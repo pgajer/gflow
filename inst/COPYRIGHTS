@@ -1,0 +1,9 @@
+This package includes the following external libraries:
+
+Eigen (http://eigen.tuxfamily.org)
+Mozilla Public License 2.0
+Copyright (C) 2006-2022 Eigen authors
+
+Spectra (https://spectralib.org)
+Mozilla Public License 2.0
+Copyright (C) 2016-2024 Yixuan Qiu and contributors

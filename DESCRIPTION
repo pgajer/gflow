@@ -1,0 +1,31 @@
+Package: gflow
+Title: Gradient Flow Data Analysis Framework
+Version: 0.0.1
+Authors@R:
+    person("Pawel", "Gajer", , "pgajer@gmail.com", role = c("aut", "cre"))
+Description: Provides tools and methods for gradient flow data analysis
+    framework. The package implements various algorithms for graph construction,
+    path analysis, and gradient flow computation, facilitating the exploration
+    and understanding of high-dimensional data.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+SystemRequirements: C++11, GNU make, OpenMP (>= 2.0)
+LinkingTo: RcppParallel
+Depends:
+    R (>= 3.1)
+Imports:
+    segmented,
+    stats,
+    graphics,
+    changepoint,
+    zoo,
+    rgl,
+    FNN
+Suggests:
+    doParallel,
+    foreach,
+    igraph,
+    parallel,
+    utils

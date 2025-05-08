@@ -1,0 +1,76 @@
+#ifndef IKNN_GRAPHS_HPP_
+#define IKNN_GRAPHS_HPP_
+
+#include "vect_wgraph.hpp"
+
+struct iknn_vertex_t {
+    size_t index; // index of the nearest neighbor
+    size_t isize;  // the number of elements in the intersection of the set, N(x), of kNN of the vertext and the set, N(x_j), of kNN of the neighbor x_j
+    double dist;  // distance between the vertex and the neighbor computed as the minimumum over k of d(x,x_k) + d(x_k,x_j), where x is the vertex, x_j is the j-th NN of x, x_k runs over elements of N(x) \cap N(x_j) and d(x,y is the distance between x and y as computed by kNN library ANN
+};
+
+struct iknn_graph_t {
+    std::vector<std::vector<iknn_vertex_t>> graph;
+
+    // Constructor that takes initial size
+    explicit iknn_graph_t(size_t n_vertices)
+        : graph(n_vertices),
+          total_isize_cache(n_vertices),
+          num_edges_cache(n_vertices)
+        {}
+
+    // Constructor takes rvalue reference - meaning it expects a temporary or moved value
+    explicit iknn_graph_t(std::vector<std::vector<iknn_vertex_t>>&& input_graph)
+        : graph(std::move(input_graph)),
+          total_isize_cache(input_graph.size()),
+          num_edges_cache(input_graph.size())
+        {}
+
+    // Public interface declaration
+    vect_wgraph_t prune_graph(int max_alt_path_length) const;
+
+    size_t size() const {
+        return graph.size();
+    }
+
+    const std::vector<iknn_vertex_t>& get_neighbors(int vertex) const {
+        return graph[vertex];
+    }
+
+    // Future member functions could include:
+    // void add_edge(int from, int to, int common_count, double distance);
+    // void remove_edge(int from, int to);
+
+    void print(size_t vertex_index_shift = 0,
+               const std::string& name = "") const;
+
+private:
+    mutable std::vector<int> total_isize_cache;
+    mutable std::vector<int> num_edges_cache;
+
+    // Helper struct for edge processing
+    struct weighted_edge_t {
+        size_t start;
+        size_t end;
+        double dist;
+        size_t isize;
+
+        bool operator<(const weighted_edge_t& other) const {
+            if (isize < other.isize) return true;      // Smaller isizeance first
+            if (isize > other.isize) return false;     // Larger isizeance later
+            // Break ties in same order as original
+            if (start < other.start) return true;
+            if (start > other.start) return false;
+            return end < other.end;
+        }
+    };
+
+    // Private helper function declaration
+    bool find_alternative_path(int start,
+                               int end,
+                               int edge_isize,
+                               int max_path_length) const;
+
+};
+
+#endif // IKNN_GRAPHS_HPP_

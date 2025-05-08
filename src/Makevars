@@ -1,0 +1,30 @@
+# Include paths
+PKG_CPPFLAGS = -I. -IANN -I../inst/include
+PKG_CPPFLAGS += -I../inst/include/eigen
+PKG_CPPFLAGS += -I../inst/include/spectra
+PKG_CPPFLAGS += -I../inst/include/spectra/Spectra
+PKG_CPPFLAGS += -D_Alignof=__alignof__
+PKG_CPPFLAGS += -I/opt/homebrew/opt/libomp/include  # Add OpenMP include path
+
+# C++ standard
+CXX_STD = CXX20
+
+# Explicit OpenMP flags
+PKG_CXXFLAGS = -fopenmp
+PKG_CXXFLAGS += -Wall -Wextra -Wpedantic
+PKG_CXXFLAGS += -Wno-sign-conversion -Wno-sign-compare -Wno-psabi -Wno-class-memaccess
+PKG_CXXFLAGS += -DTBB_SUPPRESS_DEPRECATED_MESSAGES
+
+# Explicitly link to libomp
+PKG_LIBS = -L/opt/homebrew/opt/libomp/lib -lomp $(LAPACK_LIBS) $(BLAS_LIBS)
+
+# Source files
+SOURCES_CPP = $(wildcard *.cpp)
+SOURCES_C = $(wildcard *.c)
+ANN_SOURCES = $(wildcard ANN/*.cpp)
+
+# Object files
+OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o)
+
+# Main target
+$(SHLIB): $(OBJECTS)
