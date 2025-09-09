@@ -1,9 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Random.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <random>
 #include <vector>
@@ -65,9 +65,6 @@ std::vector<double> rlaplace(int n,
     return result;
 }
 
-// Update the rlaplace function declaration to accept a seed
-std::vector<double> rlaplace(int n, double location, double scale, unsigned int seed);
-
 /**
  * @brief Generate random variates from the Laplace distribution
  *
@@ -121,6 +118,10 @@ SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed) {
         seed = static_cast<unsigned int>(unif_rand() * UINT_MAX);
         PutRNGstate();
     } else {
+        // Make sure R_seed has at least one element
+        if (LENGTH(R_seed) < 1) {
+            error("seed must have at least one element");
+        }
         seed = static_cast<unsigned int>(INTEGER(R_seed)[0]);
     }
 

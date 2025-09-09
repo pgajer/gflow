@@ -2,10 +2,10 @@
 #include <Rinternals.h>
  // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include "set_wgraph.hpp"  // for set_wgraph_t
 #include "SEXP_cpp_conversion_utils.hpp"
-
 #include "cpp_utils.hpp"
 
 extern "C" {
@@ -320,8 +320,8 @@ SEXP S_find_local_extrema(
  * Each basin in lmin_basins and lmax_basins is a list with components:
  *   - vertex: 1-based index of the extremum vertex
  *   - value: Function value at the extremum
- *   - basin: Matrix [m x 2] with vertices and distances from extremum
- *   - basin_bd: Matrix [b x 2] of boundary vertices and their monotonicity spans
+ *   - basin: Matrix [m x 3] with vertex index, vertex distance from extremum and the value of y at the vertex
+ *   - basin_bd: Matrix [b x 3] of boundary vertices, distance from extremum, and their monotonicity spans
  *
  * The distance matrices have row and column names corresponding to the basin labels
  * (e.g., "m1", "m2", ... for minima and "M1", "M2", ... for maxima).
@@ -441,22 +441,25 @@ SEXP S_create_basin_cx(
 
         // Basin boundary matrix from boundary_monotonicity_spans_map
         size_t bd_size = b.boundary_monotonicity_spans_map.size();
-        SEXP r_basin_bd = PROTECT(allocMatrix(REALSXP, bd_size, 2));
+        SEXP r_basin_bd = PROTECT(allocMatrix(REALSXP, bd_size, 3));
         double *bd_pr = REAL(r_basin_bd);
         size_t bd_idx = 0;
         for (const auto& [vertex, span] : b.boundary_monotonicity_spans_map) {
-            bd_pr[bd_idx]          = vertex + 1;   // row i, col 1 (1-based vertex index)
-            bd_pr[bd_idx + bd_size] = span;        // row i, col 2 (monotonicity span)
+            bd_pr[bd_idx]               = vertex + 1;                  // row i, col 1 (1-based vertex index)
+            bd_pr[bd_idx + bd_size]     = b.reachability_map.distances.at(vertex);  // row i, col 2 (distance)
+            bd_pr[bd_idx + 2 * bd_size] = span;                        // row i, col 3 (monotonicity span)
             bd_idx++;
         }
 
         // Add column names to basin_bd matrix
-        SEXP basin_bd_colnames = PROTECT(allocVector(STRSXP, 2));
+        SEXP basin_bd_colnames = PROTECT(allocVector(STRSXP, 3));
         SET_STRING_ELT(basin_bd_colnames, 0, mkChar("vertex"));
-        SET_STRING_ELT(basin_bd_colnames, 1, mkChar("span"));
+        SET_STRING_ELT(basin_bd_colnames, 1, mkChar("distance"));
+        SET_STRING_ELT(basin_bd_colnames, 2, mkChar("span"));
         setAttrib(r_basin_bd, R_DimNamesSymbol,
                   list2(R_NilValue, basin_bd_colnames)); // No row names
         UNPROTECT(1); // basin_bd_colnames
+
         // Set list entries
         SET_VECTOR_ELT(r_blist, 0, r_vertex);
         SET_VECTOR_ELT(r_blist, 1, r_value);
@@ -491,6 +494,7 @@ SEXP S_create_basin_cx(
     // Column names for basins_matrix
     const char* basin_matrix_colnames[] = {
         "extremum_vertex",
+        "hop_idx",
         "value",
         "is_maximum",
         "rel_min_span",
@@ -529,14 +533,15 @@ SEXP S_create_basin_cx(
         double delta_rel_span = rel_max_span - rel_min_span;
 
         // Fill row data
-        matrix_data[row]                    = vertex + 1;         // extremum_vertex (1-based)
-        matrix_data[row + total_basins]     = basin.value;        // value
-        matrix_data[row + 2*total_basins]   = 0.0;                // is_maximum (0 = false)
-        matrix_data[row + 3*total_basins]   = rel_min_span;       // rel_min_span
-        matrix_data[row + 4*total_basins]   = rel_max_span;       // rel_max_span
-        matrix_data[row + 5*total_basins]   = delta_rel_span;     // delta_rel_span
-        matrix_data[row + 6*total_basins]   = static_cast<double>(size); // size
-        matrix_data[row + 7*total_basins]   = rel_size;           // rel_size
+        matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
+        matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
+        matrix_data[row + 2*total_basins] = basin.value;        // value
+        matrix_data[row + 3*total_basins] = 0.0;                // is_maximum (0 = false)
+        matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
+        matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
+        matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
+        matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
+        matrix_data[row + 8*total_basins] = rel_size;           // rel_size
 
         row++;
     }
@@ -550,14 +555,15 @@ SEXP S_create_basin_cx(
         double delta_rel_span = rel_max_span - rel_min_span;
 
         // Fill row data
-        matrix_data[row]                    = vertex + 1;         // extremum_vertex (1-based)
-        matrix_data[row + total_basins]     = basin.value;        // value
-        matrix_data[row + 2*total_basins]   = 1.0;                // is_maximum (1 = true)
-        matrix_data[row + 3*total_basins]   = rel_min_span;       // rel_min_span
-        matrix_data[row + 4*total_basins]   = rel_max_span;       // rel_max_span
-        matrix_data[row + 5*total_basins]   = delta_rel_span;     // delta_rel_span
-        matrix_data[row + 6*total_basins]   = static_cast<double>(size); // size
-        matrix_data[row + 7*total_basins]   = rel_size;           // rel_size
+        matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
+        matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
+        matrix_data[row + 2*total_basins] = basin.value;        // value
+        matrix_data[row + 3*total_basins] = 1.0;                // is_maximum (1 = true)
+        matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
+        matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
+        matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
+        matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
+        matrix_data[row + 8*total_basins] = rel_size;           // rel_size
 
         row++;
     }

@@ -1,11 +1,12 @@
 #include <R.h>
 #include <Rinternals.h>
 
-#include <Eigen/Dense>
 #include <vector>
 #include <array>
 #include <cmath>      // for fabs()
 #include <algorithm>  // for std::find,
+
+#include <Eigen/Dense>
 
 #include "ulogit.hpp"
 #include "error_utils.h"
@@ -460,7 +461,7 @@ std::vector<double> ulogit_predict(
         total_weight += weight;
     }
     if (total_weight <= 0) {
-        throw std::invalid_argument("Sum of weights must be positive");
+        Rf_error("Sum of weights must be positive");
     }
 
     // Check for effective complete separation considering weights

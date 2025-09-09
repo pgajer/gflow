@@ -2,6 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -27,61 +28,6 @@ struct compare_edge_t {
         return e1.dist > e2.dist;
     }
 };
-
-/**
- * @brief Prints the contents of a priority queue.
- *
- * This function creates a copy of the input priority queue and prints its elements
- * in the order they would be popped (highest priority first). The original queue
- * remains unmodified.
- *
- * @tparam T The type of elements in the priority queue.
- * @tparam Container The container type used by the priority queue (default: std::vector<T>).
- * @tparam Compare The comparison function type used by the priority queue.
- *
- * @param pq The priority queue to print. Passed by const reference to prevent modification.
- * @param name An optional name to be printed before the queue contents (default: "").
- * @param n The maximum number of elements to print. If 0 or greater than queue size,
- *          prints all elements (default: 0).
- *
- * @note This function creates a copy of the entire queue, which may be memory-intensive
- *       for very large queues.
- *
- * @example
- *     std::priority_queue<int> my_pq({3, 1, 4, 1, 5, 9});
- *     print_pq(my_pq, "My Queue", 3);
- *     // Output: My Queue: 9 5 4
- */
-
-// Add this operator overload
-std::ostream& operator<<(std::ostream& os, const edge_t& edge) {
-    os << "(" << edge.from << "->" << edge.to << ": " << edge.dist << ")";
-    return os;
-}
-
-void print_edge(const edge_t& edge) {
-    std::cout << "(" << edge.from << "->" << edge.to << ": " << edge.dist << ")";
-}
-
-template <typename T, typename Container, typename Compare>
-void print_pq(const std::priority_queue<T, Container, Compare>& pq, const std::string& name = "", size_t n = 0) {
-    std::priority_queue<T, Container, Compare> pq_copy = pq;
-    if (n == 0) {
-        n = pq.size();
-    }
-    if (!name.empty()) {
-        std::cout << name << ": ";
-    }
-    size_t count = 0;
-    while (!pq_copy.empty() && count < n) {
-        print_edge(pq_copy.top());  // Use the helper function here
-        std::cout << " ";
-        pq_copy.pop();
-        ++count;
-    }
-    std::cout << std::endl;
-}
-
 
 /**
  * @brief Computes the Minimum Spanning Tree (MST) using Prim's algorithm with ANN library for efficient nearest neighbor searches.

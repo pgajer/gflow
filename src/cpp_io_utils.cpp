@@ -5,31 +5,6 @@
 #include <fstream>
 #include <vector>
 
-#if 0
-#include <nlohmann/json.hpp>
-// Writes the content of a vector of vector of int to a JSON file
-void write_json_vect_vect_int(const std::vector<std::vector<int>>& vv, const std::string& out_file) {
-    json j = vv;
-    std::ofstream vv_file(out_file);
-    vv_file << j.dump(4);  // 4 is for pretty-printing with an indent of 4 spaces
-}
-void read_json_vect_vect_int(std::vector<std::vector<int>>& vv, const std::string& in_file) {
-    std::ifstream vv_file(in_file);
-    if (!vv_file.is_open()) {
-        std::cerr << "Error: Cannot open file " << in_file << std::endl;
-        return;
-    }
-    json vv_json;
-    try {
-        vv_file >> vv_json;
-        vv = vv_json.get<std::vector<std::vector<int>>>();
-    } catch (const json::parse_error& e) {
-        std::cerr << "Parse error: " << e.what() << std::endl;
-    }
-}
-#endif
-
-
 // Writes the content of a vector of vector of int to a binary file
 void write_binary_vect_vect_int(const std::vector<std::vector<int>>& vv, const std::string& out_file) {
     std::ofstream out(out_file, std::ios::binary);

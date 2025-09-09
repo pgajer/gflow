@@ -38,6 +38,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <ANN/ANN.h>  // ANN library header
 #include <vector>
@@ -82,8 +83,6 @@ extern "C" {
         SEXP s_kmin,
         SEXP s_kmax,
         // pruning parameters
-        SEXP s_pruning_thld,
-        SEXP s_outlier_long_edge_thld,
         SEXP s_max_path_edge_ratio_thld,
         SEXP s_path_edge_ratio_percentile,
         // other
@@ -1308,151 +1307,86 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
     return res;
 }
 
-
 /**
- * @brief Computes and analyzes a sequence of pruned and multi-pruned intersection-weighted k-nearest neighbors graphs
+ * @brief Computes and analyzes a series of intersection-weighted k-nearest neighbors graphs with multiple pruning strategies
  *
  * @details
  * For a given range of k values [kmin, kmax], this function:
- * 1. Constructs intersection-weighted k-nearest neighbors (IWD-kNN) graphs
- * 2. Applies multi-stage pruning:
- *    - First stage: Geometric pruning based on relative deviation thresholds
- *    - Second stage: `prune_long_edges()` to remove long edges while preserving connectivity
- *    - Third stage (optional): Additional geometric pruning based on path-to-edge ratio
- * 3. Tracks the birth and death times of edges across different k values for all pruning stages
- * 4. Computes statistics about edge persistence, pruning efficiency, and graph stability
- * 5. Calculates frequency metrics to identify the most stable graph configurations
+ * 1. Constructs and analyzes intersection-weighted k-nearest neighbors (IWD-kNN) graphs
+ * 2. Applies two different pruning strategies to each graph:
+ *    - Geometric pruning: Removes edges where alternative paths exist with better geometric properties
+ *    - Intersection-size pruning: Removes edges where alternative paths with larger intersection sizes exist
+ * 3. Computes comprehensive statistics for each graph and pruning method
+ * 4. Optionally returns the full pruned graph structures for further analysis
  *
- * For each edge e, birth time b(e) and death time d(e) are defined as:
- * - b(e) = min{k : e ∈ pG(X,k)}
- * - d(e) = min{k : e ∈ pG(X,k-1) and e ∉ pG(X,s) for all s ≥ k}
- * where pG(X,k) is the pruned graph for parameter k
+ * The geometric pruning uses the path-to-edge ratio to determine which edges to remove:
+ * - Edges are pruned when an alternative path exists with a better path-to-edge ratio
+ * - The pruning threshold and percentile can be configured via parameters
  *
- * Multi-stage pruning process:
- * 1. Geometric pruning: Removes edges based on relative deviation threshold
- *    - For each edge (i,k), compute rel_dev = (w_ij + w_jk) / w_ik - 1.0
- *    - If rel_dev < pruning_thld, remove the edge
- *    - Ensures connectivity by preserving at least one edge per vertex
- * 2. Long-edge pruning: Applies `prune_long_edges()` to further remove redundant edges
- *    - Removes edges with weights greater than a specified percentile if removing them
- *      doesn't disconnect their endpoints
- *    - This step helps create a more sparse yet structurally meaningful graph
- * 3. Path-ratio pruning (optional): Applies additional geometric pruning
- *    - If max_path_edge_ratio_thld > 0, applies `prune_edges_geometrically()`
- *    - Removes edges where the ratio of alternative path length to direct edge length
- *      is below the specified threshold
- *
- * Edge frequency metrics are calculated as follows:
- * - For each edge, its relative frequency is the proportion of k values where it appears
- * - For each k value, the frequency_ratio is the average relative frequency of all edges
- *   in that specific pruned graph
- * - Higher frequency_ratio values indicate more stable graph configurations where edges
- *   tend to persist across different k values
+ * The intersection-size pruning evaluates alternative paths with at least 2 edges and prunes
+ * edges when all edges in the alternative path have larger intersection sizes.
  *
  * @param s_X SEXP object representing the input data matrix. Must be a numeric matrix
- *           (not a data frame) where:
- *           - Rows represent data points (vertices)
- *           - Columns represent features
- *           - Values must be numeric (coercible to REALSXP)
+ *           where rows represent data points (vertices) and columns represent features
  *
  * @param s_kmin SEXP object (integer) representing the minimum k value to consider
  *              Must be positive
  *
  * @param s_kmax SEXP object (integer) representing the maximum k value to consider
- *              Must be greater than kmin
- *
- * @param s_pruning_thld SEXP object (double) controlling intensity of the geometric edge pruning.
- *        Edge weight relative deviation is computed as rel_dev = (w_ij + w_jk) / w_ik - 1.0.
- *        Geometric pruning is performed on all edges with rel_dev < pruning_thld.
- *
- * @param s_long_edge_thld SEXP object (double) Threshold percentile for pruning long edges
- *        in the second stage of pruning (0.0-1.0). Default is 0.5 (median).
- *        Higher values result in more aggressive pruning.
+ *              Must be greater than or equal to kmin
  *
  * @param s_max_path_edge_ratio_thld SEXP object (double) Maximum acceptable ratio of
- *        alternative path length to edge length for the third pruning stage.
+ *        alternative path length to edge length for geometric pruning.
  *        Edges with ratio <= this value will be pruned. If <= 0, this pruning stage is skipped.
  *
  * @param s_path_edge_ratio_percentile SEXP object (double) Percentile threshold (0.0-1.0)
- *        for edge lengths to consider in the third pruning stage. Only edges with length
- *        greater than this percentile are considered for path-ratio pruning.
+ *        for edge lengths to consider in geometric pruning. Only edges with length
+ *        greater than this percentile are considered for pruning.
  *
  * @param s_compute_full SEXP object (logical) controlling computation of optional components:
- *                      - TRUE: Store all pruned and multi-pruned graphs in the output
- *                      - FALSE: Only return edge statistics and birth/death times
+ *                      - TRUE: Store complete pruned graph structures for both pruning methods
+ *                      - FALSE: Return only statistics without full graph structures
  *
  * @param s_verbose SEXP object (logical) controlling progress reporting during computation
  *
  * @return SEXP object (a named list) containing:
- * - birth_death_matrix: Matrix with columns for edges in geometrically pruned graphs:
- *   - start: Starting vertex of edge (1-based)
- *   - end: Ending vertex of edge (1-based)
- *   - birth_time: k value when edge first appears
- *   - death_time: k value when edge permanently disappears (SIZE_MAX if never dies)
- *
  * - k_statistics: Matrix with columns:
  *   - k: k value
  *   - n_edges: Total edges in original graph
- *   - n_edges_in_pruned_graph: Edges remaining after first-stage pruning
- *   - n_removed_edges: Edges removed during first-stage pruning
- *   - edge_reduction_ratio: Proportion of edges removed by first-stage pruning
- *   - n_edges_in_double_pruned_graph: Edges remaining after second-stage pruning
- *   - n_removed_edges_in_double_pruning: Additional edges removed by second-stage pruning
- *   - double_edge_reduction_ratio: Proportion of edges removed by second-stage pruning
+ *   - n_edges_in_pruned_graph: Edges remaining after geometric pruning
+ *   - n_removed_edges: Edges removed during geometric pruning
+ *   - edge_reduction_ratio: Proportion of edges removed by geometric pruning
+ *   - n_edges_in_isize_pruned_graph: Edges remaining after intersection-size pruning
+ *   - n_removed_edges_in_double_pruning: Additional edges removed by intersection-size pruning
+ *   - double_edge_reduction_ratio: Proportion of edges removed by intersection-size pruning
  *
- * - pruned_graphs: If compute_full is TRUE, list of first-stage pruned graphs for each k value
- *                 Each graph contains:
- *   - pruned_adj_list: Adjacency lists after pruning
- *   - pruned_weight_list: Distances for pruned edges
- *                 If compute_full is FALSE, R_NilValue
+ * - geom_pruned_graphs: If compute_full is TRUE, list of geometrically pruned graphs for each k value,
+ *                       each containing adj_list and weight_list components. NULL if compute_full is FALSE.
  *
- * - double_birth_death_matrix: Matrix with columns for edges in multi-pruned graphs:
- *   - start: Starting vertex of edge (1-based)
- *   - end: Ending vertex of edge (1-based)
- *   - birth_time: k value when edge first appears
- *   - death_time: k value when edge permanently disappears (SIZE_MAX if never dies)
- *
- * - double_pruned_graphs: If compute_full is TRUE, list of multi-pruned graphs for each k value
- *                       Each graph contains:
- *   - pruned_adj_list: Adjacency lists after multi-stage pruning
- *   - pruned_weight_list: Distances for multi-pruned edges
- *                       If compute_full is FALSE, R_NilValue
+ * - isize_pruned_graphs: If compute_full is TRUE, list of intersection-size pruned graphs for each k value,
+ *                        each containing adj_list and weight_list components. NULL if compute_full is FALSE.
  *
  * - edge_pruning_stats: List of matrices, one for each k value, containing edge pruning statistics:
  *   - edge_length: Length of each analyzed edge
  *   - length_ratio: Ratio of alternative path length to edge length
  *
  * @note
- * - The function uses `compute_knn()` once with maximum k for efficiency
- * - Geometric pruning uses `compute_edge_weight_rel_deviations()` for efficiency
- * - The second stage uses `prune_long_edges()` with a threshold percentile
- * - The third stage (optional) uses `prune_edges_geometrically()` with path-to-edge ratio
- * - Edges are stored with start < end to avoid duplication
- * - Birth/death times use 0-based k values internally
- * - All indices in returned R objects are 1-based
- * - The frequency_ratio can be used to select the most stable pruned graph configuration
- * - Higher frequency_ratio values indicate graphs whose edges tend to persist across multiple k values
- *
- * @warning
- * - Input matrix must be numeric and cannot be a data frame
- * - kmin must be positive and less than kmax
- * - Large k values or dense datasets may require significant memory
- * - Multi-stage pruning significantly reduces edge count and might disconnect the graph
+ * - The function computes k-nearest neighbors only once with the maximum k value for efficiency
+ * - Parallelization is implemented using OpenMP for processing multiple k values simultaneously
+ * - The function uses intersection size and geometric distance for edge pruning decisions
+ * - Edge pruning preserves graph connectivity while reducing redundant connections
+ * - All indices in returned R objects are 1-based (R convention)
  *
  * @see
- * - create_iknn_graph(): Computes single IWD-kNN graph
- * - set_wgraph_t::compute_edge_weight_rel_deviations(): Computes edge deviations for pruning
- * - set_wgraph_t::prune_long_edges(): Secondary pruning algorithm
- * - set_wgraph_t::prune_edges_geometrically(): Tertiary pruning algorithm
- * - convert_birth_death_map_to_matrix(): Converts internal tracking to R format
+ * - create_iknn_graph(): Creates a single intersection-weighted k-nearest neighbors graph
+ * - set_wgraph_t::prune_edges_geometrically(): Geometric pruning implementation
+ * - iknn_graph_t::prune_graph(): Intersection-size pruning implementation
  */
 SEXP S_create_iknn_graphs(
     SEXP s_X,
     SEXP s_kmin,
     SEXP s_kmax,
     // pruning parameters
-    SEXP s_pruning_thld,
-    SEXP s_outlier_long_edge_thld,
     SEXP s_max_path_edge_ratio_thld,
     SEXP s_path_edge_ratio_percentile,
     // other
@@ -1464,8 +1398,6 @@ SEXP S_create_iknn_graphs(
     int kmin = INTEGER(s_kmin)[0];
     int kmax = INTEGER(s_kmax)[0];
 
-    double pruning_thld               = REAL(s_pruning_thld)[0];
-    double outlier_long_edge_thld     = REAL(s_outlier_long_edge_thld)[0];
     double max_path_edge_ratio_thld   = REAL(s_max_path_edge_ratio_thld)[0];
     double path_edge_ratio_percentile = REAL(s_path_edge_ratio_percentile)[0];
 
@@ -1481,9 +1413,6 @@ SEXP S_create_iknn_graphs(
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin, kmax, n_vertices);
     }
 
-    // Prepare vectors to store results
-    std::vector<std::vector<double>> k_statistics(kmax - kmin + 1);
-
     // Create vector of k values
     std::vector<int> k_values(kmax - kmin + 1);
     std::iota(k_values.begin(), k_values.end(), kmin);
@@ -1494,296 +1423,110 @@ SEXP S_create_iknn_graphs(
 
     // Progress tracking
     std::atomic<int> progress_counter{0};
-    const size_t n_k_values = kmax - kmin + 1;
+    // const size_t n_k_values = kmax - kmin + 1;
 
     // Compute kNN once for maximum k
     auto knn_results = compute_knn(s_X, kmax);
 
-    #define USE_GEOMETRIC_PRUNING 1
-
-    #if USE_GEOMETRIC_PRUNING
-    std::vector<set_wgraph_t> pruned_graphs(kmax - kmin + 1);
-    // Add vector for double pruned graphs
-    std::vector<set_wgraph_t> double_pruned_graphs(kmax - kmin + 1);
-
     // Create a vector to store edge pruning stats for each k value
-    std::vector<edge_pruning_stats_t> all_edge_pruning_stats(kmax - kmin + 1);
-
-    #else
     int max_alt_path_length = 2; //INTEGER(s_max_alt_path_length)[0];
-    std::vector<vect_wgraph_t> pruned_graphs(kmax - kmin + 1);
-    #endif
-
     double threshold_percentile = 0.5;
 
-    // Parallel processing using pre-computed kNN results
-    std::for_each(std::execution::par_unseq,
-                  k_values.begin(),
-                  k_values.end(),
-                  [&](int k) {
+    // Pre-allocate all data structures
+    std::vector<set_wgraph_t> geom_pruned_graphs(kmax - kmin + 1);
+    geom_pruned_graphs.resize(kmax - kmin + 1);
 
-                      if (verbose) {
-                          int current_count = ++progress_counter;
-                          REprintf("\rProcessing %d %d%%",
-                                   current_count,
-                                   static_cast<int>((100.0 * current_count) / n_k_values));
-                      }
+    std::vector<vect_wgraph_t> isize_pruned_graphs(kmax - kmin + 1);
+    isize_pruned_graphs.resize(kmax - kmin + 1);
 
-                      auto iknn_graph = create_iknn_graph(knn_results, k);
+    // Prepare vectors to store results
+    std::vector<std::vector<double>> k_statistics(kmax - kmin + 1);
+    k_statistics.resize(kmax - kmin + 1);
 
-                      // Count original edges
-                      size_t n_edges = 0;
-                      for (const auto& vertex_edges : iknn_graph.graph) {
-                          n_edges += vertex_edges.size();
-                      }
-                      n_edges /= 2;
+    std::vector<edge_pruning_stats_t> all_edge_pruning_stats(kmax - kmin + 1);
+    all_edge_pruning_stats.resize(kmax - kmin + 1);
+
+// Set number of threads (optional)
+#ifdef _OPENMP
+    int num_threads = omp_get_max_threads();
+    if (verbose) Rprintf("Using %d OpenMP threads\n", num_threads);
+#endif
+
+// Parallel region
+#pragma omp parallel for schedule(dynamic)
+    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
+        int k = kmin + k_idx;
+
+        // Report progress - use critical section to avoid output interleaving
+        if (verbose) {
+#pragma omp critical
+            {
+                REprintf("\rProcessing k=%d (%d of %d) - %d%%",
+                         k, k_idx+1, kmax-kmin+1,
+                         static_cast<int>((100.0 * (k_idx+1)) / (kmax-kmin+1)));
+            }
+        }
+
+        // Create local graph and process
+        auto iknn_graph = create_iknn_graph(knn_results, k);
+
+        // Count original edges
+        size_t n_edges = 0;
+        for (const auto& vertex_edges : iknn_graph.graph) {
+            n_edges += vertex_edges.size();
+        }
+        n_edges /= 2;
+
+        // Transfer iknn_graph to set_wgraph_t
+        auto pruned_graph = set_wgraph_t(iknn_graph);
+
+        if (max_path_edge_ratio_thld > 0) {
+            pruned_graph = pruned_graph.prune_edges_geometrically(
+                max_path_edge_ratio_thld,
+                path_edge_ratio_percentile
+                );
+        }
+
+        // Count edges in pruned graph
+        size_t n_edges_in_pruned_graph = 0;
+        for (const auto& neighbors : pruned_graph.adjacency_list) {
+            n_edges_in_pruned_graph += neighbors.size();
+        }
+        n_edges_in_pruned_graph /= 2;
 
 
-                      #if USE_GEOMETRIC_PRUNING
-                      // geometric graph pruning
-                      // transfering iknn_graph_t to set_wgraph_t
-                      auto pruned_graph = set_wgraph_t(iknn_graph);
+        // isize graph pruning
+        vect_wgraph_t isize_pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
 
-                      // Compute the deviations using the optimized method
-                      auto rel_deviations = pruned_graph.compute_edge_weight_rel_deviations();
+        // Count edges in the pruned graph
+        size_t n_edges_in_isize_pruned_graph = 0;
+        for (const auto& neighbors : isize_pruned_graph.adjacency_list) {
+            n_edges_in_isize_pruned_graph += neighbors.size();
+        }
+        n_edges_in_isize_pruned_graph /= 2;
 
-                      // Process edges
-                      for (size_t i = 0; i < rel_deviations.size(); i++) {
-                          if (rel_deviations[i].rel_deviation < pruning_thld) {
-                              size_t source = rel_deviations[i].source;
-                              size_t target = rel_deviations[i].target;
+        // Store results
+        k_statistics[k_idx] = {
+            (double)n_edges,
+            (double)n_edges_in_pruned_graph,
+            (double)(n_edges - n_edges_in_pruned_graph),
+            (double)(n_edges - n_edges_in_pruned_graph) / n_edges,
+            (double)n_edges_in_isize_pruned_graph,
+            (double)(n_edges_in_pruned_graph - n_edges_in_isize_pruned_graph),
+            (double)(n_edges_in_pruned_graph - n_edges_in_isize_pruned_graph) / n_edges_in_pruned_graph
+        };
 
-                              // Check if removing this edge would isolate any vertex
-                              if (pruned_graph.adjacency_list[source].size() <= 1) {
-                                  continue;
-                              }
-
-                              if (pruned_graph.adjacency_list[target].size() <= 1) {
-                                  continue;
-                              }
-
-                              // Safe to remove the edge
-                              pruned_graph.remove_edge(source, target);
-                          }
-                      }
-
-                      // Compute edge pruning statistics
-                      all_edge_pruning_stats[k - kmin] = pruned_graph.compute_edge_pruning_stats(threshold_percentile);
-
-                      // Apply the set_wgraph_t::prune_long_edges method
-                      // Create a double-pruned graph by applying prune_long_edges to the pruned graph
-                      set_wgraph_t double_pruned_graph = pruned_graph.prune_long_edges(outlier_long_edge_thld);
-
-                      if (max_path_edge_ratio_thld > 0) {
-                          double_pruned_graph = double_pruned_graph.prune_edges_geometrically(
-                              max_path_edge_ratio_thld,  //  max_ratio_threshold
-                              path_edge_ratio_percentile //  threshold_percentile
-                              );
-                      }
-
-                      // Count edges in the pruned graph
-                      size_t n_edges_in_pruned_graph = 0;
-                      for (const auto& neighbors : pruned_graph.adjacency_list) {
-                          n_edges_in_pruned_graph += neighbors.size();
-                      }
-                      n_edges_in_pruned_graph /= 2;
-
-                      // Count edges in the double-pruned graph
-                      size_t n_edges_in_double_pruned_graph = 0;
-                      for (const auto& neighbors : double_pruned_graph.adjacency_list) {
-                          n_edges_in_double_pruned_graph += neighbors.size();
-                      }
-                      n_edges_in_double_pruned_graph /= 2;
-
-                      k_statistics[k - kmin] = {
-                          (double)n_edges,
-                          (double)n_edges_in_pruned_graph,
-                          (double)(n_edges - n_edges_in_pruned_graph),
-                          (double)(n_edges - n_edges_in_pruned_graph) / n_edges,
-                          (double)n_edges_in_double_pruned_graph,
-                          (double)(n_edges_in_pruned_graph - n_edges_in_double_pruned_graph),
-                          (double)(n_edges_in_pruned_graph - n_edges_in_double_pruned_graph) / n_edges_in_pruned_graph
-                      };
-
-                      // Store the double-pruned graph
-                      double_pruned_graphs[k - kmin] = std::move(double_pruned_graph);
-
-                      // Store the first-level pruned graph
-                      pruned_graphs[k - kmin] = std::move(pruned_graph);
-
-                      #else
-                      // isize graph pruning
-                      vect_wgraph_t pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
-
-                      // Count edges in the pruned graph
-                      size_t n_edges_in_pruned_graph = 0;
-                      for (const auto& neighbors : pruned_graph.adjacency_list) {
-                          n_edges_in_pruned_graph += neighbors.size();
-                      }
-                      n_edges_in_pruned_graph /= 2;
-
-                      // Store results
-                      pruned_graphs[k - kmin] = std::move(pruned_graph);
-                      k_statistics[k - kmin] = {
-                          (double)n_edges,
-                          (double)n_edges_in_pruned_graph,
-                          (double)(n_edges - n_edges_in_pruned_graph),
-                          (double)(n_edges - n_edges_in_pruned_graph) / n_edges
-                      };
-                      #endif
-                  });
+        // Store the computed graphs and stats
+        isize_pruned_graphs[k_idx]    = std::move(isize_pruned_graph);
+        all_edge_pruning_stats[k_idx] = pruned_graph.compute_edge_pruning_stats(threshold_percentile);
+        geom_pruned_graphs[k_idx]          = std::move(pruned_graph);
+    }
 
     if (verbose) {
         elapsed_time(parallel_start_time, "\rParallel processing completed", true);
     }
 
-#if 0
-    // DISABLED: Process birth/death times
-    if (verbose) {
-        Rprintf("Processing edge birth/death time ... ");
-    }
-
-    // Serial processing of results
-    auto serial_start_time = std::chrono::steady_clock::now();
-
-    // Process birth/death times and edge frequencies
-    std::unordered_map<edge_t, birth_death_time_t, edge_hash> birth_death_map;
-    std::unordered_map<edge_t, size_t, edge_hash> edge_freq_map;
-
-    // Add maps for double-pruned graphs
-    std::unordered_map<edge_t, birth_death_time_t, edge_hash> double_birth_death_map;
-    std::unordered_map<edge_t, size_t, edge_hash> double_edge_freq_map;
-
-    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        int k = kmin + k_idx;
-        const auto& pruned_graph = pruned_graphs[k_idx];
-
-        // Process edges for first-level pruned graph
-        for (int i = 0; i < n_vertices; i++) {
-            for (const auto& edge : pruned_graph.adjacency_list[i]) {
-                int neighbor = edge.vertex;
-                if (i < neighbor) {
-                    edge_t edge_key = {(size_t)i, (size_t)neighbor};
-
-                    // Update birth/death times
-                    auto it = birth_death_map.find(edge_key);
-                    if (it == birth_death_map.end()) {
-                        birth_death_map[edge_key] = {(size_t)k, (size_t)(k + 1)};
-                    } else {
-                        it->second.death_time = (size_t)(k + 1);
-                    }
-
-                    // Update edge frequency
-                    edge_freq_map[edge_key]++;
-                }
-            }
-        }
-
-        // Process edges for double-pruned graph
-        #if USE_GEOMETRIC_PRUNING
-        const auto& double_pruned_graph = double_pruned_graphs[k_idx];
-
-        for (int i = 0; i < n_vertices; i++) {
-            for (const auto& edge : double_pruned_graph.adjacency_list[i]) {
-                int neighbor = edge.vertex;
-                if (i < neighbor) {
-                    edge_t edge_key = {(size_t)i, (size_t)neighbor};
-
-                    // Update birth/death times for double-pruned graph
-                    auto it = double_birth_death_map.find(edge_key);
-                    if (it == double_birth_death_map.end()) {
-                        double_birth_death_map[edge_key] = {(size_t)k, (size_t)(k + 1)};
-                    } else {
-                        it->second.death_time = (size_t)(k + 1);
-                    }
-
-                    // Update edge frequency for double-pruned graph
-                    double_edge_freq_map[edge_key]++;
-                }
-            }
-        }
-        #endif
-    }
-
-    if (verbose) {
-        elapsed_time(serial_start_time, "DONE", true);
-        serial_start_time = std::chrono::steady_clock::now();
-        Rprintf("Processing edge frequencies ... ");
-    }
-
-    // Compute relative frequencies and k-specific statistics
-    std::unordered_map<edge_t, double, edge_hash> edge_rel_freq_map;
-    std::vector<double> k_freq_ratios(n_k_values);
-
-    // Add maps for double-pruned graphs
-    std::unordered_map<edge_t, double, edge_hash> double_edge_rel_freq_map;
-    std::vector<double> double_k_freq_ratios(n_k_values);
-
-    for (const auto& [edge, freq] : edge_freq_map) {
-        edge_rel_freq_map[edge] = static_cast<double>(freq) / n_k_values;
-    }
-
-    // Process for double-pruned graphs
-    for (const auto& [edge, freq] : double_edge_freq_map) {
-        double_edge_rel_freq_map[edge] = static_cast<double>(freq) / n_k_values;
-    }
-
-    // Calculate frequency ratios for each k
-    for (int k_idx = 0; k_idx < n_k_values; k_idx++) {
-        // Process for first-level pruned graph
-        const auto& pruned_graph = pruned_graphs[k_idx];
-        double total_rel_freq = 0.0;
-        size_t edge_count = 0;
-
-        for (int i = 0; i < n_vertices; i++) {
-            for (const auto& edge : pruned_graph.adjacency_list[i]) {
-                int neighbor = edge.vertex;
-                if (i < neighbor) {
-                    edge_t edge_key = {(size_t)i, (size_t)neighbor};
-                    total_rel_freq += edge_rel_freq_map[edge_key];
-                    edge_count++;
-                }
-            }
-        }
-
-        k_freq_ratios[k_idx] = edge_count > 0 ? total_rel_freq / edge_count : 0.0;
-
-        // Process for double-pruned graph
-        #if USE_GEOMETRIC_PRUNING
-        const auto& double_pruned_graph = double_pruned_graphs[k_idx];
-        double double_total_rel_freq = 0.0;
-        size_t double_edge_count = 0;
-
-        for (int i = 0; i < n_vertices; i++) {
-            for (const auto& edge : double_pruned_graph.adjacency_list[i]) {
-                int neighbor = edge.vertex;
-                if (i < neighbor) {
-                    edge_t edge_key = {(size_t)i, (size_t)neighbor};
-                    double_total_rel_freq += double_edge_rel_freq_map[edge_key];
-                    double_edge_count++;
-                }
-            }
-        }
-
-        double_k_freq_ratios[k_idx] = double_edge_count > 0 ? double_total_rel_freq / double_edge_count : 0.0;
-        #endif
-    }
-
-    // Add frequency statistics to k_statistics
-    for (size_t i = 0; i < k_statistics.size(); i++) {
-        k_statistics[i].push_back(k_freq_ratios[i]);
-        #if USE_GEOMETRIC_PRUNING
-        k_statistics[i].push_back(double_k_freq_ratios[i]);
-        #endif
-    }
-
-    if (verbose) {
-        elapsed_time(serial_start_time, "DONE", true);
-        serial_start_time = std::chrono::steady_clock::now();
-    }
-#endif
-
-    // Set up a start time for creating return list objects if we skipped the birth/death time processing
+    // Set up a start time for creating return list objects
     auto serial_start_time = std::chrono::steady_clock::now();
     if (verbose) {
         Rprintf("Creating return list objects ... ");
@@ -1836,18 +1579,16 @@ SEXP S_create_iknn_graphs(
     setAttrib(edge_stats_list, R_NamesSymbol, edge_stats_list_names);
 
     
-    SEXP pruned_graphs_list = R_NilValue;
-    SEXP double_pruned_graphs_list = R_NilValue;
+    SEXP geom_pruned_graphs_list = R_NilValue;
+    SEXP isize_pruned_graphs_list = R_NilValue;
 
     if (compute_full) {
-        PROTECT(pruned_graphs_list = allocVector(VECSXP, kmax - kmin + 1)); nprot++;
-        #if USE_GEOMETRIC_PRUNING
-        PROTECT(double_pruned_graphs_list = allocVector(VECSXP, kmax - kmin + 1)); nprot++;
-        #endif
+        PROTECT(geom_pruned_graphs_list = allocVector(VECSXP, kmax - kmin + 1)); nprot++;
+        PROTECT(isize_pruned_graphs_list = allocVector(VECSXP, kmax - kmin + 1)); nprot++;
 
         for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
             // Process first-level pruned graph
-            const auto& pruned_graph = pruned_graphs[k_idx];
+            const auto& pruned_graph = geom_pruned_graphs[k_idx];
 
             SEXP r_pruned_adj_list = PROTECT(allocVector(VECSXP, n_vertices));
             SEXP r_pruned_weight_list = PROTECT(allocVector(VECSXP, n_vertices));
@@ -1885,18 +1626,16 @@ SEXP S_create_iknn_graphs(
             SET_STRING_ELT(r_pruned_graph_names, 1, mkChar("weight_list"));
             setAttrib(r_pruned_graph, R_NamesSymbol, r_pruned_graph_names);
 
-            SET_VECTOR_ELT(pruned_graphs_list, k_idx, r_pruned_graph);
+            SET_VECTOR_ELT(geom_pruned_graphs_list, k_idx, r_pruned_graph);
             UNPROTECT(4);
 
-            // Process double-pruned graph
-            #if USE_GEOMETRIC_PRUNING
-            const auto& double_pruned_graph = double_pruned_graphs[k_idx];
-
-            SEXP r_double_pruned_adj_list = PROTECT(allocVector(VECSXP, n_vertices));
-            SEXP r_double_pruned_weight_list = PROTECT(allocVector(VECSXP, n_vertices));
+            // Process isize-pruned graph
+            const auto& isize_pruned_graph = isize_pruned_graphs[k_idx];
+            SEXP r_isize_pruned_adj_list = PROTECT(allocVector(VECSXP, n_vertices));
+            SEXP r_isize_pruned_weight_list = PROTECT(allocVector(VECSXP, n_vertices));
 
             for (int i = 0; i < n_vertices; i++) {
-                const auto& edges = double_pruned_graph.adjacency_list[i];
+                const auto& edges = isize_pruned_graph.adjacency_list[i];
 
                 {
                     SEXP RA = PROTECT(allocVector(INTSXP, edges.size()));
@@ -1904,7 +1643,7 @@ SEXP S_create_iknn_graphs(
                     for (const auto& edge : edges) {
                         *A++ = edge.vertex + 1;
                     }
-                    SET_VECTOR_ELT(r_double_pruned_adj_list, i, RA);
+                    SET_VECTOR_ELT(r_isize_pruned_adj_list, i, RA);
                     UNPROTECT(1);
                 }
 
@@ -1914,53 +1653,31 @@ SEXP S_create_iknn_graphs(
                     for (const auto& edge : edges) {
                         *D++ = edge.weight;
                     }
-                    SET_VECTOR_ELT(r_double_pruned_weight_list, i, RD);
+                    SET_VECTOR_ELT(r_isize_pruned_weight_list, i, RD);
                     UNPROTECT(1);
                 }
             }
 
-            SEXP r_double_pruned_graph = PROTECT(allocVector(VECSXP, 2));
-            SET_VECTOR_ELT(r_double_pruned_graph, 0, r_double_pruned_adj_list);
-            SET_VECTOR_ELT(r_double_pruned_graph, 1, r_double_pruned_weight_list);
+            SEXP r_isize_pruned_graph = PROTECT(allocVector(VECSXP, 2));
+            SET_VECTOR_ELT(r_isize_pruned_graph, 0, r_isize_pruned_adj_list);
+            SET_VECTOR_ELT(r_isize_pruned_graph, 1, r_isize_pruned_weight_list);
 
-            SEXP r_double_pruned_graph_names = PROTECT(allocVector(STRSXP, 2));
-            SET_STRING_ELT(r_double_pruned_graph_names, 0, mkChar("adj_list"));
-            SET_STRING_ELT(r_double_pruned_graph_names, 1, mkChar("weight_list"));
-            setAttrib(r_double_pruned_graph, R_NamesSymbol, r_double_pruned_graph_names);
+            SEXP r_isize_pruned_graph_names = PROTECT(allocVector(STRSXP, 2));
+            SET_STRING_ELT(r_isize_pruned_graph_names, 0, mkChar("adj_list"));
+            SET_STRING_ELT(r_isize_pruned_graph_names, 1, mkChar("weight_list"));
+            setAttrib(r_isize_pruned_graph, R_NamesSymbol, r_isize_pruned_graph_names);
 
-            SET_VECTOR_ELT(double_pruned_graphs_list, k_idx, r_double_pruned_graph);
+            SET_VECTOR_ELT(isize_pruned_graphs_list, k_idx, r_isize_pruned_graph);
             UNPROTECT(4);
-            #endif
         }
     }
 
     // Create statistics matrix without frequency ratios that were computed in the disabled section
-#if 0
-    #if USE_GEOMETRIC_PRUNING
-    // Now 9 columns instead of 6
-    SEXP k_stats_matrix = PROTECT(allocMatrix(REALSXP, k_statistics.size(), 9)); nprot++;
-    #else
-    SEXP k_stats_matrix = PROTECT(allocMatrix(REALSXP, k_statistics.size(), 6)); nprot++;
-    #endif
-#else
-    // Use fewer columns as we're not including frequency statistics
-    #if USE_GEOMETRIC_PRUNING
     SEXP k_stats_matrix = PROTECT(allocMatrix(REALSXP, k_statistics.size(), 8)); nprot++;
-    #else
-    SEXP k_stats_matrix = PROTECT(allocMatrix(REALSXP, k_statistics.size(), 5)); nprot++;
-    #endif
-#endif
-
     double* data = REAL(k_stats_matrix);
-
     for (size_t i = 0; i < k_statistics.size(); i++) {
         data[i] = kmin + i;
-        // Include one fewer statistic since we're skipping frequency_ratio
-        #if USE_GEOMETRIC_PRUNING
-        for (size_t j = 0; j < 7; j++) {  // Now 7 instead of 8 or 9
-        #else
-        for (size_t j = 0; j < 4; j++) {  // Now 4 instead of 5 or 6
-        #endif
+        for (size_t j = 0; j < 7; j++) {
             data[i + (j + 1) * k_statistics.size()] = k_statistics[i][j];
         }
     }
@@ -1969,94 +1686,32 @@ SEXP S_create_iknn_graphs(
     SEXP k_stats_dimnames = PROTECT(allocVector(VECSXP, 2)); nprot++;
     SET_VECTOR_ELT(k_stats_dimnames, 0, R_NilValue);
 
-    #if USE_GEOMETRIC_PRUNING
     SEXP k_stats_colnames = PROTECT(allocVector(STRSXP, 8)); nprot++;
     SET_STRING_ELT(k_stats_colnames, 0, mkChar("k"));
     SET_STRING_ELT(k_stats_colnames, 1, mkChar("n_edges"));
     SET_STRING_ELT(k_stats_colnames, 2, mkChar("n_edges_in_pruned_graph"));
     SET_STRING_ELT(k_stats_colnames, 3, mkChar("n_removed_edges"));
     SET_STRING_ELT(k_stats_colnames, 4, mkChar("edge_reduction_ratio"));
-    SET_STRING_ELT(k_stats_colnames, 5, mkChar("n_edges_in_double_pruned_graph"));
+    SET_STRING_ELT(k_stats_colnames, 5, mkChar("n_edges_in_isize_pruned_graph"));
     SET_STRING_ELT(k_stats_colnames, 6, mkChar("n_removed_edges_in_double_pruning"));
     SET_STRING_ELT(k_stats_colnames, 7, mkChar("double_edge_reduction_ratio"));
-    // Removed frequency_ratio column
-    #else
-    SEXP k_stats_colnames = PROTECT(allocVector(STRSXP, 5)); nprot++;
-    SET_STRING_ELT(k_stats_colnames, 0, mkChar("k"));
-    SET_STRING_ELT(k_stats_colnames, 1, mkChar("n_edges"));
-    SET_STRING_ELT(k_stats_colnames, 2, mkChar("n_edges_in_pruned_graph"));
-    SET_STRING_ELT(k_stats_colnames, 3, mkChar("n_removed_edges"));
-    SET_STRING_ELT(k_stats_colnames, 4, mkChar("edge_reduction_ratio"));
-    // Removed frequency_ratio column
-    #endif
 
     SET_VECTOR_ELT(k_stats_dimnames, 1, k_stats_colnames);
     setAttrib(k_stats_matrix, R_DimNamesSymbol, k_stats_dimnames);
 
-#if 0
-    // DISABLED: Create birth/death matrix
-    SEXP birth_death_matrix = PROTECT(convert_birth_death_map_to_matrix(birth_death_map)); nprot++;
-
-    // Create double-pruned birth/death matrix
-    #if USE_GEOMETRIC_PRUNING
-    SEXP double_birth_death_matrix = PROTECT(convert_birth_death_map_to_matrix(double_birth_death_map)); nprot++;
-    #endif
-#endif
-
-    // Create empty placeholder matrices since we're not computing birth/death times
-    SEXP birth_death_matrix = PROTECT(allocMatrix(REALSXP, 0, 4)); nprot++;
-
-    #if USE_GEOMETRIC_PRUNING
-    SEXP double_birth_death_matrix = PROTECT(allocMatrix(REALSXP, 0, 4)); nprot++;
-
-    // Set column names for empty matrices
-    SEXP bd_colnames = PROTECT(allocVector(STRSXP, 4)); nprot++;
-    SET_STRING_ELT(bd_colnames, 0, mkChar("start"));
-    SET_STRING_ELT(bd_colnames, 1, mkChar("end"));
-    SET_STRING_ELT(bd_colnames, 2, mkChar("birth_time"));
-    SET_STRING_ELT(bd_colnames, 3, mkChar("death_time"));
-
-    SEXP bd_dimnames = PROTECT(allocVector(VECSXP, 2)); nprot++;
-    SET_VECTOR_ELT(bd_dimnames, 0, R_NilValue);
-    SET_VECTOR_ELT(bd_dimnames, 1, bd_colnames);
-
-    setAttrib(birth_death_matrix, R_DimNamesSymbol, bd_dimnames);
-    setAttrib(double_birth_death_matrix, R_DimNamesSymbol, bd_dimnames);
-    #endif
-
     // Create return list
-#if USE_GEOMETRIC_PRUNING
-    SEXP result = PROTECT(allocVector(VECSXP, 6)); nprot++;
-    SET_VECTOR_ELT(result, 0, birth_death_matrix);
-    SET_VECTOR_ELT(result, 1, k_stats_matrix);
-    SET_VECTOR_ELT(result, 2, pruned_graphs_list);
-    SET_VECTOR_ELT(result, 3, double_birth_death_matrix);
-    SET_VECTOR_ELT(result, 4, double_pruned_graphs_list);
-    SET_VECTOR_ELT(result, 5, edge_stats_list);
-
-    // Set names
-    SEXP names = PROTECT(allocVector(STRSXP, 6)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("birth_death_matrix"));
-    SET_STRING_ELT(names, 1, mkChar("k_statistics"));
-    SET_STRING_ELT(names, 2, mkChar("pruned_graphs"));
-    SET_STRING_ELT(names, 3, mkChar("double_birth_death_matrix"));
-    SET_STRING_ELT(names, 4, mkChar("double_pruned_graphs"));
-    SET_STRING_ELT(names, 5, mkChar("edge_pruning_stats"));
-#else
     SEXP result = PROTECT(allocVector(VECSXP, 4)); nprot++;
-    SET_VECTOR_ELT(result, 0, birth_death_matrix);
-    SET_VECTOR_ELT(result, 1, k_stats_matrix);
-    SET_VECTOR_ELT(result, 2, pruned_graphs_list);
-    SET_VECTOR_ELT(result, 3, edge_stats_matrix);
+    SET_VECTOR_ELT(result, 0, k_stats_matrix);
+    SET_VECTOR_ELT(result, 1, geom_pruned_graphs_list);
+    SET_VECTOR_ELT(result, 2, isize_pruned_graphs_list);
+    SET_VECTOR_ELT(result, 3, edge_stats_list);
 
     // Set names
     SEXP names = PROTECT(allocVector(STRSXP, 4)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("birth_death_matrix"));
-    SET_STRING_ELT(names, 1, mkChar("k_statistics"));
-    SET_STRING_ELT(names, 2, mkChar("pruned_graphs"));
-    SET_STRING_ELT(names, 3, mkChar("long_edge_stats"));
-#endif
-
+    SET_STRING_ELT(names, 0, mkChar("k_statistics"));
+    SET_STRING_ELT(names, 1, mkChar("geom_pruned_graphs"));
+    SET_STRING_ELT(names, 2, mkChar("isize_pruned_graphs"));
+    SET_STRING_ELT(names, 3, mkChar("edge_pruning_stats"));
     setAttrib(result, R_NamesSymbol, names);
 
     if (verbose) {

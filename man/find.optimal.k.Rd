@@ -4,7 +4,7 @@
 \alias{find.optimal.k}
 \title{Find Optimal k Parameter Using Edge Persistence Analysis}
 \usage{
-find.optimal.k(birth.death.matrix, kmin, kmax)
+find.optimal.k(birth.death.matrix, kmin, kmax, matrix_type = "geom")
 }
 \arguments{
 \item{birth.death.matrix}{A numeric matrix with columns "birth_time" and "death_time"
@@ -14,6 +14,9 @@ For edges that persist through kmax, death_time equals kmax + 1.}
 \item{kmin}{The minimum k value to consider}
 
 \item{kmax}{The maximum k value to consider}
+
+\item{matrix_type}{Character string describing the type of matrix (default: "geom").
+Used for informative warning messages.}
 }
 \value{
 A list containing:

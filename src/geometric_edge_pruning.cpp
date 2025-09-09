@@ -8,6 +8,7 @@
 #include <mutex>         // For std::mutex
 #include <execution>     // For parallel execution
 
+#include "exec_policy.hpp"
 #include "edge_pruning_stats.hpp" // For edge_pruning_stats_t
 #include "set_wgraph.hpp"     // For set_wgraph_t definition
 #include "error_utils.h"      // For REPORT_ERROR
@@ -169,7 +170,8 @@ edge_pruning_stats_t set_wgraph_t::compute_edge_pruning_stats(double threshold_p
 
     std::mutex edges_mutex;  // Mutex for thread-safe access to all_edges
 
-    std::for_each(std::execution::par_unseq, vertices.begin(), vertices.end(),
+    //std::for_each(std::execution::par_unseq, vertices.begin(), vertices.end(),
+    std::for_each(GFLOW_EXEC_POLICY, vertices.begin(), vertices.end(),
         [this, &all_edges, &edges_mutex](size_t vertex) {
             std::vector<Edge> local_edges;
 

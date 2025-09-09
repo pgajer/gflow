@@ -9,13 +9,14 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <execution>
 #include <atomic>
 #include <mutex>
+#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
@@ -23,6 +24,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
+#include "exec_policy.hpp"
 #include "pgmalo.hpp"
 #include "sampling.h" // for C_runif_simplex()
 #include "error_utils.h"
@@ -98,7 +100,7 @@ std::vector<std::vector<double>> pgmalo_bb(const path_graph_plm_t& path_graph,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    std::for_each(std::execution::par_unseq,
+    std::for_each(GFLOW_EXEC_POLICY,
                   bb_indices.begin(),
                   bb_indices.end(),
                   [&](int iboot) {

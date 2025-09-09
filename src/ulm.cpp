@@ -1,4 +1,3 @@
-
 #include <Eigen/Dense>
 #include <vector>
 #include <cmath>      // For fabs()
@@ -211,7 +210,7 @@ ulm_results fit_linear_direct(
     }
 
     if (total_weight <= 0) {
-        throw std::runtime_error("Sum of weights must be positive");
+        Rf_error("Sum of weights must be positive");
     }
 
     x_wmean /= total_weight;
@@ -402,7 +401,7 @@ ulm_results fit_ulm(
     double ridge_lambda = 1e-10) {
 
     if (degree < 1 || degree > 2) {
-        throw std::runtime_error("Only degrees 1 and 2 are supported");
+        Rf_error("Only degrees 1 and 2 are supported");
     }
 
     if (degree == 1) {

@@ -1,30 +1,24 @@
-# Include paths
-PKG_CPPFLAGS = -I. -IANN -I../inst/include
-PKG_CPPFLAGS += -I../inst/include/eigen
-PKG_CPPFLAGS += -I../inst/include/spectra
-PKG_CPPFLAGS += -I../inst/include/spectra/Spectra
+# ---- Include paths
+PKG_CPPFLAGS = -I. -IANN
+PKG_CPPFLAGS += -I../inst/include/gflow
+PKG_CPPFLAGS += -I../inst/include
+PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
 PKG_CPPFLAGS += -D_Alignof=__alignof__
-PKG_CPPFLAGS += -I/opt/homebrew/opt/libomp/include  # Add OpenMP include path
+# Neutralize ANN's DLL decorations (harmless on non-Windows too)
+PKG_CPPFLAGS += -DDLL_API=
 
-# C++ standard
-CXX_STD = CXX20
+# ---- C++ standard / OpenMP
+CXX_STD      = CXX17
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 
-# Explicit OpenMP flags
-PKG_CXXFLAGS = -fopenmp
-PKG_CXXFLAGS += -Wall -Wextra -Wpedantic
-PKG_CXXFLAGS += -Wno-sign-conversion -Wno-sign-compare -Wno-psabi -Wno-class-memaccess
-PKG_CXXFLAGS += -DTBB_SUPPRESS_DEPRECATED_MESSAGES
+# ---- Sources
+SOURCES_CPP  = $(wildcard *.cpp)
+SOURCES_C    = $(wildcard *.c)
+ANN_SOURCES  = $(wildcard ANN/*.cpp)
 
-# Explicitly link to libomp
-PKG_LIBS = -L/opt/homebrew/opt/libomp/lib -lomp $(LAPACK_LIBS) $(BLAS_LIBS)
-
-# Source files
-SOURCES_CPP = $(wildcard *.cpp)
-SOURCES_C = $(wildcard *.c)
-ANN_SOURCES = $(wildcard ANN/*.cpp)
-
-# Object files
+# ---- Objects
 OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o)
 
-# Main target
+# ---- Build target
 $(SHLIB): $(OBJECTS)

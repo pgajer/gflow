@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <queue>
 #include <random>     // for std::mt19937
@@ -115,10 +115,21 @@ std::vector<vertex_path_t> set_wgraph_t::reconstruct_graph_paths(
     std::vector<vertex_path_t> paths;
 
     // Create a set of vertices to process, ordered in decreasing order by distance
-    std::set<vertex_info_t, decltype([](const vertex_info_t& a, const vertex_info_t& b) {
-        return a.distance > b.distance;
-    })> to_process(reachability_map.sorted_vertices.begin(),
-                  reachability_map.sorted_vertices.end());
+    struct VertexInfoComparator {
+        bool operator()(const vertex_info_t& a, const vertex_info_t& b) const {
+            return a.distance > b.distance;
+        }
+    };
+
+    std::set<vertex_info_t, VertexInfoComparator> to_process(
+        reachability_map.sorted_vertices.begin(),
+        reachability_map.sorted_vertices.end());
+
+    // CXX20 version
+    // std::set<vertex_info_t, decltype([](const vertex_info_t& a, const vertex_info_t& b) {
+    //     return a.distance > b.distance;
+    // })> to_process(reachability_map.sorted_vertices.begin(),
+    //               reachability_map.sorted_vertices.end());
 
     // Track discovered vertices to ensure non-overlapping paths
     std::vector<bool> discovered(adjacency_list.size(), false);

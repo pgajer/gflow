@@ -2,6 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <unordered_set>

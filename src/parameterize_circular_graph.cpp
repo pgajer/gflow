@@ -1,8 +1,8 @@
-#include <Eigen/Core>
-#include <SymEigsSolver.h>
-#include <MatOp/DenseSymMatProd.h>
-#include <MatOp/SparseSymMatProd.h>
 #include <Eigen/Dense>
+#include <Eigen/Core>
+#include <Spectra/SymEigsSolver.h>
+#include <Spectra/MatOp/DenseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
 #include <vector>
 #include <set>

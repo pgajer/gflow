@@ -20,6 +20,7 @@
 #include "uggmalog_r.h"
 #include "uggmalo_r.h"
 #include "iknn_graphs_r.h"
+#include "mknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
 #include "kNN_r.h"       // for S_kNN()
 #include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
@@ -46,12 +47,15 @@
 #include "graph_kernel_smoother_r.h"
 #include "graph_bw_adaptive_spectral_smoother_r.h"
 #include "klaps_low_pass_smoother_r.h"
-#include "klaps_spectral_filter_r.h"
+#include "graph_spectral_filter_r.h"
 #include "mst_completion_graphs_r.h"
 #include "amagelo_r.h"
 #include "gflow_basins_r.h"
 #include "harmonic_smoother_r.h"
-
+#include "gflow_cx_r.h"
+#include "fn_graphs_r.h"
+#include "nerve_cx_r.h"
+#include "stats_utils.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -87,6 +91,29 @@ static R_NativePrimitiveArgType columnwise_weighting_type[]    = {REALSXP, INTSX
 static R_NativePrimitiveArgType columnwise_eval_type[]    = {INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
 static R_NativePrimitiveArgType columnwise_TS_norm_type[] = {REALSXP, INTSXP, INTSXP, REALSXP};
 
+static R_NativePrimitiveArgType matrix_wmeans_type[]            = {REALSXP, INTSXP, INTSXP,  INTSXP,  REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType columnwise_wmean_type[]         = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType columnwise_wmean_BB_type[]      = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType columnwise_wmean_BB_qCrI_type[] = {INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType columnwise_wmean_BB_CrI_type[]  = {REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
+
+static R_NativePrimitiveArgType quantiles_type[] = {REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType modified_columnwise_wmean_BB_type[] = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType mat_columnwise_divide_type[] = {REALSXP, INTSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType normalize_dist_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType normalize_dist_with_minK_a_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType samplewr_type[] = {INTSXP, INTSXP};
+static R_NativePrimitiveArgType vpermute_type[] = {INTSXP, INTSXP, INTSXP};
+static R_NativePrimitiveArgType v_get_folds_type[] = {INTSXP, INTSXP, INTSXP};
+static R_NativePrimitiveArgType winsorize_type[] = {REALSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType pdistr_type[] = {REALSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType pearson_cor_type[] = {REALSXP, REALSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType wcov_type[] = {REALSXP, REALSXP, REALSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType pearson_wcor_type[] = {REALSXP, REALSXP, REALSXP, INTSXP, REALSXP};
+static R_NativePrimitiveArgType pearson_wcor_BB_qCrI_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType density_distance_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, REALSXP};
+static R_NativePrimitiveArgType rmatrix_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, INTSXP};
+
 static const R_CMethodDef cMethods[] = {
   {"C_llm_1D_beta", (DL_FUNC) &C_llm_1D_beta, 8, llm_1D_beta_type},
   {"C_llm_1D_beta_perms", (DL_FUNC) &C_llm_1D_beta_perms, 11, llm_1D_beta_perms_type},
@@ -117,10 +144,44 @@ static const R_CMethodDef cMethods[] = {
   {"C_columnwise_weighting", (DL_FUNC) &C_columnwise_weighting, 7, columnwise_weighting_type},
   {"C_columnwise_eval", (DL_FUNC) &C_columnwise_eval, 5, columnwise_eval_type},
   {"C_columnwise_TS_norm", (DL_FUNC) &C_columnwise_TS_norm, 4, columnwise_TS_norm_type},
+  {"C_matrix_wmeans", (DL_FUNC) &C_matrix_wmeans, 9, matrix_wmeans_type},
+  {"C_columnwise_wmean", (DL_FUNC) &C_columnwise_wmean, 6, columnwise_wmean_type},
+  {"C_columnwise_wmean_BB", (DL_FUNC) &C_columnwise_wmean_BB, 7, columnwise_wmean_BB_type},
+  {"C_columnwise_wmean_BB_qCrI", (DL_FUNC) &C_columnwise_wmean_BB_qCrI, 9, columnwise_wmean_BB_qCrI_type},
+  {"C_columnwise_wmean_BB_CrI_1", (DL_FUNC) &C_columnwise_wmean_BB_CrI_1, 8, columnwise_wmean_BB_CrI_type},
+  {"C_columnwise_wmean_BB_CrI_2", (DL_FUNC) &C_columnwise_wmean_BB_CrI_2, 8, columnwise_wmean_BB_CrI_type},
+  {"C_quantiles", (DL_FUNC) &C_quantiles, 5, quantiles_type},
+  {"C_modified_columnwise_wmean_BB", (DL_FUNC) &C_modified_columnwise_wmean_BB, 7, modified_columnwise_wmean_BB_type},
+  {"C_mat_columnwise_divide", (DL_FUNC) &C_mat_columnwise_divide, 4, mat_columnwise_divide_type},
+  {"C_normalize_dist", (DL_FUNC) &C_normalize_dist, 7, normalize_dist_type},
+  {"C_normalize_dist_with_minK_a", (DL_FUNC) &C_normalize_dist_with_minK_a, 6, normalize_dist_with_minK_a_type},
+  {"C_samplewr", (DL_FUNC) &C_samplewr, 2, samplewr_type},
+  {"C_vpermute", (DL_FUNC) &C_vpermute, 3, vpermute_type},
+  {"C_v_get_folds", (DL_FUNC) &C_v_get_folds, 3, v_get_folds_type},
+  {"C_winsorize", (DL_FUNC) &C_winsorize, 4, winsorize_type},
+  {"C_pdistr", (DL_FUNC) &C_pdistr, 4, pdistr_type},
+  {"C_pearson_cor", (DL_FUNC) &C_pearson_cor, 4, pearson_cor_type},
+  {"C_wcov", (DL_FUNC) &C_wcov, 5, wcov_type},
+  {"C_pearson_wcor", (DL_FUNC) &C_pearson_wcor, 5, pearson_wcor_type},
+  {"C_pearson_wcor_BB_qCrI", (DL_FUNC) &C_pearson_wcor_BB_qCrI, 10, pearson_wcor_BB_qCrI_type},
+  {"C_density_distance", (DL_FUNC) &C_density_distance, 5, density_distance_type},
+  {"C_rmatrix", (DL_FUNC) &C_rmatrix, 5, rmatrix_type},
   {NULL, NULL, 0, NULL}
 };
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
+  {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
+  {"S_set_function_values", (DL_FUNC) &S_set_function_values, 2},
+  {"S_set_weight_scheme", (DL_FUNC) &S_set_weight_scheme, 3},
+  {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
+  {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
+  {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
+  {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
+  {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
+  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
+  {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
+  {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
   {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
   {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
   {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
@@ -128,7 +189,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
-  {"S_klaps_spectral_filter", (DL_FUNC) &S_klaps_spectral_filter, 12},
+  {"S_graph_spectral_filter", (DL_FUNC) &S_graph_spectral_filter, 19},
   {"S_klaps_low_pass_smoother", (DL_FUNC) &S_klaps_low_pass_smoother, 14},
   {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
   {"S_graph_kernel_smoother", (DL_FUNC) &S_graph_kernel_smoother, 17},
@@ -159,6 +220,8 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
   {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 4},
   {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 9},
+  {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
+  {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
   {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
@@ -227,10 +290,13 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_estimate_local_complexity", (DL_FUNC) &S_estimate_local_complexity, 5},
   {"S_estimate_binary_local_complexity", (DL_FUNC) &S_estimate_binary_local_complexity, 6},
   {"S_estimate_ma_binary_local_complexity_quadratic", (DL_FUNC) &S_estimate_ma_binary_local_complexity_quadratic, 4},
+  {"S_pdistr", (DL_FUNC) &S_pdistr, 2},
+  {"S_lwcor", (DL_FUNC) &S_lwcor, 3},
+  {"S_lwcor_yY", (DL_FUNC) &S_lwcor_yY, 4},
   {NULL, NULL, 0}
 };
 
-void R_init_gflow(DllInfo *dll) {
+void R_init_msr2(DllInfo *dll) {
   R_registerRoutines(dll, cMethods, CallMethods, NULL, NULL);
   R_useDynamicSymbols(dll, FALSE);
 }

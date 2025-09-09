@@ -2,6 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -15,6 +16,7 @@
 #include <atomic>                   // For std::atomic
 #include <thread>                   // For std::thread::hardware_concurrenyc
 
+#include "exec_policy.hpp"
 #include "graph_deg0_lowess_cv.hpp" // For graph_deg0_lowess_cv_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
@@ -331,7 +333,8 @@ graph_deg0_lowess_cv_t set_wgraph_t::graph_deg0_lowess_cv(
     std::vector<size_t> fold_test_counts(actual_folds, 0);
     std::vector<double> fold_total_errors(actual_folds, 0.0);
 
-    std::for_each(std::execution::par_unseq, fold_indices.begin(), fold_indices.end(),
+    //std::for_each(std::execution::par_unseq, fold_indices.begin(), fold_indices.end(),
+    std::for_each(GFLOW_EXEC_POLICY, fold_indices.begin(), fold_indices.end(),
                   [&](size_t fold) {
                       try {
                           if (verbose) {

@@ -2,6 +2,7 @@
 #include <Rinternals.h>         // For SEXP and R macros
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>               // For std::vector
 #include <string>               // For std::string

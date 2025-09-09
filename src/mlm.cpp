@@ -1,4 +1,5 @@
 #include <Eigen/Dense>                 // For Eigen matrix operations
+
 #include <numeric>                     // For std::accumulate
 #include <algorithm>                   // For std::max_element
 #include <limits>                      // For std::numeric_limits

@@ -1,31 +1,58 @@
 Package: gflow
 Title: Gradient Flow Data Analysis Framework
-Version: 0.0.1
-Authors@R:
+Version: 0.1.0
+Authors@R: 
     person("Pawel", "Gajer", , "pgajer@gmail.com", role = c("aut", "cre"))
-Description: Provides tools and methods for gradient flow data analysis
-    framework. The package implements various algorithms for graph construction,
-    path analysis, and gradient flow computation, facilitating the exploration
-    and understanding of high-dimensional data.
+Description: Provides tools and methods for gradient flow-based data analysis.
+    The package implements algorithms for adaptive k-nearest neighbor graph 
+    construction, graph-based smoothing, piecewise linear modeling with optimal
+    breakpoint detection, and gradient flow computation on high-dimensional data.
+    These methods facilitate exploratory data analysis, manifold learning, and
+    the study of data structure through geometric and spectral graph techniques.
+Copyright: file inst/COPYRIGHTS
 License: GPL (>= 3)
+URL: https://github.com/pgajer/gflow
+BugReports: https://github.com/pgajer/gflow/issues
 Encoding: UTF-8
+Language: en-US
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
-SystemRequirements: C++11, GNU make, OpenMP (>= 2.0)
-LinkingTo: RcppParallel
+SystemRequirements: C++17, GNU make, OpenMP
 Depends:
-    R (>= 3.1)
+    R (>= 3.5.0)
 Imports:
-    segmented,
     stats,
     graphics,
-    changepoint,
-    zoo,
+    grDevices,
     rgl,
-    FNN
-Suggests:
+    FNN,
     doParallel,
     foreach,
-    igraph,
     parallel,
-    utils
+    igraph,
+    segmented,
+    transport
+Suggests:
+    randomForest,
+    np,
+    mgcv,
+    kernlab,
+    glmnet,
+    e1071,
+    KernSmooth,
+    CVST,
+    dbscan,
+    clValid,
+    mclust,
+    RColorBrewer,
+    viridis,
+    Matrix,
+    utils,
+    testthat (>= 3.0.0),
+    rstan,
+    HDInterval,
+    infotheo,
+    rootSolve,
+    lme4,
+    clue
+Config/testthat/edition: 3

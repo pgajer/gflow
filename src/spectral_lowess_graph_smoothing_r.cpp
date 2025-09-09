@@ -2,9 +2,9 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 #include <R_ext/Print.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include "set_wgraph.hpp"
 #include "spectral_lowess_graph_smoothing.hpp"

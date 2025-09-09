@@ -9,13 +9,14 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <execution>
 #include <atomic>
 #include <mutex>
+#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
@@ -23,6 +24,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
+#include "exec_policy.hpp"
 #include "sampling.h" // for C_runif_simplex()
 #include "error_utils.h"
 #include "pglm.h"
@@ -346,7 +348,7 @@ std::vector<double> pgmalo_cv_parallel(
     std::vector<int> cv_indices(n_CVs);
     std::iota(cv_indices.begin(), cv_indices.end(), 0);
 
-    std::for_each(std::execution::par_unseq,
+    std::for_each(GFLOW_EXEC_POLICY,
                   cv_indices.begin(),
                   cv_indices.end(),
                   [&](int cv) {

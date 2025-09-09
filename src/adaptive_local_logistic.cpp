@@ -3,20 +3,19 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include <Eigen/Dense>
-#include <Eigen/LU>
 #include <stdexcept>
 #include <limits>
+#include <optional>
 
-// If we're using any C++17 features, we might want to add:
-#include <optional>     // For std::optional (if we want to handle potential computation failures gracefully)
+#include <Eigen/Dense>
+#include <Eigen/LU>
 
 #include "adaptive_local_logistic.h"
-
 
 // Constructor implementation
 adaptive_params_t::adaptive_params_t(
@@ -32,13 +31,13 @@ adaptive_params_t::adaptive_params_t(
     max_bandwidth_factor(max_bf) {
 
     if (global_bandwidth <= 0.0) {
-        throw std::invalid_argument("global_bandwidth must be positive");
+        Rf_error("global_bandwidth must be positive");
     }
     if (min_bandwidth_factor <= 0.0 || min_bandwidth_factor > 1.0) {
-        throw std::invalid_argument("min_bandwidth_factor must be in (0,1]");
+        Rf_error("min_bandwidth_factor must be in (0,1]");
     }
     if (max_bandwidth_factor < 1.0) {
-        throw std::invalid_argument("max_bandwidth_factor must be >= 1.0");
+        Rf_error("max_bandwidth_factor must be >= 1.0");
     }
 }
 

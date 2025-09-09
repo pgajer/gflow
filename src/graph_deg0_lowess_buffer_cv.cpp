@@ -2,6 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota

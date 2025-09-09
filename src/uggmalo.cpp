@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -377,7 +377,7 @@ uggmalo_t uggmalo(
             // and fitting local linear models
 
             // debugging
-            fprintf(stderr, "\nIn uggmalo process_bw() processing grid_vertex: %zu\n", grid_vertex);
+            // fprintf(stderr, "\nIn uggmalo process_bw() processing grid_vertex: %zu\n", grid_vertex);
 
             // Collect paths that pass through this grid vertex
             std::vector<path_data_t> paths = ugg_get_path_data_efficient(
@@ -401,7 +401,7 @@ uggmalo_t uggmalo(
                 continue;
             }
 
-            fprintf(stderr, "After ugg_get_path_data_efficient()\nNumber path_data_t objects found: %zu\n", paths.size());
+            // fprintf(stderr, "After ugg_get_path_data_efficient()\nNumber path_data_t objects found: %zu\n", paths.size());
 
 
             // Fitting linear models to valid paths through the current grid vertex

@@ -1,9 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <unordered_set>
@@ -149,7 +149,8 @@ gmagelog_t gmagelog(
             }
 
             // Check if it's a grid vertex (using unordered_set)
-            if (grid_graph.grid_vertices.contains(current_vertex) &&
+            // if (grid_graph.grid_vertices.contains(current_vertex) &&
+            if (grid_graph.grid_vertices.find(current_vertex) != grid_graph.grid_vertices.end() &&
                 current_vertex != grid_vertex) {
                 result.local_grid_indices.push_back(current_vertex);
                 result.local_grid_d.push_back(current_distance);

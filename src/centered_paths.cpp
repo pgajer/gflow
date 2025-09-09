@@ -3,6 +3,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -440,7 +441,8 @@ static std::vector<ref_vertex_path_t> reconstruct_ref_vertex_paths(
     vertex_info.reserve(bfs_map.size());
     for (const auto& [vertex, info] : bfs_map) {
         if (vertex != ref_vertex) {  // exclude target vertex itself
-            vertex_info.emplace_back(vertex, info.first);
+            //vertex_info.emplace_back(vertex, info.first);
+            vertex_info.push_back({vertex, info.first});
         }
     }
 
@@ -1348,16 +1350,16 @@ double calculate_grid_relative_center_offset(
     std::queue<std::pair<size_t, double>> q;
     q.push({grid_vertex, 0.0});
 
-    fprintf(stderr,"\nIn calculate_grid_relative_center_offset()\n");
-    fprintf(stderr,"grid_vertex: %zu\n", grid_vertex);
-    print_vect(path_vertices, "path_vertices");
+    // fprintf(stderr,"\nIn calculate_grid_relative_center_offset()\n");
+    // fprintf(stderr,"grid_vertex: %zu\n", grid_vertex);
+    // print_vect(path_vertices, "path_vertices");
 
     while (!q.empty()) {
         auto [curr, dist] = q.front();
         q.pop();
         if (distances.count(curr)) continue;
 
-        fprintf(stderr,"curr: %zu\n", curr);
+        // fprintf(stderr,"curr: %zu\n", curr);
         //distances[curr] = dist;
         distances.try_emplace(curr, dist);
 
@@ -1431,16 +1433,16 @@ void compute_grid_path_metrics(
     const edge_weights_t& edge_weights
     ) {
 
-    fprintf(stderr, "\nEntering compute_grid_path_metrics\n");
-    fprintf(stderr, "Path data state:\n");
-    fprintf(stderr, "  ref_vertex: %zu\n", path_data.ref_vertex);
-    //fprintf(stderr, "  ref_vertex_index: %zu\n", path_data.ref_vertex_index);
-    fprintf(stderr, "  vertices size: %zu\n", path_data.vertices.size());
-    fprintf(stderr, "  vertices: ");
-    for (size_t v : path_data.vertices) {
-        fprintf(stderr, "%zu ", v);
-    }
-    fprintf(stderr, "\n");
+    // fprintf(stderr, "\nEntering compute_grid_path_metrics\n");
+    // fprintf(stderr, "Path data state:\n");
+    // fprintf(stderr, "  ref_vertex: %zu\n", path_data.ref_vertex);
+    // //fprintf(stderr, "  ref_vertex_index: %zu\n", path_data.ref_vertex_index);
+    // fprintf(stderr, "  vertices size: %zu\n", path_data.vertices.size());
+    // fprintf(stderr, "  vertices: ");
+    // for (size_t v : path_data.vertices) {
+    //     fprintf(stderr, "%zu ", v);
+    // }
+    // fprintf(stderr, "\n");
 
 
     size_t path_n_vertices = path_data.vertices.size();
@@ -1560,10 +1562,10 @@ void construct_grid_composite_path(
     const edge_weights_t& edge_weights
     ) {
 
-    fprintf(stderr, "\nEntering construct_grid_composite_path\n");
-    fprintf(stderr, "Path1 size: %zu, Path2 size: %zu\n",
-            path1.vertices.size(), path2.vertices.size());
-    fprintf(stderr, "Reference vertex: %zu\n", composite_path.ref_vertex);
+    // fprintf(stderr, "\nEntering construct_grid_composite_path\n");
+    // fprintf(stderr, "Path1 size: %zu, Path2 size: %zu\n",
+    //         path1.vertices.size(), path2.vertices.size());
+    // fprintf(stderr, "Reference vertex: %zu\n", composite_path.ref_vertex);
 
 #if 0
     // Validate input paths
@@ -1617,11 +1619,11 @@ void construct_grid_composite_path(
     Rprintf("\nBefore compute_grid_path_metrics() in construct_grid_composite_path()\n");
 
     // After constructing composite path
-    fprintf(stderr, "Composite path vertices: ");
-    for (size_t v : composite_path.vertices) {
-        fprintf(stderr, "%zu ", v);
-    }
-    //fprintf(stderr, "\nRef vertex index: %zu\n", composite_path.ref_vertex_index);
+    // fprintf(stderr, "Composite path vertices: ");
+    // for (size_t v : composite_path.vertices) {
+    //     fprintf(stderr, "%zu ", v);
+    // }
+    // //fprintf(stderr, "\nRef vertex index: %zu\n", composite_path.ref_vertex_index);
 
 
     Rprintf("\nIn construct_grid_composite_path()\n");
@@ -2084,8 +2086,8 @@ std::vector<path_data_t> process_paths(
     double dist_normalization_factor,
     const edge_weights_t& edge_weights) {
 
-    fprintf(stderr, "\nEntering process_paths()\n");
-    fprintf(stderr, "Number of input paths: %zu\n", paths.size());
+    // fprintf(stderr, "\nEntering process_paths()\n");
+    // fprintf(stderr, "Number of input paths: %zu\n", paths.size());
 
     if (paths.empty()) {
         REPORT_ERROR("paths vector is empty");
@@ -2096,12 +2098,12 @@ std::vector<path_data_t> process_paths(
 
     if (paths.size() == 1 && paths[0].vertices.size() >= min_path_size) {
 
-        fprintf(stderr, "Processing single path case\n");
-        fprintf(stderr, "Path vertices: ");
-        for (size_t v : paths[0].vertices) {
-            fprintf(stderr, "%zu ", v);
-        }
-        fprintf(stderr, "\nTarget vertex: %zu\n", paths[0].target_vertex);
+        // fprintf(stderr, "Processing single path case\n");
+        // fprintf(stderr, "Path vertices: ");
+        // for (size_t v : paths[0].vertices) {
+        //     fprintf(stderr, "%zu ", v);
+        // }
+        // fprintf(stderr, "\nTarget vertex: %zu\n", paths[0].target_vertex);
 
         // Single path case
         path_data_t path_data;
@@ -2177,14 +2179,14 @@ std::vector<path_data_t> generate_paths_for_bandwidth(
     size_t diff_threshold,
     const edge_weights_t& edge_weights) {
 
-    fprintf(stderr, "\nEntering generate_paths_for_bandwidth()\n");
-    fprintf(stderr, "Reference vertex: %zu\n", reachability_map.ref_vertex);
-    fprintf(stderr, "Number of sorted vertices: %zu\n", reachability_map.sorted_vertices.size());
-
-    fprintf(stderr, "\nbandwidth: %f\n\n", bandwidth);
+    // fprintf(stderr, "\nEntering generate_paths_for_bandwidth()\n");
+    // fprintf(stderr, "Reference vertex: %zu\n", reachability_map.ref_vertex);
+    // fprintf(stderr, "Number of sorted vertices: %zu\n", reachability_map.sorted_vertices.size());
+    //
+    // fprintf(stderr, "\nbandwidth: %f\n\n", bandwidth);
 
     //print_vect(reachability_map.sorted_vertices,"reachability_map.sorted_vertices");
-    print_umap(reachability_map.distances, "reachability_map.distances");
+    // print_umap(reachability_map.distances, "reachability_map.distances");
 
     std::vector<ref_vertex_path_t> paths;
     std::unordered_set<size_t> used_vertices;
@@ -2203,11 +2205,11 @@ std::vector<path_data_t> generate_paths_for_bandwidth(
         std::vector<size_t> full_path;
         size_t curr = vertex_dist_info.vertex;
 
-        fprintf(stderr, "\nReconstructing path from vertex %zu\n", curr);
+        // fprintf(stderr, "\nReconstructing path from vertex %zu\n", curr);
 
         while (curr != INVALID_VERTEX) {
-            fprintf(stderr, "Processing vertex %zu (is_original: %d)\n",
-                    curr, (int)is_original_vertex(curr, y));
+            // fprintf(stderr, "Processing vertex %zu (is_original: %d)\n",
+            //         curr, (int)is_original_vertex(curr, y));
             if (is_original_vertex(curr, y)) {
                 new_path.vertices.push_back(curr);
                 used_vertices.insert(curr);
@@ -2294,7 +2296,7 @@ std::vector<path_data_t> ugg_get_path_data_efficient(
         edge_weights
         );
 
-    fprintf(stderr, "In ugg_get_path_data_efficient()\nNumber path_data_t objects found: %zu\n", result.size());
+    // fprintf(stderr, "In ugg_get_path_data_efficient()\nNumber path_data_t objects found: %zu\n", result.size());
 
     if (result.empty()) {
         return find_grid_paths_meeting_size_requirement(

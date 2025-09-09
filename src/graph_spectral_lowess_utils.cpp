@@ -2,8 +2,10 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <Eigen/Dense>                 // For Eigen matrix operations
+
 #include <queue>                       // For std::priority_queue
 #include <limits>                      // For std::numeric_limits, INFINITY
 #include <algorithm>                   // For std::max_element

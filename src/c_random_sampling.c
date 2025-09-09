@@ -45,7 +45,6 @@ extern int cmp_double(const void *a, const void *b); // in c_utils.c
  *      Smith, R. L., & Tierney, L. (1996). Exact Transition Probabilities for the
  *      Independence Metropolis Sampler. Technical Report.
  *
- * @todo Consider adding input validation for robustness.
  * @todo Evaluate numerical stability for very large K values.
  */
 void C_runif_simplex( const int *rK, double *lambda)

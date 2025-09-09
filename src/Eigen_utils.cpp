@@ -27,22 +27,16 @@
  *
  * @note The parameter `n` is of type `Eigen::Index`, which is typically an alias for `int` in Eigen.
  */
-void print_Eigen_VectorXd(const Eigen::VectorXd& vec, const std::string& name = "", Eigen::Index n = 0) {
-    if (n == 0) {
-        n = vec.size();
-    }
-
-    if (!name.empty()) {
-        std::cout << name << ": ";
-    }
-
+void print_Eigen_VectorXd(const Eigen::VectorXd& vec,
+                          const std::string& name = "",
+                          Eigen::Index n = 0) {
+    if (n == 0) n = vec.size();
+    if (!name.empty()) Rprintf("%s: ", name.c_str());
     for (Eigen::Index i = 0; i < n && i < vec.size(); ++i) {
-        std::cout << vec[i] << " ";
+        Rprintf("%.6g%s", vec[i], (i + 1 < n && i + 1 < vec.size()) ? " " : "");
     }
-
-    std::cout << std::endl;
+    Rprintf("\n");
 }
-
 
 // Function to convert Eigen::VectorXd to SEXP
 SEXP EigenVectorXd_to_SEXP(const Eigen::VectorXd& vec) {

@@ -6,6 +6,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>

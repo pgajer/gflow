@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -1489,8 +1489,8 @@ SEXP S_univariate_gkmm(SEXP s_x,
         SEXP h_graph = PROTECT(allocVector(VECSXP, 2));
         SEXP h_graph_names = PROTECT(allocVector(STRSXP, 2));
 
-        SEXP adj_list = convert_vector_vector_int_to_R(cpp_results.graphs[i].first);
-        SEXP edge_lengths = convert_vector_vector_double_to_R(cpp_results.graphs[i].second);
+        SEXP adj_list = convert_vector_vector_int_to_R(cpp_results.graphs[i].first); UNPROTECT(1);
+        SEXP edge_lengths = convert_vector_vector_double_to_R(cpp_results.graphs[i].second); UNPROTECT(1);
 
         SET_VECTOR_ELT(h_graph, 0, adj_list);
         SET_VECTOR_ELT(h_graph, 1, edge_lengths);
@@ -1513,12 +1513,12 @@ SEXP S_univariate_gkmm(SEXP s_x,
     const int N_COMPONENTS = 11;
     SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
-    SEXP s_h_values = convert_vector_int_to_R(cpp_results.h_values);
+    SEXP s_h_values = convert_vector_int_to_R(cpp_results.h_values); n_protected++;
     SET_VECTOR_ELT(result, 0, s_h_values);
     SET_VECTOR_ELT(result, 1, s_hHN_graphs);
 
     if (!cpp_results.cv_errors.empty() && n_points > 0) {
-        SEXP s_cv_errors = convert_vector_double_to_R(cpp_results.cv_errors);
+        SEXP s_cv_errors = convert_vector_double_to_R(cpp_results.cv_errors); n_protected++;
         SET_VECTOR_ELT(result, 2, s_cv_errors);
     } else {
         SET_VECTOR_ELT(result, 2, R_NilValue);
@@ -1528,23 +1528,23 @@ SEXP S_univariate_gkmm(SEXP s_x,
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
-    SEXP s_opt_h_graph_adj_list = convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first);
+    SEXP s_opt_h_graph_adj_list = convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first); UNPROTECT(1);
     SET_VECTOR_ELT(result, 4, s_opt_h_graph_adj_list);
 
-    SEXP s_opt_h_graph_edge_lengths = convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second);
+    SEXP s_opt_h_graph_edge_lengths = convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second); UNPROTECT(1);
     SET_VECTOR_ELT(result, 5, s_opt_h_graph_edge_lengths);
 
-    SEXP s_condEy = convert_vector_double_to_R(cpp_results.condEy);
+    SEXP s_condEy = convert_vector_double_to_R(cpp_results.condEy); n_protected++;
     SET_VECTOR_ELT(result, 6, s_condEy);
 
     if (cpp_results.bb_condEy.size() > 0) {
-        SEXP s_bb_condEy = convert_vector_double_to_R(cpp_results.bb_condEy);
+        SEXP s_bb_condEy = convert_vector_double_to_R(cpp_results.bb_condEy); n_protected++;
         SET_VECTOR_ELT(result, 7, s_bb_condEy);
 
-        SEXP s_cri_L = convert_vector_double_to_R(cpp_results.cri_L);
+        SEXP s_cri_L = convert_vector_double_to_R(cpp_results.cri_L); n_protected++;
         SET_VECTOR_ELT(result, 8, s_cri_L);
 
-        SEXP s_cri_U = convert_vector_double_to_R(cpp_results.cri_U);
+        SEXP s_cri_U = convert_vector_double_to_R(cpp_results.cri_U); n_protected++;
         SET_VECTOR_ELT(result, 9, s_cri_U);
     } else {
         SET_VECTOR_ELT(result, 7, R_NilValue);

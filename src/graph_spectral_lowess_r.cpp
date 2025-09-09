@@ -4,6 +4,7 @@
 #include <R_ext/Print.h>
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>

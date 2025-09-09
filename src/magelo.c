@@ -13,104 +13,11 @@
 #include "lm.h"
 #include "kernels.h"  // for initialize_kernel()
 #include "sampling.h" // for C_rsimplex() and C_runif_simplex()
+#include "stats_utils.h" // for get_folds(), C_columnwise_eval() and iarray_t
 
 static void (*kernel_with_stop_fn)(const double*, const int*, const double*, int*, double*);
 
-typedef struct {
-  int *x;
-  int size;
-} iarray_t;
-
-/*!
-
-  \brief Performs in place permutation of an int array using Fisher-Yates
-  shuffle as implemented by Durstenfeld.
-
-  \param x An int array.
-  \param n The size of the array.
-
-*/
-void C_permute(int *x, int n) {
-  int k;
-  int tmp;
-
-  GetRNGstate();
-
-  while ( n > 1 )
-  {
-    //k = rand() % n; // 0 <= k < n.
-    k = (int)(n * runif(0.0,1.0));// 0 <= k < n.
-    n--;            // n is now the last pertinent index;
-    tmp  = x[n];    // swap x[n] with x[k] (does nothing if k == n).
-    x[n] = x[k];
-    x[k] = tmp;
-  }
-
-  PutRNGstate();
-}
-
-/*!
-    \brief Generates a split of integers from 0 to (n-1) into 'nfolds' folds of size ~ n/nfolds
-
-    \param n      The number of integers from 0 to (n-1) that will be split into
-                    'nfolds' groups of more or less equal size.
-
-    \param nfolds The number of folds, that is, the number of groups of more or
-                    less equal size into which the set of integers is going to be split.
-
-    \return Returns array_t of size nfolds.
-
-
-    ALERT: The user is responsible for freeing memory from the returned folds array_t !!!
-
-
-    NOTE: in the future add double *y parameter, which of length nrow(X), so
-    that the distribution of y on X and on X[-I] is more or less the same.
-*/
-iarray_t * get_folds(int n, int nfolds) {
-    // Creating an array of consecutive integers 0, 1, ... , (n-1)
-    int *x = (int*)malloc(n * sizeof(int));
-
-    for ( int i = 0; i < n; i++ )
-      x[i] = i;
-
-    // Permuting it in-place
-    C_permute(x, n);
-
-    // Determining sizes of folds
-    int fold_size = n / nfolds;
-    int r = n % nfolds;
-
-    int *fold_sizes = (int*)malloc(nfolds * sizeof(int));
-    for ( int i = 0; i < nfolds; i++ )
-      fold_sizes[i] = fold_size;
-
-    int k = 0;
-    while ( r > 0 && k < nfolds )
-    {
-      fold_sizes[k] += 1;
-      r--;
-      k++;
-    }
-
-    // Creating folds iarray_t
-    iarray_t *folds = (iarray_t*)malloc( nfolds * sizeof(iarray_t));
-
-    k = 0;
-    for ( int i = 0; i < nfolds; i++ )
-    {
-      folds[i].x = (int*)malloc( fold_sizes[i] * sizeof(int) );
-      folds[i].size = fold_sizes[i];
-
-      for ( int j = 0; j < fold_sizes[i]; j++ )
-        folds[i].x[j] = x[k++];
-    }
-
-    free(x);
-    free(fold_sizes);
-
-    return folds;
-}
+/* get_folds() is now defined in stats_utils.c and declared in stats_utils.h */
 
 /*
   \brief Gets bandwidths in the columns of d = t(nn.d).
@@ -449,36 +356,7 @@ void C_columnwise_TS_norm(const double *x,
     }
 }
 
-/*!
-    \fn void C_columnwise_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
-
-    \brief Evaluates x over an K-by-ng array nn_i of indices of get.knnx(x, xg, k)
-
-    \param nn_i      An array of indices of K nearest neighbors of the i-th element of x.
-    \param rK        A reference to the number of rows of nn_i.
-    \param rng       A reference to the number of columns of nn_i.
-    \param x         An array of nx elements.
-
-    \param nn_x      A return array of the same dimensions as nn_i with values of x at the indices of nn_i.
-
-*/
-void C_columnwise_eval(const int    *nn_i,
-                       const int    *rK,
-                       const int    *rng,
-                       const double *x,
-                             double *nn_x)
-{
-    int K  = rK[0];
-    int ng = rng[0];
-
-    int iK;   // holds i * K
-    for ( int i = 0; i < ng; i++ )
-    {
-      iK = i * K;
-      for ( int j = 0; j < K; j++ )
-        nn_x[j + iK] = x[nn_i[j + iK]];
-    }
-}
+/* C_columnwise_eval() is now defined in stats_utils.c and declared in stats_utils.h */
 
 /*!
     \brief Nearest neighbor weighted mean with maxK parameter.

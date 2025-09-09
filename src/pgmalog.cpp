@@ -12,10 +12,12 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <execution>
 #include <atomic>
 #include <mutex>
+#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
@@ -1161,10 +1163,10 @@ SEXP S_upgmalog(SEXP s_x,
     const int N_COMPONENTS = 13;
     SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(cpp_results.h_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(cpp_results.h_values)); n_protected++;
 
     if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
-        SET_VECTOR_ELT(result, 1, PROTECT(convert_vector_double_to_R(cpp_results.h_cv_errors))); n_protected++;
+        SET_VECTOR_ELT(result, 1, convert_vector_double_to_R(cpp_results.h_cv_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 1, R_NilValue);
     }
@@ -1177,15 +1179,15 @@ SEXP S_upgmalog(SEXP s_x,
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
-    SET_VECTOR_ELT(result, 4, PROTECT(convert_vector_vector_int_to_R(cpp_results.graph.adj_list))); n_protected++;
-    SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_vector_double_to_R(cpp_results.graph.weight_list))); n_protected++;
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_double_to_R(cpp_results.predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 7, PROTECT(convert_vector_double_to_R(cpp_results.local_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 4, convert_vector_vector_int_to_R(cpp_results.graph.adj_list)); n_protected++;
+    SET_VECTOR_ELT(result, 5, convert_vector_vector_double_to_R(cpp_results.graph.weight_list)); n_protected++;
+    SET_VECTOR_ELT(result, 6, convert_vector_double_to_R(cpp_results.predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 7, convert_vector_double_to_R(cpp_results.local_predictions)); n_protected++;
 
     if (cpp_results.bb_predictions.size() > 0) {
-        SET_VECTOR_ELT(result, 8, PROTECT(convert_vector_double_to_R(cpp_results.bb_predictions))); n_protected++;
-        SET_VECTOR_ELT(result, 9, PROTECT(convert_vector_double_to_R(cpp_results.ci_lower))); n_protected++;
-        SET_VECTOR_ELT(result, 10, PROTECT(convert_vector_double_to_R(cpp_results.ci_upper))); n_protected++;
+        SET_VECTOR_ELT(result, 8, convert_vector_double_to_R(cpp_results.bb_predictions)); n_protected++;
+        SET_VECTOR_ELT(result, 9, convert_vector_double_to_R(cpp_results.ci_lower)); n_protected++;
+        SET_VECTOR_ELT(result, 10,convert_vector_double_to_R(cpp_results.ci_upper)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 8, R_NilValue);
         SET_VECTOR_ELT(result, 9, R_NilValue);
@@ -1203,7 +1205,7 @@ SEXP S_upgmalog(SEXP s_x,
     }
 
     SET_VECTOR_ELT(result, 12,
-                   PROTECT(convert_vector_vector_double_to_R(cpp_results.h_predictions))); n_protected++;
+                   convert_vector_vector_double_to_R(cpp_results.h_predictions)); n_protected++;
 
 
     // Setting names for return list

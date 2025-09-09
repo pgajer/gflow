@@ -1,9 +1,15 @@
 This package includes the following external libraries:
 
 Eigen (http://eigen.tuxfamily.org)
-Mozilla Public License 2.0
-Copyright (C) 2006-2022 Eigen authors
+License: MPL-2.0  (see inst/licenses/MPL-2.0.txt)
+Copyright (C) 2006–2022 Eigen authors
 
 Spectra (https://spectralib.org)
-Mozilla Public License 2.0
-Copyright (C) 2016-2024 Yixuan Qiu and contributors
+License: MPL-2.0  (see inst/licenses/MPL-2.0.txt)
+Copyright (C) 2016–2024 Yixuan Qiu and contributors
+
+ANN – Approximate Nearest Neighbor Library (https://www.cs.umd.edu/~mount/ANN/)
+License: LGPL-2.1-or-later  (see inst/licenses/LGPL-2.1.txt)
+Upstream copyright notice: see inst/licenses/ANN-Copyright-Notice.txt
+Copyright (C) 1997–2010 University of Maryland,
+and Sunil Arya and David M. Mount

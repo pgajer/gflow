@@ -1,12 +1,14 @@
 #include <R.h>
 #include <R_ext/Rdynload.h>
 
-#include <iostream>
+// #include <iostream>
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include <eigen/Dense>
-#include <eigen/LU>
+
+#include <Eigen/Dense>
+#include <Eigen/LU>
+
 #include <stdexcept>
 #include <limits>
 #include <map>
@@ -14,6 +16,20 @@
 #include "density.hpp"
 #include "kernels.h"
 #include "SEXP_cpp_conversion_utils.hpp"
+
+static const char* kernel_name(int t) {
+    switch (t) {
+    case 1: return "Gaussian";
+    case 2: return "Epanechnikov";
+    case 3: return "Uniform";
+    case 4: return "Triangular";
+    case 5: return "Biweight";
+    case 6: return "Triweight";
+    case 7: return "Cosine";
+    case 8: return "Logistic";   // adjust names to your package’s convention
+    default: return "Unknown";
+    }
+}
 
 extern "C" {
     SEXP S_estimate_local_density_over_grid(SEXP s_x,
@@ -122,7 +138,7 @@ double compute_iqr(const std::vector<double>& x) {
  */
 double silverman_bandwidth(const std::vector<double>& x) {
     if (x.empty()) {
-        throw std::invalid_argument("Input vector must not be empty");
+        Rf_error("Input vector must not be empty");
     }
 
     int n = x.size();
@@ -217,76 +233,78 @@ double kernel_specific_bandwidth(const std::vector<double>& x, int kernel_type) 
 * @throw std::invalid_argument if input parameters are invalid
 */
 density_t estimate_local_density(
-   const std::vector<double>& x,
-   int center_idx,
-   double pilot_bandwidth,
-   int kernel_type,
-   bool verbose) {
+    const std::vector<double>& x,
+    int center_idx,
+    double pilot_bandwidth,
+    int kernel_type,
+    bool verbose) {
 
-   // Input validation
-   if (x.empty()) {
-       throw std::invalid_argument("Input vector must not be empty");
-   }
-   if (center_idx < 0 || center_idx >= static_cast<int>(x.size())) {
-       throw std::invalid_argument("center_idx out of range");
-   }
-   if (kernel_type < 1 || kernel_type > 8) {
-       throw std::invalid_argument("Invalid kernel_type (must be 1-8)");
-   }
+    // Input validation
+    if (x.empty())                          Rf_error("Input vector must not be empty");
+    if (center_idx < 0 || center_idx >= (int)x.size()) Rf_error("center_idx out of range");
+    if (kernel_type < 1 || kernel_type > 8) Rf_error("Invalid kernel_type (must be 1-8)");
 
-   density_t result;
-   result.auto_selected = (pilot_bandwidth <= 0);
+    density_t result;
+    result.auto_selected = (pilot_bandwidth <= 0);
+    try {
+        result.bandwidth = result.auto_selected
+            ? kernel_specific_bandwidth(x, kernel_type)
+            : pilot_bandwidth;
+    } catch (const std::exception& e) {
+        Rf_error("Bandwidth selection failed: %s", e.what());  // no newline
+    }
 
-   // Automatic bandwidth selection if needed
-   try {
-       result.bandwidth = result.auto_selected ?
-           kernel_specific_bandwidth(x, kernel_type) : pilot_bandwidth;
-   } catch (const std::exception& e) {
-       throw std::runtime_error("Bandwidth selection failed: " + std::string(e.what()));
-   }
+    if (verbose) {
+        Rprintf(
+            "Density estimation parameters:\n"
+            "  - Kernel type: %s\n"
+            "  - Bandwidth: %.6g%s\n"
+            "  - Sample size: %lld\n"
+            "  - Estimation point index: %lld\n",
+            kernel_name(kernel_type),
+            result.bandwidth,
+            (result.auto_selected ? " (automatically selected)" : " (user-provided)"),
+            (long long)x.size(),
+            (long long)center_idx
+            );
+    }
 
-   if (verbose) {
-       std::cout << "Density estimation parameters:" << std::endl
-                 << "  - Kernel type: " << kernel_type << std::endl
-                 << "  - Bandwidth: " << result.bandwidth
-                 << (result.auto_selected ? " (automatically selected)" : " (user-provided)")
-                 << std::endl
-                 << "  - Sample size: " << x.size() << std::endl
-                 << "  - Estimation point index: " << center_idx << std::endl;
-   }
+    // Initialize the chosen kernel
+    initialize_kernel(kernel_type, 1.0);
+    double kernel_total_mass = get_kernel_mass(kernel_type);
+    double center = x[center_idx];
+    double density = 0.0;
+    int n = x.size();
 
-   // Initialize the chosen kernel
-   initialize_kernel(kernel_type, 1.0);
-   double kernel_total_mass = get_kernel_mass(kernel_type);
-   double center = x[center_idx];
-   double density = 0.0;
-   int n = x.size();
+    // Compute density using the selected kernel
+    std::vector<double> dists(n);
+    std::vector<double> weights(n);
 
-   // Compute density using the selected kernel
-   std::vector<double> dists(n);
-   std::vector<double> weights(n);
+    for (int i = 0; i < n; ++i) {
+        dists[i] = std::abs(x[i] - center) / result.bandwidth;
+    }
 
-   for (int i = 0; i < n; ++i) {
-       dists[i] = std::abs(x[i] - center) / result.bandwidth;
-   }
+    // Apply the selected kernel
+    kernel_fn(dists.data(), n, weights.data());
 
-   // Apply the selected kernel
-   kernel_fn(dists.data(), n, weights.data());
+    // Sum the weights
+    for (int i = 0; i < n; ++i) {
+        density += weights[i];
+    }
 
-   // Sum the weights
-   for (int i = 0; i < n; ++i) {
-       density += weights[i];
-   }
+    result.density = density / (n * result.bandwidth * kernel_total_mass);
 
-   result.density = density / (n * result.bandwidth * kernel_total_mass);
+    if (verbose) {
+        Rprintf(
+            "Density estimation results:\n"
+            "  - Estimated density: %.6g\n"
+            "  - Total kernel mass: %.6g\n",
+            result.density,
+            kernel_total_mass
+            );
+    }
 
-   if (verbose) {
-       std::cout << "Density estimation results:" << std::endl
-                 << "  - Estimated density: " << result.density << std::endl
-                 << "  - Total kernel mass: " << kernel_total_mass << std::endl;
-   }
-
-   return result;
+    return result;
 }
 
 /**
@@ -342,17 +360,26 @@ gdensity_t estimate_local_density_over_grid(
    result.end = max_x + result.offset;
 
    if (verbose) {
-       std::cout << "Density estimation parameters:" << std::endl
-                 << "  - Sample size: " << x.size() << std::endl
-                 << "  - Grid Size: " << grid_size << std::endl
-                 << "  - p-offset: " << poffset << std::endl
-                 << "  - Offset: " << result.offset << std::endl
-                 << "  - Grid Start: " << result.start << std::endl
-                 << "  - Grid End: " << result.end << std::endl
-                 << "  - Kernel type: " << kernel_type << std::endl
-                 << "  - Bandwidth: " << result.bandwidth
-                 << (result.auto_selected ? " (automatically selected)" : " (user-provided)")
-                 << std::endl;
+       Rprintf(
+           "Density estimation parameters:\n"
+           "  - Sample size: %lld\n"
+           "  - Grid Size: %lld\n"
+           "  - p-offset: %.6g\n"
+           "  - Offset: %.6g\n"
+           "  - Grid Start: %.6g\n"
+           "  - Grid End: %.6g\n"
+           "  - Kernel type: %s\n"
+           "  - Bandwidth: %.6g%s\n",
+           (long long)x.size(),
+           (long long)grid_size,
+           poffset,
+           result.offset,
+           result.start,
+           result.end,
+           kernel_name(kernel_type),
+           result.bandwidth,
+           (result.auto_selected ? " (automatically selected)" : " (user-provided)")
+           );
    }
 
    // Initialize the chosen kernel
@@ -386,7 +413,7 @@ gdensity_t estimate_local_density_over_grid(
    }
 
    if (verbose) {
-       std::cout << "Finished density estimation" << std::endl;
+       Rprintf("Finished density estimation\n");
    }
 
    return result;
@@ -439,7 +466,7 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
     const int N_COMPONENTS = 6;
     int n_protected = 0;  // Track number of PROTECT calls
     SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_double_to_R(gdens_res.density))); n_protected++;  // Fixed: using double conversion
+    SET_VECTOR_ELT(result, 0, convert_vector_double_to_R(gdens_res.density)); n_protected++;
     SEXP s_bandwidth = PROTECT(allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
     REAL(s_bandwidth)[0] = gdens_res.bandwidth;
     SET_VECTOR_ELT(result, 1, s_bandwidth);

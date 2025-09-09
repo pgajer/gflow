@@ -2,6 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include "uniform_grid_graph.hpp"
 #include "graph_spectral_lowess_mat.hpp"

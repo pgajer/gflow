@@ -1,7 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
- // Undefine conflicting macros after including R headers
+// Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include "harmonic_smoother.hpp"
 #include "set_wgraph.hpp"  // for set_wgraph_t

@@ -1,10 +1,8 @@
-// Implementation of the Dijkstra's shortest path algorithm
-
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -236,11 +234,6 @@ SEXP S_shortest_path(SEXP s_graph, SEXP s_edge_lengths, SEXP s_vertices) {
  *
  * std::vector<int> path = shortest_path_bw_two_vertices(graph, edge_lengths, start, end);
  *
- * // Output the path
- * for (int v : path) {
- *     std::cout << v << " ";
- * }
- * // Expected output: 0 1 2 4
  * @endcode
  */
 std::vector<int> shortest_path_bw_two_vertices(const std::vector<std::vector<int>>& graph,

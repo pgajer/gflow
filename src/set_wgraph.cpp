@@ -1,5 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
+// Undefine conflicting macros after including R headers
+#undef length
+#undef eval
 
 #include <queue>
 #include <random>     // for std::mt19937
@@ -47,7 +50,7 @@ set_wgraph_t set_wgraph_t::create_subgraph(const std::vector<size_t>& vertices) 
     // Validate input
     for (size_t v : vertices) {
         if (v >= adjacency_list.size()) {
-            throw std::out_of_range("Vertex index out of range");
+            Rf_error("Vertex index out of range");
         }
     }
 
@@ -1338,7 +1341,7 @@ std::vector<double> set_wgraph_t::compute_weight_percentiles(const std::vector<d
     // Validate input probabilities
     for (const double p : probs) {
         if (p < 0.0 || p > 1.0) {
-            throw std::invalid_argument("Probability values must be between 0.0 and 1.0");
+            Rf_error("Probability values must be between 0.0 and 1.0");
         }
     }
 
@@ -1357,7 +1360,7 @@ std::vector<double> set_wgraph_t::compute_weight_percentiles(const std::vector<d
 
     // Check if we have any edges
     if (weights.empty()) {
-        throw std::runtime_error("Cannot compute percentiles: graph has no edges");
+        Rf_error("Cannot compute percentiles: graph has no edges");
     }
 
     // Sort the weights

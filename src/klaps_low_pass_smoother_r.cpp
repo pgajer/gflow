@@ -1,6 +1,7 @@
 #include <R.h>            // For Rprintf, etc.
 #include <Rinternals.h>   // For SEXP macros
 #undef length             // avoid clash with R
+#undef eval
 
 #include <vector>
 #include <algorithm>      // std::copy

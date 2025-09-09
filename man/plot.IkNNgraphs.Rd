@@ -5,7 +5,7 @@
 \title{Plot Diagnostics for Intersection k-NN Graph Analysis}
 \usage{
 \method{plot}{IkNNgraphs}(
-  res,
+  x,
   type = "diag",
   diags = c("edist", "edge", "deg"),
   with.pwlm = TRUE,
@@ -22,7 +22,7 @@
 )
 }
 \arguments{
-\item{res}{A list containing analysis results for intersection k-NN graphs, typically
+\item{x}{A list containing analysis results for intersection k-NN graphs, typically
 with components like 'k.values', 'edit.distances', 'n.edges.in.pruned.graph',
 and 'js.div'.}
 
@@ -68,6 +68,7 @@ across different k values. Can display edit distances, edge counts, and
 Jensen-Shannon divergence metrics.
 }
 \examples{
+\dontrun{
 # Create sample data for IkNNgraphs analysis
 set.seed(123)
 res <- list(
@@ -81,7 +82,6 @@ res <- list(
 )
 
 # Plot diagnostics with default settings
-\dontrun{
   plot.IkNNgraphs(res)
 
   # Plot only edit distances and edge counts

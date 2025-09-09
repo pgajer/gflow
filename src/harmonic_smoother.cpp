@@ -25,37 +25,37 @@
 double set_wgraph_t::basin_cx_difference(
     const std::unordered_map<size_t, basin_t>& basins1,
     const std::unordered_map<size_t, basin_t>& basins2
-	) const {
+    ) const {
     // If both are empty, they're identical
     if (basins1.empty() && basins2.empty()) {
         return 0.0;
     }
 
-    // If one is empty and the other isn't, they're completely different
+     // If one is empty and the other isn't, they're completely different
     if (basins1.empty() || basins2.empty()) {
         return 1.0;
     }
 
-    // Count extrema that exist in both maps
+     // Count extrema that exist in both maps
     size_t common_extrema = 0;
     double size_difference_sum = 0.0;
     double total_basins = basins1.size() + basins2.size();
 
-    // Maps to track which extrema have been matched
+     // Maps to track which extrema have been matched
     std::unordered_set<size_t> matched_in_basins1;
     std::unordered_set<size_t> matched_in_basins2;
 
-    // First pass: exact vertex matches
+     // First pass: exact vertex matches
     for (const auto& [vertex1, basin1] : basins1) {
         if (basins2.find(vertex1) != basins2.end()) {
             const basin_t& basin2 = basins2.at(vertex1);
 
-            // Found a matching extremum
+             // Found a matching extremum
             common_extrema++;
             matched_in_basins1.insert(vertex1);
             matched_in_basins2.insert(vertex1);
 
-            // Calculate relative size difference
+             // Calculate relative size difference
             double size1 = basin1.reachability_map.sorted_vertices.size();
             double size2 = basin2.reachability_map.sorted_vertices.size();
             double max_size = std::max(size1, size2);
@@ -65,7 +65,7 @@ double set_wgraph_t::basin_cx_difference(
         }
     }
 
-    // Second pass: extrema that moved slightly (within a small radius)
+     // Second pass: extrema that moved slightly (within a small radius)
     double proximity_threshold = 0.05 * graph_diameter; // 5% of graph diameter
 
     for (const auto& [vertex1, basin1] : basins1) {
@@ -73,26 +73,26 @@ double set_wgraph_t::basin_cx_difference(
             continue; // Already matched in first pass
         }
 
-        // Look for nearby extrema in basins2
+         // Look for nearby extrema in basins2
         for (const auto& [vertex2, basin2] : basins2) {
             if (matched_in_basins2.find(vertex2) != matched_in_basins2.end()) {
                 continue; // Already matched
             }
 
-            // Only match extrema of the same type (both maxima or both minima)
+             // Only match extrema of the same type (both maxima or both minima)
             if (basin1.is_maximum != basin2.is_maximum) {
                 continue;
             }
 
-            // Check if they're close enough
+             // Check if they're close enough
             double distance = compute_shortest_path_distance(vertex1, vertex2);
             if (distance <= proximity_threshold) {
-                // Found a nearby extremum
+                 // Found a nearby extremum
                 common_extrema++;
                 matched_in_basins1.insert(vertex1);
                 matched_in_basins2.insert(vertex2);
 
-                // Calculate relative size difference
+                 // Calculate relative size difference
                 double size1 = basin1.reachability_map.sorted_vertices.size();
                 double size2 = basin2.reachability_map.sorted_vertices.size();
                 double max_size = std::max(size1, size2);
@@ -100,7 +100,7 @@ double set_wgraph_t::basin_cx_difference(
                     size_difference_sum += std::abs(size1 - size2) / max_size;
                 }
 
-                // Add a penalty for the distance
+                 // Add a penalty for the distance
                 size_difference_sum += distance / proximity_threshold;
 
                 break; // Match found, move to next vertex1
@@ -108,13 +108,13 @@ double set_wgraph_t::basin_cx_difference(
         }
     }
 
-    // Calculate Dice-Sørensen similarity
+     // Calculate Dice-Sørensen similarity
     double dice = (2.0 * common_extrema) / total_basins;
 
-    // Calculate average size difference for matched basins
+     // Calculate average size difference for matched basins
     double avg_size_diff = (common_extrema > 0) ? size_difference_sum / common_extrema : 0.0;
 
-    // Combine metrics: more weight to Dice, less to size differences
+     // Combine metrics: more weight to Dice, less to size differences
     double difference = 0.7 * (1.0 - dice) + 0.3 * avg_size_diff;
 
     return difference;
@@ -133,7 +133,7 @@ double set_wgraph_t::basin_cx_difference(
  */
 std::unordered_map<size_t, basin_t> set_wgraph_t::compute_basins(
     const std::vector<double>& y
-	) const {
+) const {
     // 1. Find neighborhood-local extrema
     auto [nbr_lmin, nbr_lmax] = find_nbr_extrema(y);
     std::unordered_map<size_t, basin_t> basins_map;
@@ -145,7 +145,7 @@ std::unordered_map<size_t, basin_t> set_wgraph_t::compute_basins(
             vertex,
             y,
             detect_maxima
-			);
+            );
 
         if (basin.reachability_map.sorted_vertices.size()) {
             basin.extremum_vertex = vertex;
@@ -160,7 +160,7 @@ std::unordered_map<size_t, basin_t> set_wgraph_t::compute_basins(
             vertex,
             y,
             detect_maxima
-			);
+            );
 
         if (basin.reachability_map.sorted_vertices.size()) {
             basin.extremum_vertex = vertex;
@@ -196,14 +196,14 @@ harmonic_smoother_t set_wgraph_t::harmonic_smoother(
     int record_frequency,
     size_t stability_window,
     double stability_threshold
-	) const {
+    ) const {
     // Initialize result structure
     harmonic_smoother_t result;
 
     // Return if region is empty or too small
     if (region_vertices.size() <= 5) {
         REPORT_WARNING("WARNING: region_vertices size %zu is too small for effective harmonic smoothing\n",
-                region_vertices.size());
+                       region_vertices.size());
         return result;
     }
 
@@ -211,15 +211,15 @@ harmonic_smoother_t set_wgraph_t::harmonic_smoother(
     std::unordered_set<size_t> boundary_vertices;
     for (const size_t& v : region_vertices) {
         // Check if vertex is of degree 1 or has neighbors outside the region
-		// Modifying the definition of the boundary to exclude deg 1 vertices as for harmonic smoothing we need to focus on vertices that have neighbors not in the region
-		for (const auto& edge : adjacency_list[v]) {
-			if (region_vertices.count(edge.vertex) == 0) {
-				// This is a boundary vertex
-				boundary_vertices.insert(v);
-				break;
-			}
-		}
-	}
+        // Modifying the definition of the boundary to exclude deg 1 vertices as for harmonic smoothing we need to focus on vertices that have neighbors not in the region
+        for (const auto& edge : adjacency_list[v]) {
+            if (region_vertices.count(edge.vertex) == 0) {
+                // This is a boundary vertex
+                boundary_vertices.insert(v);
+                break;
+            }
+        }
+    }
 
     // 2. Create interior vertices set (region vertices that are not boundary vertices)
     std::unordered_set<size_t> interior_vertices;
@@ -292,7 +292,7 @@ harmonic_smoother_t set_wgraph_t::harmonic_smoother(
                 double diff = basin_cx_difference(
                     result.i_basins[last_idx - 1],
                     result.i_basins[last_idx]
-					);
+                    );
                 result.basin_cx_differences.push_back(diff);
 
                 // Check if basin complex structure has stabilized
@@ -363,39 +363,39 @@ void set_wgraph_t::perform_harmonic_repair(
     const basin_t& absorbing_basin,
     const basin_t& absorbed_basin
 ) const {
-    // Collect all vertices in the absorbed basin
+     // Collect all vertices in the absorbed basin
     std::unordered_set<size_t> basin_vertices;
     for (const auto& v_info : absorbed_basin.reachability_map.sorted_vertices) {
         basin_vertices.insert(v_info.vertex);
     }
 
-    // Identify boundary vertices (vertices in the basin with neighbors outside)
+     // Identify boundary vertices (vertices in the basin with neighbors outside)
     std::unordered_map<size_t, double> boundary_values;
 
-    // Add the absorbing basin's extremum as a boundary vertex with fixed value
+     // Add the absorbing basin's extremum as a boundary vertex with fixed value
     size_t absorbing_extremum = absorbing_basin.extremum_vertex;
     if (absorbing_extremum < harmonic_predictions.size()) {
         boundary_values[absorbing_extremum] = harmonic_predictions[absorbing_extremum];
     }
 
-    // Add other boundary vertices from the absorbed basin
+     // Add other boundary vertices from the absorbed basin
     for (const auto& v_info : absorbed_basin.reachability_map.sorted_vertices) {
         size_t v = v_info.vertex;
 
-        // Skip the extremum itself - it will be recalculated
+         // Skip the extremum itself - it will be recalculated
         if (v == absorbed_basin.extremum_vertex) {
             continue;
         }
 
-        // Check if vertex index is valid
+         // Check if vertex index is valid
         if (v >= adjacency_list.size()) {
             continue;
         }
 
-        // Check if this vertex has neighbors outside the basin
+         // Check if this vertex has neighbors outside the basin
         for (const auto& edge : adjacency_list[v]) {
             if (basin_vertices.count(edge.vertex) == 0) {
-                // This is a boundary vertex - keep its original value
+                 // This is a boundary vertex - keep its original value
                 if (v < harmonic_predictions.size()) {
                     boundary_values[v] = harmonic_predictions[v];
                 }
@@ -404,7 +404,7 @@ void set_wgraph_t::perform_harmonic_repair(
         }
     }
 
-    // Include common vertices between absorbing and absorbed basins as boundary values
+     // Include common vertices between absorbing and absorbed basins as boundary values
     for (const auto& v_info : absorbing_basin.reachability_map.sorted_vertices) {
         size_t v = v_info.vertex;
         if (basin_vertices.count(v) > 0 && v != absorbed_basin.extremum_vertex) {
@@ -414,7 +414,7 @@ void set_wgraph_t::perform_harmonic_repair(
         }
     }
 
-    // Simple Jacobi iteration for harmonic interpolation
+     // Simple Jacobi iteration for harmonic interpolation
     const int MAX_ITERATIONS = 100;
     const double TOLERANCE = 1e-6;
 
@@ -426,27 +426,27 @@ void set_wgraph_t::perform_harmonic_repair(
         for (const auto& v_info : absorbed_basin.reachability_map.sorted_vertices) {
             size_t v = v_info.vertex;
 
-            // Skip boundary vertices - their values are fixed
+             // Skip boundary vertices - their values are fixed
             if (boundary_values.count(v) > 0) {
                 continue;
             }
 
-            // Skip invalid vertex indices
+             // Skip invalid vertex indices
             if (v >= adjacency_list.size() || v >= harmonic_predictions.size()) {
                 continue;
             }
 
-            // Average the values of neighbors
+             // Average the values of neighbors
             double sum = 0.0;
             double weight_sum = 0.0;
 
             for (const auto& edge : adjacency_list[v]) {
-                // Check that neighbor index is valid
+                 // Check that neighbor index is valid
                 if (edge.vertex >= harmonic_predictions.size()) {
                     continue;
                 }
 
-                // Use inverse of edge weight as weighting factor
+                 // Use inverse of edge weight as weighting factor
                 double weight = 1.0 / (edge.weight + 1e-10); // Avoid division by zero
                 sum += harmonic_predictions[edge.vertex] * weight;
                 weight_sum += weight;
@@ -461,7 +461,7 @@ void set_wgraph_t::perform_harmonic_repair(
             }
         }
 
-        // Update the values for next iteration
+         // Update the values for next iteration
         for (const auto& v_info : absorbed_basin.reachability_map.sorted_vertices) {
             size_t v = v_info.vertex;
             if (boundary_values.count(v) == 0 && v < harmonic_predictions.size()) {
@@ -474,10 +474,10 @@ void set_wgraph_t::perform_harmonic_repair(
         }
     }
 
-    // Make a special adjustment for the absorbed extremum
+     // Make a special adjustment for the absorbed extremum
     size_t absorbed_extremum = absorbed_basin.extremum_vertex;
 
-    // Check validity of absorbed extremum
+     // Check validity of absorbed extremum
     if (absorbed_extremum >= adjacency_list.size() || absorbed_extremum >= harmonic_predictions.size()) {
         return;
     }
@@ -498,12 +498,12 @@ void set_wgraph_t::perform_harmonic_repair(
     if (weight_sum > 0) {
         neighbor_avg /= weight_sum;
 
-        // Calculate distance between extrema
+         // Calculate distance between extrema
         double extrema_distance = 1.0;
         if (absorbing_basin.reachability_map.distances.count(absorbed_extremum) > 0) {
             extrema_distance = absorbing_basin.reachability_map.distances.at(absorbed_extremum);
         } else {
-            // Compute approximate distance if not directly available
+             // Compute approximate distance if not directly available
             double d = compute_shortest_path_distance(
                 absorbing_basin.extremum_vertex,
                 absorbed_extremum
@@ -511,7 +511,7 @@ void set_wgraph_t::perform_harmonic_repair(
             extrema_distance = std::max(1.0, d);
         }
 
-        // Blend based on distance
+         // Blend based on distance
         double blend_factor = 1.0 / (1.0 + extrema_distance);
         harmonic_predictions[absorbed_extremum] =
             blend_factor * harmonic_predictions[absorbing_basin.extremum_vertex] +
@@ -568,28 +568,28 @@ void set_wgraph_t::perform_harmonic_smoothing(
     int max_iterations,
     double tolerance
 ) const {
-    // Return if region is empty or too small
+     // Return if region is empty or too small
     if (region_vertices.size() <= 5) {
         REPORT_WARNING("WARNING: region_vertices size %zu is too small for effective harmonic smoothing\n",
                 region_vertices.size());
         return;
     }
 
-    // 1. Identify boundary vertices (vertices in the region with degree 1 or neighbors outside)
+     // 1. Identify boundary vertices (vertices in the region with degree 1 or neighbors outside)
     std::unordered_set<size_t> boundary_vertices;
     for (const size_t& v : region_vertices) {
-        // Check if vertex is of degree 1 or has neighbors outside the region
-		// Modifying the definition of the boundary to exclude deg 1 vertices as for harmonic smoothing we need to focus on vertices that have neighbors not in the region
-		for (const auto& edge : adjacency_list[v]) {
-			if (region_vertices.count(edge.vertex) == 0) {
-				// This is a boundary vertex
-				boundary_vertices.insert(v);
-				break;
-			}
-		}
-	}
+         // Check if vertex is of degree 1 or has neighbors outside the region
+ // Modifying the definition of the boundary to exclude deg 1 vertices as for harmonic smoothing we need to focus on vertices that have neighbors not in the region
+for (const auto& edge : adjacency_list[v]) {
+if (region_vertices.count(edge.vertex) == 0) {
+ // This is a boundary vertex
+boundary_vertices.insert(v);
+break;
+}
+}
+}
 
-    // 2. Creating interior vertices set (region vertices that are not boundary vertices)
+     // 2. Creating interior vertices set (region vertices that are not boundary vertices)
     std::unordered_set<size_t> interior_vertices;
     for (const auto& vertex : region_vertices) {
         if (boundary_vertices.find(vertex) == boundary_vertices.end()) {
@@ -597,24 +597,24 @@ void set_wgraph_t::perform_harmonic_smoothing(
         }
     }
 
-    // Return if we have no interior vertices to smooth
+     // Return if we have no interior vertices to smooth
     if (interior_vertices.empty()) {
         Rprintf("Warning: No interior vertices to smooth\n");
         return;
     }
 
-    // 3. Iterative relaxation for harmonic interpolation
+     // 3. Iterative relaxation for harmonic interpolation
     std::vector<double> new_values = harmonic_predictions;
     for (int iter = 0; iter < max_iterations; ++iter) {
         bool converged = true;
 
-        // Update each interior vertex value
+         // Update each interior vertex value
         for (const size_t& v : interior_vertices) {
-            // Average the values of neighbors
+             // Average the values of neighbors
             double sum = 0.0;
             double weight_sum = 0.0;
             for (const auto& edge : adjacency_list[v]) {
-                // Use inverse of edge weight as weighting factor
+                 // Use inverse of edge weight as weighting factor
                 double weight = 1.0 / (edge.weight + 1e-10); // Avoid division by zero
                 sum += harmonic_predictions[edge.vertex] * weight;
                 weight_sum += weight;
@@ -629,12 +629,12 @@ void set_wgraph_t::perform_harmonic_smoothing(
             }
         }
 
-        // Update the values for next iteration
+         // Update the values for next iteration
         for (const size_t& v : interior_vertices) {
             harmonic_predictions[v] = new_values[v];
         }
 
-        // Break if converged
+         // Break if converged
         if (converged) {
             break;
         }

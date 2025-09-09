@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -272,11 +272,12 @@ SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2) {
     PROTECT(Ri2 = coerceVector(Ri2, INTSXP)); nprot++;
     int i2 = INTEGER(Ri2)[0];
 
-    UNPROTECT(nprot);
-
     std::unique_ptr<std::vector<std::vector<int>>> joined_graph = join_graphs(graph1, graph2, i1, i2);
 
-    return convert_vector_vector_int_to_R(*joined_graph);
+    SEXP result = convert_vector_vector_int_to_R(*joined_graph); nprot++;
+    UNPROTECT(nprot);
+
+    return result;
 }
 
 
@@ -397,7 +398,10 @@ SEXP S_create_star_graph(SEXP Rsizes) {
 
     std::unique_ptr<std::vector<std::vector<int>>> star_graph = create_star_graph(sizes);
 
-    return convert_vector_vector_int_to_R(*star_graph);
+    SEXP result = convert_vector_vector_int_to_R(*star_graph);
+    UNPROTECT(1);
+
+    return result;
 }
 #endif
 
@@ -450,6 +454,7 @@ SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights) {
     SEXP r_weights = R_NilValue;
     if (!result.second.empty()) {  // Assuming result.second is now a vector instead of pointer
         r_weights = convert_vector_double_to_R(result.second);
+        UNPROTECT(1);
     }
 
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));

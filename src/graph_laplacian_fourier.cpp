@@ -1,9 +1,10 @@
 #include <R.h>
 #include <Rinternals.h>
 
-#include <Eigen/Dense>
 #include <vector>
 #include <optional>
+
+#include <Eigen/Dense>
 
 #include "graph_laplacian_fourier.hpp"
 

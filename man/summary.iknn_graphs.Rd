@@ -4,15 +4,14 @@
 \alias{summary.iknn_graphs}
 \title{Summarize an iknn_graphs Object}
 \usage{
-\method{summary}{iknn_graphs}(object, use_double_pruned = TRUE, ...)
+\method{summary}{iknn_graphs}(object, use_isize_pruned = FALSE, ...)
 }
 \arguments{
 \item{object}{An object of class 'iknn_graphs', typically the output of create.iknn.graphs().}
 
-\item{use_double_pruned}{Logical. If TRUE, computes and displays statistics for the multi-stage
-pruned graphs (double_pruned_graphs). If FALSE (default), computes statistics for the
-first-stage pruned graphs (pruned_graphs). The multi-stage pruned graphs incorporate
-additional long-edge and path-ratio pruning beyond the basic geometric pruning.}
+\item{use_isize_pruned}{Logical. If TRUE, computes and displays statistics for the intersection-size
+pruned graphs (isize_pruned_graphs). If FALSE (default), computes statistics for the
+geometrically pruned graphs (geom_pruned_graphs).}
 
 \item{...}{Additional arguments passed to or from other methods (not currently used).}
 }
@@ -36,10 +35,10 @@ about the connectivity and structure of the graphs for different k values.
 The summary function extracts and presents key statistics about the structure of each
 intersection kNN graph in the iknn_graphs object. All graphs share the same number of vertices
 (equal to the number of rows in the input data matrix), but they differ in the number of edges
-due to varying k values and the pruning threshold applied during graph creation.
+due to varying k values and the pruning methods applied during graph creation.
 
 The function displays general information about the graph sequence, including the number of vertices,
-the range of k values, and the pruning threshold used. It then presents a tabular summary of statistics
+the range of k values, and the pruning parameters used. It then presents a tabular summary of statistics
 for each individual graph, showing how the graph structure changes as k increases.
 
 For each intersection kNN graph, the following metrics are calculated:
@@ -48,6 +47,7 @@ For each intersection kNN graph, the following metrics are calculated:
 \item Mean degree: Average number of connections per vertex
 \item Min/Max degree: Range of vertex connectivity
 \item Density: Proportion of potential connections that are actually present
+\item Sparsity: 1 - density, measuring the proportion of missing connections
 }
 }
 \examples{
@@ -56,13 +56,13 @@ set.seed(123)
 x <- matrix(rnorm(1000), ncol = 5)
 
 # Generate intersection kNN graphs
-iknn.res <- create.iknn.graphs(x, kmin = 3, kmax = 10, pruning.thld = 0.7)
+iknn.res <- create.iknn.graphs(x, kmin = 3, kmax = 10)
 
-# Summarize the graphs
+# Summarize the geometrically pruned graphs
 summary(iknn.res)
 
-# Store the summary statistics for further analysis
-graph_stats <- summary(iknn.res)
+# Summarize the intersection-size pruned graphs
+summary(iknn.res, use_isize_pruned = TRUE)
 
 }
 \seealso{

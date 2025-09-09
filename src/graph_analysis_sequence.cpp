@@ -1,9 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 // Standard library includes
 #include <vector>
@@ -583,12 +583,12 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
         SET_VECTOR_ELT(ms_list, 3, convert_map_set_to_R(ms.lmin_to_lmax));
         SET_VECTOR_ELT(ms_list, 4, convert_procells_to_R(ms.procells));
         SET_VECTOR_ELT(ms_list, 5, convert_map_vector_set_to_R(ms.cells));
-        SET_VECTOR_ELT(ms_list, 6, convert_vector_vector_int_to_R(ms.unique_trajectories));
+        SET_VECTOR_ELT(ms_list, 6, convert_vector_vector_int_to_R(ms.unique_trajectories)); UNPROTECT(1);
         SET_VECTOR_ELT(ms_list, 7, convert_cell_trajectories_to_R(ms.cell_trajectories));
-        SET_VECTOR_ELT(ms_list, 8, convert_vector_vector_int_to_R(ms.path_graph_adj_list));
-        SET_VECTOR_ELT(ms_list, 9, convert_vector_vector_double_to_R(ms.path_graph_weight_list));
+        SET_VECTOR_ELT(ms_list, 8, convert_vector_vector_int_to_R(ms.path_graph_adj_list)); UNPROTECT(1);
+        SET_VECTOR_ELT(ms_list, 9, convert_vector_vector_double_to_R(ms.path_graph_weight_list)); UNPROTECT(1);
         SET_VECTOR_ELT(ms_list, 10, convert_map_vector_to_R(ms.shortest_paths));
-        SET_VECTOR_ELT(ms_list, 11, convert_vector_double_to_R(ms.Ey));
+        SET_VECTOR_ELT(ms_list, 11, convert_vector_double_to_R(ms.Ey)); UNPROTECT(1); // convert_vector_double_to_R(ms.Ey)
 
         // Set names
         SEXP names;

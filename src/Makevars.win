@@ -1,0 +1,28 @@
+# ---- Include paths
+PKG_CPPFLAGS = -I. -IANN
+PKG_CPPFLAGS += -I../inst/include/gflow
+PKG_CPPFLAGS += -I../inst/include
+PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
+PKG_CPPFLAGS += -D_Alignof=__alignof__
+
+# ANN import/export: force export, not import
+PKG_CPPFLAGS += -DDLL_EXPORTS
+
+# Windows: disable direct TBB usage (use your wrappers / OpenMP/serial)
+PKG_CPPFLAGS += -DGFLOW_NO_TBB
+
+# ---- C++ standard / OpenMP
+CXX_STD      = CXX17
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+# ---- Sources
+SOURCES_CPP  = $(wildcard *.cpp)
+SOURCES_C    = $(wildcard *.c)
+ANN_SOURCES  = $(wildcard ANN/*.cpp)
+
+# ---- Objects
+OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o)
+
+# ---- Build target
+$(SHLIB): $(OBJECTS)

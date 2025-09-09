@@ -9,6 +9,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <optional>

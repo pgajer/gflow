@@ -14,17 +14,14 @@
 
 // I/O
 #include <cstdio>
-#include <iostream>
+// #include <iostream>
 
-// Eigen for linear algebra
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 #include <Eigen/Dense>
-
-// Spectra for eigen decomposition
-#include <SymEigsSolver.h>
-#include <MatOp/DenseSymMatProd.h>
-#include <MatOp/SparseSymMatProd.h>
+#include <Spectra/SymEigsSolver.h>
+#include <Spectra/MatOp/DenseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
 // Project-specific headers
 #include "graph_bw_adaptive_spectral_smoother.hpp" // For graph_bw_adaptive_spectral_smoother_t

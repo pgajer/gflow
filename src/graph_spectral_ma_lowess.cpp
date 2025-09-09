@@ -1,7 +1,7 @@
-#include <SymEigsSolver.h>             // For eigenvalue computation
-#include <MatOp/DenseSymMatProd.h>
-#include <MatOp/SparseSymMatProd.h>
 #include <Eigen/Dense>
+#include <Spectra/SymEigsSolver.h>             // For eigenvalue computation
+#include <Spectra/MatOp/DenseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
 #include <execution>                   // For std::execution::seq/par
 #include <thread>                      // For std::thread::hardware_concurrency
@@ -10,10 +10,11 @@
 #include <map>                         // For std::map
 
 // for debugging
-#include <filesystem>
-#include <fstream>
+// #include <filesystem>
+// #include <fstream>
 #include "cpp_utils.hpp"               // For debugging and elapsed.time
 
+#include "exec_policy.hpp"
 #include "graph_spectral_lowess.hpp"   // For graph_spectral_lowess_t
 #include "bandwidth_utils.hpp"         // For get_candidate_bws
 #include "kernels.h"                   // For kernel functions
@@ -22,7 +23,6 @@
 #include "set_wgraph.hpp"              // For set_wgraph_t
 #include "mabilo.hpp"                  // For uwmabilo()
 #include "cpp_stats_utils.hpp"         // For running_window_average()
-
 
 /**
  * @brief Creates a spectral embedding for a set of vertices using Laplacian eigenvectors
@@ -266,7 +266,8 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
     auto model_center_processing_start = std::chrono::steady_clock::now();
     std::vector<std::unordered_map<size_t, std::vector<wpe_t>>> thread_local_results(model_centers.size());
 
-    std::for_each(std::execution::par, model_centers.begin(), model_centers.end(),
+    //std::for_each(std::execution::par, model_centers.begin(), model_centers.end(),
+    std::for_each(GFLOW_EXEC_POLICY, model_centers.begin(), model_centers.end(),
                   [&](size_t i) {
                       size_t center_vertex = model_centers[i];
                       try {
@@ -431,7 +432,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
     std::iota(all_vertices.begin(), all_vertices.end(), 0);
 
     // Process each vertex in parallel
-    std::for_each(std::execution::par, all_vertices.begin(), all_vertices.end(),
+    std::for_each(GFLOW_EXEC_POLICY, all_vertices.begin(), all_vertices.end(),
         [&](size_t vertex) {
             const auto& models = vertex_models[vertex];
 

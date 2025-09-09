@@ -1,6 +1,7 @@
 #include <R.h>
 #include <Rinternals.h>
 #undef length
+#undef eval
 
 #include <vector>
 

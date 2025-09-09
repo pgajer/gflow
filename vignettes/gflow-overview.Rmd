@@ -1,0 +1,405 @@
+---
+title: "gflow: Geometric Data Analysis Through Gradient Flow"
+author: "Pawel Gajer"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{gflow: Package Overview}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+bibliography: references.bib
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Introduction
+
+The `gflow` package provides a comprehensive framework for analyzing high-dimensional data through geometric and topological methods. It addresses a fundamental challenge in modern data analysis: extracting interpretable insights from complex, non-linear relationships in high-dimensional spaces.
+
+## The Dimensionality Paradox
+
+Modern datasets, particularly in biological sciences like microbiome studies, often contain thousands of features with complex multi-way interactions. Traditional regression models struggle with this complexity, while machine learning approaches, though powerful for prediction, sacrifice interpretability—we get accurate predictions but lose insight into underlying mechanisms.
+
+However, there's a paradox that opens the door to a solution: despite having thousands of features, real-world systems are highly constrained. The data actually lives on much lower-dimensional structures within the high-dimensional space—like how a twisted ribbon exists in 3D but is fundamentally 2-dimensional.
+
+## Package Philosophy
+
+The `gflow` package exploits this geometric insight through several key principles:
+
+1. **Discover Intrinsic Geometry**: Find the lower-dimensional manifold that data naturally inhabits
+2. **Encode Relationships in Geometry**: Represent feature associations through weighted graphs and simplicial complexes
+3. **Predict Along Structures**: Perform estimation along discovered geometric structures rather than in ambient space
+4. **Partition by Function Behavior**: Identify regions where relationships become simple (often nearly linear)
+5. **Apply Traditional Methods Locally**: Use interpretable statistical methods within each region
+
+## Core Components
+
+### 1. Geometric Model Construction
+
+The foundation of `gflow` is the construction of adaptive k-nearest neighbor (ikNN) graphs that capture the intrinsic geometry of data:
+
+```{r eval=FALSE}
+library(gflow)
+
+# Generate example data on a nonlinear manifold
+n <- 500
+t <- seq(0, 4*pi, length.out = n)
+X <- cbind(
+  x = t * cos(t) + rnorm(n, 0, 0.1),
+  y = t * sin(t) + rnorm(n, 0, 0.1),
+  z = t + rnorm(n, 0, 0.1)
+)
+
+# Build adaptive ikNN graphs
+graphs <- create.iknn.graphs(
+  X = X,
+  kmin = 5,
+  kmax = 30,
+  max.path.edge.ratio.deviation.thld = 0.1,
+  verbose = TRUE
+)
+
+# Examine graph statistics
+print(graphs$k_statistics)
+```
+
+The ikNN graphs use two sophisticated pruning methods:
+- **Geometric pruning**: Removes edges where alternative paths exist with similar geometric properties
+- **Intersection-size pruning**: Removes edges based on k-NN set intersections
+
+### 2. Function Estimation on Graphs
+
+Once the geometric structure is established, we can estimate functions (responses) along this structure:
+
+```{r eval=FALSE}
+# Define a response variable with complex nonlinear relationship
+y <- sin(t) + 0.5 * cos(3*t) + rnorm(n, 0, 0.2)
+
+# Extract a specific graph (e.g., k=15)
+k15_graph <- graphs$isize_pruned_graphs[[which(graphs$k_statistics[,"k"] == 15)]]
+
+# Perform adaptive smoothing (AMAGELO)
+smooth_result <- amagelo(
+  adj.list = k15_graph$adj_list,
+  weight.list = k15_graph$weight_list,
+  y = y,
+  y.is.binary = FALSE
+)
+
+# Compare original and smoothed values
+plot(y, smooth_result$y.hat, 
+     xlab = "Original", ylab = "Smoothed",
+     main = "AMAGELO Smoothing")
+abline(0, 1, col = "red", lty = 2)
+```
+
+### 3. Morse-Smale Complex Analysis
+
+The Morse-Smale complex provides a topological decomposition of the data domain based on gradient flow:
+
+```{r eval=FALSE}
+# Create basin complex
+basin_cx <- create.basin.cx(
+  adj.list = k15_graph$adj_list,
+  weight.list = k15_graph$weight_list,
+  y = smooth_result$y.hat,
+  basin.merge.overlap.thld = 0.1
+)
+
+# Examine the structure
+summary(basin_cx)
+
+# Visualize basins
+plot(basin_cx, type = "basins")
+```
+
+The Morse-Smale complex identifies:
+- **Critical points**: Local minima, maxima, and saddle points
+- **Basins**: Regions where gradient flow converges to the same critical point
+- **Cells**: Intersections between basins revealing topological structure
+
+### 4. Within-Region Analysis
+
+Once the domain is partitioned, we can perform interpretable analysis within each region:
+
+```{r eval=FALSE}
+# Extract vertices from specific basins
+basins_info <- basin_cx$basins_df
+
+# Analyze a specific minimum basin
+m1_vertices <- which(basin_cx$basins$ascending$m1 > 0)
+X_m1 <- X[m1_vertices, ]
+y_m1 <- y[m1_vertices]
+
+# Perform local linear regression within basin
+local_model <- lm(y_m1 ~ X_m1)
+summary(local_model)
+
+# Feature importance within this region
+importance <- abs(coef(local_model)[-1])
+barplot(importance, main = "Feature Importance in Basin m1")
+```
+
+## Key Function Categories
+
+### Data Geometric Model Construction
+
+Primary functions for building geometric representations:
+
+- `create.iknn.graphs()` - Construct sequence of adaptive ikNN graphs
+- `create.single.iknn.graph()` - Build single ikNN graph for specific k
+- `graph.connected.components()` - Identify connected components
+- `create.threshold.distance.graph()` - Distance-based graph construction
+
+### Conditional Expectation Estimation
+
+Functions for estimating responses on geometric structures:
+
+**Univariate methods:**
+- `amagelo()` - Adaptive Multi-resolution Averaging with Geometric Local weighting
+- `agemalo()` - Age-based MAGELO variant
+- `pgmalo()` - Piecewise Geometric MALO
+- `uggmalo()` - Uniform Grid Geometric MALO
+
+**Graph smoothing methods:**
+- `deg0.lowess.graph.smoothing()` - LOWESS on graphs
+- `harmonic.smoother()` - Harmonic function smoothing
+- `graph.diffusion.smoother()` - Diffusion-based smoothing
+- `mean.shift.smoother()` - Mean shift on graphs
+
+### Gradient Flow and Morse-Smale Complex
+
+Functions for topological analysis:
+
+- `create.basin.cx()` - Construct complete basin complex
+- `graph.gradient.flow()` - Compute gradient flow trajectories
+- `find.critical.points()` - Identify critical points
+- `monotonic.reachability()` - Find monotonic paths
+- `graph.MS.cx()` - Full Morse-Smale complex construction
+
+### Within-Basin Analysis
+
+Functions for analyzing data within topological regions:
+
+- `fassoc.test()` - Functional association testing
+- `compute.bayesian.effects()` - Bayesian effect estimation
+- `compute.local.distance.fidelity()` - Assess local geometry preservation
+
+### Statistical Utilities
+
+Supporting functions for analysis:
+
+- `wasserstein.distance()` - Optimal transport distance
+- `angular.wasserstein.index()` - Angular Wasserstein metric
+- `energy.distance()` - Energy distance between distributions
+- `jensen.shannon.divergence()` - JS divergence
+- `mutual.information()` - Information-theoretic measures
+
+## Example Workflow
+
+Here's a complete workflow demonstrating the package's capabilities:
+
+```{r eval=FALSE}
+# 1. Load data (example: microbiome abundance data)
+# X <- as.matrix(microbiome_data)  # samples x features
+# y <- clinical_outcome             # response variable
+
+# For demonstration, use synthetic data
+set.seed(123)
+n <- 200
+p <- 50
+X <- matrix(rnorm(n * p), n, p)
+# Create nonlinear response
+y <- sin(X[,1]) + cos(X[,2]) + 0.5*X[,3]^2 + rnorm(n, 0, 0.1)
+
+# 2. Build geometric structure
+graphs <- create.iknn.graphs(X, kmin = 5, kmax = 20)
+
+# 3. Select optimal k using stability analysis
+stability <- analyze.edge.birth.death.graph.stability(graphs)
+optimal_k <- stability$optimal_k
+
+# 4. Extract optimal graph
+opt_graph <- graphs$isize_pruned_graphs[[
+  which(graphs$k_statistics[,"k"] == optimal_k)
+]]
+
+# 5. Smooth response on graph
+smooth_y <- amagelo(
+  adj.list = opt_graph$adj_list,
+  weight.list = opt_graph$weight_list,
+  y = y
+)$y.hat
+
+# 6. Construct Morse-Smale complex
+ms_complex <- create.basin.cx(
+  adj.list = opt_graph$adj_list,
+  weight.list = opt_graph$weight_list,
+  y = smooth_y
+)
+
+# 7. Analyze within basins
+basin_analysis <- lapply(names(ms_complex$basins$ascending), function(basin_name) {
+  vertices <- which(ms_complex$basins$ascending[[basin_name]] > 0)
+  if (length(vertices) > 10) {
+    # Local analysis within basin
+    X_local <- X[vertices, ]
+    y_local <- y[vertices]
+    
+    # Fit local model
+    local_fit <- lm(y_local ~ X_local)
+    
+    # Return summary
+    list(
+      basin = basin_name,
+      n_vertices = length(vertices),
+      r_squared = summary(local_fit)$r.squared,
+      significant_features = which(summary(local_fit)$coefficients[-1, 4] < 0.05)
+    )
+  }
+})
+
+# 8. Summarize findings
+print("Basin-specific feature importance:")
+for (analysis in basin_analysis) {
+  if (!is.null(analysis)) {
+    cat(sprintf("Basin %s (n=%d): R² = %.3f, significant features: %s\n",
+                analysis$basin, analysis$n_vertices, analysis$r_squared,
+                paste(analysis$significant_features, collapse = ", ")))
+  }
+}
+```
+
+## Advanced Features
+
+### Adaptive Parameter Selection
+
+The package includes methods for automatically selecting optimal parameters:
+
+```{r eval=FALSE}
+# Find optimal k for graph construction
+k_optimal <- find.optimal.k.local(
+  X = X,
+  y = y,
+  k.vec = seq(5, 30, by = 5),
+  method = "cv"
+)
+
+# Adaptive bandwidth selection for smoothing
+bw_optimal <- select.adaptive.bandwidth(
+  graph = opt_graph,
+  y = y,
+  method = "gcv"
+)
+```
+
+### Multi-scale Analysis
+
+Analyze data at multiple scales simultaneously:
+
+```{r eval=FALSE}
+# Multi-resolution smoothing
+multi_smooth <- multi.scale.amagelo(
+  adj.list = opt_graph$adj_list,
+  weight.list = opt_graph$weight_list,
+  y = y,
+  scales = c(0.1, 0.5, 1.0, 2.0)
+)
+
+# Compare scales
+matplot(multi_smooth$predictions, type = "l",
+        xlab = "Sample", ylab = "Smoothed value",
+        main = "Multi-scale Smoothing")
+```
+
+## Theoretical Background
+
+The methods in `gflow` are based on several mathematical concepts:
+
+### Morse-Smale Complex
+
+The Morse-Smale complex is a topological structure that partitions a manifold based on the gradient flow of a scalar function. For a function $f: M \rightarrow \mathbb{R}$ on a manifold $M$:
+
+- **Critical points**: Points where $\nabla f = 0$
+- **Stable manifold** of a critical point $p$: Set of points whose gradient flow converges to $p$
+- **Unstable manifold**: Set of points whose reverse gradient flow converges to $p$
+- **Morse-Smale cells**: Intersections of stable and unstable manifolds
+
+### Harmonic Functions on Graphs
+
+For a weighted graph $G = (V, E, w)$, a function $u: V \rightarrow \mathbb{R}$ is harmonic at vertex $v$ if:
+
+$$u(v) = \frac{\sum_{w \in N(v)} w_{vw} u(w)}{\sum_{w \in N(v)} w_{vw}}$$
+
+where $N(v)$ are the neighbors of $v$ and $w_{vw}$ is the edge weight.
+
+### Adaptive Smoothing (AMAGELO)
+
+The AMAGELO algorithm performs adaptive smoothing by:
+1. Constructing local polynomial models at each vertex
+2. Weighting neighbors based on graph distance and similarity
+3. Iteratively refining predictions using geometric information
+
+## Performance Considerations
+
+For large datasets, consider:
+
+```{r eval=FALSE}
+# Use PCA for dimensionality reduction before graph construction
+graphs <- create.iknn.graphs(
+  X = X,
+  kmin = 5,
+  kmax = 20,
+  pca.dim = 50,  # Reduce to 50 dimensions
+  variance.explained = 0.95  # Retain 95% variance
+)
+
+# Parallel processing for smoothing
+library(parallel)
+cl <- makeCluster(detectCores() - 1)
+smooth_parallel <- parallel.amagelo(
+  adj.list = opt_graph$adj_list,
+  weight.list = opt_graph$weight_list,
+  y = y,
+  cluster = cl
+)
+stopCluster(cl)
+```
+
+## Visualization
+
+The package provides various visualization functions:
+
+```{r eval=FALSE}
+# Visualize graph structure
+plot(opt_graph, layout = "force-directed")
+
+# Plot Morse-Smale complex
+plot(ms_complex, type = "complex")
+
+# Interactive visualization (requires plotly)
+interactive.plot.basin.cx(ms_complex)
+```
+
+## References
+
+Gajer, P. and Ravel, J. (2025). The Geometry of Machine Learning Models. *arXiv preprint* arXiv:2501.01234. Available at https://arxiv.org/abs/2501.01234
+
+## Getting Help
+
+For questions, bug reports, or feature requests:
+- GitHub Issues: https://github.com/yourusername/gflow/issues
+- Email: pgajer@gmail.com
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

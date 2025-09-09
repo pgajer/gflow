@@ -54,9 +54,9 @@ These modifications and considerations should help improve the robustness and ef
 
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <ANN/ANN.h>  // ANN library header
 #include <vector>
@@ -794,6 +794,7 @@ SEXP S_find_shortest_alt_path(SEXP s_adj_list,
     std::vector<int> path = find_shortest_alt_path(iigraph, source, target, edge_isize);
 
     SEXP s_path = convert_vector_int_to_R(path);
+    UNPROTECT(1);
 
     return s_path;
 }

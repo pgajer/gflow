@@ -9,8 +9,7 @@
 #include "set_wgraph.hpp"
 #include "basin.hpp"
 #include "amagelo.hpp"
-#include "error_utils.h"               // REPORT_ERROR()
-
+#include "error_utils.h"   // For REPORT_ERROR()
 
 /**
  * @brief Writes neighborhood extrema to files for debugging
@@ -508,80 +507,81 @@ basin_t set_wgraph_t::find_local_extremum(
  */
 std::pair<std::vector<basin_t>, std::vector<basin_t>> set_wgraph_t::find_local_extrema(
     const std::vector<double>& y,
-size_t min_basin_size
+	size_t min_basin_size
     ) const {
 
- // Phase 1:  Process each vertex as a potential extremum; checking local extremum conditions only within the set of each vertex's neighbors
-std::vector<size_t> lmin_candidates; // indices of vertices that satisfy local min condition over the set of its neighbors
+	// Phase 1:  Process each vertex as a potential extremum; checking local extremum conditions only within the set of each vertex's neighbors
+	std::vector<size_t> lmin_candidates; // indices of vertices that satisfy local min condition over the set of its neighbors
     std::vector<size_t> lmax_candidates; // indices of vertices that satisfy local max condition over the set of its neighbors
 
     for (size_t vertex = 0; vertex < adjacency_list.size(); ++vertex) {
 
- // Checking if vertex is a local minimum within the set of its neighbors
+		// Checking if vertex is a local minimum within the set of its neighbors
         bool lmin_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
+		for (const auto& edge : adjacency_list[vertex]) {
             if (y[edge.vertex] <= y[vertex]) { // vertex cannot be a lmin of y
-lmin_condition_met = false;
+				lmin_condition_met = false;
                 break;
             }
         }
 
-if(lmin_condition_met) {
-lmin_candidates.push_back(vertex);
-continue; // there is no point of checking if it is a local maximum
-}
+		if(lmin_condition_met) {
+			lmin_candidates.push_back(vertex);
+			continue; // there is no point of checking if it is a local maximum
+		}
 
- // Checking if vertex is a local minimum within the set of its neighbors
-bool lmax_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
-if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
-lmax_condition_met = false;
+		// Checking if vertex is a local minimum within the set of its neighbors
+		bool lmax_condition_met = true;
+		for (const auto& edge : adjacency_list[vertex]) {
+			if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
+				lmax_condition_met = false;
                 break;
             }
         }
 
-if(lmax_condition_met) {
-lmax_candidates.push_back(vertex);
-}
+		if(lmax_condition_met) {
+			lmax_candidates.push_back(vertex);
+		}
     }
 
-std::vector<basin_t> lmin_basins;
-std::vector<basin_t> lmax_basins;
+	std::vector<basin_t> lmin_basins;
+	std::vector<basin_t> lmax_basins;
 
- // Phase 2: For each vertex of lmin_candidates check if it is a local
- // minimum within the set of core_basin_size neighbors
-bool detect_maxima = false;
-for (const auto& vertex : lmin_candidates) {
-auto basin = find_local_extremum(
-vertex,
-y,
-min_basin_size,
-detect_maxima);
+	// Phase 2: For each vertex of lmin_candidates check if it is a local
+	// minimum within the set of core_basin_size neighbors
+	bool detect_maxima = false;
+	for (const auto& vertex : lmin_candidates) {
+		auto basin = find_local_extremum(
+			vertex,
+			y,
+			min_basin_size,
+			detect_maxima);
 
-if (basin.reachability_map.sorted_vertices.size()) {
-lmin_basins.push_back(basin);
+		if (basin.reachability_map.sorted_vertices.size()) {
+			lmin_basins.push_back(basin);
+		}
+	}
+
+
+	// Phase 3: For each vertex of lmax_candidates check if it is a local
+	// maximum within the set of core_basin_size neighbors
+	detect_maxima = true;
+	for (const auto& vertex : lmax_candidates) {
+		auto basin = find_local_extremum(
+			vertex,
+			y,
+			min_basin_size,
+			detect_maxima);
+
+		if (basin.reachability_map.sorted_vertices.size()) {
+			lmax_basins.push_back(basin);
+		}
+	}
+
+	return std::make_pair(lmin_basins, lmax_basins);
+
 }
-}
 
-
- // Phase 3: For each vertex of lmax_candidates check if it is a local
- // maximum within the set of core_basin_size neighbors
-detect_maxima = true;
-for (const auto& vertex : lmax_candidates) {
-auto basin = find_local_extremum(
-vertex,
-y,
-min_basin_size,
-detect_maxima);
-
-if (basin.reachability_map.sorted_vertices.size()) {
-lmax_basins.push_back(basin);
-}
-}
-
-return std::make_pair(lmin_basins, lmax_basins);
-
-}
 
 /**
  * @brief Finds vertices that are local extrema with respect to their neighbors
@@ -610,41 +610,41 @@ std::pair<std::vector<size_t>, std::vector<size_t>> set_wgraph_t::find_nbr_extre
     const std::vector<double>& y
     ) const {
 
- //  Check for each vertex if y is a local extremum over the completion of the set of its neighbors
-std::vector<size_t> nbr_lmin; // indices of vertices that satisfy local min condition over the set of its neighbors
+	//  Check for each vertex if y is a local extremum over the completion of the set of its neighbors
+	std::vector<size_t> nbr_lmin; // indices of vertices that satisfy local min condition over the set of its neighbors
     std::vector<size_t> nbr_lmax; // indices of vertices that satisfy local max condition over the set of its neighbors
 
     for (size_t vertex = 0; vertex < adjacency_list.size(); ++vertex) {
 
- // Checking if vertex is a local minimum within the set of its neighbors
+		// Checking if vertex is a local minimum within the set of its neighbors
         bool lmin_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
+		for (const auto& edge : adjacency_list[vertex]) {
             if (y[edge.vertex] <= y[vertex]) { // vertex cannot be a lmin of y
-lmin_condition_met = false;
+				lmin_condition_met = false;
                 break;
             }
         }
 
-if(lmin_condition_met) {
-nbr_lmin.push_back(vertex);
-continue; // there is no point of checking if it is a local maximum
-}
+		if(lmin_condition_met) {
+			nbr_lmin.push_back(vertex);
+			continue; // there is no point of checking if it is a local maximum
+		}
 
- // Checking if vertex is a local maximum within the set of its neighbors
-bool lmax_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
-if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
-lmax_condition_met = false;
+		// Checking if vertex is a local maximum within the set of its neighbors
+		bool lmax_condition_met = true;
+		for (const auto& edge : adjacency_list[vertex]) {
+			if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
+				lmax_condition_met = false;
                 break;
             }
         }
 
-if(lmax_condition_met) {
-nbr_lmax.push_back(vertex);
-}
+		if(lmax_condition_met) {
+			nbr_lmax.push_back(vertex);
+		}
     }
 
-return std::make_pair(nbr_lmin, nbr_lmax);
+	return std::make_pair(nbr_lmin, nbr_lmax);
 }
 
 
@@ -1170,6 +1170,12 @@ basin_cx_t set_wgraph_t::create_basin_cx(
             y,
             detect_maxima
             );
+
+		basin.extremum_hop_index = compute_extremum_hop_index(
+			vertex,
+			y,
+			detect_maxima);
+
 
         if (basin.reachability_map.sorted_vertices.size()) {
 			// Check if basin.min_monotonicity_span was computed correctly. Note

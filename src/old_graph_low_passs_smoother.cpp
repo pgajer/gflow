@@ -3,6 +3,7 @@
 #include <R_ext/Rdynload.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 // Prevent macro collision with OpenMP
 #ifdef match
@@ -17,7 +18,7 @@
 #include <memory>
 #include <cmath>
 #include <limits>
-#include <iostream>
+// #include <iostream>
 #include <algorithm>
 #include <unordered_set>
 #include <set>
@@ -27,14 +28,14 @@
 #include <chrono>
 
 #include <Eigen/Core>
-#include <SymEigsSolver.h>
-#include <MatOp/DenseSymMatProd.h>
-#include <MatOp/SparseSymMatProd.h>
+#include <Spectra/SymEigsSolver.h>
+#include <Spectra/MatOp/DenseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
+#include "Eigen_utils.h"
 #include "msr2.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
-#include "Eigen_utils.h"
 #include "graph_diffusion_smoother.hpp"
 #include "kernels.h"
 #include "error_utils.h" // for REPORT_ERROR()

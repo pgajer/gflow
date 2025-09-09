@@ -1,7 +1,7 @@
-#include <SymEigsSolver.h>             // For eigenvalue computation
-#include <MatOp/DenseSymMatProd.h>
-#include <MatOp/SparseSymMatProd.h>
 #include <Eigen/Dense>
+#include <Spectra/SymEigsSolver.h>             // For eigenvalue computation
+#include <Spectra/MatOp/DenseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
 #include <execution>                   // For std::execution::seq/par
 #include <thread>                      // For std::thread::hardware_concurrency

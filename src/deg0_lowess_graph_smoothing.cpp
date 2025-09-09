@@ -2,6 +2,7 @@
 #include <R_ext/Print.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <algorithm>

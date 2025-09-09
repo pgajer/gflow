@@ -2,6 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
     // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -1149,7 +1150,7 @@ uniform_grid_graph_t::find_original_vertices_within_radius(
             original_vertex_map[current_vertex] = current_dist;
         }
 
-        if (grid_vertices.contains(current_vertex)) {
+        if (grid_vertices.find(current_vertex) != grid_vertices.end()) {
             grid_vertex_map[current_vertex] = current_dist;
         }
 

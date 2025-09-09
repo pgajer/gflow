@@ -3,6 +3,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <algorithm>  // for std::find, std::clamp
 #include <vector>       // for std::vector

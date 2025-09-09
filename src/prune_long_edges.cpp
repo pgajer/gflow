@@ -9,6 +9,7 @@
 #include <utility>       // For std::pair
 #include <cmath>         // For mathematical operations
 
+#include "exec_policy.hpp"
 #include "set_wgraph.hpp"     // For set_wgraph_t definition
 #include "error_utils.h"      // For REPORT_ERROR
 
@@ -56,7 +57,7 @@ set_wgraph_t set_wgraph_t::prune_long_edges(double threshold_percentile) const {
 
     std::mutex edges_mutex;  // Mutex for thread-safe access to all_edges
 
-    std::for_each(std::execution::par_unseq, vertices.begin(), vertices.end(),
+    std::for_each(GFLOW_EXEC_POLICY, vertices.begin(), vertices.end(),
         [this, &all_edges, &edges_mutex](size_t vertex) {
             std::vector<Edge> local_edges;
 

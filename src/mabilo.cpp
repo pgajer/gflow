@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <execution>
 #include <atomic>
@@ -13,6 +13,7 @@
 #include <algorithm>     // For std::max
 #include <cmath>         // For std::fabs()
 
+#include "exec_policy.hpp"
 #include "mabilo.hpp"    // For mabilo_t
 #include "sampling.h"    // For C_runif_simplex()
 #include "cpp_utils.hpp" // For elapsed_time
@@ -142,7 +143,7 @@ SEXP S_wmabilo(SEXP s_x,
     std::vector<int> k_values(wmabilo_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(k_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
     SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = wmabilo_results.opt_k;
@@ -152,17 +153,17 @@ SEXP S_wmabilo(SEXP s_x,
     INTEGER(s_opt_k_idx)[0] = wmabilo_results.opt_k_idx;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
-    SET_VECTOR_ELT(result, 3, PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors))); n_protected++;
+    SET_VECTOR_ELT(result, 3, convert_vector_double_to_R(wmabilo_results.k_mean_errors)); n_protected++;
 
     // true errors
     if (y_true_exists) {
-        SET_VECTOR_ELT(result, 4, PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors))); n_protected++;
+        SET_VECTOR_ELT(result, 4, convert_vector_double_to_R(wmabilo_results.k_mean_true_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 4, R_NilValue);
     }
 
-    SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_double_to_R(wmabilo_results.predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 5, convert_vector_double_to_R(wmabilo_results.predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 6, convert_vector_vector_double_to_R(wmabilo_results.k_predictions)); n_protected++;
 
     // Setting names for return list
     SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
@@ -230,7 +231,8 @@ std::vector<std::vector<double>> mabilo_bb(const std::vector<double>& x,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    std::for_each(std::execution::par_unseq,
+    //std::for_each(std::execution::par_unseq,
+    std::for_each(GFLOW_EXEC_POLICY,
                   bb_indices.begin(),
                   bb_indices.end(),
                   [&](int iboot) {
@@ -505,7 +507,7 @@ SEXP S_mabilo(SEXP s_x,
     std::vector<int> k_values(wmabilo_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(k_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
     SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = wmabilo_results.opt_k;
@@ -515,22 +517,22 @@ SEXP S_mabilo(SEXP s_x,
     INTEGER(s_opt_k_idx)[0] = wmabilo_results.opt_k_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
-    SET_VECTOR_ELT(result, 3, PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors))); n_protected++;
+    SET_VECTOR_ELT(result, 3, convert_vector_double_to_R(wmabilo_results.k_mean_errors)); n_protected++;
 
     // true errors
     if (y_true_exists) {
-        SET_VECTOR_ELT(result, 4, PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors))); n_protected++;
+        SET_VECTOR_ELT(result, 4, convert_vector_double_to_R(wmabilo_results.k_mean_true_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 4, R_NilValue);
     }
 
-    SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_double_to_R(wmabilo_results.predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 5, convert_vector_double_to_R(wmabilo_results.predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 6, convert_vector_vector_double_to_R(wmabilo_results.k_predictions)); n_protected++;
 
     if (n_bb > 0) {
-        SET_VECTOR_ELT(result, 7, PROTECT(convert_vector_double_to_R(wmabilo_results.bb_predictions))); n_protected++;
-        SET_VECTOR_ELT(result, 8, PROTECT(convert_vector_double_to_R(wmabilo_results.cri_L))); n_protected++;
-        SET_VECTOR_ELT(result, 9, PROTECT(convert_vector_double_to_R(wmabilo_results.cri_U))); n_protected++;
+        SET_VECTOR_ELT(result, 7, convert_vector_double_to_R(wmabilo_results.bb_predictions)); n_protected++;
+        SET_VECTOR_ELT(result, 8, convert_vector_double_to_R(wmabilo_results.cri_L)); n_protected++;
+        SET_VECTOR_ELT(result, 9, convert_vector_double_to_R(wmabilo_results.cri_U)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 7, R_NilValue);
         SET_VECTOR_ELT(result, 8, R_NilValue);
@@ -969,7 +971,7 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
     std::vector<int> k_values(mabilo_with_smoothed_errors_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(k_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
     SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = mabilo_with_smoothed_errors_results.opt_k + 1;
@@ -979,19 +981,19 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
     INTEGER(s_opt_k_idx)[0] = mabilo_with_smoothed_errors_results.opt_k_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
-    SET_VECTOR_ELT(result, 3, PROTECT(convert_vector_double_to_R(mabilo_with_smoothed_errors_results.k_mean_errors))); n_protected++;
+    SET_VECTOR_ELT(result, 3, convert_vector_double_to_R(mabilo_with_smoothed_errors_results.k_mean_errors)); n_protected++;
 
-    SET_VECTOR_ELT(result, 4, PROTECT(convert_vector_double_to_R(mabilo_with_smoothed_errors_results.smoothed_k_mean_errors))); n_protected++;
+    SET_VECTOR_ELT(result, 4, convert_vector_double_to_R(mabilo_with_smoothed_errors_results.smoothed_k_mean_errors)); n_protected++;
 
     // true errors
     if (y_true_exists) {
-        SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_double_to_R(mabilo_with_smoothed_errors_results.k_mean_true_errors))); n_protected++;
+        SET_VECTOR_ELT(result, 5, convert_vector_double_to_R(mabilo_with_smoothed_errors_results.k_mean_true_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 5, R_NilValue);
     }
 
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_double_to_R(mabilo_with_smoothed_errors_results.predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 7, PROTECT(convert_vector_vector_double_to_R(mabilo_with_smoothed_errors_results.k_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 6, convert_vector_double_to_R(mabilo_with_smoothed_errors_results.predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 7, convert_vector_vector_double_to_R(mabilo_with_smoothed_errors_results.k_predictions)); n_protected++;
 
     // Setting names for return list
     SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;

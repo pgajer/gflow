@@ -1,0 +1,25 @@
+# Common C++ flags
+CXX_STD = CXX17
+
+# OpenMP support for Windows
+PKG_CXXFLAGS = -DTBB_SUPPRESS_DEPRECATED_MESSAGES $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS)
+
+# Include paths
+PKG_CPPFLAGS = -I../inst/include -I.
+PKG_CPPFLAGS += -I"$(R_HOME)/include"
+
+# Check for system Eigen
+EIGEN_CFLAGS = $(shell $(R_HOME)/bin${R_ARCH_BIN}/Rscript.exe -e "RcppEigen::RcppEigen.package.flags()")
+PKG_CPPFLAGS += $(EIGEN_CFLAGS)
+
+# Source files
+SOURCES_CPP = $(wildcard *.cpp)
+SOURCES_C = $(wildcard *.c)
+ANN_SOURCES = $(wildcard ANN/*.cpp)
+
+# Object files
+OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o)
+
+# Main target
+$(SHLIB): $(OBJECTS)

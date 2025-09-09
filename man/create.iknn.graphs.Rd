@@ -2,14 +2,12 @@
 % Please edit documentation in R/iknn_graphs.R
 \name{create.iknn.graphs}
 \alias{create.iknn.graphs}
-\title{Create Intersection k-Nearest Neighbor Graphs with Multi-Stage Pruning}
+\title{Create Intersection k-Nearest Neighbor Graphs with Dual Pruning Methods}
 \usage{
 create.iknn.graphs(
   X,
   kmin,
   kmax,
-  pruning.thld = 0.1,
-  outlier.long.edge.thld = 0.1,
   max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
   compute.full = TRUE,
@@ -26,23 +24,17 @@ Cannot be a data frame.}
 
 \item{kmax}{integer, maximum number of nearest neighbors (> kmin)}
 
-\item{pruning.thld}{numeric in (0,0.9), controlling intensity of the first-stage geometric edge pruning.
-Edge weight relative deviation is computed as rel_dev = (w_ij + w_jk) / w_ik - 1.0.
-Edges with rel_dev < pruning.thld are removed.}
-
-\item{outlier.long.edge.thld}{numeric in \link{0,1}, threshold percentile for second-stage pruning of long edges.
-Default is 0.1, which removes the top 10\% longest edges while preserving connectivity.}
-
-\item{max.path.edge.ratio.deviation.thld}{numeric, threshold for third-stage pruning based on path-to-edge ratio.
+\item{max.path.edge.ratio.deviation.thld}{numeric, threshold for geometric pruning based on path-to-edge ratio.
 If > 0, removes edges where the ratio of alternative path length to direct edge length
-is less than or equal to this value. If <= 0, third-stage pruning is skipped.}
+minus 1.0 is less than this value. If <= 0, geometric pruning uses a default method.
+Must be in the interval [0, 0.2).}
 
-\item{path.edge.ratio.percentile}{numeric in \link{0,1}, percentile threshold for edge lengths
-considered in third-stage pruning. Only edges with length greater than this
+\item{path.edge.ratio.percentile}{numeric in \eqn{[0,1]}, percentile threshold for edge lengths
+considered in geometric pruning. Only edges with length greater than this
 percentile are evaluated for path-ratio pruning.}
 
 \item{compute.full}{logical, if TRUE returns all pruned graphs, if FALSE returns only
-edge statistics and birth/death times}
+edge statistics}
 
 \item{pca.dim}{Maximum number of principal components to use if dimensionality reduction
 is applied (default: 100). Set to NULL to skip dimensionality reduction.}
@@ -55,61 +47,45 @@ the smaller number will be used. Set to NULL to use exactly pca.dim components.}
 Default is FALSE.}
 }
 \value{
-A list containing:
+A list of class "iknn_graphs" containing:
 \describe{
-\item{birth_death_matrix}{Matrix with columns: start vertex (1-based), end vertex (1-based),
-birth time, and death time. For each edge, birth time is k when edge first appears,
-death time is (last k where edge exists) + 1}
 \item{k_statistics}{Matrix with columns: k, number of edges in original graph,
-number of edges after first-stage pruning, number of removed edges,
-edge reduction ratio, number of edges after second-stage pruning,
-additional edges removed in second-stage, second-stage edge reduction ratio}
-\item{pruned_graphs}{If compute_full=TRUE, list of first-stage pruned graphs for each k.
-Each graph contains adjacency lists and distances.
+number of edges after geometric pruning, number of removed edges,
+edge reduction ratio, number of edges after intersection-size pruning,
+additional edges removed in intersection-size pruning,
+intersection-size edge reduction ratio}
+\item{geom_pruned_graphs}{If compute_full=TRUE, list of geometrically pruned graphs for each k.
+Each graph contains adjacency lists and edge weights.
 If compute_full=FALSE, NULL}
-\item{double_birth_death_matrix}{Similar to birth_death_matrix but for the multi-stage
-pruned graphs}
-\item{double_pruned_graphs}{If compute_full=TRUE, list of multi-stage pruned graphs for each k.
+\item{isize_pruned_graphs}{If compute_full=TRUE, list of intersection-size pruned graphs for each k.
+Each graph contains adjacency lists and edge weights.
 If compute_full=FALSE, NULL}
 \item{edge_pruning_stats}{List of matrices, one for each k value, containing edge pruning statistics
 including edge lengths and path-to-edge length ratios}
 }
 }
 \description{
-Computes a sequence of intersection-weighted k-nearest neighbor graphs for k in \link{kmin, kmax}
-with multi-stage edge pruning to produce efficient graph representations. The function
-tracks birth and death times of edges across different k values and can optionally
-perform dimensionality reduction via PCA before graph construction.
+Computes a sequence of intersection-weighted k-nearest neighbor graphs for k in \eqn{[\text{kmin, \text{kmax}]}}
+with two different edge pruning methods: geometric pruning and intersection-size pruning.
+The function can optionally perform dimensionality reduction via PCA before graph construction.
 }
 \details{
-The function applies a multi-stage pruning process to construct efficient graph representations:
+The function applies two different pruning methods to construct efficient graph representations:
 \enumerate{
-\item First stage: Geometric pruning based on relative deviation threshold
+\item Geometric pruning: Based on path-to-edge ratios
 \itemize{
-\item Removes edges where indirect paths through common neighbors provide a good alternative
-\item Controlled by pruning.thld parameter
+\item Removes edges where alternative paths exist with similar or better geometric properties
+\item Controlled by max.path.edge.ratio.deviation.thld and path.edge.ratio.percentile parameters
 }
-\item Second stage: Long-edge pruning
+\item Intersection-size pruning: Based on intersection sizes of k-NN sets
 \itemize{
-\item Removes edges longer than the specified percentile threshold if they can be replaced
-by alternate paths
-\item Controlled by outlier.long.edge.thld parameter
-}
-\item Third stage (optional): Path-ratio pruning
-\itemize{
-\item Removes edges where the ratio of alternative path length to direct edge length
-is below the specified threshold
-\item Controlled by max.path.edge.ratio.thld and path.edge.ratio.percentile parameters
+\item Removes edges where alternative paths exist with all edges having larger intersection sizes
+\item Uses a fixed maximum alternative path length of 2
 }
 }
 
-For each edge, birth and death times are tracked:
-\itemize{
-\item Birth time b(e) is the smallest k where edge e appears in the pruned graph
-\item Death time d(e) is one plus the largest k where edge e appears in the pruned graph
-\item If edge persists through kmax, its death time will be kmax + 1
-\item The interval [b(e), d(e)) contains exactly the k values where edge e exists
-}
+Note: The current implementation does not compute edge birth/death times. The birth_death_matrix
+and double_birth_death_matrix fields may be present but will be empty.
 }
 \examples{
 \dontrun{
@@ -122,22 +98,17 @@ result <- create.iknn.graphs(
   compute.full = FALSE
 )
 
-# With additional pruning options
+# With custom pruning parameters
 result <- create.iknn.graphs(
   X, kmin = 3, kmax = 10,
-  pruning.thld = 0.1,
-  outlier.long.edge.thld = 0.2,
-  max.path.edge.ratio.deviation.thld = 0.2,
+  max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
   compute.full = TRUE,
   verbose = TRUE
 )
 
-# Access birth-death statistics
-head(result$birth.death.matrix)
-
 # View statistics for each k
-print(result$k.statistics)
+print(result$k_statistics)
 }
 
 }

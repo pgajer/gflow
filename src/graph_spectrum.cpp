@@ -1,7 +1,3 @@
-//
-// Graph spectrum functions
-//
-
 #include <R.h>
 #include <Rinternals.h>
 
@@ -14,6 +10,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -21,7 +18,7 @@
 #include <memory>
 #include <cmath>
 #include <limits>
-#include <iostream>
+// #include <iostream>
 #include <algorithm>
 #include <unordered_set>
 #include <set>
@@ -31,15 +28,14 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include <SymEigsSolver.h>
-#include <MatOp/SparseSymMatProd.h>
-#include <MatOp/DenseSymMatProd.h>
+#include <Spectra/SymEigsSolver.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
+#include <Spectra/MatOp/DenseSymMatProd.h>
 
+#include "Eigen_utils.h"
 #include "msr2.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
-#include "Eigen_utils.h"
-
 
 extern "C" {
 

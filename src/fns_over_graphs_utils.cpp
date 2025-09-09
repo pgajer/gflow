@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
-
+#include <Rmath.h>
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <vector>
 #include <queue>
@@ -783,10 +784,11 @@ std::unique_ptr<std::vector<double>> jitter_non_isolated_loc_extrema(std::unique
     std::vector<double> jittered_y(y);
 
     // For each connected component of local minima containing more than one vertex
+    GetRNGstate();
     for (const auto& pair : res->lmin_cc_map) {
         if (pair.second.size() > 1) {
             // Pick a random vertex from that component
-            int random_index = rand() % pair.second.size();
+            int random_index = (int)(unif_rand() * pair.second.size());
             int vertex = pair.second[random_index];
 
             // Modify the value of jittered_y at that vertex by subtracting eps
@@ -798,13 +800,14 @@ std::unique_ptr<std::vector<double>> jitter_non_isolated_loc_extrema(std::unique
     for (const auto& pair : res->lmax_cc_map) {
         if (pair.second.size() > 1) {
             // Pick a random vertex from that component
-            int random_index = rand() % pair.second.size();
+            int random_index = (int)(unif_rand() * pair.second.size());
             int vertex = pair.second[random_index];
 
             // Modify the value of jittered_y at that vertex by adding eps
             jittered_y[vertex] += eps;
         }
     }
+    PutRNGstate();
 
     return std::make_unique<std::vector<double>>(jittered_y);
 }

@@ -374,20 +374,16 @@ void uniform_grid_graph_t::print(
  * Adds the edge in both directions (undirected graph).
  * Prints debug information about the added edge.
  */
-#if 0
 void uniform_grid_graph_t::add_edge(size_t v1, size_t v2, double weight) {
-    adjacency_list[v1].insert({v2, weight});
-    adjacency_list[v2].insert({v1, weight});
-    //Rprintf("DEBUG: Added edge (%d, %d) with weight %.6f\n", v1, v2, weight);
-}
-#endif
-
-void uniform_grid_graph_t::add_edge(size_t v1, size_t v2, double weight) {
-    if (v1 >= adjacency_list.size() || v2 >= adjacency_list.size()) {
-        // Log error and return without adding the edge
+    // Check bounds
+    size_t max_vertex = std::max(v1, v2);
+    if (max_vertex >= adjacency_list.size()) {
+        // This should not happen with the fixed create_uniform_grid_graph,
+        // but we keep it as a safety check
         REPORT_ERROR("Vertex index out of bounds (v1=%zu, v2=%zu, adjacency_list.size()=%zu)\n",
                      v1, v2, adjacency_list.size());
     }
+
     adjacency_list[v1].insert({v2, weight});
     adjacency_list[v2].insert({v1, weight});
 }
@@ -515,9 +511,6 @@ uniform_grid_graph_t create_uniform_grid_graph(
     size_t start_vertex,
     double snap_tolerance) {
 
-    //double grid_spacing = compute_grid_spacing(input_adj_list, input_weight_list, grid_size);
-    //double epsilon = grid_spacing * snap_tolerance;
-
     double graph_diameter = get_vertex_eccentricity(input_adj_list, input_weight_list, start_vertex);
     double grid_spacing = graph_diameter / grid_size;
     double epsilon = grid_spacing * snap_tolerance;
@@ -535,30 +528,22 @@ uniform_grid_graph_t create_uniform_grid_graph(
     // Initialize graph structure
     uniform_grid_graph_t expanded_graph;
     expanded_graph.n_original_vertices = input_adj_list.size();
-    expanded_graph.adjacency_list.resize(input_adj_list.size() + grid_size);
 
-    // Initialize vertex data tracking
-    std::vector<vertex_data_t> vertex_data(expanded_graph.adjacency_list.size());
+    // Start with a reasonable initial size, but prepare for dynamic growth
+    // We allocate space for original vertices plus twice the grid_size as a safety margin
+    size_t initial_capacity = input_adj_list.size() + 2 * grid_size;
+    expanded_graph.adjacency_list.resize(initial_capacity);
+
+    // Initialize vertex data tracking with the same initial capacity
+    std::vector<vertex_data_t> vertex_data(initial_capacity);
 
     // Convert input graph to the uniform_grid_graph_t format
-    #if 0
-    for (size_t i = 0; i < input_adj_list.size(); ++i) {
-        for (size_t j = 0; j < input_adj_list[i].size(); ++j) {
-            expanded_graph.add_edge(i, static_cast<size_t>(input_adj_list[i][j]), input_weight_list[i][j]);
-        }
-    }
-    #endif
     for (size_t i = 0; i < input_adj_list.size(); ++i) {
         for (size_t j = 0; j < input_adj_list[i].size(); ++j) {
             size_t vertex = static_cast<size_t>(input_adj_list[i][j]);
-            // if (vertex >= input_adj_list.size() + grid_size) {
-            //     REPORT_ERROR("out-of-bounds vertex %zu\ti: %zu\tj: %zu\tinput_adj_list[i][j]: %d", vertex, i, j, input_adj_list[i][j]);
-            //     //fprintf(stderr, "ERROR: Skipping edge to out-of-bounds vertex %zu\n", vertex);
-            // }
             expanded_graph.add_edge(i, vertex, input_weight_list[i][j]);
         }
     }
-
 
     // Start with the initial vertex
     expanded_graph.grid_vertices.insert(start_vertex);
@@ -577,7 +562,6 @@ uniform_grid_graph_t create_uniform_grid_graph(
         bfs_queue.pop();
 
         for (const auto& edge_info : expanded_graph.adjacency_list[current_vertex]) {
-
             // Collect ALL edges before processing any
             int neighbor = edge_info.vertex;
             double edge_length = edge_info.weight;
@@ -629,6 +613,13 @@ uniform_grid_graph_t create_uniform_grid_graph(
             double curr_pos = next_grid_pos;
 
             while (curr_pos < d_end - epsilon) {
+                // Check if we need to expand the graph
+                if (next_vertex_id >= expanded_graph.adjacency_list.size()) {
+                    size_t new_size = expanded_graph.adjacency_list.size() * 2;
+                    expanded_graph.adjacency_list.resize(new_size);
+                    vertex_data.resize(new_size);
+                }
+
                 int new_vertex = next_vertex_id++;
                 expanded_graph.grid_vertices.insert(new_vertex);
 
@@ -683,17 +674,12 @@ uniform_grid_graph_t create_uniform_grid_graph(
     }
 
     #if DEBUG__create_uniform_grid_graph
-    Rprintf("\nFinal grid point verification:\n");
-    verify_grid_point_placement(expanded_graph, vertex_data, grid_spacing);
-
     Rprintf("\n");
     expanded_graph.print("In create_uniform_grid_graph(): expanded_graph",false,0);
     #endif
 
     return expanded_graph;
 }
-
-
 
 /**
 * @brief R interface wrapper for create_uniform_grid_graph()
@@ -1418,10 +1404,20 @@ std::vector<grid_vertex_path_t> uniform_grid_graph_t::reconstruct_paths(
     std::vector<grid_vertex_path_t> paths;
 
     // Create a set of vertices to process, ordered in the decreasing order by distance from reference vertex
-    std::set<vertex_info_t, decltype([](const vertex_info_t& a, const vertex_info_t& b) {
-        return a.distance > b.distance;
-    })> to_process(reachability_map.sorted_vertices.begin(),
-                  reachability_map.sorted_vertices.end());
+    // std::set<vertex_info_t, decltype([](const vertex_info_t& a, const vertex_info_t& b) {
+    //     return a.distance > b.distance;
+    // })> to_process(reachability_map.sorted_vertices.begin(),
+    //               reachability_map.sorted_vertices.end());
+
+    struct VertexInfoComparator {
+        bool operator()(const vertex_info_t& a, const vertex_info_t& b) const {
+            return a.distance > b.distance;
+        }
+    };
+
+    std::set<vertex_info_t, VertexInfoComparator> to_process(
+        reachability_map.sorted_vertices.begin(),
+        reachability_map.sorted_vertices.end());
 
     // Track discovered vertices to ensure non-overlapping paths
     std::vector<bool> discovered(adjacency_list.size(), false);

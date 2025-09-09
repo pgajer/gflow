@@ -2,9 +2,9 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <execution>
 #include <atomic>
@@ -1006,7 +1006,7 @@ SEXP S_mabilo_plus(SEXP s_x,
     std::vector<int> k_values(mabilo_plus_results.k_mean_sm_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(k_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
     // opt_sm_k
     SEXP s_opt_sm_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
@@ -1045,8 +1045,8 @@ SEXP S_mabilo_plus(SEXP s_x,
     SET_VECTOR_ELT(result, 10, PROTECT(convert_vector_double_to_R(mabilo_plus_results.ma_predictions))); n_protected++;
 
     // k_predictions
-    SET_VECTOR_ELT(result, 11, PROTECT(convert_vector_vector_double_to_R(mabilo_plus_results.k_sm_predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 12, PROTECT(convert_vector_vector_double_to_R(mabilo_plus_results.k_ma_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 11, convert_vector_vector_double_to_R(mabilo_plus_results.k_sm_predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 12, convert_vector_vector_double_to_R(mabilo_plus_results.k_ma_predictions)); n_protected++;
 
     // Setting names for return list
     SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;

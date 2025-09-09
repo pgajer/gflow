@@ -1,6 +1,7 @@
 #include <R.h>                     // Rprintf
 // Undefine conflicting macros from R headers
 #undef length
+#undef eval
 
 // — C++ STL
 #include <vector>
@@ -10,15 +11,11 @@
 #include <cmath>                   // std::log2, std::exp
 #include <limits>                  // for numeric_limits
 
-// — Eigen
 #include <Eigen/Core>
 #include <Eigen/Sparse>
+#include <Spectra/SymEigsSolver.h>
+#include <Spectra/MatOp/SparseSymMatProd.h>
 
-// — Spectra
-#include <SymEigsSolver.h>
-#include <MatOp/SparseSymMatProd.h>
-
-// — Your project headers
 #include "set_wgraph.hpp"              // set_wgraph_t, adjacency_list
 #include "klaps_low_pass_smoother.hpp" // klaps_low_pass_smoother_t declaration
 #include "bandwidth_utils.hpp"         // get_candidate_ks()

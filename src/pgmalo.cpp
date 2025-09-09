@@ -1,8 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
-
 // Undefine conflicting macros after including R headers
 #undef length
+#undef eval
 
 #include <future>
 #include <mutex>
@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <map>
 
+#include "exec_policy.hpp"
 #include "pgmalo.hpp"
 #include "ulm.hpp"
 #include "memory_utils.hpp"
@@ -623,10 +624,10 @@ SEXP S_upgmalo(SEXP s_x,
     const int N_COMPONENTS = 13;
     SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
-    SET_VECTOR_ELT(result, 0, PROTECT(convert_vector_int_to_R(cpp_results.h_values))); n_protected++;
+    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(cpp_results.h_values)); n_protected++;
 
     if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
-        SET_VECTOR_ELT(result, 1, PROTECT(convert_vector_double_to_R(cpp_results.h_cv_errors))); n_protected++;
+        SET_VECTOR_ELT(result, 1, convert_vector_double_to_R(cpp_results.h_cv_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 1, R_NilValue);
     }
@@ -639,15 +640,15 @@ SEXP S_upgmalo(SEXP s_x,
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
-    SET_VECTOR_ELT(result, 4, PROTECT(convert_vector_vector_int_to_R(cpp_results.graph.adj_list))); n_protected++;
-    SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_vector_double_to_R(cpp_results.graph.weight_list))); n_protected++;
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_double_to_R(cpp_results.predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 7, PROTECT(convert_vector_double_to_R(cpp_results.local_predictions))); n_protected++;
+    SET_VECTOR_ELT(result, 4, convert_vector_vector_int_to_R(cpp_results.graph.adj_list)); n_protected++;
+    SET_VECTOR_ELT(result, 5, convert_vector_vector_double_to_R(cpp_results.graph.weight_list)); n_protected++;
+    SET_VECTOR_ELT(result, 6, convert_vector_double_to_R(cpp_results.predictions)); n_protected++;
+    SET_VECTOR_ELT(result, 7, convert_vector_double_to_R(cpp_results.local_predictions)); n_protected++;
 
     if (cpp_results.bb_predictions.size() > 0) {
-        SET_VECTOR_ELT(result, 8, PROTECT(convert_vector_double_to_R(cpp_results.bb_predictions))); n_protected++;
-        SET_VECTOR_ELT(result, 9, PROTECT(convert_vector_double_to_R(cpp_results.ci_lower))); n_protected++;
-        SET_VECTOR_ELT(result, 10, PROTECT(convert_vector_double_to_R(cpp_results.ci_upper))); n_protected++;
+        SET_VECTOR_ELT(result, 8, convert_vector_double_to_R(cpp_results.bb_predictions)); n_protected++;
+        SET_VECTOR_ELT(result, 9, convert_vector_double_to_R(cpp_results.ci_lower)); n_protected++;
+        SET_VECTOR_ELT(result, 10,convert_vector_double_to_R(cpp_results.ci_upper)); n_protected++;
     } else {
         SET_VECTOR_ELT(result, 8, R_NilValue);
         SET_VECTOR_ELT(result, 9, R_NilValue);
@@ -665,7 +666,7 @@ SEXP S_upgmalo(SEXP s_x,
     }
 
     SET_VECTOR_ELT(result, 12,
-                   PROTECT(convert_vector_vector_double_to_R(cpp_results.h_predictions))); n_protected++;
+                   convert_vector_vector_double_to_R(cpp_results.h_predictions)); n_protected++;
 
 
     // Setting names for return list
@@ -1147,7 +1148,7 @@ SEXP S_pgmalo(
     SEXP result_r = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     // Convert and set h_values
-    SET_VECTOR_ELT(result_r, 0, PROTECT(convert_vector_int_to_R(results.h_values))); n_protected++;
+    SET_VECTOR_ELT(result_r, 0, convert_vector_int_to_R(results.h_values)); n_protected++;
 
     // Set opt_h
     SEXP opt_h_r = PROTECT(allocVector(INTSXP, 1)); n_protected++;
@@ -1160,35 +1161,35 @@ SEXP S_pgmalo(
     SET_VECTOR_ELT(result_r, 2, opt_h_idx_r);
 
     // Convert and set h_cv_errors
-    SET_VECTOR_ELT(result_r, 3, PROTECT(convert_vector_double_to_R(results.h_cv_errors))); n_protected++;
+    SET_VECTOR_ELT(result_r, 3, convert_vector_double_to_R(results.h_cv_errors)); n_protected++;
 
     // Convert and set true_errors if they exist
     if (results.has_true_errors()) {
-        SET_VECTOR_ELT(result_r, 4, PROTECT(convert_vector_double_to_R(results.true_errors))); n_protected++;
+        SET_VECTOR_ELT(result_r, 4, convert_vector_double_to_R(results.true_errors)); n_protected++;
     } else {
         SET_VECTOR_ELT(result_r, 4, R_NilValue);
     }
 
     // Convert and set predictions
-    SET_VECTOR_ELT(result_r, 5, PROTECT(convert_vector_double_to_R(results.predictions))); n_protected++;
+    SET_VECTOR_ELT(result_r, 5, convert_vector_double_to_R(results.predictions)); n_protected++;
 
     // Convert and set local_predictions
-    SET_VECTOR_ELT(result_r, 6, PROTECT(convert_vector_double_to_R(results.local_predictions))); n_protected++;
+    SET_VECTOR_ELT(result_r, 6, convert_vector_double_to_R(results.local_predictions)); n_protected++;
 
     // Convert and set h_predictions
     SEXP h_predictions_r = PROTECT(allocVector(VECSXP, results.h_predictions.size())); n_protected++;
     for (size_t i = 0; i < results.h_predictions.size(); i++) {
         SET_VECTOR_ELT(h_predictions_r, i,
-                      PROTECT(convert_vector_double_to_R(results.h_predictions[i])));
+                      convert_vector_double_to_R(results.h_predictions[i]));
         n_protected++;
     }
     SET_VECTOR_ELT(result_r, 7, h_predictions_r);
 
     // Set bootstrap results if they exist
     if (results.has_bootstrap_results()) {
-        SET_VECTOR_ELT(result_r, 8, PROTECT(convert_vector_double_to_R(results.bb_predictions))); n_protected++;
-        SET_VECTOR_ELT(result_r, 9, PROTECT(convert_vector_double_to_R(results.ci_lower))); n_protected++;
-        SET_VECTOR_ELT(result_r, 10, PROTECT(convert_vector_double_to_R(results.ci_upper))); n_protected++;
+        SET_VECTOR_ELT(result_r, 8, convert_vector_double_to_R(results.bb_predictions)); n_protected++;
+        SET_VECTOR_ELT(result_r, 9, convert_vector_double_to_R(results.ci_lower)); n_protected++;
+        SET_VECTOR_ELT(result_r, 10,convert_vector_double_to_R(results.ci_upper)); n_protected++;
     } else {
         SET_VECTOR_ELT(result_r, 8, R_NilValue);
         SET_VECTOR_ELT(result_r, 9, R_NilValue);
@@ -1303,7 +1304,7 @@ pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
         }
     } termination_state;
 
-    std::for_each(std::execution::par_unseq, h_values.begin(), h_values.end(),
+    std::for_each(GFLOW_EXEC_POLICY, h_values.begin(), h_values.end(),
         [&](int h) {
             int i = (h - h_min) / 2;  // Calculate index based on h value
 
