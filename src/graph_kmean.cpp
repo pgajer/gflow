@@ -1017,36 +1017,33 @@ std::vector<double> graph_kmean_with_bb_weigths(const std::vector<std::vector<in
  * @warning This function may be computationally intensive for large graphs or high
  *          numbers of bootstrap iterations.
  */
-std::vector<std::vector<double>> graph_kmean_bb(const std::vector<std::vector<int>>& graph,
-                                                const std::vector<std::vector<double>>& edge_lengths,
-                                                const std::vector<double>& y,
-                                                int n_bb,
-                                                int n_cores = 1,
-                                                int ikernel = 1,
-                                                double dist_normalization_factor = 1.01,
-                                                double epsilon = 1e-15) {
-    int n_vertices = y.size();
+std::vector<std::vector<double>> graph_kmean_bb(
+    const std::vector<std::vector<int>>& graph,
+    const std::vector<std::vector<double>>& edge_lengths,
+    const std::vector<double>& y,
+    int n_bb,
+    int n_cores = 1,
+    int ikernel = 1,
+    double dist_normalization_factor = 1.01,
+    double epsilon = 1e-15)
+{
+    const int n_vertices = (int)y.size();
     std::vector<std::vector<double>> bb_Ey(n_bb);
 
-    // Set number of threads if parallel processing is requested
-    if (n_cores > 1) {
-        omp_set_num_threads(n_cores);
+#ifdef _OPENMP
+    if (n_cores > 1) omp_set_num_threads(n_cores);
+#endif
+
+    // If C_runif_simplex uses R RNG, precompute weights sequentially:
+    std::vector<std::vector<double>> all_w(n_bb, std::vector<double>(n_vertices));
+    for (int i = 0; i < n_bb; ++i) {
+        C_runif_simplex(&n_vertices, all_w[i].data());   // sequential, safe
     }
 
-    // Parallel for loop with private weights vector
-    std::vector<double> weights(n_vertices);
-    #pragma omp parallel for if(n_vertices > 1000 && n_cores > 1) private(weights)
-    for (int iboot = 0; iboot < n_bb; iboot++) {
-        // Each thread needs its own weights vector
-        C_runif_simplex(&n_vertices, weights.data());
-
-        bb_Ey[iboot] = graph_kmean_with_bb_weigths(graph,
-                                                   edge_lengths,
-                                                   weights,
-                                                   y,
-                                                   ikernel,
-                                                   dist_normalization_factor,
-                                                   epsilon);
+#pragma omp parallel for if(n_cores > 1) schedule(static)
+    for (int iboot = 0; iboot < n_bb; ++iboot) {
+        bb_Ey[iboot] = graph_kmean_with_bb_weigths(
+            graph, edge_lengths, all_w[iboot], y, ikernel, dist_normalization_factor, epsilon);
     }
 
     return bb_Ey;
@@ -1058,7 +1055,7 @@ std::vector<std::vector<double>> graph_kmean_bb(const std::vector<std::vector<in
                                                 const std::vector<double>& y,
                                                 int n_bb,
                                                 int ikernel,
-                                                double dist_normalization_factor = 1.01,
+double dist_normalization_factor = 1.01,
                                                 double epsilon = 1e-15) {
     int n_points = y.size();
     std::vector<double> weights(n_points);

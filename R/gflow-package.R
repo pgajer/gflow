@@ -25,8 +25,7 @@
 #'
 #' \strong{1. Geometric Model Construction}
 #' \itemize{
-#'   \item Adaptive k-nearest neighbor (ikNN) graphs with intelligent edge pruning
-#'   \item Intersection-weighted graphs capturing local data geometry
+#'   \item Intersection k-nearest neighbor (ikNN) graphs with edge pruning
 #'   \item Simplicial complex construction for higher-order relationships
 #' }
 #'

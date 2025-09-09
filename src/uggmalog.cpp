@@ -475,7 +475,7 @@ uggmalog_t uggmalog(
     for (size_t bw_idx = 0; bw_idx < n_bws; ++bw_idx) {
 
         if (verbose && (bw_idx % 5 == 0)) {
-            Rprintf("Processing bandwidth %ld of %ld\n", bw_idx + 1, n_bws);
+            Rprintf("Processing bandwidth %zu of %zu\n", (size_t)bw_idx + 1, (size_t)n_bws);
         }
 
         process_bw(

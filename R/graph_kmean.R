@@ -337,6 +337,7 @@ graph.kmean.cv <- function(graph,
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' # Generate example data
 #' set.seed(123)
 #' x <- seq(0, 10, length.out = 100)
@@ -350,6 +351,7 @@ graph.kmean.cv <- function(graph,
 #'
 #' # Summary
 #' summary(result)
+#' }
 #'
 #' @seealso
 #' \code{\link{plot.ugkmm}} for plotting methods
