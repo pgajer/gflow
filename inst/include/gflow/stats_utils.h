@@ -83,7 +83,7 @@ void C_modified_columnwise_wmean_BB(const double *nn_y,
                                     const int    *rnBB,
                                           double *Ey);
 
-void C_columnwise_Rf_eval(const int    *nn_i,
+void C_columnwise_eval(const int    *nn_i,
                        const int    *rK,
                        const int    *rng,
                        const double *x,

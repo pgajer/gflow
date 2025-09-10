@@ -14,7 +14,7 @@
 #include "lm.h"
 #include "kernels.h"  // for initialize_kernel()
 #include "sampling.h" // for C_rsimplex() and C_runif_simplex()
-#include "stats_utils.h" // for get_folds(), C_columnwise_Rf_eval() and iarray_t
+#include "stats_utils.h" // for get_folds(), C_columnwise_eval() and iarray_t
 
 static void (*kernel_with_stop_fn)(const double*, const int*, const double*, int*, double*);
 
@@ -357,7 +357,7 @@ void C_columnwise_TS_norm(const double *x,
     }
 }
 
-/* C_columnwise_Rf_eval() is now defined in stats_utils.c and declared in stats_utils.h */
+/* C_columnwise_eval() is now defined in stats_utils.c and declared in stats_utils.h */
 
 /*!
     \brief Nearest neighbor weighted mean with maxK parameter.
@@ -467,7 +467,7 @@ void C_llm_1D_beta_perms(const double *Tnn_x,
       // C_dpermute(perm_y, ny);  for testing purposes
 
       // row Rf_eval premuted y with nn.i
-      C_columnwise_Rf_eval(Tnn_i,
+      C_columnwise_eval(Tnn_i,
                         rnrTnn,
                         rncTnn,
                         perm_y,
@@ -1032,7 +1032,7 @@ void C_mllm_1D_fit_and_predict(const double *Y,
       j = i * (*nrY);
       k = i * (*ncTnn);
 
-      C_columnwise_Rf_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
+      C_columnwise_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
       C_llm_1D_beta(Tnn_x, Tnn_y, Tnn_w, maxK, nrTnn, ncTnn, deg, beta);
       C_wpredict_1D(beta, Tnn_i, Tnn_w, Tnn_x, maxK, nrTnn, ncTnn, deg, ncY, rybinary, EYg + k);
     }

@@ -201,7 +201,7 @@ void C_matrix_wmeans(const double *Y,
       j = i * (*nrY);
       k = i * (*ncTnn);
 
-      C_columnwise_Rf_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
+      C_columnwise_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
       C_columnwise_wmean(Tnn_y, Tnn_w, maxK, nrTnn, ncTnn, EYg + k);
     }
 
@@ -611,7 +611,7 @@ void C_columnwise_wmean_BB_CrI_2(const double *Ey,
 }
 
 /*!
-    \fn void C_columnwise_Rf_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
+    \fn void C_columnwise_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
 
     \brief Evaluates x over an K-by-ng array nn_i of indices of get.knnx(x, xg, k)
 
@@ -623,7 +623,7 @@ void C_columnwise_wmean_BB_CrI_2(const double *Ey,
     \param nn_x      A return array of the same dimensions as nn_i with values of x at the indices of nn_i.
 
 */
-void C_columnwise_Rf_eval(const int    *nn_i,
+void C_columnwise_eval(const int    *nn_i,
                        const int    *rK,
                        const int    *rng,
                        const double *x,
@@ -641,7 +641,7 @@ void C_columnwise_Rf_eval(const int    *nn_i,
 }
 
 /*!
-    \fn void C_columnwise_Rf_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
+    \fn void C_columnwise_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
 
     \brief Evaluates x over an K-by-ng array nn_i of indices of get.knnx(x, xg, k)
 

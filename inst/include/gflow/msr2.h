@@ -642,12 +642,6 @@ extern "C" {
                                   int    *maxK,
                                   double *w);
 
-    void C_columnwise_Rf_eval(const int    *nn_i,
-                           const int    *rK,
-                           const int    *rng,
-                           const double *x,
-                           double *nn_x);
-
     void C_columnwise_TS_norm(const double *x,
                               const int *rnr,
                               const int *rnc,
