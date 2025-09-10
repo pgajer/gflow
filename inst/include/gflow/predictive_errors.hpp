@@ -29,7 +29,7 @@ std::pair<double, double> compute_bbcov_error(const std::vector<std::vector<doub
                                               bool use_median);
 
 // in-class member initializers (C++11 and later)
-struct error_t {
+struct predictive_error_t {
     double bb_cov_errorA = -1;
     double bb_cov_errorB = -1;
     double bb_wasserstein_error = -1;

@@ -21,6 +21,7 @@
 #include <mutex>
 #include <random>     // for std::mt19937
 #include <chrono>
+#include <thread>      // For std::thread
 
 // #include <omp.h>
 #include "omp_compat.h"

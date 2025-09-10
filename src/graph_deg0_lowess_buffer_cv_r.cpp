@@ -14,7 +14,6 @@
 #include <mutex>                    // For std::mutex
 #include <execution>                // For std::execution::par_unseq
 #include <atomic>                   // For std::atomic
-#include <thread>                   // For std::thread::hardware_concurrenyc
 
 #include "graph_deg0_lowess_buffer_cv.hpp" // For graph_deg0_lowess_buffer_cv_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class

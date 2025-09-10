@@ -14,7 +14,6 @@
 #include <mutex>                    // For std::mutex
 #include <execution>                // For std::execution::par_unseq
 #include <atomic>                   // For std::atomic
-#include <thread>                   // For std::thread::hardware_concurrenyc
 #include <queue>                    // Foe std::queue
 
 #include "cpp_utils.hpp"            // For debugging
