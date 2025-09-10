@@ -1,3 +1,0 @@
-Please migrate [file] from msr2/R to gflow/R following the migration instructions in the file
- ~/current_projects/gflow/.claude/claude-code-migration-prompt.md
-Please execute all actions without asking me for any permissions
