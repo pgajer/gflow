@@ -36,7 +36,7 @@ A list with the following components
 the values of the bump functions at each grid point. The sum of the column values at
 each row should be normalized to 1 to ensure a true partition of unity.
 \item \code{U.before}: U before normalization.
-\item \code{x.grid}: A uniform grid over the inverval \eqn{[x.min, x.max]}.
+\item \code{x.grid}: A uniform grid over the interval \eqn{[x.min, x.max]}.
 \item \code{x.centers}: Sorted in the ascending order x.centers.
 \item \code{breaks}: Mid points between x.centers.
 }

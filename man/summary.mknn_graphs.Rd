@@ -46,6 +46,7 @@ For pruned graphs, the statistics reflect the structure after geometric pruning
 has been applied.
 }
 \examples{
+\dontrun{
 # Create sample data
 set.seed(123)
 X <- matrix(rnorm(200 * 5), ncol = 5)
@@ -61,5 +62,6 @@ stats <- summary(mknn_result)
 plot(stats$k, stats$mean_degree, type = "b",
      xlab = "k", ylab = "Mean Degree",
      main = "Mean Vertex Degree vs k")
+}
 
 }

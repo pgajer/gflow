@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{evenness}
 \alias{evenness}
-\title{Computes Shannon Evenness of a discreate probability distribution}
+\title{Computes Shannon Evenness of a discrete probability distribution}
 \usage{
 evenness(x, base = 2)
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/centered_paths.R
 \name{ugg.get.path.data}
 \alias{ugg.get.path.data}
-\title{Create a Refined Graph with Uniformly Spaced Grid Vertices and creates local paths throught the specified ref vertex}
+\title{Create a Refined Graph with Uniformly Spaced Grid Vertices and creates local paths through the specified ref vertex}
 \usage{
 ugg.get.path.data(
   adj.list,

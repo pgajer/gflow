@@ -18,7 +18,7 @@ A list with two elements:
 }
 \description{
 This function takes a logical vector as input and returns the starting index
-and length of the longest subinterval where the values are TRUE.
+and length of the longest sub-interval where the values are TRUE.
 }
 \note{
 If there are multiple disjoined stretch of TRUE values of the same length, then the first one is returned.

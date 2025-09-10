@@ -29,7 +29,7 @@ rllmf.1D(
 \item{grid.size}{A number of grid points; was grid.size = 10*length(x), but the
 results don't seem to be different from 400 which is much faster.}
 
-\item{degree}{A degree of the polynomial of x in the linear regresion; 0
+\item{degree}{A degree of the polynomial of x in the linear regression; 0
 means weighted mean, 1 is regular linear model lm(y ~ x), and deg = d is
 lm(y ~ poly(x, d)). The only allowed values are 1 and 2.}
 
@@ -48,7 +48,7 @@ differences of the old and new predictions estimates are reach a local minimum.}
 
 \item{n.cv.folds}{The number of cross-validation folds. Used only when f = NULL. Default value: 10.}
 
-\item{n.cv.reps}{The number of repetiions of cross-validation. Used only when f = NULL. Default value: 5.}
+\item{n.cv.reps}{The number of repetitions of cross-validation. Used only when f = NULL. Default value: 5.}
 
 \item{n.BB}{The number of Bayesian bootstrap iterations for estimates of CI's of beta's.}
 

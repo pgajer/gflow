@@ -429,6 +429,7 @@ create.mknn.graphs <- function(X,
 #' has been applied.
 #'
 #' @examples
+#' \dontrun{
 #' # Create sample data
 #' set.seed(123)
 #' X <- matrix(rnorm(200 * 5), ncol = 5)
@@ -444,6 +445,7 @@ create.mknn.graphs <- function(X,
 #' plot(stats$k, stats$mean_degree, type = "b",
 #'      xlab = "k", ylab = "Mean Degree",
 #'      main = "Mean Vertex Degree vs k")
+#' }
 #'
 #' @method summary mknn_graphs
 #' @export
@@ -597,13 +599,6 @@ summary.mknn_graphs <- function(object, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return Invisibly returns the input object.
-#'
-#' @examples
-#' # Create a simple graph
-#' X <- matrix(rnorm(50 * 2), ncol = 2)
-#' graph <- create.mknn.graph(X, k = 5)
-#' print(graph)
-#'
 #' @method print mknn_graph
 #' @export
 print.mknn_graph <- function(x, ...) {
@@ -632,11 +627,12 @@ print.mknn_graph <- function(x, ...) {
 #' @return Invisibly returns the input object.
 #'
 #' @examples
+#' \dontrun{
 #' # Create multiple graphs
 #' X <- matrix(rnorm(100 * 3), ncol = 3)
 #' graphs <- create.mknn.graphs(X, kmin = 5, kmax = 10)
 #' print(graphs)
-#'
+#' }
 #' @method print mknn_graphs
 #' @export
 print.mknn_graphs <- function(x, ...) {

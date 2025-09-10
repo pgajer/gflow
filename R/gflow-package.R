@@ -1,53 +1,66 @@
 #' gflow: Geometric Data Analysis Through Gradient Flow
 #'
-#' @description
-#' The gflow package implements geometric methods for analyzing high-dimensional
-#' data that naturally inhabits lower-dimensional manifolds. It provides tools
-#' for discovering intrinsic geometric structures, building adaptive
-#' nearest-neighbor graphs, performing graph-based smoothing, and partitioning
-#' data domains through Morse-Smale complexes.
-#'
 #' @details
-#' Modern datasets, particularly in biological sciences, often contain thousands
-#' of features with complex non-linear relationships and multi-way interactions
-#' that cannot be captured by examining only pairwise associations. Traditional
-#' regression models struggle with this complexity, while machine learning
-#' approaches, though powerful for prediction, sacrifice interpretability.
+#' Modern datasets, particularly in biological sciences, often contain
+#' thousands of features with complex non-linear relationships and
+#' multi-way interactions that cannot be captured by examining only
+#' pairwise associations. Traditional regression models struggle with
+#' this complexity, while machine learning approaches, though powerful
+#' for prediction, sacrifice interpretability.
 #'
 #' The gflow package addresses this challenge by exploiting a fundamental
-#' observation: despite existing in high-dimensional spaces, real-world data
-#' typically lives on much lower-dimensional geometric structures. Like a
-#' twisted ribbon in 3D space that is fundamentally 2-dimensional, biological
-#' systems are highly constrained, and their data traces out specific geometric
-#' shapes within the ambient high-dimensional space.
+#' observation: despite existing in high-dimensional spaces, real-world
+#' data typically lives on much lower-dimensional geometric structures.
+#' Like a twisted ribbon in 3D space that is fundamentally 2-dimensional,
+#' most real-world systems generate highly constrained data that traces
+#' out specific geometric shapes within the ambient space. The geometry
+#' of these shapes implicitly encodes complex associations between features.
+#'
+#' Rather than working in a fixed coordinate system, gflow adopts a
+#' coordinate-free framework that models data as a weighted graph (or more
+#' generally, a Riemannian simplicial complex) capturing the underlying
+#' geometric structure. This transforms the inference problem from \eqn{E[Y|X]}
+#' to \eqn{E[Y|G(X)]}, where \eqn{G(X)} represents the geometric object
+#' constructed from your data matrix \eqn{X}. This reformulation provides a more
+#' flexible representation that adapts to the inherent complexity of the data
+#' without imposing predetermined functional forms.
+#'
+#' A key strength of gflow is its ability to provide interpretable results from
+#' complex data. The gradient-flow decomposition identifies natural regions
+#' where relationships between predictors and outcomes are locally simple and
+#' monotonic. This allows one to "peer inside" black-box models and understand
+#' how predictions change across different parts of the data space. By
+#' respecting the intrinsic geometry of the data, gflow bridges the gap between
+#' the flexibility of modern machine learning and the interpretability of
+#' classical statistical methods.
 #'
 #' @section Key Features:
 #'
-#' \strong{1. Geometric Model Construction}
+#' \strong{1. Geometric Data Representation}
 #' \itemize{
-#'   \item Intersection k-nearest neighbor (ikNN) graphs with edge pruning
-#'   \item Simplicial complex construction for higher-order relationships
+#'   \item Pruned intersection k-nearest neighbor (ikNN) graphs that capture data geometry
+#'   \item Simplicial complex construction for modeling higher-order relationships
 #' }
 #'
-#' \strong{2. Conditional Expectation Estimation on Geometric Structures}
+#' \strong{2. Robust Signal Recovery and Smoothing}
 #' \itemize{
-#'   \item Graph-based smoothing using harmonic functions
-#'   \item Adaptive local polynomial regression (MAGELO family)
-#'   \item Spectral methods and diffusion-based smoothing
+#'   \item Kernel graph Laplacian smoothing for noise reduction
+#'   \item Spectral filtering and diffusion-based approaches
 #' }
 #'
-#' \strong{3. Morse-Smale Complex Analysis}
+#' \strong{3. Gradient Flow Domain Decomposition}
 #' \itemize{
-#'   \item Automatic identification of critical points (minima, maxima, saddles)
-#'   \item Basin construction through gradient flow
-#'   \item Domain partitioning based on function behavior
+#'   \item Automatic identification of critical points (local minima, maxima, and saddles)
+#'   \item Morse-Smale complex construction for function analysis
+#'   \item Natural partitioning into regions of monotonic behavior
 #' }
 #'
-#' \strong{4. Statistical Analysis Within Geometric Regions}
+#' \strong{4. Interpretable Statistical Inference}
 #' \itemize{
-#'   \item Within-basin regression and classification
-#'   \item Feature importance assessment in local regions
-#'   \item Interpretable decomposition of complex models
+#'   \item Within-region regression and classification
+#'   \item Bootstrap-Wasserstein testing for non-linear associations
+#'   \item Feature importance assessment across different data regions
+#'   \item Visualization tools for understanding model behavior
 #' }
 #'
 #' @section Main Function Categories:
@@ -57,104 +70,105 @@
 #'   \item \code{\link{create.iknn.graphs}} - Builds intersection k-nearest neighbor graphs
 #'   \item \code{\link{create.single.iknn.graph}} - Creates mutual k-nearest neighbor graphs
 #'   \item \code{\link{create.cmst.graph}} - Constructs a minimal spanning tree completion graph
-#'   \item \code{\link{create.nerve.complex}} - Creates a nerve complex associated with a k-nearest neighbor covering of a dataset
+#'   \item \code{\link{create.nerve.complex}} - Creates a nerve complex for k-nearest neighbor covering
 #' }
 #'
-#' \strong{Smoothing and Estimation:}
-#' 
-#' \emph{Adaptive Local Polynomial Methods:}
+#' \strong{Conditional Expectation Estimation Methods:}
+#'
+#' \emph{Model-Averaged Local Regression (1D):}
 #' \itemize{
-#'   \item \code{\link{amagelo}} - Adaptive Multi-resolution Averaging with Geometric Local 
-#'         weighting. Performs 1D nonparametric smoothing using model-averaged local linear 
-#'         regression with automatic bandwidth selection and local extrema identification.
-#'   \item \code{\link{magelo}} - Model Averaged Geometric Local regression. Uses disk-shaped 
-#'         neighborhoods and averages local polynomial models fitted at uniformly spaced grid 
-#'         points, providing smoother transitions in regions with varying data density.
-#'   \item \code{\link{agemalo}} - Adaptive Geodesic Model Averaged Local. Creates hierarchies 
-#'         of local geodesics through maximal packing vertices and fits weighted linear models 
-#'         along geodesic paths with model averaging.
-#'   \item \code{\link{pgmalo}} - Piecewise Geometric Model Averaged Local. Combines piecewise 
-#'         segmentation with local polynomial regression for handling data with structural breaks.
+#'   \item \code{\link{amagelo}} - Adaptive MAGELO with automatic bandwidth selection, extrema
+#'         detection, and robust fitting for continuous responses
+#'   \item \code{\link{magelo}} - Disk-based neighborhoods with grid-centered models for smooth
+#'         transitions in varying density data
+#'   \item \code{\link{mabilo}} - Symmetric k-hop neighborhoods with model averaging and
+#'         Bayesian bootstrap for uncertainty quantification
+#'   \item \code{\link{amagelogit}} - Grid-based logistic regression with model averaging for
+#'         binary outcomes
+#'   \item \code{\link{maelog}} - Data-centered logistic regression with adaptive disk
+#'         neighborhoods and k-NN fallback
 #' }
-#' 
-#' \emph{Graph-based LOWESS Methods:}
+#'
+#' \emph{Graph-Based Local Regression Methods:}
 #' \itemize{
-#'   \item \code{\link{deg0.lowess.graph.smoothing}} - Degree-0 LOWESS on graphs. Performs 
-#'         locally weighted averaging using graph distances with adaptive bandwidth selection.
-#'   \item \code{\link{graph.spectral.lowess}} - Spectral LOWESS. Uses spectral embedding to 
-#'         transform graph distances into Euclidean space for local linear regression with 
-#'         leave-one-out cross-validation.
-#'   \item \code{\link{spectral.lowess.graph.smoothing}} - Alternative spectral LOWESS 
-#'         implementation with Cleveland's robustness iterations and multiple kernel options.
+#'   \item \code{\link{deg0.lowess.graph.smoothing}} - Locally weighted averaging using graph
+#'         distances with adaptive bandwidth selection
+#'   \item \code{\link{graph.spectral.lowess}} - Spectral embedding transforms graph distances
+#'         to Euclidean space for local linear regression
+#'   \item \code{\link{spectral.lowess.graph.smoothing}} - Includes Cleveland's robustness
+#'         iterations and multiple kernel options
 #' }
-#' 
-#' \emph{Kernel and Diffusion Methods:}
+#'
+#' \emph{Diffusion and Kernel Methods:}
 #' \itemize{
-#'   \item \code{\link{graph.kernel.smoother}} - Graph kernel smoothing with spatially-aware 
-#'         cross-validation using buffer zones to prevent spatial autocorrelation bias.
-#'   \item \code{\link{graph.diffusion.smoother}} - Iterative diffusion smoothing. Denoises 
-#'         graph signals and interpolates missing values while preserving graph structure.
-#'   \item \code{\link{harmonic.smoother}} - Harmonic function smoothing. Solves discrete 
-#'         Laplace equation by iteratively updating interior vertices as weighted averages 
-#'         while keeping boundary values fixed.
-#'   \item \code{\link{meanshift.data.smoother}} - Mean shift algorithm on graphs. Non-parametric
-#'         technique for finding density maxima with adaptive step sizes and momentum updates.
+#'   \item \code{\link{graph.kernel.smoother}} - Spatially-aware cross-validation with buffer
+#'         zones to prevent autocorrelation bias
+#'   \item \code{\link{graph.diffusion.smoother}} - Iterative diffusion for denoising and
+#'         interpolating missing values
+#'   \item \code{\link{harmonic.smoother}} - Solves discrete Laplace equation for smooth
+#'         interpolation with fixed boundary values
+#'   \item \code{\link{graph.spectral.filter}} - Frequency-based smoothing using Laplacian
+#'         eigendecomposition
 #' }
-#' 
+#'
+#' \emph{Path and Geodesic Methods:}
+#' \itemize{
+#'   \item \code{\link{pgmalo}} - Piecewise segmentation with automatic change point detection
+#'         for data with structural breaks
+#'   \item \code{\link{agemalo}} - Adaptive geodesic regression using hierarchies of local
+#'         geodesics through maximal packing vertices
+#'   \item \code{\link{adaptive.uggmalo}} - Uniform grid approach with path-based local models
+#'         and cross-validated bandwidth selection
+#' }
+#'
 #' \emph{Specialized Methods:}
 #' \itemize{
-#'   \item \code{\link{amagelogit}} - Model-averaged logistic regression for binary outcomes 
-#'         using local polynomial fitting with automatic bandwidth selection.
-#'   \item \code{\link{uggmalo}} - Uniform Grid Geometric Model Averaged Local. Combines graph 
-#'         structure preservation with local linear modeling on uniform grids.
-#'   \item \code{\link{adaptive.uggmalo}} - Adaptive version of UGGMALO with cross-validated 
-#'         bandwidth selection and optional bootstrap confidence intervals.
-#'   \item \code{\link{graph.spectral.filter}} - Spectral filtering on graphs using eigenvalue 
-#'         decomposition for frequency-based smoothing.
-#'   \item \code{\link{nerve.cx.spectral.filter}} - Spectral filtering on nerve complexes for 
-#'         higher-order topological smoothing.
-#'   \item \code{\link{mabilo}} - Model Averaged Bilateral Local. Extends LOWESS with model 
-#'         averaging and Bayesian bootstrap for uncertainty quantification.
+#'   \item \code{\link{magelog}}, \code{\link{mabilog}}, \code{\link{uggmalog}} - Log-space
+#'         variants for positive-valued responses
+#'   \item \code{\link{ulogit}} - Uniform grid logistic regression for binary outcomes on graphs
+#'   \item \code{\link{nerve.cx.spectral.filter}} - Spectral filtering over simplicial complexes
+#'   \item \code{\link{meanshift.data.smoother}} - Data denoising using mean-shift algorithm with adaptive step sizes
 #' }
 #'
-#' \strong{Morse-Smale Complex:}
+#' \strong{Morse-Smale Complex Analysis:}
 #' \itemize{
-#'   \item \code{\link{create.basin.cx}} - Construct basin complex
-#'   \item \code{\link{compute.graph.gradient.flow}} - Compute gradient flow trajectories
-#'   \item \code{\link{find.critical.points}} - Identify critical points
+#'   \item \code{\link{create.basin.cx}} - Constructs basin complex from gradient flow
+#'   \item \code{\link{compute.graph.gradient.flow}} - Computes gradient flow trajectories
+#'   \item \code{\link{find.critical.points}} - Identifies local minima, maxima, and saddles
 #' }
 #'
-#' \strong{Statistical Analysis:}
+#' \strong{Statistical Inference:}
 #' \itemize{
-#'   \item \code{\link{fassoc.test}} - Functional association testing
-#'   \item \code{\link{compute.bayesian.effects}} - Bayesian effect estimation
-#'   \item \code{\link{wasserstein.distance}} - Geometric distance metrics
+#'   \item \code{\link{fassoc.test}} - Tests for non-linear functional associations
+#'   \item \code{\link{compute.bayesian.effects}} - Bayesian effect size estimation
+#'   \item \code{\link{wasserstein.distance}} - Computes optimal transport distances
 #' }
 #'
-#' @section Theoretical Foundation:
-#' The theoretical foundation is described in:
-#' Gajer, P. and Ravel, J. (2025). "The Geometry of Machine Learning Models".
-#' arXiv preprint arXiv:2501.01234. Available at \url{https://arxiv.org/abs/2501.01234}
-#'
-#' @section Getting Started:
-#' For a comprehensive introduction, see the package vignettes:
-#' \itemize{
-#'   \item \code{vignette("gflow-overview", package = "gflow")} - Package overview
-#'   \item \code{vignette("iknn-graphs", package = "gflow")} - Graph construction tutorial
-#'   \item \code{vignette("morse-smale", package = "gflow")} - Morse-Smale analysis
-#' }
-#'
-#' @author
-#' Pawel Gajer \email{pgajer@@gmail.com}
-#'
-#' Maintainer: Pawel Gajer \email{pgajer@@gmail.com}
+#' @author Pawel Gajer \email{pgajer@@gmail.com}
 #'
 #' @references
 #' Gajer, P. and Ravel, J. (2025). The Geometry of Machine Learning Models.
 #' \emph{arXiv preprint} arXiv:2501.01234.
+#' \url{https://arxiv.org/abs/2501.01234}
 #'
-#' @keywords package
-#' @docType package
-#' @name gflow-package
-#' @aliases gflow
-NULL
+#' Gerber, S., Rübel, O., Bremer, P. T., Pascucci, V., & Whitaker, R. T. (2013).
+#' Morse–smale regression. Journal of Computational and Graphical Statistics,
+#' 22(1), 193-214.
+#'
+#' Chen, Y. C., Genovese, C. R., & Wasserman, L. (2017). Statistical inference
+#' using the Morse-Smale complex.
+#'
+#' Gerber, S., & Potter, K. (2012). Data analysis with the morse-smale complex:
+#' The msr package for r. Journal of Statistical Software, 50, 1-22.
+#'
+#' Farrelly, C. M. (2017). Extensions of morse-smale regression with application
+#' to actuarial science. arXiv preprint arXiv:1708.05712.
+#'
+#' Gerber, S., Bremer, P. T., Pascucci, V., & Whitaker, R. (2010). Visual
+#' exploration of high dimensional scalar functions. IEEE transactions on
+#' visualization and computer graphics, 16(6), 1271-1280.
+#'
+#' @import stats
+#' @import graphics
+#' @import grDevices
+"_PACKAGE"

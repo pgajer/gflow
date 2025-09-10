@@ -1,14 +1,20 @@
 Package: gflow
 Title: Gradient Flow Data Analysis Framework
 Version: 0.1.0
-Authors@R: 
+Authors@R:
     person("Pawel", "Gajer", , "pgajer@gmail.com", role = c("aut", "cre"))
-Description: Provides tools and methods for gradient flow-based data analysis.
-    The package implements algorithms for adaptive k-nearest neighbor graph 
-    construction, graph-based smoothing, piecewise linear modeling with optimal
-    breakpoint detection, and gradient flow computation on high-dimensional data.
-    These methods facilitate exploratory data analysis, manifold learning, and
-    the study of data structure through geometric and spectral graph techniques.
+Description: The gflow package implements geometric methods for analyzing
+    high-dimensional data by exploiting the fact that most real-world
+    high-dimensional datasets are highly structured and sparse, displaying an
+    intrinsic dimension often orders of magnitude smaller than the number of
+    features (the dimension of the ambient space in which the data is embedded). The
+    package provides tools for modeling the intrinsic geometric structures of data
+    and estimating conditional expectations of response variables over these
+    geometric objects. Inferential analysis is performed using the Morse-Smale
+    regression approach, which decomposes the domain (the geometric object
+    associated with the data) into gradient flow cells. Within each cell, the
+    regression model exhibits an essentially monotonic structure that can be
+    analyzed using classical statistical methods.
 Copyright: file inst/COPYRIGHTS
 License: GPL (>= 3)
 URL: https://github.com/pgajer/gflow
@@ -16,7 +22,7 @@ BugReports: https://github.com/pgajer/gflow/issues
 Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 SystemRequirements: C++17, GNU make, OpenMP
 Depends:
     R (>= 3.5.0)

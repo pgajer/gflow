@@ -9,13 +9,13 @@ get.bws.with.minK(d, minK, bw)
 \arguments{
 \item{d}{A numeric matrix.}
 
-\item{minK}{A vector such that minK[i] is the required mininum number of
+\item{minK}{A vector such that minK[i] is the required minimum number of
 elements in the row of the i-th column of d with weights > 0.}
 
-\item{bw}{A bendwidth.}
+\item{bw}{A bandwidth.}
 }
 \value{
-A vector of bendwidths.
+A vector of bandwidths.
 }
 \description{
 The difference between this function and get.bws() is that in the former,

@@ -1,7 +1,3 @@
-#' @import stats
-#' @keywords internal
-"_PACKAGE"
-
 # Global variables used in the package
 # This file declares global variables to avoid R CMD check NOTEs
 
@@ -16,4 +12,4 @@ utils::globalVariables(c(
   # Function names that are dynamically called or missing
   "IW.kNN.graph",
   "rm.duplicate.grid.elements"
-))
+  ))

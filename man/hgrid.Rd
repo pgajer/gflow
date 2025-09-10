@@ -24,9 +24,9 @@ hgrid(
 
 \item{p.exp}{A numeric value representing the expansion factor of the bounding box. Must be between 0 and 1. Default is 0.05.}
 
-\item{K}{The number of nearest neighbors to estimate the denstiy of X at the given point.}
+\item{K}{The number of nearest neighbors to estimate the density of X at the given point.}
 
-\item{n.segments.per.axis}{An integer number specifying the number of subintervals (of equal
+\item{n.segments.per.axis}{An integer number specifying the number of sub-intervals (of equal
 length within each axis, but of potentially of different lengths between
 different axes) of each axis that will be used to construct box tiling of
 the given box.}

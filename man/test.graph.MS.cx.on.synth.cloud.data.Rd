@@ -33,7 +33,7 @@ test.graph.MS.cx.on.synth.cloud.data(
 
 \item{n.lmax}{The number of gaussians to use.}
 
-\item{y.min}{The mimimum value of the range of y values.}
+\item{y.min}{The minimum value of the range of y values.}
 
 \item{y.max}{The maximum value of the range of y values.}
 

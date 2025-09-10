@@ -38,13 +38,13 @@ get.gpredictions.CrI(
 
 \item{degree}{The degree of the local models.}
 
-\item{grid.nn.i}{A matrix of grid asociated NN indices.}
+\item{grid.nn.i}{A matrix of grid associated NN indices.}
 
-\item{grid.nn.x}{A matrix of grid asociated x values over NNs.}
+\item{grid.nn.x}{A matrix of grid associated x values over NNs.}
 
-\item{grid.nn.w}{A matrix of grid asociated NN weights.}
+\item{grid.nn.w}{A matrix of grid associated NN weights.}
 
-\item{grid.max.K}{A vector of grid asociated max.K values.}
+\item{grid.max.K}{A vector of grid associated max.K values.}
 
 \item{y.binary}{A logical variable. If TRUE, bw optimization is going to use a binary loss function mean(y(1-p) + (1-y)p).}
 

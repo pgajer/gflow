@@ -19,6 +19,6 @@ radial.qexp.gaussian(X, center, sigma = 1, q = 1)
 Returns a vector of values of the radia q-exponential Gaussian at the points of X.
 }
 \description{
-Evaluates radial q-exponential Gaussian cetnered at 'center' with standard deviation sigma
+Evaluates radial q-exponential Gaussian centered at 'center' with standard deviation sigma
 and power q on a set of points X.
 }

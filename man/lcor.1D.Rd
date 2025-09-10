@@ -60,7 +60,7 @@ differences of the old and new predictions estimates are reach a local minimum.}
 
 \item{n.cv.folds}{The number of cross-validation folds. Used only when f = NULL. Default value: 10.}
 
-\item{n.cv.reps}{The number of repetiions of cross-validation. Used only when f = NULL. Default value: 5.}
+\item{n.cv.reps}{The number of repetitions of cross-validation. Used only when f = NULL. Default value: 5.}
 
 \item{min.K}{The minimal number of x NN's that must be present in each window.}
 

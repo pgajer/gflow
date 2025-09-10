@@ -9,7 +9,7 @@ normalize.dist(d, min.K, bw)
 \arguments{
 \item{d}{A numeric matrix.}
 
-\item{min.K}{The mininum _\emph{number} of elements of each row of d after normalization with normalized distance < 1.}
+\item{min.K}{The minimum _\emph{number} of elements of each row of d after normalization with normalized distance < 1.}
 
 \item{bw}{A normalization non-negative constant.}
 }

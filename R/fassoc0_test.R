@@ -74,7 +74,7 @@
 #' }
 #'
 #' @importFrom parallel mclapply
-#' @importFrom stats ks.test sd mean sample
+#' @importFrom stats ks.test sd
 #' @importFrom graphics plot points lines abline polygon hist box text par matlines
 #' @export
 fassoc0.test <- function(x,

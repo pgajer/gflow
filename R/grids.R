@@ -13,7 +13,7 @@
 #'
 #' @param f    A fraction of x1 and x2 range that the grid is extended to.
 #'
-#' @param eSDf An edge subdivisioin factor that is a scaling factor, such that edges of mstree(X) are
+#' @param eSDf An edge subdivision factor that is a scaling factor, such that edges of mstree(X) are
 #'                subdivided if their length is greater than eSDf * mode(edge.len).
 #'
 #' @param gRf  A grid radius factor that is a scaling factor, such that points of the rectangular grid
@@ -406,13 +406,13 @@ create.2D.rect.grid <- function(n, x1.range, x2.range, type=c("unif","runif","no
 #'     the grid around X, with respect to the size of X. That is the minimal
 #'     size of the grid needs to be at least min.gSf*|X|, where |X|
 #'     is the size of X. For example, with min.gSf set to 1.5, the
-#'     mimal size of the grid will be, if possible, at least 1.5*|X|. For this
+#'     minimal size of the grid will be, if possible, at least 1.5*|X|. For this
 #'     to be possible the initial rectangular grid size has to be at least of
 #'     that minimal size, but in practice much bigger. It overrides
 #'     gRf if the size of the grid given by the value of
 #'     gRf is not
 #'
-#' @param eSDf  An edge subdivisioin factor that is a scaling factor, such that edges of mstree(X) are
+#' @param eSDf  An edge subdivision factor that is a scaling factor, such that edges of mstree(X) are
 #'                     subdivided is their length is greater than eSDf * mode(edge.len).
 #'
 #' @param gRf A scaling factor, such that points of the rectangular grid
@@ -776,13 +776,13 @@ create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 #'     the grid around X, with respect to the size of X. That is the minimal
 #'     size of the grid needs to be at least min.gSf*|X|, where |X|
 #'     is the size of X. For example, with min.gSf set to 1.5, the
-#'     mimal size of the grid will be, if possible, at least 1.5*|X|. For this
+#'     minimal size of the grid will be, if possible, at least 1.5*|X|. For this
 #'     to be possible the initial rectangular grid size has to be at least of
 #'     that minimal size, but in practice much bigger. It overrides
 #'     gRf if the size of the grid given by the value of
 #'     gRf is not
 #'
-#' @param min.min.gSf The minimal allowabel value of min.gSf.
+#' @param min.min.gSf The minimal allowable value of min.gSf.
 #'
 #' @param eSDf A scaling factor, such that edges of mstree(X) are
 #'                     subdivided is their length is greater than eSDf * mode(edge.len).
@@ -791,7 +791,7 @@ create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 #'                    that are further than gRf*mode.edge.len away from the closest
 #'                    subdivision of the minimal spanning tree of X, mstree(X), are eliminated from the grid.
 #'
-#' @param min.gRf The minimal allowabel value of gRf.
+#' @param min.gRf The minimal allowable value of gRf.
 #'
 #' @param max.n       The maximal value of n that can be reached as n is adjusted to
 #'                    satisfy the size and radius factor conditions.
@@ -1438,7 +1438,7 @@ create.X.grid.xD <- function(X,
         ## Mimal spanning tree
         if ( verbose ) {
             ptm <- proc.time()
-            cat("Creating a mimal spanning tree of X ... ")
+            cat("Creating a minimal spanning tree of X ... ")
         }
 
         min.tree.obj <- mstree.grid(X)
@@ -1656,7 +1656,7 @@ create.adaptive.tiled.X.grid.xD <- function(X,
         ## Mimal spanning tree
         if ( verbose ) {
             ptm <- proc.time()
-            cat("Creating a mimal spanning tree of X ... ")
+            cat("Creating a minimal spanning tree of X ... ")
         }
 
         min.tree.obj <- mstree.grid(X)
@@ -1884,8 +1884,8 @@ plot.gridX <- function(x, with.bounding.box.pts = TRUE, ...)
 #' @param w         The desired edge length of the grid. Points in the grid are spaced at intervals of w.
 #' @param epsilon   The maximum allowed distance from the closest point of X for points in the grid.
 #' @param p.exp     A numeric value representing the expansion factor of the bounding box. Must be between 0 and 1. Default is 0.05.
-#' @param K         The number of nearest neighbors to estimate the denstiy of X at the given point.
-#' @param n.segments.per.axis   An integer number specifying the number of subintervals (of equal
+#' @param K         The number of nearest neighbors to estimate the density of X at the given point.
+#' @param n.segments.per.axis   An integer number specifying the number of sub-intervals (of equal
 #'                  length within each axis, but of potentially of different lengths between
 #'                  different axes) of each axis that will be used to construct box tiling of
 #'                  the given box.
@@ -1933,8 +1933,8 @@ hgrid <- function(X,
 
 #' Expands a bounding box given by the opposite vertices  (L, R)
 #'
-#' @param L A numeric vector representing the left vertix that is the point of the box with the smallest coordinates among all other points of the box.
-#' @param R A numeric vector representing the right vertix that is the point of the box with the largest coordinates among all other points of the box.
+#' @param L A numeric vector representing the left vertex that is the point of the box with the smallest coordinates among all other points of the box.
+#' @param R A numeric vector representing the right vertex that is the point of the box with the largest coordinates among all other points of the box.
 #' @param p.exp An expansion factor for the bounding box. Each edge of the box is scaled by the factor (1 + p.exp).
 #' @param margin A numeric value specifying a fixed margin to add to the box. If NULL (default), margin is calculated based on p.exp.
 #'
@@ -1964,8 +1964,8 @@ expand.box <- function(L, R, p.exp, margin = NULL) {
 #'
 #' @param X A matrix of points in some Euclidean space.
 #' @param n.segments.per.axis An integer number specifying the number of
-#'     segments (subintervals) of each axis that will be used to construct box
-#'     tiling of the given box. The segmenst are of equal length within each
+#'     segments (sub-intervals) of each axis that will be used to construct box
+#'     tiling of the given box. The segments are of equal length within each
 #'     axis, but potentially of different lengths between different axes)
 #' @param eps A distance threshold (non-negative real number) such that each box
 #'     is expanded by eps and then tested for the presence of the elements of X.
@@ -2200,7 +2200,7 @@ extract.xy <- function(s) {
 #' or orthotope) is defined as the Cartesian product of k intervals, where k is the dimension of the orthotope. A box is
 #' defined by two opposite vertices L and R.
 #'
-#' @param n An integer number specifying the number of subintervals (of equal
+#' @param n An integer number specifying the number of sub-intervals (of equal
 #'     length within each axis, but of potentially of different lengths between
 #'     different axes) of each axis that will be used to construct box tiling of
 #'     the given box.
@@ -2564,7 +2564,7 @@ find.box.containing.x <- function(boxes, x) {
 #' @param boxes A list of boxes, where each box is a list containing vectors \code{L} and \code{R} representing the left and right boundaries of the box.
 #' @param x     A vector representing the point for which the containing sub-box is to be found.
 #' @param p.exp An expansion factor for the bounding box. Each edge of the box is scaled by the factor (1 + p.exp). Default is 0.1.
-#' @param margin An explicity expansion amount of the box in along each axis.
+#' @param margin An explicitly expansion amount of the box in along each axis.
 #'
 #' @return A list representing the sub-box containing \code{x}, or \code{NULL} if \code{x} is not found within any sub-box.
 #' @examples

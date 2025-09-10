@@ -588,15 +588,15 @@ SEXP S_mabilo(SEXP s_x,
  * in the error measurements
  */
 mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
-                                         const std::vector<double>& y,
-                                         const std::vector<double>& y_true,
-                                         int k_min,
-                                         int k_max,
-                                         double error_window_factor,
-                                         int distance_kernel,
-                                         double dist_normalization_factor,
-                                         double epsilon,
-                                         bool verbose) {
+                                     const std::vector<double>& y,
+                                     const std::vector<double>& y_true,
+                                     int k_min,
+                                     int k_max,
+                                     double error_window_factor,
+                                     int distance_kernel,
+                                     double dist_normalization_factor,
+                                     double epsilon,
+                                     bool verbose) {
 
     int n_points = x.size();
     auto total_ptm = std::chrono::steady_clock::now();

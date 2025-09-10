@@ -32,7 +32,7 @@ entropy <- function(x, base = 10) {
     -sum( x * log2(x) ) / log2(base)
 }
 
-#' Computes Shannon Evenness of a discreate probability distribution
+#' Computes Shannon Evenness of a discrete probability distribution
 #'
 #' Computes normalized Shannon entropy (evenness) of a numeric vector defined as entropy(x) / logB(length(x)), where B is the base of the logarithm.
 #'
@@ -89,7 +89,7 @@ minmax.normalize <- function(x, y.min = 0, y.max = 1) {
     y
 }
 
-#' Inverse logit tranformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\).
+#' Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\).
 #'
 #' @param x  A numerical vector.
 #'
@@ -205,7 +205,7 @@ knn.weighted.mean <- function(X, y, k, kernel = "epanechnikov", nn.factor = 1.01
     nn.d <- cbind(rep(0,nrow(X)), nn.d)
 
     nn.r <- nn.factor * nn.d[,k+1]
-    rw <- row.weighting(nn.d, nn.r, kernel) # applying kernel to NN distances with kernel bendwidth nn.r
+    rw <- row.weighting(nn.d, nn.r, kernel) # applying kernel to NN distances with kernel bandwidth nn.r
     nn.w <- rw$nn.w
     nn.w <- row.TS.norm(nn.w) # Total Sum row normalization
 

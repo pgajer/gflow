@@ -35,19 +35,19 @@ on each axis that are the basis of the grid.}
 the grid around X, with respect to the size of X. That is the minimal
 size of the grid needs to be at least min.gSf*|X|, where |X|
 is the size of X. For example, with min.gSf set to 1.5, the
-mimal size of the grid will be, if possible, at least 1.5*|X|. For this
+minimal size of the grid will be, if possible, at least 1.5*|X|. For this
 to be possible the initial rectangular grid size has to be at least of
 that minimal size, but in practice much bigger. It overrides
 gRf if the size of the grid given by the value of
 gRf is not}
 
-\item{min.min.gSf}{The minimal allowabel value of min.gSf.}
+\item{min.min.gSf}{The minimal allowable value of min.gSf.}
 
 \item{gRf}{A scaling factor, such that points of the rectangular grid
 that are further than gRf*mode.edge.len away from the closest
 subdivision of the minimal spanning tree of X, mstree(X), are eliminated from the grid.}
 
-\item{min.gRf}{The minimal allowabel value of gRf.}
+\item{min.gRf}{The minimal allowable value of gRf.}
 
 \item{eSDf}{A scaling factor, such that edges of mstree(X) are
 subdivided is their length is greater than eSDf * mode(edge.len).}

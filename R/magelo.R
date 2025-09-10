@@ -39,7 +39,7 @@ if(getRversion() >= "2.15.1") utils::globalVariables(c("idx"))
 #' @param get.BB.predictions Logical; if TRUE, return matrix of bootstrap estimates at x
 #' @param get.BB.gpredictions Logical; if TRUE, return matrix of bootstrap estimates at grid points
 #' @param level Numeric between 0 and 1 specifying credible interval level
-#' @param n.C.itr Integer specifying number of Cleveland's iterative reweighting steps
+#' @param n.C.itr Integer specifying number of Cleveland's iterative re-weighting steps
 #' @param C Numeric specifying scaling factor for residuals in robust fitting
 #' @param stop.C.itr.on.min Logical; if TRUE, stop iterations when improvement plateaus
 #' @param y.binary Logical; if TRUE, use binary loss function for optimization
@@ -57,7 +57,7 @@ if(getRversion() >= "2.15.1") utils::globalVariables(c("idx"))
 #' interval level can be adjusted with the \code{level} parameter.
 #'
 #' @section Robustness Parameters:
-#' MAGELO includes options for robust fitting using Cleveland's iterative reweighting procedure.
+#' MAGELO includes options for robust fitting using Cleveland's iterative re-weighting procedure.
 #' The \code{n.C.itr} parameter controls the number of iterations, while \code{C} sets the
 #' scaling factor for residuals. Use \code{stop.C.itr.on.min} to enable early stopping when
 #' improvements plateau.
@@ -787,7 +787,7 @@ magelo.plot.diagnostic <- function(x, title, xlab, ylab, ma.col, true.col, legen
 #' @param y           A numeric vector of an outcome variable.
 #' @param grid.size   A number of grid points; was grid.size = 10*length(x), but the
 #'                      results don't seem to be different from 400 which is much faster.
-#' @param degree      A degree of the polynomial of x in the linear regresion; 0
+#' @param degree      A degree of the polynomial of x in the linear regression; 0
 #'                      means weighted mean, 1 is regular linear model lm(y ~ x), and deg = d is
 #'                      lm(y ~ poly(x, d)). The only allowed values are 1 and 2.
 #'
@@ -798,7 +798,7 @@ magelo.plot.diagnostic <- function(x, title, xlab, ylab, ma.col, true.col, legen
 #' @param min.K       The minimal number of x NN's that must be present in each window.
 #'
 #' @param n.cv.folds  The number of cross-validation folds. Used only when f = NULL. Default value: 10.
-#' @param n.cv.reps   The number of repetiions of cross-validation. Used only when f = NULL. Default value: 5.
+#' @param n.cv.reps   The number of repetitions of cross-validation. Used only when f = NULL. Default value: 5.
 
 #' @param nn.kernel   A kernel.
 #' @param n.BB    The number of Bayesian bootstrap iterations for estimates of CI's of beta's.
@@ -1172,7 +1172,7 @@ magelo.fit <- function(bw,
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param nn.w      A matrix of weights over K nearest neighbors of each element of the grid.
 #' @param max.K      A vector of indices indicating the range where weights are not 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #'
 #' @return list with components: beta, gpredictions.
 #'
@@ -1406,7 +1406,7 @@ predict.magelo <- function(object, newdata, ...)
 #' @param y           A numeric vector of an outcome variable.
 #' @param grid.size   A number of grid points; was grid.size = 10*length(x), but the
 #'                      results don't seem to be different from 400 which is much faster.
-#' @param degree      A degree of the polynomial of x in the linear regresion; 0
+#' @param degree      A degree of the polynomial of x in the linear regression; 0
 #'                      means weighted mean, 1 is regular linear model lm(y ~ x), and deg = d is
 #'                      lm(y ~ poly(x, d)). The only allowed values are 1 and 2.
 #' @param f           The proportion of the range of x that is used within moving window to train the model.
@@ -1534,7 +1534,7 @@ deg0.loo.llm.1D <- function(nx, nn.i, nn.w, nn.y)
     out$predictions
 }
 
-#' Fits 1D rllm model and generates predictions esimates.
+#' Fits 1D rllm model and generates predictions estimates.
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1542,7 +1542,7 @@ deg0.loo.llm.1D <- function(nx, nn.i, nn.w, nn.y)
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param y.binary  Set to TRUE if y's values are within the interval \code{[0,1]}.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #' @param nx        The number of elements of x.
 #'
 #' @return list with components: beta, predictions.
@@ -1581,7 +1581,7 @@ llm.1D.fit.and.predict <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degr
          predictions = out$predictions)
 }
 
-#' Creates BB CI's of a 1D rllm model's predictions esimates.
+#' Creates BB CI's of a 1D rllm model's predictions estimates.
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1589,7 +1589,7 @@ llm.1D.fit.and.predict <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degr
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param y.binary  Set to TRUE if y values are in the interval \code{[0,1]}.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #' @param nx        The number of elements of x.
 #' @param predictions        An predictions estimates.
 #' @param n.BB      The number of BB iterations.
@@ -1626,14 +1626,14 @@ llm.1D.fit.and.predict.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.
     return( out$predictions.CrI )
 }
 
-#' Creates BB CI's of a 1D rllm model's predictions esimates using global reweighting of the elements of x.
+#' Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x.
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
 #' @param nn.x      A matrix of x values over K nearest neighbors of each element of the grid.
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #' @param nx        The number of elements of x.
 #' @param predictions        An predictions estimates.
 #' @param y.binary  Set to TRUE if y is a binary variable.
@@ -1678,7 +1678,7 @@ llm.1D.fit.and.predict.global.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, max.K, 
 #' @param nn.x      A matrix of x values over K nearest neighbors of each element of the grid.
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #' @param nx        The number of elements of x.
 #' @param n.BB      The number of BB iterations.
 #'
@@ -1718,7 +1718,7 @@ llm.1D.fit.and.predict.global.BB <- function(nn.i, nn.w, nn.x, nn.y, max.K, degr
 #' @param nn.x      A matrix of x values over K nearest neighbors of each element of the grid.
 #' @param nn.y      A matrix of y values over K nearest neighbors of each element of the grid.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #' @param nx        The number of elements of x.
 #' @param n.BB      The number of BB iterations.
 #' @param alpha     The confidence level.
@@ -1964,7 +1964,7 @@ Clevelands.1D.deg12.loop <- function(n.C.itr, degree, nx, y, predictions, nn.i, 
 #' @param min.K       The minimal number of x NN's that must be present in each window.
 #'
 #' @param n.cv.folds  The number of cross-validation folds. Used only when f = NULL. Default value: 10.
-#' @param n.cv.reps   The number of repetiions of cross-validation. Used only when f = NULL. Default value: 5.
+#' @param n.cv.reps   The number of repetitions of cross-validation. Used only when f = NULL. Default value: 5.
 #'
 #' @param nn.kernel   A kernel.
 #'
@@ -2133,7 +2133,7 @@ lcor.1D <- function(x, y1, y2, grid.size = 400, f = NULL, bw = NULL, smooth = TR
 #' @param y2          A numeric vector of the second outcome variable.
 #' @param grid.size   A number of grid points; was grid.size = 10*length(x), but the
 #'                      results don't seem to be different from 400 which is much faster.
-#' @param degree      A degree of the polynomial of x in the linear regresion; 0
+#' @param degree      A degree of the polynomial of x in the linear regression; 0
 #'                      means weighted mean, 1 is regular linear model lm(y ~ x), and deg = d is
 #'                      lm(y ~ poly(x, d)). The only allowed values are 1 and 2.
 #'
@@ -2145,7 +2145,7 @@ lcor.1D <- function(x, y1, y2, grid.size = 400, f = NULL, bw = NULL, smooth = TR
 #' @param min.K       The minimal number of x NN's that must be present in each window.
 #'
 #' @param n.cv.folds  The number of cross-validation folds. Used only when f = NULL. Default value: 10.
-#' @param n.cv.reps   The number of repetiions of cross-validation. Used only when f = NULL. Default value: 5.
+#' @param n.cv.reps   The number of repetitions of cross-validation. Used only when f = NULL. Default value: 5.
 #'
 #' @param nn.kernel   A kernel.
 #'
@@ -2277,7 +2277,7 @@ rllm.2os.1D <- function(x, y1, y2, grid.size = 400, degree = 2, f = NULL, bw = N
          predictions1.CI = predictions1.CI)
 }
 
-#' Fits 1D rllm model and generates predictions esimates for each column of a matrix Y.
+#' Fits 1D rllm model and generates predictions estimates for each column of a matrix Y.
 #'
 #' @param Y         A matrix with the number of rows that is the same as the length of x that was used to construct nn.* matrices. The main application of this routine is for the case when the columns of Y are permutations some y.
 #' @param y.binary  Set to TRUE, if the values of all columns of Y are within the interval \code{[0,1]}.
@@ -2285,7 +2285,7 @@ rllm.2os.1D <- function(x, y1, y2, grid.size = 400, degree = 2, f = NULL, bw = N
 #' @param nn.w      A matrix of weights.
 #' @param nn.x      A matrix of x values over K nearest neighbors of each element of the grid.
 #' @param max.K     An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.
-#' @param degree    A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.
+#' @param degree    A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.
 #'
 #' @return  EY.grid
 #'
@@ -2328,11 +2328,11 @@ mllm.1D.fit.and.predict <- function(Y, y.binary, nn.i, nn.w, nn.x, max.K, degree
 #' A local linear 1D model with y being a matrix. It expects bw value.
 #'
 #' @param x              A numeric vector of a predictor variable.
-#' @param Y              A matrix such that nrow(Y) = length(x) representating many instances of the outcome variable.
+#' @param Y              A matrix such that nrow(Y) = length(x) representation many instances of the outcome variable.
 #' @param bw             A bandwidth parameter.
 #' @param y.binary       A logical variable. If TRUE, bw optimization is going to use a binary loss function mean(y(1-p) + (1-y)p).
 #' @param with.BB        A logical parameter. Set to TRUE if Bayesian bootstraps of the column's mean function are to be returned.
-# @param degree         A degree of the polynomial of x in the linear regresion; 0
+# @param degree         A degree of the polynomial of x in the linear regression; 0
 #' @param grid.size      A number of grid points; was grid.size = 10*length(x), but the results don't seem to be different from 400 which is much faster.
 #' @param min.K          The minimal number of x NN's that must be present in each window.
 #' @param nn.kernel      The name of a kernel that will be applied to NN distances of local linear regression models.
@@ -2415,10 +2415,10 @@ mllm.1D <- function(x,
 #' @param nx         The number of elements of x.
 #' @param max.K      A vector of __indices__ indicating the range where weights are not 0.
 #' @param degree     The degree of the local models.
-#' @param grid.nn.i  A matrix of grid asociated NN indices.
-#' @param grid.nn.w  A matrix of grid asociated NN weights.
-#' @param grid.nn.x  A matrix of grid asociated x values over NNs.
-#' @param grid.max.K A vector of grid asociated max.K values.
+#' @param grid.nn.i  A matrix of grid associated NN indices.
+#' @param grid.nn.w  A matrix of grid associated NN weights.
+#' @param grid.nn.x  A matrix of grid associated x values over NNs.
+#' @param grid.max.K A vector of grid associated max.K values.
 get.BB.gpredictions <- function(n.BB,
                       nn.i,
                       nn.x,
@@ -2571,10 +2571,10 @@ get.gpredictionss <- function(bws,
 #' @param nx         The number of elements of x.
 #' @param max.K      A vector of __indices__ indicating the range where weights are not 0.
 #' @param degree     The degree of the local models.
-#' @param grid.nn.i  A matrix of grid asociated NN indices.
-#' @param grid.nn.w  A matrix of grid asociated NN weights.
-#' @param grid.nn.x  A matrix of grid asociated x values over NNs.
-#' @param grid.max.K A vector of grid asociated max.K values.
+#' @param grid.nn.i  A matrix of grid associated NN indices.
+#' @param grid.nn.w  A matrix of grid associated NN weights.
+#' @param grid.nn.x  A matrix of grid associated x values over NNs.
+#' @param grid.max.K A vector of grid associated max.K values.
 #' @param y.binary   A logical variable. If TRUE, bw optimization is going to use a binary loss function mean(y(1-p) + (1-y)p).
 #' @param alpha      The confidence level.
 #'

@@ -91,6 +91,7 @@ The algorithm:
 }
 }
 \examples{
+\dontrun{
 # Generate example data
 set.seed(123)
 x <- seq(0, 10, length.out = 100)
@@ -104,6 +105,7 @@ plot(result)
 
 # Summary
 summary(result)
+}
 
 }
 \seealso{

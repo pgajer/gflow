@@ -28,7 +28,7 @@ o.inv.fn <- function(o)
     o.inv
 }
 
-#' Producess k-NN distance and index matrices associated with a distance matrix.
+#' Produces k-NN distance and index matrices associated with a distance matrix.
 #'
 #' @param d   A distance matrix.
 #' @param k   The number of nearest neighbors.
@@ -603,7 +603,7 @@ fig.E.geodesic.F <- function(save.file.prefix, rlabs, pics.file.prefix)
     }
 }
 
-#' Sings of the derivatives of the E.geodesic.F porfiles.
+#' Sings of the derivatives of the E.geodesic.F profiles.
 #'
 #' @param save.file.prefix   The prefix of the save() files.
 #' @param rlabs              Labels of the subject factors with levels.

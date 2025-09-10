@@ -2,7 +2,7 @@
 % Please edit documentation in R/kernels.R
 \name{row.weighting}
 \alias{row.weighting}
-\title{Generates kernel defined wieghts of the rows of an input numeric metrix}
+\title{Generates kernel defined weights of the rows of an input numeric matrix}
 \usage{
 row.weighting(x, bws, kernel.str = "epanechnikov")
 }
@@ -18,5 +18,5 @@ the first elements is 0. Thus \code{max.K[i] = 0} indicates that there are no
 non-zero elements in that row.}
 }
 \description{
-Generates kernel defined wieghts of the rows of an input numeric metrix
+Generates kernel defined weights of the rows of an input numeric matrix
 }

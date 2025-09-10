@@ -58,7 +58,7 @@ kernel weights (default: 1.0).}
 }
 Default is 7.}
 
-\item{blending.coef}{Numeric value specifying weighting of models in model avaraging.}
+\item{blending.coef}{Numeric value specifying weighting of models in model averaging.}
 
 \item{precision}{Numeric value specifying the precision tolerance for binary search and
 optimization algorithms (default: 0.001).}

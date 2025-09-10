@@ -15,7 +15,7 @@ llm.1D.beta(nn.x, nn.y, nn.w, max.K, degree)
 
 \item{max.K}{A vector of indices indicating the range where weights are not 0.}
 
-\item{degree}{A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.}
+\item{degree}{A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.}
 }
 \value{
 list with components: beta, gpredictions.

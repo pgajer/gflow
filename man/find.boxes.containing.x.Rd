@@ -13,7 +13,7 @@ find.boxes.containing.x(boxes, x, p.exp = 0.1, margin = NULL)
 
 \item{p.exp}{An expansion factor for the bounding box. Each edge of the box is scaled by the factor (1 + p.exp). Default is 0.1.}
 
-\item{margin}{An explicity expansion amount of the box in along each axis.}
+\item{margin}{An explicitly expansion amount of the box in along each axis.}
 }
 \value{
 A list representing the sub-box containing \code{x}, or \code{NULL} if \code{x} is not found within any sub-box.

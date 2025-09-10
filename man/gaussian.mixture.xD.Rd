@@ -19,11 +19,11 @@ gaussian.mixture.xD(
 \arguments{
 \item{S}{A matrix or data frame of points over which a the values of the constructed synthetic function will be evaluated.}
 
-\item{X.lmax}{A matrix or data frame of the localtion of local maxima.}
+\item{X.lmax}{A matrix or data frame of the location of local maxima.}
 
 \item{n.lmax}{The number of local maxima. Used when X.lmax is NULL. If this is the case, a random set of n.lmax rows of S is taken to be X.lmax.}
 
-\item{y.lmax}{A vector of values the function being created supposet to have at the local maxima. A function that will be constructed is designed to have the values at the local maxima specified by y.lmax, but there are no warranty that it is going to be the case.}
+\item{y.lmax}{A vector of values the function being created supposed to have at the local maxima. A function that will be constructed is designed to have the values at the local maxima specified by y.lmax, but there are no warranty that it is going to be the case.}
 
 \item{y.min}{Minimum y value for local maxima (defaults to 1).}
 

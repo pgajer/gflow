@@ -30,6 +30,6 @@ This function creates a partition of unity (PoU) over a subset S of \(R^d)\),
 where d is the number of columns of S. The components of the partition of
 unity are constructed from q-exponential Gaussian radial functions. If a matrix or data
 frame, X.centers, of the centers of the components of the PoU, the centers of
-the compoenents will be places at these points. If X.centers is NULL, then
+the components will be places at these points. If X.centers is NULL, then
 the n.comp centers will be selected from the points of S.
 }

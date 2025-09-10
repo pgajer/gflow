@@ -9,12 +9,12 @@ get.bws(d, min.K, bw)
 \arguments{
 \item{d}{A numeric matrix nn.d of distances to NNs.}
 
-\item{min.K}{The mininum number of elements of each row with weights > 0.}
+\item{min.K}{The minimum number of elements of each row with weights > 0.}
 
-\item{bw}{A bendwidth.}
+\item{bw}{A bandwidth.}
 }
 \value{
-A vector of bendwidths.
+A vector of bandwidths.
 }
 \description{
 Finds a bandwidth for each column of d, such that \code{bws[i] = bw}

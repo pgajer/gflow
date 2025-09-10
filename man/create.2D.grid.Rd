@@ -14,7 +14,7 @@ on each axis that are the basis of the grid.}
 
 \item{f}{A fraction of x1 and x2 range that the grid is extended to.}
 
-\item{eSDf}{An edge subdivisioin factor that is a scaling factor, such that edges of mstree(X) are
+\item{eSDf}{An edge subdivision factor that is a scaling factor, such that edges of mstree(X) are
 subdivided if their length is greater than eSDf * mode(edge.len).}
 
 \item{gRf}{A grid radius factor that is a scaling factor, such that points of the rectangular grid

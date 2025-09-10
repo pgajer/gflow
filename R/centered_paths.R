@@ -164,7 +164,7 @@ get.path.data <- function(adj.list,
     return(result)
 }
 
-#' Create a Refined Graph with Uniformly Spaced Grid Vertices and creates local paths throught the specified ref vertex
+#' Create a Refined Graph with Uniformly Spaced Grid Vertices and creates local paths through the specified ref vertex
 #'
 #' @description
 #' Creates a refined version of an input graph by adding grid vertices (points) along

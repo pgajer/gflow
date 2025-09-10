@@ -30,7 +30,7 @@ llm.1D.fit.and.predict.global.BB.qCrI(
 
 \item{max.K}{An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.}
 
-\item{degree}{A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.}
+\item{degree}{A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.}
 
 \item{nx}{The number of elements of x.}
 

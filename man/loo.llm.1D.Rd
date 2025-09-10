@@ -23,7 +23,7 @@ loo.llm.1D(
 \item{grid.size}{A number of grid points; was grid.size = 10*length(x), but the
 results don't seem to be different from 400 which is much faster.}
 
-\item{degree}{A degree of the polynomial of x in the linear regresion; 0
+\item{degree}{A degree of the polynomial of x in the linear regression; 0
 means weighted mean, 1 is regular linear model lm(y ~ x), and deg = d is
 lm(y ~ poly(x, d)). The only allowed values are 1 and 2.}
 

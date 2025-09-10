@@ -18,7 +18,7 @@ mllm.1D(
 \arguments{
 \item{x}{A numeric vector of a predictor variable.}
 
-\item{Y}{A matrix such that nrow(Y) = length(x) representating many instances of the outcome variable.}
+\item{Y}{A matrix such that nrow(Y) = length(x) representation many instances of the outcome variable.}
 
 \item{bw}{A bandwidth parameter.}
 

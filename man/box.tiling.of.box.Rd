@@ -7,7 +7,7 @@
 box.tiling.of.box(n, box)
 }
 \arguments{
-\item{n}{An integer number specifying the number of subintervals (of equal
+\item{n}{An integer number specifying the number of sub-intervals (of equal
 length within each axis, but of potentially of different lengths between
 different axes) of each axis that will be used to construct box tiling of
 the given box.}

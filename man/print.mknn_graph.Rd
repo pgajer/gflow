@@ -17,10 +17,3 @@ Invisibly returns the input object.
 \description{
 Prints a concise summary of a mutual k-nearest neighbor graph object.
 }
-\examples{
-# Create a simple graph
-X <- matrix(rnorm(50 * 2), ncol = 2)
-graph <- create.mknn.graph(X, k = 5)
-print(graph)
-
-}

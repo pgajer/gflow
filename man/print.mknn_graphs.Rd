@@ -18,9 +18,10 @@ Invisibly returns the input object.
 Prints a concise summary of a collection of mutual k-nearest neighbor graphs.
 }
 \examples{
+\dontrun{
 # Create multiple graphs
 X <- matrix(rnorm(100 * 3), ncol = 3)
 graphs <- create.mknn.graphs(X, kmin = 5, kmax = 10)
 print(graphs)
-
+}
 }

@@ -18,8 +18,8 @@ box.tiling(
 \item{X}{A matrix of points in some Euclidean space.}
 
 \item{n.segments.per.axis}{An integer number specifying the number of
-segments (subintervals) of each axis that will be used to construct box
-tiling of the given box. The segmenst are of equal length within each
+segments (sub-intervals) of each axis that will be used to construct box
+tiling of the given box. The segments are of equal length within each
 axis, but potentially of different lengths between different axes)}
 
 \item{eps}{A distance threshold (non-negative real number) such that each box

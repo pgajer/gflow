@@ -110,7 +110,7 @@ tr.exponential.kernel <- function(x, bw=1)
 }
 
 
-#' Generates kernel defined wieghts of the rows of an input numeric metrix
+#' Generates kernel defined weights of the rows of an input numeric matrix
 #'
 #' @param x          A numeric matrix.
 #' @param bws        A numeric vector of bandwidths.
@@ -166,7 +166,7 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
 #' second.
 #'
 #' @param d      A numeric matrix.
-#' @param min.K  The mininum __number_ of elements of each row of d after normalization with normalized distance < 1.
+#' @param min.K  The minimum __number_ of elements of each row of d after normalization with normalized distance < 1.
 #' @param bw     A normalization non-negative constant.
 #'
 #' @return A list with two components: nd (normalized distances), r (radii).
@@ -210,10 +210,10 @@ normalize.dist <- function(d, min.K, bw)
 #' if \code{d[iminK + ir] < bw} and \code{bws[i] = d[iminK + 1 + ir] = d[minK + ir]}, otherwise.
 #'
 #' @param d      A numeric matrix nn.d of distances to NNs.
-#' @param min.K  The mininum number of elements of each row with weights > 0.
-#' @param bw     A bendwidth.
+#' @param min.K  The minimum number of elements of each row with weights > 0.
+#' @param bw     A bandwidth.
 #'
-#' @return A vector of bendwidths.
+#' @return A vector of bandwidths.
 get.bws <- function(d, min.K, bw)
 {
     nr <- nrow(d)
@@ -244,12 +244,12 @@ get.bws <- function(d, min.K, bw)
 #'
 #' @param d      A numeric matrix.
 #'
-#' @param minK   A vector such that minK\[i\] is the required mininum number of
+#' @param minK   A vector such that minK\[i\] is the required minimum number of
 #'               elements in the row of the i-th column of d with weights > 0.
 #'
-#' @param bw     A bendwidth.
+#' @param bw     A bandwidth.
 #'
-#' @return A vector of bendwidths.
+#' @return A vector of bandwidths.
 #' @export
 get.bws.with.minK <- function(d, minK, bw)
 {

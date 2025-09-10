@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict}
 \alias{llm.1D.fit.and.predict}
-\title{Fits 1D rllm model and generates predictions esimates.}
+\title{Fits 1D rllm model and generates predictions estimates.}
 \usage{
 llm.1D.fit.and.predict(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degree, nx)
 }
@@ -19,7 +19,7 @@ llm.1D.fit.and.predict(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degree, nx)
 
 \item{max.K}{An array of indices indicating the range where weights are not 0. Indices < max.K at i have weights > 0.}
 
-\item{degree}{A degree of the polynomial of x in the linear regresion. The only allowed values are 1 and 2.}
+\item{degree}{A degree of the polynomial of x in the linear regression. The only allowed values are 1 and 2.}
 
 \item{nx}{The number of elements of x.}
 }
@@ -29,5 +29,5 @@ list with components: beta, predictions.
 NOTE: Weights must sum up to 1!
 }
 \description{
-Fits 1D rllm model and generates predictions esimates.
+Fits 1D rllm model and generates predictions estimates.
 }

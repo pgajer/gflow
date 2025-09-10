@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{subj.factor.signEy.profs}
 \alias{subj.factor.signEy.profs}
-\title{Sings of the derivatives of the E.geodesic.F porfiles.}
+\title{Sings of the derivatives of the E.geodesic.F profiles.}
 \usage{
 subj.factor.signEy.profs(save.file.prefix, rlabs, grid.size = 400)
 }
@@ -21,7 +21,7 @@ grid points. Values are 1 for positive derivatives, -1 for negative derivatives,
 and NA for factors without corresponding data files.
 }
 \description{
-Sings of the derivatives of the E.geodesic.F porfiles.
+Sings of the derivatives of the E.geodesic.F profiles.
 }
 \details{
 This function computes the signs of the derivatives (differences) of the expected

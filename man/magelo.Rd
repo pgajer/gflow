@@ -80,7 +80,7 @@ min_bandwidth = min.bw.f * range(x). Default: 0.025}
 
 \item{level}{Numeric between 0 and 1 specifying credible interval level}
 
-\item{n.C.itr}{Integer specifying number of Cleveland's iterative reweighting steps}
+\item{n.C.itr}{Integer specifying number of Cleveland's iterative re-weighting steps}
 
 \item{C}{Numeric specifying scaling factor for residuals in robust fitting}
 
@@ -133,7 +133,7 @@ interval level can be adjusted with the \code{level} parameter.
 
 \section{Robustness Parameters}{
 
-MAGELO includes options for robust fitting using Cleveland's iterative reweighting procedure.
+MAGELO includes options for robust fitting using Cleveland's iterative re-weighting procedure.
 The \code{n.C.itr} parameter controls the number of iterations, while \code{C} sets the
 scaling factor for residuals. Use \code{stop.C.itr.on.min} to enable early stopping when
 improvements plateau.

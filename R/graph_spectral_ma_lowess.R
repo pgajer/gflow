@@ -42,7 +42,7 @@
 #'          \item 7: Tricube (default)
 #'        }
 #'        Default is 7.
-#' @param blending.coef Numeric value specifying weighting of models in model avaraging.
+#' @param blending.coef Numeric value specifying weighting of models in model averaging.
 #' @param precision Numeric value specifying the precision tolerance for binary search and
 #'   optimization algorithms (default: 0.001).
 #' @param verbose Logical indicating whether to display progress information (default: FALSE).

@@ -1560,7 +1560,7 @@ synthetic.1D.spline <- function(n.lmax,
 #'         the values of the bump functions at each grid point. The sum of the column values at
 #'         each row should be normalized to 1 to ensure a true partition of unity.
 #'   \item \code{U.before}: U before normalization.
-#'   \item \code{x.grid}: A uniform grid over the inverval \eqn{[x.min, x.max]}.
+#'   \item \code{x.grid}: A uniform grid over the interval \eqn{[x.min, x.max]}.
 #'   \item \code{x.centers}: Sorted in the ascending order x.centers.
 #'   \item \code{breaks}: Mid points between x.centers.
 #' }
@@ -1831,7 +1831,7 @@ bi.gaussian.mixture <- function(n.lmax,
 
 #' Evaluates radial q-exponential Gaussian on set of points
 #'
-#' Evaluates radial q-exponential Gaussian cetnered at 'center' with standard deviation sigma
+#' Evaluates radial q-exponential Gaussian centered at 'center' with standard deviation sigma
 #' and power q on a set of points X.
 #'
 #' @param X A matrix of data frame of points at which the radia q-exponential Gaussian is to be evaluated.
@@ -1862,7 +1862,7 @@ radial.qexp.gaussian <- function(X, center, sigma = 1, q = 1) {
 #' where d is the number of columns of S. The components of the partition of
 #' unity are constructed from q-exponential Gaussian radial functions. If a matrix or data
 #' frame, X.centers, of the centers of the components of the PoU, the centers of
-#' the compoenents will be places at these points. If X.centers is NULL, then
+#' the components will be places at these points. If X.centers is NULL, then
 #' the n.comp centers will be selected from the points of S.
 #'
 #' @param S A matrix or data frame of points over which the partition of unity will be evaluated.
@@ -1968,9 +1968,9 @@ partition.of.unity.xD <- function(S,
 #' creating complex, non-linear synthetic data for analysis and testing.
 #'
 #' @param S A matrix or data frame of points over which a the values of the constructed synthetic function will be evaluated.
-#' @param X.lmax A matrix or data frame of the localtion of local maxima.
+#' @param X.lmax A matrix or data frame of the location of local maxima.
 #' @param n.lmax The number of local maxima. Used when X.lmax is NULL. If this is the case, a random set of n.lmax rows of S is taken to be X.lmax.
-#' @param y.lmax A vector of values the function being created supposet to have at the local maxima. A function that will be constructed is designed to have the values at the local maxima specified by y.lmax, but there are no warranty that it is going to be the case.
+#' @param y.lmax A vector of values the function being created supposed to have at the local maxima. A function that will be constructed is designed to have the values at the local maxima specified by y.lmax, but there are no warranty that it is going to be the case.
 #' @param y.min Minimum y value for local maxima (defaults to 1).
 #' @param y.max Maximum y value for local maxima (defaults to 5).
 #' @param C A scaling factor to control the spread of the bump functions. Defaults to 2.
@@ -2454,7 +2454,7 @@ generate.clustered.data <- function(n.clusters,
 #' @param type        The method used for the construction.
 #' @param Ks          A vector of positive integer values specifying the range of k values.
 #' @param n.lmax      The number of gaussians to use.
-#' @param y.min       The mimimum value of the range of y values.
+#' @param y.min       The minimum value of the range of y values.
 #' @param y.max       The maximum value of the range of y values.
 #' @param out.dir     The output directory where the generated data is stored.
 #' @param verbose     Set it to TRUE, to print progress messages.

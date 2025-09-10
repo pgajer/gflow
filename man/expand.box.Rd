@@ -7,9 +7,9 @@
 expand.box(L, R, p.exp, margin = NULL)
 }
 \arguments{
-\item{L}{A numeric vector representing the left vertix that is the point of the box with the smallest coordinates among all other points of the box.}
+\item{L}{A numeric vector representing the left vertex that is the point of the box with the smallest coordinates among all other points of the box.}
 
-\item{R}{A numeric vector representing the right vertix that is the point of the box with the largest coordinates among all other points of the box.}
+\item{R}{A numeric vector representing the right vertex that is the point of the box with the largest coordinates among all other points of the box.}
 
 \item{p.exp}{An expansion factor for the bounding box. Each edge of the box is scaled by the factor (1 + p.exp).}
 

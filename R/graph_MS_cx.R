@@ -272,7 +272,7 @@ graph.constrained.gradient.flow.trajectories <- function(graph, core.graph, Ey) 
 #' Finds the Longest Stretch of Consecutive TRUE Values in a Logical Vector
 #'
 #' This function takes a logical vector as input and returns the starting index
-#' and length of the longest subinterval where the values are TRUE.
+#' and length of the longest sub-interval where the values are TRUE.
 #'
 #' @param l A logical vector.
 #'
