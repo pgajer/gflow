@@ -141,6 +141,7 @@ where \eqn{N(i, h)} is the neighborhood of vertex \eqn{i} within bandwidth \eqn{
 and \eqn{w_{ij}} are kernel weights based on graph distance.
 }
 \examples{
+\dontrun{
 n.pts <- 100
 gm <- generate.1d.gaussian.mixture(
     n.points = n.pts,
@@ -201,5 +202,6 @@ which.min(gks.res$bw_mean_abs_errors)
 plot(gm$x, gm$y, type = "l", las = 1, ylim = range(y), col = "red")
 points(x, y)
 lines(x, gks.res$predictions, col = "blue")
+}
 
 }

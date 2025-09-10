@@ -55,7 +55,7 @@ if (interactive() && requireNamespace("rgl", quietly = TRUE)) {
   rgl::open3d()
   rgl::plot3d(X)
   # Return coordinates of selected points:
-  coords <- points3D.select()
+  coords <- select3D.points()
   # Or return (id, index) pairs:
   # idxmat <- select3D.points(value = FALSE)
 }
