@@ -23,7 +23,7 @@ void C_permute(int *x, int n);
 #define CHECK_PTR(p) \
     do { \
         if ((p) == NULL) { \
-            error("Memory allocation failed in file %s at line %d.\n", __FILE__, __LINE__); \
+            Rf_error("Memory allocation failed in file %s at line %d.\n", __FILE__, __LINE__); \
         } \
     } while(0)
 
@@ -642,7 +642,7 @@ extern "C" {
                                   int    *maxK,
                                   double *w);
 
-    void C_columnwise_eval(const int    *nn_i,
+    void C_columnwise_Rf_eval(const int    *nn_i,
                            const int    *rK,
                            const int    *rng,
                            const double *x,

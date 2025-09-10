@@ -1,6 +1,9 @@
 #ifndef ULOGIT_HPP
 #define ULOGIT_HPP
 
+#include <R.h>
+#include <Rinternals.h>
+
 #include <Eigen/Dense>
 #include <vector>
 #include <string>
@@ -64,7 +67,7 @@ struct eigen_ulogit_t {
     *           equal to max_iterations if converged=false */
     int iterations;
 
-   /** @brief Vector of warning messages from the fitting process
+   /** @brief Vector of Rf_warning messages from the fitting process
     *  @details Contains warnings about numerical issues such as:
     *   - Perfect or quasi-complete separation
     *   - Numerical stability issues in IWLS steps
@@ -85,7 +88,7 @@ public:
         // Verify beta has correct dimensions based on model type
         int expected_size = fit_quadratic ? 3 : 2;
         if (beta.size() != expected_size) {
-            error("Model coefficients vector has incorrect size");
+            Rf_error("Model coefficients vector has incorrect size");
         }
 
         int n = x.size();

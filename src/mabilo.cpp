@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <atomic>
@@ -67,7 +67,7 @@ extern "C" {
  *
  * @param s_x Vector of x coordinates (must be sorted)
  * @param s_y Vector of y coordinates (response values)
- * @param s_y_true Optional vector of true y values for error calculation
+ * @param s_y_true Optional vector of true y values for Rf_error calculation
  * @param s_w Vector of weights for each point
  * @param s_k_min Minimum number of neighbors (must be positive)
  * @param s_k_max Maximum number of neighbors (must be greater than k_min)
@@ -88,7 +88,7 @@ extern "C" {
  * - predictions: Model-averaged predictions using optimal k
  * - k_predictions: Model-averaged predictions for all k values
  *
- * @throws error if input vectors have inconsistent lengths or invalid parameters
+ * @throws Rf_error if input vectors have inconsistent lengths or invalid parameters
  */
 SEXP S_wmabilo(SEXP s_x,
                  SEXP s_y,
@@ -138,18 +138,18 @@ SEXP S_wmabilo(SEXP s_x,
 
     // Creating return list
     const int N_COMPONENTS = 7;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     std::vector<int> k_values(wmabilo_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
-    SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = wmabilo_results.opt_k;
     SET_VECTOR_ELT(result, 1, s_opt_k);
 
-    SEXP s_opt_k_idx = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k_idx)[0] = wmabilo_results.opt_k_idx;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
@@ -166,16 +166,16 @@ SEXP S_wmabilo(SEXP s_x,
     SET_VECTOR_ELT(result, 6, convert_vector_vector_double_to_R(wmabilo_results.k_predictions)); n_protected++;
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("k_values"));
-    SET_STRING_ELT(names, 1, mkChar("opt_k"));
-    SET_STRING_ELT(names, 2, mkChar("opt_k_idx"));
-    SET_STRING_ELT(names, 3, mkChar("k_mean_errors"));
-    SET_STRING_ELT(names, 4, mkChar("k_mean_true_errors"));
-    SET_STRING_ELT(names, 5, mkChar("predictions"));
-    SET_STRING_ELT(names, 6, mkChar("k_predictions"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("k_mean_true_errors"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("k_predictions"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 
@@ -329,7 +329,7 @@ bb_cri_t mabilo_bb_cri(const std::vector<double>& x,
  *
  * @param x Vector of ordered x values (predictor variable)
  * @param y Vector of y values (response variable)
- * @param y_true Optional vector of true y values for error calculation
+ * @param y_true Optional vector of true y values for Rf_error calculation
  * @param k_min Minimum number of neighbors on each side
  * @param k_max Maximum number of neighbors on each side
  * @param n_bb Number of Bayesian bootstrap iterations (0 to skip bootstrap)
@@ -502,18 +502,18 @@ SEXP S_mabilo(SEXP s_x,
 
     // Creating return list
     const int N_COMPONENTS = 10;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     std::vector<int> k_values(wmabilo_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
-    SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = wmabilo_results.opt_k;
     SET_VECTOR_ELT(result, 1, s_opt_k);
 
-    SEXP s_opt_k_idx = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k_idx)[0] = wmabilo_results.opt_k_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
@@ -540,19 +540,19 @@ SEXP S_mabilo(SEXP s_x,
     }
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("k_values"));
-    SET_STRING_ELT(names, 1, mkChar("opt_k"));
-    SET_STRING_ELT(names, 2, mkChar("opt_k_idx"));
-    SET_STRING_ELT(names, 3, mkChar("k_mean_errors"));
-    SET_STRING_ELT(names, 4, mkChar("k_mean_true_errors"));
-    SET_STRING_ELT(names, 5, mkChar("predictions"));
-    SET_STRING_ELT(names, 6, mkChar("k_predictions"));
-    SET_STRING_ELT(names, 7, mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 8, mkChar("cri_L"));
-    SET_STRING_ELT(names, 9, mkChar("cri_U"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("k_mean_true_errors"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("k_predictions"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("bb_predictions"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("cri_L"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("cri_U"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 
@@ -560,20 +560,20 @@ SEXP S_mabilo(SEXP s_x,
 }
 
 /**
- * @brief Smoothed error version of Model-Averaged LOWESS (MABILO) for robust local regression
+ * @brief Smoothed Rf_error version of Model-Averaged LOWESS (MABILO) for robust local regression
  *
  * @details Similar to uwmabilo, but applies additional smoothing to the LOOCV errors
- * to reduce noise in k selection. The error curve is smoothed using uwmabilo with
+ * to reduce noise in k selection. The Rf_error curve is smoothed using uwmabilo with
  * a fixed window size of 0.25 * n_points.
  *
  * @param x Vector of ordered x values (predictor variable)
  * @param y Observed y values corresponding to x (response variable)
- * @param y_true Optional true y values for error calculation
+ * @param y_true Optional true y values for Rf_error calculation
  * @param k_min Minimum number of neighbors on each side
  * @param k_max Maximum number of neighbors on each side
- * @param error_window_factor Factor to determine window size for error curve smoothing (default: 0.25).
+ * @param error_window_factor Factor to determine window size for Rf_error curve smoothing (default: 0.25).
  *                           The window size will be error_window_factor * n_points neighbors on each side.
- *                           Larger values create smoother error curves but may miss local structure.
+ *                           Larger values create smoother Rf_error curves but may miss local structure.
  * @param distance_kernel Kernel function (0: Tricube, 1: Epanechnikov, 2: Exponential)
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
@@ -585,7 +585,7 @@ SEXP S_mabilo(SEXP s_x,
  * @throws Rf_error for numerical instability
  *
  * @note The smoothing helps prevent selecting suboptimal k values due to noise
- * in the error measurements
+ * in the Rf_error measurements
  */
 mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
                                      const std::vector<double>& y,
@@ -891,7 +891,7 @@ mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
 }
 
 /**
- * @brief R interface to the smoothed error MABILO implementation
+ * @brief R interface to the smoothed Rf_error MABILO implementation
  *
  * @details Converts R objects to C++ types, calls mabilo_with_smoothed_errors(), and returns results
  * as an R list. Handles memory management and R object protection.
@@ -901,9 +901,9 @@ mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
  * @param s_y_true R vector of true y values (can be NULL)
  * @param s_k_min R integer for minimum k
  * @param s_k_max R integer for maximum k
- * @param s_error_window_factor Factor to determine window size for error curve smoothing (default: 0.25).
+ * @param s_error_window_factor Factor to determine window size for Rf_error curve smoothing (default: 0.25).
  *                           The window size will be error_window_factor * n_points neighbors on each side.
- *                           Larger values create smoother error curves but may miss local structure.
+ *                           Larger values create smoother Rf_error curves but may miss local structure.
  * @param s_distance_kernel R integer for kernel type
  * @param s_dist_normalization_factor R numeric for distance normalization
  * @param s_epsilon R numeric for numerical stability
@@ -913,8 +913,8 @@ mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
  *         - k_values: Vector of k values used
  *         - opt_k: Optimal k value
  *         - opt_k_idx: Index of optimal k
- *         - k_mean_errors: Raw error values
- *         - smoothed_k_mean_errors: Smoothed error values
+ *         - k_mean_errors: Raw Rf_error values
+ *         - smoothed_k_mean_errors: Smoothed Rf_error values
  *         - k_mean_true_errors: True errors (if y_true provided)
  *         - predictions: Final predictions
  *         - k_predictions: Predictions for all k values
@@ -966,18 +966,18 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
 
     // Creating return list
     const int N_COMPONENTS = 8;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     std::vector<int> k_values(mabilo_with_smoothed_errors_results.k_mean_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
         k_values[k_index] = k;
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
-    SEXP s_opt_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k)[0] = mabilo_with_smoothed_errors_results.opt_k + 1;
     SET_VECTOR_ELT(result, 1, s_opt_k);
 
-    SEXP s_opt_k_idx = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_k_idx)[0] = mabilo_with_smoothed_errors_results.opt_k_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_k_idx);
 
@@ -996,17 +996,17 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
     SET_VECTOR_ELT(result, 7, convert_vector_vector_double_to_R(mabilo_with_smoothed_errors_results.k_predictions)); n_protected++;
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("k_values"));
-    SET_STRING_ELT(names, 1, mkChar("opt_k"));
-    SET_STRING_ELT(names, 2, mkChar("opt_k_idx"));
-    SET_STRING_ELT(names, 3, mkChar("k_mean_errors"));
-    SET_STRING_ELT(names, 4, mkChar("smoothed_k_mean_errors"));
-    SET_STRING_ELT(names, 5, mkChar("k_mean_true_errors"));
-    SET_STRING_ELT(names, 6, mkChar("predictions"));
-    SET_STRING_ELT(names, 7, mkChar("k_predictions"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("smoothed_k_mean_errors"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_true_errors"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("k_predictions"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 
@@ -1034,7 +1034,7 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
  *   - Weighted average of LOOCV errors
  *
  * Phase 3 - Optimal k Selection:
- * - Find k with minimum mean LOOCV error
+ * - Find k with minimum mean LOOCV Rf_error
  * - Return corresponding predictions and errors
  *
  * The algorithm uses k-hop neighbors instead of k-nearest neighbors, providing
@@ -1042,7 +1042,7 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
  *
  * @param x Vector of predictor values (sorted in ascending order)
  * @param y Vector of response values corresponding to x
- * @param y_true Optional vector of true values for error calculation
+ * @param y_true Optional vector of true values for Rf_error calculation
  * @param w Vector of sample weights
  * @param k_min Minimum number of neighbors to consider
  * @param k_max Maximum number of neighbors to consider
@@ -1183,7 +1183,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
     struct pred_w_err_t {
         double prediction;
         double weight;
-        double error;
+        double Rf_error;
     } pred_w_err;
 
     std::vector<std::vector<pred_w_err_t>> pt_pred_w_err(n_points);
@@ -1253,7 +1253,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
             for (int s = 0, j = x_min_index; j < x_max_index_plus_one; s++, j++) {
                 pred_w_err.prediction = wlm_fit.predictions[s];
                 pred_w_err.weight     = w_window[s];
-                pred_w_err.error      = wlm_fit.errors[s];
+                pred_w_err.Rf_error      = wlm_fit.errors[s];
                 pt_pred_w_err[j].push_back(pred_w_err);
             }
         }
@@ -1287,7 +1287,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
             for (const auto& v : pt_pred_w_err[i]) {
                 weighted_sum += v.weight * v.prediction;
                 weight_sum   += v.weight;
-                wmean_error  += v.weight * v.error;
+                wmean_error  += v.weight * v.Rf_error;
             }
 
             k_errors[i] = wmean_error / weight_sum;
@@ -1324,7 +1324,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
     // Phase 3: Optimal k Selection
     //------------------------------------------------------------------------------
     // 1. Compare mean LOOCV errors across different k values
-    // 2. Select k with minimum mean error
+    // 2. Select k with minimum mean Rf_error
     // 3. Store corresponding predictions and errors
     auto opt_k_ptm = std::chrono::steady_clock::now();
     if (verbose) {
@@ -1374,7 +1374,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
  *   - Weighted average of LOOCV errors
  *
  * Phase 3 - Optimal k Selection:
- * - Find k with minimum mean LOOCV error
+ * - Find k with minimum mean LOOCV Rf_error
  * - Return corresponding predictions and errors
  *
  * The algorithm uses k-hop neighbors instead of k-nearest neighbors, providing
@@ -1382,7 +1382,7 @@ mabilo_t wmabilo(const std::vector<double>& x,
  *
  * @param x Vector of predictor values (sorted in ascending order)
  * @param y Vector of response values corresponding to x
- * @param y_true Optional vector of true values for error calculation
+ * @param y_true Optional vector of true values for Rf_error calculation
  * @param k_min Minimum number of neighbors to consider
  * @param k_max Maximum number of neighbors to consider
  * @param distance_kernel Integer specifying kernel type for distance weighting
@@ -1521,7 +1521,7 @@ mabilo_t uwmabilo(const std::vector<double>& x,
     struct pred_w_err_t {
         double prediction;
         double weight;
-        double error;
+        double Rf_error;
     } pred_w_err;
 
     std::vector<std::vector<pred_w_err_t>> pt_pred_w_err(n_points);
@@ -1591,7 +1591,7 @@ mabilo_t uwmabilo(const std::vector<double>& x,
             for (int s = 0, j = x_min_index; j < x_max_index_plus_one; s++, j++) {
                 pred_w_err.prediction = wlm_fit.predictions[s];
                 pred_w_err.weight     = w_window[s];
-                pred_w_err.error      = wlm_fit.errors[s];
+                pred_w_err.Rf_error      = wlm_fit.errors[s];
                 pt_pred_w_err[j].push_back(pred_w_err);
             }
         }
@@ -1625,7 +1625,7 @@ mabilo_t uwmabilo(const std::vector<double>& x,
             for (const auto& v : pt_pred_w_err[i]) {
                 weighted_sum += v.weight * v.prediction;
                 weight_sum   += v.weight;
-                wmean_error  += v.weight * v.error;
+                wmean_error  += v.weight * v.Rf_error;
             }
 
             k_errors[i] = wmean_error / weight_sum;
@@ -1662,7 +1662,7 @@ mabilo_t uwmabilo(const std::vector<double>& x,
     // Phase 3: Optimal k Selection
     //------------------------------------------------------------------------------
     // 1. Compare mean LOOCV errors across different k values
-    // 2. Select k with minimum mean error
+    // 2. Select k with minimum mean Rf_error
     // 3. Store corresponding predictions and errors
     auto opt_k_ptm = std::chrono::steady_clock::now();
     if (verbose) {

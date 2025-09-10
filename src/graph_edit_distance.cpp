@@ -3,7 +3,7 @@
 #include <R_ext/Rdynload.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <cmath>
@@ -257,9 +257,9 @@ SEXP S_graph_edit_distance(SEXP s_graph1_adj_list,
         return s_res;
 
     } catch (const std::exception& e) {
-        Rf_error("C++ error: %s", e.what());
+        Rf_error("C++ Rf_error: %s", e.what());
     } catch (...) {
-        Rf_error("Unknown C++ error occurred");
+        Rf_error("Unknown C++ Rf_error occurred");
     }
 }
 

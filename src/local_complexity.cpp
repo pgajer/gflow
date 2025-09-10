@@ -1,4 +1,5 @@
 #include <R.h>
+#include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
 #include <vector>
@@ -66,7 +67,7 @@ double estimate_local_complexity(
 
     if (x.empty() || y.empty() || x.size() != y.size() ||
         center_idx < 0 || center_idx >= static_cast<int>(x.size())) {
-        error("Invalid input parameters");
+        Rf_error("Invalid input parameters");
     }
 
     double center = x[center_idx];
@@ -148,7 +149,7 @@ double estimate_local_complexity(
  *
  * @note This function converts R's 1-based indexing to C++'s 0-based indexing
  *
- * @throws R error if:
+ * @throws R Rf_error if:
  *         - Input types are incorrect (non-numeric x or y, non-integer center_idx)
  *         - Input vectors have unequal length
  *         - Any C++ exception occurs during computation
@@ -164,14 +165,14 @@ SEXP S_estimate_local_complexity(
     int n_protected = 0;
 
     // Check input types
-    if (!isReal(x_r) || !isReal(y_r) || !isInteger(center_idx_r) || !isReal(pilot_bandwidth_r)) {
-        error("Invalid input types");
+    if (!Rf_isReal(x_r) || !Rf_isReal(y_r) || !Rf_isInteger(center_idx_r) || !Rf_isReal(pilot_bandwidth_r)) {
+        Rf_error("Invalid input types");
     }
 
     // Get input lengths and check consistency
     int n_points = LENGTH(x_r);
     if (n_points != LENGTH(y_r)) {
-        error("Length of x and y must match");
+        Rf_error("Length of x and y must match");
     }
 
     // Create vectors from R data
@@ -184,7 +185,7 @@ SEXP S_estimate_local_complexity(
     int kernel_type = INTEGER(kernel_type_r)[0];
 
     // Allocate output
-    SEXP result_r = PROTECT(allocVector(REALSXP, 1));
+    SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
     n_protected++;
 
     // Compute result
@@ -192,7 +193,7 @@ SEXP S_estimate_local_complexity(
         REAL(result_r)[0] = estimate_local_complexity(x, y, center_idx, pilot_bandwidth, kernel_type);
     } catch (const std::exception& e) {
         UNPROTECT(n_protected);
-        error("Error in estimate_local_complexity: %s", e.what());
+        Rf_error("Error in estimate_local_complexity: %s", e.what());
     }
 
     // Clean up and return
@@ -231,7 +232,7 @@ double estimate_binary_local_complexity_comparative(
 
     if (x.empty() || y.empty() || x.size() != y.size() ||
         center_idx < 0 || center_idx >= static_cast<int>(x.size())) {
-        error("Invalid input parameters");
+        Rf_error("Invalid input parameters");
     }
 
     double center = x[center_idx];
@@ -330,7 +331,7 @@ double estimate_binary_local_complexity_quadratic(
 
     if (x.empty() || y.empty() || x.size() != y.size() ||
         center_idx < 0 || center_idx >= static_cast<int>(x.size())) {
-        error("Invalid input parameters");
+        Rf_error("Invalid input parameters");
     }
 
     double center = x[center_idx];
@@ -463,7 +464,7 @@ double estimate_binary_local_complexity_quadratic(
 
     if (x.empty() || y.empty() || x.size() != y.size() ||
         center_idx < 0 || center_idx >= static_cast<int>(x.size())) {
-        error("Invalid input parameters");
+        Rf_error("Invalid input parameters");
     }
 
     double center = x[center_idx];
@@ -733,7 +734,7 @@ std::vector<double> estimate_ma_binary_local_complexity_quadratic(
 
     // Check if we had any successful fits
     if (!any_successful_fit) {
-        throw std::runtime_error("No successful model fits achieved");
+        Rf_error("No successful model fits achieved");
     }
 
     // Compute weighted averages
@@ -765,7 +766,7 @@ std::vector<double> estimate_ma_binary_local_complexity_quadratic(
  * @details This function provides an R interface to the C++ implementation of
  * model-averaged binary local complexity estimation using quadratic logistic regression.
  * It handles conversion between R and C++ data types and provides R-appropriate
- * error handling.
+ * Rf_error handling.
  *
  * @param x_r SEXP (numeric vector) Predictor values
  * @param y_r SEXP (numeric vector) Binary response values (should contain only 0s and 1s)
@@ -774,12 +775,12 @@ std::vector<double> estimate_ma_binary_local_complexity_quadratic(
  *
  * @return SEXP (numeric vector) Estimated local complexity values for each point
  *
- * @throws R error if inputs are invalid or if computation fails
+ * @throws R Rf_error if inputs are invalid or if computation fails
  *
  * @note This function is not intended to be called directly from C/C++
- * @note R_NilValue inputs will trigger an error
- * @note Non-matching vector lengths will trigger an error
- * @note Non-numeric or non-integer inputs will trigger an error
+ * @note R_NilValue inputs will trigger an Rf_error
+ * @note Non-matching vector lengths will trigger an Rf_error
+ * @note Non-numeric or non-integer inputs will trigger an Rf_error
  */
 SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
                                                      SEXP y_r,
@@ -790,21 +791,21 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
     // Check for NULL inputs
     if (x_r == R_NilValue || y_r == R_NilValue ||
         pilot_bandwidth_r == R_NilValue || kernel_type_r == R_NilValue) {
-        error("Input arguments cannot be NULL");
+        Rf_error("Input arguments cannot be NULL");
     }
 
-    // Type checking with more specific error messages
-    if (!isReal(x_r)) error("'x' must be a numeric vector");
-    if (!isReal(y_r)) error("'y' must be a numeric vector");
-    if (!isReal(pilot_bandwidth_r)) error("'pilot_bandwidth' must be numeric");
-    if (!isInteger(kernel_type_r)) error("'kernel_type' must be integer");
+    // Type checking with more specific Rf_error messages
+    if (!Rf_isReal(x_r)) Rf_error("'x' must be a numeric vector");
+    if (!Rf_isReal(y_r)) Rf_error("'y' must be a numeric vector");
+    if (!Rf_isReal(pilot_bandwidth_r)) Rf_error("'pilot_bandwidth' must be numeric");
+    if (!Rf_isInteger(kernel_type_r)) Rf_error("'kernel_type' must be integer");
 
     // Length checking
     int n_points = LENGTH(x_r);
-    if (n_points < 1) error("Input vectors cannot be empty");
-    if (n_points != LENGTH(y_r)) error("Length of x and y must match");
-    if (LENGTH(pilot_bandwidth_r) != 1) error("pilot_bandwidth must be a scalar");
-    if (LENGTH(kernel_type_r) != 1) error("kernel_type must be a scalar");
+    if (n_points < 1) Rf_error("Input vectors cannot be empty");
+    if (n_points != LENGTH(y_r)) Rf_error("Length of x and y must match");
+    if (LENGTH(pilot_bandwidth_r) != 1) Rf_error("pilot_bandwidth must be a scalar");
+    if (LENGTH(kernel_type_r) != 1) Rf_error("kernel_type must be a scalar");
 
     // Convert inputs to C++ vectors
     std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
@@ -813,7 +814,7 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
     int kernel_type = INTEGER(kernel_type_r)[0];
 
     // Allocate result vector
-    SEXP result_r = PROTECT(allocVector(REALSXP, n_points));
+    SEXP result_r = PROTECT(Rf_allocVector(REALSXP, n_points));
     n_protected++;
 
     try {
@@ -825,7 +826,7 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
 
     } catch (const std::exception& e) {
         UNPROTECT(n_protected);
-        error("Error in estimate_ma_binary_local_complexity: %s", e.what());
+        Rf_error("Error in estimate_ma_binary_local_complexity: %s", e.what());
     }
 
     UNPROTECT(n_protected);
@@ -850,7 +851,7 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
  * @return SEXP containing single numeric value of estimated complexity
  *
  * @note Converts R's 1-based indices to C++'s 0-based indices
- * @note Handles R's error reporting via Rf_error
+ * @note Handles R's Rf_error reporting via Rf_error
  */
 SEXP S_estimate_binary_local_complexity(
     SEXP x_r,
@@ -862,13 +863,13 @@ SEXP S_estimate_binary_local_complexity(
 
     int n_protected = 0;
 
-    if (!isReal(x_r) || !isReal(y_r) || !isInteger(center_idx_r) || !isReal(pilot_bandwidth_r)) {
-        error("Invalid input types");
+    if (!Rf_isReal(x_r) || !Rf_isReal(y_r) || !Rf_isInteger(center_idx_r) || !Rf_isReal(pilot_bandwidth_r)) {
+        Rf_error("Invalid input types");
     }
 
     int n_points = LENGTH(x_r);
     if (n_points != LENGTH(y_r)) {
-        error("Length of x and y must match");
+        Rf_error("Length of x and y must match");
     }
 
     std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
@@ -879,7 +880,7 @@ SEXP S_estimate_binary_local_complexity(
     int kernel_type = INTEGER(kernel_type_r)[0];
     int method = INTEGER(method_r)[0];
 
-    SEXP result_r = PROTECT(allocVector(REALSXP, 1));
+    SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
     n_protected++;
 
     try {
@@ -891,12 +892,12 @@ SEXP S_estimate_binary_local_complexity(
             result = estimate_binary_local_complexity_comparative(x, y, center_idx,
                                                                pilot_bandwidth, kernel_type);
         } else {
-            error("Invalid method: must be 1 (quadratic) or 2 (comparative)");
+            Rf_error("Invalid method: must be 1 (quadratic) or 2 (comparative)");
         }
         REAL(result_r)[0] = result;
     } catch (const std::exception& e) {
         UNPROTECT(n_protected);
-        error("Error in estimate_binary_local_complexity: %s", e.what());
+        Rf_error("Error in estimate_binary_local_complexity: %s", e.what());
     }
 
     UNPROTECT(n_protected);
@@ -913,13 +914,13 @@ SEXP S_estimate_binary_local_complexity(
 
     int n_protected = 0;
 
-    if (!isReal(x_r) || !isReal(y_r) || !isInteger(center_idx_r) || !isReal(pilot_bandwidth_r)) {
-        error("Invalid input types");
+    if (!Rf_isReal(x_r) || !Rf_isReal(y_r) || !Rf_isInteger(center_idx_r) || !Rf_isReal(pilot_bandwidth_r)) {
+        Rf_error("Invalid input types");
     }
 
     int n_points = LENGTH(x_r);
     if (n_points != LENGTH(y_r)) {
-        error("Length of x and y must match");
+        Rf_error("Length of x and y must match");
     }
 
     std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
@@ -929,14 +930,14 @@ SEXP S_estimate_binary_local_complexity(
     double pilot_bandwidth = REAL(pilot_bandwidth_r)[0];
     int kernel_type = INTEGER(kernel_type_r)[0];
 
-    SEXP result_r = PROTECT(allocVector(REALSXP, 1));
+    SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
     n_protected++;
 
     try {
         REAL(result_r)[0] = estimate_binary_local_complexity(x, y, center_idx, pilot_bandwidth, kernel_type);
     } catch (const std::exception& e) {
         UNPROTECT(n_protected);
-        error("Error in estimate_binary_local_complexity: %s", e.what());
+        Rf_error("Error in estimate_binary_local_complexity: %s", e.what());
     }
 
     UNPROTECT(n_protected);

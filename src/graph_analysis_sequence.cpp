@@ -3,7 +3,7 @@
 #include <R_ext/Rdynload.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 // Standard library includes
 #include <vector>
@@ -356,7 +356,7 @@ compute_graph_analysis_sequence(
                 // Check if CV was performed and we found an optimal solution
                 if (!diffusion_result->mean_cv_errors.empty() && diffusion_result->optimal_time_step >= 0) {
                     current_Ey = diffusion_result->y_optimal; // The optimal smoothed values are directly available in y_optimal
-                    // The corresponding error and time step
+                    // The corresponding Rf_error and time step
                     // double optimal_cv_error = result->min_cv_error;
                     // int optimal_time = result->optimal_time_step;
                 } else {
@@ -506,13 +506,13 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
 
     std::vector<double> y, Ey; // Changed to double from int
     if (s_y != R_NilValue) {
-        PROTECT(s_y = coerceVector(s_y, REALSXP)); // Changed to REALSXP
+        PROTECT(s_y = Rf_coerceVector(s_y, REALSXP)); // Changed to REALSXP
         double* y_array = REAL(s_y);
         int y_len = LENGTH(s_y);
         y.assign(y_array, y_array + y_len);
         UNPROTECT(1);
     } else if (s_Ey != R_NilValue) {
-        PROTECT(s_Ey = coerceVector(s_Ey, REALSXP)); // Changed to REALSXP
+        PROTECT(s_Ey = Rf_coerceVector(s_Ey, REALSXP)); // Changed to REALSXP
         double* Ey_array = REAL(s_Ey);
         int Ey_len = LENGTH(s_Ey);
         Ey.assign(Ey_array, Ey_array + Ey_len);
@@ -521,7 +521,7 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
         Rf_error("s_y and s_Ey cannot be both null.");
     }
 
-    PROTECT(s_h_values = coerceVector(s_h_values, INTSXP));
+    PROTECT(s_h_values = Rf_coerceVector(s_h_values, INTSXP));
     int* h_values_array = INTEGER(s_h_values);
     int h_values_len = LENGTH(s_h_values);
     std::vector<int> h_values(h_values_array, h_values_array + h_values_len);
@@ -529,7 +529,7 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
 
     // Unpack diffusion parameters from R list
     diffusion_parameters_t diffusion_params;
-    PROTECT(s_diffusion_params = coerceVector(s_diffusion_params, VECSXP));
+    PROTECT(s_diffusion_params = Rf_coerceVector(s_diffusion_params, VECSXP));
 
     // Extract each parameter from the R list
     diffusion_params.n_time_steps = INTEGER(VECTOR_ELT(s_diffusion_params, 0))[0];
@@ -567,14 +567,14 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
 
     // Convert results to R list
     SEXP r_results_list;
-    PROTECT(r_results_list = allocVector(VECSXP, results.size()));
+    PROTECT(r_results_list = Rf_allocVector(VECSXP, results.size()));
 
     for (size_t i = 0; i < results.size(); i++) {
         const auto& ms = results[i];
 
         // Create list for single MS complex
         SEXP ms_list;
-        PROTECT(ms_list = allocVector(VECSXP, 12)); // Number of fields in MS_complex_plus_t
+        PROTECT(ms_list = Rf_allocVector(VECSXP, 12)); // Number of fields in MS_complex_plus_t
 
         // Convert each component
         SET_VECTOR_ELT(ms_list, 0, convert_set_to_R(ms.local_maxima));
@@ -592,21 +592,21 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
 
         // Set names
         SEXP names;
-        PROTECT(names = allocVector(STRSXP, 12));
-        SET_STRING_ELT(names, 0, mkChar("local_maxima"));
-        SET_STRING_ELT(names, 1, mkChar("local_minima"));
-        SET_STRING_ELT(names, 2, mkChar("lmax_to_lmin"));
-        SET_STRING_ELT(names, 3, mkChar("lmin_to_lmax"));
-        SET_STRING_ELT(names, 4, mkChar("procells"));
-        SET_STRING_ELT(names, 5, mkChar("cells"));
-        SET_STRING_ELT(names, 6, mkChar("unique_trajectories"));
-        SET_STRING_ELT(names, 7, mkChar("cell_trajectories"));
-        SET_STRING_ELT(names, 8, mkChar("path_graph_adj_list"));
-        SET_STRING_ELT(names, 9, mkChar("path_graph_weight_list"));
-        SET_STRING_ELT(names, 10, mkChar("shortest_paths"));
-        SET_STRING_ELT(names, 11, mkChar("Ey"));
+        PROTECT(names = Rf_allocVector(STRSXP, 12));
+        SET_STRING_ELT(names, 0, Rf_mkChar("local_maxima"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("local_minima"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("lmax_to_lmin"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("lmin_to_lmax"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("procells"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("cells"));
+        SET_STRING_ELT(names, 6, Rf_mkChar("unique_trajectories"));
+        SET_STRING_ELT(names, 7, Rf_mkChar("cell_trajectories"));
+        SET_STRING_ELT(names, 8, Rf_mkChar("path_graph_adj_list"));
+        SET_STRING_ELT(names, 9, Rf_mkChar("path_graph_weight_list"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("shortest_paths"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("Ey"));
 
-        setAttrib(ms_list, R_NamesSymbol, names);
+        Rf_setAttrib(ms_list, R_NamesSymbol, names);
         UNPROTECT(1); // names
 
         SET_VECTOR_ELT(r_results_list, i, ms_list);

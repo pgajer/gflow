@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "set_wgraph.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
@@ -68,19 +68,19 @@ SEXP S_parameterize_circular_graph(
 
 	// Create list and protect it
 	int protect_count = 0;
-	SEXP result = PROTECT(allocVector(VECSXP, n_elements)); protect_count++;
+	SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
 
 	// Set names
-	SEXP result_names = PROTECT(allocVector(STRSXP, n_elements));
+	SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 	for (int i = 0; i < n_elements; i++) {
-		SET_STRING_ELT(result_names, i, mkChar(names[i]));
+		SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
 	}
-	setAttrib(result, R_NamesSymbol, result_names);
+	Rf_setAttrib(result, R_NamesSymbol, result_names);
 	UNPROTECT(1); // for result_names
 
 	// Helper function to convert vector to SEXP
 	auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-		SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+		SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
 		double* ptr = REAL(r_vec);
 		std::copy(vec.begin(), vec.end(), ptr);
 		return r_vec;

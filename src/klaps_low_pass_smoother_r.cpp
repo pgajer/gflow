@@ -1,7 +1,7 @@
 #include <R.h>            // For Rprintf, etc.
 #include <Rinternals.h>   // For SEXP macros
 #undef length             // avoid clash with R
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>      // std::copy
@@ -87,21 +87,21 @@ extern "C" {
 		int n_elements = 12;
 
 		int protect_count = 0;
-		SEXP r_result = PROTECT(allocVector(VECSXP, n_elements)); protect_count++;
-		SEXP r_names  = PROTECT(allocVector(STRSXP, n_elements)); protect_count++;
+		SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
+		SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
 		for (int i = 0; i < n_elements; ++i) {
-			SET_STRING_ELT(r_names, i, mkChar(names[i]));
+			SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
 		}
-		setAttrib(r_result, R_NamesSymbol, r_names);
+		Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
 		// Helpers for conversion
 		auto vec_to_real = [&](const std::vector<double>& v) {
-			SEXP x = PROTECT(allocVector(REALSXP, v.size())); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size())); protect_count++;
 			std::copy(v.begin(), v.end(), REAL(x));
 			return x;
 		};
 		auto mat_to_real = [&](const Eigen::MatrixXd& M) {
-			SEXP x = PROTECT(allocMatrix(REALSXP, M.rows(), M.cols())); protect_count++;
+			SEXP x = PROTECT(Rf_allocMatrix(REALSXP, M.rows(), M.cols())); protect_count++;
 			double* ptr = REAL(x);
 			for (int j = 0; j < M.cols(); ++j)
 				for (int i = 0; i < M.rows(); ++i)
@@ -109,13 +109,13 @@ extern "C" {
 			return x;
 		};
 		auto vec_to_int = [&](const std::vector<size_t>& v, bool one_based=false) {
-			SEXP x = PROTECT(allocVector(INTSXP, v.size())); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(INTSXP, v.size())); protect_count++;
 			for (R_xlen_t i = 0; i < v.size(); ++i)
 				INTEGER(x)[i] = one_based ? (int)v[i] + 1 : (int)v[i];
 			return x;
 		};
 		auto scalar_int = [&](size_t v, bool one_based=false) {
-			SEXP x = PROTECT(allocVector(INTSXP, 1)); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
 			INTEGER(x)[0] = one_based ? (int)v + 1 : (int)v;
 			return x;
 		};
@@ -132,7 +132,7 @@ extern "C" {
 		SET_VECTOR_ELT(r_result, 8, scalar_int(result.opt_k_spectral_energy, true)); // opt_k_spectral_energy
 
 		// used_method: 0=Eigengap,1=GCV,2=EnergyThreshold
-		SEXP Rmethod = PROTECT(allocVector(INTSXP, 1)); protect_count++;
+		SEXP Rmethod = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
 		INTEGER(Rmethod)[0] = static_cast<int>(result.used_method);
 		SET_VECTOR_ELT(r_result, 9, Rmethod);
 
@@ -142,7 +142,7 @@ extern "C" {
 		{
 			size_t ncol = result.k_predictions.size();
 			size_t nrow = ncol ? result.k_predictions[0].size() : 0;
-			SEXP Kpred = PROTECT(allocMatrix(REALSXP, nrow, ncol)); protect_count++;
+			SEXP Kpred = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); protect_count++;
 			double* ptr = REAL(Kpred);
 			for (size_t j = 0; j < ncol; ++j) {
 				for (size_t i = 0; i < nrow; ++i) {

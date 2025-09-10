@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>         // std::vector
 #include <queue>          // std::priority_queue

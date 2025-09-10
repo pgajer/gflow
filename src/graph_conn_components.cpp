@@ -13,9 +13,10 @@
 
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <unordered_set>
@@ -164,8 +165,8 @@ std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const st
  */
 SEXP S_graph_connected_components(SEXP R_graph) {
 
-    if (!isNewList(R_graph)) {
-        error("Input must be a list");
+    if (!Rf_isNewList(R_graph)) {
+        Rf_error("Input must be a list");
     }
 
     int n = Rf_length(R_graph);
@@ -173,8 +174,8 @@ SEXP S_graph_connected_components(SEXP R_graph) {
 
     for (int i = 0; i < n; ++i) {
         SEXP neighbors = VECTOR_ELT(R_graph, i);
-        if (!isInteger(neighbors)) {
-            error("Each element of the input list must be an integer vector");
+        if (!Rf_isInteger(neighbors)) {
+            Rf_error("Each element of the input list must be an integer vector");
         }
         int* p_neighbors = INTEGER(neighbors);
         int m = Rf_length(neighbors);
@@ -186,7 +187,7 @@ SEXP S_graph_connected_components(SEXP R_graph) {
 
     std::vector<int> result = union_find(adj_vect);
 
-    SEXP R_result = PROTECT(allocVector(INTSXP, n));
+    SEXP R_result = PROTECT(Rf_allocVector(INTSXP, n));
     int* p_result = INTEGER(R_result);
 
     for (int i = 0; i < n; ++i) {

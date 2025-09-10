@@ -13,7 +13,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <atomic>
@@ -192,8 +192,8 @@ extern "C" {
  * @see path_graph_plm_t
  * @see create_path_graph_plm
  *
- * @warning This function modifies the provided weights to be strictly binary (0.0 or 1.0)
- * @warning Performance depends on the number of valid paths and non-zero weight points
+ * @Rf_warning This function modifies the provided weights to be strictly binary (0.0 or 1.0)
+ * @Rf_warning Performance depends on the number of valid paths and non-zero weight points
  *
  * Time Complexity: O(V * P * N), where:
  * - V is the number of vertices
@@ -460,8 +460,8 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
 *    - Computes kernel weights based on distances
 *    - Generates path-specific weights from Dirichlet(kernel_weights)
 *    - Fits a weighted linear model using the sampled weights
-*    - Computes LOOCV error for model selection
-* 3. Selects the best model based on LOOCV error
+*    - Computes LOOCV Rf_error for model selection
+* 3. Selects the best model based on LOOCV Rf_error
 * 4. Computes predictions using either direct model prediction or weighted average
 *    of predictions from neighboring vertices
 *
@@ -616,7 +616,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
             // Fit LOOCV model with sampled weights
             auto model = predict_lm_1d_loocv(y_path, x_path, bb_weights_path, path, position_in_path, y_binary, epsilon);
 
-            // Update best model if this one has lower LOOCV error
+            // Update best model if this one has lower LOOCV Rf_error
             if (model.loocv_at_ref_vertex < best_loocv_error) {
                 best_loocv_error = model.loocv_at_ref_vertex;
                 best_model = model;
@@ -680,10 +680,10 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
  *       - Constructs h-hop neighborhood Path Linear Model (PLM) graphs
  *       - Computes leave-one-out cross-validation (LOOCV) errors
  *   2. Global optimization:
- *       - Finds optimal h that minimizes mean CV error
+ *       - Finds optimal h that minimizes mean CV Rf_error
  *       - Computes conditional expectations using optimal h
  *   3. Local optimization:
- *       - For each vertex, finds optimal h minimizing its CV error
+ *       - For each vertex, finds optimal h minimizing its CV Rf_error
  *       - Computes vertex-specific conditional expectations
  *   4. Optional: Computes Bayesian bootstrap credible intervals
  *       - Estimates central tendency of conditional expectations
@@ -692,7 +692,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
  * @param neighbors Adjacency lists for each vertex
  * @param edge_lengths Corresponding edge lengths for each adjacency
  * @param y Response variables for each vertex
- * @param y_true True values for error computation (optional)
+ * @param y_true True values for Rf_error computation (optional)
  * @param use_median Use median instead of mean for bootstrap intervals
  * @param h_min Minimum neighborhood size (must be odd)
  * @param h_max Maximum neighborhood size (must be odd)
@@ -823,9 +823,9 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
         print_vect(errors,"errors");
         #endif
 
-        // Calculate mean error
+        // Calculate mean Rf_error
         if (verbose) {
-            Rprintf("\tCalculating mean error ... ");
+            Rprintf("\tCalculating mean Rf_error ... ");
             ptm = std::chrono::steady_clock::now();
         }
 
@@ -947,16 +947,16 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
  *             - Constructs h-hop neighborhood Path Linear Model (PLM) graphs
  *             - Computes leave-one-out cross-validation (LOOCV) errors
  *          3. Global optimization:
- *             - Finds optimal h that minimizes mean CV error
+ *             - Finds optimal h that minimizes mean CV Rf_error
  *             - Computes conditional expectations using optimal h
  *          4. Local optimization:
- *             - For each vertex, finds optimal h minimizing its CV error
+ *             - For each vertex, finds optimal h minimizing its CV Rf_error
  *             - Computes vertex-specific conditional expectations
  *          5. Optional: Computes Bayesian bootstrap credible intervals
  *
  * @param x Vector of ordered x values
  * @param y Observed y values corresponding to x
- * @param y_true True y values for error calculation (optional)
+ * @param y_true True y values for Rf_error calculation (optional)
  * @param max_distance_deviation Maximum allowed deviation from optimal center position
  * @param use_median Use median instead of mean for central tendency (default: false)
  * @param h_min Minimum neighborhood size to consider (default: 3, must be odd)
@@ -981,7 +981,7 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
  *   - h_values: Vector of used h values (odd numbers from h_min to h_max)
  *   - cv_errors: Mean cross-validation errors for each h
  *   - true_errors: Mean absolute deviation from true values (if provided)
- *   - opt_h: Optimal h value minimizing mean CV error
+ *   - opt_h: Optimal h value minimizing mean CV Rf_error
  *   - graph: Graph structure for optimal h
  *   - predictions: Global conditional expectations using optimal h
  *   - local_predictions: Vertex-specific conditional expectations using locally optimal h
@@ -1075,7 +1075,7 @@ pgmalo_t upgmalog(const std::vector<double>& x,
  *   - opt_ci_lower: Numeric vector of lower credible bounds (if n_bb > 0)
  *   - opt_ci_upper: Numeric vector of upper credible bounds (if n_bb > 0)
  *   - h_cv_errors: Numeric vector of cross-validation errors
- *   - true_error: Mean true error (if y_true provided)
+ *   - true_error: Mean true Rf_error (if y_true provided)
  *   - opt_graph_adj_list: List of adjacency lists for optimal graph
  *   - opt_graph_edge_lengths: List of edge lengths for optimal graph
  *
@@ -1167,7 +1167,7 @@ SEXP S_upgmalog(SEXP s_x,
                                 verbose);
     // Creating return list
     const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(cpp_results.h_values)); n_protected++;
 
@@ -1177,11 +1177,11 @@ SEXP S_upgmalog(SEXP s_x,
         SET_VECTOR_ELT(result, 1, R_NilValue);
     }
 
-    SEXP s_opt_h_idx = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP s_opt_h_idx = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(s_opt_h_idx)[0] = cpp_results.opt_h_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_h_idx);
 
-    SEXP s_opt_h = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
@@ -1201,7 +1201,7 @@ SEXP S_upgmalog(SEXP s_x,
     }
 
     if (cpp_results.true_errors.size() > 0) {
-        SEXP s_true_error = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
         double mean_true_error = std::accumulate(cpp_results.true_errors.begin(),
                                                  cpp_results.true_errors.end(), 0.0) /  cpp_results.true_errors.size();
         REAL(s_true_error)[0] = mean_true_error;
@@ -1215,22 +1215,22 @@ SEXP S_upgmalog(SEXP s_x,
 
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("h_values"));
-    SET_STRING_ELT(names, 1, mkChar("h_errors"));
-    SET_STRING_ELT(names, 2, mkChar("opt_h_idx"));
-    SET_STRING_ELT(names, 3, mkChar("opt_h"));
-    SET_STRING_ELT(names, 4, mkChar("graph_adj_list"));
-    SET_STRING_ELT(names, 5, mkChar("graph_edge_lengths"));
-    SET_STRING_ELT(names, 6, mkChar("predictions"));
-    SET_STRING_ELT(names, 7, mkChar("local_predictions"));
-    SET_STRING_ELT(names, 8, mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 9, mkChar("ci_lower"));
-    SET_STRING_ELT(names, 10, mkChar("ci_upper"));
-    SET_STRING_ELT(names, 11, mkChar("true_error"));
-    SET_STRING_ELT(names, 12, mkChar("h_predictions"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("h_errors"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_h_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("graph_adj_list"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("graph_edge_lengths"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("local_predictions"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("bb_predictions"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("ci_lower"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+    SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
+    SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 
@@ -1294,7 +1294,7 @@ SEXP S_upgmalog(SEXP s_x,
  * - dist_normalization_factor must be positive
  * - epsilon must be positive
  *
- * @warning
+ * @Rf_warning
  * - The function modifies the kernel state using initialize_kernel()
  * - Large graphs with many paths may require significant memory
  * - Performance depends heavily on path structure and kernel type
@@ -1403,7 +1403,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog(
     struct pred_w_err_t {
         double prediction;
         double weight;
-        double error;
+        double Rf_error;
     } pred_w_err;
 
     std::vector<std::vector<pred_w_err_t>> vertex_pred_w_err(n_vertices);
@@ -1501,7 +1501,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog(
             for (int i = 0; i < path_n_vertices; ++i) {
                 pred_w_err.prediction = fit.predictions[i];
                 pred_w_err.weight     = w_path[i];
-                pred_w_err.error      = fit.loocv_brier_errors[i];
+                pred_w_err.Rf_error      = fit.loocv_brier_errors[i];
                 vertex_pred_w_err[path[i]].push_back(pred_w_err);
             }
         } // END OF for (const auto& path_i : valid_path_indices)
@@ -1531,7 +1531,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog(
         for (const auto& v : vertex_pred_w_err[i]) {
             weighted_sum += v.weight * v.prediction;
             weight_sum   += v.weight;
-            wmean_error  += v.weight * v.error;
+            wmean_error  += v.weight * v.Rf_error;
         }
         predictions[i] = weighted_sum / weight_sum;
         errors[i] = wmean_error / weight_sum;

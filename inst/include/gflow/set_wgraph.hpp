@@ -46,7 +46,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <Eigen/Core>
 #include <Eigen/Dense>  // For Eigen::MatrixXd

@@ -174,12 +174,12 @@ public :
 //				This includes all operations in the heap
 //				as well as distance calculations to boxes.
 //
-//	average_err	The average error of each query (the
-//				error of the reported point to the true
+//	average_err	The average Rf_error of each query (the
+//				Rf_error of the reported point to the true
 //				nearest neighbor).  For k nearest neighbors
-//				the error is computed k times.
+//				the Rf_error is computed k times.
 //
-//	rank_err	The rank error of each query (the difference
+//	rank_err	The rank Rf_error of each query (the difference
 //				in the rank of the reported point and its
 //				true rank).
 //
@@ -205,8 +205,8 @@ extern ANNsampStat	ann_float_ops;	// stats on floating ops
 //  The following need to be part of the public interface, because
 //  they are accessed outside the DLL in ann_test.cpp.
 //----------------------------------------------------------------------
-DLL_API extern ANNsampStat ann_average_err;	// average error
-DLL_API extern ANNsampStat ann_rank_err;	// rank error
+DLL_API extern ANNsampStat ann_average_err;	// average Rf_error
+DLL_API extern ANNsampStat ann_rank_err;	// rank Rf_error
 
 //----------------------------------------------------------------------
 //	Declaration of externally accessible routines for statistics

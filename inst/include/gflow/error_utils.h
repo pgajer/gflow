@@ -8,7 +8,7 @@
 #ifdef length
 #undef length
 #endif
-#undef eval
+#undef Rf_eval
 
 #include <string>
 #include <sstream>
@@ -58,7 +58,7 @@ inline void report_error(const char* file, int line, const char* format, ...) {
     memcpy(final_message + loc_len, message, msg_len + 1);  // Include null terminator
 
     // Report to R
-    error("%s", final_message);
+    Rf_error("%s", final_message);
 }
 
 
@@ -66,7 +66,7 @@ inline void report_error(const char* file, int line, const char* format, ...) {
 #define REPORT_ERROR(...) report_error(LOC_INFO, __VA_ARGS__)
 
 // Warning reporting function
-inline void report_warning(const char* file, int line, const char* format, ...) {
+inline void report_Rf_warning(const char* file, int line, const char* format, ...) {
     // Increase buffer sizes to handle the worst case
     const size_t buffer_size = 8192;
     const size_t final_buffer_size = 2 * buffer_size + 1;  // Room for both strings plus null terminator
@@ -97,11 +97,11 @@ inline void report_warning(const char* file, int line, const char* format, ...) 
         strncat(final_message, message, space_for_message);
     }
 
-    warning("%s", final_message);
+    Rf_warning("%s", final_message);
 }
 
 // Wrapper macro for warnings
-#define REPORT_WARNING(...) report_warning(LOC_INFO, __VA_ARGS__)
+#define REPORT_WARNING(...) report_Rf_warning(LOC_INFO, __VA_ARGS__)
 
 // Input validation utilities
 inline void check_null(SEXP x, const char* file, int line, const char* var_name) {

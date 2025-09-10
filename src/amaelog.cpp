@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 
 #undef length  // to resolve naming conflict between the R macro length defined in Rinternals.h and a member function in the C++ standard library's codecvt class
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <mutex>
@@ -132,10 +132,10 @@ struct vbw_maelog_t {
  *   - used_knn: Boolean indicators for whether k-NN fallback was used
  *   - Input parameters are also stored in the return structure
  *
- * @throws R error if x and variable_bandwidth have different sizes
+ * @throws R Rf_error if x and variable_bandwidth have different sizes
  *
- * @note This function is part of an R package and uses the error() function
- * for error handling instead of C++ exceptions
+ * @note This function is part of an R package and uses the Rf_error() function
+ * for Rf_error handling instead of C++ exceptions
  */
 vbw_maelog_t vbw_maelog(
     const std::vector<double>& x,
@@ -150,7 +150,7 @@ vbw_maelog_t vbw_maelog(
 
     // Consider adding checks like:
     if (x.size() != variable_bandwidth.size()) {
-        error("x and variable_bandwidth must have same size");
+        Rf_error("x and variable_bandwidth must have same size");
     }
 
     vbw_maelog_t result;
@@ -746,10 +746,10 @@ SEXP S_adaptive_maelog(
     }
     catch (const std::exception& e) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("C++ error in maelog: %s", e.what());
+        Rf_error("C++ Rf_error in maelog: %s", e.what());
     }
     catch (...) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Unknown error in maelog");
+        Rf_error("Unknown Rf_error in maelog");
     }
 }

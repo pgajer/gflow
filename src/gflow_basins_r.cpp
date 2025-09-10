@@ -2,7 +2,7 @@
 #include <Rinternals.h>
  // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "set_wgraph.hpp"  // for set_wgraph_t
 #include "SEXP_cpp_conversion_utils.hpp"
@@ -83,28 +83,28 @@ SEXP S_find_gflow_basins(
     const auto &lmax = basins.second;
 
     // ---- Build R objects ----
-    SEXP r_lmin_list = PROTECT(allocVector(VECSXP, lmin.size()));
-    SEXP r_lmax_list = PROTECT(allocVector(VECSXP, lmax.size()));
+    SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin.size()));
+    SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax.size()));
 
     // Helper macro to populate one basin list
     auto fill_basin = [&](const basin_t &b, SEXP r_blist) {
         // Names: vertex, value, basin
-        SEXP names = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(names, 0, mkChar("vertex"));
-        SET_STRING_ELT(names, 1, mkChar("value"));
-        SET_STRING_ELT(names, 2, mkChar("basin"));
-        setAttrib(r_blist, R_NamesSymbol, names);
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("basin"));
+        Rf_setAttrib(r_blist, R_NamesSymbol, names);
 
         // vertex (1-based)
-        SEXP r_vertex = PROTECT(ScalarInteger(
+        SEXP r_vertex = PROTECT(Rf_ScalarInteger(
                                     static_cast<int>(b.reachability_map.ref_vertex) + 1
                                     ));
         // value
-        SEXP r_value  = PROTECT(ScalarReal(b.value));
+        SEXP r_value  = PROTECT(Rf_ScalarReal(b.value));
 
         // basin matrix
         size_t m = b.reachability_map.sorted_vertices.size();
-        SEXP r_basin = PROTECT(allocMatrix(REALSXP, m, 2));
+        SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
         double *pr = REAL(r_basin);
         for (size_t i = 0; i < m; ++i) {
             const auto &vi = b.reachability_map.sorted_vertices[i];
@@ -122,7 +122,7 @@ SEXP S_find_gflow_basins(
 
     // Fill minima basins
     for (size_t i = 0; i < lmin.size(); ++i) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 3));
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 3));
         fill_basin(lmin[i], r_blist);
         SET_VECTOR_ELT(r_lmin_list, i, r_blist);
         UNPROTECT(1); // r_blist
@@ -130,18 +130,18 @@ SEXP S_find_gflow_basins(
 
     // Fill maxima basins
     for (size_t i = 0; i < lmax.size(); ++i) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 3));
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 3));
         fill_basin(lmax[i], r_blist);
         SET_VECTOR_ELT(r_lmax_list, i, r_blist);
         UNPROTECT(1);
     }
 
     // Name the two top‐level components
-    SEXP r_result = PROTECT(allocVector(VECSXP, 2));
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, 2));
-    SET_STRING_ELT(r_result_names, 0, mkChar("lmin_basins"));
-    SET_STRING_ELT(r_result_names, 1, mkChar("lmax_basins"));
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));
+    SET_STRING_ELT(r_result_names, 1, Rf_mkChar("lmax_basins"));
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
     SET_VECTOR_ELT(r_result, 0, r_lmin_list);
     SET_VECTOR_ELT(r_result, 1, r_lmax_list);
 
@@ -205,28 +205,28 @@ SEXP S_find_local_extrema(
     const auto &lmax = basins.second;
 
     // ---- Build R objects ----
-    SEXP r_lmin_list = PROTECT(allocVector(VECSXP, lmin.size()));
-    SEXP r_lmax_list = PROTECT(allocVector(VECSXP, lmax.size()));
+    SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin.size()));
+    SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax.size()));
 
     // Helper macro to populate one basin list
     auto fill_basin = [&](const basin_t &b, SEXP r_blist) {
         // Names: vertex, value, basin
-        SEXP names = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(names, 0, mkChar("vertex"));
-        SET_STRING_ELT(names, 1, mkChar("value"));
-        SET_STRING_ELT(names, 2, mkChar("basin"));
-        setAttrib(r_blist, R_NamesSymbol, names);
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("basin"));
+        Rf_setAttrib(r_blist, R_NamesSymbol, names);
 
         // vertex (1-based)
-        SEXP r_vertex = PROTECT(ScalarInteger(
+        SEXP r_vertex = PROTECT(Rf_ScalarInteger(
                                     static_cast<int>(b.reachability_map.ref_vertex) + 1
                                     ));
         // value
-        SEXP r_value  = PROTECT(ScalarReal(b.value));
+        SEXP r_value  = PROTECT(Rf_ScalarReal(b.value));
 
         // basin matrix
         size_t m = b.reachability_map.sorted_vertices.size();
-        SEXP r_basin = PROTECT(allocMatrix(REALSXP, m, 2));
+        SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
         double *pr = REAL(r_basin);
         for (size_t i = 0; i < m; ++i) {
             const auto &vi = b.reachability_map.sorted_vertices[i];
@@ -244,7 +244,7 @@ SEXP S_find_local_extrema(
 
     // Fill minima basins
     for (size_t i = 0; i < lmin.size(); ++i) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 3));
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 3));
         fill_basin(lmin[i], r_blist);
         SET_VECTOR_ELT(r_lmin_list, i, r_blist);
         UNPROTECT(1); // r_blist
@@ -252,18 +252,18 @@ SEXP S_find_local_extrema(
 
     // Fill maxima basins
     for (size_t i = 0; i < lmax.size(); ++i) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 3));
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 3));
         fill_basin(lmax[i], r_blist);
         SET_VECTOR_ELT(r_lmax_list, i, r_blist);
         UNPROTECT(1);
     }
 
     // Name the two top‐level components
-    SEXP r_result = PROTECT(allocVector(VECSXP, 2));
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, 2));
-    SET_STRING_ELT(r_result_names, 0, mkChar("lmin_basins"));
-    SET_STRING_ELT(r_result_names, 1, mkChar("lmax_basins"));
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));
+    SET_STRING_ELT(r_result_names, 1, Rf_mkChar("lmax_basins"));
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
     SET_VECTOR_ELT(r_result, 0, r_lmin_list);
     SET_VECTOR_ELT(r_result, 1, r_lmax_list);
 
@@ -372,40 +372,40 @@ SEXP S_create_basin_cx(
     while (names[n_elements] != NULL) n_elements++;
 
     size_t n_protected = 0;
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements)); n_protected++;
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); n_protected++;
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
     UNPROTECT(1); // for r_result_names
 
     auto vec_real = [&](const std::vector<double>& v) {
-        SEXP ans = PROTECT(allocVector(REALSXP, v.size()));
+        SEXP ans = PROTECT(Rf_allocVector(REALSXP, v.size()));
         std::copy(v.begin(), v.end(), REAL(ans));
         return ans;
     };
 
-    SEXP r_lmin_list = PROTECT(allocVector(VECSXP, lmin_map.size())); n_protected++;
-    SEXP r_lmax_list = PROTECT(allocVector(VECSXP, lmax_map.size())); n_protected++;
+    SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin_map.size())); n_protected++;
+    SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax_map.size())); n_protected++;
 
     // Helper lambda to populate one basin list - MODIFIED to include basin_bd
     auto fill_basin = [&](const basin_t &b, SEXP r_blist) {
         // Names: vertex, value, basin, basin_bd (MODIFIED)
-        SEXP names = PROTECT(allocVector(STRSXP, 4));
-        SET_STRING_ELT(names, 0, mkChar("vertex"));
-        SET_STRING_ELT(names, 1, mkChar("value"));
-        SET_STRING_ELT(names, 2, mkChar("basin"));
-        SET_STRING_ELT(names, 3, mkChar("basin_bd"));
-        setAttrib(r_blist, R_NamesSymbol, names);
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+        SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("basin"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("basin_bd"));
+        Rf_setAttrib(r_blist, R_NamesSymbol, names);
 
         // vertex (1-based)
-        SEXP r_vertex = PROTECT(ScalarInteger(
+        SEXP r_vertex = PROTECT(Rf_ScalarInteger(
                                     static_cast<int>(b.reachability_map.ref_vertex) + 1
                                     ));
         // value
-        SEXP r_value  = PROTECT(ScalarReal(b.value));
+        SEXP r_value  = PROTECT(Rf_ScalarReal(b.value));
 
 
         // basin matrix
@@ -420,7 +420,7 @@ SEXP S_create_basin_cx(
                       return a.distance < b.distance;
                   });
 
-        SEXP r_basin = PROTECT(allocMatrix(REALSXP, m, 3));
+        SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 3));
         double *pr = REAL(r_basin);
         for (size_t i = 0; i < m; ++i) {
             const auto &vi = sorted_by_distance[i];
@@ -430,18 +430,18 @@ SEXP S_create_basin_cx(
         }
 
         // Add column names to basin matrix
-        SEXP basin_colnames = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(basin_colnames, 0, mkChar("vertex"));
-        SET_STRING_ELT(basin_colnames, 1, mkChar("distance"));
-        SET_STRING_ELT(basin_colnames, 2, mkChar("value"));
-        setAttrib(r_basin, R_DimNamesSymbol,
-                  list2(R_NilValue, basin_colnames)); // No row names
+        SEXP basin_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(basin_colnames, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(basin_colnames, 1, Rf_mkChar("distance"));
+        SET_STRING_ELT(basin_colnames, 2, Rf_mkChar("value"));
+        Rf_setAttrib(r_basin, R_DimNamesSymbol,
+                  Rf_list2(R_NilValue, basin_colnames)); // No row names
         UNPROTECT(1); // basin_colnames
 
 
         // Basin boundary matrix from boundary_monotonicity_spans_map
         size_t bd_size = b.boundary_monotonicity_spans_map.size();
-        SEXP r_basin_bd = PROTECT(allocMatrix(REALSXP, bd_size, 3));
+        SEXP r_basin_bd = PROTECT(Rf_allocMatrix(REALSXP, bd_size, 3));
         double *bd_pr = REAL(r_basin_bd);
         size_t bd_idx = 0;
         for (const auto& [vertex, span] : b.boundary_monotonicity_spans_map) {
@@ -452,12 +452,12 @@ SEXP S_create_basin_cx(
         }
 
         // Add column names to basin_bd matrix
-        SEXP basin_bd_colnames = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(basin_bd_colnames, 0, mkChar("vertex"));
-        SET_STRING_ELT(basin_bd_colnames, 1, mkChar("distance"));
-        SET_STRING_ELT(basin_bd_colnames, 2, mkChar("span"));
-        setAttrib(r_basin_bd, R_DimNamesSymbol,
-                  list2(R_NilValue, basin_bd_colnames)); // No row names
+        SEXP basin_bd_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(basin_bd_colnames, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(basin_bd_colnames, 1, Rf_mkChar("distance"));
+        SET_STRING_ELT(basin_bd_colnames, 2, Rf_mkChar("span"));
+        Rf_setAttrib(r_basin_bd, R_DimNamesSymbol,
+                  Rf_list2(R_NilValue, basin_bd_colnames)); // No row names
         UNPROTECT(1); // basin_bd_colnames
 
         // Set list entries
@@ -472,7 +472,7 @@ SEXP S_create_basin_cx(
     // Fill minima basins
     size_t counter = 0;
     for (const auto& [v, basin] : lmin_map) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
         fill_basin(basin, r_blist);
         SET_VECTOR_ELT(r_lmin_list, counter++, r_blist);
         UNPROTECT(1); // r_blist
@@ -481,7 +481,7 @@ SEXP S_create_basin_cx(
     // Fill maxima basins
     counter = 0;
     for (const auto& [v, basin] : lmax_map) {
-        SEXP r_blist = PROTECT(allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
+        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
         fill_basin(basin, r_blist);
         SET_VECTOR_ELT(r_lmax_list, counter++, r_blist);
         UNPROTECT(1);
@@ -506,15 +506,15 @@ SEXP S_create_basin_cx(
     int n_cols = sizeof(basin_matrix_colnames) / sizeof(basin_matrix_colnames[0]);
 
     // Create the matrix
-    SEXP basins_matrix = PROTECT(allocMatrix(REALSXP, total_basins, n_cols)); n_protected++;
+    SEXP basins_matrix = PROTECT(Rf_allocMatrix(REALSXP, total_basins, n_cols)); n_protected++;
 
     // Set column names
-    SEXP colnames = PROTECT(allocVector(STRSXP, n_cols));
+    SEXP colnames = PROTECT(Rf_allocVector(STRSXP, n_cols));
     for (int i = 0; i < n_cols; i++) {
-        SET_STRING_ELT(colnames, i, mkChar(basin_matrix_colnames[i]));
+        SET_STRING_ELT(colnames, i, Rf_mkChar(basin_matrix_colnames[i]));
     }
-    setAttrib(basins_matrix, R_DimNamesSymbol,
-              list2(R_NilValue, colnames)); // No row names
+    Rf_setAttrib(basins_matrix, R_DimNamesSymbol,
+              Rf_list2(R_NilValue, colnames)); // No row names
     UNPROTECT(1); // colnames
 
     // Fill the matrix with data from all basins
@@ -578,7 +578,7 @@ SEXP S_create_basin_cx(
         }
 
         // Create distance matrix
-        r_lmin_dist_mat = PROTECT(allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size())); n_protected++;
+        r_lmin_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size())); n_protected++;
         double* lmin_dist_data = REAL(r_lmin_dist_mat);
 
         // Calculate distances for each pair
@@ -605,20 +605,20 @@ SEXP S_create_basin_cx(
         }
 
         // Add row and column names (using 1-based vertex indices for R)
-        SEXP lmin_dimnames = PROTECT(allocVector(VECSXP, 2));
-        SEXP lmin_rownames = PROTECT(allocVector(STRSXP, lmin_vertices.size()));
-        SEXP lmin_colnames = PROTECT(allocVector(STRSXP, lmin_vertices.size()));
+        SEXP lmin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SEXP lmin_rownames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
+        SEXP lmin_colnames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
 
         for (size_t i = 0; i < lmin_vertices.size(); i++) {
             char name[32];
             snprintf(name, sizeof(name), "m%zu", lmin_vertices[i] + 1); // 1-based index for R
-            SET_STRING_ELT(lmin_rownames, i, mkChar(name));
-            SET_STRING_ELT(lmin_colnames, i, mkChar(name));
+            SET_STRING_ELT(lmin_rownames, i, Rf_mkChar(name));
+            SET_STRING_ELT(lmin_colnames, i, Rf_mkChar(name));
         }
 
         SET_VECTOR_ELT(lmin_dimnames, 0, lmin_rownames);
         SET_VECTOR_ELT(lmin_dimnames, 1, lmin_colnames);
-        setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
+        Rf_setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
 
         UNPROTECT(3); // lmin_dimnames, lmin_rownames, lmin_colnames
     }
@@ -633,7 +633,7 @@ SEXP S_create_basin_cx(
         }
 
         // Create distance matrix
-        r_lmax_dist_mat = PROTECT(allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size())); n_protected++;
+        r_lmax_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size())); n_protected++;
         double* lmax_dist_data = REAL(r_lmax_dist_mat);
 
         // Calculate distances for each pair
@@ -660,25 +660,25 @@ SEXP S_create_basin_cx(
         }
 
         // Add row and column names (using 1-based vertex indices for R)
-        SEXP lmax_dimnames = PROTECT(allocVector(VECSXP, 2));
-        SEXP lmax_rownames = PROTECT(allocVector(STRSXP, lmax_vertices.size()));
-        SEXP lmax_colnames = PROTECT(allocVector(STRSXP, lmax_vertices.size()));
+        SEXP lmax_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SEXP lmax_rownames = PROTECT(Rf_allocVector(STRSXP, lmax_vertices.size()));
+        SEXP lmax_colnames = PROTECT(Rf_allocVector(STRSXP, lmax_vertices.size()));
 
         for (size_t i = 0; i < lmax_vertices.size(); i++) {
             char name[32];
             snprintf(name, sizeof(name), "M%zu", lmax_vertices[i] + 1); // 1-based index for R
-            SET_STRING_ELT(lmax_rownames, i, mkChar(name));
-            SET_STRING_ELT(lmax_colnames, i, mkChar(name));
+            SET_STRING_ELT(lmax_rownames, i, Rf_mkChar(name));
+            SET_STRING_ELT(lmax_colnames, i, Rf_mkChar(name));
         }
 
         SET_VECTOR_ELT(lmax_dimnames, 0, lmax_rownames);
         SET_VECTOR_ELT(lmax_dimnames, 1, lmax_colnames);
-        setAttrib(r_lmax_dist_mat, R_DimNamesSymbol, lmax_dimnames);
+        Rf_setAttrib(r_lmax_dist_mat, R_DimNamesSymbol, lmax_dimnames);
 
         UNPROTECT(3); // lmax_dimnames, lmax_rownames, lmax_colnames
     }
 
-    SEXP r_graph_diameter = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(r_graph_diameter)[0] = graph.graph_diameter;
 
     // Set results

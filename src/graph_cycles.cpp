@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -272,13 +273,13 @@ std::unique_ptr<std::vector<int>> cycle_sizes(const std::vector<std::vector<int>
  *
  * @return An R integer vector containing the lengths of the cycles found in the graph.
  *
- * @throw An error is thrown if the input is not a valid R list or if any element of the list is
+ * @throw An Rf_error is thrown if the input is not a valid R list or if any element of the list is
  *        not an integer vector.
  */
 SEXP S_cycle_sizes(SEXP RA) {
     // Check if the input is a list
-    if (!isNewList(RA))
-        error("Input must be a list");
+    if (!Rf_isNewList(RA))
+        Rf_error("Input must be a list");
 
     // Get the length of the list
     int n = LENGTH(RA);
@@ -287,8 +288,8 @@ SEXP S_cycle_sizes(SEXP RA) {
     std::vector<std::vector<int>> graph;
     for (int i = 0; i < n; ++i) {
         SEXP vec = VECTOR_ELT(RA, i);
-        if (!isInteger(vec))
-            error("Each element of the list must be an integer vector");
+        if (!Rf_isInteger(vec))
+            Rf_error("Each element of the list must be an integer vector");
 
         int* ptr = INTEGER(vec);
         int len = LENGTH(vec);
@@ -300,7 +301,7 @@ SEXP S_cycle_sizes(SEXP RA) {
     std::unique_ptr<std::vector<int>> cycle_lengths = cycle_sizes(graph);
 
     // Convert the output to SEXP
-    SEXP result = PROTECT(allocVector(INTSXP, cycle_lengths->size()));
+    SEXP result = PROTECT(Rf_allocVector(INTSXP, cycle_lengths->size()));
     int* result_ptr = INTEGER(result);
     std::copy(cycle_lengths->begin(), cycle_lengths->end(), result_ptr);
     UNPROTECT(1);

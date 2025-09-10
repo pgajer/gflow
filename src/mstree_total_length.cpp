@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>
@@ -34,7 +35,7 @@ double compute_mstree_total_length(
 
     size_t n_points = X.size();
     if (n_points > static_cast<size_t>(INT_MAX)) {
-        error("Number of points exceeds maximum supported by C_mstree");
+        Rf_error("Number of points exceeds maximum supported by C_mstree");
     }
     int n_points_int = static_cast<int>(n_points);
     size_t n_points_minus_one = n_points - 1;
@@ -77,7 +78,7 @@ double compute_mstree_total_length(
  *
  * @return SEXP A single numeric value representing the total length of the minimal spanning tree.
  *
- * @throws Rf_error If the input is not a valid numeric matrix or if any other error occurs during computation.
+ * @throws Rf_error If the input is not a valid numeric matrix or if any other Rf_error occurs during computation.
  *
  * @note This function uses Rmatrix_to_cpp for R to C++ conversion and compute_mstree_total_length for MST calculation.
  *
@@ -91,7 +92,7 @@ SEXP S_compute_mstree_total_length(SEXP s_X) {
     std::vector<std::vector<double>> X = std::move(*Rmatrix_to_cpp(s_X));
     double total_length = compute_mstree_total_length(X);
 
-    // Allocate and protect result separately to avoid sequence point warning
+    // Allocate and protect result separately to avoid sequence point Rf_warning
     SEXP result = Rf_allocVector(REALSXP, 1);
     PROTECT(result);
     REAL(result)[0] = total_length;

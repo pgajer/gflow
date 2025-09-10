@@ -1,7 +1,7 @@
 #include <R.h>            // For Rprintf, etc.
 #include <Rinternals.h>   // For SEXP macros
 #undef length             // avoid clash with R
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>      // std::copy
@@ -97,12 +97,12 @@ create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
 		}
 	}
 
-	SEXP r_adj_list = PROTECT(allocVector(VECSXP, n_vertices));
-	SEXP r_weight_list = PROTECT(allocVector(VECSXP, n_vertices));
+	SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+	SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
 	for (size_t i = 0; i < n_vertices; ++i) {
 		// Integer vector for neighbors
-		SEXP RA = PROTECT(allocVector(INTSXP, adj_vect[i].size()));
+		SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
 		int* A = INTEGER(RA);
 		for (size_t j = 0; j < adj_vect[i].size(); ++j) {
 			A[j] = adj_vect[i][j] + 1; // 1-based indexing
@@ -111,7 +111,7 @@ create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
 		UNPROTECT(1); // RA
 
 		// Numeric vector for weights
-		SEXP RD = PROTECT(allocVector(REALSXP, dist_vect[i].size()));
+		SEXP RD = PROTECT(Rf_allocVector(REALSXP, dist_vect[i].size()));
 		double* D = REAL(RD);
 		for (size_t j = 0; j < dist_vect[i].size(); ++j) {
 			D[j] = dist_vect[i][j];
@@ -196,7 +196,7 @@ extern "C" SEXP S_create_mst_completion_graph(
 	SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
 	SET_VECTOR_ELT(r_list, 4, r_mst_weights);
 
-	SEXP r_names = PROTECT(allocVector(STRSXP, 5)); nprot++;
+	SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
 	SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
 	SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
 	SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));

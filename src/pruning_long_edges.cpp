@@ -19,7 +19,7 @@
 
   A limitation of the isize pruning as implemented above is that it allows
   alternative paths to be arbitrarily long, whereas intuitively the alternative
-  path should be of comparable length (if we had access to edge lenghts) to the
+  path should be of comparable Rf_length(if we had access to edge lenghts) to the
   length of the edge we are removing. This lack of constrain on the length of the
   alternative path may result in the pruned graph having different topology than
   the original graph. For example, let X be a noisy circle (points in a tubular
@@ -56,7 +56,7 @@ These modifications and considerations should help improve the robustness and ef
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <ANN/ANN.h>  // ANN library header
 #include <vector>
@@ -201,7 +201,7 @@ std::unique_ptr<std::vector<std::vector<int>>> prune_long_edges(const std::vecto
 
     int n_vertices = graph.size();
 
-    std::unordered_set<std::pair<int, int>, pair_hash> edges; // using unordered_set to make sure there are no duplicate edges in 'edges'
+    std::unordered_set<std::pair<int, int>, pair_hash> edges; // using unordered_set to make sure there are no Rf_duplicate edges in 'edges'
     for (int i = 0; i < n_vertices; i++) {
         for (auto neighbor : graph.at(i)) {
             if ( i < neighbor ) {
@@ -1050,7 +1050,7 @@ double graph_alternative_path_length_total_path_len_constrained(const std::vecto
  * @note The function assumes that the graph is undirected and the adjacency list
  *       and edge length vector are consistent with each other.
  *
- * @warning This function may have different behavior and performance characteristics
+ * @Rf_warning This function may have different behavior and performance characteristics
  *          depending on the chosen length constraint. The total length constraint
  *          (use_total_length_constraint = true) may find longer paths with more edges,
  *          while the individual edge constraint (use_total_length_constraint = false)
@@ -1115,7 +1115,7 @@ double graph_alternative_path_length(const std::vector<std::vector<int>>& adj_ve
  *       from both start to end and end to start. If the edge doesn't exist, the
  *       function will not modify the graph.
  *
- * @warning The function does not check if the vertices or edge exist. Ensure that
+ * @Rf_warning The function does not check if the vertices or edge exist. Ensure that
  *          the provided indices are valid before calling this function.
  */
 void graph_remove_edge(std::vector<std::vector<int>>& adj_vect,
@@ -1185,7 +1185,7 @@ struct dedge_t_cmp {
  * @note The function assumes that the input graph is undirected and that adj_vect
  *       and edge_length_vect are consistent with each other.
  *
- * @warning This function modifies the path_lengths and edge_lengths vectors, appending to them
+ * @Rf_warning This function modifies the path_lengths and edge_lengths vectors, appending to them
  *          the lengths of alternative paths and corresponding edge lengths found during
  *          the pruning process.
  *
@@ -1264,7 +1264,7 @@ graph_prune_long_edges(const std::vector<std::vector<int>>& adj_vect,
  * @note This function assumes that the input graph is 0-based indexed. The output
  *       graph will be converted back to 1-based indexing for R.
  *
- * @warning This function may throw R errors if there are inconsistencies in the input data.
+ * @Rf_warning This function may throw R errors if there are inconsistencies in the input data.
  */
 SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
                                SEXP s_edge_length_list,
@@ -1295,9 +1295,9 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
 
     // Preparing pruned adjacency list
     int n_vertices = static_cast<int>(pruned_adj_vect.size());
-    SEXP pruned_adj_list = PROTECT(allocVector(VECSXP, n_vertices));
+    SEXP pruned_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(allocVector(INTSXP, pruned_adj_vect[i].size()));
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, pruned_adj_vect[i].size()));
         int* A = INTEGER(RA);
         for (auto neighbor : pruned_adj_vect[i])
             *A++ = neighbor + 1;
@@ -1307,9 +1307,9 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     UNPROTECT(1);
 
     // Preparing pruned distance list
-    SEXP pruned_edge_lengths_list = PROTECT(allocVector(VECSXP, n_vertices));
+    SEXP pruned_edge_lengths_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(allocVector(REALSXP, pruned_edge_lengths_vect[i].size()));
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, pruned_edge_lengths_vect[i].size()));
         double* D = REAL(RD);
         for (auto dist : pruned_edge_lengths_vect[i])
             *D++ = dist;
@@ -1320,7 +1320,7 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
 
     // Creating path_lengths R vector
     int n_path_lengths = static_cast<int>(path_lengths.size());
-    SEXP R_path_lengths = PROTECT(allocVector(REALSXP, n_path_lengths));
+    SEXP R_path_lengths = PROTECT(Rf_allocVector(REALSXP, n_path_lengths));
     double* path_lengths_array = REAL(R_path_lengths);
     for (const auto& path_length : path_lengths)
         *path_lengths_array++ = path_length;
@@ -1330,26 +1330,26 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     int n_edge_lengths = static_cast<int>(edge_lengths.size());
     if (n_path_lengths != n_edge_lengths)
         Rf_error("n_edge_lengths is not equal to n_path_lengths.");
-    SEXP R_edge_lengths = PROTECT(allocVector(REALSXP, n_edge_lengths));
+    SEXP R_edge_lengths = PROTECT(Rf_allocVector(REALSXP, n_edge_lengths));
     double* edge_lengths_array = REAL(R_edge_lengths);
     for (const auto& edge_length : edge_lengths)
         *edge_lengths_array++ = edge_length;
     UNPROTECT(1);
 
     // Preparing the result list
-    SEXP res = PROTECT(allocVector(VECSXP, 4));
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 4));
     SET_VECTOR_ELT(res, 0, pruned_adj_list);
     SET_VECTOR_ELT(res, 1, pruned_edge_lengths_list);
     SET_VECTOR_ELT(res, 2, R_path_lengths);
     SET_VECTOR_ELT(res, 3, R_edge_lengths);
 
-    SEXP names = PROTECT(allocVector(STRSXP, 4));
-    SET_STRING_ELT(names, 0, mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, mkChar("edge_lengths_list"));
-    SET_STRING_ELT(names, 2, mkChar("path_lengths"));
-    SET_STRING_ELT(names, 3, mkChar("edge_lengths"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("edge_lengths_list"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("path_lengths"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("edge_lengths"));
 
-    setAttrib(res, R_NamesSymbol, names);
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     UNPROTECT(2);
 
@@ -1370,7 +1370,7 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     - It contains at least one intermediate vertex.
     - All edges along the path have an intersection size greater than the given edge's intersection size.
 
-  If such a path is found, the function returns its length (number of edges). Otherwise, it returns 0.
+  If such a path is found, the function returns its Rf_length(number of edges). Otherwise, it returns 0.
 
   \param graph The intersection kNN graph, represented as an adjacency list where each element is a pair of (neighbor_index, intersection_size).
   \param source The index of the starting vertex.
@@ -1500,7 +1500,7 @@ std::pair<std::vector<std::vector<std::pair<int, int>>>, std::vector<int>> plc_p
  * \note This function uses a breadth-first search approach to explore the neighborhood
  *       of the given vertex up to the specified radius.
  *
- * \warning The function assumes that the graph is undirected. For directed graphs,
+ * \Rf_warning The function assumes that the graph is undirected. For directed graphs,
  *          modifications may be necessary to ensure correct density calculation.
  */
 int calculate_local_density(const std::unique_ptr<std::vector<std::vector<std::pair<int, int>>>>& graph,
@@ -1557,7 +1557,7 @@ int calculate_local_density(const std::unique_ptr<std::vector<std::vector<std::p
  * \note The pruning criteria adapt to the global density distribution of the graph,
  *       making the algorithm robust to varying local dimensionality and density patterns.
  *
- * \warning This function modifies the input graph. If you need to preserve the original
+ * \Rf_warning This function modifies the input graph. If you need to preserve the original
  *          graph, make a copy before calling this function.
  */
 std::pair<std::vector<std::vector<std::pair<int, int>>>, std::vector<int>>

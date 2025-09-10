@@ -77,7 +77,7 @@ bool set_wgraph_t::is_composite_path_geodesic(size_t i, size_t j, const shortest
  * @param source The starting vertex index
  * @param target The destination vertex index
  *
- * @return The length (total weight) of the shortest path from source to target.
+ * @return The Rf_length(total weight) of the shortest path from source to target.
  *         Returns infinity if no path exists between the vertices.
  *
  * @note This implementation optimizes for finding the shortest path length only.

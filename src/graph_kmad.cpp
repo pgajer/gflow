@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>     // for std::vector
 #include <algorithm>  // for std::sort, std::max
@@ -290,7 +290,7 @@ std::vector<double> graph_mad(const std::vector<std::vector<int>>& graph,
 *
 * @return An R numeric vector (SEXP) containing the MAD values for each vertex
 *
-* @throws R error if:
+* @throws R Rf_error if:
 *         - s_y is not a numeric vector
 *         - Lengths of graph and y are inconsistent
 *         - Memory allocation fails
@@ -302,8 +302,8 @@ std::vector<double> graph_mad(const std::vector<std::vector<int>>& graph,
 */
 SEXP S_graph_mad(SEXP s_graph, SEXP s_y) {
     // Input validation
-    if (!isReal(s_y)) {
-        error("'y' must be a numeric vector");
+    if (!Rf_isReal(s_y)) {
+        Rf_error("'y' must be a numeric vector");
     }
 
     // Convert graph structure
@@ -312,7 +312,7 @@ SEXP S_graph_mad(SEXP s_graph, SEXP s_y) {
     // Get and validate dimensions
     int y_length = LENGTH(s_y);
     if (static_cast<size_t>(y_length) != graph.size()) {
-        error("Length of 'y' must match number of vertices in graph");
+        Rf_error("Length of 'y' must match number of vertices in graph");
     }
 
     // Convert y vector
@@ -323,14 +323,14 @@ SEXP S_graph_mad(SEXP s_graph, SEXP s_y) {
     try {
         result = graph_mad(graph, y);
     } catch (const std::exception& e) {
-        error("Error in MAD calculation: %s", e.what());
+        Rf_error("Error in MAD calculation: %s", e.what());
     }
 
     // Convert result to R vector
-    SEXP s_result = PROTECT(allocVector(REALSXP, result.size()));
+    SEXP s_result = PROTECT(Rf_allocVector(REALSXP, result.size()));
     if (s_result == R_NilValue) {
         UNPROTECT(1);
-        error("Memory allocation failed");
+        Rf_error("Memory allocation failed");
     }
 
     // Copy results

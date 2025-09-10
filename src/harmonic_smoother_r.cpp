@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "harmonic_smoother.hpp"
 #include "set_wgraph.hpp"  // for set_wgraph_t
@@ -106,7 +106,7 @@ SEXP S_perform_harmonic_smoothing(
         tolerance);
 
     // Convert back to R numeric vector
-    SEXP r_harmonic_predictions = PROTECT(allocVector(REALSXP, harmonic_predictions.size()));
+    SEXP r_harmonic_predictions = PROTECT(Rf_allocVector(REALSXP, harmonic_predictions.size()));
     std::copy(harmonic_predictions.begin(), harmonic_predictions.end(), REAL(r_harmonic_predictions));
     UNPROTECT(1);
 
@@ -209,24 +209,24 @@ SEXP S_harmonic_smoother(
     while (names[n_elements]) ++n_elements;
 
 
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements));
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
     for (int i = 0; i < n_elements; ++i) {
-        SET_STRING_ELT(r_result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 	UNPROTECT(1); // r_result_names
 
 	// r_harmonic_predictions
-    SEXP r_harmonic_predictions = PROTECT(allocVector(REALSXP, harmonic_predictions.size()));
+    SEXP r_harmonic_predictions = PROTECT(Rf_allocVector(REALSXP, harmonic_predictions.size()));
     std::copy(harmonic_predictions.begin(), harmonic_predictions.end(), REAL(r_harmonic_predictions));
     SET_VECTOR_ELT(r_result, 0, r_harmonic_predictions);
 	UNPROTECT(1);
 
     int nvert = result.i_harmonic_predictions[0].size();
     int niters = result.i_harmonic_predictions.size();
-    SEXP r_i_harmonic_predictions = PROTECT(allocMatrix(REALSXP, nvert, niters));
+    SEXP r_i_harmonic_predictions = PROTECT(Rf_allocMatrix(REALSXP, nvert, niters));
     for (int j = 0; j < niters; ++j) {
         for (int i = 0; i < nvert; ++i) {
             REAL(r_i_harmonic_predictions)[i + nvert * j] = result.i_harmonic_predictions[j][i];
@@ -236,11 +236,11 @@ SEXP S_harmonic_smoother(
 	UNPROTECT(1); // r_harmonic_predictions
 
 	// r_i_basins
-    SEXP r_i_basins = PROTECT(allocVector(VECSXP, result.i_basins.size()));
+    SEXP r_i_basins = PROTECT(Rf_allocVector(VECSXP, result.i_basins.size()));
     for (size_t iter = 0; iter < result.i_basins.size(); ++iter) {
         const auto& basin_map = result.i_basins[iter];
         size_t n_extrema = basin_map.size();
-        SEXP basin_matrix = PROTECT(allocMatrix(REALSXP, n_extrema, 2));
+        SEXP basin_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_extrema, 2));
 
         size_t row = 0;
         for (const auto& [vertex, basin] : basin_map) {
@@ -249,10 +249,10 @@ SEXP S_harmonic_smoother(
             row++;
         }
 
-        SEXP col_names = PROTECT(allocVector(STRSXP, 2));
-        SET_STRING_ELT(col_names, 0, mkChar("evertex"));
-        SET_STRING_ELT(col_names, 1, mkChar("is_max"));
-        setAttrib(basin_matrix, R_DimNamesSymbol, list2(R_NilValue, col_names));
+        SEXP col_names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(col_names, 0, Rf_mkChar("evertex"));
+        SET_STRING_ELT(col_names, 1, Rf_mkChar("is_max"));
+        Rf_setAttrib(basin_matrix, R_DimNamesSymbol, Rf_list2(R_NilValue, col_names));
 
         SET_VECTOR_ELT(r_i_basins, iter, basin_matrix);
         UNPROTECT(2); // basin_matrix, col_names
@@ -261,11 +261,11 @@ SEXP S_harmonic_smoother(
 	UNPROTECT(1); // r_i_basins
 
 
-    SEXP r_stable_iteration = PROTECT(ScalarInteger(result.stable_iteration));
+    SEXP r_stable_iteration = PROTECT(Rf_ScalarInteger(result.stable_iteration));
     SET_VECTOR_ELT(r_result, 3, r_stable_iteration);
 	UNPROTECT(1);
 
-    SEXP r_basin_cx_differences = PROTECT(allocVector(REALSXP, result.basin_cx_differences.size()));
+    SEXP r_basin_cx_differences = PROTECT(Rf_allocVector(REALSXP, result.basin_cx_differences.size()));
     std::copy(result.basin_cx_differences.begin(), result.basin_cx_differences.end(), REAL(r_basin_cx_differences));
     SET_VECTOR_ELT(r_result, 4, r_basin_cx_differences);
 	UNPROTECT(1);

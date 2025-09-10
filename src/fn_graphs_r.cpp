@@ -1,3 +1,6 @@
+#include <R.h>
+#include <Rinternals.h>
+
 #include "set_wgraph.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 
@@ -62,7 +65,7 @@ SEXP S_construct_function_aware_graph(
 	// Convert function values with proper memory management
 	std::unique_ptr<std::vector<double>> function_values_ptr = Rvect_to_CppVect_double(s_function_values);
 	if (!function_values_ptr) {
-		error("Failed to convert function values");
+		Rf_error("Failed to convert function values");
 	}
 	std::vector<double> function_values = std::move(*function_values_ptr);
 
@@ -142,8 +145,8 @@ SEXP S_analyze_function_aware_weights(
 	) {
 
 	// Validate inputs
-	if (!isVector(s_weight_types) || !isInteger(s_weight_types)) {
-		error("weight_types must be an integer vector");
+	if (!Rf_isVector(s_weight_types) || !Rf_isInteger(s_weight_types)) {
+		Rf_error("weight_types must be an integer vector");
 	}
 
 	// Convert inputs
@@ -153,7 +156,7 @@ SEXP S_analyze_function_aware_weights(
 	// Convert function values with proper memory management
 	std::unique_ptr<std::vector<double>> function_values_ptr = Rvect_to_CppVect_double(s_function_values);
 	if (!function_values_ptr) {
-		error("Failed to convert function values");
+		Rf_error("Failed to convert function values");
 	}
 	std::vector<double> function_values = std::move(*function_values_ptr);
 
@@ -177,7 +180,7 @@ SEXP S_analyze_function_aware_weights(
 
 	// Check that function values match the number of vertices
 	if (function_values.size() != graph.num_vertices()) {
-		error("Length of function_values must match the number of vertices");
+		Rf_error("Length of function_values must match the number of vertices");
 	}
 
 	// Compute weight distributions
@@ -196,17 +199,17 @@ SEXP S_analyze_function_aware_weights(
 
 	// Create return list - now one element larger to include original weights
 	int nprot = 0;
-	SEXP r_list = PROTECT(allocVector(VECSXP, results.size())); nprot++;
+	SEXP r_list = PROTECT(Rf_allocVector(VECSXP, results.size())); nprot++;
 
 	// Set names
 	const char* type_names[] = {"original", "inverse", "direct", "exp", "power", "sigmoid", "lp_embedding"};
-	SEXP r_list_names = PROTECT(allocVector(STRSXP, results.size())); nprot++;
+	SEXP r_list_names = PROTECT(Rf_allocVector(STRSXP, results.size())); nprot++;
 
 	// Set first element as original weights
-	SET_STRING_ELT(r_list_names, 0, mkChar("original"));
+	SET_STRING_ELT(r_list_names, 0, Rf_mkChar("original"));
 
 	// Convert original weights to R and add to list
-	SEXP r_orig_weights = PROTECT(allocVector(REALSXP, results[0].size()));
+	SEXP r_orig_weights = PROTECT(Rf_allocVector(REALSXP, results[0].size()));
 	for (size_t j = 0; j < results[0].size(); j++) {
 		REAL(r_orig_weights)[j] = results[0][j];
 	}
@@ -217,13 +220,13 @@ SEXP S_analyze_function_aware_weights(
 	for (size_t i = 0; i < weight_types.size(); i++) {
 		int type = weight_types[i];
 		if (type >= 0 && type <= 5) {
-			SET_STRING_ELT(r_list_names, i + 1, mkChar(type_names[type + 1]));
+			SET_STRING_ELT(r_list_names, i + 1, Rf_mkChar(type_names[type + 1]));
 		} else {
-			SET_STRING_ELT(r_list_names, i + 1, mkChar("unknown"));
+			SET_STRING_ELT(r_list_names, i + 1, Rf_mkChar("unknown"));
 		}
 
 		// Convert each weight distribution to R and add to list
-		SEXP r_weights = PROTECT(allocVector(REALSXP, results[i + 1].size()));
+		SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, results[i + 1].size()));
 		for (size_t j = 0; j < results[i + 1].size(); j++) {
 			REAL(r_weights)[j] = results[i + 1][j];
 		}
@@ -231,7 +234,7 @@ SEXP S_analyze_function_aware_weights(
 		UNPROTECT(1); // r_weights
 	}
 
-	setAttrib(r_list, R_NamesSymbol, r_list_names);
+	Rf_setAttrib(r_list, R_NamesSymbol, r_list_names);
 	UNPROTECT(nprot); // r_list and r_list_names
 
 	return r_list;

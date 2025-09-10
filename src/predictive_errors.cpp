@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>      // For std::vector usage throughout
 #include <algorithm>   // For std::sort, std::fill
@@ -215,7 +215,7 @@ bb_cri_t bb_cri(const std::vector<std::vector<double>>& bb_Ey,
  * @note This function assumes the existence of a C_wasserstein_distance_1D function
  *       for computing 1D Wasserstein distances.
  *
- * @warning The function modifies the input vectors vertex_estimates and y_dirac
+ * @Rf_warning The function modifies the input vectors vertex_estimates and y_dirac
  *          in each iteration. Ensure these are not used externally if persistence
  *          is required.
  *
@@ -337,7 +337,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
 }
 
 /**
- * @brief Computes the Bayesian Bootstrap Mean Wasserstein Distance (BBMWD) error using Kahan summation.
+ * @brief Computes the Bayesian Bootstrap Mean Wasserstein Distance (BBMWD) Rf_error using Kahan summation.
  *
  * This function calculates the BBMWD between the observed values and their
  * Bayesian bootstrap estimates for each vertex in a graph. The BBMWD is defined as:
@@ -367,7 +367,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
  *                     Each inner vector represents estimates for all vertices for one bootstrap sample.
  *                     bb_Ey[j][i] is the estimate for vertex i in bootstrap sample j.
  * @param y A vector of observed values for each vertex. y[i] is the observed value at vertex i.
- * @return The computed BBMWD error.
+ * @return The computed BBMWD Rf_error.
  *
  * @pre bb_Ey and y must not be empty.
  * @pre All inner vectors in bb_Ey must have the same size as y.
@@ -377,7 +377,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
  * @note The Wasserstein distance is computed using the C_wasserstein_distance_1D function,
  *       which should be implemented to calculate the 1D Wasserstein distance between two empirical distributions.
  *
- * @warning This function may be computationally intensive for large graphs or high numbers of bootstrap samples.
+ * @Rf_warning This function may be computationally intensive for large graphs or high numbers of bootstrap samples.
  *
  * @see C_wasserstein_distance_1D for the underlying Wasserstein distance computation.
  */
@@ -451,7 +451,7 @@ std::pair<double, double> compute_bbcov_error(const std::vector<std::vector<doub
         mu_location[i] = compute_location(vertex_estimates);
     }
 
-    // Computing the apparent error
+    // Computing the apparent Rf_error
     double apparent_error = 0.0;
     for (int i = 0; i < n_points; ++i)
         apparent_error += std::pow(y[i] - mu_location[i], 2);

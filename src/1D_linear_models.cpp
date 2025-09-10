@@ -3,7 +3,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <algorithm>  // for std::find, std::clamp
 #include <vector>       // for std::vector
@@ -56,7 +56,7 @@
  * @note The function is particularly optimized for predicting values at the reference point (x=0),
  *       which corresponds to the y-intercept of the fitted line.
  *
- * @warning The kernel_index parameter must be initialized with initialize_kernel() before calling
+ * @Rf_warning The kernel_index parameter must be initialized with initialize_kernel() before calling
  *          this function.
  *
  * @pre All input vectors for each side (left/right) must have the same length
@@ -220,7 +220,7 @@ std::pair<double,double> linear_model_1d(
 * @note When xx_wmean < epsilon, the function returns the weighted mean of y values,
 *       which is appropriate when all influential points are very close to x=0.
 *
-* @warning The kernel_index must be initialized with initialize_kernel() before calling
+* @Rf_warning The kernel_index must be initialized with initialize_kernel() before calling
 *          this function.
 *
 * @pre All input vectors for each side (left/right) must have the same length
@@ -859,7 +859,7 @@ lm_mae_t predict_lm_1d_with_mae(const std::vector<double>& y,
  *         Model evaluation:
  *         - predicted_value: Fitted value at the reference point
  *         - loocv: Leave-One-Out Cross-Validation Mean Squared Error across all points
- *         - loocv_at_ref_vertex: LOOCV squared error at the reference point
+ *         - loocv_at_ref_vertex: LOOCV squared Rf_error at the reference point
  *
  *         Methods:
  *         - predict(x): Computes model prediction at any input value x
@@ -984,14 +984,14 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
             y_hat = std::clamp(y_hat, 0.0, 1.0);
         }
 
-        // Calculate LOOCV prediction error
+        // Calculate LOOCV prediction Rf_error
         double residual = (y[i] - y_hat) / (1.0 - h_i);
         double squared_error = residual * residual;
 
         // Add to overall LOOCV sum
         loocv_sum += squared_error;
 
-        // Store specific error for reference vertex
+        // Store specific Rf_error for reference vertex
         if (i == ref_index) {
             results.loocv_at_ref_vertex = squared_error;
         }
@@ -1035,7 +1035,7 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
                                              double epsilon = 1e-8) {
 
     int n_points = x.size();
-    if (n_points != w_list.size()) { // It is assumed that w_list has as many elements as the length of x (= length(y) = length(vertex_indices)) and so ref_index is any number between 0 and (n_points - 1)
+    if (n_points != w_list.size()) { // It is assumed that w_list has as many elements as the length of x (= Rf_length(y) = Rf_length(vertex_indices)) and so ref_index is any number between 0 and (n_points - 1)
         REPORT_ERROR("ref_index_list.size(): %d\tw_list.size(): %d\tref_index_list and w_list sizes have to be the same.", n_points, (int)w_list.size());
     }
 
@@ -1109,14 +1109,14 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
                 y_hat = std::clamp(y_hat, 0.0, 1.0);
             }
 
-            // Calculate LOOCV prediction error
+            // Calculate LOOCV prediction Rf_error
             double residual = (y[i] - y_hat) / (1.0 - h_i);
             double squared_error = residual * residual;
 
             // Add to overall LOOCV sum
             loocv_sum += squared_error;
 
-            // Store specific error for reference vertex
+            // Store specific Rf_error for reference vertex
             if (i == ref_index) {
                 results[ref_index].loocv_at_ref_vertex = squared_error;
             }

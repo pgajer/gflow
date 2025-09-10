@@ -1,7 +1,8 @@
 #include <R.h>
 #include <Rinternals.h>
+
 #undef length  // to resolve naming conflict between the R macro length defined in Rinternals.h and a member function in the C++ standard library's codecvt class
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <mutex>
@@ -116,10 +117,10 @@ double rule_of_thumb_logit_bw(
  * models in the neighborhood of each data point, with the neighborhood size determined by either
  * a fixed bandwidth or one selected through cross-validation.
  *
- * The function supports three different error measures for bandwidth selection:
+ * The function supports three different Rf_error measures for bandwidth selection:
  * 1. Deviance-based criterion: $$-[y_i\log(\hat{p}_{(-i)}) + (1-y_i)\log(1-\hat{p}_{(-i)})]$$
  * 2. Brier score: $$(\hat{p}_{(-i)} - y_i)^2$$
- * 3. Absolute error: $$|y_i - \hat{p}_{(-i)}|$$
+ * 3. Absolute Rf_error: $$|y_i - \hat{p}_{(-i)}|$$
  *
  * where $$\hat{p}_{(-i)}$$ represents the leave-one-out prediction for observation i.
  *
@@ -129,8 +130,8 @@ double rule_of_thumb_logit_bw(
  *    a. Creates a grid of candidate bandwidths
  *    b. For each bandwidth:
  *       - Fits local models using either LOOCV or k-fold CV
- *       - Computes all three error measures
- *    c. Selects optimal bandwidths minimizing each error measure
+ *       - Computes all three Rf_error measures
+ *    c. Selects optimal bandwidths minimizing each Rf_error measure
  * 3. Returns predictions and model parameters for optimal or specified bandwidth(s)
  *
  * @param x Vector of predictor variables
@@ -146,7 +147,7 @@ double rule_of_thumb_logit_bw(
  * @param max_iterations Maximum iterations for logistic regression fitting
  * @param ridge_lambda Ridge regularization parameter
  * @param tolerance Convergence tolerance for model fitting
- * @param with_errors If true, computes and returns error measures
+ * @param with_errors If true, computes and returns Rf_error measures
  * @param with_bw_predictions If true, retains predictions for all bandwidths
  *
  * @return maelog_t struct containing:
@@ -157,7 +158,7 @@ double rule_of_thumb_logit_bw(
  * - mean_abs_errors: Mean absolute errors for each bandwidth
  * - opt_deviance_bw_idx: Index of bandwidth minimizing deviance
  * - opt_brier_bw_idx: Index of bandwidth minimizing Brier score
- * - opt_abs_bw_idx: Index of bandwidth minimizing absolute error
+ * - opt_abs_bw_idx: Index of bandwidth minimizing absolute Rf_error
  * - beta1s: Linear coefficients from local models
  * - beta2s: Quadratic coefficients (if fit_quadratic=true)
  *
@@ -175,7 +176,7 @@ double rule_of_thumb_logit_bw(
  * @note If with_bw_predictions=false, only predictions for unique optimal
  * bandwidths are retained in bw_predictions to conserve memory.
  *
- * @warning Input vectors x and y must be the same length and y must contain
+ * @Rf_warning Input vectors x and y must be the same length and y must contain
  * only binary values (0 or 1). The function uses the ANN library for efficient
  * nearest neighbor searches, which must be properly initialized before calling.
  *
@@ -448,7 +449,7 @@ maelog_t maelog(
     double x_range = x_max - x_min;
 
     if (x_range < std::numeric_limits<double>::epsilon()) {
-        error("Input x values are effectively constant");
+        Rf_error("Input x values are effectively constant");
     }
 
     double min_bw = min_bw_factor * x_range;
@@ -458,7 +459,7 @@ maelog_t maelog(
         result.candidate_bandwidths[i] = min_bw + i * dx;
     }
 
-    // Initialize error vectors
+    // Initialize Rf_error vectors
     result.mean_brier_errors.resize(n_bws);
     result.bw_predictions.resize(n_bws); // this vector is always initialized, even if with_bw_predictions = false, in which case only optimal bw predictions will be non-empty
 
@@ -544,7 +545,7 @@ maelog_t maelog(
 
                 auto train_preds = std::move(ll.preds);
 
-                // Compute validation error using linear interpolation
+                // Compute validation Rf_error using linear interpolation
                 for (size_t j = 0; j < valid_x.size(); j++) {
                     // Find the bracketing interval in the sorted training data
                     auto upper = std::upper_bound(sorted_train_x.begin(), sorted_train_x.end(), valid_x[j]);
@@ -593,7 +594,7 @@ maelog_t maelog(
         }
     }
 
-    // Find optimal bandwidths for each error measure
+    // Find optimal bandwidths for each Rf_error measure
     auto find_opt_idx = [](const std::vector<double>& errors) {
         return std::distance(errors.begin(),
                            std::min_element(errors.begin(), errors.end()));
@@ -673,9 +674,9 @@ maelog_t maelog(
  *   - mean_deviance_errors: Mean deviance errors for each candidate bandwidth
  *   - mean_brier_errors: Mean Brier errors for each candidate bandwidth
  *   - mean_abs_errors: Mean absolute errors for each candidate bandwidth
- *   - opt_deviance_bw_idx: Index of bandwidth minimizing deviance error
- *   - opt_brier_bw_idx: Index of bandwidth minimizing Brier error
- *   - opt_abs_bw_idx: Index of bandwidth minimizing absolute error
+ *   - opt_deviance_bw_idx: Index of bandwidth minimizing deviance Rf_error
+ *   - opt_brier_bw_idx: Index of bandwidth minimizing Brier Rf_error
+ *   - opt_abs_bw_idx: Index of bandwidth minimizing absolute Rf_error
  *   - beta1s: Linear coefficients (only when pilot_bandwidth > 0)
  *   - beta2s: Quadratic coefficients (only when pilot_bandwidth > 0 and fit_quadratic=TRUE)
  *   - fit_info: List containing model parameters:
@@ -689,7 +690,7 @@ maelog_t maelog(
  *     - ridge_lambda: Ridge regularization parameter
  *     - tolerance: Convergence tolerance
  *
- * @throws R error if inputs are invalid or computation fails
+ * @throws R Rf_error if inputs are invalid or computation fails
  *
  * @note Protected SEXP objects are properly unprotected before return
  * @note Beta coefficients are only returned when using a fixed pilot bandwidth
@@ -893,10 +894,10 @@ SEXP S_maelog(
     }
     catch (const std::exception& e) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("C++ error in maelog: %s", e.what());
+        Rf_error("C++ Rf_error in maelog: %s", e.what());
     }
     catch (...) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Unknown error in maelog");
+        Rf_error("Unknown Rf_error in maelog");
     }
 }

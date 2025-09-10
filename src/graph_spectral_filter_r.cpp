@@ -1,7 +1,7 @@
 #include <R.h>
 #include <Rinternals.h>
 #undef length                           // avoid clash with R
-#undef eval
+#undef Rf_eval
 
 #include "set_wgraph.hpp"               // set_wgraph_t
 #include "graph_spectral_filter.hpp"    // graph_spectral_filter_t
@@ -85,10 +85,10 @@ extern "C" SEXP S_graph_spectral_filter(
 	int nprot = 0;
 	// Determine how many fields to return based on whether we include all predictions for each t value
 	int n_fields = with_t_predictions ? 13 : 12;
-	SEXP Rresult = PROTECT(allocVector(VECSXP, n_fields)); nprot++;
+	SEXP Rresult = PROTECT(Rf_allocVector(VECSXP, n_fields)); nprot++;
 
 	// 3a) evalues
-	SEXP Revalues = PROTECT(allocVector(REALSXP, result.evalues.size())); nprot++;
+	SEXP Revalues = PROTECT(Rf_allocVector(REALSXP, result.evalues.size())); nprot++;
 	for (int i = 0; i < (int)result.evalues.size(); ++i)
 		REAL(Revalues)[i] = result.evalues[i];
 	SET_VECTOR_ELT(Rresult, 0, Revalues);
@@ -96,38 +96,38 @@ extern "C" SEXP S_graph_spectral_filter(
 	// 3b) evectors
 	int nrow = result.evectors.rows();
 	int ncol = result.evectors.cols();
-	SEXP Revectors = PROTECT(allocMatrix(REALSXP, nrow, ncol)); nprot++;
+	SEXP Revectors = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); nprot++;
 	for (int c = 0; c < ncol; ++c)
 		for (int r = 0; r < nrow; ++r)
 			REAL(Revectors)[r + nrow * c] = result.evectors(r, c);
 	SET_VECTOR_ELT(Rresult, 1, Revectors);
 
 	// 3c) candidate_ts
-	SEXP Rts = PROTECT(allocVector(REALSXP, result.candidate_ts.size())); nprot++;
+	SEXP Rts = PROTECT(Rf_allocVector(REALSXP, result.candidate_ts.size())); nprot++;
 	for (int i = 0; i < (int)result.candidate_ts.size(); ++i)
 		REAL(Rts)[i] = result.candidate_ts[i];
 	SET_VECTOR_ELT(Rresult, 2, Rts);
 
 	// 3d) gcv_scores
-	SEXP Rgcv = PROTECT(allocVector(REALSXP, result.gcv_scores.size())); nprot++;
+	SEXP Rgcv = PROTECT(Rf_allocVector(REALSXP, result.gcv_scores.size())); nprot++;
 	for (int i = 0; i < (int)result.gcv_scores.size(); ++i)
 		REAL(Rgcv)[i] = result.gcv_scores[i];
 	SET_VECTOR_ELT(Rresult, 3, Rgcv);
 
 	// 3e) opt_t_idx
-	SEXP Ropt = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Ropt = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Ropt)[0] = static_cast<int>(result.opt_t_idx + 1);   // 1‐based for R
 	SET_VECTOR_ELT(Rresult, 4, Ropt);
 
 	// 3f) predictions
-	SEXP Rpred = PROTECT(allocVector(REALSXP, result.predictions.size())); nprot++;
+	SEXP Rpred = PROTECT(Rf_allocVector(REALSXP, result.predictions.size())); nprot++;
 	for (int i = 0; i < (int)result.predictions.size(); ++i)
 		REAL(Rpred)[i] = result.predictions[i];
 	SET_VECTOR_ELT(Rresult, 5, Rpred);
 
 	// 3g) t_predictions (optional)
 	if (with_t_predictions) {
-		SEXP Rtp = PROTECT(allocMatrix(
+		SEXP Rtp = PROTECT(Rf_allocMatrix(
 							   REALSXP,
 							   result.t_predictions[0].size(),
 							   result.t_predictions.size()
@@ -144,99 +144,99 @@ extern "C" SEXP S_graph_spectral_filter(
 	}
 
 	// 3h) laplacian_type
-	SEXP Rlap_type = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Rlap_type = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Rlap_type)[0] = static_cast<int>(result.laplacian_type);
 	SET_VECTOR_ELT(Rresult, 7, Rlap_type);
 
 	// 3i) filter_type
-	SEXP Rfilter_type = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Rfilter_type = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Rfilter_type)[0] = static_cast<int>(result.filter_type);
 	SET_VECTOR_ELT(Rresult, 8, Rfilter_type);
 
 	// 3j) laplacian_power
-	SEXP Rlap_power = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Rlap_power = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Rlap_power)[0] = static_cast<int>(result.laplacian_power);
 	SET_VECTOR_ELT(Rresult, 9, Rlap_power);
 
 	// 3k) kernel_params
-	SEXP Rkernel_params = PROTECT(allocVector(VECSXP, 8)); nprot++;
+	SEXP Rkernel_params = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
 
-	SEXP Rtau_factor = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rtau_factor = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rtau_factor)[0] = result.kernel_params.tau_factor;
 	SET_VECTOR_ELT(Rkernel_params, 0, Rtau_factor);
 
-	SEXP Rradius_factor = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rradius_factor = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rradius_factor)[0] = result.kernel_params.radius_factor;
 	SET_VECTOR_ELT(Rkernel_params, 1, Rradius_factor);
 
-	SEXP Rkernel_type = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Rkernel_type = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Rkernel_type)[0] = static_cast<int>(result.kernel_params.kernel_type);
 	SET_VECTOR_ELT(Rkernel_params, 2, Rkernel_type);
 
-	SEXP Radaptive = PROTECT(allocVector(LGLSXP, 1)); nprot++;
+	SEXP Radaptive = PROTECT(Rf_allocVector(LGLSXP, 1)); nprot++;
 	LOGICAL(Radaptive)[0] = result.kernel_params.adaptive;
 	SET_VECTOR_ELT(Rkernel_params, 3, Radaptive);
 
-	SEXP Rmin_radius_factor = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rmin_radius_factor = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rmin_radius_factor)[0] = result.kernel_params.min_radius_factor;
 	SET_VECTOR_ELT(Rkernel_params, 4, Rmin_radius_factor);
 
-	SEXP Rmax_radius_factor = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rmax_radius_factor = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rmax_radius_factor)[0] = result.kernel_params.max_radius_factor;
 	SET_VECTOR_ELT(Rkernel_params, 5, Rmax_radius_factor);
 
-	SEXP Rdomain_min_size = PROTECT(allocVector(INTSXP, 1)); nprot++;
+	SEXP Rdomain_min_size = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
 	INTEGER(Rdomain_min_size)[0] = static_cast<int>(result.kernel_params.domain_min_size);
 	SET_VECTOR_ELT(Rkernel_params, 6, Rdomain_min_size);
 
-	SEXP Rprecision = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rprecision = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rprecision)[0] = result.kernel_params.precision;
 	SET_VECTOR_ELT(Rkernel_params, 7, Rprecision);
 
 	// Set names for kernel_params
-	SEXP kernel_params_names = PROTECT(allocVector(STRSXP, 8)); nprot++;
-	SET_STRING_ELT(kernel_params_names, 0, mkChar("tau_factor"));
-	SET_STRING_ELT(kernel_params_names, 1, mkChar("radius_factor"));
-	SET_STRING_ELT(kernel_params_names, 2, mkChar("kernel_type"));
-	SET_STRING_ELT(kernel_params_names, 3, mkChar("adaptive"));
-	SET_STRING_ELT(kernel_params_names, 4, mkChar("min_radius_factor"));
-	SET_STRING_ELT(kernel_params_names, 5, mkChar("max_radius_factor"));
-	SET_STRING_ELT(kernel_params_names, 6, mkChar("domain_min_size"));
-	SET_STRING_ELT(kernel_params_names, 7, mkChar("precision"));
-	setAttrib(Rkernel_params, R_NamesSymbol, kernel_params_names);
+	SEXP kernel_params_names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
+	SET_STRING_ELT(kernel_params_names, 0, Rf_mkChar("tau_factor"));
+	SET_STRING_ELT(kernel_params_names, 1, Rf_mkChar("radius_factor"));
+	SET_STRING_ELT(kernel_params_names, 2, Rf_mkChar("kernel_type"));
+	SET_STRING_ELT(kernel_params_names, 3, Rf_mkChar("adaptive"));
+	SET_STRING_ELT(kernel_params_names, 4, Rf_mkChar("min_radius_factor"));
+	SET_STRING_ELT(kernel_params_names, 5, Rf_mkChar("max_radius_factor"));
+	SET_STRING_ELT(kernel_params_names, 6, Rf_mkChar("domain_min_size"));
+	SET_STRING_ELT(kernel_params_names, 7, Rf_mkChar("precision"));
+	Rf_setAttrib(Rkernel_params, R_NamesSymbol, kernel_params_names);
 
 	SET_VECTOR_ELT(Rresult, 10, Rkernel_params);
 
 	// 3l) compute_time_ms
-	SEXP Rcompute_time = PROTECT(allocVector(REALSXP, 1)); nprot++;
+	SEXP Rcompute_time = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 	REAL(Rcompute_time)[0] = result.compute_time_ms;
 	SET_VECTOR_ELT(Rresult, 11, Rcompute_time);
 
 	// 3m) gcv_min_score (if with_t_predictions, this is element 12)
 	if (with_t_predictions) {
-		SEXP Rgcv_min = PROTECT(allocVector(REALSXP, 1)); nprot++;
+		SEXP Rgcv_min = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
 		REAL(Rgcv_min)[0] = result.gcv_min_score;
 		SET_VECTOR_ELT(Rresult, 12, Rgcv_min);
 	}
 
 	// 4) Set names for the result list
-	SEXP names = PROTECT(allocVector(STRSXP, n_fields)); nprot++;
-	SET_STRING_ELT(names, 0, mkChar("evalues"));
-	SET_STRING_ELT(names, 1, mkChar("evectors"));
-	SET_STRING_ELT(names, 2, mkChar("candidate_ts"));
-	SET_STRING_ELT(names, 3, mkChar("gcv_scores"));
-	SET_STRING_ELT(names, 4, mkChar("opt_t_idx"));
-	SET_STRING_ELT(names, 5, mkChar("predictions"));
-	SET_STRING_ELT(names, 6, mkChar("t_predictions"));
-	SET_STRING_ELT(names, 7, mkChar("laplacian_type"));
-	SET_STRING_ELT(names, 8, mkChar("filter_type"));
-	SET_STRING_ELT(names, 9, mkChar("laplacian_power"));
-	SET_STRING_ELT(names, 10, mkChar("kernel_params"));
-	SET_STRING_ELT(names, 11, mkChar("compute_time_ms"));
+	SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields)); nprot++;
+	SET_STRING_ELT(names, 0, Rf_mkChar("evalues"));
+	SET_STRING_ELT(names, 1, Rf_mkChar("evectors"));
+	SET_STRING_ELT(names, 2, Rf_mkChar("candidate_ts"));
+	SET_STRING_ELT(names, 3, Rf_mkChar("gcv_scores"));
+	SET_STRING_ELT(names, 4, Rf_mkChar("opt_t_idx"));
+	SET_STRING_ELT(names, 5, Rf_mkChar("predictions"));
+	SET_STRING_ELT(names, 6, Rf_mkChar("t_predictions"));
+	SET_STRING_ELT(names, 7, Rf_mkChar("laplacian_type"));
+	SET_STRING_ELT(names, 8, Rf_mkChar("filter_type"));
+	SET_STRING_ELT(names, 9, Rf_mkChar("laplacian_power"));
+	SET_STRING_ELT(names, 10, Rf_mkChar("kernel_params"));
+	SET_STRING_ELT(names, 11, Rf_mkChar("compute_time_ms"));
 	if (with_t_predictions) {
-		SET_STRING_ELT(names, 12, mkChar("gcv_min_score"));
+		SET_STRING_ELT(names, 12, Rf_mkChar("gcv_min_score"));
 	}
-	setAttrib(Rresult, R_NamesSymbol, names);
+	Rf_setAttrib(Rresult, R_NamesSymbol, names);
 
 	UNPROTECT(nprot);
 	return Rresult;

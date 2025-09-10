@@ -2,7 +2,7 @@
 #include <Rinternals.h>
    // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "set_wgraph.hpp"  // for set_wgraph_t
 #include "SEXP_cpp_conversion_utils.hpp"
@@ -100,45 +100,45 @@ SEXP S_compute_extrema_hop_nbhds(
 	auto [lmin_hop_nbhd_map, lmax_hop_nbhd_map] = graph.compute_extrema_hop_nbhds(y);
 
 	// ---- Build R objects ----
-	SEXP r_lmin_hop_nbhds = PROTECT(allocVector(VECSXP, lmin_hop_nbhd_map.size()));
-	SEXP r_lmax_hop_nbhds = PROTECT(allocVector(VECSXP, lmax_hop_nbhd_map.size()));
+	SEXP r_lmin_hop_nbhds = PROTECT(Rf_allocVector(VECSXP, lmin_hop_nbhd_map.size()));
+	SEXP r_lmax_hop_nbhds = PROTECT(Rf_allocVector(VECSXP, lmax_hop_nbhd_map.size()));
 
 	// Helper lambda to populate one neighborhood
 	auto fill_nbhd = [&](const hop_nbhd_t& nbhd, SEXP r_nbhd) {
 		// Names: vertex, hop_idx, nbhd_df, nbhd_bd_df
-		SEXP names = PROTECT(allocVector(STRSXP, 5));
-		SET_STRING_ELT(names, 0, mkChar("vertex"));
-		SET_STRING_ELT(names, 1, mkChar("value"));
-		SET_STRING_ELT(names, 2, mkChar("hop_idx"));
-		SET_STRING_ELT(names, 3, mkChar("nbhd_df"));
-		SET_STRING_ELT(names, 4, mkChar("nbhd_bd_df"));
-		setAttrib(r_nbhd, R_NamesSymbol, names);
+		SEXP names = PROTECT(Rf_allocVector(STRSXP, 5));
+		SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+		SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+		SET_STRING_ELT(names, 2, Rf_mkChar("hop_idx"));
+		SET_STRING_ELT(names, 3, Rf_mkChar("nbhd_df"));
+		SET_STRING_ELT(names, 4, Rf_mkChar("nbhd_bd_df"));
+		Rf_setAttrib(r_nbhd, R_NamesSymbol, names);
 
 		bool is_global_extremum = (nbhd.hop_idx == std::numeric_limits<size_t>::max());
 
 		// vertex (1-based)
-		SEXP r_vertex = PROTECT(ScalarInteger(
+		SEXP r_vertex = PROTECT(Rf_ScalarInteger(
 									static_cast<int>(nbhd.vertex) + 1
 									));
 
 		// value
-		SEXP r_value  = PROTECT(ScalarReal(y[nbhd.vertex]));
+		SEXP r_value  = PROTECT(Rf_ScalarReal(y[nbhd.vertex]));
 
 		// hop index
 		SEXP r_hop_idx;
 		if (is_global_extremum) {
-			r_hop_idx = PROTECT(ScalarReal(R_PosInf));
+			r_hop_idx = PROTECT(Rf_ScalarReal(R_PosInf));
 		} else {
-			r_hop_idx = PROTECT(ScalarReal(static_cast<double>(nbhd.hop_idx)));
+			r_hop_idx = PROTECT(Rf_ScalarReal(static_cast<double>(nbhd.hop_idx)));
 		}
 
 		// nbhd matrix
 		SEXP r_nbhd_df;
 		if (is_global_extremum) {
-			r_nbhd_df = PROTECT(allocMatrix(REALSXP, 0, 2)); // empty matrix
+			r_nbhd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
 		} else {
 			size_t m = nbhd.hop_dist_map.size();
-			r_nbhd_df = PROTECT(allocMatrix(REALSXP, m, 2));
+			r_nbhd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
 			double *pr = REAL(r_nbhd_df);
 			size_t i = 0;
 			for (const auto& [v,d] : nbhd.hop_dist_map) {
@@ -151,10 +151,10 @@ SEXP S_compute_extrema_hop_nbhds(
 		// nbhd_bd matrix
 		SEXP r_nbhd_bd_df;
 		if (is_global_extremum) {
-			r_nbhd_bd_df = PROTECT(allocMatrix(REALSXP, 0, 2)); // empty matrix
+			r_nbhd_bd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
 		} else {
 			size_t m = nbhd.y_nbhd_bd_map.size();
-			r_nbhd_bd_df = PROTECT(allocMatrix(REALSXP, m, 2));
+			r_nbhd_bd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
 			double *pr_bd = REAL(r_nbhd_bd_df);
 			size_t i = 0;
 			for (const auto& [v, y_val] : nbhd.y_nbhd_bd_map) {
@@ -177,7 +177,7 @@ SEXP S_compute_extrema_hop_nbhds(
 	// Fill minima nbhd's
 	size_t i = 0;
 	for (const auto& [_, nbhd] : lmin_hop_nbhd_map) {
-		SEXP r_nbhd = PROTECT(allocVector(VECSXP, 5));
+		SEXP r_nbhd = PROTECT(Rf_allocVector(VECSXP, 5));
 		fill_nbhd(nbhd, r_nbhd);
 		SET_VECTOR_ELT(r_lmin_hop_nbhds, i++, r_nbhd);
 		UNPROTECT(1); // r_nbhd
@@ -186,18 +186,18 @@ SEXP S_compute_extrema_hop_nbhds(
 	// Fill maxima nbhd's
 	i = 0;
 	for (const auto& [_, nbhd] : lmax_hop_nbhd_map) {
-		SEXP r_nbhd = PROTECT(allocVector(VECSXP, 5));
+		SEXP r_nbhd = PROTECT(Rf_allocVector(VECSXP, 5));
 		fill_nbhd(nbhd, r_nbhd);
 		SET_VECTOR_ELT(r_lmax_hop_nbhds, i++, r_nbhd);
 		UNPROTECT(1); // r_nbhd
 	}
 
 	// Name the two top‐level components
-	SEXP r_result = PROTECT(allocVector(VECSXP, 2));
-	SEXP r_result_names = PROTECT(allocVector(STRSXP, 2));
-	SET_STRING_ELT(r_result_names, 0, mkChar("lmin_hop_nbhds"));
-	SET_STRING_ELT(r_result_names, 1, mkChar("lmax_hop_nbhds"));
-	setAttrib(r_result, R_NamesSymbol, r_result_names);
+	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
+	SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
+	SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_hop_nbhds"));
+	SET_STRING_ELT(r_result_names, 1, Rf_mkChar("lmax_hop_nbhds"));
+	Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 	SET_VECTOR_ELT(r_result, 0, r_lmin_hop_nbhds);
 	SET_VECTOR_ELT(r_result, 1, r_lmax_hop_nbhds);
 
@@ -277,15 +277,15 @@ SEXP S_create_gflow_cx(
 	double* y_ptr = REAL(s_y);
 	std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
-	size_t hop_idx_thld = static_cast<size_t>(asInteger(s_hop_idx_thld));
-	smoother_type_t smoother_type = static_cast<smoother_type_t>(asInteger(s_smoother_type));
-	int max_outer_iterations = asInteger(s_max_outer_iterations);
-	int max_inner_iterations = asInteger(s_max_inner_iterations);
-	double smoothing_tolerance = asReal(s_smoothing_tolerance);
-	double sigma = asReal(s_sigma);
-	bool process_in_order = asLogical(s_process_in_order);
-	bool verbose = asLogical(s_verbose);
-	bool detailed_recording = asLogical(s_detailed_recording);
+	size_t hop_idx_thld = static_cast<size_t>(Rf_asInteger(s_hop_idx_thld));
+	smoother_type_t smoother_type = static_cast<smoother_type_t>(Rf_asInteger(s_smoother_type));
+	int max_outer_iterations = Rf_asInteger(s_max_outer_iterations);
+	int max_inner_iterations = Rf_asInteger(s_max_inner_iterations);
+	double smoothing_tolerance = Rf_asReal(s_smoothing_tolerance);
+	double sigma = Rf_asReal(s_sigma);
+	bool process_in_order = Rf_asLogical(s_process_in_order);
+	bool verbose = Rf_asLogical(s_verbose);
+	bool detailed_recording = Rf_asLogical(s_detailed_recording);
 
 	// Create graph and compute
 	set_wgraph_t graph(adj_list, weight_list);
@@ -298,65 +298,65 @@ SEXP S_create_gflow_cx(
 		);
 
 	// ---- Build R objects ----
-	SEXP r_result = PROTECT(allocVector(VECSXP, detailed_recording ? 4 : 3));
-	SEXP r_names = PROTECT(allocVector(STRSXP, detailed_recording ? 4 : 3));
+	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, detailed_recording ? 4 : 3));
+	SEXP r_names = PROTECT(Rf_allocVector(STRSXP, detailed_recording ? 4 : 3));
 
 	// Add names to result list
-	SET_STRING_ELT(r_names, 0, mkChar("harmonic_predictions"));
-	SET_STRING_ELT(r_names, 1, mkChar("lmin_hop_nbhds"));
-	SET_STRING_ELT(r_names, 2, mkChar("lmax_hop_nbhds"));
+	SET_STRING_ELT(r_names, 0, Rf_mkChar("harmonic_predictions"));
+	SET_STRING_ELT(r_names, 1, Rf_mkChar("lmin_hop_nbhds"));
+	SET_STRING_ELT(r_names, 2, Rf_mkChar("lmax_hop_nbhds"));
 	if (detailed_recording) {
-		SET_STRING_ELT(r_names, 3, mkChar("smoothing_history"));
+		SET_STRING_ELT(r_names, 3, Rf_mkChar("smoothing_history"));
 	}
-	setAttrib(r_result, R_NamesSymbol, r_names);
+	Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
 	// Add predictions
-	SEXP r_predictions = PROTECT(allocVector(REALSXP, result.harmonic_predictions.size()));
+	SEXP r_predictions = PROTECT(Rf_allocVector(REALSXP, result.harmonic_predictions.size()));
 	double* pred_ptr = REAL(r_predictions);
 	for (size_t i = 0; i < result.harmonic_predictions.size(); i++) {
 		pred_ptr[i] = result.harmonic_predictions[i];
 	}
 	SET_VECTOR_ELT(r_result, 0, r_predictions);
 
-	SEXP r_lmin_hop_nbhds = PROTECT(allocVector(VECSXP, result.lmin_hop_nbhd_map.size()));
-	SEXP r_lmax_hop_nbhds = PROTECT(allocVector(VECSXP, result.lmax_hop_nbhd_map.size()));
+	SEXP r_lmin_hop_nbhds = PROTECT(Rf_allocVector(VECSXP, result.lmin_hop_nbhd_map.size()));
+	SEXP r_lmax_hop_nbhds = PROTECT(Rf_allocVector(VECSXP, result.lmax_hop_nbhd_map.size()));
 
 	// Helper lambda to populate one neighborhood
 	auto fill_nbhd = [&](const hop_nbhd_t& nbhd, SEXP r_nbhd) {
 		// Names: vertex, hop_idx, nbhd_df, nbhd_bd_df
-		SEXP names = PROTECT(allocVector(STRSXP, 5));
-		SET_STRING_ELT(names, 0, mkChar("vertex"));
-		SET_STRING_ELT(names, 1, mkChar("value"));
-		SET_STRING_ELT(names, 2, mkChar("hop_idx"));
-		SET_STRING_ELT(names, 3, mkChar("nbhd_df"));
-		SET_STRING_ELT(names, 4, mkChar("nbhd_bd_df"));
-		setAttrib(r_nbhd, R_NamesSymbol, names);
+		SEXP names = PROTECT(Rf_allocVector(STRSXP, 5));
+		SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+		SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+		SET_STRING_ELT(names, 2, Rf_mkChar("hop_idx"));
+		SET_STRING_ELT(names, 3, Rf_mkChar("nbhd_df"));
+		SET_STRING_ELT(names, 4, Rf_mkChar("nbhd_bd_df"));
+		Rf_setAttrib(r_nbhd, R_NamesSymbol, names);
 
 		bool is_global_extremum = (nbhd.hop_idx == std::numeric_limits<size_t>::max());
 
 		// vertex (1-based)
-		SEXP r_vertex = PROTECT(ScalarInteger(
+		SEXP r_vertex = PROTECT(Rf_ScalarInteger(
 									static_cast<int>(nbhd.vertex) + 1
 									));
 
 		// value
-		SEXP r_value  = PROTECT(ScalarReal(y[nbhd.vertex]));
+		SEXP r_value  = PROTECT(Rf_ScalarReal(y[nbhd.vertex]));
 
 		// hop index
 		SEXP r_hop_idx;
 		if (is_global_extremum) {
-			r_hop_idx = PROTECT(ScalarReal(R_PosInf));
+			r_hop_idx = PROTECT(Rf_ScalarReal(R_PosInf));
 		} else {
-			r_hop_idx = PROTECT(ScalarReal(static_cast<double>(nbhd.hop_idx)));
+			r_hop_idx = PROTECT(Rf_ScalarReal(static_cast<double>(nbhd.hop_idx)));
 		}
 
 		// nbhd matrix
 		SEXP r_nbhd_df;
 		if (is_global_extremum) {
-			r_nbhd_df = PROTECT(allocMatrix(REALSXP, 0, 2)); // empty matrix
+			r_nbhd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
 		} else {
 			size_t m = nbhd.hop_dist_map.size();
-			r_nbhd_df = PROTECT(allocMatrix(REALSXP, m, 2));
+			r_nbhd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
 			double *pr = REAL(r_nbhd_df);
 			size_t i = 0;
 			for (const auto& [v,d] : nbhd.hop_dist_map) {
@@ -369,10 +369,10 @@ SEXP S_create_gflow_cx(
 		// nbhd_bd matrix
 		SEXP r_nbhd_bd_df;
 		if (is_global_extremum) {
-			r_nbhd_bd_df = PROTECT(allocMatrix(REALSXP, 0, 2)); // empty matrix
+			r_nbhd_bd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
 		} else {
 			size_t m = nbhd.y_nbhd_bd_map.size();
-			r_nbhd_bd_df = PROTECT(allocMatrix(REALSXP, m, 2));
+			r_nbhd_bd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
 			double *pr_bd = REAL(r_nbhd_bd_df);
 			size_t i = 0;
 			for (const auto& [v, y_val] : nbhd.y_nbhd_bd_map) {
@@ -395,7 +395,7 @@ SEXP S_create_gflow_cx(
 	// Fill minima nbhd's
 	size_t i = 0;
 	for (const auto& [_, nbhd] : result.lmin_hop_nbhd_map) {
-		SEXP r_nbhd = PROTECT(allocVector(VECSXP, 5));
+		SEXP r_nbhd = PROTECT(Rf_allocVector(VECSXP, 5));
 		fill_nbhd(nbhd, r_nbhd);
 		SET_VECTOR_ELT(r_lmin_hop_nbhds, i++, r_nbhd);
 		UNPROTECT(1); // r_nbhd
@@ -404,7 +404,7 @@ SEXP S_create_gflow_cx(
 	// Fill maxima nbhd's
 	i = 0;
 	for (const auto& [_, nbhd] : result.lmax_hop_nbhd_map) {
-		SEXP r_nbhd = PROTECT(allocVector(VECSXP, 5));
+		SEXP r_nbhd = PROTECT(Rf_allocVector(VECSXP, 5));
 		fill_nbhd(nbhd, r_nbhd);
 		SET_VECTOR_ELT(r_lmax_hop_nbhds, i++, r_nbhd);
 		UNPROTECT(1); // r_nbhd
@@ -417,34 +417,34 @@ SEXP S_create_gflow_cx(
 	// Add detailed smoothing history if requested
 	if (detailed_recording) {
 		int n_steps = result.smoothing_history.size();
-		SEXP r_history = PROTECT(allocVector(VECSXP, n_steps));
+		SEXP r_history = PROTECT(Rf_allocVector(VECSXP, n_steps));
 
 		for (int i = 0; i < n_steps; i++) {
 			auto& step = result.smoothing_history[i];
 
 			// Create list for this step
-			SEXP r_step = PROTECT(allocVector(VECSXP, 7));
-			SEXP r_step_names = PROTECT(allocVector(STRSXP, 7));
+			SEXP r_step = PROTECT(Rf_allocVector(VECSXP, 7));
+			SEXP r_step_names = PROTECT(Rf_allocVector(STRSXP, 7));
 
-			SET_STRING_ELT(r_step_names, 0, mkChar("vertex"));
-			SET_STRING_ELT(r_step_names, 1, mkChar("is_minimum"));
-			SET_STRING_ELT(r_step_names, 2, mkChar("hop_idx"));
-			SET_STRING_ELT(r_step_names, 3, mkChar("smoother"));
-			SET_STRING_ELT(r_step_names, 4, mkChar("before"));
-			SET_STRING_ELT(r_step_names, 5, mkChar("after"));
-			SET_STRING_ELT(r_step_names, 6, mkChar("region"));
+			SET_STRING_ELT(r_step_names, 0, Rf_mkChar("vertex"));
+			SET_STRING_ELT(r_step_names, 1, Rf_mkChar("is_minimum"));
+			SET_STRING_ELT(r_step_names, 2, Rf_mkChar("hop_idx"));
+			SET_STRING_ELT(r_step_names, 3, Rf_mkChar("smoother"));
+			SET_STRING_ELT(r_step_names, 4, Rf_mkChar("before"));
+			SET_STRING_ELT(r_step_names, 5, Rf_mkChar("after"));
+			SET_STRING_ELT(r_step_names, 6, Rf_mkChar("region"));
 
-			setAttrib(r_step, R_NamesSymbol, r_step_names);
+			Rf_setAttrib(r_step, R_NamesSymbol, r_step_names);
 
 			// Fill in the values
-			SET_VECTOR_ELT(r_step, 0, ScalarInteger(step.vertex + 1));  // Convert to 1-indexed
-			SET_VECTOR_ELT(r_step, 1, ScalarLogical(step.is_minimum));
-			SET_VECTOR_ELT(r_step, 2, ScalarInteger(step.hop_idx));
-			SET_VECTOR_ELT(r_step, 3, ScalarInteger(static_cast<int>(step.smoother)));
+			SET_VECTOR_ELT(r_step, 0, Rf_ScalarInteger(step.vertex + 1));  // Convert to 1-indexed
+			SET_VECTOR_ELT(r_step, 1, Rf_ScalarLogical(step.is_minimum));
+			SET_VECTOR_ELT(r_step, 2, Rf_ScalarInteger(step.hop_idx));
+			SET_VECTOR_ELT(r_step, 3, Rf_ScalarInteger(static_cast<int>(step.smoother)));
 
 			// Convert before and after vectors
-			SEXP r_before = PROTECT(allocVector(REALSXP, step.before.size()));
-			SEXP r_after = PROTECT(allocVector(REALSXP, step.after.size()));
+			SEXP r_before = PROTECT(Rf_allocVector(REALSXP, step.before.size()));
+			SEXP r_after = PROTECT(Rf_allocVector(REALSXP, step.after.size()));
 
 			for (size_t j = 0; j < step.before.size(); j++) {
 				REAL(r_before)[j] = step.before[j];
@@ -455,7 +455,7 @@ SEXP S_create_gflow_cx(
 			SET_VECTOR_ELT(r_step, 5, r_after);
 
 			// Convert region set to vector
-			SEXP r_region = PROTECT(allocVector(INTSXP, step.region.size()));
+			SEXP r_region = PROTECT(Rf_allocVector(INTSXP, step.region.size()));
 			int* region_ptr = INTEGER(r_region);
 			int k = 0;
 			for (size_t v : step.region) {
@@ -557,12 +557,12 @@ SEXP S_apply_harmonic_extension(
 	}
 
 	// Get other parameters
-	smoother_type_t smoother_type = static_cast<smoother_type_t>(asInteger(s_smoother_type));
-	int max_iterations = asInteger(s_max_iterations);
-	double tolerance = asReal(s_tolerance);
-	double sigma = asReal(s_sigma);
-	bool record_iterations = asLogical(s_record_iterations);
-	bool verbose = asLogical(s_verbose);
+	smoother_type_t smoother_type = static_cast<smoother_type_t>(Rf_asInteger(s_smoother_type));
+	int max_iterations = Rf_asInteger(s_max_iterations);
+	double tolerance = Rf_asReal(s_tolerance);
+	double sigma = Rf_asReal(s_sigma);
+	bool record_iterations = Rf_asLogical(s_record_iterations);
+	bool verbose = Rf_asLogical(s_verbose);
 
 	// ---- Create the graph and prepare for computation ----
 	set_wgraph_t graph(adj_list, weight_list);
@@ -745,28 +745,28 @@ SEXP S_apply_harmonic_extension(
 	}
 
 	// ---- Build R return value ----
-	SEXP r_result = PROTECT(allocVector(VECSXP, 5));
-	SEXP r_names = PROTECT(allocVector(STRSXP, 5));
+	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 5));
+	SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5));
 
 	// Set names for the result list
-	SET_STRING_ELT(r_names, 0, mkChar("smoothed_values"));
-	SET_STRING_ELT(r_names, 1, mkChar("iterations"));
-	SET_STRING_ELT(r_names, 2, mkChar("n_iterations"));
-	SET_STRING_ELT(r_names, 3, mkChar("max_change"));
-	SET_STRING_ELT(r_names, 4, mkChar("converged"));
-	setAttrib(r_result, R_NamesSymbol, r_names);
+	SET_STRING_ELT(r_names, 0, Rf_mkChar("smoothed_values"));
+	SET_STRING_ELT(r_names, 1, Rf_mkChar("iterations"));
+	SET_STRING_ELT(r_names, 2, Rf_mkChar("n_iterations"));
+	SET_STRING_ELT(r_names, 3, Rf_mkChar("max_change"));
+	SET_STRING_ELT(r_names, 4, Rf_mkChar("converged"));
+	Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
 	// Create and set smoothed_values
-	SEXP r_smoothed_values = PROTECT(allocVector(REALSXP, smoothed_values.size()));
+	SEXP r_smoothed_values = PROTECT(Rf_allocVector(REALSXP, smoothed_values.size()));
 	for (size_t i = 0; i < smoothed_values.size(); i++) {
 		REAL(r_smoothed_values)[i] = smoothed_values[i];
 	}
 	SET_VECTOR_ELT(r_result, 0, r_smoothed_values);
 
 	// Create and set iterations
-	SEXP r_iterations = PROTECT(allocVector(VECSXP, iterations.size()));
+	SEXP r_iterations = PROTECT(Rf_allocVector(VECSXP, iterations.size()));
 	for (size_t i = 0; i < iterations.size(); i++) {
-		SEXP iteration = PROTECT(allocVector(REALSXP, iterations[i].size()));
+		SEXP iteration = PROTECT(Rf_allocVector(REALSXP, iterations[i].size()));
 		for (size_t j = 0; j < iterations[i].size(); j++) {
 			REAL(iteration)[j] = iterations[i][j];
 		}
@@ -776,9 +776,9 @@ SEXP S_apply_harmonic_extension(
 	SET_VECTOR_ELT(r_result, 1, r_iterations);
 
 	// Set other values
-	SET_VECTOR_ELT(r_result, 2, ScalarInteger(iterations_performed));
-	SET_VECTOR_ELT(r_result, 3, ScalarReal(max_change));
-	SET_VECTOR_ELT(r_result, 4, ScalarLogical(converged));
+	SET_VECTOR_ELT(r_result, 2, Rf_ScalarInteger(iterations_performed));
+	SET_VECTOR_ELT(r_result, 3, Rf_ScalarReal(max_change));
+	SET_VECTOR_ELT(r_result, 4, Rf_ScalarLogical(converged));
 
 	UNPROTECT(4);  // r_result, r_names, r_smoothed_values, r_iterations
 

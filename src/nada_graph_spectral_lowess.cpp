@@ -37,8 +37,8 @@ Eigen::MatrixXd create_spectral_embedding(
  * 1. Computes the Laplacian eigenvectors for dimension reduction
  * 2. For each vertex, identifies neighboring vertices within varying bandwidths
  * 3. Creates spectral embeddings of these local neighborhoods
- * 4. Fits weighted linear models and selects optimal bandwidth based on LOOCV error
- * 5. Produces smoothed predictions, error estimates, and local scale information
+ * 4. Fits weighted linear models and selects optimal bandwidth based on LOOCV Rf_error
+ * 5. Produces smoothed predictions, Rf_error estimates, and local scale information
  *
  * @param y Response values at each vertex in the graph
  * @param n_evectors Number of eigenvectors to use for the spectral embedding
@@ -298,7 +298,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 				}
 			}
 		}
-		// If all attempts failed, report an error
+		// If all attempts failed, report an Rf_error
 		if (!success) {
 			REPORT_ERROR("Eigenvalue computation failed after multiple attempts with adjusted parameters.");
 		}
@@ -366,7 +366,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 				dist_normalization_factor,
 				n_cleveland_iterations);
 
-			// Store model and error
+			// Store model and Rf_error
 			mean_bandwidth_errors[bw_idx] += model.mean_error;
 			all_bandwidth_models[bw_idx][vertex] = std::move(model);
 		}
@@ -374,7 +374,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 		mean_bandwidth_errors[bw_idx] /= n_vertices;
 	}
 
-	// 6. Find bandwidth with the smallest mean prediction error
+	// 6. Find bandwidth with the smallest mean prediction Rf_error
 	auto min_error_it = std::min_element(mean_bandwidth_errors.begin(), mean_bandwidth_errors.end());
 
 	if (!std::isfinite(*min_error_it)) {
@@ -401,7 +401,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 			auto it = std::find_if(best_model.vertices.begin(), best_model.vertices.end(),
 								   [&](auto& v) { return v == vertex; });
 
-			// Store prediction, error, and scale
+			// Store prediction, Rf_error, and scale
 			if (it != best_model.vertices.end()) {
 				size_t idx = it - best_model.vertices.begin();
 				result.predictions[vertex] = best_model.predictions[idx];
@@ -440,7 +440,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 			auto it = std::find_if(model.vertices.begin(), model.vertices.end(),
 								   [&](auto& v) { return v == vertex; });
 
-			// Store prediction, error, and scale
+			// Store prediction, Rf_error, and scale
 			if (it != model.vertices.end()) {
 				size_t idx = it - model.vertices.begin();
 				bw_predictions[bw_idx][vertex] = model.predictions[idx];

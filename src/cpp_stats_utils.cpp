@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>
@@ -107,7 +107,7 @@ SEXP S_ecdf(SEXP x) {
 
     // Ensure x is a numeric vector
     int nprot = 0;
-    PROTECT(x = coerceVector(x, REALSXP)); nprot++;
+    PROTECT(x = Rf_coerceVector(x, REALSXP)); nprot++;
 
     // Extract the data from the SEXP
     double *data = REAL(x);
@@ -120,7 +120,7 @@ SEXP S_ecdf(SEXP x) {
     std::unique_ptr<std::vector<double>> result = ecdf(vec_x);
 
     // Convert the result to an SEXP
-    SEXP ans = PROTECT(allocVector(REALSXP, result->size())); nprot++;
+    SEXP ans = PROTECT(Rf_allocVector(REALSXP, result->size())); nprot++;
     std::copy(result->begin(), result->end(), REAL(ans));
 
     UNPROTECT(nprot);

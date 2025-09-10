@@ -30,7 +30,7 @@ void C_fsolve(double *a, double *b, int *nr, int *nc, int *status) {
       F77_CALL(dpotrs)("L", nr, nc, a, nr, b, nr, &info FCONE);
       if (info != 0) {
         *status = 1;
-        //error("F77_CALL(dpotrs) crashed!");
+        //Rf_error("F77_CALL(dpotrs) crashed!");
       }
     }
 }
@@ -268,7 +268,7 @@ void C_flm(const double *x,
     \param beta   An output array of length nc+1 with the coefficients of the model.
     \param status The binary variable set to 0 if there are no errors (like EXIT_SUCCESS) and 1 if there were errors.
 
-    NOTE: A common source of error is w not being normalized, that is sum(w) != 1.
+    NOTE: A common source of Rf_error is w not being normalized, that is sum(w) != 1.
           Thus, the first step in debugging should be checking if the sum of w is 1.
 
 */
@@ -358,7 +358,7 @@ void C_flmw(const double *x,
     C_fsolve(C, beta, &p, &n1, status);
 
     if ( *status > 0 ) {
-      //Rprintf("C_fsolve() returned error status 1 in C_flmw(). Setting beta to (wmean(y,w),0,0,0)");
+      //Rprintf("C_fsolve() returned Rf_error status 1 in C_flmw(). Setting beta to (wmean(y,w),0,0,0)");
       beta[0] = wmean(y, w, nr);
       for ( int i = 1; i < p; i++ )
         beta[i] = 0;
@@ -385,7 +385,7 @@ void C_flmw(const double *x,
     \param beta   An output array of length p+1 with the coefficients of the model.
     \param status The binary variable set to 0 if there are no errors (like EXIT_SUCCESS) and 1 if there were errors.
 
-    NOTE: A common source of error is w not being normalized, that is sum(w) != 1.
+    NOTE: A common source of Rf_error is w not being normalized, that is sum(w) != 1.
           Thus, the first step in debugging should be checking if the sum of w is 1.
 
 */

@@ -73,7 +73,7 @@ extern "C" {
  * - The function uses weighted maximum likelihood estimation
  * - LOOCV errors are computed using log loss: -log(p) for y=1, -log(1-p) for y=0
  *
- * @warning
+ * @Rf_warning
  * - The function assumes x values are sorted in ascending order
  * - Numerical instability may occur with extremely imbalanced weights
  * - The Newton-Raphson method may not converge for pathological data
@@ -176,9 +176,9 @@ ulogit_t ulogit(const double* x,
                 double w_i = weights[i];
 
                 // Gradient components
-                double error = p - y[i];
-                g0 += w_i * error;
-                g1 += w_i * error * x_centered;
+                double Rf_error = p - y[i];
+                g0 += w_i * Rf_error;
+                g1 += w_i * Rf_error * x_centered;
 
                 // Hessian components
                 double p_1mp = p * (1.0 - p);
@@ -291,9 +291,9 @@ ulogit_t ulogit(const double* x,
             loo_pred = prior_prob;
         }
 
-        // Compute cross-entropy error
+        // Compute cross-entropy Rf_error
         //result.errors[i] = -y[i] * std::log(std::max(loo_pred, tolerance)) - (1-y[i]) * std::log(std::max(1.0 - loo_pred, tolerance));
-        //result.errors[i] = std::abs(y[i] - loo_pred); // absolute deviation error
+        //result.errors[i] = std::abs(y[i] - loo_pred); // absolute deviation Rf_error
         result.errors[i] = (y[i] - loo_pred) * (y[i] - loo_pred);
     }
 
@@ -330,7 +330,7 @@ ulogit_t ulogit(const double* x,
  * - The function uses PROTECT/UNPROTECT for R's garbage collection
  * - Return value is a named list for easy access in R
  *
- * @warning
+ * @Rf_warning
  * - No input validation is performed in the C++ code
  * - R code should validate inputs before calling this function
  * - Memory management relies on R's garbage collection system
@@ -379,31 +379,31 @@ SEXP S_ulogit(SEXP x_sexp,
     // Creating return list
     const int N_COMPONENTS = 3;
     int n_protected = 0;  // Track number of PROTECT calls
-    SEXP out = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     // Convert predictions to R vector
-    SEXP predictions = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
     for(int i = 0; i < window_size; i++) {
         REAL(predictions)[i] = result.predictions[i];
     }
 
     // Convert errors to R vector
-    SEXP errors = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+    SEXP errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
     for(int i = 0; i < window_size; i++) {
         REAL(errors)[i] = result.errors[i];
     }
 
     // Convert weights to R vector
-    SEXP weights = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+    SEXP weights = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
     for(int i = 0; i < window_size; i++) {
         REAL(weights)[i] = result.w[i];
     }
 
     // Set list names
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("predictions"));
-    SET_STRING_ELT(names, 1, mkChar("errors"));
-    SET_STRING_ELT(names, 2, mkChar("weights"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("errors"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("weights"));
 
     // Set list elements
     SET_VECTOR_ELT(out, 0, predictions);
@@ -411,7 +411,7 @@ SEXP S_ulogit(SEXP x_sexp,
     SET_VECTOR_ELT(out, 2, weights);
 
     // Set list names
-    setAttrib(out, R_NamesSymbol, names);
+    Rf_setAttrib(out, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
     return out;
@@ -511,12 +511,12 @@ std::vector<double> ulogit_predict(
                 double p = 1.0 / (1.0 + std::exp(-xbeta));
 
                 double w_i = weights[i];
-                double error = p - y[i];
+                double Rf_error = p - y[i];
                 double p_1mp = p * (1.0 - p);
 
                 // Update gradient and Hessian
-                g0 += w_i * error;
-                g1 += w_i * error * x_centered;
+                g0 += w_i * Rf_error;
+                g1 += w_i * Rf_error * x_centered;
                 h00 += w_i * p_1mp;
                 h01 += w_i * p_1mp * x_centered;
                 h11 += w_i * p_1mp * x_centered * x_centered;
@@ -570,7 +570,7 @@ std::vector<double> ulogit_predict(
 }
 
 /**
- * @brief Fits univariate logistic regression using Eigen with LOOCV error estimation
+ * @brief Fits univariate logistic regression using Eigen with LOOCV Rf_error estimation
  *
  * @details Implements weighted logistic regression using iteratively reweighted least
  * squares (IRLS) with the Newton-Raphson algorithm. The implementation includes several
@@ -645,7 +645,7 @@ std::vector<double> ulogit_predict(
  *    - LDLT decomposition (primary)
  *    - QR with column pivoting (first fallback)
  *    - SVD (second fallback)
- * 3. If all decompositions fail for error estimation, uses fitted
+ * 3. If all decompositions fail for Rf_error estimation, uses fitted
  *    probabilities as approximation for LOOCV estimates
  * 4. Particularly suitable for local logistic regression fitting where
  *    numerical stability is crucial
@@ -754,7 +754,7 @@ eigen_ulogit_t eigen_ulogit_fit(
         // Add tiny ridge penalty for stability
         Eigen::MatrixXd XtX = X_w.transpose() * X_w;
 
-        // Solve weighted least squares with proper error checking
+        // Solve weighted least squares with proper Rf_error checking
         Eigen::LDLT<Eigen::MatrixXd> ldlt(XtX);
         Eigen::VectorXd new_beta;
         bool solve_succeeded = false;
@@ -783,7 +783,7 @@ eigen_ulogit_t eigen_ulogit_fit(
         if (!solve_succeeded) {
             // Use previous beta values
             new_beta = result.beta;
-            // Add warning
+            // Add Rf_warning
             result.warnings.push_back("Numerical issues in IWLS step - using previous estimates");
 
             // Add extra ridge penalty and try again
@@ -967,7 +967,7 @@ eigen_ulogit_t eigen_ulogit_fit(
             // Compute Brier score
             result.loocv_brier_errors[i] = std::pow(p_leave_one_out - y_i, 2);
 
-            // deviance error
+            // deviance Rf_error
             result.loocv_deviance_errors[i] = -(y[i] * std::log(p_leave_one_out) + (1 - y[i]) * std::log(1 - p_leave_one_out));
         }
     }
@@ -1056,8 +1056,8 @@ std::vector<double> eigen_ulogit_quadratic_predict(
  *
  * @details Converts R objects to C++ types, calls eigen_ulogit_fit(), and returns results as an R list.
  * Supports both linear and quadratic models, with optional leave-one-out cross-validation (LOOCV)
- * error estimation using influence-based approximations. The LOOCV errors are computed using
- * the Brier score (squared error) metric and leverage-based approximations for computational
+ * Rf_error estimation using influence-based approximations. The LOOCV errors are computed using
+ * the Brier score (squared Rf_error) metric and leverage-based approximations for computational
  * efficiency.
  *
  * @param x_sexp Numeric vector of predictor values
@@ -1114,25 +1114,25 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
     const int N_COMPONENTS = with_errors ? 6 : 4;
     int n_protected = 0;  // Track number of PROTECT calls
 
-    SEXP out = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     // Convert predictions to R vector
-    SEXP predictions = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
     for(int i = 0; i < window_size; i++) {
         REAL(predictions)[i] = result.predictions[i];
     }
 
     // Convert convergence status
-    SEXP converged = PROTECT(allocVector(LGLSXP, 1)); n_protected++;
+    SEXP converged = PROTECT(Rf_allocVector(LGLSXP, 1)); n_protected++;
     LOGICAL(converged)[0] = result.converged;
 
     // Convert iteration count
-    SEXP iterations = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP iterations = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(iterations)[0] = result.iterations;
 
     // Convert Eigen::VectorXd beta to R vector
     int beta_size = result.beta.size();
-    SEXP beta = PROTECT(allocVector(REALSXP, beta_size)); n_protected++;
+    SEXP beta = PROTECT(Rf_allocVector(REALSXP, beta_size)); n_protected++;
     for(int i = 0; i < beta_size; i++) {
         REAL(beta)[i] = result.beta(i);
     }
@@ -1141,26 +1141,26 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
     SEXP loocv_brier_errors = R_NilValue;
     SEXP loocv_deviance_errors = R_NilValue;
     if (with_errors) {
-        loocv_brier_errors = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+        loocv_brier_errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
         for(int i = 0; i < window_size; i++) {
             REAL(loocv_brier_errors)[i] = result.loocv_brier_errors[i];
         }
 
-        loocv_deviance_errors = PROTECT(allocVector(REALSXP, window_size)); n_protected++;
+        loocv_deviance_errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
         for(int i = 0; i < window_size; i++) {
             REAL(loocv_deviance_errors)[i] = result.loocv_deviance_errors[i];
         }
     }
 
     // Set list names
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("predictions"));
-    SET_STRING_ELT(names, 1, mkChar("converged"));
-    SET_STRING_ELT(names, 2, mkChar("iterations"));
-    SET_STRING_ELT(names, 3, mkChar("beta"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("converged"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("iterations"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("beta"));
     if (with_errors) {
-        SET_STRING_ELT(names, 4, mkChar("loocv_brier_errors"));
-        SET_STRING_ELT(names, 5, mkChar("loocv_deviance_errors"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("loocv_brier_errors"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("loocv_deviance_errors"));
     }
 
     // Set list elements
@@ -1174,7 +1174,7 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
     }
 
     // Set list names
-    setAttrib(out, R_NamesSymbol, names);
+    Rf_setAttrib(out, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
     return out;

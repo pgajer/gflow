@@ -25,7 +25,7 @@
  * 1. Creates a maximal packing of vertices to serve as fold seed points
  * 2. Assigns all vertices to the nearest seed point to form spatially coherent folds
  * 3. For each candidate bandwidth, performs cross-validation across the folds for each response variable
- * 4. Selects the bandwidth with the lowest cross-validation error for each response variable
+ * 4. Selects the bandwidth with the lowest cross-validation Rf_error for each response variable
  * 5. Fits the final model with the optimal bandwidth for each response variable
  *
  * @param Y Matrix of response values where Y[j][i] is the j-th response variable at the i-th vertex
@@ -358,7 +358,7 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
                     auto [predictions, excluded] = 
                         predict_with_weights(bw_grid[bw_idx], fold_weights, Y[j]);
 
-                    // Calculate error on test vertices
+                    // Calculate Rf_error on test vertices
                     double fold_error = 0.0;
                     size_t test_count = 0;
 
@@ -407,8 +407,8 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
         }
 
         if (total_test_points > 0) {
-            for (auto& error : result.bw_errors[j]) {
-                error /= total_test_points;
+            for (auto& Rf_error : result.bw_errors[j]) {
+                Rf_error /= total_test_points;
             }
         }
 
@@ -420,7 +420,7 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
         if (verbose) {
             Rprintf("Response variable %zu - Optimal bandwidth index: %zu\n", j, result.opt_bw_idxs[j]);
             Rprintf("Response variable %zu - Optimal bandwidth: %.4f\n", j, result.opt_bws[j]);
-            Rprintf("Response variable %zu - CV error: %.6f\n", j, result.bw_errors[j][result.opt_bw_idxs[j]]);
+            Rprintf("Response variable %zu - CV Rf_error: %.6f\n", j, result.bw_errors[j][result.opt_bw_idxs[j]]);
         }
     }
 

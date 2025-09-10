@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -657,7 +657,7 @@ std::unique_ptr<std::vector<double>> cv_imputation(const std::set<int>& test_set
  * making it suitable for a wide range of graph-structured imputation tasks.
  *
  * @note This function assumes that the input data is properly formatted and valid.
- * It does not perform extensive error checking on the inputs.
+ * It does not perform extensive Rf_error checking on the inputs.
  *
  * @seealso cv_imputation for the underlying C++ implementation
  */
@@ -676,18 +676,18 @@ SEXP S_cv_imputation(SEXP Rtest_set,
 
     // Protect R objects from garbage collection
     int nprot = 0;
-    PROTECT(Rtest_set = coerceVector(Rtest_set, INTSXP)); nprot++;
-    PROTECT(Rgraph = coerceVector(Rgraph, VECSXP)); nprot++;
-    PROTECT(Rd = coerceVector(Rd, VECSXP)); nprot++;
-    PROTECT(Ry = coerceVector(Ry, REALSXP));nprot++;
-    PROTECT(Ry_binary = coerceVector(Ry_binary, LGLSXP)); nprot++;
-    PROTECT(Rimputation_method = coerceVector(Rimputation_method, INTSXP)); nprot++;
-    PROTECT(Rmax_iterations = coerceVector(Rmax_iterations, INTSXP)); nprot++;
-    PROTECT(Rconvergence_threshold = coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
-    PROTECT(Rapply_binary_threshold = coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
-    PROTECT(Rbinary_threshold = coerceVector(Rbinary_threshold, REALSXP)); nprot++;
-    PROTECT(Rikernel = coerceVector(Rikernel, INTSXP)); nprot++;
-    PROTECT(Rdist_normalization_factor = coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
+    PROTECT(Rtest_set = Rf_coerceVector(Rtest_set, INTSXP)); nprot++;
+    PROTECT(Rgraph = Rf_coerceVector(Rgraph, VECSXP)); nprot++;
+    PROTECT(Rd = Rf_coerceVector(Rd, VECSXP)); nprot++;
+    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP));nprot++;
+    PROTECT(Ry_binary = Rf_coerceVector(Ry_binary, LGLSXP)); nprot++;
+    PROTECT(Rimputation_method = Rf_coerceVector(Rimputation_method, INTSXP)); nprot++;
+    PROTECT(Rmax_iterations = Rf_coerceVector(Rmax_iterations, INTSXP)); nprot++;
+    PROTECT(Rconvergence_threshold = Rf_coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
+    PROTECT(Rapply_binary_threshold = Rf_coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
+    PROTECT(Rbinary_threshold = Rf_coerceVector(Rbinary_threshold, REALSXP)); nprot++;
+    PROTECT(Rikernel = Rf_coerceVector(Rikernel, INTSXP)); nprot++;
+    PROTECT(Rdist_normalization_factor = Rf_coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
 
     // Convert R objects to C++ types
     std::set<int> test_set;
@@ -738,7 +738,7 @@ SEXP S_cv_imputation(SEXP Rtest_set,
                                 dist_normalization_factor);
 
     // Convert the result to an R vector
-    SEXP Rresult = PROTECT(allocVector(REALSXP, result->size())); nprot++;
+    SEXP Rresult = PROTECT(Rf_allocVector(REALSXP, result->size())); nprot++;
     std::copy(result->begin(), result->end(), REAL(Rresult));
 
     // Unprotect R objects

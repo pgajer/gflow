@@ -13,7 +13,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <atomic>
@@ -73,7 +73,7 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
  *
  * @return Vector of mean absolute deviation (MAD) errors for each vertex
  *         - For vertices that could be predicted in at least one iteration:
- *           returns average absolute error across all successful predictions
+ *           returns average absolute Rf_error across all successful predictions
  *         - For vertices that could never be predicted: returns NaN
  *
  * @note
@@ -190,20 +190,20 @@ std::vector<double> pgmalog_cv(
             continue;  // Skip this iteration if no valid test vertices
         }
 
-        // Computing cross-validation error over test vertices using absolute deviation loss function
+        // Computing cross-validation Rf_error over test vertices using absolute deviation loss function
         for (const auto& vertex : valid_test_set) {
-            double error = std::abs(Ecv_y[vertex] - y[vertex]);
+            double Rf_error = std::abs(Ecv_y[vertex] - y[vertex]);
 
             if (std::isnan(cv_error[vertex])) {
-                cv_error[vertex] = error;
+                cv_error[vertex] = Rf_error;
             } else {
-                cv_error[vertex] += error;
+                cv_error[vertex] += Rf_error;
             }
             cv_error_count[vertex]++;
         }
     } // END OF for (int cv = 0; cv < n_CVs; ++cv)
 
-    // Compute average CV error, leaving NaN for vertices with no estimates
+    // Compute average CV Rf_error, leaving NaN for vertices with no estimates
     for (int vertex = 0; vertex < n_vertices; ++vertex) {
         if (cv_error_count[vertex] > 0) {
             cv_error[vertex] /= cv_error_count[vertex];
@@ -223,7 +223,7 @@ std::vector<double> pgmalog_cv(
  *
  * The function uses parallel execution for the main cross-validation iterations while
  * ensuring thread safety through appropriate synchronization mechanisms. It handles
- * the creation of test sets, weight calculations, and error averaging.
+ * the creation of test sets, weight calculations, and Rf_error averaging.
  *
  * @param path_graph Reference to the path graph structure containing adjacency lists
  *                   and other graph-related data
@@ -243,7 +243,7 @@ std::vector<double> pgmalog_cv(
  * @note The function uses atomic operations and mutex locks to ensure thread safety
  *       when updating shared data structures.
  *
- * @warning The size of input vector y must match the number of vertices in path_graph.
+ * @Rf_warning The size of input vector y must match the number of vertices in path_graph.
  *          The function assumes that path_graph contains valid adjacency lists for
  *          all vertices.
  *
@@ -359,19 +359,19 @@ std::vector<double> pgmalog_cv_parallel(
 
         // Update cross-validation errors
         for (const auto& vertex : valid_test_vertices) {
-            double error = std::abs(Ecv_y[vertex] - y[vertex]);
+            double Rf_error = std::abs(Ecv_y[vertex] - y[vertex]);
 
             std::lock_guard<std::mutex> lock(vertex_mutexes[vertex]);
             if (std::isnan(cv_error[vertex])) {
-                cv_error[vertex] = error;
+                cv_error[vertex] = Rf_error;
             } else {
-                cv_error[vertex] += error;
+                cv_error[vertex] += Rf_error;
             }
             cv_error_count[vertex]++;
         }
     });
 
-    // Compute average CV error
+    // Compute average CV Rf_error
     for (int i = 0; i < n_vertices; ++i) {
         if (cv_error_count[i] > 0) {
             cv_error[i] /= cv_error_count[i];

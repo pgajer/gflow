@@ -2,18 +2,19 @@
   A collection of local linear regression (llm) and robust local linear regression (rllm) routines
 */
 
-#include <stdlib.h>
 #include <R.h>
+#include <Rinternals.h>
 #include <Rmath.h>
 #include <math.h>
-#include <Rinternals.h>
 #include <Rdefines.h>
+
+#include <stdlib.h>
 
 #include "msr2.h"
 #include "lm.h"
 #include "kernels.h"  // for initialize_kernel()
 #include "sampling.h" // for C_rsimplex() and C_runif_simplex()
-#include "stats_utils.h" // for get_folds(), C_columnwise_eval() and iarray_t
+#include "stats_utils.h" // for get_folds(), C_columnwise_Rf_eval() and iarray_t
 
 static void (*kernel_with_stop_fn)(const double*, const int*, const double*, int*, double*);
 
@@ -68,10 +69,10 @@ void C_get_bws_with_minK_a(const double *d,
       iminK = minK[i] - 1;
 
       if ( iminK < 0 )
-        error("ERROR in get_bws_with_minK_a(); file %s at line %d;  iminK=%d < 0!", __FILE__, __LINE__, iminK);
+        Rf_error("ERROR in get_bws_with_minK_a(); file %s at line %d;  iminK=%d < 0!", __FILE__, __LINE__, iminK);
 
       if ( iminK >= nr )
-        error("ERROR in get_bws_with_minK_a(); file %s at line %d;  iminK = (minK[%d] - 1) = %d >= nr=%d !", __FILE__, __LINE__, i, minK[i]-1, nr);
+        Rf_error("ERROR in get_bws_with_minK_a(); file %s at line %d;  iminK = (minK[%d] - 1) = %d >= nr=%d !", __FILE__, __LINE__, i, minK[i]-1, nr);
 
       if ( d[iminK + ir] < bw )
       {
@@ -207,7 +208,7 @@ void C_columnwise_weighting(const double *x,
         kernel_with_stop_fn = C_tr_exponential_kernel_with_stop;
         break;
       default:
-        error("Unknown kernel in columnwise_weighting(): file %s line %d", __FILE__, __LINE__);
+        Rf_error("Unknown kernel in columnwise_weighting(): file %s line %d", __FILE__, __LINE__);
     }
 
     int jr; // holds j*nr = the index of the j-th column of x
@@ -356,7 +357,7 @@ void C_columnwise_TS_norm(const double *x,
     }
 }
 
-/* C_columnwise_eval() is now defined in stats_utils.c and declared in stats_utils.h */
+/* C_columnwise_Rf_eval() is now defined in stats_utils.c and declared in stats_utils.h */
 
 /*!
     \brief Nearest neighbor weighted mean with maxK parameter.
@@ -465,8 +466,8 @@ void C_llm_1D_beta_perms(const double *Tnn_x,
       // in-place permutation of y
       // C_dpermute(perm_y, ny);  for testing purposes
 
-      // row eval premuted y with nn.i
-      C_columnwise_eval(Tnn_i,
+      // row Rf_eval premuted y with nn.i
+      C_columnwise_Rf_eval(Tnn_i,
                         rnrTnn,
                         rncTnn,
                         perm_y,
@@ -1031,7 +1032,7 @@ void C_mllm_1D_fit_and_predict(const double *Y,
       j = i * (*nrY);
       k = i * (*ncTnn);
 
-      C_columnwise_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
+      C_columnwise_Rf_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
       C_llm_1D_beta(Tnn_x, Tnn_y, Tnn_w, maxK, nrTnn, ncTnn, deg, beta);
       C_wpredict_1D(beta, Tnn_i, Tnn_w, Tnn_x, maxK, nrTnn, ncTnn, deg, ncY, rybinary, EYg + k);
     }
@@ -1125,7 +1126,7 @@ void C_llm_1D_fit_and_predict_BB_CrI(const int    *Tnn_i,
     double *bb = (double*)malloc( nBB * sizeof(double));
     CHECK_PTR(bb);
 
-    // This holds BB absolute error estimates
+    // This holds BB absolute Rf_error estimates
     double *ae = (double*)malloc( nx * nBB * sizeof(double));
     CHECK_PTR(ae);
 
@@ -1238,7 +1239,7 @@ void C_llm_1D_fit_and_predict_global_BB_CrI(const int    *Tnn_i,
     double *bb = (double*)malloc( nBB * sizeof(double));
     CHECK_PTR(bb);
 
-    // Holds BB absolute error estimates
+    // Holds BB absolute Rf_error estimates
     double *ae = (double*)malloc( nx * nBB * sizeof(double));
     CHECK_PTR(ae);
 

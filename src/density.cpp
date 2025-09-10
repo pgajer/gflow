@@ -465,33 +465,33 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
     // Creating return list
     const int N_COMPONENTS = 6;
     int n_protected = 0;  // Track number of PROTECT calls
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
     SET_VECTOR_ELT(result, 0, convert_vector_double_to_R(gdens_res.density)); n_protected++;
-    SEXP s_bandwidth = PROTECT(allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
+    SEXP s_bandwidth = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
     REAL(s_bandwidth)[0] = gdens_res.bandwidth;
     SET_VECTOR_ELT(result, 1, s_bandwidth);
-    SEXP s_auto_selected = PROTECT(allocVector(LGLSXP, 1)); n_protected++;
+    SEXP s_auto_selected = PROTECT(Rf_allocVector(LGLSXP, 1)); n_protected++;
     LOGICAL(s_auto_selected)[0] = gdens_res.auto_selected;
     SET_VECTOR_ELT(result, 2, s_auto_selected);
-    SEXP s_offset = PROTECT(allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
+    SEXP s_offset = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
     REAL(s_offset)[0] = gdens_res.offset;
     SET_VECTOR_ELT(result, 3, s_offset);
-    SEXP s_start = PROTECT(allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
+    SEXP s_start = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
     REAL(s_start)[0] = gdens_res.start;
     SET_VECTOR_ELT(result, 4, s_start);
-    SEXP s_end = PROTECT(allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
+    SEXP s_end = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;  // Fixed: using REALSXP
     REAL(s_end)[0] = gdens_res.end;
     SET_VECTOR_ELT(result, 5, s_end);
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("y"));
-    SET_STRING_ELT(names, 1, mkChar("bw"));
-    SET_STRING_ELT(names, 2, mkChar("bw_auto_selected"));
-    SET_STRING_ELT(names, 3, mkChar("offset"));
-    SET_STRING_ELT(names, 4, mkChar("start"));
-    SET_STRING_ELT(names, 5, mkChar("end"));
-    setAttrib(result, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("y"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("bw"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("bw_auto_selected"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("offset"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("start"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("end"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 

@@ -1,9 +1,10 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Random.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <random>
 #include <vector>
@@ -93,9 +94,9 @@ std::vector<double> rlaplace(int n,
 SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed) {
 
     // Check input types
-    if (!isInteger(R_n) || !isReal(R_location) || !isReal(R_scale) ||
-        (!isNull(R_seed) && !isInteger(R_seed))) {
-        error("Invalid input types");
+    if (!Rf_isInteger(R_n) || !Rf_isReal(R_location) || !Rf_isReal(R_scale) ||
+        (!Rf_isNull(R_seed) && !Rf_isInteger(R_seed))) {
+        Rf_error("Invalid input types");
     }
 
     // Extract parameters
@@ -105,22 +106,22 @@ SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed) {
 
     // Check for valid parameters
     if (n <= 0) {
-        error("n must be a positive integer");
+        Rf_error("n must be a positive integer");
     }
     if (scale <= 0) {
-        error("scale must be positive");
+        Rf_error("scale must be positive");
     }
 
     // Handle seed
     unsigned int seed;
-    if (isNull(R_seed)) {
+    if (Rf_isNull(R_seed)) {
         GetRNGstate();
         seed = static_cast<unsigned int>(unif_rand() * UINT_MAX);
         PutRNGstate();
     } else {
         // Make sure R_seed has at least one element
         if (LENGTH(R_seed) < 1) {
-            error("seed must have at least one element");
+            Rf_error("seed must have at least one element");
         }
         seed = static_cast<unsigned int>(INTEGER(R_seed)[0]);
     }
@@ -129,7 +130,7 @@ SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed) {
     std::vector<double> result = rlaplace(n, location, scale, seed);
 
     // Create an R numeric vector and copy the results
-    SEXP R_result = PROTECT(allocVector(REALSXP, n));
+    SEXP R_result = PROTECT(Rf_allocVector(REALSXP, n));
     double* r_ptr = REAL(R_result);
     for (int i = 0; i < n; ++i) {
         r_ptr[i] = result[i];

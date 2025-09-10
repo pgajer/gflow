@@ -2,7 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -35,7 +35,7 @@
  * Nadaraya–Watson style smoother on graph‐distances.  It supports either
  * leave‑one‑out or stratified K‑fold cross‐validation with a buffer‑zone
  * exclusion to avoid local leakage.  After evaluating each candidate
- * bandwidth on the test folds (mean absolute error), it selects the
+ * bandwidth on the test folds (mean absolute Rf_error), it selects the
  * optimal bandwidth and then recomputes final predictions on all vertices.
  *
  * @param y                        Vector of observed responses of length |V|.
@@ -57,7 +57,7 @@
  * @return A graph_kernel_smoother_t containing:
  *   - predictions: final smoothed values at the optimal bandwidth,
  *   - bw_predictions: per‐bandwidth predictions (if requested),
- *   - bw_mean_abs_errors: CV‐mean absolute error for each bandwidth,
+ *   - bw_mean_abs_errors: CV‐mean absolute Rf_error for each bandwidth,
  *   - vertex_min_bws: per‐vertex lower‐bound bandwidths,
  *   - opt_bw_idx: index of the chosen bandwidth,
  *   - buffer_hops_used: the buffer_hops actually applied.
@@ -108,7 +108,7 @@ graph_kernel_smoother_t set_wgraph_t::graph_kernel_smoother(
     // Initialize result structure
     graph_kernel_smoother_t result;
     result.predictions.resize(n_vertices);          // kernel smoothing predictions for each vertex
-    result.bw_mean_abs_errors.resize(n_bws, 0.0);   // mean_bw_abs_errors[bw_idx] is the mean prediction absolute error for the bw_idx-th bandwidth
+    result.bw_mean_abs_errors.resize(n_bws, 0.0);   // mean_bw_abs_errors[bw_idx] is the mean prediction absolute Rf_error for the bw_idx-th bandwidth
     result.vertex_min_bws.resize(n_vertices);       // vertex_min_bws[i] is the the i-th vertex's minimum bandwidth
 
     if (with_bw_predictions) {
@@ -178,7 +178,7 @@ graph_kernel_smoother_t set_wgraph_t::graph_kernel_smoother(
         print_vect(test_vertices, "test_vertices");
         print_uset(buffer_zone, "buffer_zone");
         //print_uset(training_set, "training_set");
-        // error("DEBUGGING\n");
+        // Rf_error("DEBUGGING\n");
 #endif
 
         // 3. Generate predictions fot the test set vertices only given kernel mean given the current bandwidth
@@ -555,7 +555,7 @@ set_wgraph_t::get_sorted_vertices_and_min_radius(
  *         First element: Vector of vertex-distance pairs filtered to training set and sorted by distance
  *         Second element: Minimum radius needed to include at least vertex_hbhd_min_size neighbors
  *
- * @throws Reports an error if the number of filtered vertices is insufficient to meet vertex_hbhd_min_size
+ * @throws Reports an Rf_error if the number of filtered vertices is insufficient to meet vertex_hbhd_min_size
  */
 std::pair<std::vector<std::pair<size_t, double>>, double>
 set_wgraph_t::get_sorted_vertices_and_min_radius(

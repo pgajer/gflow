@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <cmath>
@@ -35,7 +35,7 @@ extern "C" {
  * @note The caller is responsible for freeing the memory allocated for
  *       indices and distances in the returned struct.
  *
- * @warning This function modifies the global state of the ANN library.
+ * @Rf_warning This function modifies the global state of the ANN library.
  *          Make sure to call annClose() when you're done using ANN functions.
  */
 knn_result_t kNN(const std::vector<std::vector<double>>& X, int k) {
@@ -62,7 +62,7 @@ knn_result_t kNN(const std::vector<std::vector<double>>& X, int k) {
 
     // Perform k-NN search for each point
     for (int i = 0; i < nrX; i++) {
-        kdTree->annkSearch(dataPts[i], k, nnIdx, nnDist, 0); // 0 for error bound
+        kdTree->annkSearch(dataPts[i], k, nnIdx, nnDist, 0); // 0 for Rf_error bound
         for (int j = 0; j < k; j++) {
             result.indices[i * k + j] = nnIdx[j];
             result.distances[i * k + j] = std::sqrt(nnDist[j]);
@@ -100,18 +100,18 @@ knn_result_t kNN(const std::vector<std::vector<double>>& X, int k) {
  *       of temporary R objects. The number of protections is balanced with unprotections
  *       at the end of the function.
  *
- * @warning This function assumes that the input matrix RX has dimension attributes.
+ * @Rf_warning This function assumes that the input matrix RX has dimension attributes.
  *          Unexpected behavior may occur if RX is not a proper R matrix.
  */
 SEXP S_kNN_v2(SEXP RX, SEXP Rk) {
     // Protect R objects from garbage collection
     int nprot = 0;
-    PROTECT(RX = coerceVector(RX, REALSXP)); nprot++;
-    PROTECT(Rk = coerceVector(Rk, INTSXP)); nprot++;
+    PROTECT(RX = Rf_coerceVector(RX, REALSXP)); nprot++;
+    PROTECT(Rk = Rf_coerceVector(Rk, INTSXP)); nprot++;
 
     double *X = REAL(RX);
     int k = INTEGER(Rk)[0];
-    int *dimX = INTEGER(getAttrib(RX, R_DimSymbol));
+    int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
     int nrX = dimX[0];
     int ncX = dimX[1];
 
@@ -127,8 +127,8 @@ SEXP S_kNN_v2(SEXP RX, SEXP Rk) {
     knn_result_t result = kNN(X_vec, k);
 
     // Create R objects to return
-    SEXP nn_i = PROTECT(allocMatrix(INTSXP, nrX, k)); nprot++;
-    SEXP nn_d = PROTECT(allocMatrix(REALSXP, nrX, k)); nprot++;
+    SEXP nn_i = PROTECT(Rf_allocMatrix(INTSXP, nrX, k)); nprot++;
+    SEXP nn_d = PROTECT(Rf_allocMatrix(REALSXP, nrX, k)); nprot++;
 
     // Copy results to R objects
     for (int i = 0; i < nrX; i++) {
@@ -143,15 +143,15 @@ SEXP S_kNN_v2(SEXP RX, SEXP Rk) {
     delete[] result.distances;
 
     // Prepare return list
-    SEXP res = PROTECT(allocVector(VECSXP, 2)); nprot++; // List with 2 elements
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 2)); nprot++; // List with 2 elements
     SET_VECTOR_ELT(res, 0, nn_i);
     SET_VECTOR_ELT(res, 1, nn_d);
 
     // Add names to list elements
-    SEXP names = PROTECT(allocVector(STRSXP, 2)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("indices"));
-    SET_STRING_ELT(names, 1, mkChar("distances"));
-    setAttrib(res, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("indices"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("distances"));
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     // Unprotect R objects
     UNPROTECT(nprot);
@@ -182,8 +182,8 @@ SEXP S_kNN_v2(SEXP RX, SEXP Rk) {
  *       It constructs a kd-tree from the input points and performs exact (non-approximate)
  *       searches.
  *
- * @warning The function assumes that the input matrix RX is a valid numeric matrix
- *          and that Rk is a positive integer. No extensive error checking is performed.
+ * @Rf_warning The function assumes that the input matrix RX is a valid numeric matrix
+ *          and that Rk is a positive integer. No extensive Rf_error checking is performed.
  *
  * @see For more information on the ANN library, visit:
  *      http://www.cs.umd.edu/~mount/ANN/
@@ -192,12 +192,12 @@ SEXP S_kNN(SEXP RX, SEXP Rk) {
 
         // Protect R objects from garbage collection
         int nprot = 0;
-        PROTECT(RX = coerceVector(RX, REALSXP)); nprot++;
-        PROTECT(Rk = coerceVector(Rk, INTSXP)); nprot++;
+        PROTECT(RX = Rf_coerceVector(RX, REALSXP)); nprot++;
+        PROTECT(Rk = Rf_coerceVector(Rk, INTSXP)); nprot++;
 
         double *X = REAL(RX);
         int k = INTEGER(Rk)[0];
-        int *dimX = INTEGER(getAttrib(RX, R_DimSymbol));
+        int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
         int nrX = dimX[0];
         int ncX = dimX[1];
 
@@ -216,12 +216,12 @@ SEXP S_kNN(SEXP RX, SEXP Rk) {
         ANNdistArray nnDist = new ANNdist[k];
 
         // Create R objects to return
-        SEXP nn_i = PROTECT(allocMatrix(INTSXP, nrX, k)); nprot++;
-        SEXP nn_d = PROTECT(allocMatrix(REALSXP, nrX, k)); nprot++;
+        SEXP nn_i = PROTECT(Rf_allocMatrix(INTSXP, nrX, k)); nprot++;
+        SEXP nn_d = PROTECT(Rf_allocMatrix(REALSXP, nrX, k)); nprot++;
 
         // Perform k-NN search for each point
         for (int i = 0; i < nrX; i++) {
-                kdTree->annkSearch(dataPts[i], k, nnIdx, nnDist, 0); // 0 for error bound
+                kdTree->annkSearch(dataPts[i], k, nnIdx, nnDist, 0); // 0 for Rf_error bound
 
                 // Copy results to R objects
                 for (int j = 0; j < k; j++) {
@@ -238,15 +238,15 @@ SEXP S_kNN(SEXP RX, SEXP Rk) {
         annClose(); // Close ANN
 
         // Prepare return list
-        SEXP res = PROTECT(allocVector(VECSXP, 2)); nprot++; // List with 2 elements
+        SEXP res = PROTECT(Rf_allocVector(VECSXP, 2)); nprot++; // List with 2 elements
         SET_VECTOR_ELT(res, 0, nn_i);
         SET_VECTOR_ELT(res, 1, nn_d);
 
         // Add names to list elements
-        SEXP names = PROTECT(allocVector(STRSXP, 2)); nprot++;
-        SET_STRING_ELT(names, 0, mkChar("indices"));
-        SET_STRING_ELT(names, 1, mkChar("distances"));
-        setAttrib(res, R_NamesSymbol, names);
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 2)); nprot++;
+        SET_STRING_ELT(names, 0, Rf_mkChar("indices"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("distances"));
+        Rf_setAttrib(res, R_NamesSymbol, names);
 
         // Unprotect R objects
         UNPROTECT(nprot); // RX, Rk, nn_i, nn_d, res, names

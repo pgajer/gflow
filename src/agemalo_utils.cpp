@@ -2,7 +2,7 @@
 #include <Rinternals.h>  // For more advanced R functionality
   // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>             // For std::vector
 #include <queue>              // For std::priority_queue
@@ -344,15 +344,15 @@ size_t set_wgraph_t::select_best_path(
 
 
 /**
- * @brief Find the optimal bandwidth that minimizes mean prediction error
+ * @brief Find the optimal bandwidth that minimizes mean prediction Rf_error
  *
  * This function performs a binary search to find the bandwidth value that
- * minimizes the mean prediction error across all ray models. For each
+ * minimizes the mean prediction Rf_error across all ray models. For each
  * evaluated bandwidth, it:
  * 1. Finds all geodesic rays within that radius
  * 2. Clusters similar rays and selects representatives
  * 3. Fits weighted linear models to each selected ray
- * 4. Computes the average prediction error across all models
+ * 4. Computes the average prediction Rf_error across all models
  *
  * @param grid_vertex The grid vertex from which to find geodesic rays
  * @param y Response values at each vertex
@@ -469,7 +469,7 @@ std::pair<double, std::vector<ext_ulm_t>> set_wgraph_t::find_optimal_bandwidth(
 /**
  * @brief Find optimal bandwidth using a grid search over candidate bandwidths
  *
- * This function evaluates prediction error at a set of candidate bandwidths
+ * This function evaluates prediction Rf_error at a set of candidate bandwidths
  * evenly distributed over a range, either on a linear or logarithmic scale.
  *
  * @param grid_vertex The grid vertex from which to find geodesic rays
@@ -576,17 +576,17 @@ opt_bw_t set_wgraph_t::find_optimal_bandwidth_over_grid(
         double bw = result.bws[i];
 
 		// Evaluate this bandwidth
-        auto [error, models] = evaluate_bandwidth(
+        auto [Rf_error, models] = evaluate_bandwidth(
             grid_vertex, y, min_path_size, bw, min_bw,
             dist_normalization_factor, y_binary, tolerance, weights
 			);
 
-		// Store error
-        result.errors[i] = error;
+		// Store Rf_error
+        result.errors[i] = Rf_error;
 
 		// Update best if this is better
-        if (error < best_error) {
-            best_error = error;
+        if (Rf_error < best_error) {
+            best_error = Rf_error;
             best_idx = i;
             result.models = models;
         }
@@ -617,13 +617,13 @@ opt_bw_t set_wgraph_t::find_optimal_bandwidth_over_grid(
 
 
 /**
- * @brief Evaluate the prediction error for models at a specific bandwidth
+ * @brief Evaluate the prediction Rf_error for models at a specific bandwidth
  *
- * This function evaluates the mean prediction error for a given bandwidth by:
+ * This function evaluates the mean prediction Rf_error for a given bandwidth by:
  * 1. Finding all geodesic rays within the bandwidth radius
  * 2. Clustering similar rays and selecting representatives
  * 3. Fitting weighted linear models to each selected ray
- * 4. Computing the average prediction error across all models
+ * 4. Computing the average prediction Rf_error across all models
  *
  * @param grid_vertex The grid vertex from which to find geodesic rays
  * @param y Response values at each vertex
@@ -634,7 +634,7 @@ opt_bw_t set_wgraph_t::find_optimal_bandwidth_over_grid(
  * @param tolerance Convergence tolerance for model fitting
  * @param weights Optional weights for vertices (for bootstrapping)
  *
- * @return A pair containing the mean prediction error and the fitted models
+ * @return A pair containing the mean prediction Rf_error and the fitted models
  */
 std::pair<double, std::vector<ext_ulm_t>> set_wgraph_t::evaluate_bandwidth(
     size_t grid_vertex,
@@ -726,7 +726,7 @@ std::pair<double, std::vector<ext_ulm_t>> set_wgraph_t::evaluate_bandwidth(
 			robust_scale
         );
 
-          // Ensure we have error estimates
+          // Ensure we have Rf_error estimates
         if (fit_result.errors.empty()) {
             REPORT_ERROR("fit_result.errors is empty\n");
         }
@@ -741,12 +741,12 @@ std::pair<double, std::vector<ext_ulm_t>> set_wgraph_t::evaluate_bandwidth(
         extended_result.predictions = fit_result.predictions;
         extended_result.errors = fit_result.errors;
 
-          // Calculate mean error for this model
+          // Calculate mean Rf_error for this model
         double mean_error = std::accumulate(fit_result.errors.begin(),
                                          fit_result.errors.end(), 0.0) / fit_result.errors.size();
         extended_result.mean_error = mean_error;
 
-          // Add this model's error to the total for bandwidth evaluation
+          // Add this model's Rf_error to the total for bandwidth evaluation
         total_error += mean_error;
         valid_model_count++;
 
@@ -760,7 +760,7 @@ grid_vertex, bw);
 REPORT_ERROR("valid_model_count is 0\n");
 }
 
-      // Compute average error across all models for this bandwidth
+      // Compute average Rf_error across all models for this bandwidth
     double mean_error = valid_model_count > 0 ?
                       total_error / valid_model_count :
                       std::numeric_limits<double>::infinity();

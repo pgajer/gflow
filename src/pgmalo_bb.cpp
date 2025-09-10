@@ -10,9 +10,10 @@
 
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <atomic>
@@ -245,7 +246,7 @@ bb_cri_t pgmalo_bb_cri(const path_graph_plm_t& path_graph,
  * 1. The function assumes weights are properly normalized (sum to 1)
  * 2. The modification of kernel weights by bootstrap weights affects:
  *    - Model fitting through weighted least squares
- *    - LOOCV error computation
+ *    - LOOCV Rf_error computation
  *    - Model averaging when max_distance_deviation > 0
  * 3. The returned LOOCV errors incorporate both kernel and bootstrap weights
  *
@@ -401,7 +402,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_global_bb_weight
             // Fit LOOCV model with combined weights
             auto model = predict_lm_1d_loocv(y_path, x_path, w_path, path, position_in_path, y_binary, epsilon);
 
-            // Update best model if this one has lower LOOCV error
+            // Update best model if this one has lower LOOCV Rf_error
             if (model.loocv_at_ref_vertex < best_loocv_error) {
                 best_loocv_error = model.loocv_at_ref_vertex;
                 best_model = model;
@@ -467,8 +468,8 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_global_bb_weight
 *    - Computes kernel weights based on distances
 *    - Generates path-specific weights from Dirichlet(kernel_weights)
 *    - Fits a weighted linear model using the sampled weights
-*    - Computes LOOCV error for model selection
-* 3. Selects the best model based on LOOCV error
+*    - Computes LOOCV Rf_error for model selection
+* 3. Selects the best model based on LOOCV Rf_error
 * 4. Computes predictions using either direct model prediction or weighted average
 *    of predictions from neighboring vertices
 *
@@ -623,7 +624,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_bb_weights(
             // Fit LOOCV model with sampled weights
             auto model = predict_lm_1d_loocv(y_path, x_path, bb_weights_path, path, position_in_path, y_binary, epsilon);
 
-            // Update best model if this one has lower LOOCV error
+            // Update best model if this one has lower LOOCV Rf_error
             if (model.loocv_at_ref_vertex < best_loocv_error) {
                 best_loocv_error = model.loocv_at_ref_vertex;
                 best_model = model;
@@ -687,7 +688,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_bb_weights(
  *    - Kernel weights are calculated based on normalized distances from the target vertex
  *
  * 2. Path-based weights for combining predictions (when max_distance_deviation > 0):
- *    - For each vertex i, identifies its best model (lowest LOOCV error)
+ *    - For each vertex i, identifies its best model (lowest LOOCV Rf_error)
  *    - The final estimate at vertex i is a weighted average:
  *      \[
  *      \hat{y}(i) = \frac{\sum_j w_j \hat{y}_j}{\sum_j w_j}
@@ -703,7 +704,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_bb_weights(
  * 3. For each valid path:
  *    - Compute distances and kernel weights
  *    - Fit weighted linear model and compute LOOCV errors
- *    - Track the model with lowest LOOCV error at the vertex
+ *    - Track the model with lowest LOOCV Rf_error at the vertex
  * 4. Compute final predictions:
  *    - If max_distance_deviation = 0: Use best model's prediction directly
  *    - If max_distance_deviation > 0: Use weighted average of predictions from best models
@@ -799,7 +800,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_without_bb_weights(
             Rf_error("No valid paths found for vertex %d within deviation limits", vertex_i);
         }
 
-        // For each valid path, compute the LOOCV error
+        // For each valid path, compute the LOOCV Rf_error
         double best_loocv_error = std::numeric_limits<double>::infinity();
         lm_loocv_t best_model;
 
@@ -863,7 +864,7 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_without_bb_weights(
             // Fit a weighted linear modela and return as well model's LOOCV errors
             auto model = predict_lm_1d_loocv(y_path, x_path, w_path, path, position_in_path, y_binary, epsilon);
 
-            // Update best model if this one has lower LOOCV error
+            // Update best model if this one has lower LOOCV Rf_error
             if (model.loocv_at_ref_vertex < best_loocv_error) {
                 best_loocv_error = model.loocv_at_ref_vertex;
                 best_model = model;

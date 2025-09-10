@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <queue>
 #include <random>     // for std::mt19937
@@ -50,7 +51,7 @@ bool break_duplicate_values(std::vector<double>& y, double noise_magnitude = 1e-
  *           * is_maximum = false for local minimum
  *         - If not an extremum: std::nullopt
  *
- * @pre y must not contain duplicate values to ensure unique extrema
+ * @pre y must not contain Rf_duplicate values to ensure unique extrema
  * @pre vertex index must be valid (0 <= vertex < y.size())
  * @pre y.size() must match the graph size
  */
@@ -320,7 +321,7 @@ reachability_map_t set_wgraph_t::compute_graph_reachability_map(
 }
 
 /**
- * @brief Checks for duplicate values in a vector of doubles, considering numerical precision
+ * @brief Checks for Rf_duplicate values in a vector of doubles, considering numerical precision
  *
  * This function can detect both exact duplicates and near-duplicates within a specified
  * tolerance. It returns information about the duplicates found to help with debugging
@@ -386,7 +387,7 @@ void validate_no_duplicates(const std::vector<double>& y, double tolerance = 1e-
 }
 
 /**
- * @brief Adds small random noise to break ties in case of duplicate values
+ * @brief Adds small random noise to break ties in case of Rf_duplicate values
  *
  * @param y Vector of values to modify
  * @param noise_magnitude Maximum magnitude of noise to add (default: 1e-10)
@@ -805,11 +806,11 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
 #endif
 
             const auto& path = paths[path_idx];
-            evaluated_path_t eval;
-            eval.path_index = path_idx;
-            eval.has_extremum = false;
-            eval.best_vertex_index = 0;
-            eval.quality_metric = ascending ? -std::numeric_limits<double>::max() :
+            evaluated_path_t Rf_eval;
+            Rf_eval.path_index = path_idx;
+            Rf_eval.has_extremum = false;
+            Rf_eval.best_vertex_index = 0;
+            Rf_eval.quality_metric = ascending ? -std::numeric_limits<double>::max() :
                                              std::numeric_limits<double>::max();
 
             // Check each vertex along the path
@@ -868,52 +869,52 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
                 // Check if vertex is an extremum
                 auto extremum_it = extrema_map.find(vertex);
                 if (extremum_it != extrema_map.end()) {
-                    eval.has_extremum = true;
-                    eval.is_maximum = extremum_it->second;
-                    eval.extremum_index = i;
-                    eval.quality_metric = quality_metric;
-                    eval.total_change = total_change;
+                    Rf_eval.has_extremum = true;
+                    Rf_eval.is_maximum = extremum_it->second;
+                    Rf_eval.extremum_index = i;
+                    Rf_eval.quality_metric = quality_metric;
+                    Rf_eval.total_change = total_change;
                     break;
                 }
 
                 // Determine if this is the best vertex so far based on direction
                 bool is_better = false;
                 if (ascending) {
-                    is_better = (quality_metric > 0 && quality_metric > eval.quality_metric);
+                    is_better = (quality_metric > 0 && quality_metric > Rf_eval.quality_metric);
                 } else {
-                    is_better = (quality_metric < 0 && quality_metric < eval.quality_metric);
+                    is_better = (quality_metric < 0 && quality_metric < Rf_eval.quality_metric);
                 }
 
                 if (is_better) {
-                    eval.quality_metric = quality_metric;
-                    eval.total_change = total_change;
-                    eval.best_vertex_index = i;
+                    Rf_eval.quality_metric = quality_metric;
+                    Rf_eval.total_change = total_change;
+                    Rf_eval.best_vertex_index = i;
                 }
             } // END OF for (size_t i = 1; i < path.vertices.size(); ++i)
 
 #if DEBUG__construct_trajectory
             path_file.close();
 
-            bool cond = eval.has_extremum ||
-                (ascending && eval.quality_metric > 0) ||  // Only positive quality for ascending
-                (!ascending && eval.quality_metric < 0);   // Only negative quality for descending
+            bool cond = Rf_eval.has_extremum ||
+                (ascending && Rf_eval.quality_metric > 0) ||  // Only positive quality for ascending
+                (!ascending && Rf_eval.quality_metric < 0);   // Only negative quality for descending
 
-            Rprintf("eval.has_extremum: %d\nascending: %d\neval.quality_metric: %.4f\ncond: %d\n",
-                    (int)eval.has_extremum, (int)ascending, eval.quality_metric, (int)cond);
+            Rprintf("Rf_eval.has_extremum: %d\nascending: %d\nRf_eval.quality_metric: %.4f\ncond: %d\n",
+                    (int)Rf_eval.has_extremum, (int)ascending, Rf_eval.quality_metric, (int)cond);
 #endif
 
             // Only include paths that have valid metrics
-            if (eval.has_extremum ||
-                (ascending && eval.quality_metric > 0) ||  // Only positive quality for ascending
-                (!ascending && eval.quality_metric < 0)    // Only negative quality for descending
+            if (Rf_eval.has_extremum ||
+                (ascending && Rf_eval.quality_metric > 0) ||  // Only positive quality for ascending
+                (!ascending && Rf_eval.quality_metric < 0)    // Only negative quality for descending
                 ) {
-                evaluated_paths.push_back(eval);
+                evaluated_paths.push_back(Rf_eval);
             }
         } // END OF for (size_t path_idx = 0; path_idx < paths.size(); ++path_idx)
 
 #if DEBUG__construct_trajectory
         Rprintf("Found %zu valid paths from vertex %zu\n", evaluated_paths.size(), current);
-        error("DEBUGGING");
+        Rf_error("DEBUGGING");
 #endif
 
         // If we have no valid paths, terminate
@@ -932,18 +933,18 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
         bool found_appropriate_extremum = false;
 
         for (size_t i = 0; i < evaluated_paths.size(); ++i) {
-            const auto& eval = evaluated_paths[i];
-            if (eval.has_extremum &&
-                ((ascending && eval.is_maximum) || (!ascending && !eval.is_maximum))) {
+            const auto& Rf_eval = evaluated_paths[i];
+            if (Rf_eval.has_extremum &&
+                ((ascending && Rf_eval.is_maximum) || (!ascending && !Rf_eval.is_maximum))) {
                 // For ascending, select highest quality metric among appropriate extrema
                 // For descending, select lowest quality metric among appropriate extrema
                 bool is_better_extremum = ascending ?
-                    (eval.quality_metric > best_extremum_quality) :
-                    (eval.quality_metric < best_extremum_quality);
+                    (Rf_eval.quality_metric > best_extremum_quality) :
+                    (Rf_eval.quality_metric < best_extremum_quality);
 
                 if (!found_appropriate_extremum || is_better_extremum) {
                     found_appropriate_extremum = true;
-                    best_extremum_quality = eval.quality_metric;
+                    best_extremum_quality = Rf_eval.quality_metric;
                     best_path_idx = i;
                 }
             }
@@ -953,20 +954,20 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
             found_best = true;
 
             // Process the selected path with an extremum...
-            const auto& eval = evaluated_paths[best_path_idx];
+            const auto& Rf_eval = evaluated_paths[best_path_idx];
 
             // Mark that we're ending at a critical point
-            result.quality_metric = eval.quality_metric;
-            result.total_change = eval.total_change;
+            result.quality_metric = Rf_eval.quality_metric;
+            result.total_change = Rf_eval.total_change;
             result.ends_at_critical = true;
-            result.ends_at_lmax = eval.is_maximum;
+            result.ends_at_lmax = Rf_eval.is_maximum;
 
             // Add path up to and including the extremum
-            const auto& best_path = paths[eval.path_index];
+            const auto& best_path = paths[Rf_eval.path_index];
             result.path.insert(
                 result.path.end(),
                 best_path.vertices.begin() + 1,
-                best_path.vertices.begin() + eval.extremum_index + 1
+                best_path.vertices.begin() + Rf_eval.extremum_index + 1
                 );
 
             // We found a critical point, so terminate
@@ -997,14 +998,14 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
             }
 
             if (found_best) {
-                const auto& eval = evaluated_paths[best_path_idx];
-                result.quality_metric = eval.quality_metric;
-                result.total_change = eval.total_change;
+                const auto& Rf_eval = evaluated_paths[best_path_idx];
+                result.quality_metric = Rf_eval.quality_metric;
+                result.total_change = Rf_eval.total_change;
 
-                const auto& best_path = paths[eval.path_index];
+                const auto& best_path = paths[Rf_eval.path_index];
 
                 // Determine the appropriate index up to which we should add vertices
-                size_t end_index = eval.has_extremum ? eval.extremum_index : eval.best_vertex_index;
+                size_t end_index = Rf_eval.has_extremum ? Rf_eval.extremum_index : Rf_eval.best_vertex_index;
 
                 // Add vertices to our trajectory set
                 for (size_t j = 1; j <= end_index; ++j) {
@@ -1021,9 +1022,9 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
                 current = best_path.vertices[end_index];
 
                 // If we found an extremum, mark that we're ending at a critical point
-                if (eval.has_extremum) {
+                if (Rf_eval.has_extremum) {
                     result.ends_at_critical = true;
-                    result.ends_at_lmax = eval.is_maximum;
+                    result.ends_at_lmax = Rf_eval.is_maximum;
                     should_continue = false;  // Terminate the trajectory
                 }
             }
@@ -1049,7 +1050,7 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
  *
  * 1. Local Extrema Detection:
  *    - Identifies tau-local minima and maxima using the radius parameter
- *    - Breaks ties in duplicate values if necessary
+ *    - Breaks ties in Rf_duplicate values if necessary
  *
  * 2. Gradient Trajectory Computation:
  *    - For each unprocessed vertex, constructs ascending and descending trajectories
@@ -1073,7 +1074,7 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
  *
  * @throws std::runtime_error If y's size doesn't match the number of vertices
  *
- * @warning The function modifies input vector y if duplicate values are found,
+ * @Rf_warning The function modifies input vector y if Rf_duplicate values are found,
  *          adding small noise to break ties
  *
  * @see gradient_flow_t For the complete structure definition
@@ -1091,13 +1092,13 @@ gradient_flow_t set_wgraph_t::compute_gradient_flow(
 
     gradient_flow_t result;
 
-    // Check if there are duplicate values, and if there are, add to them random
+    // Check if there are Rf_duplicate values, and if there are, add to them random
     // noise runif(min = -z/5, max = z/5), where z is the smallest difference of
     // sorted y values
     double tolerance = 1e-10;
     if (conditional_selective_jitter(y, tolerance)) {
-        result.messages = "Small noise added to break ties in duplicate values";
-        REPORT_WARNING("Small noise added to break ties in duplicate values\n");
+        result.messages = "Small noise added to break ties in Rf_duplicate values";
+        REPORT_WARNING("Small noise added to break ties in Rf_duplicate values\n");
     }
 
     // Get 90th and 95th percentiles of edge weights those are unusually long edges that may cross basin boundaries
@@ -1134,7 +1135,7 @@ gradient_flow_t set_wgraph_t::compute_gradient_flow(
 
     // debugging
     // print_umap(result.local_extrema, "result.local_extrema");
-    // error("compute_gradient_flow() DEBUG");
+    // Rf_error("compute_gradient_flow() DEBUG");
 
 #if 0
     // After computing local extrema
@@ -1351,7 +1352,7 @@ gradient_flow_t set_wgraph_t::compute_gradient_flow(
  *
  * @pre y.size() must match the number of vertices in graph
  * @pre bandwidth must be positive
- * @pre y must not contain duplicate values
+ * @pre y must not contain Rf_duplicate values
  *
  * @see set_wgraph_t::compute_gradient_flow
  */
@@ -1449,17 +1450,17 @@ SEXP S_construct_graph_gradient_flow(
 
     // Convert results to R list
     size_t n_protected = 0;
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements)); n_protected++;
-    SEXP r_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); n_protected++;
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
     for (size_t i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
     }
     Rf_setAttrib(r_result, R_NamesSymbol, r_names);
     UNPROTECT(1); // for r_names
 
     // Set local extrema
     size_t n_extrema = result.local_extrema.size();
-    SEXP r_extrema = PROTECT(allocMatrix(INTSXP, n_extrema, 2));
+    SEXP r_extrema = PROTECT(Rf_allocMatrix(INTSXP, n_extrema, 2));
     int* extrema_ptr = INTEGER(r_extrema);
     size_t i = 0;
     for (const auto& [vertex, is_maximum] : result.local_extrema) {
@@ -1473,12 +1474,12 @@ SEXP S_construct_graph_gradient_flow(
     // Set trajectories
     if (with_trajectories) {
         size_t n_trajectories = result.trajectories.size();
-        SEXP r_trajectories = PROTECT(allocVector(VECSXP, n_trajectories));
+        SEXP r_trajectories = PROTECT(Rf_allocVector(VECSXP, n_trajectories));
         for (size_t i = 0; i < n_trajectories; i++) {
             const auto& traj = result.trajectories[i];
 
             // Vertices
-            SEXP r_vertices = PROTECT(allocVector(INTSXP, traj.vertices.size()));
+            SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, traj.vertices.size()));
             int* traj_ptr = INTEGER(r_vertices);
             for (size_t j = 0; j < traj.vertices.size(); j++) {
                 traj_ptr[j] = traj.vertices[j] + 1;  // Convert to 1-based indexing
@@ -1488,12 +1489,12 @@ SEXP S_construct_graph_gradient_flow(
             if (i == 0) {
                 Rprintf("\ni: %zu\n",i);
                 print_vect(traj.vertices, "traj.vertices", 1);
-                error("S_construct_graph_gradient_flow(): DEBUGGING\n");
+                Rf_error("S_construct_graph_gradient_flow(): DEBUGGING\n");
             }
             #endif
 
             // Trajectory type as string
-            SEXP r_type = PROTECT(allocVector(STRSXP, 1));
+            SEXP r_type = PROTECT(Rf_allocVector(STRSXP, 1));
             const char* type_str;
             switch (traj.trajectory_type) {
             case gradient_flow_t::LMIN_LMAX:
@@ -1508,33 +1509,33 @@ SEXP S_construct_graph_gradient_flow(
             default:
                 type_str = "UNKNOWN";
             }
-            SET_STRING_ELT(r_type, 0, mkChar(type_str));
+            SET_STRING_ELT(r_type, 0, Rf_mkChar(type_str));
 
             // Create a list with vertices and trajectory type
-            SEXP r_traj = PROTECT(allocVector(VECSXP, 4));
+            SEXP r_traj = PROTECT(Rf_allocVector(VECSXP, 4));
 
             SET_VECTOR_ELT(r_traj, 0, r_vertices);
             SET_VECTOR_ELT(r_traj, 1, r_type);
             UNPROTECT(2); // for r_vertices and r_type
 
             // Add quality metric
-            SEXP r_quality = PROTECT(allocVector(REALSXP, 1));
+            SEXP r_quality = PROTECT(Rf_allocVector(REALSXP, 1));
             REAL(r_quality)[0] = result.trajectories[i].quality_metric;
             SET_VECTOR_ELT(r_traj, 2, r_quality);
             UNPROTECT(1);
 
             // Add total change
-            SEXP r_change = PROTECT(allocVector(REALSXP, 1));
+            SEXP r_change = PROTECT(Rf_allocVector(REALSXP, 1));
             REAL(r_change)[0] = result.trajectories[i].total_change;
             SET_VECTOR_ELT(r_traj, 3, r_change);
             UNPROTECT(1);
 
             // Update names
-            SEXP r_traj_names = PROTECT(allocVector(STRSXP, 4));
-            SET_STRING_ELT(r_traj_names, 0, mkChar("vertices"));
-            SET_STRING_ELT(r_traj_names, 1, mkChar("type"));
-            SET_STRING_ELT(r_traj_names, 2, mkChar("quality_metric"));
-            SET_STRING_ELT(r_traj_names, 3, mkChar("total_change"));
+            SEXP r_traj_names = PROTECT(Rf_allocVector(STRSXP, 4));
+            SET_STRING_ELT(r_traj_names, 0, Rf_mkChar("vertices"));
+            SET_STRING_ELT(r_traj_names, 1, Rf_mkChar("type"));
+            SET_STRING_ELT(r_traj_names, 2, Rf_mkChar("quality_metric"));
+            SET_STRING_ELT(r_traj_names, 3, Rf_mkChar("total_change"));
             Rf_setAttrib(r_traj, R_NamesSymbol, r_traj_names);
             UNPROTECT(1);
 
@@ -1548,22 +1549,22 @@ SEXP S_construct_graph_gradient_flow(
     }
 
     // Set basins
-    SEXP r_basins = PROTECT(allocVector(VECSXP, 2));
+    SEXP r_basins = PROTECT(Rf_allocVector(VECSXP, 2));
 
     // Ascending basins
     size_t n_ascending = result.ascending_basin_map.size();
-    SEXP r_ascending = PROTECT(allocVector(VECSXP, n_ascending));
+    SEXP r_ascending = PROTECT(Rf_allocVector(VECSXP, n_ascending));
     i = 0;
     for (const auto& [min_vertex, basin] : result.ascending_basin_map) {
         // Create a list with local_min and vertices
-        SEXP r_basin = PROTECT(allocVector(VECSXP, 2));
+        SEXP r_basin = PROTECT(Rf_allocVector(VECSXP, 2));
 
         // Local minimum
-        SEXP r_min = PROTECT(allocVector(INTSXP, 1));
+        SEXP r_min = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(r_min)[0] = min_vertex + 1;  // Convert to 1-based indexing
 
         // Vertices in the basin
-        SEXP r_vertices = PROTECT(allocVector(INTSXP, basin.size()));
+        SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, basin.size()));
         int* vertices_ptr = INTEGER(r_vertices);
         size_t j = 0;
         for (const auto& vertex : basin) {
@@ -1575,9 +1576,9 @@ SEXP S_construct_graph_gradient_flow(
         UNPROTECT(2);  // for r_min, r_vertices
 
         // Set names for basin components
-        SEXP r_basin_names = PROTECT(allocVector(STRSXP, 2));
-        SET_STRING_ELT(r_basin_names, 0, mkChar("local_min"));
-        SET_STRING_ELT(r_basin_names, 1, mkChar("vertices"));
+        SEXP r_basin_names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(r_basin_names, 0, Rf_mkChar("local_min"));
+        SET_STRING_ELT(r_basin_names, 1, Rf_mkChar("vertices"));
         Rf_setAttrib(r_basin, R_NamesSymbol, r_basin_names);
         UNPROTECT(1);  // for r_basin_names
 
@@ -1587,18 +1588,18 @@ SEXP S_construct_graph_gradient_flow(
 
     // Descending basins
     size_t n_descending = result.descending_basin_map.size();
-    SEXP r_descending = PROTECT(allocVector(VECSXP, n_descending));
+    SEXP r_descending = PROTECT(Rf_allocVector(VECSXP, n_descending));
     i = 0;
     for (const auto& [max_vertex, basin] : result.descending_basin_map) {
         // Create a list with local_max and vertices
-        SEXP r_basin = PROTECT(allocVector(VECSXP, 2));
+        SEXP r_basin = PROTECT(Rf_allocVector(VECSXP, 2));
 
         // Local maximum
-        SEXP r_max = PROTECT(allocVector(INTSXP, 1));
+        SEXP r_max = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(r_max)[0] = max_vertex + 1;  // Convert to 1-based indexing
 
         // Vertices in the basin
-        SEXP r_vertices = PROTECT(allocVector(INTSXP, basin.size()));
+        SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, basin.size()));
         int* vertices_ptr = INTEGER(r_vertices);
         size_t j = 0;
         for (const auto& vertex : basin) {
@@ -1610,9 +1611,9 @@ SEXP S_construct_graph_gradient_flow(
         UNPROTECT(2);  // for r_max, r_vertices
 
         // Set names for basin components
-        SEXP r_basin_names = PROTECT(allocVector(STRSXP, 2));
-        SET_STRING_ELT(r_basin_names, 0, mkChar("local_max"));
-        SET_STRING_ELT(r_basin_names, 1, mkChar("vertices"));
+        SEXP r_basin_names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(r_basin_names, 0, Rf_mkChar("local_max"));
+        SET_STRING_ELT(r_basin_names, 1, Rf_mkChar("vertices"));
         Rf_setAttrib(r_basin, R_NamesSymbol, r_basin_names);
         UNPROTECT(1);  // for r_basin_names
 
@@ -1625,9 +1626,9 @@ SEXP S_construct_graph_gradient_flow(
     UNPROTECT(2);  // for r_ascending, r_descending
 
     // Set names for basins components
-    SEXP r_basins_names = PROTECT(allocVector(STRSXP, 2));
-    SET_STRING_ELT(r_basins_names, 0, mkChar("ascending"));
-    SET_STRING_ELT(r_basins_names, 1, mkChar("descending"));
+    SEXP r_basins_names = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(r_basins_names, 0, Rf_mkChar("ascending"));
+    SET_STRING_ELT(r_basins_names, 1, Rf_mkChar("descending"));
     Rf_setAttrib(r_basins, R_NamesSymbol, r_basins_names);
     UNPROTECT(1);  // for r_basins_names
 
@@ -1636,22 +1637,22 @@ SEXP S_construct_graph_gradient_flow(
 
     // Set cells
     size_t n_cells = result.cell_map.size();
-    SEXP r_cells = PROTECT(allocVector(VECSXP, n_cells));
+    SEXP r_cells = PROTECT(Rf_allocVector(VECSXP, n_cells));
     i = 0;
     for (const auto& [key_pair, vertices] : result.cell_map) {
         // Create a list with local_min, local_max, and vertices
-        SEXP r_cell = PROTECT(allocVector(VECSXP, 3));
+        SEXP r_cell = PROTECT(Rf_allocVector(VECSXP, 3));
 
         // Local minimum
-        SEXP r_min = PROTECT(allocVector(INTSXP, 1));
+        SEXP r_min = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(r_min)[0] = key_pair.first + 1;  // Convert to 1-based indexing
 
         // Local maximum
-        SEXP r_max = PROTECT(allocVector(INTSXP, 1));
+        SEXP r_max = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(r_max)[0] = key_pair.second + 1;  // Convert to 1-based indexing
 
         // Vertices in the cell
-        SEXP r_vertices = PROTECT(allocVector(INTSXP, vertices.size()));
+        SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
         int* vertices_ptr = INTEGER(r_vertices);
         size_t j = 0;
         for (const auto& vertex : vertices) {
@@ -1664,10 +1665,10 @@ SEXP S_construct_graph_gradient_flow(
         UNPROTECT(3);  // for r_min, r_max, r_vertices
 
         // Set names for cell components
-        SEXP r_cell_names = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(r_cell_names, 0, mkChar("local_min"));
-        SET_STRING_ELT(r_cell_names, 1, mkChar("local_max"));
-        SET_STRING_ELT(r_cell_names, 2, mkChar("vertices"));
+        SEXP r_cell_names = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(r_cell_names, 0, Rf_mkChar("local_min"));
+        SET_STRING_ELT(r_cell_names, 1, Rf_mkChar("local_max"));
+        SET_STRING_ELT(r_cell_names, 2, Rf_mkChar("vertices"));
         Rf_setAttrib(r_cell, R_NamesSymbol, r_cell_names);
         UNPROTECT(1);  // for r_cell_names
 
@@ -1678,8 +1679,8 @@ SEXP S_construct_graph_gradient_flow(
     UNPROTECT(1);  // for r_cells
 
     // Set messages
-    SEXP r_messages = PROTECT(allocVector(STRSXP, 1));
-    SET_STRING_ELT(r_messages, 0, mkChar(result.messages.c_str()));
+    SEXP r_messages = PROTECT(Rf_allocVector(STRSXP, 1));
+    SET_STRING_ELT(r_messages, 0, Rf_mkChar(result.messages.c_str()));
     SET_VECTOR_ELT(r_result, 4, r_messages);
     UNPROTECT(1);  // for r_messages
 

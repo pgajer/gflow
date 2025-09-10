@@ -44,7 +44,7 @@
 //----------------------------------------------------------------------
 enum	{ANN_LO=0, ANN_HI=1};	// splitting indices
 enum	{ANN_IN=0, ANN_OUT=1};	// shrinking indices
-								// what to do in case of error
+								// what to do in case of Rf_error
 enum ANNerr {ANNwarn = 0, ANNabort = 1};
 
 //----------------------------------------------------------------------
@@ -62,9 +62,9 @@ extern int		ANNptsVisited;		// number of pts visited in search
 //	Global function declarations
 //----------------------------------------------------------------------
 
-void annError(					// ANN error routine
-	const char*		msg,		// error message
-	ANNerr			level);		// level of error
+void annError(					// ANN Rf_error routine
+	const char*		msg,		// Rf_error message
+	ANNerr			level);		// level of Rf_error
 
 void annPrintPt(				// print a point
 	ANNpoint		pt,			// the point

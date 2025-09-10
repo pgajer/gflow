@@ -1,4 +1,5 @@
 #include <R.h>
+#include <Rinternals.h>
 #include <Rmath.h>
 #include <math.h>
 #include <float.h>
@@ -107,7 +108,7 @@ void initialize_kernel(int ikernel, double scale) {
     kernel_fn = const_kernel;  // or const_kernel if that's the preferred name
     break;
   default:
-    error("In %s line %d: initialize_kernel(): ikernel=%d: Unknown kernel in the internal C function", __FILE__, __LINE__, ikernel);
+    Rf_error("In %s line %d: initialize_kernel(): ikernel=%d: Unknown kernel in the internal C function", __FILE__, __LINE__, ikernel);
   }
 }
 
@@ -296,7 +297,7 @@ inline void laplace_kernel(const double *x, int n, double *w) {
  * @param w Pointer to array where weights will be stored
  *
  * @note The function assumes both pointers are valid and point to arrays of at least n elements
- * @warning Care should be taken when using the weights from x=0 cases in subsequent calculations
+ * @Rf_warning Care should be taken when using the weights from x=0 cases in subsequent calculations
  *          due to their extremely large values
  *
  * @see DBL_MAX from <float.h> for the maximum value used in x=0 case

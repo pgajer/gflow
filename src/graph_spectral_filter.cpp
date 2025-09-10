@@ -1,7 +1,7 @@
 #include <R.h>                     // Rprintf
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "graph_spectral_filter.hpp"
 #include "set_wgraph.hpp"                   // for set_wgraph_t, adjacency_list

@@ -1,10 +1,11 @@
-// Experimental version of MABILO with different model kernels and error filtering strategies
+// Experimental version of MABILO with different model kernels and Rf_error filtering strategies
 
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <atomic>
@@ -42,21 +43,21 @@ extern "C" {
 
 struct mabilo_plus_t {
     // k values
-    int opt_sm_k;     // optimal single model k value - the one with the smallest mean LOOCV error
+    int opt_sm_k;     // optimal single model k value - the one with the smallest mean LOOCV Rf_error
     int opt_sm_k_idx; // optimal single model k value index
-    int opt_ma_k;     // optimal model averaging k value - the one with the smallest mean LOOCV error
+    int opt_ma_k;     // optimal model averaging k value - the one with the smallest mean LOOCV Rf_error
     int opt_ma_k_idx; // optimal model averaging k value index
 
     // Errors
     std::vector<double> k_mean_sm_errors;   // mean LOOCV squared errors for each k for single model predictions
     std::vector<double> k_mean_ma_errors;   // mean LOOCV squared errors for each k for model averaged predictions
-    std::vector<double> k_mean_sm_true_errors; // mean absolute error between sm_predictions and y_true
-    std::vector<double> k_mean_ma_true_errors; // mean absolute error between ma_predictions and y_true
+    std::vector<double> k_mean_sm_true_errors; // mean absolute Rf_error between sm_predictions and y_true
+    std::vector<double> k_mean_ma_true_errors; // mean absolute Rf_error between ma_predictions and y_true
 
     // The best (over all k) model evaluation
     std::vector<double> sm_predictions; // optimal k single model (before model averaging) predictions
     std::vector<double> ma_predictions; // optimal k model averaged predictions
-    //std::vector<double> sm_errors;      // optimal k single model (before model averaging) Leave-One-Out Cross-Validation squared error
+    //std::vector<double> sm_errors;      // optimal k single model (before model averaging) Leave-One-Out Cross-Validation squared Rf_error
     //std::vector<double> ma_errors;      // optimal k model averaged approximate LOOCV squared errors
 
     std::vector<std::vector<double>> k_sm_predictions; // for each k single model predictions
@@ -146,24 +147,24 @@ mabilo_t mabilo(...) {
  *
  * @param x Vector of ordered x values (predictor variable)
  * @param y Observed y values corresponding to x (response variable)
- * @param y_true Optional true y values for error calculation. Used for algorithm evaluation
+ * @param y_true Optional true y values for Rf_error calculation. Used for algorithm evaluation
  * @param w Observation weights, typically from Bayesian bootstrap
  * @param k_min Minimum number of neighbors on each side (minimum window half-width)
  * @param k_max Maximum number of neighbors on each side (maximum window half-width)
  * @param model_averaging_strategy Strategy for combining model predictions:
  *        - KERNEL_WEIGHTS_ONLY: Uses only distance-based kernel weights
- *        - ERROR_WEIGHTS_ONLY: Uses only error-based weights
+ *        - ERROR_WEIGHTS_ONLY: Uses only Rf_error-based weights
  *        - KERNEL_AND_ERROR_WEIGHTS: Combines both weight types
  * @param error_filtering_strategy Method for filtering models based on their errors:
- *        - GLOBAL_PERCENTILE: Uses global error distribution
- *        - LOCAL_PERCENTILE: Uses error distribution at each point
+ *        - GLOBAL_PERCENTILE: Uses global Rf_error distribution
+ *        - LOCAL_PERCENTILE: Uses Rf_error distribution at each point
  *        - COMBINED_PERCENTILE: Applies both global and local filtering
- *        - BEST_K_MODELS: Selects k best models by error
+ *        - BEST_K_MODELS: Selects k best models by Rf_error
  * @param distance_kernel Kernel function for distance-based weights:
  *        - 0: Tricube
  *        - 1: Epanechnikov
  *        - 2: Exponential
- * @param model_kernel Kernel function for error-based weights (same options as distance_kernel)
+ * @param model_kernel Kernel function for Rf_error-based weights (same options as distance_kernel)
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  *        Makes weights at window boundaries close to but not equal to 0
  * @param epsilon Numerical stability parameter (default: 1e-15)
@@ -398,7 +399,7 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
 
         initialize_kernel(model_kernel, 1.0);
 
-        // First compute global error statistics if needed
+        // First compute global Rf_error statistics if needed
         all_errors.reserve(n_points * (2 * k + 1));  // Approximate max size
         all_errors.clear();
 
@@ -440,8 +441,8 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
 
 
                 #if 0
-                // Using the model with the minimal LOOCV error at the given
-                // point as an estimate of the LOOCV squared error for the model
+                // Using the model with the minimal LOOCV Rf_error at the given
+                // point as an estimate of the LOOCV squared Rf_error for the model
                 // averaged predictions
                 k_errors[i] = *std::min_element(local_errors.begin(), local_errors.end());
                 #endif
@@ -605,18 +606,18 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
                     // Find min and max errors among filtered models
                     double min_error = filtered_models[0].first;
                     double max_error = filtered_models[0].first;
-                    for (const auto& [error, _] : filtered_models) {
-                        min_error = std::min(min_error, error);
-                        max_error = std::max(max_error, error);
+                    for (const auto& [Rf_error, _] : filtered_models) {
+                        min_error = std::min(min_error, Rf_error);
+                        max_error = std::max(max_error, Rf_error);
                     }
 
                     double error_range = max_error - min_error;
                     if (error_range > epsilon) {
-                        for (const auto& [error, model] : filtered_models) {
+                        for (const auto& [Rf_error, model] : filtered_models) {
                             int local_index = i - model->x_min_index;
-                            double normalized_error = (error - min_error) / error_range;
+                            double normalized_error = (Rf_error - min_error) / error_range;
 
-                            // Use model_kernel for error weighting
+                            // Use model_kernel for Rf_error weighting
                             std::vector<double> error_weight(1);
                             kernel_fn(&normalized_error, 1, error_weight.data());
 
@@ -744,21 +745,21 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
                     // Find min and max errors among filtered models
                     double min_error = filtered_models[0].first;
                     double max_error = filtered_models[0].first;
-                    for (const auto& [error, _] : filtered_models) {
-                        min_error = std::min(min_error, error);
-                        max_error = std::max(max_error, error);
+                    for (const auto& [Rf_error, _] : filtered_models) {
+                        min_error = std::min(min_error, Rf_error);
+                        max_error = std::max(max_error, Rf_error);
                     }
 
                     double error_range = max_error - min_error;
                     if (error_range > epsilon) {
-                        for (const auto& [error, model] : filtered_models) {
+                        for (const auto& [Rf_error, model] : filtered_models) {
                             int local_index = i - model->x_min_index;
 
                             // Get distance-based kernel weight (already normalized)
                             double kernel_weight = model->w[local_index];
 
-                            // Compute error-based weight using model_kernel
-                            double normalized_error = (error - min_error) / error_range;
+                            // Compute Rf_error-based weight using model_kernel
+                            double normalized_error = (Rf_error - min_error) / error_range;
                             std::vector<double> error_weight(1);
                             kernel_fn(&normalized_error, 1, error_weight.data());
 
@@ -879,21 +880,21 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
  *
  * @param s_x Vector of x coordinates
  * @param s_y Vector of y coordinates (response values)
- * @param s_y_true Optional vector of true y values for error calculation
+ * @param s_y_true Optional vector of true y values for Rf_error calculation
  * @param s_w Vector of weights for each point
  * @param s_k_min Minimum number of neighbors (must be positive)
  * @param s_k_max Maximum number of neighbors (must be greater than k_min and not exceed input size)
  * @param s_model_averaging_strategy Strategy for averaging models:
  *        - "kernel_weights_only": Uses only distance-based kernel weights
- *        - "error_weights_only": Uses only error-based weights
+ *        - "error_weights_only": Uses only Rf_error-based weights
  *        - "kernel_and_error_weights": Combines both weight types
  * @param s_error_filtering_strategy Strategy for filtering models:
- *        - "global_percentile": Uses global error distribution
- *        - "local_percentile": Uses error distribution at each point
+ *        - "global_percentile": Uses global Rf_error distribution
+ *        - "local_percentile": Uses Rf_error distribution at each point
  *        - "combined_percentile": Applies both global and local filtering
- *        - "best_k_models": Selects k best models by error
+ *        - "best_k_models": Selects k best models by Rf_error
  * @param s_distance_kernel Kernel type for distance-based weights (0: Tricube, 1: Epanechnikov, 2: Exponential)
- * @param s_model_kernel Kernel type for error-based weights (same options as distance_kernel)
+ * @param s_model_kernel Kernel type for Rf_error-based weights (same options as distance_kernel)
  * @param s_dist_normalization_factor Factor for normalizing distances
  * @param s_epsilon Small number to prevent division by zero
  * @param s_verbose Whether to print progress information
@@ -913,9 +914,9 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
  * - k_sm_predictions: Single-model predictions for all k values
  * - k_ma_predictions: Model-averaged predictions for all k values
  *
- * @throws error if input vectors have inconsistent lengths
- * @throws error if k_min or k_max values are invalid
- * @throws error if unknown model averaging or error filtering strategy is provided
+ * @throws Rf_error if input vectors have inconsistent lengths
+ * @throws Rf_error if k_min or k_max values are invalid
+ * @throws Rf_error if unknown model averaging or Rf_error filtering strategy is provided
  */
 SEXP S_mabilo_plus(SEXP s_x,
                 SEXP s_y,
@@ -963,7 +964,7 @@ SEXP S_mabilo_plus(SEXP s_x,
     } else if (strcmp(strat, "kernel_weights_with_filtering") == 0) {
         model_averaging_strategy = KERNEL_WEIGHTS_WITH_FILTERING;
     } else {
-        error("Unknown model averaging strategy");
+        Rf_error("Unknown model averaging strategy");
     }
 
     const char* filter = CHAR(STRING_ELT(s_error_filtering_strategy, 0));
@@ -976,7 +977,7 @@ SEXP S_mabilo_plus(SEXP s_x,
     } else if (strcmp(filter, "best_k_models") == 0) {
         error_filtering_strategy = BEST_K_MODELS;
     } else {
-        error("Unknown error filtering strategy");
+        Rf_error("Unknown Rf_error filtering strategy");
     }
 
     int distance_kernel = INTEGER(s_distance_kernel)[0];
@@ -1001,7 +1002,7 @@ SEXP S_mabilo_plus(SEXP s_x,
 
     // Creating return list
     const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     std::vector<int> k_values(mabilo_plus_results.k_mean_sm_errors.size());
     for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
@@ -1009,20 +1010,20 @@ SEXP S_mabilo_plus(SEXP s_x,
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
 
     // opt_sm_k
-    SEXP s_opt_sm_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_sm_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_sm_k)[0] = mabilo_plus_results.opt_sm_k; // 1-base
     SET_VECTOR_ELT(result, 1, s_opt_sm_k);
 
-    SEXP s_opt_sm_k_idx = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_sm_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_sm_k_idx)[0] = mabilo_plus_results.opt_sm_k_idx + 1; // 1-base
     SET_VECTOR_ELT(result, 2, s_opt_sm_k_idx);
 
     // opt_ma_k
-    SEXP s_opt_ma_k = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_ma_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_ma_k)[0] = mabilo_plus_results.opt_ma_k; // 1-base
     SET_VECTOR_ELT(result, 3, s_opt_ma_k);
 
-    SEXP s_opt_ma_k_idx = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP s_opt_ma_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(s_opt_ma_k_idx)[0] = mabilo_plus_results.opt_ma_k_idx + 1; // 1-base
     SET_VECTOR_ELT(result, 4, s_opt_ma_k_idx);
 
@@ -1049,22 +1050,22 @@ SEXP S_mabilo_plus(SEXP s_x,
     SET_VECTOR_ELT(result, 12, convert_vector_vector_double_to_R(mabilo_plus_results.k_ma_predictions)); n_protected++;
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("k_values"));
-    SET_STRING_ELT(names, 1, mkChar("opt_sm_k"));
-    SET_STRING_ELT(names, 2, mkChar("opt_sm_k_idx"));
-    SET_STRING_ELT(names, 3, mkChar("opt_ma_k"));
-    SET_STRING_ELT(names, 4, mkChar("opt_ma_k_idx"));
-    SET_STRING_ELT(names, 5, mkChar("k_mean_sm_errors"));
-    SET_STRING_ELT(names, 6, mkChar("k_mean_ma_errors"));
-    SET_STRING_ELT(names, 7, mkChar("k_mean_sm_true_errors"));
-    SET_STRING_ELT(names, 8, mkChar("k_mean_ma_true_errors"));
-    SET_STRING_ELT(names, 9, mkChar("sm_predictions"));
-    SET_STRING_ELT(names, 10, mkChar("ma_predictions"));
-    SET_STRING_ELT(names, 11, mkChar("k_sm_predictions"));
-    SET_STRING_ELT(names, 12, mkChar("k_ma_predictions"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("opt_sm_k"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_sm_k_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("opt_ma_k"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("opt_ma_k_idx"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_sm_errors"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("k_mean_ma_errors"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("k_mean_sm_true_errors"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("k_mean_ma_true_errors"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("sm_predictions"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
+    SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
+    SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 

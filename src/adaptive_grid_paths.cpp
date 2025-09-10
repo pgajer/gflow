@@ -4,7 +4,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -218,7 +218,7 @@ std::vector<compose_path_t> uniform_grid_graph_t::find_and_filter_composite_path
 		*final_radius = current_radius;
 	}
 
-	// If we couldn't find suitable paths, log a warning
+	// If we couldn't find suitable paths, log a Rf_warning
 	if (filtered_paths.empty()) {
 		REPORT_WARNING("In uniform_grid_graph_t::find_and_filter_composite_paths() Warning: Could not find paths of size %zu even with extended search radius.\n",
 					   min_path_size);

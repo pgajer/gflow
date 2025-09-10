@@ -481,7 +481,7 @@ DLL_API void annClose();		// called to end use of ANN
 //
 //		The search algorithm, annkSearch, is given the query point (q),
 //		and the desired number of nearest neighbors to report (k), and
-//		the error bound (eps) (whose default value is 0, implying exact
+//		the Rf_error bound (eps) (whose default value is 0, implying exact
 //		nearest neighbors).  It returns two arrays which are assumed to
 //		contain at least k elements: one (nn_idx) contains the indices
 //		(within the point array) of the nearest neighbors and the other
@@ -496,7 +496,7 @@ DLL_API void annClose();		// called to end use of ANN
 //		bound, and second, it returns the total number of points lying
 //		within the radius bound. It is permitted to set k = 0, in which
 //		case it effectively answers a range counting query.  If the
-//		error bound epsilon is positive, then the search is approximate
+//		Rf_error bound epsilon is positive, then the search is approximate
 //		in the sense that it is free to ignore any point that lies
 //		outside a ball of radius r/(1+epsilon), where r is the given
 //		(unsquared) radius bound.
@@ -515,7 +515,7 @@ public:
 		int				k,				// number of near neighbors to return
 		ANNidxArray		nn_idx,			// nearest neighbor array (modified)
 		ANNdistArray	dd,				// dist to near neighbors (modified)
-		double			eps=0.0			// error bound
+		double			eps=0.0			// Rf_error bound
 		) = 0;							// pure virtual (defined elsewhere)
 
 	virtual int annkFRSearch(			// approx fixed-radius kNN search
@@ -524,7 +524,7 @@ public:
 		int				k = 0,			// number of near neighbors to return
 		ANNidxArray		nn_idx = NULL,	// nearest neighbor array (modified)
 		ANNdistArray	dd = NULL,		// dist to near neighbors (modified)
-		double			eps=0.0			// error bound
+		double			eps=0.0			// Rf_error bound
 		) = 0;							// pure virtual (defined elsewhere)
 
 	virtual int theDim() = 0;			// return dimension of space
@@ -570,7 +570,7 @@ public:
 		int				k,				// number of near neighbors to return
 		ANNidxArray		nn_idx,			// nearest neighbor array (modified)
 		ANNdistArray	dd,				// dist to near neighbors (modified)
-		double			eps=0.0);		// error bound
+		double			eps=0.0);		// Rf_error bound
 
 	int annkFRSearch(					// approx fixed-radius kNN search
 		ANNpoint		q,				// query point
@@ -578,7 +578,7 @@ public:
 		int				k = 0,			// number of near neighbors to return
 		ANNidxArray		nn_idx = NULL,	// nearest neighbor array (modified)
 		ANNdistArray	dd = NULL,		// dist to near neighbors (modified)
-		double			eps=0.0);		// error bound
+		double			eps=0.0);		// Rf_error bound
 
 	int theDim()						// return dimension of space
 		{ return dim; }
@@ -761,14 +761,14 @@ public:
 		int				k,				// number of near neighbors to return
 		ANNidxArray		nn_idx,			// nearest neighbor array (modified)
 		ANNdistArray	dd,				// dist to near neighbors (modified)
-		double			eps=0.0);		// error bound
+		double			eps=0.0);		// Rf_error bound
 
 	void annkPriSearch( 				// priority k near neighbor search
 		ANNpoint		q,				// query point
 		int				k,				// number of near neighbors to return
 		ANNidxArray		nn_idx,			// nearest neighbor array (modified)
 		ANNdistArray	dd,				// dist to near neighbors (modified)
-		double			eps=0.0);		// error bound
+		double			eps=0.0);		// Rf_error bound
 
 	int annkFRSearch(					// approx fixed-radius kNN search
 		ANNpoint		q,				// the query point
@@ -776,7 +776,7 @@ public:
 		int				k,				// number of neighbors to return
 		ANNidxArray		nn_idx = NULL,	// nearest neighbor array (modified)
 		ANNdistArray	dd = NULL,		// dist to near neighbors (modified)
-		double			eps=0.0);		// error bound
+		double			eps=0.0);		// Rf_error bound
 
 	int theDim()						// return dimension of space
 		{ return dim; }

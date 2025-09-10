@@ -98,7 +98,7 @@ eigen_ulogit_t eigen_ulogit_fit(
         result.predictions[i] = 1.0 / (1.0 + std::exp(-eta));
     }
 
-    // Standard error computation would also use X_ortho instead of raw polynomials
+    // Standard Rf_error computation would also use X_ortho instead of raw polynomials
     if (with_errors) {
         // Use X_ortho for computing the hat matrix...
     }
@@ -140,7 +140,7 @@ eigen_ulogit_t eigen_ulogit_fit(
 
 // Using orthogonal polynomials in logistic regression is more complex than in linear regression because:
 
-// The loss function is non-linear (log-likelihood instead of squared error)
+// The loss function is non-linear (log-likelihood instead of squared Rf_error)
 // The IWLS algorithm uses iteratively updated weights
 // The hat matrix computation is more involved
 

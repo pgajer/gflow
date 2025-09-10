@@ -173,7 +173,7 @@ void ANNbd_shrink::dump(				// dump a shrinking node
 //		file contains all the basic tree information according to a
 //		preorder traversal.	 We assume that the dump file also contains
 //		point data.	 (This is to guarantee the consistency of the tree.)
-//		If not, then an error is generated.
+//		If not, then an Rf_error is generated.
 //
 //		Indirectly, this procedure allocates space for points, point
 //		indices, all nodes in the tree, and the bounding box for the
@@ -439,6 +439,6 @@ static ANNkd_ptr annReadTree(
 	}
 	else {
 		annError("Illegal node type in dump file", ANNabort);
-		return NULL;								// return NULL on error
+		return NULL;								// return NULL on Rf_error
 	}
 }

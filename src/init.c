@@ -142,7 +142,7 @@ static const R_CMethodDef cMethods[] = {
   {"C_get_bws",             (DL_FUNC) &C_get_bws, 6, get_bws_type},
   {"C_get_bws_with_minK_a", (DL_FUNC) &C_get_bws_with_minK_a, 6, get_bws_type},
   {"C_columnwise_weighting", (DL_FUNC) &C_columnwise_weighting, 7, columnwise_weighting_type},
-  {"C_columnwise_eval", (DL_FUNC) &C_columnwise_eval, 5, columnwise_eval_type},
+  {"C_columnwise_Rf_eval", (DL_FUNC) &C_columnwise_Rf_eval, 5, columnwise_eval_type},
   {"C_columnwise_TS_norm", (DL_FUNC) &C_columnwise_TS_norm, 4, columnwise_TS_norm_type},
   {"C_matrix_wmeans", (DL_FUNC) &C_matrix_wmeans, 9, matrix_wmeans_type},
   {"C_columnwise_wmean", (DL_FUNC) &C_columnwise_wmean, 6, columnwise_wmean_type},

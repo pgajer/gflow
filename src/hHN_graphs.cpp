@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -42,7 +42,7 @@ extern "C" {
  * @note The time complexity is O(n * (m + n log n)), where n is the number of vertices and m is the number of edges.
  * @note The space complexity is O(n^2) in the worst case, where the hHN graph becomes a complete graph.
  *
- * @warning If k is greater than or equal to the diameter of the graph, the resulting hHN graph may be complete.
+ * @Rf_warning If k is greater than or equal to the diameter of the graph, the resulting hHN graph may be complete.
  *
  * @see For background on k-hop neighborhood graphs, refer to:
  *      - Asano, T., & Uno, T. (2018). Efficient construction of k-hop neighborhood graphs.
@@ -304,8 +304,8 @@ std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>> creat
  * @note The time complexity is O(n * (m + n log n)), where n is the number of vertices and m is the number of edges.
  * @note The space complexity is O(n^2) in the worst case, where the hHN graph becomes a complete graph.
  *
- * @warning Ensure that s_k is a scalar integer and non-negative. The function currently does not perform
- *          extensive error checking on inputs.
+ * @Rf_warning Ensure that s_k is a scalar integer and non-negative. The function currently does not perform
+ *          extensive Rf_error checking on inputs.
  *
  * @see create_hHN_graph for the underlying C++ implementation.
  *
@@ -321,12 +321,12 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
     std::vector<std::vector<double>> weight_vv = convert_weight_list_from_R(s_weight_list);
 
     // Correct: Coerces s_k to integer and extracts its value
-    PROTECT(s_h = coerceVector(s_h, INTSXP));
+    PROTECT(s_h = Rf_coerceVector(s_h, INTSXP));
     int h = INTEGER(s_h)[0];
     UNPROTECT(1);
 
     #if 0
-    PROTECT(s_type = coerceVector(s_type, INTSXP));
+    PROTECT(s_type = Rf_coerceVector(s_type, INTSXP));
     int type = INTEGER(s_type)[0];
     UNPROTECT(1);
 
@@ -347,7 +347,7 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
         hhn_graph = create_hHN_graph_hvertex_hashmap(adj_vv, weight_vv, h);
         break;
     default:
-        error("Invalid type specified.");
+        Rf_error("Invalid type specified.");
     }
     #endif
 
@@ -359,9 +359,9 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
 
     // Correct: Prepares R list for adjacency list
     int n_vertices = static_cast<int>(hhn_adj_vv.size());
-    SEXP adj_list = PROTECT(allocVector(VECSXP, n_vertices));
+    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(allocVector(INTSXP, hhn_adj_vv[i].size()));
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, hhn_adj_vv[i].size()));
         int* A = INTEGER(RA);
         for (const auto& neighbor : hhn_adj_vv[i])
             *A++ = neighbor + 1;  // Correct: Adjusts for R's 1-based indexing
@@ -370,9 +370,9 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
     }
 
     // Correct: Prepares R list for distance list
-    SEXP dist_list = PROTECT(allocVector(VECSXP, n_vertices));
+    SEXP dist_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(allocVector(REALSXP, hhn_weight_vv[i].size()));
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, hhn_weight_vv[i].size()));
         double* D = REAL(RD);
         for (const auto& dist : hhn_weight_vv[i])
             *D++ = dist;
@@ -381,16 +381,16 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
     }
 
     // Correct: Prepares the final result list
-    SEXP res = PROTECT(allocVector(VECSXP, 2));
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 2));
     SET_VECTOR_ELT(res, 0, adj_list);
     SET_VECTOR_ELT(res, 1, dist_list);
 
     UNPROTECT(2); // Unprotect adj_list and dist_list
 
-    SEXP names = PROTECT(allocVector(STRSXP, 2));
-    SET_STRING_ELT(names, 0, mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, mkChar("dist_list"));
-    setAttrib(res, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("dist_list"));
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     UNPROTECT(2); // Unprotect res and names
 

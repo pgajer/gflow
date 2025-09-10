@@ -422,7 +422,7 @@ void uniform_grid_graph_t::remove_edge(size_t v1, size_t v2) {
  * @param weight_list Input graph edge weights
  * @param grid_size Desired number of grid points
  * @return double The computed grid spacing
- * @throw Runtime error if grid_size <= 1
+ * @throw Runtime Rf_error if grid_size <= 1
  *
  * Calculates the uniform spacing between grid points based on the total
  * graph length and desired number of grid points. The spacing is computed
@@ -436,7 +436,7 @@ double compute_grid_spacing(
     #define DEBUG__compute_grid_spacing 0
 
     if (grid_size <= 1) {
-        error("grid_size must be greater than 1");
+        Rf_error("grid_size must be greater than 1");
     }
 
     double total_length = 0.0;
@@ -731,20 +731,20 @@ SEXP S_create_uniform_grid_graph(SEXP s_adj_list,
     // Creating return list
     int n_protected = 0;
     const int N_COMPONENTS = 3;
-    SEXP r_result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     // Extract adjacency and weight lists from result
     int n_total_vertices = result.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(allocVector(VECSXP, n_total_vertices)); n_protected++;
-    SEXP r_weight_list = PROTECT(allocVector(VECSXP, n_total_vertices)); n_protected++;
+    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
 
     // Convert the set-based representation back to R lists
     for (int i = 0; i < n_total_vertices; ++i) {
         const auto& neighbors = result.adjacency_list[i];
 
         // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(allocVector(INTSXP, neighbors.size()));
-        SEXP r_weights = PROTECT(allocVector(REALSXP, neighbors.size()));
+        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
 
         // Fill the vectors
         int idx = 0;
@@ -762,7 +762,7 @@ SEXP S_create_uniform_grid_graph(SEXP s_adj_list,
 
     // Create grid vertices vector (1-based indices)
     int n_grid_vertices = result.grid_vertices.size();
-    SEXP r_grid_vertices = PROTECT(allocVector(INTSXP, n_grid_vertices)); n_protected++;
+    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices)); n_protected++;
 
     int counter = 0;
     for (const auto& i : result.grid_vertices) {
@@ -776,11 +776,11 @@ SEXP S_create_uniform_grid_graph(SEXP s_adj_list,
     SET_VECTOR_ELT(r_result, 2, r_grid_vertices);
 
     // Set names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, mkChar("weight_list"));
-    SET_STRING_ELT(names, 2, mkChar("grid_vertices"));
-    setAttrib(r_result, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("grid_vertices"));
+    Rf_setAttrib(r_result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
     return r_result;
@@ -1307,10 +1307,10 @@ bool uniform_grid_graph_t::paths_explore_different_directions(
 struct weight_pred_error_t {
     double weight;
     double prediction;
-    double error;
+    double Rf_error;
 
     weight_pred_error_t(double w, double p, double e)
-        : weight(w), prediction(p), error(e) {}
+        : weight(w), prediction(p), Rf_error(e) {}
 };
 
 
@@ -1501,7 +1501,7 @@ std::vector<grid_vertex_path_t> uniform_grid_graph_t::reconstruct_paths(
  * This function generates composite paths by combining input grid vertex paths
  * with the following key characteristics:
  * - Handles both original graph vertices and grid vertices in the paths
- * - Combines paths while avoiding duplicate vertices when paths share a starting point
+ * - Combines paths while avoiding Rf_duplicate vertices when paths share a starting point
  * - Preserves distance information for both original and grid vertices
  *
  * Path Combination Logic:
@@ -1561,7 +1561,7 @@ std::vector<compose_path_t> uniform_grid_graph_t::create_composite_paths(
             const auto& path2 = grid_vertex_paths[j];
 
             // Determine if paths share a starting vertex
-            // This helps avoid duplicate vertices in composite path
+            // This helps avoid Rf_duplicate vertices in composite path
             size_t offset = (path1.vertices[0] == path2.vertices[0]) ? 1 : 0;
 
             // Composite Path Construction
@@ -1728,7 +1728,7 @@ std::vector<compose_path_t> uniform_grid_graph_t::find_min_size_composite_paths(
         new_max_bw *= 1.5;
     }
 
-    // If we couldn't find paths of sufficient size, log a warning
+    // If we couldn't find paths of sufficient size, log a Rf_warning
     REPORT_WARNING("Warning: Could not find paths of size %zu even with extended search radius.\n", min_path_size);
 
     // Return empty vector to indicate failure
@@ -1822,7 +1822,7 @@ std::vector<compose_path_t> uniform_grid_graph_t::get_bw_composite_paths(
  * @return xyw_path_t Prepared data structure for local linear regression
  *
  * @note Assumes consistent sizing between path vertices and response values
- * @warning No input validation is performed
+ * @Rf_warning No input validation is performed
  *
  * @see uniform_grid_graph_t::initialize_kernel() For kernel initialization
  */

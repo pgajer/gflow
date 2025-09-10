@@ -1,13 +1,16 @@
 #ifndef MLM_HPP
 #define MLM_HPP
 
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Print.h>       // For Rprintf
+
 #include <Eigen/Dense>         // For Eigen::VectorXd, Eigen::MatrixXd
 #include <vector>              // For std::vector
 #include <algorithm>           // For std::min
 #include <map>                 // For std::map
 #include <string>              // For std::string
 #include <fstream>             // For std::ofstream
-#include <R_ext/Print.h>       // For Rprintf
 
 #include "error_utils.h"       // For REPORT_WARNING
 

@@ -2,7 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -37,7 +37,7 @@
  * 2. Assigns all vertices to the nearest seed point to form spatially coherent folds
  * 3. For each fold, creates a buffer zone around test vertices to ensure spatial independence
  * 4. For each candidate bandwidth, performs cross-validation across the folds
- * 5. Selects the bandwidth with the lowest cross-validation error
+ * 5. Selects the bandwidth with the lowest cross-validation Rf_error
  * 6. Fits the final model with the optimal bandwidth
  *
  * @param y Response values at each vertex in the graph
@@ -203,18 +203,18 @@ graph_deg0_lowess_buffer_cv_t set_wgraph_t::graph_deg0_lowess_buffer_cv(
                     dist_normalization_factor,
                     use_uniform_weights);
 
-                // if (debugging_counter >= 5) error("DEBUGGING");
+                // if (debugging_counter >= 5) Rf_error("DEBUGGING");
 
                 Rprintf("bw_idx: %zu fold: %zu v: %zu y[v]: %.3f y.pred[v]: %.3f", bw_idx, fold, vertex, y[vertex], prediction);
 
                 // If prediction was possible
                 if (!std::isnan(prediction)) {
-                    // Calculate squared error
-                    double error = std::pow(prediction - y[vertex], 2);
-                    total_error += error;
+                    // Calculate squared Rf_error
+                    double Rf_error = std::pow(prediction - y[vertex], 2);
+                    total_error += Rf_error;
                     total_test_points++;
 
-                    Rprintf(" error: %.3f total_error: %.3f\n", error, total_error);
+                    Rprintf(" Rf_error: %.3f total_error: %.3f\n", Rf_error, total_error);
 
                     // Store prediction if requested
                     if (with_bw_predictions) {
@@ -227,7 +227,7 @@ graph_deg0_lowess_buffer_cv_t set_wgraph_t::graph_deg0_lowess_buffer_cv(
             }
         }
         
-        // Calculate average error for this bandwidth
+        // Calculate average Rf_error for this bandwidth
         if (total_test_points > 0) {
             result.bw_errors[bw_idx] = total_error / total_test_points;
         } else {
@@ -269,7 +269,7 @@ graph_deg0_lowess_buffer_cv_t set_wgraph_t::graph_deg0_lowess_buffer_cv(
  *
  * The approach ensures that predictions for test vertices are made using only
  * training vertices that are spatially separated, which produces more realistic
- * cross-validation error estimates by preventing information leakage through
+ * cross-validation Rf_error estimates by preventing information leakage through
  * the graph structure.
  *
  * @param test_vertex Index of the vertex for which to make a prediction

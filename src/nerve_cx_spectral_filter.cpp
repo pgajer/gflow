@@ -1,7 +1,7 @@
 #include <R.h>                     // Rprintf
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <algorithm>
 #include <cmath>
@@ -764,7 +764,7 @@ compute_matrix_spectrum(
             if (verbose) {
                 Rprintf("Dense eigendecomposition threw exception: %s\n", e.what());
             }
-            // Final fallback failed, throw error
+            // Final fallback failed, throw Rf_error
         }
     }
 

@@ -1,4 +1,5 @@
 #include <R.h>
+#include <Rinternals.h>
 #include <Rmath.h>
 #include <math.h>
 
@@ -12,7 +13,7 @@ FILE* file_open(const char *file, const char *mode)
 {
     FILE* retval = fopen(file, mode);
     if (retval == NULL) {
-        error("Error in %s at line %d: Could not open %s\n", __FILE__, __LINE__, file);
+        Rf_error("Error in %s at line %d: Could not open %s\n", __FILE__, __LINE__, file);
     }
     return retval;
 }
@@ -25,11 +26,11 @@ FILE* file_open(const char *file, const char *mode)
 void file_close(FILE *fp, const char *file)
 {
     if (fp == NULL) {
-        error("Error in %s at line %d: File pointer is NULL. Cannot close file.\n", __FILE__, __LINE__);
+        Rf_error("Error in %s at line %d: File pointer is NULL. Cannot close file.\n", __FILE__, __LINE__);
     }
 
     if (fclose(fp) != 0) {
-        error("Error in %s at line %d: Could not close %s\n", __FILE__, __LINE__, file ? file : "file");
+        Rf_error("Error in %s at line %d: Could not close %s\n", __FILE__, __LINE__, file ? file : "file");
     }
 }
 
@@ -280,7 +281,7 @@ void read_double2_csv(const char* file, double*** X, int** row_len, int* nX) {
     // Read the value of nX from the first row
     int numScanned = fscanf(fp, "%d\n", nX);
     if (numScanned != 1) {
-        warning("Failed to read the number of rows in the file.\n");
+        Rf_warning("Failed to read the number of rows in the file.\n");
     }
 
     // Allocate memory for row_len
@@ -290,7 +291,7 @@ void read_double2_csv(const char* file, double*** X, int** row_len, int* nX) {
     for (int i = 0; i < *nX; i++) {
         int rsize = fscanf(fp, "%d,", &((*row_len)[i]));
         if (rsize != 1) {
-            warning("Failed to read the row_len.\n");
+            Rf_warning("Failed to read the row_len.\n");
         }
     }
 
@@ -306,7 +307,7 @@ void read_double2_csv(const char* file, double*** X, int** row_len, int* nX) {
         for (int j = 0; j < (*row_len)[i]; j++) {
             x = fscanf(fp, "%lf,", &((*X)[i][j]));
             if (x != 1) {
-                warning("Failed to read the %d-th element of the %d-th row.\n", j, i);
+                Rf_warning("Failed to read the %d-th element of the %d-th row.\n", j, i);
             }
         }
     }
@@ -382,7 +383,7 @@ void read_int2_csv(const char* file, int*** X, int** row_len, int* nX) {
     // Read the value of nX from the first row
     int numScanned = fscanf(fp, "%d\n", nX);
     if (numScanned != 1) {
-        warning("Failed to read the number of rows in the file.\n");
+        Rf_warning("Failed to read the number of rows in the file.\n");
     }
 
 
@@ -393,7 +394,7 @@ void read_int2_csv(const char* file, int*** X, int** row_len, int* nX) {
     for (int i = 0; i < *nX; i++) {
         int rsize = fscanf(fp, "%d,", &((*row_len)[i]));
         if (rsize != 1) {
-            warning("Failed to read the row_len.\n");
+            Rf_warning("Failed to read the row_len.\n");
         }
     }
 
@@ -409,7 +410,7 @@ void read_int2_csv(const char* file, int*** X, int** row_len, int* nX) {
         for (int j = 0; j < (*row_len)[i]; j++) {
             x = fscanf(fp, "%d,", &((*X)[i][j]));
             if (x != 1) {
-                warning("Failed to read the %d-th element of the %d-th row.\n", j, i);
+                Rf_warning("Failed to read the %d-th element of the %d-th row.\n", j, i);
             }
         }
     }

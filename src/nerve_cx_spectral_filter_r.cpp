@@ -10,7 +10,7 @@ extern "C" {
 // Helper function to get an element from an R list by name
 // This is a common utility function used in R C interfaces
 static SEXP getListElement(SEXP list, const char *str) {
-    SEXP elmt = R_NilValue, names = getAttrib(list, R_NamesSymbol);
+    SEXP elmt = R_NilValue, names = Rf_getAttrib(list, R_NamesSymbol);
 
     for (int i = 0; i < LENGTH(list); i++) {
         if (strcmp(CHAR(STRING_ELT(names, i)), str) == 0) {
@@ -45,7 +45,7 @@ SEXP S_nerve_cx_spectral_filter(
 	}
 
 	// Convert input parameters
-	PROTECT(s_y = coerceVector(s_y, REALSXP));
+	PROTECT(s_y = Rf_coerceVector(s_y, REALSXP));
 	int n_vertices = LENGTH(s_y);
 	double* y_ptr = REAL(s_y);
 
@@ -58,7 +58,7 @@ SEXP S_nerve_cx_spectral_filter(
 	filter_type_t filter_type = static_cast<filter_type_t>(INTEGER(s_filter_type)[0]);
 	size_t laplacian_power = INTEGER(s_laplacian_power)[0];
 
-	PROTECT(s_dim_weights = coerceVector(s_dim_weights, REALSXP));
+	PROTECT(s_dim_weights = Rf_coerceVector(s_dim_weights, REALSXP));
 	int n_dim_weights = LENGTH(s_dim_weights);
 	double* dim_weights_ptr = REAL(s_dim_weights);
 
@@ -100,54 +100,54 @@ SEXP S_nerve_cx_spectral_filter(
 		);
 
 	// Prepare return list structure
-	SEXP ret = PROTECT(allocVector(VECSXP, 7));
-	SEXP names = PROTECT(allocVector(STRSXP, 7));
+	SEXP ret = PROTECT(Rf_allocVector(VECSXP, 7));
+	SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
 
 	// 1. Predictions
-	SEXP predictions = PROTECT(allocVector(REALSXP, n_vertices));
+	SEXP predictions = PROTECT(Rf_allocVector(REALSXP, n_vertices));
 	double* pred_ptr = REAL(predictions);
 	for (size_t i = 0; i < n_vertices; ++i) {
 		pred_ptr[i] = result.predictions[i];
 	}
 	SET_VECTOR_ELT(ret, 0, predictions);
-	SET_STRING_ELT(names, 0, mkChar("predictions"));
+	SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
 
 	// 2. Optimal parameter
-	SEXP opt_param = PROTECT(ScalarReal(result.candidate_ts[result.opt_t_idx]));
+	SEXP opt_param = PROTECT(Rf_ScalarReal(result.candidate_ts[result.opt_t_idx]));
 	SET_VECTOR_ELT(ret, 1, opt_param);
-	SET_STRING_ELT(names, 1, mkChar("optimal_parameter"));
+	SET_STRING_ELT(names, 1, Rf_mkChar("optimal_parameter"));
 
 	// 3. GCV score
-	SEXP gcv_score = PROTECT(ScalarReal(result.gcv_min_score));
+	SEXP gcv_score = PROTECT(Rf_ScalarReal(result.gcv_min_score));
 	SET_VECTOR_ELT(ret, 2, gcv_score);
-	SET_STRING_ELT(names, 2, mkChar("gcv_score"));
+	SET_STRING_ELT(names, 2, Rf_mkChar("gcv_score"));
 
 	// 4. Computation time
-	SEXP compute_time = PROTECT(ScalarReal(result.compute_time_ms));
+	SEXP compute_time = PROTECT(Rf_ScalarReal(result.compute_time_ms));
 	SET_VECTOR_ELT(ret, 3, compute_time);
-	SET_STRING_ELT(names, 3, mkChar("compute_time_ms"));
+	SET_STRING_ELT(names, 3, Rf_mkChar("compute_time_ms"));
 
 	// 5. All parameters
-	SEXP all_params = PROTECT(allocVector(REALSXP, result.candidate_ts.size()));
+	SEXP all_params = PROTECT(Rf_allocVector(REALSXP, result.candidate_ts.size()));
 	double* params_ptr = REAL(all_params);
 	for (size_t i = 0; i < result.candidate_ts.size(); ++i) {
 		params_ptr[i] = result.candidate_ts[i];
 	}
 	SET_VECTOR_ELT(ret, 4, all_params);
-	SET_STRING_ELT(names, 4, mkChar("all_parameters"));
+	SET_STRING_ELT(names, 4, Rf_mkChar("all_parameters"));
 
 	// 6. All GCV scores
-	SEXP all_gcv = PROTECT(allocVector(REALSXP, result.gcv_scores.size()));
+	SEXP all_gcv = PROTECT(Rf_allocVector(REALSXP, result.gcv_scores.size()));
 	double* gcv_ptr = REAL(all_gcv);
 	for (size_t i = 0; i < result.gcv_scores.size(); ++i) {
 		gcv_ptr[i] = result.gcv_scores[i];
 	}
 	SET_VECTOR_ELT(ret, 5, all_gcv);
-	SET_STRING_ELT(names, 5, mkChar("all_gcv_scores"));
+	SET_STRING_ELT(names, 5, Rf_mkChar("all_gcv_scores"));
 
 	// 7. All predictions (if requested)
 	if (with_t_predictions) {
-		SEXP all_predictions = PROTECT(allocMatrix(REALSXP, n_vertices, result.t_predictions.size()));
+		SEXP all_predictions = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, result.t_predictions.size()));
 		double* all_pred_ptr = REAL(all_predictions);
 
 		for (size_t j = 0; j < result.t_predictions.size(); ++j) {
@@ -157,16 +157,16 @@ SEXP S_nerve_cx_spectral_filter(
 		}
 
 		SET_VECTOR_ELT(ret, 6, all_predictions);
-		SET_STRING_ELT(names, 6, mkChar("all_predictions"));
+		SET_STRING_ELT(names, 6, Rf_mkChar("all_predictions"));
 		UNPROTECT(1);
 	}
 	else {
 		SET_VECTOR_ELT(ret, 6, R_NilValue);
-		SET_STRING_ELT(names, 6, mkChar("all_predictions"));
+		SET_STRING_ELT(names, 6, Rf_mkChar("all_predictions"));
 	}
 
 	// Set the list names
-	setAttrib(ret, R_NamesSymbol, names);
+	Rf_setAttrib(ret, R_NamesSymbol, names);
 
 	UNPROTECT(10);  // Unprotect everything
 	return ret;

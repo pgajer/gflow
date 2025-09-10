@@ -5,7 +5,7 @@
 #include <Rinternals.h>
 
 #undef length  // to resolve naming conflict between the R macro length defined in Rinternals.h and a member function in the C++ standard library's codecvt class
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <mutex>
@@ -60,8 +60,8 @@ extern "C" {
  *    a. Creates a grid of candidate bandwidths
  *    b. For each bandwidth:
  *       - Fits local models using either LOOCV or k-fold CV
- *       - Computes all three error measures
- *    c. Selects optimal bandwidths minimizing each error measure
+ *       - Computes all three Rf_error measures
+ *    c. Selects optimal bandwidths minimizing each Rf_error measure
  * 3. Returns predictions and model parameters for optimal or specified bandwidth(s)
  *
  * @param x Vector of predictor values
@@ -106,7 +106,7 @@ extern "C" {
  * @note If with_bw_predictions=false, only predictions for unique optimal
  * bandwidths are retained in bw_predictions to conserve memory.
  *
- * @warning Input vectors x and y must be the same length and y must contain
+ * @Rf_warning Input vectors x and y must be the same length and y must contain
  * only binary values (0 or 1). The function uses the ANN library for efficient
  * nearest neighbor searches, which must be properly initialized before calling.
  *
@@ -143,7 +143,7 @@ public:
         // Verify beta has correct dimensions based on model type
         int expected_size = fit_quadratic ? 3 : 2;
         if (beta.size() != expected_size) {
-            error("Model coefficients vector has incorrect size");
+            Rf_error("Model coefficients vector has incorrect size");
         }
 
         int n = x.size();
@@ -172,8 +172,8 @@ struct amagelogit_t {
     std::vector<double> candidate_bandwidths;                   ///< Grid of bandwidths tested during optimization
 
     // Mean errors and optimal indices
-    std::vector<double> mean_brier_errors;                      ///< Mean Brier error for each candidate bandwidth
-    int opt_brier_bw_idx;                                       ///< Index of bandwidth with minimal mean Brier error
+    std::vector<double> mean_brier_errors;                      ///< Mean Brier Rf_error for each candidate bandwidth
+    int opt_brier_bw_idx;                                       ///< Index of bandwidth with minimal mean Brier Rf_error
 
     // grid-based members
     std::vector<double> x_grid;                                ///< Uniform grid over the range of x values, models are estimated at these locations
@@ -213,16 +213,16 @@ amagelogit_t amagelogit(
     bool with_bw_grid_predictions) {
 
     if (grid_size < 2) {
-        error("grid_size must be at least 2");
+        Rf_error("grid_size must be at least 2");
     }
     if (x.size() != y.size()) {
-        error("x and y must have the same size");
+        Rf_error("x and y must have the same size");
     }
     if (x.empty()) {
-        error("Input vectors cannot be empty");
+        Rf_error("Input vectors cannot be empty");
     }
     if (min_points > static_cast<int>(x.size())) {
-        error("min_points cannot be larger than the number of data points");
+        Rf_error("min_points cannot be larger than the number of data points");
     }
 
     amagelogit_t result;
@@ -246,7 +246,7 @@ amagelogit_t amagelogit(
     double x_range = x_max - x_min;
 
     if (x_range < std::numeric_limits<double>::epsilon()) {
-        error("Input x values are effectively constant");
+        Rf_error("Input x values are effectively constant");
     }
 
     double min_bw = min_bw_factor * x_range;
@@ -535,7 +535,7 @@ amagelogit_t amagelogit(
     }
 
 
-    // Initialize error vectors
+    // Initialize Rf_error vectors
     result.mean_brier_errors.resize(n_bws);
     result.bw_grid_predictions.resize(n_bws); // this vector is always initialized, even if with_bw_grid_predictions = false, in which case only optimal bw predictions will be non-empty
 
@@ -600,7 +600,7 @@ amagelogit_t amagelogit(
 
             auto train_preds = std::move(ll.grid_predictions); // these predictions take values at all x_grid points !!!
 
-            // Compute validation error using linear interpolation
+            // Compute validation Rf_error using linear interpolation
             for (size_t j = 0; j < valid_x.size(); j++) {
                 double pred_j = interpolate_grid(valid_x[j], result.x_grid, train_preds);
                 double brier_error = std::pow(pred_j - valid_y[j], 2);
@@ -614,7 +614,7 @@ amagelogit_t amagelogit(
             std::numeric_limits<double>::infinity();
     }
 
-    // Find optimal bandwidths for each error measure
+    // Find optimal bandwidths for each Rf_error measure
     auto find_opt_idx = [](const std::vector<double>& errors) {
         return std::distance(errors.begin(),
                            std::min_element(errors.begin(), errors.end()));
@@ -651,7 +651,7 @@ amagelogit_t amagelogit(
     }
 
     // Identifying for each grid point the model of bw different from opt_i with
-    // smaller CV error smaller than the CV of the opt_i model at that grid
+    // smaller CV Rf_error smaller than the CV of the opt_i model at that grid
     // point (if such model exist)
     int opt_i = result.opt_brier_bw_idx;
     double opt_bw = result.candidate_bandwidths[opt_i];
@@ -687,8 +687,8 @@ amagelogit_t amagelogit(
                                           // index within
                                           // result.candidate_bandwidths of that
                                           // bandwith model averaged model with
-                                          // the smallest CV error smaller than
-                                          // opt_be error
+                                          // the smallest CV Rf_error smaller than
+                                          // opt_be Rf_error
     for (int i = 0; i < n_bws; i++) {
         // How to find the element of result.candidate_bandwidths closest to sm_min_error_bw[i] ??? <<---
     }
@@ -720,7 +720,7 @@ amagelogit_t amagelogit(
  * @brief R interface for amagelogit local logistic regression
  *
  * @details Converts R inputs to C++ types, calls amagelogit(), and converts results
- * back to R objects. Returns a list containing grid predictions, error measures,
+ * back to R objects. Returns a list containing grid predictions, Rf_error measures,
  * optimal bandwidths, and fitting information.
  *
  * @param x_r Numeric vector of predictor values
@@ -931,11 +931,11 @@ SEXP S_amagelogit(
     }
     catch (const std::exception& e) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("C++ error in amagelogit: %s", e.what());
+        Rf_error("C++ Rf_error in amagelogit: %s", e.what());
     }
     catch (...) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Unknown error in amagelogit");
+        Rf_error("Unknown Rf_error in amagelogit");
     }
 }
 #endif

@@ -2,7 +2,7 @@
 #include <R_ext/Print.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>
@@ -597,12 +597,12 @@ set_wgraph_t create_iknn_graph_from_matrix(
     size_t n_samples = X[0].size();
 
     // Create R matrix from X (transpose to match R's column-major format)
-    SEXP r_matrix = PROTECT(allocMatrix(REALSXP, n_samples, n_features));
+    SEXP r_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_samples, n_features));
     double* data = REAL(r_matrix);
 
     for (size_t j = 0; j < n_features; ++j) {
         if (X[j].size() != n_samples) {
-            PROTECT(r_matrix); // Ensure protection before error
+            PROTECT(r_matrix); // Ensure protection before Rf_error
             REPORT_ERROR("Inconsistent sample size across features");
         }
         for (size_t i = 0; i < n_samples; ++i) {
@@ -611,9 +611,9 @@ set_wgraph_t create_iknn_graph_from_matrix(
     }
 
     // Create parameters for S_create_single_iknn_graph
-    SEXP r_k = PROTECT(ScalarInteger(k));
-    SEXP r_pruning_thld = PROTECT(ScalarReal(pruning_thld));
-    SEXP r_compute_full = PROTECT(ScalarLogical(0)); // Don't need full components
+    SEXP r_k = PROTECT(Rf_ScalarInteger(k));
+    SEXP r_pruning_thld = PROTECT(Rf_ScalarReal(pruning_thld));
+    SEXP r_compute_full = PROTECT(Rf_ScalarLogical(0)); // Don't need full components
 
     // Call S_create_single_iknn_graph
     if (verbose) {

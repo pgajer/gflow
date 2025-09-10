@@ -1,8 +1,9 @@
 #include <R.h>                      // For R_FlushConsole, Rprintf
 #include <Rinternals.h>             // For R C API functions
+
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 
@@ -38,9 +39,9 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
     std::vector<std::vector<double>> Y;
 
     // Check if s_Y is a matrix or a list
-    if (isMatrix(s_Y)) {
+    if (Rf_isMatrix(s_Y)) {
         // Handle matrix format (convert column-major R matrix to row-major C++ vector of vectors)
-        SEXP s_Y_dim = getAttrib(s_Y, R_DimSymbol);
+        SEXP s_Y_dim = Rf_getAttrib(s_Y, R_DimSymbol);
         int nrow = INTEGER(s_Y_dim)[0];
         int ncol = INTEGER(s_Y_dim)[1];
 
@@ -55,15 +56,15 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
                 Y[j][i] = Y_ptr[i + j*nrow];
             }
         }
-    } else if (isNewList(s_Y)) {
+    } else if (Rf_isNewList(s_Y)) {
         // Handle list format
         int n_cols = LENGTH(s_Y);
         Y.resize(n_cols);
 
         for (int j = 0; j < n_cols; j++) {
             SEXP s_y_j = VECTOR_ELT(s_Y, j);
-            if (!isReal(s_y_j)) {
-                error("All elements of Y must be numeric vectors");
+            if (!Rf_isReal(s_y_j)) {
+                Rf_error("All elements of Y must be numeric vectors");
             }
 
             int n_rows = LENGTH(s_y_j);
@@ -75,7 +76,7 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
             }
         }
     } else {
-        error("Y must be a numeric matrix or a list of numeric vectors");
+        Rf_error("Y must be a numeric matrix or a list of numeric vectors");
     }
 
     // Get scalar parameters
@@ -124,21 +125,21 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
 
     // Track protection count
     int protect_count = 0;
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     protect_count++;
 
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
     protect_count++;
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 
     // Helper function to convert vector to SEXP
     auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
@@ -146,7 +147,7 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
     };
 
     // Set predictions (list of numeric vectors, one per response variable)
-    SEXP r_predictions = PROTECT(allocVector(VECSXP, result.predictions.size()));
+    SEXP r_predictions = PROTECT(Rf_allocVector(VECSXP, result.predictions.size()));
     protect_count++;
     for (size_t j = 0; j < result.predictions.size(); j++) {
         SET_VECTOR_ELT(r_predictions, j, vec_to_sexp(result.predictions[j]));
@@ -156,12 +157,12 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
     // Set bw_predictions (if requested) - nested list structure
     if (with_bw_predictions && !result.bw_predictions.empty()) {
         // Create outer list (one element per response variable)
-        SEXP r_bw_predictions = PROTECT(allocVector(VECSXP, result.bw_predictions.size()));
+        SEXP r_bw_predictions = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions.size()));
         protect_count++;
         
         for (size_t j = 0; j < result.bw_predictions.size(); j++) {
             // Create inner list (one element per bandwidth)
-            SEXP r_bw_preds_j = PROTECT(allocVector(VECSXP, result.bw_predictions[j].size()));
+            SEXP r_bw_preds_j = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions[j].size()));
             protect_count++;
             
             for (size_t bw_idx = 0; bw_idx < result.bw_predictions[j].size(); bw_idx++) {
@@ -173,11 +174,11 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
         
         SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
     } else {
-        SET_VECTOR_ELT(r_result, 1, allocVector(VECSXP, 0)); // Empty list
+        SET_VECTOR_ELT(r_result, 1, Rf_allocVector(VECSXP, 0)); // Empty list
     }
 
     // Set bw_errors (list of numeric vectors, one per response variable)
-    SEXP r_bw_errors = PROTECT(allocVector(VECSXP, result.bw_errors.size()));
+    SEXP r_bw_errors = PROTECT(Rf_allocVector(VECSXP, result.bw_errors.size()));
     protect_count++;
     for (size_t j = 0; j < result.bw_errors.size(); j++) {
         SET_VECTOR_ELT(r_bw_errors, j, vec_to_sexp(result.bw_errors[j]));
@@ -191,7 +192,7 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
     SET_VECTOR_ELT(r_result, 4, vec_to_sexp(result.opt_bws));
 
     // Set opt_bw_idxs (convert to 1-based for R)
-    SEXP r_opt_bw_idxs = PROTECT(allocVector(INTSXP, result.opt_bw_idxs.size()));
+    SEXP r_opt_bw_idxs = PROTECT(Rf_allocVector(INTSXP, result.opt_bw_idxs.size()));
     protect_count++;
     for (size_t j = 0; j < result.opt_bw_idxs.size(); j++) {
         INTEGER(r_opt_bw_idxs)[j] = result.opt_bw_idxs[j] + 1; // Convert to 1-based for R

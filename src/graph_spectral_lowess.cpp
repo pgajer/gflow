@@ -37,8 +37,8 @@ Eigen::MatrixXd create_spectral_embedding(
  * 1. Computes the Laplacian eigenvectors for dimension reduction
  * 2. For each vertex, identifies neighboring vertices within varying bandwidths
  * 3. Creates spectral embeddings of these local neighborhoods
- * 4. Fits weighted linear models and selects optimal bandwidth based on LOOCV error
- * 5. Produces smoothed predictions, error estimates, and local scale information
+ * 4. Fits weighted linear models and selects optimal bandwidth based on LOOCV Rf_error
+ * 5. Produces smoothed predictions, Rf_error estimates, and local scale information
  *
  * @param y Response values at each vertex in the graph
  * @param n_evectors Number of eigenvectors to use for the spectral embedding
@@ -238,7 +238,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 				}
 			}
 		}
-		// If all attempts failed, report an error
+		// If all attempts failed, report an Rf_error
 		if (!success) {
 			REPORT_ERROR("Eigenvalue computation failed after multiple attempts with adjusted parameters.");
 		}
@@ -322,12 +322,12 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 								  dist_normalization_factor,
 								  n_cleveland_iterations);
 
-							  // Store model and error
+							  // Store model and Rf_error
 							  bandwidth_errors[bw_idx] = model.mean_error;
 							  bandwidth_models[bw_idx] = std::move(model);
 						  }
 
-						  // Find best bandwidth (minimum error)
+						  // Find best bandwidth (minimum Rf_error)
 						  std::vector<double>::iterator min_error_it;
 						  bool smooth_bandwidth_errors = true;
 
@@ -377,7 +377,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 							  auto it = std::find_if(best_model.vertices.begin(), best_model.vertices.end(),
 													 [&](auto& v) { return v == vertex; });
 
-							  // Store prediction, error, and scale
+							  // Store prediction, Rf_error, and scale
 							  if (it != best_model.vertices.end()) {
 								  size_t idx = it - best_model.vertices.begin();
 								  result.predictions[vertex] = best_model.predictions[idx];

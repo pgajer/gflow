@@ -2,7 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
     // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -50,7 +50,7 @@
  * @param kernel_type              Integer code for kernel function (e.g., Normal, Laplace)
  * @param dist_normalization_factor Factor to scale distances before kernel evaluation
  * @param n_cleveland_iterations   Number of robustness iterations in local linear fitting
- * @param blending_coef            Control parameter for model averaging (0=pure position weights, 1=full error influence)
+ * @param blending_coef            Control parameter for model averaging (0=pure position weights, 1=full Rf_error influence)
  * @param use_linear_blending      If true, use linear blending instead of power-based scaling
  * @param precision                Minimum spacing between successive bandwidths in optimization
  * @param small_depth_threshold    Threshold for identifying small wiggles in triplet smoothing
@@ -197,19 +197,19 @@ amagelo_t amagelo(
         Rprintf("graph_diameter: %f\n", graph_diameter);
     }
 
-    // weight/prediction/error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/error/bw of the given vertex in each model where the vertext is in the support of the model
+    // weight/prediction/Rf_error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/Rf_error/bw of the given vertex in each model where the vertext is in the support of the model
     struct wpeme_t {
         double weight;
         double prediction;
-        double error;
+        double Rf_error;
         double mean_error;
 
         // Constructor needed for emplace_back(w,p,e,me)
         wpeme_t(double w, double p, double e, double me)
-            : weight(w), prediction(p), error(e), mean_error(me) {}
+            : weight(w), prediction(p), Rf_error(e), mean_error(me) {}
     };
 
-    std::vector<std::vector<std::vector<wpeme_t>>> bw_vertex_wpeme(n_bws); // wpe[bw_idx][i] stores a vector of {weight, prediction, error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+    std::vector<std::vector<std::vector<wpeme_t>>> bw_vertex_wpeme(n_bws); // wpe[bw_idx][i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
     for (size_t bw_idx = 0; bw_idx < n_bws; ++bw_idx) {
         bw_vertex_wpeme[bw_idx].resize(n_original_vertices);
     }
@@ -337,7 +337,7 @@ amagelo_t amagelo(
                     effective_weight = x.weight;
                 }
                 else if (blending_coef == 1.0) {
-                    // Full mean error influence
+                    // Full mean Rf_error influence
                     effective_weight = x.mean_error * x.weight;
                 }
                 else {
@@ -470,7 +470,7 @@ amagelo_t amagelo(
                 effective_weight = x.weight;
             }
             else if (blending_coef == 1.0) {
-                // Full mean error influence
+                // Full mean Rf_error influence
                 effective_weight = x.mean_error * x.weight;
             }
             else {

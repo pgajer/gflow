@@ -12,7 +12,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -159,7 +159,7 @@ extern "C" {
  *        by slightly increasing the normalization range. Default value is 1.01.
  * @param n_CVs The number of cross-validation rounds.
  * @param n_CV_folds The number of folds in each cross-validation round.
- * @param epsilon A small positive constant for numerical stability in binary error calculations.
+ * @param epsilon A small positive constant for numerical stability in binary Rf_error calculations.
  * @param seed A seed for the random number generator used in cross-validation.
  * @param n_cores The number of CPU cores to use for parallel computation. If set to 1 (default),
  *        the function runs sequentially. For values greater than 1, OpenMP is used to parallelize
@@ -175,26 +175,26 @@ extern "C" {
  *                     cross-validation errors for each time step and CV round.
  *         - mean_cv_errors: A vector of length n_time_steps containing the mean CV errors
  *                          across all CV rounds for each time step.
- *         - y_optimal: The smoothed y values at the optimal time step (where mean CV error is minimal).
+ *         - y_optimal: The smoothed y values at the optimal time step (where mean CV Rf_error is minimal).
  *                     If no CV is performed (n_CVs = 0), contains the final smoothed values.
  *         - n_time_steps: The number of time steps used in the diffusion process.
  *         - n_CVs: The number of cross-validation rounds performed.
- *         - optimal_time_step: The time step where the mean CV error is minimal.
- *                             Set to -1 if no CV is performed or if an error occurs.
- *         - min_cv_error: The minimum mean CV error value across all time steps.
- *                        Set to infinity if no CV is performed or if an error occurs.
+ *         - optimal_time_step: The time step where the mean CV Rf_error is minimal.
+ *                             Set to -1 if no CV is performed or if an Rf_error occurs.
+ *         - min_cv_error: The minimum mean CV Rf_error value across all time steps.
+ *                        Set to infinity if no CV is performed or if an Rf_error occurs.
  *
  * @throws std::runtime_error if input parameters are invalid or inconsistent.
  *
  * @note The function handles errors gracefully by:
  *       - Resetting CV data and continuing without CV if cross-validation fails
- *       - Providing fallback values for optimal solutions in error cases
+ *       - Providing fallback values for optimal solutions in Rf_error cases
  *       - Maintaining thread safety in parallel computations
- *       - Reporting detailed error messages when verbose is true
+ *       - Reporting detailed Rf_error messages when verbose is true
  *
  * @note The function supports both hop-index and distance-based neighbor calculations,
  *       determined by whether the edge_lengths parameter contains distances.
- *       It also handles binary data differently, using log-likelihood for error calculation.
+ *       It also handles binary data differently, using log-likelihood for Rf_error calculation.
  *       When n_cores > 1, the cross-validation process is parallelized using OpenMP.
  */
 std::unique_ptr<graph_diffusion_smoother_result_t>
@@ -472,7 +472,7 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
                             }
                         }
 
-                        // Computing CV error at the test vertices
+                        // Computing CV Rf_error at the test vertices
                         double cv_error = 0.0;
                         if (y_binary) {
                             for (const auto& vertex : test_set) {
@@ -495,7 +495,7 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
             }
         } catch (const std::exception& e) {
             Rprintf("\nError in cross-validation: %s\n", e.what());
-            // Reset CV data on error
+            // Reset CV data on Rf_error
             std::fill(cv_errors.begin(), cv_errors.end(), 0.0);
             n_CVs = 0;  // Indicate that CV failed
         }
@@ -560,7 +560,7 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
     }
 
     if (verbose) {
-        Rprintf("\nOptimal time step: %d (CV error: %f)\n",
+        Rprintf("\nOptimal time step: %d (CV Rf_error: %f)\n",
                 result->optimal_time_step,
                 result->min_cv_error);
     }
@@ -609,7 +609,7 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
  * range. Default value is 1.01.
  * @param n_CVs The number of cross-validation rounds.
  * @param n_CV_folds The number of folds in each cross-validation round.
- * @param epsilon A small positive constant for numerical stability in binary error calculations.
+ * @param epsilon A small positive constant for numerical stability in binary Rf_error calculations.
  * @param seed A seed for the random number generator used in cross-validation.
  *
  * @return A unique pointer to a graph_diffusion_smoother_result_t structure containing:
@@ -619,20 +619,20 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
  *                     cross-validation errors for each time step and CV round.
  *         - mean_cv_errors: A vector of length n_time_steps containing the mean CV errors
  *                          across all CV rounds for each time step.
- *         - y_optimal: The smoothed y values at the optimal time step (where mean CV error is minimal).
+ *         - y_optimal: The smoothed y values at the optimal time step (where mean CV Rf_error is minimal).
  *                     If no CV is performed (n_CVs = 0), contains the final smoothed values.
  *         - n_time_steps: The number of time steps used in the diffusion process.
  *         - n_CVs: The number of cross-validation rounds performed.
- *         - optimal_time_step: The time step where the mean CV error is minimal.
- *                             Set to -1 if no CV is performed or if an error occurs.
- *         - min_cv_error: The minimum mean CV error value across all time steps.
- *                        Set to infinity if no CV is performed or if an error occurs.
+ *         - optimal_time_step: The time step where the mean CV Rf_error is minimal.
+ *                             Set to -1 if no CV is performed or if an Rf_error occurs.
+ *         - min_cv_error: The minimum mean CV Rf_error value across all time steps.
+ *                        Set to infinity if no CV is performed or if an Rf_error occurs.
  *
  * @throws std::runtime_error if input parameters are invalid or inconsistent.
  *
  * @note The function supports both hop-index and distance-based neighbor calculations,
  *       determined by whether the 'd' parameter is empty or not.
- *       It also handles binary data differently, using log-likelihood for error calculation.
+ *       It also handles binary data differently, using log-likelihood for Rf_error calculation.
  *
  */
 std::unique_ptr<graph_diffusion_smoother_result_t>
@@ -891,7 +891,7 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
                                                  cv_imputation_ikernel,
                                                  dist_normalization_factor));
 
-            // Perform diffusion smoothing on the CV graph at each step estimating the MAD error
+            // Perform diffusion smoothing on the CV graph at each step estimating the MAD Rf_error
             time_step = 0;
             while (time_step < n_time_steps) {
 
@@ -927,7 +927,7 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
                     }
                 }
 
-                // Computing CV error at the test vertices
+                // Computing CV Rf_error at the test vertices
                 double cv_error = 0.0;
                 if (y_binary) {
                     for (const auto& vertex : test_set) {
@@ -956,7 +956,7 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
     result->y_traj = std::move(y_traj);
     result->cv_errors = std::move(cv_errors);
 
-    // Initialize optimal time step and minimum CV error with default values
+    // Initialize optimal time step and minimum CV Rf_error with default values
     result->optimal_time_step = -1;  // -1 indicates no optimal time step found
     result->min_cv_error = std::numeric_limits<double>::infinity();
 
@@ -994,7 +994,7 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
                     result->y_optimal = y;
                 }
 
-                // Rprintf("\nOptimal time step: %d (CV error: %f)\n",
+                // Rprintf("\nOptimal time step: %d (CV Rf_error: %f)\n",
                 //         result->optimal_time_step,
                 //         result->min_cv_error);
             } else {
@@ -1059,9 +1059,9 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
  *                     Final smoothed values if no CV performed.
  *         - n_time_steps: Integer indicating number of time steps used.
  *         - n_CVs: Integer indicating number of CV rounds performed.
- *         - optimal_time_step: Integer indicating time step with minimal CV error.
+ *         - optimal_time_step: Integer indicating time step with minimal CV Rf_error.
  *                             -1 if no CV performed.
- *         - min_cv_error: Numeric value of minimum mean CV error.
+ *         - min_cv_error: Numeric value of minimum mean CV Rf_error.
  *                        Inf if no CV performed.
  *
  * @throws Rf_error with descriptive message for:
@@ -1071,7 +1071,7 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
  *         - Invalid result states
  *         - Inconsistent dimensions in results
  *
- * @note This function performs extensive parameter validation and error checking.
+ * @note This function performs extensive parameter validation and Rf_error checking.
  *       It handles memory protection for R objects and ensures proper cleanup.
  *       Cross-validation can be parallelized when n_cores > 1.
  *       Progress information is printed when verbose = TRUE.
@@ -1125,53 +1125,53 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
 
         int nprot = 0;
 
-        // Parameter conversion with error checking
-        PROTECT(Ry = coerceVector(Ry, REALSXP)); nprot++;
+        // Parameter conversion with Rf_error checking
+        PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
         double *y = REAL(Ry);
         if (!y) {
             UNPROTECT(nprot);
             Rf_error("Failed to convert input vector y");
         }
 
-        PROTECT(Rweights = coerceVector(Rweights, REALSXP)); nprot++;
+        PROTECT(Rweights = Rf_coerceVector(Rweights, REALSXP)); nprot++;
         double *weights = REAL(Rweights);
         if (!weights) {
             UNPROTECT(nprot);
             Rf_error("Failed to convert weights vector");
         }
 
-        PROTECT(Rn_time_steps = coerceVector(Rn_time_steps, INTSXP)); nprot++;
+        PROTECT(Rn_time_steps = Rf_coerceVector(Rn_time_steps, INTSXP)); nprot++;
         int n_time_steps = INTEGER(Rn_time_steps)[0];
         if (n_time_steps <= 0) {
             UNPROTECT(nprot);
             Rf_error("Number of time steps must be positive");
         }
 
-        PROTECT(Rstep_factor = coerceVector(Rstep_factor, REALSXP)); nprot++;
+        PROTECT(Rstep_factor = Rf_coerceVector(Rstep_factor, REALSXP)); nprot++;
         double step_factor = REAL(Rstep_factor)[0];
         if (step_factor <= 0) {
             UNPROTECT(nprot);
             Rf_error("Step factor must be positive");
         }
 
-        PROTECT(Rnormalize = coerceVector(Rnormalize, INTSXP)); nprot++;
+        PROTECT(Rnormalize = Rf_coerceVector(Rnormalize, INTSXP)); nprot++;
         int normalize = INTEGER(Rnormalize)[0];
         if (normalize < 0 || normalize > 2) {
             UNPROTECT(nprot);
             Rf_error("Normalize must be 0, 1, or 2");
         }
 
-        PROTECT(Rpreserve_local_maxima = coerceVector(Rpreserve_local_maxima, LGLSXP)); nprot++;
+        PROTECT(Rpreserve_local_maxima = Rf_coerceVector(Rpreserve_local_maxima, LGLSXP)); nprot++;
         bool preserve_local_maxima = LOGICAL(Rpreserve_local_maxima)[0];
 
-        PROTECT(Rlocal_maximum_weight_factor = coerceVector(Rlocal_maximum_weight_factor, REALSXP)); nprot++;
+        PROTECT(Rlocal_maximum_weight_factor = Rf_coerceVector(Rlocal_maximum_weight_factor, REALSXP)); nprot++;
         double local_maximum_weight_factor = REAL(Rlocal_maximum_weight_factor)[0];
         if (local_maximum_weight_factor < 0 || local_maximum_weight_factor > 1) {
             UNPROTECT(nprot);
             Rf_error("Local maximum weight factor must be between 0 and 1");
         }
 
-        PROTECT(Rpreserve_local_extrema = coerceVector(Rpreserve_local_extrema, LGLSXP)); nprot++;
+        PROTECT(Rpreserve_local_extrema = Rf_coerceVector(Rpreserve_local_extrema, LGLSXP)); nprot++;
         bool preserve_local_extrema = LOGICAL(Rpreserve_local_extrema)[0];
 
         if (preserve_local_maxima && preserve_local_extrema) {
@@ -1179,79 +1179,79 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
             Rf_error("Cannot preserve both local maxima and local extrema simultaneously");
         }
 
-        PROTECT(Rimputation_method = coerceVector(Rimputation_method, INTSXP)); nprot++;
+        PROTECT(Rimputation_method = Rf_coerceVector(Rimputation_method, INTSXP)); nprot++;
         imputation_method_t imputation_method = static_cast<imputation_method_t>(INTEGER(Rimputation_method)[0]);
 
-        PROTECT(Rmax_iterations = coerceVector(Rmax_iterations, INTSXP)); nprot++;
+        PROTECT(Rmax_iterations = Rf_coerceVector(Rmax_iterations, INTSXP)); nprot++;
         int max_iterations = INTEGER(Rmax_iterations)[0];
         if (max_iterations <= 0) {
             UNPROTECT(nprot);
             Rf_error("Maximum iterations must be positive");
         }
 
-        PROTECT(Rconvergence_threshold = coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
+        PROTECT(Rconvergence_threshold = Rf_coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
         double convergence_threshold = REAL(Rconvergence_threshold)[0];
         if (convergence_threshold <= 0) {
             UNPROTECT(nprot);
             Rf_error("Convergence threshold must be positive");
         }
 
-        PROTECT(Rapply_binary_threshold = coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
+        PROTECT(Rapply_binary_threshold = Rf_coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
         bool apply_binary_threshold = LOGICAL(Rapply_binary_threshold)[0];
 
-        PROTECT(Rbinary_threshold = coerceVector(Rbinary_threshold, REALSXP)); nprot++;
+        PROTECT(Rbinary_threshold = Rf_coerceVector(Rbinary_threshold, REALSXP)); nprot++;
         double binary_threshold = REAL(Rbinary_threshold)[0];
         if (binary_threshold < 0 || binary_threshold > 1) {
             UNPROTECT(nprot);
             Rf_error("Binary threshold must be between 0 and 1");
         }
 
-        PROTECT(Rikernel = coerceVector(Rikernel, INTSXP)); nprot++;
+        PROTECT(Rikernel = Rf_coerceVector(Rikernel, INTSXP)); nprot++;
         int ikernel = INTEGER(Rikernel)[0];
         if (ikernel < 0) {
             UNPROTECT(nprot);
             Rf_error("Invalid kernel index");
         }
 
-        PROTECT(Rdist_normalization_factor = coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
+        PROTECT(Rdist_normalization_factor = Rf_coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
         double dist_normalization_factor = REAL(Rdist_normalization_factor)[0];
         if (dist_normalization_factor <= 1.0) {
             UNPROTECT(nprot);
             Rf_error("Distance normalization factor must be greater than 1.0");
         }
 
-        PROTECT(Rn_CVs = coerceVector(Rn_CVs, INTSXP)); nprot++;
+        PROTECT(Rn_CVs = Rf_coerceVector(Rn_CVs, INTSXP)); nprot++;
         int n_CVs = INTEGER(Rn_CVs)[0];
         if (n_CVs < 0) {
             UNPROTECT(nprot);
             Rf_error("Number of CV rounds must be non-negative");
         }
 
-        PROTECT(Rn_CV_folds = coerceVector(Rn_CV_folds, INTSXP)); nprot++;
+        PROTECT(Rn_CV_folds = Rf_coerceVector(Rn_CV_folds, INTSXP)); nprot++;
         int n_CV_folds = INTEGER(Rn_CV_folds)[0];
         if (n_CVs > 0 && n_CV_folds <= 1) {
             UNPROTECT(nprot);
             Rf_error("Number of CV folds must be greater than 1 when performing cross-validation");
         }
 
-        PROTECT(Repsilon = coerceVector(Repsilon, REALSXP)); nprot++;
+        PROTECT(Repsilon = Rf_coerceVector(Repsilon, REALSXP)); nprot++;
         double epsilon = REAL(Repsilon)[0];
         if (epsilon <= 0) {
             UNPROTECT(nprot);
             Rf_error("Epsilon must be positive");
         }
 
-        PROTECT(Rseed = coerceVector(Rseed, INTSXP)); nprot++;
+        PROTECT(Rseed = Rf_coerceVector(Rseed, INTSXP)); nprot++;
         unsigned int seed = static_cast<unsigned int>(INTEGER(Rseed)[0]);
 
-        PROTECT(Rn_cores = coerceVector(Rn_cores, INTSXP)); nprot++;
+        PROTECT(Rn_cores = Rf_coerceVector(Rn_cores, INTSXP)); nprot++;
         int n_cores = INTEGER(Rn_cores)[0];
         if (n_cores < 0) {
             UNPROTECT(nprot);
             Rf_error("Number of cores must be non-negative");
         }
 
-        PROTECT(Rverbose = coerceVector(Rverbose, LGLSXP)); nprot++;
+        PROTECT(Rverbose = Rf_coerceVector(Rverbose, LGLSXP)); nprot++;
         bool verbose = LOGICAL(Rverbose)[0];
 
         // Initialize parameters structure
@@ -1424,7 +1424,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
     } catch (const std::exception& e) {
         Rf_error("Error during computation: %s", e.what());
     } catch (...) {
-        Rf_error("Unknown error occurred");
+        Rf_error("Unknown Rf_error occurred");
     }
 
     // This return is never reached but silences compiler warnings
@@ -1459,7 +1459,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
  * @note The function normalizes edge lengths by the maximum edge length for each vertex
  *       before applying the kernel function.
  *
- * @warning Vertices with no neighbors (isolated vertices) maintain their original values.
+ * @Rf_warning Vertices with no neighbors (isolated vertices) maintain their original values.
  */
 std::vector<std::vector<double>> basic_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
                                                                 const std::vector<std::vector<double>>& edge_lengths,
@@ -1610,7 +1610,7 @@ std::vector<std::vector<double>> basic_graph_diffusion_smoother(const std::vecto
  * - Momentum terms are maintained separately for each vertex.
  * - Isolated vertices (those with no neighbors) maintain their original values.
  *
- * @warning
+ * @Rf_warning
  * - Very high increase_factor values may lead to instability
  * - Very low decrease_factor values may slow convergence unnecessarily
  * - High momentum values may cause overshooting in regions requiring precise adjustment
@@ -2148,7 +2148,7 @@ std::vector<std::vector<double>> adaptive_graph_diffusion_smoother_with_stop(
  * @note The function assumes that the graph is connected and that edge_lengths[i][j]
  *       corresponds to the edge between vertex i and the j-th vertex in graph[i].
  *
- * @warning Performance metrics involving y_true should only be used for algorithm
+ * @Rf_warning Performance metrics involving y_true should only be used for algorithm
  *          tuning with synthetic data where ground truth is known. They are not
  *          available in real applications where true values are unknown.
  *
@@ -2481,22 +2481,22 @@ SEXP S_instrumented_gds(SEXP s_graph,
     std::vector<std::vector<int>> graph           = convert_adj_list_from_R(s_graph);
     std::vector<std::vector<double>> edge_lengths = convert_weight_list_from_R(s_edge_lengths);
 
-    PROTECT(s_y = coerceVector(s_y, REALSXP)); nprot++;
+    PROTECT(s_y = Rf_coerceVector(s_y, REALSXP)); nprot++;
     std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
 
-    PROTECT(s_y_true = coerceVector(s_y_true, REALSXP)); nprot++;
+    PROTECT(s_y_true = Rf_coerceVector(s_y_true, REALSXP)); nprot++;
     std::vector<double> y_true(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
 
-    int n_time_steps = asInteger(s_n_time_steps);
-    double base_step_factor = asReal(s_base_step_factor);
-    bool use_pure_laplacian = asLogical(s_use_pure_laplacian);
-    int ikernel = asInteger(s_ikernel);
-    double kernel_scale = asReal(s_kernel_scale);
-    double increase_factor = asReal(s_increase_factor);
-    double decrease_factor = asReal(s_decrease_factor);
-    double oscillation_factor = asReal(s_oscillation_factor);
-    double min_step = asReal(s_min_step);
-    double max_step = asReal(s_max_step);
+    int n_time_steps = Rf_asInteger(s_n_time_steps);
+    double base_step_factor = Rf_asReal(s_base_step_factor);
+    bool use_pure_laplacian = Rf_asLogical(s_use_pure_laplacian);
+    int ikernel = Rf_asInteger(s_ikernel);
+    double kernel_scale = Rf_asReal(s_kernel_scale);
+    double increase_factor = Rf_asReal(s_increase_factor);
+    double decrease_factor = Rf_asReal(s_decrease_factor);
+    double oscillation_factor = Rf_asReal(s_oscillation_factor);
+    double min_step = Rf_asReal(s_min_step);
+    double max_step = Rf_asReal(s_max_step);
 
     // Call C++ implementation
     auto perf = instrumented_gds(graph,
@@ -2516,7 +2516,7 @@ SEXP S_instrumented_gds(SEXP s_graph,
 
     // Convert performance metrics to R list
     const int N_RESULTS = 20;
-    SEXP results = PROTECT(allocVector(VECSXP, N_RESULTS)); nprot++;
+    SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS)); nprot++;
 
     // Trajectory and deltas
     SET_VECTOR_ELT(results, 0, convert_vector_vector_double_to_R(perf.y_trajectory));       nprot++ ;
@@ -2543,7 +2543,7 @@ SEXP S_instrumented_gds(SEXP s_graph,
 
     // Truth-based metrics
     SEXP s_initial_snr;
-    PROTECT(s_initial_snr = allocVector(REALSXP, 1)); nprot++;
+    PROTECT(s_initial_snr = Rf_allocVector(REALSXP, 1)); nprot++;
     REAL(s_initial_snr)[0] = perf.initial_snr;
     SET_VECTOR_ELT(results, 15, s_initial_snr);
 
@@ -2555,29 +2555,29 @@ SEXP S_instrumented_gds(SEXP s_graph,
     SET_VECTOR_ELT(results, 19, convert_vector_double_to_R(perf.integrated_curvature_error)); nprot++;
 
     // Set names
-    SEXP names = PROTECT(allocVector(STRSXP, N_RESULTS)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("y_trajectory"));
-    SET_STRING_ELT(names, 1, mkChar("pre_update_deltas"));
-    SET_STRING_ELT(names, 2, mkChar("post_update_deltas"));
-    SET_STRING_ELT(names, 3, mkChar("step_size_history"));
-    SET_STRING_ELT(names, 4, mkChar("global_residual_norm"));
-    SET_STRING_ELT(names, 5, mkChar("max_absolute_delta"));
-    SET_STRING_ELT(names, 6, mkChar("oscillation_events"));
-    SET_STRING_ELT(names, 7, mkChar("oscillation_count_per_vertex"));
-    SET_STRING_ELT(names, 8, mkChar("increase_events_per_vertex"));
-    SET_STRING_ELT(names, 9, mkChar("decrease_events_per_vertex"));
-    SET_STRING_ELT(names, 10, mkChar("oscillation_reductions_per_vertex"));
-    SET_STRING_ELT(names, 11, mkChar("smoothness_energy"));
-    SET_STRING_ELT(names, 12, mkChar("fidelity_energy"));
-    SET_STRING_ELT(names, 13, mkChar("laplacian_energy"));
-    SET_STRING_ELT(names, 14, mkChar("energy_ratio"));
-    SET_STRING_ELT(names, 15, mkChar("initial_snr"));
-    SET_STRING_ELT(names, 16, mkChar("snr_trajectory"));
-    SET_STRING_ELT(names, 17, mkChar("mean_absolute_deviation"));
-    SET_STRING_ELT(names, 18, mkChar("pointwise_curvature_error"));
-    SET_STRING_ELT(names, 19, mkChar("integrated_curvature_error"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("y_trajectory"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("pre_update_deltas"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("post_update_deltas"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("step_size_history"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("global_residual_norm"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("max_absolute_delta"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("oscillation_events"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("oscillation_count_per_vertex"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("increase_events_per_vertex"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("decrease_events_per_vertex"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("oscillation_reductions_per_vertex"));
+    SET_STRING_ELT(names, 11, Rf_mkChar("smoothness_energy"));
+    SET_STRING_ELT(names, 12, Rf_mkChar("fidelity_energy"));
+    SET_STRING_ELT(names, 13, Rf_mkChar("laplacian_energy"));
+    SET_STRING_ELT(names, 14, Rf_mkChar("energy_ratio"));
+    SET_STRING_ELT(names, 15, Rf_mkChar("initial_snr"));
+    SET_STRING_ELT(names, 16, Rf_mkChar("snr_trajectory"));
+    SET_STRING_ELT(names, 17, Rf_mkChar("mean_absolute_deviation"));
+    SET_STRING_ELT(names, 18, Rf_mkChar("pointwise_curvature_error"));
+    SET_STRING_ELT(names, 19, Rf_mkChar("integrated_curvature_error"));
 
-    setAttrib(results, R_NamesSymbol, names);
+    Rf_setAttrib(results, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
     return results;
@@ -2591,12 +2591,12 @@ SEXP S_instrumented_gds(SEXP s_graph,
  * @details This function smooths vertex function values over a graph using diffusion with
  * cross-validation to identify the optimal diffusion time. The implementation uses a masked
  * diffusion approach where test vertices are excluded from the diffusion process by assigning
- * them zero weights, while still updating their values for error calculation.
+ * them zero weights, while still updating their values for Rf_error calculation.
  *
  * The algorithm works in three phases:
  * 1. Computes a complete diffusion trajectory for the full dataset
  * 2. Performs cross-validation by running multiple diffusion processes with different test sets
- * 3. Identifies the optimal diffusion time by finding the time step with minimum average error
+ * 3. Identifies the optimal diffusion time by finding the time step with minimum average Rf_error
  *
  * During cross-validation, test vertices are excluded from influencing other vertices (assigned
  * weight 0), but their values are still updated based on training vertices (weight 1) to evaluate
@@ -2624,20 +2624,20 @@ SEXP S_instrumented_gds(SEXP s_graph,
  *         - y_optimal: Smoothed values at the optimal diffusion time
  *         - n_time_steps: Number of time steps used
  *         - n_CVs: Number of CV runs performed
- *         - optimal_time_step: Time step with minimum mean CV error
- *         - min_cv_error: Minimum mean CV error value
+ *         - optimal_time_step: Time step with minimum mean CV Rf_error
+ *         - min_cv_error: Minimum mean CV Rf_error value
  *
  * @note The function detects if y is binary (containing only values 0.0 and 1.0) and
- *       uses log-likelihood for error calculation in that case. Otherwise, it uses
+ *       uses log-likelihood for Rf_error calculation in that case. Otherwise, it uses
  *       mean absolute deviation (MAD) for continuous values.
  *
  * @note When n_CVs is 0, no cross-validation is performed and the final diffusion
  *       result (at time step n_time_steps) is returned as y_optimal.
  *
  * @note The optimal_time_step is set to -1 if no cross-validation is performed or if
- *       an error occurs during the computation of the optimal time step.
+ *       an Rf_error occurs during the computation of the optimal time step.
  *
- * @warning The function does not perform parameter validation. This should be done
+ * @Rf_warning The function does not perform parameter validation. This should be done
  *          by the calling R function.
  *
  * @see graph_diffusion_smoother_result_t
@@ -2875,17 +2875,17 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
                 // Run one step of weighted diffusion
                 weighted_kernel_diffusion_loop(y_current, y_next, vertex_weights);
 
-                // Computing CV error at the test vertices
+                // Computing CV Rf_error at the test vertices
                 double cv_error = 0.0;
                 if (y_binary) {
-                    // Log-likelihood error for binary values
+                    // Log-likelihood Rf_error for binary values
                     for (const auto& vertex : test_set) {
                         double clipped_y_next = std::clamp(y_next[vertex], epsilon, 1.0 - epsilon);
                         cv_error += y[vertex] * log(clipped_y_next) + (1 - y[vertex]) * log(1 - clipped_y_next);
                     }
                     cv_error *= -1;
                 } else {
-                    // MAD error for continuous values
+                    // MAD Rf_error for continuous values
                     for (const auto& vertex : test_set) {
                         cv_error += std::abs(y_next[vertex] - y[vertex]);
                     }
@@ -2921,7 +2921,7 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
     result.y_traj = std::move(y_traj);
     result.cv_errors = std::move(cv_errors);
 
-    // Initialize optimal time step and minimum CV error with default values
+    // Initialize optimal time step and minimum CV Rf_error with default values
     result.optimal_time_step = -1;  // -1 indicates no optimal time step found
     result.min_cv_error = std::numeric_limits<double>::infinity();
 
@@ -2966,7 +2966,7 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
                 }
 
                 if (verbose) {
-                    Rprintf("Found optimal diffusion time: step %d (error: %.6f)\n",
+                    Rprintf("Found optimal diffusion time: step %d (Rf_error: %.6f)\n",
                             result.optimal_time_step, result.min_cv_error);
                 }
 
@@ -3010,7 +3010,7 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
  * The function performs graph diffusion smoothing with optional cross-validation to
  * identify the optimal diffusion time. It uses a masked diffusion approach where
  * test vertices are excluded from the diffusion process by assigning them zero weights,
- * while still updating their values for error calculation.
+ * while still updating their values for Rf_error calculation.
  *
  * @param s_adj_list R list containing the adjacency list representation of the graph
  * @param s_weight_list R list containing the edge weights for the graph
@@ -3033,8 +3033,8 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
  *  - y_optimal: Numeric vector of smoothed values at the optimal time step
  *  - n_time_steps: Integer number of time steps used
  *  - n_CVs: Integer number of CV runs performed
- *  - optimal_time_step: Integer time step with minimum mean CV error
- *  - min_cv_error: Numeric minimum mean CV error value
+ *  - optimal_time_step: Integer time step with minimum mean CV Rf_error
+ *  - min_cv_error: Numeric minimum mean CV Rf_error value
  *
  * @note This function performs memory management using R's PROTECT/UNPROTECT mechanism
  * to prevent garbage collection of intermediate results.
@@ -3110,18 +3110,18 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     while (names[n_elements] != NULL) n_elements++;
 
     // Create list and protect it
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements)); nprot++;
-    SEXP r_names = PROTECT(allocVector(STRSXP, n_elements)); nprot++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); nprot++;
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); nprot++;
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(r_result, R_NamesSymbol, r_names);
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
     // Helper function to convert vector to SEXP
     auto create_numeric_vector = [&nprot](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size())); nprot++;
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size())); nprot++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
@@ -3131,7 +3131,7 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     auto create_numeric_matrix = [&nprot](const std::vector<double>& vec, int nrow, int ncol) -> SEXP {
         if (vec.empty() || nrow == 0 || ncol == 0) return R_NilValue;
 
-        SEXP r_mat = PROTECT(allocMatrix(REALSXP, nrow, ncol)); nprot++;
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); nprot++;
         double* ptr = REAL(r_mat);
 
         for (int i = 0; i < nrow; i++) {
@@ -3143,7 +3143,7 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     };
 
     // Convert y_traj to an R list of vectors
-    SEXP r_y_traj = PROTECT(allocVector(VECSXP, result.y_traj.size())); nprot++;
+    SEXP r_y_traj = PROTECT(Rf_allocVector(VECSXP, result.y_traj.size())); nprot++;
     for (size_t t = 0; t < result.y_traj.size(); ++t) {
         SET_VECTOR_ELT(r_y_traj, t, create_numeric_vector(result.y_traj[t]));
     }
@@ -3164,19 +3164,19 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     SET_VECTOR_ELT(r_result, 3, create_numeric_vector(result.y_optimal));
 
     // Convert scalar values
-    SEXP r_n_time_steps = PROTECT(allocVector(INTSXP, 1)); nprot++;
+    SEXP r_n_time_steps = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
     INTEGER(r_n_time_steps)[0] = result.n_time_steps;
     SET_VECTOR_ELT(r_result, 4, r_n_time_steps);
 
-    SEXP r_n_CVs = PROTECT(allocVector(INTSXP, 1)); nprot++;
+    SEXP r_n_CVs = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
     INTEGER(r_n_CVs)[0] = result.n_CVs;
     SET_VECTOR_ELT(r_result, 5, r_n_CVs);
 
-    SEXP r_optimal_time_step = PROTECT(allocVector(INTSXP, 1)); nprot++;
+    SEXP r_optimal_time_step = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
     INTEGER(r_optimal_time_step)[0] = result.optimal_time_step;
     SET_VECTOR_ELT(r_result, 6, r_optimal_time_step);
 
-    SEXP r_min_cv_error = PROTECT(allocVector(REALSXP, 1)); nprot++;
+    SEXP r_min_cv_error = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
     REAL(r_min_cv_error)[0] = result.min_cv_error;
     SET_VECTOR_ELT(r_result, 7, r_min_cv_error);
 

@@ -1,7 +1,7 @@
 #include <R.h>                     // Rprintf
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 // — C++ STL
 #include <vector>
@@ -155,7 +155,7 @@ set_wgraph_t::klaps_low_pass_smoother(
 	// 4) For each k in candidate_ks, compute:
 	//- low-pass y_k = ∑_{i<k} gft[i] * result.evectors.col(i)
 	//- residual r_k = y_ev − y_k
-	//- squared error ||r_k||²
+	//- squared Rf_error ||r_k||²
 	std::vector<Eigen::VectorXd> low_passes;
 	low_passes.reserve(result.candidate_ks.size());
 	std::vector<double> sq_errors, trace_S;
@@ -201,7 +201,7 @@ set_wgraph_t::klaps_low_pass_smoother(
 		result.opt_k_eigengap = best_idx;
 	}
 
-	// 6) GCV: error(k) = sq_errors[k] / (n_vertices − k)²
+	// 6) GCV: Rf_error(k) = sq_errors[k] / (n_vertices − k)²
 	{
 		auto& scores = result.gcv_scores;
 		scores.resize(low_passes.size());
@@ -450,7 +450,7 @@ set_wgraph_t::compute_graph_laplacian_spectrum(
 				}
 			}
 		}
-		// If all attempts failed, report an error
+		// If all attempts failed, report an Rf_error
 		if (!success) {
 			REPORT_ERROR("Eigenvalue computation failed after multiple attempts with adjusted parameters.");
 		}

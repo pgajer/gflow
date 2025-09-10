@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -196,9 +197,9 @@ std::unique_ptr<std::vector<std::vector<int>>> join_graphs(const std::vector<std
     // Input validation
     if (i1 < 0 || i1 >= n1 || i2 < 0 || i2 >= n2) {
         if (i1 < 0 || i1 >= n1) {
-            error("i1 has to be between 0 and graph1.size() - 1.");
+            Rf_error("i1 has to be between 0 and graph1.size() - 1.");
         } else {
-            error("i2 has to be between 0 and graph2.size() - 1.");
+            Rf_error("i2 has to be between 0 and graph2.size() - 1.");
         }
     }
 
@@ -266,10 +267,10 @@ SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2) {
     std::vector<std::vector<int>> graph2 = convert_adj_list_from_R(Rgraph2);
 
     int nprot = 0;
-    PROTECT(Ri1 = coerceVector(Ri1, INTSXP)); nprot++;
+    PROTECT(Ri1 = Rf_coerceVector(Ri1, INTSXP)); nprot++;
     int i1 = INTEGER(Ri1)[0];
 
-    PROTECT(Ri2 = coerceVector(Ri2, INTSXP)); nprot++;
+    PROTECT(Ri2 = Rf_coerceVector(Ri2, INTSXP)); nprot++;
     int i2 = INTEGER(Ri2)[0];
 
     std::unique_ptr<std::vector<std::vector<int>>> joined_graph = join_graphs(graph1, graph2, i1, i2);
@@ -474,7 +475,7 @@ SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights) {
  * @brief Converts an adjacency list to an edge matrix using a set for deduplication
  *
  * This function converts an adjacency list to a list of edges, using a set
- * to automatically remove duplicate edges.
+ * to automatically remove Rf_duplicate edges.
  *
  * @param adj_vect The adjacency list representation of the graph
  * @return A unique pointer to a vector of integer pairs representing the edges
@@ -555,7 +556,7 @@ SEXP S_convert_adjacency_to_edge_matrix_unordered_set(SEXP s_graph) {
  *
  * @note Input vectors are passed by reference for efficiency but are not modified
  *
- * @warning No bounds checking is performed on the input vectors. Caller must ensure that adj_vect and isize_vect
+ * @Rf_warning No bounds checking is performed on the input vectors. Caller must ensure that adj_vect and isize_vect
  *          have compatible dimensions
  *
  * Example:

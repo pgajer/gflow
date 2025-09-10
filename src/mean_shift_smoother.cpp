@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <algorithm>
@@ -266,7 +267,7 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
  *       computationally expensive but provides more accurate results, especially for
  *       datasets where the local structure changes significantly during smoothing.
  *
- * @warning The function assumes that the input data X is not empty and that all
+ * @Rf_warning The function assumes that the input data X is not empty and that all
  *          points have the same number of features (dimensions). It does not perform
  *          explicit checks for these conditions.
  *
@@ -415,7 +416,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
  *       which can significantly improve performance for large datasets or when
  *       running many iterations.
  *
- * @warning The function assumes that the input data X is not empty and that all
+ * @Rf_warning The function assumes that the input data X is not empty and that all
  *          points have the same number of features (dimensions).
  *
  * @see kNN() function for nearest neighbor computations
@@ -423,7 +424,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
  * @see kernel_fn() function for computing kernel weights
  * @see median() function for computing median k-distances
  *
- * @todo Consider adding error checking for input parameters and handling of edge cases.
+ * @todo Consider adding Rf_error checking for input parameters and handling of edge cases.
  * @todo Explore possibilities for parallelization to further improve performance.
  */
 std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precomputed(const std::vector<std::vector<double>>& X,
@@ -567,8 +568,8 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
  * @note This function uses R's C API to create R objects. It handles the necessary memory
  *       protection (PROTECT/UNPROTECT) to prevent garbage collection issues.
  *
- * @warning This function assumes that the input vectors are not empty. It does not perform
- *          extensive error checking on the inputs.
+ * @Rf_warning This function assumes that the input vectors are not empty. It does not perform
+ *          extensive Rf_error checking on the inputs.
  */
 SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
                    const std::vector<double>& median_kdistances) {
@@ -578,13 +579,13 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     int nprot = 0;
 
     // Create trajectory list
-    SEXP X_traj_r = allocVector(VECSXP, n_steps);
+    SEXP X_traj_r = Rf_allocVector(VECSXP, n_steps);
     PROTECT(X_traj_r);
     nprot++;
 
     // Fill trajectory matrices
     for (int step = 0; step < n_steps; step++) {
-        SEXP step_matrix = allocMatrix(REALSXP, n_points, n_features);
+        SEXP step_matrix = Rf_allocMatrix(REALSXP, n_points, n_features);
         PROTECT(step_matrix);
         nprot++;
 
@@ -598,14 +599,14 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     }
 
     // Create median k-distances vector
-    SEXP median_kdistances_r = allocVector(REALSXP, median_kdistances.size());
+    SEXP median_kdistances_r = Rf_allocVector(REALSXP, median_kdistances.size());
     PROTECT(median_kdistances_r);
     nprot++;
 
     std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
 
     // Create result list
-    SEXP result = allocVector(VECSXP, 2);
+    SEXP result = Rf_allocVector(VECSXP, 2);
     PROTECT(result);
     nprot++;
 
@@ -614,13 +615,13 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     SET_VECTOR_ELT(result, 1, median_kdistances_r);
 
     // Create and set names
-    SEXP names = allocVector(STRSXP, 2);
+    SEXP names = Rf_allocVector(STRSXP, 2);
     PROTECT(names);
     nprot++;
 
-    SET_STRING_ELT(names, 0, mkChar("X_traj"));
-    SET_STRING_ELT(names, 1, mkChar("median_kdistances"));
-    setAttrib(result, R_NamesSymbol, names);
+    SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
     return result;
@@ -635,9 +636,9 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     int n_features = X_traj[0][0].size();
 
     int nprot = 0;
-    SEXP X_traj_r = PROTECT(X_traj_r = allocVector(VECSXP, n_steps)); nprot++;
+    SEXP X_traj_r = PROTECT(X_traj_r = Rf_allocVector(VECSXP, n_steps)); nprot++;
     for (int i = 0; i < n_steps; ++i) {
-        SEXP step_matrix = PROTECT(step_matrix = allocMatrix(REALSXP, n_points, n_features));
+        SEXP step_matrix = PROTECT(step_matrix = Rf_allocMatrix(REALSXP, n_points, n_features));
         double* ptr = REAL(step_matrix);
         for (int j = 0; j < n_points; ++j) {
             for (int k = 0; k < n_features; ++k) {
@@ -649,19 +650,19 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     }
 
     // median_kdistances
-    SEXP median_kdistances_r = PROTECT(median_kdistances_r = allocVector(REALSXP, median_kdistances.size())); nprot++;
+    SEXP median_kdistances_r = PROTECT(median_kdistances_r = Rf_allocVector(REALSXP, median_kdistances.size())); nprot++;
     std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
 
     // Set list elements
-    SEXP result = PROTECT(result = allocVector(VECSXP, 2)); nprot++;
+    SEXP result = PROTECT(result = Rf_allocVector(VECSXP, 2)); nprot++;
     SET_VECTOR_ELT(result, 0, X_traj_r);
     SET_VECTOR_ELT(result, 1, median_kdistances_r);
 
     // Set names
-    SEXP names = PROTECT(names = allocVector(STRSXP, 2)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("X_traj"));
-    SET_STRING_ELT(names, 1, mkChar("median_kdistances"));
-    setAttrib(result, R_NamesSymbol, names);
+    SEXP names = PROTECT(names = Rf_allocVector(STRSXP, 2)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
 
@@ -705,8 +706,8 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
  * @note The choice between full gradient averaging and direction-only averaging can significantly impact results
  *       and should be chosen based on the characteristics of the data and the desired smoothing properties.
  *
- * @warning This function assumes that the input data matrix X is non-empty and all rows have the same number of columns.
- * @warning The function may be computationally intensive for large datasets or high numbers of iterations.
+ * @Rf_warning This function assumes that the input data matrix X is non-empty and all rows have the same number of columns.
+ * @Rf_warning The function may be computationally intensive for large datasets or high numbers of iterations.
  *
  * @see kNN
  * @see initialize_kernel
@@ -902,7 +903,7 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
  * @note The function is adaptive in the sense that it recomputes nearest neighbors at each iteration,
  *       allowing for more accurate gradient estimation as points move. However, the step size remains constant.
  *
- * @warning The current implementation does not include a mechanism to adapt the step size dynamically.
+ * @Rf_warning The current implementation does not include a mechanism to adapt the step size dynamically.
  *          Consider implementing such a mechanism for truly adaptive behavior.
  *
  * @pre The input data matrix X must not be empty and all rows must have the same number of columns.
@@ -1170,7 +1171,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
  *       - increase_factor: Factor to increase step size when gradients are consistent (default: 1.2).
  *       - decrease_factor: Factor to decrease step size when gradients are inconsistent (default: 0.5).
  *
- * @warning The adaptive step size mechanism may lead to very small or very large step sizes in certain scenarios.
+ * @Rf_warning The adaptive step size mechanism may lead to very small or very large step sizes in certain scenarios.
  *          Consider implementing bounds on step sizes if needed for your specific application.
  *
  * @pre The input data matrix X must not be empty and all rows must have the same number of columns.
@@ -1566,9 +1567,9 @@ SEXP S_mean_shift_data_smoother_with_grad_field_averaging(SEXP s_X,
  *       2. Improve stability by reducing step sizes in areas with complex local geometry.
  *       3. Adapt to the local data structure that each point is traversing.
  *
- * @warning This function assumes that the input data matrix X is non-empty and all rows have the same number of columns.
- * @warning The adaptive step size mechanism introduces additional parameters that may need tuning for optimal performance on specific datasets.
- * @warning The function may be computationally intensive for large datasets or high numbers of iterations.
+ * @Rf_warning This function assumes that the input data matrix X is non-empty and all rows have the same number of columns.
+ * @Rf_warning The adaptive step size mechanism introduces additional parameters that may need tuning for optimal performance on specific datasets.
+ * @Rf_warning The function may be computationally intensive for large datasets or high numbers of iterations.
  *
  * @see kNN
  * @see initialize_kernel
@@ -1993,7 +1994,7 @@ SEXP S_mean_shift_data_smoother_adaptive(SEXP s_X,
  *       - mean_shift_data_smoother: The main C++ implementation of the algorithm.
  *       - create_R_list: Converts C++ results back to R list format.
  *
- * @warning This function may be computationally expensive for large datasets or high values of n_steps.
+ * @Rf_warning This function may be computationally expensive for large datasets or high values of n_steps.
  *          Ensure sufficient memory is available, especially for large datasets.
  */
 SEXP S_mean_shift_data_smoother(SEXP s_X,

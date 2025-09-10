@@ -43,8 +43,8 @@ Eigen::MatrixXd create_spectral_embedding(
  *
  * @details This function estimates the conditional expectation \f$ \mathbb{E}[Y \mid G] \f$ over a graph
  * using locally weighted linear regression models in a spectral embedding space.
- * It follows a global bandwidth selection strategy by evaluating prediction error over a shared
- * set of bandwidths across all vertices and selecting the bandwidth index with the lowest average error.
+ * It follows a global bandwidth selection strategy by evaluating prediction Rf_error over a shared
+ * set of bandwidths across all vertices and selecting the bandwidth index with the lowest average Rf_error.
  *
  * Each vertex is embedded into a lower-dimensional Euclidean space using Laplacian eigenvectors, and
  * kernel-weighted linear models are fit over local neighborhoods defined by increasing bandwidths.
@@ -60,14 +60,14 @@ Eigen::MatrixXd create_spectral_embedding(
  * @param precision Numerical precision used in binary search and grid generation
  * @param use_global_bw_grid If true, use global candidate bandwidths schema
  * @param with_bw_predictions If true, returns predictions for all bandwidths (bw_predictions)
- * @param with_vertex_bw_errors If true, returns LOOCV error per vertex and bandwidth index
+ * @param with_vertex_bw_errors If true, returns LOOCV Rf_error per vertex and bandwidth index
  * @param verbose If true, prints progress and debugging information
  *
  * @return graph_spectral_smoother_t structure containing:
  * - predictions: Final prediction vector using the globally optimal bandwidth index
  * - bw_predictions: Matrix of predictions for all bandwidths (only if with_bw_predictions = true)
  * - vertex_bw_errors: Matrix of LOOCV errors per vertex and bandwidth (only if with_vertex_bw_errors = true)
- * - bw_mean_abs_errors: Mean absolute error per bandwidth across all vertices
+ * - bw_mean_abs_errors: Mean absolute Rf_error per bandwidth across all vertices
  * - vertex_min_bws: Minimum usable bandwidth per vertex
  * - opt_bw_idx: Index of the globally selected optimal bandwidth
  */
@@ -195,12 +195,12 @@ graph_bw_adaptive_spectral_smoother_t set_wgraph_t::graph_bw_adaptive_spectral_s
 			if (it == model.vertices.end()) continue;
 			size_t idx = std::distance(model.vertices.begin(), it);
 			double prediction = model.predictions[idx];
-			double error = model.errors[idx];
+			double Rf_error = model.errors[idx];
 
 			result.bw_predictions[bw_idx][vertex] = prediction;
 
 			if (with_vertex_bw_errors)
-				vertex_errors[vertex][bw_idx] = error;
+				vertex_errors[vertex][bw_idx] = Rf_error;
 
 			result.bw_mean_abs_errors[bw_idx] += std::abs(prediction - y[vertex]);
 		}

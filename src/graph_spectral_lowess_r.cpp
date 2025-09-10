@@ -4,7 +4,7 @@
 #include <R_ext/Print.h>
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -45,7 +45,7 @@ extern "C" {
  * 1. Constructs a weighted graph from the provided adjacency and weight lists
  * 2. Computes a spectral embedding of vertices using Laplacian eigenvectors
  * 3. For each vertex, fits local linear models at multiple bandwidths
- * 4. Selects optimal bandwidth based on cross-validation error
+ * 4. Selects optimal bandwidth based on cross-validation Rf_error
  * 5. Returns predictions, errors, and local scales
  *
  * @param s_adj_list [SEXP] R list of integer vectors representing adjacency lists for graph vertices
@@ -156,21 +156,21 @@ SEXP S_graph_spectral_lowess(
 
     // Create list and protect it
     int protect_count = 0;
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     protect_count++;
 
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
     protect_count++;
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Helper function to convert vector to SEXP
     auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
@@ -182,7 +182,7 @@ SEXP S_graph_spectral_lowess(
     SET_VECTOR_ELT(result, 1, vec_to_sexp(res.errors));
     SET_VECTOR_ELT(result, 2, vec_to_sexp(res.scale));
 
-    SEXP s_graph_diameter = PROTECT(allocVector(REALSXP, 1));
+    SEXP s_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
     protect_count++;
     REAL(s_graph_diameter)[0] = grid_graph.graph_diameter;
     SET_VECTOR_ELT(result, 3, s_graph_diameter);

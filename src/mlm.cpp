@@ -156,7 +156,7 @@ std::vector<double> compute_loocv_errors(
  * - Progressive regularization that adaptively increases strength until stability is achieved
  * - Multiple decomposition methods (LDLT, SVD) with proper conditioning
  * - Block-based hat matrix computation to avoid large intermediate matrices
- * - Comprehensive error handling with appropriate fallbacks at each step
+ * - Comprehensive Rf_error handling with appropriate fallbacks at each step
  *
  * @param embedding Matrix of spectral coordinates where each row is a vertex and first column is 1.0
  * @param y Vector of response values for all vertices in the graph
@@ -295,7 +295,7 @@ lm_t fit_weighted_linear_model(
     // Calculate LOOCV errors using the stable method
     result.errors = compute_loocv_errors(embedding, XtWX_inv, XtW, response, predictions);
 
-    // Calculate mean error
+    // Calculate mean Rf_error
     result.mean_error = 0.0;
     size_t valid_errors = 0;
     for (size_t i = 0; i < n_vertices; ++i) {

@@ -59,8 +59,8 @@
  * @note The function uses thread-local storage and OpenMP for parallel computation
  * @note The number of tests performed is min(bb_predictions.size(), null_predictions.size())
  *
- * @warning Input vectors must be non-empty and have consistent dimensions
- * @warning Requires sufficient memory to store bootstrap samples and results
+ * @Rf_warning Input vectors must be non-empty and have consistent dimensions
+ * @Rf_warning Requires sufficient memory to store bootstrap samples and results
  */
 vertex_wasserstein_perm_test_results_t vertex_wasserstein_perm_test(
     const std::vector<std::vector<double>>& bb_predictions,

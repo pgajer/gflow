@@ -47,7 +47,7 @@ double calculate_directional_threshold(
  * @param n_bb Number of Bayesian bootstrap iterations (0 for no bootstrap)
  * @param cri_probability Probability level for confidence intervals in bootstrap
  * @param n_perms Number of permutation test iterations (0 for no permutation testing)
- * @param blending_coef Number between 0 and 1 allowing for smooth interpolation between position-based weights and mean-error times position-based weights using the formula effective_weight = x.weight * pow(x.mean_error, blending_coef);
+ * @param blending_coef Number between 0 and 1 allowing for smooth interpolation between position-based weights and mean-Rf_error times position-based weights using the formula effective_weight = x.weight * pow(x.mean_error, blending_coef);
  * @param verbose Whether to print progress information
  *
  * @return adaptive_uggmalo_result_t structure containing:
@@ -161,17 +161,17 @@ agemalo_result_t ray_agemalo(
 	}
 	#endif
 
-	// weight/prediction/error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/error/bw of the given vertex in each model where the vertext is in the support of the model
+	// weight/prediction/Rf_error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/Rf_error/bw of the given vertex in each model where the vertext is in the support of the model
     struct wpe_t {
         double weight;
         double prediction;
-        double error;
+        double Rf_error;
         double mean_error;
         double bw;
 
         // Constructor needed for emplace_back(x,y,z)
         wpe_t(double w, double p, double e, double me, double bw)
-            : weight(w), prediction(p), error(e), mean_error(me), bw(bw) {}
+            : weight(w), prediction(p), Rf_error(e), mean_error(me), bw(bw) {}
     };
 
 	//
@@ -289,7 +289,7 @@ agemalo_result_t ray_agemalo(
 		// Store the optimal bandwidth for this grid vertex
 		result.grid_opt_bw.push_back(opt_bw);
 
-		std::unordered_map<size_t, std::vector<wpe_t>> wpe_map; // wpe[i] stores a vector of {weight, prediction, error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+		std::unordered_map<size_t, std::vector<wpe_t>> wpe_map; // wpe[i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
 		for (const auto& model : opt_models) {
 			for (size_t i = 0; i < model.vertices.size(); ++i) {
 				wpe_map[ model.vertices[i] ].emplace_back(
@@ -359,7 +359,7 @@ agemalo_result_t ray_agemalo(
 
 					// Handle vertices with no model predictions
 					// predictions[i] = y[i]; // Use original value or other fallback
-					// 	if (process_errors) errors[i] = INFINITY; // Mark as high error
+					// 	if (process_errors) errors[i] = INFINITY; // Mark as high Rf_error
 					// 	if (process_scale) scale[i] = INFINITY;  // Mark as no reliable scale
 					// 	continue; // Skip to next vertex
 				}
@@ -369,7 +369,7 @@ agemalo_result_t ray_agemalo(
                     effective_weight = x.weight;
                 }
                 else if (model_blending_coef == 1.0) {
-                    // Full mean error influence
+                    // Full mean Rf_error influence
                     effective_weight = x.mean_error * x.weight;
                 }
                 else {
@@ -383,7 +383,7 @@ agemalo_result_t ray_agemalo(
                 prediction_sum += effective_weight * x.prediction;
                 weight_sum     += effective_weight;
 
-                if (process_errors) error_sum += effective_weight * x.error;
+                if (process_errors) error_sum += effective_weight * x.Rf_error;
                 // if (process_scale && x.bw < local_scale) local_scale = x.bw; // min bw method
                 if (process_scale) local_scale += effective_weight * x.bw; // weighted mean bw method
             }
@@ -429,7 +429,7 @@ agemalo_result_t ray_agemalo(
 		std::iota(indices.begin(), indices.end(), 0);
 
 		// Parallel loop: each index corresponds to one grid vertex.
-		std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+		std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
 
 		// Add progress counter
 		std::atomic<size_t> progress_counter{0};
@@ -470,7 +470,7 @@ agemalo_result_t ray_agemalo(
 			// Print summary statistics
 			print_vector_quantiles(model_counts, "Models per vertex", {0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0});
 
-			// Print warning for vertices with no models
+			// Print Rf_warning for vertices with no models
 			size_t zero_model_count = std::count(model_counts.begin(), model_counts.end(), 0);
 			if (zero_model_count > 0) {
 				REPORT_WARNING("\nWarning: %zu vertices (%.1f%%) have no models\n",
@@ -490,7 +490,7 @@ agemalo_result_t ray_agemalo(
 			// Open debug file
 			std::ofstream debug_file(debug_dir + "vertex_" + std::to_string(debug_vertex) + "_debug.csv");
 			if (debug_file.is_open()) {
-				debug_file << "model_id,grid_vertex,path_length,n_vertices,weight,prediction,error,mean_error,bandwidth\n";
+				debug_file << "model_id,grid_vertex,path_length,n_vertices,weight,prediction,Rf_error,mean_error,bandwidth\n";
 
 				// For each model that influences this vertex
 				size_t model_id = 0;
@@ -513,7 +513,7 @@ agemalo_result_t ray_agemalo(
 							   << "," // Number of vertices not directly available
 							   << effective_weight << ","
 							   << x.prediction << ","
-							   << x.error << ","
+							   << x.Rf_error << ","
 							   << x.mean_error << ","
 							   << x.bw << "\n";
 

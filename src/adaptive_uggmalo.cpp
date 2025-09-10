@@ -9,7 +9,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <optional>
@@ -30,8 +30,6 @@
 #include <random>     // For std::mt19937
 #include <chrono>
 #include <thread>      // For std::thread
-// #include <omp.h>
-#include "omp_compat.h"
 
 #include "uniform_grid_graph.hpp"
 #include "ulm.hpp"
@@ -96,11 +94,11 @@ extern "C" {
  *    - For each bandwidth and valid path:
  *      - Fits weighted linear models to path data
  *      - Computes leave-one-out cross-validation errors
- *      - Maintains queue of models sorted by prediction error
+ *      - Maintains queue of models sorted by prediction Rf_error
  *
  * 4. Model Averaging
  *    - Combines predictions from multiple models using weighted averaging
- *    - Supports both standard and mean-error-weighted averaging schemes
+ *    - Supports both standard and mean-Rf_error-weighted averaging schemes
  *    - Generates predictions for both original and grid vertices
  *
  * 5. Optional Statistical Analysis
@@ -123,7 +121,7 @@ extern "C" {
  * @param n_bb Number of Bayesian bootstrap iterations (0 for no bootstrap)
  * @param cri_probability Probability level for confidence intervals in bootstrap
  * @param n_perms Number of permutation test iterations (0 for no permutation testing)
- * @param blending_coef Number between 0 and 1 allowing for smooth interpolation between position-based weights and mean-error times position-based weights using the formula effective_weight = x.weight * pow(x.mean_error, blending_coef);
+ * @param blending_coef Number between 0 and 1 allowing for smooth interpolation between position-based weights and mean-Rf_error times position-based weights using the formula effective_weight = x.weight * pow(x.mean_error, blending_coef);
  * @param verbose Whether to print progress information
  *
  * @return adaptive_uggmalo_result_t structure containing:
@@ -158,9 +156,9 @@ extern "C" {
  *   - Validates grid vertex count matches specification
  *   - Handles non-convergent fits by skipping affected models
  *   - Uses original response values as fallback for failed predictions
- *   - Implements error reporting for critical failures
+ *   - Implements Rf_error reporting for critical failures
  *
- * @warning
+ * @Rf_warning
  * - Input graph must be connected for proper diameter calculation
  * - Edge weights must be non-negative
  * - n_grid_vertices should be chosen considering computational resources
@@ -174,7 +172,7 @@ struct adaptive_uggmalo_result_t {
     double graph_diameter;
 
     std::vector<double> predictions;      ///< predictions[i] is an averaged-model estimate of E(Y|G) at the i-th vertex of the original (before uniform grid construction) graph G
-    std::vector<double> errors;           ///< errors[i] is an averaged-model estimate of the prediction error at the i-th vertex of the original (before uniform grid construction) graph
+    std::vector<double> errors;           ///< errors[i] is an averaged-model estimate of the prediction Rf_error at the i-th vertex of the original (before uniform grid construction) graph
     std::vector<double> scale;            ///< scale[i] is a local scale at the i-th vertex of the original (before uniform grid construction) graph G, which is an approximate radius of a disk in G where predictions is well approximated by a linear model
 
     std::vector<double> grid_opt_bw;      ///< grid_opt_bw[grid_vertex] = the optimal bandwidth over all models at this vertex; this gives a local scale at each grid vertex
@@ -255,7 +253,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
     result.scale.resize(n_vertices, INFINITY);
 
     // Create models for a single grid vertex.
-    // Returns: Min Heap: Queue of models sorted in the ascending order by mean error
+    // Returns: Min Heap: Queue of models sorted in the ascending order by mean Rf_error
     auto create_grid_vertex_models = [&](
         size_t grid_vertex,
         const std::vector<double>& y,
@@ -263,7 +261,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         ) {
 
         // Fit local models over paths of different size
-        ext_ulm_priority_queue model_queue; // a priority queue of models sorted in the increasing order of their mean predition error
+        ext_ulm_priority_queue model_queue; // a priority queue of models sorted in the increasing order of their mean predition Rf_error
         // the insertion operation into model_queue:
         // If there are no models whose path vertices intersect query model's path vertices - insert it
         // If there are models with intersecting vertices AND the new model has lower mean_error than ALL of them - remove them and insert the new model
@@ -400,17 +398,17 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
     }; // END OF create_grid_vertex_models()
 
 
-    // weight/prediction/error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/error/bw of the given vertex in each model where the vertext is in the support of the model
+    // weight/prediction/Rf_error/mean_error/be struct needed for mode averaging and local scale estimation; we use it to record weight/prediction/Rf_error/bw of the given vertex in each model where the vertext is in the support of the model
     struct wpe_t {
         double weight;
         double prediction;
-        double error;
+        double Rf_error;
         double mean_error;
         double bw;
 
         // Constructor needed for emplace_back(x,y,z)
         wpe_t(double w, double p, double e, double me, double bw)
-            : weight(w), prediction(p), error(e), mean_error(me), bw(bw) {}
+            : weight(w), prediction(p), Rf_error(e), mean_error(me), bw(bw) {}
     };
 
     struct grid_wpe_t {
@@ -437,7 +435,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         bool process_errors = errors.size() == predictions.size();
         bool process_scale  = scale.size() == predictions.size();
 
-        std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+        std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
         std::unordered_map<size_t, std::vector<grid_wpe_t>> grid_wpe_map;
 
         // Rprintf("In average_models lambda grid_vertex_models_map.size(): %zu\n", grid_vertex_models_map.size());
@@ -452,7 +450,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
 
             while (!models_queue.empty()) {
                 auto model = models_queue.top(); // ext_ulm_t object
-                // Store weight, prediction and error for the given vertex from the given 'model' in wpe[ model.vertices[i] ]
+                // Store weight, prediction and Rf_error for the given vertex from the given 'model' in wpe[ model.vertices[i] ]
                 for (size_t i = 0; i < model.vertices.size(); ++i) {
                     wpe[ model.vertices[i] ].emplace_back(model.w_path[i], model.predictions[i], model.errors[i], model.mean_error, model.bw);
                 }
@@ -483,7 +481,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
                     effective_weight = x.weight;
                 }
                 else if (blending_coef == 1.0) {
-                    // Full mean error influence
+                    // Full mean Rf_error influence
                     effective_weight = x.mean_error * x.weight;
                 }
                 else {
@@ -497,7 +495,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
                 prediction_sum += effective_weight * x.prediction;
                 weight_sum     += effective_weight;
 
-                if (process_errors) error_sum += effective_weight * x.error;
+                if (process_errors) error_sum += effective_weight * x.Rf_error;
                 // if (process_scale && x.bw < local_scale) local_scale = x.bw; // min bw method
                 if (process_scale) local_scale += effective_weight * x.bw; // weighted mean bw method
             }
@@ -552,7 +550,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
                         effective_weight = x.weight;
                     }
                     else if (blending_coef == 1.0) {
-                        // Full mean error influence
+                        // Full mean Rf_error influence
                         effective_weight = x.mean_error * x.weight;
                     }
                     else {
@@ -614,13 +612,17 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
          average_models(grid_vertex_models_map, y, predictions, errors, scale, grid_predictions_map);
     };
 
-    // Create thread-local random number generators
-    const unsigned int num_threads = std::thread::hardware_concurrency();
-    std::vector<std::mt19937> thread_rngs(num_threads);
-    for (unsigned int i = 0; i < num_threads; ++i) {
-        std::random_device rd;
-        thread_rngs[i].seed(rd());
-    }
+    // one RNG per thread
+    auto make_thread_rng = []() {
+        // Each thread gets its own RNG, seeded once
+        static thread_local std::mt19937 rng([]{
+            std::random_device rd;
+            std::seed_seq seq{rd(), rd(), rd(), rd(),
+                static_cast<unsigned>(std::hash<std::thread::id>{}(std::this_thread::get_id()))};
+            return std::mt19937(seq);
+        }());
+        return std::ref(rng);
+    };
 
     std::mutex rng_mutex; // Mutex for thread-safe random number generation
     std::vector<double> empty_errors;
@@ -647,8 +649,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
                       bb_indices.end(),
                       [&](int iboot) {
                           // Get thread-local RNG
-                          const int thread_id = omp_get_thread_num() % num_threads;
-                          auto& local_rng = thread_rngs[thread_id];
+                          auto& local_rng = make_thread_rng().get();
 
                           // Generate weights using thread-local RNG
                           std::vector<double> weights(n_vertices);
@@ -764,8 +765,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
                           }
 
                           // Get thread-local RNG
-                          const int thread_id = omp_get_thread_num() % num_threads;
-                          auto& local_rng = thread_rngs[thread_id];
+                          auto& local_rng = make_thread_rng().get();
                           // Generate weights using thread-local RNG
                           std::vector<double> weights(n_vertices);
                           {
@@ -886,7 +886,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
  * @param s_n_bb [SEXP] R integer for number of bootstrap iterations
  * @param s_cri_probability [SEXP] R numeric confidence level for intervals
  * @param s_n_perms [SEXP] R integer for number of permutation test iterations
- * @param s_use_mean_error [SEXP] R logical for using mean error in model averaging
+ * @param s_use_mean_error [SEXP] R logical for using mean Rf_error in model averaging
  * @param s_verbose [SEXP] R logical controlling progress output
  *
  * @return SEXP R list containing:
@@ -904,11 +904,11 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
  *
  * @note Implementation Details:
  * - Uses helper functions for converting between R and C++ data structures
- * - Implements careful error checking for R object types
+ * - Implements careful Rf_error checking for R object types
  * - Maintains proper memory protection counting
  * - Handles matrix transposition for R's column-major format
  *
- * @warning
+ * @Rf_warning
  * - All input parameters must be of the correct R type (numeric, integer, logical)
  * - Vertex indices in s_adj_list must be 1-based (R convention)
  * - The function assumes input validation has been performed in R
@@ -1039,18 +1039,18 @@ SEXP S_adaptive_uggmalo(
     while (names[n_elements] != NULL) n_elements++;
 
     // Create list and protect it
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements));
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Helper function to convert vector to SEXP
     auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
@@ -1062,7 +1062,7 @@ SEXP S_adaptive_uggmalo(
         size_t nrow = mat.size();
         size_t ncol = mat[0].size();
 
-        SEXP r_mat = PROTECT(allocMatrix(REALSXP, nrow, ncol));
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
         double* ptr = REAL(r_mat);
 
         for (size_t i = 0; i < nrow; ++i) {
@@ -1075,7 +1075,7 @@ SEXP S_adaptive_uggmalo(
 
     // Helper function to convert boolean vector to SEXP
     auto create_logical_vector = [](const std::vector<bool>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(LGLSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, vec.size()));
         int* ptr = LOGICAL(r_vec);
         for (size_t i = 0; i < vec.size(); ++i) {
             ptr[i] = vec[i];
@@ -1084,7 +1084,7 @@ SEXP S_adaptive_uggmalo(
     };
 
     // Set graph diameter
-    SEXP diam = PROTECT(allocVector(REALSXP, 1));
+    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
     REAL(diam)[0] = res.graph_diameter;
     SET_VECTOR_ELT(result, 0, diam);
 

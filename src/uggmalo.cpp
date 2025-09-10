@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -96,14 +96,14 @@ extern "C" {
  * - Infinite errors indicate no valid predictions
  *
  * @details Model Selection Strategy:
- * - Models are ranked by mean LOOCV Brier score error
+ * - Models are ranked by mean LOOCV Brier score Rf_error
  * - Selection continues until coverage threshold is met
  * - Minimum path size constraint ensures model stability
  *
  * @param adj_list Vector of vectors containing adjacency lists for each vertex
  * @param weight_list Vector of vectors containing edge weights corresponding to adj_list
  * @param y Vector of response values (0 or 1) for original vertices
- * @param best_models_coverage_factor Proportion of the number of vertices of the given neighborhood (given by the value of a bandwidth) of the given grid vertex that the models with the smallest mean error have to cover to stop the best models selection process.
+ * @param best_models_coverage_factor Proportion of the number of vertices of the given neighborhood (given by the value of a bandwidth) of the given grid vertex that the models with the smallest mean Rf_error have to cover to stop the best models selection process.
  * @param min_bw_factor Factor for minimum bandwidth (must be > 0)
  * @param max_bw_factor Factor for maximum bandwidth (must be < 1)
  * @param n_bws Number of bandwidth values to test
@@ -137,8 +137,8 @@ extern "C" {
  * @note Model averaging uses kernel-weighted means of predictions and errors
  * @note The algorithm handles non-convergent model fits by skipping those paths
  *
- * @warning May return infinite mean error if no valid predictions for a bandwidth
- * @warning Linear regression may not converge for some paths
+ * @Rf_warning May return infinite mean Rf_error if no valid predictions for a bandwidth
+ * @Rf_warning Linear regression may not converge for some paths
  *
  * @pre All input vectors must not be empty
  * @pre best_models_coverage_factor must be in (0,1]
@@ -203,7 +203,7 @@ uggmalo_t uggmalo(
     bool verbose
     ) {
 
-    const bool with_errors = true; // we want path linear models to always return LOOCV error estimate
+    const bool with_errors = true; // we want path linear models to always return LOOCV Rf_error estimate
 
     bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
 
@@ -278,7 +278,7 @@ uggmalo_t uggmalo(
     // print_vect_vect(weight_list, "weight_list");
     // uniform_grid_graph.print("uniform_grid_graph");
     // Rprintf("\n\n");
-    // error("uggmalo() debugging");
+    // Rf_error("uggmalo() debugging");
 
 
     edge_weights_t edge_weights = precompute_edge_weights(adj_list, weight_list);
@@ -293,7 +293,7 @@ uggmalo_t uggmalo(
 
     // Creating an extended eigen_ulogit_t structure that contains besides the eigen_ulogit_t components also: mean_error, vertices and w_path components. The models will be sorted w/r to mean_error
     struct ext_ulm_t : public ulm_t {
-        double mean_error;            // mean LOOCV error of the model
+        double mean_error;            // mean LOOCV Rf_error of the model
         std::vector<size_t> vertices; // vertices of the path along which the model is estimated
         std::vector<double> w_path;   // weights at the vertices of the path
 
@@ -311,15 +311,15 @@ uggmalo_t uggmalo(
         }
     };
 
-    // weight/prediction/error struct needed for mode averaging; we use it to record weight/prediction/error of the given vertex in each model where the vertext is in the support of the model
+    // weight/prediction/Rf_error struct needed for mode averaging; we use it to record weight/prediction/Rf_error of the given vertex in each model where the vertext is in the support of the model
     struct wpe_t {
         double weight;
         double prediction;
-        double error;
+        double Rf_error;
 
         // Constructor needed for emplace_back(x,y,z)
         wpe_t(double w, double p, double e)
-            : weight(w), prediction(p), error(e) {}
+            : weight(w), prediction(p), Rf_error(e) {}
     };
 
     // Precomputing paths for each grid vertex
@@ -366,13 +366,13 @@ uggmalo_t uggmalo(
 
         // This lambda processes a single bandwidth value to:
         // 1. Fit local linear models for paths through each grid vertex
-        // 2. Select best models based on error and coverage criteria
+        // 2. Select best models based on Rf_error and coverage criteria
         // 3. Compute weighted average predictions and errors
         // Returns: Updates predictions vector and mean_error for this bandwidth
 
         // Get the number of vertices in the original graph
         const size_t n_vertices = uniform_grid_graph.n_original_vertices;
-        std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+        std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, Rf_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
 
         // Phase 1: fit linear regression models to the path data associated with each grid vertex
         for (const auto& grid_vertex : uniform_grid_graph.grid_vertices) {
@@ -457,7 +457,7 @@ uggmalo_t uggmalo(
             }
 
             // Iterating through all_models to select the minimal number of the
-            // models with the smallest mean error that cover certain fraction
+            // models with the smallest mean Rf_error that cover certain fraction
             // of the set of all vertices
             size_t coverage_thld = static_cast<size_t>(best_models_coverage_factor * all_vertices.size());
             if (coverage_thld < min_path_size) {
@@ -471,7 +471,7 @@ uggmalo_t uggmalo(
 
                 vertices_of_selected_models.insert(model.vertices.begin(), model.vertices.end());
 
-                // Store weight, prediction and error for the given vertex from the given 'model' in wpe[ model.vertices[i] ]
+                // Store weight, prediction and Rf_error for the given vertex from the given 'model' in wpe[ model.vertices[i] ]
                 for (size_t i = 0; i < model.vertices.size(); ++i) {
                     wpe[ model.vertices[i] ].emplace_back(model.w_path[i], model.predictions[i], model.errors[i]);
                 }
@@ -494,7 +494,7 @@ uggmalo_t uggmalo(
             for (const auto& x : wpe[i]) {
                 prediction_sum += x.weight * x.prediction;
                 weight_sum += x.weight;
-                error_sum +=  x.weight * x.error;
+                error_sum +=  x.weight * x.Rf_error;
             }
 
             if (weight_sum > 0) {
@@ -565,7 +565,7 @@ uggmalo_t uggmalo(
 
     // Step 4: Find optimal bandwidth
     if (std::all_of(result.mean_errors.begin(), result.mean_errors.end(),
-                    [](double error) { return std::isinf(error); })) {
+                    [](double Rf_error) { return std::isinf(Rf_error); })) {
         if (verbose) {
             REPORT_ERROR("All bandwidths resulted in infinite errors");
         }
@@ -747,7 +747,7 @@ uggmalo_t uggmalo(
                               uniform_grid_graph,
                               y_shuffled,
                               result.null_predictions[iperm],
-                              dummy_error,    // Dummy variable for unused error
+                              dummy_error,    // Dummy variable for unused Rf_error
                               std::nullopt   // No weights for permutation test
                               );
 
@@ -804,7 +804,7 @@ uggmalo_t uggmalo(
  * @param s_adj_list SEXP (list) Adjacency list representation of the graph
  * @param s_weight_list SEXP (list) Edge weights corresponding to adj_list
  * @param s_y SEXP (numeric) Response values (0 or 1) for vertices
- * @param s_best_models_coverage_factor (numeric) Proportion of the set of given neighborhood of a grid vertex that the models with the smallest mean error have to cover to stop the best models selection process.
+ * @param s_best_models_coverage_factor (numeric) Proportion of the set of given neighborhood of a grid vertex that the models with the smallest mean Rf_error have to cover to stop the best models selection process.
  * @param s_min_bw_factor SEXP (numeric) Minimum bandwidth factor
  * @param s_max_bw_factor SEXP (numeric) Maximum bandwidth factor
  * @param s_n_bws SEXP (integer) Number of bandwidth values to test
@@ -838,7 +838,7 @@ uggmalo_t uggmalo(
  *
  * @note All R indices are 1-based and converted to 0-based for C++
  * @note The function handles memory protection for all SEXP objects
- * @note Returns errors to R using the error() mechanism
+ * @note Returns errors to R using the Rf_error() mechanism
  */
 SEXP S_uggmalo(
     SEXP s_adj_list,

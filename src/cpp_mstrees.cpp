@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -58,8 +58,8 @@ struct compare_edge_t {
  * @note The function uses Euclidean distance as the distance metric. If a different metric is needed,
  *       modifications to the distance calculation would be required.
  *
- * @warning This function assumes that the input data is valid and contains at least one point.
- *          It does not perform extensive error checking on the input parameters.
+ * @Rf_warning This function assumes that the input data is valid and contains at least one point.
+ *          It does not perform extensive Rf_error checking on the input parameters.
  *
  * @see edge_t, compare_edge_t
  *
@@ -150,14 +150,14 @@ std::vector<edge_t> data_mstree(const std::vector<double>& X, int nr_X, int nc_X
  * @return An R matrix (SEXP) with three columns:
  *         1. start: The index of the starting vertex of each edge (1-based for R compatibility)
  *         2. end: The index of the ending vertex of each edge (1-based for R compatibility)
- *         3. length: The length (distance) of each edge
+ *         3. length: The Rf_length(distance) of each edge
  *         The number of rows in the output matrix is equal to the number of edges in the MST,
  *         which is always one less than the number of input points.
  *
  * @note This function uses the data_mstree C++ function to compute the MST.
  *       It handles the conversion between R and C++ data structures.
  *
- * @warning The input matrix X must be a numeric matrix. The function will raise an R error
+ * @Rf_warning The input matrix X must be a numeric matrix. The function will raise an R Rf_error
  *          if this condition is not met.
  *
  * @see data_mstree
@@ -175,19 +175,19 @@ std::vector<edge_t> data_mstree(const std::vector<double>& X, int nr_X, int nc_X
  * @note This function uses R's C API and should be compiled into a shared object
  *       before being called from R.
  *
- * @todo Consider adding more robust error checking and handling for production use.
+ * @todo Consider adding more robust Rf_error checking and handling for production use.
  *
  * @todo If performance is critical, consider using Rcpp for easier and potentially
  *       more efficient R and C++ integration.
  */
 SEXP S_mstree(SEXP X) {
     // Check if X is a numeric matrix
-    if (!isMatrix(X) || !isReal(X)) {
-        error("Input must be a numeric matrix");
+    if (!Rf_isMatrix(X) || !Rf_isReal(X)) {
+        Rf_error("Input must be a numeric matrix");
     }
 
     // Get dimensions of X
-    SEXP dim = getAttrib(X, R_DimSymbol);
+    SEXP dim = Rf_getAttrib(X, R_DimSymbol);
     int nr_X = INTEGER(dim)[0];
     int nc_X = INTEGER(dim)[1];
 
@@ -199,7 +199,7 @@ SEXP S_mstree(SEXP X) {
 
     // Create result matrix
     SEXP result;
-    PROTECT(result = allocMatrix(REALSXP, mst.size(), 3));
+    PROTECT(result = Rf_allocMatrix(REALSXP, mst.size(), 3));
     double *result_ptr = REAL(result);
 
     // Fill result matrix
@@ -211,12 +211,12 @@ SEXP S_mstree(SEXP X) {
 
     // Set column names
     SEXP colnames;
-    PROTECT(colnames = allocVector(STRSXP, 3));
-    SET_STRING_ELT(colnames, 0, mkChar("start"));
-    SET_STRING_ELT(colnames, 1, mkChar("end"));
-    SET_STRING_ELT(colnames, 2, mkChar("length"));
-    setAttrib(result, R_DimNamesSymbol,
-              PROTECT(list2(R_NilValue, colnames)));
+    PROTECT(colnames = Rf_allocVector(STRSXP, 3));
+    SET_STRING_ELT(colnames, 0, Rf_mkChar("start"));
+    SET_STRING_ELT(colnames, 1, Rf_mkChar("end"));
+    SET_STRING_ELT(colnames, 2, Rf_mkChar("length"));
+    Rf_setAttrib(result, R_DimNamesSymbol,
+              PROTECT(Rf_list2(R_NilValue, colnames)));
 
     UNPROTECT(3);
     return result;

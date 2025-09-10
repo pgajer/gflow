@@ -135,7 +135,7 @@ Eigen::MatrixXd set_wgraph_t::compute_graph_laplacian_eigenvectors(
                 }
             }
         }
-        // If all attempts failed, report an error
+        // If all attempts failed, report an Rf_error
         if (!success) {
             REPORT_ERROR("Eigenvalue computation failed after multiple attempts with adjusted parameters.");
         }
@@ -1644,7 +1644,7 @@ set_wgraph_t::construct_path_laplacian(
                                   path1.vertices.end());
             composite_path_length += path1.total_weight;
 
-            // Second part: path k in reverse (excluding duplicate vertex i)
+            // Second part: path k in reverse (excluding Rf_duplicate vertex i)
             const auto& path2 = composite_shortest_paths.paths[k];
             for (int idx = path2.vertices.size() - 1; idx >= 0; idx--) {
                 if (path2.vertices[idx] != i) {

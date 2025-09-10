@@ -3,7 +3,7 @@
 #include <R_ext/Rdynload.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 // Prevent macro collision with OpenMP
 #ifdef match
@@ -170,8 +170,8 @@ double optimize_t(const Eigen::VectorXd& evalues,
  *    - For each number of eigenvectors, compute the low-pass filtered version and calculate errors.
  *
  * 5. **Optimal Filter Selection**:
- *    - Compute the mean CV error for each number of eigenvectors.
- *    - Identify the number of eigenvectors that minimizes the mean CV error.
+ *    - Compute the mean CV Rf_error for each number of eigenvectors.
+ *    - Identify the number of eigenvectors that minimizes the mean CV Rf_error.
  *
  * 6. **Final Smoothing**:
  *    - Compute the low-pass filtered version of `y` using the optimal number of eigenvectors.
@@ -206,7 +206,7 @@ double optimize_t(const Eigen::VectorXd& evalues,
  *         containing the results of the smoothing.
  *
  * @note The function supports both binary and continuous data, with special
- *       handling for binary cases including different error calculations.
+ *       handling for binary cases including different Rf_error calculations.
  */
 std::unique_ptr<graph_spectral_smoother_result_t>
 graph_spectral_smoother(const std::vector<std::vector<int>>& graph,
@@ -361,7 +361,7 @@ graph_spectral_smoother(const std::vector<std::vector<int>>& graph,
                 for (int ev_counter = 0, i = nev - 1; ev_counter < n_eigenvectors; ++ev_counter, --i)
                     low_pass_cv_y += gft_cv_y[i] * evectors.col(i);
 
-                // Computing MAD error at the test vertices
+                // Computing MAD Rf_error at the test vertices
                 double cv_error = 0.0;
 
                 if (y_binary) {
@@ -391,7 +391,7 @@ graph_spectral_smoother(const std::vector<std::vector<int>>& graph,
         mean_cv_errors[filter_index] /= n_CVs;
     }
 
-    // finding the low-pass filter index with the smallest mean CV error
+    // finding the low-pass filter index with the smallest mean CV Rf_error
     double min_cv_error = mean_cv_errors[0];
     int opt_filter_index = 0;
     for (int filter_index = 1; filter_index < n_filters; ++filter_index) {
@@ -545,11 +545,11 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
 
     // Convert the results back to R types (this part remains largely the same)
     int nprot = 0;
-    SEXP Rresult = PROTECT(allocVector(VECSXP, 9));  nprot++;
+    SEXP Rresult = PROTECT(Rf_allocVector(VECSXP, 9));  nprot++;
 
         // evalues
     int evalues_length = result->evalues.size();
-    SEXP Revalues = PROTECT(allocVector(REALSXP, evalues_length)); nprot++;
+    SEXP Revalues = PROTECT(Rf_allocVector(REALSXP, evalues_length)); nprot++;
     for (int i = 0; i < evalues_length; ++i) {
         REAL(Revalues)[i] = result->evalues[i];
     }
@@ -558,7 +558,7 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     // evectors
     int evectors_rows = result->evectors.rows();
     int evectors_cols = result->evectors.cols();
-    SEXP Revectors = PROTECT(allocMatrix(REALSXP, evectors_rows, evectors_cols)); nprot++;
+    SEXP Revectors = PROTECT(Rf_allocMatrix(REALSXP, evectors_rows, evectors_cols)); nprot++;
     for (int i = 0; i < evectors_rows; ++i) {
         for (int j = 0; j < evectors_cols; ++j) {
             REAL(Revectors)[i + evectors_rows * j] = result->evectors(i, j);
@@ -567,13 +567,13 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     SET_VECTOR_ELT(Rresult, 1, Revectors);
 
     // optimal_num_eigenvectors
-    SEXP Roptimal_num_eigenvectors = PROTECT(allocVector(INTSXP, 1)); nprot++;
+    SEXP Roptimal_num_eigenvectors = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
     INTEGER(Roptimal_num_eigenvectors)[0] = result->optimal_num_eigenvectors;
     SET_VECTOR_ELT(Rresult, 2, Roptimal_num_eigenvectors);
 
     // y_smoothed
     int y_smoothed_length = result->y_smoothed.size();
-    SEXP Ry_smoothed = PROTECT(allocVector(REALSXP, y_smoothed_length)); nprot++;
+    SEXP Ry_smoothed = PROTECT(Rf_allocVector(REALSXP, y_smoothed_length)); nprot++;
     for (int i = 0; i < y_smoothed_length; ++i) {
         REAL(Ry_smoothed)[i] = result->y_smoothed[i];
     }
@@ -582,7 +582,7 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     // cv_errors matrix
     int cv_errors_rows = result->cv_errors.rows();
     int cv_errors_cols = result->cv_errors.cols();
-    SEXP Rcv_errors = PROTECT(allocMatrix(REALSXP, cv_errors_rows, cv_errors_cols)); nprot++;
+    SEXP Rcv_errors = PROTECT(Rf_allocMatrix(REALSXP, cv_errors_rows, cv_errors_cols)); nprot++;
     for (int i = 0; i < cv_errors_rows; ++i) {
         for (int j = 0; j < cv_errors_cols; ++j) {
             REAL(Rcv_errors)[i + cv_errors_rows * j] = result->cv_errors(i, j);
@@ -592,7 +592,7 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
 
     // mean_cv_errors
     int mean_cv_errors_length = result->mean_cv_errors.size();
-    SEXP Rmean_cv_errors = PROTECT(allocVector(REALSXP, mean_cv_errors_length)); nprot++;
+    SEXP Rmean_cv_errors = PROTECT(Rf_allocVector(REALSXP, mean_cv_errors_length)); nprot++;
     for (int i = 0; i < mean_cv_errors_length; ++i) {
         REAL(Rmean_cv_errors)[i] = result->mean_cv_errors[i];
     }
@@ -601,7 +601,7 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     // low_pass_ys matrix
     int low_pass_ys_rows = result->low_pass_ys.rows();
     int low_pass_ys_cols = result->low_pass_ys.cols();
-    SEXP Rlow_pass_ys = PROTECT(allocMatrix(REALSXP, low_pass_ys_rows, low_pass_ys_cols)); nprot++;
+    SEXP Rlow_pass_ys = PROTECT(Rf_allocMatrix(REALSXP, low_pass_ys_rows, low_pass_ys_cols)); nprot++;
     for (int i = 0; i < low_pass_ys_rows; ++i) {
         for (int j = 0; j < low_pass_ys_cols; ++j) {
             REAL(Rlow_pass_ys)[i + low_pass_ys_rows * j] = result->low_pass_ys(i, j);
@@ -609,26 +609,26 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     }
     SET_VECTOR_ELT(Rresult, 6, Rlow_pass_ys);
 
-    SEXP Rmin_num_eigenvectors = PROTECT(allocVector(REALSXP, 1)); nprot++;
+    SEXP Rmin_num_eigenvectors = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
     REAL(Rmin_num_eigenvectors)[0] = result->min_num_eigenvectors;
     SET_VECTOR_ELT(Rresult, 7, Rmin_num_eigenvectors);
 
-    SEXP Rmax_num_eigenvectors = PROTECT(allocVector(REALSXP, 1)); nprot++;
+    SEXP Rmax_num_eigenvectors = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
     REAL(Rmax_num_eigenvectors)[0] = result->max_num_eigenvectors;
     SET_VECTOR_ELT(Rresult, 8, Rmax_num_eigenvectors);
 
     // Set the names of the list components
-    SEXP names = PROTECT(allocVector(STRSXP, 9)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("evalues"));
-    SET_STRING_ELT(names, 1, mkChar("evectors"));
-    SET_STRING_ELT(names, 2, mkChar("optimal_num_eigenvectors"));
-    SET_STRING_ELT(names, 3, mkChar("y_smoothed"));
-    SET_STRING_ELT(names, 4, mkChar("cv_errors"));
-    SET_STRING_ELT(names, 5, mkChar("mean_cv_errors"));
-    SET_STRING_ELT(names, 6, mkChar("low_pass_ys"));
-    SET_STRING_ELT(names, 7, mkChar("min_num_eigenvectors"));
-    SET_STRING_ELT(names, 8, mkChar("max_num_eigenvectors"));
-    setAttrib(Rresult, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 9)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("evalues"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("evectors"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("optimal_num_eigenvectors"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("y_smoothed"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("cv_errors"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("mean_cv_errors"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("low_pass_ys"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("min_num_eigenvectors"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("max_num_eigenvectors"));
+    Rf_setAttrib(Rresult, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
 

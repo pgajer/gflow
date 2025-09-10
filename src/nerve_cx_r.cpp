@@ -27,8 +27,8 @@ void nerve_complex_finalizer(SEXP s_complex_ptr) {
  */
 SEXP S_create_nerve_complex(SEXP s_coords, SEXP s_k, SEXP s_max_dim) {
 	// Convert inputs
-	PROTECT(s_coords = coerceVector(s_coords, REALSXP));
-	int* dimX = INTEGER(getAttrib(s_coords, R_DimSymbol));
+	PROTECT(s_coords = Rf_coerceVector(s_coords, REALSXP));
+	int* dimX = INTEGER(Rf_getAttrib(s_coords, R_DimSymbol));
 	int n_points = dimX[0];
 	int n_dims = dimX[1];
 	double* X = REAL(s_coords);
@@ -55,26 +55,26 @@ SEXP S_create_nerve_complex(SEXP s_coords, SEXP s_k, SEXP s_max_dim) {
 	R_RegisterCFinalizerEx(complex_ptr, (R_CFinalizer_t) nerve_complex_finalizer, TRUE);
 
 	// Get simplex counts
-	SEXP simplex_counts = PROTECT(allocVector(INTSXP, max_dim + 1));
+	SEXP simplex_counts = PROTECT(Rf_allocVector(INTSXP, max_dim + 1));
 	int* counts = INTEGER(simplex_counts);
 	for (int d = 0; d <= max_dim; d++) {
 		counts[d] = complex->num_simplices(d);
 	}
 
 	// Create return list
-	SEXP result = PROTECT(allocVector(VECSXP, 4));
+	SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
 	SET_VECTOR_ELT(result, 0, complex_ptr);
-	SET_VECTOR_ELT(result, 1, ScalarInteger(n_points));
+	SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(n_points));
 	SET_VECTOR_ELT(result, 2, simplex_counts);
-	SET_VECTOR_ELT(result, 3, ScalarInteger(max_dim));
+	SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(max_dim));
 
 	// Set names
-	SEXP names = PROTECT(allocVector(STRSXP, 4));
-	SET_STRING_ELT(names, 0, mkChar("complex_ptr"));
-	SET_STRING_ELT(names, 1, mkChar("n_vertices"));
-	SET_STRING_ELT(names, 2, mkChar("simplex_counts"));
-	SET_STRING_ELT(names, 3, mkChar("max_dimension"));
-	setAttrib(result, R_NamesSymbol, names);
+	SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+	SET_STRING_ELT(names, 0, Rf_mkChar("complex_ptr"));
+	SET_STRING_ELT(names, 1, Rf_mkChar("n_vertices"));
+	SET_STRING_ELT(names, 2, Rf_mkChar("simplex_counts"));
+	SET_STRING_ELT(names, 3, Rf_mkChar("max_dimension"));
+	Rf_setAttrib(result, R_NamesSymbol, names);
 
 	UNPROTECT(4);
 	return result;
@@ -91,7 +91,7 @@ SEXP S_set_function_values(SEXP s_complex_ptr, SEXP s_values) {
 	}
 
 	// Convert values
-	PROTECT(s_values = coerceVector(s_values, REALSXP));
+	PROTECT(s_values = Rf_coerceVector(s_values, REALSXP));
 	int n_values = LENGTH(s_values);
 	double* values = REAL(s_values);
 
@@ -125,7 +125,7 @@ SEXP S_set_weight_scheme(SEXP s_complex_ptr, SEXP s_weight_type, SEXP s_params) 
 	const char* weight_type = CHAR(STRING_ELT(s_weight_type, 0));
 
 	// Convert parameters
-	PROTECT(s_params = coerceVector(s_params, REALSXP));
+	PROTECT(s_params = Rf_coerceVector(s_params, REALSXP));
 	int n_params = LENGTH(s_params);
 	double* params = REAL(s_params);
 
@@ -194,7 +194,7 @@ SEXP S_solve_full_laplacian(SEXP s_complex_ptr, SEXP s_lambda, SEXP s_dim_weight
 	double lambda = REAL(s_lambda)[0];
 
 	// Convert dimension weights
-	PROTECT(s_dim_weights = coerceVector(s_dim_weights, REALSXP));
+	PROTECT(s_dim_weights = Rf_coerceVector(s_dim_weights, REALSXP));
 	int n_weights = LENGTH(s_dim_weights);
 	double* weights = REAL(s_dim_weights);
 
@@ -209,7 +209,7 @@ SEXP S_solve_full_laplacian(SEXP s_complex_ptr, SEXP s_lambda, SEXP s_dim_weight
 	std::vector<double> result = complex->solve_full_laplacian(lambda, dim_weights);
 
 	// Convert result to R vector
-	SEXP r_result = PROTECT(allocVector(REALSXP, result.size()));
+	SEXP r_result = PROTECT(Rf_allocVector(REALSXP, result.size()));
 	double* r_result_ptr = REAL(r_result);
 	for (size_t i = 0; i < result.size(); i++) {
 		r_result_ptr[i] = result[i];
@@ -230,7 +230,7 @@ SEXP S_get_simplex_counts(SEXP s_complex_ptr) {
 	}
 
 	// Get simplex counts
-	SEXP counts = PROTECT(allocVector(INTSXP, complex->max_dimension + 1));
+	SEXP counts = PROTECT(Rf_allocVector(INTSXP, complex->max_dimension + 1));
 	int* counts_ptr = INTEGER(counts);
 	for (size_t d = 0; d <= complex->max_dimension; d++) {
 		counts_ptr[d] = complex->num_simplices(d);

@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include "uniform_grid_graph.hpp"
 #include "graph_spectral_lowess_mat.hpp"
@@ -46,7 +47,7 @@ extern "C" {
  * @param s_kernel_type R integer for kernel type
  * @param s_precision R numeric for precision in calculations
  * @param s_n_cleveland_iterations R integer for number of robust fitting iterations
- * @param s_with_errors R logical for including error estimates
+ * @param s_with_errors R logical for including Rf_error estimates
  * @param s_with_scale R logical for including scale estimates
  * @param s_verbose R logical for verbose output
  * 
@@ -80,9 +81,9 @@ SEXP S_graph_spectral_lowess_mat(
     std::vector<std::vector<double>> Y;
     
     // Check if s_Y is a matrix or a list
-    if (isMatrix(s_Y)) {
+    if (Rf_isMatrix(s_Y)) {
         // Handle matrix format (convert column-major R matrix to row-major C++ vector of vectors)
-        SEXP s_Y_dim = getAttrib(s_Y, R_DimSymbol);
+        SEXP s_Y_dim = Rf_getAttrib(s_Y, R_DimSymbol);
         int nrow = INTEGER(s_Y_dim)[0];
         int ncol = INTEGER(s_Y_dim)[1];
         
@@ -97,15 +98,15 @@ SEXP S_graph_spectral_lowess_mat(
                 Y[j][i] = Y_ptr[i + j*nrow];
             }
         }
-    } else if (isNewList(s_Y)) {
+    } else if (Rf_isNewList(s_Y)) {
         // Handle list format
         int n_cols = LENGTH(s_Y);
         Y.resize(n_cols);
         
         for (int j = 0; j < n_cols; j++) {
             SEXP s_y_j = VECTOR_ELT(s_Y, j);
-            if (!isReal(s_y_j)) {
-                error("All elements of Y must be numeric vectors");
+            if (!Rf_isReal(s_y_j)) {
+                Rf_error("All elements of Y must be numeric vectors");
             }
             
             int n_rows = LENGTH(s_y_j);
@@ -117,22 +118,22 @@ SEXP S_graph_spectral_lowess_mat(
             }
         }
     } else {
-        error("Y must be a numeric matrix or a list of numeric vectors");
+        Rf_error("Y must be a numeric matrix or a list of numeric vectors");
     }
     
     // Extract scalar parameters
-    size_t n_evectors = static_cast<size_t>(asInteger(s_n_evectors));
-    size_t n_bws = static_cast<size_t>(asInteger(s_n_bws));
-    bool log_grid = asLogical(s_log_grid);
-    double min_bw_factor = asReal(s_min_bw_factor);
-    double max_bw_factor = asReal(s_max_bw_factor);
-    double dist_normalization_factor = asReal(s_dist_normalization_factor);
-    size_t kernel_type = static_cast<size_t>(asInteger(s_kernel_type));
-    double precision = asReal(s_precision);
-    size_t n_cleveland_iterations = static_cast<size_t>(asInteger(s_n_cleveland_iterations));
-    bool with_errors = asLogical(s_with_errors);
-    bool with_scale = asLogical(s_with_scale);
-    bool verbose = asLogical(s_verbose);
+    size_t n_evectors = static_cast<size_t>(Rf_asInteger(s_n_evectors));
+    size_t n_bws = static_cast<size_t>(Rf_asInteger(s_n_bws));
+    bool log_grid = Rf_asLogical(s_log_grid);
+    double min_bw_factor = Rf_asReal(s_min_bw_factor);
+    double max_bw_factor = Rf_asReal(s_max_bw_factor);
+    double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    size_t kernel_type = static_cast<size_t>(Rf_asInteger(s_kernel_type));
+    double precision = Rf_asReal(s_precision);
+    size_t n_cleveland_iterations = static_cast<size_t>(Rf_asInteger(s_n_cleveland_iterations));
+    bool with_errors = Rf_asLogical(s_with_errors);
+    bool with_scale = Rf_asLogical(s_with_scale);
+    bool verbose = Rf_asLogical(s_verbose);
     
     // Create the graph object
     uniform_grid_graph_t grid_graph = uniform_grid_graph_t(adj_list, weight_list);
@@ -160,27 +161,27 @@ SEXP S_graph_spectral_lowess_mat(
     );
     
     // Initialize return list with proper components
-    // Basic components + optional error and scale components
+    // Basic components + optional Rf_error and scale components
     int n_components = 1 + (with_errors ? 1 : 0) + (with_scale ? 1 : 0);
-    SEXP s_result = PROTECT(allocVector(VECSXP, n_components));
-    SEXP s_names = PROTECT(allocVector(STRSXP, n_components));
+    SEXP s_result = PROTECT(Rf_allocVector(VECSXP, n_components));
+    SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
     
     // Set component names
-    SET_STRING_ELT(s_names, 0, mkChar("predictions"));
+    SET_STRING_ELT(s_names, 0, Rf_mkChar("predictions"));
     int name_idx = 1;
     if (with_errors) {
-        SET_STRING_ELT(s_names, name_idx++, mkChar("errors"));
+        SET_STRING_ELT(s_names, name_idx++, Rf_mkChar("errors"));
     }
     if (with_scale) {
-        SET_STRING_ELT(s_names, name_idx++, mkChar("scale"));
+        SET_STRING_ELT(s_names, name_idx++, Rf_mkChar("scale"));
     }
-    setAttrib(s_result, R_NamesSymbol, s_names);
+    Rf_setAttrib(s_result, R_NamesSymbol, s_names);
     
     // Convert predictions to R
     size_t n_response_vars = result.predictions.size();
     size_t n_vertices = result.predictions[0].size();
     
-    SEXP s_predictions = PROTECT(allocMatrix(REALSXP, n_vertices, n_response_vars));
+    SEXP s_predictions = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_response_vars));
     double* pred_ptr = REAL(s_predictions);
     
     for (size_t j = 0; j < n_response_vars; j++) {
@@ -194,7 +195,7 @@ SEXP S_graph_spectral_lowess_mat(
     // Convert errors to R if requested
     int result_idx = 1;
     if (with_errors) {
-        SEXP s_errors = PROTECT(allocMatrix(REALSXP, n_vertices, n_response_vars));
+        SEXP s_errors = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_response_vars));
         double* err_ptr = REAL(s_errors);
         
         for (size_t j = 0; j < n_response_vars; j++) {
@@ -208,7 +209,7 @@ SEXP S_graph_spectral_lowess_mat(
     
     // Convert scale to R if requested
     if (with_scale) {
-        SEXP s_scale = PROTECT(allocMatrix(REALSXP, n_vertices, n_response_vars));
+        SEXP s_scale = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_response_vars));
         double* scale_ptr = REAL(s_scale);
         
         for (size_t j = 0; j < n_response_vars; j++) {

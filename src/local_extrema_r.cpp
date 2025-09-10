@@ -1,7 +1,7 @@
 #include <R.h>
 #include <Rinternals.h>
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 
@@ -86,24 +86,24 @@ SEXP S_detect_local_extrema(
 
     // Create result list
     int protect_count = 0;
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements)); protect_count++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
 
     // Set names
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements)); protect_count++;
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Create data vectors
-    SEXP r_vertices = PROTECT(allocVector(INTSXP, n_extrema)); protect_count++;
-    SEXP r_values = PROTECT(allocVector(REALSXP, n_extrema)); protect_count++;
-    SEXP r_radii = PROTECT(allocVector(REALSXP, n_extrema)); protect_count++;
-    SEXP r_neighborhood_sizes = PROTECT(allocVector(INTSXP, n_extrema)); protect_count++;
-    SEXP r_is_maxima = PROTECT(allocVector(LGLSXP, n_extrema)); protect_count++;
+    SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, n_extrema)); protect_count++;
+    SEXP r_values = PROTECT(Rf_allocVector(REALSXP, n_extrema)); protect_count++;
+    SEXP r_radii = PROTECT(Rf_allocVector(REALSXP, n_extrema)); protect_count++;
+    SEXP r_neighborhood_sizes = PROTECT(Rf_allocVector(INTSXP, n_extrema)); protect_count++;
+    SEXP r_is_maxima = PROTECT(Rf_allocVector(LGLSXP, n_extrema)); protect_count++;
 
     // Create list to hold neighborhood vertices for each extremum
-    SEXP r_neighborhood_vertices = PROTECT(allocVector(VECSXP, n_extrema)); protect_count++;
+    SEXP r_neighborhood_vertices = PROTECT(Rf_allocVector(VECSXP, n_extrema)); protect_count++;
 
     // Fill data vectors
     for (int i = 0; i < n_extrema; i++) {
@@ -115,7 +115,7 @@ SEXP S_detect_local_extrema(
 
         // Add neighborhood vertices for this extremum
         size_t n_neighborhood = extrema[i].vertices.size();
-        SEXP r_neighborhood = PROTECT(allocVector(INTSXP, n_neighborhood));
+        SEXP r_neighborhood = PROTECT(Rf_allocVector(INTSXP, n_neighborhood));
 
         for (size_t j = 0; j < n_neighborhood; j++) {
             INTEGER(r_neighborhood)[j] = extrema[i].vertices[j] + 1;  // Convert to 1-based
@@ -126,7 +126,7 @@ SEXP S_detect_local_extrema(
     }
 
     // Create graph diameter and max packing radius values
-    SEXP r_graph_diameter = PROTECT(allocVector(REALSXP, 1)); protect_count++;
+    SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1)); protect_count++;
     REAL(r_graph_diameter)[0] = graph_diameter;
 
     // Add vectors to result list

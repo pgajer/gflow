@@ -228,7 +228,7 @@ struct graph_diffusion_smoother_performance_t {
             // Check for NaN/Inf in input values
             #if 0
             if (!std::isfinite(true_val) || !std::isfinite(curr_val)) {
-                error(sprintf("Warning: Non-finite value detected in SNR computation at index %d: true=%f, current=%f", i, true_val, curr_val));
+                Rf_error(sprintf("Warning: Non-finite value detected in SNR computation at index %d: true=%f, current=%f", i, true_val, curr_val));
                 return std::numeric_limits<double>::lowest();  // Return sentinel value
             }
             #endif
@@ -239,7 +239,7 @@ struct graph_diffusion_smoother_performance_t {
         }
 
         if (noise_power <= 0.0) {
-            error("Zero or negative noise power in SNR computation");
+            Rf_error("Zero or negative noise power in SNR computation");
         }
 
         if (noise_power <= std::numeric_limits<double>::epsilon()) {
@@ -253,7 +253,7 @@ struct graph_diffusion_smoother_performance_t {
             msg << "Warning: Non-finite SNR computed: " << snr
                 << " (signal_power=" << signal_power
                 << ", noise_power=" << noise_power << ")";
-            warning("%s", msg.str().c_str());
+            Rf_warning("%s", msg.str().c_str());
             return std::numeric_limits<double>::lowest();
         }
 

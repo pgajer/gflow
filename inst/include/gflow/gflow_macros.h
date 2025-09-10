@@ -1,13 +1,8 @@
 #ifndef GFLOW_MACROS_H
 #define GFLOW_MACROS_H
 
-#ifndef R_VERSION
-    #include <R.h>
-#endif
-
-#ifndef R_INTERNALS_H
-    #include <Rinternals.h>
-#endif
+#include <R.h>
+#include <Rinternals.h>
 
 /*!
  * \file gflow_macros.h
@@ -28,7 +23,7 @@
 #define CHECK_PTR(p) \
     do { \
         if ((p) == NULL) { \
-            error("Memory allocation failed in file %s at line %d.\n", __FILE__, __LINE__); \
+            Rf_error("Memory allocation failed in file %s at line %d.\n", __FILE__, __LINE__); \
         } \
     } while(0)
 
@@ -50,7 +45,7 @@
 #define ASSERT_BOUNDS(index, size) \
     do { \
         if ((index) < 0 || (index) >= (size)) { \
-            error("Index out of bounds: %d not in [0, %d) at %s:%d\n", \
+            Rf_error("Index out of bounds: %d not in [0, %d) at %s:%d\n", \
                   (index), (size), __FILE__, __LINE__); \
         } \
     } while(0)

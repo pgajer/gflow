@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -196,7 +197,7 @@ std::vector<double> graph_kmean(const std::vector<std::vector<int>>& graph,
  *
  * @note
  * - This function assumes that the input R objects are of the correct type
- *   and structure. No extensive error checking is performed.
+ *   and structure. No extensive Rf_error checking is performed.
  * - The function uses PROTECT/UNPROTECT for memory management as per R's
  *   C interface guidelines.
  *
@@ -222,7 +223,7 @@ SEXP S_graph_kmean(SEXP s_graph,
                                              ikernel,
                                              dist_normalization_factor);
     // Convert result to SEXP and return
-    SEXP s_result = PROTECT(allocVector(REALSXP, result.size()));
+    SEXP s_result = PROTECT(Rf_allocVector(REALSXP, result.size()));
     for (size_t i = 0; i < result.size(); ++i) {
         REAL(s_result)[i] = result[i];
     }
@@ -258,7 +259,7 @@ SEXP S_graph_kmean(SEXP s_graph,
  *       - If the vertex's weight is 0, it's added to the excluded vertices list.
  *       - If the vertex's weight is non-zero, its original value from 'y' is used.
  *
- * @warning This function assumes that the input vectors (graph, edge_lengths, weights, y)
+ * @Rf_warning This function assumes that the input vectors (graph, edge_lengths, weights, y)
  *          all have the same number of elements, corresponding to the total number of vertices in the graph.
  *
  * @pre The function 'initialize_kernel' must be called before this function to set up the kernel function.
@@ -342,7 +343,7 @@ std::pair<std::vector<double>, std::vector<int>> graph_kmean_with_weights(const 
  *
  * This function implements a cross-validation procedure to evaluate the performance
  * of kernel-weighted mean estimation on a graph structure. It supports both binary
- * and continuous outcomes, using appropriate error metrics for each case.
+ * and continuous outcomes, using appropriate Rf_error metrics for each case.
  *
  * @param graph A vector of vectors representing the graph structure. Each inner vector
  *        contains the indices of neighboring vertices for a given vertex.
@@ -362,18 +363,18 @@ std::pair<std::vector<double>, std::vector<int>> graph_kmean_with_weights(const 
  * @param seed Seed for the random number generator. If 0, the current time is used.
  *        Default is 0.
  * @param use_weighted_MAD_error A boolean flag to control the use of weighted Mean Absolute
- *        Deviation (MAD) error. Default is false.
- *        When true, the function computes a weighted MAD error to address class imbalance in of the binary variable y.
+ *        Deviation (MAD) Rf_error. Default is false.
+ *        When true, the function computes a weighted MAD Rf_error to address class imbalance in of the binary variable y.
  *        The weights are calculated as follows:
  *        - For y_i = 0: weight = 1 / (1 - q)
  *        - For y_i = 1: weight = 1 / q
  *        where q is the proportion of samples where y_i = 1.
  *        This weighting scheme ensures that errors from both classes contribute equally
- *        to the final error metric, regardless of their relative frequencies in the dataset.
- *        When false, the standard (unweighted) MAD error is used.
+ *        to the final Rf_error metric, regardless of their relative frequencies in the dataset.
+ *        When false, the standard (unweighted) MAD Rf_error is used.
  *
- * @return A vector of doubles containing the average cross-validation error for each vertex.
- *         Vertices for which no error could be computed (due to being excluded in all
+ * @return A vector of doubles containing the average cross-validation Rf_error for each vertex.
+ *         Vertices for which no Rf_error could be computed (due to being excluded in all
  *         iterations) will have a NaN value.
  *
  * @throws std::invalid_argument if n_CVs is less than or equal to 0.
@@ -392,9 +393,9 @@ std::pair<std::vector<double>, std::vector<int>> graph_kmean_with_weights(const 
  * - The function assumes that the graph_kmean_with_weights function
  *   is available and correctly implemented.
  * - Vertices that are excluded in all CV iterations (due to graph structure or
- *   weighting) will have NaN as their final error value.
+ *   weighting) will have NaN as their final Rf_error value.
  * - The function uses C++11 random number generation facilities for reproducibility.
- * - The weighted MAD error option is particularly useful for imbalanced binary variable y,
+ * - The weighted MAD Rf_error option is particularly useful for imbalanced binary variable y,
  *   as it gives equal importance to errors in both classes.
  *
  * @see graph_kmean_with_weights
@@ -437,7 +438,7 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
 
     std::vector<double> weights(n_vertices, 1.0);
 
-    // Variables for weighted MAD error
+    // Variables for weighted MAD Rf_error
     bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
     use_weighted_MAD_error &= y_binary;
     double n1 = 0;
@@ -494,21 +495,21 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
             continue;  // Skip this iteration if no valid test vertices
         }
 
-        // Computing cross-validation error over test vertices using absolute deviation loss function
+        // Computing cross-validation Rf_error over test vertices using absolute deviation loss function
         for (const auto& vertex : valid_test_set) {
-            double error = std::abs(Ecv_y[vertex] - y[vertex]);
+            double Rf_error = std::abs(Ecv_y[vertex] - y[vertex]);
             double weight = (y[vertex] == 1) ? alpha1 : alpha0;
 
             if (std::isnan(cv_error[vertex])) {
-                cv_error[vertex] = weight * error;
+                cv_error[vertex] = weight * Rf_error;
             } else {
-                cv_error[vertex] += weight * error;
+                cv_error[vertex] += weight * Rf_error;
             }
             cv_error_count[vertex]++;
         }
     } // END OF for (int cv = 0; cv < n_CVs; ++cv)
 
-    // Compute average CV error, leaving NaN for vertices with no estimates
+    // Compute average CV Rf_error, leaving NaN for vertices with no estimates
     for (int vertex = 0; vertex < n_vertices; ++vertex) {
         if (cv_error_count[vertex] > 0) {
             cv_error[vertex] /= cv_error_count[vertex];
@@ -543,10 +544,10 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
  * @param s_n_CV_folds An R integer specifying the number of folds to use in
  *        each cross-validation iteration.
  * @param s_epsilon An R numeric value used as a small constant to avoid
- *        numerical issues in error calculations.
+ *        numerical issues in Rf_error calculations.
  * @param s_seed An R integer used as a seed for the random number generator.
  * @param s_use_weighted_MAD_error An R logical value indicating whether to use
- *        weighted Mean Absolute Deviation (MAD) error calculation.
+ *        weighted Mean Absolute Deviation (MAD) Rf_error calculation.
  *
  * @return An R numeric vector containing the cross-validation errors for
  *         each vertex in the graph.
@@ -557,7 +558,7 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
  * 2. Calls the C++ implementation of graph_kmean_cv.
  * 3. Converts the C++ result (cross-validation errors) back to an R numeric vector.
  *
- * If s_use_weighted_MAD_error is TRUE, the function computes a weighted MAD error
+ * If s_use_weighted_MAD_error is TRUE, the function computes a weighted MAD Rf_error
  * to address class imbalance in the binary variable y. The weights are:
  * - For y_i = 0: weight = 1 / (1 - q)
  * - For y_i = 1: weight = 1 / q
@@ -565,12 +566,12 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
  *
  * @note
  * - This function assumes that the input R objects are of the correct type
- *   and structure. No extensive error checking is performed.
+ *   and structure. No extensive Rf_error checking is performed.
  * - The function uses PROTECT/UNPROTECT for memory management as per R's
  *   C interface guidelines.
- * - Vertices for which no cross-validation error could be computed (due to
+ * - Vertices for which no cross-validation Rf_error could be computed (due to
  *   being excluded in all iterations) will have a NaN value in the result.
- * - The weighted MAD error option is particularly useful for imbalanced datasets
+ * - The weighted MAD Rf_error option is particularly useful for imbalanced datasets
  *   in binary classification problems, as it gives equal importance to errors
  *   in both classes.
  *
@@ -608,7 +609,7 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
                                                          seed,
                                                          use_weighted_MAD_error);
     // Convert result to SEXP and return
-    SEXP s_cv_errors = PROTECT(allocVector(REALSXP, cv_errors.size()));
+    SEXP s_cv_errors = PROTECT(Rf_allocVector(REALSXP, cv_errors.size()));
     for (size_t i = 0; i < cv_errors.size(); ++i) {
         REAL(s_cv_errors)[i] = cv_errors[i];
     }
@@ -623,7 +624,7 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
  *
  * This function implements a cross-validation procedure to evaluate the performance
  * of kernel-weighted mean estimation on a graph structure. It supports both binary
- * and continuous outcomes, using Mean Absolute Deviation (MAD) as the error metric.
+ * and continuous outcomes, using Mean Absolute Deviation (MAD) as the Rf_error metric.
  *
  * @param graph A vector of vectors representing the graph structure. Each inner vector
  *        contains the indices of neighboring vertices for a given vertex.
@@ -643,8 +644,8 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
  * @param seed Seed for the random number generator. If 0, the current time is used.
  *        Default is 0.
  *
- * @return A vector of doubles containing the average cross-validation error for each vertex.
- *         Vertices for which no error could be computed (due to being excluded in all
+ * @return A vector of doubles containing the average cross-validation Rf_error for each vertex.
+ *         Vertices for which no Rf_error could be computed (due to being excluded in all
  *         iterations) will have a NaN value.
  *
  * @throws std::invalid_argument if n_CVs is less than or equal to 0.
@@ -662,10 +663,10 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
  * - The function assumes that the graph_kmean_with_weights function
  *   is available and correctly implemented.
  * - Vertices that are excluded in all CV iterations (due to graph structure or
- *   weighting) will have NaN as their final error value.
+ *   weighting) will have NaN as their final Rf_error value.
  * - The function uses C++11 random number generation facilities for reproducibility.
- * - This function uses standard (unweighted) Mean Absolute Deviation as the error metric.
- *   For a version that uses weighted MAD error, see graph_kmean_wmad_cv.
+ * - This function uses standard (unweighted) Mean Absolute Deviation as the Rf_error metric.
+ *   For a version that uses weighted MAD Rf_error, see graph_kmean_wmad_cv.
  *
  * @see graph_kmean_with_weights, graph_kmean_wmad_cv
  */
@@ -763,20 +764,20 @@ std::vector<double> graph_kmean_cv(const std::vector<std::vector<int>>& graph,
             continue;  // Skip this iteration if no valid test vertices
         }
 
-        // Computing cross-validation error over test vertices using absolute deviation loss function
+        // Computing cross-validation Rf_error over test vertices using absolute deviation loss function
         for (const auto& vertex : valid_test_set) {
-            double error = std::abs(Ecv_y[vertex] - y[vertex]);
+            double Rf_error = std::abs(Ecv_y[vertex] - y[vertex]);
 
             if (std::isnan(cv_error[vertex])) {
-                cv_error[vertex] = error;
+                cv_error[vertex] = Rf_error;
             } else {
-                cv_error[vertex] += error;
+                cv_error[vertex] += Rf_error;
             }
             cv_error_count[vertex]++;
         }
     } // END OF for (int cv = 0; cv < n_CVs; ++cv)
 
-    // Compute average CV error, leaving NaN for vertices with no estimates
+    // Compute average CV Rf_error, leaving NaN for vertices with no estimates
     for (int vertex = 0; vertex < n_vertices; ++vertex) {
         if (cv_error_count[vertex] > 0) {
             cv_error[vertex] /= cv_error_count[vertex];
@@ -810,7 +811,7 @@ std::vector<double> graph_kmean_cv(const std::vector<std::vector<int>>& graph,
  * @param s_n_CV_folds An R integer specifying the number of folds to use in
  *        each cross-validation iteration.
  * @param s_epsilon An R numeric value used as a small constant to avoid
- *        numerical issues in error calculations.
+ *        numerical issues in Rf_error calculations.
  * @param s_seed An R integer used as a seed for the random number generator.
  *
  * @return An R numeric vector containing the cross-validation errors for
@@ -822,18 +823,18 @@ std::vector<double> graph_kmean_cv(const std::vector<std::vector<int>>& graph,
  * 2. Calls the C++ implementation of graph_kmean_cv.
  * 3. Converts the C++ result (cross-validation errors) back to an R numeric vector.
  *
- * This function uses Mean Absolute Deviation (MAD) as the error metric for both
+ * This function uses Mean Absolute Deviation (MAD) as the Rf_error metric for both
  * binary and continuous outcomes.
  *
  * @note
  * - This function assumes that the input R objects are of the correct type
- *   and structure. No extensive error checking is performed.
+ *   and structure. No extensive Rf_error checking is performed.
  * - The function uses PROTECT/UNPROTECT for memory management as per R's
  *   C interface guidelines.
- * - Vertices for which no cross-validation error could be computed (due to
+ * - Vertices for which no cross-validation Rf_error could be computed (due to
  *   being excluded in all iterations) will have a NaN value in the result.
- * - This function uses standard (unweighted) Mean Absolute Deviation as the error metric.
- *   For a version that uses weighted MAD error, see S_graph_kmean_wmad_cv.
+ * - This function uses standard (unweighted) Mean Absolute Deviation as the Rf_error metric.
+ *   For a version that uses weighted MAD Rf_error, see S_graph_kmean_wmad_cv.
  *
  * @see graph_kmean_cv
  *      R_list_of_dvectors_to_cpp_vector_of_dvectors, S_graph_kmean_wmad_cv
@@ -866,7 +867,7 @@ SEXP S_graph_kmean_cv(SEXP s_graph,
                                                     n_CV_folds,
                                                     seed);
     // Convert result to SEXP and return
-    SEXP s_cv_errors = PROTECT(allocVector(REALSXP, cv_errors.size()));
+    SEXP s_cv_errors = PROTECT(Rf_allocVector(REALSXP, cv_errors.size()));
     for (size_t i = 0; i < cv_errors.size(); ++i) {
         REAL(s_cv_errors)[i] = cv_errors[i];
     }
@@ -1015,7 +1016,7 @@ std::vector<double> graph_kmean_with_bb_weigths(const std::vector<std::vector<in
  * @pre dist_normalization_factor must be positive.
  * @pre epsilon must be positive.
  *
- * @warning This function may be computationally intensive for large graphs or high
+ * @Rf_warning This function may be computationally intensive for large graphs or high
  *          numbers of bootstrap iterations.
  */
 std::vector<std::vector<double>> graph_kmean_bb(
@@ -1149,14 +1150,14 @@ bb_cri_t graph_kmean_bb_cri(const std::vector<std::vector<int>>& graph,
  *          1. For each h in [h_min, h_max]:
  *             - Constructs h-hop neighborhood (hHN) graphs
  *             - Computes cross-validation errors
- *          2. Finds optimal h that minimizes CV error
+ *          2. Finds optimal h that minimizes CV Rf_error
  *          3. Computes conditional expectations using optimal h
  *          4. Optional: Computes Bayesian bootstrap credible intervals
  *
  * @param graph        A sparce graph adjacency list [n_vertices]
  * @param edge_lengths An edge lengths list [n_vertices]
  * @param y Observed values at each vertex [n_vertices]
- * @param y_true True values for error calculation [n_vertices]
+ * @param y_true True values for Rf_error calculation [n_vertices]
  * @param h_min Minimum neighborhood size to consider (default: 2)
  * @param h_max Maximum neighborhood size to consider (default: 30)
  * @param n_CVs Number of cross-validation iterations (default: 1000)
@@ -1173,7 +1174,7 @@ bb_cri_t graph_kmean_bb_cri(const std::vector<std::vector<int>>& graph,
  * @return adaptive_nbhd_size_t struct containing:
  *         - hhn_graphs: Vector of h-hop neighborhood graphs for each h
  *         - cv_errors: Cross-validation errors for each h
- *         - opt_h: Optimal h value that minimizes CV error
+ *         - opt_h: Optimal h value that minimizes CV Rf_error
  *         - opt_h_graph: Graph with optimal h
  *         - condEy: Conditional expectations using optimal h
  *         - bb_condEy: Bootstrap central tendency (if n_bb > 0)
@@ -1242,13 +1243,13 @@ adaptive_nbhd_size_t gkmm(const std::vector<std::vector<int>>& graph,
                                      n_CV_folds,
                                      seed);
 
-        // Calculate mean error across vertices
+        // Calculate mean Rf_error across vertices
         double total_error = std::accumulate(errors.begin(), errors.end(), 0.0);
         results.cv_errors[i] = total_error / n_vertices;
         results.graphs[i] = std::move(hhn_graph);
     }
 
-    // Find the optimal h (minimum CV error)
+    // Find the optimal h (minimum CV Rf_error)
     auto min_it = std::min_element(results.cv_errors.begin(), results.cv_errors.end());
     int opt_h_idx = std::distance(results.cv_errors.begin(), min_it);
     results.opt_h = h_min + opt_h_idx;
@@ -1297,7 +1298,7 @@ adaptive_nbhd_size_t gkmm(const std::vector<std::vector<int>>& graph,
     for (size_t i = 0; i < results.graphs.size(); ++i) {
         Rprintf("h = %d:\n", h_min + static_cast<int>(i));
         Rprintf("  Graph size: %zu\n", results.graphs[i].first.size());
-        Rprintf("  CV error: %f\n", results.cv_errors[i]);
+        Rprintf("  CV Rf_error: %f\n", results.cv_errors[i]);
     }
     #endif
 
@@ -1317,7 +1318,7 @@ adaptive_nbhd_size_t gkmm(const std::vector<std::vector<int>>& graph,
  *
  * @param x Sorted predictor values [n_points]
  * @param y Response values corresponding to x [n_points]
- * @param y_true True response values for error calculation [n_points]
+ * @param y_true True response values for Rf_error calculation [n_points]
  * @param use_median Use median instead of mean for central tendency (default: false)
  * @param h_min Minimum neighborhood size to consider (default: 2)
  * @param h_max Maximum neighborhood size to consider (default: 30)
@@ -1416,13 +1417,13 @@ univariate_gkmm(const std::vector<double>& x,
  *   - bb_condEy: Bootstrap samples of conditional expectations
  *   - cri_L: Lower bounds of credible intervals
  *   - cri_U: Upper bounds of credible intervals
- *   - true_error: True error at optimal h (if y_true provided)
+ *   - true_error: True Rf_error at optimal h (if y_true provided)
  *
  * @note Input vectors s_x and s_y must have the same length.
  *       The s_x vector must be sorted in ascending order.
  *       If provided, s_y_true must match the length of s_x.
  *
- * @throws R error if input validation fails or memory allocation errors occur
+ * @throws R Rf_error if input validation fails or memory allocation errors occur
  */
 SEXP S_univariate_gkmm(SEXP s_x,
                        SEXP s_y,
@@ -1482,12 +1483,12 @@ SEXP S_univariate_gkmm(SEXP s_x,
                                        seed);
 
     // Construct s_hHN_graphs
-    SEXP s_hHN_graphs = PROTECT(allocVector(VECSXP, h_max - h_min + 1)); n_protected++;
-    SEXP h_names = PROTECT(allocVector(STRSXP, h_max - h_min + 1)); n_protected++;
+    SEXP s_hHN_graphs = PROTECT(Rf_allocVector(VECSXP, h_max - h_min + 1)); n_protected++;
+    SEXP h_names = PROTECT(Rf_allocVector(STRSXP, h_max - h_min + 1)); n_protected++;
 
     for (int i = 0; i < h_max - h_min + 1; i++) {
-        SEXP h_graph = PROTECT(allocVector(VECSXP, 2));
-        SEXP h_graph_names = PROTECT(allocVector(STRSXP, 2));
+        SEXP h_graph = PROTECT(Rf_allocVector(VECSXP, 2));
+        SEXP h_graph_names = PROTECT(Rf_allocVector(STRSXP, 2));
 
         SEXP adj_list = convert_vector_vector_int_to_R(cpp_results.graphs[i].first); UNPROTECT(1);
         SEXP edge_lengths = convert_vector_vector_double_to_R(cpp_results.graphs[i].second); UNPROTECT(1);
@@ -1495,23 +1496,23 @@ SEXP S_univariate_gkmm(SEXP s_x,
         SET_VECTOR_ELT(h_graph, 0, adj_list);
         SET_VECTOR_ELT(h_graph, 1, edge_lengths);
 
-        SET_STRING_ELT(h_graph_names, 0, mkChar("adj_list"));
-        SET_STRING_ELT(h_graph_names, 1, mkChar("edge_lengths"));
-        setAttrib(h_graph, R_NamesSymbol, h_graph_names);
+        SET_STRING_ELT(h_graph_names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(h_graph_names, 1, Rf_mkChar("edge_lengths"));
+        Rf_setAttrib(h_graph, R_NamesSymbol, h_graph_names);
 
         SET_VECTOR_ELT(s_hHN_graphs, i, h_graph);
 
         char h_label[32];
         snprintf(h_label, sizeof(h_label), "h_%d", h_min + i);
-        SET_STRING_ELT(h_names, i, mkChar(h_label));
+        SET_STRING_ELT(h_names, i, Rf_mkChar(h_label));
 
         UNPROTECT(2);  // h_graph and h_graph_names
     }
-    setAttrib(s_hHN_graphs, R_NamesSymbol, h_names);
+    Rf_setAttrib(s_hHN_graphs, R_NamesSymbol, h_names);
 
     // Creating return list
     const int N_COMPONENTS = 11;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     SEXP s_h_values = convert_vector_int_to_R(cpp_results.h_values); n_protected++;
     SET_VECTOR_ELT(result, 0, s_h_values);
@@ -1524,7 +1525,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
         SET_VECTOR_ELT(result, 2, R_NilValue);
     }
 
-    SEXP s_opt_h = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
@@ -1553,7 +1554,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
     }
 
     if (cpp_results.true_errors.size() > 0) {
-        SEXP s_true_error = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
         double mean_true_error = std::accumulate(cpp_results.true_errors.begin(),
                                                  cpp_results.true_errors.end(), 0.0) /  cpp_results.true_errors.size();
         REAL(s_true_error)[0] = mean_true_error;
@@ -1563,20 +1564,20 @@ SEXP S_univariate_gkmm(SEXP s_x,
     }
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("h_values"));
-    SET_STRING_ELT(names, 1, mkChar("graphs"));
-    SET_STRING_ELT(names, 2, mkChar("h_cv_errors"));
-    SET_STRING_ELT(names, 3, mkChar("opt_h"));
-    SET_STRING_ELT(names, 4, mkChar("opt_graph_adj_list"));
-    SET_STRING_ELT(names, 5, mkChar("opt_graph_edge_lengths"));
-    SET_STRING_ELT(names, 6, mkChar("predictions"));
-    SET_STRING_ELT(names, 7, mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 8, mkChar("opt_ci_lower"));
-    SET_STRING_ELT(names, 9, mkChar("opt_ci_upper"));
-    SET_STRING_ELT(names, 10, mkChar("true_error"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("graphs"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("h_cv_errors"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("opt_graph_adj_list"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("opt_graph_edge_lengths"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("bb_predictions"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("opt_ci_lower"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("opt_ci_upper"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("true_error"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 

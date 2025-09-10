@@ -3,8 +3,9 @@
 //
 #include <R.h>
 #include <Rinternals.h>
+
 #undef length  // to resolve naming conflict between the R macro length defined in Rinternals.h and a member function in the C++ standard library's codecvt class
-#undef eval
+#undef Rf_eval
 
 #include <execution>
 #include <mutex>
@@ -61,8 +62,8 @@ extern "C" {
  *    a. Creates a grid of candidate bandwidths
  *    b. For each bandwidth:
  *       - Fits local models using either LOOCV or k-fold CV
- *       - Computes all three error measures
- *    c. Selects optimal bandwidths minimizing each error measure
+ *       - Computes all three Rf_error measures
+ *    c. Selects optimal bandwidths minimizing each Rf_error measure
  * 3. Returns predictions and model parameters for optimal or specified bandwidth(s)
  *
  * @param x Vector of predictor values
@@ -107,7 +108,7 @@ extern "C" {
  * @note If with_bw_predictions=false, only predictions for unique optimal
  * bandwidths are retained in bw_predictions to conserve memory.
  *
- * @warning Input vectors x and y must be the same length and y must contain
+ * @Rf_warning Input vectors x and y must be the same length and y must contain
  * only binary values (0 or 1). The function uses the ANN library for efficient
  * nearest neighbor searches, which must be properly initialized before calling.
  *
@@ -121,8 +122,8 @@ struct magelog_t {
     std::vector<double> candidate_bandwidths;                   ///< Grid of bandwidths tested during optimization
 
     // Mean errors and optimal indices
-    std::vector<double> mean_brier_errors;                      ///< Mean Brier error for each candidate bandwidth
-    int opt_brier_bw_idx;                                       ///< Index of bandwidth with minimal mean Brier error
+    std::vector<double> mean_brier_errors;                      ///< Mean Brier Rf_error for each candidate bandwidth
+    int opt_brier_bw_idx;                                       ///< Index of bandwidth with minimal mean Brier Rf_error
 
     // grid-based members
     std::vector<double> x_grid;                                ///< Uniform grid over the range of x values, models are estimated at these locations
@@ -161,16 +162,16 @@ magelog_t magelog(
     bool with_bw_grid_predictions) {
 
     if (grid_size < 2) {
-        error("grid_size must be at least 2");
+        Rf_error("grid_size must be at least 2");
     }
     if (x.size() != y.size()) {
-        error("x and y must have the same size");
+        Rf_error("x and y must have the same size");
     }
     if (x.empty()) {
-        error("Input vectors cannot be empty");
+        Rf_error("Input vectors cannot be empty");
     }
     if (min_points > static_cast<int>(x.size())) {
-        error("min_points cannot be larger than the number of data points");
+        Rf_error("min_points cannot be larger than the number of data points");
     }
 
     magelog_t result;
@@ -194,7 +195,7 @@ magelog_t magelog(
     double x_range = x_max - x_min;
 
     if (x_range < std::numeric_limits<double>::epsilon()) {
-        error("Input x values are effectively constant");
+        Rf_error("Input x values are effectively constant");
     }
 
     double min_bw = min_bw_factor * x_range;
@@ -470,7 +471,7 @@ magelog_t magelog(
     }
 
 
-    // Initialize error vectors
+    // Initialize Rf_error vectors
     result.mean_brier_errors.resize(n_bws);
     result.bw_grid_predictions.resize(n_bws); // this vector is always initialized, even if with_bw_grid_predictions = false, in which case only optimal bw predictions will be non-empty
 
@@ -533,7 +534,7 @@ magelog_t magelog(
 
             auto train_preds = std::move(grid_preds); // these predictions take values at all x_grid points !!!
 
-            // Compute validation error using linear interpolation
+            // Compute validation Rf_error using linear interpolation
             for (size_t j = 0; j < valid_x.size(); j++) {
                 double pred_j = interpolate_grid(valid_x[j], result.x_grid, train_preds);
                 double brier_error = std::pow(pred_j - valid_y[j], 2);
@@ -547,7 +548,7 @@ magelog_t magelog(
             std::numeric_limits<double>::infinity();
     }
 
-    // Find optimal bandwidths for each error measure
+    // Find optimal bandwidths for each Rf_error measure
     auto find_opt_idx = [](const std::vector<double>& errors) {
         return std::distance(errors.begin(),
                            std::min_element(errors.begin(), errors.end()));
@@ -610,7 +611,7 @@ magelog_t magelog(
  * @brief R interface for magelog local logistic regression
  *
  * @details Converts R inputs to C++ types, calls magelog(), and converts results
- * back to R objects. Returns a list containing grid predictions, error measures,
+ * back to R objects. Returns a list containing grid predictions, Rf_error measures,
  * optimal bandwidths, and fitting information.
  *
  * @param x_r Numeric vector of predictor values
@@ -821,10 +822,10 @@ SEXP S_magelog(
     }
     catch (const std::exception& e) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("C++ error in magelog: %s", e.what());
+        Rf_error("C++ Rf_error in magelog: %s", e.what());
     }
     catch (...) {
         if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Unknown error in magelog");
+        Rf_error("Unknown Rf_error in magelog");
     }
 }

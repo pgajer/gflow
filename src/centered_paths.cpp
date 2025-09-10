@@ -3,7 +3,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -452,7 +452,7 @@ static std::vector<ref_vertex_path_t> reconstruct_ref_vertex_paths(
                   return a.distance > b.distance;
               });
 
-    // Keep track of used vertices to avoid duplicate paths
+    // Keep track of used vertices to avoid Rf_duplicate paths
     std::unordered_set<size_t> used_vertices;
     used_vertices.insert(ref_vertex);  // target vertex is always used
 
@@ -475,7 +475,7 @@ static std::vector<ref_vertex_path_t> reconstruct_ref_vertex_paths(
 
             auto it = bfs_map.find(curr);
             if (it == bfs_map.end()) {
-                error("Path reconstruction failed: vertex not found in path info");
+                Rf_error("Path reconstruction failed: vertex not found in path info");
             }
 
             // Store distance to target for this vertex
@@ -667,7 +667,7 @@ static std::vector<ref_vertex_path_t> reconstruct_current_paths(
  *
  * @details Modifies the input composite_path by:
  *          1. Taking the reverse of path2
- *          2. Joining it with path1 (excluding duplicate reference vertex)
+ *          2. Joining it with path1 (excluding Rf_duplicate reference vertex)
  *          3. Computing all necessary path metrics
  *          4. Adjusting total weight to account for shared edge at reference vertex
  *
@@ -1182,7 +1182,7 @@ SEXP S_get_path_data(
     size_t n_paths = paths.size();
 
     // Convert results to R list
-    SEXP result = PROTECT(allocVector(VECSXP, n_paths));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_paths));
 
     // Define component names matching path_data_t structure
     const std::vector<std::string> path_comps_names = {
@@ -1191,30 +1191,30 @@ SEXP S_get_path_data(
     };
 
     // Create SEXP for names once
-    SEXP names = PROTECT(allocVector(STRSXP, path_comps_names.size()));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, path_comps_names.size()));
     for(size_t i = 0; i < path_comps_names.size(); i++) {
-        SET_STRING_ELT(names, i, mkChar(path_comps_names[i].c_str()));
+        SET_STRING_ELT(names, i, Rf_mkChar(path_comps_names[i].c_str()));
     }
 
     for(size_t i = 0; i < n_paths; i++) {
         // Create list for current path (7 elements matching path_data_t)
-        SEXP path = PROTECT(allocVector(VECSXP, 7));
+        SEXP path = PROTECT(Rf_allocVector(VECSXP, 7));
 
         // Convert vertices to R (adding 1 for 1-based indexing)
-        SEXP vertices = PROTECT(allocVector(INTSXP, paths[i].vertices.size()));
+        SEXP vertices = PROTECT(Rf_allocVector(INTSXP, paths[i].vertices.size()));
         for(size_t j = 0; j < paths[i].vertices.size(); j++) {
             INTEGER(vertices)[j] = paths[i].vertices[j] + 1;
         }
 
         // Create scalar elements
-        SEXP ref_vertex_r = PROTECT(ScalarInteger(paths[i].ref_vertex + 1));
-        SEXP rel_center_offset = PROTECT(ScalarReal(paths[i].rel_center_offset));
-        SEXP total_weight = PROTECT(ScalarReal(paths[i].total_weight));
+        SEXP ref_vertex_r = PROTECT(Rf_ScalarInteger(paths[i].ref_vertex + 1));
+        SEXP rel_center_offset = PROTECT(Rf_ScalarReal(paths[i].rel_center_offset));
+        SEXP total_weight = PROTECT(Rf_ScalarReal(paths[i].total_weight));
 
         // Convert vector elements
-        SEXP x_path = PROTECT(allocVector(REALSXP, paths[i].x_path.size()));
-        SEXP w_path = PROTECT(allocVector(REALSXP, paths[i].w_path.size()));
-        SEXP y_path = PROTECT(allocVector(REALSXP, paths[i].y_path.size()));
+        SEXP x_path = PROTECT(Rf_allocVector(REALSXP, paths[i].x_path.size()));
+        SEXP w_path = PROTECT(Rf_allocVector(REALSXP, paths[i].w_path.size()));
+        SEXP y_path = PROTECT(Rf_allocVector(REALSXP, paths[i].y_path.size()));
 
         // Copy vector data
         std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
@@ -1231,7 +1231,7 @@ SEXP S_get_path_data(
         SET_VECTOR_ELT(path, 6, y_path);
 
         // Set names for the current path list
-        setAttrib(path, R_NamesSymbol, names);
+        Rf_setAttrib(path, R_NamesSymbol, names);
 
         // Add path to result
         SET_VECTOR_ELT(result, i, path);
@@ -1336,7 +1336,7 @@ std::vector<std::pair<size_t, double>> get_neighbors(
  * results even when the grid vertex is not directly connected to path vertices.
  * Floating-point comparisons use an EPSILON constant to handle numerical precision issues.
  *
- * @warning
+ * @Rf_warning
  * Performance depends on the size of the grid graph, as BFS must explore all vertices
  * reachable from the grid vertex to compute accurate distances.
  */
@@ -1980,7 +1980,7 @@ std::vector<path_data_t> find_grid_paths_meeting_size_requirement(
             // Look for pairs of paths that can form valid composite paths
             for (size_t i = 0; i < paths.size(); ++i) {
                 for (size_t j = i + 1; j < paths.size(); ++j) {
-                    // Check combined length (remember these paths now contain only original vertices)
+                    // Check combined Rf_length(remember these paths now contain only original vertices)
                     size_t combined_length = paths[i].vertices.size() + paths[j].vertices.size() - 1;
                     if (combined_length < min_path_size) continue;
 
@@ -2024,7 +2024,7 @@ std::vector<path_data_t> find_grid_paths_meeting_size_requirement(
  * @param uniform_grid_graph The uniform grid graph containing both original vertices and
  *                          additional grid vertices used for path refinement
  * @param ref_vertex The source vertex from which to compute all shortest paths
- * @param max_bandwidth The maximum path length (radius) to consider when computing paths.
+ * @param max_bandwidth The maximum path Rf_length(radius) to consider when computing paths.
  *                     Paths longer than this value are not computed or stored
  * @return reachability_map_t A structure containing:
  *         - distances: Map of vertex ID to its distance from ref_vertex
@@ -2333,7 +2333,7 @@ std::vector<path_data_t> ugg_get_path_data_efficient(
  *
  * @return Vector of path_data_t structures containing analyzed path information
  *
- * @throws Reports error if y.size() doesn't match number of original vertices
+ * @throws Reports Rf_error if y.size() doesn't match number of original vertices
  *
  * @details The function performs the following steps:
  * 1. Verifies input data consistency
@@ -2587,19 +2587,19 @@ SEXP S_ugg_get_path_data(
     // Convert results to R list
     size_t n_protected = 0;
     const size_t RESULT_LIST_SIZE = n_paths + 3;
-    SEXP result = PROTECT(allocVector(VECSXP, RESULT_LIST_SIZE)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, RESULT_LIST_SIZE)); n_protected++;
 
-    SEXP result_names = PROTECT(allocVector(STRSXP, RESULT_LIST_SIZE));
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, RESULT_LIST_SIZE));
     for(size_t i = 0; i < n_paths; i++) {
         std::string path_id = "path" + std::to_string(i);
-        SET_STRING_ELT(result_names, i, mkChar(path_id.c_str()));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(path_id.c_str()));
     }
 
-    SET_STRING_ELT(result_names, n_paths + 0, mkChar("ugg_adj_list"));
-    SET_STRING_ELT(result_names, n_paths + 1, mkChar("ugg_weight_list"));
-    SET_STRING_ELT(result_names, n_paths + 2, mkChar("ugg_grid_vertices"));
+    SET_STRING_ELT(result_names, n_paths + 0, Rf_mkChar("ugg_adj_list"));
+    SET_STRING_ELT(result_names, n_paths + 1, Rf_mkChar("ugg_weight_list"));
+    SET_STRING_ELT(result_names, n_paths + 2, Rf_mkChar("ugg_grid_vertices"));
 
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
     UNPROTECT(1);  // result_names
 
     // Define component names matching path_data_t structure
@@ -2609,30 +2609,30 @@ SEXP S_ugg_get_path_data(
     };
 
     // Create SEXP for names once
-    SEXP names = PROTECT(allocVector(STRSXP, path_comps_names.size())); n_protected++;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, path_comps_names.size())); n_protected++;
     for(size_t i = 0; i < path_comps_names.size(); i++) {
-        SET_STRING_ELT(names, i, mkChar(path_comps_names[i].c_str()));
+        SET_STRING_ELT(names, i, Rf_mkChar(path_comps_names[i].c_str()));
     }
 
     for(size_t i = 0; i < n_paths; i++) {
         // Create list for current path (7 elements matching path_data_t)
-        SEXP path = PROTECT(allocVector(VECSXP, 7));
+        SEXP path = PROTECT(Rf_allocVector(VECSXP, 7));
 
         // Convert vertices to R (adding 1 for 1-based indexing)
-        SEXP vertices = PROTECT(allocVector(INTSXP, paths[i].vertices.size()));
+        SEXP vertices = PROTECT(Rf_allocVector(INTSXP, paths[i].vertices.size()));
         for(size_t j = 0; j < paths[i].vertices.size(); j++) {
             INTEGER(vertices)[j] = paths[i].vertices[j] + 1;
         }
 
         // Create scalar elements
-        SEXP ref_vertex_r = PROTECT(ScalarInteger(paths[i].ref_vertex + 1));
-        SEXP rel_center_offset = PROTECT(ScalarReal(paths[i].rel_center_offset));
-        SEXP total_weight = PROTECT(ScalarReal(paths[i].total_weight));
+        SEXP ref_vertex_r = PROTECT(Rf_ScalarInteger(paths[i].ref_vertex + 1));
+        SEXP rel_center_offset = PROTECT(Rf_ScalarReal(paths[i].rel_center_offset));
+        SEXP total_weight = PROTECT(Rf_ScalarReal(paths[i].total_weight));
 
         // Convert vector elements
-        SEXP x_path = PROTECT(allocVector(REALSXP, paths[i].x_path.size()));
-        SEXP w_path = PROTECT(allocVector(REALSXP, paths[i].w_path.size()));
-        SEXP y_path = PROTECT(allocVector(REALSXP, paths[i].y_path.size()));
+        SEXP x_path = PROTECT(Rf_allocVector(REALSXP, paths[i].x_path.size()));
+        SEXP w_path = PROTECT(Rf_allocVector(REALSXP, paths[i].w_path.size()));
+        SEXP y_path = PROTECT(Rf_allocVector(REALSXP, paths[i].y_path.size()));
 
         // Copy vector data
         std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
@@ -2649,7 +2649,7 @@ SEXP S_ugg_get_path_data(
         SET_VECTOR_ELT(path, 6, y_path);
 
         // Set names for the current path list
-        setAttrib(path, R_NamesSymbol, names);
+        Rf_setAttrib(path, R_NamesSymbol, names);
 
         // Add path to result
         SET_VECTOR_ELT(result, i, path);
@@ -2661,16 +2661,16 @@ SEXP S_ugg_get_path_data(
 
     // Extract adjacency and weight lists from result
     size_t n_total_vertices = uniform_grid_graph.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(allocVector(VECSXP, n_total_vertices)); n_protected++;
-    SEXP r_weight_list = PROTECT(allocVector(VECSXP, n_total_vertices)); n_protected++;
+    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
 
     // Convert the set-based representation back to R lists
     for (size_t i = 0; i < n_total_vertices; ++i) {
         const auto& neighbors = uniform_grid_graph.adjacency_list[i];
 
         // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(allocVector(INTSXP, neighbors.size()));
-        SEXP r_weights = PROTECT(allocVector(REALSXP, neighbors.size()));
+        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
 
         // Fill the vectors
         size_t idx = 0;
@@ -2688,7 +2688,7 @@ SEXP S_ugg_get_path_data(
 
     // Create grid vertices vector (1-based indices)
     size_t n_grid_vertices = uniform_grid_graph.grid_vertices.size();
-    SEXP r_grid_vertices = PROTECT(allocVector(INTSXP, n_grid_vertices)); n_protected++;
+    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices)); n_protected++;
 
     size_t counter = 0;
     for (const auto& i : uniform_grid_graph.grid_vertices) {

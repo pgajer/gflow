@@ -324,7 +324,7 @@ void C_create_ENPs_grid_3D(const int *rn,
   \param rTotElts  A reference to the number of number of elements in the grid.
   \param grid      The output grid, a pointer to a pre-allocated memory space to store the coordinates.
 
-  The function calculates the number of grid elements along each coordinate based on the provided common edge length (rw), the left end of the range (rL), and the right end of the range (rR) for each dimension. It then creates an equidistant grid, filling the grid parameter with the coordinates.
+  The function calculates the number of grid elements along each coordinate based on the provided common edge Rf_length(rw), the left end of the range (rL), and the right end of the range (rR) for each dimension. It then creates an equidistant grid, filling the grid parameter with the coordinates.
 */
 void C_create_ED_grid_xD(const double *rw,
                          const double *L,

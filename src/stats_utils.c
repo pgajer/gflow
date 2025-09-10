@@ -24,7 +24,7 @@ double* runif_hcube(int n, int dim, double* L, double w) {
   // Allocate memory for the points
   double* X = malloc(n * dim * sizeof(double));
   if (X == NULL) {
-    perror("runif_hcube(): Could not allocate memory for X");
+    Rf_error("runif_hcube(): Could not allocate memory for X");
     return NULL;
   }
 
@@ -72,7 +72,7 @@ double median(double *a, int n )
         return a[0];
     } else if ( n == 0 )
     {
-      error("ERROR: median cannot be computed for array of size 0!\n");
+      Rf_error("ERROR: median cannot be computed for array of size 0!\n");
     }
 
     qsort( a, n, sizeof(double), dcmp );
@@ -201,7 +201,7 @@ void C_matrix_wmeans(const double *Y,
       j = i * (*nrY);
       k = i * (*ncTnn);
 
-      C_columnwise_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
+      C_columnwise_Rf_eval(Tnn_i, nrTnn, ncTnn, Y + j, Tnn_y);
       C_columnwise_wmean(Tnn_y, Tnn_w, maxK, nrTnn, ncTnn, EYg + k);
     }
 
@@ -611,7 +611,7 @@ void C_columnwise_wmean_BB_CrI_2(const double *Ey,
 }
 
 /*!
-    \fn void C_columnwise_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
+    \fn void C_columnwise_Rf_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
 
     \brief Evaluates x over an K-by-ng array nn_i of indices of get.knnx(x, xg, k)
 
@@ -623,7 +623,7 @@ void C_columnwise_wmean_BB_CrI_2(const double *Ey,
     \param nn_x      A return array of the same dimensions as nn_i with values of x at the indices of nn_i.
 
 */
-void C_columnwise_eval(const int    *nn_i,
+void C_columnwise_Rf_eval(const int    *nn_i,
                        const int    *rK,
                        const int    *rng,
                        const double *x,
@@ -641,7 +641,7 @@ void C_columnwise_eval(const int    *nn_i,
 }
 
 /*!
-    \fn void C_columnwise_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
+    \fn void C_columnwise_Rf_eval(int *nn_i, double *x, int *rK, int *rng, int *rnx, double *nn_x)
 
     \brief Evaluates x over an K-by-ng array nn_i of indices of get.knnx(x, xg, k)
 
@@ -710,9 +710,9 @@ void C_normalize_dist(const double *d,
                         // the way we enforce the minimal number of rows of nn_d
                         // to have weights > 0, requires that nr > minK, so if
                         // nr <= minK <=> nr - 1 < minK, we need to throw an
-                        // error. See the big comment below.
+                        // Rf_error. See the big comment below.
    {
-     error("ERROR in normalize_dist(); file %s  at line %d;  nr - 1 < minK !", __FILE__, __LINE__);
+     Rf_error("ERROR in normalize_dist(); file %s  at line %d;  nr - 1 < minK !", __FILE__, __LINE__);
    }
 
    int ir;  // holds i * nr
@@ -1088,8 +1088,8 @@ void C_pdistr(const double *x,
 SEXP S_pdistr( SEXP sx, SEXP sz)
 
 {
-    int nx   = length(sx);
-    double z = asReal(sz);
+    int nx   = Rf_length(sx);
+    double z = Rf_asReal(sz);
     double *x = REAL(sx);
 
     // Creating a copy of x so that the sorting of x does not change the order of elements of x
@@ -1109,7 +1109,7 @@ SEXP S_pdistr( SEXP sx, SEXP sz)
     free(y);
 
     // Creating output variable
-    SEXP out = PROTECT(allocVector(REALSXP, 1));
+    SEXP out = PROTECT(Rf_allocVector(REALSXP, 1));
     double *pout = REAL(out);
 
     *pout = (double)(nx - i) / nx;
@@ -1325,19 +1325,19 @@ SEXP S_lwcor( SEXP Snn_i, SEXP Snn_w , SEXP SY)
     #endif
 
     SEXP Sans; /* Create SEXP to hold result */
-    PROTECT( Sans = allocMatrix(REALSXP, ng, npairs)); nprot++;
+    PROTECT( Sans = Rf_allocMatrix(REALSXP, ng, npairs)); nprot++;
     double *ans = REAL( Sans );
 
     SEXP Sw; /* Create SEXP to hold weights */
-    PROTECT( Sw = allocVector(REALSXP, K)); nprot++;
+    PROTECT( Sw = Rf_allocVector(REALSXP, K)); nprot++;
     double *w = REAL( Sw );
 
     SEXP Sy1;
-    PROTECT( Sy1 = allocVector(REALSXP, nrY)); nprot++;
+    PROTECT( Sy1 = Rf_allocVector(REALSXP, nrY)); nprot++;
     double *y1 = REAL( Sy1 );
 
     SEXP Sy2;
-    PROTECT( Sy2 = allocVector(REALSXP, nrY)); nprot++;
+    PROTECT( Sy2 = Rf_allocVector(REALSXP, nrY)); nprot++;
     double *y2 = REAL( Sy2 );
 
     double *yi, *yj;
@@ -1385,7 +1385,7 @@ SEXP S_lwcor( SEXP Snn_i, SEXP Snn_w , SEXP SY)
           write_double_array(w, k, file);
           Rprintf("S_lwcor() created %s\n", file);
 
-          error("STOP");
+          Rf_error("STOP");
           #endif
 
         } // END of for ig
@@ -1405,7 +1405,7 @@ SEXP S_lwcor( SEXP Snn_i, SEXP Snn_w , SEXP SY)
    \param Snn_i  A matrix of indicies of X with ng rows and K columns.
    \param Snn_w  A matrix of weights with ng rows and K columns.
    \param SY     A matrix with nrX rows.
-   \param Sy     An array with length(y)=nrow(X), such the the local
+   \param Sy     An array with Rf_length(y)=nrow(X), such the the local
 
 */
 SEXP S_lwcor_yY( SEXP Snn_i, SEXP Snn_w , SEXP SY, SEXP Sy )
@@ -1430,19 +1430,19 @@ SEXP S_lwcor_yY( SEXP Snn_i, SEXP Snn_w , SEXP SY, SEXP Sy )
     int ncY = dimY[1];
 
     SEXP Sres; /* Create SEXP to hold result */
-    PROTECT( Sres = allocMatrix(REALSXP, ng, ncY) ); nprot++;
+    PROTECT( Sres = Rf_allocMatrix(REALSXP, ng, ncY) ); nprot++;
     double *res = REAL( Sres );
 
     SEXP Sw; /* Create SEXP to hold weights */
-    PROTECT( Sw = allocVector(REALSXP, K)); nprot++;
+    PROTECT( Sw = Rf_allocVector(REALSXP, K)); nprot++;
     double *w = REAL( Sw );
 
     SEXP Sy1;
-    PROTECT( Sy1 = allocVector(REALSXP, nrY)); nprot++;
+    PROTECT( Sy1 = Rf_allocVector(REALSXP, nrY)); nprot++;
     double *y1 = REAL( Sy1 );
 
     SEXP Sy2;
-    PROTECT( Sy2 = allocVector(REALSXP, nrY)); nprot++;
+    PROTECT( Sy2 = Rf_allocVector(REALSXP, nrY)); nprot++;
     double *y2 = REAL( Sy2 );
 
     double *yi;
@@ -1485,7 +1485,7 @@ SEXP S_lwcor_yY( SEXP Snn_i, SEXP Snn_w , SEXP SY, SEXP Sy )
         write_double_array(w, k, file);
         Rprintf("S_lwcor() created %s\n", file);
 
-        error("STOP");
+        Rf_error("STOP");
         #endif
 
       } // END OF for ig

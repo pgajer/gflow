@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>       // std::vector
 #include <utility>      // std::pair
@@ -105,14 +105,14 @@ SEXP S_test_monotonic_reachability_map(
     
     // Create result list
     int protect_count = 0;
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements)); protect_count++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
     
     // Set names
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements)); protect_count++;
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
     
     // Prepare data vectors
     std::vector<size_t> vertices;
@@ -146,41 +146,41 @@ SEXP S_test_monotonic_reachability_map(
     size_t n_vertices = vertices.size();
     
     // Vertices vector (convert to 1-based)
-    SEXP r_vertices = PROTECT(allocVector(INTSXP, n_vertices)); protect_count++;
+    SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, n_vertices)); protect_count++;
     for (size_t i = 0; i < n_vertices; i++) {
         INTEGER(r_vertices)[i] = vertices[i] + 1; // Convert to 1-based
     }
     SET_VECTOR_ELT(result, 0, r_vertices);
     
     // Monotonicity vector
-    SEXP r_monotonicity = PROTECT(allocVector(REALSXP, n_vertices)); protect_count++;
+    SEXP r_monotonicity = PROTECT(Rf_allocVector(REALSXP, n_vertices)); protect_count++;
     for (size_t i = 0; i < n_vertices; i++) {
         REAL(r_monotonicity)[i] = monotonicity[i];
     }
     SET_VECTOR_ELT(result, 1, r_monotonicity);
     
     // Total change vector
-    SEXP r_total_change = PROTECT(allocVector(REALSXP, n_vertices)); protect_count++;
+    SEXP r_total_change = PROTECT(Rf_allocVector(REALSXP, n_vertices)); protect_count++;
     for (size_t i = 0; i < n_vertices; i++) {
         REAL(r_total_change)[i] = total_change[i];
     }
     SET_VECTOR_ELT(result, 2, r_total_change);
     
     // Distances vector
-    SEXP r_distances = PROTECT(allocVector(REALSXP, n_vertices)); protect_count++;
+    SEXP r_distances = PROTECT(Rf_allocVector(REALSXP, n_vertices)); protect_count++;
     for (size_t i = 0; i < n_vertices; i++) {
         REAL(r_distances)[i] = distances[i];
     }
     SET_VECTOR_ELT(result, 3, r_distances);
     
     // Paths list
-    SEXP r_paths = PROTECT(allocVector(VECSXP, n_vertices)); protect_count++;
+    SEXP r_paths = PROTECT(Rf_allocVector(VECSXP, n_vertices)); protect_count++;
     for (size_t i = 0; i < n_vertices; i++) {
         // Reconstruct path to this vertex
         path_t path = graph.reconstruct_monotonic_path(map, vertices[i]);
         
         // Convert path to R vector (1-based)
-        SEXP r_path = PROTECT(allocVector(INTSXP, path.vertices.size()));
+        SEXP r_path = PROTECT(Rf_allocVector(INTSXP, path.vertices.size()));
         for (size_t j = 0; j < path.vertices.size(); j++) {
             INTEGER(r_path)[j] = path.vertices[j] + 1; // Convert to 1-based
         }
@@ -191,12 +191,12 @@ SEXP S_test_monotonic_reachability_map(
     SET_VECTOR_ELT(result, 4, r_paths);
     
     // Best vertex
-    SEXP r_best_vertex = PROTECT(allocVector(INTSXP, 1)); protect_count++;
+    SEXP r_best_vertex = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
     INTEGER(r_best_vertex)[0] = best_vertex_info.first + 1; // Convert to 1-based
     SET_VECTOR_ELT(result, 5, r_best_vertex);
     
     // Best monotonicity
-    SEXP r_best_monotonicity = PROTECT(allocVector(REALSXP, 1)); protect_count++;
+    SEXP r_best_monotonicity = PROTECT(Rf_allocVector(REALSXP, 1)); protect_count++;
     REAL(r_best_monotonicity)[0] = best_vertex_info.second;
     SET_VECTOR_ELT(result, 6, r_best_monotonicity);
     

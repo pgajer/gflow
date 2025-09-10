@@ -38,7 +38,7 @@ extern int cmp_double(const void *a, const void *b); // in c_utils.c
  * @note This function uses R's random number generator functions (GetRNGstate and PutRNGstate).
  *       It is designed to be called from R via .Call() or similar interfaces.
  *
- * @warning This function does not perform input validation. Incorrect inputs may lead to
+ * @Rf_warning This function does not perform input validation. Incorrect inputs may lead to
  *          undefined behavior.
  *
  * @see For background on the algorithm:

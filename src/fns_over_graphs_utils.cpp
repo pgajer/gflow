@@ -1,9 +1,10 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <Rmath.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -104,7 +105,7 @@ std::unique_ptr<std::vector<double>> prop_nbhrs_with_smaller_y(const std::vector
  *
  * @note This function uses PROTECT/UNPROTECT for proper memory management in R.
  *       It assumes that the length of Ry matches the number of vertices in the graph,
- *       and that all neighbor indices in r_adj_list are valid (i.e., not greater than length(Ry)).
+ *       and that all neighbor indices in r_adj_list are valid (i.e., not greater than Rf_length(Ry)).
  *
  * @see prop_nbhrs_with_smaller_y (the underlying C++ function)
  *
@@ -130,7 +131,7 @@ SEXP S_prop_nbhrs_with_smaller_y(SEXP r_adj_list, SEXP Ry) {
     std::unique_ptr<std::vector<double>> result = prop_nbhrs_with_smaller_y(adj_list, y_vec);
 
     // Convert result to SEXP and return
-    SEXP Rresult = PROTECT(allocVector(REALSXP, result->size()));
+    SEXP Rresult = PROTECT(Rf_allocVector(REALSXP, result->size()));
     for (size_t i = 0; i < result->size(); ++i) {
         REAL(Rresult)[i] = (*result)[i];
     }
@@ -266,15 +267,15 @@ SEXP S_loc_const_vertices(SEXP r_adj_list, SEXP Ry, SEXP Rprec) {
     std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(r_adj_list);
 
     int nprot = 0;
-    PROTECT(Ry = coerceVector(Ry, REALSXP)); nprot++;
+    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
     double *y = REAL(Ry);
 
-    PROTECT(Rprec = coerceVector(Rprec, REALSXP)); nprot++;
+    PROTECT(Rprec = Rf_coerceVector(Rprec, REALSXP)); nprot++;
     double prec = REAL(Rprec)[0];
 
     std::unique_ptr<std::vector<int>> loc_const_vertices_vect = loc_const_vertices(adj_list, std::vector<double>(y, y + LENGTH(Ry)), prec);
 
-    SEXP result = PROTECT(allocVector(INTSXP, loc_const_vertices_vect->size())); nprot++;
+    SEXP result = PROTECT(Rf_allocVector(INTSXP, loc_const_vertices_vect->size())); nprot++;
     std::copy(loc_const_vertices_vect->begin(), loc_const_vertices_vect->end(), INTEGER(result));
 
     UNPROTECT(nprot);
@@ -427,16 +428,16 @@ std::unique_ptr<std::vector<std::vector<double>>> make_response_locally_non_cons
     int n_vertices = y.size();
 
     if (n_vertices != (int)graph.size())
-        error("The lengths of graph and y must be the same.");
+        Rf_error("The lengths of graph and y must be the same.");
 
     if (n_vertices != (int)weights.size())
-        error("The lengths of weights and y must be the same.");
+        Rf_error("The lengths of weights and y must be the same.");
 
     if (prec < 0)
-        error("prec has to be a positive number.");
+        Rf_error("prec has to be a positive number.");
 
     if (n_itrs < 1)
-        error("n_itrs has to be greater than or equal to 1.");
+        Rf_error("n_itrs has to be greater than or equal to 1.");
 
     double step_size = calculate_smallest_difference(y);
     step_size *= step_factor;
@@ -563,22 +564,22 @@ SEXP S_make_response_locally_non_const(SEXP r_adj_list,
 
     int nprot = 0;
 
-    PROTECT(Ry = coerceVector(Ry, REALSXP)); nprot++;
+    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
     double *y = REAL(Ry);
 
-    PROTECT(Rweights = coerceVector(Rweights, REALSXP)); nprot++;
+    PROTECT(Rweights = Rf_coerceVector(Rweights, REALSXP)); nprot++;
     double *weights = REAL(Rweights);
 
-    PROTECT(Rstep_factor = coerceVector(Rstep_factor, REALSXP)); nprot++;
+    PROTECT(Rstep_factor = Rf_coerceVector(Rstep_factor, REALSXP)); nprot++;
     double step_factor = REAL(Rstep_factor)[0];
 
-    PROTECT(Rprec = coerceVector(Rprec, REALSXP)); nprot++;
+    PROTECT(Rprec = Rf_coerceVector(Rprec, REALSXP)); nprot++;
     double prec = REAL(Rprec)[0];
 
-    PROTECT(Rn_itrs = coerceVector(Rn_itrs, INTSXP)); nprot++;
+    PROTECT(Rn_itrs = Rf_coerceVector(Rn_itrs, INTSXP)); nprot++;
     int n_itrs = INTEGER(Rn_itrs)[0];
 
-    PROTECT(Rmean_adjust = coerceVector(Rmean_adjust, LGLSXP)); nprot++;
+    PROTECT(Rmean_adjust = Rf_coerceVector(Rmean_adjust, LGLSXP)); nprot++;
     bool mean_adjust = LOGICAL(Rmean_adjust)[0];
 
     std::unique_ptr<std::vector<std::vector<double>>> y_traj = make_response_locally_non_const(graph,
@@ -590,7 +591,7 @@ SEXP S_make_response_locally_non_const(SEXP r_adj_list,
                                                                                                mean_adjust);
 
     int n_iterations = y_traj->size();
-    SEXP result = PROTECT(allocMatrix(REALSXP, n_vertices, n_iterations)); nprot++;
+    SEXP result = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_iterations)); nprot++;
     double *result_ptr = REAL(result);
 
     for (int i = 0; i < n_iterations; i++) {

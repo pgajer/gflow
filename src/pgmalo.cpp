@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 // #include <omp.h>
 #include "omp_compat.h"
@@ -151,10 +151,10 @@ path_graph_plm_t sexp_to_path_graph_plm(SEXP s_path_graph);
  *       - Constructs h-hop neighborhood Path Linear Model (PLM) graphs
  *       - Computes leave-one-out cross-validation (LOOCV) errors
  *   2. Global optimization:
- *       - Finds optimal h that minimizes mean CV error
+ *       - Finds optimal h that minimizes mean CV Rf_error
  *       - Computes conditional expectations using optimal h
  *   3. Local optimization:
- *       - For each vertex, finds optimal h minimizing its CV error
+ *       - For each vertex, finds optimal h minimizing its CV Rf_error
  *       - Computes vertex-specific conditional expectations
  *   4. Optional: Computes Bayesian bootstrap credible intervals
  *       - Estimates central tendency of conditional expectations
@@ -163,7 +163,7 @@ path_graph_plm_t sexp_to_path_graph_plm(SEXP s_path_graph);
  * @param neighbors Adjacency lists for each vertex
  * @param edge_lengths Corresponding edge lengths for each adjacency
  * @param y Response variables for each vertex
- * @param y_true True values for error computation (optional)
+ * @param y_true True values for Rf_error computation (optional)
  * @param use_median Use median instead of mean for bootstrap intervals
  * @param h_min Minimum neighborhood size (must be odd)
  * @param h_max Maximum neighborhood size (must be odd)
@@ -291,9 +291,9 @@ pgmalo_t pgmalo(const std::vector<std::vector<int>>& neighbors,
         print_vect(errors,"errors");
         #endif
 
-        // Calculate mean error
+        // Calculate mean Rf_error
         if (verbose) {
-            Rprintf("\tCalculating mean error ... ");
+            Rprintf("\tCalculating mean Rf_error ... ");
             ptm = std::chrono::steady_clock::now();
         }
 
@@ -412,16 +412,16 @@ pgmalo_t pgmalo(const std::vector<std::vector<int>>& neighbors,
  *             - Constructs h-hop neighborhood Path Linear Model (PLM) graphs
  *             - Computes leave-one-out cross-validation (LOOCV) errors
  *          3. Global optimization:
- *             - Finds optimal h that minimizes mean CV error
+ *             - Finds optimal h that minimizes mean CV Rf_error
  *             - Computes conditional expectations using optimal h
  *          4. Local optimization:
- *             - For each vertex, finds optimal h minimizing its CV error
+ *             - For each vertex, finds optimal h minimizing its CV Rf_error
  *             - Computes vertex-specific conditional expectations
  *          5. Optional: Computes Bayesian bootstrap credible intervals
  *
  * @param x Vector of ordered x values
  * @param y Observed y values corresponding to x
- * @param y_true True y values for error calculation (optional)
+ * @param y_true True y values for Rf_error calculation (optional)
  * @param max_distance_deviation Maximum allowed deviation from optimal center position
  * @param use_median Use median instead of mean for central tendency (default: false)
  * @param h_min Minimum neighborhood size to consider (default: 3, must be odd)
@@ -446,7 +446,7 @@ pgmalo_t pgmalo(const std::vector<std::vector<int>>& neighbors,
  *   - h_values: Vector of used h values (odd numbers from h_min to h_max)
  *   - cv_errors: Mean cross-validation errors for each h
  *   - true_errors: Mean absolute deviation from true values (if provided)
- *   - opt_h: Optimal h value minimizing mean CV error
+ *   - opt_h: Optimal h value minimizing mean CV Rf_error
  *   - opt_h_graph: Graph structure for optimal h
  *   - predictions: Global conditional expectations using optimal h
  *   - local_predictions: Vertex-specific conditional expectations using locally optimal h
@@ -537,7 +537,7 @@ pgmalo_t upgmalo(const std::vector<double>& x,
  *   - opt_ci_lower: Numeric vector of lower credible bounds (if n_bb > 0)
  *   - opt_ci_upper: Numeric vector of upper credible bounds (if n_bb > 0)
  *   - h_cv_errors: Numeric vector of cross-validation errors
- *   - true_error: Mean true error (if y_true provided)
+ *   - true_error: Mean true Rf_error (if y_true provided)
  *   - opt_graph_adj_list: List of adjacency lists for optimal graph
  *   - opt_graph_edge_lengths: List of edge lengths for optimal graph
  *
@@ -624,7 +624,7 @@ SEXP S_upgmalo(SEXP s_x,
     // Creating return list
     int n_protected = 0;  // Track number of PROTECT calls
     const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(cpp_results.h_values)); n_protected++;
 
@@ -634,11 +634,11 @@ SEXP S_upgmalo(SEXP s_x,
         SET_VECTOR_ELT(result, 1, R_NilValue);
     }
 
-    SEXP s_opt_h_idx = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP s_opt_h_idx = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(s_opt_h_idx)[0] = cpp_results.opt_h_idx + 1;
     SET_VECTOR_ELT(result, 2, s_opt_h_idx);
 
-    SEXP s_opt_h = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+    SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
     REAL(s_opt_h)[0] = cpp_results.opt_h;
     SET_VECTOR_ELT(result, 3, s_opt_h);
 
@@ -658,7 +658,7 @@ SEXP S_upgmalo(SEXP s_x,
     }
 
     if (cpp_results.true_errors.size() > 0) {
-        SEXP s_true_error = PROTECT(allocVector(REALSXP, 1)); n_protected++;
+        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
         double mean_true_error = std::accumulate(cpp_results.true_errors.begin(),
                                                  cpp_results.true_errors.end(), 0.0) /  cpp_results.true_errors.size();
         REAL(s_true_error)[0] = mean_true_error;
@@ -672,22 +672,22 @@ SEXP S_upgmalo(SEXP s_x,
 
 
     // Setting names for return list
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, mkChar("h_values"));
-    SET_STRING_ELT(names, 1, mkChar("h_errors"));
-    SET_STRING_ELT(names, 2, mkChar("opt_h_idx"));
-    SET_STRING_ELT(names, 3, mkChar("opt_h"));
-    SET_STRING_ELT(names, 4, mkChar("graph_adj_list"));
-    SET_STRING_ELT(names, 5, mkChar("graph_edge_lengths"));
-    SET_STRING_ELT(names, 6, mkChar("predictions"));
-    SET_STRING_ELT(names, 7, mkChar("local_predictions"));
-    SET_STRING_ELT(names, 8, mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 9, mkChar("ci_lower"));
-    SET_STRING_ELT(names, 10, mkChar("ci_upper"));
-    SET_STRING_ELT(names, 11, mkChar("true_error"));
-    SET_STRING_ELT(names, 12, mkChar("h_predictions"));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("h_errors"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("opt_h_idx"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("graph_adj_list"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("graph_edge_lengths"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("local_predictions"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("bb_predictions"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("ci_lower"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+    SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
+    SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
 
-    setAttrib(result, R_NamesSymbol, names);
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
 
@@ -751,7 +751,7 @@ SEXP S_upgmalo(SEXP s_x,
  * - dist_normalization_factor must be positive
  * - epsilon must be positive
  *
- * @warning
+ * @Rf_warning
  * - The function modifies the kernel state using initialize_kernel()
  * - Large graphs with many paths may require significant memory
  * - Performance depends heavily on path structure and kernel type
@@ -866,7 +866,7 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
     struct pred_w_err_t {
         double prediction;
         double weight;
-        double error;
+        double Rf_error;
     } pred_w_err;
 
     std::vector<std::vector<pred_w_err_t>> vertex_pred_w_err(n_vertices);
@@ -961,7 +961,7 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
             for (int i = 0; i < path_n_vertices; ++i) {
                 pred_w_err.prediction = fit.predictions[i];
                 pred_w_err.weight     = w_path[i];
-                pred_w_err.error      = fit.errors[i];
+                pred_w_err.Rf_error      = fit.errors[i];
                 vertex_pred_w_err[path[i]].push_back(pred_w_err);
             }
         } // END OF for (const auto& path_i : valid_path_indices)
@@ -991,7 +991,7 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
         for (const auto& v : vertex_pred_w_err[i]) {
             weighted_sum += v.weight * v.prediction;
             weight_sum   += v.weight;
-            wmean_error  += v.weight * v.error;
+            wmean_error  += v.weight * v.Rf_error;
         }
         predictions[i] = weighted_sum / weight_sum;
         errors[i] = wmean_error / weight_sum;
@@ -1027,7 +1027,7 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
  * @param neighbors_r SEXP containing adjacency lists for each vertex
  * @param edge_lengths_r SEXP containing corresponding edge lengths for each adjacency
  * @param y_r SEXP containing response variables for each vertex
- * @param y_true_r SEXP containing true values for error computation (optional)
+ * @param y_true_r SEXP containing true values for Rf_error computation (optional)
  * @param use_median_r SEXP logical for using median instead of mean for bootstrap intervals
  * @param h_min_r SEXP minimum neighborhood size (must be odd)
  * @param h_max_r SEXP maximum neighborhood size (must be odd)
@@ -1147,18 +1147,18 @@ SEXP S_pgmalo(
     // Creating return list
     const int N_COMPONENTS = 11;
     int n_protected = 0;  // Track number of PROTECT calls
-    SEXP result_r = PROTECT(allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result_r = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
     // Convert and set h_values
     SET_VECTOR_ELT(result_r, 0, convert_vector_int_to_R(results.h_values)); n_protected++;
 
     // Set opt_h
-    SEXP opt_h_r = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP opt_h_r = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(opt_h_r)[0] = results.opt_h;
     SET_VECTOR_ELT(result_r, 1, opt_h_r);
 
     // Set opt_h_idx
-    SEXP opt_h_idx_r = PROTECT(allocVector(INTSXP, 1)); n_protected++;
+    SEXP opt_h_idx_r = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
     INTEGER(opt_h_idx_r)[0] = results.opt_h_idx;
     SET_VECTOR_ELT(result_r, 2, opt_h_idx_r);
 
@@ -1179,7 +1179,7 @@ SEXP S_pgmalo(
     SET_VECTOR_ELT(result_r, 6, convert_vector_double_to_R(results.local_predictions)); n_protected++;
 
     // Convert and set h_predictions
-    SEXP h_predictions_r = PROTECT(allocVector(VECSXP, results.h_predictions.size())); n_protected++;
+    SEXP h_predictions_r = PROTECT(Rf_allocVector(VECSXP, results.h_predictions.size())); n_protected++;
     for (size_t i = 0; i < results.h_predictions.size(); i++) {
         SET_VECTOR_ELT(h_predictions_r, i,
                       convert_vector_double_to_R(results.h_predictions[i]));
@@ -1199,7 +1199,7 @@ SEXP S_pgmalo(
     }
 
     // Set names for the list elements
-    SEXP names = PROTECT(allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
     const char* names_str[] = {
         "h_values",
         "opt_h",
@@ -1214,9 +1214,9 @@ SEXP S_pgmalo(
         "ci_upper"
     };
     for (int i = 0; i < N_COMPONENTS; i++) {
-        SET_STRING_ELT(names, i, mkChar(names_str[i]));
+        SET_STRING_ELT(names, i, Rf_mkChar(names_str[i]));
     }
-    setAttrib(result_r, R_NamesSymbol, names);
+    Rf_setAttrib(result_r, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
     return result_r;
@@ -1371,7 +1371,7 @@ pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
                 {
                     std::lock_guard<std::mutex> lock(console_mutex);
                     elapsed_time(ptm, "DONE");
-                    Rprintf("\tCalculating mean error ... ");
+                    Rprintf("\tCalculating mean Rf_error ... ");
                     ptm = std::chrono::steady_clock::now();
                 }
             }
@@ -1431,7 +1431,7 @@ pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
         results.h_values = std::move(new_h_values);
         results.h_predictions = std::move(new_predictions);
 
-        // Print warning about adjusted h range
+        // Print Rf_warning about adjusted h range
         Rprintf("\nWarning: Path validation failed at h = %d. Analysis proceeding with ",
                 termination_state.failed_h);
         if (results.h_values.empty()) {

@@ -209,7 +209,7 @@ shortest_paths_t set_wgraph_t::find_graph_paths_within_radius(
                   return a.distance > b.distance;
               });
 
-	// result.reachable_vertices will be used to keep track of used vertices to avoid duplicate paths
+	// result.reachable_vertices will be used to keep track of used vertices to avoid Rf_duplicate paths
     result.reachable_vertices.insert(start);  // start vertex is always used
 
 	// Process vertices in order of decreasing distance

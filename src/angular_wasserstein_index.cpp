@@ -4,7 +4,7 @@
 
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <cmath>
@@ -64,7 +64,7 @@ extern "C" {
  *       distance calculation as subroutines. The efficiency of these implementations
  *       will significantly impact the overall performance of this function.
  *
- * @warning This function may be computationally expensive for large datasets or
+ * @Rf_warning This function may be computationally expensive for large datasets or
  *          high values of k. Consider performance implications for your use case.
  *
  * Example usage:
@@ -78,7 +78,7 @@ extern "C" {
 double angular_wasserstein_index(const std::vector<std::vector<double>>& X,
                                  const std::vector<std::vector<double>>& Y,
                                  int k) {
-    // ... (previous error checking code remains the same)
+    // ... (previous Rf_error checking code remains the same)
 
     int n_X_points = X.size();
     int dim = X[0].size();
@@ -231,8 +231,8 @@ double old_angular_wasserstein_index(const std::vector<std::vector<double>>& X,
  * @note This function is intended to be called from R using .Call(). It should
  *       not be called directly from C or C++ code.
  *
- * @warning Ensure that the input matrices s_X and s_Y are numeric and have the
- *          same dimensions. The function will raise an R error if these
+ * @Rf_warning Ensure that the input matrices s_X and s_Y are numeric and have the
+ *          same dimensions. The function will raise an R Rf_error if these
  *          conditions are not met.
  *
  * R usage:

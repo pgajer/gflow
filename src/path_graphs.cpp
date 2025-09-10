@@ -1,9 +1,10 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -305,9 +306,9 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
     int nprot = 0; // Protection counter
 
     // Creating an R list for the path graph adjacency list
-    SEXP adj_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(allocVector(INTSXP, path_graph_adj_vect[i].size()));
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, path_graph_adj_vect[i].size()));
         int* A = INTEGER(RA);
         for (const auto& neighbor : path_graph_adj_vect[i])
             *A++ = neighbor + 1; // Converting to 1-based indexing
@@ -316,9 +317,9 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
     }
 
     // Creating an R list for the path graph edge length list
-    SEXP edge_length_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP edge_length_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(allocVector(REALSXP, path_graph_weight_vect[i].size()));
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, path_graph_weight_vect[i].size()));
         double* D = REAL(RD);
         for (const auto& dist : path_graph_weight_vect[i])
             *D++ = dist;
@@ -336,18 +337,18 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
     }
 
     // Create R list for shortest paths
-    SEXP shortest_paths = PROTECT(allocVector(VECSXP, 3)); nprot++;
+    SEXP shortest_paths = PROTECT(Rf_allocVector(VECSXP, 3)); nprot++;
 
     // First component: i coordinates
-    SEXP i_coords = PROTECT(allocVector(INTSXP, path_pairs.size())); nprot++;
+    SEXP i_coords = PROTECT(Rf_allocVector(INTSXP, path_pairs.size())); nprot++;
     int* i_ptr = INTEGER(i_coords);
 
     // Second component: j coordinates
-    SEXP j_coords = PROTECT(allocVector(INTSXP, path_pairs.size())); nprot++;
+    SEXP j_coords = PROTECT(Rf_allocVector(INTSXP, path_pairs.size())); nprot++;
     int* j_ptr = INTEGER(j_coords);
 
     // Third component: paths list
-    SEXP paths = PROTECT(allocVector(VECSXP, path_pairs.size())); nprot++;
+    SEXP paths = PROTECT(Rf_allocVector(VECSXP, path_pairs.size())); nprot++;
 
     for (size_t idx = 0; idx < path_pairs.size(); ++idx) {
         // Store i,j coordinates (add 1 for R indexing)
@@ -356,7 +357,7 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
 
         // Create vector for this path
         const auto& path = path_pairs[idx].second;
-        SEXP path_vec = PROTECT(allocVector(INTSXP, path.size()));
+        SEXP path_vec = PROTECT(Rf_allocVector(INTSXP, path.size()));
         int* path_ptr = INTEGER(path_vec);
 
         // Copy path values (add 1 for R indexing)
@@ -374,24 +375,24 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
     SET_VECTOR_ELT(shortest_paths, 2, paths);
 
     // Names for shortest_paths components
-    SEXP sp_names = PROTECT(allocVector(STRSXP, 3)); nprot++;
-    SET_STRING_ELT(sp_names, 0, mkChar("i"));
-    SET_STRING_ELT(sp_names, 1, mkChar("j"));
-    SET_STRING_ELT(sp_names, 2, mkChar("paths"));
-    setAttrib(shortest_paths, R_NamesSymbol, sp_names);
+    SEXP sp_names = PROTECT(Rf_allocVector(STRSXP, 3)); nprot++;
+    SET_STRING_ELT(sp_names, 0, Rf_mkChar("i"));
+    SET_STRING_ELT(sp_names, 1, Rf_mkChar("j"));
+    SET_STRING_ELT(sp_names, 2, Rf_mkChar("paths"));
+    Rf_setAttrib(shortest_paths, R_NamesSymbol, sp_names);
 
 
     // Creating the final result list
-    SEXP res = PROTECT(allocVector(VECSXP, 3)); nprot++;
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 3)); nprot++;
     SET_VECTOR_ELT(res, 0, adj_list);
     SET_VECTOR_ELT(res, 1, edge_length_list);
     SET_VECTOR_ELT(res, 2, shortest_paths);
 
-    SEXP names = PROTECT(allocVector(STRSXP, 3)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, mkChar("edge_length_list"));
-    SET_STRING_ELT(names, 2, mkChar("shortest_paths"));
-    setAttrib(res, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 3)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("edge_length_list"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("shortest_paths"));
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
 
@@ -440,14 +441,14 @@ SEXP S_create_path_graph_series(SEXP s_adj_list,
 
     int nprot = 0; // Protection counter
 
-    PROTECT(s_h_values = coerceVector(s_h_values, INTSXP)); ++nprot;
+    PROTECT(s_h_values = Rf_coerceVector(s_h_values, INTSXP)); ++nprot;
     int* h_values_array = INTEGER(s_h_values);
     int h_values_len = LENGTH(s_h_values);
     std::vector<int> h_values(h_values_array, h_values_array + h_values_len);
 
     std::vector<path_graph_t> graph_series = create_path_graph_series(adj_vect, weight_vect, h_values);
 
-    SEXP res = PROTECT(allocVector(VECSXP, h_values_len)); nprot++;
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, h_values_len)); nprot++;
     for (int i = 0; i < h_values_len; ++i) {
         SEXP path_graph = path_graph_from_path_graph_t(graph_series[i]);
         SET_VECTOR_ELT(res, i, path_graph);
@@ -509,9 +510,9 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
     int nprot = 0; // Protection counter
 
     // Creating an R list for the path graph adjacency list
-    SEXP adj_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(allocVector(INTSXP, path_graph_adj_vect[i].size()));
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, path_graph_adj_vect[i].size()));
         int* A = INTEGER(RA);
         for (const auto& neighbor : path_graph_adj_vect[i])
             *A++ = neighbor + 1; // Converting to 1-based indexing
@@ -520,9 +521,9 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
     }
 
     // Creating an R list for the path graph edge length list
-    SEXP edge_length_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP edge_length_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(allocVector(REALSXP, path_graph_weight_vect[i].size()));
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, path_graph_weight_vect[i].size()));
         double* D = REAL(RD);
         for (const auto& dist : path_graph_weight_vect[i])
             *D++ = dist;
@@ -531,9 +532,9 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
     }
 
     // Creating an R list for the path graph hop list
-    SEXP hop_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP hop_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(allocVector(INTSXP, path_graph_hop_vect[i].size()));
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, path_graph_hop_vect[i].size()));
         int* A = INTEGER(RA);
         for (const auto& hops : path_graph_hop_vect[i])
             *A++ = hops;  // No conversion needed - hop counts are already 1-based
@@ -551,18 +552,18 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
     }
 
     // Create R list for shortest paths
-    SEXP shortest_paths = PROTECT(allocVector(VECSXP, 3)); nprot++;
+    SEXP shortest_paths = PROTECT(Rf_allocVector(VECSXP, 3)); nprot++;
 
     // First component: i coordinates
-    SEXP i_coords = PROTECT(allocVector(INTSXP, path_pairs.size())); nprot++;
+    SEXP i_coords = PROTECT(Rf_allocVector(INTSXP, path_pairs.size())); nprot++;
     int* i_ptr = INTEGER(i_coords);
 
     // Second component: j coordinates
-    SEXP j_coords = PROTECT(allocVector(INTSXP, path_pairs.size())); nprot++;
+    SEXP j_coords = PROTECT(Rf_allocVector(INTSXP, path_pairs.size())); nprot++;
     int* j_ptr = INTEGER(j_coords);
 
     // Third component: paths list
-    SEXP paths = PROTECT(allocVector(VECSXP, path_pairs.size())); nprot++;
+    SEXP paths = PROTECT(Rf_allocVector(VECSXP, path_pairs.size())); nprot++;
 
     for (size_t idx = 0; idx < path_pairs.size(); ++idx) {
         // Store i,j coordinates (add 1 for R indexing)
@@ -571,7 +572,7 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
 
         // Create vector for this path
         const auto& path = path_pairs[idx].second;
-        SEXP path_vec = PROTECT(allocVector(INTSXP, path.size()));
+        SEXP path_vec = PROTECT(Rf_allocVector(INTSXP, path.size()));
         int* path_ptr = INTEGER(path_vec);
 
         // Copy path values (add 1 for R indexing)
@@ -589,26 +590,26 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
     SET_VECTOR_ELT(shortest_paths, 2, paths);
 
     // Names for shortest_paths components
-    SEXP sp_names = PROTECT(allocVector(STRSXP, 3)); nprot++;
-    SET_STRING_ELT(sp_names, 0, mkChar("i"));
-    SET_STRING_ELT(sp_names, 1, mkChar("j"));
-    SET_STRING_ELT(sp_names, 2, mkChar("paths"));
-    setAttrib(shortest_paths, R_NamesSymbol, sp_names);
+    SEXP sp_names = PROTECT(Rf_allocVector(STRSXP, 3)); nprot++;
+    SET_STRING_ELT(sp_names, 0, Rf_mkChar("i"));
+    SET_STRING_ELT(sp_names, 1, Rf_mkChar("j"));
+    SET_STRING_ELT(sp_names, 2, Rf_mkChar("paths"));
+    Rf_setAttrib(shortest_paths, R_NamesSymbol, sp_names);
 
 
     // Creating the final result list
-    SEXP res = PROTECT(allocVector(VECSXP, 4)); nprot++;
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 4)); nprot++;
     SET_VECTOR_ELT(res, 0, adj_list);
     SET_VECTOR_ELT(res, 1, edge_length_list);
     SET_VECTOR_ELT(res, 2, hop_list);
     SET_VECTOR_ELT(res, 3, shortest_paths);
 
-    SEXP names = PROTECT(allocVector(STRSXP, 4)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, mkChar("edge_length_list"));
-    SET_STRING_ELT(names, 2, mkChar("hop_list"));
-    SET_STRING_ELT(names, 3, mkChar("shortest_paths"));
-    setAttrib(res, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("edge_length_list"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("hop_list"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("shortest_paths"));
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
 
@@ -859,7 +860,7 @@ SEXP S_create_path_graph_plm(SEXP s_adj_list,
 
     // Now create the vertex_paths component
     int n_vertices = path_graph.vertex_paths.size();
-    SEXP vertex_paths_list = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP vertex_paths_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
 
     // For each vertex
     for (int v = 0; v < n_vertices; v++) {
@@ -867,7 +868,7 @@ SEXP S_create_path_graph_plm(SEXP s_adj_list,
         int n_paths = vertex_info.containing_paths.size();
 
         // Create matrix with 3 columns: start, end, position_in_path
-        SEXP path_matrix = PROTECT(allocMatrix(INTSXP, n_paths, 3));
+        SEXP path_matrix = PROTECT(Rf_allocMatrix(INTSXP, n_paths, 3));
         int* matrix_ptr = INTEGER(path_matrix);
 
         // Fill the matrix
@@ -881,19 +882,19 @@ SEXP S_create_path_graph_plm(SEXP s_adj_list,
         }
 
         // Set column names
-        SEXP colnames = PROTECT(allocVector(STRSXP, 3));
-        SET_STRING_ELT(colnames, 0, mkChar("start"));
-        SET_STRING_ELT(colnames, 1, mkChar("end"));
-        SET_STRING_ELT(colnames, 2, mkChar("position"));
-        setAttrib(path_matrix, R_DimNamesSymbol,
-                 PROTECT(list2(R_NilValue, colnames)));
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(colnames, 0, Rf_mkChar("start"));
+        SET_STRING_ELT(colnames, 1, Rf_mkChar("end"));
+        SET_STRING_ELT(colnames, 2, Rf_mkChar("position"));
+        Rf_setAttrib(path_matrix, R_DimNamesSymbol,
+                 PROTECT(Rf_list2(R_NilValue, colnames)));
 
         SET_VECTOR_ELT(vertex_paths_list, v, path_matrix);
         UNPROTECT(3); // path_matrix, colnames, and dimnames list
     }
 
     // Create the final result list by combining base_components and vertex_paths
-    SEXP res = PROTECT(allocVector(VECSXP, 5)); nprot++;
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 5)); nprot++;
 
     // Copy all elements from base_components
     for (int i = 0; i < 4; i++) {
@@ -904,17 +905,17 @@ SEXP S_create_path_graph_plm(SEXP s_adj_list,
     SET_VECTOR_ELT(res, 4, vertex_paths_list);
 
     // Set names for the result list
-    SEXP names = PROTECT(allocVector(STRSXP, 5)); nprot++;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
 
     // Copy names from base_components
-    SEXP base_names = getAttrib(base_components, R_NamesSymbol);
+    SEXP base_names = Rf_getAttrib(base_components, R_NamesSymbol);
     for (int i = 0; i < 4; i++) {
         SET_STRING_ELT(names, i, STRING_ELT(base_names, i));
     }
 
     // Add name for vertex_paths
-    SET_STRING_ELT(names, 4, mkChar("vertex_paths"));
-    setAttrib(res, R_NamesSymbol, names);
+    SET_STRING_ELT(names, 4, Rf_mkChar("vertex_paths"));
+    Rf_setAttrib(res, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
     return res;
@@ -953,7 +954,7 @@ path_graph_plm_t sexp_to_path_graph_plm(SEXP s_path_graph) {
     path_graph_plm_t result;
 
     // Verify that input is a list with required components
-    if (!isNewList(s_path_graph)) {
+    if (!Rf_isNewList(s_path_graph)) {
         Rf_error("Input must be an R list");
     }
 
@@ -1040,7 +1041,7 @@ path_graph_plm_t sexp_to_path_graph_plm(SEXP s_path_graph) {
     for (int v = 0; v < n_vertices; v++) {
         SEXP path_matrix = VECTOR_ELT(s_vertex_paths, v);
         int* matrix_ptr = INTEGER(path_matrix);
-        int n_paths = nrows(path_matrix);
+        int n_paths = Rf_nrows(path_matrix);
 
         // Get pointers to each column
         int* start_ptr = matrix_ptr;
@@ -1083,7 +1084,7 @@ path_graph_plm_t sexp_to_path_graph_plm(SEXP s_path_graph) {
  * @code
  *     path_graph_plm_t pg = create_path_graph_plm(adj_list, weight_list, h);
  *     if (!validate_vertex_paths(pg)) {
- *         throw std::runtime_error("Path validation failed");
+ *         Rf_error("Path validation failed");
  *     }
  * @endcode
  *

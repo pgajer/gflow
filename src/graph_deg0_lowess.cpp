@@ -2,7 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -203,7 +203,7 @@ SEXP S_graph_deg0_lowess(
     );
 
     // Convert result to R vector
-    SEXP result = PROTECT(allocVector(REALSXP, predictions.size()));
+    SEXP result = PROTECT(Rf_allocVector(REALSXP, predictions.size()));
     double* result_ptr = REAL(result);
     std::copy(predictions.begin(), predictions.end(), result_ptr);
 

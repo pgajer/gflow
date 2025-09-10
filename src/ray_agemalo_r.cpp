@@ -6,7 +6,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -85,7 +85,7 @@ extern "C" {
  * @param s_kernel_type [SEXP] R integer specifying kernel function type
  *
  * @param s_model_tolerance [SEXP] R numeric convergence tolerance for model fitting
- * @param s_use_mean_error [SEXP] R logical for using mean error in model averaging
+ * @param s_use_mean_error [SEXP] R logical for using mean Rf_error in model averaging
  *
  * @param s_n_bb [SEXP] R integer for number of bootstrap iterations
  * @param s_cri_probability [SEXP] R numeric confidence level for intervals
@@ -109,11 +109,11 @@ extern "C" {
  *
  * @note Implementation Details:
  * - Uses helper functions for converting between R and C++ data structures
- * - Implements careful error checking for R object types
+ * - Implements careful Rf_error checking for R object types
  * - Maintains proper memory protection counting
  * - Handles matrix transposition for R's column-major format
  *
- * @warning
+ * @Rf_warning
  * - All input parameters must be of the correct R type (numeric, integer, logical)
  * - Vertex indices in s_adj_list must be 1-based (R convention)
  * - The function assumes input validation has been performed in R
@@ -271,18 +271,18 @@ SEXP S_ray_agemalo(
     while (names[n_elements] != NULL) n_elements++;
 
     // Create list and protect it
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements));
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Helper function to convert vector to SEXP
     auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
@@ -294,7 +294,7 @@ SEXP S_ray_agemalo(
         size_t nrow = mat.size();
         size_t ncol = mat[0].size();
 
-        SEXP r_mat = PROTECT(allocMatrix(REALSXP, nrow, ncol));
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
         double* ptr = REAL(r_mat);
 
         for (size_t i = 0; i < nrow; ++i) {
@@ -307,7 +307,7 @@ SEXP S_ray_agemalo(
 
     // Helper function to convert boolean vector to SEXP
     auto create_logical_vector = [](const std::vector<bool>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(LGLSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, vec.size()));
         int* ptr = LOGICAL(r_vec);
         for (size_t i = 0; i < vec.size(); ++i) {
             ptr[i] = vec[i];
@@ -316,18 +316,18 @@ SEXP S_ray_agemalo(
     };
 
     // Set graph diameter
-    SEXP diam = PROTECT(allocVector(REALSXP, 1));
+    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
     REAL(diam)[0] = grid_graph.graph_diameter;
     SET_VECTOR_ELT(result, 0, diam);
 
     // Set packing radius
-    SEXP packing_radius = PROTECT(allocVector(REALSXP, 1));
+    SEXP packing_radius = PROTECT(Rf_allocVector(REALSXP, 1));
     REAL(packing_radius)[0] = grid_graph.max_packing_radius;
     SET_VECTOR_ELT(result, 1, packing_radius);
 
     // Create packing vertices vector (1-based indices)
     int actual_n_packing_vertices = grid_graph.grid_vertices.size();
-    SEXP packing_vertices = PROTECT(allocVector(INTSXP, actual_n_packing_vertices));
+    SEXP packing_vertices = PROTECT(Rf_allocVector(INTSXP, actual_n_packing_vertices));
 
     int counter = 0;
     for (const auto& i : grid_graph.grid_vertices) {

@@ -141,7 +141,7 @@ double set_wgraph_t::bidirectional_dijkstra_excluding_edge(
  * to determine how pruning each edge would affect the graph's geometry. For each candidate edge,
  * it computes the ratio of the alternative geodesic path length to the original edge length.
  *
- * @param threshold_percentile Percentile threshold for edge length (0.0-1.0).
+ * @param threshold_percentile Percentile threshold for edge Rf_length(0.0-1.0).
  *        Default 0.5 (median). Only edges with length greater than or equal to
  *        the value at this percentile are analyzed.
  * @return edge_pruning_stats_t structure containing statistics for each analyzed edge
@@ -245,7 +245,7 @@ edge_pruning_stats_t set_wgraph_t::compute_edge_pruning_stats(double threshold_p
  *
  * @param max_ratio_threshold Maximum acceptable ratio of alternative path length to edge length
  *        (default: 1.2). Edges with ratio <= this value will be pruned.
- * @param threshold_percentile Percentile threshold for edge length (0.0-1.0).
+ * @param threshold_percentile Percentile threshold for edge Rf_length(0.0-1.0).
  *        Default 0.5 (median). Only edges with length greater than or equal to
  *        the value at this percentile are considered for pruning.
  * @return A new set_wgraph_t with redundant edges removed

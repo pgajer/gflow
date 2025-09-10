@@ -12,9 +12,9 @@
  *
  * This function fits a weighted linear regression model to one-dimensional data and computes
  * both predictions and their Leave-One-Out Cross-Validation (LOOCV) errors. For each point i,
- * the LOOCV squared error is computed as:
+ * the LOOCV squared Rf_error is computed as:
  * \f[
- *     \text{error}_i = \left(\frac{y_i - \hat{y}_i}{1 - h_i}\right)^2
+ *     \text{Rf_error}_i = \left(\frac{y_i - \hat{y}_i}{1 - h_i}\right)^2
  * \f]
  * where \f$h_i\f$ is the leverage statistic for weighted linear regression.
  *
@@ -56,7 +56,7 @@
  *
  *         Methods:
  *         - predict(pt_index): Returns prediction at given index
- *         - predict_with_error(pt_index): Returns pair of prediction and LOOCV error
+ *         - predict_with_error(pt_index): Returns pair of prediction and LOOCV Rf_error
  *
  * @throws REPORT_ERROR if:
  *         - Sum of weights is not positive
@@ -64,7 +64,7 @@
  *
  * @note For constant x values (weighted variance less than epsilon), returns weighted mean of y
  *       with slope set to 0
- * @note When leverage h_i is within epsilon of 1, the LOOCV error is set to infinity
+ * @note When leverage h_i is within epsilon of 1, the LOOCV Rf_error is set to infinity
  */
 ulm_t ulm(const double* x,
           const double* y,
@@ -126,7 +126,7 @@ ulm_t ulm(const double* x,
     for (int i = 0; i < n_points; ++i) {
         // Calculate weighted leverage h_i
         double h_i = w[i] * (1.0/total_weight + (x_working[i] * x_working[i]) / sum_wx_squared);
-        // Calculate LOOCV prediction error
+        // Calculate LOOCV prediction Rf_error
         if (std::abs(1.0 - h_i) > epsilon) {
             double residual = (y[i] - results.predictions[i]) / (1.0 - h_i);
             results.errors[i] = residual * residual;
@@ -248,7 +248,7 @@ ulm_results fit_linear_direct(
         double x_centered = x[i] - x_wmean;
         double h_i = w[i] * (1.0/total_weight + (x_centered * x_centered) / sum_wx_squared);
 
-        // Calculate LOOCV error
+        // Calculate LOOCV Rf_error
         if (1.0 - h_i > epsilon) {
             double residual = (y[i] - results.predictions[i]) / (1.0 - h_i);
             results.errors[i] = residual * residual;

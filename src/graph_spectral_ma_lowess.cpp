@@ -47,7 +47,7 @@ Eigen::MatrixXd create_spectral_embedding(
  *    - Records model information for all vertices in each model's domain
  * 3. For each vertex in the graph:
  *    - Combines predictions from all models containing the vertex
- *    - Weights models based on proximity and prediction error
+ *    - Weights models based on proximity and prediction Rf_error
  *    - Produces model-averaged predictions, errors, and scale estimates
  *
  * This approach improves robustness to bandwidth selection and provides better
@@ -62,7 +62,7 @@ Eigen::MatrixXd create_spectral_embedding(
  * @param dist_normalization_factor Factor for normalizing distances in kernel weight calculations
  * @param kernel_type Type of kernel function to use for weighting (e.g., Gaussian, triangular)
  * @param precision Precision threshold for binary search and numerical comparisons
- * @param model_blending_coef Coefficient between 0 and 1 for blending position-based and error-based weights
+ * @param model_blending_coef Coefficient between 0 and 1 for blending position-based and Rf_error-based weights
  * @param verbose Whether to print progress information
  *
  * @return graph_spectral_lowess_t Structure containing:
@@ -85,7 +85,7 @@ Eigen::MatrixXd create_spectral_embedding(
  *    - Records model information for all vertices in each model's domain
  * 3. For each vertex in the graph:
  *    - Combines predictions from all models containing the vertex
- *    - Weights models based on proximity and prediction error
+ *    - Weights models based on proximity and prediction Rf_error
  *    - Produces model-averaged predictions, errors, and scale estimates
  *
  * This approach improves robustness to bandwidth selection and provides better
@@ -100,7 +100,7 @@ Eigen::MatrixXd create_spectral_embedding(
  * @param dist_normalization_factor Factor for normalizing distances in kernel weight calculations
  * @param kernel_type Type of kernel function to use for weighting (e.g., Gaussian, triangular)
  * @param precision Precision threshold for binary search and numerical comparisons
- * @param model_blending_coef Coefficient between 0 and 1 for blending position-based and error-based weights
+ * @param model_blending_coef Coefficient between 0 and 1 for blending position-based and Rf_error-based weights
  * @param verbose Whether to print progress information
  *
  * @return graph_spectral_lowess_result_t Structure containing:
@@ -238,16 +238,16 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
         Rprintf("Eigendecomposition completed. Processing vertices...\n");
     }
 
-    // Define the weight-prediction-error structure similar to agemalo implementation
+    // Define the weight-prediction-Rf_error structure similar to agemalo implementation
     struct wpe_t {
         double weight;       // Kernel weight based on distance
         double prediction;   // Model prediction at this vertex
-        double error;        // LOOCV error estimate
-        double mean_error;   // Mean error of the entire model
+        double Rf_error;        // LOOCV Rf_error estimate
+        double mean_error;   // Mean Rf_error of the entire model
         double bw;           // Bandwidth used for the model
 
         wpe_t(double w, double p, double e, double me, double b)
-            : weight(w), prediction(p), error(e), mean_error(me), bw(b) {}
+            : weight(w), prediction(p), Rf_error(e), mean_error(me), bw(b) {}
     };
 
     // Create a vector to store model information for each vertex
@@ -348,8 +348,8 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
 									  wpe_t temp_wpe(
 										  model.weights[j],       // Weight from kernel function
 										  model.predictions[j],   // Prediction at this vertex
-										  model.errors[j],        // LOOCV error at this vertex
-										  model.mean_error,       // Mean error across the model
+										  model.errors[j],        // LOOCV Rf_error at this vertex
+										  model.mean_error,       // Mean Rf_error across the model
 										  current_bw              // Bandwidth used
 										  );
 
@@ -412,7 +412,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
         // Print summary statistics
         print_vector_quantiles(model_counts, "Models per vertex", {0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0});
 
-        // Print warning for vertices with no models
+        // Print Rf_warning for vertices with no models
         size_t zero_model_count = std::count(model_counts.begin(), model_counts.end(), 0);
         if (zero_model_count > 0) {
             REPORT_WARNING("Warning: %zu vertices (%.1f%%) have no models\n",
@@ -459,7 +459,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
                     effective_weight = model.weight;
                 }
                 else if (model_blending_coef == 1.0) {
-                    // Full mean error influence
+                    // Full mean Rf_error influence
                     effective_weight = model.weight * model.mean_error;
                 }
                 else {
@@ -469,7 +469,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
                 }
 
                 prediction_sum += effective_weight * model.prediction;
-                error_sum += effective_weight * model.error;
+                error_sum += effective_weight * model.Rf_error;
                 scale_sum += effective_weight * model.bw;
                 weight_sum += effective_weight;
             }

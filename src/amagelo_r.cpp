@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <unordered_set>
@@ -77,11 +77,11 @@ extern "C" SEXP S_amagelo(
 ) {
     // --- 1) Unmarshal inputs ---
     if (TYPEOF(s_x) != REALSXP || TYPEOF(s_y) != REALSXP)
-        error("x and y must be real vectors");
+        Rf_error("x and y must be real vectors");
 
     R_xlen_t n = XLENGTH(s_x);
     if (XLENGTH(s_y) != n)
-        error("length(x) must equal length(y)");
+        Rf_error("Rf_length(x) must equal Rf_length(y)");
 
     double* x_ptr = REAL(s_x);
     double* y_ptr = REAL(s_y);
@@ -159,31 +159,31 @@ extern "C" SEXP S_amagelo(
     while (names[n_el]) ++n_el;
 
     int protect_count = 0;
-    SEXP r_list  = PROTECT(allocVector(VECSXP, n_el)); ++protect_count;
-    SEXP r_names = PROTECT(allocVector(STRSXP, n_el)); ++protect_count;
+    SEXP r_list  = PROTECT(Rf_allocVector(VECSXP, n_el)); ++protect_count;
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_el)); ++protect_count;
     for (int i = 0; i < n_el; ++i)
-        SET_STRING_ELT(r_names, i, mkChar(names[i]));
-    setAttrib(r_list, R_NamesSymbol, r_names);
+        SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+    Rf_setAttrib(r_list, R_NamesSymbol, r_names);
 
     // Helpers
     auto vec_real = [&](const std::vector<double>& v) {
-        SEXP ans = PROTECT(allocVector(REALSXP, v.size())); ++protect_count;
+        SEXP ans = PROTECT(Rf_allocVector(REALSXP, v.size())); ++protect_count;
         std::copy(v.begin(), v.end(), REAL(ans));
         return ans;
     };
     auto vec_int = [&](const std::vector<size_t>& v) {
-        SEXP ans = PROTECT(allocVector(INTSXP, v.size())); ++protect_count;
+        SEXP ans = PROTECT(Rf_allocVector(INTSXP, v.size())); ++protect_count;
         for (size_t i = 0; i < v.size(); ++i)
             INTEGER(ans)[i] = (int)(v[i] + 1);  // 1‐based
         return ans;
     };
     auto mat_real = [&](const std::vector<std::vector<double>>& M, R_xlen_t nrow) {
         R_xlen_t ncol = M.size();
-        SEXP ans = PROTECT(allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
+        SEXP ans = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
         double* p = REAL(ans);
         for (R_xlen_t j = 0; j < ncol; ++j) {
             if ((R_xlen_t)M[j].size() != nrow)
-                error("Inconsistent matrix column length");
+                Rf_error("Inconsistent matrix column length");
             for (R_xlen_t i = 0; i < nrow; ++i)
                 p[i + j * nrow] = M[j][i];
         }
@@ -213,7 +213,7 @@ extern "C" SEXP S_amagelo(
         R_xlen_t ncol = 8;
 
         // Allocate matrix
-        SEXP mat = PROTECT(allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
+        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
         double* p = REAL(mat);
 
         // Fill matrix by sorted order
@@ -230,17 +230,17 @@ extern "C" SEXP S_amagelo(
         }
 
         // Add column names
-        SEXP colnames = PROTECT(allocVector(STRSXP, ncol)); ++protect_count;
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol)); ++protect_count;
         const char* colnames_cstr[] = {
             "idx", "x", "y", "is_max", "depth", "depth_idx",
             "rel_depth", "range_rel_depth"
         };
         for (R_xlen_t j = 0; j < ncol; ++j)
-            SET_STRING_ELT(colnames, j, mkChar(colnames_cstr[j]));
+            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
 
-        SEXP dimnames = PROTECT(allocVector(VECSXP, 2)); ++protect_count;
+        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2)); ++protect_count;
         SET_VECTOR_ELT(dimnames, 1, colnames);  // colnames
-        setAttrib(mat, R_DimNamesSymbol, dimnames);
+        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
 
         SET_VECTOR_ELT(r_list, i++, mat);  // local_extrema = 8th element in names[]
     }
@@ -252,7 +252,7 @@ extern "C" SEXP S_amagelo(
         R_xlen_t ncol = 8;
 
         // Allocate matrix
-        SEXP mat = PROTECT(allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
+        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
         double* p = REAL(mat);
 
         // Fill matrix by sorted order
@@ -269,17 +269,17 @@ extern "C" SEXP S_amagelo(
         }
 
         // Add column names
-        SEXP colnames = PROTECT(allocVector(STRSXP, ncol)); ++protect_count;
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol)); ++protect_count;
         const char* colnames_cstr[] = {
             "idx", "x", "y", "is_max", "depth", "depth_idx",
             "rel_depth", "range_rel_depth"
         };
         for (R_xlen_t j = 0; j < ncol; ++j)
-            SET_STRING_ELT(colnames, j, mkChar(colnames_cstr[j]));
+            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
 
-        SEXP dimnames = PROTECT(allocVector(VECSXP, 2)); ++protect_count;
+        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2)); ++protect_count;
         SET_VECTOR_ELT(dimnames, 1, colnames);  // colnames
-        setAttrib(mat, R_DimNamesSymbol, dimnames);
+        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
 
         SET_VECTOR_ELT(r_list, i++, mat);  // local_extrema = 8th element in names[]
     }
@@ -292,7 +292,7 @@ extern "C" SEXP S_amagelo(
     SET_VECTOR_ELT(r_list, i++, vec_real(result.bw_errors));
 
     // opt_bw_idx
-    SEXP sx = PROTECT(allocVector(INTSXP, 1)); ++protect_count;
+    SEXP sx = PROTECT(Rf_allocVector(INTSXP, 1)); ++protect_count;
     INTEGER(sx)[0] = (int)(result.opt_bw_idx + 1); // 1-based
     SET_VECTOR_ELT(r_list, i++, sx);
 

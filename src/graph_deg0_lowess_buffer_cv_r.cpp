@@ -2,7 +2,7 @@
 #include <Rinternals.h>             // For R C API functions
 // Undefine conflicting macros from R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -149,21 +149,21 @@ SEXP S_graph_deg0_lowess_buffer_cv(
 
     // Track protection count
     int protect_count = 0;
-    SEXP r_result = PROTECT(allocVector(VECSXP, n_elements));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     protect_count++;
 
-    SEXP r_result_names = PROTECT(allocVector(STRSXP, n_elements));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
     protect_count++;
 
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(r_result, R_NamesSymbol, r_result_names);
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 
     // Helper function to convert vector to SEXP
     auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
@@ -175,7 +175,7 @@ SEXP S_graph_deg0_lowess_buffer_cv(
 
     // Set bw_predictions (if requested)
     if (with_bw_predictions && !result.bw_predictions.empty()) {
-        SEXP r_bw_predictions = PROTECT(allocVector(VECSXP, result.bw_predictions.size()));
+        SEXP r_bw_predictions = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions.size()));
         protect_count++;
 
         for (size_t i = 0; i < result.bw_predictions.size(); i++) {
@@ -184,7 +184,7 @@ SEXP S_graph_deg0_lowess_buffer_cv(
 
         SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
     } else {
-        SET_VECTOR_ELT(r_result, 1, allocVector(VECSXP, 0)); // Empty list
+        SET_VECTOR_ELT(r_result, 1, Rf_allocVector(VECSXP, 0)); // Empty list
     }
 
     // Set bw_errors
@@ -194,19 +194,19 @@ SEXP S_graph_deg0_lowess_buffer_cv(
     SET_VECTOR_ELT(r_result, 3, vec_to_sexp(result.bws));
 
     // Set opt_bw
-    SEXP r_opt_bw = PROTECT(allocVector(REALSXP, 1));
+    SEXP r_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
     protect_count++;
     REAL(r_opt_bw)[0] = result.opt_bw;
     SET_VECTOR_ELT(r_result, 4, r_opt_bw);
 
     // Set opt_bw_idx
-    SEXP r_opt_bw_idx = PROTECT(allocVector(INTSXP, 1));
+    SEXP r_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
     protect_count++;
     INTEGER(r_opt_bw_idx)[0] = result.opt_bw_idx + 1; // Convert to 1-based for R
     SET_VECTOR_ELT(r_result, 5, r_opt_bw_idx);
 
     // Set buffer_hops_used (new return value)
-    SEXP r_buffer_hops_used = PROTECT(allocVector(INTSXP, 1));
+    SEXP r_buffer_hops_used = PROTECT(Rf_allocVector(INTSXP, 1));
     protect_count++;
     INTEGER(r_buffer_hops_used)[0] = result.buffer_hops_used;
     SET_VECTOR_ELT(r_result, 6, r_buffer_hops_used);

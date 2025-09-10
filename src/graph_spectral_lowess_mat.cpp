@@ -35,7 +35,7 @@ Eigen::MatrixXd create_spectral_embedding(
  * 2. For each vertex, identifies neighboring vertices within varying bandwidths
  * 3. Creates spectral embeddings of these local neighborhoods
  * 4. Fits weighted linear models for each response variable column and selects optimal bandwidth
- * 5. Produces smoothed predictions, error estimates, and local scale information for each column
+ * 5. Produces smoothed predictions, Rf_error estimates, and local scale information for each column
  *
  * This matrix version is more efficient than calling the vector version on each column separately,
  * as it computes the graph Laplacian and eigenvectors only once.
@@ -300,7 +300,7 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
                 }
             }
         }
-        // If all attempts failed, report an error
+        // If all attempts failed, report an Rf_error
         if (!success) {
             REPORT_ERROR("Eigenvalue computation failed after multiple attempts with adjusted parameters.");
         }
@@ -431,7 +431,7 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
                                       n_cleveland_iterations
                                       );
 
-                                  // Store model and error
+                                  // Store model and Rf_error
                                   bandwidth_errors[j][bw_idx] = model.mean_error;
                                   bandwidth_models[j][bw_idx] = std::move(model);
 
@@ -444,7 +444,7 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
 
                               auto response_bandwidth_errors = bandwidth_errors[j];
 
-                              // Find best bandwidth (minimum error)
+                              // Find best bandwidth (minimum Rf_error)
                               std::vector<double>::iterator min_error_it;
                               bool smooth_bandwidth_errors = true;
 
@@ -482,7 +482,7 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
                                   // Find this vertex's prediction in the model
                                   auto it = std::find(best_model.vertices.begin(), best_model.vertices.end(), vertex);
 
-                                  // Store prediction, error, and scale
+                                  // Store prediction, Rf_error, and scale
                                   if (it != best_model.vertices.end()) {
                                       size_t idx = it - best_model.vertices.begin();
                                       result.predictions[j][vertex] = best_model.predictions[idx];

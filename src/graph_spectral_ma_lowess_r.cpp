@@ -2,7 +2,7 @@
 #include <Rinternals.h>
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <chrono>
@@ -133,18 +133,18 @@ SEXP S_graph_spectral_ma_lowess(
 
     // Create list and protect it
     int protect_count = 0;
-    SEXP result = PROTECT(allocVector(VECSXP, n_elements)); protect_count++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
 
-    SEXP result_names = PROTECT(allocVector(STRSXP, n_elements)); protect_count++;
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
     // Set names
     for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, mkChar(names[i]));
+        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
-    setAttrib(result, R_NamesSymbol, result_names);
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Helper function to convert vector to SEXP
     auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(allocVector(REALSXP, vec.size()));
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
@@ -154,7 +154,7 @@ SEXP S_graph_spectral_ma_lowess(
     SET_VECTOR_ELT(result, 1, create_numeric_vector(res.errors)); protect_count++;
     SET_VECTOR_ELT(result, 2, create_numeric_vector(res.scale)); protect_count++;
 
-    SEXP diam = PROTECT(allocVector(REALSXP, 1)); protect_count++;
+    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1)); protect_count++;
     REAL(diam)[0] = graph.graph_diameter;
     SET_VECTOR_ELT(result, 3, diam);
 

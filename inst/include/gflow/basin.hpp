@@ -58,7 +58,7 @@ struct basin_t {
 
 	double delta_rel_span; ///< = rel_max_monotonicity_span - rel_min_monotonicity_span
 
-	size_t rel_size; ///< = (number of basin elements) / length(y)
+	size_t rel_size; ///< = (number of basin elements) / Rf_length(y)
 
     /**
      * @brief Map of boundary vertices sorted by increasing distance from the extremum

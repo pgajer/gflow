@@ -1,9 +1,10 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <unordered_set>
@@ -31,14 +32,14 @@ struct gmagelog_t {
     std::vector<double> candidate_bandwidths;                   ///< Grid of bandwidths tested during optimization
 
     // grid-based members
-    int opt_bw_idx;                                             ///< Index of bandwidth with minimal mean Brier error
+    int opt_bw_idx;                                             ///< Index of bandwidth with minimal mean Brier Rf_error
     std::vector<std::map<int, double>> bw_grid_predictions;      ///< Predictions for each bandwidth in LOOCV or CV estimation
-    std::vector<double> bw_mean_errors;                          ///< Mean Brier error for each candidate bandwidth
+    std::vector<double> bw_mean_errors;                          ///< Mean Brier Rf_error for each candidate bandwidth
 
     std::vector<std::vector<double>> bw_predictions;
     std::vector<double> predictions;                           ///< Predictions at input graph vertices
 
-    std::vector<std::string> warnings;  // Vector to store warning messages
+    std::vector<std::string> warnings;  // Vector to store Rf_warning messages
 
     // Input parameters
     bool fit_quadratic;      ///< Whether quadratic term was included in local models
@@ -86,7 +87,7 @@ gmagelog_t gmagelog(
     double tolerance = 1e-8,
     int start_vertex = 0) {
 
-    bool with_errors = true; // cv_folds > 0; for now we use LOOCV prediction error estimates from eigen_ulogit_fit()
+    bool with_errors = true; // cv_folds > 0; for now we use LOOCV prediction Rf_error estimates from eigen_ulogit_fit()
 
     // Initialize result structure
     gmagelog_t result;
@@ -199,7 +200,7 @@ gmagelog_t gmagelog(
             );
 
         result.local_predictions = fit_result.predictions;
-        result.local_errors = fit_result.loocv_brier_errors; // those are computed at local non-grid points. What if estimated error[grid_v] as fit_result.loocv_brier_errors at the non-grid vertex closest to grid_v?
+        result.local_errors = fit_result.loocv_brier_errors; // those are computed at local non-grid points. What if estimated Rf_error[grid_v] as fit_result.loocv_brier_errors at the non-grid vertex closest to grid_v?
         result.local_grid_predictions = fit_result.predict(result.local_grid_d); // ideally we want here to use local_grid_x not local_grid_d; predicting conditional expectation values at the grid point within the support of the model
 
         int n_nbhd_grid_vertices = result.local_grid_d.size();
@@ -229,9 +230,9 @@ gmagelog_t gmagelog(
         std::vector<int> no_prediction_grid_vertices;
         std::vector<int> no_prediction_data_vertices;
 
-        // Collecting prediction and error data from different models for model averaging and estimation of the mean error for the given bandwidth
+        // Collecting prediction and Rf_error data from different models for model averaging and estimation of the mean Rf_error for the given bandwidth
         std::map<int, std::vector<std::pair<double,double>>> grid_wpreds_map; // grid_wpreds_map[grid_idx][i].first/second = weight/prediction of the i-th local model whose support contain 'grid_idx' grid vertex
-        std::vector<std::vector<std::tuple<double,double,double>>> w_pred_errors(n_data_vertices); // w_pred_errors[i] a vector of {weight,prediction,error} pairs for non-grid vertices within the support of different models
+        std::vector<std::vector<std::tuple<double,double,double>>> w_pred_errors(n_data_vertices); // w_pred_errors[i] a vector of {weight,prediction,Rf_error} pairs for non-grid vertices within the support of different models
         for (int grid_vertex : grid_graph.grid_vertices) {
             ugg_local_nbhd_t nbhd_model = fit_local_model_fn(
                 result.grid_graph,
@@ -312,9 +313,9 @@ gmagelog_t gmagelog(
 
         double sum = 0.0;
         int count = 0;
-        for (double error : errors) {
-            if (!std::isnan(error)) {
-                sum += error;
+        for (double Rf_error : errors) {
+            if (!std::isnan(Rf_error)) {
+                sum += Rf_error;
                 count++;
             }
         }
@@ -373,7 +374,7 @@ gmagelog_t gmagelog(
             );
 
         if (result.graph_diameter <= 0) {
-            error("result.graph_diameter: %f - Invalid graph diameter", result.graph_diameter);
+            Rf_error("result.graph_diameter: %f - Invalid graph diameter", result.graph_diameter);
         }
 
         result.candidate_bandwidths.resize(n_bws);
@@ -408,8 +409,8 @@ gmagelog_t gmagelog(
     // At the end of gmagelog() function, before return:
     if (!result.warnings.empty()) {
         Rprintf("\nWarnings:\n");
-        for (const auto& warning : result.warnings) {
-            Rprintf("  - %s\n", warning.c_str());
+        for (const auto& Rf_warning : result.warnings) {
+            Rprintf("  - %s\n", Rf_warning.c_str());
         }
     }
 

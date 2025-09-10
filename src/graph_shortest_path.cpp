@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>
 #include <queue>
@@ -46,7 +47,7 @@ extern "C" {
  *       number of vertices in the 'vertices' vector, V is the total number of vertices in
  *       the graph, and E is the total number of edges. The space complexity is O(V + k^2).
  *
- * @warning This function assumes that the graph is well-formed and that all vertex
+ * @Rf_warning This function assumes that the graph is well-formed and that all vertex
  *          indices are valid. It does not perform extensive input validation.
  *
  * Example usage:
@@ -128,12 +129,12 @@ std::unique_ptr<std::vector<double>> shortest_path(const std::vector<std::vector
  *
  * @return SEXP A PROTECT'd R matrix (REALSXP) containing the pairwise shortest distances
  *              between the specified vertices. The matrix is square with dimensions
- *              length(s_vertices) x length(s_vertices). The caller (R) is responsible for
+ *              Rf_length(s_vertices) x Rf_length(s_vertices). The caller (R) is responsible for
  *              garbage collecting this object.
  *
  * @throws Rf_error If s_vertices is neither an integer nor a numeric vector.
  *
- * @warning Ensure that s_graph and s_edge_lengths have consistent structures. The function
+ * @Rf_warning Ensure that s_graph and s_edge_lengths have consistent structures. The function
  *          assumes that the input is well-formed and does not perform extensive input validation.
  *
  * @see shortest_path The underlying C++ function that performs the actual computation.
@@ -177,7 +178,7 @@ SEXP S_shortest_path(SEXP s_graph, SEXP s_edge_lengths, SEXP s_vertices) {
             break;
         }
         default:
-            error("s_vertices must be a vector of integers or reals");
+            Rf_error("s_vertices must be a vector of integers or reals");
     }
 
     // Call the C++ shortest_path function
@@ -216,7 +217,7 @@ SEXP S_shortest_path(SEXP s_graph, SEXP s_edge_lengths, SEXP s_vertices) {
  * @note The time complexity of this function is O((V + E) * log(V)), where V is the total
  *       number of vertices in the graph and E is the total number of edges.
  *
- * @warning This function assumes that the graph is well-formed and that all vertex
+ * @Rf_warning This function assumes that the graph is well-formed and that all vertex
  *          indices are valid. It does not perform extensive input validation.
  *
  * Example usage:
@@ -450,7 +451,7 @@ std::vector<int> reconstruct_path(
     std::reverse(path.begin(), path.end());
 
     if (path.front() != start) {
-        error("Path reconstruction failed: path does not start at the specified vertex");
+        Rf_error("Path reconstruction failed: path does not start at the specified vertex");
     }
 
     return path;

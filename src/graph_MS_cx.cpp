@@ -1,8 +1,9 @@
 #include <R.h>
 #include <Rinternals.h>
+
 // Undefine conflicting macros after including R headers
 #undef length
-#undef eval
+#undef Rf_eval
 
 #include <vector>     // for std::vector
 #include <numeric>    // for std::iota
@@ -147,7 +148,7 @@ std::map<int, std::set<int>> count_subgraph_set_components(
  *         - cells: List of lists, where cells[[i]] contains connected components
  *                 of pro-cell i after removing extrema
  *
- * @throws R error if input lengths don't match
+ * @throws R Rf_error if input lengths don't match
  */
 
 /**
@@ -278,7 +279,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     int n_vertices = LENGTH(s_graph);
 
     if (LENGTH(s_Ey) != n_vertices || LENGTH(s_core_graph) != n_vertices) {
-        error("The lengths of s_graph, s_core_graph, and s_Ey must be the same");
+        Rf_error("The lengths of s_graph, s_core_graph, and s_Ey must be the same");
     }
 
     // Convert input data
@@ -294,7 +295,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
     // Allocate R objects
     int nprot = 0;
-    SEXP trajectories = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
 
     // Helper function for valid neighbors (same as before)
     auto get_valid_neighbors = [&](int current_vertex, bool ascending) {
@@ -328,7 +329,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                     Rprintf("%d ", v);
                 }
 
-                error("\nFATAL: No path exists in core_graph between vertices that are neighbors in graph.\n"
+                Rf_error("\nFATAL: No path exists in core_graph between vertices that are neighbors in graph.\n"
                       "This violates the fundamental property of (graph, core_graph) pair where\n"
                       "every edge in graph must have a corresponding path in core_graph.\n"
                       "Please verify the construction of your graph and core_graph.");
@@ -402,7 +403,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"
@@ -449,7 +450,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"
@@ -471,7 +472,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
         if (is_max) {
             // Single vertex trajectory for local maximum
-            SEXP trajectory = PROTECT(allocVector(INTSXP, 1));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
             INTEGER(trajectory)[0] = vertex;
             SET_VECTOR_ELT(trajectories, vertex, trajectory);
             UNPROTECT(1);
@@ -479,7 +480,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
             // Construct full trajectory
             descending_trajectory.erase(descending_trajectory.begin());
             int tr_size = ascending_trajectory.size() + descending_trajectory.size();
-            SEXP trajectory = PROTECT(allocVector(INTSXP, tr_size));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
             int* trajectory_ptr = INTEGER(trajectory);
 
             std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
@@ -510,15 +511,15 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     }
 
     // Convert maps to R lists
-    SEXP lmax_to_lmin       = PROTECT(allocVector(VECSXP, local_maxima_set.size())); nprot++;
-    SEXP lmax_to_lmin_names = PROTECT(allocVector(STRSXP, local_maxima_set.size())); nprot++;
+    SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size())); nprot++;
+    SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size())); nprot++;
 
-    SEXP lmin_to_lmax       = PROTECT(allocVector(VECSXP, local_minima_set.size())); nprot++;
-    SEXP lmin_to_lmax_names = PROTECT(allocVector(STRSXP, local_minima_set.size())); nprot++;
+    SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size())); nprot++;
+    SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size())); nprot++;
 
     // Convert local maxima/minima sets to R vectors
-    SEXP local_maxima = PROTECT(allocVector(INTSXP, local_maxima_set.size())); nprot++;
-    SEXP local_minima = PROTECT(allocVector(INTSXP, local_minima_set.size())); nprot++;
+    SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size())); nprot++;
+    SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size())); nprot++;
 
     // Fill local maxima vector and its connectivity list
     int max_idx = 0;
@@ -526,17 +527,17 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
         INTEGER(local_maxima)[max_idx] = lmax;
 
         const auto& connected_mins = lmax_to_lmin_map[lmax];
-        SEXP mins = PROTECT(allocVector(INTSXP, connected_mins.size()));
+        SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
         std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
         SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
         std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
         const char* lmax_char = lmax_str.c_str();
-        SET_STRING_ELT(lmax_to_lmin_names, max_idx, mkChar(lmax_char));
+        SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
         UNPROTECT(1);
 
         max_idx++;
     }
-    setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+    Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
 
     // Fill local minima vector and its connectivity list
     int min_idx = 0;
@@ -544,17 +545,17 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
         INTEGER(local_minima)[min_idx] = lmin;
 
         const auto& connected_maxs = lmin_to_lmax_map[lmin];
-        SEXP maxs = PROTECT(allocVector(INTSXP, connected_maxs.size()));
+        SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
         std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
         SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
         std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
         const char* lmin_char = lmin_str.c_str();
-        SET_STRING_ELT(lmin_to_lmax_names, min_idx, mkChar(lmin_char));
+        SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
         UNPROTECT(1);
 
         min_idx++;
     }
-    setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+    Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
 
     // Compute MS cells from pro-cells
     for (const auto& [key, procell] : ms_procells) {
@@ -592,29 +593,29 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     }
 
     // Convert pro-cells and cells to R structures
-    SEXP procells = PROTECT(allocVector(VECSXP, ms_procells.size())); nprot++;
-    SEXP cells = PROTECT(allocVector(VECSXP, ms_cells.size())); nprot++;
-    SEXP procell_keys = PROTECT(allocVector(VECSXP, ms_procells.size())); nprot++;
+    SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
+    SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size())); nprot++;
+    SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
 
     int pcell_idx = 0;
     for (const auto& [key, vertices] : ms_procells) {
         // Create key pair
-        SEXP key_pair = PROTECT(allocVector(INTSXP, 2));
+        SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
         INTEGER(key_pair)[0] = key.first;
         INTEGER(key_pair)[1] = key.second;
         SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
 
         // Create vertex set
-        SEXP vertex_set = PROTECT(allocVector(INTSXP, vertices.size()));
+        SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
         std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
         SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
 
         // Create cells list for this pro-cell
         const auto& cell_components = ms_cells[key];
-        SEXP components_list = PROTECT(allocVector(VECSXP, cell_components.size()));
+        SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
 
         for (size_t i = 0; i < cell_components.size(); ++i) {
-            SEXP component = PROTECT(allocVector(INTSXP, cell_components[i].size()));
+            SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
             std::copy(cell_components[i].begin(), cell_components[i].end(),
                      INTEGER(component));
             SET_VECTOR_ELT(components_list, i, component);
@@ -628,7 +629,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     }
 
     // Update result list to include pro-cells and cells
-    SEXP result = PROTECT(allocVector(VECSXP, 8)); nprot++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
     SET_VECTOR_ELT(result, 0, trajectories);
     SET_VECTOR_ELT(result, 1, lmax_to_lmin);
     SET_VECTOR_ELT(result, 2, lmin_to_lmax);
@@ -639,16 +640,16 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     SET_VECTOR_ELT(result, 7, cells);
 
     // Update names
-    SEXP names = PROTECT(allocVector(STRSXP, 8)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("trajectories"));
-    SET_STRING_ELT(names, 1, mkChar("lmax_to_lmin"));
-    SET_STRING_ELT(names, 2, mkChar("lmin_to_lmax"));
-    SET_STRING_ELT(names, 3, mkChar("local_maxima"));
-    SET_STRING_ELT(names, 4, mkChar("local_minima"));
-    SET_STRING_ELT(names, 5, mkChar("procell_keys"));
-    SET_STRING_ELT(names, 6, mkChar("procells"));
-    SET_STRING_ELT(names, 7, mkChar("cells"));
-    setAttrib(result, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
     return result;
@@ -699,7 +700,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 *   - procells: List of integer vectors containing vertices in each pro-cell
 *   - cells: List of lists containing connected components for each pro-cell
 *
-* @throws R error if:
+* @throws R Rf_error if:
 *   - Input lengths don't match
 *   - No valid path exists between neighbor vertices in core_graph
 *   - Non-extremal vertex has no valid ascending/descending neighbors
@@ -721,7 +722,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     int n_vertices = LENGTH(s_graph);
 
     if (LENGTH(s_Ey) != n_vertices || LENGTH(s_hop_list) != n_vertices || LENGTH(s_core_graph) != n_vertices) {
-        error("All input lengths (s_graph, s_hop_list, s_core_graph, s_Ey) must be %d", n_vertices);
+        Rf_error("All input lengths (s_graph, s_hop_list, s_core_graph, s_Ey) must be %d", n_vertices);
     }
 
     // Convert input data
@@ -737,7 +738,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     std::set<int> local_minima_set;
 
     int nprot = 0;
-    SEXP trajectories = PROTECT(allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
     for (int i = 0; i < n_vertices; i++) {
         SET_VECTOR_ELT(trajectories, i, R_NilValue);
     }
@@ -780,7 +781,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
                         if (path.empty()) {
                             Rprintf("\nCRITICAL ERROR: No path exists in core_graph between vertices %d and %d\n",
                                     current_vertex, neighbor);
-                            error("\nFATAL: We found a pair of vertices for which the shortest path connecting them is empty.\n");
+                            Rf_error("\nFATAL: We found a pair of vertices for which the shortest path connecting them is empty.\n");
                         }
                         neighbors.emplace_back(hop_neighbor_info_t{neighbor, hop_dist, diff, path});
                     }
@@ -840,7 +841,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"
@@ -879,7 +880,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"
@@ -898,7 +899,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
 
         if (is_max) {
             // Single vertex trajectory for local maximum
-            SEXP trajectory = PROTECT(allocVector(INTSXP, 1));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
             INTEGER(trajectory)[0] = vertex;
             SET_VECTOR_ELT(trajectories, vertex, trajectory);
             UNPROTECT(1);
@@ -906,7 +907,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
             // Construct full trajectory
             descending_trajectory.erase(descending_trajectory.begin());
             int tr_size = ascending_trajectory.size() + descending_trajectory.size();
-            SEXP trajectory = PROTECT(allocVector(INTSXP, tr_size));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
             int* trajectory_ptr = INTEGER(trajectory);
 
             std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
@@ -937,15 +938,15 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     }
 
     // Convert maps to R lists
-    SEXP lmax_to_lmin       = PROTECT(allocVector(VECSXP, local_maxima_set.size())); nprot++;
-    SEXP lmax_to_lmin_names = PROTECT(allocVector(STRSXP, local_maxima_set.size())); nprot++;
+    SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size())); nprot++;
+    SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size())); nprot++;
 
-    SEXP lmin_to_lmax       = PROTECT(allocVector(VECSXP, local_minima_set.size())); nprot++;
-    SEXP lmin_to_lmax_names = PROTECT(allocVector(STRSXP, local_minima_set.size())); nprot++;
+    SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size())); nprot++;
+    SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size())); nprot++;
 
     // Convert local maxima/minima sets to R vectors
-    SEXP local_maxima = PROTECT(allocVector(INTSXP, local_maxima_set.size())); nprot++;
-    SEXP local_minima = PROTECT(allocVector(INTSXP, local_minima_set.size())); nprot++;
+    SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size())); nprot++;
+    SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size())); nprot++;
 
     // Fill local maxima vector and its connectivity list
     int max_idx = 0;
@@ -953,17 +954,17 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
         INTEGER(local_maxima)[max_idx] = lmax;
 
         const auto& connected_mins = lmax_to_lmin_map[lmax];
-        SEXP mins = PROTECT(allocVector(INTSXP, connected_mins.size()));
+        SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
         std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
         SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
         std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
         const char* lmax_char = lmax_str.c_str();
-        SET_STRING_ELT(lmax_to_lmin_names, max_idx, mkChar(lmax_char));
+        SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
         UNPROTECT(1);
 
         max_idx++;
     }
-    setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+    Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
 
     // Fill local minima vector and its connectivity list
     int min_idx = 0;
@@ -971,17 +972,17 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
         INTEGER(local_minima)[min_idx] = lmin;
 
         const auto& connected_maxs = lmin_to_lmax_map[lmin];
-        SEXP maxs = PROTECT(allocVector(INTSXP, connected_maxs.size()));
+        SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
         std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
         SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
         std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
         const char* lmin_char = lmin_str.c_str();
-        SET_STRING_ELT(lmin_to_lmax_names, min_idx, mkChar(lmin_char));
+        SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
         UNPROTECT(1);
 
         min_idx++;
     }
-    setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+    Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
 
     // Compute MS cells from pro-cells
     for (const auto& [key, procell] : ms_procells) {
@@ -1000,7 +1001,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
             // Find connected components
             auto components = count_subgraph_set_components(core_graph, cell_vertices);
             if (components.empty() && !cell_vertices.empty()) {
-                warning("Empty components found for non-empty cell vertices");
+                Rf_warning("Empty components found for non-empty cell vertices");
             }
             // print_map_to_set(components, "components");
 
@@ -1021,29 +1022,29 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     }
 
     // Convert pro-cells and cells to R structures
-    SEXP procells = PROTECT(allocVector(VECSXP, ms_procells.size())); nprot++;
-    SEXP cells = PROTECT(allocVector(VECSXP, ms_cells.size())); nprot++;
-    SEXP procell_keys = PROTECT(allocVector(VECSXP, ms_procells.size())); nprot++;
+    SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
+    SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size())); nprot++;
+    SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
 
     int pcell_idx = 0;
     for (const auto& [key, vertices] : ms_procells) {
         // Create key pair
-        SEXP key_pair = PROTECT(allocVector(INTSXP, 2));
+        SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
         INTEGER(key_pair)[0] = key.first;
         INTEGER(key_pair)[1] = key.second;
         SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
 
         // Create vertex set
-        SEXP vertex_set = PROTECT(allocVector(INTSXP, vertices.size()));
+        SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
         std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
         SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
 
         // Create cells list for this pro-cell
         const auto& cell_components = ms_cells[key];
-        SEXP components_list = PROTECT(allocVector(VECSXP, cell_components.size()));
+        SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
 
         for (size_t i = 0; i < cell_components.size(); ++i) {
-            SEXP component = PROTECT(allocVector(INTSXP, cell_components[i].size()));
+            SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
             std::copy(cell_components[i].begin(), cell_components[i].end(),
                       INTEGER(component));
             SET_VECTOR_ELT(components_list, i, component);
@@ -1057,7 +1058,7 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     }
 
     // Update result list to include pro-cells and cells
-    SEXP result = PROTECT(allocVector(VECSXP, 8)); nprot++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
     SET_VECTOR_ELT(result, 0, trajectories);
     SET_VECTOR_ELT(result, 1, lmax_to_lmin);
     SET_VECTOR_ELT(result, 2, lmin_to_lmax);
@@ -1068,16 +1069,16 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     SET_VECTOR_ELT(result, 7, cells);
 
     // Update names
-    SEXP names = PROTECT(allocVector(STRSXP, 8)); nprot++;
-    SET_STRING_ELT(names, 0, mkChar("trajectories"));
-    SET_STRING_ELT(names, 1, mkChar("lmax_to_lmin"));
-    SET_STRING_ELT(names, 2, mkChar("lmin_to_lmax"));
-    SET_STRING_ELT(names, 3, mkChar("local_maxima"));
-    SET_STRING_ELT(names, 4, mkChar("local_minima"));
-    SET_STRING_ELT(names, 5, mkChar("procell_keys"));
-    SET_STRING_ELT(names, 6, mkChar("procells"));
-    SET_STRING_ELT(names, 7, mkChar("cells"));
-    setAttrib(result, R_NamesSymbol, names);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
     UNPROTECT(nprot);
     return result;
@@ -1095,13 +1096,13 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
  * @return SEXP List of integer vectors, each containing complete trajectory
  *         (descending path reversed + ascending path) for corresponding vertex
  *
- * @throws R error if input lengths don't match
+ * @throws R Rf_error if input lengths don't match
  */
 SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) {
     int n_vertices = LENGTH(s_graph);
 
     if (LENGTH(s_Ey) != n_vertices || LENGTH(s_core_graph) != n_vertices) {
-        error("The lengths of s_graph, s_core_graph, and s_Ey must be the same");
+        Rf_error("The lengths of s_graph, s_core_graph, and s_Ey must be the same");
     }
 
     // Convert input data
@@ -1109,7 +1110,7 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
     std::vector<std::vector<int>> core_graph = convert_adj_list_from_R(s_core_graph);
     double* Ey = REAL(s_Ey);
 
-    SEXP trajectories = PROTECT(allocVector(VECSXP, n_vertices));
+    SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
     // Helper function to get valid neighbors with their paths
     auto get_valid_neighbors = [&](int current_vertex, bool ascending) {
@@ -1174,7 +1175,7 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
 
         if (is_max) {
             // Single vertex trajectory for local maximum
-            SEXP trajectory = PROTECT(allocVector(INTSXP, 1));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
             INTEGER(trajectory)[0] = vertex;
             SET_VECTOR_ELT(trajectories, vertex, trajectory);
             UNPROTECT(1);
@@ -1182,7 +1183,7 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
             // Construct full trajectory
             descending_trajectory.erase(descending_trajectory.begin());
             int tr_size = ascending_trajectory.size() + descending_trajectory.size();
-            SEXP trajectory = PROTECT(allocVector(INTSXP, tr_size));
+            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
             int* trajectory_ptr = INTEGER(trajectory);
 
             std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
@@ -1380,7 +1381,7 @@ public:
  * - Selects neighbors at minimum hop distance with maximum function value difference
  * - Uses pre-computed shortest paths between selected neighbors
  *
- * @warning The function assumes that:
+ * @Rf_warning The function assumes that:
  * - All vertex indices are valid (0 to adj_list.size()-1)
  * - The graph is undirected
  * - Ey contains valid scalar values for all vertices
@@ -1458,7 +1459,7 @@ MS_complex_t graph_MS_cx(
     // Helper function to add a trajectory and update MS complex
     auto add_trajectory = [&](const std::vector<int>& ascending,
                               const std::vector<int>& descending) {
-        // Construct complete trajectory: descending -> ascending (excluding middle duplicate vertex)
+        // Construct complete trajectory: descending -> ascending (excluding middle Rf_duplicate vertex)
         std::vector<int> complete_trajectory;
         complete_trajectory.reserve(descending.size() + ascending.size() - 1);
 
@@ -1477,13 +1478,13 @@ MS_complex_t graph_MS_cx(
             int local_min = complete_trajectory.front();
             if (!ms_cx.local_minima.count(local_min)) {
                 Rprintf("\nCRITICAL ERROR: The last vertex of a trajectory is not a local minimum - end vertex: %d!\n", local_min);
-                error("\nFATAL: Found a non-miniumu vertex that is the end of a trajectory.\n");
+                Rf_error("\nFATAL: Found a non-miniumu vertex that is the end of a trajectory.\n");
             }
 
             int local_max = complete_trajectory.back();
             if (!ms_cx.local_maxima.count(local_max)) {
                 Rprintf("\nCRITICAL ERROR: The first vertex of a trajectory is not a local maximum - start vertex: %d!\n", local_max);
-                error("\nFATAL: Found a non-maximum vertex that is the start of a trajectory.\n");
+                Rf_error("\nFATAL: Found a non-maximum vertex that is the start of a trajectory.\n");
             }
 
             ms_cx.lmax_to_lmin[local_max].insert(local_min);
@@ -1541,14 +1542,14 @@ MS_complex_t graph_MS_cx(
                         if (path_it == shortest_paths.end()) {
                             Rprintf("\nCRITICAL ERROR: No path found between vertices %d and %d in shortest_paths map\n",
                                     current_vertex, neighbor);
-                            error("\nFATAL: Missing shortest path record in shortest_paths map.\n");
+                            Rf_error("\nFATAL: Missing shortest path record in shortest_paths map.\n");
                         }
 
                         const auto& path = path_it->second;
                         if (path.empty()) {
                             Rprintf("\nCRITICAL ERROR: No path exists in core_adj_list between vertices %d and %d\n",
                                     current_vertex, neighbor);
-                            error("\nFATAL: We found a pair of vertices for which the shortest path connecting them is empty.\n");
+                            Rf_error("\nFATAL: We found a pair of vertices for which the shortest path connecting them is empty.\n");
                         }
 
                         neighbors.emplace_back(hop_neighbor_info_t{
@@ -1590,7 +1591,7 @@ MS_complex_t graph_MS_cx(
         if (is_max) {
             if (!ms_cx.local_maxima.count(vertex)) {
                 Rprintf("\nCRITICAL ERROR: We found a new local maximum - vertex: %d!\n", (int)vertex);
-                error("\nFATAL: Found a non-maximum vertex that appears to be a local maximum.\n");
+                Rf_error("\nFATAL: Found a non-maximum vertex that appears to be a local maximum.\n");
             }
             continue;  // Skip to next vertex
         }
@@ -1598,7 +1599,7 @@ MS_complex_t graph_MS_cx(
         if (is_min) {
             if (!ms_cx.local_minima.count(vertex)) {
                 Rprintf("\nCRITICAL ERROR: We found a new local minimum - vertex: %d!\n", (int)vertex);
-                error("\nFATAL: Found a non-minimum vertex that appears to be a local minimum.\n");
+                Rf_error("\nFATAL: Found a non-minimum vertex that appears to be a local minimum.\n");
             }
             continue;  // Skip to next vertex
         }
@@ -1639,7 +1640,7 @@ MS_complex_t graph_MS_cx(
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"
@@ -1682,7 +1683,7 @@ MS_complex_t graph_MS_cx(
                         Rprintf(" %d(%.6f)", n, Ey[n]);
                     }
 
-                    error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
+                    Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
                           "This violates the properties of a valid Morse function on the graph.\n"
                           "Please verify that:\n"
                           "1. The function values form a valid Morse function\n"

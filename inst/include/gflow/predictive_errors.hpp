@@ -28,6 +28,7 @@ std::pair<double, double> compute_bbcov_error(const std::vector<std::vector<doub
                                               const std::vector<double>& y,
                                               bool use_median);
 
+#if 0
 // in-class member initializers (C++11 and later)
 struct predictive_error_t {
     double bb_cov_errorA = -1;
@@ -38,6 +39,7 @@ struct predictive_error_t {
     std::vector<double> Ey;
     std::pair<std::vector<double>, std::vector<double>> Ey_cri;
 };
+#endif
 
 enum class error_methods_t {
     ALL,
