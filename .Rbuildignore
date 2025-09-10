@@ -1,33 +1,46 @@
+# pkgdown site and docs
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+
+# RStudio project files
 ^.*\.Rproj$
 ^\.Rproj\.user$
+
+# Git and GitHub files
 ^\.git$
 ^\.gitignore$
+^\.github$
+
+# CRAN submission / comments / metadata
 ^README\.md$
 ^NEWS\.md$
 ^cran-comments\.md$
+^CRAN-SUBMISSION\.md$
+
+# Local build / check scripts and logs
 ^gflow_check_results\.txt$
 ^build_and_check\.sh$
-^src/.*\.o$
-^src/.*\.so$
-^src/.*\.dll$
+^check_cran\.sh$
+^check_dev\.R$
+^Makefile$
+^gflow-manual\.pdf$
+
+# Build artefacts
 ^gflow\.Rcheck$
 ^gflow_.*\.tar\.gz$
+
+# OS cruft
 ^\.DS_Store$
+^\.Rapp\.history$
+
+# Temporary / local directories
 ^\.claude$
 ^CLAUDE\.md$
-^check_cran\.sh$
-^\.github$
-^gflow\.Rcheck$
-^check_dev\.R$
-^CRAN-SUBMISSION\.md$
-^Makefile$
-^cran-comments.md$
-^gflow-manual.pdf$
+
+# Object and shared libs
+^src/.*\.(o|so|dll|a)$
+
+# Vignettes (exclude sources if not shipping)
 ^[Vv]ignettes$
 ^inst/doc$
-^\.Rapp\.history$
-^\.DS_Store$
-^src/.*\.(o|so|dll|a)$
