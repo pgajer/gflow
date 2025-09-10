@@ -96,15 +96,16 @@ graph_deg0_lowess_buffer_cv_t set_wgraph_t::graph_deg0_lowess_buffer_cv(
 
     std::vector<std::vector<size_t>> folds;
     if (n_folds >= n_vertices) {  // LOO CV case
-
         n_folds = n_vertices;
         folds.resize(n_folds);
+
         for (size_t vertex = 0; vertex < n_vertices; ++vertex) {
-            folds[vertex] = {vertex};
+            folds[vertex].assign(1, vertex);
         }
+
         // Estimate the diameter of the graph
-        auto [end1, diam] = get_vertex_eccentricity(0);   // Start from vertex 0
-        auto [end2, diameter] = get_vertex_eccentricity(end1);
+        auto [end1, diam]      = get_vertex_eccentricity(0);
+        auto [end2, diameter]  = get_vertex_eccentricity(end1);
         graph_diameter = diameter;
     } else {
         // Create spatially stratified folds

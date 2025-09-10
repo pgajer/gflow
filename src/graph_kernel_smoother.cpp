@@ -141,14 +141,6 @@ graph_kernel_smoother_t set_wgraph_t::graph_kernel_smoother(
     // Cross-validation section
     // -----------------------------------------------------------------------------
 
-    // debugging
-    std::string debug_dir = "/Users/pgajer/current_projects/msr2/debugging_data/";
-    if (!std::filesystem::exists(debug_dir)) {
-        if (!std::filesystem::create_directories(debug_dir)) {
-            REPORT_ERROR("ERROR: Failed to create debug directory: %s\n", debug_dir.c_str());
-        }
-    }
-
     for (size_t fold = 0; fold < folds.size(); ++fold) {
 
         const std::vector<size_t>& test_vertices = folds[fold];
@@ -172,14 +164,6 @@ graph_kernel_smoother_t set_wgraph_t::graph_kernel_smoother(
                 training_set.insert(i);
             }
         }
-
-#if DEBUG__graph_kernel_smoother
-        Rprintf("fold: %zu\n", fold);
-        print_vect(test_vertices, "test_vertices");
-        print_uset(buffer_zone, "buffer_zone");
-        //print_uset(training_set, "training_set");
-        // Rf_error("DEBUGGING\n");
-#endif
 
         // 3. Generate predictions fot the test set vertices only given kernel mean given the current bandwidth
         for (const auto& vertex : test_set) {

@@ -45,13 +45,6 @@ if (!exists(".gflow_state", inherits = FALSE)) {
   if (headless && is.null(.gflow_state$old_rgl_useNULL)) {
     options(rgl.useNULL = TRUE)
   }
-
-  # 2) Lazy S3 registration for rgl's plot3d generic (if/when rgl loads)
-  #    Do NOT force-load rgl here.
-  if (exists("plot3d.gaussian_mixture", envir = asNamespace(pkgname), inherits = FALSE)) {
-    method <- get("plot3d.gaussian_mixture", envir = asNamespace(pkgname))
-    .s3_register("rgl::plot3d", "gaussian_mixture", method)
-  }
 }
 
 .onUnload <- function(libpath) {

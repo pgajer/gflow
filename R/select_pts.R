@@ -34,7 +34,7 @@
 #'   rgl::open3d()
 #'   rgl::plot3d(X)
 #'   # Return coordinates of selected points:
-#'   coords <- points3D.select()
+#'   coords <- select3D.points()
 #'   # Or return (id, index) pairs:
 #'   # idxmat <- select3D.points(value = FALSE)
 #' }
@@ -321,8 +321,8 @@ select3D.points.profiles <- function(X,
   }
 
   # Ensure selection helper exists
-  if (!exists("points3D.select", mode = "function")) {
-    stop("Required helper 'points3D.select()' not found in the package namespace.",
+  if (!exists("select3D.points", mode = "function")) {
+    stop("Required helper 'select3D.points()' not found in the package namespace.",
          call. = FALSE)
   }
 
@@ -341,7 +341,7 @@ select3D.points.profiles <- function(X,
   }
 
   # Perform interactive selection (blocks until user finishes; API provided by your helper)
-  r <- points3D.select(value = FALSE, multiple = selection_callback)
+  r <- select3D.points(value = FALSE, multiple = selection_callback)
 
   if (is.null(r) || NROW(r) == 0) {
     message("No points selected.")
@@ -379,176 +379,3 @@ select3D.points.profiles <- function(X,
   invisible(list(idx = ii, prof = prof))
 }
 
-#' Select Points in 3D Space
-#'
-#' A modified version of \code{rgl::selectpoints3d()} that provides more stable
-#' interaction for selecting points in 3D space.
-#'
-#' @param objects Integer vector of rgl object IDs to consider for selection.
-#'   Defaults to all objects in the current scene.
-#' @param value Logical; if TRUE, return coordinates of selected points.
-#'   If FALSE, return object IDs and indices.
-#' @param closest Logical; if TRUE, pick the closest point when clicking near
-#'   but not directly on a point.
-#' @param multiple Logical or function; if TRUE, allow multiple selections.
-#'   If a function, it's called after each selection with the newly added rows;
-#'   return FALSE from the function to stop.
-#' @param allow_headless Logical; if TRUE, bypasses the headless/null-device
-#'   check (selection still won't work without a real OpenGL window). Default FALSE.
-#' @param ... Additional parameters passed to \code{rgl::select3d()}.
-#'
-#' @return If \code{value = TRUE}, a matrix with columns \code{x,y,z} of selected
-#'   coordinates. If \code{value = FALSE}, an integer matrix with columns
-#'   \code{id,index} identifying selected points.
-#'
-#' @details
-#' This function is **interactive** and requires a real rgl OpenGL device.
-#' On CRAN/rhub or other headless environments (where \code{options(rgl.useNULL)=TRUE})
-#' or in non-interactive sessions (\code{interactive()==FALSE}), the function stops
-#' with an informative error.
-#'
-#' @examples
-#' \dontrun{
-#' if (interactive() && requireNamespace("rgl", quietly = TRUE)) {
-#'   set.seed(1)
-#'   X <- matrix(rnorm(300), ncol = 3)
-#'   rgl::open3d()
-#'   rgl::plot3d(X)
-#'   # Return coordinates of selected points:
-#'   coords <- points3D.select()
-#'   # Or return (id, index) pairs:
-#'   # idxmat <- points3d.select(value = FALSE)
-#' }
-#' }
-#' @export
-points3D.select <- function(objects = NULL,
-                            value = TRUE,
-                            closest = TRUE,
-                            multiple = TRUE,
-                            allow_headless = FALSE,
-                            ...) {
-
-  # rgl gating
-  if (!requireNamespace("rgl", quietly = TRUE)) {
-    stop("This function requires the optional package 'rgl'. ",
-         "Install with install.packages('rgl').", call. = FALSE)
-  }
-  # Interactive selection cannot run headless or in non-interactive sessions
-  if (!isTRUE(allow_headless) && isTRUE(getOption("rgl.useNULL", FALSE))) {
-    stop("Interactive selection is unavailable with the rgl null (off-screen) device. ",
-         "Run in an interactive session with a real rgl window ",
-         "(options(rgl.useNULL)=FALSE).", call. = FALSE)
-  }
-  if (!interactive()) {
-    stop("Interactive selection requires an interactive R session (interactive() == TRUE).",
-         call. = FALSE)
-  }
-  if (rgl::rgl.cur() == 0) {
-    stop("No active rgl device. Plot your 3D points first (e.g., rgl::plot3d(...)).",
-         call. = FALSE)
-  }
-
-  # Default objects to all scene objects
-  if (is.null(objects)) {
-    ids_df <- rgl::ids3d()
-    if (NROW(ids_df) == 0) stop("No objects found in the current rgl scene.", call. = FALSE)
-    objects <- ids_df$id
-  }
-  # Coerce/validate object IDs
-  objects <- as.integer(objects)
-  objects <- objects[is.finite(objects)]
-  if (!length(objects)) stop("'objects' must contain valid rgl object IDs.", call. = FALSE)
-
-  # Validate flags
-  if (!is.logical(value)   || length(value)   != 1L) stop("'value' must be a single logical")
-  if (!is.logical(closest) || length(closest) != 1L) stop("'closest' must be a single logical")
-
-  # Initialize result
-  if (isTRUE(value)) {
-    result <- cbind(x = numeric(0), y = numeric(0), z = numeric(0))
-  } else {
-    result <- cbind(id = integer(0), index = integer(0))
-  }
-
-  first <- TRUE
-  repeat {
-    # Obtain selection function (user draws rectangle/region)
-    f <- rgl::select3d(...)
-    if (is.null(f)) break  # user canceled/finished
-
-    env <- environment(f)
-    have_proj <- is.environment(env) && all(c("proj", "llx", "lly") %in% ls(env, all.names = TRUE))
-
-    prev_n <- nrow(result)
-    picked_any <- FALSE
-    best_dist <- Inf
-
-    for (id in objects) {
-      verts <- try(rgl::rgl.attrib(id, "vertices"), silent = TRUE)
-      if (inherits(verts, "try-error") || !is.matrix(verts) || nrow(verts) == 0L || ncol(verts) < 3L)
-        next
-
-      # Direct hits via selection function
-      hits <- try(f(verts), silent = TRUE)
-      if (inherits(hits, "try-error") || length(hits) != nrow(verts)) hits <- rep(FALSE, nrow(verts))
-
-      if (any(hits)) {
-        picked_any <- TRUE
-        if (isTRUE(value)) {
-          result <- rbind(result, verts[hits, 1:3, drop = FALSE])
-        } else {
-          result <- rbind(result, cbind(id = rep.int(id, sum(hits)), index = which(hits)))
-        }
-        next
-      }
-
-      # If no hits, optionally choose the closest point to the selection
-      if (isTRUE(closest) && have_proj && is.finite(best_dist)) {
-        wc <- try(rgl::rgl.user2window(verts, projection = env$proj), silent = TRUE)
-        if (!inherits(wc, "try-error") && is.matrix(wc) && ncol(wc) >= 3L) {
-          keep <- (wc[, 3] >= 0) & (wc[, 3] <= 1)
-          if (any(keep)) {
-            wx <- wc[keep, 1] - env$llx
-            wy <- wc[keep, 2] - env$lly
-            d  <- sqrt(wx * wx + wy * wy)
-            if (length(d) && min(d) < best_dist) {
-              best_dist <- min(d)
-              imin <- which.min(d)
-              if (isTRUE(value)) {
-                result <- rbind(result, verts[keep, 1:3, drop = FALSE][imin, , drop = FALSE])
-              } else {
-                idx_keep <- which(keep)
-                result <- rbind(result, cbind(id = id, index = idx_keep[imin]))
-              }
-              picked_any <- TRUE
-            }
-          }
-        }
-      }
-    } # for each object
-
-    # Invoke callback for multiple=function
-    if (is.function(multiple) && nrow(result) > prev_n) {
-      new_rows <- result[(prev_n + 1):nrow(result), , drop = FALSE]
-      cont <- try(multiple(new_rows), silent = TRUE)
-      if (inherits(cont, "try-error") || isFALSE(cont)) {
-        result <- result[seq_len(prev_n), , drop = FALSE]
-        break
-      }
-    }
-
-    # Single selection mode: stop after first pick
-    if (!is.function(multiple) && !isTRUE(multiple)) break
-
-    # If user didn’t pick anything this round, allow trying again; otherwise loop
-    first <- FALSE
-  }
-
-  # Ensure integer columns for id/index form
-  if (!isTRUE(value) && nrow(result)) {
-    result[, "id"]    <- as.integer(result[, "id"])
-    result[, "index"] <- as.integer(result[, "index"])
-  }
-
-  result
-}

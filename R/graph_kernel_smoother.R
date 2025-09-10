@@ -99,6 +99,7 @@
 #'   }
 #'
 #' @examples
+#' \dontrun{
 #' n.pts <- 100
 #' gm <- generate.1d.gaussian.mixture(
 #'     n.points = n.pts,
@@ -159,6 +160,7 @@
 #' plot(gm$x, gm$y, type = "l", las = 1, ylim = range(y), col = "red")
 #' points(x, y)
 #' lines(x, gks.res$predictions, col = "blue")
+#' }
 #'
 #' @export
 graph.kernel.smoother <- function(
