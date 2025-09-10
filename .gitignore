@@ -1,0 +1,53 @@
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+
+# RStudio files
+.Rproj.user/
+*.Rproj
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# CRAN build/check artefacts
+*.tar.gz
+*.Rcheck/
+
+# Compiled shared objects and intermediates
+src/*.o
+src/*.so
+src/*.dll
+src/*.a
+
+# Vignettes build outputs
+inst/doc/
+vignettes/*.html
+vignettes/*.pdf
+vignettes/*.tex
+vignettes/*.log
+vignettes/*.out
+vignettes/*.toc
+vignettes/*.bbl
+vignettes/*.blg
+
+# Test artefacts
+tests/testthat.Rout*
+.Rout
+
+# Coverage artefacts
+coverage/
+covr.R
+
+# Revdep checks
+revdep/
+
+# Local or temporary files
+*.swp
+*.tmp
+*.bak
+*~
+.claude/
