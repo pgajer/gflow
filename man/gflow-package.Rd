@@ -160,6 +160,23 @@ variants for positive-valued responses
 Gajer, P. and Ravel, J. (2025). The Geometry of Machine Learning Models.
 \emph{arXiv preprint} arXiv:2501.01234.
 \url{https://arxiv.org/abs/2501.01234}
+
+Gerber, S., Rübel, O., Bremer, P. T., Pascucci, V., & Whitaker, R. T. (2013).
+Morse–smale regression. Journal of Computational and Graphical Statistics,
+22(1), 193-214.
+
+Chen, Y. C., Genovese, C. R., & Wasserman, L. (2017). Statistical inference
+using the Morse-Smale complex.
+
+Gerber, S., & Potter, K. (2012). Data analysis with the morse-smale complex:
+The msr package for r. Journal of Statistical Software, 50, 1-22.
+
+Farrelly, C. M. (2017). Extensions of morse-smale regression with application
+to actuarial science. arXiv preprint arXiv:1708.05712.
+
+Gerber, S., Bremer, P. T., Pascucci, V., & Whitaker, R. (2010). Visual
+exploration of high dimensional scalar functions. IEEE transactions on
+visualization and computer graphics, 16(6), 1271-1280.
 }
 \seealso{
 Useful links:

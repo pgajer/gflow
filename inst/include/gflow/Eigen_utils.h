@@ -10,7 +10,8 @@
 #undef match
 #endif
 
-#include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 
 // Undefine conflicting macros after including R headers
 #undef length

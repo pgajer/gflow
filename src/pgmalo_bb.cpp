@@ -1,5 +1,6 @@
 #ifdef _OPENMP
-    #include <omp.h>
+//#include <omp.h>
+#include "omp_compat.h"
 #endif
 
 // Undefine R's match macro if it exists
@@ -16,7 +17,6 @@
 #include <execution>
 #include <atomic>
 #include <mutex>
-#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
@@ -604,7 +604,9 @@ std::pair<std::vector<double>, std::vector<double>> pgmalo_with_bb_weights(
                 d_path[i] /= max_dist;
             }
 
-            #pragma omp critical(kernel_init)
+            #ifdef _OPENMP
+#pragma omp critical(kernel_init)
+            #endif
             {
                 initialize_kernel(ikernel, 1.0);
             }

@@ -1,5 +1,6 @@
 #ifdef _OPENMP
-    #include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 #endif
 
 // Undefine R's match macro if it exists
@@ -17,7 +18,6 @@
 #include <execution>
 #include <atomic>
 #include <mutex>
-#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
@@ -228,7 +228,9 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
     std::vector<double> d_path;
     std::vector<std::vector<double>> w_list;
 
-    #pragma omp critical(kernel_init)
+    #ifdef _OPENMP
+#pragma omp critical(kernel_init)
+    #endif
     {
         initialize_kernel(ikernel, 1.0);
     }
@@ -595,7 +597,9 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
                 d_path[i] /= max_dist;
             }
 
-            #pragma omp critical(kernel_init)
+            #ifdef _OPENMP
+#pragma omp critical(kernel_init)
+            #endif
             {
                 initialize_kernel(ikernel, 1.0);
             }
@@ -882,7 +886,9 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
         }
 
         results.true_errors.resize(n_vertices);
-        #pragma omp parallel for if(n_cores > 1) schedule(dynamic)
+        #ifdef _OPENMP
+#pragma omp parallel for if(n_cores > 1) schedule(dynamic)
+        #endif
         for (int i = 0; i < n_vertices; i++) {
             results.true_errors[i] = std::abs(y_true[i] - results.predictions[i]);
         }

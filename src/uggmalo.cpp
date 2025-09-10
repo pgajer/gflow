@@ -21,7 +21,9 @@
 #include <mutex>
 #include <random>     // for std::mt19937
 #include <chrono>
-#include <omp.h>
+
+// #include <omp.h>
+#include "omp_compat.h"
 
 #include "edge_weights.hpp"
 #include "ulm.hpp"

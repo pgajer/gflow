@@ -7,13 +7,12 @@
 #undef match
 #endif
 
-#include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 
 // Undefine conflicting macros after including R headers
 #undef length
 #undef eval
-
-#include <omp.h>
 
 #include <vector>
 #include <queue>
@@ -383,7 +382,9 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
             int fold_size = n_vertices / n_CV_folds;
 
             // The main parallel cross-validation loop
+            #ifdef _OPENMP
             #pragma omp parallel
+            #endif
             {
                 int thread_id = omp_get_thread_num();
                 std::vector<double>& local_kernel_weights = thread_kernel_weights[thread_id];
@@ -398,10 +399,14 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
                 std::mt19937 local_rng(seed);
                 std::uniform_int_distribution<int> local_uni(0, n_vertices - 1);
 
-                #pragma omp for schedule(dynamic)
+                #ifdef _OPENMP
+#pragma omp for schedule(dynamic)
+                #endif
                 for (int cv = 0; cv < n_CVs; ++cv) {
                     if (verbose) {
-                        #pragma omp critical
+                        #ifdef _OPENMP
+#pragma omp critical
+                        #endif
                         {
                             Rprintf("\rcv step: %d", cv);
                         }

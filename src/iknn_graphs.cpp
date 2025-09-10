@@ -29,7 +29,8 @@
 */
 
 #undef match
-#include <omp.h>
+//#include <omp.h>
+#include "omp_compat.h"
 #define match Rf_match
 
 #include <R.h>
@@ -1453,13 +1454,17 @@ SEXP S_create_iknn_graphs(
 #endif
 
 // Parallel region
+    #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic)
+    #endif
     for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
         int k = kmin + k_idx;
 
         // Report progress - use critical section to avoid output interleaving
         if (verbose) {
+            #ifdef _OPENMP
 #pragma omp critical
+            #endif
             {
                 REprintf("\rProcessing k=%d (%d of %d) - %d%%",
                          k, k_idx+1, kmax-kmin+1,

@@ -29,7 +29,8 @@
 #include <mutex>
 #include <random>     // For std::mt19937
 #include <chrono>
-#include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 
 #include "uniform_grid_graph.hpp"
 #include "ulm.hpp"

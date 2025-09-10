@@ -1,5 +1,6 @@
 #ifdef _OPENMP
-    #include <omp.h>
+//#include <omp.h>
+#include "omp_compat.h"
 #endif
 
 // Undefine R's match macro if it exists
@@ -17,7 +18,6 @@
 #include <execution>
 #include <atomic>
 #include <mutex>
-#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>

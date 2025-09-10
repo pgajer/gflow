@@ -18,7 +18,8 @@
 #include <chrono>
 #include <cmath>
 
-#include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 
 #include "sampling.h" // for C_runif_simplex()
 #include "msr2.h"
@@ -1040,7 +1041,9 @@ std::vector<std::vector<double>> graph_kmean_bb(
         C_runif_simplex(&n_vertices, all_w[i].data());   // sequential, safe
     }
 
+    #ifdef _OPENMP
 #pragma omp parallel for if(n_cores > 1) schedule(static)
+    #endif
     for (int iboot = 0; iboot < n_bb; ++iboot) {
         bb_Ey[iboot] = graph_kmean_with_bb_weigths(
             graph, edge_lengths, all_w[iboot], y, ikernel, dist_normalization_factor, epsilon);

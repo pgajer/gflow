@@ -31,7 +31,8 @@
 #include <numeric>         // for std::iota
 #include <execution>       // for std::execution::seq, std::execution::par_unseq
 #include <thread>          // for std::thread::hardware_concurrency()
-#include <omp.h>           // for omp_get_thread_num()
+//#include <omp.h>           // for omp_get_thread_num()
+#include "omp_compat.h"
 #include <cstddef>         // for size_t
 
 #include "wasserstein_perm_test.hpp"  // Contains vertex_wasserstein_perm_test_results_t definition and C_wasserstein_distance_1D

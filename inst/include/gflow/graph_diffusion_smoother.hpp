@@ -9,7 +9,8 @@
 #undef match
 #endif
 
-#include <omp.h>
+// #include <omp.h>
+#include "omp_compat.h"
 
 #include <vector>
 #include <memory>

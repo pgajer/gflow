@@ -23,7 +23,7 @@ Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-SystemRequirements: C++17, GNU make, OpenMP
+SystemRequirements: C++17, GNU make, OpenMP (optional)
 Depends:
     R (>= 3.5.0)
 Imports:

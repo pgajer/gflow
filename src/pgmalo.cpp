@@ -4,12 +4,14 @@
 #undef length
 #undef eval
 
+// #include <omp.h>
+#include "omp_compat.h"
+
 #include <future>
 #include <mutex>
 #include <execution>
 #include <atomic>
 #include <mutex>
-#include <omp.h>
 #include <vector>
 #include <algorithm> // for std::max
 #include <random>
