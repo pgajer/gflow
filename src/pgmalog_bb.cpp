@@ -75,7 +75,7 @@ std::vector<std::vector<double>> pgmalog_bb(const path_graph_plm_t& path_graph,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    std::for_each(GFLOW_EXEC_POLICY,
+    gflow::for_each(GFLOW_EXEC_POLICY,
                   bb_indices.begin(),
                   bb_indices.end(),
                   [&](int iboot) {

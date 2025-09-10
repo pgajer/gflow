@@ -322,7 +322,7 @@ std::vector<double> pgmalog_cv_parallel(
     std::vector<int> cv_indices(n_CVs);
     std::iota(cv_indices.begin(), cv_indices.end(), 0);
 
-    std::for_each(GFLOW_EXEC_POLICY,
+    gflow::for_each(GFLOW_EXEC_POLICY,
                   cv_indices.begin(),
                   cv_indices.end(),
                   [&](int cv) {

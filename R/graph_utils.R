@@ -1965,110 +1965,112 @@ generate.graph.gaussian.mixture <- function(
 
 #' Visualize a Function on a Grid Graph
 #'
-#' @description
-#' Creates visualizations of a function defined on a grid graph, including
-#' 2D heatmap, 3D surface plot (if rgl is available), and contour plot.
+#' Creates multiple visualizations of a function defined on a grid graph including
+#' heatmap with contours, 3D perspective plot, and optionally an interactive 3D plot.
 #'
-#' @param grid.size Size of the grid (grid.size x grid.size)
-#' @param z Function values on the grid
-#' @param centers Optional vector of center vertex indices to highlight
-#' @param title Plot title
+#' @param grid.size Integer; size of the square grid (grid.size x grid.size).
+#' @param z Numeric vector; function values at each vertex in row-wise order (length = grid.size^2).
+#' @param centers Optional integer vector; vertex indices to highlight (e.g., peaks).
+#' @param title Character string; title for the plots (default: "Function on Grid Graph").
 #'
-#' @return Invisibly returns the function values
+#' @return Invisibly returns the input \code{z}.
+#'
+#' @details
+#' Left panel: heatmap with contour lines (and optional centers).
+#' Right panel: 3D perspective plot (base graphics).
+#' If \pkg{rgl} is available, a separate off-screen rgl window is opened to render a 3D point view.
 #'
 #' @examples
 #' \dontrun{
-#' # Create a grid graph
 #' grid.size <- 20
-#' grid <- create.grid.graph(grid.size, grid.size)
+#' x <- rep(1:grid.size, grid.size) / grid.size
+#' y <- rep(1:grid.size, each = grid.size) / grid.size
+#' z <- exp(-10*((x-0.3)^2 + (y-0.3)^2)) + 0.5*exp(-8*((x-0.7)^2 + (y-0.6)^2))
+#' centers <- which(z > 0.9)
+#' visualize.grid.function(grid.size, z, centers)
 #'
-#' # Generate a mixture of Gaussians
-#' centers <- c(1, grid.size * grid.size / 2 + grid.size / 2)
-#' y <- generate.graph.gaussian.mixture(
-#'   grid$adj.list,
-#'   grid$weight.list,
-#'   centers
-#' )
-#'
-#' # Visualize the function
-#' visualize.grid.function(grid.size, y, centers)
+#' if (requireNamespace("rgl", quietly = TRUE)) {
+#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'   visualize.grid.function(grid.size, z, centers)
 #' }
-#'
+#' }
 #' @export
 visualize.grid.function <- function(grid.size, z, centers = NULL, title = "Function on Grid Graph") {
-  # Generate coordinates
-  x_coords <- rep(1:grid.size, grid.size) / grid.size
-  y_coords <- rep(1:grid.size, each=grid.size) / grid.size
+  ## ---- Validation -----------------------------------------------------------
+  if (length(grid.size) != 1L || !is.numeric(grid.size) || grid.size < 2 || !is.finite(grid.size)) {
+    stop("'grid.size' must be a single finite numeric value >= 2", call. = FALSE)
+  }
+  grid.size <- as.integer(grid.size)
+  n_vertices <- grid.size^2L
 
-  # Convert vertex indices to 2D coordinates
-  vertex_to_coords <- function(vertices) {
-    x <- (vertices - 1) %% grid.size + 1
-    y <- ceiling(vertices / grid.size)
-    return(list(x = x / grid.size, y = y / grid.size))
+  if (!is.numeric(z) || length(z) != n_vertices) {
+    stop(sprintf("'z' must be a numeric vector of length grid.size^2 (= %d)", n_vertices), call. = FALSE)
+  }
+  if (any(!is.finite(z))) {
+    stop("'z' contains non-finite values; please remove or impute NA/Inf/NaN", call. = FALSE)
   }
 
-  # Get center coordinates if provided
   if (!is.null(centers)) {
-    center_coords <- vertex_to_coords(centers)
+    centers <- as.integer(centers)
+    centers <- centers[is.finite(centers)]
+    centers <- centers[centers >= 1L & centers <= n_vertices]
+    if (!length(centers)) centers <- NULL
   }
 
-  # Create visualization layout
-  layout(matrix(c(1, 2), 1, 2))
+  ## ---- Coordinates & helpers -----------------------------------------------
+  x_coords <- rep(seq_len(grid.size), grid.size) / grid.size
+  y_coords <- rep(seq_len(grid.size), each = grid.size) / grid.size
 
-  # Plot 1: Heatmap with contours
-  par(mar = c(4, 4, 2, 1))
+  vertex_to_coords <- function(vertices) {
+    xv <- (vertices - 1L) %% grid.size + 1L
+    yv <- ceiling(vertices / grid.size)
+    list(x = xv / grid.size, y = yv / grid.size)
+  }
 
-  # Reshape z for image
-  z_matrix <- matrix(z, nrow = grid.size, byrow = FALSE)
+  center_coords <- if (!is.null(centers)) vertex_to_coords(centers) else NULL
 
-  # Create heatmap
-  image(
-    1:grid.size / grid.size,
-    1:grid.size / grid.size,
-    z_matrix,
-    col = heat.colors(100),
+  ## ---- Set layout and par safely -------------------------------------------
+  old_par <- graphics::par(no.readonly = TRUE)
+  on.exit(try(graphics::par(old_par), silent = TRUE), add = TRUE)
+
+  graphics::layout(matrix(c(1, 2), nrow = 1L, ncol = 2L))
+  on.exit(try(graphics::layout(1), silent = TRUE), add = TRUE)
+
+  ## ---- Plot 1: Heatmap + contours ------------------------------------------
+  graphics::par(mar = c(4, 4, 2, 1))
+  z_matrix <- matrix(z, nrow = grid.size, ncol = grid.size, byrow = FALSE)
+
+  pal2d <- grDevices::hcl.colors(100, palette = "YlOrRd")
+  graphics::image(
+    x = seq_len(grid.size) / grid.size,
+    y = seq_len(grid.size) / grid.size,
+    z = z_matrix,
+    col = pal2d,
     main = title,
     xlab = "X", ylab = "Y"
   )
 
-  # Add contour lines
-  contour(
-    1:grid.size / grid.size,
-    1:grid.size / grid.size,
-    z_matrix,
+  graphics::contour(
+    x = seq_len(grid.size) / grid.size,
+    y = seq_len(grid.size) / grid.size,
+    z = z_matrix,
     add = TRUE,
     col = "black"
   )
 
-  # Add center points if provided
   if (!is.null(centers)) {
-    points(
-      center_coords$x,
-      center_coords$y,
-      pch = 19,
-      col = "blue",
-      cex = 1.5
-    )
-
-    # Add labels
-    text(
-      center_coords$x,
-      center_coords$y,
-      labels = paste("Center", seq_along(centers)),
-      pos = 3,
-      offset = 0.7,
-      cex = 0.8
-    )
+    graphics::points(center_coords$x, center_coords$y, pch = 19, col = "blue", cex = 1.5)
+    graphics::text(center_coords$x, center_coords$y,
+                   labels = paste("Center", seq_along(centers)),
+                   pos = 3, offset = 0.7, cex = 0.8)
   }
 
-  # Plot 2: 3D perspective plot
-  par(mar = c(4, 4, 2, 1))
-
-  # Create perspective plot
-  persp(
-    1:grid.size / grid.size,
-    1:grid.size / grid.size,
-    z_matrix,
+  ## ---- Plot 2: Base-graphics 3D perspective -------------------------------
+  graphics::par(mar = c(4, 4, 2, 1))
+  graphics::persp(
+    x = seq_len(grid.size) / grid.size,
+    y = seq_len(grid.size) / grid.size,
+    z = z_matrix,
     theta = 30, phi = 30,
     expand = 0.7,
     col = "lightblue",
@@ -2077,45 +2079,39 @@ visualize.grid.function <- function(grid.size, z, centers = NULL, title = "Funct
     xlab = "X", ylab = "Y", zlab = "Value"
   )
 
-  # Reset layout
-  layout(1)
-
-  # 3D visualization if rgl is available
+  ## ---- Optional rgl 3D view (headless-safe) --------------------------------
   if (requireNamespace("rgl", quietly = TRUE)) {
-    # Open 3D device
-    rgl::open3d()
+    old_rgl <- options(rgl.useNULL = TRUE)
+    on.exit(options(old_rgl), add = TRUE)
 
-    # Plot surface
+    rgl::open3d()
+    on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+
+    pal3d <- grDevices::hcl.colors(length(z), palette = "Spectral")
     rgl::plot3d(
       x_coords, y_coords, z,
-      col = heat.colors(length(z))[rank(z)],
+      col = pal3d[rank(z, ties.method = "average")],
       size = 3,
       xlab = "X", ylab = "Y", zlab = "Z",
-      main = title,
       type = "p"
     )
+    rgl::title3d(main = title)
 
-    # Add center points if provided
     if (!is.null(centers)) {
       for (i in seq_along(centers)) {
-        # Get center coordinates and value
-        center_x <- center_coords$x[i]
-        center_y <- center_coords$y[i]
-        center_z <- z[centers[i]]
-
-        # Draw sphere at center
         rgl::spheres3d(
-          center_x, center_y, center_z,
+          center_coords$x[i], center_coords$y[i], z[centers[i]],
           radius = 0.02,
           color = "blue"
         )
       }
     }
+
+    rgl::axes3d()
   }
 
   invisible(z)
 }
-
 
 #' Create a Random Graph
 #'

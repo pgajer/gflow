@@ -2,41 +2,63 @@
 % Please edit documentation in R/plot_utils.R
 \name{show.cltrs}
 \alias{show.cltrs}
-\title{Display Cluster Labels in 3D Space}
+\title{Display Cluster Labels in 3D Space (Headless/CRAN-safe)}
 \usage{
-show.cltrs(X, cltr, cex = 1, adj = c(0.5, 1))
+show.cltrs(
+  X,
+  cltr,
+  cex = 1,
+  adj = c(0.5, 1),
+  show.plot = TRUE,
+  open_new = FALSE
+)
 }
 \arguments{
-\item{X}{A matrix or data.frame representing a set of points in 3D space.}
+\item{X}{A matrix or data.frame with 3 columns representing 3D coordinates.}
 
-\item{cltr}{A vector of cluster assignments for the rows of X.}
+\item{cltr}{A vector of cluster assignments for the rows of \code{X}.
+\code{NA} entries are ignored.}
 
 \item{cex}{Character expansion factor for cluster labels.}
 
-\item{adj}{Adjustment values for label positioning.}
+\item{adj}{Adjustment values for label positioning (passed to \code{rgl::text3d}).}
+
+\item{show.plot}{Logical; if \code{TRUE}, add labels to the current rgl scene
+(off-screen in headless CI). If rgl is not installed, plotting is skipped
+with a warning and centers are still returned.}
+
+\item{open_new}{Logical; if \code{TRUE}, open a new rgl device for the labels
+and close it on exit. Defaults to \code{FALSE} so callers can layer on an
+existing scene.}
 }
 \value{
-Invisibly returns a matrix of cluster centers with row names as cluster labels.
+Invisibly returns a numeric matrix of size \eqn{K \times 3} containing
+per-cluster centers (component-wise medians when cluster size \eqn{\ge 2},
+or the lone point when size \eqn{=1}). Row names are the cluster labels.
 }
 \description{
-Shows cluster labels at the median center of each cluster in 3D space
+Shows cluster labels at the median center of each cluster in 3D space.
+Computes centers regardless of plotting availability; plotting is optional.
 }
 \details{
-This function calculates the median center of each cluster and displays the cluster
-label at that position. For clusters with only one member, the label is placed at
-the point itself.
+This function is compute-first and plotting-optional. It is safe on CRAN/rhub
+and in headless environments. When \code{show.plot = TRUE}, it renders
+off-screen by setting \code{options(rgl.useNULL = TRUE)} locally. It never
+requires \pkg{rgl} unless plotting is requested.
 }
 \examples{
-\dontrun{
-# Generate sample data
+# Minimal example; runs even without rgl (no plotting).
+set.seed(1)
 X <- matrix(rnorm(300), ncol = 3)
-cltr <- sample(1:5, 100, replace = TRUE)
+cl <- sample(1:5, nrow(X), replace = TRUE)
+centers <- show.cltrs(X, cl, show.plot = FALSE)
 
-# Plot points first
-plot3D.plain(X)
-
-# Add cluster labels
-show.cltrs(X, cltr)
+# If rgl is available, render off-screen safely:
+if (requireNamespace("rgl", quietly = TRUE)) {
+  old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+  # Suppose you've already drawn points via your helper:
+  # plot3D.plain(X)
+  show.cltrs(X, cl, cex = 1.1, adj = c(0.5, 1), show.plot = TRUE)
 }
 
 }

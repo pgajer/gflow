@@ -2,7 +2,7 @@
 % Please edit documentation in R/graphics.R
 \name{plot.ggraph}
 \alias{plot.ggraph}
-\title{Plot method for ggraph objects}
+\title{Plot a ggraph Object}
 \usage{
 \method{plot}{ggraph}(
   x,
@@ -24,61 +24,56 @@
 )
 }
 \arguments{
-\item{x}{A ggraph object created by ggraph()}
+\item{x}{A ggraph object}
 
-\item{y}{A function over vertices of the graph (optional)}
+\item{y}{Optional numeric vector over vertices (used for color coding if provided)}
 
-\item{dim}{The embedding dimension. Possible values 2 or 3. Default 2.}
+\item{dim}{Embedding dimension: 2 or 3 (default 2)}
 
-\item{vertex.size}{Numeric scalar specifying the size of the vertices in the plot}
+\item{vertex.size}{Numeric scalar for 2D point size (igraph)}
 
-\item{vertex.radius}{Numeric scalar specifying the radius of spheres in 3D}
+\item{vertex.radius}{Numeric sphere radius multiplier for 3D (combined with vertex.size)}
 
-\item{vertex.label}{Character vector specifying the labels for vertices}
+\item{vertex.label}{Character vector of vertex labels}
 
-\item{layout}{Layout algorithm name (see details)}
+\item{layout}{Layout algorithm name (e.g., "kk", "fr", "in_circle", "lgl", ...)}
 
-\item{vertex.color}{Controls the color of vertices}
+\item{vertex.color}{Optional vector of colors for vertices (overrides y if provided)}
 
-\item{draw.edges}{Set to TRUE to draw edges in 3d}
+\item{draw.edges}{Logical; draw edges in 3D}
 
-\item{legend.cex}{Size of legend window when y is not NULL}
+\item{legend.cex}{Legend size when y is not NULL}
 
-\item{legend.position}{Character string specifying legend position}
+\item{legend.position}{Legend position for 2D (e.g., "topleft")}
 
-\item{quantize.method}{Method to quantize a variable: "uniform" or "quantile"}
+\item{quantize.method}{Method to quantize y: "uniform" or "quantile"}
 
-\item{label.cex}{Size of vertex labels in 3D plots}
+\item{label.cex}{Size of vertex labels in 3D}
 
-\item{label.adj}{Horizontal and vertical adjustment of labels}
+\item{label.adj}{Horizontal/vertical adjustment of labels (3D)}
 
-\item{use.saved.layout}{Layout matrix from previous call}
+\item{use.saved.layout}{Optional matrix of coordinates to reuse}
 
-\item{...}{Additional parameters passed to igraph plot}
+\item{...}{Additional parameters passed to igraph plotting in 2D}
 }
 \value{
-Invisibly returns a list containing graph, layout, and color information
+Invisibly returns a list: graph, layout, vertex.color, and y-color info if used
 }
 \description{
-Plot method for ggraph objects
+Creates a visualization of a ggraph object in either 2D or 3D.
 }
 \examples{
 \dontrun{
-# Create a ggraph object
 adj_list <- list(c(2, 3), c(1, 3), c(1, 2))
 weight_list <- list(c(1, 1), c(1, 1), c(1, 1))
 g <- ggraph(adj_list, weight_list)
-
-# Plot with default settings
 plot.res <- plot(g)
-
-# Plot with custom vertex size and labels
 plot(g, vertex.size = 5, vertex.label = c("A", "B", "C"))
-
-# Plot with a different layout
 plot(g, layout = "in_circle")
-
-# Recreate the same layout
 plot(g, vertex.size = 2, use.saved.layout = plot.res$layout)
+if (requireNamespace("rgl", quietly = TRUE)) {
+  old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+  plot(g, dim = 3)
+}
 }
 }

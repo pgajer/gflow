@@ -262,12 +262,11 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
     std::atomic<size_t> progress_counter{0};
     const size_t progress_step = std::max(size_t(1), n_vertices / 20);
 
-	// First, process all model centers to create models
+    // First, process all model centers to create models
     auto model_center_processing_start = std::chrono::steady_clock::now();
     std::vector<std::unordered_map<size_t, std::vector<wpe_t>>> thread_local_results(model_centers.size());
 
-    //std::for_each(std::execution::par, model_centers.begin(), model_centers.end(),
-    std::for_each(GFLOW_EXEC_POLICY, model_centers.begin(), model_centers.end(),
+    gflow::for_each(GFLOW_EXEC_POLICY, model_centers.begin(), model_centers.end(),
                   [&](size_t i) {
                       size_t center_vertex = model_centers[i];
                       try {
@@ -432,7 +431,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_ma_lowess(
     std::iota(all_vertices.begin(), all_vertices.end(), 0);
 
     // Process each vertex in parallel
-    std::for_each(GFLOW_EXEC_POLICY, all_vertices.begin(), all_vertices.end(),
+    gflow::for_each(GFLOW_EXEC_POLICY, all_vertices.begin(), all_vertices.end(),
         [&](size_t vertex) {
             const auto& models = vertex_models[vertex];
 

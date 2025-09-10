@@ -1306,7 +1306,7 @@ pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
         }
     } termination_state;
 
-    std::for_each(GFLOW_EXEC_POLICY, h_values.begin(), h_values.end(),
+    gflow::for_each(GFLOW_EXEC_POLICY, h_values.begin(), h_values.end(),
         [&](int h) {
             int i = (h - h_min) / 2;  // Calculate index based on h value
 

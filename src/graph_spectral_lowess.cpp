@@ -14,7 +14,7 @@
 //#include <filesystem>
 //#include <fstream>
 #include "cpp_utils.hpp"                // For debugging and elapsed.time
-
+#include "exec_policy.hpp"
 #include "graph_spectral_lowess.hpp"    // For graph_spectral_lowess_t
 #include "bandwidth_utils.hpp"          // For get_candidate_bws
 #include "kernels.h"                    // For kernel functions
@@ -256,7 +256,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 	std::iota(vertices.begin(), vertices.end(), 0);
 
 	// Use std::execution::par_unseq for parallel processing if available
-	std::for_each(std::execution::seq, vertices.begin(), vertices.end(),
+	gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
 				  [&](size_t vertex) {
 					  try {
 						  // Find minimum bandwidth that ensures enough vertices for modeling

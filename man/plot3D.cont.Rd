@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_utils.R
 \name{plot3D.cont}
 \alias{plot3D.cont}
-\title{Create 3D Plot with Continuous Color Coding}
+\title{Creates 3D Plot with Continuous Color Coding}
 \usage{
 plot3D.cont(
   X,
@@ -22,7 +22,9 @@ plot3D.cont(
   quantize.dig.lab = 2,
   start = 1/6,
   end = 0,
-  n.levels = 10
+  n.levels = 10,
+  use_null = TRUE,
+  open_new = TRUE
 )
 }
 \arguments{
@@ -32,66 +34,43 @@ plot3D.cont(
 
 \item{subset}{A logical vector indicating which points to highlight (default is NULL).}
 
-\item{non.highlight.type}{Character, either "sphere" or "point" for non-highlighted points (default is "sphere").}
+\item{non.highlight.type}{Either "sphere" or "point" for non-highlighted points (default "sphere").}
 
-\item{non.highlight.color}{Character, indicating the color of non-highlighted points (default is "gray").}
+\item{non.highlight.color}{Color of non-highlighted points (default "gray").}
 
-\item{point.size}{Numeric, size of points when non.highlight.type is "point" (default is 3).}
+\item{point.size}{Point size when \code{non.highlight.type="point"} (default 3).}
 
-\item{legend.title}{A string for the legend title (default is "").}
+\item{legend.title}{Legend title (default "").}
 
-\item{legend.cex}{A numeric value for the legend text size (default is 2).}
+\item{legend.cex}{Legend text size (default 2).}
 
-\item{legend.side}{The side of the plot for the legend (default is 3).}
+\item{legend.side}{Side of the plot for the legend (default 3).}
 
-\item{legend.line}{The line position for the legend (default is 0.5).}
+\item{legend.line}{Line position for the legend (default 0.5).}
 
-\item{radius}{The radius of spheres for 3D plotting (default is NULL).}
+\item{radius}{Sphere radius (default NULL, that is, auto-scale).}
 
-\item{quantize.method}{Method for quantizing y values: "uniform" or "quantile" (default is "uniform").}
+\item{quantize.method}{Method for quantizing y values: "uniform" or "quantile" (default "uniform").}
 
-\item{quantize.wins.p}{Winsorization parameter for the "uniform" method (default is 0.02).}
+\item{quantize.wins.p}{Winsorization parameter for "uniform" (default 0.02).}
 
-\item{quantize.round}{Logical, whether to round the quantization endpoints (default is FALSE).}
+\item{quantize.round}{Logical; round quantization endpoints (default FALSE).}
 
-\item{quantize.dig.lab}{Number of digits for quantization labels (default is 2).}
+\item{quantize.dig.lab}{Digits for quantization labels (default 2).}
 
-\item{start}{Start value for color range (default is 1/6).}
+\item{start, end}{Hue start/end for palette (defaults 1/6 and 0).}
 
-\item{end}{End value for color range (default is 0).}
+\item{n.levels}{Number of color levels (default 10).}
 
-\item{n.levels}{Number of color levels (default is 10).}
+\item{use_null}{Logical; force rgl null device (recommended for CRAN/CI; default TRUE).}
+
+\item{open_new}{Logical; open/close a new rgl device inside this function (default TRUE).}
 }
 \value{
-Invisibly returns a list containing:
-\item{y.cols}{Vector of colors assigned to each data point}
-\item{y.col.tbl}{Color table mapping categories to colors}
-\item{legend.labs}{Labels for the legend}
+Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
 }
 \description{
-Creates a 3D plot of a set of points defined by X color coded by the values of y
-}
-\details{
-This function creates a 3D scatter plot where points are colored according to a continuous
-variable. The continuous variable is discretized into categories for visualization.
-When a subset is specified, highlighted points are shown as spheres while non-highlighted
-points can be shown as either smaller spheres or points.
-}
-\examples{
-\dontrun{
-# Generate sample data
-set.seed(123)
-X <- matrix(rnorm(300), ncol = 3)
-y <- runif(100)
-some.logical.vector <- y > median(y)
-
-# Plot all points as spheres (original behavior)
-plot3D.cont(X, y)
-
-# Plot highlighted points as spheres, non-highlighted as points
-plot3D.cont(X, y, subset = some.logical.vector, non.highlight.type = "point")
-}
-
+Creates a 3D plot of a set of points defined by \code{X} color-coded by the values of \code{y}.
 }
 \seealso{
 \code{\link{plot3D.plain}}, \code{\link[rgl]{plot3d}}, \code{\link[rgl]{spheres3d}}

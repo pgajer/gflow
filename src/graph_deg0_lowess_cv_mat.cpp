@@ -337,7 +337,7 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
         std::iota(fold_indices.begin(), fold_indices.end(), 0);
 
         //std::for_each(std::execution::par_unseq, fold_indices.begin(), fold_indices.end(),
-        std::for_each(GFLOW_EXEC_POLICY, fold_indices.begin(), fold_indices.end(),
+        gflow::for_each(GFLOW_EXEC_POLICY, fold_indices.begin(), fold_indices.end(),
                      [&](size_t fold) {
             try {
                 if (verbose) {
@@ -437,8 +437,7 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
     std::vector<size_t> response_indices(n_response_vars);
     std::iota(response_indices.begin(), response_indices.end(), 0);
 
-    //std::for_each(std::execution::par_unseq, response_indices.begin(), response_indices.end(),
-    std::for_each(GFLOW_EXEC_POLICY, response_indices.begin(), response_indices.end(),
+    gflow::for_each(GFLOW_EXEC_POLICY, response_indices.begin(), response_indices.end(),
                  [&](size_t j) {
         try {
             std::vector<double> uniform_weights(n_vertices, 1.0);  // Use all vertices

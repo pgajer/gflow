@@ -7,6 +7,7 @@
 #include <numeric>
 #include <execution>
 
+#include "exec_policy.hpp"
 #include "geodesic_stats.hpp"
 #include "uniform_grid_graph.hpp"
 #include "error_utils.h"         // For REPORT_ERROR()
@@ -179,7 +180,7 @@ geodesic_stats_t compute_geodesic_stats(
 
         // Process grid vertices (optionally in parallel)
         // std::execution::seq
-        std::for_each(std::execution::seq, grid_verts.begin(), grid_verts.end(),
+        gflow::for_each(gflow::seq, grid_verts.begin(), grid_verts.end(),
             [&](size_t grid_vertex) {
                 // Find shortest paths within radius
                 shortest_paths_t shortest_paths = grid_graph.find_graph_paths_within_radius(grid_vertex, radius);

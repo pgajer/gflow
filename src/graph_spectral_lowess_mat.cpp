@@ -10,6 +10,7 @@
 #include <map>                         // For std::map
 #include <mutex>
 
+#include "exec_policy.hpp"
 #include "graph_spectral_lowess_mat.hpp"  // For graph_spectral_lowess_mat_t
 #include "bandwidth_utils.hpp"         // For get_candidate_bws
 #include "kernels.h"                   // For kernel functions
@@ -330,7 +331,7 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
     const size_t report_interval = 10; // Update every 10 vertices
 
     // Use std::execution::par_unseq for parallel processing
-    std::for_each(std::execution::seq, vertices.begin(), vertices.end(),
+    gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
                   [&](size_t vertex) {
                       try {
                           // Find minimum bandwidth that ensures enough vertices for modeling

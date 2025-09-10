@@ -171,7 +171,7 @@ edge_pruning_stats_t set_wgraph_t::compute_edge_pruning_stats(double threshold_p
     std::mutex edges_mutex;  // Mutex for thread-safe access to all_edges
 
     //std::for_each(std::execution::par_unseq, vertices.begin(), vertices.end(),
-    std::for_each(GFLOW_EXEC_POLICY, vertices.begin(), vertices.end(),
+    gflow::for_each(GFLOW_EXEC_POLICY, vertices.begin(), vertices.end(),
         [this, &all_edges, &edges_mutex](size_t vertex) {
             std::vector<Edge> local_edges;
 

@@ -2,70 +2,52 @@
 % Please edit documentation in R/gflow_cx.R
 \name{visualize.smoothing.steps}
 \alias{visualize.smoothing.steps}
-\title{Visualize Smoothing Steps from Graph Flow Complex}
+\title{Visualize Smoothing Steps from Gradient Flow Complex}
 \usage{
 visualize.smoothing.steps(
   gflow_result,
   plot_res,
   step_by_step = TRUE,
-  animation_delay = 0.5
+  animation_delay = 0.5,
+  out.dir = NULL,
+  filename.prefix = "smoothing_step"
 )
 }
 \arguments{
-\item{gflow_result}{A \code{gflow_cx} object created with
-\code{detailed.recording = TRUE}}
+\item{gflow_result}{Result from \code{create.gflow.cx(..., detailed.recording = TRUE)}.
+Must contain \code{$smoothing_history} (list of steps).}
 
-\item{plot_res}{A graph plotting result containing layout information}
+\item{plot_res}{A list containing at least \code{$layout}: an \eqn{n\times 2} numeric matrix
+of 2D coordinates for vertices. If \code{$graph} (igraph) or adjacency data
+are present, edges will also be rendered when available.}
 
-\item{step_by_step}{Logical; if TRUE (default), pauses between steps for
-interactive viewing. If FALSE, saves snapshots to files.}
+\item{step_by_step}{Logical; if TRUE, waits for user input between steps (interactive only).
+In non-interactive/headless sessions this is ignored and snapshot mode is used.}
 
-\item{animation_delay}{Numeric; delay in seconds between steps when
-\code{step_by_step = TRUE}. Default is 0.5.}
+\item{animation_delay}{Numeric; delay in seconds between frames (used when not waiting).}
+
+\item{out.dir}{Optional output directory for snapshot PNGs (default: \code{tempdir()}).}
+
+\item{filename.prefix}{Character; prefix for snapshot filenames (default: \code{"smoothing_step"}).}
 }
 \value{
-Invisibly returns NULL. Creates 3D visualizations as side effect.
+NULL invisibly.
 }
 \description{
-Creates 3D visualizations showing the step-by-step smoothing process applied
-to spurious extrema in a graph flow complex. Requires detailed recording to
-have been enabled during the computation.
+Creates an animated 3D visualization showing how spurious extrema are smoothed
+during the gradient flow complex construction process.
 }
 \details{
-This function requires the \code{rgl} package for 3D visualization. When
-\code{step_by_step = FALSE}, it saves PNG snapshots of each smoothing step.
-
-The visualization shows:
-\itemize{
-\item The graph structure in 3D with z-coordinates from function values
-\item Local minima as blue spheres
-\item Local maxima as red spheres
-\item The progression of smoothing for each spurious extremum
-}
+The function opens a single rgl window and reuses it for all frames.
+In headless/CI environments, an off-screen rgl device is used automatically and
+images are written to \code{out.dir}.
 }
 \examples{
 \dontrun{
-# Requires interactive graphics
-if (interactive() && requireNamespace("rgl", quietly = TRUE)) {
-  # Create example with spurious extrema
-  adj.list <- list(c(2,3), c(1,3,4), c(1,2,4), c(2,3))
-  weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1,1))
-  y <- c(0, 1, 0.9, 0.1)  # Spurious max at vertex 3
-
-  # Compute with detailed recording
-  result <- create.gflow.cx(
-    adj.list, weight.list, y,
-    hop.idx.thld = 2,
-    detailed.recording = TRUE,
-    verbose = FALSE
-  )
-
-  # Create layout (assuming plot.graph function exists)
-  # plot_res <- plot.graph(list(adj.list=adj.list, weight.list=weight.list))
-
-  # Visualize smoothing steps
+if (requireNamespace("rgl", quietly = TRUE)) {
+  # result <- create.gflow.cx(..., detailed.recording = TRUE)
+  # plot_res <- list(layout = <n x 2 matrix>, graph = <igraph optional>)
   # visualize.smoothing.steps(result, plot_res)
 }
 }
-
 }

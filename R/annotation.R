@@ -153,225 +153,209 @@ prof.fn <- function(id,
 #' Reads taxon-specific 3D embedding data and performs or loads clustering
 #' analysis. Optionally reorders clusters by size and creates 3D visualization.
 #'
-#' @param taxon Character string specifying the taxon name to process. Used to
-#'   construct input/output file names.
-#' @param data.dir Character string specifying the directory containing data
-#'   files. Should include trailing slash. If NULL, current directory is used.
-#' @param cltr.from.scratch Logical indicating whether to perform new clustering
-#'   (TRUE) or load existing cluster assignments (FALSE). Default is TRUE.
-#' @param min.pts Numeric vector of minimum points parameters for HDBSCAN
-#'   clustering. If length > 1, performs parameter selection. Default is
-#'   seq(5, 50, by = 5).
-#' @param reorder.cltrs Logical indicating whether to reorder clusters by
-#'   decreasing size. Default is TRUE.
-#' @param show.plot Logical indicating whether to display 3D visualization of
-#'   clusters. Default is TRUE.
-#' @param n.cores Integer specifying number of cores for parallel processing.
-#'   Default is 10.
-#' @param verbose Logical indicating whether to print progress messages.
-#'   Default is TRUE.
+#' @param taxon Character string for the taxon name used in file names.
+#' @param data.dir Directory containing data files (default: current dir if NULL/"").
+#' @param cltr.from.scratch Logical; compute clustering or load existing (default TRUE).
+#' @param min.pts Numeric vector of HDBSCAN minPts values (default seq(5, 50, 5)).
+#' @param reorder.cltrs Logical; reorder clusters by decreasing size (default TRUE).
+#' @param show.plot Logical; show 3D plot if possible (default TRUE).
+#' @param n.cores Integer; parallel cores for your internal functions (default 10).
+#' @param verbose Logical; print progress (default TRUE).
 #'
-#' @return Invisibly returns a list containing:
-#'   \item{taxon}{The taxon name}
-#'   \item{cltr.ext}{Extended cluster assignments (including imputed clusters)}
-#'   \item{cltr}{Original cluster assignments}
-#'   \item{X}{The 3D embedding matrix}
-#'   \item{pacmap.file}{Path to the PaCMAP embedding file}
-#'   \item{cltr.ext.file}{Path to the extended clustering file}
-#'
-#' @details The function expects the following file naming convention:
-#'   - PaCMAP embedding: \code{<data.dir><taxon>_pacmap.csv}
-#'   - Clustering: \code{<data.dir><taxon>_pacmap_cltr.csv}
-#'   - Extended clustering: \code{<data.dir><taxon>_pacmap_cltr_ext.csv}
-#'
-#'   When cltr.from.scratch = FALSE and extended clustering file doesn't exist,
-#'   it will be created using k-NN imputation.
-#'
+#' @return (Invisibly) a list with taxon, cltr.ext, cltr, X, pacmap.file, cltr.ext.file
 #' @importFrom utils read.csv write.csv
-#' @import rgl
-#'
-#' @examples
-#' \dontrun{
-#' # Process clustering for a specific taxon
-#' result <- show.tx(taxon = "Bacteroides",
-#'                   data.dir = "./data/",
-#'                   cltr.from.scratch = TRUE)
-#' }
-#'
 #' @export
 show.tx <- function(taxon,
-                   data.dir = NULL,
-                   cltr.from.scratch = TRUE,
-                   min.pts = seq(5, 50, by = 5),
-                   reorder.cltrs = TRUE,
-                   show.plot = TRUE,
-                   n.cores = 10,
-                   verbose = TRUE) {
+                    data.dir = NULL,
+                    cltr.from.scratch = TRUE,
+                    min.pts = seq(5, 50, by = 5),
+                    reorder.cltrs = TRUE,
+                    show.plot = TRUE,
+                    n.cores = 10,
+                    verbose = TRUE) {
 
-    # Input validation
-    if (missing(taxon) || is.null(taxon) || !is.character(taxon)) {
-        stop("'taxon' must be a non-empty character string")
-    }
+  ## ---- Input validation ----------------------------------------------------
+  if (missing(taxon) || is.null(taxon) || !is.character(taxon) || length(taxon) != 1L) {
+    stop("'taxon' must be a non-empty character string of length 1")
+  }
 
-    # Ensure data.dir has trailing slash
-    if (!is.null(data.dir)) {
-        if (!dir.exists(data.dir)) {
-            stop("Directory '", data.dir, "' does not exist")
-        }
-        if (!grepl("/$", data.dir)) {
-            data.dir <- paste0(data.dir, "/")
-        }
+  # Normalize data.dir and precompute file paths
+  if (is.null(data.dir) || identical(data.dir, "")) {
+    data.dir <- "."
+  }
+
+  if (!dir.exists(data.dir)) {
+    if (isTRUE(cltr.from.scratch)) {
+      # Friendly behavior: create it if we're going to write outputs
+      dir.create(data.dir, recursive = TRUE, showWarnings = FALSE)
+      if (!dir.exists(data.dir)) {
+        stop("Could not create directory '", data.dir, "'")
+      }
     } else {
-        data.dir <- ""
+      stop("Directory '", data.dir, "' does not exist")
     }
+  }
 
-    # Check for required functions
-    required_fns <- c("hdbscan.cltr", "kNN.cltr.imputation", "clusters.reorder")
-    if (show.plot) {
-        required_fns <- c(required_fns, "plot3D.cltrs", "plot3d")
-    }
+  pacmap.file   <- file.path(data.dir, sprintf("%s_pacmap.csv",          taxon))
+  cltr.file     <- file.path(data.dir, sprintf("%s_pacmap_cltr.csv",     taxon))
+  cltr.ext.file <- file.path(data.dir, sprintf("%s_pacmap_cltr_ext.csv", taxon))
 
-    missing_fns <- required_fns[!sapply(required_fns, exists, mode = "function")]
-    if (length(missing_fns) > 0) {
-        stop("Required functions not found: ", paste(missing_fns, collapse = ", "))
-    }
+  ## ---- Read embedding ------------------------------------------------------
+  if (!file.exists(pacmap.file)) {
+    stop("PaCMAP file not found: ", pacmap.file)
+  }
 
-    # Reading 3D embedding matrix
-    pacmap.file <- paste0(data.dir, taxon, "_pacmap.csv")
-    if (!file.exists(pacmap.file)) {
-        stop("PaCMAP file not found: ", pacmap.file)
-    }
+  X <- utils::read.csv(pacmap.file, row.names = 1, check.names = FALSE)
+  if (!is.data.frame(X) && !is.matrix(X)) {
+    stop("Invalid embedding data format; expected data.frame or matrix")
+  }
 
-    X <- read.csv(pacmap.file, row.names = 1)
+  X <- as.matrix(X)
+  storage.mode(X) <- "double"
+  n.samples <- nrow(X)
+  if (n.samples < 2L) {
+    stop("Insufficient samples for clustering (n = ", n.samples, ")")
+  }
 
-    # Validate embedding data
-    if (!is.data.frame(X) && !is.matrix(X)) {
-        stop("Invalid embedding data format")
-    }
+  max.soft.K <- min(20L, n.samples - 1L)
 
-    X <- as.matrix(X)
-    n.samples <- nrow(X)
+  ## ---- Clustering (from scratch or load) ----------------------------------
+  if (isTRUE(cltr.from.scratch)) {
+    if (verbose) message("Performing clustering from scratch...")
 
-    if (n.samples < 2) {
-        stop("Insufficient samples for clustering (n = ", n.samples, ")")
-    }
+    if (length(min.pts) > 1L) {
+      # keep min.pts < n.samples
+      keep <- min.pts < n.samples
+      min.pts <- as.integer(min.pts[keep])
+      if (!length(min.pts)) {
+        stop("All 'min.pts' values exceed number of samples")
+      }
 
-    max.soft.K <- min(c(20, n.samples - 1))
-
-    if (cltr.from.scratch) {
-        if (verbose) {
-            message("Performing clustering from scratch...")
-        }
-
-        if (length(min.pts) > 1) {
-            # Filter min.pts values that are too large
-            idx <- min.pts < n.samples
-            min.pts <- min.pts[idx]
-
-            if (length(min.pts) == 0) {
-                stop("All min.pts values exceed number of samples")
-            }
-
-            r <- hdbscan.cltr(X,
-                            min.pts = min.pts,
-                            soft.K = max.soft.K,
-                            n.cores = n.cores,
-                            verbose = verbose,
-                            method = "dunn")
-            cltr <- r$dunn.cltr
-        } else {
-            if (min.pts >= n.samples) {
-                stop("min.pts (", min.pts, ") must be less than number of samples (",
-                     n.samples, ")")
-            }
-            cltr <- dbscan::hdbscan(X, minPts = min.pts)$cluster
-        }
-
-        # Save clustering results
-        cltr.file <- paste0(data.dir, taxon, "_pacmap_cltr.csv")
-        write.csv(cbind(cluster = as.integer(cltr) - 1),
-                 file = cltr.file,
-                 row.names = FALSE)
-
-        # Create extended clustering
-        cltr.ext <- kNN.cltr.imputation(X, cltr, K = max.soft.K)
-        cltr.ext.file <- paste0(data.dir, taxon, "_pacmap_cltr_ext.csv")
-        utils::write.csv(cbind(cluster_extended = cltr.ext),
-                        file = cltr.ext.file,
-                        row.names = TRUE)
+      r <- hdbscan.cltr(
+        X,
+        min.pts = min.pts,
+        soft.K = max.soft.K,
+        n.cores = n.cores,
+        verbose = verbose,
+        method  = "dunn"
+      )
+      cltr <- r$dunn.cltr
     } else {
-        if (verbose) {
-            message("Loading existing clustering...")
-        }
-
-        # Reading clustering
-        cltr.file <- paste0(data.dir, taxon, "_pacmap_cltr.csv")
-        if (!file.exists(cltr.file)) {
-            stop("Clustering file not found: ", cltr.file)
-        }
-
-        cltr_data <- read.csv(cltr.file)
-        cltr <- cltr_data[, 1] + 1
-
-        # Reading or creating extended clustering
-        cltr.ext.file <- paste0(data.dir, taxon, "_pacmap_cltr_ext.csv")
-        if (!file.exists(cltr.ext.file)) {
-            if (verbose) {
-                message("Creating extended clustering...")
-            }
-            cltr.ext <- kNN.cltr.imputation(X, cltr, K = max.soft.K)
-            utils::write.csv(cbind(cluster_extended = cltr.ext),
-                           file = cltr.ext.file,
-                           row.names = TRUE)
-        } else {
-            cltr.ext <- utils::read.csv(cltr.ext.file, row.names = 1)[, 1]
-        }
+      if (min.pts >= n.samples) {
+        stop("min.pts (", min.pts, ") must be less than number of samples (", n.samples, ")")
+      }
+      cltr <- dbscan::hdbscan(X, minPts = as.integer(min.pts))$cluster
     }
 
-    if (reorder.cltrs) {
-        if (verbose) {
-            message("Reordering clusters by size...")
-        }
+    cltr <- as.integer(cltr)
 
-        # Reorder main clusters
-        if (length(table(cltr[cltr != 0])) > 1) {
-            cltr[cltr != 0] <- clusters.reorder(cltr[cltr != 0])
-            cltr.file <- paste0(data.dir, taxon, "_pacmap_cltr.csv")
-            write.csv(cbind(cluster = as.integer(cltr) - 1),
-                     file = cltr.file,
-                     row.names = FALSE)
-        }
+    # Write main clustering (no row names; we read back and +1 later)
+    utils::write.csv(
+      data.frame(cluster = as.integer(cltr) - 1L),
+      file = cltr.file,
+      row.names = FALSE
+    )
 
-        # Reorder extended clusters
-        if (length(table(cltr.ext[cltr.ext != 0])) > 1) {
-            cltr.ext[cltr.ext != 0] <- clusters.reorder(cltr.ext[cltr.ext != 0])
-            cltr.ext.file <- paste0(data.dir, taxon, "_pacmap_cltr_ext.csv")
-            utils::write.csv(cbind(cluster_extended = as.integer(cltr.ext)),
-                           file = cltr.ext.file,
-                           row.names = TRUE)
-        }
+    # Extended clustering (keep row names so we can align later if needed)
+    cltr.ext <- kNN.cltr.imputation(X, cltr, K = max.soft.K)
+    cltr.ext <- as.integer(cltr.ext)
+    names(cltr.ext) <- rownames(X)
+
+    utils::write.csv(
+      data.frame(cluster_extended = as.integer(cltr.ext)),
+      file = cltr.ext.file,
+      row.names = TRUE
+    )
+
+  } else {
+    if (verbose) message("Loading existing clustering...")
+
+    if (!file.exists(cltr.file)) {
+      stop("Clustering file not found: ", cltr.file)
     }
 
-    # Show the clustering visualization
-    if (show.plot) {
-        if (length(table(cltr.ext)) > 1) {
-            plot3D.cltrs(X,
-                        cltr.ext,
-                        legend.title = taxon,
-                        radius = NA,
-                        show.cltr.labels = TRUE,
-                        sort.legend.labs.by.freq = TRUE)
-        } else {
-            rgl::plot3d(X)
-        }
+    cltr_data <- utils::read.csv(cltr.file, check.names = FALSE)
+    cltr <- as.integer(cltr_data[[1L]]) + 1L
+
+    if (!file.exists(cltr.ext.file)) {
+      if (verbose) message("Creating extended clustering (file missing)...")
+      cltr.ext <- kNN.cltr.imputation(X, cltr, K = max.soft.K)
+      cltr.ext <- as.integer(cltr.ext)
+      names(cltr.ext) <- rownames(X)
+
+      utils::write.csv(
+        data.frame(cluster_extended = as.integer(cltr.ext)),
+        file = cltr.ext.file,
+        row.names = TRUE
+      )
+    } else {
+      cltr.ext <- utils::read.csv(cltr.ext.file, row.names = 1, check.names = FALSE)[, 1]
+      cltr.ext <- as.integer(cltr.ext)
+      # keep names if present; otherwise align to X
+      if (is.null(names(cltr.ext))) names(cltr.ext) <- rownames(X)
+    }
+  }
+
+  ## ---- Optional reordering by size ----------------------------------------
+  if (isTRUE(reorder.cltrs)) {
+    if (verbose) message("Reordering clusters by size...")
+
+    # Main clusters (skip 0 as "noise", if that's your convention)
+    if (length(table(cltr[cltr != 0L])) > 1L) {
+      cltr_new <- cltr
+      cltr_new[cltr_new != 0L] <- clusters.reorder(cltr_new[cltr_new != 0L])
+      if (!identical(cltr_new, cltr)) {
+        cltr <- as.integer(cltr_new)
+        utils::write.csv(
+          data.frame(cluster = as.integer(cltr) - 1L),
+          file = cltr.file,
+          row.names = FALSE
+        )
+      }
     }
 
-    invisible(list(taxon = taxon,
-                  cltr.ext = cltr.ext,
-                  cltr = cltr,
-                  X = X,
-                  pacmap.file = pacmap.file,
-                  cltr.ext.file = cltr.ext.file))
+    # Extended clusters
+    if (length(table(cltr.ext[cltr.ext != 0L])) > 1L) {
+      cltr.ext.new <- cltr.ext
+      cltr.ext.new[cltr.ext.new != 0L] <- clusters.reorder(cltr.ext.new[cltr.ext.new != 0L])
+      if (!identical(cltr.ext.new, cltr.ext)) {
+        cltr.ext <- as.integer(cltr.ext.new)
+        utils::write.csv(
+          data.frame(cluster_extended = as.integer(cltr.ext)),
+          file = cltr.ext.file,
+          row.names = TRUE
+        )
+      }
+    }
+  }
+
+  ## ---- Visualization (delegated to plot3D.cltrs) --------------------------
+  if (isTRUE(show.plot)) {
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+      warning("Package 'rgl' is not installed; skipping 3D visualization.")
+    } else {
+      if (!is.null(cltr.ext) && length(table(cltr.ext)) > 1L) {
+        plot3D.cltrs(
+          X, cltr.ext,
+          legend.title = taxon,
+          radius = NA,
+          show.cltr.labels = TRUE,
+          sort.legend.labs.by.freq = TRUE
+        )
+      } else {
+        plot3D.cltrs(X, cltr = NULL)
+      }
+    }
+  }
+
+  invisible(list(
+    taxon = taxon,
+    cltr.ext = as.integer(cltr.ext),
+    cltr     = as.integer(cltr),
+    X = X,
+    pacmap.file   = pacmap.file,
+    cltr.ext.file = cltr.ext.file
+  ))
 }
 
 #' Standardize String for File Names

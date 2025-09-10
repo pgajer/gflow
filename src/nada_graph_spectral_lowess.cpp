@@ -15,6 +15,7 @@
 // #include <fstream>
 #include "cpp_utils.hpp"               // For debugging and elapsed.time
 
+#include "exec_policy.hpp"
 #include "nada_graph_spectral_lowess.hpp" // For nada_graph_spectral_lowess_t
 #include "bandwidth_utils.hpp"         // For get_candidate_bws
 #include "kernels.h"                   // For kernel functions
@@ -133,7 +134,7 @@ nada_graph_spectral_lowess_t set_wgraph_t::nada_graph_spectral_lowess(
 		std::vector<size_t> vertices(n_vertices);
 		std::iota(vertices.begin(), vertices.end(), 0);
 
-		std::for_each(std::execution::seq, vertices.begin(), vertices.end(),
+		gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
 					  [&](size_t vertex) {
 
 						  // Find minimum bandwidth that ensures enough vertices for modeling

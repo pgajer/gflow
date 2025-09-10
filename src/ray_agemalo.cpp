@@ -7,6 +7,7 @@
 #include <filesystem>  // for debugging
 #include <fstream>
 
+#include "exec_policy.hpp"
 #include "agemalo.hpp"
 #include "kernels.h"
 #include "error_utils.h"         // For REPORT_ERROR()
@@ -91,10 +92,6 @@ agemalo_result_t ray_agemalo(
 
 	// Start timer for the entire function
     auto total_start_time = std::chrono::steady_clock::now();
-
-    // std::for_each flag
-    // auto exec = std::execution::seq;
-    // auto exec = std::execution::par_unseq;
 
     // Initialize result structure
     agemalo_result_t result;
@@ -435,7 +432,7 @@ agemalo_result_t ray_agemalo(
 		std::atomic<size_t> progress_counter{0};
 		const size_t progress_step = std::max(size_t(1), grid_verts.size() / 10);
 
-		std::for_each(std::execution::seq, indices.begin(), indices.end(),
+		gflow::for_each(gflow::seq, indices.begin(), indices.end(),
 					  [&](size_t i) {
 
 						  size_t grid_vertex = grid_verts[i];
@@ -566,7 +563,7 @@ agemalo_result_t ray_agemalo(
         // Progress tracking
         std::atomic<int> bootstrap_counter{0};
 
-        std::for_each(std::execution::seq, bb_indices.begin(), bb_indices.end(),
+        gflow::for_each(gflow::seq, bb_indices.begin(), bb_indices.end(),
                       [&](int iboot) {
 
 						  // Generate bootstrap weights
@@ -671,7 +668,7 @@ agemalo_result_t ray_agemalo(
         std::atomic<int> permutation_counter{0};
 
         // Parallel execution of permutation iterations
-		std::for_each(std::execution::seq, perm_indices.begin(), perm_indices.end(),
+		gflow::for_each(gflow::seq, perm_indices.begin(), perm_indices.end(),
 					  [&](int iperm) {
 
 						  // Create permuted y vector

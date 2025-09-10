@@ -30,7 +30,6 @@ Imports:
     stats,
     graphics,
     grDevices,
-    rgl,
     FNN,
     doParallel,
     foreach,
@@ -39,6 +38,7 @@ Imports:
     segmented,
     transport
 Suggests:
+    rgl,
     randomForest,
     np,
     mgcv,

@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <experimental/filesystem>
 
+#include "exec_policy.hpp"
 #include "amagelo.hpp" // For amagelo_t
 #include "uniform_grid_graph.hpp"
 #include "error_utils.h"            // For REPORT_ERROR

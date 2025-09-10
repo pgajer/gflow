@@ -32,7 +32,7 @@ deviation of the Gaussian distribution as half of the minimum distance to
 its neighbors. It then forms a synthetic function by combining these
 Gaussian distributions. The function can generate smooth functions that
 take also negative values by multiplying Gaussian components by a vector
-of ±1 values.
+of \eqn{\pm 1} values.
 }
 \examples{
 \dontrun{

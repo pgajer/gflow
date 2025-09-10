@@ -404,653 +404,187 @@ itriangle.plot <- function(coords, v = NULL, params) {
     }
 }
 
-#' Plot method for ggraph objects
+#' Plot a ggraph Object
 #'
-#' @param x A ggraph object created by ggraph()
-#' @param y A function over vertices of the graph (optional)
-#' @param dim The embedding dimension. Possible values 2 or 3. Default 2.
-#' @param vertex.size Numeric scalar specifying the size of the vertices in the plot
-#' @param vertex.radius Numeric scalar specifying the radius of spheres in 3D
-#' @param vertex.label Character vector specifying the labels for vertices
-#' @param layout Layout algorithm name (see details)
-#' @param vertex.color Controls the color of vertices
-#' @param draw.edges Set to TRUE to draw edges in 3d
-#' @param legend.cex Size of legend window when y is not NULL
-#' @param legend.position Character string specifying legend position
-#' @param quantize.method Method to quantize a variable: "uniform" or "quantile"
-#' @param label.cex Size of vertex labels in 3D plots
-#' @param label.adj Horizontal and vertical adjustment of labels
-#' @param use.saved.layout Layout matrix from previous call
-#' @param ... Additional parameters passed to igraph plot
+#' Creates a visualization of a ggraph object in either 2D or 3D.
 #'
-#' @return Invisibly returns a list containing graph, layout, and color information
+#' @param x A ggraph object
+#' @param y Optional numeric vector over vertices (used for color coding if provided)
+#' @param dim Embedding dimension: 2 or 3 (default 2)
+#' @param vertex.size Numeric scalar for 2D point size (igraph)
+#' @param vertex.radius Numeric sphere radius multiplier for 3D (combined with vertex.size)
+#' @param vertex.label Character vector of vertex labels
+#' @param layout Layout algorithm name (e.g., "kk", "fr", "in_circle", "lgl", ...)
+#' @param vertex.color Optional vector of colors for vertices (overrides y if provided)
+#' @param draw.edges Logical; draw edges in 3D
+#' @param legend.cex Legend size when y is not NULL
+#' @param legend.position Legend position for 2D (e.g., "topleft")
+#' @param quantize.method Method to quantize y: "uniform" or "quantile"
+#' @param label.cex Size of vertex labels in 3D
+#' @param label.adj Horizontal/vertical adjustment of labels (3D)
+#' @param use.saved.layout Optional matrix of coordinates to reuse
+#' @param ... Additional parameters passed to igraph plotting in 2D
+#'
+#' @return Invisibly returns a list: graph, layout, vertex.color, and y-color info if used
 #'
 #' @examples
 #' \dontrun{
-#' # Create a ggraph object
 #' adj_list <- list(c(2, 3), c(1, 3), c(1, 2))
 #' weight_list <- list(c(1, 1), c(1, 1), c(1, 1))
 #' g <- ggraph(adj_list, weight_list)
-#'
-#' # Plot with default settings
 #' plot.res <- plot(g)
-#'
-#' # Plot with custom vertex size and labels
 #' plot(g, vertex.size = 5, vertex.label = c("A", "B", "C"))
-#'
-#' # Plot with a different layout
 #' plot(g, layout = "in_circle")
-#'
-#' # Recreate the same layout
 #' plot(g, vertex.size = 2, use.saved.layout = plot.res$layout)
+#' if (requireNamespace("rgl", quietly = TRUE)) {
+#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'   plot(g, dim = 3)
 #' }
+#' }
+#' @method plot ggraph
 #' @export
 plot.ggraph <- function(x,
-                       y = NULL,
-                       dim = 2,
-                       vertex.size = 1,
-                       vertex.radius = 0.1,
-                       vertex.label = NA,
-                       layout = "kk",
-                       vertex.color = NULL,
-                       draw.edges = TRUE,
-                       legend.cex = 1,
-                       legend.position = "topleft",
-                       quantize.method = "uniform",
-                       label.cex = 1.2,
-                       label.adj = c(0.5, 0.5),
-                       use.saved.layout = NULL,
-                       ...) {
+                        y = NULL,
+                        dim = 2,
+                        vertex.size = 1,
+                        vertex.radius = 0.1,
+                        vertex.label = NA,
+                        layout = "kk",
+                        vertex.color = NULL,
+                        draw.edges = TRUE,
+                        legend.cex = 1,
+                        legend.position = "topleft",
+                        quantize.method = "uniform",
+                        label.cex = 1.2,
+                        label.adj = c(0.5, 0.5),
+                        use.saved.layout = NULL,
+                        ...) {
 
-    # Extract components from ggraph object
-    graph.adj.list <- x$adj.list
-    graph.edge.lengths <- x$weight.list
-   
-    graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
-    g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+  if (!dim %in% c(2, 3)) stop("'dim' must be 2 or 3")
 
-    if (!is.null(graph.edge.lengths)) {
-        igraph::E(g)$weight <- graph.obj$weights
-    }
+  # Extract from ggraph object
+  graph.adj.list    <- x$adj.list
+  graph.edge.lengths <- x$weight.list
 
-    if (is.null(vertex.color)) {
-        comps <- igraph::components(g)
-        vertex.color <- rainbow(comps$no)[comps$membership]
-    }
+  graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+  g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+  if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 
-    .ensure_custom_shapes_registered()
+  # Default vertex colors by components (stable palette)
+  if (is.null(vertex.color)) {
+    comps <- igraph::components(g)
+    pal <- grDevices::hcl.colors(comps$no, palette = "Set3")
+    vertex.color <- pal[comps$membership]
+  }
 
-    ## Convert layout to a function if it is a string
-    if (is.character(layout)) {
-        layout_func <- switch(layout,
-                              "nicely"    = igraph::layout_nicely,
-                              "randomly"  = igraph::layout_randomly,
-                              "in_circle" = igraph::layout_in_circle,
-                              "on_sphere" = igraph::layout_on_sphere,
-                              "fr"        = igraph::layout_with_fr,
-                              "kk"        = igraph::layout_with_kk,
-                              "as_tree"   = igraph::layout_as_tree,
-                              "lgl"       = igraph::layout_with_lgl,
-                              "graphopt"  = igraph::layout_with_graphopt,
-                              "drl"       = igraph::layout_with_drl,
-                              "dh"        = igraph::layout_with_dh,
-                              "mds"       = igraph::layout_with_mds,
-                              stop("Invalid layout specified")
-                              )
-    } else {
-        layout_func <- layout
-    }
+  .ensure_custom_shapes_registered()
 
-    # Generate or use a saved layout
-    if (!is.null(use.saved.layout)) {
-        # Use the provided layout from a previous run
-        layout_coords <- use.saved.layout
-    } else {
-        # Generate a new layout
-        layout_coords <- layout_func(g, dim = dim)
-    }
-
-    # Store the final result to return invisibly
-    result <- list(
-        graph = g,
-        layout = layout_coords,
-        vertex.color = vertex.color
+  # Resolve layout function
+  if (is.character(layout)) {
+    layout_func <- switch(layout,
+      "nicely"    = igraph::layout_nicely,
+      "randomly"  = igraph::layout_randomly,
+      "in_circle" = igraph::layout_in_circle,
+      "on_sphere" = igraph::layout_on_sphere,
+      "fr"        = igraph::layout_with_fr,
+      "kk"        = igraph::layout_with_kk,
+      "as_tree"   = igraph::layout_as_tree,
+      "lgl"       = igraph::layout_with_lgl,
+      "graphopt"  = igraph::layout_with_graphopt,
+      "drl"       = igraph::layout_with_drl,
+      "dh"        = igraph::layout_with_dh,
+      "mds"       = igraph::layout_with_mds,
+      stop("Invalid layout specified")
     )
+  } else {
+    layout_func <- layout
+  }
 
-    # Now proceed with plotting
-    if (dim == 2) {
-        if (is.null(y)) {
-            plot(g, vertex.color = vertex.color, layout = layout_coords, vertex.size = vertex.size, vertex.label = vertex.label, ...)
-        } else {
-            q <- quantize.cont.var(y, method = quantize.method)
-            y.cat <- q$x.cat
-            y.col.tbl <- q$x.col.tbl
-            y.color <- y.col.tbl[y.cat]
-            plot(g, layout = layout_coords, vertex.color = y.color, vertex.size = vertex.size, vertex.label = vertex.label, ...)
-            legend(legend.position, xpd = NA, legend = names(y.col.tbl), fill = y.col.tbl, inset = 0.01, cex = legend.cex)
+  # Coordinates
+  if (!is.null(use.saved.layout)) {
+    layout_coords <- use.saved.layout
+  } else {
+    # many igraph layouts accept dim=2 or 3; ignored by some
+    layout_coords <- layout_func(g, dim = dim)
+  }
+  layout_coords <- as.matrix(layout_coords)
+  if (dim == 3 && ncol(layout_coords) < 3) {
+    # be defensive: pad with zeros if a 2D layout was returned
+    layout_coords <- cbind(layout_coords, z = 0)
+  }
 
-            # Save the color information in the result
-            result$y.color <- y.color
-            result$y.col.tbl <- y.col.tbl
-        }
-    } else {
-        # 3D plotting code with layout_coords
-        plot3d(layout_coords, axes = FALSE, xlab = "", ylab = "", zlab = "")
+  # Color via y if supplied (both 2D and 3D)
+  y_info <- NULL
+  if (!is.null(y)) {
+    q <- quantize.cont.var(y, method = quantize.method)
+    y.cat <- q$x.cat
+    y.col.tbl <- q$x.col.tbl
+    vertex.color <- y.col.tbl[y.cat]
+    y_info <- list(y.color = vertex.color, y.col.tbl = y.col.tbl)
+  }
 
-        # Add spheres for vertices with proper colors
-        spheres3d(layout_coords, radius = vertex.radius * vertex.size, col = vertex.color)
+  # Return info
+  result <- c(list(graph = g, layout = layout_coords, vertex.color = vertex.color), y_info)
 
-        # Add text labels if specified
-        if (!all(is.na(vertex.label))) {
-            # Calculate text offset from vertex centers (adjustable)
-            text_offset <- 1.3 * max(vertex.radius * vertex.size)
-
-            # Find which vertices should have labels
-            label_indices <- which(!is.na(vertex.label))
-
-            # Add 3D text for labels
-            for (i in label_indices) {
-                # Position text slightly offset from vertex
-                text3d(layout_coords[i,1], layout_coords[i,2], layout_coords[i,3] + text_offset,
-                       texts = vertex.label[i],
-                       color = "black",
-                       cex = label.cex,
-                       adj = label.adj)
-            }
-        }
-
-        # Draw edges if requested
-        if (draw.edges) {
-            # Get the edge pairs from adjacency list
-            edges <- list()
-            for (i in 1:length(graph.adj.list)) {
-                for (j in graph.adj.list[[i]]) {
-                    # To avoid duplicate edges, only add if i < j
-                    if (i < j) {
-                        edges[[length(edges) + 1]] <- c(i, j)
-                    }
-                }
-            }
-
-            # Draw each edge as a segment
-            for (e in edges) {
-                v1 <- e[1]
-                v2 <- e[2]
-                segments3d(rbind(layout_coords[v1,], layout_coords[v2,]),
-                           color = "gray70",
-                           lwd = 1)
-            }
-        }
+  # 2D branch: uses base graphics; safe on headless (R uses an off-screen device)
+  if (dim == 2) {
+    igraph::plot.igraph(
+      g,
+      layout = layout_coords,
+      vertex.color = vertex.color,
+      vertex.size = vertex.size,
+      vertex.label = vertex.label,
+      ...
+    )
+    if (!is.null(y_info)) {
+      graphics::legend(legend.position, xpd = NA,
+        legend = names(y_info$y.col.tbl),
+        fill   = y_info$y.col.tbl,
+        inset  = 0.01, cex = legend.cex
+      )
     }
+    return(invisible(result))
+  }
 
-    # Return the result object invisibly
-    invisible(result)
+  # 3D branch: rgl-gated & headless-safe
+  if (!requireNamespace("rgl", quietly = TRUE)) {
+    stop("This function requires the optional package 'rgl' for 3D plots. ",
+         "Install with install.packages('rgl').", call. = FALSE)
+  }
+  old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+  rgl::open3d(); on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+
+  # Points (spheres); radius scales by vertex.size
+  rgl::plot3d(layout_coords, axes = FALSE, xlab = "", ylab = "", zlab = "")
+  rgl::spheres3d(layout_coords, radius = vertex.radius * vertex.size, col = vertex.color)
+
+  # Labels
+  if (!all(is.na(vertex.label))) {
+    text_offset <- 1.3 * (vertex.radius * vertex.size)
+    label_idx <- which(!is.na(vertex.label))
+    if (length(label_idx)) {
+      for (i in label_idx) {
+        rgl::text3d(layout_coords[i, 1], layout_coords[i, 2], layout_coords[i, 3] + text_offset,
+                    texts = vertex.label[i], color = "black", cex = label.cex, adj = label.adj)
+      }
+    }
+  }
+
+  # Edges
+  if (isTRUE(draw.edges)) {
+    edges <- igraph::as_edgelist(g, names = FALSE)
+    if (NROW(edges)) {
+      for (k in seq_len(NROW(edges))) {
+        v1 <- edges[k, 1]; v2 <- edges[k, 2]
+        rgl::lines3d(rbind(layout_coords[v1, ], layout_coords[v2, ]),
+                     col = "gray50", lwd = 1)
+      }
+    }
+  }
+
+  invisible(result)
 }
 
-#' Plot a graph with a function z in 3D with basin extrema points
-#'
-#' @description
-#' Creates a 3D visualization using rgl where the graph structure is displayed in the x-y plane
-#' and function values (z) are represented as points or spheres above the graph. The function
-#' supports multiple input formats and can highlight basin extrema (local minima and maxima).
-#'
-#' @param x One of the following:
-#'   \itemize{
-#'     \item A \code{graph.3d} object created by \code{graph.3d()}
-#'     \item A \code{ggraph} object created by \code{ggraph()}
-#'     \item A list returned by \code{plot.ggraph()} containing graph and layout elements
-#'   }
-#' @param z A numeric vector containing z values for each vertex in the graph.
-#'   Required unless x is a graph.3d object that already contains z values.
-#' @param layout Character string or matrix. Used only when x is a ggraph object:
-#'   \itemize{
-#'     \item Character options: "kk" (Kamada-Kawai), "fr" (Fruchterman-Reingold),
-#'           "nicely", "circle", "tree", "lgl", "graphopt", "drl", "dh", "mds"
-#'     \item Matrix: Pre-computed 2D layout coordinates (n x 2 matrix)
-#'   }
-#'   Default is "kk". Ignored when x already contains layout information.
-#' @param conn.points Logical, whether to connect z-values with lines if their vertices
-#'   are connected in the original graph. Default is TRUE.
-#' @param use.spheres Logical, whether to use spheres (TRUE) or points (FALSE) to
-#'   represent z values. Default is TRUE.
-#' @param graph.alpha Numeric between 0 and 1, opacity of the original graph in the
-#'   x-y plane. Default is 0.7.
-#' @param z.point.size Numeric, size of the points or spheres representing z values.
-#'   Default is 0.5.
-#' @param z.color Color specification for z-values. Can be:
-#'   \itemize{
-#'     \item NULL: Uses rainbow colors based on z values (default)
-#'     \item Single color: Applied to all vertices
-#'     \item Vector of colors: Must match the number of vertices
-#'   }
-#' @param z.alpha Numeric between 0 and 1, opacity of the z points/spheres. Default is 1.
-#' @param edge.color Color for the edges connecting z values. Default is "gray70".
-#' @param edge.width Numeric, width of the edges connecting z values. Default is 1.
-#' @param base.plane Logical, whether to draw the original graph in the x-y plane.
-#'   Default is TRUE.
-#' @param base.vertex.size Numeric, size of vertices in the base graph. Default is 0.5.
-#' @param z.scale Numeric, scaling factor for z values. Default is 1.
-#' @param show.axes Logical, whether to show 3D axes. Default is TRUE.
-#' @param vertical.lines Logical, whether to draw vertical lines connecting base
-#'   vertices to z points. Default is TRUE.
-#' @param vertical.line.style Character, style of vertical lines: "solid" or "dashed".
-#'   Default is "dashed".
-#' @param dash.length Numeric, length of each dash when using dashed lines. Default is 0.05.
-#' @param gap.length Numeric, length of gaps between dashes. Default is 0.05.
-#' @param vertical.line.color Color for vertical lines. Default is "darkgray".
-#' @param vertical.line.alpha Numeric between 0 and 1, opacity of vertical lines.
-#'   Default is 0.5.
-#' @param vertical.line.width Numeric, width of vertical lines. Default is 0.5.
-#' @param basins.df Data frame containing basin extrema information with columns:
-#'   \itemize{
-#'     \item \code{evertex}: Vertex indices (required)
-#'     \item \code{is_max}: 0 for minima, 1 for maxima (required)
-#'     \item \code{label}: Text labels for extrema (required)
-#'   }
-#'   Default is NULL (no extrema highlighted).
-#' @param evertex.sphere.radius Numeric, radius of spheres representing extrema.
-#'   Default is 0.2.
-#' @param evertex.min.color Color for local minima. Default is "blue".
-#' @param evertex.max.color Color for local maxima. Default is "red".
-#' @param evertex.cex Numeric, size of extrema labels. Default is 1.
-#' @param evertex.adj Numeric vector of length 2, horizontal and vertical adjustment
-#'   of extrema labels. Default is c(0.5, 0.5).
-#' @param evertex.label.offset Numeric, offset of labels from extrema points. Default is 0.3.
-#' @param ... Additional arguments (currently unused).
-#'
-#' @return NULL invisibly. The function creates an rgl 3D plot as a side effect.
-#'
-#' @details
-#' The function provides three workflows:
-#'
-#' \strong{Workflow 1: Direct from ggraph}
-#' \preformatted{
-#' g <- ggraph(adj.list, weight.list)
-#' plot.graph.3d(g, z.values)
-#' }
-#'
-#' \strong{Workflow 2: Using plot result}
-#' \preformatted{
-#' g <- ggraph(adj.list, weight.list)
-#' plot.result <- plot(g)
-#' plot.graph.3d(plot.result, z.values)
-#' }
-#'
-#' \strong{Workflow 3: Using graph.3d object}
-#' \preformatted{
-#' g3d <- graph.3d(plot.result, z.values)
-#' plot(g3d)
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' # Create sample graph
-#' adj.list <- list(c(2, 3), c(1, 3, 4), c(1, 2), c(2))
-#' weight.list <- list(c(1, 1), c(1, 1, 1), c(1, 1), c(1))
-#' z.values <- c(0.5, 1.2, 0.8, 1.5)
-#'
-#' # Workflow 1: Direct from ggraph
-#' g <- ggraph(adj.list, weight.list)
-#' plot.graph.3d(g, z.values)
-#'
-#' # Workflow 2: Using plot result with custom layout
-#' plot.result <- plot(g, dim = 2, layout = "fr")
-#' plot.graph.3d(plot.result, z.values, vertical.line.style = "solid")
-#'
-#' # Workflow 3: Using graph.3d object
-#' g3d <- graph.3d(plot.result, z.values)
-#' plot(g3d, z.color = "red", base.plane = FALSE)
-#'
-#' # With basin extrema highlighting
-#' basins.df <- data.frame(
-#'   evertex = c(1, 3),
-#'   is_max = c(0, 1),
-#'   label = c("Local Min", "Local Max")
-#' )
-#' plot.graph.3d(g, z.values, basins.df = basins.df)
-#'
-#' # Custom styling
-#' plot.graph.3d(g, z.values,
-#'   z.color = heat.colors(4),
-#'   vertical.line.style = "dashed",
-#'   base.plane = TRUE,
-#'   show.axes = TRUE
-#' )
-#' }
-#'
-#' @seealso
-#' \code{\link{ggraph}} for creating graph objects,
-#' \code{\link{plot.ggraph}} for 2D graph visualization,
-#' \code{\link{graph.3d}} for creating graph.3d objects
-#'
-#' @import rgl
-#' @importFrom igraph graph_from_edgelist as_edgelist vcount E V
-#' @importFrom igraph layout_with_fr layout_with_kk layout_nicely layout_in_circle
-#' @importFrom grDevices rainbow
-#' @export
-plot.graph.3d <- function(x,
-                          z = NULL,
-                          layout = "kk",
-                          conn.points = TRUE,
-                          use.spheres = TRUE,
-                          graph.alpha = 0.7,
-                          z.point.size = 0.5,
-                          z.color = NULL,
-                          z.alpha = 1,
-                          edge.color = "gray70",
-                          edge.width = 1,
-                          base.plane = TRUE,
-                          base.vertex.size = 0.5,
-                          z.scale = 1,
-                          show.axes = TRUE,
-                          vertical.lines = TRUE,
-                          vertical.line.style = "dashed",
-                          dash.length = 0.05,
-                          gap.length = 0.05,
-                          vertical.line.color = "darkgray",
-                          vertical.line.alpha = 0.5,
-                          vertical.line.width = 0.5,
-                          basins.df = NULL,
-                          evertex.sphere.radius = 0.2,
-                          evertex.min.color = "blue",
-                          evertex.max.color = "red",
-                          evertex.cex = 1,
-                          evertex.adj = c(0.5, 0.5),
-                          evertex.label.offset = 0.3,
-                          ...) {
-
-    ## Check if rgl is available
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-        stop("The rgl package is required for this function. Please install it with install.packages('rgl')")
-    }
-
-    ## Handle different input types for x
-    if (inherits(x, "graph.3d")) {
-        ## x is a graph.3d object
-        g <- x$graph
-        layout.2d <- x$layout
-        vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(x$graph))
-        if (is.null(z)) {
-            z <- x$z
-        }
-    } else if (inherits(x, "ggraph")) {
-        ## x is a ggraph object - we need to create the graph and layout
-        res <- convert.adjacency.to.edge.matrix(x$adj.list, x$weight.list)
-        g <- igraph::graph_from_edgelist(res$edge.matrix, directed = FALSE)
-        if (!is.null(res$weights)) {
-            igraph::E(g)$weight <- res$weights
-        }
-
-        ## Create layout if needed
-        if (is.character(layout)) {
-            layout.2d <- switch(layout,
-                fr = igraph::layout_with_fr(g, dim = 2),
-                kk = igraph::layout_with_kk(g, dim = 2),
-                nicely = igraph::layout_nicely(g, dim = 2),
-                circle = igraph::layout_in_circle(g),
-                tree = igraph::layout_as_tree(g),
-                lgl = igraph::layout_with_lgl(g),
-                graphopt = igraph::layout_with_graphopt(g),
-                drl = igraph::layout_with_drl(g),
-                dh = igraph::layout_with_dh(g),
-                mds = igraph::layout_with_mds(g),
-                igraph::layout_with_kk(g, dim = 2)  # default
-            )
-        } else if (is.matrix(layout) && ncol(layout) == 2) {
-            layout.2d <- layout
-        } else {
-            stop("layout must be either a character string or a n x 2 matrix")
-        }
-
-        vertex.color <- rep("gray", igraph::vcount(g))  # default color
-
-    } else if (is.list(x) && !is.null(x$graph) && !is.null(x$layout)) {
-        ## x is a plot result from plot.ggraph
-        g <- x$graph
-        layout.2d <- x$layout
-        vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(x$graph))
-    } else {
-        stop("x must be a graph.3d object, a ggraph object, or a list containing 'graph' and 'layout' elements")
-    }
-
-    ## Check if z is provided
-    if (is.null(z)) {
-        stop("z values must be provided (either as parameter or within a graph.3d object)")
-    }
-
-    ## Validate z
-    if (!is.numeric(z)) {
-        stop("z must be a numeric vector")
-    }
-
-    ## Check if z length matches number of vertices
-    if (length(z) != nrow(layout.2d)) {
-        stop(sprintf("Length of z (%d) must match the number of vertices (%d)",
-                     length(z), nrow(layout.2d)))
-    }
-
-    ## Scale z values if needed
-    z <- z * z.scale
-
-    ## Create 3D coordinates by adding z to the 2D layout
-    layout.3d <- cbind(layout.2d, z)
-
-    ## Set up colors for z values if not provided
-    if (is.null(z.color)) {
-        if (length(unique(z)) > 1) {
-            z.norm <- (z - min(z)) / (max(z) - min(z))
-            z.color <- grDevices::rainbow(100)[1 + floor(z.norm * 99)]
-        } else {
-            z.color <- rep("red", length(z))
-        }
-    } else if (length(z.color) == 1) {
-        z.color <- rep(z.color, length(z))
-    } else if (length(z.color) != length(z)) {
-        stop("z.color must be a single color or have the same length as z")
-    }
-
-    ## Open new rgl device if none exists
-    if (length(rgl::rgl.dev.list()) == 0) {
-        rgl::open3d()
-    }
-
-    ## Clear the current device
-    rgl::clear3d()
-
-    ## Plot the base graph in the x-y plane if requested
-    if (base.plane) {
-        ## Create a copy of the layout with z = 0 for all vertices
-        base.layout <- cbind(layout.2d, 0)
-
-        ## Draw vertices in the base plane
-        if (use.spheres) {
-            rgl::spheres3d(
-                base.layout,
-                radius = base.vertex.size * 0.02,  # Scale down for better proportion
-                col = vertex.color,
-                alpha = graph.alpha
-            )
-        } else {
-            rgl::points3d(
-                base.layout,
-                size = base.vertex.size * 10,
-                col = vertex.color,
-                alpha = graph.alpha
-            )
-        }
-
-        ## Draw edges in the base plane
-        edges <- igraph::as_edgelist(g, names = FALSE)
-        if (nrow(edges) > 0) {
-            edge.coords <- matrix(NA, nrow = nrow(edges) * 2, ncol = 3)
-            for (i in 1:nrow(edges)) {
-                v1 <- edges[i, 1]
-                v2 <- edges[i, 2]
-                edge.coords[(i-1)*2 + 1, ] <- base.layout[v1,]
-                edge.coords[(i-1)*2 + 2, ] <- base.layout[v2,]
-            }
-            rgl::segments3d(
-                edge.coords,
-                col = "gray50",
-                alpha = graph.alpha,
-                lwd = edge.width
-            )
-        }
-    }
-
-    ## Plot the z values
-    if (use.spheres) {
-        rgl::spheres3d(
-            layout.3d,
-            radius = z.point.size * 0.02,  # Scale down for better proportion
-            col = z.color,
-            alpha = z.alpha
-        )
-    } else {
-        rgl::points3d(
-            layout.3d,
-            size = z.point.size * 10,
-            col = z.color,
-            alpha = z.alpha
-        )
-    }
-
-    ## Connect z values with edges if requested
-    if (conn.points) {
-        edges <- igraph::as_edgelist(g, names = FALSE)
-        if (nrow(edges) > 0) {
-            edge.coords <- matrix(NA, nrow = nrow(edges) * 2, ncol = 3)
-            for (i in 1:nrow(edges)) {
-                v1 <- edges[i, 1]
-                v2 <- edges[i, 2]
-                edge.coords[(i-1)*2 + 1, ] <- layout.3d[v1,]
-                edge.coords[(i-1)*2 + 2, ] <- layout.3d[v2,]
-            }
-            rgl::segments3d(
-                edge.coords,
-                col = edge.color,
-                alpha = z.alpha,
-                lwd = edge.width
-            )
-        }
-    }
-
-    ## Helper function to create dashed lines
-    draw.dashed.line3d <- function(from, to, col = "black", alpha = 1, lwd = 1,
-                                   dash.len = 0.1, gap.len = 0.1) {
-        vec <- to - from
-        total.length <- sqrt(sum(vec^2))
-
-        if (total.length < dash.len) {
-            rgl::segments3d(rbind(from, to), col = col, alpha = alpha, lwd = lwd)
-            return(invisible(NULL))
-        }
-
-        vec.norm <- vec / total.length
-        segment.length <- dash.len + gap.len
-        num.segments <- floor(total.length / segment.length)
-
-        segments.coords <- NULL
-        for (i in 0:num.segments) {
-            start.point <- from + i * segment.length * vec.norm
-            end.dist <- min(i * segment.length + dash.len, total.length)
-            end.point <- from + end.dist * vec.norm
-
-            if (!identical(start.point, end.point)) {
-                segments.coords <- rbind(segments.coords, start.point, end.point)
-            }
-        }
-
-        if (!is.null(segments.coords)) {
-            rgl::segments3d(segments.coords, col = col, alpha = alpha, lwd = lwd)
-        }
-    }
-
-    ## Draw vertical lines connecting base points to z values
-    if (base.plane && vertical.lines) {
-        for (i in 1:nrow(layout.3d)) {
-            base.point <- c(layout.2d[i,], 0)
-            z.point <- layout.3d[i,]
-
-            if (vertical.line.style == "dashed") {
-                draw.dashed.line3d(
-                    from = base.point,
-                    to = z.point,
-                    col = vertical.line.color,
-                    alpha = vertical.line.alpha,
-                    lwd = vertical.line.width,
-                    dash.len = dash.length,
-                    gap.len = gap.length
-                )
-            } else {
-                rgl::segments3d(
-                    rbind(base.point, z.point),
-                    col = vertical.line.color,
-                    alpha = vertical.line.alpha,
-                    lwd = vertical.line.width
-                )
-            }
-        }
-    }
-
-    ## Plot basin extrema if provided
-    if (!is.null(basins.df) && nrow(basins.df) > 0) {
-        ## Check required columns
-        required.cols <- c("evertex", "is_max", "label")
-        if (!all(required.cols %in% colnames(basins.df))) {
-            stop("basins.df must contain columns: evertex, is_max, and label")
-        }
-
-        ## Process each extremum
-        for (i in 1:nrow(basins.df)) {
-            v.idx <- basins.df$evertex[i]
-
-            ## Validate vertex index
-            if (v.idx < 1 || v.idx > nrow(layout.3d)) {
-                warning(sprintf("Invalid vertex index: %d - skipping", v.idx))
-                next
-            }
-
-            ## Get position and color
-            extremum.point <- layout.3d[v.idx, ]
-            is_max <- basins.df$is_max[i]
-            extremum.color <- if (is_max == 1) evertex.max.color else evertex.min.color
-
-            ## Draw sphere
-            rgl::spheres3d(
-                extremum.point,
-                radius = evertex.sphere.radius * 0.02,  # Scale for proportion
-                col = extremum.color,
-                alpha = 1
-            )
-
-            ## Add label
-            label.text <- as.character(basins.df$label[i])
-            label.position <- extremum.point
-            label.position[3] <- label.position[3] + evertex.label.offset
-
-            rgl::texts3d(
-                label.position,
-                texts = label.text,
-                cex = evertex.cex,
-                adj = evertex.adj,
-                color = extremum.color
-            )
-        }
-    }
-
-    ## Set up axes if requested
-    if (show.axes) {
-        rgl::axes3d()
-        rgl::title3d(xlab = "X", ylab = "Y", zlab = "Z")
-    }
-
-    ## Set a good viewing angle
-    rgl::view3d(theta = 30, phi = 30, zoom = 0.8)
-
-    ## Return NULL invisibly
-    invisible(NULL)
-}
 
 #' Plot Method for graphMScx Objects
 #'
@@ -2081,3 +1615,307 @@ plot.chain.with.path <- function(x,
     points(x.coords[path$ref_vertex], y.coords[path$ref_vertex], pch = 1, cex = 3 * vertex.size, col = "blue", lwd = 2)
 }
 
+#' 3D Graph Visualization with Height Values
+#'
+#' Visualizes a graph in 3D where vertices are positioned at different heights
+#' based on a function's values. Uses an off-screen rgl device by default so it
+#' works on headless/CI environments.
+#'
+#' @param x A ggraph object, a plot result from \code{plot.ggraph()}, or a \code{graph.3d} object.
+#' @param z Numeric vector of height values for each vertex (required unless x is graph.3d).
+#' @param layout Layout algorithm name (character) or a numeric matrix of 2D coordinates (n x 2).
+#' @param conn.points Logical; connect vertices with edges in 3D.
+#' @param use.spheres Logical; use spheres (TRUE) or points (FALSE) for vertices.
+#' @param graph.alpha Numeric in \eqn{[0,1]}; transparency for base graph.
+#' @param z.point.size Numeric; size for z-value points/spheres.
+#' @param z.color Vector of colors for z values or NULL for automatic coloring.
+#' @param z.alpha Numeric in \eqn{[0,1]}; transparency for z points.
+#' @param edge.color Color for edges.
+#' @param edge.width Numeric; width of edges.
+#' @param base.plane Logical; show base graph in x-y plane.
+#' @param base.vertex.size Numeric; size of base plane vertices.
+#' @param z.scale Numeric; scaling factor for z values.
+#' @param show.axes Logical; show coordinate axes.
+#' @param vertical.lines Logical; draw vertical lines from base to z points.
+#' @param vertical.line.style "solid" or "dashed" for verticals.
+#' @param dash.length, gap.length Numerics controlling dashed verticals.
+#' @param vertical.line.color, vertical.line.alpha, vertical.line.width Aesthetics for verticals.
+#' @param vertical.line.alpha Numeric in \eqn{[0,1]}; transparency for vertical guide lines.
+#' @param vertical.line.width Numeric; line width for vertical guide lines.
+#' @param basins.df Optional data.frame with columns \code{evertex}, \code{is_max}, and optional \code{label}.
+#' @param evertex.sphere.radius Numeric; radius for extrema spheres.
+#' @param evertex.min.color, evertex.max.color Colors for minima/maxima.
+#' @param evertex.max.color Color used for maxima (extrema) spheres and labels.
+#' @param evertex.cex Numeric; text size for extrema labels.
+#' @param evertex.adj Numeric length-2; text adjustment for extrema labels.
+#' @param evertex.label.offset Numeric; z-offset for extrema labels.
+#' @param gap.length Numeric; length of gaps between dashes when \code{vertical.line.style = "dashed"}.
+#' @param ... Reserved for future extensions.
+#'
+#' @return NULL (invisibly). Opens an rgl device, draws, and closes it on exit.
+#'
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("rgl", quietly = TRUE)) {
+#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'   adj.list <- list(c(2, 3), c(1, 3, 4), c(1, 2), c(2))
+#'   weight.list <- list(c(1, 1), c(1, 1, 1), c(1, 1), c(1))
+#'   z.values <- c(0.5, 1.2, 0.8, 1.5)
+#'   g <- ggraph(adj.list, weight.list)
+#'   plot3D.graph(g, z.values)
+#' }
+#' }
+#' @export
+plot3D.graph <- function(x,
+                         z = NULL,
+                         layout = "kk",
+                         conn.points = TRUE,
+                         use.spheres = TRUE,
+                         graph.alpha = 0.7,
+                         z.point.size = 0.5,
+                         z.color = NULL,
+                         z.alpha = 1,
+                         edge.color = "gray70",
+                         edge.width = 1,
+                         base.plane = TRUE,
+                         base.vertex.size = 0.5,
+                         z.scale = 1,
+                         show.axes = TRUE,
+                         vertical.lines = TRUE,
+                         vertical.line.style = "dashed",
+                         dash.length = 0.05,
+                         gap.length = 0.05,
+                         vertical.line.color = "darkgray",
+                         vertical.line.alpha = 0.5,
+                         vertical.line.width = 0.5,
+                         basins.df = NULL,
+                         evertex.sphere.radius = 0.2,
+                         evertex.min.color = "blue",
+                         evertex.max.color = "red",
+                         evertex.cex = 1,
+                         evertex.adj = c(0.5, 0.5),
+                         evertex.label.offset = 0.3,
+                         ...) {
+
+  # rgl gating
+  if (!requireNamespace("rgl", quietly = TRUE)) {
+    stop("This function requires the optional package 'rgl'. ",
+         "Install with install.packages('rgl').", call. = FALSE)
+  }
+
+  # Headless/CI-safe: render to the null device; harmless on desktops
+  old <- options(rgl.useNULL = TRUE)
+  on.exit(options(old), add = TRUE)
+
+  # ---- extract/construct graph and 2D layout ----
+  if (inherits(x, "graph.3d")) {
+    g <- x$graph
+    layout.2d <- x$layout
+    if (is.null(z)) z <- x$z
+    vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(g))
+
+  } else if (inherits(x, "ggraph")) {
+    graph.adj.list     <- x$adj.list
+    graph.edge.lengths <- x$weight.list
+
+    graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+    g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+    if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
+
+    if (is.character(layout)) {
+      layout_func <- switch(layout,
+        "nicely"    = igraph::layout_nicely,
+        "randomly"  = igraph::layout_randomly,
+        "in_circle" = igraph::layout_in_circle,
+        "on_sphere" = igraph::layout_on_sphere,
+        "fr"        = igraph::layout_with_fr,
+        "kk"        = igraph::layout_with_kk,
+        "as_tree"   = igraph::layout_as_tree,
+        "lgl"       = igraph::layout_with_lgl,
+        "graphopt"  = igraph::layout_with_graphopt,
+        "drl"       = igraph::layout_with_drl,
+        "dh"        = igraph::layout_with_dh,
+        "mds"       = igraph::layout_with_mds,
+        stop("Invalid layout specified")
+      )
+      layout.2d <- layout_func(g, dim = 2)
+    } else if (is.matrix(layout) && ncol(layout) == 2) {
+      layout.2d <- layout
+    } else {
+      stop("'layout' must be a known layout name or an n x 2 numeric matrix")
+    }
+
+    vertex.color <- rep("gray", igraph::vcount(g))
+
+  } else if (is.list(x) && !is.null(x$graph) && !is.null(x$layout)) {
+    g <- x$graph
+    layout.2d <- x$layout
+    vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(g))
+
+  } else {
+    stop("`x` must be a graph.3d object, a ggraph object, or a list with components 'graph' and 'layout'")
+  }
+
+  # ---- validate z and layout ----
+  if (is.null(z)) {
+    stop("`z` values must be provided (argument `z` or inside a graph.3d object)")
+  }
+  if (!is.numeric(z)) stop("`z` must be a numeric vector", call. = FALSE)
+  layout.2d <- as.matrix(layout.2d)
+  if (!is.numeric(layout.2d)) stop("`layout` must be numeric coordinates", call. = FALSE)
+  if (ncol(layout.2d) != 2L) stop("`layout` must have exactly 2 columns", call. = FALSE)
+  if (length(z) != nrow(layout.2d)) {
+    stop(sprintf("Length of `z` (%d) must match number of vertices (%d).",
+                 length(z), nrow(layout.2d)), call. = FALSE)
+  }
+  if (!is.numeric(graph.alpha) || graph.alpha < 0 || graph.alpha > 1) {
+    stop("`graph.alpha` must be in [0, 1]", call. = FALSE)
+  }
+  if (!is.numeric(z.alpha) || z.alpha < 0 || z.alpha > 1) {
+    stop("`z.alpha` must be in [0, 1]", call. = FALSE)
+  }
+
+  # ---- scale & colors ----
+  z <- as.numeric(z) * z.scale
+  layout.3d <- cbind(layout.2d, z)
+
+  if (is.null(z.color)) {
+    if (diff(range(z)) > 0) {
+      z.norm <- (z - min(z)) / diff(range(z))
+      pal <- grDevices::hcl.colors(100, palette = "Spectral")
+      idx <- pmin(100L, pmax(1L, 1L + floor(z.norm * 99)))
+      z.color <- pal[idx]
+    } else {
+      z.color <- rep("red", length(z))
+    }
+  } else if (length(z.color) == 1L) {
+    z.color <- rep(z.color, length(z))
+  } else if (length(z.color) != length(z)) {
+    stop("`z.color` must be a single color or have the same length as `z`", call. = FALSE)
+  }
+
+  # ---- open/clear device ----
+  rgl::open3d()
+  on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+  rgl::clear3d()
+
+  # ---- base plane (z=0) ----
+  if (isTRUE(base.plane)) {
+    base.layout <- cbind(layout.2d, 0)
+
+    if (isTRUE(use.spheres)) {
+      rgl::spheres3d(
+        base.layout,
+        radius = base.vertex.size * 0.02,
+        col = vertex.color,
+        alpha = graph.alpha
+      )
+    } else {
+      rgl::points3d(
+        base.layout,
+        size = base.vertex.size * 10,
+        col = vertex.color,
+        alpha = graph.alpha
+      )
+    }
+
+    edges <- igraph::as_edgelist(g, names = FALSE)
+    if (NROW(edges) > 0) {
+      edge.coords <- matrix(NA_real_, nrow = NROW(edges) * 2L, ncol = 3L)
+      for (i in seq_len(NROW(edges))) {
+        v1 <- edges[i, 1]; v2 <- edges[i, 2]
+        edge.coords[(i - 1L) * 2L + 1L, ] <- base.layout[v1, ]
+        edge.coords[(i - 1L) * 2L + 2L, ] <- base.layout[v2, ]
+      }
+      rgl::segments3d(edge.coords, col = "gray50", alpha = graph.alpha, lwd = edge.width)
+    }
+  }
+
+  # ---- z points ----
+  if (isTRUE(use.spheres)) {
+    rgl::spheres3d(
+      layout.3d,
+      radius = z.point.size * 0.02,
+      col = z.color,
+      alpha = z.alpha
+    )
+  } else {
+    rgl::points3d(
+      layout.3d,
+      size = z.point.size * 10,
+      col = z.color,
+      alpha = z.alpha
+    )
+  }
+
+  # ---- 3D edges between z points ----
+  if (isTRUE(conn.points)) {
+    edges <- igraph::as_edgelist(g, names = FALSE)
+    if (NROW(edges) > 0) {
+      for (i in seq_len(NROW(edges))) {
+        v1 <- edges[i, 1]; v2 <- edges[i, 2]
+        rgl::lines3d(rbind(layout.3d[v1, ], layout.3d[v2, ]),
+                     col = edge.color, lwd = edge.width)
+      }
+    }
+  }
+
+  # ---- vertical lines from base to z points ----
+  if (isTRUE(vertical.lines) && isTRUE(base.plane)) {
+    if (identical(vertical.line.style, "dashed")) {
+      for (i in seq_len(nrow(layout.2d))) {
+        z_height <- z[i]
+        if (z_height <= 0) next
+        seg_len <- dash.length + gap.length
+        n_segments <- floor(z_height / seg_len)
+        if (n_segments < 1L) n_segments <- 1L
+        for (j in 0:(n_segments - 1L)) {
+          start_z <- j * seg_len
+          end_z   <- min(start_z + dash.length, z_height)
+          rgl::lines3d(
+            rbind(c(layout.2d[i, ], start_z),
+                  c(layout.2d[i, ], end_z)),
+            col   = vertical.line.color,
+            alpha = vertical.line.alpha,
+            lwd   = vertical.line.width
+          )
+        }
+      }
+    } else {
+      base.layout <- cbind(layout.2d, 0)
+      for (i in seq_len(nrow(layout.2d))) {
+        rgl::lines3d(
+          rbind(base.layout[i, ], layout.3d[i, ]),
+          col   = vertical.line.color,
+          alpha = vertical.line.alpha,
+          lwd   = vertical.line.width
+        )
+      }
+    }
+  }
+
+  # ---- extrema (basins.df) ----
+  if (!is.null(basins.df)) {
+    if (!all(c("evertex", "is_max") %in% names(basins.df))) {
+      stop("`basins.df` must contain columns 'evertex' and 'is_max'", call. = FALSE)
+    }
+    labels <- if (!is.null(basins.df$label)) basins.df$label else paste0("E", seq_len(nrow(basins.df)))
+    for (i in seq_len(nrow(basins.df))) {
+      v <- basins.df$evertex[i]
+      if (!is.finite(v) || v < 1L || v > nrow(layout.3d)) next
+      colv <- if (isTRUE(basins.df$is_max[i] == 1)) evertex.max.color else evertex.min.color
+      rgl::spheres3d(layout.3d[v, 1], layout.3d[v, 2], layout.3d[v, 3],
+                     radius = evertex.sphere.radius * 0.02, col = colv, alpha = 0.8)
+      rgl::text3d(layout.3d[v, 1], layout.3d[v, 2], layout.3d[v, 3] + evertex.label.offset,
+                  texts = labels[i], col = colv, cex = evertex.cex, adj = evertex.adj)
+    }
+  }
+
+  # ---- axes ----
+  if (isTRUE(show.axes)) {
+    rgl::axes3d()
+    rgl::title3d(xlab = "X", ylab = "Y", zlab = "Z")
+  }
+
+  invisible(NULL)
+}

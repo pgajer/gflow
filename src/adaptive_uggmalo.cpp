@@ -31,6 +31,7 @@
 #include <chrono>
 #include <thread>      // For std::thread
 
+#include "exec_policy.hpp"
 #include "uniform_grid_graph.hpp"
 #include "ulm.hpp"
 #include "graph_utils.hpp"        // For get_grid_diameter()
@@ -209,10 +210,6 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
     bool verbose
     ) {
 
-    // std::for_each flag
-    auto exec = std::execution::seq;
-    // auto exec = std::execution::par_unseq;
-
     initialize_kernel(kernel_type, 1.0);
 
     // Initialize result structure
@@ -224,7 +221,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
 
     result.graph_diameter = grid_graph.graph_diameter;
 
-    	// Define minimum and maximum bandwidth as a fraction of graph diameter
+    // Define minimum and maximum bandwidth as a fraction of graph diameter
     double max_bw = max_bw_factor * grid_graph.graph_diameter;
     double min_bw = min_bw_factor * grid_graph.graph_diameter;
     // Ensure the min_bw is at least the maximum packing radius
@@ -423,7 +420,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
     };
 
 
-    auto average_models = [&blending_coef,&n_vertices,&verbose,&grid_graph](
+    auto average_models = [&blending_coef,&n_vertices,&verbose](
         std::unordered_map<size_t, ext_ulm_priority_queue>& grid_vertex_models_map,
         const std::vector<double>& y,
         std::vector<double>& predictions,
@@ -644,7 +641,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         // Progress tracking
         std::atomic<int> bootstrap_counter{0};
 
-        std::for_each(exec,
+        gflow::for_each(gflow::seq,
                       bb_indices.begin(),
                       bb_indices.end(),
                       [&](int iboot) {
@@ -745,7 +742,7 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         std::mt19937 gen(rd());
 
         // Parallel execution of permutation iterations
-        std::for_each(exec,
+        gflow::for_each(gflow::seq,
                       perm_indices.begin(),
                       perm_indices.end(),
                       [&](int iperm) {

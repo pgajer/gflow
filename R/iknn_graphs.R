@@ -748,7 +748,6 @@ find.optimal.k <- function(birth.death.matrix, kmin, kmax, matrix_type = "geom")
 #' }
 #'
 #' @importFrom graphics par mtext abline
-#' @import rgl
 #'
 #' @export
 plot.IkNNgraphs <- function(x,
@@ -766,7 +765,7 @@ plot.IkNNgraphs <- function(x,
                             yline = 3.15,
                             ...) {
 
-    types <- c("diag", "graph")
+    types <- c("diag")
     type <- match.arg(type, types)
 
     old.par <- par(no.readonly = TRUE)  # Save old par settings
@@ -932,9 +931,5 @@ plot.IkNNgraphs <- function(x,
                        abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
                    }
                }
-           },
-           "graph" = {
-               open3d()
-
            })
 }

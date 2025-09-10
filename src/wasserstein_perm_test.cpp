@@ -31,12 +31,11 @@
 #include <numeric>         // for std::iota
 #include <execution>       // for std::execution::seq, std::execution::par_unseq
 #include <thread>          // for std::thread::hardware_concurrency()
-//#include <omp.h>           // for omp_get_thread_num()
-#include "omp_compat.h"
 #include <cstddef>         // for size_t
 
 #include "wasserstein_perm_test.hpp"  // Contains vertex_wasserstein_perm_test_results_t definition and C_wasserstein_distance_1D
-
+#include "exec_policy.hpp"
+#include "omp_compat.h"
 
 /**
  * @brief Performs a vertex-wise Wasserstein permutation test
@@ -108,10 +107,7 @@ vertex_wasserstein_perm_test_results_t vertex_wasserstein_perm_test(
     std::vector<size_t> bootstrap_indices(n_bootstraps);
     std::iota(bootstrap_indices.begin(), bootstrap_indices.end(), 0);
 
-    // std::execution::par_unseq,
-    auto exec = std::execution::seq;
-    // std::execution::par_unseq,
-    std::for_each(exec,
+    gflow::for_each(gflow::seq,
                   bootstrap_indices.begin(),
                   bootstrap_indices.end(),
                   [&](size_t k) {  // Changed from int to size_t to match index type
@@ -133,7 +129,7 @@ vertex_wasserstein_perm_test_results_t vertex_wasserstein_perm_test(
     const size_t n_threads = std::thread::hardware_concurrency();
     std::vector<std::vector<double>> thread_local_bb_values(n_threads, std::vector<double>(n_tests));
 
-    std::for_each(exec,
+    gflow::for_each(gflow::seq,
                   vertex_indices.begin(),
                   vertex_indices.end(),
                   [&](size_t i) {  // Changed from int to size_t

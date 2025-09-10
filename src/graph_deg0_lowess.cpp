@@ -12,6 +12,7 @@
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 
+#include "exec_policy.hpp"
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
 #include "kernels.h"                // For kernel functions and initialization
@@ -77,7 +78,7 @@ std::vector<double> set_wgraph_t::graph_deg0_lowess(
     std::iota(vertices.begin(), vertices.end(), 0);
 
     // Use std::execution::par_unseq for parallel processing if available
-    std::for_each(std::execution::seq, vertices.begin(), vertices.end(),
+    gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
         [&](size_t vertex) {
             try {
                 // Find vertices within bandwidth radius

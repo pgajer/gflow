@@ -29,6 +29,7 @@ plot3D.cltrs(
   xlab = "",
   ylab = "",
   zlab = "",
+  use.null = TRUE,
   ...
 )
 }
@@ -77,6 +78,8 @@ plot3D.cltrs(
 
 \item{xlab, ylab, zlab}{Axis labels.}
 
+\item{use.null}{Logical. If TRUE, forces use of the RGL null device for safe operation in headless or CI environments.}
+
 \item{...}{Additional arguments passed to \code{\link[rgl]{plot3d}}.}
 }
 \value{
@@ -96,17 +99,11 @@ color assignment, legend generation, and various customization options. It suppo
 highlighting specific clusters and different color palette options.
 }
 \examples{
-\dontrun{
-# Generate sample data
-set.seed(123)
-X <- matrix(rnorm(300), ncol = 3)
-cltr <- sample(c("A", "B", "C"), 100, replace = TRUE)
-
-# Basic cluster plot
-plot3D.cltrs(X, cltr)
-
-# Plot with reference cluster
-cltr[1:10] <- "0"
-plot3D.cltrs(X, cltr, ref.cltr = "0", show.cltr.labels = TRUE)
+if (requireNamespace("rgl", quietly = TRUE)) {
+  old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+  set.seed(123)
+  X <- matrix(rnorm(300), ncol = 3)
+  cltr <- sample(c("A", "B", "C"), 100, replace = TRUE)
+  plot3D.cltrs(X, cltr, show.cltr.labels = TRUE)
 }
 }

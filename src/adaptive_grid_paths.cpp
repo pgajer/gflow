@@ -181,8 +181,6 @@ std::vector<compose_path_t> uniform_grid_graph_t::find_and_filter_composite_path
 	std::vector<compose_path_t> filtered_paths;
 
 	// Try increasingly larger radii until we find suitable paths or reach the maximum
-
-	size_t debugging_iterator = 0;
 	while (current_radius <= max_allowed_radius) {
 
 		// Compute reachability map with current radius
@@ -209,8 +207,6 @@ std::vector<compose_path_t> uniform_grid_graph_t::find_and_filter_composite_path
 
 		// Increase the radius for the next iteration
 		current_radius *= 1.5;
-
-		debugging_iterator++;
 	}
 
 	// Store the final radius if the caller requested it

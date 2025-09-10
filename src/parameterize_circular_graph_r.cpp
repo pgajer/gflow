@@ -15,7 +15,6 @@ extern "C" {
 		);
 }
 
-
 /**
  * @brief Parameterizes a circular graph structure using spectral methods and returns the result to R
  *
@@ -38,62 +37,58 @@ extern "C" {
  *       and that the graph is connected.
  */
 SEXP S_parameterize_circular_graph(
-	SEXP s_adj_list,
-	SEXP s_weight_list,
-	SEXP s_use_edge_lengths
-	) {
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_use_edge_lengths
+) {
+    // Convert input parameters using R's C API
+    std::vector<std::vector<int>>    adj_list    = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+    bool use_edge_lengths = LOGICAL(s_use_edge_lengths)[0];
 
-	// Convert input parameters using R's C API
-	std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
-	std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
-	bool use_edge_lengths = LOGICAL(s_use_edge_lengths)[0];
+    set_wgraph_t graph(adj_list, weight_list);
 
-	set_wgraph_t graph(adj_list, weight_list);
+    circular_param_result_t res = graph.parameterize_circular_graph(use_edge_lengths);
 
-	circular_param_result_t res = graph.parameterize_circular_graph(use_edge_lengths);
+    // We will always return a 6-element list:
+    // c("angles","eig_vec2","eig_vec3","eig_vec4","eig_vec5","eig_vec6")
+    static const char* kNames[] = {
+        "angles","eig_vec2","eig_vec3","eig_vec4","eig_vec5","eig_vec6"
+    };
+    constexpr int K = 6;
 
-	// Create the return list using R's C API
-	const char* names[] = {
-		"angles",
-		"eig_vec2",
-		"eig_vec3",
-		"eig_vec4",
-		"eig_vec5",
-		"eig_vec6",
-		NULL
-	};
+    int protect_count = 0;
 
-	int n_elements = 0;
-	while (names[n_elements] != NULL) n_elements++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, K));                              // (1)
+    // names
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, K));                        // (2)
+    for (int i = 0; i < K; ++i) SET_STRING_ELT(result_names, i, Rf_mkChar(kNames[i]));
+    Rf_setAttrib(result, R_NamesSymbol, result_names);
+    UNPROTECT(1); // result_names
 
-	// Create list and protect it
-	int protect_count = 0;
-	SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
+    // Helpers that PROTECT so we can UNPROTECT at the end.
+    auto create_numeric_vector = [&](const std::vector<double>& v) -> SEXP {
+        SEXP r = PROTECT(Rf_allocVector(REALSXP, v.size()));
+        ++protect_count;
+        double* p = REAL(r);
+        std::copy(v.begin(), v.end(), p);
+        return r;
+    };
+    auto maybe_numeric_or_null = [&](const std::vector<double>& v) -> SEXP {
+        if (v.empty()) return R_NilValue;
+        return create_numeric_vector(v);
+    };
 
-	// Set names
-	SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-	for (int i = 0; i < n_elements; i++) {
-		SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
-	}
-	Rf_setAttrib(result, R_NamesSymbol, result_names);
-	UNPROTECT(1); // for result_names
+    // Set elements
+    SET_VECTOR_ELT(result, 0, create_numeric_vector(res.angles));  // angles
+    SET_VECTOR_ELT(result, 1, maybe_numeric_or_null(res.eig_vec2));
+    SET_VECTOR_ELT(result, 2, maybe_numeric_or_null(res.eig_vec3));
+    SET_VECTOR_ELT(result, 3, maybe_numeric_or_null(res.eig_vec4));
+    SET_VECTOR_ELT(result, 4, maybe_numeric_or_null(res.eig_vec5));
+    SET_VECTOR_ELT(result, 5, maybe_numeric_or_null(res.eig_vec6));
 
-	// Helper function to convert vector to SEXP
-	auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-		SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-		double* ptr = REAL(r_vec);
-		std::copy(vec.begin(), vec.end(), ptr);
-		return r_vec;
-	};
+    // Unprotect all vectors we created via helpers (result itself stays protected for return)
+    UNPROTECT(protect_count + 1);  // +1 accounts for 'result' at the top (1)
 
-	SET_VECTOR_ELT(result, 0, create_numeric_vector(res.angles)); protect_count++;
-	SET_VECTOR_ELT(result, 1, create_numeric_vector(res.eig_vec2)); protect_count++;
-	SET_VECTOR_ELT(result, 2, create_numeric_vector(res.eig_vec3)); protect_count++;
-	SET_VECTOR_ELT(result, 3, create_numeric_vector(res.eig_vec4)); protect_count++;
-	SET_VECTOR_ELT(result, 4, create_numeric_vector(res.eig_vec5)); protect_count++;
-	SET_VECTOR_ELT(result, 5, create_numeric_vector(res.eig_vec6)); protect_count++;
-
-	UNPROTECT(protect_count);
-
-	return result;
+    return result;
 }

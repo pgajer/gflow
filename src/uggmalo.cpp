@@ -23,9 +23,8 @@
 #include <chrono>
 #include <thread>      // For std::thread
 
-// #include <omp.h>
 #include "omp_compat.h"
-
+#include "exec_policy.hpp"
 #include "edge_weights.hpp"
 #include "ulm.hpp"
 #include "graph_utils.hpp"
@@ -527,9 +526,7 @@ uggmalo_t uggmalo(
     const size_t progress_chunk = std::max<size_t>(1, n_bws / 10);  // Report every 10% progress
 
     // Parallel execution of bandwidth processing
-    //auto exec = std::execution::par_unseq,
-    auto exec = std::execution::seq;
-    std::for_each(exec,
+    gflow::for_each(gflow::seq,
                   bw_indices.begin(),
                   bw_indices.end(),
                   [&](int bw_idx) {
@@ -608,11 +605,9 @@ uggmalo_t uggmalo(
         // Progress tracking
         std::atomic<int> bootstrap_counter{0};
         const size_t progress_chunk = std::max<size_t>(1, n_bb / 100);  // Report every 1% progress
-        //auto start_time = std::chrono::steady_clock::now();
 
         // Parallel execution with thread-local RNG
-        // std::execution::par_unseq,
-        std::for_each(exec,
+        gflow::for_each(gflow::seq,
                       bb_indices.begin(),
                       bb_indices.end(),
                       [&](int iboot) {
@@ -720,8 +715,7 @@ uggmalo_t uggmalo(
         std::mt19937 gen(rd());
 
         // Parallel execution of permutation iterations
-        // std::execution::par_unseq,
-        std::for_each(exec,
+        gflow::for_each(gflow::seq,
                       perm_indices.begin(),
                       perm_indices.end(),
                       [&](int iperm) {

@@ -5,6 +5,7 @@
 #include <filesystem>  // for debugging
 #include <fstream>
 
+#include "exec_policy.hpp"
 #include "agemalo.hpp"
 #include "kernels.h"
 #include "error_utils.h"         // For REPORT_ERROR()
@@ -84,18 +85,14 @@ agemalo_result_t agemalo(
 	double cri_probability,
 	// permutation parameters
 	size_t n_perms,
-// verbose
+	// verbose
 	bool verbose
 	) {
 
 	// Start timer for the entire function
 	auto total_start_time = std::chrono::steady_clock::now();
 
-// std::for_each flag
-// auto exec = std::execution::seq;
-// auto exec = std::execution::par_unseq;
-
-// Initialize result structure
+	// Initialize result structure
 	agemalo_result_t result;
 	result.graph_diameter = grid_graph.graph_diameter;
 	result.max_packing_radius = grid_graph.max_packing_radius;
@@ -112,7 +109,7 @@ agemalo_result_t agemalo(
 	double max_bw = max_bw_factor * grid_graph.graph_diameter;
 	double min_bw = min_bw_factor * grid_graph.graph_diameter;
 	// Ensure the min_bw is at least the maximum packing radius
-// This guarantees all vertices are covered by at least one ball
+	// This guarantees all vertices are covered by at least one ball
 	min_bw = std::max(min_bw, grid_graph.max_packing_radius);
 
 	initialize_kernel(kernel_type, 1.0);
@@ -457,7 +454,7 @@ agemalo_result_t agemalo(
 		std::atomic<size_t> progress_counter{0};
 		const size_t progress_step = std::max(size_t(1), grid_verts.size() / 10);
 
-		std::for_each(std::execution::seq, indices.begin(), indices.end(),
+		gflow::for_each(gflow::seq, indices.begin(), indices.end(),
 					  [&](size_t i) {
 
 						  size_t grid_vertex = grid_verts[i];
@@ -572,23 +569,23 @@ agemalo_result_t agemalo(
 	std::vector<double> empty_scale;
 
 	if (n_bb > 0) {
-// Perform Bayesian bootstrap estimation
+		// Perform Bayesian bootstrap estimation
 		auto bootstrap_start_time = std::chrono::steady_clock::now();
 		if (verbose) {
 			Rprintf("Starting Bayesian bootstrap with %zu iterations\n", n_bb);
 		}
 
-// Initialize storage for predictions and errors
+		// Initialize storage for predictions and errors
 		result.bb_predictions.resize(n_bb, std::vector<double>(n_vertices, 0.0));
 
-// Create indices for parallel iteration
+		// Create indices for parallel iteration
 		std::vector<int> bb_indices(n_bb);
 		std::iota(bb_indices.begin(), bb_indices.end(), 0);
 
-// Progress tracking
+		// Progress tracking
 		std::atomic<int> bootstrap_counter{0};
 
-		std::for_each(std::execution::seq, bb_indices.begin(), bb_indices.end(),
+		gflow::for_each(gflow::seq, bb_indices.begin(), bb_indices.end(),
 					  [&](int iboot) {
 
 						  // Generate bootstrap weights
@@ -675,25 +672,25 @@ agemalo_result_t agemalo(
 	}
 
 	if (n_perms > 0) {
-// Perform permutation testing if requested
+		// Perform permutation testing if requested
 		auto permutation_start_time = std::chrono::steady_clock::now();
 
 		if (verbose) {
 			Rprintf("Starting permutated outcome predictions estimates with %zu permutations\n", n_perms);
 		}
 
-// Initialize permutation test results
+		// Initialize permutation test results
 		result.null_predictions.resize(n_perms, std::vector<double>(n_vertices, 0.0));
 
-// Create indices for parallel iteration
+		// Create indices for parallel iteration
 		std::vector<int> perm_indices(n_perms);
 		std::iota(perm_indices.begin(), perm_indices.end(), 0);
 
-// Atomic counter for tracking progress
+		// Atomic counter for tracking progress
 		std::atomic<int> permutation_counter{0};
 
-// Parallel execution of permutation iterations
-		std::for_each(std::execution::seq, perm_indices.begin(), perm_indices.end(),
+		// Parallel execution of permutation iterations
+		gflow::for_each(gflow::seq, perm_indices.begin(), perm_indices.end(),
 					  [&](int iperm) {
 
 						  // Create permuted y vector

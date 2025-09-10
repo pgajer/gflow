@@ -348,40 +348,40 @@ std::vector<double> pgmalo_cv_parallel(
     std::vector<int> cv_indices(n_CVs);
     std::iota(cv_indices.begin(), cv_indices.end(), 0);
 
-    std::for_each(GFLOW_EXEC_POLICY,
-                  cv_indices.begin(),
-                  cv_indices.end(),
-                  [&](int cv) {
-        std::vector<double> weights(n_vertices, 1.0);
-        const auto& test_set = all_test_sets[cv];
+    gflow::for_each(GFLOW_EXEC_POLICY,
+                    cv_indices.begin(),
+                    cv_indices.end(),
+                    [&](int cv) {
+                        std::vector<double> weights(n_vertices, 1.0);
+                        const auto& test_set = all_test_sets[cv];
 
-        // Set weights for test set vertices to 0
-        for (const auto& vertex : test_set) {
-            weights[vertex] = 0.0;
-        }
+                        // Set weights for test set vertices to 0
+                        for (const auto& vertex : test_set) {
+                            weights[vertex] = 0.0;
+                        }
 
-        // Estimate conditional expectation
-        auto res = pgmalo_with_cv_weights(path_graph,
-                                      y,
-                                      weights,
-                                      ikernel,
-                                      max_distance_deviation,
-                                      dist_normalization_factor,
-                                      epsilon);
+                        // Estimate conditional expectation
+                        auto res = pgmalo_with_cv_weights(path_graph,
+                                                          y,
+                                                          weights,
+                                                          ikernel,
+                                                          max_distance_deviation,
+                                                          dist_normalization_factor,
+                                                          epsilon);
 
-        std::vector<double> Ecv_y = res.first;
-        std::vector<int> excluded_vertices = res.second;
+                        std::vector<double> Ecv_y = res.first;
+                        std::vector<int> excluded_vertices = res.second;
 
-        // Compute valid test set
-        std::vector<int> valid_test_vertices;
-        std::copy_if(test_set.begin(),
-                    test_set.end(),
-                    std::back_inserter(valid_test_vertices),
-                    [&](int vertex) {
-                        return std::find(excluded_vertices.begin(),
-                                       excluded_vertices.end(),
-                                       vertex) == excluded_vertices.end();
-                    });
+                        // Compute valid test set
+                        std::vector<int> valid_test_vertices;
+                        std::copy_if(test_set.begin(),
+                                     test_set.end(),
+                                     std::back_inserter(valid_test_vertices),
+                                     [&](int vertex) {
+                                         return std::find(excluded_vertices.begin(),
+                                                          excluded_vertices.end(),
+                                                          vertex) == excluded_vertices.end();
+                                     });
 
         // Update cross-validation errors
         for (const auto& vertex : valid_test_vertices) {

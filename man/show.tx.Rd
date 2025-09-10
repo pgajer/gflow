@@ -16,61 +16,26 @@ show.tx(
 )
 }
 \arguments{
-\item{taxon}{Character string specifying the taxon name to process. Used to
-construct input/output file names.}
+\item{taxon}{Character string for the taxon name used in file names.}
 
-\item{data.dir}{Character string specifying the directory containing data
-files. Should include trailing slash. If NULL, current directory is used.}
+\item{data.dir}{Directory containing data files (default: current dir if NULL/"").}
 
-\item{cltr.from.scratch}{Logical indicating whether to perform new clustering
-(TRUE) or load existing cluster assignments (FALSE). Default is TRUE.}
+\item{cltr.from.scratch}{Logical; compute clustering or load existing (default TRUE).}
 
-\item{min.pts}{Numeric vector of minimum points parameters for HDBSCAN
-clustering. If length > 1, performs parameter selection. Default is
-seq(5, 50, by = 5).}
+\item{min.pts}{Numeric vector of HDBSCAN minPts values (default seq(5, 50, 5)).}
 
-\item{reorder.cltrs}{Logical indicating whether to reorder clusters by
-decreasing size. Default is TRUE.}
+\item{reorder.cltrs}{Logical; reorder clusters by decreasing size (default TRUE).}
 
-\item{show.plot}{Logical indicating whether to display 3D visualization of
-clusters. Default is TRUE.}
+\item{show.plot}{Logical; show 3D plot if possible (default TRUE).}
 
-\item{n.cores}{Integer specifying number of cores for parallel processing.
-Default is 10.}
+\item{n.cores}{Integer; parallel cores for your internal functions (default 10).}
 
-\item{verbose}{Logical indicating whether to print progress messages.
-Default is TRUE.}
+\item{verbose}{Logical; print progress (default TRUE).}
 }
 \value{
-Invisibly returns a list containing:
-\item{taxon}{The taxon name}
-\item{cltr.ext}{Extended cluster assignments (including imputed clusters)}
-\item{cltr}{Original cluster assignments}
-\item{X}{The 3D embedding matrix}
-\item{pacmap.file}{Path to the PaCMAP embedding file}
-\item{cltr.ext.file}{Path to the extended clustering file}
+(Invisibly) a list with taxon, cltr.ext, cltr, X, pacmap.file, cltr.ext.file
 }
 \description{
 Reads taxon-specific 3D embedding data and performs or loads clustering
 analysis. Optionally reorders clusters by size and creates 3D visualization.
-}
-\details{
-The function expects the following file naming convention:
-\itemize{
-\item PaCMAP embedding: \code{<data.dir><taxon>_pacmap.csv}
-\item Clustering: \code{<data.dir><taxon>_pacmap_cltr.csv}
-\item Extended clustering: \code{<data.dir><taxon>_pacmap_cltr_ext.csv}
-}
-
-When cltr.from.scratch = FALSE and extended clustering file doesn't exist,
-it will be created using k-NN imputation.
-}
-\examples{
-\dontrun{
-# Process clustering for a specific taxon
-result <- show.tx(taxon = "Bacteroides",
-                  data.dir = "./data/",
-                  cltr.from.scratch = TRUE)
-}
-
 }

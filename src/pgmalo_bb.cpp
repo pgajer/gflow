@@ -101,31 +101,31 @@ std::vector<std::vector<double>> pgmalo_bb(const path_graph_plm_t& path_graph,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    std::for_each(GFLOW_EXEC_POLICY,
-                  bb_indices.begin(),
-                  bb_indices.end(),
-                  [&](int iboot) {
-        // Thread-local weight vector
-        std::vector<double> weights(n_vertices);
+    gflow::for_each(GFLOW_EXEC_POLICY,
+                    bb_indices.begin(),
+                    bb_indices.end(),
+                    [&](int iboot) {
+                        // Thread-local weight vector
+                        std::vector<double> weights(n_vertices);
 
-        // Generate weights in a thread-safe manner
-        {
-            std::lock_guard<std::mutex> lock(rng_mutex);
-            C_runif_simplex(&n_vertices, weights.data());
-        }
+                        // Generate weights in a thread-safe manner
+                        {
+                            std::lock_guard<std::mutex> lock(rng_mutex);
+                            C_runif_simplex(&n_vertices, weights.data());
+                        }
 
-        // Compute predictions for this bootstrap iteration
-        auto [predictions, errors] = spgmalo(path_graph,
-                                            y,
-                                            weights,
-                                            ikernel,
-                                            max_distance_deviation,
-                                            dist_normalization_factor,
-                                            epsilon);
+                        // Compute predictions for this bootstrap iteration
+                        auto [predictions, errors] = spgmalo(path_graph,
+                                                             y,
+                                                             weights,
+                                                             ikernel,
+                                                             max_distance_deviation,
+                                                             dist_normalization_factor,
+                                                             epsilon);
 
-        // Store results - no need for mutex as each thread writes to its own index
-        bb_Ey[iboot] = std::move(predictions);
-    });
+                        // Store results - no need for mutex as each thread writes to its own index
+                        bb_Ey[iboot] = std::move(predictions);
+                    });
 
     return bb_Ey;
 }

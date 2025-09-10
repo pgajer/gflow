@@ -1045,7 +1045,7 @@ synthetic.xD.spline <- function(X, y = NULL) {
 #'     its neighbors. It then forms a synthetic function by combining these
 #'     Gaussian distributions. The function can generate smooth functions that
 #'     take also negative values by multiplying Gaussian components by a vector
-#'     of ±1 values.
+#'     of \eqn{\pm 1} values.
 #'
 #' @examples
 #' \dontrun{
@@ -3227,73 +3227,101 @@ plot.gaussian_mixture <- function(x, n.grid = 50, main = "2D Gaussian Mixture", 
     invisible(NULL)
 }
 
-#' Create 3D interactive plot of gaussian_mixture
+#' 3D Plot of Gaussian Mixture
 #'
-#' @param x A gaussian_mixture object
-#' @param n.grid Number of grid points in each dimension
-#' @param col Surface color
-#' @param alpha Surface transparency
-#' @param add.contours Whether to add contour lines at the base
-#' @param ... Additional arguments passed to rgl functions
+#' Creates a 3D surface plot of a 2D Gaussian mixture object.
 #'
-#' @return Invisible surface object
+#' @param x A \code{gaussian_mixture} object (from your generator).
+#' @param n.grid Integer \eqn{\ge 2}. Number of grid points per axis.
+#' @param col Color for the surface.
+#' @param alpha Transparency of the surface in \eqn{[0,1]}.
+#' @param add.contours Logical; whether to add contour lines on a base plane.
+#' @param ... Passed to \code{rgl::surface3d()}.
+#'
+#' @return Invisibly returns the rgl surface object id.
+#'
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("rgl", quietly = TRUE)) {
+#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'   gm <- get.gaussian.mixture.2d(n.components = 2)
+#'   plot3D(gm)
+#' }
+#' }
 #' @export
-plot3d.gaussian_mixture <- function(x,
-                                   n.grid = 50,
-                                   col = "skyblue",
-                                   alpha = 0.7,
-                                   add.contours = TRUE,
-                                   ...) {
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-        stop("Package 'rgl' is required for 3D plotting. Please install it.")
+plot3D.gaussian_mixture <- function(x,
+                                    n.grid = 50,
+                                    col = "skyblue",
+                                    alpha = 0.7,
+                                    add.contours = TRUE,
+                                    ...) {
+  # rgl gating
+  if (!requireNamespace("rgl", quietly = TRUE)) {
+    stop("This function requires the optional package 'rgl'. ",
+         "Install with install.packages('rgl').", call. = FALSE)
+  }
+
+  # Validate object
+  if (is.null(x) || !inherits(x, "gaussian_mixture")) {
+    stop("`x` must be an object of class 'gaussian_mixture'.", call. = FALSE)
+  }
+  req_fields <- c("f", "x.range", "y.range", "n.components", "centers")
+  missing <- setdiff(req_fields, names(x))
+  if (length(missing)) {
+    stop("Missing fields in 'gaussian_mixture': ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  if (!is.function(x$f)) stop("`x$f` must be a function f(x, y).", call. = FALSE)
+  if (!is.numeric(x$x.range) || length(x$x.range) != 2L) stop("`x$x.range` must be numeric length 2.", call. = FALSE)
+  if (!is.numeric(x$y.range) || length(x$y.range) != 2L) stop("`x$y.range` must be numeric length 2.", call. = FALSE)
+  if (!is.matrix(x$centers) || ncol(x$centers) != 2L) stop("`x$centers` must be an n-by-2 numeric matrix.", call. = FALSE)
+  if (!is.numeric(n.grid) || n.grid < 2) stop("`n.grid` must be an integer >= 2.", call. = FALSE)
+  if (!is.numeric(alpha) || alpha < 0 || alpha > 1) stop("`alpha` must be in [0,1].", call. = FALSE)
+
+  # Headless/CI-safe (off-screen device)
+  old <- options(rgl.useNULL = TRUE)
+  on.exit(options(old), add = TRUE)
+
+  # Grid
+  x.seq <- seq(x$x.range[1], x$x.range[2], length.out = n.grid)
+  y.seq <- seq(x$y.range[1], x$y.range[2], length.out = n.grid)
+
+  # Evaluate z = f(x,y) on the grid (vectorized safely)
+  fxy <- Vectorize(function(xx, yy) x$f(xx, yy))
+  z <- outer(x.seq, y.seq, fxy)  # n.grid-by-n.grid
+
+  # Open/close dedicated device
+  rgl::open3d()
+  on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+
+  # Optional base plane with contours
+  if (isTRUE(add.contours)) {
+    base.z <- min(z) - 0.1 * diff(range(z))
+    rgl::surface3d(x.seq, y.seq, matrix(base.z, n.grid, n.grid),
+                   col = "white", alpha = 0.3)
+    cl <- grDevices::contourLines(x.seq, y.seq, z, nlevels = 10)
+    if (length(cl)) {
+      for (ln in cl) {
+        rgl::lines3d(ln$x, ln$y, rep.int(base.z, length(ln$x)),
+                     col = "darkgray", lwd = 2)
+      }
     }
+  }
 
-    # Generate evaluation grid
-    x.seq <- seq(x$x.range[1], x$x.range[2], length.out = n.grid)
-    y.seq <- seq(x$y.range[1], x$y.range[2], length.out = n.grid)
+  # Main surface
+  surf <- rgl::surface3d(x.seq, y.seq, z, col = col, alpha = alpha, ...)
 
-    # Evaluate function on grid
-    z <- matrix(0, n.grid, n.grid)
-    for (i in 1:n.grid) {
-        for (j in 1:n.grid) {
-            z[i, j] <- x$f(x.seq[i], y.seq[j])
-        }
-    }
+  # Component centers (as small spheres at their height)
+  if (is.numeric(x$n.components) && x$n.components > 0) {
+    cz <- vapply(seq_len(nrow(x$centers)), function(i) x$f(x$centers[i, 1], x$centers[i, 2]), numeric(1))
+    rgl::spheres3d(x$centers[, 1], x$centers[, 2], cz, radius = 0.02, col = "red")
+  }
 
-    # Clear previous plot
-    rgl::open3d()
+  # Axes and view
+  rgl::axes3d()
+  rgl::title3d(xlab = "x", ylab = "y", zlab = "f(x,y)")
+  rgl::view3d(theta = 45, phi = 30)
 
-    # Add contours at base if requested
-    if (add.contours) {
-        base.z <- min(z) - 0.1 * diff(range(z))
-        rgl::surface3d(x.seq, y.seq, matrix(base.z, n.grid, n.grid),
-                      color = "white", alpha = 0.3)
-
-        contour.lines <- grDevices::contourLines(x.seq, y.seq, z, nlevels = 10)
-        for (line in contour.lines) {
-            rgl::lines3d(line$x, line$y, rep(base.z, length(line$x)),
-                        col = "darkgray", lwd = 2)
-        }
-    }
-
-    # Add main surface
-    surf <- rgl::surface3d(x.seq, y.seq, z, color = col, alpha = alpha, ...)
-
-    # Add axes
-    rgl::axes3d()
-    rgl::title3d(xlab = "x", ylab = "y", zlab = "f(x,y)")
-
-    # Add center points as spheres
-    for (i in 1:x$n.components) {
-        rgl::spheres3d(x$centers[i, 1], x$centers[i, 2],
-                      x$f(x$centers[i, 1], x$centers[i, 2]),
-                      radius = 0.02, col = "red")
-    }
-
-    # Set viewing angle
-    rgl::view3d(theta = 45, phi = 30)
-
-    invisible(surf)
+  invisible(surf)
 }
 
 #' Print method for gaussian_mixture objects
@@ -3622,8 +3650,8 @@ plot.gaussian_mixture_data <- function(x,
                ## Create ggraph object
                g <- ggraph(adj_list, weight_list)
 
-               ## Use plot.graph.3d
-               plot.graph.3d(
+               ## Use plot3D.graph
+               plot3D.graph(
                    x = g,
                    z = x$y,
                    layout = x$X,

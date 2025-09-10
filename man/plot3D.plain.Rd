@@ -2,42 +2,44 @@
 % Please edit documentation in R/plot_utils.R
 \name{plot3D.plain}
 \alias{plot3D.plain}
-\title{Plot 3D Points or Spheres Without Axes}
+\title{Plots 3D Points or Spheres Without Axes}
 \usage{
-plot3D.plain(X, radius = NULL, col = "gray", size = 3, ...)
+plot3D.plain(
+  X,
+  radius = NULL,
+  col = "gray",
+  size = 3,
+  use_null = TRUE,
+  open_new = TRUE,
+  axes = FALSE,
+  xlab = "",
+  ylab = "",
+  zlab = "",
+  ...
+)
 }
 \arguments{
-\item{X}{A numeric matrix or data frame with exactly 3 columns representing x, y, and z coordinates.}
+\item{X}{matrix/data.frame with exactly 3 columns}
 
-\item{radius}{Numeric value for the radius of spheres. If NULL (default), points will be plotted instead of spheres.}
+\item{radius}{numeric or NULL; if non-NULL, draw spheres with this radius}
 
-\item{col}{Color for the points or spheres. Default is "gray".}
+\item{col}{color for points/spheres}
 
-\item{size}{Numeric value for the size of points when plotting points (radius = NULL). Default is 3.}
+\item{size}{point size when radius is NULL}
 
-\item{...}{Additional arguments passed to \code{\link[rgl]{plot3d}}.}
+\item{use_null}{logical; force rgl null device (recommended for CRAN/CI)}
+
+\item{open_new}{logical; open/close a new rgl device within this call}
+
+\item{axes, xlab, ylab, zlab}{standard rgl axis/label args}
+
+\item{...}{passed to rgl::plot3d()}
 }
 \value{
-Invisibly returns NULL. The function is called for its side effect of creating a plot.
+Invisibly returns the rgl object ids from plot3d()
 }
 \description{
-This function creates a 3D plot of points or spheres without axes labels using the rgl package.
-It automatically switches between spheres and points based on whether a radius is specified.
-}
-\details{
-The function creates a 3D plot without axes or labels. If radius is specified,
-it plots spheres using type="s"; otherwise, it plots points using type="p".
-}
-\examples{
-\dontrun{
-# Create sample 3D data
-X <- matrix(rnorm(30), ncol = 3)
-
-# Plot as points
-plot3D.plain(X)
-
-# Plot as spheres
-plot3D.plain(X, radius = 0.2, col = "blue")
-}
-
+This function creates a 3D plot of points or spheres without axes labels
+using the rgl package. It automatically switches between spheres and points
+based on whether a radius is specified.
 }

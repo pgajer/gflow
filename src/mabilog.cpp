@@ -920,39 +920,38 @@ std::vector<std::vector<double>> mabilog_bb(const std::vector<double>& x,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    //std::for_each(std::execution::par_unseq,
-    std::for_each(GFLOW_EXEC_POLICY,
-                  bb_indices.begin(),
-                  bb_indices.end(),
-                  [&](int iboot) {
-        // Thread-local weight vector
-        std::vector<double> weights(n_points);
+    gflow::for_each(GFLOW_EXEC_POLICY,
+                    bb_indices.begin(),
+                    bb_indices.end(),
+                    [&](int iboot) {
+                        // Thread-local weight vector
+                        std::vector<double> weights(n_points);
 
-        // Generate weights in a thread-safe manner
-        {
-            std::lock_guard<std::mutex> lock(rng_mutex);
-            C_runif_simplex(&n_points, weights.data());
-        }
+                        // Generate weights in a thread-safe manner
+                        {
+                            std::lock_guard<std::mutex> lock(rng_mutex);
+                            C_runif_simplex(&n_points, weights.data());
+                        }
 
-        // Compute predictions for this bootstrap iteration
-        std::vector<double> y_true;
-        auto wmabilog_results = wmabilog(x,
-                                         y,
-                                         y_true,
-                                         weights,
-                                         max_iterations,
-                                         ridge_lambda,
-                                         max_beta,
-                                         tolerance,
-                                         k,
-                                         k,
-                                         distance_kernel,
-                                         dist_normalization_factor,
-                                         verbose);
+                        // Compute predictions for this bootstrap iteration
+                        std::vector<double> y_true;
+                        auto wmabilog_results = wmabilog(x,
+                                                         y,
+                                                         y_true,
+                                                         weights,
+                                                         max_iterations,
+                                                         ridge_lambda,
+                                                         max_beta,
+                                                         tolerance,
+                                                         k,
+                                                         k,
+                                                         distance_kernel,
+                                                         dist_normalization_factor,
+                                                         verbose);
 
-        // Store results - no need for mutex as each thread writes to its own index
-        bb_predictions[iboot] = std::move(wmabilog_results.predictions);
-    });
+                        // Store results - no need for mutex as each thread writes to its own index
+                        bb_predictions[iboot] = std::move(wmabilog_results.predictions);
+                    });
 
     return bb_predictions;
 }

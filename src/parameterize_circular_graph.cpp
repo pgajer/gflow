@@ -18,260 +18,121 @@
  * @param use_edge_lengths Whether to use edge lengths as weights in the graph Laplacian
  * @return A struct containing angles and eigenvectors for the circular parameterization
  */
+circular_param_result_t set_wgraph_t::parameterize_circular_graph(bool use_edge_lengths) const {
 
-// normalized laplacian
-#if 0
-circular_param_result_t set_wgraph_t::parameterize_circular_graph(
-	bool use_edge_lengths) const {
-	// Set Eigen to use 12 threads for parallel computation
-	Eigen::setNbThreads(12);
-	int n_vertices = adjacency_list.size();  // Number of vertices
+    //Eigen::setNbThreads(12);
 
-	// Step 1: Construct the adjacency matrix and degree matrix (unchanged)
-	// Adjacency matrix as a sparse matrix
-	Eigen::SparseMatrix<double> A(n_vertices, n_vertices);
-	std::vector<Eigen::Triplet<double>> triples;
-	for (int i = 0; i < n_vertices; ++i) {
-		for (const auto& edge : adjacency_list[i]) {
-			int j = edge.vertex;
-			// Use edge length as weight if specified, otherwise use binary weights
-			double weight = use_edge_lengths ? edge.weight : 1.0;
-			if (i < j) {   // Ensure each edge is added only once
-				triples.push_back(Eigen::Triplet<double>(i, j, weight));
-				triples.push_back(Eigen::Triplet<double>(j, i, weight));
-			}
-		}
-	}
-	A.setFromTriplets(triples.begin(), triples.end());
+    const int n_vertices = static_cast<int>(adjacency_list.size());
+    if (n_vertices < 3) {
+        REPORT_ERROR("Graph must have at least 3 vertices to parameterize a circle.");
+    }
 
-	// Compute degree matrix D and D^(-1/2) directly
-	Eigen::SparseMatrix<double> D(n_vertices, n_vertices);
-	Eigen::SparseMatrix<double> D_inv_sqrt(n_vertices, n_vertices);
+    // Build symmetric weighted adjacency A
+    Eigen::SparseMatrix<double> A(n_vertices, n_vertices);
+    std::vector<Eigen::Triplet<double>> triples;
+    triples.reserve(2 * n_vertices * 4); // heuristic
+    for (int i = 0; i < n_vertices; ++i) {
+        for (const auto& edge : adjacency_list[i]) {
+            const int j = edge.vertex;
+            const double w = use_edge_lengths ? edge.weight : 1.0;
+            if (i < j) { // add each undirected edge once, both directions
+                triples.emplace_back(i, j, w);
+                triples.emplace_back(j, i, w);
+            }
+        }
+    }
+    A.setFromTriplets(triples.begin(), triples.end());
 
-	for (int k = 0; k < A.outerSize(); ++k) {
-		double sum = 0;
-		for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
-			sum += it.value();
-		}
-		// Add small epsilon to avoid division by zero
-		double d_value = sum + 1e-10;
-		D.insert(k, k) = d_value;
-		D_inv_sqrt.insert(k, k) = 1.0 / std::sqrt(d_value);
-	}
+    // Degree matrix D and Laplacian L = D - A
+    Eigen::SparseMatrix<double> D(n_vertices, n_vertices);
+    for (int k = 0; k < A.outerSize(); ++k) {
+        double sum = 0.0;
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) sum += it.value();
+        if (sum > 0.0) D.insert(k, k) = sum;
+    }
+    Eigen::SparseMatrix<double> L = D - A;
 
-	// Compute normalized Laplacian L = I - D^(-1/2) A D^(-1/2)
-	Eigen::SparseMatrix<double> I(n_vertices, n_vertices);
-	I.setIdentity();
+    // Small diagonal regularization for numerical stability
+    for (int i = 0; i < n_vertices; ++i) L.coeffRef(i, i) += 1e-8;
 
-	// Efficient computation of D^(-1/2) A D^(-1/2)
-	Eigen::SparseMatrix<double> temp = D_inv_sqrt * A * D_inv_sqrt;
-	Eigen::SparseMatrix<double> L = I - temp;
+    // Spectra operator
+    Spectra::SparseSymMatProd<double> op(L);
 
-	// Add a small regularization term to improve numerical stability
-	for (int i = 0; i < n_vertices; i++) {
-		L.coeffRef(i, i) += 1e-8;
-	}
+    // We want up to 6 smallest eigenpairs (beyond the trivial), but are limited by n.
+    // Spectra requires: nev < ncv <= n, and typically ncv >= nev+1.
+    const int want = std::min(6, std::max(1, n_vertices - 1)); // at most n-1 nontrivial
+    int nev = want;
+    int ncv = std::min(std::max(2 * nev + 1, nev + 1), n_vertices); // generous subspace, capped at n
+    if (nev >= ncv) nev = ncv - 1;
+    if (nev < 1)    nev = 1;
 
-	// Step 3: Compute eigenvalues and eigenvectors of the Laplacian
-	// Eigenvalue decomposition
-	Spectra::SparseSymMatProd<double> op(L);
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+    eigs.init();
+    const int maxit = 1000;
+    const double tol = 1e-16;
+    eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
-	// Ensure ncv is within bounds: nev < ncv <= n
-	int nev = 6;
-	int ncv = std::min(4 * nev, n_vertices);  // Adjust ncv to be within bounds
+    if (eigs.info() != Spectra::CompInfo::Successful) {
+        REPORT_ERROR("Eigenvalue estimation with Spectra failed.");
+    }
 
-	// Ensure nev < ncv
-	if (nev >= ncv) {
-		nev = ncv - 1;
-	}
-	if (nev < 1) {
-		nev = 1;
-	}
+    // Retrieve what was actually computed
+    const Eigen::VectorXd eigenvalues = eigs.eigenvalues();
+    const Eigen::MatrixXd evectors   = eigs.eigenvectors();
+    const int m = static_cast<int>(eigenvalues.size());  // number of columns in evectors
 
-	// Construct eigen solver object to find eigenvalues closest to 0
-	Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
-	eigs.init();
+    // Safe debug prints
+    for (int i = 0; i < m; ++i) {
+        Rprintf("Eigenvalue %d: %.8f\n", i + 1, eigenvalues(i));
+    }
 
-	int maxit = 1000;  // Increase maximum iterations
-	double tol = 1e-16;  // Adjust tolerance
-	eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
+    // Need at least 3 eigenvectors (0th ~ constant, then 2nd & 3rd for embedding)
+    // We access columns 1 and 2 (0-based): ensure they exist.
+    if (m < 3) {
+        REPORT_ERROR("Not enough eigenpairs to compute circular coordinates (need at least 3).");
+    }
 
-	if (eigs.info() != Spectra::CompInfo::Successful)
-		REPORT_ERROR("Eigenvalue estimation with Spectra failed.");
+    // Extract available eigenvectors—only index what exists
+    const Eigen::VectorXd eig_vec2_e = evectors.col(1);
+    const Eigen::VectorXd eig_vec3_e = evectors.col(2);
+    Eigen::VectorXd eig_vec4_e, eig_vec5_e, eig_vec6_e;
+    const bool has4 = (m > 3);
+    const bool has5 = (m > 4);
+    const bool has6 = (m > 5);
+    if (has4) eig_vec4_e = evectors.col(3);
+    if (has5) eig_vec5_e = evectors.col(4);
+    if (has6) eig_vec6_e = evectors.col(5);
 
+    // Compute angles from (eig_vec2, eig_vec3)
+    std::vector<double> angles(n_vertices);
+    Eigen::VectorXd v2 = eig_vec2_e;
+    Eigen::VectorXd v3 = eig_vec3_e;
+    const double n2 = v2.norm();
+    const double n3 = v3.norm();
+    if (n2 == 0.0 || n3 == 0.0) {
+        REPORT_ERROR("Encountered zero-norm eigenvector; cannot compute angles.");
+    }
+    v2 /= n2; v3 /= n3;
 
-	// debugging
-	Eigen::VectorXd eigenvalues = eigs.eigenvalues();
-	Rprintf("Eigenvalue 1: %.8f\n", eigenvalues(0));
-	Rprintf("Eigenvalue 2: %.8f\n", eigenvalues(1));
-	Rprintf("Eigenvalue 3: %.8f\n", eigenvalues(2));
-	Rprintf("Eigenvalue 4: %.8f\n", eigenvalues(3));
-	Rprintf("Eigenvalue 5: %.8f\n", eigenvalues(4));
-	Rprintf("Eigenvalue 6: %.8f\n", eigenvalues(5));
+    for (int i = 0; i < n_vertices; ++i) {
+        double ang = std::atan2(v3(i), v2(i));
+        if (ang < 0.0) ang += 2.0 * M_PI;
+        angles[i] = ang;
+    }
 
+    // Marshal to result struct
+    circular_param_result_t out;
+    out.angles = std::move(angles);
 
-	Eigen::MatrixXd evectors = eigs.eigenvectors();
+    out.eig_vec2.assign(v2.data(), v2.data() + v2.size());
+    out.eig_vec3.assign(v3.data(), v3.data() + v3.size());
+    if (has4) out.eig_vec4.assign(eig_vec4_e.data(), eig_vec4_e.data() + eig_vec4_e.size());
+    if (has5) out.eig_vec5.assign(eig_vec5_e.data(), eig_vec5_e.data() + eig_vec5_e.size());
+    if (has6) out.eig_vec6.assign(eig_vec6_e.data(), eig_vec6_e.data() + eig_vec6_e.size());
+    // If not present, those vectors remain empty; the R wrapper returns NULL for them.
 
-	// The first eigenvector corresponds to the smallest eigenvalue
-	// For a connected graph, this is approximately constant
-	// We want the 2nd and 3rd eigenvectors
-	Eigen::VectorXd eig_vec2 = evectors.col(1);
-	Eigen::VectorXd eig_vec3 = evectors.col(2);
-
-	// Step 5: Calculate circular coordinates (angles) from the eigenvectors
-	std::vector<double> angles(n_vertices);
-	for (int i = 0; i < n_vertices; i++) {
-		angles[i] = std::atan2(eig_vec3(i), eig_vec2(i));
-		if (angles[i] < 0) {
-			angles[i] += 2 * M_PI;
-		}
-	}
-
-	// Return the struct with all the results
-	circular_param_result_t result;
-	result.angles = angles;
-	result.eig_vec2.resize(n_vertices);
-	result.eig_vec3.resize(n_vertices);
-
-	// Copy Eigen vectors to std::vectors
-	for (int i = 0; i < n_vertices; ++i) {
-		result.eig_vec2[i] = eig_vec2(i);
-		result.eig_vec3[i] = eig_vec3(i);
-	}
-
-	return result;
+    return out;
 }
-#endif
-
-// this function uses standard laplacian and produces figure eight instead of circular graph when using the second and third eigenvectors
-#if 1
-circular_param_result_t set_wgraph_t::parameterize_circular_graph(
-	bool use_edge_lengths) const {
-
-	// Set Eigen to use 12 threads for parallel computation
-	Eigen::setNbThreads(12);
-
-	int n_vertices = adjacency_list.size(); // Number of vertices
-
-	// Step 1: Construct the adjacency matrix and degree matrix (unchanged)
-	// Adjacency matrix as a sparse matrix
-	Eigen::SparseMatrix<double> A(n_vertices, n_vertices);
-	std::vector<Eigen::Triplet<double>> triples;
-	for (int i = 0; i < n_vertices; ++i) {
-		for (const auto& edge : adjacency_list[i]) {
-			int j = edge.vertex;
-			// Use edge length as weight if specified, otherwise use binary weights
-			double weight = use_edge_lengths ? edge.weight : 1.0;
-			if (i < j) {  // Ensure each edge is added only once
-				triples.push_back(Eigen::Triplet<double>(i, j, weight));
-				triples.push_back(Eigen::Triplet<double>(j, i, weight));
-			}
-		}
-	}
-	A.setFromTriplets(triples.begin(), triples.end());
-
-	// Compute Laplacian matrix as a sparse matrix
-	Eigen::SparseMatrix<double> D(n_vertices, n_vertices);
-	for (int k = 0; k < A.outerSize(); ++k) {
-		double sum = 0;
-		for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
-			sum += it.value();
-		}
-		D.insert(k, k) = sum;
-	}
-	Eigen::SparseMatrix<double> L = D - A;
-
-	// Add a small regularization term to improve numerical stability
-	for (int i = 0; i < n_vertices; i++) {
-		L.coeffRef(i, i) += 1e-8;
-	}
-
-	// Step 3: Compute eigenvalues and eigenvectors of the Laplacian
-	// Eigenvalue decomposition
-	Spectra::SparseSymMatProd<double> op(L);
-
-	// Ensure ncv is within bounds: nev < ncv <= n
-	int nev = 10;
-	int ncv = std::min(4 * nev, n_vertices); // Adjust ncv to be within bounds
-	// Ensure nev < ncv
-	if (nev >= ncv) {
-		nev = ncv - 1;
-	}
-
-	if (nev < 1) {
-		nev = 1;
-	}
-
-	// Construct eigen solver object to find eigenvalues closest to 0
-	Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
-	eigs.init();
-	//eigs.compute(Spectra::SortRule::SmallestAlge);
-	int maxit = 1000; // Increase maximum iterations (default is often too low)
-	double tol = 1e-16; // Adjust tolerance if needed
-	eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
-
-
-	if (eigs.info() != Spectra::CompInfo::Successful)
-		REPORT_ERROR("Eigenvalue estimation with Spectra failed.");
-
-	// debugging
-	Eigen::VectorXd eigenvalues = eigs.eigenvalues();
-	Rprintf("Eigenvalue 1: %.8f\n", eigenvalues(0));
-	Rprintf("Eigenvalue 2: %.8f\n", eigenvalues(1));
-	Rprintf("Eigenvalue 3: %.8f\n", eigenvalues(2));
-	Rprintf("Eigenvalue 4: %.8f\n", eigenvalues(3));
-	Rprintf("Eigenvalue 5: %.8f\n", eigenvalues(4));
-	Rprintf("Eigenvalue 6: %.8f\n", eigenvalues(5));
-
-	Eigen::MatrixXd evectors = eigs.eigenvectors();
-
-	// The first eigenvector corresponds to the smallest eigenvalue
-	// For a connected graph, this is approximately constant
-	// We want the 2nd and 3rd eigenvectors
-	Eigen::VectorXd eig_vec2 = evectors.col(1);
-	Eigen::VectorXd eig_vec3 = evectors.col(2);
-	Eigen::VectorXd eig_vec4 = evectors.col(3);
-	Eigen::VectorXd eig_vec5 = evectors.col(4);
-	Eigen::VectorXd eig_vec6 = evectors.col(5);
-
-	// Step 5: Calculate circular coordinates (angles) from the eigenvectors
-	std::vector<double> angles(n_vertices);
-	// Normalize eigenvectors first to ensure uniform scaling
-	double norm2 = eig_vec2.norm();
-	double norm3 = eig_vec3.norm();
-	eig_vec2 /= norm2;
-	eig_vec3 /= norm3;
-
-	// Calculate angles differently
-	for (int i = 0; i < n_vertices; i++) {
-		angles[i] = std::atan2(eig_vec3(i), eig_vec2(i));
-		if (angles[i] < 0) {
-			angles[i] += 2 * M_PI;
-		}
-	}
-
-	// Return the struct with all the results
-	circular_param_result_t result;
-	result.angles = angles;
-	result.eig_vec2.resize(n_vertices);
-	result.eig_vec3.resize(n_vertices);
-	result.eig_vec4.resize(n_vertices);
-	result.eig_vec5.resize(n_vertices);
-	result.eig_vec6.resize(n_vertices);
-
-
-	// Copy Eigen vectors to std::vectors
-	for (int i = 0; i < n_vertices; ++i) {
-		result.eig_vec2[i] = eig_vec2(i);
-		result.eig_vec3[i] = eig_vec3(i);
-		result.eig_vec4[i] = eig_vec4(i);
-		result.eig_vec5[i] = eig_vec5(i);
-		result.eig_vec6[i] = eig_vec6(i);
-	}
-
-	return result;
-}
-#endif
 
 
 /**

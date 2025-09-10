@@ -601,224 +601,238 @@ create.hop.nbhd.extrema.df <- function(result,
     return(df)
 }
 
-#' Visualize Smoothing Steps from Graph Flow Complex
+#' Visualize Smoothing Steps from Gradient Flow Complex
 #'
-#' @description
-#' Creates 3D visualizations showing the step-by-step smoothing process applied
-#' to spurious extrema in a graph flow complex. Requires detailed recording to
-#' have been enabled during the computation.
+#' Creates an animated 3D visualization showing how spurious extrema are smoothed
+#' during the gradient flow complex construction process.
 #'
-#' @param gflow_result A \code{gflow_cx} object created with
-#'   \code{detailed.recording = TRUE}
-#' @param plot_res A graph plotting result containing layout information
-#' @param step_by_step Logical; if TRUE (default), pauses between steps for
-#'   interactive viewing. If FALSE, saves snapshots to files.
-#' @param animation_delay Numeric; delay in seconds between steps when
-#'   \code{step_by_step = TRUE}. Default is 0.5.
+#' @param gflow_result Result from \code{create.gflow.cx(..., detailed.recording = TRUE)}.
+#'        Must contain \code{$smoothing_history} (list of steps).
+#' @param plot_res A list containing at least \code{$layout}: an \eqn{n\times 2} numeric matrix
+#'        of 2D coordinates for vertices. If \code{$graph} (igraph) or adjacency data
+#'        are present, edges will also be rendered when available.
+#' @param step_by_step Logical; if TRUE, waits for user input between steps (interactive only).
+#'        In non-interactive/headless sessions this is ignored and snapshot mode is used.
+#' @param animation_delay Numeric; delay in seconds between frames (used when not waiting).
+#' @param out.dir Optional output directory for snapshot PNGs (default: \code{tempdir()}).
+#' @param filename.prefix Character; prefix for snapshot filenames (default: \code{"smoothing_step"}).
 #'
-#' @return Invisibly returns NULL. Creates 3D visualizations as side effect.
+#' @return NULL invisibly.
 #'
 #' @details
-#' This function requires the \code{rgl} package for 3D visualization. When
-#' \code{step_by_step = FALSE}, it saves PNG snapshots of each smoothing step.
-#'
-#' The visualization shows:
-#' \itemize{
-#'   \item The graph structure in 3D with z-coordinates from function values
-#'   \item Local minima as blue spheres
-#'   \item Local maxima as red spheres
-#'   \item The progression of smoothing for each spurious extremum
-#' }
+#' The function opens a single rgl window and reuses it for all frames.
+#' In headless/CI environments, an off-screen rgl device is used automatically and
+#' images are written to \code{out.dir}.
 #'
 #' @examples
 #' \dontrun{
-#' # Requires interactive graphics
-#' if (interactive() && requireNamespace("rgl", quietly = TRUE)) {
-#'   # Create example with spurious extrema
-#'   adj.list <- list(c(2,3), c(1,3,4), c(1,2,4), c(2,3))
-#'   weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1,1))
-#'   y <- c(0, 1, 0.9, 0.1)  # Spurious max at vertex 3
-#'
-#'   # Compute with detailed recording
-#'   result <- create.gflow.cx(
-#'     adj.list, weight.list, y,
-#'     hop.idx.thld = 2,
-#'     detailed.recording = TRUE,
-#'     verbose = FALSE
-#'   )
-#'
-#'   # Create layout (assuming plot.graph function exists)
-#'   # plot_res <- plot.graph(list(adj.list=adj.list, weight.list=weight.list))
-#'
-#'   # Visualize smoothing steps
+#' if (requireNamespace("rgl", quietly = TRUE)) {
+#'   # result <- create.gflow.cx(..., detailed.recording = TRUE)
+#'   # plot_res <- list(layout = <n x 2 matrix>, graph = <igraph optional>)
 #'   # visualize.smoothing.steps(result, plot_res)
 #' }
 #' }
-#'
 #' @export
 visualize.smoothing.steps <- function(gflow_result,
-                                     plot_res,
-                                     step_by_step = TRUE,
-                                     animation_delay = 0.5) {
+                                      plot_res,
+                                      step_by_step = TRUE,
+                                      animation_delay = 0.5,
+                                      out.dir = NULL,
+                                      filename.prefix = "smoothing_step") {
+  ## ---- Preconditions --------------------------------------------------------
+  if (!"smoothing_history" %in% names(gflow_result)) {
+    stop("No detailed smoothing history available. ",
+         "Run create.gflow.cx(..., detailed.recording = TRUE).", call. = FALSE)
+  }
+  steps <- gflow_result$smoothing_history
+  n_steps <- length(steps)
 
-    ## Check if detailed recording is available
-    if (!"smoothing_history" %in% names(gflow_result)) {
-        stop("No detailed smoothing history available. ",
-             "Run create.gflow.cx with detailed.recording = TRUE")
+  if (!requireNamespace("rgl", quietly = TRUE)) {
+    stop("This function requires the optional package 'rgl'. ",
+         "Install with install.packages('rgl').", call. = FALSE)
+  }
+
+  if (!is.list(plot_res) || is.null(plot_res$layout)) {
+    stop("'plot_res' must be a list with component 'layout' (n x 2 numeric matrix).", call. = FALSE)
+  }
+  layout_2d <- as.matrix(plot_res$layout)
+  if (!is.numeric(layout_2d) || ncol(layout_2d) != 2L) {
+    stop("'plot_res$layout' must be numeric with exactly 2 columns.", call. = FALSE)
+  }
+
+  if (!is.logical(step_by_step) || length(step_by_step) != 1L) {
+    stop("'step_by_step' must be a single logical.", call. = FALSE)
+  }
+  if (!is.numeric(animation_delay) || length(animation_delay) != 1L || animation_delay < 0) {
+    stop("'animation_delay' must be a non-negative numeric.", call. = FALSE)
+  }
+
+  ## ---- Edge extraction (optional) ------------------------------------------
+  # Try to get edges for rendering (best-effort; OK if absent)
+  get_edges <- function() {
+    if (!is.null(plot_res$graph)) {
+      e <- try(igraph::as_edgelist(plot_res$graph, names = FALSE), silent = TRUE)
+      if (!inherits(e, "try-error") && is.matrix(e) && ncol(e) == 2L) return(e)
+    }
+    if (!is.null(gflow_result$adj.list)) {
+      el <- lapply(seq_along(gflow_result$adj.list), function(i) {
+        v <- gflow_result$adj.list[[i]]
+        if (!length(v)) return(NULL)
+        cbind(i, as.integer(v))
+      })
+      e <- do.call(rbind, el)
+      if (!is.null(e)) {
+        e <- e[e[, 1] < e[, 2], , drop = FALSE] # undirected unique
+        return(e)
+      }
+    }
+    NULL
+  }
+  edges <- get_edges()
+
+  ## ---- Device mode: real vs off-screen -------------------------------------
+  # Use a real window only if interactive & display available; otherwise off-screen.
+  use_null <- (!interactive()) ||
+              identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+              (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+  old_opt <- options(rgl.useNULL = use_null)
+  on.exit(options(old_opt), add = TRUE)
+
+  # In non-interactive/headless, don't block: force snapshot mode
+  if (isTRUE(step_by_step) && (use_null || !interactive())) {
+    message("Non-interactive/headless context detected; switching to snapshot mode.")
+    step_by_step <- FALSE
+  }
+
+  # Snapshot directory (dont pollute working dir by default)
+  if (is.null(out.dir)) out.dir <- getOption("gflow.snapshot.dir", default = tempdir())
+  if (!dir.exists(out.dir)) {
+    ok <- dir.create(out.dir, recursive = TRUE, showWarnings = FALSE)
+    if (!ok) stop("Unable to create output directory: ", out.dir, call. = FALSE)
+  }
+
+  ## ---- Open a single rgl device --------------------------------------------
+  rgl::open3d()
+  on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+
+  ## ---- 3D drawing helper ----------------------------------------------------
+  draw_frame <- function(values, title_text, highlight_vertex = NULL) {
+    # validate values length
+    if (length(values) != nrow(layout_2d)) {
+      stop("Length of 'values' does not match number of vertices in layout.", call. = FALSE)
     }
 
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-        stop("Package 'rgl' is required for 3D visualization. Please install it.")
+    layout_3d <- cbind(layout_2d, as.numeric(values))
+
+    rgl::clear3d()
+
+    # base plane points
+    rgl::points3d(cbind(layout_2d, 0), size = 4, col = "gray70", alpha = 0.35)
+
+    # base plane edges (optional)
+    if (!is.null(edges) && nrow(edges) > 0) {
+      base_seg <- matrix(NA_real_, nrow = nrow(edges) * 2L, ncol = 3L)
+      for (i in seq_len(nrow(edges))) {
+        v1 <- edges[i, 1]; v2 <- edges[i, 2]
+        base_seg[(i - 1L) * 2L + 1L, ] <- c(layout_2d[v1, ], 0)
+        base_seg[(i - 1L) * 2L + 2L, ] <- c(layout_2d[v2, ], 0)
+      }
+      rgl::segments3d(base_seg, col = "gray60", alpha = 0.35, lwd = 1)
     }
 
-    if (!is.logical(step_by_step) || length(step_by_step) != 1) {
-        stop("step_by_step must be a single logical value")
+    # 3D vertices (heights)
+    # color by rank for a quick gradient
+    pal <- grDevices::hcl.colors(nrow(layout_3d), palette = "Spectral")
+    cols <- pal[rank(values, ties.method = "average")]
+    rgl::spheres3d(layout_3d, radius = 0.02, col = cols, alpha = 0.9)
+
+    # 3D edges (optional)
+    if (!is.null(edges) && nrow(edges) > 0) {
+      for (i in seq_len(nrow(edges))) {
+        v1 <- edges[i, 1]; v2 <- edges[i, 2]
+        rgl::lines3d(rbind(layout_3d[v1, ], layout_3d[v2, ]), col = "gray50", lwd = 1)
+      }
     }
 
-    if (!is.numeric(animation_delay) || length(animation_delay) != 1 ||
-        animation_delay < 0) {
-        stop("animation_delay must be a non-negative numeric value")
+    # Highlight current vertex (optional)
+    if (!is.null(highlight_vertex) && is.finite(highlight_vertex)) {
+      hv <- as.integer(highlight_vertex)
+      if (hv >= 1L && hv <= nrow(layout_3d)) {
+        rgl::spheres3d(layout_3d[hv, , drop = FALSE], radius = 0.05,
+                       col = "yellow", alpha = 0.8)
+      }
     }
 
-    smoother_names <- c(
-        "Weighted Mean",
-        "Harmonic Iterative",
-        "Harmonic Eigen",
-        "Hybrid Biharmonic-Harmonic",
-        "Boundary Smoothed Harmonic"
-    )
+    # axes + title
+    rgl::axes3d()
+    rgl::title3d(xlab = "X", ylab = "Y", zlab = "Value", main = title_text)
+  }
 
-    n_steps <- length(gflow_result$smoothing_history)
-    cat(sprintf("Found %d smoothing steps\n", n_steps))
+  ## ---- Run animation --------------------------------------------------------
+  if (n_steps == 0) {
+    message("No smoothing steps recorded (no spurious extrema found).")
+    return(invisible(NULL))
+  }
 
-    if (n_steps == 0) {
-        message("No smoothing steps recorded (no spurious extrema found)")
-        return(invisible(NULL))
+  message(sprintf("Found %d smoothing step%s.", n_steps, if (n_steps == 1) "" else "s"))
+
+  # Initial frame
+  initial_values <- steps[[1]]$before
+  draw_frame(initial_values, "Initial State")
+
+  if (isTRUE(step_by_step)) {
+    if (interactive()) {
+      invisible(readline("Press [Enter] to start smoothing process..."))
+      for (i in seq_len(n_steps)) {
+        st <- steps[[i]]
+        title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d (hop_idx=%.2f)",
+                                i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"),
+                                st$vertex, as.numeric(st$hop_idx))
+        draw_frame(st$before, title_before, st$vertex)
+        if (animation_delay > 0) Sys.sleep(animation_delay)
+
+        delta <- abs(st$after[st$vertex] - st$before[st$vertex])
+        title_after <- sprintf("Step %d/%d: After smoothing (\u0394=%.4f)", i, n_steps, delta)
+        draw_frame(st$after, title_after, st$vertex)
+
+        if (i < n_steps) invisible(readline("Press [Enter] to continue..."))
+      }
+    }
+  } else {
+    # Snapshot mode
+    # helper for filenames
+    fpath <- function(tag) file.path(out.dir, sprintf("%s_%s.png", filename.prefix, tag))
+
+    message("Saving snapshots to: ", normalizePath(out.dir, winslash = "/"))
+    # initial
+    draw_frame(initial_values, "Initial State")
+    rgl::snapshot3d(filename = fpath("000_initial"))
+
+    for (i in seq_len(n_steps)) {
+      st <- steps[[i]]
+
+      title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d",
+                              i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"), st$vertex)
+      draw_frame(st$before, title_before, st$vertex)
+      rgl::snapshot3d(filename = fpath(sprintf("%03d_before", i)))
+      if (animation_delay > 0) Sys.sleep(animation_delay)
+
+      title_after <- sprintf("Step %d/%d: After smoothing", i, n_steps)
+      draw_frame(st$after, title_after, st$vertex)
+      rgl::snapshot3d(filename = fpath(sprintf("%03d_after", i)))
+      if (animation_delay > 0) Sys.sleep(animation_delay)
     }
 
-    ## Initialize 3D plot window
-    rgl::open3d()
+    message(sprintf("Saved %d snapshot%s.",
+                    2 * n_steps + 1L, if (2 * n_steps + 1L == 1L) "" else "s"))
+  }
 
-    ## Helper function to create the 3D plot
-    create_3d_plot <- function(values, title_text, highlight_vertex = NULL) {
-        rgl::clear3d()
+  # Final frame
+  final_values <- steps[[n_steps]]$after
+  draw_frame(final_values, "Final State (All Spurious Extrema Removed)")
+  if (isTRUE(step_by_step) && interactive()) {
+    invisible(readline("Press [Enter] to close..."))
+  }
 
-        ## Create extrema data frame for current state
-        extrema_df <- gflow_result$extrema_df2
-
-        ## Plot the 3D graph
-        plot.graph.3d(
-            plot_res,
-            values,
-            base.vertex.size = 0.05,
-            z.point.size = 0.05,
-            basins.df = extrema_df,
-            evertex.sphere.radius = 0.1,
-            evertex.min.color = "blue",
-            evertex.max.color = "red",
-            evertex.cex = 1,
-            evertex.adj = c(0.5, 0.5),
-            evertex.label.offset = 0.01
-        )
-
-        ## Highlight current vertex being smoothed
-        if (!is.null(highlight_vertex)) {
-            layout <- plot_res$layout
-            rgl::spheres3d(
-                layout[highlight_vertex, 1],
-                layout[highlight_vertex, 2],
-                values[highlight_vertex],
-                radius = 0.15,
-                col = "yellow",
-                alpha = 0.7
-            )
-        }
-
-        rgl::title3d(main = title_text)
-    }
-
-    ## Plot initial state
-    initial_values <- gflow_result$smoothing_history[[1]]$before
-    create_3d_plot(initial_values, "Initial State")
-
-    if (step_by_step) {
-        readline("Press [Enter] to start smoothing process...")
-
-        ## Process each smoothing step
-        for (i in seq_len(n_steps)) {
-            step <- gflow_result$smoothing_history[[i]]
-
-            ## Show state before smoothing this extremum
-            title_before <- sprintf(
-                "Step %d/%d: Before smoothing %s at vertex %d (hop_idx=%.1f)",
-                i, n_steps,
-                ifelse(step$is_minimum, "minimum", "maximum"),
-                step$vertex,
-                step$hop_idx
-            )
-
-            create_3d_plot(step$before, title_before, step$vertex)
-            Sys.sleep(animation_delay)
-
-            ## Show state after smoothing
-            title_after <- sprintf(
-                "Step %d/%d: After smoothing (change: %.4f)",
-                i, n_steps,
-                abs(step$after[step$vertex] - step$before[step$vertex])
-            )
-
-            create_3d_plot(step$after, title_after, step$vertex)
-
-            if (i < n_steps) {
-                readline("Press [Enter] to continue...")
-            }
-        }
-
-    } else {
-        ## Save snapshots mode
-        cat("Saving snapshots...\n")
-
-        ## Save initial state
-        create_3d_plot(initial_values, "Initial State")
-        rgl::snapshot3d(filename = "smoothing_step_000_initial.png")
-
-        ## Process each smoothing step
-        for (i in seq_len(n_steps)) {
-            step <- gflow_result$smoothing_history[[i]]
-
-            ## Before smoothing
-            title_before <- sprintf(
-                "Step %d: Before smoothing %s at vertex %d",
-                i,
-                ifelse(step$is_minimum, "min", "max"),
-                step$vertex
-            )
-
-            create_3d_plot(step$before, title_before, step$vertex)
-            rgl::snapshot3d(filename = sprintf("smoothing_step_%03d_before.png", i))
-
-            ## After smoothing
-            title_after <- sprintf(
-                "Step %d: After smoothing",
-                i
-            )
-
-            create_3d_plot(step$after, title_after)
-            rgl::snapshot3d(filename = sprintf("smoothing_step_%03d_after.png", i))
-        }
-
-        cat(sprintf("Saved %d snapshots\n", 2 * n_steps + 1))
-    }
-
-    ## Show final state
-    final_values <- gflow_result$harmonic_predictions
-    create_3d_plot(final_values, "Final State (All Smoothing Complete)")
-
-    if (step_by_step) {
-        readline("Press [Enter] to close...")
-    } else {
-        rgl::snapshot3d(filename = "smoothing_step_final.png")
-    }
-
-    invisible(NULL)
+  invisible(NULL)
 }
