@@ -25,5 +25,9 @@
 ^CRAN-SUBMISSION\.md$
 ^Makefile$
 ^cran-comments.md$
-^vignettes$
 ^gflow-manual.pdf$
+^[Vv]ignettes$
+^inst/doc$
+^\.Rapp\.history$
+^\.DS_Store$
+^src/.*\.(o|so|dll|a)$
