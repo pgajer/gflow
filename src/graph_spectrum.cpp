@@ -282,7 +282,7 @@ SEXP S_graph_spectrum_plus(SEXP Rgraph, SEXP Rnev, SEXP Rreturn_dense) {
     // Convert inputs
     std::vector<std::vector<int>> graph = convert_adj_list_from_R(Rgraph);
     int nev = INTEGER(Rnev)[0];
-    bool return_dense = LOGICAL(Rreturn_dense)[0];
+    bool return_dense = (LOGICAL(Rreturn_dense)[0] == 1);
 
     // Compute spectrum
     std::unique_ptr<graph_spectrum_plus_t> result = graph_spectrum_plus(graph, nev, return_dense);

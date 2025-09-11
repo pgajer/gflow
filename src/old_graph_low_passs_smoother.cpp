@@ -510,7 +510,7 @@ SEXP S_graph_spectral_smoother(SEXP Rgraph,
     imputation_method_t imputation_method = static_cast<imputation_method_t>(INTEGER(Rimputation_method)[0]);
     int max_iterations = INTEGER(Rmax_iterations)[0];
     double convergence_threshold = REAL(Rconvergence_threshold)[0];
-    bool apply_binary_threshold = LOGICAL(Rapply_binary_threshold)[0];
+    bool apply_binary_threshold = (LOGICAL(Rapply_binary_threshold)[0] == 1);
     double binary_threshold = REAL(Rbinary_threshold)[0];
     int ikernel = INTEGER(Rikernel)[0];
     double dist_normalization_factor = REAL(Rdist_normalization_factor)[0];

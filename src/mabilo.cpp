@@ -123,7 +123,7 @@ SEXP S_wmabilo(SEXP s_x,
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilo_t wmabilo_results = wmabilo(x,
                                        y,
@@ -485,7 +485,7 @@ SEXP S_mabilo(SEXP s_x,
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilo_t wmabilo_results = mabilo(x,
                                       y,
@@ -950,7 +950,7 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilo_t mabilo_with_smoothed_errors_results = mabilo_with_smoothed_errors(x,
                                                                                y,

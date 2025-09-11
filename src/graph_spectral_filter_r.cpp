@@ -51,7 +51,7 @@ extern "C" SEXP S_graph_spectral_filter(
 	kernel_params.tau_factor = REAL(s_kernel_tau_factor)[0];
 	kernel_params.radius_factor = REAL(s_kernel_radius_factor)[0];
 	kernel_params.kernel_type = static_cast<kernel_type_t>(INTEGER(s_kernel_type)[0]);
-	kernel_params.adaptive = LOGICAL(s_kernel_adaptive)[0];
+	kernel_params.adaptive = (LOGICAL(s_kernel_adaptive)[0] == 1);
 	kernel_params.min_radius_factor = REAL(s_min_radius_factor)[0];
 	kernel_params.max_radius_factor = REAL(s_max_radius_factor)[0];
 	kernel_params.domain_min_size = static_cast<size_t>(INTEGER(s_domain_min_size)[0]);
@@ -60,9 +60,9 @@ extern "C" SEXP S_graph_spectral_filter(
 	// Convert remaining parameters
 	size_t n_evectors_to_compute = static_cast<size_t>(INTEGER(s_n_evectors_to_compute)[0]);
 	size_t n_candidates = static_cast<size_t>(INTEGER(s_n_candidates)[0]);
-	bool log_grid = LOGICAL(s_log_grid)[0];
-	bool with_t_predictions = LOGICAL(s_with_t_predictions)[0];
-	bool verbose = LOGICAL(s_verbose)[0];
+	bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
+	bool with_t_predictions = (LOGICAL(s_with_t_predictions)[0] == 1);
+	bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
 	// 2) Call the C++ graph filter
 	set_wgraph_t graph(adj_list, weight_list);

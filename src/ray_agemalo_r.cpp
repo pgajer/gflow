@@ -177,7 +177,7 @@ SEXP S_ray_agemalo(
 
     // bw parameters
     size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    bool log_grid = LOGICAL(s_log_grid)[0];
+    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
     double min_bw_factor = REAL(s_min_bw_factor)[0];
     double max_bw_factor = REAL(s_max_bw_factor)[0];
 
@@ -193,7 +193,7 @@ SEXP S_ray_agemalo(
     // permutation parameters
     size_t n_perms = (size_t)INTEGER(s_n_perms)[0];
     // verbose
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     uniform_grid_graph_t grid_graph;
     size_t n_vertices = adj_list.size();

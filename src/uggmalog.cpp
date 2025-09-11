@@ -602,11 +602,11 @@ SEXP S_uggmalog(
     size_t min_path_size = INTEGER(s_min_path_size)[0];
     size_t diff_threshold = INTEGER(s_diff_threshold)[0];
     size_t kernel_type = INTEGER(s_kernel_type)[0];
-    bool fit_quadratic = LOGICAL(s_fit_quadratic)[0];
+    bool fit_quadratic = (LOGICAL(s_fit_quadratic)[0] == 1);
     size_t max_iterations = INTEGER(s_max_iterations)[0];
     double ridge_lambda = REAL(s_ridge_lambda)[0];
     double tolerance = REAL(s_tolerance)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     uggmalog_t result = uggmalog(
         adj_list,

@@ -43,10 +43,10 @@ extern "C" {
 		double radius_factor          = REAL(s_radius_factor)[0];
 		size_t laplacian_power        = static_cast<size_t>(INTEGER(s_laplacian_power)[0]);
 		size_t n_candidates           = static_cast<size_t>(INTEGER(s_n_candidates)[0]);
-		bool   log_grid               = LOGICAL(s_log_grid)[0];
+		bool   log_grid               = (LOGICAL(s_log_grid)[0] == 1);
 		double energy_threshold       = REAL(s_energy_threshold)[0];
-		bool   with_k_predictions     = LOGICAL(s_with_k_predictions)[0];
-		bool   verbose                = LOGICAL(s_verbose)[0];
+		bool   with_k_predictions     = (LOGICAL(s_with_k_predictions)[0] == 1);
+		bool   verbose                = (LOGICAL(s_verbose)[0] == 1);
 
 		// Call the C++ smoother
 		set_wgraph_t graph(adj_list, weight_list);
@@ -110,7 +110,7 @@ extern "C" {
 		};
 		auto vec_to_int = [&](const std::vector<size_t>& v, bool one_based=false) {
 			SEXP x = PROTECT(Rf_allocVector(INTSXP, v.size())); protect_count++;
-			for (R_xlen_t i = 0; i < v.size(); ++i)
+			for (size_t i = 0; i < v.size(); ++i)
 				INTEGER(x)[i] = one_based ? (int)v[i] + 1 : (int)v[i];
 			return x;
 		};

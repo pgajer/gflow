@@ -806,7 +806,7 @@ SEXP S_wmabilog(SEXP s_x,
     int k_max = INTEGER(s_k_max)[0];
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilog_t wmabilog_results = wmabilog(x,
                                            y,
@@ -1201,7 +1201,7 @@ SEXP S_mabilog(SEXP s_x,
 
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilog_t wmabilog_results = mabilog(x,
                                           y,
@@ -1664,7 +1664,7 @@ SEXP S_mabilog_with_smoothed_errors(SEXP s_x,
 
     int distance_kernel = INTEGER(s_distance_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilog_t mabilog_with_smoothed_errors_results = mabilog_with_smoothed_errors(x,
                                                                                    y,

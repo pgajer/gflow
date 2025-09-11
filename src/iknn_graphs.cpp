@@ -858,7 +858,7 @@ extern "C" SEXP S_create_single_iknn_graph(SEXP s_X,
     int *dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
     double pruning_thld = REAL(s_pruning_thld)[0];
     int n_vertices = dimX[0];
-    int compute_full = LOGICAL(s_compute_full)[0];
+    int compute_full = (LOGICAL(s_compute_full)[0] == 1);
 
     // Creating a kNN graph
     auto iknn_graph = create_iknn_graph(s_X, s_k);
@@ -1400,8 +1400,8 @@ SEXP S_create_iknn_graphs(
     double max_path_edge_ratio_thld   = REAL(s_max_path_edge_ratio_thld)[0];
     double path_edge_ratio_percentile = REAL(s_path_edge_ratio_percentile)[0];
 
-    int compute_full = LOGICAL(s_compute_full)[0];
-    int verbose = LOGICAL(s_verbose)[0];
+    int compute_full = (LOGICAL(s_compute_full)[0] == 1);
+    int verbose = (LOGICAL(s_verbose)[0] == 1);
 
     int nprot = 0;
     PROTECT(s_X = Rf_coerceVector(s_X, REALSXP)); nprot++;

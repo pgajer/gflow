@@ -193,8 +193,8 @@ SEXP S_create_mknn_graphs(
     double max_path_edge_ratio_thld   = REAL(s_max_path_edge_ratio_thld)[0];
     double path_edge_ratio_percentile = REAL(s_path_edge_ratio_percentile)[0];
 
-    int compute_full = LOGICAL(s_compute_full)[0];
-    int verbose = LOGICAL(s_verbose)[0];
+    int compute_full = (LOGICAL(s_compute_full)[0] == 1);
+    int verbose = (LOGICAL(s_verbose)[0] == 1);
 
     int nprot = 0;
     PROTECT(s_X = Rf_coerceVector(s_X, REALSXP)); nprot++;

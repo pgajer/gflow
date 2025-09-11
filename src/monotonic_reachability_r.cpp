@@ -56,7 +56,7 @@ SEXP S_test_monotonic_reachability_map(
     std::vector<double> y(REAL(s_y), REAL(s_y) + Rf_length(s_y));
     size_t ref_vertex = static_cast<size_t>(INTEGER(s_ref_vertex)[0] - 1); // Convert from 1-based to 0-based
     double radius = REAL(s_radius)[0];
-    bool ascending = LOGICAL(s_ascending)[0];
+    bool ascending = (LOGICAL(s_ascending)[0] == 1);
     
     // Create graph
     set_wgraph_t graph(adj_list, weight_list);

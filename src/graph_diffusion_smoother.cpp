@@ -1162,7 +1162,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         }
 
         PROTECT(Rpreserve_local_maxima = Rf_coerceVector(Rpreserve_local_maxima, LGLSXP)); nprot++;
-        bool preserve_local_maxima = LOGICAL(Rpreserve_local_maxima)[0];
+        bool preserve_local_maxima = (LOGICAL(Rpreserve_local_maxima)[0] == 1);
 
         PROTECT(Rlocal_maximum_weight_factor = Rf_coerceVector(Rlocal_maximum_weight_factor, REALSXP)); nprot++;
         double local_maximum_weight_factor = REAL(Rlocal_maximum_weight_factor)[0];
@@ -1172,7 +1172,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         }
 
         PROTECT(Rpreserve_local_extrema = Rf_coerceVector(Rpreserve_local_extrema, LGLSXP)); nprot++;
-        bool preserve_local_extrema = LOGICAL(Rpreserve_local_extrema)[0];
+        bool preserve_local_extrema = (LOGICAL(Rpreserve_local_extrema)[0] == 1);
 
         if (preserve_local_maxima && preserve_local_extrema) {
             UNPROTECT(nprot);
@@ -1197,7 +1197,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         }
 
         PROTECT(Rapply_binary_threshold = Rf_coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
-        bool apply_binary_threshold = LOGICAL(Rapply_binary_threshold)[0];
+        bool apply_binary_threshold = (LOGICAL(Rapply_binary_threshold)[0] == 1);
 
         PROTECT(Rbinary_threshold = Rf_coerceVector(Rbinary_threshold, REALSXP)); nprot++;
         double binary_threshold = REAL(Rbinary_threshold)[0];
@@ -1252,7 +1252,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         }
 
         PROTECT(Rverbose = Rf_coerceVector(Rverbose, LGLSXP)); nprot++;
-        bool verbose = LOGICAL(Rverbose)[0];
+        bool verbose = (LOGICAL(Rverbose)[0] == 1);
 
         // Initialize parameters structure
         iterative_imputation_params_t iterative_params;
@@ -3072,7 +3072,7 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     int n_CV_folds = INTEGER(s_n_CV_folds)[0];
     double epsilon = REAL(s_epsilon)[0];
     unsigned int seed = INTEGER(s_seed)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     int nprot = 0;
 

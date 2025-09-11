@@ -454,7 +454,7 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
     double poffset = REAL(s_poffset)[0];
     double pilot_bandwidth = REAL(s_pilot_bandwidth)[0];
     int kernel_type = INTEGER(s_kernel_type)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     gdensity_t gdens_res = estimate_local_density_over_grid(x,
                                                             grid_size,

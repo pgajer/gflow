@@ -85,9 +85,9 @@ SEXP S_nerve_cx_spectral_filter(
 
 	size_t n_evectors = INTEGER(s_n_evectors)[0];
 	size_t n_candidates = INTEGER(s_n_candidates)[0];
-	bool log_grid = LOGICAL(s_log_grid)[0];
-	bool with_t_predictions = LOGICAL(s_with_t_predictions)[0];
-	bool verbose = LOGICAL(s_verbose)[0];
+	bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
+	bool with_t_predictions = (LOGICAL(s_with_t_predictions)[0] == 1);
+	bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
 	// Convert y to std::vector
 	std::vector<double> y(y_ptr, y_ptr + n_vertices);

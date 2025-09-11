@@ -1276,8 +1276,8 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     std::vector<std::vector<double>> edge_length_vect = convert_weight_list_from_R(s_edge_length_list);
 
     double alt_path_len_ratio_thld = REAL(s_alt_path_len_ratio_thld)[0];
-    bool use_total_length_constraint = LOGICAL(s_use_total_length_constraint)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool use_total_length_constraint = (LOGICAL(s_use_total_length_constraint)[0] == 1);
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     std::vector<double> path_lengths;
     std::vector<double> edge_lengths;

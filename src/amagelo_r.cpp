@@ -92,19 +92,19 @@ extern "C" SEXP S_amagelo(
     double min_bw_factor           = REAL(s_min_bw_factor)[0];
     double max_bw_factor           = REAL(s_max_bw_factor)[0];
     size_t n_bws                   = (size_t) INTEGER(s_n_bws)[0];
-    bool   use_global_bw_grid      = LOGICAL(s_use_global_bw_grid)[0];
-    bool   with_bw_predictions     = LOGICAL(s_with_bw_predictions)[0];
-    bool   log_grid                = LOGICAL(s_log_grid)[0];
+    bool   use_global_bw_grid      = (LOGICAL(s_use_global_bw_grid)[0] == 1);
+    bool   with_bw_predictions     = (LOGICAL(s_with_bw_predictions)[0] == 1);
+    bool   log_grid                = (LOGICAL(s_log_grid)[0] == 1);
     size_t domain_min_size         = (size_t) INTEGER(s_domain_min_size)[0];
     size_t kernel_type             = (size_t) INTEGER(s_kernel_type)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     size_t n_cleveland_iterations  = (size_t) INTEGER(s_n_cleveland_iterations)[0];
     double blending_coef           = REAL(s_blending_coef)[0];
-    bool   use_linear_blending     = LOGICAL(s_use_linear_blending)[0];
+    bool   use_linear_blending     = (LOGICAL(s_use_linear_blending)[0] == 1);
     double precision               = REAL(s_precision)[0];
     double small_depth_threshold   = REAL(s_small_depth_threshold)[0];
     double depth_similarity_tol    = REAL(s_depth_similarity_tol)[0];
-    bool   verbose                 = LOGICAL(s_verbose)[0];
+    bool   verbose                 = (LOGICAL(s_verbose)[0] == 1);
 
     // --- 2) Call C++ backend ---
     amagelo_t result = amagelo(

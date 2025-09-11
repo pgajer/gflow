@@ -735,7 +735,7 @@ SEXP S_maelog(
         // Convert inputs
         std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
         std::vector<double> y(REAL(y_r), REAL(y_r) + n_points);
-        bool fit_quadratic = LOGICAL(fit_quadratic_r)[0];
+        bool fit_quadratic = (LOGICAL(fit_quadratic_r)[0] == 1);
         double pilot_bandwidth = REAL(pilot_bandwidth_r)[0];
         int kernel_type = INTEGER(kernel_type_r)[0];
         int min_points = INTEGER(min_points_r)[0];
@@ -746,10 +746,10 @@ SEXP S_maelog(
         int max_iterations = INTEGER(max_iterations_r)[0];
         double ridge_lambda = REAL(ridge_lambda_r)[0];
         double tolerance = REAL(tolerance_r)[0];
-        bool with_errors = LOGICAL(with_errors_r)[0];
-        bool with_bw_preditions = LOGICAL(with_bw_preditions_r)[0];
-        //bool parallel = LOGICAL(parallel_r)[0];
-        //bool verbose = LOGICAL(verbose_r)[0];
+        bool with_errors = (LOGICAL(with_errors_r)[0] == 1);
+        bool with_bw_preditions = (LOGICAL(with_bw_preditions_r)[0] == 1);
+        //bool parallel = (LOGICAL(parallel_r)[0] == 1);
+        //bool verbose = (LOGICAL(verbose_r)[0] == 1);
 
         auto result = maelog(x, y, fit_quadratic, pilot_bandwidth, kernel_type,
                                 min_points, cv_folds, n_bws, min_bw_factor, max_bw_factor,

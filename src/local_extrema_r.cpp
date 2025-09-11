@@ -49,7 +49,7 @@ SEXP S_detect_local_extrema(
     std::vector<double> y(REAL(s_y), REAL(s_y) + Rf_length(s_y));
     double max_radius = REAL(s_max_radius)[0];
     size_t min_neighborhood_size = static_cast<size_t>(INTEGER(s_min_neighborhood_size)[0]);
-    bool detect_maxima = LOGICAL(s_detect_maxima)[0];
+    bool detect_maxima = (LOGICAL(s_detect_maxima)[0] == 1);
 
     // Create graph
     set_wgraph_t graph(adj_list, weight_list);

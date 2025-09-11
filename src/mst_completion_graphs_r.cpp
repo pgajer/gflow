@@ -173,7 +173,7 @@ extern "C" SEXP S_create_mst_completion_graph(
 	}
 
 	double q_thld = REAL(s_q_thld)[0];
-	bool verbose = LOGICAL(s_verbose)[0];
+	bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
 	std::vector<std::vector<double>> X = std::move(*Rmatrix_to_cpp(s_X));
 

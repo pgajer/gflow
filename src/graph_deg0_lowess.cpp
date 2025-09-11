@@ -173,7 +173,7 @@ SEXP S_graph_deg0_lowess(
     double bandwidth = REAL(s_bandwidth)[0];
     size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     // Create graph and run algorithm
     set_wgraph_t graph = set_wgraph_t(adj_list, weight_list);

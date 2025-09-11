@@ -798,12 +798,12 @@ SEXP S_uggmalo(
     size_t min_path_size = INTEGER(s_min_path_size)[0];
     size_t diff_threshold = INTEGER(s_diff_threshold)[0];
     size_t kernel_type = INTEGER(s_kernel_type)[0];
-    bool fit_quadratic = LOGICAL(s_fit_quadratic)[0];
+    bool fit_quadratic = (LOGICAL(s_fit_quadratic)[0] == 1);
     double tolerance = REAL(s_tolerance)[0];
     size_t n_bb = INTEGER(s_n_bb)[0];
     double p = REAL(s_p)[0];
     size_t n_perms = INTEGER(s_n_perms)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     uggmalo_t res = uggmalo(
         adj_list,

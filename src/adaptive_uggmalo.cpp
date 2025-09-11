@@ -941,7 +941,7 @@ SEXP S_adaptive_uggmalo(
     double cri_probability = REAL(s_cri_probability)[0];
     size_t n_perms = (size_t)INTEGER(s_n_perms)[0];
     double blending_coef = REAL(s_blending_coef)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     size_t n_vertices = adj_list.size();
     uniform_grid_graph_t grid_graph;

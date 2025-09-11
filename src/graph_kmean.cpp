@@ -596,7 +596,7 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
     int n_CVs = INTEGER(s_n_CVs)[0];
     int n_CV_folds = INTEGER(s_n_CV_folds)[0];
     unsigned int seed = (unsigned int)INTEGER(s_seed)[0];
-    bool use_weighted_MAD_error = LOGICAL(s_use_weighted_MAD_error)[0];
+    bool use_weighted_MAD_error = (LOGICAL(s_use_weighted_MAD_error)[0] == 1);
 
     std::vector<double> cv_errors =  graph_kmean_wmad_cv(graph,
                                                          edge_lengths,
@@ -1452,7 +1452,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
         y_true.assign(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
     }
 
-    bool use_median = LOGICAL(s_use_median)[0];
+    bool use_median = (LOGICAL(s_use_median)[0] == 1);
     int h_min = INTEGER(s_h_min)[0];
     int h_max = INTEGER(s_h_max)[0];
     int n_CVs = INTEGER(s_n_CVs)[0];

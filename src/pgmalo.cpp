@@ -591,7 +591,7 @@ SEXP S_upgmalo(SEXP s_x,
     }
 
     //int max_distance_deviation = INTEGER(s_max_distance_deviation)[0];
-    bool use_median = LOGICAL(s_use_median)[0];
+    bool use_median = (LOGICAL(s_use_median)[0] == 1);
     int h_min = INTEGER(s_h_min)[0];
     int h_max = INTEGER(s_h_max)[0];
     double p = REAL(s_p)[0];
@@ -603,7 +603,7 @@ SEXP S_upgmalo(SEXP s_x,
     int ikernel = INTEGER(s_ikernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     auto cpp_results = upgmalo(x,
                                y,
@@ -1096,7 +1096,7 @@ SEXP S_pgmalo(
     }
 
     //int max_distance_deviation = INTEGER(s_max_distance_deviation)[0];
-    bool use_median = LOGICAL(use_median_r)[0];
+    bool use_median = (LOGICAL(use_median_r)[0] == 1);
     int h_min = INTEGER(h_min_r)[0];
     int h_max = INTEGER(h_max_r)[0];
     double p = REAL(p_r)[0];
@@ -1108,7 +1108,7 @@ SEXP S_pgmalo(
     int kernel_type = INTEGER(kernel_type_r)[0];
     double dist_normalization_factor = REAL(dist_normalization_factor_r)[0];
     double epsilon = REAL(epsilon_r)[0];
-    bool verbose = LOGICAL(verbose_r)[0];
+    bool verbose = (LOGICAL(verbose_r)[0] == 1);
 
 #if 0
     auto results = pgmalo_mp(neighbors,

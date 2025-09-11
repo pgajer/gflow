@@ -89,14 +89,14 @@ SEXP S_graph_bw_adaptive_spectral_smoother(
 	double min_bw_factor = REAL(s_min_bw_factor)[0];
 	double max_bw_factor = REAL(s_max_bw_factor)[0];
 	size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-	bool log_grid = LOGICAL(s_log_grid)[0];
+	bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
 	size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
 	double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
 	double precision = REAL(s_precision)[0];
-	bool use_global_bw_grid = LOGICAL(s_use_global_bw_grid)[0];
-	bool with_bw_predictions = LOGICAL(s_with_bw_predictions)[0];
-	bool with_vertex_bw_errors = LOGICAL(s_with_vertex_bw_errors)[0];
-	bool verbose = LOGICAL(s_verbose)[0];
+	bool use_global_bw_grid = (LOGICAL(s_use_global_bw_grid)[0] == 1);
+	bool with_bw_predictions = (LOGICAL(s_with_bw_predictions)[0] == 1);
+	bool with_vertex_bw_errors = (LOGICAL(s_with_vertex_bw_errors)[0] == 1);
+	bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
 	set_wgraph_t graph(adj_list, weight_list);
 	graph_bw_adaptive_spectral_smoother_t result = graph.graph_bw_adaptive_spectral_smoother(

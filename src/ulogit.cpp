@@ -303,7 +303,7 @@ ulogit_t ulogit(const double* x,
 inline bool r_logical_to_bool_true_only(SEXP s) {
     if (TYPEOF(s) != LGLSXP || XLENGTH(s) < 1)
         Rf_error("Expected logical(1)");
-    return LOGICAL(s)[0] == 1;  // TRUE->true; FALSE/NA->false
+    return (LOGICAL(s)[0] == 1) == 1;  // TRUE->true; FALSE/NA->false
 }
 
 /**
@@ -1101,8 +1101,8 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
     double* x = REAL(x_sexp);
     double* y = REAL(y_sexp);
     double* w_r = REAL(w_sexp);
-    bool fit_quadratic = LOGICAL(fit_quadratic_sexp)[0];
-    bool with_errors = LOGICAL(with_errors_sexp)[0];
+    bool fit_quadratic = (LOGICAL(fit_quadratic_sexp)[0] == 1);
+    bool with_errors = (LOGICAL(with_errors_sexp)[0] == 1);
     int max_iterations = INTEGER(max_iterations_sexp)[0];
     double ridge_lambda = REAL(ridge_lambda_sexp)[0];
     double tolerance = REAL(tolerance_sexp)[0];

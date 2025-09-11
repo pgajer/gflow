@@ -1425,7 +1425,7 @@ SEXP S_construct_graph_gradient_flow(
     std::vector<double> y(REAL(s_y), REAL(s_y) + n_vertices);
     std::vector<double> scale(REAL(s_scale), REAL(s_scale) + n_vertices);
     double quantile_scale_thld = REAL(s_quantile_scale_thld)[0];
-    bool with_trajectories = LOGICAL(s_with_trajectories)[0];
+    bool with_trajectories = (LOGICAL(s_with_trajectories)[0] == 1);
 
     //print_vect(scale, "scale in S_construct_graph_gradient_flow");
 

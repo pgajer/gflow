@@ -580,7 +580,7 @@ SEXP S_make_response_locally_non_const(SEXP r_adj_list,
     int n_itrs = INTEGER(Rn_itrs)[0];
 
     PROTECT(Rmean_adjust = Rf_coerceVector(Rmean_adjust, LGLSXP)); nprot++;
-    bool mean_adjust = LOGICAL(Rmean_adjust)[0];
+    bool mean_adjust = (LOGICAL(Rmean_adjust)[0] == 1);
 
     std::unique_ptr<std::vector<std::vector<double>>> y_traj = make_response_locally_non_const(graph,
                                                                                                std::vector<double>(y, y + n_vertices),

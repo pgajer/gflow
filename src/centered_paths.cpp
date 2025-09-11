@@ -1162,7 +1162,7 @@ SEXP S_get_path_data(
     size_t min_path_size = INTEGER(min_path_size_s)[0];
     size_t diff_threshold = INTEGER(diff_threshold_s)[0];
     size_t kernel_type = INTEGER(kernel_type_s)[0];
-    bool verbose = LOGICAL(verbose_s)[0];
+    bool verbose = (LOGICAL(verbose_s)[0] == 1);
 
     // print_vect_vect(adj_list,"adj_list");
 
@@ -2557,7 +2557,7 @@ SEXP S_ugg_get_path_data(
     size_t min_path_size = INTEGER(min_path_size_s)[0];
     size_t diff_threshold = INTEGER(diff_threshold_s)[0];
     size_t kernel_type = INTEGER(kernel_type_s)[0];
-    bool verbose = LOGICAL(verbose_s)[0];
+    bool verbose = (LOGICAL(verbose_s)[0] == 1);
 
     double snap_tolerance = 0.1;
     uniform_grid_graph_t uniform_grid_graph = create_uniform_grid_graph(

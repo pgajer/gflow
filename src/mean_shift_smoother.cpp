@@ -1491,7 +1491,7 @@ SEXP S_mean_shift_data_smoother_with_grad_field_averaging(SEXP s_X,
     double step_size = REAL(s_step_size)[0];
     int ikernel = INTEGER(s_ikernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool average_direction_only = LOGICAL(s_average_direction_only)[0];
+    bool average_direction_only = (LOGICAL(s_average_direction_only)[0] == 1);
 
     // Call the C++ function
     auto results = mean_shift_data_smoother_with_grad_field_averaging(X,
@@ -1900,7 +1900,7 @@ SEXP S_mean_shift_data_smoother_adaptive(SEXP s_X,
     double step_size = REAL(s_step_size)[0];
     int ikernel = INTEGER(s_ikernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool average_direction_only = LOGICAL(s_average_direction_only)[0];
+    bool average_direction_only = (LOGICAL(s_average_direction_only)[0] == 1);
 
     // Call the C++ function
     auto results = mean_shift_data_smoother_adaptive(X,

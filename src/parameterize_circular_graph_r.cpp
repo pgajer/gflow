@@ -44,7 +44,7 @@ SEXP S_parameterize_circular_graph(
     // Convert input parameters using R's C API
     std::vector<std::vector<int>>    adj_list    = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
-    bool use_edge_lengths = LOGICAL(s_use_edge_lengths)[0];
+    bool use_edge_lengths = (LOGICAL(s_use_edge_lengths)[0] == 1);
 
     set_wgraph_t graph(adj_list, weight_list);
 

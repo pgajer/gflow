@@ -78,7 +78,7 @@ SEXP S_construct_function_aware_graph(
 	double p = REAL(s_p)[0];
 	double q = REAL(s_q)[0];
 	double r = REAL(s_r)[0];
-	bool normalize = LOGICAL(s_normalize)[0];
+	bool normalize = (LOGICAL(s_normalize)[0] == 1);
 	double weight_thld = REAL(s_weight_thld)[0];
 
 	// Create graph and compute function-aware version

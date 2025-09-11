@@ -984,7 +984,7 @@ SEXP S_mabilo_plus(SEXP s_x,
     int model_kernel = INTEGER(s_model_kernel)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     mabilo_plus_t mabilo_plus_results = mabilo_plus(x,
                                                     y,

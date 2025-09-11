@@ -107,20 +107,20 @@ SEXP S_graph_kernel_smoother(
     double min_bw_factor = REAL(s_min_bw_factor)[0];
     double max_bw_factor = REAL(s_max_bw_factor)[0];
     size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    bool log_grid = LOGICAL(s_log_grid)[0];
+    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
     size_t vertex_hbhd_min_size = (size_t)INTEGER(s_vertex_hbhd_min_size)[0];
     size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool use_uniform_weights = LOGICAL(s_use_uniform_weights)[0];
+    bool use_uniform_weights = (LOGICAL(s_use_uniform_weights)[0] == 1);
 
     // New parameters for buffer zone method
     size_t buffer_hops = (size_t)INTEGER(s_buffer_hops)[0];
-    bool auto_buffer_hops = LOGICAL(s_auto_buffer_hops)[0];
+    bool auto_buffer_hops = (LOGICAL(s_auto_buffer_hops)[0] == 1);
 
     size_t n_folds = (size_t)INTEGER(s_n_folds)[0];
-    bool with_bw_predictions = LOGICAL(s_with_bw_predictions)[0];
+    bool with_bw_predictions = (LOGICAL(s_with_bw_predictions)[0] == 1);
     double precision = REAL(s_precision)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     // Run the C++ smoother
     set_wgraph_t graph(adj_list, weight_list);

@@ -1133,7 +1133,7 @@ SEXP S_upgmalog(SEXP s_x,
     }
 
     //int max_distance_deviation = INTEGER(s_max_distance_deviation)[0];
-    bool use_median = LOGICAL(s_use_median)[0];
+    bool use_median = (LOGICAL(s_use_median)[0] == 1);
     int h_min = INTEGER(s_h_min)[0];
     int h_max = INTEGER(s_h_max)[0];
     double p = REAL(s_p)[0];
@@ -1146,7 +1146,7 @@ SEXP S_upgmalog(SEXP s_x,
     int n_cores = INTEGER(s_n_cores)[0];
     double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
     double epsilon = REAL(s_epsilon)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     auto cpp_results = upgmalog(x,
                                 y,

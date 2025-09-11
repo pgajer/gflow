@@ -783,7 +783,7 @@ SEXP S_amagelogit(
         std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
         std::vector<double> y(REAL(y_r), REAL(y_r) + n_points);
         int grid_size = INTEGER(grid_size_r)[0];
-        bool fit_quadratic = LOGICAL(fit_quadratic_r)[0];
+        bool fit_quadratic = (LOGICAL(fit_quadratic_r)[0] == 1);
         double pilot_bandwidth = REAL(pilot_bandwidth_r)[0];
         int kernel_type = INTEGER(kernel_type_r)[0];
         int min_points = INTEGER(min_points_r)[0];
@@ -794,7 +794,7 @@ SEXP S_amagelogit(
         int max_iterations = INTEGER(max_iterations_r)[0];
         double ridge_lambda = REAL(ridge_lambda_r)[0];
         double tolerance = REAL(tolerance_r)[0];
-        bool with_bw_predictions = LOGICAL(with_bw_predictions_r)[0];
+        bool with_bw_predictions = (LOGICAL(with_bw_predictions_r)[0] == 1);
 
         auto result = amagelogit(x, y, grid_size, fit_quadratic, pilot_bandwidth, kernel_type,
                                 min_points, cv_folds, n_bws, min_bw_factor, max_bw_factor,
@@ -884,7 +884,7 @@ SEXP S_amagelogit(
         SET_STRING_ELT(fit_info_names, 8, Rf_mkChar("tolerance"));
 
         SEXP fit_quad_r = PROTECT(Rf_allocVector(LGLSXP, 1));
-        LOGICAL(fit_quad_r)[0] = result.fit_quadratic;
+        (LOGICAL(fit_quad_r)[0] == 1) = result.fit_quadratic;
         SET_VECTOR_ELT(fit_info, 0, fit_quad_r); n_protected++;
 
         SEXP pilot_bw_r = PROTECT(Rf_allocVector(REALSXP, 1));

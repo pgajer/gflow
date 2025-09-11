@@ -103,7 +103,7 @@ SEXP S_nada_graph_spectral_lowess(
 
     // bw parameters
     size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    bool log_grid = LOGICAL(s_log_grid)[0];
+    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
     double min_bw_factor = REAL(s_min_bw_factor)[0];
     double max_bw_factor = REAL(s_max_bw_factor)[0];
 
@@ -114,7 +114,7 @@ SEXP S_nada_graph_spectral_lowess(
     // other
     double precision = REAL(s_precision)[0];
 	size_t n_cleveland_iterations = (size_t)INTEGER(s_n_cleveland_iterations)[0];
-    bool verbose = LOGICAL(s_verbose)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     set_wgraph_t graph = set_wgraph_t(adj_list, weight_list);
 
