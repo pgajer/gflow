@@ -5,6 +5,9 @@
 #include <set>        // for std::set
 #include <map>        // for std::map
 #include <utility>    // for std::pair
+#include <cstddef>
+
+using std::size_t;
 
 struct hop_neighbor_info_t {
     int vertex;              ///< The neighboring vertex

@@ -6,10 +6,13 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cstddef>      // For size_t (though often included by other headers)
 
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Error.h>
+
+using std::size_t;
 
 // Macro for location info
 #define LOC_INFO __FILE__, __LINE__

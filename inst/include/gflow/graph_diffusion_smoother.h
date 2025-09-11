@@ -3,6 +3,7 @@
 
 #include "omp_compat.h"
 
+#include <cstddef>
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -20,6 +21,8 @@
 
 #include <R.h>
 #include <Rinternals.h>
+
+using std::size_t;
 
 enum class imputation_method_t {
     LOCAL_MEAN_THRESHOLD,            // the mean of y computed over the training vertices

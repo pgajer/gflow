@@ -1,9 +1,13 @@
 #ifndef PGLM_H_
 #define PGLM_H_
 
+#include "1D_linear_models.h"
+
+#include <cstddef>
 #include <vector>
 #include <map>
-#include "1D_linear_models.h"
+
+using std::size_t;
 
 /**
  * @brief Triplet of integers identifying a unique path model
