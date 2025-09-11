@@ -912,61 +912,47 @@ SEXP S_adaptive_uggmalo(
     SEXP s_n_perms,
     SEXP s_blending_coef,
     SEXP s_verbose
-    ) {
-
-    // Convert input parameters using R's C API
+) {
+    // ---- Convert inputs (no allocations that need PROTECT because we copy out) ----
     std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
-    // Convert numeric vector directly
     double* y_ptr = REAL(s_y);
     std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
-    // Extract scalar parameters using R's C API
-    size_t min_path_size = (size_t)INTEGER(s_min_path_size)[0];
+    size_t min_path_size  = (size_t)INTEGER(s_min_path_size)[0];
     size_t n_grid_vertices = (size_t)INTEGER(s_n_grid_vertices)[0];
-    size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    double min_bw_factor = REAL(s_min_bw_factor)[0];
-    double max_bw_factor = REAL(s_max_bw_factor)[0];
+    size_t n_bws          = (size_t)INTEGER(s_n_bws)[0];
+    double min_bw_factor  = REAL(s_min_bw_factor)[0];
+    double max_bw_factor  = REAL(s_max_bw_factor)[0];
     size_t max_iterations = (size_t)INTEGER(s_max_iterations)[0];
-    double precision = REAL(s_precision)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
-    double tolerance = REAL(s_tolerance)[0];
-    size_t n_bb = (size_t)INTEGER(s_n_bb)[0];
-    double cri_probability = REAL(s_cri_probability)[0];
-    size_t n_perms = (size_t)INTEGER(s_n_perms)[0];
-    double blending_coef = REAL(s_blending_coef)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    double precision      = REAL(s_precision)[0];
+    double dist_norm_fac  = REAL(s_dist_normalization_factor)[0];
+    size_t kernel_type    = (size_t)INTEGER(s_kernel_type)[0];
+    double tolerance      = REAL(s_tolerance)[0];
+    size_t n_bb           = (size_t)INTEGER(s_n_bb)[0];
+    double cri_prob       = REAL(s_cri_probability)[0];
+    size_t n_perms        = (size_t)INTEGER(s_n_perms)[0];
+    double blending_coef  = REAL(s_blending_coef)[0];
+    bool verbose          = (LOGICAL(s_verbose)[0] == 1);
 
     size_t n_vertices = adj_list.size();
     uniform_grid_graph_t grid_graph;
 
     if (n_grid_vertices < n_vertices) {
-
-        // The returned uniform_grid_graph_t object inherits both the graph_diameter
-        // and max_packing_radius values from the intermediate set_wgraph_t object,
-        // making these calculated values available for further analysis.
-        grid_graph = create_maximal_packing(adj_list,
-                                            weight_list,
-                                            n_grid_vertices,
-                                            max_iterations,
-                                            precision);
+        grid_graph = create_maximal_packing(adj_list, weight_list,
+                                            n_grid_vertices, max_iterations, precision);
         Rprintf("grid_graph.graph_diameter: %.4f\n", grid_graph.graph_diameter);
-
     } else {
         std::vector<size_t> packing(n_vertices);
         std::iota(packing.begin(), packing.end(), 0);
-
         grid_graph = uniform_grid_graph_t(adj_list, weight_list, packing);
 
-        // Find diameter endpoints
-        auto [end1, diam] = grid_graph.get_vertex_eccentricity(0);  // Start from vertex 0
+        auto [end1, diam]   = grid_graph.get_vertex_eccentricity(0);
         auto [end2, diameter] = grid_graph.get_vertex_eccentricity(end1);
         grid_graph.graph_diameter = diameter;
     }
 
-    // Call the C++ function
     adaptive_uggmalo_result_t res = adaptive_uggmalo(
         grid_graph,
         y,
@@ -974,139 +960,141 @@ SEXP S_adaptive_uggmalo(
         n_bws,
         min_bw_factor,
         max_bw_factor,
-        dist_normalization_factor,
+        dist_norm_fac,
         kernel_type,
         tolerance,
         n_bb,
-        cri_probability,
+        cri_prob,
         n_perms,
         blending_coef,
         verbose
     );
 
-    // Create the return list using R's C API
-    const char* names[] = {
-        "graph_diameter",
-        "grid_opt_bw",
-        "predictions",
-        "errors",
-        "scale",
-        "grid_predictions",
-        "bb_predictions",
-        "cri_lower",
-        "cri_upper",
-        "null_predictions",
-        "null_predictions_cri_lower",
-        "null_predictions_cri_upper",
-        "p_values",
-        "effect_sizes",
-        "significant_vertices",
-        "null_distances",
-        NULL
+    // ---- Prepare return object ----
+    static const char* names[] = {
+        "graph_diameter",                // 0
+        "grid_opt_bw",                   // 1
+        "predictions",                   // 2
+        "errors",                        // 3
+        "scale",                         // 4
+        "grid_predictions",              // 5
+        "bb_predictions",                // 6
+        "cri_lower",                     // 7
+        "cri_upper",                     // 8
+        "null_predictions",              // 9
+        "null_predictions_cri_lower",    // 10
+        "null_predictions_cri_upper",    // 11
+        "p_values",                      // 12
+        "effect_sizes",                  // 13
+        "significant_vertices",          // 14
+        "null_distances",                // 15
+        nullptr
     };
 
     int n_elements = 0;
-    while (names[n_elements] != NULL) n_elements++;
+    while (names[n_elements] != nullptr) ++n_elements;
 
-    // Create list and protect it
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));      // [P1]
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); // [P2]
+    for (int i = 0; i < n_elements; ++i) {
         SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
     Rf_setAttrib(result, R_NamesSymbol, result_names);
 
-    // Helper function to convert vector to SEXP
-    auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        double* ptr = REAL(r_vec);
-        std::copy(vec.begin(), vec.end(), ptr);
-        return r_vec;
+    // Utility lambdas that DO NOT PROTECT (caller handles it)
+    auto put_double_scalar = [&](int idx, double val) {
+        SEXP x = PROTECT(Rf_allocVector(REALSXP, 1));       // [Px]
+        REAL(x)[0] = val;
+        SET_VECTOR_ELT(result, idx, x);
+        UNPROTECT(1);                                       // [/Px]
     };
 
-    // Helper function to convert matrix to SEXP
-    auto create_numeric_matrix = [](const std::vector<std::vector<double>>& mat) -> SEXP {
-        if (mat.empty()) return R_NilValue;
-        size_t nrow = mat.size();
-        size_t ncol = mat[0].size();
+    auto put_double_vec = [&](int idx, const std::vector<double>& v) {
+        SEXP x = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)v.size())); // [Px]
+        double* p = REAL(x);
+        if (!v.empty()) std::copy(v.begin(), v.end(), p);
+        SET_VECTOR_ELT(result, idx, x);
+        UNPROTECT(1);                                       // [/Px]
+    };
 
-        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-        double* ptr = REAL(r_mat);
-
-        for (size_t i = 0; i < nrow; ++i) {
-            for (size_t j = 0; j < ncol; ++j) {
-                ptr[i + j * nrow] = mat[i][j];  // Column-major order for R
+    auto put_double_mat = [&](int idx, const std::vector<std::vector<double>>& M) {
+        if (M.empty()) {
+            SET_VECTOR_ELT(result, idx, R_NilValue);
+            return;
+        }
+        const R_xlen_t nrow = (R_xlen_t)M.size();
+        const R_xlen_t ncol = (R_xlen_t)M[0].size();
+        SEXP x = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));        // [Px]
+        double* p = REAL(x);
+        for (R_xlen_t i = 0; i < nrow; ++i) {
+            // guard against ragged rows
+            if ((R_xlen_t)M[i].size() != ncol)
+                Rf_error("Internal error: non-rectangular matrix.");
+            for (R_xlen_t j = 0; j < ncol; ++j) {
+                p[i + j * nrow] = M[i][j]; // column-major
             }
         }
-        return r_mat;
+        SET_VECTOR_ELT(result, idx, x);
+        UNPROTECT(1);                                                   // [/Px]
     };
 
-    // Helper function to convert boolean vector to SEXP
-    auto create_logical_vector = [](const std::vector<bool>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, vec.size()));
-        int* ptr = LOGICAL(r_vec);
-        for (size_t i = 0; i < vec.size(); ++i) {
-            ptr[i] = vec[i];
-        }
-        return r_vec;
+    auto put_logical_vec = [&](int idx, const std::vector<bool>& v) {
+        SEXP x = PROTECT(Rf_allocVector(LGLSXP, (R_xlen_t)v.size()));   // [Px]
+        int* p = LOGICAL(x);
+        for (R_xlen_t i = 0; i < (R_xlen_t)v.size(); ++i) p[i] = v[i] ? 1 : 0;
+        SET_VECTOR_ELT(result, idx, x);
+        UNPROTECT(1);                                                   // [/Px]
     };
 
-    // Set graph diameter
-    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
-    REAL(diam)[0] = res.graph_diameter;
-    SET_VECTOR_ELT(result, 0, diam);
+    // 0: graph_diameter
+    put_double_scalar(0, res.graph_diameter);
 
-    // Set other numeric vectors
-    SET_VECTOR_ELT(result, 1, create_numeric_vector(res.grid_opt_bw));
-    SET_VECTOR_ELT(result, 2, create_numeric_vector(res.predictions));
-    SET_VECTOR_ELT(result, 3, create_numeric_vector(res.errors));
-    SET_VECTOR_ELT(result, 4, create_numeric_vector(res.scale));
-    SET_VECTOR_ELT(result, 5, create_numeric_vector(map_to_vector(res.grid_predictions_map)));
+    // 1..5: flat numeric vectors
+    put_double_vec(1, res.grid_opt_bw);
+    put_double_vec(2, res.predictions);
+    put_double_vec(3, res.errors);
+    put_double_vec(4, res.scale);
+    {
+        // map_to_vector returns std::vector<double>
+        std::vector<double> tmp = map_to_vector(res.grid_predictions_map);
+        put_double_vec(5, tmp);
+    }
 
-    // Set bootstrap fields if available
+    // 6..8: bootstrap outputs (or NULLs)
     if (!res.bb_predictions.empty()) {
-        SET_VECTOR_ELT(result, 6, create_numeric_matrix(res.bb_predictions));
-        SET_VECTOR_ELT(result, 7, create_numeric_vector(res.cri_lower));
-        SET_VECTOR_ELT(result, 8, create_numeric_vector(res.cri_upper));
+        put_double_mat(6, res.bb_predictions);
+        put_double_vec(7, res.cri_lower);
+        put_double_vec(8, res.cri_upper);
     } else {
-        // Set to NULL if not available
         SET_VECTOR_ELT(result, 6, R_NilValue);
         SET_VECTOR_ELT(result, 7, R_NilValue);
         SET_VECTOR_ELT(result, 8, R_NilValue);
     }
 
-    // Set permutation fields if available
+    // 9..11: permutation null predictions (or NULLs)
     if (!res.null_predictions.empty()) {
-        SET_VECTOR_ELT(result, 9, create_numeric_matrix(res.null_predictions));
-        SET_VECTOR_ELT(result, 10, create_numeric_vector(res.null_predictions_cri_lower));
-        SET_VECTOR_ELT(result, 11, create_numeric_vector(res.null_predictions_cri_upper));
+        put_double_mat(9,  res.null_predictions);
+        put_double_vec(10, res.null_predictions_cri_lower);
+        put_double_vec(11, res.null_predictions_cri_upper);
     } else {
-        SET_VECTOR_ELT(result, 9, R_NilValue);
+        SET_VECTOR_ELT(result, 9,  R_NilValue);
         SET_VECTOR_ELT(result, 10, R_NilValue);
         SET_VECTOR_ELT(result, 11, R_NilValue);
     }
 
-    // Set permutation test results if available
+    // 12..15: permutation test results (or NULLs)
     if (res.permutation_tests) {
-        SET_VECTOR_ELT(result, 12, create_numeric_vector(res.permutation_tests->p_values));
-        SET_VECTOR_ELT(result, 13, create_numeric_vector(res.permutation_tests->effect_sizes));
-        SET_VECTOR_ELT(result, 14, create_logical_vector(res.permutation_tests->significant_vertices));
-        SET_VECTOR_ELT(result, 15, create_numeric_vector(res.permutation_tests->null_distances));
+        put_double_vec(12, res.permutation_tests->p_values);
+        put_double_vec(13, res.permutation_tests->effect_sizes);
+        put_logical_vec(14, res.permutation_tests->significant_vertices);
+        put_double_vec(15, res.permutation_tests->null_distances);
     } else {
-        for (int i = 12; i <= 15; i++) {
-            SET_VECTOR_ELT(result, i, R_NilValue);
-        }
+        SET_VECTOR_ELT(result, 12, R_NilValue);
+        SET_VECTOR_ELT(result, 13, R_NilValue);
+        SET_VECTOR_ELT(result, 14, R_NilValue);
+        SET_VECTOR_ELT(result, 15, R_NilValue);
     }
 
-    // Count protected objects: result, result_names, diam, and all non-NULL vectors/matrices
-    int total_protected = 3;  // Start with result, result_names, and diam
-    for (int i = 1; i < n_elements; i++) {
-        if (VECTOR_ELT(result, i) != R_NilValue) total_protected++;
-    }
-
-    UNPROTECT(total_protected);
+    UNPROTECT(2); // result, result_names
     return result;
 }
-

@@ -586,36 +586,45 @@ SEXP convert_map_int_vector_int_to_R(const std::unordered_map<int, std::vector<i
  * @note The function protects the allocated R objects to prevent memory leaks.
  */
 SEXP Cpp_map_int_set_int_to_Rlist(const std::unordered_map<int, std::set<int>>& cpp_map_int_set_int) {
-     // Identifying the largest key of the map
-    int max_key = 0;
-    for (const auto& pair : cpp_map_int_set_int) {
-        if (pair.first > max_key)
-            max_key = pair.first;
-    }
-
-    int Rlist_len = max_key + 1;
-
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, Rlist_len));
-
-    for (const auto& [key, set] : cpp_map_int_set_int) {
-        int m = set.size();
-        SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, m));
-        int* ptr = INTEGER(Rvec);
-        int j = 0;
-        for (const auto& e : set)
-            ptr[j++] = e;
-
-        if (key < 0 || key > Rlist_len - 1) {
-            Rf_error("In Cpp_map_int_set_int_to_Rlist(): key: %d is out of range[0,Rlist_len - 1]\n", key);
-        }
-
-        SET_VECTOR_ELT(Rlist, key, Rvec);
+    // ---- First pass: validate and find max key (no PROTECTs yet) ----
+    if (cpp_map_int_set_int.empty()) {
+        // Return an empty list; no elements to fill.
+        SEXP empty = PROTECT(Rf_allocVector(VECSXP, 0));
         UNPROTECT(1);
+        return empty;
     }
 
-    return Rlist; // user has to unprotect it !!!
-}
+    int max_key = 0;
+    for (const auto& kv : cpp_map_int_set_int) {
+        const int key = kv.first;
+        if (key < 0) {
+            Rf_error("Cpp_map_int_set_int_to_Rlist(): negative key %d is not allowed.", key);
+        }
+        if (key > max_key) max_key = key;
+    }
 
+    const R_xlen_t Rlist_len = (R_xlen_t)max_key + 1;
+    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, Rlist_len)); // [P1]
+
+    // R initializes VECSXP slots to NULL; we fill only those present in the map.
+    for (const auto& kv : cpp_map_int_set_int) {
+        const int key = kv.first;
+        const std::set<int>& s = kv.second;
+
+        // key is guaranteed 0..max_key by the validation pass above.
+        const R_xlen_t m = (R_xlen_t)s.size();
+        SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, m));      // [P2]
+        int* ptr = INTEGER(Rvec);
+        R_xlen_t j = 0;
+        for (int e : s) ptr[j++] = e;
+
+        SET_VECTOR_ELT(Rlist, (R_xlen_t)key, Rvec);
+        UNPROTECT(1); // [/P2]
+    }
+
+    UNPROTECT(1); // [/P1] unprotect the list before returning
+    return Rlist;
+}
 
 /**
  * @brief Converts a C++ vector of integer pairs to an R matrix (unique pointer version)
