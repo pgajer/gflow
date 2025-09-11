@@ -300,6 +300,11 @@ ulogit_t ulogit(const double* x,
     return result;
 }
 
+inline bool r_logical_to_bool_true_only(SEXP s) {
+    if (TYPEOF(s) != LGLSXP || XLENGTH(s) < 1)
+        Rf_error("Expected logical(1)");
+    return LOGICAL(s)[0] == 1;  // TRUE->true; FALSE/NA->false
+}
 
 /**
  * @brief R interface wrapper for univariate logistic regression function
@@ -355,68 +360,72 @@ SEXP S_ulogit(SEXP x_sexp,
               SEXP max_beta_sexp,
               SEXP tolerance_sexp,
               SEXP verbose_sexp) {
-    // Convert inputs from R to C++
-    double* x = REAL(x_sexp);
-    double* y = REAL(y_sexp);
-    double* w_r = REAL(w_sexp);
+    // Basic type/length checks (optional but nice)
+    if (TYPEOF(x_sexp) != REALSXP || TYPEOF(y_sexp) != REALSXP || TYPEOF(w_sexp) != REALSXP)
+        Rf_error("x, y, w must be numeric");
+    R_xlen_t n = XLENGTH(w_sexp);
+    if (XLENGTH(x_sexp) < n || XLENGTH(y_sexp) < n)
+        Rf_error("x and y must have length at least length(w)");
+
+    const double* x = REAL(x_sexp);
+    const double* y = REAL(y_sexp);
+    const double* w_r = REAL(w_sexp);
+
     int max_iterations = INTEGER(max_iterations_sexp)[0];
     double ridge_lambda = REAL(ridge_lambda_sexp)[0];
     double max_beta = REAL(max_beta_sexp)[0];
     double tolerance = REAL(tolerance_sexp)[0];
-    bool verbose = LOGICAL(verbose_sexp)[0];
 
-    // Convert R vector to std::vector
-    int window_size = Rf_length(w_sexp);
-    std::vector<double> w(w_r, w_r + window_size);
+    // SAFE: treat only TRUE as true; FALSE/NA => false
+    const int* vptr = LOGICAL(verbose_sexp);
+    bool verbose = (vptr && vptr[0] == 1);
 
-    // Call the actual function with all parameters
+    // Copy weights
+    std::vector<double> w;
+    w.assign(w_r, w_r + n);
+
+    // Compute
     ulogit_t result = ulogit(x, y, w,
                              max_iterations,
                              ridge_lambda,
                              max_beta,
                              tolerance,
                              verbose);
-    // Creating return list
+
+    // Build return list
     const int N_COMPONENTS = 3;
-    int n_protected = 0;  // Track number of PROTECT calls
+    int n_protected = 0;
     SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
 
-    // Convert predictions to R vector
-    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
-    for(int i = 0; i < window_size; i++) {
+    // predictions
+    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
+    for (R_xlen_t i = 0; i < n; ++i)
         REAL(predictions)[i] = result.predictions[i];
-    }
 
-    // Convert errors to R vector
-    SEXP errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
-    for(int i = 0; i < window_size; i++) {
+    // errors
+    SEXP errors = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
+    for (R_xlen_t i = 0; i < n; ++i)
         REAL(errors)[i] = result.errors[i];
-    }
 
-    // Convert weights to R vector
-    SEXP weights = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
-    for(int i = 0; i < window_size; i++) {
+    // weights
+    SEXP weights = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
+    for (R_xlen_t i = 0; i < n; ++i)
         REAL(weights)[i] = result.w[i];
-    }
 
-    // Set list names
+    // names
     SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
     SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
     SET_STRING_ELT(names, 1, Rf_mkChar("errors"));
     SET_STRING_ELT(names, 2, Rf_mkChar("weights"));
 
-    // Set list elements
     SET_VECTOR_ELT(out, 0, predictions);
     SET_VECTOR_ELT(out, 1, errors);
     SET_VECTOR_ELT(out, 2, weights);
-
-    // Set list names
     Rf_setAttrib(out, R_NamesSymbol, names);
 
     UNPROTECT(n_protected);
     return out;
 }
-
 
 /**
  * @brief Fits a univariate logistic regression model and returns predictions

@@ -178,7 +178,8 @@ ulogit <- function(x,
                     as.double(ridge.lambda),
                     as.double(max.beta),
                     as.double(tolerance),
-                    as.logical(verbose))
+                    isTRUE(verbose),
+                    PACKAGE = "gflow")
     
     # Add call to result
     result$call <- cl

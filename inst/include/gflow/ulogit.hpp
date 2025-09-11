@@ -118,16 +118,16 @@ eigen_ulogit_t eigen_ulogit_fit(
 
 struct ulogit_t {
     std::vector<double> w;        // weight values for the x_values
-    int x_min_index;             // index of smallest x value in dataset
-    int x_max_index;             // index of largest x value in dataset
+    int x_min_index = -1;             // index of smallest x value in dataset
+    int x_max_index = -1;             // index of largest x value in dataset
 
     // Model evaluation
     std::vector<double> predictions;   // predicted probabilities
     std::vector<double> errors;        // Leave-One-Out Cross-Validation log-loss errors
 
     // debugging info
-    int iteration_count;
-    bool converged;
+    int iteration_count = 0;
+    bool converged = false;
 };
 
 ulogit_t ulogit(const double* x,
