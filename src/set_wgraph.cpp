@@ -1,9 +1,6 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "set_wgraph.hpp"
+#include "error_utils.h" // for REPORT_ERROR()
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <queue>
 #include <random>     // for std::mt19937
@@ -15,9 +12,8 @@
 #include <cmath>
 #include <algorithm>
 
-#include "set_wgraph.hpp"
-#include "error_utils.h" // for REPORT_ERROR()
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_compute_edge_weight_deviations(SEXP s_adj_list, SEXP s_weight_list);

@@ -1,5 +1,14 @@
 #pragma once
 
+// If any header defined a macro named match, it breaks OpenMP pragmas.
+// Undef it before we include <omp.h>.
+#ifdef match
+#  undef match
+#endif
+#ifdef check       // some SDKs define this one too; harmless to guard
+#  undef check
+#endif
+
 #ifdef _OPENMP
   #include <omp.h>
 #else

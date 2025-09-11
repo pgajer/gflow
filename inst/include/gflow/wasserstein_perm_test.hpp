@@ -1,8 +1,11 @@
 #ifndef WASSERSTEIN_PERM_TEST_H_
 #define WASSERSTEIN_PERM_TEST_H_
 
-#include <vector>
 #include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
+
+#include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Results structure for vertex-level Wasserstein permutation tests

@@ -4,6 +4,9 @@
 #include "uniform_grid_graph.hpp"
 #include "wasserstein_perm_test.hpp"
 
+#include <cstddef>
+using std::size_t;
+
 struct agemalo_result_t {
     double graph_diameter;
     double max_packing_radius;

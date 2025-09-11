@@ -1,9 +1,7 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
+#include "cpp_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "stats_utils.h"
 
 #include <vector>
 #include <queue>
@@ -18,10 +16,8 @@
 #include <random>
 #include <chrono>
 
-#include "msr2.h"
-#include "cpp_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "stats_utils.h"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2);

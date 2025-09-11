@@ -3,6 +3,9 @@
 
 #include "vect_wgraph.hpp"
 
+#include <cstddef>
+using std::size_t;
+
 struct iknn_vertex_t {
     size_t index; // index of the nearest neighbor
     size_t isize;  // the number of elements in the intersection of the set, N(x), of kNN of the vertext and the set, N(x_j), of kNN of the neighbor x_j

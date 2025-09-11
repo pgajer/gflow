@@ -1,8 +1,11 @@
-#include <R.h>                      // For R_FlushConsole, Rprintf
-#include <Rinternals.h>             // For R C API functions
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "exec_policy.hpp"
+#include "graph_deg0_lowess_cv.hpp" // For graph_deg0_lowess_cv_t
+#include "set_wgraph.hpp"           // For the set_wgraph_t class
+#include "error_utils.h"            // For REPORT_ERROR
+#include "kernels.h"                // For kernel functions and initialization
+#include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
+#include "bandwidth_utils.hpp"      // For get_candidate_bws()
+#include "progress_utils.hpp"       // For progress_tracker_t
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -15,14 +18,8 @@
 #include <atomic>                   // For std::atomic
 #include <thread>                   // For std::thread::hardware_concurrenyc
 
-#include "exec_policy.hpp"
-#include "graph_deg0_lowess_cv.hpp" // For graph_deg0_lowess_cv_t
-#include "set_wgraph.hpp"           // For the set_wgraph_t class
-#include "error_utils.h"            // For REPORT_ERROR
-#include "kernels.h"                // For kernel functions and initialization
-#include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
-#include "bandwidth_utils.hpp"      // For get_candidate_bws()
-#include "progress_utils.hpp"       // For progress_tracker_t
+#include <R.h>                      // For R_FlushConsole, Rprintf
+#include <Rinternals.h>             // For R C API functions
 
 extern "C" {
     SEXP S_graph_deg0_lowess_cv(

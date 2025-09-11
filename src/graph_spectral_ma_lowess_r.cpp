@@ -1,13 +1,3 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <vector>
-#include <chrono>
-#include <numeric> // for std::iota()
-
 #include "graph_spectral_lowess.hpp"  // For graph_spectral_lowess_result_t
 #include "bandwidth_utils.hpp"        // For get_candidate_bws
 #include "error_utils.h"              // For REPORT_ERROR
@@ -15,6 +5,13 @@
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "cpp_utils.hpp"
 #include "progress_utils.hpp"         // For elapsed_time
+
+#include <vector>
+#include <chrono>
+#include <numeric> // for std::iota()
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_graph_spectral_ma_lowess(

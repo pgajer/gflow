@@ -2,6 +2,8 @@
 #define AMAGELO_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 struct extremum_t {
     size_t idx;                 ///< Index of extremum in prediction vector

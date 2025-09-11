@@ -2,7 +2,11 @@
 #define KLAPS_LOW_PASS_SMOOTHER_H_
 
 #include <vector>
+#include <cstddef>
+
 #include <Eigen/Core>
+
+using std::size_t;
 
 /// Result of low‑pass spectral smoothing with multiple k‑selection criteria
 struct klaps_low_pass_smoother_t {

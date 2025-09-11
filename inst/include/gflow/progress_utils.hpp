@@ -2,12 +2,17 @@
 #ifndef PROGRESS_UTILS_HPP
 #define PROGRESS_UTILS_HPP
 
+#include "error_utils.h" // for REPORT_ERROR()
+
+#include <cstddef>
+#include <chrono>
+
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 #include <R_ext/Print.h>
-#include <chrono>
-#include "error_utils.h" // for REPORT_ERROR()
+
+using std::size_t;
 
 void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
                   const char* message,

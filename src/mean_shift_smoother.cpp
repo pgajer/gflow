@@ -1,9 +1,10 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
+#include "cpp_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "graph_diffusion_smoother.hpp"
+#include "stats_utils.h"
+#include "kernels.h"
+#include "kNN.h"
 
 #include <vector>
 #include <algorithm>
@@ -13,13 +14,8 @@
 #include <cmath>
 #include <memory>
 
-#include "msr2.h"
-#include "cpp_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "graph_diffusion_smoother.hpp"
-#include "stats_utils.h"
-#include "kernels.h"
-#include "kNN.h"
+#include <R.h>
+#include <Rinternals.h>
 
 // Forward declarations of helper functions
 SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,

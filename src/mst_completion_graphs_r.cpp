@@ -1,14 +1,12 @@
-#include <R.h>            // For Rprintf, etc.
-#include <Rinternals.h>   // For SEXP macros
-#undef length             // avoid clash with R
-#undef Rf_eval
+#include "mst_completion_graphs.hpp"
+#include "error_utils.h"                 // REPORT_ERROR()
+#include "SEXP_cpp_conversion_utils.hpp" // convert_adj_list_from_R, convert_weight_list_from_R
 
 #include <vector>
 #include <algorithm>      // std::copy
 
-#include "mst_completion_graphs.hpp"
-#include "error_utils.h"                 // REPORT_ERROR()
-#include "SEXP_cpp_conversion_utils.hpp" // convert_adj_list_from_R, convert_weight_list_from_R
+#include <R.h>            // For Rprintf, etc.
+#include <Rinternals.h>   // For SEXP macros
 
 /**
  * @brief Extracts edge weights from a set_wgraph_t into a numeric R vector

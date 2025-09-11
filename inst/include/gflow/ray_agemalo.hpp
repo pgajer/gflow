@@ -5,6 +5,10 @@
 #include "wasserstein_perm_test.hpp"
 #include "agemalo.hpp"
 
+#include <cstddef>
+
+using std::size_t;
+
 agemalo_result_t ray_agemalo(
     const uniform_grid_graph_t& grid_graph,
     const std::vector<double>& y,

@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <string>
 #include <utility> // For std::pair
+#include <cstddef>
+using std::size_t;
 
 struct gradient_flow_t {
 

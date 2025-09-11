@@ -2,30 +2,6 @@
 // #include <omp.h>
 #include "omp_compat.h"
 #endif
-
-// Undefine R's match macro if it exists
-#ifdef match
-    #undef match
-#endif
-
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <vector>
-#include <algorithm> // for std::max
-#include <random>
-#include <cmath>         // for fabs()
-#include <unordered_set>
-#include <unordered_map>
-#include <map>
-
 #include "pgmalog.hpp"
 #include "pgmalo.hpp"
 #include "ulogit.hpp"
@@ -42,6 +18,20 @@
 #include "kernels.h"
 #include "1D_linear_models.h"
 #include "predictive_errors.hpp"
+
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#include <algorithm> // for std::max
+#include <random>
+#include <cmath>         // for fabs()
+#include <unordered_set>
+#include <unordered_map>
+#include <map>
+
+#include <R.h>
+#include <Rinternals.h>
 
 bb_cri_t pgmalog_bb_cri(const path_graph_plm_t& path_graph,
                      const std::vector<double>& y,

@@ -1,14 +1,12 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "kNN.h"
 
 #include <vector>
 #include <cmath>
+
 #include <ANN/ANN.h>  // ANN library header
 
-#include "kNN.h"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_kNN(SEXP RX, SEXP Rk);

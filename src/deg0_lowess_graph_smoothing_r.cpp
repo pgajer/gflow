@@ -1,15 +1,12 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-#include <R_ext/Print.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include "set_wgraph.hpp"
 #include "deg0_lowess_graph_smoothing.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "error_utils.h" // for REPORT_ERROR()
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
+#include <R_ext/Print.h>
 
 extern "C" {
     SEXP S_deg0_lowess_graph_smoothing(

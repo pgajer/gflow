@@ -1,11 +1,14 @@
 #ifndef CENTERED_PATHS_H_
 #define CENTERED_PATHS_H_
 
-#include <vector>
-#include <limits>  // for std::numeric_limits
 #include "uniform_grid_graph.hpp"
 #include "set_wgraph.hpp" // for vertex_info_t
 #include "edge_weights.hpp"
+
+#include <vector>
+#include <limits>  // for std::numeric_limits
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief A structure containing path data for composite paths constructed from

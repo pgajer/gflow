@@ -1,9 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "error_utils.h" // for REPORT_ERROR()
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <vector>
 #include <queue>
@@ -12,8 +8,8 @@
 #include <algorithm>
 #include <unordered_set>
 
-#include "error_utils.h" // for REPORT_ERROR()
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_shortest_path(SEXP s_graph, SEXP s_edge_lengths, SEXP s_vertices);

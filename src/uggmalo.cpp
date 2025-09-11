@@ -1,8 +1,17 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "edge_weights.hpp"
+#include "ulm.hpp"
+#include "graph_utils.hpp"
+#include "uniform_grid_graph.hpp"
+#include "centered_paths.hpp"
+#include "uniform_grid_graph.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "graph_shortest_path.hpp"
+#include "cpp_utils.hpp"
+#include "error_utils.h" // for REPORT_ERROR()
+#include "kernels.h"
+#include "sampling.h" // for C_runif_simplex()
+#include "predictive_errors.hpp"
+#include "wasserstein_perm_test.hpp"
 
 #include <vector>
 #include <queue>
@@ -22,20 +31,8 @@
 #include <chrono>
 #include <thread>      // For std::thread
 
-#include "edge_weights.hpp"
-#include "ulm.hpp"
-#include "graph_utils.hpp"
-#include "uniform_grid_graph.hpp"
-#include "centered_paths.hpp"
-#include "uniform_grid_graph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "graph_shortest_path.hpp"
-#include "cpp_utils.hpp"
-#include "error_utils.h" // for REPORT_ERROR()
-#include "kernels.h"
-#include "sampling.h" // for C_runif_simplex()
-#include "predictive_errors.hpp"
-#include "wasserstein_perm_test.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_uggmalo(

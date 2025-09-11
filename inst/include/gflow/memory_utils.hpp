@@ -1,9 +1,6 @@
 #ifndef MEMORY_UTILS_HPP
 #define MEMORY_UTILS_HPP
 
-#include <cstddef>  // for size_t
-#include <R.h>     // for Rprintf and R_FlushConsole
-
 // Platform-specific includes for memory tracking
 #ifdef _WIN32
 #include <windows.h>
@@ -15,6 +12,13 @@
 #include <mach/mach.h>
 #endif
 #endif
+
+#include <cstddef>  // for size_t
+
+#include <R.h>     // for Rprintf and R_FlushConsole
+
+using std::size_t;
+
 
 // Function to get current RSS (Resident Set Size)
 size_t get_current_rss();  // Platform-specific implementation

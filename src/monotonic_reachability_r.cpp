@@ -1,18 +1,14 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <vector>       // std::vector
-#include <utility>      // std::pair
-#include <algorithm>    // std::sort
-
 #include "set_wgraph.hpp"                    // set_wgraph_t
 #include "reachability_map.hpp"              // monotonic_reachability_map_t
 #include "SEXP_cpp_conversion_utils.hpp"     // convert_adj_list_from_R, convert_weight_list_from_R
 #include "error_utils.h"                     // if any errors are checked via REPORT_ERROR()
 
+#include <vector>       // std::vector
+#include <utility>      // std::pair
+#include <algorithm>    // std::sort
+
+#include <R.h>
+#include <Rinternals.h>
 
 // R interface function to test monotonic reachability map
 

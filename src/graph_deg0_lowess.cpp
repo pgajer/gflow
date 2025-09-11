@@ -1,8 +1,8 @@
-#include <R.h>                      // For R_FlushConsole, Rprintf
-#include <Rinternals.h>             // For R C API functions
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "exec_policy.hpp"
+#include "set_wgraph.hpp"           // For the set_wgraph_t class
+#include "error_utils.h"            // For REPORT_ERROR
+#include "kernels.h"                // For kernel functions and initialization
+#include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
@@ -11,11 +11,8 @@
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 
-#include "exec_policy.hpp"
-#include "set_wgraph.hpp"           // For the set_wgraph_t class
-#include "error_utils.h"            // For REPORT_ERROR
-#include "kernels.h"                // For kernel functions and initialization
-#include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
+#include <R.h>                      // For R_FlushConsole, Rprintf
+#include <Rinternals.h>             // For R C API functions
 
 extern "C" {
     SEXP S_graph_deg0_lowess(

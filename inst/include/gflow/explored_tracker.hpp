@@ -1,6 +1,9 @@
 #ifndef EXPLORED_TRACKER_H_
 #define EXPLORED_TRACKER_H_
 
+#include <cstddef>
+using std::size_t;
+
 /**
  * @brief Helper structure to track vertices explored during the ε-packing algorithm
  *

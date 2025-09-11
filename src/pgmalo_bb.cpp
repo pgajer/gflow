@@ -1,29 +1,6 @@
 #ifdef _OPENMP
-//#include <omp.h>
 #include "omp_compat.h"
 #endif
-
-// Undefine R's match macro if it exists
-#ifdef match
-    #undef match
-#endif
-
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <vector>
-#include <algorithm> // for std::max
-#include <random>
-#include <cmath>         // for fabs()
-#include <unordered_set>
-#include <unordered_map>
 
 #include "exec_policy.hpp"
 #include "pgmalo.hpp"
@@ -37,6 +14,19 @@
 #include "kernels.h"
 #include "1D_linear_models.h"
 #include "predictive_errors.hpp"
+
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#include <algorithm> // for std::max
+#include <random>
+#include <cmath>         // for fabs()
+#include <unordered_set>
+#include <unordered_map>
+
+#include <R.h>
+#include <Rinternals.h>
 
 lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
                                const std::vector<double>& x,

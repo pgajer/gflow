@@ -1,9 +1,8 @@
-#include <R.h>                     // Rprintf
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "set_wgraph.hpp"              // set_wgraph_t, adjacency_list
+#include "klaps_low_pass_smoother.hpp" // klaps_low_pass_smoother_t declaration
+#include "bandwidth_utils.hpp"         // get_candidate_ks()
+#include "error_utils.h"               // REPORT_ERROR()
 
-// — C++ STL
 #include <vector>
 #include <utility>                 // std::pair
 #include <algorithm>               // std::min, std::accumulate
@@ -16,10 +15,7 @@
 #include <Spectra/SymEigsSolver.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
 
-#include "set_wgraph.hpp"              // set_wgraph_t, adjacency_list
-#include "klaps_low_pass_smoother.hpp" // klaps_low_pass_smoother_t declaration
-#include "bandwidth_utils.hpp"         // get_candidate_ks()
-#include "error_utils.h"               // REPORT_ERROR()
+#include <R.h>                     // Rprintf
 
 std::vector<size_t> get_candidate_ks(
 	size_t k_min,

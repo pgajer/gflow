@@ -2,6 +2,8 @@
 #define GRAPH_BW_ADAPTIVE_SPECTRAL_SMOOTHER_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 struct graph_bw_adaptive_spectral_smoother_t {
 	std::vector<double> predictions;                 ///< predictions[i] is an estimate of E(Y|G) at the i-th vertex at the optimal bandwidth

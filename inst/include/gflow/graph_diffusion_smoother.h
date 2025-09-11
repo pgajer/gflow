@@ -1,15 +1,6 @@
 #ifndef MSR2_DIFF_SMOOTHER_H_
 #define MSR2_DIFF_SMOOTHER_H_
 
-#include <R.h>
-#include <Rinternals.h>
-
-// Prevent macro collision with OpenMP
-#ifdef match
-#undef match
-#endif
-
-// #include <omp.h>
 #include "omp_compat.h"
 
 #include <vector>
@@ -26,6 +17,9 @@
 #include <sstream>  // Add this at the top of your file if not already present
 
 #include <Eigen/Core>
+
+#include <R.h>
+#include <Rinternals.h>
 
 enum class imputation_method_t {
     LOCAL_MEAN_THRESHOLD,            // the mean of y computed over the training vertices

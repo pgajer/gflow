@@ -1,18 +1,22 @@
 #ifndef MLM_HPP
 #define MLM_HPP
 
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Print.h>       // For Rprintf
+#include "error_utils.h"  // REPORT_WARNING etc.
 
-#include <Eigen/Dense>         // For Eigen::VectorXd, Eigen::MatrixXd
+#include <cstddef>             // For std::size_t
 #include <vector>              // For std::vector
 #include <algorithm>           // For std::min
 #include <map>                 // For std::map
 #include <string>              // For std::string
 #include <fstream>             // For std::ofstream
 
-#include "error_utils.h"       // For REPORT_WARNING
+#include <Eigen/Dense>         // For Eigen::VectorXd, Eigen::MatrixXd
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Print.h>       // For Rprintf
+
+using std::size_t;
 
 /**
  * @brief Enhanced linear model structure for spectral embedding

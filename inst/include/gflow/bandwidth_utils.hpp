@@ -2,6 +2,8 @@
 #define BANDWIDTH_UTILS_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Generates a set of candidate bandwidth values over the specified range

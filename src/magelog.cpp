@@ -1,11 +1,11 @@
 //
 // Model average local logistic regression with models positioned over a uniform grid
 //
-#include <R.h>
-#include <Rinternals.h>
 
-#undef length  // to resolve naming conflict between the R macro length defined in Rinternals.h and a member function in the C++ standard library's codecvt class
-#undef Rf_eval
+#include "ulogit.hpp"
+#include "kernels.h"
+#include "maelog.hpp"
+#include "cpp_utils.hpp" // for debugging and elapsed.time
 
 #include <execution>
 #include <mutex>
@@ -13,17 +13,12 @@
 #include <numeric>    // for std::iota
 #include <random>     // for std::mt19937
 #include <algorithm>  // for std::shuffle
-#include <ANN/ANN.h>
 
+#include <ANN/ANN.h>
 #include <Eigen/Dense>
 
-#include "ulogit.hpp"
-#include "kernels.h"
-#include "maelog.hpp"
-
-#include "cpp_utils.hpp" // for debugging and elapsed.time
-//#include <fstream>       // for debugging and elapsed.time
-
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_magelog(

@@ -1,15 +1,12 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "amagelo.hpp"
+#include "uniform_grid_graph.hpp" // For create_chain_graph, etc.
 
 #include <vector>
 #include <unordered_set>
 #include <numeric>                // For std::iota()
 
-#include "amagelo.hpp"
-#include "uniform_grid_graph.hpp" // For create_chain_graph, etc.
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * @brief R interface to the AMAGELO algorithm

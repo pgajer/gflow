@@ -1,10 +1,8 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "uniform_grid_graph.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
+#include "error_utils.h"
+#include "kernels.h"
 
 #include <vector>
 #include <queue>
@@ -15,11 +13,9 @@
 #include <tuple>
 #include <numeric>
 
-#include "uniform_grid_graph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
-#include "error_utils.h"
-#include "kernels.h"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 /**
  * @brief Discovers paths that meet minimum size requirements by adaptively adjusting search radius

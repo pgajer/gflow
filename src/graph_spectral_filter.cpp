@@ -1,17 +1,15 @@
-#include <R.h>                     // Rprintf
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
-
 #include "graph_spectral_filter.hpp"
 #include "set_wgraph.hpp"                   // for set_wgraph_t, adjacency_list
 #include "klaps_low_pass_smoother.hpp"      // for compute_graph_laplacian_spectrum()
 #include "error_utils.h"                    // REPORT_ERROR()
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <utility>
 #include <chrono>
+
+#include <R.h>                     // Rprintf
 
 /**
  * @brief Smooths a signal on a graph using spectral filtering with various Laplacian operators and filter types.

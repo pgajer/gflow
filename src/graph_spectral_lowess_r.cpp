@@ -1,20 +1,17 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-#include <R_ext/Print.h>
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "graph_spectral_lowess.hpp"   // For graph_spectral_lowess_t
+#include "error_utils.h"               // For REPORT_ERROR
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "uniform_grid_graph.hpp"
 
 #include <vector>
 #include <queue>
 #include <chrono>
 #include <numeric> // for std::iota()
 
-#include "graph_spectral_lowess.hpp"   // For graph_spectral_lowess_t
-#include "error_utils.h"               // For REPORT_ERROR
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "uniform_grid_graph.hpp"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
+#include <R_ext/Print.h>
 
 extern "C" {
     SEXP S_graph_spectral_lowess(

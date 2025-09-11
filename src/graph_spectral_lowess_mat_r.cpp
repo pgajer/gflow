@@ -1,13 +1,9 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include "uniform_grid_graph.hpp"
 #include "graph_spectral_lowess_mat.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_graph_spectral_lowess_mat(

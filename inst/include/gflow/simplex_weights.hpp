@@ -1,10 +1,14 @@
 #ifndef SIMPLEX_WEIGHTS_HPP
 #define SIMPLEX_WEIGHTS_HPP
 
+#include "nerve_cx.hpp"
+
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include "nerve_cx.hpp"
+#include <cstddef>
+
+using std::size_t;
 
 namespace simplex_weights {
 

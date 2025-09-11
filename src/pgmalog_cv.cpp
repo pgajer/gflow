@@ -2,29 +2,6 @@
 // #include <omp.h>
 #include "omp_compat.h"
 #endif
-
-// Undefine R's match macro if it exists
-#ifdef match
-    #undef match
-#endif
-
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <vector>
-#include <algorithm> // for std::max
-#include <random>
-#include <cmath>         // for fabs()
-#include <unordered_set>
-#include <unordered_map>
-
 #include "exec_policy.hpp"
 #include "sampling.h" // for C_runif_simplex()
 #include "error_utils.h"
@@ -36,6 +13,19 @@
 #include "kernels.h"
 #include "1D_linear_models.h"
 #include "predictive_errors.hpp"
+
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#include <algorithm> // for std::max
+#include <random>
+#include <cmath>         // for fabs()
+#include <unordered_set>
+#include <unordered_map>
+
+#include <R.h>
+#include <Rinternals.h>
 
 std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
     const path_graph_plm_t& path_graph,

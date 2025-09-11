@@ -1,14 +1,11 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <numeric> // for std::iota()
-
 #include "geodesic_stats.hpp"
 #include "uniform_grid_graph.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
+
+#include <numeric> // for std::iota()
+
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * R interface for compute_geodesic_stats C++ function

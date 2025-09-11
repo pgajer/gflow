@@ -1,13 +1,11 @@
-#include <R.h>
-#include <Rinternals.h>
-#undef length
-#undef Rf_eval
-
-#include <vector>
-
 #include "set_wgraph.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "error_utils.h"
+
+#include <vector>
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_detect_local_extrema(

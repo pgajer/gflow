@@ -1,18 +1,6 @@
 #ifndef GRAPH_HPP
 #define GRAPH_HPP
 
-#include <vector>        // For std::vector used throughout the code
-#include <unordered_map> // For std::unordered_map used for boundary_vertices
-#include <map>
-#include <unordered_set>
-#include <set>
-#include <optional>
-#include <algorithm>
-#include <span>
-#include <ranges>
-#include <limits>
-#include <utility>            // For std::pair
-
 #include "graph_spectral_filter.hpp"
 #include "iknn_graphs.hpp"
 #include "edge_info.hpp"
@@ -40,17 +28,25 @@
 #include "invalid_vertex.hpp"
 #include "harmonic_smoother.hpp"
 #include "geodesic_stats.hpp"
-#include "gflow_cx.hpp"
 #include "harmonic_extender.hpp"
 #include "gflow_cx.hpp"
 
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include <cstddef>
+#include <vector>        // For std::vector used throughout the code
+#include <unordered_map> // For std::unordered_map used for boundary_vertices
+#include <map>
+#include <unordered_set>
+#include <set>
+#include <optional>
+#include <algorithm>
+#include <limits>
+#include <utility>            // For std::pair
 
 #include <Eigen/Core>
 #include <Eigen/Dense>  // For Eigen::MatrixXd
 #include <Eigen/Sparse> // For Eigen::SparseMatrix, Triplet
+
+using std::size_t;
 
 struct path_t {
 	std::vector<size_t> vertices;  ///< vertices of the path

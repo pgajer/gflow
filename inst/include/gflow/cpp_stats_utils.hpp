@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <algorithm>
+#include <cstddef>
+using std::size_t;
 
 std::vector<double> running_window_average(
 	const std::vector<double>& values,

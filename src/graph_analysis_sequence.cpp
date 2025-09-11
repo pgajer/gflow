@@ -1,11 +1,10 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "graph_diffusion_smoother.hpp"
+#include "path_graphs.hpp"               // for path_graph_t and path_graph_plus_t
+#include "MS_complex.h"                  // for MS_complex_t
+#include "graph_diffusion_smoother.hpp"  // for graph_diffusion_smoother and related types
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"                 // for elapsed_time
 
-// Standard library includes
 #include <vector>
 #include <map>
 #include <utility>   // for std::pair
@@ -13,12 +12,9 @@
 #include <algorithm> // for std::max_element
 #include <stdexcept> // for std::invalid_argument
 
-#include "graph_diffusion_smoother.hpp"
-#include "path_graphs.hpp"               // for path_graph_t and path_graph_plus_t
-#include "MS_complex.h"                  // for MS_complex_t
-#include "graph_diffusion_smoother.hpp"  // for graph_diffusion_smoother and related types
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"                 // for elapsed_time
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 extern "C" {
     SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,

@@ -1,14 +1,18 @@
 #ifndef NERVE_COMPLEX_HPP
 #define NERVE_COMPLEX_HPP
 
+#include "set_wgraph.hpp"
+#include "edge_info.hpp"
+#include "nerve_cx_spectral_filter.hpp"
+
+#include <cstddef>
 #include <vector>
 #include <unordered_map>
 #include <set>
 #include <memory>
 #include <functional>
-#include "set_wgraph.hpp"
-#include "edge_info.hpp"
-#include "nerve_cx_spectral_filter.hpp"
+
+using std::size_t;
 
 /**
  * @brief Hash function for vectors of size_t (simplex representation)

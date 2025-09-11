@@ -1,8 +1,10 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "reachability_map.hpp"
+#include "cpp_utils.hpp"
+#include "cpp_stats_utils.hpp"
+#include "set_wgraph.hpp"
+#include "error_utils.h" // for REPORT_ERROR()
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "gradient_flow.hpp"
 
 #include <vector>         // std::vector
 #include <queue>          // std::priority_queue
@@ -15,14 +17,8 @@
 #include <cmath>          // std::abs
 #include <algorithm>      // std::reverse, std::sort
 
-#include "reachability_map.hpp"
-#include "cpp_utils.hpp"
-#include "cpp_stats_utils.hpp"
-#include "set_wgraph.hpp"
-#include "error_utils.h" // for REPORT_ERROR()
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "gradient_flow.hpp"
-
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * @brief Computes a monotonic reachability map optimizing for path monotonicity

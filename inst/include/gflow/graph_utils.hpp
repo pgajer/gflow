@@ -1,6 +1,8 @@
 #ifndef GRAPH_UTILS_H_
 #define GRAPH_UTILS_H_
 
+#include <vector>       // for std::vector
+
 double get_graph_diameter(
 	const std::vector<std::vector<int>>& adj_list,
 	const std::vector<std::vector<double>>& weight_list,

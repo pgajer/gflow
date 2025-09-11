@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 #include <array>
+#include <cstddef>
+using std::size_t;
 
 // Forward declarations
 std::vector<double> calculate_overlap_statistics(const std::vector<double>& overlap_indices);

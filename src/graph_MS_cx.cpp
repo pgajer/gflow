@@ -1,9 +1,6 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
+#include "MS_complex.h"
 
 #include <vector>     // for std::vector
 #include <numeric>    // for std::iota
@@ -12,9 +9,8 @@
 #include <map>        // for std::map
 #include <utility>    // for std::pair
 
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
-#include "MS_complex.h"
+#include <R.h>
+#include <Rinternals.h>
 
 std::vector<int> union_find(const std::vector<std::vector<int>>& adj_vect);
 std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const std::vector<std::vector<int>>& graph,

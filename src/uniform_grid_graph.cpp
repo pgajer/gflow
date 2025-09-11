@@ -1,9 +1,9 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
+#include "graph_utils.hpp" // for get_grid_diameter()
+#include "uniform_grid_graph.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
+#include "error_utils.h"
+#include "kernels.h"
 
 #include <vector>
 #include <queue>
@@ -14,12 +14,9 @@
 #include <tuple>
 #include <numeric>
 
-#include "graph_utils.hpp" // for get_grid_diameter()
-#include "uniform_grid_graph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
-#include "error_utils.h"
-#include "kernels.h"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 extern "C" {
     SEXP S_create_uniform_grid_graph(SEXP s_input_adj_list,

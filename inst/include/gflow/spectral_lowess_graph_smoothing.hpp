@@ -1,8 +1,11 @@
 #ifndef SPECTRAL_LOWESS_GRAPH_SMOOTHING_HPP
 #define SPECTRAL_LOWESS_GRAPH_SMOOTHING_HPP
 
-#include <vector>
 #include "set_wgraph.hpp"
+
+#include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Defines the type of convergence criteria to use for the iterative process

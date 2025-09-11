@@ -28,20 +28,16 @@
 
 */
 
-#undef match
-//#include <omp.h>
 #include "omp_compat.h"
-#define match Rf_match
+#include "iknn_graphs.hpp"
+#include "set_wgraph.hpp"
+#include "kNN_r.h"       // for S_kNN()
+#include "kNN.h"         // for struct iknn_vertex_tt and kNN_search
+#include "cpp_utils.hpp" // for debugging
+#include "progress_utils.hpp" // for elapsed.time
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "edge_pruning_stats.hpp"
 
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <ANN/ANN.h>  // ANN library header
 #include <vector>
 #include <unordered_set>
 #include <set>
@@ -55,14 +51,11 @@
 #include <queue>
 #include <numeric>    // for std::iota
 
-#include "iknn_graphs.hpp"
-#include "set_wgraph.hpp"
-#include "kNN_r.h"       // for S_kNN()
-#include "kNN.h"         // for struct iknn_vertex_tt and kNN_search
-#include "cpp_utils.hpp" // for debugging
-#include "progress_utils.hpp" // for elapsed.time
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "edge_pruning_stats.hpp"
+#include <ANN/ANN.h>  // ANN library header
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 extern "C" {
 

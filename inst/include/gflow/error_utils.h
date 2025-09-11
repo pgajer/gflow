@@ -1,20 +1,15 @@
 #ifndef ERROR_UTILS_H
 #define ERROR_UTILS_H
 
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Error.h>
-
-#ifdef length
-#undef length
-#endif
-#undef Rf_eval
-
 #include <string>
 #include <sstream>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Error.h>
 
 // Macro for location info
 #define LOC_INFO __FILE__, __LINE__

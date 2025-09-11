@@ -1,15 +1,13 @@
-#include <R.h>            // For Rprintf, etc.
-#include <Rinternals.h>   // For SEXP macros
-#undef length             // avoid clash with R
-#undef Rf_eval
-
-#include <vector>
-#include <algorithm>      // std::copy
-
 #include "set_wgraph.hpp"                // set_wgraph_t
 #include "klaps_low_pass_smoother.hpp"   // klaps_low_pass_smoother_t declaration
 #include "error_utils.h"                 // REPORT_ERROR()
 #include "SEXP_cpp_conversion_utils.hpp" // convert_adj_list_from_R, convert_weight_list_from_R
+
+#include <vector>
+#include <algorithm>      // std::copy
+
+#include <R.h>            // For Rprintf, etc.
+#include <Rinternals.h>   // For SEXP macros
 
 extern "C" {
 	SEXP S_klaps_low_pass_smoother(

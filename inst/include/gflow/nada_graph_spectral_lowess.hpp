@@ -2,6 +2,8 @@
 #define NADA_GRAPH_SPECTRAL_LOWESS_H_
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 struct nada_graph_spectral_lowess_t {
 	std::vector<double> predictions;      ///< predictions[i] is an estimate of E(Y|G) at the i-th vertex

@@ -1,22 +1,17 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "cpp_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "stats_utils.h"
+#include "kNN.h"
+#include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
 
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <numeric>
 
-//#include "msr2.h"
-#include "cpp_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "stats_utils.h"
-#include "kNN.h"
-#include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
 void C_wasserstein_distance_1D(const double *x,

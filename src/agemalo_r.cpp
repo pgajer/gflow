@@ -2,21 +2,18 @@
  * @brief Implementation of Adaptive GEMALO algorithm
  */
 
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "agemalo.hpp"
+#include "graph_maximal_packing.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
 
 #include <vector>
 #include <queue>
 #include <chrono>
 #include <numeric> // for std::iota()
 
-#include "agemalo.hpp"
-#include "graph_maximal_packing.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_agemalo(

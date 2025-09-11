@@ -1,11 +1,12 @@
 #ifndef MSR2_CPP_UTILS_H_
 #define MSR2_CPP_UTILS_H_
 
+#include "progress_utils.hpp" // for elapsed.time
+
 #include <vector>
 #include <string>
 #include <fstream>
 #include <sstream>
-//#include <iostream>
 #include <iomanip>
 #include <type_traits>
 #include <unordered_set>
@@ -19,9 +20,11 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <cstddef>
+
 #include <R.h>  // For Rprintf
 
-#include "progress_utils.hpp" // for elapsed.time
+using std::size_t;
 
 struct conn_comps_of_loc_extr_t {
     std::unordered_map<int, std::vector<int>> lmin_cc_map;

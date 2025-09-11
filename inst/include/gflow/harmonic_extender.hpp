@@ -2,6 +2,8 @@
 #define HARMONIC_EXTENDER_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 struct harmonic_extender_t {
 	std::vector<std::vector<double>> iterations; ///< Function values at each recorded iteration

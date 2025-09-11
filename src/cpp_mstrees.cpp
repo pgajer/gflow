@@ -1,16 +1,14 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "cpp_utils.hpp"
 
 #include <vector>
 #include <queue>
 #include <unordered_set>
 #include <limits>
+
 #include <ANN/ANN.h>
 
-#include "cpp_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_mstree(SEXP X);

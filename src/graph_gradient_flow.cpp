@@ -1,19 +1,3 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <queue>
-#include <random>     // for std::mt19937
-#include <sstream>
-#include <unordered_set>
-#include <functional>
-#include <map>
-
-#include <filesystem> // For debugging
-
 #include "reachability_map.hpp"
 #include "cpp_utils.hpp"
 #include "cpp_stats_utils.hpp"
@@ -21,6 +5,18 @@
 #include "error_utils.h" // for REPORT_ERROR()
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "gradient_flow.hpp"
+
+#include <queue>
+#include <random>     // for std::mt19937
+#include <sstream>
+#include <unordered_set>
+#include <functional>
+#include <map>
+#include <vector>
+// #include <filesystem>  // for debugging
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_construct_graph_gradient_flow(
@@ -672,7 +668,7 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
     double long_edge_upper_thld
     ) const {
 
-#define DEBUG__construct_trajectory 1
+#define DEBUG__construct_trajectory 0
 
     // Initialize result structure
     gradient_trajectory_t result;

@@ -2,6 +2,8 @@
 #define GRAPH_KERNEL_SMOOTHER_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Return structure for graph kernel smoother

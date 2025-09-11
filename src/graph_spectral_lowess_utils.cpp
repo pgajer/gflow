@@ -1,10 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <Eigen/Dense>                 // For Eigen matrix operations
+#include "set_wgraph.hpp"
+#include "error_utils.h"               // For REPORT_ERROR
 
 #include <queue>                       // For std::priority_queue
 #include <limits>                      // For std::numeric_limits, INFINITY
@@ -12,8 +7,10 @@
 #include <numeric>                     // For std::accumulate
 #include <map>                         // For std::map
 
-#include "set_wgraph.hpp"
-#include "error_utils.h"               // For REPORT_ERROR
+#include <Eigen/Dense>                 // For Eigen matrix operations
+
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * @brief Finds all vertices within a specified radius of a reference vertex

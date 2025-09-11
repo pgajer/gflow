@@ -1,16 +1,12 @@
-#include <R.h>                      // For R_FlushConsole, Rprintf
-#include <Rinternals.h>             // For R C API functions
-
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
-
-#include <vector>                   // For std::vector
-
 #include "graph_deg0_lowess_cv_mat.hpp" // For graph_deg0_lowess_cv_mat_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
 #include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
+
+#include <vector>                   // For std::vector
+
+#include <R.h>                      // For R_FlushConsole, Rprintf
+#include <Rinternals.h>             // For R C API functions
 
 /**
  * @brief R interface for matrix version of graph degree 0 LOWESS with CV

@@ -1,9 +1,6 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
+#include "kNN.h"
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -11,9 +8,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include "msr2.h"
-#include "kNN.h"
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern void C_mstree(const int* riinit, const int* nn_i, const double* nn_d,
                   const double* rldist, const int* rn, int* edges, double* edge_lens);

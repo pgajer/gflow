@@ -1,12 +1,16 @@
 #ifndef GRID_VERTEX_PATH_MODEL_MODEL_PRIORITY_QUEUE_H_
 #define GRID_VERTEX_PATH_MODEL_MODEL_PRIORITY_QUEUE_H_
 
+#include <unordered_map>
+#include <algorithm>
 #include <unordered_set>
 #include <queue>
 #include <vector>
+#include <cstddef>
+
 #include <R.h>  // For Rprintf
-#include <unordered_map>
-#include <algorithm>
+
+using std::size_t;
 
 struct grid_vertex_path_model_t {
     size_t grid_vertex;

@@ -6,6 +6,7 @@
 #include <unordered_map> // For std::unordered_map
 #include <vector>       // For std::vector
 #include <cstddef>      // For size_t (though often included by other headers)
+using std::size_t;
 
 /**
  * @struct edge_weights_t

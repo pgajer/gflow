@@ -1,8 +1,10 @@
-#include <R.h>           // Basic R functionality
-#include <Rinternals.h>  // For more advanced R functionality
-  // Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "set_wgraph.hpp"     // For set_wgraph_t class definition
+#include "error_utils.h"      // For REPORT_ERROR()
+#include "weighted_correlation.hpp" // For calculate_weighted_correlation()
+#include "kernels.h"
+#include "progress_utils.hpp" // for elapsed.time
+#include "opt_bw.hpp"
+#include "cpp_utils.hpp"
 
 #include <vector>             // For std::vector
 #include <queue>              // For std::priority_queue
@@ -12,15 +14,8 @@
 #include <cmath>              // For std::fabs
 #include <numeric>            // For std::accumulate
 
-// #include <filesystem>     // For DEBUGGING only !!!
-
-#include "set_wgraph.hpp"     // For set_wgraph_t class definition
-#include "error_utils.h"      // For REPORT_ERROR()
-#include "weighted_correlation.hpp" // For calculate_weighted_correlation()
-#include "kernels.h"
-#include "progress_utils.hpp" // for elapsed.time
-#include "opt_bw.hpp"
-#include "cpp_utils.hpp"
+#include <R.h>           // Basic R functionality
+#include <Rinternals.h>  // For more advanced R functionality
 
 /**
  * @brief Calculate directional threshold for clustering geodesic rays

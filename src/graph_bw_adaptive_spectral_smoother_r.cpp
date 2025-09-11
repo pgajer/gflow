@@ -1,18 +1,14 @@
-#include <R.h>                  // For Rprintf, Rf_error, etc.
-#include <Rinternals.h>         // For SEXP and R macros
-
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "graph_bw_adaptive_spectral_smoother.hpp" // For graph_bw_adaptive_spectral_smoother_t
+#include "error_utils.h"                  // For REPORT_ERROR
+#include "set_wgraph.hpp"                 // For set_wgraph_t
+#include "SEXP_cpp_conversion_utils.hpp"  // For converting R objects to C++
 
 #include <vector>               // For std::vector
 #include <string>               // For std::string
 #include <algorithm>            // For std::copy
 
-#include "graph_bw_adaptive_spectral_smoother.hpp" // For graph_bw_adaptive_spectral_smoother_t
-#include "error_utils.h"                  // For REPORT_ERROR
-#include "set_wgraph.hpp"                 // For set_wgraph_t
-#include "SEXP_cpp_conversion_utils.hpp"  // For converting R objects to C++
+#include <R.h>                  // For Rprintf, Rf_error, etc.
+#include <Rinternals.h>         // For SEXP and R macros
 
 extern "C" {
 	SEXP S_graph_bw_adaptive_spectral_smoother(

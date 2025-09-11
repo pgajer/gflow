@@ -1,17 +1,11 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-// Prevent macro collision with OpenMP
-#ifdef match
-#undef match
-#endif
-
-//#include <omp.h>
 #include "omp_compat.h"
+#include "Eigen_utils.h"
+#include "msr2.h"
+#include "cpp_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "graph_diffusion_smoother.hpp"
+#include "kernels.h"
+#include "error_utils.h" // for REPORT_ERROR()
 
 #include <vector>
 #include <queue>
@@ -19,7 +13,6 @@
 #include <memory>
 #include <cmath>
 #include <limits>
-// #include <iostream>
 #include <algorithm>
 #include <unordered_set>
 #include <set>
@@ -33,13 +26,9 @@
 #include <Spectra/MatOp/DenseSymMatProd.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
 
-#include "Eigen_utils.h"
-#include "msr2.h"
-#include "cpp_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "graph_diffusion_smoother.hpp"
-#include "kernels.h"
-#include "error_utils.h" // for REPORT_ERROR()
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 void scale_to_range(std::vector<double>& x, double ymin, double ymax);
 double calculate_smallest_difference(const std::vector<double>& y);

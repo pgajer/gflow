@@ -1,15 +1,16 @@
 #ifndef BASIN_HPP
 #define BASIN_HPP
 
-#include <map>
-#include <unordered_map>
-#include <string>
-#include <cmath>  // for INFINITY
-
 #include "edge_weights.hpp"
 #include "invalid_vertex.hpp"
 #include "reachability_map.hpp"
 
+#include <map>
+#include <unordered_map>
+#include <string>
+#include <cmath>  // for INFINITY
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Represents the monotonic basin of a local extremum

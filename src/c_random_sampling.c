@@ -1,8 +1,9 @@
-#include <R.h>
-#include <Rmath.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stddef.h>
+
+#include <R.h>
+#include <Rmath.h>
 
 extern int cmp_double(const void *a, const void *b); // in c_utils.c
 

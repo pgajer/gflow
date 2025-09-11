@@ -26,6 +26,9 @@
 ^Makefile$
 ^gflow-manual\.pdf$
 
+# Local dev tools
+^tools$
+
 # Build artefacts
 ^gflow\.Rcheck$
 ^gflow_.*\.tar\.gz$

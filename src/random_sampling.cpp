@@ -1,16 +1,12 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Random.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include <random>
 #include <vector>
 #include <cmath>
 #include <numeric>
 #include <algorithm>
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Random.h>
 
 extern "C" {
     SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed);

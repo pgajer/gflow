@@ -2,6 +2,8 @@
 #define ULM_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 
 struct ulm_t {

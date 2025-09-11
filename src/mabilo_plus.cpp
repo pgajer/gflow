@@ -1,11 +1,12 @@
 // Experimental version of MABILO with different model kernels and Rf_error filtering strategies
 
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "ulm.hpp"
+#include "error_utils.h" // for REPORT_ERROR()
+#include "pglm.h"     // for itriplet_t
+#include "kernels.h"  // for initialize_kernel()
+#include "memory_utils.hpp"
+#include "progress_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <execution>
 #include <atomic>
@@ -16,13 +17,8 @@
 #include <random>
 #include <cmath>         // for fabs()
 
-#include "ulm.hpp"
-#include "error_utils.h" // for REPORT_ERROR()
-#include "pglm.h"     // for itriplet_t
-#include "kernels.h"  // for initialize_kernel()
-#include "memory_utils.hpp"
-#include "progress_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_mabilo_plus(SEXP s_x,

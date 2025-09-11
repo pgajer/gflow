@@ -1,11 +1,9 @@
-#include <R.h>
-#include <Rinternals.h>
-#undef length                           // avoid clash with R
-#undef Rf_eval
-
 #include "set_wgraph.hpp"               // set_wgraph_t
 #include "graph_spectral_filter.hpp"    // graph_spectral_filter_t
 #include "SEXP_cpp_conversion_utils.hpp"// convert_adj_list_from_R, convert_weight_list_from_R, Rvect_to_CppVect_double
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" SEXP S_graph_spectral_filter(
 	SEXP s_adj_list,

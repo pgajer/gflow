@@ -1,8 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "kernels.h"
 
 #include <vector>     // for std::vector
 #include <algorithm>  // for std::sort, std::max
@@ -10,8 +7,8 @@
 #include <cmath>     // for std::abs
 #include <utility>   // for std::pair (used in weighted version only)
 
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "kernels.h"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_graph_mad(SEXP s_graph, SEXP s_y);

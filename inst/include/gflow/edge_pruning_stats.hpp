@@ -4,6 +4,7 @@
 #include <vector>    // For std::vector
 #include <utility>   // For std::pair
 #include <cstddef>   // For size_t
+using std::size_t;
 
 /**
  * @struct edge_pruning_stats_t

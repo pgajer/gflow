@@ -10,13 +10,7 @@
 
  */
 
-
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
 
 #include <vector>
 #include <unordered_set>
@@ -26,7 +20,8 @@
 #include <map>
 #include <unordered_map>
 
-#include "msr2.h"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_graph_connected_components(SEXP R_graph);

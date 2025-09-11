@@ -1,13 +1,10 @@
-#include <R.h>
-#include <Rinternals.h>
-   // Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include "set_wgraph.hpp"  // for set_wgraph_t
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "gflow_cx.hpp"
 #include "cpp_utils.hpp"
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
 	SEXP S_compute_extrema_hop_nbhds(

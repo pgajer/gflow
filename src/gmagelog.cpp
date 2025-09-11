@@ -1,10 +1,9 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "uniform_grid_graph.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
+#include "graph_utils.hpp"
+#include "kernels.h"
+#include "ulogit.hpp"
 
 #include <vector>
 #include <unordered_set>
@@ -15,12 +14,9 @@
 #include <numeric>
 #include <tuple>
 
-#include "uniform_grid_graph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
-#include "graph_utils.hpp"
-#include "kernels.h"
-#include "ulogit.hpp"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 struct gmagelog_t {
     // Additional members specific to graph-based implementation

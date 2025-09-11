@@ -5,8 +5,7 @@
  // Nested structures (vector of sets, etc.) become nested R lists
  // All numeric values are properly converted to R integer or real types
 
-#include <R.h>
-#include <Rinternals.h>
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <vector>
 #include <queue>
@@ -19,7 +18,8 @@
 #include <numeric>
 #include <unordered_map>
 
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * @brief Converts an R matrix to a C++ vector of vectors.

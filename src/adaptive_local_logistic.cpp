@@ -1,9 +1,4 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "adaptive_local_logistic.h"
 
 #include <vector>
 #include <cmath>
@@ -15,7 +10,8 @@
 #include <Eigen/Dense>
 #include <Eigen/LU>
 
-#include "adaptive_local_logistic.h"
+#include <R.h>
+#include <Rinternals.h>
 
 // Constructor implementation
 adaptive_params_t::adaptive_params_t(

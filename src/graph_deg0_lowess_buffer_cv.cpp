@@ -1,21 +1,4 @@
-#include <R.h>                      // For R_FlushConsole, Rprintf
-#include <Rinternals.h>             // For R C API functions
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
-
-#include <vector>                   // For std::vector
-#include <numeric>                  // For std::iota
-#include <atomic>                   // For std::atomic
-#include <chrono>                   // For timing
-#include <cmath>                    // For math functions
-#include <mutex>                    // For std::mutex
-#include <execution>                // For std::execution::par_unseq
-#include <atomic>                   // For std::atomic
-#include <queue>                    // Foe std::queue
-
 #include "cpp_utils.hpp"            // For debugging
-
 #include "graph_deg0_lowess_buffer_cv.hpp" // For graph_deg0_lowess_buffer_cv_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
@@ -23,6 +6,18 @@
 #include "SEXP_cpp_conversion_utils.hpp" // For converting R objects to C++
 #include "bandwidth_utils.hpp"      // For get_candidate_bws()
 #include "progress_utils.hpp"       // For progress_tracker_t
+
+#include <vector>                   // For std::vector
+#include <numeric>                  // For std::iota
+#include <atomic>                   // For std::atomic
+#include <chrono>                   // For timing
+#include <cmath>                    // For math functions
+#include <execution>                // For std::execution::par_unseq
+#include <atomic>                   // For std::atomic
+#include <queue>                    // Foe std::queue
+
+#include <R.h>                      // For R_FlushConsole, Rprintf
+#include <Rinternals.h>             // For R C API functions
 
 /**
  * @brief Perform degree-0 LOWESS with buffer zone cross-validation for bandwidth selection

@@ -1,17 +1,18 @@
 #ifndef MSR2_CPP_TO_R_UTILS_H_
 #define MSR2_CPP_TO_R_UTILS_H_
 
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "MS_complex.h"
+#include "set_wgraph.hpp"
 
+#include <cstddef>
 #include <unordered_map>
 #include <memory>
 #include <set>
-#include "MS_complex.h"
-#include "set_wgraph.hpp"
+
+#include <R.h>
+#include <Rinternals.h>
+
+using std::size_t;
 
 std::unique_ptr<std::vector<std::vector<double>>> Rmatrix_to_cpp(SEXP Rmatrix);
 

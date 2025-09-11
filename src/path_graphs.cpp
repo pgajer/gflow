@@ -1,10 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "path_graphs.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <vector>
 #include <queue>
@@ -13,8 +8,9 @@
 #include <utility>
 #include <mutex>
 
-#include "path_graphs.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 extern "C" {
     SEXP S_create_path_graph_series(SEXP s_adj_list,

@@ -1,8 +1,13 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "ulogit.hpp"
+#include "graph_utils.hpp"
+#include "uniform_grid_graph.hpp"
+#include "centered_paths.hpp"
+#include "uniform_grid_graph.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "graph_shortest_path.hpp"
+#include "cpp_utils.hpp"
+#include "error_utils.h" // for REPORT_ERROR()
+#include "kernels.h"
 
 #include <vector>
 #include <queue>
@@ -17,16 +22,8 @@
 #include <utility>
 #include <numeric> // for std::accumulate
 
-#include "ulogit.hpp"
-#include "graph_utils.hpp"
-#include "uniform_grid_graph.hpp"
-#include "centered_paths.hpp"
-#include "uniform_grid_graph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "graph_shortest_path.hpp"
-#include "cpp_utils.hpp"
-#include "error_utils.h" // for REPORT_ERROR()
-#include "kernels.h"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_uggmalog(

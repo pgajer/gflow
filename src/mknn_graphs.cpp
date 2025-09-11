@@ -5,12 +5,10 @@
 
 */
 
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "set_wgraph.hpp"
+#include "knn_search_result.hpp"
+#include "progress_utils.hpp" // For elapsed.time
+#include "kNN_r.h"            // For S_kNN()
 
 #include <ANN/ANN.h>  // ANN library header
 #include <vector>
@@ -20,10 +18,8 @@
 #include <chrono>
 #include <numeric>            // For std::iota()
 
-#include "set_wgraph.hpp"
-#include "knn_search_result.hpp"
-#include "progress_utils.hpp" // For elapsed.time
-#include "kNN_r.h"            // For S_kNN()
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_create_mknn_graph(SEXP RX, SEXP Rk);

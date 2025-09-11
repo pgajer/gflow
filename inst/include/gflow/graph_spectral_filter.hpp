@@ -2,7 +2,11 @@
 #define GRAPH_SPECTRAL_FILTER_HPP
 
 #include <vector>
+#include <cstddef>
+
 #include <Eigen/Core>
+
+using std::size_t;
 
 /**
  * @brief Types of graph Laplacians for spectral decomposition

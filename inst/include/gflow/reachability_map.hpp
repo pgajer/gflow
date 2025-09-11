@@ -1,14 +1,13 @@
 #ifndef REACHABILITY_MAP_H_
 #define REACHABILITY_MAP_H_
 
-#include <vector>
-#include <unordered_map>
 #include "vertex_info.hpp"
 
-// struct vertex_info_t {
-// 	size_t vertex;
-// 	double distance;
-// };
+#include <cstddef>
+#include <vector>
+#include <unordered_map>
+
+using std::size_t;
 
 /**
  * @brief Structure holding precomputed path information for a reference vertex

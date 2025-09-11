@@ -1,15 +1,16 @@
 #ifndef UNIFORM_GRID_GRAPH_HPP
 #define UNIFORM_GRID_GRAPH_HPP
 
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include "set_wgraph.hpp"
 #include "edge_weights.hpp"
 #include "reachability_map.hpp"
+
+#include <cstddef>
+
+#include <R.h>
+#include <Rinternals.h>
+
+using std::size_t;
 
 /**
  * @brief A structure representing a path through a graph centered around a reference (grid) vertex

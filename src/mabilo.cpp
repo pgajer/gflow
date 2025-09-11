@@ -1,18 +1,3 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <numeric>
-#include <vector>
-#include <random>
-#include <algorithm>     // For std::max
-#include <cmath>         // For std::fabs()
-
 #include "exec_policy.hpp"
 #include "mabilo.hpp"    // For mabilo_t
 #include "sampling.h"    // For C_runif_simplex()
@@ -23,8 +8,19 @@
 #include "memory_utils.hpp"
 #include "progress_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
-
 #include "predictive_errors.hpp"
+
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <numeric>
+#include <vector>
+#include <random>
+#include <algorithm>     // For std::max
+#include <cmath>         // For std::fabs()
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_wmabilo(SEXP s_x,

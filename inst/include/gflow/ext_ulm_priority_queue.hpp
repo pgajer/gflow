@@ -1,13 +1,18 @@
 #ifndef EXT_ULM_PRIORITY_QUEUE_H_
 #define EXT_ULM_PRIORITY_QUEUE_H_
 
+#include "ulm.hpp"
+
+#include <unordered_map>
 #include <unordered_set>
 #include <queue>
 #include <vector>
-#include <R.h>  // For Rprintf
-#include <unordered_map>
 #include <algorithm>
-#include "ulm.hpp"
+#include <cstddef>
+
+#include <R.h>  // For Rprintf
+
+using std::size_t;
 
 // Custom comparator for min heap based on mean_error
 struct compare_ext_ulm {

@@ -1,6 +1,11 @@
 #ifndef VERTEX_INFO_H_
 #define VERTEX_INFO_H_
 
+#include <cstddef>
+#include <vector>
+
+using std::size_t;
+
 /**
  * used for sorting shortest paths staring at a given vertex by the distance from that vertex
  */

@@ -1,9 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
+#include "cpp_utils.hpp"
 
 #include <vector>
 #include <queue>
@@ -15,8 +11,8 @@
 #include <stack>
 #include <numeric>
 
-#include "msr2.h"
-#include "cpp_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_cycle_sizes(SEXP RA);

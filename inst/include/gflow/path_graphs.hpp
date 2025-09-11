@@ -1,10 +1,13 @@
 #ifndef PATH_GRAPHS_HPP_
 #define PATH_GRAPHS_HPP_
 
-#include <vector>   // for std::vector
-#include <map>      // for std::map
-#include <utility>  // for std::pair
+#include <vector>     // for std::vector
+#include <map>        // for std::map
+#include <utility>    // for std::pair
 #include <algorithm>  // for std::min, std::max
+#include <cstddef>
+
+using std::size_t;
 
 // Basic path graph structure
 struct path_graph_t {

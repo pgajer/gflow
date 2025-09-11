@@ -1,6 +1,9 @@
 #ifndef KNN_SEARCH_RESULT_HPP
 #define KNN_SEARCH_RESULT_HPP
 
+#include <cstddef>
+using std::size_t;
+
 // Struct to hold kNN results
 struct knn_search_result_t {
 	std::vector<std::vector<int>> indices; // [n_points][k]

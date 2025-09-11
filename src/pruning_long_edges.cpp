@@ -51,14 +51,10 @@ These modifications and considerations should help improve the robustness and ef
 
  */
 
+#include "msr2.h"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "iknn_graphs.hpp"
 
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <ANN/ANN.h>  // ANN library header
 #include <vector>
 #include <queue>
 #include <functional> // For std::hash
@@ -68,9 +64,10 @@ These modifications and considerations should help improve the robustness and ef
 #include <unordered_set>
 #include <set>
 
-#include "msr2.h"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "iknn_graphs.hpp"
+#include <ANN/ANN.h>  // ANN library header
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,

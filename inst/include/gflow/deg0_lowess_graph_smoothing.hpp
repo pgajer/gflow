@@ -1,9 +1,13 @@
 #ifndef DEG0_LOWESS_GRAPH_SMOOTHING_HPP
 #define DEG0_LOWESS_GRAPH_SMOOTHING_HPP
 
-#include <vector>
 #include "set_wgraph.hpp"
 #include "spectral_lowess_graph_smoothing.hpp"  // For ConvergenceCriteriaType
+
+#include <cstddef>
+#include <vector>
+
+using std::size_t;
 
 /**
  * @brief Structure containing the results of the degree 0 LOWESS graph smoothing process

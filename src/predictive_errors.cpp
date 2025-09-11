@@ -1,18 +1,14 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "sampling.h"  // For C_runif_simplex()
+#include "predictive_errors.hpp" // For bb_cri_t
+#include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
 
 #include <vector>      // For std::vector usage throughout
 #include <algorithm>   // For std::sort, std::fill
 #include <numeric>     // For std::accumulate
 #include <limits>      // For numeric limits
 
-#include "sampling.h"  // For C_runif_simplex()
-//#include "msr2.h"      // For C_wasserstein_distance_1D functions
-#include "predictive_errors.hpp" // For bb_cri_t
-#include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
+#include <R.h>
+#include <Rinternals.h>
 
 /**
  * @brief Computes Bayesian credible intervals with configurable central location measure.

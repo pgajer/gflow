@@ -1,14 +1,11 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "SEXP_cpp_conversion_utils.hpp"
 
 #include <vector>
 #include <cmath>
 
-#include "SEXP_cpp_conversion_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
 
 extern "C" {
     SEXP S_graph_edit_distance(SEXP s_graph1_adj_list,

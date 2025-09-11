@@ -1,8 +1,5 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "cpp_utils.hpp"
 
 #include <vector>
 #include <queue>
@@ -14,8 +11,8 @@
 #include <map>
 #include <utility>
 
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h);

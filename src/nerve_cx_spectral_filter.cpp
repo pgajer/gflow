@@ -1,7 +1,5 @@
-#include <R.h>                     // Rprintf
-// Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
+#include "nerve_cx.hpp"
+#include "error_utils.h"           // REPORT_ERROR()
 
 #include <algorithm>
 #include <cmath>
@@ -14,8 +12,7 @@
 #include <Spectra/SymEigsSolver.h>          // For SymEigsSolver
 #include <Spectra/MatOp/SparseSymMatProd.h> // For SparseSymMatProd
 
-#include "nerve_cx.hpp"
-#include "error_utils.h"           // REPORT_ERROR()
+#include <R.h>                     // Rprintf
 
 /**
  * @brief Computes boundary operator boundary_1: C₁ → C₀ (edges → vertices)
@@ -539,9 +536,9 @@ compute_matrix_spectrum(
     }
 
     // Final safety check
-    if (ncv > n) {
-        ncv = n;
-        nev = std::max(1, static_cast<int>(ncv - 1));
+    if (ncv > static_cast<int>(n)) {
+        ncv = static_cast<int>(n);
+        nev = std::max(1, ncv - 1);
     }
 
     if (verbose) {
@@ -987,7 +984,7 @@ nerve_complex_t::nerve_cx_spectral_filter(
             // Create diagonal matrix of inverse square roots of degrees
             Eigen::SparseMatrix<double> D_invsqrt(n_vertices, n_vertices);
             
-            for (int i = 0; i < n_vertices; ++i) {
+            for (size_t i = 0; i < n_vertices; ++i) {
                 double degree = L_full.coeff(i, i); // Diagonal contains degree
                 if (degree > 0) {
                     D_invsqrt.insert(i, i) = 1.0 / std::sqrt(degree);
@@ -1006,7 +1003,7 @@ nerve_complex_t::nerve_cx_spectral_filter(
             // Create diagonal matrix of inverse degrees
             Eigen::SparseMatrix<double> D_inv(n_vertices, n_vertices);
             
-            for (int i = 0; i < n_vertices; ++i) {
+            for (size_t i = 0; i < n_vertices; ++i) {
                 double degree = L_full.coeff(i, i); // Diagonal contains degree
                 if (degree > 0) {
                     D_inv.insert(i, i) = 1.0 / degree;
@@ -1034,7 +1031,7 @@ nerve_complex_t::nerve_cx_spectral_filter(
         {
             // Add small regularization to diagonal
             L_modified = L_full;
-            for (int i = 0; i < n_vertices; ++i) {
+            for (size_t i = 0; i < n_vertices; ++i) {
                 L_modified.coeffRef(i, i) += 1e-8;
             }
         }

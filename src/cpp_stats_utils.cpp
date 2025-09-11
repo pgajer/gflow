@@ -1,8 +1,4 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "error_utils.h" // For REPORT_ERROR()
 
 #include <vector>
 #include <algorithm>
@@ -12,7 +8,8 @@
 #include <set>
 #include <cmath>         // For std::exp
 
-#include "error_utils.h" // For REPORT_ERROR()
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_ecdf(SEXP x);

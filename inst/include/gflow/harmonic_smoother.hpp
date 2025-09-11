@@ -1,9 +1,12 @@
 #ifndef HARMONIC_SMOOTHER_H_
 #define HARMONIC_SMOOTHER_H_
 
+#include "basin.hpp"
+
 #include <vector>
 #include <unordered_map>
-#include "basin.hpp"
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Advanced harmonic smoothing with predictions landscape feature tracking

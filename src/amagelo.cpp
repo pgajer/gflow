@@ -1,19 +1,4 @@
-#include <R.h>                      // For R_FlushConsole, Rprintf
-#include <Rinternals.h>             // For R C API functions
-    // Undefine conflicting macros from R headers
-#undef length
-#undef Rf_eval
-
-#include <vector>                   // For std::vector
-#include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
-#include <chrono>                   // For timing
-#include <cmath>                    // For math functions
-#include <queue>                    // Foe std::queue
-
 #include "cpp_utils.hpp"            // For debugging
-// #include <filesystem>
-
 #include "exec_policy.hpp"
 #include "amagelo.hpp" // For amagelo_t
 #include "uniform_grid_graph.hpp"
@@ -24,6 +9,16 @@
 #include "sort_utils.hpp"           // For sort_by_x_keep_y_and_order()
 #include "graph_utils.hpp"          // For create_chain_graph()
 #include "kernel_utils.hpp"         // For get_weights()
+
+#include <vector>                   // For std::vector
+#include <numeric>                  // For std::iota
+#include <execution>                // For std::execution::seq/par
+#include <chrono>                   // For timing
+#include <cmath>                    // For math functions
+#include <queue>                    // Foe std::queue
+
+#include <R.h>                      // For R_FlushConsole, Rprintf
+#include <Rinternals.h>             // For R C API functions
 
 /**
  * @brief Perform Adaptive Model Averaged Uniform Grid LOcal linear smoothing (AMAGELO) of 1D data

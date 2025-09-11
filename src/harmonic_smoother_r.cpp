@@ -1,12 +1,9 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
 #include "harmonic_smoother.hpp"
 #include "set_wgraph.hpp"  // for set_wgraph_t
 #include "SEXP_cpp_conversion_utils.hpp"
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
     SEXP S_perform_harmonic_smoothing(

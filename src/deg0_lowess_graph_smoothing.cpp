@@ -1,8 +1,9 @@
-#include <Rinternals.h>  // For Rprintf
-#include <R_ext/Print.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "set_wgraph.hpp"
+#include "iknn_graphs_r.h"
+#include "iknn_graphs.hpp"
+#include "graph_deg0_lowess_cv.hpp"
+#include "progress_utils.hpp"
+#include "deg0_lowess_graph_smoothing.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -12,12 +13,8 @@
 #include <chrono>
 #include <memory>
 
-#include "set_wgraph.hpp"
-#include "iknn_graphs_r.h"
-#include "iknn_graphs.hpp"
-#include "graph_deg0_lowess_cv.hpp"
-#include "progress_utils.hpp"
-#include "deg0_lowess_graph_smoothing.hpp"
+#include <Rinternals.h>  // For Rprintf
+#include <R_ext/Print.h>
 
 deg0_lowess_graph_smoothing_t deg0_lowess_graph_smoothing(
     set_wgraph_t& initial_graph,

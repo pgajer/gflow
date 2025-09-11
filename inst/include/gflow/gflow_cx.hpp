@@ -3,6 +3,12 @@
 
 #include "basin.hpp"
 
+#include <cstddef>
+#include <unordered_set>
+#include <unordered_map>
+
+using std::size_t;
+
 struct hop_nbhd_t {
 	size_t vertex;                                   // index of the vertex of the given hop neighborhood
 	size_t hop_idx;                                  // the maximal hop size of the neighborhood where local extremum condition holds

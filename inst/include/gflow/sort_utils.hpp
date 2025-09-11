@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cstddef>
+using std::size_t;
 
 /// Sort x (and y in parallel), and produce an “inverse” index so that
 ///   x_sorted[order[i]] == x[i]

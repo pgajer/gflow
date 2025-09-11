@@ -2,6 +2,8 @@
 #define GRAPH_DEG0_LOWESS_CV_MAT_H_
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Return structure for matrix version of graph degree 0 LOWESS with cross-validation

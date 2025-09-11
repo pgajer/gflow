@@ -3,6 +3,9 @@
 
 #include <ANN/ANN.h>
 
+#include <R.h>
+#include <Rinternals.h>
+
 struct knn_result_t {
     int* indices;
     double* distances;

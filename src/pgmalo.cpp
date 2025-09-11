@@ -1,25 +1,4 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-// #include <omp.h>
 #include "omp_compat.h"
-
-#include <future>
-#include <mutex>
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <vector>
-#include <algorithm> // for std::max
-#include <random>
-#include <cmath>         // for fabs()
-#include <unordered_set>
-#include <unordered_map>
-#include <map>
-
 #include "exec_policy.hpp"
 #include "pgmalo.hpp"
 #include "ulm.hpp"
@@ -36,6 +15,21 @@
 #include "1D_linear_models.h"
 #include "predictive_errors.hpp"
 
+#include <future>
+#include <mutex>
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#include <algorithm> // for std::max
+#include <random>
+#include <cmath>         // for fabs()
+#include <unordered_set>
+#include <unordered_map>
+#include <map>
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
 

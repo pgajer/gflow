@@ -1,18 +1,3 @@
-#include <R.h>
-#include <Rinternals.h>
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
-
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <numeric>
-#include <vector>
-#include <algorithm> // for std::max
-#include <random>
-#include <cmath>         // for fabs()
-
 #include "exec_policy.hpp"
 #include "sampling.h" // for C_runif_simplex()
 #include "ulogit.hpp"
@@ -23,6 +8,18 @@
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "cpp_utils.hpp"                 // for elapsed_time
 #include "predictive_errors.hpp"
+
+#include <execution>
+#include <atomic>
+#include <mutex>
+#include <numeric>
+#include <vector>
+#include <algorithm> // for std::max
+#include <random>
+#include <cmath>         // for fabs()
+
+#include <R.h>
+#include <Rinternals.h>
 
 extern "C" {
 

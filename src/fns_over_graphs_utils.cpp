@@ -1,10 +1,8 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <Rmath.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "msr2.h"
+#include "cpp_utils.hpp"
+#include "SEXP_cpp_conversion_utils.hpp"
+#include "graph_diffusion_smoother.hpp"
+#include "stats_utils.h"
 
 #include <vector>
 #include <queue>
@@ -19,11 +17,9 @@
 #include <random>
 #include <chrono>
 
-#include "msr2.h"
-#include "cpp_utils.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "graph_diffusion_smoother.hpp"
-#include "stats_utils.h"
+#include <R.h>
+#include <Rinternals.h>
+#include <Rmath.h>
 
 std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const std::vector<std::vector<int>>& graph,
                                                                         const std::vector<int>& V);

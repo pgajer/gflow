@@ -1,7 +1,13 @@
 #ifndef EDGE_INFO_H_
 #define EDGE_INFO_H_
 
-#include <cstddef>  // For size_t
+#include <cstddef>
+#include <functional>   // for std::hash
+
+#include <R.h>
+#include <Rinternals.h>
+
+using std::size_t;
 
 /**
  * @struct edge_info_t

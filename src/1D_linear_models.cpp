@@ -1,18 +1,14 @@
-#include <R.h>
-#include <Rinternals.h>
-
-// Undefine conflicting macros after including R headers
-#undef length
-#undef Rf_eval
+#include "kernels.h"
+#include "1D_linear_models.h"
+#include "error_utils.h"
 
 #include <algorithm>  // for std::find, std::clamp
 #include <vector>       // for std::vector
 #include <utility>      // for std::pair
 #include <cmath>        // for fabs()
 
-#include "kernels.h"
-#include "1D_linear_models.h"
-#include "error_utils.h"
+#include <R.h>
+#include <Rinternals.h>
 
 #if 0
 /**

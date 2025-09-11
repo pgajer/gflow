@@ -1,9 +1,14 @@
 #ifndef NERVE_CX_SPECTRAL_FILTER_HPP
 #define NERVE_CX_SPECTRAL_FILTER_HPP
 
-#include <vector>
-#include <Eigen/Core>
 #include "graph_spectral_filter.hpp" // For enums and structures
+
+#include <vector>
+#include <cstddef>
+
+#include <Eigen/Core>
+
+using std::size_t;
 
 class simplex_weight_manager_t {
 private:

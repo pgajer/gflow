@@ -2,6 +2,8 @@
 #define GRAPH_DEG0_LOWESS_BUFFER_CV_HPP
 
 #include <vector>
+#include <cstddef>
+using std::size_t;
 
 /**
  * @brief Return structure for graph degree 0 LOWESS with cross-validation
