@@ -8,7 +8,6 @@
 #include <mutex>         // For std::mutex
 #include <execution>     // For parallel execution
 
-#include "exec_policy.hpp"
 #include "edge_pruning_stats.hpp" // For edge_pruning_stats_t
 #include "set_wgraph.hpp"     // For set_wgraph_t definition
 #include "error_utils.h"      // For REPORT_ERROR
@@ -164,33 +163,24 @@ edge_pruning_stats_t set_wgraph_t::compute_edge_pruning_stats(double threshold_p
     std::vector<Edge> all_edges;
     all_edges.reserve(adjacency_list.size() * 5);  // Rough estimate of edges
 
-    // Using for_each with parallel execution policy
-    std::vector<size_t> vertices(adjacency_list.size());
-    std::iota(vertices.begin(), vertices.end(), 0);
+    for (size_t vertex = 0; vertex < adjacency_list.size(); ++vertex) {
+        std::vector<Edge> local_edges;
 
-    std::mutex edges_mutex;  // Mutex for thread-safe access to all_edges
+        for (const auto& edge_info : adjacency_list[vertex]) {
+            size_t target = edge_info.vertex;
 
-    //std::for_each(std::execution::par_unseq, vertices.begin(), vertices.end(),
-    gflow::for_each(GFLOW_EXEC_POLICY, vertices.begin(), vertices.end(),
-        [this, &all_edges, &edges_mutex](size_t vertex) {
-            std::vector<Edge> local_edges;
-
-            for (const auto& edge_info : adjacency_list[vertex]) {
-                size_t target = edge_info.vertex;
-
-                // Only add each edge once (when source < target)
-                if (vertex < target) {
-                    local_edges.emplace_back(vertex, target, edge_info.weight);
-                }
-            }
-
-            // Thread-safe merging of local edges into all_edges
-            if (!local_edges.empty()) {
-                std::lock_guard<std::mutex> lock(edges_mutex);
-                all_edges.insert(all_edges.end(), local_edges.begin(), local_edges.end());
+            // Only add each edge once (when source < target)
+            if (vertex < target) {
+                local_edges.emplace_back(vertex, target, edge_info.weight);
             }
         }
-    );
+
+        if (!local_edges.empty()) {
+            all_edges.insert(all_edges.end(),
+                             local_edges.begin(),
+                             local_edges.end());
+        }
+    }
 
     // Return early if no edges
     if (all_edges.empty()) {

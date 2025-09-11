@@ -64,10 +64,10 @@ struct lm_t {
         Rprintf("Linear Model Summary:\n");
         Rprintf("  Intercept: %.6f\n", intercept);
         Rprintf("  Coefficients (%zu):", coefficients.size());
-        for (int i = 0; i < std::min(max_num_coefs, (size_t)coefficients.size()); i++) {
+        for (size_t i = 0; i < std::min(max_num_coefs, (size_t)coefficients.size()); i++) {
             Rprintf(" %.6f", coefficients(i));
         }
-        if (coefficients.size() > max_num_coefs) {
+        if (coefficients.size() > static_cast<Eigen::Index>(max_num_coefs)) {
             Rprintf(" ...");
         }
         Rprintf("\n");

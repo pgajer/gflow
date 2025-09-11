@@ -6,7 +6,6 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <algorithm>                // For std::for_each
 #include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
@@ -333,7 +332,6 @@ graph_deg0_lowess_cv_t set_wgraph_t::graph_deg0_lowess_cv(
     std::vector<size_t> fold_test_counts(actual_folds, 0);
     std::vector<double> fold_total_errors(actual_folds, 0.0);
 
-    //std::for_each(std::execution::par_unseq, fold_indices.begin(), fold_indices.end(),
     gflow::for_each(GFLOW_EXEC_POLICY, fold_indices.begin(), fold_indices.end(),
                   [&](size_t fold) {
                       try {

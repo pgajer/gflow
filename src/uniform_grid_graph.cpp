@@ -553,7 +553,7 @@ uniform_grid_graph_t create_uniform_grid_graph(
     std::queue<int> bfs_queue;
     bfs_queue.push(start_vertex);
 
-    int next_vertex_id = input_adj_list.size();
+    size_t next_vertex_id = input_adj_list.size();
 
     // Phase 1: Complete BFS Discovery
     std::vector<std::tuple<int, int, double>> all_edges_to_process;
@@ -1838,19 +1838,19 @@ xyw_path_t uniform_grid_graph_t::get_xyw_data(
    result.vertices      = path.vertices;
    result.grid_vertices = path.grid_vertices;
 
-   int n_vertices = path.vertices.size();
+   size_t n_vertices = path.vertices.size();
    result.w_path.resize(n_vertices);
 
    // Normalizing path.dist_to_ref_vertex distances
    double max_dist = 0.0;
-   for (int i = 0; i < n_vertices; ++i) {
+   for (size_t i = 0; i < n_vertices; ++i) {
        max_dist = std::max(max_dist, path.dist_to_ref_vertex[i]);
    }
 
    if (max_dist == 0) max_dist = 1;
    max_dist *= dist_normalization_factor;
 
-   for (int i = 0; i < n_vertices; ++i) {
+   for (size_t i = 0; i < n_vertices; ++i) {
        path.dist_to_ref_vertex[i] /= max_dist;
    }
 
@@ -1858,30 +1858,30 @@ xyw_path_t uniform_grid_graph_t::get_xyw_data(
    kernel_fn(path.dist_to_ref_vertex.data(), n_vertices, result.w_path.data());
    // <<<--- I am not sure if we really need to normalize result.w_path ???
    double total_w_path = std::accumulate(result.w_path.begin(), result.w_path.end(), 0.0);
-   for (int i = 0; i < n_vertices; ++i)
+   for (size_t i = 0; i < n_vertices; ++i)
        result.w_path[i] /= total_w_path;
 
 
-   int n_grid_vertices = path.grid_vertices.size();
+   size_t n_grid_vertices = path.grid_vertices.size();
    result.grid_w_path.resize(n_grid_vertices);
 
    // Normalizing path.grid_dist_to_ref_vertex distances
    double max_grid_dist = 0.0;
-   for (int i = 0; i < n_grid_vertices; ++i) {
+   for (size_t i = 0; i < n_grid_vertices; ++i) {
        max_grid_dist = std::max(max_grid_dist, path.grid_dist_to_ref_vertex[i]);
    }
 
    if (max_grid_dist == 0) max_grid_dist = 1;
    max_grid_dist *= dist_normalization_factor;
 
-   for (int i = 0; i < n_grid_vertices; ++i) {
+   for (size_t i = 0; i < n_grid_vertices; ++i) {
        path.grid_dist_to_ref_vertex[i] /= max_grid_dist;
    }
 
    kernel_fn(path.grid_dist_to_ref_vertex.data(), n_grid_vertices, result.grid_w_path.data());
    // <<<--- I am not sure if we really need to normalize result.grid_w_path ???
    double total_grid_w_path = std::accumulate(result.grid_w_path.begin(), result.grid_w_path.end(), 0.0);
-   for (int i = 0; i < n_grid_vertices; ++i)
+   for (size_t i = 0; i < n_grid_vertices; ++i)
        result.grid_w_path[i] /= total_grid_w_path;
 
    result.x_path      = path.dist_to_from_start;

@@ -178,55 +178,49 @@ geodesic_stats_t compute_geodesic_stats(
             Rprintf("Processing radius %.2f (%zu/%zu)...\n", radius, r+1, n_steps);
         }
 
-        // Process grid vertices (optionally in parallel)
-        // std::execution::seq
-        gflow::for_each(gflow::seq, grid_verts.begin(), grid_verts.end(),
-            [&](size_t grid_vertex) {
-                // Find shortest paths within radius
-                shortest_paths_t shortest_paths = grid_graph.find_graph_paths_within_radius(grid_vertex, radius);
-                composite_shortest_paths_t composite_shortest_paths(shortest_paths);
+        for (size_t idx = 0; idx < grid_verts.size(); ++idx) {
+            size_t grid_vertex = grid_verts[idx];
 
-                // Record number of geodesic rays
-                stats.geodesic_rays[r][grid_vertex] = shortest_paths.paths.size();
+            // Find shortest paths within radius
+            shortest_paths_t shortest_paths =
+                grid_graph.find_graph_paths_within_radius(grid_vertex, radius);
+            composite_shortest_paths_t composite_shortest_paths(shortest_paths);
 
-                // Calculate composite geodesics
-                size_t composite_geodesic_count = 0;
-                for (size_t i = 0; i < shortest_paths.paths.size(); i++) {
-                    for (size_t j = i + 1; j < shortest_paths.paths.size(); j++) {
-                        if (grid_graph.is_composite_path_geodesic(i, j, shortest_paths)) {
-                            composite_shortest_paths.add_composite_shortest_path(i, j);
-                            composite_geodesic_count++;
-                        }
+            // Record number of geodesic rays
+            stats.geodesic_rays[r][grid_vertex] = shortest_paths.paths.size();
+
+            // Calculate composite geodesics
+            size_t composite_geodesic_count = 0;
+            for (size_t i = 0; i < shortest_paths.paths.size(); ++i) {
+                for (size_t j = i + 1; j < shortest_paths.paths.size(); ++j) {
+                    if (grid_graph.is_composite_path_geodesic(i, j, shortest_paths)) {
+                        composite_shortest_paths.add_composite_shortest_path(i, j);
+                        ++composite_geodesic_count;
                     }
-                }
-                stats.composite_geodesics[r][grid_vertex] = composite_geodesic_count;
-
-                // Calculate path overlap statistics
-                if (composite_geodesic_count >= 2) {
-                    // Get overlap indices for all pairs of composite paths
-                    auto overlap_indices = calculate_path_overlap(composite_shortest_paths);
-
-                    if (!overlap_indices.empty()) {
-                        // Use a mutex or critical section if in parallel mode
-                        // std::lock_guard<std::mutex> lock(overlaps_mutex); // If parallel
-                        all_overlaps.insert(all_overlaps.end(),
-                                            overlap_indices.begin(),
-                                            overlap_indices.end());
-
-                        // Calculate statistical measures
-                        auto overlap_stats_vec = calculate_overlap_statistics(overlap_indices);
-                        overlap_stats_t overlap_stats(overlap_stats_vec);
-                        stats.paths_overlap[r][grid_vertex] = overlap_stats;
-                    } else {
-                        // No valid overlap indices
-                        stats.paths_overlap[r][grid_vertex] = overlap_stats_t();
-                    }
-                } else {
-                    // Not enough composite paths for overlap calculation
-                    stats.paths_overlap[r][grid_vertex] = overlap_stats_t();
                 }
             }
-        );
+            stats.composite_geodesics[r][grid_vertex] = composite_geodesic_count;
+
+            // Calculate path overlap statistics
+            if (composite_geodesic_count >= 2) {
+                auto overlap_indices = calculate_path_overlap(composite_shortest_paths);
+
+                if (!overlap_indices.empty()) {
+                    // In serial mode, no lock needed
+                    all_overlaps.insert(all_overlaps.end(),
+                                        overlap_indices.begin(),
+                                        overlap_indices.end());
+
+                    auto overlap_stats_vec = calculate_overlap_statistics(overlap_indices);
+                    overlap_stats_t overlap_stats(overlap_stats_vec);
+                    stats.paths_overlap[r][grid_vertex] = overlap_stats;
+                } else {
+                    stats.paths_overlap[r][grid_vertex] = overlap_stats_t();
+                }
+            } else {
+                stats.paths_overlap[r][grid_vertex] = overlap_stats_t();
+            }
+        }
 
         // Store all collected overlap values for this radius
         stats.radius_overlaps[r] = std::move(all_overlaps);

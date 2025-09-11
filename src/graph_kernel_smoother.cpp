@@ -6,8 +6,6 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <algorithm>                // For std::for_each
-#include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
@@ -17,8 +15,7 @@
 #include <queue>                    // Foe std::queue
 
 #include "cpp_utils.hpp"            // For debugging
-#include <filesystem>
-#include <experimental/filesystem>
+// #include <filesystem>
 
 #include "graph_kernel_smoother.hpp" // For graph_kernel_smoother_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
@@ -91,13 +88,14 @@ graph_kernel_smoother_t set_wgraph_t::graph_kernel_smoother(
     compute_graph_diameter();
 
     size_t n_vertices = adjacency_list.size();
-
     std::vector<std::vector<size_t>> folds;
+
     if (n_folds >= n_vertices) {
         n_folds = n_vertices;
-        folds.resize(n_folds);
-        for (size_t v = 0; v < n_vertices; ++v)
-            folds[v] = {v};
+        folds.resize(n_vertices);
+        for (size_t v = 0; v < n_vertices; ++v) {
+            folds[v].assign(1, v);   // or push_back(v)
+        }
     } else {
         folds = create_spatially_stratified_folds(n_folds);
     }

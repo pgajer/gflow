@@ -154,7 +154,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 	Eigen::SparseMatrix<double> L = D - A;
 
 	// Add small regularization for numerical stability
-	for (int i = 0; i < n_vertices; i++) {
+	for (size_t i = 0; i < n_vertices; i++) {
 		L.coeffRef(i, i) += 1e-8;
 	}
 

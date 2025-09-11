@@ -2,10 +2,9 @@
 #include <thread>      // For std::thread
 #include <random>      // For std::mt19937, std::random_device, std::gamma_distribution
 
-#include <filesystem>  // for debugging
+// #include <filesystem>  // for debugging
 #include <fstream>
 
-#include "exec_policy.hpp"
 #include "agemalo.hpp"
 #include "kernels.h"
 #include "error_utils.h"         // For REPORT_ERROR()
@@ -131,11 +130,11 @@ agemalo_result_t agemalo(
 	}
 
 #define DEBUG__agemalo 0
+#if DEBUG__agemalo
 
 	std::string debug_dir = "/Users/pgajer/current_projects/msr2/debugging_data/";
 	std::filesystem::create_directories(debug_dir);
 
-#if DEBUG__agemalo
 	std::ofstream grid_vertices_file(debug_dir + "_grid_vertices.csv");
 	for (const auto& vertex : grid_graph.grid_vertices) {
 		grid_vertices_file << (vertex + 1) << "\n";
@@ -351,7 +350,7 @@ agemalo_result_t agemalo(
 		return wpe_map;
 	};
 
-	auto average_models = [&model_blending_coef,&n_vertices,&verbose,&grid_graph](
+	auto average_models = [&model_blending_coef,&n_vertices](
 		std::vector<std::vector<wpe_t>>& wpe,
 		std::vector<double>& predictions,
 		std::vector<double>& errors,
@@ -361,7 +360,7 @@ agemalo_result_t agemalo(
 		bool process_errors = errors.size() == predictions.size();
 		bool process_scale  = scale.size() == predictions.size();
 
-// Model averaging over the vertices of the original graph
+		// Model averaging over the vertices of the original graph
 		for (size_t i = 0; i < n_vertices; i++ ) {
 
 			double prediction_sum = 0.0;
@@ -384,26 +383,26 @@ agemalo_result_t agemalo(
 				}
 
 				if (model_blending_coef == 0.0) {
-// Pure position weight
+					// Pure position weight
 					effective_weight = x.weight;
 				}
 				else if (model_blending_coef == 1.0) {
-// Full mean Rf_error influence
+					// Full mean Rf_error influence
 					effective_weight = x.mean_error * x.weight;
 				}
 				else {
-// Smooth interpolation between the two approaches
-// Method 1: Linear interpolation of weights
+					// Smooth interpolation between the two approaches
+					// Method 1: Linear interpolation of weights
 					effective_weight = (1.0 - model_blending_coef) * x.weight + model_blending_coef * (x.mean_error * x.weight);
-// Method 2: Power-based scaling
-//effective_weight = x.weight * pow(x.mean_error, model_blending_coef);
+					// Method 2: Power-based scaling
+					//effective_weight = x.weight * pow(x.mean_error, model_blending_coef);
 				}
 
 				prediction_sum += effective_weight * x.prediction;
 				weight_sum += effective_weight;
 
 				if (process_errors) error_sum += effective_weight * x.Rf_error;
-// if (process_scale && x.bw < local_scale) local_scale = x.bw; // min bw method
+				// if (process_scale && x.bw < local_scale) local_scale = x.bw; // min bw method
 				if (process_scale) local_scale += effective_weight * x.bw; // weighted mean bw method
 			}
 
@@ -416,11 +415,11 @@ agemalo_result_t agemalo(
 						scale[i] = local_scale / weight_sum;
 				} else {
 					REPORT_ERROR("Very small weight sum encountered for vertex %zu.\n", i); // Setting predictions[i] to y[i]
-//predictions[i] = std::numeric_limits<double>::quiet_NaN();
+					//predictions[i] = std::numeric_limits<double>::quiet_NaN();
 				}
 			} else {
 				REPORT_ERROR("Weight sum = 0 for vertex %zu in predictions\n", i);
-//predictions[i] = y[i];
+				//predictions[i] = y[i];
 			}
 		}
 	}; // END OF auto average_models
@@ -443,38 +442,37 @@ agemalo_result_t agemalo(
 			Rprintf("Processing %zu grid vertices\n", grid_verts.size());
 		}
 
-		// Build an index vector for parallelization.
-		std::vector<size_t> indices(grid_verts.size());
-		std::iota(indices.begin(), indices.end(), 0);
+		// wpe[i] stores a vector of {weight, prediction, Rf_error, mean_error}
+		// values for each model that contains the i-th vertex in its support;
+		// these values will be used to compute the model-averaged predictions
+		std::vector<std::vector<wpe_t>> wpe(n_vertices);
 
-		// Parallel loop: each index corresponds to one grid vertex.
-		std::vector<std::vector<wpe_t>> wpe(n_vertices); // wpe[i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
-
-		// Add progress counter
+		// Progress counter
 		std::atomic<size_t> progress_counter{0};
 		const size_t progress_step = std::max(size_t(1), grid_verts.size() / 10);
 
-		gflow::for_each(gflow::seq, indices.begin(), indices.end(),
-					  [&](size_t i) {
+		// Serial loop: each index corresponds to one grid vertex
+		for (size_t i = 0; i < grid_verts.size(); ++i) {
+			size_t grid_vertex = grid_verts[i];
+			auto wpe_map = create_grid_vertex_models(grid_vertex, y, weights);
 
-						  size_t grid_vertex = grid_verts[i];
-						  auto wpe_map = create_grid_vertex_models(grid_vertex, y, weights);
-						  for (const auto& [vertex, vertex_wpe_vector] : wpe_map) {
-							  wpe[vertex].insert(wpe[vertex].end(), vertex_wpe_vector.begin(), vertex_wpe_vector.end());
-						  }
+			for (const auto& [vertex, vertex_wpe_vector] : wpe_map) {
+				wpe[vertex].insert(wpe[vertex].end(),
+								   vertex_wpe_vector.begin(),
+								   vertex_wpe_vector.end());
+			}
 
-						  // Report progress
-						  if (verbose) {
-							  size_t completed = ++progress_counter;
-							  if (completed % progress_step == 0 || completed == grid_verts.size()) {
-								  double percentage = (100.0 * completed) / grid_verts.size();
-								  Rprintf("\rProcessing grid vertices: %.1f%% (%zu/%zu)",
-										  percentage, completed, grid_verts.size());
-								  R_FlushConsole();
-							  }
-						  }
-					  }
-			);
+			// Report progress
+			if (verbose) {
+				size_t completed = ++progress_counter;
+				if (completed % progress_step == 0 || completed == grid_verts.size()) {
+					double percentage = (100.0 * completed) / grid_verts.size();
+					Rprintf("\rProcessing grid vertices: %.1f%% (%zu/%zu)",
+							percentage, completed, grid_verts.size());
+					R_FlushConsole();
+				}
+			}
+		}
 
 		if (verbose) {
 			Rprintf("\n");
@@ -501,6 +499,7 @@ agemalo_result_t agemalo(
 		auto averaging_start_time = std::chrono::steady_clock::now();
 		average_models(wpe, predictions, errors, scale);
 
+		#if 0
 		// debugging
 		{
 			// Debug specific vertex (vertex 5 in this case)
@@ -558,7 +557,7 @@ agemalo_result_t agemalo(
 				}
 			}
 		}
-
+		#endif
 
 		if (verbose) {
 			elapsed_time(averaging_start_time, "Model averaging completed", true);
@@ -578,59 +577,50 @@ agemalo_result_t agemalo(
 		// Initialize storage for predictions and errors
 		result.bb_predictions.resize(n_bb, std::vector<double>(n_vertices, 0.0));
 
-		// Create indices for parallel iteration
-		std::vector<int> bb_indices(n_bb);
-		std::iota(bb_indices.begin(), bb_indices.end(), 0);
-
 		// Progress tracking
 		std::atomic<int> bootstrap_counter{0};
 
-		gflow::for_each(gflow::seq, bb_indices.begin(), bb_indices.end(),
-					  [&](int iboot) {
+		for (size_t iboot = 0; iboot < n_bb; ++iboot) {
+			// Generate bootstrap weights
+			std::mt19937 local_rng(static_cast<unsigned int>(std::hash<int>{}(iboot)));
+			std::vector<double> weights(n_vertices);
+			{
+				std::gamma_distribution<double> gamma(1.0, 1.0);
+				double sum = 0.0;
+				for (size_t i = 0; i < n_vertices; ++i) {
+					weights[i] = gamma(local_rng);
+					sum += weights[i];
+				}
 
-						  // Generate bootstrap weights
-						  std::mt19937 local_rng((unsigned int)(std::hash<int>{}(iboot))); // Get thread-local RNG
-						  std::vector<double> weights(n_vertices);
-						  {
-							  // Use thread-local RNG to generate weights
-							  std::gamma_distribution<double> gamma(1.0, 1.0);
-							  double sum = 0.0;
-							  for (int i = 0; i < n_vertices; ++i) {
-								  weights[i] = gamma(local_rng);
-								  sum += weights[i];
-							  }
+				if (sum > 0.0) {
+					// Normalize weights
+					for (size_t i = 0; i < n_vertices; ++i) {
+						weights[i] /= sum;
+					}
+				} else {
+					// Handle edge case of all-zero weights
+					std::fill(weights.begin(), weights.end(), 1.0 / static_cast<double>(n_vertices));
+					REPORT_WARNING("Bootstrap instance %d generated all-zero weights. Using uniform weights.\n", iboot);
+				}
+			}
 
-							  if (sum > 0.0) {
-								  // Normalize weights
-								  for (int i = 0; i < n_vertices; ++i) {
-									  weights[i] /= sum;
-								  }
-							  } else {
-								  // Handle edge case of all-zero weights
-								  std::fill(weights.begin(), weights.end(), 1.0 / n_vertices);
-								  REPORT_WARNING("Bootstrap instance %d generated all-zero weights. Using uniform weights.\n", iboot);
-							  }
-						  }
+			// Generate bootstrapped predictions
+			std::optional<std::vector<double>> opt_weights(weights);
+			grid_models_predictions(
+				y,
+				opt_weights,
+				result.bb_predictions[iboot],
+				empty_errors,
+				empty_scale
+				);
 
-						  // Generate bootstrapped predictions
-						  std::optional<std::vector<double>> opt_weights(weights);
-						  grid_models_predictions(
-							  y,
-							  opt_weights,
-							  result.bb_predictions[iboot],
-							  empty_errors,
-							  empty_scale
-							  );
-
-						  // Thread-safe progress update without mutex
-						  if (verbose) {
-							  int current_count = ++bootstrap_counter;
-							  //if (current_count % progress_chunk == 0) {
-							  REprintf("\rBootstrap progress: %d%%",
-									   static_cast<int>((100.0 * current_count) / n_bb));
-							  //}
-						  }
-					  });
+			// Progress update
+			if (verbose) {
+				int current_count = ++bootstrap_counter;
+				REprintf("\rBootstrap progress: %d%%",
+						 static_cast<int>((100.0 * current_count) / n_bb));
+			}
+		}
 
 		bool use_median = true;
 		bb_cri_t bb_cri_res = bb_cri(result.bb_predictions, use_median, cri_probability);
@@ -682,61 +672,53 @@ agemalo_result_t agemalo(
 		// Initialize permutation test results
 		result.null_predictions.resize(n_perms, std::vector<double>(n_vertices, 0.0));
 
-		// Create indices for parallel iteration
-		std::vector<int> perm_indices(n_perms);
-		std::iota(perm_indices.begin(), perm_indices.end(), 0);
-
-		// Atomic counter for tracking progress
+		// Progress tracking
 		std::atomic<int> permutation_counter{0};
 
-		// Parallel execution of permutation iterations
-		gflow::for_each(gflow::seq, perm_indices.begin(), perm_indices.end(),
-					  [&](int iperm) {
+		for (size_t iperm = 0; iperm < n_perms; ++iperm) {
+			// Create permuted y vector
+			// Local RNG for shuffling, seeded with iperm for reproducibility
+			std::mt19937 local_rng(static_cast<unsigned int>(std::hash<int>{}(iperm)));
+			std::vector<size_t> local_indices(n_vertices);
+			std::iota(local_indices.begin(), local_indices.end(), 0);
+			std::shuffle(local_indices.begin(), local_indices.end(), local_rng);
 
-						  // Create permuted y vector
-						  // Create a local RNG for shuffling, seeded with iperm for reproducibility.
-						  std::mt19937 local_rng((unsigned int)(std::hash<int>{}(iperm)));
-						  std::vector<size_t> local_indices(n_vertices);
-						  std::iota(local_indices.begin(), local_indices.end(), 0);
-						  std::shuffle(local_indices.begin(), local_indices.end(), local_rng);
+			// Apply permutation using local_indices
+			std::vector<double> y_shuffled(n_vertices);
+			for (size_t i = 0; i < n_vertices; ++i) {
+				y_shuffled[i] = y[local_indices[i]];
+			}
 
-						  // Apply permutation using local_indices
-						  std::vector<double> y_shuffled(n_vertices);
-						  for (size_t i = 0; i < n_vertices; ++i) {
-							  y_shuffled[i] = y[local_indices[i]];
-						  }
+			// Generate weights using the same local RNG
+			std::vector<double> weights(n_vertices);
+			{
+				std::gamma_distribution<double> gamma(1.0, 1.0);
+				double sum = 0.0;
+				for (size_t i = 0; i < n_vertices; ++i) {
+					weights[i] = gamma(local_rng);
+					sum += weights[i];
+				}
+				for (size_t i = 0; i < n_vertices; ++i) {
+					weights[i] /= sum;
+				}
+			}
 
-						  // Generate weights using the same local RNG.
-						  std::vector<double> weights(n_vertices);
-						  {
-							  std::gamma_distribution<double> gamma(1.0, 1.0);
-							  double sum = 0.0;
-							  for (size_t i = 0; i < n_vertices; ++i) {
-								  weights[i] = gamma(local_rng);
-								  sum += weights[i];
-							  }
-							  for (size_t i = 0; i < n_vertices; ++i) {
-								  weights[i] /= sum;
-							  }
-						  }
+			// Generate predictions for shuffled y
+			std::optional<std::vector<double>> opt_weights(weights);
+			grid_models_predictions(
+				y_shuffled,
+				opt_weights,
+				result.null_predictions[iperm],
+				empty_errors,
+				empty_scale
+				);
 
-						  // Generate predictions for shuffled y
-						  std::optional<std::vector<double>> opt_weights(weights);
-						  grid_models_predictions(
-							  y_shuffled,
-							  opt_weights,
-							  result.null_predictions[iperm],
-							  empty_errors,
-							  empty_scale
-							  );
-
-						  if (verbose) {
-							  int current_count = ++permutation_counter;
-							  REprintf("\rPermutation Test Progress: %d%%",
-									   static_cast<int>((100.0 * current_count) / n_perms));
-						  }
-					  }
-			);
+			if (verbose) {
+				int current_count = ++permutation_counter;
+				REprintf("\rPermutation Test Progress: %d%%",
+						 static_cast<int>((100.0 * current_count) / n_perms));
+			}
+		}
 
 		bool use_median = true;
 		bb_cri_t null_cri_res = bb_cri(result.null_predictions, use_median, cri_probability);

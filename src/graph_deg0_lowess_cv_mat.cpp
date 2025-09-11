@@ -1,6 +1,5 @@
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <algorithm>                // For std::for_each
 #include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
@@ -8,7 +7,6 @@
 #include <thread>                   // For std::thread::hardware_concurrency
 #include <mutex>                    // For std::mutex
 
-#include "exec_policy.hpp"
 #include "graph_deg0_lowess_cv_mat.hpp" // For graph_deg0_lowess_cv_mat_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
@@ -332,18 +330,11 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
         std::vector<size_t> fold_test_counts(actual_folds, 0);
         std::vector<double> fold_total_errors(actual_folds, 0.0);
 
-        // Process each fold in parallel
-        std::vector<size_t> fold_indices(actual_folds);
-        std::iota(fold_indices.begin(), fold_indices.end(), 0);
-
-        //std::for_each(std::execution::par_unseq, fold_indices.begin(), fold_indices.end(),
-        gflow::for_each(GFLOW_EXEC_POLICY, fold_indices.begin(), fold_indices.end(),
-                     [&](size_t fold) {
+        for (size_t fold = 0; fold < actual_folds; ++fold) {
             try {
                 if (verbose) {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    Rprintf("Processing fold %zu/%zu for response variable %zu/%zu\n", 
-                            fold+1, actual_folds, j+1, n_response_vars);
+                    Rprintf("Processing fold %zu/%zu for response variable %zu/%zu\n",
+                            fold + 1, actual_folds, j + 1, n_response_vars);
                 }
 
                 // Generate weights for this fold (1.0 for training, 0.0 for testing)
@@ -355,32 +346,27 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
                 // Process each bandwidth
                 for (size_t bw_idx = 0; bw_idx < bw_grid.size(); ++bw_idx) {
                     // Get predictions with this bandwidth
-                    auto [predictions, excluded] = 
+                    auto [predictions, excluded] =
                         predict_with_weights(bw_grid[bw_idx], fold_weights, Y[j]);
 
-                    // Calculate Rf_error on test vertices
+                    // Calculate error on test vertices
                     double fold_error = 0.0;
                     size_t test_count = 0;
-
                     for (size_t vertex : folds[fold]) {
                         if (!excluded[vertex]) {  // Only count non-excluded vertices
-                            fold_error += std::pow(predictions[vertex] - Y[j][vertex], 2);
-                            test_count++;
+                            double diff = predictions[vertex] - Y[j][vertex];
+                            fold_error += diff * diff;
+                            ++test_count;
                         }
                     }
 
-                    // Store fold results (thread-safe)
-                    {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        result.bw_errors[j][bw_idx] += fold_error;
-                        fold_test_counts[fold] = test_count;
-                        fold_total_errors[fold] += fold_error;
-                    }
+                    // Store fold results
+                    result.bw_errors[j][bw_idx] += fold_error;
+                    fold_test_counts[fold] = test_count;
+                    fold_total_errors[fold] += fold_error;
 
-                    // Store predictions if requested
+                    // Store predictions if requested (only for test vertices of this fold)
                     if (with_bw_predictions) {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        // Only update predictions for test vertices from this fold
                         for (size_t vertex : folds[fold]) {
                             result.bw_predictions[j][bw_idx][vertex] = predictions[vertex];
                         }
@@ -389,16 +375,16 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
 
                 // Update progress
                 if (verbose) {
+                    // If completed_tasks was an atomic before, leaving it as-is is fine.
                     size_t tasks_completed = completed_tasks.fetch_add(1, std::memory_order_relaxed) + 1;
-                    std::lock_guard<std::mutex> lock(mutex);
                     progress.update(tasks_completed);
                 }
+
             } catch (const std::exception& e) {
-                std::lock_guard<std::mutex> lock(mutex);
-                REPORT_ERROR("Error processing fold %zu for response variable %zu: %s", 
+                REPORT_ERROR("Error processing fold %zu for response variable %zu: %s",
                              fold, j, e.what());
             }
-        });
+        }
 
         // Normalize errors by total test points
         size_t total_test_points = 0;
@@ -433,21 +419,17 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
         Rprintf("Computing final predictions using optimal bandwidths...\n");
     }
 
-    // Process each response variable in parallel
-    std::vector<size_t> response_indices(n_response_vars);
-    std::iota(response_indices.begin(), response_indices.end(), 0);
-
-    gflow::for_each(GFLOW_EXEC_POLICY, response_indices.begin(), response_indices.end(),
-                 [&](size_t j) {
+    for (size_t j = 0; j < n_response_vars; ++j) {
         try {
             std::vector<double> uniform_weights(n_vertices, 1.0);  // Use all vertices
-            auto [final_predictions, _] = predict_with_weights(result.opt_bws[j], uniform_weights, Y[j]);
-            result.predictions[j] = final_predictions;
+            auto [final_predictions, _] =
+                predict_with_weights(result.opt_bws[j], uniform_weights, Y[j]);
+            result.predictions[j] = std::move(final_predictions);
         } catch (const std::exception& e) {
-            std::lock_guard<std::mutex> lock(mutex);
-            REPORT_ERROR("Error computing final predictions for response variable %zu: %s", j, e.what());
+            REPORT_ERROR("Error computing final predictions for response variable %zu: %s",
+                         j, e.what());
         }
-    });
+    }
 
     if (verbose) {
         double elapsed = std::chrono::duration<double>(

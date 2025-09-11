@@ -6,15 +6,13 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <algorithm>                // For std::sort and std::for_each
 #include <execution>                // For std::execution::seq/par
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <queue>                    // Foe std::queue
 
 #include "cpp_utils.hpp"            // For debugging
-#include <filesystem>
-#include <experimental/filesystem>
+// #include <filesystem>
 
 #include "exec_policy.hpp"
 #include "amagelo.hpp" // For amagelo_t

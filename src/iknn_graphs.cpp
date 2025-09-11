@@ -54,8 +54,6 @@
 #include <sstream>
 #include <queue>
 #include <numeric>    // for std::iota
-#include <execution>  // for std::execution::par
-#include <algorithm>  // for std::for_each, std::set_intersection and std::sort
 
 #include "iknn_graphs.hpp"
 #include "set_wgraph.hpp"
@@ -388,7 +386,7 @@ SEXP S_verify_pruning(SEXP s_X,
         Rf_error("X could not be coerced to a numeric matrix. X has to be a numeric matrix (cannot be a data frame).");
     }
     int *dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    int n_vertices = dimX[0];
+    size_t n_vertices = dimX[0];
     int max_alt_path_length = INTEGER(s_max_alt_path_length)[0];
 
     // Creating a kNN graph
@@ -412,7 +410,7 @@ SEXP S_verify_pruning(SEXP s_X,
     old_pruned_vect_wgraph.adjacency_list.resize(n_vertices);
     for (size_t vertex = 0; vertex < n_vertices; vertex++) {
         for (auto neighbor_pair : old_pruned_graph[vertex]) {
-            int neighbor = neighbor_pair.first;
+            size_t neighbor = neighbor_pair.first;
             for (const auto& iknn_neighbor : iknn_graph.graph[vertex]) {
                 if (iknn_neighbor.index == neighbor) {
                     old_pruned_vect_wgraph.adjacency_list[vertex].emplace_back(neighbor, iknn_neighbor.dist);
@@ -435,7 +433,7 @@ SEXP S_verify_pruning(SEXP s_X,
     SEXP vertex_names = PROTECT(Rf_allocVector(STRSXP, n_vertices)); nprot++;
     int total_discrepancies = 0;
 
-    for (int vertex = 0; vertex < n_vertices; vertex++) {
+    for (size_t vertex = 0; vertex < n_vertices; vertex++) {
         std::vector<edge_info_t>& old_edges = old_pruned_vect_wgraph.adjacency_list[vertex];
         std::vector<edge_info_t>& new_edges = new_pruned_vect_wgraph.adjacency_list[vertex];
 
@@ -656,10 +654,10 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
     PROTECT(RX = Rf_coerceVector(RX, REALSXP));
     int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
     UNPROTECT(1);
-    int n_points = dimX[0];
+    size_t n_points = dimX[0];
 
     PROTECT(Rk = Rf_coerceVector(Rk, INTSXP));
-    int k = INTEGER(Rk)[0];
+    size_t k = INTEGER(Rk)[0];
     UNPROTECT(1);
 
     #if DEBUG__create_iknn_graph
@@ -681,11 +679,11 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
     iknn_graph_t res(n_points);
 
     // Perform k-NN search for each point
-    int n_points_minus_one = n_points - 1;
+    size_t n_points_minus_one = n_points - 1;
     std::vector<int> intersection;
     for (size_t pt_i = 0; pt_i < n_points_minus_one; pt_i++) {
         // Copying indices of kNN of the pt_i point to nn_i
-        for (int j = 0; j < k; j++) {
+        for (size_t j = 0; j < k; j++) {
             nn_i[j] = indices[pt_i + n_points * j];
             sorted_nn_i[j] = nn_i[j];
         }
@@ -1157,7 +1155,7 @@ SEXP create_R_graph_representation(
             // Find corresponding distance in original graph
             double distance = 0.0;
             for (const auto& vertex : original_graph[i]) {
-                if (vertex.index == pruned_graph[i][j].first) {
+                if (vertex.index == (size_t)pruned_graph[i][j].first) {
                     distance = vertex.dist;
                     break;
                 }
@@ -1231,7 +1229,7 @@ struct knn_search_result_t {
 knn_search_result_t compute_knn(SEXP RX, int k) {
     PROTECT(RX = Rf_coerceVector(RX, REALSXP));
     int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
-    int n_points = dimX[0];
+    size_t n_points = dimX[0];
 
     SEXP Rk = PROTECT(Rf_ScalarInteger(k));
     SEXP knn_res = PROTECT(S_kNN(RX, Rk));
@@ -1244,7 +1242,7 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
 
     // Reorganize data into more convenient format
     for (size_t i = 0; i < n_points; i++) {
-        for (size_t j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++) {
             result.indices[i][j] = indices_raw[i + n_points * j];
             result.distances[i][j] = distances_raw[i + n_points * j];
         }
@@ -1275,7 +1273,7 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
 
         for (size_t pt_j = pt_i + 1; pt_j < n_points; pt_j++) {
             // Get k nearest neighbors for point j
-            for (size_t j = 0; j < k; j++) {
+            for (int j = 0; j < k; j++) {
                 nn_j[j] = knn_results.indices[pt_j][j];
                 sorted_nn_j[j] = nn_j[j];
             }

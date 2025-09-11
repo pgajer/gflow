@@ -31,7 +31,6 @@
 #include <chrono>
 #include <thread>      // For std::thread
 
-#include "exec_policy.hpp"
 #include "uniform_grid_graph.hpp"
 #include "ulm.hpp"
 #include "graph_utils.hpp"        // For get_grid_diameter()
@@ -634,57 +633,47 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
             predictions.resize(n_vertices);
         }
 
-        // Create indices for parallel iteration
-        std::vector<int> bb_indices(n_bb);
-        std::iota(bb_indices.begin(), bb_indices.end(), 0);
-
         // Progress tracking
         std::atomic<int> bootstrap_counter{0};
 
-        gflow::for_each(gflow::seq,
-                      bb_indices.begin(),
-                      bb_indices.end(),
-                      [&](int iboot) {
-                          // Get thread-local RNG
-                          auto& local_rng = make_thread_rng().get();
+        for (size_t iboot = 0; iboot < n_bb; ++iboot) {
+            // Get thread-local RNG
+            auto& local_rng = make_thread_rng().get();
 
-                          // Generate weights using thread-local RNG
-                          std::vector<double> weights(n_vertices);
-                          {
-                              // Use thread-local RNG to generate weights
-                              std::gamma_distribution<double> gamma(1.0, 1.0);
-                              double sum = 0.0;
-                              for (int i = 0; i < n_vertices; ++i) {
-                                  weights[i] = gamma(local_rng);
-                                  sum += weights[i];
-                              }
-                              // Normalize weights
-                              for (int i = 0; i < n_vertices; ++i) {
-                                  weights[i] /= sum;
-                              }
-                          }
+            // Generate weights using thread-local RNG
+            std::vector<double> weights(n_vertices);
+            {
+                // Use thread-local RNG to generate weights
+                std::gamma_distribution<double> gamma(1.0, 1.0);
+                double sum = 0.0;
+                for (size_t i = 0; i < n_vertices; ++i) {
+                    weights[i] = gamma(local_rng);
+                    sum += weights[i];
+                }
+                // Normalize weights
+                for (size_t i = 0; i < n_vertices; ++i) {
+                    weights[i] /= sum;
+                }
+            }
 
-                          std::optional<std::vector<double>> opt_weights(weights);
-                          std::optional<std::unordered_map<size_t, double>> opt_nullptr_grid_pred;
-                          grid_models_predictions(
-                              y,
-                              opt_weights,
-                              result.bb_predictions[iboot],
-                              empty_errors,
-                              empty_scale,
-                              opt_nullptr_grid_pred
-                              );
+            std::optional<std::vector<double>> opt_weights(weights);
+            std::optional<std::unordered_map<size_t, double>> opt_nullptr_grid_pred;
+            grid_models_predictions(
+                y,
+                opt_weights,
+                result.bb_predictions[iboot],
+                empty_errors,
+                empty_scale,
+                opt_nullptr_grid_pred
+                );
 
-                          // Thread-safe progress update without mutex
-                          if (verbose) {
-                              int current_count = ++bootstrap_counter;
-                              //if (current_count % progress_chunk == 0) {
-                              // Use \r to move cursor to start of line
-                              REprintf("\rBootstrap progress: %d%%",
-                                       static_cast<int>((100.0 * current_count) / n_bb));
-                              //}
-                          }
-                      });
+            // Progress update
+            if (verbose) {
+                int current_count = ++bootstrap_counter;
+                REprintf("\rBootstrap progress: %d%%",
+                         static_cast<int>((100.0 * current_count) / n_bb));
+            }
+        }
 
         bool use_median = true;
         bb_cri_t bb_cri_res = bb_cri(result.bb_predictions, use_median, cri_probability);
@@ -726,79 +715,67 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
             pred.resize(n_vertices);
         }
 
-        // Create indices for parallel iteration
-        std::vector<int> perm_indices(n_perms);
-        std::iota(perm_indices.begin(), perm_indices.end(), 0);
-
-        // Create indices for permutation
-        std::vector<size_t> indices(n_vertices);
-        std::iota(indices.begin(), indices.end(), 0);
-
-        // Atomic counter for tracking progress
+        // Atomic counter for tracking progress (could just be int in serial mode)
         std::atomic<int> permutation_counter{0};
 
         // Create a random number generator
         std::random_device rd;
         std::mt19937 gen(rd());
 
-        // Parallel execution of permutation iterations
-        gflow::for_each(gflow::seq,
-                      perm_indices.begin(),
-                      perm_indices.end(),
-                      [&](int iperm) {
-                          // Create permuted y vector
-                          std::vector<double> y_perm(y);  // Copy original y
+        // Create indices for permutation
+        std::vector<size_t> indices(n_vertices);
+        std::iota(indices.begin(), indices.end(), 0);
 
-                          // Generate permutation in thread-safe manner
-                          {
-                              std::lock_guard<std::mutex> lock(rng_mutex);
-                              std::shuffle(indices.begin(), indices.end(), gen);
-                          }
+        for (size_t iperm = 0; iperm < n_perms; ++iperm) {
+            // Create permuted y vector
+            std::vector<double> y_perm(y);  // Copy original y
 
-                          // Apply permutation
-                          std::vector<double> y_shuffled(n_vertices);
-                          for (size_t i = 0; i < n_vertices; ++i) {
-                              y_shuffled[i] = y[indices[i]];
-                          }
+            // Generate permutation
+            std::shuffle(indices.begin(), indices.end(), gen);
 
-                          // Get thread-local RNG
-                          auto& local_rng = make_thread_rng().get();
-                          // Generate weights using thread-local RNG
-                          std::vector<double> weights(n_vertices);
-                          {
-                              // Use thread-local RNG to generate weights
-                              std::gamma_distribution<double> gamma(1.0, 1.0);
-                              double sum = 0.0;
-                              for (int i = 0; i < n_vertices; ++i) {
-                                  weights[i] = gamma(local_rng);
-                                  sum += weights[i];
-                              }
-                              // Normalize weights
-                              for (int i = 0; i < n_vertices; ++i) {
-                                  weights[i] /= sum;
-                              }
-                          }
+            // Apply permutation
+            std::vector<double> y_shuffled(n_vertices);
+            for (size_t i = 0; i < n_vertices; ++i) {
+                y_shuffled[i] = y[indices[i]];
+            }
 
-                          // Process permuted data using optimal bandwidth
-                          std::optional<std::vector<double>> opt_weights(weights);
-                          std::optional<std::unordered_map<size_t, double>> opt_nullptr_grid_pred;
-                          grid_models_predictions(
-                              y_shuffled,
-                              opt_weights,
-                              result.null_predictions[iperm],
-                              empty_errors,
-                              empty_scale,
-                              opt_nullptr_grid_pred
-                              );
+            // Get thread-local RNG
+            auto& local_rng = make_thread_rng().get();
 
-                          // Increment counter and update progress
-                          if (verbose) {
-                              int current_count = ++permutation_counter;
-                              // Use \r to move cursor to start of line
-                              REprintf("\rPermutation Test Progress: %d%%",
-                                       static_cast<int>((100.0 * current_count) / n_perms));
-                          }
-                      });
+            // Generate weights using thread-local RNG
+            std::vector<double> weights(n_vertices);
+            {
+                std::gamma_distribution<double> gamma(1.0, 1.0);
+                double sum = 0.0;
+                for (size_t i = 0; i < n_vertices; ++i) {
+                    weights[i] = gamma(local_rng);
+                    sum += weights[i];
+                }
+                // Normalize weights
+                for (size_t i = 0; i < n_vertices; ++i) {
+                    weights[i] /= sum;
+                }
+            }
+
+            // Process permuted data using optimal bandwidth
+            std::optional<std::vector<double>> opt_weights(weights);
+            std::optional<std::unordered_map<size_t, double>> opt_nullptr_grid_pred;
+            grid_models_predictions(
+                y_shuffled,
+                opt_weights,
+                result.null_predictions[iperm],
+                empty_errors,
+                empty_scale,
+                opt_nullptr_grid_pred
+                );
+
+            // Increment counter and update progress
+            if (verbose) {
+                int current_count = ++permutation_counter;
+                REprintf("\rPermutation Test Progress: %d%%",
+                         static_cast<int>((100.0 * current_count) / n_perms));
+            }
+        }
 
         bool use_median = true;
         bb_cri_t null_cri_res = bb_cri(result.null_predictions, use_median, cri_probability);

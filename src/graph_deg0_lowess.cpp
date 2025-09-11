@@ -6,7 +6,6 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <algorithm>                // For std::for_each
 #include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
@@ -73,80 +72,64 @@ std::vector<double> set_wgraph_t::graph_deg0_lowess(
     std::atomic<size_t> progress_counter{0};
     const size_t progress_step = std::max(size_t(1), n_vertices / 20);
 
-    // Process each vertex
-    std::vector<size_t> vertices(n_vertices);
-    std::iota(vertices.begin(), vertices.end(), 0);
+    for (size_t vertex = 0; vertex < n_vertices; ++vertex) {
+        try {
+            // Find vertices within bandwidth radius
+            auto vertex_map = find_vertices_within_radius(vertex, bandwidth);
 
-    // Use std::execution::par_unseq for parallel processing if available
-    gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
-        [&](size_t vertex) {
-            try {
-                // Find vertices within bandwidth radius
-                auto vertex_map = find_vertices_within_radius(vertex, bandwidth);
+            // Distance normalization strategy (see comments in original)
+            size_t nbhd_size = vertex_map.size();
+            std::vector<double> normalized_dists(nbhd_size);
+            std::vector<size_t> neighbors(nbhd_size);
 
-                // Distance normalization strategy:
-                // 1. Find the maximum distance (max_dist) in the vertex neighborhood
-                // 2. Scale max_dist by dist_normalization_factor (typically 1.1)
-                // 3. Divide all distances by this scaled maximum
-                // This approach ensures all normalized distances fall within [0, 1/dist_normalization_factor],
-                // which is approximately [0, 0.91] when dist_normalization_factor = 1.1
-                // This keeps all distances within the effective support of the kernel functions,
-                // as most kernels in this implementation have support on [-1, 1]
-
-                size_t nbhd_size = vertex_map.size();
-                std::vector<double> normalized_dists(nbhd_size);
-                std::vector<size_t> neighbors(nbhd_size);
-                size_t counter = 0;
-                for (const auto& [neighbor, distance] : vertex_map) {
-                    // Normalize distance and compute kernel weight
-                    normalized_dists[counter] = distance;
-                    neighbors[counter++]      = neighbor;
-                }
-
-                double max_dist = 0.0;
-                for (size_t k = 0; k < nbhd_size; ++k) {
-                    max_dist = std::max(max_dist, normalized_dists[k]);
-                }
-
-                if (max_dist == 0) max_dist = 1;
-                max_dist *= dist_normalization_factor;
-
-                for (size_t k = 0; k < nbhd_size; ++k) {
-                    normalized_dists[k] /= max_dist;
-                }
-
-                std::vector<double> weights(nbhd_size);
-                kernel_fn(normalized_dists.data(), nbhd_size, weights.data());
-
-                double weighted_sum = 0.0;
-                double weight_sum = 0.0;
-                for (size_t k = 0; k < nbhd_size; ++k) {
-                    weighted_sum += weights[k] * y[neighbors[k]];
-                    weight_sum += weights[k];
-                }
-
-                // Compute weighted average
-                if (weight_sum > 0) {
-                    predictions[vertex] = weighted_sum / weight_sum;
-                } else {
-                    predictions[vertex] = std::numeric_limits<double>::quiet_NaN();
-                }
-
-                // Update progress counter
-                if (verbose) {
-                    size_t current = ++progress_counter;
-                    if (current % progress_step == 0 || current == n_vertices) {
-                        double percentage = 100.0 * current / n_vertices;
-                        Rprintf("\rProcessing vertices: %.1f%% complete (%zu/%zu)",
-                                percentage, current, n_vertices);
-                        R_FlushConsole();
-                    }
-                }
-            } catch (const std::exception& e) {
-                REPORT_ERROR("Error processing vertex %zu: %s", vertex, e.what());
+            size_t counter = 0;
+            for (const auto& [neighbor, distance] : vertex_map) {
+                normalized_dists[counter] = distance;
+                neighbors[counter++]      = neighbor;
             }
+
+            double max_dist = 0.0;
+            for (size_t k = 0; k < nbhd_size; ++k) {
+                if (normalized_dists[k] > max_dist) max_dist = normalized_dists[k];
+            }
+            if (max_dist == 0.0) max_dist = 1.0;
+            max_dist *= dist_normalization_factor;
+
+            for (size_t k = 0; k < nbhd_size; ++k) {
+                normalized_dists[k] /= max_dist;
+            }
+
+            std::vector<double> weights(nbhd_size);
+            kernel_fn(normalized_dists.data(), nbhd_size, weights.data());
+
+            double weighted_sum = 0.0;
+            double weight_sum   = 0.0;
+            for (size_t k = 0; k < nbhd_size; ++k) {
+                weighted_sum += weights[k] * y[neighbors[k]];
+                weight_sum   += weights[k];
+            }
+
+            // Compute weighted average
+            if (weight_sum > 0.0) {
+                predictions[vertex] = weighted_sum / weight_sum;
+            } else {
+                predictions[vertex] = std::numeric_limits<double>::quiet_NaN();
+            }
+
+            // Update progress counter
+            if (verbose) {
+                size_t current = ++progress_counter;  // ok to make this a plain size_t in pure-serial
+                if (current % progress_step == 0 || current == n_vertices) {
+                    double percentage = 100.0 * current / static_cast<double>(n_vertices);
+                    Rprintf("\rProcessing vertices: %.1f%% complete (%zu/%zu)",
+                            percentage, current, n_vertices);
+                    R_FlushConsole();
+                }
+            }
+        } catch (const std::exception& e) {
+            REPORT_ERROR("Error processing vertex %zu: %s", vertex, e.what());
         }
-    );
+    }
 
     if (verbose) {
         Rprintf("\nCompleted graph_deg0_lowess in %.2f seconds\n",
