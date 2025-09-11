@@ -351,7 +351,7 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
 
             // Count non-zero weight points in this path
             int n_non_zero_points = 0;
-            for (int i = 0; i < path.size(); ++i) {
+            for (size_t i = 0; i < path.size(); ++i) {
                 if (weights[path[i]] > epsilon) {
                     n_non_zero_points++;
                 }
@@ -875,7 +875,7 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
 
     // Compute true errors if available
     if (!y_true.empty()) {
-        if (y_true.size() != n_vertices) {
+        if ((int)y_true.size() != n_vertices) {
             Rf_error("y_true size (%zu) does not match number of vertices (%d)",
                     y_true.size(), n_vertices);
         }

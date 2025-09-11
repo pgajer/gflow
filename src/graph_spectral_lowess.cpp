@@ -3,7 +3,6 @@
 #include <Spectra/MatOp/DenseSymMatProd.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
 
-#include <execution>                    // For std::execution::seq/par
 #include <thread>                       // For std::thread::hardware_concurrency
 #include <algorithm>                    // For std::min_element
 #include <numeric>                      // For std::accumulate
@@ -14,7 +13,6 @@
 //#include <filesystem>
 //#include <fstream>
 #include "cpp_utils.hpp"                // For debugging and elapsed.time
-#include "exec_policy.hpp"
 #include "graph_spectral_lowess.hpp"    // For graph_spectral_lowess_t
 #include "bandwidth_utils.hpp"          // For get_candidate_bws
 #include "kernels.h"                    // For kernel functions
@@ -247,176 +245,136 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 		eigenvectors = eigs.eigenvectors();
 	}
 
-	// Progress counter for parallel processing
-	std::atomic<size_t> progress_counter{0};
-	const size_t progress_step = std::max(size_t(1), n_vertices / 20);
+	// Progress counter for serial processing
+	size_t progress_counter = 0;
+	const size_t progress_step = std::max<size_t>(1, n_vertices / 20);
 
-	// Process each vertex
-	std::vector<size_t> vertices(n_vertices);
-	std::iota(vertices.begin(), vertices.end(), 0);
+// Process each vertex (serial)
+	for (size_t vertex = 0; vertex < n_vertices; ++vertex) {
+		try {
+			// Find minimum bandwidth that ensures enough vertices for modeling
+			double vertex_min_bw = find_minimum_radius_for_domain_min_size(
+				vertex, min_bw, max_bw, domain_min_size, precision
+				);
 
-	// Use std::execution::par_unseq for parallel processing if available
-	gflow::for_each(gflow::seq, vertices.begin(), vertices.end(),
-				  [&](size_t vertex) {
-					  try {
-						  // Find minimum bandwidth that ensures enough vertices for modeling
-						  double vertex_min_bw = find_minimum_radius_for_domain_min_size(
-							  vertex,
-							  min_bw,
-							  max_bw,
-							  domain_min_size,
-							  precision
-							  );
+			// Check bandwidth constraints
+			if (vertex_min_bw >= max_bw) {
+				REPORT_ERROR("Required minimum bandwidth (%.4f) exceeds maximum bandwidth (%.4f) for vertex %zu",
+							 vertex_min_bw, max_bw, vertex);
+			}
 
-						  // Check bandwidth constraints
-						  if (vertex_min_bw >= max_bw) {
-							  REPORT_ERROR("Required minimum bandwidth (%.4f) exceeds maximum bandwidth (%.4f) for vertex %zu",
-										   vertex_min_bw, max_bw, vertex);
-						  }
+			// Generate candidate bandwidths
+			std::vector<double> candidate_bws = get_candidate_bws(
+				vertex_min_bw, max_bw, n_bws, log_grid, precision
+				);
 
-						  // Generate candidate bandwidths
-						  std::vector<double> candidate_bws = get_candidate_bws(
-							  vertex_min_bw,
-							  max_bw,
-							  n_bws,
-							  log_grid,
-							  precision
-							  );
+			// Find all vertices within maximum radius
+			auto reachable_vertices_map = find_vertices_within_radius(vertex, max_bw);
 
-						  // Find all vertices within maximum radius
-						  auto reachable_vertices_map = find_vertices_within_radius(vertex, max_bw);
+			// Create storage for bandwidth evaluations
+			std::vector<double> bandwidth_errors(candidate_bws.size(),
+												 std::numeric_limits<double>::infinity());
+			std::vector<lm_t> bandwidth_models(candidate_bws.size());
 
-						  // Create storage for bandwidth evaluations
-						  std::vector<double> bandwidth_errors(candidate_bws.size(), std::numeric_limits<double>::infinity());
-						  std::vector<lm_t> bandwidth_models(candidate_bws.size());
+			// Evaluate each bandwidth
+			for (size_t bw_idx = 0; bw_idx < candidate_bws.size(); ++bw_idx) {
+				double current_bw = candidate_bws[bw_idx];
 
-						  // Evaluate each bandwidth
-						  for (size_t bw_idx = 0; bw_idx < candidate_bws.size(); ++bw_idx) {
-							  double current_bw = candidate_bws[bw_idx];
+				// Filter vertices by current bandwidth
+				std::map<size_t, double> local_vertex_map;
+				for (const auto& [v, dist] : reachable_vertices_map) {
+					if (dist <= current_bw) local_vertex_map[v] = dist;
+				}
 
-							  // Filter vertices by current bandwidth
-							  std::map<size_t, double> local_vertex_map;
-							  for (const auto& [v, dist] : reachable_vertices_map) {
-								  if (dist <= current_bw) {
-									  local_vertex_map[v] = dist;
-								  }
-							  }
+				// Skip if we don't have enough vertices
+				if (local_vertex_map.size() < domain_min_size) continue;
 
-							  // Skip if we don't have enough vertices
-							  if (local_vertex_map.size() < domain_min_size) {
-								  continue;
-							  }
+				// Create embedding using eigenvectors
+				Eigen::MatrixXd embedding = create_spectral_embedding(
+					local_vertex_map, eigenvectors, n_evectors
+					);
 
-							  // Create embedding using eigenvectors
-							  Eigen::MatrixXd embedding = create_spectral_embedding(
-								  local_vertex_map,
-								  eigenvectors,
-								  n_evectors
-								  );
+				// Fit weighted linear model
+				lm_t model = cleveland_fit_linear_model(
+					embedding, y, local_vertex_map,
+					dist_normalization_factor, n_cleveland_iterations
+					);
 
-							  // Fit weighted linear model
-							  lm_t model = cleveland_fit_linear_model(
-								  embedding,
-								  y,
-								  local_vertex_map,
-								  dist_normalization_factor,
-								  n_cleveland_iterations);
+				// Store model and error
+				bandwidth_errors[bw_idx] = model.mean_error;
+				bandwidth_models[bw_idx] = std::move(model);
+			}
 
-							  // Store model and Rf_error
-							  bandwidth_errors[bw_idx] = model.mean_error;
-							  bandwidth_models[bw_idx] = std::move(model);
-						  }
+			// Find best bandwidth (minimum error)
+			std::vector<double>::iterator min_error_it;
+			bool smooth_bandwidth_errors = true;
 
-						  // Find best bandwidth (minimum Rf_error)
-						  std::vector<double>::iterator min_error_it;
-						  bool smooth_bandwidth_errors = true;
+			if (smooth_bandwidth_errors) {
+				double q_thld = 1.0 / 3.0;
+				int k = std::max(2, static_cast<int>(q_thld * n_bws));
+				double epsilon = 1e-10;
+				std::vector<double> null_vector;
+				auto bandwidth_errors_fit = uwmabilo(
+					candidate_bws, bandwidth_errors, null_vector,
+					k, k, kernel_type, dist_normalization_factor, epsilon, false
+					);
+				bandwidth_errors = std::move(bandwidth_errors_fit.predictions);
+			}
+			min_error_it = std::min_element(bandwidth_errors.begin(), bandwidth_errors.end());
 
-						  if (smooth_bandwidth_errors) {
-#if 1
-							  double q_thld = 1.0 / 3.0;
-							  int k = std::max(2, (int)(q_thld * n_bws));
-							  double epsilon = 1e-10;
-							  std::vector<double> null_vector;
-							  auto bandwidth_errors_fit = uwmabilo(candidate_bws,
-																   bandwidth_errors,
-																   null_vector,
-																   k,
-																   k,
-																   kernel_type,
-																   dist_normalization_factor,
-																   epsilon,
-																   false);
-							  bandwidth_errors = std::move(bandwidth_errors_fit.predictions);
-#else
+			if (min_error_it != bandwidth_errors.end() && std::isfinite(*min_error_it)) {
+				// Index of best bandwidth
+				size_t best_bw_idx = static_cast<size_t>(min_error_it - bandwidth_errors.begin());
 
-							  bandwidth_errors = running_window_average(bandwidth_errors, 2);
-							  // print_vect(bandwidth_errors, "bandwidth_errors");
-#endif
+				// Store results for this vertex
+				const auto& best_model = bandwidth_models[best_bw_idx];
 
-							  min_error_it = std::min_element(bandwidth_errors.begin(), bandwidth_errors.end());
+				if (best_model.vertices.empty()) {
+					Rprintf("vertex: %zu\n", vertex);
+					Rprintf("best_bw_idx: %zu\n", best_bw_idx);
+					REPORT_ERROR("ERROR\n");
+				}
 
-						  } else {
-							  min_error_it = std::min_element(bandwidth_errors.begin(), bandwidth_errors.end());
-						  }
+				// Find this vertex's prediction in the model
+				auto it = std::find(best_model.vertices.begin(),
+									best_model.vertices.end(), vertex);
 
-						  if (min_error_it != bandwidth_errors.end() && std::isfinite(*min_error_it)) {
+				// Store prediction, error, and scale
+				if (it != best_model.vertices.end()) {
+					size_t idx = static_cast<size_t>(it - best_model.vertices.begin());
+					result.predictions[vertex] = best_model.predictions[idx];
+					result.errors[vertex]      = best_model.errors[idx];
+				} else {
+					Rprintf("vertex: %zu\n", vertex);
+					Rprintf("best_bw_idx: %zu\n", best_bw_idx);
+					Rprintf("best_model.vertices.size(): %zu\n", best_model.vertices.size());
+					REPORT_ERROR("ERROR: vertex %zu not found in best_model.vertices\n", vertex);
+				}
 
-							  // Get index of best bandwidth
-							  size_t best_bw_idx = min_error_it - bandwidth_errors.begin();
+				result.scale[vertex] = candidate_bws[best_bw_idx];
 
-							  // Store results for this vertex
-							  const auto& best_model = bandwidth_models[best_bw_idx];
+			} else {
+				// No valid models found
+				result.predictions[vertex] = std::numeric_limits<double>::quiet_NaN();
+				result.errors[vertex]      = std::numeric_limits<double>::infinity();
+				result.scale[vertex]       = max_bw;
+				REPORT_ERROR("ERROR: No valid models found for vertex: %zu\n", vertex);
+			}
 
-							  if (best_model.vertices.size() == 0) {
-								  Rprintf("vertex: %zu\n", vertex);
-								  Rprintf("best_bw_idx: %zu\n", best_bw_idx);
-								  REPORT_ERROR("ERROR\n");
-							  }
-
-							  // Find this vertex's prediction in the model
-							  auto it = std::find_if(best_model.vertices.begin(), best_model.vertices.end(),
-													 [&](auto& v) { return v == vertex; });
-
-							  // Store prediction, Rf_error, and scale
-							  if (it != best_model.vertices.end()) {
-								  size_t idx = it - best_model.vertices.begin();
-								  result.predictions[vertex] = best_model.predictions[idx];
-								  result.errors[vertex] = best_model.errors[idx];
-							  } else {
-								  // Fallback if vertex not found in predictions
-								  Rprintf("vertex: %zu\n", vertex);
-								  Rprintf("best_bw_idx: %zu\n", best_bw_idx);
-								  Rprintf("best_model.vertices.size(): %zu\n", best_model.vertices.size());
-								  //print_vect(best_model.vertices, "best_model.vertices");
-
-								  REPORT_ERROR("ERROR: vertex %zu not found in best_model.vertices\n", vertex);
-							  }
-
-							  result.scale[vertex] = candidate_bws[best_bw_idx];
-
-						  } else {
-							  // No valid models found
-							  result.predictions[vertex] = std::numeric_limits<double>::quiet_NaN();
-							  result.errors[vertex] = std::numeric_limits<double>::infinity();
-							  result.scale[vertex] = max_bw;
-							  REPORT_ERROR("ERROR: No valid models found for vertex: %zu\n", vertex);
-						  }
-
-						  // Update progress counter
-						  if (verbose) {
-							  size_t current = ++progress_counter;
-							  if (current % progress_step == 0 || current == n_vertices) {
-								  double percentage = 100.0 * current / n_vertices;
-								  Rprintf("\rProcessing vertices: %.1f%% complete (%zu/%zu)",
-										  percentage, current, n_vertices);
-								  R_FlushConsole();
-							  }
-						  }
-					  } catch (const std::exception& e) {
-						  REPORT_ERROR("Error processing vertex %zu: %s", vertex, e.what());
-					  }
-				  }
-		);
+			// Progress
+			if (verbose) {
+				++progress_counter;
+				if (progress_counter % progress_step == 0 || progress_counter == n_vertices) {
+					double percentage = 100.0 * progress_counter / static_cast<double>(n_vertices);
+					Rprintf("\rProcessing vertices: %.1f%% complete (%zu/%zu)",
+							percentage, progress_counter, n_vertices);
+					R_FlushConsole();
+				}
+			}
+		} catch (const std::exception& e) {
+			REPORT_ERROR("Error processing vertex %zu: %s", vertex, e.what());
+		}
+	}
 
 	bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
 	if (y_binary) {

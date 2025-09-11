@@ -27,7 +27,7 @@ struct vertex_path_info_t {
 
     // Helper method to get full paths of specific length
     std::vector<std::pair<std::vector<int>, int>>
-    get_full_paths(int desired_length,
+    get_full_paths(size_t desired_length,
                   const std::map<std::pair<int,int>, std::vector<int>>& shortest_paths) const {
         std::vector<std::pair<std::vector<int>, int>> result;
 

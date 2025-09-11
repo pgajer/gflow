@@ -626,7 +626,7 @@ std::pair<std::vector<double>, std::vector<int>> pgmalo_with_cv_weights(
 
             // Count non-zero weight points in this path
             int n_non_zero_points = 0;
-            for (int i = 0; i < path.size(); ++i) {
+            for (size_t i = 0; i < path.size(); ++i) {
                 if (weights[path[i]] > epsilon) {
                     n_non_zero_points++;
                 }

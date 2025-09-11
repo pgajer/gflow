@@ -19,8 +19,7 @@
 #include <chrono>
 #include <cmath>
 
-// #include <omp.h>
-#include "omp_compat.h"
+// #include "omp_compat.h"
 
 #include "sampling.h" // for C_runif_simplex()
 #include "msr2.h"
@@ -1265,9 +1264,9 @@ adaptive_nbhd_size_t gkmm(const std::vector<std::vector<int>>& graph,
                                  dist_normalization_factor);
 
     // Compute true errors
-    if (!y_true.empty() && y_true.size() == n_vertices) {
+    if (!y_true.empty() && (int)y_true.size() == n_vertices) {
         results.true_errors.resize(n_vertices);
-        for (size_t i = 0; i < n_vertices; i++) {
+        for (int i = 0; i < n_vertices; i++) {
             results.true_errors[i] = std::abs(y_true[i] - results.condEy[i]);
         }
     } else {

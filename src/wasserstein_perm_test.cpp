@@ -25,17 +25,13 @@
  */
 
 #include <vector>          // for std::vector
+#include <algorithm>       // for std::count_if
 #include <random>          // for std::random_device, std::mt19937, std::uniform_int_distribution
 #include <utility>         // for std::pair
-#include <algorithm>       // for std::for_each, std::count_if
 #include <numeric>         // for std::iota
-#include <execution>       // for std::execution::seq, std::execution::par_unseq
-#include <thread>          // for std::thread::hardware_concurrency()
 #include <cstddef>         // for size_t
 
 #include "wasserstein_perm_test.hpp"  // Contains vertex_wasserstein_perm_test_results_t definition and C_wasserstein_distance_1D
-#include "exec_policy.hpp"
-#include "omp_compat.h"
 
 /**
  * @brief Performs a vertex-wise Wasserstein permutation test
@@ -103,64 +99,46 @@ vertex_wasserstein_perm_test_results_t vertex_wasserstein_perm_test(
         pairs.emplace_back(i, j);
     }
 
-    // Compute null distribution of Wasserstein distances
-    std::vector<size_t> bootstrap_indices(n_bootstraps);
-    std::iota(bootstrap_indices.begin(), bootstrap_indices.end(), 0);
+    // Compute null distribution of Wasserstein distances (serial)
+    for (size_t k = 0; k < n_bootstraps; ++k) {
+        const auto& [i, j] = pairs[k];
+        int n_test_int = static_cast<int>(n_tests);
+        C_wasserstein_distance_1D(
+            null_values[i].data(),
+            null_values[j].data(),
+            &n_test_int,
+            &results.null_distances[k]
+            );
+    }
 
-    gflow::for_each(gflow::seq,
-                  bootstrap_indices.begin(),
-                  bootstrap_indices.end(),
-                  [&](size_t k) {  // Changed from int to size_t to match index type
-                      const auto& [i, j] = pairs[k];
-                      int n_test_int = static_cast<int>(n_tests);
-                      C_wasserstein_distance_1D(
-                          null_values[i].data(),
-                          null_values[j].data(),
-                          &n_test_int,
-                          &results.null_distances[k]  // Fixed: use k instead of undefined variable
-                          );
-                  });
+    // Reusable buffer for a single vertex's bootstrap values
+    std::vector<double> vertex_bb_values(n_tests);
 
-    // Extract bb values and compute effect sizes for each vertex
-    std::vector<size_t> vertex_indices(n_vertices);
-    std::iota(vertex_indices.begin(), vertex_indices.end(), 0);
+    for (size_t i = 0; i < n_vertices; ++i) {
+        // Collect bootstrap distribution for this vertex
+        for (size_t j = 0; j < n_tests; ++j) {
+            vertex_bb_values[j] = bb_predictions[j][i];
+        }
 
-    // Create thread-local storage for vertex_bb_values
-    const size_t n_threads = std::thread::hardware_concurrency();
-    std::vector<std::vector<double>> thread_local_bb_values(n_threads, std::vector<double>(n_tests));
+        // Compute Wasserstein distance between bb and null distributions
+        int n_test_int = static_cast<int>(n_tests);
+        C_wasserstein_distance_1D(
+            vertex_bb_values.data(),
+            null_values[i].data(),
+            &n_test_int,
+            &results.effect_sizes[i]
+            );
 
-    gflow::for_each(gflow::seq,
-                  vertex_indices.begin(),
-                  vertex_indices.end(),
-                  [&](size_t i) {  // Changed from int to size_t
-                      // Get thread-local storage
-                      const int thread_id = omp_get_thread_num() % n_threads;
-                      auto& vertex_bb_values = thread_local_bb_values[thread_id];
+        // Compute p-value from null distances
+        size_t more_extreme = std::count_if(
+            results.null_distances.begin(),
+            results.null_distances.end(),
+            [es = results.effect_sizes[i]](double d) { return d >= es; }
+            );
 
-                      // Get bootstrap distribution for this vertex
-                      for (size_t j = 0; j < n_tests; ++j) {
-                          vertex_bb_values[j] = bb_predictions[j][i];
-                      }
-
-                      // Compute Wasserstein distance between bb and null distributions
-                      int n_test_int = static_cast<int>(n_tests);
-                      C_wasserstein_distance_1D(
-                          vertex_bb_values.data(),
-                          null_values[i].data(),
-                          &n_test_int,
-                          &results.effect_sizes[i]
-                          );
-
-                      // Compute p-value
-                      size_t more_extreme = std::count_if(
-                          results.null_distances.begin(),
-                          results.null_distances.end(),
-                          [es = results.effect_sizes[i]](double d) { return d >= es; }
-                          );
-
-                      results.p_values[i] = static_cast<double>(more_extreme) / n_bootstraps;
-                      results.significant_vertices[i] = results.p_values[i] < alpha;
-                  });
+        results.p_values[i] = static_cast<double>(more_extreme) / static_cast<double>(n_bootstraps);
+        results.significant_vertices[i] = (results.p_values[i] < alpha);
+    }
 
     return results;
 }

@@ -343,7 +343,7 @@ pgmalo_t pgmalo(const std::vector<std::vector<int>>& neighbors,
 
     // Compute true errors if available
     if (!y_true.empty()) {
-        if (y_true.size() != n_vertices) {
+        if ((int)y_true.size() != n_vertices) {
             Rf_error("y_true size (%zu) does not match number of vertices (%d)",
                     y_true.size(), n_vertices);
         }
@@ -917,10 +917,7 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
             std::vector<int> path = vertex_paths[path_i].first;
             int position_in_path = vertex_paths[path_i].second;
 
-            // Clear data vectors
-            y_path.clear();
-            x_path.clear();
-            d_path.clear();
+            // Initialize the first entries, then fill the rest
             x_path[0] = 0;
             y_path[0] = y[path[0]];
 
@@ -946,6 +943,14 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
             kernel_fn(d_path.data(), path_n_vertices, w_path.data());
 
             double total_w_path = std::accumulate(w_path.begin(), w_path.end(), 0.0);
+
+            if (total_w_path <= 0.0 || !std::isfinite(total_w_path)) {
+                // fallback to uniform weights over the path segment
+                double inv = 1.0 / static_cast<double>(path_n_vertices);
+                for (int i = 0; i < path_n_vertices; ++i) w_path[i] = inv;
+                total_w_path = 1.0;
+            }
+
             for (int i = 0; i < path_n_vertices; ++i)
                 w_path[i] = w_path[i] / total_w_path * weights[path[i]];
 
@@ -979,22 +984,23 @@ std::pair<std::vector<double>, std::vector<double>> spgmalo(
         Rprintf("  Phase 2: Computing model-averaged predictions ... ");
     }
     auto phase2_ptm = std::chrono::steady_clock::now();
-
-    double weighted_sum = 0.0;
-    double weight_sum = 0.0;
-    double wmean_error = 0.0;
-
     for (int i = 0; i < n_vertices; i++) {
-        weighted_sum = 0.0;
-        weight_sum = 0.0;
-        wmean_error = 0.0;
+        double weighted_sum = 0.0, weight_sum = 0.0, wmean_error = 0.0;
+
         for (const auto& v : vertex_pred_w_err[i]) {
             weighted_sum += v.weight * v.prediction;
             weight_sum   += v.weight;
             wmean_error  += v.weight * v.Rf_error;
         }
-        predictions[i] = weighted_sum / weight_sum;
-        errors[i] = wmean_error / weight_sum;
+
+        if (weight_sum > 0.0) {
+            predictions[i] = weighted_sum / weight_sum;
+            errors[i]      = wmean_error  / weight_sum;
+        } else {
+            // Fallback: use original y or 0; choose what makes sense for your pipeline
+            predictions[i] = y[i];
+            errors[i]      = 0.0;
+        }
     }
 
     if (verbose) {
@@ -1456,7 +1462,7 @@ pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
 
     // Compute true errors if available
     if (!y_true.empty()) {
-        if (y_true.size() != n_vertices) {
+        if ((int)y_true.size() != n_vertices) {
             Rf_error("y_true size (%zu) does not match number of vertices (%d)",
                     y_true.size(), n_vertices);
         }

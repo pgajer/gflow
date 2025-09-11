@@ -16,15 +16,12 @@
 #include <map>
 #include <utility>
 #include <numeric> // for std::accumulate
-#include <execution>
 #include <atomic>
 #include <mutex>
 #include <random>     // for std::mt19937
 #include <chrono>
 #include <thread>      // For std::thread
 
-#include "omp_compat.h"
-#include "exec_policy.hpp"
 #include "edge_weights.hpp"
 #include "ulm.hpp"
 #include "graph_utils.hpp"
@@ -517,44 +514,35 @@ uggmalo_t uggmalo(
             std::numeric_limits<double>::infinity();
     };
 
-    // Step 3: Process each bandwidth in parallel
-    std::vector<int> bw_indices(n_bws);
-    std::iota(bw_indices.begin(), bw_indices.end(), 0);
+    // Progress tracking (serial)
+    const size_t progress_chunk = std::max<size_t>(1, n_bws / 10);  // report ~every 10%
 
-    // Progress tracking
-    std::atomic<int> bandwidth_counter{0};
-    const size_t progress_chunk = std::max<size_t>(1, n_bws / 10);  // Report every 10% progress
+    for (size_t bw_idx = 0; bw_idx < n_bws; ++bw_idx) {
+        // Optional progress
+        if (verbose) {
+            size_t current = bw_idx + 1;  // processed so far
+            if (current % progress_chunk == 0 || current == n_bws) {
+                REprintf("\rProcessing bandwidth %zu%%",
+                         static_cast<size_t>( (100.0 * current) / n_bws ));
+            }
+        }
 
-    // Parallel execution of bandwidth processing
-    gflow::for_each(gflow::seq,
-                  bw_indices.begin(),
-                  bw_indices.end(),
-                  [&](int bw_idx) {
-                      if (verbose && (bw_idx % 5 == 0)) {
-                          // Thread-safe progress update
-                          int current_count = ++bandwidth_counter;
-                          if (current_count % progress_chunk == 0) {
-                              REprintf("\rProcessing bandwidth %d%%",
-                                       static_cast<int>((100.0 * current_count) / n_bws));
-                          }
-                      }
+        process_bw(
+            result.candidate_bws[bw_idx],
+            uniform_grid_graph,
+            y,
+            result.bw_predictions[bw_idx],
+            result.mean_errors[bw_idx],
+            std::nullopt
+            );
 
-                      process_bw(
-                          result.candidate_bws[bw_idx],
-                          uniform_grid_graph,
-                          y,
-                          result.bw_predictions[bw_idx],
-                          result.mean_errors[bw_idx],
-                          std::nullopt
-                          );
-
-                      if (result.mean_errors[bw_idx] == std::numeric_limits<double>::infinity()) {
-                          if (verbose) {
-                              REprintf("Warning: No valid mean errors for bandwidth index %d and bandwidth %f\n",
-                                       bw_idx, result.candidate_bws[bw_idx]);
-                          }
-                      }
-                  });
+        if (result.mean_errors[bw_idx] == std::numeric_limits<double>::infinity()) {
+            if (verbose) {
+                REprintf("Warning: No valid mean errors for bandwidth index %zu and bandwidth %f\n",
+                         bw_idx, result.candidate_bws[bw_idx]);
+            }
+        }
+    }
 
     if (verbose) {
         Rprintf("\nBandwidth processing completed.\n");
@@ -598,77 +586,48 @@ uggmalo_t uggmalo(
             thread_rngs[i].seed(rd());
         }
 
-        // Create indices for parallel iteration
-        std::vector<int> bb_indices(n_bb);
-        std::iota(bb_indices.begin(), bb_indices.end(), 0);
+        // Progress tracking (serial): report every ~1%
+        const size_t progress_chunk = std::max<size_t>(1, n_bb / 100);
 
-        // Progress tracking
-        std::atomic<int> bootstrap_counter{0};
-        const size_t progress_chunk = std::max<size_t>(1, n_bb / 100);  // Report every 1% progress
+        for (size_t iboot = 0; iboot < n_bb; ++iboot) {
+            // Local RNG seeded by iboot for reproducibility
+            std::mt19937 local_rng(static_cast<unsigned int>(std::hash<int>{}(iboot)));
 
-        // Parallel execution with thread-local RNG
-        gflow::for_each(gflow::seq,
-                      bb_indices.begin(),
-                      bb_indices.end(),
-                      [&](int iboot) {
-                          // Get thread-local RNG
-                          const int thread_id = omp_get_thread_num() % num_threads;
-                          auto& local_rng = thread_rngs[thread_id];
+            // Generate weights using local RNG
+            std::vector<double> weights(n_points);
+            {
+                std::gamma_distribution<double> gamma(1.0, 1.0);
+                double sum = 0.0;
+                for (int i = 0; i < n_points; ++i) {
+                    weights[i] = gamma(local_rng);
+                    sum += weights[i];
+                }
+                // Normalize weights (assumes sum > 0)
+                for (int i = 0; i < n_points; ++i) {
+                    weights[i] /= sum;
+                }
+            }
 
-                          // Generate weights using thread-local RNG
-                          std::vector<double> weights(n_points);
-                          {
-                              // Use thread-local RNG to generate weights
-                              std::gamma_distribution<double> gamma(1.0, 1.0);
-                              double sum = 0.0;
-                              for (int i = 0; i < n_points; ++i) {
-                                  weights[i] = gamma(local_rng);
-                                  sum += weights[i];
-                              }
-                              // Normalize weights
-                              for (int i = 0; i < n_points; ++i) {
-                                  weights[i] /= sum;
-                              }
-                          }
+            // Process bootstrap with local weights
+            double bootstrap_error;
+            process_bw(
+                result.opt_bw,
+                uniform_grid_graph,
+                y,
+                result.bb_predictions[iboot],
+                bootstrap_error,
+                std::optional<std::vector<double>>(weights)
+                );
 
-                          // Process bootstrap with thread-local weights
-                          double bootstrap_error;
-                          process_bw(
-                              result.opt_bw,
-                              uniform_grid_graph,
-                              y,
-                              result.bb_predictions[iboot],
-                              bootstrap_error,
-                              std::optional<std::vector<double>>(weights)
-                              );
-
-                          // Thread-safe progress update without mutex
-                          if (verbose) {
-                              int current_count = ++bootstrap_counter;
-                              if (current_count % progress_chunk == 0) {
-                                  // Use \r to move cursor to start of line
-                                  REprintf("\rBootstrap progress: %d%%",
-                                           static_cast<int>((100.0 * current_count) / n_bb));
-                              }
-                          }
-
-                          #if 0
-                          // Thread-safe progress update
-                          int current_count = ++bootstrap_counter;
-                          if (verbose && (current_count % progress_chunk == 0)) {
-                              auto current_time = std::chrono::steady_clock::now();
-                              auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-                                  current_time - start_time).count();
-                              double progress = (100.0 * current_count) / n_bb;
-
-                              std::lock_guard<std::mutex> lock(console_mutex); // line (uggmalo.cpp:704) <<---
-                              Rprintf("\rBootstrap progress: %.1f%% (%d/%zu) - Elapsed: %llds",
-                                      progress, current_count, n_bb, elapsed);
-                              //R_FlushConsole();
-                          }
-                          #endif
-                      });
-
+            // Progress update
+            if (verbose) {
+                size_t current = static_cast<size_t>(iboot) + 1;
+                if (current % progress_chunk == 0 || current == static_cast<size_t>(n_bb)) {
+                    REprintf("\rBootstrap progress: %d%%",
+                             static_cast<int>((100.0 * current) / static_cast<size_t>(n_bb)));
+                }
+            }
+        }
 
         bool use_median = true;
         bb_cri_t bb_cri_res = bb_cri(result.bb_predictions, use_median, p);
@@ -692,82 +651,47 @@ uggmalo_t uggmalo(
             pred.resize(n_points);
         }
 
-        // Create indices for parallel iteration
-        std::vector<int> perm_indices(n_perms);
-        std::iota(perm_indices.begin(), perm_indices.end(), 0);
+        // Progress cadence (~1%)
+        const size_t progress_chunk = std::max<size_t>(1, n_perms / 100);
 
-        // Create indices for permutation
         std::vector<size_t> indices(n_points);
-        std::iota(indices.begin(), indices.end(), 0);
+        for (size_t iperm = 0; iperm < static_cast<size_t>(n_perms); ++iperm) {
+            // Local RNG seeded by iperm for reproducibility
+            std::mt19937 local_rng(static_cast<unsigned int>(std::hash<size_t>{}(iperm)));
 
-        // Mutex for thread-safe random number generation
-        std::mutex rng_mutex;
+            // Prepare permutation indices [0..n_points-1] and shuffle
+            std::iota(indices.begin(), indices.end(), 0);
+            std::shuffle(indices.begin(), indices.end(), local_rng);
 
-        // Atomic counter for tracking progress
-        std::atomic<int> permutation_counter{0};
-        const size_t progress_chunk = std::max<size_t>(1, n_perms / 100);  // Report every 1% progress
+            // Apply permutation
+            std::vector<double> y_shuffled(n_points);
+            for (size_t i = 0; i < n_points; ++i) {
+                y_shuffled[i] = y[indices[i]];
+            }
 
-        // Track time for progress updates
-        // auto ptm = std::chrono::steady_clock::now();
+            // Process permuted data using optimal bandwidth
+            double dummy_error;
+            process_bw(
+                result.opt_bw,
+                uniform_grid_graph,
+                y_shuffled,
+                result.null_predictions[iperm],
+                dummy_error,     // unused error output
+                std::nullopt     // no weights in permutation test
+                );
 
-        // Create a random number generator
-        std::random_device rd;
-        std::mt19937 gen(rd());
+            // Progress
+            if (verbose) {
+                size_t current = iperm + 1;
+                if (current % progress_chunk == 0 || current == static_cast<size_t>(n_perms)) {
+                    REprintf("\rPermutation Test Progress: %d%%",
+                             static_cast<int>((100.0 * current) / static_cast<size_t>(n_perms)));
+                }
+            }
 
-        // Parallel execution of permutation iterations
-        gflow::for_each(gflow::seq,
-                      perm_indices.begin(),
-                      perm_indices.end(),
-                      [&](int iperm) {
-                          // Create permuted y vector
-                          std::vector<double> y_perm(y);  // Copy original y
-
-                          // Generate permutation in thread-safe manner
-                          {
-                              std::lock_guard<std::mutex> lock(rng_mutex);
-                              std::shuffle(indices.begin(), indices.end(), gen);
-                          }
-
-                          // Apply permutation
-                          std::vector<double> y_shuffled(n_points);
-                          for (size_t i = 0; i < n_points; ++i) {
-                              y_shuffled[i] = y[indices[i]];
-                          }
-
-                          // Process permuted data using optimal bandwidth
-                          double dummy_error;
-                          process_bw(
-                              result.opt_bw,
-                              uniform_grid_graph,
-                              y_shuffled,
-                              result.null_predictions[iperm],
-                              dummy_error,    // Dummy variable for unused Rf_error
-                              std::nullopt   // No weights for permutation test
-                              );
-
-                          // Increment counter and update progress
-                          if (verbose) {
-                              int current_count = ++permutation_counter;
-                              if (current_count % progress_chunk == 0) {
-                                  // Use \r to move cursor to start of line
-                                  REprintf("\rPermutation Test Progress: %d%%",
-                                           static_cast<int>((100.0 * current_count) / n_perms));
-                              }
-                          }
-
-                          #if 0
-                          if (verbose) {
-                              int current_count = ++permutation_counter;
-                              {
-                                  std::lock_guard<std::mutex> lock(console_mutex);
-                                  char msg[100];
-                                  snprintf(msg, sizeof(msg), "\rProcessed %d permutations", current_count);
-                                  elapsed_time(ptm, msg, true);
-                                  ptm = std::chrono::steady_clock::now();
-                              }
-                          }
-                          #endif
-                      });
+            // (Optional) free memory early
+            // y_shuffled.shrink_to_fit(); // usually unnecessary
+        }
 
         if (verbose) {
             Rprintf("\nPermutation Test Completed.\n");
