@@ -2,9 +2,11 @@
 # https://github.com/r-hub/actions/blob/v1/workflows/rhub.yaml
 # You can update this file to a newer version using the rhub2 package:
 #
-# rhub::rhub_setup()
+#   rhub::rhub_setup()
 #
-# It is unlikely that you need to modify this file manually.
+# It is unlikely that you need to modify this file manually. The only change
+# below is a CI-only step to remove .github/pkg.lock to avoid pak lockfile
+# issues on shared runners.
 
 name: R-hub
 run-name: "${{ github.event.inputs.id }}: ${{ github.event.inputs.name || format('Manually run by {0}', github.triggering_actor) }}"
@@ -29,14 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       containers: ${{ steps.rhub-setup.outputs.containers }}
-      platforms: ${{ steps.rhub-setup.outputs.platforms }}
+      platforms:  ${{ steps.rhub-setup.outputs.platforms }}
 
     steps:
-    # NO NEED TO CHECKOUT HERE
-    - uses: r-hub/actions/setup@v1
-      with:
-        config: ${{ github.event.inputs.config }}
-      id: rhub-setup
+      # NO NEED TO CHECKOUT HERE
+      - uses: r-hub/actions/setup@v1
+        id: rhub-setup
+        with:
+          config: ${{ github.event.inputs.config }}
 
   linux-containers:
     needs: setup
@@ -52,14 +54,21 @@ jobs:
 
     steps:
       - uses: r-hub/actions/checkout@v1
+
+      # CI-only: avoid pak::lockfile_install(".github/pkg.lock") issues
+      - name: Remove lockfile (CI-only)
+        run: rm -f .github/pkg.lock
+
       - uses: r-hub/actions/platform-info@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+
       - uses: r-hub/actions/setup-deps@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+
       - uses: r-hub/actions/run-check@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
@@ -77,18 +86,26 @@ jobs:
 
     steps:
       - uses: r-hub/actions/checkout@v1
+
+      # CI-only: avoid pak::lockfile_install(".github/pkg.lock") issues
+      - name: Remove lockfile (CI-only)
+        run: rm -f .github/pkg.lock
+
       - uses: r-hub/actions/setup-r@v1
         with:
           job-config: ${{ matrix.config.job-config }}
           token: ${{ secrets.RHUB_TOKEN }}
+
       - uses: r-hub/actions/platform-info@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+
       - uses: r-hub/actions/setup-deps@v1
         with:
           job-config: ${{ matrix.config.job-config }}
           token: ${{ secrets.RHUB_TOKEN }}
+
       - uses: r-hub/actions/run-check@v1
         with:
           job-config: ${{ matrix.config.job-config }}
