@@ -25,6 +25,7 @@ src/*.a
 src/**/*.o
 src/**/*.so
 src/**/*.a
+src/ANN/*.o
 
 # Vignettes build outputs
 inst/doc/
