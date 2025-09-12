@@ -3,7 +3,7 @@
 \name{create.3D.TN.grid.plus}
 \alias{create.3D.TN.grid.plus}
 \title{Creates a tubular neighborhood 3D grid of X returning a list with a grid
-around X and the distance to the boundary of the grid.}
+around X and the distance to the boundary of the grid}
 \usage{
 create.3D.TN.grid.plus(
   X,
@@ -40,5 +40,5 @@ subdivision of the minimal spanning tree of X, mstree(X), are eliminated from th
 }
 \description{
 Creates a tubular neighborhood 3D grid of X returning a list with a grid
-around X and the distance to the boundary of the grid.
+around X and the distance to the boundary of the grid
 }

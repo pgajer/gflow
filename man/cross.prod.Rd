@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{cross.prod}
 \alias{cross.prod}
-\title{Computes a cross product between two 3D vectors.}
+\title{Computes a cross product between two 3D vectors}
 \usage{
 cross.prod(x, y)
 }

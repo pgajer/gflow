@@ -29,7 +29,7 @@ Creates a plot of Median Absolute Error (MAE) with error bars
 \details{
 This function creates a line plot with error bars showing the median absolute
 error across different numbers of nearest neighbors. The error bars represent
-±0.5 * MAD (median absolute deviation).
++/-0.5 * MAD (median absolute deviation).
 }
 \examples{
 \dontrun{

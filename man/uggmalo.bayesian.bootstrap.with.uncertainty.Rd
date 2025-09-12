@@ -15,7 +15,7 @@ uggmalo.bayesian.bootstrap.with.uncertainty(
 \arguments{
 \item{perm.results}{Numeric matrix where each row corresponds to a vertex
 and each column contains predictions from a permutation run. Dimensions
-should be (number of vertices × number of permutations).}
+should be (number of vertices x number of permutations).}
 
 \item{true.predictions}{Numeric vector of original UGGMALO predictions
 for each vertex. Length must match the number of rows in
@@ -40,7 +40,7 @@ A list of class "uggmalo_bootstrap" containing:
 \item{ci.lower}{Numeric vector of lower bounds of \eqn{95\%} credible intervals}
 \item{ci.upper}{Numeric vector of upper bounds of \eqn{95\%} credible intervals}
 \item{bootstrap.distribution}{Matrix of bootstrap estimates where each
-column represents one bootstrap iteration (vertices × iterations)}
+column represents one bootstrap iteration (vertices x iterations)}
 }
 \description{
 \strong{Note: This is an experimental function and may produce errors under certain conditions.

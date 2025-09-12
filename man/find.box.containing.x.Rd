@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{find.box.containing.x}
 \alias{find.box.containing.x}
-\title{Finds the box within a box list covering some data set that contains a given point.}
+\title{Finds the box within a box list covering some data set that contains a given point}
 \usage{
 find.box.containing.x(boxes, x)
 }

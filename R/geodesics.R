@@ -28,7 +28,7 @@ o.inv.fn <- function(o)
     o.inv
 }
 
-#' Produces k-NN distance and index matrices associated with a distance matrix.
+#' Produces k-NN distance and index matrices associated with a distance matrix
 #'
 #' @param d   A distance matrix.
 #' @param k   The number of nearest neighbors.
@@ -72,7 +72,7 @@ dist.to.knn <- function(d, k)
 }
 
 #' Distances from the first vertex of a path to each consecutive vertex along
-#' the given path normalized so that the total distance is 1.
+#' the given path normalized so that the total distance is 1
 #'
 #' @param s        A sequences of vertex indices of the graph - the path.
 #' @param V        A vertex positions matrix.
@@ -111,7 +111,7 @@ path.dist <- function(s, V, edge.col="gray")
     d / d[n]
 }
 
-#' Computes the length of a path specified by a matrix X.
+#' Computes the length of a path specified by a matrix X
 #'
 #' @param X A matrix of points along a path.
 #'
@@ -247,7 +247,7 @@ euclidean.distance <- function(p1, p2)
 }
 
 #' Subdivides a path of points in \eqn{R^n} into a uniform grid of points along
-#' the path.
+#' the path
 #'
 #' @param path               A matrix of consecutive path points in some state space.
 #' @param n.subdivision.pts  The number of points in the grid.
@@ -326,7 +326,7 @@ subdivide.path <- function(path, n.subdivision.pts)
     subdivision.pts
 }
 
-#' Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path.
+#' Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path
 #'
 #' @param path               A matrix of consecutive path points in some state space.
 #' @param n.subdivision.pts  The number of points in the grid.
@@ -451,7 +451,7 @@ create.tubular.nbhd.of.a.geodesic <- function(smoothed.geodesic,
     res
 }
 
-#' Estimates and the mean prevalence of a factors along a geodesic.
+#' Estimates and the mean prevalence of a factors along a geodesic
 #'
 #' Given a list of subject-level factors, subj.factors, and IDs of the given
 #' branch, bch.ids, as well as the distance along the geodesic, gamma, vector
@@ -544,7 +544,7 @@ E.geodesic.F <- function(subj.factors,
     save.files
 }
 
-#' Generates figures associated with E.geodesic.F estimates.
+#' Generates figures associated with E.geodesic.F estimates
 #'
 #' @param save.file.prefix   A prefix of the save() files.
 #' @param rlabs              Labels of the subject factors with levels.
@@ -603,7 +603,7 @@ fig.E.geodesic.F <- function(save.file.prefix, rlabs, pics.file.prefix)
     }
 }
 
-#' Sings of the derivatives of the E.geodesic.F profiles.
+#' Sings of the derivatives of the E.geodesic.F profiles
 #'
 #' @param save.file.prefix   The prefix of the save() files.
 #' @param rlabs              Labels of the subject factors with levels.
@@ -643,7 +643,7 @@ subj.factor.signEy.profs <- function(save.file.prefix, rlabs, grid.size=400)
     subj.factor.signEy.profs
 }
 
-#' Generates a data frame of proportion plus/minus dE.geodesic.F profiles.
+#' Generates a data frame of proportion plus/minus dE.geodesic.F profiles
 #'
 #' @param subj.factor.signEy.profs  An output from subj.factor.signEy.profs().
 #' @param rowInd             Row index permutation vector as returned by 'order.dendrogram'.
@@ -779,7 +779,7 @@ vars.approx.monotonically.assoc.with.geodesic <- function(X, eps = 0.4) {
     return(monotonic)
 }
 
-#' Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space.
+#' Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space
 #'
 #' @param sID      A subject ID.
 #' @param S        A state space.
@@ -1063,7 +1063,7 @@ estimate_density <- function(point, X) {
     return(1)  # Returning a constant for simplicity.
 }
 
-#' Estimates geodesic (shortest path) nearest neighbors.
+#' Estimates geodesic (shortest path) nearest neighbors
 #'
 #' @param X      A numeric matrix.
 #' @param k      The number of nearest neighbors to be returned.
@@ -1309,8 +1309,8 @@ estimate.geodesic.distances <- function(points, k = 5, graph = NULL, method = "k
     return(geodesic_distances)
 }
 
-#' Estimates geodesic (shortest path) nearest neighbors of X.grid points in X.
-#' That is for each point of X.grid the k-NN's within X are returned.
+#' Estimates geodesic (shortest path) nearest neighbors of X.grid points in X
+#' That is for each point of X.grid the k-NN's within X are returned
 #'
 #' @param X      A numeric matrix.
 #' @param X.grid A grid associated with X.
@@ -1450,7 +1450,7 @@ geodesic.knnx <- function(X, X.grid, k, method="knn.graph", K=5) {
 }
 
 #' Creates weights adjacency matrix given a matrix of edges and position matrix
-#' of the corresponding vertices.
+#' of the corresponding vertices
 #'
 #' The weights adjacency matrix A has the property that the (i,j) entry is the
 #' weight of the edge between i and j, if such edge exists, and 0 otherwise. The

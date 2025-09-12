@@ -55,3 +55,8 @@ if (!exists(".gflow_state", inherits = FALSE)) {
     options(rgl.useNULL = .gflow_state$old_rgl_useNULL)
   }
 }
+
+is_valgrind <- function() nzchar(Sys.getenv("R_VALGRIND_OPTS"))
+is_check    <- function() identical(Sys.getenv("_R_CHECK_PACKAGE_NAME_"), "gflow") ||
+                           nzchar(Sys.getenv("_R_CHECK_LENGTH_1_LOGIC2_"))          # common CRAN flag
+safe_cores  <- function(n) if (is_valgrind() || is_check()) 1L else as.integer(n)

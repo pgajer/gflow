@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{vector.norm}
 \alias{vector.norm}
-\title{The norm of a vector.}
+\title{The norm of a vector}
 \usage{
 vector.norm(x)
 }
@@ -10,5 +10,5 @@ vector.norm(x)
 \item{x}{A numeric vector.}
 }
 \description{
-The norm of a vector.
+The norm of a vector
 }

@@ -23,8 +23,9 @@ This function calculates the elapsed time since a given start time,
 formats it, and prints it with an optional message.
 }
 \examples{
+\dontrun{
 start <- proc.time()
 Sys.sleep(2)  # Do some work
 elapsed.time(start, "Processing complete")
-
+}
 }

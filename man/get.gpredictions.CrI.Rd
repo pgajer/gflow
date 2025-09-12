@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{get.gpredictions.CrI}
 \alias{get.gpredictions.CrI}
-\title{Generates Bayesian bootstrap credible intervals of gpredictions.}
+\title{Generates Bayesian bootstrap credible intervals of gpredictions}
 \usage{
 get.gpredictions.CrI(
   n.BB,
@@ -54,7 +54,7 @@ get.gpredictions.CrI(
 A matrix of Bayesian bootstrap credible intervals of gpredictions.
 }
 \description{
-Generates Bayesian bootstrap credible intervals of gpredictions.
+Generates Bayesian bootstrap credible intervals of gpredictions
 }
 \examples{
 # TBD

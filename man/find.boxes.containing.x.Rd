@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{find.boxes.containing.x}
 \alias{find.boxes.containing.x}
-\title{Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point.}
+\title{Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point}
 \usage{
 find.boxes.containing.x(boxes, x, p.exp = 0.1, margin = NULL)
 }
@@ -19,7 +19,7 @@ find.boxes.containing.x(boxes, x, p.exp = 0.1, margin = NULL)
 A list representing the sub-box containing \code{x}, or \code{NULL} if \code{x} is not found within any sub-box.
 }
 \description{
-Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point.
+Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point
 }
 \examples{
 \dontrun{

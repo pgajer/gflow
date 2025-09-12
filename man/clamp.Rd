@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{clamp}
 \alias{clamp}
-\title{Restricts the range of value of a numeric vector to \code{[xmin, xmax]}.}
+\title{Restricts the range of value of a numeric vector to \code{[xmin, xmax]}}
 \usage{
 clamp(x, xmin, xmax)
 }
@@ -17,5 +17,5 @@ clamp(x, xmin, xmax)
 A vector with all values below xmin set to xmin and all value above xmax set to xmax.
 }
 \description{
-Restricts the range of value of a numeric vector to \code{[xmin, xmax]}.
+Restricts the range of value of a numeric vector to \code{[xmin, xmax]}
 }

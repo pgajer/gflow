@@ -40,6 +40,6 @@ print(result)
 
 }
 \references{
-Wang, Q., Kulkarni, S. R., & Verdú, S. (2009). Divergence estimation for multidimensional densities
+Wang, Q., Kulkarni, S. R., & Verdu, S. (2009). Divergence estimation for multidimensional densities
 via k-nearest-neighbor distances. IEEE Transactions on Information Theory, 55(5), 2392-2405.
 }

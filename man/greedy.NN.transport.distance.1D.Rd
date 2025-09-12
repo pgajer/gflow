@@ -2,7 +2,7 @@
 % Please edit documentation in R/wasserstein_dist.R
 \name{greedy.NN.transport.distance.1D}
 \alias{greedy.NN.transport.distance.1D}
-\title{A function to compute the Wasserstein distance between two samples from one-dimensional distributions using nearest neighbors strategy.}
+\title{A function to compute the Wasserstein distance between two samples from one-dimensional distributions using nearest neighbors strategy}
 \usage{
 greedy.NN.transport.distance.1D(x, y)
 }

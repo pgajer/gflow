@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict.BB.CrI}
 \alias{llm.1D.fit.and.predict.BB.CrI}
-\title{Creates BB CI's of a 1D rllm model's predictions estimates.}
+\title{Creates BB CI's of a 1D rllm model's predictions estimates}
 \usage{
 llm.1D.fit.and.predict.BB.CrI(
   nn.i,
@@ -42,5 +42,5 @@ llm.1D.fit.and.predict.BB.CrI(
 predictions.CrI of length nx.
 }
 \description{
-Creates BB CI's of a 1D rllm model's predictions estimates.
+Creates BB CI's of a 1D rllm model's predictions estimates
 }

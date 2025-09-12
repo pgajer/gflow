@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{subdivide.path.v1}
 \alias{subdivide.path.v1}
-\title{Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path.}
+\title{Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path}
 \usage{
 subdivide.path.v1(path, n.subdivision.pts)
 }
@@ -17,7 +17,7 @@ input path. Each row represents a point along the subdivided path, with points
 evenly spaced according to the path's arc length.
 }
 \description{
-Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path.
+Subdivides a path of points in \eqn{R^n} into a uniform grid of points along the path
 }
 \details{
 This is version 1 of the path subdivision algorithm. Like subdivide.path, it creates

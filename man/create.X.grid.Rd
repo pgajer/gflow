@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{create.X.grid}
 \alias{create.X.grid}
-\title{Creates a grid around a state space.}
+\title{Creates a grid around a state space}
 \usage{
 create.X.grid(X, gSf, gRf, min.K = 10, med.dK.divf = 5, max.dx.C = 1)
 }

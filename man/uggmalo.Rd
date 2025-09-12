@@ -105,7 +105,7 @@ Default: FALSE}
 A list of class "uggmalo" containing:
 \describe{
 \item{candidate_bws}{Numeric vector of candidate bandwidths tested}
-\item{bw_predictions}{Matrix of predictions for each bandwidth (vertices × bandwidths)}
+\item{bw_predictions}{Matrix of predictions for each bandwidth (vertices x bandwidths)}
 \item{mean_errors}{Numeric vector of mean cross-validation errors
 for each bandwidth}
 \item{opt_bw_idx}{Integer. Index of the optimal bandwidth (1-based)}

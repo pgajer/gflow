@@ -39,7 +39,7 @@ results include means and 95\% confidence intervals for these proportions across
 all simulations.
 
 The confidence intervals are computed using the normal approximation:
-mean ± 1.96 * (standard deviation / sqrt(n.sims))
+mean +/- 1.96 * (standard deviation / sqrt(n.sims))
 }
 \examples{
 \dontrun{

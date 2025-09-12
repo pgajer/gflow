@@ -241,7 +241,7 @@ show.profile <- function(i, Z, n.comp = 5) {
 #' @param show.profiles Logical; whether to display profiles during selection.
 #' @param use.pts Logical; if TRUE, use points for highlighting; otherwise use spheres.
 #' @param color Color for highlighting selected points.
-#' @param alpha Transparency for highlighted spheres (0–1).
+#' @param alpha Transparency for highlighted spheres (0--1).
 #' @param size Size for highlighted points (when \code{use.pts = TRUE}).
 #' @param radius Radius for highlighted spheres (when \code{use.pts = FALSE}).
 #' @param allow_headless Logical; if TRUE, bypasses the headless/null-device check
@@ -249,7 +249,7 @@ show.profile <- function(i, Z, n.comp = 5) {
 #'
 #' @return A list with:
 #'   \item{idx}{Integer vector of selected row indices in \code{X}.}
-#'   \item{prof}{1×k matrix of the mean profile over selected rows (top \code{n.comp} features),
+#'   \item{prof}{1xk matrix of the mean profile over selected rows (top \code{n.comp} features),
 #'               or \code{NA} if \code{Z} is not provided or nothing is selected.}
 #'
 #' @details
@@ -361,7 +361,7 @@ select3D.points.profiles <- function(X,
     k <- min(n.comp, length(mean_prof))
     top <- ord[seq_len(k)]
     prof_vec <- mean_prof[top]
-    # return a 1×k matrix as documented
+    # return a 1xk matrix as documented
     prof <- matrix(prof_vec, nrow = 1,
                    dimnames = list("mean", colnames(Z)[top]))
 

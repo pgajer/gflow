@@ -45,7 +45,7 @@ The function computes several Bayesian statistics:
 \itemize{
 \item Method having smaller effect than reference (prob_smaller)
 \item Method having larger effect than reference (prob_larger)
-\item Effect being practically equivalent to reference (within ±0.1 SD)
+\item Effect being practically equivalent to reference (within +/-0.1 SD)
 }
 }
 }

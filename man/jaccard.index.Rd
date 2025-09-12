@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{jaccard.index}
 \alias{jaccard.index}
-\title{Calculate Jaccard index between two sets represented as numeric vectors.}
+\title{Calculate Jaccard index between two sets represented as numeric vectors}
 \usage{
 jaccard.index(vec.1, vec.2)
 }
@@ -25,7 +25,7 @@ Returns NaN if both sets are empty (0/0 case).
 \description{
 The Jaccard index (also known as Jaccard similarity coefficient) is defined as the ratio
 of the size of the intersection of the two sets to the size of their union. Formally:
-\deqn{J(A, B) = \frac{|A \cap B|}{|A \cup B|}}{J(A, B) = |A ∩ B| / |A ∪ B|}
+\deqn{J(A, B) = \frac{|A \cap B|}{|A \cup B|}}{J(A, B) = |A  intersect  B| / |A  union  B|}
 The index ranges from 0 (no overlap) to 1 (identical sets).
 }
 \details{

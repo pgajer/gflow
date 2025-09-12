@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{find.points.within.box}
 \alias{find.points.within.box}
-\title{Find the points of a set X within a box.}
+\title{Find the points of a set X within a box}
 \usage{
 find.points.within.box(X, box, eps)
 }

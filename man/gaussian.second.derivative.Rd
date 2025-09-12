@@ -15,14 +15,14 @@ gaussian.second.derivative(x, mu, sd)
 }
 \value{
 Numeric vector of second derivative values with the same length as x. The second
-derivative equals zero at the inflection points (x = mu ± sd), is negative between
+derivative equals zero at the inflection points (x = mu +/- sd), is negative between
 them (concave down), and positive outside them (concave up).
 }
 \description{
 This function computes the second derivative of the unnormalized Gaussian function:
 \deqn{f(x) = \exp\left(-\frac{(x - \mu)^2}{2\sigma^2}\right)}{f(x) = exp(-((x - mu)^2)/(2 * sd^2))}
 with respect to x. The second derivative identifies inflection points of the Gaussian
-curve, which occur at \eqn{\mu \pm \sigma}{mu ± sd}.
+curve, which occur at \eqn{\mu \pm \sigma}{mu +/- sd}.
 }
 \details{
 The second derivative is computed using the formula:
@@ -31,7 +31,7 @@ where \eqn{z = (x - \mu)/\sigma}{z = (x - mu)/sd} is the standardized value.
 
 Key properties:
 \itemize{
-\item Zero at x = mu ± sd (inflection points)
+\item Zero at x = mu +/- sd (inflection points)
 \item Maximum at x = mu (where f''(mu) = -1/sd^2)
 \item Approaches 0 as \eqn{x \to \pm \infty}
 }
@@ -46,7 +46,7 @@ normalized version, multiply the result by \eqn{1/(\sigma\sqrt{2\pi})}{1/(sd*sqr
 x <- seq(-5, 5, length.out = 100)
 result <- gaussian.second.derivative(x, mu = 0, sd = 1)
 
-# Example 2: Verify inflection points at mu ± sd
+# Example 2: Verify inflection points at mu +/- sd
 mu <- 2
 sd <- 1.5
 x_inflection <- c(mu - sd, mu + sd)

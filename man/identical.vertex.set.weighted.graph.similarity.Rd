@@ -2,7 +2,7 @@
 % Please edit documentation in R/graph_utils.R
 \name{identical.vertex.set.weighted.graph.similarity}
 \alias{identical.vertex.set.weighted.graph.similarity}
-\title{Weighted Graph Matching between two graphs with identical vertex sets.}
+\title{Weighted Graph Matching between two graphs with identical vertex sets}
 \usage{
 identical.vertex.set.weighted.graph.similarity(
   graph1.adj.list,

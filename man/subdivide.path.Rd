@@ -3,7 +3,7 @@
 \name{subdivide.path}
 \alias{subdivide.path}
 \title{Subdivides a path of points in \eqn{R^n} into a uniform grid of points along
-the path.}
+the path}
 \usage{
 subdivide.path(path, n.subdivision.pts)
 }
@@ -19,7 +19,7 @@ evenly spaced according to the path's arc length.
 }
 \description{
 Subdivides a path of points in \eqn{R^n} into a uniform grid of points along
-the path.
+the path
 }
 \details{
 This function takes a path defined by consecutive points and creates a new set of

@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{E.geodesic.F}
 \alias{E.geodesic.F}
-\title{Estimates and the mean prevalence of a factors along a geodesic.}
+\title{Estimates and the mean prevalence of a factors along a geodesic}
 \usage{
 E.geodesic.F(
   subj.factors,

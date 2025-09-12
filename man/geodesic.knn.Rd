@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{geodesic.knn}
 \alias{geodesic.knn}
-\title{Estimates geodesic (shortest path) nearest neighbors.}
+\title{Estimates geodesic (shortest path) nearest neighbors}
 \usage{
 geodesic.knn(X, k, K = 5, G = NULL)
 }
@@ -24,7 +24,7 @@ geodesic nearest neighbor of point i.}
 to the j-th nearest neighbor of point i.}
 }
 \description{
-Estimates geodesic (shortest path) nearest neighbors.
+Estimates geodesic (shortest path) nearest neighbors
 }
 \details{
 This function computes k-nearest neighbors based on geodesic distances (shortest paths

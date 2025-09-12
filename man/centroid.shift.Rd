@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{centroid.shift}
 \alias{centroid.shift}
-\title{Subtracts the centroid from each point of the given dataset.}
+\title{Subtracts the centroid from each point of the given dataset}
 \usage{
 centroid.shift(X, centroid = NULL)
 }

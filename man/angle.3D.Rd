@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{angle.3D}
 \alias{angle.3D}
-\title{Computes the angle between two 3D vectors in radians.}
+\title{Computes the angle between two 3D vectors in radians}
 \usage{
 angle.3D(v, w, method = "arcsine")
 }
@@ -17,7 +17,7 @@ angle.3D(v, w, method = "arcsine")
 The angle between two 3D vectors in radians.
 }
 \description{
-Computes the angle between two 3D vectors in radians.
+Computes the angle between two 3D vectors in radians
 }
 \examples{
 \dontrun{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{row.eval}
 \alias{row.eval}
-\title{Row-wise evaluates x at nn.i.}
+\title{Row-wise evaluates x at nn.i}
 \usage{
 row.eval(nn.i, x)
 }
@@ -15,5 +15,5 @@ row.eval(nn.i, x)
 A matrix obtained from x by evaluating it at the indices of nn.i.
 }
 \description{
-Row-wise evaluates x at nn.i.
+Row-wise evaluates x at nn.i
 }

@@ -53,7 +53,7 @@ side by side.
 }
 }
 \examples{
-\dontrun{X1™
+\dontrun{
 # Generate sample data
 X <- matrix(rnorm(200), ncol = 2)
 

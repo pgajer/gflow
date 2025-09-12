@@ -12,10 +12,11 @@
 #' @return None. This function is called for its side effect of printing.
 #'
 #' @examples
+#' \dontrun{
 #' start <- proc.time()
 #' Sys.sleep(2)  # Do some work
 #' elapsed.time(start, "Processing complete")
-#'
+#' }
 #' @export
 elapsed.time <- function(start.time,
                          message = "DONE",

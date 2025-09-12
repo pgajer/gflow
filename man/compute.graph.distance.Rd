@@ -31,11 +31,11 @@ Computes the shortest path distance between two vertices in any weighted graph,
 using Dijkstra's algorithm.
 }
 \examples{
+\dontrun{
 # Using star_obj
 star.obj <- generate.star.dataset(n.points = 10, n.arms = 3)
 dist <- compute.graph.distance(star.obj = star.obj, i = 1, j = 5)
 
-\dontrun{
 # Using adjacency list and edge lengths directly
 # Assuming adj_list and edge_lengths are defined
 dist <- compute.graph.distance(i = 1, j = 5,

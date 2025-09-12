@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict}
 \alias{llm.1D.fit.and.predict}
-\title{Fits 1D rllm model and generates predictions estimates.}
+\title{Fits 1D rllm model and generates predictions estimates}
 \usage{
 llm.1D.fit.and.predict(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degree, nx)
 }
@@ -29,5 +29,5 @@ list with components: beta, predictions.
 NOTE: Weights must sum up to 1!
 }
 \description{
-Fits 1D rllm model and generates predictions estimates.
+Fits 1D rllm model and generates predictions estimates
 }

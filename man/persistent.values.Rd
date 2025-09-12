@@ -3,7 +3,7 @@
 \name{persistent.values}
 \alias{persistent.values}
 \title{Returns a matrix with two columns. The first column is the index of x where
-\code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}.}
+\code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}}
 \usage{
 persistent.values(x)
 }
@@ -12,5 +12,5 @@ persistent.values(x)
 }
 \description{
 Returns a matrix with two columns. The first column is the index of x where
-\code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}.
+\code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}
 }

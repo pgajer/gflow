@@ -163,7 +163,7 @@ wasserstein1d.test <- function(x, y, n.perms = 10000, n.cores = 7)
   )
 }
 
-#' A function to compute the Wasserstein distance between two samples from one-dimensional distributions using nearest neighbors strategy.
+#' A function to compute the Wasserstein distance between two samples from one-dimensional distributions using nearest neighbors strategy
 #'
 #' The samples are assumed to be of the same size.
 #'
@@ -205,7 +205,7 @@ greedy.NN.transport.distance.1D <- function(x, y)
     W / n
 }
 
-#' Local Wasserstein distance to the uniform and delta at 1 of the inner products of the NN unit vectors.
+#' Local Wasserstein distance to the uniform and delta at 1 of the inner products of the NN unit vectors
 #'
 #' For each point x of a state space, S, the unit vectors starting at x and
 #' ending at x's K-NN's are defined. The routine estimates the entropy of the

@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{box.tiling.of.box}
 \alias{box.tiling.of.box}
-\title{Creates box tiling of a box.}
+\title{Creates box tiling of a box}
 \usage{
 box.tiling.of.box(n, box)
 }

@@ -30,7 +30,7 @@ select3D.points.profiles(
 
 \item{color}{Color for highlighting selected points.}
 
-\item{alpha}{Transparency for highlighted spheres (0–1).}
+\item{alpha}{Transparency for highlighted spheres (0--1).}
 
 \item{size}{Size for highlighted points (when \code{use.pts = TRUE}).}
 
@@ -42,7 +42,7 @@ select3D.points.profiles(
 \value{
 A list with:
 \item{idx}{Integer vector of selected row indices in \code{X}.}
-\item{prof}{1×k matrix of the mean profile over selected rows (top \code{n.comp} features),
+\item{prof}{1xk matrix of the mean profile over selected rows (top \code{n.comp} features),
 or \code{NA} if \code{Z} is not provided or nothing is selected.}
 }
 \description{

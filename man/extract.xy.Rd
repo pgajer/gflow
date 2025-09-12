@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{extract.xy}
 \alias{extract.xy}
-\title{Extracts Numerical x and y Values from a Character Vector.}
+\title{Extracts Numerical x and y Values from a Character Vector}
 \usage{
 extract.xy(s)
 }

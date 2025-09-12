@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{mllm.1D}
 \alias{mllm.1D}
-\title{A local linear 1D model with y being a matrix. It expects bw value.}
+\title{A local linear 1D model with y being a matrix. It expects bw value}
 \usage{
 mllm.1D(
   x,
@@ -36,5 +36,5 @@ mllm.1D(
 EY.grid
 }
 \description{
-A local linear 1D model with y being a matrix. It expects bw value.
+A local linear 1D model with y being a matrix. It expects bw value
 }

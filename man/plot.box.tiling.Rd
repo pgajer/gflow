@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{plot.box.tiling}
 \alias{plot.box.tiling}
-\title{Plots boxes of a box tiling of a 2D state space.}
+\title{Plots boxes of a box tiling of a 2D state space}
 \usage{
 \method{plot}{box.tiling}(
   x,

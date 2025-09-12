@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{create.2D.grid}
 \alias{create.2D.grid}
-\title{Creates a 2D grid of points around X.}
+\title{Creates a 2D grid of points around X}
 \usage{
 create.2D.grid(n, X, f = 0.2, eSDf = 1.5, gRf = 4)
 }

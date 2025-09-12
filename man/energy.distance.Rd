@@ -42,6 +42,6 @@ print(result)
 
 }
 \references{
-Székely, G. J., & Rizzo, M. L. (2013). Energy statistics: A class of statistics based on distances.
+Szekely, G. J., & Rizzo, M. L. (2013). Energy statistics: A class of statistics based on distances.
 Journal of statistical planning and inference, 143(8), 1249-1272.
 }

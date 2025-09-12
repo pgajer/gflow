@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{subj.D.risk}
 \alias{subj.D.risk}
-\title{Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space.}
+\title{Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space}
 \usage{
 subj.D.risk(sID, S, G.S, ED, subjID, visit)
 }
@@ -30,7 +30,7 @@ A list containing risk estimates for the subject:
 \item{subj.path23.ED.max}{Maximum risk value along the path from visit 2 to 3.}
 }
 \description{
-Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space.
+Estimates subject risk of a disease or adverse outcome, D, given the risk D over some state space
 }
 \details{
 This function calculates disease risk for a specific subject by:

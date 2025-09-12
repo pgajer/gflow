@@ -181,7 +181,7 @@ graph.3d <- function(plot.result, z) {
 
 #' triangle.plot
 #'
-#' Custom plot function to draw vertices as triangles in an igraph plot.
+#' Custom plot function to draw vertices as triangles in an igraph plot
 #'
 #' This function is used to plot vertices as equilateral triangles in an igraph
 #' graph. The triangles are sized to have approximately the same area as circles
@@ -292,7 +292,7 @@ triangle.plot <- function(coords, v = NULL, params) {
 
 #' itriangle.plot
 #'
-#' Custom plot function to draw vertices as inverted triangles in an igraph plot.
+#' Custom plot function to draw vertices as inverted triangles in an igraph plot
 #'
 #' This function is used to plot vertices as inverted equilateral triangles in an igraph
 #' graph. The triangles are sized to have approximately the same area as circles
@@ -600,7 +600,7 @@ plot.ggraph <- function(x,
 #'   \describe{
 #'     \item{\code{"MS_cx_graph"}}{Plot the Morse-Smale complex graph with vertices
 #'       colored by type (local minimum/maximum) using a bipartite layout}
-#'     \item{\code{"MS_cx_nerve_graph"}}{Plot the Čech (nerve) graph of the
+#'     \item{\code{"MS_cx_nerve_graph"}}{Plot the Cech (nerve) graph of the
 #'       Morse-Smale complex with edges weighted by the number of shared vertices
 #'       between cells}
 #'     \item{\code{"lmin_BoA"}}{Plot the graph with vertices colored by their

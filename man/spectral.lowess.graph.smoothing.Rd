@@ -28,189 +28,111 @@ spectral.lowess.graph.smoothing(
 )
 }
 \arguments{
-\item{adj.list}{A list of integer vectors representing the adjacency list of
-the graph. Each element \code{adj.list[[i]]} contains the indices of vertices
-adjacent to vertex \code{i}. Indices must be between 1 and \code{length(adj.list)}.}
+\item{adj.list}{A list of integer vectors representing the adjacency list of the graph.
+Each element \code{adj.list[[i]]} contains the indices of vertices adjacent to vertex i.}
 
-\item{weight.list}{A list of numeric vectors containing edge weights corresponding
-to the adjacencies. Each element \code{weight.list[[i]][j]} is the weight of
-the edge from vertex \code{i} to vertex \code{adj.list[[i]][j]}. Weights must
-be non-negative. Must have the same structure as \code{adj.list}.}
+\item{weight.list}{A list of numeric vectors with edge weights corresponding to adjacencies.
+Each element \code{weight.list[[i]][j]} is the weight of the edge from vertex i to
+\code{adj.list[[i]][j]}.}
 
-\item{X}{A numeric matrix where rows represent samples/vertices and columns
-represent features. Must have \code{nrow(X) == length(adj.list)}. Missing
-values are not allowed.}
+\item{X}{A numeric matrix where rows are samples and columns are features}
 
-\item{max.iterations}{Maximum number of iterations to perform. Must be a positive
-integer. Default: 10.}
+\item{max.iterations}{Maximum number of iterations to perform}
 
-\item{convergence.threshold}{Threshold for convergence. The algorithm stops when
-the convergence metric falls below this value. Must be positive. Default: 1e-4.}
+\item{convergence.threshold}{Threshold for convergence}
 
-\item{convergence.type}{Type of convergence criterion to use:
-\itemize{
-\item{1: Maximum absolute difference between successive iterations}
-\item{2: Mean absolute difference between successive iterations}
-\item{3: Maximum relative change between successive iterations}
-}
-Default: 1.}
+\item{convergence.type}{Type of convergence criteria:
+1 = maximum absolute difference
+2 = mean absolute difference
+3 = maximum relative change}
 
-\item{k}{Number of nearest neighbors for k-NN graph construction. Must be a
-positive integer less than the number of vertices. Default: 10.}
+\item{k}{Number of nearest neighbors for kNN graph construction}
 
-\item{pruning.thld}{Threshold for pruning edges in graph construction. Edges
-with weights below this threshold are removed. Must be non-negative. Default: 0.1.}
+\item{pruning.thld}{Threshold for pruning edges in graph construction}
 
-\item{n.evectors}{Number of eigenvectors to use for spectral embedding. Must be
-a positive integer. Larger values capture more graph structure but increase
-computation time. Default: 8.}
+\item{n.evectors}{Number of eigenvectors for spectral embedding}
 
-\item{n.bws}{Number of candidate bandwidths to consider for LOWESS smoothing.
-Must be a positive integer. Default: 10.}
+\item{n.bws}{Number of candidate bandwidths for LOWESS}
 
-\item{log.grid}{Logical. If \code{TRUE}, use logarithmic spacing for the bandwidth
-grid; if \code{FALSE}, use linear spacing. Default: \code{TRUE}.}
+\item{log.grid}{Logical, whether to use logarithmic spacing for bandwidth grid}
 
-\item{min.bw.factor}{Factor for minimum bandwidth, multiplied by the graph diameter
-to determine the actual minimum bandwidth. Must be positive and less than
-\code{max.bw.factor}. Default: 0.05.}
+\item{min.bw.factor}{Factor for minimum bandwidth (multiplied by graph diameter)}
 
-\item{max.bw.factor}{Factor for maximum bandwidth, multiplied by the graph diameter
-to determine the actual maximum bandwidth. Must be positive and greater than
-\code{min.bw.factor}. Default: 0.5.}
+\item{max.bw.factor}{Factor for maximum bandwidth (multiplied by graph diameter)}
 
-\item{dist.normalization.factor}{Factor for normalizing distances in kernel weight
-calculation. Must be at least 1.1. Higher values result in more uniform weights.
-Default: 1.1.}
+\item{dist.normalization.factor}{Factor for normalizing distances in kernel weight calculation}
 
-\item{kernel.type}{Integer specifying the kernel function for weighting:
-\itemize{
-\item{7: Gaussian kernel (default)}
-\item{Other values may be supported depending on the C++ implementation}
-}
-Default: 7L.}
+\item{kernel.type}{Type of kernel function (1 = Gaussian, 2 = Exponential, etc.)}
 
-\item{n.cleveland.iterations}{Number of robustness iterations for Cleveland's
-LOWESS algorithm. Must be a non-negative integer. Default: 1.}
+\item{n.cleveland.iterations}{Number of robustness iterations for Cleveland's algorithm}
 
-\item{compute.errors}{Logical. If \code{TRUE}, compute prediction errors for
-each iteration. May increase computation time. Default: \code{TRUE}.}
+\item{compute.errors}{Logical, whether to compute prediction errors}
 
-\item{compute.scales}{Logical. If \code{TRUE}, compute bandwidth/scale information
-for each iteration. May increase computation time. Default: \code{TRUE}.}
+\item{compute.scales}{Logical, whether to compute bandwidth/scale information}
 
-\item{switch.to.residuals.after}{Number of iterations to perform direct smoothing
-before switching to residual smoothing (boosting mode). Must be a non-negative
-integer. Set to 0 to use residual smoothing from the start. If \code{NULL},
-defaults to \code{max.iterations} (never switch). Default: \code{NULL}.}
+\item{switch.to.residuals.after}{Number of iterations to perform direct smoothing before
+switching to residual smoothing (boosting mode). Default is max.iterations (never switch).
+Set to 0 to use residual smoothing from the start.}
 
-\item{verbose}{Logical. If \code{TRUE}, print progress information during iterations.
-Default: \code{FALSE}.}
+\item{verbose}{Logical, whether to print progress information}
 }
 \value{
-A list of class \code{"spectral.lowess.result"} containing:
-\item{smoothed.graphs}{A list of length \code{iterations.performed}, where each
-element is a graph (represented as adjacency and weight lists) after
-the corresponding iteration}
-\item{smoothed.X}{A list of length \code{iterations.performed}, where each
-element is the smoothed data matrix after the corresponding iteration}
-\item{convergence.metrics}{A numeric vector of length \code{iterations.performed}
-containing the convergence metric at each iteration}
-\item{iterations.performed}{Integer indicating the number of iterations actually
-performed before convergence or reaching \code{max.iterations}}
-\item{used.boosting}{Logical indicating whether boosting (residual smoothing)
-was used in any iteration}
-\item{call}{The matched function call}
-\item{parameters}{A list containing all input parameters for reproducibility}
+A list containing:
+\item{smoothed.graphs}{List of smoothed graphs at each iteration}
+\item{smoothed.X}{List of smoothed data matrices at each iteration}
+\item{convergence.metrics}{Numeric vector of convergence metrics at each iteration}
+\item{iterations.performed}{Number of iterations actually performed}
+\item{used.boosting}{Logical, whether boosting (residual smoothing) was used}
 }
 \description{
-Applies iterative spectral LOWESS (Locally Weighted Scatterplot Smoothing) to
-graph-structured data. The algorithm iteratively smooths features by estimating
-conditional expectations using spectral embeddings of local neighborhoods,
-then reconstructs the graph from the smoothed data.
-}
-\details{
-The algorithm performs the following steps iteratively:
-\enumerate{
-\item Compute spectral embedding of the graph using eigenvectors of the
-normalized Laplacian
-\item For each vertex, estimate conditional expectations of features using
-LOWESS on the spectral embedding coordinates
-\item Reconstruct the graph from the smoothed features using k-NN with
-specified pruning
-\item Check convergence criterion and stop if threshold is met
-}
-
-The boosting mode (residual smoothing) can be activated by setting
-\code{switch.to.residuals.after} to a value less than \code{max.iterations}.
-In this mode, the algorithm smooths residuals from previous iterations rather
-than the data directly, which can improve convergence in some cases.
-}
-\note{
-\itemize{
-\item The function requires a C++ implementation accessed via \code{.Call}
-\item Large graphs or high-dimensional data may require substantial memory
-\item The choice of convergence type affects both speed and quality of results
-\item Edge weights should typically be similarity measures (larger = more similar)
-}
+Apply iterative spectral LOWESS smoothing to a graph and its associated data matrix.
+At each iteration, conditional expectations of features are estimated using
+spectral embedding of local neighborhoods, and a new graph is constructed
+from the smoothed data.
 }
 \examples{
 \dontrun{
-# Generate synthetic data
-set.seed(123)
-n <- 100
-p <- 10
-X <- matrix(rnorm(n * p), nrow = n, ncol = p)
+# Create a graph and data matrix
+graph <- create.iknn.graph(X, k = 10, pruning.thld = 0.1)
 
-# Create a k-NN graph
-library(FNN)
-knn.result <- get.knn(X, k = 10)
-adj.list <- lapply(1:n, function(i) knn.result$nn.index[i, ])
-weight.list <- lapply(1:n, function(i) 1 / (1 + knn.result$nn.dist[i, ]))
-
-# Apply spectral LOWESS smoothing
-result <- spectral.lowess.graph.smoothing(
-  adj.list = adj.list,
-  weight.list = weight.list,
-  X = X,
-  max.iterations = 5,
-  convergence.threshold = 1e-3,
-  verbose = TRUE
-)
-
-# Examine results
-cat("Iterations performed:", result$iterations.performed, "\n")
-cat("Final convergence metric:",
-    result$convergence.metrics[result$iterations.performed], "\n")
-
-# Compare original and smoothed data
-X.smoothed <- result$smoothed.X[[result$iterations.performed]]
-par(mfrow = c(1, 2))
-image(X, main = "Original Data", xlab = "Sample", ylab = "Feature")
-image(X.smoothed, main = "Smoothed Data", xlab = "Sample", ylab = "Feature")
-
-# Example with boosting
-result.boost <- spectral.lowess.graph.smoothing(
-  adj.list = adj.list,
-  weight.list = weight.list,
+# Apply spectral LOWESS graph smoothing - traditional approach
+result1 <- spectral.lowess.graph.smoothing(
+  adj.list = graph$adj_list,
+  weight.list = graph$weight_list,
   X = X,
   max.iterations = 10,
-  switch.to.residuals.after = 3,
+  convergence.threshold = 1e-4,
+  convergence.type = 1,  # MAX.ABSOLUTE.DIFF
+  k = 10,
+  pruning.thld = 0.1,
+  n.evectors = 8,
   verbose = TRUE
 )
 
-# Compare convergence
-plot(result$convergence.metrics, type = "b", col = "blue",
-     xlab = "Iteration", ylab = "Convergence Metric",
-     main = "Convergence Comparison")
-lines(result.boost$convergence.metrics, type = "b", col = "red")
-legend("topright", legend = c("Standard", "Boosting"),
-       col = c("blue", "red"), lty = 1, pch = 1)
+# Apply spectral LOWESS graph smoothing with boosting
+result2 <- spectral.lowess.graph.smoothing(
+  adj.list = graph$adj_list,
+  weight.list = graph$weight_list,
+  X = X,
+  max.iterations = 10,
+  convergence.threshold = 1e-4,
+  convergence.type = 1,  # MAX.ABSOLUTE.DIFF
+  k = 10,
+  pruning.thld = 0.1,
+  n.evectors = 8,
+  switch.to.residuals.after = 2,  # Switch to boosting after 2 iterations
+  verbose = TRUE
+)
+
+# Access final smoothed data matrix
+X.smoothed <- result2$smoothed.X[[length(result2$smoothed.X)]]
+
+# Plot convergence metrics for both approaches
+plot(result1$convergence.metrics, type = "b", col = "blue",
+     xlab = "Iteration", ylab = "Convergence Metric")
+lines(result2$convergence.metrics, type = "b", col = "red")
+legend("topright", legend = c("Traditional", "Boosting"), 
+       col = c("blue", "red"), lty = 1)
 }
 
-}
-\references{
-Cleveland, W. S. (1979). Robust locally weighted regression and smoothing
-scatterplots. \emph{Journal of the American Statistical Association},
-74(368), 829-836.
 }

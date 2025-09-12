@@ -150,7 +150,7 @@ graph.embedding <- function(adj.list,
 #' @param vertex.colors A numeric vector of length n containing the function values
 #'                     used to color the vertices.
 #' @param vertex.size Numeric scalar controlling the size of vertices (default: 1).
-#'                   Uses the same scale as base R's cex parameter.
+#'                   Uses the same scale as base R's cex parameter
 #' @param edge.alpha Numeric scalar between 0 and 1 controlling edge transparency
 #'                  (default: 0.2). Higher values make edges more opaque.
 #' @param color.palette Optional vector of colors defining the color gradient for
@@ -892,7 +892,7 @@ hungarian.frobenius.graph.matching <- function(graph1, graph2) {
 }
 
 
-#' Weighted Graph Matching between two graphs with identical vertex sets.
+#' Weighted Graph Matching between two graphs with identical vertex sets
 #'
 #' This function computes a similarity measure between two weighted graphs
 #' derived from the same dataset. It assumes that both graphs have identical
@@ -1220,7 +1220,7 @@ create.subgraph <- function(S.graph, id.indices = NULL, ids = NULL, S = NULL, us
 #' all simulations.
 #'
 #' The confidence intervals are computed using the normal approximation:
-#' mean ± 1.96 * (standard deviation / sqrt(n.sims))
+#' mean +/- 1.96 * (standard deviation / sqrt(n.sims))
 #'
 #' @examples
 #' \dontrun{
@@ -1653,11 +1653,11 @@ create.vertex.label.indicators <- function(vertex.labels, state.space) {
 #' @return Numeric value representing shortest path distance between vertices i and j
 #'
 #' @examples
+#' \dontrun{
 #' # Using star_obj
 #' star.obj <- generate.star.dataset(n.points = 10, n.arms = 3)
 #' dist <- compute.graph.distance(star.obj = star.obj, i = 1, j = 5)
 #'
-#' \dontrun{
 #' # Using adjacency list and edge lengths directly
 #' # Assuming adj_list and edge_lengths are defined
 #' dist <- compute.graph.distance(i = 1, j = 5,
@@ -1783,12 +1783,14 @@ count.edges <- function(adj.list) {
 #' The function requires the foreach and doParallel packages.
 #'
 #' @examples
+#' \dontrun{
 #' # Create a simple undirected weighted graph
 #' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
 #' weight.list <- list(c(5, 10), c(5, 7), c(10, 7))
 #'
 #' # Get weights of all edges using 2 cores
-#' edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = 2)
+#' edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = safe_cores(1))
+#' }
 #'
 #' @import foreach
 #' @import doParallel

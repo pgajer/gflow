@@ -2,8 +2,8 @@
 % Please edit documentation in R/geodesics.R
 \name{geodesic.knnx}
 \alias{geodesic.knnx}
-\title{Estimates geodesic (shortest path) nearest neighbors of X.grid points in X.
-That is for each point of X.grid the k-NN's within X are returned.}
+\title{Estimates geodesic (shortest path) nearest neighbors of X.grid points in X
+That is for each point of X.grid the k-NN's within X are returned}
 \usage{
 geodesic.knnx(X, X.grid, k, method = "knn.graph", K = 5)
 }
@@ -32,8 +32,8 @@ index (in X) of the j-th geodesic nearest neighbor of grid point i.}
 geodesic distance from grid point i to its j-th nearest neighbor in X.}
 }
 \description{
-Estimates geodesic (shortest path) nearest neighbors of X.grid points in X.
-That is for each point of X.grid the k-NN's within X are returned.
+Estimates geodesic (shortest path) nearest neighbors of X.grid points in X
+That is for each point of X.grid the k-NN's within X are returned
 }
 \details{
 This function finds k-nearest neighbors from dataset X for each point in X.grid

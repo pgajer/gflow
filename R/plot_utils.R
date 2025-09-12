@@ -550,6 +550,7 @@ plot2D.cont <- function(X,
 #' requires \pkg{rgl} unless plotting is requested.
 #'
 #' @examples
+#' \dontrun{
 #' # Minimal example; runs even without rgl (no plotting).
 #' set.seed(1)
 #' X <- matrix(rnorm(300), ncol = 3)
@@ -562,6 +563,7 @@ plot2D.cont <- function(X,
 #'   # Suppose you've already drawn points via your helper:
 #'   # plot3D.plain(X)
 #'   show.cltrs(X, cl, cex = 1.1, adj = c(0.5, 1), show.plot = TRUE)
+#' }
 #' }
 #'
 #' @export
@@ -678,12 +680,14 @@ show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
 #' highlighting specific clusters and different color palette options.
 #'
 #' @examples
+#' \dontrun{
 #' if (requireNamespace("rgl", quietly = TRUE)) {
 #'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
 #'   set.seed(123)
 #'   X <- matrix(rnorm(300), ncol = 3)
 #'   cltr <- sample(c("A", "B", "C"), 100, replace = TRUE)
 #'   plot3D.cltrs(X, cltr, show.cltr.labels = TRUE)
+#' }
 #' }
 #' @importFrom grDevices hcl.colors rainbow
 #' @export
@@ -1102,7 +1106,7 @@ cont.segments3d <- function(X, y, offset, ...) {
 #' @details
 #' This function creates a line plot with error bars showing the median absolute
 #' error across different numbers of nearest neighbors. The error bars represent
-#' ±0.5 * MAD (median absolute deviation).
+#' +/-0.5 * MAD (median absolute deviation).
 #'
 #' @examples
 #' \dontrun{

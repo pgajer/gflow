@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.beta}
 \alias{llm.1D.beta}
-\title{Eestimates the coefficients of linear models in the vicinity of each grid point of radius nn.r.}
+\title{Eestimates the coefficients of linear models in the vicinity of each grid point of radius nn.r}
 \usage{
 llm.1D.beta(nn.x, nn.y, nn.w, max.K, degree)
 }

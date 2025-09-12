@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{fig.E.geodesic.F}
 \alias{fig.E.geodesic.F}
-\title{Generates figures associated with E.geodesic.F estimates.}
+\title{Generates figures associated with E.geodesic.F estimates}
 \usage{
 fig.E.geodesic.F(save.file.prefix, rlabs, pics.file.prefix)
 }
@@ -19,7 +19,7 @@ One PDF file is created for each factor in rlabs that has a corresponding saved
 RDA file.
 }
 \description{
-Generates figures associated with E.geodesic.F estimates.
+Generates figures associated with E.geodesic.F estimates
 }
 \details{
 This function loads the results from E.geodesic.F estimation (saved as RDA files)

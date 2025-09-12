@@ -3,7 +3,7 @@
 \name{non.NA.values}
 \alias{non.NA.values}
 \title{Returns a matrix with two columns. The first column is the index of x where
-x[i] is not NA and the second column is the largest k such that x[i] == x[i + k].}
+x[i] is not NA and the second column is the largest k such that x[i] == x[i + k]}
 \usage{
 non.NA.values(x)
 }
@@ -12,5 +12,5 @@ non.NA.values(x)
 }
 \description{
 Returns a matrix with two columns. The first column is the index of x where
-x[i] is not NA and the second column is the largest k such that x[i] == x[i + k].
+x[i] is not NA and the second column is the largest k such that x[i] == x[i + k]
 }

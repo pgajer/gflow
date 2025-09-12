@@ -1456,7 +1456,7 @@ right.asymmetric.bump.fn <- function(x, offset = 0, h = 1, q = 1) {
     return(ret)
 }
 
-#' Generates the values of a synthetic 1d spline function over a uniform grid in the pre-specified range.
+#' Generates the values of a synthetic 1d spline function over a uniform grid in the pre-specified range
 #'
 #' This function generates a synthetic 1D spline with a specified number of local maxima.
 #' The synthetic function is evaluated on a uniform grid over a specified x range.
@@ -1667,7 +1667,7 @@ bi.gaussian <- function(x, mu, sigma.left, sigma.right) {
     y[names(x)]
 }
 
-#' Creates a Synthetic Function with Specified Number of Local Maxima using bi-Gaussians.
+#' Creates a Synthetic Function with Specified Number of Local Maxima using bi-Gaussians
 #'
 #' Generates a synthetic function with specified number of local maxima using bi-Gaussian functions
 #' and a partition of unity. This function is useful for creating complex, non-linear synthetic data
@@ -1961,7 +1961,7 @@ partition.of.unity.xD <- function(S,
 }
 
 
-#' Creates a Synthetic Function with Specified Number of Local Maxima over a subset of R^d, d > 1.
+#' Creates a Synthetic Function with Specified Number of Local Maxima over a subset of R^d, d > 1
 #'
 #' Generates a synthetic function with specified number of local maxima using a
 #' mixture of Gaussians and a partition of unity. This function is useful for
@@ -2288,7 +2288,7 @@ generate.noisy.circle.embedding <- function(n,
 
 
 
-#' Generate Equally Spaced Points on a Circle without any noise.
+#' Generate Equally Spaced Points on a Circle without any noise
 #'
 #' This function creates a set of points that are equally spaced along a circle. The first and last point are the same.
 #'

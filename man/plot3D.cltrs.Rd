@@ -99,11 +99,13 @@ color assignment, legend generation, and various customization options. It suppo
 highlighting specific clusters and different color palette options.
 }
 \examples{
+\dontrun{
 if (requireNamespace("rgl", quietly = TRUE)) {
   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
   set.seed(123)
   X <- matrix(rnorm(300), ncol = 3)
   cltr <- sample(c("A", "B", "C"), 100, replace = TRUE)
   plot3D.cltrs(X, cltr, show.cltr.labels = TRUE)
+}
 }
 }

@@ -47,3 +47,6 @@
 # Vignettes (exclude sources if not shipping)
 ^[Vv]ignettes$
 ^inst/doc$
+
+# Local scripts
+^scripts$

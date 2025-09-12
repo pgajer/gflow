@@ -3,7 +3,7 @@
 \name{graph.adj.mat}
 \alias{graph.adj.mat}
 \title{Creates weights adjacency matrix given a matrix of edges and position matrix
-of the corresponding vertices.}
+of the corresponding vertices}
 \usage{
 graph.adj.mat(X, E)
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/synthetic_data_utils.R
 \name{synthetic.1D.spline}
 \alias{synthetic.1D.spline}
-\title{Generates the values of a synthetic 1d spline function over a uniform grid in the pre-specified range.}
+\title{Generates the values of a synthetic 1d spline function over a uniform grid in the pre-specified range}
 \usage{
 synthetic.1D.spline(
   n.lmax,

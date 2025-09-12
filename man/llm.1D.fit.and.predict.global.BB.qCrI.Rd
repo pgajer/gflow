@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict.global.BB.qCrI}
 \alias{llm.1D.fit.and.predict.global.BB.qCrI}
-\title{Creates BB quantile-based estimates of predictions CI's.}
+\title{Creates BB quantile-based estimates of predictions CI's}
 \usage{
 llm.1D.fit.and.predict.global.BB.qCrI(
   y.binary,
@@ -42,5 +42,5 @@ llm.1D.fit.and.predict.global.BB.qCrI(
 predictions.qCI matrix with two rows (upper and lower CI) and nx columns.
 }
 \description{
-Creates BB quantile-based estimates of predictions CI's.
+Creates BB quantile-based estimates of predictions CI's
 }

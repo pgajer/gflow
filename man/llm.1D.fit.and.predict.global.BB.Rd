@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict.global.BB}
 \alias{llm.1D.fit.and.predict.global.BB}
-\title{Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x.}
+\title{Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x}
 \usage{
 llm.1D.fit.and.predict.global.BB(
   nn.i,
@@ -36,5 +36,5 @@ llm.1D.fit.and.predict.global.BB(
 BB predictions matrix of dim nx-by-n.BB.
 }
 \description{
-Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x.
+Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x
 }

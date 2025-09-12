@@ -27,7 +27,7 @@ of indices representing the vertices adjacent to vertex i.}
 used to color the vertices.}
 
 \item{vertex.size}{Numeric scalar controlling the size of vertices (default: 1).
-Uses the same scale as base R's cex parameter.}
+Uses the same scale as base R's cex parameter}
 
 \item{edge.alpha}{Numeric scalar between 0 and 1 controlling edge transparency
 (default: 0.2). Higher values make edges more opaque.}

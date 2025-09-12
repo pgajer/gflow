@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{dist.to.knn}
 \alias{dist.to.knn}
-\title{Produces k-NN distance and index matrices associated with a distance matrix.}
+\title{Produces k-NN distance and index matrices associated with a distance matrix}
 \usage{
 dist.to.knn(d, k)
 }
@@ -19,7 +19,7 @@ nearest neighbor of point i.}
 nearest neighbor of point i.}
 }
 \description{
-Produces k-NN distance and index matrices associated with a distance matrix.
+Produces k-NN distance and index matrices associated with a distance matrix
 }
 \details{
 For each point (row) in the distance matrix, this function identifies the k nearest

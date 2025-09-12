@@ -2,7 +2,7 @@
 % Please edit documentation in R/synthetic_data_utils.R
 \name{gaussian.mixture.xD}
 \alias{gaussian.mixture.xD}
-\title{Creates a Synthetic Function with Specified Number of Local Maxima over a subset of R^d, d > 1.}
+\title{Creates a Synthetic Function with Specified Number of Local Maxima over a subset of R^d, d > 1}
 \usage{
 gaussian.mixture.xD(
   S,

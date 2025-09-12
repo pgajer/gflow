@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{get.gpredictionss}
 \alias{get.gpredictionss}
-\title{Estimates gpredictions Means Matrix Over a Uniform Grid for Different bandwidths.}
+\title{Estimates gpredictions Means Matrix Over a Uniform Grid for Different bandwidths}
 \usage{
 get.gpredictionss(bws, nn.i, nn.d, nn.x, nn.y, y.binary, degree, min.K, xgrid)
 }

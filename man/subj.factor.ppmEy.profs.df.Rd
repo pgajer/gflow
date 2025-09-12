@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{subj.factor.ppmEy.profs.df}
 \alias{subj.factor.ppmEy.profs.df}
-\title{Generates a data frame of proportion plus/minus dE.geodesic.F profiles.}
+\title{Generates a data frame of proportion plus/minus dE.geodesic.F profiles}
 \usage{
 subj.factor.ppmEy.profs.df(
   subj.factor.signEy.profs,
@@ -32,7 +32,7 @@ representing the discretized derivative profile of each factor.}
 \item{lab}{Character column containing the factor labels.}
 }
 \description{
-Generates a data frame of proportion plus/minus dE.geodesic.F profiles.
+Generates a data frame of proportion plus/minus dE.geodesic.F profiles
 }
 \details{
 This function creates a visual representation of how factor expected values change

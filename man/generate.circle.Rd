@@ -2,7 +2,7 @@
 % Please edit documentation in R/synthetic_data_utils.R
 \name{generate.circle}
 \alias{generate.circle}
-\title{Generate Equally Spaced Points on a Circle without any noise.}
+\title{Generate Equally Spaced Points on a Circle without any noise}
 \usage{
 generate.circle(n, radius = 1)
 }

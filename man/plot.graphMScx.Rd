@@ -30,7 +30,7 @@ construction, as returned by \code{graph.MS.cx}}
 \describe{
 \item{\code{"MS_cx_graph"}}{Plot the Morse-Smale complex graph with vertices
 colored by type (local minimum/maximum) using a bipartite layout}
-\item{\code{"MS_cx_nerve_graph"}}{Plot the Čech (nerve) graph of the
+\item{\code{"MS_cx_nerve_graph"}}{Plot the Cech (nerve) graph of the
 Morse-Smale complex with edges weighted by the number of shared vertices
 between cells}
 \item{\code{"lmin_BoA"}}{Plot the graph with vertices colored by their

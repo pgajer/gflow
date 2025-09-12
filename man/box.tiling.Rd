@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{box.tiling}
 \alias{box.tiling}
-\title{Creates a box tiling of the bounding box of some set.}
+\title{Creates a box tiling of the bounding box of some set}
 \usage{
 box.tiling(
   X,

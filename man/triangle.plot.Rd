@@ -17,7 +17,7 @@ vertices will be plotted.}
 igraph \code{params} function.}
 }
 \description{
-Custom plot function to draw vertices as triangles in an igraph plot.
+Custom plot function to draw vertices as triangles in an igraph plot
 }
 \details{
 This function is used to plot vertices as equilateral triangles in an igraph

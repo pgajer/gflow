@@ -1828,7 +1828,7 @@ get.basin.vertices <- function(x, id) {
 #' @param ms_edges_only Logical; if TRUE, only include edges between ascending and descending basins,
 #'        ignoring ascending-ascending and descending-descending connections (default: FALSE)
 #' @param weight_type Character string specifying the edge weight metric to use. Options are:
-#'        "dice" (Dice-Sørensen similarity), "jaccard" (Jaccard index), "overlap" (overlap size),
+#'        "dice" (Dice-Sorensen similarity), "jaccard" (Jaccard index), "overlap" (overlap size),
 #'        or "y_diff" (function value difference) (default: "dice")
 #'
 #' @details
@@ -1838,7 +1838,7 @@ get.basin.vertices <- function(x, id) {
 #'
 #' Edge weights can be based on different metrics:
 #' \itemize{
-#'   \item dice: Dice-Sørensen similarity index \eqn{(2|A \cap B|/(|A| + |B|))}
+#'   \item dice: Dice-Sorensen similarity index \eqn{(2|A \cap B|/(|A| + |B|))}
 #'   \item jaccard: Jaccard similarity index \eqn{(|A \cap B|/|A \cup B|)}
 #'   \item overlap: Raw number of vertices in the intersection
 #'   \item y_diff: Absolute difference in function value between extrema
@@ -1962,7 +1962,7 @@ construct.basin.cx.graph <- function(basin_cx,
       } else if (intersection_matrix[i, j] > 0) {
         ## Calculate similarity based on selected metric
         if (weight_type == "dice") {
-          ## Dice-Sørensen index = 2|intersection| / (|A| + |B|)
+          ## Dice-Sorensen index = 2|intersection| / (|A| + |B|)
           similarity <- 2 * intersection_matrix[i, j] / (basin_sizes[i] + basin_sizes[j])
         } else if (weight_type == "jaccard") {
           ## Jaccard index = |intersection| / |union|
@@ -1972,7 +1972,7 @@ construct.basin.cx.graph <- function(basin_cx,
           ## Overlap index
           similarity <- intersection_matrix[i, j] / min(c(basin_sizes[i], basin_sizes[j]))
         } else {
-          ## Default to Dice-Sørensen index
+          ## Default to Dice-Sorensen index
           similarity <- 2 * intersection_matrix[i, j] / (basin_sizes[i] + basin_sizes[j])
         }
 

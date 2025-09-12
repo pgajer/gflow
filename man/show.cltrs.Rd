@@ -47,6 +47,7 @@ off-screen by setting \code{options(rgl.useNULL = TRUE)} locally. It never
 requires \pkg{rgl} unless plotting is requested.
 }
 \examples{
+\dontrun{
 # Minimal example; runs even without rgl (no plotting).
 set.seed(1)
 X <- matrix(rnorm(300), ncol = 3)
@@ -59,6 +60,7 @@ if (requireNamespace("rgl", quietly = TRUE)) {
   # Suppose you've already drawn points via your helper:
   # plot3D.plain(X)
   show.cltrs(X, cl, cex = 1.1, adj = c(0.5, 1), show.plot = TRUE)
+}
 }
 
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/random_sampling.R
 \name{runif.simplex}
 \alias{runif.simplex}
-\title{Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex.}
+\title{Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex}
 \usage{
 runif.simplex(K)
 }
@@ -13,5 +13,5 @@ runif.simplex(K)
 A numeric vector of non-negative numbers that sum to 1.
 }
 \description{
-Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex.
+Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex
 }

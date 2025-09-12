@@ -2,7 +2,7 @@
 % Please edit documentation in R/geodesics.R
 \name{path.length}
 \alias{path.length}
-\title{Computes the length of a path specified by a matrix X.}
+\title{Computes the length of a path specified by a matrix X}
 \usage{
 path.length(X)
 }
@@ -14,7 +14,7 @@ A numeric value representing the total Euclidean length of the path
 defined by consecutive points in X.
 }
 \description{
-Computes the length of a path specified by a matrix X.
+Computes the length of a path specified by a matrix X
 }
 \details{
 This function calculates the total path length by summing the Euclidean distances

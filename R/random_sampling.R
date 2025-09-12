@@ -153,7 +153,7 @@ qlaplace <- function(p, location = 0, scale = 1, lower.tail = TRUE, log.p = FALS
 
 
 
-#' Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex.
+#' Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex
 #'
 #' @param K The size of vector of non-negative numbers that sum up to 1.
 #'

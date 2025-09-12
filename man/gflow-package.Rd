@@ -161,8 +161,8 @@ Gajer, P. and Ravel, J. (2025). The Geometry of Machine Learning Models.
 \emph{arXiv preprint} arXiv:2501.01234.
 \url{https://arxiv.org/abs/2501.01234}
 
-Gerber, S., Rübel, O., Bremer, P. T., Pascucci, V., & Whitaker, R. T. (2013).
-Morse–smale regression. Journal of Computational and Graphical Statistics,
+Gerber, S., Rubel, O., Bremer, P. T., Pascucci, V., & Whitaker, R. T. (2013).
+Morse--smale regression. Journal of Computational and Graphical Statistics,
 22(1), 193-214.
 
 Chen, Y. C., Genovese, C. R., & Wasserman, L. (2017). Statistical inference

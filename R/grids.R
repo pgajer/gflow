@@ -2,7 +2,7 @@
 ## Library of grid forming routines
 ##
 
-#' Creates a 2D grid of points around X.
+#' Creates a 2D grid of points around X
 #'
 #' If X is NULL, x1.range and x2.range will be used to create a rectangular grid of n*n points.
 #'
@@ -545,7 +545,7 @@ create.3D.grid <- function(n, X, f=0.2, min.gSf=1.5, eSDf=1.5, gRf=2) {
 }
 
 
-#' Creates a tubular neighborhood 3D grid of X.
+#' Creates a tubular neighborhood 3D grid of X
 #'
 #' This is a complete rewrite of the predecessor routine create.3D.grid.v2()
 #' with gSf replaced by the length of the grid edge (all edges in these grids
@@ -586,7 +586,7 @@ create.3D.TN.grid <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbo
 }
 
 #' Creates a tubular neighborhood 3D grid of X returning a list with a grid
-#' around X and the distance to the boundary of the grid.
+#' around X and the distance to the boundary of the grid
 #'
 #' @param X         A set of points around which the grid is created if not NULL.
 #' @param mst.grid     A matrix of 3D points that are subdivisions of edges of the mstree(X).
@@ -625,7 +625,7 @@ create.3D.TN.grid.plus <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, 
 }
 
 
-#' Creates a grid around a state space.
+#' Creates a grid around a state space
 #'
 #' This function generates a uniform grid in a tubular neighborhood of a state space.
 #'
@@ -762,7 +762,7 @@ create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 }
 
 
-#' Creates a 3D grid of points around X.
+#' Creates a 3D grid of points around X
 #'
 #' In this version if the min.gSf condition is not satisfied, n is
 #' increases until it satisfies that condition. Thus, gRf is never modified.
@@ -1145,9 +1145,9 @@ create.3D.rect.grid <- function(n, x1.range, x2.range, x3.range, type=c("unif","
     X.grid
 }
 
-#' Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf.
+#' Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf
 #' The resulting data is used to build models allowing to construct grid(X) with
-#' the prespecified values of gRf and gSf.
+#' the prespecified values of gRf and gSf
 #'
 #' @param X           A state space matrix.
 #' @param min.K       The number of nearest neighbors used to estimate median min.K.
@@ -1955,7 +1955,7 @@ expand.box <- function(L, R, p.exp, margin = NULL) {
     list(L = L, R = R)
 }
 
-#' Creates a box tiling of the bounding box of some set.
+#' Creates a box tiling of the bounding box of some set
 #'
 #' This function creates a box tiling of the bounding box of some set by
 #' selecting only boxes of the box tiling containing elements of that set. Box
@@ -2158,7 +2158,7 @@ box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, pl
 }
 
 
-#' Extracts Numerical x and y Values from a Character Vector.
+#' Extracts Numerical x and y Values from a Character Vector
 #'
 #' This function takes a character vector of the form \code{c("x1,y1", "x2,y2", ..., "xN,yN")}
 #' and extracts two numerical vectors, \code{x} and \code{y}, containing the corresponding
@@ -2193,7 +2193,7 @@ extract.xy <- function(s) {
     list(x = x, y = y)
 }
 
-#' Creates box tiling of a box.
+#' Creates box tiling of a box
 #'
 #' This function constructs a box tiling of a box specified by vectors 'L' and 'R'. The boxes forming the tiling are
 #' created by subdividing each axis into the same number of equal length intervals. A box is (also called hyperrectangle
@@ -2459,7 +2459,7 @@ identify_points_within_box <- function(X, L, R) {
     return(names(within_box)[within_box])
 }
 
-#' Find the points of a set X within a box.
+#' Find the points of a set X within a box
 #'
 #' This function finds ids of the points of X that are found within the given box.
 #'
@@ -2529,7 +2529,7 @@ find.points.within.box <- function(X, box, eps) {
 }
 
 
-#' Finds the box within a box list covering some data set that contains a given point.
+#' Finds the box within a box list covering some data set that contains a given point
 #'
 #' This function finds the sub-box within a given set of boxes that contains a specified point \code{x}.
 #'
@@ -2559,7 +2559,7 @@ find.box.containing.x <- function(boxes, x) {
     return(NULL)
 }
 
-#' Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point.
+#' Finds boxes within a box list covering some data set that (after expansion by a factor p.exp) contain a given point
 #'
 #' @param boxes A list of boxes, where each box is a list containing vectors \code{L} and \code{R} representing the left and right boundaries of the box.
 #' @param x     A vector representing the point for which the containing sub-box is to be found.
@@ -2657,7 +2657,7 @@ create.final.grid <- function(boxes, X, w, epsilon)
 
 
 
-#' Plots boxes of a box tiling of a 2D state space.
+#' Plots boxes of a box tiling of a 2D state space
 #'
 #' This function creates a plot showing the edges of boxes of the given box
 #' tiling and their indices in the center of each box. It is designed to work

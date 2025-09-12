@@ -84,7 +84,7 @@
 #' @return A list of class "uggmalo" containing:
 #' \describe{
 #' \item{candidate_bws}{Numeric vector of candidate bandwidths tested}
-#' \item{bw_predictions}{Matrix of predictions for each bandwidth (vertices × bandwidths)}
+#' \item{bw_predictions}{Matrix of predictions for each bandwidth (vertices x bandwidths)}
 #' \item{mean_errors}{Numeric vector of mean cross-validation errors
 #'   for each bandwidth}
 #' \item{opt_bw_idx}{Integer. Index of the optimal bandwidth (1-based)}
@@ -350,7 +350,7 @@ uggmalo <- function(adj.list,
 #'
 #' @param perm.results Numeric matrix where each row corresponds to a vertex
 #'   and each column contains predictions from a permutation run. Dimensions
-#'   should be (number of vertices × number of permutations).
+#'   should be (number of vertices x number of permutations).
 #' @param true.predictions Numeric vector of original UGGMALO predictions
 #'   for each vertex. Length must match the number of rows in
 #'   \code{perm.results}.
@@ -370,7 +370,7 @@ uggmalo <- function(adj.list,
 #' \item{ci.lower}{Numeric vector of lower bounds of \eqn{95\%} credible intervals}
 #' \item{ci.upper}{Numeric vector of upper bounds of \eqn{95\%} credible intervals}
 #' \item{bootstrap.distribution}{Matrix of bootstrap estimates where each
-#'   column represents one bootstrap iteration (vertices × iterations)}
+#'   column represents one bootstrap iteration (vertices x iterations)}
 #'
 #' @seealso \code{\link{uggmalo}}
 #'

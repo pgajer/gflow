@@ -89,7 +89,7 @@ minmax.normalize <- function(x, y.min = 0, y.max = 1) {
     y
 }
 
-#' Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\).
+#' Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\)
 #'
 #' @param x  A numerical vector.
 #'
@@ -238,7 +238,7 @@ n.zeros <- function(x)
 }
 
 #' Returns a matrix with two columns. The first column is the index of x where
-#' \code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}.
+#' \code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}
 #'
 #' @param x A numeric vector.
 #' @export
@@ -270,7 +270,7 @@ persistent.values <- function(x)
 }
 
 #' Returns a matrix with two columns. The first column is the index of x where
-#' x\[i\] is not NA and the second column is the largest k such that x\[i\] == x\[i + k\].
+#' x\[i\] is not NA and the second column is the largest k such that x\[i\] == x\[i + k\]
 #'
 #' @param x A numeric vector.
 #'
@@ -300,7 +300,7 @@ non.NA.values <- function(x)
 }
 
 #' Returns a matrix with two columns. The first column is the index of x where
-#' x\[i\] is not 0 and the second column is the largest k such that x\[i\] == x\[i + k\].
+#' x\[i\] is not 0 and the second column is the largest k such that x\[i\] == x\[i + k\]
 #'
 #' @param x A numeric vector.
 #'
@@ -345,7 +345,7 @@ p.cases <- function(y)
 }
 
 
-#' Computes a cross product between two 3D vectors.
+#' Computes a cross product between two 3D vectors
 #'
 #' This routine calculates the cross product between two vectors in \code{R^3}.
 #'
@@ -375,7 +375,7 @@ cross.prod <- function(x, y)
     return (x[j(i+1)]*y[j(i+2)] - x[j(i+2)]*y[j(i+1)])
 }
 
-#' The norm of a vector.
+#' The norm of a vector
 #'
 #' @param x A numeric vector.
 #' @export
@@ -385,7 +385,7 @@ vector.norm <- function(x)
 }
 
 
-#' Computes the angle between two 3D vectors in radians.
+#' Computes the angle between two 3D vectors in radians
 #'
 #' @param v A 3D vector.
 #' @param w A 3D vector.
@@ -559,7 +559,7 @@ derivative.second.order.method <- function(y, dx)
     dy[n] <- (y[n] - y[n-1]) / dx
     ddx <- 12 * dx
     for ( i in 3:(n-2) ) {
-        ## f'(t_i) ≈ (-f(t_{i+2}) + 8*f(t_{i+1}) - 8*f(t_{i-1}) + f(t_{i-2})) / (12*dt)
+        ## f'(t_i) approx (-f(t_{i+2}) + 8*f(t_{i+1}) - 8*f(t_{i-1}) + f(t_{i-2})) / (12*dt)
         dy[i] <- (-y[i+2] + 8*y[i+1] - 8*y[i-1] + y[i-2]) / ddx
     }
     dy
@@ -615,7 +615,7 @@ scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
     return(y)
 }
 
-#' Subtracts the centroid from each point of the given dataset.
+#' Subtracts the centroid from each point of the given dataset
 #'
 #' This function centers a dataset by subtracting a centroid from each point (row).
 #' If no centroid is provided, it computes the centroid as the column means of X.
@@ -879,7 +879,7 @@ scaled.log.tan <- function(x, scale=0.1)
     tan(x)
 }
 
-#' Restricts the range of value of a numeric vector to \code{[xmin, xmax]}.
+#' Restricts the range of value of a numeric vector to \code{[xmin, xmax]}
 #'
 #' @param x     A numeric vector.
 #' @param xmin  The minimum value of the clamped x.
@@ -1456,7 +1456,7 @@ robust.z.normalize <- function(x) {
 #' - Posterior probabilities are computed for:
 #'   * Method having smaller effect than reference (prob_smaller)
 #'   * Method having larger effect than reference (prob_larger)
-#'   * Effect being practically equivalent to reference (within ±0.1 SD)
+#'   * Effect being practically equivalent to reference (within +/-0.1 SD)
 #'
 #' @return A data frame where each row represents a method (named by method identifiers)
 #'         and columns contain:
@@ -1996,13 +1996,13 @@ find.inflection.pts <- function(y, x = NULL, method = c("magelo","mabilo")) {
 #' This function computes the second derivative of the unnormalized Gaussian function:
 #' \deqn{f(x) = \exp\left(-\frac{(x - \mu)^2}{2\sigma^2}\right)}{f(x) = exp(-((x - mu)^2)/(2 * sd^2))}
 #' with respect to x. The second derivative identifies inflection points of the Gaussian
-#' curve, which occur at \eqn{\mu \pm \sigma}{mu ± sd}.
+#' curve, which occur at \eqn{\mu \pm \sigma}{mu +/- sd}.
 #'
 #' @param x Numeric vector of x values at which to evaluate the second derivative
 #' @param mu Mean parameter (location) of the Gaussian function
 #' @param sd Standard deviation parameter (scale) of the Gaussian function. Must be positive.
 #' @return Numeric vector of second derivative values with the same length as x. The second
-#'   derivative equals zero at the inflection points (x = mu ± sd), is negative between
+#'   derivative equals zero at the inflection points (x = mu +/- sd), is negative between
 #'   them (concave down), and positive outside them (concave up).
 #' @details The second derivative is computed using the formula:
 #'   \deqn{f''(x) = \frac{(z^2 - 1) \cdot \exp(-z^2/2)}{\sigma^2}}{f''(x) = (z^2 - 1) * exp(-z^2/2) / sd^2}
@@ -2010,7 +2010,7 @@ find.inflection.pts <- function(y, x = NULL, method = c("magelo","mabilo")) {
 #'
 #'   Key properties:
 #'   \itemize{
-#'     \item Zero at x = mu ± sd (inflection points)
+#'     \item Zero at x = mu +/- sd (inflection points)
 #'     \item Maximum at x = mu (where f''(mu) = -1/sd^2)
 #'     \item Approaches 0 as \eqn{x \to \pm \infty}
 #'   }
@@ -2022,7 +2022,7 @@ find.inflection.pts <- function(y, x = NULL, method = c("magelo","mabilo")) {
 #' x <- seq(-5, 5, length.out = 100)
 #' result <- gaussian.second.derivative(x, mu = 0, sd = 1)
 #'
-#' # Example 2: Verify inflection points at mu ± sd
+#' # Example 2: Verify inflection points at mu +/- sd
 #' mu <- 2
 #' sd <- 1.5
 #' x_inflection <- c(mu - sd, mu + sd)
@@ -2058,12 +2058,12 @@ gaussian.second.derivative <- function(x, mu, sd) {
     return(second.deriv)
 }
 
-#' Calculate Jaccard index between two sets represented as numeric vectors.
+#' Calculate Jaccard index between two sets represented as numeric vectors
 #'
 #' @description
 #' The Jaccard index (also known as Jaccard similarity coefficient) is defined as the ratio
 #' of the size of the intersection of the two sets to the size of their union. Formally:
-#' \deqn{J(A, B) = \frac{|A \cap B|}{|A \cup B|}}{J(A, B) = |A ∩ B| / |A ∪ B|}
+#' \deqn{J(A, B) = \frac{|A \cap B|}{|A \cup B|}}{J(A, B) = |A  intersect  B| / |A  union  B|}
 #' The index ranges from 0 (no overlap) to 1 (identical sets).
 #'
 #' @param vec.1 A numeric vector representing the first set. Duplicate values are

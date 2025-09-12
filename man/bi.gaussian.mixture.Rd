@@ -2,7 +2,7 @@
 % Please edit documentation in R/synthetic_data_utils.R
 \name{bi.gaussian.mixture}
 \alias{bi.gaussian.mixture}
-\title{Creates a Synthetic Function with Specified Number of Local Maxima using bi-Gaussians.}
+\title{Creates a Synthetic Function with Specified Number of Local Maxima using bi-Gaussians}
 \usage{
 bi.gaussian.mixture(
   n.lmax,

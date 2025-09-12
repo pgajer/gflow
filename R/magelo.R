@@ -1164,7 +1164,7 @@ magelo.fit <- function(bw,
          beta = beta)
 }
 
-#' Eestimates the coefficients of linear models in the vicinity of each grid point of radius nn.r.
+#' Eestimates the coefficients of linear models in the vicinity of each grid point of radius nn.r
 #'
 #' The max.K parameter is used to avoid looping over indices where weights are 0.
 #'
@@ -1534,7 +1534,7 @@ deg0.loo.llm.1D <- function(nx, nn.i, nn.w, nn.y)
     out$predictions
 }
 
-#' Fits 1D rllm model and generates predictions estimates.
+#' Fits 1D rllm model and generates predictions estimates
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1581,7 +1581,7 @@ llm.1D.fit.and.predict <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degr
          predictions = out$predictions)
 }
 
-#' Creates BB CI's of a 1D rllm model's predictions estimates.
+#' Creates BB CI's of a 1D rllm model's predictions estimates
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1626,7 +1626,7 @@ llm.1D.fit.and.predict.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.
     return( out$predictions.CrI )
 }
 
-#' Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x.
+#' Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1671,7 +1671,7 @@ llm.1D.fit.and.predict.global.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, max.K, 
     return( out$predictions.CrI )
 }
 
-#' Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x.
+#' Creates Bayesian bootstrap (BB) estimates of predictions using global reweighting of the elements of x
 #'
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
 #' @param nn.w      A matrix of weights.
@@ -1710,7 +1710,7 @@ llm.1D.fit.and.predict.global.BB <- function(nn.i, nn.w, nn.x, nn.y, max.K, degr
     return( bbpredictions )
 }
 
-#' Creates BB quantile-based estimates of predictions CI's.
+#' Creates BB quantile-based estimates of predictions CI's
 #'
 #' @param y.binary  A logical variable. If TRUE, predicted predictions will be trimmed to the closed interval \code{[0, 1]}.
 #' @param nn.i      A matrix of the indices of K nearest neighbors of each element of the grid, where K is determined in the parent routine.
@@ -2277,7 +2277,7 @@ rllm.2os.1D <- function(x, y1, y2, grid.size = 400, degree = 2, f = NULL, bw = N
          predictions1.CI = predictions1.CI)
 }
 
-#' Fits 1D rllm model and generates predictions estimates for each column of a matrix Y.
+#' Fits 1D rllm model and generates predictions estimates for each column of a matrix Y
 #'
 #' @param Y         A matrix with the number of rows that is the same as the length of x that was used to construct nn.* matrices. The main application of this routine is for the case when the columns of Y are permutations some y.
 #' @param y.binary  Set to TRUE, if the values of all columns of Y are within the interval \code{[0,1]}.
@@ -2325,7 +2325,7 @@ mllm.1D.fit.and.predict <- function(Y, y.binary, nn.i, nn.w, nn.x, max.K, degree
     matrix(out$EY.grid, nrow = ncTnn, ncol = ncY, byrow = FALSE)
 }
 
-#' A local linear 1D model with y being a matrix. It expects bw value.
+#' A local linear 1D model with y being a matrix. It expects bw value
 #'
 #' @param x              A numeric vector of a predictor variable.
 #' @param Y              A matrix such that nrow(Y) = length(x) representation many instances of the outcome variable.
@@ -2478,7 +2478,7 @@ get.BB.gpredictions <- function(n.BB,
          bb.dgpredictions = bb.dgpredictions)
 }
 
-#' Estimates gpredictions Means Matrix Over a Uniform Grid for Different bandwidths.
+#' Estimates gpredictions Means Matrix Over a Uniform Grid for Different bandwidths
 #'
 #' Given a vector, bws, of bandwidths this routine estimates a matrix of gpredictions's
 #' where each column corresponds to the gpredictions estimate for a different bandwidth.
@@ -2561,7 +2561,7 @@ get.gpredictionss <- function(bws,
     matrix(out$gpredictionss, nrow = ncTnn, ncol = n.bws, byrow = FALSE)
 }
 
-#' Generates Bayesian bootstrap credible intervals of gpredictions.
+#' Generates Bayesian bootstrap credible intervals of gpredictions
 #'
 #' @param n.BB       The number of Bayesian bootstrap iterations
 #' @param nn.i       A matrix of indices of X of the nearest neighbors of each point of X.
@@ -2636,7 +2636,7 @@ get.gpredictions.CrI <- function(n.BB,
 }
 
 
-#' Row-wise evaluates x at nn.i.
+#' Row-wise evaluates x at nn.i
 #'
 #' @param nn.i      An array of indices of K nearest neighbors of the i-th element of x.
 #' @param x         An array of nx elements.
@@ -2663,10 +2663,10 @@ row.eval <- function(nn.i, x) {
     return(nn.x)
 }
 
-#' 1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition.
+#' 1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition
 #' Given a vector 'y', this routine finds 'predictions' such that the first element of
 #' 'predictions' equals the first element of 'y', and the last element of 'predictions'
-#' equals the last element of 'y'.
+#' equals the last element of 'y'
 #'
 #' @param x           A numeric vector of a predictor variable.
 #' @param y           A numeric vector of an outcome variable.
@@ -2683,7 +2683,7 @@ row.eval <- function(nn.i, x) {
 #' @param min.bw.f    The min.bw factor, such that, min.bw = min.bw.f * dx, where dx <- diff(x.range).
 #'                    The default value is 0.025.
 #' @param method      A method of estimating the optimal value of the bandwidth.
-#'                    Possible choices are "LOOCV" (for small datasets) and "CV".
+#'                    Possible choices are "LOOCV" (for small datasets) and "CV"
 #' @param n.bws       The number of bandwidths in the optimization process. Default: 100.
 #' @param n.cv.folds  The number of cross-validation folds. Used only when f = NULL. Default value: 10.
 #' @param n.cv.reps   The number of repetitions of cross-validation. Used only when f = NULL. Default value: 20.

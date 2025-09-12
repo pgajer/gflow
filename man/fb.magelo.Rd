@@ -2,10 +2,10 @@
 % Please edit documentation in R/magelo.R
 \name{fb.magelo}
 \alias{fb.magelo}
-\title{1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition.
+\title{1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition
 Given a vector 'y', this routine finds 'predictions' such that the first element of
 'predictions' equals the first element of 'y', and the last element of 'predictions'
-equals the last element of 'y'.}
+equals the last element of 'y'}
 \usage{
 fb.magelo(
   x,
@@ -63,7 +63,7 @@ cross-validation optimization algorithm.}
 The default value is 0.025.}
 
 \item{method}{A method of estimating the optimal value of the bandwidth.
-Possible choices are "LOOCV" (for small datasets) and "CV".}
+Possible choices are "LOOCV" (for small datasets) and "CV"}
 
 \item{n.bws}{The number of bandwidths in the optimization process. Default: 100.}
 
@@ -122,8 +122,8 @@ A list of class "magelo" containing input parameters as well as fitted values,
 credible intervals, bootstrap estimates, and model coefficients
 }
 \description{
-1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition.
+1D MAGELO (Model Averaged Grid-based Epsilon LOwess) with fixed boundary condition
 Given a vector 'y', this routine finds 'predictions' such that the first element of
 'predictions' equals the first element of 'y', and the last element of 'predictions'
-equals the last element of 'y'.
+equals the last element of 'y'
 }

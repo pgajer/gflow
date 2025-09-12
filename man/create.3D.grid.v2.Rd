@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{create.3D.grid.v2}
 \alias{create.3D.grid.v2}
-\title{Creates a 3D grid of points around X.}
+\title{Creates a 3D grid of points around X}
 \usage{
 create.3D.grid.v2(
   n,

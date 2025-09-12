@@ -3,7 +3,7 @@
 \name{path.dist}
 \alias{path.dist}
 \title{Distances from the first vertex of a path to each consecutive vertex along
-the given path normalized so that the total distance is 1.}
+the given path normalized so that the total distance is 1}
 \usage{
 path.dist(s, V, edge.col = "gray")
 }
@@ -22,7 +22,7 @@ the last element is always 1.
 }
 \description{
 Distances from the first vertex of a path to each consecutive vertex along
-the given path normalized so that the total distance is 1.
+the given path normalized so that the total distance is 1
 }
 \details{
 This function calculates the cumulative Euclidean distances along a path defined

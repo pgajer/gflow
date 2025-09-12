@@ -44,11 +44,11 @@ A list containing:
 }
 \description{
 Fits a regularized polynomial regression model using elastic net regularization
-via the glmnet package. The function creates polynomial features (x, x², x³) and
+via the glmnet package. The function creates polynomial features (x, x^2, x^3) and
 uses cross-validation to select the optimal regularization parameter lambda.
 }
 \details{
-This function creates polynomial features (x, x², x³) to capture non-linear
+This function creates polynomial features (x, x^2, x^3) to capture non-linear
 relationships. It uses cv.glmnet for automatic cross-validation to select the optimal
 lambda parameter. The alpha parameter controls the type of regularization:
 \itemize{

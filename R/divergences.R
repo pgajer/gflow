@@ -28,7 +28,7 @@
 #' print(result)
 #'
 #' @references
-#' Wang, Q., Kulkarni, S. R., & Verdú, S. (2009). Divergence estimation for multidimensional densities
+#' Wang, Q., Kulkarni, S. R., & Verdu, S. (2009). Divergence estimation for multidimensional densities
 #' via k-nearest-neighbor distances. IEEE Transactions on Information Theory, 55(5), 2392-2405.
 init.version.nn.distance.ratio.estimator <- function(X, Y, k = 1) {
   n <- nrow(X)
@@ -73,7 +73,7 @@ init.version.nn.distance.ratio.estimator <- function(X, Y, k = 1) {
 #' print(result)
 #'
 #' @references
-#' Wang, Q., Kulkarni, S. R., & Verdú, S. (2009). Divergence estimation for multidimensional densities
+#' Wang, Q., Kulkarni, S. R., & Verdu, S. (2009). Divergence estimation for multidimensional densities
 #' via k-nearest-neighbor distances. IEEE Transactions on Information Theory, 55(5), 2392-2405.
 #' @export
 nn.distance.ratio.estimator <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e-8) {
@@ -533,7 +533,7 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
 #' print(result)
 #'
 #' @references
-#' Székely, G. J., & Rizzo, M. L. (2013). Energy statistics: A class of statistics based on distances.
+#' Szekely, G. J., & Rizzo, M. L. (2013). Energy statistics: A class of statistics based on distances.
 #' Journal of statistical planning and inference, 143(8), 1249-1272.
 #' @export
 energy.distance <- function(X, Y) {

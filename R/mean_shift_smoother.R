@@ -423,7 +423,7 @@ meanshift.data.smoother <- function(X,
 #' @return This function does not return a value; it produces a plot as a side effect.
 #'
 #' @examples
-#' \dontrun{X1™
+#' \dontrun{
 #' # Generate sample data
 #' X <- matrix(rnorm(200), ncol = 2)
 #'

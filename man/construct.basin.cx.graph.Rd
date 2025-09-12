@@ -21,7 +21,7 @@ for an edge to be created (default: 1)}
 ignoring ascending-ascending and descending-descending connections (default: FALSE)}
 
 \item{weight_type}{Character string specifying the edge weight metric to use. Options are:
-"dice" (Dice-Sørensen similarity), "jaccard" (Jaccard index), "overlap" (overlap size),
+"dice" (Dice-Sorensen similarity), "jaccard" (Jaccard index), "overlap" (overlap size),
 or "y_diff" (function value difference) (default: "dice")}
 }
 \value{
@@ -50,7 +50,7 @@ the topological structure of the function on the original graph.
 
 Edge weights can be based on different metrics:
 \itemize{
-\item dice: Dice-Sørensen similarity index \eqn{(2|A \cap B|/(|A| + |B|))}
+\item dice: Dice-Sorensen similarity index \eqn{(2|A \cap B|/(|A| + |B|))}
 \item jaccard: Jaccard similarity index \eqn{(|A \cap B|/|A \cup B|)}
 \item overlap: Raw number of vertices in the intersection
 \item y_diff: Absolute difference in function value between extrema

@@ -2,7 +2,7 @@
 % Please edit documentation in R/magelo.R
 \name{llm.1D.fit.and.predict.global.BB.CrI}
 \alias{llm.1D.fit.and.predict.global.BB.CrI}
-\title{Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x.}
+\title{Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x}
 \usage{
 llm.1D.fit.and.predict.global.BB.CrI(
   nn.i,
@@ -42,5 +42,5 @@ llm.1D.fit.and.predict.global.BB.CrI(
 predictions.CrI of length nx.
 }
 \description{
-Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x.
+Creates BB CI's of a 1D rllm model's predictions estimates using global reweighting of the elements of x
 }

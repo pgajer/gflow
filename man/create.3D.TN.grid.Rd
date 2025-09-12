@@ -2,7 +2,7 @@
 % Please edit documentation in R/grids.R
 \name{create.3D.TN.grid}
 \alias{create.3D.TN.grid}
-\title{Creates a tubular neighborhood 3D grid of X.}
+\title{Creates a tubular neighborhood 3D grid of X}
 \usage{
 create.3D.TN.grid(
   X,

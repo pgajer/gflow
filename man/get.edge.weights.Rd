@@ -30,11 +30,13 @@ each edge is counted exactly once.
 The function requires the foreach and doParallel packages.
 }
 \examples{
+\dontrun{
 # Create a simple undirected weighted graph
 adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
 weight.list <- list(c(5, 10), c(5, 7), c(10, 7))
 
 # Get weights of all edges using 2 cores
-edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = 2)
+edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = safe_cores(1))
+}
 
 }

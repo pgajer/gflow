@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats_utils.R
 \name{inv.logit}
 \alias{inv.logit}
-\title{Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\).}
+\title{Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\)}
 \usage{
 inv.logit(x)
 }
@@ -13,5 +13,5 @@ inv.logit(x)
 Inverse logit transformed data.
 }
 \description{
-Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\).
+Inverse logit transformation x -> 1 / (1 + exp(-x)) from real numbers into the unit interval \((0,1)\)
 }

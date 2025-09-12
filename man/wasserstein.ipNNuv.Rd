@@ -2,7 +2,7 @@
 % Please edit documentation in R/wasserstein_dist.R
 \name{wasserstein.ipNNuv}
 \alias{wasserstein.ipNNuv}
-\title{Local Wasserstein distance to the uniform and delta at 1 of the inner products of the NN unit vectors.}
+\title{Local Wasserstein distance to the uniform and delta at 1 of the inner products of the NN unit vectors}
 \usage{
 wasserstein.ipNNuv(
   S,

@@ -950,9 +950,13 @@ function.contours.plot <- function(grid, f.grid,
 #' morse.analysis.plot(grid, f.grid, traj, critical)
 #' }
 #' @export
-morse.analysis.plot <- function(grid, f.grid, trajectory, critical.points,
-                              show.contours = TRUE,
-                              main = "Morse Analysis", ...) {
+morse.analysis.plot <- function(grid,
+                                f.grid,
+                                trajectory,
+                                critical.points,
+                                show.contours = TRUE,
+                                main = "Morse Analysis",
+                                ...) {
     ## Start with contours if requested
     if (show.contours) {
         function.contours.plot(grid, f.grid, main = main, ...)

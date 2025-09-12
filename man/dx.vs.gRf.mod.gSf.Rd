@@ -2,9 +2,9 @@
 % Please edit documentation in R/grids.R
 \name{dx.vs.gRf.mod.gSf}
 \alias{dx.vs.gRf.mod.gSf}
-\title{Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf.
+\title{Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf
 The resulting data is used to build models allowing to construct grid(X) with
-the prespecified values of gRf and gSf.}
+the prespecified values of gRf and gSf}
 \usage{
 dx.vs.gRf.mod.gSf(
   X,
@@ -50,7 +50,7 @@ dx.vs.gRf.mod.gSf(
 \item{verbose}{A logical flag. Set it to TRUE to report timing of the foreach loop.}
 }
 \description{
-Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf.
+Given gSf and gRf, dx are found so that corresponding grid(X) has give gSf
 The resulting data is used to build models allowing to construct grid(X) with
-the prespecified values of gRf and gSf.
+the prespecified values of gRf and gSf
 }
