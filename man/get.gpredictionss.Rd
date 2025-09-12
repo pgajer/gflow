@@ -31,9 +31,9 @@ A matrix of the estimates of the means, gpredictions, of y over a uniform grid w
 \description{
 Given a vector, bws, of bandwidths this routine estimates a matrix of gpredictions's
 where each column corresponds to the gpredictions estimate for a different bandwidth.
-This is an R interface to a C routine, C_get_gpredictionss(), where the estimates of
+This is an R interface to a C routine, C_get_Eygs(), where the estimates of
 gpredictions's are done. In practice, it is not intended to be used directly from R,
-but rather to test the correctness of C_get_gpredictionss(). This routine is used in
+but rather to test the correctness of C_get_Eygs(). This routine is used in
 different bandwidth optimization processes based on gpredictions characteristics (like
 total absolute curvature or the number of inflection points).
 }

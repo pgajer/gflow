@@ -1,25 +1,27 @@
-#' A generic interface for evaluating a kernel over a numeric vector
+#' Evaluate a smoothing kernel on a numeric vector
 #'
-#' @param x           A numeric vector.
-#' @param kernel.str  The name (character string) of a kernel that will be evaluated over x.
+#' @param x numeric vector
+#' @param ikernel integer kernel id (EPANECHNIKOV, TRIANGULAR, NORMAL, LAPLACE, etc.)
+#' @param scale positive numeric; used for Normal and Laplace (default 1)
+#' @return numeric vector of same length as \code{x}
 #' @export
-kernel.fn <- function(x, kernel.str="normal")
-{
-    kernels <- c("epanechnikov", "triangular", "tr.exponential","normal")
-    ikernel <- pmatch(kernel.str, kernels)
+kernel.eval <- function(x, ikernel, scale = 1) {
 
-    nx <- length(x)
-    y <- numeric(nx)
+  if (!is.finite(scale) || scale <= 0)
+    stop("'scale' must be a positive finite number.")
+  n <- length(x)
+  if (n > .Machine$integer.max)
+    stop("Length(x) exceeds internal integer limit.")
 
-    x[is.na(x)] <- 1
+  out <- .C("C_kernel_eval",
+            as.integer(ikernel),  # int*
+            as.double(x),         # double*
+            as.integer(n),        # int*
+            y = double(n),        # double*
+            as.double(scale),     # double*
+            PACKAGE = "gflow")
 
-    out <- .C("C_kernel",
-             as.integer(ikernel),
-             as.double(x),
-             as.integer(nx),
-             y=as.double(y))
-
-    return(out$y)
+  out$y
 }
 
 #' Triangular kernel

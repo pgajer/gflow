@@ -1,3 +1,81 @@
+#' Graph Kernel Smoother
+#'
+#' Smooth a scalar signal on a graph using kernel weights along edges.
+#' This is a thin user-facing wrapper that forwards to the Rcpp
+#' implementation `Rcpp_graph_kernel_smoother()`.
+#'
+#' @param adj A list of integer vectors; the adjacency list of the graph.
+#'   Each element \code{adj[[i]]} contains the (1-based) neighbor indices of vertex \code{i}.
+#' @param w A list of numeric vectors of the same shape as \code{adj}, or \code{NULL}.
+#'   If provided, \code{w[[i]]} must have length \code{length(adj[[i]])} and
+#'   contains edge weights for the neighbors of vertex \code{i}. Use \code{NULL}
+#'   for unweighted graphs (defaults to weight 1 per edge).
+#' @param y A numeric vector of length \code{length(adj)}; the signal to be smoothed.
+#' @param bandwidth Integer bandwidth (method-specific; typically controls kernel
+#'   neighborhood/scale). Must be \eqn{\ge 1}.
+#' @param with_details Logical; if \code{TRUE}, include additional diagnostics
+#'   (e.g., per-vertex bandwidth usage, iteration counts). Defaults to \code{FALSE}.
+#'
+#' @return A named list with components:
+#' \itemize{
+#'   \item \code{fitted} — numeric vector of length \code{length(y)} with smoothed values.
+#'   \item \code{bandwidth} — integer bandwidth actually used.
+#'   \item \code{details} — (optional) a list of diagnostics, present when \code{with_details = TRUE}.
+#' }
+#'
+#' @section Input requirements:
+#' \itemize{
+#'   \item \code{adj} must be a list the same length as \code{y}; neighbors are 1-based indices.
+#'   \item If \code{w} is not \code{NULL}, it must be a list the same length as \code{adj} with
+#'         \code{length(w[[i]]) == length(adj[[i]])} for all \code{i}.
+#' }
+#'
+#' @section Notes:
+#' This wrapper only orchestrates I/O and delegates computation to the Rcpp routine
+#' \code{Rcpp_graph_kernel_smoother()}. For reproducibility, ensure any stochastic
+#' components in the underlying method are deterministically seeded upstream.
+#'
+#' @examples
+#' \dontrun{
+#' # Tiny chain graph with unit weights
+#' n <- 5L
+#' adj <- vector("list", n)
+#' for (i in seq_len(n)) {
+#'   adj[[i]] <- unique(c(if (i > 1) i - 1L else integer(), if (i < n) i + 1L else integer()))
+#' }
+#' w <- lapply(adj, function(nei) rep(1, length(nei)))
+#' y <- as.numeric(1:n)
+#'
+#' fit <- graph.kernel.smoother(adj, w, y, bandwidth = 2L, with_details = FALSE)
+#' str(fit)
+#' }
+#'
+#' @seealso \code{\link{Rcpp_graph.kernel.smoother}} (internal), related graph smoothers in this package.
+#' @export
+graph.kernel.smoother <- function(adj, w, y, bandwidth, with_details = FALSE) {
+  # Basic validation at the R layer (fast errors, helpful messages)
+  if (!is.list(adj)) stop("`adj` must be a list of integer vectors.")
+  n <- length(adj)
+  if (!is.numeric(y) || length(y) != n) {
+    stop("`y` must be numeric and length(y) must equal length(adj).")
+  }
+  if (!is.null(w)) {
+    if (!is.list(w) || length(w) != n) stop("`w` must be NULL or a list matching `adj` in length.")
+    for (i in seq_len(n)) {
+      if (length(w[[i]]) && length(w[[i]]) != length(adj[[i]])) {
+        stop(sprintf("`w[[%d]]` must have the same length as `adj[[%d]]`.", i, i))
+      }
+    }
+  }
+  if (!is.numeric(bandwidth) || length(bandwidth) != 1L || bandwidth < 1) {
+    stop("`bandwidth` must be a single integer >= 1.")
+  }
+
+  # Delegate to the Rcpp implementation (exported via Rcpp::compileAttributes)
+  Rcpp_graph_kernel_smoother(adj, w, y, as.integer(bandwidth), isTRUE(with_details))
+}
+
+
 #' Graph-Based Kernel Smoother with Buffer Zone Cross-Validation
 #'
 #' @description
@@ -162,8 +240,7 @@
 #' lines(x, gks.res$predictions, col = "blue")
 #' }
 #'
-#' @export
-graph.kernel.smoother <- function(
+S.version.graph.kernel.smoother <- function(
     adj.list,
     weight.list,
     y,

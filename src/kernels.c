@@ -49,7 +49,6 @@ static void laplace_kernel_wrapper(const double *x, int n, double *w) {
     }
 }
 
-
 /*!
  * @brief Initialize the kernel function to be used for smoothing.
  *
@@ -67,7 +66,7 @@ static void laplace_kernel_wrapper(const double *x, int n, double *w) {
  * @throws Error if an unknown kernel type is specified
  */
 void initialize_kernel(int ikernel, double scale) {
-  switch(ikernel) {
+  switch (ikernel) {
   case EPANECHNIKOV:
     kernel_fn = epanechnikov_kernel;
     break;
@@ -79,16 +78,16 @@ void initialize_kernel(int ikernel, double scale) {
     break;
   case LAPLACE:
     if (scale != 1.0) {
-       g_scale = scale;
-       kernel_fn = laplace_kernel_wrapper;
+      g_scale = scale;
+      kernel_fn = laplace_kernel_wrapper;
     } else {
-       kernel_fn = laplace_kernel;
+      kernel_fn = laplace_kernel;
     }
     break;
   case NORMAL:
     if (scale != 1.0) {
-       g_scale = scale;
-       kernel_fn = normal_kernel_wrapper;
+      g_scale = scale;
+      kernel_fn = normal_kernel_wrapper;
     } else {
       kernel_fn = normal_kernel;
     }
@@ -102,16 +101,39 @@ void initialize_kernel(int ikernel, double scale) {
   case COSINE:
     kernel_fn = cosine_kernel;
     break;
-    case HYPERBOLIC:
-      kernel_fn = hyperbolic_kernel;
+  case HYPERBOLIC:
+    kernel_fn = hyperbolic_kernel;
+    break;
   case CONSTANT:
-    kernel_fn = const_kernel;  // or const_kernel if that's the preferred name
+    kernel_fn = const_kernel;
     break;
   default:
-    Rf_error("In %s line %d: initialize_kernel(): ikernel=%d: Unknown kernel in the internal C function", __FILE__, __LINE__, ikernel);
+    Rf_error("In %s line %d: initialize_kernel(): ikernel=%d: Unknown kernel in the internal C function",
+             __FILE__, __LINE__, ikernel);
   }
 }
 
+/*!
+ * @brief Evaluates a kernel specified by kernel index over a numeric vector.
+ *
+ * This calls initialize_kernel() to set the correct kernel function pointer
+ * and then applies it to the input data.
+ *
+ * @param ikernel - kernel index
+ * @param x       - input 1D array
+ * @param n       - number of elements of x
+ * @param y       - output 1D array
+ * @param scale   - optional scale parameter (default = 1.0)
+ */
+void C_kernel_eval(const int* ikernel,
+                   const double* x,
+                   const int* n,
+                   double* y,
+                   const double* scale)
+{
+    initialize_kernel(*ikernel, *scale);
+    kernel_fn(x, *n, y);
+}
 
 //
 // The following kernel definitions return void and assume that the output is

@@ -56,6 +56,8 @@
 #include "fn_graphs_r.h"
 #include "nerve_cx_r.h"
 #include "stats_utils.h"
+#include "kernels.h"
+#include "mean_shift_smoother_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -114,7 +116,10 @@ static R_NativePrimitiveArgType pearson_wcor_BB_qCrI_type[] = {REALSXP, REALSXP,
 static R_NativePrimitiveArgType density_distance_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, REALSXP};
 static R_NativePrimitiveArgType rmatrix_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, INTSXP};
 
+static R_NativePrimitiveArgType kernel_eval_type[] = { INTSXP, REALSXP, INTSXP, REALSXP, REALSXP };
+
 static const R_CMethodDef cMethods[] = {
+  {"C_kernel_eval", (DL_FUNC) &C_kernel_eval, 5, kernel_eval_type},
   {"C_llm_1D_beta", (DL_FUNC) &C_llm_1D_beta, 8, llm_1D_beta_type},
   {"C_llm_1D_beta_perms", (DL_FUNC) &C_llm_1D_beta_perms, 11, llm_1D_beta_perms_type},
   {"C_predict_1D", (DL_FUNC) &C_predict_1D, 11, predict_1D_type},

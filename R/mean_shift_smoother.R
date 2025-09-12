@@ -277,7 +277,7 @@ meanshift.data.smoother <- function(X,
 
     # Call the appropriate C function based on method
     if (method.num == 0) {
-        # Basic method
+        ## Basic method
         result <- .Call("S_mean_shift_data_smoother",
                        X,
                        as.integer(k),
@@ -286,14 +286,16 @@ meanshift.data.smoother <- function(X,
                        as.integer(ikernel),
                        as.double(dist.normalization.factor))
     } else if (method.num == 1) {
-        # Precomputed method
-        result <- .Call("S_mean_shift_data_smoother_precomputed",
-                       X,
-                       as.integer(k),
-                       as.integer(n.steps),
-                       as.double(step.size),
-                       as.integer(ikernel),
-                       as.double(dist.normalization.factor))
+        ## Precomputed method
+        stop("Precomputed method not implemented yet")
+        ## result <- .Call("S_mean_shift_data_smoother_precomputed",
+        ##                X,
+        ##                as.integer(k),
+        ##                as.integer(n.steps),
+        ##                as.double(step.size),
+        ##                as.integer(ikernel),
+        ##                as.double(dist.normalization.factor))
+
     } else if (method.num %in% c(2, 3)) {
         # Gradient field averaging methods
         result <- .Call("S_mean_shift_data_smoother_with_grad_field_averaging",
@@ -317,44 +319,43 @@ meanshift.data.smoother <- function(X,
                        as.double(dist.normalization.factor),
                        as.logical(average.direction.only))
     } else if (method.num == 6) {
-        # KNN adaptive method
-        result <- .Call("S_knn_adaptive_mean_shift_smoother",
-                       X,
-                       as.integer(k),
-                       as.integer(density.k),
-                       as.integer(n.steps),
-                       as.double(step.size),
-                       as.integer(ikernel),
-                       as.double(dist.normalization.factor),
-                       as.double(increase.factor),
-                       as.double(decrease.factor))
+        ## KNN adaptive method
+        stop("knn_adaptive_mean_shift_smoother not implemented yet")
+        ## result <- .Call("S_knn_adaptive_mean_shift_smoother",
+        ##                X,
+        ##                as.integer(k),
+        ##                as.integer(density.k),
+        ##                as.integer(n.steps),
+        ##                as.double(step.size),
+        ##                as.integer(ikernel),
+        ##                as.double(dist.normalization.factor),
+        ##                as.double(increase.factor),
+        ##                as.double(decrease.factor))
+
     } else if (method.num %in% c(7, 8)) {
-        # KNN adaptive with gradient field averaging
-        result <- .Call("S_knn_adaptive_mean_shift_data_smoother_with_grad_field_averaging",
-                       X,
-                       as.integer(k),
-                       as.integer(density.k),
-                       as.integer(n.steps),
-                       as.double(step.size),
-                       as.integer(ikernel),
-                       as.double(dist.normalization.factor),
-                       as.logical(average.direction.only),
-                       as.double(increase.factor),
-                       as.double(decrease.factor))
+        ## KNN adaptive with gradient field averaging
+        result <- knn_adaptive_mean_shift_gfa(X,
+                                              k,
+                                              density_k,
+                                              n_steps,
+                                              step.size,
+                                              ikernel = 1L,
+                                              dist.normalization.factor,
+                                              average.direction.only)
+
     } else if (method.num %in% c(9, 10)) {
-        # Adaptive with gradient field averaging and momentum
-        result <- .Call("S_adaptive_mean_shift_data_smoother_with_grad_field_averaging",
-                       X,
-                       as.integer(k),
-                       as.integer(density.k),
-                       as.integer(n.steps),
-                       as.double(step.size),
-                       as.integer(ikernel),
-                       as.double(dist.normalization.factor),
-                       as.logical(average.direction.only),
-                       as.double(momentum),
-                       as.double(increase.factor),
-                       as.double(decrease.factor))
+        ## Adaptive with gradient field averaging and momentum
+        result <- adaptive_mean_shift_gfa(X,
+                                          k,
+                                          density_k,
+                                          n_steps,
+                                          initial_step_size,
+                                          ikernel,
+                                          dist_normalization_factor,
+                                          average_direction_only,
+                                          momentum,
+                                          increase_factor,
+                                          decrease_factor)
     }
 
     # Process results
@@ -565,4 +566,99 @@ plot.MSD <- function(x,
             }
         }
     )
+}
+
+
+#' Fully Adaptive Mean Shift with Gradient Field Averaging
+#'
+#' Implements a fully adaptive mean-shift smoother with gradient-field averaging.
+#' This version adapts both neighborhood selection (kNN recomputed each step)
+#' and per-point step sizes via momentum and step increase/decrease factors.
+#'
+#' @param X Numeric matrix (n x d), one row per point.
+#' @param k Integer > 0, k-NN for gradient estimation (excl. self).
+#' @param density_k Integer > 0, k-NN for density estimation (excl. self).
+#' @param n_steps Integer > 0, number of iterations.
+#' @param initial_step_size Positive numeric, initial per-point step size.
+#' @param ikernel Integer kernel id; 1=Gaussian, 2=Epanechnikov, 3=Quartic.
+#' @param dist_normalization_factor Positive numeric distance scaling (default 1.01).
+#' @param average_direction_only Logical; if TRUE, average directions only.
+#' @param momentum Numeric in (0,1], influence of previous gradients (default 0.9).
+#' @param increase_factor Numeric > 1, step growth factor (default 1.2).
+#' @param decrease_factor Numeric in (0,1), step shrink factor (default 0.5).
+#'
+#' @return A list with:
+#' \itemize{
+#'   \item \code{X_traj}: list of length \code{n_steps+1} (typically),
+#'         each an n x d matrix of point positions per iteration.
+#'   \item \code{median_kdistances}: numeric vector of median k-distances per step.
+#' }
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(200), ncol = 2)
+#' out <- adaptive_mean_shift_gfa(
+#'   X, k = 10, density_k = 10, n_steps = 5, initial_step_size = 0.1
+#' )
+#' length(out$X_traj)
+#' @export
+adaptive_mean_shift_gfa <- function(
+  X,
+  k,
+  density_k,
+  n_steps,
+  initial_step_size,
+  ikernel = 1L,
+  dist_normalization_factor = 1.01,
+  average_direction_only = FALSE,
+  momentum = 0.9,
+  increase_factor = 1.2,
+  decrease_factor = 0.5
+) {
+  X <- as.matrix(X)
+  rcpp_adaptive_mean_shift_gfa(
+    X, as.integer(k), as.integer(density_k), as.integer(n_steps),
+    as.numeric(initial_step_size),
+    as.integer(ikernel), as.numeric(dist_normalization_factor),
+    as.logical(average_direction_only),
+    as.numeric(momentum), as.numeric(increase_factor), as.numeric(decrease_factor)
+  )
+}
+
+#' kNN-Adaptive Mean Shift with Gradient Field Averaging
+#'
+#' Adaptive in the sense that kNN is recomputed as points move, but with a
+#' constant step size over iterations.
+#'
+#' @inheritParams adaptive_mean_shift_gfa
+#' @param step_size Positive numeric constant step size per iteration.
+#'
+#' @return A list with \code{X_traj} and \code{median_kdistances}; see
+#'   \code{\link{adaptive_mean_shift_gfa}}.
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(200), ncol = 2)
+#' out <- knn_adaptive_mean_shift_gfa(
+#'   X, k = 10, density_k = 10, n_steps = 5, step_size = 0.1
+#' )
+#' sapply(out$X_traj, dim)
+#' @export
+knn_adaptive_mean_shift_gfa <- function(
+  X,
+  k,
+  density_k,
+  n_steps,
+  step_size,
+  ikernel = 1L,
+  dist_normalization_factor = 1.01,
+  average_direction_only = FALSE
+) {
+  X <- as.matrix(X)
+  rcpp_knn_adaptive_mean_shift_gfa(
+    X, as.integer(k), as.integer(density_k), as.integer(n_steps),
+    as.numeric(step_size),
+    as.integer(ikernel), as.numeric(dist_normalization_factor),
+    as.logical(average_direction_only)
+  )
 }

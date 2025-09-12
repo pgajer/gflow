@@ -1,3 +1,7 @@
+#' @useDynLib gflow, .registration = TRUE
+#' @importFrom Rcpp evalCpp
+NULL
+
 # Global variables used in the package
 # This file declares global variables to avoid R CMD check NOTEs
 

@@ -1,3 +1,4 @@
+#include "mean_shift_smoother.hpp"
 #include "msr2.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
@@ -17,17 +18,7 @@
 #include <R.h>
 #include <Rinternals.h>
 
-// Forward declarations of helper functions
-SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
-                   const std::vector<double>& median_kdistances);
-
 extern knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
-
-// Define the result struct
-struct mean_shift_smoother_results_t {
-    std::vector<std::vector<std::vector<double>>> X_traj;
-    std::vector<double> median_kdistances;
-};
 
 extern "C" {
     SEXP S_mean_shift_data_smoother(SEXP s_X,
@@ -536,136 +527,6 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
 
     return results;
 }
-
-
-
-
-/**
- * @brief Helper function to convert mean shift smoothing results to an R list.
- *
- * This function takes the results of the mean shift smoothing algorithm (trajectory of points
- * and median k-distances) and converts them into an R list structure. It is designed to be used
- * internally by the S_mean_shift_data_smoother function to prepare its return value for R.
- *
- * @param X_traj const std::vector<std::vector<std::vector<double>>>&
- *        A 3D vector representing the trajectory of points across all smoothing steps.
- *        - First dimension: steps
- *        - Second dimension: points
- *        - Third dimension: features of each point
- *
- * @param median_kdistances const std::vector<double>&
- *        A vector of median k-distances, one for each smoothing step.
- *
- * @return SEXP
- *         Returns an R list containing:
- *         - X_traj: A list of matrices, each representing the smoothed dataset at each step.
- *         - median_kdistances: A numeric vector of median k-distances.
- *
- * @note This function uses R's C API to create R objects. It handles the necessary memory
- *       protection (PROTECT/UNPROTECT) to prevent garbage collection issues.
- *
- * @Rf_warning This function assumes that the input vectors are not empty. It does not perform
- *          extensive Rf_error checking on the inputs.
- */
-SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
-                   const std::vector<double>& median_kdistances) {
-    int n_steps = X_traj.size();
-    int n_points = X_traj[0].size();
-    int n_features = X_traj[0][0].size();
-    int nprot = 0;
-
-    // Create trajectory list
-    SEXP X_traj_r = Rf_allocVector(VECSXP, n_steps);
-    PROTECT(X_traj_r);
-    nprot++;
-
-    // Fill trajectory matrices
-    for (int step = 0; step < n_steps; step++) {
-        SEXP step_matrix = Rf_allocMatrix(REALSXP, n_points, n_features);
-        PROTECT(step_matrix);
-        nprot++;
-
-        double* matrix_ptr = REAL(step_matrix);
-        for (int i = 0; i < n_points; i++) {
-            for (int j = 0; j < n_features; j++) {
-                matrix_ptr[i + j * n_points] = X_traj[step][i][j];
-            }
-        }
-        SET_VECTOR_ELT(X_traj_r, step, step_matrix);
-    }
-
-    // Create median k-distances vector
-    SEXP median_kdistances_r = Rf_allocVector(REALSXP, median_kdistances.size());
-    PROTECT(median_kdistances_r);
-    nprot++;
-
-    std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
-
-    // Create result list
-    SEXP result = Rf_allocVector(VECSXP, 2);
-    PROTECT(result);
-    nprot++;
-
-    // Set list elements
-    SET_VECTOR_ELT(result, 0, X_traj_r);
-    SET_VECTOR_ELT(result, 1, median_kdistances_r);
-
-    // Create and set names
-    SEXP names = Rf_allocVector(STRSXP, 2);
-    PROTECT(names);
-    nprot++;
-
-    SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(nprot);
-    return result;
-}
-
-#if 0
-SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
-                   const std::vector<double>& median_kdistances) {
-
-    int n_steps = X_traj.size();
-    int n_points = X_traj[0].size();
-    int n_features = X_traj[0][0].size();
-
-    int nprot = 0;
-    SEXP X_traj_r = PROTECT(X_traj_r = Rf_allocVector(VECSXP, n_steps)); nprot++;
-    for (int i = 0; i < n_steps; ++i) {
-        SEXP step_matrix = PROTECT(step_matrix = Rf_allocMatrix(REALSXP, n_points, n_features));
-        double* ptr = REAL(step_matrix);
-        for (int j = 0; j < n_points; ++j) {
-            for (int k = 0; k < n_features; ++k) {
-                ptr[j + k * n_points] = X_traj[i][j][k];
-            }
-        }
-        SET_VECTOR_ELT(X_traj_r, i, step_matrix);
-        UNPROTECT(1);
-    }
-
-    // median_kdistances
-    SEXP median_kdistances_r = PROTECT(median_kdistances_r = Rf_allocVector(REALSXP, median_kdistances.size())); nprot++;
-    std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
-
-    // Set list elements
-    SEXP result = PROTECT(result = Rf_allocVector(VECSXP, 2)); nprot++;
-    SET_VECTOR_ELT(result, 0, X_traj_r);
-    SET_VECTOR_ELT(result, 1, median_kdistances_r);
-
-    // Set names
-    SEXP names = PROTECT(names = Rf_allocVector(STRSXP, 2)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(nprot);
-
-    return result;
-}
-#endif
-
 
 /**
  * @brief Performs mean shift data smoothing with gradient field averaging.

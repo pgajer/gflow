@@ -1,6 +1,3 @@
-#' @useDynLib gflow, .registration = TRUE
-NULL
-
 #' Create Intersection k-Nearest Neighbor Graphs with Dual Pruning Methods
 #'
 #' @description

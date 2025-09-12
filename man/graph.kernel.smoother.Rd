@@ -2,206 +2,72 @@
 % Please edit documentation in R/graph_kernel_smoother.R
 \name{graph.kernel.smoother}
 \alias{graph.kernel.smoother}
-\title{Graph-Based Kernel Smoother with Buffer Zone Cross-Validation}
+\title{Graph Kernel Smoother}
 \usage{
-graph.kernel.smoother(
-  adj.list,
-  weight.list,
-  y,
-  min.bw.factor = 0.01,
-  max.bw.factor = 0.5,
-  n.bws = 20,
-  log.grid = TRUE,
-  vertex.hbhd.min.size = 1,
-  dist.normalization.factor = 1.1,
-  use.uniform.weights = FALSE,
-  buffer.hops = 2,
-  auto.buffer.hops = TRUE,
-  kernel.type = 7L,
-  n.folds = 5,
-  with.bw.predictions = FALSE,
-  precision = 1e-06,
-  verbose = FALSE
-)
+graph.kernel.smoother(adj, w, y, bandwidth, with_details = FALSE)
 }
 \arguments{
-\item{adj.list}{A list of integer vectors representing the adjacency list of
-the graph. Each element \code{adj.list[[i]]} contains the indices of
-vertices adjacent to vertex \code{i}. Vertices should be indexed from 1 to n.}
+\item{adj}{A list of integer vectors; the adjacency list of the graph.
+Each element \code{adj[[i]]} contains the (1-based) neighbor indices of vertex \code{i}.}
 
-\item{weight.list}{A list of numeric vectors with edge weights corresponding
-to adjacencies. Each element \code{weight.list[[i]][j]} is the weight of
-the edge from vertex \code{i} to \code{adj.list[[i]][j]}. Must be positive values.}
+\item{w}{A list of numeric vectors of the same shape as \code{adj}, or \code{NULL}.
+If provided, \code{w[[i]]} must have length \code{length(adj[[i]])} and
+contains edge weights for the neighbors of vertex \code{i}. Use \code{NULL}
+for unweighted graphs (defaults to weight 1 per edge).}
 
-\item{y}{A numeric vector of response values at each vertex. Length must
-match the number of vertices in the graph.}
+\item{y}{A numeric vector of length \code{length(adj)}; the signal to be smoothed.}
 
-\item{min.bw.factor}{Minimum bandwidth as a factor of graph diameter. Must
-be between 0 and 1. Default is 0.01.}
+\item{bandwidth}{Integer bandwidth (method-specific; typically controls kernel
+neighborhood/scale). Must be \eqn{\ge 1}.}
 
-\item{max.bw.factor}{Maximum bandwidth as a factor of graph diameter. Must
-be between \code{min.bw.factor} and 1. Default is 0.5.}
-
-\item{n.bws}{Number of bandwidths to test. Must be at least 2. Default is 20.}
-
-\item{log.grid}{Logical. If \code{TRUE}, use logarithmic spacing for
-bandwidth grid; if \code{FALSE}, use linear spacing. Default is \code{TRUE}.}
-
-\item{vertex.hbhd.min.size}{Integer. Minimum number of vertices required in
-any neighborhood. Must be between 1 and \eqn{10\%} of total vertices. Default is 1.}
-
-\item{dist.normalization.factor}{Positive factor for normalizing distances
-in kernel weight computation. Values > 1 result in wider effective
-bandwidths. Default is 1.1.}
-
-\item{use.uniform.weights}{Logical. If \code{TRUE}, use uniform weights
-instead of kernel-based weights. Default is \code{FALSE}.}
-
-\item{buffer.hops}{Integer. Number of hops for buffer zone around test
-vertices during cross-validation. Must be non-negative. Default is 2.}
-
-\item{auto.buffer.hops}{Logical. If \code{TRUE}, automatically determine
-optimal buffer size based on spatial autocorrelation analysis. Default
-is \code{TRUE}.}
-
-\item{kernel.type}{Integer specifying the kernel function:
-\itemize{
-\item 1: Uniform kernel
-\item 2: Triangular kernel
-\item 3: Epanechnikov kernel
-\item 4: Quartic (biweight) kernel
-\item 5: Triweight kernel
-\item 6: Gaussian kernel
-\item 7: Tricube kernel (default)
-}}
-
-\item{n.folds}{Integer. Number of cross-validation folds. Default is 5.
-The effective range is \eqn{[2, \lfloor n/2 \rfloor]}, where \eqn{n} is the
-number of vertices in the input graph. Values outside this range are
-automatically clamped: if \code{n.folds < 2}, it is reset to 2; if
-\code{n.folds > floor(n/2)}, it is reset to \eqn{\lfloor n/2 \rfloor}.
-A message is issued when values are clamped if \code{verbose = TRUE}.}
-
-\item{with.bw.predictions}{Logical. If \code{TRUE}, compute and store
-predictions for all tested bandwidths. Default is \code{FALSE}.}
-
-\item{precision}{Numeric. Precision for bandwidth grid computation. Must be
-positive. Default is 1e-6.}
-
-\item{verbose}{Logical. If \code{TRUE}, print progress information during
-computation. Default is \code{FALSE}.}
+\item{with_details}{Logical; if \code{TRUE}, include additional diagnostics
+(e.g., per-vertex bandwidth usage, iteration counts). Defaults to \code{FALSE}.}
 }
 \value{
-An object of class \code{"graph_kernel_smoother"}, which is a list
-containing:
-\describe{
-\item{\code{predictions}}{Numeric vector of smoothed predictions at each vertex.}
-\item{\code{bw_predictions}}{If \code{with.bw.predictions = TRUE}, a list
-of prediction vectors for each tested bandwidth; otherwise \code{NULL}.}
-\item{\code{bw_errors}}{Numeric vector of cross-validation errors for each
-tested bandwidth.}
-\item{\code{bws}}{Numeric vector of bandwidth values tested.}
-\item{\code{opt_bw}}{Numeric. The optimal bandwidth value selected by
-cross-validation.}
-\item{\code{opt_bw_idx}}{Integer. Index of the optimal bandwidth in
-\code{bws}.}
-\item{\code{buffer_hops_used}}{Integer. Number of hops used for the buffer
-zone (useful when \code{auto.buffer.hops = TRUE}).}
+A named list with components:
+\itemize{
+\item \code{fitted} — numeric vector of length \code{length(y)} with smoothed values.
+\item \code{bandwidth} — integer bandwidth actually used.
+\item \code{details} — (optional) a list of diagnostics, present when \code{with_details = TRUE}.
 }
 }
 \description{
-Performs graph-based locally weighted smoothing (LOWESS-like) with adaptive
-bandwidth selection using spatially-aware cross-validation. The method
-implements buffer zones around test vertices during cross-validation to
-prevent spatial autocorrelation from biasing bandwidth selection.
+Smooth a scalar signal on a graph using kernel weights along edges.
+This is a thin user-facing wrapper that forwards to the Rcpp
+implementation \code{Rcpp_graph_kernel_smoother()}.
 }
-\details{
-This function implements a graph-based extension of LOWESS (degree-0, i.e.,
-locally weighted average) with spatially-stratified cross-validation using
-buffer zones. The algorithm proceeds as follows:
+\section{Input requirements}{
 
-\enumerate{
-\item \strong{Spatial fold creation}: Creates a maximal packing of vertices
-to serve as fold seed points, then assigns all vertices to the nearest
-seed point to form spatially coherent folds.
-\item \strong{Buffer zone construction}: For each fold, creates a buffer zone
-around test vertices by excluding vertices within a specified graph
-distance (hops) from the training set.
-\item \strong{Cross-validation}: For each candidate bandwidth, performs
-cross-validation across the spatially-separated folds.
-\item \strong{Bandwidth selection}: Selects the bandwidth that minimizes
-the cross-validation error.
-\item \strong{Final fitting}: Fits the final model using all data with the
-optimal bandwidth.
+\itemize{
+\item \code{adj} must be a list the same length as \code{y}; neighbors are 1-based indices.
+\item If \code{w} is not \code{NULL}, it must be a list the same length as \code{adj} with
+\code{length(w[[i]]) == length(adj[[i]])} for all \code{i}.
+}
 }
 
-The kernel smoother at vertex \eqn{i} computes:
-\deqn{\hat{y}_i = \sum_{j \in N(i, h)} w_{ij} y_j / \sum_{j \in N(i, h)} w_{ij}}
-where \eqn{N(i, h)} is the neighborhood of vertex \eqn{i} within bandwidth \eqn{h},
-and \eqn{w_{ij}} are kernel weights based on graph distance.
+\section{Notes}{
+
+This wrapper only orchestrates I/O and delegates computation to the Rcpp routine
+\code{Rcpp_graph_kernel_smoother()}. For reproducibility, ensure any stochastic
+components in the underlying method are deterministically seeded upstream.
 }
+
 \examples{
 \dontrun{
-n.pts <- 100
-gm <- generate.1d.gaussian.mixture(
-    n.points = n.pts,
-    x.knot = c(0, 10),
-    y.knot = c(10, 2.5),
-    sd.knot = 1.5,
-    x.offset = 3)
-x <- sort(runif(n.pts, min = min(gm$x), max = max(gm$x)))
-x.graph <- create.bi.kNN.chain.graph(k = 1, x = x, y = gm$y)
-
-y.smooth <- approx(gm$x, gm$y, xout = x)$y
-sigma <- 1
-eps <- rnorm(n.pts, 0, sigma)
-y <- y.smooth + eps
-
-g <- ggraph(x.graph$adj.list, x.graph$edge.lengths)
-plot(g, y.smooth)
-
-plot(gm$x, gm$y, type = "l", las = 1, ylim = range(y), col = "red", xlab = "x", ylab = "y")
-points(x, y)
-legend("topright", legend = c("y.smooth", "y"), lty = c(1,NA), pch = c(NA,1),
-col = c("red", "black"), inset = 0.1)
-
-gks.res <- graph.kernel.smoother(x.graph$adj.list,
-                                 x.graph$edge.lengths,
-                                 y,
-                                 min.bw.factor = 0.025,
-                                 max.bw.factor = 0.5,
-                                 n.bws = 20,
-                                 log.grid = TRUE,
-                                 vertex.hbhd.min.size = 3,
-                                 dist.normalization.factor = 1.1,
-                                 use.uniform.weights = FALSE,
-                                 buffer.hops = 1,
-                                 auto.buffer.hops = FALSE,
-                                 kernel.type = 7L,
-                                 n.folds = 10,
-                                 with.bw.predictions = TRUE,
-                                 verbose = TRUE)
-
-# View results
-print(gks.res)
-summary(gks.res)
-
-# Computing Mean Absolute and Mean Squared Errors
-mae <- c()
-for (i in seq(ncol(gks.res$bw_predictions))) {
-    mae[i] <- mean(abs(y.smooth - gks.res$bw_predictions[,i]))
+# Tiny chain graph with unit weights
+n <- 5L
+adj <- vector("list", n)
+for (i in seq_len(n)) {
+  adj[[i]] <- unique(c(if (i > 1) i - 1L else integer(), if (i < n) i + 1L else integer()))
 }
-plot(mae, las = 1, type = 'b', xlab = "Bandwidth indices", ylab = "Mean Absolute Error")
-which.min(mae)
-gks.res$opt_bw_idx
+w <- lapply(adj, function(nei) rep(1, length(nei)))
+y <- as.numeric(1:n)
 
-plot(gks.res$bw_mean_abs_errors, las = 1, type = "b")
-abline(v = gks.res$opt_bw_idx, lty = 2)
-which.min(gks.res$bw_mean_abs_errors)
-
-plot(gm$x, gm$y, type = "l", las = 1, ylim = range(y), col = "red")
-points(x, y)
-lines(x, gks.res$predictions, col = "blue")
+fit <- graph.kernel.smoother(adj, w, y, bandwidth = 2L, with_details = FALSE)
+str(fit)
 }
 
+}
+\seealso{
+\code{\link{Rcpp_graph.kernel.smoother}} (internal), related graph smoothers in this package.
 }

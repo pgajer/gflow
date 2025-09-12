@@ -1964,3 +1964,543 @@ void C_get_Eyg_CrI(const int    *rybinary,
     free(bb_dEyg);
     free(bb);
 }
+
+// structure to hold a value of a function and the associated weight
+typedef struct {
+  double y;
+  double w;
+} yw_t;
+
+
+// This allows sorting yw_t's in descending order
+int cmp_desc_yw_t (const void *a, const void *b)
+{
+  yw_t *ya = (yw_t *)a;
+  yw_t *yb = (yw_t *)b;
+
+  if ( ya->w < yb->w ){
+    return 1;
+  } else if ( ya->w > yb->w ){
+    return -1;
+  } else {
+    return 0;
+  }
+}
+
+/*!
+
+  \brief Returns the weighted mean of y values of yw_t array weighted by the
+  corresponding w component of the struct.
+
+  \param yw  A pointer to a yw_t array.
+  \param n   The number of elements of yt.
+*/
+double yw_t_wmean( yw_t *yw, int n )
+{
+    double s = 0;
+    double yws = 0;
+    for ( int i = 0; i < n; i++ )
+      s += yw[i].w;
+
+    if ( s > 0 )
+    {
+      for ( int i = 0; i < n; i++ )
+        yws += yw[i].y * yw[i].w;
+
+      yws /= s;
+
+    } else {
+
+      for ( int i = 0; i < n; i++ )
+        yws += yw[i].y;
+
+      yws /= n;
+    }
+
+    return yws;
+}
+
+/*!
+    \brief Interpolates the mean values, Eyg, of y defined over a grid using nn_w weights.
+
+    \param Eyg        Mean values of y over grid elements.
+    \param nn_i       An array associated with a K-by-ng matrix of nearest neighbors (NN) indices.
+    \param nn_d       An array associated with a K-by-ng matrix of nearest neighbors (NN) distances.
+    \param rK         A reference of the number of rows of the nn_ arrays.
+    \param rng        A reference of the number of columns of the nn_ arrays.
+
+    \param rnNN       A reference of the number of NN to use for finding interpolated
+                      values. In principle, if we set nNN to the dimension of X, then it will be a
+                      generalization of a linear interpolation. NOTE: nNN cannot be greater than ng!
+
+    \param rnx        A reference of the length of x (points over which Ey is estimated).
+
+    \param Ey         An output array of weighted mean values of y estimates using Eyg with nn_w weights.
+*/
+void C_interpolate_Eyg(const double *Eyg,
+                       const int    *nn_i,
+                       const double *nn_d,
+                       const int    *rK,
+                       const int    *rng,
+                       const int    *rnNN,
+                       const int    *rnx,
+                             double *Ey)
+{
+    int K    = rK[0];
+    int ng   = rng[0];
+    int nNN  = rnNN[0];
+    int nx = rnx[0]; // nn_i[i]'s are in the range 0 .. (nx-1), as they index values of x, over which Ey is estimated
+
+    // initializing Ey
+    for ( int i = 0; i < nx; i++ )
+      Ey[i] = 0;
+
+    int *nn_ix = (int*)malloc( ng * nx * sizeof(int) ); // nn_ix - index of x in nn_i
+    CHECK_PTR(nn_ix);
+
+    // initializing nn_ix
+    int n = ng * nx;
+    for ( int i = 0; i < n; i++ )
+      nn_ix[i] = -1;
+
+    int ix;
+    int igx;
+    int iK;  // ig * K
+    for ( int ig = 0; ig < ng; ig++ )
+    {
+      iK  = ig * K;
+      igx = ig * nx;
+      for ( int j = 0; j < K; j++ )
+      {
+        ix = nn_i[j + iK]; // index of x in the i-th column and j-th row of nn_i = the j-th NN of the i-th xg
+        nn_ix[ ix + igx ] = j;
+      }
+    }
+
+    // Estimating NN weights
+    double *bws = (double*)malloc(ng * sizeof(double));
+    CHECK_PTR(bws);
+
+    for ( int ig = 0; ig < ng; ig++ )
+      bws[ig] = 1.0;
+
+    double *nn_w = (double*)calloc(K * ng, sizeof(double));
+    CHECK_PTR(nn_w);
+
+    int *maxK = (int*)calloc(ng, sizeof(int));
+    CHECK_PTR(maxK);
+
+    int ikernel = (int)EPANECHNIKOV;
+    C_columnwise_weighting(nn_d, rK, rng, &ikernel, bws, maxK, nn_w);
+
+    yw_t *yw = (yw_t*)malloc(ng * sizeof(yw_t));
+    CHECK_PTR(yw);
+
+    int j;
+    for ( int ix = 0; ix < nx; ix++ )
+    {
+      for ( int ig = 0; ig < ng; ig++ )
+      {
+        j = nn_ix[ix + ig*nx];
+        if ( j > -1 )
+        {
+          yw[ig].y = Eyg[ig];
+          yw[ig].w = nn_w[ j + ig*K];
+
+        } else {
+
+          yw[ig].y = 0;
+          yw[ig].w = 0;
+        }
+
+      }
+
+      qsort( yw, ng, sizeof(yw_t), cmp_desc_yw_t );
+
+      Ey[ix] = yw_t_wmean( yw, nNN );
+    }
+
+    free(nn_ix);
+    free(bws);
+    free(nn_w);
+    free(maxK);
+    free(yw);
+}
+
+
+/*!
+    \brief Performs cross-validation of llm_xD() for degree 0 model cvEy estimates.
+
+    \param rnfolds   A reference to the number of fold in cross-validation.
+    \param rnreps    A reference to the number of repetitions of cross-validation.
+    \param rnNN      A reference to the number of nearest neighbors used in interpolate_Eyg() to estimate Ey given Ey.grid.
+    \param rybinary  A reference to a binar indicator, ybinary, such that, ybinary=1 restricts the values of Eyg (and hence Ey) to [0,1].
+    \param nn_i      An array corresponding to a K-by-ng matrix of indices of K nearest neighbors of each element of a grid.
+    \param nn_d      An array corresponding to a K-by-ng matrix of distances over K nearest neighbors from the elements of the grid to X.
+    \param y         A response variable.
+    \param rK        A reference to the number of rows of the nn_ arrays.
+    \param rng       A reference to the number of columns of the nn_ arrays.
+    \param rnrX      A reference to the number of rows of X.
+    \param rbw       A reference to the value of bandwidth parameter.
+    \param rminK     A reference to the mininum __number_ of elements in the rows of nn_i/nn_d that need to have weights > 0.
+    \param rikernel  The integeer index of a kernel used for generating weights.
+
+    \param cvEy      The output variable of predicted values of the mean of y over
+                     hold-out folds over nreps replications of CV; dim nrX-by-nreps.
+*/
+void C_cv_deg0_llm(const int    *rnfolds,
+                   const int    *rnreps,
+                   const int    *rnNN,
+                   const int    *rybinary,
+                   const int    *nn_i,
+                   const double *nn_d,
+                   const double *y,
+                   const int    *rK,
+                   const int    *rng,
+                   const int    *rnrX,
+                   const double *rbw,
+                   const int    *rminK,
+                   const int    *rikernel,
+                         double *cvEy)
+{
+    int nfolds = rnfolds[0]; // number of folds
+    int nreps  = rnreps[0];  // number of repetitions of CV
+    int nrX    = rnrX[0];    // number of rows of X before trasposition
+    int ng     = rng[0];     // grid size
+    int K      = rK[0];      // number of nearest neighbors = number of rows of nn_ matrices
+    int minK   = rminK[0];   // minimal number of points of X present in each local neighbor of each X.grid point
+    int nNN    = rnNN[0];
+    int ybinary = rybinary[0];
+
+    // Mean values of y over elements of the grid.
+    double *Eyg = (double*)malloc(ng * sizeof(double));
+    CHECK_PTR(Eyg);
+
+    // weights array
+    double *nn_w = (double*)calloc(K * ng, sizeof(double));
+    CHECK_PTR(nn_w);
+
+    // complementary weights array
+    double *nn_cw = (double*)calloc(K * ng, sizeof(double));
+    CHECK_PTR(nn_cw);
+
+    // Fold (F) (ind)ices indicator array
+    int *Find = (int*)calloc(nrX, sizeof(int));
+    CHECK_PTR(Find);
+
+    // Number of fold indices found in nn_i[,j] for each j
+    int *nFinds = (int*)calloc(ng, sizeof(int));
+    CHECK_PTR(nFinds);
+
+    // Turning minK into array with minK_a[j] = minK + nFinds[j] = the minimal number of elements of the rows of nn_i/nn_d with weights > 0.
+    int *minK_a = (int*)calloc(ng, sizeof(int));
+    CHECK_PTR(minK_a);
+
+    // Allocating memory for the maxK parameter of columnwise_weighting
+    int *maxK = (int*)calloc(ng, sizeof(int));
+    CHECK_PTR(maxK);
+
+    // Bandwidths
+    double *bws = (double*)malloc(ng * sizeof(double));
+    CHECK_PTR(bws);
+
+    // holds results of prediction over hold out set
+    double *hoEy = (double*)calloc(nrX, sizeof(double));
+    CHECK_PTR(hoEy);
+
+    // array of y values over NN's indices of nn_i
+    double *nn_y = (double*)calloc(K * ng, sizeof(double));
+    CHECK_PTR(nn_y);
+
+    //
+    // Creating nn_y
+    //
+    C_columnwise_eval(nn_i, rK, rng, y, nn_y);
+
+    int nF;          // number of elements of I
+    iarray_t *folds; // array with nfolds elements each being array_t holding an array of size ~ 0.1*|X|
+    int *F;          // array holding indices of the current fold
+    int rep_nrX;     // holds nrX * rep
+    int G;           // (index of the last non-zero element) + 1
+    int jK;          // holds j * K
+
+    for ( int rep = 0; rep < nreps; rep++ )
+    {
+      folds   = get_folds(nrX, nfolds);
+      rep_nrX = nrX * rep;
+
+      for ( int ifold = 0; ifold < nfolds; ifold++ )
+      {
+        F  = folds[ifold].x;    // indices of the fold with values between 0 and nrX-1
+        nF = folds[ifold].size; // number of the elements in F
+
+        for ( int j = 0; j < nF; j++ )
+          Find[F[j]] = 1;
+
+        // Finding number of fold indices in nn_i[,j]; the corresponding number of fold indices is nFinds[j]
+        for ( int j = 0; j < ng; j++ )
+        {
+          jK = j * K;
+          for ( int k = 0; k < minK; k++ )
+            nFinds[j] +=  Find[nn_i[k + jK]];
+        }
+
+        // Turning Kmin into array Kmin_a adding nFinds
+        for ( int j = 0; j < ng; j++ )
+          minK_a[j] = minK + nFinds[j];
+
+        // getting bws' using minK_a
+        C_get_bws_with_minK_a(nn_d, rK, rng, minK_a, rbw, bws);
+
+        // Appling kernel to the normalized distances
+        C_columnwise_weighting(nn_d, rK, rng, rikernel, bws, maxK, nn_w);
+
+        // Modifying nn_w and creating nn_cw.
+        // nn_w needs to be 0 at the indices of F
+        for ( int j = 0; j < ng; j++ )
+        {
+          jK = j * K;
+          G = maxK[j] + 1;
+
+          for ( int k = 0; k < G; k++ )
+          {
+            nn_cw[k + jK] = nn_w[k + jK] * Find[nn_i[k + jK]]; // This sets to 0 terms not from F
+            nn_w[k + jK] *= 1 - Find[nn_i[k + jK]]; // Find[nn_i[k + jK]] = 1,
+                                                    // when nn_i[k + jK] is from
+                                                    // F, so we are multiplying
+                                                    // by 0 terms corresponding
+                                                    // to elements of F
+          }
+        }
+
+        // nn_w and nn_cw are not normalized
+        //
+        // For model building weights MUST be normalized. Thus, we need to normalize nn_w.
+        // For prediction, the weights do not have to be normalized.
+
+        // Normalizing nn_w and nn_cw
+        double s; // sum of weights in each column
+        for ( int j = 0; j < ng; j++ )
+        {
+          jK = j * K;
+          G = maxK[j] + 1;
+
+          // nn_w normalization
+          s = 0.0;
+          for ( int k = 0; k < G; k++ )
+            s += nn_w[k + jK];
+
+          for ( int k = 0; k < G; k++ )
+            nn_w[k + jK] /= s;
+
+          // nn_cw normalization
+          s = 0.0;
+          for ( int k = 0; k < G; k++ )
+            s += nn_cw[k + jK];
+
+          for ( int k = 0; k < G; k++ )
+            nn_cw[k + jK] /= s;
+        }
+
+        // Estimating the mean values, Eyg, of y over elements of the grid.
+        C_columnwise_wmean(nn_y, nn_w, maxK, rK, rng, Eyg);
+
+        if ( ybinary == 1 )
+        {
+          for ( int j = 0; j < ng; j++ )
+          {
+            if ( Eyg[j] < 0 ){
+              Eyg[j] = 0;
+            } else if ( Eyg[j] > 1 ){
+              Eyg[j] = 1;
+            }
+          }
+        }
+
+        // Generating predicted mean y values of the elements of the fold using nn_cw
+        C_interpolate_Eyg(Eyg, nn_i, nn_d, rK, rng, &nNN, rnrX, hoEy);
+
+        for ( int j = 0; j < nrX; j++ )
+          if ( !R_FINITE(hoEy[j]) )
+          {
+            Rprintf("\n\nERROR in cv_deg0_llm() rep=%d ifold=%d: hoEy[%d] is not finite!\n", rep, ifold, j);
+            Rf_error("STOP");
+          }
+
+        for ( int j = 0; j < nF; j++ )
+          cvEy[F[j] + rep_nrX] = hoEy[F[j]];
+
+        // Resetting Find
+        for ( int j = 0; j < nF; j++ )
+          Find[F[j]] = 0; // reseting the fold indices to 0
+
+        for ( int j = 0; j < ng; j++ )
+          nFinds[j] = 0;
+
+      } // END OF for ( int ifold = 0; ifold < nfolds; ifold++ )
+
+      // freeing memory allocated to folds[i].x and folds from within get_folds(nrX, nfolds)
+      for ( int i = 0; i < nfolds; i++ )
+        free(folds[i].x);
+      free(folds);
+
+    } // END OF for ( int rep = 0; rep < nreps; rep++ )
+
+    free(Eyg);
+    free(nn_w);
+    free(nn_cw);
+    free(Find);
+    free(nFinds);
+    free(minK_a);
+    free(maxK);
+    free(hoEy);
+    free(bws);
+}
+
+
+
+/*!
+    \brief Performs cross-validation of llm_xD() for degree 0 model returning mean absolute error (MAE).
+
+    \param rnfolds   A reference to the number of fold in cross-validation.
+    \param rnreps    A reference to the number of repetitions of cross-validation.
+    \param rnNN      A reference to the number of nearest neighbors used in interpolate_Eyg() to estimate Ey given Ey.grid.
+    \param rybinary  A reference to a binar indicator, ybinary, such that, ybinary=1 restricts the values of Eyg (and hence Ey) to [0,1].
+    \param nn_i      An array corresponding to a K-by-ng matrix of indices of K nearest neighbors of each element of a grid.
+    \param nn_d      An array corresponding to a K-by-ng matrix of distances over K nearest neighbors from the elements of the grid to X.
+    \param y         A response variable.
+    \param rK        A reference to the number of rows of the nn_ arrays.
+    \param rng       A reference to the number of columns of the nn_ arrays.
+    \param rnrX      A reference to the number of rows of X.
+    \param rbw       A reference to the value of bandwidth parameter.
+    \param rminK     A reference to the mininum __number_ of elements in the rows of nn_i/nn_d that need to have weights > 0.
+    \param rikernel  The integeer index of a kernel used for generating weights.
+    \param rMAE      A reference to estimated MAE.
+*/
+void C_cv_deg0_mae(const int    *rnfolds,
+                   const int    *rnreps,
+                   const int    *rnNN,
+                   const int    *rybinary,
+                   const int    *nn_i,
+                   const double *nn_d,
+                   const double *y,
+                   const int    *rK,
+                   const int    *rng,
+                   const int    *rnrX,
+                   const double *rbw,
+                   const int    *rminK,
+                   const int    *rikernel,
+                         double *rMAE)
+{
+    int nreps  = rnreps[0];  // number of repetitions of CV
+    int nrX    = rnrX[0];    // number of rows of X before trasposition
+
+    // Mean values of y over elements of the grid.
+    double *cvEy = (double*)malloc(nrX * nreps * sizeof(double));
+    CHECK_PTR(cvEy);
+
+    C_cv_deg0_llm(rnfolds,
+                rnreps,
+                rnNN,
+                rybinary,
+                nn_i,
+                nn_d,
+                y,
+                rK,
+                rng,
+                rnrX,
+                rbw,
+                rminK,
+                rikernel,
+                cvEy);
+
+    // MAE loop
+    int rep_nrX; // holds nrX * rep
+    double mae = 0;
+
+    for ( int rep = 0; rep < nreps; rep++ )
+    {
+      rep_nrX = nrX * rep;
+
+      for ( int i = 0; i < nrX; i++ )
+        mae += fabs( y[i] - cvEy[i + rep_nrX] );
+    }
+    mae /= nreps * nrX;
+
+    *rMAE = mae;
+
+    free(cvEy);
+}
+
+/*!
+    \brief Performs cross-validation of llm_xD() for degree 0 model returning binary loss function y(1-p) + (1-y)p.
+
+    \param rnfolds   A reference to the number of fold in cross-validation.
+    \param rnreps    A reference to the number of repetitions of cross-validation.
+    \param rnNN      A reference to the number of nearest neighbors used in interpolate_Eyg() to estimate Ey given Ey.grid.
+    \param rybinary  A reference to a binar indicator, ybinary, such that, ybinary=1 restricts the values of Eyg (and hence Ey) to [0,1].
+    \param nn_i      An array corresponding to a K-by-ng matrix of indices of K nearest neighbors of each element of a grid.
+    \param nn_d      An array corresponding to a K-by-ng matrix of distances over K nearest neighbors from the elements of the grid to X.
+    \param y         A response variable.
+    \param rK        A reference to the number of rows of the nn_ arrays.
+    \param rng       A reference to the number of columns of the nn_ arrays.
+    \param rnrX      A reference to the number of rows of X.
+    \param rbw       A reference to the value of bandwidth parameter.
+    \param rminK     A reference to the mininum __number_ of elements in the rows of nn_i/nn_d that need to have weights > 0.
+    \param rikernel  The integeer index of a kernel used for generating weights.
+    \param rbinloss  A reference to estimated binary loss.
+*/
+void C_cv_deg0_binloss(const int    *rnfolds,
+                       const int    *rnreps,
+                       const int    *rnNN,
+                       const int    *rybinary,
+                       const int    *nn_i,
+                       const double *nn_d,
+                       const double *y,
+                       const int    *rK,
+                       const int    *rng,
+                       const int    *rnrX,
+                       const double *rbw,
+                       const int    *rminK,
+                       const int    *rikernel,
+                             double *rbinloss)
+{
+    int nreps  = rnreps[0];  // number of repetitions of CV
+    int nrX    = rnrX[0];    // number of rows of X before trasposition
+
+    // Mean values of y over elements of the grid.
+    double *cvEy = (double*)malloc(nrX * nreps * sizeof(double));
+    CHECK_PTR(cvEy);
+
+    C_cv_deg0_llm(rnfolds,
+                rnreps,
+                rnNN,
+                rybinary,
+                nn_i,
+                nn_d,
+                y,
+                rK,
+                rng,
+                rnrX,
+                rbw,
+                rminK,
+                rikernel,
+                cvEy);
+
+    // binloss loop
+    int rep_nrX; // holds nrX * rep
+    double bl = 0;
+
+    for ( int rep = 0; rep < nreps; rep++ )
+    {
+      rep_nrX = nrX * rep;
+
+      for ( int i = 0; i < nrX; i++ )
+        bl +=  y[i]*(1 - cvEy[i + rep_nrX]) + (1 - y[i])*cvEy[i + rep_nrX];
+    }
+    bl /= nreps * nrX;
+
+    *rbinloss = bl;
+
+    free(cvEy);
+}

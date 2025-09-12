@@ -14,6 +14,10 @@
 
 using std::size_t;
 
+
+SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
+                   const std::vector<double>& median_kdistances);
+
 std::unique_ptr<std::vector<std::vector<double>>> Rmatrix_to_cpp(SEXP Rmatrix);
 
 std::unique_ptr<std::vector<std::vector<int>>> R_list_of_ivectors_to_cpp_vector_of_ivectors(SEXP Rgraph);

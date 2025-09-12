@@ -45,6 +45,12 @@ extern "C" {
     // Function pointer type for kernel functions
     typedef void (*kernel_function)(const double*, int, double*);
 
+    void C_kernel_eval(const int* ikernel,
+                       const double* x,
+                       const int* n,
+                       double* y,
+                       const double* scale);
+
     // Kernel function declarations
     void epanechnikov_kernel(const double *x, int n, double *w);
     void triangular_kernel(const double *x, int n, double *w);

@@ -1808,7 +1808,7 @@ Clevelands.1D.deg0.loop <- function(n.C.itr, x, y, xgrid, predictions, nn.i, nn.
     while (itr < n.C.itr) {
         # Calculate weights based on absolute errors
         ae <- abs(res) / (C * sigma)
-        ae.weights <- kernel.fn(ae, ae.kernel)
+        ae.weights <- kernel.eval(ae, ae.kernel)
         ae.weights <- ae.weights / sum(ae.weights)
 
         # Update neighbor weights
@@ -1908,7 +1908,7 @@ Clevelands.1D.deg12.loop <- function(n.C.itr, degree, nx, y, predictions, nn.i, 
     while (itr < n.C.itr) {
         # Calculate weights based on absolute errors
         ae <- abs(res) / (C * sigma)
-        ae.weights <- kernel.fn(ae, ae.kernel)
+        ae.weights <- kernel.eval(ae, ae.kernel)
         ae.weights <- ae.weights / sum(ae.weights)
 
         # Update neighbor weights
@@ -2482,9 +2482,9 @@ get.BB.gpredictions <- function(n.BB,
 #'
 #' Given a vector, bws, of bandwidths this routine estimates a matrix of gpredictions's
 #' where each column corresponds to the gpredictions estimate for a different bandwidth.
-#' This is an R interface to a C routine, C_get_gpredictionss(), where the estimates of
+#' This is an R interface to a C routine, C_get_Eygs(), where the estimates of
 #' gpredictions's are done. In practice, it is not intended to be used directly from R,
-#' but rather to test the correctness of C_get_gpredictionss(). This routine is used in
+#' but rather to test the correctness of C_get_Eygs(). This routine is used in
 #' different bandwidth optimization processes based on gpredictions characteristics (like
 #' total absolute curvature or the number of inflection points).
 #'
@@ -2539,7 +2539,7 @@ get.gpredictionss <- function(bws,
 
     gpredictionss  <- numeric(ncTnn * n.bws)
 
-    out <- .C("C_get_gpredictionss",
+    out <- .C("C_get_Eygs",
              as.double(bws),
              as.integer(n.bws),
              as.integer(Tnn.i),
