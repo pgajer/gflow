@@ -150,7 +150,7 @@ get.path.data <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call C++ function
-    result <- .Call("S_get_path_data",
+    result <- .Call(S_get_path_data,
                    adj.list.0based,
                    weight.list,
                    as.double(y),
@@ -315,7 +315,7 @@ ugg.get.path.data <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call C++ function
-    result <- .Call("S_ugg_get_path_data",
+    result <- .Call(S_ugg_get_path_data,
                    adj.list.0based,
                    weight.list,
                    as.integer(grid.size),

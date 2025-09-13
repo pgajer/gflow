@@ -102,7 +102,7 @@ create.hHN.graph <- function(graph, edge.lengths, h) {
     graph_0based <- lapply(graph, function(x) as.integer(x - 1))
 
     # Call the C++ implementation
-    result <- .Call("S_create_hHN_graph",
+    result <- .Call(S_create_hHN_graph,
                     graph_0based,
                     edge.lengths,
                     h)

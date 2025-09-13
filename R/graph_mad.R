@@ -62,7 +62,7 @@ graph.mad <- function(graph,y) {
 
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    .Call("S_graph_mad",
+    .Call(S_graph_mad,
           graph.0based,
           as.numeric(y))
 }

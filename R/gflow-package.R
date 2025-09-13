@@ -83,8 +83,6 @@
 #'         transitions in varying density data
 #'   \item \code{\link{mabilo}} - Symmetric k-hop neighborhoods with model averaging and
 #'         Bayesian bootstrap for uncertainty quantification
-#'   \item \code{\link{amagelogit}} - Grid-based logistic regression with model averaging for
-#'         binary outcomes
 #'   \item \code{\link{maelog}} - Data-centered logistic regression with adaptive disk
 #'         neighborhoods and k-NN fallback
 #' }

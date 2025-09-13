@@ -193,7 +193,7 @@ mabilog <- function(x,
     }
 
     ## Call the C++ implementation
-    result <- .Call("S_mabilog",
+    result <- .Call(S_mabilog,
                     as.double(x),
                     as.double(y),
                     as.double(y.true),

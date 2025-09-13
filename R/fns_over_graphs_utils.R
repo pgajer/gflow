@@ -42,7 +42,7 @@ loc.const.vertices <- function(adj.list, y, prec = 1e-8) {
     ## Converting each component of adj.list to an integer vector
     adj.list <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    result <- .Call("S_loc_const_vertices", adj.list, y, prec)
+    result <- .Call(S_loc_const_vertices, adj.list, y, prec)
 
     result + 1  # Converting back to 1-based indexing
 }

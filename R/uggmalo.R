@@ -299,7 +299,7 @@ uggmalo <- function(adj.list,
     start.vertex.0based <- as.integer(start.vertex - 1L)
 
     # Call the C++ function
-    result <- .Call("S_uggmalo",
+    result <- .Call(S_uggmalo,
                    adj.list.0based,
                    weight.list,
                    as.numeric(y),

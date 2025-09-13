@@ -106,7 +106,7 @@ detect.local.extrema <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call the C++ function
-    result <- .Call("S_detect_local_extrema",
+    result <- .Call(S_detect_local_extrema,
                     adj.list.0based,
                     weight.list,
                     y,

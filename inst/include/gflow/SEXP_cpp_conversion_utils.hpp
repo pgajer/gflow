@@ -4,16 +4,23 @@
 #include "MS_complex.h"
 #include "set_wgraph.hpp"
 
+#include <algorithm>
+#include <climits>   // INT_MAX
 #include <cstddef>
-#include <unordered_map>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <set>
+#include <stack>
+#include <queue>
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <R.h>
 #include <Rinternals.h>
 
 using std::size_t;
-
 
 SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
                    const std::vector<double>& median_kdistances);

@@ -151,7 +151,7 @@ amagelo <- function(
 
     ##-- Call C backend ---------------------------------------------------------
     result <- .Call(
-        "S_amagelo",
+        S_amagelo,
         as.double(x),
         as.double(y),
         as.integer(grid.size),

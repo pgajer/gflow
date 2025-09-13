@@ -169,29 +169,27 @@ spectral.lowess.graph.smoothing <- function(
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call(
-        "S_spectral_lowess_graph_smoothing",
-        adj.list.0based,
-        weight.list,
-        X,
-        as.integer(max.iterations),
-        as.double(convergence.threshold),
-        as.integer(convergence.type),
-        as.integer(k),
-        as.double(pruning.thld),
-        as.integer(n.evectors),
-        as.integer(n.bws),
-        as.logical(log.grid),
-        as.double(min.bw.factor),
-        as.double(max.bw.factor),
-        as.double(dist.normalization.factor),
-        as.integer(kernel.type),
-        as.integer(n.cleveland.iterations),
-        as.logical(compute.errors),
-        as.logical(compute.scales),
-        as.integer(switch.to.residuals.after),
-        as.logical(verbose)
-    )
+    result <- .Call(S_spectral_lowess_graph_smoothing,
+                    adj.list.0based,
+                    weight.list,
+                    X,
+                    as.integer(max.iterations),
+                    as.double(convergence.threshold),
+                    as.integer(convergence.type),
+                    as.integer(k),
+                    as.double(pruning.thld),
+                    as.integer(n.evectors),
+                    as.integer(n.bws),
+                    as.logical(log.grid),
+                    as.double(min.bw.factor),
+                    as.double(max.bw.factor),
+                    as.double(dist.normalization.factor),
+                    as.integer(kernel.type),
+                    as.integer(n.cleveland.iterations),
+                    as.logical(compute.errors),
+                    as.logical(compute.scales),
+                    as.integer(switch.to.residuals.after),
+                    as.logical(verbose))
 
     return(result)
 }

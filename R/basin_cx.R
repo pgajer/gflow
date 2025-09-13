@@ -119,7 +119,7 @@ create.basin.cx <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function (initial basin detection)
-    initial_basin_cx <- .Call("S_create_basin_cx",
+    initial_basin_cx <- .Call(S_create_basin_cx,
                               adj.list.0based,
                               weight.list,
                               as.numeric(y))

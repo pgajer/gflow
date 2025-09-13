@@ -127,9 +127,6 @@
 #' Coifman, R. R., & Lafon, S. (2006). Diffusion maps. Applied and computational
 #' harmonic analysis, 21(1), 5-30.
 #'
-#' @seealso \code{\link{graph.diffusion.matrix.smoother}},
-#'   \code{\link{instrumented.gds}}
-#'
 #' @export
 ext.graph.diffusion.smoother <- function(graph,
                                         edge.lengths,
@@ -343,7 +340,7 @@ ext.graph.diffusion.smoother <- function(graph,
     # Set n.cores to 1 (sequential) as specified in the original
     n.cores <- 1L
 
-    res <- .Call("S_ext_graph_diffusion_smoother",
+    res <- .Call(S_ext_graph_diffusion_smoother,
                  graph.0based,
                  edge.lengths,
                  weights,
@@ -589,7 +586,7 @@ instrumented.gds <- function(graph,
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
     # Call C++ implementation
-    result <- .Call("S_instrumented_gds",
+    result <- .Call(S_instrumented_gds,
                     graph.0based,
                     edge.lengths,
                     y,
@@ -1111,7 +1108,7 @@ graph.diffusion.smoother <- function(adj.list,
 
     # Call C++ implementation
     result <- .Call(
-        "S_graph_diffusion_smoother",
+        S_graph_diffusion_smoother,
         adj.list.0based,
         weight.list,
         y,

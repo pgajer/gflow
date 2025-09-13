@@ -152,7 +152,7 @@ create.path.graph <- function(graph, edge.lengths, h) {
     })
 
     ## Call C++ implementation
-    res <- .Call("S_create_path_graph_plus",
+    res <- .Call(S_create_path_graph_plus,
                  graph.0based,
                  edge.lengths,
                  h)
@@ -491,10 +491,9 @@ create.path.graph.series <- function(graph, edge.lengths, h.values) {
     })
 
     ## Call C++ function
-    res <- .Call("S_create_path_graph_series",
+    res <- .Call(S_create_path_graph_series,
                  graph.0based,
                  edge.lengths,
-                 as.integer(max(h.values)),
                  h.values)
 
     ## Convert each element to a path.graph object with h attribute
@@ -816,7 +815,7 @@ create.plm.graph <- function(graph, edge.lengths, h) {
     })
 
     ## Call C++ implementation
-    res <- .Call("S_create_path_graph_plm",
+    res <- .Call(S_create_path_graph_plm,
                  graph.0based,
                  edge.lengths,
                  h)

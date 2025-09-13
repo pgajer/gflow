@@ -5,8 +5,8 @@
 \title{Generate Degree Distribution Properties in Tubular Neighborhood of Unit Circle}
 \usage{
 get.TN.S1.degree.props(
-  n.pts = 1000,
-  n.sims = 100,
+  n.pts = 100,
+  n.sims = 10,
   k = 10,
   noise = 0.1,
   noise.type = "laplace"
@@ -44,16 +44,12 @@ to construct the k-nearest neighbor graph. It computes degree distributions for 
 simulation and aggregates the results to estimate population parameters.
 }
 \examples{
-# Generate degree distribution properties with default parameters
-results <- get.TN.S1.degree.props()
-
-# Use custom parameters
-results <- get.TN.S1.degree.props(
-  n.pts = 500,
-  n.sims = 50,
+res <- get.TN.S1.degree.props(
+  n.pts = 100,
+  n.sims = 10,
   k = 5,
   noise = 0.05,
   noise.type = "normal"
 )
-
+str(res)
 }

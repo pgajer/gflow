@@ -11,7 +11,8 @@ compute.vertex.geodesic.stats(
   min.radius = 0.2,
   max.radius = 0.5,
   n.steps = 5,
-  n.packing.vertices = length(adj.list)
+  n.packing.vertices = length(adj.list),
+  packing.precision = 1e-04
 )
 }
 \arguments{
@@ -30,6 +31,8 @@ corresponding to adjacencies in adj.list.}
 \item{n.steps}{Integer. Number of radius steps to test.}
 
 \item{n.packing.vertices}{Integer. Number of vertices in the grid/packing.}
+
+\item{packing.precision}{Numeric. Precision threshold for packing convergence.}
 }
 \value{
 A data frame of class "vertex_geodesic_stats" with columns:

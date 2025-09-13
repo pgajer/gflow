@@ -212,7 +212,7 @@ create.grid.graph <- function(adj.list,
 
   # Call the C++ implementation
   # The C++ function expects 0-based indices
-  result <- .Call("S_create_uniform_grid_graph",
+  result <- .Call(S_create_uniform_grid_graph,
                   adj.list.0based,
                   weight.list,
                   as.integer(grid.size),

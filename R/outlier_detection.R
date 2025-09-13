@@ -284,15 +284,6 @@ remove.knn.outliers <- function(S, y = NULL, p = 0.98, dist.factor = 100,
 #' @param ... Additional arguments passed to \code{print} methods.
 #'
 #' @return Invisibly returns the input object.
-#'
-#' @examples
-#' # Using the example from remove.knn.outliers
-#' set.seed(123)
-#' S <- rbind(matrix(rnorm(2000), ncol = 2),
-#'            cbind(rnorm(10, 10), rnorm(10, 10)))
-#' result <- remove.knn.outliers(S, K = 10)
-#' print(result)
-#'
 #' @export
 print.knn.outliers <- function(x, ...) {
     cat("k-Nearest Neighbor Outlier Detection Results\n")
@@ -318,15 +309,6 @@ print.knn.outliers <- function(x, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return A list of class "summary.knn.outliers" containing summary statistics.
-#'
-#' @examples
-#' # Using the example from remove.knn.outliers
-#' set.seed(123)
-#' S <- rbind(matrix(rnorm(2000), ncol = 2),
-#'            cbind(rnorm(10, 10), rnorm(10, 10)))
-#' result <- remove.knn.outliers(S, K = 10)
-#' summary(result)
-#'
 #' @export
 summary.knn.outliers <- function(object, ...) {
     # Calculate summary statistics for nearest neighbor distances

@@ -236,7 +236,7 @@ mabilo <- function(x,
     }
 
     # Call the C function
-    result <- .Call("S_mabilo",
+    result <- .Call(S_mabilo,
                     as.double(x),
                     as.double(y),
                     as.double(y.true),

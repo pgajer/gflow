@@ -2,7 +2,7 @@
 #define MEAN_SHIFT_SMOOTHER_H_
 
 #include <vector>
-#include <memory>'
+#include <memory>
 
 struct mean_shift_smoother_results_t {
     std::vector<std::vector<std::vector<double>>> X_traj;

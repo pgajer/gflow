@@ -17,12 +17,3 @@ Invisibly returns the input object.
 \description{
 Prints a summary of the outlier detection results from \code{remove.knn.outliers}.
 }
-\examples{
-# Using the example from remove.knn.outliers
-set.seed(123)
-S <- rbind(matrix(rnorm(2000), ncol = 2),
-           cbind(rnorm(10, 10), rnorm(10, 10)))
-result <- remove.knn.outliers(S, K = 10)
-print(result)
-
-}

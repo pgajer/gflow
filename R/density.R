@@ -32,7 +32,7 @@
 #' @examples
 #' data <- rnorm(100)
 #' result <- gdensity(data, grid.size = 200, poffset = 0.1, bw = 0, kernel = 5)
-#' plot(result$x, result$density, type = "l")
+#' plot(result$x, result$y, type = "l")
 #'
 #' @export
 gdensity <- function(x,
@@ -93,7 +93,7 @@ gdensity <- function(x,
         stop("'verbose' must be a single logical value")
     }
 
-    result <- .Call("S_estimate_local_density_over_grid",
+    result <- .Call(S_estimate_local_density_over_grid,
                    as.double(x),
                    as.integer(grid.size),
                    as.double(poffset),

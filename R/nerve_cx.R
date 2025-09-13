@@ -24,7 +24,7 @@ create.nerve.complex <- function(coords, k, max.dim = 2) {
   }
 
   # Call C++ function
-    result <- .Call("S_create_nerve_complex",
+    result <- .Call(S_create_nerve_complex,
                     coords,
                     as.integer(k + 1), # Note that ANN library is configured so that it includes the query point within the set of kNN's so we need to increase k by 1 to really get kNN's
                     as.integer(max.dim))
@@ -55,7 +55,9 @@ set.complex.function.values <- function(complex, values) {
   }
 
   # Call C++ function
-  .Call("S_set_function_values", complex$complex_ptr, as.numeric(values))
+    .Call(S_set_function_values,
+          complex$complex_ptr,
+          as.numeric(values))
 
   return(invisible(complex))
 }
@@ -104,7 +106,10 @@ set.complex.weight.scheme <- function(complex, weight.type, params = numeric(0))
   }
 
   # Call C++ function
-  .Call("S_set_weight_scheme", complex$complex_ptr, weight.type, as.numeric(params))
+    .Call(S_set_weight_scheme,
+          complex$complex_ptr,
+          weight.type,
+          as.numeric(params))
 
   return(invisible(complex))
 }
@@ -132,8 +137,10 @@ complex.laplacian.solve <- function(complex, lambda = 1.0,
   }
 
   # Call C++ function
-  result <- .Call("S_solve_full_laplacian", complex$complex_ptr,
-                 as.numeric(lambda), as.numeric(dim.weights))
+    result <- .Call(S_solve_full_laplacian,
+                    complex$complex_ptr,
+                    as.numeric(lambda),
+                    as.numeric(dim.weights))
 
   return(result)
 }
@@ -147,13 +154,14 @@ complex.laplacian.solve <- function(complex, lambda = 1.0,
 #' @return Vector of simplex counts
 #' @export
 get.simplex.counts <- function(complex) {
-  # Check inputs
-  if (!inherits(complex, "nerve_complex")) {
-    stop("complex must be a nerve_complex object")
-  }
+                                        # Check inputs
+    if (!inherits(complex, "nerve_complex")) {
+        stop("complex must be a nerve_complex object")
+    }
 
-  # Call C++ function
-  .Call("S_get_simplex_counts", complex$complex_ptr)
+    ## Call C++ function
+    .Call(S_get_simplex_counts,
+          complex$complex_ptr)
 }
 
 #' Extract 1-Skeleton Graph from Nerve Complex
@@ -165,15 +173,16 @@ get.simplex.counts <- function(complex) {
 #' @return A graph representation of the 1-skeleton
 #' @export
 extract.skeleton.graph <- function(complex) {
-  # Check inputs
-  if (!inherits(complex, "nerve_complex")) {
-    stop("complex must be a nerve_complex object")
-  }
+                                        # Check inputs
+    if (!inherits(complex, "nerve_complex")) {
+        stop("complex must be a nerve_complex object")
+    }
 
-  # Call C++ function
-  result <- .Call("S_extract_skeleton_graph", complex$complex_ptr)
+    ## Call C++ function
+    result <- .Call(S_extract_skeleton_graph,
+                    complex$complex_ptr)
 
-  return(result)
+    return(result)
 }
 
 #' Print Method for Nerve Complex Objects

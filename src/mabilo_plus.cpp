@@ -8,14 +8,12 @@
 #include "progress_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 
-#include <execution>
-#include <atomic>
-#include <mutex>
-#include <numeric>
-#include <vector>
 #include <algorithm> // for std::max
+#include <cmath>
+#include <cstring>
+#include <numeric>
 #include <random>
-#include <cmath>         // for fabs()
+#include <vector>
 
 #include <R.h>
 #include <Rinternals.h>
@@ -872,28 +870,23 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
 }
 
 /**
- * @brief R interface for MABILO (Model-Averaged Locally Weighted Scatterplot Smoothing)
+ * \brief R interface for MABILO (Model-Averaged Locally Weighted Scatterplot Smoothing).
  *
- * @param s_x Vector of x coordinates
- * @param s_y Vector of y coordinates (response values)
- * @param s_y_true Optional vector of true y values for Rf_error calculation
- * @param s_w Vector of weights for each point
- * @param s_k_min Minimum number of neighbors (must be positive)
- * @param s_k_max Maximum number of neighbors (must be greater than k_min and not exceed input size)
- * @param s_model_averaging_strategy Strategy for averaging models:
- *        - "kernel_weights_only": Uses only distance-based kernel weights
- *        - "error_weights_only": Uses only Rf_error-based weights
- *        - "kernel_and_error_weights": Combines both weight types
- * @param s_error_filtering_strategy Strategy for filtering models:
- *        - "global_percentile": Uses global Rf_error distribution
- *        - "local_percentile": Uses Rf_error distribution at each point
- *        - "combined_percentile": Applies both global and local filtering
- *        - "best_k_models": Selects k best models by Rf_error
- * @param s_distance_kernel Kernel type for distance-based weights (0: Tricube, 1: Epanechnikov, 2: Exponential)
- * @param s_model_kernel Kernel type for Rf_error-based weights (same options as distance_kernel)
- * @param s_dist_normalization_factor Factor for normalizing distances
- * @param s_epsilon Small number to prevent division by zero
- * @param s_verbose Whether to print progress information
+ * \param s_x  Numeric vector of x coordinates.
+ * \param s_y  Numeric vector of y (response) values.
+ * \param s_y_true Optional numeric vector of true y values (used for true-error summaries).
+ * \param s_w  Numeric vector of per-point weights (same length as x/y).
+ * \param s_k_min Minimum number of neighbors (>= 1).
+ * \param s_k_max Maximum number of neighbors (>= k_min and <= length(x)).
+ * \param s_model_averaging_strategy Character scalar: "kernel_weights_only",
+ *        "error_weights_only", "kernel_and_error_weights", or "kernel_weights_with_filtering".
+ * \param s_error_filtering_strategy Character scalar: "global_percentile", "local_percentile",
+ *        "combined_percentile", or "best_k_models".
+ * \param s_distance_kernel Integer code for distance-kernel (e.g., 0=Tricube, 1=Epanechnikov, 2=Exponential).
+ * \param s_model_kernel    Integer code for model-error kernel (same options).
+ * \param s_dist_normalization_factor Double normalization factor for distances.
+ * \param s_epsilon Small positive double to avoid division by zero.
+ * \param s_verbose Logical; if TRUE, print progress.
  *
  * @return A list containing:
  * - k_values: Vector of k values tested
@@ -910,160 +903,219 @@ mabilo_plus_t mabilo_plus(const std::vector<double>& x,
  * - k_sm_predictions: Single-model predictions for all k values
  * - k_ma_predictions: Model-averaged predictions for all k values
  *
- * @throws Rf_error if input vectors have inconsistent lengths
- * @throws Rf_error if k_min or k_max values are invalid
- * @throws Rf_error if unknown model averaging or Rf_error filtering strategy is provided
+ * \throws Calls \c Rf_error() on type/length mismatches, invalid strategy strings, or invalid k ranges.
  */
 SEXP S_mabilo_plus(SEXP s_x,
-                SEXP s_y,
-                SEXP s_y_true,
-                SEXP s_w,
-                SEXP s_k_min,
-                SEXP s_k_max,
-                SEXP s_model_averaging_strategy,
-                SEXP s_error_filtering_strategy,
-                SEXP s_distance_kernel,
-                SEXP s_model_kernel,
-                SEXP s_dist_normalization_factor,
-                SEXP s_epsilon,
-                SEXP s_verbose) {
+                   SEXP s_y,
+                   SEXP s_y_true,
+                   SEXP s_w,
+                   SEXP s_k_min,
+                   SEXP s_k_max,
+                   SEXP s_model_averaging_strategy,
+                   SEXP s_error_filtering_strategy,
+                   SEXP s_distance_kernel,
+                   SEXP s_model_kernel,
+                   SEXP s_dist_normalization_factor,
+                   SEXP s_epsilon,
+                   SEXP s_verbose) {
 
-    int n_protected = 0;  // Track number of PROTECT calls
+    // ---- Coerce x/y/w to REAL and copy out (long-vector safe) ----
+    std::vector<double> x, y, w, y_true;
+    {
+        int tprot = 0;
 
-    int n_points = LENGTH(s_x);
-    std::vector<double> x(REAL(s_x), REAL(s_x) + n_points);
-    std::vector<double> y(REAL(s_y), REAL(s_y) + n_points);
+        SEXP sx = s_x;
+        if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
+        const R_xlen_t nx = XLENGTH(sx);
+        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
 
-    // Handle empty y_true vector
-    std::vector<double> y_true;
-    bool y_true_exists = LENGTH(s_y_true) == n_points;
-    if (y_true_exists) {
-        y_true.assign(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
+        SEXP sy = s_y;
+        if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
+        const R_xlen_t ny = XLENGTH(sy);
+        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+
+        SEXP sw = s_w;
+        if (TYPEOF(sw) != REALSXP) { sw = PROTECT(Rf_coerceVector(sw, REALSXP)); ++tprot; }
+        const R_xlen_t nw = XLENGTH(sw);
+        w.assign(REAL(sw), REAL(sw) + static_cast<size_t>(nw));
+
+        if (nx != ny || nx != nw) {
+            Rf_error("x, y, and w must have the same length.");
+        }
+
+        if (s_y_true != R_NilValue) {
+            SEXP syt = s_y_true;
+            if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
+            const R_xlen_t nyt = XLENGTH(syt);
+            if (nyt == nx) {
+                y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+            } // else: leave empty; treated as unavailable
+        }
+
+        if (tprot) UNPROTECT(tprot);
     }
 
-    std::vector<double> w(REAL(s_w), REAL(s_w) + n_points);
+    // ---- Scalars / enums / strings ----
+    const int k_min = Rf_asInteger(s_k_min);
+    const int k_max = Rf_asInteger(s_k_max);
 
-    //int max_distance_deviation = INTEGER(s_max_distance_deviation)[0];
-    int k_min = INTEGER(s_k_min)[0];
-    int k_max = INTEGER(s_k_max)[0];
+    // Strategy strings: require length-1 character vectors and non-NA
+    auto require_char_scalar = [](SEXP s, const char* what) -> const char* {
+        if (TYPEOF(s) != STRSXP || XLENGTH(s) < 1)
+            Rf_error("%s must be a non-empty character vector of length 1.", what);
+        SEXP elt = STRING_ELT(s, 0);
+        if (elt == NA_STRING)
+            Rf_error("%s cannot be NA.", what);
+        return CHAR(elt);
+    };
+
+    const char* strat  = require_char_scalar(s_model_averaging_strategy, "model_averaging_strategy");
+    const char* filter = require_char_scalar(s_error_filtering_strategy, "error_filtering_strategy");
 
     model_averaging_strategy_t model_averaging_strategy;
-    error_filtering_strategy_t error_filtering_strategy;
+    error_filtering_strategy_t  error_filtering_strategy;
 
-    const char* strat = CHAR(STRING_ELT(s_model_averaging_strategy, 0));
-    if (strcmp(strat, "kernel_weights_only") == 0) {
-        model_averaging_strategy = KERNEL_WEIGHTS_ONLY;
-    } else if (strcmp(strat, "error_weights_only") == 0) {
-        model_averaging_strategy = ERROR_WEIGHTS_ONLY;
-    } else if (strcmp(strat, "kernel_and_error_weights") == 0) {
-        model_averaging_strategy = KERNEL_AND_ERROR_WEIGHTS;
-    } else if (strcmp(strat, "kernel_weights_with_filtering") == 0) {
-        model_averaging_strategy = KERNEL_WEIGHTS_WITH_FILTERING;
-    } else {
-        Rf_error("Unknown model averaging strategy");
-    }
+    if      (std::strcmp(strat,  "kernel_weights_only")        == 0) model_averaging_strategy = KERNEL_WEIGHTS_ONLY;
+    else if (std::strcmp(strat,  "error_weights_only")         == 0) model_averaging_strategy = ERROR_WEIGHTS_ONLY;
+    else if (std::strcmp(strat,  "kernel_and_error_weights")   == 0) model_averaging_strategy = KERNEL_AND_ERROR_WEIGHTS;
+    else if (std::strcmp(strat,  "kernel_weights_with_filtering") == 0) model_averaging_strategy = KERNEL_WEIGHTS_WITH_FILTERING;
+    else Rf_error("Unknown model_averaging_strategy: '%s'", strat);
 
-    const char* filter = CHAR(STRING_ELT(s_error_filtering_strategy, 0));
-    if (strcmp(filter, "global_percentile") == 0) {
-        error_filtering_strategy = GLOBAL_PERCENTILE;
-    } else if (strcmp(filter, "local_percentile") == 0) {
-        error_filtering_strategy = LOCAL_PERCENTILE;
-    } else if (strcmp(filter, "combined_percentile") == 0) {
-        error_filtering_strategy = COMBINED_PERCENTILE;
-    } else if (strcmp(filter, "best_k_models") == 0) {
-        error_filtering_strategy = BEST_K_MODELS;
-    } else {
-        Rf_error("Unknown Rf_error filtering strategy");
-    }
+    if      (std::strcmp(filter, "global_percentile")   == 0) error_filtering_strategy = GLOBAL_PERCENTILE;
+    else if (std::strcmp(filter, "local_percentile")    == 0) error_filtering_strategy = LOCAL_PERCENTILE;
+    else if (std::strcmp(filter, "combined_percentile") == 0) error_filtering_strategy = COMBINED_PERCENTILE;
+    else if (std::strcmp(filter, "best_k_models")       == 0) error_filtering_strategy = BEST_K_MODELS;
+    else Rf_error("Unknown error_filtering_strategy: '%s'", filter);
 
-    int distance_kernel = INTEGER(s_distance_kernel)[0];
-    int model_kernel = INTEGER(s_model_kernel)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    double epsilon = REAL(s_epsilon)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    const int    distance_kernel = Rf_asInteger(s_distance_kernel);
+    const int    model_kernel    = Rf_asInteger(s_model_kernel);
+    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    const double epsilon         = Rf_asReal(s_epsilon);
+    const bool   verbose         = (Rf_asLogical(s_verbose) == TRUE);
 
-    mabilo_plus_t mabilo_plus_results = mabilo_plus(x,
-                                                    y,
-                                                    y_true,
-                                                    w,
-                                                    k_min,
-                                                    k_max,
-                                                    model_averaging_strategy,
-                                                    error_filtering_strategy,
-                                                    distance_kernel,
-                                                    model_kernel,
-                                                    dist_normalization_factor,
-                                                    epsilon,
-                                                    verbose);
+    // ---- Core computation (no R allocations inside) ----
+    mabilo_plus_t out = mabilo_plus(x, y, y_true, w,
+                                    k_min, k_max,
+                                    model_averaging_strategy, error_filtering_strategy,
+                                    distance_kernel, model_kernel,
+                                    dist_normalization_factor, epsilon, verbose);
 
-    // Creating return list
+    // ---- Build result (container-first; per-element protect) ----
+    int nprot = 0;
     const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
 
-    std::vector<int> k_values(mabilo_plus_results.k_mean_sm_errors.size());
-    for (int k_index = 0, k = k_min; k <= k_max; k++, k_index++)
-        k_values[k_index] = k;
-    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(k_values)); n_protected++;
+    // 0: k_values (sequence k_min..k_max)
+    {
+        const R_xlen_t K = static_cast<R_xlen_t>(static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
+        std::vector<int> k_values(static_cast<size_t>(K));
+        for (R_xlen_t i = 0; i < K; ++i) k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
+        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
+        SET_VECTOR_ELT(result, 0, kv);
+        UNPROTECT(1);
+    }
 
-    // opt_sm_k
-    SEXP s_opt_sm_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(s_opt_sm_k)[0] = mabilo_plus_results.opt_sm_k; // 1-base
-    SET_VECTOR_ELT(result, 1, s_opt_sm_k);
+    // 1: opt_sm_k (scalar int)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_sm_k));   // already 1-based in your core?
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1);
+    }
 
-    SEXP s_opt_sm_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(s_opt_sm_k_idx)[0] = mabilo_plus_results.opt_sm_k_idx + 1; // 1-base
-    SET_VECTOR_ELT(result, 2, s_opt_sm_k_idx);
+    // 2: opt_sm_k_idx (1-based)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_sm_k_idx + 1));
+        SET_VECTOR_ELT(result, 2, s);
+        UNPROTECT(1);
+    }
 
-    // opt_ma_k
-    SEXP s_opt_ma_k = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(s_opt_ma_k)[0] = mabilo_plus_results.opt_ma_k; // 1-base
-    SET_VECTOR_ELT(result, 3, s_opt_ma_k);
+    // 3: opt_ma_k (scalar int)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_ma_k));
+        SET_VECTOR_ELT(result, 3, s);
+        UNPROTECT(1);
+    }
 
-    SEXP s_opt_ma_k_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(s_opt_ma_k_idx)[0] = mabilo_plus_results.opt_ma_k_idx + 1; // 1-base
-    SET_VECTOR_ELT(result, 4, s_opt_ma_k_idx);
+    // 4: opt_ma_k_idx (1-based)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_ma_k_idx + 1));
+        SET_VECTOR_ELT(result, 4, s);
+        UNPROTECT(1);
+    }
 
-    // k_mean_sm_errors
-    SET_VECTOR_ELT(result, 5, PROTECT(convert_vector_double_to_R(mabilo_plus_results.k_mean_sm_errors))); n_protected++;
-    // k_mean_ma_errors
-    SET_VECTOR_ELT(result, 6, PROTECT(convert_vector_double_to_R(mabilo_plus_results.k_mean_ma_errors))); n_protected++;
+    // 5: k_mean_sm_errors
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_sm_errors));
+        SET_VECTOR_ELT(result, 5, s);
+        UNPROTECT(1);
+    }
 
-    // true errors
-    if (y_true_exists) {
-        SET_VECTOR_ELT(result, 7, PROTECT(convert_vector_double_to_R(mabilo_plus_results.k_mean_sm_true_errors))); n_protected++;
-        SET_VECTOR_ELT(result, 8, PROTECT(convert_vector_double_to_R(mabilo_plus_results.k_mean_ma_true_errors))); n_protected++;
+    // 6: k_mean_ma_errors
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_ma_errors));
+        SET_VECTOR_ELT(result, 6, s);
+        UNPROTECT(1);
+    }
+
+    // 7..8: true-error means (or NULLs if y_true absent)
+    if (!y_true.empty()) {
+        SEXP s7 = PROTECT(convert_vector_double_to_R(out.k_mean_sm_true_errors));
+        SET_VECTOR_ELT(result, 7, s7); UNPROTECT(1);
+        SEXP s8 = PROTECT(convert_vector_double_to_R(out.k_mean_ma_true_errors));
+        SET_VECTOR_ELT(result, 8, s8); UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(result, 7, R_NilValue);
         SET_VECTOR_ELT(result, 8, R_NilValue);
     }
 
-    // predictions
-    SET_VECTOR_ELT(result, 9, PROTECT(convert_vector_double_to_R(mabilo_plus_results.sm_predictions))); n_protected++;
-    SET_VECTOR_ELT(result, 10, PROTECT(convert_vector_double_to_R(mabilo_plus_results.ma_predictions))); n_protected++;
+    // 9: sm_predictions
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(out.sm_predictions));
+        SET_VECTOR_ELT(result, 9, s);
+        UNPROTECT(1);
+    }
 
-    // k_predictions
-    SET_VECTOR_ELT(result, 11, convert_vector_vector_double_to_R(mabilo_plus_results.k_sm_predictions)); n_protected++;
-    SET_VECTOR_ELT(result, 12, convert_vector_vector_double_to_R(mabilo_plus_results.k_ma_predictions)); n_protected++;
+    // 10: ma_predictions
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(out.ma_predictions));
+        SET_VECTOR_ELT(result, 10, s);
+        UNPROTECT(1);
+    }
 
-    // Setting names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("opt_sm_k"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("opt_sm_k_idx"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("opt_ma_k"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("opt_ma_k_idx"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_sm_errors"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("k_mean_ma_errors"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("k_mean_sm_true_errors"));
-    SET_STRING_ELT(names, 8, Rf_mkChar("k_mean_ma_true_errors"));
-    SET_STRING_ELT(names, 9, Rf_mkChar("sm_predictions"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
-    SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
-    SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
+    // 11: k_sm_predictions (list of numeric)
+    {
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_sm_predictions));
+        SET_VECTOR_ELT(result, 11, s);
+        UNPROTECT(1);
+    }
 
-    Rf_setAttrib(result, R_NamesSymbol, names);
+    // 12: k_ma_predictions (list of numeric)
+    {
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_ma_predictions));
+        SET_VECTOR_ELT(result, 12, s);
+        UNPROTECT(1);
+    }
 
-    UNPROTECT(n_protected);
+    // names while result is protected
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
+        SET_STRING_ELT(names, 0,  Rf_mkChar("k_values"));
+        SET_STRING_ELT(names, 1,  Rf_mkChar("opt_sm_k"));
+        SET_STRING_ELT(names, 2,  Rf_mkChar("opt_sm_k_idx"));
+        SET_STRING_ELT(names, 3,  Rf_mkChar("opt_ma_k"));
+        SET_STRING_ELT(names, 4,  Rf_mkChar("opt_ma_k_idx"));
+        SET_STRING_ELT(names, 5,  Rf_mkChar("k_mean_sm_errors"));
+        SET_STRING_ELT(names, 6,  Rf_mkChar("k_mean_ma_errors"));
+        SET_STRING_ELT(names, 7,  Rf_mkChar("k_mean_sm_true_errors"));
+        SET_STRING_ELT(names, 8,  Rf_mkChar("k_mean_ma_true_errors"));
+        SET_STRING_ELT(names, 9,  Rf_mkChar("sm_predictions"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
+        SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); --nprot; // names
+    }
 
+    UNPROTECT(nprot);
     return result;
 }

@@ -161,7 +161,7 @@ ecdf.cpp <- function(x) {
       stop("x has to have at least two elements.")
   }
 
-  result <- .Call("S_ecdf", x)
+  result <- .Call(S_ecdf, x)
 
   return(result)
 }
@@ -490,10 +490,10 @@ project.onto.subspace <- function(x, U) {
 #' q <- c(1, 1)
 #' p.density <- density.func(p)
 #' q.density <- density.func(q)
-#' R.density.distance(p, q, p.density, q.density, density.func)
+#' Rdensity.distance(p, q, p.density, q.density, density.func)
 #'
 #' @export
-R.density.distance <- function(p, q, p.density, q.density, density.func = NULL) {
+Rdensity.distance <- function(p, q, p.density, q.density, density.func = NULL) {
 
     ## Calculate Euclidean distance between p and q
     euclidean.distance <- sqrt(sum((p - q)^2))
@@ -2755,7 +2755,7 @@ pearson.wcor <- function(x, y, w) {
     }
 
     cc <- 0
-    out <- .C("C_pearson_wcor",
+    out <- .C(C_pearson_wcor,
              as.double(x),
              as.double(y),
              as.double(w),
@@ -2817,7 +2817,7 @@ pearson.wcor.BB.qCrI <- function(nn.y1, nn.y2, nn.i, nn.w, nx, n.BB = 1000, alph
     }
 
     lwcor.CI <- numeric(2 * ng)
-    out <- .C("C_pearson_wcor_BB_qCrI",
+    out <- .C(C_pearson_wcor_BB_qCrI,
              as.double(t(nn.y1)),
              as.double(t(nn.y2)),
              as.integer(t(nn.i - 1)),  # Convert to 0-based indexing for C

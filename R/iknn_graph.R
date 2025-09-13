@@ -164,7 +164,7 @@ create.single.iknn.graph <- function(X,
         }
     }
 
-    result <- .Call("S_create_single_iknn_graph",
+    result <- .Call(S_create_single_iknn_graph,
                     X,
                     as.integer(k + 1),
                     as.double(pruning.thld),

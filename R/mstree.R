@@ -37,7 +37,7 @@ mstree <- function(X, i = 1) {
     edges <- numeric((n - 1) * 2)
     edge.lens <- numeric(n - 1)
 
-    out <- .C("C_mstree",
+    out <- .C(C_mstree,
              as.integer(i - 1),
              as.integer(t(nn.i - 1)),
              as.double(t(nn.d)),

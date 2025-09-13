@@ -58,6 +58,7 @@
 #include "stats_utils.h"
 #include "kernels.h"
 #include "mean_shift_smoother_r.h"
+#include "cv_deg0.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -117,8 +118,16 @@ static R_NativePrimitiveArgType density_distance_type[] = {REALSXP, INTSXP, INTS
 static R_NativePrimitiveArgType rmatrix_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, INTSXP};
 
 static R_NativePrimitiveArgType kernel_eval_type[] = { INTSXP, REALSXP, INTSXP, REALSXP, REALSXP };
+static R_NativePrimitiveArgType kernel_type[] = { REALSXP, INTSXP, REALSXP, INTSXP, REALSXP };
+
+static R_NativePrimitiveArgType cv_type[] = { INTSXP, INTSXP, INTSXP, INTSXP, INTSXP,  REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, INTSXP, REALSXP};
 
 static const R_CMethodDef cMethods[] = {
+  {"C_cv_deg0_binloss", (DL_FUNC) &C_cv_deg0_binloss, 14, cv_type},
+  {"C_cv_deg0_mae", (DL_FUNC) &C_cv_deg0_mae, 14, cv_type},
+  {"C_epanechnikov_kernel_with_stop", (DL_FUNC) &C_epanechnikov_kernel_with_stop, 5, kernel_type},
+  {"C_triangular_kernel_with_stop", (DL_FUNC) &C_triangular_kernel_with_stop, 5, kernel_type},
+  {"C_tr_exponential_kernel_with_stop", (DL_FUNC) &C_tr_exponential_kernel_with_stop, 5, kernel_type},
   {"C_kernel_eval", (DL_FUNC) &C_kernel_eval, 5, kernel_eval_type},
   {"C_llm_1D_beta", (DL_FUNC) &C_llm_1D_beta, 8, llm_1D_beta_type},
   {"C_llm_1D_beta_perms", (DL_FUNC) &C_llm_1D_beta_perms, 11, llm_1D_beta_perms_type},
@@ -174,6 +183,16 @@ static const R_CMethodDef cMethods[] = {
   {NULL, NULL, 0, NULL}
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+#ifdef __cplusplus
+}
+#endif
+
 static const R_CallMethodDef CallMethods[] = {
   {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
@@ -224,7 +243,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
   {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
   {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 4},
-  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 9},
+  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 7},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
@@ -298,10 +317,14 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_pdistr", (DL_FUNC) &S_pdistr, 2},
   {"S_lwcor", (DL_FUNC) &S_lwcor, 3},
   {"S_lwcor_yY", (DL_FUNC) &S_lwcor_yY, 4},
+  {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
+  {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
+  {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
   {NULL, NULL, 0}
 };
 
-void R_init_msr2(DllInfo *dll) {
+void R_init_gflow(DllInfo *dll) {
   R_registerRoutines(dll, cMethods, CallMethods, NULL, NULL);
   R_useDynamicSymbols(dll, FALSE);
+  R_forceSymbols(dll, FALSE);     // it will allow Rcpp’s generated .Call("...") work
 }

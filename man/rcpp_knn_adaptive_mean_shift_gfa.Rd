@@ -26,7 +26,18 @@ rcpp_knn_adaptive_mean_shift_gfa(
 
 \item{step_size}{positive numeric step size (constant over iterations).}
 
-\item{ikernel}{integer kernel id (1=Gaussian, 2=Epanechnikov, 3=Quartic).}
+\item{ikernel}{Type of kernel function to use (default: 1 - Epanechnikov).
+Available kernels:
+- 0-Constant,
+- 1-Epanechnikov,
+- 2-Triangular,
+- 3-TrExponential,
+- 4-Laplace,
+- 5-Normal,
+- 6-Biweight,
+- 7-Tricube,
+- 8-Cosine
+- 9-Hyperbolic}
 
 \item{dist_normalization_factor}{numeric > 0.}
 

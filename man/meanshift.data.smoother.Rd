@@ -13,10 +13,10 @@ meanshift.data.smoother(
   ikernel = 1,
   dist.normalization.factor = 1.01,
   method = "precomputed",
-  average.direction.only = NULL,
   momentum = 0.9,
   increase.factor = 1.2,
-  decrease.factor = 0.5
+  decrease.factor = 0.5,
+  average.direction.only = NULL
 )
 }
 \arguments{
@@ -64,14 +64,6 @@ distance normalization. Should be greater than 1. Default is 1.01.}
 }
 Default is "precomputed".}
 
-\item{average.direction.only}{A logical value indicating whether to average only the
-directions of gradients (TRUE) or full gradient vectors (FALSE). If NULL (default),
-this is automatically determined based on the method:
-\itemize{
-\item Methods ending in "_dir" use TRUE
-\item Other methods use FALSE
-}}
-
 \item{momentum}{A numeric value specifying the momentum factor for methods
 "adaptive_momentum" and "adaptive_momentum_dir". Should be between 0 and 1.
 Default is 0.9. Ignored for other methods.}
@@ -83,6 +75,14 @@ Only used for adaptive methods (4-10).}
 \item{decrease.factor}{A numeric value specifying the factor by which to decrease
 the step size in adaptive methods. Should be between 0 and 1. Default is 0.5.
 Only used for adaptive methods (4-10).}
+
+\item{average.direction.only}{A logical value indicating whether to average only the
+directions of gradients (TRUE) or full gradient vectors (FALSE). If NULL (default),
+this is automatically determined based on the method:
+\itemize{
+\item Methods ending in "_dir" use TRUE
+\item Other methods use FALSE
+}}
 }
 \value{
 A list of class "MSD" containing:

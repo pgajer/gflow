@@ -437,7 +437,7 @@ angular.wasserstein.index <- function(X, Y, k) {
         }
 
         W <- 0
-        out <- .C("C_wasserstein_distance_1D",
+        out <- .C(C_wasserstein_distance_1D,
                   as.double(angles.X),
                   as.double(angles.Y),
                   as.integer(k-1),
@@ -495,7 +495,7 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
         warning("Large matrices detected. Computation may take a while.")
     }
 
-    result <- .Call("S_angular_wasserstein_index", X, Y, as.integer(k + 1))
+    result <- .Call(S_angular_wasserstein_index, X, Y, as.integer(k + 1))
 
     return(result)
 }

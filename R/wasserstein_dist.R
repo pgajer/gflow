@@ -45,7 +45,7 @@ wasserstein.distance.1D <- function(x, y)
     if (length(y) != n) stop("x and y must have the same length")
 
     W <- 0
-    out <- .C("C_wasserstein_distance_1D",
+    out <- .C(C_wasserstein_distance_1D,
              as.double(x),
              as.double(y),
              as.integer(n),
@@ -362,7 +362,7 @@ wasserstein.ipNNuv <- function(S,
             } else {
                 n.coss <- length(coss)
                 d <- 0
-                out <- .C("C_wasserstein_distance_1D",
+                out <- .C(C_wasserstein_distance_1D,
                          as.double(coss),
                          as.double(delta1),
                          as.integer(n.coss),
@@ -370,7 +370,7 @@ wasserstein.ipNNuv <- function(S,
                 Wd1[i] <- out$d
                 ##
                 u <- seq(-1,1, length.out = n.coss)
-                out <- .C("C_wasserstein_distance_1D",
+                out <- .C(C_wasserstein_distance_1D,
                          as.double(coss),
                          as.double(u),
                          as.integer(n.coss),

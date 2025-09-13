@@ -393,7 +393,11 @@ inline void C_triangular_kernel_with_stop(const double *x, const int *rn, const 
     \param w     An output array of kernel values (weights).
 
 */
-inline void C_epanechnikov_kernel_with_stop(const double *x, const int *rn, const double *rbw, int *stop, double *w)
+inline void C_epanechnikov_kernel_with_stop(const double *x,
+                                            const int *rn,
+                                            const double *rbw,
+                                            int *stop,
+                                            double *w)
 {
     int n     = rn[0];
     double bw = rbw[0];

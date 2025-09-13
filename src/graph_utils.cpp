@@ -435,36 +435,52 @@ convert_adjacency_to_edge_matrix(const std::vector<std::vector<int>>& adj_vect,
 }
 
 SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights) {
-
-    std::vector<std::vector<int>> adj_vect = convert_adj_list_from_R(s_graph);
-
-    // Initialize weights list
-    std::vector<std::vector<double>> weight_list;
-    if (s_weights != R_NilValue) {
-        weight_list = convert_weight_list_from_R(s_weights);
+  // ---- Inputs (pure reads; no PROTECT needed) ----
+  std::vector<std::vector<int>>    adj_vect    = convert_adj_list_from_R(s_graph);
+  std::vector<std::vector<double>> weight_list;
+  if (s_weights != R_NilValue) {
+    weight_list = convert_weight_list_from_R(s_weights);
+    if (!weight_list.empty() && weight_list.size() != adj_vect.size()) {
+      Rf_error("weights length must be 0 or equal to adjacency length.");
     }
+  }
 
-    // Pass vectors directly, no need to dereference
-    auto result = convert_adjacency_to_edge_matrix(adj_vect, weight_list);
+  // ---- Core computation (no R allocations inside) ----
+  // result.first  : vector<pair<int,int>> edges (0-based or 1-based per your core)
+  // result.second : vector<double> weights (may be empty for unweighted)
+  auto result = convert_adjacency_to_edge_matrix(adj_vect, weight_list);
 
-    SEXP r_edges = cpp_vector_of_pairs_to_R_matrix(result.first);
-    SEXP r_weights = R_NilValue;
-    if (!result.second.empty()) {  // Assuming result.second is now a vector instead of pointer
-        r_weights = convert_vector_double_to_R(result.second);
-        UNPROTECT(1);
-    }
+  // ---- Build return (container-first; per-element protect) ----
+  int nprot = 0;
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2)); ++nprot;
 
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
-    SET_VECTOR_ELT(r_result, 0, r_edges);
-    SET_VECTOR_ELT(r_result, 1, r_weights);
+  // 0: edge.matrix
+  {
+    SEXP edges = PROTECT(cpp_vector_of_pairs_to_R_matrix(result.first));
+    SET_VECTOR_ELT(out, 0, edges);
+    UNPROTECT(1);
+  }
 
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 2));
-    SET_STRING_ELT(r_names, 0, Rf_mkChar("edge.matrix"));
-    SET_STRING_ELT(r_names, 1, Rf_mkChar("weights"));
-    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+  // 1: weights (or NULL)
+  if (!result.second.empty()) {
+    SEXP w = PROTECT(convert_vector_double_to_R(result.second));
+    SET_VECTOR_ELT(out, 1, w);
+    UNPROTECT(1);
+  } else {
+    SET_VECTOR_ELT(out, 1, R_NilValue);
+  }
 
-    UNPROTECT(2);
-    return r_result;
+  // names while `out` is protected
+  {
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2)); ++nprot;
+    SET_STRING_ELT(nm, 0, Rf_mkChar("edge.matrix"));
+    SET_STRING_ELT(nm, 1, Rf_mkChar("weights"));
+    Rf_setAttrib(out, R_NamesSymbol, nm);
+    UNPROTECT(1); --nprot; // nm
+  }
+
+  UNPROTECT(nprot); // out
+  return out;
 }
 
 /**

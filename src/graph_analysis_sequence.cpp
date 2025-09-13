@@ -474,21 +474,6 @@ compute_graph_analysis_sequence(
  * @note For large graphs or multiple h-values, this function can be computationally intensive
  * @note The path graphs generated for each h-value are retained in the output to allow reuse
  *
- * @example
- * # R usage example:
- * result <- compute_graph_analysis_sequence(
- *   adj_list = my_graph$adj_list,
- *   weight_list = my_graph$weights,
- *   y = vertex_function,
- *   Ey = NULL,
- *   h_values = c(1, 2, 3),
- *   diffusion_params = list(
- *     n_time_steps = 100,
- *     step_factor = 0.1,
- *     normalize = 1,
- *     # ... other parameters ...
- *   )
- * )
  */
 SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
                                        SEXP s_weight_list,
@@ -496,119 +481,148 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
                                        SEXP s_Ey,
                                        SEXP s_h_values,
                                        SEXP s_diffusion_params) {
-    // Converting R inputs to C++ types
-    std::vector<std::vector<int>> adj_vect       = convert_adj_list_from_R(s_adj_list);
-    std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
+  // ---------- Convert adjacency & weights ----------
+  // (Assume these helpers do not leak and do any coercion internally if needed.)
+  std::vector<std::vector<int>>    adj_vect    = convert_adj_list_from_R(s_adj_list);
+  std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
 
-    std::vector<double> y, Ey; // Changed to double from int
-    if (s_y != R_NilValue) {
-        PROTECT(s_y = Rf_coerceVector(s_y, REALSXP)); // Changed to REALSXP
-        double* y_array = REAL(s_y);
-        int y_len = LENGTH(s_y);
-        y.assign(y_array, y_array + y_len);
-        UNPROTECT(1);
-    } else if (s_Ey != R_NilValue) {
-        PROTECT(s_Ey = Rf_coerceVector(s_Ey, REALSXP)); // Changed to REALSXP
-        double* Ey_array = REAL(s_Ey);
-        int Ey_len = LENGTH(s_Ey);
-        Ey.assign(Ey_array, Ey_array + Ey_len);
-        UNPROTECT(1);
-    } else {
-        Rf_error("s_y and s_Ey cannot be both null.");
+  const size_t n_vertices = adj_vect.size();
+  if (!weight_vect.empty() && weight_vect.size() != n_vertices) {
+    Rf_error("weight_list length must be 0 or equal to adj_list length.");
+  }
+
+  // ---------- y / Ey (only one allowed) ----------
+  std::vector<double> y, Ey;
+  const bool has_y  = (s_y  != R_NilValue);
+  const bool has_Ey = (s_Ey != R_NilValue);
+  if (has_y && has_Ey) {
+    Rf_error("Exactly one of `y` or `Ey` must be provided (not both).");
+  }
+  if (!has_y && !has_Ey) {
+    Rf_error("`y` and `Ey` cannot both be NULL.");
+  }
+
+  if (has_y) {
+    SEXP sy = s_y;
+    if (TYPEOF(sy) != REALSXP) sy = Rf_coerceVector(sy, REALSXP); // safe: we copy out immediately
+    const R_xlen_t ny = XLENGTH(sy);
+    if (static_cast<size_t>(ny) != n_vertices) {
+      Rf_error("length(y) must equal length(adj_list).");
+    }
+    const double* py = REAL(sy);
+    y.assign(py, py + static_cast<size_t>(ny));
+  } else { // has_Ey
+    SEXP sEy = s_Ey;
+    if (TYPEOF(sEy) != REALSXP) sEy = Rf_coerceVector(sEy, REALSXP);
+    const R_xlen_t nEy = XLENGTH(sEy);
+    if (static_cast<size_t>(nEy) != n_vertices) {
+      Rf_error("length(Ey) must equal length(adj_list).");
+    }
+    const double* pEy = REAL(sEy);
+    Ey.assign(pEy, pEy + static_cast<size_t>(nEy));
+  }
+
+  // ---------- h_values ----------
+  std::vector<int> h_values;
+  {
+    SEXP sh = s_h_values;
+    if (TYPEOF(sh) != INTSXP) sh = Rf_coerceVector(sh, INTSXP);
+    const R_xlen_t nh = XLENGTH(sh);
+    const int* ph = INTEGER(sh);
+    h_values.assign(ph, ph + static_cast<size_t>(nh));
+  }
+
+  // ---------- diffusion_params (list) ----------
+  if (TYPEOF(s_diffusion_params) != VECSXP) {
+    Rf_error("`diffusion_params` must be a list.");
+  }
+  diffusion_parameters_t diffusion_params;
+
+  // Use R API accessors that coerce scalars as needed.
+  diffusion_params.n_time_steps                = Rf_asInteger (VECTOR_ELT(s_diffusion_params, 0));
+  diffusion_params.step_factor                 = Rf_asReal    (VECTOR_ELT(s_diffusion_params, 1));
+  diffusion_params.normalize                   = Rf_asInteger (VECTOR_ELT(s_diffusion_params, 2));
+  diffusion_params.preserve_local_maxima       = Rf_asLogical (VECTOR_ELT(s_diffusion_params, 3)) == TRUE;
+  diffusion_params.local_maximum_weight_factor = Rf_asReal    (VECTOR_ELT(s_diffusion_params, 4));
+  diffusion_params.preserve_local_extrema      = Rf_asLogical (VECTOR_ELT(s_diffusion_params, 5)) == TRUE;
+  diffusion_params.imputation_method = static_cast<imputation_method_t>(
+      Rf_asInteger(VECTOR_ELT(s_diffusion_params, 6)));
+
+  SEXP s_iterative_params = VECTOR_ELT(s_diffusion_params, 7);
+  if (TYPEOF(s_iterative_params) != VECSXP) {
+    Rf_error("`diffusion_params[[8]]` (iterative_params) must be a list.");
+  }
+  diffusion_params.iterative_params.max_iterations        = Rf_asInteger(VECTOR_ELT(s_iterative_params, 0));
+  diffusion_params.iterative_params.convergence_threshold = Rf_asReal   (VECTOR_ELT(s_iterative_params, 1));
+
+  diffusion_params.apply_binary_threshold     = Rf_asLogical (VECTOR_ELT(s_diffusion_params, 8)) == TRUE;
+  diffusion_params.binary_threshold           = Rf_asReal    (VECTOR_ELT(s_diffusion_params, 9));
+  diffusion_params.ikernel                    = Rf_asInteger (VECTOR_ELT(s_diffusion_params,10));
+  diffusion_params.dist_normalization_factor  = Rf_asReal    (VECTOR_ELT(s_diffusion_params,11));
+  diffusion_params.n_CVs                      = Rf_asInteger (VECTOR_ELT(s_diffusion_params,12));
+  diffusion_params.n_CV_folds                 = Rf_asInteger (VECTOR_ELT(s_diffusion_params,13));
+  diffusion_params.epsilon                    = Rf_asReal    (VECTOR_ELT(s_diffusion_params,14));
+  diffusion_params.seed                       = Rf_asInteger (VECTOR_ELT(s_diffusion_params,15));
+
+  // ---------- Core computation (no R allocations inside) ----------
+  std::vector<MS_complex_plus_t> results =
+      compute_graph_analysis_sequence(adj_vect, weight_vect, y, Ey, h_values, diffusion_params);
+
+  // ---------- Build return list (rchk-safe) ----------
+  int nprot = 0;
+  const R_xlen_t nres = static_cast<R_xlen_t>(results.size());
+  SEXP r_results_list = PROTECT(Rf_allocVector(VECSXP, nres)); ++nprot;
+
+  for (R_xlen_t i = 0; i < nres; ++i) {
+    const auto& ms = results[static_cast<size_t>(i)];
+
+    // ms_list container first
+    SEXP ms_list = PROTECT(Rf_allocVector(VECSXP, 12)); ++nprot;
+
+    // Each element: PROTECT converter result -> insert -> UNPROTECT(1)
+    {
+      SEXP t = PROTECT(convert_set_to_R(ms.local_maxima));           SET_VECTOR_ELT(ms_list, 0, t); UNPROTECT(1);
+      t     = PROTECT(convert_set_to_R(ms.local_minima));            SET_VECTOR_ELT(ms_list, 1, t); UNPROTECT(1);
+      t     = PROTECT(convert_map_set_to_R(ms.lmax_to_lmin));        SET_VECTOR_ELT(ms_list, 2, t); UNPROTECT(1);
+      t     = PROTECT(convert_map_set_to_R(ms.lmin_to_lmax));        SET_VECTOR_ELT(ms_list, 3, t); UNPROTECT(1);
+      t     = PROTECT(convert_procells_to_R(ms.procells));           SET_VECTOR_ELT(ms_list, 4, t); UNPROTECT(1);
+      t     = PROTECT(convert_map_vector_set_to_R(ms.cells));        SET_VECTOR_ELT(ms_list, 5, t); UNPROTECT(1);
+      t     = PROTECT(convert_vector_vector_int_to_R(ms.unique_trajectories));
+                                                                     SET_VECTOR_ELT(ms_list, 6, t); UNPROTECT(1);
+      t     = PROTECT(convert_cell_trajectories_to_R(ms.cell_trajectories));
+                                                                     SET_VECTOR_ELT(ms_list, 7, t); UNPROTECT(1);
+      t     = PROTECT(convert_vector_vector_int_to_R(ms.path_graph_adj_list));
+                                                                     SET_VECTOR_ELT(ms_list, 8, t); UNPROTECT(1);
+      t     = PROTECT(convert_vector_vector_double_to_R(ms.path_graph_weight_list));
+                                                                     SET_VECTOR_ELT(ms_list, 9, t); UNPROTECT(1);
+      t     = PROTECT(convert_map_vector_to_R(ms.shortest_paths));   SET_VECTOR_ELT(ms_list,10, t); UNPROTECT(1);
+      t     = PROTECT(convert_vector_double_to_R(ms.Ey));            SET_VECTOR_ELT(ms_list,11, t); UNPROTECT(1);
     }
 
-    PROTECT(s_h_values = Rf_coerceVector(s_h_values, INTSXP));
-    int* h_values_array = INTEGER(s_h_values);
-    int h_values_len = LENGTH(s_h_values);
-    std::vector<int> h_values(h_values_array, h_values_array + h_values_len);
-    UNPROTECT(1);
-
-    // Unpack diffusion parameters from R list
-    diffusion_parameters_t diffusion_params;
-    PROTECT(s_diffusion_params = Rf_coerceVector(s_diffusion_params, VECSXP));
-
-    // Extract each parameter from the R list
-    diffusion_params.n_time_steps = INTEGER(VECTOR_ELT(s_diffusion_params, 0))[0];
-    diffusion_params.step_factor = REAL(VECTOR_ELT(s_diffusion_params, 1))[0];
-    diffusion_params.normalize = INTEGER(VECTOR_ELT(s_diffusion_params, 2))[0];
-    diffusion_params.preserve_local_maxima = LOGICAL(VECTOR_ELT(s_diffusion_params, 3))[0];
-    diffusion_params.local_maximum_weight_factor = REAL(VECTOR_ELT(s_diffusion_params, 4))[0];
-    diffusion_params.preserve_local_extrema = LOGICAL(VECTOR_ELT(s_diffusion_params, 5))[0];
-    diffusion_params.imputation_method = static_cast<imputation_method_t>(INTEGER(VECTOR_ELT(s_diffusion_params, 6))[0]);
-
-    // Get iterative params
-    SEXP s_iterative_params = VECTOR_ELT(s_diffusion_params, 7);
-    diffusion_params.iterative_params.max_iterations = INTEGER(VECTOR_ELT(s_iterative_params, 0))[0];
-    diffusion_params.iterative_params.convergence_threshold = REAL(VECTOR_ELT(s_iterative_params, 1))[0];
-
-    // Continue with remaining parameters
-    diffusion_params.apply_binary_threshold = LOGICAL(VECTOR_ELT(s_diffusion_params, 8))[0];
-    diffusion_params.binary_threshold = REAL(VECTOR_ELT(s_diffusion_params, 9))[0];
-    diffusion_params.ikernel = INTEGER(VECTOR_ELT(s_diffusion_params, 10))[0];
-    diffusion_params.dist_normalization_factor = REAL(VECTOR_ELT(s_diffusion_params, 11))[0];
-    diffusion_params.n_CVs = INTEGER(VECTOR_ELT(s_diffusion_params, 12))[0];
-    diffusion_params.n_CV_folds = INTEGER(VECTOR_ELT(s_diffusion_params, 13))[0];
-    diffusion_params.epsilon = REAL(VECTOR_ELT(s_diffusion_params, 14))[0];
-    diffusion_params.seed = INTEGER(VECTOR_ELT(s_diffusion_params, 15))[0];
-
-    UNPROTECT(1);
-
-    // Call the C++ function
-    std::vector<MS_complex_plus_t> results = compute_graph_analysis_sequence(adj_vect,
-                                                                             weight_vect,
-                                                                             y,
-                                                                             Ey,
-                                                                             h_values,
-                                                                             diffusion_params);
-
-    // Convert results to R list
-    SEXP r_results_list;
-    PROTECT(r_results_list = Rf_allocVector(VECSXP, results.size()));
-
-    for (size_t i = 0; i < results.size(); i++) {
-        const auto& ms = results[i];
-
-        // Create list for single MS complex
-        SEXP ms_list;
-        PROTECT(ms_list = Rf_allocVector(VECSXP, 12)); // Number of fields in MS_complex_plus_t
-
-        // Convert each component
-        SET_VECTOR_ELT(ms_list, 0, convert_set_to_R(ms.local_maxima));
-        SET_VECTOR_ELT(ms_list, 1, convert_set_to_R(ms.local_minima));
-        SET_VECTOR_ELT(ms_list, 2, convert_map_set_to_R(ms.lmax_to_lmin));
-        SET_VECTOR_ELT(ms_list, 3, convert_map_set_to_R(ms.lmin_to_lmax));
-        SET_VECTOR_ELT(ms_list, 4, convert_procells_to_R(ms.procells));
-        SET_VECTOR_ELT(ms_list, 5, convert_map_vector_set_to_R(ms.cells));
-        SET_VECTOR_ELT(ms_list, 6, convert_vector_vector_int_to_R(ms.unique_trajectories)); UNPROTECT(1);
-        SET_VECTOR_ELT(ms_list, 7, convert_cell_trajectories_to_R(ms.cell_trajectories));
-        SET_VECTOR_ELT(ms_list, 8, convert_vector_vector_int_to_R(ms.path_graph_adj_list)); UNPROTECT(1);
-        SET_VECTOR_ELT(ms_list, 9, convert_vector_vector_double_to_R(ms.path_graph_weight_list)); UNPROTECT(1);
-        SET_VECTOR_ELT(ms_list, 10, convert_map_vector_to_R(ms.shortest_paths));
-        SET_VECTOR_ELT(ms_list, 11, convert_vector_double_to_R(ms.Ey)); UNPROTECT(1); // convert_vector_double_to_R(ms.Ey)
-
-        // Set names
-        SEXP names;
-        PROTECT(names = Rf_allocVector(STRSXP, 12));
-        SET_STRING_ELT(names, 0, Rf_mkChar("local_maxima"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("local_minima"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("lmax_to_lmin"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("lmin_to_lmax"));
-        SET_STRING_ELT(names, 4, Rf_mkChar("procells"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("cells"));
-        SET_STRING_ELT(names, 6, Rf_mkChar("unique_trajectories"));
-        SET_STRING_ELT(names, 7, Rf_mkChar("cell_trajectories"));
-        SET_STRING_ELT(names, 8, Rf_mkChar("path_graph_adj_list"));
-        SET_STRING_ELT(names, 9, Rf_mkChar("path_graph_weight_list"));
-        SET_STRING_ELT(names, 10, Rf_mkChar("shortest_paths"));
-        SET_STRING_ELT(names, 11, Rf_mkChar("Ey"));
-
-        Rf_setAttrib(ms_list, R_NamesSymbol, names);
-        UNPROTECT(1); // names
-
-        SET_VECTOR_ELT(r_results_list, i, ms_list);
-        UNPROTECT(1); // ms_list
+    // names while ms_list is protected
+    {
+      SEXP names = PROTECT(Rf_allocVector(STRSXP, 12)); ++nprot;
+      SET_STRING_ELT(names, 0,  Rf_mkChar("local_maxima"));
+      SET_STRING_ELT(names, 1,  Rf_mkChar("local_minima"));
+      SET_STRING_ELT(names, 2,  Rf_mkChar("lmax_to_lmin"));
+      SET_STRING_ELT(names, 3,  Rf_mkChar("lmin_to_lmax"));
+      SET_STRING_ELT(names, 4,  Rf_mkChar("procells"));
+      SET_STRING_ELT(names, 5,  Rf_mkChar("cells"));
+      SET_STRING_ELT(names, 6,  Rf_mkChar("unique_trajectories"));
+      SET_STRING_ELT(names, 7,  Rf_mkChar("cell_trajectories"));
+      SET_STRING_ELT(names, 8,  Rf_mkChar("path_graph_adj_list"));
+      SET_STRING_ELT(names, 9,  Rf_mkChar("path_graph_weight_list"));
+      SET_STRING_ELT(names, 10, Rf_mkChar("shortest_paths"));
+      SET_STRING_ELT(names, 11, Rf_mkChar("Ey"));
+      Rf_setAttrib(ms_list, R_NamesSymbol, names);
+      UNPROTECT(1); --nprot; // names
     }
 
-    UNPROTECT(1); // r_results_list
-    return r_results_list;
+    // Insert ms_list and release its protection (now owned by r_results_list)
+    SET_VECTOR_ELT(r_results_list, i, ms_list);
+    UNPROTECT(1); --nprot; // ms_list
+  }
+
+  UNPROTECT(nprot); // r_results_list
+  return r_results_list;
 }

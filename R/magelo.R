@@ -191,7 +191,7 @@ magelo <- function(x,
         # Define the optimization function for degree 0, MAE
         opt.bw.fn.deg0.mae <- function(bw) {
             mae <- 0
-            out <- .C("C_cv_deg0_mae",
+            out <- .C(C_cv_deg0_mae,
                      as.integer(n.cv.folds),
                      as.integer(n.cv.reps),
                      as.integer(cv.nNN),
@@ -256,7 +256,7 @@ magelo <- function(x,
         # Define the optimization function for degree 0, binary loss
         opt.bw.fn.deg0.binloss <- function(bw) {
             bl <- 0
-            out <- .C("C_cv_deg0_binloss",
+            out <- .C(C_cv_deg0_binloss,
                      as.integer(n.cv.folds),
                      as.integer(n.cv.reps),
                      as.integer(cv.nNN),
@@ -342,7 +342,7 @@ magelo <- function(x,
 
                 predictions <- numeric(nx)
 
-                out <- .C("C_loo_llm_1D",
+                out <- .C(C_loo_llm_1D,
                          as.double(x),
                          as.integer(nx),
                          as.integer(t(nn.i-1)),
@@ -428,7 +428,7 @@ magelo <- function(x,
                 mae = 0
                 K <- ncol(nn.i)
 
-                out <- .C("C_cv_mae_1D",
+                out <- .C(C_cv_mae_1D,
                          as.integer(n.cv.folds),
                          as.integer(n.cv.reps),
                          as.double(y),
@@ -1187,7 +1187,7 @@ llm.1D.beta <- function(nn.x, nn.y, nn.w, max.K, degree) {
 
     beta <- matrix(0, nrow = ng, ncol = ncoef)
 
-    out <- .C("C_llm_1D_beta",
+    out <- .C(C_llm_1D_beta,
              as.double(t(nn.x)),
              as.double(t(nn.y)),
              as.double(t(nn.w)),
@@ -1226,7 +1226,7 @@ llm.1D.beta.perms <- function(nn.x, nn.i, y, nn.w, max.K, degree, n.perms) {
     K <- ncol(nn.x)  # number of NN's = nrow(t(nn.'s))
     ncoef <- degree + 1
     beta <- numeric(ng * ncoef * n.perms)
-    out <- .C("C_llm_1D_beta_perms",
+    out <- .C(C_llm_1D_beta_perms,
              as.double(t(nn.x)),
              as.integer(t(nn.i)),
              as.double(y),
@@ -1263,7 +1263,7 @@ llm.predict.1D <- function(beta, nn.i, nn.d, nn.x, nx, max.K, nn.kernel = "epane
 
     predictions <- numeric(nx)
 
-    out <- .C("C_predict_1D",
+    out <- .C(C_predict_1D,
              as.double(t(beta)),
              as.integer(t(nn.i-1)),
              as.double(t(nn.d)),
@@ -1300,7 +1300,7 @@ wpredict.1D <- function(beta, nn.i, nn.w, nn.x, nx, max.K, y.binary = FALSE)
 
     predictions <- numeric(nx)
 
-    out <- .C("C_wpredict_1D",
+    out <- .C(C_wpredict_1D,
              as.double(t(beta)),
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
@@ -1493,7 +1493,7 @@ loo.llm.1D <- function(x, y, grid.size = 400, degree = 2, f = 0.2, bw = NULL, mi
 
     predictions <- numeric(nx)
 
-    out <- .C("C_loo_llm_1D",
+    out <- .C(C_loo_llm_1D,
              as.double(x),
              as.integer(nx),
              as.integer(t(nn.i-1)),
@@ -1522,7 +1522,7 @@ deg0.loo.llm.1D <- function(nx, nn.i, nn.w, nn.y)
 {
     predictions <- numeric(nx)
 
-    out <- .C("C_deg0_loo_llm_1D",
+    out <- .C(C_deg0_loo_llm_1D,
               as.integer(nx),
               as.integer(t(nn.i-1)),
               as.double(t(nn.w)),
@@ -1561,7 +1561,7 @@ llm.1D.fit.and.predict <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.K, degr
     beta <- matrix(0, nrow = ng, ncol = ncoef)
     predictions <- numeric(nx)
 
-    out <- .C("C_llm_1D_fit_and_predict",
+    out <- .C(C_llm_1D_fit_and_predict,
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
              as.double(t(nn.x)),
@@ -1608,7 +1608,7 @@ llm.1D.fit.and.predict.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, y.binary, max.
 
     predictions.CrI <- numeric(nx)
 
-    out <- .C("C_llm_1D_fit_and_predict_BB_CrI",
+    out <- .C(C_llm_1D_fit_and_predict_BB_CrI,
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
              as.double(t(nn.x)),
@@ -1653,7 +1653,7 @@ llm.1D.fit.and.predict.global.BB.CrI <- function(nn.i, nn.w, nn.x, nn.y, max.K, 
 
     predictions.CrI <- numeric(nx)
 
-    out <- .C("C_llm_1D_fit_and_predict_global_BB_CrI",
+    out <- .C(C_llm_1D_fit_and_predict_global_BB_CrI,
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
              as.double(t(nn.x)),
@@ -1692,7 +1692,7 @@ llm.1D.fit.and.predict.global.BB <- function(nn.i, nn.w, nn.x, nn.y, max.K, degr
 
     bbpredictions <- numeric(nx * n.BB)
 
-    out <- .C("C_llm_1D_fit_and_predict_global_BB",
+    out <- .C(C_llm_1D_fit_and_predict_global_BB,
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
              as.double(t(nn.x)),
@@ -1735,7 +1735,7 @@ llm.1D.fit.and.predict.global.BB.qCrI <- function(y.binary, nn.i, nn.w, nn.x, nn
 
     predictions.qCI <- numeric(nx * 2)
 
-    out <- .C("C_llm_1D_fit_and_predict_global_BB_qCrI",
+    out <- .C(C_llm_1D_fit_and_predict_global_BB_qCrI,
              as.integer(y.binary),
              as.integer(t(nn.i-1)),
              as.double(t(nn.w)),
@@ -2306,7 +2306,7 @@ mllm.1D.fit.and.predict <- function(Y, y.binary, nn.i, nn.w, nn.x, max.K, degree
 
     EY.grid <- numeric(ncTnn * ncY)
 
-    out <- .C("C_mllm_1D_fit_and_predict",
+    out <- .C(C_mllm_1D_fit_and_predict,
              as.double(Y),
              as.integer(nrY),
              as.integer(ncY),
@@ -2450,7 +2450,7 @@ get.BB.gpredictions <- function(n.BB,
     bb.gpredictions  <- numeric(ncTnn * n.BB)
     bb.dgpredictions <- numeric(ncTnn * n.BB)
 
-    out <- .C("C_get_BB_Eyg",
+    out <- .C(C_get_BB_Eyg,
              as.integer(n.BB),
              as.integer(Tnn.i),
              as.double(Tnn.x),
@@ -2539,7 +2539,7 @@ get.gpredictionss <- function(bws,
 
     gpredictionss  <- numeric(ncTnn * n.bws)
 
-    out <- .C("C_get_Eygs",
+    out <- .C(C_get_Eygs,
              as.double(bws),
              as.integer(n.bws),
              as.integer(Tnn.i),
@@ -2611,7 +2611,7 @@ get.gpredictions.CrI <- function(n.BB,
 
     gpredictions.CrI <- numeric(ncTnn * 2)
 
-    out <- .C("C_get_Eyg_CrI",
+    out <- .C(C_get_Eyg_CrI,
              as.integer(y.binary),
              as.integer(n.BB),
              as.integer(Tnn.i),
@@ -2651,7 +2651,7 @@ row.eval <- function(nn.i, x) {
 
     nn.x <- numeric(nr.Tnn.i * nc.Tnn.i)
 
-    out <- .C("C_columnwise_eval",
+    out <- .C(C_columnwise_eval,
              as.integer(Tnn.i),
              as.integer(nr.Tnn.i),
              as.integer(nc.Tnn.i),

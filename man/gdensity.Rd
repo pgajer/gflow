@@ -52,6 +52,6 @@ Similar to base R's density() but uses a fixed uniform grid for estimation.
 \examples{
 data <- rnorm(100)
 result <- gdensity(data, grid.size = 200, poffset = 0.1, bw = 0, kernel = 5)
-plot(result$x, result$density, type = "l")
+plot(result$x, result$y, type = "l")
 
 }

@@ -86,7 +86,7 @@ find.shortest.paths.within.radius <- function(adj.list, weight.list, start, radi
     adj.list.0based <- lapply(adj.list, function(neighbors) as.integer(neighbors - 1))
 
     ## Call the C++ implementation
-    result <- .Call("S_find_graph_paths_within_radius",
+    result <- .Call(S_find_graph_paths_within_radius,
                     adj.list.0based,
                     weight.list,
                     start.0based,

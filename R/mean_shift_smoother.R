@@ -133,17 +133,18 @@
 #'
 #' @export
 meanshift.data.smoother <- function(X,
-                                   k,
-                                   density.k = 1,
-                                   n.steps = 10,
-                                   step.size = 0.1,
-                                   ikernel = 1,
-                                   dist.normalization.factor = 1.01,
-                                   method = "precomputed",
-                                   average.direction.only = NULL,
-                                   momentum = 0.9,
-                                   increase.factor = 1.2,
-                                   decrease.factor = 0.5) {
+                                    k,
+                                    density.k = 1,
+                                    n.steps = 10,
+                                    step.size = 0.1,
+                                    ikernel = 1,
+                                    dist.normalization.factor = 1.01,
+                                    method = "precomputed",
+                                    momentum = 0.9,
+                                    increase.factor = 1.2,
+                                    decrease.factor = 0.5,
+                                    average.direction.only = NULL
+                                    ) {
 
     # Input validation for X
     if (!is.matrix(X)) {
@@ -278,17 +279,23 @@ meanshift.data.smoother <- function(X,
     # Call the appropriate C function based on method
     if (method.num == 0) {
         ## Basic method
-        result <- .Call("S_mean_shift_data_smoother",
-                       X,
-                       as.integer(k),
-                       as.integer(n.steps),
-                       as.double(step.size),
-                       as.integer(ikernel),
-                       as.double(dist.normalization.factor))
+        result <- .Call(S_mean_shift_data_smoother,
+                        X,
+                        as.integer(k),
+                        as.integer(density.k),
+                        as.integer(n.steps),
+                        as.double(step.size),
+                        as.integer(ikernel),
+                        as.double(dist.normalization.factor),
+                        as.integer(method.num),
+                        as.double(momentum),
+                        as.double(increase.factor),
+                        as.double(decrease.factor))
+
     } else if (method.num == 1) {
         ## Precomputed method
         stop("Precomputed method not implemented yet")
-        ## result <- .Call("S_mean_shift_data_smoother_precomputed",
+        ## result <- .Call(S_mean_shift_data_smoother_precomputed,
         ##                X,
         ##                as.integer(k),
         ##                as.integer(n.steps),
@@ -298,7 +305,7 @@ meanshift.data.smoother <- function(X,
 
     } else if (method.num %in% c(2, 3)) {
         # Gradient field averaging methods
-        result <- .Call("S_mean_shift_data_smoother_with_grad_field_averaging",
+        result <- .Call(S_mean_shift_data_smoother_with_grad_field_averaging,
                        X,
                        as.integer(k),
                        as.integer(density.k),
@@ -309,7 +316,7 @@ meanshift.data.smoother <- function(X,
                        as.logical(average.direction.only))
     } else if (method.num %in% c(4, 5)) {
         # Adaptive methods
-        result <- .Call("S_mean_shift_data_smoother_adaptive",
+        result <- .Call(S_mean_shift_data_smoother_adaptive,
                        X,
                        as.integer(k),
                        as.integer(density.k),
@@ -321,7 +328,7 @@ meanshift.data.smoother <- function(X,
     } else if (method.num == 6) {
         ## KNN adaptive method
         stop("knn_adaptive_mean_shift_smoother not implemented yet")
-        ## result <- .Call("S_knn_adaptive_mean_shift_smoother",
+        ## result <- .Call(S_knn_adaptive_mean_shift_smoother,
         ##                X,
         ##                as.integer(k),
         ##                as.integer(density.k),
@@ -335,27 +342,27 @@ meanshift.data.smoother <- function(X,
     } else if (method.num %in% c(7, 8)) {
         ## KNN adaptive with gradient field averaging
         result <- knn_adaptive_mean_shift_gfa(X,
-                                              k,
-                                              density_k,
-                                              n_steps,
-                                              step.size,
-                                              ikernel = 1L,
-                                              dist.normalization.factor,
-                                              average.direction.only)
+                                              as.integer(k),
+                                              as.integer(density.k),
+                                              as.integer(n.steps),
+                                              as.double(step.size),
+                                              as.integer(ikernel),
+                                              as.double(dist.normalization.factor),
+                                              as.logical(average.direction.only))
 
     } else if (method.num %in% c(9, 10)) {
         ## Adaptive with gradient field averaging and momentum
         result <- adaptive_mean_shift_gfa(X,
-                                          k,
-                                          density_k,
-                                          n_steps,
-                                          initial_step_size,
-                                          ikernel,
-                                          dist_normalization_factor,
-                                          average_direction_only,
-                                          momentum,
-                                          increase_factor,
-                                          decrease_factor)
+                                          as.integer(k),
+                                          as.integer(density.k),
+                                          as.integer(n.steps),
+                                          as.double(step.size),
+                                          as.integer(ikernel),
+                                          as.double(dist.normalization.factor),
+                                          as.logical(average.direction.only),
+                                          as.double(momentum),
+                                          as.double(increase.factor),
+                                          as.double(decrease.factor))
     }
 
     # Process results

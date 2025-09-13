@@ -193,7 +193,7 @@ create.maximal.packing <- function(adj.list,
   adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
   # Call the C++ implementation
-  result <- .Call("S_create_maximal_packing",
+  result <- .Call(S_create_maximal_packing,
                   adj.list.0based,
                   weight.list,
                   as.integer(grid.size),

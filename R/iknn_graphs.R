@@ -220,7 +220,7 @@ create.iknn.graphs <- function(X,
     ## Call the C++ function with updated signature
     ## Note: The C++ function expects k values incremented by 1 to account for
     ## ANN library including the reference vertex in its kNN set
-    result <- .Call("S_create_iknn_graphs",
+    result <- .Call(S_create_iknn_graphs,
                     X,
                     as.integer(kmin + 1),
                     as.integer(kmax + 1),

@@ -15,7 +15,18 @@ Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALS
 #' @param density_k integer, k-NN for density estimation (excl. self).
 #' @param n_steps integer, number of iterations.
 #' @param initial_step_size positive numeric, initial per-point step size.
-#' @param ikernel integer kernel id (1=Gaussian, 2=Epanechnikov, 3=Quartic).
+#' @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+#'               Available kernels:
+#'               - 0-Constant,
+#'               - 1-Epanechnikov,
+#'               - 2-Triangular,
+#'               - 3-TrExponential,
+#'               - 4-Laplace,
+#'               - 5-Normal,
+#'               - 6-Biweight,
+#'               - 7-Tricube,
+#'               - 8-Cosine
+#'               - 9-Hyperbolic
 #' @param dist_normalization_factor numeric > 0.
 #' @param average_direction_only logical; if TRUE, average directions only.
 #' @param momentum numeric, gradient momentum (default 0.9).
@@ -39,7 +50,18 @@ rcpp_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, initial_step_
 #' @param density_k integer, k-NN for density estimation (excl. self).
 #' @param n_steps integer, number of iterations.
 #' @param step_size positive numeric step size (constant over iterations).
-#' @param ikernel integer kernel id (1=Gaussian, 2=Epanechnikov, 3=Quartic).
+#' @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+#'               Available kernels:
+#'               - 0-Constant,
+#'               - 1-Epanechnikov,
+#'               - 2-Triangular,
+#'               - 3-TrExponential,
+#'               - 4-Laplace,
+#'               - 5-Normal,
+#'               - 6-Biweight,
+#'               - 7-Tricube,
+#'               - 8-Cosine
+#'               - 9-Hyperbolic
 #' @param dist_normalization_factor numeric > 0.
 #' @param average_direction_only logical; if TRUE, average directions only.
 #'

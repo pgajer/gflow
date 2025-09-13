@@ -1,5 +1,4 @@
 .PHONY: clean build build-verbose check check-fast install document attrs
-
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -9,6 +8,7 @@ clean:
 	find src -name "*.o" -delete
 	find src -name "*.so" -delete
 	rm -f src/*.dll
+	rm -f src/RcppExports.cpp
 	rm -rf $(PKGNAME).Rcheck
 	rm -f $(TARBALL)
 	rm -f $(LOGDIR)/*.log

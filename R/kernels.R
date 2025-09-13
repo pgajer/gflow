@@ -13,7 +13,7 @@ kernel.eval <- function(x, ikernel, scale = 1) {
   if (n > .Machine$integer.max)
     stop("Length(x) exceeds internal integer limit.")
 
-  out <- .C("C_kernel_eval",
+  out <- .C(C_kernel_eval,
             as.integer(ikernel),  # int*
             as.double(x),         # double*
             as.integer(n),        # int*
@@ -41,7 +41,7 @@ triangular.kernel <- function(x, bw=1)
                # value < bw, max.K in C will retain -1 value. In R it will be
                # changed to 0.
 
-    out <- .C("C_triangular_kernel_with_stop",
+    out <- .C(C_triangular_kernel_with_stop,
              as.double(x),
              as.integer(nx),
              as.double(bw),
@@ -70,7 +70,7 @@ epanechnikov.kernel <- function(x, bw=1)
                # value < bw, max.K in C will retain -1 value. In R it will be
                # changed to 0.
 
-    out <- .C("C_epanechnikov_kernel_with_stop",
+    out <- .C(C_epanechnikov_kernel_with_stop,
              as.double(x),
              as.integer(nx),
              as.double(bw),
@@ -100,7 +100,7 @@ tr.exponential.kernel <- function(x, bw=1)
                # value < bw, max.K in C will retain -1 value. In R it will be
                # changed to 0.
 
-    out <- .C("C_tr_exponential_kernel_with_stop",
+    out <- .C(C_tr_exponential_kernel_with_stop,
              as.double(x),
              as.integer(nx),
              as.double(bw),
@@ -140,7 +140,7 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
     w <- numeric(nr * nc)
     max.K <- numeric(nr)
 
-    out <- .C("C_columnwise_weighting",
+    out <- .C(C_columnwise_weighting,
              as.double(t(x)),
              as.integer(nc),
              as.integer(nr),
@@ -192,7 +192,7 @@ normalize.dist <- function(d, min.K, bw)
     nd <- matrix(0, nrow=nc, ncol=nr)
     r <- numeric(nr)
 
-    out <- .C("C_normalize_dist", ## this C function normalizes the columns of the input matrix
+    out <- .C(C_normalize_dist, ## this C function normalizes the columns of the input matrix
              as.double(t(d)),
              as.integer(nc),   ## number of rows of t(d)
              as.integer(nr),   ## number of columns of t(d)
@@ -225,7 +225,7 @@ get.bws <- function(d, min.K, bw)
 
     bws <- numeric(nr)
 
-    out <- .C("C_get_bws",
+    out <- .C(C_get_bws,
              as.double(t(d)),
              as.integer(nc),    # number of rows of t(d)
              as.integer(nr),    # number of columns of t(d)
@@ -262,7 +262,7 @@ get.bws.with.minK <- function(d, minK, bw)
 
     bws <- numeric(nr)
 
-    out <- .C("C_get_bws_with_minK_a",
+    out <- .C(C_get_bws_with_minK_a,
              as.double(t(d)),
              as.integer(nc),    # number of rows of t(d)
              as.integer(nr),    # number of columns of t(d)
@@ -287,7 +287,7 @@ row.TS.norm <- function(x)
 
     nx <- numeric(nr * nc)
 
-    out <- .C("C_columnwise_TS_norm",
+    out <- .C(C_columnwise_TS_norm,
              as.double(t(x)),
              as.integer(nc),
              as.integer(nr),

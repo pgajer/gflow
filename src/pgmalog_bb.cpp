@@ -35,7 +35,18 @@
  * @param y Vector of observed values
  * @param n_bb Number of bootstrap iterations
  * @param max_distance_deviation Maximum allowed deviation in distance calculations
- * @param ikernel Kernel function identifier
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances
  * @param epsilon Numerical tolerance parameter
  *
@@ -111,7 +122,18 @@ std::vector<std::vector<double>> pgmalog_bb(const path_graph_plm_t& path_graph,
  * @param n_bb Number of bootstrap iterations (default: 100)
  * @param max_distance_deviation Maximum allowed deviation from optimal center position
  * @param use_median If true, uses median instead of mean for central location (default: false)
- * @param ikernel Kernel function selector (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Distance normalization factor (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
  *

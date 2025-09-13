@@ -140,8 +140,18 @@ extern "C" {
  * @param iterative_params Parameters for iterative imputation methods (only used with ITERATIVE_NEIGHBORHOOD_MATCHING)
  * @param apply_binary_threshold Whether to apply binary thresholding for binary data.
  * @param binary_threshold The threshold value for binary classification.
- * @param ikernel An integer specifying the kernel function to use for distance-based calculations.
- *        Set ikernel to 0 to use unweighted means.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A scaling factor applied to the maximum distance between a vertex
  *        and its neighbors. This ensures non-zero weights even when all distances are equal,
  *        by slightly increasing the normalization range. Default value is 1.01.
@@ -1436,8 +1446,17 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
  * @param n_time_steps Number of diffusion steps to perform.
  * @param step_factor Factor controlling the magnitude of each diffusion step (typically in (0,1]).
  * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
- *               Available kernels: 0-Constant, 1-Epanechnikov, 2-Triangular,
- *               3-TrExponential, 4-Laplace, 5-Normal, 6-Biweight, 7-Tricube, 8-Cosine
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param kernel_scale Scale parameter for Normal and Laplace kernels (default: 1.0).
  * @param dist_normalization_factor Factor used in edge length normalization (default: 1.01).
  *
@@ -1575,8 +1594,17 @@ std::vector<std::vector<double>> basic_graph_diffusion_smoother(const std::vecto
  * @param n_time_steps Number of diffusion steps to perform.
  * @param base_step_factor Initial step size for all vertices (typically in (0,1]).
  * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
- *               Available kernels: 0-Constant, 1-Epanechnikov, 2-Triangular,
- *               3-TrExponential, 4-Laplace, 5-Normal, 6-Biweight, 7-Tricube, 8-Cosine
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param kernel_scale Scale parameter for Normal and Laplace kernels (default: 1.0).
  * @param dist_normalization_factor Factor used in edge length normalization (default: 1.01).
  * @param momentum Momentum coefficient controlling the influence of previous updates (default: 0.9).
@@ -1753,7 +1781,18 @@ std::vector<std::vector<double>> momentum_adaptive_graph_diffusion_smoother(cons
  * @param y Initial values at each vertex
  * @param n_time_steps Number of diffusion steps to perform
  * @param base_step_factor Initial step size for all vertices
- * @param ikernel Type of kernel function to use (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param kernel_scale Scale parameter for Normal and Laplace kernels (default: 1.0)
  * @param dist_normalization_factor Factor for edge length normalization (default: 1.01)
  * @param increase_factor Factor to multiply step size when changes are productive (default: 1.1)
@@ -2449,126 +2488,196 @@ instrumented_gds(const std::vector<std::vector<int>>& graph,
  *
  * @return SEXP containing R list with performance metrics
  */
-SEXP S_instrumented_gds(SEXP s_graph,
-                        SEXP s_edge_lengths,
-                        SEXP s_y,
-                        SEXP s_y_true,
-                        SEXP s_n_time_steps,
-                        SEXP s_base_step_factor,
-                        SEXP s_use_pure_laplacian,
-                        SEXP s_ikernel,
-                        SEXP s_kernel_scale,
-                        SEXP s_increase_factor,
-                        SEXP s_decrease_factor,
-                        SEXP s_oscillation_factor,
-                        SEXP s_min_step,
-                        SEXP s_max_step) {
-    int nprot = 0;
+extern "C" {
+#include <R.h>
+#include <Rinternals.h>
+}
+#include <vector>
 
-    // Convert input parameters
-    std::vector<std::vector<int>> graph           = convert_adj_list_from_R(s_graph);
-    std::vector<std::vector<double>> edge_lengths = convert_weight_list_from_R(s_edge_lengths);
+// assumes these helpers exist and do not allocate/retain SEXPs:
+//   convert_adj_list_from_R, convert_weight_list_from_R
+//   convert_vector_*_to_R, convert_vector_vector_*_to_R
+// assumes instrumented_gds(...) exists and performs no R allocations internally.
 
-    PROTECT(s_y = Rf_coerceVector(s_y, REALSXP)); nprot++;
-    std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
+extern "C" SEXP S_instrumented_gds(SEXP s_graph,
+                                   SEXP s_edge_lengths,
+                                   SEXP s_y,
+                                   SEXP s_y_true,
+                                   SEXP s_n_time_steps,
+                                   SEXP s_base_step_factor,
+                                   SEXP s_use_pure_laplacian,
+                                   SEXP s_ikernel,
+                                   SEXP s_kernel_scale,
+                                   SEXP s_increase_factor,
+                                   SEXP s_decrease_factor,
+                                   SEXP s_oscillation_factor,
+                                   SEXP s_min_step,
+                                   SEXP s_max_step) {
+  // ---- Graph & weights (pure reads; no PROTECT needed) ----
+  std::vector<std::vector<int>>    graph        = convert_adj_list_from_R(s_graph);
+  std::vector<std::vector<double>> edge_lengths = convert_weight_list_from_R(s_edge_lengths);
 
-    PROTECT(s_y_true = Rf_coerceVector(s_y_true, REALSXP)); nprot++;
-    std::vector<double> y_true(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
+  const size_t n_vertices = graph.size();
+  if (!edge_lengths.empty() && edge_lengths.size() != n_vertices) {
+    Rf_error("edge_lengths length must be 0 or equal to graph length.");
+  }
 
-    int n_time_steps = Rf_asInteger(s_n_time_steps);
-    double base_step_factor = Rf_asReal(s_base_step_factor);
-    bool use_pure_laplacian = Rf_asLogical(s_use_pure_laplacian);
-    int ikernel = Rf_asInteger(s_ikernel);
-    double kernel_scale = Rf_asReal(s_kernel_scale);
-    double increase_factor = Rf_asReal(s_increase_factor);
-    double decrease_factor = Rf_asReal(s_decrease_factor);
-    double oscillation_factor = Rf_asReal(s_oscillation_factor);
-    double min_step = Rf_asReal(s_min_step);
-    double max_step = Rf_asReal(s_max_step);
+  // ---- y / y_true (coerce defensively, copy out, release temporaries) ----
+  std::vector<double> y, y_true;
+  {
+    SEXP sy = s_y;
+    if (TYPEOF(sy) != REALSXP) sy = Rf_coerceVector(sy, REALSXP);
+    const R_xlen_t ny = XLENGTH(sy);
+    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
 
-    // Call C++ implementation
-    auto perf = instrumented_gds(graph,
-                                 edge_lengths,
-                                 y,
-                                 y_true,
-                                 n_time_steps,
-                                 base_step_factor,
-                                 use_pure_laplacian,
-                                 ikernel,
-                                 kernel_scale,
-                                 increase_factor,
-                                 decrease_factor,
-                                 oscillation_factor,
-                                 min_step,
-                                 max_step);
+    if (s_y_true != R_NilValue) {
+      SEXP syt = s_y_true;
+      if (TYPEOF(syt) != REALSXP) syt = Rf_coerceVector(syt, REALSXP);
+      const R_xlen_t nyt = XLENGTH(syt);
+      if (nyt != ny) {
+        Rf_error("length(y_true) must equal length(y).");
+      }
+      y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+    }
+    if (static_cast<size_t>(ny) != n_vertices) {
+      Rf_error("length(y) must equal number of vertices.");
+    }
+  }
 
-    // Convert performance metrics to R list
-    const int N_RESULTS = 20;
-    SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS)); nprot++;
+  // ---- Scalars (coerce via R API; validate where it helps) ----
+  const int    n_time_steps      = Rf_asInteger(s_n_time_steps);
+  const double base_step_factor  = Rf_asReal   (s_base_step_factor);
+  const bool   use_pure_laplacian= (Rf_asLogical(s_use_pure_laplacian) == TRUE);
+  const int    ikernel           = Rf_asInteger(s_ikernel);
+  const double kernel_scale      = Rf_asReal   (s_kernel_scale);
+  const double increase_factor   = Rf_asReal   (s_increase_factor);
+  const double decrease_factor   = Rf_asReal   (s_decrease_factor);
+  const double oscillation_factor= Rf_asReal   (s_oscillation_factor);
+  const double min_step          = Rf_asReal   (s_min_step);
+  const double max_step          = Rf_asReal   (s_max_step);
 
-    // Trajectory and deltas
-    SET_VECTOR_ELT(results, 0, convert_vector_vector_double_to_R(perf.y_trajectory));       nprot++ ;
-    SET_VECTOR_ELT(results, 1, convert_vector_vector_double_to_R(perf.pre_update_deltas));  nprot++;
-    SET_VECTOR_ELT(results, 2, convert_vector_vector_double_to_R(perf.post_update_deltas)); nprot++;
-    SET_VECTOR_ELT(results, 3, convert_vector_vector_double_to_R(perf.step_size_history));  nprot++;
+  if (n_time_steps < 1)            Rf_error("n_time_steps must be >= 1.");
+  if (!(max_step >= min_step))     Rf_error("max_step must be >= min_step.");
 
-    // Scalar metrics
-    SET_VECTOR_ELT(results, 4, convert_vector_double_to_R(perf.global_residual_norm)); nprot++;
-    SET_VECTOR_ELT(results, 5, convert_vector_double_to_R(perf.max_absolute_delta));   nprot++;
-    SET_VECTOR_ELT(results, 6, convert_vector_vector_bool_to_R(perf.oscillation_events)); nprot++;
+  // ---- Core computation (no R allocations inside) ----
+  auto perf = instrumented_gds(graph,
+                               edge_lengths,
+                               y,
+                               y_true,
+                               n_time_steps,
+                               base_step_factor,
+                               use_pure_laplacian,
+                               ikernel,
+                               kernel_scale,
+                               increase_factor,
+                               decrease_factor,
+                               oscillation_factor,
+                               min_step,
+                               max_step);
 
-    // Per-vertex event counts
-    SET_VECTOR_ELT(results, 7, convert_vector_int_to_R(perf.oscillation_count_per_vertex)); nprot++;
-    SET_VECTOR_ELT(results, 8, convert_vector_int_to_R(perf.increase_events_per_vertex));   nprot++;
-    SET_VECTOR_ELT(results, 9, convert_vector_int_to_R(perf.decrease_events_per_vertex));   nprot++;
-    SET_VECTOR_ELT(results, 10, convert_vector_int_to_R(perf.oscillation_reductions_per_vertex)); nprot++;
+  // ---- Build result list (container-first; per-element protect) ----
+  int nprot = 0;
+  const int N_RESULTS = 20;
+  SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS)); ++nprot;
 
-    // Energy metrics
-    SET_VECTOR_ELT(results, 11, convert_vector_double_to_R(perf.smoothness_energy)); nprot++;
-    SET_VECTOR_ELT(results, 12, convert_vector_double_to_R(perf.fidelity_energy));   nprot++;
-    SET_VECTOR_ELT(results, 13, convert_vector_double_to_R(perf.laplacian_energy));  nprot++;
-    SET_VECTOR_ELT(results, 14, convert_vector_double_to_R(perf.energy_ratio));      nprot++;
+  // 0..3: trajectories/deltas/steps (list<NumericVector>)
+  {
+    SEXP t = PROTECT(convert_vector_vector_double_to_R(perf.y_trajectory));
+    SET_VECTOR_ELT(results, 0, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_vector_double_to_R(perf.pre_update_deltas));
+    SET_VECTOR_ELT(results, 1, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_vector_double_to_R(perf.post_update_deltas));
+    SET_VECTOR_ELT(results, 2, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_vector_double_to_R(perf.step_size_history));
+    SET_VECTOR_ELT(results, 3, t); UNPROTECT(1);
+  }
 
-    // Truth-based metrics
-    SEXP s_initial_snr;
-    PROTECT(s_initial_snr = Rf_allocVector(REALSXP, 1)); nprot++;
-    REAL(s_initial_snr)[0] = perf.initial_snr;
-    SET_VECTOR_ELT(results, 15, s_initial_snr);
+  // 4..6: scalar series & events
+  {
+    SEXP t = PROTECT(convert_vector_double_to_R(perf.global_residual_norm));
+    SET_VECTOR_ELT(results, 4, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.max_absolute_delta));
+    SET_VECTOR_ELT(results, 5, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_vector_bool_to_R(perf.oscillation_events));
+    SET_VECTOR_ELT(results, 6, t); UNPROTECT(1);
+  }
 
-    SET_VECTOR_ELT(results, 16, convert_vector_double_to_R(perf.snr_trajectory));          nprot++;
-    SET_VECTOR_ELT(results, 17, convert_vector_double_to_R(perf.mean_absolute_deviation)); nprot++;
+  // 7..10: per-vertex event counts
+  {
+    SEXP t = PROTECT(convert_vector_int_to_R(perf.oscillation_count_per_vertex));
+    SET_VECTOR_ELT(results, 7, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_int_to_R(perf.increase_events_per_vertex));
+    SET_VECTOR_ELT(results, 8, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_int_to_R(perf.decrease_events_per_vertex));
+    SET_VECTOR_ELT(results, 9, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_int_to_R(perf.oscillation_reductions_per_vertex));
+    SET_VECTOR_ELT(results,10, t); UNPROTECT(1);
+  }
 
-    // Curvature errors
-    SET_VECTOR_ELT(results, 18, convert_vector_double_to_R(perf.pointwise_curvature_error));  nprot++;
-    SET_VECTOR_ELT(results, 19, convert_vector_double_to_R(perf.integrated_curvature_error)); nprot++;
+  // 11..14: energy metrics
+  {
+    SEXP t = PROTECT(convert_vector_double_to_R(perf.smoothness_energy));
+    SET_VECTOR_ELT(results,11, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.fidelity_energy));
+    SET_VECTOR_ELT(results,12, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.laplacian_energy));
+    SET_VECTOR_ELT(results,13, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.energy_ratio));
+    SET_VECTOR_ELT(results,14, t); UNPROTECT(1);
+  }
 
-    // Set names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("y_trajectory"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("pre_update_deltas"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("post_update_deltas"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("step_size_history"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("global_residual_norm"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("max_absolute_delta"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("oscillation_events"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("oscillation_count_per_vertex"));
-    SET_STRING_ELT(names, 8, Rf_mkChar("increase_events_per_vertex"));
-    SET_STRING_ELT(names, 9, Rf_mkChar("decrease_events_per_vertex"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("oscillation_reductions_per_vertex"));
-    SET_STRING_ELT(names, 11, Rf_mkChar("smoothness_energy"));
-    SET_STRING_ELT(names, 12, Rf_mkChar("fidelity_energy"));
-    SET_STRING_ELT(names, 13, Rf_mkChar("laplacian_energy"));
-    SET_STRING_ELT(names, 14, Rf_mkChar("energy_ratio"));
-    SET_STRING_ELT(names, 15, Rf_mkChar("initial_snr"));
-    SET_STRING_ELT(names, 16, Rf_mkChar("snr_trajectory"));
-    SET_STRING_ELT(names, 17, Rf_mkChar("mean_absolute_deviation"));
-    SET_STRING_ELT(names, 18, Rf_mkChar("pointwise_curvature_error"));
-    SET_STRING_ELT(names, 19, Rf_mkChar("integrated_curvature_error"));
+  // 15: initial_snr (scalar)
+  {
+    SEXP s = PROTECT(Rf_ScalarReal(perf.initial_snr));  // temp protect
+    SET_VECTOR_ELT(results, 15, s);
+    UNPROTECT(1);
+  }
 
+  // 16..17: snr trajectory, MAD
+  {
+    SEXP t = PROTECT(convert_vector_double_to_R(perf.snr_trajectory));
+    SET_VECTOR_ELT(results,16, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.mean_absolute_deviation));
+    SET_VECTOR_ELT(results,17, t); UNPROTECT(1);
+  }
+
+  // 18..19: curvature errors
+  {
+    SEXP t = PROTECT(convert_vector_double_to_R(perf.pointwise_curvature_error));
+    SET_VECTOR_ELT(results,18, t); UNPROTECT(1);
+    t = PROTECT(convert_vector_double_to_R(perf.integrated_curvature_error));
+    SET_VECTOR_ELT(results,19, t); UNPROTECT(1);
+  }
+
+  // names while results is protected
+  {
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS)); ++nprot;
+    SET_STRING_ELT(names, 0,  Rf_mkChar("y_trajectory"));
+    SET_STRING_ELT(names, 1,  Rf_mkChar("pre_update_deltas"));
+    SET_STRING_ELT(names, 2,  Rf_mkChar("post_update_deltas"));
+    SET_STRING_ELT(names, 3,  Rf_mkChar("step_size_history"));
+    SET_STRING_ELT(names, 4,  Rf_mkChar("global_residual_norm"));
+    SET_STRING_ELT(names, 5,  Rf_mkChar("max_absolute_delta"));
+    SET_STRING_ELT(names, 6,  Rf_mkChar("oscillation_events"));
+    SET_STRING_ELT(names, 7,  Rf_mkChar("oscillation_count_per_vertex"));
+    SET_STRING_ELT(names, 8,  Rf_mkChar("increase_events_per_vertex"));
+    SET_STRING_ELT(names, 9,  Rf_mkChar("decrease_events_per_vertex"));
+    SET_STRING_ELT(names,10,  Rf_mkChar("oscillation_reductions_per_vertex"));
+    SET_STRING_ELT(names,11,  Rf_mkChar("smoothness_energy"));
+    SET_STRING_ELT(names,12,  Rf_mkChar("fidelity_energy"));
+    SET_STRING_ELT(names,13,  Rf_mkChar("laplacian_energy"));
+    SET_STRING_ELT(names,14,  Rf_mkChar("energy_ratio"));
+    SET_STRING_ELT(names,15,  Rf_mkChar("initial_snr"));
+    SET_STRING_ELT(names,16,  Rf_mkChar("snr_trajectory"));
+    SET_STRING_ELT(names,17,  Rf_mkChar("mean_absolute_deviation"));
+    SET_STRING_ELT(names,18,  Rf_mkChar("pointwise_curvature_error"));
+    SET_STRING_ELT(names,19,  Rf_mkChar("integrated_curvature_error"));
     Rf_setAttrib(results, R_NamesSymbol, names);
+    UNPROTECT(1); --nprot; // names
+  }
 
-    UNPROTECT(nprot);
-    return results;
+  UNPROTECT(nprot); // results
+  return results;
 }
 
 
@@ -2598,7 +2707,18 @@ SEXP S_instrumented_gds(SEXP s_graph,
  * @param n_time_steps Number of diffusion time steps to perform
  * @param step_factor Factor controlling the magnitude of each diffusion step
  * @param binary_threshold Threshold for binary classification (if y is binary). If negative, uses mean of y.
- * @param ikernel Kernel function identifier for distance weighting (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Scaling factor applied to maximum neighbor distances (default: 1.1)
  * @param n_CVs Number of cross-validation runs to perform (default: 0, no cross-validation)
  * @param n_CV_folds Number of folds in each cross-validation run (default: 10)

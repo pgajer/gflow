@@ -262,7 +262,7 @@ create.gflow.cx <- function(adj.list,
     })
 
     result <- .Call(
-        "S_create_gflow_cx",
+        S_create_gflow_cx,
         adj.list.0based,
         weight.list,
         as.numeric(y),

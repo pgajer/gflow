@@ -261,7 +261,7 @@ magelog <- function(x,
     ## ====================================================================
 
     # Call the compiled C++ function
-    res <- .Call("S_magelog",
+    res <- .Call(S_magelog,
                  x,
                  y,
                  grid.size,

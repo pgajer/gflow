@@ -207,7 +207,7 @@ parameterize.circular.graph <- function(adj.list,
 
   # Call the C++ function
   result <- tryCatch({
-    .Call("S_parameterize_circular_graph",
+    .Call(S_parameterize_circular_graph,
           adj.list.0based,
           weight.list,
           as.logical(use.edge.lengths))

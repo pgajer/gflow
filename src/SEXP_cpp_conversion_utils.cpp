@@ -7,22 +7,6 @@
 
 #include "SEXP_cpp_conversion_utils.hpp"
 
-#include <vector>
-#include <queue>
-#include <memory>
-#include <limits>
-#include <algorithm>
-#include <unordered_set>
-#include <set>
-#include <stack>
-#include <numeric>
-#include <unordered_map>
-
-#include <R.h>
-#include <Rinternals.h>
-
-
-
 /**
  * @brief Helper function to convert mean shift smoothing results to an R list.
  *
@@ -255,70 +239,113 @@ std::unique_ptr<std::vector<std::vector<double>>> R_list_of_dvectors_to_cpp_vect
  * @note The function assumes indices are already adjusted for C++ (0-based indexing)
  */
 std::vector<std::vector<int>> convert_adj_list_from_R(SEXP s_adj_list) {
-     // Input validation
-    if (!Rf_isNewList(s_adj_list)) {
-        Rf_error("Expected a list for adjacency list");
+  if (TYPEOF(s_adj_list) != VECSXP) {
+    Rf_error("convert_adj_list_from_R: expected a list (VECSXP).");
+  }
+
+  const R_xlen_t n_vertices = XLENGTH(s_adj_list);
+  std::vector<std::vector<int>> adj(static_cast<size_t>(n_vertices));
+
+  for (R_xlen_t i = 0; i < n_vertices; ++i) {
+    SEXP v = VECTOR_ELT(s_adj_list, i);
+    if (TYPEOF(v) != INTSXP) {
+      Rf_error("convert_adj_list_from_R: adj[[%lld]] must be an integer vector.",
+               static_cast<long long>(i + 1));
     }
 
-    int n_vertices = LENGTH(s_adj_list);
-    std::vector<std::vector<int>> adj_list(n_vertices);
+    const R_xlen_t deg = XLENGTH(v);
+    const int* pv = INTEGER(v);
+    auto& row = adj[static_cast<size_t>(i)];
+    row.resize(static_cast<size_t>(deg));
 
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP vertex_neighbors = VECTOR_ELT(s_adj_list, i);
-
-        if (!Rf_isInteger(vertex_neighbors)) {
-            Rf_error("Expected integer vector for vertex neighbors");
-        }
-
-        int* neighbors = INTEGER(vertex_neighbors);
-        int n_neighbors = LENGTH(vertex_neighbors);
-
-         // Efficient bulk assignment - no index conversion
-        adj_list[i].assign(neighbors, neighbors + n_neighbors);
+    for (R_xlen_t j = 0; j < deg; ++j) {
+      const int idx = pv[j];
+      if (idx == NA_INTEGER) {
+        Rf_error("convert_adj_list_from_R: adj[[%lld]][%lld] is NA.",
+                 static_cast<long long>(i + 1), static_cast<long long>(j + 1));
+      }
+      if (idx < 0 || idx >= n_vertices) {
+        Rf_error("convert_adj_list_from_R: index %d out of range at adj[[%lld]][%lld]; "
+                 "expected 0..%lld.",
+                 idx,
+                 static_cast<long long>(i + 1),
+                 static_cast<long long>(j + 1),
+                 static_cast<long long>(n_vertices - 1));
+      }
+      row[static_cast<size_t>(j)] = idx; // keep 0-based as provided
     }
-    return adj_list;
+  }
+
+  return adj;
 }
 
 /**
- * @brief Converts an R edge weight list to a C++ vector representation
+ * \brief Converts an R weight list (list of numeric vectors) to
+ *        std::vector<std::vector<double>>.
  *
- * @details This function takes an R SEXP object representing a list of edge weights
- * and converts it to a C++ nested vector representation. The function expects
- * the input to be a list of numeric vectors, where each vector contains the
- * weights of edges corresponding to the adjacency list. The function performs
- * input validation to ensure the proper format.
+ * \details
+ *   - Input is either \c NULL (meaning “no weights”) or a list (\c VECSXP).
+ *   - Each list element is a numeric vector (\c REALSXP); a \c NULL element
+ *     becomes an empty \c std::vector<double>.
+ *   - The function copies values into C++ containers and does not allocate
+ *     any SEXPs (pure read), so no PROTECT/UNPROTECT is needed here.
  *
- * @param s_weight_list An R SEXP object representing a list of edge weights
- * @return std::vector<std::vector<double>> A C++ nested vector representation of the weight list
- * @throws R Rf_error if the input is not a list or contains non-numeric vectors
+ * \param s_weight_list R object holding the weight list; may be \c R_NilValue.
  *
- * @note The function assumes the weight list structure matches the corresponding adjacency list
+ * \return A nested \c std::vector<double> with the same outer length as
+ *         \c s_weight_list (or empty when \c s_weight_list is \c NULL).
+ *         Inner vectors preserve the element order from R.
+ *
+ * \pre s_weight_list == \c R_NilValue || TYPEOF(s_weight_list) == \c VECSXP.
+ * \pre For every i, \c weight_list[[i]] is \c REALSXP or \c R_NilValue.
+ *
+ * \post Returned container size equals \c XLENGTH(s_weight_list) (or 0 if \c NULL).
+ *
+ * \throws Calls \c Rf_error() if \c s_weight_list is not a list or any element
+ *         is non-numeric.
+ *
+ * \note Shape consistency with the adjacency list (same outer length and
+ *       per-vertex degree) is validated by the caller.
  */
 std::vector<std::vector<double>> convert_weight_list_from_R(SEXP s_weight_list) {
-     // Input validation
-    if (!Rf_isNewList(s_weight_list)) {
-        Rf_error("Expected a list for weight list");
+  // Allow NULL to mean “no weights supplied”
+  if (s_weight_list == R_NilValue) {
+    return {};
+  }
+
+  if (TYPEOF(s_weight_list) != VECSXP) {
+    Rf_error("convert_weight_list_from_R: expected a list (VECSXP).");
+  }
+
+  const R_xlen_t n_vertices = XLENGTH(s_weight_list);
+  std::vector<std::vector<double>> weights(static_cast<size_t>(n_vertices));
+
+  for (R_xlen_t i = 0; i < n_vertices; ++i) {
+    SEXP v = VECTOR_ELT(s_weight_list, i);
+
+    // Treat NULL element as empty weight vector for that vertex
+    if (v == R_NilValue) {
+      weights[static_cast<size_t>(i)].clear();
+      continue;
     }
 
-    int n_vertices = LENGTH(s_weight_list);
-    std::vector<std::vector<double>> weight_list(n_vertices);
-
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP vertex_weights = VECTOR_ELT(s_weight_list, i);
-
-        if (!Rf_isReal(vertex_weights)) {
-            Rf_error("Expected numeric vector for vertex weights");
-        }
-
-        double* weights = REAL(vertex_weights);
-        int n_weights = LENGTH(vertex_weights);
-
-         // Efficient bulk assignment - no index conversion
-        weight_list[i].assign(weights, weights + n_weights);
+    if (TYPEOF(v) != REALSXP) {
+      Rf_error("convert_weight_list_from_R: weight_list[[%lld]] must be a numeric (double) vector.",
+               static_cast<long long>(i + 1));
     }
-    return weight_list;
+
+    const R_xlen_t nw = XLENGTH(v);
+    const double* pv = REAL(v);
+
+    auto& row = weights[static_cast<size_t>(i)];
+    row.resize(static_cast<size_t>(nw));
+    for (R_xlen_t j = 0; j < nw; ++j) {
+      row[static_cast<size_t>(j)] = pv[j];
+    }
+  }
+
+  return weights;
 }
-
 
 /**
  * Converts a C++ vector of vectors of integers to an R list of integer vectors.
@@ -330,27 +357,25 @@ std::vector<std::vector<double>> convert_weight_list_from_R(SEXP s_weight_list) 
  * @param cpp_vec_vec The input C++ vector of vectors of integers to be converted.
  * @return An R list of integer vectors representing the converted input.
  */
-SEXP convert_vector_vector_int_to_R(const std::vector<std::vector<int>>& cpp_vec_vec) {
+SEXP convert_vector_vector_int_to_R(const std::vector<std::vector<int>>& x) {
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(x.size());
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, n)); ++nprot;
 
-    int n = cpp_vec_vec.size();
-
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n));
-
-    for (int i = 0; i < n; ++i) {
-        int m = cpp_vec_vec[i].size();
-
-        SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, m));
-        int* ptr = INTEGER(Rvec);
-
-        for (int j = 0; j < m; ++j) {
-            ptr[j] = cpp_vec_vec[i][j];
-        }
-
-        SET_VECTOR_ELT(Rlist, i, Rvec);
-        UNPROTECT(1);
+  for (R_xlen_t i = 0; i < n; ++i) {
+    const auto& vi = x[static_cast<size_t>(i)];
+    const R_xlen_t m = static_cast<R_xlen_t>(vi.size());
+    SEXP v = PROTECT(Rf_allocVector(INTSXP, m)); ++nprot;
+    int* pv = INTEGER(v);
+    for (R_xlen_t j = 0; j < m; ++j) {
+      pv[static_cast<size_t>(j)] = vi[static_cast<size_t>(j)];
     }
+    SET_VECTOR_ELT(out, i, v);
+    UNPROTECT(1); --nprot;
+  }
 
-    return Rlist;
+  UNPROTECT(nprot);
+  return out;
 }
 
 /**
@@ -373,28 +398,65 @@ SEXP convert_vector_vector_int_to_R(const std::vector<std::vector<int>>& cpp_vec
  *
  * @see REAL, PROTECT, UNPROTECT, Rf_allocVector, SET_VECTOR_ELT
  */
-SEXP convert_vector_vector_double_to_R(const std::vector<std::vector<double>>& vec) {
-    int n = vec.size();
+SEXP convert_vector_vector_double_to_R(const std::vector<std::vector<double>>& x) {
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(x.size());
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, n)); ++nprot;
 
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n));
-
-    for (int i = 0; i < n; ++i) {
-        int m = vec[i].size();
-
-        SEXP Rvec = PROTECT(Rf_allocVector(REALSXP, m));
-        double* ptr = REAL(Rvec);
-
-        for (int j = 0; j < m; ++j) {
-            ptr[j] = vec[i][j];
-        }
-
-        SET_VECTOR_ELT(Rlist, i, Rvec);
-        UNPROTECT(1);
+  for (R_xlen_t i = 0; i < n; ++i) {
+    const auto& vi = x[static_cast<size_t>(i)];
+    const R_xlen_t m = static_cast<R_xlen_t>(vi.size());
+    SEXP v = PROTECT(Rf_allocVector(REALSXP, m)); ++nprot;
+    double* pv = REAL(v);
+    for (R_xlen_t j = 0; j < m; ++j) {
+      pv[static_cast<size_t>(j)] = vi[static_cast<size_t>(j)];
     }
+    SET_VECTOR_ELT(out, i, v);
+    UNPROTECT(1); --nprot; // release element temporary
+  }
 
-    return Rlist;
+  UNPROTECT(nprot);
+  return out;
 }
 
+/**
+ * @brief Converts a C++ vector of vectors of booleans to an R list of logical vectors
+ *
+ * @param vec Input vector of vectors of booleans to convert
+ * @return SEXP A protected R list where each element is a logical vector
+ *             corresponding to the inner vectors of the input
+ *
+ * @details This function takes a C++ nested vector structure containing boolean values
+ *          and converts it to an R list where each element is a logical vector.
+ *          The function handles all necessary R object protection and unprotection.
+ *          Each inner vector becomes a logical vector in R, preserving the boolean values.
+ *
+ * @note The returned SEXP object is protected once and should be unprotected by the caller
+ *       if necessary
+ *
+ * @Rf_warning The function assumes the input vector is valid and non-null. Empty vectors
+ *          are handled correctly but not specially treated.
+ */
+SEXP convert_vector_vector_bool_to_R(const std::vector<std::vector<bool>>& x) {
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(x.size());
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, n)); ++nprot;
+
+  for (R_xlen_t i = 0; i < n; ++i) {
+    const auto& vi = x[static_cast<size_t>(i)];
+    const R_xlen_t m = static_cast<R_xlen_t>(vi.size());
+    SEXP v = PROTECT(Rf_allocVector(LGLSXP, m)); ++nprot;
+    int* pv = LOGICAL(v);
+    for (R_xlen_t j = 0; j < m; ++j) {
+      pv[static_cast<size_t>(j)] = vi[static_cast<size_t>(j)] ? 1 : 0;
+    }
+    SET_VECTOR_ELT(out, i, v);
+    UNPROTECT(1); --nprot;
+  }
+
+  UNPROTECT(nprot);
+  return out;
+}
 
 /**
  * @brief Converts a C++ vector of vectors to an R matrix
@@ -448,58 +510,45 @@ SEXP convert_vector_vector_double_to_R(const std::vector<std::vector<double>>& v
  * ```
  */
 SEXP convert_vector_vector_double_to_matrix(const std::vector<std::vector<double>>& data) {
-    if (data.empty()) return R_NilValue;
+  int nprot = 0;
 
-    int nrow = data.size();
-    int ncol = data[0].size();
+  // Empty -> type-stable 0x0 matrix
+  if (data.empty()) {
+    SEXP out0 = PROTECT(Rf_allocMatrix(REALSXP, 0, 0)); ++nprot;
+    UNPROTECT(nprot);
+    return out0;
+  }
 
-    SEXP matrix = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-    double* matrix_ptr = REAL(matrix);
+  const R_xlen_t nrow = static_cast<R_xlen_t>(data.size());
+  const R_xlen_t ncol = static_cast<R_xlen_t>(data.front().size());
 
-     // R matrices are column-major, so we need to transpose during copying
-    for (int j = 0; j < ncol; ++j) {
-        for (int i = 0; i < nrow; ++i) {
-            matrix_ptr[i + j * nrow] = data[i][j];
-        }
+  // Rectangular check
+  for (R_xlen_t i = 1; i < nrow; ++i) {
+    if (static_cast<R_xlen_t>(data[static_cast<size_t>(i)].size()) != ncol) {
+      Rf_error("convert_vector_vector_double_to_matrix: ragged input at row %lld",
+               static_cast<long long>(i + 1));
     }
+  }
 
-    return matrix;
-}
+  // Guard against INT overflow in Rf_allocMatrix arguments
+  if (nrow > INT_MAX || ncol > INT_MAX) {
+    Rf_error("convert_vector_vector_double_to_matrix: dimensions exceed matrix limits");
+  }
 
+  SEXP M = PROTECT(Rf_allocMatrix(REALSXP, static_cast<int>(nrow), static_cast<int>(ncol)));
+  ++nprot;
+  double* pm = REAL(M);
 
-/**
- * @brief Converts a C++ vector of vectors of booleans to an R list of logical vectors
- *
- * @param vec Input vector of vectors of booleans to convert
- * @return SEXP A protected R list where each element is a logical vector
- *             corresponding to the inner vectors of the input
- *
- * @details This function takes a C++ nested vector structure containing boolean values
- *          and converts it to an R list where each element is a logical vector.
- *          The function handles all necessary R object protection and unprotection.
- *          Each inner vector becomes a logical vector in R, preserving the boolean values.
- *
- * @note The returned SEXP object is protected once and should be unprotected by the caller
- *       if necessary
- *
- * @Rf_warning The function assumes the input vector is valid and non-null. Empty vectors
- *          are handled correctly but not specially treated.
- */
-SEXP convert_vector_vector_bool_to_R(const std::vector<std::vector<bool>>& vec) {
-    int n = vec.size();
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n));
-    for (int i = 0; i < n; ++i) {
-        int m = vec[i].size();
-        SEXP Rvec = PROTECT(Rf_allocVector(LGLSXP, m));
-        int* ptr = LOGICAL(Rvec);
-        for (int j = 0; j < m; ++j) {
-            ptr[j] = vec[i][j];
-        }
-        SET_VECTOR_ELT(Rlist, i, Rvec);
-        UNPROTECT(1);
+  // Fill column-major: [i + j*nrow]
+  for (R_xlen_t j = 0; j < ncol; ++j) {
+    for (R_xlen_t i = 0; i < nrow; ++i) {
+      pm[static_cast<size_t>(i) + static_cast<size_t>(j) * static_cast<size_t>(nrow)]
+        = data[static_cast<size_t>(i)][static_cast<size_t>(j)];
     }
+  }
 
-    return Rlist;
+  UNPROTECT(nprot);
+  return M;
 }
 
 /**
@@ -513,17 +562,18 @@ SEXP convert_vector_vector_bool_to_R(const std::vector<std::vector<bool>>& vec) 
  * @param vec The std::vector<double> to convert
  * @return SEXP An R numeric vector (REALSXP) containing the values from vec
  *
- * @note The returned SEXP is protected when returned and must be unprotected by the caller
+ * @note The returned SEXP object is unprotected and should be either immediately returned or protected
  */
 SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
-    int n = vec.size();
-    SEXP Rvec = PROTECT(Rf_allocVector(REALSXP, n));
-    double* ptr = REAL(Rvec);
-    for (int j = 0; j < n; ++j) {
-        ptr[j] = vec[j];
-    }
-    // Do NOT unprotect here - the caller is responsible for unprotecting
-    return Rvec;
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(vec.size());
+  SEXP Rvec = PROTECT(Rf_allocVector(REALSXP, n)); ++nprot;
+  double* p = REAL(Rvec);
+  for (R_xlen_t i = 0; i < n; ++i) {
+    p[static_cast<size_t>(i)] = vec[static_cast<size_t>(i)];
+  }
+  UNPROTECT(nprot);
+  return Rvec;
 }
 
 
@@ -537,8 +587,7 @@ SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
  *          vector, preserving all values. The function handles the necessary R object
  *          protection and unprotection.
  *
- * @note The returned SEXP object is protected once and should be unprotected by the caller
- *       if necessary
+ * @note The returned SEXP object is unprotected and should be either immediately returned or protected
  *
  * @Rf_warning The function assumes the input vector is valid. No range checking is performed
  *          on the integer values, so values outside the range of R's integers may cause
@@ -547,15 +596,15 @@ SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
  * @see INTEGER, PROTECT, UNPROTECT, Rf_allocVector
  */
 SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
-    int n = vec.size();
-
-    SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, n));
-    int* ptr = INTEGER(Rvec);
-
-    for (int j = 0; j < n; ++j)
-        ptr[j] = vec[j];
-
-    return Rvec;
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(vec.size());
+  SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, n)); ++nprot;
+  int* p = INTEGER(Rvec);
+  for (R_xlen_t i = 0; i < n; ++i) {
+    p[static_cast<size_t>(i)] = vec[static_cast<size_t>(i)];
+  }
+  UNPROTECT(nprot);
+  return Rvec;
 }
 
 /**
@@ -569,8 +618,7 @@ SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
  *          object protection and unprotection. Note that R's logical values are stored
  *          as integers internally (0 for FALSE, 1 for TRUE).
  *
- * @note The returned SEXP object is protected once and should be unprotected by the caller
- *       if necessary
+ * @note The returned SEXP object is unprotected and should be either immediately returned or protected
  *
  * @Rf_warning Special consideration should be given to std::vector<bool> which is a specialized
  *          template that packs booleans into bits for space efficiency
@@ -578,13 +626,15 @@ SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
  * @see LOGICAL, PROTECT, UNPROTECT, Rf_allocVector
  */
 SEXP convert_vector_bool_to_R(const std::vector<bool>& vec) {
-    int n = vec.size();
-    SEXP Rvec = PROTECT(Rf_allocVector(LGLSXP, n));
-    int* ptr = LOGICAL(Rvec);
-    for (int j = 0; j < n; ++j)
-        ptr[j] = vec[j];
-
-    return Rvec;
+  int nprot = 0;
+  const R_xlen_t n = static_cast<R_xlen_t>(vec.size());
+  SEXP Rvec = PROTECT(Rf_allocVector(LGLSXP, n)); ++nprot;
+  int* p = LOGICAL(Rvec);
+  for (R_xlen_t i = 0; i < n; ++i) {
+    p[static_cast<size_t>(i)] = vec[static_cast<size_t>(i)] ? 1 : 0;
+  }
+  UNPROTECT(nprot);
+  return Rvec;
 }
 
 /**
@@ -612,45 +662,72 @@ SEXP convert_vector_bool_to_R(const std::vector<bool>& vec) {
  *   [[3]] = c(4,5)      name: "30"
  *   [[4]] = NULL        name: "40"
  */
-SEXP convert_map_int_vector_int_to_R(const std::unordered_map<int, std::vector<int>>& cpp_map_int_vect_int,
-                                     const std::vector<int>& names) {
-     // Identifying the largest key of the map
-    int max_key = 0;
-    for (const auto& pair : cpp_map_int_vect_int) {
-        if (pair.first > max_key)
-            max_key = pair.first;
+SEXP convert_map_int_vector_int_to_R(
+    const std::map<int, std::vector<int>>& m,
+    const std::vector<std::string>& names  // must have size = max_key+1
+    ) {
+    int nprot = 0;
+
+    if (m.empty()) {
+        // Return named zero-length list if names provided, else plain list(0)
+        SEXP out = PROTECT(Rf_allocVector(VECSXP, 0)); ++nprot;
+        if (!names.empty()) {
+            SEXP nm = PROTECT(Rf_allocVector(STRSXP, 0)); ++nprot;
+            Rf_setAttrib(out, R_NamesSymbol, nm);
+        }
+        UNPROTECT(nprot);
+        return out;
     }
 
-    int Rlist_len = max_key + 1;
-    if (Rlist_len != (int)names.size()) {
-        Rf_error("Rlist_len != names.size(): Rlist_len: %d\tnames.size(): %d\n\n", Rlist_len, (int)names.size());
+    int max_key = -1;
+    for (const auto& kv : m) {
+        const int key = kv.first;
+        if (key < 0) {
+            Rf_error("convert_map_int_vector_int_to_R: negative key %d not allowed", key);
+        }
+        if (key > max_key) max_key = key;
     }
 
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, Rlist_len));
-
-    for (const auto& [key, vect] : cpp_map_int_vect_int) {
-        int m = vect.size();
-        SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, m));
-        int* ptr = INTEGER(Rvec);
-
-        for (int j = 0; j < m; ++j)
-            ptr[j] = vect[j];
-
-        SET_VECTOR_ELT(Rlist, key, Rvec);
-        UNPROTECT(1);
+    const int list_len = max_key + 1;
+    if (!names.empty() && static_cast<int>(names.size()) != list_len) {
+        Rf_error("convert_map_int_vector_int_to_R: names.size() (%d) != max_key+1 (%d)",
+                 static_cast<int>(names.size()), list_len);
     }
 
-     // Convert the names vector to an R character vector
-    SEXP Rnames = PROTECT(Rf_allocVector(STRSXP, names.size()));
-    for (size_t i = 0; i < names.size(); ++i) {
-        SET_STRING_ELT(Rnames, i, Rf_mkChar(std::to_string(names[i]).c_str()));
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, list_len)); ++nprot;
+
+    // Initialize all slots to integer(0) to satisfy dense contract
+    for (int i = 0; i < list_len; ++i) {
+        SEXP empty = PROTECT(Rf_allocVector(INTSXP, 0)); ++nprot;
+        SET_VECTOR_ELT(out, i, empty);
+        UNPROTECT(1); --nprot;
     }
 
-     // Set the names of the list elements
-    Rf_setAttrib(Rlist, R_NamesSymbol, Rnames);
-    UNPROTECT(1);
+    // Fill present keys
+    for (const auto& kv : m) {
+        const int key = kv.first;
+        const auto& v  = kv.second;
+        const R_xlen_t n = static_cast<R_xlen_t>(v.size());
+        SEXP Ri = PROTECT(Rf_allocVector(INTSXP, n)); ++nprot;
+        int* pi = INTEGER(Ri);
+        for (R_xlen_t j = 0; j < n; ++j) {
+            pi[static_cast<size_t>(j)] = v[static_cast<size_t>(j)];
+        }
+        SET_VECTOR_ELT(out, key, Ri);
+        UNPROTECT(1); --nprot;
+    }
 
-    return Rlist; // user needs to unprotect it !!!
+    // Names (optional)
+    if (!names.empty()) {
+        SEXP nm = PROTECT(Rf_allocVector(STRSXP, list_len)); ++nprot;
+        for (int i = 0; i < list_len; ++i) {
+            SET_STRING_ELT(nm, i, Rf_mkChar(names[static_cast<size_t>(i)].c_str()));
+        }
+        Rf_setAttrib(out, R_NamesSymbol, nm);
+    }
+
+    UNPROTECT(nprot);
+    return out;
 }
 
 /**
@@ -1240,39 +1317,52 @@ SEXP convert_vector_vector_vector_double_to_R(
  * @note Vertex indices are converted from 0-based (C++) to 1-based (R) indexing
  */
 SEXP convert_wgraph_to_R(const set_wgraph_t& graph) {
+  int nprot = 0;
 
-    size_t n_vertices = graph.num_vertices();
-    size_t nprot = 0;
-    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
-    SEXP weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
+  const size_t n_vertices_sz = graph.num_vertices();
+  if (n_vertices_sz > static_cast<size_t>(R_XLEN_T_MAX)) {
+    Rf_error("Number of vertices (%zu) exceeds R's vector limit.", n_vertices_sz);
+  }
+  const R_xlen_t n_vertices = static_cast<R_xlen_t>(n_vertices_sz);
 
-    for (size_t i = 0; i < n_vertices; i++) {
-        size_t n_neighbors = graph.adjacency_list[i].size();
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, n_neighbors));
-        SEXP RW = PROTECT(Rf_allocVector(REALSXP, n_neighbors));
-        int* A    = INTEGER(RA);
-        double* W = REAL(RW);
+  // Container-first protection
+  SEXP adj_list    = PROTECT(Rf_allocVector(VECSXP, n_vertices)); ++nprot;
+  SEXP weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); ++nprot;
 
-        for (const auto& edge : graph.adjacency_list[i]) {
-            *A++ = static_cast<int>(edge.vertex + 1);  // Convert to 1-based indexing
-            *W++ = edge.weight;
-        }
+  for (R_xlen_t i = 0; i < n_vertices; ++i) {
+    const auto& nbrs = graph.adjacency_list[static_cast<size_t>(i)]; // std::set<edge_info_t>
 
-        SET_VECTOR_ELT(adj_list, i, RA);
-        SET_VECTOR_ELT(weight_list, i, RW);
-        UNPROTECT(2);
+    const size_t n_neighbors_sz = nbrs.size();
+    const R_xlen_t n_neighbors = static_cast<R_xlen_t>(n_neighbors_sz);
+
+    // Temporaries protected only until inserted
+    SEXP RA = PROTECT(Rf_allocVector(INTSXP,  n_neighbors));
+    SEXP RW = PROTECT(Rf_allocVector(REALSXP, n_neighbors));
+    int*    A = INTEGER(RA);
+    double* W = REAL(RW);
+
+    R_xlen_t j = 0;
+    for (const auto& e : nbrs) {
+        A[j] = static_cast<int>(e.vertex) + 1;
+        W[j] = e.weight;
+        ++j;
     }
 
-    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 2)); nprot++;
-    SET_VECTOR_ELT(r_list, 0, adj_list);
-    SET_VECTOR_ELT(r_list, 1, weight_list);
+    SET_VECTOR_ELT(adj_list,    i, RA);
+    SET_VECTOR_ELT(weight_list, i, RW);
+    UNPROTECT(2); // RA, RW
+  }
 
-     // Set names
-    SEXP r_list_names = PROTECT(Rf_allocVector(STRSXP, 2)); nprot++;
-    SET_STRING_ELT(r_list_names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(r_list_names, 1, Rf_mkChar("weight_list"));
-    Rf_setAttrib(r_list, R_NamesSymbol, r_list_names);
+  // Result list + names
+  SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 2)); ++nprot;
+  SET_VECTOR_ELT(r_list, 0, adj_list);
+  SET_VECTOR_ELT(r_list, 1, weight_list);
 
-    UNPROTECT(nprot);
-    return r_list;
+  SEXP r_list_names = PROTECT(Rf_allocVector(STRSXP, 2)); ++nprot;
+  SET_STRING_ELT(r_list_names, 0, Rf_mkChar("adj_list"));
+  SET_STRING_ELT(r_list_names, 1, Rf_mkChar("weight_list"));
+  Rf_setAttrib(r_list, R_NamesSymbol, r_list_names);
+
+  UNPROTECT(nprot);
+  return r_list;
 }

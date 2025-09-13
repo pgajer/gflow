@@ -138,7 +138,7 @@ cv.imputation <- function(test.set,
     ## Convert graph indices to 0-based
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    result <- .Call("S_cv_imputation",
+    result <- .Call(S_cv_imputation,
                     as.integer(test.set),
                     graph.0based,
                     edge.lengths,

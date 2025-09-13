@@ -274,7 +274,7 @@ create.cmst.graph <- function(X,
         }
     }
 
-    result <- .Call("S_create_mst_completion_graph",
+    result <- .Call(S_create_mst_completion_graph,
                     X,
                     as.double(q.thld),
                     as.logical(verbose))

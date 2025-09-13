@@ -65,7 +65,18 @@ extern "C" {
  * @param density_k Number of nearest neighbors for density estimation
  * @param n_steps Number of iterations for the mean shift algorithm
  * @param step_size Step size for updating point positions
- * @param ikernel Kernel function identifier (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  * @return std::unique_ptr<mean_shift_smoother_results_t> Results containing:
  *         - X_traj: Trajectory of data points over iterations
@@ -236,8 +247,18 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
  * @param step_size A scaling factor for the magnitude of each mean shift step.
  *                  Larger values may lead to faster convergence but might overshoot;
  *                  smaller values provide more accurate but slower shifts.
- * @param ikernel An integer specifying the kernel function to use. Default is 1.
- *                The specific kernel functions should be defined elsewhere in the code.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances when computing
  *                                  kernel weights. Default is 1.01. This helps prevent
  *                                  division by zero and adjusts the influence of distance
@@ -388,8 +409,18 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
  * @param step_size A scaling factor for the magnitude of each mean shift step.
  *                  Larger values may lead to faster convergence but might overshoot;
  *                  smaller values provide more accurate but slower shifts.
- * @param ikernel An integer specifying the kernel function to use. Default is 1.
- *                The specific kernel functions should be defined elsewhere in the code.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances when computing
  *                                  kernel weights. Default is 1.01.
  *
@@ -544,10 +575,18 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
  * @param density_k Number of nearest neighbors to use for density estimation (excluding the point itself).
  * @param n_steps Number of iterations for the mean shift process.
  * @param step_size Step size for updating point positions in each iteration.
- * @param ikernel Kernel function identifier (default is 1).
- *        - 1: Gaussian kernel
- *        - 2: Epanechnikov kernel
- *        - 3: Quartic kernel
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances (default is 1.01).
  * @param average_direction_only If true, only the directions of gradients are averaged;
  *                               if false, full gradient vectors are averaged (default is false).
@@ -745,10 +784,18 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
  * @param density_k Number of nearest neighbors to use for density estimation (excluding the point itself).
  * @param n_steps Number of iterations for the mean shift process.
  * @param step_size Step size for updating point positions in each iteration.
- * @param ikernel Kernel function identifier (default is 1).
- *        - 1: Gaussian kernel
- *        - 2: Epanechnikov kernel
- *        - 3: Quartic kernel
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances (default is 1.01).
  * @param average_direction_only If true, only the directions of gradients are averaged;
  *                               if false, full gradient vectors are averaged (default is false).
@@ -1006,10 +1053,18 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
  * @param density_k Number of nearest neighbors to use for density estimation (excluding the point itself).
  * @param n_steps Maximum number of iterations for the mean shift process.
  * @param initial_step_size Initial step size for updating point positions. This will be adapted for each point.
- * @param ikernel Kernel function identifier (default is 1).
- *        - 1: Gaussian kernel
- *        - 2: Epanechnikov kernel
- *        - 3: Quartic kernel
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances (default is 1.01).
  * @param average_direction_only If true, only the directions of gradients are averaged;
  *                               if false, full gradient vectors are averaged (default is false).
@@ -1392,10 +1447,18 @@ SEXP S_mean_shift_data_smoother_with_grad_field_averaging(SEXP s_X,
  * @param density_k Number of nearest neighbors to use for density estimation (excluding the point itself).
  * @param n_steps Maximum number of iterations for the mean shift process.
  * @param initial_step_size Initial step size for updating point positions.
- * @param ikernel Kernel function identifier (default is 1).
- *        - 1: Gaussian kernel
- *        - 2: Epanechnikov kernel
- *        - 3: Quartic kernel
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Factor for normalizing distances (default is 1.01).
  * @param average_direction_only If true, only the directions of gradients are averaged;
  *                               if false, full gradient vectors are averaged (default is false).

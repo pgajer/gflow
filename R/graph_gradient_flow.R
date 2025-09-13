@@ -233,7 +233,7 @@ construct.graph.gradient.flow <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
 
     # Call C++ implementation
-    result <- .Call("S_construct_graph_gradient_flow",
+    result <- .Call(S_construct_graph_gradient_flow,
                     adj.list.0based,
                     weight.list,
                     y,

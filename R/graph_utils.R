@@ -445,7 +445,7 @@ wgraph.prune.long.edges <- function(graph,
     ## Converting graph to 0-based indexing
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    result <- .Call("S_wgraph_prune_long_edges",
+    result <- .Call(S_wgraph_prune_long_edges,
                     graph.0based,
                     edge.lengths,
                     as.numeric(alt.path.len.ratio.thld),
@@ -665,7 +665,10 @@ convert.adjacency.to.edge.matrix <- function(adj.list, weights.list = NULL) {
     }
 
     adj.list <- lapply(adj.list, function(x) as.integer(x - 1))
-    return(.Call("S_convert_adjacency_to_edge_matrix", adj.list, weights.list, PACKAGE = "gflow"))
+    return(.Call(S_convert_adjacency_to_edge_matrix,
+                 adj.list,
+                 weights.list,
+                 PACKAGE = "gflow"))
 }
 
 #' Converts an Edge Label List to an Edge Vector
@@ -1028,7 +1031,7 @@ graph.connected.components <- function(adj.list) {
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call("S_graph_connected_components",
+    result <- .Call(S_graph_connected_components,
                     adj.list.0based)
 
     ## Check the result
@@ -1307,22 +1310,18 @@ get.sphere.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 2)
 #' simulation and aggregates the results to estimate population parameters.
 #'
 #' @examples
-#' # Generate degree distribution properties with default parameters
-#' results <- get.TN.S1.degree.props()
-#'
-#' # Use custom parameters
-#' results <- get.TN.S1.degree.props(
-#'   n.pts = 500,
-#'   n.sims = 50,
+#' res <- get.TN.S1.degree.props(
+#'   n.pts = 100,
+#'   n.sims = 10,
 #'   k = 5,
 #'   noise = 0.05,
 #'   noise.type = "normal"
 #' )
-#'
+#' str(res)
 #' @importFrom stats sd
 #' @export
-get.TN.S1.degree.props <- function(n.pts = 1000,
-                                   n.sims = 100,
+get.TN.S1.degree.props <- function(n.pts = 100,
+                                   n.sims = 10,
                                    k = 10,
                                    noise = 0.1,
                                    noise.type = "laplace") {

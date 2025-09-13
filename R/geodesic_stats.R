@@ -55,7 +55,7 @@ compute.geodesic.stats <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call the C++ function
-    result <- .Call("S_compute_geodesic_stats",
+    result <- .Call(S_compute_geodesic_stats,
                    adj.list.0based,
                    weight.list,
                    as.double(min.radius),
@@ -245,6 +245,7 @@ print.geodesic_stats <- function(x, ...) {
 #' @param max.radius Numeric. Maximum radius as a fraction of graph diameter.
 #' @param n.steps Integer. Number of radius steps to test.
 #' @param n.packing.vertices Integer. Number of vertices in the grid/packing.
+#' @param packing.precision Numeric. Precision threshold for packing convergence.
 #'
 #' @return A data frame of class "vertex_geodesic_stats" with columns:
 #' \describe{
@@ -267,7 +268,8 @@ compute.vertex.geodesic.stats <- function(adj.list,
                                           min.radius = 0.2,
                                           max.radius = 0.5,
                                           n.steps = 5,
-                                          n.packing.vertices = length(adj.list)) {
+                                          n.packing.vertices = length(adj.list),
+                                          packing.precision = 0.0001) {
 
                                         # Input validation
     if (!is.list(adj.list) || !is.list(weight.list))
@@ -283,15 +285,16 @@ compute.vertex.geodesic.stats <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
     grid.vertex.0based <- as.integer(grid.vertex - 1)
 
-                                        # Call the C++ function
-    result <- .Call("S_compute_vertex_geodesic_stats",
+    ## Call the C++ function
+    result <- .Call(S_compute_vertex_geodesic_stats,
                     adj.list.0based,
                     weight.list,
                     grid.vertex.0based,
                     as.double(min.radius),
                     as.double(max.radius),
                     as.integer(n.steps),
-                    as.integer(n.packing.vertices))
+                    as.integer(n.packing.vertices),
+                    as.double(packing.precision))
 
                                         # Extract the result matrix and convert to data frame
     df <- as.data.frame(result$data)

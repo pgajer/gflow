@@ -180,7 +180,3 @@ legend("topright", c("Original", "Smoothed"), col = c("red", "blue"), lty = 1)
 Coifman, R. R., & Lafon, S. (2006). Diffusion maps. Applied and computational
 harmonic analysis, 21(1), 5-30.
 }
-\seealso{
-\code{\link{graph.diffusion.matrix.smoother}},
-\code{\link{instrumented.gds}}
-}

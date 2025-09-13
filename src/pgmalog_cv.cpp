@@ -56,7 +56,18 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
  * @param n_CVs Number of cross-validation iterations to perform
  * @param n_CV_folds Number of folds for each cross-validation iteration
  * @param seed Random seed for test set selection (0 uses current time)
- * @param ikernel Kernel function identifier for weight computation
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param max_distance_deviation Maximum allowed deviation from optimal position in path
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  * @param epsilon Numerical tolerance for zero comparisons (default: 1e-8)
@@ -221,7 +232,18 @@ std::vector<double> pgmalog_cv(
  * @param n_CVs Number of cross-validation iterations to perform
  * @param n_CV_folds Number of folds for cross-validation
  * @param seed Random seed for reproducibility (0 for time-based seed)
- * @param ikernel Kernel function identifier for the PGMALOG
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param max_distance_deviation Maximum allowed deviation in distance calculations
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  * @param epsilon Numerical tolerance parameter (default: 1e-8)

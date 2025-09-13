@@ -134,7 +134,7 @@ create.ENPs.grid.2D <- function(n, x1.range, x2.range, f=0.2)
 {
     X.grid <- numeric(2*n*n)
 
-    out <- .C("C_create_ENPs_grid_2D",
+    out <- .C(C_create_ENPs_grid_2D,
              as.integer(n),
              as.double(x1.range[1]),
              as.double(x1.range[2]),
@@ -160,7 +160,7 @@ create.ENPs.grid.3D <- function(n, x1.range, x2.range, x3.range, f=0.2)
 {
     X.grid <- numeric(3*n^3)
 
-    out <- .C("C_create_ENPs_grid_3D",
+    out <- .C(C_create_ENPs_grid_3D,
              as.integer(n),
              as.double(x1.range[1]),
              as.double(x1.range[2]),
@@ -236,7 +236,7 @@ create.ED.grid.2D <- function(dx, x1.range, x2.range, f=0.2, verbose=FALSE)
 
     X.grid <- numeric(2*n1*n2)
 
-    out <- .C("C_create_ED_grid_2D",
+    out <- .C(C_create_ED_grid_2D,
              as.double(dx),
              as.double(x1L),
              as.integer(n1),
@@ -319,7 +319,7 @@ create.ED.grid.3D <- function(dx, x1.range, x2.range, x3.range, f=0.1, verbose=F
 
     X.grid <- numeric(3*n1*n2*n3)
 
-    out <- .C("C_create_ED_grid_3D",
+    out <- .C(C_create_ED_grid_3D,
              as.double(dx),
              as.double(x1L),
              as.integer(n1),
@@ -1336,7 +1336,7 @@ create.ED.grid.xD <- function(edge.length, lower.bounds, upper.bounds ) { # , ro
 
     grid <- matrix(0, ncol = dim, nrow = n.grid.nodes)
 
-    out <- .C("C_create_ED_grid_xD",
+    out <- .C(C_create_ED_grid_xD,
              as.double(edge.length),
              as.double(lower.bounds),
              as.integer(dim),
@@ -2395,7 +2395,7 @@ bbox.hcube.tiling <- function(w, L, R) {
 
 ##     hcubes <- numeric(n.hcubes * 2 * dim)
 
-##     res <- .C("C_bbox_hcube_tiling",
+##     res <- .C(C_bbox_hcube_tiling,
 ##              as.double(w),
 ##              as.double(L),
 ##              as.double(R),

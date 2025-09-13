@@ -101,7 +101,7 @@ graph.kmean <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call C++ implementation
-    .Call("S_graph_kmean",
+    .Call(S_graph_kmean,
           adj.list.0based,
           edge.lengths,
           as.numeric(y),
@@ -259,7 +259,7 @@ graph.kmean.cv <- function(graph,
 
     # Call appropriate C++ function
     if (use.weighted.MAD.error) {
-        .Call("S_graph_kmean_wmad_cv",
+        .Call(S_graph_kmean_wmad_cv,
               graph.0based,
               edge.lengths,
               as.numeric(y),
@@ -267,9 +267,10 @@ graph.kmean.cv <- function(graph,
               as.numeric(dist.normalization.factor),
               as.integer(n.CVs),
               as.integer(n.CV.folds),
-              as.integer(seed))
+              as.integer(seed),
+              as.logical(use.weighted.MAD.error))
     } else {
-        .Call("S_graph_kmean_cv",
+        .Call(S_graph_kmean_cv,
               graph.0based,
               edge.lengths,
               as.numeric(y),
@@ -477,7 +478,7 @@ univariate.gkmm <- function(x, y, y.true = NULL,
     }
 
     # Call C++ implementation
-    result <- .Call("S_univariate_gkmm",
+    result <- .Call(S_univariate_gkmm,
                    as.double(x),
                    as.double(y),
                    if (is.null(y.true)) double() else as.double(y.true),

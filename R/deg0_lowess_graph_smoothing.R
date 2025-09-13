@@ -173,7 +173,7 @@ deg0.lowess.graph.smoothing <- function(
 
     ## Call the C++ function
     result <- .Call(
-        "S_deg0_lowess_graph_smoothing",
+        S_deg0_lowess_graph_smoothing,
         adj.list.0based,
         weight.list,
         X,

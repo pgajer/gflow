@@ -134,7 +134,7 @@ find.gflow.basins <- function(adj.list,
     })
 
     # Call C++ backend
-    result <- .Call("S_find_gflow_basins",
+    result <- .Call(S_find_gflow_basins,
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),
@@ -466,7 +466,7 @@ find.local.extrema <- function(adj.list,
     })
 
     # Call C++ backend
-    result <- .Call("S_find_local_extrema",
+    result <- .Call(S_find_local_extrema,
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),

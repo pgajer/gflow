@@ -58,7 +58,7 @@ rlaplace <- function(n,
         seed <- as.integer(seed)
     }
 
-    .Call("S_rlaplace",
+    .Call(S_rlaplace,
           as.integer(n),
           as.double(location),
           as.double(scale),
@@ -163,7 +163,7 @@ runif.simplex <- function(K)
 {
     lambda <- numeric(K)
 
-    out <- .C("C_runif_simplex",
+    out <- .C(C_runif_simplex,
              as.integer(K),
              lambda=as.double(lambda))
 

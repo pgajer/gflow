@@ -177,7 +177,18 @@ double optimize_t(const Eigen::VectorXd& evalues,
  * @param iterative_params Parameters for iterative imputation methods (only used with ITERATIVE_NEIGHBORHOOD_MATCHING)
  * @param apply_binary_threshold Whether to apply binary thresholding.
  * @param binary_threshold Threshold for binary classification.
- * @param ikernel Integer specifying the kernel function to use.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A scaling factor applied to the maximum
  * distance between a vertex and its neighbors. This ensures non-zero weights
  * even when all distances are equal, by slightly increasing the normalization

@@ -145,7 +145,18 @@ extern "C" {
  * @param path_graph The path graph structure containing graph topology and path information
  * @param y Vector of response variables for each vertex
  * @param weights Binary weight vector (0.0 for test set, 1.0 for training set)
- * @param ikernel Kernel function identifier for weight computation
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param max_distance_deviation Maximum allowed deviation from optimal position in path
  * @param dist_normalization_factor Factor for normalizing distances (default: 1.01)
  * @param epsilon Numerical tolerance for zero comparisons (default: 1e-8)
@@ -437,56 +448,67 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
 
 
 /**
-* @brief Performs Bayesian bootstrap sampling for graph path linear models with path-specific weights
-*
-* This function implements a modified version of graph path linear models (PGMALOG) with Bayesian
-* bootstrap sampling. For each path in the graph, it generates path-specific weights from a
-* Dirichlet distribution parameterized by the path's kernel weights. This approach ensures that
-* the Bayesian bootstrap estimates are centered around the unweighted graph path linear model.
-*
-* The algorithm follows these steps for each vertex:
-* 1. Identifies all valid paths containing the vertex
-* 2. For each valid path:
-*    - Computes kernel weights based on distances
-*    - Generates path-specific weights from Dirichlet(kernel_weights)
-*    - Fits a weighted linear model using the sampled weights
-*    - Computes LOOCV Rf_error for model selection
-* 3. Selects the best model based on LOOCV Rf_error
-* 4. Computes predictions using either direct model prediction or weighted average
-*    of predictions from neighboring vertices
-*
-* @param path_graph The path graph structure containing adjacency lists, weights, and path information
-* @param y Vector of response variables for each vertex
-* @param ikernel Integer specifying the kernel type for weight computation
-* @param max_distance_deviation Maximum allowed deviation from the minimum distance to mid-point
-*                              when selecting valid paths. If > 0, enables weighted averaging
-*                              of predictions from neighboring vertices
-* @param min_required_paths Minimum number of valid paths required for each vertex
-* @param dist_normalization_factor Factor used to normalize distances (default: 1.01)
-* @param epsilon Small positive number for numerical stability (default: 1e-8)
-*
-* @return std::pair containing:
-*         - First element: Vector of predicted values for each vertex
-*         - Second element: Vector of LOOCV errors for each vertex
-*
-* @throws Rf_error if:
-*         - max_distance_deviation is negative
-*         - min_required_paths is less than 1
-*         - Length of y doesn't match number of vertices
-*         - No paths found for a vertex
-*         - No valid paths found within deviation limits
-*
-* @note The Bayesian bootstrap is implemented using path-specific Dirichlet sampling,
-*       where the parameters of the Dirichlet distribution are the kernel weights
-*       computed for each path. This ensures that:
-*       1. The weights are properly normalized within each path
-*       2. The bootstrap estimates are centered around the original weighted model
-*       3. The uncertainty quantification is path-specific
-*
-* @see C_rsimplex For the Dirichlet sampling implementation
-* @see predict_lm_1d_loocv For the weighted linear model fitting
-* @see path_graph_plm_t For the path graph data structure
-*/
+ * @brief Performs Bayesian bootstrap sampling for graph path linear models with path-specific weights
+ *
+ * This function implements a modified version of graph path linear models (PGMALOG) with Bayesian
+ * bootstrap sampling. For each path in the graph, it generates path-specific weights from a
+ * Dirichlet distribution parameterized by the path's kernel weights. This approach ensures that
+ * the Bayesian bootstrap estimates are centered around the unweighted graph path linear model.
+ *
+ * The algorithm follows these steps for each vertex:
+ * 1. Identifies all valid paths containing the vertex
+ * 2. For each valid path:
+ *    - Computes kernel weights based on distances
+ *    - Generates path-specific weights from Dirichlet(kernel_weights)
+ *    - Fits a weighted linear model using the sampled weights
+ *    - Computes LOOCV Rf_error for model selection
+ * 3. Selects the best model based on LOOCV Rf_error
+ * 4. Computes predictions using either direct model prediction or weighted average
+ *    of predictions from neighboring vertices
+ *
+ * @param path_graph The path graph structure containing adjacency lists, weights, and path information
+ * @param y Vector of response variables for each vertex
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
+ * @param max_distance_deviation Maximum allowed deviation from the minimum distance to mid-point
+ *                              when selecting valid paths. If > 0, enables weighted averaging
+ *                              of predictions from neighboring vertices
+ * @param min_required_paths Minimum number of valid paths required for each vertex
+ * @param dist_normalization_factor Factor used to normalize distances (default: 1.01)
+ * @param epsilon Small positive number for numerical stability (default: 1e-8)
+ *
+ * @return std::pair containing:
+ *         - First element: Vector of predicted values for each vertex
+ *         - Second element: Vector of LOOCV errors for each vertex
+ *
+ * @throws Rf_error if:
+ *         - max_distance_deviation is negative
+ *         - min_required_paths is less than 1
+ *         - Length of y doesn't match number of vertices
+ *         - No paths found for a vertex
+ *         - No valid paths found within deviation limits
+ *
+ * @note The Bayesian bootstrap is implemented using path-specific Dirichlet sampling,
+ *       where the parameters of the Dirichlet distribution are the kernel weights
+ *       computed for each path. This ensures that:
+ *       1. The weights are properly normalized within each path
+ *       2. The bootstrap estimates are centered around the original weighted model
+ *       3. The uncertainty quantification is path-specific
+ *
+ * @see C_rsimplex For the Dirichlet sampling implementation
+ * @see predict_lm_1d_loocv For the weighted linear model fitting
+ * @see path_graph_plm_t For the path graph data structure
+ */
 std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
     const path_graph_plm_t& path_graph,
     const std::vector<double>& y,
@@ -689,7 +711,18 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
  * @param p Confidence level for bootstrap intervals (0 < p < 1)
  * @param n_bb Number of bootstrap iterations (0 for no bootstrap)
  * @param bb_max_distance_deviation The maximal distance deviation from the min distance from the reference point applied to the bootstrap samples of y for the optimal h. To pick the optimal h max_distance_deviation is set to (h-1)/2. If bb_max_distance_deviation = -1, we set it to (h-1)/2 in the bootstrap loop
- * @param ikernel Kernel function identifier
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param n_cores Number of cores for parallel computation
  * @param dist_normalization_factor Distance normalization factor
  * @param epsilon Numerical stability threshold
@@ -954,7 +987,18 @@ pgmalo_t pgsmalog(const std::vector<std::vector<int>>& neighbors,
  * @param p Probability level for credible intervals (default: 0.95)
  * @param n_bb Number of bootstrap iterations (default: 500, 0 to skip)
  * @param bb_max_distance_deviation The maximal distance deviation from the min distance from the reference point applied to the bootstrap samples of y for the optimal h. To pick the optimal h max_distance_deviation is set to (h-1)/2. If bb_max_distance_deviation = -1, we set it to (h-1)/2 in the bootstrap loop
- * @param ikernel Kernel function selector (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param n_cores Number of cores for parallel computation (default: 1)
  * @param dist_normalization_factor Distance normalization factor (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
@@ -1261,7 +1305,18 @@ SEXP S_upgmalog(SEXP s_x,
  *    - longest_paths: Vector of path endpoints for paths of length h
  * @param y Vector of response values for each vertex
  * @param weights Vector of sample weights for each vertex (e.g., from Bayesian bootstrap)
- * @param ikernel Integer specifying the kernel type for distance weighting
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param max_distance_deviation Maximum allowed deviation from path midpoint when selecting valid models
  * @param dist_normalization_factor Factor for normalizing distances in kernel weight computation (default: 1.01)
  * @param epsilon Small constant for numerical stability in linear model fitting (default: 1e-8)

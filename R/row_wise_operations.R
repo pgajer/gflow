@@ -25,7 +25,7 @@ row.weighted.mean <- function(nn.y, nn.w, max.K) {
 
     Eyg <- numeric(ng)
 
-    out <- .C("C_columnwise_wmean",
+    out <- .C(C_columnwise_wmean,
              as.double(t(nn.y)),
              as.double(t(nn.w)),
              as.integer(max.K-1),
@@ -65,7 +65,7 @@ row.weighted.mean.BB <- function(nn.y, nn.w, max.K, n.BB=100) {
 
     BB.Eyg <- numeric(ng * n.BB)
 
-    out <- .C("C_columnwise_wmean_BB",
+    out <- .C(C_columnwise_wmean_BB,
              as.double(t(nn.y)),
              as.double(t(nn.w)),
              as.integer(max.K-1),
@@ -110,7 +110,7 @@ row.weighted.mean.BB.qCrI <- function(y.binary, nn.y, nn.w, max.K, n.BB=100, alp
 
     Eyg.qCI <- numeric(ng * 2)
 
-    out <- .C("C_columnwise_wmean_BB_qCrI",
+    out <- .C(C_columnwise_wmean_BB_qCrI,
              as.integer(y.binary),
              as.double(t(nn.y)),
              as.double(t(nn.w)),
@@ -157,7 +157,7 @@ row.weighted.mean.BB.CI.v1 <- function(Eyg, nn.y, nn.w, max.K, n.BB=100) {
 
     Ey.CI <- numeric(ng)
 
-    out <- .C("C_columnwise_wmean_BB_CrI_1",
+    out <- .C(C_columnwise_wmean_BB_CrI_1,
              as.double(Eyg),
              as.double(t(nn.y)),
              as.double(t(nn.w)),
@@ -201,7 +201,7 @@ row.weighted.mean.BB.CI.v2 <- function(Eyg, nn.y, nn.w, max.K, n.BB=100) {
 
     Ey.CI <- numeric(ng)
 
-    out <- .C("C_columnwise_wmean_BB_CrI_2",
+    out <- .C(C_columnwise_wmean_BB_CrI_2,
              as.double(Eyg),
              as.double(t(nn.y)),
              as.double(t(nn.w)),
@@ -255,7 +255,7 @@ matrix.weighted.means <- function(Y, nn.i, nn.w, max.K) {
 
     Eyg <- numeric(ncTnn * ncY)
 
-    out <- .C("C_matrix_wmeans",
+    out <- .C(C_matrix_wmeans,
              as.double(Y),
              as.integer(nrY),
              as.integer(ncY),

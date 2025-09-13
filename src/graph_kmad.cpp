@@ -15,44 +15,55 @@ extern "C" {
 }
 
 /**
-* @brief Computes Kernel-Weighted Median Absolute Deviation (MAD) on a Graph
-*
-* @details
-* This function calculates the kernel-weighted median absolute deviation of values associated
-* with vertices in a graph. The MAD is a robust measure of statistical dispersion that is more
-* resilient to outliers than standard deviation.
-*
-* For each vertex, the function:
-* 1. Collects the vertex's value and its neighbors' values with their kernel weights
-* 2. Computes the weighted median of these values
-* 3. Calculates absolute deviations from this median
-* 4. Computes the weighted median of these deviations
-*
-* The kernel weights are determined by:
-* - Normalizing edge lengths by the maximum distance in the local neighborhood
-* - Applying a specified kernel function to these normalized distances
-*
-* For vertices with no neighbors, their MAD is set to 0 as there is no variation to measure.
-*
-* @param graph A list of integer vectors where each element represents a vertex and contains
-*        indices of its neighboring vertices
-* @param edge_lengths A list of numeric vectors containing the lengths of edges to neighbors.
-*        Must match the structure of the `graph` parameter
-* @param y A numeric vector of values associated with each vertex in the graph
-* @param ikernel An integer specifying the kernel function to use for weighting
-* @param dist_normalization_factor A numeric value used to normalize distances in the graph.
-*        Default is 1.01
-*
-* @return A numeric vector containing the kernel-weighted MAD for each vertex in the graph
-*
-* @throws std::invalid_argument If input vectors have inconsistent sizes
-* @throws std::runtime_error If kernel initialization fails
-*
-* @note The function uses a weighted median calculation which preserves the influence of
-*       kernel weights on the final MAD value
-*
-* @see initialize_kernel(), kernel_fn()
-*/
+ * @brief Computes Kernel-Weighted Median Absolute Deviation (MAD) on a Graph
+ *
+ * @details
+ * This function calculates the kernel-weighted median absolute deviation of values associated
+ * with vertices in a graph. The MAD is a robust measure of statistical dispersion that is more
+ * resilient to outliers than standard deviation.
+ *
+ * For each vertex, the function:
+ * 1. Collects the vertex's value and its neighbors' values with their kernel weights
+ * 2. Computes the weighted median of these values
+ * 3. Calculates absolute deviations from this median
+ * 4. Computes the weighted median of these deviations
+ *
+ * The kernel weights are determined by:
+ * - Normalizing edge lengths by the maximum distance in the local neighborhood
+ * - Applying a specified kernel function to these normalized distances
+ *
+ * For vertices with no neighbors, their MAD is set to 0 as there is no variation to measure.
+ *
+ * @param graph A list of integer vectors where each element represents a vertex and contains
+ *        indices of its neighboring vertices
+ * @param edge_lengths A list of numeric vectors containing the lengths of edges to neighbors.
+ *        Must match the structure of the `graph` parameter
+ * @param y A numeric vector of values associated with each vertex in the graph
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
+ * @param dist_normalization_factor A numeric value used to normalize distances in the graph.
+ *        Default is 1.01
+ *
+ * @return A numeric vector containing the kernel-weighted MAD for each vertex in the graph
+ *
+ * @throws std::invalid_argument If input vectors have inconsistent sizes
+ * @throws std::runtime_error If kernel initialization fails
+ *
+ * @note The function uses a weighted median calculation which preserves the influence of
+ *       kernel weights on the final MAD value
+ *
+ * @see initialize_kernel(), kernel_fn()
+ */
 std::vector<double> graph_kernel_weighted_mad(const std::vector<std::vector<int>>& graph,
                                             const std::vector<std::vector<double>>& edge_lengths,
                                             const std::vector<double>& y,

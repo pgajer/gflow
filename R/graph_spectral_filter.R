@@ -376,7 +376,7 @@ graph.spectral.filter <- function(adj.list,
     })
 
     # Call C++ implementation
-    res <- .Call("S_graph_spectral_filter",
+    res <- .Call(S_graph_spectral_filter,
                  adj.list.0based,
                  weight.list,
                  as.numeric(y),

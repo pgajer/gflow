@@ -415,7 +415,7 @@ join.graphs <- function(graph1, graph2, i1, i2) {
     graph1 <- lapply(graph1, function(x) as.integer(x - 1))
     graph2 <- lapply(graph2, function(x) as.integer(x - 1))
 
-    joined.graph <- .Call("S_join_graphs",
+    joined.graph <- .Call(S_join_graphs,
                     graph1,
                     graph2,
                     as.integer(i1 - 1),
@@ -522,7 +522,7 @@ create.star.graph <- function(sizes) {
     }
 
     ## sizes <- as.integer(sizes)
-    ## result <- .Call("S_create_star_graph", sizes)
+    ## result <- .Call(S_create_star_graph, sizes)
 
     n.chains <- length(sizes)
     if (n.chains < 2) {

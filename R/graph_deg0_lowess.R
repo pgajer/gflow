@@ -114,7 +114,7 @@ graph.deg0.lowess <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ implementation
-    result <- .Call("S_graph_deg0_lowess",
+    result <- .Call(S_graph_deg0_lowess,
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),

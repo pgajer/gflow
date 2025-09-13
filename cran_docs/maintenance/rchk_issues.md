@@ -247,6 +247,24 @@ Acceptance: rchk clean for `SEXP_cpp_conversion_utils.cpp`.
 Families: `*_kernel_smoother_r.cpp`, `*_lowess*`, `klaps_*`, `graph_bw_adaptive_spectral_smoother_r.cpp`, `graph_diffusion_smoother.cpp` (R boundary).
 Acceptance: zero “unsupported form of unprotect”.
 
+[~/current_projects/gflow/src]% ls -1 *_lowess*_r.cpp
+deg0_lowess_graph_smoothing_r.cpp
+graph_deg0_lowess_buffer_cv_r.cpp
+graph_deg0_lowess_cv_mat_r.cpp
+graph_spectral_lowess_mat_r.cpp
+graph_spectral_lowess_r.cpp
+graph_spectral_ma_lowess_r.cpp
+nada_graph_spectral_lowess_r.cpp
+spectral_lowess_graph_smoothing_r.cpp
+
+klaps_low_pass_smoother_r.cpp
+graph_bw_adaptive_spectral_smoother_r.cpp
+graph_diffusion_smoother.cpp
+
+
+
+
+
 ## Phase 3 — Hard Failures: Negative Depth / Over‑unprotect
 Priority A: `S_agemalo`, `S_ray_agemalo`, `S_pgmalo`, `S_upgmalo`, `S_pgmalog`, `S_upgmalog`, `S_graph_spectral_lowess_mat`, `S_graph_spectral_ma_lowess`.
 Priority B (builders): `S_convert_adjacency_to_edge_matrix`, `S_join_graphs`, `S_univariate_gkmm`, `S_wgraph_prune_long_edges`, `S_find_graph_paths_within_radius`, `S_find_shortest_alt_path`, `S_construct_graph_gradient_flow`, `S_create_hHN_graph`, `S_create_nerve_complex`.
@@ -444,12 +462,546 @@ Would you like me to draft a **template Roxygen block** for the R wrapper (with 
 
 
 
------
-
-Rcpp::compileAttributes()
-
------
-
-
 tests/testthat/test-graph-kernel-smoother.R
 
+
+
+------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
+# ToDo's: 
+------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
+
+1) Find all instances of 
+
+convert_vector_double_to_R
+convert_vector_int_to_R
+convert_vector_bool_to_R
+
+convert_vector_vector_int_to_R
+convert_vector_vector_double_to_R
+convert_vector_vector_bool_to_R
+
+convert_vector_vector_double_to_matrix
+convert_map_int_vector_int_to_R
+convert_wgraph_to_R
+
+calls and make sure the output is UNPROTECTED 
+
+Great question. Short answer: the converter returns an **unprotected** SEXP by design. That’s correct and CRAN-safe—**as long as you immediately anchor it** in one of the standard ways.
+
+Here’s exactly how to use `convert_vector_double_to_R()` safely in all common situations:
+
+---
+
+### 0) What the converter does
+
+```cpp
+SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
+  int nprot = 0;
+  SEXP Rvec = PROTECT(Rf_allocVector(REALSXP, vec.size())); ++nprot;
+  // ... fill ...
+  UNPROTECT(nprot);              // <- unprotected on return (intended)
+  return Rvec;
+}
+```
+
+* It **PROTECTs during construction** so GC can’t touch it while being filled.
+* It **UNPROTECTs before return** so the caller decides how to anchor it.
+* When a `.Call` function returns its result to R, the **R evaluator preserves the return value**—so returning it directly is safe.
+
+---
+
+### 1) Case A — Return it directly from a `.Call` wrapper (no further allocations)
+
+Safe and simplest: no extra PROTECT needed.
+
+```cpp
+extern "C" SEXP S_make_vec(SEXP /*args*/) {
+  // do not allocate anything after this call if you rely on returning it directly
+  return convert_vector_double_to_R(my_cpp_vec);
+}
+```
+
+---
+
+### 2) Case B — You’ll do more allocations after getting it (e.g., building a list)
+
+**Immediately PROTECT** the returned object (or insert it into a protected container and then UNPROTECT).
+
+Conservative, rchk-friendly pattern:
+
+```cpp
+extern "C" SEXP S_build_list(SEXP /*args*/) {
+  int nprot = 0;
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 1)); ++nprot;
+
+  SEXP elt = PROTECT(convert_vector_double_to_R(my_cpp_vec)); ++nprot; // PROTECT immediately
+  SET_VECTOR_ELT(out, 0, elt);
+  UNPROTECT(1); --nprot;                    // element now referenced by 'out'
+
+  // ... you can safely make more allocations here ...
+
+  UNPROTECT(nprot);
+  return out;
+}
+```
+
+Why PROTECT the element even though you set it immediately?
+
+* It’s the **safest** pattern: if anything allocates between creation and `SET_VECTOR_ELT` (directly or via inline helpers), GC can’t collect it.
+
+---
+
+### 3) Case C — Build container first, then set elements (per-element protect/unprotect)
+
+This is the “container-first” idiom we’ve been standardizing:
+
+```cpp
+SEXP out = PROTECT(Rf_allocVector(VECSXP, K)); ++nprot;
+
+SEXP v = PROTECT(convert_vector_double_to_R(vec)); ++nprot;
+// ... optional transforms that might allocate ...
+SET_VECTOR_ELT(out, i, v);
+UNPROTECT(1); --nprot; // v now owned by 'out'
+```
+
+---
+
+### 4) Case D — Rcpp boundary (use a shield)
+
+If you’re inside an Rcpp function but calling a raw-C converter:
+
+```cpp
+Rcpp::Shield<SEXP> v(convert_vector_double_to_R(vec));
+Rcpp::List out(1);
+out[0] = v;  // safe; shield releases when v goes out of scope
+```
+
+---
+
+### 5) Long-lived objects across calls (rare)
+
+If you need to hold onto the SEXP **beyond the current `.Call`** (e.g., store globally, use later):
+
+* Use `R_PreserveObject(sexp);` when you obtain it, and **later** `R_ReleaseObject(sexp);`.
+* Do **not** rely on PROTECT/UNPROTECT for multi-call lifetimes; those are only for the current C stack.
+
+---
+
+### 6) What **not** to do
+
+* Don’t let the **unprotected** return value cross any allocating call (e.g., `Rf_alloc*`, `Rf_mkChar`, `Rf_setAttrib`) before you PROTECT or insert into a protected container.
+* Don’t return an object that’s still PROTECTed **without** balancing the protect stack (it will trip rchk and can cause “protect stack too deep”).
+
+---
+
+### TL;DR
+
+* Returning it straight to R? **Just return** (safe).
+* Doing anything else before returning? **PROTECT it immediately**, then either:
+
+  * insert into a **protected** container and `UNPROTECT(1)`, or
+  * keep it PROTECTed until your final `UNPROTECT(nprot)` just before `return`.
+
+If you show me a specific call site where you use the converter, I’ll mark exactly where to PROTECT/UNPROTECT to keep rchk perfectly quiet.
+
+
+    
+
+
+-------- checking examples
+
+# 1) Build the same "all examples" script that R CMD check runs
+rds <- list.files("man", pattern = "\\.Rd$", full.names = TRUE)
+con <- file("gflow-Ex.R", "w", encoding = "UTF-8")
+for (f in rds) {
+  rd <- tools::parse_Rd(f, encoding = "UTF-8")
+  tools::Rd2ex(rd, out = con)
+}
+close(con)
+
+# 2) Now run it to reproduce the crash
+source("gflow-Ex.R")
+
+
+rds <- list.files("man", pattern="\\.Rd$", full.names=TRUE)
+env <- new.env(parent = baseenv())
+cat("Running examples in ONE session...\n")
+for (i in seq_along(rds)) {
+  f <- rds[i]
+  rd <- tools::parse_Rd(f, encoding="UTF-8")
+  tf <- tempfile(fileext = ".R")
+  tools::Rd2ex(rd, out = tf)
+  cat(sprintf("\n==== [%d/%d] %s ====\n", i, length(rds), basename(f)))
+  flush.console()
+  # Optional: make GC more aggressive to catch PROTECT bugs earlier
+  # gctorture2(enable = TRUE, inhibit_release = TRUE)
+  source(tf, local = env)  # if it aborts, the last header printed is your offender
+  # gctorture2(enable = FALSE)
+}
+cat("\nAll examples completed without abort in single session.\n")
+
+
+for f in man/*.Rd; do
+  echo ">>> Running $(basename "$f")"
+  Rscript -e "rd<-tools::parse_Rd('$f', encoding='UTF-8');
+              tf<-tempfile(fileext='.R'); tools::Rd2ex(rd, out=tf);
+              source(tf)" >/tmp/ex.log 2>&1 || { echo 'FAILED'; exit 1; }
+done
+
+
+
+# In package root
+Sys.setenv(R_ABORT_ON_PROTECT_ERROR = "1")  # make PROTECT bugs fatal where they occur
+
+# Turn only "stack imbalance" warnings into errors and capture a dump
+withCallingHandlers(
+  {
+    # run the same examples script
+    source("gflow-Ex.R")
+  },
+  warning = function(w) {
+    if (grepl("stack imbalance", conditionMessage(w), fixed = TRUE)) {
+      dump.frames("stack_imbalance_dump", to.file = TRUE)
+      stop(w)  # convert to error so we halt right at the offender
+    }
+  }
+)
+
+
+# --- Strict settings so we fail at the origin ---
+Sys.setenv(R_ABORT_ON_PROTECT_ERROR = "1")
+options(warn = 1)  # print warnings in order (not buffered)
+
+# We'll write the dump to a guaranteed path and print it.
+dump_path <- file.path(getwd(), "last.dump.rda")
+
+# Evaluate gflow-Ex.R line-by-line to pinpoint the first imbalance.
+lines <- readLines("gflow-Ex.R", warn = FALSE)
+env <- new.env(parent = baseenv())
+
+cat(sprintf("Running %d lines from gflow-Ex.R ...\n", length(lines)))
+for (i in seq_along(lines)) {
+  withCallingHandlers(
+    {
+      expr <- parse(text = lines[i])
+      if (length(expr)) eval(expr, envir = env)
+    },
+    warning = function(w) {
+      msg <- conditionMessage(w)
+      if (grepl("stack imbalance", msg, fixed = TRUE)) {
+        cat("\n### STACK IMBALANCE at line", i, "###\n")
+        cat("Message: ", msg, "\n", sep = "")
+        cat("Context (prev..next):\n",
+            paste0("  ", lines[pmax(1, i-5):pmin(length(lines), i+5)]),
+            sep = "\n")
+        # Create a dump you can inspect with debugger()
+        dump.frames("last.dump", to.file = TRUE)
+        cat("\nWrote dump to: ", dump_path, "\n", sep = "")
+        stop(w)  # convert to error so we halt right here
+      } else {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+}
+cat("\nAll lines completed with no stack imbalance.\n")
+
+
+# Strict settings
+Sys.setenv(R_ABORT_ON_PROTECT_ERROR = "1")
+options(warn = 1)  # warnings are immediate
+
+# Attach default packages like an interactive session
+for (pkg in c("stats","graphics","grDevices","utils","datasets","methods")) {
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+}
+
+# Ensure your package is attached (exports visible like in R CMD check)
+suppressPackageStartupMessages(library(gflow))
+
+# Prepare runner
+dump_path <- file.path(getwd(), "last.dump.rda")
+lines <- readLines("gflow-Ex.R", warn = FALSE)
+env <- new.env(parent = .GlobalEnv)  # <-- key: inherits normal search path
+
+cat(sprintf("Running %d lines from gflow-Ex.R ...\n", length(lines)))
+for (i in seq_along(lines)) {
+  withCallingHandlers(
+    {
+      expr <- parse(text = lines[i])
+      if (length(expr)) eval(expr, envir = env)
+    },
+    warning = function(w) {
+      msg <- conditionMessage(w)
+      if (grepl("stack imbalance", msg, fixed = TRUE)) {
+        cat("\n### STACK IMBALANCE at line", i, "###\n")
+        cat("Message: ", msg, "\n", sep = "")
+        cat("Context (prev..next):\n",
+            paste0("  ", lines[pmax(1, i-5):pmin(length(lines), i+5)]),
+            sep = "\n")
+        dump.frames("last.dump", to.file = TRUE)  # -> last.dump.rda
+        cat("\nWrote dump to: ", dump_path, "\n", sep = "")
+        stop(w)
+      } else {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+}
+cat("\nAll lines completed with no stack imbalance.\n")
+
+# --- strict settings ---
+Sys.setenv(R_ABORT_ON_PROTECT_ERROR = "1")
+options(warn = 1)
+
+# Attach default base packages & gflow so examples see them
+for (pkg in c("stats","graphics","grDevices","utils","datasets","methods"))
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+suppressPackageStartupMessages(library(gflow))
+
+# Parse the entire script with source refs
+ex_file <- "gflow-Ex.R"
+exprs <- parse(file = ex_file, keep.source = TRUE)
+lines <- readLines(ex_file, warn = FALSE)
+env <- new.env(parent = .GlobalEnv)
+dump_path <- file.path(getwd(), "last.dump.rda")
+
+cat(sprintf("Running %d expressions from %s ...\n", length(exprs), ex_file))
+for (i in seq_along(exprs)) {
+  withCallingHandlers(
+    {
+      eval(exprs[[i]], envir = env)
+    },
+    warning = function(w) {
+      msg <- conditionMessage(w)
+      if (grepl("stack imbalance", msg, fixed = TRUE)) {
+        sr <- attr(exprs[[i]], "srcref")
+        if (!is.null(sr)) {
+          start <- sr[[1]]; end <- sr[[3]]
+          cat("\n### STACK IMBALANCE at expression", i,
+              sprintf("(lines %d-%d)", start, end), "###\n", sep = " ")
+          ctx <- lines[pmax(1, start-5):pmin(length(lines), end+5)]
+          cat("Message: ", msg, "\n", sep = "")
+          cat("Context:\n", paste0("  ", ctx), sep = "\n")
+        } else {
+          cat("\n### STACK IMBALANCE at expression", i, "(no srcref) ###\n")
+          cat("Message: ", msg, "\n", sep = "")
+        }
+        dump.frames("last.dump", to.file = TRUE)  # -> last.dump.rda
+        cat("\nWrote dump to: ", dump_path, "\n", sep = "")
+        stop(w)
+      } else {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+}
+cat("\nAll expressions completed with no stack imbalance.\n")
+
+
+
+# Strict settings
+Sys.setenv(R_ABORT_ON_PROTECT_ERROR = "1")
+options(warn = 2)  # turn warnings into errors so we can trap them
+
+# Attach default packages + gflow (like an interactive session)
+for (pkg in c("stats","graphics","grDevices","utils","datasets","methods")) {
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+}
+suppressPackageStartupMessages(library(gflow))
+
+# Parse all expressions with source references
+ex_file <- "gflow-Ex.R"
+exprs <- parse(file = ex_file, keep.source = TRUE)
+lines <- readLines(ex_file, warn = FALSE)
+env <- new.env(parent = .GlobalEnv)
+
+cat(sprintf("Running %d expressions from %s ...\n", length(exprs), ex_file))
+
+handle_fail <- function(i, cond) {
+  msg <- conditionMessage(cond)
+  sr  <- attr(exprs[[i]], "srcref")
+  if (!is.null(sr)) {
+    start <- sr[[1]]; end <- sr[[3]]
+    cat("\n### FAILURE at expression", i, sprintf("(lines %d-%d)", start, end), "###\n")
+    cat("Message: ", msg, "\n", sep = "")
+    ctx <- lines[pmax(1, start-5):pmin(length(lines), end+5)]
+    cat("Context:\n", paste0("  ", ctx), sep = "\n")
+  } else {
+    cat("\n### FAILURE at expression", i, "(no srcref) ###\nMessage: ", msg, "\n", sep = "")
+  }
+  dump.frames("last.dump", to.file = TRUE)  # -> last.dump.rda in cwd
+  cat("\nWrote dump to: ", file.path(getwd(), "last.dump.rda"), "\n", sep = "")
+}
+
+for (i in seq_along(exprs)) {
+  # Catch both warnings-as-errors and regular errors
+  tryCatch(
+    {
+      withCallingHandlers(
+        {
+          eval(exprs[[i]], envir = env)
+        },
+        warning = function(w) {
+          # If warn=2, this usually won't fire; but keep it as belt-and-suspenders
+          if (grepl("stack imbalance", conditionMessage(w), fixed = TRUE)) {
+            handle_fail(i, w); stop(w)
+          } else {
+            invokeRestart("muffleWarning")
+          }
+        }
+      )
+    },
+    error = function(e) {
+      # We stop on ANY error now; report and dump for inspection
+      handle_fail(i, e)
+      stop(e)
+    }
+  )
+}
+
+cat("\nAll expressions completed with no stack imbalance.\n")
+
+
+-----
+
+# Strict like R CMD check
+Sys.setenv(
+  R_ABORT_ON_PROTECT_ERROR = "1",  # fatal on PROTECT bugs
+  `_R_CHECK_INTERNALS2_`   = "1"   # harden internal checks → turn latent issues into aborts
+)
+options(warn = 2)                  # warnings → errors
+
+# Attach default packages + your package (like a normal session)
+for (pkg in c("stats","graphics","grDevices","utils","datasets","methods"))
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+suppressPackageStartupMessages(library(gflow))
+
+# Parse whole file to keep multi-line expressions intact
+ex_file <- "gflow-Ex.R"
+exprs   <- parse(file = ex_file, keep.source = TRUE)
+lines   <- readLines(ex_file, warn = FALSE)
+env     <- new.env(parent = .GlobalEnv)
+
+handle_fail <- function(i, cond) {
+  sr  <- attr(exprs[[i]], "srcref")
+  msg <- conditionMessage(cond)
+  if (!is.null(sr)) {
+    start <- sr[[1]]; end <- sr[[3]]
+    cat("\n### FAILURE at expression", i, sprintf("(lines %d-%d)", start, end), "###\n")
+    cat("Message: ", msg, "\n", sep = "")
+    ctx <- lines[pmax(1, start-5):pmin(length(lines), end+5)]
+    cat("Context:\n", paste0("  ", ctx), sep = "\n")
+  } else {
+    cat("\n### FAILURE at expression", i, "(no srcref) ###\nMessage: ", msg, "\n", sep = "")
+  }
+  dump.frames("last.dump", to.file = TRUE)
+  cat("\nWrote dump to: ", file.path(getwd(), "last.dump.rda"), "\n", sep = "")
+}
+
+cat(sprintf("Running %d expressions under check-like settings...\n", length(exprs)))
+for (i in seq_along(exprs)) {
+  tryCatch(
+    {
+      withCallingHandlers(
+        {
+            # Make GC more aggressive every so often to surface relocations
+            if (i %% 10L == 0L) gctorture2(on = TRUE, inhibit_release = TRUE)
+            on.exit(gctorture2(on = FALSE), add = TRUE)
+
+            eval(exprs[[i]], envir = env)
+        },
+        warning = function(w) {
+          if (grepl("stack imbalance", conditionMessage(w), fixed = TRUE)) {
+            handle_fail(i, w); stop(w)
+          } else invokeRestart("muffleWarning")
+        }
+      )
+    },
+    error = function(e) { handle_fail(i, e); stop(e) }
+  )
+}
+cat("\nAll expressions completed without stack imbalance.\n")
+
+
+## strict like R CMD check
+Sys.setenv(`_R_CHECK_INTERNALS2_`="1", R_ABORT_ON_PROTECT_ERROR="1")
+options(warn = 2)
+
+## attach defaults + your pkg
+for (p in c("stats","graphics","grDevices","utils","datasets","methods"))
+  suppressPackageStartupMessages(library(p, character.only=TRUE))
+suppressPackageStartupMessages(library(gflow))
+
+## parse whole examples file (handles multi-line calls)
+ex_file <- "gflow-Ex.R"
+exprs   <- parse(file = ex_file, keep.source = TRUE)
+lines   <- readLines(ex_file, warn = FALSE)
+env     <- new.env(parent = .GlobalEnv)
+
+handle_fail <- function(i, cond){
+  msg <- conditionMessage(cond); sr <- attr(exprs[[i]], "srcref")
+  if (!is.null(sr)) {
+    s <- sr[[1]]; e <- sr[[3]]
+    cat("\n### FAILURE at expr", i, sprintf("(lines %d-%d)", s, e), "###\n")
+    cat("Message: ", msg, "\n", sep = "")
+    cat("Context:\n", paste0("  ", lines[pmax(1, s-5):pmin(length(lines), e+5)]), sep="\n")
+  } else cat("\n### FAILURE at expr", i, "(no srcref) ###\nMessage: ", msg, "\n", sep = "")
+  dump.frames("last.dump", to.file = TRUE)
+  cat("\nWrote dump to: ", file.path(getwd(), "last.dump.rda"), "\n", sep = "")
+}
+
+cat(sprintf("Running %d expressions under check-like settings...\n", length(exprs)))
+for (i in seq_along(exprs)) {
+  tryCatch(
+    {
+      ## make GC nasty every N expressions
+      if (i %% 10L == 0L) gctorture2(step = 1, wait = 0, inhibit_release = TRUE)
+      on.exit(gctorture2(step = 0), add = TRUE)
+
+      withCallingHandlers(
+        { eval(exprs[[i]], envir = env) },
+        warning = function(w) {
+          if (grepl("stack imbalance", conditionMessage(w), fixed = TRUE)) {
+            handle_fail(i, w); stop(w)
+          } else invokeRestart("muffleWarning")
+        }
+      )
+    },
+    error = function(e) { handle_fail(i, e); stop(e) }
+  )
+}
+cat("\nAll expressions completed with no stack imbalance.\n")
+
+
+
+# Read the generated examples file
+examples_code <- readLines("gflow-Ex.R")
+
+# Find all function names being tested
+# Look for patterns like "### Name: functionname"
+name_lines <- grep("^### Name:", examples_code)
+function_names <- gsub("### Name: ", "", examples_code[name_lines])
+
+# Run each example block separately
+for (i in seq_along(function_names)) {
+  cat("\n\nTesting function:", function_names[i], "\n")
+  
+  # Extract code for this specific example
+  start_line <- name_lines[i]
+  end_line <- if (i < length(name_lines)) name_lines[i+1] - 1 else length(examples_code)
+  
+  # Create temporary file with just this example
+  example_code <- examples_code[start_line:end_line]
+  writeLines(example_code, "temp_example.R")
+  
+  # Try to run it
+  tryCatch({
+    source("temp_example.R", echo = TRUE)
+    cat("SUCCESS: No crash for", function_names[i], "\n")
+  }, error = function(e) {
+    cat("ERROR in", function_names[i], ":", e$message, "\n")
+  })
+}

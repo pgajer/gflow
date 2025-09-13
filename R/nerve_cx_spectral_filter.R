@@ -278,7 +278,7 @@ nerve.cx.spectral.filter <- function(complex,
         message(sprintf("  Number of candidates: %d", n.candidates))
     }
 
-    result <- .Call("S_nerve_cx_spectral_filter",
+    result <- .Call(S_nerve_cx_spectral_filter,
                     complex$complex_ptr,
                     as.numeric(y),
                     as.integer(laplacian.type.map[laplacian.type]),

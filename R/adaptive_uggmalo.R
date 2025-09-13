@@ -164,7 +164,7 @@ adaptive.uggmalo <- function(adj.list,
 
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    result <- .Call("S_adaptive_uggmalo",
+    result <- .Call(S_adaptive_uggmalo,
                    adj.list.0based,
                    weight.list,
                    as.double(y),

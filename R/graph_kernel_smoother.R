@@ -50,7 +50,6 @@
 #' str(fit)
 #' }
 #'
-#' @seealso \code{\link{Rcpp_graph.kernel.smoother}} (internal), related graph smoothers in this package.
 #' @export
 graph.kernel.smoother <- function(adj, w, y, bandwidth, with_details = FALSE) {
   # Basic validation at the R layer (fast errors, helpful messages)
@@ -406,7 +405,7 @@ S.version.graph.kernel.smoother <- function(
     ## Convert to 0-based indexing for C++ code
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    result <- .Call("S_graph_kernel_smoother",
+    result <- .Call(S_graph_kernel_smoother,
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),

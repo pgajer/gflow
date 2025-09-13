@@ -7,19 +7,20 @@
 #include "predictive_errors.hpp"
 #include "adaptive_nbhd_size.hpp"
 
-#include <vector>
-#include <queue>
-#include <memory>
-#include <limits>
 #include <algorithm>
-#include <unordered_set>
-#include <set>
-#include <stack>
-#include <numeric>
-#include <unordered_map>
-#include <random>
 #include <chrono>
 #include <cmath>
+#include <cstdio>    // snprintf
+#include <memory>
+#include <numeric>
+#include <limits>
+#include <queue>
+#include <random>
+#include <set>
+#include <stack>
+#include <unordered_set>
+#include <unordered_map>
+#include <vector>
 
 #include <R.h>
 #include <Rinternals.h>
@@ -76,34 +77,45 @@ extern "C" {
 }
 
 /**
-* Computes Kernel-Weighted Mean on a Graph
-*
-* This function calculates the kernel-weighted mean of values associated with vertices in a graph.
-* It uses the graph structure, edge lengths, and a specified kernel function to compute weighted
-* averages for each vertex.
-*
-* @param graph A list of integer vectors. Each element represents a vertex, and the vector
-*   contains indices of its neighboring vertices.
-* @param edge_lengths A list of numeric vectors. Each element corresponds to a vertex, and the
-*   vector contains the lengths (or distances) of edges to its neighbors. The structure should
-*   match that of the `graph` parameter.
-* @param y A numeric vector of values associated with each vertex in the graph.
-* @param ikernel An integer specifying the kernel function to use for weighting.
-* @param dist_normalization_factor A numeric value used to normalize distances in the graph.
-*   Default is 1.01.
-*
-* @return A numeric vector containing the kernel-weighted mean for each vertex in the graph.
-*
-* @details
-* The function performs the following steps for each vertex:
-* 1. Normalizes the distances to its neighbors.
-* 2. Applies the specified kernel function to these normalized distances.
-* 3. Computes a weighted average of the vertex's value and its neighbors' values,
-*    using the kernel weights.
-*
-* For vertices with no neighbors, their original value from `y` is retained.
-*
-*/
+ * Computes Kernel-Weighted Mean on a Graph
+ *
+ * This function calculates the kernel-weighted mean of values associated with vertices in a graph.
+ * It uses the graph structure, edge lengths, and a specified kernel function to compute weighted
+ * averages for each vertex.
+ *
+ * @param graph A list of integer vectors. Each element represents a vertex, and the vector
+ *   contains indices of its neighboring vertices.
+ * @param edge_lengths A list of numeric vectors. Each element corresponds to a vertex, and the
+ *   vector contains the lengths (or distances) of edges to its neighbors. The structure should
+ *   match that of the `graph` parameter.
+ * @param y A numeric vector of values associated with each vertex in the graph.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
+ * @param dist_normalization_factor A numeric value used to normalize distances in the graph.
+ *   Default is 1.01.
+ *
+ * @return A numeric vector containing the kernel-weighted mean for each vertex in the graph.
+ *
+ * @details
+ * The function performs the following steps for each vertex:
+ * 1. Normalizes the distances to its neighbors.
+ * 2. Applies the specified kernel function to these normalized distances.
+ * 3. Computes a weighted average of the vertex's value and its neighbors' values,
+ *    using the kernel weights.
+ *
+ * For vertices with no neighbors, their original value from `y` is retained.
+ *
+ */
 std::vector<double> graph_kmean(const std::vector<std::vector<int>>& graph,
                                 const std::vector<std::vector<double>>& edge_lengths,
                                 const std::vector<double>& y,
@@ -240,7 +252,18 @@ SEXP S_graph_kmean(SEXP s_graph,
  * @param weights A vector of weights for each vertex in the graph. A weight of 0 will cause
  *                the vertex to be excluded from calculations.
  * @param y A vector of values associated with each vertex in the graph.
- * @param ikernel An integer specifying the kernel function to use for weighting.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances in the graph.
  *                                  Default value is 1.01.
  *
@@ -344,8 +367,18 @@ std::pair<std::vector<double>, std::vector<int>> graph_kmean_with_weights(const 
  *        in the graph. It should have the same structure as the 'graph' parameter.
  * @param y A vector of values associated with each vertex in the graph. These can be
  *        binary (0 or 1) or continuous values.
- * @param ikernel An integer specifying the kernel function to use for weighting.
- *        Default is 1.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances in the graph.
  *        Default is 1.01.
  * @param n_CVs The number of cross-validation iterations to perform. Must be greater than 0.
@@ -625,8 +658,18 @@ SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
  *        in the graph. It should have the same structure as the 'graph' parameter.
  * @param y A vector of values associated with each vertex in the graph. These can be
  *        binary (0 or 1) or continuous values.
- * @param ikernel An integer specifying the kernel function to use for weighting.
- *        Default is 1.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances in the graph.
  *        Default is 1.01.
  * @param n_CVs The number of cross-validation iterations to perform. Must be greater than 0.
@@ -886,7 +929,18 @@ SEXP S_graph_kmean_cv(SEXP s_graph,
  *                    neighbors in the graph structure.
  * @param weights A vector of strictly positive weights derived from Bayesian bootstrap that sum to 1.
  * @param y A vector of function values at each vertex.
- * @param ikernel An integer specifying the kernel function to use.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances. Default is 1.01.
  * @param epsilon Threshold for checking effectively zero weight sums. Default is 1e-15.
  *
@@ -986,7 +1040,18 @@ std::vector<double> graph_kmean_with_bb_weigths(const std::vector<std::vector<in
  * @param n_cores Number of cores to use for parallel computation:
  *                - n_cores = 1: serial execution
  *                - n_cores > 1: parallel execution with specified number of cores
- * @param ikernel An integer specifying the kernel function to use.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor A factor used to normalize distances in the kernel
  *                                  computation (default: 1.01).
  * @param epsilon Small positive number to check for effectively zero weights sum (default: 1e-15).
@@ -1092,7 +1157,18 @@ double dist_normalization_factor = 1.01,
  * @param n_cores Number of cores for parallel computation (default: 1)
  *                - 1: serial execution
  *                - >1: parallel execution
- * @param ikernel Kernel function selector (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param dist_normalization_factor Distance normalization factor (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
  *
@@ -1158,7 +1234,18 @@ bb_cri_t graph_kmean_bb_cri(const std::vector<std::vector<int>>& graph,
  * @param p Probability level for credible intervals (default: 0.95)
  * @param n_bb Number of bootstrap iterations (default: 500, 0 to skip)
  * @param use_median Use median instead of mean for central tendency (default: false)
- * @param ikernel Kernel function selector (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param n_cores Number of cores for parallel computation (default: 1)
  * @param dist_normalization_factor Distance normalization factor (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
@@ -1319,7 +1406,18 @@ adaptive_nbhd_size_t gkmm(const std::vector<std::vector<int>>& graph,
  * @param n_CV_folds Number of folds for cross-validation (default: 10)
  * @param p Probability level for credible intervals (default: 0.95)
  * @param n_bb Number of bootstrap iterations (default: 500)
- * @param ikernel Kernel function selector (default: 1)
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
  * @param n_cores Number of cores for parallel computation (default: 1)
  * @param dist_normalization_factor Distance normalization factor (default: 1.01)
  * @param epsilon Numerical stability parameter (default: 1e-15)
@@ -1419,160 +1517,215 @@ univariate_gkmm(const std::vector<double>& x,
  * @throws R Rf_error if input validation fails or memory allocation errors occur
  */
 SEXP S_univariate_gkmm(SEXP s_x,
-                       SEXP s_y,
-                       SEXP s_y_true,
-                       SEXP s_use_median,
-                       SEXP s_h_min,
-                       SEXP s_h_max,
-                       SEXP s_n_CVs,
-                       SEXP s_n_CV_folds,
-                       SEXP s_p,
-                       SEXP s_n_bb,
-                       SEXP s_ikernel,
-                       SEXP s_n_cores,
-                       SEXP s_dist_normalization_factor,
-                       SEXP s_epsilon,
-                       SEXP s_seed) {
+                                  SEXP s_y,
+                                  SEXP s_y_true,
+                                  SEXP s_use_median,
+                                  SEXP s_h_min,
+                                  SEXP s_h_max,
+                                  SEXP s_n_CVs,
+                                  SEXP s_n_CV_folds,
+                                  SEXP s_p,
+                                  SEXP s_n_bb,
+                                  SEXP s_ikernel,
+                                  SEXP s_n_cores,
+                                  SEXP s_dist_normalization_factor,
+                                  SEXP s_epsilon,
+                                  SEXP s_seed) {
+  // ---- x, y (defensive coercion + copy) ----
+  std::vector<double> x, y, y_true;
 
-    int n_protected = 0;  // Track number of PROTECT calls
+  {
+    SEXP sx = s_x;
+    if (TYPEOF(sx) != REALSXP) sx = Rf_coerceVector(sx, REALSXP);
+    const R_xlen_t nx = XLENGTH(sx);
+    x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
 
-    int n_points = LENGTH(s_x);
-    std::vector<double> x(REAL(s_x), REAL(s_x) + n_points);
-    std::vector<double> y(REAL(s_y), REAL(s_y) + n_points);
+    SEXP sy = s_y;
+    if (TYPEOF(sy) != REALSXP) sy = Rf_coerceVector(sy, REALSXP);
+    const R_xlen_t ny = XLENGTH(sy);
+    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
 
-    // Handle empty y_true vector
-    std::vector<double> y_true;
-    if (LENGTH(s_y_true) == n_points) {
-        y_true.assign(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
+    if (nx != ny) {
+      Rf_error("length(x) must equal length(y).");
     }
 
-    bool use_median = (LOGICAL(s_use_median)[0] == 1);
-    int h_min = INTEGER(s_h_min)[0];
-    int h_max = INTEGER(s_h_max)[0];
-    int n_CVs = INTEGER(s_n_CVs)[0];
-    int n_CV_folds = INTEGER(s_n_CV_folds)[0];
-    double p = REAL(s_p)[0];
-    int n_bb = INTEGER(s_n_bb)[0];
-    int ikernel = INTEGER(s_ikernel)[0];
-    int n_cores = INTEGER(s_n_cores)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    double epsilon = REAL(s_epsilon)[0];
-    unsigned int seed = (unsigned int)INTEGER(s_seed)[0];
-
-    auto cpp_results = univariate_gkmm(x,
-                                       y,
-                                       y_true,
-                                       use_median,
-                                       h_min,
-                                       h_max,
-                                       n_CVs,
-                                       n_CV_folds,
-                                       p,
-                                       n_bb,
-                                       ikernel,
-                                       n_cores,
-                                       dist_normalization_factor,
-                                       epsilon,
-                                       seed);
-
-    // Construct s_hHN_graphs
-    SEXP s_hHN_graphs = PROTECT(Rf_allocVector(VECSXP, h_max - h_min + 1)); n_protected++;
-    SEXP h_names = PROTECT(Rf_allocVector(STRSXP, h_max - h_min + 1)); n_protected++;
-
-    for (int i = 0; i < h_max - h_min + 1; i++) {
-        SEXP h_graph = PROTECT(Rf_allocVector(VECSXP, 2));
-        SEXP h_graph_names = PROTECT(Rf_allocVector(STRSXP, 2));
-
-        SEXP adj_list = convert_vector_vector_int_to_R(cpp_results.graphs[i].first); UNPROTECT(1);
-        SEXP edge_lengths = convert_vector_vector_double_to_R(cpp_results.graphs[i].second); UNPROTECT(1);
-
-        SET_VECTOR_ELT(h_graph, 0, adj_list);
-        SET_VECTOR_ELT(h_graph, 1, edge_lengths);
-
-        SET_STRING_ELT(h_graph_names, 0, Rf_mkChar("adj_list"));
-        SET_STRING_ELT(h_graph_names, 1, Rf_mkChar("edge_lengths"));
-        Rf_setAttrib(h_graph, R_NamesSymbol, h_graph_names);
-
-        SET_VECTOR_ELT(s_hHN_graphs, i, h_graph);
-
-        char h_label[32];
-        snprintf(h_label, sizeof(h_label), "h_%d", h_min + i);
-        SET_STRING_ELT(h_names, i, Rf_mkChar(h_label));
-
-        UNPROTECT(2);  // h_graph and h_graph_names
+    if (s_y_true != R_NilValue) {
+      SEXP syt = s_y_true;
+      if (TYPEOF(syt) != REALSXP) syt = Rf_coerceVector(syt, REALSXP);
+      const R_xlen_t nyt = XLENGTH(syt);
+      if (nyt == ny) {
+        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+      } // else: leave y_true empty (treated as unavailable)
     }
-    Rf_setAttrib(s_hHN_graphs, R_NamesSymbol, h_names);
+  }
 
-    // Creating return list
-    const int N_COMPONENTS = 11;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+  // ---- scalars (coerce via Rf_as*) ----
+  const bool   use_median = (Rf_asLogical(s_use_median) == TRUE);
+  const int    h_min      = Rf_asInteger(s_h_min);
+  const int    h_max      = Rf_asInteger(s_h_max);
+  const int    n_CVs      = Rf_asInteger(s_n_CVs);
+  const int    n_CV_folds = Rf_asInteger(s_n_CV_folds);
+  const double p          = Rf_asReal(s_p);
+  const int    n_bb       = Rf_asInteger(s_n_bb);
+  const int    ikernel    = Rf_asInteger(s_ikernel);
+  const int    n_cores    = Rf_asInteger(s_n_cores);
+  const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+  const double epsilon    = Rf_asReal(s_epsilon);
+  const unsigned int seed = static_cast<unsigned int>(Rf_asInteger(s_seed));
 
-    SEXP s_h_values = convert_vector_int_to_R(cpp_results.h_values); n_protected++;
-    SET_VECTOR_ELT(result, 0, s_h_values);
-    SET_VECTOR_ELT(result, 1, s_hHN_graphs);
+  if (h_max < h_min) {
+    Rf_error("h_max must be >= h_min.");
+  }
+  const R_xlen_t K = static_cast<R_xlen_t>(static_cast<long long>(h_max) - static_cast<long long>(h_min) + 1LL);
 
-    if (!cpp_results.cv_errors.empty() && n_points > 0) {
-        SEXP s_cv_errors = convert_vector_double_to_R(cpp_results.cv_errors); n_protected++;
-        SET_VECTOR_ELT(result, 2, s_cv_errors);
-    } else {
-        SET_VECTOR_ELT(result, 2, R_NilValue);
+  // ---- core computation (no R allocations inside) ----
+  auto cpp_results = univariate_gkmm(x, y, y_true,
+                                     use_median,
+                                     h_min, h_max,
+                                     n_CVs, n_CV_folds,
+                                     p, n_bb, ikernel, n_cores,
+                                     dist_normalization_factor,
+                                     epsilon, seed);
+
+  // ---- build s_hHN_graphs (container-first) ----
+  int nprot = 0;
+  SEXP s_hHN_graphs = PROTECT(Rf_allocVector(VECSXP, K)); ++nprot;
+  SEXP h_names      = PROTECT(Rf_allocVector(STRSXP, K)); ++nprot;
+
+  for (R_xlen_t i = 0; i < K; ++i) {
+    // Per-h graph list (adj_list, edge_lengths)
+    SEXP h_graph = PROTECT(Rf_allocVector(VECSXP, 2)); ++nprot;
+
+    // Elements (protect temp → set → unprotect)
+    {
+      SEXP adj = PROTECT(convert_vector_vector_int_to_R(
+                  cpp_results.graphs[static_cast<size_t>(i)].first));
+      SET_VECTOR_ELT(h_graph, 0, adj);
+      UNPROTECT(1);
+
+      SEXP elen = PROTECT(convert_vector_vector_double_to_R(
+                    cpp_results.graphs[static_cast<size_t>(i)].second));
+      SET_VECTOR_ELT(h_graph, 1, elen);
+      UNPROTECT(1);
     }
 
-    SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(s_opt_h)[0] = cpp_results.opt_h;
-    SET_VECTOR_ELT(result, 3, s_opt_h);
-
-    SEXP s_opt_h_graph_adj_list = convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first); UNPROTECT(1);
-    SET_VECTOR_ELT(result, 4, s_opt_h_graph_adj_list);
-
-    SEXP s_opt_h_graph_edge_lengths = convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second); UNPROTECT(1);
-    SET_VECTOR_ELT(result, 5, s_opt_h_graph_edge_lengths);
-
-    SEXP s_condEy = convert_vector_double_to_R(cpp_results.condEy); n_protected++;
-    SET_VECTOR_ELT(result, 6, s_condEy);
-
-    if (cpp_results.bb_condEy.size() > 0) {
-        SEXP s_bb_condEy = convert_vector_double_to_R(cpp_results.bb_condEy); n_protected++;
-        SET_VECTOR_ELT(result, 7, s_bb_condEy);
-
-        SEXP s_cri_L = convert_vector_double_to_R(cpp_results.cri_L); n_protected++;
-        SET_VECTOR_ELT(result, 8, s_cri_L);
-
-        SEXP s_cri_U = convert_vector_double_to_R(cpp_results.cri_U); n_protected++;
-        SET_VECTOR_ELT(result, 9, s_cri_U);
-    } else {
-        SET_VECTOR_ELT(result, 7, R_NilValue);
-        SET_VECTOR_ELT(result, 8, R_NilValue);
-        SET_VECTOR_ELT(result, 9, R_NilValue);
+    // names for h_graph while protected
+    {
+      SEXP gn = PROTECT(Rf_allocVector(STRSXP, 2)); ++nprot;
+      SET_STRING_ELT(gn, 0, Rf_mkChar("adj_list"));
+      SET_STRING_ELT(gn, 1, Rf_mkChar("edge_lengths"));
+      Rf_setAttrib(h_graph, R_NamesSymbol, gn);
+      UNPROTECT(1); --nprot; // gn
     }
 
-    if (cpp_results.true_errors.size() > 0) {
-        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-        double mean_true_error = std::accumulate(cpp_results.true_errors.begin(),
-                                                 cpp_results.true_errors.end(), 0.0) /  cpp_results.true_errors.size();
-        REAL(s_true_error)[0] = mean_true_error;
-        SET_VECTOR_ELT(result, 10, s_true_error);
-    } else {
-        SET_VECTOR_ELT(result, 10, R_NilValue);
-    }
+    SET_VECTOR_ELT(s_hHN_graphs, i, h_graph);
+    UNPROTECT(1); --nprot; // h_graph
 
-    // Setting names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("graphs"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("h_cv_errors"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("opt_graph_adj_list"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("opt_graph_edge_lengths"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 8, Rf_mkChar("opt_ci_lower"));
-    SET_STRING_ELT(names, 9, Rf_mkChar("opt_ci_upper"));
+    char h_label[32];
+    std::snprintf(h_label, sizeof(h_label), "h_%d", h_min + static_cast<int>(i));
+    SET_STRING_ELT(h_names, i, Rf_mkChar(h_label));
+  }
+  Rf_setAttrib(s_hHN_graphs, R_NamesSymbol, h_names);
+
+  // ---- build result (container-first) ----
+  const int N_COMPONENTS = 11;
+  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+
+  // 0: h_values
+  {
+    SEXP hv = PROTECT(convert_vector_int_to_R(cpp_results.h_values));
+    SET_VECTOR_ELT(result, 0, hv);
+    UNPROTECT(1);
+  }
+  // 1: graphs
+  SET_VECTOR_ELT(result, 1, s_hHN_graphs); // already protected as part of nprot
+
+  // 2: h_cv_errors (or NULL)
+  if (!cpp_results.cv_errors.empty() && !x.empty()) {
+    SEXP ce = PROTECT(convert_vector_double_to_R(cpp_results.cv_errors));
+    SET_VECTOR_ELT(result, 2, ce);
+    UNPROTECT(1);
+  } else {
+    SET_VECTOR_ELT(result, 2, R_NilValue);
+  }
+
+  // 3: opt_h (scalar)
+  {
+    SEXP opt_h = PROTECT(Rf_ScalarReal(cpp_results.opt_h)); ++nprot;
+    SET_VECTOR_ELT(result, 3, opt_h);
+    // keep opt_h protected until final UNPROTECT(nprot) or unprotect now:
+    UNPROTECT(1); --nprot; // safe to release immediately after insertion
+  }
+
+  // 4–5: opt graph pieces
+  {
+    SEXP adj = PROTECT(convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first));
+    SET_VECTOR_ELT(result, 4, adj);
+    UNPROTECT(1);
+
+    SEXP eln = PROTECT(convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second));
+    SET_VECTOR_ELT(result, 5, eln);
+    UNPROTECT(1);
+  }
+
+  // 6: predictions (condEy)
+  {
+    SEXP pr = PROTECT(convert_vector_double_to_R(cpp_results.condEy));
+    SET_VECTOR_ELT(result, 6, pr);
+    UNPROTECT(1);
+  }
+
+  // 7–9: bb_predictions and CIs (or NULLs)
+  if (!cpp_results.bb_condEy.empty()) {
+    SEXP bb = PROTECT(convert_vector_double_to_R(cpp_results.bb_condEy));
+    SET_VECTOR_ELT(result, 7, bb);
+    UNPROTECT(1);
+
+    SEXP L = PROTECT(convert_vector_double_to_R(cpp_results.cri_L));
+    SET_VECTOR_ELT(result, 8, L);
+    UNPROTECT(1);
+
+    SEXP U = PROTECT(convert_vector_double_to_R(cpp_results.cri_U));
+    SET_VECTOR_ELT(result, 9, U);
+    UNPROTECT(1);
+  } else {
+    SET_VECTOR_ELT(result, 7, R_NilValue);
+    SET_VECTOR_ELT(result, 8, R_NilValue);
+    SET_VECTOR_ELT(result, 9, R_NilValue);
+  }
+
+  // 10: true_error (mean) or NULL
+  if (!cpp_results.true_errors.empty()) {
+    const double mean_true_error =
+        std::accumulate(cpp_results.true_errors.begin(),
+                        cpp_results.true_errors.end(), 0.0)
+        / static_cast<double>(cpp_results.true_errors.size());
+    SEXP te = PROTECT(Rf_ScalarReal(mean_true_error)); ++nprot;
+    SET_VECTOR_ELT(result, 10, te);
+    UNPROTECT(1); --nprot; // release after insertion
+  } else {
+    SET_VECTOR_ELT(result, 10, R_NilValue);
+  }
+
+  // names for result (while result is protected)
+  {
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
+    SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
+    SET_STRING_ELT(names, 1,  Rf_mkChar("graphs"));
+    SET_STRING_ELT(names, 2,  Rf_mkChar("h_cv_errors"));
+    SET_STRING_ELT(names, 3,  Rf_mkChar("opt_h"));
+    SET_STRING_ELT(names, 4,  Rf_mkChar("opt_graph_adj_list"));
+    SET_STRING_ELT(names, 5,  Rf_mkChar("opt_graph_edge_lengths"));
+    SET_STRING_ELT(names, 6,  Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 7,  Rf_mkChar("bb_predictions"));
+    SET_STRING_ELT(names, 8,  Rf_mkChar("opt_ci_lower"));
+    SET_STRING_ELT(names, 9,  Rf_mkChar("opt_ci_upper"));
     SET_STRING_ELT(names, 10, Rf_mkChar("true_error"));
-
     Rf_setAttrib(result, R_NamesSymbol, names);
+    UNPROTECT(1); --nprot; // names
+  }
 
-    UNPROTECT(n_protected);
-
-    return result;
+  // Unprotect live containers: result + s_hHN_graphs (+ nothing else kept live)
+  UNPROTECT(nprot);
+  return result;
 }

@@ -61,7 +61,19 @@ extern "C" {
  * @param iterative_params Parameters for iterative imputation methods (only used with ITERATIVE_NEIGHBORHOOD_MATCHING)
  * @param apply_binary_threshold Whether to apply binary threshold for binary y (default: true).
  * @param binary_threshold Threshold for binary classification (default: 0.5).
- * @param ikernel Kernel type for distance weighting (default: 1).
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
+ *
  * @param dist_normalization_factor A scaling factor applied to the maximum
  * distance between a vertex and its neighbors. This ensures non-zero weights
  * even when all distances are equal, by slightly increasing the normalization range.
@@ -757,7 +769,19 @@ SEXP S_cv_imputation(SEXP Rtest_set,
  *              contains the indices of neighboring vertices for a given vertex.
  * @param d A vector of vectors containing the edge lengths. Each inner vector corresponds
  *          to a vertex and contains the lengths of edges to its neighbors.
- * @param ikernel An integer specifying the kernel function to use. Default is 1.
+ * @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
+ *               Available kernels:
+ *               - 0-Constant,
+ *               - 1-Epanechnikov,
+ *               - 2-Triangular,
+ *               - 3-TrExponential,
+ *               - 4-Laplace,
+ *               - 5-Normal,
+ *               - 6-Biweight,
+ *               - 7-Tricube,
+ *               - 8-Cosine
+ *               - 9-Hyperbolic
+ *
  * @param dist_normalization_factor A scaling factor applied to the maximum distance between
  *                                  a vertex and its neighbors. This ensures non-zero weights
  *                                  even when all distances are equal, by slightly increasing

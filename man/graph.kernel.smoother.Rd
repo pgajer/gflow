@@ -68,6 +68,3 @@ str(fit)
 }
 
 }
-\seealso{
-\code{\link{Rcpp_graph.kernel.smoother}} (internal), related graph smoothers in this package.
-}
