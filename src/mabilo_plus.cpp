@@ -922,37 +922,33 @@ SEXP S_mabilo_plus(SEXP s_x,
     // ---- Coerce x/y/w to REAL and copy out (long-vector safe) ----
     std::vector<double> x, y, w, y_true;
     {
-        int tprot = 0;
+        SEXP sx = s_x, sy = s_y, sw = s_w, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
+        PROTECT_INDEX pix, piy, piw, pzt; // pzt for syt
+        PROTECT_WITH_INDEX(sx, &pix);
+        PROTECT_WITH_INDEX(sy, &piy);
+        PROTECT_WITH_INDEX(sw, &piw);
+        PROTECT_WITH_INDEX(syt, &pzt);
 
-        SEXP sx = s_x;
-        if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
-        const R_xlen_t nx = XLENGTH(sx);
+        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
+        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
+        if (TYPEOF(sw) != REALSXP) REPROTECT(sw = Rf_coerceVector(sw, REALSXP), piw);
+        if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
+            REPROTECT(syt = Rf_coerceVector(syt, REALSXP), pzt);
+
+        const R_xlen_t nx = XLENGTH(sx), ny = XLENGTH(sy), nw = XLENGTH(sw);
+        if (nx != ny) { UNPROTECT(4); Rf_error("x and y must have the same length."); }
+        if (nx != nw) { UNPROTECT(4); Rf_error("x and w must have the same length."); }
+
         x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
-
-        SEXP sy = s_y;
-        if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-        const R_xlen_t ny = XLENGTH(sy);
         y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
-
-        SEXP sw = s_w;
-        if (TYPEOF(sw) != REALSXP) { sw = PROTECT(Rf_coerceVector(sw, REALSXP)); ++tprot; }
-        const R_xlen_t nw = XLENGTH(sw);
         w.assign(REAL(sw), REAL(sw) + static_cast<size_t>(nw));
-
-        if (nx != ny || nx != nw) {
-            Rf_error("x, y, and w must have the same length.");
-        }
-
-        if (s_y_true != R_NilValue) {
-            SEXP syt = s_y_true;
-            if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
+        if (syt != R_NilValue) {
             const R_xlen_t nyt = XLENGTH(syt);
             if (nyt == nx) {
                 y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-            } // else: leave empty; treated as unavailable
+            }
         }
-
-        if (tprot) UNPROTECT(tprot);
+        UNPROTECT(4); // sx, sy, sw, syt
     }
 
     // ---- Scalars / enums / strings ----
@@ -1001,9 +997,7 @@ SEXP S_mabilo_plus(SEXP s_x,
                                     dist_normalization_factor, epsilon, verbose);
 
     // ---- Build result (container-first; per-element protect) ----
-    int nprot = 0;
-    const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 13));
 
     // 0: k_values (sequence k_min..k_max)
     {
@@ -1096,26 +1090,22 @@ SEXP S_mabilo_plus(SEXP s_x,
         UNPROTECT(1);
     }
 
-    // names while result is protected
-    {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
-        SET_STRING_ELT(names, 0,  Rf_mkChar("k_values"));
-        SET_STRING_ELT(names, 1,  Rf_mkChar("opt_sm_k"));
-        SET_STRING_ELT(names, 2,  Rf_mkChar("opt_sm_k_idx"));
-        SET_STRING_ELT(names, 3,  Rf_mkChar("opt_ma_k"));
-        SET_STRING_ELT(names, 4,  Rf_mkChar("opt_ma_k_idx"));
-        SET_STRING_ELT(names, 5,  Rf_mkChar("k_mean_sm_errors"));
-        SET_STRING_ELT(names, 6,  Rf_mkChar("k_mean_ma_errors"));
-        SET_STRING_ELT(names, 7,  Rf_mkChar("k_mean_sm_true_errors"));
-        SET_STRING_ELT(names, 8,  Rf_mkChar("k_mean_ma_true_errors"));
-        SET_STRING_ELT(names, 9,  Rf_mkChar("sm_predictions"));
-        SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
-        SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
-        SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
-        Rf_setAttrib(result, R_NamesSymbol, names);
-        UNPROTECT(1); --nprot; // names
-    }
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 13));
+    SET_STRING_ELT(names, 0,  Rf_mkChar("k_values"));
+    SET_STRING_ELT(names, 1,  Rf_mkChar("opt_sm_k"));
+    SET_STRING_ELT(names, 2,  Rf_mkChar("opt_sm_k_idx"));
+    SET_STRING_ELT(names, 3,  Rf_mkChar("opt_ma_k"));
+    SET_STRING_ELT(names, 4,  Rf_mkChar("opt_ma_k_idx"));
+    SET_STRING_ELT(names, 5,  Rf_mkChar("k_mean_sm_errors"));
+    SET_STRING_ELT(names, 6,  Rf_mkChar("k_mean_ma_errors"));
+    SET_STRING_ELT(names, 7,  Rf_mkChar("k_mean_sm_true_errors"));
+    SET_STRING_ELT(names, 8,  Rf_mkChar("k_mean_ma_true_errors"));
+    SET_STRING_ELT(names, 9,  Rf_mkChar("sm_predictions"));
+    SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
+    SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
+    SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
 
-    UNPROTECT(nprot);
+    UNPROTECT(2);
     return result;
 }

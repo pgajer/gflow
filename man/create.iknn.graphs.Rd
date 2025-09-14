@@ -2,7 +2,7 @@
 % Please edit documentation in R/iknn_graphs.R
 \name{create.iknn.graphs}
 \alias{create.iknn.graphs}
-\title{Create Intersection k-Nearest Neighbor Graphs with Dual Pruning Methods}
+\title{Create intersection k-nearest neighbor graphs with dual pruning}
 \usage{
 create.iknn.graphs(
   X,
@@ -18,77 +18,62 @@ create.iknn.graphs(
 )
 }
 \arguments{
-\item{X}{numeric matrix where rows represent observations and columns represent features.
-Cannot be a data frame.}
+\item{X}{A numeric matrix (or object coercible to a numeric matrix) with rows
+= observations and columns = features.}
 
-\item{kmin}{integer, minimum number of nearest neighbors (>= 1)}
+\item{kmin}{Integer \eqn{\ge 1}, the minimum k.}
 
-\item{kmax}{integer, maximum number of nearest neighbors (> kmin)}
+\item{kmax}{Integer \eqn{> k_{\mathrm{min}}}, the maximum k.}
 
-\item{max.path.edge.ratio.deviation.thld}{numeric, threshold for geometric pruning based on path-to-edge ratio.
-If > 0, removes edges where the ratio of alternative path length to direct edge length
-minus 1.0 is less than this value. If <= 0, geometric pruning uses a default method.
-Must be in the interval [0, 0.2).}
+\item{max.path.edge.ratio.deviation.thld}{Numeric in \eqn{[0, 0.2)}.
+Geometric pruning removes an edge \eqn{(i,j)} when there exists an
+alternative path between \eqn{i} and \eqn{j} whose path/edge length ratio
+minus 1.0 is \emph{less than} this threshold. This is a deviation
+threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
+path-to-edge ratio R to \eqn{1 + \delta}.}
 
-\item{path.edge.ratio.percentile}{numeric in \eqn{[0,1]}, percentile threshold for edge lengths
-considered in geometric pruning. Only edges with length greater than this
-percentile are evaluated for path-ratio pruning.}
+\item{path.edge.ratio.percentile}{Numeric in \eqn{[0,1]}. Only edges with
+length above this percentile are considered for geometric pruning.}
 
-\item{compute.full}{logical, if TRUE returns all pruned graphs, if FALSE returns only
-edge statistics}
+\item{compute.full}{Logical. If \code{TRUE}, return the pruned graphs; if \code{FALSE},
+return only edge statistics.}
 
-\item{pca.dim}{Maximum number of principal components to use if dimensionality reduction
-is applied (default: 100). Set to NULL to skip dimensionality reduction.}
+\item{pca.dim}{Positive integer or \code{NULL}. If not \code{NULL} and \code{ncol(X) > pca.dim}, PCA is used to reduce to at most \code{pca.dim} components.}
 
-\item{variance.explained}{Percentage of variance to be explained by the principal components
-(default: 0.99). If this threshold can be met with fewer components than pca.dim,
-the smaller number will be used. Set to NULL to use exactly pca.dim components.}
+\item{variance.explained}{Numeric in \eqn{(0,1]} or \code{NULL}. If not \code{NULL},
+choose the smallest number of PCs whose cumulative variance explained
+exceeds this threshold, capped by \code{pca.dim}.}
 
-\item{n.cores}{The number of cores to use. Set to NULL to use maximal number of cores.}
+\item{n.cores}{Integer or \code{NULL}. Number of CPU cores. \code{NULL} uses the
+maximum available (OpenMP build only).}
 
-\item{verbose}{Logical. If TRUE, print progress messages and timing information.
-Default is FALSE.}
+\item{verbose}{Logical; print progress and timing.}
 }
 \value{
-A list of class "iknn_graphs" containing:
+A list of class \code{"iknn_graphs"} with entries:
 \describe{
-\item{k_statistics}{Matrix with columns: k, number of edges in original graph,
-number of edges after geometric pruning, number of removed edges,
-edge reduction ratio, number of edges after intersection-size pruning,
-additional edges removed in intersection-size pruning,
-intersection-size edge reduction ratio}
-\item{geom_pruned_graphs}{If compute_full=TRUE, list of geometrically pruned graphs for each k.
-Each graph contains adjacency lists and edge weights.
-If compute_full=FALSE, NULL}
-\item{isize_pruned_graphs}{If compute_full=TRUE, list of intersection-size pruned graphs for each k.
-Each graph contains adjacency lists and edge weights.
-If compute_full=FALSE, NULL}
-\item{edge_pruning_stats}{List of matrices, one for each k value, containing edge pruning statistics
-including edge lengths and path-to-edge length ratios}
+\item{k_statistics}{Matrix of per-\eqn{k} edge counts and reductions.
+(If the C++ side supplies column names, they’re preserved.
+Otherwise we add names consistent with what the C++ returns.)}
+\item{geom_pruned_graphs}{If \code{compute.full=TRUE}, list of geometrically
+pruned graphs (adjacency + weights); otherwise \code{NULL}.}
+\item{isize_pruned_graphs}{If \code{compute.full=TRUE}, list of intersection-size
+pruned graphs; otherwise \code{NULL}.}
+\item{edge_pruning_stats}{List (per \eqn{k}) of matrices with edge-level
+statistics (lengths, path/edge ratios, etc.).}
 }
 }
 \description{
-Computes a sequence of intersection-weighted k-nearest neighbor graphs for k in \eqn{[\text{kmin, \text{kmax}]}}
-with two different edge pruning methods: geometric pruning and intersection-size pruning.
-The function can optionally perform dimensionality reduction via PCA before graph construction.
+For each \eqn{k \in [k_{\mathrm{min}},\,k_{\mathrm{max}}]}, builds an
+intersection-weighted k-NN graph and applies two pruning schemes:
+(1) geometric (path-to-edge ratio) and (2) intersection-size.
+Optionally performs PCA before graph construction.
 }
 \details{
-The function applies two different pruning methods to construct efficient graph representations:
-\enumerate{
-\item Geometric pruning: Based on path-to-edge ratios
-\itemize{
-\item Removes edges where alternative paths exist with similar or better geometric properties
-\item Controlled by max.path.edge.ratio.deviation.thld and path.edge.ratio.percentile parameters
-}
-\item Intersection-size pruning: Based on intersection sizes of k-NN sets
-\itemize{
-\item Removes edges where alternative paths exist with all edges having larger intersection sizes
-\item Uses a fixed maximum alternative path length of 2
-}
-}
-
-Note: The current implementation does not compute edge birth/death times. The birth_death_matrix
-and double_birth_death_matrix fields may be present but will be empty.
+Geometric pruning uses the deviation threshold
+\code{max.path.edge.ratio.deviation.thld} and the filtering percentile
+\code{path.edge.ratio.percentile}. Intersection-size pruning currently uses
+a maximum alternative path length of 2.
 }
 \examples{
 \dontrun{
@@ -114,5 +99,4 @@ result <- create.iknn.graphs(
 # View statistics for each k
 print(result$k_statistics)
 }
-
 }

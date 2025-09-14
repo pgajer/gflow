@@ -95,135 +95,118 @@ SEXP S_wmabilo(SEXP s_x,
                SEXP s_epsilon,
                SEXP s_verbose) {
 
-  // --- Coerce x/y/w to REAL and copy (long-vector safe) ---
-  std::vector<double> x, y, w, y_true;
-  {
-    int tprot = 0;
+    // --- Coerce x/y/w to REAL and copy (long-vector safe) ---
+    std::vector<double> x, y, w, y_true;
+    {
+        SEXP sx = s_x, sy = s_y, sw = s_w, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
+        PROTECT_INDEX pix, piy, piw, pzt; // pzt for syt
+        PROTECT_WITH_INDEX(sx, &pix);
+        PROTECT_WITH_INDEX(sy, &piy);
+        PROTECT_WITH_INDEX(sw, &piw);
+        PROTECT_WITH_INDEX(syt, &pzt);
 
-    SEXP sx = s_x;
-    if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
-    const R_xlen_t nx = XLENGTH(sx);
-    x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
+        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
+        if (TYPEOF(sw) != REALSXP) REPROTECT(sw = Rf_coerceVector(sw, REALSXP), piw);
+        if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
+            REPROTECT(syt = Rf_coerceVector(syt, REALSXP), pzt);
 
-    SEXP sy = s_y;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+        const R_xlen_t nx = XLENGTH(sx), ny = XLENGTH(sy), nw = XLENGTH(sw);
+        if (nx != ny) { UNPROTECT(4); Rf_error("x and y must have the same length."); }
+        if (nx != nw) { UNPROTECT(4); Rf_error("x and w must have the same length."); }
 
-    SEXP sw = s_w;
-    if (TYPEOF(sw) != REALSXP) { sw = PROTECT(Rf_coerceVector(sw, REALSXP)); ++tprot; }
-    const R_xlen_t nw = XLENGTH(sw);
-    w.assign(REAL(sw), REAL(sw) + static_cast<size_t>(nw));
-
-    if (nx != ny || nx != nw) {
-      if (tprot) UNPROTECT(tprot);
-      Rf_error("x, y, and w must have the same length.");
+        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+        w.assign(REAL(sw), REAL(sw) + static_cast<size_t>(nw));
+        if (syt != R_NilValue) {
+            const R_xlen_t nyt = XLENGTH(syt);
+            if (nyt == nx) {
+                y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+            }
+        }
+        UNPROTECT(4); // sx, sy, sw, syt
     }
 
-    if (s_y_true != R_NilValue) {
-      SEXP syt = s_y_true;
-      if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
-      const R_xlen_t nyt = XLENGTH(syt);
-      if (nyt == nx) {
-        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-      } // else leave y_true empty (treated as unavailable)
+    // --- Scalars / parameters ---
+    const int k_min = Rf_asInteger(s_k_min);
+    const int k_max = Rf_asInteger(s_k_max);
+    const int    distance_kernel = Rf_asInteger(s_distance_kernel);
+    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    const double epsilon = Rf_asReal(s_epsilon);
+    const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+
+    const int n_points = static_cast<int>(x.size());
+    if (k_min < 1) Rf_error("k_min must be >= 1");
+    if (k_max < k_min) Rf_error("k_max must be >= k_min");
+    if (k_max > (n_points - 1)/2)
+        Rf_error("k_max must be <= floor((length(x) - 1)/2)");
+
+    // --- Core computation (no R allocations inside) ---
+    mabilo_t wmabilo_results = wmabilo(x, y, y_true, w,
+                                       k_min, k_max,
+                                       distance_kernel,
+                                       dist_normalization_factor,
+                                       epsilon, verbose);
+
+    // --- Build result (container-first; per-element protect) ---
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 7));
+
+    // 0: k_values sequence [k_min .. k_max]
+    {
+        const R_xlen_t K = static_cast<R_xlen_t>(
+            static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
+        std::vector<int> k_values(static_cast<size_t>(K));
+        for (R_xlen_t i = 0; i < K; ++i) k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
+        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
+        SET_VECTOR_ELT(result, 0, kv);
+        UNPROTECT(1);
     }
 
-    // Optional: enforce sorted x (non-decreasing)
-    for (R_xlen_t i = 1; i < nx; ++i) {
-      if (x[static_cast<size_t>(i)] < x[static_cast<size_t>(i - 1)]) {
-        if (tprot) UNPROTECT(tprot);
-        Rf_error("x must be sorted non-decreasing.");
-      }
+    // 1: opt_k (scalar int)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k));
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1);
     }
 
-    if (tprot) UNPROTECT(tprot);
-  }
+    // 2: opt_k_idx (scalar int; use whatever base your core returns)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx + 1));
+        SET_VECTOR_ELT(result, 2, s);
+        UNPROTECT(1);
+    }
 
-  // --- Scalars / parameters ---
-  const int k_min = Rf_asInteger(s_k_min);
-  const int k_max = Rf_asInteger(s_k_max);
-  const int    distance_kernel = Rf_asInteger(s_distance_kernel);
-  const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
-  const double epsilon = Rf_asReal(s_epsilon);
-  const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+    // 3: k_mean_errors (numeric)
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors));
+        SET_VECTOR_ELT(result, 3, s);
+        UNPROTECT(1);
+    }
 
-  const int n_points = static_cast<int>(x.size());
-  if (k_min < 1) Rf_error("k_min must be >= 1");
-  if (k_max < k_min) Rf_error("k_max must be >= k_min");
-  if (k_max > (n_points - 1)/2)
-      Rf_error("k_max must be <= floor((length(x) - 1)/2)");
+    // 4: k_mean_true_errors (numeric or NULL)
+    if (!y_true.empty()) {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors));
+        SET_VECTOR_ELT(result, 4, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 4, R_NilValue);
+    }
 
-  // --- Core computation (no R allocations inside) ---
-  mabilo_t wmabilo_results = wmabilo(x, y, y_true, w,
-                                     k_min, k_max,
-                                     distance_kernel,
-                                     dist_normalization_factor,
-                                     epsilon, verbose);
+    // 5: predictions (numeric)
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.predictions));
+        SET_VECTOR_ELT(result, 5, s);
+        UNPROTECT(1);
+    }
 
-  // --- Build result (container-first; per-element protect) ---
-  int nprot = 0;
-  const int N_COMPONENTS = 7;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+    // 6: k_predictions (list<numeric>)
+    {
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions));
+        SET_VECTOR_ELT(result, 6, s);
+        UNPROTECT(1);
+    }
 
-  // 0: k_values sequence [k_min .. k_max]
-  {
-    const R_xlen_t K = static_cast<R_xlen_t>(
-        static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
-    std::vector<int> k_values(static_cast<size_t>(K));
-    for (R_xlen_t i = 0; i < K; ++i) k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-    SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
-    SET_VECTOR_ELT(result, 0, kv);
-    UNPROTECT(1);
-  }
-
-  // 1: opt_k (scalar int)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k));
-    SET_VECTOR_ELT(result, 1, s);
-    UNPROTECT(1);
-  }
-
-  // 2: opt_k_idx (scalar int; use whatever base your core returns)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx + 1));
-    SET_VECTOR_ELT(result, 2, s);
-    UNPROTECT(1);
-  }
-
-  // 3: k_mean_errors (numeric)
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors));
-    SET_VECTOR_ELT(result, 3, s);
-    UNPROTECT(1);
-  }
-
-  // 4: k_mean_true_errors (numeric or NULL)
-  if (!y_true.empty()) {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors));
-    SET_VECTOR_ELT(result, 4, s);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 4, R_NilValue);
-  }
-
-  // 5: predictions (numeric)
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.predictions));
-    SET_VECTOR_ELT(result, 5, s);
-    UNPROTECT(1);
-  }
-
-  // 6: k_predictions (list<numeric>)
-  {
-    SEXP s = PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions));
-    SET_VECTOR_ELT(result, 6, s);
-    UNPROTECT(1);
-  }
-
-  // names while result is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
     SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
     SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
     SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
@@ -232,13 +215,10 @@ SEXP S_wmabilo(SEXP s_x,
     SET_STRING_ELT(names, 5, Rf_mkChar("predictions"));
     SET_STRING_ELT(names, 6, Rf_mkChar("k_predictions"));
     Rf_setAttrib(result, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
-  }
 
-  UNPROTECT(nprot);
-  return result;
+    UNPROTECT(2);
+    return result;
 }
-
 
 /**
  * @brief Performs parallel Bayesian bootstrap calculations for MABILO
@@ -521,143 +501,141 @@ SEXP S_mabilo(SEXP s_x,
               SEXP s_epsilon,
               SEXP s_verbose) {
 
-  // --- Coerce x/y to REAL and copy (long-vector safe) ---
-  std::vector<double> x, y, y_true;
-  {
-    int tprot = 0;
+    // --- Coerce x/y to REAL and copy (long-vector safe) ---
 
-    SEXP sx = s_x;
-    if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
-    const R_xlen_t nx = XLENGTH(sx);
-    x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+    std::vector<double> x, y, y_true;
+    {
+        // Always hold exactly 3 protected slots: sx, sy, syt (syt may be R_NilValue)
+        SEXP sx = s_x, sy = s_y, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
+        PROTECT_INDEX pix, piy, piyt;
+        PROTECT_WITH_INDEX(sx, &pix);
+        PROTECT_WITH_INDEX(sy, &piy);
+        PROTECT_WITH_INDEX(syt, &piyt);
 
-    SEXP sy = s_y;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
+        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
+        if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
+            REPROTECT(syt = Rf_coerceVector(syt, REALSXP), piyt);
 
-    // Optional y_true of matching length
-    if (s_y_true != R_NilValue) {
-      SEXP syt = s_y_true;
-      if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
-      const R_xlen_t nyt = XLENGTH(syt);
-      if (nyt == nx) {
-        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-      } // else: treat as unavailable (leave empty)
+        const R_xlen_t nx = XLENGTH(sx);
+        const R_xlen_t ny = XLENGTH(sy);
+        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+
+        if (syt != R_NilValue) {
+            const R_xlen_t nyt = XLENGTH(syt);
+            if (nyt == nx) {
+                y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+            }
+        }
+        UNPROTECT(3); // sx, sy, syt
     }
 
-    if (tprot) UNPROTECT(tprot);
-  }
+    // --- Scalars / parameters (validated) ---
+    const int    k_min = Rf_asInteger(s_k_min);
+    const int    k_max = Rf_asInteger(s_k_max);
+    const int    n_bb  = Rf_asInteger(s_n_bb);
+    const double p     = Rf_asReal(s_p);
+    const int    distance_kernel = Rf_asInteger(s_distance_kernel);
+    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    const double epsilon = Rf_asReal(s_epsilon);
+    const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
 
-  // --- Scalars / parameters (validated) ---
-  const int    k_min = Rf_asInteger(s_k_min);
-  const int    k_max = Rf_asInteger(s_k_max);
-  const int    n_bb  = Rf_asInteger(s_n_bb);
-  const double p     = Rf_asReal(s_p);
-  const int    distance_kernel = Rf_asInteger(s_distance_kernel);
-  const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
-  const double epsilon = Rf_asReal(s_epsilon);
-  const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+    const int n_points = static_cast<int>(x.size());
+    if (k_min < 1) Rf_error("k_min must be >= 1");
+    if (k_max < k_min) Rf_error("k_max must be >= k_min");
+    if (k_max > (n_points - 1)/2)
+        Rf_error("k_max must be <= floor((length(x) - 1)/2)");
 
-  const int n_points = static_cast<int>(x.size());
-  if (k_min < 1) Rf_error("k_min must be >= 1");
-  if (k_max < k_min) Rf_error("k_max must be >= k_min");
-  if (k_max > (n_points - 1)/2)
-      Rf_error("k_max must be <= floor((length(x) - 1)/2)");
+    // --- Core computation (no R allocations inside) ---
+    mabilo_t wmabilo_results = mabilo(x,
+                                      y,
+                                      y_true,
+                                      k_min,
+                                      k_max,
+                                      n_bb,
+                                      p,
+                                      distance_kernel,
+                                      dist_normalization_factor,
+                                      epsilon,
+                                      verbose);
 
-  // --- Core computation (no R allocations inside) ---
-  mabilo_t wmabilo_results = mabilo(x,
-                                    y,
-                                    y_true,
-                                    k_min,
-                                    k_max,
-                                    n_bb,
-                                    p,
-                                    distance_kernel,
-                                    dist_normalization_factor,
-                                    epsilon,
-                                    verbose);
+    // --- Build result (container-first; per-element PROTECT/UNPROTECT) ---
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 10));
 
-  // --- Build result (container-first; per-element PROTECT/UNPROTECT) ---
-  int nprot = 0;
-  const int N_COMPONENTS = 10;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+    // 0: k_values sequence [k_min .. k_max]
+    {
+        const R_xlen_t K = static_cast<R_xlen_t>(
+            static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
+        std::vector<int> k_values(static_cast<size_t>(K));
+        for (R_xlen_t i = 0; i < K; ++i)
+            k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
+        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
+        SET_VECTOR_ELT(result, 0, kv);
+        UNPROTECT(1);
+    }
 
-  // 0: k_values sequence [k_min .. k_max]
-  {
-    const R_xlen_t K = static_cast<R_xlen_t>(
-        static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
-    std::vector<int> k_values(static_cast<size_t>(K));
-    for (R_xlen_t i = 0; i < K; ++i)
-      k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-    SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
-    SET_VECTOR_ELT(result, 0, kv);
-    UNPROTECT(1);
-  }
+    // 1: opt_k (scalar int)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k));
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1);
+    }
 
-  // 1: opt_k (scalar int)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k));
-    SET_VECTOR_ELT(result, 1, s);
-    UNPROTECT(1);
-  }
+    // 2: opt_k_idx (1-based)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx + 1));
+        SET_VECTOR_ELT(result, 2, s);
+        UNPROTECT(1);
+    }
 
-  // 2: opt_k_idx (1-based)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx + 1));
-    SET_VECTOR_ELT(result, 2, s);
-    UNPROTECT(1);
-  }
+    // 3: k_mean_errors
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors));
+        SET_VECTOR_ELT(result, 3, s);
+        UNPROTECT(1);
+    }
 
-  // 3: k_mean_errors
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_errors));
-    SET_VECTOR_ELT(result, 3, s);
-    UNPROTECT(1);
-  }
+    // 4: k_mean_true_errors (or NULL)
+    if (!y_true.empty()) {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors));
+        SET_VECTOR_ELT(result, 4, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 4, R_NilValue);
+    }
 
-  // 4: k_mean_true_errors (or NULL)
-  if (!y_true.empty()) {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.k_mean_true_errors));
-    SET_VECTOR_ELT(result, 4, s);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 4, R_NilValue);
-  }
+    // 5: predictions
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.predictions));
+        SET_VECTOR_ELT(result, 5, s);
+        UNPROTECT(1);
+    }
 
-  // 5: predictions
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.predictions));
-    SET_VECTOR_ELT(result, 5, s);
-    UNPROTECT(1);
-  }
+    // 6: k_predictions (list<numeric>)
+    {
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions));
+        SET_VECTOR_ELT(result, 6, s);
+        UNPROTECT(1);
+    }
 
-  // 6: k_predictions (list<numeric>)
-  {
-    SEXP s = PROTECT(convert_vector_vector_double_to_R(wmabilo_results.k_predictions));
-    SET_VECTOR_ELT(result, 6, s);
-    UNPROTECT(1);
-  }
+    // 7–9: bootstrap outputs (or NULLs if n_bb == 0)
+    if (n_bb > 0) {
+        SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.bb_predictions));
+        SET_VECTOR_ELT(result, 7, s); UNPROTECT(1);
 
-  // 7–9: bootstrap outputs (or NULLs if n_bb == 0)
-  if (n_bb > 0) {
-    SEXP s = PROTECT(convert_vector_double_to_R(wmabilo_results.bb_predictions));
-    SET_VECTOR_ELT(result, 7, s); UNPROTECT(1);
+        s = PROTECT(convert_vector_double_to_R(wmabilo_results.cri_L));
+        SET_VECTOR_ELT(result, 8, s); UNPROTECT(1);
 
-    s = PROTECT(convert_vector_double_to_R(wmabilo_results.cri_L));
-    SET_VECTOR_ELT(result, 8, s); UNPROTECT(1);
+        s = PROTECT(convert_vector_double_to_R(wmabilo_results.cri_U));
+        SET_VECTOR_ELT(result, 9, s); UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 7, R_NilValue);
+        SET_VECTOR_ELT(result, 8, R_NilValue);
+        SET_VECTOR_ELT(result, 9, R_NilValue);
+    }
 
-    s = PROTECT(convert_vector_double_to_R(wmabilo_results.cri_U));
-    SET_VECTOR_ELT(result, 9, s); UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 7, R_NilValue);
-    SET_VECTOR_ELT(result, 8, R_NilValue);
-    SET_VECTOR_ELT(result, 9, R_NilValue);
-  }
-
-  // names while result is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 10));
     SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
     SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
     SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
@@ -669,11 +647,9 @@ SEXP S_mabilo(SEXP s_x,
     SET_STRING_ELT(names, 8, Rf_mkChar("cri_L"));
     SET_STRING_ELT(names, 9, Rf_mkChar("cri_U"));
     Rf_setAttrib(result, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
-  }
 
-  UNPROTECT(nprot);
-  return result;
+    UNPROTECT(2); // result, names
+    return result;
 }
 
 
@@ -1056,33 +1032,29 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
   // --- Coerce x/y (and optional y_true) to REAL and copy (long-vector safe) ---
   std::vector<double> x, y, y_true;
   {
-    int tprot = 0;
+      SEXP sx = s_x, sy = s_y, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
+      PROTECT_INDEX pix, piy, pzt; // pzt for syt
+      PROTECT_WITH_INDEX(sx, &pix);
+      PROTECT_WITH_INDEX(sy, &piy);
+      PROTECT_WITH_INDEX(syt, &pzt);
 
-    SEXP sx = s_x;
-    if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
-    const R_xlen_t nx = XLENGTH(sx);
-    x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+      if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
+      if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
+      if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
+          REPROTECT(syt = Rf_coerceVector(syt, REALSXP), pzt);
 
-    SEXP sy = s_y;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+      const R_xlen_t nx = XLENGTH(sx), ny = XLENGTH(sy);
+      if (nx != ny) { UNPROTECT(3); Rf_error("x and y must have the same length."); }
 
-    if (nx != ny) {
-      if (tprot) UNPROTECT(tprot);
-      Rf_error("x and y must have the same length.");
-    }
-
-    if (s_y_true != R_NilValue) {
-      SEXP syt = s_y_true;
-      if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
-      const R_xlen_t nyt = XLENGTH(syt);
-      if (nyt == nx) {
-        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-      } // else: leave empty (treated as unavailable)
-    }
-
-    if (tprot) UNPROTECT(tprot);
+      x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
+      y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+      if (syt != R_NilValue) {
+          const R_xlen_t nyt = XLENGTH(syt);
+          if (nyt == nx) {
+              y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
+          }
+      }
+      UNPROTECT(3); // sx, sy, syt
   }
 
   // --- Scalars / parameters (validated) ---
@@ -1109,9 +1081,7 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
                                              epsilon, verbose);
 
   // --- Build result (container-first; per-element protect/unprotect) ---
-  int nprot = 0;
-  const int N_COMPONENTS = 8;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+  SEXP result = PROTECT(Rf_allocVector(VECSXP, 8));
 
   // 0: k_values sequence [k_min .. k_max]
   {
@@ -1176,22 +1146,18 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
     UNPROTECT(1);
   }
 
-  // names while result is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
-    SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("smoothed_k_mean_errors"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_true_errors"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("k_predictions"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
-  }
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, 8));
+  SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
+  SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
+  SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
+  SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
+  SET_STRING_ELT(names, 4, Rf_mkChar("smoothed_k_mean_errors"));
+  SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_true_errors"));
+  SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+  SET_STRING_ELT(names, 7, Rf_mkChar("k_predictions"));
+  Rf_setAttrib(result, R_NamesSymbol, names);
 
-  UNPROTECT(nprot);
+  UNPROTECT(2);
   return result;
 }
 
