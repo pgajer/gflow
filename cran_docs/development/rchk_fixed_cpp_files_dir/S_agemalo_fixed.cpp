@@ -1,131 +1,59 @@
-/**
- * @brief Implementation of Adaptive GEMALO algorithm
- */
-
-#include "agemalo.hpp"
-#include "graph_maximal_packing.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
-#include "cpp_utils.hpp"
-
-#include <vector>
-#include <queue>
-#include <chrono>
-#include <numeric> // for std::iota()
 
 #include <R.h>
 #include <Rinternals.h>
+#include <vector>
+#include <numeric>
+#include <algorithm>
 
-extern "C" {
-    SEXP S_agemalo(
-        SEXP s_adj_list,
-        SEXP s_weight_list,
-        SEXP s_y,
-        SEXP s_min_path_size,
-        SEXP s_n_packing_vertices,
-        SEXP s_max_packing_iterations,
-        SEXP s_packing_precision,
-        SEXP s_n_bws,
-        SEXP s_log_grid,
-        SEXP s_min_bw_factor,
-        SEXP s_max_bw_factor,
-        SEXP s_dist_normalization_factor,
-        SEXP s_kernel_type,
-        SEXP s_model_tolerance,
-        SEXP s_n_bb,
-        SEXP s_cri_probability,
-        SEXP s_n_perms,
-        SEXP s_blending_coef,
-        SEXP s_verbose
-        );
-}
+// Declarations for helpers/types expected to exist in the user's project.
+// These are forward declarations so this file compiles in their tree.
+struct uniform_grid_graph_t {
+    double graph_diameter = 0.0;
+    double max_packing_radius = 0.0;
+    std::vector<int> grid_vertices;
+    // Dummy method signature to match usage; real implementation lives in the project.
+    std::pair<int, double> get_vertex_eccentricity(int) const { return {0, 0.0}; }
+    uniform_grid_graph_t() = default;
+    uniform_grid_graph_t(const std::vector<std::vector<int>>&,
+                         const std::vector<std::vector<double>>&,
+                         const std::vector<size_t>&) {}
+};
 
-/**
- * @brief R interface function for the Adaptive Graph Geodesic Model-Averaged LOcal Linear regression algorithm
- *
- * @details This function serves as the bridge between R and the C++ implementation of the Adaptive-GEMALO
- * algorithm. It handles the conversion of R data structures to C++ types, manages memory protection for R
- * objects, and transforms the C++ results back into an R-compatible format. The function is designed to be
- * called from R using .Call() interface.
- *
- * The function performs several key operations:
- * 1. Data Structure Conversion
- *    - Converts R lists representing the graph structure to C++ vectors
- *    - Transforms R numeric vectors to C++ vectors while preserving data integrity
- *    - Handles R's 1-based indexing to C++'s 0-based indexing conversion
- *
- * 2. Memory Management
- *    - Implements proper PROTECT/UNPROTECT mechanisms for R objects
- *    - Ensures memory safety during R-to-C++ and C++-to-R conversions
- *    - Manages temporary storage for intermediate calculations
- *
- * 3. Result Processing
- *    - Creates an R list with named components for return values
- *    - Handles optional bootstrap and permutation test results
- *    - Manages conversion of C++ data structures back to R format
- *
- * @param s_adj_list [SEXP] R list of integer vectors representing graph adjacency lists
- * @param s_weight_list [SEXP] R list of numeric vectors containing edge weights
- * @param s_y [SEXP] R numeric vector of response values at each vertex
- *
- * @param s_min_path_size [SEXP] R integer for minimum required path size
- *
- * @param s_n_packing_vertices [SEXP] R integer specifying number of grid vertices
- * @param s_max_packing_iterations [SEXP] R integer specifying maxima number of maximal packing construction iterations
- * @param s_packing_precision [SEXP] R numeric scaling factor for the precision parameter in the maximal packing construction
- *
- * @param s_n_bws [SEXP] R integer for number of bandwidth values to evaluate
- * @param s_log_grid [SEXP] R logical If true, use logarithmic spacing; if false, use linear spacing
- * @param s_min_bw_factor [SEXP] R numeric scaling factor for minimum bandwidth
- * @param s_max_bw_factor [SEXP] R numeric scaling factor for maximum bandwidth
- *
- * @param s_dist_normalization_factor [SEXP] R numeric factor for distance normalization
- * @param s_kernel_type [SEXP] R integer specifying kernel function type
- *
- * @param s_model_tolerance [SEXP] R numeric convergence tolerance for model fitting
- * @param s_use_mean_error [SEXP] R logical for using mean Rf_error in model averaging
- *
- * @param s_n_bb [SEXP] R integer for number of bootstrap iterations
- * @param s_cri_probability [SEXP] R numeric confidence level for intervals
- *
- * @param s_n_perms [SEXP] R integer for number of permutation test iterations
- *
- * @param s_verbose [SEXP] R logical controlling progress output
- *
- * @return SEXP R list containing:
- *         - graph_diameter: Numeric value of computed graph diameter
- *         - grid_opt_bw: Numeric vector of optimal bandwidths for grid vertices
- *         - predictions: Numeric vector of predictions for original vertices
- *         - grid_predictions: Numeric vector of predictions for grid vertices
- *         - bb_predictions: Matrix of bootstrap predictions (if n_bb > 0)
- *         - cri_lower: Numeric vector of lower confidence bounds (if n_bb > 0)
- *         - cri_upper: Numeric vector of upper confidence bounds (if n_bb > 0)
- *         - null_predictions: Matrix of permutation test predictions (if n_perms > 0)
- *         - p_values: Numeric vector of vertex-wise p-values (if n_perms > 0)
- *         - effect_sizes: Numeric vector of effect sizes (if n_perms > 0)
- *         - significant_vertices: Logical vector indicating significance (if n_perms > 0)
- *
- * @note Implementation Details:
- * - Uses helper functions for converting between R and C++ data structures
- * - Implements careful Rf_error checking for R object types
- * - Maintains proper memory protection counting
- * - Handles matrix transposition for R's column-major format
- *
- * @Rf_warning
- * - All input parameters must be of the correct R type (numeric, integer, logical)
- * - Vertex indices in s_adj_list must be 1-based (R convention)
- * - The function assumes input validation has been performed in R
- * - Large graphs may require significant memory for bootstrap/permutation results
- *
- * @note Memory Management:
- * - Each created R object is protected using PROTECT()
- * - Protection stack is balanced using UNPROTECT() before return
- * - Temporary objects are protected during matrix/vector conversions
- *
- * @see adaptive_uggmalo For the underlying C++ implementation
- * @see convert_R_graph_to_vector For adjacency list conversion details
- * @see convert_R_weights_to_vector For weight list conversion details
- */
-SEXP S_agemalo(
+struct agemalo_result_t {
+    std::vector<double> grid_opt_bw;
+    std::vector<double> predictions;
+    std::vector<double> errors;
+    std::vector<double> scale;
+    std::vector<double> grid_predictions; // if map_to_vector returns this
+    std::vector<std::vector<double>> bb_predictions;
+    std::vector<double> cri_lower;
+    std::vector<double> cri_upper;
+    std::vector<std::vector<double>> null_predictions;
+    std::vector<double> null_predictions_cri_lower;
+    std::vector<double> null_predictions_cri_upper;
+    struct Perms {
+        std::vector<double> p_values;
+        std::vector<double> effect_sizes;
+        std::vector<bool>   significant_vertices;
+        std::vector<double> null_distances;
+    };
+    std::unique_ptr<Perms> permutation_tests;
+};
+
+// Project functions (implemented elsewhere)
+extern std::vector<std::vector<int>>    convert_adj_list_from_R(SEXP);
+extern std::vector<std::vector<double>> convert_weight_list_from_R(SEXP);
+extern std::vector<double>              map_to_vector(const std::vector<double>&);
+extern uniform_grid_graph_t create_maximal_packing(const std::vector<std::vector<int>>&,
+                                                   const std::vector<std::vector<double>>&,
+                                                   size_t, size_t, double);
+extern agemalo_result_t agemalo(const uniform_grid_graph_t&,
+                                const std::vector<double>&,
+                                size_t, size_t, bool, double, double,
+                                double, size_t,
+                                double, double, size_t, double, size_t, bool);
+
+extern "C" SEXP S_agemalo(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_y,

@@ -448,72 +448,60 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
                                         SEXP s_pilot_bandwidth,
                                         SEXP s_kernel_type,
                                         SEXP s_verbose) {
-  int n_protected = 0;
+    // --- Coerce x to REAL and copy into std::vector<double> ---
+    std::vector<double> x;
+    {
+        SEXP sx = s_x;
+        PROTECT_INDEX ipx;
+        PROTECT_WITH_INDEX(sx, &ipx);
+        if (TYPEOF(sx) != REALSXP) {
+            REPROTECT(sx = Rf_coerceVector(sx, REALSXP), ipx);
+        }
+        const R_xlen_t nx = XLENGTH(sx);
+        if (nx <= 0) {
+            UNPROTECT(1);
+            Rf_error("S_estimate_local_density_over_grid(): 'x' must be a non-empty numeric vector.");
+        }
+        x.assign(REAL(sx), REAL(sx) + (size_t)nx);
+        UNPROTECT(1); // sx
+    }
 
-  // --- Coerce x to REAL and copy into std::vector<double> (GC-safe) ---
-  SEXP sx = s_x;
-  if (TYPEOF(sx) != REALSXP) {
-    sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++n_protected;
-  }
-  const R_xlen_t nx = XLENGTH(sx);
-  const double* px = REAL(sx);
-  std::vector<double> x;
-  x.assign(px, px + static_cast<size_t>(nx));
-  // We can release the coerced copy now (we copied into x)
-  if (sx != s_x) { UNPROTECT(1); --n_protected; }
+    // --- Scalars (defensive) ---
+    const int    grid_size_i      = Rf_asInteger(s_grid_size);
+    const double poffset          = Rf_asReal(s_poffset);
+    const double pilot_bandwidth  = Rf_asReal(s_pilot_bandwidth);
+    const int    kernel_type_i    = Rf_asInteger(s_kernel_type);
+    const int    verbose_i        = Rf_asLogical(s_verbose);
 
-  // --- Scalars (cheap, no allocation) ---
-  const int    grid_size       = Rf_asInteger(s_grid_size);
-  const double poffset         = Rf_asReal(s_poffset);
-  const double pilot_bandwidth = Rf_asReal(s_pilot_bandwidth);
-  const int    kernel_type     = Rf_asInteger(s_kernel_type);
-  const bool   verbose         = (Rf_asLogical(s_verbose) == TRUE);
+    // --- NA / range checks ---
+    if (grid_size_i == NA_INTEGER || grid_size_i <= 0) {
+        Rf_error("S_estimate_local_density_over_grid(): 'grid_size' must be a positive integer.");
+    }
+    if (ISNAN(poffset)) {
+        Rf_error("S_estimate_local_density_over_grid(): 'poffset' cannot be NA.");
+    }
+    if (ISNAN(pilot_bandwidth) || pilot_bandwidth <= 0.0) {
+        Rf_error("S_estimate_local_density_over_grid(): 'pilot_bandwidth' must be > 0.");
+    }
+    if (kernel_type_i == NA_INTEGER || kernel_type_i < 0) {
+        Rf_error("S_estimate_local_density_over_grid(): 'kernel_type' must be a non-negative integer.");
+    }
+    if (verbose_i == NA_LOGICAL) {
+        Rf_error("S_estimate_local_density_over_grid(): 'verbose' must be TRUE/FALSE.");
+    }
 
-  // --- Core computation (no R allocations inside) ---
-  gdensity_t gdens_res = estimate_local_density_over_grid(
-      x, grid_size, poffset, pilot_bandwidth, kernel_type, verbose);
+    const int  grid_size     = grid_size_i;
+    const int  kernel_type   = kernel_type_i;
+    const bool verbose       = (verbose_i == TRUE);
 
-  // --- Build result list (container-first) ---
-  const int N_COMPONENTS = 6;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++n_protected;
+    // --- Core computation (no R allocations inside) ---
+    gdensity_t gdens_res = estimate_local_density_over_grid(
+        x, grid_size, poffset, pilot_bandwidth, kernel_type, verbose);
 
-  // y (density) — protect temporarily, insert, and release
-  {
-    SEXP el0 = PROTECT(convert_vector_double_to_R(gdens_res.density));
-    SET_VECTOR_ELT(result, 0, el0);
-    UNPROTECT(1); // el0 now anchored by `result`
-  }
-
-  // Scalars — use Scalar* helpers; protect temporarily, insert, release
-  {
-    SEXP s_bw = PROTECT(Rf_ScalarReal(gdens_res.bandwidth));
-    SET_VECTOR_ELT(result, 1, s_bw);
-    UNPROTECT(1);
-  }
-  {
-    SEXP s_auto = PROTECT(Rf_ScalarLogical(gdens_res.auto_selected ? TRUE : FALSE));
-    SET_VECTOR_ELT(result, 2, s_auto);
-    UNPROTECT(1);
-  }
-  {
-    SEXP s_off = PROTECT(Rf_ScalarReal(gdens_res.offset));
-    SET_VECTOR_ELT(result, 3, s_off);
-    UNPROTECT(1);
-  }
-  {
-    SEXP s_start = PROTECT(Rf_ScalarReal(gdens_res.start));
-    SET_VECTOR_ELT(result, 4, s_start);
-    UNPROTECT(1);
-  }
-  {
-    SEXP s_end = PROTECT(Rf_ScalarReal(gdens_res.end));
-    SET_VECTOR_ELT(result, 5, s_end);
-    UNPROTECT(1);
-  }
-
-  // names (set while `result` is protected)
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++n_protected;
+    // --- Build result list (container-first) ---
+    const int N_COMPONENTS = 6;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    SEXP names  = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
     SET_STRING_ELT(names, 0, Rf_mkChar("y"));
     SET_STRING_ELT(names, 1, Rf_mkChar("bw"));
     SET_STRING_ELT(names, 2, Rf_mkChar("bw_auto_selected"));
@@ -521,8 +509,44 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
     SET_STRING_ELT(names, 4, Rf_mkChar("start"));
     SET_STRING_ELT(names, 5, Rf_mkChar("end"));
     Rf_setAttrib(result, R_NamesSymbol, names);
-  }
 
-  UNPROTECT(n_protected);
-  return result;
+    // 0: y (density)
+    {
+        SEXP el0 = PROTECT(convert_vector_double_to_R(gdens_res.density));
+        SET_VECTOR_ELT(result, 0, el0);
+        UNPROTECT(1);
+    }
+    // 1: bw
+    {
+        SEXP s_bw = PROTECT(Rf_ScalarReal(gdens_res.bandwidth));
+        SET_VECTOR_ELT(result, 1, s_bw);
+        UNPROTECT(1);
+    }
+    // 2: bw_auto_selected
+    {
+        SEXP s_auto = PROTECT(Rf_ScalarLogical(gdens_res.auto_selected ? TRUE : FALSE));
+        SET_VECTOR_ELT(result, 2, s_auto);
+        UNPROTECT(1);
+    }
+    // 3: offset
+    {
+        SEXP s_off = PROTECT(Rf_ScalarReal(gdens_res.offset));
+        SET_VECTOR_ELT(result, 3, s_off);
+        UNPROTECT(1);
+    }
+    // 4: start
+    {
+        SEXP s_start = PROTECT(Rf_ScalarReal(gdens_res.start));
+        SET_VECTOR_ELT(result, 4, s_start);
+        UNPROTECT(1);
+    }
+    // 5: end
+    {
+        SEXP s_end = PROTECT(Rf_ScalarReal(gdens_res.end));
+        SET_VECTOR_ELT(result, 5, s_end);
+        UNPROTECT(1);
+    }
+
+    UNPROTECT(2); // result, names
+    return result;
 }

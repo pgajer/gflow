@@ -72,36 +72,46 @@ extern "C" SEXP S_amagelo(
     SEXP s_depth_similarity_tol,
     SEXP s_verbose
 ) {
-    // --- 1) Unmarshal inputs ---
-    if (TYPEOF(s_x) != REALSXP || TYPEOF(s_y) != REALSXP)
-        Rf_error("x and y must be real vectors");
+    // --- 1) Unmarshal inputs (coercion block) ---
+    std::vector<double> x, y;
+    {
+        SEXP sx = s_x, sy = s_y;
+        PROTECT_INDEX px, py;
+        PROTECT_WITH_INDEX(sx, &px);
+        PROTECT_WITH_INDEX(sy, &py);
 
-    R_xlen_t n = XLENGTH(s_x);
-    if (XLENGTH(s_y) != n)
-        Rf_error("Rf_length(x) must equal Rf_length(y)");
+        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), px);
+        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), py);
 
-    double* x_ptr = REAL(s_x);
-    double* y_ptr = REAL(s_y);
-    std::vector<double> x(x_ptr, x_ptr + n);
-    std::vector<double> y(y_ptr, y_ptr + n);
+        R_xlen_t n = XLENGTH(sx);
+        if (XLENGTH(sy) != n) {
+            UNPROTECT(2);
+            Rf_error("length(x) must equal length(y)");
+        }
 
-    size_t grid_size               = (size_t) INTEGER(s_grid_size)[0];
-    double min_bw_factor           = REAL(s_min_bw_factor)[0];
-    double max_bw_factor           = REAL(s_max_bw_factor)[0];
-    size_t n_bws                   = (size_t) INTEGER(s_n_bws)[0];
-    bool   use_global_bw_grid      = (LOGICAL(s_use_global_bw_grid)[0] == 1);
-    bool   with_bw_predictions     = (LOGICAL(s_with_bw_predictions)[0] == 1);
-    bool   log_grid                = (LOGICAL(s_log_grid)[0] == 1);
-    size_t domain_min_size         = (size_t) INTEGER(s_domain_min_size)[0];
-    size_t kernel_type             = (size_t) INTEGER(s_kernel_type)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    size_t n_cleveland_iterations  = (size_t) INTEGER(s_n_cleveland_iterations)[0];
-    double blending_coef           = REAL(s_blending_coef)[0];
-    bool   use_linear_blending     = (LOGICAL(s_use_linear_blending)[0] == 1);
-    double precision               = REAL(s_precision)[0];
-    double small_depth_threshold   = REAL(s_small_depth_threshold)[0];
-    double depth_similarity_tol    = REAL(s_depth_similarity_tol)[0];
-    bool   verbose                 = (LOGICAL(s_verbose)[0] == 1);
+        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(n));
+        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(n));
+        UNPROTECT(2); // sx, sy
+    }
+
+    // Extract scalar parameters using defensive coercion
+    size_t grid_size               = static_cast<size_t>(Rf_asInteger(s_grid_size));
+    double min_bw_factor           = Rf_asReal(s_min_bw_factor);
+    double max_bw_factor           = Rf_asReal(s_max_bw_factor);
+    size_t n_bws                   = static_cast<size_t>(Rf_asInteger(s_n_bws));
+    bool   use_global_bw_grid      = (Rf_asLogical(s_use_global_bw_grid) == TRUE);
+    bool   with_bw_predictions     = (Rf_asLogical(s_with_bw_predictions) == TRUE);
+    bool   log_grid                = (Rf_asLogical(s_log_grid) == TRUE);
+    size_t domain_min_size         = static_cast<size_t>(Rf_asInteger(s_domain_min_size));
+    size_t kernel_type             = static_cast<size_t>(Rf_asInteger(s_kernel_type));
+    double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    size_t n_cleveland_iterations  = static_cast<size_t>(Rf_asInteger(s_n_cleveland_iterations));
+    double blending_coef           = Rf_asReal(s_blending_coef);
+    bool   use_linear_blending     = (Rf_asLogical(s_use_linear_blending) == TRUE);
+    double precision               = Rf_asReal(s_precision);
+    double small_depth_threshold   = Rf_asReal(s_small_depth_threshold);
+    double depth_similarity_tol    = Rf_asReal(s_depth_similarity_tol);
+    bool   verbose                 = (Rf_asLogical(s_verbose) == TRUE);
 
     // --- 2) Call C++ backend ---
     amagelo_t result = amagelo(
@@ -125,181 +135,263 @@ extern "C" SEXP S_amagelo(
         verbose
     );
 
-    // --- 3) Prepare R return list ---
+    // --- 3) Prepare R return list (container-first pattern) ---
+    const int n_el = 17; // Fixed number of elements
+    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, n_el));
+
+    int idx = 0;
+
+    // x_sorted
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.x_sorted.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.x_sorted.begin(), result.x_sorted.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // y_sorted
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.y_sorted.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.y_sorted.begin(), result.y_sorted.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // order (1-based)
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.order.size());
+        SEXP s = PROTECT(Rf_allocVector(INTSXP, n));
+        int* p = INTEGER(s);
+        for (R_xlen_t i = 0; i < n; ++i)
+            p[i] = static_cast<int>(result.order[static_cast<size_t>(i)] + 1);
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // grid_coords
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.grid_coords.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.grid_coords.begin(), result.grid_coords.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // predictions
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.predictions.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.predictions.begin(), result.predictions.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // bw_predictions (matrix or NULL)
+    if (with_bw_predictions && !result.bw_predictions.empty()) {
+        const R_xlen_t nrow = static_cast<R_xlen_t>(result.predictions.size());
+        const R_xlen_t ncol = static_cast<R_xlen_t>(result.bw_predictions.size());
+        for (R_xlen_t j = 0; j < ncol; ++j) {
+            if (static_cast<R_xlen_t>(result.bw_predictions[static_cast<size_t>(j)].size()) != nrow) {
+                Rf_error("Inconsistent matrix column length");
+            }
+        }
+
+        // Allocate and fill after validation
+        SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* p = REAL(s);
+        for (R_xlen_t j = 0; j < ncol; ++j)
+            for (R_xlen_t i = 0; i < nrow; ++i)
+                p[i + j * nrow] = result.bw_predictions[static_cast<size_t>(j)][static_cast<size_t>(i)];
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(r_list, idx++, R_NilValue);
+    }
+
+    // grid_predictions
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.grid_predictions.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.grid_predictions.begin(), result.grid_predictions.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // harmonic_predictions
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.harmonic_predictions.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.harmonic_predictions.begin(), result.harmonic_predictions.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // local_extrema matrix
+    {
+        const auto& extrema = result.local_extrema;
+        const R_xlen_t nrow = static_cast<R_xlen_t>(extrema.size());
+        const R_xlen_t ncol = 8;
+
+        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* p = REAL(mat);
+
+        for (R_xlen_t row = 0; row < nrow; ++row) {
+            const auto& e = extrema[static_cast<size_t>(row)];
+            p[row + 0 * nrow] = static_cast<double>(e.idx + 1);
+            p[row + 1 * nrow] = e.x;
+            p[row + 2 * nrow] = e.y;
+            p[row + 3 * nrow] = e.is_max ? 1.0 : 0.0;
+            p[row + 4 * nrow] = e.depth;
+            p[row + 5 * nrow] = static_cast<double>(e.depth_idx + 1);
+            p[row + 6 * nrow] = e.rel_depth;
+            p[row + 7 * nrow] = e.range_rel_depth;
+        }
+
+        // Add column names
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol));
+        const char* colnames_cstr[] = {
+            "idx", "x", "y", "is_max", "depth", "depth_idx",
+            "rel_depth", "range_rel_depth"
+        };
+        for (R_xlen_t j = 0; j < ncol; ++j)
+            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
+
+        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue);  // rownames
+        SET_VECTOR_ELT(dimnames, 1, colnames);    // colnames
+        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
+
+        SET_VECTOR_ELT(r_list, idx++, mat);
+        UNPROTECT(3); // mat, colnames, dimnames
+    }
+
+    // harmonic_predictions_local_extrema matrix
+    {
+        const auto& extrema = result.harmonic_predictions_local_extrema;
+        const R_xlen_t nrow = static_cast<R_xlen_t>(extrema.size());
+        const R_xlen_t ncol = 8;
+
+        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* p = REAL(mat);
+
+        for (R_xlen_t row = 0; row < nrow; ++row) {
+            const auto& e = extrema[static_cast<size_t>(row)];
+            p[row + 0 * nrow] = static_cast<double>(e.idx + 1);
+            p[row + 1 * nrow] = e.x;
+            p[row + 2 * nrow] = e.y;
+            p[row + 3 * nrow] = e.is_max ? 1.0 : 0.0;
+            p[row + 4 * nrow] = e.depth;
+            p[row + 5 * nrow] = static_cast<double>(e.depth_idx + 1);
+            p[row + 6 * nrow] = e.rel_depth;
+            p[row + 7 * nrow] = e.range_rel_depth;
+        }
+
+        // Add column names
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol));
+        const char* colnames_cstr[] = {
+            "idx", "x", "y", "is_max", "depth", "depth_idx",
+            "rel_depth", "range_rel_depth"
+        };
+        for (R_xlen_t j = 0; j < ncol; ++j)
+            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
+
+        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue);  // rownames
+        SET_VECTOR_ELT(dimnames, 1, colnames);    // colnames
+        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
+
+        SET_VECTOR_ELT(r_list, idx++, mat);
+        UNPROTECT(3); // mat, colnames, dimnames
+    }
+
+    // monotonic_interval_proportions
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.monotonic_interval_proportions.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.monotonic_interval_proportions.begin(),
+                  result.monotonic_interval_proportions.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // change_scaled_monotonicity_index
+    {
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s)[0] = result.change_scaled_monotonicity_index;
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // bw_errors
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.bw_errors.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.bw_errors.begin(), result.bw_errors.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // opt_bw_idx (1-based)
+    {
+        SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(s)[0] = static_cast<int>(result.opt_bw_idx + 1);
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // min_bw
+    {
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s)[0] = result.min_bw;
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // max_bw
+    {
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s)[0] = result.max_bw;
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // bws
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.bws.size());
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        std::copy(result.bws.begin(), result.bws.end(), REAL(s));
+        SET_VECTOR_ELT(r_list, idx++, s);
+        UNPROTECT(1);
+    }
+
+    // Set names
     const char* names[] = {
         "x_sorted",
         "y_sorted",
         "order",
         "grid_coords",
-        // predictions
         "predictions",
         "bw_predictions",
         "grid_predictions",
         "harmonic_predictions",
-        // local extrema
         "local_extrema",
         "harmonic_predictions_local_extrema",
-        // monotonicity measures
-        // "tvmi",
         "monotonic_interval_proportions",
         "change_scaled_monotonicity_index",
-        // "simpson_index",
-        // errors etc
         "bw_errors",
         "opt_bw_idx",
         "min_bw",
         "max_bw",
-        "bws",
-        NULL
+        "bws"
     };
-    int n_el = 0;
-    while (names[n_el]) ++n_el;
 
-    int protect_count = 0;
-    SEXP r_list  = PROTECT(Rf_allocVector(VECSXP, n_el)); ++protect_count;
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_el)); ++protect_count;
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_el));
     for (int i = 0; i < n_el; ++i)
         SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
     Rf_setAttrib(r_list, R_NamesSymbol, r_names);
 
-    // Helpers
-    auto vec_real = [&](const std::vector<double>& v) {
-        SEXP ans = PROTECT(Rf_allocVector(REALSXP, v.size())); ++protect_count;
-        std::copy(v.begin(), v.end(), REAL(ans));
-        return ans;
-    };
-    auto vec_int = [&](const std::vector<size_t>& v) {
-        SEXP ans = PROTECT(Rf_allocVector(INTSXP, v.size())); ++protect_count;
-        for (size_t i = 0; i < v.size(); ++i)
-            INTEGER(ans)[i] = (int)(v[i] + 1);  // 1‐based
-        return ans;
-    };
-    auto mat_real = [&](const std::vector<std::vector<double>>& M, R_xlen_t nrow) {
-        R_xlen_t ncol = M.size();
-        SEXP ans = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
-        double* p = REAL(ans);
-        for (R_xlen_t j = 0; j < ncol; ++j) {
-            if ((R_xlen_t)M[j].size() != nrow)
-                Rf_error("Inconsistent matrix column length");
-            for (R_xlen_t i = 0; i < nrow; ++i)
-                p[i + j * nrow] = M[j][i];
-        }
-        return ans;
-    };
-
-    // Fill in
-    int i = 0;
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.x_sorted));
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.y_sorted));
-    SET_VECTOR_ELT(r_list, i++, vec_int (result.order));
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.grid_coords));
-
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.predictions));
-    if (with_bw_predictions) {
-        SET_VECTOR_ELT(r_list, i++, mat_real(result.bw_predictions,   (R_xlen_t)result.predictions.size()));
-    } else {
-        SET_VECTOR_ELT(r_list, i++, R_NilValue);
-    }
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.grid_predictions));
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.harmonic_predictions));
-
-    // local_extrema matrix: columns = [idx, x, y, is_max, depth, depth_idx, rel_depth, range_rel_depth]
-    {
-        const auto& extrema = result.local_extrema;
-        R_xlen_t nrow = extrema.size();
-        R_xlen_t ncol = 8;
-
-        // Allocate matrix
-        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
-        double* p = REAL(mat);
-
-        // Fill matrix by sorted order
-        for (R_xlen_t row = 0; row < nrow; ++row) {
-            const auto& e = extrema[row];
-            p[row + 0 * nrow] = static_cast<double>(e.idx + 1);
-            p[row + 1 * nrow] = e.x;
-            p[row + 2 * nrow] = e.y;
-            p[row + 3 * nrow] = e.is_max ? 1.0 : 0.0;
-            p[row + 4 * nrow] = e.depth;
-            p[row + 5 * nrow] = static_cast<double>(e.depth_idx + 1);
-            p[row + 6 * nrow] = e.rel_depth;
-            p[row + 7 * nrow] = e.range_rel_depth;
-        }
-
-        // Add column names
-        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol)); ++protect_count;
-        const char* colnames_cstr[] = {
-            "idx", "x", "y", "is_max", "depth", "depth_idx",
-            "rel_depth", "range_rel_depth"
-        };
-        for (R_xlen_t j = 0; j < ncol; ++j)
-            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
-
-        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2)); ++protect_count;
-        SET_VECTOR_ELT(dimnames, 1, colnames);  // colnames
-        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
-
-        SET_VECTOR_ELT(r_list, i++, mat);  // local_extrema = 8th element in names[]
-    }
-
-    // harmonic_predictions_local_extrema matrix: columns = [idx, x, y, is_max, depth, depth_idx, rel_depth, range_rel_depth]
-    {
-        const auto& extrema = result.harmonic_predictions_local_extrema;
-        R_xlen_t nrow = extrema.size();
-        R_xlen_t ncol = 8;
-
-        // Allocate matrix
-        SEXP mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); ++protect_count;
-        double* p = REAL(mat);
-
-        // Fill matrix by sorted order
-        for (R_xlen_t row = 0; row < nrow; ++row) {
-            const auto& e = extrema[row];
-            p[row + 0 * nrow] = static_cast<double>(e.idx + 1);
-            p[row + 1 * nrow] = e.x;
-            p[row + 2 * nrow] = e.y;
-            p[row + 3 * nrow] = e.is_max ? 1.0 : 0.0;
-            p[row + 4 * nrow] = e.depth;
-            p[row + 5 * nrow] = static_cast<double>(e.depth_idx + 1);
-            p[row + 6 * nrow] = e.rel_depth;
-            p[row + 7 * nrow] = e.range_rel_depth;
-        }
-
-        // Add column names
-        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol)); ++protect_count;
-        const char* colnames_cstr[] = {
-            "idx", "x", "y", "is_max", "depth", "depth_idx",
-            "rel_depth", "range_rel_depth"
-        };
-        for (R_xlen_t j = 0; j < ncol; ++j)
-            SET_STRING_ELT(colnames, j, Rf_mkChar(colnames_cstr[j]));
-
-        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2)); ++protect_count;
-        SET_VECTOR_ELT(dimnames, 1, colnames);  // colnames
-        Rf_setAttrib(mat, R_DimNamesSymbol, dimnames);
-
-        SET_VECTOR_ELT(r_list, i++, mat);  // local_extrema = 8th element in names[]
-    }
-
-    // SET_VECTOR_ELT(r_list, i++, vec_real(std::vector<double>{ result.tvmi }));
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.monotonic_interval_proportions));
-    // SET_VECTOR_ELT(r_list, i++, vec_real(std::vector<double>{ result.simpson_index }));
-    SET_VECTOR_ELT(r_list, i++, vec_real(std::vector<double>{ result.change_scaled_monotonicity_index }));
-
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.bw_errors));
-
-    // opt_bw_idx
-    SEXP sx = PROTECT(Rf_allocVector(INTSXP, 1)); ++protect_count;
-    INTEGER(sx)[0] = (int)(result.opt_bw_idx + 1); // 1-based
-    SET_VECTOR_ELT(r_list, i++, sx);
-
-    // min_bw, max_bw
-    SET_VECTOR_ELT(r_list, i++, vec_real(std::vector<double>{ result.min_bw }));
-    SET_VECTOR_ELT(r_list, i++, vec_real(std::vector<double>{ result.max_bw }));
-
-    // bws
-    SET_VECTOR_ELT(r_list, i++, vec_real(result.bws));
-
-    UNPROTECT(protect_count);
+    UNPROTECT(2); // r_list, r_names
     return r_list;
 }

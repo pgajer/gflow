@@ -4,16 +4,6 @@ Here is a list of gflow package functions that rchk flaged, grouped by file and 
 
 # Functions to fix (from rchk output)
 
-## “mabilo” / “mabilog” family
-
- S_mabilo (`src/mabilo.cpp:675`) — multiple pointer protection counters; unsupported UNPROTECT(variable).
- S_mabilo_with_smoothed_errors (`src/mabilo.cpp:1194`) — same issue class.
- S_wmabilo (`src/mabilo.cpp:238`) — same issue class.
- S_mabilog (`src/mabilog.cpp:1381`) — multiple pointer protection counters; unsupported UNPROTECT(variable).
- S_mabilog_with_smoothed_errors (`src/mabilog.cpp:1896`) — same issue class.
- S_wmabilog (`src/mabilog.cpp:913`) — same issue class.
- S_mabilo_plus (`src/mabilo_plus.cpp:1119`) — multiple pointer protection counters; unsupported UNPROTECT(variable).
-
 ## agemalo / ray_agemalo / amagelo family
 
  S_agemalo (`src/agemalo_r.cpp:384, 386`) — negative depth; UNPROTECT(<counter>) over-unprotects; stack imbalance.
