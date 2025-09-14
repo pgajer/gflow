@@ -1,16 +1,17 @@
-#ifndef MSC2_KNN_H_
-#define MSC2_KNN_H_
+#ifndef GFLOW_KNN_H_
+#define GFLOW_KNN_H_
 
-#include <ANN/ANN.h>
+#include <vector>
 
-#include <R.h>
-#include <Rinternals.h>
-
+// Leak-proof result: flat row-major buffers inside std::vector.
 struct knn_result_t {
-    int* indices;
-    double* distances;
+  int n = 0;                 // number of points
+  int k = 0;                 // neighbors per point
+  std::vector<int> indices;        // size n*k, neighbors of i at [i*k ... i*k+k-1]
+  std::vector<double> distances;   // size n*k, same layout
 };
 
-SEXP kNN_search(ANNpointArray data_pts, int nrX, int ncX, int k);
+// C++ helper: compute kNN over X as vector-of-rows
+knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
 
-#endif // MSC2_KNN_H_
+#endif // GFLOW_KNN_H_

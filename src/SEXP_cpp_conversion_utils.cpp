@@ -48,9 +48,7 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
 
     // Fill trajectory matrices
     for (int step = 0; step < n_steps; step++) {
-        SEXP step_matrix = Rf_allocMatrix(REALSXP, n_points, n_features);
-        PROTECT(step_matrix);
-        nprot++;
+        SEXP step_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_points, n_features));
 
         double* matrix_ptr = REAL(step_matrix);
         for (int i = 0; i < n_points; i++) {
@@ -59,6 +57,7 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
             }
         }
         SET_VECTOR_ELT(X_traj_r, step, step_matrix);
+        UNPROTECT(1); // release the temporary protection for this element
     }
 
     // Create median k-distances vector
@@ -931,7 +930,9 @@ SEXP convert_map_set_to_R(const std::map<int, std::set<int>>& map_set) {
     int i = 0;
     for (const auto& pair : map_set) {
          // Convert the set to R vector
-        SET_VECTOR_ELT(Rlist, i, convert_set_to_R(pair.second));
+        SEXP tmp = PROTECT(convert_set_to_R(pair.second));
+        SET_VECTOR_ELT(Rlist, i, tmp);
+        UNPROTECT(1);
          // Set the name as the key
         SET_STRING_ELT(names, i, Rf_mkChar(std::to_string(pair.first).c_str()));
         i++;
@@ -963,7 +964,9 @@ SEXP convert_map_vector_set_to_R(const std::map<std::pair<int,int>, std::vector<
          // Create nested list for vector of sets
         SEXP inner_list = PROTECT(Rf_allocVector(VECSXP, pair.second.size()));
         for (size_t j = 0; j < pair.second.size(); ++j) {
-            SET_VECTOR_ELT(inner_list, j, convert_set_to_R(pair.second[j]));
+            SEXP tmp = PROTECT(convert_set_to_R(pair.second[j]));
+            SET_VECTOR_ELT(inner_list, j, tmp);
+            UNPROTECT(1);
         }
 
          // Set the name as "key1_key2"

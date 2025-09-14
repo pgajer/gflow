@@ -14,8 +14,6 @@
 extern void C_mstree(const int* riinit, const int* nn_i, const double* nn_d,
                   const double* rldist, const int* rn, int* edges, double* edge_lens);
 
-extern knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
-
 extern "C" {
     SEXP S_compute_mstree_total_length(SEXP s_X);
 }

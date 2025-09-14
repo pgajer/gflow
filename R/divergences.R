@@ -583,11 +583,12 @@ energy.distance <- function(X, Y) {
 #' @return A numeric value representing the estimated relative entropy.
 #'
 #' @examples
+#' \dontrun{
 #' X <- matrix(rnorm(1000), ncol = 2)
 #' Y <- matrix(rnorm(1000, mean = 1), ncol = 2)
 #' result <- entropy.difference(X, Y)
 #' print(result)
-#'
+#' }
 #' @seealso
 #'   \code{\link[infotheo]{discretize}} for the discretization method,
 #' @references
@@ -661,6 +662,7 @@ entropy.difference <- function(X, Y, num.bins = 10) {
 #'       if features are correlated
 #'   }
 #' @examples
+#' \dontrun{
 #' # Example 1: Datasets with different means
 #' set.seed(123)
 #' X <- matrix(rnorm(1000), ncol = 2)
@@ -685,6 +687,7 @@ entropy.difference <- function(X, Y, num.bins = 10) {
 #' })
 #' barplot(feature_mi, names.arg = paste("Feature", 1:5),
 #'         main = "Feature-wise MI Contribution")
+#' }
 #' }
 #' @references
 #' Cover, T. M., & Thomas, J. A. (2006). Elements of information theory. John Wiley & Sons.

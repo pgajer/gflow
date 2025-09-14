@@ -31,9 +31,9 @@
 #include "omp_compat.h"
 #include "iknn_graphs.hpp"
 #include "set_wgraph.hpp"
-#include "kNN_r.h"       // for S_kNN()
-#include "kNN.h"         // for struct iknn_vertex_tt and kNN_search
-#include "cpp_utils.hpp" // for debugging
+#include "kNN_r.h"            // for S_kNN()
+#include "kNN.h"              // for struct iknn_vertex_tt
+#include "cpp_utils.hpp"      // for debugging
 #include "progress_utils.hpp" // for elapsed.time
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "edge_pruning_stats.hpp"

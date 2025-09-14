@@ -18,8 +18,6 @@
 #include <R.h>
 #include <Rinternals.h>
 
-extern knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
-
 extern "C" {
     SEXP S_mean_shift_data_smoother(SEXP s_X,
                                     SEXP s_k,
@@ -124,7 +122,7 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
             std::vector<double> new_point(n_features, 0.0);
 
             // Finding the maximum distance among k-1 nearest neighbors
-            double max_dist = 0.0;
+          double max_dist = 0.0;
             for (int j = 0; j < k_minus_one; ++j) {
                 local_distances[j] = knn_res.distances[point * k + j + 1];
                 if (local_distances[j] > max_dist) max_dist = local_distances[j];
@@ -145,10 +143,12 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
             for (int j = 0; j < k_minus_one; ++j) {
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 for (int i = 0; i < n_features; ++i) {
-                    new_point[i] += kernel_weights[j] * X[neighbor_idx][i];
+                    new_point[i] += kernel_weights[j] * X_traj[step-1][neighbor_idx][i];
                 }
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             // Computing and estimate of data density gradient
             double gradient_norm = 0.0;
@@ -194,11 +194,14 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 double proj = 0.0;
                 for (int i = 0; i < n_features; ++i) {
-                    proj += (X[neighbor_idx][i] - X[point][i]) * gradient_vector_field[point][i];
+                    proj += (X_traj[step-1][neighbor_idx][i] - X_traj[step-1][point][i]) * gradient_vector_field[point][i];
                 }
                 gradient_magnitude += kernel_weights[j] * std::abs(proj);
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             gradient_magnitude /= total_weight;
 
             // Updating point position
@@ -318,7 +321,9 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
     X_traj[0] = X;  // Initialize the first step with the original data
 
     for (int step = 1; step < n_steps; ++step) {
-        auto knn_res = kNN(X_traj[step-1], std::max(k, density_k));
+
+        int Kmax = std::max(k, density_k);
+        auto knn_res = kNN(X_traj[step-1], Kmax);
 
         X_traj[step].resize(n_points, std::vector<double>(n_features));  // Prepare space for the current step
         std::vector<std::vector<double>> gradient_vector_field(n_points, std::vector<double>(n_features));
@@ -328,7 +333,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
             double max_dist = 0.0;
 
             for (int j = 0; j < k_minus_one; ++j) {
-                local_distances[j] = knn_res.distances[point * k + j + 1];
+                local_distances[j] = knn_res.distances[point * Kmax + j + 1];
                 if (local_distances[j] > max_dist) max_dist = local_distances[j];
             }
 
@@ -343,7 +348,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
             double gradient_magnitude = 0.0;
 
             for (int j = 0; j < k_minus_one; ++j) {
-                int neighbor_idx = knn_res.indices[point * k + j + 1];
+                int neighbor_idx = knn_res.indices[point * Kmax + j + 1];
                 double proj = 0.0;
 
                 for (int i = 0; i < n_features; ++i) {
@@ -355,6 +360,8 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
                 total_weight += kernel_weights[j];
                 gradient_magnitude += kernel_weights[j] * std::abs(proj);
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
@@ -376,7 +383,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
                 X_traj[step][point][i] = X_traj[step-1][point][i] + step_size * gradient_magnitude * gradient_vector_field[point][i];
             }
 
-            kdistances[point] = knn_res.distances[point * density_k + density_k_minus_one];
+            kdistances[point] = knn_res.distances[point * Kmax + density_k_minus_one];
         }
 
         median_kdistances[step] = median(kdistances.data(), (int)kdistances.size());
@@ -502,10 +509,12 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
             for (int j = 0; j < k_minus_one; ++j) {
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 for (int i = 0; i < n_features; ++i) {
-                    new_point[i] += kernel_weights[point][j] * X[neighbor_idx][i];
+                    new_point[i] += kernel_weights[point][j] * X_traj[step-1][neighbor_idx][i];
                 }
                 total_weight += kernel_weights[point][j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
@@ -531,11 +540,14 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 double proj = 0.0;
                 for (int i = 0; i < n_features; ++i) {
-                    proj += (X[neighbor_idx][i] - X[point][i]) * gradient_vector_field[point][i];
+                    proj += (X_traj[step-1][neighbor_idx][i] - X_traj[step-1][point][i]) * gradient_vector_field[point][i];
                 }
                 gradient_magnitude += kernel_weights[point][j] * std::abs(proj);
                 total_weight += kernel_weights[point][j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             gradient_magnitude /= total_weight;
 
             for (int i = 0; i < n_features; ++i) {
@@ -671,10 +683,12 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
             for (int j = 0; j < k_minus_one; ++j) {
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 for (int i = 0; i < n_features; ++i) {
-                    new_point[i] += kernel_weights[point][j] * X[neighbor_idx][i];
+                    new_point[i] += kernel_weights[point][j] * X_traj[step-1][neighbor_idx][i];
                 }
                 total_weight += kernel_weights[point][j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
@@ -719,6 +733,8 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
                 total_weight += kernel_weights[point][j];
             }
 
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
                 averaged_gradient[i] /= total_weight;
@@ -744,11 +760,14 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
                 int neighbor_idx = knn_res.indices[point * k + j + 1];
                 double proj = 0.0;
                 for (int i = 0; i < n_features; ++i) {
-                    proj += (X[neighbor_idx][i] - X[point][i]) * averaged_gradient_field[point][i];
+                    proj += (X_traj[step-1][neighbor_idx][i] - X_traj[step-1][point][i]) * averaged_gradient_field[point][i];
                 }
                 gradient_magnitude += kernel_weights[point][j] * std::abs(proj);
                 total_weight += kernel_weights[point][j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             gradient_magnitude /= total_weight;
 
             for (int i = 0; i < n_features; ++i) {
@@ -864,7 +883,9 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
 
     // Main loop for mean shift steps
     for (int step = 1; step < n_steps; ++step) {
-        auto knn_res = kNN(X_traj[step-1], std::max(k, density_k));
+
+        int Kmax = std::max(k, density_k);
+        auto knn_res = kNN(X_traj[step-1], Kmax);
 
         X_traj[step].resize(n_points, std::vector<double>(n_features));  // Prepare space for the current step
 
@@ -878,7 +899,7 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
             // Finding the maximum distance among k-1 nearest neighbors
             double max_dist = 0.0;
             for (int j = 0; j < k_minus_one; ++j) {
-                local_distances[j] = knn_res.distances[point * k + j + 1];
+                local_distances[j] = knn_res.distances[point * Kmax + j + 1];
                 if (local_distances[j] > max_dist) max_dist = local_distances[j];
             }
 
@@ -901,6 +922,8 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
                 }
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             // Computing and estimate of data density gradient
             double gradient_norm = 0.0;
@@ -940,11 +963,11 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
                 local_distances[j] /= max_dist;
 
             // Computing kernel weights
-            kernel_fn(local_distances.data(), k_minus_one, kernel_weights.data());
+           kernel_fn(local_distances.data(), k_minus_one, kernel_weights.data());
 
             // Averaging gradient using kernel weights
             for (int j = 0; j < k_minus_one; ++j) {
-                int neighbor_idx = knn_res.indices[point * k + j + 1];
+                int neighbor_idx = knn_res.indices[point * Kmax + j + 1];
                 if (average_direction_only) {
                     // Normalize the neighbor's gradient to a unit vector
                     double neighbor_grad_norm = 0.0;
@@ -966,6 +989,8 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
                 }
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             // Normalizing averaged gradient
             double gradient_norm = 0.0;
@@ -1016,6 +1041,8 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
                 gradient_magnitude += kernel_weights[j] * std::abs(proj);
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
             gradient_magnitude /= total_weight;
 
             // Updating point position
@@ -1143,7 +1170,8 @@ std::unique_ptr<mean_shift_smoother_results_t> adaptive_mean_shift_data_smoother
 
     // Main loop for mean shift steps
     for (int step = 1; step < n_steps; ++step) {
-        auto knn_res = kNN(X_traj[step-1], std::max(k, density_k));
+        int Kmax = std::max(k, density_k);
+        auto knn_res = kNN(X_traj[step-1], Kmax);
 
         X_traj[step].resize(n_points, std::vector<double>(n_features));  // Prepare space for the current step
 
@@ -1156,7 +1184,7 @@ std::unique_ptr<mean_shift_smoother_results_t> adaptive_mean_shift_data_smoother
             // Finding the maximum distance among k-1 nearest neighbors
             double max_dist = 0.0;
             for (int j = 0; j < k_minus_one; ++j) {
-                local_distances[j] = knn_res.distances[point * k + j + 1];
+                local_distances[j] = knn_res.distances[point * Kmax + j + 1];
                 if (local_distances[j] > max_dist) max_dist = local_distances[j];
             }
 
@@ -1173,12 +1201,14 @@ std::unique_ptr<mean_shift_smoother_results_t> adaptive_mean_shift_data_smoother
             // Computing weighted mean of neighboring points
             double total_weight = 0.0;
             for (int j = 0; j < k_minus_one; ++j) {
-                int neighbor_idx = knn_res.indices[point * k + j + 1];
+                int neighbor_idx = knn_res.indices[point * Kmax + j + 1];
                 for (int i = 0; i < n_features; ++i) {
                     new_point[i] += kernel_weights[j] * X_traj[step-1][neighbor_idx][i];
                 }
                 total_weight += kernel_weights[j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
 
             // Computing and estimate of data density gradient
             double gradient_norm = 0.0;
@@ -1245,6 +1275,8 @@ std::unique_ptr<mean_shift_smoother_results_t> adaptive_mean_shift_data_smoother
                 total_weight += kernel_weights[j];
             }
 
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             // Normalizing averaged gradient
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
@@ -1294,6 +1326,7 @@ std::unique_ptr<mean_shift_smoother_results_t> adaptive_mean_shift_data_smoother
                 gradient_magnitude += kernel_weights[j] * std::abs(proj);
                 total_weight += kernel_weights[j];
             }
+            if (total_weight <= 0.0) total_weight = 1e-12;
             gradient_magnitude /= total_weight;
 
             // Compute dot product between current and previous gradient
@@ -1571,6 +1604,8 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_adaptive
                 total_weight += kernel_weights[point][j];
             }
 
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
                 new_point[i] /= total_weight;
@@ -1614,6 +1649,8 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_adaptive
                 total_weight += kernel_weights[point][j];
             }
 
+            if (total_weight <= 0.0) total_weight = 1e-12;
+
             double gradient_norm = 0.0;
             for (int i = 0; i < n_features; ++i) {
                 averaged_gradient[i] /= total_weight;
@@ -1644,6 +1681,8 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_adaptive
                 gradient_magnitude += kernel_weights[point][j] * std::abs(proj);
                 total_weight += kernel_weights[point][j];
             }
+
+            if (total_weight <= 0.0) total_weight = 1e-12;
             gradient_magnitude /= total_weight;
 
             // Compute dot product between current and previous gradient
@@ -1688,72 +1727,6 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_adaptive
     return results;
 }
 
-#if 0
-std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_adaptive(
-    const std::vector<std::vector<double>>& X,
-    int k,
-    int density_k,
-    int n_steps,
-    double initial_step_size,
-    int ikernel = 1,
-    double dist_normalization_factor = 1.01,
-    bool average_direction_only = false) {
-
-    // ... [Previous initialization code remains the same] ...
-
-    std::vector<double> step_sizes(n_points, initial_step_size);
-    std::vector<std::vector<double>> previous_gradients(n_points, std::vector<double>(n_features, 0.0));
-    double momentum = 0.9;
-    double increase_factor = 1.2;
-    double decrease_factor = 0.5;
-
-    // Main loop for mean shift steps
-    for (int step = 1; step < n_steps; ++step) {
-        std::vector<std::vector<double>> gradient_vector_field(n_points, std::vector<double>(n_features));
-
-        // ... [Gradient estimation and averaging code remains the same] ...
-
-        // Updating X_traj using the averaged gradient field and adaptive step size
-        for (int point = 0; point < n_points; ++point) {
-            double gradient_magnitude = 0.0;
-            double total_weight = 0.0;
-
-            // ... [Code for computing gradient_magnitude remains the same] ...
-
-            // Compute dot product between current and previous gradient
-            double gradient_dot_product = 0.0;
-            for (int i = 0; i < n_features; ++i) {
-                gradient_dot_product += averaged_gradient_field[point][i] * previous_gradients[point][i];
-            }
-
-            // Adjust step size based on gradient direction consistency
-            if (gradient_dot_product > 0) {
-                // Gradients are pointing in similar directions, increase step size
-                step_sizes[point] *= increase_factor;
-            } else {
-                // Gradients are pointing in different directions, decrease step size
-                step_sizes[point] *= decrease_factor;
-            }
-
-            // Update point position with adaptive step size
-            for (int i = 0; i < n_features; ++i) {
-                X_traj[step][point][i] = X_traj[step-1][point][i] +
-                    step_sizes[point] * gradient_magnitude * averaged_gradient_field[point][i];
-            }
-
-            // Update previous gradient with momentum
-            for (int i = 0; i < n_features; ++i) {
-                previous_gradients[point][i] = momentum * previous_gradients[point][i] +
-                    (1 - momentum) * averaged_gradient_field[point][i];
-            }
-        }
-
-        // ... [Rest of the function remains the same] ...
-    }
-
-    // ... [Return statement remains the same] ...
-}
-#endif
 
 /**
  * @brief R wrapper for the adaptive mean shift data smoother.

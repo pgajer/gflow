@@ -13,7 +13,6 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-knn_result_t kNN(const std::vector<std::vector<double>>& X, int k);
 void C_wasserstein_distance_1D(const double *x,
                                const double *y,
                                const int    *rn,
@@ -70,137 +69,88 @@ extern "C" {
  * double index = angular_wasserstein_index(X, Y, k);
  * @endcode
  */
+#include <numeric>   // std::inner_product
+#include <algorithm> // std::clamp
+#include <cmath>
+
 double angular_wasserstein_index(const std::vector<std::vector<double>>& X,
                                  const std::vector<std::vector<double>>& Y,
                                  int k) {
-    // ... (previous Rf_error checking code remains the same)
+    // Preconditions are reportedly checked in the R wrapper, but add cheap asserts here too.
+    const int n_X_points = static_cast<int>(X.size());
+    const int dim        = static_cast<int>(X.empty() ? 0 : X[0].size());
+    if (n_X_points == 0 || dim == 0 || k <= 1) return 0.0; // nothing to compare
+    if (static_cast<int>(Y.size()) != n_X_points || static_cast<int>(Y[0].size()) != dim)
+        Rf_error("X and Y must have identical shapes");
 
-    int n_X_points = X.size();
-    int dim = X[0].size();
-    int k_minus_one = k - 1;
+    const int k_minus_one = k - 1;
 
-    auto knn_res = kNN(X, k);
-
-    // print_row_major_2D_array(knn_res.indices, n_X_points, k, "knn_res.indices", 0, true, 1);
-    // print_row_major_2D_array(knn_res.distances, n_X_points, k, "knn_res.distances", 0, true, 1);
+    // RAII: result holds flat vectors of size n*k
+    const auto knn_res = kNN(X, k);  // indices and distances are std::vector<>
 
     double total_dist = 0.0;
     std::vector<double> angles_X(k_minus_one);
     std::vector<double> angles_Y(k_minus_one);
 
-    for (int point = 0; point < n_X_points; ++point) {
-        std::vector<double> reference_X(dim);
-        std::vector<double> reference_Y(dim);
+    // scratch allocated once per point
+    std::vector<double> reference_X(dim), reference_Y(dim);
+    std::vector<double> vec_X(dim), vec_Y(dim);
 
-        // Use the last neighbor (k-1) as reference
+    for (int point = 0; point < n_X_points; ++point) {
+        const int ref_idx = knn_res.indices[static_cast<size_t>(point) * k + (k - 1)];
+
+        // reference direction (last neighbor)
         for (int d = 0; d < dim; ++d) {
-            reference_X[d] = X[knn_res.indices[point * k + (k-1)]][d] - X[point][d];
-            reference_Y[d] = Y[knn_res.indices[point * k + (k-1)]][d] - Y[point][d];
+            reference_X[d] = X[ref_idx][d] - X[point][d];
+            reference_Y[d] = Y[ref_idx][d] - Y[point][d];
         }
 
-        double ref_norm_X = std::sqrt(std::inner_product(reference_X.begin(), reference_X.end(), reference_X.begin(), 0.0));
-        double ref_norm_Y = std::sqrt(std::inner_product(reference_Y.begin(), reference_Y.end(), reference_Y.begin(), 0.0));
+        const double ref_norm_X = std::sqrt(std::inner_product(reference_X.begin(), reference_X.end(),
+                                                               reference_X.begin(), 0.0));
+        const double ref_norm_Y = std::sqrt(std::inner_product(reference_Y.begin(), reference_Y.end(),
+                                                               reference_Y.begin(), 0.0));
 
-        // Start from j = 1 to skip the first neighbor (which is the point itself)
+        // Guard against zero norms (coincident points). If zero, angle defaults to 0.
+        const bool ref_X_zero = (ref_norm_X == 0.0);
+        const bool ref_Y_zero = (ref_norm_Y == 0.0);
+
+        // j = 1..k-1 (skip j=0 which is the point itself)
         for (int j = 1; j < k; ++j) {
-            int neighbor_idx = knn_res.indices[point * k + j];
-
-            std::vector<double> vec_X(dim);
-            std::vector<double> vec_Y(dim);
+            const int neighbor_idx = knn_res.indices[static_cast<size_t>(point) * k + j];
 
             for (int d = 0; d < dim; ++d) {
                 vec_X[d] = X[neighbor_idx][d] - X[point][d];
                 vec_Y[d] = Y[neighbor_idx][d] - Y[point][d];
             }
 
-            double dot_product_X = std::inner_product(vec_X.begin(), vec_X.end(), reference_X.begin(), 0.0);
-            double dot_product_Y = std::inner_product(vec_Y.begin(), vec_Y.end(), reference_Y.begin(), 0.0);
+            const double vec_norm_X = std::sqrt(std::inner_product(vec_X.begin(), vec_X.end(),
+                                                                   vec_X.begin(), 0.0));
+            const double vec_norm_Y = std::sqrt(std::inner_product(vec_Y.begin(), vec_Y.end(),
+                                                                   vec_Y.begin(), 0.0));
 
-            double vec_norm_X = std::sqrt(std::inner_product(vec_X.begin(), vec_X.end(), vec_X.begin(), 0.0));
-            double vec_norm_Y = std::sqrt(std::inner_product(vec_Y.begin(), vec_Y.end(), vec_Y.begin(), 0.0));
+            double cosX = 1.0, cosY = 1.0;
+            if (!ref_X_zero && vec_norm_X != 0.0) {
+                const double dotX = std::inner_product(vec_X.begin(), vec_X.end(), reference_X.begin(), 0.0);
+                cosX = std::clamp(dotX / (vec_norm_X * ref_norm_X), -1.0, 1.0);
+            }
+            if (!ref_Y_zero && vec_norm_Y != 0.0) {
+                const double dotY = std::inner_product(vec_Y.begin(), vec_Y.end(), reference_Y.begin(), 0.0);
+                cosY = std::clamp(dotY / (vec_norm_Y * ref_norm_Y), -1.0, 1.0);
+            }
 
-            angles_X[j-1] = std::acos(std::max(-1.0, std::min(1.0, dot_product_X / (vec_norm_X * ref_norm_X))));
-            angles_Y[j-1] = std::acos(std::max(-1.0, std::min(1.0, dot_product_Y / (vec_norm_Y * ref_norm_Y))));
+            angles_X[j - 1] = std::acos(cosX);
+            angles_Y[j - 1] = std::acos(cosY);
         }
 
         double dist = 0.0;
-        C_wasserstein_distance_1D(angles_X.data(), angles_Y.data(), &k_minus_one, &dist);
+        C_wasserstein_distance_1D(angles_X.data(), angles_Y.data(),
+                                  const_cast<int*>(&k_minus_one), &dist);
         total_dist += dist;
     }
 
-    delete[] knn_res.indices;
-    delete[] knn_res.distances;
-
+    // No deletes: knn_res holds std::vector and frees itself
     return total_dist / (n_X_points * k_minus_one);
 }
-
-double old_angular_wasserstein_index(const std::vector<std::vector<double>>& X,
-                                 const std::vector<std::vector<double>>& Y,
-                                 int k) {
-    if (X.size() != Y.size() || X[0].size() != Y[0].size()) {
-        Rf_error("X and Y must have the same dimensions");
-    }
-    if (k < 2) {
-        Rf_error("k must be at least 2");
-    }
-
-    int n_X_points = X.size();
-    int dim = X[0].size();
-    int k_minus_one = k - 1;
-
-    auto knn_res = kNN(X, k);
-
-    print_row_major_2D_array(knn_res.indices, n_X_points, k, "knn_res.indices");
-
-    double total_dist = 0.0;
-    double dist = 0.0;
-
-    std::vector<double> angles_X(k_minus_one);
-    std::vector<double> angles_Y(k_minus_one);
-
-    for (int point = 0; point < n_X_points; ++point) {
-        std::vector<double> reference_X(dim);
-        std::vector<double> reference_Y(dim);
-
-        for (int d = 0; d < dim; ++d) {
-            reference_X[d] = X[knn_res.indices[point * k + k - 1]][d] - X[point][d];
-            reference_Y[d] = Y[knn_res.indices[point * k + k - 1]][d] - Y[point][d];
-        }
-
-        double ref_norm_X = std::sqrt(std::inner_product(reference_X.begin(), reference_X.end(), reference_X.begin(), 0.0));
-        double ref_norm_Y = std::sqrt(std::inner_product(reference_Y.begin(), reference_Y.end(), reference_Y.begin(), 0.0));
-
-        for (int j = 0; j < k_minus_one; ++j) {
-            int neighbor_idx = knn_res.indices[point * k + j + 1];
-
-            std::vector<double> vec_X(dim);
-            std::vector<double> vec_Y(dim);
-
-            for (int d = 0; d < dim; ++d) {
-                vec_X[d] = X[neighbor_idx][d] - X[point][d];
-                vec_Y[d] = Y[neighbor_idx][d] - Y[point][d];
-            }
-
-            double dot_product_X = std::inner_product(vec_X.begin(), vec_X.end(), reference_X.begin(), 0.0);
-            double dot_product_Y = std::inner_product(vec_Y.begin(), vec_Y.end(), reference_Y.begin(), 0.0);
-
-            double vec_norm_X = std::sqrt(std::inner_product(vec_X.begin(), vec_X.end(), vec_X.begin(), 0.0));
-            double vec_norm_Y = std::sqrt(std::inner_product(vec_Y.begin(), vec_Y.end(), vec_Y.begin(), 0.0));
-
-            angles_X[j] = std::acos(std::max(-1.0, std::min(1.0, dot_product_X / (vec_norm_X * ref_norm_X))));
-            angles_Y[j] = std::acos(std::max(-1.0, std::min(1.0, dot_product_Y / (vec_norm_Y * ref_norm_Y))));
-        }
-
-        C_wasserstein_distance_1D(angles_X.data(), angles_Y.data(), &k_minus_one, &dist);
-        total_dist += dist;
-    }
-
-    delete[] knn_res.indices;
-    delete[] knn_res.distances;
-
-    return total_dist / (n_X_points * k_minus_one);
-}
-
 
 /**
  * @brief R interface for computing the Angular Wasserstein Index between two sets of points.
