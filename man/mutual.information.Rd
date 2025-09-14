@@ -61,6 +61,7 @@ if features are correlated
 }
 }
 \examples{
+\dontrun{
 # Example 1: Datasets with different means
 set.seed(123)
 X <- matrix(rnorm(1000), ncol = 2)
@@ -85,6 +86,7 @@ feature_mi <- sapply(1:5, function(i) {
 })
 barplot(feature_mi, names.arg = paste("Feature", 1:5),
         main = "Feature-wise MI Contribution")
+}
 }
 }
 \references{

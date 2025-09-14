@@ -38,11 +38,12 @@ useful when dealing with high-dimensional data where direct density estimation i
 However, it's sensitive to the choice of binning and may not be as accurate as some other methods.
 }
 \examples{
+\dontrun{
 X <- matrix(rnorm(1000), ncol = 2)
 Y <- matrix(rnorm(1000, mean = 1), ncol = 2)
 result <- entropy.difference(X, Y)
 print(result)
-
+}
 }
 \references{
 Cover, T. M., & Thomas, J. A. (2006). Elements of information theory. John Wiley & Sons.
