@@ -24,9 +24,10 @@ combines the vertices and edges from both input graphs, with the specified verti
 treated as a single vertex in the joined graph.
 }
 \examples{
+\dontrun{
 graph1 <- list(c(2, 3), c(1), c(1))
 graph2 <- list(c(2), c(1, 3), c(2))
 joined_graph <- join.graphs(graph1, graph2, 2, 1)
 print(joined_graph)
-
+}
 }

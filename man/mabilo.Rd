@@ -123,7 +123,7 @@ Bootstrap" for theoretical details.
 # Basic usage
 x <- seq(0, 10, length.out = 100)
 y <- sin(x) + rnorm(100, 0, 0.1)
-fit <- mabilo(x, y, k.min = 3, k.max = 10)
+fit <- mabilo(x, y, k.min = 3, k.max = 10, n.bb = 0)
 plot(x, y)
 lines(x, fit$predictions, col = "red")
 

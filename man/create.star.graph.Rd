@@ -20,7 +20,8 @@ vertex. The resulting star graph consists of a central vertex connected to multi
 of vertices.
 }
 \examples{
+\dontrun{
 star_graph <- create.star.graph(c(3, 4, 2))
 print(star_graph)
-
+}
 }

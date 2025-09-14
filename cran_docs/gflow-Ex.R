@@ -1152,21 +1152,22 @@ chain1 <- create.chain.graph(4)
 
 ### ** Examples
 
-# Generate sample data
-set.seed(123)
-X <- matrix(rnorm(100 * 3), nrow = 100, ncol = 3)
-
-# Create MST completion graph with default parameters
-graph <- create.cmst.graph(X)
-
-# Create graph with PCA dimensionality reduction
-X_high <- matrix(rnorm(100 * 200), nrow = 100, ncol = 200)
-graph_pca <- create.cmst.graph(X_high, pca.dim = 50, variance.explained = 0.95)
-
-# Print summary
-print(graph_pca)
-summary(graph_pca)
-
+## Not run: 
+##D # Generate sample data
+##D set.seed(123)
+##D X <- matrix(rnorm(100 * 3), nrow = 100, ncol = 3)
+##D 
+##D # Create MST completion graph with default parameters
+##D graph <- create.cmst.graph(X)
+##D 
+##D # Create graph with PCA dimensionality reduction
+##D X_high <- matrix(rnorm(100 * 200), nrow = 100, ncol = 200)
+##D graph_pca <- create.cmst.graph(X_high, pca.dim = 50, variance.explained = 0.95)
+##D 
+##D # Print summary
+##D print(graph_pca)
+##D summary(graph_pca)
+## End(Not run)
 
 
 

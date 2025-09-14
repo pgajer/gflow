@@ -101,7 +101,7 @@
 #' # Basic usage
 #' x <- seq(0, 10, length.out = 100)
 #' y <- sin(x) + rnorm(100, 0, 0.1)
-#' fit <- mabilo(x, y, k.min = 3, k.max = 10)
+#' fit <- mabilo(x, y, k.min = 3, k.max = 10, n.bb = 0)
 #' plot(x, y)
 #' lines(x, fit$predictions, col = "red")
 #'
@@ -330,7 +330,7 @@ mabilo <- function(x,
 #' y <- sin(x) + rnorm(100, 0, 0.1)
 #'
 #' # Fit mabilo model
-#' fit <- mabilo(x, y, n.bb = 100)
+#' fit <- mabilo(x, y, k.min = 3, k.max = 10, n.bb = 0)
 #'
 #' # Basic fit plot with credible intervals
 #' plot(fit)

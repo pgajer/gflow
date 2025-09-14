@@ -148,6 +148,12 @@ SEXP S_wmabilo(SEXP s_x,
   const double epsilon = Rf_asReal(s_epsilon);
   const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
 
+  const int n_points = static_cast<int>(x.size());
+  if (k_min < 1) Rf_error("k_min must be >= 1");
+  if (k_max < k_min) Rf_error("k_max must be >= k_min");
+  if (k_max > (n_points - 1)/2)
+      Rf_error("k_max must be <= floor((length(x) - 1)/2)");
+
   // --- Core computation (no R allocations inside) ---
   mabilo_t wmabilo_results = wmabilo(x, y, y_true, w,
                                      k_min, k_max,
@@ -180,7 +186,7 @@ SEXP S_wmabilo(SEXP s_x,
 
   // 2: opt_k_idx (scalar int; use whatever base your core returns)
   {
-    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx));
+    SEXP s = PROTECT(Rf_ScalarInteger(wmabilo_results.opt_k_idx + 1));
     SET_VECTOR_ELT(result, 2, s);
     UNPROTECT(1);
   }
@@ -283,7 +289,7 @@ std::vector<std::vector<double>> mabilo_bb(const std::vector<double>& x,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    gflow::for_each(GFLOW_EXEC_POLICY,
+    gflow::for_each(std::execution::seq,
                     bb_indices.begin(),
                     bb_indices.end(),
                     [&](int iboot) {
@@ -552,6 +558,12 @@ SEXP S_mabilo(SEXP s_x,
   const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
   const double epsilon = Rf_asReal(s_epsilon);
   const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+
+  const int n_points = static_cast<int>(x.size());
+  if (k_min < 1) Rf_error("k_min must be >= 1");
+  if (k_max < k_min) Rf_error("k_max must be >= k_min");
+  if (k_max > (n_points - 1)/2)
+      Rf_error("k_max must be <= floor((length(x) - 1)/2)");
 
   // --- Core computation (no R allocations inside) ---
   mabilo_t wmabilo_results = mabilo(x,
@@ -842,6 +854,9 @@ mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
                 x_max_index = n_points_minus_one;
             }
 
+            x_min_index = std::max(0, x_min_index);
+            x_max_index = std::min(n_points - 1, x_max_index);
+
             // Computing window weights
             w_window = window_weights(x_min_index, x_max_index, i);
 
@@ -1078,6 +1093,12 @@ SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
   const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
   const double epsilon = Rf_asReal(s_epsilon);
   const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+
+  const int n_points = static_cast<int>(x.size());
+  if (k_min < 1) Rf_error("k_min must be >= 1");
+  if (k_max < k_min) Rf_error("k_max must be >= k_min");
+  if (k_max > (n_points - 1)/2)
+      Rf_error("k_max must be <= floor((length(x) - 1)/2)");
 
   // --- Core computation (no R allocations inside) ---
   mabilo_t out = mabilo_with_smoothed_errors(x, y, y_true,
@@ -1396,6 +1417,9 @@ mabilo_t wmabilo(const std::vector<double>& x,
                 x_min_index = n_points_minus_one_minus_two_k;
                 x_max_index = n_points_minus_one;
             }
+
+            x_min_index = std::max(0, x_min_index);
+            x_max_index = std::min(n_points - 1, x_max_index);
 
             // Computing window weights
             w_window = window_weights(x_min_index, x_max_index, i);
@@ -1734,6 +1758,9 @@ mabilo_t uwmabilo(const std::vector<double>& x,
                 x_min_index = n_points_minus_one_minus_two_k;
                 x_max_index = n_points_minus_one;
             }
+
+            x_min_index = std::max(0, x_min_index);
+            x_max_index = std::min(n_points - 1, x_max_index);
 
             // Computing window weights
             w_window = window_weights(x_min_index, x_max_index, i);

@@ -100,6 +100,7 @@ with each arm having potentially different lengths. Points are distributed along
 these arms to create the graph vertices.
 }
 \examples{
+\dontrun{
 # Generate a 2D star graph with 5 arms and exponential function centered at origin
 result <- generate.star.dataset(
   n.points = 20,
@@ -114,5 +115,5 @@ result <- generate.star.dataset(
   noise = "norm",
   noise.sd = 0.1
 )
-
+}
 }

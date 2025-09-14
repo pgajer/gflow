@@ -81,44 +81,47 @@ SEXP graph_to_edge_matrix(const set_wgraph_t& G) {
  */
 std::pair<SEXP, SEXP>
 create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
-	const auto& adj_list = G.adjacency_list;
-	size_t n_vertices = adj_list.size();
+    const auto& adj_list = G.adjacency_list;
+    size_t n_vertices = adj_list.size();
 
-	// Prepare temporary C++ storage for adjacency and weights
-	std::vector<std::vector<int>> adj_vect(n_vertices);
-	std::vector<std::vector<double>> dist_vect(n_vertices);
+    // Prepare temporary C++ storage for adjacency and weights
+    std::vector<std::vector<int>> adj_vect(n_vertices);
+    std::vector<std::vector<double>> dist_vect(n_vertices);
 
-	for (size_t i = 0; i < n_vertices; ++i) {
-		for (const auto& nbr : adj_list[i]) {
-			adj_vect[i].push_back(static_cast<int>(nbr.vertex));
-			dist_vect[i].push_back(nbr.weight);
-		}
-	}
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (const auto& nbr : adj_list[i]) {
+            adj_vect[i].push_back(static_cast<int>(nbr.vertex));
+            dist_vect[i].push_back(nbr.weight);
+        }
+    }
 
-	SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-	SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-	for (size_t i = 0; i < n_vertices; ++i) {
-		// Integer vector for neighbors
-		SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
-		int* A = INTEGER(RA);
-		for (size_t j = 0; j < adj_vect[i].size(); ++j) {
-			A[j] = adj_vect[i][j] + 1; // 1-based indexing
-		}
-		SET_VECTOR_ELT(r_adj_list, i, RA);
-		UNPROTECT(1); // RA
+    for (size_t i = 0; i < n_vertices; ++i) {
+        // Integer vector for neighbors
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
+        int* A = INTEGER(RA);
+        for (size_t j = 0; j < adj_vect[i].size(); ++j) {
+            A[j] = adj_vect[i][j] + 1; // 1-based indexing
+        }
+        SET_VECTOR_ELT(r_adj_list, i, RA);
+        UNPROTECT(1); // RA
 
-		// Numeric vector for weights
-		SEXP RD = PROTECT(Rf_allocVector(REALSXP, dist_vect[i].size()));
-		double* D = REAL(RD);
-		for (size_t j = 0; j < dist_vect[i].size(); ++j) {
-			D[j] = dist_vect[i][j];
-		}
-		SET_VECTOR_ELT(r_weight_list, i, RD);
-		UNPROTECT(1); // RD
-	}
+        // Numeric vector for weights
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, dist_vect[i].size()));
+        double* D = REAL(RD);
+        for (size_t j = 0; j < dist_vect[i].size(); ++j) {
+            D[j] = dist_vect[i][j];
+        }
+        SET_VECTOR_ELT(r_weight_list, i, RD);
+        UNPROTECT(1); // RD
+    }
 
-	return std::make_pair(r_adj_list, r_weight_list);
+    // IMPORTANT: We need to UNPROTECT before returning
+    UNPROTECT(2); // r_adj_list and r_weight_list
+
+    return std::make_pair(r_adj_list, r_weight_list);
 }
 
 /**
@@ -155,55 +158,62 @@ create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
  * \endcode
  */
 extern "C" SEXP S_create_mst_completion_graph(
-	SEXP s_X,
-	SEXP s_q_thld,
-	SEXP s_verbose
-	) {
-	// Input checking
-	if (!Rf_isReal(s_X) || !Rf_isMatrix(s_X)) {
-		REPORT_ERROR("X must be a numeric matrix");
-	}
-	if (!Rf_isReal(s_q_thld) || Rf_length(s_q_thld) != 1) {
-		REPORT_ERROR("q_thld must be a numeric scalar");
-	}
-	if (!Rf_isLogical(s_verbose) || Rf_length(s_verbose) != 1) {
-		REPORT_ERROR("verbose must be a logical scalar");
-	}
+    SEXP s_X,
+    SEXP s_q_thld,
+    SEXP s_verbose
+) {
+    // Input checking
+    if (!Rf_isReal(s_X) || !Rf_isMatrix(s_X)) {
+        REPORT_ERROR("X must be a numeric matrix");
+    }
+    if (!Rf_isReal(s_q_thld) || Rf_length(s_q_thld) != 1) {
+        REPORT_ERROR("q_thld must be a numeric scalar");
+    }
+    if (!Rf_isLogical(s_verbose) || Rf_length(s_verbose) != 1) {
+        REPORT_ERROR("verbose must be a logical scalar");
+    }
 
-	double q_thld = REAL(s_q_thld)[0];
-	bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    double q_thld = REAL(s_q_thld)[0];
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
-	std::vector<std::vector<double>> X = std::move(*Rmatrix_to_cpp(s_X));
+    std::vector<std::vector<double>> X = std::move(*Rmatrix_to_cpp(s_X));
 
-	mst_completion_graph_t res = create_mst_completion_graph(X, q_thld, verbose);
+    mst_completion_graph_t res = create_mst_completion_graph(X, q_thld, verbose);
 
-	// Create R return list
-	size_t nprot = 0;
-	auto [r_mst_adj_list, r_mst_weights_list] = create_r_graph_from_set_wgraph(res.mstree); nprot += 2;
-	auto [r_cmst_adj_list, r_cmst_weights_list] = create_r_graph_from_set_wgraph(res.completed_mstree); nprot += 2;
+    // Create R return list
+    size_t nprot = 0;
 
-	size_t m = res.mstree_edge_weights.size();
-	SEXP r_mst_weights = PROTECT(Rf_allocVector(REALSXP, m)); nprot++;
-	std::copy(res.mstree_edge_weights.begin(), res.mstree_edge_weights.end(), REAL(r_mst_weights));
+    // Since create_r_graph_from_set_wgraph now UNPROTECTs internally,
+    // we need to PROTECT the results here
+    auto [r_mst_adj_list, r_mst_weights_list] = create_r_graph_from_set_wgraph(res.mstree);
+    PROTECT(r_mst_adj_list); nprot++;
+    PROTECT(r_mst_weights_list); nprot++;
 
-		// Output list components
-	SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 5)); nprot++;
-	SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
-	SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
-	SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
-	SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
-	SET_VECTOR_ELT(r_list, 4, r_mst_weights);
+    auto [r_cmst_adj_list, r_cmst_weights_list] = create_r_graph_from_set_wgraph(res.completed_mstree);
+    PROTECT(r_cmst_adj_list); nprot++;
+    PROTECT(r_cmst_weights_list); nprot++;
 
-	SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
-	SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
-	SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
-	SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));
-	SET_STRING_ELT(r_names, 3, Rf_mkChar("cmst_weight_list"));
-	SET_STRING_ELT(r_names, 4, Rf_mkChar("mst_edge_weights"));
-	Rf_setAttrib(r_list, R_NamesSymbol, r_names);
+    size_t m = res.mstree_edge_weights.size();
+    SEXP r_mst_weights = PROTECT(Rf_allocVector(REALSXP, m)); nprot++;
+    std::copy(res.mstree_edge_weights.begin(), res.mstree_edge_weights.end(), REAL(r_mst_weights));
 
-	UNPROTECT(nprot);
+    // Output list components
+    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 5)); nprot++;
+    SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
+    SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
+    SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
+    SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
+    SET_VECTOR_ELT(r_list, 4, r_mst_weights);
 
-	return r_list;
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
+    SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
+    SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
+    SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));
+    SET_STRING_ELT(r_names, 3, Rf_mkChar("cmst_weight_list"));
+    SET_STRING_ELT(r_names, 4, Rf_mkChar("mst_edge_weights"));
+    Rf_setAttrib(r_list, R_NamesSymbol, r_names);
+
+    UNPROTECT(nprot);
+
+    return r_list;
 }
-

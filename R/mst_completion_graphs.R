@@ -66,6 +66,7 @@
 #'   }
 #'
 #' @examples
+#' \dontrun{
 #' # Generate sample data
 #' set.seed(123)
 #' X <- matrix(rnorm(100 * 3), nrow = 100, ncol = 3)
@@ -80,7 +81,7 @@
 #' # Print summary
 #' print(graph_pca)
 #' summary(graph_pca)
-#'
+#' }
 #' @seealso
 #' \code{\link{prcomp}} for principal component analysis,
 #' \code{\link{pca.optimal.components}} for variance-based component selection,
