@@ -13,6 +13,7 @@ create.iknn.graphs(
   compute.full = TRUE,
   pca.dim = 100,
   variance.explained = 0.99,
+  n.cores = NULL,
   verbose = FALSE
 )
 }
@@ -42,6 +43,8 @@ is applied (default: 100). Set to NULL to skip dimensionality reduction.}
 \item{variance.explained}{Percentage of variance to be explained by the principal components
 (default: 0.99). If this threshold can be met with fewer components than pca.dim,
 the smaller number will be used. Set to NULL to use exactly pca.dim components.}
+
+\item{n.cores}{The number of cores to use. Set to NULL to use maximal number of cores.}
 
 \item{verbose}{Logical. If TRUE, print progress messages and timing information.
 Default is FALSE.}
@@ -104,6 +107,7 @@ result <- create.iknn.graphs(
   max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
   compute.full = TRUE,
+  n.cores = 1,
   verbose = TRUE
 )
 

@@ -79,6 +79,7 @@ extern "C" {
         SEXP s_path_edge_ratio_percentile,
         // other
         SEXP s_compute_full,
+        SEXP s_n_cores,
         SEXP s_verbose
         );
 }
@@ -1220,28 +1221,29 @@ struct knn_search_result_t {
 
 // Function to compute kNN once for max k
 knn_search_result_t compute_knn(SEXP RX, int k) {
-    PROTECT(RX = Rf_coerceVector(RX, REALSXP));
-    int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
-    size_t n_points = dimX[0];
+    // assume RX is REAL matrix; assert minimally
+    if (TYPEOF(RX) != REALSXP) Rf_error("RX must be REALSXP.");
+    SEXP dim = Rf_getAttrib(RX, R_DimSymbol);
+    if (dim == R_NilValue || Rf_length(dim) != 2)
+        Rf_error("RX must be a matrix.");
+    R_xlen_t n_points = INTEGER(dim)[0];
 
     SEXP Rk = PROTECT(Rf_ScalarInteger(k));
     SEXP knn_res = PROTECT(S_kNN(RX, Rk));
 
-    int *indices_raw = INTEGER(VECTOR_ELT(knn_res, 0));
-    double *distances_raw = REAL(VECTOR_ELT(knn_res, 1));
+    int *indices_raw   = INTEGER(VECTOR_ELT(knn_res, 0));
+    double *dist_raw   = REAL(VECTOR_ELT(knn_res, 1));
 
-    // Create and fill result structure
-    knn_search_result_t result(n_points, k);
+    knn_search_result_t result((size_t)n_points, (size_t)k);
 
-    // Reorganize data into more convenient format
-    for (size_t i = 0; i < n_points; i++) {
-        for (int j = 0; j < k; j++) {
-            result.indices[i][j] = indices_raw[i + n_points * j];
-            result.distances[i][j] = distances_raw[i + n_points * j];
+    for (R_xlen_t i = 0; i < n_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            result.indices[i][j]   = indices_raw[i + n_points * j];
+            result.distances[i][j] = dist_raw  [i + n_points * j];
         }
     }
 
-    UNPROTECT(3);
+    UNPROTECT(2);
     return result;
 }
 
@@ -1338,7 +1340,7 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
  * @param s_compute_full SEXP object (logical) controlling computation of optional components:
  *                      - TRUE: Store complete pruned graph structures for both pruning methods
  *                      - FALSE: Return only statistics without full graph structures
- *
+ * @param s_n_cores SEXP object(NULL or integer) controlling the number of cores to use with n_cores = NULL using maximal possible number of cores on OMP machines and n_cores = 1 forcing serial execution.
  * @param s_verbose SEXP object (logical) controlling progress reporting during computation
  *
  * @return SEXP object (a named list) containing:
@@ -1383,39 +1385,76 @@ SEXP S_create_iknn_graphs(
     SEXP s_path_edge_ratio_percentile,
     // other
     SEXP s_compute_full,
+    SEXP s_n_cores,
     SEXP s_verbose) {
 
-    auto total_start_time = std::chrono::steady_clock::now();
+    int nprot = 0;
 
+    // --- Defensive coercions / reads
+    if (TYPEOF(s_X) != REALSXP)
+        Rf_error("s_X must be a double (REALSXP) matrix.");
+    PROTECT(s_X); nprot++;  // no copy, just protect
+
+    if (!Rf_isInteger(s_kmin) || !Rf_isInteger(s_kmax))
+        Rf_error("kmin and kmax must be integer.");
     int kmin = INTEGER(s_kmin)[0];
     int kmax = INTEGER(s_kmax)[0];
+    if (kmin <= 0 || kmax < kmin) Rf_error("Require 0 < kmin <= kmax.");
 
+    if (!Rf_isReal(s_max_path_edge_ratio_thld) || !Rf_isReal(s_path_edge_ratio_percentile))
+        Rf_error("Threshold/percentile must be numeric.");
     double max_path_edge_ratio_thld   = REAL(s_max_path_edge_ratio_thld)[0];
     double path_edge_ratio_percentile = REAL(s_path_edge_ratio_percentile)[0];
 
-    int compute_full = (LOGICAL(s_compute_full)[0] == 1);
-    int verbose = (LOGICAL(s_verbose)[0] == 1);
+    if (!Rf_isLogical(s_compute_full) || !Rf_isLogical(s_verbose))
+        Rf_error("compute_full and verbose must be logical.");
+    int compute_full = LOGICAL(s_compute_full)[0] == 1;
+    int verbose      = LOGICAL(s_verbose)[0] == 1;
 
-    int nprot = 0;
-    PROTECT(s_X = Rf_coerceVector(s_X, REALSXP)); nprot++;
-    int* dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    int n_vertices = dimX[0];
+    // --- Dimensions
+    SEXP dim = Rf_getAttrib(s_X, R_DimSymbol);
+    if (dim == R_NilValue || Rf_length(dim) != 2)
+        Rf_error("s_X must be a numeric matrix.");
+    int n_vertices = INTEGER(dim)[0];
+
+    // --- n_cores handling
+#ifdef _OPENMP
+    int num_threads = 1;
+    if (Rf_isNull(s_n_cores)) {
+        num_threads = omp_get_max_threads();
+    } else {
+        if (!Rf_isInteger(s_n_cores))
+            Rf_error("n_cores must be integer or NULL.");
+        num_threads = INTEGER(s_n_cores)[0];
+        if (num_threads < 1) num_threads = 1;
+        // Optionally cap at omp_get_max_threads():
+        int max_t = omp_get_max_threads();
+        if (num_threads > max_t) num_threads = max_t;
+    }
+    if (verbose) Rprintf("Using %d OpenMP threads\n", num_threads);
+    if (num_threads > 1) omp_set_num_threads(num_threads);
+#else
+    // OpenMP not available
+    if (!Rf_isNull(s_n_cores) && Rf_asInteger(s_n_cores) != 1 && verbose)
+        Rprintf("OpenMP not enabled; running single-threaded.\n");
+#endif
 
     if (verbose) {
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin, kmax, n_vertices);
     }
 
+    // --- Precompute / allocate
     // Create vector of k values
     std::vector<int> k_values(kmax - kmin + 1);
     std::iota(k_values.begin(), k_values.end(), kmin);
 
     // Parallel processing of graph creation and pruning
     if (verbose) Rprintf("Starting parallel graph processing\n");
+    auto total_start_time = std::chrono::steady_clock::now();
     auto parallel_start_time = std::chrono::steady_clock::now();
 
     // Progress tracking
-    std::atomic<int> progress_counter{0};
-    // const size_t n_k_values = kmax - kmin + 1;
+    //std::atomic<int> progress_counter{0};
 
     // Compute kNN once for maximum k
     auto knn_results = compute_knn(s_X, kmax);
@@ -1426,42 +1465,19 @@ SEXP S_create_iknn_graphs(
 
     // Pre-allocate all data structures
     std::vector<set_wgraph_t> geom_pruned_graphs(kmax - kmin + 1);
-    geom_pruned_graphs.resize(kmax - kmin + 1);
-
     std::vector<vect_wgraph_t> isize_pruned_graphs(kmax - kmin + 1);
-    isize_pruned_graphs.resize(kmax - kmin + 1);
-
-    // Prepare vectors to store results
     std::vector<std::vector<double>> k_statistics(kmax - kmin + 1);
-    k_statistics.resize(kmax - kmin + 1);
-
     std::vector<edge_pruning_stats_t> all_edge_pruning_stats(kmax - kmin + 1);
-    all_edge_pruning_stats.resize(kmax - kmin + 1);
 
-// Set number of threads (optional)
-#ifdef _OPENMP
-    int num_threads = omp_get_max_threads();
-    if (verbose) Rprintf("Using %d OpenMP threads\n", num_threads);
-#endif
-
-// Parallel region
+    // --- Parallel/serial region
     #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for schedule(dynamic) if(num_threads>1) default(none) \
+       shared(k_values, knn_results, max_path_edge_ratio_thld, path_edge_ratio_percentile, \
+           geom_pruned_graphs, isize_pruned_graphs, k_statistics, all_edge_pruning_stats, \
+           max_alt_path_length, threshold_percentile)
     #endif
-    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        int k = kmin + k_idx;
-
-        // Report progress - use critical section to avoid output interleaving
-        if (verbose) {
-            #ifdef _OPENMP
-#pragma omp critical
-            #endif
-            {
-                REprintf("\rProcessing k=%d (%d of %d) - %d%%",
-                         k, k_idx+1, kmax-kmin+1,
-                         static_cast<int>((100.0 * (k_idx+1)) / (kmax-kmin+1)));
-            }
-        }
+    for (int k_idx = 0; k_idx < (int)k_values.size(); ++k_idx) {
+        int k = k_values[k_idx];
 
         // Create local graph and process
         auto iknn_graph = create_iknn_graph(knn_results, k);
@@ -1515,7 +1531,7 @@ SEXP S_create_iknn_graphs(
         // Store the computed graphs and stats
         isize_pruned_graphs[k_idx]    = std::move(isize_pruned_graph);
         all_edge_pruning_stats[k_idx] = pruned_graph.compute_edge_pruning_stats(threshold_percentile);
-        geom_pruned_graphs[k_idx]          = std::move(pruned_graph);
+        geom_pruned_graphs[k_idx]     = std::move(pruned_graph);
     }
 
     if (verbose) {
@@ -1570,7 +1586,7 @@ SEXP S_create_iknn_graphs(
     // Set names for the edge_stats_list (k values)
     SEXP edge_stats_list_names = PROTECT(Rf_allocVector(STRSXP, kmax - kmin + 1)); nprot++;
     for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        SET_STRING_ELT(edge_stats_list_names, k_idx, Rf_mkChar(std::to_string(kmin + k_idx - 1).c_str()));
+        SET_STRING_ELT(edge_stats_list_names, k_idx, Rf_mkChar(std::to_string(kmin + k_idx).c_str()));
     }
     Rf_setAttrib(edge_stats_list, R_NamesSymbol, edge_stats_list_names);
 

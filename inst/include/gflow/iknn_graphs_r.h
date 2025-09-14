@@ -27,6 +27,7 @@ extern "C" {
 		SEXP s_path_edge_ratio_percentile,
 		// other
 		SEXP s_compute_full,
+		SEXP s_n_cores,
 		SEXP s_verbose
 		);
 

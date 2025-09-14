@@ -243,7 +243,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
   {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
   {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 4},
-  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 7},
+  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 8},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
