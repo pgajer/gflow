@@ -289,7 +289,7 @@ std::vector<std::vector<double>> mabilo_bb(const std::vector<double>& x,
     std::mutex rng_mutex;
 
     // Parallel execution of bootstrap iterations
-    gflow::for_each(std::execution::seq,
+    gflow::for_each(gflow::seq,
                     bb_indices.begin(),
                     bb_indices.end(),
                     [&](int iboot) {
