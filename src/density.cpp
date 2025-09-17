@@ -480,8 +480,8 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
     if (ISNAN(poffset)) {
         Rf_error("S_estimate_local_density_over_grid(): 'poffset' cannot be NA.");
     }
-    if (ISNAN(pilot_bandwidth) || pilot_bandwidth <= 0.0) {
-        Rf_error("S_estimate_local_density_over_grid(): 'pilot_bandwidth' must be > 0.");
+    if (ISNAN(pilot_bandwidth) || pilot_bandwidth < 0.0) {
+        Rf_error("S_estimate_local_density_over_grid(): 'pilot_bandwidth' must be >= 0.");
     }
     if (kernel_type_i == NA_INTEGER || kernel_type_i < 0) {
         Rf_error("S_estimate_local_density_over_grid(): 'kernel_type' must be a non-negative integer.");
