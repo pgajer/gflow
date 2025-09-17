@@ -81,6 +81,10 @@ create.mknn.graph <- function(X, k) {
     stop("'X' must contain numeric data.", call. = FALSE)
   }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
   # Check for missing values
   if (any(is.na(X))) {
     stop("'X' cannot contain NA values.", call. = FALSE)
@@ -257,7 +261,10 @@ create.mknn.graphs <- function(X,
     if (any(is.na(X))) {
         stop("'X' cannot contain NA values.", call. = FALSE)
     }
-    storage.mode(X) <- "double"
+
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
 
     ## Validate k parameters
     if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 2) {

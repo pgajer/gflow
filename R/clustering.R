@@ -546,6 +546,10 @@ kNN.cltr.imputation <- function(X, cltr, ref.cltr = 0, K = 20, use.geodesic.dist
         }
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     # Validate K
     if (!is.numeric(K) || length(K) != 1 || K < 1 || K != floor(K)) {
         stop("K must be a positive integer")

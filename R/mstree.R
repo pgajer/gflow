@@ -24,6 +24,10 @@ mstree <- function(X, i = 1) {
         stop("X cannot contain NA, NaN, or Inf values")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     if (!is.numeric(i) || length(i) != 1 || i != round(i) || i < 1 || i > nrow(X)) {
         stop("i must be a positive integer not greater than the number of points in X")
     }

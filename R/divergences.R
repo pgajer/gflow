@@ -255,6 +255,10 @@ wasserstein.divergence <- function(X, Y, k) {
         stop("X and Y have to have the same number of rows.")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     if (!is.numeric(k) || k != round(k) || k < 1) {
         stop("k has to be a positive integer.")
     }
@@ -328,6 +332,10 @@ angular.wasserstein.index <- function(X, Y, k) {
 
     if (nrow(X) != nrow(Y)) {
         stop("X and Y have to have the same number of rows.")
+    }
+
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
     }
 
     if (!is.numeric(k) || k != round(k) || k < 2) {
@@ -467,6 +475,10 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
         stop("X cannot contain NA, NaN, or Inf values")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     if (!is.matrix(Y)) {
         Y <- try(as.matrix(Y), silent = TRUE)
         if (inherits(Y, "try-error")) {
@@ -476,6 +488,10 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
 
     if (!is.numeric(Y)) {
         stop("Y must contain numeric values")
+    }
+
+    if (!is.double(Y)) {
+        storage.mode(Y) <- "double"
     }
 
     if (any(is.na(Y)) || any(is.infinite(Y))) {

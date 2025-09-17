@@ -125,6 +125,10 @@ create.cmst.graph <- function(X,
         stop("'X' contains infinite values", call. = FALSE)
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     # Check dimensions
     n <- nrow(X)
     p <- ncol(X)

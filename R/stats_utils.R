@@ -650,6 +650,10 @@ centroid.shift <- function(X, centroid = NULL) {
         stop("X must contain numeric values")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     if (any(is.na(X)) || any(is.infinite(X))) {
         stop("X cannot contain NA, NaN, or Inf values")
     }

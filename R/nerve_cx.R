@@ -18,7 +18,10 @@ create.nerve.complex <- function(X, k, max.dim = 2) {
     }
     if (!is.numeric(X)) stop("X must be numeric.")
     if (any(!is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
-    storage.mode(X) <- "double"
+
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
 
     if (k < 2) {
         stop("k must be at least 2")

@@ -162,6 +162,10 @@ meanshift.data.smoother <- function(X,
         stop("X cannot contain NA, NaN, or Inf values")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     n.points <- nrow(X)
     n.features <- ncol(X)
 

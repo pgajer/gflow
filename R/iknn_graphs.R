@@ -83,152 +83,155 @@ create.iknn.graphs <- function(X,
                                n.cores = NULL,
                                verbose = FALSE) {
 
-  ## Coerce & basic checks
-  if (!is.matrix(X)) {
-    X <- try(as.matrix(X), silent = TRUE)
-    if (inherits(X, "try-error"))
-      stop("X must be a matrix or coercible to a numeric matrix.")
-  }
-  if (!is.numeric(X)) stop("X must be numeric.")
-  if (any(!is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
-  storage.mode(X) <- "double"
+    ## Coerce & basic checks
+    if (!is.matrix(X)) {
+        X <- try(as.matrix(X), silent = TRUE)
+        if (inherits(X, "try-error"))
+            stop("X must be a matrix or coercible to a numeric matrix.")
+    }
+    if (!is.numeric(X)) stop("X must be numeric.")
+    if (any(!is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
 
-  n <- nrow(X)
-  if (n < 2) stop("X must have at least 2 rows (observations).")
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
 
-  if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 1 || kmin != floor(kmin))
-    stop("kmin must be a positive integer.")
-  if (!is.numeric(kmax) || length(kmax) != 1 || kmax < kmin || kmax != floor(kmax))
-    stop("kmax must be an integer not smaller than kmin.")
-  if (n <= kmax)
-    stop("Number of observations (nrow(X)) must be greater than kmax.")
+    n <- nrow(X)
+    if (n < 2) stop("X must have at least 2 rows (observations).")
 
-  if (!is.numeric(max.path.edge.ratio.deviation.thld) || length(max.path.edge.ratio.deviation.thld) != 1)
-    stop("max.path.edge.ratio.deviation.thld must be numeric.")
-  if (max.path.edge.ratio.deviation.thld < 0 || max.path.edge.ratio.deviation.thld >= 0.2)
-    stop("max.path.edge.ratio.deviation.thld must be in [0, 0.2).")
+    if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 1 || kmin != floor(kmin))
+        stop("kmin must be a positive integer.")
+    if (!is.numeric(kmax) || length(kmax) != 1 || kmax < kmin || kmax != floor(kmax))
+        stop("kmax must be an integer not smaller than kmin.")
+    if (n <= kmax)
+        stop("Number of observations (nrow(X)) must be greater than kmax.")
 
-  if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
-      path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
-    stop("path.edge.ratio.percentile must be in [0, 1].")
+    if (!is.numeric(max.path.edge.ratio.deviation.thld) || length(max.path.edge.ratio.deviation.thld) != 1)
+        stop("max.path.edge.ratio.deviation.thld must be numeric.")
+    if (max.path.edge.ratio.deviation.thld < 0 || max.path.edge.ratio.deviation.thld >= 0.2)
+        stop("max.path.edge.ratio.deviation.thld must be in [0, 0.2).")
 
-  if (!is.logical(compute.full) || length(compute.full) != 1)
-    stop("compute.full must be TRUE/FALSE.")
-  if (!is.logical(verbose) || length(verbose) != 1)
-    stop("verbose must be TRUE/FALSE.")
+    if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
+        path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
+        stop("path.edge.ratio.percentile must be in [0, 1].")
 
-  if (!is.null(pca.dim)) {
-    if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
-      stop("pca.dim must be a positive integer or NULL.")
-  }
-  if (!is.null(variance.explained)) {
-    if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
-        variance.explained <= 0 || variance.explained > 1)
-      stop("variance.explained must be in (0, 1], or NULL.")
-  }
+    if (!is.logical(compute.full) || length(compute.full) != 1)
+        stop("compute.full must be TRUE/FALSE.")
+    if (!is.logical(verbose) || length(verbose) != 1)
+        stop("verbose must be TRUE/FALSE.")
 
-  ## PCA (optional)
-  pca_info <- NULL
-  if (!is.null(pca.dim) && ncol(X) > pca.dim) {
-    if (verbose) message("High-dimensional data detected. Performing PCA.")
-    original_dim <- ncol(X)
+    if (!is.null(pca.dim)) {
+        if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
+            stop("pca.dim must be a positive integer or NULL.")
+    }
     if (!is.null(variance.explained)) {
-      pca_analysis <- pca.optimal.components(
-        X, variance.threshold = variance.explained, max.components = pca.dim
-      )
-      n_components <- pca_analysis$n.components
-      if (verbose) {
-        message(sprintf("Using %d PCs (explains %.2f%% variance)",
-                        n_components, 100 * pca_analysis$variance.explained))
-      }
-      X <- pca.project(X, pca_analysis$pca.result, n_components)
-      pca_info <- list(
-        original_dim = original_dim,
-        n_components = n_components,
-        variance_explained = pca_analysis$variance.explained,
-        cumulative_variance = pca_analysis$cumulative.variance
-      )
-    } else {
-      if (verbose) message(sprintf("Projecting to first %d PCs", pca.dim))
-      pca_result <- prcomp(X)
-      X <- pca.project(X, pca_result, pca.dim)
-      variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
-      pca_info <- list(
-        original_dim = original_dim,
-        n_components = pca.dim,
-        variance_explained = variance_explained
-      )
+        if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
+            variance.explained <= 0 || variance.explained > 1)
+            stop("variance.explained must be in (0, 1], or NULL.")
     }
-  }
 
-  ## Note on k: ANN returns self in its kNN sets, this is why k+1 is passed here (for kmin and kmax).
-  ## We need to ensure the C++ labels/columns reflect the *original* k.
-  result <- .Call(S_create_iknn_graphs,
-                  X,
-                  as.integer(kmin + 1L),
-                  as.integer(kmax + 1L),
-                  as.double(max.path.edge.ratio.deviation.thld + 1.0),
-                  as.double(path.edge.ratio.percentile),
-                  as.logical(compute.full),
-                  if (is.null(n.cores)) NULL else as.integer(n.cores),
-                  as.logical(verbose),
-                  PACKAGE = "gflow")
-
-  ## Normalize optional matrices (placeholders may be empty)
-  if (!is.null(result$birth_death_matrix)) {
-    if (!is.matrix(result$birth_death_matrix) || nrow(result$birth_death_matrix) == 0) {
-      result$birth_death_matrix <- matrix(
-        numeric(0), nrow = 0, ncol = 4,
-        dimnames = list(NULL, c("start","end","birth_time","death_time"))
-      )
-    } else if (is.null(colnames(result$birth_death_matrix))) {
-      colnames(result$birth_death_matrix) <- c("start","end","birth_time","death_time")
+    ## PCA (optional)
+    pca_info <- NULL
+    if (!is.null(pca.dim) && ncol(X) > pca.dim) {
+        if (verbose) message("High-dimensional data detected. Performing PCA.")
+        original_dim <- ncol(X)
+        if (!is.null(variance.explained)) {
+            pca_analysis <- pca.optimal.components(
+                X, variance.threshold = variance.explained, max.components = pca.dim
+            )
+            n_components <- pca_analysis$n.components
+            if (verbose) {
+                message(sprintf("Using %d PCs (explains %.2f%% variance)",
+                                n_components, 100 * pca_analysis$variance.explained))
+            }
+            X <- pca.project(X, pca_analysis$pca.result, n_components)
+            pca_info <- list(
+                original_dim = original_dim,
+                n_components = n_components,
+                variance_explained = pca_analysis$variance.explained,
+                cumulative_variance = pca_analysis$cumulative.variance
+            )
+        } else {
+            if (verbose) message(sprintf("Projecting to first %d PCs", pca.dim))
+            pca_result <- prcomp(X)
+            X <- pca.project(X, pca_result, pca.dim)
+            variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
+            pca_info <- list(
+                original_dim = original_dim,
+                n_components = pca.dim,
+                variance_explained = variance_explained
+            )
+        }
     }
-  }
-  if (!is.null(result$double_birth_death_matrix)) {
-    if (!is.matrix(result$double_birth_death_matrix) || nrow(result$double_birth_death_matrix) == 0) {
-      result$double_birth_death_matrix <- matrix(
-        numeric(0), nrow = 0, ncol = 4,
-        dimnames = list(NULL, c("start","end","birth_time","death_time"))
-      )
-    }
-  }
 
-  ## Add column names to k_statistics only if missing, and match column count
-  if (!is.null(result$k_statistics) && is.matrix(result$k_statistics) &&
-      is.null(colnames(result$k_statistics))) {
-    nc <- ncol(result$k_statistics)
-    # Common layouts: with k (8 cols) or without k (7 cols)
-    if (nc == 8L) {
-      colnames(result$k_statistics) <- c("k",
-        "n_edges",
-        "n_edges_in_geom_pruned_graph",
-        "n_geom_removed_edges",
-        "geom_edge_reduction_ratio",
-        "n_edges_in_isize_pruned_graph",
-        "n_isize_removed_edges",
-        "isize_edge_reduction_ratio"
-      )
-    } else if (nc == 7L) {
-      colnames(result$k_statistics) <- c(
-        "n_edges",
-        "n_edges_in_geom_pruned_graph",
-        "n_geom_removed_edges",
-        "geom_edge_reduction_ratio",
-        "n_edges_in_isize_pruned_graph",
-        "n_isize_removed_edges",
-        "isize_edge_reduction_ratio"
-      )
-    }
-  }
+    ## Note on k: ANN returns self in its kNN sets, this is why k+1 is passed here (for kmin and kmax).
+    ## We need to ensure the C++ labels/columns reflect the *original* k.
+    result <- .Call(S_create_iknn_graphs,
+                    X,
+                    as.integer(kmin + 1L),
+                    as.integer(kmax + 1L),
+                    as.double(max.path.edge.ratio.deviation.thld + 1.0),
+                    as.double(path.edge.ratio.percentile),
+                    as.logical(compute.full),
+                    if (is.null(n.cores)) NULL else as.integer(n.cores),
+                    as.logical(verbose),
+                    PACKAGE = "gflow")
 
-  attr(result, "kmin") <- kmin
-  attr(result, "kmax") <- kmax
-  attr(result, "max_path_edge_ratio_deviation_thld") <- max.path.edge.ratio.deviation.thld
-  attr(result, "path_edge_ratio_percentile") <- path.edge.ratio.percentile
-  if (!is.null(pca_info)) attr(result, "pca") <- pca_info
-  class(result) <- "iknn_graphs"
-  result
+    ## Normalize optional matrices (placeholders may be empty)
+    if (!is.null(result$birth_death_matrix)) {
+        if (!is.matrix(result$birth_death_matrix) || nrow(result$birth_death_matrix) == 0) {
+            result$birth_death_matrix <- matrix(
+                numeric(0), nrow = 0, ncol = 4,
+                dimnames = list(NULL, c("start","end","birth_time","death_time"))
+            )
+        } else if (is.null(colnames(result$birth_death_matrix))) {
+            colnames(result$birth_death_matrix) <- c("start","end","birth_time","death_time")
+        }
+    }
+    if (!is.null(result$double_birth_death_matrix)) {
+        if (!is.matrix(result$double_birth_death_matrix) || nrow(result$double_birth_death_matrix) == 0) {
+            result$double_birth_death_matrix <- matrix(
+                numeric(0), nrow = 0, ncol = 4,
+                dimnames = list(NULL, c("start","end","birth_time","death_time"))
+            )
+        }
+    }
+
+    ## Add column names to k_statistics only if missing, and match column count
+    if (!is.null(result$k_statistics) && is.matrix(result$k_statistics) &&
+        is.null(colnames(result$k_statistics))) {
+        nc <- ncol(result$k_statistics)
+                                        # Common layouts: with k (8 cols) or without k (7 cols)
+        if (nc == 8L) {
+            colnames(result$k_statistics) <- c("k",
+                                               "n_edges",
+                                               "n_edges_in_geom_pruned_graph",
+                                               "n_geom_removed_edges",
+                                               "geom_edge_reduction_ratio",
+                                               "n_edges_in_isize_pruned_graph",
+                                               "n_isize_removed_edges",
+                                               "isize_edge_reduction_ratio"
+                                               )
+        } else if (nc == 7L) {
+            colnames(result$k_statistics) <- c(
+                "n_edges",
+                "n_edges_in_geom_pruned_graph",
+                "n_geom_removed_edges",
+                "geom_edge_reduction_ratio",
+                "n_edges_in_isize_pruned_graph",
+                "n_isize_removed_edges",
+                "isize_edge_reduction_ratio"
+            )
+        }
+    }
+
+    attr(result, "kmin") <- kmin
+    attr(result, "kmax") <- kmax
+    attr(result, "max_path_edge_ratio_deviation_thld") <- max.path.edge.ratio.deviation.thld
+    attr(result, "path_edge_ratio_percentile") <- path.edge.ratio.percentile
+    if (!is.null(pca_info)) attr(result, "pca") <- pca_info
+    class(result) <- "iknn_graphs"
+    result
 }
 
 
