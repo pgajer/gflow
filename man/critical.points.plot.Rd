@@ -33,10 +33,12 @@ Invisible NULL
 Plots critical points (maxima, minima, saddles) from continuous analysis.
 }
 \examples{
+\dontrun{
 # Create a function with known critical points
 f <- function(x, y) x^2 - y^2  # Saddle at origin
 gradient <- function(x, y) c(2*x, -2*y)
 grid <- create.grid(30)
 critical <- find.critical.points.continuous(gradient, grid)
 critical.points.plot(critical)
+}
 }

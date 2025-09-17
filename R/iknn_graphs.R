@@ -49,18 +49,17 @@
 #' a maximum alternative path length of 2.
 #'
 #' @examples
-#' \dontrun{
 #' # Generate sample data
 #' X <- matrix(rnorm(100 * 5), 100, 5)
 #'
 #' # Basic usage
-#' result <- create.iknn.graphs(
-#'   X, kmin = 3, kmax = 10,
+#' res1 <- create.iknn.graphs(
+#'   X, kmin = 3, kmax = 10, n.cores = 1,
 #'   compute.full = FALSE
 #' )
 #'
 #' # With custom pruning parameters
-#' result <- create.iknn.graphs(
+#' res2 <- create.iknn.graphs(
 #'   X, kmin = 3, kmax = 10,
 #'   max.path.edge.ratio.deviation.thld = 0.1,
 #'   path.edge.ratio.percentile = 0.5,
@@ -70,8 +69,8 @@
 #' )
 #'
 #' # View statistics for each k
-#' print(result$k_statistics)
-#' }
+#' print(res2$k_statistics)
+#'
 #' @export
 create.iknn.graphs <- function(X,
                                kmin,

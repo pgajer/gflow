@@ -1222,7 +1222,7 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
       const size_t Nyt = LENGTH(syt);
       if (Nyt == Ny) {
         y_true.assign(REAL(syt), REAL(syt) + Nyt);
-      } else {
+      } else if (Nyt != 0) {
           Rf_error("y_true_r must have the same length as y_r");
       }
     }
