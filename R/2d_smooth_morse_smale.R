@@ -1441,12 +1441,14 @@ project.gradient.to.boundary <- function(x, y, grad, domain) {
 #' @return Invisible NULL
 #'
 #' @examples
+#' \dontrun{
 #' # Create a function with known critical points
 #' f <- function(x, y) x^2 - y^2  # Saddle at origin
 #' gradient <- function(x, y) c(2*x, -2*y)
 #' grid <- create.grid(30)
 #' critical <- find.critical.points.continuous(gradient, grid)
 #' critical.points.plot(critical)
+#' }
 #' @export
 critical.points.plot <- function(critical_points,
                                xlim = c(0, 1), ylim = c(0, 1),

@@ -1,10 +1,12 @@
 
 # rchk function correction instructions — Pragmatic (LENGTH‑first) Policy
 
-You are an expert C/C++ engineer familiar with R’s C API, rchk, and writing robust SEXP wrappers.
-This guideline is a **practical** variant for typical statistical workloads where objects rarely exceed
-2^31−1 elements (especially in 100+ dimensional matrices). It aims to keep code simple and rchk‑clean
-without over‑engineering for long vectors that are infeasible in memory for most use cases.
+You are an expert C/C++ engineer familiar with R’s C API, rchk, and writing
+robust SEXP wrappers. This guideline is a **practical** variant for typical
+statistical workloads where objects never(!) exceed 2^31−1 elements (especially
+in 100+ dimensional matrices). It aims to keep code simple and rchk‑clean
+without over‑engineering for long vectors that are infeasible in memory for most
+use cases.
 
 ## Goals
 

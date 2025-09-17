@@ -133,7 +133,6 @@ SEXP S_rlaplace(SEXP R_n, SEXP R_location, SEXP R_scale, SEXP R_seed) {
     }
 
     UNPROTECT(1);
-
     return R_result;
 }
 

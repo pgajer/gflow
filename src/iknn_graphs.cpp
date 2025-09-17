@@ -375,8 +375,14 @@ SEXP S_verify_pruning(SEXP s_X,
                       SEXP s_k,
                       SEXP s_max_alt_path_length) {
 
-    int *dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    size_t n_vertices = dimX[0];
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int n_vertices = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
+
     int max_alt_path_length = Rf_asInteger(s_max_alt_path_length);
 
     // Creating a kNN graph
@@ -398,7 +404,7 @@ SEXP S_verify_pruning(SEXP s_X,
     // Create vect_wgraph_t from old implementation results
     vect_wgraph_t old_pruned_vect_wgraph;
     old_pruned_vect_wgraph.adjacency_list.resize(n_vertices);
-    for (size_t vertex = 0; vertex < n_vertices; vertex++) {
+    for (int vertex = 0; vertex < n_vertices; vertex++) {
         for (auto neighbor_pair : old_pruned_graph[vertex]) {
             size_t neighbor = neighbor_pair.first;
             for (const auto& iknn_neighbor : iknn_graph.graph[vertex]) {
@@ -434,7 +440,7 @@ SEXP S_verify_pruning(SEXP s_X,
         SEXP vertex_names = PROTECT(Rf_allocVector(STRSXP, n_vertices));
         int total_discrepancies = 0;
 
-        for (size_t vertex = 0; vertex < n_vertices; vertex++) {
+        for (int vertex = 0; vertex < n_vertices; vertex++) {
             std::vector<edge_info_t>& old_edges = old_pruned_vect_wgraph.adjacency_list[vertex];
             std::vector<edge_info_t>& new_edges = new_pruned_vect_wgraph.adjacency_list[vertex];
 
@@ -793,48 +799,95 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
  *   - iknn_graph_t::prune_graph for graph pruning implementation
  */
 extern "C" SEXP S_create_single_iknn_graph(SEXP s_X,
-                                SEXP s_k,
-                                SEXP s_pruning_thld,
-                                SEXP s_compute_full) {
+                                           SEXP s_k,
+                                           SEXP s_pruning_thld,
+                                           SEXP s_compute_full) {
+    // --- dims(X) protected while reading
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
+        UNPROTECT(1);
+        Rf_error("X must be a numeric matrix with valid dimensions.");
+    }
+    const int n_vertices = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
 
+    const double pruning_thld = Rf_asReal(s_pruning_thld);
+    const int compute_full = (Rf_asLogical(s_compute_full) == TRUE);
 
-    int *dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    double pruning_thld = Rf_asReal(s_pruning_thld);
-    int n_vertices = dimX[0];
-    bool compute_full = (Rf_asLogical(s_compute_full) == TRUE);
-
-    // Creating a kNN graph
+    // ---- Create kNN graph (C++ side; no R allocations assumed)
     auto iknn_graph = create_iknn_graph(s_X, s_k);
 
-    // Count total edges in original graph
+    // ---- Count total edges (undirected stored twice)
     int n_edges = 0;
     for (const auto& vertex_edges : iknn_graph.graph) {
-        n_edges += vertex_edges.size();
+        if (vertex_edges.size() > static_cast<size_t>(INT_MAX)) {
+            Rf_error("Edge list too large for int lengths.");
+        }
+        n_edges += static_cast<int>(vertex_edges.size());
     }
     n_edges /= 2;
 
-    // Create basic graph vectors needed for original graph
-    auto adj_vect = std::vector<std::vector<int>>(n_vertices);
-    auto dist_vect = std::vector<std::vector<double>>(n_vertices);
-    for (size_t i = 0; i < iknn_graph.graph.size(); i++) {
-        for (auto nn_vertex : iknn_graph.graph[i]) {
-            adj_vect[i].push_back(nn_vertex.index);
-            dist_vect[i].push_back(nn_vertex.dist);
+    // ---- Build plain C++ adjacency/weight lists for original graph
+    std::vector<std::vector<int>>    adj_vect(n_vertices);
+    std::vector<std::vector<double>> dist_vect(n_vertices);
+    for (size_t i = 0; i < iknn_graph.graph.size(); ++i) {
+        const auto& nbrs = iknn_graph.graph[i];
+        adj_vect[i].reserve(nbrs.size());
+        dist_vect[i].reserve(nbrs.size());
+        for (const auto& nn : nbrs) {
+            adj_vect[i].push_back(nn.index);  // 0-based here
+            dist_vect[i].push_back(nn.dist);
         }
     }
 
-    // Initialize all components as NULL
-    SEXP adj_list = R_NilValue;
-    SEXP intersection_size_list = R_NilValue;
-    SEXP weight_list = R_NilValue;
-    SEXP s_conn_comps = R_NilValue;
+#define USE_GEOMETRIC_PRUNING_IN_SINGLE_IKNN_GRAPH 1
+    size_t n_edges_in_pruned_graph_sz = 0;
 
-    // ------- Results list
-    SEXP res = PROTECT(Rf_allocVector(VECSXP, 11));
+#if USE_GEOMETRIC_PRUNING_IN_SINGLE_IKNN_GRAPH
+    set_wgraph_t pruned_graph(iknn_graph);
+    auto rel_devs = pruned_graph.compute_edge_weight_rel_deviations();
 
-    // Set names
+    for (size_t i = 0; i < rel_devs.size(); ++i) {
+        if (rel_devs[i].rel_deviation < pruning_thld) {
+            const size_t u = rel_devs[i].source;
+            const size_t v = rel_devs[i].target;
+
+            // do not isolate a vertex
+            if (pruned_graph.adjacency_list[u].size() <= 1) continue;
+            if (pruned_graph.adjacency_list[v].size() <= 1) continue;
+
+            pruned_graph.remove_edge(u, v);
+        }
+    }
+
+    for (const auto& nbrs : pruned_graph.adjacency_list) {
+        n_edges_in_pruned_graph_sz += nbrs.size();
+    }
+    n_edges_in_pruned_graph_sz /= 2;
+    const int n_edges_in_pruned_graph =
+        (n_edges_in_pruned_graph_sz > static_cast<size_t>(INT_MAX))
+            ? INT_MAX
+            : static_cast<int>(n_edges_in_pruned_graph_sz);
+#else
+    const int max_alt_path_length = 2;
+    vect_wgraph_t pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
+
+    int n_edges_in_pruned_graph = 0;
+    for (const auto& nbrs : pruned_graph.adjacency_list) {
+        if (nbrs.size() > static_cast<size_t>(INT_MAX)) {
+            Rf_error("Edge list too large for int lengths.");
+        }
+        n_edges_in_pruned_graph += static_cast<int>(nbrs.size());
+    }
+    n_edges_in_pruned_graph /= 2;
+#endif
+
+    // -------- Result list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 10));
+
+    // names
     {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 11));
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 10));
         SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
         SET_STRING_ELT(names, 1, Rf_mkChar("isize_list"));
         SET_STRING_ELT(names, 2, Rf_mkChar("weight_list"));
@@ -845,167 +898,117 @@ extern "C" SEXP S_create_single_iknn_graph(SEXP s_X,
         SET_STRING_ELT(names, 7, Rf_mkChar("n_edges_in_pruned_graph"));
         SET_STRING_ELT(names, 8, Rf_mkChar("n_removed_edges"));
         SET_STRING_ELT(names, 9, Rf_mkChar("edge_reduction_ratio"));
-        SET_STRING_ELT(names, 10, Rf_mkChar("connected_components"));
-        Rf_setAttrib(res, R_NamesSymbol, names);
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
+
+    // ---- pruned lists
+    {
+        SEXP pruned_adj_list   = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP pruned_weight_list= PROTECT(Rf_allocVector(VECSXP, n_vertices));
+
+        for (int i = 0; i < n_vertices; ++i) {
+            const auto& edges = pruned_graph.adjacency_list[static_cast<size_t>(i)];
+
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, (R_len_t)edges.size()));
+            int* A  = INTEGER(RA);
+            for (const auto& e : edges) { *A++ = (int)e.vertex + 1; }
+            SET_VECTOR_ELT(pruned_adj_list, i, RA);
+            UNPROTECT(1); // RA
+
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, (R_len_t)edges.size()));
+            double* D = REAL(RD);
+            for (const auto& e : edges) { *D++ = e.weight; }
+            SET_VECTOR_ELT(pruned_weight_list, i, RD);
+            UNPROTECT(1); // RD
+        }
+
+        SET_VECTOR_ELT(r_result, 4, pruned_adj_list);
+        SET_VECTOR_ELT(r_result, 5, pruned_weight_list);
+        UNPROTECT(2); // pruned_adj_list, pruned_weight_list
+    }
+
+    // ---- stats (protect each scalar prior to SET_VECTOR_ELT)
+    {
+        const int removed = n_edges - n_edges_in_pruned_graph;
+        const double ratio = (n_edges > 0) ? ((double)removed / (double)n_edges) : 0.0;
+
+        SEXP s0 = PROTECT(Rf_ScalarReal((double)n_edges));
+        SET_VECTOR_ELT(r_result, 6, s0);
+        UNPROTECT(1);
+
+        SEXP s1 = PROTECT(Rf_ScalarReal((double)n_edges_in_pruned_graph));
+        SET_VECTOR_ELT(r_result, 7, s1);
+        UNPROTECT(1);
+
+        SEXP s2 = PROTECT(Rf_ScalarReal((double)removed));
+        SET_VECTOR_ELT(r_result, 8, s2);
+        UNPROTECT(1);
+
+        SEXP s3 = PROTECT(Rf_ScalarReal(ratio));
+        SET_VECTOR_ELT(r_result, 9, s3);
         UNPROTECT(1);
     }
 
-    SEXP pruned_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    SEXP pruned_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-
-#define USE_GEOMETRIC_PRUNING_IN_SINGLE_IKNN_GRAPH 1
-
-    size_t n_edges_in_pruned_graph = 0;
-
-#if USE_GEOMETRIC_PRUNING_IN_SINGLE_IKNN_GRAPH
-    // transfering iknn_graph_t to set_wgraph_t
-    auto pruned_graph = set_wgraph_t(iknn_graph);
-
-    // Compute the deviations using the optimized method
-    auto rel_deviations = pruned_graph.compute_edge_weight_rel_deviations();
-    //const double EPSILON = 1e-16; // Threshold for considering a value as zero
-
-    // Track removed edges
-    //int removed_count = 0;
-
-    // Process edges
-    for (size_t i = 0; i < rel_deviations.size(); i++) {
-
-        if (rel_deviations[i].rel_deviation < pruning_thld) {
-
-            size_t source = rel_deviations[i].source;
-            size_t target = rel_deviations[i].target;
-            // size_t intermediate = rel_deviations[i].best_intermediate;
-
-            // Check if removing this edge would isolate any vertex
-            if (pruned_graph.adjacency_list[source].size() <= 1) {
-                continue;
-                // REPORT_ERROR("Cannot remove edge (%zu,%zu) through intermediate %zu: Vertex %zu would become isolated with 0 neighbors",
-                //              source + 1, target + 1, intermediate + 1, source + 1);
-            }
-
-            if (pruned_graph.adjacency_list[target].size() <= 1) {
-                continue;
-                // REPORT_ERROR("Cannot remove edge (%zu,%zu) through intermediate %zu: Vertex %zu would become isolated with 0 neighbors",
-                //              source + 1, target + 1, intermediate + 1, target + 1);
-            }
-
-            // Safe to remove the edge
-            pruned_graph.remove_edge(source, target);
-            //removed_count++;
-        }
-    }
-
-    // Count edges in the pruned graph
-    for (const auto& neighbors : pruned_graph.adjacency_list) {
-        n_edges_in_pruned_graph += neighbors.size();
-    }
-    n_edges_in_pruned_graph /= 2;
-
-    #else
-    int max_alt_path_length = 2; //INTEGER(s_max_alt_path_length)[0];
-    vect_wgraph_t pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
-
-    // Count edges in pruned graph
-    int n_edges_in_pruned_graph = 0;
-    for (const auto& vertex_edges : pruned_graph.adjacency_list) {
-        n_edges_in_pruned_graph += vertex_edges.size();
-    }
-    n_edges_in_pruned_graph /= 2;
-
-    #endif
-
-
-    // Compute graph statistics
-    SEXP stats = PROTECT(Rf_allocVector(REALSXP, 4));
-    REAL(stats)[0] = n_edges;
-    REAL(stats)[1] = n_edges_in_pruned_graph;
-    REAL(stats)[2] = n_edges - n_edges_in_pruned_graph;
-    REAL(stats)[3] = (double)(n_edges - n_edges_in_pruned_graph) / n_edges;
-
-    // Fill pruned lists from pruned_graph
-    for (int i = 0; i < n_vertices; i++) {
-        const auto& edges = pruned_graph.adjacency_list[i];
-
-        // Adjacency list
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, edges.size()));
-        int* A = INTEGER(RA);
-        for (const auto& edge : edges) {
-            *A++ = edge.vertex + 1;  // Convert to 1-based indexing for R
-        }
-        SET_VECTOR_ELT(pruned_adj_list, i, RA);
-        UNPROTECT(1);
-
-        // Distance list
-        SEXP RD = PROTECT(Rf_allocVector(REALSXP, edges.size()));
-        double* D = REAL(RD);
-        for (const auto& edge : edges) {
-            *D++ = edge.weight;
-        }
-        SET_VECTOR_ELT(pruned_weight_list, i, RD);
-        UNPROTECT(1);
-    }
-
+    // ---- optional full graph payload
     if (compute_full) {
-        // Create full components
-        adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        intersection_size_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP adj_list               = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP intersection_size_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP weight_list            = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-        // Fill original graph components
-        for (int i = 0; i < n_vertices; i++) {
-            // Original graph adjacency list
+        for (int i = 0; i < n_vertices; ++i) {
+            // adjacency
             {
-                SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
-                int* A = INTEGER(RA);
-                for (auto neighbor : adj_vect[i])
-                    *A++ = neighbor + 1;
+                const auto m = (R_len_t)adj_vect[i].size();
+                SEXP RA = PROTECT(Rf_allocVector(INTSXP, m));
+                int* A  = INTEGER(RA);
+                for (int idx = 0; idx < m; ++idx) A[idx] = adj_vect[i][(size_t)idx] + 1;
                 SET_VECTOR_ELT(adj_list, i, RA);
                 UNPROTECT(1);
             }
-
-            // Original graph intersection sizes
+            // intersection sizes
             {
-                SEXP RW = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
-                int* W = INTEGER(RW);
-                for (auto nn_vertex : iknn_graph.graph[i])
-                    *W++ = nn_vertex.isize;
+                const auto m = (R_len_t)iknn_graph.graph[i].size();
+                SEXP RW = PROTECT(Rf_allocVector(INTSXP, m));
+                int* W  = INTEGER(RW);
+                for (int idx = 0; idx < m; ++idx) W[idx] = iknn_graph.graph[i][(size_t)idx].isize;
                 SET_VECTOR_ELT(intersection_size_list, i, RW);
                 UNPROTECT(1);
             }
-
-            // Original graph distances
+            // distances
             {
-                SEXP RD = PROTECT(Rf_allocVector(REALSXP, dist_vect[i].size()));
+                const auto m = (R_len_t)dist_vect[i].size();
+                SEXP RD = PROTECT(Rf_allocVector(REALSXP, m));
                 double* D = REAL(RD);
-                for (auto dist : dist_vect[i])
-                    *D++ = dist;
+                for (int idx = 0; idx < m; ++idx) D[idx] = dist_vect[i][(size_t)idx];
                 SET_VECTOR_ELT(weight_list, i, RD);
                 UNPROTECT(1);
             }
         }
 
-        // Compute connected components
+        // connected components
         std::vector<int> conn_comps = union_find(adj_vect);
-        s_conn_comps = PROTECT(Rf_allocVector(INTSXP, conn_comps.size()));
+        if (conn_comps.size() > static_cast<size_t>(INT_MAX)) {
+            UNPROTECT(3); // adj_list, intersection_size_list, weight_list
+            Rf_error("Connected component vector too large for int lengths.");
+        }
+        SEXP s_conn_comps = PROTECT(Rf_allocVector(INTSXP, (R_len_t)conn_comps.size()));
         std::copy(conn_comps.begin(), conn_comps.end(), INTEGER(s_conn_comps));
+
+        SET_VECTOR_ELT(r_result, 0, adj_list);
+        SET_VECTOR_ELT(r_result, 1, intersection_size_list);
+        SET_VECTOR_ELT(r_result, 2, weight_list);
+        SET_VECTOR_ELT(r_result, 3, s_conn_comps);
+        UNPROTECT(4); // adj_list, intersection_size_list, weight_list, s_conn_comps
+    } else {
+        SET_VECTOR_ELT(r_result, 0, R_NilValue);
+        SET_VECTOR_ELT(r_result, 1, R_NilValue);
+        SET_VECTOR_ELT(r_result, 2, R_NilValue);
+        SET_VECTOR_ELT(r_result, 3, R_NilValue);
     }
 
-    SET_VECTOR_ELT(res, 0, adj_list);
-    SET_VECTOR_ELT(res, 1, intersection_size_list);
-    SET_VECTOR_ELT(res, 2, weight_list);
-    SET_VECTOR_ELT(res, 3, s_conn_comps);
-    SET_VECTOR_ELT(res, 4, pruned_adj_list);
-    SET_VECTOR_ELT(res, 5, pruned_weight_list);
-    SET_VECTOR_ELT(res, 6, Rf_ScalarReal(REAL(stats)[0]));
-    SET_VECTOR_ELT(res, 7, Rf_ScalarReal(REAL(stats)[1]));
-    SET_VECTOR_ELT(res, 8, Rf_ScalarReal(REAL(stats)[2]));
-    SET_VECTOR_ELT(res, 9, Rf_ScalarReal(REAL(stats)[3]));
-    SET_VECTOR_ELT(res, 10, s_conn_comps);  // Adding connected components to the end
-    UNPROTECT(11);
-
-    UNPROTECT(1); // results
-    return res;
+    UNPROTECT(1); // r_result
+    return r_result;
 }
 
 
@@ -1345,6 +1348,15 @@ SEXP S_create_iknn_graphs(
     SEXP s_n_cores,
     SEXP s_verbose) {
 
+    // --- Dimensions
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int n_vertices = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
+
     if (!Rf_isInteger(s_kmin) || !Rf_isInteger(s_kmax))
         Rf_error("kmin and kmax must be integer.");
     int kmin = Rf_asInteger(s_kmin);
@@ -1360,12 +1372,6 @@ SEXP S_create_iknn_graphs(
         Rf_error("compute_full and verbose must be logical.");
     bool compute_full = (Rf_asLogical(s_compute_full) == TRUE);
     bool verbose      = (Rf_asLogical(s_verbose) == TRUE);
-
-    // --- Dimensions
-    SEXP dim = Rf_getAttrib(s_X, R_DimSymbol);
-    if (dim == R_NilValue || Rf_length(dim) != 2)
-        Rf_error("s_X must be a numeric matrix.");
-    int n_vertices = Rf_asInteger(dim);
 
     // --- n_cores handling
 #ifdef _OPENMP
@@ -1497,7 +1503,7 @@ SEXP S_create_iknn_graphs(
     //
     // Create return list
     //
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 4));
 
     // Set names
     {
@@ -1506,7 +1512,7 @@ SEXP S_create_iknn_graphs(
         SET_STRING_ELT(names, 1, Rf_mkChar("geom_pruned_graphs"));
         SET_STRING_ELT(names, 2, Rf_mkChar("isize_pruned_graphs"));
         SET_STRING_ELT(names, 3, Rf_mkChar("edge_pruning_stats"));
-        Rf_setAttrib(result, R_NamesSymbol, names);
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
         UNPROTECT(1);
     }
 
@@ -1556,17 +1562,14 @@ SEXP S_create_iknn_graphs(
             Rf_setAttrib(edge_stats_list, R_NamesSymbol, edge_stats_list_names);
             UNPROTECT(1); // edge_stats_list_names
         }
-        SET_VECTOR_ELT(result, 3, edge_stats_list);
+        SET_VECTOR_ELT(r_result, 3, edge_stats_list);
         UNPROTECT(1); // edge_stats_list
     }
 
-    
-    SEXP geom_pruned_graphs_list = R_NilValue;
-    SEXP isize_pruned_graphs_list = R_NilValue;
-
     if (compute_full) {
-        PROTECT(geom_pruned_graphs_list = Rf_allocVector(VECSXP, kmax - kmin + 1));
-        PROTECT(isize_pruned_graphs_list = Rf_allocVector(VECSXP, kmax - kmin + 1));
+
+        SEXP geom_pruned_graphs_list = PROTECT(Rf_allocVector(VECSXP, kmax - kmin + 1));
+        SEXP isize_pruned_graphs_list = PROTECT(Rf_allocVector(VECSXP, kmax - kmin + 1));
 
         for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
             // Process first-level pruned graph
@@ -1659,12 +1662,12 @@ SEXP S_create_iknn_graphs(
             UNPROTECT(1); // r_isize_pruned_graph
         }
 
-        SET_VECTOR_ELT(result, 1, geom_pruned_graphs_list);
-        SET_VECTOR_ELT(result, 2, isize_pruned_graphs_list);
+        SET_VECTOR_ELT(r_result, 1, geom_pruned_graphs_list);
+        SET_VECTOR_ELT(r_result, 2, isize_pruned_graphs_list);
         UNPROTECT(2); // geom_pruned_graphs_list, isize_pruned_graphs_list
     } else {
-        SET_VECTOR_ELT(result, 1, geom_pruned_graphs_list);
-        SET_VECTOR_ELT(result, 2, isize_pruned_graphs_list);
+        SET_VECTOR_ELT(r_result, 1, R_NilValue);
+        SET_VECTOR_ELT(r_result, 2, R_NilValue);
     }
 
     // 0:
@@ -1701,7 +1704,7 @@ SEXP S_create_iknn_graphs(
             UNPROTECT(1); // k_stats_dimnames
         }
 
-        SET_VECTOR_ELT(result, 0, k_stats_matrix);
+        SET_VECTOR_ELT(r_result, 0, k_stats_matrix);
         UNPROTECT(1); // k_stats_matrix
     }
 
@@ -1710,6 +1713,6 @@ SEXP S_create_iknn_graphs(
         elapsed_time(total_start_time, "Total elapsed time", true);
     }
 
-    UNPROTECT(1);
-    return result;
+    UNPROTECT(1); // r_result
+    return r_result;
 }
