@@ -126,7 +126,6 @@ std::unique_ptr<std::vector<std::vector<double>>> Rmatrix_to_cpp(SEXP Rmatrix) {
     if (Rdim == R_NilValue || Rf_length(Rdim) != 2) {
         Rf_error("Rmatrix_to_cpp: Input must be a matrix");
     }
-
     int nrows = INTEGER(Rdim)[0];
     int ncols = INTEGER(Rdim)[1];
 

@@ -110,7 +110,7 @@ std::vector<edge_t> data_mstree(const std::vector<double>& X, int nr_X, int nc_X
     // Add edges from the first point
     add_edges();
 
-    while (!pq.empty() && result.size() < nr_X - 1) {
+    while (!pq.empty() && (int)result.size() < nr_X - 1) {
         edge_t e = pq.top();
         pq.pop();
 

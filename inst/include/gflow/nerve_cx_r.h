@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 	SEXP S_create_nerve_complex(SEXP s_coords, SEXP s_k, SEXP s_max_dim);
+	SEXP S_extract_skeleton_graph(SEXP s_complex_ptr);
 	SEXP S_set_function_values(SEXP s_complex_ptr, SEXP s_values);
 	SEXP S_set_weight_scheme(SEXP s_complex_ptr, SEXP s_weight_type, SEXP s_params);
 	SEXP S_solve_full_laplacian(SEXP s_complex_ptr, SEXP s_lambda, SEXP s_dim_weights);

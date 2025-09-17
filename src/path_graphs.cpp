@@ -870,16 +870,18 @@ SEXP S_create_path_graph_plm(SEXP s_adj_list,
 
         // Set names for the result list
         {
-            SEXP names = PROTECT(Rf_allocVector(STRSXP, 5));
-            // Copy names from base_components
-            SEXP base_names = Rf_getAttrib(base_components, R_NamesSymbol);
-            for (int i = 0; i < 4; i++) {
-                SET_STRING_ELT(names, i, STRING_ELT(base_names, i));
+            SEXP names = PROTECT(Rf_allocVector(STRSXP, 5));  // +1
+            SEXP base_names = PROTECT(Rf_getAttrib(base_components, R_NamesSymbol)); // +2
+
+            const int n_copy = 4; // copy first 4 names
+            for (int i = 0; i < n_copy; i++) {
+                SET_STRING_ELT(names, i, STRING_ELT(base_names, i)); // no allocations here
             }
-            // Add name for vertex_paths
-            SET_STRING_ELT(names, 4, Rf_mkChar("vertex_paths"));
+
+            SET_STRING_ELT(names, 4, Rf_mkChar("vertex_paths")); // allocates, but base_names already protected
             Rf_setAttrib(res, R_NamesSymbol, names);
-            UNPROTECT(1); // names
+
+            UNPROTECT(2); // base_names, names
         }
 
         UNPROTECT(1); // base_components

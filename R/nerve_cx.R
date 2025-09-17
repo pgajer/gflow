@@ -176,7 +176,7 @@ get.simplex.counts <- function(complex) {
 #' @return A graph representation of the 1-skeleton
 #' @export
 extract.skeleton.graph <- function(complex) {
-                                        # Check inputs
+
     if (!inherits(complex, "nerve_complex")) {
         stop("complex must be a nerve_complex object")
     }

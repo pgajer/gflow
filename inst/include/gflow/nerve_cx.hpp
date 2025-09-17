@@ -241,5 +241,4 @@ struct nerve_complex_t {
 
 };
 
-
 #endif // NERVE_COMPLEX_HPP

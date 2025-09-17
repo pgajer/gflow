@@ -657,7 +657,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
         UNPROTECT(1);
         Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
     }
-    const int n_points = INTEGER(s_dim)[0];
+    const size_t n_points = Rf_asInteger(s_dim);
     UNPROTECT(1); // s_dim
 
     size_t k = Rf_asInteger(Rk);
