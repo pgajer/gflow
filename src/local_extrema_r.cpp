@@ -79,63 +79,68 @@ SEXP S_detect_local_extrema(
 
     int n_elements = 0;
     while (names[n_elements] != NULL) n_elements++;
-
     int n_extrema = extrema.size();
 
-    // Create result list
-    int protect_count = 0;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
+    //
+    // Return R list
+    //
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
 
     // Set names
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
+    {
+        SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        for (int i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(result, R_NamesSymbol, result_names);
+        UNPROTECT(1);
     }
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
-    // Create data vectors
-    SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, n_extrema)); protect_count++;
-    SEXP r_values = PROTECT(Rf_allocVector(REALSXP, n_extrema)); protect_count++;
-    SEXP r_radii = PROTECT(Rf_allocVector(REALSXP, n_extrema)); protect_count++;
-    SEXP r_neighborhood_sizes = PROTECT(Rf_allocVector(INTSXP, n_extrema)); protect_count++;
-    SEXP r_is_maxima = PROTECT(Rf_allocVector(LGLSXP, n_extrema)); protect_count++;
+    {
+        SEXP r_vertices = PROTECT(Rf_allocVector(INTSXP, n_extrema));
+        SEXP r_values = PROTECT(Rf_allocVector(REALSXP, n_extrema));
+        SEXP r_radii = PROTECT(Rf_allocVector(REALSXP, n_extrema));
+        SEXP r_neighborhood_sizes = PROTECT(Rf_allocVector(INTSXP, n_extrema));
+        SEXP r_is_maxima = PROTECT(Rf_allocVector(LGLSXP, n_extrema));
+        // Create list to hold neighborhood vertices for each extremum
+        SEXP r_neighborhood_vertices = PROTECT(Rf_allocVector(VECSXP, n_extrema));
 
-    // Create list to hold neighborhood vertices for each extremum
-    SEXP r_neighborhood_vertices = PROTECT(Rf_allocVector(VECSXP, n_extrema)); protect_count++;
+        for (int i = 0; i < n_extrema; i++) {
+            INTEGER(r_vertices)[i] = extrema[i].vertex + 1;  // Convert to 1-based
+            REAL(r_values)[i] = extrema[i].value;
+            REAL(r_radii)[i] = extrema[i].radius;
+            INTEGER(r_neighborhood_sizes)[i] = extrema[i].neighborhood_size;
+            LOGICAL(r_is_maxima)[i] = extrema[i].is_maximum;
 
-    // Fill data vectors
-    for (int i = 0; i < n_extrema; i++) {
-        INTEGER(r_vertices)[i] = extrema[i].vertex + 1;  // Convert to 1-based
-        REAL(r_values)[i] = extrema[i].value;
-        REAL(r_radii)[i] = extrema[i].radius;
-        INTEGER(r_neighborhood_sizes)[i] = extrema[i].neighborhood_size;
-        LOGICAL(r_is_maxima)[i] = extrema[i].is_maximum;
+            // Add neighborhood vertices for this extremum
+            size_t n_neighborhood = extrema[i].vertices.size();
+            SEXP r_neighborhood = PROTECT(Rf_allocVector(INTSXP, n_neighborhood));
 
-        // Add neighborhood vertices for this extremum
-        size_t n_neighborhood = extrema[i].vertices.size();
-        SEXP r_neighborhood = PROTECT(Rf_allocVector(INTSXP, n_neighborhood));
+            for (size_t j = 0; j < n_neighborhood; j++) {
+                INTEGER(r_neighborhood)[j] = extrema[i].vertices[j] + 1;  // Convert to 1-based
+            }
 
-        for (size_t j = 0; j < n_neighborhood; j++) {
-            INTEGER(r_neighborhood)[j] = extrema[i].vertices[j] + 1;  // Convert to 1-based
+            SET_VECTOR_ELT(r_neighborhood_vertices, i, r_neighborhood);
+            UNPROTECT(1);  // Unprotect r_neighborhood after adding it to the list
         }
 
-        SET_VECTOR_ELT(r_neighborhood_vertices, i, r_neighborhood);
-        UNPROTECT(1);  // Unprotect r_neighborhood after adding it to the list
+        SET_VECTOR_ELT(result, 0, r_vertices);
+        SET_VECTOR_ELT(result, 1, r_values);
+        SET_VECTOR_ELT(result, 2, r_radii);
+        SET_VECTOR_ELT(result, 3, r_neighborhood_sizes);
+        SET_VECTOR_ELT(result, 4, r_is_maxima);
+        SET_VECTOR_ELT(result, 5, r_neighborhood_vertices);
+        UNPROTECT(6);
     }
 
     // Create graph diameter and max packing radius values
-    SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1)); protect_count++;
-    REAL(r_graph_diameter)[0] = graph_diameter;
+    {
+        SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_graph_diameter)[0] = graph_diameter;
+        SET_VECTOR_ELT(result, 6, r_graph_diameter);
+        UNPROTECT(1);
+    }
 
-    // Add vectors to result list
-    SET_VECTOR_ELT(result, 0, r_vertices);
-    SET_VECTOR_ELT(result, 1, r_values);
-    SET_VECTOR_ELT(result, 2, r_radii);
-    SET_VECTOR_ELT(result, 3, r_neighborhood_sizes);
-    SET_VECTOR_ELT(result, 4, r_is_maxima);
-    SET_VECTOR_ELT(result, 5, r_neighborhood_vertices);
-    SET_VECTOR_ELT(result, 6, r_graph_diameter);
-
-    UNPROTECT(protect_count);
+    UNPROTECT(1);
     return result;
 }

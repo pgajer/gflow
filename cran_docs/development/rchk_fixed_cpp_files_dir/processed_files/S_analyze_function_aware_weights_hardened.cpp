@@ -1,135 +1,37 @@
-#include <R.h>
+
+// Hardened, rchk-safe drop-in for S_analyze_function_aware_weights
+// - Container-first protection
+// - Strict type/length checks
+// - Uses R_xlen_t for long vectors
+// - Avoids unsupported UNPROTECT patterns
+// - Validates sizes of `results` vs `weight_types`
+// - Defensive NA handling is left to downstream C++ if desired
+
 #include <Rinternals.h>
+#include <R_ext/Error.h>
+#include <vector>
+#include <memory>
+#include <limits>
+#include <cmath>
 
-#include "set_wgraph.hpp"
-#include "SEXP_cpp_conversion_utils.hpp"
+// Forward decls for helpers provided elsewhere in the package
+std::vector<std::vector<int>> convert_adj_list_from_R(SEXP s_adj_list);
+std::vector<std::vector<double>> convert_weight_list_from_R(SEXP s_weight_list);
+std::unique_ptr<std::vector<double>> Rvect_to_CppVect_double(SEXP s_vec);
 
-extern "C" {
-	SEXP S_construct_function_aware_graph(
-		SEXP s_adj_list,
-		SEXP s_weight_list,
-		SEXP s_function_values,
-		SEXP s_weight_type,
-		SEXP s_epsilon,
-		SEXP s_lambda,
-		SEXP s_alpha,
-		SEXP s_beta,
-		SEXP s_tau,
-		SEXP s_p,
-		SEXP s_q,
-		SEXP s_r,
-		SEXP s_normalize,
-		SEXP s_weight_thld
-		);
+// Forward decl for graph type (provided by the package)
+struct set_wgraph_t {
+    set_wgraph_t(const std::vector<std::vector<int>>& adj,
+                 const std::vector<std::vector<double>>& w);
+    size_t num_vertices() const;
+    std::vector<std::vector<double>> analyze_function_aware_weights(
+        const std::vector<double>& function_values,
+        const std::vector<int>&     weight_types,
+        double epsilon, double lambda, double alpha, double beta,
+        double tau, double p, double q, double r) const;
+};
 
-	SEXP S_analyze_function_aware_weights(
-		SEXP s_adj_list,
-		SEXP s_weight_list,
-		SEXP s_function_values,
-		SEXP s_weight_types,
-		SEXP s_epsilon,
-		SEXP s_lambda,
-		SEXP s_alpha,
-		SEXP s_beta,
-		SEXP s_tau,
-		SEXP s_p,
-		SEXP s_q,
-		SEXP s_r
-		);
-}
-
-/**
- * R interface for construct_function_aware_graph
- */
-SEXP S_construct_function_aware_graph(
-	SEXP s_adj_list,
-	SEXP s_weight_list,
-	SEXP s_function_values,
-	SEXP s_weight_type,
-	SEXP s_epsilon,
-	SEXP s_lambda,
-	SEXP s_alpha,
-	SEXP s_beta,
-	SEXP s_tau,
-	SEXP s_p,
-	SEXP s_q,
-	SEXP s_r,
-	SEXP s_normalize,
-	SEXP s_weight_thld
-	) {
-
-	// Convert inputs
-	std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
-	std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
-
-	// Convert function values with proper memory management
-	std::unique_ptr<std::vector<double>> function_values_ptr = Rvect_to_CppVect_double(s_function_values);
-	if (!function_values_ptr) {
-		Rf_error("Failed to convert function values");
-	}
-	std::vector<double> function_values = std::move(*function_values_ptr);
-
-	int weight_type = Rf_asInteger(s_weight_type);
-	double epsilon = Rf_asReal(s_epsilon);
-	double lambda = Rf_asReal(s_lambda);
-	double alpha = Rf_asReal(s_alpha);
-	double beta = Rf_asReal(s_beta);
-	double tau = Rf_asReal(s_tau);
-	double p = Rf_asReal(s_p);
-	double q = Rf_asReal(s_q);
-	double r = Rf_asReal(s_r);
-	bool normalize = (Rf_asLogical(s_normalize) == TRUE);
-	double weight_thld = Rf_asReal(s_weight_thld);
-
-	// Create graph and compute function-aware version
-	set_wgraph_t graph(adj_list, weight_list);
-	set_wgraph_t result_graph = graph.construct_function_aware_graph(
-		function_values,
-		weight_type,
-		epsilon,
-		lambda,
-		alpha,
-		beta,
-		tau,
-		p,
-		q,
-		r,
-		normalize,
-		weight_thld
-		);
-
-	// Convert result to R format
-	return convert_wgraph_to_R(result_graph);
-}
-
-/**
- * @brief Analyzes weight distributions for function-aware graph construction
- *
- * @details
- * This function takes a graph and function values defined on its vertices, and analyzes
- * how different weighting schemes would modify the edge weights. It returns the complete
- * distribution of modified weights for several weighting schemes, which can be used to
- * determine appropriate thresholds for edge pruning.
- *
- * The function supports various weighting schemes:
- * - Inverse relationship: w_new = w_old / (|f(i) - f(j)| + epsilon)
- * - Direct relationship: w_new = w_old * |f(i) - f(j)|
- * - Exponential decay: w_new = w_old * exp(-lambda * |f(i) - f(j)|)
- * - Power law: w_new = w_old * |f(i) - f(j)|^(-alpha)
- * - Sigmoid: w_new = w_old * 1/(1 + exp(beta * (|f(i) - f(j)| - tau)))
- *
- * @param s_adj_list SEXP R list of adjacency lists
- * @param s_weight_list SEXP R list of edge weights
- * @param s_function_values SEXP R numeric vector of function values at each vertex
- * @param s_weight_type SEXP R integer specifying the weighting scheme to analyze (0-4)
- * @param s_params SEXP R numeric vector of parameters for the weighting function
- *
- * @return SEXP A named R list containing weight distributions for each weighting scheme
- *         The first element contains the original, unmodified weights.
- *
- * @note The caller is responsible for unprotecting the returned SEXP
- */
-SEXP S_analyze_function_aware_weights(
+extern "C" SEXP S_analyze_function_aware_weights(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_function_values,

@@ -2543,19 +2543,17 @@ SEXP S_ugg_get_path_data(
     std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(adj_list_s);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(weight_list_s);
 
-    size_t grid_size   = (size_t) Rf_asInteger(grid_size_s);
-    size_t ref_vertex  = (size_t) Rf_asInteger(ref_vertex_s);
+    size_t grid_size = INTEGER(grid_size_s)[0];
+    size_t ref_vertex = INTEGER(ref_vertex_s)[0];
 
-    std::vector<double> y(REAL(y_s), REAL(y_s) + LENGTH(y_s));
-
-    double bandwidth                 = Rf_asReal(bandwidth_s);
-    double dist_normalization_factor = Rf_asReal(dist_normalization_factor_s);
-
-    size_t min_path_size  = (size_t) Rf_asInteger(min_path_size_s);
-    size_t diff_threshold = (size_t) Rf_asInteger(diff_threshold_s);
-    size_t kernel_type    = (size_t) Rf_asInteger(kernel_type_s);
-
-    bool verbose = (Rf_asLogical(verbose_s) == TRUE);
+    size_t n_vertices = LENGTH(y_s);
+    std::vector<double> y(REAL(y_s), REAL(y_s) + n_vertices);
+    double bandwidth = REAL(bandwidth_s)[0];
+    double dist_normalization_factor = REAL(dist_normalization_factor_s)[0];
+    size_t min_path_size = INTEGER(min_path_size_s)[0];
+    size_t diff_threshold = INTEGER(diff_threshold_s)[0];
+    size_t kernel_type = INTEGER(kernel_type_s)[0];
+    bool verbose = (LOGICAL(verbose_s)[0] == 1);
 
     double snap_tolerance = 0.1;
     uniform_grid_graph_t uniform_grid_graph = create_uniform_grid_graph(
@@ -2583,8 +2581,9 @@ SEXP S_ugg_get_path_data(
     size_t n_paths = paths.size();
 
     // Convert results to R list
+    size_t n_protected = 0;
     const size_t RESULT_LIST_SIZE = n_paths + 3;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, RESULT_LIST_SIZE));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, RESULT_LIST_SIZE)); n_protected++;
 
     SEXP result_names = PROTECT(Rf_allocVector(STRSXP, RESULT_LIST_SIZE));
     for(size_t i = 0; i < n_paths; i++) {
@@ -2606,7 +2605,7 @@ SEXP S_ugg_get_path_data(
     };
 
     // Create SEXP for names once
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, path_comps_names.size()));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, path_comps_names.size())); n_protected++;
     for(size_t i = 0; i < path_comps_names.size(); i++) {
         SET_STRING_ELT(names, i, Rf_mkChar(path_comps_names[i].c_str()));
     }
@@ -2616,7 +2615,7 @@ SEXP S_ugg_get_path_data(
         SEXP path = PROTECT(Rf_allocVector(VECSXP, 7));
 
         // Convert vertices to R (adding 1 for 1-based indexing)
-        SEXP vertices = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)paths[i].vertices.size()));
+        SEXP vertices = PROTECT(Rf_allocVector(INTSXP, paths[i].vertices.size()));
         for(size_t j = 0; j < paths[i].vertices.size(); j++) {
             INTEGER(vertices)[j] = paths[i].vertices[j] + 1;
         }
@@ -2652,22 +2651,22 @@ SEXP S_ugg_get_path_data(
         SET_VECTOR_ELT(result, i, path);
 
         // Unprotect all elements created in this iteration
-        UNPROTECT(8);  // vertices, ref_vertex_r, rel_center_offset, total_weight, x_path, w_path, y_path, path
+        UNPROTECT(7);  // vertices, ref_vertex_r, rel_center_offset, total_weight, x_path, w_path, y_path
+        UNPROTECT(1);  // path
     }
-    UNPROTECT(1);  // names
 
     // Extract adjacency and weight lists from result
     size_t n_total_vertices = uniform_grid_graph.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices));
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices));
+    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
 
     // Convert the set-based representation back to R lists
     for (size_t i = 0; i < n_total_vertices; ++i) {
         const auto& neighbors = uniform_grid_graph.adjacency_list[i];
 
         // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)neighbors.size()));
-        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)neighbors.size()));
+        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
 
         // Fill the vectors
         size_t idx = 0;
@@ -2682,22 +2681,23 @@ SEXP S_ugg_get_path_data(
         SET_VECTOR_ELT(r_weight_list, i, r_weights);
         UNPROTECT(2); // for r_adj and r_weights
     }
-    SET_VECTOR_ELT(result, n_paths + 0, r_adj_list);
-    SET_VECTOR_ELT(result, n_paths + 1, r_weight_list);
-    UNPROTECT(2); // for r_adj_list and r_weights_list
 
     // Create grid vertices vector (1-based indices)
-    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)uniform_grid_graph.grid_vertices.size()));
+    size_t n_grid_vertices = uniform_grid_graph.grid_vertices.size();
+    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices)); n_protected++;
 
     size_t counter = 0;
     for (const auto& i : uniform_grid_graph.grid_vertices) {
         // Convert to 1-based indices for R
         INTEGER(r_grid_vertices)[counter++] = i + 1;
     }
-    SET_VECTOR_ELT(result, n_paths + 2, r_grid_vertices);
-    UNPROTECT(1); // r_grid_vertices
 
-    UNPROTECT(1); // result
+    // Set components in the uniform_grid_graph list
+    SET_VECTOR_ELT(result, n_paths + 0, r_adj_list);
+    SET_VECTOR_ELT(result, n_paths + 1, r_weight_list);
+    SET_VECTOR_ELT(result, n_paths + 2, r_grid_vertices);
+
+    UNPROTECT(n_protected);
 
     return result;
 }

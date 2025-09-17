@@ -596,200 +596,186 @@ SEXP S_upgmalo(SEXP s_x,
                SEXP s_epsilon,
                SEXP s_verbose) {
 
-  // ---- Coerce x/y (and optional y_true) to REAL and copy (long-vector safe) ----
-  std::vector<double> x, y, y_true;
-  {
-    int tprot = 0;
+    // ---- Create std::vector<double>'s'
+    const size_t nx = (size_t) LENGTH(s_x);
+    std::vector<double> x(REAL(s_x), REAL(s_x) + nx);
 
-    SEXP sx = s_x;
-    if (TYPEOF(sx) != REALSXP) { sx = PROTECT(Rf_coerceVector(sx, REALSXP)); ++tprot; }
-    const R_xlen_t nx = XLENGTH(sx);
-    x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
-
-    SEXP sy = s_y;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
+    const size_t ny = (size_t) LENGTH(s_y);
+    std::vector<double> y(REAL(s_y), REAL(s_y) + ny);
 
     if (nx != ny) {
-      if (tprot) UNPROTECT(tprot);
-      Rf_error("x and y must have the same length.");
+        Rf_error("x and y must have the same length.");
     }
 
+    std::vector<double> y_true;
     if (s_y_true != R_NilValue) {
-      SEXP syt = s_y_true;
-      if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
-      const R_xlen_t nyt = XLENGTH(syt);
-      if (nyt == nx) {
-        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-      } // else: treat as unavailable (leave empty)
+        const size_t nyt = (size_t) LENGTH(s_y_true);
+        if (nyt == nx) {
+            y_true.assign(REAL(s_y_true), REAL(s_y_true) + nyt);
+        }
+        // else: leave y_true empty (treated as unavailable)
     }
 
-    if (tprot) UNPROTECT(tprot);
-  }
+    const size_t n_points = x.size();
 
-  const R_xlen_t n_points = static_cast<R_xlen_t>(x.size());
+    // ---- Scalars / parameters (validated) ----
+    const bool use_median                  = (Rf_asLogical(s_use_median) == TRUE);
+    const int  h_min                       = Rf_asInteger(s_h_min);
+    const int  h_max                       = Rf_asInteger(s_h_max);
+    const double p                         = Rf_asReal(s_p);
+    const int  n_bb                        = Rf_asInteger(s_n_bb);
+    const int  bb_max_distance_deviation   = Rf_asInteger(s_bb_max_distance_deviation);
+    const int  n_CVs                       = Rf_asInteger(s_n_CVs);
+    const int  n_CV_folds                  = Rf_asInteger(s_n_CV_folds);
+    const unsigned int seed                = static_cast<unsigned int>(Rf_asInteger(s_seed));
+    const int    ikernel                   = Rf_asInteger(s_ikernel);
+    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    const double epsilon                   = Rf_asReal(s_epsilon);
+    const bool   verbose                   = (Rf_asLogical(s_verbose) == TRUE);
 
-  // ---- Scalars / parameters (validated) ----
-  const bool use_median = (Rf_asLogical(s_use_median) == TRUE);
-  const int  h_min = Rf_asInteger(s_h_min);
-  const int  h_max = Rf_asInteger(s_h_max);
-  const double p   = Rf_asReal(s_p);
-  const int  n_bb  = Rf_asInteger(s_n_bb);
-  const int  bb_max_distance_deviation = Rf_asInteger(s_bb_max_distance_deviation);
-  const int  n_CVs      = Rf_asInteger(s_n_CVs);
-  const int  n_CV_folds = Rf_asInteger(s_n_CV_folds);
-  const unsigned int seed = static_cast<unsigned int>(Rf_asInteger(s_seed));
-  const int    ikernel = Rf_asInteger(s_ikernel);
-  const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
-  const double epsilon = Rf_asReal(s_epsilon);
-  const bool   verbose = (Rf_asLogical(s_verbose) == TRUE);
+    if (h_min < 1)                Rf_error("h_min must be >= 1.");
+    if (h_max < h_min)            Rf_error("h_max must be >= h_min.");
+    if (static_cast<size_t>(h_max) > n_points)
+        Rf_error("h_max (%d) cannot exceed N (%zu).", h_max, n_points);
+    if (!(p > 0.0 && p <= 1.0))   Rf_error("p must be in (0, 1].");
+    if (n_bb < 0)                 Rf_error("n_bb must be >= 0.");
+    if (bb_max_distance_deviation < 0)
+        Rf_error("bb_max_distance_deviation must be >= 0.");
+    if (n_CVs < 1)                Rf_error("n_CVs must be >= 1.");
+    if (n_CV_folds < 2)           Rf_error("n_CV_folds must be >= 2.");
+    if (!(epsilon > 0.0))         Rf_error("epsilon must be > 0.");
 
-  if (h_min < 1)                Rf_error("h_min must be >= 1.");
-  if (h_max < h_min)            Rf_error("h_max must be >= h_min.");
-  if (static_cast<R_xlen_t>(h_max) > n_points)
-                                Rf_error("h_max (%d) cannot exceed N (%lld).",
-                                         h_max, static_cast<long long>(n_points));
-  if (!(p > 0.0 && p <= 1.0))   Rf_error("p must be in (0, 1].");
-  if (n_bb < 0)                 Rf_error("n_bb must be >= 0.");
-  if (bb_max_distance_deviation < 0)
-                                Rf_error("bb_max_distance_deviation must be >= 0.");
-  if (n_CVs < 1)                Rf_error("n_CVs must be >= 1.");
-  if (n_CV_folds < 2)           Rf_error("n_CV_folds must be >= 2.");
-  if (!(epsilon > 0.0))         Rf_error("epsilon must be > 0.");
+    // ---- Core computation (no R allocations inside) ----
+    auto cpp_results = upgmalo(x, y, y_true,
+                               use_median,
+                               h_min, h_max,
+                               p,
+                               n_bb, bb_max_distance_deviation,
+                               n_CVs, n_CV_folds,
+                               seed,
+                               ikernel,
+                               dist_normalization_factor,
+                               epsilon,
+                               verbose);
 
-  // ---- Core computation (no R allocations inside) ----
-  auto cpp_results = upgmalo(x, y, y_true,
-                             use_median,
-                             h_min, h_max,
-                             p,
-                             n_bb, bb_max_distance_deviation,
-                             n_CVs, n_CV_folds,
-                             seed,
-                             ikernel,
-                             dist_normalization_factor,
-                             epsilon,
-                             verbose);
+    // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
+    const int N_COMPONENTS = 13;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    // names while result is protected
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
+        SET_STRING_ELT(names, 1,  Rf_mkChar("h_errors"));
+        SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
+        SET_STRING_ELT(names, 3,  Rf_mkChar("opt_h"));
+        SET_STRING_ELT(names, 4,  Rf_mkChar("graph_adj_list"));
+        SET_STRING_ELT(names, 5,  Rf_mkChar("graph_edge_lengths"));
+        SET_STRING_ELT(names, 6,  Rf_mkChar("predictions"));
+        SET_STRING_ELT(names, 7,  Rf_mkChar("local_predictions"));
+        SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
+        SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
+        SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
 
-  // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
-  int nprot = 0;
-  const int N_COMPONENTS = 13;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+    // 0: h_values
+    {
+        SEXP s = convert_vector_int_to_R(cpp_results.h_values);
+        SET_VECTOR_ELT(result, 0, s);
+        UNPROTECT(1);
+    }
 
-  // 0: h_values
-  {
-    SEXP s = PROTECT(convert_vector_int_to_R(cpp_results.h_values));
-    SET_VECTOR_ELT(result, 0, s);
+    // 1: h_errors (or NULL)
+    if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
+        SEXP s = convert_vector_double_to_R(cpp_results.h_cv_errors);
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 1, R_NilValue);
+    }
+
+    // 2: opt_h_idx (1-based)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(cpp_results.opt_h_idx + 1));
+        SET_VECTOR_ELT(result, 2, s);
+        UNPROTECT(1);
+    }
+
+    // 3: opt_h
+    {
+        SEXP s = PROTECT(Rf_ScalarReal(cpp_results.opt_h));
+        SET_VECTOR_ELT(result, 3, s);
+        UNPROTECT(1);
+    }
+
+    // 4: graph_adj_list
+    {
+        SEXP s = convert_vector_vector_int_to_R(cpp_results.graph.adj_list);
+        SET_VECTOR_ELT(result, 4, s);
+        UNPROTECT(1);
+    }
+
+    // 5: graph_edge_lengths
+    {
+        SEXP s = convert_vector_vector_double_to_R(cpp_results.graph.weight_list);
+        SET_VECTOR_ELT(result, 5, s);
+        UNPROTECT(1);
+    }
+
+    // 6: predictions
+    {
+        SEXP s = convert_vector_double_to_R(cpp_results.predictions);
+        SET_VECTOR_ELT(result, 6, s);
+        UNPROTECT(1);
+    }
+
+    // 7: local_predictions
+    {
+        SEXP s = convert_vector_double_to_R(cpp_results.local_predictions);
+        SET_VECTOR_ELT(result, 7, s);
+        UNPROTECT(1);
+    }
+
+    // 8–10: bootstrap CI pieces (or NULLs)
+    if (!cpp_results.bb_predictions.empty()) {
+        SEXP s = convert_vector_double_to_R(cpp_results.bb_predictions);
+        SET_VECTOR_ELT(result, 8, s);  UNPROTECT(1);
+        s = convert_vector_double_to_R(cpp_results.ci_lower);
+        SET_VECTOR_ELT(result, 9, s);  UNPROTECT(1);
+        s = convert_vector_double_to_R(cpp_results.ci_upper);
+        SET_VECTOR_ELT(result,10, s);  UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 8,  R_NilValue);
+        SET_VECTOR_ELT(result, 9,  R_NilValue);
+        SET_VECTOR_ELT(result, 10, R_NilValue);
+    }
+
+    // 11: true_error (mean of vector, or NULL)
+    if (!cpp_results.true_errors.empty()) {
+        const double mean_true_error =
+            std::accumulate(cpp_results.true_errors.begin(),
+                            cpp_results.true_errors.end(), 0.0) /
+            static_cast<double>(cpp_results.true_errors.size());
+        SEXP s = PROTECT(Rf_ScalarReal(mean_true_error));
+        SET_VECTOR_ELT(result, 11, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(result, 11, R_NilValue);
+    }
+
+    // 12: h_predictions (list<numeric>)
+    {
+        SEXP s = convert_vector_vector_double_to_R(cpp_results.h_predictions);
+        SET_VECTOR_ELT(result, 12, s);
+        UNPROTECT(1);
+    }
+
+
     UNPROTECT(1);
-  }
-
-  // 1: h_errors (or NULL)
-  if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
-    SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.h_cv_errors));
-    SET_VECTOR_ELT(result, 1, s);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 1, R_NilValue);
-  }
-
-  // 2: opt_h_idx (1-based)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(cpp_results.opt_h_idx + 1));
-    SET_VECTOR_ELT(result, 2, s);
-    UNPROTECT(1);
-  }
-
-  // 3: opt_h
-  {
-    SEXP s = PROTECT(Rf_ScalarReal(cpp_results.opt_h));
-    SET_VECTOR_ELT(result, 3, s);
-    UNPROTECT(1);
-  }
-
-  // 4: graph_adj_list
-  {
-    SEXP s = PROTECT(convert_vector_vector_int_to_R(cpp_results.graph.adj_list));
-    SET_VECTOR_ELT(result, 4, s);
-    UNPROTECT(1);
-  }
-
-  // 5: graph_edge_lengths
-  {
-    SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.graph.weight_list));
-    SET_VECTOR_ELT(result, 5, s);
-    UNPROTECT(1);
-  }
-
-  // 6: predictions
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.predictions));
-    SET_VECTOR_ELT(result, 6, s);
-    UNPROTECT(1);
-  }
-
-  // 7: local_predictions
-  {
-    SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.local_predictions));
-    SET_VECTOR_ELT(result, 7, s);
-    UNPROTECT(1);
-  }
-
-  // 8–10: bootstrap CI pieces (or NULLs)
-  if (!cpp_results.bb_predictions.empty()) {
-    SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.bb_predictions));
-    SET_VECTOR_ELT(result, 8, s);  UNPROTECT(1);
-       s = PROTECT(convert_vector_double_to_R(cpp_results.ci_lower));
-    SET_VECTOR_ELT(result, 9, s);  UNPROTECT(1);
-       s = PROTECT(convert_vector_double_to_R(cpp_results.ci_upper));
-    SET_VECTOR_ELT(result,10, s);  UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 8,  R_NilValue);
-    SET_VECTOR_ELT(result, 9,  R_NilValue);
-    SET_VECTOR_ELT(result, 10, R_NilValue);
-  }
-
-  // 11: true_error (mean of vector, or NULL)
-  if (!cpp_results.true_errors.empty()) {
-    const double mean_true_error =
-        std::accumulate(cpp_results.true_errors.begin(),
-                        cpp_results.true_errors.end(), 0.0) /
-        static_cast<double>(cpp_results.true_errors.size());
-    SEXP s = PROTECT(Rf_ScalarReal(mean_true_error));
-    SET_VECTOR_ELT(result, 11, s);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 11, R_NilValue);
-  }
-
-  // 12: h_predictions (list<numeric>)
-  {
-    SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.h_predictions));
-    SET_VECTOR_ELT(result, 12, s);
-    UNPROTECT(1);
-  }
-
-  // names while result is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
-    SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
-    SET_STRING_ELT(names, 1,  Rf_mkChar("h_errors"));
-    SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
-    SET_STRING_ELT(names, 3,  Rf_mkChar("opt_h"));
-    SET_STRING_ELT(names, 4,  Rf_mkChar("graph_adj_list"));
-    SET_STRING_ELT(names, 5,  Rf_mkChar("graph_edge_lengths"));
-    SET_STRING_ELT(names, 6,  Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 7,  Rf_mkChar("local_predictions"));
-    SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
-    SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
-    SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
-  }
-
-  UNPROTECT(nprot);
-  return result;
+    return result;
 }
 
 
@@ -1225,33 +1211,22 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
     }
   }
 
-  // ---- y / y_true (coerce defensively, copy out) ----
-  std::vector<double> y, y_true;
+  // ---- y / y_true ----
+  const size_t Ny = LENGTH(y_r);
+  std::vector<double> y(REAL(y_r), REAL(y_r) + Ny);
+
+  std::vector<double> y_true;
   {
-    int tprot = 0;
-    SEXP sy = y_r;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t Ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(Ny));
-
-    if (neighbors.size() != static_cast<size_t>(Ny)) {
-      if (tprot) UNPROTECT(tprot);
-      Rf_error("length(y) must equal length(neighbors).");
-    }
-
     if (y_true_r != R_NilValue) {
       SEXP syt = y_true_r;
-      if (TYPEOF(syt) != REALSXP) { syt = PROTECT(Rf_coerceVector(syt, REALSXP)); ++tprot; }
-      const R_xlen_t Nyt = XLENGTH(syt);
+      const size_t Nyt = LENGTH(syt);
       if (Nyt == Ny) {
-        y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(Nyt));
-      } // else: leave empty (treated as unavailable)
+        y_true.assign(REAL(syt), REAL(syt) + Nyt);
+      } else {
+          Rf_error("y_true_r must have the same length as y_r");
+      }
     }
-
-    if (tprot) UNPROTECT(tprot);
   }
-
-  const R_xlen_t N = static_cast<R_xlen_t>(y.size());
 
   // ---- Scalars / parameters (validated) ----
   const bool   use_median = (Rf_asLogical(use_median_r) == TRUE);
@@ -1270,9 +1245,9 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
 
   if (h_min < 1)                 Rf_error("h_min must be >= 1.");
   if (h_max < h_min)             Rf_error("h_max must be >= h_min.");
-  if (static_cast<R_xlen_t>(h_max) > N)
-                                 Rf_error("h_max (%d) cannot exceed N (%lld).",
-                                          h_max, static_cast<long long>(N));
+  if ((size_t)h_max > Ny)
+                                 Rf_error("h_max (%d) cannot exceed Ny (%zu).",
+                                          h_max, Ny);
   if (!(p > 0.0 && p <= 1.0))    Rf_error("p must be in (0, 1].");
   if (n_bb < 0)                  Rf_error("n_bb must be >= 0.");
   if (bb_max_distance_deviation < 0)
@@ -1301,13 +1276,12 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
                         verbose);
 
   // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
-  int nprot = 0;
   const int N_COMPONENTS = 11;
-  SEXP result_r = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+  SEXP result_r = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
 
   // 0: h_values
   {
-    SEXP s = PROTECT(convert_vector_int_to_R(results.h_values));
+    SEXP s = convert_vector_int_to_R(results.h_values);
     SET_VECTOR_ELT(result_r, 0, s);
     UNPROTECT(1);
   }
@@ -1328,14 +1302,14 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
 
   // 3: h_errors
   {
-    SEXP s = PROTECT(convert_vector_double_to_R(results.h_cv_errors));
+    SEXP s = convert_vector_double_to_R(results.h_cv_errors);
     SET_VECTOR_ELT(result_r, 3, s);
     UNPROTECT(1);
   }
 
   // 4: true_errors (or NULL)
   if (results.has_true_errors()) {
-    SEXP s = PROTECT(convert_vector_double_to_R(results.true_errors));
+    SEXP s = convert_vector_double_to_R(results.true_errors);
     SET_VECTOR_ELT(result_r, 4, s);
     UNPROTECT(1);
   } else {
@@ -1344,14 +1318,14 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
 
   // 5: predictions
   {
-    SEXP s = PROTECT(convert_vector_double_to_R(results.predictions));
+    SEXP s = convert_vector_double_to_R(results.predictions);
     SET_VECTOR_ELT(result_r, 5, s);
     UNPROTECT(1);
   }
 
   // 6: local_predictions
   {
-    SEXP s = PROTECT(convert_vector_double_to_R(results.local_predictions));
+    SEXP s = convert_vector_double_to_R(results.local_predictions);
     SET_VECTOR_ELT(result_r, 6, s);
     UNPROTECT(1);
   }
@@ -1359,25 +1333,25 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
   // 7: h_predictions (list<numeric>)
   {
     const size_t H = results.h_predictions.size();
-    SEXP hp = PROTECT(Rf_allocVector(VECSXP, static_cast<R_xlen_t>(H))); ++nprot;
+    SEXP hp = PROTECT(Rf_allocVector(VECSXP, static_cast<R_xlen_t>(H)));
     for (size_t i = 0; i < H; ++i) {
-      SEXP vec = PROTECT(convert_vector_double_to_R(results.h_predictions[i]));
+      SEXP vec = convert_vector_double_to_R(results.h_predictions[i]);
       SET_VECTOR_ELT(hp, static_cast<R_xlen_t>(i), vec);
       UNPROTECT(1);
     }
     SET_VECTOR_ELT(result_r, 7, hp);
-    UNPROTECT(1); --nprot; // hp now reachable from result_r
+    UNPROTECT(1); // hp now reachable from result_r
   }
 
   // 8–10: bootstrap outputs (or NULLs)
   if (results.has_bootstrap_results()) {
-    SEXP s = PROTECT(convert_vector_double_to_R(results.bb_predictions));
+    SEXP s = convert_vector_double_to_R(results.bb_predictions);
     SET_VECTOR_ELT(result_r, 8, s); UNPROTECT(1);
 
-    s = PROTECT(convert_vector_double_to_R(results.ci_lower));
+    s = convert_vector_double_to_R(results.ci_lower);
     SET_VECTOR_ELT(result_r, 9, s); UNPROTECT(1);
 
-    s = PROTECT(convert_vector_double_to_R(results.ci_upper));
+    s = convert_vector_double_to_R(results.ci_upper);
     SET_VECTOR_ELT(result_r, 10, s); UNPROTECT(1);
   } else {
     SET_VECTOR_ELT(result_r, 8,  R_NilValue);
@@ -1386,316 +1360,20 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
   }
 
   // names while result_r is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
-    SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
-    SET_STRING_ELT(names, 1,  Rf_mkChar("opt_h"));
-    SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
-    SET_STRING_ELT(names, 3,  Rf_mkChar("h_errors"));
-    SET_STRING_ELT(names, 4,  Rf_mkChar("true_errors"));
-    SET_STRING_ELT(names, 5,  Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 6,  Rf_mkChar("local_predictions"));
-    SET_STRING_ELT(names, 7,  Rf_mkChar("h_predictions"));
-    SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
-    Rf_setAttrib(result_r, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
-  }
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+  SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
+  SET_STRING_ELT(names, 1,  Rf_mkChar("opt_h"));
+  SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
+  SET_STRING_ELT(names, 3,  Rf_mkChar("h_errors"));
+  SET_STRING_ELT(names, 4,  Rf_mkChar("true_errors"));
+  SET_STRING_ELT(names, 5,  Rf_mkChar("predictions"));
+  SET_STRING_ELT(names, 6,  Rf_mkChar("local_predictions"));
+  SET_STRING_ELT(names, 7,  Rf_mkChar("h_predictions"));
+  SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
+  SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
+  SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+  Rf_setAttrib(result_r, R_NamesSymbol, names);
 
-  UNPROTECT(nprot); // result_r
+  UNPROTECT(2); // result_r, names
   return result_r;
 }
-
-#if 0
-// Mutex for protecting console output
-std::mutex console_mutex;
-
-pgmalo_t pgmalo_mp(const std::vector<std::vector<int>>& neighbors,
-                   const std::vector<std::vector<double>>& edge_lengths,
-                   const std::vector<double>& y,
-                   const std::vector<double>& y_true,
-                   bool use_median,
-                   int h_min,
-                   int h_max,
-                   double p,
-                   int n_bb,
-                   int bb_max_distance_deviation,
-                   int n_CVs,
-                   int n_CV_folds,
-                   unsigned int seed,
-                   int kernel_type,
-                   double dist_normalization_factor,
-                   double epsilon,
-                   bool verbose) {
-
-    auto total_ptm = std::chrono::steady_clock::now();
-    auto ptm = std::chrono::steady_clock::now();
-
-    const int n_vertices = static_cast<int>(y.size());
-    const int n_h_values = (h_max - h_min) / 2 + 1;
-
-    // Initialize results structure
-    pgmalo_t results;
-    results.graphs.resize(n_h_values);
-    results.h_cv_errors.resize(n_h_values);
-    results.h_values.resize(n_h_values);
-    results.h_predictions.resize(n_h_values);
-
-    // Create vector of h values for parallel processing
-    std::vector<int> h_values(n_h_values);
-    std::generate(h_values.begin(), h_values.end(),
-                 [h = h_min]() mutable { auto current = h; h += 2; return current; });
-
-    // Thread-safe storage for intermediate results
-    struct thread_safe_results_t {
-        std::mutex mutex;
-        std::unordered_map<int, std::vector<double>> predictions_map;
-
-        void store_predictions(int h, std::vector<double>&& predictions) {
-            std::lock_guard<std::mutex> lock(mutex);
-            predictions_map[h] = std::move(predictions);
-        }
-    };
-
-    thread_safe_results_t thread_safe_results;
-    thread_safe_results.predictions_map.reserve(n_h_values);
-
-    // Initialize uniform weights
-    std::vector<double> weights(n_vertices, 1.0);
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
-
-    // Parallel processing of h values
-
-    struct termination_state_t {
-        std::mutex mutex;
-        int failed_h = std::numeric_limits<int>::max();
-        bool has_failed = false;
-        std::vector<int> successful_h_values;
-
-        bool should_terminate(int current_h) {
-            std::lock_guard<std::mutex> lock(mutex);
-            return has_failed && current_h >= failed_h;
-        }
-
-        void signal_failure(int h) {
-            std::lock_guard<std::mutex> lock(mutex);
-            if (!has_failed || h < failed_h) {
-                has_failed = true;
-                failed_h = h;
-            }
-        }
-
-        void record_success(int h) {
-            std::lock_guard<std::mutex> lock(mutex);
-            successful_h_values.push_back(h);
-        }
-    } termination_state;
-
-    gflow::for_each(GFLOW_EXEC_POLICY, h_values.begin(), h_values.end(),
-        [&](int h) {
-            int i = (h - h_min) / 2;  // Calculate index based on h value
-
-            if (verbose) {
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    Rprintf("\nProcessing h = %d (%d/%d)\n\tCreating path graph ... ",
-                            h, i + 1, n_h_values);
-                    ptm = std::chrono::steady_clock::now();
-                }
-            }
-
-            auto path_graph = create_path_graph_plm(neighbors, edge_lengths, h);
-
-            if (!validate_vertex_paths(path_graph)) {
-                termination_state.signal_failure(h);
-                return;
-            }
-
-            if (verbose) {
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    elapsed_time(ptm, "DONE");
-                }
-            }
-
-            // Compute predictions and errors
-            if (verbose) {
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    Rprintf("\tComputing predictions and errors ... ");
-                    ptm = std::chrono::steady_clock::now();
-                }
-            }
-
-            auto [predictions, errors] = spgmalo(path_graph,
-                                               y,
-                                               weights,
-                                               kernel_type,
-                                               bb_max_distance_deviation,
-                                               dist_normalization_factor,
-                                               epsilon,
-                                               verbose);
-
-            if (n_CVs && y_binary) {
-                errors = pgmalo_cv_parallel(path_graph,
-                                          y,
-                                          n_CVs,
-                                          n_CV_folds,
-                                          seed,
-                                          kernel_type,
-                                          bb_max_distance_deviation,
-                                          dist_normalization_factor,
-                                          epsilon);
-
-                errors.erase(std::remove_if(errors.begin(), errors.end(),
-                                          [](double x) { return std::isnan(x); }),
-                           errors.end());
-            }
-
-            if (verbose) {
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    elapsed_time(ptm, "DONE");
-                    Rprintf("\tCalculating mean Rf_error ... ");
-                    ptm = std::chrono::steady_clock::now();
-                }
-            }
-
-            const double mean_error = std::accumulate(errors.begin(), errors.end(), 0.0) / n_vertices;
-
-            // Thread-safe updates to shared data structures
-            {
-                std::lock_guard<std::mutex> lock(thread_safe_results.mutex);
-                results.h_cv_errors[i] = mean_error;
-                results.graphs[i] = std::move(path_graph);
-                results.h_values[i] = h;
-                results.h_predictions[i] = predictions;
-                thread_safe_results.predictions_map[h] = std::move(predictions);
-            }
-
-            if (verbose) {
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    elapsed_time(ptm, "DONE");
-                }
-            }
-
-            termination_state.record_success(h);
-        });
-
-
-    if (termination_state.has_failed) {
-        // Sort successful h values to ensure they're in order
-        std::sort(termination_state.successful_h_values.begin(),
-                  termination_state.successful_h_values.end());
-
-        // Resize result vectors to match successful h values
-        size_t new_size = termination_state.successful_h_values.size();
-        std::vector<path_graph_plm_t> new_graphs;
-        std::vector<double> new_cv_errors;
-        std::vector<int> new_h_values;
-        std::vector<std::vector<double>> new_predictions;
-
-        new_graphs.reserve(new_size);
-        new_cv_errors.reserve(new_size);
-        new_h_values.reserve(new_size);
-        new_predictions.reserve(new_size);
-
-        // Copy only successful results
-        for (int h : termination_state.successful_h_values) {
-            int i = (h - h_min) / 2;
-            new_graphs.push_back(std::move(results.graphs[i]));
-            new_cv_errors.push_back(results.h_cv_errors[i]);
-            new_h_values.push_back(results.h_values[i]);
-            new_predictions.push_back(std::move(results.h_predictions[i]));
-        }
-
-        // Update results structure with only successful data
-        results.graphs = std::move(new_graphs);
-        results.h_cv_errors = std::move(new_cv_errors);
-        results.h_values = std::move(new_h_values);
-        results.h_predictions = std::move(new_predictions);
-
-        // Print Rf_warning about adjusted h range
-        Rprintf("\nWarning: Path validation failed at h = %d. Analysis proceeding with ",
-                termination_state.failed_h);
-        if (results.h_values.empty()) {
-            Rprintf("no valid h values.\n");
-            // Handle the case where no h values were successful
-            REPORT_ERROR("No valid h values found.");
-        } else {
-            Rprintf("h values in range [%d, %d].\n",
-                    results.h_values.front(),
-                    results.h_values.back());
-        }
-    }
-
-    // Find optimal h
-    auto min_it = std::min_element(results.h_cv_errors.begin(), results.h_cv_errors.end());
-    results.opt_h_idx = std::distance(results.h_cv_errors.begin(), min_it);
-    results.opt_h = h_min + 2 * results.opt_h_idx;
-
-    // Store optimal results
-    results.graph = std::move(results.graphs[results.opt_h_idx]);
-    results.predictions = std::move(thread_safe_results.predictions_map[results.opt_h]);
-
-    // Compute true errors if available
-    if (!y_true.empty()) {
-        if ((int)y_true.size() != n_vertices) {
-            Rf_error("y_true size (%zu) does not match number of vertices (%d)",
-                    y_true.size(), n_vertices);
-        }
-
-        if (verbose) {
-            Rprintf("Computing true errors ... ");
-            ptm = std::chrono::steady_clock::now();
-        }
-
-        results.true_errors.resize(n_vertices);
-        for (int i = 0; i < n_vertices; i++) {
-            results.true_errors[i] = std::abs(y_true[i] - results.predictions[i]);
-        }
-
-        if (verbose) elapsed_time(ptm, "DONE");
-    }
-
-    // Compute bootstrap intervals if requested
-    if (n_bb > 0) {
-        if (verbose) {
-            Rprintf("Computing bootstrap intervals (n=%d) ... ", n_bb);
-            ptm = std::chrono::steady_clock::now();
-        }
-
-        int local_max_distance_deviation = 0;
-        if (bb_max_distance_deviation == -1) {
-            local_max_distance_deviation = (results.opt_h - 1) / 2;
-        } else {
-            local_max_distance_deviation = bb_max_distance_deviation;
-        }
-
-        bb_cri_t bb_cri_results = pgmalo_bb_cri(results.graph,
-                                                y,
-                                                p,
-                                                n_bb,
-                                                local_max_distance_deviation,
-                                                use_median,
-                                                kernel_type,
-                                                dist_normalization_factor,
-                                                epsilon);
-
-        results.bb_predictions = std::move(bb_cri_results.bb_Ey);
-        results.ci_lower = std::move(bb_cri_results.cri_L);
-        results.ci_upper = std::move(bb_cri_results.cri_U);
-
-        if (verbose) elapsed_time(ptm, "DONE");
-    }
-
-    if (verbose) {
-        Rprintf("\nOptimal h: %d\n", results.opt_h);
-        elapsed_time(total_ptm, "Total time");
-    }
-
-    return results;
-}
-#endif

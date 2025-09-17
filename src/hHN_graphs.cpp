@@ -312,41 +312,14 @@ std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>> creat
  * hhn_adj_list <- result$adj_list
  * hhn_dist_list <- result$dist_list
  */
-SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
+SEXP S_create_hHN_graph(SEXP s_adj_list,
+                        SEXP s_weight_list,
+                        SEXP s_h) {
+
     // Correct: Converts R inputs to C++ types
     std::vector<std::vector<int>> adj_vv       = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_vv = convert_weight_list_from_R(s_weight_list);
-
-    // Correct: Coerces s_k to integer and extracts its value
-    PROTECT(s_h = Rf_coerceVector(s_h, INTSXP));
-    int h = INTEGER(s_h)[0];
-    UNPROTECT(1);
-
-    #if 0
-    PROTECT(s_type = Rf_coerceVector(s_type, INTSXP));
-    int type = INTEGER(s_type)[0];
-    UNPROTECT(1);
-
-    // benchmark_hHN_graph results:
-    // type0   2.355964   2.406112   2.454287   2.420903   2.433518   2.654935     5
-    // type1 215.185024 220.344316 222.421501 220.622162 227.920013 228.035989     5
-    // type2   8.643084   8.769095   8.790769   8.794763   8.836087   8.910816     5
-
-    std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>> hhn_graph;
-    switch(type) {
-    case 0:
-        hhn_graph = create_hHN_graph(adj_vv, weight_vv, h);
-        break;
-    case 1:
-        hhn_graph = create_hHN_graph_hvertex_vector(adj_vv, weight_vv, h);
-        break;
-    case 2:
-        hhn_graph = create_hHN_graph_hvertex_hashmap(adj_vv, weight_vv, h);
-        break;
-    default:
-        Rf_error("Invalid type specified.");
-    }
-    #endif
+    int h = Rf_asInteger(s_h);
 
     std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>> hhn_graph = create_hHN_graph(adj_vv, weight_vv, h);
 
@@ -354,42 +327,50 @@ SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h) {
     std::vector<std::vector<int>> hhn_adj_vv       = hhn_graph.first;
     std::vector<std::vector<double>> hhn_weight_vv = hhn_graph.second;
 
-    // Correct: Prepares R list for adjacency list
-    int n_vertices = static_cast<int>(hhn_adj_vv.size());
-    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, hhn_adj_vv[i].size()));
-        int* A = INTEGER(RA);
-        for (const auto& neighbor : hhn_adj_vv[i])
-            *A++ = neighbor + 1;  // Correct: Adjusts for R's 1-based indexing
-        SET_VECTOR_ELT(adj_list, i, RA);
-        UNPROTECT(1);
-    }
+    const int n_vertices = static_cast<int>(adj_vv.size());
 
-    // Correct: Prepares R list for distance list
-    SEXP dist_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(Rf_allocVector(REALSXP, hhn_weight_vv[i].size()));
-        double* D = REAL(RD);
-        for (const auto& dist : hhn_weight_vv[i])
-            *D++ = dist;
-        SET_VECTOR_ELT(dist_list, i, RD);
-        UNPROTECT(1);
-    }
-
-    // Correct: Prepares the final result list
+    // Create result list (container-first pattern)
     SEXP res = PROTECT(Rf_allocVector(VECSXP, 2));
-    SET_VECTOR_ELT(res, 0, adj_list);
-    SET_VECTOR_ELT(res, 1, dist_list);
 
-    UNPROTECT(2); // Unprotect adj_list and dist_list
+    // Build adjacency list
+    {
+        SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        for (int i = 0; i < n_vertices; i++) {
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, hhn_adj_vv[i].size()));
+            int* A = INTEGER(RA);
+            for (const auto& neighbor : hhn_adj_vv[i])
+                *A++ = neighbor + 1;  // Adjust for R's 1-based indexing
+            SET_VECTOR_ELT(adj_list, i, RA);
+            UNPROTECT(1); // RA
+        }
+        SET_VECTOR_ELT(res, 0, adj_list);
+        UNPROTECT(1); // adj_list
+    }
 
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("dist_list"));
-    Rf_setAttrib(res, R_NamesSymbol, names);
+    // Build distance/weight list
+    {
+        SEXP dist_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        for (int i = 0; i < n_vertices; i++) {
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, hhn_weight_vv[i].size()));
+            double* D = REAL(RD);
+            for (const auto& dist : hhn_weight_vv[i])
+                *D++ = dist;
+            SET_VECTOR_ELT(dist_list, i, RD);
+            UNPROTECT(1); // RD
+        }
+        SET_VECTOR_ELT(res, 1, dist_list);
+        UNPROTECT(1); // dist_list
+    }
 
-    UNPROTECT(2); // Unprotect res and names
+    // Set names
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("dist_list"));
+        Rf_setAttrib(res, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
 
+    UNPROTECT(1); // res
     return res;
 }

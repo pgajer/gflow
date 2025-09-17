@@ -61,39 +61,37 @@ SEXP S_graph_spectral_ma_lowess(
     SEXP s_verbose
 ) {
     // Convert input parameters using R's C API
-    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
     // Convert numeric vector directly
-    double* y_ptr = REAL(s_y);
-    std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
+    std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
 
-    size_t n_evectors = (size_t)INTEGER(s_n_evectors)[0];
-
+    // -------- Scalars / flags (defensive extraction) --------
+    const size_t n_evectors = static_cast<size_t>(Rf_asInteger(s_n_evectors));
     // bw parameters
-    size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
-    double min_bw_factor = REAL(s_min_bw_factor)[0];
-    double max_bw_factor = REAL(s_max_bw_factor)[0];
-
+    const size_t n_bws      = static_cast<size_t>(Rf_asInteger(s_n_bws));
+    const bool   log_grid   = (Rf_asLogical(s_log_grid) == TRUE);
+    const double min_bw_factor = Rf_asReal(s_min_bw_factor);
+    const double max_bw_factor = Rf_asReal(s_max_bw_factor);
     // kernel parameters
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
-
+    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
+    const size_t kernel_type = static_cast<size_t>(Rf_asInteger(s_kernel_type));
     // model parameters
-    double blending_coef = REAL(s_blending_coef)[0];
-
+    const double blending_coef = Rf_asReal(s_blending_coef);
     // other
-    double precision = REAL(s_precision)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    const double precision = Rf_asReal(s_precision);
+    const bool   verbose   = (Rf_asLogical(s_verbose) == TRUE);
 
-    // Create the graph
+    // -------- Create the graph --------
     set_wgraph_t graph(adj_list, weight_list);
 
-    // Find diameter if not already computed
+    // -------- Ensure diameter is computed --------
     if (graph.graph_diameter <= 0) {
         auto [end1, diam] = graph.get_vertex_eccentricity(0);  // Start from vertex 0
+        (void)diam;
         auto [end2, diameter] = graph.get_vertex_eccentricity(end1);
+        (void)end2;
         graph.graph_diameter = diameter;
     }
 
@@ -116,45 +114,55 @@ SEXP S_graph_spectral_ma_lowess(
         verbose
     );
 
-    // Create the return list using R's C API
-    const char* names[] = {
-        "predictions",
-        "errors",
-        "scale",
-        "graph_diameter",
-        NULL
-    };
+    // -------- Build result (container-first; fixed UNPROTECT counts) --------
+    const int n_elements = 4;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
 
-    int n_elements = 0;
-    while (names[n_elements] != NULL) n_elements++;
-
-    // Create list and protect it
-    int protect_count = 0;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
-
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
-    }
+    // names
+    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+    SET_STRING_ELT(result_names, 0, Rf_mkChar("predictions"));
+    SET_STRING_ELT(result_names, 1, Rf_mkChar("errors"));
+    SET_STRING_ELT(result_names, 2, Rf_mkChar("scale"));
+    SET_STRING_ELT(result_names, 3, Rf_mkChar("graph_diameter"));
     Rf_setAttrib(result, R_NamesSymbol, result_names);
+    UNPROTECT(1); // result_names
 
     // Helper function to convert vector to SEXP
     auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
         SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        double* ptr = REAL(r_vec);
-        std::copy(vec.begin(), vec.end(), ptr);
+        std::copy(vec.begin(), vec.end(), REAL(r_vec));
         return r_vec;
     };
 
-    SET_VECTOR_ELT(result, 0, create_numeric_vector(res.predictions)); protect_count++;
-    SET_VECTOR_ELT(result, 1, create_numeric_vector(res.errors)); protect_count++;
-    SET_VECTOR_ELT(result, 2, create_numeric_vector(res.scale)); protect_count++;
+    // 0: predictions
+    {
+        SEXP s = create_numeric_vector(res.predictions);
+        SET_VECTOR_ELT(result, 0, s);
+        UNPROTECT(1); // s - protected in create_numeric_vector()
+    }
 
-    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1)); protect_count++;
-    REAL(diam)[0] = graph.graph_diameter;
-    SET_VECTOR_ELT(result, 3, diam);
+    // 1: errors
+    {
+        SEXP s = create_numeric_vector(res.errors);
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1); // s - protected in create_numeric_vector()
+    }
 
-    UNPROTECT(protect_count);
+    // 2: scale
+    {
+        SEXP s = create_numeric_vector(res.scale);
+        SET_VECTOR_ELT(result, 2, s);
+        UNPROTECT(1); // s - protected in create_numeric_vector()
+    }
+
+    // 3: graph_diameter
+    {
+        SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(diam)[0] = graph.graph_diameter;
+        SET_VECTOR_ELT(result, 3, diam);
+        UNPROTECT(1);
+    }
+
+    UNPROTECT(1); // result
     return result;
 }

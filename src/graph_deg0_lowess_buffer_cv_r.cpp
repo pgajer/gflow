@@ -142,70 +142,83 @@ SEXP S_graph_deg0_lowess_buffer_cv(
     int n_elements = 0;
     while (names[n_elements] != NULL) n_elements++;
 
-    // Track protection count
-    int protect_count = 0;
+    // return R list
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-    protect_count++;
-
-    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    protect_count++;
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
+    {
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        for (int i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+        UNPROTECT(1);
     }
-    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 
     // Helper function to convert vector to SEXP
-    auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
+    auto vec_to_sexp = [&](const std::vector<double>& vec) -> SEXP {
         SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
     };
 
     // Set predictions
-    SET_VECTOR_ELT(r_result, 0, vec_to_sexp(result.predictions));
+    {
+        SEXP s = vec_to_sexp(result.predictions);
+        SET_VECTOR_ELT(r_result, 0, s);
+        UNPROTECT(1);
+    }
 
     // Set bw_predictions (if requested)
     if (with_bw_predictions && !result.bw_predictions.empty()) {
         SEXP r_bw_predictions = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions.size()));
-        protect_count++;
-
         for (size_t i = 0; i < result.bw_predictions.size(); i++) {
             SET_VECTOR_ELT(r_bw_predictions, i, vec_to_sexp(result.bw_predictions[i]));
         }
-
         SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(r_result, 1, Rf_allocVector(VECSXP, 0)); // Empty list
     }
 
     // Set bw_errors
-    SET_VECTOR_ELT(r_result, 2, vec_to_sexp(result.bw_errors));
+    {
+        SEXP s = vec_to_sexp(result.bw_errors);
+        SET_VECTOR_ELT(r_result, 2, s);
+        UNPROTECT(1);
+    }
+
 
     // Set bws
-    SET_VECTOR_ELT(r_result, 3, vec_to_sexp(result.bws));
+    {
+        SEXP s = vec_to_sexp(result.bws);
+        SET_VECTOR_ELT(r_result, 3, s);
+        UNPROTECT(1);
+    }
 
     // Set opt_bw
-    SEXP r_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
-    protect_count++;
-    REAL(r_opt_bw)[0] = result.opt_bw;
-    SET_VECTOR_ELT(r_result, 4, r_opt_bw);
+    {
+        SEXP r_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_opt_bw)[0] = result.opt_bw;
+        SET_VECTOR_ELT(r_result, 4, r_opt_bw);
+        UNPROTECT(1);
+    }
 
     // Set opt_bw_idx
-    SEXP r_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
-    protect_count++;
-    INTEGER(r_opt_bw_idx)[0] = result.opt_bw_idx + 1; // Convert to 1-based for R
-    SET_VECTOR_ELT(r_result, 5, r_opt_bw_idx);
+    {
+        SEXP r_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(r_opt_bw_idx)[0] = result.opt_bw_idx + 1; // Convert to 1-based for R
+        SET_VECTOR_ELT(r_result, 5, r_opt_bw_idx);
+        UNPROTECT(1);
+    }
 
     // Set buffer_hops_used (new return value)
-    SEXP r_buffer_hops_used = PROTECT(Rf_allocVector(INTSXP, 1));
-    protect_count++;
-    INTEGER(r_buffer_hops_used)[0] = result.buffer_hops_used;
-    SET_VECTOR_ELT(r_result, 6, r_buffer_hops_used);
+    {
+        SEXP r_buffer_hops_used = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(r_buffer_hops_used)[0] = result.buffer_hops_used;
+        SET_VECTOR_ELT(r_result, 6, r_buffer_hops_used);
+        UNPROTECT(1);
+    }
 
-    UNPROTECT(protect_count);
+    UNPROTECT(1);
     return r_result;
 }

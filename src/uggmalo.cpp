@@ -847,22 +847,24 @@ SEXP S_uggmalo(
     };
 
     // Convert results to R list
-    size_t n_protected = 0;
     size_t n_elements = sizeof(names)/sizeof(names[0]) - 1;  // subtract 1 for NULL terminator
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
 
     // Create and set the names
-    SEXP names_vec = PROTECT(Rf_allocVector(STRSXP, n_elements)); n_protected++;
-    for(size_t i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(names_vec, i, Rf_mkChar(names[i]));
+    {
+        SEXP names_vec = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        for(size_t i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(names_vec, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, names_vec);
+        UNPROTECT(1); // names_vec
     }
-    Rf_setAttrib(result, R_NamesSymbol, names_vec);
 
     // Helper function to convert std::vector<double> to SEXP
     auto vec_to_sexp = [](const std::vector<double>& vec) -> SEXP {
         SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
         std::copy(vec.begin(), vec.end(), REAL(r_vec));
-        UNPROTECT(1);
+
         return r_vec;
     };
 
@@ -878,7 +880,7 @@ SEXP S_uggmalo(
                 ptr[j + i * ncol] = mat[i][j];
             }
         }
-        UNPROTECT(1);
+
         return r_mat;
     };
 
@@ -888,50 +890,103 @@ SEXP S_uggmalo(
         for (size_t i = 0; i < vec.size(); ++i) {
             LOGICAL(r_vec)[i] = vec[i];
         }
-        UNPROTECT(1);
+
         return r_vec;
     };
 
     // Initialize all elements to R_NilValue first
     for(size_t i = 0; i < n_elements; i++) {
-        SET_VECTOR_ELT(result, i, R_NilValue);
+        SET_VECTOR_ELT(r_result, i, R_NilValue);
     }
 
     // Populate existing fields
-    SET_VECTOR_ELT(result, 0, vec_to_sexp(res.candidate_bws));
-    SET_VECTOR_ELT(result, 1, matrix_to_sexp(res.bw_predictions));
-    SET_VECTOR_ELT(result, 2, vec_to_sexp(res.mean_errors));
-    SEXP opt_bw = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(opt_bw)[0] = res.opt_bw;
-    SET_VECTOR_ELT(result, 3, opt_bw);
-    SEXP opt_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(opt_idx)[0] = res.opt_bw_index + 1;  // Convert to 1-based indexing for R
-    SET_VECTOR_ELT(result, 4, opt_idx);
-    SET_VECTOR_ELT(result, 5, vec_to_sexp(res.opt_predictions));
-    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(diam)[0] = res.graph_diameter;
-    SET_VECTOR_ELT(result, 6, diam);
+    {
+        SEXP s = vec_to_sexp(res.candidate_bws);
+        SET_VECTOR_ELT(r_result, 0, s);
+        UNPROTECT(1); // s - as it is returned by vec_to_sexp() PROTECTed !!!
+    }
+
+    {
+        SEXP s = matrix_to_sexp(res.bw_predictions);
+        SET_VECTOR_ELT(r_result, 1, s);
+        UNPROTECT(1);
+    }
+
+    {
+        SEXP s = vec_to_sexp(res.mean_errors);
+        SET_VECTOR_ELT(r_result, 2, s);
+        UNPROTECT(1);
+    }
+
+    {
+        SEXP opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(opt_bw)[0] = res.opt_bw;
+        SET_VECTOR_ELT(r_result, 3, opt_bw);
+        UNPROTECT(1);
+    }
+
+    {
+        SEXP opt_idx = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(opt_idx)[0] = res.opt_bw_index + 1;  // Convert to 1-based indexing for R
+        SET_VECTOR_ELT(r_result, 4, opt_idx);
+        UNPROTECT(1);
+    }
+
+    {
+        SEXP s = vec_to_sexp(res.opt_predictions);
+        SET_VECTOR_ELT(r_result, 5, s);
+        UNPROTECT(1);
+    }
+
+    {
+        SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(diam)[0] = res.graph_diameter;
+        SET_VECTOR_ELT(r_result, 6, diam);
+        UNPROTECT(1);
+    }
+
 
     // Populate bootstrap fields (if available)
     if (!res.bb_predictions.empty()) {
-        SET_VECTOR_ELT(result, 7, matrix_to_sexp(res.bb_predictions));
-        SET_VECTOR_ELT(result, 8, vec_to_sexp(res.bb_central));
-        SET_VECTOR_ELT(result, 9, vec_to_sexp(res.cri_lower));
-        SET_VECTOR_ELT(result, 10, vec_to_sexp(res.cri_upper));
+        SEXP s = matrix_to_sexp(res.bb_predictions);
+        SET_VECTOR_ELT(r_result, 7, s);
+        UNPROTECT(1);
+
+        s = vec_to_sexp(res.bb_central);
+        SET_VECTOR_ELT(r_result, 8, s);
+        UNPROTECT(1);
+
+        s = vec_to_sexp(res.cri_lower);
+        SET_VECTOR_ELT(r_result, 9, s);
+        UNPROTECT(1);
+
+        s = vec_to_sexp(res.cri_upper);
+        SET_VECTOR_ELT(r_result, 10, s);
+        UNPROTECT(1);
     }
 
     // Populate permutation fields (if available)
     if (!res.null_predictions.empty()) {
-        SET_VECTOR_ELT(result, 11, matrix_to_sexp(res.null_predictions));
+        SEXP s = matrix_to_sexp(res.null_predictions);
+        SET_VECTOR_ELT(r_result, 11, s);
+        UNPROTECT(1);
     }
 
-    // Populate vertex test results (if available)
+    // Populate vertex test r_results (if available)
     if (res.permutation_tests) {
-        SET_VECTOR_ELT(result, 12, vec_to_sexp(res.permutation_tests->p_values));
-        SET_VECTOR_ELT(result, 13, vec_to_sexp(res.permutation_tests->effect_sizes));
-        SET_VECTOR_ELT(result, 14, bool_vec_to_sexp(res.permutation_tests->significant_vertices));
+        SEXP s = vec_to_sexp(res.permutation_tests->p_values);
+        SET_VECTOR_ELT(r_result, 12, s);
+        UNPROTECT(1);
+
+        s = vec_to_sexp(res.permutation_tests->effect_sizes);
+        SET_VECTOR_ELT(r_result, 13, s);
+        UNPROTECT(1);
+
+        s = bool_vec_to_sexp(res.permutation_tests->significant_vertices);
+        SET_VECTOR_ELT(r_result, 14, s);
+        UNPROTECT(1);
     }
 
-    UNPROTECT(n_protected);
-    return result;
+    UNPROTECT(1);
+    return r_result;
 }

@@ -671,90 +671,151 @@ std::unique_ptr<std::vector<double>> cv_imputation(const std::set<int>& test_set
  * @seealso cv_imputation for the underlying C++ implementation
  */
 SEXP S_cv_imputation(SEXP Rtest_set,
-                     SEXP Rgraph,
-                     SEXP Rd,
-                     SEXP Ry,
-                     SEXP Ry_binary,
-                     SEXP Rimputation_method,
-                     SEXP Rmax_iterations,
-                     SEXP Rconvergence_threshold,
-                     SEXP Rapply_binary_threshold,
-                     SEXP Rbinary_threshold,
-                     SEXP Rikernel,
-                     SEXP Rdist_normalization_factor) {
+                                SEXP Rgraph,
+                                SEXP Rd,
+                                SEXP Ry,
+                                SEXP Ry_binary,
+                                SEXP Rimputation_method,
+                                SEXP Rmax_iterations,
+                                SEXP Rconvergence_threshold,
+                                SEXP Rapply_binary_threshold,
+                                SEXP Rbinary_threshold,
+                                SEXP Rikernel,
+                                SEXP Rdist_normalization_factor) {
+    // --- 0) Type checks (no coercions) ---
+    if (TYPEOF(Rtest_set) != INTSXP)   Rf_error("S_cv_imputation: Rtest_set must be integer.");
+    if (TYPEOF(Rgraph)    != VECSXP)   Rf_error("S_cv_imputation: Rgraph must be a list.");
+    if (TYPEOF(Rd)        != VECSXP)   Rf_error("S_cv_imputation: Rd must be a list (possibly empty).");
+    if (TYPEOF(Ry)        != REALSXP)  Rf_error("S_cv_imputation: Ry must be double.");
+    if (TYPEOF(Ry_binary) != LGLSXP)   Rf_error("S_cv_imputation: Ry_binary must be logical.");
+    if (TYPEOF(Rimputation_method) != INTSXP) Rf_error("S_cv_imputation: Rimputation_method must be integer.");
+    if (TYPEOF(Rmax_iterations) != INTSXP)    Rf_error("S_cv_imputation: Rmax_iterations must be integer.");
+    if (TYPEOF(Rconvergence_threshold) != REALSXP) Rf_error("S_cv_imputation: Rconvergence_threshold must be double.");
+    if (TYPEOF(Rapply_binary_threshold) != LGLSXP) Rf_error("S_cv_imputation: Rapply_binary_threshold must be logical.");
+    if (TYPEOF(Rbinary_threshold) != REALSXP) Rf_error("S_cv_imputation: Rbinary_threshold must be double.");
+    if (TYPEOF(Rikernel) != INTSXP)           Rf_error("S_cv_imputation: Rikernel must be integer.");
+    if (TYPEOF(Rdist_normalization_factor) != REALSXP) Rf_error("S_cv_imputation: Rdist_normalization_factor must be double.");
 
-    // Protect R objects from garbage collection
-    int nprot = 0;
-    PROTECT(Rtest_set = Rf_coerceVector(Rtest_set, INTSXP)); nprot++;
-    PROTECT(Rgraph = Rf_coerceVector(Rgraph, VECSXP)); nprot++;
-    PROTECT(Rd = Rf_coerceVector(Rd, VECSXP)); nprot++;
-    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP));nprot++;
-    PROTECT(Ry_binary = Rf_coerceVector(Ry_binary, LGLSXP)); nprot++;
-    PROTECT(Rimputation_method = Rf_coerceVector(Rimputation_method, INTSXP)); nprot++;
-    PROTECT(Rmax_iterations = Rf_coerceVector(Rmax_iterations, INTSXP)); nprot++;
-    PROTECT(Rconvergence_threshold = Rf_coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
-    PROTECT(Rapply_binary_threshold = Rf_coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
-    PROTECT(Rbinary_threshold = Rf_coerceVector(Rbinary_threshold, REALSXP)); nprot++;
-    PROTECT(Rikernel = Rf_coerceVector(Rikernel, INTSXP)); nprot++;
-    PROTECT(Rdist_normalization_factor = Rf_coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
+    // --- 1) Scalars / sizes (LENGTH-first) ---
+    const int n_vertices = LENGTH(Rgraph);
+    const int n_y        = LENGTH(Ry);
+    if (n_vertices <= 0) Rf_error("S_cv_imputation: Rgraph must be non-empty.");
 
-    // Convert R objects to C++ types
+    if (n_y != n_vertices) {
+        Rf_error("S_cv_imputation: length(y) (%d) must equal number of vertices (%d).", n_y, n_vertices);
+    }
+
+    const int    imputation_method_i   = (LENGTH(Rimputation_method) > 0) ? INTEGER(Rimputation_method)[0] : 0;
+    const int    max_iterations        = (LENGTH(Rmax_iterations) > 0) ? INTEGER(Rmax_iterations)[0] : 0;
+    const double conv_threshold        = (LENGTH(Rconvergence_threshold) > 0) ? REAL(Rconvergence_threshold)[0] : 0.0;
+    const int    apply_bin_thr_i       = (LENGTH(Rapply_binary_threshold) > 0) ? LOGICAL(Rapply_binary_threshold)[0] : 0;
+    const double binary_threshold      = (LENGTH(Rbinary_threshold) > 0) ? REAL(Rbinary_threshold)[0] : 0.0;
+    const int    ikernel               = (LENGTH(Rikernel) > 0) ? INTEGER(Rikernel)[0] : 0;
+    const double dist_norm_factor      = (LENGTH(Rdist_normalization_factor) > 0) ? REAL(Rdist_normalization_factor)[0] : 1.0;
+    const int    y_is_binary_i         = (LENGTH(Ry_binary) > 0) ? LOGICAL(Ry_binary)[0] : 0;
+
+    if (max_iterations < 0) Rf_error("S_cv_imputation: max_iterations must be non-negative.");
+
+    // --- 2) Convert test_set (1-based from R to 0-based), no allocations in R ---
     std::set<int> test_set;
-    for (int i = 0; i < LENGTH(Rtest_set); ++i) {
-        test_set.insert(INTEGER(Rtest_set)[i] - 1);  // R indices are 1-based
-    }
-
-    std::vector<std::vector<int>> graph(LENGTH(Rgraph));
-    for (int i = 0; i < LENGTH(Rgraph); ++i) {
-        SEXP Rneighbors = VECTOR_ELT(Rgraph, i);
-        for (int j = 0; j < LENGTH(Rneighbors); ++j) {
-            graph[i].push_back(INTEGER(Rneighbors)[j]);
+    {
+        const int n_test = LENGTH(Rtest_set);
+        const int* ts    = INTEGER(Rtest_set);
+        for (int i = 0; i < n_test; ++i) {
+            const int idx0 = ts[i] - 1;
+            if (idx0 < 0 || idx0 >= n_vertices) {
+                Rf_error("S_cv_imputation: test_set index out of range (R index %d).", ts[i]);
+            }
+            test_set.insert(idx0);
         }
     }
 
+    // --- 3) Convert graph (expects integer neighbor vectors with 0-based indices already) ---
+    std::vector<std::vector<int>> graph;
+    graph.resize(n_vertices);
+    for (int i = 0; i < n_vertices; ++i) {
+        SEXP Rnei = VECTOR_ELT(Rgraph, i);  // child of protected arg; no R allocations here
+        if (TYPEOF(Rnei) != INTSXP) {
+            Rf_error("S_cv_imputation: Rgraph[[%d]] must be integer vector (0-based indices).", i + 1);
+        }
+        const int m  = LENGTH(Rnei);
+        const int* p = INTEGER(Rnei);
+        graph[i].reserve(m);
+        for (int j = 0; j < m; ++j) {
+            const int v = p[j];
+            if (v < 0 || v >= n_vertices) {
+                Rf_error("S_cv_imputation: neighbor index out of range at vertex %d (value %d).", i + 1, v);
+            }
+            graph[i].push_back(v);
+        }
+    }
+
+    // --- 4) Convert edge lengths (optional): expects double vectors; lengths match degree ---
     std::vector<std::vector<double>> edge_lengths;
-    if (LENGTH(Rd) > 0) {
-        edge_lengths.resize(LENGTH(Rd));
-        for (int i = 0; i < LENGTH(Rd); ++i) {
-            SEXP Rdists = VECTOR_ELT(Rd, i);
-            edge_lengths[i].assign(REAL(Rdists), REAL(Rdists) + LENGTH(Rdists));
+    const int n_d = LENGTH(Rd);
+    if (n_d > 0) {
+        if (n_d != n_vertices) {
+            Rf_error("S_cv_imputation: length(Rd) (%d) must equal number of vertices (%d).", n_d, n_vertices);
+        }
+        edge_lengths.resize(n_vertices);
+        for (int i = 0; i < n_vertices; ++i) {
+            SEXP Rd_i = VECTOR_ELT(Rd, i);
+            if (TYPEOF(Rd_i) != REALSXP) {
+                Rf_error("S_cv_imputation: Rd[[%d]] must be a double vector.", i + 1);
+            }
+            const int m  = LENGTH(Rd_i);
+            const double* d = REAL(Rd_i);
+            if (m != (int)graph[i].size()) {
+                Rf_error("S_cv_imputation: Rd[[%d]] length (%d) must match degree (%d).",
+                         i + 1, m, (int)graph[i].size());
+            }
+            edge_lengths[i].assign(d, d + m);
         }
     }
 
-    std::vector<double> y(REAL(Ry), REAL(Ry) + LENGTH(Ry));
-    bool y_binary = (LOGICAL(Ry_binary)[0] == 1);
-    imputation_method_t imputation_method = static_cast<imputation_method_t>(INTEGER(Rimputation_method)[0]);
-    iterative_imputation_params_t iterative_params = {
-        INTEGER(Rmax_iterations)[0],
-        REAL(Rconvergence_threshold)[0]
-    };
-    bool apply_binary_threshold = (LOGICAL(Rapply_binary_threshold)[0] == 1);
-    double binary_threshold = REAL(Rbinary_threshold)[0];
-    int ikernel = INTEGER(Rikernel)[0];
-    double dist_normalization_factor = REAL(Rdist_normalization_factor)[0];
+    // --- 5) Copy y ---
+    std::vector<double> y;
+    y.reserve(n_y);
+    {
+        const double* yp = REAL(Ry);
+        for (int i = 0; i < n_y; ++i) y.push_back(yp[i]);
+    }
 
-    // Call the C++ function
-    auto result = cv_imputation(test_set,
-                                graph,
-                                edge_lengths,
-                                y,
-                                y_binary,
-                                imputation_method,
-                                iterative_params,
-                                apply_binary_threshold,
-                                binary_threshold,
-                                ikernel,
-                                dist_normalization_factor);
+    const bool y_binary               = (y_is_binary_i != 0);
+    const bool apply_binary_threshold = (apply_bin_thr_i != 0);
+    const imputation_method_t imputation_method =
+        static_cast<imputation_method_t>(imputation_method_i);
+    const iterative_imputation_params_t iterative_params{ max_iterations, conv_threshold };
 
-    // Convert the result to an R vector
-    SEXP Rresult = PROTECT(Rf_allocVector(REALSXP, result->size())); nprot++;
-    std::copy(result->begin(), result->end(), REAL(Rresult));
+    // --- 6) Worker call (no R API inside) ---
+    std::shared_ptr<std::vector<double>> result =
+        cv_imputation(test_set,
+                      graph,
+                      edge_lengths,
+                      y,
+                      y_binary,
+                      imputation_method,
+                      iterative_params,
+                      apply_binary_threshold,
+                      binary_threshold,
+                      ikernel,
+                      dist_norm_factor);
 
-    // Unprotect R objects
-    UNPROTECT(nprot);
+    if (!result) Rf_error("S_cv_imputation: internal error (NULL result).");
 
+    const int out_len = (int)result->size();
+    if (out_len < 0) Rf_error("S_cv_imputation: invalid result size.");
+
+    // --- 7) Allocate return vector and copy (single PROTECT) ---
+    SEXP Rresult = PROTECT(Rf_allocVector(REALSXP, out_len));
+    if (out_len > 0) {
+        std::copy(result->begin(), result->end(), REAL(Rresult));
+    }
+
+    UNPROTECT(1);
     return Rresult;
 }
+
 
 /**
  * @brief Computes edge weights for a graph given edge lengths and a kernel function.

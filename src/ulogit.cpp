@@ -394,36 +394,46 @@ SEXP S_ulogit(SEXP x_sexp,
 
     // Build return list
     const int N_COMPONENTS = 3;
-    int n_protected = 0;
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    {
+        // names
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("errors"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("weights"));
+        Rf_setAttrib(out, R_NamesSymbol, names);
+        UNPROTECT(1);
+    }
 
     // predictions
-    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
-    for (R_xlen_t i = 0; i < n; ++i)
-        REAL(predictions)[i] = result.predictions[i];
+    {
+        SEXP predictions = PROTECT(Rf_allocVector(REALSXP, n));
+        for (R_xlen_t i = 0; i < n; ++i)
+            REAL(predictions)[i] = result.predictions[i];
+        SET_VECTOR_ELT(out, 0, predictions);
+        UNPROTECT(1);
+    }
 
     // errors
-    SEXP errors = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
-    for (R_xlen_t i = 0; i < n; ++i)
-        REAL(errors)[i] = result.errors[i];
+    {
+        SEXP errors = PROTECT(Rf_allocVector(REALSXP, n));
+        for (R_xlen_t i = 0; i < n; ++i)
+            REAL(errors)[i] = result.errors[i];
+        SET_VECTOR_ELT(out, 1, errors);
+        UNPROTECT(1);
+    }
+
 
     // weights
-    SEXP weights = PROTECT(Rf_allocVector(REALSXP, n)); n_protected++;
-    for (R_xlen_t i = 0; i < n; ++i)
-        REAL(weights)[i] = result.w[i];
+    {
+        SEXP weights = PROTECT(Rf_allocVector(REALSXP, n));
+        for (R_xlen_t i = 0; i < n; ++i)
+            REAL(weights)[i] = result.w[i];
+        SET_VECTOR_ELT(out, 2, weights);
+        UNPROTECT(1);
+    }
 
-    // names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("errors"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("weights"));
-
-    SET_VECTOR_ELT(out, 0, predictions);
-    SET_VECTOR_ELT(out, 1, errors);
-    SET_VECTOR_ELT(out, 2, weights);
-    Rf_setAttrib(out, R_NamesSymbol, names);
-
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return out;
 }
 
@@ -1121,71 +1131,74 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
 
     // Creating return list - adjust size based on whether errors are included
     const int N_COMPONENTS = with_errors ? 6 : 4;
-    int n_protected = 0;  // Track number of PROTECT calls
-
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    {
+        // Set list names
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(r_names, 0, Rf_mkChar("predictions"));
+        SET_STRING_ELT(r_names, 1, Rf_mkChar("converged"));
+        SET_STRING_ELT(r_names, 2, Rf_mkChar("iterations"));
+        SET_STRING_ELT(r_names, 3, Rf_mkChar("beta"));
+        if (with_errors) {
+            SET_STRING_ELT(r_names, 4, Rf_mkChar("loocv_brier_errors"));
+            SET_STRING_ELT(r_names, 5, Rf_mkChar("loocv_deviance_errors"));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+        UNPROTECT(1); // r_names
+    }
 
     // Convert predictions to R vector
-    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
-    for(int i = 0; i < window_size; i++) {
-        REAL(predictions)[i] = result.predictions[i];
+    {
+        SEXP predictions = PROTECT(Rf_allocVector(REALSXP, window_size));
+        for(int i = 0; i < window_size; i++) {
+            REAL(predictions)[i] = result.predictions[i];
+        }
+        SET_VECTOR_ELT(r_result, 0, predictions);
+
     }
 
     // Convert convergence status
-    SEXP converged = PROTECT(Rf_allocVector(LGLSXP, 1)); n_protected++;
-    LOGICAL(converged)[0] = result.converged;
+    {
+        SEXP converged = PROTECT(Rf_allocVector(LGLSXP, 1));
+        LOGICAL(converged)[0] = result.converged;
+        SET_VECTOR_ELT(r_result, 1, converged);
+    }
 
     // Convert iteration count
-    SEXP iterations = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(iterations)[0] = result.iterations;
+    {
+        SEXP iterations = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(iterations)[0] = result.iterations;
+        SET_VECTOR_ELT(r_result, 2, iterations);
+    }
 
     // Convert Eigen::VectorXd beta to R vector
-    int beta_size = result.beta.size();
-    SEXP beta = PROTECT(Rf_allocVector(REALSXP, beta_size)); n_protected++;
-    for(int i = 0; i < beta_size; i++) {
-        REAL(beta)[i] = result.beta(i);
+    {
+        int beta_size = result.beta.size();
+        SEXP beta = PROTECT(Rf_allocVector(REALSXP, beta_size));
+        for(int i = 0; i < beta_size; i++) {
+            REAL(beta)[i] = result.beta(i);
+        }
+        SET_VECTOR_ELT(r_result, 3, beta);
     }
 
     // Convert LOOCV errors if computed
-    SEXP loocv_brier_errors = R_NilValue;
-    SEXP loocv_deviance_errors = R_NilValue;
     if (with_errors) {
-        loocv_brier_errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
+        SEXP loocv_brier_errors = PROTECT(Rf_allocVector(REALSXP, window_size));
         for(int i = 0; i < window_size; i++) {
             REAL(loocv_brier_errors)[i] = result.loocv_brier_errors[i];
         }
+        SET_VECTOR_ELT(r_result, 4, loocv_brier_errors);
+        UNPROTECT(1);
 
-        loocv_deviance_errors = PROTECT(Rf_allocVector(REALSXP, window_size)); n_protected++;
+        SEXP loocv_deviance_errors = PROTECT(Rf_allocVector(REALSXP, window_size));
         for(int i = 0; i < window_size; i++) {
             REAL(loocv_deviance_errors)[i] = result.loocv_deviance_errors[i];
         }
+        SET_VECTOR_ELT(r_result, 5, loocv_deviance_errors);
+        UNPROTECT(1);
     }
 
-    // Set list names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("converged"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("iterations"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("beta"));
-    if (with_errors) {
-        SET_STRING_ELT(names, 4, Rf_mkChar("loocv_brier_errors"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("loocv_deviance_errors"));
-    }
-
-    // Set list elements
-    SET_VECTOR_ELT(out, 0, predictions);
-    SET_VECTOR_ELT(out, 1, converged);
-    SET_VECTOR_ELT(out, 2, iterations);
-    SET_VECTOR_ELT(out, 3, beta);
-    if (with_errors) {
-        SET_VECTOR_ELT(out, 4, loocv_brier_errors);
-        SET_VECTOR_ELT(out, 5, loocv_deviance_errors);
-    }
-
-    // Set list names
-    Rf_setAttrib(out, R_NamesSymbol, names);
-
-    UNPROTECT(n_protected);
-    return out;
+    UNPROTECT(1);
+    return r_result;
 }
 

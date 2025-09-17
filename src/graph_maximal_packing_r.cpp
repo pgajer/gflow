@@ -80,70 +80,90 @@ SEXP S_create_maximal_packing(SEXP s_adj_list,
         precision);
 
     // Creating return list
-    int n_protected = 0;
+
     const int N_COMPONENTS = 5;  // Increased from 3 to 5
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+
+    // Set names for return list
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("grid_vertices"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("graph_diameter"));       // Add name for graph diameter
+        SET_STRING_ELT(names, 4, Rf_mkChar("max_packing_radius"));   // Add name for max packing radius
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
 
     // Extract adjacency and weight lists from grid_graph
     int n_total_vertices = grid_graph.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
 
-    // Convert the set-based representation back to R lists
-    for (int i = 0; i < n_total_vertices; ++i) {
-        const auto& neighbors = grid_graph.adjacency_list[i];
+    // adj_list, weight_list
+    {
+        SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices));
+        SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices));
 
-        // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
-        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
+        // Convert the set-based representation back to R lists
+        for (int i = 0; i < n_total_vertices; ++i) {
+            const auto& neighbors = grid_graph.adjacency_list[i];
 
-        // Fill the vectors
-        int idx = 0;
-        for (const auto& [neighbor, weight] : neighbors) {
-            // Convert to 1-based indices for R
-            INTEGER(r_adj)[idx] = neighbor + 1;
-            REAL(r_weights)[idx] = weight;
-            ++idx;
+            // Create vectors for this vertex's adjacency list and weights
+            SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+            SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
+
+            // Fill the vectors
+            int idx = 0;
+            for (const auto& [neighbor, weight] : neighbors) {
+                // Convert to 1-based indices for R
+                INTEGER(r_adj)[idx] = neighbor + 1;
+                REAL(r_weights)[idx] = weight;
+                ++idx;
+            }
+
+            SET_VECTOR_ELT(r_adj_list, i, r_adj);
+            SET_VECTOR_ELT(r_weight_list, i, r_weights);
+            UNPROTECT(2); // for r_adj and r_weights
         }
 
-        SET_VECTOR_ELT(r_adj_list, i, r_adj);
-        SET_VECTOR_ELT(r_weight_list, i, r_weights);
-        UNPROTECT(2); // for r_adj and r_weights
+        SET_VECTOR_ELT(r_result, 0, r_adj_list);
+        SET_VECTOR_ELT(r_result, 1, r_weight_list);
+        UNPROTECT(2); // r_adj_list, r_weight_list
     }
 
     // Create grid vertices vector (1-based indices)
-    int n_grid_vertices = grid_graph.grid_vertices.size();
-    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices)); n_protected++;
+    {
+        int n_grid_vertices = grid_graph.grid_vertices.size();
+        SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices));
 
-    int counter = 0;
-    for (const auto& i : grid_graph.grid_vertices) {
-        // Convert to 1-based indices for R
-        INTEGER(r_grid_vertices)[counter++] = i + 1;
+        int counter = 0;
+        for (const auto& i : grid_graph.grid_vertices) {
+            // Convert to 1-based indices for R
+            INTEGER(r_grid_vertices)[counter++] = i + 1;
+        }
+
+        SET_VECTOR_ELT(r_result, 2, r_grid_vertices);
+        UNPROTECT(1); // r_grid_vertices
     }
 
     // Create graph diameter and max packing radius values
-    SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(r_graph_diameter)[0] = grid_graph.graph_diameter;
+    {
+        SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_graph_diameter)[0] = grid_graph.graph_diameter;
 
-    SEXP r_max_packing_radius = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(r_max_packing_radius)[0] = grid_graph.max_packing_radius;
+        SET_VECTOR_ELT(r_result, 3, r_graph_diameter);
+        UNPROTECT(1); // r_graph_diameter
+    }
 
-    // Set components in the result list
-    SET_VECTOR_ELT(r_result, 0, r_adj_list);
-    SET_VECTOR_ELT(r_result, 1, r_weight_list);
-    SET_VECTOR_ELT(r_result, 2, r_grid_vertices);
-    SET_VECTOR_ELT(r_result, 3, r_graph_diameter);      // Add graph diameter
-    SET_VECTOR_ELT(r_result, 4, r_max_packing_radius);  // Add max packing radius
+    // max packing radius
+    {
+        SEXP r_max_packing_radius = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_max_packing_radius)[0] = grid_graph.max_packing_radius;
 
-    // Set names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("grid_vertices"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("graph_diameter"));       // Add name for graph diameter
-    SET_STRING_ELT(names, 4, Rf_mkChar("max_packing_radius"));   // Add name for max packing radius
-    Rf_setAttrib(r_result, R_NamesSymbol, names);
+        SET_VECTOR_ELT(r_result, 4, r_max_packing_radius);
+        UNPROTECT(1); // r_max_packing_radius
+    }
 
-    UNPROTECT(n_protected);
+    UNPROTECT(1); // r_result
     return r_result;
 }

@@ -260,24 +260,52 @@ std::unique_ptr<std::vector<int>> loc_const_vertices(const std::vector<std::vect
  *         is locally constant.
  */
 SEXP S_loc_const_vertices(SEXP r_adj_list, SEXP Ry, SEXP Rprec) {
+
+    // ---- Validate inputs to avoid UB when accessing REAL()/INTEGER() ----
+    if (!Rf_isVectorList(r_adj_list)) {
+        Rf_error("`adj.list` must be a list (of integer vectors).");
+    }
+    if (!Rf_isNumeric(Ry)) {
+        Rf_error("`y` must be a numeric vector.");
+    }
+    if (!Rf_isNumeric(Rprec) || Rf_length(Rprec) < 1) {
+        Rf_error("`prec` must be a numeric scalar.");
+    }
+
     std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(r_adj_list);
+    const size_t ny = (size_t) LENGTH(Ry);
+    std::vector<double> y(REAL(Ry), REAL(Ry) + ny);
+    // Coerce scalar and check positivity as the R wrapper enforces
+    double prec = Rf_asReal(Rprec);
+    if (!(prec > 0)) {
+        Rf_error("`prec` must be positive.");
+    }
 
-    int nprot = 0;
-    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
-    double *y = REAL(Ry);
+    if ((size_t)ny != adj_list.size()) {
+        Rf_error("Length of `y` (%ld) must equal number of vertices in the graph (%zu).",
+                 (long)ny, adj_list.size());
+    }
 
-    PROTECT(Rprec = Rf_coerceVector(Rprec, REALSXP)); nprot++;
-    double prec = REAL(Rprec)[0];
+    // Compute
+    std::unique_ptr<std::vector<int>> locs;
+    try {
+        locs = loc_const_vertices(adj_list, y, prec);
+    } catch (const std::exception& e) {
+        Rf_error("loc_const_vertices() failed: %s", e.what());
+    } catch (...) {
+        Rf_error("loc_const_vertices() failed with an unknown error.");
+    }
+    if (!locs) {
+        Rf_error("Internal error: computation returned null result.");
+    }
 
-    std::unique_ptr<std::vector<int>> loc_const_vertices_vect = loc_const_vertices(adj_list, std::vector<double>(y, y + LENGTH(Ry)), prec);
+    const int nres = (int)locs->size(); // safe under LENGTH-first
+    SEXP result = PROTECT(Rf_allocVector(INTSXP, nres));
+    std::copy(locs->begin(), locs->end(), INTEGER(result));
 
-    SEXP result = PROTECT(Rf_allocVector(INTSXP, loc_const_vertices_vect->size())); nprot++;
-    std::copy(loc_const_vertices_vect->begin(), loc_const_vertices_vect->end(), INTEGER(result));
-
-    UNPROTECT(nprot);
+    UNPROTECT(1);
     return result;
 }
-
 
 /**
  * Finds edges in a graph where the function values at the edge vertices are the same.
@@ -555,46 +583,66 @@ SEXP S_make_response_locally_non_const(SEXP r_adj_list,
                                        SEXP Rn_itrs,
                                        SEXP Rmean_adjust) {
 
+    // ---- Basic validation (cheap checks; no allocations here) ----
+    if (!Rf_isVectorList(r_adj_list)) {
+        Rf_error("`adj.list` must be a list of integer vectors.");
+    }
+    if (!Rf_isNumeric(Ry))       Rf_error("`y` must be a numeric vector.");
+    if (!Rf_isNumeric(Rweights)) Rf_error("`weights` must be a numeric vector.");
+
+    // Scalars: use Rf_as* (no extra PROTECT needed)
+    const double step_factor = Rf_asReal(Rstep_factor);
+    const double prec        = Rf_asReal(Rprec);
+    const int    n_itrs      = Rf_asInteger(Rn_itrs);
+    const int    mean_adjust = Rf_asLogical(Rmean_adjust);
+
+    if (!(prec > 0))        Rf_error("`prec` must be positive.");
+    if (!(n_itrs >= 1))     Rf_error("`n_itrs` must be >= 1.");
+    if (mean_adjust == NA_LOGICAL) Rf_error("`mean_adjust` must be TRUE or FALSE.");
+
+    // ---- Convert adjacency (pure C++ conversion) ----
     std::vector<std::vector<int>> graph = convert_adj_list_from_R(r_adj_list);
-    int n_vertices = LENGTH(Ry);
 
-    int nprot = 0;
+    const size_t n_vertices = (size_t) LENGTH(Ry);
+    std::vector<double> y(REAL(Ry), REAL(Ry) + n_vertices);
+    const size_t n_weights = (size_t) LENGTH(Rweights);
+    std::vector<double> weights(REAL(Rweights), REAL(Rweights) + n_weights);
 
-    PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
-    double *y = REAL(Ry);
-
-    PROTECT(Rweights = Rf_coerceVector(Rweights, REALSXP)); nprot++;
-    double *weights = REAL(Rweights);
-
-    PROTECT(Rstep_factor = Rf_coerceVector(Rstep_factor, REALSXP)); nprot++;
-    double step_factor = REAL(Rstep_factor)[0];
-
-    PROTECT(Rprec = Rf_coerceVector(Rprec, REALSXP)); nprot++;
-    double prec = REAL(Rprec)[0];
-
-    PROTECT(Rn_itrs = Rf_coerceVector(Rn_itrs, INTSXP)); nprot++;
-    int n_itrs = INTEGER(Rn_itrs)[0];
-
-    PROTECT(Rmean_adjust = Rf_coerceVector(Rmean_adjust, LGLSXP)); nprot++;
-    bool mean_adjust = (LOGICAL(Rmean_adjust)[0] == 1);
-
-    std::unique_ptr<std::vector<std::vector<double>>> y_traj = make_response_locally_non_const(graph,
-                                                                                               std::vector<double>(y, y + n_vertices),
-                                                                                               std::vector<double>(weights, weights + n_vertices),
-                                                                                               step_factor,
-                                                                                               prec,
-                                                                                               n_itrs,
-                                                                                               mean_adjust);
-
-    int n_iterations = y_traj->size();
-    SEXP result = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_iterations)); nprot++;
-    double *result_ptr = REAL(result);
-
-    for (int i = 0; i < n_iterations; i++) {
-        std::copy((*y_traj)[i].begin(), (*y_traj)[i].end(), result_ptr + i * n_vertices);
+    // ---- Cross-check sizes ----
+    if (n_vertices != graph.size()) {
+        Rf_error("Length of `y` (%zu) must equal number of vertices in the graph (%zu).",
+                 n_vertices, graph.size());
+    }
+    if (n_weights != n_vertices) {
+        Rf_error("Length of `weights` (%zu) must equal length of `y` (%zu).",
+                 n_weights, n_vertices);
     }
 
-    UNPROTECT(nprot);
+    // ---- Compute trajectory ----
+    std::unique_ptr<std::vector<std::vector<double>>> y_traj;
+    try {
+        y_traj = make_response_locally_non_const(
+            graph, y, weights, step_factor, prec, n_itrs, (mean_adjust == TRUE)
+            );
+    } catch (const std::exception& e) {
+        Rf_error("make_response_locally_non_const() failed: %s", e.what());
+    } catch (...) {
+        Rf_error("make_response_locally_non_const() failed with an unknown error.");
+    }
+    if (!y_traj) {
+        Rf_error("Internal error: computation returned null result.");
+    }
+
+    // ---- Assemble result matrix: n_vertices x n_iterations (column-major) ----
+    const size_t n_iterations = y_traj->size();
+    SEXP result = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_iterations));
+    double* result_ptr = REAL(result);
+    for (size_t i = 0; i < n_iterations; ++i) {
+        const std::vector<double>& col = (*y_traj)[(size_t)i];
+        std::copy(col.begin(), col.end(), result_ptr + i * n_vertices);
+    }
+
+    UNPROTECT(1); // result
     return result;
 }
 

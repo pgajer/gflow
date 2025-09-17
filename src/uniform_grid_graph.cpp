@@ -726,60 +726,67 @@ SEXP S_create_uniform_grid_graph(SEXP s_adj_list,
         snap_tolerance);
 
     // Creating return list
-    int n_protected = 0;
     const int N_COMPONENTS = 3;
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    {
+        // Set names for return list
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("grid_vertices"));
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
+        UNPROTECT(1);
+    }
 
     // Extract adjacency and weight lists from result
-    int n_total_vertices = result.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_total_vertices)); n_protected++;
+    {
+        int n_vertices = result.adjacency_list.size();
+        SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-    // Convert the set-based representation back to R lists
-    for (int i = 0; i < n_total_vertices; ++i) {
-        const auto& neighbors = result.adjacency_list[i];
+        // Convert the set-based representation back to R lists
+        for (int i = 0; i < n_vertices; ++i) {
+            const auto& neighbors = result.adjacency_list[i];
 
-        // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
-        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
+            // Create vectors for this vertex's adjacency list and weights
+            SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+            SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
 
-        // Fill the vectors
-        int idx = 0;
-        for (const auto& [neighbor, weight] : neighbors) {
-            // Convert to 1-based indices for R
-            INTEGER(r_adj)[idx] = neighbor + 1;
-            REAL(r_weights)[idx] = weight;
-            ++idx;
+            // Fill the vectors
+            int idx = 0;
+            for (const auto& [neighbor, weight] : neighbors) {
+                // Convert to 1-based indices for R
+                INTEGER(r_adj)[idx] = neighbor + 1;
+                REAL(r_weights)[idx] = weight;
+                ++idx;
+            }
+
+            SET_VECTOR_ELT(r_adj_list, i, r_adj);
+            SET_VECTOR_ELT(r_weight_list, i, r_weights);
+            UNPROTECT(2); // for r_adj and r_weights
         }
 
-        SET_VECTOR_ELT(r_adj_list, i, r_adj);
-        SET_VECTOR_ELT(r_weight_list, i, r_weights);
-        UNPROTECT(2); // for r_adj and r_weights
+        SET_VECTOR_ELT(r_result, 0, r_adj_list);
+        SET_VECTOR_ELT(r_result, 1, r_weight_list);
+        UNPROTECT(2);
     }
 
     // Create grid vertices vector (1-based indices)
-    int n_grid_vertices = result.grid_vertices.size();
-    SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices)); n_protected++;
+    {
+        int n_grid_vertices = result.grid_vertices.size();
+        SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, n_grid_vertices));
 
-    int counter = 0;
-    for (const auto& i : result.grid_vertices) {
-        // Convert to 1-based indices for R
-        INTEGER(r_grid_vertices)[counter++] = i + 1;
+        int counter = 0;
+        for (const auto& i : result.grid_vertices) {
+            // Convert to 1-based indices for R
+            INTEGER(r_grid_vertices)[counter++] = i + 1;
+        }
+
+        SET_VECTOR_ELT(r_result, 2, r_grid_vertices);
+        UNPROTECT(1);
     }
 
-    // Set components in the result list
-    SET_VECTOR_ELT(r_result, 0, r_adj_list);
-    SET_VECTOR_ELT(r_result, 1, r_weight_list);
-    SET_VECTOR_ELT(r_result, 2, r_grid_vertices);
-
-    // Set names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("grid_vertices"));
-    Rf_setAttrib(r_result, R_NamesSymbol, names);
-
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return r_result;
 }
 

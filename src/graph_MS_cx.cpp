@@ -290,8 +290,22 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     std::set<int> local_minima_set;
 
     // Allocate R objects
-    int nprot = 0;
-    SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8));
+
+    // Update names
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 8));
+        SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
+        SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
+        SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
 
     // Helper function for valid neighbors (same as before)
     auto get_valid_neighbors = [&](int current_vertex, bool ascending) {
@@ -355,203 +369,222 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
     std::map<std::pair<int,int>, std::set<int>> ms_procells;
     std::map<std::pair<int,int>, std::vector<std::set<int>>> ms_cells;
 
-    for (int vertex = 0; vertex < n_vertices; vertex++) {
-        bool is_max = is_local_maximum(vertex, graph, Ey);
-        bool is_min = is_local_minimum(vertex, graph, Ey);
+    // 0: trajectories
+    {
+        SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-        if (is_max) {
-            local_maxima_set.insert(vertex);
-        }
-        if (is_min) {
-            local_minima_set.insert(vertex);
-        }
+        for (int vertex = 0; vertex < n_vertices; vertex++) {
+            bool is_max = is_local_maximum(vertex, graph, Ey);
+            bool is_min = is_local_minimum(vertex, graph, Ey);
 
-        // Compute ascending and descending trajectories
-        std::vector<int> ascending_trajectory = {vertex};
-        std::vector<int> descending_trajectory = {vertex};
-        int asc_vertex = vertex;
-        int desc_vertex = vertex;
+            if (is_max) {
+                local_maxima_set.insert(vertex);
+            }
+            if (is_min) {
+                local_minima_set.insert(vertex);
+            }
 
-        // Compute ascending trajectory if not at local maximum
-        if (!is_max) {
-            while (true) {
-                auto valid_neighbors = get_valid_neighbors(asc_vertex, true);
+            // Compute ascending and descending trajectories
+            std::vector<int> ascending_trajectory = {vertex};
+            std::vector<int> descending_trajectory = {vertex};
+            int asc_vertex = vertex;
+            int desc_vertex = vertex;
 
-                if (valid_neighbors.empty()) {
-                    // This should never happen for non-extremal vertices
-                    Rprintf("\nCRITICAL ERROR: No valid ascending neighbors found for non-maximum vertex!\n");
-                    Rprintf("Details:\n");
-                    Rprintf("  - Current vertex: %d\n", asc_vertex);
-                    Rprintf("  - Function value: %.6f\n", Ey[asc_vertex]);
-                    Rprintf("  - Trajectory so far: ");
-                    for (int v : ascending_trajectory) {
-                        Rprintf("%d ", v);
+            // Compute ascending trajectory if not at local maximum
+            if (!is_max) {
+                while (true) {
+                    auto valid_neighbors = get_valid_neighbors(asc_vertex, true);
+
+                    if (valid_neighbors.empty()) {
+                        // This should never happen for non-extremal vertices
+                        Rprintf("\nCRITICAL ERROR: No valid ascending neighbors found for non-maximum vertex!\n");
+                        Rprintf("Details:\n");
+                        Rprintf("  - Current vertex: %d\n", asc_vertex);
+                        Rprintf("  - Function value: %.6f\n", Ey[asc_vertex]);
+                        Rprintf("  - Trajectory so far: ");
+                        for (int v : ascending_trajectory) {
+                            Rprintf("%d ", v);
+                        }
+
+                        Rprintf("\n\nNeighborhood Analysis:\n");
+                        Rprintf("  Neighbors in graph:");
+                        for (int n : graph[asc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rprintf("\n  Neighbors in core_graph:");
+                        for (int n : core_graph[asc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
+                                 "This violates the properties of a valid Morse function on the graph.\n"
+                                 "Please verify that:\n"
+                                 "1. The function values form a valid Morse function\n"
+                                 "2. The graph connectivity is correct\n"
+                                 "3. All paths in core_graph preserve monotonicity");
                     }
 
-                    Rprintf("\n\nNeighborhood Analysis:\n");
-                    Rprintf("  Neighbors in graph:");
-                    for (int n : graph[asc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
-                    }
-
-                    Rprintf("\n  Neighbors in core_graph:");
-                    for (int n : core_graph[asc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
-                    }
-
-                    Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
-                          "This violates the properties of a valid Morse function on the graph.\n"
-                          "Please verify that:\n"
-                          "1. The function values form a valid Morse function\n"
-                          "2. The graph connectivity is correct\n"
-                          "3. All paths in core_graph preserve monotonicity");
+                    auto path = valid_neighbors[0].path;
+                    ascending_trajectory.insert(ascending_trajectory.end(),
+                                                path.begin() + 1, path.end());
+                    asc_vertex = valid_neighbors[0].vertex;
                 }
 
-                auto path = valid_neighbors[0].path;
-                ascending_trajectory.insert(ascending_trajectory.end(),
-                                            path.begin() + 1, path.end());
-                asc_vertex = valid_neighbors[0].vertex;
+                // Check if endpoint is local maximum
+                if (is_local_maximum(asc_vertex, graph, Ey)) {
+                    local_maxima_set.insert(asc_vertex);
+                }
             }
 
-            // Check if endpoint is local maximum
-            if (is_local_maximum(asc_vertex, graph, Ey)) {
-                local_maxima_set.insert(asc_vertex);
-            }
-        }
+            // Compute descending trajectory if not at local minimum
+            if (!is_min) {
+                while (true) {
+                    auto valid_neighbors = get_valid_neighbors(desc_vertex, false);
 
-        // Compute descending trajectory if not at local minimum
-        if (!is_min) {
-            while (true) {
-                auto valid_neighbors = get_valid_neighbors(desc_vertex, false);
+                    if (valid_neighbors.empty()) {
+                        // This should never happen for non-extremal vertices
+                        Rprintf("\nCRITICAL ERROR: No valid descending neighbors found for non-minimum vertex!\n");
+                        Rprintf("Details:\n");
+                        Rprintf("  - Current vertex: %d\n", desc_vertex);
+                        Rprintf("  - Function value: %.6f\n", Ey[desc_vertex]);
+                        Rprintf("  - Trajectory so far: ");
+                        for (int v : descending_trajectory) {
+                            Rprintf("%d ", v);
+                        }
 
-                if (valid_neighbors.empty()) {
-                    // This should never happen for non-extremal vertices
-                    Rprintf("\nCRITICAL ERROR: No valid descending neighbors found for non-minimum vertex!\n");
-                    Rprintf("Details:\n");
-                    Rprintf("  - Current vertex: %d\n", desc_vertex);
-                    Rprintf("  - Function value: %.6f\n", Ey[desc_vertex]);
-                    Rprintf("  - Trajectory so far: ");
-                    for (int v : descending_trajectory) {
-                        Rprintf("%d ", v);
+                        Rprintf("\n\nNeighborhood Analysis:\n");
+                        Rprintf("  Neighbors in graph:");
+                        for (int n : graph[desc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rprintf("\n  Neighbors in core_graph:");
+                        for (int n : core_graph[desc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
+                                 "This violates the properties of a valid Morse function on the graph.\n"
+                                 "Please verify that:\n"
+                                 "1. The function values form a valid Morse function\n"
+                                 "2. The graph connectivity is correct\n"
+                                 "3. All paths in core_graph preserve monotonicity");
                     }
 
-                    Rprintf("\n\nNeighborhood Analysis:\n");
-                    Rprintf("  Neighbors in graph:");
-                    for (int n : graph[desc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
-                    }
-
-                    Rprintf("\n  Neighbors in core_graph:");
-                    for (int n : core_graph[desc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
-                    }
-
-                    Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
-                          "This violates the properties of a valid Morse function on the graph.\n"
-                          "Please verify that:\n"
-                          "1. The function values form a valid Morse function\n"
-                          "2. The graph connectivity is correct\n"
-                          "3. All paths in core_graph preserve monotonicity");
+                    auto path = valid_neighbors[0].path;
+                    descending_trajectory.insert(descending_trajectory.end(),
+                                                 path.begin() + 1, path.end());
+                    desc_vertex = valid_neighbors[0].vertex;
                 }
 
-                auto path = valid_neighbors[0].path;
-                descending_trajectory.insert(descending_trajectory.end(),
-                                             path.begin() + 1, path.end());
-                desc_vertex = valid_neighbors[0].vertex;
+                // Check if endpoint is local minimum
+                if (is_local_minimum(desc_vertex, graph, Ey)) {
+                    local_minima_set.insert(desc_vertex);
+                }
             }
 
-            // Check if endpoint is local minimum
-            if (is_local_minimum(desc_vertex, graph, Ey)) {
-                local_minima_set.insert(desc_vertex);
+            if (is_max) {
+                // Single vertex trajectory for local maximum
+                SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
+                INTEGER(trajectory)[0] = vertex;
+                SET_VECTOR_ELT(trajectories, vertex, trajectory);
+                UNPROTECT(1);
+            } else {
+                // Construct full trajectory
+                descending_trajectory.erase(descending_trajectory.begin());
+                int tr_size = ascending_trajectory.size() + descending_trajectory.size();
+                SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
+                int* trajectory_ptr = INTEGER(trajectory);
+
+                std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
+                std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
+                          trajectory_ptr + descending_trajectory.size());
+
+                SET_VECTOR_ELT(trajectories, vertex, trajectory);
+                UNPROTECT(1);
+            }
+
+            // Update connectivity maps and pro-cells if trajectory connects local extrema
+            if (is_local_minimum(desc_vertex, graph, Ey) &&
+                is_local_maximum(asc_vertex, graph, Ey)) {
+
+                // Update connectivity maps
+                lmax_to_lmin_map[asc_vertex].insert(desc_vertex);
+                lmin_to_lmax_map[desc_vertex].insert(asc_vertex);
+
+                // Update pro-cell
+                std::pair<int,int> cell_key(asc_vertex, desc_vertex);
+
+                // Add all vertices from the trajectory to the pro-cell
+                ms_procells[cell_key].insert(descending_trajectory.begin(),
+                                             descending_trajectory.end());
+                ms_procells[cell_key].insert(ascending_trajectory.begin(),
+                                             ascending_trajectory.end());
             }
         }
 
-        if (is_max) {
-            // Single vertex trajectory for local maximum
-            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
-            INTEGER(trajectory)[0] = vertex;
-            SET_VECTOR_ELT(trajectories, vertex, trajectory);
+        SET_VECTOR_ELT(result, 0, trajectories);
+        UNPROTECT(1); // trajectories
+    }
+
+    // 1-4: lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
+    {
+        // Convert maps to R lists
+        SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
+        SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
+
+        SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
+        SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
+
+        // Convert local maxima/minima sets to R vectors
+        SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
+        SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
+
+        // Fill local maxima vector and its connectivity list
+        int max_idx = 0;
+        for (int lmax : local_maxima_set) {
+            INTEGER(local_maxima)[max_idx] = lmax;
+
+            const auto& connected_mins = lmax_to_lmin_map[lmax];
+            SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
+            std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+            SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
+            std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
+            const char* lmax_char = lmax_str.c_str();
+            SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
             UNPROTECT(1);
-        } else {
-            // Construct full trajectory
-            descending_trajectory.erase(descending_trajectory.begin());
-            int tr_size = ascending_trajectory.size() + descending_trajectory.size();
-            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
-            int* trajectory_ptr = INTEGER(trajectory);
 
-            std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
-            std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
-                      trajectory_ptr + descending_trajectory.size());
+            max_idx++;
+        }
+        Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+        UNPROTECT(1); // lmax_to_lmin_names
 
-            SET_VECTOR_ELT(trajectories, vertex, trajectory);
+        // Fill local minima vector and its connectivity list
+        int min_idx = 0;
+        for (int lmin : local_minima_set) {
+            INTEGER(local_minima)[min_idx] = lmin;
+
+            const auto& connected_maxs = lmin_to_lmax_map[lmin];
+            SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
+            std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+            SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
+            std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
+            const char* lmin_char = lmin_str.c_str();
+            SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
             UNPROTECT(1);
+
+            min_idx++;
         }
+        Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+        UNPROTECT(1); // lmin_to_lmax_names
 
-        // Update connectivity maps and pro-cells if trajectory connects local extrema
-        if (is_local_minimum(desc_vertex, graph, Ey) &&
-            is_local_maximum(asc_vertex, graph, Ey)) {
-
-            // Update connectivity maps
-            lmax_to_lmin_map[asc_vertex].insert(desc_vertex);
-            lmin_to_lmax_map[desc_vertex].insert(asc_vertex);
-
-            // Update pro-cell
-            std::pair<int,int> cell_key(asc_vertex, desc_vertex);
-
-            // Add all vertices from the trajectory to the pro-cell
-            ms_procells[cell_key].insert(descending_trajectory.begin(),
-                                       descending_trajectory.end());
-            ms_procells[cell_key].insert(ascending_trajectory.begin(),
-                                       ascending_trajectory.end());
-        }
+        SET_VECTOR_ELT(result, 1, lmax_to_lmin);
+        SET_VECTOR_ELT(result, 2, lmin_to_lmax);
+        SET_VECTOR_ELT(result, 3, local_maxima);
+        SET_VECTOR_ELT(result, 4, local_minima);
+        UNPROTECT(4); // lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
     }
-
-    // Convert maps to R lists
-    SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size())); nprot++;
-    SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size())); nprot++;
-
-    SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size())); nprot++;
-    SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size())); nprot++;
-
-    // Convert local maxima/minima sets to R vectors
-    SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size())); nprot++;
-    SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size())); nprot++;
-
-    // Fill local maxima vector and its connectivity list
-    int max_idx = 0;
-    for (int lmax : local_maxima_set) {
-        INTEGER(local_maxima)[max_idx] = lmax;
-
-        const auto& connected_mins = lmax_to_lmin_map[lmax];
-        SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-        std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
-        SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
-        std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
-        const char* lmax_char = lmax_str.c_str();
-        SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
-        UNPROTECT(1);
-
-        max_idx++;
-    }
-    Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
-
-    // Fill local minima vector and its connectivity list
-    int min_idx = 0;
-    for (int lmin : local_minima_set) {
-        INTEGER(local_minima)[min_idx] = lmin;
-
-        const auto& connected_maxs = lmin_to_lmax_map[lmin];
-        SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-        std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
-        SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
-        std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
-        const char* lmin_char = lmin_str.c_str();
-        SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
-        UNPROTECT(1);
-
-        min_idx++;
-    }
-    Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
 
     // Compute MS cells from pro-cells
     for (const auto& [key, procell] : ms_procells) {
@@ -588,66 +621,51 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
         }
     }
 
-    // Convert pro-cells and cells to R structures
-    SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
-    SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size())); nprot++;
-    SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
+    // 5-7: procell_keys, procells, cells
+    {
+        // Convert pro-cells and cells to R structures
+        SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
+        SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size()));
+        SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
 
-    int pcell_idx = 0;
-    for (const auto& [key, vertices] : ms_procells) {
-        // Create key pair
-        SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
-        INTEGER(key_pair)[0] = key.first;
-        INTEGER(key_pair)[1] = key.second;
-        SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
+        int pcell_idx = 0;
+        for (const auto& [key, vertices] : ms_procells) {
+            // Create key pair
+            SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
+            INTEGER(key_pair)[0] = key.first;
+            INTEGER(key_pair)[1] = key.second;
+            SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
 
-        // Create vertex set
-        SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
-        std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
-        SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
+            // Create vertex set
+            SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
+            std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+            SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
 
-        // Create cells list for this pro-cell
-        const auto& cell_components = ms_cells[key];
-        SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
+            // Create cells list for this pro-cell
+            const auto& cell_components = ms_cells[key];
+            SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
 
-        for (size_t i = 0; i < cell_components.size(); ++i) {
-            SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
-            std::copy(cell_components[i].begin(), cell_components[i].end(),
-                     INTEGER(component));
-            SET_VECTOR_ELT(components_list, i, component);
-            UNPROTECT(1);
+            for (size_t i = 0; i < cell_components.size(); ++i) {
+                SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
+                std::copy(cell_components[i].begin(), cell_components[i].end(),
+                          INTEGER(component));
+                SET_VECTOR_ELT(components_list, i, component);
+                UNPROTECT(1);
+            }
+
+            SET_VECTOR_ELT(cells, pcell_idx, components_list);
+
+            UNPROTECT(3);  // key_pair, vertex_set, components_list
+            pcell_idx++;
         }
 
-        SET_VECTOR_ELT(cells, pcell_idx, components_list);
-
-        UNPROTECT(3);  // key_pair, vertex_set, components_list
-        pcell_idx++;
+        SET_VECTOR_ELT(result, 5, procell_keys);
+        SET_VECTOR_ELT(result, 6, procells);
+        SET_VECTOR_ELT(result, 7, cells);
+        UNPROTECT(3); // procell_keys, procells, cells
     }
 
-    // Update result list to include pro-cells and cells
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
-    SET_VECTOR_ELT(result, 0, trajectories);
-    SET_VECTOR_ELT(result, 1, lmax_to_lmin);
-    SET_VECTOR_ELT(result, 2, lmin_to_lmax);
-    SET_VECTOR_ELT(result, 3, local_maxima);
-    SET_VECTOR_ELT(result, 4, local_minima);
-    SET_VECTOR_ELT(result, 5, procell_keys);
-    SET_VECTOR_ELT(result, 6, procells);
-    SET_VECTOR_ELT(result, 7, cells);
-
-    // Update names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(nprot);
+    UNPROTECT(1);
     return result;
 }
 
@@ -733,10 +751,22 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     std::set<int> local_maxima_set;
     std::set<int> local_minima_set;
 
-    int nprot = 0;
-    SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices)); nprot++;
-    for (int i = 0; i < n_vertices; i++) {
-        SET_VECTOR_ELT(trajectories, i, R_NilValue);
+    // Update result list to include pro-cells and cells
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8));
+
+    // Update names
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 8));
+        SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
+        SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
+        SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
     }
 
     // Helper function to get valid neighbors using hop distances
@@ -798,187 +828,209 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     std::map<std::pair<int,int>, std::set<int>> ms_procells;
     std::map<std::pair<int,int>, std::vector<std::set<int>>> ms_cells;
 
-    for (int vertex = 0; vertex < n_vertices; vertex++) {
-        bool is_max = is_local_maximum(vertex, graph, Ey);
-        bool is_min = is_local_minimum(vertex, graph, Ey);
-
-        if (is_max) {
-            local_maxima_set.insert(vertex);
-        }
-        if (is_min) {
-            local_minima_set.insert(vertex);
+    // 0:
+    {
+        SEXP trajectories = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        for (int i = 0; i < n_vertices; i++) {
+            SET_VECTOR_ELT(trajectories, i, R_NilValue);
         }
 
-        // Compute ascending and descending trajectories
-        std::vector<int> ascending_trajectory = {vertex};
-        std::vector<int> descending_trajectory = {vertex};
-        int asc_vertex = vertex;
-        int desc_vertex = vertex;
+        for (int vertex = 0; vertex < n_vertices; vertex++) {
+            bool is_max = is_local_maximum(vertex, graph, Ey);
+            bool is_min = is_local_minimum(vertex, graph, Ey);
 
-        // Compute ascending trajectory if not at local maximum
-        if (!is_max) {
-            while (true) {
-                auto valid_neighbors = get_valid_neighbors(asc_vertex, true);
+            if (is_max) {
+                local_maxima_set.insert(vertex);
+            }
+            if (is_min) {
+                local_minima_set.insert(vertex);
+            }
 
-                if (valid_neighbors.empty()) {
-                    // This should never happen for non-extremal vertices
-                    Rprintf("\nCRITICAL ERROR: No valid ascending neighbors found for non-maximum vertex!\n");
-                    Rprintf("Details:\n");
-                    Rprintf("  - Current vertex: %d\n", asc_vertex);
-                    Rprintf("  - Function value: %.6f\n", Ey[asc_vertex]);
-                    Rprintf("  - Trajectory so far: ");
-                    for (int v : ascending_trajectory) {
-                        Rprintf("%d ", v);
+            // Compute ascending and descending trajectories
+            std::vector<int> ascending_trajectory = {vertex};
+            std::vector<int> descending_trajectory = {vertex};
+            int asc_vertex = vertex;
+            int desc_vertex = vertex;
+
+            // Compute ascending trajectory if not at local maximum
+            if (!is_max) {
+                while (true) {
+                    auto valid_neighbors = get_valid_neighbors(asc_vertex, true);
+
+                    if (valid_neighbors.empty()) {
+                        // This should never happen for non-extremal vertices
+                        Rprintf("\nCRITICAL ERROR: No valid ascending neighbors found for non-maximum vertex!\n");
+                        Rprintf("Details:\n");
+                        Rprintf("  - Current vertex: %d\n", asc_vertex);
+                        Rprintf("  - Function value: %.6f\n", Ey[asc_vertex]);
+                        Rprintf("  - Trajectory so far: ");
+                        for (int v : ascending_trajectory) {
+                            Rprintf("%d ", v);
+                        }
+
+                        //Rprintf("\n\nNeighborhood Analysis:\n");
+                        Rprintf("  Neighbors in graph:");
+                        for (int n : graph[asc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
+                                 "This violates the properties of a valid Morse function on the graph.\n"
+                                 "Please verify that:\n"
+                                 "1. The function values form a valid Morse function\n"
+                                 "2. The graph connectivity is correct");
                     }
 
-                    //Rprintf("\n\nNeighborhood Analysis:\n");
-                    Rprintf("  Neighbors in graph:");
-                    for (int n : graph[asc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
+                    auto path = valid_neighbors[0].path;
+                    ascending_trajectory.insert(ascending_trajectory.end(),
+                                                path.begin() + 1, path.end());
+                    asc_vertex = valid_neighbors[0].vertex;
+                    if (is_local_maximum(asc_vertex, graph, Ey)) {
+                        break;
+                    }
+                }
+            }
+
+            // Compute descending trajectory if not at local minimum
+            if (!is_min) {
+                while (true) {
+                    auto valid_neighbors = get_valid_neighbors(desc_vertex, false);
+
+                    if (valid_neighbors.empty()) {
+                        // This should never happen for non-extremal vertices
+                        Rprintf("\nCRITICAL ERROR: No valid descending neighbors found for non-minimum vertex!\n");
+                        Rprintf("Details:\n");
+                        Rprintf("  - Current vertex: %d\n", desc_vertex);
+                        Rprintf("  - Function value: %.6f\n", Ey[desc_vertex]);
+                        Rprintf("  - Trajectory so far: ");
+                        for (int v : descending_trajectory) {
+                            Rprintf("%d ", v);
+                        }
+
+                        //Rprintf("\n\nNeighborhood Analysis:\n");
+                        Rprintf("  Neighbors in graph:");
+                        for (int n : graph[desc_vertex]) {
+                            Rprintf(" %d(%.6f)", n, Ey[n]);
+                        }
+
+                        Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
+                                 "This violates the properties of a valid Morse function on the graph.\n"
+                                 "Please verify that:\n"
+                                 "1. The function values form a valid Morse function\n"
+                                 "2. The graph connectivity is correct");
                     }
 
-                    Rf_error("\nFATAL: Found a non-maximum vertex with no valid ascending neighbors.\n"
-                          "This violates the properties of a valid Morse function on the graph.\n"
-                          "Please verify that:\n"
-                          "1. The function values form a valid Morse function\n"
-                          "2. The graph connectivity is correct");
+                    auto path = valid_neighbors[0].path;
+                    descending_trajectory.insert(descending_trajectory.end(),
+                                                 path.begin() + 1, path.end());
+                    desc_vertex = valid_neighbors[0].vertex;
+                    if (is_local_minimum(desc_vertex, graph, Ey)) {
+                        break;
+                    }
                 }
+            }
 
-                auto path = valid_neighbors[0].path;
-                ascending_trajectory.insert(ascending_trajectory.end(),
-                                            path.begin() + 1, path.end());
-                asc_vertex = valid_neighbors[0].vertex;
-                if (is_local_maximum(asc_vertex, graph, Ey)) {
-                    break;
-                }
+            if (is_max) {
+                // Single vertex trajectory for local maximum
+                SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
+                INTEGER(trajectory)[0] = vertex;
+                SET_VECTOR_ELT(trajectories, vertex, trajectory);
+                UNPROTECT(1);
+            } else {
+                // Construct full trajectory
+                descending_trajectory.erase(descending_trajectory.begin());
+                int tr_size = ascending_trajectory.size() + descending_trajectory.size();
+                SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
+                int* trajectory_ptr = INTEGER(trajectory);
+
+                std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
+                std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
+                          trajectory_ptr + descending_trajectory.size());
+
+                SET_VECTOR_ELT(trajectories, vertex, trajectory);
+                UNPROTECT(1);
+            }
+
+            // Update connectivity maps and pro-cells if trajectory connects local extrema
+            if (is_local_minimum(desc_vertex, graph, Ey) &&
+                is_local_maximum(asc_vertex, graph, Ey)) {
+
+                // Update connectivity maps
+                lmax_to_lmin_map[asc_vertex].insert(desc_vertex);
+                lmin_to_lmax_map[desc_vertex].insert(asc_vertex);
+
+                // Update pro-cell
+                std::pair<int,int> cell_key(asc_vertex, desc_vertex);
+
+                // Add all vertices from the trajectory to the pro-cell
+                ms_procells[cell_key].insert(descending_trajectory.begin(),
+                                             descending_trajectory.end());
+                ms_procells[cell_key].insert(ascending_trajectory.begin(),
+                                             ascending_trajectory.end());
             }
         }
 
-        // Compute descending trajectory if not at local minimum
-        if (!is_min) {
-            while (true) {
-                auto valid_neighbors = get_valid_neighbors(desc_vertex, false);
+        SET_VECTOR_ELT(result, 0, trajectories);
+        UNPROTECT(1); // trajectories
+    }
 
-                if (valid_neighbors.empty()) {
-                    // This should never happen for non-extremal vertices
-                    Rprintf("\nCRITICAL ERROR: No valid descending neighbors found for non-minimum vertex!\n");
-                    Rprintf("Details:\n");
-                    Rprintf("  - Current vertex: %d\n", desc_vertex);
-                    Rprintf("  - Function value: %.6f\n", Ey[desc_vertex]);
-                    Rprintf("  - Trajectory so far: ");
-                    for (int v : descending_trajectory) {
-                        Rprintf("%d ", v);
-                    }
+    // 1-4: lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
+    {
+        // Convert maps to R lists
+        SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
+        SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
 
-                    //Rprintf("\n\nNeighborhood Analysis:\n");
-                    Rprintf("  Neighbors in graph:");
-                    for (int n : graph[desc_vertex]) {
-                        Rprintf(" %d(%.6f)", n, Ey[n]);
-                    }
+        SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
+        SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
 
-                    Rf_error("\nFATAL: Found a non-minimum vertex with no valid descending neighbors.\n"
-                          "This violates the properties of a valid Morse function on the graph.\n"
-                          "Please verify that:\n"
-                          "1. The function values form a valid Morse function\n"
-                          "2. The graph connectivity is correct");
-                }
+        // Convert local maxima/minima sets to R vectors
+        SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
+        SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
 
-                auto path = valid_neighbors[0].path;
-                descending_trajectory.insert(descending_trajectory.end(),
-                                             path.begin() + 1, path.end());
-                desc_vertex = valid_neighbors[0].vertex;
-                if (is_local_minimum(desc_vertex, graph, Ey)) {
-                    break;
-                }
-            }
-        }
+        // Fill local maxima vector and its connectivity list
+        int max_idx = 0;
+        for (int lmax : local_maxima_set) {
+            INTEGER(local_maxima)[max_idx] = lmax;
 
-        if (is_max) {
-            // Single vertex trajectory for local maximum
-            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, 1));
-            INTEGER(trajectory)[0] = vertex;
-            SET_VECTOR_ELT(trajectories, vertex, trajectory);
+            const auto& connected_mins = lmax_to_lmin_map[lmax];
+            SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
+            std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+            SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
+            std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
+            const char* lmax_char = lmax_str.c_str();
+            SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
             UNPROTECT(1);
-        } else {
-            // Construct full trajectory
-            descending_trajectory.erase(descending_trajectory.begin());
-            int tr_size = ascending_trajectory.size() + descending_trajectory.size();
-            SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
-            int* trajectory_ptr = INTEGER(trajectory);
 
-            std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
-            std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
-                      trajectory_ptr + descending_trajectory.size());
+            max_idx++;
+        }
+        Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+        UNPROTECT(1); // lmax_to_lmin_names
 
-            SET_VECTOR_ELT(trajectories, vertex, trajectory);
+        // Fill local minima vector and its connectivity list
+        int min_idx = 0;
+        for (int lmin : local_minima_set) {
+            INTEGER(local_minima)[min_idx] = lmin;
+
+            const auto& connected_maxs = lmin_to_lmax_map[lmin];
+            SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
+            std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+            SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
+            std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
+            const char* lmin_char = lmin_str.c_str();
+            SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
             UNPROTECT(1);
+
+            min_idx++;
         }
+        Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+        UNPROTECT(1); // lmin_to_lmax_names
 
-        // Update connectivity maps and pro-cells if trajectory connects local extrema
-        if (is_local_minimum(desc_vertex, graph, Ey) &&
-            is_local_maximum(asc_vertex, graph, Ey)) {
-
-            // Update connectivity maps
-            lmax_to_lmin_map[asc_vertex].insert(desc_vertex);
-            lmin_to_lmax_map[desc_vertex].insert(asc_vertex);
-
-            // Update pro-cell
-            std::pair<int,int> cell_key(asc_vertex, desc_vertex);
-
-            // Add all vertices from the trajectory to the pro-cell
-            ms_procells[cell_key].insert(descending_trajectory.begin(),
-                                         descending_trajectory.end());
-            ms_procells[cell_key].insert(ascending_trajectory.begin(),
-                                         ascending_trajectory.end());
-        }
+        SET_VECTOR_ELT(result, 1, lmax_to_lmin);
+        SET_VECTOR_ELT(result, 2, lmin_to_lmax);
+        SET_VECTOR_ELT(result, 3, local_maxima);
+        SET_VECTOR_ELT(result, 4, local_minima);
+        UNPROTECT(4);
     }
-
-    // Convert maps to R lists
-    SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size())); nprot++;
-    SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size())); nprot++;
-
-    SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size())); nprot++;
-    SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size())); nprot++;
-
-    // Convert local maxima/minima sets to R vectors
-    SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size())); nprot++;
-    SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size())); nprot++;
-
-    // Fill local maxima vector and its connectivity list
-    int max_idx = 0;
-    for (int lmax : local_maxima_set) {
-        INTEGER(local_maxima)[max_idx] = lmax;
-
-        const auto& connected_mins = lmax_to_lmin_map[lmax];
-        SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-        std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
-        SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
-        std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
-        const char* lmax_char = lmax_str.c_str();
-        SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
-        UNPROTECT(1);
-
-        max_idx++;
-    }
-    Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
-
-    // Fill local minima vector and its connectivity list
-    int min_idx = 0;
-    for (int lmin : local_minima_set) {
-        INTEGER(local_minima)[min_idx] = lmin;
-
-        const auto& connected_maxs = lmin_to_lmax_map[lmin];
-        SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-        std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
-        SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
-        std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
-        const char* lmin_char = lmin_str.c_str();
-        SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
-        UNPROTECT(1);
-
-        min_idx++;
-    }
-    Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
 
     // Compute MS cells from pro-cells
     for (const auto& [key, procell] : ms_procells) {
@@ -1017,66 +1069,51 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
         }
     }
 
-    // Convert pro-cells and cells to R structures
-    SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
-    SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size())); nprot++;
-    SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size())); nprot++;
+    // 5-7: procell_keys, procells, cells
+    {
+        // Convert pro-cells and cells to R structures
+        SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
+        SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size()));
+        SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
 
-    int pcell_idx = 0;
-    for (const auto& [key, vertices] : ms_procells) {
-        // Create key pair
-        SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
-        INTEGER(key_pair)[0] = key.first;
-        INTEGER(key_pair)[1] = key.second;
-        SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
+        int pcell_idx = 0;
+        for (const auto& [key, vertices] : ms_procells) {
+            // Create key pair
+            SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
+            INTEGER(key_pair)[0] = key.first;
+            INTEGER(key_pair)[1] = key.second;
+            SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
 
-        // Create vertex set
-        SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
-        std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
-        SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
+            // Create vertex set
+            SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
+            std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+            SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
 
-        // Create cells list for this pro-cell
-        const auto& cell_components = ms_cells[key];
-        SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
+            // Create cells list for this pro-cell
+            const auto& cell_components = ms_cells[key];
+            SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
 
-        for (size_t i = 0; i < cell_components.size(); ++i) {
-            SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
-            std::copy(cell_components[i].begin(), cell_components[i].end(),
-                      INTEGER(component));
-            SET_VECTOR_ELT(components_list, i, component);
-            UNPROTECT(1);
+            for (size_t i = 0; i < cell_components.size(); ++i) {
+                SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
+                std::copy(cell_components[i].begin(), cell_components[i].end(),
+                          INTEGER(component));
+                SET_VECTOR_ELT(components_list, i, component);
+                UNPROTECT(1);
+            }
+
+            SET_VECTOR_ELT(cells, pcell_idx, components_list);
+
+            UNPROTECT(3);  // key_pair, vertex_set, components_list
+            pcell_idx++;
         }
 
-        SET_VECTOR_ELT(cells, pcell_idx, components_list);
-
-        UNPROTECT(3);  // key_pair, vertex_set, components_list
-        pcell_idx++;
+        SET_VECTOR_ELT(result, 5, procell_keys);
+        SET_VECTOR_ELT(result, 6, procells);
+        SET_VECTOR_ELT(result, 7, cells);
+        UNPROTECT(3); // procell_keys, procells, cells
     }
 
-    // Update result list to include pro-cells and cells
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
-    SET_VECTOR_ELT(result, 0, trajectories);
-    SET_VECTOR_ELT(result, 1, lmax_to_lmin);
-    SET_VECTOR_ELT(result, 2, lmin_to_lmax);
-    SET_VECTOR_ELT(result, 3, local_maxima);
-    SET_VECTOR_ELT(result, 4, local_minima);
-    SET_VECTOR_ELT(result, 5, procell_keys);
-    SET_VECTOR_ELT(result, 6, procells);
-    SET_VECTOR_ELT(result, 7, cells);
-
-    // Update names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("trajectories"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("lmax_to_lmin"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("lmin_to_lmax"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("local_maxima"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("local_minima"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("procell_keys"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("procells"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("cells"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(nprot);
+    UNPROTECT(1);
     return result;
 }
 

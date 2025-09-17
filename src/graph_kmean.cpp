@@ -1533,7 +1533,6 @@ SEXP S_univariate_gkmm(SEXP s_x,
                                   SEXP s_seed) {
   // ---- x, y (defensive coercion + copy) ----
   std::vector<double> x, y, y_true;
-
   {
     SEXP sx = s_x;
     if (TYPEOF(sx) != REALSXP) sx = Rf_coerceVector(sx, REALSXP);
@@ -1588,144 +1587,151 @@ SEXP S_univariate_gkmm(SEXP s_x,
                                      epsilon, seed);
 
   // ---- build s_hHN_graphs (container-first) ----
-  int nprot = 0;
-  SEXP s_hHN_graphs = PROTECT(Rf_allocVector(VECSXP, K)); ++nprot;
-  SEXP h_names      = PROTECT(Rf_allocVector(STRSXP, K)); ++nprot;
+  SEXP s_hHN_graphs = PROTECT(Rf_allocVector(VECSXP, K));
+  SEXP h_names      = PROTECT(Rf_allocVector(STRSXP, K));
 
   for (R_xlen_t i = 0; i < K; ++i) {
     // Per-h graph list (adj_list, edge_lengths)
-    SEXP h_graph = PROTECT(Rf_allocVector(VECSXP, 2)); ++nprot;
+    SEXP h_graph = PROTECT(Rf_allocVector(VECSXP, 2));
 
     // Elements (protect temp → set → unprotect)
     {
-      SEXP adj = PROTECT(convert_vector_vector_int_to_R(
-                  cpp_results.graphs[static_cast<size_t>(i)].first));
+      SEXP adj = convert_vector_vector_int_to_R(cpp_results.graphs[static_cast<size_t>(i)].first);
       SET_VECTOR_ELT(h_graph, 0, adj);
       UNPROTECT(1);
 
-      SEXP elen = PROTECT(convert_vector_vector_double_to_R(
-                    cpp_results.graphs[static_cast<size_t>(i)].second));
+      SEXP elen = convert_vector_vector_double_to_R(
+                    cpp_results.graphs[static_cast<size_t>(i)].second);
       SET_VECTOR_ELT(h_graph, 1, elen);
       UNPROTECT(1);
     }
 
     // names for h_graph while protected
     {
-      SEXP gn = PROTECT(Rf_allocVector(STRSXP, 2)); ++nprot;
+      SEXP gn = PROTECT(Rf_allocVector(STRSXP, 2));
       SET_STRING_ELT(gn, 0, Rf_mkChar("adj_list"));
       SET_STRING_ELT(gn, 1, Rf_mkChar("edge_lengths"));
       Rf_setAttrib(h_graph, R_NamesSymbol, gn);
-      UNPROTECT(1); --nprot; // gn
+      UNPROTECT(1); // gn
     }
 
     SET_VECTOR_ELT(s_hHN_graphs, i, h_graph);
-    UNPROTECT(1); --nprot; // h_graph
+    UNPROTECT(1); // h_graph
 
     char h_label[32];
     std::snprintf(h_label, sizeof(h_label), "h_%d", h_min + static_cast<int>(i));
     SET_STRING_ELT(h_names, i, Rf_mkChar(h_label));
   }
   Rf_setAttrib(s_hHN_graphs, R_NamesSymbol, h_names);
+  UNPROTECT(1); // h_names
 
   // ---- build result (container-first) ----
   const int N_COMPONENTS = 11;
-  SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); ++nprot;
+  SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+  // names for r_result (while r_result is protected)
+  {
+      SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+      SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
+      SET_STRING_ELT(names, 1,  Rf_mkChar("graphs"));
+      SET_STRING_ELT(names, 2,  Rf_mkChar("h_cv_errors"));
+      SET_STRING_ELT(names, 3,  Rf_mkChar("opt_h"));
+      SET_STRING_ELT(names, 4,  Rf_mkChar("opt_graph_adj_list"));
+      SET_STRING_ELT(names, 5,  Rf_mkChar("opt_graph_edge_lengths"));
+      SET_STRING_ELT(names, 6,  Rf_mkChar("predictions"));
+      SET_STRING_ELT(names, 7,  Rf_mkChar("bb_predictions"));
+      SET_STRING_ELT(names, 8,  Rf_mkChar("opt_ci_lower"));
+      SET_STRING_ELT(names, 9,  Rf_mkChar("opt_ci_upper"));
+      SET_STRING_ELT(names, 10, Rf_mkChar("true_error"));
+      Rf_setAttrib(r_result, R_NamesSymbol, names);
+      UNPROTECT(1); // names
+  }
 
   // 0: h_values
   {
-    SEXP hv = PROTECT(convert_vector_int_to_R(cpp_results.h_values));
-    SET_VECTOR_ELT(result, 0, hv);
-    UNPROTECT(1);
+    SEXP hv = convert_vector_int_to_R(cpp_results.h_values);
+    SET_VECTOR_ELT(r_result, 0, hv);
+    UNPROTECT(1); // hv
   }
+
   // 1: graphs
-  SET_VECTOR_ELT(result, 1, s_hHN_graphs); // already protected as part of nprot
+  {
+      SET_VECTOR_ELT(r_result, 1, s_hHN_graphs);
+      UNPROTECT(1); // s_hHN_graphs
+  }
 
   // 2: h_cv_errors (or NULL)
-  if (!cpp_results.cv_errors.empty() && !x.empty()) {
-    SEXP ce = PROTECT(convert_vector_double_to_R(cpp_results.cv_errors));
-    SET_VECTOR_ELT(result, 2, ce);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 2, R_NilValue);
+  {
+      if (!cpp_results.cv_errors.empty() && !x.empty()) {
+          SEXP ce = convert_vector_double_to_R(cpp_results.cv_errors);
+          SET_VECTOR_ELT(r_result, 2, ce);
+          UNPROTECT(1);
+      } else {
+          SET_VECTOR_ELT(r_result, 2, R_NilValue);
+      }
+
   }
 
   // 3: opt_h (scalar)
   {
-    SEXP opt_h = PROTECT(Rf_ScalarReal(cpp_results.opt_h)); ++nprot;
-    SET_VECTOR_ELT(result, 3, opt_h);
-    // keep opt_h protected until final UNPROTECT(nprot) or unprotect now:
-    UNPROTECT(1); --nprot; // safe to release immediately after insertion
+    SEXP opt_h = PROTECT(Rf_ScalarReal(cpp_results.opt_h));
+    SET_VECTOR_ELT(r_result, 3, opt_h);
+    UNPROTECT(1); // opt_h
   }
 
   // 4–5: opt graph pieces
   {
-    SEXP adj = PROTECT(convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first));
-    SET_VECTOR_ELT(result, 4, adj);
-    UNPROTECT(1);
+    SEXP adj = convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first);
+    SET_VECTOR_ELT(r_result, 4, adj);
+    UNPROTECT(1); // adj
 
-    SEXP eln = PROTECT(convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second));
-    SET_VECTOR_ELT(result, 5, eln);
-    UNPROTECT(1);
+    SEXP eln = convert_vector_vector_double_to_R(cpp_results.opt_h_graph.second);
+    SET_VECTOR_ELT(r_result, 5, eln);
+    UNPROTECT(1); // eln
   }
 
   // 6: predictions (condEy)
   {
-    SEXP pr = PROTECT(convert_vector_double_to_R(cpp_results.condEy));
-    SET_VECTOR_ELT(result, 6, pr);
-    UNPROTECT(1);
+    SEXP pr = convert_vector_double_to_R(cpp_results.condEy);
+    SET_VECTOR_ELT(r_result, 6, pr);
+    UNPROTECT(1); // pr
   }
 
   // 7–9: bb_predictions and CIs (or NULLs)
-  if (!cpp_results.bb_condEy.empty()) {
-    SEXP bb = PROTECT(convert_vector_double_to_R(cpp_results.bb_condEy));
-    SET_VECTOR_ELT(result, 7, bb);
-    UNPROTECT(1);
+  {
+      if (!cpp_results.bb_condEy.empty()) {
+          SEXP bb = convert_vector_double_to_R(cpp_results.bb_condEy);
+          SET_VECTOR_ELT(r_result, 7, bb);
+          UNPROTECT(1); // bb
 
-    SEXP L = PROTECT(convert_vector_double_to_R(cpp_results.cri_L));
-    SET_VECTOR_ELT(result, 8, L);
-    UNPROTECT(1);
+          SEXP L = convert_vector_double_to_R(cpp_results.cri_L);
+          SET_VECTOR_ELT(r_result, 8, L);
+          UNPROTECT(1); // L
 
-    SEXP U = PROTECT(convert_vector_double_to_R(cpp_results.cri_U));
-    SET_VECTOR_ELT(result, 9, U);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result, 7, R_NilValue);
-    SET_VECTOR_ELT(result, 8, R_NilValue);
-    SET_VECTOR_ELT(result, 9, R_NilValue);
+          SEXP U = convert_vector_double_to_R(cpp_results.cri_U);
+          SET_VECTOR_ELT(r_result, 9, U);
+          UNPROTECT(1); // U
+      } else {
+          SET_VECTOR_ELT(r_result, 7, R_NilValue);
+          SET_VECTOR_ELT(r_result, 8, R_NilValue);
+          SET_VECTOR_ELT(r_result, 9, R_NilValue);
+      }
   }
 
   // 10: true_error (mean) or NULL
-  if (!cpp_results.true_errors.empty()) {
-    const double mean_true_error =
-        std::accumulate(cpp_results.true_errors.begin(),
-                        cpp_results.true_errors.end(), 0.0)
-        / static_cast<double>(cpp_results.true_errors.size());
-    SEXP te = PROTECT(Rf_ScalarReal(mean_true_error)); ++nprot;
-    SET_VECTOR_ELT(result, 10, te);
-    UNPROTECT(1); --nprot; // release after insertion
-  } else {
-    SET_VECTOR_ELT(result, 10, R_NilValue);
-  }
-
-  // names for result (while result is protected)
   {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); ++nprot;
-    SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
-    SET_STRING_ELT(names, 1,  Rf_mkChar("graphs"));
-    SET_STRING_ELT(names, 2,  Rf_mkChar("h_cv_errors"));
-    SET_STRING_ELT(names, 3,  Rf_mkChar("opt_h"));
-    SET_STRING_ELT(names, 4,  Rf_mkChar("opt_graph_adj_list"));
-    SET_STRING_ELT(names, 5,  Rf_mkChar("opt_graph_edge_lengths"));
-    SET_STRING_ELT(names, 6,  Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 7,  Rf_mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 8,  Rf_mkChar("opt_ci_lower"));
-    SET_STRING_ELT(names, 9,  Rf_mkChar("opt_ci_upper"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("true_error"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
+      if (!cpp_results.true_errors.empty()) {
+          const double mean_true_error =
+              std::accumulate(cpp_results.true_errors.begin(),
+                              cpp_results.true_errors.end(), 0.0)
+              / static_cast<double>(cpp_results.true_errors.size());
+          SEXP te = PROTECT(Rf_ScalarReal(mean_true_error));
+          SET_VECTOR_ELT(r_result, 10, te);
+          UNPROTECT(1); // te
+      } else {
+          SET_VECTOR_ELT(r_result, 10, R_NilValue);
+      }
   }
 
-  // Unprotect live containers: result + s_hHN_graphs (+ nothing else kept live)
-  UNPROTECT(nprot);
-  return result;
+  UNPROTECT(1); // r_result
+  return r_result;
 }

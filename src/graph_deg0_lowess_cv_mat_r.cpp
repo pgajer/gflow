@@ -28,7 +28,7 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
     SEXP s_verbose) {
 
     // Convert input parameters
-    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
     // Convert Y matrix/list from R
@@ -75,18 +75,18 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
         Rf_error("Y must be a numeric matrix or a list of numeric vectors");
     }
 
-    // Get scalar parameters
-    double min_bw_factor = REAL(s_min_bw_factor)[0];
-    double max_bw_factor = REAL(s_max_bw_factor)[0];
-    size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
-    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
-    size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    bool use_uniform_weights = (LOGICAL(s_use_uniform_weights)[0] == 1);
-    size_t n_folds = (size_t)INTEGER(s_n_folds)[0];
-    bool with_bw_predictions = (LOGICAL(s_with_bw_predictions)[0] == 1);
-    double precision = REAL(s_precision)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    // Scalars (defensive extraction)
+    const double min_bw_factor            = Rf_asReal(s_min_bw_factor);
+    const double max_bw_factor            = Rf_asReal(s_max_bw_factor);
+    const size_t n_bws                    = (size_t)Rf_asInteger(s_n_bws);
+    const bool   log_grid                 = (Rf_asLogical(s_log_grid) == TRUE);
+    const size_t kernel_type              = (size_t)Rf_asInteger(s_kernel_type);
+    const double dist_norm_factor         = Rf_asReal(s_dist_normalization_factor);
+    const bool   use_uniform_weights      = (Rf_asLogical(s_use_uniform_weights) == TRUE);
+    const size_t n_folds                  = (size_t)Rf_asInteger(s_n_folds);
+    const bool   with_bw_predictions      = (Rf_asLogical(s_with_bw_predictions) == TRUE);
+    const double precision                = Rf_asReal(s_precision);
+    const bool   verbose                  = (Rf_asLogical(s_verbose) == TRUE);
 
     // Create graph and run algorithm
     set_wgraph_t graph = set_wgraph_t(adj_list, weight_list);
@@ -97,7 +97,7 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
         n_bws,
         log_grid,
         kernel_type,
-        dist_normalization_factor,
+        dist_norm_factor,
         use_uniform_weights,
         n_folds,
         with_bw_predictions,
@@ -116,85 +116,106 @@ extern "C" SEXP S_graph_deg0_lowess_cv_mat(
         NULL
     };
 
-    int n_elements = 0;
-    while (names[n_elements] != NULL) n_elements++;
-
-    // Track protection count
-    int protect_count = 0;
+    // Assemble R result
+    const int n_elements = 6;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-    protect_count++;
 
-    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    protect_count++;
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
+    // names
+    {
+        SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        for (int i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
+        UNPROTECT(1);
     }
-    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 
-    // Helper function to convert vector to SEXP
-    auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
+
+    // Helper function to convert vector to SEXP - user has to unprotect the result
+    auto vec_to_sexp = [](const std::vector<double>& vec) -> SEXP {
         SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
     };
 
     // Set predictions (list of numeric vectors, one per response variable)
-    SEXP r_predictions = PROTECT(Rf_allocVector(VECSXP, result.predictions.size()));
-    protect_count++;
-    for (size_t j = 0; j < result.predictions.size(); j++) {
-        SET_VECTOR_ELT(r_predictions, j, vec_to_sexp(result.predictions[j]));
+    {
+        SEXP r_predictions = PROTECT(Rf_allocVector(VECSXP, result.predictions.size()));
+        for (size_t j = 0; j < result.predictions.size(); j++) {
+            SEXP s = vec_to_sexp(result.predictions[j]);
+            SET_VECTOR_ELT(r_predictions, j, s);
+            UNPROTECT(1); // s - protected in vec_to_sexp()
+        }
+        SET_VECTOR_ELT(r_result, 0, r_predictions);
+        UNPROTECT(1);
     }
-    SET_VECTOR_ELT(r_result, 0, r_predictions);
 
     // Set bw_predictions (if requested) - nested list structure
-    if (with_bw_predictions && !result.bw_predictions.empty()) {
-        // Create outer list (one element per response variable)
-        SEXP r_bw_predictions = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions.size()));
-        protect_count++;
-        
-        for (size_t j = 0; j < result.bw_predictions.size(); j++) {
-            // Create inner list (one element per bandwidth)
-            SEXP r_bw_preds_j = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions[j].size()));
-            protect_count++;
-            
-            for (size_t bw_idx = 0; bw_idx < result.bw_predictions[j].size(); bw_idx++) {
-                SET_VECTOR_ELT(r_bw_preds_j, bw_idx, vec_to_sexp(result.bw_predictions[j][bw_idx]));
+    {
+        if (with_bw_predictions && !result.bw_predictions.empty()) {
+            // Create outer list (one element per response variable)
+            SEXP r_bw_predictions = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions.size()));
+
+            for (size_t j = 0; j < result.bw_predictions.size(); j++) {
+                // Create inner list (one element per bandwidth)
+                SEXP r_bw_preds_j = PROTECT(Rf_allocVector(VECSXP, result.bw_predictions[j].size()));
+
+                for (size_t bw_idx = 0; bw_idx < result.bw_predictions[j].size(); bw_idx++) {
+                    SEXP s = vec_to_sexp(result.bw_predictions[j][bw_idx]);
+                    SET_VECTOR_ELT(r_bw_preds_j, bw_idx, s);
+                    UNPROTECT(1); // s - protected in vec_to_sexp()
+                }
+
+                SET_VECTOR_ELT(r_bw_predictions, j, r_bw_preds_j);
+                UNPROTECT(1); // r_bw_preds_j
             }
-            
-            SET_VECTOR_ELT(r_bw_predictions, j, r_bw_preds_j);
+
+            SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
+            UNPROTECT(1); // r_bw_predictions
+        } else {
+            SET_VECTOR_ELT(r_result, 1, Rf_allocVector(VECSXP, 0)); // Empty list
         }
-        
-        SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
-    } else {
-        SET_VECTOR_ELT(r_result, 1, Rf_allocVector(VECSXP, 0)); // Empty list
     }
 
     // Set bw_errors (list of numeric vectors, one per response variable)
-    SEXP r_bw_errors = PROTECT(Rf_allocVector(VECSXP, result.bw_errors.size()));
-    protect_count++;
-    for (size_t j = 0; j < result.bw_errors.size(); j++) {
-        SET_VECTOR_ELT(r_bw_errors, j, vec_to_sexp(result.bw_errors[j]));
+    {
+        SEXP r_bw_errors = PROTECT(Rf_allocVector(VECSXP, result.bw_errors.size()));
+
+        for (size_t j = 0; j < result.bw_errors.size(); j++) {
+            SEXP s = vec_to_sexp(result.bw_errors[j]);
+            SET_VECTOR_ELT(r_bw_errors, j, s);
+            UNPROTECT(1); // s
+        }
+        SET_VECTOR_ELT(r_result, 2, r_bw_errors);
+        UNPROTECT(1); // r_bw_errors
     }
-    SET_VECTOR_ELT(r_result, 2, r_bw_errors);
 
     // Set bws
-    SET_VECTOR_ELT(r_result, 3, vec_to_sexp(result.bws));
+    {
+        SEXP s = vec_to_sexp(result.bws);
+        SET_VECTOR_ELT(r_result, 3, s);
+        UNPROTECT(1); // s
+    }
 
     // Set opt_bws
-    SET_VECTOR_ELT(r_result, 4, vec_to_sexp(result.opt_bws));
+    {
+        SEXP s = vec_to_sexp(result.opt_bws);
+        SET_VECTOR_ELT(r_result, 4, s);
+        UNPROTECT(1); // s
+    }
 
     // Set opt_bw_idxs (convert to 1-based for R)
-    SEXP r_opt_bw_idxs = PROTECT(Rf_allocVector(INTSXP, result.opt_bw_idxs.size()));
-    protect_count++;
-    for (size_t j = 0; j < result.opt_bw_idxs.size(); j++) {
-        INTEGER(r_opt_bw_idxs)[j] = result.opt_bw_idxs[j] + 1; // Convert to 1-based for R
-    }
-    SET_VECTOR_ELT(r_result, 5, r_opt_bw_idxs);
+    {
+        SEXP r_opt_bw_idxs = PROTECT(Rf_allocVector(INTSXP, result.opt_bw_idxs.size()));
 
-    UNPROTECT(protect_count);
+        for (size_t j = 0; j < result.opt_bw_idxs.size(); j++) {
+            INTEGER(r_opt_bw_idxs)[j] = result.opt_bw_idxs[j] + 1; // Convert to 1-based for R
+        }
+        SET_VECTOR_ELT(r_result, 5, r_opt_bw_idxs);
+        UNPROTECT(1); // r_opt_bw_idxs
+    }
+
+    UNPROTECT(1); // r_result
     return r_result;
 }

@@ -2,7 +2,7 @@
  * @brief Implementation of Adaptive GEMALO algorithm
  */
 
-#include "ray_agemalo.hpp"
+#include "agemalo.hpp"
 #include "graph_maximal_packing.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "cpp_utils.hpp"
@@ -16,7 +16,7 @@
 #include <Rinternals.h>
 
 extern "C" {
-    SEXP S_ray_agemalo(
+    SEXP S_agemalo(
         SEXP s_adj_list,
         SEXP s_weight_list,
         SEXP s_y,
@@ -125,7 +125,7 @@ extern "C" {
  * @see convert_R_graph_to_vector For adjacency list conversion details
  * @see convert_R_weights_to_vector For weight list conversion details
  */
-SEXP S_ray_agemalo(
+SEXP S_agemalo(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_y,
@@ -160,35 +160,37 @@ SEXP S_ray_agemalo(
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
     // Convert numeric vector directly
-    std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
+    double* y_ptr = REAL(s_y);
+    std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
-    // --- Extract scalar parameters using defensive coercion ---
+    // Extract scalar parameters using R's C API
+
     // geodesic parameter
-    const size_t min_path_size = static_cast<size_t>(Rf_asInteger(s_min_path_size));
+    size_t min_path_size = (size_t)INTEGER(s_min_path_size)[0];
     // packing parameters
-    const size_t n_packing_vertices = static_cast<size_t>(Rf_asInteger(s_n_packing_vertices));
-    const size_t max_packing_iterations = static_cast<size_t>(Rf_asInteger(s_max_packing_iterations));
-    const double packing_precision = Rf_asReal(s_packing_precision);
+    size_t n_packing_vertices = (size_t)INTEGER(s_n_packing_vertices)[0];
+    size_t max_packing_iterations = (size_t)INTEGER(s_max_packing_iterations)[0];
+    double packing_precision = REAL(s_packing_precision)[0];
 
     // bw parameters
-    const size_t n_bws = static_cast<size_t>(Rf_asInteger(s_n_bws));
-    const bool log_grid = (Rf_asLogical(s_log_grid) == TRUE);
-    const double min_bw_factor = Rf_asReal(s_min_bw_factor);
-    const double max_bw_factor = Rf_asReal(s_max_bw_factor);
+    size_t n_bws = (size_t)INTEGER(s_n_bws)[0];
+    bool log_grid = (LOGICAL(s_log_grid)[0] == 1);
+    double min_bw_factor = REAL(s_min_bw_factor)[0];
+    double max_bw_factor = REAL(s_max_bw_factor)[0];
 
     // kernel parameters
-    const double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
-    const size_t kernel_type = static_cast<size_t>(Rf_asInteger(s_kernel_type));
+    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
+    size_t kernel_type = (size_t)INTEGER(s_kernel_type)[0];
     // model parameters
-    const double model_tolerance = Rf_asReal(s_model_tolerance);
-    const double model_blending_coef = Rf_asReal(s_model_blending_coef);
+    double model_tolerance = REAL(s_model_tolerance)[0];
+    double model_blending_coef = REAL(s_model_blending_coef)[0];
     // Bayesian bootstrap parameters
-    const size_t n_bb = static_cast<size_t>(Rf_asInteger(s_n_bb));
-    const double cri_probability = Rf_asReal(s_cri_probability);
+    size_t n_bb = (size_t)INTEGER(s_n_bb)[0];
+    double cri_probability = REAL(s_cri_probability)[0];
     // permutation parameters
-    const size_t n_perms = static_cast<size_t>(Rf_asInteger(s_n_perms));
+    size_t n_perms = (size_t)INTEGER(s_n_perms)[0];
     // verbose
-    const bool verbose = (Rf_asLogical(s_verbose) == TRUE);
+    bool verbose = (LOGICAL(s_verbose)[0] == 1);
 
     uniform_grid_graph_t grid_graph;
     size_t n_vertices = adj_list.size();
@@ -214,7 +216,7 @@ SEXP S_ray_agemalo(
     }
 
     // Call the C++ function
-    agemalo_result_t res = ray_agemalo(
+    agemalo_result_t res = agemalo(
         grid_graph,
         y,
         // geodesic parameter
@@ -274,211 +276,111 @@ SEXP S_ray_agemalo(
         SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
     }
     Rf_setAttrib(result, R_NamesSymbol, result_names);
-    UNPROTECT(1); // result_names
 
-    // 0: graph_diameter
-    {
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(s)[0] = grid_graph.graph_diameter;
-        SET_VECTOR_ELT(result, 0, s);
-        UNPROTECT(1);
-    }
+    // Helper function to convert vector to SEXP
+    auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
+        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
+        double* ptr = REAL(r_vec);
+        std::copy(vec.begin(), vec.end(), ptr);
+        return r_vec;
+    };
 
-    // 1: packing_radius
-    {
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(s)[0] = grid_graph.max_packing_radius;
-        SET_VECTOR_ELT(result, 1, s);
-        UNPROTECT(1);
-    }
+    // Helper function to convert matrix to SEXP
+    auto create_numeric_matrix = [](const std::vector<std::vector<double>>& mat) -> SEXP {
+        if (mat.empty()) return R_NilValue;
+        size_t nrow = mat.size();
+        size_t ncol = mat[0].size();
 
-    // 2: packing_vertices (1-based indices)
-    {
-        // Create grid vertices vector (1-based indices)
-        SEXP r_grid_vertices = PROTECT(Rf_allocVector(INTSXP, grid_graph.grid_vertices.size()));
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* ptr = REAL(r_mat);
 
-        size_t counter = 0;
-        for (const auto& i : grid_graph.grid_vertices) {
-            // Convert to 1-based indices for R
-            INTEGER(r_grid_vertices)[counter++] = i + 1;
-        }
-        SET_VECTOR_ELT(result, 2, r_grid_vertices);
-        UNPROTECT(1); // r_grid_vertices
-    }
-
-    // 3: grid_opt_bw
-    {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.grid_opt_bw.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.grid_opt_bw.begin(), res.grid_opt_bw.end(), REAL(s));
-        SET_VECTOR_ELT(result, 3, s);
-        UNPROTECT(1);
-    }
-
-    // 4: predictions
-    {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.predictions.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.predictions.begin(), res.predictions.end(), REAL(s));
-        SET_VECTOR_ELT(result, 4, s);
-        UNPROTECT(1);
-    }
-
-    // 5: errors
-    {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.errors.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.errors.begin(), res.errors.end(), REAL(s));
-        SET_VECTOR_ELT(result, 5, s);
-        UNPROTECT(1);
-    }
-
-    // 6: scale
-    {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.scale.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.scale.begin(), res.scale.end(), REAL(s));
-        SET_VECTOR_ELT(result, 6, s);
-        UNPROTECT(1);
-    }
-
-    // 7: grid_predictions (convert map to vector if needed)
-    {
-        std::vector<double> grid_pred_vec = map_to_vector(res.grid_predictions_map);
-        const R_xlen_t n = static_cast<R_xlen_t>(grid_pred_vec.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(grid_pred_vec.begin(), grid_pred_vec.end(), REAL(s));
-        SET_VECTOR_ELT(result, 7, s);
-        UNPROTECT(1);
-    }
-
-    // 8: bb_predictions (matrix or NULL)
-    if (!res.bb_predictions.empty()) {
-        const R_xlen_t nrow = static_cast<R_xlen_t>(res.bb_predictions.size());
-        const R_xlen_t ncol = static_cast<R_xlen_t>(res.bb_predictions[0].size());
-        SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-        double* p = REAL(s);
-        for (R_xlen_t i = 0; i < nrow; ++i) {
-            for (R_xlen_t j = 0; j < ncol; ++j) {
-                p[i + j * nrow] = res.bb_predictions[static_cast<size_t>(i)][static_cast<size_t>(j)];
+        for (size_t i = 0; i < nrow; ++i) {
+            for (size_t j = 0; j < ncol; ++j) {
+                ptr[i + j * nrow] = mat[i][j];  // Column-major order for R
             }
         }
-        SET_VECTOR_ELT(result, 8, s);
-        UNPROTECT(1);
+        return r_mat;
+    };
+
+    // Helper function to convert boolean vector to SEXP
+    auto create_logical_vector = [](const std::vector<bool>& vec) -> SEXP {
+        SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, vec.size()));
+        int* ptr = LOGICAL(r_vec);
+        for (size_t i = 0; i < vec.size(); ++i) {
+            ptr[i] = vec[i];
+        }
+        return r_vec;
+    };
+
+    // Set graph diameter
+    SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
+    REAL(diam)[0] = grid_graph.graph_diameter;
+    SET_VECTOR_ELT(result, 0, diam);
+
+    // Set packing radius
+    SEXP packing_radius = PROTECT(Rf_allocVector(REALSXP, 1));
+    REAL(packing_radius)[0] = grid_graph.max_packing_radius;
+    SET_VECTOR_ELT(result, 1, packing_radius);
+
+    // Create packing vertices vector (1-based indices)
+    int actual_n_packing_vertices = grid_graph.grid_vertices.size();
+    SEXP packing_vertices = PROTECT(Rf_allocVector(INTSXP, actual_n_packing_vertices));
+
+    int counter = 0;
+    for (const auto& i : grid_graph.grid_vertices) {
+        // Convert to 1-based indices for R
+        INTEGER(packing_vertices)[counter++] = i + 1;
+    }
+    SET_VECTOR_ELT(result, 2, packing_vertices);
+
+    // Set other numeric vectors
+    SET_VECTOR_ELT(result, 3, create_numeric_vector(res.grid_opt_bw));
+    SET_VECTOR_ELT(result, 4, create_numeric_vector(res.predictions));
+    SET_VECTOR_ELT(result, 5, create_numeric_vector(res.errors));
+    SET_VECTOR_ELT(result, 6, create_numeric_vector(res.scale));
+    SET_VECTOR_ELT(result, 7, create_numeric_vector(map_to_vector(res.grid_predictions_map)));
+
+    // Set bootstrap fields if available
+    if (!res.bb_predictions.empty()) {
+        SET_VECTOR_ELT(result, 8, create_numeric_matrix(res.bb_predictions));
+        SET_VECTOR_ELT(result, 9, create_numeric_vector(res.cri_lower));
+        SET_VECTOR_ELT(result, 10, create_numeric_vector(res.cri_upper));
     } else {
+        // Set to NULL if not available
         SET_VECTOR_ELT(result, 8, R_NilValue);
-    }
-
-    // 9: cri_lower
-    if (!res.cri_lower.empty()) {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.cri_lower.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.cri_lower.begin(), res.cri_lower.end(), REAL(s));
-        SET_VECTOR_ELT(result, 9, s);
-        UNPROTECT(1);
-    } else {
         SET_VECTOR_ELT(result, 9, R_NilValue);
-    }
-
-    // 10: cri_upper
-    if (!res.cri_upper.empty()) {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.cri_upper.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.cri_upper.begin(), res.cri_upper.end(), REAL(s));
-        SET_VECTOR_ELT(result, 10, s);
-        UNPROTECT(1);
-    } else {
         SET_VECTOR_ELT(result, 10, R_NilValue);
     }
 
-    // 11: null_predictions (matrix or NULL)
+    // Set permutation fields if available
     if (!res.null_predictions.empty()) {
-        const R_xlen_t nrow = static_cast<R_xlen_t>(res.null_predictions.size());
-        const R_xlen_t ncol = static_cast<R_xlen_t>(res.null_predictions[0].size());
-        SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-        double* p = REAL(s);
-        for (R_xlen_t i = 0; i < nrow; ++i) {
-            for (R_xlen_t j = 0; j < ncol; ++j) {
-                p[i + j * nrow] = res.null_predictions[static_cast<size_t>(i)][static_cast<size_t>(j)];
-            }
-        }
-        SET_VECTOR_ELT(result, 11, s);
-        UNPROTECT(1);
+        SET_VECTOR_ELT(result, 11, create_numeric_matrix(res.null_predictions));
+        SET_VECTOR_ELT(result, 12, create_numeric_vector(res.null_predictions_cri_lower));
+        SET_VECTOR_ELT(result, 13, create_numeric_vector(res.null_predictions_cri_upper));
     } else {
         SET_VECTOR_ELT(result, 11, R_NilValue);
-    }
-
-    // 12: null_predictions_cri_lower
-    if (!res.null_predictions_cri_lower.empty()) {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.null_predictions_cri_lower.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.null_predictions_cri_lower.begin(), res.null_predictions_cri_lower.end(), REAL(s));
-        SET_VECTOR_ELT(result, 12, s);
-        UNPROTECT(1);
-    } else {
         SET_VECTOR_ELT(result, 12, R_NilValue);
-    }
-
-    // 13: null_predictions_cri_upper
-    if (!res.null_predictions_cri_upper.empty()) {
-        const R_xlen_t n = static_cast<R_xlen_t>(res.null_predictions_cri_upper.size());
-        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-        std::copy(res.null_predictions_cri_upper.begin(), res.null_predictions_cri_upper.end(), REAL(s));
-        SET_VECTOR_ELT(result, 13, s);
-        UNPROTECT(1);
-    } else {
         SET_VECTOR_ELT(result, 13, R_NilValue);
     }
 
-    // 14-17: permutation test results if available
+    // Set permutation test results if available
     if (res.permutation_tests) {
-        // 14: p_values
-        {
-            const R_xlen_t n = static_cast<R_xlen_t>(res.permutation_tests->p_values.size());
-            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-            std::copy(res.permutation_tests->p_values.begin(),
-                      res.permutation_tests->p_values.end(), REAL(s));
-            SET_VECTOR_ELT(result, 14, s);
-            UNPROTECT(1);
-        }
-
-        // 15: effect_sizes
-        {
-            const R_xlen_t n = static_cast<R_xlen_t>(res.permutation_tests->effect_sizes.size());
-            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-            std::copy(res.permutation_tests->effect_sizes.begin(),
-                      res.permutation_tests->effect_sizes.end(), REAL(s));
-            SET_VECTOR_ELT(result, 15, s);
-            UNPROTECT(1);
-        }
-
-        // 16: significant_vertices (logical)
-        {
-            const R_xlen_t n = static_cast<R_xlen_t>(res.permutation_tests->significant_vertices.size());
-            SEXP s = PROTECT(Rf_allocVector(LGLSXP, n));
-            int* p = LOGICAL(s);
-            for (R_xlen_t i = 0; i < n; ++i) {
-                p[i] = res.permutation_tests->significant_vertices[static_cast<size_t>(i)] ? TRUE : FALSE;
-            }
-            SET_VECTOR_ELT(result, 16, s);
-            UNPROTECT(1);
-        }
-
-        // 17: null_distances
-        {
-            const R_xlen_t n = static_cast<R_xlen_t>(res.permutation_tests->null_distances.size());
-            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
-            std::copy(res.permutation_tests->null_distances.begin(),
-                      res.permutation_tests->null_distances.end(), REAL(s));
-            SET_VECTOR_ELT(result, 17, s);
-            UNPROTECT(1);
-        }
+        SET_VECTOR_ELT(result, 14, create_numeric_vector(res.permutation_tests->p_values));
+        SET_VECTOR_ELT(result, 15, create_numeric_vector(res.permutation_tests->effect_sizes));
+        SET_VECTOR_ELT(result, 16, create_logical_vector(res.permutation_tests->significant_vertices));
+        SET_VECTOR_ELT(result, 17, create_numeric_vector(res.permutation_tests->null_distances));
     } else {
-        for (int i = 14; i <= 17; ++i) {
+        for (int i = 14; i <= 17; i++) {
             SET_VECTOR_ELT(result, i, R_NilValue);
         }
     }
 
-    UNPROTECT(1); // result
+    // Count protected objects: result, result_names, diam, and all non-NULL vectors/matrices
+    int total_protected = 2;  // Start with result, result_names
+    for (int i = 0; i < n_elements; i++) {
+        if (VECTOR_ELT(result, i) != R_NilValue) total_protected++;
+    }
+
+    UNPROTECT(total_protected);
     return result;
 }

@@ -87,7 +87,7 @@ set_wgraph_t create_mknn_graph(const knn_search_result_t& knn_results, int k) {
 
                 // Look up distance in knn_results
                 for (int idx = 0; idx < k; ++idx) {
-                    if (knn_results.indices[i][idx] == j) {
+                    if (knn_results.indices[i][idx] == (int)j) {
                         distance = knn_results.distances[i][idx];
                         break;
                     }
@@ -192,8 +192,6 @@ SEXP S_create_mknn_graphs(
     int compute_full = (LOGICAL(s_compute_full)[0] == 1);
     int verbose = (LOGICAL(s_verbose)[0] == 1);
 
-    int nprot = 0;
-    PROTECT(s_X = Rf_coerceVector(s_X, REALSXP)); nprot++;
     int* dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
     int n_vertices = dimX[0];
 
@@ -303,56 +301,76 @@ SEXP S_create_mknn_graphs(
     }
 
     //
-    // Create R objects
+    // Create return list
     //
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 3));
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
+        SET_STRING_ELT(names, 0, Rf_mkChar("k_statistics"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("pruned_graphs"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("edge_pruning_stats"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
 
-    // Create a list to hold all the edge pruning stats matrices
-    SEXP edge_stats_list = PROTECT(Rf_allocVector(VECSXP, kmax - kmin + 1)); nprot++;
+    // 2:
+    {
+        // Create a list to hold all the edge pruning stats matrices
+        SEXP edge_stats_list = PROTECT(Rf_allocVector(VECSXP, kmax - kmin + 1));
 
-    // Fill the list with edge stats matrices for each k value
-    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        const auto& edge_pruning_stats = all_edge_pruning_stats[k_idx];
+        // Fill the list with edge stats matrices for each k value
+        for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
+            const auto& edge_pruning_stats = all_edge_pruning_stats[k_idx];
 
-        // Create matrix for this k value's stats
-        SEXP edge_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, edge_pruning_stats.stats.size(), 2));
-        double* stats_data = REAL(edge_stats_matrix);
+            // Create matrix for this k value's stats
+            SEXP edge_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, edge_pruning_stats.stats.size(), 2));
+            double* stats_data = REAL(edge_stats_matrix);
 
-        // Fill the matrix with data - edge_length and length_ratio
-        for (size_t i = 0; i < edge_pruning_stats.stats.size(); i++) {
-            const auto& stat = edge_pruning_stats.stats[i];
-            stats_data[i] = stat.edge_length;
-            stats_data[i + edge_pruning_stats.stats.size()] = stat.length_ratio;
+            // Fill the matrix with data - edge_length and length_ratio
+            for (size_t i = 0; i < edge_pruning_stats.stats.size(); i++) {
+                const auto& stat = edge_pruning_stats.stats[i];
+                stats_data[i] = stat.edge_length;
+                stats_data[i + edge_pruning_stats.stats.size()] = stat.length_ratio;
+            }
+
+            // Set column names for the matrix
+            {
+                SEXP stats_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+                SET_VECTOR_ELT(stats_dimnames, 0, R_NilValue);  // No row names
+                {
+                SEXP stats_colnames = PROTECT(Rf_allocVector(STRSXP, 2));
+                SET_STRING_ELT(stats_colnames, 0, Rf_mkChar("edge_length"));
+                SET_STRING_ELT(stats_colnames, 1, Rf_mkChar("length_ratio"));
+                SET_VECTOR_ELT(stats_dimnames, 1, stats_colnames);
+                UNPROTECT(1); // stats_colnames
+                }
+                Rf_setAttrib(edge_stats_matrix, R_DimNamesSymbol, stats_dimnames);
+                UNPROTECT(1); // stats_dimnames
+            }
+
+            // Add this matrix to the list
+            SET_VECTOR_ELT(edge_stats_list, k_idx, edge_stats_matrix);
+            UNPROTECT(1); // edge_stats_matrix
         }
 
-        // Set column names for the matrix
-        SEXP stats_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
-        SET_VECTOR_ELT(stats_dimnames, 0, R_NilValue);  // No row names
+        // Set names for the edge_stats_list (k values)
+        {
+            SEXP edge_stats_list_names = PROTECT(Rf_allocVector(STRSXP, kmax - kmin + 1));
+            for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
+                SET_STRING_ELT(edge_stats_list_names, k_idx, Rf_mkChar(std::to_string(kmin + k_idx).c_str()));
+            }
+            Rf_setAttrib(edge_stats_list, R_NamesSymbol, edge_stats_list_names);
+            UNPROTECT(1); // edge_stats_list_names
+        }
 
-        SEXP stats_colnames = PROTECT(Rf_allocVector(STRSXP, 2));
-        SET_STRING_ELT(stats_colnames, 0, Rf_mkChar("edge_length"));
-        SET_STRING_ELT(stats_colnames, 1, Rf_mkChar("length_ratio"));
-        SET_VECTOR_ELT(stats_dimnames, 1, stats_colnames);
-
-        Rf_setAttrib(edge_stats_matrix, R_DimNamesSymbol, stats_dimnames);
-
-        // Add this matrix to the list
-        SET_VECTOR_ELT(edge_stats_list, k_idx, edge_stats_matrix);
-
-        UNPROTECT(3); // Unprotect the matrix, dimnames, and colnames
+        SET_VECTOR_ELT(result, 2, edge_stats_list);
+        UNPROTECT(1); // edge_stats_list
     }
-
-    // Set names for the edge_stats_list (k values)
-    SEXP edge_stats_list_names = PROTECT(Rf_allocVector(STRSXP, kmax - kmin + 1)); nprot++;
-    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        SET_STRING_ELT(edge_stats_list_names, k_idx, Rf_mkChar(std::to_string(kmin + k_idx).c_str()));
-    }
-    Rf_setAttrib(edge_stats_list, R_NamesSymbol, edge_stats_list_names);
-
 
     SEXP pruned_graphs_list = R_NilValue;
 
     if (compute_full) {
-        PROTECT(pruned_graphs_list = Rf_allocVector(VECSXP, kmax - kmin + 1)); nprot++;
+        PROTECT(pruned_graphs_list = Rf_allocVector(VECSXP, kmax - kmin + 1));
 
         for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
             // Process pruned graph
@@ -398,51 +416,49 @@ SEXP S_create_mknn_graphs(
             SET_VECTOR_ELT(pruned_graphs_list, k_idx, r_pruned_graph);
             UNPROTECT(4);
         }
+        SET_VECTOR_ELT(result, 1, pruned_graphs_list);
+        UNPROTECT(1); // pruned_graphs_list
+    } else {
+        SET_VECTOR_ELT(result, 1, pruned_graphs_list);
     }
 
     // Create statistics matrix
-    SEXP k_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, k_statistics.size(), 5)); nprot++;
-    double* data = REAL(k_stats_matrix);
-    for (size_t i = 0; i < k_statistics.size(); i++) {
-        data[i] = kmin + i;
-        for (size_t j = 0; j < 4; j++) {
-            data[i + (j + 1) * k_statistics.size()] = k_statistics[i][j];
+    {
+        SEXP k_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, k_statistics.size(), 5));
+        double* data = REAL(k_stats_matrix);
+        for (size_t i = 0; i < k_statistics.size(); i++) {
+            data[i] = kmin + i;
+            for (size_t j = 0; j < 4; j++) {
+                data[i + (j + 1) * k_statistics.size()] = k_statistics[i][j];
+            }
         }
+
+        {
+            // Set column names
+            SEXP k_stats_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+            SET_VECTOR_ELT(k_stats_dimnames, 0, R_NilValue);
+
+            SEXP k_stats_colnames = PROTECT(Rf_allocVector(STRSXP, 5));
+            SET_STRING_ELT(k_stats_colnames, 0, Rf_mkChar("k"));
+            SET_STRING_ELT(k_stats_colnames, 1, Rf_mkChar("n_edges"));
+            SET_STRING_ELT(k_stats_colnames, 2, Rf_mkChar("n_edges_in_pruned_graph"));
+            SET_STRING_ELT(k_stats_colnames, 3, Rf_mkChar("n_removed_edges"));
+            SET_STRING_ELT(k_stats_colnames, 4, Rf_mkChar("edge_reduction_ratio"));
+
+            SET_VECTOR_ELT(k_stats_dimnames, 1, k_stats_colnames);
+            Rf_setAttrib(k_stats_matrix, R_DimNamesSymbol, k_stats_dimnames);
+            UNPROTECT(1); // k_stats_dimnames, k_stats_colnames
+        }
+        SET_VECTOR_ELT(result, 0, k_stats_matrix);
+        UNPROTECT(1); // k_stats_matrix
     }
-
-    // Set column names
-    SEXP k_stats_dimnames = PROTECT(Rf_allocVector(VECSXP, 2)); nprot++;
-    SET_VECTOR_ELT(k_stats_dimnames, 0, R_NilValue);
-
-    SEXP k_stats_colnames = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
-    SET_STRING_ELT(k_stats_colnames, 0, Rf_mkChar("k"));
-    SET_STRING_ELT(k_stats_colnames, 1, Rf_mkChar("n_edges"));
-    SET_STRING_ELT(k_stats_colnames, 2, Rf_mkChar("n_edges_in_pruned_graph"));
-    SET_STRING_ELT(k_stats_colnames, 3, Rf_mkChar("n_removed_edges"));
-    SET_STRING_ELT(k_stats_colnames, 4, Rf_mkChar("edge_reduction_ratio"));
-
-    SET_VECTOR_ELT(k_stats_dimnames, 1, k_stats_colnames);
-    Rf_setAttrib(k_stats_matrix, R_DimNamesSymbol, k_stats_dimnames);
-
-    // Create return list
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 3)); nprot++;
-    SET_VECTOR_ELT(result, 0, k_stats_matrix);
-    SET_VECTOR_ELT(result, 1, pruned_graphs_list);
-    SET_VECTOR_ELT(result, 2, edge_stats_list);
-
-    // Set names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 3)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("k_statistics"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("pruned_graphs"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("edge_pruning_stats"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
 
     if (verbose) {
         elapsed_time(serial_start_time, "DONE", true);
         elapsed_time(total_start_time, "Total elapsed time", true);
     }
 
-    UNPROTECT(nprot);
+    UNPROTECT(1); // result
     return result;
 }
 
@@ -464,10 +480,6 @@ SEXP S_create_mknn_graphs(
 */
 SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
 
-    int nprot = 0;
-    PROTECT(RX = Rf_coerceVector(RX, REALSXP)); nprot++;
-    PROTECT(Rk = Rf_coerceVector(Rk, INTSXP)); nprot++;
-
     double *X = REAL(RX);
     int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
     int nrX = dimX[0];
@@ -484,9 +496,10 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
     }
 
     // Finding kNN's for all points of X
-    SEXP knn_res = PROTECT(S_kNN(RX, Rk)); nprot++;
+    SEXP knn_res = S_kNN(RX, Rk);
     int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
     double *distances = REAL(VECTOR_ELT(knn_res, 1));
+    UNPROTECT(1); // knn_res - as S_kNN() returns a protected object !!!
 
     if (indices == NULL) {
         Rf_error("MW_kNN_graph: Error in S_kNN: kNN index extraction failed.");
@@ -525,8 +538,20 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
     annDeallocPts(dataPts);
     annClose(); // Close ANN
 
+    // Prepare return list
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 2)); // List with 2 elements
+
+    // Add names to list elements
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
+        Rf_setAttrib(res, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
+
     // Creating adj_list associated with adj_vect
-    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, nrX)); nprot++; // List with nrX components; each component hold indices of points adjacent to the given point (index of the list)
+    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, nrX));  // List with nrX components; each component hold indices of points adjacent to the given point (index of the list)
     for (int i = 0; i < nrX; i++) {
         SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect->at(i).size())); // Adjacency list of the i-th vertex
         int* A = INTEGER(RA);
@@ -539,7 +564,7 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
     }
 
     // Creating dists_list associated with dists_vect
-    SEXP dists_list = PROTECT(Rf_allocVector(VECSXP, nrX)); nprot++; // List with nrX components; each component hold indices of points adjacent to the given point (index of the list)
+    SEXP dists_list = PROTECT(Rf_allocVector(VECSXP, nrX));  // List with nrX components; each component hold indices of points adjacent to the given point (index of the list)
     for (int i = 0; i < nrX; i++) {
         SEXP RW = PROTECT(Rf_allocVector(REALSXP, dists_vect->at(i).size())); // Dists list of the i-th vertex
         double* W = REAL(RW);
@@ -551,18 +576,9 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
         UNPROTECT(1);
     }
 
-    // Prepare return list
-    SEXP res = PROTECT(Rf_allocVector(VECSXP, 2)); nprot++; // List with 2 elements
     SET_VECTOR_ELT(res, 0, adj_list);
     SET_VECTOR_ELT(res, 1, dists_list);
 
-    // Add names to list elements
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2)); nprot++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
-    Rf_setAttrib(res, R_NamesSymbol, names);
-
-    UNPROTECT(nprot);
-
+    UNPROTECT(3); // res, adj_list, dists_list
     return res;
 }

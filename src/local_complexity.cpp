@@ -161,9 +161,6 @@ SEXP S_estimate_local_complexity(
     SEXP pilot_bandwidth_r,
     SEXP kernel_type_r) {
 
-    // Initialize protected counter
-    int n_protected = 0;
-
     // Check input types
     if (!Rf_isReal(x_r) || !Rf_isReal(y_r) || !Rf_isInteger(center_idx_r) || !Rf_isReal(pilot_bandwidth_r)) {
         Rf_error("Invalid input types");
@@ -186,18 +183,16 @@ SEXP S_estimate_local_complexity(
 
     // Allocate output
     SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
-    n_protected++;
 
     // Compute result
     try {
         REAL(result_r)[0] = estimate_local_complexity(x, y, center_idx, pilot_bandwidth, kernel_type);
     } catch (const std::exception& e) {
-        UNPROTECT(n_protected);
+        UNPROTECT(1);
         Rf_error("Error in estimate_local_complexity: %s", e.what());
     }
 
-    // Clean up and return
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return result_r;
 }
 
@@ -786,8 +781,6 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
                                                      SEXP y_r,
                                                      SEXP pilot_bandwidth_r,
                                                      SEXP kernel_type_r) {
-    int n_protected = 0;
-
     // Check for NULL inputs
     if (x_r == R_NilValue || y_r == R_NilValue ||
         pilot_bandwidth_r == R_NilValue || kernel_type_r == R_NilValue) {
@@ -815,7 +808,6 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
 
     // Allocate result vector
     SEXP result_r = PROTECT(Rf_allocVector(REALSXP, n_points));
-    n_protected++;
 
     try {
         auto result = estimate_ma_binary_local_complexity_quadratic(
@@ -825,11 +817,11 @@ SEXP S_estimate_ma_binary_local_complexity_quadratic(SEXP x_r,
         std::copy(result.begin(), result.end(), REAL(result_r));
 
     } catch (const std::exception& e) {
-        UNPROTECT(n_protected);
+        UNPROTECT(1);
         Rf_error("Error in estimate_ma_binary_local_complexity: %s", e.what());
     }
 
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return result_r;
 }
 
@@ -861,8 +853,6 @@ SEXP S_estimate_binary_local_complexity(
     SEXP kernel_type_r,
     SEXP method_r) {  // 1 for quadratic, 2 for comparative
 
-    int n_protected = 0;
-
     if (!Rf_isReal(x_r) || !Rf_isReal(y_r) || !Rf_isInteger(center_idx_r) || !Rf_isReal(pilot_bandwidth_r)) {
         Rf_error("Invalid input types");
     }
@@ -881,7 +871,6 @@ SEXP S_estimate_binary_local_complexity(
     int method = INTEGER(method_r)[0];
 
     SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
-    n_protected++;
 
     try {
         double result;
@@ -896,11 +885,11 @@ SEXP S_estimate_binary_local_complexity(
         }
         REAL(result_r)[0] = result;
     } catch (const std::exception& e) {
-        UNPROTECT(n_protected);
+        UNPROTECT(1);
         Rf_error("Error in estimate_binary_local_complexity: %s", e.what());
     }
 
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return result_r;
 }
 
@@ -931,16 +920,15 @@ SEXP S_estimate_binary_local_complexity(
     int kernel_type = INTEGER(kernel_type_r)[0];
 
     SEXP result_r = PROTECT(Rf_allocVector(REALSXP, 1));
-    n_protected++;
 
     try {
         REAL(result_r)[0] = estimate_binary_local_complexity(x, y, center_idx, pilot_bandwidth, kernel_type);
     } catch (const std::exception& e) {
-        UNPROTECT(n_protected);
+        UNPROTECT(1);
         Rf_error("Error in estimate_binary_local_complexity: %s", e.what());
     }
 
-    UNPROTECT(n_protected);
+    UNPROTECT(1);
     return result_r;
 }
 #endif

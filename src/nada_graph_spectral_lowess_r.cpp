@@ -155,62 +155,79 @@ SEXP S_nada_graph_spectral_lowess(
     while (names[n_elements] != NULL) n_elements++;
 
     // Create list and protect it
-    int protect_count = 0;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-    protect_count++;
-
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    protect_count++;
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    {
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        for (int i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+        UNPROTECT(1);
     }
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
     // Helper function to convert vector to SEXP
-    auto vec_to_sexp = [&protect_count](const std::vector<double>& vec) -> SEXP {
+    auto vec_to_sexp = [&](const std::vector<double>& vec) -> SEXP {
         SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        protect_count++;
         double* ptr = REAL(r_vec);
         std::copy(vec.begin(), vec.end(), ptr);
         return r_vec;
     };
 
     // Set values
-    SET_VECTOR_ELT(result, 0, vec_to_sexp(res.predictions));
-
+    {
+        SEXP s = vec_to_sexp(res.predictions);
+        SET_VECTOR_ELT(r_result, 0, s);
+        UNPROTECT(1);
+    }
 
     // Convert matrix of bw predictions
-    SEXP bw_pred_r = PROTECT(Rf_allocMatrix(REALSXP,
-                                            res.bw_predictions[0].size(),
-                                            res.bw_predictions.size())); protect_count++;
-    for(size_t i = 0; i < res.bw_predictions.size(); i++) {
-        std::copy(res.bw_predictions[i].begin(),
-                  res.bw_predictions[i].end(),
-                  REAL(bw_pred_r) + i * res.bw_predictions[0].size());
+    {
+        SEXP bw_pred_r = PROTECT(Rf_allocMatrix(REALSXP,
+                                                res.bw_predictions[0].size(),
+                                                res.bw_predictions.size()));
+        for(size_t i = 0; i < res.bw_predictions.size(); i++) {
+            std::copy(res.bw_predictions[i].begin(),
+                      res.bw_predictions[i].end(),
+                      REAL(bw_pred_r) + i * res.bw_predictions[0].size());
+        }
+        SET_VECTOR_ELT(r_result, 1, bw_pred_r);
+        UNPROTECT(1);
     }
-    SET_VECTOR_ELT(result, 1, bw_pred_r);
 
-    SET_VECTOR_ELT(result, 2, vec_to_sexp(res.errors));
-    SET_VECTOR_ELT(result, 3, vec_to_sexp(res.global_bws));
+    {
+        SEXP s = vec_to_sexp(res.errors);
+        SET_VECTOR_ELT(r_result, 2, s);
+        UNPROTECT(1);
+    }
 
-    SEXP s_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
-    protect_count++;
-    INTEGER(s_opt_bw_idx)[0] = res.opt_bw_idx;
-    SET_VECTOR_ELT(result, 4, s_opt_bw_idx);
+    {
+        SEXP s = vec_to_sexp(res.global_bws);
+        SET_VECTOR_ELT(r_result, 3, s);
+        UNPROTECT(1);
+    }
 
-    // result.opt_bw = global_bws[opt_bw_idx];
-    SEXP s_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
-    protect_count++;
-    REAL(s_opt_bw)[0] = res.opt_bw;
-    SET_VECTOR_ELT(result, 5, s_opt_bw);
+    {
+        SEXP s_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(s_opt_bw_idx)[0] = res.opt_bw_idx;
+        SET_VECTOR_ELT(r_result, 4, s_opt_bw_idx);
+        UNPROTECT(1);
+    }
 
-    SEXP s_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
-    protect_count++;
-    REAL(s_graph_diameter)[0] = graph.graph_diameter;
-    SET_VECTOR_ELT(result, 6, s_graph_diameter);
+    {
+        // r_result.opt_bw = global_bws[opt_bw_idx];
+        SEXP s_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s_opt_bw)[0] = res.opt_bw;
+        SET_VECTOR_ELT(r_result, 5, s_opt_bw);
+        UNPROTECT(1);
+    }
 
-    UNPROTECT(protect_count);
-    return result;
+    {
+        SEXP s_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s_graph_diameter)[0] = graph.graph_diameter;
+        SET_VECTOR_ELT(r_result, 6, s_graph_diameter);
+        UNPROTECT(1);
+    }
+
+    UNPROTECT(1);
+    return r_result;
 }

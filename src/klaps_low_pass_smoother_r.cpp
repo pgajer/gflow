@@ -83,23 +83,24 @@ extern "C" {
 			NULL
 		};
 		int n_elements = 12;
-
-		int protect_count = 0;
-		SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
-		SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
-		for (int i = 0; i < n_elements; ++i) {
-			SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+		SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+		{
+			SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, n_elements));
+			for (int i = 0; i < n_elements; ++i) {
+				SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+			}
+			Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+			UNPROTECT(1);
 		}
-		Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
 		// Helpers for conversion
 		auto vec_to_real = [&](const std::vector<double>& v) {
-			SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size())); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size()));
 			std::copy(v.begin(), v.end(), REAL(x));
 			return x;
 		};
 		auto mat_to_real = [&](const Eigen::MatrixXd& M) {
-			SEXP x = PROTECT(Rf_allocMatrix(REALSXP, M.rows(), M.cols())); protect_count++;
+			SEXP x = PROTECT(Rf_allocMatrix(REALSXP, M.rows(), M.cols()));
 			double* ptr = REAL(x);
 			for (int j = 0; j < M.cols(); ++j)
 				for (int i = 0; i < M.rows(); ++i)
@@ -107,40 +108,100 @@ extern "C" {
 			return x;
 		};
 		auto vec_to_int = [&](const std::vector<size_t>& v, bool one_based=false) {
-			SEXP x = PROTECT(Rf_allocVector(INTSXP, v.size())); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(INTSXP, v.size()));
 			for (size_t i = 0; i < v.size(); ++i)
 				INTEGER(x)[i] = one_based ? (int)v[i] + 1 : (int)v[i];
 			return x;
 		};
 		auto scalar_int = [&](size_t v, bool one_based=false) {
-			SEXP x = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
+			SEXP x = PROTECT(Rf_allocVector(INTSXP, 1));
 			INTEGER(x)[0] = one_based ? (int)v + 1 : (int)v;
 			return x;
 		};
 
-		// Fill in slots
-		SET_VECTOR_ELT(r_result, 0, vec_to_real(result.evalues));             // evalues
-		SET_VECTOR_ELT(r_result, 1, mat_to_real(result.evectors));            // evectors
-		SET_VECTOR_ELT(r_result, 2, vec_to_int(result.candidate_ks, true));   // candidate_ks
-		SET_VECTOR_ELT(r_result, 3, vec_to_real(result.eigengaps));           // eigengaps
-		SET_VECTOR_ELT(r_result, 4, scalar_int(result.opt_k_eigengap, true)); // opt_k_eigengap
-		SET_VECTOR_ELT(r_result, 5, vec_to_real(result.gcv_scores));          // gcv_scores
-		SET_VECTOR_ELT(r_result, 6, scalar_int(result.opt_k_gcv, true));      // opt_k_gcv
-		SET_VECTOR_ELT(r_result, 7, vec_to_real(result.spectral_energy));     // spectral_energy
-		SET_VECTOR_ELT(r_result, 8, scalar_int(result.opt_k_spectral_energy, true)); // opt_k_spectral_energy
+		// evalues
+		{
+			SEXP s = vec_to_real(result.evalues);
+			SET_VECTOR_ELT(r_result, 0, s);
+			UNPROTECT(1);
+		}
+
+		// evectors
+		{
+			SEXP s = mat_to_real(result.evectors);
+			SET_VECTOR_ELT(r_result, 1, s);
+			UNPROTECT(1);
+		}
+
+		// candidate_ks
+		{
+			SEXP s = vec_to_int(result.candidate_ks, true);
+			SET_VECTOR_ELT(r_result, 2, s);
+			UNPROTECT(1);
+		}
+
+		// eigengaps
+		{
+			SEXP s = vec_to_real(result.eigengaps);
+			SET_VECTOR_ELT(r_result, 3, s);
+			UNPROTECT(1);
+		}
+
+		// opt_k_eigengap
+		{
+			SEXP s = scalar_int(result.opt_k_eigengap, true);
+			SET_VECTOR_ELT(r_result, 4, s);
+			UNPROTECT(1);
+		}
+
+		// gcv_scores
+		{
+			SEXP s = vec_to_real(result.gcv_scores);
+			SET_VECTOR_ELT(r_result, 5, s);
+			UNPROTECT(1);
+		}
+
+		// opt_k_gcv
+		{
+			SEXP s = scalar_int(result.opt_k_gcv, true);
+			SET_VECTOR_ELT(r_result, 6, s);
+			UNPROTECT(1);
+		}
+
+		// spectral_energy
+		{
+			SEXP s = vec_to_real(result.spectral_energy);
+			SET_VECTOR_ELT(r_result, 7, s);
+			UNPROTECT(1);
+		}
+
+		// opt_k_spectral_energy
+		{
+			SEXP s = scalar_int(result.opt_k_spectral_energy, true);
+			SET_VECTOR_ELT(r_result, 8, s);
+			UNPROTECT(1);
+		}
 
 		// used_method: 0=Eigengap,1=GCV,2=EnergyThreshold
-		SEXP Rmethod = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
-		INTEGER(Rmethod)[0] = static_cast<int>(result.used_method);
-		SET_VECTOR_ELT(r_result, 9, Rmethod);
+		{
+			SEXP Rmethod = PROTECT(Rf_allocVector(INTSXP, 1));
+			INTEGER(Rmethod)[0] = static_cast<int>(result.used_method);
+			SET_VECTOR_ELT(r_result, 9, Rmethod);
+			UNPROTECT(1);
+		}
 
-		SET_VECTOR_ELT(r_result,10, vec_to_real(result.predictions));  // predictions
+		// predictions
+		{
+			SEXP s = vec_to_real(result.predictions);
+			SET_VECTOR_ELT(r_result,10, s);
+			UNPROTECT(1);
+		}
 
 		// k_predictions: n_vertices × n_candidates matrix (possibly empty)
 		{
 			size_t ncol = result.k_predictions.size();
 			size_t nrow = ncol ? result.k_predictions[0].size() : 0;
-			SEXP Kpred = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); protect_count++;
+			SEXP Kpred = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
 			double* ptr = REAL(Kpred);
 			for (size_t j = 0; j < ncol; ++j) {
 				for (size_t i = 0; i < nrow; ++i) {
@@ -148,9 +209,10 @@ extern "C" {
 				}
 			}
 			SET_VECTOR_ELT(r_result,11, Kpred);
+			UNPROTECT(1);
 		}
 
-		UNPROTECT(protect_count);
+		UNPROTECT(1);
 		return r_result;
 	}
 }  // extern "C"

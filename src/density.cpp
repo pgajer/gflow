@@ -500,53 +500,56 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
 
     // --- Build result list (container-first) ---
     const int N_COMPONENTS = 6;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
-    SEXP names  = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
-    SET_STRING_ELT(names, 0, Rf_mkChar("y"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("bw"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("bw_auto_selected"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("offset"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("start"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("end"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    {
+        SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(r_names, 0, Rf_mkChar("y"));
+        SET_STRING_ELT(r_names, 1, Rf_mkChar("bw"));
+        SET_STRING_ELT(r_names, 2, Rf_mkChar("bw_auto_selected"));
+        SET_STRING_ELT(r_names, 3, Rf_mkChar("offset"));
+        SET_STRING_ELT(r_names, 4, Rf_mkChar("start"));
+        SET_STRING_ELT(r_names, 5, Rf_mkChar("end"));
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+        UNPROTECT(1); // r_names
+    }
 
     // 0: y (density)
     {
-        SEXP el0 = PROTECT(convert_vector_double_to_R(gdens_res.density));
-        SET_VECTOR_ELT(result, 0, el0);
+        SEXP el0 = convert_vector_double_to_R(gdens_res.density);
+        SET_VECTOR_ELT(r_result, 0, el0);
         UNPROTECT(1);
     }
     // 1: bw
     {
         SEXP s_bw = PROTECT(Rf_ScalarReal(gdens_res.bandwidth));
-        SET_VECTOR_ELT(result, 1, s_bw);
+        SET_VECTOR_ELT(r_result, 1, s_bw);
         UNPROTECT(1);
     }
     // 2: bw_auto_selected
     {
         SEXP s_auto = PROTECT(Rf_ScalarLogical(gdens_res.auto_selected ? TRUE : FALSE));
-        SET_VECTOR_ELT(result, 2, s_auto);
+        SET_VECTOR_ELT(r_result, 2, s_auto);
         UNPROTECT(1);
     }
     // 3: offset
     {
         SEXP s_off = PROTECT(Rf_ScalarReal(gdens_res.offset));
-        SET_VECTOR_ELT(result, 3, s_off);
+        SET_VECTOR_ELT(r_result, 3, s_off);
         UNPROTECT(1);
     }
     // 4: start
     {
         SEXP s_start = PROTECT(Rf_ScalarReal(gdens_res.start));
-        SET_VECTOR_ELT(result, 4, s_start);
+        SET_VECTOR_ELT(r_result, 4, s_start);
         UNPROTECT(1);
     }
     // 5: end
     {
         SEXP s_end = PROTECT(Rf_ScalarReal(gdens_res.end));
-        SET_VECTOR_ELT(result, 5, s_end);
+        SET_VECTOR_ELT(r_result, 5, s_end);
         UNPROTECT(1);
     }
 
-    UNPROTECT(2); // result, names
-    return result;
+    UNPROTECT(1); // r_result
+    return r_result;
 }

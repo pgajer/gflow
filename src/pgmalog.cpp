@@ -1154,15 +1154,13 @@ SEXP S_upgmalog(SEXP s_x,
                SEXP s_epsilon,
                SEXP s_verbose) {
 
-    int n_protected = 0;  // Track number of PROTECT calls
-
-    int n_points = LENGTH(s_x);
+    const size_t n_points = LENGTH(s_x);
     std::vector<double> x(REAL(s_x), REAL(s_x) + n_points);
     std::vector<double> y(REAL(s_y), REAL(s_y) + n_points);
 
     // Handle empty y_true vector
     std::vector<double> y_true;
-    if (LENGTH(s_y_true) == n_points) {
+    if (s_y_true != R_NilValue && (size_t)LENGTH(s_y_true) == n_points) {
         y_true.assign(REAL(s_y_true), REAL(s_y_true) + LENGTH(s_y_true));
     }
 
@@ -1201,55 +1199,110 @@ SEXP S_upgmalog(SEXP s_x,
                                 verbose);
     // Creating return list
     const int N_COMPONENTS = 13;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
 
-    SET_VECTOR_ELT(result, 0, convert_vector_int_to_R(cpp_results.h_values)); n_protected++;
 
-    if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
-        SET_VECTOR_ELT(result, 1, convert_vector_double_to_R(cpp_results.h_cv_errors)); n_protected++;
+        // 0: h_values
+    {
+        SEXP s = convert_vector_int_to_R(cpp_results.h_values);
+        SET_VECTOR_ELT(result, 0, s);
+        UNPROTECT(1);
+    }
+
+    // 1: h_errors (or NULL)
+    if (!cpp_results.h_cv_errors.empty()) {
+        SEXP s = convert_vector_double_to_R(cpp_results.h_cv_errors);
+        SET_VECTOR_ELT(result, 1, s);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(result, 1, R_NilValue);
     }
 
-    SEXP s_opt_h_idx = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(s_opt_h_idx)[0] = cpp_results.opt_h_idx + 1;
-    SET_VECTOR_ELT(result, 2, s_opt_h_idx);
+    // 2: opt_h_idx (1-based, keep as REALSXP to match original behavior)
+    {
+        SEXP s_opt_h_idx = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s_opt_h_idx)[0] = (double)(cpp_results.opt_h_idx + 1);
+        SET_VECTOR_ELT(result, 2, s_opt_h_idx);
+        UNPROTECT(1);
+    }
 
-    SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(s_opt_h)[0] = cpp_results.opt_h;
-    SET_VECTOR_ELT(result, 3, s_opt_h);
+    // 3: opt_h
+    {
+        SEXP s_opt_h = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(s_opt_h)[0] = cpp_results.opt_h;
+        SET_VECTOR_ELT(result, 3, s_opt_h);
+        UNPROTECT(1);
+    }
 
-    SET_VECTOR_ELT(result, 4, convert_vector_vector_int_to_R(cpp_results.graph.adj_list)); n_protected++;
-    SET_VECTOR_ELT(result, 5, convert_vector_vector_double_to_R(cpp_results.graph.weight_list)); n_protected++;
-    SET_VECTOR_ELT(result, 6, convert_vector_double_to_R(cpp_results.predictions)); n_protected++;
-    SET_VECTOR_ELT(result, 7, convert_vector_double_to_R(cpp_results.local_predictions)); n_protected++;
+    // 4: graph_adj_list
+    {
+        SEXP s = convert_vector_vector_int_to_R(cpp_results.graph.adj_list);
+        SET_VECTOR_ELT(result, 4, s);
+        UNPROTECT(1);
+    }
 
-    if (cpp_results.bb_predictions.size() > 0) {
-        SET_VECTOR_ELT(result, 8, convert_vector_double_to_R(cpp_results.bb_predictions)); n_protected++;
-        SET_VECTOR_ELT(result, 9, convert_vector_double_to_R(cpp_results.ci_lower)); n_protected++;
-        SET_VECTOR_ELT(result, 10,convert_vector_double_to_R(cpp_results.ci_upper)); n_protected++;
+    // 5: graph_edge_lengths
+    {
+        SEXP s = convert_vector_vector_double_to_R(cpp_results.graph.weight_list);
+        SET_VECTOR_ELT(result, 5, s);
+        UNPROTECT(1);
+    }
+
+    // 6: predictions
+    {
+        SEXP s = convert_vector_double_to_R(cpp_results.predictions);
+        SET_VECTOR_ELT(result, 6, s);
+        UNPROTECT(1);
+    }
+
+    // 7: local_predictions
+    {
+        SEXP s = convert_vector_double_to_R(cpp_results.local_predictions);
+        SET_VECTOR_ELT(result, 7, s);
+        UNPROTECT(1);
+    }
+
+    // 8-10: bootstrap results (or NULLs)
+    if (!cpp_results.bb_predictions.empty()) {
+        SEXP s = convert_vector_double_to_R(cpp_results.bb_predictions);
+        SET_VECTOR_ELT(result, 8, s);
+        UNPROTECT(1);
+
+        s = convert_vector_double_to_R(cpp_results.ci_lower);
+        SET_VECTOR_ELT(result, 9, s);
+        UNPROTECT(1);
+
+        s = convert_vector_double_to_R(cpp_results.ci_upper);
+        SET_VECTOR_ELT(result, 10, s);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(result, 8, R_NilValue);
         SET_VECTOR_ELT(result, 9, R_NilValue);
         SET_VECTOR_ELT(result, 10, R_NilValue);
     }
 
-    if (cpp_results.true_errors.size() > 0) {
-        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
+    // 11: true_error (mean of vector, or NULL)
+    if (!cpp_results.true_errors.empty()) {
+        SEXP s_true_error = PROTECT(Rf_allocVector(REALSXP, 1));
         double mean_true_error = std::accumulate(cpp_results.true_errors.begin(),
-                                                 cpp_results.true_errors.end(), 0.0) /  cpp_results.true_errors.size();
+                                                 cpp_results.true_errors.end(), 0.0) /
+                                 (double) cpp_results.true_errors.size();
         REAL(s_true_error)[0] = mean_true_error;
         SET_VECTOR_ELT(result, 11, s_true_error);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(result, 11, R_NilValue);
     }
 
-    SET_VECTOR_ELT(result, 12,
-                   convert_vector_vector_double_to_R(cpp_results.h_predictions)); n_protected++;
+    // 12: h_predictions
+    {
+        SEXP s = convert_vector_vector_double_to_R(cpp_results.h_predictions);
+        SET_VECTOR_ELT(result, 12, s);
+        UNPROTECT(1);
+    }
 
-
-    // Setting names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
+    // Setting names for return list — keep protected until tail
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
     SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
     SET_STRING_ELT(names, 1, Rf_mkChar("h_errors"));
     SET_STRING_ELT(names, 2, Rf_mkChar("opt_h_idx"));
@@ -1263,11 +1316,9 @@ SEXP S_upgmalog(SEXP s_x,
     SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
     SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
     SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
-
     Rf_setAttrib(result, R_NamesSymbol, names);
 
-    UNPROTECT(n_protected);
-
+    UNPROTECT(2); // result, names
     return result;
 }
 

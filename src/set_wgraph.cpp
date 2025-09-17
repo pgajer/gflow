@@ -438,122 +438,88 @@ SEXP S_find_graph_paths_within_radius(
     SEXP s_radius) {
 
     // Convert input parameters using R's C API
-    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
     set_wgraph_t graph(adj_list, weight_list);
 
-    size_t start_vertex = (size_t)INTEGER(s_start)[0];
-    double radius = REAL(s_radius)[0];
+    size_t start_vertex = (size_t)Rf_asInteger(s_start);
+    double radius       = Rf_asReal(s_radius);
 
     shortest_paths_t shortest_paths = graph.find_graph_paths_within_radius(start_vertex, radius);
 
-    // Creating return list
-    // return list component names
-    const char* names[] = {
-        "paths",
-        "reachable_vertices",
-        "vertex_to_path_map",
-        NULL
-    };
+    // Build return list: c(paths, reachable_vertices, vertex_to_path_map)
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 3));
 
-    size_t n_elements = 0;
-    while (names[n_elements] != NULL) n_elements++;
-
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
+    // 0) paths : list<int>
+    {
+        const R_xlen_t n_paths = (R_xlen_t)shortest_paths.paths.size();
+        SEXP r_paths_list = PROTECT(Rf_allocVector(VECSXP, n_paths));   // [2]
+        for (R_xlen_t i = 0; i < n_paths; ++i) {
+            const auto& verts = shortest_paths.paths[(size_t)i].vertices;
+            const R_xlen_t m = (R_xlen_t)verts.size();
+            SEXP r_path = PROTECT(Rf_allocVector(INTSXP, m));           // [3]
+            int* p = INTEGER(r_path);
+            for (R_xlen_t j = 0; j < m; ++j) p[j] = (int)verts[(size_t)j] + 1;
+            SET_VECTOR_ELT(r_paths_list, i, r_path);
+            UNPROTECT(1); // r_path                                    // [-1] -> [2]
+        }
+        SET_VECTOR_ELT(result, 0, r_paths_list);
+        UNPROTECT(1); // r_paths_list                                   // [-1] -> [1]
     }
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
-    UNPROTECT(1); // for result_names
 
-    // Creating paths list
-    // Helper function to convert vector to SEXP
-    auto convert_int_vector_to_R = [](const std::vector<size_t>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(INTSXP, vec.size()));
-        int* ptr = INTEGER(r_vec);
-
-        // std::copy(vec.begin(), vec.end(), ptr); // Direct copy without index adjustment
-
-        for (size_t i = 0; i < vec.size(); i++) {
-            ptr[i] = static_cast<int>(vec[i]) + 1;  // Convert to int and add 1
-        }
-
-        return r_vec;
-    };
-
-    size_t n_paths = shortest_paths.paths.size();
-    SEXP r_paths_list = PROTECT(Rf_allocVector(VECSXP, n_paths));
-    for (size_t i = 0; i < n_paths; i++) {
-        SEXP r_path = convert_int_vector_to_R(shortest_paths.paths[i].vertices);
-        SET_VECTOR_ELT(r_paths_list, i, r_path);
-        UNPROTECT(1); // for r_path
+    // 1) reachable_vertices : int vector
+    {
+        const auto& reachable = shortest_paths.reachable_vertices;
+        const R_xlen_t m = (R_xlen_t)reachable.size();
+        SEXP r_reach = PROTECT(Rf_allocVector(INTSXP, m));              // [2]
+        int* p = INTEGER(r_reach);
+        R_xlen_t idx = 0;
+        for (const auto& v : reachable) p[idx++] = (int)v + 1;
+        SET_VECTOR_ELT(result, 1, r_reach);
+        UNPROTECT(1); // r_reach                                        // [-1] -> [1]
     }
-    SET_VECTOR_ELT(result, 0, r_paths_list);
-    UNPROTECT(1); // for r_paths_list
 
-    // Creating reachable_vertices vector
-    auto convert_int_unordered_set_to_R = [](const std::unordered_set<int>& set) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(INTSXP, set.size()));
-        int* ptr = INTEGER(r_vec);  // Corrected: int* instead of double*
-        //std::copy(set.begin(), set.end(), ptr);
-        size_t i = 0;
-        for (const auto& val : set) {
-            ptr[i++] = val + 1;  // Convert to 1-based indexing
+    // 2) vertex_to_path_map : numeric matrix (nrow x 3) or NULL
+    {
+        const auto& map = shortest_paths.vertex_to_path_map;
+        if (!map.empty()) {
+            const R_xlen_t nrow = (R_xlen_t)map.size();
+            const R_xlen_t ncol = 3;
+            SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));  // [2]
+            double* M = REAL(r_mat);
+            R_xlen_t i = 0;
+            for (const auto& kv : map) {
+                const size_t vertex = kv.first;
+                const auto& sub    = kv.second;
+                M[i]          = (double)vertex + 1.0;
+                M[i + nrow]   = (double)sub.path_idx + 1.0;
+                M[i + 2*nrow] = (double)sub.vertex_idx + 1.0;
+                ++i;
+            }
+            SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol));      // [3]
+            SET_STRING_ELT(colnames, 0, Rf_mkChar("vertex"));
+            SET_STRING_ELT(colnames, 1, Rf_mkChar("path_idx"));
+            SET_STRING_ELT(colnames, 2, Rf_mkChar("vertex_idx"));
+            SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));         // [4]
+            SET_VECTOR_ELT(dimnames, 0, R_NilValue);
+            SET_VECTOR_ELT(dimnames, 1, colnames);
+            Rf_setAttrib(r_mat, R_DimNamesSymbol, dimnames);
+            SET_VECTOR_ELT(result, 2, r_mat);
+            UNPROTECT(3); // r_mat, colnames, dimnames                   // [-3] -> [1]
+        } else {
+            SET_VECTOR_ELT(result, 2, R_NilValue);
         }
+    }
 
-        return r_vec;
-    };
+    // names(result)
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 3));              // [2]
+    SET_STRING_ELT(nm, 0, Rf_mkChar("paths"));
+    SET_STRING_ELT(nm, 1, Rf_mkChar("reachable_vertices"));
+    SET_STRING_ELT(nm, 2, Rf_mkChar("vertex_to_path_map"));
+    Rf_setAttrib(result, R_NamesSymbol, nm);
 
-    SEXP r_reachable_vertices = convert_int_unordered_set_to_R(shortest_paths.reachable_vertices);
-    SET_VECTOR_ELT(result, 1, r_reachable_vertices);
-    UNPROTECT(1); // for r_reachable_vertices
-
-    // Helper function to convert subpath_t map to a matrix
-    auto convert_vertex_subpath_map_to_matrix = [](
-        const std::unordered_map<size_t, subpath_t>& map) -> SEXP {
-
-        if (map.empty()) return R_NilValue;
-        size_t nrow = map.size();
-        size_t ncol = 3;  // vertex, path_idx, vertex_idx
-
-        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-        double* ptr = REAL(r_mat);
-
-        size_t i = 0;
-        size_t nrow_times_1 = nrow;
-        size_t nrow_times_2 = 2 * nrow;
-
-        for (const auto& [vertex, subpath] : map) {
-            ptr[i]                 = vertex + 1;
-            ptr[i + nrow_times_1]  = subpath.path_idx + 1;
-            ptr[i + nrow_times_2]  = subpath.vertex_idx + 1;
-            i++;
-        }
-
-        // Add column names
-        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, ncol));
-        SET_STRING_ELT(colnames, 0, Rf_mkChar("vertex"));
-        SET_STRING_ELT(colnames, 1, Rf_mkChar("path_idx"));
-        SET_STRING_ELT(colnames, 2, Rf_mkChar("vertex_idx"));
-
-        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
-        SET_VECTOR_ELT(dimnames, 0, R_NilValue);  // No row names
-        SET_VECTOR_ELT(dimnames, 1, colnames);
-
-        Rf_setAttrib(r_mat, R_DimNamesSymbol, dimnames);
-
-        UNPROTECT(2);  // for colnames and dimnames
-        return r_mat;
-    };
-
-    SEXP r_vertex_to_path_mat = convert_vertex_subpath_map_to_matrix(shortest_paths.vertex_to_path_map);
-    SET_VECTOR_ELT(result, 2, r_vertex_to_path_mat);
-    UNPROTECT(1); // for r_vertex_to_path_mat
-
-    UNPROTECT(1); // for result
+    UNPROTECT(2); // result, nm
     return result;
 }
 
@@ -906,57 +872,55 @@ edge_weight_deviations_t set_wgraph_t::compute_edge_weight_deviations() const {
  * @note This function properly handles R's garbage collection by using PROTECT/UNPROTECT
  *       mechanism for all allocated R objects.
  */
-SEXP S_compute_edge_weight_deviations(SEXP s_adj_list, SEXP s_weight_list) {
+SEXP S_compute_edge_weight_deviations(
+    SEXP s_adj_list,
+    SEXP s_weight_list) {
+
     // Convert R objects to C++ vectors
-    std::vector<std::vector<int>> adj_vect       = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<int>>    adj_vect    = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
 
-    // Create the graph once (fixed variable names)
+    // Build graph and compute deviations (no SEXP allocations here)
     set_wgraph_t graph(adj_vect, weight_vect);
-
-    // Compute the deviations using the optimized method
     edge_weight_deviations_t deviations = graph.compute_edge_weight_deviations();
 
-    // Create the return list using R's C API
-    const char* names[] = {
-        "absolute_deviations",
-        "relative_deviations",
-        NULL
-    };
-    int n_elements = 2;
+    // Result container
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 2));
 
-    // Track protection count explicitly
-    int protect_count = 0;
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
-    protect_count++;
-
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    protect_count++;
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(result_names, i, Rf_mkChar(names[i]));
+    // Names
+    {
+        SEXP result_names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(result_names, 0, Rf_mkChar("absolute_deviations"));
+        SET_STRING_ELT(result_names, 1, Rf_mkChar("relative_deviations"));
+        Rf_setAttrib(result, R_NamesSymbol, result_names);
+        UNPROTECT(1); // result_names
     }
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
 
-    // Create and set the absolute deviations vector
-    SEXP abs_dev = PROTECT(Rf_allocVector(REALSXP, deviations.absolute_deviations.size()));
-    protect_count++;
-    double* abs_ptr = REAL(abs_dev);
-    std::copy(deviations.absolute_deviations.begin(), deviations.absolute_deviations.end(), abs_ptr);
-    SET_VECTOR_ELT(result, 0, abs_dev);
+    // absolute_deviations
+    {
+        const R_xlen_t n_abs = (R_xlen_t)deviations.absolute_deviations.size();
+        SEXP abs_dev = PROTECT(Rf_allocVector(REALSXP, n_abs));
+        std::copy(deviations.absolute_deviations.begin(),
+                  deviations.absolute_deviations.end(),
+                  REAL(abs_dev));
+        SET_VECTOR_ELT(result, 0, abs_dev);
+        UNPROTECT(1); // abs_dev
+    }
 
-    // Create and set the relative deviations vector
-    SEXP rel_dev = PROTECT(Rf_allocVector(REALSXP, deviations.relative_deviations.size()));
-    protect_count++;
-    double* rel_ptr = REAL(rel_dev);
-    std::copy(deviations.relative_deviations.begin(), deviations.relative_deviations.end(), rel_ptr);
-    SET_VECTOR_ELT(result, 1, rel_dev);
+    // relative_deviations
+    {
+        const R_xlen_t n_rel = (R_xlen_t)deviations.relative_deviations.size();
+        SEXP rel_dev = PROTECT(Rf_allocVector(REALSXP, n_rel));
+        std::copy(deviations.relative_deviations.begin(),
+                  deviations.relative_deviations.end(),
+                  REAL(rel_dev));
+        SET_VECTOR_ELT(result, 1, rel_dev);
+        UNPROTECT(1); // rel_dev
+    }
 
-    UNPROTECT(protect_count);
+    UNPROTECT(1); // result
     return result;
 }
-
 
 /**
  * @brief Compute relative deviations for graph edge weights
@@ -987,48 +951,47 @@ SEXP S_compute_edge_weight_deviations(SEXP s_adj_list, SEXP s_weight_list) {
  * @see compute_edge_weight_rel_deviations
  */
 SEXP S_compute_edge_weight_rel_deviations(SEXP s_adj_list, SEXP s_weight_list) {
-
     // Convert R objects to C++ vectors
-    std::vector<std::vector<int>> adj_vect       = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<int>>    adj_vect    = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
 
-    // Create the graph once (fixed variable names)
+    // Build graph and compute results (no SEXP allocations here)
     set_wgraph_t graph(adj_vect, weight_vect);
-
-    // Compute the deviations using the optimized method
     auto results = graph.compute_edge_weight_rel_deviations();
 
-    // Create the result matrix
-    size_t n_edges = results.size();
-    size_t protect_count = 0;
-    SEXP result_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_edges, 4));
-    protect_count++;
+    // Create the result matrix: n_edges x 4 (column-major)
+    const size_t   n_edges = results.size();
+    const R_xlen_t nrow    = (R_xlen_t)n_edges;
+    const R_xlen_t ncol    = (R_xlen_t)4;
+
+    SEXP result_matrix = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
     double* result_data = REAL(result_matrix);
 
-    // Fill the matrix with data
-    size_t n_edges_times_two   = 2 * n_edges;
-    size_t n_edges_times_three = 3 * n_edges;
-    for (size_t i = 0; i < n_edges; i++) {
-        // In column-major order (as R uses)
-        result_data[i]                       = static_cast<double>(results[i].source + 1); // Column 1: source
-        result_data[i + n_edges]             = static_cast<double>(results[i].target + 1); // Column 2: target
-        result_data[i + n_edges_times_two]   = static_cast<double>(results[i].best_intermediate + 1); // Column 3: best_intermediate
-        result_data[i + n_edges_times_three] = results[i].rel_deviation;                // Column 4: rel_deviation
+    const size_t n_edges_times_two   = n_edges * 2;
+    const size_t n_edges_times_three = n_edges * 3;
+
+    for (size_t i = 0; i < n_edges; ++i) {
+        // columns 0..3
+        result_data[i]                       = (double)(results[i].source + 1);            // col 1
+        result_data[i + n_edges]             = (double)(results[i].target + 1);            // col 2
+        result_data[i + n_edges_times_two]   = (double)(results[i].best_intermediate + 1); // col 3
+        result_data[i + n_edges_times_three] = results[i].rel_deviation;                   // col 4
     }
 
-    // Set column names
+    // Set column names safely
     SEXP colnames = PROTECT(Rf_allocVector(STRSXP, 4));
-    protect_count++;
     SET_STRING_ELT(colnames, 0, Rf_mkChar("source"));
     SET_STRING_ELT(colnames, 1, Rf_mkChar("target"));
     SET_STRING_ELT(colnames, 2, Rf_mkChar("best_intermediate"));
     SET_STRING_ELT(colnames, 3, Rf_mkChar("rel_deviation"));
 
-    // Set the colnames attribute
-    Rf_setAttrib(result_matrix, R_DimNamesSymbol,
-                 Rf_list2(R_NilValue, colnames));
+    // Build dimnames as a protected vector list: list(NULL, colnames)
+    SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+    SET_VECTOR_ELT(dimnames, 0, R_NilValue);
+    SET_VECTOR_ELT(dimnames, 1, colnames);
+    Rf_setAttrib(result_matrix, R_DimNamesSymbol, dimnames);
 
-    UNPROTECT(protect_count);
+    UNPROTECT(3); // result_matrix, colnames, dimnames
     return result_matrix;
 }
 
@@ -1056,74 +1019,6 @@ void set_wgraph_t::remove_edge(size_t v1, size_t v2) {
         //Rprintf("DEBUG: Removed edge (%d, %d) with weight %.6f\n", v1, v2, weight);
     }
 }
-
-#if 0
-SEXP S_remove_redundant_edges(SEXP s_adj_list, SEXP s_weight_list) {
-
-    // Convert R objects to C++ vectors
-    std::vector<std::vector<int>> adj_vect       = convert_adj_list_from_R(s_adj_list);
-    std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
-
-    // Create the graph once (fixed variable names)
-    set_wgraph_t graph(adj_vect, weight_vect);
-
-    // Compute the deviations using the optimized method
-    auto rel_deviations = graph.compute_edge_weight_rel_deviations();
-
-    const double EPSILON = 1e-16; // when a value is considered 0 in R ???
-
-    // Create the result matrix
-    size_t n_edges = rel_deviations.size();
-    for (size_t i = 0; i < n_edges; i++) {
-        if (rel_deviations[i].rel_deviation < EPSILON) {
-            graph.remove_edge(rel_deviations[i].source, rel_deviations[i].target);
-        }
-    }
-
-    // Creating return list
-    int n_protected = 0;
-    const int N_COMPONENTS = 2;
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
-    int n_vertices = graph.adjacency_list.size();
-    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); n_protected++;
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); n_protected++;
-
-    // Convert the set-based representation back to R lists
-    for (int i = 0; i < n_vertices; ++i) {
-        const auto& neighbors = graph.adjacency_list[i];
-
-        // Create vectors for this vertex's adjacency list and weights
-        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
-        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
-
-        // Fill the vectors
-        int idx = 0;
-        for (const auto& [neighbor, weight] : neighbors) {
-            // Convert to 1-based indices for R
-            INTEGER(r_adj)[idx] = neighbor + 1;
-            REAL(r_weights)[idx] = weight;
-            ++idx;
-        }
-
-        SET_VECTOR_ELT(r_adj_list, i, r_adj);
-        SET_VECTOR_ELT(r_weight_list, i, r_weights);
-        UNPROTECT(2); // for r_adj and r_weights
-    }
-
-    // Set components in the result list
-    SET_VECTOR_ELT(r_result, 0, r_adj_list);
-    SET_VECTOR_ELT(r_result, 1, r_weight_list);
-
-    // Set names for return list
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
-    Rf_setAttrib(r_result, R_NamesSymbol, names);
-
-    UNPROTECT(n_protected);
-    return r_result;
-}
-#endif
 
 /**
  * @brief Remove redundant edges from a weighted graph while preserving connectivity
@@ -1162,110 +1057,75 @@ SEXP S_remove_redundant_edges(SEXP s_adj_list, SEXP s_weight_list) {
  * @see compute_edge_weight_rel_deviations
  * @see set_wgraph_t::remove_edge
  */
-SEXP S_remove_redundant_edges(SEXP s_adj_list, SEXP s_weight_list) {
+SEXP S_remove_redundant_edges(SEXP s_adj_list, SEXP s_weight_list)
+{
+    std::vector<std::vector<int>>    adj_vect    = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
+    set_wgraph_t graph(adj_vect, weight_vect);
 
-    size_t n_protected = 0;
+    const auto rel_devs = graph.compute_edge_weight_rel_deviations();
+    constexpr double EPS = 1e-16;
 
-    try {
-        // Convert R objects to C++ vectors
-        std::vector<std::vector<int>> adj_vect       = convert_adj_list_from_R(s_adj_list);
-        std::vector<std::vector<double>> weight_vect = convert_weight_list_from_R(s_weight_list);
-
-        // Create the graph once
-        set_wgraph_t graph(adj_vect, weight_vect);
-
-        // Compute the deviations using the optimized method
-        auto rel_deviations = graph.compute_edge_weight_rel_deviations();
-        const double EPSILON = 1e-16; // Threshold for considering a value as zero
-
-        // Track removed edges
-        //int removed_count = 0;
-
-        // Process edges
-        for (size_t i = 0; i < rel_deviations.size(); i++) {
-            if (rel_deviations[i].rel_deviation < EPSILON) {
-                size_t source = rel_deviations[i].source;
-                size_t target = rel_deviations[i].target;
-                size_t intermediate = rel_deviations[i].best_intermediate;
-
-                // Check if removing this edge would isolate any vertex
-                if (graph.adjacency_list[source].size() <= 1) {
-                    Rf_error("Cannot remove edge (%zu,%zu) through intermediate %zu: Vertex %zu would become isolated with 0 neighbors",
-                             source + 1, target + 1, intermediate + 1, source + 1);
-                }
-
-                if (graph.adjacency_list[target].size() <= 1) {
-                    Rf_error("Cannot remove edge (%zu,%zu) through intermediate %zu: Vertex %zu would become isolated with 0 neighbors",
-                             source + 1, target + 1, intermediate + 1, target + 1);
-                }
-
-                // Safe to remove the edge
-                graph.remove_edge(source, target);
-                //removed_count++;
+    for (size_t i = 0; i < rel_devs.size(); ++i) {
+        const auto& e = rel_devs[i];
+        if (e.rel_deviation < EPS) {
+            const size_t u = e.source;
+            const size_t v = e.target;
+            const size_t w = e.best_intermediate;
+            // Note: Rf_error below occurs before any PROTECT in this function,
+            // so no PROTECT imbalance is possible on these paths.
+            if (graph.adjacency_list[u].size() <= 1) {
+                Rf_error("Cannot remove edge (%zu,%zu) via %zu: vertex %zu would become isolated",
+                         u + 1, v + 1, w + 1, u + 1);
             }
-        }
-
-        const int N_COMPONENTS = 2;
-        SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS)); n_protected++;
-        int n_vertices = graph.adjacency_list.size();
-        SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); n_protected++;
-        SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices)); n_protected++;
-
-        // Convert the set-based representation back to R lists
-        for (int i = 0; i < n_vertices; ++i) {
-            const auto& neighbors = graph.adjacency_list[i];
-
-            // Create vectors for this vertex's adjacency list and weights
-            SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
-            SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
-
-            // Fill the vectors
-            int idx = 0;
-            for (const auto& [neighbor, weight] : neighbors) {
-                // Convert to 1-based indices for R
-                INTEGER(r_adj)[idx] = neighbor + 1;
-                REAL(r_weights)[idx] = weight;
-                ++idx;
+            if (graph.adjacency_list[v].size() <= 1) {
+                Rf_error("Cannot remove edge (%zu,%zu) via %zu: vertex %zu would become isolated",
+                         u + 1, v + 1, w + 1, v + 1);
             }
-
-            SET_VECTOR_ELT(r_adj_list, i, r_adj);
-            SET_VECTOR_ELT(r_weight_list, i, r_weights);
-            UNPROTECT(2); // for r_adj and r_weights
+            graph.remove_edge(u, v);
         }
-
-        // Set components in the result list
-        SET_VECTOR_ELT(r_result, 0, r_adj_list);
-        SET_VECTOR_ELT(r_result, 1, r_weight_list);
-
-        // Set names for return list
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS)); n_protected++;
-        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("weight_list"));
-        Rf_setAttrib(r_result, R_NamesSymbol, names);
-
-        // Rprintf("Removed %zu redundant edges\n", removed_count);
-
-        UNPROTECT(n_protected);
-        return r_result;
-
-    } catch (const std::exception& e) {
-        if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Error removing redundant edges: %s", e.what());
-    } catch (...) {
-        if (n_protected > 0) UNPROTECT(n_protected);
-        Rf_error("Unknown Rf_error occurred while removing redundant edges");
     }
-}
 
-/**
- * @brief Precomputes all edge weights in the graph for efficient lookup
- *
- * Populates the internal edge_weights map for O(1) weight lookup by vertex pair.
- * For undirected graphs, only one entry is stored per edge with the
- * convention that vertex indices are ordered (i < j).
- *
- * @note This method is const as it only modifies mutable cache members
- */
+    // Build return list: list(adj_list, weight_list)
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
+
+    const size_t n_vertices = graph.adjacency_list.size();
+    SEXP r_adj_list    = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        const auto& neighbors = graph.adjacency_list[i];
+
+        // Create vectors for this vertex's adjacency list and weights
+        SEXP r_adj = PROTECT(Rf_allocVector(INTSXP, neighbors.size()));
+        SEXP r_weights = PROTECT(Rf_allocVector(REALSXP, neighbors.size()));
+
+        // Fill the vectors
+        int idx = 0;
+        for (const auto& [neighbor, weight] : neighbors) {
+            // Convert to 1-based indices for R
+            INTEGER(r_adj)[idx] = neighbor + 1;
+            REAL(r_weights)[idx] = weight;
+            ++idx;
+        }
+
+        SET_VECTOR_ELT(r_adj_list, i, r_adj);
+        SET_VECTOR_ELT(r_weight_list, i, r_weights);
+        UNPROTECT(2); // for r_adj and r_weights
+    }
+
+    SET_VECTOR_ELT(r_result, 0, r_adj_list);
+    SET_VECTOR_ELT(r_result, 1, r_weight_list);
+    UNPROTECT(2); // r_adj_list and r_weight_list
+
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(nm, 0, Rf_mkChar("adj_list"));
+    SET_STRING_ELT(nm, 1, Rf_mkChar("weight_list"));
+    Rf_setAttrib(r_result, R_NamesSymbol, nm);
+
+    UNPROTECT(2); // r_result, nm
+    return r_result;
+}
 
 /**
  * @brief Precomputes all edge weights in the graph for efficient lookup

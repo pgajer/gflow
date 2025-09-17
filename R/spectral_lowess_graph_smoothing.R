@@ -117,6 +117,7 @@ spectral.lowess.graph.smoothing <- function(
     if (!is.matrix(X) || !is.numeric(X)) {
         stop("'X' must be a numeric matrix")
     }
+    storage.mode(X) <- "double"
 
     if (length(adj.list) != nrow(X)) {
         stop("Number of vertices in graph (", length(adj.list),

@@ -126,6 +126,10 @@ deg0.lowess.graph.smoothing <- function(
         stop("'X' must be a numeric matrix")
     }
 
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
+
     if (length(adj.list) != nrow(X)) {
         stop("Number of vertices in graph (", length(adj.list),
              ") does not match number of samples in X (", nrow(X), ")")

@@ -102,25 +102,19 @@ std::unique_ptr<std::vector<double>> ecdf(const std::vector<double> &x) {
 */
 SEXP S_ecdf(SEXP x) {
 
-    // Ensure x is a numeric vector
-    int nprot = 0;
-    PROTECT(x = Rf_coerceVector(x, REALSXP)); nprot++;
-
-    // Extract the data from the SEXP
-    double *data = REAL(x);
-    int n = LENGTH(x);
-
     // Create a vector from the data
-    std::vector<double> vec_x(data, data + n);
+    PROTECT(x = Rf_coerceVector(x, REALSXP));
+    std::vector<double> vec_x(REAL(x), REAL(x) + (size_t)XLENGTH(x));
+    UNPROTECT(1); // x
 
     // Call the C++ ecdf function
     std::unique_ptr<std::vector<double>> result = ecdf(vec_x);
 
     // Convert the result to an SEXP
-    SEXP ans = PROTECT(Rf_allocVector(REALSXP, result->size())); nprot++;
+    SEXP ans = PROTECT(Rf_allocVector(REALSXP, result->size()));
     std::copy(result->begin(), result->end(), REAL(ans));
 
-    UNPROTECT(nprot);
+    UNPROTECT(1);
     return ans;
 }
 

@@ -351,14 +351,14 @@ SEXP S_create_basin_cx(
 
     // ---- Build R objects ----
     const char* names[] = {
-        "basins_matrix",
-        "harmonic_predictions",
-        "lmin_basins",
-        "lmax_basins",
-        "init_rel_min_monotonicity_spans",
-        "lmin_dist_mat",
-        "lmax_dist_mat",
-        "graph_diameter",
+        "basins_matrix",                    // 0
+        "harmonic_predictions",             // 1
+        "lmin_basins",                      // 2
+        "lmax_basins",                      // 3
+        "init_rel_min_monotonicity_spans",  // 4
+        "lmin_dist_mat",                    // 5
+        "lmax_dist_mat",                    // 6
+        "graph_diameter",                   // 7
         NULL
     };
 
@@ -368,15 +368,19 @@ SEXP S_create_basin_cx(
     int n_elements = 0;
     while (names[n_elements] != NULL) n_elements++;
 
-    size_t n_protected = 0;
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); n_protected++;
-    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
+    //
+    // Creating return list
+    //
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    {
+        SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        // Set names
+        for (int i = 0; i < n_elements; i++) {
+            SET_STRING_ELT(r_result_names, i, Rf_mkChar(names[i]));
+        }
+        Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
+        UNPROTECT(1); // r_result_names
     }
-    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
-    UNPROTECT(1); // for r_result_names
 
     auto vec_real = [&](const std::vector<double>& v) {
         SEXP ans = PROTECT(Rf_allocVector(REALSXP, v.size()));
@@ -384,240 +388,289 @@ SEXP S_create_basin_cx(
         return ans;
     };
 
-    SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin_map.size())); n_protected++;
-    SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax_map.size())); n_protected++;
+    // harmonic_predictions
+    {
+        SEXP s = vec_real(basin_cx.harmonic_predictions);
+        SET_VECTOR_ELT(r_result, 1, s);
+        UNPROTECT(1); // s
+    }
 
-    // Helper lambda to populate one basin list - MODIFIED to include basin_bd
+    // init_rel_min_monotonicity_spans
+    {
+        SEXP s = vec_real(basin_cx.init_rel_min_monotonicity_spans);
+        SET_VECTOR_ELT(r_result, 4, s);
+        UNPROTECT(1); // s
+    }
+
+    // Helper lambda to populate one basin list
     auto fill_basin = [&](const basin_t &b, SEXP r_blist) {
-        // Names: vertex, value, basin, basin_bd (MODIFIED)
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
-        SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("value"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("basin"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("basin_bd"));
-        Rf_setAttrib(r_blist, R_NamesSymbol, names);
+
+        // Names: vertex, value, basin, basin_bd
+        {
+            SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+            SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
+            SET_STRING_ELT(names, 1, Rf_mkChar("value"));
+            SET_STRING_ELT(names, 2, Rf_mkChar("basin"));
+            SET_STRING_ELT(names, 3, Rf_mkChar("basin_bd"));
+            Rf_setAttrib(r_blist, R_NamesSymbol, names);
+            UNPROTECT(1); // names
+        }
 
         // vertex (1-based)
-        SEXP r_vertex = PROTECT(Rf_ScalarInteger(
-                                    static_cast<int>(b.reachability_map.ref_vertex) + 1
-                                    ));
-        // value
-        SEXP r_value  = PROTECT(Rf_ScalarReal(b.value));
+        {
+            SEXP r_vertex = PROTECT(Rf_ScalarInteger(
+                                        static_cast<int>(b.reachability_map.ref_vertex) + 1
+                                        ));
+            SET_VECTOR_ELT(r_blist, 0, r_vertex);
+            UNPROTECT(1); // r_vertex
+        }
 
+        // value
+        {
+            SEXP r_value  = PROTECT(Rf_ScalarReal(b.value));
+            SET_VECTOR_ELT(r_blist, 1, r_value);
+            UNPROTECT(1); // r_value
+        }
 
         // basin matrix
-        size_t m = b.reachability_map.sorted_vertices.size();
+        {
+            size_t m = b.reachability_map.sorted_vertices.size();
 
-        // Create a copy of the sorted_vertices that we can sort by distance
-        std::vector<vertex_info_t> sorted_by_distance = b.reachability_map.sorted_vertices;
+            // Create a copy of the sorted_vertices that we can sort by distance
+            std::vector<vertex_info_t> sorted_by_distance = b.reachability_map.sorted_vertices;
 
-        // Sort by distance (ascending)
-        std::sort(sorted_by_distance.begin(), sorted_by_distance.end(),
-                  [](const vertex_info_t& a, const vertex_info_t& b) {
-                      return a.distance < b.distance;
-                  });
+            // Sort by distance (ascending)
+            std::sort(sorted_by_distance.begin(), sorted_by_distance.end(),
+                      [](const vertex_info_t& a, const vertex_info_t& b) {
+                          return a.distance < b.distance;
+                      });
 
-        SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 3));
-        double *pr = REAL(r_basin);
-        for (size_t i = 0; i < m; ++i) {
-            const auto &vi = sorted_by_distance[i];
-            pr[i]         = vi.vertex + 1;   // row i, col 1
-            pr[i + m]     = vi.distance;     // row i, col 2
-            pr[i + 2 * m] = y[vi.vertex];    // row i, col 3
+            SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 3));
+            double *pr = REAL(r_basin);
+            for (size_t i = 0; i < m; ++i) {
+                const auto &vi = sorted_by_distance[i];
+                pr[i]         = vi.vertex + 1;   // row i, col 1
+                pr[i + m]     = vi.distance;     // row i, col 2
+                pr[i + 2 * m] = y[vi.vertex];    // row i, col 3
+            }
+
+            {
+                // Add column names to basin matrix
+                SEXP basin_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+                SET_STRING_ELT(basin_colnames, 0, Rf_mkChar("vertex"));
+                SET_STRING_ELT(basin_colnames, 1, Rf_mkChar("distance"));
+                SET_STRING_ELT(basin_colnames, 2, Rf_mkChar("value"));
+                Rf_setAttrib(r_basin, R_DimNamesSymbol,
+                             Rf_list2(R_NilValue, basin_colnames)); // No row names
+                UNPROTECT(1); // basin_colnames
+
+            }
+
+            SET_VECTOR_ELT(r_blist, 2, r_basin);
+            UNPROTECT(1); // r_basin
         }
-
-        // Add column names to basin matrix
-        SEXP basin_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
-        SET_STRING_ELT(basin_colnames, 0, Rf_mkChar("vertex"));
-        SET_STRING_ELT(basin_colnames, 1, Rf_mkChar("distance"));
-        SET_STRING_ELT(basin_colnames, 2, Rf_mkChar("value"));
-        Rf_setAttrib(r_basin, R_DimNamesSymbol,
-                  Rf_list2(R_NilValue, basin_colnames)); // No row names
-        UNPROTECT(1); // basin_colnames
-
 
         // Basin boundary matrix from boundary_monotonicity_spans_map
-        size_t bd_size = b.boundary_monotonicity_spans_map.size();
-        SEXP r_basin_bd = PROTECT(Rf_allocMatrix(REALSXP, bd_size, 3));
-        double *bd_pr = REAL(r_basin_bd);
-        size_t bd_idx = 0;
-        for (const auto& [vertex, span] : b.boundary_monotonicity_spans_map) {
-            bd_pr[bd_idx]               = vertex + 1;                  // row i, col 1 (1-based vertex index)
-            bd_pr[bd_idx + bd_size]     = b.reachability_map.distances.at(vertex);  // row i, col 2 (distance)
-            bd_pr[bd_idx + 2 * bd_size] = span;                        // row i, col 3 (monotonicity span)
-            bd_idx++;
+        {
+            size_t bd_size = b.boundary_monotonicity_spans_map.size();
+            SEXP r_basin_bd = PROTECT(Rf_allocMatrix(REALSXP, bd_size, 3));
+            double *bd_pr = REAL(r_basin_bd);
+            size_t bd_idx = 0;
+            for (const auto& [vertex, span] : b.boundary_monotonicity_spans_map) {
+                bd_pr[bd_idx]               = vertex + 1;                  // row i, col 1 (1-based vertex index)
+                bd_pr[bd_idx + bd_size]     = b.reachability_map.distances.at(vertex);  // row i, col 2 (distance)
+                bd_pr[bd_idx + 2 * bd_size] = span;                        // row i, col 3 (monotonicity span)
+                bd_idx++;
+            }
+
+            // Add column names to basin_bd matrix
+            SEXP basin_bd_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+            SET_STRING_ELT(basin_bd_colnames, 0, Rf_mkChar("vertex"));
+            SET_STRING_ELT(basin_bd_colnames, 1, Rf_mkChar("distance"));
+            SET_STRING_ELT(basin_bd_colnames, 2, Rf_mkChar("span"));
+            Rf_setAttrib(r_basin_bd, R_DimNamesSymbol,
+                         Rf_list2(R_NilValue, basin_bd_colnames)); // No row names
+            UNPROTECT(1); // basin_bd_colnames
+
+            SET_VECTOR_ELT(r_blist, 3, r_basin_bd);
+            UNPROTECT(1); // r_basin_bd
         }
-
-        // Add column names to basin_bd matrix
-        SEXP basin_bd_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
-        SET_STRING_ELT(basin_bd_colnames, 0, Rf_mkChar("vertex"));
-        SET_STRING_ELT(basin_bd_colnames, 1, Rf_mkChar("distance"));
-        SET_STRING_ELT(basin_bd_colnames, 2, Rf_mkChar("span"));
-        Rf_setAttrib(r_basin_bd, R_DimNamesSymbol,
-                  Rf_list2(R_NilValue, basin_bd_colnames)); // No row names
-        UNPROTECT(1); // basin_bd_colnames
-
-        // Set list entries
-        SET_VECTOR_ELT(r_blist, 0, r_vertex);
-        SET_VECTOR_ELT(r_blist, 1, r_value);
-        SET_VECTOR_ELT(r_blist, 2, r_basin);
-        SET_VECTOR_ELT(r_blist, 3, r_basin_bd);
-
-        UNPROTECT(5); // names, r_vertex, r_value, r_basin, r_basin_bd
     };
 
     // Fill minima basins
-    size_t counter = 0;
-    for (const auto& [v, basin] : lmin_map) {
-        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
-        fill_basin(basin, r_blist);
-        SET_VECTOR_ELT(r_lmin_list, counter++, r_blist);
-        UNPROTECT(1); // r_blist
+    {
+        SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin_map.size()));
+        size_t counter = 0;
+        for (const auto& [v, basin] : lmin_map) {
+            SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
+            fill_basin(basin, r_blist);
+            SET_VECTOR_ELT(r_lmin_list, counter++, r_blist);
+            UNPROTECT(1); // r_blist
+        }
+
+        SET_VECTOR_ELT(r_result, 2, r_lmin_list);
+        UNPROTECT(1); // r_lmin_list
     }
 
     // Fill maxima basins
-    counter = 0;
-    for (const auto& [v, basin] : lmax_map) {
-        SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
-        fill_basin(basin, r_blist);
-        SET_VECTOR_ELT(r_lmax_list, counter++, r_blist);
-        UNPROTECT(1);
+    {
+        SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax_map.size()));
+        size_t counter = 0;
+        for (const auto& [v, basin] : lmax_map) {
+            SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
+            fill_basin(basin, r_blist);
+            SET_VECTOR_ELT(r_lmax_list, counter++, r_blist);
+            UNPROTECT(1);
+        }
+
+        SET_VECTOR_ELT(r_result, 3, r_lmax_list);
+        UNPROTECT(1); // r_lmax_list
     }
 
     // Create basins_matrix
-    // Count total number of basins (minima + maxima)
-    size_t total_basins = lmin_map.size() + lmax_map.size();
+    {
+        // Count total number of basins (minima + maxima)
+        size_t total_basins = lmin_map.size() + lmax_map.size();
 
-    // Column names for basins_matrix
-    const char* basin_matrix_colnames[] = {
-        "extremum_vertex",
-        "hop_idx",
-        "value",
-        "is_maximum",
-        "rel_min_span",
-        "rel_max_span",
-        "delta_rel_span",
-        "size",
-        "rel_size"
-    };
-    int n_cols = sizeof(basin_matrix_colnames) / sizeof(basin_matrix_colnames[0]);
+        // Column names for basins_matrix
+        const char* basin_matrix_colnames[] = {
+            "extremum_vertex",
+            "hop_idx",
+            "value",
+            "is_maximum",
+            "rel_min_span",
+            "rel_max_span",
+            "delta_rel_span",
+            "size",
+            "rel_size"
+        };
+        int n_cols = sizeof(basin_matrix_colnames) / sizeof(basin_matrix_colnames[0]);
 
-    // Create the matrix
-    SEXP basins_matrix = PROTECT(Rf_allocMatrix(REALSXP, total_basins, n_cols)); n_protected++;
+        // Create the matrix
+        SEXP basins_matrix = PROTECT(Rf_allocMatrix(REALSXP, total_basins, n_cols));
 
-    // Set column names
-    SEXP colnames = PROTECT(Rf_allocVector(STRSXP, n_cols));
-    for (int i = 0; i < n_cols; i++) {
-        SET_STRING_ELT(colnames, i, Rf_mkChar(basin_matrix_colnames[i]));
-    }
-    Rf_setAttrib(basins_matrix, R_DimNamesSymbol,
-              Rf_list2(R_NilValue, colnames)); // No row names
-    UNPROTECT(1); // colnames
+        // Set column names
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, n_cols));
+        for (int i = 0; i < n_cols; i++) {
+            SET_STRING_ELT(colnames, i, Rf_mkChar(basin_matrix_colnames[i]));
+        }
+        Rf_setAttrib(basins_matrix, R_DimNamesSymbol,
+                     Rf_list2(R_NilValue, colnames)); // No row names
+        UNPROTECT(1); // colnames
 
-    // Fill the matrix with data from all basins
-    double* matrix_data = REAL(basins_matrix);
-    size_t row = 0;
+        // Fill the matrix with data from all basins
+        double* matrix_data = REAL(basins_matrix);
+        size_t row = 0;
 
-    // Calculate total graph size for relative size calculations
-    double total_graph_size = static_cast<double>(graph.num_vertices());
+        // Calculate total graph size for relative size calculations
+        double total_graph_size = static_cast<double>(graph.num_vertices());
 
-    // First process all minima
-    for (const auto& [vertex, basin] : lmin_map) {
-        size_t size           = basin.reachability_map.sorted_vertices.size();
-        double rel_size       = total_graph_size > 0 ? static_cast<double>(size) / total_graph_size : 0.0;
-        double rel_min_span   = basin.rel_min_monotonicity_span;
-        double rel_max_span   = basin.rel_max_monotonicity_span;
-        double delta_rel_span = rel_max_span - rel_min_span;
+        // First process all minima
+        for (const auto& [vertex, basin] : lmin_map) {
+            size_t size           = basin.reachability_map.sorted_vertices.size();
+            double rel_size       = total_graph_size > 0 ? static_cast<double>(size) / total_graph_size : 0.0;
+            double rel_min_span   = basin.rel_min_monotonicity_span;
+            double rel_max_span   = basin.rel_max_monotonicity_span;
+            double delta_rel_span = rel_max_span - rel_min_span;
 
-        // Fill row data
-        matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
-        matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
-        matrix_data[row + 2*total_basins] = basin.value;        // value
-        matrix_data[row + 3*total_basins] = 0.0;                // is_maximum (0 = false)
-        matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
-        matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
-        matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
-        matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
-        matrix_data[row + 8*total_basins] = rel_size;           // rel_size
+            // Fill row data
+            matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
+            matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
+            matrix_data[row + 2*total_basins] = basin.value;        // value
+            matrix_data[row + 3*total_basins] = 0.0;                // is_maximum (0 = false)
+            matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
+            matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
+            matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
+            matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
+            matrix_data[row + 8*total_basins] = rel_size;           // rel_size
 
-        row++;
-    }
+            row++;
+        }
 
-    // Then process all maxima
-    for (const auto& [vertex, basin] : lmax_map) {
-        size_t size           = basin.reachability_map.sorted_vertices.size();
-        double rel_size       = total_graph_size > 0 ? static_cast<double>(size) / total_graph_size : 0.0;
-        double rel_min_span   = basin.rel_min_monotonicity_span;
-        double rel_max_span   = basin.rel_max_monotonicity_span;
-        double delta_rel_span = rel_max_span - rel_min_span;
+        // Then process all maxima
+        for (const auto& [vertex, basin] : lmax_map) {
+            size_t size           = basin.reachability_map.sorted_vertices.size();
+            double rel_size       = total_graph_size > 0 ? static_cast<double>(size) / total_graph_size : 0.0;
+            double rel_min_span   = basin.rel_min_monotonicity_span;
+            double rel_max_span   = basin.rel_max_monotonicity_span;
+            double delta_rel_span = rel_max_span - rel_min_span;
 
-        // Fill row data
-        matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
-        matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
-        matrix_data[row + 2*total_basins] = basin.value;        // value
-        matrix_data[row + 3*total_basins] = 1.0;                // is_maximum (1 = true)
-        matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
-        matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
-        matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
-        matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
-        matrix_data[row + 8*total_basins] = rel_size;           // rel_size
+            // Fill row data
+            matrix_data[row]                  = vertex + 1;         // extremum_vertex (1-based)
+            matrix_data[row +   total_basins] = basin.extremum_hop_index;  // extremum_hop_index
+            matrix_data[row + 2*total_basins] = basin.value;        // value
+            matrix_data[row + 3*total_basins] = 1.0;                // is_maximum (1 = true)
+            matrix_data[row + 4*total_basins] = rel_min_span;       // rel_min_span
+            matrix_data[row + 5*total_basins] = rel_max_span;       // rel_max_span
+            matrix_data[row + 6*total_basins] = delta_rel_span;     // delta_rel_span
+            matrix_data[row + 7*total_basins] = static_cast<double>(size); // size
+            matrix_data[row + 8*total_basins] = rel_size;           // rel_size
 
-        row++;
+            row++;
+        }
+
+        SET_VECTOR_ELT(r_result, 0, basins_matrix);
+        UNPROTECT(1); // basins_matrix
     }
 
     // Calculate pairwise geodesic distances between local minima
-    SEXP r_lmin_dist_mat = R_NilValue;
-    if (lmin_map.size() > 0) {
-        // Create a vector of local minima vertex indices
-        std::vector<size_t> lmin_vertices;
-        for (const auto& [vertex, _] : lmin_map) {
-            lmin_vertices.push_back(vertex);
-        }
+    {
+        SEXP r_lmin_dist_mat = R_NilValue;
+        if (lmin_map.size() > 0) {
+            // Create a vector of local minima vertex indices
+            std::vector<size_t> lmin_vertices;
+            for (const auto& [vertex, _] : lmin_map) {
+                lmin_vertices.push_back(vertex);
+            }
 
-        // Create distance matrix
-        r_lmin_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size())); n_protected++;
-        double* lmin_dist_data = REAL(r_lmin_dist_mat);
+            // Create distance matrix
+            r_lmin_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size()));
+            double* lmin_dist_data = REAL(r_lmin_dist_mat);
 
-        // Calculate distances for each pair
-        for (size_t i = 0; i < lmin_vertices.size(); i++) {
-            // Create a set of target vertices (all except current)
-            std::unordered_set<size_t> targets;
-            for (size_t j = 0; j < lmin_vertices.size(); j++) {
-                if (i != j) {
-                    targets.insert(lmin_vertices[j]);
+            // Calculate distances for each pair
+            for (size_t i = 0; i < lmin_vertices.size(); i++) {
+                // Create a set of target vertices (all except current)
+                std::unordered_set<size_t> targets;
+                for (size_t j = 0; j < lmin_vertices.size(); j++) {
+                    if (i != j) {
+                        targets.insert(lmin_vertices[j]);
+                    }
+                }
+
+                // Compute shortest path distances from this vertex to all targets
+                auto distances = graph.compute_shortest_path_distances(lmin_vertices[i], targets);
+
+                // Fill in matrix (including diagonal)
+                for (size_t j = 0; j < lmin_vertices.size(); j++) {
+                    if (i == j) {
+                        lmin_dist_data[i + j * lmin_vertices.size()] = 0.0; // Diagonal = 0
+                    } else {
+                        lmin_dist_data[i + j * lmin_vertices.size()] = distances[lmin_vertices[j]];
+                    }
                 }
             }
 
-            // Compute shortest path distances from this vertex to all targets
-            auto distances = graph.compute_shortest_path_distances(lmin_vertices[i], targets);
+            // Add row and column names (using 1-based vertex indices for R)
+            SEXP lmin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+            SEXP lmin_rownames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
+            SEXP lmin_colnames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
 
-            // Fill in matrix (including diagonal)
-            for (size_t j = 0; j < lmin_vertices.size(); j++) {
-                if (i == j) {
-                    lmin_dist_data[i + j * lmin_vertices.size()] = 0.0; // Diagonal = 0
-                } else {
-                    lmin_dist_data[i + j * lmin_vertices.size()] = distances[lmin_vertices[j]];
-                }
+            for (size_t i = 0; i < lmin_vertices.size(); i++) {
+                char name[32];
+                snprintf(name, sizeof(name), "m%zu", lmin_vertices[i] + 1); // 1-based index for R
+                SET_STRING_ELT(lmin_rownames, i, Rf_mkChar(name));
+                SET_STRING_ELT(lmin_colnames, i, Rf_mkChar(name));
             }
+
+            SET_VECTOR_ELT(lmin_dimnames, 0, lmin_rownames);
+            SET_VECTOR_ELT(lmin_dimnames, 1, lmin_colnames);
+            Rf_setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
+
+            UNPROTECT(3); // lmin_dimnames, lmin_rownames, lmin_colnames
         }
 
-        // Add row and column names (using 1-based vertex indices for R)
-        SEXP lmin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
-        SEXP lmin_rownames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
-        SEXP lmin_colnames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
-
-        for (size_t i = 0; i < lmin_vertices.size(); i++) {
-            char name[32];
-            snprintf(name, sizeof(name), "m%zu", lmin_vertices[i] + 1); // 1-based index for R
-            SET_STRING_ELT(lmin_rownames, i, Rf_mkChar(name));
-            SET_STRING_ELT(lmin_colnames, i, Rf_mkChar(name));
-        }
-
-        SET_VECTOR_ELT(lmin_dimnames, 0, lmin_rownames);
-        SET_VECTOR_ELT(lmin_dimnames, 1, lmin_colnames);
-        Rf_setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
-
-        UNPROTECT(3); // lmin_dimnames, lmin_rownames, lmin_colnames
+        SET_VECTOR_ELT(r_result, 5, r_lmin_dist_mat);
+        UNPROTECT(1); // r_lmin_dist_mat
     }
 
     // Calculate pairwise geodesic distances between local maxima
@@ -630,7 +683,7 @@ SEXP S_create_basin_cx(
         }
 
         // Create distance matrix
-        r_lmax_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size())); n_protected++;
+        r_lmax_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size()));
         double* lmax_dist_data = REAL(r_lmax_dist_mat);
 
         // Calculate distances for each pair
@@ -673,23 +726,20 @@ SEXP S_create_basin_cx(
         Rf_setAttrib(r_lmax_dist_mat, R_DimNamesSymbol, lmax_dimnames);
 
         UNPROTECT(3); // lmax_dimnames, lmax_rownames, lmax_colnames
+
+        SET_VECTOR_ELT(r_result, 6, r_lmax_dist_mat);
+        UNPROTECT(1); // r_lmax_dist_mat
     }
 
-    SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1)); n_protected++;
-    REAL(r_graph_diameter)[0] = graph.graph_diameter;
+    // r_graph_diameter
+    {
+        SEXP r_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_graph_diameter)[0] = graph.graph_diameter;
+        SET_VECTOR_ELT(r_result, 7, r_graph_diameter);
+        UNPROTECT(1); // r_graph_diameter
+    }
 
-    // Set results
-    size_t i = 0;
-    SET_VECTOR_ELT(r_result, i++, basins_matrix);
-    SET_VECTOR_ELT(r_result, i++, vec_real(basin_cx.harmonic_predictions)); n_protected++;
-    SET_VECTOR_ELT(r_result, i++, r_lmin_list);
-    SET_VECTOR_ELT(r_result, i++, r_lmax_list);
-    SET_VECTOR_ELT(r_result, i++, vec_real(basin_cx.init_rel_min_monotonicity_spans)); n_protected++;
-    SET_VECTOR_ELT(r_result, i++, r_lmin_dist_mat);
-    SET_VECTOR_ELT(r_result, i++, r_lmax_dist_mat);
-    SET_VECTOR_ELT(r_result, i++, r_graph_diameter);
-
-    UNPROTECT(n_protected);
+    UNPROTECT(1); // r_result
     return r_result;
 }
 

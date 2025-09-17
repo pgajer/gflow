@@ -1121,144 +1121,35 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
             REPORT_ERROR("Edge lengths size must match input vector length");
         }
 
-        int nprot = 0;
+        // Convert numeric vectors directly
+        std::vector<double> weights(REAL(Rweights), REAL(Rweights) + LENGTH(Rweights));
+        std::vector<double> y(REAL(Ry), REAL(Ry) + LENGTH(Ry));
 
-        // Parameter conversion with Rf_error checking
-        PROTECT(Ry = Rf_coerceVector(Ry, REALSXP)); nprot++;
-        double *y = REAL(Ry);
-        if (!y) {
-            UNPROTECT(nprot);
-            Rf_error("Failed to convert input vector y");
-        }
-
-        PROTECT(Rweights = Rf_coerceVector(Rweights, REALSXP)); nprot++;
-        double *weights = REAL(Rweights);
-        if (!weights) {
-            UNPROTECT(nprot);
-            Rf_error("Failed to convert weights vector");
-        }
-
-        PROTECT(Rn_time_steps = Rf_coerceVector(Rn_time_steps, INTSXP)); nprot++;
-        int n_time_steps = INTEGER(Rn_time_steps)[0];
-        if (n_time_steps <= 0) {
-            UNPROTECT(nprot);
-            Rf_error("Number of time steps must be positive");
-        }
-
-        PROTECT(Rstep_factor = Rf_coerceVector(Rstep_factor, REALSXP)); nprot++;
-        double step_factor = REAL(Rstep_factor)[0];
-        if (step_factor <= 0) {
-            UNPROTECT(nprot);
-            Rf_error("Step factor must be positive");
-        }
-
-        PROTECT(Rnormalize = Rf_coerceVector(Rnormalize, INTSXP)); nprot++;
-        int normalize = INTEGER(Rnormalize)[0];
-        if (normalize < 0 || normalize > 2) {
-            UNPROTECT(nprot);
-            Rf_error("Normalize must be 0, 1, or 2");
-        }
-
-        PROTECT(Rpreserve_local_maxima = Rf_coerceVector(Rpreserve_local_maxima, LGLSXP)); nprot++;
-        bool preserve_local_maxima = (LOGICAL(Rpreserve_local_maxima)[0] == 1);
-
-        PROTECT(Rlocal_maximum_weight_factor = Rf_coerceVector(Rlocal_maximum_weight_factor, REALSXP)); nprot++;
-        double local_maximum_weight_factor = REAL(Rlocal_maximum_weight_factor)[0];
-        if (local_maximum_weight_factor < 0 || local_maximum_weight_factor > 1) {
-            UNPROTECT(nprot);
-            Rf_error("Local maximum weight factor must be between 0 and 1");
-        }
-
-        PROTECT(Rpreserve_local_extrema = Rf_coerceVector(Rpreserve_local_extrema, LGLSXP)); nprot++;
-        bool preserve_local_extrema = (LOGICAL(Rpreserve_local_extrema)[0] == 1);
-
-        if (preserve_local_maxima && preserve_local_extrema) {
-            UNPROTECT(nprot);
-            Rf_error("Cannot preserve both local maxima and local extrema simultaneously");
-        }
-
-        PROTECT(Rimputation_method = Rf_coerceVector(Rimputation_method, INTSXP)); nprot++;
-        imputation_method_t imputation_method = static_cast<imputation_method_t>(INTEGER(Rimputation_method)[0]);
-
-        PROTECT(Rmax_iterations = Rf_coerceVector(Rmax_iterations, INTSXP)); nprot++;
-        int max_iterations = INTEGER(Rmax_iterations)[0];
-        if (max_iterations <= 0) {
-            UNPROTECT(nprot);
-            Rf_error("Maximum iterations must be positive");
-        }
-
-        PROTECT(Rconvergence_threshold = Rf_coerceVector(Rconvergence_threshold, REALSXP)); nprot++;
-        double convergence_threshold = REAL(Rconvergence_threshold)[0];
-        if (convergence_threshold <= 0) {
-            UNPROTECT(nprot);
-            Rf_error("Convergence threshold must be positive");
-        }
-
-        PROTECT(Rapply_binary_threshold = Rf_coerceVector(Rapply_binary_threshold, LGLSXP)); nprot++;
-        bool apply_binary_threshold = (LOGICAL(Rapply_binary_threshold)[0] == 1);
-
-        PROTECT(Rbinary_threshold = Rf_coerceVector(Rbinary_threshold, REALSXP)); nprot++;
-        double binary_threshold = REAL(Rbinary_threshold)[0];
-        if (binary_threshold < 0 || binary_threshold > 1) {
-            UNPROTECT(nprot);
-            Rf_error("Binary threshold must be between 0 and 1");
-        }
-
-        PROTECT(Rikernel = Rf_coerceVector(Rikernel, INTSXP)); nprot++;
-        int ikernel = INTEGER(Rikernel)[0];
-        if (ikernel < 0) {
-            UNPROTECT(nprot);
-            Rf_error("Invalid kernel index");
-        }
-
-        PROTECT(Rdist_normalization_factor = Rf_coerceVector(Rdist_normalization_factor, REALSXP)); nprot++;
-        double dist_normalization_factor = REAL(Rdist_normalization_factor)[0];
-        if (dist_normalization_factor <= 1.0) {
-            UNPROTECT(nprot);
-            Rf_error("Distance normalization factor must be greater than 1.0");
-        }
-
-        PROTECT(Rn_CVs = Rf_coerceVector(Rn_CVs, INTSXP)); nprot++;
-        int n_CVs = INTEGER(Rn_CVs)[0];
-        if (n_CVs < 0) {
-            UNPROTECT(nprot);
-            Rf_error("Number of CV rounds must be non-negative");
-        }
-
-        PROTECT(Rn_CV_folds = Rf_coerceVector(Rn_CV_folds, INTSXP)); nprot++;
-        int n_CV_folds = INTEGER(Rn_CV_folds)[0];
-        if (n_CVs > 0 && n_CV_folds <= 1) {
-            UNPROTECT(nprot);
-            Rf_error("Number of CV folds must be greater than 1 when performing cross-validation");
-        }
-
-        PROTECT(Repsilon = Rf_coerceVector(Repsilon, REALSXP)); nprot++;
-        double epsilon = REAL(Repsilon)[0];
-        if (epsilon <= 0) {
-            UNPROTECT(nprot);
-            Rf_error("Epsilon must be positive");
-        }
-
-        PROTECT(Rseed = Rf_coerceVector(Rseed, INTSXP)); nprot++;
-        unsigned int seed = static_cast<unsigned int>(INTEGER(Rseed)[0]);
-
-        PROTECT(Rn_cores = Rf_coerceVector(Rn_cores, INTSXP)); nprot++;
-        int n_cores = INTEGER(Rn_cores)[0];
-        if (n_cores < 0) {
-            UNPROTECT(nprot);
-            Rf_error("Number of cores must be non-negative");
-        }
-
-        PROTECT(Rverbose = Rf_coerceVector(Rverbose, LGLSXP)); nprot++;
-        bool verbose = (LOGICAL(Rverbose)[0] == 1);
+        // Scalars (defensive extraction)
+        const int   n_time_steps             = Rf_asInteger(Rn_time_steps);
+        const double step_factor             = Rf_asReal(Rstep_factor);
+        const int normalize                  = Rf_asInteger(Rnormalize);
+        const bool preserve_local_maxima     = (Rf_asLogical(Rpreserve_local_maxima) == TRUE);
+        const double local_maximum_weight_factor = Rf_asReal(Rlocal_maximum_weight_factor);
+        const bool preserve_local_extrema    = (Rf_asLogical(Rpreserve_local_extrema) == TRUE);
+        const imputation_method_t imputation_method = static_cast<imputation_method_t>(Rf_asInteger(Rimputation_method));
+        const int max_iterations             = Rf_asInteger(Rmax_iterations);
+        const double convergence_threshold   = Rf_asReal(Rconvergence_threshold);
+        const bool apply_binary_threshold    = (Rf_asLogical(Rapply_binary_threshold) == TRUE);
+        const double binary_threshold        = Rf_asReal(Rbinary_threshold);
+        const int   ikernel                  = Rf_asInteger(Rikernel);
+        const double dist_normalization_fctr = Rf_asReal(Rdist_normalization_factor);
+        const int   n_CVs                    = Rf_asInteger(Rn_CVs);
+        const int   n_CV_folds               = Rf_asInteger(Rn_CV_folds);
+        const double epsilon                 = Rf_asReal(Repsilon);
+        const unsigned int seed              = static_cast<unsigned int>(Rf_asInteger(Rseed));
+        const int n_cores                    = Rf_asInteger(Rn_cores);
+        const bool  verbose                  = (Rf_asLogical(Rverbose) == TRUE);
 
         // Initialize parameters structure
         iterative_imputation_params_t iterative_params;
         iterative_params.max_iterations = max_iterations;
         iterative_params.convergence_threshold = convergence_threshold;
-
-        // Create local copy of weights
-        std::vector<double> local_weights(weights, weights + n_vertices);
 
         // Call appropriate smoother function
         std::unique_ptr<graph_diffusion_smoother_result_t> result;
@@ -1266,8 +1157,8 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         if (n_cores == 1) {
             result = ext_graph_diffusion_smoother(graph,
                                               edge_length,
-                                              local_weights,
-                                              std::vector<double>(y, y + n_vertices),
+                                              weights,
+                                              y,
                                               n_time_steps,
                                               step_factor,
                                               normalize,
@@ -1279,7 +1170,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
                                               apply_binary_threshold,
                                               binary_threshold,
                                               ikernel,
-                                              dist_normalization_factor,
+                                              dist_normalization_fctr,
                                               n_CVs,
                                               n_CV_folds,
                                               epsilon,
@@ -1287,8 +1178,8 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         } else {
             result = graph_diffusion_smoother_mp(graph,
                                                  edge_length,
-                                                 local_weights,
-                                                 std::vector<double>(y, y + n_vertices),
+                                                 weights,
+                                                 y,
                                                  n_time_steps,
                                                  step_factor,
                                                  normalize,
@@ -1300,7 +1191,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
                                                  apply_binary_threshold,
                                                  binary_threshold,
                                                  ikernel,
-                                                 dist_normalization_factor,
+                                                 dist_normalization_fctr,
                                                  n_CVs,
                                                  n_CV_folds,
                                                  epsilon,
@@ -1310,92 +1201,82 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
 
         }
 
-        // Check result
-        if (!result) {
-            UNPROTECT(nprot);
-            Rf_error("Failed to compute graph diffusion smoothing");
-        }
-
-        // Validate result components
-        if (result->y_traj.empty()) {
-            UNPROTECT(nprot);
-            Rf_error("Empty trajectory returned from graph diffusion smoothing");
-        }
-
-        if (result->y_optimal.empty()) {
-            UNPROTECT(nprot);
-            Rf_error("Empty optimal solution returned from graph diffusion smoothing");
-        }
-
-        // Add check for consistent dimensions
-        if (!result->y_traj.empty() && result->y_traj[0].size() != static_cast<size_t>(n_vertices)) {
-            UNPROTECT(nprot);
-            Rf_error("Inconsistent dimensions in result trajectory");
-        }
-
-        if (result->y_optimal.size() != static_cast<size_t>(n_vertices)) {
-            UNPROTECT(nprot);
-            Rf_error("Inconsistent dimensions in optimal solution");
-        }
-
         // Convert results to R objects
-        SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 8)); nprot++;
+        SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 8));
 
         // Convert y_traj to R list of vectors
-        SEXP r_y_traj = PROTECT(Rf_allocVector(VECSXP, result->y_traj.size())); nprot++;
-        for (size_t t = 0; t < result->y_traj.size(); ++t) {
-            SEXP r_vector = PROTECT(Rf_allocVector(REALSXP, n_vertices));
-            std::copy(result->y_traj[t].begin(), result->y_traj[t].end(), REAL(r_vector));
-            SET_VECTOR_ELT(r_y_traj, t, r_vector);
-            UNPROTECT(1);
+        {
+            SEXP r_y_traj = PROTECT(Rf_allocVector(VECSXP, result->y_traj.size()));
+            for (size_t t = 0; t < result->y_traj.size(); ++t) {
+                SEXP r_vector = PROTECT(Rf_allocVector(REALSXP, n_vertices));
+                std::copy(result->y_traj[t].begin(), result->y_traj[t].end(), REAL(r_vector));
+                SET_VECTOR_ELT(r_y_traj, t, r_vector);
+                UNPROTECT(1);
+            }
+            SET_VECTOR_ELT(r_result, 0, r_y_traj);
+            UNPROTECT(1); // r_y_traj
         }
-        SET_VECTOR_ELT(r_result, 0, r_y_traj);
 
         // Convert cv_errors to R matrix
-        if (result->n_CVs > 0) {
-            if (result->cv_errors.size() != static_cast<size_t>(result->n_time_steps * result->n_CVs)) {
-                UNPROTECT(nprot);
-                Rf_error("Invalid cv_errors size");
+        {
+            SEXP r_cv_errors = PROTECT(Rf_allocMatrix(REALSXP, result->n_time_steps, result->n_CVs));
+            double* cv_errors_ptr = REAL(r_cv_errors);
+            for (int t = 0; t < result->n_time_steps; ++t) {
+                for (int cv = 0; cv < result->n_CVs; ++cv) {
+                    cv_errors_ptr[t + cv * result->n_time_steps] = result->cv_errors[t + cv * result->n_time_steps];
+                }
             }
+            SET_VECTOR_ELT(r_result, 1, r_cv_errors);
+            UNPROTECT(1);
         }
-        SEXP r_cv_errors = PROTECT(Rf_allocMatrix(REALSXP, result->n_time_steps, result->n_CVs)); nprot++;
-        double* cv_errors_ptr = REAL(r_cv_errors);
-        for (int t = 0; t < result->n_time_steps; ++t) {
-            for (int cv = 0; cv < result->n_CVs; ++cv) {
-                cv_errors_ptr[t + cv * result->n_time_steps] = result->cv_errors[t + cv * result->n_time_steps];
-            }
-        }
-        SET_VECTOR_ELT(r_result, 1, r_cv_errors);
 
         // Convert mean_cv_errors to R vector
-        SEXP r_mean_cv_errors = PROTECT(Rf_allocVector(REALSXP, result->mean_cv_errors.size())); nprot++;
-        std::copy(result->mean_cv_errors.begin(), result->mean_cv_errors.end(), REAL(r_mean_cv_errors));
-        SET_VECTOR_ELT(r_result, 2, r_mean_cv_errors);
+        {
+            SEXP r_mean_cv_errors = PROTECT(Rf_allocVector(REALSXP, result->mean_cv_errors.size()));
+            std::copy(result->mean_cv_errors.begin(), result->mean_cv_errors.end(), REAL(r_mean_cv_errors));
+            SET_VECTOR_ELT(r_result, 2, r_mean_cv_errors);
+            UNPROTECT(1);
+        }
 
         // Convert y_optimal to R vector
-        SEXP r_y_optimal = PROTECT(Rf_allocVector(REALSXP, result->y_optimal.size())); nprot++;
-        std::copy(result->y_optimal.begin(), result->y_optimal.end(), REAL(r_y_optimal));
-        SET_VECTOR_ELT(r_result, 3, r_y_optimal);
+        {
+            SEXP r_y_optimal = PROTECT(Rf_allocVector(REALSXP, result->y_optimal.size()));
+            std::copy(result->y_optimal.begin(), result->y_optimal.end(), REAL(r_y_optimal));
+            SET_VECTOR_ELT(r_result, 3, r_y_optimal);
+            UNPROTECT(1);
+        }
 
         // Convert scalar values
-        SEXP r_n_time_steps = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-        INTEGER(r_n_time_steps)[0] = result->n_time_steps;
-        SET_VECTOR_ELT(r_result, 4, r_n_time_steps);
+        {
+            SEXP r_n_time_steps = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(r_n_time_steps)[0] = result->n_time_steps;
+            SET_VECTOR_ELT(r_result, 4, r_n_time_steps);
+            UNPROTECT(1);
+        }
 
-        SEXP r_n_CVs = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-        INTEGER(r_n_CVs)[0] = result->n_CVs;
-        SET_VECTOR_ELT(r_result, 5, r_n_CVs);
+        {
+            SEXP r_n_CVs = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(r_n_CVs)[0] = result->n_CVs;
+            SET_VECTOR_ELT(r_result, 5, r_n_CVs);
+            UNPROTECT(1);
+        }
 
-        SEXP r_optimal_time_step = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-        INTEGER(r_optimal_time_step)[0] = result->optimal_time_step;
-        SET_VECTOR_ELT(r_result, 6, r_optimal_time_step);
+        {
+            SEXP r_optimal_time_step = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(r_optimal_time_step)[0] = result->optimal_time_step;
+            SET_VECTOR_ELT(r_result, 6, r_optimal_time_step);
+            UNPROTECT(1);
+        }
 
-        SEXP r_min_cv_error = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
-        REAL(r_min_cv_error)[0] = result->min_cv_error;
-        SET_VECTOR_ELT(r_result, 7, r_min_cv_error);
+        {
+            SEXP r_min_cv_error = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(r_min_cv_error)[0] = result->min_cv_error;
+            SET_VECTOR_ELT(r_result, 7, r_min_cv_error);
+            UNPROTECT(1);
+        }
 
         // Set names for the result list
-        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 8)); nprot++;
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 8));
         SET_STRING_ELT(r_names, 0, Rf_mkChar("y_traj"));
         SET_STRING_ELT(r_names, 1, Rf_mkChar("cv_errors"));
         SET_STRING_ELT(r_names, 2, Rf_mkChar("mean_cv_errors"));
@@ -1406,15 +1287,7 @@ SEXP S_ext_graph_diffusion_smoother(SEXP Rgraph,
         SET_STRING_ELT(r_names, 7, Rf_mkChar("min_cv_error"));
         Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
-        // Add checks for allocation failure
-        if (!r_result || !r_y_traj || !r_cv_errors || !r_mean_cv_errors ||
-            !r_y_optimal || !r_n_time_steps || !r_n_CVs ||
-            !r_optimal_time_step || !r_min_cv_error || !r_names) {
-            UNPROTECT(nprot);
-            Rf_error("Failed to allocate memory for results");
-        }
-
-        UNPROTECT(nprot);
+        UNPROTECT(2);
         return r_result;
 
     } catch (const std::bad_alloc& e) {
@@ -2305,7 +2178,8 @@ instrumented_gds(const std::vector<std::vector<int>>& graph,
             pointwise_sum += std::abs(diff);
             integrated_sum += diff * diff;
         }
-        return std::make_pair(pointwise_sum / n_vertices, std::sqrt(integrated_sum / n_vertices));
+        return std::make_pair(pointwise_sum / n_vertices,
+                              std::sqrt(integrated_sum / n_vertices));
     };
 
     auto kernel_diffusion_loop = [&](std::vector<double>& y_current, std::vector<double>& y_next) {
@@ -2576,27 +2450,26 @@ extern "C" SEXP S_instrumented_gds(SEXP s_graph,
                                max_step);
 
   // ---- Build result list (container-first; per-element protect) ----
-  int nprot = 0;
   const int N_RESULTS = 20;
-  SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS)); ++nprot;
+  SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS));
 
   // 0..3: trajectories/deltas/steps (list<NumericVector>)
   {
-    SEXP t = PROTECT(convert_vector_vector_double_to_R(perf.y_trajectory));
+    SEXP t = convert_vector_vector_double_to_R(perf.y_trajectory);
     SET_VECTOR_ELT(results, 0, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_vector_double_to_R(perf.pre_update_deltas));
+    t = convert_vector_vector_double_to_R(perf.pre_update_deltas);
     SET_VECTOR_ELT(results, 1, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_vector_double_to_R(perf.post_update_deltas));
+    t = convert_vector_vector_double_to_R(perf.post_update_deltas);
     SET_VECTOR_ELT(results, 2, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_vector_double_to_R(perf.step_size_history));
+    t = convert_vector_vector_double_to_R(perf.step_size_history);
     SET_VECTOR_ELT(results, 3, t); UNPROTECT(1);
   }
 
   // 4..6: scalar series & events
   {
-    SEXP t = PROTECT(convert_vector_double_to_R(perf.global_residual_norm));
+    SEXP t = convert_vector_double_to_R(perf.global_residual_norm);
     SET_VECTOR_ELT(results, 4, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.max_absolute_delta));
+    t = convert_vector_double_to_R(perf.max_absolute_delta);
     SET_VECTOR_ELT(results, 5, t); UNPROTECT(1);
     t = PROTECT(convert_vector_vector_bool_to_R(perf.oscillation_events));
     SET_VECTOR_ELT(results, 6, t); UNPROTECT(1);
@@ -2604,25 +2477,25 @@ extern "C" SEXP S_instrumented_gds(SEXP s_graph,
 
   // 7..10: per-vertex event counts
   {
-    SEXP t = PROTECT(convert_vector_int_to_R(perf.oscillation_count_per_vertex));
+    SEXP t = convert_vector_int_to_R(perf.oscillation_count_per_vertex);
     SET_VECTOR_ELT(results, 7, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_int_to_R(perf.increase_events_per_vertex));
+    t = convert_vector_int_to_R(perf.increase_events_per_vertex);
     SET_VECTOR_ELT(results, 8, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_int_to_R(perf.decrease_events_per_vertex));
+    t = convert_vector_int_to_R(perf.decrease_events_per_vertex);
     SET_VECTOR_ELT(results, 9, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_int_to_R(perf.oscillation_reductions_per_vertex));
+    t = convert_vector_int_to_R(perf.oscillation_reductions_per_vertex);
     SET_VECTOR_ELT(results,10, t); UNPROTECT(1);
   }
 
   // 11..14: energy metrics
   {
-    SEXP t = PROTECT(convert_vector_double_to_R(perf.smoothness_energy));
+    SEXP t = convert_vector_double_to_R(perf.smoothness_energy);
     SET_VECTOR_ELT(results,11, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.fidelity_energy));
+    t = convert_vector_double_to_R(perf.fidelity_energy);
     SET_VECTOR_ELT(results,12, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.laplacian_energy));
+    t = convert_vector_double_to_R(perf.laplacian_energy);
     SET_VECTOR_ELT(results,13, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.energy_ratio));
+    t = convert_vector_double_to_R(perf.energy_ratio);
     SET_VECTOR_ELT(results,14, t); UNPROTECT(1);
   }
 
@@ -2635,23 +2508,23 @@ extern "C" SEXP S_instrumented_gds(SEXP s_graph,
 
   // 16..17: snr trajectory, MAD
   {
-    SEXP t = PROTECT(convert_vector_double_to_R(perf.snr_trajectory));
+    SEXP t = convert_vector_double_to_R(perf.snr_trajectory);
     SET_VECTOR_ELT(results,16, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.mean_absolute_deviation));
+    t = convert_vector_double_to_R(perf.mean_absolute_deviation);
     SET_VECTOR_ELT(results,17, t); UNPROTECT(1);
   }
 
   // 18..19: curvature errors
   {
-    SEXP t = PROTECT(convert_vector_double_to_R(perf.pointwise_curvature_error));
+    SEXP t = convert_vector_double_to_R(perf.pointwise_curvature_error);
     SET_VECTOR_ELT(results,18, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_double_to_R(perf.integrated_curvature_error));
+    t = convert_vector_double_to_R(perf.integrated_curvature_error);
     SET_VECTOR_ELT(results,19, t); UNPROTECT(1);
   }
 
   // names while results is protected
   {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS)); ++nprot;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS));
     SET_STRING_ELT(names, 0,  Rf_mkChar("y_trajectory"));
     SET_STRING_ELT(names, 1,  Rf_mkChar("pre_update_deltas"));
     SET_STRING_ELT(names, 2,  Rf_mkChar("post_update_deltas"));
@@ -2673,10 +2546,10 @@ extern "C" SEXP S_instrumented_gds(SEXP s_graph,
     SET_STRING_ELT(names,18,  Rf_mkChar("pointwise_curvature_error"));
     SET_STRING_ELT(names,19,  Rf_mkChar("integrated_curvature_error"));
     Rf_setAttrib(results, R_NamesSymbol, names);
-    UNPROTECT(1); --nprot; // names
+    UNPROTECT(1); // names
   }
 
-  UNPROTECT(nprot); // results
+  UNPROTECT(1); // results
   return results;
 }
 
@@ -3167,22 +3040,19 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
     // Convert numeric vector directly
-    double* y_ptr = REAL(s_y);
-    std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
+    std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
 
-    // Extract scalar parameters using R's C API
-    int n_time_steps = INTEGER(s_n_time_steps)[0];
-    double step_factor = REAL(s_step_factor)[0];
-    double binary_threshold = REAL(s_binary_threshold)[0];
-    int ikernel = INTEGER(s_ikernel)[0];
-    double dist_normalization_factor = REAL(s_dist_normalization_factor)[0];
-    int n_CVs = INTEGER(s_n_CVs)[0];
-    int n_CV_folds = INTEGER(s_n_CV_folds)[0];
-    double epsilon = REAL(s_epsilon)[0];
-    unsigned int seed = INTEGER(s_seed)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
-
-    int nprot = 0;
+    // Scalars (defensive extraction)
+    const int   n_time_steps             = Rf_asInteger(s_n_time_steps);
+    const double step_factor             = Rf_asReal(s_step_factor);
+    const double binary_threshold        = Rf_asReal(s_binary_threshold);
+    const int   ikernel                  = Rf_asInteger(s_ikernel);
+    const double dist_normalization_fctr = Rf_asReal(s_dist_normalization_factor);
+    const int   n_CVs                    = Rf_asInteger(s_n_CVs);
+    const int   n_CV_folds               = Rf_asInteger(s_n_CV_folds);
+    const double epsilon                 = Rf_asReal(s_epsilon);
+    const bool  verbose                  = (Rf_asLogical(s_verbose) == TRUE);
+    const unsigned int seed              = static_cast<unsigned int>(Rf_asInteger(s_seed));
 
     // Call the graph diffusion smoother function
     graph_diffusion_smoother_result_t result = graph_diffusion_smoother(
@@ -3193,7 +3063,7 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
         step_factor,
         binary_threshold,
         ikernel,
-        dist_normalization_factor,
+        dist_normalization_fctr,
         n_CVs,
         n_CV_folds,
         epsilon,
@@ -3201,93 +3071,104 @@ SEXP S_graph_diffusion_smoother(SEXP s_adj_list,
         seed
         );
 
-    // Create the return list using R's C API
-    const char* names[] = {
-        "y_traj",
-        "cv_errors",
-        "mean_cv_errors",
-        "y_optimal",
-        "n_time_steps",
-        "n_CVs",
-        "optimal_time_step",
-        "min_cv_error",
-        NULL
-    };
+    // Assemble return value
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 8));
 
-    int n_elements = 0;
-    while (names[n_elements] != NULL) n_elements++;
-
-    // Create list and protect it
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); nprot++;
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements)); nprot++;
-
-    // Set names
-    for (int i = 0; i < n_elements; i++) {
-        SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+    // names
+    {
+        SEXP nm = PROTECT(Rf_allocVector(STRSXP, 8)); // [2]
+        SET_STRING_ELT(nm, 0, Rf_mkChar("y_traj"));
+        SET_STRING_ELT(nm, 1, Rf_mkChar("cv_errors"));
+        SET_STRING_ELT(nm, 2, Rf_mkChar("mean_cv_errors"));
+        SET_STRING_ELT(nm, 3, Rf_mkChar("y_optimal"));
+        SET_STRING_ELT(nm, 4, Rf_mkChar("n_time_steps"));
+        SET_STRING_ELT(nm, 5, Rf_mkChar("n_CVs"));
+        SET_STRING_ELT(nm, 6, Rf_mkChar("optimal_time_step"));
+        SET_STRING_ELT(nm, 7, Rf_mkChar("min_cv_error"));
+        Rf_setAttrib(r_result, R_NamesSymbol, nm);
+        UNPROTECT(1); // nm -> [1]
     }
-    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
-    // Helper function to convert vector to SEXP
-    auto create_numeric_vector = [&nprot](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size())); nprot++;
-        double* ptr = REAL(r_vec);
-        std::copy(vec.begin(), vec.end(), ptr);
-        return r_vec;
-    };
+    // 0: y_traj — list of numeric vectors
+    {
+        const R_xlen_t T = static_cast<R_xlen_t>(result.y_traj.size());
+        SEXP r_y_traj = PROTECT(Rf_allocVector(VECSXP, T)); // [2]
+        for (R_xlen_t t = 0; t < T; ++t) {
+            const R_xlen_t n = static_cast<R_xlen_t>(result.y_traj[static_cast<size_t>(t)].size());
+            SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, n)); // [3]
+            std::copy(result.y_traj[static_cast<size_t>(t)].begin(),
+                      result.y_traj[static_cast<size_t>(t)].end(),
+                      REAL(r_vec));
+            SET_VECTOR_ELT(r_y_traj, t, r_vec);
+            UNPROTECT(1); // r_vec -> [2]
+        }
+        SET_VECTOR_ELT(r_result, 0, r_y_traj);
+        UNPROTECT(1); // r_y_traj -> [1]
+    }
 
-    // Helper function to convert matrix to SEXP (column-major for R)
-    auto create_numeric_matrix = [&nprot](const std::vector<double>& vec, int nrow, int ncol) -> SEXP {
-        if (vec.empty() || nrow == 0 || ncol == 0) return R_NilValue;
-
-        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); nprot++;
-        double* ptr = REAL(r_mat);
-
-        for (int i = 0; i < nrow; i++) {
-            for (int j = 0; j < ncol; j++) {
-                ptr[i + j * nrow] = vec[i + j * nrow];  // Column-major order for R
+    // 1: cv_errors — matrix (n_time_steps x n_CVs) or NULL
+    if (result.n_CVs > 0 && result.n_time_steps > 0) {
+        const R_xlen_t nrow = static_cast<R_xlen_t>(result.n_time_steps);
+        const R_xlen_t ncol = static_cast<R_xlen_t>(result.n_CVs);
+        SEXP r_cv = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); // [2]
+        double* p = REAL(r_cv);
+        for (R_xlen_t i = 0; i < nrow; ++i) {
+            for (R_xlen_t j = 0; j < ncol; ++j) {
+                p[i + j * nrow] = result.cv_errors[static_cast<size_t>(i + j * nrow)];
             }
         }
-        return r_mat;
-    };
-
-    // Convert y_traj to an R list of vectors
-    SEXP r_y_traj = PROTECT(Rf_allocVector(VECSXP, result.y_traj.size())); nprot++;
-    for (size_t t = 0; t < result.y_traj.size(); ++t) {
-        SET_VECTOR_ELT(r_y_traj, t, create_numeric_vector(result.y_traj[t]));
-    }
-    SET_VECTOR_ELT(r_result, 0, r_y_traj);
-
-    // Convert cv_errors to R matrix
-    if (result.n_CVs > 0 && result.n_time_steps > 0) {
-        SEXP r_cv_errors = create_numeric_matrix(result.cv_errors, result.n_time_steps, result.n_CVs);
-        SET_VECTOR_ELT(r_result, 1, r_cv_errors);
+        SET_VECTOR_ELT(r_result, 1, r_cv);
+        UNPROTECT(1); // r_cv -> [1]
     } else {
         SET_VECTOR_ELT(r_result, 1, R_NilValue);
     }
 
-    // Convert mean_cv_errors to R vector
-    SET_VECTOR_ELT(r_result, 2, create_numeric_vector(result.mean_cv_errors));
+    // 2: mean_cv_errors — numeric vector
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.mean_cv_errors.size());
+        SEXP v = PROTECT(Rf_allocVector(REALSXP, n)); // [2]
+        std::copy(result.mean_cv_errors.begin(), result.mean_cv_errors.end(), REAL(v));
+        SET_VECTOR_ELT(r_result, 2, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    // Convert y_optimal to R vector
-    SET_VECTOR_ELT(r_result, 3, create_numeric_vector(result.y_optimal));
+    // 3: y_optimal — numeric vector
+    {
+        const R_xlen_t n = static_cast<R_xlen_t>(result.y_optimal.size());
+        SEXP v = PROTECT(Rf_allocVector(REALSXP, n)); // [2]
+        std::copy(result.y_optimal.begin(), result.y_optimal.end(), REAL(v));
+        SET_VECTOR_ELT(r_result, 3, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    // Convert scalar values
-    SEXP r_n_time_steps = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-    INTEGER(r_n_time_steps)[0] = result.n_time_steps;
-    SET_VECTOR_ELT(r_result, 4, r_n_time_steps);
+    // 4: n_time_steps — scalar int
+    {
+        SEXP v = PROTECT(Rf_ScalarInteger(result.n_time_steps)); // [2]
+        SET_VECTOR_ELT(r_result, 4, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    SEXP r_n_CVs = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-    INTEGER(r_n_CVs)[0] = result.n_CVs;
-    SET_VECTOR_ELT(r_result, 5, r_n_CVs);
+    // 5: n_CVs — scalar int
+    {
+        SEXP v = PROTECT(Rf_ScalarInteger(result.n_CVs)); // [2]
+        SET_VECTOR_ELT(r_result, 5, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    SEXP r_optimal_time_step = PROTECT(Rf_allocVector(INTSXP, 1)); nprot++;
-    INTEGER(r_optimal_time_step)[0] = result.optimal_time_step;
-    SET_VECTOR_ELT(r_result, 6, r_optimal_time_step);
+    // 6: optimal_time_step — scalar int
+    {
+        SEXP v = PROTECT(Rf_ScalarInteger(result.optimal_time_step)); // [2]
+        SET_VECTOR_ELT(r_result, 6, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    SEXP r_min_cv_error = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
-    REAL(r_min_cv_error)[0] = result.min_cv_error;
-    SET_VECTOR_ELT(r_result, 7, r_min_cv_error);
+    // 7: min_cv_error — scalar double
+    {
+        SEXP v = PROTECT(Rf_ScalarReal(result.min_cv_error)); // [2]
+        SET_VECTOR_ELT(r_result, 7, v);
+        UNPROTECT(1); // v -> [1]
+    }
 
-    UNPROTECT(nprot);
+    UNPROTECT(1); // r_result
     return r_result;
 }

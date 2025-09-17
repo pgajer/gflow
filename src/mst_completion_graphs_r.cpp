@@ -3,6 +3,8 @@
 #include "SEXP_cpp_conversion_utils.hpp" // convert_adj_list_from_R, convert_weight_list_from_R
 
 #include <vector>
+#include <utility>  // for std::pair
+#include <vector>
 #include <algorithm>      // std::copy
 
 #include <R.h>            // For Rprintf, etc.
@@ -65,11 +67,6 @@ SEXP graph_to_edge_matrix(const set_wgraph_t& G) {
 	UNPROTECT(1);
 	return res;
 }
-
-#include <R.h>
-#include <Rinternals.h>
-#include <vector>
-#include <utility>  // for std::pair
 
 /**
  * @brief Converts a set_wgraph_t to a pair of R lists:
@@ -173,47 +170,57 @@ extern "C" SEXP S_create_mst_completion_graph(
         REPORT_ERROR("verbose must be a logical scalar");
     }
 
-    double q_thld = REAL(s_q_thld)[0];
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    double q_thld = Rf_asReal(s_q_thld);
+    bool verbose  = (Rf_asLogical(s_verbose) == TRUE);
 
     std::vector<std::vector<double>> X = std::move(*Rmatrix_to_cpp(s_X));
 
     mst_completion_graph_t res = create_mst_completion_graph(X, q_thld, verbose);
 
-    // Create R return list
-    size_t nprot = 0;
+	// Create R return list (container-first pattern)
+    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 5));
 
-    // Since create_r_graph_from_set_wgraph now UNPROTECTs internally,
-    // we need to PROTECT the results here
-    auto [r_mst_adj_list, r_mst_weights_list] = create_r_graph_from_set_wgraph(res.mstree);
-    PROTECT(r_mst_adj_list); nprot++;
-    PROTECT(r_mst_weights_list); nprot++;
+	// Set names
+    {
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5));
+        SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
+        SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
+        SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));
+        SET_STRING_ELT(r_names, 3, Rf_mkChar("cmst_weight_list"));
+        SET_STRING_ELT(r_names, 4, Rf_mkChar("mst_edge_weights"));
+        Rf_setAttrib(r_list, R_NamesSymbol, r_names);
+        UNPROTECT(1); // r_names
+    }
 
-    auto [r_cmst_adj_list, r_cmst_weights_list] = create_r_graph_from_set_wgraph(res.completed_mstree);
-    PROTECT(r_cmst_adj_list); nprot++;
-    PROTECT(r_cmst_weights_list); nprot++;
+	// Get MST graph components
+	{
+		auto [r_mst_adj_list, r_mst_weights_list] = create_r_graph_from_set_wgraph(res.mstree);
+		PROTECT(r_mst_adj_list);
+		PROTECT(r_mst_weights_list);
+		SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
+		SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
+		UNPROTECT(2); // r_mst_adj_list, r_mst_weights_list
+	}
 
-    size_t m = res.mstree_edge_weights.size();
-    SEXP r_mst_weights = PROTECT(Rf_allocVector(REALSXP, m)); nprot++;
-    std::copy(res.mstree_edge_weights.begin(), res.mstree_edge_weights.end(), REAL(r_mst_weights));
+	// Get completed MST graph components
+	{
+		auto [r_cmst_adj_list, r_cmst_weights_list] = create_r_graph_from_set_wgraph(res.completed_mstree);
+		PROTECT(r_cmst_adj_list);
+		PROTECT(r_cmst_weights_list);
+		SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
+		SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
+		UNPROTECT(2); // r_cmst_adj_list, r_cmst_weights_list
+	}
 
-    // Output list components
-    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 5)); nprot++;
-    SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
-    SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
-    SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
-    SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
-    SET_VECTOR_ELT(r_list, 4, r_mst_weights);
+	// MST edge weights
+    {
+        size_t m = res.mstree_edge_weights.size();
+        SEXP r_mst_weights = PROTECT(Rf_allocVector(REALSXP, m));
+        std::copy(res.mstree_edge_weights.begin(), res.mstree_edge_weights.end(), REAL(r_mst_weights));
+        SET_VECTOR_ELT(r_list, 4, r_mst_weights);
+        UNPROTECT(1); // r_mst_weights
+    }
 
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5)); nprot++;
-    SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
-    SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
-    SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));
-    SET_STRING_ELT(r_names, 3, Rf_mkChar("cmst_weight_list"));
-    SET_STRING_ELT(r_names, 4, Rf_mkChar("mst_edge_weights"));
-    Rf_setAttrib(r_list, R_NamesSymbol, r_names);
-
-    UNPROTECT(nprot);
-
+    UNPROTECT(1); // r_list
     return r_list;
 }

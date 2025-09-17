@@ -628,71 +628,89 @@ SEXP S_uggmalog(
         );
 
     // Convert results to R list
-    size_t n_protected = 0;
+
     const size_t RESULT_LIST_SIZE = 6;
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, RESULT_LIST_SIZE)); n_protected++;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, RESULT_LIST_SIZE));
 
     // Updated names including x_grid
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, RESULT_LIST_SIZE)); n_protected++;
-    SET_STRING_ELT(r_names, 0, Rf_mkChar("candidate_bws"));
-    SET_STRING_ELT(r_names, 1, Rf_mkChar("bw_predictions"));
-    SET_STRING_ELT(r_names, 2, Rf_mkChar("mean_errors"));
-    SET_STRING_ELT(r_names, 3, Rf_mkChar("opt_bw_idx"));
-    SET_STRING_ELT(r_names, 4, Rf_mkChar("predictions")); // opt_predictions
-    SET_STRING_ELT(r_names, 5, Rf_mkChar("graph_diameter"));
+    {
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, RESULT_LIST_SIZE));
+        SET_STRING_ELT(r_names, 0, Rf_mkChar("candidate_bws"));
+        SET_STRING_ELT(r_names, 1, Rf_mkChar("bw_predictions"));
+        SET_STRING_ELT(r_names, 2, Rf_mkChar("mean_errors"));
+        SET_STRING_ELT(r_names, 3, Rf_mkChar("opt_bw_idx"));
+        SET_STRING_ELT(r_names, 4, Rf_mkChar("predictions")); // opt_predictions
+        SET_STRING_ELT(r_names, 5, Rf_mkChar("graph_diameter"));
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+        UNPROTECT(1); // r_names
+    }
 
     // Candidate bandwidths
-    SEXP r_candidate_bws = PROTECT(Rf_allocVector(REALSXP, result.candidate_bws.size())); n_protected++;
-    std::copy(result.candidate_bws.begin(), result.candidate_bws.end(),
-              REAL(r_candidate_bws));
-    SET_VECTOR_ELT(r_result, 0, r_candidate_bws);
+    {
+        SEXP r_candidate_bws = PROTECT(Rf_allocVector(REALSXP, result.candidate_bws.size()));
+        std::copy(result.candidate_bws.begin(), result.candidate_bws.end(),
+                  REAL(r_candidate_bws));
+        SET_VECTOR_ELT(r_result, 0, r_candidate_bws);
+        UNPROTECT(1); //
+    }
 
     // Bandwidth predictions
-    if (n_bws != result.bw_predictions.size()) { // result.bw_predictions should have n_bws elements
-        REPORT_ERROR("n_bws: %ld is not equal to result.bw_predictions.size(): %ld\n",
-            n_bws, result.bw_predictions.size());
-    }
-    SEXP r_bw_predictions;
-    r_bw_predictions = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_bws)); n_protected++; // the i-th column of r_bw_predictions is result.bw_predictions[i]
-    for (size_t i = 0; i < n_bws; ++i) {
-        if (!result.bw_predictions[i].empty()) {
-
-            if (n_vertices != result.bw_predictions[i].size()) {
-                REPORT_ERROR("n_vertices: %ld is not equal to result.bw_predictions.size(): %ld\n",
-                             n_vertices, result.bw_predictions.size());
-            }
-
-            // Copy column by column for column-major order
-            std::copy(result.bw_predictions[i].begin(),
-                      result.bw_predictions[i].end(),
-                      REAL(r_bw_predictions) + i * n_vertices);
+    {
+        if (n_bws != result.bw_predictions.size()) { // result.bw_predictions should have n_bws elements
+            REPORT_ERROR("n_bws: %ld is not equal to result.bw_predictions.size(): %ld\n",
+                         n_bws, result.bw_predictions.size());
         }
+        SEXP r_bw_predictions;
+        r_bw_predictions = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_bws));  // the i-th column of r_bw_predictions is result.bw_predictions[i]
+        for (size_t i = 0; i < n_bws; ++i) {
+            if (!result.bw_predictions[i].empty()) {
+
+                if (n_vertices != result.bw_predictions[i].size()) {
+                    REPORT_ERROR("n_vertices: %ld is not equal to result.bw_predictions.size(): %ld\n",
+                                 n_vertices, result.bw_predictions.size());
+                }
+
+                // Copy column by column for column-major order
+                std::copy(result.bw_predictions[i].begin(),
+                          result.bw_predictions[i].end(),
+                          REAL(r_bw_predictions) + i * n_vertices);
+            }
+        }
+        SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
+        UNPROTECT(1); //
     }
-    SET_VECTOR_ELT(r_result, 1, r_bw_predictions);
 
     // Mean errors
-    SEXP r_mean_errors = PROTECT(Rf_allocVector(REALSXP, result.mean_errors.size())); n_protected++;
-    std::copy(result.mean_errors.begin(), result.mean_errors.end(), REAL(r_mean_errors));
-    SET_VECTOR_ELT(r_result, 2, r_mean_errors);
+    {
+        SEXP r_mean_errors = PROTECT(Rf_allocVector(REALSXP, result.mean_errors.size()));
+        std::copy(result.mean_errors.begin(), result.mean_errors.end(), REAL(r_mean_errors));
+        SET_VECTOR_ELT(r_result, 2, r_mean_errors);
+        UNPROTECT(1); //
+    }
 
     // Optimal indices
-    SEXP r_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-    INTEGER(r_opt_bw_idx)[0] = result.opt_bw_index + 1; // Convert to 1-based indexing
-    SET_VECTOR_ELT(r_result, 3, r_opt_bw_idx);
+    {
+        SEXP r_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(r_opt_bw_idx)[0] = result.opt_bw_index + 1; // Convert to 1-based indexing
+        SET_VECTOR_ELT(r_result, 3, r_opt_bw_idx);
+        UNPROTECT(1); //
+    }
 
     // Optimal predictions
-    SEXP r_opt_predictions = PROTECT(Rf_allocVector(REALSXP, n_vertices)); n_protected++;
-    std::copy(result.opt_predictions.begin(), result.opt_predictions.end(), REAL(r_opt_predictions));
-    SET_VECTOR_ELT(r_result, 4, r_opt_predictions);
+    {
+        SEXP r_opt_predictions = PROTECT(Rf_allocVector(REALSXP, n_vertices));
+        std::copy(result.opt_predictions.begin(), result.opt_predictions.end(), REAL(r_opt_predictions));
+        SET_VECTOR_ELT(r_result, 4, r_opt_predictions);
+        UNPROTECT(1); //
+    }
 
     // Graph diameter
-    SEXP r_graph_diameter = PROTECT(Rf_ScalarReal(result.graph_diameter)); n_protected++;
-    SET_VECTOR_ELT(r_result, 5, r_graph_diameter);
+    {
+        SEXP r_graph_diameter = PROTECT(Rf_ScalarReal(result.graph_diameter));
+        SET_VECTOR_ELT(r_result, 5, r_graph_diameter);
+        UNPROTECT(1); //
+    }
 
-    // Set names for the main list
-    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
-
-    UNPROTECT(n_protected);
-
+    UNPROTECT(1);
     return r_result;
 }

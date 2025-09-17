@@ -305,7 +305,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_path_graph_plm", (DL_FUNC) &S_create_path_graph_plm, 3},
   {"S_create_path_graph_series", (DL_FUNC) &S_create_path_graph_series, 3},
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
-  {"S_kNN_v2", (DL_FUNC) &S_kNN_v2, 2},
+  //{"S_kNN_v2", (DL_FUNC) &S_kNN_v2, 2},
   {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
   {"S_ecdf", (DL_FUNC) &S_ecdf, 1},
   {"S_rlaplace", (DL_FUNC) &S_rlaplace, 4},

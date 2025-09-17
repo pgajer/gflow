@@ -997,115 +997,117 @@ SEXP S_mabilo_plus(SEXP s_x,
                                     dist_normalization_factor, epsilon, verbose);
 
     // ---- Build result (container-first; per-element protect) ----
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 13));
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 13));
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 13));
+        SET_STRING_ELT(names, 0,  Rf_mkChar("k_values"));
+        SET_STRING_ELT(names, 1,  Rf_mkChar("opt_sm_k"));
+        SET_STRING_ELT(names, 2,  Rf_mkChar("opt_sm_k_idx"));
+        SET_STRING_ELT(names, 3,  Rf_mkChar("opt_ma_k"));
+        SET_STRING_ELT(names, 4,  Rf_mkChar("opt_ma_k_idx"));
+        SET_STRING_ELT(names, 5,  Rf_mkChar("k_mean_sm_errors"));
+        SET_STRING_ELT(names, 6,  Rf_mkChar("k_mean_ma_errors"));
+        SET_STRING_ELT(names, 7,  Rf_mkChar("k_mean_sm_true_errors"));
+        SET_STRING_ELT(names, 8,  Rf_mkChar("k_mean_ma_true_errors"));
+        SET_STRING_ELT(names, 9,  Rf_mkChar("sm_predictions"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
+        SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
+        UNPROTECT(1);
+    }
 
     // 0: k_values (sequence k_min..k_max)
     {
         const R_xlen_t K = static_cast<R_xlen_t>(static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
         std::vector<int> k_values(static_cast<size_t>(K));
         for (R_xlen_t i = 0; i < K; ++i) k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
-        SET_VECTOR_ELT(result, 0, kv);
+        SEXP kv = convert_vector_int_to_R(k_values);
+        SET_VECTOR_ELT(r_result, 0, kv);
         UNPROTECT(1);
     }
 
     // 1: opt_sm_k (scalar int)
     {
         SEXP s = PROTECT(Rf_ScalarInteger(out.opt_sm_k));   // already 1-based in your core?
-        SET_VECTOR_ELT(result, 1, s);
+        SET_VECTOR_ELT(r_result, 1, s);
         UNPROTECT(1);
     }
 
     // 2: opt_sm_k_idx (1-based)
     {
         SEXP s = PROTECT(Rf_ScalarInteger(out.opt_sm_k_idx + 1));
-        SET_VECTOR_ELT(result, 2, s);
+        SET_VECTOR_ELT(r_result, 2, s);
         UNPROTECT(1);
     }
 
     // 3: opt_ma_k (scalar int)
     {
         SEXP s = PROTECT(Rf_ScalarInteger(out.opt_ma_k));
-        SET_VECTOR_ELT(result, 3, s);
+        SET_VECTOR_ELT(r_result, 3, s);
         UNPROTECT(1);
     }
 
     // 4: opt_ma_k_idx (1-based)
     {
         SEXP s = PROTECT(Rf_ScalarInteger(out.opt_ma_k_idx + 1));
-        SET_VECTOR_ELT(result, 4, s);
+        SET_VECTOR_ELT(r_result, 4, s);
         UNPROTECT(1);
     }
 
     // 5: k_mean_sm_errors
     {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_sm_errors));
-        SET_VECTOR_ELT(result, 5, s);
+        SEXP s = convert_vector_double_to_R(out.k_mean_sm_errors);
+        SET_VECTOR_ELT(r_result, 5, s);
         UNPROTECT(1);
     }
 
     // 6: k_mean_ma_errors
     {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_ma_errors));
-        SET_VECTOR_ELT(result, 6, s);
+        SEXP s = convert_vector_double_to_R(out.k_mean_ma_errors);
+        SET_VECTOR_ELT(r_result, 6, s);
         UNPROTECT(1);
     }
 
     // 7..8: true-error means (or NULLs if y_true absent)
     if (!y_true.empty()) {
-        SEXP s7 = PROTECT(convert_vector_double_to_R(out.k_mean_sm_true_errors));
-        SET_VECTOR_ELT(result, 7, s7); UNPROTECT(1);
-        SEXP s8 = PROTECT(convert_vector_double_to_R(out.k_mean_ma_true_errors));
-        SET_VECTOR_ELT(result, 8, s8); UNPROTECT(1);
+        SEXP s7 = convert_vector_double_to_R(out.k_mean_sm_true_errors);
+        SET_VECTOR_ELT(r_result, 7, s7); UNPROTECT(1);
+        SEXP s8 = convert_vector_double_to_R(out.k_mean_ma_true_errors);
+        SET_VECTOR_ELT(r_result, 8, s8); UNPROTECT(1);
     } else {
-        SET_VECTOR_ELT(result, 7, R_NilValue);
-        SET_VECTOR_ELT(result, 8, R_NilValue);
+        SET_VECTOR_ELT(r_result, 7, R_NilValue);
+        SET_VECTOR_ELT(r_result, 8, R_NilValue);
     }
 
     // 9: sm_predictions
     {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.sm_predictions));
-        SET_VECTOR_ELT(result, 9, s);
+        SEXP s = convert_vector_double_to_R(out.sm_predictions);
+        SET_VECTOR_ELT(r_result, 9, s);
         UNPROTECT(1);
     }
 
     // 10: ma_predictions
     {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.ma_predictions));
-        SET_VECTOR_ELT(result, 10, s);
+        SEXP s = convert_vector_double_to_R(out.ma_predictions);
+        SET_VECTOR_ELT(r_result, 10, s);
         UNPROTECT(1);
     }
 
     // 11: k_sm_predictions (list of numeric)
     {
-        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_sm_predictions));
-        SET_VECTOR_ELT(result, 11, s);
+        SEXP s = convert_vector_vector_double_to_R(out.k_sm_predictions);
+        SET_VECTOR_ELT(r_result, 11, s);
         UNPROTECT(1);
     }
 
     // 12: k_ma_predictions (list of numeric)
     {
-        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_ma_predictions));
-        SET_VECTOR_ELT(result, 12, s);
+        SEXP s = convert_vector_vector_double_to_R(out.k_ma_predictions);
+        SET_VECTOR_ELT(r_result, 12, s);
         UNPROTECT(1);
     }
 
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 13));
-    SET_STRING_ELT(names, 0,  Rf_mkChar("k_values"));
-    SET_STRING_ELT(names, 1,  Rf_mkChar("opt_sm_k"));
-    SET_STRING_ELT(names, 2,  Rf_mkChar("opt_sm_k_idx"));
-    SET_STRING_ELT(names, 3,  Rf_mkChar("opt_ma_k"));
-    SET_STRING_ELT(names, 4,  Rf_mkChar("opt_ma_k_idx"));
-    SET_STRING_ELT(names, 5,  Rf_mkChar("k_mean_sm_errors"));
-    SET_STRING_ELT(names, 6,  Rf_mkChar("k_mean_ma_errors"));
-    SET_STRING_ELT(names, 7,  Rf_mkChar("k_mean_sm_true_errors"));
-    SET_STRING_ELT(names, 8,  Rf_mkChar("k_mean_ma_true_errors"));
-    SET_STRING_ELT(names, 9,  Rf_mkChar("sm_predictions"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("ma_predictions"));
-    SET_STRING_ELT(names, 11, Rf_mkChar("k_sm_predictions"));
-    SET_STRING_ELT(names, 12, Rf_mkChar("k_ma_predictions"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(2);
-    return result;
+    UNPROTECT(1);
+    return r_result;
 }

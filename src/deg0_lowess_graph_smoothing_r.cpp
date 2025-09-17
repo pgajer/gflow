@@ -26,11 +26,11 @@ extern "C" {
         SEXP s_kernel_type,
         SEXP s_n_folds,
         SEXP s_use_uniform_weights,
-		SEXP s_outlier_thld,
-		SEXP s_with_bw_predictions,
+        SEXP s_outlier_thld,
+        SEXP s_with_bw_predictions,
         SEXP s_switch_to_residuals_after,
         SEXP s_verbose
-    );
+        );
 }
 
 /**
@@ -53,33 +53,26 @@ SEXP S_deg0_lowess_graph_smoothing(
     SEXP s_kernel_type,
     SEXP s_n_folds,
     SEXP s_use_uniform_weights,
-	SEXP s_outlier_thld,
+    SEXP s_outlier_thld,
     SEXP s_with_bw_predictions,
     SEXP s_switch_to_residuals_after,
     SEXP s_verbose
-) {
-    int nprot = 0;
+    ) {
 
     // Extract and validate parameters
     std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
-    // Check and coerce X to matrix if necessary
-    PROTECT(s_X = Rf_coerceVector(s_X, REALSXP)); nprot++;
-    if (!Rf_isMatrix(s_X)) {
-        UNPROTECT(nprot);
-        REPORT_ERROR("X must be a numeric matrix");
-    }
-
+    // R wrapper assures that X is a matrix of type double
     // Get dimensions
     int *X_dims = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
     int n_samples = X_dims[0];
     int n_features = X_dims[1];
 
     // Extract scalar parameters
-    size_t max_iterations = static_cast<size_t>(Rf_asInteger(s_max_iterations));
+    size_t max_iterations        = static_cast<size_t>(Rf_asInteger(s_max_iterations));
     double convergence_threshold = Rf_asReal(s_convergence_threshold);
-    int convergence_type_int = Rf_asInteger(s_convergence_type);
+    int convergence_type_int     = Rf_asInteger(s_convergence_type);
     ConvergenceCriteriaType convergence_type;
 
     // Convert convergence type
@@ -94,24 +87,24 @@ SEXP S_deg0_lowess_graph_smoothing(
             convergence_type = ConvergenceCriteriaType::RELATIVE_CHANGE;
             break;
         default:
-            UNPROTECT(nprot);
             REPORT_ERROR("Invalid convergence type: %d", convergence_type_int);
     }
 
     size_t k = static_cast<size_t>(Rf_asInteger(s_k));
     double pruning_thld = Rf_asReal(s_pruning_thld);
     size_t n_bws = static_cast<size_t>(Rf_asInteger(s_n_bws));
-    bool log_grid = Rf_asLogical(s_log_grid);
     double min_bw_factor = Rf_asReal(s_min_bw_factor);
     double max_bw_factor = Rf_asReal(s_max_bw_factor);
     double dist_normalization_factor = Rf_asReal(s_dist_normalization_factor);
     size_t kernel_type = static_cast<size_t>(Rf_asInteger(s_kernel_type));
     size_t n_folds = static_cast<size_t>(Rf_asInteger(s_n_folds));
-    bool use_uniform_weights = Rf_asLogical(s_use_uniform_weights);
-	double outlier_thld = Rf_asReal(s_outlier_thld);
-    bool with_bw_predictions = Rf_asLogical(s_with_bw_predictions);
+    double outlier_thld = Rf_asReal(s_outlier_thld);
     size_t switch_to_residuals_after = static_cast<size_t>(Rf_asInteger(s_switch_to_residuals_after));
-    bool verbose = Rf_asLogical(s_verbose);
+
+    bool log_grid            = (Rf_asLogical(s_log_grid) == TRUE);
+    bool use_uniform_weights = (Rf_asLogical(s_use_uniform_weights) == TRUE);
+    bool with_bw_predictions = (Rf_asLogical(s_with_bw_predictions) == TRUE);
+    bool verbose             = (Rf_asLogical(s_verbose) == TRUE);
 
     // Construct initial graph
     set_wgraph_t initial_graph(adj_list, weight_list);
@@ -124,7 +117,6 @@ SEXP S_deg0_lowess_graph_smoothing(
     // Convert R matrix to C++ vectors (column-major to row-major)
     std::vector<std::vector<double>> X(n_features, std::vector<double>(n_samples));
     double *X_data = REAL(s_X);
-
     for (int j = 0; j < n_features; ++j) {
         for (int i = 0; i < n_samples; ++i) {
             X[j][i] = X_data[i + j * n_samples];
@@ -150,161 +142,184 @@ SEXP S_deg0_lowess_graph_smoothing(
             kernel_type,
             n_folds,
             use_uniform_weights,
-			outlier_thld,
+            outlier_thld,
             with_bw_predictions,
             switch_to_residuals_after,
             verbose
         );
     } catch (const std::exception &e) {
-        UNPROTECT(nprot);
         REPORT_ERROR("Error in deg0_lowess_graph_smoothing: %s", e.what());
     }
 
     // Create R objects for the results
-    SEXP s_result = PROTECT(Rf_allocVector(VECSXP, 7)); nprot++;  // 7 components in the result
+    SEXP s_result = PROTECT(Rf_allocVector(VECSXP, 7));
+
+    int n_iterations = result.iterations_performed;
 
     // 1. Smoothed graphs
-    int n_iterations = result.iterations_performed;
-    SEXP s_smoothed_graphs = PROTECT(Rf_allocVector(VECSXP, n_iterations)); nprot++;
+    {
+        SEXP s_smoothed_graphs = PROTECT(Rf_allocVector(VECSXP, n_iterations));
 
-    for (int iter = 0; iter < n_iterations; ++iter) {
-        const set_wgraph_t& graph = result.smoothed_graphs[iter];
-        size_t n_vertices = graph.adjacency_list.size();
+        for (int iter = 0; iter < n_iterations; ++iter) {
+            const set_wgraph_t& graph = result.smoothed_graphs[iter];
+            size_t n_vertices = graph.adjacency_list.size();
 
-        // Create lists for adjacency and weights
-        SEXP s_graph_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        SEXP s_graph_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+            // Create lists for adjacency and weights
+            SEXP s_graph_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+            SEXP s_graph_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-        for (size_t i = 0; i < n_vertices; ++i) {
-            // Get neighbors and weights
-            const auto& edges = graph.adjacency_list[i];
+            for (size_t i = 0; i < n_vertices; ++i) {
+                // Get neighbors and weights
+                const auto& edges = graph.adjacency_list[i];
 
-            // Create vectors for this vertex
-            SEXP s_neighbors = PROTECT(Rf_allocVector(INTSXP, edges.size()));
-            SEXP s_weights = PROTECT(Rf_allocVector(REALSXP, edges.size()));
+                // Create vectors for this vertex
+                SEXP s_neighbors = PROTECT(Rf_allocVector(INTSXP, edges.size()));
+                SEXP s_weights = PROTECT(Rf_allocVector(REALSXP, edges.size()));
 
-            int* neighbors = INTEGER(s_neighbors);
-            double* weights = REAL(s_weights);
+                int* neighbors = INTEGER(s_neighbors);
+                double* weights = REAL(s_weights);
 
-            // Fill vectors
-            size_t j = 0;
-            for (const auto& edge : edges) {
-                neighbors[j] = edge.vertex + 1;  // Convert to 1-based indexing
-                weights[j] = edge.weight;
-                j++;
+                // Fill vectors
+                size_t j = 0;
+                for (const auto& edge : edges) {
+                    neighbors[j] = edge.vertex + 1;  // Convert to 1-based indexing
+                    weights[j] = edge.weight;
+                    j++;
+                }
+
+                // Set vectors in lists
+                SET_VECTOR_ELT(s_graph_adj_list, i, s_neighbors);
+                SET_VECTOR_ELT(s_graph_weight_list, i, s_weights);
+
+                UNPROTECT(2);  // s_neighbors, s_weights
             }
 
-            // Set vectors in lists
-            SET_VECTOR_ELT(s_graph_adj_list, i, s_neighbors);
-            SET_VECTOR_ELT(s_graph_weight_list, i, s_weights);
+            // Create graph list
+            SEXP s_graph_list = PROTECT(Rf_allocVector(VECSXP, 2));
+            SET_VECTOR_ELT(s_graph_list, 0, s_graph_adj_list);
+            SET_VECTOR_ELT(s_graph_list, 1, s_graph_weight_list);
 
-            UNPROTECT(2);  // s_neighbors, s_weights
+            // Set names
+            SEXP s_graph_names = PROTECT(Rf_allocVector(STRSXP, 2));
+            SET_STRING_ELT(s_graph_names, 0, Rf_mkChar("adj_list"));
+            SET_STRING_ELT(s_graph_names, 1, Rf_mkChar("weight_list"));
+            Rf_setAttrib(s_graph_list, R_NamesSymbol, s_graph_names);
+
+            // Set in list of graphs
+            SET_VECTOR_ELT(s_smoothed_graphs, iter, s_graph_list);
+
+            UNPROTECT(4);  // s_graph_adj_list, s_graph_weight_list, s_graph_list, s_graph_names
         }
-
-        // Create graph list
-        SEXP s_graph_list = PROTECT(Rf_allocVector(VECSXP, 2));
-        SET_VECTOR_ELT(s_graph_list, 0, s_graph_adj_list);
-        SET_VECTOR_ELT(s_graph_list, 1, s_graph_weight_list);
-
-        // Set names
-        SEXP s_graph_names = PROTECT(Rf_allocVector(STRSXP, 2));
-        SET_STRING_ELT(s_graph_names, 0, Rf_mkChar("adj_list"));
-        SET_STRING_ELT(s_graph_names, 1, Rf_mkChar("weight_list"));
-        Rf_setAttrib(s_graph_list, R_NamesSymbol, s_graph_names);
-
-        // Set in list of graphs
-        SET_VECTOR_ELT(s_smoothed_graphs, iter, s_graph_list);
-
-        UNPROTECT(4);  // s_graph_adj_list, s_graph_weight_list, s_graph_list, s_graph_names
+        SET_VECTOR_ELT(s_result, 0, s_smoothed_graphs);
+        UNPROTECT(1); // s_smoothed_graphs
     }
 
     // 2. Smoothed X matrices
-    SEXP s_smoothed_X = PROTECT(Rf_allocVector(VECSXP, n_iterations + 1)); nprot++;  // +1 because we have one more X than graphs
+    {
+        SEXP s_smoothed_X = PROTECT(Rf_allocVector(VECSXP, n_iterations + 1));   // +1 because we have one more X than graphs
 
-    for (int iter = 0; iter <= n_iterations; ++iter) {
-        const std::vector<std::vector<double>>& X_iter = result.smoothed_X[iter];
+        for (int iter = 0; iter <= n_iterations; ++iter) {
+            const std::vector<std::vector<double>>& X_iter = result.smoothed_X[iter];
 
-        // Create matrix
-        SEXP s_X_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_samples, n_features));
-        double* X_data = REAL(s_X_matrix);
+            // Create matrix
+            SEXP s_X_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_samples, n_features));
+            double* X_mat = REAL(s_X_matrix);
 
-        // Fill matrix (convert from row-major to column-major)
-        for (int j = 0; j < n_features; ++j) {
-            for (int i = 0; i < n_samples; ++i) {
-                X_data[i + j * n_samples] = X_iter[j][i];
+            // Fill matrix (convert from row-major to column-major)
+            for (int j = 0; j < n_features; ++j) {
+                for (int i = 0; i < n_samples; ++i) {
+                    X_mat[i + j * n_samples] = X_iter[j][i];
+                }
             }
+
+            // Set in list
+            SET_VECTOR_ELT(s_smoothed_X, iter, s_X_matrix);
+
+            UNPROTECT(1);  // s_X_matrix
         }
 
-        // Set in list
-        SET_VECTOR_ELT(s_smoothed_X, iter, s_X_matrix);
-
-        UNPROTECT(1);  // s_X_matrix
+        SET_VECTOR_ELT(s_result, 1, s_smoothed_X);
+        UNPROTECT(1);  // s_smoothed_X
     }
 
     // 3. Convergence metrics
-    SEXP s_convergence_metrics = PROTECT(Rf_allocVector(REALSXP, result.convergence_metrics.size())); nprot++;
-    double* metrics_data = REAL(s_convergence_metrics);
+    {
+        SEXP s_convergence_metrics = PROTECT(Rf_allocVector(REALSXP, result.convergence_metrics.size()));
+        double* metrics_data = REAL(s_convergence_metrics);
 
-    for (size_t i = 0; i < result.convergence_metrics.size(); ++i) {
-        metrics_data[i] = result.convergence_metrics[i];
+        for (size_t i = 0; i < result.convergence_metrics.size(); ++i) {
+            metrics_data[i] = result.convergence_metrics[i];
+        }
+        SET_VECTOR_ELT(s_result, 2, s_convergence_metrics);
+        UNPROTECT(1); // s_convergence_metrics
     }
 
     // 4. Iterations performed
-    SEXP s_iterations_performed = PROTECT(Rf_ScalarInteger(result.iterations_performed)); nprot++;
+    {
+        SEXP s_iterations_performed = PROTECT(Rf_ScalarInteger(result.iterations_performed));
+        SET_VECTOR_ELT(s_result, 3, s_iterations_performed);
+        UNPROTECT(1); // s_iterations_performed
+    }
 
     // 5. Used boosting flag
-    SEXP s_used_boosting = PROTECT(Rf_ScalarLogical(result.used_boosting)); nprot++;
+    {
+        SEXP s_used_boosting = PROTECT(Rf_ScalarLogical(result.used_boosting));
+        SET_VECTOR_ELT(s_result, 4, s_used_boosting);
+        UNPROTECT(1); // s_used_boosting
+    }
 
     // 6. Vertex mappings (list of integer vectors)
-    SEXP s_vertex_mappings = PROTECT(Rf_allocVector(VECSXP, result.vertex_mappings.size())); nprot++;
+    {
+        SEXP s_vertex_mappings = PROTECT(Rf_allocVector(VECSXP, result.vertex_mappings.size()));
 
-    for (size_t i = 0; i < result.vertex_mappings.size(); ++i) {
-        const std::vector<size_t>& mapping = result.vertex_mappings[i];
+        for (size_t i = 0; i < result.vertex_mappings.size(); ++i) {
+            const std::vector<size_t>& mapping = result.vertex_mappings[i];
 
-        // Create integer vector for this mapping
-        SEXP s_mapping = PROTECT(Rf_allocVector(INTSXP, mapping.size()));
-        int* mapping_data = INTEGER(s_mapping);
+            // Create integer vector for this mapping
+            SEXP s_mapping = PROTECT(Rf_allocVector(INTSXP, mapping.size()));
+            int* mapping_data = INTEGER(s_mapping);
 
-        // Fill vector with 1-based indexing for R
-        for (size_t j = 0; j < mapping.size(); ++j) {
-            mapping_data[j] = mapping[j] + 1;  // Convert to 1-based indexing for R
+            // Fill vector with 1-based indexing for R
+            for (size_t j = 0; j < mapping.size(); ++j) {
+                mapping_data[j] = mapping[j] + 1;  // Convert to 1-based indexing for R
+            }
+
+            // Set in list
+            SET_VECTOR_ELT(s_vertex_mappings, i, s_mapping);
+
+            UNPROTECT(1);  // s_mapping
         }
 
-        // Set in list
-        SET_VECTOR_ELT(s_vertex_mappings, i, s_mapping);
-
-        UNPROTECT(1);  // s_mapping
+        SET_VECTOR_ELT(s_result, 5, s_vertex_mappings);
+        UNPROTECT(1); // s_vertex_mappings
     }
 
     // 7. Outlier indices (integer vector)
-    SEXP s_outlier_indices = PROTECT(Rf_allocVector(INTSXP, result.outlier_indices.size())); nprot++;
-    int* outlier_data = INTEGER(s_outlier_indices);
-
-    // Fill vector with 1-based indexing for R
-    for (size_t i = 0; i < result.outlier_indices.size(); ++i) {
-        outlier_data[i] = result.outlier_indices[i] + 1;  // Convert to 1-based indexing for R
+    {
+        SEXP s_outlier_indices = PROTECT(Rf_allocVector(INTSXP, result.outlier_indices.size()));
+        int* outlier_data = INTEGER(s_outlier_indices);
+        // Fill vector with 1-based indexing for R
+        for (size_t i = 0; i < result.outlier_indices.size(); ++i) {
+            outlier_data[i] = result.outlier_indices[i] + 1;  // Convert to 1-based indexing for R
+        }
+        SET_VECTOR_ELT(s_result, 6, s_outlier_indices);
+        UNPROTECT(1); // s_outlier_indices
     }
 
-    // Set results in output list
-    SET_VECTOR_ELT(s_result, 0, s_smoothed_graphs);
-    SET_VECTOR_ELT(s_result, 1, s_smoothed_X);
-    SET_VECTOR_ELT(s_result, 2, s_convergence_metrics);
-    SET_VECTOR_ELT(s_result, 3, s_iterations_performed);
-    SET_VECTOR_ELT(s_result, 4, s_used_boosting);
-    SET_VECTOR_ELT(s_result, 5, s_vertex_mappings);
-    SET_VECTOR_ELT(s_result, 6, s_outlier_indices);
-
     // Set names
-    SEXP s_result_names = PROTECT(Rf_allocVector(STRSXP, 7)); nprot++;
-    SET_STRING_ELT(s_result_names, 0, Rf_mkChar("smoothed_graphs"));
-    SET_STRING_ELT(s_result_names, 1, Rf_mkChar("smoothed_X"));
-    SET_STRING_ELT(s_result_names, 2, Rf_mkChar("convergence_metrics"));
-    SET_STRING_ELT(s_result_names, 3, Rf_mkChar("iterations_performed"));
-    SET_STRING_ELT(s_result_names, 4, Rf_mkChar("used_boosting"));
-    SET_STRING_ELT(s_result_names, 5, Rf_mkChar("vertex_mappings"));
-    SET_STRING_ELT(s_result_names, 6, Rf_mkChar("outlier_indices"));
-    Rf_setAttrib(s_result, R_NamesSymbol, s_result_names);
+    {
+        SEXP s_result_names = PROTECT(Rf_allocVector(STRSXP, 7));
+        SET_STRING_ELT(s_result_names, 0, Rf_mkChar("smoothed_graphs"));
+        SET_STRING_ELT(s_result_names, 1, Rf_mkChar("smoothed_X"));
+        SET_STRING_ELT(s_result_names, 2, Rf_mkChar("convergence_metrics"));
+        SET_STRING_ELT(s_result_names, 3, Rf_mkChar("iterations_performed"));
+        SET_STRING_ELT(s_result_names, 4, Rf_mkChar("used_boosting"));
+        SET_STRING_ELT(s_result_names, 5, Rf_mkChar("vertex_mappings"));
+        SET_STRING_ELT(s_result_names, 6, Rf_mkChar("outlier_indices"));
+        Rf_setAttrib(s_result, R_NamesSymbol, s_result_names);
+        UNPROTECT(1);
+    }
 
-    UNPROTECT(nprot);
+    UNPROTECT(1);
     return s_result;
 }

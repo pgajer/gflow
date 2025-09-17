@@ -21,7 +21,6 @@
 
 extern "C" {
     SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2);
-
     SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights);
     SEXP S_convert_adjacency_to_edge_matrix_set(SEXP s_graph);
     SEXP S_convert_adjacency_to_edge_matrix_unordered_set(SEXP s_graph);
@@ -259,21 +258,34 @@ std::unique_ptr<std::vector<std::vector<int>>> join_graphs(const std::vector<std
  */
 SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2) {
 
+    // Basic type sanity checks (fast-fail, defensive)
+    if (TYPEOF(Rgraph1) != VECSXP)
+        Rf_error("S_join_graphs(): Rgraph1 must be a list (adjacency list).");
+    if (TYPEOF(Rgraph2) != VECSXP)
+        Rf_error("S_join_graphs(): Rgraph2 must be a list (adjacency list).");
+
+    // Indices — use Rf_asInteger (no need to PROTECT, result is a plain int)
+    int i1 = Rf_asInteger(Ri1);
+    int i2 = Rf_asInteger(Ri2);
+    if (i1 == NA_INTEGER || i2 == NA_INTEGER) {
+        Rf_error("S_join_graphs(): i1 and i2 must be valid integers (not NA).");
+    }
+    if (i1 < 0 || i2 < 0) {
+        Rf_error("S_join_graphs(): i1 and i2 must be non-negative.");
+    }
+
     std::vector<std::vector<int>> graph1 = convert_adj_list_from_R(Rgraph1);
     std::vector<std::vector<int>> graph2 = convert_adj_list_from_R(Rgraph2);
 
-    int nprot = 0;
-    PROTECT(Ri1 = Rf_coerceVector(Ri1, INTSXP)); nprot++;
-    int i1 = INTEGER(Ri1)[0];
-
-    PROTECT(Ri2 = Rf_coerceVector(Ri2, INTSXP)); nprot++;
-    int i2 = INTEGER(Ri2)[0];
-
+    // Core operation
     std::unique_ptr<std::vector<std::vector<int>>> joined_graph = join_graphs(graph1, graph2, i1, i2);
+    if (!joined_graph) {
+        Rf_error("S_join_graphs(): join_graphs() returned null.");
+    }
 
-    SEXP result = convert_vector_vector_int_to_R(*joined_graph); nprot++;
-    UNPROTECT(nprot);
+    SEXP result = convert_vector_vector_int_to_R(*joined_graph);
 
+    UNPROTECT(1);
     return result;
 }
 
@@ -396,8 +408,8 @@ SEXP S_create_star_graph(SEXP Rsizes) {
     std::unique_ptr<std::vector<std::vector<int>>> star_graph = create_star_graph(sizes);
 
     SEXP result = convert_vector_vector_int_to_R(*star_graph);
-    UNPROTECT(1);
 
+    UNPROTECT(1);
     return result;
 }
 #endif
@@ -420,10 +432,10 @@ convert_adjacency_to_edge_matrix(const std::vector<std::vector<int>>& adj_vect,
     std::vector<std::pair<int, int>> edges;
     std::vector<double> weights;
     bool has_weights = !weight_list.empty();
-    for (int i = 0; i < adj_vect.size(); ++i) {
-        for (int j = 0; j < adj_vect[i].size(); ++j) {
+    for (size_t i = 0; i < adj_vect.size(); ++i) {
+        for (size_t j = 0; j < adj_vect[i].size(); ++j) {
             int targetNode = adj_vect[i][j];
-            if (i <= targetNode) {
+            if ((int)i <= targetNode) {
                 edges.emplace_back(i, targetNode);
                 if (has_weights) {
                     weights.push_back(weight_list[i][j]);
@@ -451,35 +463,34 @@ SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights) {
   auto result = convert_adjacency_to_edge_matrix(adj_vect, weight_list);
 
   // ---- Build return (container-first; per-element protect) ----
-  int nprot = 0;
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2)); ++nprot;
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
 
   // 0: edge.matrix
   {
-    SEXP edges = PROTECT(cpp_vector_of_pairs_to_R_matrix(result.first));
+    SEXP edges = cpp_vector_of_pairs_to_R_matrix(result.first);
     SET_VECTOR_ELT(out, 0, edges);
-    UNPROTECT(1);
+    UNPROTECT(1); // edges
   }
 
   // 1: weights (or NULL)
   if (!result.second.empty()) {
-    SEXP w = PROTECT(convert_vector_double_to_R(result.second));
+    SEXP w = convert_vector_double_to_R(result.second);
     SET_VECTOR_ELT(out, 1, w);
-    UNPROTECT(1);
+    UNPROTECT(1); // w
   } else {
     SET_VECTOR_ELT(out, 1, R_NilValue);
   }
 
   // names while `out` is protected
   {
-    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2)); ++nprot;
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2));
     SET_STRING_ELT(nm, 0, Rf_mkChar("edge.matrix"));
     SET_STRING_ELT(nm, 1, Rf_mkChar("weights"));
     Rf_setAttrib(out, R_NamesSymbol, nm);
-    UNPROTECT(1); --nprot; // nm
+    UNPROTECT(1); // nm
   }
 
-  UNPROTECT(nprot); // out
+  UNPROTECT(1); // out
   return out;
 }
 
@@ -497,9 +508,9 @@ std::unique_ptr<std::vector<std::pair<int, int>>> convert_adjacency_to_edge_matr
 
     std::set<std::pair<int, int>> edgeSet;
 
-    for (int i = 0; i < adj_vect.size(); ++i) {
+    for (size_t i = 0; i < adj_vect.size(); ++i) {
         for (int targetNode : adj_vect[i]) {
-            edgeSet.emplace(std::min(i, targetNode), std::max(i, targetNode));
+            edgeSet.emplace(std::min((int)i, targetNode), std::max((int)i, targetNode));
         }
     }
 
@@ -537,9 +548,9 @@ std::unique_ptr<std::vector<std::pair<int, int>>> convert_adjacency_to_edge_matr
 
     std::unordered_set<std::pair<int, int>, PairHash> edgeSet;
 
-    for (int i = 0; i < adj_vect.size(); ++i) {
+    for (size_t i = 0; i < adj_vect.size(); ++i) {
         for (int targetNode : adj_vect[i]) {
-            edgeSet.emplace(std::min(i, targetNode), std::max(i, targetNode));
+            edgeSet.emplace(std::min((int)i, targetNode), std::max((int)i, targetNode));
         }
     }
 

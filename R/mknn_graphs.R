@@ -244,151 +244,152 @@ create.mknn.graphs <- function(X,
                               variance.explained = 0.99,
                               verbose = FALSE) {
 
-  # Convert data frame to matrix if necessary
-  if (is.data.frame(X)) {
-    X <- as.matrix(X)
-  }
-
-  # Comprehensive input validation
-  if (!is.matrix(X) || !is.numeric(X)) {
-    stop("'X' must be a numeric matrix or data frame.", call. = FALSE)
-  }
-
-  if (any(is.na(X))) {
-    stop("'X' cannot contain NA values.", call. = FALSE)
-  }
-
-  # Validate k parameters
-  if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 2) {
-    stop("'kmin' must be a single integer >= 2.", call. = FALSE)
-  }
-  kmin <- as.integer(kmin)
-
-  if (!is.numeric(kmax) || length(kmax) != 1 || kmax < kmin) {
-    stop("'kmax' must be a single integer >= kmin.", call. = FALSE)
-  }
-  kmax <- as.integer(kmax)
-
-  # Check that we have enough data points
-  n <- nrow(X)
-  if (n <= kmax) {
-    stop(sprintf("Number of data points (%d) must be greater than kmax (%d).",
-                 n, kmax), call. = FALSE)
-  }
-
-  # Validate other parameters
-  if (!is.numeric(max.path.edge.ratio.thld) || length(max.path.edge.ratio.thld) != 1) {
-    stop("'max.path.edge.ratio.thld' must be a single numeric value.", call. = FALSE)
-  }
-
-  if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
-      path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1) {
-    stop("'path.edge.ratio.percentile' must be a single value between 0 and 1.",
-         call. = FALSE)
-  }
-
-  if (!is.logical(compute.full) || length(compute.full) != 1) {
-    stop("'compute.full' must be TRUE or FALSE.", call. = FALSE)
-  }
-
-  if (!is.logical(verbose) || length(verbose) != 1) {
-    stop("'verbose' must be TRUE or FALSE.", call. = FALSE)
-  }
-
-  # PCA dimensionality reduction if needed
-  pca_info <- NULL
-  X_original <- X
-
-  if (!is.null(pca.dim) && ncol(X) > pca.dim) {
-    if (verbose) {
-      message(sprintf("Performing PCA: reducing from %d to max %d dimensions...",
-                      ncol(X), pca.dim))
+    ## Convert data frame to matrix if necessary
+    if (is.data.frame(X)) {
+        X <- as.matrix(X)
     }
 
-    # Store original dimensions
-    original_dim <- ncol(X)
-
-    # Perform PCA
-    pca_result <- prcomp(X, center = TRUE, scale. = TRUE)
-
-    # Determine number of components to use
-    if (!is.null(variance.explained) && variance.explained > 0 && variance.explained <= 1) {
-      # Find number of components needed for target variance
-      cum_var <- cumsum(pca_result$sdev^2) / sum(pca_result$sdev^2)
-      n_components <- min(which(cum_var >= variance.explained))
-      n_components <- min(n_components, pca.dim)
-      actual_var <- cum_var[n_components]
-    } else {
-      # Use fixed number of components
-      n_components <- min(pca.dim, ncol(X))
-      actual_var <- sum(pca_result$sdev[1:n_components]^2) / sum(pca_result$sdev^2)
+    ## Comprehensive input validation
+    if (!is.matrix(X) || !is.numeric(X)) {
+        stop("'X' must be a numeric matrix or data frame.", call. = FALSE)
     }
 
-    if (verbose) {
-      message(sprintf("Using %d principal components (explains %.1f%% of variance)",
-                      n_components, actual_var * 100))
+    if (any(is.na(X))) {
+        stop("'X' cannot contain NA values.", call. = FALSE)
+    }
+    storage.mode(X) <- "double"
+
+    ## Validate k parameters
+    if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 2) {
+        stop("'kmin' must be a single integer >= 2.", call. = FALSE)
+    }
+    kmin <- as.integer(kmin)
+
+    if (!is.numeric(kmax) || length(kmax) != 1 || kmax < kmin) {
+        stop("'kmax' must be a single integer >= kmin.", call. = FALSE)
+    }
+    kmax <- as.integer(kmax)
+
+    ## Check that we have enough data points
+    n <- nrow(X)
+    if (n <= kmax) {
+        stop(sprintf("Number of data points (%d) must be greater than kmax (%d).",
+                     n, kmax), call. = FALSE)
     }
 
-    # Project data onto selected components
-    X <- pca_result$x[, 1:n_components, drop = FALSE]
-
-    # Store PCA information
-    pca_info <- list(
-      original_dim = original_dim,
-      n_components = n_components,
-      variance_explained = actual_var,
-      center = pca_result$center,
-      scale = pca_result$scale,
-      rotation = pca_result$rotation[, 1:n_components, drop = FALSE]
-    )
-  }
-
-  # Call C++ implementation
-  # Note: Adding 1 to k values for C++ compatibility (includes self in kNN)
-  result <- .Call(S_create_mknn_graphs,
-                  X,
-                  as.integer(kmin + 1),
-                  as.integer(kmax + 1),
-                  as.double(max.path.edge.ratio.thld + 1.0),
-                  as.double(path.edge.ratio.percentile),
-                  as.logical(compute.full),
-                  as.logical(verbose))
-
-  # Post-process results
-  # Ensure k_statistics is a proper data frame
-  if (!is.null(result$k_statistics)) {
-    result$k_statistics <- as.data.frame(result$k_statistics)
-    names(result$k_statistics) <- c("k", "n_edges", "n_edges_pruned",
-                                    "n_removed", "reduction_ratio")
-    result$k_statistics$k <- kmin:kmax  # Correct k values
-  }
-
-  # Set names for pruned graphs
-  if (compute.full && !is.null(result$pruned_graphs)) {
-    names(result$pruned_graphs) <- as.character(kmin:kmax)
-
-    # Add metadata to each graph
-    for (i in seq_along(result$pruned_graphs)) {
-      result$pruned_graphs[[i]]$k <- kmin + i - 1
-      result$pruned_graphs[[i]]$n_vertices <- n
-      class(result$pruned_graphs[[i]]) <- c("mknn_graph", "list")
+    ## Validate other parameters
+    if (!is.numeric(max.path.edge.ratio.thld) || length(max.path.edge.ratio.thld) != 1) {
+        stop("'max.path.edge.ratio.thld' must be a single numeric value.", call. = FALSE)
     }
-  }
 
-  # Add attributes
-  attr(result, "kmin") <- kmin
-  attr(result, "kmax") <- kmax
-  attr(result, "max.path.edge.ratio.thld") <- max.path.edge.ratio.thld
-  attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
-  attr(result, "n_vertices") <- n
+    if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
+        path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1) {
+        stop("'path.edge.ratio.percentile' must be a single value between 0 and 1.",
+             call. = FALSE)
+    }
 
-  if (!is.null(pca_info)) {
-    attr(result, "pca") <- pca_info
-  }
+    if (!is.logical(compute.full) || length(compute.full) != 1) {
+        stop("'compute.full' must be TRUE or FALSE.", call. = FALSE)
+    }
 
-  class(result) <- "mknn_graphs"
+    if (!is.logical(verbose) || length(verbose) != 1) {
+        stop("'verbose' must be TRUE or FALSE.", call. = FALSE)
+    }
 
-  return(result)
+    ## PCA dimensionality reduction if needed
+    pca_info <- NULL
+    X_original <- X
+
+    if (!is.null(pca.dim) && ncol(X) > pca.dim) {
+        if (verbose) {
+            message(sprintf("Performing PCA: reducing from %d to max %d dimensions...",
+                            ncol(X), pca.dim))
+        }
+
+        ## Store original dimensions
+        original_dim <- ncol(X)
+
+        ## Perform PCA
+        pca_result <- prcomp(X, center = TRUE, scale. = TRUE)
+
+        ## Determine number of components to use
+        if (!is.null(variance.explained) && variance.explained > 0 && variance.explained <= 1) {
+            ## Find number of components needed for target variance
+            cum_var <- cumsum(pca_result$sdev^2) / sum(pca_result$sdev^2)
+            n_components <- min(which(cum_var >= variance.explained))
+            n_components <- min(n_components, pca.dim)
+            actual_var <- cum_var[n_components]
+        } else {
+            ## Use fixed number of components
+            n_components <- min(pca.dim, ncol(X))
+            actual_var <- sum(pca_result$sdev[1:n_components]^2) / sum(pca_result$sdev^2)
+        }
+
+        if (verbose) {
+            message(sprintf("Using %d principal components (explains %.1f%% of variance)",
+                            n_components, actual_var * 100))
+        }
+
+        ## Project data onto selected components
+        X <- pca_result$x[, 1:n_components, drop = FALSE]
+
+        ## Store PCA information
+        pca_info <- list(
+            original_dim = original_dim,
+            n_components = n_components,
+            variance_explained = actual_var,
+            center = pca_result$center,
+            scale = pca_result$scale,
+            rotation = pca_result$rotation[, 1:n_components, drop = FALSE]
+        )
+    }
+
+    ## Call C++ implementation
+    ## Note: Adding 1 to k values for C++ compatibility (includes self in kNN)
+    result <- .Call(S_create_mknn_graphs,
+                    X,
+                    as.integer(kmin + 1),
+                    as.integer(kmax + 1),
+                    as.double(max.path.edge.ratio.thld + 1.0),
+                    as.double(path.edge.ratio.percentile),
+                    as.logical(compute.full),
+                    as.logical(verbose))
+
+    ## Post-process results
+    ## Ensure k_statistics is a proper data frame
+    if (!is.null(result$k_statistics)) {
+        result$k_statistics <- as.data.frame(result$k_statistics)
+        names(result$k_statistics) <- c("k", "n_edges", "n_edges_pruned",
+                                        "n_removed", "reduction_ratio")
+        result$k_statistics$k <- kmin:kmax  ## Correct k values
+    }
+
+    ## Set names for pruned graphs
+    if (compute.full && !is.null(result$pruned_graphs)) {
+        names(result$pruned_graphs) <- as.character(kmin:kmax)
+
+        ## Add metadata to each graph
+        for (i in seq_along(result$pruned_graphs)) {
+            result$pruned_graphs[[i]]$k <- kmin + i - 1
+            result$pruned_graphs[[i]]$n_vertices <- n
+            class(result$pruned_graphs[[i]]) <- c("mknn_graph", "list")
+        }
+    }
+
+    ## Add attributes
+    attr(result, "kmin") <- kmin
+    attr(result, "kmax") <- kmax
+    attr(result, "max.path.edge.ratio.thld") <- max.path.edge.ratio.thld
+    attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
+    attr(result, "n_vertices") <- n
+
+    if (!is.null(pca_info)) {
+        attr(result, "pca") <- pca_info
+    }
+
+    class(result) <- "mknn_graphs"
+
+    return(result)
 }
 
 

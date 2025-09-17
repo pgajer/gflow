@@ -765,134 +765,167 @@ SEXP S_maelog(
         #endif
 
         // Create return list with updated size
-        SEXP result_list = PROTECT(Rf_allocVector(VECSXP, 7)); n_protected++;
+        SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 7));
 
-        // Updated names for list elements
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 7)); n_protected++;
-        SET_STRING_ELT(names, 0, Rf_mkChar("bw_predictions"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("mean_brier_errors"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("opt_brier_bw_idx"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("beta1s"));
-        SET_STRING_ELT(names, 4, Rf_mkChar("beta2s"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("bws")); // candidate_bandwidths
-        SET_STRING_ELT(names, 6, Rf_mkChar("fit_info"));
+        // names for list elements
+        {
+            SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
+            SET_STRING_ELT(names, 0, Rf_mkChar("bw_predictions"));
+            SET_STRING_ELT(names, 1, Rf_mkChar("mean_brier_errors"));
+            SET_STRING_ELT(names, 2, Rf_mkChar("opt_brier_bw_idx"));
+            SET_STRING_ELT(names, 3, Rf_mkChar("beta1s"));
+            SET_STRING_ELT(names, 4, Rf_mkChar("beta2s"));
+            SET_STRING_ELT(names, 5, Rf_mkChar("bws")); // candidate_bandwidths
+            SET_STRING_ELT(names, 6, Rf_mkChar("fit_info"));
+            Rf_setAttrib(r_result, R_NamesSymbol, names);
+            UNPROTECT(1); // names
+        }
 
         // Bandwidth predictions
-        SEXP bw_pred_r;
-        if (!result.bw_predictions.empty()) {
-            bw_pred_r = PROTECT(Rf_allocMatrix(REALSXP, n_points, result.bw_predictions.size())); n_protected++;
-            double* ptr = REAL(bw_pred_r);
-            for (size_t i = 0; i < result.bw_predictions.size(); ++i) {
-                if (!result.bw_predictions[i].empty()) {
-                    std::copy(result.bw_predictions[i].begin(), result.bw_predictions[i].end(),
-                             ptr + i * n_points);
+        {
+            SEXP bw_pred_r;
+            if (!result.bw_predictions.empty()) {
+                bw_pred_r = PROTECT(Rf_allocMatrix(REALSXP, n_points, result.bw_predictions.size()));
+                double* ptr = REAL(bw_pred_r);
+                for (size_t i = 0; i < result.bw_predictions.size(); ++i) {
+                    if (!result.bw_predictions[i].empty()) {
+                        std::copy(result.bw_predictions[i].begin(), result.bw_predictions[i].end(),
+                                  ptr + i * n_points);
+                    }
                 }
+            } else {
+                bw_pred_r = PROTECT(Rf_allocVector(REALSXP, 0));
             }
-        } else {
-            bw_pred_r = PROTECT(Rf_allocVector(REALSXP, 0)); n_protected++;
+            SET_VECTOR_ELT(r_result, 0, bw_pred_r);
+            UNPROTECT(1); // bw_pred_r
         }
-        SET_VECTOR_ELT(result_list, 0, bw_pred_r);
 
         // Mean errors
-        SEXP mean_brier_errors_r = PROTECT(Rf_allocVector(REALSXP, result.mean_brier_errors.size())); n_protected++;
-        std::copy(result.mean_brier_errors.begin(), result.mean_brier_errors.end(), REAL(mean_brier_errors_r));
-        SET_VECTOR_ELT(result_list, 1, mean_brier_errors_r);
+        {
+            SEXP mean_brier_errors_r = PROTECT(Rf_allocVector(REALSXP, result.mean_brier_errors.size()));
+            std::copy(result.mean_brier_errors.begin(), result.mean_brier_errors.end(), REAL(mean_brier_errors_r));
+            SET_VECTOR_ELT(r_result, 1, mean_brier_errors_r);
+            UNPROTECT(1); // mean_brier_errors_r
+        }
 
         // Optimal indices
-        SEXP opt_brier_bw_idx_r = PROTECT(Rf_allocVector(INTSXP, 1)); n_protected++;
-        INTEGER(opt_brier_bw_idx_r)[0] = result.opt_brier_bw_idx + 1; // 1-base
-        SET_VECTOR_ELT(result_list, 2, opt_brier_bw_idx_r);
+        {
+            SEXP opt_brier_bw_idx_r = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(opt_brier_bw_idx_r)[0] = result.opt_brier_bw_idx + 1; // 1-base
+            SET_VECTOR_ELT(r_result, 2, opt_brier_bw_idx_r);
+            UNPROTECT(1); //
+        }
 
         // Beta coefficients (only when pilot_bandwidth > 0)
-        SEXP beta1s_r;
-        if (pilot_bandwidth > 0 && !result.beta1s.empty()) {
-            beta1s_r = PROTECT(Rf_allocVector(REALSXP, result.beta1s.size())); n_protected++;
-            std::copy(result.beta1s.begin(), result.beta1s.end(), REAL(beta1s_r));
-        } else {
-            beta1s_r = PROTECT(Rf_allocVector(REALSXP, 0)); n_protected++;
+        {
+            SEXP beta1s_r;
+            if (pilot_bandwidth > 0 && !result.beta1s.empty()) {
+                beta1s_r = PROTECT(Rf_allocVector(REALSXP, result.beta1s.size()));
+                std::copy(result.beta1s.begin(), result.beta1s.end(), REAL(beta1s_r));
+            } else {
+                beta1s_r = PROTECT(Rf_allocVector(REALSXP, 0));
+            }
+            SET_VECTOR_ELT(r_result, 3, beta1s_r);
+            UNPROTECT(1); //
         }
-        SET_VECTOR_ELT(result_list, 3, beta1s_r);
 
-        SEXP beta2s_r;
-        if (pilot_bandwidth > 0 && fit_quadratic && !result.beta2s.empty()) {
-            beta2s_r = PROTECT(Rf_allocVector(REALSXP, result.beta2s.size())); n_protected++;
-            std::copy(result.beta2s.begin(), result.beta2s.end(), REAL(beta2s_r));
-        } else {
-            beta2s_r = PROTECT(Rf_allocVector(REALSXP, 0)); n_protected++;
+        {
+            SEXP beta2s_r;
+            if (pilot_bandwidth > 0 && fit_quadratic && !result.beta2s.empty()) {
+                beta2s_r = PROTECT(Rf_allocVector(REALSXP, result.beta2s.size()));
+                std::copy(result.beta2s.begin(), result.beta2s.end(), REAL(beta2s_r));
+            } else {
+                beta2s_r = PROTECT(Rf_allocVector(REALSXP, 0));
+            }
+            SET_VECTOR_ELT(r_result, 4, beta2s_r);
+            UNPROTECT(1); //
         }
-        SET_VECTOR_ELT(result_list, 4, beta2s_r);
 
         // Candidate bandwidths
-        SEXP candidate_bandwidths_r = PROTECT(Rf_allocVector(REALSXP, result.candidate_bandwidths.size())); n_protected++;
-        std::copy(result.candidate_bandwidths.begin(), result.candidate_bandwidths.end(),
-                 REAL(candidate_bandwidths_r));
-        SET_VECTOR_ELT(result_list, 5, candidate_bandwidths_r);
+        {
+            SEXP candidate_bandwidths_r = PROTECT(Rf_allocVector(REALSXP, result.candidate_bandwidths.size()));
+            std::copy(result.candidate_bandwidths.begin(), result.candidate_bandwidths.end(),
+                      REAL(candidate_bandwidths_r));
+            SET_VECTOR_ELT(r_result, 5, candidate_bandwidths_r);
+            UNPROTECT(1); //
+        }
 
         // Fit info as a named list
-        SEXP fit_info = PROTECT(Rf_allocVector(VECSXP, 9)); n_protected++;
+        {
+            SEXP fit_info = PROTECT(Rf_allocVector(VECSXP, 9));
+            {
+                SEXP fit_info_names = PROTECT(Rf_allocVector(STRSXP, 9));
+                SET_STRING_ELT(fit_info_names, 0, Rf_mkChar("fit_quadratic"));
+                SET_STRING_ELT(fit_info_names, 1, Rf_mkChar("pilot_bandwidth"));
+                SET_STRING_ELT(fit_info_names, 2, Rf_mkChar("kernel_type"));
+                SET_STRING_ELT(fit_info_names, 3, Rf_mkChar("cv_folds"));
+                SET_STRING_ELT(fit_info_names, 4, Rf_mkChar("min_bw_factor"));
+                SET_STRING_ELT(fit_info_names, 5, Rf_mkChar("max_bw_factor"));
+                SET_STRING_ELT(fit_info_names, 6, Rf_mkChar("max_iterations"));
+                SET_STRING_ELT(fit_info_names, 7, Rf_mkChar("ridge_lambda"));
+                SET_STRING_ELT(fit_info_names, 8, Rf_mkChar("tolerance"));
+                Rf_setAttrib(fit_info, R_NamesSymbol, fit_info_names);
+                UNPROTECT(1); // fit_info_names
+            }
 
-        SEXP fit_info_names = PROTECT(Rf_allocVector(STRSXP, 9)); n_protected++;
-        SET_STRING_ELT(fit_info_names, 0, Rf_mkChar("fit_quadratic"));
-        SET_STRING_ELT(fit_info_names, 1, Rf_mkChar("pilot_bandwidth"));
-        SET_STRING_ELT(fit_info_names, 2, Rf_mkChar("kernel_type"));
-        SET_STRING_ELT(fit_info_names, 3, Rf_mkChar("cv_folds"));
-        SET_STRING_ELT(fit_info_names, 4, Rf_mkChar("min_bw_factor"));
-        SET_STRING_ELT(fit_info_names, 5, Rf_mkChar("max_bw_factor"));
-        SET_STRING_ELT(fit_info_names, 6, Rf_mkChar("max_iterations"));
-        SET_STRING_ELT(fit_info_names, 7, Rf_mkChar("ridge_lambda"));
-        SET_STRING_ELT(fit_info_names, 8, Rf_mkChar("tolerance"));
+            SEXP fit_quad_r = PROTECT(Rf_allocVector(LGLSXP, 1));
+            LOGICAL(fit_quad_r)[0] = result.fit_quadratic;
+            SET_VECTOR_ELT(fit_info, 0, fit_quad_r);
+            UNPROTECT(1);
 
-        SEXP fit_quad_r = PROTECT(Rf_allocVector(LGLSXP, 1));
-        LOGICAL(fit_quad_r)[0] = result.fit_quadratic;
-        SET_VECTOR_ELT(fit_info, 0, fit_quad_r); n_protected++;
+            SEXP pilot_bw_r = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(pilot_bw_r)[0] = result.pilot_bandwidth;
+            SET_VECTOR_ELT(fit_info, 1, pilot_bw_r);
+            UNPROTECT(1);
 
-        SEXP pilot_bw_r = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(pilot_bw_r)[0] = result.pilot_bandwidth;
-        SET_VECTOR_ELT(fit_info, 1, pilot_bw_r); n_protected++;
+            SEXP kernel_type_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(kernel_type_out_r)[0] = result.kernel_type;
+            SET_VECTOR_ELT(fit_info, 2, kernel_type_out_r);
+            UNPROTECT(1);
 
-        SEXP kernel_type_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-        INTEGER(kernel_type_out_r)[0] = result.kernel_type;
-        SET_VECTOR_ELT(fit_info, 2, kernel_type_out_r); n_protected++;
+            SEXP cv_folds_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(cv_folds_out_r)[0] = result.cv_folds;
+            SET_VECTOR_ELT(fit_info, 3, cv_folds_out_r);
+            UNPROTECT(1);
 
-        SEXP cv_folds_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-        INTEGER(cv_folds_out_r)[0] = result.cv_folds;
-        SET_VECTOR_ELT(fit_info, 3, cv_folds_out_r); n_protected++;
+            SEXP min_bw_factor_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(min_bw_factor_out_r)[0] = result.min_bw_factor;
+            SET_VECTOR_ELT(fit_info, 4, min_bw_factor_out_r);
+            UNPROTECT(1);
 
-        SEXP min_bw_factor_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(min_bw_factor_out_r)[0] = result.min_bw_factor;
-        SET_VECTOR_ELT(fit_info, 4, min_bw_factor_out_r); n_protected++;
+            SEXP max_bw_factor_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(max_bw_factor_out_r)[0] = result.max_bw_factor;
+            SET_VECTOR_ELT(fit_info, 5, max_bw_factor_out_r);
+            UNPROTECT(1);
 
-        SEXP max_bw_factor_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(max_bw_factor_out_r)[0] = result.max_bw_factor;
-        SET_VECTOR_ELT(fit_info, 5, max_bw_factor_out_r); n_protected++;
+            SEXP max_iter_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
+            INTEGER(max_iter_out_r)[0] = result.max_iterations;
+            SET_VECTOR_ELT(fit_info, 6, max_iter_out_r);
+            UNPROTECT(1);
 
-        SEXP max_iter_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-        INTEGER(max_iter_out_r)[0] = result.max_iterations;
-        SET_VECTOR_ELT(fit_info, 6, max_iter_out_r); n_protected++;
+            SEXP ridge_lambda_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(ridge_lambda_out_r)[0] = result.ridge_lambda;
+            SET_VECTOR_ELT(fit_info, 7, ridge_lambda_out_r);
+            UNPROTECT(1);
 
-        SEXP ridge_lambda_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(ridge_lambda_out_r)[0] = result.ridge_lambda;
-        SET_VECTOR_ELT(fit_info, 7, ridge_lambda_out_r); n_protected++;
+            SEXP tolerance_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
+            REAL(tolerance_out_r)[0] = result.tolerance;
+            SET_VECTOR_ELT(fit_info, 8, tolerance_out_r);
+            UNPROTECT(1);
 
-        SEXP tolerance_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-        REAL(tolerance_out_r)[0] = result.tolerance;
-        SET_VECTOR_ELT(fit_info, 8, tolerance_out_r); n_protected++;
+            SET_VECTOR_ELT(r_result, 6, fit_info);
+            UNPROTECT(1); // fit_info
+        }
 
-        Rf_setAttrib(fit_info, R_NamesSymbol, fit_info_names);
-        SET_VECTOR_ELT(result_list, 6, fit_info);
-
-        // Set names for the main list
-        Rf_setAttrib(result_list, R_NamesSymbol, names);
-
-        UNPROTECT(n_protected);
-        return result_list;
+        UNPROTECT(1); // r_result
+        return r_result;
     }
     catch (const std::exception& e) {
-        if (n_protected > 0) UNPROTECT(n_protected);
+        if (n_protected > 0) UNPROTECT(1);
         Rf_error("C++ Rf_error in maelog: %s", e.what());
     }
     catch (...) {
-        if (n_protected > 0) UNPROTECT(n_protected);
+        if (n_protected > 0) UNPROTECT(1);
         Rf_error("Unknown Rf_error in maelog");
     }
 }

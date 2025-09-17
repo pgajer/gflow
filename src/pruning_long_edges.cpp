@@ -782,9 +782,11 @@ SEXP S_find_shortest_alt_path(SEXP s_adj_list,
                               SEXP s_edge_isize) {
     std::vector<std::vector<int>> adj_vect   = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<int>> isize_vect = convert_adj_list_from_R(s_isize_list);
-    int source = INTEGER(s_source)[0];
-    int target = INTEGER(s_target)[0];
-    int edge_isize = INTEGER(s_edge_isize)[0];
+
+    // Extract scalar parameters using defensive coercion
+    int source = Rf_asInteger(s_source);
+    int target = Rf_asInteger(s_target);
+    int edge_isize = Rf_asInteger(s_edge_isize);
 
     std::vector<std::vector<std::pair<int, int>>> iigraph = convert_to_int_weighted_adj_list(adj_vect, isize_vect);
 
@@ -818,22 +820,20 @@ SEXP S_shortest_alt_path_length(SEXP s_adj_list,
                                 SEXP s_edge_isize) {
     std::vector<std::vector<int>> adj_vect   = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<int>> isize_vect = convert_adj_list_from_R(s_isize_list);
-    int source = INTEGER(s_source)[0];
-    int target = INTEGER(s_target)[0];
-    int edge_isize = INTEGER(s_edge_isize)[0];
+
+    int source     = Rf_asInteger(s_source);
+    int target     = Rf_asInteger(s_target);
+    int edge_isize = Rf_asInteger(s_edge_isize);
 
     std::vector<std::vector<std::pair<int, int>>> iigraph = convert_to_int_weighted_adj_list(adj_vect, isize_vect);
 
     int path_length = shortest_alt_path_length(iigraph, source, target, edge_isize);
 
-    SEXP s_path_length = PROTECT(Rf_allocVector(INTSXP, 1));
-    INTEGER(s_path_length)[0] = path_length;
+    SEXP s_path_length = PROTECT(Rf_ScalarInteger(path_length));
     UNPROTECT(1);
 
     return s_path_length;
 }
-
-
 
 /**
  * @brief Tests for the existence of an isize-alternate path between edge vertices in an intersection kNN graph using an alternative algorithm.
@@ -1272,9 +1272,9 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     std::vector<std::vector<int>> adj_vect            = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> edge_length_vect = convert_weight_list_from_R(s_edge_length_list);
 
-    double alt_path_len_ratio_thld = REAL(s_alt_path_len_ratio_thld)[0];
-    bool use_total_length_constraint = (LOGICAL(s_use_total_length_constraint)[0] == 1);
-    bool verbose = (LOGICAL(s_verbose)[0] == 1);
+    double alt_path_len_ratio_thld   = Rf_asReal(s_alt_path_len_ratio_thld);
+    bool use_total_length_constraint = (Rf_asLogical(s_use_total_length_constraint) == TRUE);
+    bool verbose                     = (Rf_asLogical(s_verbose) == TRUE);
 
     std::vector<double> path_lengths;
     std::vector<double> edge_lengths;
@@ -1290,66 +1290,81 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
     auto pruned_adj_vect          = pruning_res.first;
     auto pruned_edge_lengths_vect = pruning_res.second;
 
-    // Preparing pruned adjacency list
-    int n_vertices = static_cast<int>(pruned_adj_vect.size());
-    SEXP pruned_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, pruned_adj_vect[i].size()));
-        int* A = INTEGER(RA);
-        for (auto neighbor : pruned_adj_vect[i])
-            *A++ = neighbor + 1;
-        SET_VECTOR_ELT(pruned_adj_list, i, RA);
-        UNPROTECT(1);
-    }
-    UNPROTECT(1);
-
-    // Preparing pruned distance list
-    SEXP pruned_edge_lengths_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    for (int i = 0; i < n_vertices; i++) {
-        SEXP RD = PROTECT(Rf_allocVector(REALSXP, pruned_edge_lengths_vect[i].size()));
-        double* D = REAL(RD);
-        for (auto dist : pruned_edge_lengths_vect[i])
-            *D++ = dist;
-        SET_VECTOR_ELT(pruned_edge_lengths_list, i, RD);
-        UNPROTECT(1);
-    }
-    UNPROTECT(1);
-
-    // Creating path_lengths R vector
-    int n_path_lengths = static_cast<int>(path_lengths.size());
-    SEXP R_path_lengths = PROTECT(Rf_allocVector(REALSXP, n_path_lengths));
-    double* path_lengths_array = REAL(R_path_lengths);
-    for (const auto& path_length : path_lengths)
-        *path_lengths_array++ = path_length;
-    UNPROTECT(1);
-
-    // Creating edge_lengths R vector
-    int n_edge_lengths = static_cast<int>(edge_lengths.size());
-    if (n_path_lengths != n_edge_lengths)
-        Rf_error("n_edge_lengths is not equal to n_path_lengths.");
-    SEXP R_edge_lengths = PROTECT(Rf_allocVector(REALSXP, n_edge_lengths));
-    double* edge_lengths_array = REAL(R_edge_lengths);
-    for (const auto& edge_length : edge_lengths)
-        *edge_lengths_array++ = edge_length;
-    UNPROTECT(1);
-
-    // Preparing the result list
+    // Build result (container-first pattern)
     SEXP res = PROTECT(Rf_allocVector(VECSXP, 4));
-    SET_VECTOR_ELT(res, 0, pruned_adj_list);
-    SET_VECTOR_ELT(res, 1, pruned_edge_lengths_list);
-    SET_VECTOR_ELT(res, 2, R_path_lengths);
-    SET_VECTOR_ELT(res, 3, R_edge_lengths);
 
+    int n_vertices = static_cast<int>(pruned_adj_vect.size());
+
+    // 0: pruned_adj_list
+    {
+        SEXP pruned_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        for (int i = 0; i < n_vertices; i++) {
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, pruned_adj_vect[i].size()));
+            int* A = INTEGER(RA);
+            for (size_t j = 0; j < pruned_adj_vect[i].size(); j++) {
+                A[j] = pruned_adj_vect[i][j] + 1; // Convert to 1-based
+            }
+            SET_VECTOR_ELT(pruned_adj_list, i, RA);
+            UNPROTECT(1); // RA
+        }
+        SET_VECTOR_ELT(res, 0, pruned_adj_list);
+        UNPROTECT(1); // pruned_adj_list
+    }
+
+    // 1: pruned_edge_lengths_list
+    {
+        SEXP pruned_edge_lengths_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        for (int i = 0; i < n_vertices; i++) {
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, pruned_edge_lengths_vect[i].size()));
+            double* D = REAL(RD);
+            for (size_t j = 0; j < pruned_edge_lengths_vect[i].size(); j++) {
+                D[j] = pruned_edge_lengths_vect[i][j];
+            }
+            SET_VECTOR_ELT(pruned_edge_lengths_list, i, RD);
+            UNPROTECT(1); // RD
+        }
+        SET_VECTOR_ELT(res, 1, pruned_edge_lengths_list);
+        UNPROTECT(1); // pruned_edge_lengths_list
+    }
+
+    // 2: path_lengths
+    {
+        int n_path_lengths = static_cast<int>(path_lengths.size());
+        SEXP R_path_lengths = PROTECT(Rf_allocVector(REALSXP, n_path_lengths));
+        double* path_lengths_array = REAL(R_path_lengths);
+        for (int i = 0; i < n_path_lengths; i++) {
+            path_lengths_array[i] = path_lengths[i];
+        }
+        SET_VECTOR_ELT(res, 2, R_path_lengths);
+        UNPROTECT(1); // R_path_lengths
+    }
+
+    // 3: edge_lengths
+    {
+        int n_edge_lengths = static_cast<int>(edge_lengths.size());
+        int n_path_lengths = static_cast<int>(path_lengths.size());
+        if (n_path_lengths != n_edge_lengths) {
+            UNPROTECT(1); // res
+            Rf_error("n_edge_lengths is not equal to n_path_lengths.");
+        }
+        SEXP R_edge_lengths = PROTECT(Rf_allocVector(REALSXP, n_edge_lengths));
+        double* edge_lengths_array = REAL(R_edge_lengths);
+        for (int i = 0; i < n_edge_lengths; i++) {
+            edge_lengths_array[i] = edge_lengths[i];
+        }
+        SET_VECTOR_ELT(res, 3, R_edge_lengths);
+        UNPROTECT(1); // R_edge_lengths
+    }
+
+    // Set names
     SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
     SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
     SET_STRING_ELT(names, 1, Rf_mkChar("edge_lengths_list"));
     SET_STRING_ELT(names, 2, Rf_mkChar("path_lengths"));
     SET_STRING_ELT(names, 3, Rf_mkChar("edge_lengths"));
-
     Rf_setAttrib(res, R_NamesSymbol, names);
 
-    UNPROTECT(2);
-
+    UNPROTECT(2); // res, names
     return res;
 }
 

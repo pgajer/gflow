@@ -112,16 +112,7 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
     }
   }
 
-  // ---- y: coerce defensively, copy out; long-vector safe ----
-  std::vector<double> y;
-  {
-    int tprot = 0;
-    SEXP sy = s_y;
-    if (TYPEOF(sy) != REALSXP) { sy = PROTECT(Rf_coerceVector(sy, REALSXP)); ++tprot; }
-    const R_xlen_t ny = XLENGTH(sy);
-    y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
-    if (tprot) UNPROTECT(tprot);
-  }
+  std::vector<double> y(REAL(s_y), REAL(s_y) + (size_t)XLENGTH(s_y));
 
   if (adj_list.size() != y.size()) {
     Rf_error("length(y) (%zu) must equal length(adj_list) (%zu).",
@@ -175,30 +166,24 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
       verbose);
 
   // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
-  int nprot = 0;
-  const int N_ELT = 6;
-  SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_ELT)); ++nprot;
+  SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 6));
 
   // names while r_result is protected
-  {
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, N_ELT)); ++nprot;
-    SET_STRING_ELT(r_names, 0, Rf_mkChar("predictions"));
-    SET_STRING_ELT(r_names, 1, Rf_mkChar("bw_predictions"));
-    SET_STRING_ELT(r_names, 2, Rf_mkChar("bw_mean_abs_errors"));
-    SET_STRING_ELT(r_names, 3, Rf_mkChar("vertex_min_bws"));
-    SET_STRING_ELT(r_names, 4, Rf_mkChar("opt_bw_idx"));
-    SET_STRING_ELT(r_names, 5, Rf_mkChar("buffer_hops_used"));
-    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
-    // keep names protected only until attribute is set
-    UNPROTECT(1); --nprot;
-  }
+  SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 6));
+  SET_STRING_ELT(r_names, 0, Rf_mkChar("predictions"));
+  SET_STRING_ELT(r_names, 1, Rf_mkChar("bw_predictions"));
+  SET_STRING_ELT(r_names, 2, Rf_mkChar("bw_mean_abs_errors"));
+  SET_STRING_ELT(r_names, 3, Rf_mkChar("vertex_min_bws"));
+  SET_STRING_ELT(r_names, 4, Rf_mkChar("opt_bw_idx"));
+  SET_STRING_ELT(r_names, 5, Rf_mkChar("buffer_hops_used"));
+  Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+  UNPROTECT(1); // r_names
 
   // 0: predictions (numeric)
   {
-    SEXP s = PROTECT(convert_vector_double_to_R(result.predictions));
+    SEXP s = convert_vector_double_to_R(result.predictions);
     if (static_cast<R_xlen_t>(result.predictions.size()) != N) {
-      UNPROTECT(1); // s
-      UNPROTECT(nprot);
+      UNPROTECT(2); // s r_result
       Rf_error("predictions length mismatch.");
     }
     SET_VECTOR_ELT(r_result, 0, s);
@@ -210,20 +195,20 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
     const size_t ncol_sz = result.bw_predictions.size();
     const size_t nrow_sz = result.bw_predictions[0].size();
     if (nrow_sz != static_cast<size_t>(N)) {
-      UNPROTECT(nprot);
+      UNPROTECT(1); // r_result
       Rf_error("bw_predictions: row count (%zu) must equal length(y) (%lld).",
                nrow_sz, static_cast<long long>(N));
     }
     for (size_t j = 1; j < ncol_sz; ++j) {
       if (result.bw_predictions[j].size() != nrow_sz) {
-        UNPROTECT(nprot);
+        UNPROTECT(1); // r_result
         Rf_error("bw_predictions: column %zu has length %zu; expected %zu.",
                  j + 1, result.bw_predictions[j].size(), nrow_sz);
       }
     }
     if (nrow_sz > static_cast<size_t>(R_XLEN_T_MAX) ||
         ncol_sz > static_cast<size_t>(R_XLEN_T_MAX)) {
-      UNPROTECT(nprot);
+      UNPROTECT(1); // r_result
       Rf_error("bw_predictions dimensions exceed R limits.");
     }
     const R_xlen_t nrow = static_cast<R_xlen_t>(nrow_sz);
@@ -247,11 +232,11 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
   {
     if (!result.bw_mean_abs_errors.empty() &&
         static_cast<int>(result.bw_mean_abs_errors.size()) != n_bws) {
-      UNPROTECT(nprot);
+      UNPROTECT(1);
       Rf_error("bw_mean_abs_errors length (%zu) must equal n_bws (%d).",
                result.bw_mean_abs_errors.size(), n_bws);
     }
-    SEXP s = PROTECT(convert_vector_double_to_R(result.bw_mean_abs_errors));
+    SEXP s = convert_vector_double_to_R(result.bw_mean_abs_errors);
     SET_VECTOR_ELT(r_result, 2, s);
     UNPROTECT(1);
   }
@@ -260,10 +245,10 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
   {
     if (!result.vertex_min_bws.empty() &&
         static_cast<R_xlen_t>(result.vertex_min_bws.size()) != N) {
-      UNPROTECT(nprot);
+      UNPROTECT(1);
       Rf_error("vertex_min_bws length mismatch.");
     }
-    SEXP s = PROTECT(convert_vector_double_to_R(result.vertex_min_bws));
+    SEXP s = convert_vector_double_to_R(result.vertex_min_bws);
     SET_VECTOR_ELT(r_result, 3, s);
     UNPROTECT(1);
   }
@@ -282,6 +267,6 @@ SEXP S_graph_kernel_smoother(SEXP s_adj_list,
     UNPROTECT(1);
   }
 
-  UNPROTECT(nprot); // r_result
+  UNPROTECT(1); // r_result
   return r_result;
 }

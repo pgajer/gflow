@@ -78,6 +78,7 @@ create.single.iknn.graph <- function(X,
     if (n < 2) {
         stop("X must contain at least 2 data points")
     }
+    storage.mode(X) <- "double"
 
     if (!is.numeric(k) || length(k) != 1 || k != round(k) || k < 1 || k >= n) {
         stop("k must be a positive integer less than the number of data points")

@@ -119,25 +119,27 @@ SEXP S_graph_bw_adaptive_spectral_smoother(
 		"opt_bw_idx",
 		NULL
 	};
+
 	int n_elements = 5;
-	int protect_count = 0;
-
-	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements)); protect_count++;
-	SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, n_elements)); protect_count++;
-	for (int i = 0; i < n_elements; ++i) {
-		SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
+	{
+		SEXP r_names  = PROTECT(Rf_allocVector(STRSXP, n_elements));
+		for (int i = 0; i < n_elements; ++i) {
+			SET_STRING_ELT(r_names, i, Rf_mkChar(names[i]));
+		}
+		Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+		UNPROTECT(1);
 	}
-	Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
-	auto vec_to_sexp = [&protect_count](const std::vector<double>& v) {
-		SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size())); protect_count++;
+	auto vec_to_sexp = [&](const std::vector<double>& v) {
+		SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size()));
 		std::copy(v.begin(), v.end(), REAL(x));
 		return x;
 	};
-	auto mat_to_sexp = [&protect_count](const std::vector<std::vector<double>>& M) {
+	auto mat_to_sexp = [&](const std::vector<std::vector<double>>& M) {
 		size_t ncol = M.size();
 		size_t nrow = ncol ? M[0].size() : 0;
-		SEXP x = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol)); protect_count++;
+		SEXP x = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
 		double* ptr = REAL(x);
 		for (size_t j = 0; j < ncol; ++j) {
 			if (M[j].size() != nrow)
@@ -147,18 +149,42 @@ SEXP S_graph_bw_adaptive_spectral_smoother(
 		}
 		return x;
 	};
-	auto scalar_int = [&protect_count](size_t v, bool one_based=false) {
-		SEXP x = PROTECT(Rf_allocVector(INTSXP, 1)); protect_count++;
+	auto scalar_int = [&](size_t v, bool one_based=false) {
+		SEXP x = PROTECT(Rf_allocVector(INTSXP, 1));
 		INTEGER(x)[0] = one_based ? (int)v + 1 : (int)v;
 		return x;
 	};
 
-	SET_VECTOR_ELT(r_result, 0, vec_to_sexp(result.predictions));
-	SET_VECTOR_ELT(r_result, 1, mat_to_sexp(result.bw_predictions));
-	SET_VECTOR_ELT(r_result, 2, vec_to_sexp(result.bw_mean_abs_errors));
-	SET_VECTOR_ELT(r_result, 3, vec_to_sexp(result.vertex_min_bws));
-	SET_VECTOR_ELT(r_result, 4, scalar_int(result.opt_bw_idx, true));
+	{
+		SEXP s = vec_to_sexp(result.predictions);
+		SET_VECTOR_ELT(r_result, 0, s);
+		UNPROTECT(1);
+	}
 
-	UNPROTECT(protect_count);
+	{
+		SEXP s = mat_to_sexp(result.bw_predictions);
+		SET_VECTOR_ELT(r_result, 1, s);
+		UNPROTECT(1);
+	}
+
+	{
+		SEXP s = vec_to_sexp(result.bw_mean_abs_errors);
+		SET_VECTOR_ELT(r_result, 2, s);
+		UNPROTECT(1);
+	}
+
+	{
+		SEXP s = vec_to_sexp(result.vertex_min_bws);
+		SET_VECTOR_ELT(r_result, 3, s);
+		UNPROTECT(1);
+	}
+
+	{
+		SEXP s = scalar_int(result.opt_bw_idx, true);
+		SET_VECTOR_ELT(r_result, 4, s);
+		UNPROTECT(1);
+	}
+
+	UNPROTECT(1);
 	return r_result;
 }

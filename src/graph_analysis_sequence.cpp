@@ -569,39 +569,41 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
       compute_graph_analysis_sequence(adj_vect, weight_vect, y, Ey, h_values, diffusion_params);
 
   // ---------- Build return list (rchk-safe) ----------
-  int nprot = 0;
   const R_xlen_t nres = static_cast<R_xlen_t>(results.size());
-  SEXP r_results_list = PROTECT(Rf_allocVector(VECSXP, nres)); ++nprot;
+  SEXP r_results_list = PROTECT(Rf_allocVector(VECSXP, nres));
 
   for (R_xlen_t i = 0; i < nres; ++i) {
     const auto& ms = results[static_cast<size_t>(i)];
 
     // ms_list container first
-    SEXP ms_list = PROTECT(Rf_allocVector(VECSXP, 12)); ++nprot;
+    SEXP ms_list = PROTECT(Rf_allocVector(VECSXP, 12));
 
     // Each element: PROTECT converter result -> insert -> UNPROTECT(1)
     {
-      SEXP t = PROTECT(convert_set_to_R(ms.local_maxima));           SET_VECTOR_ELT(ms_list, 0, t); UNPROTECT(1);
-      t     = PROTECT(convert_set_to_R(ms.local_minima));            SET_VECTOR_ELT(ms_list, 1, t); UNPROTECT(1);
-      t     = PROTECT(convert_map_set_to_R(ms.lmax_to_lmin));        SET_VECTOR_ELT(ms_list, 2, t); UNPROTECT(1);
-      t     = PROTECT(convert_map_set_to_R(ms.lmin_to_lmax));        SET_VECTOR_ELT(ms_list, 3, t); UNPROTECT(1);
-      t     = PROTECT(convert_procells_to_R(ms.procells));           SET_VECTOR_ELT(ms_list, 4, t); UNPROTECT(1);
-      t     = PROTECT(convert_map_vector_set_to_R(ms.cells));        SET_VECTOR_ELT(ms_list, 5, t); UNPROTECT(1);
-      t     = PROTECT(convert_vector_vector_int_to_R(ms.unique_trajectories));
+      SEXP t = convert_set_to_R(ms.local_maxima);           SET_VECTOR_ELT(ms_list, 0, t); UNPROTECT(1);
+      t     = convert_set_to_R(ms.local_minima);            SET_VECTOR_ELT(ms_list, 1, t); UNPROTECT(1);
+      t     = convert_map_set_to_R(ms.lmax_to_lmin);        SET_VECTOR_ELT(ms_list, 2, t); UNPROTECT(1);
+      t     = convert_map_set_to_R(ms.lmin_to_lmax);        SET_VECTOR_ELT(ms_list, 3, t); UNPROTECT(1);
+      t     = convert_procells_to_R(ms.procells);           SET_VECTOR_ELT(ms_list, 4, t); UNPROTECT(1);
+      t     = convert_map_vector_set_to_R(ms.cells);        SET_VECTOR_ELT(ms_list, 5, t); UNPROTECT(1);
+      t     = convert_vector_vector_int_to_R(ms.unique_trajectories);
                                                                      SET_VECTOR_ELT(ms_list, 6, t); UNPROTECT(1);
-      t     = PROTECT(convert_cell_trajectories_to_R(ms.cell_trajectories));
+      t     = convert_cell_trajectories_to_R(ms.cell_trajectories);
                                                                      SET_VECTOR_ELT(ms_list, 7, t); UNPROTECT(1);
-      t     = PROTECT(convert_vector_vector_int_to_R(ms.path_graph_adj_list));
+      t     = convert_vector_vector_int_to_R(ms.path_graph_adj_list);
                                                                      SET_VECTOR_ELT(ms_list, 8, t); UNPROTECT(1);
-      t     = PROTECT(convert_vector_vector_double_to_R(ms.path_graph_weight_list));
+      t     = convert_vector_vector_double_to_R(ms.path_graph_weight_list);
                                                                      SET_VECTOR_ELT(ms_list, 9, t); UNPROTECT(1);
-      t     = PROTECT(convert_map_vector_to_R(ms.shortest_paths));   SET_VECTOR_ELT(ms_list,10, t); UNPROTECT(1);
-      t     = PROTECT(convert_vector_double_to_R(ms.Ey));            SET_VECTOR_ELT(ms_list,11, t); UNPROTECT(1);
+      t     = convert_map_vector_to_R(ms.shortest_paths);   SET_VECTOR_ELT(ms_list,10, t); UNPROTECT(1);
+
+      t     = convert_vector_double_to_R(ms.Ey);
+      SET_VECTOR_ELT(ms_list,11, t);
+      UNPROTECT(1);
     }
 
     // names while ms_list is protected
     {
-      SEXP names = PROTECT(Rf_allocVector(STRSXP, 12)); ++nprot;
+      SEXP names = PROTECT(Rf_allocVector(STRSXP, 12));
       SET_STRING_ELT(names, 0,  Rf_mkChar("local_maxima"));
       SET_STRING_ELT(names, 1,  Rf_mkChar("local_minima"));
       SET_STRING_ELT(names, 2,  Rf_mkChar("lmax_to_lmin"));
@@ -615,14 +617,14 @@ SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
       SET_STRING_ELT(names, 10, Rf_mkChar("shortest_paths"));
       SET_STRING_ELT(names, 11, Rf_mkChar("Ey"));
       Rf_setAttrib(ms_list, R_NamesSymbol, names);
-      UNPROTECT(1); --nprot; // names
+      UNPROTECT(1); // names
     }
 
     // Insert ms_list and release its protection (now owned by r_results_list)
     SET_VECTOR_ELT(r_results_list, i, ms_list);
-    UNPROTECT(1); --nprot; // ms_list
+    UNPROTECT(1); // ms_list
   }
 
-  UNPROTECT(nprot); // r_results_list
+  UNPROTECT(1); // r_results_list
   return r_results_list;
 }
