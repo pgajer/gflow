@@ -4,10 +4,10 @@
 \alias{create.nerve.complex}
 \title{Creates a Nerve Complex Associated With kNN Covering of a Dataset}
 \usage{
-create.nerve.complex(coords, k, max.dim = 2)
+create.nerve.complex(X, k, max.dim = 2)
 }
 \arguments{
-\item{coords}{Matrix of point coordinates, where rows are points and columns are dimensions}
+\item{X}{Matrix of point coordinates, where rows are points and columns are dimensions}
 
 \item{k}{Number of nearest neighbors to use for the covering}
 
