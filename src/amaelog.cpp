@@ -563,7 +563,7 @@ adaptive_bandwidth_t adaptive_maelog(
  *   - used_knn: Indicators for k-NN fallback usage
  *   - fit_info: List of fitting parameters and information
  */
-SEXP S_adaptive_maelog(
+extern "C" SEXP S_adaptive_maelog(
     SEXP x_r,
     SEXP y_r,
     SEXP max_adapt_iterations_r,
@@ -576,204 +576,224 @@ SEXP S_adaptive_maelog(
     SEXP max_iterations_r,
     SEXP ridge_lambda_r,
     SEXP tolerance_r
-    ) {
+) {
 
-    try {
-        // Check for NULL inputs
-        if (x_r == R_NilValue ||
-            y_r == R_NilValue ||
-            kernel_type_r == R_NilValue ||
-            min_points_r == R_NilValue ||
-            max_iterations_r == R_NilValue ||
-            ridge_lambda_r == R_NilValue ||
-            tolerance_r == R_NilValue) {
-            Rf_error("Input arguments cannot be NULL");
+    // Basic NULL checks (fast fail before any PROTECT)
+    if (x_r == R_NilValue || y_r == R_NilValue ||
+        kernel_type_r == R_NilValue || min_points_r == R_NilValue ||
+        max_iterations_r == R_NilValue || ridge_lambda_r == R_NilValue ||
+        tolerance_r == R_NilValue ||
+        max_adapt_iterations_r == R_NilValue || convergence_threshold_r == R_NilValue ||
+        c_min_r == R_NilValue || c_max_r == R_NilValue || power_r == R_NilValue) {
+        Rf_error("Input arguments cannot be NULL");
+    }
+
+    // LENGTH-first; guard x/y lengths before any PROTECTs
+    const int n_points = LENGTH(x_r);
+    if (LENGTH(y_r) != n_points) {
+        Rf_error("x and y must have the same length");
+    }
+
+    // Convert inputs (no R allocs here; no PROTECT needed)
+    std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
+    std::vector<double> y(REAL(y_r), REAL(y_r) + n_points);
+
+    const double max_adapt_iterations = REAL(max_adapt_iterations_r)[0];
+    const double convergence_threshold = REAL(convergence_threshold_r)[0];
+    const double c_min = REAL(c_min_r)[0];
+    const double c_max = REAL(c_max_r)[0];
+    const double power = REAL(power_r)[0];
+    const int    kernel_type = INTEGER(kernel_type_r)[0];
+    const int    min_points  = INTEGER(min_points_r)[0];
+    const int    max_iterations = INTEGER(max_iterations_r)[0];
+    const double ridge_lambda = REAL(ridge_lambda_r)[0];
+    const double tolerance    = REAL(tolerance_r)[0];
+
+    // Do all potentially-throwing C++ work before any PROTECTs
+    auto result = adaptive_maelog(
+        x, y,
+        max_adapt_iterations,
+        convergence_threshold,
+        c_min, c_max,
+        power,
+        kernel_type,
+        min_points,
+        max_iterations,
+        ridge_lambda,
+        tolerance
+        );
+
+    // From here on: only R allocs, balanced PROTECT/UNPROTECT with no throws expected.
+
+    const int N_RETURN_COMPS = 9;
+    SEXP result_list = PROTECT(Rf_allocVector(VECSXP, N_RETURN_COMPS));                 // [1]
+
+    // names(result_list)
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RETURN_COMPS));                   // [2]
+        SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("apredictions"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("baseline_bw"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("var_bw"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("beta1s"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("beta2s"));
+        SET_STRING_ELT(names, 6, Rf_mkChar("n_points_used"));
+        SET_STRING_ELT(names, 7, Rf_mkChar("used_knn"));
+        SET_STRING_ELT(names, 8, Rf_mkChar("fit_info"));
+        Rf_setAttrib(result_list, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
+
+    // predictions
+    {
+        const int len = (int) result.predictions.size();
+        SEXP pred_r = PROTECT(Rf_allocVector(REALSXP, len));                            // [2]
+        if (len) std::copy(result.predictions.begin(), result.predictions.end(), REAL(pred_r));
+        SET_VECTOR_ELT(result_list, 0, pred_r);
+        UNPROTECT(1); // pred_r
+    }
+
+    // apredictions matrix (handle empty case)
+    {
+        int n_cols = (int) result.apredictions.size();
+        int n_rows = 0;
+        if (n_cols > 0) {
+            n_rows = (int) result.apredictions[0].size();
         }
-
-        int n_points = LENGTH(x_r);
-
-        // Convert inputs
-        std::vector<double> x(REAL(x_r), REAL(x_r) + n_points);
-        std::vector<double> y(REAL(y_r), REAL(y_r) + n_points);
-        double max_adapt_iterations = REAL(max_adapt_iterations_r)[0];
-        double convergence_threshold = REAL(convergence_threshold_r)[0];
-        double c_min = REAL(c_min_r)[0];
-        double c_max = REAL(c_max_r)[0];
-        double power = REAL(power_r)[0];
-        int kernel_type = INTEGER(kernel_type_r)[0];
-        int min_points = INTEGER(min_points_r)[0];
-        int max_iterations = INTEGER(max_iterations_r)[0];
-        double ridge_lambda = REAL(ridge_lambda_r)[0];
-        double tolerance = REAL(tolerance_r)[0];
-
-        auto result = adaptive_maelog(x,
-                                         y,
-                                         max_adapt_iterations,
-                                         convergence_threshold,
-                                         c_min,
-                                         c_max,
-                                         power,
-                                         kernel_type,
-                                         min_points,
-                                         max_iterations,
-                                         ridge_lambda,
-                                         tolerance);
-
-        // Create return list with updated size
-        const int N_RETURN_COMPS = 9;
-        SEXP result_list = PROTECT(Rf_allocVector(VECSXP, N_RETURN_COMPS));
-
-        // names for list elements
-        {
-            SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RETURN_COMPS));
-            SET_STRING_ELT(names, 0, Rf_mkChar("predictions"));
-            SET_STRING_ELT(names, 1, Rf_mkChar("apredictions"));
-            SET_STRING_ELT(names, 2, Rf_mkChar("baseline_bw"));
-            SET_STRING_ELT(names, 3, Rf_mkChar("var_bw"));
-            SET_STRING_ELT(names, 4, Rf_mkChar("beta1s"));
-            SET_STRING_ELT(names, 5, Rf_mkChar("beta2s"));
-            SET_STRING_ELT(names, 6, Rf_mkChar("n_points_used"));
-            SET_STRING_ELT(names, 7, Rf_mkChar("used_knn"));
-            SET_STRING_ELT(names, 8, Rf_mkChar("fit_info"));
-            Rf_setAttrib(result_list, R_NamesSymbol, names);
-            UNPROTECT(1); // names
-        }
-
-        // predictions
-        {
-            SEXP pred_r = PROTECT(Rf_allocVector(REALSXP, result.predictions.size()));
-            std::copy(result.predictions.begin(), result.predictions.end(), REAL(pred_r));
-            SET_VECTOR_ELT(result_list, 0, pred_r);
-            UNPROTECT(1); // pred_r
-        }
-
-        // Convert matrix of adaptive predictions
-        {
-            SEXP apred_r = PROTECT(Rf_allocMatrix(REALSXP,
-                                                  result.apredictions[0].size(),
-                                                  result.apredictions.size()));
-            for(size_t i = 0; i < result.apredictions.size(); i++) {
-                std::copy(result.apredictions[i].begin(),
-                          result.apredictions[i].end(),
-                          REAL(apred_r) + i * result.apredictions[0].size());
+        SEXP apred_r = PROTECT(Rf_allocMatrix(REALSXP, n_rows, n_cols));                // [2]
+        if (n_cols > 0 && n_rows > 0) {
+            double* base = REAL(apred_r);
+            for (int j = 0; j < n_cols; ++j) {
+                // defensive: allow ragged (truncate/ignore overflow) if it ever happens
+                const int width = std::min<int>((int)result.apredictions[j].size(), n_rows);
+                std::copy(result.apredictions[j].begin(),
+                          result.apredictions[j].begin() + width,
+                          base + (size_t)j * (size_t)n_rows);
             }
-            SET_VECTOR_ELT(result_list, 1, apred_r);
-            UNPROTECT(1); // apred_r
         }
-
-        // baseline bandwidth
-        {
-            SEXP baseline_bw_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(baseline_bw_r)[0] = result.baseline_bw;
-            SET_VECTOR_ELT(result_list, 2, baseline_bw_r);
-            UNPROTECT(1); //
-        }
-
-        // var_bw
-        {
-            SEXP var_bw_r = PROTECT(Rf_allocVector(REALSXP, result.var_bw.size()));
-            std::copy(result.var_bw.begin(), result.var_bw.end(),
-                      REAL(var_bw_r));
-            SET_VECTOR_ELT(result_list, 3, var_bw_r);
-            UNPROTECT(1); //
-        }
-
-        // Beta coefficients
-        {
-            SEXP beta1s_r;
-            beta1s_r = PROTECT(Rf_allocVector(REALSXP, result.beta1s.size()));
-            std::copy(result.beta1s.begin(), result.beta1s.end(), REAL(beta1s_r));
-            SET_VECTOR_ELT(result_list, 4, beta1s_r);
-            UNPROTECT(1); //
-        }
-
-        SEXP beta2s_r;
-        {
-            beta2s_r = PROTECT(Rf_allocVector(REALSXP, result.beta2s.size()));
-            SET_VECTOR_ELT(result_list, 5, beta2s_r);
-            UNPROTECT(1); //
-        }
-
-        // n_points_used and used_knn
-        {
-            SEXP n_points_used_r = PROTECT(Rf_allocVector(INTSXP, result.n_points_used.size()));
-            std::copy(result.n_points_used.begin(), result.n_points_used.end(), INTEGER(n_points_used_r));
-            SET_VECTOR_ELT(result_list, 6, n_points_used_r);
-            UNPROTECT(1); //
-        }
-
-        // used_knn_r
-        {
-            SEXP used_knn_r = PROTECT(Rf_allocVector(LGLSXP, result.used_knn.size()));
-            std::copy(result.used_knn.begin(), result.used_knn.end(), LOGICAL(used_knn_r));
-            SET_VECTOR_ELT(result_list, 7, used_knn_r);
-            UNPROTECT(1); //
-        }
-
-        // Fit info
-        {
-            SEXP fit_info = PROTECT(Rf_allocVector(VECSXP, 8));
-
-            {
-                SEXP fit_info_names = PROTECT(Rf_allocVector(STRSXP, 8));
-                SET_STRING_ELT(fit_info_names, 0, Rf_mkChar("c_min"));
-                SET_STRING_ELT(fit_info_names, 1, Rf_mkChar("c_max"));
-                SET_STRING_ELT(fit_info_names, 2, Rf_mkChar("power"));
-                SET_STRING_ELT(fit_info_names, 3, Rf_mkChar("kernel_type"));
-                SET_STRING_ELT(fit_info_names, 4, Rf_mkChar("min_points"));
-                SET_STRING_ELT(fit_info_names, 5, Rf_mkChar("max_iterations"));
-                SET_STRING_ELT(fit_info_names, 6, Rf_mkChar("ridge_lambda"));
-                SET_STRING_ELT(fit_info_names, 7, Rf_mkChar("tolerance"));
-                Rf_setAttrib(fit_info, R_NamesSymbol, fit_info_names);
-                UNPROTECT(1); // fit_info_names
-            }
-
-            // Create new SEXPs for each parameter
-            SEXP c_min_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(c_min_out_r)[0] = c_min;
-            SET_VECTOR_ELT(fit_info, 0, c_min_out_r);
-
-            SEXP c_max_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(c_max_out_r)[0] = c_max;
-            SET_VECTOR_ELT(fit_info, 1, c_max_out_r);
-
-            SEXP power_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(power_out_r)[0] = power;
-            SET_VECTOR_ELT(fit_info, 2, power_out_r);
-
-            SEXP kernel_type_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-            INTEGER(kernel_type_out_r)[0] = kernel_type;
-            SET_VECTOR_ELT(fit_info, 3, kernel_type_out_r);
-
-            SEXP min_points_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-            INTEGER(min_points_out_r)[0] = min_points;
-            SET_VECTOR_ELT(fit_info, 4, min_points_out_r);
-
-            SEXP max_iterations_out_r = PROTECT(Rf_allocVector(INTSXP, 1));
-            INTEGER(max_iterations_out_r)[0] = max_iterations;
-            SET_VECTOR_ELT(fit_info, 5, max_iterations_out_r);
-
-            SEXP ridge_lambda_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(ridge_lambda_out_r)[0] = ridge_lambda;
-            SET_VECTOR_ELT(fit_info, 6, ridge_lambda_out_r);
-
-            SEXP tolerance_out_r = PROTECT(Rf_allocVector(REALSXP, 1));
-            REAL(tolerance_out_r)[0] = tolerance;
-            SET_VECTOR_ELT(fit_info, 7, tolerance_out_r);
-
-            SET_VECTOR_ELT(result_list, 8, fit_info);
-            UNPROTECT(1); // fit_info
-        }
-
-        UNPROTECT(1);
-        return result_list;
+        SET_VECTOR_ELT(result_list, 1, apred_r);
+        UNPROTECT(1); // apred_r
     }
-    catch (const std::exception& e) {
+
+    // baseline_bw (scalar)
+    {
+        SEXP baseline_bw_r = PROTECT(Rf_allocVector(REALSXP, 1));                       // [2]
+        REAL(baseline_bw_r)[0] = result.baseline_bw;
+        SET_VECTOR_ELT(result_list, 2, baseline_bw_r);
         UNPROTECT(1);
-        Rf_error("C++ Rf_error in maelog: %s", e.what());
     }
-    catch (...) {
+
+    // var_bw
+    {
+        const int len = (int) result.var_bw.size();
+        SEXP var_bw_r = PROTECT(Rf_allocVector(REALSXP, len));                          // [2]
+        if (len) std::copy(result.var_bw.begin(), result.var_bw.end(), REAL(var_bw_r));
+        SET_VECTOR_ELT(result_list, 3, var_bw_r);
         UNPROTECT(1);
-        Rf_error("Unknown Rf_error in maelog");
     }
+
+    // beta1s
+    {
+        const int len = (int) result.beta1s.size();
+        SEXP beta1s_r = PROTECT(Rf_allocVector(REALSXP, len));                          // [2]
+        if (len) std::copy(result.beta1s.begin(), result.beta1s.end(), REAL(beta1s_r));
+        SET_VECTOR_ELT(result_list, 4, beta1s_r);
+        UNPROTECT(1);
+    }
+
+    // beta2s  (FIX: actually fill data)
+    {
+        const int len = (int) result.beta2s.size();
+        SEXP beta2s_r = PROTECT(Rf_allocVector(REALSXP, len));                          // [2]
+        if (len) std::copy(result.beta2s.begin(), result.beta2s.end(), REAL(beta2s_r));
+        SET_VECTOR_ELT(result_list, 5, beta2s_r);
+        UNPROTECT(1);
+    }
+
+    // n_points_used
+    {
+        const int len = (int) result.n_points_used.size();
+        SEXP n_points_used_r = PROTECT(Rf_allocVector(INTSXP, len));                    // [2]
+        if (len) std::copy(result.n_points_used.begin(), result.n_points_used.end(), INTEGER(n_points_used_r));
+        SET_VECTOR_ELT(result_list, 6, n_points_used_r);
+        UNPROTECT(1);
+    }
+
+    // used_knn
+    {
+        const int len = (int) result.used_knn.size();
+        SEXP used_knn_r = PROTECT(Rf_allocVector(LGLSXP, len));
+        for (int i = 0; i < len; ++i) LOGICAL(used_knn_r)[i] = result.used_knn[i] ? 1 : 0;
+        SET_VECTOR_ELT(result_list, 7, used_knn_r);
+        UNPROTECT(1);
+    }
+
+    // fit_info list of 8 scalars
+    {
+        SEXP fit_info = PROTECT(Rf_allocVector(VECSXP, 8));                             // [2]
+
+        // names(fit_info)
+        {
+            SEXP nm = PROTECT(Rf_allocVector(STRSXP, 8));                               // [3]
+            SET_STRING_ELT(nm, 0, Rf_mkChar("c_min"));
+            SET_STRING_ELT(nm, 1, Rf_mkChar("c_max"));
+            SET_STRING_ELT(nm, 2, Rf_mkChar("power"));
+            SET_STRING_ELT(nm, 3, Rf_mkChar("kernel_type"));
+            SET_STRING_ELT(nm, 4, Rf_mkChar("min_points"));
+            SET_STRING_ELT(nm, 5, Rf_mkChar("max_iterations"));
+            SET_STRING_ELT(nm, 6, Rf_mkChar("ridge_lambda"));
+            SET_STRING_ELT(nm, 7, Rf_mkChar("tolerance"));
+            Rf_setAttrib(fit_info, R_NamesSymbol, nm);
+            UNPROTECT(1); // nm
+        }
+
+        // Each child: PROTECT → SET_VECTOR_ELT → UNPROTECT(1)
+        SEXP tmp;
+
+        tmp = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(tmp)[0] = c_min;
+        SET_VECTOR_ELT(fit_info, 0, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(tmp)[0] = c_max;
+        SET_VECTOR_ELT(fit_info, 1, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(tmp)[0] = power;
+        SET_VECTOR_ELT(fit_info, 2, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(tmp)[0] = kernel_type;
+        SET_VECTOR_ELT(fit_info, 3, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(tmp)[0] = min_points;
+        SET_VECTOR_ELT(fit_info, 4, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(INTSXP, 1));
+        INTEGER(tmp)[0] = max_iterations;
+        SET_VECTOR_ELT(fit_info, 5, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(tmp)[0] = ridge_lambda;
+        SET_VECTOR_ELT(fit_info, 6, tmp);
+        UNPROTECT(1);
+
+        tmp = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(tmp)[0] = tolerance;
+        SET_VECTOR_ELT(fit_info, 7, tmp);
+        UNPROTECT(1);
+
+        SET_VECTOR_ELT(result_list, 8, fit_info);
+        UNPROTECT(1); // fit_info
+    }
+
+    UNPROTECT(1); // result_list
+    return result_list;
 }

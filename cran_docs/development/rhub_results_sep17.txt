@@ -1,0 +1,520 @@
+Running bcheck
+==== rchk bcheck =========================================
+ERROR: too many states (abstraction error?) in function strptime_internal
+ERROR: too many states (abstraction error?) in function bcEval_loop
+ERROR: too many states (abstraction error?) in function RunGenCollect
+
+Function Rcpp::Armor<SEXPREC*>::init(SEXPREC*)
+  [PB] has possible protection stack imbalance /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Armor.h:47
+
+Function Rcpp::Armor<SEXPREC*>::~Armor()
+  [PB] has negative depth /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Armor.h:41
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Armor.h:41
+  [PB] has possible protection stack imbalance /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Armor.h:42
+
+Function Rcpp::Rcpp_protect(SEXPREC*)
+  [PB] has possible protection stack imbalance /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Shield.h:25
+
+Function Rcpp::Rcpp_unprotect(int)
+  [PB] has an unsupported form of unprotect with a variable results will be incomplete /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Shield.h:31
+  [UP] unsupported form of unprotect, unprotecting all variables, results will be incomplete /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/protection/Shield.h:31
+
+Function Rcpp::Vector<19, Rcpp::PreserveStorage>::push_back_name__impl(SEXPREC* const&, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, Rcpp::traits::integral_constant<bool, true>)
+  [UP] unprotected variable names while calling allocating function Rf_allocVector /github/home/R/x86_64-pc-linux-gnu-library/4.6/Rcpp/include/Rcpp/vector/Vector.h:680
+
+Function Rcpp::internal::convert_using_rfunction(SEXPREC*, char const*)
+  [UP] ignoring variable <unnamed var:   %10 = alloca %struct.SEXPREC*, align 8> as it has address taken, results will be incomplete
+
+Function Rcpp::internal::generic_name_proxy<19, Rcpp::PreserveStorage>::set(SEXPREC*)
+  [UP] ignoring variable rhs as it has address taken, results will be incomplete
+
+Function S_adaptive_maelog
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/amaelog.cpp:769
+
+Function S_compute_graph_analysis_sequence
+  [UP] unprotected variable ms_list while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/graph_analysis_sequence.cpp:584
+  [PB] has negative depth /__w/gflow/gflow/src/graph_analysis_sequence.cpp:585
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_analysis_sequence.cpp:585
+  [UP] unprotected variable ms_list while calling allocating function convert_map_set_to_R(std::__1::map<int, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::less<int>, std::__1::allocator<std::__1::pair<int const, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > > > const&) /__w/gflow/gflow/src/graph_analysis_sequence.cpp:585
+  [UP] unprotected variable r_results_list while calling allocating function convert_map_set_to_R(std::__1::map<int, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::less<int>, std::__1::allocator<std::__1::pair<int const, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > > > const&) /__w/gflow/gflow/src/graph_analysis_sequence.cpp:585
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_analysis_sequence.cpp:630
+
+Function S_convert_adjacency_to_edge_matrix
+  [UP] unprotected variable out while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/graph_utils.cpp:477
+  [PB] has negative depth /__w/gflow/gflow/src/graph_utils.cpp:479
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_utils.cpp:479
+  [UP] unprotected variable out while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_utils.cpp:486
+  [UP] unprotected variable out while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_utils.cpp:487
+  [UP] unprotected variable out while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_utils.cpp:488
+  [PB] has negative depth /__w/gflow/gflow/src/graph_utils.cpp:493
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_utils.cpp:493
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_utils.cpp:495
+
+Function S_create_basin_cx
+  [UP] unprotected variable r_result while calling allocating function S_create_basin_cx::$_2::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/gflow_basins_r.cpp:400
+  [PB] has negative depth /__w/gflow/gflow/src/gflow_basins_r.cpp:402
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/gflow_basins_r.cpp:402
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/gflow_basins_r.cpp:744
+
+Function S_create_basin_cx::$_2::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/gflow_basins_r.cpp:388
+
+Function S_create_mknn_graph
+  [PB] has negative depth /__w/gflow/gflow/src/mknn_graphs.cpp:512
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mknn_graphs.cpp:512
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mknn_graphs.cpp:594
+
+Function S_create_mknn_graphs
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mknn_graphs.cpp:468
+
+Function S_create_path_graph_plm
+  [UP] unprotected variable base_components while calling allocating function Rf_allocVector /__w/gflow/gflow/src/path_graphs.cpp:873
+  [UP] calling allocating function Rf_getAttrib(?,S:names) with a fresh pointer (base_components <arg 1>) /__w/gflow/gflow/src/path_graphs.cpp:874
+  [UP] unprotected variable res while calling allocating function Rf_allocVector /__w/gflow/gflow/src/path_graphs.cpp:893
+  [UP] unprotected variable res while calling allocating function Rf_allocMatrix /__w/gflow/gflow/src/path_graphs.cpp:901
+  [UP] unprotected variable res while calling allocating function Rf_allocVector /__w/gflow/gflow/src/path_graphs.cpp:915
+  [UP] unprotected variable res while calling allocating function Rf_mkChar /__w/gflow/gflow/src/path_graphs.cpp:916
+  [UP] unprotected variable res while calling allocating function Rf_mkChar /__w/gflow/gflow/src/path_graphs.cpp:917
+  [UP] unprotected variable res while calling allocating function Rf_mkChar /__w/gflow/gflow/src/path_graphs.cpp:918
+  [UP] unprotected variable res while calling allocating function Rf_setAttrib(?,S:dimnames,?) /__w/gflow/gflow/src/path_graphs.cpp:919
+  [UP] unprotected variable res while calling allocating function Rf_list2(?,V) /__w/gflow/gflow/src/path_graphs.cpp:920
+  [PB] has negative depth /__w/gflow/gflow/src/path_graphs.cpp:931
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/path_graphs.cpp:931
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/path_graphs.cpp:933
+
+Function S_create_path_graph_plus
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/path_graphs.cpp:620
+
+Function S_create_path_graph_series
+  [UP] unprotected variable res while calling allocating function path_graph_from_path_graph_t(path_graph_t&) /__w/gflow/gflow/src/path_graphs.cpp:442
+  [PB] has negative depth /__w/gflow/gflow/src/path_graphs.cpp:444
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/path_graphs.cpp:444
+  [PB] has negative depth /__w/gflow/gflow/src/path_graphs.cpp:447
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/path_graphs.cpp:447
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/path_graphs.cpp:449
+
+Function S_eigen_ulogit
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/ulogit.cpp:1203
+
+Function S_estimate_local_density_over_grid
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/density.cpp:524
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/density.cpp:536
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/density.cpp:542
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/density.cpp:548
+  [PB] has negative depth /__w/gflow/gflow/src/density.cpp:553
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/density.cpp:553
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/density.cpp:555
+
+Function S_find_shortest_alt_path
+  [PB] has negative depth /__w/gflow/gflow/src/pruning_long_edges.cpp:796
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pruning_long_edges.cpp:796
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/pruning_long_edges.cpp:799
+
+Function S_graph_MS_cx_using_short_h_hops
+  [UP] unprotected variable local_minima while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_MS_cx.cpp:1015
+  [UP] unprotected variable local_minima while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_MS_cx.cpp:1020
+  [UP] unprotected variable local_minima while calling allocating function Rf_setAttrib(V,S:names,V) /__w/gflow/gflow/src/graph_MS_cx.cpp:1025
+
+Function S_graph_MS_cx_with_path_search
+  [UP] unprotected variable local_minima while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_MS_cx.cpp:569
+  [UP] unprotected variable local_minima while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_MS_cx.cpp:574
+  [UP] unprotected variable local_minima while calling allocating function Rf_setAttrib(V,S:names,V) /__w/gflow/gflow/src/graph_MS_cx.cpp:579
+
+Function S_graph_bw_adaptive_spectral_smoother
+  [UP] unprotected variable r_result while calling allocating function S_graph_bw_adaptive_spectral_smoother::$_1::operator()(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) const /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:165
+  [PB] has negative depth /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:167
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:167
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:190
+
+Function S_graph_bw_adaptive_spectral_smoother::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:137
+
+Function S_graph_bw_adaptive_spectral_smoother::$_1::operator()(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:150
+
+Function S_graph_bw_adaptive_spectral_smoother::$_2::operator()(unsigned long, bool) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_bw_adaptive_spectral_smoother_r.cpp:155
+
+Function S_graph_deg0_lowess_buffer_cv
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:173
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_buffer_cv::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:175
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:180
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_buffer_cv::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:185
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:187
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:187
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:224
+
+Function S_graph_deg0_lowess_buffer_cv::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_buffer_cv_r.cpp:161
+
+Function S_graph_deg0_lowess_cv
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:517
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:520
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:528
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv::$_2::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:533
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:535
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:535
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:563
+
+Function S_graph_deg0_lowess_cv::$_2::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_cv.cpp:505
+
+Function S_graph_deg0_lowess_cv_mat
+  [UP] unprotected variable r_predictions while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:151
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:151
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:153
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:153
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:156
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:156
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:163
+  [UP] unprotected variable r_bw_predictions while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:167
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:167
+  [UP] unprotected variable r_bw_predictions while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:170
+  [UP] unprotected variable r_bw_preds_j while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:170
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:170
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:172
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:172
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:176
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:176
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:180
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:180
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:182
+  [UP] unprotected variable r_result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:188
+  [UP] unprotected variable r_bw_errors while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:191
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:191
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:193
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:193
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:196
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:196
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:201
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:203
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:203
+  [UP] unprotected variable r_result while calling allocating function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:208
+  [PB] has negative depth /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:210
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:210
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:226
+
+Function S_graph_deg0_lowess_cv_mat::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_deg0_lowess_cv_mat_r.cpp:144
+
+Function S_graph_kernel_smoother
+  [UP] unprotected variable r_result while calling allocating function Rf_allocMatrix /__w/gflow/gflow/src/graph_kernel_smoother_r.cpp:217
+  [UP] unprotected variable r_result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/graph_kernel_smoother_r.cpp:239
+  [PB] has negative depth /__w/gflow/gflow/src/graph_kernel_smoother_r.cpp:241
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_kernel_smoother_r.cpp:241
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_kernel_smoother_r.cpp:272
+
+Function S_graph_spectral_filter
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_spectral_filter_r.cpp:280
+
+Function S_graph_spectral_lowess_mat
+  [PB] has negative depth /__w/gflow/gflow/src/graph_spectral_lowess_mat_r.cpp:231
+  [UP] attempt to unprotect more items (4) than protected (3), results will be incomplete /__w/gflow/gflow/src/graph_spectral_lowess_mat_r.cpp:231
+  [UP] attempt to unprotect more items (5) than protected (3), results will be incomplete /__w/gflow/gflow/src/graph_spectral_lowess_mat_r.cpp:231
+  [UP] attempt to unprotect more items (5) than protected (4), results will be incomplete /__w/gflow/gflow/src/graph_spectral_lowess_mat_r.cpp:231
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_spectral_lowess_mat_r.cpp:233
+
+Function S_graph_spectral_ma_lowess
+  [UP] unprotected variable result while calling allocating function S_graph_spectral_ma_lowess::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/graph_spectral_ma_lowess_r.cpp:146
+  [PB] has negative depth /__w/gflow/gflow/src/graph_spectral_ma_lowess_r.cpp:148
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_spectral_ma_lowess_r.cpp:148
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_spectral_ma_lowess_r.cpp:168
+
+Function S_graph_spectral_ma_lowess::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_spectral_ma_lowess_r.cpp:134
+
+Function S_instrumented_gds
+  [UP] unprotected variable results while calling allocating function convert_vector_vector_double_to_R(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) /__w/gflow/gflow/src/graph_diffusion_smoother.cpp:2460
+  [PB] has negative depth /__w/gflow/gflow/src/graph_diffusion_smoother.cpp:2461
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_diffusion_smoother.cpp:2461
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_diffusion_smoother.cpp:2554
+
+Function S_join_graphs
+  [PB] has negative depth /__w/gflow/gflow/src/graph_utils.cpp:288
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_utils.cpp:288
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_utils.cpp:290
+
+Function S_kNN
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/kNN.cpp:130
+
+Function S_klaps_low_pass_smoother
+  [UP] unprotected variable r_result while calling allocating function S_klaps_low_pass_smoother::$_1::operator()(Eigen::Matrix<double, -1, -1, 0, -1, -1> const&) const /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:131
+  [PB] has negative depth /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:133
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:133
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:217
+
+Function S_klaps_low_pass_smoother::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:100
+
+Function S_klaps_low_pass_smoother::$_1::operator()(Eigen::Matrix<double, -1, -1, 0, -1, -1> const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:108
+
+Function S_klaps_low_pass_smoother::$_2::operator()(std::__1::vector<unsigned long, std::__1::allocator<unsigned long> > const&, bool) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:114
+
+Function S_klaps_low_pass_smoother::$_3::operator()(unsigned long, bool) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/klaps_low_pass_smoother_r.cpp:119
+
+Function S_mabilo
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:580
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:587
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilo.cpp:594
+  [PB] has negative depth /__w/gflow/gflow/src/mabilo.cpp:596
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilo.cpp:596
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilo.cpp:653
+
+Function S_mabilo_plus
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo_plus.cpp:1032
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo_plus.cpp:1039
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo_plus.cpp:1046
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo_plus.cpp:1053
+  [UP] unprotected variable r_result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilo_plus.cpp:1060
+  [PB] has negative depth /__w/gflow/gflow/src/mabilo_plus.cpp:1062
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilo_plus.cpp:1062
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilo_plus.cpp:1113
+
+Function S_mabilo_with_smoothed_errors
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:1100
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:1107
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilo.cpp:1114
+  [PB] has negative depth /__w/gflow/gflow/src/mabilo.cpp:1116
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilo.cpp:1116
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilo.cpp:1162
+
+Function S_mabilog
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:1290
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:1297
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilog.cpp:1304
+  [PB] has negative depth /__w/gflow/gflow/src/mabilog.cpp:1306
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilog.cpp:1306
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilog.cpp:1363
+
+Function S_mabilog_with_smoothed_errors
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:1807
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:1814
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilog.cpp:1821
+  [PB] has negative depth /__w/gflow/gflow/src/mabilog.cpp:1823
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilog.cpp:1823
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilog.cpp:1869
+
+Function S_nada_graph_spectral_lowess
+  [UP] unprotected variable r_result while calling allocating function Rf_allocMatrix /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:185
+  [UP] unprotected variable r_result while calling allocating function S_nada_graph_spectral_lowess::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:198
+  [PB] has negative depth /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:200
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:200
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:233
+
+Function S_nada_graph_spectral_lowess::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/nada_graph_spectral_lowess_r.cpp:173
+
+Function S_parameterize_circular_graph
+  [PB] has an unsupported form of unprotect with a variable results will be incomplete /__w/gflow/gflow/src/parameterize_circular_graph_r.cpp:89
+  [UP] unsupported form of unprotect, unprotecting all variables, results will be incomplete /__w/gflow/gflow/src/parameterize_circular_graph_r.cpp:89
+
+Function S_parameterize_circular_graph::$_0::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/parameterize_circular_graph_r.cpp:73
+
+Function S_pgmalo
+  [UP] unprotected variable result_r while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/pgmalo.cpp:1291
+  [UP] unprotected variable result_r while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/pgmalo.cpp:1298
+  [UP] unprotected variable result_r while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/pgmalo.cpp:1305
+  [PB] has negative depth /__w/gflow/gflow/src/pgmalo.cpp:1307
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pgmalo.cpp:1307
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/pgmalo.cpp:1379
+
+Function S_shortest_path
+  [PB] has negative depth /__w/gflow/gflow/src/graph_shortest_path.cpp:186
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_shortest_path.cpp:186
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_shortest_path.cpp:188
+
+Function S_uggmalo
+  [UP] unprotected variable r_result while calling allocating function S_uggmalo::$_3::operator()(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) const /__w/gflow/gflow/src/uggmalo.cpp:910
+  [PB] has negative depth /__w/gflow/gflow/src/uggmalo.cpp:912
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/uggmalo.cpp:912
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/uggmalo.cpp:992
+
+Function S_uggmalo::$_2::operator()(std::__1::vector<double, std::__1::allocator<double> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/uggmalo.cpp:868
+
+Function S_uggmalo::$_3::operator()(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/uggmalo.cpp:885
+
+Function S_uggmalo::$_4::operator()(std::__1::vector<bool, std::__1::allocator<bool> > const&) const
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/uggmalo.cpp:894
+
+Function S_univariate_gkmm
+  [UP] unprotected variable h_names while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_kmean.cpp:1595
+  [UP] unprotected variable s_hHN_graphs while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_kmean.cpp:1595
+  [UP] unprotected variable h_names while calling allocating function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1599
+  [UP] unprotected variable s_hHN_graphs while calling allocating function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1599
+  [UP] unprotected variable h_graph while calling allocating function convert_vector_vector_double_to_R(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1603
+  [UP] unprotected variable h_names while calling allocating function convert_vector_vector_double_to_R(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1603
+  [UP] unprotected variable s_hHN_graphs while calling allocating function convert_vector_vector_double_to_R(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1603
+  [PB] has negative depth /__w/gflow/gflow/src/graph_kmean.cpp:1606
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_kmean.cpp:1606
+  [UP] unprotected variable h_graph while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_kmean.cpp:1611
+  [UP] unprotected variable h_names while calling allocating function Rf_allocVector /__w/gflow/gflow/src/graph_kmean.cpp:1611
+  [UP] unprotected variable h_graph while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1612
+  [UP] unprotected variable h_names while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1612
+  [UP] unprotected variable h_graph while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1613
+  [UP] unprotected variable h_names while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1613
+  [UP] unprotected variable h_names while calling allocating function Rf_setAttrib(V,S:names,V) /__w/gflow/gflow/src/graph_kmean.cpp:1614
+  [UP] unprotected variable h_names while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1623
+  [UP] unprotected variable s_hHN_graphs while calling allocating function Rf_mkChar /__w/gflow/gflow/src/graph_kmean.cpp:1623
+  [PB] has negative depth /__w/gflow/gflow/src/graph_kmean.cpp:1626
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_kmean.cpp:1626
+  [UP] unprotected variable r_result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1665
+  [PB] has negative depth /__w/gflow/gflow/src/graph_kmean.cpp:1667
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_kmean.cpp:1667
+  [UP] unprotected variable r_result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/graph_kmean.cpp:1676
+  [UP] unprotected variable r_result while calling allocating function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&) /__w/gflow/gflow/src/graph_kmean.cpp:1683
+  [PB] has negative depth /__w/gflow/gflow/src/graph_kmean.cpp:1685
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/graph_kmean.cpp:1685
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/graph_kmean.cpp:1737
+
+Function S_upgmalo
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/pgmalo.cpp:693
+  [PB] has negative depth /__w/gflow/gflow/src/pgmalo.cpp:695
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pgmalo.cpp:695
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/pgmalo.cpp:702
+  [UP] unprotected variable result while calling allocating function Rf_ScalarReal /__w/gflow/gflow/src/pgmalo.cpp:709
+  [UP] unprotected variable result while calling allocating function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&) /__w/gflow/gflow/src/pgmalo.cpp:716
+  [PB] has negative depth /__w/gflow/gflow/src/pgmalo.cpp:718
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pgmalo.cpp:718
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/pgmalo.cpp:779
+
+Function S_upgmalog
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/pgmalog.cpp:1214
+  [PB] has negative depth /__w/gflow/gflow/src/pgmalog.cpp:1216
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pgmalog.cpp:1216
+  [UP] unprotected variable result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/pgmalog.cpp:1223
+  [UP] unprotected variable result while calling allocating function Rf_allocVector /__w/gflow/gflow/src/pgmalog.cpp:1231
+  [UP] unprotected variable result while calling allocating function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&) /__w/gflow/gflow/src/pgmalog.cpp:1239
+  [PB] has negative depth /__w/gflow/gflow/src/pgmalog.cpp:1241
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/pgmalog.cpp:1241
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/pgmalog.cpp:1323
+
+Function S_verify_pruning
+  [PB] has negative depth /__w/gflow/gflow/src/iknn_graphs.cpp:518
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/iknn_graphs.cpp:518
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/iknn_graphs.cpp:520
+
+Function S_wmabilo
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:167
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilo.cpp:174
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilo.cpp:181
+  [PB] has negative depth /__w/gflow/gflow/src/mabilo.cpp:183
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilo.cpp:183
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilo.cpp:221
+
+Function S_wmabilog
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:850
+  [UP] unprotected variable result while calling allocating function Rf_ScalarInteger /__w/gflow/gflow/src/mabilog.cpp:857
+  [UP] unprotected variable result while calling allocating function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&) /__w/gflow/gflow/src/mabilog.cpp:864
+  [PB] has negative depth /__w/gflow/gflow/src/mabilog.cpp:866
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/mabilog.cpp:866
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/mabilog.cpp:904
+
+Function _gflow_Rcpp_graph_kernel_smoother
+  [UP] ignoring variable <unnamed var:   %24 = alloca %struct.SEXPREC*, align 8> as it has address taken, results will be incomplete
+
+Function _gflow_rcpp_adaptive_mean_shift_gfa
+  [UP] ignoring variable <unnamed var:   %42 = alloca %struct.SEXPREC*, align 8> as it has address taken, results will be incomplete
+
+Function _gflow_rcpp_knn_adaptive_mean_shift_gfa
+  [UP] ignoring variable <unnamed var:   %33 = alloca %struct.SEXPREC*, align 8> as it has address taken, results will be incomplete
+
+Function compute_knn(SEXPREC*, int)
+  [PB] has negative depth /__w/gflow/gflow/src/iknn_graphs.cpp:1206
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/iknn_graphs.cpp:1206
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/iknn_graphs.cpp:1218
+
+Function convert_cell_trajectories_to_R(std::__1::map<cell_t, std::__1::set<unsigned long, std::__1::less<unsigned long>, std::__1::allocator<unsigned long> >, std::__1::less<cell_t>, std::__1::allocator<std::__1::pair<cell_t const, std::__1::set<unsigned long, std::__1::less<unsigned long>, std::__1::allocator<unsigned long> > > > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:1031
+
+Function convert_map_int_vector_int_to_R(std::__1::map<int, std::__1::vector<int, std::__1::allocator<int> >, std::__1::less<int>, std::__1::allocator<std::__1::pair<int const, std::__1::vector<int, std::__1::allocator<int> > > > > const&, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > > > const&)
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:662
+  [UP] attempt to unprotect more items (2) than protected (1), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:662
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:716
+
+Function convert_map_set_to_R(std::__1::map<int, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::less<int>, std::__1::allocator<std::__1::pair<int const, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > > > const&)
+  [UP] unprotected variable Rlist while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:934
+  [UP] unprotected variable names while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:934
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:936
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:936
+  [UP] unprotected variable Rlist while calling allocating function Rf_mkChar /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:938
+  [UP] unprotected variable names while calling allocating function Rf_mkChar /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:938
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:942
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:942
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:945
+
+Function convert_map_vector_set_to_R(std::__1::map<std::__1::pair<int, int>, std::__1::vector<std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::allocator<std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > >, std::__1::less<std::__1::pair<int, int> >, std::__1::allocator<std::__1::pair<std::__1::pair<int, int> const, std::__1::vector<std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::allocator<std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > > > > > const&)
+  [UP] unprotected variable Rlist while calling allocating function Rf_allocVector /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:968
+  [UP] unprotected variable names while calling allocating function Rf_allocVector /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:968
+  [UP] unprotected variable Rlist while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:970
+  [UP] unprotected variable inner_list while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:970
+  [UP] unprotected variable names while calling allocating function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&) /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:970
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:972
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:972
+  [UP] unprotected variable Rlist while calling allocating function Rf_mkChar /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:977
+  [UP] unprotected variable inner_list while calling allocating function Rf_mkChar /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:977
+  [UP] unprotected variable names while calling allocating function Rf_mkChar /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:977
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:980
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:980
+  [PB] has negative depth /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:984
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:984
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:987
+
+Function convert_map_vector_to_R(std::__1::map<std::__1::pair<int, int>, std::__1::vector<int, std::__1::allocator<int> >, std::__1::less<std::__1::pair<int, int> >, std::__1::allocator<std::__1::pair<std::__1::pair<int, int> const, std::__1::vector<int, std::__1::allocator<int> > > > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:1075
+
+Function convert_procells_to_R(std::__1::map<std::__1::pair<int, int>, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> >, std::__1::less<std::__1::pair<int, int> >, std::__1::allocator<std::__1::pair<std::__1::pair<int, int> const, std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > > > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:1191
+
+Function convert_set_to_R(std::__1::set<int, std::__1::less<int>, std::__1::allocator<int> > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:907
+
+Function convert_vector_bool_to_R(std::__1::vector<bool, std::__1::allocator<bool> > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:622
+
+Function convert_vector_double_to_R(std::__1::vector<double, std::__1::allocator<double> > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:561
+
+Function convert_vector_int_to_R(std::__1::vector<int, std::__1::allocator<int> > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:592
+
+Function convert_vector_vector_double_to_R(std::__1::vector<std::__1::vector<double, std::__1::allocator<double> >, std::__1::allocator<std::__1::vector<double, std::__1::allocator<double> > > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:407
+
+Function convert_vector_vector_int_to_R(std::__1::vector<std::__1::vector<int, std::__1::allocator<int> >, std::__1::allocator<std::__1::vector<int, std::__1::allocator<int> > > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:368
+
+Function cpp_vector_of_pairs_to_R_matrix(std::__1::vector<std::__1::pair<int, int>, std::__1::allocator<std::__1::pair<int, int> > > const&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:827
+
+Function create_iknn_graph(SEXPREC*, SEXPREC*)
+  [PB] has negative depth /__w/gflow/gflow/src/iknn_graphs.cpp:669
+  [UP] attempt to unprotect more items (1) than protected (0), results will be incomplete /__w/gflow/gflow/src/iknn_graphs.cpp:669
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/iknn_graphs.cpp:723
+
+Function create_r_graph_from_set_wgraph(set_wgraph_t const&)
+  [UP] ignoring variable r_weight_list as it has address taken, results will be incomplete
+
+Function flat_vector_to_R_matrix(std::__1::vector<double, std::__1::allocator<double> > const&, int, int)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/SEXP_cpp_conversion_utils.cpp:875
+
+Function path_graph_from_path_graph_t(path_graph_t&)
+  [PB] has possible protection stack imbalance /__w/gflow/gflow/src/path_graphs.cpp:400
+
+Function void Rcpp::Vector<19, Rcpp::PreserveStorage>::push_back<SEXPREC*>(SEXPREC* const&, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&)
+  [UP] ignoring variable <unnamed var:   %7 = alloca %struct.SEXPREC*, align 8> as it has address taken, results will be incomplete
+Analyzed 54982 functions, traversed 226384 states.
+------------------------------------------------------
+Run # Fail for rchk errors.
+Fail for rchk errors
+Error: Process completed with exit code 1.
+Run # Save binary package
+Save binary package
+Run actions/upload-artifact@v4
+/usr/bin/docker exec  dbc6054e5c40a85e87095912c2d1be7aa10cfa35df3af45bfe7fbdb58b25c7dc sh -c "cat /etc/*release | grep ^ID"
+Warning: No files were found with the provided path: check. No artifacts will be uploaded.
