@@ -73,11 +73,16 @@ SEXP S_kNN(SEXP RX, SEXP Rk) {
     if (!Rf_isMatrix(RX)) { Rf_error("S_kNN: RX must be a matrix"); }
     const int k = Rf_asInteger(Rk);
 
-    SEXP dim = Rf_getAttrib(RX, R_DimSymbol);
-    const int n = INTEGER(dim)[0];
-    const int d = INTEGER(dim)[1];
-    const double* X = REAL(RX);
+    SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
+        UNPROTECT(1);
+        Rf_error("X must be a numeric matrix with valid dimensions.");
+    }
+    const int n = INTEGER(s_dim)[0];
+    const int d = INTEGER(s_dim)[1];
+    UNPROTECT(1); // s_dim
 
+    const double* X = REAL(RX);
     ANNpointArray dataPts = annAllocPts(n, d);
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < d; ++j)

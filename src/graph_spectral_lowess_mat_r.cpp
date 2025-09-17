@@ -79,10 +79,15 @@ SEXP S_graph_spectral_lowess_mat(
     // Check if s_Y is a matrix or a list
     if (Rf_isMatrix(s_Y)) {
         // Handle matrix format (convert column-major R matrix to row-major C++ vector of vectors)
-        SEXP s_Y_dim = Rf_getAttrib(s_Y, R_DimSymbol);
-        int nrow = INTEGER(s_Y_dim)[0];
-        int ncol = INTEGER(s_Y_dim)[1];
-        
+        SEXP s_dim = PROTECT(Rf_getAttrib(s_Y, R_DimSymbol));
+        if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+            UNPROTECT(1);
+            Rf_error("Y must be a matrix with a valid integer 'dim' attribute.");
+        }
+        const int nrow = INTEGER(s_dim)[0];
+        const int ncol = INTEGER(s_dim)[1];
+        UNPROTECT(1); // s_dim
+
         // Each column of the matrix becomes a response variable vector
         Y.resize(ncol);
         double* Y_ptr = REAL(s_Y);

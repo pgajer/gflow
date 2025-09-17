@@ -65,9 +65,15 @@ SEXP S_deg0_lowess_graph_smoothing(
 
     // R wrapper assures that X is a matrix of type double
     // Get dimensions
-    int *X_dims = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    int n_samples = X_dims[0];
-    int n_features = X_dims[1];
+
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int n_samples = INTEGER(s_dim)[0];
+    const int n_features = INTEGER(s_dim)[1];
+    UNPROTECT(1); // s_dim
 
     // Extract scalar parameters
     size_t max_iterations        = static_cast<size_t>(Rf_asInteger(s_max_iterations));

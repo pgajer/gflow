@@ -652,8 +652,14 @@ void print_iknn_graph(
  */
 iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
 
-    int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
-    size_t n_points = dimX[0];
+    SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int n_points = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
+
     size_t k = Rf_asInteger(Rk);
 
     // Finding kNN's for all points of X
@@ -1182,10 +1188,14 @@ struct knn_search_result_t {
 knn_search_result_t compute_knn(SEXP RX, int k) {
     // assume RX is REAL matrix; assert minimally
     if (TYPEOF(RX) != REALSXP) Rf_error("RX must be REALSXP.");
-    SEXP dim = Rf_getAttrib(RX, R_DimSymbol);
-    if (dim == R_NilValue || Rf_length(dim) != 2)
-        Rf_error("RX must be a matrix.");
-    R_xlen_t n_points = INTEGER(dim)[0];
+
+    SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
+        UNPROTECT(1);
+        Rf_error("X must be a numeric matrix with valid dimensions.");
+    }
+    const int n_points = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
 
     SEXP Rk = PROTECT(Rf_ScalarInteger(k));
     SEXP knn_res = S_kNN(RX, Rk);
@@ -1197,7 +1207,7 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
 
     knn_search_result_t result((size_t)n_points, (size_t)k);
 
-    for (R_xlen_t i = 0; i < n_points; ++i) {
+    for (int i = 0; i < n_points; ++i) {
         for (int j = 0; j < k; ++j) {
             result.indices[i][j]   = indices_raw[i + n_points * j];
             result.distances[i][j] = dist_raw  [i + n_points * j];

@@ -192,8 +192,13 @@ SEXP S_create_mknn_graphs(
     int compute_full = (LOGICAL(s_compute_full)[0] == 1);
     int verbose = (LOGICAL(s_verbose)[0] == 1);
 
-    int* dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
-    int n_vertices = dimX[0];
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int n_vertices = INTEGER(s_dim)[0];
+    UNPROTECT(1); // s_dim
 
     if (verbose) {
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin, kmax, n_vertices);
@@ -480,14 +485,19 @@ SEXP S_create_mknn_graphs(
 */
 SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
 
-    double *X = REAL(RX);
-    int *dimX = INTEGER(Rf_getAttrib(RX, R_DimSymbol));
-    int nrX = dimX[0];
-    int ncX = dimX[1];
+    SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int nrX = INTEGER(s_dim)[0];
+    const int ncX = INTEGER(s_dim)[1];
+    UNPROTECT(1); // s_dim
 
-    int k = INTEGER(Rk)[0];
+    int k = Rf_asInteger(Rk);
 
     // Convert RX matrix to ANNpointArray
+    double *X = REAL(RX);
     ANNpointArray dataPts = annAllocPts(nrX, ncX);
     for (int i = 0; i < nrX; i++) {
         for (int j = 0; j < ncX; j++) {

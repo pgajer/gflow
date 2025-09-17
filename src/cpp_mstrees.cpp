@@ -185,9 +185,14 @@ SEXP S_mstree(SEXP X) {
     }
 
     // Get dimensions of X
-    SEXP dim = Rf_getAttrib(X, R_DimSymbol);
-    int nr_X = INTEGER(dim)[0];
-    int nc_X = INTEGER(dim)[1];
+    SEXP s_dim = PROTECT(Rf_getAttrib(X, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const int nr_X = INTEGER(s_dim)[0];
+    const int nc_X = INTEGER(s_dim)[1];
+    UNPROTECT(1); // s_dim
 
     // Convert X to std::vector<double>
     std::vector<double> x_vec(REAL(X), REAL(X) + nr_X * nc_X);

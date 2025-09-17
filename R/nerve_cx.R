@@ -3,36 +3,39 @@
 #' This function creates a nerve complex from a set of points in \eqn{R^n} based on their
 #' k-nearest neighbor covering.
 #'
-#' @param coords Matrix of point coordinates, where rows are points and columns are dimensions
+#' @param X Matrix of point coordinates, where rows are points and columns are dimensions
 #' @param k Number of nearest neighbors to use for the covering
 #' @param max.dim Maximum dimension of simplices to compute
 #'
 #' @return A nerve complex object
 #' @export
-create.nerve.complex <- function(coords, k, max.dim = 2) {
-  # Check inputs
-  if (!is.matrix(coords)) {
-    coords <- as.matrix(coords)
-  }
+create.nerve.complex <- function(X, k, max.dim = 2) {
 
-  if (k < 2) {
-    stop("k must be at least 2")
-  }
+    if (!is.matrix(X)) {
+        X <- try(as.matrix(X), silent = TRUE)
+        if (inherits(X, "try-error"))
+            stop("X must be a matrix or coercible to a numeric matrix.")
+    }
+    if (!is.numeric(X)) stop("X must be numeric.")
+    if (any(!is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
+    storage.mode(X) <- "double"
 
-  if (max.dim < 1) {
-    stop("max.dim must be at least 1")
-  }
+    if (k < 2) {
+        stop("k must be at least 2")
+    }
 
-  # Call C++ function
+    if (max.dim < 1) {
+        stop("max.dim must be at least 1")
+    }
+
     result <- .Call(S_create_nerve_complex,
-                    coords,
+                    X,
                     as.integer(k + 1), # Note that ANN library is configured so that it includes the query point within the set of kNN's so we need to increase k by 1 to really get kNN's
                     as.integer(max.dim))
 
-  # Add class
-  class(result) <- "nerve_complex"
+    class(result) <- "nerve_complex"
 
-  return(result)
+    return(result)
 }
 
 #' Set Function Values on Nerve Complex Vertices

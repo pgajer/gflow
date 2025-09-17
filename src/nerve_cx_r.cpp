@@ -20,23 +20,23 @@ void nerve_complex_finalizer(SEXP s_complex_ptr) {
 /**
  * @brief Creates a nerve complex from point coordinates
  *
- * @param s_coords SEXP matrix of point coordinates
+ * @param s_X SEXP matrix of point coordinates
  * @param s_k SEXP integer for k nearest neighbors
  * @param s_max_dim SEXP integer for maximum simplex dimension
  * @return SEXP external pointer to the nerve complex
  */
-SEXP S_create_nerve_complex(SEXP s_coords, SEXP s_k, SEXP s_max_dim) {
+SEXP S_create_nerve_complex(SEXP s_X, SEXP s_k, SEXP s_max_dim) {
 	// Convert inputs
-	PROTECT(s_coords = Rf_coerceVector(s_coords, REALSXP));
-	int* dimX = INTEGER(Rf_getAttrib(s_coords, R_DimSymbol));
+	PROTECT(s_X = Rf_coerceVector(s_X, REALSXP));
+	int* dimX = INTEGER(Rf_getAttrib(s_X, R_DimSymbol));
 	int n_points = dimX[0];
 	int n_dims = dimX[1];
-	double* X = REAL(s_coords);
 
-	int k = INTEGER(s_k)[0];
-	int max_dim = INTEGER(s_max_dim)[0];
+	int k       = Rf_asInteger(s_k);
+	int max_dim = Rf_asInteger(s_max_dim);
 
 	// Convert coordinates to C++ format
+	double* X = REAL(s_X);
 	std::vector<std::vector<double>> coords(n_points);
 	for (int i = 0; i < n_points; i++) {
 		coords[i].resize(n_dims);
@@ -44,40 +44,52 @@ SEXP S_create_nerve_complex(SEXP s_coords, SEXP s_k, SEXP s_max_dim) {
 			coords[i][j] = X[i + n_points * j]; // Column-major to row-major
 		}
 	}
-
-	// Create the nerve complex
-	nerve_complex_t* complex = new nerve_complex_t(coords, k, max_dim);
-
-	// Create external pointer
-	SEXP complex_ptr = R_MakeExternalPtr(complex, R_NilValue, R_NilValue);
-
-	// Register finalizer
-	R_RegisterCFinalizerEx(complex_ptr, (R_CFinalizer_t) nerve_complex_finalizer, TRUE);
-
-	// Get simplex counts
-	SEXP simplex_counts = PROTECT(Rf_allocVector(INTSXP, max_dim + 1));
-	int* counts = INTEGER(simplex_counts);
-	for (int d = 0; d <= max_dim; d++) {
-		counts[d] = complex->num_simplices(d);
-	}
+	UNPROTECT(1); // s_X
 
 	// Create return list
-	SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
-	SET_VECTOR_ELT(result, 0, complex_ptr);
-	SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(n_points));
-	SET_VECTOR_ELT(result, 2, simplex_counts);
-	SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(max_dim));
+	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 4));
+	{
+		// Set names
+		SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+		SET_STRING_ELT(names, 0, Rf_mkChar("complex_ptr"));
+		SET_STRING_ELT(names, 1, Rf_mkChar("n_vertices"));
+		SET_STRING_ELT(names, 2, Rf_mkChar("simplex_counts"));
+		SET_STRING_ELT(names, 3, Rf_mkChar("max_dimension"));
+		Rf_setAttrib(r_result, R_NamesSymbol, names);
+		UNPROTECT(1);
+	}
 
-	// Set names
-	SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
-	SET_STRING_ELT(names, 0, Rf_mkChar("complex_ptr"));
-	SET_STRING_ELT(names, 1, Rf_mkChar("n_vertices"));
-	SET_STRING_ELT(names, 2, Rf_mkChar("simplex_counts"));
-	SET_STRING_ELT(names, 3, Rf_mkChar("max_dimension"));
-	Rf_setAttrib(result, R_NamesSymbol, names);
+	// Create the nerve complex
+	{
+		nerve_complex_t* complex = new nerve_complex_t(coords, k, max_dim);
 
-	UNPROTECT(4);
-	return result;
+		// Create external pointer
+		SEXP complex_ptr = R_MakeExternalPtr(complex, R_NilValue, R_NilValue);
+
+		// Register finalizer
+		R_RegisterCFinalizerEx(complex_ptr, (R_CFinalizer_t) nerve_complex_finalizer, TRUE);
+
+		SET_VECTOR_ELT(r_result, 0, complex_ptr);
+		UNPROTECT(1);
+	}
+
+	SET_VECTOR_ELT(r_result, 1, Rf_ScalarInteger(n_points));
+
+	// Get simplex counts
+	{
+		SEXP simplex_counts = PROTECT(Rf_allocVector(INTSXP, max_dim + 1));
+		int* counts = INTEGER(simplex_counts);
+		for (int d = 0; d <= max_dim; d++) {
+			counts[d] = complex->num_simplices(d);
+		}
+		SET_VECTOR_ELT(r_result, 2, simplex_counts);
+		UNPROTECT(1);
+	}
+
+	SET_VECTOR_ELT(r_result, 3, Rf_ScalarInteger(max_dim));
+
+	UNPROTECT(1);
+	return r_result;
 }
 
 /**
@@ -197,6 +209,7 @@ SEXP S_solve_full_laplacian(SEXP s_complex_ptr, SEXP s_lambda, SEXP s_dim_weight
 	PROTECT(s_dim_weights = Rf_coerceVector(s_dim_weights, REALSXP));
 	int n_weights = LENGTH(s_dim_weights);
 	double* weights = REAL(s_dim_weights);
+	UNPROTECT(1); // s_dim_weights
 
 	if (n_weights < (int)complex->max_dimension + 1) {
 		REPORT_ERROR("Not enough dimension weights provided");
@@ -215,7 +228,7 @@ SEXP S_solve_full_laplacian(SEXP s_complex_ptr, SEXP s_lambda, SEXP s_dim_weight
 		r_result_ptr[i] = result[i];
 	}
 
-	UNPROTECT(2);
+	UNPROTECT(1); // r_result
 	return r_result;
 }
 

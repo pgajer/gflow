@@ -538,19 +538,42 @@ SEXP S_apply_harmonic_extension(
 	std::unordered_map<size_t, double> boundary_values;
 
 	if (TYPEOF(s_boundary_values) == VECSXP) {
-		SEXP names = Rf_getAttrib(s_boundary_values, R_NamesSymbol);
-		if (names != R_NilValue) {
-			for (int i = 0; i < LENGTH(s_boundary_values); i++) {
-				// Get the vertex index from name (assuming it's the vertex index)
-				size_t vertex = static_cast<size_t>(std::stoi(CHAR(STRING_ELT(names, i))));
-				double value = REAL(VECTOR_ELT(s_boundary_values, i))[0];
-				boundary_values[vertex] = value;
-			}
-		} else {
-			REPORT_ERROR("Boundary values must be a named list with vertex indices as names");
+		int n = Rf_length(s_boundary_values);  // LENGTH-first, no long vectors
+		SEXP names = PROTECT(Rf_getAttrib(s_boundary_values, R_NamesSymbol));
+
+		if (names == R_NilValue || TYPEOF(names) != STRSXP || Rf_length(names) != n) {
+			UNPROTECT(1);
+			REPORT_ERROR("Boundary values must be a named list with one name per element.");
 		}
+
+		for (int i = 0; i < n; ++i) {
+			// name -> integer vertex index (avoid std::stoi)
+			SEXP nm = STRING_ELT(names, i);
+			int vertex = Rf_asInteger(nm);
+			if (vertex == NA_INTEGER) {
+				UNPROTECT(1);
+				REPORT_ERROR("Boundary list names must be integer-like (e.g., '0', '17').");
+			}
+			if (vertex < 0 /* || vertex >= (int)boundary_values_size */) {
+				UNPROTECT(1);
+				REPORT_ERROR("Boundary vertex index out of range.");
+			}
+
+			// value checks
+			SEXP elt = VECTOR_ELT(s_boundary_values, i);
+			if (TYPEOF(elt) != REALSXP || Rf_length(elt) < 1) {
+				UNPROTECT(1);
+				REPORT_ERROR("Each boundary value must be a non-empty numeric vector.");
+			}
+			double value = REAL(elt)[0];
+
+			// assign
+			boundary_values[(size_t)vertex] = value;
+		}
+
+		UNPROTECT(1); // names
 	} else {
-		REPORT_ERROR("Boundary values must be a list");
+		REPORT_ERROR("Boundary values must be a list.");
 	}
 
 	// Get other parameters

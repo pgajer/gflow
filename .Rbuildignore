@@ -52,4 +52,4 @@
 ^scripts$
 
 # CRAN submission and package maintenance documentation
-^cran_docs/
+^cran_docs$
