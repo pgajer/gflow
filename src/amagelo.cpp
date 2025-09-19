@@ -454,7 +454,7 @@ amagelo_t amagelo(
 
         double prediction_sum = 0.0;
         double weight_sum     = 0.0;
-        double error_sum      = 0.0;
+        //double error_sum      = 0.0;
         double effective_weight;
 
         for (const auto& x : gv_wpmes) {
@@ -479,7 +479,7 @@ amagelo_t amagelo(
             }
 
             prediction_sum += effective_weight * x.prediction;
-            error_sum      += effective_weight * x.mean_error;
+            //error_sum      += effective_weight * x.mean_error;
             weight_sum     += effective_weight;
         }
 

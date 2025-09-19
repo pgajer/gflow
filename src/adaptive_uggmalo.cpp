@@ -22,7 +22,6 @@
 #include <numeric>    // For std::accumulate
 #include <execution>
 #include <atomic>
-#include <mutex>
 #include <random>     // For std::mt19937
 #include <chrono>
 #include <thread>      // For std::thread
@@ -616,7 +615,6 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         return std::ref(rng);
     };
 
-    std::mutex rng_mutex; // Mutex for thread-safe random number generation
     std::vector<double> empty_errors;
     std::vector<double> empty_scale;
 

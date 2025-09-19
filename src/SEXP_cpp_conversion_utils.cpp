@@ -43,6 +43,15 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     // Create result list
     SEXP result = PROTECT(Rf_allocVector(VECSXP, 2));
 
+    // Create and set names
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
+
     // Create trajectory list
     {
         SEXP X_traj_r = PROTECT(Rf_allocVector(VECSXP, n_steps));
@@ -72,13 +81,8 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
         UNPROTECT(1);
     }
 
-    // Create and set names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
-    SET_STRING_ELT(names, 0, Rf_mkChar("X_traj"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("median_kdistances"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
 
-    UNPROTECT(2);
+    UNPROTECT(1); // result
     return result;
 }
 
@@ -172,19 +176,6 @@ std::unique_ptr<std::vector<double>> Rvect_to_CppVect_double(SEXP Ry) {
     std::vector<double> y(REAL(Ry), REAL(Ry) + LENGTH(Ry));
     return std::make_unique<std::vector<double>>(std::move(y));
 }
-
-#if 0
-std::unique_ptr<std::vector<double>> Rvect_to_CppVect_double(SEXP Ry) {
-    int y_length = LENGTH(Ry);
-    auto y = std::make_unique<std::vector<double>>(y_length);
-
-    for (int i = 0; i < y_length; ++i)
-        (*y)[i] = REAL(Ry)[i];
-
-    return y;
-}
-#endif
-
 
 /**
  * @brief Converts an R list of numeric vectors to a C++ vector of vectors of doubles.
@@ -365,6 +356,7 @@ SEXP convert_vector_vector_int_to_R(const std::vector<std::vector<int>>& x) {
     UNPROTECT(1);
   }
 
+  UNPROTECT(1); // out
   return out;
 }
 
@@ -404,6 +396,7 @@ SEXP convert_vector_vector_double_to_R(const std::vector<std::vector<double>>& x
     UNPROTECT(1);  // release element temporary
   }
 
+  UNPROTECT(1); // out
   return out;
 }
 
@@ -442,7 +435,7 @@ SEXP convert_vector_vector_bool_to_R(const std::vector<std::vector<bool>>& x) {
     UNPROTECT(1);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(1); // out
   return out;
 }
 
@@ -533,7 +526,7 @@ SEXP convert_vector_vector_double_to_matrix(const std::vector<std::vector<double
     }
   }
 
-  UNPROTECT(1);
+  UNPROTECT(1); // M
   return M;
 }
 
@@ -546,13 +539,13 @@ SEXP convert_vector_vector_double_to_matrix(const std::vector<std::vector<double
  * in a protected state for further use.
  *
  * @param vec The std::vector<double> to convert
- * @return SEXP (PROTECTED). Caller must UNPROTECT(1) after inserting/anchoring it.
+ * @return SEXP (UNPROTECTED).
  *
  */
 SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
 
   const size_t n = vec.size();
-  SEXP Rvec = PROTECT(Rf_allocVector(REALSXP, n));
+  SEXP Rvec = Rf_allocVector(REALSXP, n);
   double* p = REAL(Rvec);
   for (size_t i = 0; i < n; ++i) {
     p[i] = vec[i];
@@ -566,7 +559,7 @@ SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
  * @brief Converts a C++ vector of integers to an R integer vector
  *
  * @param vec Input vector of integers to convert
- * @return SEXP A protected R integer vector containing the same values as the input
+ * @return SEXP An unprotected R integer vector containing the same values as the input
  *
  * @details This function takes a C++ vector of integers and converts it to an R integer
  *          vector, preserving all values. The function handles the necessary R object
@@ -583,7 +576,7 @@ SEXP convert_vector_double_to_R(const std::vector<double>& vec) {
 SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
 
   const size_t n = vec.size();
-  SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, n));
+  SEXP Rvec = Rf_allocVector(INTSXP, n);
   int* p = INTEGER(Rvec);
   for (size_t i = 0; i < n; ++i) {
     p[i] = vec[i];
@@ -596,7 +589,7 @@ SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
  * @brief Converts a C++ vector of booleans to an R logical vector
  *
  * @param vec Input vector of booleans to convert
- * @return SEXP A protected R logical vector containing the same values as the input
+ * @return SEXP Aa unprotected R logical vector containing the same values as the input
  *
  * @details This function takes a C++ vector of booleans and converts it to an R logical
  *          vector, preserving the boolean values. The function handles the necessary R
@@ -613,7 +606,7 @@ SEXP convert_vector_int_to_R(const std::vector<int>& vec) {
 SEXP convert_vector_bool_to_R(const std::vector<bool>& vec) {
 
   const size_t n = vec.size();
-  SEXP Rvec = PROTECT(Rf_allocVector(LGLSXP, n));
+  SEXP Rvec = Rf_allocVector(LGLSXP, n);
   int* p = LOGICAL(Rvec);
   for (size_t i = 0; i < n; ++i) {
     p[i] = vec[i] ? 1 : 0;
@@ -649,69 +642,66 @@ SEXP convert_vector_bool_to_R(const std::vector<bool>& vec) {
  */
 SEXP convert_map_int_vector_int_to_R(
     const std::map<int, std::vector<int>>& m,
-    const std::vector<std::string>& names  // must have size = max_key+1
-    ) {
-
+    const std::vector<std::string>& names
+) {
     if (m.empty()) {
-        // Return named zero-length list if names provided, else plain list(0)
         SEXP out = PROTECT(Rf_allocVector(VECSXP, 0));
         if (!names.empty()) {
             SEXP nm = PROTECT(Rf_allocVector(STRSXP, 0));
             Rf_setAttrib(out, R_NamesSymbol, nm);
+            UNPROTECT(2); // out, nm
+        } else {
+            UNPROTECT(1); // out
         }
-        UNPROTECT(2);
         return out;
     }
 
     int max_key = -1;
     for (const auto& kv : m) {
         const int key = kv.first;
-        if (key < 0) {
-            Rf_error("convert_map_int_vector_int_to_R: negative key %d not allowed", key);
-        }
+        if (key < 0) Rf_error("convert_map_int_vector_int_to_R: negative key %d not allowed", key);
         if (key > max_key) max_key = key;
     }
 
     const int list_len = max_key + 1;
-    if (!names.empty() && static_cast<int>(names.size()) != list_len) {
+    if (!names.empty() && (int)names.size() != list_len) {
         Rf_error("convert_map_int_vector_int_to_R: names.size() (%d) != max_key+1 (%d)",
-                 static_cast<int>(names.size()), list_len);
+                 (int)names.size(), list_len);
     }
 
     SEXP out = PROTECT(Rf_allocVector(VECSXP, list_len));
 
-    // Initialize all slots to integer(0) to satisfy dense contract
+    // init to integer(0)
     for (int i = 0; i < list_len; ++i) {
         SEXP empty = PROTECT(Rf_allocVector(INTSXP, 0));
         SET_VECTOR_ELT(out, i, empty);
         UNPROTECT(1);
     }
 
-    // Fill present keys
+    // fill present keys (LENGTH-first)
     for (const auto& kv : m) {
         const int key = kv.first;
         const auto& v  = kv.second;
-        const R_xlen_t n = static_cast<R_xlen_t>(v.size());
+        if ((size_t)v.size() > (size_t)INT_MAX) Rf_error("vector too large");
+        const int n = (int)v.size();
+
         SEXP Ri = PROTECT(Rf_allocVector(INTSXP, n));
         int* pi = INTEGER(Ri);
-        for (R_xlen_t j = 0; j < n; ++j) {
-            pi[static_cast<size_t>(j)] = v[static_cast<size_t>(j)];
-        }
+        for (int j = 0; j < n; ++j) pi[j] = v[(size_t)j];
         SET_VECTOR_ELT(out, key, Ri);
         UNPROTECT(1);
     }
 
-    // Names (optional)
     if (!names.empty()) {
         SEXP nm = PROTECT(Rf_allocVector(STRSXP, list_len));
         for (int i = 0; i < list_len; ++i) {
-            SET_STRING_ELT(nm, i, Rf_mkChar(names[static_cast<size_t>(i)].c_str()));
+            SET_STRING_ELT(nm, i, Rf_mkCharCE(names[(size_t)i].c_str(), CE_UTF8));
         }
         Rf_setAttrib(out, R_NamesSymbol, nm);
         UNPROTECT(1);
     }
 
-    UNPROTECT(1);
+    UNPROTECT(1); // out
     return out;
 }
 
@@ -788,17 +778,23 @@ SEXP Cpp_map_int_set_int_to_Rlist(const std::unordered_map<int, std::set<int>>& 
  * @Rf_warning The function assumes that the input vector is not empty. Behavior is
  *          undefined for empty vectors.
  */
-SEXP uptr_vector_of_pairs_to_R_matrix(const std::unique_ptr<std::vector<std::pair<int, int>>>& cpp_vector) {
-    int n_rows = cpp_vector->size();
-    SEXP R_matrix = PROTECT(Rf_allocMatrix(INTSXP, n_rows, 2));
-    int* matrix_data = INTEGER(R_matrix);
-    for (int i = 0; i < n_rows; ++i) {
-        matrix_data[i] = (*cpp_vector)[i].first + 1;           // + 1 to change it to 1-based integers
-        matrix_data[i + n_rows] = (*cpp_vector)[i].second + 1;
+SEXP uptr_vector_of_pairs_to_R_matrix(
+    const std::unique_ptr<std::vector<std::pair<int,int>>>& v
+){
+    if (!v) {                        // unique_ptr holds no object
+        return Rf_allocMatrix(INTSXP, 0, 2);
     }
+    const size_t nsz = v->size();
+    if (nsz > (size_t)INT_MAX) Rf_error("Too many rows for INT matrix");
+    const int n_rows = (int) nsz;
 
-    UNPROTECT(1);  // R_matrix
-    return R_matrix;
+    SEXP Rmat = Rf_allocMatrix(INTSXP, n_rows, 2);
+    int* x = INTEGER(Rmat);
+    for (int i = 0; i < n_rows; ++i) {
+        x[i]          = (*v)[(size_t)i].first  + 1;
+        x[i + n_rows] = (*v)[(size_t)i].second + 1;
+    }
+    return Rmat; // UNPROTECTED on return - caller protects or inserts immediately
 }
 
 /**
@@ -815,18 +811,19 @@ SEXP uptr_vector_of_pairs_to_R_matrix(const std::unique_ptr<std::vector<std::pai
  * @Rf_warning The function assumes that the input vector is not empty. Behavior is
  *          undefined for empty vectors.
  */
-SEXP cpp_vector_of_pairs_to_R_matrix(const std::vector<std::pair<int, int>>& cpp_vector) {
-    size_t n_rows = cpp_vector.size();
-    SEXP R_matrix = PROTECT(Rf_allocMatrix(INTSXP, n_rows, 2));
-    int* matrix_data = INTEGER(R_matrix);
-    for (size_t i = 0; i < n_rows; ++i) {
-        matrix_data[i] = cpp_vector[i].first + 1;           // + 1 to change it to 1-based integers
-        matrix_data[i + n_rows] = cpp_vector[i].second + 1;
+SEXP cpp_vector_of_pairs_to_R_matrix(const std::vector<std::pair<int,int>>& v) {
+    const size_t nsz = v.size();
+    if (nsz > (size_t)INT_MAX) Rf_error("Too many rows for INT matrix");
+    const int n_rows = (int)nsz;
+
+    SEXP Rmat = Rf_allocMatrix(INTSXP, n_rows, 2);
+    int* x = INTEGER(Rmat);
+    for (int i = 0; i < n_rows; ++i) {
+        x[i]          = v[(size_t)i].first  + 1;
+        x[i + n_rows] = v[(size_t)i].second + 1;
     }
-
-    return R_matrix;
+    return Rmat; // leaf
 }
-
 
 /**
  * @brief Converts a flat C++ vector to an R matrix.
@@ -864,15 +861,13 @@ SEXP cpp_vector_of_pairs_to_R_matrix(const std::vector<std::pair<int, int>>& cpp
  * @endcode
  */
 SEXP flat_vector_to_R_matrix(const std::vector<double>& flat_matrix, int nrow, int ncol) {
-    SEXP r_matrix = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+    SEXP r_matrix = Rf_allocMatrix(REALSXP, nrow, ncol);
     double* matrix_ptr = REAL(r_matrix);
-
     for (int i = 0; i < nrow * ncol; ++i) {
         matrix_ptr[i] = flat_matrix[i];
     }
 
-
-    return r_matrix;
+    return r_matrix; // UNPROTECTED on return
 }
 
 /**
@@ -898,13 +893,12 @@ SEXP flat_vector_to_R_matrix(const std::vector<double>& flat_matrix, int nrow, i
  *      to safely integrate this helper into higher-level list/matrix assemblers.
  */
 SEXP convert_set_to_R(const std::set<int>& set) {
-    SEXP Rvec = PROTECT(Rf_allocVector(INTSXP, (int)set.size()));
+    const int n = (int)set.size();
+    SEXP Rvec = Rf_allocVector(INTSXP, n);
     int* ptr = INTEGER(Rvec);
     int i = 0;
-    for (const auto& val : set) {
-        ptr[i++] = val;
-    }
-    return Rvec;
+    for (int v : set) ptr[i++] = v;
+    return Rvec; // UNPROTECTED on return - caller protects or inserts immediately
 }
 
 /**
@@ -922,27 +916,33 @@ SEXP convert_set_to_R(const std::set<int>& set) {
  *       caller unprotects" convention.
  */
 SEXP convert_map_set_to_R(const std::map<int, std::set<int>>& map_set) {
+    const int n = (int)map_set.size();
 
-    int n = map_set.size();
-    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n));
+    SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n)); // protect parent immediately
 
+    // Names under protection while we create strings
     {
         SEXP names = PROTECT(Rf_allocVector(STRSXP, n));
         int i = 0;
-        for (const auto& pair : map_set) {
-            // Convert the set to R vector
-            SEXP tmp = convert_set_to_R(pair.second);
-            SET_VECTOR_ELT(Rlist, i, tmp);
-            UNPROTECT(1);
-            // Set the name as the key
-            SET_STRING_ELT(names, i, Rf_mkChar(std::to_string(pair.first).c_str()));
-            i++;
+        for (const auto& kv : map_set) {
+            // Use UTF-8 to be explicit about encoding
+            SET_STRING_ELT(names, i++, Rf_mkCharCE(std::to_string(kv.first).c_str(), CE_UTF8));
         }
         Rf_setAttrib(Rlist, R_NamesSymbol, names);
-        UNPROTECT(1);
+        UNPROTECT(1); // names
     }
 
-    return Rlist;
+    // Fill elements: alloc child → SET_VECTOR_ELT right away (no allocations in between)
+    {
+        int i = 0;
+        for (const auto& kv : map_set) {
+            SEXP tmp = convert_set_to_R(kv.second); // returns UNPROTECTED, does no post-alloc allocations
+            SET_VECTOR_ELT(Rlist, i++, tmp);        // safe: parent is protected
+        }
+    }
+
+    UNPROTECT(1); // Rlist
+    return Rlist; // unprotected to caller; caller may PROTECT if doing more work
 }
 
 /**
@@ -956,34 +956,34 @@ SEXP convert_map_set_to_R(const std::map<int, std::set<int>>& map_set) {
  * @note Creates a nested list structure to represent the vector of sets
  * @note The returned SEXP is PROTECTed state.
  */
-SEXP convert_map_vector_set_to_R(const std::map<std::pair<int,int>, std::vector<std::set<int>>>& map_vec_set) {
-    int n = map_vec_set.size();
+SEXP convert_map_vector_set_to_R(
+    const std::map<std::pair<int,int>, std::vector<std::set<int>>>& map_vec_set
+) {
+    const int n = (int)map_vec_set.size();
     SEXP Rlist = PROTECT(Rf_allocVector(VECSXP, n));
 
-    {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, n));
-        int i = 0;
-        for (const auto& pair : map_vec_set) {
-            // Create nested list for vector of sets
-            SEXP inner_list = PROTECT(Rf_allocVector(VECSXP, pair.second.size()));
-            for (size_t j = 0; j < pair.second.size(); ++j) {
-                SEXP tmp = convert_set_to_R(pair.second[j]);
-                SET_VECTOR_ELT(inner_list, j, tmp);
-                UNPROTECT(1);
-            }
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n));
+    int i = 0;
+    for (const auto& pair : map_vec_set) {
+        const size_t inner_n = pair.second.size();
+        if (inner_n > (size_t)INT_MAX) Rf_error("inner list too large");
 
-            // Set the name as "key1_key2"
-            std::string name = std::to_string(pair.first.first) + "_" + std::to_string(pair.first.second);
-            SET_STRING_ELT(names, i, Rf_mkChar(name.c_str()));
-
-            SET_VECTOR_ELT(Rlist, i, inner_list);
-            UNPROTECT(1); // inner_list
-            i++;
+        SEXP inner_list = PROTECT(Rf_allocVector(VECSXP, (int)inner_n));
+        for (size_t j = 0; j < inner_n; ++j) {
+            // child is a leaf; insert immediately; NO PROTECT needed; NO UNPROTECT here
+            SEXP tmp = convert_set_to_R(pair.second[j]);
+            SET_VECTOR_ELT(inner_list, (int)j, tmp);
         }
-        Rf_setAttrib(Rlist, R_NamesSymbol, names);
-        UNPROTECT(1);
-    }
 
+        std::string name = std::to_string(pair.first.first) + "_" + std::to_string(pair.first.second);
+        SET_STRING_ELT(names, i, Rf_mkCharCE(name.c_str(), CE_UTF8));
+
+        SET_VECTOR_ELT(Rlist, i, inner_list);
+        UNPROTECT(1); // inner_list
+        ++i;
+    }
+    Rf_setAttrib(Rlist, R_NamesSymbol, names);
+    UNPROTECT(2); // names, Rlist
     return Rlist;
 }
 
@@ -1028,7 +1028,8 @@ SEXP convert_cell_trajectories_to_R(const std::map<cell_t, std::set<size_t>>& ce
         UNPROTECT(1);
     }
 
-    return Rlist;
+    UNPROTECT(1); // Rlist
+    return Rlist; // UNPROTECTED on return - caller protects or inserts immediately
 }
 
 
@@ -1072,7 +1073,8 @@ SEXP convert_map_vector_to_R(const std::map<std::pair<int,int>, std::vector<int>
         UNPROTECT(1);
     }
 
-    return Rlist;
+    UNPROTECT(1); // Rlist
+    return Rlist; // UNPROTECTED on return - caller protects or inserts immediately
 }
 
 /**
@@ -1188,6 +1190,7 @@ SEXP convert_procells_to_R(const std::map<std::pair<int,int>, std::set<int>>& pr
         UNPROTECT(1);
     }
 
+    UNPROTECT(1);
     return Rlist;
 }
 
@@ -1309,8 +1312,7 @@ SEXP convert_vector_vector_vector_double_to_R(
     }
 
     UNPROTECT(1);
-
-    return result;  // Still protected, caller must UNPROTECT
+    return result; // UNPROTECTed
 }
 
 
@@ -1333,59 +1335,47 @@ SEXP convert_vector_vector_vector_double_to_R(
  * @note Vertex indices are converted from 0-based (C++) to 1-based (R) indexing
  */
 SEXP convert_wgraph_to_R(const set_wgraph_t& graph) {
+    const size_t n_vertices_sz = graph.num_vertices();
+    if (n_vertices_sz > (size_t)INT_MAX) {
+        Rf_error("Too many vertices for this build (>%d).", INT_MAX);
+    }
+    const int n_vertices = (int)n_vertices_sz;
 
-  const size_t n_vertices_sz = graph.num_vertices();
-  if (n_vertices_sz > static_cast<size_t>(R_XLEN_T_MAX)) {
-    Rf_error("Number of vertices (%zu) exceeds R's vector limit.", n_vertices_sz);
-  }
-  const R_xlen_t n_vertices = static_cast<R_xlen_t>(n_vertices_sz);
+    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 2));
+    {
+        SEXP r_list_names = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(r_list_names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(r_list_names, 1, Rf_mkChar("weight_list"));
+        Rf_setAttrib(r_list, R_NamesSymbol, r_list_names);
+        UNPROTECT(1);
+    }
 
-  // Result list + names
-  SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP adj_list    = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    SEXP weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
-  // Container-first protection
-  {
-      SEXP adj_list    = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-      SEXP weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    for (int i = 0; i < n_vertices; ++i) {
+        const auto& nbrs = graph.adjacency_list[(size_t)i]; // std::set<edge_info_t>
+        const size_t deg = nbrs.size();
+        if (deg > (size_t)INT_MAX) Rf_error("Degree too large");
 
-      for (R_xlen_t i = 0; i < n_vertices; ++i) {
-          const auto& nbrs = graph.adjacency_list[static_cast<size_t>(i)]; // std::set<edge_info_t>
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP,  (int)deg));
+        SEXP RW = PROTECT(Rf_allocVector(REALSXP, (int)deg));
+        int*    A = INTEGER(RA);
+        double* W = REAL(RW);
 
-          const size_t n_neighbors_sz = nbrs.size();
-          const R_xlen_t n_neighbors = static_cast<R_xlen_t>(n_neighbors_sz);
+        int j = 0;
+        for (const auto& e : nbrs) {
+            A[j] = (int)e.vertex + 1;
+            W[j] = e.weight;
+            ++j;
+        }
+        SET_VECTOR_ELT(adj_list,    i, RA);
+        SET_VECTOR_ELT(weight_list, i, RW);
+        UNPROTECT(2); // RA, RW
+    }
 
-          // Temporaries protected only until inserted
-          SEXP RA = PROTECT(Rf_allocVector(INTSXP,  n_neighbors));
-          SEXP RW = PROTECT(Rf_allocVector(REALSXP, n_neighbors));
-          int*    A = INTEGER(RA);
-          double* W = REAL(RW);
-
-          R_xlen_t j = 0;
-          for (const auto& e : nbrs) {
-              A[j] = static_cast<int>(e.vertex) + 1;
-              W[j] = e.weight;
-              ++j;
-          }
-
-          SET_VECTOR_ELT(adj_list,    i, RA);
-          SET_VECTOR_ELT(weight_list, i, RW);
-          UNPROTECT(2); // RA, RW
-      }
-
-      SET_VECTOR_ELT(r_list, 0, adj_list);
-      SET_VECTOR_ELT(r_list, 1, weight_list);
-      UNPROTECT(2); // adj_list, weight_list
-  }
-
-  // names
-  {
-      SEXP r_list_names = PROTECT(Rf_allocVector(STRSXP, 2));
-      SET_STRING_ELT(r_list_names, 0, Rf_mkChar("adj_list"));
-      SET_STRING_ELT(r_list_names, 1, Rf_mkChar("weight_list"));
-      Rf_setAttrib(r_list, R_NamesSymbol, r_list_names);
-      UNPROTECT(1);
-  }
-
-  UNPROTECT(1);
-  return r_list;
+    SET_VECTOR_ELT(r_list, 0, adj_list);
+    SET_VECTOR_ELT(r_list, 1, weight_list);
+    UNPROTECT(3); // adj_list, weight_list, r_list
+    return r_list; // leaf
 }

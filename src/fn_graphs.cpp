@@ -229,7 +229,7 @@ std::vector<std::vector<double>> set_wgraph_t::analyze_function_aware_weights(
                     double f_diff = std::abs(function_values[i] - function_values[j]);
 
                     // Apply the selected weight modification function
-                    double new_weight;
+                    double new_weight = 0;
                     switch (weight_type) {
                         case 0: // Inverse relationship
                             new_weight = original_weight / (f_diff + epsilon);

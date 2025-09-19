@@ -33,73 +33,63 @@ using namespace Rcpp;
 //     const std::vector<double>& y,
 //     int bandwidth,
 //     bool with_details);
-
 // [[Rcpp::export]]
-List Rcpp_graph_kernel_smoother(List adj, List w, NumericVector y,
-                                int bandwidth, bool with_details = false) {
-  const R_xlen_t n = adj.size();
-  if (n == 0) {
-    stop("`adj` must be a non-empty list.");
-  }
-  if (y.size() != n) {
-    stop("length(y) must match length(adj).");
-  }
-  if (bandwidth < 1) {
-    stop("`bandwidth` must be >= 1.");
-  }
+Rcpp::List Rcpp_graph_kernel_smoother(Rcpp::List adj, Rcpp::List w, Rcpp::NumericVector y,
+                                      int bandwidth, bool with_details = false) {
+  const int n = (int) adj.size();
+  if (n == 0) Rcpp::stop("`adj` must be a non-empty list.");
+  if ((int)y.size() != n) Rcpp::stop("length(y) must match length(adj).");
+  if (bandwidth < 1) Rcpp::stop("`bandwidth` must be >= 1.");
 
   // Convert y
   std::vector<double> y_cpp(y.begin(), y.end());
 
   // Convert adjacency
-  std::vector<std::vector<int>> adj_cpp(static_cast<size_t>(n));
-  for (R_xlen_t i = 0; i < n; ++i) {
-    IntegerVector ai = adj[i];
-    adj_cpp[static_cast<size_t>(i)] = std::vector<int>(ai.begin(), ai.end());
+  std::vector<std::vector<int>> adj_cpp((size_t)n);
+  for (int i = 0; i < n; ++i) {
+    Rcpp::IntegerVector ai = adj[i];
+    adj_cpp[(size_t)i] = std::vector<int>(ai.begin(), ai.end());
   }
 
-  // Optional: convert 1-based -> 0-based (UNCOMMENT if your core expects 0-based)
-  // for (auto& nb : adj_cpp) {
-  //   for (int& idx : nb) { --idx; } // assumes idx >= 1
-  // }
-
-  // Convert weights: if NULL, use unit weights per neighbor
-  std::vector<std::vector<double>> w_cpp(static_cast<size_t>(n));
+  // Convert weights (NULL => unit weights)
+  std::vector<std::vector<double>> w_cpp((size_t)n);
   const bool have_w = !w.isNULL();
-  if (have_w) {
-    if (w.size() != n) {
-      stop("`w` must be NULL or a list of the same length as `adj`.");
-    }
+  if (have_w && (int)w.size() != n) {
+    Rcpp::stop("`w` must be NULL or a list of the same length as `adj`.");
   }
-
-  for (R_xlen_t i = 0; i < n; ++i) {
-    const size_t deg = static_cast<size_t>(adj_cpp[static_cast<size_t>(i)].size());
+  for (int i = 0; i < n; ++i) {
+    const size_t deg = adj_cpp[(size_t)i].size();
     if (have_w) {
-      NumericVector wi = w[i];
-      if (static_cast<size_t>(wi.size()) != deg) {
-        stop("`w[[%d]]` must have the same length as `adj[[%d]]`.", (int)(i+1), (int)(i+1));
+      Rcpp::NumericVector wi = w[i];
+      if ((size_t)wi.size() != deg) {
+        Rcpp::stop("`w[[%d]]` must have the same length as `adj[[%d]]`.", i+1, i+1);
       }
-      w_cpp[static_cast<size_t>(i)] = std::vector<double>(wi.begin(), wi.end());
+      w_cpp[(size_t)i] = std::vector<double>(wi.begin(), wi.end());
     } else {
-      w_cpp[static_cast<size_t>(i)].assign(deg, 1.0);
+      w_cpp[(size_t)i].assign(deg, 1.0);
     }
   }
 
-  // ---- Call your core implementation ----
-  // Replace this placeholder with your actual call and, if applicable, populate details.
-  // auto fitted = graph_kernel_smoother(adj_cpp, w_cpp, y_cpp, bandwidth, with_details);
-  std::vector<double> fitted = y_cpp; // placeholder: identity
+  // ---- Call core implementation ----
+  // std::vector<double> fitted = graph_kernel_smoother(adj_cpp, w_cpp, y_cpp, bandwidth, with_details);
+  std::vector<double> fitted = y_cpp; // placeholder
 
-  // ---- Build result ----
-  List out = List::create(
-    _["fitted"]    = NumericVector(fitted.begin(), fitted.end()),
-    _["bandwidth"] = bandwidth
-  );
+  // ---- Build result without Named push-back ----
+  const int out_len = with_details ? 3 : 2;
+  Rcpp::List out(out_len);
+  Rcpp::CharacterVector nm(out_len);
+
+  out[0] = Rcpp::NumericVector(fitted.begin(), fitted.end());
+  nm[0]  = "fitted";
+
+  out[1] = bandwidth;
+  nm[1]  = "bandwidth";
 
   if (with_details) {
-    // Populate real diagnostics from your core; placeholder is empty list.
-    out["details"] = List::create();
+    out[2] = Rcpp::List();  // fill with real diagnostics if available
+    nm[2]  = "details";
   }
 
+  out.attr("names") = nm;
   return out;
 }

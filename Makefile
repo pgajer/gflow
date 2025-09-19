@@ -52,3 +52,6 @@ check-examples: build
 
 install: build
 	cd .. && R CMD INSTALL $(TARBALL)
+
+rchk:
+	@tools/check_rchk.sh
