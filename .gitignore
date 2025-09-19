@@ -64,3 +64,5 @@ build/
 src/*.bc
 *.bc
 cran_docs/
+libs/
+libsonly/
