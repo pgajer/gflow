@@ -4,7 +4,7 @@
 .Ruserdata
 .Rapp.history
 
-# RStudio files
+# RStudio project files
 .Rproj.user/
 *.Rproj
 
@@ -13,7 +13,7 @@
 .AppleDouble
 .LSOverride
 
-# CRAN build/check artefacts
+# CRAN build/check artefacts (outputs)
 *.tar.gz
 *.Rcheck/
 
@@ -26,8 +26,10 @@ src/**/*.o
 src/**/*.so
 src/**/*.a
 src/ANN/*.o
+src/*.bc
+*.bc
 
-# Vignettes build outputs
+# Vignette build outputs
 inst/doc/
 vignettes/*.html
 vignettes/*.pdf
@@ -56,14 +58,15 @@ revdep/
 *~
 .claude/
 
-# scripts
-scripts/
-cran_docs/cheatsheets/shell_notes.org
-cran_docs/cheatsheets/shell_snippets.org
+# Build outputs (keep CRAN tarballs & rchk logs out of git)
 build/
-src/*.bc
-*.bc
-cran_docs/
 libs/
 libsonly/
+
+# Optional: per-run rchk cache/logs if you ever change the path
+rchk_remote_out/
+
+cran_docs/
+docs/
 tools/
+scripts/

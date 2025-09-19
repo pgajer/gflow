@@ -1,6 +1,6 @@
 # pkgdown site and docs
 ^_pkgdown\.yml$
-^docs$
+^docs
 ^pkgdown$
 
 # RStudio project files
@@ -12,13 +12,15 @@
 ^\.gitignore$
 ^\.github$
 
-# CRAN submission / comments / metadata
-^README\.md$
-^NEWS\.md$
-^cran-comments\.md$
-^CRAN-SUBMISSION\.md$
+# Local scripts and tools (keep in repo, exclude from tarball)
+^scripts$
+^tools$
 
-# Local build / check scripts and logs
+# Local development docs (keep in repo, exclude from tarball)
+^cran_docs$
+^README\.md$      # keep if you don't want it in the tarball; remove this line to include README.md
+
+# Local build/check scripts and logs
 ^gflow_check_results\.txt$
 ^build_and_check\.sh$
 ^check_cran\.sh$
@@ -26,12 +28,11 @@
 ^Makefile$
 ^gflow-manual\.pdf$
 
-# Local dev tools
-^tools$
-
 # Build artefacts
 ^gflow\.Rcheck$
 ^gflow_.*\.tar\.gz$
+^libs$
+^libsonly$
 
 # OS cruft
 ^\.DS_Store$
@@ -47,9 +48,3 @@
 # Vignettes (exclude sources if not shipping)
 ^[Vv]ignettes$
 ^inst/doc$
-
-# Local scripts
-^scripts$
-
-# CRAN submission and package maintenance documentation
-^cran_docs$
