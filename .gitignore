@@ -63,3 +63,4 @@ cran_docs/cheatsheets/shell_snippets.org
 build/
 src/*.bc
 *.bc
+cran_docs/
