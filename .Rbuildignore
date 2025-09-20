@@ -50,3 +50,4 @@
 # Vignettes (exclude sources if not shipping)
 ^[Vv]ignettes$
 
+^rchk_reports$
