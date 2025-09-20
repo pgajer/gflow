@@ -141,9 +141,9 @@ show_elapsed $PULL_START "Results retrieval"
 echo "ℹ️  Logs: ${LOCAL_OUT_DIR}/rchk_stdout.txt"
 
 # 5) Process rchk errors into organized reports
-if [ -f "${LOCAL_OUT_DIR}/check_results/gflow.so.bcheck" ]; then
+if [ -f "${LOCAL_OUT_DIR}/gflow/libsonly/gflow/libs/gflow.so.bcheck" ]; then
   echo "📊 Processing rchk errors..."
-  python3 tools/process_rchk_errors.py "${LOCAL_OUT_DIR}/check_results/gflow.so.bcheck"
+  python3 tools/process_rchk_errors.py "${LOCAL_OUT_DIR}/gflow/libsonly/gflow/libs/gflow.so.bcheck"
 
   # Move reports into the timestamped directory
   if [ -d "rchk_reports" ]; then
