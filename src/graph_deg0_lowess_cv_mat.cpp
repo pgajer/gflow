@@ -5,7 +5,6 @@
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <thread>                   // For std::thread::hardware_concurrency
-#include <mutex>                    // For std::mutex
 
 #include "graph_deg0_lowess_cv_mat.hpp" // For graph_deg0_lowess_cv_mat_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
@@ -321,7 +320,6 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
     }
 
     // Setup for multi-threaded processing
-    std::mutex mutex;
     progress_tracker_t progress(actual_folds * n_response_vars, "Processing folds", 1);
     std::atomic<size_t> completed_tasks(0);
 

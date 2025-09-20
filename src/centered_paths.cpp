@@ -1608,7 +1608,7 @@ void construct_grid_composite_path(
     // abs((idx_before + ref_vertex_offset)/(path_size - 1) - 0.5)
     double idx_before =  path1.dist_to_ref_vertex.size() - 2;
     double path_size_minus_one = composite_path.vertices.size() - 1.0;
-    composite_path.rel_center_offset = abs((idx_before + ref_vertex_offset) / path_size_minus_one - 0.5);
+    composite_path.rel_center_offset = fabs((idx_before + ref_vertex_offset) / path_size_minus_one - 0.5);
 
 #if 1
     // Compute all path metrics

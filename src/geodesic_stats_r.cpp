@@ -189,26 +189,26 @@ extern "C" SEXP S_compute_geodesic_stats(
     {
         SEXP overlap_list = PROTECT(Rf_allocVector(VECSXP, 7));
 
-        auto make_overlap_matrix = [&](auto getter) -> SEXP {
-            SEXP m = PROTECT(Rf_allocMatrix(REALSXP, n_grid_vertices, n_radii));
-            double* mp = REAL(m);
-            const R_xlen_t N = n_grid_vertices * n_radii;
-            for (R_xlen_t idx = 0; idx < N; ++idx) mp[idx] = 0.0;
+        // auto make_overlap_matrix = [&](auto getter) -> SEXP {
+        //     SEXP m = PROTECT(Rf_allocMatrix(REALSXP, n_grid_vertices, n_radii));
+        //     double* mp = REAL(m);
+        //     const R_xlen_t N = n_grid_vertices * n_radii;
+        //     for (R_xlen_t idx = 0; idx < N; ++idx) mp[idx] = 0.0;
 
-            for (R_xlen_t r = 0; r < n_radii; ++r) {
-                const auto& omap = stats.paths_overlap[(size_t)r];
-                for (R_xlen_t i = 0; i < n_grid_vertices; ++i) {
-                    size_t v = grid_vertices_vec[(size_t)i];
-                    auto it = omap.find(v);
-                    if (it != omap.end()) {
-                        mp[i + r * n_grid_vertices] = getter(it->second);
-                    }
-                }
-            }
-            set_dimnames(m, n_grid_vertices, n_radii, grid_vertices_vec, stats.radii);
-            UNPROTECT(1); // m was protected, but we'll return it; keep it protected by caller
-            return m;
-        };
+        //     for (R_xlen_t r = 0; r < n_radii; ++r) {
+        //         const auto& omap = stats.paths_overlap[(size_t)r];
+        //         for (R_xlen_t i = 0; i < n_grid_vertices; ++i) {
+        //             size_t v = grid_vertices_vec[(size_t)i];
+        //             auto it = omap.find(v);
+        //             if (it != omap.end()) {
+        //                 mp[i + r * n_grid_vertices] = getter(it->second);
+        //             }
+        //         }
+        //     }
+        //     set_dimnames(m, n_grid_vertices, n_radii, grid_vertices_vec, stats.radii);
+        //     UNPROTECT(1); // m was protected, but we'll return it; keep it protected by caller
+        //     return m;
+        // };
 
         // Build and insert each matrix; protect/unprotect inside scope of overlap_list
         {

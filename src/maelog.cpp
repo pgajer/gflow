@@ -207,7 +207,7 @@ maelog_t maelog(
     result.tolerance = tolerance;
 
     // Lambda function for fitting local logistic regression with a specific bandwidth
-    auto fit_local_logistic = [&cv_folds](
+    auto fit_local_logistic = [&](
         const std::vector<double>& x,
         const std::vector<double>& y,
         double bandwidth,

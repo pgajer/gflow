@@ -1635,14 +1635,14 @@ set_wgraph_t::construct_path_laplacian(
             // Regular composite path handling (unchanged)
             // Construct composite path (forward direction)
             std::vector<size_t> composite_path;
-            double composite_path_length = 0;
+            // double composite_path_length = 0;
 
             // First part: path j
             const auto& path1 = composite_shortest_paths.paths[j];
             composite_path.insert(composite_path.end(),
                                   path1.vertices.begin(),
                                   path1.vertices.end());
-            composite_path_length += path1.total_weight;
+            // composite_path_length += path1.total_weight;
 
             // Second part: path k in reverse (excluding Rf_duplicate vertex i)
             const auto& path2 = composite_shortest_paths.paths[k];
@@ -1651,7 +1651,7 @@ set_wgraph_t::construct_path_laplacian(
                     composite_path.push_back(path2.vertices[idx]);
                 }
             }
-            composite_path_length += path2.total_weight;
+            // composite_path_length += path2.total_weight;
 
             // Compute weights for second derivative along composite path
             std::vector<double> path_weights = compute_quadratic_weights(

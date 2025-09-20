@@ -11,14 +11,14 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // Rcpp_graph_kernel_smoother
-List Rcpp_graph_kernel_smoother(List adj, List w, NumericVector y, int bandwidth, bool with_details);
+Rcpp::List Rcpp_graph_kernel_smoother(Rcpp::List adj, Rcpp::List w, Rcpp::NumericVector y, int bandwidth, bool with_details);
 RcppExport SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP adjSEXP, SEXP wSEXP, SEXP ySEXP, SEXP bandwidthSEXP, SEXP with_detailsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< List >::type adj(adjSEXP);
-    Rcpp::traits::input_parameter< List >::type w(wSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type adj(adjSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type w(wSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type y(ySEXP);
     Rcpp::traits::input_parameter< int >::type bandwidth(bandwidthSEXP);
     Rcpp::traits::input_parameter< bool >::type with_details(with_detailsSEXP);
     rcpp_result_gen = Rcpp::wrap(Rcpp_graph_kernel_smoother(adj, w, y, bandwidth, with_details));
