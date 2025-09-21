@@ -53,3 +53,4 @@
 
 ^rchk_reports$
 ^build$
+^cran-comments\.md$

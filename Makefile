@@ -3,7 +3,6 @@ VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
 LOGDIR := .claude
-export PATH := /opt/homebrew/bin:$(PATH)
 
 clean:
 	find src -name "*.o" -delete
