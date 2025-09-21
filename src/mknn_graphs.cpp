@@ -450,7 +450,7 @@ SEXP S_create_mknn_graphs(
 
             SET_VECTOR_ELT(k_stats_dimnames, 1, k_stats_colnames);
             Rf_setAttrib(k_stats_matrix, R_DimNamesSymbol, k_stats_dimnames);
-            UNPROTECT(1); // k_stats_dimnames, k_stats_colnames
+            UNPROTECT(2); // k_stats_dimnames, k_stats_colnames
         }
         SET_VECTOR_ELT(result, 0, k_stats_matrix);
         UNPROTECT(1); // k_stats_matrix

@@ -382,22 +382,28 @@ SEXP S_create_basin_cx(
         UNPROTECT(1); // r_result_names
     }
 
-    auto vec_real = [&](const std::vector<double>& v) {
-        SEXP ans = PROTECT(Rf_allocVector(REALSXP, v.size()));
-        std::copy(v.begin(), v.end(), REAL(ans));
-        return ans;
-    };
-
-    // harmonic_predictions
+    // harmonic_predictions (slot 1): REALSXP vector
     {
-        SEXP s = vec_real(basin_cx.harmonic_predictions);
+        const int n = (int) basin_cx.harmonic_predictions.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(s);
+            std::copy(basin_cx.harmonic_predictions.begin(),
+                      basin_cx.harmonic_predictions.end(), p);
+        }
         SET_VECTOR_ELT(r_result, 1, s);
         UNPROTECT(1); // s
     }
 
-    // init_rel_min_monotonicity_spans
+    // init_rel_min_monotonicity_spans (slot 4): REALSXP vector
     {
-        SEXP s = vec_real(basin_cx.init_rel_min_monotonicity_spans);
+        const int n = (int) basin_cx.init_rel_min_monotonicity_spans.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(s);
+            std::copy(basin_cx.init_rel_min_monotonicity_spans.begin(),
+                      basin_cx.init_rel_min_monotonicity_spans.end(), p);
+        }
         SET_VECTOR_ELT(r_result, 4, s);
         UNPROTECT(1); // s
     }

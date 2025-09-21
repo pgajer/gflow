@@ -294,95 +294,107 @@ std::vector<path_graph_t> create_path_graph_series(
  */
 SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
 
-    std::vector<std::vector<int>>    path_graph_adj_vect                     = path_graph.adj_list;
-    std::vector<std::vector<double>> path_graph_weight_vect                  = path_graph.weight_list;
+    std::vector<std::vector<int>>    path_graph_adj_vect    = path_graph.adj_list;
+    std::vector<std::vector<double>> path_graph_weight_vect = path_graph.weight_list;
     std::map<std::pair<int,int>, std::vector<int>> path_graph_shortest_paths = path_graph.shortest_paths;
 
-    // Creating the final result list
-    SEXP res = PROTECT(Rf_allocVector(VECSXP, 3));
+    // Parent list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 3));
 
-    // res slot names
+    // Names for r_result
     {
         SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
         SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
         SET_STRING_ELT(names, 1, Rf_mkChar("edge_length_list"));
         SET_STRING_ELT(names, 2, Rf_mkChar("shortest_paths"));
-        Rf_setAttrib(res, R_NamesSymbol, names);
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
         UNPROTECT(1); // names
     }
 
-    int n_vertices = static_cast<int>(path_graph_adj_vect.size());
+    // LENGTH-first + overflow guard for vertex count
+    const size_t nv_sz = path_graph_adj_vect.size();
+    if (nv_sz > (size_t)INT_MAX) { UNPROTECT(1); Rf_error("too large"); }
+    const int n_vertices = (int) nv_sz;
 
-    // Creating an R list for the path graph adjacency list
+    // 0,1) adj_list & edge_length_list
     {
-        SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        for (int i = 0; i < n_vertices; i++) {
-            SEXP RA = PROTECT(Rf_allocVector(INTSXP, path_graph_adj_vect[i].size()));
-            int* A = INTEGER(RA);
-            for (const auto& neighbor : path_graph_adj_vect[i])
-                *A++ = neighbor + 1; // Converting to 1-based indexing
-            SET_VECTOR_ELT(adj_list, i, RA);
-            UNPROTECT(1);
-        }
-
-        // Creating an R list for the path graph edge length list
+        SEXP adj_list         = PROTECT(Rf_allocVector(VECSXP, n_vertices));
         SEXP edge_length_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+
         for (int i = 0; i < n_vertices; i++) {
-            SEXP RD = PROTECT(Rf_allocVector(REALSXP, path_graph_weight_vect[i].size()));
+            // adj_list[[i]]
+            const size_t degA_sz = path_graph_adj_vect[(size_t)i].size();
+            if (degA_sz > (size_t)INT_MAX) { UNPROTECT(2); UNPROTECT(1); Rf_error("too large"); }
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, (int)degA_sz));
+            int* A = INTEGER(RA);
+            for (int k = 0, dk = (int)degA_sz; k < dk; ++k)
+                A[k] = (int) path_graph_adj_vect[(size_t)i][(size_t)k] + 1; // 1-based
+            SET_VECTOR_ELT(adj_list, i, RA);
+            UNPROTECT(1); // RA
+
+            // edge_length_list[[i]]
+            const size_t degW_sz = path_graph_weight_vect[(size_t)i].size();
+            if (degW_sz > (size_t)INT_MAX) { UNPROTECT(2); UNPROTECT(1); Rf_error("too large"); }
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, (int)degW_sz));
             double* D = REAL(RD);
-            for (const auto& dist : path_graph_weight_vect[i])
-                *D++ = dist;
+            if (degW_sz > 0) {
+                const auto& src = path_graph_weight_vect[(size_t)i];
+                std::copy(src.begin(), src.end(), D);
+            }
             SET_VECTOR_ELT(edge_length_list, i, RD);
-            UNPROTECT(1);
+            UNPROTECT(1); // RD
         }
 
-        SET_VECTOR_ELT(res, 0, adj_list);
-        SET_VECTOR_ELT(res, 1, edge_length_list);
+        SET_VECTOR_ELT(r_result, 0, adj_list);
+        SET_VECTOR_ELT(r_result, 1, edge_length_list);
         UNPROTECT(2); // adj_list, edge_length_list
     }
 
-    // Creating an R list for the path graph shortest paths map
+    // 2) shortest_paths = list(i, j, paths)
     {
-        const size_t n_pairs = path_graph_shortest_paths.size();
+        const size_t npairs_sz = path_graph_shortest_paths.size();
+        if (npairs_sz > (size_t)INT_MAX) { UNPROTECT(1); Rf_error("too large"); }
+        const int npairs = (int) npairs_sz;
+
         SEXP shortest_paths = PROTECT(Rf_allocVector(VECSXP, 3));
 
-        // First component: i coordinates
-        SEXP i_coords = PROTECT(Rf_allocVector(INTSXP, n_pairs));
-        int* i_ptr = INTEGER(i_coords);
+        // components
+        SEXP i_coords = PROTECT(Rf_allocVector(INTSXP, npairs));
+        SEXP j_coords = PROTECT(Rf_allocVector(INTSXP, npairs));
+        SEXP paths    = PROTECT(Rf_allocVector(VECSXP,  npairs));
 
-        // Second component: j coordinates
-        SEXP j_coords = PROTECT(Rf_allocVector(INTSXP, n_pairs));
+        int* i_ptr = INTEGER(i_coords);
         int* j_ptr = INTEGER(j_coords);
 
-        // Third component: paths list
-        SEXP paths = PROTECT(Rf_allocVector(VECSXP, n_pairs));
-
-        size_t idx = 0;
+        int idx = 0;
         for (const auto& kv : path_graph_shortest_paths) {
             const int i = kv.first.first;
             const int j = kv.first.second;
             const std::vector<int>& path = kv.second;
 
-            i_ptr[idx] = i + 1; // 1-based for R
+            i_ptr[idx] = i + 1; // 1-based
             j_ptr[idx] = j + 1;
 
-            SEXP path_vec = PROTECT(Rf_allocVector(INTSXP, path.size()));
+            const size_t npath_sz = path.size();
+            if (npath_sz > (size_t)INT_MAX) { UNPROTECT(3); UNPROTECT(1); Rf_error("too large"); }
+            const int npath = (int) npath_sz;
+
+            SEXP path_vec = PROTECT(Rf_allocVector(INTSXP, npath));
             int* path_ptr = INTEGER(path_vec);
-            for (size_t k = 0; k < path.size(); ++k)
-                path_ptr[k] = path[k] + 1;
+            for (int k = 0; k < npath; ++k)
+                path_ptr[k] = (int) path[(size_t)k] + 1;
 
             SET_VECTOR_ELT(paths, idx, path_vec);
             UNPROTECT(1); // path_vec
             ++idx;
         }
 
-        // Set components of shortest_paths list
         SET_VECTOR_ELT(shortest_paths, 0, i_coords);
         SET_VECTOR_ELT(shortest_paths, 1, j_coords);
         SET_VECTOR_ELT(shortest_paths, 2, paths);
         UNPROTECT(3); // i_coords, j_coords, paths
 
-        // Names for shortest_paths components
+        // names for shortest_paths
         {
             SEXP sp_names = PROTECT(Rf_allocVector(STRSXP, 3));
             SET_STRING_ELT(sp_names, 0, Rf_mkChar("i"));
@@ -392,11 +404,12 @@ SEXP path_graph_from_path_graph_t(path_graph_t& path_graph) {
             UNPROTECT(1); // sp_names
         }
 
-        SET_VECTOR_ELT(res, 2, shortest_paths);
+        SET_VECTOR_ELT(r_result, 2, shortest_paths);
         UNPROTECT(1); // shortest_paths
     }
 
-    return res;
+    UNPROTECT(1); // r_result
+    return r_result;
 }
 
 
