@@ -793,7 +793,6 @@ SEXP S_find_shortest_alt_path(SEXP s_adj_list,
     std::vector<int> path = find_shortest_alt_path(iigraph, source, target, edge_isize);
 
     SEXP s_path = convert_vector_int_to_R(path);
-    UNPROTECT(1);
 
     return s_path;
 }
@@ -828,10 +827,7 @@ SEXP S_shortest_alt_path_length(SEXP s_adj_list,
     std::vector<std::vector<std::pair<int, int>>> iigraph = convert_to_int_weighted_adj_list(adj_vect, isize_vect);
 
     int path_length = shortest_alt_path_length(iigraph, source, target, edge_isize);
-
-    SEXP s_path_length = PROTECT(Rf_ScalarInteger(path_length));
-    UNPROTECT(1);
-
+    SEXP s_path_length = Rf_ScalarInteger(path_length);
     return s_path_length;
 }
 
@@ -1292,7 +1288,16 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
 
     // Build result (container-first pattern)
     SEXP res = PROTECT(Rf_allocVector(VECSXP, 4));
-
+    {
+        // Set names
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("edge_lengths_list"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("path_lengths"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("edge_lengths"));
+        Rf_setAttrib(res, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
     int n_vertices = static_cast<int>(pruned_adj_vect.size());
 
     // 0: pruned_adj_list
@@ -1356,15 +1361,7 @@ SEXP S_wgraph_prune_long_edges(SEXP s_adj_list,
         UNPROTECT(1); // R_edge_lengths
     }
 
-    // Set names
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
-    SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("edge_lengths_list"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("path_lengths"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("edge_lengths"));
-    Rf_setAttrib(res, R_NamesSymbol, names);
-
-    UNPROTECT(2); // res, names
+    UNPROTECT(1); // res
     return res;
 }
 

@@ -1022,7 +1022,7 @@ SEXP S_mabilo_plus(SEXP s_x,
         const R_xlen_t K = static_cast<R_xlen_t>(static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
         std::vector<int> k_values(static_cast<size_t>(K));
         for (R_xlen_t i = 0; i < K; ++i) k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-        SEXP kv = convert_vector_int_to_R(k_values);
+        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
         SET_VECTOR_ELT(r_result, 0, kv);
         UNPROTECT(1);
     }
@@ -1057,24 +1057,26 @@ SEXP S_mabilo_plus(SEXP s_x,
 
     // 5: k_mean_sm_errors
     {
-        SEXP s = convert_vector_double_to_R(out.k_mean_sm_errors);
+        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_sm_errors));
         SET_VECTOR_ELT(r_result, 5, s);
         UNPROTECT(1);
     }
 
     // 6: k_mean_ma_errors
     {
-        SEXP s = convert_vector_double_to_R(out.k_mean_ma_errors);
+        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_ma_errors));
         SET_VECTOR_ELT(r_result, 6, s);
         UNPROTECT(1);
     }
 
     // 7..8: true-error means (or NULLs if y_true absent)
     if (!y_true.empty()) {
-        SEXP s7 = convert_vector_double_to_R(out.k_mean_sm_true_errors);
-        SET_VECTOR_ELT(r_result, 7, s7); UNPROTECT(1);
-        SEXP s8 = convert_vector_double_to_R(out.k_mean_ma_true_errors);
-        SET_VECTOR_ELT(r_result, 8, s8); UNPROTECT(1);
+        SEXP s7 = PROTECT(convert_vector_double_to_R(out.k_mean_sm_true_errors));
+        SET_VECTOR_ELT(r_result, 7, s7);
+        UNPROTECT(1);
+        SEXP s8 = PROTECT(convert_vector_double_to_R(out.k_mean_ma_true_errors));
+        SET_VECTOR_ELT(r_result, 8, s8);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(r_result, 7, R_NilValue);
         SET_VECTOR_ELT(r_result, 8, R_NilValue);
@@ -1082,28 +1084,28 @@ SEXP S_mabilo_plus(SEXP s_x,
 
     // 9: sm_predictions
     {
-        SEXP s = convert_vector_double_to_R(out.sm_predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(out.sm_predictions));
         SET_VECTOR_ELT(r_result, 9, s);
         UNPROTECT(1);
     }
 
     // 10: ma_predictions
     {
-        SEXP s = convert_vector_double_to_R(out.ma_predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(out.ma_predictions));
         SET_VECTOR_ELT(r_result, 10, s);
         UNPROTECT(1);
     }
 
     // 11: k_sm_predictions (list of numeric)
     {
-        SEXP s = convert_vector_vector_double_to_R(out.k_sm_predictions);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_sm_predictions));
         SET_VECTOR_ELT(r_result, 11, s);
         UNPROTECT(1);
     }
 
     // 12: k_ma_predictions (list of numeric)
     {
-        SEXP s = convert_vector_vector_double_to_R(out.k_ma_predictions);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_ma_predictions));
         SET_VECTOR_ELT(r_result, 12, s);
         UNPROTECT(1);
     }

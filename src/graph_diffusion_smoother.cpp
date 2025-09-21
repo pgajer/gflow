@@ -2362,31 +2362,20 @@ instrumented_gds(const std::vector<std::vector<int>>& graph,
  *
  * @return SEXP containing R list with performance metrics
  */
-extern "C" {
-#include <R.h>
-#include <Rinternals.h>
-}
-#include <vector>
-
-// assumes these helpers exist and do not allocate/retain SEXPs:
-//   convert_adj_list_from_R, convert_weight_list_from_R
-//   convert_vector_*_to_R, convert_vector_vector_*_to_R
-// assumes instrumented_gds(...) exists and performs no R allocations internally.
-
-extern "C" SEXP S_instrumented_gds(SEXP s_graph,
-                                   SEXP s_edge_lengths,
-                                   SEXP s_y,
-                                   SEXP s_y_true,
-                                   SEXP s_n_time_steps,
-                                   SEXP s_base_step_factor,
-                                   SEXP s_use_pure_laplacian,
-                                   SEXP s_ikernel,
-                                   SEXP s_kernel_scale,
-                                   SEXP s_increase_factor,
-                                   SEXP s_decrease_factor,
-                                   SEXP s_oscillation_factor,
-                                   SEXP s_min_step,
-                                   SEXP s_max_step) {
+SEXP S_instrumented_gds(SEXP s_graph,
+                        SEXP s_edge_lengths,
+                        SEXP s_y,
+                        SEXP s_y_true,
+                        SEXP s_n_time_steps,
+                        SEXP s_base_step_factor,
+                        SEXP s_use_pure_laplacian,
+                        SEXP s_ikernel,
+                        SEXP s_kernel_scale,
+                        SEXP s_increase_factor,
+                        SEXP s_decrease_factor,
+                        SEXP s_oscillation_factor,
+                        SEXP s_min_step,
+                        SEXP s_max_step) {
   // ---- Graph & weights (pure reads; no PROTECT needed) ----
   std::vector<std::vector<int>>    graph        = convert_adj_list_from_R(s_graph);
   std::vector<std::vector<double>> edge_lengths = convert_weight_list_from_R(s_edge_lengths);
@@ -2452,104 +2441,103 @@ extern "C" SEXP S_instrumented_gds(SEXP s_graph,
   // ---- Build result list (container-first; per-element protect) ----
   const int N_RESULTS = 20;
   SEXP results = PROTECT(Rf_allocVector(VECSXP, N_RESULTS));
+  // names while results is protected
+  {
+      SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS));
+      SET_STRING_ELT(names, 0,  Rf_mkChar("y_trajectory"));
+      SET_STRING_ELT(names, 1,  Rf_mkChar("pre_update_deltas"));
+      SET_STRING_ELT(names, 2,  Rf_mkChar("post_update_deltas"));
+      SET_STRING_ELT(names, 3,  Rf_mkChar("step_size_history"));
+      SET_STRING_ELT(names, 4,  Rf_mkChar("global_residual_norm"));
+      SET_STRING_ELT(names, 5,  Rf_mkChar("max_absolute_delta"));
+      SET_STRING_ELT(names, 6,  Rf_mkChar("oscillation_events"));
+      SET_STRING_ELT(names, 7,  Rf_mkChar("oscillation_count_per_vertex"));
+      SET_STRING_ELT(names, 8,  Rf_mkChar("increase_events_per_vertex"));
+      SET_STRING_ELT(names, 9,  Rf_mkChar("decrease_events_per_vertex"));
+      SET_STRING_ELT(names,10,  Rf_mkChar("oscillation_reductions_per_vertex"));
+      SET_STRING_ELT(names,11,  Rf_mkChar("smoothness_energy"));
+      SET_STRING_ELT(names,12,  Rf_mkChar("fidelity_energy"));
+      SET_STRING_ELT(names,13,  Rf_mkChar("laplacian_energy"));
+      SET_STRING_ELT(names,14,  Rf_mkChar("energy_ratio"));
+      SET_STRING_ELT(names,15,  Rf_mkChar("initial_snr"));
+      SET_STRING_ELT(names,16,  Rf_mkChar("snr_trajectory"));
+      SET_STRING_ELT(names,17,  Rf_mkChar("mean_absolute_deviation"));
+      SET_STRING_ELT(names,18,  Rf_mkChar("pointwise_curvature_error"));
+      SET_STRING_ELT(names,19,  Rf_mkChar("integrated_curvature_error"));
+      Rf_setAttrib(results, R_NamesSymbol, names);
+      UNPROTECT(1); // names
+  }
 
   // 0..3: trajectories/deltas/steps (list<NumericVector>)
   {
-    SEXP t = convert_vector_vector_double_to_R(perf.y_trajectory);
-    SET_VECTOR_ELT(results, 0, t); UNPROTECT(1);
-    t = convert_vector_vector_double_to_R(perf.pre_update_deltas);
-    SET_VECTOR_ELT(results, 1, t); UNPROTECT(1);
-    t = convert_vector_vector_double_to_R(perf.post_update_deltas);
-    SET_VECTOR_ELT(results, 2, t); UNPROTECT(1);
-    t = convert_vector_vector_double_to_R(perf.step_size_history);
-    SET_VECTOR_ELT(results, 3, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_vector_double_to_R(perf.y_trajectory));
+      SET_VECTOR_ELT(results, 0, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_vector_double_to_R(perf.pre_update_deltas));
+      SET_VECTOR_ELT(results, 1, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_vector_double_to_R(perf.post_update_deltas));
+      SET_VECTOR_ELT(results, 2, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_vector_double_to_R(perf.step_size_history));
+      SET_VECTOR_ELT(results, 3, t); UNPROTECT(1);
   }
 
   // 4..6: scalar series & events
   {
-    SEXP t = convert_vector_double_to_R(perf.global_residual_norm);
-    SET_VECTOR_ELT(results, 4, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.max_absolute_delta);
-    SET_VECTOR_ELT(results, 5, t); UNPROTECT(1);
-    t = PROTECT(convert_vector_vector_bool_to_R(perf.oscillation_events));
-    SET_VECTOR_ELT(results, 6, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_double_to_R(perf.global_residual_norm));
+      SET_VECTOR_ELT(results, 4, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.max_absolute_delta));
+      SET_VECTOR_ELT(results, 5, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_vector_bool_to_R(perf.oscillation_events));
+      SET_VECTOR_ELT(results, 6, t); UNPROTECT(1);
   }
 
   // 7..10: per-vertex event counts
   {
-    SEXP t = convert_vector_int_to_R(perf.oscillation_count_per_vertex);
-    SET_VECTOR_ELT(results, 7, t); UNPROTECT(1);
-    t = convert_vector_int_to_R(perf.increase_events_per_vertex);
-    SET_VECTOR_ELT(results, 8, t); UNPROTECT(1);
-    t = convert_vector_int_to_R(perf.decrease_events_per_vertex);
-    SET_VECTOR_ELT(results, 9, t); UNPROTECT(1);
-    t = convert_vector_int_to_R(perf.oscillation_reductions_per_vertex);
-    SET_VECTOR_ELT(results,10, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_int_to_R(perf.oscillation_count_per_vertex));
+      SET_VECTOR_ELT(results, 7, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_int_to_R(perf.increase_events_per_vertex));
+      SET_VECTOR_ELT(results, 8, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_int_to_R(perf.decrease_events_per_vertex));
+      SET_VECTOR_ELT(results, 9, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_int_to_R(perf.oscillation_reductions_per_vertex));
+      SET_VECTOR_ELT(results,10, t); UNPROTECT(1);
   }
 
   // 11..14: energy metrics
   {
-    SEXP t = convert_vector_double_to_R(perf.smoothness_energy);
-    SET_VECTOR_ELT(results,11, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.fidelity_energy);
-    SET_VECTOR_ELT(results,12, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.laplacian_energy);
-    SET_VECTOR_ELT(results,13, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.energy_ratio);
-    SET_VECTOR_ELT(results,14, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_double_to_R(perf.smoothness_energy));
+      SET_VECTOR_ELT(results,11, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.fidelity_energy));
+      SET_VECTOR_ELT(results,12, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.laplacian_energy));
+      SET_VECTOR_ELT(results,13, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.energy_ratio));
+      SET_VECTOR_ELT(results,14, t); UNPROTECT(1);
   }
 
   // 15: initial_snr (scalar)
   {
-    SEXP s = PROTECT(Rf_ScalarReal(perf.initial_snr));  // temp protect
-    SET_VECTOR_ELT(results, 15, s);
-    UNPROTECT(1);
+      SEXP s = PROTECT(Rf_ScalarReal(perf.initial_snr));
+      SET_VECTOR_ELT(results, 15, s);
+      UNPROTECT(1);
   }
 
   // 16..17: snr trajectory, MAD
   {
-    SEXP t = convert_vector_double_to_R(perf.snr_trajectory);
-    SET_VECTOR_ELT(results,16, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.mean_absolute_deviation);
-    SET_VECTOR_ELT(results,17, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_double_to_R(perf.snr_trajectory));
+      SET_VECTOR_ELT(results,16, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.mean_absolute_deviation));
+      SET_VECTOR_ELT(results,17, t); UNPROTECT(1);
   }
 
   // 18..19: curvature errors
   {
-    SEXP t = convert_vector_double_to_R(perf.pointwise_curvature_error);
-    SET_VECTOR_ELT(results,18, t); UNPROTECT(1);
-    t = convert_vector_double_to_R(perf.integrated_curvature_error);
-    SET_VECTOR_ELT(results,19, t); UNPROTECT(1);
+      SEXP t = PROTECT(convert_vector_double_to_R(perf.pointwise_curvature_error));
+      SET_VECTOR_ELT(results,18, t); UNPROTECT(1);
+      t = PROTECT(convert_vector_double_to_R(perf.integrated_curvature_error));
+      SET_VECTOR_ELT(results,19, t); UNPROTECT(1);
   }
 
-  // names while results is protected
-  {
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_RESULTS));
-    SET_STRING_ELT(names, 0,  Rf_mkChar("y_trajectory"));
-    SET_STRING_ELT(names, 1,  Rf_mkChar("pre_update_deltas"));
-    SET_STRING_ELT(names, 2,  Rf_mkChar("post_update_deltas"));
-    SET_STRING_ELT(names, 3,  Rf_mkChar("step_size_history"));
-    SET_STRING_ELT(names, 4,  Rf_mkChar("global_residual_norm"));
-    SET_STRING_ELT(names, 5,  Rf_mkChar("max_absolute_delta"));
-    SET_STRING_ELT(names, 6,  Rf_mkChar("oscillation_events"));
-    SET_STRING_ELT(names, 7,  Rf_mkChar("oscillation_count_per_vertex"));
-    SET_STRING_ELT(names, 8,  Rf_mkChar("increase_events_per_vertex"));
-    SET_STRING_ELT(names, 9,  Rf_mkChar("decrease_events_per_vertex"));
-    SET_STRING_ELT(names,10,  Rf_mkChar("oscillation_reductions_per_vertex"));
-    SET_STRING_ELT(names,11,  Rf_mkChar("smoothness_energy"));
-    SET_STRING_ELT(names,12,  Rf_mkChar("fidelity_energy"));
-    SET_STRING_ELT(names,13,  Rf_mkChar("laplacian_energy"));
-    SET_STRING_ELT(names,14,  Rf_mkChar("energy_ratio"));
-    SET_STRING_ELT(names,15,  Rf_mkChar("initial_snr"));
-    SET_STRING_ELT(names,16,  Rf_mkChar("snr_trajectory"));
-    SET_STRING_ELT(names,17,  Rf_mkChar("mean_absolute_deviation"));
-    SET_STRING_ELT(names,18,  Rf_mkChar("pointwise_curvature_error"));
-    SET_STRING_ELT(names,19,  Rf_mkChar("integrated_curvature_error"));
-    Rf_setAttrib(results, R_NamesSymbol, names);
-    UNPROTECT(1); // names
-  }
-
-  UNPROTECT(1); // results
+  UNPROTECT(1);  // results
   return results;
 }
 

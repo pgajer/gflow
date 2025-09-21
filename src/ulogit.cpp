@@ -1154,7 +1154,7 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
             REAL(predictions)[i] = result.predictions[i];
         }
         SET_VECTOR_ELT(r_result, 0, predictions);
-
+        UNPROTECT(1);
     }
 
     // Convert convergence status
@@ -1162,6 +1162,7 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
         SEXP converged = PROTECT(Rf_allocVector(LGLSXP, 1));
         LOGICAL(converged)[0] = result.converged;
         SET_VECTOR_ELT(r_result, 1, converged);
+        UNPROTECT(1);
     }
 
     // Convert iteration count
@@ -1169,6 +1170,7 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
         SEXP iterations = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(iterations)[0] = result.iterations;
         SET_VECTOR_ELT(r_result, 2, iterations);
+        UNPROTECT(1);
     }
 
     // Convert Eigen::VectorXd beta to R vector
@@ -1179,6 +1181,7 @@ SEXP S_eigen_ulogit(SEXP x_sexp,
             REAL(beta)[i] = result.beta(i);
         }
         SET_VECTOR_ELT(r_result, 3, beta);
+        UNPROTECT(1);
     }
 
     // Convert LOOCV errors if computed

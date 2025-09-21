@@ -825,7 +825,6 @@ SEXP S_uggmalo(
         verbose
         );
 
-
     // Create the return list with the CORRECT number of elements
     const char* names[] = {
         "candidate_bws",
@@ -860,131 +859,223 @@ SEXP S_uggmalo(
         UNPROTECT(1); // names_vec
     }
 
-    // Helper function to convert std::vector<double> to SEXP
-    auto vec_to_sexp = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        std::copy(vec.begin(), vec.end(), REAL(r_vec));
-
-        return r_vec;
-    };
-
-    // Helper function to convert std::vector<std::vector<double>> to SEXP
-    auto matrix_to_sexp = [](const std::vector<std::vector<double>>& mat) -> SEXP {
-        if (mat.empty()) return R_NilValue;
-        size_t nrow = mat.size();
-        size_t ncol = mat[0].size();
-        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, ncol, nrow));
-        double* ptr = REAL(r_mat);
-        for (size_t i = 0; i < nrow; ++i) {
-            for (size_t j = 0; j < ncol; ++j) {
-                ptr[j + i * ncol] = mat[i][j];
-            }
-        }
-
-        return r_mat;
-    };
-
-    // Helper function to convert std::vector<bool> to SEXP
-    auto bool_vec_to_sexp = [](const std::vector<bool>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, vec.size()));
-        for (size_t i = 0; i < vec.size(); ++i) {
-            LOGICAL(r_vec)[i] = vec[i];
-        }
-
-        return r_vec;
-    };
-
-    // Initialize all elements to R_NilValue first
-    for(size_t i = 0; i < n_elements; i++) {
+    // Initialize all elements to R_NilValue first (unchanged)
+    for (size_t i = 0; i < n_elements; i++) {
         SET_VECTOR_ELT(r_result, i, R_NilValue);
     }
-
-    // Populate existing fields
+    // 0) candidate_bws : REALSXP vector ***/
     {
-        SEXP s = vec_to_sexp(res.candidate_bws);
+        const int n = (int) res.candidate_bws.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(s);
+            std::copy(res.candidate_bws.begin(), res.candidate_bws.end(), p);
+        }
         SET_VECTOR_ELT(r_result, 0, s);
-        UNPROTECT(1); // s - as it is returned by vec_to_sexp() PROTECTed !!!
+        UNPROTECT(1); // s
     }
 
+    // 1) bw_predictions : REALSXP matrix with dims (ncol, nrow) like original helper ***/
     {
-        SEXP s = matrix_to_sexp(res.bw_predictions);
-        SET_VECTOR_ELT(r_result, 1, s);
-        UNPROTECT(1);
+        if (res.bw_predictions.empty()) {
+            SET_VECTOR_ELT(r_result, 1, R_NilValue);
+        } else {
+            const size_t nrow_sz = res.bw_predictions.size();                 // rows of input
+            const size_t ncol_sz = res.bw_predictions[0].size();             // cols of input
+            const int nrowR = (int) ncol_sz;                                 // rows in R matrix
+            const int ncolR = (int) nrow_sz;                                 // cols in R matrix
+
+            // (optional) shape validation
+            for (size_t i = 0; i < nrow_sz; ++i) {
+                if (res.bw_predictions[i].size() != ncol_sz)
+                    Rf_error("Inconsistent bw_predictions dimensions");
+            }
+
+            SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrowR, ncolR));
+            double* ptr = REAL(s);
+            for (size_t i = 0; i < nrow_sz; ++i) {
+                for (size_t j = 0; j < ncol_sz; ++j) {
+                    // note: matches your helper: ptr[j + i*ncol] with ncol = ncol_sz
+                    ptr[(int)j + (int)(i * ncol_sz)] = res.bw_predictions[i][j];
+                }
+            }
+            SET_VECTOR_ELT(r_result, 1, s);
+            UNPROTECT(1); // s
+        }
     }
 
+    // 2) mean_errors : REALSXP vector ***/
     {
-        SEXP s = vec_to_sexp(res.mean_errors);
+        const int n = (int) res.mean_errors.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(s);
+            std::copy(res.mean_errors.begin(), res.mean_errors.end(), p);
+        }
         SET_VECTOR_ELT(r_result, 2, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
+    // 3) opt_bw : REALSXP scalar ***/
     {
         SEXP opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
         REAL(opt_bw)[0] = res.opt_bw;
         SET_VECTOR_ELT(r_result, 3, opt_bw);
-        UNPROTECT(1);
+        UNPROTECT(1); // opt_bw
     }
 
+    // 4) opt_bw_index (1-based) : INTSXP scalar ***/
     {
         SEXP opt_idx = PROTECT(Rf_allocVector(INTSXP, 1));
-        INTEGER(opt_idx)[0] = res.opt_bw_index + 1;  // Convert to 1-based indexing for R
+        INTEGER(opt_idx)[0] = (int) res.opt_bw_index + 1;
         SET_VECTOR_ELT(r_result, 4, opt_idx);
-        UNPROTECT(1);
+        UNPROTECT(1); // opt_idx
     }
 
+    // 5) opt_predictions : REALSXP vector ***/
     {
-        SEXP s = vec_to_sexp(res.opt_predictions);
+        const int n = (int) res.opt_predictions.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(s);
+            std::copy(res.opt_predictions.begin(), res.opt_predictions.end(), p);
+        }
         SET_VECTOR_ELT(r_result, 5, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
+    // 6) graph_diameter : REALSXP scalar ***/
     {
         SEXP diam = PROTECT(Rf_allocVector(REALSXP, 1));
         REAL(diam)[0] = res.graph_diameter;
         SET_VECTOR_ELT(r_result, 6, diam);
-        UNPROTECT(1);
+        UNPROTECT(1); // diam
     }
 
-
-    // Populate bootstrap fields (if available)
+    // 7–10) bootstrap fields (present iff !bb_predictions.empty()) ***/
     if (!res.bb_predictions.empty()) {
-        SEXP s = matrix_to_sexp(res.bb_predictions);
-        SET_VECTOR_ELT(r_result, 7, s);
-        UNPROTECT(1);
+        // 7) bb_predictions matrix (same transposed layout as above)
+        {
+            const size_t nrow_sz = res.bb_predictions.size();
+            const size_t ncol_sz = res.bb_predictions[0].size();
+            const int nrowR = (int) ncol_sz;
+            const int ncolR = (int) nrow_sz;
 
-        s = vec_to_sexp(res.bb_central);
-        SET_VECTOR_ELT(r_result, 8, s);
-        UNPROTECT(1);
+            for (size_t i = 0; i < nrow_sz; ++i) {
+                if (res.bb_predictions[i].size() != ncol_sz)
+                    Rf_error("Inconsistent bb_predictions dimensions");
+            }
 
-        s = vec_to_sexp(res.cri_lower);
-        SET_VECTOR_ELT(r_result, 9, s);
-        UNPROTECT(1);
+            SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrowR, ncolR));
+            double* ptr = REAL(s);
+            for (size_t i = 0; i < nrow_sz; ++i) {
+                for (size_t j = 0; j < ncol_sz; ++j) {
+                    ptr[(int)j + (int)(i * ncol_sz)] = res.bb_predictions[i][j];
+                }
+            }
+            SET_VECTOR_ELT(r_result, 7, s);
+            UNPROTECT(1); // s
+        }
 
-        s = vec_to_sexp(res.cri_upper);
-        SET_VECTOR_ELT(r_result, 10, s);
-        UNPROTECT(1);
+        // 8) bb_central vector
+        {
+            const int n = (int) res.bb_central.size();
+            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+            if (n > 0) {
+                double* p = REAL(s);
+                std::copy(res.bb_central.begin(), res.bb_central.end(), p);
+            }
+            SET_VECTOR_ELT(r_result, 8, s);
+            UNPROTECT(1); // s
+        }
+
+        // 9) cri_lower vector
+        {
+            const int n = (int) res.cri_lower.size();
+            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+            if (n > 0) {
+                double* p = REAL(s);
+                std::copy(res.cri_lower.begin(), res.cri_lower.end(), p);
+            }
+            SET_VECTOR_ELT(r_result, 9, s);
+            UNPROTECT(1); // s
+        }
+
+        // 10) cri_upper vector
+        {
+            const int n = (int) res.cri_upper.size();
+            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+            if (n > 0) {
+                double* p = REAL(s);
+                std::copy(res.cri_upper.begin(), res.cri_upper.end(), p);
+            }
+            SET_VECTOR_ELT(r_result, 10, s);
+            UNPROTECT(1); // s
+        }
     }
 
-    // Populate permutation fields (if available)
+    // 11) null_predictions matrix (present iff !null_predictions.empty()) ***/
     if (!res.null_predictions.empty()) {
-        SEXP s = matrix_to_sexp(res.null_predictions);
+        const size_t nrow_sz = res.null_predictions.size();
+        const size_t ncol_sz = res.null_predictions[0].size();
+        const int nrowR = (int) ncol_sz;
+        const int ncolR = (int) nrow_sz;
+
+        for (size_t i = 0; i < nrow_sz; ++i) {
+            if (res.null_predictions[i].size() != ncol_sz)
+                Rf_error("Inconsistent null_predictions dimensions");
+        }
+
+        SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrowR, ncolR));
+        double* ptr = REAL(s);
+        for (size_t i = 0; i < nrow_sz; ++i) {
+            for (size_t j = 0; j < ncol_sz; ++j) {
+                ptr[(int)j + (int)(i * ncol_sz)] = res.null_predictions[i][j];
+            }
+        }
         SET_VECTOR_ELT(r_result, 11, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
-    // Populate vertex test r_results (if available)
+    // 12–14) permutation test results (present iff res.permutation_tests) ***/
     if (res.permutation_tests) {
-        SEXP s = vec_to_sexp(res.permutation_tests->p_values);
-        SET_VECTOR_ELT(r_result, 12, s);
-        UNPROTECT(1);
+        // 12) p_values vector
+        {
+            const int n = (int) res.permutation_tests->p_values.size();
+            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+            if (n > 0) {
+                double* p = REAL(s);
+                std::copy(res.permutation_tests->p_values.begin(),
+                          res.permutation_tests->p_values.end(), p);
+            }
+            SET_VECTOR_ELT(r_result, 12, s);
+            UNPROTECT(1); // s
+        }
 
-        s = vec_to_sexp(res.permutation_tests->effect_sizes);
-        SET_VECTOR_ELT(r_result, 13, s);
-        UNPROTECT(1);
+        // 13) effect_sizes vector
+        {
+            const int n = (int) res.permutation_tests->effect_sizes.size();
+            SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+            if (n > 0) {
+                double* p = REAL(s);
+                std::copy(res.permutation_tests->effect_sizes.begin(),
+                          res.permutation_tests->effect_sizes.end(), p);
+            }
+            SET_VECTOR_ELT(r_result, 13, s);
+            UNPROTECT(1); // s
+        }
 
-        s = bool_vec_to_sexp(res.permutation_tests->significant_vertices);
-        SET_VECTOR_ELT(r_result, 14, s);
-        UNPROTECT(1);
+        // 14) significant_vertices logical vector
+        {
+            const int n = (int) res.permutation_tests->significant_vertices.size();
+            SEXP s = PROTECT(Rf_allocVector(LGLSXP, n));
+            if (n > 0) {
+                int* lp = LOGICAL(s);
+                for (int i = 0; i < n; ++i) lp[i] = res.permutation_tests->significant_vertices[(size_t)i] ? 1 : 0;
+            }
+            SET_VECTOR_ELT(r_result, 14, s);
+            UNPROTECT(1); // s
+        }
     }
 
     UNPROTECT(1);

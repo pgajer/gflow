@@ -268,8 +268,6 @@ bool is_local_minimum(int vertex, const std::vector<std::vector<int>>& graph, co
     return true;
 }
 
-
-
 SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) {
 
     int n_vertices = LENGTH(s_graph);
@@ -530,60 +528,60 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
     // 1-4: lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
     {
-        // Convert maps to R lists
-        SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
-        SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
-
-        SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
-        SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
-
-        // Convert local maxima/minima sets to R vectors
-        SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
-        SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
-
         // Fill local maxima vector and its connectivity list
-        int max_idx = 0;
-        for (int lmax : local_maxima_set) {
-            INTEGER(local_maxima)[max_idx] = lmax;
+        {
+            SEXP local_maxima       = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
+            SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
+            SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
+            int max_idx = 0;
+            for (int lmax : local_maxima_set) {
+                INTEGER(local_maxima)[max_idx] = lmax;
+                const auto& connected_mins = lmax_to_lmin_map[lmax];
+                SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
+                std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
+                std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
+                const char* lmax_char = lmax_str.c_str();
+                SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
+                UNPROTECT(1);
 
-            const auto& connected_mins = lmax_to_lmin_map[lmax];
-            SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-            std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
-            SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
-            std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
-            const char* lmax_char = lmax_str.c_str();
-            SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
-            UNPROTECT(1);
-
-            max_idx++;
+                max_idx++;
+            }
+            Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+            UNPROTECT(1); // lmax_to_lmin_names
+            SET_VECTOR_ELT(result, 1, lmax_to_lmin);
+            UNPROTECT(1); // lmax_to_lmin
+            SET_VECTOR_ELT(result, 3, local_maxima);
+            UNPROTECT(1); // local_maxima
         }
-        Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
-        UNPROTECT(1); // lmax_to_lmin_names
+
 
         // Fill local minima vector and its connectivity list
-        int min_idx = 0;
-        for (int lmin : local_minima_set) {
-            INTEGER(local_minima)[min_idx] = lmin;
+        {
+            SEXP local_minima       = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
+            SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
+            SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
+            int min_idx = 0;
+            for (int lmin : local_minima_set) {
+                INTEGER(local_minima)[min_idx] = lmin;
+                const auto& connected_maxs = lmin_to_lmax_map[lmin];
+                SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
+                std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
+                std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
+                const char* lmin_char = lmin_str.c_str();
+                SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
+                UNPROTECT(1);
 
-            const auto& connected_maxs = lmin_to_lmax_map[lmin];
-            SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-            std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
-            SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
-            std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
-            const char* lmin_char = lmin_str.c_str();
-            SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
-            UNPROTECT(1);
-
-            min_idx++;
+                min_idx++;
+            }
+            Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+            UNPROTECT(1); // lmin_to_lmax_names
+            SET_VECTOR_ELT(result, 2, lmin_to_lmax);
+            UNPROTECT(1); // lmin_to_lmax
+            SET_VECTOR_ELT(result, 4, local_minima);
+            UNPROTECT(1); // local_minima
         }
-        Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
-        UNPROTECT(1); // lmin_to_lmax_names
-
-        SET_VECTOR_ELT(result, 1, lmax_to_lmin);
-        SET_VECTOR_ELT(result, 2, lmin_to_lmax);
-        SET_VECTOR_ELT(result, 3, local_maxima);
-        SET_VECTOR_ELT(result, 4, local_minima);
-        UNPROTECT(4); // lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
     }
 
     // Compute MS cells from pro-cells
@@ -976,60 +974,62 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
 
     // 1-4: lmax_to_lmin, lmin_to_lmax, local_maxima, local_minima
     {
-        // Convert maps to R lists
-        SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
-        SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
-
-        SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
-        SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
-
-        // Convert local maxima/minima sets to R vectors
-        SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
-        SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
-
         // Fill local maxima vector and its connectivity list
-        int max_idx = 0;
-        for (int lmax : local_maxima_set) {
-            INTEGER(local_maxima)[max_idx] = lmax;
+        {
+            SEXP local_maxima = PROTECT(Rf_allocVector(INTSXP, local_maxima_set.size()));
+            SEXP lmax_to_lmin       = PROTECT(Rf_allocVector(VECSXP, local_maxima_set.size()));
+            SEXP lmax_to_lmin_names = PROTECT(Rf_allocVector(STRSXP, local_maxima_set.size()));
+            int max_idx = 0;
+            for (int lmax : local_maxima_set) {
+                INTEGER(local_maxima)[max_idx] = lmax;
 
-            const auto& connected_mins = lmax_to_lmin_map[lmax];
-            SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-            std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
-            SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
-            std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
-            const char* lmax_char = lmax_str.c_str();
-            SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
-            UNPROTECT(1);
+                const auto& connected_mins = lmax_to_lmin_map[lmax];
+                SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
+                std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
+                std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
+                const char* lmax_char = lmax_str.c_str();
+                SET_STRING_ELT(lmax_to_lmin_names, max_idx, Rf_mkChar(lmax_char));
+                UNPROTECT(1);
 
-            max_idx++;
+                max_idx++;
+            }
+            Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
+            UNPROTECT(1); // lmax_to_lmin_names
+            SET_VECTOR_ELT(result, 1, lmax_to_lmin);
+            UNPROTECT(1); // lmax_to_lmin
+            SET_VECTOR_ELT(result, 3, local_maxima);
+            UNPROTECT(1); // local_maxima
         }
-        Rf_setAttrib(lmax_to_lmin, R_NamesSymbol, lmax_to_lmin_names);
-        UNPROTECT(1); // lmax_to_lmin_names
 
         // Fill local minima vector and its connectivity list
-        int min_idx = 0;
-        for (int lmin : local_minima_set) {
-            INTEGER(local_minima)[min_idx] = lmin;
+        {
+            SEXP local_minima = PROTECT(Rf_allocVector(INTSXP, local_minima_set.size()));
+            SEXP lmin_to_lmax       = PROTECT(Rf_allocVector(VECSXP, local_minima_set.size()));
+            SEXP lmin_to_lmax_names = PROTECT(Rf_allocVector(STRSXP, local_minima_set.size()));
+            int min_idx = 0;
+            for (int lmin : local_minima_set) {
+                INTEGER(local_minima)[min_idx] = lmin;
 
-            const auto& connected_maxs = lmin_to_lmax_map[lmin];
-            SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-            std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
-            SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
-            std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
-            const char* lmin_char = lmin_str.c_str();
-            SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
-            UNPROTECT(1);
+                const auto& connected_maxs = lmin_to_lmax_map[lmin];
+                SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
+                std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
+                UNPROTECT(1);
 
-            min_idx++;
+                std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
+                const char* lmin_char = lmin_str.c_str();
+                SET_STRING_ELT(lmin_to_lmax_names, min_idx, Rf_mkChar(lmin_char));
+
+                min_idx++;
+            }
+            Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
+            UNPROTECT(1); // lmin_to_lmax_names
+            SET_VECTOR_ELT(result, 2, lmin_to_lmax);
+            UNPROTECT(1); // lmin_to_lmax
+            SET_VECTOR_ELT(result, 4, local_minima);
+            UNPROTECT(1); // local_minima
         }
-        Rf_setAttrib(lmin_to_lmax, R_NamesSymbol, lmin_to_lmax_names);
-        UNPROTECT(1); // lmin_to_lmax_names
-
-        SET_VECTOR_ELT(result, 1, lmax_to_lmin);
-        SET_VECTOR_ELT(result, 2, lmin_to_lmax);
-        SET_VECTOR_ELT(result, 3, local_maxima);
-        SET_VECTOR_ELT(result, 4, local_minima);
-        UNPROTECT(4);
     }
 
     // Compute MS cells from pro-cells
@@ -1072,38 +1072,47 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
     // 5-7: procell_keys, procells, cells
     {
         // Convert pro-cells and cells to R structures
-        SEXP procells = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
-        SEXP cells = PROTECT(Rf_allocVector(VECSXP, ms_cells.size()));
         SEXP procell_keys = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
+        SEXP procells     = PROTECT(Rf_allocVector(VECSXP, ms_procells.size()));
+        SEXP cells        = PROTECT(Rf_allocVector(VECSXP, ms_cells.size()));
 
         int pcell_idx = 0;
         for (const auto& [key, vertices] : ms_procells) {
             // Create key pair
-            SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
-            INTEGER(key_pair)[0] = key.first;
-            INTEGER(key_pair)[1] = key.second;
-            SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
-
-            // Create vertex set
-            SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
-            std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
-            SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
-
-            // Create cells list for this pro-cell
-            const auto& cell_components = ms_cells[key];
-            SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
-
-            for (size_t i = 0; i < cell_components.size(); ++i) {
-                SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
-                std::copy(cell_components[i].begin(), cell_components[i].end(),
-                          INTEGER(component));
-                SET_VECTOR_ELT(components_list, i, component);
-                UNPROTECT(1);
+            {
+                SEXP key_pair = PROTECT(Rf_allocVector(INTSXP, 2));
+                INTEGER(key_pair)[0] = key.first;
+                INTEGER(key_pair)[1] = key.second;
+                SET_VECTOR_ELT(procell_keys, pcell_idx, key_pair);
+                UNPROTECT(1); // key_pair
             }
 
-            SET_VECTOR_ELT(cells, pcell_idx, components_list);
+            // Create vertex set
+            {
+                SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
+                std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+                SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
+                UNPROTECT(1); // vertex_set
+            }
 
-            UNPROTECT(3);  // key_pair, vertex_set, components_list
+
+            // Create cells list for this pro-cell
+            {
+                const auto& cell_components = ms_cells[key];
+                SEXP components_list = PROTECT(Rf_allocVector(VECSXP, cell_components.size()));
+
+                for (size_t i = 0; i < cell_components.size(); ++i) {
+                    SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
+                    std::copy(cell_components[i].begin(), cell_components[i].end(),
+                              INTEGER(component));
+                    SET_VECTOR_ELT(components_list, i, component);
+                    UNPROTECT(1);
+                }
+
+                SET_VECTOR_ELT(cells, pcell_idx, components_list);
+                UNPROTECT(1);  // components_list
+            }
+
             pcell_idx++;
         }
 

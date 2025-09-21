@@ -515,7 +515,7 @@ SEXP S_estimate_local_density_over_grid(SEXP s_x,
 
     // 0: y (density)
     {
-        SEXP el0 = convert_vector_double_to_R(gdens_res.density);
+        SEXP el0 = PROTECT(convert_vector_double_to_R(gdens_res.density));
         SET_VECTOR_ELT(r_result, 0, el0);
         UNPROTECT(1);
     }

@@ -93,126 +93,147 @@ extern "C" {
 			UNPROTECT(1);
 		}
 
-		// Helpers for conversion
-		auto vec_to_real = [&](const std::vector<double>& v) {
-			SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size()));
-			std::copy(v.begin(), v.end(), REAL(x));
-			return x;
-		};
-		auto mat_to_real = [&](const Eigen::MatrixXd& M) {
-			SEXP x = PROTECT(Rf_allocMatrix(REALSXP, M.rows(), M.cols()));
-			double* ptr = REAL(x);
-			for (int j = 0; j < M.cols(); ++j)
-				for (int i = 0; i < M.rows(); ++i)
-					ptr[i + j * M.rows()] = M(i,j);
-			return x;
-		};
-		auto vec_to_int = [&](const std::vector<size_t>& v, bool one_based=false) {
-			SEXP x = PROTECT(Rf_allocVector(INTSXP, v.size()));
-			for (size_t i = 0; i < v.size(); ++i)
-				INTEGER(x)[i] = one_based ? (int)v[i] + 1 : (int)v[i];
-			return x;
-		};
-		auto scalar_int = [&](size_t v, bool one_based=false) {
-			SEXP x = PROTECT(Rf_allocVector(INTSXP, 1));
-			INTEGER(x)[0] = one_based ? (int)v + 1 : (int)v;
-			return x;
-		};
-
-		// evalues
+		// evalues (slot 0): REALSXP vector
 		{
-			SEXP s = vec_to_real(result.evalues);
+			const int n = (int) result.evalues.size();
+			SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+			if (n > 0) {
+				double* p = REAL(s);
+				std::copy(result.evalues.begin(), result.evalues.end(), p);
+			}
 			SET_VECTOR_ELT(r_result, 0, s);
-			UNPROTECT(1);
+			UNPROTECT(1); // s
 		}
 
-		// evectors
+		// evectors (slot 1): REALSXP matrix (rows=M.rows, cols=M.cols)
 		{
-			SEXP s = mat_to_real(result.evectors);
+			const int nrow = (int) result.evectors.rows();
+			const int ncol = (int) result.evectors.cols();
+			SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+			double* ptr = REAL(s);
+			for (int j = 0; j < ncol; ++j)
+				for (int i = 0; i < nrow; ++i)
+					ptr[i + (size_t)j * nrow] = result.evectors(i, j);
 			SET_VECTOR_ELT(r_result, 1, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// candidate_ks
+		// candidate_ks (slot 2): INTSXP vector (1-based)
 		{
-			SEXP s = vec_to_int(result.candidate_ks, true);
+			const int n = (int) result.candidate_ks.size();
+			SEXP s = PROTECT(Rf_allocVector(INTSXP, n));
+			if (n > 0) {
+				int* ip = INTEGER(s);
+				for (int i = 0; i < n; ++i) ip[i] = (int) result.candidate_ks[(size_t)i] + 1;
+			}
 			SET_VECTOR_ELT(r_result, 2, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// eigengaps
+		// eigengaps (slot 3): REALSXP vector
 		{
-			SEXP s = vec_to_real(result.eigengaps);
+			const int n = (int) result.eigengaps.size();
+			SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+			if (n > 0) {
+				double* p = REAL(s);
+				std::copy(result.eigengaps.begin(), result.eigengaps.end(), p);
+			}
 			SET_VECTOR_ELT(r_result, 3, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// opt_k_eigengap
+		// opt_k_eigengap (slot 4): INTSXP scalar (1-based)
 		{
-			SEXP s = scalar_int(result.opt_k_eigengap, true);
+			SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+			INTEGER(s)[0] = (int) result.opt_k_eigengap + 1;
 			SET_VECTOR_ELT(r_result, 4, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// gcv_scores
+		// gcv_scores (slot 5): REALSXP vector
 		{
-			SEXP s = vec_to_real(result.gcv_scores);
+			const int n = (int) result.gcv_scores.size();
+			SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+			if (n > 0) {
+				double* p = REAL(s);
+				std::copy(result.gcv_scores.begin(), result.gcv_scores.end(), p);
+			}
 			SET_VECTOR_ELT(r_result, 5, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// opt_k_gcv
+		// opt_k_gcv (slot 6): INTSXP scalar (1-based)
 		{
-			SEXP s = scalar_int(result.opt_k_gcv, true);
+			SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+			INTEGER(s)[0] = (int) result.opt_k_gcv + 1;
 			SET_VECTOR_ELT(r_result, 6, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// spectral_energy
+		// spectral_energy (slot 7): REALSXP vector
 		{
-			SEXP s = vec_to_real(result.spectral_energy);
+			const int n = (int) result.spectral_energy.size();
+			SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+			if (n > 0) {
+				double* p = REAL(s);
+				std::copy(result.spectral_energy.begin(), result.spectral_energy.end(), p);
+			}
 			SET_VECTOR_ELT(r_result, 7, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// opt_k_spectral_energy
+		// opt_k_spectral_energy (slot 8): INTSXP scalar (1-based)
 		{
-			SEXP s = scalar_int(result.opt_k_spectral_energy, true);
+			SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+			INTEGER(s)[0] = (int) result.opt_k_spectral_energy + 1;
 			SET_VECTOR_ELT(r_result, 8, s);
-			UNPROTECT(1);
+			UNPROTECT(1);  // s
 		}
 
-		// used_method: 0=Eigengap,1=GCV,2=EnergyThreshold
+		// used_method (slot 9): INTSXP scalar (0=Eigengap, 1=GCV, 2=EnergyThreshold)
 		{
-			SEXP Rmethod = PROTECT(Rf_allocVector(INTSXP, 1));
-			INTEGER(Rmethod)[0] = static_cast<int>(result.used_method);
-			SET_VECTOR_ELT(r_result, 9, Rmethod);
-			UNPROTECT(1);
+			SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+			INTEGER(s)[0] = (int) result.used_method;
+			SET_VECTOR_ELT(r_result, 9, s);
+			UNPROTECT(1);  // s
 		}
 
-		// predictions
+		// predictions (slot 10): REALSXP vector
 		{
-			SEXP s = vec_to_real(result.predictions);
-			SET_VECTOR_ELT(r_result,10, s);
-			UNPROTECT(1);
+			const int n = (int) result.predictions.size();
+			SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+			if (n > 0) {
+				double* p = REAL(s);
+				std::copy(result.predictions.begin(), result.predictions.end(), p);
+			}
+			SET_VECTOR_ELT(r_result, 10, s);
+			UNPROTECT(1);  // s
 		}
 
-		// k_predictions: n_vertices × n_candidates matrix (possibly empty)
+		// k_predictions (slot 11): REALSXP matrix [nrow x ncol]
 		{
-			size_t ncol = result.k_predictions.size();
-			size_t nrow = ncol ? result.k_predictions[0].size() : 0;
+			const size_t ncol_sz = result.k_predictions.size();
+			const size_t nrow_sz = ncol_sz ? result.k_predictions[0].size() : 0;
+			const int ncol = (int) ncol_sz;
+			const int nrow = (int) nrow_sz;
+
+			// (optional) shape check
+			for (size_t j = 0; j < ncol_sz; ++j) {
+				if (result.k_predictions[j].size() != nrow_sz)
+					Rf_error("Inconsistent k_predictions dimensions");
+			}
+
 			SEXP Kpred = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
 			double* ptr = REAL(Kpred);
-			for (size_t j = 0; j < ncol; ++j) {
-				for (size_t i = 0; i < nrow; ++i) {
-					ptr[i + j * nrow] = result.k_predictions[j][i];
-				}
-			}
-			SET_VECTOR_ELT(r_result,11, Kpred);
-			UNPROTECT(1);
+			for (int j = 0; j < ncol; ++j)
+				for (int i = 0; i < nrow; ++i)
+					ptr[i + (size_t)j * nrow] = result.k_predictions[(size_t)j][(size_t)i];
+
+			SET_VECTOR_ELT(r_result, 11, Kpred);
+			UNPROTECT(1);  // Kpred
 		}
 
 		UNPROTECT(1);
 		return r_result;
 	}
-}  // extern "C"
+}   // extern "C"

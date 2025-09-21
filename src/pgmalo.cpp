@@ -683,14 +683,14 @@ SEXP S_upgmalo(SEXP s_x,
 
     // 0: h_values
     {
-        SEXP s = convert_vector_int_to_R(cpp_results.h_values);
+        SEXP s = PROTECT(convert_vector_int_to_R(cpp_results.h_values));
         SET_VECTOR_ELT(result, 0, s);
         UNPROTECT(1);
     }
 
     // 1: h_errors (or NULL)
     if (!cpp_results.h_cv_errors.empty() && n_points > 0) {
-        SEXP s = convert_vector_double_to_R(cpp_results.h_cv_errors);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.h_cv_errors));
         SET_VECTOR_ELT(result, 1, s);
         UNPROTECT(1);
     } else {
@@ -713,40 +713,45 @@ SEXP S_upgmalo(SEXP s_x,
 
     // 4: graph_adj_list
     {
-        SEXP s = convert_vector_vector_int_to_R(cpp_results.graph.adj_list);
+        SEXP s = PROTECT(convert_vector_vector_int_to_R(cpp_results.graph.adj_list));
         SET_VECTOR_ELT(result, 4, s);
         UNPROTECT(1);
     }
 
     // 5: graph_edge_lengths
     {
-        SEXP s = convert_vector_vector_double_to_R(cpp_results.graph.weight_list);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.graph.weight_list));
         SET_VECTOR_ELT(result, 5, s);
         UNPROTECT(1);
     }
 
     // 6: predictions
     {
-        SEXP s = convert_vector_double_to_R(cpp_results.predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.predictions));
         SET_VECTOR_ELT(result, 6, s);
         UNPROTECT(1);
     }
 
     // 7: local_predictions
     {
-        SEXP s = convert_vector_double_to_R(cpp_results.local_predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.local_predictions));
         SET_VECTOR_ELT(result, 7, s);
         UNPROTECT(1);
     }
 
     // 8–10: bootstrap CI pieces (or NULLs)
     if (!cpp_results.bb_predictions.empty()) {
-        SEXP s = convert_vector_double_to_R(cpp_results.bb_predictions);
-        SET_VECTOR_ELT(result, 8, s);  UNPROTECT(1);
-        s = convert_vector_double_to_R(cpp_results.ci_lower);
-        SET_VECTOR_ELT(result, 9, s);  UNPROTECT(1);
-        s = convert_vector_double_to_R(cpp_results.ci_upper);
-        SET_VECTOR_ELT(result,10, s);  UNPROTECT(1);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.bb_predictions));
+        SET_VECTOR_ELT(result, 8, s);
+        UNPROTECT(1);
+
+        s = PROTECT(convert_vector_double_to_R(cpp_results.ci_lower));
+        SET_VECTOR_ELT(result, 9, s);
+        UNPROTECT(1);
+
+        s = PROTECT(convert_vector_double_to_R(cpp_results.ci_upper));
+        SET_VECTOR_ELT(result,10, s);
+        UNPROTECT(1);
     } else {
         SET_VECTOR_ELT(result, 8,  R_NilValue);
         SET_VECTOR_ELT(result, 9,  R_NilValue);
@@ -768,11 +773,10 @@ SEXP S_upgmalo(SEXP s_x,
 
     // 12: h_predictions (list<numeric>)
     {
-        SEXP s = convert_vector_vector_double_to_R(cpp_results.h_predictions);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.h_predictions));
         SET_VECTOR_ELT(result, 12, s);
         UNPROTECT(1);
     }
-
 
     UNPROTECT(1);
     return result;
@@ -1191,189 +1195,196 @@ extern "C" SEXP S_pgmalo(SEXP neighbors_r,
                          SEXP dist_normalization_factor_r,
                          SEXP epsilon_r,
                          SEXP verbose_r) {
-  // ---- Graph inputs (pure reads; no PROTECT needed) ----
-  std::vector<std::vector<int>>    neighbors    = convert_adj_list_from_R(neighbors_r);
-  std::vector<std::vector<double>> edge_lengths;
-  if (edge_lengths_r != R_NilValue) {
-    edge_lengths = convert_weight_list_from_R(edge_lengths_r);
-    if (!edge_lengths.empty() && edge_lengths.size() != neighbors.size()) {
-      Rf_error("edge_lengths length must be 0 or equal to neighbors length.");
-    }
-    // Per-vertex length check when weights are supplied
-    if (!edge_lengths.empty()) {
-      const size_t V = neighbors.size();
-      for (size_t i = 0; i < V; ++i) {
-        if (edge_lengths[i].size() != neighbors[i].size()) {
-          Rf_error("edge_lengths[[%zu]] length (%zu) must equal neighbors[[%zu]] length (%zu).",
-                   i + 1, edge_lengths[i].size(), i + 1, neighbors[i].size());
+
+// ---- Graph inputs (pure reads; no PROTECT needed) ----
+    std::vector<std::vector<int>>    neighbors    = convert_adj_list_from_R(neighbors_r);
+    std::vector<std::vector<double>> edge_lengths;
+    if (edge_lengths_r != R_NilValue) {
+        edge_lengths = convert_weight_list_from_R(edge_lengths_r);
+        if (!edge_lengths.empty() && edge_lengths.size() != neighbors.size()) {
+            Rf_error("edge_lengths length must be 0 or equal to neighbors length.");
         }
-      }
+        // Per-vertex length check when weights are supplied
+        if (!edge_lengths.empty()) {
+            const size_t V = neighbors.size();
+            for (size_t i = 0; i < V; ++i) {
+                if (edge_lengths[i].size() != neighbors[i].size()) {
+                    Rf_error("edge_lengths[[%zu]] length (%zu) must equal neighbors[[%zu]] length (%zu).",
+                             i + 1, edge_lengths[i].size(), i + 1, neighbors[i].size());
+                }
+            }
+        }
     }
-  }
 
-  // ---- y / y_true ----
-  const size_t Ny = LENGTH(y_r);
-  std::vector<double> y(REAL(y_r), REAL(y_r) + Ny);
+    // ---- y / y_true ----
+    const size_t Ny = LENGTH(y_r);
+    std::vector<double> y(REAL(y_r), REAL(y_r) + Ny);
 
-  std::vector<double> y_true;
-  {
-    if (y_true_r != R_NilValue) {
-      SEXP syt = y_true_r;
-      const size_t Nyt = LENGTH(syt);
-      if (Nyt == Ny) {
-        y_true.assign(REAL(syt), REAL(syt) + Nyt);
-      } else if (Nyt != 0) {
-          Rf_error("y_true_r must have the same length as y_r");
-      }
+    std::vector<double> y_true;
+    {
+        if (y_true_r != R_NilValue) {
+            SEXP syt = y_true_r;
+            const size_t Nyt = LENGTH(syt);
+            if (Nyt == Ny) {
+                y_true.assign(REAL(syt), REAL(syt) + Nyt);
+            } else if (Nyt != 0) {
+                Rf_error("y_true_r must have the same length as y_r");
+            }
+        }
     }
-  }
 
-  // ---- Scalars / parameters (validated) ----
-  const bool   use_median = (Rf_asLogical(use_median_r) == TRUE);
-  const int    h_min      = Rf_asInteger(h_min_r);
-  const int    h_max      = Rf_asInteger(h_max_r);
-  const double p          = Rf_asReal(p_r);
-  const int    n_bb       = Rf_asInteger(n_bb_r);
-  const int    bb_max_distance_deviation = Rf_asInteger(bb_max_distance_deviation_r);
-  const int    n_CVs      = Rf_asInteger(n_CVs_r);
-  const int    n_CV_folds = Rf_asInteger(n_CV_folds_r);
-  const unsigned int seed  = static_cast<unsigned int>(Rf_asInteger(seed_r));
-  const int    kernel_type = Rf_asInteger(kernel_type_r);
-  const double dist_normalization_factor = Rf_asReal(dist_normalization_factor_r);
-  const double epsilon     = Rf_asReal(epsilon_r);
-  const bool   verbose     = (Rf_asLogical(verbose_r) == TRUE);
+    // ---- Scalars / parameters (validated) ----
+    const bool   use_median = (Rf_asLogical(use_median_r) == TRUE);
+    const int    h_min      = Rf_asInteger(h_min_r);
+    const int    h_max      = Rf_asInteger(h_max_r);
+    const double p          = Rf_asReal(p_r);
+    const int    n_bb       = Rf_asInteger(n_bb_r);
+    const int    bb_max_distance_deviation = Rf_asInteger(bb_max_distance_deviation_r);
+    const int    n_CVs      = Rf_asInteger(n_CVs_r);
+    const int    n_CV_folds = Rf_asInteger(n_CV_folds_r);
+    const unsigned int seed  = static_cast<unsigned int>(Rf_asInteger(seed_r));
+    const int    kernel_type = Rf_asInteger(kernel_type_r);
+    const double dist_normalization_factor = Rf_asReal(dist_normalization_factor_r);
+    const double epsilon     = Rf_asReal(epsilon_r);
+    const bool   verbose     = (Rf_asLogical(verbose_r) == TRUE);
 
-  if (h_min < 1)                 Rf_error("h_min must be >= 1.");
-  if (h_max < h_min)             Rf_error("h_max must be >= h_min.");
-  if ((size_t)h_max > Ny)
-                                 Rf_error("h_max (%d) cannot exceed Ny (%zu).",
-                                          h_max, Ny);
-  if (!(p > 0.0 && p <= 1.0))    Rf_error("p must be in (0, 1].");
-  if (n_bb < 0)                  Rf_error("n_bb must be >= 0.");
-  if (bb_max_distance_deviation < 0)
-                                 Rf_error("bb_max_distance_deviation must be >= 0.");
-  if (n_CVs < 1)                 Rf_error("n_CVs must be >= 1.");
-  if (n_CV_folds < 2)            Rf_error("n_CV_folds must be >= 2.");
-  if (!(epsilon > 0.0))          Rf_error("epsilon must be > 0.");
+    if (h_min < 1)                 Rf_error("h_min must be >= 1.");
+    if (h_max < h_min)             Rf_error("h_max must be >= h_min.");
+    if ((size_t)h_max > Ny)
+        Rf_error("h_max (%d) cannot exceed Ny (%zu).",
+                 h_max, Ny);
+    if (!(p > 0.0 && p <= 1.0))    Rf_error("p must be in (0, 1].");
+    if (n_bb < 0)                  Rf_error("n_bb must be >= 0.");
+    if (bb_max_distance_deviation < 0)
+        Rf_error("bb_max_distance_deviation must be >= 0.");
+    if (n_CVs < 1)                 Rf_error("n_CVs must be >= 1.");
+    if (n_CV_folds < 2)            Rf_error("n_CV_folds must be >= 2.");
+    if (!(epsilon > 0.0))          Rf_error("epsilon must be > 0.");
 
-  // ---- Core computation (no R allocations inside) ----
-  auto results = pgmalo(neighbors,
-                        edge_lengths,
-                        y,
-                        y_true,
-                        use_median,
-                        h_min,
-                        h_max,
-                        p,
-                        n_bb,
-                        bb_max_distance_deviation,
-                        n_CVs,
-                        n_CV_folds,
-                        seed,
-                        kernel_type,
-                        dist_normalization_factor,
-                        epsilon,
-                        verbose);
+    // ---- Core computation (no R allocations inside) ----
+    auto results = pgmalo(neighbors,
+                          edge_lengths,
+                          y,
+                          y_true,
+                          use_median,
+                          h_min,
+                          h_max,
+                          p,
+                          n_bb,
+                          bb_max_distance_deviation,
+                          n_CVs,
+                          n_CV_folds,
+                          seed,
+                          kernel_type,
+                          dist_normalization_factor,
+                          epsilon,
+                          verbose);
 
-  // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
-  const int N_COMPONENTS = 11;
-  SEXP result_r = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
+    // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
+    const int N_COMPONENTS = 11;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
 
-  // 0: h_values
-  {
-    SEXP s = convert_vector_int_to_R(results.h_values);
-    SET_VECTOR_ELT(result_r, 0, s);
-    UNPROTECT(1);
-  }
-
-  // 1: opt_h (scalar int)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(results.opt_h));
-    SET_VECTOR_ELT(result_r, 1, s);
-    UNPROTECT(1);
-  }
-
-  // 2: opt_h_idx (if your convention is 1-based in R, add +1 here)
-  {
-    SEXP s = PROTECT(Rf_ScalarInteger(results.opt_h_idx));
-    SET_VECTOR_ELT(result_r, 2, s);
-    UNPROTECT(1);
-  }
-
-  // 3: h_errors
-  {
-    SEXP s = convert_vector_double_to_R(results.h_cv_errors);
-    SET_VECTOR_ELT(result_r, 3, s);
-    UNPROTECT(1);
-  }
-
-  // 4: true_errors (or NULL)
-  if (results.has_true_errors()) {
-    SEXP s = convert_vector_double_to_R(results.true_errors);
-    SET_VECTOR_ELT(result_r, 4, s);
-    UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result_r, 4, R_NilValue);
-  }
-
-  // 5: predictions
-  {
-    SEXP s = convert_vector_double_to_R(results.predictions);
-    SET_VECTOR_ELT(result_r, 5, s);
-    UNPROTECT(1);
-  }
-
-  // 6: local_predictions
-  {
-    SEXP s = convert_vector_double_to_R(results.local_predictions);
-    SET_VECTOR_ELT(result_r, 6, s);
-    UNPROTECT(1);
-  }
-
-  // 7: h_predictions (list<numeric>)
-  {
-    const size_t H = results.h_predictions.size();
-    SEXP hp = PROTECT(Rf_allocVector(VECSXP, static_cast<R_xlen_t>(H)));
-    for (size_t i = 0; i < H; ++i) {
-      SEXP vec = convert_vector_double_to_R(results.h_predictions[i]);
-      SET_VECTOR_ELT(hp, static_cast<R_xlen_t>(i), vec);
-      UNPROTECT(1);
+    // r_result names
+    {
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
+        SET_STRING_ELT(names, 1,  Rf_mkChar("opt_h"));
+        SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
+        SET_STRING_ELT(names, 3,  Rf_mkChar("h_errors"));
+        SET_STRING_ELT(names, 4,  Rf_mkChar("true_errors"));
+        SET_STRING_ELT(names, 5,  Rf_mkChar("predictions"));
+        SET_STRING_ELT(names, 6,  Rf_mkChar("local_predictions"));
+        SET_STRING_ELT(names, 7,  Rf_mkChar("h_predictions"));
+        SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
+        SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+        Rf_setAttrib(r_result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
     }
-    SET_VECTOR_ELT(result_r, 7, hp);
-    UNPROTECT(1); // hp now reachable from result_r
-  }
 
-  // 8–10: bootstrap outputs (or NULLs)
-  if (results.has_bootstrap_results()) {
-    SEXP s = convert_vector_double_to_R(results.bb_predictions);
-    SET_VECTOR_ELT(result_r, 8, s); UNPROTECT(1);
+    // 0: h_values
+    {
+        SEXP s = PROTECT(convert_vector_int_to_R(results.h_values));
+        SET_VECTOR_ELT(r_result, 0, s);
+        UNPROTECT(1);
+    }
 
-    s = convert_vector_double_to_R(results.ci_lower);
-    SET_VECTOR_ELT(result_r, 9, s); UNPROTECT(1);
+    // 1: opt_h (scalar int)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(results.opt_h));
+        SET_VECTOR_ELT(r_result, 1, s);
+        UNPROTECT(1);
+    }
 
-    s = convert_vector_double_to_R(results.ci_upper);
-    SET_VECTOR_ELT(result_r, 10, s); UNPROTECT(1);
-  } else {
-    SET_VECTOR_ELT(result_r, 8,  R_NilValue);
-    SET_VECTOR_ELT(result_r, 9,  R_NilValue);
-    SET_VECTOR_ELT(result_r, 10, R_NilValue);
-  }
+    // 2: opt_h_idx (if your convention is 1-based in R, add +1 here)
+    {
+        SEXP s = PROTECT(Rf_ScalarInteger(results.opt_h_idx));
+        SET_VECTOR_ELT(r_result, 2, s);
+        UNPROTECT(1);
+    }
 
-  // names while result_r is protected
-  SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
-  SET_STRING_ELT(names, 0,  Rf_mkChar("h_values"));
-  SET_STRING_ELT(names, 1,  Rf_mkChar("opt_h"));
-  SET_STRING_ELT(names, 2,  Rf_mkChar("opt_h_idx"));
-  SET_STRING_ELT(names, 3,  Rf_mkChar("h_errors"));
-  SET_STRING_ELT(names, 4,  Rf_mkChar("true_errors"));
-  SET_STRING_ELT(names, 5,  Rf_mkChar("predictions"));
-  SET_STRING_ELT(names, 6,  Rf_mkChar("local_predictions"));
-  SET_STRING_ELT(names, 7,  Rf_mkChar("h_predictions"));
-  SET_STRING_ELT(names, 8,  Rf_mkChar("bb_predictions"));
-  SET_STRING_ELT(names, 9,  Rf_mkChar("ci_lower"));
-  SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
-  Rf_setAttrib(result_r, R_NamesSymbol, names);
+    // 3: h_errors
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(results.h_cv_errors));
+        SET_VECTOR_ELT(r_result, 3, s);
+        UNPROTECT(1);
+    }
 
-  UNPROTECT(2); // result_r, names
-  return result_r;
+    // 4: true_errors (or NULL)
+    if (results.has_true_errors()) {
+        SEXP s = PROTECT(convert_vector_double_to_R(results.true_errors));
+        SET_VECTOR_ELT(r_result, 4, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(r_result, 4, R_NilValue);
+    }
+
+    // 5: predictions
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(results.predictions));
+        SET_VECTOR_ELT(r_result, 5, s);
+        UNPROTECT(1);
+    }
+
+    // 6: local_predictions
+    {
+        SEXP s = PROTECT(convert_vector_double_to_R(results.local_predictions));
+        SET_VECTOR_ELT(r_result, 6, s);
+        UNPROTECT(1);
+    }
+
+    // 7: h_predictions (list<numeric>)
+    {
+        const size_t H = results.h_predictions.size();
+        SEXP hp = PROTECT(Rf_allocVector(VECSXP, static_cast<R_xlen_t>(H)));
+        for (size_t i = 0; i < H; ++i) {
+            SEXP vec = PROTECT(convert_vector_double_to_R(results.h_predictions[i]));
+            SET_VECTOR_ELT(hp, static_cast<R_xlen_t>(i), vec);
+            UNPROTECT(1);
+        }
+        SET_VECTOR_ELT(r_result, 7, hp);
+        UNPROTECT(1); // hp now reachable from r_result
+    }
+
+    // 8–10: bootstrap outputs (or NULLs)
+    if (results.has_bootstrap_results()) {
+        SEXP s = PROTECT(convert_vector_double_to_R(results.bb_predictions));
+        SET_VECTOR_ELT(r_result, 8, s);
+        UNPROTECT(1);
+
+        s = PROTECT(convert_vector_double_to_R(results.ci_lower));
+        SET_VECTOR_ELT(r_result, 9, s);
+        UNPROTECT(1);
+
+        s = PROTECT(convert_vector_double_to_R(results.ci_upper));
+        SET_VECTOR_ELT(r_result, 10, s);
+        UNPROTECT(1);
+    } else {
+        SET_VECTOR_ELT(r_result, 8,  R_NilValue);
+        SET_VECTOR_ELT(r_result, 9,  R_NilValue);
+        SET_VECTOR_ELT(r_result, 10, R_NilValue);
+    }
+
+    UNPROTECT(1); // r_result
+    return r_result;
 }

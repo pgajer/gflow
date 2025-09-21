@@ -338,7 +338,7 @@ SEXP S_create_basin_cx(
     std::vector<std::vector<int>>    adj_list    = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
-    std::vector<double> y(REAL(s_y), REAL(s_y) + Rf_length(s_y));
+    std::vector<double> y(REAL(s_y), REAL(s_y) + LENGTH(s_y));
 
     // Create graph
     set_wgraph_t graph(adj_list, weight_list);
@@ -445,7 +445,7 @@ SEXP S_create_basin_cx(
                           return a.distance < b.distance;
                       });
 
-            SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, m, 3));
+            SEXP r_basin = PROTECT(Rf_allocMatrix(REALSXP, (int)m, 3));
             double *pr = REAL(r_basin);
             for (size_t i = 0; i < m; ++i) {
                 const auto &vi = sorted_by_distance[i];
@@ -473,7 +473,7 @@ SEXP S_create_basin_cx(
         // Basin boundary matrix from boundary_monotonicity_spans_map
         {
             size_t bd_size = b.boundary_monotonicity_spans_map.size();
-            SEXP r_basin_bd = PROTECT(Rf_allocMatrix(REALSXP, bd_size, 3));
+            SEXP r_basin_bd = PROTECT(Rf_allocMatrix(REALSXP, (int)bd_size, 3));
             double *bd_pr = REAL(r_basin_bd);
             size_t bd_idx = 0;
             for (const auto& [vertex, span] : b.boundary_monotonicity_spans_map) {
@@ -499,7 +499,7 @@ SEXP S_create_basin_cx(
 
     // Fill minima basins
     {
-        SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, lmin_map.size()));
+        SEXP r_lmin_list = PROTECT(Rf_allocVector(VECSXP, (int)lmin_map.size()));
         size_t counter = 0;
         for (const auto& [v, basin] : lmin_map) {
             SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
@@ -514,7 +514,7 @@ SEXP S_create_basin_cx(
 
     // Fill maxima basins
     {
-        SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, lmax_map.size()));
+        SEXP r_lmax_list = PROTECT(Rf_allocVector(VECSXP, (int)lmax_map.size()));
         size_t counter = 0;
         for (const auto& [v, basin] : lmax_map) {
             SEXP r_blist = PROTECT(Rf_allocVector(VECSXP, 4)); // MODIFIED: now 4 elements
@@ -547,7 +547,7 @@ SEXP S_create_basin_cx(
         int n_cols = sizeof(basin_matrix_colnames) / sizeof(basin_matrix_colnames[0]);
 
         // Create the matrix
-        SEXP basins_matrix = PROTECT(Rf_allocMatrix(REALSXP, total_basins, n_cols));
+        SEXP basins_matrix = PROTECT(Rf_allocMatrix(REALSXP, (int)total_basins, n_cols));
 
         // Set column names
         SEXP colnames = PROTECT(Rf_allocVector(STRSXP, n_cols));
@@ -614,67 +614,65 @@ SEXP S_create_basin_cx(
     }
 
     // Calculate pairwise geodesic distances between local minima
-    {
-        SEXP r_lmin_dist_mat = R_NilValue;
-        if (lmin_map.size() > 0) {
-            // Create a vector of local minima vertex indices
-            std::vector<size_t> lmin_vertices;
-            for (const auto& [vertex, _] : lmin_map) {
-                lmin_vertices.push_back(vertex);
-            }
-
-            // Create distance matrix
-            r_lmin_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size()));
-            double* lmin_dist_data = REAL(r_lmin_dist_mat);
-
-            // Calculate distances for each pair
-            for (size_t i = 0; i < lmin_vertices.size(); i++) {
-                // Create a set of target vertices (all except current)
-                std::unordered_set<size_t> targets;
-                for (size_t j = 0; j < lmin_vertices.size(); j++) {
-                    if (i != j) {
-                        targets.insert(lmin_vertices[j]);
-                    }
-                }
-
-                // Compute shortest path distances from this vertex to all targets
-                auto distances = graph.compute_shortest_path_distances(lmin_vertices[i], targets);
-
-                // Fill in matrix (including diagonal)
-                for (size_t j = 0; j < lmin_vertices.size(); j++) {
-                    if (i == j) {
-                        lmin_dist_data[i + j * lmin_vertices.size()] = 0.0; // Diagonal = 0
-                    } else {
-                        lmin_dist_data[i + j * lmin_vertices.size()] = distances[lmin_vertices[j]];
-                    }
-                }
-            }
-
-            // Add row and column names (using 1-based vertex indices for R)
-            SEXP lmin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
-            SEXP lmin_rownames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
-            SEXP lmin_colnames = PROTECT(Rf_allocVector(STRSXP, lmin_vertices.size()));
-
-            for (size_t i = 0; i < lmin_vertices.size(); i++) {
-                char name[32];
-                snprintf(name, sizeof(name), "m%zu", lmin_vertices[i] + 1); // 1-based index for R
-                SET_STRING_ELT(lmin_rownames, i, Rf_mkChar(name));
-                SET_STRING_ELT(lmin_colnames, i, Rf_mkChar(name));
-            }
-
-            SET_VECTOR_ELT(lmin_dimnames, 0, lmin_rownames);
-            SET_VECTOR_ELT(lmin_dimnames, 1, lmin_colnames);
-            Rf_setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
-
-            UNPROTECT(3); // lmin_dimnames, lmin_rownames, lmin_colnames
+    if (lmin_map.size() > 0) {
+        // Create a vector of local minima vertex indices
+        std::vector<size_t> lmin_vertices;
+        for (const auto& [vertex, _] : lmin_map) {
+            lmin_vertices.push_back(vertex);
         }
+
+        // Create distance matrix
+        SEXP r_lmin_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmin_vertices.size(), lmin_vertices.size()));
+        double* lmin_dist_data = REAL(r_lmin_dist_mat);
+
+        // Calculate distances for each pair
+        for (size_t i = 0; i < lmin_vertices.size(); i++) {
+            // Create a set of target vertices (all except current)
+            std::unordered_set<size_t> targets;
+            for (size_t j = 0; j < lmin_vertices.size(); j++) {
+                if (i != j) {
+                    targets.insert(lmin_vertices[j]);
+                }
+            }
+
+            // Compute shortest path distances from this vertex to all targets
+            auto distances = graph.compute_shortest_path_distances(lmin_vertices[i], targets);
+
+            // Fill in matrix (including diagonal)
+            for (size_t j = 0; j < lmin_vertices.size(); j++) {
+                if (i == j) {
+                    lmin_dist_data[i + j * lmin_vertices.size()] = 0.0; // Diagonal = 0
+                } else {
+                    lmin_dist_data[i + j * lmin_vertices.size()] = distances[lmin_vertices[j]];
+                }
+            }
+        }
+
+        // Add row and column names (using 1-based vertex indices for R)
+        SEXP lmin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SEXP lmin_rownames = PROTECT(Rf_allocVector(STRSXP, (int)lmin_vertices.size()));
+        SEXP lmin_colnames = PROTECT(Rf_allocVector(STRSXP, (int)lmin_vertices.size()));
+
+        for (size_t i = 0; i < lmin_vertices.size(); i++) {
+            char name[32];
+            snprintf(name, sizeof(name), "m%zu", lmin_vertices[i] + 1); // 1-based index for R
+            SET_STRING_ELT(lmin_rownames, i, Rf_mkChar(name));
+            SET_STRING_ELT(lmin_colnames, i, Rf_mkChar(name));
+        }
+
+        SET_VECTOR_ELT(lmin_dimnames, 0, lmin_rownames);
+        SET_VECTOR_ELT(lmin_dimnames, 1, lmin_colnames);
+        Rf_setAttrib(r_lmin_dist_mat, R_DimNamesSymbol, lmin_dimnames);
+
+        UNPROTECT(3); // lmin_dimnames, lmin_rownames, lmin_colnames
 
         SET_VECTOR_ELT(r_result, 5, r_lmin_dist_mat);
         UNPROTECT(1); // r_lmin_dist_mat
+    } else {
+        SET_VECTOR_ELT(r_result, 5, R_NilValue);
     }
 
     // Calculate pairwise geodesic distances between local maxima
-    SEXP r_lmax_dist_mat = R_NilValue;
     if (lmax_map.size() > 0) {
         // Create a vector of local maxima vertex indices
         std::vector<size_t> lmax_vertices;
@@ -683,7 +681,7 @@ SEXP S_create_basin_cx(
         }
 
         // Create distance matrix
-        r_lmax_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size()));
+        SEXP r_lmax_dist_mat = PROTECT(Rf_allocMatrix(REALSXP, lmax_vertices.size(), lmax_vertices.size()));
         double* lmax_dist_data = REAL(r_lmax_dist_mat);
 
         // Calculate distances for each pair
@@ -711,8 +709,8 @@ SEXP S_create_basin_cx(
 
         // Add row and column names (using 1-based vertex indices for R)
         SEXP lmax_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
-        SEXP lmax_rownames = PROTECT(Rf_allocVector(STRSXP, lmax_vertices.size()));
-        SEXP lmax_colnames = PROTECT(Rf_allocVector(STRSXP, lmax_vertices.size()));
+        SEXP lmax_rownames = PROTECT(Rf_allocVector(STRSXP, (int)lmax_vertices.size()));
+        SEXP lmax_colnames = PROTECT(Rf_allocVector(STRSXP, (int)lmax_vertices.size()));
 
         for (size_t i = 0; i < lmax_vertices.size(); i++) {
             char name[32];
@@ -729,6 +727,8 @@ SEXP S_create_basin_cx(
 
         SET_VECTOR_ELT(r_result, 6, r_lmax_dist_mat);
         UNPROTECT(1); // r_lmax_dist_mat
+    } else {
+        SET_VECTOR_ELT(r_result, 6, R_NilValue);
     }
 
     // r_graph_diameter
@@ -742,5 +742,3 @@ SEXP S_create_basin_cx(
     UNPROTECT(1); // r_result
     return r_result;
 }
-
-

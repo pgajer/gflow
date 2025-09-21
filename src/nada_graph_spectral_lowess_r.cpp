@@ -165,22 +165,19 @@ SEXP S_nada_graph_spectral_lowess(
         UNPROTECT(1);
     }
 
-    // Helper function to convert vector to SEXP
-    auto vec_to_sexp = [&](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        double* ptr = REAL(r_vec);
-        std::copy(vec.begin(), vec.end(), ptr);
-        return r_vec;
-    };
-
-    // Set values
+    // predictions (slot 0)
     {
-        SEXP s = vec_to_sexp(res.predictions);
+        const int n = (int) res.predictions.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* ptr = REAL(s);
+            std::copy(res.predictions.begin(), res.predictions.end(), ptr);
+        }
         SET_VECTOR_ELT(r_result, 0, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
-    // Convert matrix of bw predictions
+    // Convert matrix of bw predictions  (slot 1)
     {
         SEXP bw_pred_r = PROTECT(Rf_allocMatrix(REALSXP,
                                                 res.bw_predictions[0].size(),
@@ -194,18 +191,31 @@ SEXP S_nada_graph_spectral_lowess(
         UNPROTECT(1);
     }
 
+    // errors (slot 2)
     {
-        SEXP s = vec_to_sexp(res.errors);
+        const int n = (int) res.errors.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* ptr = REAL(s);
+            std::copy(res.errors.begin(), res.errors.end(), ptr);
+        }
         SET_VECTOR_ELT(r_result, 2, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
+    // global_bws (slot 3)
     {
-        SEXP s = vec_to_sexp(res.global_bws);
+        const int n = (int) res.global_bws.size();
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* ptr = REAL(s);
+            std::copy(res.global_bws.begin(), res.global_bws.end(), ptr);
+        }
         SET_VECTOR_ELT(r_result, 3, s);
-        UNPROTECT(1);
+        UNPROTECT(1); // s
     }
 
+    // (slot 4)
     {
         SEXP s_opt_bw_idx = PROTECT(Rf_allocVector(INTSXP, 1));
         INTEGER(s_opt_bw_idx)[0] = res.opt_bw_idx;
@@ -213,6 +223,7 @@ SEXP S_nada_graph_spectral_lowess(
         UNPROTECT(1);
     }
 
+    // (slot 5)
     {
         // r_result.opt_bw = global_bws[opt_bw_idx];
         SEXP s_opt_bw = PROTECT(Rf_allocVector(REALSXP, 1));
@@ -221,6 +232,7 @@ SEXP S_nada_graph_spectral_lowess(
         UNPROTECT(1);
     }
 
+    // (slot 6)
     {
         SEXP s_graph_diameter = PROTECT(Rf_allocVector(REALSXP, 1));
         REAL(s_graph_diameter)[0] = graph.graph_diameter;

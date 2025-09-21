@@ -119,40 +119,38 @@ SEXP S_graph_spectral_ma_lowess(
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_elements));
 
     // names
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
-    SET_STRING_ELT(result_names, 0, Rf_mkChar("predictions"));
-    SET_STRING_ELT(result_names, 1, Rf_mkChar("errors"));
-    SET_STRING_ELT(result_names, 2, Rf_mkChar("scale"));
-    SET_STRING_ELT(result_names, 3, Rf_mkChar("graph_diameter"));
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
-    UNPROTECT(1); // result_names
-
-    // Helper function to convert vector to SEXP
-    auto create_numeric_vector = [](const std::vector<double>& vec) -> SEXP {
-        SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, vec.size()));
-        std::copy(vec.begin(), vec.end(), REAL(r_vec));
-        return r_vec;
-    };
+    {
+        SEXP result_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+        SET_STRING_ELT(result_names, 0, Rf_mkChar("predictions"));
+        SET_STRING_ELT(result_names, 1, Rf_mkChar("errors"));
+        SET_STRING_ELT(result_names, 2, Rf_mkChar("scale"));
+        SET_STRING_ELT(result_names, 3, Rf_mkChar("graph_diameter"));
+        Rf_setAttrib(result, R_NamesSymbol, result_names);
+        UNPROTECT(1); // result_names
+    }
 
     // 0: predictions
     {
-        SEXP s = create_numeric_vector(res.predictions);
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, (int)res.predictions.size()));
+        std::copy(res.predictions.begin(), res.predictions.end(), REAL(s));
         SET_VECTOR_ELT(result, 0, s);
-        UNPROTECT(1); // s - protected in create_numeric_vector()
+        UNPROTECT(1);
     }
 
     // 1: errors
     {
-        SEXP s = create_numeric_vector(res.errors);
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, (int)res.errors.size()));
+        std::copy(res.errors.begin(), res.errors.end(), REAL(s));
         SET_VECTOR_ELT(result, 1, s);
-        UNPROTECT(1); // s - protected in create_numeric_vector()
+        UNPROTECT(1); // s
     }
 
     // 2: scale
     {
-        SEXP s = create_numeric_vector(res.scale);
+        SEXP s = PROTECT(Rf_allocVector(REALSXP, (int)res.scale.size()));
+        std::copy(res.scale.begin(), res.scale.end(), REAL(s));
         SET_VECTOR_ELT(result, 2, s);
-        UNPROTECT(1); // s - protected in create_numeric_vector()
+        UNPROTECT(1); // s
     }
 
     // 3: graph_diameter

@@ -6,11 +6,11 @@
 #include <Rinternals.h>
 
 extern "C" {
-	SEXP S_parameterize_circular_graph(
-		SEXP s_adj_list,
-		SEXP s_weight_list,
-		SEXP s_use_edge_lengths
-		);
+    SEXP S_parameterize_circular_graph(
+        SEXP s_adj_list,
+        SEXP s_weight_list,
+        SEXP s_use_edge_lengths
+        );
 }
 
 /**
@@ -39,54 +39,65 @@ SEXP S_parameterize_circular_graph(
     SEXP s_weight_list,
     SEXP s_use_edge_lengths
 ) {
-    // Convert input parameters using R's C API
+    // Convert inputs (no allocations via R API)
     std::vector<std::vector<int>>    adj_list    = convert_adj_list_from_R(s_adj_list);
     std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
-    bool use_edge_lengths = (LOGICAL(s_use_edge_lengths)[0] == 1);
+    const int use_edge_lengths = LOGICAL(s_use_edge_lengths)[0] ? 1 : 0;
 
     set_wgraph_t graph(adj_list, weight_list);
+    circular_param_result_t res = graph.parameterize_circular_graph(use_edge_lengths != 0);
 
-    circular_param_result_t res = graph.parameterize_circular_graph(use_edge_lengths);
-
-    // We will always return a 6-element list:
-    // c("angles","eig_vec2","eig_vec3","eig_vec4","eig_vec5","eig_vec6")
+    // Prepare result list and names
     static const char* kNames[] = {
         "angles","eig_vec2","eig_vec3","eig_vec4","eig_vec5","eig_vec6"
     };
-    constexpr int K = 6;
+    enum { K = 6 };
 
-    int protect_count = 0;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, K));
+    {
+        SEXP result_names = PROTECT(Rf_allocVector(STRSXP, K));
+        for (int i = 0; i < K; ++i) {
+            SET_STRING_ELT(result_names, i, Rf_mkChar(kNames[i]));
+        }
+        Rf_setAttrib(result, R_NamesSymbol, result_names);
+        UNPROTECT(1); // result_names
+    }
 
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, K));                              // (1)
-    // names
-    SEXP result_names = PROTECT(Rf_allocVector(STRSXP, K));                        // (2)
-    for (int i = 0; i < K; ++i) SET_STRING_ELT(result_names, i, Rf_mkChar(kNames[i]));
-    Rf_setAttrib(result, R_NamesSymbol, result_names);
-    UNPROTECT(1); // result_names
+    // angles
+    {
+        const int n = (int) res.angles.size();
+        SEXP v = PROTECT(Rf_allocVector(REALSXP, n));
+        if (n > 0) {
+            double* p = REAL(v);
+            std::copy(res.angles.begin(), res.angles.end(), p);
+        }
+        SET_VECTOR_ELT(result, 0, v);
+        UNPROTECT(1); // v
+    }
 
-    // Helpers that PROTECT so we can UNPROTECT at the end.
-    auto create_numeric_vector = [&](const std::vector<double>& v) -> SEXP {
-        SEXP r = PROTECT(Rf_allocVector(REALSXP, v.size()));
-        ++protect_count;
-        double* p = REAL(r);
-        std::copy(v.begin(), v.end(), p);
-        return r;
-    };
-    auto maybe_numeric_or_null = [&](const std::vector<double>& v) -> SEXP {
-        if (v.empty()) return R_NilValue;
-        return create_numeric_vector(v);
-    };
+    // helper macro for remaining eigenvectors (handles empty => NULL)
+    #define SET_EIG_VEC(slot_idx, vec_ref)                                 \
+        do {                                                               \
+            if ((vec_ref).empty()) {                                       \
+                SET_VECTOR_ELT(result, (slot_idx), R_NilValue);            \
+            } else {                                                       \
+                const int n_ = (int) (vec_ref).size();                     \
+                SEXP v_ = PROTECT(Rf_allocVector(REALSXP, n_));            \
+                double* p_ = REAL(v_);                                     \
+                std::copy((vec_ref).begin(), (vec_ref).end(), p_);         \
+                SET_VECTOR_ELT(result, (slot_idx), v_);                    \
+                UNPROTECT(1); /* v_ */                                     \
+            }                                                              \
+        } while (0)
 
-    // Set elements
-    SET_VECTOR_ELT(result, 0, create_numeric_vector(res.angles));  // angles
-    SET_VECTOR_ELT(result, 1, maybe_numeric_or_null(res.eig_vec2));
-    SET_VECTOR_ELT(result, 2, maybe_numeric_or_null(res.eig_vec3));
-    SET_VECTOR_ELT(result, 3, maybe_numeric_or_null(res.eig_vec4));
-    SET_VECTOR_ELT(result, 4, maybe_numeric_or_null(res.eig_vec5));
-    SET_VECTOR_ELT(result, 5, maybe_numeric_or_null(res.eig_vec6));
+    SET_EIG_VEC(1, res.eig_vec2);
+    SET_EIG_VEC(2, res.eig_vec3);
+    SET_EIG_VEC(3, res.eig_vec4);
+    SET_EIG_VEC(4, res.eig_vec5);
+    SET_EIG_VEC(5, res.eig_vec6);
 
-    // Unprotect all vectors we created via helpers (result itself stays protected for return)
-    UNPROTECT(protect_count + 1);  // +1 accounts for 'result' at the top (1)
+    #undef SET_EIG_VEC
 
+    UNPROTECT(1); // result
     return result;
 }

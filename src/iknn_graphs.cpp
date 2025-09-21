@@ -415,12 +415,8 @@ SEXP S_verify_pruning(SEXP s_X,
         }
     }
 
-    //old_pruned_vect_wgraph.print("old_pruned_vect_wgraph");
-
     // Phase 2: Get results from new implementation
     vect_wgraph_t new_pruned_vect_wgraph = iknn_graph.prune_graph(max_alt_path_length);
-
-    //new_pruned_vect_wgraph.print("new_pruned_vect_wgraph");
 
     // return list
     SEXP result = PROTECT(Rf_allocVector(VECSXP, 3));
@@ -437,10 +433,11 @@ SEXP S_verify_pruning(SEXP s_X,
 
     {
         SEXP discrepancies = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        SEXP vertex_names = PROTECT(Rf_allocVector(STRSXP, n_vertices));
+        SEXP vertex_names  = PROTECT(Rf_allocVector(STRSXP, n_vertices));
         int total_discrepancies = 0;
 
         for (int vertex = 0; vertex < n_vertices; vertex++) {
+
             std::vector<edge_info_t>& old_edges = old_pruned_vect_wgraph.adjacency_list[vertex];
             std::vector<edge_info_t>& new_edges = new_pruned_vect_wgraph.adjacency_list[vertex];
 
@@ -475,19 +472,21 @@ SEXP S_verify_pruning(SEXP s_X,
                 SEXP vertex_report = PROTECT(Rf_allocVector(VECSXP, 3));
 
                 // Missing edges
-                SEXP missing = PROTECT(Rf_allocMatrix(REALSXP, missing_in_new.size(), 2));
+                const int n_miss = (int) missing_in_new.size();
+                SEXP missing = PROTECT(Rf_allocMatrix(REALSXP, n_miss, 2));
                 double* missing_ptr = REAL(missing);
-                for (size_t i = 0; i < missing_in_new.size(); i++) {
-                    missing_ptr[i] = missing_in_new[i].first;
-                    missing_ptr[i + missing_in_new.size()] = missing_in_new[i].second;
+                for (int i = 0; i < n_miss; i++) {
+                    missing_ptr[i]               = (double) missing_in_new[(size_t)i].first;
+                    missing_ptr[i + n_miss]      =        missing_in_new[(size_t)i].second;
                 }
 
                 // Extra edges
-                SEXP extra = PROTECT(Rf_allocMatrix(REALSXP, extra_in_new.size(), 2));
+                const int n_extra = (int) extra_in_new.size();
+                SEXP extra = PROTECT(Rf_allocMatrix(REALSXP, n_extra, 2));
                 double* extra_ptr = REAL(extra);
-                for (size_t i = 0; i < extra_in_new.size(); i++) {
-                    extra_ptr[i] = extra_in_new[i].first;
-                    extra_ptr[i + extra_in_new.size()] = extra_in_new[i].second;
+                for (int i = 0; i < n_extra; i++) {
+                    extra_ptr[i]                = (double) extra_in_new[(size_t)i].first;
+                    extra_ptr[i + n_extra]      =        extra_in_new[(size_t)i].second;
                 }
 
                 SET_VECTOR_ELT(vertex_report, 0, Rf_ScalarInteger(vertex));
@@ -497,22 +496,20 @@ SEXP S_verify_pruning(SEXP s_X,
                 SET_VECTOR_ELT(discrepancies, vertex, vertex_report);
                 SET_STRING_ELT(vertex_names, vertex, Rf_mkChar(std::to_string(vertex).c_str()));
 
-                UNPROTECT(3);  // vertex_report, missing, extra
+                UNPROTECT(3); // vertex_report, missing, extra
             } else {
                 SET_VECTOR_ELT(discrepancies, vertex, R_NilValue);
                 SET_STRING_ELT(vertex_names, vertex, Rf_mkChar(std::to_string(vertex).c_str()));
             }
         }
 
-        // Set names for the discrepancies list
         Rf_setAttrib(discrepancies, R_NamesSymbol, vertex_names);
 
-        // Create final result
-        SET_VECTOR_ELT(result, 0, Rf_ScalarLogical(total_discrepancies == 0));  // TRUE if no discrepancies
+        SET_VECTOR_ELT(result, 0, Rf_ScalarLogical(total_discrepancies == 0));
         SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(total_discrepancies));
         SET_VECTOR_ELT(result, 2, discrepancies);
 
-        UNPROTECT(3);
+        UNPROTECT(2); // FIX: was 3; now matches {discrepancies, vertex_names}
     }
 
     UNPROTECT(1);
@@ -663,7 +660,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
     size_t k = Rf_asInteger(Rk);
 
     // Finding kNN's for all points of X
-    SEXP knn_res = S_kNN(RX, Rk);
+    SEXP knn_res = PROTECT(S_kNN(RX, Rk));
     int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
     double *distances = REAL(VECTOR_ELT(knn_res, 1));
     UNPROTECT(1); // knn_res
@@ -1198,9 +1195,8 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
     UNPROTECT(1); // s_dim
 
     SEXP Rk = PROTECT(Rf_ScalarInteger(k));
-    SEXP knn_res = S_kNN(RX, Rk);
+    SEXP knn_res = PROTECT(S_kNN(RX, Rk));
     UNPROTECT(1); // Rk
-
     int *indices_raw   = INTEGER(VECTOR_ELT(knn_res, 0));
     double *dist_raw   = REAL(VECTOR_ELT(knn_res, 1));
     UNPROTECT(1); // knn_res

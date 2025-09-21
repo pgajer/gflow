@@ -1201,17 +1201,36 @@ SEXP S_upgmalog(SEXP s_x,
     const int N_COMPONENTS = 13;
     SEXP result = PROTECT(Rf_allocVector(VECSXP, N_COMPONENTS));
 
-
-        // 0: h_values
+    // Setting names for return list
     {
-        SEXP s = convert_vector_int_to_R(cpp_results.h_values);
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
+        SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("h_errors"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("opt_h_idx"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
+        SET_STRING_ELT(names, 4, Rf_mkChar("graph_adj_list"));
+        SET_STRING_ELT(names, 5, Rf_mkChar("graph_edge_lengths"));
+        SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
+        SET_STRING_ELT(names, 7, Rf_mkChar("local_predictions"));
+        SET_STRING_ELT(names, 8, Rf_mkChar("bb_predictions"));
+        SET_STRING_ELT(names, 9, Rf_mkChar("ci_lower"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
+        SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+        UNPROTECT(1); // names
+    }
+
+    // 0: h_values
+    {
+        SEXP s = PROTECT(convert_vector_int_to_R(cpp_results.h_values));
         SET_VECTOR_ELT(result, 0, s);
         UNPROTECT(1);
     }
 
     // 1: h_errors (or NULL)
     if (!cpp_results.h_cv_errors.empty()) {
-        SEXP s = convert_vector_double_to_R(cpp_results.h_cv_errors);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.h_cv_errors));
         SET_VECTOR_ELT(result, 1, s);
         UNPROTECT(1);
     } else {
@@ -1236,43 +1255,43 @@ SEXP S_upgmalog(SEXP s_x,
 
     // 4: graph_adj_list
     {
-        SEXP s = convert_vector_vector_int_to_R(cpp_results.graph.adj_list);
+        SEXP s = PROTECT(convert_vector_vector_int_to_R(cpp_results.graph.adj_list));
         SET_VECTOR_ELT(result, 4, s);
         UNPROTECT(1);
     }
 
     // 5: graph_edge_lengths
     {
-        SEXP s = convert_vector_vector_double_to_R(cpp_results.graph.weight_list);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.graph.weight_list));
         SET_VECTOR_ELT(result, 5, s);
         UNPROTECT(1);
     }
 
     // 6: predictions
     {
-        SEXP s = convert_vector_double_to_R(cpp_results.predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.predictions));
         SET_VECTOR_ELT(result, 6, s);
         UNPROTECT(1);
     }
 
     // 7: local_predictions
     {
-        SEXP s = convert_vector_double_to_R(cpp_results.local_predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.local_predictions));
         SET_VECTOR_ELT(result, 7, s);
         UNPROTECT(1);
     }
 
     // 8-10: bootstrap results (or NULLs)
     if (!cpp_results.bb_predictions.empty()) {
-        SEXP s = convert_vector_double_to_R(cpp_results.bb_predictions);
+        SEXP s = PROTECT(convert_vector_double_to_R(cpp_results.bb_predictions));
         SET_VECTOR_ELT(result, 8, s);
         UNPROTECT(1);
 
-        s = convert_vector_double_to_R(cpp_results.ci_lower);
+        s = PROTECT(convert_vector_double_to_R(cpp_results.ci_lower));
         SET_VECTOR_ELT(result, 9, s);
         UNPROTECT(1);
 
-        s = convert_vector_double_to_R(cpp_results.ci_upper);
+        s = PROTECT(convert_vector_double_to_R(cpp_results.ci_upper));
         SET_VECTOR_ELT(result, 10, s);
         UNPROTECT(1);
     } else {
@@ -1296,29 +1315,12 @@ SEXP S_upgmalog(SEXP s_x,
 
     // 12: h_predictions
     {
-        SEXP s = convert_vector_vector_double_to_R(cpp_results.h_predictions);
+        SEXP s = PROTECT(convert_vector_vector_double_to_R(cpp_results.h_predictions));
         SET_VECTOR_ELT(result, 12, s);
         UNPROTECT(1);
     }
 
-    // Setting names for return list — keep protected until tail
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, N_COMPONENTS));
-    SET_STRING_ELT(names, 0, Rf_mkChar("h_values"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("h_errors"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("opt_h_idx"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("opt_h"));
-    SET_STRING_ELT(names, 4, Rf_mkChar("graph_adj_list"));
-    SET_STRING_ELT(names, 5, Rf_mkChar("graph_edge_lengths"));
-    SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
-    SET_STRING_ELT(names, 7, Rf_mkChar("local_predictions"));
-    SET_STRING_ELT(names, 8, Rf_mkChar("bb_predictions"));
-    SET_STRING_ELT(names, 9, Rf_mkChar("ci_lower"));
-    SET_STRING_ELT(names, 10, Rf_mkChar("ci_upper"));
-    SET_STRING_ELT(names, 11, Rf_mkChar("true_error"));
-    SET_STRING_ELT(names, 12, Rf_mkChar("h_predictions"));
-    Rf_setAttrib(result, R_NamesSymbol, names);
-
-    UNPROTECT(2); // result, names
+    UNPROTECT(1); // result
     return result;
 }
 

@@ -181,9 +181,8 @@ SEXP S_shortest_path(SEXP s_graph, SEXP s_edge_lengths, SEXP s_vertices) {
     std::unique_ptr<std::vector<double>> result = shortest_path(graph, edge_lengths, vertices);
 
     // Convert the result to an R matrix
+    // rchk-safe: we do not PROTECT here nor UNPROTECT, since we return immediately.
     SEXP r_matrix = flat_vector_to_R_matrix(*result, vertices_length, vertices_length);
-
-    UNPROTECT(1);
     return r_matrix;
 }
 

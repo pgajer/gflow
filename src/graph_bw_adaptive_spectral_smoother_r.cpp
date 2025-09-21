@@ -131,58 +131,75 @@ SEXP S_graph_bw_adaptive_spectral_smoother(
 		UNPROTECT(1);
 	}
 
-	auto vec_to_sexp = [&](const std::vector<double>& v) {
-		SEXP x = PROTECT(Rf_allocVector(REALSXP, v.size()));
-		std::copy(v.begin(), v.end(), REAL(x));
-		return x;
-	};
-	auto mat_to_sexp = [&](const std::vector<std::vector<double>>& M) {
-		size_t ncol = M.size();
-		size_t nrow = ncol ? M[0].size() : 0;
-		SEXP x = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
-		double* ptr = REAL(x);
-		for (size_t j = 0; j < ncol; ++j) {
-			if (M[j].size() != nrow)
-				Rf_error("Inconsistent bw_predictions dimensions");
-			for (size_t i = 0; i < nrow; ++i)
-				ptr[i + j * nrow] = M[j][i];
+	// predictions (slot 0): numeric vector
+	{
+		const int n = (int) result.predictions.size();
+		SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+		if (n > 0) {
+			double* ptr = REAL(s);
+			std::copy(result.predictions.begin(), result.predictions.end(), ptr);
 		}
-		return x;
-	};
-	auto scalar_int = [&](size_t v, bool one_based=false) {
-		SEXP x = PROTECT(Rf_allocVector(INTSXP, 1));
-		INTEGER(x)[0] = one_based ? (int)v + 1 : (int)v;
-		return x;
-	};
-
-	{
-		SEXP s = vec_to_sexp(result.predictions);
 		SET_VECTOR_ELT(r_result, 0, s);
-		UNPROTECT(1);
+		UNPROTECT(1); // s
 	}
 
+	// bw_predictions (slot 1): numeric matrix [nrow x ncol]
 	{
-		SEXP s = mat_to_sexp(result.bw_predictions);
+		const size_t ncol_sz = result.bw_predictions.size();
+		const size_t nrow_sz = ncol_sz ? result.bw_predictions[0].size() : 0;
+
+		// validate shapes before allocating
+		for (size_t j = 0; j < ncol_sz; ++j) {
+			if (result.bw_predictions[j].size() != nrow_sz)
+				Rf_error("Inconsistent bw_predictions dimensions");
+		}
+
+		const int ncol = (int) ncol_sz;
+		const int nrow = (int) nrow_sz;
+
+		SEXP s = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+		double* ptr = REAL(s);
+		for (int j = 0; j < ncol; ++j) {
+			const auto& col = result.bw_predictions[(size_t)j];
+			for (int i = 0; i < nrow; ++i)
+				ptr[i + (size_t)j * nrow] = col[(size_t)i];
+		}
 		SET_VECTOR_ELT(r_result, 1, s);
-		UNPROTECT(1);
+		UNPROTECT(1);  // s
 	}
 
+	// bw_mean_abs_errors (slot 2): numeric vector
 	{
-		SEXP s = vec_to_sexp(result.bw_mean_abs_errors);
+		const int n = (int) result.bw_mean_abs_errors.size();
+		SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+		if (n > 0) {
+			double* ptr = REAL(s);
+			std::copy(result.bw_mean_abs_errors.begin(),
+					  result.bw_mean_abs_errors.end(), ptr);
+		}
 		SET_VECTOR_ELT(r_result, 2, s);
-		UNPROTECT(1);
+		UNPROTECT(1);  // s
 	}
 
+	// vertex_min_bws (slot 3): numeric vector
 	{
-		SEXP s = vec_to_sexp(result.vertex_min_bws);
+		const int n = (int) result.vertex_min_bws.size();
+		SEXP s = PROTECT(Rf_allocVector(REALSXP, n));
+		if (n > 0) {
+			double* ptr = REAL(s);
+			std::copy(result.vertex_min_bws.begin(),
+					  result.vertex_min_bws.end(), ptr);
+		}
 		SET_VECTOR_ELT(r_result, 3, s);
-		UNPROTECT(1);
+		UNPROTECT(1);  // s
 	}
 
+	// opt_bw_idx (slot 4): integer scalar, 1-based
 	{
-		SEXP s = scalar_int(result.opt_bw_idx, true);
+		SEXP s = PROTECT(Rf_allocVector(INTSXP, 1));
+		INTEGER(s)[0] = (int) result.opt_bw_idx + 1;
 		SET_VECTOR_ELT(r_result, 4, s);
-		UNPROTECT(1);
+		UNPROTECT(1);  // s
 	}
 
 	UNPROTECT(1);

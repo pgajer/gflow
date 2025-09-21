@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import os
 from collections import defaultdict
 import json
 import sys
@@ -129,6 +130,59 @@ def generate_reports(file_to_functions, output_dir='rchk_reports'):
     with open(f"{output_dir}/errors.json", 'w') as f:
         json.dump(dict(file_to_functions), f, indent=2)
 
+def generate_fix_queue(file_to_functions, output_dir='rchk_reports'):
+    """Generate a CSV file for tracking fix progress"""
+    import csv
+    from datetime import datetime
+
+    queue_file = f"{output_dir}/fix_queue.csv"
+
+    # Check if file exists to preserve existing status
+    existing_status = {}
+    if os.path.exists(queue_file):
+        with open(queue_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                existing_status[row['file']] = {
+                    'status': row['status'],
+                    'assignee': row['assignee'],
+                    'notes': row['notes']
+                }
+
+    # Write updated queue
+    with open(queue_file, 'w', newline='') as f:
+        fieldnames = ['file', 'functions', 'error_count', 'status', 'assignee', 'notes', 'last_updated']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for source_file, functions in sorted(file_to_functions.items()):
+            if not functions:
+                continue
+
+            # Count total errors
+            error_count = sum(len(func['errors']) for func in functions)
+            func_names = ', '.join(f['function'] for f in functions)
+
+            # Preserve existing status or set defaults
+            if source_file in existing_status:
+                status = existing_status[source_file]['status']
+                assignee = existing_status[source_file]['assignee']
+                notes = existing_status[source_file]['notes']
+            else:
+                status = ''
+                assignee = ''
+                notes = ''
+
+            writer.writerow({
+                'file': source_file,
+                'functions': func_names[:50] + '...' if len(func_names) > 50 else func_names,
+                'error_count': error_count,
+                'status': status,
+                'assignee': assignee,
+                'notes': notes,
+                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M')
+            })
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python3 process_rchk.py <bcheck_file>")
@@ -138,6 +192,7 @@ if __name__ == "__main__":
     file_to_functions = parse_bcheck_output(bcheck_file)
     filtered = filter_relevant_functions(file_to_functions)
     generate_reports(filtered)
+    generate_fix_queue(filtered)
 
     print(f"Generated reports in rchk_reports/")
     print(f"Found errors in {len(filtered)} source files")

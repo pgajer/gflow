@@ -471,8 +471,6 @@ create.path.graph.series <- function(graph, edge.lengths, h.values) {
         stop("'h.values' must be a non-empty numeric vector.", call. = FALSE)
     }
 
-    h.values <- as.integer(h.values)
-
     if (any(h.values < 1)) {
         stop("All values in 'h.values' must be at least 1.", call. = FALSE)
     }
@@ -494,7 +492,7 @@ create.path.graph.series <- function(graph, edge.lengths, h.values) {
     res <- .Call(S_create_path_graph_series,
                  graph.0based,
                  edge.lengths,
-                 h.values)
+                 as.integer(h.values))
 
     ## Convert each element to a path.graph object with h attribute
     path.graphs <- mapply(function(pg, h) {

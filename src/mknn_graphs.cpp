@@ -372,10 +372,8 @@ SEXP S_create_mknn_graphs(
         UNPROTECT(1); // edge_stats_list
     }
 
-    SEXP pruned_graphs_list = R_NilValue;
-
     if (compute_full) {
-        PROTECT(pruned_graphs_list = Rf_allocVector(VECSXP, kmax - kmin + 1));
+        SEXP pruned_graphs_list = PROTECT(Rf_allocVector(VECSXP, kmax - kmin + 1));
 
         for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
             // Process pruned graph
@@ -424,7 +422,7 @@ SEXP S_create_mknn_graphs(
         SET_VECTOR_ELT(result, 1, pruned_graphs_list);
         UNPROTECT(1); // pruned_graphs_list
     } else {
-        SET_VECTOR_ELT(result, 1, pruned_graphs_list);
+        SET_VECTOR_ELT(result, 1, R_NilValue);
     }
 
     // Create statistics matrix
@@ -506,10 +504,10 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
     }
 
     // Finding kNN's for all points of X
-    SEXP knn_res = S_kNN(RX, Rk);
+    SEXP knn_res = PROTECT(S_kNN(RX, Rk));
     int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
     double *distances = REAL(VECTOR_ELT(knn_res, 1));
-    UNPROTECT(1); // knn_res - as S_kNN() returns a protected object !!!
+    UNPROTECT(1); // knn_res
 
     if (indices == NULL) {
         Rf_error("MW_kNN_graph: Error in S_kNN: kNN index extraction failed.");
