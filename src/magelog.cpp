@@ -210,7 +210,7 @@ magelog_t magelog(
     initialize_kernel(kernel_type, 1.0);
 
     // Lambda function for fitting local logistic regression with a specific bandwidth - models are estimated only at the x_grid points
-    auto fit_local_logistic = [&cv_folds,&result,&grid_size](
+    auto fit_local_logistic = [&result,&grid_size](
         const std::vector<double>& x,
         const std::vector<double>& y,
         double bandwidth,
