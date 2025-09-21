@@ -57,7 +57,7 @@ jobs:
 
       # CI-only: avoid pak::lockfile_install(".github/pkg.lock") issues
       - name: Remove lockfile (CI-only)
-        run: rm -f .github/pkg.lock
+        run: Rscript -e "if (file.exists('.github/pkg.lock')) unlink('.github/pkg.lock', force = TRUE)"
 
       - uses: r-hub/actions/platform-info@v1
         with:

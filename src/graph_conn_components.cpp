@@ -121,9 +121,9 @@ std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const st
         for (int neighbor : graph[v]) {
             auto it = std::find(V.begin(), V.end(), neighbor);
             if (it != V.end()) {
-                int subgraph_index = std::distance(V.begin(), it);
+                size_t subgraph_index = (size_t)std::distance(V.begin(), it);
                 if (i >= subgraph_adj_list.size() || subgraph_index >= subgraph_adj_list.size()) {
-                    Rprintf("Index out of bounds: i = %d, subgraph_index = %d, subgraph_adj_list.size() = %zu\n",
+                    Rprintf("Index out of bounds: i = %d, subgraph_index = %zu, subgraph_adj_list.size() = %zu\n",
                             (int)i, subgraph_index, subgraph_adj_list.size());
                     return nullptr;
                 }
@@ -134,7 +134,7 @@ std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const st
 
     auto components = union_find(subgraph_adj_list);
     auto vertex_component_map = std::make_unique<std::unordered_map<int, int>>();
-    for (int i = 0; i < V.size(); ++i) {
+    for (size_t i = 0; i < V.size(); ++i) {
         (*vertex_component_map)[V[i]] = components[i];
     }
 

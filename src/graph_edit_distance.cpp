@@ -47,7 +47,7 @@ double graph_edit_distance(const std::vector<std::vector<int>>& graph1_adj_list,
         Rf_error("Empty graph provided");
     }
 
-    int n = graph1_adj_list.size();
+    size_t n = graph1_adj_list.size();
     if (n != graph2_adj_list.size()) {
         Rf_error("Graphs must have the same number of vertices");
     }
@@ -58,13 +58,13 @@ double graph_edit_distance(const std::vector<std::vector<int>>& graph1_adj_list,
     }
 
     // Validate vertex indices and weights
-    for (int v = 0; v < n; ++v) {
-        for (int adj_idx : graph1_adj_list[v]) {
+    for (size_t v = 0; v < n; ++v) {
+        for (size_t adj_idx : graph1_adj_list[v]) {
             if (adj_idx < 0 || adj_idx >= n) {
                 Rf_error("Invalid vertex index in graph1");
             }
         }
-        for (int adj_idx : graph2_adj_list[v]) {
+        for (size_t adj_idx : graph2_adj_list[v]) {
             if (adj_idx < 0 || adj_idx >= n) {
                 Rf_error("Invalid vertex index in graph2");
             }
@@ -83,8 +83,8 @@ double graph_edit_distance(const std::vector<std::vector<int>>& graph1_adj_list,
 
     double ged = 0.0;
 
-    for (int v1 = 0; v1 < n; ++v1) {
-        for (int v2 = v1 + 1; v2 < n; ++v2) {
+    for (size_t v1 = 0; v1 < n; ++v1) {
+        for (size_t v2 = v1 + 1; v2 < n; ++v2) {
             bool edge1_exists = false;
             bool edge2_exists = false;
             double weight1 = 0.0;
@@ -92,7 +92,7 @@ double graph_edit_distance(const std::vector<std::vector<int>>& graph1_adj_list,
 
             // Check if edge exists in graph1
             for (size_t i = 0; i < graph1_adj_list[v1].size(); ++i) {
-                if (graph1_adj_list[v1][i] == v2) {
+                if (graph1_adj_list[v1][i] == (int)v2) {
                     edge1_exists = true;
                     weight1 = graph1_weights[v1][i];
                     break;
@@ -101,7 +101,7 @@ double graph_edit_distance(const std::vector<std::vector<int>>& graph1_adj_list,
 
             // Check if edge exists in graph2
             for (size_t i = 0; i < graph2_adj_list[v1].size(); ++i) {
-                if (graph2_adj_list[v1][i] == v2) {
+                if (graph2_adj_list[v1][i] == (int)v2) {
                     edge2_exists = true;
                     weight2 = graph2_weights[v1][i];
                     break;

@@ -373,7 +373,7 @@ set_wgraph_t::compute_graph_laplacian_spectrum(
 		REPORT_ERROR("nev: %d  ncv: %d - Spectra requires nev < ncv\n", nev, ncv);
 	}
 
-	if (ncv > n_vertices) {
+	if (ncv > (int)n_vertices) {
 		REPORT_ERROR("ncv: %d n_vertices: %d - Spectra requires nev < ncv\n", ncv, (int)n_vertices);
 	}
 

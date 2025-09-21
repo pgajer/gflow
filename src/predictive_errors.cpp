@@ -307,7 +307,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
     if (bb_Ey.empty() || y.empty() || bb_y.empty()) {
         Rf_error("Input vectors must not be empty");
     }
-    int n_points = static_cast<int>(y.size());
+    size_t n_points = static_cast<int>(y.size());
     int B = static_cast<int>(bb_Ey.size());
 
     if (bb_Ey[0].size() != n_points || bb_y.size() != B || bb_y[0].size() != n_points) {
@@ -319,7 +319,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
     std::vector<double> vertex_estimates(B);
     std::vector<double> vertex_bb_y(B);
 
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         // Extract estimates and bb_y for vertex i
         for (int b = 0; b < B; ++b) {
             vertex_estimates[b] = bb_Ey[b][i];

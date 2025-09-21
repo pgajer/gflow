@@ -69,7 +69,6 @@ rchk_remote_out/
 cran_docs/
 docs/
 scripts/
-.github/
 
 rchk_reports/
 dev/

@@ -339,7 +339,7 @@ gmagelog_t gmagelog(
                 "% of data). This may indicate isolated vertices or insufficient bandwidth coverage.";
             warnings.push_back(msg);
 
-            if (no_prediction_data_vertices.size() > n_data_vertices / 2) {
+            if (no_prediction_data_vertices.size() > (size_t)n_data_vertices / 2) {
                 warnings.push_back("More than 50% of data vertices have no predictions. Consider increasing bandwidth or checking data vertex distribution.");
             }
         }

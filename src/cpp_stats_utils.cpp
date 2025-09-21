@@ -195,12 +195,12 @@ std::vector<double> running_window_average(const std::vector<double>& values, in
     // Slide the window for each position
     for (size_t i = 1; i < n; ++i) {
         // Update window boundaries
-        size_t prev_left = (i - 1 >= window_size) ? i - 1 - window_size : 0;
+        size_t prev_left = (i - 1 >= (size_t)window_size) ? i - 1 - (size_t)window_size : 0;
         size_t new_right = std::min(i + window_size, n - 1);
 
         // Update window sum by removing leftmost value (if it's no longer in window)
         // and adding rightmost value (if it's newly in window)
-        if (i > window_size) {
+        if (i > (size_t)window_size) {
             window_sum -= values[prev_left];
         }
 
@@ -210,7 +210,7 @@ std::vector<double> running_window_average(const std::vector<double>& values, in
         }
 
         // Compute window size (handles edge cases)
-        left = (i >= window_size) ? i - window_size : 0;
+        left = (i >= (size_t)window_size) ? i - (size_t)window_size : 0;
         window_count = right - left + 1;
 
         // Compute and store the average

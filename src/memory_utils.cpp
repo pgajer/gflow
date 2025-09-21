@@ -1,5 +1,3 @@
-#include "memory_utils.hpp"
-
 /**
  * @brief Platform-independent memory tracking utility function
  *
@@ -14,36 +12,50 @@
  * @return size_t The current RSS in bytes. Returns 0 if measurement fails
  *         or if the platform is unsupported.
  */
-size_t get_current_rss() {
+#include "memory_utils.hpp"
+
 #ifdef _WIN32
-    PROCESS_MEMORY_COUNTERS pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
-        return pmc.WorkingSetSize;
+size_t get_current_rss() {
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    HANDLE h = GetCurrentProcess();
+    if (GetProcessMemoryInfo(h, (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+        return (size_t)pmc.WorkingSetSize; // bytes
     }
     return 0;
-
-#elif defined(__APPLE__) && defined(__MACH__)
-    struct mach_task_basic_info info;
-    mach_msg_type_number_t infoCount = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
-                  (task_info_t)&info, &infoCount) == KERN_SUCCESS) {
-        return info.resident_size;
-    }
-    return 0;
-
-#elif defined(__linux__) || defined(__linux) || defined(linux) || defined(__gnu_linux__)
-    FILE* fp = fopen("/proc/self/statm", "r");
-    if (fp) {
-        long rss;
-        if (fscanf(fp, "%*s%ld", &rss) == 1) {
-            fclose(fp);
-            return rss * sysconf(_SC_PAGESIZE);
-        }
-        fclose(fp);
-    }
-    return 0;
-
-#else
-    return 0;
-#endif
 }
+#elif defined(__APPLE__) && defined(__MACH__)
+size_t get_current_rss() {
+    task_basic_info_data_t info;
+    mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS) {
+        return (size_t)info.resident_size;
+    }
+    return 0;
+}
+#else
+size_t get_current_rss() {
+    // Linux/Unix: prefer /proc/self/statm if available; fall back to getrusage
+    // 1) /proc path (Linux)
+    FILE* f = std::fopen("/proc/self/statm", "r");
+    if (f) {
+        long pages = 0;
+        if (std::fscanf(f, "%*s %ld", &pages) == 1) {
+            std::fclose(f);
+            long page_size = sysconf(_SC_PAGESIZE);
+            if (page_size > 0 && pages > 0) return (size_t)pages * (size_t)page_size;
+        } else {
+            std::fclose(f);
+        }
+    }
+    // 2) getrusage (portable-ish fallback)
+    struct rusage ru;
+    if (getrusage(RUSAGE_SELF, &ru) == 0) {
+    #ifdef __linux__
+        return (size_t)ru.ru_maxrss * 1024ULL; // Linux: ru_maxrss in kilobytes
+    #else
+        return (size_t)ru.ru_maxrss;           // BSD/macOS: ru_maxrss in bytes (not used on mac path)
+    #endif
+    }
+    return 0;
+}
+#endif

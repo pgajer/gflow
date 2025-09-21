@@ -254,24 +254,24 @@ double predict_linear_model_1d(
     double epsilon = 1e-8) {
 
     // Check that all Left vectors have the same length
-    int Lsize = Ld.size();
+    size_t Lsize = Ld.size();
     if (Lsize != Ly.size() || Lsize != Lw.size()) {
-        Rprintf("Ld.size: %d\n", Lsize);
+        Rprintf("Ld.size: %zu\n", Lsize);
         Rprintf("Ly.size: %d\n", (int)Ld.size());
         Rprintf("Lw.size: %d\n", (int)Lw.size());
         Rf_error("All left arrays have to have the same length");
     }
 
     // Check that all Right vectors have the same length
-    int Rsize = Rd.size();
+    size_t Rsize = Rd.size();
     if (Rsize != Ry.size() || Rsize != Rw.size()) {
-        Rprintf("Rd.size: %d\n", Rsize);
+        Rprintf("Rd.size: %zu\n", Rsize);
         Rprintf("Ry.size: %d\n", (int)Rd.size());
         Rprintf("Rw.size: %d\n", (int)Rw.size());
         Rf_error("All right arrays have to have the same length");
     }
 
-    int n_points = Lsize + Rsize;
+    size_t n_points = Lsize + Rsize;
 
     // We could potentially avoid creating the y vector and combine steps
     std::vector<double> x(n_points);
@@ -279,12 +279,12 @@ double predict_linear_model_1d(
 
     // Combine x and w arrays and compute maximum x
     double max_x = 0.0;
-    for (int i = 0; i < Lsize; ++i) {
+    for (size_t i = 0; i < Lsize; ++i) {
         x[i] = Ld[i];
         w[i] = Lw[i];
         max_x = std::max(max_x, std::abs(x[i]));
     }
-    for (int i = 0; i < Rsize; ++i) {
+    for (size_t i = 0; i < Rsize; ++i) {
         int shifted_i = i + Lsize;
         x[shifted_i] = Rd[i];
         w[shifted_i] = Rw[i];
@@ -307,13 +307,13 @@ double predict_linear_model_1d(
     double x_wmean = 0.0;
     double y_wmean = 0.0;
 
-    for (int i = 0; i < Lsize; ++i) {
+    for (size_t i = 0; i < Lsize; ++i) {
         w[i] *= kernel_weight[i];
         total_weight += w[i];
         x_wmean += w[i] * x[i];
         y_wmean += w[i] * Ly[i];
     }
-    for (int i = 0; i < Rsize; ++i) {
+    for (size_t i = 0; i < Rsize; ++i) {
         int shifted_i = i + Lsize;
         w[shifted_i] *= kernel_weight[shifted_i];
         total_weight += w[shifted_i];
@@ -329,7 +329,7 @@ double predict_linear_model_1d(
     double xx_wmean = 0.0;
     double xy_wmean = 0.0;
 
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xx_wmean += w[i] * xx * xx;
         xy_wmean += w[i] * xx * ((i < Lsize) ? Ly[i] : Ry[i-Lsize]);
@@ -390,22 +390,22 @@ double predict_lm_1d(const std::vector<double>& y,
                     int ref_index,
                     double epsilon = 1e-8) {
     // Check that all vectors have the same length
-    int n_points = x.size();
+    size_t n_points = x.size();
     if (n_points != y.size() || n_points != w.size()) {
-        Rprintf("x.size: %d\n", n_points);
+        Rprintf("x.size: %zu\n", n_points);
         Rprintf("y.size: %d\n", (int)y.size());
         Rprintf("w.size: %d\n", (int)w.size());
         Rf_error("All vectors have to have the same length");
     }
 
     // Validate ref_index
-    if (ref_index < 0 || ref_index >= n_points) {
+    if (ref_index < 0 || ref_index >= (int)n_points) {
         Rf_error("Reference index out of bounds");
     }
 
     // Validate weights
     double total_weight = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         if (w[i] < 0) {
             Rf_error("Negative weights are not allowed");
         }
@@ -417,20 +417,20 @@ double predict_lm_1d(const std::vector<double>& y,
 
     // Create normalized weights
     std::vector<double> w_normalized(w);
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         w_normalized[i] /= total_weight;
     }
 
     // Center x values around reference point
     double x_ref = x[ref_index];
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x[i] -= x_ref;
     }
 
     // Calculate weighted means
     double x_wmean = 0.0;
     double y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x_wmean += w_normalized[i] * x[i];
         y_wmean += w_normalized[i] * y[i];
     }
@@ -438,7 +438,7 @@ double predict_lm_1d(const std::vector<double>& y,
     // Compute slope components
     double xx_wmean = 0.0;
     double xy_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xx_wmean += w_normalized[i] * xx * xx;
         xy_wmean += w_normalized[i] * xx * y[i];
@@ -531,22 +531,22 @@ lm_dmudy_t predict_lm_dmudy(const std::vector<double>& y,
                             int ref_index,
                             double epsilon = 1e-8) {
     // Check that all vectors have the same length
-    int n_points = x.size();
+    size_t n_points = x.size();
     if (n_points != y.size() || n_points != w.size()) {
-        Rprintf("x.size: %d\n", n_points);
+        Rprintf("x.size: %zu\n", n_points);
         Rprintf("y.size: %d\n", (int)y.size());
         Rprintf("w.size: %d\n", (int)w.size());
         Rf_error("All vectors have to have the same length");
     }
 
     // Validate ref_index
-    if (ref_index < 0 || ref_index >= n_points) {
+    if (ref_index < 0 || ref_index >= (int)n_points) {
         Rf_error("Reference index out of bounds");
     }
 
     // Validate weights
     double total_weight = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         if (w[i] < 0) {
             Rf_error("Negative weights are not allowed");
         }
@@ -558,20 +558,20 @@ lm_dmudy_t predict_lm_dmudy(const std::vector<double>& y,
 
     // Create normalized weights
     std::vector<double> w_normalized(w);
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         w_normalized[i] /= total_weight;
     }
 
     // Center x values around reference point
     double x_ref = x[ref_index];
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x[i] -= x_ref;
     }
 
     // Calculate weighted means
     double x_wmean = 0.0;
     double y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x_wmean += w_normalized[i] * x[i];
         y_wmean += w_normalized[i] * y[i];
     }
@@ -579,7 +579,7 @@ lm_dmudy_t predict_lm_dmudy(const std::vector<double>& y,
     // Compute slope components
     double xx_wmean = 0.0;
     double xy_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xx_wmean += w_normalized[i] * xx * xx;
     }
@@ -596,7 +596,7 @@ lm_dmudy_t predict_lm_dmudy(const std::vector<double>& y,
     double derivative = w_normalized[ref_index] * (1.0 - (x_centered * x_centered) / xx_wmean);
 
     // Calculate prediction
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xy_wmean += w_normalized[i] * xx * y[i];
     }
@@ -656,7 +656,7 @@ lm_fit_t predict_lm_1d_with_metrics(
     double epsilon = 1e-8) {
 
     lm_fit_t results;
-    int n_points = x.size();
+    size_t n_points = x.size();
 
     // Original prediction logic
     double total_weight = 0.0;
@@ -670,14 +670,14 @@ lm_fit_t predict_lm_1d_with_metrics(
 
     // Calculate weighted means
     double x_wmean = 0.0, y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x_wmean += w_normalized[i] * x[i];
         y_wmean += w_normalized[i] * y[i];
     }
 
     // Compute slope components
     double xx_wmean = 0.0, xy_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xx_wmean += w_normalized[i] * xx * xx;
         xy_wmean += w_normalized[i] * xx * y[i];
@@ -692,7 +692,7 @@ lm_fit_t predict_lm_1d_with_metrics(
     double ss_tot = 0.0;  // Total sum of squares
     double sum_abs_res = 0.0;  // Sum of absolute residuals
 
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double predicted = y_wmean + slope * (x[i] - x_wmean);
         double residual = y[i] - predicted;
 
@@ -755,13 +755,13 @@ lm_mae_t predict_lm_1d_with_mae(const std::vector<double>& y,
                                 double epsilon = 1e-8) {
 
     lm_mae_t results;
-    int n_points = x.size();
+    size_t n_points = x.size();
 
     // Input validation
     if (n_points != y.size() || n_points != w.size()) {
         Rf_error("All vectors must have the same length");
     }
-    if (ref_index < 0 || ref_index >= n_points) {
+    if (ref_index < 0 || ref_index >= (int)n_points) {
         Rf_error("Reference index out of bounds");
     }
 
@@ -781,14 +781,14 @@ lm_mae_t predict_lm_1d_with_mae(const std::vector<double>& y,
 
     // Calculate weighted means
     double x_wmean = 0.0, y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x_wmean += w_normalized[i] * x[i];
         y_wmean += w_normalized[i] * y[i];
     }
 
     // Compute slope components
     double xx_wmean = 0.0, xy_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double xx = x[i] - x_wmean;
         xx_wmean += w_normalized[i] * xx * xx;
         xy_wmean += w_normalized[i] * xx * y[i];
@@ -800,7 +800,7 @@ lm_mae_t predict_lm_1d_with_mae(const std::vector<double>& y,
 
     // Calculate MAE using normalized weights
     double sum_abs_res = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         double predicted = y_wmean + slope * (x[i] - x_wmean);
         double residual = y[i] - predicted;
         sum_abs_res += w_normalized[i] * std::abs(residual);
@@ -879,8 +879,8 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
                                bool y_binary = false,
                                double epsilon = 1e-8) {
 
-    int n_points = x.size();
-    if (ref_index < 0 || ref_index >= n_points) {
+    size_t n_points = x.size();
+    if (ref_index < 0 || ref_index >= (int)n_points) {
         Rf_error("Reference index out of bounds");
     }
 
@@ -923,14 +923,14 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
     // Calculate weighted means
     results.x_wmean = 0.0;
     results.y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         results.x_wmean += w[i] * x_working[i] / total_weight;
         results.y_wmean += w[i] * y[i] / total_weight;
     }
 
     // Center x_working around weighted mean for leverage calculation
     double sum_wx_squared = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         x_working[i] -= results.x_wmean;  // Now x is centered around its weighted mean
         sum_wx_squared += w[i] * x_working[i] * x_working[i];
     }
@@ -939,7 +939,7 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
     results.slope = 0.0;
     if (sum_wx_squared > epsilon) {
         double wxy_sum = 0.0;
-        for (int i = 0; i < n_points; ++i) {
+        for (size_t i = 0; i < n_points; ++i) {
             wxy_sum += w[i] * x_working[i] * y[i];
         }
         results.slope = wxy_sum / sum_wx_squared;
@@ -962,7 +962,7 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
 
     // Calculate LOOCV components
     double loocv_sum = 0.0;
-    for (int i = 0; i < n_points; ++i) {
+    for (size_t i = 0; i < n_points; ++i) {
         // Calculate weighted leverage h_i
         double h_i = w[i] * (1.0/total_weight + (x_working[i] * x_working[i]) / sum_wx_squared);
 
@@ -988,7 +988,7 @@ lm_loocv_t predict_lm_1d_loocv(const std::vector<double>& y,
         loocv_sum += squared_error;
 
         // Store specific Rf_error for reference vertex
-        if (i == ref_index) {
+        if (i == (size_t)ref_index) {
             results.loocv_at_ref_vertex = squared_error;
         }
     }
@@ -1030,7 +1030,7 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
                                              bool y_binary,
                                              double epsilon = 1e-8) {
 
-    int n_points = x.size();
+    size_t n_points = x.size();
     if (n_points != w_list.size()) { // It is assumed that w_list has as many elements as the length of x (= Rf_length(y) = Rf_length(vertex_indices)) and so ref_index is any number between 0 and (n_points - 1)
         REPORT_ERROR("ref_index_list.size(): %d\tw_list.size(): %d\tref_index_list and w_list sizes have to be the same.", n_points, (int)w_list.size());
     }
@@ -1039,7 +1039,7 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
     std::vector<lm_loocv_t> results(n_points);
     std::vector<double> x_working(n_points);
     std::vector<double> w(n_points);
-    for (int ref_index = 0; ref_index < n_points; ++ref_index) {
+    for (size_t ref_index = 0; ref_index < n_points; ++ref_index) {
 
         results[ref_index].vertex_indices = vertex_indices;
         results[ref_index].x_values = x;
@@ -1064,14 +1064,14 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
         // Calculate weighted means
         results[ref_index].x_wmean = 0.0;
         results[ref_index].y_wmean = 0.0;
-        for (int i = 0; i < n_points; ++i) {
+        for (size_t i = 0; i < n_points; ++i) {
             results[ref_index].x_wmean += w[i] * x_working[i] / total_weight;
             results[ref_index].y_wmean += w[i] * y[i] / total_weight;
         }
 
         // Center x_working around weighted mean for leverage calculation
         double sum_wx_squared = 0.0;
-        for (int i = 0; i < n_points; ++i) {
+        for (size_t i = 0; i < n_points; ++i) {
             x_working[i] -= results[ref_index].x_wmean;  // Now x is centered around its weighted mean
             sum_wx_squared += w[i] * x_working[i] * x_working[i];
         }
@@ -1080,7 +1080,7 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
         results[ref_index].slope = 0.0;
         if (sum_wx_squared > epsilon) {
             double wxy_sum = 0.0;
-            for (int i = 0; i < n_points; ++i) {
+            for (size_t i = 0; i < n_points; ++i) {
                 wxy_sum += w[i] * x_working[i] * y[i];
             }
             results[ref_index].slope = wxy_sum / sum_wx_squared;
@@ -1095,7 +1095,7 @@ std::vector<lm_loocv_t> predict_lms_1d_loocv(const std::vector<double>& y,
 
         // Calculate LOOCV components
         double loocv_sum = 0.0;
-        for (int i = 0; i < n_points; ++i) {
+        for (size_t i = 0; i < n_points; ++i) {
             // Calculate weighted leverage h_i
             double h_i = w[i] * (1.0/total_weight + (x_working[i] * x_working[i]) / sum_wx_squared);
 

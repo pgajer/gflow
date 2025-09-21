@@ -60,7 +60,7 @@ Eigen::MatrixXd set_wgraph_t::compute_graph_laplacian_eigenvectors(
 
     Eigen::SparseMatrix<double> L = D - A;
     constexpr double lap_reg = 1e-8;
-    for (int i = 0; i < n_vertices; i++) {
+    for (size_t i = 0; i < n_vertices; i++) {
         L.coeffRef(i, i) += lap_reg;  // Small regularization
     }
 
@@ -190,7 +190,7 @@ Eigen::MatrixXd set_wgraph_t::compute_graph_shifted_kernel_laplacian_eigenvector
 
     // Step 2: Build Degree Matrix D
     Eigen::SparseMatrix<double> D(n_vertices, n_vertices);
-    for (int i = 0; i < K.outerSize(); ++i) {
+    for (size_t i = 0; i < (size_t)K.outerSize(); ++i) {
         double sum = 0;
         for (Eigen::SparseMatrix<double>::InnerIterator it(K, i); it; ++it) {
             sum += it.value();
@@ -205,7 +205,7 @@ Eigen::MatrixXd set_wgraph_t::compute_graph_shifted_kernel_laplacian_eigenvector
 
     // Step 4: Regularize L
     constexpr double lap_reg = 1e-8;
-    for (int i = 0; i < n_vertices; ++i) {
+    for (size_t i = 0; i < n_vertices; ++i) {
         L.coeffRef(i, i) += lap_reg;
     }
 
@@ -365,7 +365,7 @@ set_wgraph_t::compute_graph_shifted_kernel_laplacian_spectrum(
 
     // Step 2: Build Degree Matrix D
     Eigen::SparseMatrix<double> D(n_vertices, n_vertices);
-    for (int i = 0; i < K.outerSize(); ++i) {
+    for (size_t i = 0; i < (size_t)K.outerSize(); ++i) {
         double sum = 0;
         for (Eigen::SparseMatrix<double>::InnerIterator it(K, i); it; ++it) {
             sum += it.value();
@@ -381,7 +381,7 @@ set_wgraph_t::compute_graph_shifted_kernel_laplacian_spectrum(
 
     // Step 4: Regularize L
     constexpr double lap_reg = 1e-8;
-    for (int i = 0; i < n_vertices; ++i) {
+    for (size_t i = 0; i < n_vertices; ++i) {
         L.coeffRef(i, i) += lap_reg;
     }
 
@@ -613,7 +613,7 @@ set_wgraph_t::compute_graph_laplacian_spectrum_generic(
     }
 
     // Final safety check
-    if (ncv > n_vertices) {
+    if (ncv > (int)n_vertices) {
         ncv = n_vertices;
         nev = std::max(1, static_cast<int>(ncv - 1));
     }
@@ -709,7 +709,7 @@ set_wgraph_t::compute_graph_laplacian_spectrum_generic(
 
     // If power > 1, apply power to eigenvalues
     if (power > 1) {
-        for (int i = 0; i < eigenvalues.size(); ++i) {
+        for (size_t i = 0; i < (size_t)eigenvalues.size(); ++i) {
             eigenvalues(i) = std::pow(eigenvalues(i), power);
         }
     }
@@ -1212,7 +1212,7 @@ set_wgraph_t::construct_regularized_laplacian(
     Eigen::SparseMatrix<double> L = construct_standard_laplacian(params);
 
     // Add regularization to diagonal
-    for (int k = 0; k < L.outerSize(); ++k) {
+    for (size_t k = 0; k < (size_t)L.outerSize(); ++k) {
         for (Eigen::SparseMatrix<double>::InnerIterator it(L, k); it; ++it) {
             if (it.row() == it.col()) {
                 it.valueRef() += epsilon;
@@ -1239,7 +1239,7 @@ set_wgraph_t::construct_regularized_kernel_laplacian(
     Eigen::SparseMatrix<double> L_kernel = construct_kernel_laplacian(params);
 
     // Add regularization to diagonal
-    for (int k = 0; k < L_kernel.outerSize(); ++k) {
+    for (size_t k = 0; k < (size_t)L_kernel.outerSize(); ++k) {
         for (Eigen::SparseMatrix<double>::InnerIterator it(L_kernel, k); it; ++it) {
             if (it.row() == it.col()) {
                 it.valueRef() += epsilon;
