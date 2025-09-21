@@ -327,7 +327,7 @@ agemalo_result_t ray_agemalo(
 		return wpe_map;
 	};
 
-    auto average_models = [&model_blending_coef,&n_vertices,&grid_graph](
+    auto average_models = [&model_blending_coef,&n_vertices](
 		std::vector<std::vector<wpe_t>>& wpe,
         std::vector<double>& predictions,
         std::vector<double>& errors,

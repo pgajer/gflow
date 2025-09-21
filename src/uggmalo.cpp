@@ -196,8 +196,6 @@ uggmalo_t uggmalo(
     bool verbose
     ) {
 
-    const bool with_errors = true; // we want path linear models to always return LOOCV Rf_error estimate
-
     bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
 
     // Validation of input parameters will be done in the parent R function
@@ -339,9 +337,7 @@ uggmalo_t uggmalo(
         kernel_type,
         // Model fitting parameters
         y_binary,
-        fit_quadratic,
         tolerance,
-        with_errors,
         // Debug parameter
         &verbose
         ](
