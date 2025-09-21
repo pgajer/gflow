@@ -80,25 +80,25 @@ SEXP S_create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
     const auto& adj_list = G.adjacency_list;
     const int n_vertices = (int) adj_list.size();
 
-    // Build the two lists
-    SEXP r_adj_list    = PROTECT(Rf_allocVector(VECSXP,  n_vertices));
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP,  n_vertices));
+    // Outer lists for adjacency and weights
+    SEXP r_adj_list    = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
     for (int i = 0; i < n_vertices; ++i) {
-        const auto& nbrs = adj_list[i];
+        const auto& nbrs = adj_list[i];           // e.g., std::set<edge_info_t>
         const int deg = (int) nbrs.size();
 
-        // neighbors (1-based for R)
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, deg));
-        int* A = INTEGER(RA);
-
-        // weights
-        SEXP RD = PROTECT(Rf_allocVector(REALSXP, deg));
+        // Allocate R vectors for this vertex
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP,   deg));
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP,  deg));
+        int*    A = INTEGER(RA);
         double* D = REAL(RD);
 
-        for (int j = 0; j < deg; ++j) {
-            A[j] = (int) nbrs[j].vertex + 1;
-            D[j] = nbrs[j].weight;
+        int j = 0;
+        for (const auto& e : nbrs) {              // iterate the set
+            A[j] = (int)e.vertex + 1;             // R is 1-based
+            D[j] = e.weight;
+            ++j;
         }
 
         SET_VECTOR_ELT(r_adj_list,    i, RA);
@@ -106,7 +106,7 @@ SEXP S_create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
         UNPROTECT(2); // RA, RD
     }
 
-    // Pack into an outer list with names
+    // Pack into a single list with names (avoids std::pair<SEXP,SEXP>)
     SEXP res = PROTECT(Rf_allocVector(VECSXP, 2));
     SET_VECTOR_ELT(res, 0, r_adj_list);
     SET_VECTOR_ELT(res, 1, r_weight_list);
@@ -195,17 +195,17 @@ extern "C" SEXP S_create_mst_completion_graph(
 	{
 		SEXP pair = PROTECT(S_create_r_graph_from_set_wgraph(res.mstree));
 		SEXP r_adj_list    = VECTOR_ELT(pair, 0);
-		SEXP r_weight_list = VECTOR_ELT(pair, 1);
-		SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
-		SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
+		SEXP r_weights_list = VECTOR_ELT(pair, 1);
+		SET_VECTOR_ELT(r_list, 0, r_adj_list);
+		SET_VECTOR_ELT(r_list, 1, r_weights_list);
 		UNPROTECT(1); // pair
 	}
 
 	// Get completed MST graph components
 	{
-		auto [r_cmst_adj_list, r_cmst_weights_list] = create_r_graph_from_set_wgraph(res.completed_mstree);
-		PROTECT(r_cmst_adj_list);
-		PROTECT(r_cmst_weights_list);
+		SEXP pair = PROTECT(S_create_r_graph_from_set_wgraph(res.completed_mstree));
+		SEXP r_cmst_adj_list    = VECTOR_ELT(pair, 0);
+		SEXP r_cmst_weights_list = VECTOR_ELT(pair, 1);
 		SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
 		SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
 		UNPROTECT(2); // r_cmst_adj_list, r_cmst_weights_list

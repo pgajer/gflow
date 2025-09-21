@@ -1584,7 +1584,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
     const int K = (int)Kll;
 
     // ---- core computation (no R allocations inside) ----
-    gkmm_result_t cpp_results = univariate_gkmm(x, y, y_true,
+    auto cpp_results = univariate_gkmm(x, y, y_true,
                                        use_median,
                                        h_min, h_max,
                                        n_CVs, n_CV_folds,
