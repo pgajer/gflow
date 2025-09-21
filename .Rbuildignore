@@ -16,7 +16,8 @@
 ^scripts$
 ^tools$
 ^inst/doc$
-^dev/
+^dev$
+^dev/rchk$
 
 # Local development docs (keep in repo, exclude from tarball)
 ^cran_docs$
