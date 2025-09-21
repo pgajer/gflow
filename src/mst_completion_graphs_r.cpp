@@ -208,7 +208,7 @@ extern "C" SEXP S_create_mst_completion_graph(
 		SEXP r_cmst_weights_list = VECTOR_ELT(pair, 1);
 		SET_VECTOR_ELT(r_list, 2, r_cmst_adj_list);
 		SET_VECTOR_ELT(r_list, 3, r_cmst_weights_list);
-		UNPROTECT(2); // r_cmst_adj_list, r_cmst_weights_list
+		UNPROTECT(1); // pair
 	}
 
 	// MST edge weights
