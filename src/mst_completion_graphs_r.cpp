@@ -74,51 +74,50 @@ SEXP graph_to_edge_matrix(const set_wgraph_t& G) {
  *        - weight list: numeric vectors (edge weights)
  *
  * @param G A set_wgraph_t object representing the graph
- * @return std::pair<SEXP, SEXP> where first = adj list, second = weight list
+ * @return A single list: list(adjacency = <list>, weights = <list>)
  */
-std::pair<SEXP, SEXP>
-create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
+SEXP S_create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
     const auto& adj_list = G.adjacency_list;
-    size_t n_vertices = adj_list.size();
+    const int n_vertices = (int) adj_list.size();
 
-    // Prepare temporary C++ storage for adjacency and weights
-    std::vector<std::vector<int>> adj_vect(n_vertices);
-    std::vector<std::vector<double>> dist_vect(n_vertices);
+    // Build the two lists
+    SEXP r_adj_list    = PROTECT(Rf_allocVector(VECSXP,  n_vertices));
+    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP,  n_vertices));
 
-    for (size_t i = 0; i < n_vertices; ++i) {
-        for (const auto& nbr : adj_list[i]) {
-            adj_vect[i].push_back(static_cast<int>(nbr.vertex));
-            dist_vect[i].push_back(nbr.weight);
-        }
-    }
+    for (int i = 0; i < n_vertices; ++i) {
+        const auto& nbrs = adj_list[i];
+        const int deg = (int) nbrs.size();
 
-    SEXP r_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-    SEXP r_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-
-    for (size_t i = 0; i < n_vertices; ++i) {
-        // Integer vector for neighbors
-        SEXP RA = PROTECT(Rf_allocVector(INTSXP, adj_vect[i].size()));
+        // neighbors (1-based for R)
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, deg));
         int* A = INTEGER(RA);
-        for (size_t j = 0; j < adj_vect[i].size(); ++j) {
-            A[j] = adj_vect[i][j] + 1; // 1-based indexing
-        }
-        SET_VECTOR_ELT(r_adj_list, i, RA);
-        UNPROTECT(1); // RA
 
-        // Numeric vector for weights
-        SEXP RD = PROTECT(Rf_allocVector(REALSXP, dist_vect[i].size()));
+        // weights
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, deg));
         double* D = REAL(RD);
-        for (size_t j = 0; j < dist_vect[i].size(); ++j) {
-            D[j] = dist_vect[i][j];
+
+        for (int j = 0; j < deg; ++j) {
+            A[j] = (int) nbrs[j].vertex + 1;
+            D[j] = nbrs[j].weight;
         }
+
+        SET_VECTOR_ELT(r_adj_list,    i, RA);
         SET_VECTOR_ELT(r_weight_list, i, RD);
-        UNPROTECT(1); // RD
+        UNPROTECT(2); // RA, RD
     }
 
-    // IMPORTANT: We need to UNPROTECT before returning
-    UNPROTECT(2); // r_adj_list and r_weight_list
+    // Pack into an outer list with names
+    SEXP res = PROTECT(Rf_allocVector(VECSXP, 2));
+    SET_VECTOR_ELT(res, 0, r_adj_list);
+    SET_VECTOR_ELT(res, 1, r_weight_list);
 
-    return std::make_pair(r_adj_list, r_weight_list);
+    SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(nm, 0, Rf_mkChar("adjacency"));
+    SET_STRING_ELT(nm, 1, Rf_mkChar("weights"));
+    Rf_setAttrib(res, R_NamesSymbol, nm);
+
+    UNPROTECT(4); // r_adj_list, r_weight_list, res, nm
+    return res;
 }
 
 /**
@@ -194,12 +193,12 @@ extern "C" SEXP S_create_mst_completion_graph(
 
 	// Get MST graph components
 	{
-		auto [r_mst_adj_list, r_mst_weights_list] = create_r_graph_from_set_wgraph(res.mstree);
-		PROTECT(r_mst_adj_list);
-		PROTECT(r_mst_weights_list);
+		SEXP pair = PROTECT(S_create_r_graph_from_set_wgraph(res.mstree));
+		SEXP r_adj_list    = VECTOR_ELT(pair, 0);
+		SEXP r_weight_list = VECTOR_ELT(pair, 1);
 		SET_VECTOR_ELT(r_list, 0, r_mst_adj_list);
 		SET_VECTOR_ELT(r_list, 1, r_mst_weights_list);
-		UNPROTECT(2); // r_mst_adj_list, r_mst_weights_list
+		UNPROTECT(1); // pair
 	}
 
 	// Get completed MST graph components

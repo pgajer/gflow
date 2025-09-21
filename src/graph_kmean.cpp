@@ -1549,16 +1549,12 @@ SEXP S_univariate_gkmm(SEXP s_x,
         const int ny = LENGTH(sy);
         if (nx != ny) { UNPROTECT(3); Rf_error("length(x) must equal length(y)."); }
 
-        // overflow guards before casting to size_t
-        if ((size_t)nx > (size_t)INT_MAX || (size_t)ny > (size_t)INT_MAX) { UNPROTECT(3); Rf_error("too large"); }
-
         x.assign(REAL(sx), REAL(sx) + (size_t)nx);
         y.assign(REAL(sy), REAL(sy) + (size_t)ny);
 
         if (syt != R_NilValue) {
             const int nyt = LENGTH(syt);
             if (nyt == nx) {
-                if ((size_t)nyt > (size_t)INT_MAX) { UNPROTECT(3); Rf_error("too large"); }
                 y_true.assign(REAL(syt), REAL(syt) + (size_t)nyt);
             } // else leave y_true empty (treated as unavailable)
         }
@@ -1588,7 +1584,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
     const int K = (int)Kll;
 
     // ---- core computation (no R allocations inside) ----
-    auto cpp_results = univariate_gkmm(x, y, y_true,
+    gkmm_result_t cpp_results = univariate_gkmm(x, y, y_true,
                                        use_median,
                                        h_min, h_max,
                                        n_CVs, n_CV_folds,
@@ -1669,7 +1665,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
         UNPROTECT(1); // s_hHN_graphs [P1]
     }
 
-    // 2: h_cv_errors (or NULL)
+    // 2: h_cv_errors (or NULL)  <-- rchk line ~1675
     {
         if (!cpp_results.cv_errors.empty() && !x.empty()) {
             SEXP ce = PROTECT(convert_vector_double_to_R(cpp_results.cv_errors)); // [P10]
@@ -1680,14 +1676,14 @@ SEXP S_univariate_gkmm(SEXP s_x,
         }
     }
 
-    // 3: opt_h (scalar)
+    // 3: opt_h (scalar)  <-- rchk line ~1685
     {
         SEXP opt_h = PROTECT(Rf_ScalarReal(cpp_results.opt_h)); // [P11]
         SET_VECTOR_ELT(r_result, 3, opt_h);
         UNPROTECT(1); // opt_h [P11]
     }
 
-    // 4–5: opt graph pieces
+    // 4–5: opt graph pieces  <-- rchk lines ~1692, ~1696
     {
         SEXP adj = PROTECT(convert_vector_vector_int_to_R(cpp_results.opt_h_graph.first)); // [P12]
         SET_VECTOR_ELT(r_result, 4, adj);
@@ -1698,14 +1694,14 @@ SEXP S_univariate_gkmm(SEXP s_x,
         UNPROTECT(1); // eln [P13]
     }
 
-    // 6: predictions (condEy)
+    // 6: predictions (condEy)  <-- rchk line ~1703
     {
         SEXP pr = PROTECT(convert_vector_double_to_R(cpp_results.condEy)); // [P14]
         SET_VECTOR_ELT(r_result, 6, pr);
         UNPROTECT(1); // pr [P14]
     }
 
-    // 7–9: bb_predictions and CIs (or NULLs)
+    // 7–9: bb_predictions and CIs (or NULLs)  <-- rchk lines ~1711, ~1715, ~1719
     {
         if (!cpp_results.bb_condEy.empty()) {
             SEXP bb = PROTECT(convert_vector_double_to_R(cpp_results.bb_condEy)); // [P15]
@@ -1726,7 +1722,7 @@ SEXP S_univariate_gkmm(SEXP s_x,
         }
     }
 
-    // 10: true_error (mean) or NULL
+    // 10: true_error (mean) or NULL  <-- rchk line ~1736
     {
         if (!cpp_results.true_errors.empty()) {
             const double mean_true_error =
