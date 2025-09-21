@@ -296,7 +296,6 @@ uggmalog_t uggmalog(
         max_iterations,
         ridge_lambda,
         tolerance,
-        with_errors,
         // Debug parameter
         &verbose
         ](
