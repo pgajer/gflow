@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "configure.win: probing for sanitizer flags" 1>&2
+
+ALLFLAGS="${CFLAGS:-} ${CPPFLAGS:-} ${CXXFLAGS:-} ${CXX11FLAGS:-} ${CXX14FLAGS:-} ${CXX17FLAGS:-} ${CXX20FLAGS:-} ${LDFLAGS:-}"
+
+case "$ALLFLAGS" in
+  *-fsanitize=address*|*-fsanitize=undefined*|*-fsanitize=leak*)
+    echo "configure.win: sanitizer detected -> using RcppParallel TinyThread backend" 1>&2
+    mkdir -p src
+    printf "\nexport RCPP_PARALLEL_BACKEND=tinythread\n" >> src/Makevars.win
+    # Optional
+    # printf "export RCPP_PARALLEL_USE_TBBMALLOC_PROXY=FALSE\n" >> src/Makevars.win
+    ;;
+  *)
+    echo "configure.win: no sanitizer flags found (keeping default backend)" 1>&2
+    ;;
+esac
+
+exit 0

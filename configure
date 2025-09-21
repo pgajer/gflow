@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+# Fail fast
+set -eu
+
+echo "configure: probing for sanitizer flags" 1>&2
+
+ALLFLAGS="${CFLAGS:-} ${CPPFLAGS:-} ${CXXFLAGS:-} ${CXX11FLAGS:-} ${CXX14FLAGS:-} ${CXX17FLAGS:-} ${CXX20FLAGS:-} ${LDFLAGS:-}"
+
+case "$ALLFLAGS" in
+  *-fsanitize=address*|*-fsanitize=undefined*|*-fsanitize=leak*)
+    echo "configure: sanitizer detected -> using RcppParallel TinyThread backend" 1>&2
+
+    # Ensure src exists
+    mkdir -p src
+
+    # Export the backend from Makevars so all compilation gets it
+    # (append once; harmless if duplicated)
+    printf "\nexport RCPP_PARALLEL_BACKEND=tinythread\n" >> src/Makevars
+
+    # Optional: if you also want to avoid tbbmalloc in asan runs while keeping TBB elsewhere
+    # printf "export RCPP_PARALLEL_USE_TBBMALLOC_PROXY=FALSE\n" >> src/Makevars
+
+    ;;
+  *)
+    echo "configure: no sanitizer flags found (keeping default RcppParallel backend)" 1>&2
+    ;;
+esac
+
+exit 0
