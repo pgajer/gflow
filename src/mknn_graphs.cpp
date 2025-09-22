@@ -5,6 +5,7 @@
 
 */
 
+#include "omp_compat.h"
 #include "set_wgraph.hpp"
 #include "knn_search_result.hpp"
 #include "progress_utils.hpp" // For elapsed.time
@@ -223,30 +224,41 @@ SEXP S_create_mknn_graphs(
     std::vector<std::vector<double>> k_statistics(kmax - kmin + 1);
     std::vector<edge_pruning_stats_t> all_edge_pruning_stats(kmax - kmin + 1);
 
-// Set number of threads (optional)
-#ifdef _OPENMP
-    int num_threads = omp_get_max_threads();
-    if (verbose) Rprintf("Using %d OpenMP threads\n", num_threads);
+    // --- Thread setup (works with/without OpenMP) ---
+    const int max_threads = gflow_get_max_threads();   // =1 when no OpenMP
+    int num_threads = max_threads;                      // or clamp a user-supplied n_cores here
+    gflow_set_num_threads(num_threads);                 // no-op when no OpenMP
+
+    if (verbose) {
+#if defined(_OPENMP)
+        Rprintf("Using %d OpenMP thread%s\n", num_threads, (num_threads == 1 ? "" : "s"));
+#else
+        Rprintf("OpenMP not enabled; running single-threaded.\n");
 #endif
+    }
 
-// Parallel region
-    #ifdef _OPENMP
+    // --- Parallel region (serial when no OpenMP) ---
+    const int nK = (kmax - kmin + 1);
+
+#if defined(_OPENMP)
 #pragma omp parallel for schedule(dynamic)
-    #endif
-    for (int k_idx = 0; k_idx < kmax - kmin + 1; k_idx++) {
-        int k = kmin + k_idx;
+#endif
+    for (int k_idx = 0; k_idx < nK; ++k_idx) {
+        const int k = kmin + k_idx;
 
-        // Report progress - use critical section to avoid output interleaving
         if (verbose) {
-            #ifdef _OPENMP
+#if defined(_OPENMP)
 #pragma omp critical
-            #endif
+#endif
             {
                 REprintf("\rProcessing k=%d (%d of %d) - %d%%",
-                         k, k_idx+1, kmax-kmin+1,
-                         static_cast<int>((100.0 * (k_idx+1)) / (kmax-kmin+1)));
+                         k, k_idx + 1, nK, static_cast<int>((100.0 * (k_idx + 1)) / nK));
+                R_FlushConsole();  // helpful on some R consoles
             }
         }
+
+        // nice final newline after the carriage-return progress output
+        if (verbose) REprintf("\n");
 
         // Create mutual kNN graph for current k value
         auto mknn_graph = create_mknn_graph(knn_results, k);

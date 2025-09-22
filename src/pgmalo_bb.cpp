@@ -1,7 +1,4 @@
-#ifdef _OPENMP
 #include "omp_compat.h"
-#endif
-
 #include "exec_policy.hpp"
 #include "pgmalo.hpp"
 #include "sampling.h" // for C_runif_simplex()

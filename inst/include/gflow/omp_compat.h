@@ -1,19 +1,23 @@
 #pragma once
 
-// If any header defined a macro named match, it breaks OpenMP pragmas.
-// Undef it before we include <omp.h>.
+// Some SDKs leak macros that break OpenMP pragmas; sanitize.
 #ifdef match
 #  undef match
 #endif
-#ifdef check       // some SDKs define this one too; harmless to guard
+#ifdef check
 #  undef check
 #endif
 
 #ifdef _OPENMP
   #include <omp.h>
+  static inline int  gflow_get_max_threads(void) { return omp_get_max_threads(); }
+  static inline int  gflow_get_thread_num(void)  { return omp_get_thread_num(); }
+  static inline int  gflow_in_parallel(void)     { return omp_in_parallel(); }
+  static inline void gflow_set_num_threads(int n){ if (n > 0) omp_set_num_threads(n); }
 #else
-  // Minimal stubs so code compiles without OpenMP
-  inline int  omp_get_max_threads() { return 1; }
-  inline int  omp_get_thread_num()  { return 0; }
-  inline void omp_set_num_threads(int) {}
+  // Stubs for builds without OpenMP
+  static inline int  gflow_get_max_threads(void) { return 1; }
+  static inline int  gflow_get_thread_num(void)  { return 0; }
+  static inline int  gflow_in_parallel(void)     { return 0; }
+  static inline void gflow_set_num_threads(int n){ (void)n; }
 #endif

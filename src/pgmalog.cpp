@@ -1,7 +1,4 @@
-#ifdef _OPENMP
-// #include <omp.h>
 #include "omp_compat.h"
-#endif
 #include "pgmalog.hpp"
 #include "pgmalo.hpp"
 #include "ulogit.hpp"

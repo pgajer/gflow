@@ -1381,23 +1381,40 @@ extern "C" SEXP S_create_iknn_graphs(
     const bool verbose      = (Rf_asLogical(s_verbose) == TRUE);
 
     // --- n_cores handling (no R API used in parallel region)
-#ifdef _OPENMP
     int num_threads = 1;
-    if (Rf_isNull(s_n_cores)) {
-        num_threads = omp_get_max_threads();
-    } else {
-        if (!Rf_isInteger(s_n_cores)) Rf_error("n_cores must be integer or NULL.");
-        num_threads = Rf_asInteger(s_n_cores);
-        if (num_threads < 1) num_threads = 1;
-        const int max_t = omp_get_max_threads();
-        if (num_threads > max_t) num_threads = max_t;
+
+    // Parse s_n_cores safely
+    if (!Rf_isNull(s_n_cores)) {
+        if (!Rf_isInteger(s_n_cores) || Rf_length(s_n_cores) < 1) {
+            Rf_error("n_cores must be NULL or a length-1 integer.");
+        }
+        int req = INTEGER(s_n_cores)[0];
+        if (req == NA_INTEGER) {
+            Rf_error("n_cores cannot be NA.");
+        }
+        if (req > 0) num_threads = req;
     }
-    if (verbose) Rprintf("Using %d OpenMP threads\n", num_threads);
-    if (num_threads > 1) omp_set_num_threads(num_threads);
+
+    // Clamp to available threads
+    const int max_t = gflow_get_max_threads();  // 1 when OpenMP is absent
+    if (num_threads > max_t) num_threads = max_t;
+    if (num_threads < 1)     num_threads = 1;
+
+    // Set threads (no-op if OpenMP is absent)
+    gflow_set_num_threads(num_threads);
+
+    // Messaging
+    if (verbose) {
+#if defined(_OPENMP)
+        Rprintf("Using %d OpenMP thread%s\n", num_threads, (num_threads==1?"":"s"));
 #else
-    if (!Rf_isNull(s_n_cores) && Rf_asInteger(s_n_cores) != 1 && verbose)
-        Rprintf("OpenMP not enabled; running single-threaded.\n");
+        if (!Rf_isNull(s_n_cores) && num_threads > 1) {
+            Rprintf("OpenMP not enabled; running single-threaded.\n");
+        } else {
+            Rprintf("Running single-threaded.\n");
+        }
 #endif
+    }
 
     if (verbose) {
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin, kmax, n_vertices);

@@ -223,7 +223,7 @@ shortest_paths_t set_wgraph_t::find_graph_paths_within_radius(
         new_path.total_weight = info.distance;  // distance from start to target
 
 		// Reconstruct the path from this vertex to target
-        size_t curr = info.vertex;
+        int curr = (int)info.vertex;
         std::vector<size_t> temp_vertices;
         std::vector<double> temp_distances;
 
