@@ -20,7 +20,6 @@
 #include <map>
 #include <utility>
 #include <numeric>    // For std::accumulate
-#include <execution>
 #include <atomic>
 #include <random>     // For std::mt19937
 #include <chrono>

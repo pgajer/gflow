@@ -2,7 +2,6 @@
 #include "kernels.h"
 #include "maelog.hpp"
 
-#include <execution>
 #include <mutex>
 #include <vector>
 #include <numeric>    // for std::iota

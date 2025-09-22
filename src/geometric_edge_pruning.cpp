@@ -6,7 +6,6 @@
 #include <queue>         // For std::priority_queue
 #include <functional>    // For std::greater
 #include <mutex>         // For std::mutex
-#include <execution>     // For parallel execution
 
 #include "edge_pruning_stats.hpp" // For edge_pruning_stats_t
 #include "set_wgraph.hpp"     // For set_wgraph_t definition

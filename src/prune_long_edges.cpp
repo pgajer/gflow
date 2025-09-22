@@ -1,6 +1,5 @@
 #include <vector>        // For std::vector
 #include <algorithm>     // For std::sort, std::for_each
-#include <execution>     // For std::execution::par_unseq
 #include <numeric>       // For std::iota
 #include <mutex>         // For std::mutex, std::lock_guard
 #include <queue>         // For std::queue

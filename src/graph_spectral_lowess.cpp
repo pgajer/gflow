@@ -3,7 +3,6 @@
 #include <Spectra/MatOp/DenseSymMatProd.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
 
-#include <thread>                       // For std::thread::hardware_concurrency
 #include <algorithm>                    // For std::min_element
 #include <numeric>                      // For std::accumulate
 #include <map>                          // For std::map
@@ -12,6 +11,7 @@
 // for debugging
 //#include <filesystem>
 //#include <fstream>
+#include "omp_compat.h"
 #include "cpp_utils.hpp"                // For debugging and elapsed.time
 #include "graph_spectral_lowess.hpp"    // For graph_spectral_lowess_t
 #include "bandwidth_utils.hpp"          // For get_candidate_bws
@@ -79,7 +79,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 	initialize_kernel(kernel_type, 1.0);
 
 	// Set Eigen to use available threads for parallel computation
-	unsigned int available_threads = std::thread::hardware_concurrency();
+	unsigned int available_threads = gflow_get_max_threads();
 	if (available_threads == 0) available_threads = 4;  // Fallback if detection fails
 	Eigen::setNbThreads(available_threads);
 

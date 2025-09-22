@@ -12,7 +12,6 @@
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <mutex>                    // For std::mutex
-#include <execution>                // For std::execution::par_unseq
 #include <atomic>                   // For std::atomic
 
 #include <R.h>                      // For R_FlushConsole, Rprintf

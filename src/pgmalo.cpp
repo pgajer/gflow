@@ -17,7 +17,6 @@
 
 #include <future>
 #include <mutex>
-#include <execution>
 #include <atomic>
 #include <mutex>
 #include <vector>
