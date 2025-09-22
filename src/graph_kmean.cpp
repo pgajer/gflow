@@ -1,3 +1,4 @@
+#include "omp_compat.h"
 #include "sampling.h" // for C_runif_simplex()
 #include "msr2.h"
 #include "cpp_utils.hpp"
