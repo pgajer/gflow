@@ -242,9 +242,12 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
     }
 
     // Set up OpenMP
-    int max_threads = omp_get_max_threads();
-    int num_threads = (n_cores > 0 && n_cores <= max_threads) ? n_cores : max_threads;
-    omp_set_num_threads(num_threads);
+    const int max_threads = gflow_get_max_threads();        // 1 if no OpenMP
+    int num_threads = (n_cores > 0) ? n_cores : max_threads;
+    if (num_threads > max_threads) num_threads = max_threads;
+    if (num_threads < 1)           num_threads = 1;
+
+    gflow_set_num_threads(num_threads);  // no-op when OpenMP is absent
 
     // Initialize thread-local kernel weights and vertex edge lengths vectors
     std::vector<std::vector<double>> thread_kernel_weights(num_threads, std::vector<double>(max_neighbors));
@@ -384,7 +387,7 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
             #pragma omp parallel
             #endif
             {
-                int thread_id = omp_get_thread_num();
+                int thread_id = gflow_get_thread_num();
                 std::vector<double>& local_kernel_weights = thread_kernel_weights[thread_id];
                 std::vector<double>& local_vertex_edge_lengths = thread_vertex_edge_lengths[thread_id];
 

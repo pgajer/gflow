@@ -310,7 +310,7 @@ std::vector<double> compute_bbwasserstein_errors(const std::vector<std::vector<d
     size_t n_points = static_cast<int>(y.size());
     int B = static_cast<int>(bb_Ey.size());
 
-    if (bb_Ey[0].size() != n_points || bb_y.size() != B || bb_y[0].size() != n_points) {
+    if (bb_Ey[0].size() != n_points || bb_y.size() != (size_t)B || bb_y[0].size() != n_points) {
         Rf_error("Mismatch in dimensions between inputs");
     }
 
