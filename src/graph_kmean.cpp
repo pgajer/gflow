@@ -1090,9 +1090,7 @@ std::vector<std::vector<double>> graph_kmean_bb(
     const int n_vertices = (int)y.size();
     std::vector<std::vector<double>> bb_Ey(n_bb);
 
-#ifdef _OPENMP
-    if (n_cores > 1) omp_set_num_threads(n_cores);
-#endif
+    gflow_set_num_threads(n_cores);
 
     // If C_runif_simplex uses R RNG, precompute weights sequentially:
     std::vector<std::vector<double>> all_w(n_bb, std::vector<double>(n_vertices));
