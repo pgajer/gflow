@@ -6,7 +6,6 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions

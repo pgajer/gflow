@@ -9,7 +9,6 @@
 #include "cpp_utils.hpp"                 // for elapsed_time
 #include "predictive_errors.hpp"
 
-#include <execution>
 #include <atomic>
 #include <mutex>
 #include <numeric>

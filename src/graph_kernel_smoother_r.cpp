@@ -8,13 +8,10 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <mutex>                    // For std::mutex
-#include <execution>                // For std::execution::par_unseq
-#include <atomic>                   // For std::atomic
 
 #include <R.h>                      // For R_FlushConsole, Rprintf
 #include <Rinternals.h>             // For R C API functions

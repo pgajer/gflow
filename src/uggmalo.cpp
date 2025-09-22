@@ -1,3 +1,4 @@
+#include "omp_compat.h"
 #include "edge_weights.hpp"
 #include "ulm.hpp"
 #include "graph_utils.hpp"
@@ -572,7 +573,7 @@ uggmalo_t uggmalo(
         }
 
         // Create thread-local random number generators
-        const unsigned int num_threads = std::thread::hardware_concurrency();
+        const unsigned int num_threads = gflow_get_max_threads();
         std::vector<std::mt19937> thread_rngs(num_threads);
         for (unsigned int i = 0; i < num_threads; ++i) {
             std::random_device rd;

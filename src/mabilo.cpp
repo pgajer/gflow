@@ -10,7 +10,6 @@
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "predictive_errors.hpp"
 
-#include <execution>
 #include <atomic>
 #include <mutex>
 #include <numeric>

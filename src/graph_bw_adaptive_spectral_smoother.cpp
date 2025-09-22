@@ -8,9 +8,8 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
-#include <thread>
+// #include <thread>
 #include <mutex>
-#include <execution>
 
 // I/O
 #include <cstdio>
@@ -24,6 +23,7 @@
 #include <Spectra/MatOp/SparseSymMatProd.h>
 
 // Project-specific headers
+#include "omp_compat.h"
 #include "graph_bw_adaptive_spectral_smoother.hpp" // For graph_bw_adaptive_spectral_smoother_t
 #include "bandwidth_utils.hpp"          // For get_candidate_bws
 #include "kernels.h"                    // For kernel functions
@@ -118,7 +118,7 @@ graph_bw_adaptive_spectral_smoother_t set_wgraph_t::graph_bw_adaptive_spectral_s
 	initialize_kernel(kernel_type, 1.0);
 
 	// Set Eigen to use available threads for parallel computation
-	unsigned int available_threads = std::thread::hardware_concurrency();
+	unsigned int available_threads = gflow_get_max_threads();
 	if (available_threads == 0) available_threads = 4;  // Fallback if detection fails
 	Eigen::setNbThreads(available_threads);
 

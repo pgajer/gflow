@@ -12,7 +12,6 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <queue>                    // Foe std::queue

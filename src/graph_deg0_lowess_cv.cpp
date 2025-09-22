@@ -1,3 +1,4 @@
+#include "omp_compat.h"
 #include "exec_policy.hpp"
 #include "graph_deg0_lowess_cv.hpp" // For graph_deg0_lowess_cv_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
@@ -9,12 +10,10 @@
 
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
 #include <mutex>                    // For std::mutex
-#include <execution>                // For std::execution::par_unseq
 #include <atomic>                   // For std::atomic
 #include <thread>                   // For std::thread::hardware_concurrenyc
 
@@ -85,7 +84,7 @@ graph_deg0_lowess_cv_t set_wgraph_t::graph_deg0_lowess_cv(
     // Initialize kernel function
     initialize_kernel(kernel_type, 1.0);
 
-    unsigned int available_threads = std::thread::hardware_concurrency();
+    unsigned int available_threads = gflow_get_max_threads();
     if (available_threads == 0) available_threads = 4; // Fallback if detection fails
 
     size_t n_vertices = adjacency_list.size();

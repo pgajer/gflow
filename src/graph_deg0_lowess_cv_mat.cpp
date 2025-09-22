@@ -1,11 +1,10 @@
 #include <vector>                   // For std::vector
 #include <numeric>                  // For std::iota
-#include <execution>                // For std::execution::seq/par
 #include <atomic>                   // For std::atomic
 #include <chrono>                   // For timing
 #include <cmath>                    // For math functions
-#include <thread>                   // For std::thread::hardware_concurrency
 
+#include "omp_compat.h"
 #include "graph_deg0_lowess_cv_mat.hpp" // For graph_deg0_lowess_cv_mat_t
 #include "set_wgraph.hpp"           // For the set_wgraph_t class
 #include "error_utils.h"            // For REPORT_ERROR
@@ -82,7 +81,7 @@ graph_deg0_lowess_cv_mat_t set_wgraph_t::graph_deg0_lowess_cv_mat(
     }
 
     // Set number of threads for parallel computation
-    unsigned int available_threads = std::thread::hardware_concurrency();
+    unsigned int available_threads = gflow_get_max_threads();
     if (available_threads == 0) available_threads = 4; // Fallback if detection fails
 
     if (verbose) {

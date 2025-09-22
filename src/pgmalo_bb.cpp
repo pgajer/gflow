@@ -12,7 +12,6 @@
 #include "1D_linear_models.h"
 #include "predictive_errors.hpp"
 
-#include <execution>
 #include <atomic>
 #include <mutex>
 #include <vector>

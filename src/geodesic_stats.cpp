@@ -5,7 +5,6 @@
 #include <unordered_set>
 #include <algorithm>
 #include <numeric>
-#include <execution>
 
 #include "exec_policy.hpp"
 #include "geodesic_stats.hpp"
