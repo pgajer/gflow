@@ -59,6 +59,7 @@
 #include "kernels.h"
 #include "mean_shift_smoother_r.h"
 #include "cv_deg0.h"
+#include "riem_dcx_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -123,6 +124,8 @@ static R_NativePrimitiveArgType kernel_type[] = { REALSXP, INTSXP, REALSXP, INTS
 static R_NativePrimitiveArgType cv_type[] = { INTSXP, INTSXP, INTSXP, INTSXP, INTSXP,  REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, INTSXP, REALSXP};
 
 static const R_CMethodDef cMethods[] = {
+  {"S_build_nerve_from_knn", (DL_FUNC) &S_build_nerve_from_knn, 7},
+  {"S_riem_dcx_summary", (DL_FUNC) &S_riem_dcx_summary, 1},
   {"C_cv_deg0_binloss", (DL_FUNC) &C_cv_deg0_binloss, 14, cv_type},
   {"C_cv_deg0_mae", (DL_FUNC) &C_cv_deg0_mae, 14, cv_type},
   {"C_epanechnikov_kernel_with_stop", (DL_FUNC) &C_epanechnikov_kernel_with_stop, 5, kernel_type},
