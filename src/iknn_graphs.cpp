@@ -84,7 +84,7 @@ extern "C" {
         );
 }
 
-iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk);
+iknn_graph_t create_iknn_graph(SEXP s_X, SEXP s_k);
 
 std::vector<int> union_find(const std::vector<std::vector<int>>& adj_vect);
 std::unique_ptr<std::vector<std::vector<std::pair<int, int>>>> prune_long_edges(const std::unique_ptr<std::vector<std::vector<std::pair<int, int>>>>& wgraph, int version);
