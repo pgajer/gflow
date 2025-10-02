@@ -200,53 +200,6 @@ void riem_dcx_t::build_nerve_from_knn(
 	Rprintf("Phase 5: Building edge list...\n");
 	#endif
 	// Build edges: edge (i,j) exists iff N̂_k(x_i) ∩ N̂_k(x_j) ≠ ∅
-#if 0
-// version 1:
-	std::vector<std::array<index_t, 2>> edge_list;
-	std::vector<double> edge_weights_vec;
-
-	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-		for (index_t j = i + 1; j < static_cast<index_t>(n_points); ++j) {
-			double intersection_measure = compute_intersection_measure(
-				neighbor_sets[i], neighbor_sets[j]
-				);
-
-			if (intersection_measure > 1e-15) {
-				edge_list.push_back({i, j});
-				edge_weights_vec.push_back(intersection_measure);
-			}
-		}
-	}
-
-// version 2:
-	// Build inverse index
-	std::vector<std::vector<index_t>> inv_neighbors(n_points);
-	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-		for (index_t neighbor : neighbor_sets[i]) {
-			if (neighbor != i) inv_neighbors[neighbor].push_back(i);
-		}
-	}
-
-	// Build edges using inverse index
-	std::set<std::pair<index_t, index_t>> seen_edges;
-	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-		for (index_t ell : neighbor_sets[i]) {
-			for (index_t j : inv_neighbors[ell]) {
-				if (i >= j) continue;  // Avoid duplicates
-
-				if (seen_edges.find({i, j}) != seen_edges.end()) continue;
-				seen_edges.insert({i, j});
-
-				double w = compute_intersection_measure(neighbor_sets[i], neighbor_sets[j]);
-				if (w > 1e-15) {
-					edge_list.push_back({i, j});
-					edge_weights_vec.push_back(w);
-				}
-			}
-		}
-	}
-#endif
-
 
 	// neighbor_sets: std::vector<std::unordered_set<index_t>>   // CLOSED: contains i
 	// compute_intersection_measure(const std::unordered_set<index_t>& A,
