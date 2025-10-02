@@ -394,6 +394,173 @@ struct laplacian_bundle_t {
     }
 
     /**
+     * @brief Build symmetrized (normalized) vertex Laplacian for spectral analysis
+     *
+     * @param g Metric family containing vertex masses M[0] and edge information
+     *
+     * @details
+     * This function constructs the normalized graph Laplacian L0_sym, which is the
+     * symmetrized version of the standard graph Laplacian. This form is particularly
+     * useful for spectral analysis because it has eigenvalues in [0, 2] and satisfies
+     * nice properties for diffusion processes.
+     *
+     * MATHEMATICAL FORMULATION:
+     *
+     * Given a weighted graph with:
+     *   - Vertices V = {1, ..., n}
+     *   - Edges E with conductances c_ij > 0
+     *   - Vertex masses m_i > 0 (from metric M[0])
+     *
+     * We construct:
+     * 1. Standard graph Laplacian: L_div
+     * 2. Mass matrix diagonal: D = diag(m_1, ..., m_n)
+     * 3. Normalized Laplacian: L_sym = D^{-1/2} L_div D^{-1/2}
+     *
+     * The normalized Laplacian has the property that for functions f on vertices:
+     *   <f, L_sym f>_{ℓ²} = (1/2) Σ_{edges (i,j)} c_ij (f_i/√m_i - f_j/√m_j)²
+     *
+     * This measures the "smoothness" of f with respect to the geometry.
+     */
+    void build_L0_sym_if_needed(const metric_family_t& g) {
+        // ========== VALIDATION: Check if we can build L0_sym ==========
+
+        // Need at least 2 dimensions (vertices and edges)
+        if (B.size() < 2) {
+            L0_sym.resize(0, 0);
+            return;
+        }
+
+        // Need a non-empty boundary operator B[1] (vertex-edge incidence)
+        if (B[1].nonZeros() == 0) {
+            L0_sym.resize(0, 0);
+            return;
+        }
+
+        // Need vertex metric M[0]
+        if (g.M.empty() || g.M[0].rows() == 0) {
+            L0_sym.resize(0, 0);
+            return;
+        }
+
+        // Need conductances c1 for each edge
+        // c1[e] represents the "strength" or "weight" of edge e
+        if (c1.size() != B[1].cols()) {
+            L0_sym.resize(0, 0);
+            return;
+        }
+
+        // ========== EXTRACT DIMENSIONS ==========
+
+        const spmat_t& B1 = B[1];           // Boundary operator ∂₁: C₁ → C₀
+        const Eigen::Index n = B1.rows();   // Number of vertices
+        const Eigen::Index m = B1.cols();   // Number of edges
+
+        // ========== BUILD STANDARD GRAPH LAPLACIAN L_div ==========
+
+        // The graph Laplacian has the form:
+        //   (L_div)_ii = Σ_{j∼i} c_ij  (sum of conductances of incident edges)
+        //   (L_div)_ij = -c_ij          (negative conductance if i,j are adjacent)
+        //   (L_div)_ij = 0              (zero if i,j not adjacent)
+        //
+        // This can be written as: L_div = B₁ C B₁ᵀ
+        // where C = diag(c₁, ..., c_m) is the diagonal matrix of edge conductances.
+
+        std::vector<Eigen::Triplet<double>> triplets;
+        triplets.reserve(4 * m);  // Each edge contributes 4 entries to L_div
+
+        // Iterate over each edge
+        for (int e = 0; e < m; ++e) {
+            // ===== DECODE EDGE ENDPOINTS FROM BOUNDARY OPERATOR =====
+
+            // The boundary operator B₁ has exactly 2 non-zero entries per column:
+            //   B₁[i, e] = -1  (tail vertex of edge e)
+            //   B₁[j, e] = +1  (head vertex of edge e)
+            //
+            // This encodes the oriented edge as: e = [i → j]
+
+            int i = -1;  // Tail vertex (receives -1 in B₁)
+            int j = -1;  // Head vertex (receives +1 in B₁)
+
+            for (spmat_t::InnerIterator it(B1, e); it; ++it) {
+                if (it.value() > 0) {
+                    j = it.row();  // Positive coefficient → head vertex
+                } else if (it.value() < 0) {
+                    i = it.row();  // Negative coefficient → tail vertex
+                }
+            }
+
+            // Skip malformed edges (should not happen in valid complex)
+            if (i < 0 || j < 0) continue;
+
+            // ===== GET EDGE CONDUCTANCE =====
+
+            real_t c = c1[e];
+
+            // Skip edges with non-positive conductance (degenerate or removed)
+            if (c <= 0) continue;
+
+            // ===== ADD CONTRIBUTIONS TO LAPLACIAN =====
+
+            // For an edge (i,j) with conductance c, the Laplacian contributions are:
+            //
+            //   L[i,i] ← L[i,i] + c    (degree term at vertex i)
+            //   L[j,j] ← L[j,j] + c    (degree term at vertex j)
+            //   L[i,j] ← L[i,j] - c    (off-diagonal coupling)
+            //   L[j,i] ← L[j,i] - c    (symmetric)
+            //
+            // This ensures L_div is symmetric and positive semi-definite.
+
+            triplets.emplace_back(i, i,  c);   // Diagonal: vertex i degree
+            triplets.emplace_back(j, j,  c);   // Diagonal: vertex j degree
+            triplets.emplace_back(i, j, -c);   // Off-diagonal: coupling
+            triplets.emplace_back(j, i, -c);   // Off-diagonal: coupling (symmetric)
+        }
+
+        // Assemble sparse matrix from triplets
+        // Note: setFromTriplets automatically sums contributions to same (row, col)
+        spmat_t L0_div(n, n);
+        L0_div.setFromTriplets(triplets.begin(), triplets.end());
+
+        // ========== BUILD NORMALIZATION MATRIX D^{-1/2} ==========
+
+        // The vertex masses m_i are stored on the diagonal of M[0].
+        // We construct the diagonal matrix:
+        //   D^{-1/2} = diag(1/√m₁, ..., 1/√m_n)
+        //
+        // This will be used to normalize the Laplacian.
+
+        spmat_t Dm05(n, n);
+        Dm05.reserve(Eigen::VectorXi::Constant(n, 1));  // Reserve space for diagonal
+
+        for (Eigen::Index i = 0; i < n; ++i) {
+            // Extract vertex mass (with safety threshold to avoid division by zero)
+            real_t m = std::max(g.M[0].coeff(i, i), 1e-15);
+
+            // Insert 1/√m_i on the diagonal
+            Dm05.insert(i, i) = 1.0 / std::sqrt(m);
+        }
+        Dm05.makeCompressed();
+
+        // ========== COMPUTE NORMALIZED LAPLACIAN ==========
+
+        // The normalized (symmetrized) Laplacian is:
+        //   L_sym = D^{-1/2} L_div D^{-1/2}
+        //
+        // This has several nice properties:
+        // 1. Symmetric: L_sym = L_symᵀ
+        // 2. Eigenvalues in [0, 2]
+        // 3. Smallest eigenvalue is 0 (with eigenvector ∝ √masses)
+        // 4. Number of 0 eigenvalues = number of connected components
+        // 5. Well-conditioned for iterative solvers
+        //
+        // The normalization makes vertices with large mass contribute less
+        // to the energy, balancing the influence of high-degree and low-degree vertices.
+
+        L0_sym = Dm05 * L0_div * Dm05;
+    }
+
+#if 0
+    /**
      * @brief Build symmetrized vertex Laplacian if conditions are met
      * @param g Metric family
      *
@@ -403,35 +570,50 @@ struct laplacian_bundle_t {
      */
     void build_L0_sym_if_needed(const metric_family_t& g) {
         if (B.size()<2 || B[1].nonZeros()==0 || g.M.empty() || g.M[0].rows()==0 || c1.size()!=B[1].cols()) {
-            L0_sym.resize(0,0); return;
+            L0_sym.resize(0,0);
+            return;
         }
+
         const spmat_t& B1 = B[1];
         const Eigen::Index n = B1.rows();
-        spmat_t L0_div(n,n);
 
-        for (int e=0; e<B1.cols(); ++e) {
-            int i=-1, j=-1;
-            for (spmat_t::InnerIterator it(B1,e); it; ++it) {
+        // Build L0_div using triplets
+        std::vector<Eigen::Triplet<double>> triplets;
+        triplets.reserve(4 * B1.cols());  // Each edge contributes 4 entries
+
+        for (int e = 0; e < B1.cols(); ++e) {
+            int i = -1, j = -1;
+            for (spmat_t::InnerIterator it(B1, e); it; ++it) {
                 if (it.value() > 0) i = it.row();
                 else if (it.value() < 0) j = it.row();
             }
-            if (i<0 || j<0) continue;
-            real_t c = c1[e]; if (c<=0) continue;
-            L0_div.insert(i,i) += c;
-            L0_div.insert(j,j) += c;
-            L0_div.insert(i,j) -= c;
-            L0_div.insert(j,i) -= c;
-        }
-        L0_div.makeCompressed();
+            if (i < 0 || j < 0) continue;
 
-        spmat_t Dm05(n,n); Dm05.reserve(Eigen::VectorXi::Constant(n,1));
-        for (Eigen::Index i=0;i<n;++i) {
-            real_t d = std::max(g.M[0].coeff(i,i), 1e-15);
-            Dm05.insert(i,i) = 1.0 / std::sqrt(d);
+            real_t c = c1[e];
+            if (c <= 0) continue;
+
+            triplets.emplace_back(i, i, c);
+            triplets.emplace_back(j, j, c);
+            triplets.emplace_back(i, j, -c);
+            triplets.emplace_back(j, i, -c);
+        }
+
+        spmat_t L0_div(n, n);
+        L0_div.setFromTriplets(triplets.begin(), triplets.end());
+
+        // Build D^{-1/2}
+        spmat_t Dm05(n, n);
+        Dm05.reserve(Eigen::VectorXi::Constant(n, 1));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            real_t d = std::max(g.M[0].coeff(i, i), 1e-15);
+            Dm05.insert(i, i) = 1.0 / std::sqrt(d);
         }
         Dm05.makeCompressed();
+
+        // Compute normalized Laplacian
         L0_sym = Dm05 * L0_div * Dm05;
     }
+#endif
 
     /**
      * @brief Assemble all Hodge Laplacians from boundary maps and metric
@@ -443,19 +625,40 @@ struct laplacian_bundle_t {
      */
     void assemble_all(const metric_family_t& g) {
         const int P = static_cast<int>(g.M.size()) - 1;
-        L.assign(P+1, spmat_t());
+        L.assign(P + 1, spmat_t());
+
         for (int p = 0; p <= P; ++p) {
+            const Eigen::Index n = g.M[p].rows();
+
             spmat_t up, down;
-            if (p+1 <= P && B[p+1].nonZeros() > 0) {
-                spmat_t A = right_apply_Minv(g, p+1, B[p+1]);
-                up = B[p+1].transpose() * A;
+            bool has_up = false, has_down = false;
+
+            // Up term: ∂_{p+1} ∂_{p+1}^* = B[p+1] M[p+1]^{-1} B[p+1]^T M[p]
+            if (p + 1 <= P && B.size() > static_cast<size_t>(p + 1) && B[p+1].nonZeros() > 0) {
+                spmat_t temp = B[p+1] * left_apply_Minv(g, p + 1, B[p+1].transpose());
+                up = temp * g.M[p];
+                has_up = true;
             }
-            if (p-1 >= 0 && B[p].nonZeros() > 0) {
-                spmat_t T = B[p] * g.M[p-1] * B[p].transpose();
-                down = left_apply_Minv(g, p, T);
+
+            // Down term: ∂_p^* ∂_p = M[p]^{-1} B[p]^T M[p-1] B[p]
+            if (p >= 1 && B.size() > static_cast<size_t>(p) && B[p].nonZeros() > 0) {
+                spmat_t temp = B[p].transpose() * g.M[p - 1] * B[p];
+                down = left_apply_Minv(g, p, temp);
+                has_down = true;
             }
-            L[p] = up + down;
+
+            // Assemble Laplacian
+            if (has_up && has_down) {
+                L[p] = up + down;
+            } else if (has_up) {
+                L[p] = up;
+            } else if (has_down) {
+                L[p] = down;
+            } else {
+                L[p] = spmat_t(n, n);
+            }
         }
+
         build_L0_sym_if_needed(g);
     }
 

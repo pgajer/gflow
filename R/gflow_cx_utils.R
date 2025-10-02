@@ -589,7 +589,7 @@ apply.harmonic.extension <- function(subgraph,
 #' )
 #' }
 #'
-#' @export
+#' @export compare.harmonic.methods
 compare.harmonic.methods <- function(subgraph,
                                    methods = c("weighted_mean", "harmonic_iterative",
                                               "harmonic_eigen", "biharmonic_harmonic",

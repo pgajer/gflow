@@ -709,7 +709,7 @@ print.summary.nerve_cx_spectral_filter <- function(x, digits = 3, ...) {
 #' cat("MSE improvement:", comparison$mse_improvement_pct, "%\n")
 #' }
 #'
-#' @export
+#' @export compare.graph.vs.nerve.cx.filtering
 compare.graph.vs.nerve.cx.filtering <- function(
     complex,
     y,

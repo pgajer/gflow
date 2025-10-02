@@ -17,7 +17,10 @@ void riem_dcx_t::build_nerve_from_knn(
     bool use_counting_measure,
     bool directed_knn,
     double density_normalization
-) {
+	) {
+
+#define DEBUG_BUILD_NERVE_FROM_KNN 0
+
     // Extract dimensions
     const Eigen::Index n_points = X.rows();
     const Eigen::Index n_features = X.cols();
@@ -32,6 +35,9 @@ void riem_dcx_t::build_nerve_from_knn(
     }
 
     // ==================== Phase 1: kNN Computation ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 1 ...\n");
+	#endif
 
     // Convert sparse Eigen matrix to R matrix for ANN library
     SEXP s_X = PROTECT(Rf_allocMatrix(REALSXP, n_points, n_features));
@@ -70,30 +76,22 @@ void riem_dcx_t::build_nerve_from_knn(
     std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
     if (!directed_knn) {
         // Build mutual kNN: keep only edges where both vertices are neighbors
-        for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-            neighbor_sets[i].clear();
-            for (index_t j : knn_neighbors[i]) {
-                // Check if i is also in j's neighborhood
-                bool is_mutual = (i == j); // vertex is always in its own closed neighborhood
-                if (!is_mutual) {
-                    for (index_t neighbor_of_j : knn_neighbors[j]) {
-                        if (neighbor_of_j == i) {
-                            is_mutual = true;
-                            break;
-                        }
-                    }
-                }
-                if (is_mutual) {
-                    neighbor_sets[i].insert(j);
-                }
-            }
-            // Always include the vertex itself in its closed neighborhood
-            neighbor_sets[i].insert(i);
-        }
+		for (index_t i = 0; i < (index_t)n_points; ++i) {
+			neighbor_sets[i].clear();
+			for (index_t j : knn_neighbors[i]) {
+				if (j == i) continue;                           // skip self early
+				bool is_mutual = false;
+				for (index_t neighbor_of_j : knn_neighbors[j]) {
+					if (neighbor_of_j == i) { is_mutual = true; break; }
+				}
+				if (is_mutual) neighbor_sets[i].insert(j);
+			}
+			neighbor_sets[i].insert(i);                         // closed neighborhood
+		}
     } else {
         // Use directed kNN: include all neighbors plus self
         for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-            neighbor_sets[i].insert(i); // closed neighborhood includes self
+            // neighbor_sets[i].insert(i); // closed neighborhood includes self - this is unnecessary as ANN includes self in the set of kNN's
             for (index_t j : knn_neighbors[i]) {
                 neighbor_sets[i].insert(j);
             }
@@ -101,6 +99,9 @@ void riem_dcx_t::build_nerve_from_knn(
     }
 
     // ==================== Phase 2: Density Computation ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 2 ...\n");
+    #endif
 
     std::vector<double> vertex_weights(n_points);
 
@@ -139,42 +140,233 @@ void riem_dcx_t::build_nerve_from_knn(
     }
 
     // ==================== Phase 3: Initialize riem_dcx_t Structure ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 3 ...\n");
+	#endif
 
-    // Determine simplex counts for initialization
-    std::vector<index_t> n_by_dim(max_p + 1);
-    n_by_dim[0] = static_cast<index_t>(n_points);
+	// Initialize with ONLY vertices (dimension 0)
+	std::vector<index_t> n_by_dim = {static_cast<index_t>(n_points)};
+	init_dims(0, n_by_dim);  // <-- Initialize pmax = 0, not max_p
 
-    // We'll count edges and higher simplices as we build them
-    // For now, initialize with vertices only
-    init_dims(max_p, n_by_dim);
+	// ==================== Phase 4: Build 0-Simplices (Vertices) ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 4 ...\n");
+	#endif
 
-    // ==================== Phase 4: Build 0-Simplices (Vertices) ====================
+	S[0].simplex_verts.resize(n_points);
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		S[0].simplex_verts[i] = {i};
+		S[0].id_of[{i}] = i;
+	}
 
-    S[0].simplex_verts.resize(n_points);
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        S[0].simplex_verts[i] = {i};
-        S[0].id_of[{i}] = i;
-    }
+	// Initialize vertex masses: m_i = μ(N̂_k(x_i))
+	vec_t vertex_masses = vec_t::Zero(n_points);
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		double mass = 0.0;
+		for (index_t j : neighbor_sets[i]) {
+			mass += vertex_weights[j];
+		}
+		vertex_masses[i] = mass;
+	}
 
-    // Initialize vertex masses: m_i = μ(N̂_k(x_i))
-    // For directed kNN: this is the weighted sum over the neighborhood
-    // For mutual kNN: weighted sum over mutual neighbors
-    vec_t vertex_masses = vec_t::Zero(n_points);
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        double mass = 0.0;
-        for (index_t j : neighbor_sets[i]) {
-            mass += vertex_weights[j];
-        }
-        vertex_masses[i] = mass;
-    }
+	g.M[0] = spmat_t(n_points, n_points);
+	g.M[0].reserve(Eigen::VectorXi::Constant(n_points, 1));
+	for (Eigen::Index i = 0; i < n_points; ++i) {
+		g.M[0].insert(i, i) = std::max(vertex_masses[i], 1e-15);
+	}
+	g.M[0].makeCompressed();
 
-    g.M[0] = spmat_t(n_points, n_points);
-    g.M[0].reserve(Eigen::VectorXi::Constant(n_points, 1));
-    for (Eigen::Index i = 0; i < n_points; ++i) {
-        g.M[0].insert(i, i) = std::max(vertex_masses[i], 1e-15);
-    }
-    g.M[0].makeCompressed();
 
+	// ==================== Phase 5: Build 1-Simplices (Edges) ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Starting edge construction...\n");
+    #endif
+
+	// Helper function to compute measure of intersection
+	auto compute_intersection_measure = [&](
+		const std::unordered_set<index_t>& set_i,
+		const std::unordered_set<index_t>& set_j
+		) -> double {
+		double measure = 0.0;
+		for (index_t v : set_i) {
+			if (set_j.find(v) != set_j.end()) {
+				measure += vertex_weights[v];
+			}
+		}
+		return measure;
+	};
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Building edge list...\n");
+	#endif
+	// Build edges: edge (i,j) exists iff N̂_k(x_i) ∩ N̂_k(x_j) ≠ ∅
+#if 0
+// version 1:
+	std::vector<std::array<index_t, 2>> edge_list;
+	std::vector<double> edge_weights_vec;
+
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		for (index_t j = i + 1; j < static_cast<index_t>(n_points); ++j) {
+			double intersection_measure = compute_intersection_measure(
+				neighbor_sets[i], neighbor_sets[j]
+				);
+
+			if (intersection_measure > 1e-15) {
+				edge_list.push_back({i, j});
+				edge_weights_vec.push_back(intersection_measure);
+			}
+		}
+	}
+
+// version 2:
+	// Build inverse index
+	std::vector<std::vector<index_t>> inv_neighbors(n_points);
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		for (index_t neighbor : neighbor_sets[i]) {
+			if (neighbor != i) inv_neighbors[neighbor].push_back(i);
+		}
+	}
+
+	// Build edges using inverse index
+	std::set<std::pair<index_t, index_t>> seen_edges;
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		for (index_t ell : neighbor_sets[i]) {
+			for (index_t j : inv_neighbors[ell]) {
+				if (i >= j) continue;  // Avoid duplicates
+
+				if (seen_edges.find({i, j}) != seen_edges.end()) continue;
+				seen_edges.insert({i, j});
+
+				double w = compute_intersection_measure(neighbor_sets[i], neighbor_sets[j]);
+				if (w > 1e-15) {
+					edge_list.push_back({i, j});
+					edge_weights_vec.push_back(w);
+				}
+			}
+		}
+	}
+#endif
+
+
+	// neighbor_sets: std::vector<std::unordered_set<index_t>>   // CLOSED: contains i
+	// compute_intersection_measure(const std::unordered_set<index_t>& A,
+	//                              const std::unordered_set<index_t>& B) -> double
+	// n_points: size_t (or index_t-castable)
+	// eps threshold:
+	const double eps_w = 1e-15;
+
+	const index_t n = static_cast<index_t>(n_points);
+
+	// Build OPEN inverse index: Pre(ell) = { i : ell in N_k(i) } (self excluded)
+	std::vector<std::vector<index_t>> inv_neighbors;
+	inv_neighbors.assign(n, {});
+	for (index_t i = 0; i < n; ++i) {
+		inv_neighbors[i].reserve(neighbor_sets[i].size()); // rough
+	}
+	for (index_t i = 0; i < n; ++i) {
+		for (index_t neighbor : neighbor_sets[i]) {
+			if (neighbor != i) inv_neighbors[neighbor].push_back(i);
+		}
+	}
+
+	// Edge candidate generation via witnesses (closed on the forward side)
+	auto pack_pair = [](index_t a, index_t b) -> uint64_t {
+		if (a > b) std::swap(a, b);
+		return (uint64_t(a) << 32) ^ uint64_t(b);
+	};
+
+	std::unordered_set<uint64_t> seen;
+	seen.reserve(static_cast<size_t>(n) * 3u * (inv_neighbors.empty() ? 1u : inv_neighbors[0].capacity()));
+
+	std::vector<std::array<index_t,2>> edge_list;
+	std::vector<double> edge_weights_vec;
+	// Rough pre-reserve: ~ 2k edges per vertex (tune as you like)
+	edge_list.reserve(static_cast<size_t>(n) * 2u * (inv_neighbors.empty() ? 1u : inv_neighbors[0].capacity()));
+	edge_weights_vec.reserve(edge_list.capacity());
+
+	for (index_t i = 0; i < n; ++i) {
+		// iterate witnesses in CLOSED forward set (ell may equal i; that’s fine for closed-cover nerve)
+		for (index_t ell : neighbor_sets[i]) {
+			// pull all j that also have ell as a neighbor (OPEN inverse index)
+			const auto& pre = inv_neighbors[ell];
+			for (index_t j : pre) {
+				if (j == i) continue;
+
+				const uint64_t key = pack_pair(i, j);
+				if (!seen.insert(key).second) continue; // already processed this unordered pair
+
+				// tiny constant-factor win: pass smaller closed set first
+				const bool i_smaller = neighbor_sets[i].size() <= neighbor_sets[j].size();
+				const auto& A = i_smaller ? neighbor_sets[i] : neighbor_sets[j];
+				const auto& B = i_smaller ? neighbor_sets[j] : neighbor_sets[i];
+				const double w = compute_intersection_measure(A, B);
+
+				if (w > eps_w) {
+					const index_t a = std::min(i, j), b = std::max(i, j);
+					edge_list.push_back({a, b});
+					edge_weights_vec.push_back(w);
+				}
+			}
+		}
+	}
+
+	const index_t n_edges = edge_list.size();
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Found %zu edges\n", n_edges);
+	#endif
+
+	if (n_edges == 0) {
+		Rf_error("No edges found in k-NN graph");
+	}
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Calling extend_by_one_dim(%zu)\n", n_edges);
+	#endif
+	extend_by_one_dim(n_edges);
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Populating edge table...\n");
+	#endif
+	// Populate edge table
+	S[1].simplex_verts.resize(n_edges);
+	for (index_t e = 0; e < n_edges; ++e) {
+		std::vector<index_t> edge_verts = {edge_list[e][0], edge_list[e][1]};
+		S[1].simplex_verts[e] = edge_verts;
+		S[1].id_of[edge_verts] = e;
+	}
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Building edge metric...\n");
+	#endif
+	// Build edge masses from intersection measures
+	g.M[1] = spmat_t(n_edges, n_edges);
+	g.M[1].reserve(Eigen::VectorXi::Constant(n_edges, 1));
+	for (index_t e = 0; e < n_edges; ++e) {
+		g.M[1].insert(e, e) = std::max(edge_weights_vec[e], 1e-15);
+	}
+	g.M[1].makeCompressed();
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Building boundary operator...\n");
+	#endif
+	// Build boundary operator B[1]: edges → vertices
+	build_incidence_from_edges();
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Storing conductances...\n");
+	#endif
+	// Store conductances for potential L0_sym construction
+	L.c1 = vec_t(n_edges);
+	for (index_t e = 0; e < n_edges; ++e) {
+		L.c1[e] = edge_weights_vec[e];
+	}
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 5: Complete\n");
+	#endif
+
+#if 0
     // ==================== Phase 5: Build 1-Simplices (Edges) ====================
 
     // Helper function to compute measure of intersection
@@ -192,18 +384,18 @@ void riem_dcx_t::build_nerve_from_knn(
     };
 
     // Helper to compute intersection as a set
-    auto compute_intersection_set = [](
-        const std::unordered_set<index_t>& set_i,
-        const std::unordered_set<index_t>& set_j
-    ) -> std::unordered_set<index_t> {
-        std::unordered_set<index_t> result;
-        for (index_t v : set_i) {
-            if (set_j.find(v) != set_j.end()) {
-                result.insert(v);
-            }
-        }
-        return result;
-    };
+    // auto compute_intersection_set = [](
+    //     const std::unordered_set<index_t>& set_i,
+    //     const std::unordered_set<index_t>& set_j
+    // ) -> std::unordered_set<index_t> {
+    //     std::unordered_set<index_t> result;
+    //     for (index_t v : set_i) {
+    //         if (set_j.find(v) != set_j.end()) {
+    //             result.insert(v);
+    //         }
+    //     }
+    //     return result;
+    // };
 
     // Build edges: edge (i,j) exists iff N̂_k(x_i) ∩ N̂_k(x_j) ≠ ∅
     std::vector<std::array<index_t, 2>> edge_list;
@@ -224,9 +416,8 @@ void riem_dcx_t::build_nerve_from_knn(
 
     const index_t n_edges = edge_list.size();
 
-    // Update dimension counts and reinitialize
-    n_by_dim[1] = n_edges;
-	extend_by_one_dim((index_t)n_edges);
+	// Extend to dimension 1 with n_edges simplices
+	extend_by_one_dim(n_edges);
 
     // Populate edge table
     S[1].simplex_verts.resize(n_edges);
@@ -253,133 +444,129 @@ void riem_dcx_t::build_nerve_from_knn(
         L.c1[e] = edge_weights_vec[e];
     }
 
+#endif
+
     // ==================== Phase 6: Build Higher-Dimensional Simplices ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 6 max_p: %d\n", (int)max_p);
+    #endif
 
-    if (max_p >= 2) {
-        // Build 2-simplices (triangles) and higher if requested
+	if (max_p >= 2) {
+		// Build simplices dimension by dimension
+		for (int p = 2; p <= static_cast<int>(max_p); ++p) {
+			// Use unordered_map to automatically deduplicate and aggregate weights
+			std::unordered_map<std::vector<index_t>, double, vec_hash_t> simplex_weight_map;
 
-        for (int p = 2; p <= static_cast<int>(max_p); ++p) {
-            std::vector<std::vector<index_t>> p_simplices;
-            std::vector<double> p_weights;
+			// Consider all pairs of (p-1)-simplices
+			const index_t n_prev = S[p-1].size();
+			for (index_t i = 0; i < n_prev; ++i) {
+				for (index_t j = i + 1; j < n_prev; ++j) {
+					const auto& s1 = S[p-1].simplex_verts[i];
+					const auto& s2 = S[p-1].simplex_verts[j];
 
-            if (p == 2) {
-                // Triangles: check each triple of vertices
-                for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-                    for (index_t j = i + 1; j < static_cast<index_t>(n_points); ++j) {
-                        // Skip if no edge (i,j)
-                        std::vector<index_t> edge_ij = {i, j};
-                        if (S[1].id_of.find(edge_ij) == S[1].id_of.end()) continue;
+					// Compute intersection size
+					std::unordered_set<index_t> intersection;
+					for (index_t v : s1) {
+						if (std::find(s2.begin(), s2.end(), v) != s2.end()) {
+							intersection.insert(v);
+						}
+					}
 
-                        for (index_t ell = j + 1; ell < static_cast<index_t>(n_points); ++ell) {
-                            // Check if all three edges exist
-                            std::vector<index_t> edge_i_ell = {i, ell};
-                            std::vector<index_t> edge_j_ell = {j, ell};
+					// If they share exactly p vertices, merge to form p-simplex
+					if (intersection.size() == static_cast<size_t>(p-1)) {
+						// Merge the two simplices (union of vertices)
+						std::vector<index_t> merged;
+						merged.reserve(p + 1);
+						std::set_union(s1.begin(), s1.end(),
+									   s2.begin(), s2.end(),
+									   std::back_inserter(merged));
 
-                            if (S[1].id_of.find(edge_i_ell) == S[1].id_of.end()) continue;
-                            if (S[1].id_of.find(edge_j_ell) == S[1].id_of.end()) continue;
+						// Verify we got a p-simplex (p+1 vertices)
+						if (merged.size() != static_cast<size_t>(p + 1)) {
+							continue;
+						}
 
-                            // All three edges exist, compute triple intersection
-                            std::unordered_set<index_t> intersection_ij =
-                                compute_intersection_set(neighbor_sets[i], neighbor_sets[j]);
+						// Compute measure of the p-simplex (intersection of all neighborhoods)
+						std::unordered_set<index_t> common_neighbors = neighbor_sets[merged[0]];
+						for (size_t v_idx = 1; v_idx < merged.size(); ++v_idx) {
+							std::unordered_set<index_t> temp;
+							for (index_t v : common_neighbors) {
+								if (neighbor_sets[merged[v_idx]].find(v) !=
+									neighbor_sets[merged[v_idx]].end()) {
+									temp.insert(v);
+								}
+							}
+							common_neighbors = std::move(temp);
+						}
 
-                            double triple_measure = 0.0;
-                            for (index_t v : intersection_ij) {
-                                if (neighbor_sets[ell].find(v) != neighbor_sets[ell].end()) {
-                                    triple_measure += vertex_weights[v];
-                                }
-                            }
+						double measure = 0.0;
+						for (index_t v : common_neighbors) {
+							measure += vertex_weights[v];
+						}
 
-                            if (triple_measure > 1e-15) {
-                                p_simplices.push_back({i, j, ell});
-                                p_weights.push_back(triple_measure);
-                            }
-                        }
-                    }
-                }
-            } else {
-                // For p > 2: build from (p-1)-simplices
-                // A p-simplex exists if all its (p-1)-faces exist and neighborhoods intersect
+						if (measure > 1e-15) {
+							// Aggregate weights: use max to handle duplicates
+							auto it = simplex_weight_map.find(merged);
+							if (it != simplex_weight_map.end()) {
+								// Simplex already discovered via another pair
+								it->second = std::max(it->second, measure);
+							} else {
+								// First time discovering this simplex
+								simplex_weight_map[merged] = measure;
+							}
+						}
+					}
+				}
+			}
 
-                const auto& prev_simplices = S[p-1].simplex_verts;
+			#if DEBUG_BUILD_NERVE_FROM_KNN
+			Rprintf("Phase 6: Dimension p=%d, found %zu candidate simplices before deduplication\n",
+					p, simplex_weight_map.size());
+			#endif
 
-                for (index_t s1 = 0; s1 < prev_simplices.size(); ++s1) {
-                    for (index_t s2 = s1 + 1; s2 < prev_simplices.size(); ++s2) {
-                        const auto& simplex1 = prev_simplices[s1];
-                        const auto& simplex2 = prev_simplices[s2];
+			if (simplex_weight_map.empty()) {
+				#if DEBUG_BUILD_NERVE_FROM_KNN
+				Rprintf("Phase 6: No %d-simplices found, stopping at dimension %d\n",
+						p, p - 1);
+				#endif
+				pmax = p - 1;
+				break;
+			}
 
-                        // Check if they share exactly p-1 vertices
-                        std::vector<index_t> common;
-                        std::set_intersection(
-                            simplex1.begin(), simplex1.end(),
-                            simplex2.begin(), simplex2.end(),
-                            std::back_inserter(common)
-                        );
+			// Extract deduplicated simplices and weights
+			std::vector<std::vector<index_t>> p_simplices;
+			std::vector<double> p_weights;
+			p_simplices.reserve(simplex_weight_map.size());
+			p_weights.reserve(simplex_weight_map.size());
 
-                        if (common.size() == static_cast<size_t>(p - 1)) {
-                            // Merge to form p-simplex
-                            std::vector<index_t> merged;
-                            std::set_union(
-                                simplex1.begin(), simplex1.end(),
-                                simplex2.begin(), simplex2.end(),
-                                std::back_inserter(merged)
-                            );
+			for (const auto& [simplex, weight] : simplex_weight_map) {
+				p_simplices.push_back(simplex);
+				p_weights.push_back(weight);
+			}
 
-                            // Compute measure of (p+1)-fold intersection
-                            std::unordered_set<index_t> intersection = neighbor_sets[merged[0]];
-                            for (size_t idx = 1; idx < merged.size(); ++idx) {
-                                std::unordered_set<index_t> temp;
-                                for (index_t v : intersection) {
-                                    if (neighbor_sets[merged[idx]].find(v) !=
-                                        neighbor_sets[merged[idx]].end()) {
-                                        temp.insert(v);
-                                    }
-                                }
-                                intersection = std::move(temp);
-                            }
+			// Extend complex to dimension p
+			extend_by_one_dim(static_cast<index_t>(p_simplices.size()));
 
-                            double measure = 0.0;
-                            for (index_t v : intersection) {
-                                measure += vertex_weights[v];
-                            }
+			// Add p-simplices to the complex
+			S[p].simplex_verts = p_simplices;
+			for (index_t s = 0; s < static_cast<index_t>(p_simplices.size()); ++s) {
+				S[p].id_of[p_simplices[s]] = s;
+			}
 
-                            if (measure > 1e-15) {
-                                p_simplices.push_back(merged);
-                                p_weights.push_back(measure);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (p_simplices.empty()) {
-                // No p-simplices exist; stop construction
-				// Adjust pmax downward - no artificial limit
-                pmax = p - 1;
-                break;
-            }
-
-			// Update dimension count and populate structures
-            n_by_dim[p] = p_simplices.size();
-
-            // Reinitialize with updated dimensions
-			extend_by_one_dim((index_t)p_simplices.size());
-
-            // Add p-simplices
-            S[p].simplex_verts = p_simplices;
-            for (index_t s = 0; s < static_cast<index_t>(p_simplices.size()); ++s) {
-                S[p].id_of[p_simplices[s]] = s;
-            }
-
-            g.M[p] = spmat_t(p_simplices.size(), p_simplices.size());
-            g.M[p].reserve(Eigen::VectorXi::Constant(p_simplices.size(), 1));
-            for (index_t s = 0; s < static_cast<index_t>(p_simplices.size()); ++s) {
-                g.M[p].insert(s, s) = std::max(p_weights[s], 1e-15);
-            }
-            g.M[p].makeCompressed();
-        }
-    }
+			// Build metric matrix for p-simplices
+			g.M[p] = spmat_t(p_simplices.size(), p_simplices.size());
+			g.M[p].reserve(Eigen::VectorXi::Constant(p_simplices.size(), 1));
+			for (index_t s = 0; s < static_cast<index_t>(p_simplices.size()); ++s) {
+				g.M[p].insert(s, s) = std::max(p_weights[s], 1e-15);
+			}
+			g.M[p].makeCompressed();
+		}
+	}
 
     // ==================== Phase 7: Build Star Tables ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 7 ...\n");
+    #endif
 
     // Populate star tables for gradient computations
     for (int p = 0; p < pmax; ++p) {
@@ -418,10 +605,18 @@ void riem_dcx_t::build_nerve_from_knn(
     }
 
 	// ==================== Phase 7.5: Build Boundary Operators for p >= 2 ====================
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 7.5 ...\n");
+	#endif
 
 	for (int p = 2; p <= pmax; ++p) {
 		const index_t n_p_simplices = S[p].size();
 		const index_t n_p_minus_1_simplices = S[p-1].size();
+
+		if (n_p_simplices == 0) {
+			// No simplices at this dimension, skip
+			continue;
+		}
 
 		// Build boundary operator B[p]: C_p -> C_{p-1}
 		std::vector<Eigen::Triplet<double>> triplets;
@@ -429,6 +624,12 @@ void riem_dcx_t::build_nerve_from_knn(
 
 		for (index_t sp = 0; sp < n_p_simplices; ++sp) {
 			const auto& vertices = S[p].simplex_verts[sp];
+
+			// Safety check: verify vertex count
+			if (vertices.size() != static_cast<size_t>(p + 1)) {
+				Rf_error("Simplex %zu in dimension %d has %zu vertices, expected %d",
+						 sp, p, vertices.size(), p + 1);
+			}
 
 			// Generate all (p-1)-faces of this p-simplex
 			for (size_t omit_idx = 0; omit_idx < vertices.size(); ++omit_idx) {
@@ -446,13 +647,29 @@ void riem_dcx_t::build_nerve_from_knn(
 				auto it = S[p-1].id_of.find(face);
 				if (it != S[p-1].id_of.end()) {
 					index_t face_id = it->second;
+
+					// Safety check: verify face_id is in bounds
+					if (face_id >= n_p_minus_1_simplices) {
+						Rf_error("Face ID %zu out of bounds (max %zu) for dimension %d",
+								 face_id, n_p_minus_1_simplices - 1, p - 1);
+					}
+
 					double sign = (omit_idx % 2 == 0) ? 1.0 : -1.0;
 					triplets.emplace_back(static_cast<Eigen::Index>(face_id),
 										  static_cast<Eigen::Index>(sp),
 										  sign);
 				} else {
-					// This should never happen if complex construction is correct
-					Rf_error("Face not found in S[%d] during boundary operator construction", p-1);
+					// Face not found - this indicates a serious error in complex construction
+					Rf_error("Face {%s} of simplex %zu in dimension %d not found in S[%d]",
+							 [&]() {
+								 std::string s;
+								 for (size_t i = 0; i < face.size(); ++i) {
+									 if (i > 0) s += ",";
+									 s += std::to_string(face[i]);
+								 }
+								 return s.c_str();
+							 }(),
+							 sp, p, p - 1);
 				}
 			}
 		}
@@ -464,10 +681,21 @@ void riem_dcx_t::build_nerve_from_knn(
 		L.B[p].makeCompressed();
 	}
 
-    // ==================== Phase 8: Assemble Operators ====================
+	// ==================== Phase 8: Assemble Operators ====================
 
-    g.normalize();
-    assemble_operators();
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 8: Normalizing metrics...\n");
+	#endif
+	g.normalize();
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 8: Assembling operators (pmax=%d)...\n", pmax);
+	#endif
+	assemble_operators();
+
+	#if DEBUG_BUILD_NERVE_FROM_KNN
+	Rprintf("Phase 8: Complete\n");
+	#endif
 }
 
 void riem_dcx_t::build_knn_riem_dcx(
