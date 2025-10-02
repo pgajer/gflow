@@ -12,6 +12,117 @@ devtools::document()       # Update documentation (roxygen2)
 make build                 # Build tarball with Makefile
 R CMD build .              # Build tarball (manual)
 R CMD check gflow_*.tar.gz --as-cran   # Full CRAN check
+
+# Clean everything
+devtools::clean_dll()
+
+# Regenerate documentation and NAMESPACE
+devtools::document()
+
+# Try loading again
+devtools::load_all()
+```
+
+## Interactive Debugging Setup
+```r
+devtools::load_all()
+
+data <- list(
+  X = matrix(rnorm(100), 50, 2),
+  y = rnorm(50)
+)
+
+dcx1 <- build.nerve.from.knn(data$X, data$y, k = 10, max.p = 1)
+
+## see /Users/pgajer/Library/Logs/DiagnosticReports/
+## [~/current_projects/gflow]% ls -lt /Users/pgajer/Library/Logs/DiagnosticReports/*ips | head
+
+
+source("tests/manual/setup-debug.R")
+data <- make_test_data(n = 50, type = "clustered")
+
+# Test with max.p = 1 (should work)
+dcx1 <- build.nerve.from.knn(data$X, data$y, k = 10, max.p = 1)
+riem.dcx.summary(dcx1)
+
+# Test with max.p = 2 (triangles)
+dcx2 <- build.nerve.from.knn(data$X, data$y, k = 10, max.p = 2)
+riem.dcx.summary(dcx2)
+
+check_all_duplicates(dcx2)
+
+# Only if max.p = 2 works, try max.p = 3
+dcx3 <- build.nerve.from.knn(data$X, data$y, k = 10, max.p = 3)
+riem.dcx.summary(dcx3)
+check_all_duplicates(dcx3)
+
+# Try k=20 (40% of points)
+dcx_k20 <- build.nerve.from.knn(data$X, data$y, k = 20, max.p = 3)
+riem.dcx.summary(dcx_k20)
+
+# Directed k-NN is less restrictive
+dcx.dir <- build.nerve.from.knn(data$X, data$y, k = 20, max.p = 3, directed.knn = TRUE)
+riem.dcx.summary(dcx.dir)
+
+
+
+
+# Start debugging session
+source("tests/manual/setup-debug.R")
+
+# Quick test with defaults
+dcx <- quick_check()
+
+# Test with clustered data
+data <- make_test_data(n = 100, type = "clustered")
+dcx <- quick_check(data$X, data$y, k = 15, max.p = 3)
+
+# Detailed inspection
+print_simplices(dcx, 2)  # Show triangles
+check_all_duplicates(dcx, verbose = TRUE)
+
+# Visualize (if you have ggplot2)
+plot_nerve_2d(dcx, data$X, show_triangles = TRUE)
+
+# After modifying C++ code
+reload_cpp()
+dcx <- quick_check()
+
+# Test different scenarios
+for (type in c("random", "clustered", "circle")) {
+  cat("\n\n### Testing", type, "data ###\n")
+  data <- make_test_data(type = type)
+  dcx <- quick_check(data$X, data$y, k = 12, max.p = 3)
+}
+```
+
+## Running Manual Tests
+```r
+# From package root
+source("tests/manual/debug-nerve-duplicates.R")
+
+# Or load the package first
+devtools::load_all()
+source("tests/manual/debug-nerve-duplicates.R")
+
+# Or interactively step through
+file.edit("tests/manual/debug-nerve-duplicates.R")
+# Then run chunks with Ctrl+Enter or Cmd+Enter
+```
+
+## Run all tests
+```r
+devtools::test()
+```
+
+## Run specific test file
+```r
+devtools::test(filter = "nerve-construction")
+```
+
+## Run with detailed output
+```r
+devtools::test(reporter = "progress")
 ```
 
 ## Build/package cycle:

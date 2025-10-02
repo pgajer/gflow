@@ -278,7 +278,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     const double density_normalization = Rf_asReal(s_density_normalization);
 
     // ==================== Convert X to Eigen Sparse Matrix ====================
-
     Eigen::SparseMatrix<double> X_sparse;
 
     if (Rf_isMatrix(s_X) && TYPEOF(s_X) == REALSXP) {
@@ -356,7 +355,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     const Eigen::Index n_features = X_sparse.cols();
 
     // ==================== Convert y to Eigen Vector ====================
-
     Eigen::VectorXd y_vec;
 
     if (s_y == R_NilValue) {
@@ -379,7 +377,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     }
 
     // ==================== Validate Parameters ====================
-
     if (n_points <= 0 || n_features <= 0) {
         Rf_error("X must have positive dimensions (n_points=%ld, n_features=%ld)",
                  n_points, n_features);
@@ -410,7 +407,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     }
 
     // ==================== Build Complex ====================
-
     riem_dcx_t* dcx = nullptr;
 
     try {
@@ -435,7 +431,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     }
 
     // ==================== Create External Pointer ====================
-
     // Create external pointer with finalizer
     SEXP ext_ptr = PROTECT(R_MakeExternalPtr(dcx, R_NilValue, R_NilValue));
 
@@ -524,3 +519,75 @@ extern "C" SEXP S_riem_dcx_summary(SEXP s_dcx_ptr) {
     return result;
 }
 
+/**
+ * @brief Extract simplex vertex lists for a given dimension
+ */
+extern "C" SEXP S_get_simplices(SEXP s_dcx_ptr, SEXP s_dim) {
+    if (TYPEOF(s_dcx_ptr) != EXTPTRSXP) {
+        Rf_error("Argument must be an external pointer");
+    }
+
+    riem_dcx_t* dcx = static_cast<riem_dcx_t*>(R_ExternalPtrAddr(s_dcx_ptr));
+    if (dcx == nullptr) {
+        Rf_error("Invalid or deleted riem_dcx_t pointer");
+    }
+
+    int dim = Rf_asInteger(s_dim);
+    if (dim < 0 || dim > dcx->pmax) {
+        Rf_error("Invalid dimension %d (must be 0 to %d)", dim, dcx->pmax);
+    }
+
+    const auto& simplices = dcx->S[dim].simplex_verts;
+    const index_t n_simplices = simplices.size();
+
+    // Create list of integer vectors
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_simplices));
+
+    for (index_t i = 0; i < n_simplices; ++i) {
+        const auto& simplex = simplices[i];
+        SEXP simplex_vec = PROTECT(Rf_allocVector(INTSXP, simplex.size()));
+        int* p_simplex = INTEGER(simplex_vec);
+
+        for (size_t j = 0; j < simplex.size(); ++j) {
+            p_simplex[j] = static_cast<int>(simplex[j]) + 1; // R uses 1-indexing
+        }
+
+        SET_VECTOR_ELT(result, i, simplex_vec);
+        UNPROTECT(1); // simplex_vec
+    }
+
+    UNPROTECT(1); // result
+    return result;
+}
+
+/**
+ * @brief Extract metric diagonal values for a given dimension
+ */
+extern "C" SEXP S_get_metric_diagonal(SEXP s_dcx_ptr, SEXP s_dim) {
+    if (TYPEOF(s_dcx_ptr) != EXTPTRSXP) {
+        Rf_error("Argument must be an external pointer");
+    }
+
+    riem_dcx_t* dcx = static_cast<riem_dcx_t*>(R_ExternalPtrAddr(s_dcx_ptr));
+    if (dcx == nullptr) {
+        Rf_error("Invalid or deleted riem_dcx_t pointer");
+    }
+
+    int dim = Rf_asInteger(s_dim);
+    if (dim < 0 || dim > dcx->pmax) {
+        Rf_error("Invalid dimension %d (must be 0 to %d)", dim, dcx->pmax);
+    }
+
+    const spmat_t& M = dcx->g.M[dim];
+    const Eigen::Index n = M.rows();
+
+    SEXP result = PROTECT(Rf_allocVector(REALSXP, n));
+    double* p_result = REAL(result);
+
+    for (Eigen::Index i = 0; i < n; ++i) {
+        p_result[i] = M.coeff(i, i);
+    }
+
+    UNPROTECT(1);
+    return result;
+}

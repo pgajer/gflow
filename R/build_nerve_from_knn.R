@@ -304,69 +304,72 @@
 #'
 #' @export
 build.nerve.from.knn <- function(
-    X,
-    y = NULL,
-    k = 10,
-    max.p = 2,
-    use.counting.measure = TRUE,
-    directed.knn = FALSE,
-    density.normalization = 0.0
-) {
-  # Validate inputs at R level
-  if (!is.matrix(X) && !inherits(X, "Matrix")) {
-    stop("X must be a numeric matrix or sparse Matrix (dgCMatrix)")
-  }
+                                 X,
+                                 y = NULL,
+                                 k = 10,
+                                 max.p = 2,
+                                 use.counting.measure = TRUE,
+                                 directed.knn = FALSE,
+                                 density.normalization = 0.0
+                                 ) {
+    ## Validate inputs at R level
+    if (!is.matrix(X) && !inherits(X, "Matrix")) {
+        stop("X must be a numeric matrix or sparse Matrix (dgCMatrix)")
+    }
 
-  if (!is.null(y) && !is.numeric(y)) {
-    stop("y must be a numeric vector or NULL")
-  }
+    if (!is.null(y) && !is.numeric(y)) {
+        stop("y must be a numeric vector or NULL")
+    }
 
-  if (!is.numeric(k) || length(k) != 1 || k != as.integer(k)) {
-    stop("k must be a single integer")
-  }
+    if (!is.numeric(k) || length(k) != 1 || k != as.integer(k)) {
+        stop("k must be a single integer")
+    }
 
-  if (!is.numeric(max.p) || length(max.p) != 1 || max.p != as.integer(max.p)) {
-    stop("max.p must be a single integer")
-  }
+    if (!is.numeric(max.p) || length(max.p) != 1 || max.p != as.integer(max.p)) {
+        stop("max.p must be a single integer")
+    }
 
-  if (!is.logical(use.counting.measure) || length(use.counting.measure) != 1) {
-    stop("use.counting.measure must be a single logical value")
-  }
+    if (!is.logical(use.counting.measure) || length(use.counting.measure) != 1) {
+        stop("use.counting.measure must be a single logical value")
+    }
 
-  if (!is.logical(directed.knn) || length(directed.knn) != 1) {
-    stop("directed.knn must be a single logical value")
-  }
+    if (!is.logical(directed.knn) || length(directed.knn) != 1) {
+        stop("directed.knn must be a single logical value")
+    }
 
-  if (!is.numeric(density.normalization) || length(density.normalization) != 1) {
-    stop("density.normalization must be a single numeric value")
-  }
+    if (!is.numeric(density.normalization) || length(density.normalization) != 1) {
+        stop("density.normalization must be a single numeric value")
+    }
 
-  # Call C++ implementation via .Call()
-  dcx <- .Call(
-    "C_build_nerve_from_knn",
-    X,
-    y,
-    as.integer(k),
-    as.integer(max.p),
-    as.logical(use.counting.measure),
-    as.logical(directed.knn),
-    as.numeric(density.normalization),
-    PACKAGE = "gflow"
-  )
+    storage.mode(X) <- "double"
 
-  # Attach construction parameters as attributes
-  attr(dcx, "construction_params") <- list(
-    n_points = nrow(X),
-    n_features = ncol(X),
-    k = k,
-    max_p = max.p,
-    use_counting_measure = use.counting.measure,
-    directed_knn = directed.knn,
-    density_normalization = density.normalization,
-    has_response = !is.null(y)
-  )
+    ## Call C++ implementation via .Call()
+    dcx <- .Call(
+        "S_build_nerve_from_knn",
+        X,
+        as.double(y),
+        as.integer(k + 1), # ANN returns self as a member of k-nearest neighbors, so we need to adjust for it adding 1
+        as.integer(max.p),
+        as.logical(use.counting.measure),
+        as.logical(directed.knn),
+        as.numeric(density.normalization)
+    )
 
-  return(dcx)
+    ## Attach construction parameters as attributes
+    attr(dcx, "construction_params") <- list(
+        n_points = nrow(X),
+        n_features = ncol(X),
+        k = k,
+        max_p = max.p,
+        use_counting_measure = use.counting.measure,
+        directed_knn = directed.knn,
+        density_normalization = density.normalization,
+        has_response = !is.null(y)
+    )
+
+    class(dcx) <- c("riem_dcx", "list")
+
+    return(dcx)
 }
 
 #' Extract Summary Information from Riemannian Complex
@@ -402,12 +405,12 @@ build.nerve.from.knn <- function(
 #'
 #' @export
 riem.dcx.summary <- function(dcx) {
-  if (!inherits(dcx, "Rcpp_riem_dcx")) {
-    stop("dcx must be a Rcpp_riem_dcx object created by build.nerve.from.knn")
+  if (!inherits(dcx, "riem_dcx")) {
+    stop("dcx must be a riem_dcx object created by build.nerve.from.knn")
   }
 
   # Call C++ summary via .Call()
-  cpp_info <- .Call("C_riem_dcx_summary", dcx, PACKAGE = "gflow")
+  cpp_info <- .Call(S_riem_dcx_summary, dcx, PACKAGE = "gflow")
 
   # Add construction parameters if available
   params <- attr(dcx, "construction_params")

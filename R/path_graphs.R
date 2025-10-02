@@ -563,7 +563,7 @@ print.path.graph.series <- function(x, ...) {
 #' compare.paths(pgs, from = 1, to = 3)
 #' }
 #'
-#' @export
+#' @export compare.paths
 compare.paths <- function(x, from, to) {
     if (!inherits(x, "path.graph.series")) {
         stop("'x' must be a path.graph.series object.", call. = FALSE)

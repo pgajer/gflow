@@ -490,7 +490,7 @@ wgraph.prune.long.edges <- function(graph,
 #' adj.list2 <- list(c(3, 2), c(3, 1), c(2, 1), c(1))
 #' compare.adj.lists(adj.list1, adj.list2) # returns FALSE
 #'
-#' @export
+#' @export compare.adj.lists
 compare.adj.lists <- function(adj.list1, adj.list2) {
   if (length(adj.list1) != length(adj.list2)) {
     return(FALSE)

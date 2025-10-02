@@ -124,8 +124,6 @@ static R_NativePrimitiveArgType kernel_type[] = { REALSXP, INTSXP, REALSXP, INTS
 static R_NativePrimitiveArgType cv_type[] = { INTSXP, INTSXP, INTSXP, INTSXP, INTSXP,  REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, INTSXP, REALSXP};
 
 static const R_CMethodDef cMethods[] = {
-  {"S_build_nerve_from_knn", (DL_FUNC) &S_build_nerve_from_knn, 7},
-  {"S_riem_dcx_summary", (DL_FUNC) &S_riem_dcx_summary, 1},
   {"C_cv_deg0_binloss", (DL_FUNC) &C_cv_deg0_binloss, 14, cv_type},
   {"C_cv_deg0_mae", (DL_FUNC) &C_cv_deg0_mae, 14, cv_type},
   {"C_epanechnikov_kernel_with_stop", (DL_FUNC) &C_epanechnikov_kernel_with_stop, 5, kernel_type},
@@ -197,6 +195,10 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_build_nerve_from_knn", (DL_FUNC) &S_build_nerve_from_knn, 7},
+  {"S_riem_dcx_summary", (DL_FUNC) &S_riem_dcx_summary, 1},
+  {"S_get_simplices", (DL_FUNC) &S_get_simplices, 2},
+  {"S_get_metric_diagonal", (DL_FUNC) &S_get_metric_diagonal, 2},
   {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
   {"S_set_function_values", (DL_FUNC) &S_set_function_values, 2},
