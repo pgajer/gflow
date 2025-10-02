@@ -72,3 +72,5 @@ scripts/
 
 rchk_reports/
 dev/
+man/
+tests/
