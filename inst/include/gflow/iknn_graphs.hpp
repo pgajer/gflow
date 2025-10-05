@@ -2,15 +2,7 @@
 #define IKNN_GRAPHS_HPP_
 
 #include "vect_wgraph.hpp"
-
-#include <cstddef>
-using std::size_t;
-
-struct iknn_vertex_t {
-    size_t index; // index of the nearest neighbor
-    size_t isize;  // the number of elements in the intersection of the set, N(x), of kNN of the vertext and the set, N(x_j), of kNN of the neighbor x_j
-    double dist;  // distance between the vertex and the neighbor computed as the minimumum over k of d(x,x_k) + d(x_k,x_j), where x is the vertex, x_j is the j-th NN of x, x_k runs over elements of N(x) \cap N(x_j) and d(x,y is the distance between x and y as computed by kNN library ANN
-};
+#include "iknn_vertex.hpp"
 
 struct iknn_graph_t {
     std::vector<std::vector<iknn_vertex_t>> graph; // ToDo: change to 'neighbors' or 'adjacency_list'

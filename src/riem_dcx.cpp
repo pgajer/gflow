@@ -722,18 +722,27 @@ void riem_dcx_t::build_knn_riem_dcx(
         }
     }
 }
+
 /**
-   Constructs the reference measure μ that assigns base weights to vertices before any geometric evolution.
-
-   The reference measure provides the starting point for density estimation. Two
-   approaches serve different data characteristics: counting measure treats all
-   points equally (appropriate for uniform sampling), while distance-based
-   measure down-weights points in dense regions (appropriate when sampling
-   density varies). The formula $\mu(\{x\}) = d_\ell(x)^{-\alpha}$ with $\alpha
-   \in [1,2]$ provides robust local density surrogate without bandwidth
-   selection, addressing kernel density estimation instability in
-   moderate-to-high dimensions.
-
+ * @brief Initialize reference measure for density computation
+ *
+ * Constructs the reference measure μ that assigns base weights to vertices
+ * before any geometric evolution. The reference measure provides the starting
+ * point for density estimation.
+ *
+ * Two approaches serve different data characteristics:
+ * - Counting measure treats all points equally (appropriate for uniform sampling)
+ * - Distance-based measure down-weights points in dense regions (appropriate
+ *   when sampling density varies)
+ *
+ * The formula μ({x}) = (ε + d_k(x))^(-α) with α ∈ [1,2] provides a robust
+ * local density surrogate without bandwidth selection, addressing kernel density
+ * estimation instability in moderate-to-high dimensions.
+ *
+ * @param knn_neighbors k-nearest neighbor indices for each point
+ * @param knn_distances k-nearest neighbor distances for each point
+ * @param use_counting_measure If true, use uniform weights; if false, use distance-based
+ * @param density_normalization Target sum for normalized weights (typically n)
  */
 void riem_dcx_t::initialize_reference_measure(
     const std::vector<std::vector<index_t>>& knn_neighbors,
@@ -745,12 +754,22 @@ void riem_dcx_t::initialize_reference_measure(
     std::vector<double> vertex_weights(n);
 
     if (use_counting_measure) {
+		// Counting measure: each vertex has unit weight
         std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
     } else {
-        const double epsilon = 1e-10;
-        const double alpha = 1.5;
+		// Distance-based measure using d_k distances
+        // Formula: w(x) = (ε + d_k(x))^(-α)
+        // where d_k(x) is the distance to the kth nearest neighbor
+
+		const double epsilon = 1e-10;  // Regularization to prevent division by zero
+        const double alpha = 1.5;      // Exponent in [1, 2] for density estimation
+
+        // For each vertex, extract distance to kth (last) neighbor
         for (size_t i = 0; i < n; ++i) {
-            double d_k = knn_distances[i].back();
+            // The last element in knn_distances[i] is d_k(x_i)
+            const double d_k = knn_distances[i].back();
+
+            // Compute weight: points in dense regions (small d_k) get higher weights
             vertex_weights[i] = std::pow(epsilon + d_k, -alpha);
         }
     }
