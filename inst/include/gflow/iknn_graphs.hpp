@@ -13,7 +13,7 @@ struct iknn_vertex_t {
 };
 
 struct iknn_graph_t {
-    std::vector<std::vector<iknn_vertex_t>> graph;
+    std::vector<std::vector<iknn_vertex_t>> graph; // ToDo: change to 'neighbors' or 'adjacency_list'
 
     // Constructor that takes initial size
     explicit iknn_graph_t(size_t n_vertices)
