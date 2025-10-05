@@ -5,30 +5,33 @@
 // INTERNAL HELPERS (anonymous namespace)
 // ============================================================
 
-namespace {
-
 double apply_filter_function(
     double lambda,
     double eta,
     filter_type_t filter_type
 ) {
-    // ... implementation ...
-}
+    switch (filter_type) {
+        case filter_type_t::HEAT_KERNEL:
+            return std::exp(-eta * lambda);
 
-} // anonymous namespace
+        case filter_type_t::TIKHONOV:
+            return 1.0 / (1.0 + eta * lambda);
+
+        case filter_type_t::CUBIC_SPLINE:
+            return 1.0 / (1.0 + eta * lambda * lambda);
+
+        case filter_type_t::GAUSSIAN:
+            return std::exp(-eta * lambda * lambda);
+
+        default:
+            Rf_error("Unknown filter type");
+            return 0.0; // Never reached
+    }
+}
 
 // ============================================================
 // INITIALIZATION HELPERS (private member functions)
 // ============================================================
-
-void riem_dcx_t::initialize_reference_measure(
-    const std::vector<std::vector<index_t>>& knn_neighbors,
-    const std::vector<std::vector<double>>& knn_distances,
-    index_t k,
-    bool use_counting_measure
-) {
-    // ... implementation ...
-}
 
 void riem_dcx_t::compute_initial_densities(
     const std::vector<std::unordered_set<index_t>>& neighbor_sets
