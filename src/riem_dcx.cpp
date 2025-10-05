@@ -709,9 +709,9 @@ void riem_dcx_t::build_knn_riem_dcx(
         }
 
         // Normalize density to sum to n_points
-        real_t density_sum = rho.rho[0].sum();
+        double density_sum = rho.rho[0].sum();
         if (density_sum > 1e-15) {
-            rho.rho[0] *= static_cast<real_t>(n_points) / density_sum;
+            rho.rho[0] *= static_cast<double>(n_points) / density_sum;
         }
     }
 

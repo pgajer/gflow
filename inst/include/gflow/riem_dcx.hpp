@@ -7,15 +7,76 @@
 #include <algorithm>
 #include <memory>
 #include <cmath>
+#include <unordered_set>
 #include <Eigen/Sparse>
 #include <Eigen/IterativeLinearSolvers>
 
 #include <R.h>
 
-using index_t  = std::size_t;
-using real_t   = double;
-using vec_t    = Eigen::VectorXd;
-using spmat_t  = Eigen::SparseMatrix<real_t>;
+// Type aliases
+using index_t = size_t;
+using vec_t = Eigen::VectorXd;
+using spmat_t = Eigen::SparseMatrix<double>;
+
+// ================================================================
+// SUPPORTING ENUMERATIONS AND STRUCTURES
+// ================================================================
+
+/**
+ * @brief Filter type enumeration for spectral filtering
+ */
+enum class filter_type_t {
+    HEAT_KERNEL,   ///< f(λ) = exp(-ηλ), exponential decay
+    TIKHONOV,      ///< f(λ) = 1/(1 + ηλ), rational decay
+    CUBIC_SPLINE,  ///< f(λ) = 1/(1 + ηλ²), spline smoothness
+    GAUSSIAN       ///< f(λ) = exp(-ηλ^2)
+};
+
+/**
+ * @brief Result structure for GCV-based spectral filtering
+ */
+struct gcv_result_t {
+    double eta_optimal;              ///< Optimal smoothing parameter
+    vec_t y_hat;                     ///< Smoothed response vector
+    std::vector<double> gcv_scores;  ///< GCV scores for each eta candidate
+    std::vector<double> eta_grid;    ///< Grid of eta values evaluated
+};
+
+/**
+ * @brief Convergence status for iterative refinement
+ */
+struct convergence_status_t {
+    bool converged;              ///< True if convergence criteria met
+    double response_change;      ///< Relative change in fitted values
+    double max_density_change;   ///< Maximum relative change in densities
+    int iteration;               ///< Current iteration number
+    std::string message;         ///< Human-readable convergence message
+};
+
+/**
+ * @brief Complete result structure for regression fitting
+ */
+struct regression_result_t {
+    vec_t y_hat_final;                      ///< Final fitted values
+    int n_iterations;                       ///< Number of iterations performed
+    bool converged;                         ///< Convergence status
+    std::vector<double> response_changes;   ///< History of response changes
+    std::vector<double> density_changes;    ///< History of density changes
+    std::vector<vec_t> y_hat_history;       ///< Full fitted values history
+};
+
+/**
+ * @brief kNN vertex structure for adjacency list
+ */
+struct iknn_vertex_t {
+    size_t index;   ///< Index of the neighbor
+    size_t isize;   ///< Size of neighborhood intersection
+    double dist;    ///< Minimum indirect distance through common neighbors
+};
+
+// ================================================================
+// COMPONENT STRUCTURES (definitions follow)
+// ================================================================
 
 // ========================= Utility: hash for simplex keys =========================
 struct vec_hash_t {
@@ -28,7 +89,6 @@ struct vec_hash_t {
     }
 };
 
-// ========================= Combinatorics by dimension =========================
 /**
  * @brief Lookup table for simplices of fixed dimension
  *
@@ -122,75 +182,6 @@ struct star_table_t {
 };
 
 /**
- * @brief Local inner product matrices for gradient computations
- *
- * Stores sparse matrices encoding local geometric relationships between
- * simplices. These inner products arise from the Riemannian metric on the
- * complex and are used in gradient flow computations for density estimation
- * and signal processing on the complex.
- */
-struct local_inner_products_t {
-    /// Sparse inner product matrix for each p-simplex
-    std::vector<spmat_t> inn;
-
-    /**
-     * @brief Initialize storage for a given number of p-simplices
-     * @param n_from Number of p-simplices to allocate storage for
-     */
-    void resize(index_t n_from) { inn.assign(n_from, spmat_t()); }
-};
-
-/**
- * @brief Density functions on chains at each dimension
- *
- * Maintains density (or mass distribution) functions as coefficient vectors
- * for chains at each dimension of the complex. In the Morse-Smale regression
- * framework, these densities evolve according to geometric flows and encode
- * the probability distribution of data across the simplicial structure.
- */
-struct density_family_t {
-    /// Density vector for each dimension p (length n_p)
-    std::vector<vec_t> rho;
-
-    /**
-     * @brief Initialize density vectors for all dimensions
-     * @param n_by_dim Vector where n_by_dim[p] is the number of p-simplices
-     *
-     * Allocates zero-initialized density vectors with appropriate dimensions
-     * for the entire chain complex.
-     */
-    void init_dims(const std::vector<index_t>& n_by_dim) {
-        rho.resize(n_by_dim.size());
-        for (index_t p = 0; p < n_by_dim.size(); ++p)
-            rho[p] = vec_t::Zero((Eigen::Index)n_by_dim[p]);
-    }
-};
-
-/**
- * @brief Signal observations and fitted values
- *
- * Manages the observed signal and maintains history of fitted signal values
- * during iterative regression. The signal y typically represents scalar
- * observations at vertices (0-simplices), while y_hat_hist tracks the
- * evolution of fitted values through the optimization procedure.
- */
-struct signal_state_t {
-    /// Observed signal vector (typically at vertices)
-    vec_t y;
-
-    /// History of fitted signal vectors across iterations
-    std::vector<vec_t> y_hat_hist;
-
-    /**
-     * @brief Clear the fitted value history
-     *
-     * Useful for resetting state between independent runs or freeing memory
-     * when history is no longer needed.
-     */
-    void clear_history() { y_hat_hist.clear(); }
-};
-
-/**
  * @brief Riemannian metric on chain spaces
  *
  * Encodes the geometry of the simplicial complex through mass (metric) matrices
@@ -253,7 +244,7 @@ struct metric_family_t {
     void normalize() {
         if (!M.empty() && M[0].rows() > 0) {
             vec_t m0 = get_diagonal(0);
-            real_t s = m0.sum();
+            double s = m0.sum();
             if (s > 0) {
                 m0 /= s;
                 set_diagonal(0, m0);
@@ -261,7 +252,7 @@ struct metric_family_t {
         }
         if (M.size() > 1 && M[1].rows() > 0) {
             vec_t m1 = get_diagonal(1);
-            real_t meanw = m1.mean();
+            double meanw = m1.mean();
             if (meanw > 0) {
                 m1 /= meanw;
                 set_diagonal(1, m1);
@@ -273,7 +264,7 @@ struct metric_family_t {
         if (is_diagonal(p)) {
             vec_t y = x;
             for (Eigen::Index i = 0; i < y.size(); ++i) {
-                real_t d = std::max(M[p].coeff(i, i), 1e-15);
+                double d = std::max(M[p].coeff(i, i), 1e-15);
                 y[i] /= d;
             }
             return y;
@@ -363,7 +354,7 @@ struct laplacian_bundle_t {
         A.reserve(Bp.nonZeros());
         for (int k=0; k<Bp.outerSize(); ++k) {
             for (spmat_t::InnerIterator it(Bp,k); it; ++it) {
-                real_t d = std::max(g.M[p].coeff(it.row(), it.row()), 1e-15);
+                double d = std::max(g.M[p].coeff(it.row(), it.row()), 1e-15);
                 A.insert(it.row(), it.col()) = it.value() / d;
             }
         }
@@ -385,7 +376,7 @@ struct laplacian_bundle_t {
         D.reserve(T.nonZeros());
         for (int k=0; k<T.outerSize(); ++k) {
             for (spmat_t::InnerIterator it(T,k); it; ++it) {
-                real_t d = std::max(g.M[p].coeff(it.row(), it.row()), 1e-15);
+                double d = std::max(g.M[p].coeff(it.row(), it.row()), 1e-15);
                 D.insert(it.row(), it.col()) = it.value() / d;
             }
         }
@@ -494,7 +485,7 @@ struct laplacian_bundle_t {
 
             // ===== GET EDGE CONDUCTANCE =====
 
-            real_t c = c1[e];
+            double c = c1[e];
 
             // Skip edges with non-positive conductance (degenerate or removed)
             if (c <= 0) continue;
@@ -534,7 +525,7 @@ struct laplacian_bundle_t {
 
         for (Eigen::Index i = 0; i < n; ++i) {
             // Extract vertex mass (with safety threshold to avoid division by zero)
-            real_t m = std::max(g.M[0].coeff(i, i), 1e-15);
+            double m = std::max(g.M[0].coeff(i, i), 1e-15);
 
             // Insert 1/√m_i on the diagonal
             Dm05.insert(i, i) = 1.0 / std::sqrt(m);
@@ -558,62 +549,6 @@ struct laplacian_bundle_t {
 
         L0_sym = Dm05 * L0_div * Dm05;
     }
-
-#if 0
-    /**
-     * @brief Build symmetrized vertex Laplacian if conditions are met
-     * @param g Metric family
-     *
-     * Constructs L0_sym from edge information and conductances when available.
-     * This normalized form is useful for spectral analysis and certain
-     * diffusion computations.
-     */
-    void build_L0_sym_if_needed(const metric_family_t& g) {
-        if (B.size()<2 || B[1].nonZeros()==0 || g.M.empty() || g.M[0].rows()==0 || c1.size()!=B[1].cols()) {
-            L0_sym.resize(0,0);
-            return;
-        }
-
-        const spmat_t& B1 = B[1];
-        const Eigen::Index n = B1.rows();
-
-        // Build L0_div using triplets
-        std::vector<Eigen::Triplet<double>> triplets;
-        triplets.reserve(4 * B1.cols());  // Each edge contributes 4 entries
-
-        for (int e = 0; e < B1.cols(); ++e) {
-            int i = -1, j = -1;
-            for (spmat_t::InnerIterator it(B1, e); it; ++it) {
-                if (it.value() > 0) i = it.row();
-                else if (it.value() < 0) j = it.row();
-            }
-            if (i < 0 || j < 0) continue;
-
-            real_t c = c1[e];
-            if (c <= 0) continue;
-
-            triplets.emplace_back(i, i, c);
-            triplets.emplace_back(j, j, c);
-            triplets.emplace_back(i, j, -c);
-            triplets.emplace_back(j, i, -c);
-        }
-
-        spmat_t L0_div(n, n);
-        L0_div.setFromTriplets(triplets.begin(), triplets.end());
-
-        // Build D^{-1/2}
-        spmat_t Dm05(n, n);
-        Dm05.reserve(Eigen::VectorXi::Constant(n, 1));
-        for (Eigen::Index i = 0; i < n; ++i) {
-            real_t d = std::max(g.M[0].coeff(i, i), 1e-15);
-            Dm05.insert(i, i) = 1.0 / std::sqrt(d);
-        }
-        Dm05.makeCompressed();
-
-        // Compute normalized Laplacian
-        L0_sym = Dm05 * L0_div * Dm05;
-    }
-#endif
 
     /**
      * @brief Assemble all Hodge Laplacians from boundary maps and metric
@@ -673,12 +608,12 @@ struct laplacian_bundle_t {
      * Uses m-step backward Euler time stepping to approximate the heat
      * semigroup. Larger m_steps give better approximations at higher cost.
      */
-    vec_t heat_apply(int p, const vec_t& x, real_t t, int m_steps=8) const {
+    vec_t heat_apply(int p, const vec_t& x, double t, int m_steps=8) const {
         if (p<0 || p>=static_cast<int>(L.size())) Rf_error("heat_apply: bad p");
         if (t<=0) return x;
         spmat_t A = L[p];
         spmat_t I(A.rows(), A.cols()); I.setIdentity();
-        real_t h = t / std::max(1, m_steps);
+        double h = t / std::max(1, m_steps);
         A = I + h * A;
         Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper> cg;
         cg.setTolerance(1e-8); cg.setMaxIterations(1000); cg.compute(A);
@@ -700,8 +635,8 @@ struct laplacian_bundle_t {
      * Laplacian. Used for signal smoothing and fitting with geometric
      * regularization on the complex.
      */
-    vec_t tikhonov_solve(int p, const vec_t& b, real_t eta,
-                         real_t tol=1e-8, int maxit=1000) const {
+    vec_t tikhonov_solve(int p, const vec_t& b, double eta,
+                         double tol=1e-8, int maxit=1000) const {
         if (p<0 || p>=static_cast<int>(L.size())) Rf_error("tikhonov: bad p");
         spmat_t A = L[p];
         spmat_t I(A.rows(), A.cols()); I.setIdentity();
@@ -713,85 +648,126 @@ struct laplacian_bundle_t {
 };
 
 /**
- * @brief Complete Riemannian discrete chain complex structure
+ * @brief Density functions on chains at each dimension
  *
- * Unifies all components of the Morse-Smale regression framework: the
- * simplicial complex topology, geometric structures (metric and Laplacians),
- * density evolution, and signal processing capabilities. This structure
- * provides a complete environment for geometric statistics on simplicial
- * complexes.
+ * Maintains density (or mass distribution) functions as coefficient vectors
+ * for chains at each dimension of the complex. In the Morse-Smale regression
+ * framework, these densities evolve according to geometric flows and encode
+ * the probability distribution of data across the simplicial structure.
+ */
+struct density_family_t {
+    /// Density vector for each dimension p (length n_p)
+    std::vector<vec_t> rho;
+
+    /**
+     * @brief Initialize density vectors for all dimensions
+     * @param n_by_dim Vector where n_by_dim[p] is the number of p-simplices
+     *
+     * Allocates zero-initialized density vectors with appropriate dimensions
+     * for the entire chain complex.
+     */
+    void init_dims(const std::vector<index_t>& n_by_dim) {
+        rho.resize(n_by_dim.size());
+        for (index_t p = 0; p < n_by_dim.size(); ++p)
+            rho[p] = vec_t::Zero((Eigen::Index)n_by_dim[p]);
+    }
+};
+
+/**
+ * @brief Signal observations and fitted values
+ *
+ * Manages the observed signal and maintains history of fitted signal values
+ * during iterative regression. The signal y typically represents scalar
+ * observations at vertices (0-simplices), while y_hat_hist tracks the
+ * evolution of fitted values through the optimization procedure.
+ */
+struct signal_state_t {
+    /// Observed signal vector (typically at vertices)
+    vec_t y; ///< Original response
+
+    /// History of fitted signal vectors across iterations
+    std::vector<vec_t> y_hat_hist; ///< Fitted values history
+
+    signal_state_t() = default;
+
+    /**
+     * @brief Clear the fitted value history
+     *
+     * Useful for resetting state between independent runs or freeing memory
+     * when history is no longer needed.
+     */
+    void clear_history() { y_hat_hist.clear(); }
+};
+
+// ================================================================
+// MAIN DATA STRUCTURE
+// ================================================================
+
+/**
+ * @brief Riemannian simplicial complex for geometric regression
+ *
+ * Central data structure representing a simplicial complex equipped with
+ * a Riemannian metric, Hodge Laplacian operators, and signal processing
+ * capabilities for conditional expectation estimation.
  */
 struct riem_dcx_t {
-    /// Maximum dimension of chains in the complex
-    /// Invariant: pmax >= 0
-    /// Invariant: S.size() == stars.size() == inn.size() == pmax + 1
-    ///            (automatically maintained by init_dims)
-    /// Invariant: g.M.size() == L.B.size() == L.L.size() == pmax + 1
-    ///            (automatically maintained by init_dims)
-    int pmax = 1;
+    // ----------------------------------------------------------------
+    // Core Complex Structure
+    // ----------------------------------------------------------------
 
-    /// Simplex tables for each dimension (vertices, edges, triangles, etc.)
-    std::vector<simplex_table_t> S;
+    int pmax = 1;                        ///< Maximum simplex dimension
+    std::vector<simplex_table_t> S;      ///< Simplex tables by dimension
+    std::vector<star_table_t> stars;     ///< Star neighborhoods
 
-    /// Star tables encoding upward incidence relations
-    std::vector<star_table_t> stars;
+    // ----------------------------------------------------------------
+    // Geometric Structure
+    // ----------------------------------------------------------------
 
-    /// Reference measure μ that assigns base weights to vertices before any geometric evolution.
-    // std::vector<double> reference_measure;
+    metric_family_t g;                   ///< Mass matrices (Riemannian metric)
+    laplacian_bundle_t L;                ///< Hodge Laplacian operators
+    density_family_t rho;                ///< Probability densities
 
-    /// Local inner product structures for each dimension
-    std::vector<local_inner_products_t> inn;
+    // ----------------------------------------------------------------
+    // Signal State
+    // ----------------------------------------------------------------
 
-    /// Riemannian metric on chain spaces
-    metric_family_t g;
+    signal_state_t sig;                  ///< Response and fitted values
 
-    /// Hodge Laplacians and related operators
-    laplacian_bundle_t L;
+    // ----------------------------------------------------------------
+    // Geometric Data (for regression)
+    // ----------------------------------------------------------------
 
-    /// Density functions at each dimension
-    density_family_t rho;
+    std::vector<double> edge_lengths;           ///< Edge lengths (1-skeleton)
+    std::vector<double> reference_measure;      ///< Reference probability measure
 
-    /// Signal observations and fitted values
-    signal_state_t sig;
+    // ----------------------------------------------------------------
+    // Convergence Tracking (for regression)
+    // ----------------------------------------------------------------
 
-    // Geometric data (new additions)
-    std::vector<double> edge_lengths;
-    std::vector<double> reference_measure;
+    bool converged = false;                      ///< Convergence flag
+    int n_iterations = 0;                        ///< Number of iterations performed
+    double final_response_change = 0.0;          ///< Final response convergence metric
+    double final_density_change = 0.0;           ///< Final density convergence metric
+    std::vector<double> response_changes;        ///< Response change history
+    std::vector<double> density_changes;         ///< Density change history
 
     // ================================================================
     // CONSTRUCTION METHODS
     // ================================================================
 
     /**
+     * @brief Build nerve complex from kNN covering (general purpose)
+     */
+    void build_nerve_from_knn(
+        const spmat_t& X,
+        index_t k,
+        index_t max_p,
+        bool use_counting_measure,
+        double density_normalization
+    );
+
+    /**
      * @brief Fit kNN Riemannian graph regression model
-     *
-     * Constructs 1-skeleton kNN complex and iteratively refines geometry
-     * to reflect response structure. Primary method for conditional
-     * expectation estimation.
-     *
-     * @param X Feature matrix (n × d)
-     * @param y Response vector (length n)
-     * @param k Number of nearest neighbors
-     * @param use_counting_measure If true, uniform vertex weights;
-     *                             if false, distance-based weights
-     * @param density_normalization Target sum for vertex densities
-     *                              (0 = sum to n, >0 = sum to value)
-     * @param t_diffusion Heat diffusion time (0 = auto-select)
-     * @param beta_damping Damping parameter (0 = auto-select)
-     * @param gamma_modulation Response coherence exponent [0.5, 2]
-     * @param n_eigenpairs Number of eigenpairs for spectral filtering
-     * @param filter_type Spectral filter choice
-     * @param epsilon_y Response convergence threshold
-     * @param epsilon_rho Density convergence threshold
-     * @param max_iterations Maximum iteration count
-     *
-     * @post pmax = 1 (1-skeleton constructed)
-     * @post S[0], S[1] populated with vertices and edges
-     * @post sig.y contains original response
-     * @post sig.y_hat_hist contains iteration history of fitted values
-     * @post rho contains final densities
-     * @post g contains final metric
-     * @post L contains final Laplacian
      */
     void fit_knn_riem_graph_regression(
         const spmat_t& X,
@@ -811,21 +787,18 @@ struct riem_dcx_t {
 
     /**
      * @brief Legacy wrapper for backward compatibility
-     *
-     * Builds kNN complex with response and basic geometry.
-     * Superseded by fit_knn_riem_graph_regression() for regression.
      */
     void build_knn_riem_dcx(
-        const spmat_t& X,              // Feature matrix (sparse, n x d)
-        const vec_t& y,                // Response vector (length n)
-        index_t k,                     // kNN parameter
-        index_t max_p,                 // Maximum simplex dimension
-        bool use_counting_measure,     // true: count overlaps; false: use d_k weights
-        double density_normalization   // 0: sum to n; >0: custom normalization
-        );
+        const spmat_t& X,
+        const vec_t& y,
+        index_t k,
+        index_t max_p,
+        bool use_counting_measure,
+        double density_normalization
+    );
 
     // ================================================================
-    // ITERATION HELPER METHODS (can be private or public)
+    // ITERATION HELPER METHODS
     // ================================================================
 
     /**
@@ -835,7 +808,7 @@ struct riem_dcx_t {
         const vec_t& rho_current,
         double t,
         double beta
-        );
+    );
 
     /**
      * @brief Update edge densities from evolved vertex densities
@@ -848,8 +821,8 @@ struct riem_dcx_t {
     void apply_response_coherence_modulation(
         const vec_t& y_hat,
         double gamma
-        );
-    
+    );
+
     /**
      * @brief Smooth response via spectral filtering with GCV
      */
@@ -857,7 +830,7 @@ struct riem_dcx_t {
         const vec_t& y,
         int n_eigenpairs,
         filter_type_t filter_type
-        );
+    );
 
     /**
      * @brief Check convergence criteria
@@ -871,10 +844,10 @@ struct riem_dcx_t {
         double epsilon_rho,
         int iteration,
         int max_iterations
-        );
+    );
 
     // ================================================================
-    // EXISTING METHODS (unchanged)
+    // EXISTING METHODS
     // ================================================================
 
     /**
@@ -889,11 +862,86 @@ struct riem_dcx_t {
         pmax = pmax_;
         S.resize(pmax+1);
         stars.resize(pmax+1);
-        inn.resize(pmax+1);
+        //inn.resize(pmax+1);
         rho.init_dims(n_by_dim);
         g.init_dims(n_by_dim);
         L.B.assign(pmax+1, spmat_t());
         L.L.assign(pmax+1, spmat_t());
+    }
+
+    /**
+     * @brief Build boundary operator B[1] from stored edge list
+     *
+     * Constructs the vertex-edge incidence matrix from the edge simplex table.
+     * Each edge (i,j) with i < j contributes (+1) at vertex j and (-1) at
+     * vertex i in the corresponding column of B[1].
+     */
+    void build_incidence_from_edges() {
+        if (S.size()<2) return;
+        const auto& edges = S[1].simplex_verts;
+        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
+        const Eigen::Index m = static_cast<Eigen::Index>(edges.size());
+        spmat_t B1(n, m);
+        B1.reserve(Eigen::VectorXi::Constant(m,2));
+        for (Eigen::Index e=0; e<m; ++e) {
+            auto v = edges[e];
+            if (v.size()!=2)
+                Rf_error("Edge must have exactly 2 vertices");
+            Eigen::Index i = static_cast<Eigen::Index>(v[0]);
+            Eigen::Index j = static_cast<Eigen::Index>(v[1]);
+            if (i<j) { B1.insert(j,e) =  1.0; B1.insert(i,e) = -1.0; }
+            else     { B1.insert(i,e) =  1.0; B1.insert(j,e) = -1.0; }
+        }
+        B1.makeCompressed();
+        if (L.B.size()<2) L.B.resize(2);
+        L.B[1] = std::move(B1);
+    }
+
+    /**
+     * @brief Assemble all Laplacian operators from current metric
+     *
+     * Updates all Hodge Laplacians based on the current state of the metric
+     * and boundary maps. Should be called after any change to the metric.
+     */
+    void assemble_operators() { L.assemble_all(g); }
+
+    /**
+     * @brief Perform one iteration of density evolution and signal fitting
+     * @param t_vertex Heat diffusion time for vertex density
+     * @param eta_y Tikhonov regularization parameter for signal fitting
+     * @param with_edge_density Whether to compute edge densities (unused)
+     * @param rebuild_knn Whether to rebuild nearest neighbor structure (unused)
+     *
+     * Executes one step of the iterative algorithm: evolves vertex density
+     * via heat diffusion from empirical distribution, fits signal with
+     * regularization if available, updates metric from density, and
+     * reassembles operators. This implements the core computational loop
+     * of the Morse-Smale regression method.
+     */
+    void iteration_step(double t_vertex, double eta_y,
+                        bool with_edge_density=false,
+                        bool rebuild_knn=false) {
+        (void)with_edge_density; (void)rebuild_knn;
+        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
+        vec_t emp = vec_t::Ones(n);
+        emp /= std::max<double>(emp.sum(), 1e-15);
+        rho.rho[0] = L.heat_apply(0, emp, t_vertex, 8);
+
+        if (sig.y.size()==n) {
+            vec_t yhat = L.tikhonov_solve(0, sig.y, eta_y);
+            sig.y_hat_hist.push_back(yhat);
+        }
+
+        if (!g.M.empty() && g.M[0].rows()==n) {
+            const double alpha = 0.2;
+            rho.rho[0] = rho.rho[0].cwiseMax(1e-15);
+            vec_t m0 = g.get_diagonal(0);
+            m0 = (1.0 - alpha) * m0 + alpha * rho.rho[0];
+            g.set_diagonal(0, m0);
+            g.normalize();
+        }
+
+        assemble_operators();
     }
 
     /**
@@ -1093,7 +1141,7 @@ struct riem_dcx_t {
         pmax = p_new;
         S.resize(pmax + 1);
         stars.resize(pmax + 1);
-        inn.resize(pmax + 1);
+        //inn.resize(pmax + 1);
 
         // Resize density family
         rho.rho.resize(pmax + 1);
@@ -1131,7 +1179,7 @@ struct riem_dcx_t {
         }
 
         // Initialize local inner products
-        inn[p_new].resize((p_new >= 1) ? S[p_new - 1].size() : 0);
+        // inn[p_new].resize((p_new >= 1) ? S[p_new - 1].size() : 0);
 
         // Initialize boundary operator (empty matrix with correct shape)
         const Eigen::Index rows = (p_new >= 1) ?
@@ -1143,100 +1191,10 @@ struct riem_dcx_t {
         L.L[p_new] = spmat_t();
     }
 
-    /**
-     * @brief Build boundary operator B[1] from stored edge list
-     *
-     * Constructs the vertex-edge incidence matrix from the edge simplex table.
-     * Each edge (i,j) with i < j contributes (+1) at vertex j and (-1) at
-     * vertex i in the corresponding column of B[1].
-     */
-    void build_incidence_from_edges() {
-        if (S.size()<2) return;
-        const auto& edges = S[1].simplex_verts;
-        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
-        const Eigen::Index m = static_cast<Eigen::Index>(edges.size());
-        spmat_t B1(n, m);
-        B1.reserve(Eigen::VectorXi::Constant(m,2));
-        for (Eigen::Index e=0; e<m; ++e) {
-            auto v = edges[e];
-            if (v.size()!=2)
-                Rf_error("Edge must have exactly 2 vertices");
-            Eigen::Index i = static_cast<Eigen::Index>(v[0]);
-            Eigen::Index j = static_cast<Eigen::Index>(v[1]);
-            if (i<j) { B1.insert(j,e) =  1.0; B1.insert(i,e) = -1.0; }
-            else     { B1.insert(i,e) =  1.0; B1.insert(j,e) = -1.0; }
-        }
-        B1.makeCompressed();
-        if (L.B.size()<2) L.B.resize(2);
-        L.B[1] = std::move(B1);
-    }
-
-    /**
-     * @brief Assemble all Laplacian operators from current metric
-     *
-     * Updates all Hodge Laplacians based on the current state of the metric
-     * and boundary maps. Should be called after any change to the metric.
-     */
-    void assemble_operators() { L.assemble_all(g); }
-
-    /**
-     * @brief Perform one iteration of density evolution and signal fitting
-     * @param t_vertex Heat diffusion time for vertex density
-     * @param eta_y Tikhonov regularization parameter for signal fitting
-     * @param with_edge_density Whether to compute edge densities (unused)
-     * @param rebuild_knn Whether to rebuild nearest neighbor structure (unused)
-     *
-     * Executes one step of the iterative algorithm: evolves vertex density
-     * via heat diffusion from empirical distribution, fits signal with
-     * regularization if available, updates metric from density, and
-     * reassembles operators. This implements the core computational loop
-     * of the Morse-Smale regression method.
-     */
-    void iteration_step(real_t t_vertex, real_t eta_y,
-                        bool with_edge_density=false,
-                        bool rebuild_knn=false) {
-        (void)with_edge_density; (void)rebuild_knn;
-        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
-        vec_t emp = vec_t::Ones(n);
-        emp /= std::max<real_t>(emp.sum(), 1e-15);
-        rho.rho[0] = L.heat_apply(0, emp, t_vertex, 8);
-
-        if (sig.y.size()==n) {
-            vec_t yhat = L.tikhonov_solve(0, sig.y, eta_y);
-            sig.y_hat_hist.push_back(yhat);
-        }
-
-        if (!g.M.empty() && g.M[0].rows()==n) {
-            const real_t alpha = 0.2;
-            rho.rho[0] = rho.rho[0].cwiseMax(1e-15);
-            vec_t m0 = g.get_diagonal(0);
-            m0 = (1.0 - alpha) * m0 + alpha * rho.rho[0];
-            g.set_diagonal(0, m0);
-            g.normalize();
-        }
-
-        assemble_operators();
-    }
-
 private:
     // ================================================================
     // INTERNAL HELPERS
     // ================================================================
-
-    /**
-     * @brief Build nerve complex from kNN covering (general purpose)
-     *
-     * Constructs simplicial complex up to dimension max_p from kNN covering.
-     * Geometry depends only on feature distribution (not response).
-     * Suitable for general topological analysis.
-     */
-    void build_nerve_from_knn(
-        const spmat_t& X,
-        index_t k,
-        index_t max_p,
-        bool use_counting_measure,
-        double density_normalization
-        );
 
     /**
      * @brief Initialize reference measure for density computation
@@ -1246,14 +1204,14 @@ private:
         const std::vector<std::vector<double>>& knn_distances,
         bool use_counting_measure,
         double density_normalization
-        );
+    );
 
     /**
      * @brief Compute initial densities from reference measure
      */
     void compute_initial_densities(
         const std::vector<std::unordered_set<index_t>>& neighbor_sets
-        );
+    );
 
     /**
      * @brief Initialize metric from densities
@@ -1263,7 +1221,7 @@ private:
     /**
      * @brief Update metric from current densities
      */
-    void update_metric_from_density();
+    void update_metric_from_density() {};
 
     /**
      * @brief Compute full edge mass matrix with triple intersections
@@ -1282,12 +1240,12 @@ private:
         index_t e1,
         index_t e2,
         index_t vertex_i
-        ) const;
-    
+    ) const;
+
     /**
      * @brief Compute simplex volume via Cayley-Menger determinant
      */
     double compute_simplex_volume(
         const std::vector<index_t>& vertices
-        ) const;
+    ) const;
 };
