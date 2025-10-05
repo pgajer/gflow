@@ -971,8 +971,178 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     return rho_new;
 }
 
+/**
+ * @brief Update edge densities from evolved vertex densities
+ *
+ * Recomputes edge densities from current vertex densities after density
+ * evolution via damped heat diffusion. Each edge density is determined by
+ * the total vertex density mass in the pairwise intersection of its endpoints'
+ * neighborhoods.
+ *
+ * This function implements Step 2 of the iteration cycle, immediately following
+ * density diffusion. After vertex densities ρ₀ have evolved through the damped
+ * heat equation, edge densities ρ₁ must be updated to maintain consistency with
+ * the evolved vertex distribution. The edge density for edge [i,j] aggregates
+ * vertex densities over the neighborhood intersection:
+ *
+ *   ρ₁([i,j]) = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j)} ρ₀(v)
+ *
+ * This construction ensures that edge densities reflect the current geometric
+ * distribution of vertex mass. Edges connecting vertices with overlapping
+ * high-density neighborhoods receive high density, while edges spanning sparse
+ * or disconnected regions receive low density.
+ *
+ * ITERATION CONTEXT:
+ * Within each iteration of fit_knn_riem_graph_regression():
+ *   Step 1: Density diffusion evolves ρ₀ via damped heat equation
+ *   Step 2: Edge density update ← THIS FUNCTION
+ *   Step 3: Response-coherence modulation adjusts ρ₁ based on fitted values
+ *   Step 4: Metric update rebuilds M₀ and M₁ from evolved densities
+ *
+ * The updated edge densities serve dual purposes:
+ * 1. Input to response-coherence modulation (Step 3), which further adjusts
+ *    edge densities based on response variation
+ * 2. Diagonal entries of the edge mass matrix M₁ during metric update (Step 4),
+ *    since ⟨e_ij, e_ij⟩ = ρ₁([i,j]) by construction
+ *
+ * NORMALIZATION STRATEGY:
+ * After computing raw edge densities from pairwise intersections, the function
+ * normalizes to sum to n_edges (the number of edges). This normalization ensures:
+ *   - The average edge has density 1
+ *   - Total edge mass remains stable across iterations
+ *   - Numerical conditioning of the mass matrix M₁
+ *   - Interpretability: edge densities represent relative mass in standardized units
+ *
+ * The normalization preserves relative density differences while maintaining
+ * a fixed total mass scale, preventing geometric drift over iterations.
+ *
+ * COMPUTATIONAL COMPLEXITY:
+ * O(n_edges · k) where k is the average neighborhood size. For each edge,
+ * computing the pairwise intersection requires iterating over one neighborhood
+ * and checking membership in the other. The optimized strategy iterates over
+ * the smaller neighborhood, giving O(min(|N_i|, |N_j|)) per edge.
+ *
+ * For kNN graphs with uniform k, this gives O(n_edges · k). Since n_edges ≈ n·k
+ * for kNN graphs, the total complexity is O(n·k²), though with a smaller
+ * constant than the full mass matrix computation (which involves triple
+ * intersections and O(k²) edge pairs per vertex).
+ *
+ * NUMERICAL STABILITY:
+ * The function includes safeguards against degenerate cases:
+ *   - Zero total edge density: Falls back to uniform density (all edges = 1.0)
+ *   - Empty intersections: Natural result is zero density for that edge
+ *   - Small denominators: Uses threshold 1e-15 to detect near-zero totals
+ *
+ * The pairwise intersection computation is robust because it only involves
+ * non-negative additions of density values. No numerical cancellation occurs,
+ * and the result is guaranteed non-negative.
+ *
+ * CONSISTENCY WITH INITIALIZATION:
+ * This function uses the same pairwise intersection formula as
+ * compute_initial_densities(), ensuring that edge density computation is
+ * consistent between initialization and iteration. The only differences are:
+ *   - Initialization uses reference_measure values for aggregation
+ *   - Iteration uses evolved rho.rho[0] values for aggregation
+ *
+ * Both produce edge densities normalized to sum to n_edges.
+ *
+ * RELATION TO MASS MATRIX:
+ * The updated edge densities populate the diagonal of the edge mass matrix M₁.
+ * For edge e_ij = [i,j], the diagonal entry is:
+ *   M₁[e_ij, e_ij] = ρ₁([i,j])
+ *
+ * This relationship holds because the edge self-inner product equals the
+ * pairwise intersection mass:
+ *   ⟨e_ij, e_ij⟩ = Σ_{v ∈ N_i ∩ N_j} ρ₀(v) = ρ₁([i,j])
+ *
+ * Off-diagonal entries of M₁ involve triple intersections and are computed
+ * separately via compute_edge_mass_matrix().
+ *
+ * @pre rho.rho[0] contains evolved vertex densities from current iteration
+ * @pre S[1] contains edge simplex table (unchanged from initialization)
+ * @pre neighbor_sets contains kNN neighborhoods (unchanged from initialization)
+ * @pre rho.rho[1] is allocated with size equal to number of edges
+ *
+ * @post rho.rho[1] contains updated edge densities computed from current ρ₀
+ * @post rho.rho[1].sum() ≈ n_edges (normalized to sum to number of edges)
+ * @post All entries of rho.rho[1] are non-negative
+ *
+ * @note This function only updates edge densities (dimension 1). Vertex densities
+ *       (dimension 0) remain unchanged, as they were already updated by the
+ *       damped heat diffusion step.
+ *
+ * @note The combinatorial structure (which edges exist, vertex neighborhoods)
+ *       remains fixed throughout iteration. Only the numerical density values
+ *       change based on evolved vertex distributions.
+ *
+ * @note After this function returns, edge densities may be further modified by
+ *       response-coherence modulation (Step 3) before being used in metric
+ *       construction (Step 4).
+ *
+ * @see compute_initial_densities() for the initialization version
+ * @see apply_response_coherence_modulation() for subsequent edge density adjustment
+ * @see update_metric_from_density() for how updated densities enter the metric
+ */
 void riem_dcx_t::update_edge_densities_from_vertices() {
-    // ... implementation ...
+    const size_t n_edges = S[1].size();
+
+    // Ensure vertex densities are available
+    if (static_cast<size_t>(rho.rho[0].size()) != S[0].size()) {
+        Rf_error("update_edge_densities_from_vertices: vertex densities not properly initialized");
+    }
+
+    // ============================================================
+    // Compute edge densities from pairwise intersections
+    // ============================================================
+
+    // For each edge [i,j], aggregate vertex densities over the
+    // intersection of neighborhoods: N̂_k(x_i) ∩ N̂_k(x_j)
+
+    for (size_t e = 0; e < n_edges; ++e) {
+        // Get the two vertices of this edge
+        const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
+        const index_t i = edge_verts[0];
+        const index_t j = edge_verts[1];
+
+        // Compute pairwise intersection mass
+        double edge_density = 0.0;
+
+        // Optimize by iterating over smaller neighborhood and checking larger
+        const std::unordered_set<index_t>& set_i = neighbor_sets[i];
+        const std::unordered_set<index_t>& set_j = neighbor_sets[j];
+
+        const std::unordered_set<index_t>& smaller_set =
+            (set_i.size() <= set_j.size()) ? set_i : set_j;
+        const std::unordered_set<index_t>& larger_set =
+            (set_i.size() <= set_j.size()) ? set_j : set_i;
+
+        // Sum vertex densities over intersection
+        for (index_t v : smaller_set) {
+            if (larger_set.find(v) != larger_set.end()) {
+                edge_density += rho.rho[0][v];
+            }
+        }
+
+        rho.rho[1][e] = edge_density;
+    }
+
+    // ============================================================
+    // Normalize edge densities to sum to n_edges
+    // ============================================================
+
+    double edge_density_sum = rho.rho[1].sum();
+
+    if (edge_density_sum > 1e-15) {
+        // Normal case: scale to preserve relative densities while fixing total mass
+        rho.rho[1] *= static_cast<double>(n_edges) / edge_density_sum;
+    } else {
+        // Degenerate case: all intersections are empty or near-zero
+        // Fall back to uniform density to maintain positive definiteness
+        rho.rho[1].setConstant(1.0);
+
+        Rf_warning("update_edge_densities_from_vertices: edge density sum near zero, "
+                   "falling back to uniform density");
+    }
 }
 
 void riem_dcx_t::apply_response_coherence_modulation(
