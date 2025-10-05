@@ -1145,11 +1145,275 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
     }
 }
 
+/**
+ * @brief Apply response-coherence modulation to edge densities
+ *
+ * Adjusts edge densities based on response variation across each edge, creating
+ * outcome-aware geometry where edges within response-coherent regions retain high
+ * density (short distances in the Riemannian metric) while edges crossing response
+ * boundaries receive low density (long distances, acting as diffusion barriers).
+ *
+ * This function implements Step 3 of the iteration cycle, following edge density
+ * update and preceding metric reconstruction. The modulation mechanism is central
+ * to the algorithm's ability to learn geometry that respects response structure:
+ * regions where the response varies smoothly become well-connected through
+ * high-mass edges, while response discontinuities create geometric barriers
+ * that prevent diffusion across boundaries.
+ *
+ * MATHEMATICAL CONSTRUCTION:
+ * For each edge [i,j], we measure response variation as the absolute difference
+ * between endpoint fitted values:
+ *   Δ_ij = |ŷ(i) - ŷ(j)|
+ *
+ * We compute an adaptive scale parameter σ₁ as the interquartile range (IQR) of
+ * all edge variations {Δ_ij}. The IQR provides robust scale estimation that
+ * resists outliers and adapts to the current response structure.
+ *
+ * Each edge density is then multiplied by a penalty function:
+ *   Γ(Δ_ij) = (1 + Δ²_ij/σ²₁)^(-γ)
+ *   ρ₁([i,j]) ← ρ₁([i,j]) · Γ(Δ_ij)
+ *
+ * The penalty function Γ takes values in (0,1]:
+ *   - Γ(0) = 1: Edges with no response variation retain full density
+ *   - Γ(Δ) → 0 as Δ → ∞: Edges with large variation lose density
+ *   - γ controls decay rate: larger γ creates sharper boundaries
+ *
+ * After applying penalties, we renormalize edge densities to preserve total mass,
+ * ensuring geometric scale stability across iterations.
+ *
+ * ITERATION CONTEXT:
+ * Within each iteration of fit_knn_riem_graph_regression():
+ *   Step 1: Density diffusion evolves vertex densities ρ₀
+ *   Step 2: Edge densities ρ₁ recomputed from evolved ρ₀
+ *   Step 3: Response-coherence modulation ← THIS FUNCTION
+ *   Step 4: Metric update uses modulated ρ₁ to rebuild M₁
+ *   Step 5: Laplacian reassembly with updated metric
+ *   Step 6: Response smoothing with updated Laplacian
+ *
+ * The modulated edge densities directly influence the edge mass matrix M₁ diagonal
+ * entries and thus the vertex Laplacian structure. High-penalty edges effectively
+ * disconnect regions with different response values, allowing the response
+ * smoothing (Step 6) to maintain sharp transitions while remaining smooth within
+ * coherent regions.
+ *
+ * ADAPTIVE SCALE PARAMETER:
+ * The IQR-based scale σ₁ = IQR({Δ_ij}) adapts to the current response distribution:
+ *   - Early iterations: Large σ₁ if response variation is widespread
+ *   - Late iterations: Smaller σ₁ as geometry focuses on remaining boundaries
+ *   - Robustness: IQR ignores outliers, focusing on typical variation
+ *
+ * We use std::nth_element for efficient O(n) quartile computation without full
+ * sorting. The first and third quartiles (Q1, Q3) define IQR = Q3 - Q1.
+ *
+ * DEGENERATE CASES:
+ * Several edge cases require careful handling:
+ *
+ * 1. **Near-constant response** (σ₁ < 1e-10): If all edges have nearly identical
+ *    response variation, the scale becomes ill-defined. We set σ₁ = 1e-10 to
+ *    avoid division by zero, effectively disabling modulation when response
+ *    variation is negligible.
+ *
+ * 2. **Uniform edge densities**: If all Δ_ij are equal, IQR = 0. The regularization
+ *    σ₁ = max(σ₁, 1e-10) handles this case.
+ *
+ * 3. **Zero total mass after modulation**: If all edges receive strong penalties,
+ *    the sum could approach zero. We check for this and issue a warning while
+ *    proceeding with the degenerate normalization.
+ *
+ * GAMMA PARAMETER INTERPRETATION:
+ * The exponent γ controls the strength of response-based geometric adaptation:
+ *
+ *   γ = 0.5: Gentle modulation, gradual boundaries
+ *     Example: Δ = σ gives Γ = (2)^(-0.5) ≈ 0.71 (29% reduction)
+ *
+ *   γ = 1.0: Moderate modulation (recommended default)
+ *     Example: Δ = σ gives Γ = (2)^(-1) = 0.50 (50% reduction)
+ *
+ *   γ = 2.0: Strong modulation, sharp boundaries
+ *     Example: Δ = σ gives Γ = (2)^(-2) = 0.25 (75% reduction)
+ *
+ * For boundary-crossing edges with Δ = 3σ:
+ *   γ = 0.5: Γ ≈ 0.32 (68% reduction)
+ *   γ = 1.0: Γ = 0.10 (90% reduction)
+ *   γ = 2.0: Γ = 0.01 (99% reduction)
+ *
+ * Typical applications use γ ∈ [0.5, 2], with γ = 1 providing good balance.
+ *
+ * NORMALIZATION STRATEGY:
+ * After applying penalties, we normalize to preserve total edge mass:
+ *   ρ₁ ← ρ₁ · (Σ ρ₁_old) / (Σ ρ₁_new)
+ *
+ * This ensures:
+ *   - Total mass constant: Σ ρ₁ = n_edges before and after modulation
+ *   - Only relative distribution changes, not overall scale
+ *   - Geometric stability across iterations
+ *   - Numerical conditioning of mass matrix
+ *
+ * The normalization compensates for the global mass loss from penalties, rescaling
+ * the distribution while preserving the relative penalty effects.
+ *
+ * VERTEX DENSITIES UNCHANGED:
+ * Critically, this function only modulates edge densities (dimension p=1). Vertex
+ * densities ρ₀ remain unchanged, as they represent the underlying data distribution
+ * and should not depend on response structure. This separation ensures:
+ *   - Vertex masses reflect data density, not response variation
+ *   - Response-aware geometry emerges only through edge connectivity
+ *   - Interpretability: vertices = observations, edges = relationships
+ *
+ * COMPUTATIONAL COMPLEXITY:
+ * O(n_edges log n_edges) for the IQR computation via nth_element, plus O(n_edges)
+ * for computing variations and applying penalties. The dominant cost is the
+ * nth_element calls for quartile computation.
+ *
+ * For very large graphs (n_edges > 10^6), consider approximating IQR by sampling
+ * a random subset of edges, though this is rarely necessary in practice.
+ *
+ * NUMERICAL STABILITY:
+ * The penalty function is numerically stable:
+ *   - No cancellation: only additions and multiplications
+ *   - Bounded output: Γ ∈ (0, 1] always
+ *   - Smooth behavior: continuous and differentiable
+ *   - Protected division: σ₁ regularized to avoid zero denominator
+ *
+ * The power function (1 + x)^(-γ) is well-conditioned for x ≥ 0 and moderate γ.
+ *
+ * @param y_hat Current fitted response values (from previous iteration's smoothing)
+ * @param gamma Decay rate parameter controlling boundary sharpness (typically 0.5-2.0)
+ *
+ * @pre y_hat.size() == S[0].size() (fitted values for all vertices)
+ * @pre rho.rho[1] contains current edge densities (from Step 2 of iteration)
+ * @pre S[1] contains edge simplex table with vertex endpoints
+ * @pre gamma > 0 (positive decay rate)
+ *
+ * @post rho.rho[1] contains modulated edge densities
+ * @post rho.rho[1].sum() ≈ n_edges (preserved total mass)
+ * @post All entries of rho.rho[1] are positive (penalties reduce but never zero)
+ * @post rho.rho[0] is unchanged (vertex densities not modulated)
+ *
+ * @note This function modifies edge densities in place. The original edge density
+ *       distribution is not preserved, as it's replaced by the modulated version.
+ *
+ * @note If gamma = 0, all edges receive Γ = 1 (no modulation). If gamma is very
+ *       large (> 10), even small response variations create strong penalties,
+ *       potentially fragmenting the geometry excessively.
+ *
+ * @warning Very small gamma (< 0.1) provides minimal geometric adaptation and may
+ *          not effectively create response boundaries. Very large gamma (> 5) may
+ *          over-fragment the geometry, preventing diffusion even within coherent
+ *          regions.
+ *
+ * @see update_edge_densities_from_vertices() for Step 2 (edge density computation)
+ * @see update_metric_from_density() for Step 4 (using modulated densities)
+ * @see fit_knn_riem_graph_regression() for complete iteration context
+ */
 void riem_dcx_t::apply_response_coherence_modulation(
     const vec_t& y_hat,
     double gamma
 ) {
-    // ... implementation ...
+    const size_t n_edges = S[1].size();
+
+    // Validate inputs
+    if (static_cast<size_t>(y_hat.size()) != S[0].size()) {
+        Rf_error("apply_response_coherence_modulation: y_hat size does not match number of vertices");
+    }
+
+    if (gamma <= 0.0) {
+        Rf_error("apply_response_coherence_modulation: gamma must be positive");
+    }
+
+    // ============================================================
+    // Step 1: Compute response variations for all edges
+    // ============================================================
+
+    std::vector<double> delta_values;
+    delta_values.reserve(n_edges);
+
+    for (size_t e = 0; e < n_edges; ++e) {
+        // Get edge endpoints
+        const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
+        const index_t i = edge_verts[0];
+        const index_t j = edge_verts[1];
+
+        // Compute response variation: Δ_ij = |ŷ(i) - ŷ(j)|
+        double delta = std::abs(y_hat[i] - y_hat[j]);
+        delta_values.push_back(delta);
+    }
+
+    // ============================================================
+    // Step 2: Compute adaptive scale parameter (IQR)
+    // ============================================================
+
+    // Compute first quartile (Q1) at 25th percentile
+    std::vector<double> delta_copy1 = delta_values;
+    size_t q1_index = delta_copy1.size() / 4;
+    std::nth_element(delta_copy1.begin(),
+                     delta_copy1.begin() + q1_index,
+                     delta_copy1.end());
+    double Q1 = delta_copy1[q1_index];
+
+    // Compute third quartile (Q3) at 75th percentile
+    std::vector<double> delta_copy2 = delta_values;
+    size_t q3_index = (3 * delta_copy2.size()) / 4;
+    std::nth_element(delta_copy2.begin(),
+                     delta_copy2.begin() + q3_index,
+                     delta_copy2.end());
+    double Q3 = delta_copy2[q3_index];
+
+    // Compute IQR = Q3 - Q1
+    double sigma_1 = Q3 - Q1;
+
+    // Regularize to avoid division by zero when response is nearly constant
+    if (sigma_1 < 1e-10) {
+        sigma_1 = 1e-10;
+
+        // Note: Not issuing warning here as near-constant response is valid
+        // and simply means no modulation is needed
+    }
+
+    // ============================================================
+    // Step 3: Store total mass before modulation for normalization
+    // ============================================================
+
+    double total_mass_before = rho.rho[1].sum();
+
+    // ============================================================
+    // Step 4: Apply penalty function to each edge
+    // ============================================================
+
+    for (size_t e = 0; e < n_edges; ++e) {
+        // Compute normalized variation
+        double delta = delta_values[e];
+        double delta_normalized = delta / sigma_1;
+
+        // Compute penalty: Γ(Δ) = (1 + Δ²/σ²)^(-γ)
+        //                       = (1 + (Δ/σ)²)^(-γ)
+        double penalty = std::pow(1.0 + delta_normalized * delta_normalized, -gamma);
+
+        // Apply penalty to edge density
+        rho.rho[1][e] *= penalty;
+    }
+
+    // ============================================================
+    // Step 5: Renormalize to preserve total edge mass
+    // ============================================================
+
+    double total_mass_after = rho.rho[1].sum();
+
+    if (total_mass_after > 1e-15) {
+        // Normal case: rescale to restore original total mass
+        rho.rho[1] *= total_mass_before / total_mass_after;
+    } else {
+        // Degenerate case: all edges received extreme penalties
+        // Fall back to uniform density and warn
+        rho.rho[1].setConstant(1.0);
+
+        Rf_warning("apply_response_coherence_modulation: edge density sum near zero "
+                   "after modulation, falling back to uniform density. "
+                   "Consider reducing gamma parameter.");
+    }
+
+    // Note: Vertex densities rho.rho[0] are intentionally NOT modified
+    // They represent data distribution and should not depend on response
 }
 
 gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
