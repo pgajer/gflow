@@ -90,28 +90,6 @@
 #' surrogates, avoiding the curse of dimensionality that affects kernel methods.
 #' }
 #'
-#' \subsection{Directed vs. Mutual Neighborhoods}{
-#' The k-NN relation is asymmetric: \eqn{x_j} being among \eqn{x_i}'s neighbors
-#' does not imply the reverse. This creates a choice:
-#'
-#' \strong{Directed k-NN} (\code{directed_knn = TRUE}):
-#' \itemize{
-#'   \item Use all directed neighbor relationships
-#'   \item Results in denser complex with more simplices
-#'   \item May include "one-way" connections at density boundaries
-#'   \item Suitable when all local information should be preserved
-#' }
-#'
-#' \strong{Mutual k-NN} (\code{directed_knn = FALSE}, \strong{recommended}):
-#' \itemize{
-#'   \item Require symmetric neighbor relationships
-#'   \item Edge exists only if \eqn{i \in N_k(j)} AND \eqn{j \in N_k(i)}
-#'   \item Results in sparser, more stable complex
-#'   \item Filters spurious connections at density gradients
-#'   \item Default choice for most applications
-#' }
-#' }
-#'
 #' \subsection{Choosing k}{
 #' The parameter \eqn{k} controls the scale of the construction:
 #'
@@ -174,9 +152,6 @@
 #'   measure giving equal weight to all points. If \code{FALSE}, use density-based
 #'   weights derived from k-NN distances.
 #'
-#' @param directed.knn Logical. If \code{TRUE}, use directed k-NN (asymmetric).
-#'   If \code{FALSE} (default, recommended), enforce mutual k-NN (symmetric).
-#'
 #' @param density.normalization Non-negative numeric. Target sum for normalized
 #'   weights. If 0 (default), normalize to sum to \eqn{n}. Ignored when
 #'   \code{use.counting.measure = TRUE}.
@@ -237,7 +212,6 @@
 #'   k = 15,
 #'   max.p = 2,
 #'   use.counting.measure = FALSE,  # Density-aware
-#'   directed.knn = FALSE
 #' )
 #'
 #' # Vertices in the dense cluster receive higher weights
@@ -309,7 +283,6 @@ build.nerve.from.knn <- function(
                                  k = 10,
                                  max.p = 2,
                                  use.counting.measure = TRUE,
-                                 directed.knn = FALSE,
                                  density.normalization = 0.0
                                  ) {
     ## Validate inputs at R level
@@ -333,10 +306,6 @@ build.nerve.from.knn <- function(
         stop("use.counting.measure must be a single logical value")
     }
 
-    if (!is.logical(directed.knn) || length(directed.knn) != 1) {
-        stop("directed.knn must be a single logical value")
-    }
-
     if (!is.numeric(density.normalization) || length(density.normalization) != 1) {
         stop("density.normalization must be a single numeric value")
     }
@@ -351,7 +320,6 @@ build.nerve.from.knn <- function(
         as.integer(k + 1), # ANN returns self as a member of k-nearest neighbors, so we need to adjust for it adding 1
         as.integer(max.p),
         as.logical(use.counting.measure),
-        as.logical(directed.knn),
         as.numeric(density.normalization)
     )
 
@@ -362,7 +330,6 @@ build.nerve.from.knn <- function(
         k = k,
         max_p = max.p,
         use_counting_measure = use.counting.measure,
-        directed_knn = directed.knn,
         density_normalization = density.normalization,
         has_response = !is.null(y)
     )
@@ -458,8 +425,6 @@ print.riem_dcx_summary <- function(x, ...) {
     cat(sprintf("  Requested max dimension: %d\n", params$max_p))
     cat(sprintf("  Measure type: %s\n",
                 if (params$use_counting_measure) "counting" else "density-based"))
-    cat(sprintf("  Neighborhood type: %s k-NN\n",
-                if (params$directed_knn) "directed" else "mutual"))
   }
 
   invisible(x)

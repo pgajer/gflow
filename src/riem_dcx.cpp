@@ -15,7 +15,6 @@ void riem_dcx_t::build_nerve_from_knn(
     index_t k,
     index_t max_p,
     bool use_counting_measure,
-    bool directed_knn,
     double density_normalization
 	) {
 
@@ -51,6 +50,7 @@ void riem_dcx_t::build_nerve_from_knn(
 
     SEXP s_k = PROTECT(Rf_ScalarInteger(k));
 
+	#if 0
     // Call S_kNN to compute neighborhoods and distances
     SEXP knn_res = PROTECT(S_kNN(s_X, s_k));
     int* indices = INTEGER(VECTOR_ELT(knn_res, 0));
@@ -74,26 +74,74 @@ void riem_dcx_t::build_nerve_from_knn(
 
     // Enforce mutual kNN if requested
     std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
-    if (!directed_knn) {
-        // Build mutual kNN: keep only edges where both vertices are neighbors
-		for (index_t i = 0; i < (index_t)n_points; ++i) {
-			neighbor_sets[i].clear();
-			for (index_t j : knn_neighbors[i]) {
-				if (j == i) continue;                           // skip self early
-				bool is_mutual = false;
-				for (index_t neighbor_of_j : knn_neighbors[j]) {
-					if (neighbor_of_j == i) { is_mutual = true; break; }
-				}
-				if (is_mutual) neighbor_sets[i].insert(j);
-			}
-			neighbor_sets[i].insert(i);                         // closed neighborhood
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		// neighbor_sets[i].insert(i); // closed neighborhood includes self - this is unnecessary as ANN includes self in the set of kNN's
+		for (index_t j : knn_neighbors[i]) {
+			neighbor_sets[i].insert(j);
 		}
-    } else {
-        // Use directed kNN: include all neighbors plus self
-        for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-            // neighbor_sets[i].insert(i); // closed neighborhood includes self - this is unnecessary as ANN includes self in the set of kNN's
-            for (index_t j : knn_neighbors[i]) {
-                neighbor_sets[i].insert(j);
+	}
+    #endif
+
+	// ---------
+	struct iknn_vertex_t {
+		size_t index; // index of the nearest neighbor
+		size_t isize;  // the number of elements in the intersection of the set, N(x), of kNN of the vertext and the set, N(x_j), of kNN of the neighbor x_j
+		double dist;  // distance between the vertex and the neighbor computed as the minimumum over k of d(x,x_k) + d(x_k,x_j), where x is the vertex, x_j is the j-th NN of x, x_k runs over elements of N(x) \cap N(x_j) and d(x,y is the distance between x and y as computed by kNN library ANN
+	};
+
+	SEXP knn_res = PROTECT(S_kNN(s_X, s_k));
+	int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
+    double *distances = REAL(VECTOR_ELT(knn_res, 1));
+    UNPROTECT(3); // knn_res, s_k, s_X
+
+    std::vector<int> nn_i(k);
+    std::vector<int> nn_j(k);
+    std::vector<int> sorted_nn_i(k);
+    std::vector<int> sorted_nn_j(k);
+
+	std::vector<std::vector<iknn_vertex_t>> adjacency_list(n_points);
+	std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
+
+    // Perform k-NN search for each point
+    size_t n_points_minus_one = n_points - 1;
+    std::vector<int> intersection;
+    for (size_t pt_i = 0; pt_i < n_points_minus_one; pt_i++) {
+        // Copying indices of kNN of the pt_i point to nn_i
+        for (size_t j = 0; j < k; j++) {
+            nn_i[j] = indices[pt_i + n_points * j];
+            sorted_nn_i[j] = nn_i[j];
+			neighbor_sets[pt_i].insert(nn_i[j]);
+        }
+        std::sort(sorted_nn_i.begin(), sorted_nn_i.end()); // Ensure sorted for set intersection
+
+        for (size_t pt_j = pt_i + 1; pt_j < static_cast<index_t>(n_points); pt_j++) {
+            // Copying indices of kNN of the pt_j point to nn_j
+            for (size_t j = 0; j < k; j++) {
+                nn_j[j] = indices[pt_j + n_points * j];
+                sorted_nn_j[j] = nn_j[j];
+            }
+            std::sort(sorted_nn_j.begin(), sorted_nn_j.end()); // Ensure sorted for set intersection
+
+            intersection.clear(); // Clear the intersection vector before reusing it
+            std::set_intersection(sorted_nn_i.begin(), sorted_nn_i.end(), sorted_nn_j.begin(), sorted_nn_j.end(), std::back_inserter(intersection));
+
+            size_t common_count = intersection.size();
+
+            if (common_count > 0) {
+                // Computing the minimum of d(x,x_k) + d(x_k,x_j)
+                double min_dist = std::numeric_limits<double>::max();
+                for (int x_k : intersection) {
+                    size_t idx_i = std::find(nn_i.begin(), nn_i.end(), x_k) - nn_i.begin(); // The std::find function returns an iterator, not an index. We need to subtract the beginning iterator to get the index.
+                    size_t idx_j = std::find(nn_j.begin(), nn_j.end(), x_k) - nn_j.begin();
+                    double dist_i_k = distances[pt_i + n_points * idx_i];
+                    double dist_j_k = distances[pt_j + n_points * idx_j];
+                    min_dist = std::min(min_dist, dist_i_k + dist_j_k);
+
+                }
+
+                // Add edge from pt_i to pt_j and from pt_j to pt_i
+                adjacency_list[pt_i].emplace_back(iknn_vertex_t{pt_j, common_count, min_dist});
+                adjacency_list[pt_j].emplace_back(iknn_vertex_t{pt_i, common_count, min_dist});
             }
         }
     }
@@ -117,7 +165,8 @@ void riem_dcx_t::build_nerve_from_knn(
         // Compute d_k for each vertex (distance to kth nearest neighbor)
         std::vector<double> d_k_values(n_points);
         for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-            d_k_values[i] = knn_distances[i][k - 1]; // last neighbor
+            //d_k_values[i] = knn_distances[i][k - 1]; // last neighbor
+			d_k_values[i] = adjacency_list[i][k - 1].dist;
         }
 
         // Compute weights
@@ -318,86 +367,6 @@ void riem_dcx_t::build_nerve_from_knn(
 	#if DEBUG_BUILD_NERVE_FROM_KNN
 	Rprintf("Phase 5: Complete\n");
 	#endif
-
-#if 0
-    // ==================== Phase 5: Build 1-Simplices (Edges) ====================
-
-    // Helper function to compute measure of intersection
-    auto compute_intersection_measure = [&](
-        const std::unordered_set<index_t>& set_i,
-        const std::unordered_set<index_t>& set_j
-    ) -> double {
-        double measure = 0.0;
-        for (index_t v : set_i) {
-            if (set_j.find(v) != set_j.end()) {
-                measure += vertex_weights[v];
-            }
-        }
-        return measure;
-    };
-
-    // Helper to compute intersection as a set
-    // auto compute_intersection_set = [](
-    //     const std::unordered_set<index_t>& set_i,
-    //     const std::unordered_set<index_t>& set_j
-    // ) -> std::unordered_set<index_t> {
-    //     std::unordered_set<index_t> result;
-    //     for (index_t v : set_i) {
-    //         if (set_j.find(v) != set_j.end()) {
-    //             result.insert(v);
-    //         }
-    //     }
-    //     return result;
-    // };
-
-    // Build edges: edge (i,j) exists iff N̂_k(x_i) ∩ N̂_k(x_j) ≠ ∅
-    std::vector<std::array<index_t, 2>> edge_list;
-    std::vector<double> edge_weights_vec;
-
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        for (index_t j = i + 1; j < static_cast<index_t>(n_points); ++j) {
-            double intersection_measure = compute_intersection_measure(
-                neighbor_sets[i], neighbor_sets[j]
-            );
-
-            if (intersection_measure > 1e-15) {
-                edge_list.push_back({i, j});
-                edge_weights_vec.push_back(intersection_measure);
-            }
-        }
-    }
-
-    const index_t n_edges = edge_list.size();
-
-	// Extend to dimension 1 with n_edges simplices
-	extend_by_one_dim(n_edges);
-
-    // Populate edge table
-    S[1].simplex_verts.resize(n_edges);
-    for (index_t e = 0; e < n_edges; ++e) {
-        std::vector<index_t> edge_verts = {edge_list[e][0], edge_list[e][1]};
-        S[1].simplex_verts[e] = edge_verts;
-        S[1].id_of[edge_verts] = e;
-    }
-
-    // Build edge masses from intersection measures
-    g.M[1] = spmat_t(n_edges, n_edges);
-    g.M[1].reserve(Eigen::VectorXi::Constant(n_edges, 1));
-    for (index_t e = 0; e < n_edges; ++e) {
-        g.M[1].insert(e, e) = std::max(edge_weights_vec[e], 1e-15);
-    }
-    g.M[1].makeCompressed();
-
-    // Build boundary operator B[1]: edges → vertices
-    build_incidence_from_edges();
-
-    // Store conductances for potential L0_sym construction
-    L.c1 = vec_t(n_edges);
-    for (index_t e = 0; e < n_edges; ++e) {
-        L.c1[e] = edge_weights_vec[e];
-    }
-
-#endif
 
     // ==================== Phase 6: Build Higher-Dimensional Simplices ====================
 	#if DEBUG_BUILD_NERVE_FROM_KNN
@@ -657,7 +626,6 @@ void riem_dcx_t::build_knn_riem_dcx(
     index_t k,
     index_t max_p,
     bool use_counting_measure,
-    bool directed_knn,
     double density_normalization
 ) {
     // ==================== Input Validation ====================
@@ -715,7 +683,7 @@ void riem_dcx_t::build_knn_riem_dcx(
 	// init_dims() will automatically ensure
     // that S.size() == stars.size() == pmax + 1
     build_nerve_from_knn(X, k, max_p, use_counting_measure,
-                        directed_knn, density_normalization);
+                        density_normalization);
 
     // ==================== Signal Initialization ====================
 
@@ -753,4 +721,50 @@ void riem_dcx_t::build_knn_riem_dcx(
             rho.rho[p].setZero();
         }
     }
+}
+/**
+   Constructs the reference measure μ that assigns base weights to vertices before any geometric evolution.
+
+   The reference measure provides the starting point for density estimation. Two
+   approaches serve different data characteristics: counting measure treats all
+   points equally (appropriate for uniform sampling), while distance-based
+   measure down-weights points in dense regions (appropriate when sampling
+   density varies). The formula $\mu(\{x\}) = d_\ell(x)^{-\alpha}$ with $\alpha
+   \in [1,2]$ provides robust local density surrogate without bandwidth
+   selection, addressing kernel density estimation instability in
+   moderate-to-high dimensions.
+
+ */
+void riem_dcx_t::initialize_reference_measure(
+    const std::vector<std::vector<index_t>>& knn_neighbors,
+    const std::vector<std::vector<double>>& knn_distances,
+    bool use_counting_measure,
+    double density_normalization
+) {
+    const size_t n = S[0].size();
+    std::vector<double> vertex_weights(n);
+
+    if (use_counting_measure) {
+        std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
+    } else {
+        const double epsilon = 1e-10;
+        const double alpha = 1.5;
+        for (size_t i = 0; i < n; ++i) {
+            double d_k = knn_distances[i].back();
+            vertex_weights[i] = std::pow(epsilon + d_k, -alpha);
+        }
+    }
+
+    // Normalize to target sum
+    double total = std::accumulate(vertex_weights.begin(),
+                                   vertex_weights.end(), 0.0);
+    double target = (density_normalization > 0.0) ?
+                    density_normalization : static_cast<double>(n);
+    if (total > 1e-15) {
+        double scale = target / total;
+        for (double& w : vertex_weights) w *= scale;
+    }
+
+    // Store in member variable for use by other modules
+    this->reference_measure = std::move(vertex_weights);
 }

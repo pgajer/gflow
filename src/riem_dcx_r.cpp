@@ -72,22 +72,6 @@
  *    becomes unstable; provides robust local density surrogate without
  *    bandwidth selection
  *
- * DIRECTED vs. MUTUAL k-NN:
- * The k-NN relation is asymmetric: j ∈ N_k(i) does not imply i ∈ N_k(j).
- * This asymmetry can produce spurious simplices in regions of variable density.
- *
- * 1) Directed k-NN (directed_knn = true):
- *    Use neighborhoods as defined
- *    Preserves all local information
- *    May include one-sided connections at density boundaries
- *    Results in denser complex with more simplices
- *
- * 2) Mutual k-NN (directed_knn = false, RECOMMENDED):
- *    Edge {i,j} exists only if i ∈ N_k(j) AND j ∈ N_k(i)
- *    Symmetrization filters spurious connections from density gradients
- *    Produces more stable complexes
- *    Default and recommended for most applications
- *
  * COMPUTATIONAL COMPLEXITY:
  * The algorithm proceeds through several phases:
  *   - k-NN computation: O(n log n) using ANN library with kd-trees
@@ -169,11 +153,6 @@
  *                                based weights from k-NN distances. See formula
  *                                in detailed description above.
  *
- * @param s_directed_knn SEXP logical scalar. If TRUE, use directed k-NN
- *                       (asymmetric). If FALSE (recommended), enforce mutual
- *                       k-NN (symmetric) by retaining only bidirectional
- *                       neighbor relationships.
- *
  * @param s_density_normalization SEXP numeric scalar, non-negative. Specifies
  *                                 target sum for normalized vertex weights.
  *                                 If 0 (default), weights normalized to sum
@@ -201,7 +180,7 @@
  *       {"S_build_nerve_from_knn", (DL_FUNC) &S_build_nerve_from_knn, 7}
  *       Called from R via:
  *       .Call("S_build_nerve_from_knn", X, y, k, max_p,
- *             use_counting_measure, directed_knn, density_normalization,
+ *             use_counting_measure, density_normalization,
  *             PACKAGE = "gflow")
  *
  * @warning For large n or large k, simplex count grows rapidly, especially at
@@ -233,7 +212,7 @@
  * // y <- X[,1]^2 + X[,2]^2 + rnorm(n, sd = 0.1)
  * // dcx <- build.nerve.from.knn(X, y, k = 10, max_p = 2,
  * //                              use_counting_measure = TRUE,
- * //                              directed_knn = FALSE)
+ * //                              )
  * // summary(dcx)
  */
 extern "C" SEXP S_build_nerve_from_knn(
@@ -242,7 +221,6 @@ extern "C" SEXP S_build_nerve_from_knn(
     SEXP s_k,
     SEXP s_max_p,
     SEXP s_use_counting_measure,
-    SEXP s_directed_knn,
     SEXP s_density_normalization
 ) {
     // ==================== Input Extraction ====================
@@ -264,12 +242,6 @@ extern "C" SEXP S_build_nerve_from_knn(
         Rf_error("use_counting_measure must be a single logical value");
     }
     const bool use_counting_measure = (bool)Rf_asLogical(s_use_counting_measure);
-
-    // Extract directed_knn
-    if (!Rf_isLogical(s_directed_knn) || Rf_length(s_directed_knn) != 1) {
-        Rf_error("directed_knn must be a single logical value");
-    }
-    const bool directed_knn = (bool)Rf_asLogical(s_directed_knn);
 
     // Extract density_normalization
     if (!Rf_isReal(s_density_normalization) || Rf_length(s_density_normalization) != 1) {
@@ -418,7 +390,6 @@ extern "C" SEXP S_build_nerve_from_knn(
             static_cast<index_t>(k),
             static_cast<index_t>(max_p),
             use_counting_measure,
-            directed_knn,
             density_normalization
         );
 

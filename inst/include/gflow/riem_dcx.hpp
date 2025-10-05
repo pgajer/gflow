@@ -736,6 +736,9 @@ struct riem_dcx_t {
     /// Star tables encoding upward incidence relations
     std::vector<star_table_t> stars;
 
+    /// Reference measure μ that assigns base weights to vertices before any geometric evolution.
+    // std::vector<double> reference_measure;
+
     /// Local inner product structures for each dimension
     std::vector<local_inner_products_t> inn;
 
@@ -750,6 +753,129 @@ struct riem_dcx_t {
 
     /// Signal observations and fitted values
     signal_state_t sig;
+
+    // Geometric data (new additions)
+    std::vector<double> edge_lengths;
+    std::vector<double> reference_measure;
+
+    // ================================================================
+    // CONSTRUCTION METHODS
+    // ================================================================
+
+    /**
+     * @brief Fit kNN Riemannian graph regression model
+     *
+     * Constructs 1-skeleton kNN complex and iteratively refines geometry
+     * to reflect response structure. Primary method for conditional
+     * expectation estimation.
+     *
+     * @param X Feature matrix (n × d)
+     * @param y Response vector (length n)
+     * @param k Number of nearest neighbors
+     * @param use_counting_measure If true, uniform vertex weights;
+     *                             if false, distance-based weights
+     * @param density_normalization Target sum for vertex densities
+     *                              (0 = sum to n, >0 = sum to value)
+     * @param t_diffusion Heat diffusion time (0 = auto-select)
+     * @param beta_damping Damping parameter (0 = auto-select)
+     * @param gamma_modulation Response coherence exponent [0.5, 2]
+     * @param n_eigenpairs Number of eigenpairs for spectral filtering
+     * @param filter_type Spectral filter choice
+     * @param epsilon_y Response convergence threshold
+     * @param epsilon_rho Density convergence threshold
+     * @param max_iterations Maximum iteration count
+     *
+     * @post pmax = 1 (1-skeleton constructed)
+     * @post S[0], S[1] populated with vertices and edges
+     * @post sig.y contains original response
+     * @post sig.y_hat_hist contains iteration history of fitted values
+     * @post rho contains final densities
+     * @post g contains final metric
+     * @post L contains final Laplacian
+     */
+    void fit_knn_riem_graph_regression(
+        const spmat_t& X,
+        const vec_t& y,
+        index_t k,
+        bool use_counting_measure,
+        double density_normalization,
+        double t_diffusion,
+        double beta_damping,
+        double gamma_modulation,
+        int n_eigenpairs,
+        filter_type_t filter_type,
+        double epsilon_y,
+        double epsilon_rho,
+        int max_iterations
+    );
+
+    /**
+     * @brief Legacy wrapper for backward compatibility
+     *
+     * Builds kNN complex with response and basic geometry.
+     * Superseded by fit_knn_riem_graph_regression() for regression.
+     */
+    void build_knn_riem_dcx(
+        const spmat_t& X,              // Feature matrix (sparse, n x d)
+        const vec_t& y,                // Response vector (length n)
+        index_t k,                     // kNN parameter
+        index_t max_p,                 // Maximum simplex dimension
+        bool use_counting_measure,     // true: count overlaps; false: use d_k weights
+        double density_normalization   // 0: sum to n; >0: custom normalization
+        );
+
+    // ================================================================
+    // ITERATION HELPER METHODS (can be private or public)
+    // ================================================================
+
+    /**
+     * @brief Apply damped heat diffusion to vertex density
+     */
+    vec_t apply_damped_heat_diffusion(
+        const vec_t& rho_current,
+        double t,
+        double beta
+        );
+
+    /**
+     * @brief Update edge densities from evolved vertex densities
+     */
+    void update_edge_densities_from_vertices();
+
+    /**
+     * @brief Modulate edge densities based on response variation
+     */
+    void apply_response_coherence_modulation(
+        const vec_t& y_hat,
+        double gamma
+        );
+    
+    /**
+     * @brief Smooth response via spectral filtering with GCV
+     */
+    gcv_result_t smooth_response_via_spectral_filter(
+        const vec_t& y,
+        int n_eigenpairs,
+        filter_type_t filter_type
+        );
+
+    /**
+     * @brief Check convergence criteria
+     */
+    convergence_status_t check_convergence(
+        const vec_t& y_hat_prev,
+        const vec_t& y_hat_curr,
+        const std::vector<vec_t>& rho_prev,
+        const std::vector<vec_t>& rho_curr,
+        double epsilon_y,
+        double epsilon_rho,
+        int iteration,
+        int max_iterations
+        );
+
+    // ================================================================
+    // EXISTING METHODS (unchanged)
+    // ================================================================
 
     /**
      * @brief Initialize all structures with given dimensions
@@ -1092,23 +1218,76 @@ struct riem_dcx_t {
         assemble_operators();
     }
 
-    void build_knn_riem_dcx(
-        const spmat_t& X,              // Feature matrix (sparse, n x d)
-        const vec_t& y,                // Response vector (length n)
-        index_t k,                     // kNN parameter
-        index_t max_p,                 // Maximum simplex dimension
-        bool use_counting_measure = true,  // true: count overlaps; false: use d_k weights
-        bool directed_knn = false,     // true: directed; false: mutual kNN
-        double density_normalization = 0.0  // 0: sum to n; >0: custom normalization
-        );
-
 private:
+    // ================================================================
+    // INTERNAL HELPERS
+    // ================================================================
+
+    /**
+     * @brief Build nerve complex from kNN covering (general purpose)
+     *
+     * Constructs simplicial complex up to dimension max_p from kNN covering.
+     * Geometry depends only on feature distribution (not response).
+     * Suitable for general topological analysis.
+     */
     void build_nerve_from_knn(
         const spmat_t& X,
         index_t k,
         index_t max_p,
         bool use_counting_measure,
-        bool directed_knn,
         double density_normalization
         );
+
+    /**
+     * @brief Initialize reference measure for density computation
+     */
+    void initialize_reference_measure(
+        const std::vector<std::vector<index_t>>& knn_neighbors,
+        const std::vector<std::vector<double>>& knn_distances,
+        bool use_counting_measure,
+        double density_normalization
+        );
+
+    /**
+     * @brief Compute initial densities from reference measure
+     */
+    void compute_initial_densities(
+        const std::vector<std::unordered_set<index_t>>& neighbor_sets
+        );
+
+    /**
+     * @brief Initialize metric from densities
+     */
+    void initialize_metric_from_density();
+
+    /**
+     * @brief Update metric from current densities
+     */
+    void update_metric_from_density();
+
+    /**
+     * @brief Compute full edge mass matrix with triple intersections
+     */
+    void compute_edge_mass_matrix();
+
+    /**
+     * @brief Update edge mass matrix from current vertex densities
+     */
+    void update_edge_mass_matrix();
+
+    /**
+     * @brief Compute inner product between edges in a star
+     */
+    double compute_edge_inner_product(
+        index_t e1,
+        index_t e2,
+        index_t vertex_i
+        ) const;
+    
+    /**
+     * @brief Compute simplex volume via Cayley-Menger determinant
+     */
+    double compute_simplex_volume(
+        const std::vector<index_t>& vertices
+        ) const;
 };

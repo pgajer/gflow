@@ -195,6 +195,7 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_fit_knn_riem_graph_regression", (DL_FUNC) &S_fit_knn_riem_graph_regression, 13},
   {"S_build_nerve_from_knn", (DL_FUNC) &S_build_nerve_from_knn, 7},
   {"S_riem_dcx_summary", (DL_FUNC) &S_riem_dcx_summary, 1},
   {"S_get_simplices", (DL_FUNC) &S_get_simplices, 2},
