@@ -247,74 +247,45 @@ void riem_dcx_t::initialize_metric_from_density() {
 void riem_dcx_t::compute_edge_mass_matrix() {
     const size_t n_edges = S[1].size();
 
-    // Use triplet list for efficient sparse matrix construction
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(n_edges * 10);  // Heuristic: ~10 nonzeros per row
+    triplets.reserve(n_edges * 10);
 
-    // ========================================================================
-    // Main loop: For each vertex, compute inner products between its edges
-    // ========================================================================
-
-    for (const auto& star_entry : stars[0].star_over) {
-        const std::vector<index_t>& incident_edges = star_entry;
-
-        if (incident_edges.empty()) continue;
-
-        // Get the vertex index (need to find which vertex this star belongs to)
-        // This requires looking up the vertex from the star table structure
-        // For efficiency, we'll iterate over all vertices explicitly below
-    }
-
-    // More direct approach: iterate over all vertices
     const size_t n_vertices = S[0].size();
 
     for (size_t i = 0; i < n_vertices; ++i) {
-        // Get all edges incident to vertex i
         const std::vector<index_t>& incident_edges = stars[0].star_over[i];
         const size_t n_incident = incident_edges.size();
 
         if (n_incident == 0) continue;
 
-        // For each pair of incident edges, compute their inner product
         for (size_t a = 0; a < n_incident; ++a) {
             const index_t e_ij_idx = incident_edges[a];
+            const std::vector<index_t>& e_ij_verts = S[1].simplex_verts[e_ij_idx];
 
-            for (size_t b = a; b < n_incident; ++b) {
+            // Only process diagonal when we're at the SMALLER endpoint
+            // Since edges are stored sorted: e_ij_verts[0] < e_ij_verts[1]
+            if (i == e_ij_verts[0]) {
+                // Add diagonal entry (only once per edge)
+                double diagonal = std::max(rho.rho[1][e_ij_idx], 1e-15);
+                triplets.emplace_back(e_ij_idx, e_ij_idx, diagonal);
+            }
+
+            // Off-diagonal entries (process all pairs as before)
+            for (size_t b = a + 1; b < n_incident; ++b) {
                 const index_t e_is_idx = incident_edges[b];
 
-                double inner_product = 0.0;
+                double inner_product = compute_edge_inner_product(e_ij_idx, e_is_idx, i);
 
-                if (a == b) {
-                    // Diagonal entry: ⟨e_ij, e_ij⟩ = ρ₁([i,j])
-                    inner_product = rho.rho[1][e_ij_idx];
-                } else {
-                    // Off-diagonal entry: requires triple intersection
-                    inner_product = compute_edge_inner_product(e_ij_idx, e_is_idx, i);
-                }
-
-                // Apply regularization to diagonal entries
-                if (a == b) {
-                    inner_product = std::max(inner_product, 1e-15);
-                }
-
-                // Add to triplet list (symmetric matrix)
                 triplets.emplace_back(e_ij_idx, e_is_idx, inner_product);
-                if (a != b) {
-                    triplets.emplace_back(e_is_idx, e_ij_idx, inner_product);
-                }
+                triplets.emplace_back(e_is_idx, e_ij_idx, inner_product);
             }
         }
     }
-
-    // ========================================================================
-    // Build sparse matrix from triplets
-    // ========================================================================
 
     g.M[1] = spmat_t(n_edges, n_edges);
     g.M[1].setFromTriplets(triplets.begin(), triplets.end());
     g.M[1].makeCompressed();
 
-    // Clear any existing factorization (will be recomputed if needed)
     g.M_solver[1].reset();
 }
 
@@ -391,6 +362,227 @@ double riem_dcx_t::compute_edge_inner_product(
 // ============================================================
 // ITERATION HELPERS (public/private member functions)
 // ============================================================
+
+/**
+ * @brief Compute and cache spectral decomposition of vertex Laplacian
+ *
+ * Computes the eigendecomposition L[0] = V Λ V^T and caches the results
+ * for use in spectral filtering and parameter selection. The eigenvalues
+ * are sorted in ascending order, so eigenvalues[0] ≈ 0 (constant function)
+ * and eigenvalues[1] = λ₂ is the spectral gap.
+ *
+ * This method should be called after any operation that modifies L[0],
+ * such as metric updates or Laplacian reassembly. The cached decomposition
+ * remains valid until explicitly invalidated.
+ *
+ * @param n_eigenpairs Number of eigenpairs to compute. If -1 or greater than
+ *                     the matrix dimension, computes full decomposition.
+ *                     For large graphs (n > 1000), computing only the smallest
+ *                     100-200 eigenpairs is more efficient and sufficient for
+ *                     most filtering operations.
+ *
+ * @throws std::runtime_error if L[0] is not properly initialized or if
+ *                            eigendecomposition fails
+ *
+ * @post spectral_cache.is_valid == true
+ * @post spectral_cache.eigenvalues contains n_eigenpairs eigenvalues (sorted)
+ * @post spectral_cache.eigenvectors contains corresponding eigenvectors
+ * @post spectral_cache.lambda_2 contains the spectral gap
+ *
+ * @note For computational efficiency, this function uses dense eigensolvers
+ *       from Eigen for small-to-medium graphs. For very large graphs (n > 5000),
+ *       consider using sparse iterative solvers (Spectra/ARPACK) to compute
+ *       only the smallest eigenpairs.
+ */
+void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
+    // Validate that Laplacian exists
+    if (L.L.empty() || L.L[0].rows() == 0) {
+        Rf_error("compute_spectral_decomposition: vertex Laplacian L[0] not initialized");
+    }
+
+    const Eigen::Index n = L.L[0].rows();
+
+    // Determine how many eigenpairs to compute
+    int num_pairs = n_eigenpairs;
+    if (num_pairs < 0 || num_pairs > n) {
+        num_pairs = n;  // Full decomposition
+    }
+
+    // For small graphs or full decomposition request, use dense solver
+    if (num_pairs == n || n <= 1000) {
+        // Convert to dense for eigendecomposition
+        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L.L[0]);
+
+        // Compute eigendecomposition
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
+
+        if (eigensolver.info() != Eigen::Success) {
+            Rf_error("compute_spectral_decomposition: eigendecomposition failed");
+        }
+
+        // Store results (eigenvalues already sorted in ascending order)
+        spectral_cache.eigenvalues = eigensolver.eigenvalues();
+        spectral_cache.eigenvectors = eigensolver.eigenvectors();
+
+    } else {
+        // For large graphs with partial decomposition, use iterative solver
+        // TODO: Implement Spectra-based solver for partial eigendecomposition
+        // For now, fall back to full decomposition with warning
+        Rf_warning("Partial eigendecomposition not yet implemented for large graphs, computing full spectrum");
+
+        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L.L[0]);
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
+
+        if (eigensolver.info() != Eigen::Success) {
+            Rf_error("compute_spectral_decomposition: eigendecomposition failed");
+        }
+
+        spectral_cache.eigenvalues = eigensolver.eigenvalues();
+        spectral_cache.eigenvectors = eigensolver.eigenvectors();
+    }
+
+    // Extract spectral gap (second smallest eigenvalue)
+    if (spectral_cache.eigenvalues.size() < 2) {
+        Rf_error("compute_spectral_decomposition: graph has fewer than 2 vertices");
+    }
+
+    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+
+    // Validate spectral gap
+    if (spectral_cache.lambda_2 < 1e-10) {
+        Rf_warning("Spectral gap λ₂ = %.3e is very small; graph may be disconnected or poorly conditioned",
+                   spectral_cache.lambda_2);
+    }
+
+    // Mark cache as valid
+    spectral_cache.is_valid = true;
+}
+
+/**
+ * @brief Automatically select diffusion and damping parameters
+ *
+ * Implements the hybrid strategy combining spectral gap analysis with
+ * coordinated parameter selection. If the spectral decomposition has not
+ * been computed, triggers computation automatically.
+ *
+ * The selection follows these principles:
+ * 1. Diffusion time t scales inversely with spectral gap λ₂
+ * 2. Damping parameter β maintains fixed ratio with t
+ * 3. User-provided values (> 0) are respected and not overridden
+ * 4. Safety warnings for extreme parameter combinations
+ *
+ * @param t_diffusion Reference to diffusion time parameter (input/output).
+ *                    If <= 0 on input, automatically set to 0.5/λ₂.
+ *                    If > 0 on input, left unchanged (user override).
+ *
+ * @param beta_damping Reference to damping parameter (input/output).
+ *                     If <= 0 on input, automatically set to 0.1/t_diffusion.
+ *                     If > 0 on input, left unchanged (user override).
+ *
+ * @param verbose If true, print diagnostic information about selected parameters
+ *
+ * @pre L[0] must be properly assembled
+ * @post t_diffusion > 0 and beta_damping > 0
+ * @post spectral_cache.is_valid == true
+ *
+ * @note This function can be called multiple times during iteration if
+ *       adaptive parameter adjustment is desired, though the current design
+ *       uses fixed parameters throughout.
+ *
+ * Example usage in fit_knn_riem_graph_regression():
+ * @code
+ * // After initial Laplacian assembly
+ * select_diffusion_parameters(t_diffusion, beta_damping, verbose);
+ * // Now t_diffusion and beta_damping are set (either auto or user-provided)
+ * @endcode
+ */
+void riem_dcx_t::select_diffusion_parameters(
+    double& t_diffusion,
+    double& beta_damping,
+    bool verbose
+) {
+    // Ensure spectral decomposition is available
+    if (!spectral_cache.is_valid) {
+        if (verbose) {
+            Rprintf("Computing spectral decomposition for parameter selection...\n");
+        }
+        compute_spectral_decomposition();
+    }
+
+    const double lambda_2 = spectral_cache.lambda_2;
+
+    // Auto-select t_diffusion if not provided by user
+    bool t_auto_selected = false;
+    if (t_diffusion <= 0.0) {
+        // Use moderate default: 0.5/λ₂
+        t_diffusion = 0.5 / lambda_2;
+        t_auto_selected = true;
+
+        if (verbose) {
+            Rprintf("Auto-selected t_diffusion = %.6f (based on spectral gap λ₂ = %.6f)\n",
+                    t_diffusion, lambda_2);
+            Rprintf("  Conservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
+                    0.1 / lambda_2, 0.5 / lambda_2, 1.0 / lambda_2);
+        }
+    } else if (verbose) {
+        Rprintf("Using user-provided t_diffusion = %.6f\n", t_diffusion);
+    }
+
+    // Auto-select beta_damping if not provided by user
+    bool beta_auto_selected = false;
+    if (beta_damping <= 0.0) {
+        // Coordinate with t: damping is 10% of diffusion scale
+        beta_damping = 0.1 / t_diffusion;
+        beta_auto_selected = true;
+
+        if (verbose) {
+            Rprintf("Auto-selected beta_damping = %.6f (ratio β·t = %.3f)\n",
+                    beta_damping, beta_damping * t_diffusion);
+        }
+    } else if (verbose) {
+        Rprintf("Using user-provided beta_damping = %.6f\n", beta_damping);
+    }
+
+    // Diagnostic checks and warnings
+    const double diffusion_scale = t_diffusion * lambda_2;
+
+    if (diffusion_scale > 3.0) {
+        Rf_warning("Large diffusion scale (t·λ₂ = %.2f): density may change dramatically per iteration. "
+                   "Consider reducing t_diffusion to %.6f for more conservative updates.",
+                   diffusion_scale, 1.0 / lambda_2);
+    }
+
+    if (diffusion_scale < 0.05) {
+        Rf_warning("Small diffusion scale (t·λ₂ = %.2f): convergence may be very slow. "
+                   "Consider increasing t_diffusion to %.6f for faster updates.",
+                   diffusion_scale, 0.3 / lambda_2);
+    }
+
+    const double damping_ratio = beta_damping * t_diffusion;
+
+    if (damping_ratio > 0.5) {
+        Rf_warning("High damping ratio (β·t = %.2f): may over-suppress geometric structure. "
+                   "Typical range is [0.05, 0.2].", damping_ratio);
+    }
+
+    if (damping_ratio < 0.01) {
+        Rf_warning("Low damping ratio (β·t = %.3f): density may collapse onto small regions. "
+                   "Consider increasing beta_damping to %.6f.",
+                   damping_ratio, 0.05 / t_diffusion);
+    }
+
+    // Final summary if verbose
+    if (verbose) {
+        Rprintf("\nDiffusion parameter summary:\n");
+        Rprintf("  λ₂ (spectral gap):  %.6f\n", lambda_2);
+        Rprintf("  t (diffusion time): %.6f %s\n", t_diffusion,
+                t_auto_selected ? "[auto]" : "[user]");
+        Rprintf("  β (damping):        %.6f %s\n", beta_damping,
+                beta_auto_selected ? "[auto]" : "[user]");
+        Rprintf("  Diffusion scale:    %.3f (t·λ₂)\n", diffusion_scale);
+        Rprintf("  Damping ratio:      %.3f (β·t)\n", damping_ratio);
+    }
+}
 
 /**
  * @brief Apply damped heat diffusion to vertex densities
@@ -589,7 +781,20 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     int n_eigenpairs,
     rdcx_filter_type_t filter_type
 ) {
-    // ... implementation ...
+    // Use cached spectral decomposition if available and sufficient
+    if (!spectral_cache.is_valid ||
+        spectral_cache.eigenvalues.size() < n_eigenpairs) {
+        compute_spectral_decomposition(n_eigenpairs);
+    }
+
+    // Extract needed eigenpairs from cache
+    const int m = std::min(n_eigenpairs,
+                          static_cast<int>(spectral_cache.eigenvalues.size()));
+
+    vec_t eigenvalues = spectral_cache.eigenvalues.head(m);
+    Eigen::MatrixXd eigenvectors = spectral_cache.eigenvectors.leftCols(m);
+
+    // ... rest of spectral filtering implementation using cached eigenvalues/vectors
 }
 
 convergence_status_t riem_dcx_t::check_convergence(
@@ -845,6 +1050,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     assemble_operators();
 
     // ----------------------------------------------------------------
+    // Phase 4.5: Select diffusion parameters (auto or validate user input)
+    // ----------------------------------------------------------------
+    select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
+
+    // ----------------------------------------------------------------
     // Phase 5: Initial response smoothing
     // ----------------------------------------------------------------
     auto gcv_result = this->smooth_response_via_spectral_filter(
@@ -866,31 +1076,32 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         rho_prev = rho.rho;
 
         // Step 1: Density diffusion
-        rho.rho[0] = this->apply_damped_heat_diffusion(
-            rho.rho[0], t_diffusion, beta_damping
-        );
+        rho.rho[0] = apply_damped_heat_diffusion(rho.rho[0], t_diffusion, beta_damping);
 
         // Step 2: Edge density update
-        this->update_edge_densities_from_vertices();
+        update_edge_densities_from_vertices();
 
         // Step 3: Response-coherence modulation
-        this->apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
+        apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
 
         // Step 4: Metric update
-        this->update_metric_from_density();
+        update_metric_from_density();
 
         // Step 5: Laplacian reassembly
-        this->assemble_operators();
+        assemble_operators();
+
+        // Invalidate spectral cache since L[0] changed
+        spectral_cache.invalidate();
 
         // Step 6: Response smoothing
-        gcv_result = this->smooth_response_via_spectral_filter(
+        gcv_result = smooth_response_via_spectral_filter(
             y, n_eigenpairs, filter_type
         );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
 
         // Step 7: Convergence check
-        auto status = this->check_convergence(
+        auto status = check_convergence(
             y_hat_prev, y_hat_curr,
             rho_prev, rho.rho,
             epsilon_y, epsilon_rho,

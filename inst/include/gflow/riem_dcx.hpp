@@ -1188,9 +1188,40 @@ private:
 
     std::vector<std::unordered_set<index_t>> neighbor_sets;
 
+    /**
+     * @brief Cached spectral decomposition of vertex Laplacian
+     *
+     * Stores eigenvalues and eigenvectors of L[0] to avoid recomputation.
+     * Updated whenever the Laplacian is reassembled during iteration.
+     */
+    struct spectral_cache_t {
+        vec_t eigenvalues;           ///< Eigenvalues in ascending order
+        Eigen::MatrixXd eigenvectors; ///< Corresponding eigenvectors (columns)
+        bool is_valid;               ///< True if cache contains current L[0] spectrum
+        double lambda_2;             ///< Spectral gap (second smallest eigenvalue)
+
+        spectral_cache_t() : is_valid(false), lambda_2(0.0) {}
+
+        void invalidate() { is_valid = false; }
+    } spectral_cache;
+
     // ================================================================
     // INTERNAL HELPERS
     // ================================================================
+
+    /**
+     * @brief Compute and cache spectral decomposition of vertex Laplacian
+     */
+    void compute_spectral_decomposition(int n_eigenpairs = -1);
+
+    /**
+     * @brief Automatically select diffusion and damping parameters
+     */
+    void select_diffusion_parameters(
+        double& t_diffusion,
+        double& beta_damping,
+        bool verbose = false
+        );
 
     /**
      * @brief Initialize reference measure for density computation

@@ -462,15 +462,18 @@ print.riem_dcx_summary <- function(x, ...) {
 #'   Set to 1.0 for probability interpretation, or to a large value (e.g., 1e6)
 #'   for very large graphs to avoid numerical underflow.
 #'
-#' @param t.diffusion Numeric scalar, non-negative. Heat diffusion time for
-#'   density evolution. If 0 (default), automatically selected as 0.5/λ₂ where
-#'   λ₂ is the spectral gap of the initial Laplacian. Larger values produce
-#'   more diffusion. Manual setting rarely needed.
+#' @param t.diffusion Diffusion time parameter (non-negative). Controls how much
+#'   vertex density evolves in each iteration. If 0 (default), automatically
+#'   selected as 0.5/λ₂ where λ₂ is the spectral gap. Larger values produce
+#'   more aggressive density updates; smaller values are more conservative.
+#'   Typical range: [0.1/λ₂, 1.0/λ₂]. Set to 0 for automatic selection (recommended).
 #'
-#' @param beta.damping Numeric scalar, non-negative. Damping parameter
-#'   preventing density collapse to a few high-density vertices. If 0 (default),
-#'   set to 0.1/t.diffusion after t is determined. Larger values pull density
-#'   toward uniform distribution. Typical range: [0.01/t, 0.5/t].
+#' @param beta.damping Damping parameter (non-negative). Controls the strength
+#'   of the restoring force toward uniform distribution. If 0 (default),
+#'   automatically selected as 0.1/t.diffusion to maintain a 10:1 ratio of
+#'   diffusion to damping. Larger values prevent concentration but may over-smooth;
+#'   smaller values allow more geometric structure but risk collapse. Set to 0
+#'   for automatic selection (recommended).
 #'
 #' @param gamma.modulation Numeric scalar in [0.5, 2.0]. Exponent controlling
 #'   sharpness of response boundaries in the geometry. Default 1.0 corresponds
