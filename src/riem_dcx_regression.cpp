@@ -460,19 +460,19 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ----------------------------------------------------------------
     // Phase 1: Build 1-skeleton geometry
     // ----------------------------------------------------------------
-#if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
-    Rprintf("Phase 1: Computing k-NN neighborhoods ...\n");
-#endif
 
-    // Compute k-NN using the Eigen-compatible wrapper
-    knn_result_t knn_result = compute_knn_from_eigen(X, k);
+#if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
+    Rprintf("Phase 1: Computing k-NN neighborhoods...\n");
+#endif
 
     const size_t n_points = static_cast<size_t>(X.rows());
 
-    // Extract results into more convenient format
+    // Step 1: Compute k-NN using Eigen-compatible wrapper
+    knn_result_t knn_result = compute_knn_from_eigen(X, k);
+
+    // Extract results into convenient format
     std::vector<std::vector<index_t>> knn_indices(n_points, std::vector<index_t>(k));
     std::vector<std::vector<double>> knn_distances(n_points, std::vector<double>(k));
-
     for (size_t i = 0; i < n_points; ++i) {
         for (size_t j = 0; j < k; ++j) {
             const size_t offset = i * k + j;
@@ -481,47 +481,33 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         }
     }
 
-    // Build neighborhood sets and adjacency structure
+    // Step 2: Build neighborhood sets
     std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
-    std::vector<std::vector<iknn_vertex_t>> adjacency_list(n_points);
-
-    // Populate neighbor sets
     for (size_t i = 0; i < n_points; ++i) {
         for (index_t neighbor_idx : knn_indices[i]) {
             neighbor_sets[i].insert(neighbor_idx);
         }
     }
 
-    // Build edges via neighborhood intersections
-    std::vector<int> nn_i(k);
-    std::vector<int> nn_j(k);
-    std::vector<int> sorted_nn_i(k);
-    std::vector<int> sorted_nn_j(k);
-    std::vector<int> intersection;
+    // Step 3: Build edges via O(nk) neighborhood intersection algorithm
+    std::vector<std::vector<iknn_vertex_t>> adjacency_list(n_points);
+    std::vector<index_t> intersection;
+    intersection.reserve(k);  // Pre-allocate for efficiency
 
-    for (size_t pt_i = 0; pt_i < n_points - 1; ++pt_i) {
-        // Copy and sort neighbors of pt_i
-        for (size_t j = 0; j < k; ++j) {
-            nn_i[j] = knn_indices[pt_i][j];
-            sorted_nn_i[j] = nn_i[j];
-        }
-        std::sort(sorted_nn_i.begin(), sorted_nn_i.end());
+    for (size_t i = 0; i < n_points; ++i) {
+        const std::vector<index_t>& neighbors_i = knn_indices[i];
 
-        for (size_t pt_j = pt_i + 1; pt_j < n_points; ++pt_j) {
-            // Copy and sort neighbors of pt_j
-            for (size_t j = 0; j < k; ++j) {
-                nn_j[j] = knn_indices[pt_j][j];
-                sorted_nn_j[j] = nn_j[j];
-            }
-            std::sort(sorted_nn_j.begin(), sorted_nn_j.end());
+        // Only examine neighbors j where j > i to avoid duplicate edges
+        for (index_t j : neighbor_sets[i]) {
+            if (j <= i) continue;  // Skip self and already-processed pairs
 
-            // Compute intersection
+            // Compute intersection of neighborhoods
             intersection.clear();
-            std::set_intersection(
-                sorted_nn_i.begin(), sorted_nn_i.end(),
-                sorted_nn_j.begin(), sorted_nn_j.end(),
-                std::back_inserter(intersection)
-                );
+            for (index_t v : neighbor_sets[i]) {
+                if (neighbor_sets[j].find(v) != neighbor_sets[j].end()) {
+                    intersection.push_back(v);
+                }
+            }
 
             size_t common_count = intersection.size();
 
@@ -529,34 +515,40 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
                 // Compute minimum distance through common neighbors
                 double min_dist = std::numeric_limits<double>::max();
 
-                for (int x_k : intersection) {
-                    // Find x_k in pt_i's neighbors
-                    auto it_i = std::find(nn_i.begin(), nn_i.end(), x_k);
-                    size_t idx_i = it_i - nn_i.begin();
+                for (index_t x_k : intersection) {
+                    // Find x_k in i's neighbor list to get distance
+                    auto it_i = std::find(neighbors_i.begin(), neighbors_i.end(), x_k);
+                    size_t idx_i = it_i - neighbors_i.begin();
+                    double dist_i_k = knn_distances[i][idx_i];
 
-                    // Find x_k in pt_j's neighbors
-                    auto it_j = std::find(nn_j.begin(), nn_j.end(), x_k);
-                    size_t idx_j = it_j - nn_j.begin();
-
-                    double dist_i_k = knn_distances[pt_i][idx_i];
-                    double dist_j_k = knn_distances[pt_j][idx_j];
+                    // Find x_k in j's neighbor list to get distance
+                    const std::vector<index_t>& neighbors_j = knn_indices[j];
+                    auto it_j = std::find(neighbors_j.begin(), neighbors_j.end(), x_k);
+                    size_t idx_j = it_j - neighbors_j.begin();
+                    double dist_j_k = knn_distances[j][idx_j];
 
                     min_dist = std::min(min_dist, dist_i_k + dist_j_k);
                 }
 
                 // Add edges (bidirectional)
-                adjacency_list[pt_i].emplace_back(iknn_vertex_t{pt_j, common_count, min_dist});
-                adjacency_list[pt_j].emplace_back(iknn_vertex_t{pt_i, common_count, min_dist});
+                adjacency_list[i].emplace_back(iknn_vertex_t{j, common_count, min_dist});
+                adjacency_list[j].emplace_back(iknn_vertex_t{i, common_count, min_dist});
             }
         }
     }
 
-    // Store neighbor sets as member variable for later use
+
+    // Step 4: Store neighbor sets as member variable for later use
     this->neighbor_sets = std::move(neighbor_sets);
 
 #if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
-    Rprintf("Phase 1 complete: %zu vertices, %zu total edges\n",
-            n_points, adjacency_list.size());
+    // Count total edges
+    size_t total_edges = 0;
+    for (const auto& adj : adjacency_list) {
+        total_edges += adj.size();
+    }
+    Rprintf("Phase 1 complete: %zu vertices, %zu directed edges (%zu undirected)\n",
+            n_points, total_edges, total_edges / 2);
 #endif
 
     // ----------------------------------------------------------------
