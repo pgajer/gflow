@@ -1,6 +1,7 @@
 #include "riem_dcx.hpp"
 #include "iknn_vertex.hpp" // for iknn_vertex_t
 #include "kNN.h"
+#include "set_wgraph.hpp"
 #include <R.h>
 
 // ============================================================
@@ -17,19 +18,19 @@ namespace {
 double apply_filter_function(
     double lambda,
     double eta,
-    filter_type_t filter_type
+    rdcx_filter_type_t filter_type
 ) {
     switch (filter_type) {
-        case filter_type_t::HEAT_KERNEL:
+        case rdcx_filter_type_t::HEAT_KERNEL:
             return std::exp(-eta * lambda);
 
-        case filter_type_t::TIKHONOV:
+        case rdcx_filter_type_t::TIKHONOV:
             return 1.0 / (1.0 + eta * lambda);
 
-        case filter_type_t::CUBIC_SPLINE:
+        case rdcx_filter_type_t::CUBIC_SPLINE:
             return 1.0 / (1.0 + eta * lambda * lambda);
 
-        case filter_type_t::GAUSSIAN:
+        case rdcx_filter_type_t::GAUSSIAN:
             return std::exp(-eta * lambda * lambda);
 
         default:
@@ -391,12 +392,185 @@ double riem_dcx_t::compute_edge_inner_product(
 // ITERATION HELPERS (public/private member functions)
 // ============================================================
 
+/**
+ * @brief Apply damped heat diffusion to vertex densities
+ *
+ * Evolves the density distribution through a damped heat equation that balances
+ * geometric diffusion with a restoring force toward uniform distribution. The
+ * method solves the discretized damped heat equation using a single implicit
+ * Euler step, ensuring unconditional stability even for large time parameters.
+ *
+ * The governing equation combines standard heat diffusion with damping:
+ *   ∂ρ/∂t = -L₀ρ - β(ρ - u)
+ * where L₀ is the vertex Laplacian, β ≥ 0 controls damping strength, and
+ * u = (1, 1, ..., 1)ᵀ represents uniform distribution scaled to sum to n.
+ *
+ * The heat diffusion term -L₀ρ drives mass toward densely connected regions,
+ * as the Laplacian naturally smooths density along the graph structure. The
+ * damping term -β(ρ - u) prevents runaway concentration by continuously pulling
+ * the distribution back toward uniformity. This balance allows the method to
+ * discover meaningful geometric structure without collapsing onto a small set
+ * of vertices.
+ *
+ * We discretize using implicit Euler with step size t:
+ *   (I + t(L₀ + βI))ρ_new = ρ_old + tβu
+ * The implicit scheme guarantees stability for arbitrarily large t, unlike
+ * explicit methods which require restrictive step size bounds. After solving,
+ * we renormalize to enforce the constraint Σρ_new(i) = n.
+ *
+ * The system matrix A = I + t(L₀ + βI) is symmetric positive definite, as it
+ * combines the identity with positive multiples of L₀ (positive semidefinite)
+ * and βI (positive definite for β > 0). We solve using conjugate gradient
+ * iteration, which exploits sparsity and symmetry for efficiency.
+ *
+ * @param rho_current Current vertex density vector (length n)
+ * @param t Diffusion time parameter, controls smoothing scale
+ * @param beta Damping parameter, controls strength of restoring force
+ * @return Updated vertex density vector, normalized to sum to n
+ *
+ * @pre rho_current must have positive entries summing to n
+ * @pre t > 0 for meaningful diffusion
+ * @pre beta >= 0 for stability (beta = 0 gives pure heat diffusion)
+ * @pre L.L[0] must be assembled and current
+ * @post Return value sums to n (up to numerical tolerance)
+ * @post Return value has all positive entries
+ *
+ * @note For kNN graphs with n vertices, typical values are t ∈ [0.1/λ₂, 1.0/λ₂]
+ *       where λ₂ is the spectral gap, and β ≈ 0.1/t. These choices balance
+ *       geometric smoothing with stability.
+ *
+ * @note The solver uses tolerance 1e-10 and maximum 1000 iterations. For large
+ *       systems (n > 10000), consider using a preconditioner or iterative
+ *       refinement if convergence is slow.
+ */
 vec_t riem_dcx_t::apply_damped_heat_diffusion(
     const vec_t& rho_current,
     double t,
     double beta
 ) {
-    // ... implementation ...
+    // ========================================================================
+    // Part 1: Input validation and setup
+    // ========================================================================
+
+    const Eigen::Index n = rho_current.size();
+
+    if (n == 0) {
+        Rf_error("apply_damped_heat_diffusion: rho_current is empty");
+    }
+
+    if (t <= 0.0) {
+        Rf_error("apply_damped_heat_diffusion: diffusion time t must be positive (got %.3e)", t);
+    }
+
+    if (beta < 0.0) {
+        Rf_error("apply_damped_heat_diffusion: damping parameter beta must be non-negative (got %.3e)", beta);
+    }
+
+    if (L.L.empty() || L.L[0].rows() != n || L.L[0].cols() != n) {
+        Rf_error("apply_damped_heat_diffusion: vertex Laplacian L[0] not properly initialized");
+    }
+
+    // Verify positive densities (with small tolerance for numerical errors)
+    const double min_density = rho_current.minCoeff();
+    if (min_density < -1e-10) {
+        Rf_error("apply_damped_heat_diffusion: rho_current contains negative entries (min=%.3e)",
+                 min_density);
+    }
+
+    // ========================================================================
+    // Part 2: Build system matrix A = I + t(L₀ + βI)
+    // ========================================================================
+
+    // Start with identity matrix
+    spmat_t I(n, n);
+    I.setIdentity();
+
+    // Build system matrix: A = I + t*L₀ + t*β*I = (1 + t*β)*I + t*L₀
+    // We compute this efficiently by scaling operations
+    const double identity_coeff = 1.0 + t * beta;
+    spmat_t A = identity_coeff * I + t * L.L[0];
+
+    // Compress for efficient solve
+    A.makeCompressed();
+
+    // ========================================================================
+    // Part 3: Build right-hand side b = ρ_current + tβu
+    // ========================================================================
+
+    // Uniform distribution vector u = (1, 1, ..., 1)ᵀ
+    vec_t u = vec_t::Ones(n);
+
+    // Right-hand side: b = ρ_current + t*β*u
+    vec_t b = rho_current + (t * beta) * u;
+
+    // ========================================================================
+    // Part 4: Solve linear system A*ρ_new = b using conjugate gradient
+    // ========================================================================
+
+    // Initialize conjugate gradient solver
+    // We use CG since A is symmetric positive definite
+    Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper> cg;
+
+    // Set solver parameters
+    cg.setMaxIterations(1000);
+    cg.setTolerance(1e-10);
+
+    // Compute the factorization
+    cg.compute(A);
+
+    if (cg.info() != Eigen::Success) {
+        Rf_error("apply_damped_heat_diffusion: failed to initialize CG solver");
+    }
+
+    // Solve the system
+    vec_t rho_new = cg.solve(b);
+
+    if (cg.info() != Eigen::Success) {
+        Rf_warning("apply_damped_heat_diffusion: CG solver did not converge (iterations=%d, error=%.3e)",
+                   static_cast<int>(cg.iterations()),
+                   cg.error());
+        // Continue with best available solution rather than failing completely
+    }
+
+    // ========================================================================
+    // Part 5: Enforce positivity and normalize
+    // ========================================================================
+
+    // Clip any small negative values that arose from numerical error
+    // This can happen near zero due to finite precision arithmetic
+    for (Eigen::Index i = 0; i < n; ++i) {
+        if (rho_new[i] < 0.0) {
+            if (rho_new[i] < -1e-8) {
+                Rf_warning("apply_damped_heat_diffusion: large negative density %.3e at vertex %ld after solve",
+                           rho_new[i], static_cast<long>(i));
+            }
+            rho_new[i] = 1e-15;  // Small positive value to maintain positivity
+        }
+    }
+
+    // Normalize to sum to n
+    const double current_sum = rho_new.sum();
+
+    if (current_sum < 1e-15) {
+        Rf_error("apply_damped_heat_diffusion: density collapsed to zero after diffusion");
+    }
+
+    rho_new *= static_cast<double>(n) / current_sum;
+
+    // ========================================================================
+    // Part 6: Verification and return
+    // ========================================================================
+
+    // Verify normalization (debugging check)
+    const double final_sum = rho_new.sum();
+    const double normalization_error = std::abs(final_sum - static_cast<double>(n));
+
+    if (normalization_error > 1e-6) {
+        Rf_warning("apply_damped_heat_diffusion: normalization error %.3e (sum=%.6f, expected=%ld)",
+                   normalization_error, final_sum, static_cast<long>(n));
+    }
+
+    return rho_new;
 }
 
 void riem_dcx_t::update_edge_densities_from_vertices() {
@@ -413,7 +587,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
 gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const vec_t& y,
     int n_eigenpairs,
-    filter_type_t filter_type
+    rdcx_filter_type_t filter_type
 ) {
     // ... implementation ...
 }
@@ -445,10 +619,12 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     double beta_damping,
     double gamma_modulation,
     int n_eigenpairs,
-    filter_type_t filter_type,
+    rdcx_filter_type_t filter_type,
     double epsilon_y,
     double epsilon_rho,
-    int max_iterations
+    int max_iterations,
+    double max_ratio_threshold,
+    double threshold_percentile
     ) {
 
 #define DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION 0
@@ -458,7 +634,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ================================================================
 
     // ----------------------------------------------------------------
-    // Phase 1: Build 1-skeleton geometry
+    // Phase 1a: Build 1-skeleton geometry
     // ----------------------------------------------------------------
 
 #if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
@@ -541,6 +717,108 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // Step 4: Store neighbor sets as member variable for later use
     this->neighbor_sets = std::move(neighbor_sets);
 
+    // ----------------------------------------------------------------
+    // Phase 1b: Edge construction with geometric edge pruning
+    // ----------------------------------------------------------------
+    // Extract edges from adjacency list
+    struct temp_edge {
+        index_t i, j;
+        size_t isize;
+        double dist;
+    };
+    std::vector<temp_edge> all_edges;
+
+    for (size_t i = 0; i < n_points; ++i) {
+        for (const auto& neighbor : adjacency_list[i]) {
+            size_t j = neighbor.index;
+            if (j > i) {
+                all_edges.push_back({
+                        static_cast<index_t>(i),
+                        static_cast<index_t>(j),
+                        neighbor.isize,
+                        neighbor.dist
+                    });
+            }
+        }
+    }
+
+    // Apply geometric pruning
+    set_wgraph_t temp_graph(n_points);
+    for (const auto& edge : all_edges) {
+        temp_graph.add_edge(edge.i, edge.j, edge.dist);
+    }
+
+    set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
+        max_ratio_threshold, threshold_percentile);
+
+    // Rebuild edge list with only retained edges
+    std::vector<temp_edge> pruned_edges;
+    for (const auto& edge : all_edges) {
+        // Check if edge still exists in pruned graph
+        bool exists = false;
+        for (const auto& nbr : pruned_graph.adjacency_list[edge.i]) {
+            if (nbr.vertex == edge.j) {
+                exists = true;
+                break;
+            }
+        }
+        if (exists) {
+            pruned_edges.push_back(edge);
+        }
+    }
+    all_edges = std::move(pruned_edges);
+
+    // Now build simplex structures from all_edges
+    const index_t n_edges = all_edges.size();
+    extend_by_one_dim(n_edges);
+
+    S[1].simplex_verts.resize(n_edges);
+    for (index_t e = 0; e < n_edges; ++e) {
+        std::vector<index_t> verts = {all_edges[e].i, all_edges[e].j};
+        S[1].simplex_verts[e] = verts;
+        S[1].id_of[verts] = e;
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 1c: Build 0-Simplices (Vertices)
+    // ----------------------------------------------------------------
+    S[0].simplex_verts.resize(n_points);
+    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+        S[0].simplex_verts[i] = {i};
+        S[0].id_of[{i}] = i;
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 1d: Initialize reference measure
+    // ----------------------------------------------------------------
+    // Initilizting reference_measure
+    initialize_reference_measure(
+        knn_indices,
+        knn_distances,
+        use_counting_measure,
+        density_normalization
+        );
+
+    // ----------------------------------------------------------------
+    // Phase 1e: Initialize vertex masses: m_i = μ(N̂_k(x_i))
+    // ----------------------------------------------------------------
+    vec_t vertex_masses = vec_t::Zero(n_points);
+    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+        double mass = 0.0;
+        for (index_t j : neighbor_sets[i]) {
+            mass += reference_measure[j];
+        }
+        vertex_masses[i] = mass;
+    }
+
+    g.M[0] = spmat_t(n_points, n_points);
+    g.M[0].reserve(Eigen::VectorXi::Constant(n_points, 1));
+    for (size_t i = 0; i < n_points; ++i) {
+        g.M[0].insert(i, i) = std::max(vertex_masses[i], 1e-15);
+    }
+    g.M[0].makeCompressed();
+
+
 #if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
     // Count total edges
     size_t total_edges = 0;
@@ -552,32 +830,22 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 #endif
 
     // ----------------------------------------------------------------
-    // Phase 2: Initialize reference measure
-    // ----------------------------------------------------------------
-    initialize_reference_measure(
-        knn_indices,
-        knn_distances,
-        use_counting_measure,
-        density_normalization
-        );
-
-    // ----------------------------------------------------------------
-    // Phase 3: Compute initial densities
+    // Phase 2: Compute initial densities
     // ----------------------------------------------------------------
     compute_initial_densities();
 
     // ----------------------------------------------------------------
-    // Phase 4: Build initial metric
+    // Phase 3: Build initial metric
     // ----------------------------------------------------------------
     initialize_metric_from_density();
 
     // ----------------------------------------------------------------
-    // Phase 5: Assemble initial Laplacian
+    // Phase 4: Assemble initial Laplacian
     // ----------------------------------------------------------------
     assemble_operators();
 
     // ----------------------------------------------------------------
-    // Phase 6: Initial response smoothing
+    // Phase 5: Initial response smoothing
     // ----------------------------------------------------------------
     auto gcv_result = this->smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type

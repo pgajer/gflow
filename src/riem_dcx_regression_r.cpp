@@ -140,7 +140,7 @@ extern "C" SEXP create_parameters_component(
     double beta_damping,
     double gamma_modulation,
     int n_eigenpairs,
-    filter_type_t filter_type,
+    rdcx_filter_type_t filter_type,
     double epsilon_y,
     double epsilon_rho,
     int max_iterations
@@ -172,8 +172,8 @@ extern "C" SEXP create_parameters_component(
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(n_eigenpairs));
 
     SET_STRING_ELT(names, idx, Rf_mkChar("filter.type"));
-    const char* filter_str = (filter_type == filter_type_t::HEAT_KERNEL) ? "heat_kernel" :
-                             (filter_type == filter_type_t::TIKHONOV) ? "tikhonov" :
+    const char* filter_str = (filter_type == rdcx_filter_type_t::HEAT_KERNEL) ? "heat_kernel" :
+                             (filter_type == rdcx_filter_type_t::TIKHONOV) ? "tikhonov" :
                              "cubic_spline";
     SET_VECTOR_ELT(params, idx++, Rf_mkString(filter_str));
 
@@ -230,7 +230,9 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_filter_type,
     SEXP s_epsilon_y,
     SEXP s_epsilon_rho,
-    SEXP s_max_iterations
+    SEXP s_max_iterations,
+    SEXP s_max_ratio_threshold,
+    SEXP s_threshold_percentile
 ) {
     // ================================================================
     // PART I: INPUT EXTRACTION (same as before)
@@ -503,14 +505,14 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         Rf_error("filter.type cannot be empty string");
     }
 
-    filter_type_t filter_type;
+    rdcx_filter_type_t filter_type;
 
     if (strcmp(filter_str, "heat_kernel") == 0) {
-        filter_type = filter_type_t::HEAT_KERNEL;
+        filter_type = rdcx_filter_type_t::HEAT_KERNEL;
     } else if (strcmp(filter_str, "tikhonov") == 0) {
-        filter_type = filter_type_t::TIKHONOV;
+        filter_type = rdcx_filter_type_t::TIKHONOV;
     } else if (strcmp(filter_str, "cubic_spline") == 0) {
-        filter_type = filter_type_t::CUBIC_SPLINE;
+        filter_type = rdcx_filter_type_t::CUBIC_SPLINE;
     } else {
         Rf_error("filter.type must be 'heat_kernel', 'tikhonov', or 'cubic_spline' (got '%s')",
                  filter_str);
@@ -558,6 +560,33 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         Rf_error("max.iterations must be at least 1 (got %d)", max_iterations);
     }
 
+
+    // -------------------- max.ratio.threshold --------------------
+
+    if (TYPEOF(s_max_ratio_threshold) != REALSXP || Rf_length(s_max_ratio_threshold) != 1) {
+        Rf_error("max.ratio.threshold must be a single numeric value");
+    }
+
+    const double max_ratio_threshold = REAL(s_max_ratio_threshold)[0];
+
+    if (!R_FINITE(max_ratio_threshold) || max_ratio_threshold <= 0.0) {
+        Rf_error("max.ratio.threshold must be a finite positive number (got %.3e)",
+                 max_ratio_threshold);
+    }
+
+    // -------------------- threshold.percentile --------------------
+
+    if (TYPEOF(s_threshold_percentile) != REALSXP || Rf_length(s_threshold_percentile) != 1) {
+        Rf_error("threshold.percentile must be a single numeric value");
+    }
+
+    const double threshold_percentile = REAL(s_threshold_percentile)[0];
+
+    if (!R_FINITE(threshold_percentile) || threshold_percentile <= 0.0) {
+        Rf_error("threshold.percentile must be a finite positive number (got %.3e)",
+                 threshold_percentile);
+    }
+
     // ================================================================
     // PART II: CALL MEMBER FUNCTION
     // ================================================================
@@ -570,8 +599,9 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
             use_counting_measure, density_normalization,
             t_diffusion, beta_damping, gamma_modulation,
             n_eigenpairs, filter_type,
-            epsilon_y, epsilon_rho, max_iterations
-        );
+            epsilon_y, epsilon_rho, max_iterations,
+            max_ratio_threshold, threshold_percentile
+            );
 
     } catch (const std::exception& e) {
         Rf_error("Regression fitting failed: %s", e.what());
