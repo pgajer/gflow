@@ -1246,7 +1246,7 @@ private:
     /**
      * @brief Update metric from current densities
      */
-    void update_metric_from_density() {};
+    void update_metric_from_density();
 
     /**
      * @brief Compute full edge mass matrix with triple intersections
