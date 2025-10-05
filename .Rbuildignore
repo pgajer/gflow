@@ -57,3 +57,4 @@
 ^CRAN-SUBMISSION$
 
 ^tests/manual$
+^inst/examples$

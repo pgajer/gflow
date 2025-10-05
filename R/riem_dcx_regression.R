@@ -510,6 +510,16 @@ print.riem_dcx_summary <- function(x, ...) {
 #'   well-chosen parameters. If maximum iterations reached without convergence,
 #'   a warning is issued.
 #'
+#' @param max.ratio.threshold Numeric in \eqn{[0, 0.2)}.
+#'     Geometric pruning removes an edge \eqn{(i,j)} when there exists an
+#'     alternative path between \eqn{i} and \eqn{j} whose path/edge length ratio
+#'     minus 1.0 is \emph{less than} this threshold. This is a deviation
+#'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
+#'     path-to-edge ratio R to \eqn{1 + \delta}. Default 0.1.
+#'
+#' @param threshold.percentile Numeric in \eqn{[0,1]}. Only edges with
+#'     length above this percentile are considered for geometric pruning. Default 0.5.
+#'
 #' @return An object of class \code{c("knn.riem.fit", "riem.dcx")}, which is
 #'   an external pointer to a fitted riem_dcx_t object. Use accessor functions
 #'   to extract components:
@@ -648,7 +658,9 @@ fit.knn.riem.graph.regression <- function(
     filter.type = c("heat_kernel", "tikhonov", "cubic_spline"),
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
-    max.iterations = 50
+    max.iterations = 50,
+    max.ratio.threshold = 0.1,
+    threshold.percentile = 0.5
 ) {
     # ==================== Feature Matrix Validation ====================
 
@@ -901,6 +913,21 @@ fit.knn.riem.graph.regression <- function(
                        max.iterations))
     }
 
+    # max.ratio.threshold
+    if (!is.numeric(max.ratio.threshold) || length(max.ratio.threshold) != 1) {
+        stop("max.ratio.threshold must be numeric.")
+    }
+        
+    if (max.ratio.threshold < 0 || max.ratio.threshold >= 0.2) {
+        stop("max.ratio.threshold must be in [0, 0.2).")
+    }
+        
+    # threshold.percentile
+    if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1 ||
+        threshold.percentile < 0 || threshold.percentile > 1) {
+        stop("threshold.percentile must be in [0, 1].")
+    }
+        
     # ==================== String Parameter Validation ====================
 
     # Match filter.type
@@ -923,6 +950,8 @@ fit.knn.riem.graph.regression <- function(
         as.double(epsilon.y),
         as.double(epsilon.rho),
         as.integer(max.iterations),
+        as.double(max.ratio.threshold),
+        as.double(threshold.percentile),
         PACKAGE = "gflow"
     )
 

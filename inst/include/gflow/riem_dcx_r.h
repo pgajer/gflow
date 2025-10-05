@@ -25,7 +25,9 @@ extern "C" {
 		SEXP s_filter_type,
 		SEXP s_epsilon_y,
 		SEXP s_epsilon_rho,
-		SEXP s_max_iterations
+		SEXP s_max_iterations,
+		SEXP s_max_ratio_threshold,
+		SEXP s_threshold_percentile
 		);
 
 #ifdef __cplusplus

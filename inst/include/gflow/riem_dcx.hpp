@@ -25,7 +25,7 @@ using spmat_t = Eigen::SparseMatrix<double>;
 /**
  * @brief Filter type enumeration for spectral filtering
  */
-enum class filter_type_t {
+enum class rdcx_filter_type_t {
     HEAT_KERNEL,   ///< f(λ) = exp(-ηλ), exponential decay
     TIKHONOV,      ///< f(λ) = 1/(1 + ηλ), rational decay
     CUBIC_SPLINE,  ///< f(λ) = 1/(1 + ηλ²), spline smoothness
@@ -770,10 +770,12 @@ struct riem_dcx_t {
         double beta_damping,
         double gamma_modulation,
         int n_eigenpairs,
-        filter_type_t filter_type,
+        rdcx_filter_type_t filter_type,
         double epsilon_y,
         double epsilon_rho,
-        int max_iterations
+        int max_iterations,
+        double max_ratio_threshold,
+        double threshold_percentile
     );
 
     /**
@@ -820,7 +822,7 @@ struct riem_dcx_t {
     gcv_result_t smooth_response_via_spectral_filter(
         const vec_t& y,
         int n_eigenpairs,
-        filter_type_t filter_type
+        rdcx_filter_type_t filter_type
     );
 
     /**
