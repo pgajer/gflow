@@ -65,15 +65,6 @@ struct regression_result_t {
     std::vector<vec_t> y_hat_history;       ///< Full fitted values history
 };
 
-/**
- * @brief kNN vertex structure for adjacency list
- */
-struct iknn_vertex_t {
-    size_t index;   ///< Index of the neighbor
-    size_t isize;   ///< Size of neighborhood intersection
-    double dist;    ///< Minimum indirect distance through common neighbors
-};
-
 // ================================================================
 // COMPONENT STRUCTURES (definitions follow)
 // ================================================================
@@ -1192,6 +1183,9 @@ struct riem_dcx_t {
     }
 
 private:
+
+    std::vector<std::unordered_set<index_t>> neighbor_sets;
+
     // ================================================================
     // INTERNAL HELPERS
     // ================================================================
@@ -1209,9 +1203,7 @@ private:
     /**
      * @brief Compute initial densities from reference measure
      */
-    void compute_initial_densities(
-        const std::vector<std::unordered_set<index_t>>& neighbor_sets
-    );
+    void compute_initial_densities();
 
     /**
      * @brief Initialize metric from densities
