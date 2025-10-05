@@ -218,7 +218,6 @@ void riem_dcx_t::initialize_metric_from_density() {
     // to diagonal entries to maintain numerical stability.
 }
 
-
 /**
  * @brief Compute full edge mass matrix with triple intersections
  *
@@ -362,6 +361,213 @@ double riem_dcx_t::compute_edge_inner_product(
 // ============================================================
 // ITERATION HELPERS (public/private member functions)
 // ============================================================
+
+/**
+ * @brief Update metric from evolved densities during iterative refinement
+ *
+ * Reconstructs the Riemannian metric structure g from the current density
+ * distribution ρ after density evolution steps. This function is called
+ * during each iteration of the regression algorithm after vertex densities
+ * have been updated via damped heat diffusion and edge densities have been
+ * recomputed from the evolved vertex distribution.
+ *
+ * The metric update follows the same mathematical construction as initialization
+ * but operates on evolved densities rather than initial values. The vertex mass
+ * matrix M₀ is updated by replacing diagonal entries with current vertex densities.
+ * The edge mass matrix M₁ is recomputed via triple neighborhood intersections
+ * using the evolved vertex densities, capturing how the geometric relationships
+ * between edges change as density concentrates in response-coherent regions and
+ * depletes across response boundaries.
+ *
+ * A critical side effect of metric updating is invalidation of the spectral cache.
+ * Since the Laplacian L₀ depends on the mass matrices through L₀ = B₁ M₁⁻¹ B₁ᵀ M₀,
+ * any change to the metric renders previously computed eigendecompositions invalid.
+ * The function explicitly invalidates the spectral cache to ensure that subsequent
+ * response smoothing operations trigger fresh eigendecomposition with the updated
+ * geometry.
+ *
+ * ITERATION CONTEXT:
+ * This function is called as Step 4 in the iteration loop of fit_knn_riem_graph_regression():
+ *   Step 1: Density diffusion (evolves ρ₀)
+ *   Step 2: Edge density update (derives ρ₁ from evolved ρ₀)
+ *   Step 3: Response-coherence modulation (adjusts ρ₁ based on response variation)
+ *   Step 4: Metric update ← THIS FUNCTION
+ *   Step 5: Laplacian reassembly (builds L₀ from updated M₀, M₁)
+ *   Step 6: Response smoothing (solves for ŷ using updated L₀)
+ *   Step 7: Convergence check
+ *
+ * COMPUTATIONAL COST:
+ * The dominant cost is recomputing M₁ via update_edge_mass_matrix(), which
+ * performs O(n·k²) triple intersection computations. Updating M₀ is O(n) and
+ * negligible by comparison. For large graphs (n > 10000), this step can become
+ * the primary computational bottleneck of each iteration.
+ *
+ * FUTURE OPTIMIZATION:
+ * The current implementation performs full recomputation of M₁ at each iteration.
+ * Potential optimizations include:
+ *   - Incremental updates tracking which vertex densities changed significantly
+ *   - Lazy evaluation deferring M₁ update until Laplacian assembly
+ *   - Low-rank approximations when density changes are small
+ * These optimizations would require tracking density change history and accepting
+ * increased code complexity in exchange for reduced iteration cost.
+ *
+ * @pre rho.rho[0] contains evolved vertex densities (normalized to sum to n)
+ * @pre rho.rho[1] contains updated edge densities (normalized to sum to n_edges)
+ * @pre S[0], S[1], neighbor_sets, and stars[0] remain unchanged from initialization
+ *
+ * @post g.M[0] diagonal entries updated to current vertex densities
+ * @post g.M[1] recomputed with current vertex densities via triple intersections
+ * @post spectral_cache.is_valid == false (cache invalidated)
+ * @post Laplacian L.L[0] remains unchanged (caller must invoke assemble_operators())
+ *
+ * @note Unlike initialize_metric_from_density(), this function assumes the
+ *       sparse matrix structures g.M[0] and g.M[1] are already allocated with
+ *       correct dimensions. It updates entries in place rather than reconstructing
+ *       from scratch, though the current implementation of update_edge_mass_matrix()
+ *       does perform full reconstruction of M₁.
+ *
+ * @note This function does NOT automatically reassemble the Laplacian. The caller
+ *       must explicitly call assemble_operators() after metric update to rebuild
+ *       L₀ from the updated mass matrices.
+ *
+ * @see initialize_metric_from_density() for the initial metric construction
+ * @see update_edge_mass_matrix() for the edge mass matrix recomputation
+ * @see fit_knn_riem_graph_regression() for the complete iteration context
+ */
+void riem_dcx_t::update_metric_from_density() {
+    // Rebuild M₀ from updated vertex densities
+    const size_t n_vertices = S[0].size();
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        double mass = std::max(rho.rho[0][i], 1e-15);
+        g.M[0].coeffRef(i, i) = mass;
+    }
+
+    // Rebuild M₁ from updated vertex and edge densities
+    update_edge_mass_matrix();
+
+    // Invalidate spectral cache since Laplacian will change
+    spectral_cache.invalidate();
+}
+
+/**
+ * @brief Update edge mass matrix from evolved vertex densities
+ *
+ * Recomputes the edge mass matrix M₁ using current vertex densities after
+ * density evolution. This function performs the same triple intersection
+ * computations as compute_edge_mass_matrix() but operates in the context
+ * of iterative refinement where densities have evolved from their initial
+ * values through damped heat diffusion and response-coherence modulation.
+ *
+ * The edge mass matrix encodes geometric relationships between edges through
+ * their shared vertices and overlapping neighborhoods. For edges e_ij = [i,j]
+ * and e_is = [i,s] sharing vertex v_i, the inner product is:
+ *
+ *   ⟨e_ij, e_is⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j) ∩ N̂_k(x_s)} ρ₀(v)
+ *
+ * As vertex densities ρ₀ evolve during iteration, these inner products change,
+ * reflecting how the Riemannian geometry adapts to concentrate mass in
+ * response-coherent regions and deplete mass across response boundaries. The
+ * updated mass matrix captures these evolved geometric relationships.
+ *
+ * ITERATION CONTEXT:
+ * This function is called by update_metric_from_density() as part of Step 4
+ * in the iteration loop. At this point in each iteration:
+ *   - Vertex densities ρ₀ have been evolved via damped heat diffusion
+ *   - Edge densities ρ₁ have been recomputed from evolved ρ₀
+ *   - Response-coherence modulation has adjusted ρ₁ based on fitted values
+ *   - The combinatorial structure (S[1], neighbor_sets, stars[0]) remains fixed
+ *
+ * The recomputed M₁ will be used to reassemble the vertex Laplacian:
+ *   L₀ = B₁ M₁⁻¹ B₁ᵀ M₀
+ * which in turn drives the next iteration's response smoothing and density evolution.
+ *
+ * IMPLEMENTATION STRATEGY:
+ * The current implementation performs full recomputation by delegating to
+ * compute_edge_mass_matrix(), which iterates over all vertices and computes
+ * inner products for all edge pairs in each vertex's star. This ensures
+ * correctness and maintains consistency with the initialization logic.
+ *
+ * The function rebuilds M₁ completely by:
+ *   1. Iterating over all vertices i
+ *   2. For each vertex, examining all incident edge pairs (e_ij, e_is)
+ *   3. Computing inner products via triple intersections using current ρ₀
+ *   4. Assembling the symmetric sparse matrix from triplets
+ *   5. Applying regularization to diagonal entries
+ *
+ * COMPUTATIONAL COMPLEXITY:
+ * O(n·k²) where n is the number of vertices and k is the neighborhood size.
+ * This matches the initialization cost since the combinatorial structure is
+ * unchanged. For kNN graphs, each vertex has O(k) incident edges, so each
+ * vertex contributes O(k²) edge pairs to examine. Computing each triple
+ * intersection costs O(k) via the optimized smallest-set-first strategy.
+ *
+ * PERFORMANCE CONSIDERATIONS:
+ * This function is the computational bottleneck of each iteration. For large
+ * graphs (n > 10000) or large neighborhoods (k > 50), the O(n·k²) cost can
+ * dominate iteration time. The triple intersection computations cannot be
+ * trivially parallelized due to the need to accumulate contributions from
+ * different vertices to the same matrix entries.
+ *
+ * FUTURE OPTIMIZATION OPPORTUNITIES:
+ * 1. **Incremental updates**: Track which vertex densities changed significantly
+ *    (e.g., relative change > 0.01) and only recompute matrix entries involving
+ *    those vertices. Requires maintaining vertex-to-matrix-entry dependency structure.
+ *
+ * 2. **Selective recomputation**: If density changes are localized (common in
+ *    later iterations near convergence), recompute only affected submatrices.
+ *
+ * 3. **Low-rank updates**: If ||ρ₀^(ℓ) - ρ₀^(ℓ-1)|| is small, approximate
+ *    M₁^(ℓ) ≈ M₁^(ℓ-1) + ΔM where ΔM is computed from density perturbations.
+ *
+ * 4. **Parallel computation**: Use OpenMP to parallelize the outer loop over
+ *    vertices, with careful handling of concurrent triplet list updates.
+ *
+ * These optimizations trade code complexity for computational savings and should
+ * be considered if profiling identifies this function as the primary bottleneck.
+ *
+ * NUMERICAL STABILITY:
+ * The function inherits regularization from compute_edge_mass_matrix():
+ *   - Diagonal entries: max(ρ₁([i,j]), 1e-15) prevents singular matrices
+ *   - Off-diagonal entries: naturally non-negative from density summations
+ *   - Symmetry: enforced by adding both (i,j) and (j,i) triplets
+ *
+ * The resulting matrix is guaranteed symmetric positive semidefinite by
+ * construction, as all inner products arise from L²(ρ) pairings.
+ *
+ * @pre rho.rho[0] contains evolved vertex densities (current iteration)
+ * @pre rho.rho[1] contains updated edge densities (current iteration)
+ * @pre S[1] contains edge simplex table (unchanged from initialization)
+ * @pre neighbor_sets contains kNN neighborhoods (unchanged from initialization)
+ * @pre stars[0] contains vertex-to-incident-edges mapping (unchanged from initialization)
+ * @pre g.M[1] is allocated with dimensions n_edges × n_edges
+ *
+ * @post g.M[1] contains updated edge mass matrix computed from current ρ₀
+ * @post g.M[1] is symmetric: M₁[i,j] == M₁[j,i] for all i,j
+ * @post g.M[1] is positive semidefinite with regularized diagonal entries
+ * @post g.M_solver[1] is reset (factorization invalidated)
+ *
+ * @note This function modifies g.M[1] in place, replacing all entries with
+ *       values computed from current vertex densities. Any previous matrix
+ *       entries or factorizations are discarded.
+ *
+ * @note The combinatorial structure (which edges exist, vertex neighborhoods,
+ *       star relationships) remains fixed throughout iteration. Only the
+ *       numerical values in the mass matrix change based on evolved densities.
+ *
+ * @warning The current implementation performs full O(n·k²) recomputation at
+ *          each call. For very large graphs, consider profiling and implementing
+ *          incremental update strategies if this becomes a bottleneck.
+ *
+ * @see compute_edge_mass_matrix() for the initial mass matrix construction
+ * @see update_metric_from_density() for the calling context
+ * @see compute_edge_inner_product() for the triple intersection computation
+ */
+void riem_dcx_t::update_edge_mass_matrix() {
+    // For now, just call the full computation
+    // Future optimization: track changes and update only affected entries
+    compute_edge_mass_matrix();
+}
 
 /**
  * @brief Compute and cache spectral decomposition of vertex Laplacian
