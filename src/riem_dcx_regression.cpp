@@ -1519,6 +1519,8 @@ void riem_dcx_t::apply_response_coherence_modulation(
         double scale = total_mass_before / total_mass_after;
         g.M[1] *= scale;
     } else {
+        // The mass collapse is telling us that the modulation parameters are
+        // incompatible with the data.
         Rf_error(
             "Response-coherence modulation caused complete mass collapse.\n"
             "This indicates:\n"
@@ -1532,6 +1534,15 @@ void riem_dcx_t::apply_response_coherence_modulation(
             *std::min_element(edge_deltas.begin(), edge_deltas.end()),
             *std::max_element(edge_deltas.begin(), edge_deltas.end())
             );
+
+        // Rf_warning(
+        //     "Response-coherence modulation collapsed all mass (gamma = %.3f too large). "
+        //     "Disabling modulation for this iteration. Reduce gamma parameter.",
+        //     gamma
+        // );
+        // // Restore to pre-modulation state by rebuilding from densities
+        // compute_edge_mass_matrix();
+        // return;  // Skip normalization, use unmodulated matrix
     }
 
     // Invalidate factorization
