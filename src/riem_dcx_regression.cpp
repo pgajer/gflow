@@ -2,6 +2,13 @@
 #include "iknn_vertex.hpp" // for iknn_vertex_t
 #include "kNN.h"
 #include "set_wgraph.hpp"
+
+#include <Eigen/Core>
+#include <Eigen/Dense>  // For Eigen::MatrixXd
+#include <Eigen/Sparse> // For Eigen::SparseMatrix, Triplet
+#include <Spectra/SymEigsSolver.h>          // For SymEigsSolver
+#include <Spectra/MatOp/SparseSymMatProd.h> // For SparseSymMatProd
+
 #include <R.h>
 
 // ============================================================
