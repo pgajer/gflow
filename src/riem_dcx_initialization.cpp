@@ -348,9 +348,9 @@ void riem_dcx_t::initialize_from_knn(
 
 				// Verify non-empty triple intersection
 				bool has_intersection = false;
-				for (index_t v : neighbor_sets[i]) {
-					if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
-						neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
+				for (index_t v : this->neighbor_sets[i]) {
+					if (this->neighbor_sets[j].find(v) != this->neighbor_sets[j].end() &&
+						this->neighbor_sets[s].find(v) != this->neighbor_sets[s].end()) {
 						has_intersection = true;
 						break;
 					}
