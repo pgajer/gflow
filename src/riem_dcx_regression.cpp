@@ -548,7 +548,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
 
     // The Laplacian L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ depends on M₀, so any cached
     // eigendecomposition is now invalid and must be recomputed
-    // spectral_cache.invalidate();
+    spectral_cache.invalidate();
 
     // Note: g.M[1] is intentionally NOT modified here
     // The edge mass matrix was already modulated by response-coherence
@@ -1599,6 +1599,13 @@ void riem_dcx_t::apply_response_coherence_modulation(
                     g.M[1].coeffRef(e2, e1) = modulated_value;
                 }
             }
+        }
+    } else if (gamma > 0.0) {
+        // Warn that we skipped off-diagonal modulation
+        static bool warning_issued = false;
+        if (!warning_issued) {
+            Rprintf("Note: No triangles available...\n");
+            warning_issued = true;
         }
     }
 
@@ -2696,6 +2703,17 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         max_ratio_threshold,
         threshold_percentile
     );
+
+    // Validate triangle construction for response-coherence
+    if (gamma_modulation > 0.0 && (S.size() <= 2 || S[2].size() == 0)) {
+        Rf_warning("gamma_modulation = %.2f requires triangles for off-diagonal "
+                   "modulation, but no triangles were constructed. "
+                   "Only diagonal entries of M₁ will be modulated. "
+                   "Consider: (1) increasing k to create more triangles, "
+                   "(2) setting gamma_modulation = 0 to disable modulation, or "
+                   "(3) adjusting pruning thresholds.",
+                   gamma_modulation);
+    }
 
     // Phase 4.5: Select or validate diffusion parameters
     select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
