@@ -54,6 +54,31 @@ struct convergence_status_t {
 };
 
 /**
+ * @brief Enhanced convergence check with additional diagnostics
+ *
+ * This extended version provides more detailed diagnostic information,
+ * including per-dimension density changes and convergence predictions.
+ * Useful for research and debugging, but not necessary for production use.
+ *
+ * @note This function is optional and not currently used in the main
+ *       iteration loop. It demonstrates how more detailed convergence
+ *       monitoring could be implemented if needed.
+ */
+struct detailed_convergence_status_t {
+    bool converged;
+    double response_change;
+    std::vector<double> density_changes_by_dim;
+    double max_density_change;
+    int iteration;
+    std::string message;
+
+    // Additional diagnostics
+    double response_change_rate;        // Rate of change in response
+    double density_change_rate;         // Rate of change in densities
+    int estimated_iterations_remaining; // Rough estimate to convergence
+};
+
+/**
  * @brief Complete result structure for regression fitting
  */
 struct regression_result_t {
@@ -837,7 +862,22 @@ struct riem_dcx_t {
         double epsilon_rho,
         int iteration,
         int max_iterations
-    );
+        );
+
+    /**
+     * @brief Check convergence criteria - detailed version for research
+     */
+    detailed_convergence_status_t check_convergence_detailed(
+        const vec_t& y_hat_prev,
+        const vec_t& y_hat_curr,
+        const std::vector<vec_t>& rho_prev,
+        const std::vector<vec_t>& rho_curr,
+        double epsilon_y,
+        double epsilon_rho,
+        int iteration,
+        int max_iterations,
+        const std::vector<double>& response_change_history
+        );
 
     // ================================================================
     // EXISTING METHODS
