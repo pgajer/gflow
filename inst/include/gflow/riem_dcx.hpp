@@ -880,8 +880,20 @@ struct riem_dcx_t {
         );
 
     // ================================================================
-    // EXISTING METHODS
+    // METHODS
     // ================================================================
+
+    /**
+     * @brief Initialize Riemannian simplicial complex from k-NN structure
+     */
+    void initialize_from_knn(
+        const spmat_t& X,
+        index_t k,
+        bool use_counting_measure,
+        double density_normalization,
+        double max_ratio_threshold,
+        double threshold_percentile
+        );
 
     /**
      * @brief Initialize all structures with given dimensions
@@ -938,44 +950,6 @@ struct riem_dcx_t {
      */
     void assemble_operators() { L.assemble_all(g); }
 
-    /**
-     * @brief Perform one iteration of density evolution and signal fitting
-     * @param t_vertex Heat diffusion time for vertex density
-     * @param eta_y Tikhonov regularization parameter for signal fitting
-     * @param with_edge_density Whether to compute edge densities (unused)
-     * @param rebuild_knn Whether to rebuild nearest neighbor structure (unused)
-     *
-     * Executes one step of the iterative algorithm: evolves vertex density
-     * via heat diffusion from empirical distribution, fits signal with
-     * regularization if available, updates metric from density, and
-     * reassembles operators. This implements the core computational loop
-     * of the Morse-Smale regression method.
-     */
-    void iteration_step(double t_vertex, double eta_y,
-                        bool with_edge_density=false,
-                        bool rebuild_knn=false) {
-        (void)with_edge_density; (void)rebuild_knn;
-        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
-        vec_t emp = vec_t::Ones(n);
-        emp /= std::max<double>(emp.sum(), 1e-15);
-        rho.rho[0] = L.heat_apply(0, emp, t_vertex, 8);
-
-        if (sig.y.size()==n) {
-            vec_t yhat = L.tikhonov_solve(0, sig.y, eta_y);
-            sig.y_hat_hist.push_back(yhat);
-        }
-
-        if (!g.M.empty() && g.M[0].rows()==n) {
-            const double alpha = 0.2;
-            rho.rho[0] = rho.rho[0].cwiseMax(1e-15);
-            vec_t m0 = g.get_diagonal(0);
-            m0 = (1.0 - alpha) * m0 + alpha * rho.rho[0];
-            g.set_diagonal(0, m0);
-            g.normalize();
-        }
-
-        assemble_operators();
-    }
 
     /**
      * @brief Extend the complex by one dimension, preserving all existing structure
@@ -1287,6 +1261,11 @@ private:
      * @brief Update metric from current densities
      */
     void update_metric_from_density();
+
+    /**
+     * @brief Update vertex mass matrix from evolved vertex densities
+     */
+    void update_vertex_metric_from_density();
 
     /**
      * @brief Compute full edge mass matrix with triple intersections
