@@ -1372,15 +1372,15 @@ void riem_dcx_t::apply_response_coherence_modulation(
 
     double sigma_2 = 1e-10;  // Default if no triangles
 
+    // Lambda to pack two edge indices into a single uint64_t key
+    auto pack_edge_pair = [](index_t e1, index_t e2) -> uint64_t {
+        if (e1 > e2) std::swap(e1, e2);
+        return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
+    };
+
     if (S.size() > 2 && S[2].size() > 0) {
         std::vector<double> triangle_deltas;
         triangle_deltas.reserve(S[2].size());
-
-        // Lambda to pack two edge indices into a single uint64_t key
-        auto pack_edge_pair = [](index_t e1, index_t e2) -> uint64_t {
-            if (e1 > e2) std::swap(e1, e2);
-            return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
-        };
 
         for (size_t t = 0; t < S[2].size(); ++t) {
             const auto& verts = S[2].simplex_verts[t];
@@ -1463,11 +1463,6 @@ void riem_dcx_t::apply_response_coherence_modulation(
 
     // Part B: Off-diagonal entries (modulated by triangle variation)
     if (!edge_pair_max_delta.empty()) {
-        // Lambda to pack edge indices for lookup
-        auto pack_edge_pair = [](index_t e1, index_t e2) -> uint64_t {
-            if (e1 > e2) std::swap(e1, e2);
-            return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
-        };
 
         // Iterate over all non-zero entries in M₁
         for (int k = 0; k < g.M[1].outerSize(); ++k) {
