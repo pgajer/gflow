@@ -457,14 +457,6 @@ void riem_dcx_t::update_vertex_metric_from_density() {
 
     g.M_solver[0].reset();
 
-    // ============================================================
-    // Invalidate spectral cache
-    // ============================================================
-
-    // The Laplacian L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ depends on M₀, so any cached
-    // eigendecomposition is now invalid and must be recomputed
-    spectral_cache.invalidate();
-
     // Note: g.M[1] is intentionally NOT modified here
     // The edge mass matrix was already modulated by response-coherence
     // in Step 3 and should not be overwritten
