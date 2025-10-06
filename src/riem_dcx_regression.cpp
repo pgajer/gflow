@@ -601,67 +601,161 @@ void riem_dcx_t::update_edge_mass_matrix() {
  *       only the smallest eigenpairs.
  */
 void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
-    // Validate that Laplacian exists
-    if (L.L.empty() || L.L[0].rows() == 0) {
-        Rf_error("compute_spectral_decomposition: vertex Laplacian L[0] not initialized");
+    // Select appropriate Laplacian
+    const spmat_t& L0 = (L.L0_sym.rows() > 0) ? L.L0_sym : L.L[0];
+    const int n_vertices = L0.rows();
+
+    // Validate and bound parameters
+    int max_eigenpairs = std::max(1, n_vertices - 2);
+    n_eigenpairs = std::min(n_eigenpairs, max_eigenpairs);
+
+    int nev = n_eigenpairs;
+    int ncv = std::min(2 * nev + 10, n_vertices);
+
+    if (ncv <= nev) {
+        ncv = std::min(nev + 5, n_vertices);
     }
 
-    const Eigen::Index n = L.L[0].rows();
+    // Setup operator
+    Spectra::SparseSymMatProd<double> op(L0);
 
-    // Determine how many eigenpairs to compute
-    int num_pairs = n_eigenpairs;
-    if (num_pairs < 0 || num_pairs > n) {
-        num_pairs = n;  // Full decomposition
-    }
+    // ============================================================
+    // PRIMARY ATTEMPT: Standard parameters
+    // ============================================================
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+    eigs.init();
 
-    // For small graphs or full decomposition request, use dense solver
-    if (num_pairs == n || n <= 1000) {
-        // Convert to dense for eigendecomposition
-        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L.L[0]);
+    int maxit = 1000;
+    double tol = 1e-10;
+    eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
-        // Compute eigendecomposition
-        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
+    if (eigs.info() == Spectra::CompInfo::Successful) {
+        // Success on first try
+        spectral_cache.eigenvalues = eigs.eigenvalues();
+        spectral_cache.eigenvectors = eigs.eigenvectors();
+        spectral_cache.is_valid = true;
 
-        if (eigensolver.info() != Eigen::Success) {
-            Rf_error("compute_spectral_decomposition: eigendecomposition failed");
+        if (spectral_cache.eigenvalues.size() >= 2) {
+            spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
         }
+        return;
+    }
 
-        // Store results (eigenvalues already sorted in ascending order)
-        spectral_cache.eigenvalues = eigensolver.eigenvalues();
-        spectral_cache.eigenvectors = eigensolver.eigenvectors();
+    // ============================================================
+    // TIER 1: Relaxed convergence criteria
+    // ============================================================
+    std::vector<std::pair<int, double>> tier1_attempts = {
+        {2000, 1e-8},
+        {3000, 1e-6},
+        {5000, 1e-4}
+    };
 
-    } else {
-        // For large graphs with partial decomposition, use iterative solver
-        // TODO: Implement Spectra-based solver for partial eigendecomposition
-        // For now, fall back to full decomposition with warning
-        Rf_warning("Partial eigendecomposition not yet implemented for large graphs, computing full spectrum");
+    for (const auto& [adjusted_maxit, adjusted_tol] : tier1_attempts) {
+        eigs.init();
+        eigs.compute(Spectra::SortRule::SmallestAlge, adjusted_maxit, adjusted_tol);
 
-        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L.L[0]);
-        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
+        if (eigs.info() == Spectra::CompInfo::Successful) {
+            Rprintf("Spectral decomposition converged with relaxed parameters: "
+                    "maxit=%d, tol=%.2e\n", adjusted_maxit, adjusted_tol);
 
-        if (eigensolver.info() != Eigen::Success) {
-            Rf_error("compute_spectral_decomposition: eigendecomposition failed");
+            spectral_cache.eigenvalues = eigs.eigenvalues();
+            spectral_cache.eigenvectors = eigs.eigenvectors();
+            spectral_cache.is_valid = true;
+
+            if (spectral_cache.eigenvalues.size() >= 2) {
+                spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+            }
+            return;
         }
-
-        spectral_cache.eigenvalues = eigensolver.eigenvalues();
-        spectral_cache.eigenvectors = eigensolver.eigenvectors();
     }
 
-    // Extract spectral gap (second smallest eigenvalue)
-    if (spectral_cache.eigenvalues.size() < 2) {
-        Rf_error("compute_spectral_decomposition: graph has fewer than 2 vertices");
+    // ============================================================
+    // TIER 2: Enlarged Krylov subspace with relaxed criteria
+    // ============================================================
+
+    // Compute reasonable maximum ncv
+    // Use logarithmic scaling to avoid excessive memory
+    int max_ncv = std::min(
+        static_cast<int>(1 << static_cast<int>(std::log2(n_vertices))),
+        n_vertices
+    );
+
+    std::vector<int> ncv_multipliers = {2, 4, 8, 16};
+
+    for (int multiplier : ncv_multipliers) {
+        int adjusted_ncv = std::min(multiplier * ncv, max_ncv);
+
+        // Skip if we can't actually enlarge
+        if (adjusted_ncv <= ncv) continue;
+
+        Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>>
+            enlarged_eigs(op, nev, adjusted_ncv);
+
+        // Try each tolerance level with enlarged subspace
+        for (const auto& [adjusted_maxit, adjusted_tol] : tier1_attempts) {
+            enlarged_eigs.init();
+            enlarged_eigs.compute(Spectra::SortRule::SmallestAlge,
+                                 adjusted_maxit, adjusted_tol);
+
+            if (enlarged_eigs.info() == Spectra::CompInfo::Successful) {
+                Rprintf("Spectral decomposition converged with enlarged Krylov subspace: "
+                        "ncv=%d (multiplier=%d), maxit=%d, tol=%.2e\n",
+                        adjusted_ncv, multiplier, adjusted_maxit, adjusted_tol);
+
+                spectral_cache.eigenvalues = enlarged_eigs.eigenvalues();
+                spectral_cache.eigenvectors = enlarged_eigs.eigenvectors();
+                spectral_cache.is_valid = true;
+
+                if (spectral_cache.eigenvalues.size() >= 2) {
+                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                }
+                return;
+            }
+        }
     }
 
-    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+    // ============================================================
+    // FALLBACK: Dense eigendecomposition (last resort)
+    // ============================================================
 
-    // Validate spectral gap
-    if (spectral_cache.lambda_2 < 1e-10) {
-        Rf_warning("Spectral gap λ₂ = %.3e is very small; graph may be disconnected or poorly conditioned",
-                   spectral_cache.lambda_2);
+    // For small enough problems, fall back to dense eigensolver
+    // This is guaranteed to work but expensive
+    if (n_vertices <= 1000) {
+        Rf_warning("Sparse eigendecomposition failed; falling back to dense solver "
+                   "for n=%d vertices", n_vertices);
+
+        // Convert to dense
+        Eigen::MatrixXd L0_dense = Eigen::MatrixXd(L0);
+
+        // Use SelfAdjointEigenSolver for symmetric matrices
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L0_dense);
+
+        if (dense_solver.info() == Eigen::Success) {
+            // Extract smallest eigenvalues/vectors
+            int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
+
+            spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
+            spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
+            spectral_cache.is_valid = true;
+
+            if (spectral_cache.eigenvalues.size() >= 2) {
+                spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+            }
+
+            Rprintf("Dense eigendecomposition successful\n");
+            return;
+        }
     }
 
-    // Mark cache as valid
-    spectral_cache.is_valid = true;
+    // ============================================================
+    // COMPLETE FAILURE
+    // ============================================================
+    Rf_error("Spectral decomposition of Hodge Laplacian L_0 failed after all fallback attempts.\n"
+             "This may indicate:\n"
+             "  - Extreme ill-conditioning in the metric structure\n"
+             "  - Near-zero densities creating degenerate geometry\n"
+             "  - Numerical issues in Laplacian assembly\n"
+             "Consider: increasing regularization, checking density bounds, or reducing n_eigenpairs.");
 }
 
 /**

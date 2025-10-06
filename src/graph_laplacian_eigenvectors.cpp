@@ -484,29 +484,6 @@ set_wgraph_t::compute_graph_shifted_kernel_laplacian_spectrum(
 }
 
 
-
-// ## 6. Recommendations for Testing
-
-// For practical implementation and testing:
-
-// 1. **Start with basic cases**: Begin with standard, normalized, and kernel Laplacians with power=1.
-
-// 2. **Add squared variants**: Test power=2 for each Laplacian type.
-
-// 3. **Test filter types**: Start with HEAT, GAUSSIAN, and CUBIC_SPLINE filters.
-
-// 4. **Graph types for testing**: Use chain graphs, grid graphs, and more complex real-world graphs.
-
-// 5. **Metrics**: Compare smoothing quality using MSE, visual assessment, and preservation of important features.
-
-// For most practical applications, I recommend:
-// - Laplacian power k = 1 or 2 (rarely higher)
-// - Starting with STANDARD, NORMALIZED, and KERNEL Laplacian types
-// - CUBIC_SPLINE filter for spline-like smoothness
-// - HEAT or GAUSSIAN filters for more traditional smoothing
-
-// This modular design gives you a flexible framework to experiment with different combinations while keeping the code maintainable.
-
 std::pair<Eigen::VectorXd, Eigen::MatrixXd>
 set_wgraph_t::compute_graph_laplacian_spectrum_generic(
     const std::vector<double>& y,
@@ -779,11 +756,6 @@ set_wgraph_t::construct_standard_laplacian(
     return L;
 }
 
-/**
- * @brief Constructs the normalized Laplacian matrix L_norm = D^(-1/2) L D^(-1/2)
- *
- * @return Eigen::SparseMatrix<double> The normalized Laplacian matrix
- */
 /**
  * @brief Constructs the normalized Laplacian matrix L_norm = D^(-1/2) L D^(-1/2)
  *
