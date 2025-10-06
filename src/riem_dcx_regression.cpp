@@ -11,6 +11,10 @@
 
 #include <R.h>
 
+#include <cmath>
+#include <limits>
+#include <algorithm>
+
 // ============================================================
 // INTERNAL HELPERS (anonymous namespace)
 // ============================================================
@@ -19,34 +23,6 @@ knn_result_t compute_knn_from_eigen(
     const Eigen::SparseMatrix<double>& X,
     int k
     );
-
-namespace {
-
-double apply_filter_function(
-    double lambda,
-    double eta,
-    rdcx_filter_type_t filter_type
-) {
-    switch (filter_type) {
-        case rdcx_filter_type_t::HEAT_KERNEL:
-            return std::exp(-eta * lambda);
-
-        case rdcx_filter_type_t::TIKHONOV:
-            return 1.0 / (1.0 + eta * lambda);
-
-        case rdcx_filter_type_t::CUBIC_SPLINE:
-            return 1.0 / (1.0 + eta * lambda * lambda);
-
-        case rdcx_filter_type_t::GAUSSIAN:
-            return std::exp(-eta * lambda * lambda);
-
-        default:
-            Rf_error("Unknown filter type");
-            return 0.0; // Never reached
-    }
-}
-
-} // anonymous namespace
 
 // ============================================================
 // INITIALIZATION HELPERS (private member functions)
@@ -608,13 +584,45 @@ void riem_dcx_t::update_edge_mass_matrix() {
  *       only the smallest eigenpairs.
  */
 void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
-    // Select appropriate Laplacian
+    // Validate that Laplacian exists
+    if (L.L.empty() || L.L[0].rows() == 0) {
+        Rf_error("compute_spectral_decomposition: vertex Laplacian L[0] not initialized");
+    }
+
+    // Select appropriate Laplacian (use normalized if available)
     const spmat_t& L0 = (L.L0_sym.rows() > 0) ? L.L0_sym : L.L[0];
     const int n_vertices = L0.rows();
 
     // Validate and bound parameters
     int max_eigenpairs = std::max(1, n_vertices - 2);
-    n_eigenpairs = std::min(n_eigenpairs, max_eigenpairs);
+    if (n_eigenpairs < 0 || n_eigenpairs > max_eigenpairs) {
+        n_eigenpairs = std::min(200, max_eigenpairs);
+    }
+
+    // For small graphs or near-full decomposition, use dense solver
+    if (n_eigenpairs >= n_vertices - 2 || n_vertices <= 1000) {
+        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
+
+        if (eigensolver.info() != Eigen::Success) {
+            Rf_error("Dense eigendecomposition failed");
+        }
+
+        // Store full or partial results
+        int n_to_extract = std::min(n_eigenpairs, (int)eigensolver.eigenvalues().size());
+        spectral_cache.eigenvalues = eigensolver.eigenvalues().head(n_to_extract);
+        spectral_cache.eigenvectors = eigensolver.eigenvectors().leftCols(n_to_extract);
+        spectral_cache.is_valid = true;
+
+        if (spectral_cache.eigenvalues.size() >= 2) {
+            spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+        }
+        return;
+    }
+
+    // ============================================================
+    // SPARSE ITERATIVE SOLVER WITH FALLBACKS
+    // ============================================================
 
     int nev = n_eigenpairs;
     int ncv = std::min(2 * nev + 10, n_vertices);
@@ -637,7 +645,6 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
     eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
     if (eigs.info() == Spectra::CompInfo::Successful) {
-        // Success on first try
         spectral_cache.eigenvalues = eigs.eigenvalues();
         spectral_cache.eigenvectors = eigs.eigenvectors();
         spectral_cache.is_valid = true;
@@ -680,8 +687,6 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
     // TIER 2: Enlarged Krylov subspace with relaxed criteria
     // ============================================================
 
-    // Compute reasonable maximum ncv
-    // Use logarithmic scaling to avoid excessive memory
     int max_ncv = std::min(
         static_cast<int>(1 << static_cast<int>(std::log2(n_vertices))),
         n_vertices
@@ -692,13 +697,11 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
     for (int multiplier : ncv_multipliers) {
         int adjusted_ncv = std::min(multiplier * ncv, max_ncv);
 
-        // Skip if we can't actually enlarge
         if (adjusted_ncv <= ncv) continue;
 
         Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>>
             enlarged_eigs(op, nev, adjusted_ncv);
 
-        // Try each tolerance level with enlarged subspace
         for (const auto& [adjusted_maxit, adjusted_tol] : tier1_attempts) {
             enlarged_eigs.init();
             enlarged_eigs.compute(Spectra::SortRule::SmallestAlge,
@@ -706,8 +709,8 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 
             if (enlarged_eigs.info() == Spectra::CompInfo::Successful) {
                 Rprintf("Spectral decomposition converged with enlarged Krylov subspace: "
-                        "ncv=%d (multiplier=%d), maxit=%d, tol=%.2e\n",
-                        adjusted_ncv, multiplier, adjusted_maxit, adjusted_tol);
+                        "ncv=%d, maxit=%d, tol=%.2e\n",
+                        adjusted_ncv, adjusted_maxit, adjusted_tol);
 
                 spectral_cache.eigenvalues = enlarged_eigs.eigenvalues();
                 spectral_cache.eigenvectors = enlarged_eigs.eigenvectors();
@@ -722,23 +725,16 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
     }
 
     // ============================================================
-    // FALLBACK: Dense eigendecomposition (last resort)
+    // TIER 3: Dense fallback for small-medium problems
     // ============================================================
-
-    // For small enough problems, fall back to dense eigensolver
-    // This is guaranteed to work but expensive
-    if (n_vertices <= 1000) {
+    if (n_vertices <= 2000) {
         Rf_warning("Sparse eigendecomposition failed; falling back to dense solver "
                    "for n=%d vertices", n_vertices);
 
-        // Convert to dense
-        Eigen::MatrixXd L0_dense = Eigen::MatrixXd(L0);
-
-        // Use SelfAdjointEigenSolver for symmetric matrices
-        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L0_dense);
+        Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
 
         if (dense_solver.info() == Eigen::Success) {
-            // Extract smallest eigenvalues/vectors
             int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
 
             spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
@@ -1517,12 +1513,176 @@ void riem_dcx_t::apply_response_coherence_modulation(
     // They represent data distribution and should not depend on response
 }
 
+// ============================================================
+// SPECTRAL FILTER FUNCTIONS
+// ============================================================
+
+namespace {
+
+/**
+ * @brief Apply spectral filter function to eigenvalues
+ *
+ * @param lambda Eigenvalue (or array of eigenvalues)
+ * @param eta Smoothing parameter
+ * @param filter_type Type of spectral filter
+ * @return Filter weight(s) in [0,1]
+ */
+inline double apply_filter_function(
+    double lambda,
+    double eta,
+    rdcx_filter_type_t filter_type
+) {
+    switch (filter_type) {
+    case rdcx_filter_type_t::HEAT_KERNEL:
+        return std::exp(-eta * lambda);
+
+    case rdcx_filter_type_t::TIKHONOV:
+        return 1.0 / (1.0 + eta * lambda);
+
+    case rdcx_filter_type_t::CUBIC_SPLINE:
+        return 1.0 / (1.0 + eta * lambda * lambda);
+
+    case rdcx_filter_type_t::GAUSSIAN:
+        return std::exp(-eta * lambda * lambda);
+
+    default:
+        Rf_error("Unsupported filter type");
+        return 0.0;
+    }
+}
+
+/**
+ * @brief Compute filter weights for all eigenvalues
+ */
+Eigen::VectorXd compute_filter_weights(
+    const vec_t& eigenvalues,
+    double eta,
+    rdcx_filter_type_t filter_type
+) {
+    const int m = eigenvalues.size();
+    Eigen::VectorXd weights(m);
+
+    for (int i = 0; i < m; ++i) {
+        weights[i] = apply_filter_function(eigenvalues[i], eta, filter_type);
+    }
+
+    return weights;
+}
+
+/**
+ * @brief Compute GCV score for given smoothing parameter
+ *
+ * GCV score = ||y - y_hat||² / (n - trace(S))²
+ * where trace(S) = sum of filter weights (effective degrees of freedom)
+ */
+double compute_gcv_score(
+    const vec_t& y,
+    const vec_t& y_hat,
+    const Eigen::VectorXd& filter_weights
+) {
+    const double n = static_cast<double>(y.size());
+    const double trace_S = filter_weights.sum();
+
+    double residual_norm_sq = (y - y_hat).squaredNorm();
+    double denom = n - trace_S;
+
+    // Handle edge case where trace is close to n
+    if (std::abs(denom) < 1e-10) {
+        denom = 1e-10;
+    }
+
+    return residual_norm_sq / (denom * denom);
+}
+
+/**
+ * @brief Generate logarithmically-spaced grid for smoothing parameter
+ */
+std::vector<double> generate_eta_grid(
+    double lambda_max,
+    rdcx_filter_type_t filter_type,
+    int n_candidates
+) {
+    const double eps = 1e-10;
+    double eta_min = eps;
+    double eta_max;
+
+    // Determine appropriate eta_max based on filter type
+    switch (filter_type) {
+    case rdcx_filter_type_t::HEAT_KERNEL:
+    case rdcx_filter_type_t::GAUSSIAN:
+        // For exponential filters: -log(eps)/lambda_max
+        eta_max = (lambda_max > 0) ? -std::log(eps) / lambda_max : 1.0;
+        break;
+
+    case rdcx_filter_type_t::TIKHONOV:
+    case rdcx_filter_type_t::CUBIC_SPLINE:
+        // For rational filters: 1/eps
+        eta_max = 1.0 / eps;
+        break;
+
+    default:
+        eta_max = 1.0;
+        break;
+    }
+
+    // Generate logarithmic grid
+    std::vector<double> eta_grid(n_candidates);
+    for (int i = 0; i < n_candidates; ++i) {
+        double t = static_cast<double>(i + 1) / static_cast<double>(n_candidates);
+        eta_grid[i] = std::exp(std::log(eta_min) + t * (std::log(eta_max) - std::log(eta_min)));
+    }
+
+    return eta_grid;
+}
+
+} // anonymous namespace
+
+// ============================================================
+// MAIN SPECTRAL FILTERING FUNCTION
+// ============================================================
+
+/**
+ * @brief Smooth response via spectral filtering with GCV parameter selection
+ *
+ * This function implements spectral filtering of the response signal y using
+ * the eigendecomposition of the Hodge Laplacian L_0. The filtering operates
+ * in the eigenbasis, applying frequency-dependent weights determined by the
+ * filter type and smoothing parameter η.
+ *
+ * The process follows these steps:
+ * 1. Ensure spectral decomposition is available (compute if needed)
+ * 2. Transform response to spectral domain (Graph Fourier Transform)
+ * 3. Generate grid of candidate smoothing parameters
+ * 4. For each candidate, apply filter and compute GCV score
+ * 5. Select optimal parameter minimizing GCV
+ * 6. Return smoothed response and diagnostic information
+ *
+ * @param y Observed response vector (size = n_vertices)
+ * @param n_eigenpairs Number of eigenpairs to use in filtering.
+ *                     More eigenpairs capture finer-scale variation.
+ *                     Typical values: 50-200 for most applications.
+ * @param filter_type Type of spectral filter to apply:
+ *        - HEAT_KERNEL: exp(-ηλ), exponential decay
+ *        - TIKHONOV: 1/(1+ηλ), rational decay
+ *        - CUBIC_SPLINE: 1/(1+ηλ²), spline smoothness
+ *        - GAUSSIAN: exp(-ηλ²), aggressive high-frequency attenuation
+ *
+ * @return gcv_result_t structure containing:
+ *         - eta_optimal: Selected smoothing parameter
+ *         - y_hat: Smoothed response at optimal parameter
+ *         - gcv_scores: GCV scores for all candidate parameters
+ *         - eta_grid: Grid of evaluated parameters
+ */
 gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const vec_t& y,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type
 ) {
-    // Use cached spectral decomposition if available and sufficient
+    // ================================================================
+    // STEP 1: ENSURE SPECTRAL DECOMPOSITION IS AVAILABLE
+    // ================================================================
+
+    // Use cached decomposition if valid and sufficient
     if (!spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs) {
         compute_spectral_decomposition(n_eigenpairs);
@@ -1535,9 +1695,129 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     vec_t eigenvalues = spectral_cache.eigenvalues.head(m);
     Eigen::MatrixXd eigenvectors = spectral_cache.eigenvectors.leftCols(m);
 
-    // ... rest of spectral filtering implementation using cached eigenvalues/vectors
+    // Validate response vector
+    const int n_vertices = y.size();
+    if (n_vertices != eigenvectors.rows()) {
+        Rf_error("Response vector size (%d) does not match number of vertices (%d)",
+                 n_vertices, (int)eigenvectors.rows());
+    }
+
+    // ================================================================
+    // STEP 2: GRAPH FOURIER TRANSFORM
+    // ================================================================
+
+    // Project response onto eigenbasis: y_spectral = V^T y
+    vec_t y_spectral = eigenvectors.transpose() * y;
+
+    // ================================================================
+    // STEP 3: GENERATE CANDIDATE SMOOTHING PARAMETERS
+    // ================================================================
+
+    const int n_candidates = 40;  // Standard grid size
+    const double lambda_max = eigenvalues[m - 1];
+
+    std::vector<double> eta_grid = generate_eta_grid(
+        lambda_max, filter_type, n_candidates
+    );
+
+    // ================================================================
+    // STEP 4: EVALUATE GCV FOR EACH CANDIDATE PARAMETER
+    // ================================================================
+
+    std::vector<double> gcv_scores(n_candidates);
+    double best_gcv = std::numeric_limits<double>::max();
+    int best_idx = 0;
+    vec_t best_y_hat;
+
+    for (int i = 0; i < n_candidates; ++i) {
+        const double eta = eta_grid[i];
+
+        // Compute filter weights for this eta
+        Eigen::VectorXd filter_weights = compute_filter_weights(
+            eigenvalues, eta, filter_type
+        );
+
+        // Apply filter in spectral domain
+        vec_t y_filtered_spectral = filter_weights.asDiagonal() * y_spectral;
+
+        // Transform back to vertex domain: y_hat = V * (filter_weights .* y_spectral)
+        vec_t y_hat = eigenvectors * y_filtered_spectral;
+
+        // Compute GCV score
+        double gcv = compute_gcv_score(y, y_hat, filter_weights);
+        gcv_scores[i] = gcv;
+
+        // Track best solution
+        if (gcv < best_gcv) {
+            best_gcv = gcv;
+            best_idx = i;
+            best_y_hat = y_hat;
+        }
+    }
+
+    // ================================================================
+    // STEP 5: CONSTRUCT RESULT
+    // ================================================================
+
+    gcv_result_t result;
+    result.eta_optimal = eta_grid[best_idx];
+    result.y_hat = best_y_hat;
+    result.gcv_scores = gcv_scores;
+    result.eta_grid = eta_grid;
+
+    return result;
 }
 
+/**
+ * @brief Check convergence of iterative refinement procedure
+ *
+ * This function determines whether the iterative refinement process has
+ * converged by monitoring two primary quantities: the smoothed response
+ * field and the density distributions across simplex dimensions. The
+ * iteration is considered converged when both quantities have stabilized
+ * below specified thresholds.
+ *
+ * The convergence criteria are based on relative changes to ensure scale
+ * independence. We measure the L2 norm of differences normalized by the
+ * L2 norm of the previous state. This provides a dimensionless measure
+ * of change that is robust to the scale of the problem.
+ *
+ * For density monitoring, we track changes across all dimensions where
+ * density is defined. In the standard implementation, this includes vertex
+ * densities (dimension 0) and edge densities (dimension 1). The maximum
+ * relative change across all dimensions serves as the geometric convergence
+ * criterion.
+ *
+ * The function also provides diagnostic information through the returned
+ * status structure, including human-readable messages describing the
+ * current convergence state. This information is useful for monitoring
+ * iteration progress and diagnosing convergence behavior.
+ *
+ * @param y_hat_prev Fitted response values from previous iteration
+ * @param y_hat_curr Fitted response values from current iteration
+ * @param rho_prev Density distributions from previous iteration (indexed by dimension)
+ * @param rho_curr Density distributions from current iteration (indexed by dimension)
+ * @param epsilon_y Convergence threshold for response relative change
+ * @param epsilon_rho Convergence threshold for density relative change
+ * @param iteration Current iteration number (1-indexed)
+ * @param max_iterations Maximum allowed iterations
+ *
+ * @return convergence_status_t structure containing:
+ *         - converged: true if both criteria satisfied
+ *         - response_change: relative change in fitted values
+ *         - max_density_change: maximum relative change across all densities
+ *         - iteration: current iteration number
+ *         - message: human-readable convergence status
+ *
+ * @note Typical threshold values:
+ *       - epsilon_y = 1e-4 to 1e-3 (response convergence)
+ *       - epsilon_rho = 1e-4 to 1e-3 (density convergence)
+ *
+ * @note The function handles edge cases gracefully:
+ *       - Near-zero norms are replaced with 1.0 to avoid division by zero
+ *       - Maximum iterations reached is treated as termination (not convergence)
+ *       - Empty density vectors are handled safely
+ */
 convergence_status_t riem_dcx_t::check_convergence(
     const vec_t& y_hat_prev,
     const vec_t& y_hat_curr,
@@ -1548,8 +1828,268 @@ convergence_status_t riem_dcx_t::check_convergence(
     int iteration,
     int max_iterations
 ) {
-    // ... implementation ...
+    // Initialize status structure
+    convergence_status_t status;
+    status.iteration = iteration;
+    status.converged = false;
+    status.response_change = 0.0;
+    status.max_density_change = 0.0;
+
+    // ================================================================
+    // CHECK 1: Maximum iterations reached
+    // ================================================================
+
+    // If we've reached the maximum iteration count, terminate regardless
+    // of convergence criteria. This prevents infinite loops in cases where
+    // convergence is slow or parameters are poorly chosen.
+    if (iteration >= max_iterations) {
+        // Compute changes for diagnostic purposes even though we're terminating
+        double y_norm_prev = y_hat_prev.norm();
+        if (y_norm_prev < 1e-15) {
+            y_norm_prev = 1.0;
+        }
+        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+        // Compute density changes
+        for (size_t p = 0; p < rho_prev.size() && p < rho_curr.size(); ++p) {
+            if (rho_prev[p].size() == 0 || rho_curr[p].size() == 0) {
+                continue;
+            }
+
+            double rho_norm = rho_prev[p].norm();
+            if (rho_norm < 1e-15) {
+                rho_norm = 1.0;
+            }
+
+            double change = (rho_curr[p] - rho_prev[p]).norm() / rho_norm;
+            status.max_density_change = std::max(status.max_density_change, change);
+        }
+
+        status.message = "Maximum iterations reached";
+        return status;
+    }
+
+    // ================================================================
+    // CHECK 2: Response convergence
+    // ================================================================
+
+    // Compute relative change in fitted response values using L2 norm.
+    // The relative change is computed as ||y_curr - y_prev|| / ||y_prev||
+    // to ensure scale independence.
+
+    // Validate dimensions
+    if (y_hat_prev.size() != y_hat_curr.size()) {
+        Rf_error("check_convergence: response vectors have inconsistent sizes "
+                 "(%d vs %d)", (int)y_hat_prev.size(), (int)y_hat_curr.size());
+    }
+
+    // Compute previous state norm with safety check
+    double y_norm_prev = y_hat_prev.norm();
+    if (y_norm_prev < 1e-15) {
+        // Near-zero norm indicates either initialization or numerical issues.
+        // Use 1.0 as denominator to avoid division by zero while still
+        // measuring absolute change.
+        y_norm_prev = 1.0;
+    }
+
+    // Compute relative change
+    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+    // ================================================================
+    // CHECK 3: Density convergence
+    // ================================================================
+
+    // Compute relative changes for densities at all dimensions.
+    // We track the maximum change across all dimensions as the overall
+    // geometric convergence measure.
+
+    // Validate that both density vectors have compatible structure
+    if (rho_prev.size() != rho_curr.size()) {
+        Rf_error("check_convergence: density vectors have inconsistent dimension counts "
+                 "(%d vs %d)", (int)rho_prev.size(), (int)rho_curr.size());
+    }
+
+    // Iterate over all simplex dimensions
+    for (size_t p = 0; p < rho_prev.size(); ++p) {
+        // Skip dimensions with no simplices
+        if (rho_prev[p].size() == 0 || rho_curr[p].size() == 0) {
+            continue;
+        }
+
+        // Validate dimension consistency
+        if (rho_prev[p].size() != rho_curr[p].size()) {
+            Rf_error("check_convergence: density at dimension %d has inconsistent sizes "
+                     "(%d vs %d)", (int)p, (int)rho_prev[p].size(), (int)rho_curr[p].size());
+        }
+
+        // Compute previous state norm with safety check
+        double rho_norm = rho_prev[p].norm();
+        if (rho_norm < 1e-15) {
+            rho_norm = 1.0;
+        }
+
+        // Compute relative change at this dimension
+        double change_p = (rho_curr[p] - rho_prev[p]).norm() / rho_norm;
+
+        // Track maximum across dimensions
+        status.max_density_change = std::max(status.max_density_change, change_p);
+    }
+
+    // ================================================================
+    // CHECK 4: Evaluate convergence criteria
+    // ================================================================
+
+    // Determine convergence status based on both response and density criteria.
+    // Full convergence requires both to be below their respective thresholds.
+
+    bool response_converged = (status.response_change < epsilon_y);
+    bool density_converged = (status.max_density_change < epsilon_rho);
+
+    // ================================================================
+    // CASE 1: Full convergence (both criteria satisfied)
+    // ================================================================
+    if (response_converged && density_converged) {
+        status.converged = true;
+        status.message = "Converged: both response and density stable";
+        return status;
+    }
+
+    // ================================================================
+    // CASE 2: Partial convergence (only response stable)
+    // ================================================================
+    if (response_converged && !density_converged) {
+        status.converged = false;
+        status.message = "Response converged, but density still evolving";
+        return status;
+    }
+
+    // ================================================================
+    // CASE 3: Partial convergence (only density stable)
+    // ================================================================
+    if (!response_converged && density_converged) {
+        status.converged = false;
+        status.message = "Density converged, but response still evolving";
+        return status;
+    }
+
+    // ================================================================
+    // CASE 4: No convergence (both still changing)
+    // ================================================================
+    status.converged = false;
+    status.message = "Iteration in progress";
+    return status;
 }
+
+/**
+ * @brief Check convergence with enhanced diagnostics
+ *
+ * Extended version that tracks per-dimension changes and estimates
+ * convergence rate. This information can guide adaptive parameter
+ * selection or early stopping decisions.
+ */
+detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
+    const vec_t& y_hat_prev,
+    const vec_t& y_hat_curr,
+    const std::vector<vec_t>& rho_prev,
+    const std::vector<vec_t>& rho_curr,
+    double epsilon_y,
+    double epsilon_rho,
+    int iteration,
+    int max_iterations,
+    const std::vector<double>& response_change_history = {}
+) {
+    detailed_convergence_status_t status;
+    status.iteration = iteration;
+    status.converged = false;
+    status.response_change = 0.0;
+    status.max_density_change = 0.0;
+    status.response_change_rate = 0.0;
+    status.density_change_rate = 0.0;
+    status.estimated_iterations_remaining = -1;
+
+    // Maximum iterations check
+    if (iteration >= max_iterations) {
+        double y_norm_prev = y_hat_prev.norm();
+        if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+        status.message = "Maximum iterations reached";
+        return status;
+    }
+
+    // Response convergence
+    double y_norm_prev = y_hat_prev.norm();
+    if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+    // Density convergence with per-dimension tracking
+    status.density_changes_by_dim.resize(rho_prev.size());
+
+    for (size_t p = 0; p < rho_prev.size(); ++p) {
+        if (rho_prev[p].size() == 0 || rho_curr[p].size() == 0) {
+            status.density_changes_by_dim[p] = 0.0;
+            continue;
+        }
+
+        double rho_norm = rho_prev[p].norm();
+        if (rho_norm < 1e-15) rho_norm = 1.0;
+
+        double change_p = (rho_curr[p] - rho_prev[p]).norm() / rho_norm;
+        status.density_changes_by_dim[p] = change_p;
+        status.max_density_change = std::max(status.max_density_change, change_p);
+    }
+
+    // Estimate convergence rate if history is available
+    if (response_change_history.size() >= 2) {
+        // Simple linear extrapolation of convergence rate
+        size_t n = response_change_history.size();
+        double recent_change = response_change_history[n-1];
+        double prev_change = response_change_history[n-2];
+
+        if (prev_change > 1e-15) {
+            status.response_change_rate = recent_change / prev_change;
+
+            // Estimate iterations to convergence assuming geometric decay
+            if (status.response_change_rate < 1.0 && status.response_change_rate > 0.01) {
+                double log_current = std::log(std::max(recent_change, 1e-15));
+                double log_target = std::log(epsilon_y);
+                double log_rate = std::log(status.response_change_rate);
+
+                if (log_rate < -1e-6) {  // Ensure decreasing
+                    status.estimated_iterations_remaining =
+                        static_cast<int>(std::ceil((log_target - log_current) / log_rate));
+                }
+            }
+        }
+    }
+
+    // Convergence determination
+    bool response_converged = (status.response_change < epsilon_y);
+    bool density_converged = (status.max_density_change < epsilon_rho);
+
+    if (response_converged && density_converged) {
+        status.converged = true;
+        status.message = "Converged: both response and density stable";
+    } else if (response_converged) {
+        status.message = "Response converged, but density still evolving";
+    } else if (density_converged) {
+        status.message = "Density converged, but response still evolving";
+    } else {
+        status.message = "Iteration in progress";
+
+        // Add convergence estimate to message if available
+        if (status.estimated_iterations_remaining > 0 &&
+            status.estimated_iterations_remaining < 100) {
+            status.message += " (est. " +
+                std::to_string(status.estimated_iterations_remaining) +
+                " iterations remaining)";
+        }
+    }
+
+    return status;
+}
+
+
 
 // ============================================================
 // MAIN REGRESSION METHOD
@@ -1811,6 +2351,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
     vec_t y_hat_prev;
     std::vector<vec_t> rho_prev;
+    std::vector<double> response_change_history;
 
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
@@ -1842,19 +2383,54 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         sig.y_hat_hist.push_back(y_hat_curr);
 
         // Step 7: Convergence check
-        auto status = check_convergence(
-            y_hat_prev, y_hat_curr,
-            rho_prev, rho.rho,
-            epsilon_y, epsilon_rho,
-            iter, max_iterations
-        );
+        const bool research_mode = true;
+        if (research_mode) {
+            auto status = check_convergence_detailed(
+                y_hat_prev, y_hat_curr,
+                rho_prev, rho.rho,
+                epsilon_y, epsilon_rho,
+                iter, max_iterations,
+                response_change_history
+                );
 
-        Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
-               iter, status.response_change, status.max_density_change);
+            // Store history for next iteration
+            response_change_history.push_back(status.response_change);
 
-        if (status.converged) {
-            Rprintf("%s\n", status.message.c_str());
-            break;
+            // Log detailed diagnostics
+            Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
+                    iter, status.response_change, status.max_density_change);
+
+            // Optional: print detailed per-dimension info
+            if (1) {
+                for (size_t p = 0; p < status.density_changes_by_dim.size(); ++p) {
+                    Rprintf("  Density[%d] change: %.6f\n",
+                            (int)p, status.density_changes_by_dim[p]);
+                }
+                if (status.estimated_iterations_remaining > 0) {
+                    Rprintf("  Estimated iterations remaining: %d\n",
+                            status.estimated_iterations_remaining);
+                }
+            }
+
+            if (status.converged) {
+                Rprintf("%s\n", status.message.c_str());
+                break;
+            }
+        } else {
+            auto status = check_convergence(
+                y_hat_prev, y_hat_curr,
+                rho_prev, rho.rho,
+                epsilon_y, epsilon_rho,
+                iter, max_iterations
+                );
+
+            Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
+                    iter, status.response_change, status.max_density_change);
+
+            if (status.converged) {
+                Rprintf("%s\n", status.message.c_str());
+                break;
+            }
         }
     }
 
