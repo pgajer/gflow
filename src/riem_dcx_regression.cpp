@@ -1519,15 +1519,19 @@ void riem_dcx_t::apply_response_coherence_modulation(
         double scale = total_mass_before / total_mass_after;
         g.M[1] *= scale;
     } else {
-        Rf_warning("apply_response_coherence_modulation: mass collapsed, "
-                   "restoring to identity. Reduce gamma.");
-
-        // Restore to diagonal identity
-        std::vector<Eigen::Triplet<double>> triplets;
-        for (size_t e = 0; e < n_edges; ++e) {
-            triplets.emplace_back(e, e, 1.0);
-        }
-        g.M[1].setFromTriplets(triplets.begin(), triplets.end());
+        Rf_error(
+            "Response-coherence modulation caused complete mass collapse.\n"
+            "This indicates:\n"
+            "  - gamma = %.3f may be too large (try reducing to 0.5-1.0)\n"
+            "  - Response may be extremely discontinuous everywhere\n"
+            "  - Scale parameters: σ₁ = %.3e, σ₂ = %.3e\n"
+            "  - All edges have large response variation: min(Δ) = %.3e, max(Δ) = %.3e\n"
+            "Consider: (1) reducing gamma, (2) checking response data for outliers,\n"
+            "or (3) setting gamma = 0 to disable modulation.",
+            gamma, sigma_1, sigma_2,
+            *std::min_element(edge_deltas.begin(), edge_deltas.end()),
+            *std::max_element(edge_deltas.begin(), edge_deltas.end())
+            );
     }
 
     // Invalidate factorization
