@@ -1782,7 +1782,75 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const vec_t& y,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type
-) {
+    ) {
+
+    // ================================================================
+    // VALIDATION: Input parameters and complex state
+    // ================================================================
+
+    // Validate that Laplacian exists and is properly initialized
+    if (L.L.empty() || L.L[0].rows() == 0) {
+        Rf_error("smooth_response_via_spectral_filter: vertex Laplacian L[0] not initialized");
+    }
+
+    const int n_vertices = L.L[0].rows();
+
+    // Validate response vector dimension
+    if (y.size() != n_vertices) {
+        Rf_error("smooth_response_via_spectral_filter: response vector size (%d) "
+                 "does not match number of vertices (%d)",
+                 (int)y.size(), n_vertices);
+    }
+
+    // Validate n_eigenpairs bounds
+    if (n_eigenpairs <= 0) {
+        Rf_error("smooth_response_via_spectral_filter: n_eigenpairs must be positive, got %d",
+                 n_eigenpairs);
+    }
+
+    // Critical: n_eigenpairs cannot exceed matrix dimension
+    // For eigensolvers, we need at least 2 fewer than dimension for convergence
+    const int max_feasible_eigenpairs = std::max(1, n_vertices - 2);
+
+    if (n_eigenpairs > max_feasible_eigenpairs) {
+        Rf_warning("smooth_response_via_spectral_filter: requested n_eigenpairs=%d exceeds "
+                   "maximum feasible value %d for n_vertices=%d; reducing to %d",
+                   n_eigenpairs, max_feasible_eigenpairs, n_vertices, max_feasible_eigenpairs);
+        n_eigenpairs = max_feasible_eigenpairs;
+    }
+
+    // Practical limitation: very large n_eigenpairs may be computationally prohibitive
+    if (n_eigenpairs > 500) {
+        Rf_warning("smooth_response_via_spectral_filter: n_eigenpairs=%d is very large; "
+                   "eigendecomposition may be slow. Consider reducing for computational efficiency.",
+                   n_eigenpairs);
+    }
+
+    // Validate that we can proceed with spectral filtering
+    // Either cache is valid with sufficient eigenpairs, or we need to compute
+    const bool need_recompute = !spectral_cache.is_valid ||
+        spectral_cache.eigenvalues.size() < n_eigenpairs;
+
+    if (need_recompute && n_vertices > 10000 && n_eigenpairs > 200) {
+        Rprintf("smooth_response_via_spectral_filter: computing %d eigenpairs for n=%d vertices; "
+                "this may take significant time...\n", n_eigenpairs, n_vertices);
+    }
+
+    // Check for degenerate Laplacian (all zeros would indicate disconnected graph)
+    if (L.L[0].nonZeros() == 0) {
+        Rf_error("smooth_response_via_spectral_filter: vertex Laplacian is empty "
+                 "(graph may be completely disconnected)");
+    }
+
+    // Validate response vector contains finite values
+    for (int i = 0; i < y.size(); ++i) {
+        if (!std::isfinite(y[i])) {
+            Rf_error("smooth_response_via_spectral_filter: response vector contains "
+                     "non-finite value at index %d (y[%d] = %f)",
+                     i, i, y[i]);
+        }
+    }
+
     // ================================================================
     // STEP 1: ENSURE SPECTRAL DECOMPOSITION IS AVAILABLE
     // ================================================================
@@ -1801,7 +1869,6 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     Eigen::MatrixXd eigenvectors = spectral_cache.eigenvectors.leftCols(m);
 
     // Validate response vector
-    const int n_vertices = y.size();
     if (n_vertices != eigenvectors.rows()) {
         Rf_error("Response vector size (%d) does not match number of vertices (%d)",
                  n_vertices, (int)eigenvectors.rows());
