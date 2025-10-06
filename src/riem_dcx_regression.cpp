@@ -16,15 +16,6 @@
 #include <algorithm>
 
 // ============================================================
-// INTERNAL HELPERS (anonymous namespace)
-// ============================================================
-
-knn_result_t compute_knn_from_eigen(
-    const Eigen::SparseMatrix<double>& X,
-    int k
-    );
-
-// ============================================================
 // INITIALIZATION HELPERS (private member functions)
 // ============================================================
 
@@ -2095,6 +2086,389 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
 // MAIN REGRESSION METHOD
 // ============================================================
 
+/**
+ * @brief Fit Riemannian graph regression model using iterative geometric refinement
+ *
+ * @details
+ * This function implements a novel approach to conditional expectation estimation
+ * that combines geometric and probabilistic perspectives. Given feature-response
+ * data (X, y), we estimate E[y|X] by constructing a Riemannian simplicial complex
+ * whose geometry adapts iteratively to both the intrinsic structure of X and the
+ * response field y.
+ *
+ * ## Mathematical Framework
+ *
+ * The method addresses a fundamental challenge in high-dimensional regression:
+ * while the ambient dimension of X may be large, real-world datasets typically
+ * exhibit much lower intrinsic dimensionality. Rather than estimating the
+ * conditional expectation in the full ambient space, we construct a geometric
+ * object K(X) that captures the intrinsic structure, then estimate E[y|K(X)].
+ *
+ * The geometric object is a simplicial complex K equipped with:
+ * - A probability density ρ encoding the data distribution
+ * - A Riemannian metric g derived from ρ
+ * - A Hodge Laplacian L₀ encoding diffusion dynamics
+ *
+ * The triple (K, g, ρ) evolves through iterative refinement where:
+ * 1. Density diffuses across the geometry via heat kernel
+ * 2. Edge densities are modulated by response coherence
+ * 3. The metric adapts to the evolved density
+ * 4. The Laplacian is reassembled with the new metric
+ * 5. The response is smoothed via spectral filtering on the new Laplacian
+ *
+ * This iteration continues until both the geometry and the response field reach
+ * a mutually consistent fixed point.
+ *
+ * ## Algorithm Structure
+ *
+ * ### Part I: Initialization
+ *
+ * We begin by constructing the initial geometric structure from k-nearest neighbor
+ * relationships. For each data point xᵢ, we compute its k nearest neighbors,
+ * defining a neighborhood N̂ₖ(xᵢ). These neighborhoods form a covering of the
+ * data space.
+ *
+ * The nerve of this covering gives us a simplicial complex: vertices correspond
+ * to data points, and edges connect vertices whose neighborhoods overlap. We
+ * weight edges by the size of neighborhood intersections and the minimum path
+ * length through common neighbors, encoding both topological (intersection size)
+ * and metric (path length) information.
+ *
+ * Geometric pruning removes spurious long-range connections that arise from
+ * ambient space geometry but do not reflect intrinsic structure. We apply
+ * ratio-based thresholding, comparing each edge length to local length scales.
+ *
+ * Initial densities are computed from a reference measure μ on the data points.
+ * For vertex i, the density ρ₀(i) equals μ(N̂ₖ(xᵢ)). For edge [i,j], the density
+ * ρ₁([i,j]) equals μ(N̂ₖ(xᵢ) ∩ N̂ₖ(xⱼ)). These densities capture how probability
+ * mass is distributed across the complex.
+ *
+ * The Riemannian metric is constructed from densities. The vertex mass matrix
+ * M₀ is diagonal with M₀[i,i] = ρ₀(i). The edge mass matrix M₁ captures
+ * geometric interactions: for edges eᵢⱼ = [i,j] and eᵢₛ = [i,s] sharing vertex i,
+ * their inner product ⟨eᵢⱼ, eᵢₛ⟩ equals the total density in the triple
+ * intersection N̂ₖ(xᵢ) ∩ N̂ₖ(xⱼ) ∩ N̂ₖ(xₛ).
+ *
+ * The Hodge Laplacian L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ is assembled, where B₁ is the
+ * vertex-edge boundary operator. This operator encodes diffusion on the complex,
+ * with rates determined by the Riemannian structure.
+ *
+ * ### Part II: Iterative Refinement
+ *
+ * The iteration refines both the geometry and the response field through a
+ * feedback loop. Each iteration performs these steps:
+ *
+ * **Density Evolution (Step 1-2):** Vertex densities evolve via damped heat
+ * diffusion, solving (I + t(L₀ + βI))ρ₀⁽ˡ⁺¹⁾ = ρ₀⁽ˡ⁾ + tβu. The parameter t
+ * controls diffusion rate, while β provides damping toward uniform distribution.
+ * Edge densities are then recomputed by summing vertex densities over
+ * neighborhood intersections.
+ *
+ * **Response-Coherence Modulation (Step 3):** Edge densities are modulated based
+ * on response variation. For each edge [i,j], we compute Δᵢⱼ = |ŷ(i) - ŷ(j)|
+ * measuring response discontinuity. Edges crossing response boundaries (large Δᵢⱼ)
+ * receive reduced density via the penalty factor (1 + Δᵢⱼ²/σ₁²)⁻ᵞ, where σ₁ is
+ * an adaptive scale (typically the interquartile range of all Δᵢⱼ) and γ controls
+ * modulation strength.
+ *
+ * This creates geometry where edges within response-coherent regions maintain
+ * high density (short Riemannian distance), while edges crossing response
+ * boundaries have reduced density (long Riemannian distance). Diffusion becomes
+ * faster within coherent regions and slower across boundaries, naturally
+ * respecting the response structure.
+ *
+ * **Metric and Laplacian Update (Step 4-5):** The Riemannian metric is
+ * reconstructed from evolved densities, and the Hodge Laplacian is reassembled.
+ * The spectral decomposition cache is invalidated since L₀ has changed.
+ *
+ * **Response Smoothing (Step 6):** The response is smoothed via spectral
+ * filtering using the updated Laplacian. We compute the eigendecomposition
+ * L₀ = V Λ Vᵀ and apply a low-pass filter: ŷ⁽ˡ⁺¹⁾ = V Fₙ(Λ) Vᵀ y, where
+ * Fₙ(Λ) = diag(f(λ₁), ..., f(λₘ)) attenuates high-frequency components. The
+ * smoothing parameter η is selected via Generalized Cross-Validation (GCV)
+ * to balance fidelity and smoothness.
+ *
+ * **Convergence Check (Step 7):** We monitor relative changes in both response
+ * and densities. Convergence is declared when:
+ * - ‖ŷ⁽ˡ⁺¹⁾ - ŷ⁽ˡ⁾‖ / ‖ŷ⁽ˡ⁾‖ < εᵧ (response stability)
+ * - max_p ‖ρₚ⁽ˡ⁺¹⁾ - ρₚ⁽ˡ⁾‖ / ‖ρₚ⁽ˡ⁾‖ < ε_ρ (density stability)
+ *
+ * ### Part III: Finalization
+ *
+ * Upon convergence or reaching maximum iterations, we store the original
+ * response and the complete fitted history. The final state contains:
+ * - Fitted response values ŷ accessible via sig.y_hat_hist.back()
+ * - Complete fitting history for diagnostic analysis
+ * - Converged geometry (K, g, ρ) encoding the learned structure
+ *
+ * ## Theoretical Justification
+ *
+ * The method combines three powerful ideas:
+ *
+ * **Geometric Perspective:** By working on a simplicial complex rather than the
+ * ambient space, we exploit intrinsic low-dimensionality. The complex K(X)
+ * captures essential geometric relationships while discarding irrelevant ambient
+ * directions.
+ *
+ * **Measure-Theoretic Foundation:** The density ρ provides a probability measure
+ * on the complex. Smoothing the response with respect to this measure yields
+ * conditional expectation estimates that properly account for data distribution.
+ *
+ * **Adaptive Geometry:** The response-coherence modulation creates geometry that
+ * respects the response structure. Regions where the response varies smoothly
+ * receive short Riemannian distances (rapid diffusion), while discontinuities
+ * receive long distances (slow diffusion). This automatic adaptation eliminates
+ * the need for manual bandwidth selection or kernel choice.
+ *
+ * The iteration finds a fixed point where the geometry is consistent with the
+ * response and the response is smooth with respect to the geometry. This mutual
+ * consistency is the key to the method's effectiveness.
+ *
+ * ## Parameter Selection Guidelines
+ *
+ * **k (neighbors):** Controls local neighborhood size. Typical range: 10-50.
+ * Larger k captures more global structure but increases computation. For n < 500,
+ * use k ≈ 0.1n. For n > 5000, use k ≈ 20-30.
+ *
+ * **t_diffusion:** Controls density evolution rate. If ≤ 0, automatically set to
+ * 0.5/λ₂ where λ₂ is the spectral gap. Larger t produces faster convergence but
+ * may overshoot. Smaller t gives more conservative updates.
+ *
+ * **beta_damping:** Prevents density from concentrating excessively. If ≤ 0,
+ * automatically set to 0.1/t_diffusion. The product β·t should be small (< 0.5)
+ * for gentle damping.
+ *
+ * **gamma_modulation:** Controls response-coherence modulation strength. Range:
+ * 0.5-2.0. Larger γ creates stronger geometric adaptation to response structure.
+ * Use γ = 1.0 as default. Set γ = 0 to disable modulation entirely.
+ *
+ * **n_eigenpairs:** Number of eigenpairs for spectral filtering. Typical range:
+ * 50-200. More eigenpairs capture finer response variation but increase
+ * computation. Use min(n/5, 200) as a reasonable default.
+ *
+ * **filter_type:** Spectral filter for response smoothing:
+ * - HEAT_KERNEL: General-purpose, exponential decay exp(-ηλ)
+ * - TIKHONOV: Gentler smoothing, rational decay 1/(1+ηλ)
+ * - CUBIC_SPLINE: Spline-like smoothness, 1/(1+ηλ²)
+ * - GAUSSIAN: Aggressive smoothing, exp(-ηλ²)
+ *
+ * **epsilon_y, epsilon_rho:** Convergence thresholds. Typical: 1e-4 to 1e-3.
+ * Tighter thresholds (1e-5) give more accurate convergence but require more
+ * iterations. Looser thresholds (1e-3) converge faster but may be less stable.
+ *
+ * **max_iterations:** Safety limit. Typical: 20-50. Most problems converge
+ * within 5-15 iterations with reasonable parameters. If convergence takes > 30
+ * iterations, consider adjusting t_diffusion or gamma_modulation.
+ *
+ * **max_ratio_threshold:** Geometric pruning threshold. Typical: 2.0-3.0.
+ * Larger values retain more edges (denser graph), smaller values prune more
+ * aggressively. Use 2.5 as default.
+ *
+ * **threshold_percentile:** Percentile for local scale computation. Typical: 0.5
+ * (median). Lower percentiles use shorter reference scales (more aggressive
+ * pruning), higher percentiles use longer scales (less pruning).
+ *
+ * ## Computational Complexity
+ *
+ * **Initialization:** O(n k² log n) dominated by k-NN computation and edge
+ * construction. Metric assembly is O(n k³) but typically k³ << n.
+ *
+ * **Per-iteration:** O(n k² + m³) where m is the number of eigenpairs computed.
+ * Density diffusion requires solving a sparse linear system (O(n k²) with
+ * iterative solvers). Eigendecomposition is O(m²n) for sparse methods. For
+ * typical parameters (k ~ 30, m ~ 100), each iteration is O(n).
+ *
+ * **Total:** O(n k² log n + T·n k²) where T is the number of iterations. For
+ * T ~ 10, the initialization dominates asymptotically, making the method O(n k²)
+ * overall.
+ *
+ * ## Memory Requirements
+ *
+ * - Simplicial complex: O(n) for vertices, O(nk) for edges
+ * - Mass matrices: O(n) for M₀ (diagonal), O(nk²) for M₁ (sparse)
+ * - Laplacian: O(nk) (sparse)
+ * - Eigendecomposition cache: O(mn) for m eigenpairs
+ * - History storage: O(Tn) if storing full iteration history
+ *
+ * Total: O(n(k² + m)) which is linear in n for fixed k and m.
+ *
+ * ## Numerical Considerations
+ *
+ * **Spectral Decomposition:** Uses robust fallback strategies for eigenvalue
+ * computation. If standard ARPACK fails, progressively relaxes tolerance and
+ * enlarges Krylov subspace. For small problems (n < 1000), falls back to dense
+ * solver as guaranteed success path.
+ *
+ * **Ill-Conditioning:** Near-zero densities can create ill-conditioned metrics.
+ * Regularization (adding small ε to diagonal entries) prevents numerical
+ * instability. Monitor warnings about small spectral gaps or ill-conditioning.
+ *
+ * **Convergence Stalling:** If iteration stalls (changes decrease very slowly
+ * but don't cross threshold), consider:
+ * - Increasing t_diffusion for faster convergence
+ * - Loosening convergence thresholds
+ * - Checking for nearly-disconnected geometry
+ *
+ * ## Example Usage
+ *
+ * @code
+ * // Create and initialize complex
+ * riem_dcx_t complex;
+ * complex.init_dims(1, {n_points, 0});  // Max dimension 1, n points
+ *
+ * // Prepare data
+ * Eigen::SparseMatrix<double> X = ...; // n × d feature matrix
+ * Eigen::VectorXd y = ...;             // n response vector
+ *
+ * // Fit with default parameters
+ * complex.fit_knn_riem_graph_regression(
+ *     X, y,
+ *     20,                              // k neighbors
+ *     true,                            // use counting measure
+ *     1.0,                             // density normalization
+ *     0.0,                             // auto t_diffusion
+ *     0.0,                             // auto beta_damping
+ *     1.0,                             // gamma modulation
+ *     100,                             // n eigenpairs
+ *     rdcx_filter_type_t::HEAT_KERNEL, // filter type
+ *     1e-4,                            // epsilon_y
+ *     1e-4,                            // epsilon_rho
+ *     30,                              // max iterations
+ *     2.5,                             // max ratio threshold
+ *     0.5                              // threshold percentile
+ * );
+ *
+ * // Extract fitted values
+ * Eigen::VectorXd y_hat = complex.sig.y_hat_hist.back();
+ *
+ * // Examine convergence history
+ * for (size_t iter = 0; iter < complex.sig.y_hat_hist.size(); ++iter) {
+ *     // Analyze evolution...
+ * }
+ * @endcode
+ *
+ * ## References
+ *
+ * The method builds on several theoretical foundations:
+ * - Hodge theory on simplicial complexes
+ * - Spectral graph theory and diffusion on manifolds
+ * - Kernel regression and local polynomial smoothing
+ * - Computational topology and persistent homology
+ *
+ * Key innovations:
+ * - Iterative geometric refinement guided by response structure
+ * - Response-coherence modulation of edge densities
+ * - Integration of Riemannian geometry with probability measures
+ * - Automatic adaptation eliminating manual parameter tuning
+ *
+ * @param[in] X Feature matrix (n × d sparse or dense). Rows are observations,
+ *              columns are features. Can be high-dimensional as method exploits
+ *              intrinsic structure.
+ *
+ * @param[in] y Response vector (n × 1). Can be any real-valued signal defined
+ *              on the data points. Method works for both smooth and discontinuous
+ *              responses.
+ *
+ * @param[in] k Number of nearest neighbors for graph construction. Controls
+ *              local neighborhood size. Typical: 10-50. Larger k captures more
+ *              global structure but increases computation.
+ *
+ * @param[in] use_counting_measure If true, use uniform reference measure μ(x)=1
+ *              for all points. If false, use density-weighted measure based on
+ *              local distances. Counting measure is simpler and often sufficient.
+ *
+ * @param[in] density_normalization Power for density weighting when
+ *              use_counting_measure=false. Typical: 1.0 gives μ(x) = 1/d_local(x)
+ *              where d_local is the distance to k-th neighbor. Higher powers
+ *              increase weight concentration in dense regions.
+ *
+ * @param[in,out] t_diffusion Diffusion time parameter for density evolution.
+ *              If ≤ 0 on input, automatically set to 0.5/λ₂ where λ₂ is spectral
+ *              gap. If > 0, uses provided value. Larger t produces faster density
+ *              evolution. Modified in place during parameter selection.
+ *
+ * @param[in,out] beta_damping Damping parameter preventing density concentration.
+ *              If ≤ 0 on input, automatically set to 0.1/t_diffusion. If > 0,
+ *              uses provided value. Provides gentle push toward uniform
+ *              distribution. Modified in place during parameter selection.
+ *
+ * @param[in] gamma_modulation Response-coherence modulation strength. Controls
+ *              how strongly edge densities are modulated by response variation.
+ *              Range: 0-2. Default: 1.0. Set to 0 to disable modulation entirely.
+ *              Larger values create stronger geometric adaptation.
+ *
+ * @param[in] n_eigenpairs Number of eigenpairs to compute for spectral filtering.
+ *              More eigenpairs capture finer response variation but increase
+ *              computation. Typical: 50-200. Use min(n/5, 200) as default.
+ *
+ * @param[in] filter_type Type of spectral filter for response smoothing:
+ *              - HEAT_KERNEL: exp(-ηλ), general-purpose exponential decay
+ *              - TIKHONOV: 1/(1+ηλ), gentler rational decay
+ *              - CUBIC_SPLINE: 1/(1+ηλ²), spline-like smoothness
+ *              - GAUSSIAN: exp(-ηλ²), aggressive high-frequency attenuation
+ *
+ * @param[in] epsilon_y Convergence threshold for response relative change.
+ *              Iteration stops when ‖ŷ⁽ˡ⁺¹⁾-ŷ⁽ˡ⁾‖/‖ŷ⁽ˡ⁾‖ < epsilon_y.
+ *              Typical: 1e-4 to 1e-3. Tighter threshold gives more accurate
+ *              convergence but requires more iterations.
+ *
+ * @param[in] epsilon_rho Convergence threshold for density relative change.
+ *              Iteration stops when max_p ‖ρₚ⁽ˡ⁺¹⁾-ρₚ⁽ˡ⁾‖/‖ρₚ⁽ˡ⁾‖ < epsilon_rho.
+ *              Typical: 1e-4 to 1e-3.
+ *
+ * @param[in] max_iterations Maximum number of refinement iterations. Safety
+ *              limit preventing infinite loops. Typical: 20-50. Most problems
+ *              converge within 5-15 iterations with reasonable parameters.
+ *
+ * @param[in] max_ratio_threshold Maximum edge length ratio for geometric pruning.
+ *              Edges longer than this ratio times the local scale are removed.
+ *              Typical: 2.0-3.0. Use 2.5 as default. Larger values retain more
+ *              edges (denser graph).
+ *
+ * @param[in] threshold_percentile Percentile for computing local scale in
+ *              geometric pruning. Typical: 0.5 (median). Lower percentiles
+ *              produce more aggressive pruning.
+ *
+ * @pre Complex must be initialized via init_dims() before calling
+ * @pre X.rows() must equal y.size()
+ * @pre k must be less than X.rows()
+ * @pre All epsilon values must be positive
+ * @pre max_iterations must be positive
+ *
+ * @post Simplicial complex fully populated with converged geometry
+ * @post sig.y contains original response
+ * @post sig.y_hat_hist contains complete iteration history
+ * @post rho.rho contains final converged densities
+ * @post g.M contains final converged metric tensors
+ * @post L.L[0] contains final converged Hodge Laplacian
+ * @post spectral_cache contains final eigendecomposition
+ *
+ * @throws std::runtime_error if k ≥ n
+ * @throws std::runtime_error if dimensions are inconsistent
+ * @throws std::runtime_error if eigendecomposition fails after all fallbacks
+ * @throws std::runtime_error if linear system solve fails in density diffusion
+ *
+ * @warning This function performs substantial computation. For large n (> 10000)
+ *          or large k (> 50), initialization may take minutes. Monitor progress
+ *          via Rprintf output.
+ *
+ * @warning Automatic parameter selection (t_diffusion ≤ 0, beta_damping ≤ 0)
+ *          requires computing spectral gap, adding cost to initialization.
+ *
+ * @note The function prints iteration diagnostics to R console via Rprintf.
+ *       Each iteration shows response_change and density_change values for
+ *       monitoring convergence progress.
+ *
+ * @note Final fitted values are accessed via sig.y_hat_hist.back(). The complete
+ *       history is available for analyzing convergence behavior or producing
+ *       diagnostic plots.
+ *
+ * @see initialize_from_knn() for details on geometric construction
+ * @see smooth_response_via_spectral_filter() for spectral filtering algorithm
+ * @see check_convergence() for convergence criteria
+ * @see apply_damped_heat_diffusion() for density evolution
+ * @see apply_response_coherence_modulation() for edge modulation
+ */
 void riem_dcx_t::fit_knn_riem_graph_regression(
     const spmat_t& X,
     const vec_t& y,
@@ -2111,234 +2485,25 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     int max_iterations,
     double max_ratio_threshold,
     double threshold_percentile
-    ) {
-
-#define DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION 0
-
+) {
     // ================================================================
     // PART I: INITIALIZATION
     // ================================================================
 
-    // ----------------------------------------------------------------
-    // Phase 1a: Build 1-skeleton geometry
-    // ----------------------------------------------------------------
-
-#if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
-    Rprintf("Phase 1: Computing k-NN neighborhoods...\n");
-#endif
-
-    const size_t n_points = static_cast<size_t>(X.rows());
-
-    // Step 1: Compute k-NN using Eigen-compatible wrapper
-    knn_result_t knn_result = compute_knn_from_eigen(X, k);
-
-    // Extract results into convenient format
-    std::vector<std::vector<index_t>> knn_indices(n_points, std::vector<index_t>(k));
-    std::vector<std::vector<double>> knn_distances(n_points, std::vector<double>(k));
-    for (size_t i = 0; i < n_points; ++i) {
-        for (size_t j = 0; j < k; ++j) {
-            const size_t offset = i * k + j;
-            knn_indices[i][j] = static_cast<index_t>(knn_result.indices[offset]);
-            knn_distances[i][j] = knn_result.distances[offset];
-        }
-    }
-
-    // Step 2: Build neighborhood sets
-    std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
-    for (size_t i = 0; i < n_points; ++i) {
-        for (index_t neighbor_idx : knn_indices[i]) {
-            neighbor_sets[i].insert(neighbor_idx);
-        }
-    }
-
-    // Step 3: Build edges via O(nk) neighborhood intersection algorithm
-    std::vector<std::vector<iknn_vertex_t>> adjacency_list(n_points);
-    std::vector<index_t> intersection;
-    intersection.reserve(k);  // Pre-allocate for efficiency
-
-    for (size_t i = 0; i < n_points; ++i) {
-        const std::vector<index_t>& neighbors_i = knn_indices[i];
-
-        // Only examine neighbors j where j > i to avoid duplicate edges
-        for (index_t j : neighbor_sets[i]) {
-            if (j <= i) continue;  // Skip self and already-processed pairs
-
-            // Compute intersection of neighborhoods
-            intersection.clear();
-            for (index_t v : neighbor_sets[i]) {
-                if (neighbor_sets[j].find(v) != neighbor_sets[j].end()) {
-                    intersection.push_back(v);
-                }
-            }
-
-            size_t common_count = intersection.size();
-
-            if (common_count > 0) {
-                // Compute minimum distance through common neighbors
-                double min_dist = std::numeric_limits<double>::max();
-
-                for (index_t x_k : intersection) {
-                    // Find x_k in i's neighbor list to get distance
-                    auto it_i = std::find(neighbors_i.begin(), neighbors_i.end(), x_k);
-                    size_t idx_i = it_i - neighbors_i.begin();
-                    double dist_i_k = knn_distances[i][idx_i];
-
-                    // Find x_k in j's neighbor list to get distance
-                    const std::vector<index_t>& neighbors_j = knn_indices[j];
-                    auto it_j = std::find(neighbors_j.begin(), neighbors_j.end(), x_k);
-                    size_t idx_j = it_j - neighbors_j.begin();
-                    double dist_j_k = knn_distances[j][idx_j];
-
-                    min_dist = std::min(min_dist, dist_i_k + dist_j_k);
-                }
-
-                // Add edges (bidirectional)
-                adjacency_list[i].emplace_back(iknn_vertex_t{j, common_count, min_dist});
-                adjacency_list[j].emplace_back(iknn_vertex_t{i, common_count, min_dist});
-            }
-        }
-    }
-
-
-    // Step 4: Store neighbor sets as member variable for later use
-    this->neighbor_sets = std::move(neighbor_sets);
-
-    // ----------------------------------------------------------------
-    // Phase 1b: Edge construction with geometric edge pruning
-    // ----------------------------------------------------------------
-    // Extract edges from adjacency list
-    struct temp_edge {
-        index_t i, j;
-        size_t isize;
-        double dist;
-    };
-    std::vector<temp_edge> all_edges;
-
-    for (size_t i = 0; i < n_points; ++i) {
-        for (const auto& neighbor : adjacency_list[i]) {
-            size_t j = neighbor.index;
-            if (j > i) {
-                all_edges.push_back({
-                        static_cast<index_t>(i),
-                        static_cast<index_t>(j),
-                        neighbor.isize,
-                        neighbor.dist
-                    });
-            }
-        }
-    }
-
-    // Apply geometric pruning
-    set_wgraph_t temp_graph(n_points);
-    for (const auto& edge : all_edges) {
-        temp_graph.add_edge(edge.i, edge.j, edge.dist);
-    }
-
-    set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
-        max_ratio_threshold, threshold_percentile);
-
-    // Rebuild edge list with only retained edges
-    std::vector<temp_edge> pruned_edges;
-    for (const auto& edge : all_edges) {
-        // Check if edge still exists in pruned graph
-        bool exists = false;
-        for (const auto& nbr : pruned_graph.adjacency_list[edge.i]) {
-            if (nbr.vertex == edge.j) {
-                exists = true;
-                break;
-            }
-        }
-        if (exists) {
-            pruned_edges.push_back(edge);
-        }
-    }
-    all_edges = std::move(pruned_edges);
-
-    // Now build simplex structures from all_edges
-    const index_t n_edges = all_edges.size();
-    extend_by_one_dim(n_edges);
-
-    S[1].simplex_verts.resize(n_edges);
-    for (index_t e = 0; e < n_edges; ++e) {
-        std::vector<index_t> verts = {all_edges[e].i, all_edges[e].j};
-        S[1].simplex_verts[e] = verts;
-        S[1].id_of[verts] = e;
-    }
-
-    // ----------------------------------------------------------------
-    // Phase 1c: Build 0-Simplices (Vertices)
-    // ----------------------------------------------------------------
-    S[0].simplex_verts.resize(n_points);
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        S[0].simplex_verts[i] = {i};
-        S[0].id_of[{i}] = i;
-    }
-
-    // ----------------------------------------------------------------
-    // Phase 1d: Initialize reference measure
-    // ----------------------------------------------------------------
-    // Initilizting reference_measure
-    initialize_reference_measure(
-        knn_indices,
-        knn_distances,
+    // Phase 1-4: Build geometric structure
+    initialize_from_knn(
+        X, k,
         use_counting_measure,
-        density_normalization
-        );
+        density_normalization,
+        max_ratio_threshold,
+        threshold_percentile
+    );
 
-    // ----------------------------------------------------------------
-    // Phase 1e: Initialize vertex masses: m_i = μ(N̂_k(x_i))
-    // ----------------------------------------------------------------
-    vec_t vertex_masses = vec_t::Zero(n_points);
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        double mass = 0.0;
-        for (index_t j : neighbor_sets[i]) {
-            mass += reference_measure[j];
-        }
-        vertex_masses[i] = mass;
-    }
-
-    g.M[0] = spmat_t(n_points, n_points);
-    g.M[0].reserve(Eigen::VectorXi::Constant(n_points, 1));
-    for (size_t i = 0; i < n_points; ++i) {
-        g.M[0].insert(i, i) = std::max(vertex_masses[i], 1e-15);
-    }
-    g.M[0].makeCompressed();
-
-
-#if DEBUG_FIT_KNN_RIEM_GRAPH_REGRESSION
-    // Count total edges
-    size_t total_edges = 0;
-    for (const auto& adj : adjacency_list) {
-        total_edges += adj.size();
-    }
-    Rprintf("Phase 1 complete: %zu vertices, %zu directed edges (%zu undirected)\n",
-            n_points, total_edges, total_edges / 2);
-#endif
-
-    // ----------------------------------------------------------------
-    // Phase 2: Compute initial densities
-    // ----------------------------------------------------------------
-    compute_initial_densities();
-
-    // ----------------------------------------------------------------
-    // Phase 3: Build initial metric
-    // ----------------------------------------------------------------
-    initialize_metric_from_density();
-
-    // ----------------------------------------------------------------
-    // Phase 4: Assemble initial Laplacian
-    // ----------------------------------------------------------------
-    assemble_operators();
-
-    // ----------------------------------------------------------------
-    // Phase 4.5: Select diffusion parameters (auto or validate user input)
-    // ----------------------------------------------------------------
+    // Phase 4.5: Select or validate diffusion parameters
     select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
 
-    // ----------------------------------------------------------------
     // Phase 5: Initial response smoothing
-    // ----------------------------------------------------------------
-    auto gcv_result = this->smooth_response_via_spectral_filter(
+    auto gcv_result = smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type
     );
     vec_t y_hat_curr = gcv_result.y_hat;
@@ -2358,7 +2523,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         rho_prev = rho.rho;
 
         // Step 1: Density diffusion
-        rho.rho[0] = apply_damped_heat_diffusion(rho.rho[0], t_diffusion, beta_damping);
+        rho.rho[0] = apply_damped_heat_diffusion(
+            rho.rho[0], t_diffusion, beta_damping
+        );
 
         // Step 2: Edge density update
         update_edge_densities_from_vertices();
@@ -2371,8 +2538,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         // Step 5: Laplacian reassembly
         assemble_operators();
-
-        // Invalidate spectral cache since L[0] changed
         spectral_cache.invalidate();
 
         // Step 6: Response smoothing
@@ -2383,54 +2548,32 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         sig.y_hat_hist.push_back(y_hat_curr);
 
         // Step 7: Convergence check
-        const bool research_mode = true;
-        if (research_mode) {
-            auto status = check_convergence_detailed(
-                y_hat_prev, y_hat_curr,
-                rho_prev, rho.rho,
-                epsilon_y, epsilon_rho,
-                iter, max_iterations,
-                response_change_history
-                );
+        auto status = check_convergence_detailed(
+            y_hat_prev, y_hat_curr,
+            rho_prev, rho.rho,
+            epsilon_y, epsilon_rho,
+            iter, max_iterations,
+            response_change_history
+        );
 
-            // Store history for next iteration
-            response_change_history.push_back(status.response_change);
+        response_change_history.push_back(status.response_change);
 
-            // Log detailed diagnostics
-            Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
-                    iter, status.response_change, status.max_density_change);
+        Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
+                iter, status.response_change, status.max_density_change);
 
-            // Optional: print detailed per-dimension info
-            if (1) {
-                for (size_t p = 0; p < status.density_changes_by_dim.size(); ++p) {
-                    Rprintf("  Density[%d] change: %.6f\n",
-                            (int)p, status.density_changes_by_dim[p]);
-                }
-                if (status.estimated_iterations_remaining > 0) {
-                    Rprintf("  Estimated iterations remaining: %d\n",
-                            status.estimated_iterations_remaining);
-                }
-            }
+        // Optional detailed diagnostics
+        for (size_t p = 0; p < status.density_changes_by_dim.size(); ++p) {
+            Rprintf("  Density[%d] change: %.6f\n",
+                    (int)p, status.density_changes_by_dim[p]);
+        }
+        if (status.estimated_iterations_remaining > 0) {
+            Rprintf("  Estimated iterations remaining: %d\n",
+                    status.estimated_iterations_remaining);
+        }
 
-            if (status.converged) {
-                Rprintf("%s\n", status.message.c_str());
-                break;
-            }
-        } else {
-            auto status = check_convergence(
-                y_hat_prev, y_hat_curr,
-                rho_prev, rho.rho,
-                epsilon_y, epsilon_rho,
-                iter, max_iterations
-                );
-
-            Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
-                    iter, status.response_change, status.max_density_change);
-
-            if (status.converged) {
-                Rprintf("%s\n", status.message.c_str());
-                break;
-            }
+        if (status.converged) {
+            Rprintf("%s\n", status.message.c_str());
+            break;
         }
     }
 
@@ -2438,8 +2581,5 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // PART III: FINALIZATION
     // ================================================================
 
-    // Store original response
     sig.y = y;
-
-    // Final state already in place
 }
