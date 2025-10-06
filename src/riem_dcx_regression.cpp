@@ -219,46 +219,46 @@ void riem_dcx_t::initialize_metric_from_density() {
  */
 void riem_dcx_t::compute_edge_mass_matrix() {
     const size_t n_edges = S[1].size();
-
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(n_edges * 10);
 
-    const size_t n_vertices = S[0].size();
+    // Add diagonal entries
+    for (size_t e = 0; e < n_edges; ++e) {
+        double diagonal = std::max(rho.rho[1][e], 1e-15);
+        triplets.emplace_back(e, e, diagonal);
+    }
 
-    for (size_t i = 0; i < n_vertices; ++i) {
-        const std::vector<index_t>& incident_edges = stars[0].star_over[i];
-        const size_t n_incident = incident_edges.size();
+    // Add off-diagonal entries from triangles
+    if (S.size() > 2 && S[2].size() > 0) {
+        for (size_t t = 0; t < S[2].size(); ++t) {
+            const auto& tri_verts = S[2].simplex_verts[t];
 
-        if (n_incident == 0) continue;
+            // Get the three edge IDs
+            index_t e01 = S[1].get_id({tri_verts[0], tri_verts[1]});
+            index_t e02 = S[1].get_id({tri_verts[0], tri_verts[2]});
+            index_t e12 = S[1].get_id({tri_verts[1], tri_verts[2]});
 
-        for (size_t a = 0; a < n_incident; ++a) {
-            const index_t e_ij_idx = incident_edges[a];
-            const std::vector<index_t>& e_ij_verts = S[1].simplex_verts[e_ij_idx];
-
-            // Only process diagonal when we're at the SMALLER endpoint
-            // Since edges are stored sorted: e_ij_verts[0] < e_ij_verts[1]
-            if (i == e_ij_verts[0]) {
-                // Add diagonal entry (only once per edge)
-                double diagonal = std::max(rho.rho[1][e_ij_idx], 1e-15);
-                triplets.emplace_back(e_ij_idx, e_ij_idx, diagonal);
+            // Compute triple intersection mass once per triangle
+            double mass = 0.0;
+            for (index_t v : neighbor_sets[tri_verts[0]]) {
+                if (neighbor_sets[tri_verts[1]].find(v) != neighbor_sets[tri_verts[1]].end() &&
+                    neighbor_sets[tri_verts[2]].find(v) != neighbor_sets[tri_verts[2]].end()) {
+                    mass += rho.rho[0][v];
+                }
             }
 
-            // Off-diagonal entries (process all pairs as before)
-            for (size_t b = a + 1; b < n_incident; ++b) {
-                const index_t e_is_idx = incident_edges[b];
-
-                double inner_product = compute_edge_inner_product(e_ij_idx, e_is_idx, i);
-
-                triplets.emplace_back(e_ij_idx, e_is_idx, inner_product);
-                triplets.emplace_back(e_is_idx, e_ij_idx, inner_product);
-            }
+            // Add all three off-diagonal pairs
+            triplets.emplace_back(e01, e02, mass);
+            triplets.emplace_back(e02, e01, mass);
+            triplets.emplace_back(e01, e12, mass);
+            triplets.emplace_back(e12, e01, mass);
+            triplets.emplace_back(e02, e12, mass);
+            triplets.emplace_back(e12, e02, mass);
         }
     }
 
     g.M[1] = spmat_t(n_edges, n_edges);
     g.M[1].setFromTriplets(triplets.begin(), triplets.end());
     g.M[1].makeCompressed();
-
     g.M_solver[1].reset();
 }
 
@@ -422,6 +422,140 @@ void riem_dcx_t::update_metric_from_density() {
 
     // Invalidate spectral cache since Laplacian will change
     spectral_cache.invalidate();
+}
+
+/**
+ * @brief Update vertex mass matrix from evolved vertex densities
+ *
+ * Updates only the vertex mass matrix M₀ from the current vertex densities after
+ * density evolution via damped heat diffusion. This function is called during
+ * iterative refinement after edge mass matrix M₁ has already been modulated by
+ * response-coherence.
+ *
+ * MATHEMATICAL CONSTRUCTION:
+ *
+ * The vertex mass matrix is diagonal by mathematical necessity:
+ *   M₀ = diag(ρ₀(1), ρ₀(2), ..., ρ₀(n))
+ *
+ * Vertices have no geometric interaction under the inner product construction,
+ * so off-diagonal entries are always zero. Each diagonal entry represents the
+ * total density mass in the neighborhood of that vertex.
+ *
+ * ITERATION CONTEXT:
+ *
+ * This function is called as part of Step 4 in the iteration loop:
+ *   Step 1: Density diffusion evolves ρ₀ via damped heat equation
+ *   Step 2: Edge densities ρ₁ recomputed from evolved ρ₀
+ *   Step 3: Response-coherence modulation (modulates g.M[1] directly)
+ *   Step 4: Metric update ← THIS FUNCTION (updates only g.M[0])
+ *   Step 5: Laplacian reassembly with updated M₀ and modulated M₁
+ *   Step 6: Response smoothing
+ *
+ * CRITICAL: This function does NOT recompute M₁. The edge mass matrix has
+ * already been modulated by response-coherence in Step 3 and should not be
+ * overwritten. Only the vertex mass matrix M₀ needs updating from evolved
+ * vertex densities.
+ *
+ * REGULARIZATION:
+ *
+ * Each diagonal entry is regularized to ensure strict positivity:
+ *   M₀[i,i] = max(ρ₀(i), 1e-15)
+ *
+ * This prevents numerical issues in Laplacian assembly where M₀ appears in
+ * products and inverses. The threshold 1e-15 is small enough to not affect
+ * typical density values but large enough to avoid underflow.
+ *
+ * SPECTRAL CACHE INVALIDATION:
+ *
+ * Changing M₀ invalidates the cached spectral decomposition of the vertex
+ * Laplacian L₀, since L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ depends on M₀. The cache must be
+ * invalidated to ensure subsequent response smoothing operations trigger
+ * fresh eigendecomposition with the updated geometry.
+ *
+ * FACTORIZATION:
+ *
+ * The vertex mass matrix is diagonal, so no Cholesky factorization is needed
+ * or stored. The solver pointer g.M_solver[0] is reset to null, indicating
+ * that M₀ is handled via element-wise operations rather than matrix
+ * factorization.
+ *
+ * NUMERICAL STABILITY:
+ *
+ * Since vertex densities are normalized to sum to n after diffusion, typical
+ * values are O(1). The regularization threshold 1e-15 is many orders of
+ * magnitude smaller, so it only activates if densities collapse to near-zero
+ * in some region (which would indicate numerical instability in the diffusion
+ * step itself).
+ *
+ * @pre rho.rho[0] contains evolved vertex densities from damped heat diffusion
+ * @pre rho.rho[0].sum() ≈ n (normalized from diffusion step)
+ * @pre g.M[0] is allocated as n × n sparse diagonal matrix
+ * @pre All entries of rho.rho[0] are non-negative
+ *
+ * @post g.M[0] diagonal entries updated to current ρ₀ values
+ * @post All diagonal entries satisfy M₀[i,i] ≥ 1e-15
+ * @post g.M[0] remains diagonal (no off-diagonal entries)
+ * @post g.M_solver[0] is null (no factorization for diagonal matrix)
+ * @post spectral_cache.is_valid == false (cache invalidated)
+ * @post g.M[1] is unchanged (edge mass matrix not affected)
+ *
+ * @note This function modifies M₀ in place using coeffRef for efficiency.
+ *       Since M₀ is diagonal and already allocated, we avoid reconstruction.
+ *
+ * @note The function does NOT call assemble_operators(). The caller must
+ *       explicitly reassemble the Laplacian after metric update to incorporate
+ *       the new M₀ values into L₀.
+ *
+ * @see apply_damped_heat_diffusion() for Step 1 (evolves ρ₀)
+ * @see apply_response_coherence_modulation() for Step 3 (modulates M₁)
+ * @see assemble_operators() for Step 5 (rebuilds L₀ from updated metric)
+ * @see fit_knn_riem_graph_regression() for complete iteration context
+ */
+void riem_dcx_t::update_vertex_metric_from_density() {
+    const size_t n_vertices = S[0].size();
+
+    // ============================================================
+    // Validation
+    // ============================================================
+
+    if (static_cast<size_t>(rho.rho[0].size()) != n_vertices) {
+        Rf_error("update_vertex_metric_from_density: vertex density size mismatch");
+    }
+
+    if (g.M[0].rows() != static_cast<Eigen::Index>(n_vertices) ||
+        g.M[0].cols() != static_cast<Eigen::Index>(n_vertices)) {
+        Rf_error("update_vertex_metric_from_density: M[0] dimension mismatch");
+    }
+
+    // ============================================================
+    // Update diagonal entries from evolved vertex densities
+    // ============================================================
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        // Apply regularization to ensure strict positivity
+        double mass = std::max(rho.rho[0][i], 1e-15);
+
+        // Update in place (M₀ is diagonal, so coeffRef is efficient)
+        g.M[0].coeffRef(i, i) = mass;
+    }
+
+    // ============================================================
+    // Clear factorization (not needed for diagonal matrix)
+    // ============================================================
+
+    g.M_solver[0].reset();
+
+    // ============================================================
+    // Invalidate spectral cache
+    // ============================================================
+
+    // The Laplacian L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ depends on M₀, so any cached
+    // eigendecomposition is now invalid and must be recomputed
+    spectral_cache.invalidate();
+
+    // Note: g.M[1] is intentionally NOT modified here
+    // The edge mass matrix was already modulated by response-coherence
+    // in Step 3 and should not be overwritten
 }
 
 /**
@@ -1234,175 +1368,62 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
 }
 
 /**
- * @brief Apply response-coherence modulation to edge densities
+ * @brief Apply response-coherence modulation to full edge mass matrix
  *
- * Adjusts edge densities based on response variation across each edge, creating
- * outcome-aware geometry where edges within response-coherent regions retain high
- * density (short distances in the Riemannian metric) while edges crossing response
- * boundaries receive low density (long distances, acting as diffusion barriers).
- *
- * This function implements Step 3 of the iteration cycle, following edge density
- * update and preceding metric reconstruction. The modulation mechanism is central
- * to the algorithm's ability to learn geometry that respects response structure:
- * regions where the response varies smoothly become well-connected through
- * high-mass edges, while response discontinuities create geometric barriers
- * that prevent diffusion across boundaries.
+ * Modulates both diagonal and off-diagonal entries of the edge mass matrix M₁
+ * based on response variation. This creates outcome-aware Riemannian geometry where:
+ * - Diagonal M₁[e,e]: modulated by response variation across edge e = [i,j]
+ * - Off-diagonal M₁[e,e']: modulated by response variation across induced triangle
  *
  * MATHEMATICAL CONSTRUCTION:
- * For each edge [i,j], we measure response variation as the absolute difference
- * between endpoint fitted values:
- *   Δ_ij = |ŷ(i) - ŷ(j)|
  *
- * We compute an adaptive scale parameter σ₁ as the interquartile range (IQR) of
- * all edge variations {Δ_ij}. The IQR provides robust scale estimation that
- * resists outliers and adapts to the current response structure.
+ * For diagonal entries (edge self-inner products):
+ *   Δ_ij = |ŷ(i) - ŷ(j)| for edge [i,j]
+ *   σ₁ = IQR({Δ_ij : all edges})
+ *   M₁[e,e] ← M₁[e,e] · Γ(Δ_ij/σ₁)
  *
- * Each edge density is then multiplied by a penalty function:
- *   Γ(Δ_ij) = (1 + Δ²_ij/σ²₁)^(-γ)
- *   ρ₁([i,j]) ← ρ₁([i,j]) · Γ(Δ_ij)
+ * For off-diagonal entries (edge pair inner products):
+ *   For triangle τ = [i,j,s] ∈ S[2]:
+ *     Δ_τ = max{|ŷ(i)-ŷ(j)|, |ŷ(i)-ŷ(s)|, |ŷ(j)-ŷ(s)|}
+ *     σ₂ = IQR({Δ_τ : all triangles})
+ *     M₁[e_ij, e_is] ← M₁[e_ij, e_is] · Γ(Δ_τ/σ₂)
  *
- * The penalty function Γ takes values in (0,1]:
- *   - Γ(0) = 1: Edges with no response variation retain full density
- *   - Γ(Δ) → 0 as Δ → ∞: Edges with large variation lose density
- *   - γ controls decay rate: larger γ creates sharper boundaries
- *
- * After applying penalties, we renormalize edge densities to preserve total mass,
- * ensuring geometric scale stability across iterations.
+ * where Γ(x) = (1 + x²)^(-γ) is the penalty function.
  *
  * ITERATION CONTEXT:
- * Within each iteration of fit_knn_riem_graph_regression():
- *   Step 1: Density diffusion evolves vertex densities ρ₀
+ *   Step 1: Density diffusion evolves ρ₀
  *   Step 2: Edge densities ρ₁ recomputed from evolved ρ₀
- *   Step 3: Response-coherence modulation ← THIS FUNCTION
- *   Step 4: Metric update uses modulated ρ₁ to rebuild M₁
- *   Step 5: Laplacian reassembly with updated metric
- *   Step 6: Response smoothing with updated Laplacian
+ *   Step 3: Response-coherence modulation ← THIS FUNCTION (modulates g.M[1])
+ *   Step 4: Metric update (only M₀ needs updating, M₁ already modulated)
+ *   Step 5: Laplacian reassembly
+ *   Step 6: Response smoothing
  *
- * The modulated edge densities directly influence the edge mass matrix M₁ diagonal
- * entries and thus the vertex Laplacian structure. High-penalty edges effectively
- * disconnect regions with different response values, allowing the response
- * smoothing (Step 6) to maintain sharp transitions while remaining smooth within
- * coherent regions.
+ * @param y_hat Current fitted response values
+ * @param gamma Decay rate parameter (typically 0.5-2.0)
  *
- * ADAPTIVE SCALE PARAMETER:
- * The IQR-based scale σ₁ = IQR({Δ_ij}) adapts to the current response distribution:
- *   - Early iterations: Large σ₁ if response variation is widespread
- *   - Late iterations: Smaller σ₁ as geometry focuses on remaining boundaries
- *   - Robustness: IQR ignores outliers, focusing on typical variation
+ * @pre y_hat.size() == S[0].size()
+ * @pre g.M[1] contains current edge mass matrix
+ * @pre S[2] contains triangles (may be empty if pmax < 2)
+ * @pre gamma > 0
  *
- * We use std::nth_element for efficient O(n) quartile computation without full
- * sorting. The first and third quartiles (Q1, Q3) define IQR = Q3 - Q1.
- *
- * DEGENERATE CASES:
- * Several edge cases require careful handling:
- *
- * 1. **Near-constant response** (σ₁ < 1e-10): If all edges have nearly identical
- *    response variation, the scale becomes ill-defined. We set σ₁ = 1e-10 to
- *    avoid division by zero, effectively disabling modulation when response
- *    variation is negligible.
- *
- * 2. **Uniform edge densities**: If all Δ_ij are equal, IQR = 0. The regularization
- *    σ₁ = max(σ₁, 1e-10) handles this case.
- *
- * 3. **Zero total mass after modulation**: If all edges receive strong penalties,
- *    the sum could approach zero. We check for this and issue a warning while
- *    proceeding with the degenerate normalization.
- *
- * GAMMA PARAMETER INTERPRETATION:
- * The exponent γ controls the strength of response-based geometric adaptation:
- *
- *   γ = 0.5: Gentle modulation, gradual boundaries
- *     Example: Δ = σ gives Γ = (2)^(-0.5) ≈ 0.71 (29% reduction)
- *
- *   γ = 1.0: Moderate modulation (recommended default)
- *     Example: Δ = σ gives Γ = (2)^(-1) = 0.50 (50% reduction)
- *
- *   γ = 2.0: Strong modulation, sharp boundaries
- *     Example: Δ = σ gives Γ = (2)^(-2) = 0.25 (75% reduction)
- *
- * For boundary-crossing edges with Δ = 3σ:
- *   γ = 0.5: Γ ≈ 0.32 (68% reduction)
- *   γ = 1.0: Γ = 0.10 (90% reduction)
- *   γ = 2.0: Γ = 0.01 (99% reduction)
- *
- * Typical applications use γ ∈ [0.5, 2], with γ = 1 providing good balance.
- *
- * NORMALIZATION STRATEGY:
- * After applying penalties, we normalize to preserve total edge mass:
- *   ρ₁ ← ρ₁ · (Σ ρ₁_old) / (Σ ρ₁_new)
- *
- * This ensures:
- *   - Total mass constant: Σ ρ₁ = n_edges before and after modulation
- *   - Only relative distribution changes, not overall scale
- *   - Geometric stability across iterations
- *   - Numerical conditioning of mass matrix
- *
- * The normalization compensates for the global mass loss from penalties, rescaling
- * the distribution while preserving the relative penalty effects.
- *
- * VERTEX DENSITIES UNCHANGED:
- * Critically, this function only modulates edge densities (dimension p=1). Vertex
- * densities ρ₀ remain unchanged, as they represent the underlying data distribution
- * and should not depend on response structure. This separation ensures:
- *   - Vertex masses reflect data density, not response variation
- *   - Response-aware geometry emerges only through edge connectivity
- *   - Interpretability: vertices = observations, edges = relationships
- *
- * COMPUTATIONAL COMPLEXITY:
- * O(n_edges log n_edges) for the IQR computation via nth_element, plus O(n_edges)
- * for computing variations and applying penalties. The dominant cost is the
- * nth_element calls for quartile computation.
- *
- * For very large graphs (n_edges > 10^6), consider approximating IQR by sampling
- * a random subset of edges, though this is rarely necessary in practice.
- *
- * NUMERICAL STABILITY:
- * The penalty function is numerically stable:
- *   - No cancellation: only additions and multiplications
- *   - Bounded output: Γ ∈ (0, 1] always
- *   - Smooth behavior: continuous and differentiable
- *   - Protected division: σ₁ regularized to avoid zero denominator
- *
- * The power function (1 + x)^(-γ) is well-conditioned for x ≥ 0 and moderate γ.
- *
- * @param y_hat Current fitted response values (from previous iteration's smoothing)
- * @param gamma Decay rate parameter controlling boundary sharpness (typically 0.5-2.0)
- *
- * @pre y_hat.size() == S[0].size() (fitted values for all vertices)
- * @pre rho.rho[1] contains current edge densities (from Step 2 of iteration)
- * @pre S[1] contains edge simplex table with vertex endpoints
- * @pre gamma > 0 (positive decay rate)
- *
- * @post rho.rho[1] contains modulated edge densities
- * @post rho.rho[1].sum() ≈ n_edges (preserved total mass)
- * @post All entries of rho.rho[1] are positive (penalties reduce but never zero)
- * @post rho.rho[0] is unchanged (vertex densities not modulated)
- *
- * @note This function modifies edge densities in place. The original edge density
- *       distribution is not preserved, as it's replaced by the modulated version.
- *
- * @note If gamma = 0, all edges receive Γ = 1 (no modulation). If gamma is very
- *       large (> 10), even small response variations create strong penalties,
- *       potentially fragmenting the geometry excessively.
- *
- * @warning Very small gamma (< 0.1) provides minimal geometric adaptation and may
- *          not effectively create response boundaries. Very large gamma (> 5) may
- *          over-fragment the geometry, preventing diffusion even within coherent
- *          regions.
- *
- * @see update_edge_densities_from_vertices() for Step 2 (edge density computation)
- * @see update_metric_from_density() for Step 4 (using modulated densities)
- * @see fit_knn_riem_graph_regression() for complete iteration context
+ * @post g.M[1] modulated in place (both diagonal and off-diagonal)
+ * @post g.M[1] remains symmetric positive semidefinite
+ * @post Total Frobenius mass approximately preserved
+ * @post g.M_solver[1] invalidated
  */
 void riem_dcx_t::apply_response_coherence_modulation(
     const vec_t& y_hat,
     double gamma
 ) {
     const size_t n_edges = S[1].size();
+    const size_t n_vertices = S[0].size();
 
-    // Validate inputs
-    if (static_cast<size_t>(y_hat.size()) != S[0].size()) {
-        Rf_error("apply_response_coherence_modulation: y_hat size does not match number of vertices");
+    // ============================================================
+    // Validation
+    // ============================================================
+
+    if (static_cast<size_t>(y_hat.size()) != n_vertices) {
+        Rf_error("apply_response_coherence_modulation: y_hat size mismatch");
     }
 
     if (gamma <= 0.0) {
@@ -1410,98 +1431,191 @@ void riem_dcx_t::apply_response_coherence_modulation(
     }
 
     // ============================================================
-    // Step 1: Compute response variations for all edges
+    // Step 1: Compute edge response variations (for diagonal)
     // ============================================================
 
-    std::vector<double> delta_values;
-    delta_values.reserve(n_edges);
+    std::vector<double> edge_deltas;
+    edge_deltas.reserve(n_edges);
 
     for (size_t e = 0; e < n_edges; ++e) {
-        // Get edge endpoints
-        const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
-        const index_t i = edge_verts[0];
-        const index_t j = edge_verts[1];
-
-        // Compute response variation: Δ_ij = |ŷ(i) - ŷ(j)|
-        double delta = std::abs(y_hat[i] - y_hat[j]);
-        delta_values.push_back(delta);
+        const std::vector<index_t>& verts = S[1].simplex_verts[e];
+        double delta = std::abs(y_hat[verts[0]] - y_hat[verts[1]]);
+        edge_deltas.push_back(delta);
     }
 
     // ============================================================
-    // Step 2: Compute adaptive scale parameter (IQR)
+    // Step 2: Compute scale parameter σ₁ for edges
     // ============================================================
 
-    // Compute first quartile (Q1) at 25th percentile
-    std::vector<double> delta_copy1 = delta_values;
-    size_t q1_index = delta_copy1.size() / 4;
-    std::nth_element(delta_copy1.begin(),
-                     delta_copy1.begin() + q1_index,
-                     delta_copy1.end());
-    double Q1 = delta_copy1[q1_index];
+    std::vector<double> edge_copy = edge_deltas;
+    size_t q1_idx = edge_copy.size() / 4;
+    size_t q3_idx = (3 * edge_copy.size()) / 4;
 
-    // Compute third quartile (Q3) at 75th percentile
-    std::vector<double> delta_copy2 = delta_values;
-    size_t q3_index = (3 * delta_copy2.size()) / 4;
-    std::nth_element(delta_copy2.begin(),
-                     delta_copy2.begin() + q3_index,
-                     delta_copy2.end());
-    double Q3 = delta_copy2[q3_index];
+    std::nth_element(edge_copy.begin(),
+                     edge_copy.begin() + q1_idx,
+                     edge_copy.end());
+    double Q1_edge = edge_copy[q1_idx];
 
-    // Compute IQR = Q3 - Q1
-    double sigma_1 = Q3 - Q1;
+    edge_copy = edge_deltas;
+    std::nth_element(edge_copy.begin(),
+                     edge_copy.begin() + q3_idx,
+                     edge_copy.end());
+    double Q3_edge = edge_copy[q3_idx];
 
-    // Regularize to avoid division by zero when response is nearly constant
-    if (sigma_1 < 1e-10) {
-        sigma_1 = 1e-10;
+    double sigma_1 = std::max(Q3_edge - Q1_edge, 1e-10);
 
-        // Note: Not issuing warning here as near-constant response is valid
-        // and simply means no modulation is needed
+    // ============================================================
+    // Step 3: Compute triangle response variations (for off-diagonal)
+    // ============================================================
+
+    std::vector<double> triangle_deltas;
+    double sigma_2 = 1e-10;  // Default if no triangles
+
+    if (S.size() > 2 && S[2].size() > 0) {
+        triangle_deltas.reserve(S[2].size());
+
+        for (size_t t = 0; t < S[2].size(); ++t) {
+            const auto& verts = S[2].simplex_verts[t];
+            double delta = std::max({
+                std::abs(y_hat[verts[0]] - y_hat[verts[1]]),
+                std::abs(y_hat[verts[0]] - y_hat[verts[2]]),
+                std::abs(y_hat[verts[1]] - y_hat[verts[2]])
+            });
+            triangle_deltas.push_back(delta);
+        }
+
+        // Compute scale parameter σ₂ for triangles
+        std::vector<double> tri_copy = triangle_deltas;
+        q1_idx = tri_copy.size() / 4;
+        q3_idx = (3 * tri_copy.size()) / 4;
+
+        std::nth_element(tri_copy.begin(),
+                         tri_copy.begin() + q1_idx,
+                         tri_copy.end());
+        double Q1_tri = tri_copy[q1_idx];
+
+        tri_copy = triangle_deltas;
+        std::nth_element(tri_copy.begin(),
+                         tri_copy.begin() + q3_idx,
+                         tri_copy.end());
+        double Q3_tri = tri_copy[q3_idx];
+
+        sigma_2 = std::max(Q3_tri - Q1_tri, 1e-10);
     }
 
     // ============================================================
-    // Step 3: Store total mass before modulation for normalization
+    // Step 4: Store total mass before modulation
     // ============================================================
 
-    double total_mass_before = rho.rho[1].sum();
+    double total_mass_before = 0.0;
+    for (int k = 0; k < g.M[1].outerSize(); ++k) {
+        for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
+            // Count each entry once (Frobenius norm contribution)
+            if (it.row() <= it.col()) {
+                total_mass_before += (it.row() == it.col()) ?
+                    it.value() : 2.0 * it.value();
+            }
+        }
+    }
 
     // ============================================================
-    // Step 4: Apply penalty function to each edge
+    // Step 5: Rebuild M₁ with modulation
     // ============================================================
 
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(g.M[1].nonZeros());
+
+    // Part A: Diagonal entries (modulated by edge variation)
     for (size_t e = 0; e < n_edges; ++e) {
-        // Compute normalized variation
-        double delta = delta_values[e];
-        double delta_normalized = delta / sigma_1;
+        double current_mass = g.M[1].coeff(e, e);
+        double delta_normalized = edge_deltas[e] / sigma_1;
+        double penalty = std::pow(1.0 + delta_normalized * delta_normalized,
+                                  -gamma);
+        double modulated_mass = current_mass * penalty;
 
-        // Compute penalty: Γ(Δ) = (1 + Δ²/σ²)^(-γ)
-        //                       = (1 + (Δ/σ)²)^(-γ)
-        double penalty = std::pow(1.0 + delta_normalized * delta_normalized, -gamma);
+        triplets.emplace_back(e, e, modulated_mass);
+    }
 
-        // Apply penalty to edge density
-        rho.rho[1][e] *= penalty;
+    // Part B: Off-diagonal entries (modulated by triangle variation)
+    if (S.size() > 2 && S[2].size() > 0) {
+        for (size_t t = 0; t < S[2].size(); ++t) {
+            const auto& tri_verts = S[2].simplex_verts[t];
+
+            // Get edge IDs for the three edges of this triangle
+            std::vector<index_t> e01_verts = {tri_verts[0], tri_verts[1]};
+            std::vector<index_t> e02_verts = {tri_verts[0], tri_verts[2]};
+            std::vector<index_t> e12_verts = {tri_verts[1], tri_verts[2]};
+
+            index_t e01 = S[1].get_id(e01_verts);
+            index_t e02 = S[1].get_id(e02_verts);
+            index_t e12 = S[1].get_id(e12_verts);
+
+            // Get current inner products
+            double ip_01_02 = g.M[1].coeff(e01, e02);
+            double ip_01_12 = g.M[1].coeff(e01, e12);
+            double ip_02_12 = g.M[1].coeff(e02, e12);
+
+            // Compute modulation penalty for this triangle
+            double delta_normalized = triangle_deltas[t] / sigma_2;
+            double penalty = std::pow(1.0 + delta_normalized * delta_normalized,
+                                      -gamma);
+
+            // Modulate all three off-diagonal pairs
+            if (std::abs(ip_01_02) > 1e-15) {
+                double modulated = ip_01_02 * penalty;
+                triplets.emplace_back(e01, e02, modulated);
+                triplets.emplace_back(e02, e01, modulated);
+            }
+
+            if (std::abs(ip_01_12) > 1e-15) {
+                double modulated = ip_01_12 * penalty;
+                triplets.emplace_back(e01, e12, modulated);
+                triplets.emplace_back(e12, e01, modulated);
+            }
+
+            if (std::abs(ip_02_12) > 1e-15) {
+                double modulated = ip_02_12 * penalty;
+                triplets.emplace_back(e02, e12, modulated);
+                triplets.emplace_back(e12, e02, modulated);
+            }
+        }
     }
 
     // ============================================================
-    // Step 5: Renormalize to preserve total edge mass
+    // Step 6: Rebuild matrix and normalize
     // ============================================================
 
-    double total_mass_after = rho.rho[1].sum();
+    g.M[1] = spmat_t(n_edges, n_edges);
+    g.M[1].setFromTriplets(triplets.begin(), triplets.end());
+    g.M[1].makeCompressed();
 
+    // Compute total mass after modulation
+    double total_mass_after = 0.0;
+    for (int k = 0; k < g.M[1].outerSize(); ++k) {
+        for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
+            if (it.row() <= it.col()) {
+                total_mass_after += (it.row() == it.col()) ?
+                    it.value() : 2.0 * it.value();
+            }
+        }
+    }
+
+    // Normalize to preserve total Frobenius mass
     if (total_mass_after > 1e-15) {
-        // Normal case: rescale to restore original total mass
-        rho.rho[1] *= total_mass_before / total_mass_after;
+        double scale = total_mass_before / total_mass_after;
+        g.M[1] *= scale;
     } else {
-        // Degenerate case: all edges received extreme penalties
-        // Fall back to uniform density and warn
-        rho.rho[1].setConstant(1.0);
-
-        Rf_warning("apply_response_coherence_modulation: edge density sum near zero "
-                   "after modulation, falling back to uniform density. "
-                   "Consider reducing gamma parameter.");
+        Rf_warning("apply_response_coherence_modulation: mass collapsed, "
+                   "falling back to identity matrix. Reduce gamma.");
+        g.M[1] = spmat_t(n_edges, n_edges);
+        g.M[1].setIdentity();
     }
 
-    // Note: Vertex densities rho.rho[0] are intentionally NOT modified
-    // They represent data distribution and should not depend on response
+    // Invalidate factorization
+    g.M_solver[1].reset();
+
+    // Note: rho.rho[0] and rho.rho[1] remain unchanged
+    // This function modulates the Riemannian metric g.M[1] directly
 }
 
 // ============================================================
@@ -2530,11 +2644,12 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Step 2: Edge density update
         update_edge_densities_from_vertices();
 
-        // Step 3: Response-coherence modulation
+        // Step 3: Response-coherence modulation (modulates g.M[1] directly)
         apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
 
-        // Step 4: Metric update
-        update_metric_from_density();
+        // Step 4: Update only M₀ from evolved vertex densities
+        // M₁ is already modulated above, no need to recompute
+        update_vertex_metric_from_density();
 
         // Step 5: Laplacian reassembly
         assemble_operators();
