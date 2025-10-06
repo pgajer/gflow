@@ -283,6 +283,18 @@ void riem_dcx_t::initialize_from_knn(
         S[0].id_of[{i}] = i;
     }
 
+	// ================================================================
+	// PHASE 1E: POPULATE STAR TABLES
+	// ================================================================
+
+	// Build stars[0]: for each vertex, list incident edges
+	stars[0].resize(n_points);
+	for (index_t e = 0; e < n_edges; ++e) {
+		const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
+		stars[0].star_over[edge_verts[0]].push_back(e);
+		stars[0].star_over[edge_verts[1]].push_back(e);
+	}
+
     // ================================================================
     // PHASE 2: DENSITY INITIALIZATION
     // ================================================================
@@ -309,4 +321,69 @@ void riem_dcx_t::initialize_from_knn(
     // ================================================================
 
     assemble_operators();
+
+	// ================================================================
+	// PHASE 5: BUILD 2-SIMPLICES (TRIANGLES)
+	// ================================================================
+
+	std::vector<std::array<index_t, 3>> triangle_list;
+	triangle_list.reserve(n_points * k);
+
+	for (size_t i = 0; i < n_points; ++i) {
+		const std::vector<index_t>& incident = stars[0].star_over[i];
+
+		for (size_t a = 0; a < incident.size(); ++a) {
+			const std::vector<index_t>& e_ij_verts = S[1].simplex_verts[incident[a]];
+			index_t j = (e_ij_verts[0] == i) ? e_ij_verts[1] : e_ij_verts[0];
+
+			for (size_t b = a + 1; b < incident.size(); ++b) {
+				const std::vector<index_t>& e_is_verts = S[1].simplex_verts[incident[b]];
+				index_t s = (e_is_verts[0] == i) ? e_is_verts[1] : e_is_verts[0];
+
+				// Check if edge [j,s] exists
+				std::vector<index_t> edge_js = {std::min(j,s), std::max(j,s)};
+				if (S[1].id_of.find(edge_js) == S[1].id_of.end()) {
+					continue;
+				}
+
+				// Verify non-empty triple intersection
+				bool has_intersection = false;
+				for (index_t v : neighbor_sets[i]) {
+					if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
+						neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
+						has_intersection = true;
+						break;
+					}
+				}
+
+				if (has_intersection) {
+					std::array<index_t, 3> tri = {i, j, s};
+					std::sort(tri.begin(), tri.end());
+					triangle_list.push_back(tri);
+				}
+			}
+		}
+	}
+
+	// Remove duplicates
+	std::sort(triangle_list.begin(), triangle_list.end());
+	triangle_list.erase(std::unique(triangle_list.begin(), triangle_list.end()),
+						triangle_list.end());
+
+	const index_t n_triangles = triangle_list.size();
+
+	if (n_triangles > 0) {
+		extend_by_one_dim(n_triangles);
+
+		S[2].simplex_verts.resize(n_triangles);
+		for (index_t t = 0; t < n_triangles; ++t) {
+			std::vector<index_t> tri_verts = {
+				triangle_list[t][0],
+				triangle_list[t][1],
+				triangle_list[t][2]
+			};
+			S[2].simplex_verts[t] = tri_verts;
+			S[2].id_of[tri_verts] = t;
+		}
+	}
 }
