@@ -419,9 +419,6 @@ void riem_dcx_t::update_metric_from_density() {
 
     // Rebuild M₁ from updated vertex and edge densities
     update_edge_mass_matrix();
-
-    // Invalidate spectral cache since Laplacian will change
-    spectral_cache.invalidate();
 }
 
 /**
@@ -551,7 +548,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
 
     // The Laplacian L₀ = B₁ M₁⁻¹ B₁ᵀ M₀ depends on M₀, so any cached
     // eigendecomposition is now invalid and must be recomputed
-    spectral_cache.invalidate();
+    // spectral_cache.invalidate();
 
     // Note: g.M[1] is intentionally NOT modified here
     // The edge mass matrix was already modulated by response-coherence
@@ -1368,12 +1365,11 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
 }
 
 /**
- * @brief Apply response-coherence modulation to full edge mass matrix
+ * @brief Apply response-coherence modulation to existing edge mass matrix
  *
  * Modulates both diagonal and off-diagonal entries of the edge mass matrix M₁
- * based on response variation. This creates outcome-aware Riemannian geometry where:
- * - Diagonal M₁[e,e]: modulated by response variation across edge e = [i,j]
- * - Off-diagonal M₁[e,e']: modulated by response variation across induced triangle
+ * in place based on response variation. This creates outcome-aware Riemannian
+ * geometry where edges crossing response boundaries receive reduced mass.
  *
  * MATHEMATICAL CONSTRUCTION:
  *
@@ -1390,23 +1386,23 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *
  * where Γ(x) = (1 + x²)^(-γ) is the penalty function.
  *
- * ITERATION CONTEXT:
- *   Step 1: Density diffusion evolves ρ₀
- *   Step 2: Edge densities ρ₁ recomputed from evolved ρ₀
- *   Step 3: Response-coherence modulation ← THIS FUNCTION (modulates g.M[1])
- *   Step 4: Metric update (only M₀ needs updating, M₁ already modulated)
- *   Step 5: Laplacian reassembly
- *   Step 6: Response smoothing
+ * IMPORTANT OPTIMIZATION:
+ * Rather than rebuilding M₁ from scratch, this version:
+ * 1. Computes modulation factors for all edges and triangles
+ * 2. Applies factors directly to existing matrix entries via coeffRef
+ * 3. Preserves matrix structure and sparsity pattern
+ *
+ * This is much faster than reconstruction, especially for large graphs.
  *
  * @param y_hat Current fitted response values
  * @param gamma Decay rate parameter (typically 0.5-2.0)
  *
  * @pre y_hat.size() == S[0].size()
- * @pre g.M[1] contains current edge mass matrix
+ * @pre g.M[1] is assembled with current edge mass matrix
  * @pre S[2] contains triangles (may be empty if pmax < 2)
  * @pre gamma > 0
  *
- * @post g.M[1] modulated in place (both diagonal and off-diagonal)
+ * @post g.M[1] modulated in place
  * @post g.M[1] remains symmetric positive semidefinite
  * @post Total Frobenius mass approximately preserved
  * @post g.M_solver[1] invalidated
@@ -1428,6 +1424,10 @@ void riem_dcx_t::apply_response_coherence_modulation(
 
     if (gamma <= 0.0) {
         Rf_error("apply_response_coherence_modulation: gamma must be positive");
+    }
+
+    if (n_edges == 0) {
+        return;  // Nothing to modulate
     }
 
     // ============================================================
@@ -1468,20 +1468,54 @@ void riem_dcx_t::apply_response_coherence_modulation(
     // Step 3: Compute triangle response variations (for off-diagonal)
     // ============================================================
 
-    std::vector<double> triangle_deltas;
+    // Map from unordered edge pairs to triangle delta
+    // Key: packed (e1, e2) with e1 < e2
+    // Value: maximum response variation over all triangles containing both edges
+    std::unordered_map<uint64_t, double> edge_pair_max_delta;
+
     double sigma_2 = 1e-10;  // Default if no triangles
 
     if (S.size() > 2 && S[2].size() > 0) {
+        std::vector<double> triangle_deltas;
         triangle_deltas.reserve(S[2].size());
+
+        // Lambda to pack two edge indices into a single uint64_t key
+        auto pack_edge_pair = [](index_t e1, index_t e2) -> uint64_t {
+            if (e1 > e2) std::swap(e1, e2);
+            return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
+        };
 
         for (size_t t = 0; t < S[2].size(); ++t) {
             const auto& verts = S[2].simplex_verts[t];
+
+            // Compute maximum response variation over triangle vertices
             double delta = std::max({
                 std::abs(y_hat[verts[0]] - y_hat[verts[1]]),
                 std::abs(y_hat[verts[0]] - y_hat[verts[2]]),
                 std::abs(y_hat[verts[1]] - y_hat[verts[2]])
             });
             triangle_deltas.push_back(delta);
+
+            // Get the three edge IDs for this triangle
+            std::vector<index_t> e01_verts = {verts[0], verts[1]};
+            std::vector<index_t> e02_verts = {verts[0], verts[2]};
+            std::vector<index_t> e12_verts = {verts[1], verts[2]};
+
+            index_t e01 = S[1].get_id(e01_verts);
+            index_t e02 = S[1].get_id(e02_verts);
+            index_t e12 = S[1].get_id(e12_verts);
+
+            // Record maximum delta for each edge pair in this triangle
+            uint64_t key_01_02 = pack_edge_pair(e01, e02);
+            uint64_t key_01_12 = pack_edge_pair(e01, e12);
+            uint64_t key_02_12 = pack_edge_pair(e02, e12);
+
+            edge_pair_max_delta[key_01_02] = std::max(
+                edge_pair_max_delta[key_01_02], delta);
+            edge_pair_max_delta[key_01_12] = std::max(
+                edge_pair_max_delta[key_01_12], delta);
+            edge_pair_max_delta[key_02_12] = std::max(
+                edge_pair_max_delta[key_02_12], delta);
         }
 
         // Compute scale parameter σ₂ for triangles
@@ -1510,7 +1544,6 @@ void riem_dcx_t::apply_response_coherence_modulation(
     double total_mass_before = 0.0;
     for (int k = 0; k < g.M[1].outerSize(); ++k) {
         for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
-            // Count each entry once (Frobenius norm contribution)
             if (it.row() <= it.col()) {
                 total_mass_before += (it.row() == it.col()) ?
                     it.value() : 2.0 * it.value();
@@ -1519,77 +1552,60 @@ void riem_dcx_t::apply_response_coherence_modulation(
     }
 
     // ============================================================
-    // Step 5: Rebuild M₁ with modulation
+    // Step 5: Apply modulation in place
     // ============================================================
-
-    std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(g.M[1].nonZeros());
 
     // Part A: Diagonal entries (modulated by edge variation)
     for (size_t e = 0; e < n_edges; ++e) {
-        double current_mass = g.M[1].coeff(e, e);
         double delta_normalized = edge_deltas[e] / sigma_1;
-        double penalty = std::pow(1.0 + delta_normalized * delta_normalized,
-                                  -gamma);
-        double modulated_mass = current_mass * penalty;
+        double penalty = std::pow(1.0 + delta_normalized * delta_normalized, -gamma);
 
-        triplets.emplace_back(e, e, modulated_mass);
+        // Modify diagonal entry in place
+        g.M[1].coeffRef(e, e) *= penalty;
     }
 
     // Part B: Off-diagonal entries (modulated by triangle variation)
-    if (S.size() > 2 && S[2].size() > 0) {
-        for (size_t t = 0; t < S[2].size(); ++t) {
-            const auto& tri_verts = S[2].simplex_verts[t];
+    if (!edge_pair_max_delta.empty()) {
+        // Lambda to pack edge indices for lookup
+        auto pack_edge_pair = [](index_t e1, index_t e2) -> uint64_t {
+            if (e1 > e2) std::swap(e1, e2);
+            return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
+        };
 
-            // Get edge IDs for the three edges of this triangle
-            std::vector<index_t> e01_verts = {tri_verts[0], tri_verts[1]};
-            std::vector<index_t> e02_verts = {tri_verts[0], tri_verts[2]};
-            std::vector<index_t> e12_verts = {tri_verts[1], tri_verts[2]};
+        // Iterate over all non-zero entries in M₁
+        for (int k = 0; k < g.M[1].outerSize(); ++k) {
+            for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
+                // Skip diagonal (already handled)
+                if (it.row() == it.col()) continue;
 
-            index_t e01 = S[1].get_id(e01_verts);
-            index_t e02 = S[1].get_id(e02_verts);
-            index_t e12 = S[1].get_id(e12_verts);
+                // Only process upper triangle to avoid double-processing
+                if (it.row() > it.col()) continue;
 
-            // Get current inner products
-            double ip_01_02 = g.M[1].coeff(e01, e02);
-            double ip_01_12 = g.M[1].coeff(e01, e12);
-            double ip_02_12 = g.M[1].coeff(e02, e12);
+                index_t e1 = static_cast<index_t>(it.row());
+                index_t e2 = static_cast<index_t>(it.col());
+                uint64_t key = pack_edge_pair(e1, e2);
 
-            // Compute modulation penalty for this triangle
-            double delta_normalized = triangle_deltas[t] / sigma_2;
-            double penalty = std::pow(1.0 + delta_normalized * delta_normalized,
-                                      -gamma);
+                // Check if this edge pair appears in any triangle
+                auto pair_it = edge_pair_max_delta.find(key);
+                if (pair_it != edge_pair_max_delta.end()) {
+                    double delta = pair_it->second;
+                    double delta_normalized = delta / sigma_2;
+                    double penalty = std::pow(
+                        1.0 + delta_normalized * delta_normalized, -gamma);
 
-            // Modulate all three off-diagonal pairs
-            if (std::abs(ip_01_02) > 1e-15) {
-                double modulated = ip_01_02 * penalty;
-                triplets.emplace_back(e01, e02, modulated);
-                triplets.emplace_back(e02, e01, modulated);
-            }
-
-            if (std::abs(ip_01_12) > 1e-15) {
-                double modulated = ip_01_12 * penalty;
-                triplets.emplace_back(e01, e12, modulated);
-                triplets.emplace_back(e12, e01, modulated);
-            }
-
-            if (std::abs(ip_02_12) > 1e-15) {
-                double modulated = ip_02_12 * penalty;
-                triplets.emplace_back(e02, e12, modulated);
-                triplets.emplace_back(e12, e02, modulated);
+                    // Modify both (i,j) and (j,i) entries for symmetry
+                    double modulated_value = it.value() * penalty;
+                    g.M[1].coeffRef(e1, e2) = modulated_value;
+                    g.M[1].coeffRef(e2, e1) = modulated_value;
+                }
             }
         }
     }
 
     // ============================================================
-    // Step 6: Rebuild matrix and normalize
+    // Step 6: Normalize to preserve total Frobenius mass
     // ============================================================
 
-    g.M[1] = spmat_t(n_edges, n_edges);
-    g.M[1].setFromTriplets(triplets.begin(), triplets.end());
-    g.M[1].makeCompressed();
-
-    // Compute total mass after modulation
     double total_mass_after = 0.0;
     for (int k = 0; k < g.M[1].outerSize(); ++k) {
         for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
@@ -1600,22 +1616,23 @@ void riem_dcx_t::apply_response_coherence_modulation(
         }
     }
 
-    // Normalize to preserve total Frobenius mass
     if (total_mass_after > 1e-15) {
         double scale = total_mass_before / total_mass_after;
         g.M[1] *= scale;
     } else {
         Rf_warning("apply_response_coherence_modulation: mass collapsed, "
-                   "falling back to identity matrix. Reduce gamma.");
-        g.M[1] = spmat_t(n_edges, n_edges);
-        g.M[1].setIdentity();
+                   "restoring to identity. Reduce gamma.");
+
+        // Restore to diagonal identity
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (size_t e = 0; e < n_edges; ++e) {
+            triplets.emplace_back(e, e, 1.0);
+        }
+        g.M[1].setFromTriplets(triplets.begin(), triplets.end());
     }
 
     // Invalidate factorization
     g.M_solver[1].reset();
-
-    // Note: rho.rho[0] and rho.rho[1] remain unchanged
-    // This function modulates the Riemannian metric g.M[1] directly
 }
 
 // ============================================================
@@ -2711,25 +2728,27 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Step 2: Edge density update
         update_edge_densities_from_vertices();
 
-        // Step 3: Response-coherence modulation (modulates g.M[1] directly)
+        // Step 3: Rebuild edge mass matrix from evolved densities
+        update_edge_mass_matrix();  // Compute M₁ from current ρ₀
+
+        // Step 4: Apply response-coherence modulation to fresh M₁
         apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
 
-        // Step 4: Update only M₀ from evolved vertex densities
-        // M₁ is already modulated above, no need to recompute
+        // Step 5: Update vertex mass matrix from evolved densities
         update_vertex_metric_from_density();
 
-        // Step 5: Laplacian reassembly
+        // Step 6: Laplacian reassembly
         assemble_operators();
         spectral_cache.invalidate();
 
-        // Step 6: Response smoothing
+        // Step 7: Response smoothing
         gcv_result = smooth_response_via_spectral_filter(
             y, n_eigenpairs, filter_type
         );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
 
-        // Step 7: Convergence check
+        // Step 8: Convergence check
         auto status = check_convergence_detailed(
             y_hat_prev, y_hat_curr,
             rho_prev, rho.rho,
@@ -2743,7 +2762,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
                 iter, status.response_change, status.max_density_change);
 
-        // Optional detailed diagnostics
         for (size_t p = 0; p < status.density_changes_by_dim.size(); ++p) {
             Rprintf("  Density[%d] change: %.6f\n",
                     (int)p, status.density_changes_by_dim[p]);
