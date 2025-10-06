@@ -1258,11 +1258,6 @@ private:
     void initialize_metric_from_density();
 
     /**
-     * @brief Update metric from current densities
-     */
-    void update_metric_from_density();
-
-    /**
      * @brief Update vertex mass matrix from evolved vertex densities
      */
     void update_vertex_metric_from_density();

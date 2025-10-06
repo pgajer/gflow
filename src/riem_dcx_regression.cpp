@@ -337,91 +337,6 @@ double riem_dcx_t::compute_edge_inner_product(
 // ============================================================
 
 /**
- * @brief Update metric from evolved densities during iterative refinement
- *
- * Reconstructs the Riemannian metric structure g from the current density
- * distribution ρ after density evolution steps. This function is called
- * during each iteration of the regression algorithm after vertex densities
- * have been updated via damped heat diffusion and edge densities have been
- * recomputed from the evolved vertex distribution.
- *
- * The metric update follows the same mathematical construction as initialization
- * but operates on evolved densities rather than initial values. The vertex mass
- * matrix M₀ is updated by replacing diagonal entries with current vertex densities.
- * The edge mass matrix M₁ is recomputed via triple neighborhood intersections
- * using the evolved vertex densities, capturing how the geometric relationships
- * between edges change as density concentrates in response-coherent regions and
- * depletes across response boundaries.
- *
- * A critical side effect of metric updating is invalidation of the spectral cache.
- * Since the Laplacian L₀ depends on the mass matrices through L₀ = B₁ M₁⁻¹ B₁ᵀ M₀,
- * any change to the metric renders previously computed eigendecompositions invalid.
- * The function explicitly invalidates the spectral cache to ensure that subsequent
- * response smoothing operations trigger fresh eigendecomposition with the updated
- * geometry.
- *
- * ITERATION CONTEXT:
- * This function is called as Step 4 in the iteration loop of fit_knn_riem_graph_regression():
- *   Step 1: Density diffusion (evolves ρ₀)
- *   Step 2: Edge density update (derives ρ₁ from evolved ρ₀)
- *   Step 3: Response-coherence modulation (adjusts ρ₁ based on response variation)
- *   Step 4: Metric update ← THIS FUNCTION
- *   Step 5: Laplacian reassembly (builds L₀ from updated M₀, M₁)
- *   Step 6: Response smoothing (solves for ŷ using updated L₀)
- *   Step 7: Convergence check
- *
- * COMPUTATIONAL COST:
- * The dominant cost is recomputing M₁ via update_edge_mass_matrix(), which
- * performs O(n·k²) triple intersection computations. Updating M₀ is O(n) and
- * negligible by comparison. For large graphs (n > 10000), this step can become
- * the primary computational bottleneck of each iteration.
- *
- * FUTURE OPTIMIZATION:
- * The current implementation performs full recomputation of M₁ at each iteration.
- * Potential optimizations include:
- *   - Incremental updates tracking which vertex densities changed significantly
- *   - Lazy evaluation deferring M₁ update until Laplacian assembly
- *   - Low-rank approximations when density changes are small
- * These optimizations would require tracking density change history and accepting
- * increased code complexity in exchange for reduced iteration cost.
- *
- * @pre rho.rho[0] contains evolved vertex densities (normalized to sum to n)
- * @pre rho.rho[1] contains updated edge densities (normalized to sum to n_edges)
- * @pre S[0], S[1], neighbor_sets, and stars[0] remain unchanged from initialization
- *
- * @post g.M[0] diagonal entries updated to current vertex densities
- * @post g.M[1] recomputed with current vertex densities via triple intersections
- * @post spectral_cache.is_valid == false (cache invalidated)
- * @post Laplacian L.L[0] remains unchanged (caller must invoke assemble_operators())
- *
- * @note Unlike initialize_metric_from_density(), this function assumes the
- *       sparse matrix structures g.M[0] and g.M[1] are already allocated with
- *       correct dimensions. It updates entries in place rather than reconstructing
- *       from scratch, though the current implementation of update_edge_mass_matrix()
- *       does perform full reconstruction of M₁.
- *
- * @note This function does NOT automatically reassemble the Laplacian. The caller
- *       must explicitly call assemble_operators() after metric update to rebuild
- *       L₀ from the updated mass matrices.
- *
- * @see initialize_metric_from_density() for the initial metric construction
- * @see update_edge_mass_matrix() for the edge mass matrix recomputation
- * @see fit_knn_riem_graph_regression() for the complete iteration context
- */
-void riem_dcx_t::update_metric_from_density() {
-    // Rebuild M₀ from updated vertex densities
-    const size_t n_vertices = S[0].size();
-
-    for (size_t i = 0; i < n_vertices; ++i) {
-        double mass = std::max(rho.rho[0][i], 1e-15);
-        g.M[0].coeffRef(i, i) = mass;
-    }
-
-    // Rebuild M₁ from updated vertex and edge densities
-    update_edge_mass_matrix();
-}
-
-/**
  * @brief Update vertex mass matrix from evolved vertex densities
  *
  * Updates only the vertex mass matrix M₀ from the current vertex densities after
@@ -575,14 +490,6 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * response-coherent regions and deplete mass across response boundaries. The
  * updated mass matrix captures these evolved geometric relationships.
  *
- * ITERATION CONTEXT:
- * This function is called by update_metric_from_density() as part of Step 4
- * in the iteration loop. At this point in each iteration:
- *   - Vertex densities ρ₀ have been evolved via damped heat diffusion
- *   - Edge densities ρ₁ have been recomputed from evolved ρ₀
- *   - Response-coherence modulation has adjusted ρ₁ based on fitted values
- *   - The combinatorial structure (S[1], neighbor_sets, stars[0]) remains fixed
- *
  * The recomputed M₁ will be used to reassemble the vertex Laplacian:
  *   L₀ = B₁ M₁⁻¹ B₁ᵀ M₀
  * which in turn drives the next iteration's response smoothing and density evolution.
@@ -665,8 +572,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  *          incremental update strategies if this becomes a bottleneck.
  *
  * @see compute_edge_mass_matrix() for the initial mass matrix construction
- * @see update_metric_from_density() for the calling context
- * @see compute_edge_inner_product() for the triple intersection computation
+  * @see compute_edge_inner_product() for the triple intersection computation
  */
 void riem_dcx_t::update_edge_mass_matrix() {
     // For now, just call the full computation
@@ -1300,7 +1206,6 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *
  * @see compute_initial_densities() for the initialization version
  * @see apply_response_coherence_modulation() for subsequent edge density adjustment
- * @see update_metric_from_density() for how updated densities enter the metric
  */
 void riem_dcx_t::update_edge_densities_from_vertices() {
     const size_t n_edges = S[1].size();
@@ -2746,14 +2651,14 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Step 2: Edge density update
         update_edge_densities_from_vertices();
 
-        // Step 3: Rebuild edge mass matrix from evolved densities
-        update_edge_mass_matrix();  // Compute M₁ from current ρ₀
+        // Step 3: Update vertex mass matrix from evolved densities
+        update_vertex_metric_from_density();  // Updates only M[0]
 
-        // Step 4: Apply response-coherence modulation to fresh M₁
+        // Step 4: Rebuild edge mass matrix from evolved densities
+        update_edge_mass_matrix();  // Compute fresh M₁ from current ρ₀
+
+        // Step 5: Apply response-coherence modulation to fresh M₁
         apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
-
-        // Step 5: Update vertex mass matrix from evolved densities
-        update_vertex_metric_from_density();
 
         // Step 6: Laplacian reassembly
         assemble_operators();
