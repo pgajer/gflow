@@ -3587,7 +3587,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ================================================================
     // PART II: ITERATIVE REFINEMENT
     // ================================================================
-
+    sig.y = y;  // Store original response
     vec_t y_hat_prev;
     std::vector<double> response_change_history;
 
