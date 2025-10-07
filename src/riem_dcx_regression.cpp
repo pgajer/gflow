@@ -37,13 +37,29 @@
  * normalization ensures numerical stability and interpretability across different
  * dataset sizes.
  *
+ * Densities are stored directly in the vertex_cofaces structure:
+ *   - vertex_cofaces[i][0].density = ρ₀(i)
+ *   - vertex_cofaces[i][k].density = ρ₁(edge [i, vertex_cofaces[i][k].vertex_index])
+ *
  * @pre reference_measure must be initialized and have size equal to number of vertices
- * @post rho.rho[0] contains normalized vertex densities summing to n
- * @post rho.rho[1] contains normalized edge densities summing to n_edges
+ * @pre vertex_cofaces must be populated with topology and simplex indices
+ * @post vertex_cofaces[i][0].density contains normalized vertex densities summing to n
+ * @post vertex_cofaces[i][k].density (k>0) contains normalized edge densities
+ * @note Edge densities appear twice (once in each endpoint's vertex_cofaces)
  */
 void riem_dcx_t::compute_initial_densities() {
-    const size_t n_vertices = S[0].size();
-    const size_t n_edges = S[1].size();
+    const size_t n_vertices = vertex_cofaces.size();
+
+    // Count total number of edges
+    size_t n_edges = 0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {  // Count each edge only once
+                n_edges++;
+            }
+        }
+    }
 
     // Ensure reference measure is available
     if (reference_measure.size() != n_vertices) {
@@ -55,8 +71,6 @@ void riem_dcx_t::compute_initial_densities() {
     // ============================================================
 
     // For each vertex i, sum the reference measure over its k-neighborhood
-    rho.rho[0] = vec_t::Zero(n_vertices);
-
     for (size_t i = 0; i < n_vertices; ++i) {
         double vertex_density = 0.0;
 
@@ -65,17 +79,26 @@ void riem_dcx_t::compute_initial_densities() {
             vertex_density += reference_measure[j];
         }
 
-        rho.rho[0][i] = vertex_density;
+        // Store in self-loop at position [0]
+        vertex_cofaces[i][0].density = vertex_density;
     }
 
-    // Normalize vertex densities to sum to n
-    double vertex_density_sum = rho.rho[0].sum();
+    // Normalize vertex densities to sum to n_vertices
+    double vertex_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        vertex_density_sum += vertex_cofaces[i][0].density;
+    }
 
     if (vertex_density_sum > 1e-15) {
-        rho.rho[0] *= static_cast<double>(n_vertices) / vertex_density_sum;
+        double vertex_scale = static_cast<double>(n_vertices) / vertex_density_sum;
+        for (size_t i = 0; i < n_vertices; ++i) {
+            vertex_cofaces[i][0].density *= vertex_scale;
+        }
     } else {
         // Fallback: uniform density if something went wrong
-        rho.rho[0].setConstant(1.0);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            vertex_cofaces[i][0].density = 1.0;
+        }
     }
 
     // ============================================================
@@ -84,44 +107,73 @@ void riem_dcx_t::compute_initial_densities() {
 
     // For each edge [i,j], sum the reference measure over the intersection
     // of neighborhoods: Ň_k(x_i) ∩ Ň_k(x_j)
-    rho.rho[1] = vec_t::Zero(n_edges);
 
-    for (size_t e = 0; e < n_edges; ++e) {
-        // Get the two vertices of this edge
-        const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
-        const index_t i = edge_verts[0];
-        const index_t j = edge_verts[1];
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
 
-        // Compute intersection of neighborhoods
-        double edge_density = 0.0;
+            // Only compute once per edge (use i < j convention)
+            if (i >= j) continue;
 
-        // For efficiency, iterate over the smaller set and check membership in larger
-        const std::unordered_set<index_t>& set_i = neighbor_sets[i];
-        const std::unordered_set<index_t>& set_j = neighbor_sets[j];
+            // Compute intersection of neighborhoods
+            double edge_density = 0.0;
 
-        const std::unordered_set<index_t>& smaller_set =
-            (set_i.size() <= set_j.size()) ? set_i : set_j;
-        const std::unordered_set<index_t>& larger_set =
-            (set_i.size() <= set_j.size()) ? set_j : set_i;
+            // For efficiency, iterate over the smaller set and check membership in larger
+            const std::unordered_set<index_t>& set_i = neighbor_sets[i];
+            const std::unordered_set<index_t>& set_j = neighbor_sets[j];
 
-        // Sum measure over intersection
-        for (index_t v : smaller_set) {
-            if (larger_set.find(v) != larger_set.end()) {
-                edge_density += reference_measure[v];
+            const std::unordered_set<index_t>& smaller_set =
+                (set_i.size() <= set_j.size()) ? set_i : set_j;
+            const std::unordered_set<index_t>& larger_set =
+                (set_i.size() <= set_j.size()) ? set_j : set_i;
+
+            // Sum measure over intersection
+            for (index_t v : smaller_set) {
+                if (larger_set.find(v) != larger_set.end()) {
+                    edge_density += reference_measure[v];
+                }
+            }
+
+            // Store in vertex_cofaces[i][k]
+            vertex_cofaces[i][k].density = edge_density;
+
+            // Also store in vertex_cofaces[j] (find the corresponding entry)
+            for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                if (vertex_cofaces[j][m].vertex_index == i) {
+                    vertex_cofaces[j][m].density = edge_density;
+                    break;
+                }
             }
         }
-
-        rho.rho[1][e] = edge_density;
     }
 
     // Normalize edge densities to sum to n_edges
-    double edge_density_sum = rho.rho[1].sum();
+    double edge_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {  // Count each edge only once
+                edge_density_sum += vertex_cofaces[i][k].density;
+            }
+        }
+    }
 
     if (edge_density_sum > 1e-15) {
-        rho.rho[1] *= static_cast<double>(n_edges) / edge_density_sum;
+        double edge_scale = static_cast<double>(n_edges) / edge_density_sum;
+
+        // Apply normalization to all edge densities
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density *= edge_scale;
+            }
+        }
     } else {
         // Fallback: uniform density if intersections are all empty
-        rho.rho[1].setConstant(1.0);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density = 1.0;
+            }
+        }
     }
 }
 

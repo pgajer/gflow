@@ -750,7 +750,7 @@ void riem_dcx_t::initialize_reference_measure(
     bool use_counting_measure,
     double density_normalization
 ) {
-    const size_t n = S[0].size();
+    const size_t n = knn_neighbors.size();
     std::vector<double> vertex_weights(n);
 
     if (use_counting_measure) {
