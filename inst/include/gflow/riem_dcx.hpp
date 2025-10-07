@@ -791,61 +791,12 @@ struct riem_dcx_t {
     //     .density = ρ_2[triangle_idx]         // Triangle density
     // };
 
-    double get_vertex_density(index_t i) const {
-        if (!vertex_cofaces.empty() && i < vertex_cofaces.size()
-            && !vertex_cofaces[i].empty()) {
-            return vertex_cofaces[i][0].density;
-        }
-        // Fallback to rho during transition
-        if (!rho.rho.empty() && i < (index_t)rho.rho[0].size()) {
-            return rho.rho[0][i];
-        }
-        return 0.0;
-    }
-
-    void set_vertex_density(index_t i, double density) {
-        if (!vertex_cofaces.empty() && i < vertex_cofaces.size()
-            && !vertex_cofaces[i].empty()) {
-            vertex_cofaces[i][0].density = density;
-        }
-        // Also update rho during transition
-        if (!rho.rho.empty() && i < (index_t)rho.rho[0].size()) {
-            rho.rho[0][i] = density;
-        }
-    }
-
-    double get_edge_density(index_t i, index_t j) const {
-        // Find edge in vertex_cofaces[i]
-        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
-            if (vertex_cofaces[i][k].vertex_index == j) {
-                return vertex_cofaces[i][k].density;
-            }
-        }
-        return 0.0; // Edge not found
-    }
-
-    index_t get_edge_index(index_t i, index_t j) const {
-        // Find edge in vertex_cofaces[i]
-        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
-            if (vertex_cofaces[i][k].vertex_index == j) {
-                return vertex_cofaces[i][k].simplex_index;
-            }
-        }
-        return std::numeric_limits<index_t>::max(); // Edge not found
-    }
-
-    //
-    std::vector<std::vector<iknn_vertex_t>> vertex_adjacency_list;  ///< vertex adjacency list with iknn_vertex_t fields: index, isize, dist
-    std::vector<simplex_table_t> S;      ///< Simplex tables by dimension
-    std::vector<star_table_t> stars;     ///< Star neighborhoods
-
     // ----------------------------------------------------------------
     // Geometric Structure
     // ----------------------------------------------------------------
 
     metric_family_t g;                   ///< Mass matrices (Riemannian metric)
     laplacian_bundle_t L;                ///< Hodge Laplacian operators
-    density_family_t rho;                ///< Probability densities
 
     // ----------------------------------------------------------------
     // Signal State
@@ -876,17 +827,6 @@ struct riem_dcx_t {
     // ================================================================
 
     /**
-     * @brief Build nerve complex from kNN covering (general purpose)
-     */
-    void build_nerve_from_knn(
-        const spmat_t& X,
-        index_t k,
-        index_t max_p,
-        bool use_counting_measure,
-        double density_normalization
-    );
-
-    /**
      * @brief Fit kNN Riemannian graph regression model
      */
     void fit_knn_riem_graph_regression(
@@ -906,18 +846,6 @@ struct riem_dcx_t {
         double max_ratio_threshold,
         double threshold_percentile,
         int test_stage
-    );
-
-    /**
-     * @brief Legacy wrapper for backward compatibility
-     */
-    void build_knn_riem_dcx(
-        const spmat_t& X,
-        const vec_t& y,
-        index_t k,
-        index_t max_p,
-        bool use_counting_measure,
-        double density_normalization
     );
 
     /**
@@ -966,9 +894,43 @@ struct riem_dcx_t {
     );
 
     /**
-     * @brief Check convergence criteria
+     * @brief Check convergence of iterative refinement procedure (simplified version)
      */
     convergence_status_t check_convergence(
+        const vec_t& y_hat_prev,
+        const vec_t& y_hat_curr,
+        double epsilon_y,
+        int iteration,
+        int max_iterations
+        );
+
+    /**
+     * @brief Check convergence with enhanced diagnostics (simplified version)
+     */
+    detailed_convergence_status_t check_convergence_detailed(
+        const vec_t& y_hat_prev,
+        const vec_t& y_hat_curr,
+        double epsilon_y,
+        int iteration,
+        int max_iterations,
+        const std::vector<double>& response_change_history
+        );
+
+    /**
+     * @brief Check convergence with full geometric tracking
+     */
+    convergence_status_t check_convergence_with_geometry(
+        const vec_t& y_hat_prev,
+        const vec_t& y_hat_curr,
+        const std::vector<std::vector<neighbor_info_t>>& vertex_cofaces_prev,
+        const std::vector<std::vector<neighbor_info_t>>& vertex_cofaces_curr,
+        double epsilon_y,
+        double epsilon_rho,
+        int iteration,
+        int max_iterations
+        );
+
+    convergence_status_t check_convergence_with_rho(
         const vec_t& y_hat_prev,
         const vec_t& y_hat_curr,
         const std::vector<vec_t>& rho_prev,
@@ -979,10 +941,7 @@ struct riem_dcx_t {
         int max_iterations
         );
 
-    /**
-     * @brief Check convergence criteria - detailed version for research
-     */
-    detailed_convergence_status_t check_convergence_detailed(
+    detailed_convergence_status_t check_convergence_with_rho_detailed(
         const vec_t& y_hat_prev,
         const vec_t& y_hat_curr,
         const std::vector<vec_t>& rho_prev,
@@ -991,7 +950,7 @@ struct riem_dcx_t {
         double epsilon_rho,
         int iteration,
         int max_iterations,
-        const std::vector<double>& response_change_history
+        const std::vector<double>& response_change_history = {}
         );
 
     // ================================================================
@@ -1011,53 +970,6 @@ struct riem_dcx_t {
         );
 
     /**
-     * @brief Initialize all structures with given dimensions
-     * @param pmax_ Maximum chain dimension
-     * @param n_by_dim Number of simplices at each dimension
-     *
-     * Allocates and initializes all component structures. Must be called
-     * before adding simplices or performing computations.
-     */
-    void init_dims(int pmax_, const std::vector<index_t>& n_by_dim) {
-        pmax = pmax_;
-        S.resize(pmax+1);
-        stars.resize(pmax+1);
-        //inn.resize(pmax+1);
-        rho.init_dims(n_by_dim);
-        g.init_dims(n_by_dim);
-        L.B.assign(pmax+1, spmat_t());
-        L.L.assign(pmax+1, spmat_t());
-    }
-
-    /**
-     * @brief Build boundary operator B[1] from stored edge list
-     *
-     * Constructs the vertex-edge incidence matrix from the edge simplex table.
-     * Each edge (i,j) with i < j contributes (+1) at vertex j and (-1) at
-     * vertex i in the corresponding column of B[1].
-     */
-    void build_incidence_from_edges() {
-        if (S.size()<2) return;
-        const auto& edges = S[1].simplex_verts;
-        const Eigen::Index n = static_cast<Eigen::Index>(S[0].size());
-        const Eigen::Index m = static_cast<Eigen::Index>(edges.size());
-        spmat_t B1(n, m);
-        B1.reserve(Eigen::VectorXi::Constant(m,2));
-        for (Eigen::Index e=0; e<m; ++e) {
-            auto v = edges[e];
-            if (v.size()!=2)
-                Rf_error("Edge must have exactly 2 vertices");
-            Eigen::Index i = static_cast<Eigen::Index>(v[0]);
-            Eigen::Index j = static_cast<Eigen::Index>(v[1]);
-            if (i<j) { B1.insert(j,e) =  1.0; B1.insert(i,e) = -1.0; }
-            else     { B1.insert(i,e) =  1.0; B1.insert(j,e) = -1.0; }
-        }
-        B1.makeCompressed();
-        if (L.B.size()<2) L.B.resize(2);
-        L.B[1] = std::move(B1);
-    }
-
-    /**
      * @brief Assemble all Laplacian operators from current metric
      *
      * Updates all Hodge Laplacians based on the current state of the metric
@@ -1065,253 +977,10 @@ struct riem_dcx_t {
      */
     void assemble_operators() { L.assemble_all(g); }
 
-
     /**
      * @brief Extend the complex by one dimension, preserving all existing structure
-     *
-     * @details
-     * Appends a new chain degree to the discrete chain complex, incrementing pmax
-     * by one and initializing all data structures for the new dimension. This
-     * operation preserves all existing simplex tables, metric structures, boundary
-     * operators, and Laplacians at lower dimensions. The function is designed for
-     * incremental complex construction where simplices are built dimension by
-     * dimension.
-     *
-     * MOTIVATION:
-     * During nerve complex construction from k-NN neighborhoods, we discover
-     * simplices dimension by dimension: first vertices, then edges (by checking
-     * pairwise neighborhood intersections), then triangles (by checking triple
-     * intersections), and so forth. Each dimension depends on having the previous
-     * dimension fully constructed to check face existence. This function enables
-     * that incremental workflow without destroying lower-dimensional data.
-     *
-     * OPERATION:
-     * Let p_new = pmax + 1 denote the new dimension being added. The function:
-     *
-     * 1. Increments pmax to p_new
-     * 2. Resizes all dimension-indexed containers to accommodate p_new:
-     *    - S (simplex tables)
-     *    - stars (upward incidence)
-     *    - inn (local inner products)
-     *    - rho.rho (density vectors)
-     *    - g.M (metric diagonal and matrices)
-     *    - g.M_solver (Cholesky factorizations, if maintained)
-     *    - L.B (boundary operators)
-     *    - L.L (Hodge Laplacians)
-     *
-     * 3. Initializes the new dimension p_new with default values:
-     *    - S[p_new]: Empty simplex table (to be populated by caller)
-     *    - rho.rho[p_new]: Zero density vector of length n_new
-     *    - g.M[p_new]: Sparse diagonal matrix with ones on diagonal
-     *    - g.M_solver[p_new]: Null pointer (no factorization yet)
-     *    - stars[p_new]: Star table with one bucket per (p_new-1)-simplex
-     *    - inn[p_new]: Empty local inner product blocks
-     *    - L.B[p_new]: Empty boundary operator matrix (shape: |C_{p_new-1}| × n_new)
-     *    - L.L[p_new]: Empty Laplacian (to be assembled after faces are defined)
-     *
-     * USAGE PATTERN:
-     * The typical usage in complex construction is:
-     *
-     * @code
-     * // Start with vertices only (dimension 0)
-     * riem_dcx_t dcx;
-     * std::vector<index_t> n_by_dim = {n_vertices};
-     * dcx.init_dims(0, n_by_dim);
-     * // ... populate S[0] with vertices ...
-     *
-     * // Discover edges exist
-     * std::vector<std::vector<index_t>> edge_list = discover_edges();
-     * dcx.extend_by_one_dim(edge_list.size());  // Now pmax = 1
-     * // ... populate S[1] with edges ...
-     * // ... build L.B[1] (vertex-edge incidence) ...
-     *
-     * // Discover triangles exist
-     * std::vector<std::vector<index_t>> triangle_list = discover_triangles();
-     * dcx.extend_by_one_dim(triangle_list.size());  // Now pmax = 2
-     * // ... populate S[2] with triangles ...
-     * // ... build L.B[2] (edge-triangle incidence) ...
-     * @endcode
-     *
-     * STAR TABLE SIZING:
-     * The star table stars[p_new] is used to record which (p_new+1)-simplices
-     * contain each p_new-simplex. However, at the time of creating dimension p_new,
-     * no (p_new+1)-simplices exist yet. The star table is sized based on the
-     * number of (p_new-1)-simplices, which is what stars[p_new-1] indexes over.
-     *
-     * Specifically:
-     *   - stars[p_new].star_over has length S[p_new-1].size()
-     *   - Each entry stars[p_new].star_over[sigma_id] will eventually list the
-     *     p_new-simplices that have (p_new-1)-simplex sigma_id in their boundary
-     *   - For p_new = 0, stars[0] has length 0 (no (-1)-simplices)
-     *
-     * METRIC INITIALIZATION:
-     * The new dimension starts with identity metric (diagonal ones). This is a
-     * safe default that can be overwritten by the caller based on geometric
-     * measurements (e.g., intersection measures for nerve complexes). The metric
-     * determines inner products on chain spaces and must be positive definite.
-     *
-     * BOUNDARY OPERATOR:
-     * The boundary map B[p_new]: C_{p_new} → C_{p_new-1} is allocated with the
-     * correct dimensions (rows = |C_{p_new-1}|, cols = |C_{p_new}| = n_new) but
-     * contains no entries initially. The caller must populate this after defining
-     * the faces of each p_new-simplex. For a p_new-simplex with faces
-     * {f_0, ..., f_p_new}, the boundary operator has entries:
-     *     B[p_new](f_i, simplex_id) = (-1)^i
-     *
-     * LAPLACIAN ASSEMBLY:
-     * The Hodge Laplacian L[p_new] is left empty and must be computed via
-     * assemble_operators() after:
-     *   1. All boundary operators B[p_new+1] and B[p_new] are populated
-     *   2. The metric g.M[p_new] reflects the actual geometry
-     *
-     * The Laplacian at dimension p is given by the Hodge decomposition:
-     *     L[p] = B[p+1]^T M[p+1]^{-1} B[p+1] + M[p]^{-1} B[p] M[p-1] B[p]^T
-     * where the first term represents coboundary (curl) contribution and the
-     * second term represents boundary (divergence) contribution.
-     *
-     * INVARIANTS MAINTAINED:
-     * After calling extend_by_one_dim(n_new):
-     *   - pmax has increased by 1
-     *   - S.size() == stars.size() == inn.size() == pmax + 1
-     *   - g.M.size() == L.B.size() == L.L.size() == pmax + 1
-     *   - rho.rho.size() == pmax + 1
-     *   - S[pmax].size() == 0 (empty, to be populated)
-     *   - g.M[pmax] is diagonal with n_new ones
-     *   - L.B[pmax] is empty sparse matrix of shape (|C_{pmax-1}|, n_new)
-     *   - All structures at dimensions 0, ..., pmax-1 are unchanged
-     *
-     * EFFICIENCY:
-     * This operation is O(n_new) for initializing the new dimension's data
-     * structures, plus O(pmax) for resizing dimension-indexed containers.
-     * Critically, it does NOT rebuild or copy data from lower dimensions,
-     * making it suitable for use in tight loops during complex construction.
-     *
-     * ALTERNATIVE TO init_dims():
-     * The older init_dims(pmax, n_by_dim) function resizes all dimensions at once
-     * and may require rebuilding lower-dimensional structures if called repeatedly.
-     * In contrast, extend_by_one_dim() is designed for incremental growth:
-     *   - init_dims(): Use once at the start to establish dimension 0
-     *   - extend_by_one_dim(): Use repeatedly to grow the complex upward
-     *
-     * THREAD SAFETY:
-     * This function modifies the riem_dcx_t object and is NOT thread-safe. Do not
-     * call concurrently from multiple threads on the same object.
-     *
-     * @param n_new Number of simplices at the new dimension p_new = pmax + 1.
-     *              Must be non-negative. If zero, the dimension is added but
-     *              contains no simplices (useful for maintaining consistent
-     *              dimension indexing even when higher simplices don't exist).
-     *
-     * @post pmax is incremented by 1
-     * @post All dimension-indexed containers have size pmax + 1
-     * @post S[pmax] is empty (size 0)
-     * @post g.M[pmax] is diagonal identity matrix of size n_new × n_new
-     * @post rho.rho[pmax] is zero vector of length n_new
-     * @post L.B[pmax] is empty sparse matrix of shape (|S[pmax-1]|, n_new)
-     * @post L.L[pmax] is empty (to be assembled later)
-     * @post All data at dimensions 0, ..., pmax-1 (pre-increment) are unchanged
-     *
-     * @note The caller must subsequently:
-     *       1. Populate S[pmax].simplex_verts with actual simplices
-     *       2. Update S[pmax].id_of for simplex lookup
-     *       3. Set g.M[pmax] diagonal entries based on geometric measurements
-     *       4. Build L.B[pmax] by iterating over simplices and their faces
-     *       5. Call assemble_operators() to compute L.L[pmax]
-     *
-     * @note If n_new = 0, the dimension exists but is empty. This is valid and
-     *       sometimes useful when the construction algorithm discovers that no
-     *       simplices of a given dimension exist (e.g., no triangles in a sparse
-     *       graph). Having the dimension allocated prevents index errors in
-     *       downstream code that assumes dimension p_new exists.
-     *
-     * @see init_dims() - Initialize all dimensions at once (use for dimension 0)
-     * @see assemble_operators() - Compute Laplacians after boundary maps are built
-     * @see build_incidence_from_edges() - Example of building B[1] from S[1]
-     *
-     * @example
-     * // Incremental construction of a 2-dimensional complex
-     * riem_dcx_t dcx;
-     *
-     * // Start with 5 vertices
-     * std::vector<index_t> n_by_dim = {5};
-     * dcx.init_dims(0, n_by_dim);
-     * for (index_t i = 0; i < 5; ++i) {
-     *     dcx.S[0].add_simplex({i});
-     * }
-     *
-     * // Add 8 edges
-     * dcx.extend_by_one_dim(8);  // pmax is now 1
-     * dcx.S[1].add_simplex({0, 1});
-     * dcx.S[1].add_simplex({1, 2});
-     * // ... add remaining edges ...
-     * dcx.build_incidence_from_edges();
-     *
-     * // Add 3 triangles
-     * dcx.extend_by_one_dim(3);  // pmax is now 2
-     * dcx.S[2].add_simplex({0, 1, 2});
-     * dcx.S[2].add_simplex({1, 2, 3});
-     * dcx.S[2].add_simplex({2, 3, 4});
-     * // ... build B[2] from triangle faces ...
-     *
-     * // Compute all Laplacians
-     * dcx.assemble_operators();
      */
-    void extend_by_one_dim(index_t n_new) {
-        const int p_new = pmax + 1;
-
-        // Increment maximum dimension and resize all containers
-        pmax = p_new;
-        S.resize(pmax + 1);
-        stars.resize(pmax + 1);
-        //inn.resize(pmax + 1);
-
-        // Resize density family
-        rho.rho.resize(pmax + 1);
-
-        // Resize metric family
-        g.M.resize(pmax + 1);
-        g.M_solver.resize(pmax + 1);
-
-        // Resize operator family
-        L.B.resize(pmax + 1);
-        L.L.resize(pmax + 1);
-
-        // Initialize combinatorics at new dimension (empty for now)
-        S[p_new].simplex_verts.clear();
-        S[p_new].id_of.clear();
-
-        // Initialize density at new dimension (zeros)
-        rho.rho[p_new] = vec_t::Zero(static_cast<Eigen::Index>(n_new));
-
-        // Initialize metric at new dimension (identity)
-        g.M[p_new] = spmat_t(static_cast<Eigen::Index>(n_new),
-                             static_cast<Eigen::Index>(n_new));
-        g.M[p_new].reserve(Eigen::VectorXi::Constant(static_cast<int>(n_new), 1));
-        for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(n_new); ++i) {
-            g.M[p_new].insert(i, i) = 1.0;
-        }
-        g.M[p_new].makeCompressed();
-        g.M_solver[p_new].reset();
-
-        // Initialize star table at new dimension
-        if (p_new >= 1) {
-            stars[p_new].resize(S[p_new - 1].size());
-        } else {
-            stars[p_new].resize(0);
-        }
-
-        // Initialize local inner products
-        // inn[p_new].resize((p_new >= 1) ? S[p_new - 1].size() : 0);
-
-        // Initialize boundary operator (empty matrix with correct shape)
-        const Eigen::Index rows = (p_new >= 1) ?
-            static_cast<Eigen::Index>(S[p_new - 1].size()) : 0;
-        const Eigen::Index cols = static_cast<Eigen::Index>(n_new);
-        L.B[p_new] = spmat_t(rows, cols);
-
-        // Initialize Laplacian (empty, to be assembled later)
-        L.L[p_new] = spmat_t();
-    }
+    void extend_by_one_dim(index_t n_new);
 
 private:
 

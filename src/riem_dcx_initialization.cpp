@@ -104,7 +104,6 @@ knn_result_t compute_knn_from_eigen(
  * @param threshold_percentile Percentile for computing local scale in geometric pruning.
  *                             Typical value: 0.5 (median)
  *
- * @pre pmax and dimensional structure must be initialized via init_dims()
  * @post Simplicial complex S[0], S[1] populated with vertices and edges
  * @post Densities rho.rho[0], rho.rho[1] computed and normalized
  * @post Metric tensors g.M[0], g.M[1] constructed
@@ -405,6 +404,7 @@ void riem_dcx_t::initialize_from_knn(
 
 	const index_t n_triangles = triangle_list.size();
 
+#if 0
 	// Build S[2] for backward compatibility (temporary)
 	if (n_triangles > 0) {
 		extend_by_one_dim(n_triangles);
@@ -420,7 +420,7 @@ void riem_dcx_t::initialize_from_knn(
 			S[2].id_of[tri_verts] = t;
 		}
 	}
-
+#endif
 	// ================================================================
 	// PHASE 1G: POPULATE edge_cofaces WITH TRIANGLES
 	// ================================================================
@@ -498,6 +498,7 @@ void riem_dcx_t::initialize_from_knn(
 			});
 	}
 
+#if 0
 	// ================================================================
 	// PHASE 1H: BUILD S[0] AND S[1] (backward compatibility - temporary)
 	// ================================================================
@@ -516,7 +517,6 @@ void riem_dcx_t::initialize_from_knn(
 		S[1].id_of[verts] = e;
 	}
 
-
 	// ================================================================
 	// PHASE 1I: POPULATE STAR TABLES (backward compatibility - temporary)
 	// ================================================================
@@ -528,6 +528,7 @@ void riem_dcx_t::initialize_from_knn(
 		stars[0].star_over[edge_verts[0]].push_back(e);
 		stars[0].star_over[edge_verts[1]].push_back(e);
 	}
+#endif
 
     // ================================================================
     // PHASE 2: DENSITY INITIALIZATION
