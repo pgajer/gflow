@@ -20,6 +20,12 @@ using index_t = size_t;
 using vec_t = Eigen::VectorXd;
 using spmat_t = Eigen::SparseMatrix<double>;
 
+/// Sentinel value indicating no vertex (used in self-loops)
+constexpr index_t NO_VERTEX = std::numeric_limits<index_t>::max();
+
+/// Sentinel value indicating no edge (used during construction)
+constexpr index_t NO_EDGE = std::numeric_limits<index_t>::max();
+
 // ================================================================
 // SUPPORTING ENUMERATIONS AND STRUCTURES
 // ================================================================

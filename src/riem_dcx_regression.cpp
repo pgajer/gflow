@@ -249,8 +249,8 @@ void riem_dcx_t::initialize_metric_from_density() {
  *
  * Builds the complete edge mass matrix M₁ by computing inner products between
  * all pairs of edges through triple neighborhood intersections and setting
- * diagonal entries from edge densities. For edges e_ij = [i,j] and e_is = [i,s]
- * sharing vertex v_i, the inner product is:
+ * diagonal entries from edge densities stored in vertex_cofaces. For edges
+ * e_ij = [i,j] and e_is = [i,s] sharing vertex v_i, the inner product is:
  *
  *   ⟨e_ij, e_is⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j) ∩ N̂_k(x_s)} ρ₀(v)
  *
@@ -258,8 +258,8 @@ void riem_dcx_t::initialize_metric_from_density() {
  * neighborhoods, encoding the geometric relationship between edges through
  * their shared vertex and overlapping neighborhoods.
  *
- * The diagonal entries are set directly from edge densities:
- *   M₁[e,e] = ρ₁(e)
+ * The diagonal entries are set directly from edge densities stored in vertex_cofaces:
+ *   M₁[e,e] = ρ₁(e) = vertex_cofaces[i][k].density for edge [i,j]
  *
  * since the edge self-inner product equals the pairwise intersection mass:
  *   ⟨e_ij, e_ij⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j)} ρ₀(v) = ρ₁([i,j])
@@ -270,159 +270,142 @@ void riem_dcx_t::initialize_metric_from_density() {
  *
  * IMPLEMENTATION STRATEGY:
  * The function builds M₁ by:
- * 1. Adding diagonal entries from rho.rho[1] (edge densities)
- * 2. Iterating over all triangles in S[2]
- * 3. For each triangle [i,j,s], computing the triple intersection mass
- * 4. Adding off-diagonal entries for all three edge pairs in the triangle
+ * 1. Adding diagonal entries from vertex_cofaces[i][k].density (edge densities)
+ * 2. Iterating over all edges and their incident triangles using edge_cofaces
+ * 3. For each triangle, computing the triple intersection mass using vertex densities
+ * 4. Adding off-diagonal entries for all three edge pairs in each triangle
  * 5. Assembling the symmetric sparse matrix from triplets
  *
- * This triangle-based approach ensures all edge pairs sharing a vertex are
- * accounted for, as every such pair appears in at least one triangle (if
- * the complex includes 2-simplices).
+ * This edge_cofaces-based approach ensures all edge pairs sharing a vertex are
+ * accounted for by iterating through triangles incident to each edge.
  *
  * COMPUTATIONAL COMPLEXITY: O(n * k²) where n is number of vertices and k is
  * the neighborhood size. This is the bottleneck operation in metric construction.
  *
- * The complexity arises from:
- * - Iterating over O(n·k²) triangles
- * - Computing each triple intersection in O(k) time
- * - Building sparse matrix from O(n·k²) triplets
- *
- * @pre S[0] and S[1] must be populated with vertices and edges
- * @pre S[2] must be populated with triangles (for off-diagonal entries)
- * @pre rho.rho[0] must contain current vertex densities
- * @pre rho.rho[1] must contain current edge densities
+ * @pre vertex_cofaces must be populated with topology and densities
+ * @pre vertex_cofaces[i][0].density contains current vertex densities
+ * @pre vertex_cofaces[i][k].density (k>0) contains current edge densities
+ * @pre edge_cofaces must be populated with incident triangles
+ * @pre edge_registry must map edge indices to vertex pairs
  * @pre neighbor_sets must be populated with kNN neighborhoods
  *
  * @post g.M[1] contains symmetric positive semidefinite edge mass matrix
- * @post g.M[1] has diagonal entries from rho.rho[1]
- * @post g.M[1] has off-diagonal entries from triple intersections using rho.rho[0]
+ * @post g.M[1] has diagonal entries from vertex_cofaces edge densities
+ * @post g.M[1] has off-diagonal entries from triple intersections using vertex densities
  * @post g.M_solver[1] is reset (no factorization stored)
  *
- * @note If S[2] is empty (no triangles), only diagonal entries are created,
- *       resulting in a diagonal mass matrix. This loses the full Riemannian
- *       structure and reduces the method to a simpler graph-based approach.
+ * @note If edge_cofaces contains only self-loops (no triangles), only diagonal
+ *       entries are created, resulting in a diagonal mass matrix.
  *
  * @note Regularization is applied to diagonal entries: M₁[e,e] = max(ρ₁(e), 1e-15)
  *       to ensure positive definiteness even if some edge densities are very small.
  *
  * @see initialize_metric_from_density() for initialization context
  * @see update_edge_mass_matrix() for iteration context
- * @see compute_edge_inner_product() for the triple intersection computation
  */
 void riem_dcx_t::compute_edge_mass_matrix() {
-    const size_t n_edges = S[1].size();
+    const size_t n_edges = edge_registry.size();
+    const size_t n_vertices = vertex_cofaces.size();
     std::vector<Eigen::Triplet<double>> triplets;
 
-    // Add diagonal entries
-    for (size_t e = 0; e < n_edges; ++e) {
-        double diagonal = std::max(rho.rho[1][e], 1e-15);
-        triplets.emplace_back(e, e, diagonal);
+    // ========================================================================
+    // Part 1: Add diagonal entries from edge densities in vertex_cofaces
+    // ========================================================================
+
+    // Iterate through vertex_cofaces to extract edge densities
+    for (size_t i = 0; i < n_vertices; ++i) {
+        // Skip self-loop at [0], process edges at [1:]
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+
+            // Only process each edge once (use i < j convention)
+            if (i >= j) continue;
+
+            index_t edge_idx = vertex_cofaces[i][k].simplex_index;
+            double diagonal = std::max(vertex_cofaces[i][k].density, 1e-15);
+
+            triplets.emplace_back(edge_idx, edge_idx, diagonal);
+        }
     }
 
-    // Add off-diagonal entries from triangles
-    if (S.size() > 2 && S[2].size() > 0) {
-        for (size_t t = 0; t < S[2].size(); ++t) {
-            const auto& tri_verts = S[2].simplex_verts[t];
+    // ========================================================================
+    // Part 2: Add off-diagonal entries from triangles via edge_cofaces
+    // ========================================================================
 
-            // Get the three edge IDs
-            index_t e01 = S[1].get_id({tri_verts[0], tri_verts[1]});
-            index_t e02 = S[1].get_id({tri_verts[0], tri_verts[2]});
-            index_t e12 = S[1].get_id({tri_verts[1], tri_verts[2]});
+    // Track which triangles we've processed to avoid duplicates
+    std::unordered_set<index_t> processed_triangles;
 
-            // Compute triple intersection mass once per triangle
-            double mass = 0.0;
-            for (index_t v : neighbor_sets[tri_verts[0]]) {
-                if (neighbor_sets[tri_verts[1]].find(v) != neighbor_sets[tri_verts[1]].end() &&
-                    neighbor_sets[tri_verts[2]].find(v) != neighbor_sets[tri_verts[2]].end()) {
-                    mass += rho.rho[0][v];
+    for (size_t e = 0; e < n_edges; ++e) {
+        // Skip self-loop at [0], process triangles at [1:]
+        for (size_t t_idx = 1; t_idx < edge_cofaces[e].size(); ++t_idx) {
+            index_t triangle_idx = edge_cofaces[e][t_idx].simplex_index;
+
+            // Only process each triangle once
+            if (processed_triangles.count(triangle_idx)) continue;
+            processed_triangles.insert(triangle_idx);
+
+            // Get the three vertices of this triangle
+            // We need to reconstruct the triangle from edge_cofaces
+            // edge_cofaces[e][t_idx].vertex_index is the third vertex
+            const auto [v0, v1] = edge_registry[e];
+            const index_t v2 = edge_cofaces[e][t_idx].vertex_index;
+
+            // Get the three edge indices
+            index_t e01 = e;  // Current edge
+
+            // Find edge [v0, v2]
+            index_t e02 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                if (vertex_cofaces[v0][k].vertex_index == v2) {
+                    e02 = vertex_cofaces[v0][k].simplex_index;
+                    break;
                 }
             }
 
-            // Add all three off-diagonal pairs
-            triplets.emplace_back(e01, e02, mass);
-            triplets.emplace_back(e02, e01, mass);
-            triplets.emplace_back(e01, e12, mass);
-            triplets.emplace_back(e12, e01, mass);
-            triplets.emplace_back(e02, e12, mass);
-            triplets.emplace_back(e12, e02, mass);
+            // Find edge [v1, v2]
+            index_t e12 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v1].size(); ++k) {
+                if (vertex_cofaces[v1][k].vertex_index == v2) {
+                    e12 = vertex_cofaces[v1][k].simplex_index;
+                    break;
+                }
+            }
+
+            // Compute triple intersection mass once per triangle
+            // Use vertex densities from vertex_cofaces[v][0].density
+            double mass = 0.0;
+            for (index_t v : neighbor_sets[v0]) {
+                if (neighbor_sets[v1].find(v) != neighbor_sets[v1].end() &&
+                    neighbor_sets[v2].find(v) != neighbor_sets[v2].end()) {
+                    // Access vertex density from self-loop
+                    mass += vertex_cofaces[v][0].density;
+                }
+            }
+
+            // Add all three off-diagonal pairs (symmetric)
+            if (e02 != NO_EDGE) {
+                triplets.emplace_back(e01, e02, mass);
+                triplets.emplace_back(e02, e01, mass);
+            }
+            if (e12 != NO_EDGE) {
+                triplets.emplace_back(e01, e12, mass);
+                triplets.emplace_back(e12, e01, mass);
+            }
+            if (e02 != NO_EDGE && e12 != NO_EDGE) {
+                triplets.emplace_back(e02, e12, mass);
+                triplets.emplace_back(e12, e02, mass);
+            }
         }
     }
+
+    // ========================================================================
+    // Part 3: Assemble sparse matrix
+    // ========================================================================
 
     g.M[1] = spmat_t(n_edges, n_edges);
     g.M[1].setFromTriplets(triplets.begin(), triplets.end());
     g.M[1].makeCompressed();
     g.M_solver[1].reset();
-}
-
-/**
- * @brief Compute inner product between two edges sharing a vertex
- *
- * For edges e_ij = [i,j] and e_is = [i,s] sharing vertex v_i, computes:
- *   ⟨e_ij, e_is⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j) ∩ N̂_k(x_s)} ρ₀(v)
- *
- * This is the total vertex density in the triple intersection of neighborhoods,
- * representing the geometric relationship between the two edges through their
- * shared vertex and overlapping neighborhoods.
- *
- * COMPUTATIONAL STRATEGY:
- * To compute the triple intersection efficiently, we iterate over the smallest
- * set and check membership in the other two sets. For typical kNN graphs with
- * moderate k, this gives O(k) complexity per inner product computation.
- *
- * @param e1 Index of first edge
- * @param e2 Index of second edge
- * @param vertex_i Index of shared vertex
- * @return Inner product ⟨e1, e2⟩ at vertex_i
- */
-double riem_dcx_t::compute_edge_inner_product(
-    index_t e1,
-    index_t e2,
-    index_t vertex_i
-) const {
-    // Get the vertices of both edges
-    const std::vector<index_t>& edge1_verts = S[1].simplex_verts[e1];
-    const std::vector<index_t>& edge2_verts = S[1].simplex_verts[e2];
-
-    // Find the other endpoints (not vertex_i)
-    const index_t j = (edge1_verts[0] == vertex_i) ? edge1_verts[1] : edge1_verts[0];
-    const index_t s = (edge2_verts[0] == vertex_i) ? edge2_verts[1] : edge2_verts[0];
-
-    // Get the three neighborhood sets
-    const std::unordered_set<index_t>& N_i = neighbor_sets[vertex_i];
-    const std::unordered_set<index_t>& N_j = neighbor_sets[j];
-    const std::unordered_set<index_t>& N_s = neighbor_sets[s];
-
-    // Find the smallest set for efficiency
-    const std::unordered_set<index_t>* smallest_set = &N_i;
-    size_t min_size = N_i.size();
-
-    if (N_j.size() < min_size) {
-        smallest_set = &N_j;
-        min_size = N_j.size();
-    }
-
-    if (N_s.size() < min_size) {
-        smallest_set = &N_s;
-    }
-
-    // Compute triple intersection mass by iterating over smallest set
-    // and checking membership in the other two
-    double triple_intersection_mass = 0.0;
-
-    for (index_t v : *smallest_set) {
-        // Check if v is in all three neighborhoods
-        bool in_N_i = (smallest_set == &N_i) || (N_i.find(v) != N_i.end());
-        bool in_N_j = (smallest_set == &N_j) || (N_j.find(v) != N_j.end());
-        bool in_N_s = (smallest_set == &N_s) || (N_s.find(v) != N_s.end());
-
-        if (in_N_i && in_N_j && in_N_s) {
-            // v is in the triple intersection, add its density
-            triple_intersection_mass += rho.rho[0][v];
-        }
-    }
-
-    return triple_intersection_mass;
 }
 
 // ============================================================

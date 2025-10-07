@@ -323,7 +323,183 @@ void riem_dcx_t::initialize_from_knn(
 	}
 
 	// ================================================================
-	// PHASE 1F: BUILD S[0] AND S[1] (backward compatibility - temporary)
+	// PHASE 1F: BUILD TRIANGLES AND POPULATE edge_cofaces
+	// ================================================================
+
+	// Initialize edge_cofaces with self-loops
+	edge_cofaces.resize(n_edges);
+
+	for (size_t e = 0; e < n_edges; ++e) {
+		edge_cofaces[e].reserve(k);  // self + ~k triangles
+
+		// Add edge self-loop at position [0]
+		const auto [i, j] = edge_registry[e];
+
+		// Find edge length from vertex_cofaces
+		double edge_length = 0.0;
+		for (size_t k_idx = 1; k_idx < vertex_cofaces[i].size(); ++k_idx) {
+			if (vertex_cofaces[i][k_idx].vertex_index == j) {
+				edge_length = vertex_cofaces[i][k_idx].dist;
+				break;
+			}
+		}
+
+		edge_cofaces[e].push_back(neighbor_info_t{
+				static_cast<index_t>(i),  // Store first vertex as reference
+				static_cast<index_t>(e),  // simplex_index = edge index
+				0,                        // isize not used for edge self-loop
+				edge_length,              // Edge length
+				0.0                       // density (will be set by compute_initial_densities)
+			});
+	}
+
+	// Build triangles and populate edge_cofaces simultaneously
+	std::vector<std::array<index_t, 3>> triangle_list;
+	triangle_list.reserve(n_points * k);
+
+	for (size_t i = 0; i < n_points; ++i) {
+		// Iterate over pairs of incident edges
+		for (size_t a = 1; a < vertex_cofaces[i].size(); ++a) {
+			index_t j = vertex_cofaces[i][a].vertex_index;
+			// REMOVED: index_t edge_ij_idx = vertex_cofaces[i][a].simplex_index;
+
+			for (size_t b = a + 1; b < vertex_cofaces[i].size(); ++b) {
+				index_t s = vertex_cofaces[i][b].vertex_index;
+				// REMOVED: index_t edge_is_idx = vertex_cofaces[i][b].simplex_index;
+
+				// Check if edge [j,s] exists
+				index_t edge_js_idx = NO_EDGE;
+				for (size_t k_idx = 1; k_idx < vertex_cofaces[j].size(); ++k_idx) {
+					if (vertex_cofaces[j][k_idx].vertex_index == s) {
+						edge_js_idx = vertex_cofaces[j][k_idx].simplex_index;
+						break;
+					}
+				}
+
+				if (edge_js_idx == NO_EDGE) continue;  // No edge [j,s], so no triangle
+
+				// Verify non-empty triple intersection
+				bool has_intersection = false;
+				for (index_t v : neighbor_sets[i]) {
+					if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
+						neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
+						has_intersection = true;
+						break;
+					}
+				}
+
+				if (!has_intersection) continue;
+
+				// Triangle exists: [i, j, s]
+				std::array<index_t, 3> tri = {i, j, s};
+				std::sort(tri.begin(), tri.end());
+				triangle_list.push_back(tri);
+			}
+		}
+	}
+
+	// Remove duplicate triangles
+	std::sort(triangle_list.begin(), triangle_list.end());
+	triangle_list.erase(std::unique(triangle_list.begin(), triangle_list.end()),
+						triangle_list.end());
+
+	const index_t n_triangles = triangle_list.size();
+
+	// Build S[2] for backward compatibility (temporary)
+	if (n_triangles > 0) {
+		extend_by_one_dim(n_triangles);
+
+		S[2].simplex_verts.resize(n_triangles);
+		for (index_t t = 0; t < n_triangles; ++t) {
+			std::vector<index_t> tri_verts = {
+				triangle_list[t][0],
+				triangle_list[t][1],
+				triangle_list[t][2]
+			};
+			S[2].simplex_verts[t] = tri_verts;
+			S[2].id_of[tri_verts] = t;
+		}
+	}
+
+	// ================================================================
+	// PHASE 1G: POPULATE edge_cofaces WITH TRIANGLES
+	// ================================================================
+
+	// Now populate edge_cofaces with triangle information
+	for (index_t t = 0; t < n_triangles; ++t) {
+		const auto& tri = triangle_list[t];
+		const index_t v0 = tri[0];
+		const index_t v1 = tri[1];
+		const index_t v2 = tri[2];
+
+		// Find the three edge indices
+		// Edge [v0, v1]
+		index_t e01 = NO_EDGE;
+		for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+			if (vertex_cofaces[v0][k].vertex_index == v1) {
+				e01 = vertex_cofaces[v0][k].simplex_index;
+				break;
+			}
+		}
+
+		// Edge [v0, v2]
+		index_t e02 = NO_EDGE;
+		for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+			if (vertex_cofaces[v0][k].vertex_index == v2) {
+				e02 = vertex_cofaces[v0][k].simplex_index;
+				break;
+			}
+		}
+
+		// Edge [v1, v2]
+		index_t e12 = NO_EDGE;
+		for (size_t k = 1; k < vertex_cofaces[v1].size(); ++k) {
+			if (vertex_cofaces[v1][k].vertex_index == v2) {
+				e12 = vertex_cofaces[v1][k].simplex_index;
+				break;
+			}
+		}
+
+		// Compute triple intersection size (for isize)
+		size_t triple_isize = 0;
+		for (index_t v : neighbor_sets[v0]) {
+			if (neighbor_sets[v1].find(v) != neighbor_sets[v1].end() &&
+				neighbor_sets[v2].find(v) != neighbor_sets[v2].end()) {
+				triple_isize++;
+			}
+		}
+
+		// Add triangle to edge_cofaces for each of the three edges
+		// For edge [v0,v1], the third vertex is v2
+		edge_cofaces[e01].push_back(neighbor_info_t{
+				v2,              // vertex_index = third vertex
+				t,               // simplex_index = triangle index
+				triple_isize,    // Intersection size
+				0.0,             // dist (not used for triangles)
+				0.0              // density (will be set if we compute triangle densities)
+			});
+
+		// For edge [v0,v2], the third vertex is v1
+		edge_cofaces[e02].push_back(neighbor_info_t{
+				v1,              // vertex_index = third vertex
+				t,               // simplex_index = triangle index
+				triple_isize,
+				0.0,
+				0.0
+			});
+
+		// For edge [v1,v2], the third vertex is v0
+		edge_cofaces[e12].push_back(neighbor_info_t{
+				v0,              // vertex_index = third vertex
+				t,               // simplex_index = triangle index
+				triple_isize,
+				0.0,
+				0.0
+			});
+	}
+
+	// ================================================================
+	// PHASE 1H: BUILD S[0] AND S[1] (backward compatibility - temporary)
 	// ================================================================
 
 	S[0].simplex_verts.resize(n_points);
@@ -342,7 +518,7 @@ void riem_dcx_t::initialize_from_knn(
 
 
 	// ================================================================
-	// PHASE 1E: POPULATE STAR TABLES (backward compatibility - temporary)
+	// PHASE 1I: POPULATE STAR TABLES (backward compatibility - temporary)
 	// ================================================================
 
 	// Build stars[0]: for each vertex, list incident edges
@@ -379,69 +555,4 @@ void riem_dcx_t::initialize_from_knn(
     // ================================================================
 
     assemble_operators();
-
-	// ================================================================
-	// PHASE 5: BUILD 2-SIMPLICES (TRIANGLES)
-	// ================================================================
-
-	std::vector<std::array<index_t, 3>> triangle_list;
-	triangle_list.reserve(n_points * k);
-
-	for (size_t i = 0; i < n_points; ++i) {
-		const std::vector<index_t>& incident = stars[0].star_over[i];
-
-		for (size_t a = 0; a < incident.size(); ++a) {
-			const std::vector<index_t>& e_ij_verts = S[1].simplex_verts[incident[a]];
-			index_t j = (e_ij_verts[0] == i) ? e_ij_verts[1] : e_ij_verts[0];
-
-			for (size_t b = a + 1; b < incident.size(); ++b) {
-				const std::vector<index_t>& e_is_verts = S[1].simplex_verts[incident[b]];
-				index_t s = (e_is_verts[0] == i) ? e_is_verts[1] : e_is_verts[0];
-
-				// Check if edge [j,s] exists
-				std::vector<index_t> edge_js = {std::min(j,s), std::max(j,s)};
-				if (S[1].id_of.find(edge_js) == S[1].id_of.end()) {
-					continue;
-				}
-
-				// Verify non-empty triple intersection
-				bool has_intersection = false;
-				for (index_t v : neighbor_sets[i]) {
-					if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
-						neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
-						has_intersection = true;
-						break;
-					}
-				}
-
-				if (has_intersection) {
-					std::array<index_t, 3> tri = {i, j, s};
-					std::sort(tri.begin(), tri.end());
-					triangle_list.push_back(tri);
-				}
-			}
-		}
-	}
-
-	// Remove duplicates
-	std::sort(triangle_list.begin(), triangle_list.end());
-	triangle_list.erase(std::unique(triangle_list.begin(), triangle_list.end()),
-						triangle_list.end());
-
-	const index_t n_triangles = triangle_list.size();
-
-	if (n_triangles > 0) {
-		extend_by_one_dim(n_triangles);
-
-		S[2].simplex_verts.resize(n_triangles);
-		for (index_t t = 0; t < n_triangles; ++t) {
-			std::vector<index_t> tri_verts = {
-				triangle_list[t][0],
-				triangle_list[t][1],
-				triangle_list[t][2]
-			};
-			S[2].simplex_verts[t] = tri_verts;
-			S[2].id_of[tri_verts] = t;
-		}
-	}
 }
