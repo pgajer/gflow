@@ -930,6 +930,7 @@ struct riem_dcx_t {
         int max_iterations
         );
 
+    // old convergence helper functions with rho
     convergence_status_t check_convergence_with_rho(
         const vec_t& y_hat_prev,
         const vec_t& y_hat_curr,

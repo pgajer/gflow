@@ -3687,18 +3687,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             response_change_history
             );
 
-        // auto status = check_convergence_with_rho_detailed(
-        //     y_hat_prev,
-        //     y_hat_curr,
-        //     rho_vertex_prev,
-        //     rho_vertex_new,
-        //     epsilon_y,
-        //     epsilon_rho,
-        //     iter,
-        //     max_iterations,
-        //     response_change_history
-        //     );
-
         if (test_stage == 10) {
             Rprintf("TEST_STAGE 10: Stopped after check_convergence_detailed()\n");
             return;
