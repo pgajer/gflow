@@ -920,6 +920,16 @@ struct riem_dcx_t {
         double density_normalization
     );
 
+    /**
+     * @brief Build boundary operator B[1] from edge_registry
+     */
+    void build_boundary_operator_from_edges();
+
+    /**
+     * @brief Build boundary operator B[2] from triangles using edge_cofaces only
+     */
+    void build_boundary_operator_from_triangles();
+
     // ================================================================
     // ITERATION HELPER METHODS
     // ================================================================
