@@ -763,6 +763,9 @@ struct riem_dcx_t {
     //     .density = ρ_1[edge_idx]          // Edge density
     // };
 
+    // Edge registry for indexing
+    std::vector<std::array<index_t, 2>> edge_registry;  ///< edge_registry[e] = {i, j}
+
     /// Cofaces of edges: [e][0] is edge e, [e][j>0] are incident triangles
     std::vector<std::vector<neighbor_info_t>> edge_cofaces;
 

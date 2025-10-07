@@ -231,84 +231,118 @@ void riem_dcx_t::initialize_from_knn(
 		}
 	}
 
-    // ================================================================
-    // PHASE 1C: GEOMETRIC EDGE PRUNING
-    // ================================================================
+	// ================================================================
+	// PHASE 1C: GEOMETRIC EDGE PRUNING
+	// ================================================================
 
-    // Extract edges into temporary structure
-    struct temp_edge {
-        index_t i, j;
-        size_t isize;
-        double dist;
-    };
-    std::vector<temp_edge> all_edges;
+	// Build temporary graph directly from vertex_cofaces
+	set_wgraph_t temp_graph(n_points);
+	for (size_t i = 0; i < n_points; ++i) {
+		// Skip self-loop at [0], iterate over edges [1:]
+		for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+			const auto& edge_info = vertex_cofaces[i][k];
+			index_t j = edge_info.vertex_index;
 
-    for (size_t i = 0; i < n_points; ++i) {
-        for (const auto& neighbor : vertex_adjacency_list[i]) {
-            size_t j = neighbor.index;
-            if (j > i) {
-                all_edges.push_back({
-                    static_cast<index_t>(i),
-                    static_cast<index_t>(j),
-                    neighbor.isize,
-                    neighbor.dist
-                });
-            }
-        }
-    }
+			if (j > i) {   // Only add each edge once
+				temp_graph.add_edge(i, j, edge_info.dist);
+			}
+		}
+	}
 
-    // Apply geometric pruning via temporary graph
-    set_wgraph_t temp_graph(n_points);
-    for (const auto& edge : all_edges) {
-        temp_graph.add_edge(edge.i, edge.j, edge.dist);
-    }
-
-    set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
-        max_ratio_threshold, threshold_percentile
-    );
-
-    // Rebuild edge list with only retained edges
-    std::vector<temp_edge> pruned_edges;
-    for (const auto& edge : all_edges) {
-        // Check if edge survives pruning
-        bool exists = false;
-        for (const auto& nbr : pruned_graph.adjacency_list[edge.i]) {
-            if (nbr.vertex == edge.j) {
-                exists = true;
-                break;
-            }
-        }
-        if (exists) {
-            pruned_edges.push_back(edge);
-        }
-    }
-
-    all_edges = std::move(pruned_edges);
-
-    // ================================================================
-    // PHASE 1D: POPULATE SIMPLEX TABLES
-    // ================================================================
-
-    // Build edge simplex table
-    const index_t n_edges = all_edges.size();
-    extend_by_one_dim(n_edges);
-
-    S[1].simplex_verts.resize(n_edges);
-    for (index_t e = 0; e < n_edges; ++e) {
-        std::vector<index_t> verts = {all_edges[e].i, all_edges[e].j};
-        S[1].simplex_verts[e] = verts;
-        S[1].id_of[verts] = e;
-    }
-
-    // Build vertex simplex table
-    S[0].simplex_verts.resize(n_points);
-    for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
-        S[0].simplex_verts[i] = {i};
-        S[0].id_of[{i}] = i;
-    }
+	// Apply geometric pruning
+	set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
+		max_ratio_threshold, threshold_percentile
+		);
 
 	// ================================================================
-	// PHASE 1E: POPULATE STAR TABLES
+	// PHASE 1D: FILTER vertex_cofaces IN PLACE
+	// ================================================================
+
+	for (size_t i = 0; i < n_points; ++i) {
+		const auto& pruned_neighbors = pruned_graph.adjacency_list[i];
+
+		// Build set of surviving neighbors
+		std::unordered_set<index_t> survivors;
+		for (const auto& edge_info : pruned_neighbors) {
+			survivors.insert(edge_info.vertex);
+		}
+
+		// Remove-erase idiom: filter out non-surviving edges
+		auto new_end = std::remove_if(
+			vertex_cofaces[i].begin() + 1,  // Skip self-loop at [0]
+			vertex_cofaces[i].end(),
+			[&survivors](const neighbor_info_t& info) {
+				return !survivors.count(info.vertex_index);
+			}
+			);
+		vertex_cofaces[i].erase(new_end, vertex_cofaces[i].end());
+	}
+
+	// ================================================================
+	// PHASE 1E: BUILD edge_registry AND ASSIGN FINAL INDICES
+	// ================================================================
+
+	// Build edge_registry from pruned_graph
+	std::vector<std::pair<index_t, index_t>> edge_list;
+	edge_list.reserve(pruned_graph.adjacency_list.size() * k / 2);   // Rough estimate
+
+	for (size_t i = 0; i < n_points; ++i) {
+		for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
+			index_t j = edge_info.vertex;
+			if (j > i) {   // Only add each edge once
+				edge_list.push_back({static_cast<index_t>(i), j});
+			}
+		}
+	}
+
+	const index_t n_edges = edge_list.size();
+	edge_registry.resize(n_edges);
+	for (index_t e = 0; e < n_edges; ++e) {
+		edge_registry[e] = {edge_list[e].first, edge_list[e].second};
+	}
+
+	// Update simplex_index in vertex_cofaces with final edge indices
+	for (index_t e = 0; e < n_edges; ++e) {
+		const auto [i, j] = edge_registry[e];
+
+		// Update in vertex_cofaces[i]
+		for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+			if (vertex_cofaces[i][k].vertex_index == j) {
+				vertex_cofaces[i][k].simplex_index = e;
+				break;
+			}
+		}
+
+		// Update in vertex_cofaces[j]
+		for (size_t k = 1; k < vertex_cofaces[j].size(); ++k) {
+			if (vertex_cofaces[j][k].vertex_index == i) {
+				vertex_cofaces[j][k].simplex_index = e;
+				break;
+			}
+		}
+	}
+
+	// ================================================================
+	// PHASE 1F: BUILD S[0] AND S[1] (backward compatibility - temporary)
+	// ================================================================
+
+	S[0].simplex_verts.resize(n_points);
+	for (index_t i = 0; i < static_cast<index_t>(n_points); ++i) {
+		S[0].simplex_verts[i] = {i};
+		S[0].id_of[{i}] = i;
+	}
+
+	extend_by_one_dim(n_edges);
+	S[1].simplex_verts.resize(n_edges);
+	for (index_t e = 0; e < n_edges; ++e) {
+		std::vector<index_t> verts = {edge_registry[e][0], edge_registry[e][1]};
+		S[1].simplex_verts[e] = verts;
+		S[1].id_of[verts] = e;
+	}
+
+
+	// ================================================================
+	// PHASE 1E: POPULATE STAR TABLES (backward compatibility - temporary)
 	// ================================================================
 
 	// Build stars[0]: for each vertex, list incident edges
