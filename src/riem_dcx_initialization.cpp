@@ -7,7 +7,6 @@
  * assembles the initial Hodge Laplacian operators.
  */
 
-
 #include "riem_dcx.hpp"
 #include "set_wgraph.hpp"
 #include "kNN.h"
@@ -147,65 +146,90 @@ void riem_dcx_t::initialize_from_knn(
     }
 
     // Build neighborhood sets for efficient intersection queries
-    std::vector<std::unordered_set<index_t>> neighbor_sets(n_points);
+	neighbor_sets.resize(n_points);
     for (size_t i = 0; i < n_points; ++i) {
         for (index_t neighbor_idx : knn_indices[i]) {
             neighbor_sets[i].insert(neighbor_idx);
         }
     }
 
-    // ================================================================
-    // PHASE 1B: EDGE CONSTRUCTION VIA NEIGHBORHOOD INTERSECTIONS
-    // ================================================================
+	// ================================================================
+	// PHASE 1B: EDGE CONSTRUCTION VIA NEIGHBORHOOD INTERSECTIONS
+	// ================================================================
 
-    // Build adjacency list representation
-    std::vector<std::vector<iknn_vertex_t>> adjacency_list(n_points);
-    std::vector<index_t> intersection;
-    intersection.reserve(k);
+	// Initialize vertex_cofaces with self-loops
+	vertex_cofaces.resize(n_points);
+	for (index_t i = 0; i < n_points; ++i) {
+		vertex_cofaces[i].reserve(k);  // ✓ CORRECTED: self + at most (k-1) neighbors
 
-    for (size_t i = 0; i < n_points; ++i) {
-        const std::vector<index_t>& neighbors_i = knn_indices[i];
+		// Add self-loop at position [0]
+		// Convention: vertex_cofaces[i][0] is always the vertex itself
+		vertex_cofaces[i].push_back(neighbor_info_t{
+				i,  // vertex_index = i (self-reference)
+				i,  // simplex_index = i (vertex index)
+				neighbor_sets[i].size(),
+				0.0,
+				0.0
+			});
+	}
 
-        // Examine only neighbors j > i to avoid duplicates
-        for (index_t j : neighbor_sets[i]) {
-            if (j <= i) continue;
+	// Build edge topology
+	std::vector<index_t> intersection;
+	intersection.reserve(k);  // Intersection can't exceed k
 
-            // Compute neighborhood intersection
-            intersection.clear();
-            for (index_t v : neighbor_sets[i]) {
-                if (neighbor_sets[j].find(v) != neighbor_sets[j].end()) {
-                    intersection.push_back(v);
-                }
-            }
+	for (size_t i = 0; i < n_points; ++i) {
+		const std::vector<index_t>& neighbors_i = knn_indices[i];
 
-            size_t common_count = intersection.size();
-            if (common_count == 0) continue;
+		// Examine neighbors j > i to avoid duplicates
+		for (index_t j : neighbor_sets[i]) {
+			if (j <= i) continue;  // Skips self (i) and previously processed neighbors
 
-            // Compute minimum path length through common neighbors
-            double min_dist = std::numeric_limits<double>::max();
-            for (index_t x_k : intersection) {
-                // Distance from i to x_k
-                auto it_i = std::find(neighbors_i.begin(), neighbors_i.end(), x_k);
-                size_t idx_i = it_i - neighbors_i.begin();
-                double dist_i_k = knn_distances[i][idx_i];
+			// Compute neighborhood intersection
+			intersection.clear();
+			for (index_t v : neighbor_sets[i]) {
+				if (neighbor_sets[j].find(v) != neighbor_sets[j].end()) {
+					intersection.push_back(v);
+				}
+			}
 
-                // Distance from j to x_k
-                const std::vector<index_t>& neighbors_j = knn_indices[j];
-                auto it_j = std::find(neighbors_j.begin(), neighbors_j.end(), x_k);
-                size_t idx_j = it_j - neighbors_j.begin();
-                double dist_j_k = knn_distances[j][idx_j];
+			size_t common_count = intersection.size();
+			if (common_count == 0) continue;
 
-                min_dist = std::min(min_dist, dist_i_k + dist_j_k);
-            }
+			// Compute minimum path length through common neighbors
+			double min_dist = std::numeric_limits<double>::max();
+			for (index_t x_k : intersection) {
+				auto it_i = std::find(neighbors_i.begin(), neighbors_i.end(), x_k);
+				if (it_i == neighbors_i.end()) continue;
+				size_t idx_i = it_i - neighbors_i.begin();
+				double dist_i_k = knn_distances[i][idx_i];
 
-            // Add bidirectional edges
-            adjacency_list[i].emplace_back(iknn_vertex_t{j, common_count, min_dist});
-            adjacency_list[j].emplace_back(iknn_vertex_t{i, common_count, min_dist});
-        }
-    }
+				const std::vector<index_t>& neighbors_j = knn_indices[j];
+				auto it_j = std::find(neighbors_j.begin(), neighbors_j.end(), x_k);
+				if (it_j == neighbors_j.end()) continue;
+				size_t idx_j = it_j - neighbors_j.begin();
+				double dist_j_k = knn_distances[j][idx_j];
 
-    // Store neighborhood sets for later use in density computation
-    this->neighbor_sets = std::move(neighbor_sets);
+				min_dist = std::min(min_dist, dist_i_k + dist_j_k);
+			}
+
+			// Add bidirectional edges
+			vertex_cofaces[i].push_back(neighbor_info_t{
+					j,
+					0,
+					common_count,
+					min_dist,
+					0.0
+				});
+
+			vertex_cofaces[j].push_back(neighbor_info_t{
+					static_cast<index_t>(i),
+					0,
+					common_count,
+					min_dist,
+					0.0
+				});
+		}
+	}
 
     // ================================================================
     // PHASE 1C: GEOMETRIC EDGE PRUNING
@@ -220,7 +244,7 @@ void riem_dcx_t::initialize_from_knn(
     std::vector<temp_edge> all_edges;
 
     for (size_t i = 0; i < n_points; ++i) {
-        for (const auto& neighbor : adjacency_list[i]) {
+        for (const auto& neighbor : vertex_adjacency_list[i]) {
             size_t j = neighbor.index;
             if (j > i) {
                 all_edges.push_back({
@@ -348,9 +372,9 @@ void riem_dcx_t::initialize_from_knn(
 
 				// Verify non-empty triple intersection
 				bool has_intersection = false;
-				for (index_t v : this->neighbor_sets[i]) {
-					if (this->neighbor_sets[j].find(v) != this->neighbor_sets[j].end() &&
-						this->neighbor_sets[s].find(v) != this->neighbor_sets[s].end()) {
+				for (index_t v : neighbor_sets[i]) {
+					if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
+						neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
 						has_intersection = true;
 						break;
 					}

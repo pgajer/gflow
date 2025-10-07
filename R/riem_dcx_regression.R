@@ -657,13 +657,14 @@ fit.knn.riem.graph.regression <- function(
     t.diffusion = 0,
     beta.damping = 0,
     gamma.modulation = 1.0,
-    n.eigenpairs = 200,
+    n.eigenpairs = 10,
     filter.type = c("heat_kernel", "tikhonov", "cubic_spline"),
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
     max.iterations = 50,
     max.ratio.threshold = 0.1,
-    threshold.percentile = 0.5
+    threshold.percentile = 0.5,
+    test.stage
 ) {
     # ==================== Feature Matrix Validation ====================
 
@@ -759,15 +760,6 @@ fit.knn.riem.graph.regression <- function(
 
     if (k >= n) {
         stop(sprintf("k must be less than n (got k=%d, n=%d)", k, n))
-    }
-
-    # Warn if k seems unusual
-    if (k < 5) {
-        warning(sprintf("Small k=%d may result in fragmented graph. Consider k >= 5.", k))
-    }
-
-    if (k > n/3) {
-        warning(sprintf("Large k=%d (> n/3) may oversmooth. Consider smaller k.", k))
     }
 
     # ==================== Logical Parameter Validation ====================
@@ -955,6 +947,7 @@ fit.knn.riem.graph.regression <- function(
         as.integer(max.iterations),
         as.double(max.ratio.threshold),
         as.double(threshold.percentile),
+        as.integer(test.stage),
         PACKAGE = "gflow"
     )
 

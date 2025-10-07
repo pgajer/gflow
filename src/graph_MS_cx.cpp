@@ -153,7 +153,7 @@ std::map<int, std::set<int>> count_subgraph_set_components(
  * Used internally by graph_MS_cx to track information about valid neighbors
  * when computing ascending and descending trajectories.
  */
-struct neighbor_info_t {
+struct MS_neighbor_info_t {
     int vertex;              ///< The neighboring vertex
     std::vector<int> path;   ///< Path to the neighbor
     int path_length;         ///< Length of the path
@@ -307,7 +307,7 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
     // Helper function for valid neighbors (same as before)
     auto get_valid_neighbors = [&](int current_vertex, bool ascending) {
-        std::vector<neighbor_info_t> neighbors;
+        std::vector<MS_neighbor_info_t> neighbors;
 
         for (int neighbor : graph[current_vertex]) {
 
@@ -350,13 +350,13 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
             if (diff > 0 && (ascending ?
                              is_path_monotonic_increasing(path, Ey) :
                              is_path_monotonic_decreasing(path, Ey))) {
-                neighbors.emplace_back(neighbor_info_t{neighbor, path, static_cast<int>(path.size() - 1), diff});
+                neighbors.emplace_back(MS_neighbor_info_t{neighbor, path, static_cast<int>(path.size() - 1), diff});
             }
         }
 
         // Sort by difference value in descending order
         std::sort(neighbors.begin(), neighbors.end(),
-                  [](const neighbor_info_t& a, const neighbor_info_t& b) {
+                  [](const MS_neighbor_info_t& a, const MS_neighbor_info_t& b) {
                       return a.diff_value > b.diff_value;
                   });
 
@@ -1156,7 +1156,7 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
 
     // Helper function to get valid neighbors with their paths
     auto get_valid_neighbors = [&](int current_vertex, bool ascending) {
-        std::vector<neighbor_info_t> neighbors;
+        std::vector<MS_neighbor_info_t> neighbors;
 
         for (int neighbor : graph[current_vertex]) {
             std::vector<int> path = shortest_path_by_hops(core_graph, current_vertex, neighbor);
@@ -1169,13 +1169,13 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
             if (diff > 0 && (ascending ?
                 is_path_monotonic_increasing(path, Ey) :
                 is_path_monotonic_decreasing(path, Ey))) {
-                neighbors.emplace_back(neighbor_info_t{neighbor, path, static_cast<int>(path.size() - 1), diff});
+                neighbors.emplace_back(MS_neighbor_info_t{neighbor, path, static_cast<int>(path.size() - 1), diff});
             }
         }
 
         // Sort by difference value in descending order
         std::sort(neighbors.begin(), neighbors.end(),
-                 [](const neighbor_info_t& a, const neighbor_info_t& b) {
+                 [](const MS_neighbor_info_t& a, const MS_neighbor_info_t& b) {
                      return a.diff_value > b.diff_value;
                  });
 
