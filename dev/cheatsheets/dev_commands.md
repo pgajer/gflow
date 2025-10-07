@@ -1,5 +1,9 @@
 # Development Commands (gflow)
 
+## see /Users/pgajer/Library/Logs/DiagnosticReports/
+## [~/current_projects/gflow]% ls -lt /Users/pgajer/Library/Logs/DiagnosticReports/*ips | head
+
+
 A quick-access cheat sheet of common commands used during package development,
 debugging, and CRAN submission prep.
 
