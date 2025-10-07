@@ -232,7 +232,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_epsilon_rho,
     SEXP s_max_iterations,
     SEXP s_max_ratio_threshold,
-    SEXP s_threshold_percentile
+    SEXP s_threshold_percentile,
+    SEXP s_test_stage
 ) {
     // ================================================================
     // PART I: INPUT EXTRACTION (same as before)
@@ -560,7 +561,6 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         Rf_error("max.iterations must be at least 1 (got %d)", max_iterations);
     }
 
-
     // -------------------- max.ratio.threshold --------------------
 
     if (TYPEOF(s_max_ratio_threshold) != REALSXP || Rf_length(s_max_ratio_threshold) != 1) {
@@ -587,6 +587,22 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
                  threshold_percentile);
     }
 
+    // -------------------- s_test_stage --------------------
+
+    if (TYPEOF(s_test_stage) != INTSXP || Rf_length(s_test_stage) != 1) {
+        Rf_error("test_stage must be a single integer");
+    }
+
+    const int test_stage = INTEGER(s_test_stage)[0];
+
+    if (test_stage == NA_INTEGER) {
+        Rf_error("test_stage cannot be NA");
+    }
+
+    if (test_stage < -2) {
+        Rf_error("test_stage must be at least -1 (got %d)", test_stage);
+    }
+
     // ================================================================
     // PART II: CALL MEMBER FUNCTION
     // ================================================================
@@ -600,7 +616,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
             t_diffusion, beta_damping, gamma_modulation,
             n_eigenpairs, filter_type,
             epsilon_y, epsilon_rho, max_iterations,
-            max_ratio_threshold, threshold_percentile
+            max_ratio_threshold, threshold_percentile,
+            test_stage
             );
 
     } catch (const std::exception& e) {
@@ -613,11 +630,33 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     const Eigen::Index n = y.size();
 
-    // Get final fitted values
-    if (dcx.sig.y_hat_hist.empty()) {
-        Rf_error("No fitted values computed (internal error)");
+    // ---------- Handle test stages with early termination ----------
+    // When test_stage >= 0, the fit may have terminated early before
+    // computing fitted values. We handle this by providing appropriate
+    // placeholder values and diagnostic information.
+
+    bool has_fitted_values = !dcx.sig.y_hat_hist.empty();
+    vec_t y_hat_final;
+
+    if (has_fitted_values) {
+        y_hat_final = dcx.sig.y_hat_hist.back();
+    } else {
+        // Early termination: use observed y as placeholder
+        // This allows the result structure to be consistent
+        y_hat_final = y;
+
+        // Warn user if this wasn't intentional
+        if (test_stage < 0) {
+            Rf_warning("No fitted values computed (unexpected early termination). "
+                       "Returning observed y values as placeholder.");
+        }
     }
-    const vec_t& y_hat_final = dcx.sig.y_hat_hist.back();
+
+    // Get final fitted values
+    // if (dcx.sig.y_hat_hist.empty()) {
+    //     Rf_error("No fitted values computed (internal error)");
+    // }
+    // const vec_t& y_hat_final = dcx.sig.y_hat_hist.back();
 
     // ---------- Main result list ----------
 
@@ -638,8 +677,16 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     // Component 2: residuals
     SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
     SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
+    // Safe access: both y_hat_final and y are guaranteed to have size n
     for (Eigen::Index i = 0; i < n; ++i) {
-        REAL(s_resid)[i] = dcx.sig.y[i] - y_hat_final[i];
+        double residual;
+        if (dcx.sig.y.size() == n) {
+            residual = dcx.sig.y[i] - y_hat_final[i];
+        } else {
+            // Early termination: use input y
+            residual = y[i] - y_hat_final[i];
+        }
+        REAL(s_resid)[i] = residual;
     }
     SET_VECTOR_ELT(result, component_idx++, s_resid);
     UNPROTECT(1);
@@ -669,8 +716,18 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     // Component 6: y (original response)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("y"));
     SEXP s_y_copy = PROTECT(Rf_allocVector(REALSXP, n));
-    for (Eigen::Index i = 0; i < n; ++i) {
-        REAL(s_y_copy)[i] = dcx.sig.y[i];
+
+    // CRITICAL FIX: Check if sig.y was populated during fitting
+    if (dcx.sig.y.size() == n) {
+        // Use the stored response from dcx
+        for (Eigen::Index i = 0; i < n; ++i) {
+            REAL(s_y_copy)[i] = dcx.sig.y[i];
+        }
+    } else {
+        // Early termination: sig.y not populated, use input y
+        for (Eigen::Index i = 0; i < n; ++i) {
+            REAL(s_y_copy)[i] = y[i];
+        }
     }
     SET_VECTOR_ELT(result, component_idx++, s_y_copy);
     UNPROTECT(1);

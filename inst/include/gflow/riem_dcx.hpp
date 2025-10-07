@@ -1,5 +1,7 @@
 #pragma once
 
+#include "iknn_vertex.hpp"
+
 #include <vector>
 #include <array>
 #include <unordered_map>
@@ -715,6 +717,14 @@ struct signal_state_t {
     void clear_history() { y_hat_hist.clear(); }
 };
 
+struct neighbor_info_t {
+    index_t vertex_index;    ///< Vertex index
+    index_t simplex_index;   ///< Simplex index in S[p]
+    size_t isize;            ///< Neighborhood intersection size
+    double dist;             ///< Geometric distance
+    double density;          ///< Density from ρ[p]
+};
+
 // ================================================================
 // MAIN DATA STRUCTURE
 // ================================================================
@@ -727,11 +737,96 @@ struct signal_state_t {
  * capabilities for conditional expectation estimation.
  */
 struct riem_dcx_t {
+
     // ----------------------------------------------------------------
     // Core Complex Structure
     // ----------------------------------------------------------------
 
     int pmax = 1;                        ///< Maximum simplex dimension
+
+    /// Cofaces of vertices: [i][0] is vertex i, [i][j>0] are incident edge
+    std::vector<std::vector<neighbor_info_t>> vertex_cofaces;
+
+    // vertex_cofaces[i][0] = {
+    //     .index = i,                        // The vertex itself
+    //     .simplex_index = i,
+    //     .isize = |N̂_k(i)|,
+    //     .dist = 0.0,
+    //     .density = ρ_0[i]
+    // };
+
+    // vertex_cofaces[i][j] = {  // j > 0
+    //     .index = neighbor_vertex_idx,     // The other endpoint of edge [i, neighbor_vertex_idx]
+    //     .simplex_index = edge_idx,        // For density lookup
+    //     .isize = |N̂_k(i) ∩ N̂_k(neighbor)|,
+    //     .dist = d(i, neighbor),
+    //     .density = ρ_1[edge_idx]          // Edge density
+    // };
+
+    /// Cofaces of edges: [e][0] is edge e, [e][j>0] are incident triangles
+    std::vector<std::vector<neighbor_info_t>> edge_cofaces;
+
+    // edge_cofaces[e][0] = {
+    //     .vertex_index = -1,                  // Special marker: -1
+    //     .simplex_index = e,                  // The edge index
+    //     .isize = 0,                          // Not applicable
+    //     .dist = edge_lengths[e],             // Edge length (useful!)
+    //     .density = ρ_1[e]                    // Edge density
+    // };
+
+    // edge_cofaces[e][j] = {  // j > 0
+    //     .vertex_index = third_vertex_idx,    // The third vertex forming triangle
+    //     .simplex_index = triangle_idx,       // Triangle index in S[2]
+    //     .isize = triangle_intersection_size,
+    //     .dist = 0.0,                         // Or some measure
+    //     .density = ρ_2[triangle_idx]         // Triangle density
+    // };
+
+    double get_vertex_density(index_t i) const {
+        if (!vertex_cofaces.empty() && i < vertex_cofaces.size()
+            && !vertex_cofaces[i].empty()) {
+            return vertex_cofaces[i][0].density;
+        }
+        // Fallback to rho during transition
+        if (!rho.rho.empty() && i < (index_t)rho.rho[0].size()) {
+            return rho.rho[0][i];
+        }
+        return 0.0;
+    }
+
+    void set_vertex_density(index_t i, double density) {
+        if (!vertex_cofaces.empty() && i < vertex_cofaces.size()
+            && !vertex_cofaces[i].empty()) {
+            vertex_cofaces[i][0].density = density;
+        }
+        // Also update rho during transition
+        if (!rho.rho.empty() && i < (index_t)rho.rho[0].size()) {
+            rho.rho[0][i] = density;
+        }
+    }
+
+    double get_edge_density(index_t i, index_t j) const {
+        // Find edge in vertex_cofaces[i]
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            if (vertex_cofaces[i][k].vertex_index == j) {
+                return vertex_cofaces[i][k].density;
+            }
+        }
+        return 0.0; // Edge not found
+    }
+
+    index_t get_edge_index(index_t i, index_t j) const {
+        // Find edge in vertex_cofaces[i]
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            if (vertex_cofaces[i][k].vertex_index == j) {
+                return vertex_cofaces[i][k].simplex_index;
+            }
+        }
+        return std::numeric_limits<index_t>::max(); // Edge not found
+    }
+
+    //
+    std::vector<std::vector<iknn_vertex_t>> vertex_adjacency_list;  ///< vertex adjacency list with iknn_vertex_t fields: index, isize, dist
     std::vector<simplex_table_t> S;      ///< Simplex tables by dimension
     std::vector<star_table_t> stars;     ///< Star neighborhoods
 
@@ -800,7 +895,8 @@ struct riem_dcx_t {
         double epsilon_rho,
         int max_iterations,
         double max_ratio_threshold,
-        double threshold_percentile
+        double threshold_percentile,
+        int test_stage
     );
 
     /**

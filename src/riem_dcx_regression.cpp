@@ -1090,9 +1090,10 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     vec_t rho_new = cg.solve(b);
 
     if (cg.info() != Eigen::Success) {
+        double cg_error = cg.error();  // Get value before Rf_warning
         Rf_warning("apply_damped_heat_diffusion: CG solver did not converge (iterations=%d, error=%.3e)",
                    static_cast<int>(cg.iterations()),
-                   cg.error());
+                   cg_error);
         // Continue with best available solution rather than failing completely
     }
 
@@ -2712,7 +2713,8 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     double epsilon_rho,
     int max_iterations,
     double max_ratio_threshold,
-    double threshold_percentile
+    double threshold_percentile,
+    int test_stage
 ) {
     // ================================================================
     // PART I: INITIALIZATION
@@ -2726,6 +2728,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         max_ratio_threshold,
         threshold_percentile
     );
+
+    if (test_stage == 0) {
+        Rprintf("TEST_STAGE 0: Stopped after initialize_from_knn\n");
+        return;
+    }
 
     // Validate triangle construction for response-coherence
     if (gamma_modulation > 0.0 && (S.size() <= 2 || S[2].size() == 0)) {
@@ -2741,6 +2748,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // Phase 4.5: Select or validate diffusion parameters
     select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
 
+    if (test_stage == 1) {
+        Rprintf("TEST_STAGE 1: Stopped after parameter selection\n");
+        return;
+    }
+
     // Phase 5: Initial response smoothing
     auto gcv_result = smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type
@@ -2748,6 +2760,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
     sig.y_hat_hist.push_back(y_hat_curr);
+
+    if (test_stage == 2) {
+        Rprintf("TEST_STAGE 2: Stopped after initial smoothing\n");
+        return;
+    }
 
     // ================================================================
     // PART II: ITERATIVE REFINEMENT
@@ -2766,21 +2783,51 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             rho.rho[0], t_diffusion, beta_damping
         );
 
+        if (test_stage == 3) {
+            Rprintf("TEST_STAGE 3: Stopped after first diffusion\n");
+            return;
+        }
+
         // Step 2: Edge density update
         update_edge_densities_from_vertices();
+
+        if (test_stage == 4) {
+            Rprintf("TEST_STAGE 4: Stopped after edge density update\n");
+            return;
+        }
 
         // Step 3: Update vertex mass matrix from evolved densities
         update_vertex_metric_from_density();  // Updates only M[0]
 
+        if (test_stage == 5) {
+            Rprintf("TEST_STAGE 5: Stopped after update_vertex_metric_from_density()\n");
+            return;
+        }
+
         // Step 4: Rebuild edge mass matrix from evolved densities
         update_edge_mass_matrix();  // Compute fresh M₁ from current ρ₀
+
+        if (test_stage == 6) {
+            Rprintf("TEST_STAGE 6: Stopped after update_edge_mass_matrix()\n");
+            return;
+        }
 
         // Step 5: Apply response-coherence modulation to fresh M₁
         apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
 
+        if (test_stage == 7) {
+            Rprintf("TEST_STAGE 7: Stopped after apply_response_coherence_modulation()\n");
+            return;
+        }
+
         // Step 6: Laplacian reassembly
         assemble_operators();
         spectral_cache.invalidate();
+
+        if (test_stage == 8) {
+            Rprintf("TEST_STAGE 8: Stopped after assemble_operators()\n");
+            return;
+        }
 
         // Step 7: Response smoothing
         gcv_result = smooth_response_via_spectral_filter(
@@ -2788,6 +2835,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
+
+        if (test_stage == 9) {
+            Rprintf("TEST_STAGE 9: Stopped after smooth_response_via_spectral_filter()\n");
+            return;
+        }
 
         // Step 8: Convergence check
         auto status = check_convergence_detailed(
@@ -2797,6 +2849,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             iter, max_iterations,
             response_change_history
         );
+
+        if (test_stage == 10) {
+            Rprintf("TEST_STAGE 10: Stopped after check_convergence_detailed()\n");
+            return;
+        }
 
         response_change_history.push_back(status.response_change);
 
@@ -2816,6 +2873,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             Rprintf("%s\n", status.message.c_str());
             break;
         }
+
+        ///// testing
+        if (iter == 1) break;  // Only do one iteration for testing
     }
 
     // ================================================================

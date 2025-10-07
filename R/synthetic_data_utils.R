@@ -2158,7 +2158,7 @@ gaussian.xD.grad <- function(x, mu, sigma, C) {
 #' df <- generate.circle.data(100, radius = 2)
 #'
 #' # Generate 50 random points with Laplace noise
-#' df_noisy <- generate.circle.data(50, noise = 0.1, type = "random", noise.type = "laplace")
+#' df.noisy <- generate.circle.data(50, noise = 0.1, type = "random", noise.type = "laplace")
 #'
 #' @export
 generate.circle.data <- function(n,
