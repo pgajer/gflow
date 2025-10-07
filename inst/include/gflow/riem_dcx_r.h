@@ -8,10 +8,6 @@
 extern "C" {
 #endif
 
-	SEXP S_build_nerve_from_knn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-	SEXP S_riem_dcx_summary(SEXP);
-	SEXP S_get_simplices(SEXP s_dcx_ptr, SEXP s_dim);
-	SEXP S_get_metric_diagonal(SEXP s_dcx_ptr, SEXP s_dim);
 	SEXP S_fit_knn_riem_graph_regression(
 		SEXP s_X,
 		SEXP s_y,

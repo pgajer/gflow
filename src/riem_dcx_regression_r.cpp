@@ -23,11 +23,11 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
 
     // n.vertices
     SET_STRING_ELT(names, idx, Rf_mkChar("n.vertices"));
-    SET_VECTOR_ELT(graph, idx++, Rf_ScalarInteger(dcx.S[0].size()));
+    SET_VECTOR_ELT(graph, idx++, Rf_ScalarInteger(dcx.vertex_cofaces.size()));
 
     // n.edges
     SET_STRING_ELT(names, idx, Rf_mkChar("n.edges"));
-    SET_VECTOR_ELT(graph, idx++, Rf_ScalarInteger(dcx.S[1].size()));
+    SET_VECTOR_ELT(graph, idx++, Rf_ScalarInteger(dcx.edge_registry.size()));
 
     // edge.lengths
     SET_STRING_ELT(names, idx, Rf_mkChar("edge.lengths"));
@@ -41,20 +41,29 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
 
     // vertex.densities
     SET_STRING_ELT(names, idx, Rf_mkChar("vertex.densities"));
-    const Eigen::Index n_verts = dcx.rho.rho[0].size();
+    const Eigen::Index n_verts = dcx.vertex_cofaces.size();
     SEXP s_vert_dens = PROTECT(Rf_allocVector(REALSXP, n_verts));
     for (Eigen::Index i = 0; i < n_verts; ++i) {
-        REAL(s_vert_dens)[i] = dcx.rho.rho[0][i];
+        REAL(s_vert_dens)[i] = dcx.vertex_cofaces[i][0].density;
     }
     SET_VECTOR_ELT(graph, idx++, s_vert_dens);
     UNPROTECT(1);
 
     // edge.densities
     SET_STRING_ELT(names, idx, Rf_mkChar("edge.densities"));
-    const Eigen::Index n_edges_dens = dcx.rho.rho[1].size();
+    const Eigen::Index n_edges_dens = dcx.edge_registry.size();
     SEXP s_edge_dens = PROTECT(Rf_allocVector(REALSXP, n_edges_dens));
     for (Eigen::Index e = 0; e < n_edges_dens; ++e) {
-        REAL(s_edge_dens)[e] = dcx.rho.rho[1][e];
+        // Find edge density from first vertex of the edge
+        const auto [v0, v1] = dcx.edge_registry[e];
+        double edge_density = 0.0;
+        for (size_t k = 1; k < dcx.vertex_cofaces[v0].size(); ++k) {
+            if (dcx.vertex_cofaces[v0][k].vertex_index == v1) {
+                edge_density = dcx.vertex_cofaces[v0][k].density;
+                break;
+            }
+        }
+        REAL(s_edge_dens)[e] = edge_density;
     }
     SET_VECTOR_ELT(graph, idx++, s_edge_dens);
     UNPROTECT(1);
@@ -64,9 +73,9 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
     SEXP s_edge_list = PROTECT(Rf_allocMatrix(INTSXP, n_edges, 2));
     int* edge_data = INTEGER(s_edge_list);
     for (size_t e = 0; e < n_edges; ++e) {
-        const auto& verts = dcx.S[1].simplex_verts[e];
-        edge_data[e] = verts[0] + 1;  // R uses 1-based indexing
-        edge_data[e + n_edges] = verts[1] + 1;
+        const auto [v0, v1] = dcx.edge_registry[e];
+        edge_data[e] = v0 + 1;  // R uses 1-based indexing
+        edge_data[e + n_edges] = v1 + 1;
     }
     SET_VECTOR_ELT(graph, idx++, s_edge_list);
     UNPROTECT(1);

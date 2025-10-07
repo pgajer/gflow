@@ -181,9 +181,9 @@ void riem_dcx_t::compute_initial_densities() {
  * @brief Initialize metric from densities
  *
  * Constructs the Riemannian metric structure g from the current density
- * distribution ρ. The metric determines inner products between chains at
- * each dimension, encoding geometric information about lengths, angles,
- * areas, and volumes throughout the complex.
+ * distribution stored in vertex_cofaces. The metric determines inner products
+ * between chains at each dimension, encoding geometric information about lengths,
+ * angles, areas, and volumes throughout the complex.
  *
  * For vertices (dimension 0), the metric is always diagonal with M₀ = diag(ρ₀).
  * This is a mathematical necessity: vertices have no geometric interaction
@@ -199,13 +199,13 @@ void riem_dcx_t::compute_initial_densities() {
  * The construction ensures positive semidefiniteness by design, as all inner
  * products arise from L²(μ) pairings of neighborhood indicator functions.
  *
- * @pre rho.rho[0] must contain vertex densities (normalized to sum to n)
- * @pre rho.rho[1] must contain edge densities (normalized to sum to n_edges)
+ * @pre vertex_cofaces[i][0].density contains vertex densities (normalized to sum to n)
+ * @pre vertex_cofaces[i][k].density (k>0) contains edge densities (normalized to sum to n_edges)
  * @post g.M[0] contains diagonal vertex mass matrix
  * @post g.M[1] contains full edge mass matrix (sparse, symmetric, positive semidefinite)
  */
 void riem_dcx_t::initialize_metric_from_density() {
-    const size_t n_vertices = S[0].size();
+    const size_t n_vertices = vertex_cofaces.size();
 
     // ========================================================================
     // Part 1: Vertex mass matrix M₀ (diagonal)
@@ -219,7 +219,8 @@ void riem_dcx_t::initialize_metric_from_density() {
 
     for (size_t i = 0; i < n_vertices; ++i) {
         // Apply regularization to ensure positive definiteness
-        double mass = std::max(rho.rho[0][i], 1e-15);
+        // Density is stored in self-loop at position [0]
+        double mass = std::max(vertex_cofaces[i][0].density, 1e-15);
         g.M[0].insert(i, i) = mass;
     }
 
@@ -644,10 +645,10 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  * ITERATION CONTEXT:
  *
  * This function is called as Step 3 in the iteration loop:
- *   Step 1: Density diffusion evolves ρ₀ via damped heat equation
- *   Step 2: Edge densities ρ₁ recomputed from evolved ρ₀
+ *   Step 1: Density diffusion evolves vertex densities via damped heat equation
+ *   Step 2: Edge densities recomputed from evolved vertex densities
  *   Step 3: Vertex mass matrix update ← THIS FUNCTION (updates only M₀)
- *   Step 4: Edge mass matrix construction (builds M₁ from ρ₀ and ρ₁)
+ *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
  *   Step 5: Response-coherence modulation (modulates M₁ directly)
  *   Step 6: Laplacian reassembly with updated M₀ and modulated M₁
  *   Step 7: Response smoothing
@@ -680,12 +681,13 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  * in some region (which would indicate numerical instability in the diffusion
  * step itself).
  *
- * @pre rho.rho[0] contains evolved vertex densities from damped heat diffusion
- * @pre rho.rho[0].sum() ≈ n (normalized from diffusion step)
+ * @pre vertex_cofaces[i][0].density contains evolved vertex densities from
+ *      damped heat diffusion
+ * @pre Sum of vertex densities ≈ n (normalized from diffusion step)
  * @pre g.M[0] is allocated as n × n sparse diagonal matrix
- * @pre All entries of rho.rho[0] are non-negative
+ * @pre All vertex densities are non-negative
  *
- * @post g.M[0] diagonal entries updated to current ρ₀ values
+ * @post g.M[0] diagonal entries updated to current vertex density values
  * @post All diagonal entries satisfy M₀[i,i] ≥ 1e-15
  * @post g.M[0] remains diagonal (no off-diagonal entries)
  * @post g.M_solver[0] is null (no factorization for diagonal matrix)
@@ -699,22 +701,19 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  *       explicitly reassemble the Laplacian after completing all metric
  *       updates (both M₀ and M₁) to incorporate the new values into L₀.
  *
- * @see apply_damped_heat_diffusion() for Step 1 (evolves ρ₀)
- * @see update_edge_mass_matrix() for Step 4 (builds M₁)
+ * @see apply_damped_heat_diffusion() for Step 1 (evolves vertex densities)
+ * @see update_edge_densities_from_vertices() for Step 2 (updates edge densities)
+ * @see compute_edge_mass_matrix() for Step 4 (builds M₁)
  * @see apply_response_coherence_modulation() for Step 5 (modulates M₁)
  * @see assemble_operators() for Step 6 (rebuilds L₀ from updated metric)
  * @see fit_knn_riem_graph_regression() for complete iteration context
  */
 void riem_dcx_t::update_vertex_metric_from_density() {
-    const size_t n_vertices = S[0].size();
+    const size_t n_vertices = vertex_cofaces.size();
 
     // ============================================================
     // Validation
     // ============================================================
-
-    if (static_cast<size_t>(rho.rho[0].size()) != n_vertices) {
-        Rf_error("update_vertex_metric_from_density: vertex density size mismatch");
-    }
 
     if (g.M[0].rows() != static_cast<Eigen::Index>(n_vertices) ||
         g.M[0].cols() != static_cast<Eigen::Index>(n_vertices)) {
@@ -727,7 +726,8 @@ void riem_dcx_t::update_vertex_metric_from_density() {
 
     for (size_t i = 0; i < n_vertices; ++i) {
         // Apply regularization to ensure strict positivity
-        double mass = std::max(rho.rho[0][i], 1e-15);
+        // Density is stored in self-loop at position [0]
+        double mass = std::max(vertex_cofaces[i][0].density, 1e-15);
 
         // Update in place (M₀ is diagonal, so coeffRef is efficient)
         g.M[0].coeffRef(i, i) = mass;
@@ -740,8 +740,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
     g.M_solver[0].reset();
 
     // Note: g.M[1] is intentionally NOT modified here
-    // The edge mass matrix was already modulated by response-coherence
-    // in Step 3 and should not be overwritten
+    // The edge mass matrix will be rebuilt fresh in Step 4
 }
 
 /**
@@ -1395,8 +1394,8 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * neighborhoods.
  *
  * This function implements Step 2 of the iteration cycle, immediately following
- * density diffusion. After vertex densities ρ₀ have evolved through the damped
- * heat equation, edge densities ρ₁ must be updated to maintain consistency with
+ * density diffusion. After vertex densities have evolved through the damped
+ * heat equation, edge densities must be updated to maintain consistency with
  * the evolved vertex distribution. The edge density for edge [i,j] aggregates
  * vertex densities over the neighborhood intersection:
  *
@@ -1409,11 +1408,11 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *
  * ITERATION CONTEXT:
  * Within each iteration of fit_knn_riem_graph_regression():
- *   Step 1: Density diffusion evolves ρ₀ via damped heat equation
+ *   Step 1: Density diffusion evolves vertex densities via damped heat equation
  *   Step 2: Edge density update ← THIS FUNCTION
- *   Step 3: Vertex mass matrix update (builds M₀ from ρ₀)
- *   Step 4: Edge mass matrix construction (builds M₁ from ρ₀ and ρ₁)
- *   Step 5: Response-coherence modulation (modulates M₁, not ρ₁)
+ *   Step 3: Vertex mass matrix update (builds M₀ from vertex densities)
+ *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
+ *   Step 5: Response-coherence modulation (modulates M₁, not edge densities)
  *   Step 6: Laplacian reassembly
  *   Step 7: Response smoothing
  *
@@ -1422,9 +1421,9 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *    since ⟨e_ij, e_ij⟩ = ρ₁([i,j]) by construction
  * 2. Geometric interpretation: relative density of edges in the complex
  *
- * IMPORTANT: The edge densities ρ₁ computed by this function remain unchanged
+ * IMPORTANT: The edge densities computed by this function remain unchanged
  * for the rest of the iteration. Response-coherence modulation (Step 5)
- * operates on the mass matrix M₁, not on the densities ρ₁. The densities are
+ * operates on the mass matrix M₁, not on the densities. The densities are
  * pure geometric quantities derived from evolved vertex distributions, while
  * the mass matrix incorporates response-aware modulation.
  *
@@ -1438,6 +1437,13 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *
  * The normalization preserves relative density differences while maintaining
  * a fixed total mass scale, preventing geometric drift over iterations.
+ *
+ * STORAGE:
+ * Edge densities are stored in vertex_cofaces structure. For edge [i,j], the
+ * density appears twice:
+ *   - vertex_cofaces[i][k].density where vertex_cofaces[i][k].vertex_index == j
+ *   - vertex_cofaces[j][m].density where vertex_cofaces[j][m].vertex_index == i
+ * This bidirectional storage enables O(1) access from either endpoint.
  *
  * COMPUTATIONAL COMPLEXITY:
  * O(n_edges · k) where k is the average neighborhood size. For each edge,
@@ -1465,7 +1471,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * compute_initial_densities(), ensuring that edge density computation is
  * consistent between initialization and iteration. The only differences are:
  *   - Initialization uses reference_measure values for aggregation
- *   - Iteration uses evolved rho.rho[0] values for aggregation
+ *   - Iteration uses evolved vertex densities for aggregation
  *
  * Both produce edge densities normalized to sum to n_edges.
  *
@@ -1481,14 +1487,15 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * Off-diagonal entries of M₁ involve triple intersections and are computed
  * separately via compute_edge_mass_matrix().
  *
- * @pre rho.rho[0] contains evolved vertex densities from current iteration
- * @pre S[1] contains edge simplex table (unchanged from initialization)
+ * @pre vertex_cofaces[i][0].density contains evolved vertex densities
+ * @pre vertex_cofaces contains edge topology with simplex indices
  * @pre neighbor_sets contains kNN neighborhoods (unchanged from initialization)
- * @pre rho.rho[1] is allocated with size equal to number of edges
+ * @pre edge_registry maps edge indices to vertex pairs
  *
- * @post rho.rho[1] contains updated edge densities computed from current ρ₀
- * @post rho.rho[1].sum() ≈ n_edges (normalized to sum to number of edges)
- * @post All entries of rho.rho[1] are non-negative
+ * @post vertex_cofaces[i][k].density (k>0) contains updated edge densities
+ * @post Sum of all edge densities ≈ n_edges (normalized to sum to number of edges)
+ * @post All edge densities are non-negative
+ * @post Each edge density appears twice (once in each endpoint's vertex_cofaces)
  *
  * @note This function only updates edge densities (dimension 1). Vertex densities
  *       (dimension 0) remain unchanged, as they were already updated by the
@@ -1498,21 +1505,17 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *       remains fixed throughout iteration. Only the numerical density values
  *       change based on evolved vertex distributions.
  *
- * @note The edge densities ρ₁ remain unchanged after this function returns.
+ * @note The edge densities remain unchanged after this function returns.
  *       Response-coherence modulation operates on the mass matrix M₁, not
  *       on the densities themselves.
  *
  * @see compute_initial_densities() for the initialization version
- * @see update_edge_mass_matrix() for how ρ₁ enters M₁ diagonal
- * @see apply_response_coherence_modulation() for M₁ modulation (not ρ₁)
+ * @see compute_edge_mass_matrix() for how edge densities enter M₁ diagonal
+ * @see apply_response_coherence_modulation() for M₁ modulation (not densities)
  */
 void riem_dcx_t::update_edge_densities_from_vertices() {
-    const size_t n_edges = S[1].size();
-
-    // Ensure vertex densities are available
-    if (static_cast<size_t>(rho.rho[0].size()) != S[0].size()) {
-        Rf_error("update_edge_densities_from_vertices: vertex densities not properly initialized");
-    }
+    const size_t n_vertices = vertex_cofaces.size();
+    const size_t n_edges = edge_registry.size();
 
     // ============================================================
     // Compute edge densities from pairwise intersections
@@ -1521,47 +1524,80 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
     // For each edge [i,j], aggregate vertex densities over the
     // intersection of neighborhoods: N̂_k(x_i) ∩ N̂_k(x_j)
 
-    for (size_t e = 0; e < n_edges; ++e) {
-        // Get the two vertices of this edge
-        const std::vector<index_t>& edge_verts = S[1].simplex_verts[e];
-        const index_t i = edge_verts[0];
-        const index_t j = edge_verts[1];
+    for (size_t i = 0; i < n_vertices; ++i) {
+        // Iterate over edges incident to vertex i
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
 
-        // Compute pairwise intersection mass
-        double edge_density = 0.0;
+            // Only compute once per edge (use i < j convention)
+            if (i >= j) continue;
 
-        // Optimize by iterating over smaller neighborhood and checking larger
-        const std::unordered_set<index_t>& set_i = neighbor_sets[i];
-        const std::unordered_set<index_t>& set_j = neighbor_sets[j];
+            // Compute pairwise intersection mass
+            double edge_density = 0.0;
 
-        const std::unordered_set<index_t>& smaller_set =
-            (set_i.size() <= set_j.size()) ? set_i : set_j;
-        const std::unordered_set<index_t>& larger_set =
-            (set_i.size() <= set_j.size()) ? set_j : set_i;
+            // Optimize by iterating over smaller neighborhood and checking larger
+            const std::unordered_set<index_t>& set_i = neighbor_sets[i];
+            const std::unordered_set<index_t>& set_j = neighbor_sets[j];
 
-        // Sum vertex densities over intersection
-        for (index_t v : smaller_set) {
-            if (larger_set.find(v) != larger_set.end()) {
-                edge_density += rho.rho[0][v];
+            const std::unordered_set<index_t>& smaller_set =
+                (set_i.size() <= set_j.size()) ? set_i : set_j;
+            const std::unordered_set<index_t>& larger_set =
+                (set_i.size() <= set_j.size()) ? set_j : set_i;
+
+            // Sum vertex densities over intersection
+            for (index_t v : smaller_set) {
+                if (larger_set.find(v) != larger_set.end()) {
+                    // Access vertex density from vertex_cofaces[v][0]
+                    edge_density += vertex_cofaces[v][0].density;
+                }
+            }
+
+            // Store in vertex_cofaces[i][k]
+            vertex_cofaces[i][k].density = edge_density;
+
+            // Also store in vertex_cofaces[j] (find the corresponding entry)
+            for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                if (vertex_cofaces[j][m].vertex_index == i) {
+                    vertex_cofaces[j][m].density = edge_density;
+                    break;
+                }
             }
         }
-
-        rho.rho[1][e] = edge_density;
     }
 
     // ============================================================
     // Normalize edge densities to sum to n_edges
     // ============================================================
 
-    double edge_density_sum = rho.rho[1].sum();
+    // Sum all edge densities (count each edge only once)
+    double edge_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {  // Count each edge only once
+                edge_density_sum += vertex_cofaces[i][k].density;
+            }
+        }
+    }
 
     if (edge_density_sum > 1e-15) {
         // Normal case: scale to preserve relative densities while fixing total mass
-        rho.rho[1] *= static_cast<double>(n_edges) / edge_density_sum;
+        double scale = static_cast<double>(n_edges) / edge_density_sum;
+
+        // Apply normalization to all edge densities
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density *= scale;
+            }
+        }
     } else {
         // Degenerate case: all intersections are empty or near-zero
         // Fall back to uniform density to maintain positive definiteness
-        rho.rho[1].setConstant(1.0);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density = 1.0;
+            }
+        }
 
         Rf_warning("update_edge_densities_from_vertices: edge density sum near zero, "
                    "falling back to uniform density");
@@ -1587,7 +1623,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *   M₁[e,e] ← M₁[e,e] · Γ(Δ_ij/σ₁)
  *
  * For off-diagonal entries (edge pair inner products):
- *   For triangle τ = [i,j,s] ∈ S[2]:
+ *   For triangle τ = [i,j,s]:
  *     Δ_τ = max{|ŷ(i)-ŷ(j)|, |ŷ(i)-ŷ(s)|, |ŷ(j)-ŷ(s)|}
  *     σ₂ = IQR({Δ_τ : all triangles})
  *     M₁[e_ij, e_is] ← M₁[e_ij, e_is] · Γ(Δ_τ/σ₂)
@@ -1620,10 +1656,10 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *
  * ITERATION CONTEXT:
  * This function is called as Step 5 in the iteration loop:
- *   Step 1: Density diffusion (evolves ρ₀)
- *   Step 2: Edge density update (computes ρ₁ from evolved ρ₀)
- *   Step 3: Vertex mass matrix update (builds M₀ from ρ₀)
- *   Step 4: Edge mass matrix construction (builds M₁ from ρ₀ and ρ₁)
+ *   Step 1: Density diffusion (evolves vertex densities)
+ *   Step 2: Edge density update (computes edge densities from evolved vertex densities)
+ *   Step 3: Vertex mass matrix update (builds M₀ from vertex densities)
+ *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
  *   Step 5: Response-coherence modulation ← THIS FUNCTION
  *   Step 6: Laplacian reassembly (builds L₀ from M₀ and modulated M₁)
  *   Step 7: Response smoothing
@@ -1636,10 +1672,10 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *              of modulation: larger γ produces sharper response boundaries,
  *              while smaller γ yields gentler transitions.
  *
- * @pre y_hat.size() == S[0].size()
+ * @pre y_hat.size() == vertex_cofaces.size()
  * @pre g.M[1] is assembled with current edge mass matrix from Step 4
- * @pre S[2] contains triangles (may be empty if pmax < 2, in which case only
- *      diagonal modulation is performed)
+ * @pre edge_cofaces contains triangles (may be empty if no triangles, in which
+ *      case only diagonal modulation is performed)
  * @pre gamma > 0
  *
  * @post g.M[1] modulated in place with diagonal and off-diagonal entries adjusted
@@ -1647,7 +1683,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  * @post Total Frobenius mass preserved: ||M₁||_F unchanged by normalization
  * @post g.M_solver[1] invalidated (factorization no longer valid)
  *
- * @note If S[2] is empty (no triangles), only diagonal entries are modulated.
+ * @note If edge_cofaces contains no triangles, only diagonal entries are modulated.
  *       A warning is issued if γ > 0 but no triangles are available.
  *
  * @note The two-scale approach (σ₁ ≠ σ₂) is essential for proper modulation.
@@ -1656,10 +1692,10 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *       normalization scales.
  *
  * @note This function operates on the **mass matrix** M₁, not on the edge
- *       densities ρ₁. The densities remain unchanged; only the geometric
+ *       densities. The densities remain unchanged; only the geometric
  *       structure (inner products) is modulated.
  *
- * @see update_edge_mass_matrix() for Step 4 (builds M₁ before modulation)
+ * @see compute_edge_mass_matrix() for Step 4 (builds M₁ before modulation)
  * @see assemble_operators() for Step 6 (uses modulated M₁ to build L₀)
  * @see fit_knn_riem_graph_regression() for complete iteration context
  */
@@ -1667,8 +1703,8 @@ void riem_dcx_t::apply_response_coherence_modulation(
     const vec_t& y_hat,
     double gamma
 ) {
-    const size_t n_edges = S[1].size();
-    const size_t n_vertices = S[0].size();
+    const size_t n_edges = edge_registry.size();
+    const size_t n_vertices = vertex_cofaces.size();
 
     // ============================================================
     // Validation
@@ -1694,8 +1730,8 @@ void riem_dcx_t::apply_response_coherence_modulation(
     edge_deltas.reserve(n_edges);
 
     for (size_t e = 0; e < n_edges; ++e) {
-        const std::vector<index_t>& verts = S[1].simplex_verts[e];
-        double delta = std::abs(y_hat[verts[0]] - y_hat[verts[1]]);
+        const auto [v0, v1] = edge_registry[e];
+        double delta = std::abs(y_hat[v0] - y_hat[v1]);
         edge_deltas.push_back(delta);
     }
 
@@ -1737,60 +1773,116 @@ void riem_dcx_t::apply_response_coherence_modulation(
         return (static_cast<uint64_t>(e1) << 32) | static_cast<uint64_t>(e2);
     };
 
-    if (S.size() > 2 && S[2].size() > 0) {
+    // Count triangles from edge_cofaces
+    size_t n_triangles = 0;
+    if (!edge_cofaces.empty()) {
+        for (const auto& cofaces : edge_cofaces) {
+            for (size_t k = 1; k < cofaces.size(); ++k) {
+                n_triangles = std::max(n_triangles,
+                    static_cast<size_t>(cofaces[k].simplex_index + 1));
+            }
+        }
+    }
+
+    if (n_triangles > 0) {
         std::vector<double> triangle_deltas;
-        triangle_deltas.reserve(S[2].size());
+        triangle_deltas.reserve(n_triangles);
 
-        for (size_t t = 0; t < S[2].size(); ++t) {
-            const auto& verts = S[2].simplex_verts[t];
+        // Track which triangles we've processed
+        std::unordered_set<index_t> processed_triangles;
 
-            // Compute maximum response variation over triangle vertices
-            double delta = std::max({
-                std::abs(y_hat[verts[0]] - y_hat[verts[1]]),
-                std::abs(y_hat[verts[0]] - y_hat[verts[2]]),
-                std::abs(y_hat[verts[1]] - y_hat[verts[2]])
-            });
-            triangle_deltas.push_back(delta);
+        // Iterate through all edges and their incident triangles
+        for (size_t e = 0; e < n_edges; ++e) {
+            const auto [v0_edge, v1_edge] = edge_registry[e];
 
-            // Get the three edge IDs for this triangle
-            std::vector<index_t> e01_verts = {verts[0], verts[1]};
-            std::vector<index_t> e02_verts = {verts[0], verts[2]};
-            std::vector<index_t> e12_verts = {verts[1], verts[2]};
+            // Process triangles incident to this edge
+            for (size_t t_idx = 1; t_idx < edge_cofaces[e].size(); ++t_idx) {
+                index_t triangle_idx = edge_cofaces[e][t_idx].simplex_index;
 
-            index_t e01 = S[1].get_id(e01_verts);
-            index_t e02 = S[1].get_id(e02_verts);
-            index_t e12 = S[1].get_id(e12_verts);
+                // Only process each triangle once
+                if (processed_triangles.count(triangle_idx)) continue;
+                processed_triangles.insert(triangle_idx);
 
-            // Record maximum delta for each edge pair in this triangle
-            uint64_t key_01_02 = pack_edge_pair(e01, e02);
-            uint64_t key_01_12 = pack_edge_pair(e01, e12);
-            uint64_t key_02_12 = pack_edge_pair(e02, e12);
+                // Reconstruct triangle vertices
+                const index_t v2 = edge_cofaces[e][t_idx].vertex_index;
+                std::array<index_t, 3> tri_verts = {v0_edge, v1_edge, v2};
+                std::sort(tri_verts.begin(), tri_verts.end());
 
-            edge_pair_max_delta[key_01_02] = std::max(
-                edge_pair_max_delta[key_01_02], delta);
-            edge_pair_max_delta[key_01_12] = std::max(
-                edge_pair_max_delta[key_01_12], delta);
-            edge_pair_max_delta[key_02_12] = std::max(
-                edge_pair_max_delta[key_02_12], delta);
+                const index_t v0 = tri_verts[0];
+                const index_t v1 = tri_verts[1];
+                const index_t v2_sorted = tri_verts[2];
+
+                // Compute maximum response variation over triangle vertices
+                double delta = std::max({
+                    std::abs(y_hat[v0] - y_hat[v1]),
+                    std::abs(y_hat[v0] - y_hat[v2_sorted]),
+                    std::abs(y_hat[v1] - y_hat[v2_sorted])
+                });
+                triangle_deltas.push_back(delta);
+
+                // Find the three edge indices
+                index_t e01 = NO_EDGE;
+                for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                    if (vertex_cofaces[v0][k].vertex_index == v1) {
+                        e01 = vertex_cofaces[v0][k].simplex_index;
+                        break;
+                    }
+                }
+
+                index_t e02 = NO_EDGE;
+                for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                    if (vertex_cofaces[v0][k].vertex_index == v2_sorted) {
+                        e02 = vertex_cofaces[v0][k].simplex_index;
+                        break;
+                    }
+                }
+
+                index_t e12 = NO_EDGE;
+                for (size_t k = 1; k < vertex_cofaces[v1].size(); ++k) {
+                    if (vertex_cofaces[v1][k].vertex_index == v2_sorted) {
+                        e12 = vertex_cofaces[v1][k].simplex_index;
+                        break;
+                    }
+                }
+
+                // Record maximum delta for each edge pair in this triangle
+                if (e01 != NO_EDGE && e02 != NO_EDGE) {
+                    uint64_t key_01_02 = pack_edge_pair(e01, e02);
+                    edge_pair_max_delta[key_01_02] = std::max(
+                        edge_pair_max_delta[key_01_02], delta);
+                }
+                if (e01 != NO_EDGE && e12 != NO_EDGE) {
+                    uint64_t key_01_12 = pack_edge_pair(e01, e12);
+                    edge_pair_max_delta[key_01_12] = std::max(
+                        edge_pair_max_delta[key_01_12], delta);
+                }
+                if (e02 != NO_EDGE && e12 != NO_EDGE) {
+                    uint64_t key_02_12 = pack_edge_pair(e02, e12);
+                    edge_pair_max_delta[key_02_12] = std::max(
+                        edge_pair_max_delta[key_02_12], delta);
+                }
+            }
         }
 
         // Compute scale parameter σ₂ for triangles
-        std::vector<double> tri_copy = triangle_deltas;
-        q1_idx = tri_copy.size() / 4;
-        q3_idx = (3 * tri_copy.size()) / 4;
+        if (!triangle_deltas.empty()) {
+            std::vector<double> tri_copy = triangle_deltas;
+            q1_idx = tri_copy.size() / 4;
+            q3_idx = (3 * tri_copy.size()) / 4;
 
-        std::nth_element(tri_copy.begin(),
-                         tri_copy.begin() + q1_idx,
-                         tri_copy.end());
-        double Q1_tri = tri_copy[q1_idx];
+            std::nth_element(tri_copy.begin(),
+                             tri_copy.begin() + q1_idx,
+                             tri_copy.end());
+            double Q1_tri = tri_copy[q1_idx];
 
-        tri_copy = triangle_deltas;
-        std::nth_element(tri_copy.begin(),
-                         tri_copy.begin() + q3_idx,
-                         tri_copy.end());
-        double Q3_tri = tri_copy[q3_idx];
+            tri_copy = triangle_deltas;
+            std::nth_element(tri_copy.begin(),
+                             tri_copy.begin() + q3_idx,
+                             tri_copy.end());
+            double Q3_tri = tri_copy[q3_idx];
 
-        sigma_2 = std::max(Q3_tri - Q1_tri, 1e-10);
+            sigma_2 = std::max(Q3_tri - Q1_tri, 1e-10);
+        }
     }
 
     // ============================================================
@@ -1855,7 +1947,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
         // Warn that we skipped off-diagonal modulation
         static bool warning_issued = false;
         if (!warning_issued) {
-            Rprintf("Note: No triangles available...\n");
+            Rprintf("Note: No triangles available for off-diagonal modulation.\n");
             warning_issued = true;
         }
     }
@@ -1892,16 +1984,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
             gamma, sigma_1, sigma_2,
             *std::min_element(edge_deltas.begin(), edge_deltas.end()),
             *std::max_element(edge_deltas.begin(), edge_deltas.end())
-            );
-
-        // Rf_warning(
-        //     "Response-coherence modulation collapsed all mass (gamma = %.3f too large). "
-        //     "Disabling modulation for this iteration. Reduce gamma parameter.",
-        //     gamma
-        // );
-        // // Restore to pre-modulation state by rebuilding from densities
-        // compute_edge_mass_matrix();
-        // return;  // Skip normalization, use unmodulated matrix
+        );
     }
 
     // Invalidate factorization
@@ -2231,6 +2314,487 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
 }
 
 /**
+ * @brief Check convergence of iterative refinement procedure (simplified version)
+ *
+ * This function determines whether the iterative refinement process has
+ * converged by monitoring the smoothed response field. Following the principle
+ * that response convergence is the primary criterion for practical applications,
+ * this simplified implementation focuses solely on the stability of predictions
+ * rather than tracking the underlying geometric evolution.
+ *
+ * The convergence criterion is based on relative change to ensure scale
+ * independence. We measure the L2 norm of differences normalized by the
+ * L2 norm of the previous state. This provides a dimensionless measure
+ * of change that is robust to the scale of the problem.
+ *
+ * Although the theoretical framework monitors both response and density
+ * convergence, empirical experience shows that response stability is the
+ * dominant indicator of practical convergence. The geometric quantities
+ * (densities and mass matrices) typically stabilize before or alongside
+ * the response, making separate density tracking often redundant for
+ * determining when to terminate iteration. This simplified approach
+ * reduces computational overhead by avoiding the extraction and comparison
+ * of potentially large density vectors from the coface structures.
+ *
+ * The function provides diagnostic information through the returned
+ * status structure, including human-readable messages describing the
+ * current convergence state. This information is useful for monitoring
+ * iteration progress and diagnosing convergence behavior.
+ *
+ * @param y_hat_prev Fitted response values from previous iteration
+ * @param y_hat_curr Fitted response values from current iteration
+ * @param epsilon_y Convergence threshold for response relative change
+ * @param iteration Current iteration number (1-indexed)
+ * @param max_iterations Maximum allowed iterations
+ *
+ * @return convergence_status_t structure containing:
+ *         - converged: true if response criterion satisfied
+ *         - response_change: relative change in fitted values
+ *         - max_density_change: set to 0.0 (not tracked in simplified version)
+ *         - iteration: current iteration number
+ *         - message: human-readable convergence status
+ *
+ * @note Typical threshold value: epsilon_y = 1e-4 to 1e-3
+ *
+ * @note The function handles edge cases gracefully:
+ *       - Near-zero norms are replaced with 1.0 to avoid division by zero
+ *       - Maximum iterations reached is treated as termination (not convergence)
+ *
+ * @note For applications requiring explicit geometric convergence monitoring,
+ *       use check_convergence_with_geometry() instead, which tracks density
+ *       changes at the cost of additional computation.
+ */
+convergence_status_t riem_dcx_t::check_convergence(
+    const vec_t& y_hat_prev,
+    const vec_t& y_hat_curr,
+    double epsilon_y,
+    int iteration,
+    int max_iterations
+) {
+    // Initialize status structure
+    convergence_status_t status;
+    status.iteration = iteration;
+    status.converged = false;
+    status.response_change = 0.0;
+    status.max_density_change = 0.0;  // Not tracked in simplified version
+
+    // ================================================================
+    // CHECK 1: Maximum iterations reached
+    // ================================================================
+
+    // If we've reached the maximum iteration count, terminate regardless
+    // of convergence criteria. This prevents infinite loops in cases where
+    // convergence is slow or parameters are poorly chosen.
+    if (iteration >= max_iterations) {
+        // Compute change for diagnostic purposes even though we're terminating
+        double y_norm_prev = y_hat_prev.norm();
+        if (y_norm_prev < 1e-15) {
+            y_norm_prev = 1.0;
+        }
+        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+        status.message = "Maximum iterations reached";
+        return status;
+    }
+
+    // ================================================================
+    // CHECK 2: Response convergence
+    // ================================================================
+
+    // Compute relative change in fitted response values using L2 norm.
+    // The relative change is computed as ||y_curr - y_prev|| / ||y_prev||
+    // to ensure scale independence.
+
+    // Validate dimensions
+    if (y_hat_prev.size() != y_hat_curr.size()) {
+        Rf_error("check_convergence: response vectors have inconsistent sizes "
+                 "(%d vs %d)", (int)y_hat_prev.size(), (int)y_hat_curr.size());
+    }
+
+    // Compute previous state norm with safety check
+    double y_norm_prev = y_hat_prev.norm();
+    if (y_norm_prev < 1e-15) {
+        // Near-zero norm indicates either initialization or numerical issues.
+        // Use 1.0 as denominator to avoid division by zero while still
+        // measuring absolute change.
+        y_norm_prev = 1.0;
+    }
+
+    // Compute relative change
+    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+    // ================================================================
+    // CHECK 3: Evaluate convergence criterion
+    // ================================================================
+
+    // Determine convergence status based solely on response criterion.
+    // This follows the practical principle that stable prediction is
+    // the primary goal, and geometric quantities stabilize alongside
+    // or before the response in typical use cases.
+
+    bool response_converged = (status.response_change < epsilon_y);
+
+    if (response_converged) {
+        status.converged = true;
+        status.message = "Converged: response stable";
+        return status;
+    }
+
+    // Still changing
+    status.converged = false;
+    status.message = "Iteration in progress";
+    return status;
+}
+
+/**
+ * @brief Check convergence with enhanced diagnostics (simplified version)
+ *
+ * Extended version that estimates convergence rate from response change
+ * history. This information can guide adaptive parameter selection or
+ * early stopping decisions. Like the basic version, this simplified
+ * implementation tracks only response convergence, not geometric quantities.
+ *
+ * @param y_hat_prev Fitted response values from previous iteration
+ * @param y_hat_curr Fitted response values from current iteration
+ * @param epsilon_y Convergence threshold for response relative change
+ * @param iteration Current iteration number (1-indexed)
+ * @param max_iterations Maximum allowed iterations
+ * @param response_change_history Vector of response changes from previous iterations
+ *
+ * @return detailed_convergence_status_t structure containing:
+ *         - converged: true if response criterion satisfied
+ *         - response_change: relative change in fitted values
+ *         - max_density_change: set to 0.0 (not tracked)
+ *         - response_change_rate: ratio of consecutive changes
+ *         - density_change_rate: set to 0.0 (not tracked)
+ *         - estimated_iterations_remaining: projection based on geometric decay
+ *         - density_changes_by_dim: empty vector (not tracked)
+ *         - iteration: current iteration number
+ *         - message: human-readable convergence status
+ *
+ * @note The convergence rate estimation assumes geometric (exponential) decay
+ *       of the response change, which is typical for well-posed diffusion
+ *       and spectral filtering iterations.
+ */
+detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
+    const vec_t& y_hat_prev,
+    const vec_t& y_hat_curr,
+    double epsilon_y,
+    int iteration,
+    int max_iterations,
+    const std::vector<double>& response_change_history
+) {
+    detailed_convergence_status_t status;
+    status.iteration = iteration;
+    status.converged = false;
+    status.response_change = 0.0;
+    status.max_density_change = 0.0;  // Not tracked in simplified version
+    status.response_change_rate = 0.0;
+    status.density_change_rate = 0.0;  // Not tracked in simplified version
+    status.estimated_iterations_remaining = -1;
+
+    // Maximum iterations check
+    if (iteration >= max_iterations) {
+        double y_norm_prev = y_hat_prev.norm();
+        if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+        status.message = "Maximum iterations reached";
+        return status;
+    }
+
+    // Response convergence
+    double y_norm_prev = y_hat_prev.norm();
+    if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+    // Estimate convergence rate if history is available
+    if (response_change_history.size() >= 2) {
+        // Simple linear extrapolation of convergence rate
+        size_t n = response_change_history.size();
+        double recent_change = response_change_history[n-1];
+        double prev_change = response_change_history[n-2];
+
+        if (prev_change > 1e-15) {
+            status.response_change_rate = recent_change / prev_change;
+
+            // Estimate iterations to convergence assuming geometric decay
+            if (status.response_change_rate < 1.0 && status.response_change_rate > 0.01) {
+                double log_current = std::log(std::max(recent_change, 1e-15));
+                double log_target = std::log(epsilon_y);
+                double log_rate = std::log(status.response_change_rate);
+
+                if (log_rate < -1e-6) {  // Ensure decreasing
+                    status.estimated_iterations_remaining =
+                        static_cast<int>(std::ceil((log_target - log_current) / log_rate));
+                }
+            }
+        }
+    }
+
+    // Convergence determination
+    bool response_converged = (status.response_change < epsilon_y);
+
+    if (response_converged) {
+        status.converged = true;
+        status.message = "Converged: response stable";
+    } else {
+        status.message = "Iteration in progress";
+
+        // Add convergence estimate to message if available
+        if (status.estimated_iterations_remaining > 0 &&
+            status.estimated_iterations_remaining < 100) {
+            status.message += " (est. " +
+                std::to_string(status.estimated_iterations_remaining) +
+                " iterations remaining)";
+        }
+    }
+
+    return status;
+}
+
+/**
+ * @brief Check convergence with full geometric tracking
+ *
+ * This extended version monitors both response and density convergence by
+ * extracting and comparing density values from the vertex_cofaces structure.
+ * Use this function when explicit geometric convergence verification is
+ * required, at the cost of additional computation for density extraction.
+ *
+ * The convergence criteria follow the theoretical framework: iteration
+ * terminates when both response and density stabilize below their respective
+ * thresholds. This ensures that not only predictions but also the underlying
+ * geometric structure has reached a stable state.
+ *
+ * For density monitoring, we track changes at both vertex and edge levels
+ * by extracting densities from the coface structures. The maximum relative
+ * change across both dimensions serves as the geometric convergence criterion.
+ * This ensures that convergence is not declared prematurely if any dimension
+ * continues to evolve even when others have stabilized.
+ *
+ * @param y_hat_prev Fitted response values from previous iteration
+ * @param y_hat_curr Fitted response values from current iteration
+ * @param vertex_cofaces_prev Vertex coface structure from previous iteration
+ * @param vertex_cofaces_curr Vertex coface structure from current iteration
+ * @param epsilon_y Convergence threshold for response relative change
+ * @param epsilon_rho Convergence threshold for density relative change
+ * @param iteration Current iteration number (1-indexed)
+ * @param max_iterations Maximum allowed iterations
+ *
+ * @return convergence_status_t structure containing:
+ *         - converged: true if both criteria satisfied
+ *         - response_change: relative change in fitted values
+ *         - max_density_change: maximum relative change across vertex and edge densities
+ *         - iteration: current iteration number
+ *         - message: human-readable convergence status
+ *
+ * @note Typical threshold values:
+ *       - epsilon_y = 1e-4 to 1e-3 (response convergence)
+ *       - epsilon_rho = 1e-4 to 1e-3 (density convergence)
+ *
+ * @note This function is more expensive than check_convergence() due to
+ *       density extraction. For typical applications where response stability
+ *       is the primary concern, the simplified version suffices.
+ */
+convergence_status_t riem_dcx_t::check_convergence_with_geometry(
+    const vec_t& y_hat_prev,
+    const vec_t& y_hat_curr,
+    const std::vector<std::vector<neighbor_info_t>>& vertex_cofaces_prev,
+    const std::vector<std::vector<neighbor_info_t>>& vertex_cofaces_curr,
+    double epsilon_y,
+    double epsilon_rho,
+    int iteration,
+    int max_iterations
+) {
+    // Initialize status structure
+    convergence_status_t status;
+    status.iteration = iteration;
+    status.converged = false;
+    status.response_change = 0.0;
+    status.max_density_change = 0.0;
+
+    // ================================================================
+    // CHECK 1: Maximum iterations reached
+    // ================================================================
+
+    if (iteration >= max_iterations) {
+        // Compute changes for diagnostic purposes
+        double y_norm_prev = y_hat_prev.norm();
+        if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+        // Compute density changes
+        const size_t n_vertices = vertex_cofaces_prev.size();
+
+        vec_t vertex_dens_prev(n_vertices);
+        vec_t vertex_dens_curr(n_vertices);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            vertex_dens_prev[i] = vertex_cofaces_prev[i][0].density;
+            vertex_dens_curr[i] = vertex_cofaces_curr[i][0].density;
+        }
+
+        double vertex_norm = vertex_dens_prev.norm();
+        if (vertex_norm < 1e-15) vertex_norm = 1.0;
+        status.max_density_change = (vertex_dens_curr - vertex_dens_prev).norm() / vertex_norm;
+
+        // Extract edge densities
+        size_t n_edges = 0;
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces_prev[i].size(); ++k) {
+                if (vertex_cofaces_prev[i][k].vertex_index > static_cast<index_t>(i)) {
+                    n_edges++;
+                }
+            }
+        }
+
+        if (n_edges > 0) {
+            vec_t edge_dens_prev(n_edges);
+            vec_t edge_dens_curr(n_edges);
+            size_t edge_idx = 0;
+
+            for (size_t i = 0; i < n_vertices; ++i) {
+                for (size_t k = 1; k < vertex_cofaces_prev[i].size(); ++k) {
+                    index_t j = vertex_cofaces_prev[i][k].vertex_index;
+                    if (j > static_cast<index_t>(i)) {
+                        edge_dens_prev[edge_idx] = vertex_cofaces_prev[i][k].density;
+
+                        for (size_t m = 1; m < vertex_cofaces_curr[i].size(); ++m) {
+                            if (vertex_cofaces_curr[i][m].vertex_index == j) {
+                                edge_dens_curr[edge_idx] = vertex_cofaces_curr[i][m].density;
+                                break;
+                            }
+                        }
+                        edge_idx++;
+                    }
+                }
+            }
+
+            double edge_norm = edge_dens_prev.norm();
+            if (edge_norm < 1e-15) edge_norm = 1.0;
+            double edge_change = (edge_dens_curr - edge_dens_prev).norm() / edge_norm;
+            status.max_density_change = std::max(status.max_density_change, edge_change);
+        }
+
+        status.message = "Maximum iterations reached";
+        return status;
+    }
+
+    // ================================================================
+    // CHECK 2: Response convergence
+    // ================================================================
+
+    if (y_hat_prev.size() != y_hat_curr.size()) {
+        Rf_error("check_convergence_with_geometry: response vectors have inconsistent sizes "
+                 "(%d vs %d)", (int)y_hat_prev.size(), (int)y_hat_curr.size());
+    }
+
+    double y_norm_prev = y_hat_prev.norm();
+    if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
+    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+
+    // ================================================================
+    // CHECK 3: Density convergence
+    // ================================================================
+
+    if (vertex_cofaces_prev.size() != vertex_cofaces_curr.size()) {
+        Rf_error("check_convergence_with_geometry: vertex_cofaces have inconsistent sizes "
+                 "(%d vs %d)", (int)vertex_cofaces_prev.size(),
+                 (int)vertex_cofaces_curr.size());
+    }
+
+    const size_t n_vertices = vertex_cofaces_prev.size();
+
+    // Extract and compare vertex densities
+    vec_t vertex_dens_prev(n_vertices);
+    vec_t vertex_dens_curr(n_vertices);
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        vertex_dens_prev[i] = vertex_cofaces_prev[i][0].density;
+        vertex_dens_curr[i] = vertex_cofaces_curr[i][0].density;
+    }
+
+    double vertex_norm = vertex_dens_prev.norm();
+    if (vertex_norm < 1e-15) vertex_norm = 1.0;
+    double vertex_change = (vertex_dens_curr - vertex_dens_prev).norm() / vertex_norm;
+    status.max_density_change = vertex_change;
+
+    // Extract and compare edge densities
+    size_t n_edges = 0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces_prev[i].size(); ++k) {
+            index_t j = vertex_cofaces_prev[i][k].vertex_index;
+            if (j > static_cast<index_t>(i)) {
+                n_edges++;
+            }
+        }
+    }
+
+    if (n_edges > 0) {
+        vec_t edge_dens_prev(n_edges);
+        vec_t edge_dens_curr(n_edges);
+        size_t edge_idx = 0;
+
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces_prev[i].size(); ++k) {
+                index_t j = vertex_cofaces_prev[i][k].vertex_index;
+
+                if (j > static_cast<index_t>(i)) {
+                    edge_dens_prev[edge_idx] = vertex_cofaces_prev[i][k].density;
+
+                    bool found = false;
+                    for (size_t m = 1; m < vertex_cofaces_curr[i].size(); ++m) {
+                        if (vertex_cofaces_curr[i][m].vertex_index == j) {
+                            edge_dens_curr[edge_idx] = vertex_cofaces_curr[i][m].density;
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        Rf_error("check_convergence_with_geometry: edge [%d,%d] not found in current iteration",
+                                 (int)i, (int)j);
+                    }
+
+                    edge_idx++;
+                }
+            }
+        }
+
+        double edge_norm = edge_dens_prev.norm();
+        if (edge_norm < 1e-15) edge_norm = 1.0;
+        double edge_change = (edge_dens_curr - edge_dens_prev).norm() / edge_norm;
+        status.max_density_change = std::max(status.max_density_change, edge_change);
+    }
+
+    // ================================================================
+    // CHECK 4: Evaluate convergence criteria
+    // ================================================================
+
+    bool response_converged = (status.response_change < epsilon_y);
+    bool density_converged = (status.max_density_change < epsilon_rho);
+
+    if (response_converged && density_converged) {
+        status.converged = true;
+        status.message = "Converged: both response and density stable";
+        return status;
+    }
+
+    if (response_converged && !density_converged) {
+        status.converged = false;
+        status.message = "Response converged, but density still evolving";
+        return status;
+    }
+
+    if (!response_converged && density_converged) {
+        status.converged = false;
+        status.message = "Density converged, but response still evolving";
+        return status;
+    }
+
+    status.converged = false;
+    status.message = "Iteration in progress";
+    return status;
+}
+
+/**
  * @brief Check convergence of iterative refinement procedure
  *
  * This function determines whether the iterative refinement process has
@@ -2283,7 +2847,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
  *       - Maximum iterations reached is treated as termination (not convergence)
  *       - Empty density vectors are handled safely
  */
-convergence_status_t riem_dcx_t::check_convergence(
+convergence_status_t riem_dcx_t::check_convergence_with_rho(
     const vec_t& y_hat_prev,
     const vec_t& y_hat_curr,
     const std::vector<vec_t>& rho_prev,
@@ -2452,7 +3016,7 @@ convergence_status_t riem_dcx_t::check_convergence(
  * convergence rate. This information can guide adaptive parameter
  * selection or early stopping decisions.
  */
-detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
+detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
     const vec_t& y_hat_prev,
     const vec_t& y_hat_curr,
     const std::vector<vec_t>& rho_prev,
@@ -2461,7 +3025,7 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
     double epsilon_rho,
     int iteration,
     int max_iterations,
-    const std::vector<double>& response_change_history = {}
+    const std::vector<double>& response_change_history
 ) {
     detailed_convergence_status_t status;
     status.iteration = iteration;
@@ -2553,8 +3117,6 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
 
     return status;
 }
-
-
 
 // ============================================================
 // MAIN REGRESSION METHOD
@@ -2805,7 +3367,6 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
  * @code
  * // Create and initialize complex
  * riem_dcx_t complex;
- * complex.init_dims(1, {n_points, 0});  // Max dimension 1, n points
  *
  * // Prepare data
  * Eigen::SparseMatrix<double> X = ...; // n x d feature matrix
@@ -2906,7 +3467,6 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
  *              geometric pruning. Typical: 0.5 (median). Lower percentiles
  *              produce more aggressive pruning.
  *
- * @pre Complex must be initialized via init_dims() before calling
  * @pre X.rows() must equal y.size()
  * @pre k must be less than X.rows()
  * @pre All epsilon values must be positive
@@ -2977,13 +3537,18 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         threshold_percentile
     );
 
-    if (test_stage == 0) {
-        Rprintf("TEST_STAGE 0: Stopped after initialize_from_knn\n");
-        return;
+    // Validate triangle construction for response-coherence
+    bool has_triangles = false;
+    if (!edge_cofaces.empty()) {
+        for (const auto& cofaces : edge_cofaces) {
+            if (cofaces.size() > 1) {  // Has triangles (more than just self-loop)
+                has_triangles = true;
+                break;
+            }
+        }
     }
 
-    // Validate triangle construction for response-coherence
-    if (gamma_modulation > 0.0 && (S.size() <= 2 || S[2].size() == 0)) {
+    if (gamma_modulation > 0.0 && !has_triangles) {
         Rf_warning("gamma_modulation = %.2f requires triangles for off-diagonal "
                    "modulation, but no triangles were constructed. "
                    "Only diagonal entries of M₁ will be modulated. "
@@ -2991,6 +3556,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
                    "(2) setting gamma_modulation = 0 to disable modulation, or "
                    "(3) adjusting pruning thresholds.",
                    gamma_modulation);
+    }
+
+    if (test_stage == 0) {
+        Rprintf("TEST_STAGE 0: Stopped after initialize_from_knn\n");
+        return;
     }
 
     // Phase 4.5: Select or validate diffusion parameters
@@ -3019,17 +3589,35 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ================================================================
 
     vec_t y_hat_prev;
-    std::vector<vec_t> rho_prev;
     std::vector<double> response_change_history;
+
+    // Note: epsilon_rho parameter is accepted for API compatibility but not
+    // used in the simplified convergence checking that monitors only response
+    // changes. The geometric quantities (densities stored in vertex_cofaces)
+    // typically stabilize before or alongside response convergence, making
+    // separate density tracking often redundant for determining when to
+    // terminate iteration.
 
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
-        rho_prev = rho.rho;
 
         // Step 1: Density diffusion
-        rho.rho[0] = apply_damped_heat_diffusion(
-            rho.rho[0], t_diffusion, beta_damping
+        // Extract current vertex densities from vertex_cofaces
+        const size_t n_vertices = vertex_cofaces.size();
+        vec_t rho_vertex_prev(n_vertices);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            rho_vertex_prev[i] = vertex_cofaces[i][0].density;
+        }
+
+        // Apply damped heat diffusion
+        vec_t rho_vertex_new = apply_damped_heat_diffusion(
+            rho_vertex_prev, t_diffusion, beta_damping
         );
+
+        // Store evolved vertex densities back into vertex_cofaces
+        for (size_t i = 0; i < n_vertices; ++i) {
+            vertex_cofaces[i][0].density = rho_vertex_new[i];
+        }
 
         if (test_stage == 3) {
             Rprintf("TEST_STAGE 3: Stopped after first diffusion\n");
@@ -3089,14 +3677,27 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
-        // Step 8: Convergence check
+        // Step 8: Convergence check (simplified version)
         auto status = check_convergence_detailed(
-            y_hat_prev, y_hat_curr,
-            rho_prev, rho.rho,
-            epsilon_y, epsilon_rho,
-            iter, max_iterations,
+            y_hat_prev,
+            y_hat_curr,
+            epsilon_y,
+            iter,
+            max_iterations,
             response_change_history
-        );
+            );
+
+        // auto status = check_convergence_with_rho_detailed(
+        //     y_hat_prev,
+        //     y_hat_curr,
+        //     rho_vertex_prev,
+        //     rho_vertex_new,
+        //     epsilon_y,
+        //     epsilon_rho,
+        //     iter,
+        //     max_iterations,
+        //     response_change_history
+        //     );
 
         if (test_stage == 10) {
             Rprintf("TEST_STAGE 10: Stopped after check_convergence_detailed()\n");
@@ -3105,13 +3706,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         response_change_history.push_back(status.response_change);
 
-        Rprintf("Iteration %d: response_change=%.6f, density_change=%.6f\n",
-                iter, status.response_change, status.max_density_change);
+        Rprintf("Iteration %d: response_change=%.6f\n",
+                iter, status.response_change);
 
-        for (size_t p = 0; p < status.density_changes_by_dim.size(); ++p) {
-            Rprintf("  Density[%d] change: %.6f\n",
-                    (int)p, status.density_changes_by_dim[p]);
-        }
         if (status.estimated_iterations_remaining > 0) {
             Rprintf("  Estimated iterations remaining: %d\n",
                     status.estimated_iterations_remaining);
