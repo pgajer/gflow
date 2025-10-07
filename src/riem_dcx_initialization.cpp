@@ -550,8 +550,18 @@ void riem_dcx_t::initialize_from_knn(
 
     initialize_metric_from_density();
 
+	// ================================================================
+    // PHASE 4: BUILD BOUNDARY OPERATORS
     // ================================================================
-    // PHASE 4: LAPLACIAN ASSEMBLY
+
+	build_boundary_operator_from_edges();      // B[1]: edges → vertices
+
+	if (edge_cofaces.size() > 0) {
+		build_boundary_operator_from_triangles();  // B[2]: triangles → edges
+	}
+
+    // ================================================================
+    // PHASE 5: LAPLACIAN ASSEMBLY
     // ================================================================
 
     assemble_operators();

@@ -408,6 +408,219 @@ void riem_dcx_t::compute_edge_mass_matrix() {
     g.M_solver[1].reset();
 }
 
+/**
+ * @brief Build boundary operator B[1] from edge_registry
+ *
+ * Constructs the vertex-edge incidence matrix (boundary operator) directly from
+ * the edge_registry structure, without relying on S[1]. This is the boundary map
+ * ∂₁: C₁ → C₀ that takes edges to their boundary (the formal sum of their endpoints).
+ *
+ * For each edge e with vertices (i,j) where i < j:
+ *   ∂₁(e) = v_j - v_i
+ *
+ * In matrix form, B[1] is an (n_vertices × n_edges) sparse matrix where:
+ *   B[1](i, e) = -1  (tail vertex)
+ *   B[1](j, e) = +1  (head vertex)
+ *
+ * The boundary operator is fundamental to the Hodge Laplacian construction:
+ *   L₀ = B₁ M₁⁻¹ B₁ᵀ M₀
+ *
+ * This encodes how the Riemannian metric on edges induces a Laplacian operator
+ * on vertex functions through the geometric relationship between adjacent vertices.
+ *
+ * @pre edge_registry must be populated with all edges as {i,j} pairs with i < j
+ * @pre vertex_cofaces must be populated to determine n_vertices
+ * @post L.B[1] contains the boundary operator as a sparse matrix
+ * @post L.B is resized to at least size 2 if needed
+ *
+ * COMPUTATIONAL COMPLEXITY: O(n_edges) for building the sparse matrix
+ *
+ * @see build_boundary_operators_from_triangles() for B[2] construction
+ * @see assemble_operators() which uses B[1] to compute Laplacians
+ */
+void riem_dcx_t::build_boundary_operator_from_edges() {
+    const Eigen::Index n_vertices = static_cast<Eigen::Index>(vertex_cofaces.size());
+    const Eigen::Index n_edges = static_cast<Eigen::Index>(edge_registry.size());
+
+    // Ensure L.B is large enough
+    if (L.B.size() < 2) {
+        L.B.resize(2);
+    }
+
+    // Build B[1]: C₁ → C₀ (edges to vertices)
+    // Matrix dimensions: n_vertices × n_edges
+    spmat_t B1(n_vertices, n_edges);
+    B1.reserve(Eigen::VectorXi::Constant(n_edges, 2));  // Each edge has 2 vertices
+
+    for (Eigen::Index e = 0; e < n_edges; ++e) {
+        const auto [i, j] = edge_registry[e];
+
+        // Boundary of edge e is: ∂₁(e) = v_j - v_i
+        // Since edge_registry stores edges with i < j by construction,
+        // we have a consistent orientation
+        B1.insert(static_cast<Eigen::Index>(j), e) =  1.0;  // Head vertex
+        B1.insert(static_cast<Eigen::Index>(i), e) = -1.0;  // Tail vertex
+    }
+
+    B1.makeCompressed();
+    L.B[1] = std::move(B1);
+}
+
+/**
+ * @brief Build boundary operator B[2] from triangles using edge_cofaces only
+ *
+ * Constructs the edge-triangle incidence matrix (boundary operator) from the
+ * edge_cofaces structure without any dependency on S[2]. This is the boundary
+ * map ∂₂: C₂ → C₁ that takes triangles to their boundary (the formal sum of
+ * their three edges).
+ *
+ * For a triangle t with vertices (v₀, v₁, v₂) sorted in ascending order:
+ *   ∂₂(t) = e₁₂ - e₀₂ + e₀₁
+ *
+ * where e_ij denotes the edge [v_i, v_j]. The signs follow the standard
+ * simplicial orientation: the sign of face f_i (opposite vertex v_i) is (-1)^i.
+ *
+ * ALGORITHM:
+ * 1. Iterate through edge_cofaces to enumerate all triangles
+ * 2. For each triangle, reconstruct its three vertices from edge + third vertex
+ * 3. Find the three edge indices using vertex_cofaces lookups
+ * 4. Compute boundary signs based on vertex ordering
+ * 5. Build sparse matrix from triplets
+ *
+ * The algorithm processes each triangle exactly once by tracking which triangles
+ * have been processed, avoiding the triple-counting that would occur from visiting
+ * each triangle via all three of its edges.
+ *
+ * In matrix form, B[2] is an (n_edges × n_triangles) sparse matrix where
+ * each column corresponds to one triangle and contains ±1 entries for its
+ * three boundary edges.
+ *
+ * The boundary operator appears in the Hodge Laplacian at dimension 1:
+ *   L₁ = B₂ M₂⁻¹ B₂ᵀ M₁ + M₁⁻¹ B₁ᵀ M₀ B₁
+ *
+ * @pre edge_cofaces must be populated with triangles
+ * @pre edge_registry must map edge indices to vertex pairs
+ * @pre vertex_cofaces must allow edge lookups by vertex pair
+ * @post L.B[2] contains the boundary operator as a sparse matrix
+ * @post L.B is resized to at least size 3 if triangles exist
+ *
+ * COMPUTATIONAL COMPLEXITY: O(n_triangles * k) where k is the average vertex degree
+ * The k factor comes from searching vertex_cofaces for edge indices
+ *
+ * @see build_boundary_operator_from_edges() for B[1] construction
+ * @see assemble_operators() which uses B[2] to compute Laplacians
+ */
+void riem_dcx_t::build_boundary_operator_from_triangles() {
+    // Count triangles and find maximum triangle index from edge_cofaces
+    index_t n_triangles = 0;
+    if (!edge_cofaces.empty()) {
+        for (const auto& cofaces : edge_cofaces) {
+            for (size_t k = 1; k < cofaces.size(); ++k) {
+                n_triangles = std::max(n_triangles, cofaces[k].simplex_index + 1);
+            }
+        }
+    }
+
+    if (n_triangles == 0) {
+        // No triangles, nothing to do
+        return;
+    }
+
+    const Eigen::Index n_edges = static_cast<Eigen::Index>(edge_registry.size());
+
+    // Ensure L.B is large enough
+    if (L.B.size() < 3) {
+        L.B.resize(3);
+    }
+
+    // Build B[2]: C₂ → C₁ (triangles to edges)
+    // Matrix dimensions: n_edges × n_triangles
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(n_triangles * 3);  // Each triangle has 3 edges
+
+    // Track which triangles we've processed to avoid duplicates
+    std::unordered_set<index_t> processed_triangles;
+
+    // Iterate through all edges and their incident triangles
+    for (size_t e = 0; e < edge_registry.size(); ++e) {
+        // Skip self-loop at [0], process triangles at [1:]
+        for (size_t t_idx = 1; t_idx < edge_cofaces[e].size(); ++t_idx) {
+            index_t triangle_idx = edge_cofaces[e][t_idx].simplex_index;
+
+            // Only process each triangle once
+            if (processed_triangles.count(triangle_idx)) continue;
+            processed_triangles.insert(triangle_idx);
+
+            // Reconstruct triangle vertices from edge e and third vertex
+            const auto [v0_unsorted, v1_unsorted] = edge_registry[e];
+            const index_t v2 = edge_cofaces[e][t_idx].vertex_index;
+
+            // Sort vertices to get canonical ordering for consistent orientation
+            std::array<index_t, 3> tri_verts = {v0_unsorted, v1_unsorted, v2};
+            std::sort(tri_verts.begin(), tri_verts.end());
+
+            const index_t v0 = tri_verts[0];
+            const index_t v1 = tri_verts[1];
+            const index_t v2_sorted = tri_verts[2];
+
+            // Find the three edge indices by searching vertex_cofaces
+            // Edge [v0, v1]
+            index_t e01 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                if (vertex_cofaces[v0][k].vertex_index == v1) {
+                    e01 = vertex_cofaces[v0][k].simplex_index;
+                    break;
+                }
+            }
+
+            // Edge [v0, v2]
+            index_t e02 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                if (vertex_cofaces[v0][k].vertex_index == v2_sorted) {
+                    e02 = vertex_cofaces[v0][k].simplex_index;
+                    break;
+                }
+            }
+
+            // Edge [v1, v2]
+            index_t e12 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v1].size(); ++k) {
+                if (vertex_cofaces[v1][k].vertex_index == v2_sorted) {
+                    e12 = vertex_cofaces[v1][k].simplex_index;
+                    break;
+                }
+            }
+
+            // Verify all edges found
+            if (e01 == NO_EDGE || e02 == NO_EDGE || e12 == NO_EDGE) {
+                Rf_error("Triangle %ld has missing edges: e01=%ld, e02=%ld, e12=%ld",
+                         triangle_idx, e01, e02, e12);
+            }
+
+            // Compute boundary with correct signs
+            // For triangle with sorted vertices [v0, v1, v2]:
+            // ∂₂(triangle) = (face opposite v0) - (face opposite v1) + (face opposite v2)
+            //              = [v1,v2] - [v0,v2] + [v0,v1]
+            //              = e12 - e02 + e01
+            //
+            // The sign pattern follows (-1)^i for face opposite vertex i:
+            //   Face opposite v0 (i=0): (-1)^0 = +1 → +e12
+            //   Face opposite v1 (i=1): (-1)^1 = -1 → -e02
+            //   Face opposite v2 (i=2): (-1)^2 = +1 → +e01
+
+            triplets.emplace_back(e01, triangle_idx,  1.0);   // +[v0,v1]
+            triplets.emplace_back(e02, triangle_idx, -1.0);   // -[v0,v2]
+            triplets.emplace_back(e12, triangle_idx,  1.0);   // +[v1,v2]
+        }
+    }
+
+    // Build sparse matrix from triplets
+    spmat_t B2(n_edges, n_triangles);
+    B2.setFromTriplets(triplets.begin(), triplets.end());
+    B2.makeCompressed();
+    L.B[2] = std::move(B2);
+}
+
 // ============================================================
 // ITERATION HELPERS (public/private member functions)
 // ============================================================
