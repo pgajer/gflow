@@ -3537,6 +3537,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         threshold_percentile
     );
 
+    // Store original response EARLY, before any possible early returns
+    sig.y = y;
+
     // Validate triangle construction for response-coherence
     bool has_triangles = false;
     if (!edge_cofaces.empty()) {
@@ -3587,7 +3590,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ================================================================
     // PART II: ITERATIVE REFINEMENT
     // ================================================================
-    sig.y = y;  // Store original response
     vec_t y_hat_prev;
     std::vector<double> response_change_history;
 
@@ -3708,12 +3710,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         }
 
         ///// testing
-        if (iter == 1) break;  // Only do one iteration for testing
+        // if (iter == 1) break;  // Only do one iteration for testing
     }
-
-    // ================================================================
-    // PART III: FINALIZATION
-    // ================================================================
-
-    sig.y = y;
 }

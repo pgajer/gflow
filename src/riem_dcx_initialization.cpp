@@ -126,6 +126,26 @@ void riem_dcx_t::initialize_from_knn(
     const size_t n_points = static_cast<size_t>(X.rows());
 
     // ================================================================
+    // PHASE 0: INITIALIZE DIMENSION STRUCTURE
+    // ================================================================
+
+    // Initialize pmax and resize dimension-indexed containers
+    pmax = -1;  // Start with no dimensions
+
+    // Add vertex dimension (dimension 0)
+    pmax = 0;
+    g.M.resize(1);
+    g.M_solver.resize(1);
+    L.B.resize(1);
+    L.L.resize(1);
+
+    // Initialize M[0] as empty (will be set by initialize_metric_from_density())
+    g.M[0] = spmat_t();
+    g.M_solver[0].reset();
+    L.B[0] = spmat_t();  // No boundary for dimension 0
+    L.L[0] = spmat_t();  // Will be assembled later
+
+    // ================================================================
     // PHASE 1A: K-NN COMPUTATION AND NEIGHBORHOOD CONSTRUCTION
     // ================================================================
 
@@ -299,6 +319,8 @@ void riem_dcx_t::initialize_from_knn(
 	for (index_t e = 0; e < n_edges; ++e) {
 		edge_registry[e] = {edge_list[e].first, edge_list[e].second};
 	}
+
+	extend_by_one_dim(n_edges);  // Now pmax = 1, g.M resized to include M[1]
 
 	// Update simplex_index in vertex_cofaces with final edge indices
 	for (index_t e = 0; e < n_edges; ++e) {
