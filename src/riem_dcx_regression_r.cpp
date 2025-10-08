@@ -747,15 +747,63 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     // computing fitted values. We handle this by providing appropriate
     // placeholder values and diagnostic information.
 
-    bool has_fitted_values = !dcx.sig.y_hat_hist.empty();
-    vec_t y_hat_final;
+    // ---------- Select fitted values based on minimum GCV ----------
+    // Instead of simply using the last iteration's fitted values, we
+    // select the iteration that minimizes the GCV score across all
+    // iterations. This implements proper model selection and can
+    // prevent overfitting when the iterative refinement continues
+    // beyond the optimal point.
 
-    if (has_fitted_values) {
+    bool has_fitted_values = !dcx.sig.y_hat_hist.empty();
+    bool has_gcv_history = !dcx.gcv_history.iterations.empty();
+    vec_t y_hat_final;
+    int optimal_iteration = -1;
+
+    if (has_fitted_values && has_gcv_history) {
+        // Verify consistency between fitted values history and GCV history
+        if (dcx.sig.y_hat_hist.size() != dcx.gcv_history.iterations.size()) {
+            Rf_warning("Inconsistent history sizes: y_hat_hist has %d entries, "
+                       "gcv_history has %d entries. Using last iteration.",
+                       (int)dcx.sig.y_hat_hist.size(),
+                       (int)dcx.gcv_history.iterations.size());
+            y_hat_final = dcx.sig.y_hat_hist.back();
+            optimal_iteration = (int)dcx.sig.y_hat_hist.size() - 1;
+        } else {
+            // Find iteration with minimum GCV score
+            double min_gcv = std::numeric_limits<double>::max();
+            size_t min_idx = 0;
+
+            for (size_t i = 0; i < dcx.gcv_history.iterations.size(); ++i) {
+                double gcv_score = dcx.gcv_history.iterations[i].gcv_optimal;
+                if (gcv_score < min_gcv) {
+                    min_gcv = gcv_score;
+                    min_idx = i;
+                }
+            }
+
+            // Use fitted values from the iteration with minimum GCV
+            y_hat_final = dcx.sig.y_hat_hist[min_idx];
+            optimal_iteration = (int)min_idx;
+
+            // Inform user if optimal iteration differs from final iteration
+            if (test_stage < 0 && min_idx != dcx.sig.y_hat_hist.size() - 1) {
+                Rprintf("Selected iteration %d (GCV = %.6e) over final iteration %d (GCV = %.6e)\n",
+                        (int)min_idx, min_gcv,
+                        (int)(dcx.sig.y_hat_hist.size() - 1),
+                        dcx.gcv_history.iterations.back().gcv_optimal);
+            }
+        }
+    } else if (has_fitted_values) {
+        // GCV history unavailable (should not happen in normal operation)
+        // Fall back to last iteration
+        Rf_warning("GCV history unavailable. Using last iteration's fitted values.");
         y_hat_final = dcx.sig.y_hat_hist.back();
+        optimal_iteration = (int)dcx.sig.y_hat_hist.size() - 1;
     } else {
         // Early termination: use observed y as placeholder
         // This allows the result structure to be consistent
         y_hat_final = y;
+        optimal_iteration = -1;
 
         // Warn user if this wasn't intentional
         if (test_stage < 0) {
@@ -764,15 +812,9 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         }
     }
 
-    // Get final fitted values
-    // if (dcx.sig.y_hat_hist.empty()) {
-    //     Rf_error("No fitted values computed (internal error)");
-    // }
-    // const vec_t& y_hat_final = dcx.sig.y_hat_hist.back();
-
     // ---------- Main result list ----------
 
-    const int n_components = 8;
+    const int n_components = 9;  // Changed from 8 to 9 to add optimal.iteration
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -803,29 +845,33 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_resid);
     UNPROTECT(1);
 
-    // Component 3: graph (nested list)
+    // Component 3: optimal.iteration (NEW)
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("optimal.iteration"));
+    SET_VECTOR_ELT(result, component_idx++, Rf_ScalarInteger(optimal_iteration + 1));  // R uses 1-based indexing
+
+    // Component 4: graph (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("graph"));
     SEXP s_graph = PROTECT(create_graph_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_graph);
     UNPROTECT(1);
 
-    // Component 4: iteration (nested list)
+    // Component 5: iteration (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("iteration"));
     SEXP s_iteration = PROTECT(create_iteration_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_iteration);
     UNPROTECT(1);
 
-    // Component 5: parameters (nested list)
+    // Component 6: parameters (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("parameters"));
     SEXP s_params = PROTECT(create_parameters_component(
-        k, use_counting_measure, density_normalization,
-        t_diffusion, beta_damping, gamma_modulation,
-        n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations
-    ));
+                                k, use_counting_measure, density_normalization,
+                                t_diffusion, beta_damping, gamma_modulation,
+                                n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations
+                                ));
     SET_VECTOR_ELT(result, component_idx++, s_params);
     UNPROTECT(1);
 
-    // Component 6: y (original response)
+    // Component 7: y (original response)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("y"));
     SEXP s_y_copy = PROTECT(Rf_allocVector(REALSXP, n));
 
@@ -844,13 +890,13 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_y_copy);
     UNPROTECT(1);
 
-    // Component 7: gcv (nested list)
+    // Component 8: gcv (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gcv"));
     SEXP s_gcv = PROTECT(create_gcv_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gcv);
     UNPROTECT(1);
 
-    // Component 8: density
+    // Component 9: density
     SET_STRING_ELT(names, component_idx, Rf_mkChar("density"));
     SEXP s_density = PROTECT(create_density_history_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_density);
