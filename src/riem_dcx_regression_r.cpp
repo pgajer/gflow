@@ -15,6 +15,67 @@ namespace sexp_utils {
 // HELPER FUNCTIONS TO BUILD NESTED COMPONENTS
 // ================================================================
 
+extern "C" SEXP create_gcv_component(const riem_dcx_t& dcx) {
+    const size_t n_iters = dcx.gcv_history.iterations.size();
+
+    const int n_fields = 4;
+    SEXP gcv = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    // eta.optimal (vector)
+    SET_STRING_ELT(names, idx, Rf_mkChar("eta.optimal"));
+    SEXP s_eta_opt = PROTECT(Rf_allocVector(REALSXP, n_iters));
+    for (size_t i = 0; i < n_iters; ++i) {
+        REAL(s_eta_opt)[i] = dcx.gcv_history.iterations[i].eta_optimal;
+    }
+    SET_VECTOR_ELT(gcv, idx++, s_eta_opt);
+    UNPROTECT(1);
+
+    // gcv.optimal (vector)
+    SET_STRING_ELT(names, idx, Rf_mkChar("gcv.optimal"));
+    SEXP s_gcv_opt = PROTECT(Rf_allocVector(REALSXP, n_iters));
+    for (size_t i = 0; i < n_iters; ++i) {
+        REAL(s_gcv_opt)[i] = dcx.gcv_history.iterations[i].gcv_optimal;
+    }
+    SET_VECTOR_ELT(gcv, idx++, s_gcv_opt);
+    UNPROTECT(1);
+
+    // eta.grid (list of vectors)
+    SET_STRING_ELT(names, idx, Rf_mkChar("eta.grid"));
+    SEXP s_eta_grid_list = PROTECT(Rf_allocVector(VECSXP, n_iters));
+    for (size_t i = 0; i < n_iters; ++i) {
+        const auto& grid = dcx.gcv_history.iterations[i].eta_grid;
+        SEXP s_grid = PROTECT(Rf_allocVector(REALSXP, grid.size()));
+        for (size_t j = 0; j < grid.size(); ++j) {
+            REAL(s_grid)[j] = grid[j];
+        }
+        SET_VECTOR_ELT(s_eta_grid_list, i, s_grid);
+        UNPROTECT(1);
+    }
+    SET_VECTOR_ELT(gcv, idx++, s_eta_grid_list);
+    UNPROTECT(1);
+
+    // gcv.scores (list of vectors)
+    SET_STRING_ELT(names, idx, Rf_mkChar("gcv.scores"));
+    SEXP s_gcv_scores_list = PROTECT(Rf_allocVector(VECSXP, n_iters));
+    for (size_t i = 0; i < n_iters; ++i) {
+        const auto& scores = dcx.gcv_history.iterations[i].gcv_scores;
+        SEXP s_scores = PROTECT(Rf_allocVector(REALSXP, scores.size()));
+        for (size_t j = 0; j < scores.size(); ++j) {
+            REAL(s_scores)[j] = scores[j];
+        }
+        SET_VECTOR_ELT(s_gcv_scores_list, i, s_scores);
+        UNPROTECT(1);
+    }
+    SET_VECTOR_ELT(gcv, idx++, s_gcv_scores_list);
+    UNPROTECT(1);
+
+    Rf_setAttrib(gcv, R_NamesSymbol, names);
+    UNPROTECT(2); // names, gcv
+    return gcv;
+}
+
 extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
     const int n_fields = 6;
     SEXP graph = PROTECT(Rf_allocVector(VECSXP, n_fields));
@@ -669,7 +730,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     // ---------- Main result list ----------
 
-    const int n_components = 6;
+    const int n_components = 7;
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -739,6 +800,12 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         }
     }
     SET_VECTOR_ELT(result, component_idx++, s_y_copy);
+    UNPROTECT(1);
+
+    // Component 7: gcv (nested list)
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("gcv"));
+    SEXP s_gcv = PROTECT(create_gcv_component(dcx));
+    SET_VECTOR_ELT(result, component_idx++, s_gcv);
     UNPROTECT(1);
 
     // Set names attribute
