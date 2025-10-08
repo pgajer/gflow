@@ -732,6 +732,14 @@ struct neighbor_info_t {
     double density;          ///< Density from ρ[p]
 };
 
+struct gamma_selection_result_t {
+    double gamma_optimal;
+    double gcv_optimal;
+    std::vector<double> gamma_grid;
+    std::vector<double> gcv_scores;
+    vec_t y_hat_optimal;
+};
+
 // ================================================================
 // MAIN DATA STRUCTURE
 // ================================================================
@@ -890,13 +898,23 @@ struct riem_dcx_t {
     // ================================================================
 
     /**
+     * @brief Select optimal gamma parameter via first-iteration GCV evaluation
+     */
+    gamma_selection_result_t select_gamma_first_iteration(
+        const vec_t& y,
+        const std::vector<double>& gamma_grid,
+        int n_eigenpairs,
+        rdcx_filter_type_t filter_type
+        );
+
+    /**
      * @brief Apply damped heat diffusion to vertex density
      */
     vec_t apply_damped_heat_diffusion(
         const vec_t& rho_current,
         double t,
         double beta
-    );
+        );
 
     /**
      * @brief Update edge densities from evolved vertex densities
@@ -909,7 +927,7 @@ struct riem_dcx_t {
     void apply_response_coherence_modulation(
         const vec_t& y_hat,
         double gamma
-    );
+        );
 
     /**
      * @brief Smooth response via spectral filtering with GCV
@@ -918,7 +936,7 @@ struct riem_dcx_t {
         const vec_t& y,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type
-    );
+        );
 
     /**
      * @brief Check convergence of iterative refinement procedure (simplified version)
