@@ -15,6 +15,48 @@ namespace sexp_utils {
 // HELPER FUNCTIONS TO BUILD NESTED COMPONENTS
 // ================================================================
 
+extern "C" SEXP create_density_history_component(const riem_dcx_t& dcx) {
+    const size_t n_iters = dcx.density_history.rho_vertex.size();
+
+    if (n_iters == 0) {
+        // Return empty list if no history
+        SEXP empty = PROTECT(Rf_allocVector(VECSXP, 0));
+        UNPROTECT(1);
+        return empty;
+    }
+
+    const int n_fields = 2;
+    SEXP density = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    // Field 1: rho.vertex (list of vectors, one per iteration)
+    SET_STRING_ELT(names, idx, Rf_mkChar("rho.vertex"));
+    SEXP s_rho_list = PROTECT(Rf_allocVector(VECSXP, n_iters));
+
+    for (size_t i = 0; i < n_iters; ++i) {
+        const vec_t& rho = dcx.density_history.rho_vertex[i];
+        const Eigen::Index n_vertices = rho.size();
+
+        SEXP s_rho_vec = PROTECT(Rf_allocVector(REALSXP, n_vertices));
+        for (Eigen::Index j = 0; j < n_vertices; ++j) {
+            REAL(s_rho_vec)[j] = rho[j];
+        }
+        SET_VECTOR_ELT(s_rho_list, i, s_rho_vec);
+        UNPROTECT(1);
+    }
+    SET_VECTOR_ELT(density, idx++, s_rho_list);
+    UNPROTECT(1);
+
+    // Field 2: n.iterations (scalar, for convenience)
+    SET_STRING_ELT(names, idx, Rf_mkChar("n.iterations"));
+    SET_VECTOR_ELT(density, idx++, Rf_ScalarInteger(n_iters));
+
+    Rf_setAttrib(density, R_NamesSymbol, names);
+    UNPROTECT(2); // names, density
+    return density;
+}
+
 extern "C" SEXP create_gcv_component(const riem_dcx_t& dcx) {
     const size_t n_iters = dcx.gcv_history.iterations.size();
 
@@ -730,7 +772,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     // ---------- Main result list ----------
 
-    const int n_components = 7;
+    const int n_components = 8;
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -806,6 +848,12 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gcv"));
     SEXP s_gcv = PROTECT(create_gcv_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gcv);
+    UNPROTECT(1);
+
+    // Component 8: density
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("density"));
+    SEXP s_density = PROTECT(create_density_history_component(dcx));
+    SET_VECTOR_ELT(result, component_idx++, s_density);
     UNPROTECT(1);
 
     // Set names attribute

@@ -22,15 +22,15 @@
 /**
  * @brief Compute initial densities from reference measure
  *
- * Constructs the initial density functions ρ₀ on vertices and ρ₁ on edges by
- * aggregating the reference measure μ over appropriate neighborhoods. The vertex
+ * Constructs the initial density functions \eqn{\rho_0} on vertices and \eqn{\rho_1} on edges by
+ * aggregating the reference measure \eqn{\mu} over appropriate neighborhoods. The vertex
  * density at point i measures the total mass in its k-neighborhood, while the
  * edge density on edge [i,j] measures the mass in the intersection of their
  * neighborhoods.
  *
  * The initialization follows the formula:
- *   ρ₀(i) = Σ_{j ∈ Ň_k(x_i)} μ({j})
- *   ρ₁([i,j]) = Σ_{v ∈ Ň_k(x_i) ∩ Ň_k(x_j)} μ({v})
+ *   \deqn{\rho_0(i) = \sum_{j \in \hat{N}_k(x_i)} \mu({j})}
+ *   \deqn{\rho_1([i,j]) = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j)} \mu({v})}
  *
  * Both densities are normalized to sum to their respective simplex counts, so that
  * the average vertex has density 1 and the average edge has density 1. This
@@ -38,8 +38,8 @@
  * dataset sizes.
  *
  * Densities are stored directly in the vertex_cofaces structure:
- *   - vertex_cofaces[i][0].density = ρ₀(i)
- *   - vertex_cofaces[i][k].density = ρ₁(edge [i, vertex_cofaces[i][k].vertex_index])
+ *   - vertex_cofaces[i][0].density = \eqn{\rho_0}(i)
+ *   - vertex_cofaces[i][k].density = \eqn{\rho_1}(edge [i, vertex_cofaces[i][k].vertex_index])
  *
  * @pre reference_measure must be initialized and have size equal to number of vertices
  * @pre vertex_cofaces must be populated with topology and simplex indices
@@ -74,7 +74,7 @@ void riem_dcx_t::compute_initial_densities() {
     for (size_t i = 0; i < n_vertices; ++i) {
         double vertex_density = 0.0;
 
-        // Aggregate measure over all neighbors j ∈ Ň_k(x_i)
+        // Aggregate measure over all neighbors j \in \hat{N}_k(x_i)
         for (index_t j : neighbor_sets[i]) {
             vertex_density += reference_measure[j];
         }
@@ -106,7 +106,7 @@ void riem_dcx_t::compute_initial_densities() {
     // ============================================================
 
     // For each edge [i,j], sum the reference measure over the intersection
-    // of neighborhoods: Ň_k(x_i) ∩ Ň_k(x_j)
+    // of neighborhoods: \hat{N}_k(x_i) \cap \hat{N}_k(x_j)
 
     for (size_t i = 0; i < n_vertices; ++i) {
         for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
@@ -185,11 +185,11 @@ void riem_dcx_t::compute_initial_densities() {
  * between chains at each dimension, encoding geometric information about lengths,
  * angles, areas, and volumes throughout the complex.
  *
- * For vertices (dimension 0), the metric is always diagonal with M₀ = diag(ρ₀).
+ * For vertices (dimension 0), the metric is always diagonal with \eqn{M_0 = \text{diag}(rho_0)}.
  * This is a mathematical necessity: vertices have no geometric interaction
  * under the inner product construction.
  *
- * For edges (dimension 1), the full mass matrix M₁ captures essential geometric
+ * For edges (dimension 1), the full mass matrix \eqn{M_1} captures essential geometric
  * information through triple intersections of neighborhoods. Two edges sharing
  * a common vertex have inner product determined by the density mass in the
  * triple intersection of their endpoints' neighborhoods. This encodes how the
@@ -197,7 +197,7 @@ void riem_dcx_t::compute_initial_densities() {
  * neighborhoods.
  *
  * The construction ensures positive semidefiniteness by design, as all inner
- * products arise from L²(μ) pairings of neighborhood indicator functions.
+ * products arise from L^{2}(\mu) pairings of neighborhood indicator functions.
  *
  * @pre vertex_cofaces[i][0].density contains vertex densities (normalized to sum to n)
  * @pre vertex_cofaces[i][k].density (k>0) contains edge densities (normalized to sum to n_edges)
@@ -208,11 +208,11 @@ void riem_dcx_t::initialize_metric_from_density() {
     const size_t n_vertices = vertex_cofaces.size();
 
     // ========================================================================
-    // Part 1: Vertex mass matrix M₀ (diagonal)
+    // Part 1: Vertex mass matrix \eqn{M_0} (diagonal)
     // ========================================================================
 
     // The vertex mass matrix is diagonal by mathematical necessity.
-    // M₀ = diag(ρ₀(1), ρ₀(2), ..., ρ₀(n))
+    // M_0 = diag(\rho_0(1), \rho_0(2), ..., \rho_0(n))
 
     g.M[0] = spmat_t(n_vertices, n_vertices);
     g.M[0].reserve(Eigen::VectorXi::Constant(n_vertices, 1));
@@ -230,7 +230,7 @@ void riem_dcx_t::initialize_metric_from_density() {
     g.M_solver[0].reset();
 
     // ========================================================================
-    // Part 2: Edge mass matrix M₁ (full matrix via triple intersections)
+    // Part 2: Edge mass matrix \eqn{M_1} (full matrix via triple intersections)
     // ========================================================================
 
     // The edge mass matrix requires computing inner products between all pairs
@@ -248,29 +248,29 @@ void riem_dcx_t::initialize_metric_from_density() {
 /**
  * @brief Compute full edge mass matrix with triple intersections
  *
- * Builds the complete edge mass matrix M₁ by computing inner products between
+ * Builds the complete edge mass matrix \eqn{M_1} by computing inner products between
  * all pairs of edges through triple neighborhood intersections and setting
  * diagonal entries from edge densities stored in vertex_cofaces. For edges
  * e_ij = [i,j] and e_is = [i,s] sharing vertex v_i, the inner product is:
  *
- *   ⟨e_ij, e_is⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j) ∩ N̂_k(x_s)} ρ₀(v)
+ *   ⟨e_ij, e_is⟩ = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j) \cap \hat{N}_k(x_s)} \rho_0(v)
  *
  * This measures the total vertex density in the triple intersection of
  * neighborhoods, encoding the geometric relationship between edges through
  * their shared vertex and overlapping neighborhoods.
  *
  * The diagonal entries are set directly from edge densities stored in vertex_cofaces:
- *   M₁[e,e] = ρ₁(e) = vertex_cofaces[i][k].density for edge [i,j]
+ *   M_1[e,e] = \eqn{\rho_1}(e) = vertex_cofaces[i][k].density for edge [i,j]
  *
  * since the edge self-inner product equals the pairwise intersection mass:
- *   ⟨e_ij, e_ij⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j)} ρ₀(v) = ρ₁([i,j])
+ *   ⟨e_ij, e_ij⟩ = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j)} \rho_0(v) = \rho_1([i,j])
  *
  * The resulting matrix is symmetric positive semidefinite and sparse. For
- * kNN complexes with parameter k, each edge typically interacts with O(k²)
+ * kNN complexes with parameter k, each edge typically interacts with O(k^{2})
  * other edges, making sparse storage efficient.
  *
  * IMPLEMENTATION STRATEGY:
- * The function builds M₁ by:
+ * The function builds \eqn{M_1} by:
  * 1. Adding diagonal entries from vertex_cofaces[i][k].density (edge densities)
  * 2. Iterating over all edges and their incident triangles using edge_cofaces
  * 3. For each triangle, computing the triple intersection mass using vertex densities
@@ -280,7 +280,7 @@ void riem_dcx_t::initialize_metric_from_density() {
  * This edge_cofaces-based approach ensures all edge pairs sharing a vertex are
  * accounted for by iterating through triangles incident to each edge.
  *
- * COMPUTATIONAL COMPLEXITY: O(n * k²) where n is number of vertices and k is
+ * COMPUTATIONAL COMPLEXITY: O(n * k^{2}) where n is number of vertices and k is
  * the neighborhood size. This is the bottleneck operation in metric construction.
  *
  * @pre vertex_cofaces must be populated with topology and densities
@@ -298,7 +298,7 @@ void riem_dcx_t::initialize_metric_from_density() {
  * @note If edge_cofaces contains only self-loops (no triangles), only diagonal
  *       entries are created, resulting in a diagonal mass matrix.
  *
- * @note Regularization is applied to diagonal entries: M₁[e,e] = max(ρ₁(e), 1e-15)
+ * @note Regularization is applied to diagonal entries: M_1[e,e] = max(\eqn{\rho_1}(e), 1e-15)
  *       to ensure positive definiteness even if some edge densities are very small.
  *
  * @see initialize_metric_from_density() for initialization context
@@ -414,17 +414,17 @@ void riem_dcx_t::compute_edge_mass_matrix() {
  *
  * Constructs the vertex-edge incidence matrix (boundary operator) directly from
  * the edge_registry structure, without relying on S[1]. This is the boundary map
- * ∂₁: C₁ → C₀ that takes edges to their boundary (the formal sum of their endpoints).
+ * \eqn{\partial_1: C_1 \to C_0} that takes edges to their boundary (the formal sum of their endpoints).
  *
  * For each edge e with vertices (i,j) where i < j:
- *   ∂₁(e) = v_j - v_i
+ *   \eqn{\partial_1(e) = v_j - v_i}
  *
  * In matrix form, B[1] is an (n_vertices × n_edges) sparse matrix where:
  *   B[1](i, e) = -1  (tail vertex)
  *   B[1](j, e) = +1  (head vertex)
  *
  * The boundary operator is fundamental to the Hodge Laplacian construction:
- *   L₀ = B₁ M₁⁻¹ B₁ᵀ M₀
+ *   \deqn{L_0 = B_1 M_1^{-1} B_1^{T} M_0}
  *
  * This encodes how the Riemannian metric on edges induces a Laplacian operator
  * on vertex functions through the geometric relationship between adjacent vertices.
@@ -448,7 +448,7 @@ void riem_dcx_t::build_boundary_operator_from_edges() {
         L.B.resize(2);
     }
 
-    // Build B[1]: C₁ → C₀ (edges to vertices)
+    // Build B[1]: C_1 \to C_0 (edges to vertices)
     // Matrix dimensions: n_vertices × n_edges
     spmat_t B1(n_vertices, n_edges);
     B1.reserve(Eigen::VectorXi::Constant(n_edges, 2));  // Each edge has 2 vertices
@@ -456,7 +456,7 @@ void riem_dcx_t::build_boundary_operator_from_edges() {
     for (Eigen::Index e = 0; e < n_edges; ++e) {
         const auto [i, j] = edge_registry[e];
 
-        // Boundary of edge e is: ∂₁(e) = v_j - v_i
+        // Boundary of edge e is: \partial_1(e) = v_j - v_i
         // Since edge_registry stores edges with i < j by construction,
         // we have a consistent orientation
         B1.insert(static_cast<Eigen::Index>(j), e) =  1.0;  // Head vertex
@@ -472,14 +472,15 @@ void riem_dcx_t::build_boundary_operator_from_edges() {
  *
  * Constructs the edge-triangle incidence matrix (boundary operator) from the
  * edge_cofaces structure without any dependency on S[2]. This is the boundary
- * map ∂₂: C₂ → C₁ that takes triangles to their boundary (the formal sum of
+ * map ∂_2: C_2 \to C_1 that takes triangles to their boundary (the formal sum of
  * their three edges).
  *
- * For a triangle t with vertices (v₀, v₁, v₂) sorted in ascending order:
- *   ∂₂(t) = e₁₂ - e₀₂ + e₀₁
+ * For a triangle t with vertices (v_0, v_1, v_2) sorted in ascending order:
+ *   \deqn{\partial_2(t) = e_{12} - e_{02} + e_{01}}
  *
- * where e_ij denotes the edge [v_i, v_j]. The signs follow the standard
- * simplicial orientation: the sign of face f_i (opposite vertex v_i) is (-1)^i.
+ * where \eqn{e_{ij}} denotes the edge \eqn{[v_i, v_j]}. The signs follow the
+ * standard simplicial orientation: the sign of face \eqn{f_i} (opposite vertex
+ * \eqn{v_i}) is \eqn{(-1)^i}.
  *
  * ALGORITHM:
  * 1. Iterate through edge_cofaces to enumerate all triangles
@@ -493,11 +494,11 @@ void riem_dcx_t::build_boundary_operator_from_edges() {
  * each triangle via all three of its edges.
  *
  * In matrix form, B[2] is an (n_edges × n_triangles) sparse matrix where
- * each column corresponds to one triangle and contains ±1 entries for its
+ * each column corresponds to one triangle and contains \eqn{\pm 1} entries for its
  * three boundary edges.
  *
  * The boundary operator appears in the Hodge Laplacian at dimension 1:
- *   L₁ = B₂ M₂⁻¹ B₂ᵀ M₁ + M₁⁻¹ B₁ᵀ M₀ B₁
+ *   L_1 = B_2 M_2^{-1} B_2^{T} M_1 + M_1^{-1} B_1^{T} M_0 B_1
  *
  * @pre edge_cofaces must be populated with triangles
  * @pre edge_registry must map edge indices to vertex pairs
@@ -534,7 +535,7 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
         L.B.resize(3);
     }
 
-    // Build B[2]: C₂ → C₁ (triangles to edges)
+    // Build B[2]: C_2 \to C_1 (triangles to edges)
     // Matrix dimensions: n_edges × n_triangles
     std::vector<Eigen::Triplet<double>> triplets;
     triplets.reserve(n_triangles * 3);  // Each triangle has 3 edges
@@ -600,14 +601,14 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
 
             // Compute boundary with correct signs
             // For triangle with sorted vertices [v0, v1, v2]:
-            // ∂₂(triangle) = (face opposite v0) - (face opposite v1) + (face opposite v2)
+            // \partial_2(triangle) = (face opposite v0) - (face opposite v1) + (face opposite v2)
             //              = [v1,v2] - [v0,v2] + [v0,v1]
             //              = e12 - e02 + e01
             //
             // The sign pattern follows (-1)^i for face opposite vertex i:
-            //   Face opposite v0 (i=0): (-1)^0 = +1 → +e12
-            //   Face opposite v1 (i=1): (-1)^1 = -1 → -e02
-            //   Face opposite v2 (i=2): (-1)^2 = +1 → +e01
+            //   Face opposite v0 (i=0): (-1)^0 = +1 \to +e12
+            //   Face opposite v1 (i=1): (-1)^1 = -1 \to -e02
+            //   Face opposite v2 (i=2): (-1)^2 = +1 \to +e01
 
             triplets.emplace_back(e01, triangle_idx,  1.0);   // +[v0,v1]
             triplets.emplace_back(e02, triangle_idx, -1.0);   // -[v0,v2]
@@ -629,14 +630,14 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
 /**
  * @brief Update vertex mass matrix from evolved vertex densities
  *
- * Updates only the vertex mass matrix M₀ from the current vertex densities after
+ * Updates only the vertex mass matrix \eqn{M_0} from the current vertex densities after
  * density evolution via damped heat diffusion. This function is called during
  * iterative refinement as part of the metric reconstruction process.
  *
  * MATHEMATICAL CONSTRUCTION:
  *
  * The vertex mass matrix is diagonal by mathematical necessity:
- *   M₀ = diag(ρ₀(1), ρ₀(2), ..., ρ₀(n))
+ *   M_0 = diag(\rho_0(1), \rho_0(2), ..., \rho_0(n))
  *
  * Vertices have no geometric interaction under the inner product construction,
  * so off-diagonal entries are always zero. Each diagonal entry represents the
@@ -647,22 +648,22 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  * This function is called as Step 3 in the iteration loop:
  *   Step 1: Density diffusion evolves vertex densities via damped heat equation
  *   Step 2: Edge densities recomputed from evolved vertex densities
- *   Step 3: Vertex mass matrix update ← THIS FUNCTION (updates only M₀)
- *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
- *   Step 5: Response-coherence modulation (modulates M₁ directly)
- *   Step 6: Laplacian reassembly with updated M₀ and modulated M₁
+ *   Step 3: Vertex mass matrix update \leftarrow THIS FUNCTION (updates only \eqn{M_0})
+ *   Step 4: Edge mass matrix construction (builds \eqn{M_1} from vertex and edge densities)
+ *   Step 5: Response-coherence modulation (modulates \eqn{M_1} directly)
+ *   Step 6: Laplacian reassembly with updated \eqn{M_0} and modulated \eqn{M_1}
  *   Step 7: Response smoothing
  *
- * NOTE: This function does NOT modify M₁. The edge mass matrix is rebuilt
- * fresh in Step 4, then modulated in Step 5. Only the vertex mass matrix M₀
+ * NOTE: This function does NOT modify \eqn{M_1}. The edge mass matrix is rebuilt
+ * fresh in Step 4, then modulated in Step 5. Only the vertex mass matrix \eqn{M_0}
  * is updated by this function.
  *
  * REGULARIZATION:
  *
  * Each diagonal entry is regularized to ensure strict positivity:
- *   M₀[i,i] = max(ρ₀(i), 1e-15)
+ *   M_0[i,i] = max(\rho_0(i), 1e-15)
  *
- * This prevents numerical issues in Laplacian assembly where M₀ appears in
+ * This prevents numerical issues in Laplacian assembly where \eqn{M_0} appears in
  * products and inverses. The threshold 1e-15 is small enough to not affect
  * typical density values but large enough to avoid underflow.
  *
@@ -670,7 +671,7 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  *
  * The vertex mass matrix is diagonal, so no Cholesky factorization is needed
  * or stored. The solver pointer g.M_solver[0] is reset to null, indicating
- * that M₀ is handled via element-wise operations rather than matrix
+ * that \eqn{M_0} is handled via element-wise operations rather than matrix
  * factorization.
  *
  * NUMERICAL STABILITY:
@@ -683,29 +684,29 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  *
  * @pre vertex_cofaces[i][0].density contains evolved vertex densities from
  *      damped heat diffusion
- * @pre Sum of vertex densities ≈ n (normalized from diffusion step)
+ * @pre Sum of vertex densities \approx  n (normalized from diffusion step)
  * @pre g.M[0] is allocated as n × n sparse diagonal matrix
  * @pre All vertex densities are non-negative
  *
  * @post g.M[0] diagonal entries updated to current vertex density values
- * @post All diagonal entries satisfy M₀[i,i] ≥ 1e-15
+ * @post All diagonal entries satisfy \eqn{M_0[i,i] \ge 1e-15}
  * @post g.M[0] remains diagonal (no off-diagonal entries)
  * @post g.M_solver[0] is null (no factorization for diagonal matrix)
  * @post spectral_cache.is_valid == false (cache invalidated)
  * @post g.M[1] is unchanged (edge mass matrix not affected)
  *
- * @note This function modifies M₀ in place using coeffRef for efficiency.
- *       Since M₀ is diagonal and already allocated, we avoid reconstruction.
+ * @note This function modifies \eqn{M_0} in place using coeffRef for efficiency.
+ *       Since \eqn{M_0} is diagonal and already allocated, we avoid reconstruction.
  *
  * @note The function does NOT call assemble_operators(). The caller must
  *       explicitly reassemble the Laplacian after completing all metric
- *       updates (both M₀ and M₁) to incorporate the new values into L₀.
+ *       updates (both \eqn{M_0} and \eqn{M_1}) to incorporate the new values into L_0.
  *
  * @see apply_damped_heat_diffusion() for Step 1 (evolves vertex densities)
  * @see update_edge_densities_from_vertices() for Step 2 (updates edge densities)
- * @see compute_edge_mass_matrix() for Step 4 (builds M₁)
- * @see apply_response_coherence_modulation() for Step 5 (modulates M₁)
- * @see assemble_operators() for Step 6 (rebuilds L₀ from updated metric)
+ * @see compute_edge_mass_matrix() for Step 4 (builds \eqn{M_1})
+ * @see apply_response_coherence_modulation() for Step 5 (modulates \eqn{M_1})
+ * @see assemble_operators() for Step 6 (rebuilds L_0 from updated metric)
  * @see fit_knn_riem_graph_regression() for complete iteration context
  */
 void riem_dcx_t::update_vertex_metric_from_density() {
@@ -729,7 +730,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
         // Density is stored in self-loop at position [0]
         double mass = std::max(vertex_cofaces[i][0].density, 1e-15);
 
-        // Update in place (M₀ is diagonal, so coeffRef is efficient)
+        // Update in place (\eqn{M_0} is diagonal, so coeffRef is efficient)
         g.M[0].coeffRef(i, i) = mass;
     }
 
@@ -746,7 +747,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
 /**
  * @brief Update edge mass matrix from evolved vertex densities
  *
- * Recomputes the edge mass matrix M₁ using current vertex and edge densities
+ * Recomputes the edge mass matrix \eqn{M_1} using current vertex and edge densities
  * after density evolution. This function performs the same triple intersection
  * computations as compute_edge_mass_matrix() but operates in the context
  * of iterative refinement where densities have evolved from their initial
@@ -756,24 +757,24 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * their shared vertices and overlapping neighborhoods. For edges e_ij = [i,j]
  * and e_is = [i,s] sharing vertex v_i, the inner product is:
  *
- *   ⟨e_ij, e_is⟩ = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j) ∩ N̂_k(x_s)} ρ₀(v)
+ *   ⟨e_ij, e_is⟩ = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j) \cap \hat{N}_k(x_s)} \rho_0(v)
  *
- * As vertex densities ρ₀ evolve during iteration, these inner products change,
+ * As vertex densities \eqn{\rho_0} evolve during iteration, these inner products change,
  * reflecting how the Riemannian geometry adapts to concentrate mass in
  * response-coherent regions and deplete mass across response boundaries. The
  * updated mass matrix captures these evolved geometric relationships.
  *
  * ITERATION CONTEXT:
  * This function is called as Step 4 in the iteration loop. At this point:
- *   - Vertex densities ρ₀ have been evolved via damped heat diffusion
- *   - Edge densities ρ₁ have been recomputed from evolved ρ₀
- *   - Vertex mass matrix M₀ has been updated from evolved ρ₀
+ *   - Vertex densities \eqn{\rho_0} have been evolved via damped heat diffusion
+ *   - Edge densities \eqn{\rho_1} have been recomputed from evolved \eqn{\rho_0}
+ *   - Vertex mass matrix \eqn{M_0} has been updated from evolved \eqn{\rho_0}
  *   - Response-coherence modulation has NOT yet been applied (comes next)
  *   - The combinatorial structure (S[1], neighbor_sets, S[2]) remains fixed
  *
- * The recomputed M₁ will be modulated by response-coherence in the next step,
+ * The recomputed \eqn{M_1} will be modulated by response-coherence in the next step,
  * then used to reassemble the vertex Laplacian:
- *   L₀ = B₁ M₁⁻¹ B₁ᵀ M₀
+ *   L_0 = B_1 M_1^{-1} B_1^{T} \eqn{M_0}
  * which in turn drives the next iteration's response smoothing and density evolution.
  *
  * IMPLEMENTATION STRATEGY:
@@ -782,23 +783,23 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * inner products for all edge pairs. This ensures correctness and maintains
  * consistency with the initialization logic.
  *
- * The function rebuilds M₁ completely by:
- *   1. Setting diagonal entries from edge densities: M₁[e,e] = ρ₁(e)
- *   2. Computing off-diagonal entries via triple intersections using ρ₀
+ * The function rebuilds \eqn{M_1} completely by:
+ *   1. Setting diagonal entries from edge densities: M_1[e,e] = \eqn{\rho_1}(e)
+ *   2. Computing off-diagonal entries via triple intersections using \eqn{\rho_0}
  *   3. Iterating over triangles to find all edge pairs sharing vertices
  *   4. Assembling the symmetric sparse matrix from triplets
  *   5. Applying regularization to diagonal entries
  *
  * COMPUTATIONAL COMPLEXITY:
- * O(n·k²) where n is the number of vertices and k is the neighborhood size.
+ * O(n\cdot k^{2}) where n is the number of vertices and k is the neighborhood size.
  * This matches the initialization cost since the combinatorial structure is
  * unchanged. For kNN graphs, each vertex has O(k) incident edges, so each
- * vertex contributes O(k²) edge pairs to examine. Computing each triple
+ * vertex contributes O(k^{2}) edge pairs to examine. Computing each triple
  * intersection costs O(k) via the optimized smallest-set-first strategy.
  *
  * PERFORMANCE CONSIDERATIONS:
  * This function is the computational bottleneck of each iteration. For large
- * graphs (n > 10000) or large neighborhoods (k > 50), the O(n·k²) cost can
+ * graphs (n > 10000) or large neighborhoods (k > 50), the O(n\cdot k^{2}) cost can
  * dominate iteration time. The triple intersection computations cannot be
  * trivially parallelized due to the need to accumulate contributions from
  * different vertices to the same matrix entries.
@@ -811,8 +812,8 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * 2. **Selective recomputation**: If density changes are localized (common in
  *    later iterations near convergence), recompute only affected submatrices.
  *
- * 3. **Low-rank updates**: If ||ρ₀^(ℓ) - ρ₀^(ℓ-1)|| is small, approximate
- *    M₁^(ℓ) ≈ M₁^(ℓ-1) + ΔM where ΔM is computed from density perturbations.
+ * 3. **Low-rank updates**: If ||\rho_0^(\ell ) - \rho_0^(\ell -1)|| is small, approximate
+ *    M_1^(\ell ) \approx  M_1^(\ell -1) + \Delta M where \Delta M is computed from density perturbations.
  *
  * 4. **Parallel computation**: Use OpenMP to parallelize the outer loop over
  *    vertices, with careful handling of concurrent triplet list updates.
@@ -822,12 +823,12 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  *
  * NUMERICAL STABILITY:
  * The function inherits regularization from compute_edge_mass_matrix():
- *   - Diagonal entries: max(ρ₁([i,j]), 1e-15) prevents singular matrices
+ *   - Diagonal entries: max(\eqn{\rho_1}([i,j]), 1e-15) prevents singular matrices
  *   - Off-diagonal entries: naturally non-negative from density summations
  *   - Symmetry: enforced by adding both (i,j) and (j,i) triplets
  *
  * The resulting matrix is guaranteed symmetric positive semidefinite by
- * construction, as all inner products arise from L²(ρ) pairings.
+ * construction, as all inner products arise from \eqn{L^2(\rho)} pairings.
  *
  * @pre rho.rho[0] contains evolved vertex densities (current iteration)
  * @pre rho.rho[1] contains updated edge densities (current iteration)
@@ -836,8 +837,8 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * @pre neighbor_sets contains kNN neighborhoods (unchanged from initialization)
  * @pre g.M[1] is allocated with dimensions n_edges × n_edges
  *
- * @post g.M[1] contains updated edge mass matrix computed from current ρ₀ and ρ₁
- * @post g.M[1] is symmetric: M₁[i,j] == M₁[j,i] for all i,j
+ * @post g.M[1] contains updated edge mass matrix computed from current \eqn{\rho_0} and \eqn{\rho_1}
+ * @post g.M[1] is symmetric: M_1[i,j] == M_1[j,i] for all i,j
  * @post g.M[1] is positive semidefinite with regularized diagonal entries
  * @post g.M_solver[1] is reset (factorization invalidated)
  *
@@ -853,13 +854,13 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  *       function completes. The modulation happens as the next step in the
  *       iteration loop.
  *
- * @warning The current implementation performs full O(n·k²) recomputation at
+ * @warning The current implementation performs full O(n\cdot k^{2}) recomputation at
  *          each call. For very large graphs, consider profiling and implementing
  *          incremental update strategies if this becomes a bottleneck.
  *
  * @see compute_edge_mass_matrix() for the initial mass matrix construction
- * @see update_vertex_metric_from_density() for M₀ update (previous step)
- * @see apply_response_coherence_modulation() for M₁ modulation (next step)
+ * @see update_vertex_metric_from_density() for \eqn{M_0} update (previous step)
+ * @see apply_response_coherence_modulation() for \eqn{M_1} modulation (next step)
  * @see fit_knn_riem_graph_regression() for complete iteration context
  */
 void riem_dcx_t::update_edge_mass_matrix() {
@@ -871,10 +872,10 @@ void riem_dcx_t::update_edge_mass_matrix() {
 /**
  * @brief Compute and cache spectral decomposition of vertex Laplacian
  *
- * Computes the eigendecomposition L[0] = V Λ V^T and caches the results
- * for use in spectral filtering and parameter selection. The eigenvalues
- * are sorted in ascending order, so eigenvalues[0] ≈ 0 (constant function)
- * and eigenvalues[1] = λ₂ is the spectral gap.
+ * Computes the eigendecomposition \eqn{L[0] = V \wedge V^T} and caches the
+ * results for use in spectral filtering and parameter selection. The
+ * eigenvalues are sorted in ascending order, so eigenvalues[0] \approx  0 (constant
+ * function) and \eqn{\text{eigenvalues}[1] = \lambda_2} is the spectral gap.
  *
  * This method should be called after any operation that modifies L[0],
  * such as metric updates or Laplacian reassembly. The cached decomposition
@@ -1085,13 +1086,13 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
  * been computed, triggers computation automatically.
  *
  * The selection follows these principles:
- * 1. Diffusion time t scales inversely with spectral gap λ₂
- * 2. Damping parameter β maintains fixed ratio with t
+ * 1. Diffusion time t scales inversely with spectral gap \eqn{\lambda_2}
+ * 2. Damping parameter \beta maintains fixed ratio with t
  * 3. User-provided values (> 0) are respected and not overridden
  * 4. Safety warnings for extreme parameter combinations
  *
  * @param t_diffusion Reference to diffusion time parameter (input/output).
- *                    If <= 0 on input, automatically set to 0.5/λ₂.
+ *                    If <= 0 on input, automatically set to \eqn{0.5/\lambda_2}.
  *                    If > 0 on input, left unchanged (user override).
  *
  * @param beta_damping Reference to damping parameter (input/output).
@@ -1133,12 +1134,12 @@ void riem_dcx_t::select_diffusion_parameters(
     // Auto-select t_diffusion if not provided by user
     bool t_auto_selected = false;
     if (t_diffusion <= 0.0) {
-        // Use moderate default: 0.5/λ₂
+        // Use moderate default: 0.5/\lambda_2
         t_diffusion = 0.5 / lambda_2;
         t_auto_selected = true;
 
         if (verbose) {
-            Rprintf("Auto-selected t_diffusion = %.6f (based on spectral gap λ₂ = %.6f)\n",
+            Rprintf("Auto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
                     t_diffusion, lambda_2);
             Rprintf("  Conservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
                     0.1 / lambda_2, 0.5 / lambda_2, 1.0 / lambda_2);
@@ -1155,7 +1156,7 @@ void riem_dcx_t::select_diffusion_parameters(
         beta_auto_selected = true;
 
         if (verbose) {
-            Rprintf("Auto-selected beta_damping = %.6f (ratio β·t = %.3f)\n",
+            Rprintf("Auto-selected beta_damping = %.6f (ratio beta t = %.3f)\n",
                     beta_damping, beta_damping * t_diffusion);
         }
     } else if (verbose) {
@@ -1166,13 +1167,13 @@ void riem_dcx_t::select_diffusion_parameters(
     const double diffusion_scale = t_diffusion * lambda_2;
 
     if (diffusion_scale > 3.0) {
-        Rf_warning("Large diffusion scale (t·λ₂ = %.2f): density may change dramatically per iteration. "
+        Rf_warning("Large diffusion scale (t lambda_2 = %.2f): density may change dramatically per iteration. "
                    "Consider reducing t_diffusion to %.6f for more conservative updates.",
                    diffusion_scale, 1.0 / lambda_2);
     }
 
     if (diffusion_scale < 0.05) {
-        Rf_warning("Small diffusion scale (t·λ₂ = %.2f): convergence may be very slow. "
+        Rf_warning("Small diffusion scale (t lambda_2 = %.2f): convergence may be very slow. "
                    "Consider increasing t_diffusion to %.6f for faster updates.",
                    diffusion_scale, 0.3 / lambda_2);
     }
@@ -1180,12 +1181,12 @@ void riem_dcx_t::select_diffusion_parameters(
     const double damping_ratio = beta_damping * t_diffusion;
 
     if (damping_ratio > 0.5) {
-        Rf_warning("High damping ratio (β·t = %.2f): may over-suppress geometric structure. "
+        Rf_warning("High damping ratio (beta t = %.2f): may over-suppress geometric structure. "
                    "Typical range is [0.05, 0.2].", damping_ratio);
     }
 
     if (damping_ratio < 0.01) {
-        Rf_warning("Low damping ratio (β·t = %.3f): density may collapse onto small regions. "
+        Rf_warning("Low damping ratio (beta t = %.3f): density may collapse onto small regions. "
                    "Consider increasing beta_damping to %.6f.",
                    damping_ratio, 0.05 / t_diffusion);
     }
@@ -1193,13 +1194,13 @@ void riem_dcx_t::select_diffusion_parameters(
     // Final summary if verbose
     if (verbose) {
         Rprintf("\nDiffusion parameter summary:\n");
-        Rprintf("  λ₂ (spectral gap):  %.6f\n", lambda_2);
+        Rprintf("  lambda_2 (spectral gap):  %.6f\n", lambda_2);
         Rprintf("  t (diffusion time): %.6f %s\n", t_diffusion,
                 t_auto_selected ? "[auto]" : "[user]");
-        Rprintf("  β (damping):        %.6f %s\n", beta_damping,
+        Rprintf("  beta (damping):        %.6f %s\n", beta_damping,
                 beta_auto_selected ? "[auto]" : "[user]");
-        Rprintf("  Diffusion scale:    %.3f (t·λ₂)\n", diffusion_scale);
-        Rprintf("  Damping ratio:      %.3f (β·t)\n", damping_ratio);
+        Rprintf("  Diffusion scale:    %.3f (t lambda_2)\n", diffusion_scale);
+        Rprintf("  Damping ratio:      %.3f (beta t)\n", damping_ratio);
     }
 }
 
@@ -1212,27 +1213,29 @@ void riem_dcx_t::select_diffusion_parameters(
  * Euler step, ensuring unconditional stability even for large time parameters.
  *
  * The governing equation combines standard heat diffusion with damping:
- *   ∂ρ/∂t = -L₀ρ - β(ρ - u)
- * where L₀ is the vertex Laplacian, β ≥ 0 controls damping strength, and
- * u = (1, 1, ..., 1)ᵀ represents uniform distribution scaled to sum to n.
+ *   \deqn{\partial \rho/\partial t = -L_0\rho - \beta(\rho - u)} where
+ *   \eqn{L_0} is the vertex Laplacian, \beta \ge 0 controls damping strength,
+ *   and \eqn{u = (1, 1, ..., 1)^{T}} represents uniform distribution scaled to
+ *   sum to n.
  *
- * The heat diffusion term -L₀ρ drives mass toward densely connected regions,
- * as the Laplacian naturally smooths density along the graph structure. The
- * damping term -β(ρ - u) prevents runaway concentration by continuously pulling
- * the distribution back toward uniformity. This balance allows the method to
- * discover meaningful geometric structure without collapsing onto a small set
- * of vertices.
+ * The heat diffusion term \eqn{-L_0\rho} drives mass toward densely connected
+ * regions, as the Laplacian naturally smooths density along the graph
+ * structure. The damping term \eqn{-\beta(\rho - u)} prevents runaway
+ * concentration by continuously pulling the distribution back toward
+ * uniformity. This balance allows the method to discover meaningful geometric
+ * structure without collapsing onto a small set of vertices.
  *
  * We discretize using implicit Euler with step size t:
- *   (I + t(L₀ + βI))ρ_new = ρ_old + tβu
+ *   \deqn{(I + t(L_0 + \beta I))\rho_{new} = \rho_{old} + t\beta u}
  * The implicit scheme guarantees stability for arbitrarily large t, unlike
  * explicit methods which require restrictive step size bounds. After solving,
- * we renormalize to enforce the constraint Σρ_new(i) = n.
+ * we renormalize to enforce the constraint \sum \rho_new(i) = n.
  *
- * The system matrix A = I + t(L₀ + βI) is symmetric positive definite, as it
- * combines the identity with positive multiples of L₀ (positive semidefinite)
- * and βI (positive definite for β > 0). We solve using conjugate gradient
- * iteration, which exploits sparsity and symmetry for efficiency.
+ * The system matrix \deqn{A = I + t(L_0 + \beta I)} is symmetric positive
+ * definite, as it combines the identity with positive multiples of \eqn{L_0}
+ * (positive semidefinite) and \beta I (positive definite for \eqn{\beta > 0}).
+ * We solve using conjugate gradient iteration, which exploits sparsity and
+ * symmetry for efficiency.
  *
  * @param rho_current Current vertex density vector (length n)
  * @param t Diffusion time parameter, controls smoothing scale
@@ -1246,12 +1249,13 @@ void riem_dcx_t::select_diffusion_parameters(
  * @post Return value sums to n (up to numerical tolerance)
  * @post Return value has all positive entries
  *
- * @note For kNN graphs with n vertices, typical values are t ∈ [0.1/λ₂, 1.0/λ₂]
- *       where λ₂ is the spectral gap, and β ≈ 0.1/t. These choices balance
- *       geometric smoothing with stability.
+ * @note For kNN graphs with n vertices, typical values are \eqn{t \in
+ *       \deqn{[0.1/\lambda_2, 1.0/\lambda_2]} where \eqn{\lambda_2} is the spectral
+ *       gap, and \eqn{\beta \approx 0.1/t}. These choices balance geometric
+ *       smoothing with stability.
  *
- * @note The solver uses tolerance 1e-10 and maximum 1000 iterations. For large
- *       systems (n > 10000), consider using a preconditioner or iterative
+ * @note The solver uses tolerance \eqn{1e-10} and maximum 1000 iterations. For
+ *       large systems (n > 10000), consider using a preconditioner or iterative
  *       refinement if convergence is slow.
  */
 vec_t riem_dcx_t::apply_damped_heat_diffusion(
@@ -1289,14 +1293,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     }
 
     // ========================================================================
-    // Part 2: Build system matrix A = I + t(L₀ + βI)
+    // Part 2: Build system matrix A = I + t(L_0 + \beta I)
     // ========================================================================
 
     // Start with identity matrix
     spmat_t I(n, n);
     I.setIdentity();
 
-    // Build system matrix: A = I + t*L₀ + t*β*I = (1 + t*β)*I + t*L₀
+    // Build system matrix: A = I + t*L_0 + t*\beta *I = (1 + t*\beta )*I + t*L_0
     // We compute this efficiently by scaling operations
     const double identity_coeff = 1.0 + t * beta;
     spmat_t A = identity_coeff * I + t * L.L[0];
@@ -1305,17 +1309,17 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     A.makeCompressed();
 
     // ========================================================================
-    // Part 3: Build right-hand side b = ρ_current + tβu
+    // Part 3: Build right-hand side b = \rho_current + t\beta u
     // ========================================================================
 
-    // Uniform distribution vector u = (1, 1, ..., 1)ᵀ
+    // Uniform distribution vector u = (1, 1, ..., 1)^{T}
     vec_t u = vec_t::Ones(n);
 
-    // Right-hand side: b = ρ_current + t*β*u
+    // Right-hand side: b = \rho_current + t*\beta *u
     vec_t b = rho_current + (t * beta) * u;
 
     // ========================================================================
-    // Part 4: Solve linear system A*ρ_new = b using conjugate gradient
+    // Part 4: Solve linear system A*\rho_new = b using conjugate gradient
     // ========================================================================
 
     // Initialize conjugate gradient solver
@@ -1399,7 +1403,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * the evolved vertex distribution. The edge density for edge [i,j] aggregates
  * vertex densities over the neighborhood intersection:
  *
- *   ρ₁([i,j]) = Σ_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j)} ρ₀(v)
+ *   \rho_1([i,j]) = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j)} \rho_0(v)
  *
  * This construction ensures that edge densities reflect the current geometric
  * distribution of vertex mass. Edges connecting vertices with overlapping
@@ -1409,21 +1413,21 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * ITERATION CONTEXT:
  * Within each iteration of fit_knn_riem_graph_regression():
  *   Step 1: Density diffusion evolves vertex densities via damped heat equation
- *   Step 2: Edge density update ← THIS FUNCTION
- *   Step 3: Vertex mass matrix update (builds M₀ from vertex densities)
- *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
- *   Step 5: Response-coherence modulation (modulates M₁, not edge densities)
+ *   Step 2: Edge density update \leftarrow THIS FUNCTION
+ *   Step 3: Vertex mass matrix update (builds \eqn{M_0} from vertex densities)
+ *   Step 4: Edge mass matrix construction (builds \eqn{M_1} from vertex and edge densities)
+ *   Step 5: Response-coherence modulation (modulates \eqn{M_1}, not edge densities)
  *   Step 6: Laplacian reassembly
  *   Step 7: Response smoothing
  *
  * The updated edge densities serve two purposes:
- * 1. Diagonal entries of the edge mass matrix M₁ during metric construction,
- *    since ⟨e_ij, e_ij⟩ = ρ₁([i,j]) by construction
+ * 1. Diagonal entries of the edge mass matrix \eqn{M_1} during metric construction,
+ *    since ⟨e_ij, e_ij⟩ = \rho_1([i,j]) by construction
  * 2. Geometric interpretation: relative density of edges in the complex
  *
  * IMPORTANT: The edge densities computed by this function remain unchanged
  * for the rest of the iteration. Response-coherence modulation (Step 5)
- * operates on the mass matrix M₁, not on the densities. The densities are
+ * operates on the mass matrix \eqn{M_1}, not on the densities. The densities are
  * pure geometric quantities derived from evolved vertex distributions, while
  * the mass matrix incorporates response-aware modulation.
  *
@@ -1432,7 +1436,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * normalizes to sum to n_edges (the number of edges). This normalization ensures:
  *   - The average edge has density 1
  *   - Total edge mass remains stable across iterations
- *   - Numerical conditioning of the mass matrix M₁
+ *   - Numerical conditioning of the mass matrix \eqn{M_1}
  *   - Interpretability: edge densities represent relative mass in standardized units
  *
  * The normalization preserves relative density differences while maintaining
@@ -1446,15 +1450,17 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * This bidirectional storage enables O(1) access from either endpoint.
  *
  * COMPUTATIONAL COMPLEXITY:
- * O(n_edges · k) where k is the average neighborhood size. For each edge,
- * computing the pairwise intersection requires iterating over one neighborhood
- * and checking membership in the other. The optimized strategy iterates over
- * the smaller neighborhood, giving O(min(|N_i|, |N_j|)) per edge.
+ * \eqn{O(n_{\text{edges}} \cdot k)} where k is the average neighborhood size.
+ * For each edge, computing the pairwise intersection requires iterating over
+ * one neighborhood and checking membership in the other. The optimized strategy
+ * iterates over the smaller neighborhood, giving \eqn{O(min(|N_i|, |N_j|))} per
+ * edge.
  *
- * For kNN graphs with uniform k, this gives O(n_edges · k). Since n_edges ≈ n·k
- * for kNN graphs, the total complexity is O(n·k²), though with a smaller
- * constant than the full mass matrix computation (which involves triple
- * intersections and O(k²) edge pairs per vertex).
+ * For kNN graphs with uniform k, this gives \eqn{O(n_edges \cdot k)}. Since
+ * \eqn{n_{\text{edges}} \approx n\cdot k} for kNN graphs, the total complexity
+ * is \eqn{O(n\cdot k^{2})}, though with a smaller constant than the full mass
+ * matrix computation (which involves triple intersections and \eqn{O(k^{2})}
+ * edge pairs per vertex).
  *
  * NUMERICAL STABILITY:
  * The function includes safeguards against degenerate cases:
@@ -1476,15 +1482,15 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * Both produce edge densities normalized to sum to n_edges.
  *
  * RELATION TO MASS MATRIX:
- * The updated edge densities populate the diagonal of the edge mass matrix M₁.
+ * The updated edge densities populate the diagonal of the edge mass matrix \eqn{M_1}.
  * For edge e_ij = [i,j], the diagonal entry is:
- *   M₁[e_ij, e_ij] = ρ₁([i,j])
+ *   M_1[e_ij, e_ij] = \rho_1([i,j])
  *
  * This relationship holds because the edge self-inner product equals the
  * pairwise intersection mass:
- *   ⟨e_ij, e_ij⟩ = Σ_{v ∈ N_i ∩ N_j} ρ₀(v) = ρ₁([i,j])
+ *   ⟨e_ij, e_ij⟩ = \sum_{v \in N_i \cap N_j} \rho_0(v) = \rho_1([i,j])
  *
- * Off-diagonal entries of M₁ involve triple intersections and are computed
+ * Off-diagonal entries of \eqn{M_1} involve triple intersections and are computed
  * separately via compute_edge_mass_matrix().
  *
  * @pre vertex_cofaces[i][0].density contains evolved vertex densities
@@ -1493,7 +1499,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * @pre edge_registry maps edge indices to vertex pairs
  *
  * @post vertex_cofaces[i][k].density (k>0) contains updated edge densities
- * @post Sum of all edge densities ≈ n_edges (normalized to sum to number of edges)
+ * @post Sum of all edge densities \approx  n_edges (normalized to sum to number of edges)
  * @post All edge densities are non-negative
  * @post Each edge density appears twice (once in each endpoint's vertex_cofaces)
  *
@@ -1506,12 +1512,12 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *       change based on evolved vertex distributions.
  *
  * @note The edge densities remain unchanged after this function returns.
- *       Response-coherence modulation operates on the mass matrix M₁, not
+ *       Response-coherence modulation operates on the mass matrix \eqn{M_1}, not
  *       on the densities themselves.
  *
  * @see compute_initial_densities() for the initialization version
- * @see compute_edge_mass_matrix() for how edge densities enter M₁ diagonal
- * @see apply_response_coherence_modulation() for M₁ modulation (not densities)
+ * @see compute_edge_mass_matrix() for how edge densities enter \eqn{M_1} diagonal
+ * @see apply_response_coherence_modulation() for \eqn{M_1} modulation (not densities)
  */
 void riem_dcx_t::update_edge_densities_from_vertices() {
     const size_t n_vertices = vertex_cofaces.size();
@@ -1522,7 +1528,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
     // ============================================================
 
     // For each edge [i,j], aggregate vertex densities over the
-    // intersection of neighborhoods: N̂_k(x_i) ∩ N̂_k(x_j)
+    // intersection of neighborhoods: \hat{N}_k(x_i) \cap \hat{N}_k(x_j)
 
     for (size_t i = 0; i < n_vertices; ++i) {
         // Iterate over edges incident to vertex i
@@ -1607,7 +1613,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
 /**
  * @brief Apply response-coherence modulation to existing edge mass matrix
  *
- * Modulates both diagonal and off-diagonal entries of the edge mass matrix M₁
+ * Modulates both diagonal and off-diagonal entries of the edge mass matrix \eqn{M_1}
  * in place based on response variation. This creates outcome-aware Riemannian
  * geometry where edges crossing response boundaries receive reduced mass.
  *
@@ -1618,19 +1624,19 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  * roles.
  *
  * For diagonal entries (edge self-inner products):
- *   Δ_ij = |ŷ(i) - ŷ(j)| for edge [i,j]
- *   σ₁ = IQR({Δ_ij : all edges})
- *   M₁[e,e] ← M₁[e,e] · Γ(Δ_ij/σ₁)
+ *   \deqn{\Delta _ij = |\hat{y}(i) - \hat{y}(j)| \text{ for edge } [i,j]}
+ *   \deqn{\sigma_1 = IQR({\Delta _ij : \text{all edges}})}
+ *   \deqn{M_1[e,e] \leftarrow M_1[e,e] · \Gamma(\Delta _ij/\sigma_1)}
  *
  * For off-diagonal entries (edge pair inner products):
- *   For triangle τ = [i,j,s]:
- *     Δ_τ = max{|ŷ(i)-ŷ(j)|, |ŷ(i)-ŷ(s)|, |ŷ(j)-ŷ(s)|}
- *     σ₂ = IQR({Δ_τ : all triangles})
- *     M₁[e_ij, e_is] ← M₁[e_ij, e_is] · Γ(Δ_τ/σ₂)
+ *   For triangle \eqn{\tau = [i,j,s]}:
+ *     \deqn{\Delta_\tau = max{|\hat{y}(i)-\hat{y}(j)|, |\hat{y}(i)-\hat{y}(s)|, |\hat{y}(j)-\hat{y}(s)|}}
+ *     \deqn{\sigma_2 = IQR({\Delta_\tau : \text{ all triangles }})}
+ *     \deqn{M_1[e_ij, e_is] \leftarrow M_1[e_ij, e_is] · \Gamma(\Delta_\tau/\sigma_2)}
  *
- * where Γ(x) = (1 + x²)^(-γ) is the penalty function.
+ * where \deqn{\Gamma(x) = (1 + x^{2})^(-\gamma)} is the penalty function.
  *
- * The use of two separate scales (σ₁ for edges, σ₂ for triangles) allows the
+ * The use of two separate scales (\sigma_1 for edges, \sigma_2 for triangles) allows the
  * modulation to adapt independently to the distribution of response variation
  * at different geometric levels. Diagonal entries use pairwise differences along
  * edges, while off-diagonal entries use the maximum variation across triangle
@@ -1638,7 +1644,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  * rather than two.
  *
  * IMPORTANT OPTIMIZATION:
- * Rather than rebuilding M₁ from scratch, this version:
+ * Rather than rebuilding \eqn{M_1} from scratch, this version:
  * 1. Computes modulation factors for all edges and triangles
  * 2. Applies factors directly to existing matrix entries via coeffRef
  * 3. Preserves matrix structure and sparsity pattern
@@ -1648,7 +1654,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  * NORMALIZATION:
  * After modulation, the total Frobenius mass is normalized to equal the
  * pre-modulation mass:
- *   ||M₁^(modulated)||_F = ||M₁^(original)||_F
+ *   ||M_1^(modulated)||_F = ||M_1^(original)||_F
  *
  * This prevents systematic drift in the overall geometry scale across iterations.
  * The normalization preserves relative modulation differences while fixing the
@@ -1658,19 +1664,19 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  * This function is called as Step 5 in the iteration loop:
  *   Step 1: Density diffusion (evolves vertex densities)
  *   Step 2: Edge density update (computes edge densities from evolved vertex densities)
- *   Step 3: Vertex mass matrix update (builds M₀ from vertex densities)
- *   Step 4: Edge mass matrix construction (builds M₁ from vertex and edge densities)
- *   Step 5: Response-coherence modulation ← THIS FUNCTION
- *   Step 6: Laplacian reassembly (builds L₀ from M₀ and modulated M₁)
+ *   Step 3: Vertex mass matrix update (builds \eqn{M_0} from vertex densities)
+ *   Step 4: Edge mass matrix construction (builds \eqn{M_1} from vertex and edge densities)
+ *   Step 5: Response-coherence modulation \leftarrow THIS FUNCTION
+ *   Step 6: Laplacian reassembly (builds L_0 from \eqn{M_0} and modulated \eqn{M_1})
  *   Step 7: Response smoothing
  *
- * The modulated M₁ is used immediately in Step 6 to assemble the Laplacian,
+ * The modulated \eqn{M_1} is used immediately in Step 6 to assemble the Laplacian,
  * which then drives response smoothing and the next iteration's density evolution.
  *
  * @param y_hat Current fitted response values
  * @param gamma Decay rate parameter (typically 0.5-2.0). Controls the strength
- *              of modulation: larger γ produces sharper response boundaries,
- *              while smaller γ yields gentler transitions.
+ *              of modulation: larger \gamma produces sharper response boundaries,
+ *              while smaller \gamma yields gentler transitions.
  *
  * @pre y_hat.size() == vertex_cofaces.size()
  * @pre g.M[1] is assembled with current edge mass matrix from Step 4
@@ -1680,23 +1686,23 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *
  * @post g.M[1] modulated in place with diagonal and off-diagonal entries adjusted
  * @post g.M[1] remains symmetric positive semidefinite
- * @post Total Frobenius mass preserved: ||M₁||_F unchanged by normalization
+ * @post Total Frobenius mass preserved: ||\eqn{M_1}||_F unchanged by normalization
  * @post g.M_solver[1] invalidated (factorization no longer valid)
  *
  * @note If edge_cofaces contains no triangles, only diagonal entries are modulated.
- *       A warning is issued if γ > 0 but no triangles are available.
+ *       A warning is issued if \gamma > 0 but no triangles are available.
  *
- * @note The two-scale approach (σ₁ ≠ σ₂) is essential for proper modulation.
+ * @note The two-scale approach (\sigma_1 ≠ \sigma_2) is essential for proper modulation.
  *       Diagonal and off-diagonal entries use different response variation
  *       measures (pairwise vs. max over triangle) and thus require different
  *       normalization scales.
  *
- * @note This function operates on the **mass matrix** M₁, not on the edge
+ * @note This function operates on the **mass matrix** \eqn{M_1}, not on the edge
  *       densities. The densities remain unchanged; only the geometric
  *       structure (inner products) is modulated.
  *
- * @see compute_edge_mass_matrix() for Step 4 (builds M₁ before modulation)
- * @see assemble_operators() for Step 6 (uses modulated M₁ to build L₀)
+ * @see compute_edge_mass_matrix() for Step 4 (builds \eqn{M_1} before modulation)
+ * @see assemble_operators() for Step 6 (uses modulated \eqn{M_1} to build L_0)
  * @see fit_knn_riem_graph_regression() for complete iteration context
  */
 void riem_dcx_t::apply_response_coherence_modulation(
@@ -1736,7 +1742,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
     }
 
     // ============================================================
-    // Step 2: Compute scale parameter σ₁ for edges
+    // Step 2: Compute scale parameter \sigma_1 for edges
     // ============================================================
 
     std::vector<double> edge_copy = edge_deltas;
@@ -1864,7 +1870,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
             }
         }
 
-        // Compute scale parameter σ₂ for triangles
+        // Compute scale parameter \sigma_2 for triangles
         if (!triangle_deltas.empty()) {
             std::vector<double> tri_copy = triangle_deltas;
             q1_idx = tri_copy.size() / 4;
@@ -1915,7 +1921,7 @@ void riem_dcx_t::apply_response_coherence_modulation(
     // Part B: Off-diagonal entries (modulated by triangle variation)
     if (!edge_pair_max_delta.empty()) {
 
-        // Iterate over all non-zero entries in M₁
+        // Iterate over all non-zero entries in \eqn{M_1}
         for (int k = 0; k < g.M[1].outerSize(); ++k) {
             for (spmat_t::InnerIterator it(g.M[1], k); it; ++it) {
                 // Skip diagonal (already handled)
@@ -1977,8 +1983,8 @@ void riem_dcx_t::apply_response_coherence_modulation(
             "This indicates:\n"
             "  - gamma = %.3f may be too large (try reducing to 0.5-1.0)\n"
             "  - Response may be extremely discontinuous everywhere\n"
-            "  - Scale parameters: σ₁ = %.3e, σ₂ = %.3e\n"
-            "  - All edges have large response variation: min(Δ) = %.3e, max(Δ) = %.3e\n"
+            "  - Scale parameters: sigma_1 = %.3e, sigma_2 = %.3e\n"
+            "  - All edges have large response variation: min(Delta ) = %.3e, max(Delta ) = %.3e\n"
             "Consider: (1) reducing gamma, (2) checking response data for outliers,\n"
             "or (3) setting gamma = 0 to disable modulation.",
             gamma, sigma_1, sigma_2,
@@ -2050,7 +2056,7 @@ Eigen::VectorXd compute_filter_weights(
 /**
  * @brief Compute GCV score for given smoothing parameter
  *
- * GCV score = ||y - y_hat||² / (n - trace(S))²
+ * GCV score = ||y - y_hat||^{2} / (n - trace(S))^{2}
  * where trace(S) = sum of filter weights (effective degrees of freedom)
  */
 double compute_gcv_score(
@@ -2140,10 +2146,10 @@ std::vector<double> generate_eta_grid(
  *                     More eigenpairs capture finer-scale variation.
  *                     Typical values: 50-200 for most applications.
  * @param filter_type Type of spectral filter to apply:
- *        - HEAT_KERNEL: exp(-ηλ), exponential decay
- *        - TIKHONOV: 1/(1+ηλ), rational decay
- *        - CUBIC_SPLINE: 1/(1+ηλ²), spline smoothness
- *        - GAUSSIAN: exp(-ηλ²), aggressive high-frequency attenuation
+ *        - HEAT_KERNEL: exp(-η\lambda), exponential decay
+ *        - TIKHONOV: 1/(1+η\lambda), rational decay
+ *        - CUBIC_SPLINE: 1/(1+η\lambda^{2}), spline smoothness
+ *        - GAUSSIAN: exp(-η\lambda^{2}), aggressive high-frequency attenuation
  *
  * @return gcv_result_t structure containing:
  *         - eta_optimal: Selected smoothing parameter
@@ -3555,7 +3561,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     if (gamma_modulation > 0.0 && !has_triangles) {
         Rf_warning("gamma_modulation = %.2f requires triangles for off-diagonal "
                    "modulation, but no triangles were constructed. "
-                   "Only diagonal entries of M₁ will be modulated. "
+                   "Only diagonal entries of M[1] will be modulated. "
                    "Consider: (1) increasing k to create more triangles, "
                    "(2) setting gamma_modulation = 0 to disable modulation, or "
                    "(3) adjusting pruning thresholds.",
@@ -3595,8 +3601,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // ================================================================
     // PART II: ITERATIVE REFINEMENT
     // ================================================================
-    vec_t y_hat_prev;
-    std::vector<double> response_change_history;
 
     // Note: epsilon_rho parameter is accepted for API compatibility but not
     // used in the simplified convergence checking that monitors only response
@@ -3605,13 +3609,27 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // separate density tracking often redundant for determining when to
     // terminate iteration.
 
+    const size_t n_vertices = vertex_cofaces.size();
+
+    density_history.clear();
+    // Store initial densities (iteration 0)
+    vec_t rho_initial(n_vertices);
+    for (size_t i = 0; i < n_vertices; ++i) {
+        rho_initial[i] = vertex_cofaces[i][0].density;
+    }
+    density_history.add(rho_initial);
+
+    vec_t y_hat_prev;
+    vec_t rho_vertex_prev(n_vertices);  // Allocate once
+    std::vector<double> response_change_history;
+
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
 
+        // --------------------------------------------------------------
         // Step 1: Density diffusion
+        // --------------------------------------------------------------
         // Extract current vertex densities from vertex_cofaces
-        const size_t n_vertices = vertex_cofaces.size();
-        vec_t rho_vertex_prev(n_vertices);
         for (size_t i = 0; i < n_vertices; ++i) {
             rho_vertex_prev[i] = vertex_cofaces[i][0].density;
         }
@@ -3621,17 +3639,34 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             rho_vertex_prev, t_diffusion, beta_damping
         );
 
+        // Store evolved densities
+        density_history.add(rho_vertex_new);
+
         // Store evolved vertex densities back into vertex_cofaces
         for (size_t i = 0; i < n_vertices; ++i) {
             vertex_cofaces[i][0].density = rho_vertex_new[i];
         }
+
+        // Test if density evolution is working
+        static vec_t rho_prev_iter;
+        if (iter == 1) {
+            rho_prev_iter = rho_vertex_prev;
+        } else {
+            double density_change_norm = (rho_vertex_new - rho_prev_iter).norm();
+            double density_norm = rho_prev_iter.norm();
+            Rprintf("  Density L2 change: %.6e (relative: %.6e)\n",
+                    density_change_norm, density_change_norm / density_norm);
+        }
+        rho_prev_iter = rho_vertex_new;
 
         if (test_stage == 3) {
             Rprintf("TEST_STAGE 3: Stopped after first diffusion\n");
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 2: Edge density update
+        // --------------------------------------------------------------
         update_edge_densities_from_vertices();
 
         if (test_stage == 4) {
@@ -3639,7 +3674,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 3: Update vertex mass matrix from evolved densities
+        // --------------------------------------------------------------
         update_vertex_metric_from_density();  // Updates only M[0]
 
         if (test_stage == 5) {
@@ -3647,15 +3684,23 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 4: Rebuild edge mass matrix from evolved densities
-        update_edge_mass_matrix();  // Compute fresh M₁ from current ρ₀
+        // --------------------------------------------------------------
+        update_edge_mass_matrix();  // Compute fresh \eqn{M_1} from current \eqn{\rho_0}
 
         if (test_stage == 6) {
             Rprintf("TEST_STAGE 6: Stopped after update_edge_mass_matrix()\n");
             return;
         }
 
-        // Step 5: Apply response-coherence modulation to fresh M₁
+        // --------------------------------------------------------------
+        // Step 5: Apply response-coherence modulation to fresh \eqn{M_1}
+        // --------------------------------------------------------------
+        // Start conservative, increase gradually
+        // double gamma_eff = gamma_modulation * std::min(1.0, iter / 5.0);
+        // apply_response_coherence_modulation(y_hat_curr, gamma_eff);
+
         apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
 
         if (test_stage == 7) {
@@ -3663,16 +3708,31 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 6: Laplacian reassembly
+        // --------------------------------------------------------------
         assemble_operators();
         spectral_cache.invalidate();
+
+        // Test if eigenvalues are changing
+        static double prev_lambda_2 = 0.0;
+        if (iter == 1) {
+            prev_lambda_2 = spectral_cache.lambda_2;
+        } else {
+            double lambda_change = std::abs(spectral_cache.lambda_2 - prev_lambda_2);
+            Rprintf("  lambda_2 changed: %.6e -> %.6e (Delta = %.6e)\n",
+                    prev_lambda_2, spectral_cache.lambda_2, lambda_change);
+            prev_lambda_2 = spectral_cache.lambda_2;
+        }
 
         if (test_stage == 8) {
             Rprintf("TEST_STAGE 8: Stopped after assemble_operators()\n");
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 7: Response smoothing
+        // --------------------------------------------------------------
         gcv_result = smooth_response_via_spectral_filter(
             y, n_eigenpairs, filter_type
         );
@@ -3687,7 +3747,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
+        // --------------------------------------------------------------
         // Step 8: Convergence check (simplified version)
+        // --------------------------------------------------------------
         auto status = check_convergence_detailed(
             y_hat_prev,
             y_hat_curr,
