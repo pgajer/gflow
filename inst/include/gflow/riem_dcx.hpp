@@ -45,6 +45,7 @@ enum class rdcx_filter_type_t {
  */
 struct gcv_result_t {
     double eta_optimal;              ///< Optimal smoothing parameter
+    double gcv_optimal;              ///< Optimal GCV
     vec_t y_hat;                     ///< Smoothed response vector
     std::vector<double> gcv_scores;  ///< GCV scores for each eta candidate
     std::vector<double> eta_grid;    ///< Grid of eta values evaluated
@@ -798,11 +799,25 @@ struct riem_dcx_t {
     metric_family_t g;                   ///< Mass matrices (Riemannian metric)
     laplacian_bundle_t L;                ///< Hodge Laplacian operators
 
+
     // ----------------------------------------------------------------
     // Signal State
     // ----------------------------------------------------------------
 
     signal_state_t sig;                  ///< Response and fitted values
+
+    // GCV tracking across iterations
+    struct gcv_history_t {
+        std::vector<gcv_result_t> iterations;  // One gcv_result_t per iteration
+
+        void clear() {
+            iterations.clear();
+        }
+
+        void add(const gcv_result_t& result) {
+            iterations.push_back(result);
+        }
+    } gcv_history;
 
     // ----------------------------------------------------------------
     // Geometric Data (for regression)

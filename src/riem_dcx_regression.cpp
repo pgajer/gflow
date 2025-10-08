@@ -2306,6 +2306,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
 
     gcv_result_t result;
     result.eta_optimal = eta_grid[best_idx];
+    result.gcv_optimal = best_gcv;
     result.y_hat = best_y_hat;
     result.gcv_scores = gcv_scores;
     result.eta_grid = eta_grid;
@@ -3575,12 +3576,16 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     }
 
     // Phase 5: Initial response smoothing
+    gcv_history.clear();
     auto gcv_result = smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type
     );
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
     sig.y_hat_hist.push_back(y_hat_curr);
+
+    // Store initial GCV results
+    gcv_history.add(gcv_result);
 
     if (test_stage == 2) {
         Rprintf("TEST_STAGE 2: Stopped after initial smoothing\n");
@@ -3673,6 +3678,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
+
+        // Store GCV result for this iteration
+        gcv_history.add(gcv_result);
 
         if (test_stage == 9) {
             Rprintf("TEST_STAGE 9: Stopped after smooth_response_via_spectral_filter()\n");
