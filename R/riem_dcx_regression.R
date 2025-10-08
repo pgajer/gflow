@@ -37,19 +37,22 @@
 #'   more conservative. Typical range is \eqn{0.1/\lambda_2} to \eqn{1.0/\lambda_2}.
 #'   Set to 0 for automatic selection (recommended).
 #'
-#' @param beta.damping Damping parameter (non-negative). Controls the strength
-#'   of the restoring force toward uniform distribution. If 0 (default),
-#'   automatically selected as 0.1/t.diffusion to maintain a 10:1 ratio of
-#'   diffusion to damping. Larger values prevent concentration but may over-smooth;
-#'   smaller values allow more geometric structure but risk collapse. Set to 0
-#'   for automatic selection (recommended).
+#' @param density.uniform.pull Restoring force strength (non-negative).
+#'   Controls how strongly vertex densities are pulled back toward uniform
+#'   distribution during diffusion, preventing excessive concentration. If 0
+#'   (default), automatically selected as 0.1/t.diffusion to maintain a 10:1
+#'   ratio of diffusion to restoration. Larger values prevent concentration but
+#'   may over-smooth; smaller values allow more geometric structure but risk
+#'   collapse. Set to 0 for automatic selection (recommended). Former beta.damping.
 #'
-#' @param gamma.modulation Numeric scalar in the range 0.5 to 2.0. Exponent
-#'   controlling sharpness of response boundaries in the geometry. Default 1.0
-#'   corresponds to Cauchy kernel: \eqn{\Gamma(\Delta) = (1 + \Delta^2/\sigma^2)^{-\gamma}}.
-#'   Larger \eqn{\gamma} creates sharper boundaries (more aggressive edge pruning
-#'   at response discontinuities). Smaller \eqn{\gamma} creates gentler transitions.
-#'   Values outside this range trigger a warning.
+#' @param response.penalty.exp Response penalty exponent in the range 0.5 to
+#'   2.0. Controls the rate of edge weight reduction as response variation
+#'   increases, via the penalty function
+#'   \eqn{\Gamma(\Delta) = (1 + \Delta^2/\sigma^2)^{-\gamma}}. Default 1.0
+#'   corresponds to Cauchy kernel. Larger values create steeper penalties
+#'   (sharper adaptation to response changes); smaller values create gentler
+#'   penalties. For smooth responses use 0.5-0.75; for discontinuous responses
+#'   use 1.5-2.0.
 #'
 #' @param n.eigenpairs Integer scalar in the range 10 to n. Number of Laplacian
 #'   eigenpairs to compute for spectral filtering. Default 200. Larger values
@@ -165,7 +168,7 @@
 #' \itemize{
 #'   \item \strong{k}: Primary tuning parameter. Start with \eqn{k = \lceil\log(n)\rceil}
 #'         and adjust based on cross-validation. Larger k smooths more.
-#'   \item \strong{gamma.modulation}: Increase (up to 2.0) for sharper response
+#'   \item \strong{response.penalty.exp}: Increase (up to 2.0) for sharper response
 #'         boundaries; decrease (down to 0.5) for gentler transitions.
 #'   \item \strong{filter.type}: "heat_kernel" (default) for general use;
 #'         "tikhonov" for better linear trend preservation; "cubic_spline"
@@ -222,7 +225,7 @@
 #' y <- ifelse(X[,1]^2 + X[,2]^2 < 0.5, 1, 0) + rnorm(n, sd = 0.1)
 #'
 #' # Use larger gamma for sharper boundary detection
-#' fit <- fit.knn.riem.graph.regression(X, y, k = 20, gamma.modulation = 1.5)
+#' fit <- fit.knn.riem.graph.regression(X, y, k = 20, response.penalty.exp = 1.5)
 #' y.hat <- fitted(fit)
 #'
 #' # Example 3: Using sparse matrix input
@@ -244,8 +247,8 @@ fit.knn.riem.graph.regression <- function(
     use.counting.measure = TRUE,
     density.normalization = 0,
     t.diffusion = 0,
-    beta.damping = 0,
-    gamma.modulation = 1.0,
+    density.uniform.pull = 0,
+    response.penalty.exp = 1.0,
     n.eigenpairs = 10,
     filter.type = c("heat_kernel", "tikhonov", "cubic_spline"),
     epsilon.y = 1e-4,
@@ -391,37 +394,37 @@ fit.knn.riem.graph.regression <- function(
                      t.diffusion))
     }
 
-    # beta.damping
-    if (!is.numeric(beta.damping) || length(beta.damping) != 1) {
-        stop("beta.damping must be a single numeric value")
+    # density.uniform.pull
+    if (!is.numeric(density.uniform.pull) || length(density.uniform.pull) != 1) {
+        stop("density.uniform.pull must be a single numeric value")
     }
 
-    if (is.na(beta.damping) || !is.finite(beta.damping)) {
-        stop("beta.damping cannot be NA or infinite")
+    if (is.na(density.uniform.pull) || !is.finite(density.uniform.pull)) {
+        stop("density.uniform.pull cannot be NA or infinite")
     }
 
-    if (beta.damping < 0) {
-        stop(sprintf("beta.damping must be non-negative (got %.3f; use 0 for auto)",
-                     beta.damping))
+    if (density.uniform.pull < 0) {
+        stop(sprintf("density.uniform.pull must be non-negative (got %.3f; use 0 for auto)",
+                     density.uniform.pull))
     }
 
-    # gamma.modulation
-    if (!is.numeric(gamma.modulation) || length(gamma.modulation) != 1) {
-        stop("gamma.modulation must be a single numeric value")
+    # response.penalty.exp
+    if (!is.numeric(response.penalty.exp) || length(response.penalty.exp) != 1) {
+        stop("response.penalty.exp must be a single numeric value")
     }
 
-    if (is.na(gamma.modulation) || !is.finite(gamma.modulation)) {
-        stop("gamma.modulation cannot be NA or infinite")
+    if (is.na(response.penalty.exp) || !is.finite(response.penalty.exp)) {
+        stop("response.penalty.exp cannot be NA or infinite")
     }
 
-    if (gamma.modulation <= 0) {
-        stop(sprintf("gamma.modulation must be positive (got %.3f)", gamma.modulation))
+    if (response.penalty.exp <= 0) {
+        stop(sprintf("response.penalty.exp must be positive (got %.3f)", response.penalty.exp))
     }
 
-    if (gamma.modulation < 0.05 || gamma.modulation > 2.0) {
-        warning(sprintf(paste0("gamma.modulation=%.3f is outside recommended range [0.5, 2.0].\n",
+    if (response.penalty.exp < 0.05 || response.penalty.exp > 2.0) {
+        warning(sprintf(paste0("response.penalty.exp=%.3f is outside recommended range [0.5, 2.0].\n",
                               "Values outside this range may produce unstable geometry."),
-                       gamma.modulation))
+                       response.penalty.exp))
     }
 
     # n.eigenpairs
@@ -527,8 +530,8 @@ fit.knn.riem.graph.regression <- function(
         as.logical(use.counting.measure),
         as.double(density.normalization),
         as.double(t.diffusion),
-        as.double(beta.damping),
-        as.double(gamma.modulation),
+        as.double(density.uniform.pull),
+        as.double(response.penalty.exp),
         as.integer(n.eigenpairs),
         as.character(filter.type),
         as.double(epsilon.y),
