@@ -27,6 +27,12 @@ devtools::document()
 devtools::load_all()
 ```
 
+## Testing for non-ASCII characters within a file
+```
+M-x occur RET [←τŷΓ²·≈ΛℓΣβλΔ→ρμσ₀₁₂ε≥±] RET
+M-x occur RET [N̂←τŷΓ²≈ΛℓΣβλΔ→ρμσ₀₁₂ε≥±] RET
+```
+
 ## Interactive Debugging Setup
 ```r
 devtools::load_all()

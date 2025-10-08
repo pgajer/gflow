@@ -418,7 +418,7 @@ fit.knn.riem.graph.regression <- function(
         stop(sprintf("gamma.modulation must be positive (got %.3f)", gamma.modulation))
     }
 
-    if (gamma.modulation < 0.5 || gamma.modulation > 2.0) {
+    if (gamma.modulation < 0.05 || gamma.modulation > 2.0) {
         warning(sprintf(paste0("gamma.modulation=%.3f is outside recommended range [0.5, 2.0].\n",
                               "Values outside this range may produce unstable geometry."),
                        gamma.modulation))

@@ -819,6 +819,18 @@ struct riem_dcx_t {
         }
     } gcv_history;
 
+    struct density_history_t {
+        std::vector<vec_t> rho_vertex;  // One vector per iteration
+
+        void clear() {
+            rho_vertex.clear();
+        }
+
+        void add(const vec_t& rho) {
+            rho_vertex.push_back(rho);
+        }
+    } density_history;
+
     // ----------------------------------------------------------------
     // Geometric Data (for regression)
     // ----------------------------------------------------------------
