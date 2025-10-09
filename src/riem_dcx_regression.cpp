@@ -3787,17 +3787,16 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // Convention: gamma_modulation < 0 triggers auto-selection
     bool gamma_auto_selected = false;
 
-    if (gamma_modulation < 0.0) {
+       if (gamma_modulation < 0.0) {
         Rprintf("\n");
         Rprintf("==========================================================\n");
         Rprintf("AUTOMATIC GAMMA SELECTION VIA FIRST-ITERATION GCV\n");
         Rprintf("==========================================================\n");
 
         // Define search grid
-        // Fine grid near typical optimal values (0.1 - 1.0)
-        // Coarser grid at extremes (1.0 - 2.0)
         std::vector<double> gamma_grid = {
-            0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+            0.05, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3,
+            0.325, 0.35, 0.375, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9,
             1.0, 1.2, 1.4, 1.6, 1.8, 2.0
         };
 
@@ -3810,11 +3809,15 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Perform gamma selection
         auto gamma_result = select_gamma_first_iteration(
             y, gamma_grid, n_eigenpairs, filter_type
-            );
-        
+        );
+
         // Use selected gamma
         gamma_modulation = gamma_result.gamma_optimal;
         gamma_auto_selected = true;
+
+        // STORE THE RESULT IN THE MEMBER VARIABLE
+        gamma_selection_result = gamma_result;
+        gamma_was_auto_selected = true;
 
         Rprintf("\n");
         Rprintf("GAMMA SELECTION COMPLETE\n");
@@ -3834,14 +3837,12 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         Rprintf("==========================================================\n");
         Rprintf("\n");
 
-        // Store gamma selection diagnostics in a new field
-        // (This would require adding to riem_dcx_t structure)
-        // gamma_selection_result = gamma_result;
-
     } else if (gamma_modulation == 0.0) {
         Rprintf("Using gamma = 0 (no response-coherence modulation)\n");
+        gamma_was_auto_selected = false;
     } else {
         Rprintf("Using user-provided gamma = %.3f\n", gamma_modulation);
+        gamma_was_auto_selected = false;
     }
 
     // ================================================================
@@ -3875,6 +3876,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         Rprintf("(using auto-selected gamma = %.3f)\n", gamma_modulation);
     }
     Rprintf("\n");
+
+    // Initialize convergence tracking
+    converged = false;
+    n_iterations = 0;
+    response_changes.clear();
 
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
@@ -4029,10 +4035,27 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         if (status.converged) {
             Rprintf("%s\n", status.message.c_str());
+            converged = true;
+            n_iterations = iter;
             break;
         }
 
         ///// testing
         // if (iter == 1) break;  // Only do one iteration for testing
     }
+
+    // ================================================================
+    // FINALIZATION: Store convergence results
+    // ================================================================
+
+    // If loop completed without converging
+    if (!converged) {
+        n_iterations = max_iterations;
+    }
+
+    // Store response change history
+    response_changes = response_change_history;
+
+    // Optional: store density changes if tracked
+    // density_changes = ...;
 }

@@ -1,3 +1,315 @@
+#' Computes Local Extrema Hop Neighborhoods in a Graph Function
+#'
+#' @description
+#' Identifies local extrema (minima and maxima) of a function defined on a graph and computes
+#' their extremum hop neighborhoods. For each extremum, this function determines the maximum hop distance
+#' at which it maintains its extremum property and identifies boundary vertices where this
+#' property is first violated.
+#'
+#' @details
+#' A local extremum is a vertex whose function value is more extreme (higher for maxima, lower for minima)
+#' than all its adjacent neighbors. The hop neighborhood analysis extends this concept by examining
+#' how far the extremum property persists across the graph structure.
+#'
+#' For each extremum, the function computes:
+#' \itemize{
+#'   \item Its maximum hop radius (hop_idx) where it remains a strict extremum
+#'   \item All vertices within this hop radius and their distances
+#'   \item The boundary vertices at hop_idx + 1 where the extremum property is first violated
+#' }
+#'
+#' This information is useful for identification of spurious local extrema.
+#'
+#' @param adj.list A list where each element contains the indices of vertices adjacent to vertex i.
+#'                The list should be 1-indexed (as is standard in R).
+#' @param weight.list A list of the same structure as adj.list, where each element contains the
+#'                   weights of edges connecting vertex i to its adjacent vertices.
+#' @param y A numeric vector containing function values at each vertex of the graph.
+#'
+#' @return A list with two components:
+#' \describe{
+#'   \item{lmin.hop.nbhds}{A list of hop neighborhoods for local minima. Each neighborhood
+#'                        is a list containing:
+#'     \itemize{
+#'       \item{vertex: The vertex index (1-indexed) that is a local minimum}
+#'       \item{hop.idx: The maximum hop distance at which the minimum property holds}
+#'       \item{nbhd.df: A matrix with two columns - vertex indices and their hop distances from the minimum}
+#'       \item{nbhd.bd.df: A matrix with two columns - boundary vertex indices and their function values}
+#'     }
+#'   }
+#'   \item{lmax.hop.nbhds}{A list with the same structure as lmin.hop.nbhds, but for local maxima}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Create a simple graph
+#' adj.list <- list(c(2,3), c(1,3,4), c(1,2,4), c(2,3))
+#' weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1,1))
+#' y <- c(0.5, 0.2, 0.8, 0.3)
+#'
+#' # Calculate extrema hop neighborhoods
+#' result <- compute.extrema.hop.nbhds(adj.list, weight.list, y)
+#'
+#' # Examine minima
+#' minima <- result$lmin.hop.nbhds
+#' # Examine maxima
+#' maxima <- result$lmax.hop.nbhds
+#'
+#' # Plot the graph and highlight extrema and their hop neighborhoods
+#' # (requires igraph package)
+#' library(igraph)
+#' g <- graph.from.adj.list(adj.list)
+#' E(g)$weight <- unlist(weight.list)
+#' vertex.colors <- rep("grey", length(y))
+#'
+#' # Highlight minima
+#' for(min.nbhd in minima) {
+#'   min.vertex <- min.nbhd$vertex
+#'   vertex.colors[min.vertex] <- "blue"
+#'   # Highlight vertices in neighborhood with decreasing intensity
+#'   if(nrow(min.nbhd$nbhd.df) > 0) {
+#'     for(i in 1:nrow(min.nbhd$nbhd.df)) {
+#'       v <- min.nbhd$nbhd.df[i,1]
+#'       if(v != min.vertex) {
+#'         vertex.colors[v] <- "lightblue"
+#'       }
+#'     }
+#'   }
+#' }
+#'
+#' # Highlight maxima
+#' for(max.nbhd in maxima) {
+#'   max.vertex <- max.nbhd$vertex
+#'   vertex.colors[max.vertex] <- "red"
+#'   # Highlight vertices in neighborhood with decreasing intensity
+#'   if(nrow(max.nbhd$nbhd.df) > 0) {
+#'     for(i in 1:nrow(max.nbhd$nbhd.df)) {
+#'       v <- max.nbhd$nbhd.df[i,1]
+#'       if(v != max.vertex && vertex.colors[v] == "grey") {
+#'         vertex.colors[v] <- "pink"
+#'       }
+#'     }
+#'   }
+#' }
+#'
+#' plot(g, vertex.color = vertex.colors, vertex.label = y)
+#' }
+#'
+#' @seealso
+#' \code{\link{compute.graph.basin.complex}} for computing the basin complex of extrema,
+#' \code{\link{graph.watershed}} for watershed segmentation based on extrema.
+#'
+#' @export
+compute.extrema.hop.nbhds <- function(adj.list,
+                                      weight.list,
+                                      y) {
+    ## Input validation
+    if (!is.list(adj.list) || !is.list(weight.list)) {
+        stop("adj.list and weight.list must be lists")
+    }
+
+    if (length(adj.list) != length(weight.list)) {
+        stop("adj.list and weight.list must have the same length")
+    }
+
+    if (length(y) != length(adj.list)) {
+        stop("Length of y must match the number of vertices (length of adj.list)")
+    }
+
+    adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
+
+    ## Call the C++ function
+    result <- .Call(S_compute_extrema_hop_nbhds,
+                    adj.list.0based,
+                    weight.list,
+                    as.numeric(y),
+                    PACKAGE = "gflow")
+
+    ## Create extrema data frame
+    result$extrema_df <- create.hop.nbhd.extrema.df(result)
+
+    ## Return the processed results
+    return(result)
+}
+
+#' Create a Data Frame of Extrema Information
+#'
+#' Creates a data frame containing information about local extrema from either
+#' compute.extrema.hop.nbhds() or create.gflow.cx() results.
+#'
+#' @param result An object from compute.extrema.hop.nbhds() or create.gflow.cx()
+#' @param include_spurious Logical; whether to include spurious extrema (default TRUE)
+#' @param threshold Optional threshold for hop_idx; extrema with hop_idx <= threshold
+#'   are considered spurious. If NULL, uses the threshold from the result object
+#'   or defaults to 2.
+#' @param sort_by_value Logical; if TRUE, orders extrema by function value
+#'   rather than sequentially (default FALSE)
+#' @param vertex_column_name Character; name of the vertex column in the output
+#'   (default "vertex")
+#'
+#' @return A data frame with columns:
+#'   \itemize{
+#'     \item vertex (or evertex): Vertex index
+#'     \item hop_idx: Hop index of the extremum
+#'     \item is_max: 0 for minima, 1 for maxima
+#'     \item label: Label for the extremum (e.g., "min1", "max1")
+#'     \item value: Function value at the extremum (if available)
+#'     \item spurious: Logical; whether the extremum is considered spurious
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # With compute.extrema.hop.nbhds() result
+#' hop_nbhds_result <- compute.extrema.hop.nbhds(graph$adj_list, graph$weight_list, y)
+#' extrema_df <- create_extrema_df(hop_nbhds_result)
+#'
+#' # With create.gflow.cx() result
+#' gflow_result <- create.gflow.cx(graph$adj_list, graph$weight_list, y)
+#' extrema_df <- create.hop.nbhd.extrema.df(gflow_result, include_spurious = FALSE)
+#' }
+#'
+#' @export
+create.hop.nbhd.extrema.df <- function(result,
+                              include_spurious = TRUE,
+                              threshold = NULL,
+                              sort_by_value = FALSE,
+                              vertex_column_name = "vertex") {
+
+  # Check if the input has required components
+  if (!all(c("lmin_hop_nbhds", "lmax_hop_nbhds") %in% names(result))) {
+    stop("Input must have 'lmin_hop_nbhds' and 'lmax_hop_nbhds' components")
+  }
+
+  # Determine if we're dealing with gflow_cx object
+  is_gflow <- inherits(result, "gflow_cx")
+
+  # Determine threshold for spurious extrema
+  if (is.null(threshold)) {
+    if (is_gflow) {
+      threshold <- attr(result, "hop_idx_threshold")
+    }
+    if (is.null(threshold)) {
+      threshold <- 2  # Default if not found
+    }
+  }
+
+  # Extract data from minima
+  lmin_data <- lapply(result$lmin_hop_nbhds, function(x) {
+    list(
+      vertex = x$vertex,
+      hop_idx = x$hop_idx,
+      value = if ("value" %in% names(x)) x$value else NA
+    )
+  })
+
+  # Extract data from maxima
+  lmax_data <- lapply(result$lmax_hop_nbhds, function(x) {
+    list(
+      vertex = x$vertex,
+      hop_idx = x$hop_idx,
+      value = if ("value" %in% names(x)) x$value else NA
+    )
+  })
+
+  n_min <- length(lmin_data)
+  n_max <- length(lmax_data)
+
+  # Handle empty case
+  if (n_min + n_max == 0) {
+    return(data.frame(
+      vertex = integer(),
+      hop_idx = integer(),
+      is_max = integer(),
+      label = character(),
+      value = numeric(),
+      spurious = logical(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # Extract data
+  vertices <- c(sapply(lmin_data, `[[`, "vertex"), sapply(lmax_data, `[[`, "vertex"))
+  hop_indices <- c(sapply(lmin_data, `[[`, "hop_idx"), sapply(lmax_data, `[[`, "hop_idx"))
+  is_max <- c(rep(0, n_min), rep(1, n_max))
+
+  # Get function values if available
+  values <- c(sapply(lmin_data, `[[`, "value"), sapply(lmax_data, `[[`, "value"))
+  has_values <- !all(is.na(values))
+
+  # Determine spurious extrema
+  spurious <- hop_indices <= threshold
+
+  # Filter spurious extrema if requested
+  if (!include_spurious) {
+    keep <- !spurious
+    vertices <- vertices[keep]
+    hop_indices <- hop_indices[keep]
+    is_max <- is_max[keep]
+    values <- values[keep]
+    spurious <- spurious[keep]
+
+    # Adjust counts after filtering
+    n_min <- sum(is_max == 0)
+    n_max <- sum(is_max == 1)
+  }
+
+  # Create labels
+  if (sort_by_value && has_values) {
+    # Label based on function values
+    labels <- character(length(vertices))
+
+    # Label maxima in descending order of function value
+    if (n_max > 0) {
+      max_indices <- which(is_max == 1)
+      max_values <- values[max_indices]
+      ord <- order(max_values, decreasing = TRUE)
+      labels[max_indices[ord]] <- paste0("max", seq_len(n_max))
+    }
+
+    # Label minima in ascending order of function value
+    if (n_min > 0) {
+      min_indices <- which(is_max == 0)
+      min_values <- values[min_indices]
+      ord <- order(min_values, decreasing = FALSE)
+      labels[min_indices[ord]] <- paste0("min", seq_len(n_min))
+    }
+  } else {
+    # Sequential labeling
+    labels <- c(
+      paste0("min", seq_len(n_min)),
+      paste0("max", seq_len(n_max))
+    )
+  }
+
+  # Create data frame with appropriate column name for vertex
+  df <- data.frame(
+    hop_idx = hop_indices,
+    is_max = is_max,
+    label = labels,
+    spurious = spurious,
+    stringsAsFactors = FALSE
+  )
+
+  # Add function values if available
+  if (has_values) {
+    df$value <- values
+  }
+
+  # Add vertex column with requested name
+  df[[vertex_column_name]] <- vertices
+
+  # Reorder columns to put vertex first
+  col_order <- c(vertex_column_name, "hop_idx", "is_max", "label", "spurious")
+  if (has_values) {
+    col_order <- c(col_order, "value")
+  }
+
+  df <- df[, col_order]
+
+  return(df)
+}
+
+
 #' Create Graph Flow Complex with Harmonic Extension
 #'
 #' @description
@@ -639,200 +951,204 @@ visualize.smoothing.steps <- function(gflow_result,
                                       animation_delay = 0.5,
                                       out.dir = NULL,
                                       filename.prefix = "smoothing_step") {
-  ## ---- Preconditions --------------------------------------------------------
-  if (!"smoothing_history" %in% names(gflow_result)) {
-    stop("No detailed smoothing history available. ",
-         "Run create.gflow.cx(..., detailed.recording = TRUE).", call. = FALSE)
-  }
-  steps <- gflow_result$smoothing_history
-  n_steps <- length(steps)
-
-  if (!requireNamespace("rgl", quietly = TRUE)) {
-    stop("This function requires the optional package 'rgl'. ",
-         "Install with install.packages('rgl').", call. = FALSE)
-  }
-
-  if (!is.list(plot_res) || is.null(plot_res$layout)) {
-    stop("'plot_res' must be a list with component 'layout' (n x 2 numeric matrix).", call. = FALSE)
-  }
-  layout_2d <- as.matrix(plot_res$layout)
-  if (!is.numeric(layout_2d) || ncol(layout_2d) != 2L) {
-    stop("'plot_res$layout' must be numeric with exactly 2 columns.", call. = FALSE)
-  }
-
-  if (!is.logical(step_by_step) || length(step_by_step) != 1L) {
-    stop("'step_by_step' must be a single logical.", call. = FALSE)
-  }
-  if (!is.numeric(animation_delay) || length(animation_delay) != 1L || animation_delay < 0) {
-    stop("'animation_delay' must be a non-negative numeric.", call. = FALSE)
-  }
-
-  ## ---- Edge extraction (optional) ------------------------------------------
-  # Try to get edges for rendering (best-effort; OK if absent)
-  get_edges <- function() {
-    if (!is.null(plot_res$graph)) {
-      e <- try(igraph::as_edgelist(plot_res$graph, names = FALSE), silent = TRUE)
-      if (!inherits(e, "try-error") && is.matrix(e) && ncol(e) == 2L) return(e)
+    ## ---- Preconditions --------------------------------------------------------
+    if (!"smoothing_history" %in% names(gflow_result)) {
+        stop("No detailed smoothing history available. ",
+             "Run create.gflow.cx(..., detailed.recording = TRUE).", call. = FALSE)
     }
-    if (!is.null(gflow_result$adj.list)) {
-      el <- lapply(seq_along(gflow_result$adj.list), function(i) {
-        v <- gflow_result$adj.list[[i]]
-        if (!length(v)) return(NULL)
-        cbind(i, as.integer(v))
-      })
-      e <- do.call(rbind, el)
-      if (!is.null(e)) {
-        e <- e[e[, 1] < e[, 2], , drop = FALSE] # undirected unique
-        return(e)
-      }
-    }
-    NULL
-  }
-  edges <- get_edges()
+    steps <- gflow_result$smoothing_history
+    n_steps <- length(steps)
 
-  ## ---- Device mode: real vs off-screen -------------------------------------
-  # Use a real window only if interactive & display available; otherwise off-screen.
-  use_null <- (!interactive()) ||
-              identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
-              (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
-  old_opt <- options(rgl.useNULL = use_null)
-  on.exit(options(old_opt), add = TRUE)
-
-  # In non-interactive/headless, don't block: force snapshot mode
-  if (isTRUE(step_by_step) && (use_null || !interactive())) {
-    message("Non-interactive/headless context detected; switching to snapshot mode.")
-    step_by_step <- FALSE
-  }
-
-  # Snapshot directory (dont pollute working dir by default)
-  if (is.null(out.dir)) out.dir <- getOption("gflow.snapshot.dir", default = tempdir())
-  if (!dir.exists(out.dir)) {
-    ok <- dir.create(out.dir, recursive = TRUE, showWarnings = FALSE)
-    if (!ok) stop("Unable to create output directory: ", out.dir, call. = FALSE)
-  }
-
-  ## ---- Open a single rgl device --------------------------------------------
-  rgl::open3d()
-  on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
-
-  ## ---- 3D drawing helper ----------------------------------------------------
-  draw_frame <- function(values, title_text, highlight_vertex = NULL) {
-    # validate values length
-    if (length(values) != nrow(layout_2d)) {
-      stop("Length of 'values' does not match number of vertices in layout.", call. = FALSE)
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl'. ",
+             "Install with install.packages('rgl').", call. = FALSE)
     }
 
-    layout_3d <- cbind(layout_2d, as.numeric(values))
+    if (!is.list(plot_res) || is.null(plot_res$layout)) {
+        stop("'plot_res' must be a list with component 'layout' (n x 2 numeric matrix).", call. = FALSE)
+    }
+    layout_2d <- as.matrix(plot_res$layout)
+    if (!is.numeric(layout_2d) || ncol(layout_2d) != 2L) {
+        stop("'plot_res$layout' must be numeric with exactly 2 columns.", call. = FALSE)
+    }
 
+    if (!is.logical(step_by_step) || length(step_by_step) != 1L) {
+        stop("'step_by_step' must be a single logical.", call. = FALSE)
+    }
+    if (!is.numeric(animation_delay) || length(animation_delay) != 1L || animation_delay < 0) {
+        stop("'animation_delay' must be a non-negative numeric.", call. = FALSE)
+    }
+
+    ## ---- Edge extraction (optional) ------------------------------------------
+    ## Try to get edges for rendering (best-effort; OK if absent)
+    get_edges <- function() {
+        if (!is.null(plot_res$graph)) {
+            e <- try(igraph::as_edgelist(plot_res$graph, names = FALSE), silent = TRUE)
+            if (!inherits(e, "try-error") && is.matrix(e) && ncol(e) == 2L) return(e)
+        }
+        if (!is.null(gflow_result$adj.list)) {
+            el <- lapply(seq_along(gflow_result$adj.list), function(i) {
+                v <- gflow_result$adj.list[[i]]
+                if (!length(v)) return(NULL)
+                cbind(i, as.integer(v))
+            })
+            e <- do.call(rbind, el)
+            if (!is.null(e)) {
+                e <- e[e[, 1] < e[, 2], , drop = FALSE] # undirected unique
+                return(e)
+            }
+        }
+        NULL
+    }
+    edges <- get_edges()
+
+    ## ---- Device mode: real vs off-screen -------------------------------------
+    ## Use a real window only if interactive & display available; otherwise off-screen.
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
+
+    ## In non-interactive/headless, don't block: force snapshot mode
+    if (isTRUE(step_by_step) && (use_null || !interactive())) {
+        message("Non-interactive/headless context detected; switching to snapshot mode.")
+        step_by_step <- FALSE
+    }
+
+    ## Snapshot directory (dont pollute working dir by default)
+    if (is.null(out.dir)) out.dir <- getOption("gflow.snapshot.dir", default = tempdir())
+    if (!dir.exists(out.dir)) {
+        ok <- dir.create(out.dir, recursive = TRUE, showWarnings = FALSE)
+        if (!ok) stop("Unable to create output directory: ", out.dir, call. = FALSE)
+    }
+
+    ## ---- Open a single rgl device --------------------------------------------
+    rgl::open3d()
+    if (use_null) {
+        ## Only close the device automatically if using null device
+        on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    }
     rgl::clear3d()
 
-    # base plane points
-    rgl::points3d(cbind(layout_2d, 0), size = 4, col = "gray70", alpha = 0.35)
+    ## ---- 3D drawing helper ----------------------------------------------------
+    draw_frame <- function(values, title_text, highlight_vertex = NULL) {
+        ## validate values length
+        if (length(values) != nrow(layout_2d)) {
+            stop("Length of 'values' does not match number of vertices in layout.", call. = FALSE)
+        }
 
-    # base plane edges (optional)
-    if (!is.null(edges) && nrow(edges) > 0) {
-      base_seg <- matrix(NA_real_, nrow = nrow(edges) * 2L, ncol = 3L)
-      for (i in seq_len(nrow(edges))) {
-        v1 <- edges[i, 1]; v2 <- edges[i, 2]
-        base_seg[(i - 1L) * 2L + 1L, ] <- c(layout_2d[v1, ], 0)
-        base_seg[(i - 1L) * 2L + 2L, ] <- c(layout_2d[v2, ], 0)
-      }
-      rgl::segments3d(base_seg, col = "gray60", alpha = 0.35, lwd = 1)
+        layout_3d <- cbind(layout_2d, as.numeric(values))
+
+        rgl::clear3d()
+
+        ## base plane points
+        rgl::points3d(cbind(layout_2d, 0), size = 4, col = "gray70", alpha = 0.35)
+
+        ## base plane edges (optional)
+        if (!is.null(edges) && nrow(edges) > 0) {
+            base_seg <- matrix(NA_real_, nrow = nrow(edges) * 2L, ncol = 3L)
+            for (i in seq_len(nrow(edges))) {
+                v1 <- edges[i, 1]; v2 <- edges[i, 2]
+                base_seg[(i - 1L) * 2L + 1L, ] <- c(layout_2d[v1, ], 0)
+                base_seg[(i - 1L) * 2L + 2L, ] <- c(layout_2d[v2, ], 0)
+            }
+            rgl::segments3d(base_seg, col = "gray60", alpha = 0.35, lwd = 1)
+        }
+
+        ## 3D vertices (heights)
+        ## color by rank for a quick gradient
+        pal <- grDevices::hcl.colors(nrow(layout_3d), palette = "Spectral")
+        cols <- pal[rank(values, ties.method = "average")]
+        rgl::spheres3d(layout_3d, radius = 0.02, col = cols, alpha = 0.9)
+
+        ## 3D edges (optional)
+        if (!is.null(edges) && nrow(edges) > 0) {
+            for (i in seq_len(nrow(edges))) {
+                v1 <- edges[i, 1]; v2 <- edges[i, 2]
+                rgl::lines3d(rbind(layout_3d[v1, ], layout_3d[v2, ]), col = "gray50", lwd = 1)
+            }
+        }
+
+        ## Highlight current vertex (optional)
+        if (!is.null(highlight_vertex) && is.finite(highlight_vertex)) {
+            hv <- as.integer(highlight_vertex)
+            if (hv >= 1L && hv <= nrow(layout_3d)) {
+                rgl::spheres3d(layout_3d[hv, , drop = FALSE], radius = 0.05,
+                               col = "yellow", alpha = 0.8)
+            }
+        }
+
+        ## axes + title
+        rgl::axes3d()
+        rgl::title3d(xlab = "X", ylab = "Y", zlab = "Value", main = title_text)
     }
 
-    # 3D vertices (heights)
-    # color by rank for a quick gradient
-    pal <- grDevices::hcl.colors(nrow(layout_3d), palette = "Spectral")
-    cols <- pal[rank(values, ties.method = "average")]
-    rgl::spheres3d(layout_3d, radius = 0.02, col = cols, alpha = 0.9)
-
-    # 3D edges (optional)
-    if (!is.null(edges) && nrow(edges) > 0) {
-      for (i in seq_len(nrow(edges))) {
-        v1 <- edges[i, 1]; v2 <- edges[i, 2]
-        rgl::lines3d(rbind(layout_3d[v1, ], layout_3d[v2, ]), col = "gray50", lwd = 1)
-      }
+    ## ---- Run animation --------------------------------------------------------
+    if (n_steps == 0) {
+        message("No smoothing steps recorded (no spurious extrema found).")
+        return(invisible(NULL))
     }
 
-    # Highlight current vertex (optional)
-    if (!is.null(highlight_vertex) && is.finite(highlight_vertex)) {
-      hv <- as.integer(highlight_vertex)
-      if (hv >= 1L && hv <= nrow(layout_3d)) {
-        rgl::spheres3d(layout_3d[hv, , drop = FALSE], radius = 0.05,
-                       col = "yellow", alpha = 0.8)
-      }
-    }
+    message(sprintf("Found %d smoothing step%s.", n_steps, if (n_steps == 1) "" else "s"))
 
-    # axes + title
-    rgl::axes3d()
-    rgl::title3d(xlab = "X", ylab = "Y", zlab = "Value", main = title_text)
-  }
-
-  ## ---- Run animation --------------------------------------------------------
-  if (n_steps == 0) {
-    message("No smoothing steps recorded (no spurious extrema found).")
-    return(invisible(NULL))
-  }
-
-  message(sprintf("Found %d smoothing step%s.", n_steps, if (n_steps == 1) "" else "s"))
-
-  # Initial frame
-  initial_values <- steps[[1]]$before
-  draw_frame(initial_values, "Initial State")
-
-  if (isTRUE(step_by_step)) {
-    if (interactive()) {
-      invisible(readline("Press [Enter] to start smoothing process..."))
-      for (i in seq_len(n_steps)) {
-        st <- steps[[i]]
-        title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d (hop_idx=%.2f)",
-                                i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"),
-                                st$vertex, as.numeric(st$hop_idx))
-        draw_frame(st$before, title_before, st$vertex)
-        if (animation_delay > 0) Sys.sleep(animation_delay)
-
-        delta <- abs(st$after[st$vertex] - st$before[st$vertex])
-        title_after <- sprintf("Step %d/%d: After smoothing (\u0394=%.4f)", i, n_steps, delta)
-        draw_frame(st$after, title_after, st$vertex)
-
-        if (i < n_steps) invisible(readline("Press [Enter] to continue..."))
-      }
-    }
-  } else {
-    # Snapshot mode
-    # helper for filenames
-    fpath <- function(tag) file.path(out.dir, sprintf("%s_%s.png", filename.prefix, tag))
-
-    message("Saving snapshots to: ", normalizePath(out.dir, winslash = "/"))
-    # initial
+    ## Initial frame
+    initial_values <- steps[[1]]$before
     draw_frame(initial_values, "Initial State")
-    rgl::snapshot3d(filename = fpath("000_initial"))
 
-    for (i in seq_len(n_steps)) {
-      st <- steps[[i]]
+    if (isTRUE(step_by_step)) {
+        if (interactive()) {
+            invisible(readline("Press [Enter] to start smoothing process..."))
+            for (i in seq_len(n_steps)) {
+                st <- steps[[i]]
+                title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d (hop_idx=%.2f)",
+                                        i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"),
+                                        st$vertex, as.numeric(st$hop_idx))
+                draw_frame(st$before, title_before, st$vertex)
+                if (animation_delay > 0) Sys.sleep(animation_delay)
 
-      title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d",
-                              i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"), st$vertex)
-      draw_frame(st$before, title_before, st$vertex)
-      rgl::snapshot3d(filename = fpath(sprintf("%03d_before", i)))
-      if (animation_delay > 0) Sys.sleep(animation_delay)
+                delta <- abs(st$after[st$vertex] - st$before[st$vertex])
+                title_after <- sprintf("Step %d/%d: After smoothing (\u0394=%.4f)", i, n_steps, delta)
+                draw_frame(st$after, title_after, st$vertex)
 
-      title_after <- sprintf("Step %d/%d: After smoothing", i, n_steps)
-      draw_frame(st$after, title_after, st$vertex)
-      rgl::snapshot3d(filename = fpath(sprintf("%03d_after", i)))
-      if (animation_delay > 0) Sys.sleep(animation_delay)
+                if (i < n_steps) invisible(readline("Press [Enter] to continue..."))
+            }
+        }
+    } else {
+        ## Snapshot mode
+        ## helper for filenames
+        fpath <- function(tag) file.path(out.dir, sprintf("%s_%s.png", filename.prefix, tag))
+
+        message("Saving snapshots to: ", normalizePath(out.dir, winslash = "/"))
+        ## initial
+        draw_frame(initial_values, "Initial State")
+        rgl::snapshot3d(filename = fpath("000_initial"))
+
+        for (i in seq_len(n_steps)) {
+            st <- steps[[i]]
+
+            title_before <- sprintf("Step %d/%d: Before smoothing %s at vertex %d",
+                                    i, n_steps, ifelse(isTRUE(st$is_minimum), "minimum", "maximum"), st$vertex)
+            draw_frame(st$before, title_before, st$vertex)
+            rgl::snapshot3d(filename = fpath(sprintf("%03d_before", i)))
+            if (animation_delay > 0) Sys.sleep(animation_delay)
+
+            title_after <- sprintf("Step %d/%d: After smoothing", i, n_steps)
+            draw_frame(st$after, title_after, st$vertex)
+            rgl::snapshot3d(filename = fpath(sprintf("%03d_after", i)))
+            if (animation_delay > 0) Sys.sleep(animation_delay)
+        }
+
+        message(sprintf("Saved %d snapshot%s.",
+                        2 * n_steps + 1L, if (2 * n_steps + 1L == 1L) "" else "s"))
     }
 
-    message(sprintf("Saved %d snapshot%s.",
-                    2 * n_steps + 1L, if (2 * n_steps + 1L == 1L) "" else "s"))
-  }
+    ## Final frame
+    final_values <- steps[[n_steps]]$after
+    draw_frame(final_values, "Final State (All Spurious Extrema Removed)")
+    if (isTRUE(step_by_step) && interactive()) {
+        invisible(readline("Press [Enter] to close..."))
+    }
 
-  # Final frame
-  final_values <- steps[[n_steps]]$after
-  draw_frame(final_values, "Final State (All Spurious Extrema Removed)")
-  if (isTRUE(step_by_step) && interactive()) {
-    invisible(readline("Press [Enter] to close..."))
-  }
-
-  invisible(NULL)
+    invisible(NULL)
 }

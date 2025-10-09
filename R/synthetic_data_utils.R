@@ -2859,50 +2859,107 @@ normalize.and.inv.logit.fn <- function(y, y.min = -3, y.max = 3) {
     return(y)
 }
 
+#' Create a Bivariate Gaussian Mixture Function
+#'
+#' Generates a bivariate Gaussian mixture comprising two components with specified
+#' locations, amplitudes, and shared bandwidth. The function returns both the mixture
+#' surface and its gradient, providing a smooth test function commonly used in
+#' optimization and statistical applications.
+#'
+#' Consider the problem of testing gradient-based algorithms on smooth surfaces with
+#' multiple local extrema. A mixture of two Gaussian densities provides a natural
+#' setting for such investigations, as the resulting surface exhibits controlled
+#' complexity while remaining analytically tractable. The function creates a weighted
+#' sum of two bivariate Gaussian components, each centered at a specified location
+#' with given amplitude. The shared standard deviation parameter controls the spread
+#' of both components, determining the smoothness of the resulting surface.
+#'
+#' The mixture function takes the form \eqn{f(x,y) = A_1 \exp(-r_1^2/(2\sigma^2)) +
+#' A_2 \exp(-r_2^2/(2\sigma^2))}, where \eqn{r_i^2 = (x-x_i)^2 + (y-y_i)^2} measures
+#' the squared distance from the \eqn{i}-th center. The gradient is computed
+#' analytically using the chain rule, yielding \eqn{\nabla f = \sum_{i=1}^2
+#' (-1/\sigma^2) A_i \exp(-r_i^2/(2\sigma^2)) (x-x_i, y-y_i)^T}. This closed-form
+#' expression enables efficient evaluation of both function values and directional
+#' derivatives without numerical approximation.
+#'
+#' @param x1 Numeric scalar giving the x-coordinate of the first Gaussian center.
+#'   Default is 0.25.
+#' @param y1 Numeric scalar giving the y-coordinate of the first Gaussian center.
+#'   Default is 0.25.
+#' @param x2 Numeric scalar giving the x-coordinate of the second Gaussian center.
+#'   Default is 0.75.
+#' @param y2 Numeric scalar giving the y-coordinate of the second Gaussian center.
+#'   Default is 0.75.
+#' @param A1 Positive numeric scalar specifying the amplitude of the first Gaussian
+#'   component. Default is 1.0.
+#' @param A2 Positive numeric scalar specifying the amplitude of the second Gaussian
+#'   component. Default is 1.0.
+#' @param sigma Positive numeric scalar controlling the standard deviation shared by
+#'   both Gaussian components. Smaller values produce narrower peaks. Default is 0.2.
+#'
+#' @return A list with two components:
+#'   \item{f}{A function of two arguments \code{(x, y)} returning the mixture value
+#'     at the specified point.}
+#'   \item{gradient}{A function of two arguments \code{(x, y)} returning a named
+#'     numeric vector with components \code{dx} and \code{dy} giving the partial
+#'     derivatives at the specified point.}
+#'
+#' @examples
+#' # Create a symmetric mixture with equal amplitudes
+#' mixture <- create.gaussian.mixture()
+#' mixture$f(0.5, 0.5)
+#' mixture$gradient(0.5, 0.5)
+#'
+#' # Create an asymmetric mixture with different amplitudes
+#' mixture2 <- create.gaussian.mixture(A1 = 2.0, A2 = 0.5, sigma = 0.15)
+#'
+#' # Evaluate on a grid to visualize the surface
+#' x <- seq(0, 1, length.out = 50)
+#' y <- seq(0, 1, length.out = 50)
+#' z <- outer(x, y, Vectorize(mixture$f))
+#'
+#' @export
+create.gaussian.mixture <- function(x1 = 0.25, y1 = 0.25,  ## location of first Gaussian
+                                    x2 = 0.75, y2 = 0.75,    ## location of second Gaussian
+                                    A1 = 1.0,                ## amplitude of first Gaussian
+                                    A2 = 1.0,                ## amplitude of second Gaussian
+                                    sigma = 0.2) {           ## shared standard deviation
+    ## Input validation
+    if (sigma <= 0) stop("sigma must be positive")
+    if (A1 <= 0 || A2 <= 0) stop("amplitudes must be positive")
 
+    ## Create list of functions to return
+    result <- list()
 
+    ## Function for the Gaussian mixture
+    result$f <- function(x, y) {
+        ## First Gaussian
+        g1 <- A1 * exp(-((x - x1)^2 + (y - y1)^2)/(2 * sigma^2))
+        ## Second Gaussian
+        g2 <- A2 * exp(-((x - x2)^2 + (y - y2)^2)/(2 * sigma^2))
+        ## Sum of Gaussians
+        return(g1 + g2)
+    }
 
-## create.gaussian.mixture <- function(x1 = 0.25, y1 = 0.25,  ## location of first Gaussian
-##                                     x2 = 0.75, y2 = 0.75,    ## location of second Gaussian
-##                                     A1 = 1.0,                ## amplitude of first Gaussian
-##                                     A2 = 1.0,                ## amplitude of second Gaussian
-##                                     sigma = 0.2) {           ## shared standard deviation
-##     ## Input validation
-##     if (sigma <= 0) stop("sigma must be positive")
-##     if (A1 <= 0 || A2 <= 0) stop("amplitudes must be positive")
+    ## Function for the gradient
+    result$gradient <- function(x, y) {
+        ## First Gaussian and its derivatives
+        g1 <- A1 * exp(-((x - x1)^2 + (y - y1)^2)/(2 * sigma^2))
+        dg1_dx <- g1 * (-1/sigma^2) * (x - x1)
+        dg1_dy <- g1 * (-1/sigma^2) * (y - y1)
 
-##     ## Create list of functions to return
-##     result <- list()
+        ## Second Gaussian and its derivatives
+        g2 <- A2 * exp(-((x - x2)^2 + (y - y2)^2)/(2 * sigma^2))
+        dg2_dx <- g2 * (-1/sigma^2) * (x - x2)
+        dg2_dy <- g2 * (-1/sigma^2) * (y - y2)
 
-##     ## Function for the Gaussian mixture
-##     result$f <- function(x, y) {
-##         ## First Gaussian
-##         g1 <- A1 * exp(-((x - x1)^2 + (y - y1)^2)/(2 * sigma^2))
-##         ## Second Gaussian
-##         g2 <- A2 * exp(-((x - x2)^2 + (y - y2)^2)/(2 * sigma^2))
-##         ## Sum of Gaussians
-##         return(g1 + g2)
-##     }
+        ## Return gradient vector (partial derivatives with respect to x and y)
+        return(c(dx = dg1_dx + dg2_dx,
+                 dy = dg1_dy + dg2_dy))
+    }
 
-##     ## Function for the gradient
-##     result$gradient <- function(x, y) {
-##         ## First Gaussian and its derivatives
-##         g1 <- A1 * exp(-((x - x1)^2 + (y - y1)^2)/(2 * sigma^2))
-##         dg1_dx <- g1 * (-1/sigma^2) * (x - x1)
-##         dg1_dy <- g1 * (-1/sigma^2) * (y - y1)
-
-##         ## Second Gaussian and its derivatives
-##         g2 <- A2 * exp(-((x - x2)^2 + (y - y2)^2)/(2 * sigma^2))
-##         dg2_dx <- g2 * (-1/sigma^2) * (x - x2)
-##         dg2_dy <- g2 * (-1/sigma^2) * (y - y2)
-
-##         ## Return gradient vector (partial derivatives with respect to x and y)
-##         return(c(dx = dg1_dx + dg2_dx,
-##                 dy = dg1_dy + dg2_dy))
-##     }
-
-##     return(result)
-## }
+    return(result)
+}
 
 
 #' Generate 2D Gaussian Mixture
@@ -3277,9 +3334,12 @@ plot3D.gaussian_mixture <- function(x,
   if (!is.numeric(n.grid) || n.grid < 2) stop("`n.grid` must be an integer >= 2.", call. = FALSE)
   if (!is.numeric(alpha) || alpha < 0 || alpha > 1) stop("`alpha` must be in [0,1].", call. = FALSE)
 
-  # Headless/CI-safe (off-screen device)
-  old <- options(rgl.useNULL = TRUE)
-  on.exit(options(old), add = TRUE)
+    ## Headless/CI-safe (off-screen device)
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
 
   # Grid
   x.seq <- seq(x$x.range[1], x$x.range[2], length.out = n.grid)
@@ -3289,9 +3349,13 @@ plot3D.gaussian_mixture <- function(x,
   fxy <- Vectorize(function(xx, yy) x$f(xx, yy))
   z <- outer(x.seq, y.seq, fxy)  # n.grid-by-n.grid
 
-  # Open/close dedicated device
-  rgl::open3d()
-  on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
+    ## Open/close dedicated device
+    rgl::open3d()
+    if (use_null) {
+        ## Only close the device automatically if using null device
+        on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    }
+    rgl::clear3d()
 
   # Optional base plane with contours
   if (isTRUE(add.contours)) {

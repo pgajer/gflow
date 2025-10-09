@@ -8,7 +8,6 @@
 #' @param radius  numeric or NULL; if non-NULL, draw spheres with this radius
 #' @param col     color for points/spheres
 #' @param size    point size when radius is NULL
-#' @param use_null logical; force rgl null device (recommended for CRAN/CI)
 #' @param open_new logical; open/close a new rgl device within this call
 #' @param axes,xlab,ylab,zlab standard rgl axis/label args
 #' @param ...     passed to rgl::plot3d()
@@ -19,7 +18,6 @@ plot3D.plain <- function(X,
                          radius = NULL,
                          col = "gray",
                          size = 3,
-                         use_null = TRUE,
                          open_new = TRUE,
                          axes = FALSE, xlab = "", ylab = "", zlab = "",
                          ...) {
@@ -28,11 +26,13 @@ plot3D.plain <- function(X,
          "Install with install.packages('rgl').", call. = FALSE)
   }
 
-  # Headless/CI-safe; harmless on desktops
-  if (isTRUE(use_null)) {
-    old <- options(rgl.useNULL = TRUE)
-    on.exit(options(old), add = TRUE)
-  }
+  ## Headless/CI-safe; harmless on desktops
+  use_null <- (!interactive()) ||
+      identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+      (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+  old_opt <- options(rgl.useNULL = use_null)
+  on.exit(options(old_opt), add = TRUE)
+
 
   if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
   if (ncol(X) != 3) stop("X must have exactly 3 columns")
@@ -43,7 +43,11 @@ plot3D.plain <- function(X,
   # Manage device lifecycle locally if requested
   if (isTRUE(open_new)) {
     rgl::open3d()
-    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    if (use_null) {
+        ## Only close the device automatically if using null device
+        on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    }
+    rgl::clear3d()
   }
 
   ids <- if (!is.null(radius)) {
@@ -79,7 +83,6 @@ plot3D.plain <- function(X,
 #' @param quantize.dig.lab Digits for quantization labels (default 2).
 #' @param start,end Hue start/end for palette (defaults 1/6 and 0).
 #' @param n.levels Number of color levels (default 10).
-#' @param use_null Logical; force rgl null device (recommended for CRAN/CI; default TRUE).
 #' @param open_new Logical; open/close a new rgl device inside this function (default TRUE).
 #'
 #' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
@@ -102,7 +105,6 @@ plot3D.cont <- function(X,
                         quantize.round = FALSE,
                         quantize.dig.lab = 2,
                         start = 1/6, end = 0, n.levels = 10,
-                        use_null = TRUE,
                         open_new = TRUE) {
 
   # rgl is optional; error here because this function's purpose is plotting
@@ -111,11 +113,12 @@ plot3D.cont <- function(X,
          "Install with install.packages('rgl').", call. = FALSE)
   }
 
-  # Headless/CI-safe; harmless on desktops
-  if (isTRUE(use_null)) {
-    old <- options(rgl.useNULL = TRUE)
-    on.exit(options(old), add = TRUE)
-  }
+    ## Headless/CI-safe; harmless on desktops
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
 
   # Validate inputs
   if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
@@ -165,10 +168,14 @@ plot3D.cont <- function(X,
   }
 
   # Manage device lifecycle locally if requested
-  if (isTRUE(open_new)) {
-    rgl::open3d()
-    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-  }
+    if (isTRUE(open_new)) {
+        rgl::open3d()
+        if (use_null) {
+            ## Only close the device automatically if using null device
+            on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+        }
+        rgl::clear3d()
+    }
 
   # Base layer: non-highlighted points
   if (any(!subset)) {
@@ -177,7 +184,6 @@ plot3D.cont <- function(X,
         X[!subset, , drop = FALSE],
         col      = non.highlight.color,
         radius   = radius_local,
-        use_null = FALSE,   # already set by this function
         open_new = FALSE    # plot into the current device
       )
     } else {
@@ -185,7 +191,6 @@ plot3D.cont <- function(X,
         X[!subset, , drop = FALSE],
         col      = non.highlight.color,
         size     = point.size,
-        use_null = FALSE,
         open_new = FALSE
       )
     }
@@ -195,7 +200,6 @@ plot3D.cont <- function(X,
       X[FALSE, , drop = FALSE],
       col      = non.highlight.color,
       size     = point.size,
-      use_null = FALSE,
       open_new = FALSE
     )
   }
@@ -569,73 +573,83 @@ plot2D.cont <- function(X,
 #' @export
 show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
                        show.plot = TRUE, open_new = FALSE) {
-  # --- Input checks & coercions (CRAN-safe) ---
-  if (!is.matrix(X) && !is.data.frame(X)) {
-    stop("X must be a matrix or data frame", call. = FALSE)
-  }
-  X <- as.matrix(X)
-  if (ncol(X) != 3L) {
-    stop("X must have exactly 3 columns", call. = FALSE)
-  }
-  storage.mode(X) <- "double"
-
-  if (length(cltr) != nrow(X)) {
-    stop("Length of 'cltr' must match the number of rows in X", call. = FALSE)
-  }
-
-  # Drop rows with NA cluster labels
-  keep <- !is.na(cltr)
-  if (!all(keep)) {
-    X <- X[keep, , drop = FALSE]
-    cltr <- cltr[keep]
-  }
-  if (nrow(X) == 0L) {
-    warning("No non-NA cluster assignments; nothing to do.")
-    return(invisible(matrix(numeric(0), nrow = 0L, ncol = 3,
-                            dimnames = list(NULL, c("x", "y", "z")))))
-  }
-
-  # Use character labels for rownames; preserve your freq-based ordering
-  cltr_chr <- as.character(cltr)
-  cltr_labs <- unique(names(sort(table(cltr_chr))))
-  nCl <- length(cltr_labs)
-
-  cltr_centers <- matrix(NA_real_, nrow = nCl, ncol = 3L,
-                         dimnames = list(cltr_labs, c("x", "y", "z")))
-
-  # --- Compute per-cluster centers (medians for size >= 2, point itself for size == 1) ---
-  for (j in seq_len(nCl)) {
-    idx <- cltr_chr == cltr_labs[j]
-    nj <- sum(idx)
-    if (nj == 0L) next
-    if (nj == 1L) {
-      cltr_centers[j, ] <- X[which(idx)[1L], ]
-    } else {
-      # median is robust; NA-safe because X has no NAs unless user provided them
-      cltr_centers[j, ] <- apply(X[idx, , drop = FALSE], 2L, median, na.rm = TRUE)
+    ## --- Input checks & coercions (CRAN-safe) ---
+    if (!is.matrix(X) && !is.data.frame(X)) {
+        stop("X must be a matrix or data frame", call. = FALSE)
     }
-  }
-
-  # --- Optional plotting: headless-safe & gated on rgl availability ---
-  if (isTRUE(show.plot)) {
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-      warning("Package 'rgl' is not installed; skipping 3D visualization.")
-    } else {
-      old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
-      if (isTRUE(open_new)) {
-        rgl::open3d()
-        on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-      }
-      # Add labels to the current scene (or the fresh one if open_new = TRUE)
-      rgl::text3d(x = cltr_centers[, 1],
-                  y = cltr_centers[, 2],
-                  z = cltr_centers[, 3],
-                  texts = rownames(cltr_centers),
-                  font = 2L, cex = cex, adj = adj)
+    X <- as.matrix(X)
+    if (ncol(X) != 3L) {
+        stop("X must have exactly 3 columns", call. = FALSE)
     }
-  }
+    storage.mode(X) <- "double"
 
-  invisible(cltr_centers)
+    if (length(cltr) != nrow(X)) {
+        stop("Length of 'cltr' must match the number of rows in X", call. = FALSE)
+    }
+
+    ## Drop rows with NA cluster labels
+    keep <- !is.na(cltr)
+    if (!all(keep)) {
+        X <- X[keep, , drop = FALSE]
+        cltr <- cltr[keep]
+    }
+    if (nrow(X) == 0L) {
+        warning("No non-NA cluster assignments; nothing to do.")
+        return(invisible(matrix(numeric(0), nrow = 0L, ncol = 3,
+                                dimnames = list(NULL, c("x", "y", "z")))))
+    }
+
+    ## Use character labels for rownames; preserve your freq-based ordering
+    cltr_chr <- as.character(cltr)
+    cltr_labs <- unique(names(sort(table(cltr_chr))))
+    nCl <- length(cltr_labs)
+
+    cltr_centers <- matrix(NA_real_, nrow = nCl, ncol = 3L,
+                           dimnames = list(cltr_labs, c("x", "y", "z")))
+
+    ## --- Compute per-cluster centers (medians for size >= 2, point itself for size == 1) ---
+    for (j in seq_len(nCl)) {
+        idx <- cltr_chr == cltr_labs[j]
+        nj <- sum(idx)
+        if (nj == 0L) next
+        if (nj == 1L) {
+            cltr_centers[j, ] <- X[which(idx)[1L], ]
+        } else {
+            ## median is robust; NA-safe because X has no NAs unless user provided them
+            cltr_centers[j, ] <- apply(X[idx, , drop = FALSE], 2L, median, na.rm = TRUE)
+        }
+    }
+
+    ## --- Optional plotting: headless-safe & gated on rgl availability ---
+    if (isTRUE(show.plot)) {
+        if (!requireNamespace("rgl", quietly = TRUE)) {
+            warning("Package 'rgl' is not installed; skipping 3D visualization.")
+        } else {
+
+            use_null <- (!interactive()) ||
+                identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+                (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+            old_opt <- options(rgl.useNULL = use_null)
+            on.exit(options(old_opt), add = TRUE)
+
+            if (isTRUE(open_new)) {
+                rgl::open3d()
+                if (use_null) {
+                    ## Only close the device automatically if using null device
+                    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+                }
+                rgl::clear3d()
+            }
+                                        # Add labels to the current scene (or the fresh one if open_new = TRUE)
+            rgl::text3d(x = cltr_centers[, 1],
+                        y = cltr_centers[, 2],
+                        z = cltr_centers[, 3],
+                        texts = rownames(cltr_centers),
+                        font = 2L, cex = cex, adj = adj)
+        }
+    }
+
+    invisible(cltr_centers)
 }
 
 #' Create 3D Plot with Cluster Visualization
@@ -664,7 +678,6 @@ show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
 #' @param radius Numeric. Size of spheres at data points.
 #' @param axes Logical. Whether to show axes.
 #' @param xlab,ylab,zlab Axis labels.
-#' @param use.null Logical. If TRUE, forces use of the RGL null device for safe operation in headless or CI environments.
 #' @param ... Additional arguments passed to \code{\link[rgl]{plot3d}}.
 #'
 #' @return Invisibly returns a list containing:
@@ -716,7 +729,6 @@ plot3D.cltrs <- function(X,
                          xlab = "",
                          ylab = "",
                          zlab = "",
-                         use.null = TRUE,
                          ...) {
 
   if (!requireNamespace("rgl", quietly = TRUE)) {
@@ -724,11 +736,12 @@ plot3D.cltrs <- function(X,
          "Install with install.packages('rgl').", call. = FALSE)
   }
 
-  # Headless/CI-safe; harmless on desktops
-  if (isTRUE(use.null)) {
-    old <- options(rgl.useNULL = TRUE)
-    on.exit(options(old), add = TRUE)
-  }
+    ## Headless/CI-safe; harmless on desktops
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
 
   if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
   if (ncol(X) != 3) stop("X must have exactly 3 columns")
@@ -740,8 +753,14 @@ plot3D.cltrs <- function(X,
 
   x <- X[, 1]; y <- X[, 2]; z <- X[, 3]
 
-  if (isTRUE(open.3d)) rgl::open3d()
-  on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    if (isTRUE(open.3d)){
+        rgl::open3d()
+        if (use_null) {
+            ## Only close the device automatically if using null device
+            on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+        }
+        rgl::clear3d()
+    }
 
   if (!is.null(cltr)) {
     cltr <- as.character(cltr)

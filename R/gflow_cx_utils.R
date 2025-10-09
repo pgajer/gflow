@@ -20,7 +20,7 @@
 #'     \item \code{hop_idx}: Integer hop radius of the extremum
 #'     \item \code{is_max}: Logical indicating if extremum is a maximum
 #'     \item \code{label}: Character label for the extremum
-#'     \item \code{fn_value}: Numeric function value at the extremum
+#'     \item \code{value}: Numeric function value at the extremum
 #'   }
 #' @param hop.offset Integer specifying additional hop distance to include beyond the
 #'   extremum's hop radius (default: 2). Must be non-negative.
@@ -116,7 +116,7 @@ extract.extrema.subgraphs <- function(adj.list,
     stop("extrema.df must be a data frame")
   }
 
-  required.cols <- c("vertex", "hop_idx", "is_max", "label", "fn_value")
+  required.cols <- c("vertex", "hop_idx", "is_max", "label", "value")
   missing.cols <- setdiff(required.cols, colnames(extrema.df))
   if (length(missing.cols) > 0) {
     stop("extrema.df is missing required columns: ", paste(missing.cols, collapse = ", "))
