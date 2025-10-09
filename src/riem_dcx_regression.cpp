@@ -3474,7 +3474,7 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
  * for gentle damping.
  *
  * **gamma_modulation:** Controls response-coherence modulation strength. Range:
- * 0.5-2.0. Larger gamma creates stronger geometric adaptation to response structure.
+ * 0-2.0. Larger gamma creates stronger geometric adaptation to response structure.
  * Use gamma = 1.0 as default. Set gamma = 0 to disable modulation entirely.
  *
  * **n_eigenpairs:** Number of eigenpairs for spectral filtering. Typical range:
@@ -3960,7 +3960,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // double gamma_eff = gamma_modulation * std::min(1.0, iter / 5.0);
         // apply_response_coherence_modulation(y_hat_curr, gamma_eff);
 
-        apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
+        if (gamma_modulation > 0.0) {
+            apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
+        }
 
         if (test_stage == 7) {
             Rprintf("TEST_STAGE 7: Stopped after apply_response_coherence_modulation()\n");
