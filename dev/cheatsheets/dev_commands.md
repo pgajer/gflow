@@ -13,6 +13,7 @@ debugging, and CRAN submission prep.
 ```r
 devtools::load_all()       # Load package without rebuilding
 devtools::document()       # Update documentation (roxygen2)
+roxygen2::roxygenize()
 make build                 # Build tarball with Makefile
 R CMD build .              # Build tarball (manual)
 R CMD check gflow_*.tar.gz --as-cran   # Full CRAN check

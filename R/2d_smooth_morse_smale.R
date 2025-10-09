@@ -27,7 +27,9 @@ create.grid <- function(axis.n.pts) {
 #'
 #' @param f Function taking two arguments (x, y)
 #' @param grid List containing grid data (as created by create.grid)
-#' @return Numeric vector of function values
+#' @return List with components:
+#'   \item{y.smooth}{Numeric vector of function values}
+#'   \item{X}{Matrix of grid coordinates}
 #'
 #' @examples
 #' grid <- create.grid(50)
@@ -46,7 +48,8 @@ evaluate.function.on.grid.as.vector <- function(f, grid) {
         y.smooth[i] <- f(X[i, 1], X[i, 2])
     }
 
-    return(y.smooth)
+    list(y.smooth = y.smooth,
+         X = X)
 }
 
 #' Evaluate Function on Grid

@@ -303,6 +303,60 @@ extern "C" SEXP create_parameters_component(
     return params;
 }
 
+extern "C" SEXP create_gamma_selection_component(const riem_dcx_t& dcx) {
+    // If gamma selection was not performed, return NULL
+    if (!dcx.gamma_was_auto_selected) {
+        return R_NilValue;
+    }
+
+    const auto& gsr = dcx.gamma_selection_result;
+
+    const int n_fields = 5;
+    SEXP gamma_sel = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    // Field 1: gamma.optimal
+    SET_STRING_ELT(names, idx, Rf_mkChar("gamma.optimal"));
+    SET_VECTOR_ELT(gamma_sel, idx++, Rf_ScalarReal(gsr.gamma_optimal));
+
+    // Field 2: gcv.optimal (FIRST-ITERATION GCV, not global optimal)
+    SET_STRING_ELT(names, idx, Rf_mkChar("gcv.first.iter"));
+    SET_VECTOR_ELT(gamma_sel, idx++, Rf_ScalarReal(gsr.gcv_optimal));
+
+    // Field 3: gamma.grid
+    SET_STRING_ELT(names, idx, Rf_mkChar("gamma.grid"));
+    SEXP s_gamma_grid = PROTECT(Rf_allocVector(REALSXP, gsr.gamma_grid.size()));
+    for (size_t i = 0; i < gsr.gamma_grid.size(); ++i) {
+        REAL(s_gamma_grid)[i] = gsr.gamma_grid[i];
+    }
+    SET_VECTOR_ELT(gamma_sel, idx++, s_gamma_grid);
+    UNPROTECT(1);
+
+    // Field 4: gcv.scores (GCV at first iteration for each gamma)
+    SET_STRING_ELT(names, idx, Rf_mkChar("gcv.scores"));
+    SEXP s_gcv_scores = PROTECT(Rf_allocVector(REALSXP, gsr.gcv_scores.size()));
+    for (size_t i = 0; i < gsr.gcv_scores.size(); ++i) {
+        REAL(s_gcv_scores)[i] = gsr.gcv_scores[i];
+    }
+    SET_VECTOR_ELT(gamma_sel, idx++, s_gcv_scores);
+    UNPROTECT(1);
+
+    // Field 5: y.hat.optimal (fitted values at first iteration with optimal gamma)
+    SET_STRING_ELT(names, idx, Rf_mkChar("y.hat.first.iter"));
+    const Eigen::Index n = gsr.y_hat_optimal.size();
+    SEXP s_y_hat_opt = PROTECT(Rf_allocVector(REALSXP, n));
+    for (Eigen::Index i = 0; i < n; ++i) {
+        REAL(s_y_hat_opt)[i] = gsr.y_hat_optimal[i];
+    }
+    SET_VECTOR_ELT(gamma_sel, idx++, s_y_hat_opt);
+    UNPROTECT(1);
+
+    Rf_setAttrib(gamma_sel, R_NamesSymbol, names);
+    UNPROTECT(2); // names, gamma_sel
+    return gamma_sel;
+}
+
 /**
  * @brief R interface for kNN Riemannian graph regression
  *
@@ -582,8 +636,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     const double gamma_modulation = REAL(s_gamma_modulation)[0];
 
-    if (!R_FINITE(gamma_modulation) || gamma_modulation <= 0.0) {
-        Rf_error("gamma.modulation must be a finite positive number (got %.3f)",
+    if (!R_FINITE(gamma_modulation)) {
+        Rf_error("gamma.modulation must be a finite number (got %.3f)",
                  gamma_modulation);
     }
 
@@ -814,7 +868,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     // ---------- Main result list ----------
 
-    const int n_components = 9;  // Changed from 8 to 9 to add optimal.iteration
+    const int n_components = 10;  // Changed from 8 to 9 to add optimal.iteration
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -900,6 +954,12 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_STRING_ELT(names, component_idx, Rf_mkChar("density"));
     SEXP s_density = PROTECT(create_density_history_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_density);
+    UNPROTECT(1);
+
+    // Component 10: gamma.selection
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("gamma.selection"));
+    SEXP s_gamma_sel = PROTECT(create_gamma_selection_component(dcx));
+    SET_VECTOR_ELT(result, component_idx++, s_gamma_sel);
     UNPROTECT(1);
 
     // Set names attribute

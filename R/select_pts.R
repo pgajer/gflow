@@ -52,20 +52,12 @@ select3D.points <- function(objects = NULL,
     stop("This function requires the optional package 'rgl'. ",
          "Install with install.packages('rgl').", call. = FALSE)
   }
-  # Interactive selection cannot run headless or in non-interactive sessions
-  if (!isTRUE(allow_headless) && isTRUE(getOption("rgl.useNULL", FALSE))) {
-    stop("Interactive selection is unavailable with the rgl null (off-screen) device. ",
-         "Run in an interactive session with a real rgl window ",
-         "(options(rgl.useNULL)=FALSE).", call. = FALSE)
-  }
-  if (!interactive()) {
-    stop("Interactive selection requires an interactive R session (interactive() == TRUE).",
-         call. = FALSE)
-  }
-  if (rgl::rgl.cur() == 0) {
-    stop("No active rgl device. Plot your 3D points first (e.g., rgl::plot3d(...)).",
-         call. = FALSE)
-  }
+
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
 
   # Default objects to all scene objects
   if (is.null(objects)) {
@@ -303,12 +295,12 @@ select3D.points.profiles <- function(X,
     stop("'alpha' must be a numeric value between 0 and 1", call. = FALSE)
   }
 
-  # Interactive selection cannot work with the null (off-screen) device
-  if (!isTRUE(allow_headless) && isTRUE(getOption("rgl.useNULL", FALSE))) {
-    stop("Interactive selection is unavailable with the rgl null (off-screen) device. ",
-         "Run in an interactive session with a real rgl window ",
-         "(options(rgl.useNULL)=FALSE).", call. = FALSE)
-  }
+    ## Interactive selection cannot work with the null (off-screen) device
+    use_null <- (!interactive()) ||
+        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+    old_opt <- options(rgl.useNULL = use_null)
+    on.exit(options(old_opt), add = TRUE)
 
   # Require active device and scene contents
   if (rgl::rgl.cur() == 0) {

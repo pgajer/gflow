@@ -857,6 +857,10 @@ struct riem_dcx_t {
     std::vector<double> response_changes;        ///< Response change history
     std::vector<double> density_changes;         ///< Density change history
 
+    // Gamma selection result (empty if not performed)
+    gamma_selection_result_t gamma_selection_result;
+    bool gamma_was_auto_selected = false;
+
     // ================================================================
     // CONSTRUCTION METHODS
     // ================================================================

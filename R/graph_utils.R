@@ -1997,121 +1997,129 @@ generate.graph.gaussian.mixture <- function(
 #' }
 #' @export
 visualize.grid.function <- function(grid.size, z, centers = NULL, title = "Function on Grid Graph") {
-  ## ---- Validation -----------------------------------------------------------
-  if (length(grid.size) != 1L || !is.numeric(grid.size) || grid.size < 2 || !is.finite(grid.size)) {
-    stop("'grid.size' must be a single finite numeric value >= 2", call. = FALSE)
-  }
-  grid.size <- as.integer(grid.size)
-  n_vertices <- grid.size^2L
+    ## ---- Validation -----------------------------------------------------------
+    if (length(grid.size) != 1L || !is.numeric(grid.size) || grid.size < 2 || !is.finite(grid.size)) {
+        stop("'grid.size' must be a single finite numeric value >= 2", call. = FALSE)
+    }
+    grid.size <- as.integer(grid.size)
+    n_vertices <- grid.size^2L
 
-  if (!is.numeric(z) || length(z) != n_vertices) {
-    stop(sprintf("'z' must be a numeric vector of length grid.size^2 (= %d)", n_vertices), call. = FALSE)
-  }
-  if (any(!is.finite(z))) {
-    stop("'z' contains non-finite values; please remove or impute NA/Inf/NaN", call. = FALSE)
-  }
-
-  if (!is.null(centers)) {
-    centers <- as.integer(centers)
-    centers <- centers[is.finite(centers)]
-    centers <- centers[centers >= 1L & centers <= n_vertices]
-    if (!length(centers)) centers <- NULL
-  }
-
-  ## ---- Coordinates & helpers -----------------------------------------------
-  x_coords <- rep(seq_len(grid.size), grid.size) / grid.size
-  y_coords <- rep(seq_len(grid.size), each = grid.size) / grid.size
-
-  vertex_to_coords <- function(vertices) {
-    xv <- (vertices - 1L) %% grid.size + 1L
-    yv <- ceiling(vertices / grid.size)
-    list(x = xv / grid.size, y = yv / grid.size)
-  }
-
-  center_coords <- if (!is.null(centers)) vertex_to_coords(centers) else NULL
-
-  ## ---- Set layout and par safely -------------------------------------------
-  old_par <- graphics::par(no.readonly = TRUE)
-  on.exit(try(graphics::par(old_par), silent = TRUE), add = TRUE)
-
-  graphics::layout(matrix(c(1, 2), nrow = 1L, ncol = 2L))
-  on.exit(try(graphics::layout(1), silent = TRUE), add = TRUE)
-
-  ## ---- Plot 1: Heatmap + contours ------------------------------------------
-  graphics::par(mar = c(4, 4, 2, 1))
-  z_matrix <- matrix(z, nrow = grid.size, ncol = grid.size, byrow = FALSE)
-
-  pal2d <- grDevices::hcl.colors(100, palette = "YlOrRd")
-  graphics::image(
-    x = seq_len(grid.size) / grid.size,
-    y = seq_len(grid.size) / grid.size,
-    z = z_matrix,
-    col = pal2d,
-    main = title,
-    xlab = "X", ylab = "Y"
-  )
-
-  graphics::contour(
-    x = seq_len(grid.size) / grid.size,
-    y = seq_len(grid.size) / grid.size,
-    z = z_matrix,
-    add = TRUE,
-    col = "black"
-  )
-
-  if (!is.null(centers)) {
-    graphics::points(center_coords$x, center_coords$y, pch = 19, col = "blue", cex = 1.5)
-    graphics::text(center_coords$x, center_coords$y,
-                   labels = paste("Center", seq_along(centers)),
-                   pos = 3, offset = 0.7, cex = 0.8)
-  }
-
-  ## ---- Plot 2: Base-graphics 3D perspective -------------------------------
-  graphics::par(mar = c(4, 4, 2, 1))
-  graphics::persp(
-    x = seq_len(grid.size) / grid.size,
-    y = seq_len(grid.size) / grid.size,
-    z = z_matrix,
-    theta = 30, phi = 30,
-    expand = 0.7,
-    col = "lightblue",
-    shade = 0.5,
-    main = "3D Perspective",
-    xlab = "X", ylab = "Y", zlab = "Value"
-  )
-
-  ## ---- Optional rgl 3D view (headless-safe) --------------------------------
-  if (requireNamespace("rgl", quietly = TRUE)) {
-    old_rgl <- options(rgl.useNULL = TRUE)
-    on.exit(options(old_rgl), add = TRUE)
-
-    rgl::open3d()
-    on.exit(try(rgl::rgl.close(), silent = TRUE), add = TRUE)
-
-    pal3d <- grDevices::hcl.colors(length(z), palette = "Spectral")
-    rgl::plot3d(
-      x_coords, y_coords, z,
-      col = pal3d[rank(z, ties.method = "average")],
-      size = 3,
-      xlab = "X", ylab = "Y", zlab = "Z",
-      type = "p"
-    )
-    rgl::title3d(main = title)
-
-    if (!is.null(centers)) {
-      for (i in seq_along(centers)) {
-        rgl::spheres3d(
-          center_coords$x[i], center_coords$y[i], z[centers[i]],
-          radius = 0.02,
-          color = "blue"
-        )
-      }
+    if (!is.numeric(z) || length(z) != n_vertices) {
+        stop(sprintf("'z' must be a numeric vector of length grid.size^2 (= %d)", n_vertices), call. = FALSE)
+    }
+    if (any(!is.finite(z))) {
+        stop("'z' contains non-finite values; please remove or impute NA/Inf/NaN", call. = FALSE)
     }
 
-    rgl::axes3d()
-  }
+    if (!is.null(centers)) {
+        centers <- as.integer(centers)
+        centers <- centers[is.finite(centers)]
+        centers <- centers[centers >= 1L & centers <= n_vertices]
+        if (!length(centers)) centers <- NULL
+    }
 
-  invisible(z)
+    ## ---- Coordinates & helpers -----------------------------------------------
+    x_coords <- rep(seq_len(grid.size), grid.size) / grid.size
+    y_coords <- rep(seq_len(grid.size), each = grid.size) / grid.size
+
+    vertex_to_coords <- function(vertices) {
+        xv <- (vertices - 1L) %% grid.size + 1L
+        yv <- ceiling(vertices / grid.size)
+        list(x = xv / grid.size, y = yv / grid.size)
+    }
+
+    center_coords <- if (!is.null(centers)) vertex_to_coords(centers) else NULL
+
+    ## ---- Set layout and par safely -------------------------------------------
+    old_par <- graphics::par(no.readonly = TRUE)
+    on.exit(try(graphics::par(old_par), silent = TRUE), add = TRUE)
+
+    graphics::layout(matrix(c(1, 2), nrow = 1L, ncol = 2L))
+    on.exit(try(graphics::layout(1), silent = TRUE), add = TRUE)
+
+    ## ---- Plot 1: Heatmap + contours ------------------------------------------
+    graphics::par(mar = c(4, 4, 2, 1))
+    z_matrix <- matrix(z, nrow = grid.size, ncol = grid.size, byrow = FALSE)
+
+    pal2d <- grDevices::hcl.colors(100, palette = "YlOrRd")
+    graphics::image(
+                  x = seq_len(grid.size) / grid.size,
+                  y = seq_len(grid.size) / grid.size,
+                  z = z_matrix,
+                  col = pal2d,
+                  main = title,
+                  xlab = "X", ylab = "Y"
+              )
+
+    graphics::contour(
+                  x = seq_len(grid.size) / grid.size,
+                  y = seq_len(grid.size) / grid.size,
+                  z = z_matrix,
+                  add = TRUE,
+                  col = "black"
+              )
+
+    if (!is.null(centers)) {
+        graphics::points(center_coords$x, center_coords$y, pch = 19, col = "blue", cex = 1.5)
+        graphics::text(center_coords$x, center_coords$y,
+                       labels = paste("Center", seq_along(centers)),
+                       pos = 3, offset = 0.7, cex = 0.8)
+    }
+
+    ## ---- Plot 2: Base-graphics 3D perspective -------------------------------
+    graphics::par(mar = c(4, 4, 2, 1))
+    graphics::persp(
+                  x = seq_len(grid.size) / grid.size,
+                  y = seq_len(grid.size) / grid.size,
+                  z = z_matrix,
+                  theta = 30, phi = 30,
+                  expand = 0.7,
+                  col = "lightblue",
+                  shade = 0.5,
+                  main = "3D Perspective",
+                  xlab = "X", ylab = "Y", zlab = "Value"
+              )
+
+    ## ---- Optional rgl 3D view (headless-safe) --------------------------------
+    if (requireNamespace("rgl", quietly = TRUE)) {
+
+        use_null <- (!interactive()) ||
+            identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
+            (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
+        old_opt <- options(rgl.useNULL = use_null)
+        on.exit(options(old_opt), add = TRUE)
+
+        rgl::open3d()
+        if (use_null) {
+            ## Only close the device automatically if using null device
+            on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+        }
+        rgl::clear3d()
+
+        pal3d <- grDevices::hcl.colors(length(z), palette = "Spectral")
+        rgl::plot3d(
+                 x_coords, y_coords, z,
+                 col = pal3d[rank(z, ties.method = "average")],
+                 size = 3,
+                 xlab = "X", ylab = "Y", zlab = "Z",
+                 type = "p"
+             )
+        rgl::title3d(main = title)
+
+        if (!is.null(centers)) {
+            for (i in seq_along(centers)) {
+                rgl::spheres3d(
+                         center_coords$x[i], center_coords$y[i], z[centers[i]],
+                         radius = 0.02,
+                         color = "blue"
+                     )
+            }
+        }
+
+        rgl::axes3d()
+    }
+
+    invisible(z)
 }
 
 #' Create a Random Graph
