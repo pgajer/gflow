@@ -28,31 +28,157 @@ Eigen::MatrixXd create_spectral_embedding(
 	size_t n_evectors);
 
 /**
- * @brief Implements spectral-based locally weighted regression for graph data
+ * @brief Spectral-based locally weighted regression on weighted graphs
  *
- * @details This function computes a local linear approximation of the response variable
- * at each vertex using spectral embedding of local neighborhoods. The algorithm:
- * 1. Computes the Laplacian eigenvectors for dimension reduction
- * 2. For each vertex, identifies neighboring vertices within varying bandwidths
- * 3. Creates spectral embeddings of these local neighborhoods
- * 4. Fits weighted linear models and selects optimal bandwidth based on LOOCV Rf_error
- * 5. Produces smoothed predictions, Rf_error estimates, and local scale information
+ * MOTIVATION
  *
- * @param y Response values at each vertex in the graph
- * @param n_evectors Number of eigenvectors to use for the spectral embedding
- * @param n_bws Number of candidate bandwidths to evaluate
- * @param log_grid If true, use logarithmic spacing for bandwidth grid; if false, use linear spacing
- * @param min_bw_factor Factor multiplied by graph diameter to determine minimum bandwidth
- * @param max_bw_factor Factor multiplied by graph diameter to determine maximum bandwidth
- * @param dist_normalization_factor Factor for normalizing distances in kernel weight calculations
- * @param kernel_type Type of kernel function to use for weighting (e.g., Gaussian, triangular)
- * @param precision Precision threshold for binary search and numerical comparisons
- * @param verbose Whether to print progress information
+ * Estimating smooth functions on graphs presents a fundamental challenge: how
+ * do we adapt regression bandwidth to local geometric structure while accounting
+ * for intrinsic graph topology? Classical LOWESS on Euclidean domains uses
+ * ambient distance to define neighborhoods, but graphs possess intrinsic geometry
+ * that may differ substantially from any embedding. This function addresses the
+ * challenge by combining spectral methods for dimension reduction with local
+ * weighted regression, allowing bandwidth adaptation while respecting graph structure.
  *
- * @return graph_spectral_lowess_t Structure containing:
- * - predictions: Smoothed values at each vertex
- * - errors: Estimated prediction errors
- * - scale: Local bandwidth/scale parameter for each vertex
+ * ALGORITHM OVERVIEW
+ *
+ * The algorithm proceeds in three main phases. First, we compute a global spectral
+ * embedding using Laplacian eigenvectors. These eigenvectors provide coordinates
+ * that encode graph structure through the diffusion geometry of random walks. The
+ * eigenvectors corresponding to smallest eigenvalues capture large-scale structure,
+ * while larger eigenvalues encode local variation.
+ *
+ * Second, for each vertex we identify candidate bandwidths spanning from a
+ * minimum ensuring sufficient local sample size to a maximum encompassing
+ * substantial portions of the graph. For each bandwidth, we extract the induced
+ * neighborhood and project it into the spectral embedding space. This creates
+ * a Euclidean domain where local regression can be performed while respecting
+ * the graph's intrinsic geometry.
+ *
+ * Third, we fit weighted linear models in the spectral coordinates for each
+ * bandwidth, using kernel weights that decay with graph distance. Cross-validation
+ * error guides bandwidth selection, with optional smoothing of the error profile
+ * to improve stability. The final prediction at each vertex comes from the
+ * locally optimal model.
+ *
+ * SPECTRAL EMBEDDING CONSTRUCTION
+ *
+ * The Laplacian matrix L = D - A encodes the graph structure, where D is the
+ * degree matrix and A the adjacency matrix. For weighted graphs, entries A[i,j]
+ * represent edge lengths or costs. The Laplacian's eigendecomposition L = VΛV^T
+ * provides coordinates: the i-th eigenvector V[:,i] assigns each vertex a value
+ * reflecting its position in the graph's diffusion geometry.
+ *
+ * We compute the n_evectors smallest eigenvectors. The smallest (trivial)
+ * eigenvector is constant, corresponding to eigenvalue zero. Subsequent
+ * eigenvectors partition the graph at progressively finer scales. Using these
+ * eigenvectors as coordinates provides an n_evectors-dimensional Euclidean
+ * representation where Euclidean distance approximates diffusion distance on
+ * the original graph.
+ *
+ * LOCAL NEIGHBORHOOD REGRESSION
+ *
+ * At each vertex i, we identify all vertices within graph distance bw, where
+ * bw is a candidate bandwidth. The spectral embedding restricted to this
+ * neighborhood gives coordinates X[j,1:n_evectors] for each neighbor j, and
+ * we have response values y[j]. We fit the weighted linear model:
+ *
+ *   ŷ[j] = β₀ + β₁X[j,1] + ... + βₙ X[j,n_evectors]
+ *
+ * with weights w[j] = K(d[i,j] / h), where d[i,j] is graph distance from i
+ * to j, h = dist_normalization_factor controls decay rate, and K is the kernel
+ * function specified by kernel_type.
+ *
+ * The weighted least squares problem minimizes:
+ *
+ *   ∑ⱼ w[j](y[j] - ŷ[j])²
+ *
+ * Leave-one-out cross-validation estimates prediction error without requiring
+ * a held-out test set. For each vertex j in the neighborhood, we refit the
+ * model excluding j and predict ŷ₋ⱼ[j]. The LOOCV error averages squared
+ * prediction errors across all vertices.
+ *
+ * BANDWIDTH SELECTION
+ *
+ * Bandwidth selection balances bias and variance. Small bandwidths yield
+ * unbiased estimates but high variance due to limited data. Large bandwidths
+ * reduce variance through extensive smoothing but introduce bias by averaging
+ * over regions where the response varies substantially.
+ *
+ * We evaluate candidate bandwidths on a grid between vertex-specific minimums
+ * (ensuring sufficient sample size) and a global maximum (capturing substantial
+ * graph structure). For each bandwidth, we compute LOOCV error and select the
+ * bandwidth minimizing this error.
+ *
+ * The algorithm optionally smooths the error profile across bandwidths using
+ * a secondary smoothing procedure. This removes noise in error estimates that
+ * can arise from sampling variability, particularly for vertices with irregular
+ * neighborhoods. The smoothed profile often yields more stable bandwidth selection.
+ *
+ * PARAMETERS
+ *
+ * @param y Response values at graph vertices (length = number of vertices)
+ * @param n_evectors Dimension of spectral embedding. Controls trade-off between
+ *        computational cost and embedding fidelity. Typical values: 5-20.
+ *        Larger values capture finer geometric detail but increase cost.
+ *
+ * @param n_bws Number of candidate bandwidths evaluated at each vertex.
+ *        More candidates improve optimization but increase computation.
+ *        Typical values: 10-30.
+ *
+ * @param log_grid If true, candidate bandwidths space logarithmically between
+ *        minimum and maximum. Logarithmic spacing concentrates candidates at
+ *        smaller bandwidths where error profiles often vary most rapidly.
+ *        If false, use linear spacing.
+ *
+ * @param min_bw_factor Minimum bandwidth = min_bw_factor × graph_diameter.
+ *        Controls smallest neighborhood size. Values 0.05-0.15 ensure sufficient
+ *        local sample size while maintaining locality.
+ *
+ * @param max_bw_factor Maximum bandwidth = max_bw_factor × graph_diameter.
+ *        Controls largest neighborhood size. Values 0.3-0.8 balance global
+ *        information with local adaptation.
+ *
+ * @param dist_normalization_factor Scaling factor h for kernel weights.
+ *        Larger values produce slower decay, effectively widening the kernel.
+ *        Interacts with bandwidth: both control smoothing but at different scales.
+ *
+ * @param kernel_type Specifies kernel function K for distance-based weighting.
+ *        Common choices: Gaussian, Epanechnikov, triangular, uniform.
+ *        Kernel shape affects local influence structure.
+ *
+ * @param precision Numerical tolerance for distance comparisons and binary search
+ *        in bandwidth determination. Typical value: 1e-6.
+ *
+ * @param n_cleveland_iterations Number of robustifying iterations for weighted
+ *        least squares. Cleveland's original LOWESS uses 2-3 iterations to
+ *        downweight outliers. Set to 1 for standard weighted regression.
+ *
+ * @param verbose If true, print progress information including eigendecomposition
+ *        status and percentage of vertices processed.
+ *
+ * @return graph_spectral_lowess_t structure containing:
+ *   - predictions: Smoothed response values at each vertex
+ *   - errors: Estimated prediction error (from LOOCV) at each vertex
+ *   - scale: Optimal bandwidth selected for each vertex
+ *
+ * LIMITATIONS AND EXTENSIONS
+ *
+ * The current implementation uses a global Laplacian eigendecomposition.
+ * This means eigenvectors encode global graph structure, which may not
+ * optimally represent local geometry in heterogeneous graphs. A natural
+ * extension computes neighborhood-specific Laplacians for each vertex,
+ * providing spectral coordinates adapted to local structure.
+ *
+ * The Laplacian construction uses edge weights from the adjacency matrix,
+ * which represent ambient geometry. An alternative constructs a Riemannian
+ * Laplacian from a density-derived metric that accounts for data distribution
+ * and response coherence. This would provide intrinsic geometry more suitable
+ * for statistical inference.
+ *
+ * @see set_wgraph_t For the weighted graph structure and distance computations
+ * @see cleveland_fit_linear_model For the weighted regression implementation
+ * @see get_candidate_bws For bandwidth grid generation
  */
 graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 	const std::vector<double>& y,
@@ -249,7 +375,7 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 	size_t progress_counter = 0;
 	const size_t progress_step = std::max<size_t>(1, n_vertices / 20);
 
-// Process each vertex (serial)
+	// Process each vertex (serial)
 	for (size_t vertex = 0; vertex < n_vertices; ++vertex) {
 		try {
 			// Find minimum bandwidth that ensures enough vertices for modeling
