@@ -1632,7 +1632,15 @@ plot.chain.with.path <- function(x,
 #' based on a function's values. Uses an off-screen rgl device by default so it
 #' works on headless/CI environments.
 #'
-#' @param x A ggraph object, a plot result from \code{plot.ggraph()}, or a \code{graph.3d} object.
+#' @param x Graph input. Can be one of:
+#'   \itemize{
+#'     \item A \code{ggraph} object
+#'     \item A plot result from \code{plot.ggraph()}
+#'     \item A \code{graph.3d} object
+#'     \item A list with components \code{graph} and \code{layout}
+#'     \item A list with adjacency and weight list components (recognized names include
+#'           \code{adj_list}, \code{adj.list}, \code{weight_list}, \code{weight.list}, etc.)
+#' }
 #' @param z Numeric vector of height values for each vertex (required unless x is graph.3d).
 #' @param layout Layout algorithm name (character) or a numeric matrix of 2D coordinates (n x 2).
 #' @param conn.points Logical; connect vertices with edges in 3D.
@@ -1669,11 +1677,21 @@ plot.chain.with.path <- function(x,
 #' \dontrun{
 #' if (requireNamespace("rgl", quietly = TRUE)) {
 #'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'
+#'   # Example 1: Using ggraph object
 #'   adj.list <- list(c(2, 3), c(1, 3, 4), c(1, 2), c(2))
 #'   weight.list <- list(c(1, 1), c(1, 1, 1), c(1, 1), c(1))
 #'   z.values <- c(0.5, 1.2, 0.8, 1.5)
 #'   g <- ggraph(adj.list, weight.list)
 #'   plot3D.graph(g, z.values)
+#'
+#'   # Example 2: Using list with adjacency and weight components directly
+#'   my.graph <- list(adj_list = adj.list, weight_list = weight.list)
+#'   plot3D.graph(my.graph, z.values)
+#'
+#'   # Example 3: Alternative naming convention
+#'   my.graph2 <- list(adj.list = adj.list, weight.list = weight.list)
+#'   plot3D.graph(my.graph2, z.values)
 #' }
 #' }
 #' @export
@@ -1755,6 +1773,7 @@ plot3D.graph <- function(x,
     rgl::clear3d()
 
     ## ---- extract/construct graph and 2D layout ----
+    ## Extracting or constructing the graph object 'g'
     if (inherits(x, "graph.3d")) {
         g <- x$graph
         layout.2d <- x$layout
@@ -1769,6 +1788,56 @@ plot3D.graph <- function(x,
         g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
         if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 
+        layout.2d <- NULL  # Will be computed below
+        vertex.color <- rep("gray", igraph::vcount(g))
+
+    } else if (is.list(x) && !is.null(x$graph) && !is.null(x$layout)) {
+        g <- x$graph
+        layout.2d <- x$layout
+        vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(g))
+
+    } else if (is.list(x) && length(x) >= 2) {
+        ## Try to identify adjacency list and weight list components
+        ## Check for common naming patterns
+        adj_names <- c("adj_list", "adj.list", "adjacency_list", "adjacency.list", "adj", "adjacency")
+        weight_names <- c("weight_list", "weight.list", "weights", "weight", "edge_weights", "edge.weights")
+
+        adj_idx <- which(names(x) %in% adj_names)[1]
+        weight_idx <- which(names(x) %in% weight_names)[1]
+
+        ## If named components not found, assume first two list components
+        ## where both are lists themselves (heuristic for adjacency + weights)
+        if (is.na(adj_idx) || is.na(weight_idx)) {
+            list_components <- which(sapply(x, is.list))
+            if (length(list_components) >= 2) {
+                adj_idx <- list_components[1]
+                weight_idx <- list_components[2]
+                message("Using components '", names(x)[adj_idx], "' and '",
+                        names(x)[weight_idx], "' as adjacency and weight lists")
+            } else {
+                stop("`x` appears to be a list but cannot identify adjacency and weight list components")
+            }
+        }
+
+        graph.adj.list <- x[[adj_idx]]
+        graph.edge.lengths <- x[[weight_idx]]
+
+        ## Convert to igraph object
+        graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+        g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+        if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
+
+        layout.2d <- NULL  # Will be computed below
+        vertex.color <- rep("gray", igraph::vcount(g))
+
+    } else {
+        stop("`x` must be a graph.3d object, a ggraph object, ",
+             "a list with components 'graph' and 'layout', ",
+             "or a list with adjacency and weight list components")
+    }
+
+    ## Compute layout if not already provided
+    if (is.null(layout.2d)) {
         if (is.character(layout)) {
             layout_func <- switch(layout,
                                   "nicely"    = igraph::layout_nicely,
@@ -1791,16 +1860,6 @@ plot3D.graph <- function(x,
         } else {
             stop("'layout' must be a known layout name or an n x 2 numeric matrix")
         }
-
-        vertex.color <- rep("gray", igraph::vcount(g))
-
-    } else if (is.list(x) && !is.null(x$graph) && !is.null(x$layout)) {
-        g <- x$graph
-        layout.2d <- x$layout
-        vertex.color <- if (!is.null(x$vertex.color)) x$vertex.color else rep("gray", igraph::vcount(g))
-
-    } else {
-        stop("`x` must be a graph.3d object, a ggraph object, or a list with components 'graph' and 'layout'")
     }
 
     ## ---- validate z and layout ----
