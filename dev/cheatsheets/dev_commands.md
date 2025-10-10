@@ -231,3 +231,4 @@ summaryRprof("out.prof")
 ```
 
 
+## the separation of concerns principle
