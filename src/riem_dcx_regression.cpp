@@ -3787,7 +3787,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // Convention: gamma_modulation < 0 triggers auto-selection
     bool gamma_auto_selected = false;
 
-       if (gamma_modulation < 0.0) {
+    if (gamma_modulation < 0.0) {
         Rprintf("\n");
         Rprintf("==========================================================\n");
         Rprintf("AUTOMATIC GAMMA SELECTION VIA FIRST-ITERATION GCV\n");
