@@ -44,34 +44,36 @@ extern "C" {
 }
 
 /**
- * @brief R interface for computing extrema hop neighborhoods in a graph-based function
+ * @brief R interface for computing extrema hop neighborhoods
  *
- * @details This function analyzes a function defined on a graph to identify local extrema
- *          (both minima and maxima) and computes their hop neighborhoods. For each extremum,
- *          it determines the maximum hop distance at which the extremum property is maintained,
- *          along with information about the boundary where this property is first violated.
+ * @details This function provides an R interface to the C++ extrema hop neighborhood
+ *          analysis. It converts R data structures to C++, performs the analysis,
+ *          and converts results back to R format.
  *
  *          The function:
- *          1. Constructs a weighted graph from the provided adjacency and weight lists
- *          2. Computes the graph diameter for reference
- *          3. Calls the C++ implementation of `compute_extrema_hop_nbhds` to find all extrema
- *             and their hop neighborhoods
- *          4. Converts these results to R data structures
+ *          1. Converts R adjacency list (1-indexed) to C++ format (0-indexed)
+ *          2. Converts R weight list and function values to C++ vectors
+ *          3. Constructs a weighted graph and computes its diameter
+ *          4. Calls compute_extrema_hop_nbhds() to find all extrema and their neighborhoods
+ *          5. Converts results back to R format with 1-based indexing
  *
- * @param s_adj_list SEXP representing the graph's adjacency list (from R)
- * @param s_weight_list SEXP representing the edge weights for the graph
- * @param s_y SEXP containing function values at each vertex as a numeric vector
+ *          Each returned neighborhood contains:
+ *          - vertex: the extremum vertex index (1-based)
+ *          - value: the function value at the extremum
+ *          - hop_idx: maximum hop radius where extremum property holds
+ *                    (Inf for global extrema, 0 if not a local extremum)
+ *          - nbhd_df: matrix with columns [vertex, hop_distance] for neighborhood vertices
+ *          - nbhd_bd_df: matrix with columns [vertex, function_value] for boundary vertices
  *
- * @return SEXP containing a named list with two components:
- *         - lmin_hop_nbhds: List of hop neighborhoods for local minima
- *         - lmax_hop_nbhds: List of hop neighborhoods for local maxima
- *         Each neighborhood contains:
- *         - vertex: The extremum vertex index (1-based for R)
- *         - hop_idx: The maximum hop radius where extremum condition holds
- *         - nbhd_df: Matrix of vertices and their hop distances within the neighborhood
- *         - nbhd_bd_df: Matrix of boundary vertices and their function values
+ * @param s_adj_list SEXP adjacency list (0-based integers from R, one list per vertex)
+ * @param s_weight_list SEXP weight list (same structure as adj_list, edge weights)
+ * @param s_y SEXP numeric vector of function values at each vertex
  *
- * @note All vertex indices are converted to 1-based indexing for R compatibility
+ * @return SEXP Named list with two components:
+ *         - lmin_hop_nbhds: list of hop neighborhoods for local minima
+ *         - lmax_hop_nbhds: list of hop neighborhoods for local maxima
+ *
+ * @note All vertex indices are converted from 0-based (C++) to 1-based (R)
  */
 SEXP S_compute_extrema_hop_nbhds(
 	SEXP s_adj_list,
@@ -202,7 +204,6 @@ SEXP S_compute_extrema_hop_nbhds(
 
 	return r_result;
 }
-
 
 /**
  * @brief R interface for creating a gradient flow complex with harmonic extension
