@@ -3,30 +3,44 @@
 #include <R_ext/Print.h>
 
 /**
- * @brief Compute the local extremum hop index for a given vertex.
+ * @brief Compute the hop neighborhood where a vertex ceases to be a local extremum
  *
- * @details This function determines the maximum number of hops for which a vertex remains
- *          a strict local extremum. If the vertex is not a neighborhood local extremum,
- *          the returned index is 0. Otherwise, the function performs a breadth-first search
- *          (BFS) starting from the given vertex and identifies the minimal hop h at which a
- *          violation occurs (i.e., a vertex with a more extreme value is found).
+ * @details This function determines the maximum hop distance for which a vertex remains
+ *          a strict local extremum and returns the corresponding hop neighborhood structure.
+ *
+ *          The function performs these key steps:
+ *          1. Checks if the vertex is a global extremum (global min/max of function y).
+ *             If so, returns immediately with hop_idx = std::numeric_limits<size_t>::max()
+ *          2. Verifies the vertex is a 1-hop local extremum. If not, returns with hop_idx = 0
+ *          3. Performs breadth-first search (BFS) level-by-level to find the minimal hop h
+ *             where a violation occurs (a vertex with more extreme value is found)
+ *          4. Collects all vertices within the extremum hop neighborhood (hop distance ≤ h)
+ *          5. Identifies boundary vertices at hop distance h+1 that violate the extremum property
  *
  * The hop index is defined as:
- * - For a local minimum: the smallest hop distance at which y[w] < y[v]
- * - For a local maximum: the smallest hop distance at which y[w] > y[v]
+ * - For a local minimum: the smallest hop distance h where ∃ vertex w with y[w] < y[v]
+ * - For a local maximum: the smallest hop distance h where ∃ vertex w with y[w] > y[v]
  *
- * If no such vertex is found, the hop index is the graph diameter.
+ * Special return values for hop_idx:
+ * - 0: vertex is not a 1-hop local extremum
+ * - std::numeric_limits<size_t>::max(): vertex is a global extremum
+ * - h > 0: vertex remains a strict extremum within h-hop neighborhood but not beyond
  *
  * @param vertex Index of the vertex to evaluate
  * @param y Vector of function values at each vertex
- * @param detect_maxima If true, checks for maxima; otherwise, for minima
- * @return size_t The local extremum hop index (0 if not a local extremum)
+ * @param detect_maxima If true, analyze as maximum; if false, analyze as minimum
+ *
+ * @return hop_nbhd_t Structure containing:
+ *         - vertex: the input vertex index
+ *         - hop_idx: maximum hop distance where extremum property holds
+ *         - hop_dist_map: map from vertex → hop distance for all vertices in the neighborhood
+ *         - y_nbhd_bd_map: map from boundary vertex → function value for vertices at hop_idx+1
  */
 size_t set_wgraph_t::compute_extremum_hop_index(
     size_t vertex,
     const std::vector<double>& y,
     bool detect_maxima
-) const {
+    ) const {
     // Check if vertex is a local extremum in its 1-hop neighborhood
     for (const auto& edge : adjacency_list[vertex]) {
         size_t u = edge.vertex;
@@ -90,6 +104,10 @@ size_t set_wgraph_t::compute_extremum_hop_index(
  * - If the vertex is a global extremum, hop_idx is set to std::numeric_limits<size_t>::max().
  * - If no violation is found in the entire graph, hop_idx is the graph diameter.
  *
+ *          NOTE: Properly handles global extrema detection, including ties.
+ *          A vertex is a global extremum if its value equals the global min/max,
+ *          accounting for floating point precision.
+ *
  * @param vertex Index of the vertex to evaluate
  * @param y Vector of function values at each vertex
  * @param detect_maxima If true, checks for maxima; otherwise, for minima
@@ -99,23 +117,26 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
     size_t vertex,
     const std::vector<double>& y,
     bool detect_maxima
-) const {
+    ) const {
 
     hop_nbhd_t result;
     result.vertex  = vertex;
 
-	// Checking if 'vertex' is a global minimum or maximum of y
-	size_t min_idx = 0, max_idx = 0;
-	for (size_t i = 1; i < y.size(); ++i) {
-		if (y[i] < y[min_idx]) min_idx = i;
-		if (y[i] > y[max_idx]) max_idx = i;
-	}
+    // Find global minimum and maximum values (not just indices)
+    double global_min = *std::min_element(y.begin(), y.end());
+    double global_max = *std::max_element(y.begin(), y.end());
 
-	if ((detect_maxima && vertex == max_idx) || (!detect_maxima && vertex == min_idx)) {
-		// Rprintf("vertex: %zu is a global %s\n", vertex, detect_maxima ? "maximum" : "minimum");
-		result.hop_idx = std::numeric_limits<size_t>::max();
-		return result;
-	}
+    // Tolerance for floating point comparison
+    const double epsilon = 1e-14 * std::max(std::abs(global_min), std::abs(global_max));
+
+    // Check if vertex is a global extremum (allowing for floating point tolerance)
+    bool is_global_min = std::abs(y[vertex] - global_min) <= epsilon;
+    bool is_global_max = std::abs(y[vertex] - global_max) <= epsilon;
+
+    if ((detect_maxima && is_global_max) || (!detect_maxima && is_global_min)) {
+        result.hop_idx = std::numeric_limits<size_t>::max();
+        return result;
+    }
 
     // Check if vertex is a local extremum in its 1-hop neighborhood
     bool is_local_extremum = true;
@@ -141,8 +162,8 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
 
     // BFS to find the extremum hop neighborhood
     std::vector<bool> visited(adjacency_list.size(), false);
-    std::vector<size_t> current_level;  // Vertices at current level
-    std::vector<size_t> next_level;     // Vertices at next level
+    std::vector<size_t> current_level;
+    std::vector<size_t> next_level;
 
     // Initialize with the start vertex
     result.hop_dist_map[vertex] = 0;
@@ -164,25 +185,19 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
 
                 // Check if this vertex violates the extremum condition
                 bool is_violation = (detect_maxima && y[u] > y[vertex]) ||
-                                   (!detect_maxima && y[u] < y[vertex]);
+                    (!detect_maxima && y[u] < y[vertex]);
 
                 if (is_violation) {
                     violation_found = true;
-                    // Don't add to boundary map yet, we'll do that in a separate pass
                 } else {
-                    // This vertex is part of the next level to explore
                     next_level.push_back(u);
-
-                    // Add to hop_dist_map as it's at current_hop + 1
                     result.hop_dist_map[u] = current_hop + 1;
                 }
             }
         }
 
-        // If we found violations at this level, we've found our hop index
         if (violation_found) {
             result.hop_idx = current_hop;
-			// Rprintf("Found violation at current_hop: %zu\n", current_hop);
             break;
         }
 
@@ -192,11 +207,7 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
         next_level.clear();
     }
 
-	// Rprintf("current_hop: %zu\n", current_hop);
-
-    // If we've exited the loop with violations found, we need to:
-    // 1. Remove vertices from hop_dist_map with hop distance > result.hop_idx
-    // 2. Ensure we have all boundary vertices at hop_idx + 1
+    // If violations found, collect boundary vertices
     if (violation_found) {
         // Remove vertices with hop distance > result.hop_idx
         std::vector<size_t> vertices_to_remove;
@@ -210,14 +221,12 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
             result.hop_dist_map.erase(v);
         }
 
-        // We need another BFS to find all vertices at exactly hop_idx + 1
-        // Reset visited flags except for vertices we've already processed
+        // Find all boundary vertices at hop_idx + 1
         std::fill(visited.begin(), visited.end(), false);
         for (const auto& [v, _] : result.hop_dist_map) {
             visited[v] = true;
         }
 
-        // Start a new BFS from vertices at hop_idx
         std::vector<size_t> boundary_search;
         for (const auto& [v, dist] : result.hop_dist_map) {
             if (dist == result.hop_idx) {
@@ -225,140 +234,175 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
             }
         }
 
-        // Find all vertices at hop_idx + 1
         for (size_t v : boundary_search) {
             for (const auto& edge : adjacency_list[v]) {
                 size_t u = edge.vertex;
                 if (visited[u]) continue;
 
                 visited[u] = true;
-
-                // Add all vertices at hop_idx + 1 to the boundary map, regardless of whether
-                // they violate the extremum condition (we want the complete boundary)
                 result.y_nbhd_bd_map[u] = y[u];
             }
         }
     } else {
-		result.hop_idx = current_hop;
-	}
+        result.hop_idx = current_hop;
+    }
 
     return result;
 }
 
-
 /**
- * @brief Analyze extrema and their hop neighborhoods in a function defined on a graph
+ * @brief Analyze all local extrema and compute their hop neighborhoods
+ *
+ * @details This function identifies all local extrema (both minima and maxima) in a
+ *          function defined on a graph and computes the hop neighborhood for each one.
+ *
+ *          The analysis proceeds as follows:
+ *          1. Find all 1-hop local minima and maxima using find_nbr_extrema()
+ *          2. For each local minimum, compute its extremum hop neighborhood
+ *          3. For each local maximum, compute its extremum hop neighborhood
+ *
+ *          This provides a complete characterization of the extremal structure of the
+ *          function, which is essential for:
+ *          - Identifying spurious vs. meaningful extrema (via hop_idx threshold)
+ *          - Gradient flow analysis and basin of attraction computation
+ *          - Morse-Smale complex construction
  *
  * @param y Vector of function values at each vertex
- * @return A pair of maps from extrema vertices to their hop neighborhoods for minima and maxima
+ *
+ * @return std::pair<std::unordered_map<size_t, hop_nbhd_t>, std::unordered_map<size_t, hop_nbhd_t>>
+ *         A pair of maps:
+ *         - first: map from local minimum vertex → its hop neighborhood structure
+ *         - second: map from local maximum vertex → its hop neighborhood structure
  */
 std::pair<std::unordered_map<size_t, hop_nbhd_t>, std::unordered_map<size_t, hop_nbhd_t>>
 set_wgraph_t::compute_extrema_hop_nbhds(
-	const std::vector<double>& y
-	) const {
+    const std::vector<double>& y
+    ) const {
 
-	// Find all local extrema
-	auto [nbr_lmin, nbr_lmax] = find_nbr_extrema(y);
+    // Find all local extrema
+    auto [nbr_lmin, nbr_lmax] = find_nbr_extrema(y);
 
-	// Initialize maps for results
-	std::unordered_map<size_t, hop_nbhd_t> lmin_hop_nbhd_map;
-	std::unordered_map<size_t, hop_nbhd_t> lmax_hop_nbhd_map;
+    // Initialize maps for results
+    std::unordered_map<size_t, hop_nbhd_t> lmin_hop_nbhd_map;
+    std::unordered_map<size_t, hop_nbhd_t> lmax_hop_nbhd_map;
 
-	// Compute hop neighborhoods for all local minima
-	bool detect_maxima = false;
-	for (const auto& vertex : nbr_lmin) {
-		hop_nbhd_t hop_nbhd = compute_extremum_hop_nbhd(vertex, y, detect_maxima);
-		lmin_hop_nbhd_map[vertex] = hop_nbhd;
-	}
+    // Compute hop neighborhoods for all local minima
+    bool detect_maxima = false;
+    for (const auto& vertex : nbr_lmin) {
+        hop_nbhd_t hop_nbhd = compute_extremum_hop_nbhd(vertex, y, detect_maxima);
+        lmin_hop_nbhd_map[vertex] = hop_nbhd;
+    }
 
-	// Compute hop neighborhoods for all local maxima
-	detect_maxima = true;
-	for (const auto& vertex : nbr_lmax) {
-		hop_nbhd_t hop_nbhd = compute_extremum_hop_nbhd(vertex, y, detect_maxima);
-		lmax_hop_nbhd_map[vertex] = hop_nbhd;
-	}
+    // Compute hop neighborhoods for all local maxima
+    detect_maxima = true;
+    for (const auto& vertex : nbr_lmax) {
+        hop_nbhd_t hop_nbhd = compute_extremum_hop_nbhd(vertex, y, detect_maxima);
+        lmax_hop_nbhd_map[vertex] = hop_nbhd;
+    }
 
-	return {lmin_hop_nbhd_map, lmax_hop_nbhd_map};
-}
-
-std::vector<size_t> set_wgraph_t::compute_ascending_gradient_trajectory(
-	const std::vector<double>& values,
-	size_t start_vertex) const {
-
-	std::vector<size_t> trajectory = {start_vertex};
-	size_t current = start_vertex;
-	bool is_local_max = false;
-
-	while (!is_local_max) {
-		double max_increase = 0.0;
-		size_t next_vertex = current;  // Default to staying at current (local max)
-
-		for (const auto& edge : adjacency_list[current]) {
-			size_t neighbor = edge.vertex;
-			double increase = values[neighbor] - values[current];
-
-			if (increase > max_increase) {
-				max_increase = increase;
-				next_vertex = neighbor;
-			}
-		}
-
-		// If we can't find a higher neighbor, we've reached a local maximum
-		if (next_vertex == current) {
-			is_local_max = true;
-		} else {
-			trajectory.push_back(next_vertex);
-			current = next_vertex;
-		}
-	}
-
-	return trajectory;
+    return {lmin_hop_nbhd_map, lmax_hop_nbhd_map};
 }
 
 /**
- * @brief Creates a gradient flow complex with iterative harmonic extension
+ * @brief Compute ascending gradient trajectory from a starting vertex
  *
- * @details This function identifies local extrema in a function defined on a graph and
- *          iteratively applies harmonic extension to smooth out spurious extrema. The process
- *          continues until either all spurious extrema (those with hop index <= threshold)
- *          are eliminated or the maximum number of iterations is reached.
+ * @details This function traces the path of steepest ascent in a function defined on
+ *          a graph, starting from a given vertex. At each step, it moves to the neighbor
+ *          with the largest increase in function value, stopping when no higher neighbor
+ *          exists (i.e., at a local maximum).
  *
- *          The algorithm follows these key steps:
- *          1. Identify local extrema (minima and maxima) and compute their hop neighborhoods
- *          2. Classify extrema as either spurious (hop_idx <= hop_idx_thld) or non-spurious
- *          3. Apply the selected smoothing method to each spurious extremum
- *          4. Recompute extrema after smoothing to check if:
+ *          The trajectory is the sequence of vertices visited during this ascent.
+ *          This is used in gradient flow analysis to:
+ *          - Assign each vertex to a basin of attraction
+ *          - Construct the Morse-Smale complex
+ *          - Visualize the flow structure of the function
+ *
+ * @param values Vector of function values at each vertex
+ * @param start_vertex Index of the starting vertex for the trajectory
+ *
+ * @return std::vector<size_t> Ordered sequence of vertex indices from start_vertex
+ *         to the local maximum reached. The first element is start_vertex and the
+ *         last element is a local maximum.
+ */
+std::vector<size_t> set_wgraph_t::compute_ascending_gradient_trajectory(
+    const std::vector<double>& values,
+    size_t start_vertex) const {
+
+    std::vector<size_t> trajectory = {start_vertex};
+    size_t current = start_vertex;
+    bool is_local_max = false;
+
+    while (!is_local_max) {
+        double max_increase = 0.0;
+        size_t next_vertex = current;  // Default to staying at current (local max)
+
+        for (const auto& edge : adjacency_list[current]) {
+            size_t neighbor = edge.vertex;
+            double increase = values[neighbor] - values[current];
+
+            if (increase > max_increase) {
+                max_increase = increase;
+                next_vertex = neighbor;
+            }
+        }
+
+        // If we can't find a higher neighbor, we've reached a local maximum
+        if (next_vertex == current) {
+            is_local_max = true;
+        } else {
+            trajectory.push_back(next_vertex);
+            current = next_vertex;
+        }
+    }
+
+    return trajectory;
+}
+
+/**
+ * @brief Create gradient flow complex by iteratively removing spurious extrema
+ *
+ * @details This function constructs a simplified gradient flow complex by identifying
+ *          and removing spurious local extrema through iterative harmonic extension.
+ *          Spurious extrema are those with hop_idx ≤ hop_idx_thld, indicating they
+ *          are quickly violated and likely artifacts of noise rather than meaningful
+ *          features of the underlying function.
+ *
+ *          The algorithm proceeds as follows:
+ *          1. Compute all local extrema and their hop neighborhoods
+ *          2. Classify extrema as spurious (hop_idx ≤ threshold) or non-spurious
+ *          3. For each spurious extremum, apply harmonic extension to smooth it out:
+ *             - Interior region: all vertices within hop_idx
+ *             - Boundary values: fixed values at hop_idx + 1
+ *             - Smoothing method: determined by smoother_type parameter
+ *          4. Recompute extrema and validate that:
  *             - No new spurious extrema were introduced
  *             - All non-spurious extrema were preserved
- *             - Any remaining spurious extrema need further processing
- *          5. Repeat until convergence criteria are met or max iterations reached
+ *          5. Repeat until all spurious extrema eliminated or max iterations reached
  *
- * @param[in] y Vector of function values at each vertex
- * @param[in] hop_idx_thld Threshold for hop index; extrema with hop_idx <= this value
- *                         are considered spurious and will be smoothed
- * @param[in] smoother_type The type of smoothing method to use (weighted mean, harmonic, etc.)
- * @param[in] max_outer_iterations Maximum number of global smoothing iterations
- * @param[in] max_inner_iterations Maximum number of iterations for each smoothing operation
- * @param[in] smoothing_tolerance Convergence tolerance for smoothing algorithms
- * @param[in] sigma Parameter controlling the smoothing kernel width for weighted mean method
- * @param[in] process_in_order Whether to process extrema in ascending order of hop index
- * @param[in] verbose Whether to print progress information
- * @param[in] detailed_recording Whether to record detailed information about each smoothing step
+ *          The iterative validation ensures that smoothing operations don't inadvertently
+ *          create new artifacts or destroy important features of the function.
  *
- * @return gflow_cx_t A structure containing:
- *         - harmonic_predictions: Smoothed function values
- *         - lmin_hop_nbhd_map: Map of local minima to their hop neighborhoods
- *         - lmax_hop_nbhd_map: Map of local maxima to their hop neighborhoods
- *         - smoothing_history: (If detailed_recording=TRUE) Records of each smoothing step
+ * @param y Vector of function values at each vertex
+ * @param hop_idx_thld Threshold for classifying spurious extrema. Extrema with
+ *                     hop_idx ≤ this value are considered spurious and will be smoothed
+ * @param smoother_type Method for smoothing (WMEAN, HARMONIC_IT, HARMONIC_EIGEN, etc.)
+ * @param max_outer_iterations Maximum number of global smoothing iterations
+ * @param max_inner_iterations Maximum iterations for each local smoothing operation
+ * @param smoothing_tolerance Convergence tolerance for iterative smoothing methods
+ * @param sigma Kernel width parameter for weighted mean smoother
+ * @param process_in_order If true, process extrema in ascending order of hop_idx
+ * @param verbose If true, print progress information
+ * @param detailed_recording If true, record detailed history of each smoothing step
  *
- * @note The iterative nature of this algorithm helps ensure that smoothing operations don't
- *       introduce new unwanted extrema or eliminate important (non-spurious) ones. At each
- *       iteration, all current spurious extrema are processed in a single pass before
- *       validation and the next iteration.
+ * @return gflow_cx_t Structure containing:
+ *         - harmonic_predictions: final smoothed function values
+ *         - lmin_hop_nbhd_map: remaining local minima and their hop neighborhoods
+ *         - lmax_hop_nbhd_map: remaining local maxima and their hop neighborhoods
+ *         - smoothing_history: (if detailed_recording=true) record of each smoothing step
  *
- * @see compute_extrema_hop_nbhds(), perform_weighted_mean_hop_disk_extension(),
- *      harmonic_extender(), harmonic_extension_eigen(),
- *      hybrid_biharmonic_harmonic_extension(), boundary_smoothed_harmonic_extension()
+ * @note The hop_idx threshold is the key parameter for controlling which extrema are
+ *       considered spurious. Typical values might be 1-3 for noisy data, higher for
+ *       cleaner data where more stability is required.
  */
 gflow_cx_t set_wgraph_t::create_gflow_cx(
     const std::vector<double>& y,
