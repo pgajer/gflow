@@ -2278,104 +2278,6 @@ robust.zscore <- function(data, scale.factor = 1.4826) {
     return(robust.data)
 }
 
-#' Winsorize a numeric vector
-#'
-#' Replaces extreme values in a numeric vector with less extreme values.
-#' Values below the p-th percentile are set to the p-th percentile,
-#' and values above the (1-p)-th percentile are set to the (1-p)-th percentile.
-#'
-#' @param x A numeric vector to be winsorized
-#' @param p The proportion of data to be winsorized on each tail (default is 0.01).
-#'   Must be between 0 and 0.25.
-#'
-#' @return A numeric vector of the same length as \code{x} with extreme values replaced.
-#'   NA values in the input are preserved in the output.
-#'
-#' @seealso \code{winsorize.zscore} for robust z-score winsorization
-#'
-#' @examples
-#' # Simple example
-#' x <- 1:10
-#' winsorize(x, p = 0.2)
-#'
-#' # With normally distributed data
-#' set.seed(123)
-#' y <- rnorm(100)
-#' y_wins <- winsorize(y, p = 0.05)
-#'
-#' # Compare ranges
-#' range(y)
-#' range(y_wins)
-#'
-#' @importFrom stats quantile
-#' @export
-winsorize <- function(x, p = 0.01) {
-  # Input validation
-  if (!is.numeric(x)) {
-    stop("x must be a numeric vector")
-  }
-  if (!is.numeric(p) || length(p) != 1) {
-    stop("p must be a single numeric value")
-  }
-  if (p < 0 || p >= 0.25) {
-    stop("p must be between 0 and 0.25")
-  }
-
-  # Handle edge cases
-  if (length(x) == 0) return(x)
-  if (all(is.na(x))) return(x)
-  if (p == 0) return(x)
-
-  # Calculate quantiles
-  q <- quantile(x, probs = c(p, 1 - p), na.rm = TRUE)
-
-  # Apply winsorization
-  x[!is.na(x) & x < q[1]] <- q[1]
-  x[!is.na(x) & x > q[2]] <- q[2]
-
-  x
-}
-
-#' Right Winsorize a numeric vector
-#'
-#' This function applies right-winsorization to a numeric vector, replacing extreme values on the right tail.
-#'
-#' @param y A numeric vector to be right-winsorized
-#' @param p A numeric value between 0 and 0.25 indicating the proportion of data to be replaced on the right tail (default is 0.01)
-#'
-#' @return A numeric vector with extreme values on the right tail replaced
-#'
-#' @examples
-#' y <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-#' right.winsorize(y, p = 0.1)
-#'
-#' @export
-right.winsorize <- function(y, p = 0.01) {
-  # Input validation
-  if (!is.numeric(y)) {
-    stop("y must be a numeric vector")
-  }
-  if (!is.numeric(p) || length(p) != 1) {
-    stop("p must be a single numeric value")
-  }
-  if (p < 0 || p >= 0.25) {
-    stop("p must be between 0 and 0.25")
-  }
-
-  # Handle edge cases
-  if (length(y) == 0) return(y)
-  if (all(is.na(y))) return(y)
-  if (p == 0) return(y)
-
-  # Calculate quantile
-  q <- quantile(y, probs = 1 - p, na.rm = TRUE)
-
-  # Apply right winsorization
-  y[!is.na(y) & y > q] <- q
-
-  y
-}
-
 #' Quantize a continuous variable into categories
 #'
 #' @param x Numeric vector.
@@ -2956,4 +2858,535 @@ rm.SS.outliers <- function(S, y = NULL, p = 0.98, dist.factor = 100, K = 30,
          nn.d = nn.d,
          d.thld = d.thld,
          idx = idx)
+}
+
+#' Apply Floor to Function Values
+#'
+#' @description
+#' Sets all values below threshold to the threshold value.
+#' Simple, explicit operation for enforcing lower bounds.
+#'
+#' @param y Numeric vector
+#' @param floor.at Lower bound threshold
+#' @param verbose Logical; print diagnostic info
+#'
+#' @return Numeric vector with floor applied
+#'
+#' @examples
+#' y <- c(-0.1, 0.2, 0.5)
+#' apply.floor(y, floor.at = 0)
+#'
+#' @export
+apply.floor <- function(y, floor.at, verbose = FALSE) {
+  n.floored <- sum(y < floor.at, na.rm = TRUE)
+
+  if (verbose && n.floored > 0) {
+    cat("Flooring", n.floored, "values to", floor.at, "\n")
+    cat("  Original range: [", min(y, na.rm = TRUE), ",", max(y, na.rm = TRUE), "]\n")
+  }
+
+  y[!is.na(y) & y < floor.at] <- floor.at
+
+  if (verbose && n.floored > 0) {
+    cat("  New range: [", min(y, na.rm = TRUE), ",", max(y, na.rm = TRUE), "]\n")
+  }
+
+  return(y)
+}
+
+
+#' Apply Ceiling to Function Values
+#'
+#' @description
+#' Sets all values above threshold to the threshold value.
+#' Simple, explicit operation for enforcing upper bounds.
+#'
+#' @param y Numeric vector
+#' @param ceiling.at Upper bound threshold
+#' @param verbose Logical; print diagnostic info
+#'
+#' @return Numeric vector with ceiling applied
+#'
+#' @examples
+#' y <- c(0.2, 0.5, 1.2)
+#' apply.ceiling(y, ceiling.at = 1.0)
+#'
+#' @export
+apply.ceiling <- function(y, ceiling.at, verbose = FALSE) {
+  n.ceilinged <- sum(y > ceiling.at, na.rm = TRUE)
+
+  if (verbose && n.ceilinged > 0) {
+    cat("Ceiling", n.ceilinged, "values to", ceiling.at, "\n")
+    cat("  Original range: [", min(y, na.rm = TRUE), ",", max(y, na.rm = TRUE), "]\n")
+  }
+
+  y[!is.na(y) & y > ceiling.at] <- ceiling.at
+
+  if (verbose && n.ceilinged > 0) {
+    cat("  New range: [", min(y, na.rm = TRUE), ",", max(y, na.rm = TRUE), "]\n")
+  }
+
+  return(y)
+}
+
+
+#' Left Winsorize (for completeness, though you may not use it)
+#'
+#' @description
+#' Replaces extreme values on the left tail with p-th quantile.
+#'
+#' @param y Numeric vector
+#' @param p Proportion for left tail (default 0.01)
+#' @param verbose Logical; print diagnostic info
+#'
+#' @return Numeric vector with left tail winsorized
+#'
+#' @export
+left.winsorize <- function(y, p = 0.01, verbose = FALSE) {
+  if (p < 0 || p >= 0.25) {
+    stop("p must be between 0 and 0.25")
+  }
+  if (p == 0) return(y)
+
+  q.left <- quantile(y, probs = p, na.rm = TRUE)
+  n.winsorized <- sum(y < q.left, na.rm = TRUE)
+
+  if (verbose) {
+    cat("Left winsorization (p =", p, "):\n")
+    cat("  Threshold:", q.left, "\n")
+    cat("  Values winsorized:", n.winsorized, "\n")
+  }
+
+  y[!is.na(y) & y < q.left] <- q.left
+
+  return(y)
+}
+
+
+#' Right Winsorize
+#'
+#' @description
+#' Replaces extreme values on the right tail with (1-p)-th quantile.
+#'
+#' @param y Numeric vector
+#' @param p Proportion for right tail (default 0.01)
+#' @param verbose Logical; print diagnostic info
+#'
+#' @return Numeric vector with right tail winsorized
+#'
+#' @examples
+#' y <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+#' right.winsorize(y, p = 0.1)
+#'
+#' @export
+right.winsorize <- function(y, p = 0.01, verbose = FALSE) {
+  if (p < 0 || p >= 0.25) {
+    stop("p must be between 0 and 0.25")
+  }
+  if (p == 0) return(y)
+  if (all(is.na(y))) return(y)
+
+  q.right <- quantile(y, probs = 1 - p, na.rm = TRUE)
+  n.winsorized <- sum(y > q.right, na.rm = TRUE)
+
+  if (verbose) {
+    cat("Right winsorization (p =", p, "):\n")
+    cat("  Threshold:", q.right, "\n")
+    cat("  Values winsorized:", n.winsorized, "\n")
+  }
+
+  y[!is.na(y) & y > q.right] <- q.right
+
+  return(y)
+}
+
+#' Winsorize a numeric vector
+#'
+#' Replaces extreme values in a numeric vector with less extreme values.
+#' Values below the p-th percentile are set to the p-th percentile,
+#' and values above the (1-p)-th percentile are set to the (1-p)-th percentile.
+#'
+#' @param x A numeric vector to be winsorized
+#' @param p The proportion of data to be winsorized on each tail (default is 0.01).
+#'   Must be between 0 and 0.25.
+#' @param verbose Set to TRUE to report the new min/max values.
+#'
+#' @return A numeric vector of the same length as \code{x} with extreme values replaced.
+#'   NA values in the input are preserved in the output.
+#'
+#' @seealso \code{winsorize.zscore} for robust z-score winsorization
+#'
+#' @examples
+#' # Simple example
+#' x <- 1:10
+#' winsorize(x, p = 0.2)
+#'
+#' # With normally distributed data
+#' set.seed(123)
+#' y <- rnorm(100)
+#' y.wins <- winsorize(y, p = 0.05)
+#'
+#' # Compare ranges
+#' range(y)
+#' range(y.wins)
+#'
+#' @importFrom stats quantile
+#' @export
+winsorize <- function(x, p = 0.01, verbose = FALSE) {
+  # Input validation
+  if (!is.numeric(x)) {
+    stop("x must be a numeric vector")
+  }
+  if (!is.numeric(p) || length(p) != 1) {
+    stop("p must be a single numeric value")
+  }
+  if (p <= 0 || p >= 0.25) {
+    stop("p must be greater than 0 and less than 0.25")
+  }
+
+  # Handle edge cases
+  if (length(x) == 0) return(x)
+
+  if (all(is.na(x))) {
+    warning("All values in x are NA - no winsorization performed")
+    return(x)
+  }
+
+  q <- quantile(x, probs = c(p, 1 - p), na.rm = TRUE)
+
+  n.left <- sum(x < q[1], na.rm = TRUE)
+  n.right <- sum(x > q[2], na.rm = TRUE)
+
+  if (verbose) {
+    cat("Two-sided winsorization (p =", p, "):\n")
+    cat("  Left threshold:", q[1], "(", n.left, "values)\n")
+    cat("  Right threshold:", q[2], "(", n.right, "values)\n")
+  }
+
+  x[!is.na(x) & x < q[1]] <- q[1]
+  x[!is.na(x) & x > q[2]] <- q[2]
+
+  return(x)
+}
+
+#' Break Ties with Adaptive Noise
+#'
+#' @description
+#' Adds minimal noise to break ties in function values.
+#' Automatically adapts noise scale to the data range.
+#'
+#' @param y Numeric vector
+#' @param noise.scale Relative noise as fraction of range (default 1e-10)
+#' @param min.abs.noise Minimum absolute noise magnitude (default 1e-12)
+#' @param preserve.bounds Keep min/max exactly (default TRUE)
+#' @param seed Random seed for reproducibility (default NULL)
+#' @param verbose Logical; print diagnostic info
+#'
+#' @return Numeric vector with ties broken
+#'
+#' @details
+#' For values at global min: perturbs upward only
+#' For values at global max: perturbs downward only
+#' For interior values: perturbs symmetrically
+#'
+#' @export
+break.ties <- function(y,
+                      noise.scale = 1e-10,
+                      min.abs.noise = 1e-12,
+                      preserve.bounds = TRUE,
+                      seed = NULL,
+                      verbose = FALSE) {
+
+  if (!is.null(seed)) set.seed(seed)
+
+  if (any(is.na(y))) {
+    stop("y contains NA values")
+  }
+
+  # Get range
+  y.min <- min(y)
+  y.max <- max(y)
+  y.range <- y.max - y.min
+
+  if (y.range == 0) {
+    stop("y is constant - cannot break ties")
+  }
+
+  # Check for ties
+  tied.values <- unique(y[duplicated(y)])
+  n.tied.values <- length(tied.values)
+
+  if (n.tied.values == 0) {
+    if (verbose) cat("No ties to break\n")
+    return(y)
+  }
+
+  # Determine noise magnitude
+  noise.magnitude <- max(y.range * noise.scale, min.abs.noise)
+
+  if (verbose) {
+    cat("Breaking ties:\n")
+    cat("  Tied values:", n.tied.values, "\n")
+    cat("  Noise magnitude:", format(noise.magnitude, scientific = TRUE), "\n")
+    cat("  As % of range:", format(100 * noise.magnitude / y.range, digits = 4), "%\n")
+  }
+
+  # Process each tied value
+  for (val in tied.values) {
+    tied.indices <- which(y == val)
+    n.tied <- length(tied.indices)
+
+    is.global.min <- abs(val - y.min) < 1e-14
+    is.global.max <- abs(val - y.max) < 1e-14
+
+    # Generate perturbations
+    if (preserve.bounds && is.global.min) {
+      # Keep first at exact min, perturb others up
+      perturbations <- c(0, sort(runif(n.tied - 1, 0, noise.magnitude)))
+
+    } else if (preserve.bounds && is.global.max) {
+      # Keep first at exact max, perturb others down
+      perturbations <- c(0, -sort(runif(n.tied - 1, 0, noise.magnitude), decreasing = TRUE))
+
+    } else {
+      # Symmetric perturbation
+      perturbations <- runif(n.tied, -noise.magnitude/2, noise.magnitude/2)
+      perturbations <- perturbations - mean(perturbations)
+    }
+
+    y[tied.indices] <- val + perturbations
+  }
+
+  if (verbose) {
+    cat("  Final unique values:", length(unique(y)), "/", length(y), "\n")
+  }
+
+  return(y)
+}
+
+#' Prepare Binary Outcome Conditional Expectation for Extrema Detection
+#'
+#' @description
+#' Standard pipeline for `E[Y|X]` where `Y` is binary with values in `{0, 1}`.
+#' Enforces `[0, 1]` bounds, applies right winsorization, and breaks ties.
+#'
+#' @param y.hat Estimated conditional expectation vector
+#' @param p.right Right tail proportion for winsorization (default 0.01)
+#' @param apply.right.winsorization Logical; whether to winsorize right tail
+#' @param noise.scale Noise scale for tie breaking (default 1e-10)
+#' @param seed Random seed (default 123)
+#' @param verbose Logical; print diagnostics
+#'
+#' @return Numeric vector ready for extrema detection
+#'
+#' @examples
+#' \dontrun{
+#' # After fitting
+#' sptb.cond.exp <- sptb.cond.exp.fit$predictions
+#' sptb.cond.exp.clean <- prepare.binary.cond.exp(
+#'   sptb.cond.exp,
+#'   p.right = 0.01,
+#'   verbose = TRUE
+#' )
+#' }
+#'
+#' @export
+prepare.binary.cond.exp <- function(y.hat,
+                                   p.right = 0.01,
+                                   apply.right.winsorization = TRUE,
+                                   noise.scale = 1e-10,
+                                   seed = 123,
+                                   verbose = FALSE) {
+
+  if (verbose) {
+    cat("\n=== PREPARING BINARY CONDITIONAL EXPECTATION ===\n")
+    cat("Original range: [", min(y.hat), ",", max(y.hat), "]\n")
+  }
+
+  # Step 1: Floor at 0 (conditional expectation cannot be negative)
+  y.clean <- apply.floor(y.hat, floor.at = 0, verbose = verbose)
+
+  # Step 2: Right winsorization (if requested)
+  if (apply.right.winsorization) {
+    y.clean <- right.winsorize(y.clean, p = p.right, verbose = verbose)
+  }
+
+  # Step 3: Ceiling at 1 (conditional expectation cannot exceed 1)
+  # Note: This might do nothing if data is left-skewed
+  y.clean <- apply.ceiling(y.clean, ceiling.at = 1, verbose = verbose)
+
+  # Step 4: Break ties
+  y.clean <- break.ties(y.clean,
+                       noise.scale = noise.scale,
+                       preserve.bounds = TRUE,
+                       seed = seed,
+                       verbose = verbose)
+
+  if (verbose) {
+    cat("Final range: [", min(y.clean), ",", max(y.clean), "]\n")
+    cat("=== PREPARATION COMPLETE ===\n\n")
+  }
+
+  return(y.clean)
+}
+
+
+#' Prepare Continuous Outcome for Extrema Detection
+#'
+#' @description
+#' Standard pipeline for continuous outcomes.
+#' Applies two-sided winsorization and breaks ties.
+#'
+#' @param y Continuous outcome vector
+#' @param p.winsorize Proportion for two-sided winsorization (default 0.01)
+#' @param apply.winsorization Logical; whether to winsorize (default TRUE)
+#' @param noise.scale Noise scale for tie breaking (default 1e-10)
+#' @param seed Random seed (default 123)
+#' @param verbose Logical; print diagnostics
+#'
+#' @return Numeric vector ready for extrema detection
+#'
+#' @examples
+#' \dontrun{
+#' y.clean <- prepare.continuous.outcome(
+#'   y.raw,
+#'   p.winsorize = 0.025,
+#'   verbose = TRUE
+#' )
+#' }
+#'
+#' @export
+prepare.continuous.outcome <- function(y,
+                                      p.winsorize = 0.01,
+                                      apply.winsorization = TRUE,
+                                      noise.scale = 1e-10,
+                                      seed = 123,
+                                      verbose = FALSE) {
+
+  if (verbose) {
+    cat("\n=== PREPARING CONTINUOUS OUTCOME ===\n")
+    cat("Original range: [", min(y), ",", max(y), "]\n")
+  }
+
+  y.clean <- y
+
+  # Step 1: Two-sided winsorization
+  if (apply.winsorization) {
+    y.clean <- winsorize(y.clean, p = p.winsorize, verbose = verbose)
+  }
+
+  # Step 2: Break ties
+  y.clean <- break.ties(y.clean,
+                       noise.scale = noise.scale,
+                       preserve.bounds = TRUE,
+                       seed = seed,
+                       verbose = verbose)
+
+  if (verbose) {
+    cat("Final range: [", min(y.clean), ",", max(y.clean), "]\n")
+    cat("=== PREPARATION COMPLETE ===\n\n")
+  }
+
+  return(y.clean)
+}
+
+#' Prepare for Extrema Detection (Fully Customizable)
+#'
+#' @description
+#' Flexible wrapper that allows manual specification of all preprocessing steps.
+#' Use this when you need full control or have already applied some steps.
+#'
+#' @param y Function values (possibly already preprocessed)
+#' @param floor.at Optional floor value (NULL = no flooring)
+#' @param ceiling.at Optional ceiling value (NULL = no ceiling)
+#' @param left.winsorize.p Optional left winsorization proportion (NULL = skip)
+#' @param right.winsorize.p Optional right winsorization proportion (NULL = skip)
+#' @param break.ties.after Logical; break ties at end (default TRUE)
+#' @param noise.scale Noise scale for tie breaking (default 1e-10)
+#' @param seed Random seed (default 123)
+#' @param verbose Logical; print diagnostics
+#'
+#' @return Numeric vector ready for extrema detection
+#'
+#' @examples
+#' \dontrun{
+#' # Your current workflow:
+#' sptb.cond.exp <- sptb.cond.exp.fit$predictions
+#' sptb.cond.exp <- ifelse(sptb.cond.exp < 0, 0, sptb.cond.exp)  # manual floor
+#' sptb.cond.exp <- right.winsorize(sptb.cond.exp)
+#'
+#' # Then just break ties:
+#' sptb.cond.exp.clean <- prepare.for.extrema.detection(
+#'   sptb.cond.exp,
+#'   floor.at = NULL,  # Already done manually
+#'   ceiling.at = NULL,  # Not needed
+#'   break.ties.after = TRUE,
+#'   verbose = FALSE
+#' )
+#'
+#' # Or let the function do everything:
+#' sptb.cond.exp.clean <- prepare.for.extrema.detection(
+#'   sptb.cond.exp.fit$predictions,
+#'   floor.at = 0,
+#'   right.winsorize.p = 0.01,
+#'   ceiling.at = 1,
+#'   verbose = TRUE
+#' )
+#' }
+#'
+#' @export
+prepare.for.extrema.detection <- function(y,
+                                         floor.at = NULL,
+                                         ceiling.at = NULL,
+                                         left.winsorize.p = NULL,
+                                         right.winsorize.p = NULL,
+                                         break.ties.after = TRUE,
+                                         noise.scale = 1e-10,
+                                         seed = 123,
+                                         verbose = FALSE) {
+
+  if (verbose) {
+    cat("\n=== CUSTOM PREPARATION PIPELINE ===\n")
+    cat("Original range: [", min(y), ",", max(y), "]\n")
+  }
+
+  y.clean <- y
+
+  # Apply operations in logical order
+
+  # 1. Floor
+  if (!is.null(floor.at)) {
+    y.clean <- apply.floor(y.clean, floor.at = floor.at, verbose = verbose)
+  }
+
+  # 2. Left winsorization
+  if (!is.null(left.winsorize.p)) {
+    y.clean <- left.winsorize(y.clean, p = left.winsorize.p, verbose = verbose)
+  }
+
+  # 3. Right winsorization
+  if (!is.null(right.winsorize.p)) {
+    y.clean <- right.winsorize(y.clean, p = right.winsorize.p, verbose = verbose)
+  }
+
+  # 4. Ceiling
+  if (!is.null(ceiling.at)) {
+    y.clean <- apply.ceiling(y.clean, ceiling.at = ceiling.at, verbose = verbose)
+  }
+
+  # 5. Break ties
+  if (break.ties.after) {
+    y.clean <- break.ties(y.clean,
+                         noise.scale = noise.scale,
+                         preserve.bounds = TRUE,
+                         seed = seed,
+                         verbose = verbose)
+  }
+
+  if (verbose) {
+    cat("Final range: [", min(y.clean), ",", max(y.clean), "]\n")
+    cat("=== PREPARATION COMPLETE ===\n\n")
+  }
+
+  return(y.clean)
 }
