@@ -1642,7 +1642,7 @@ plot.chain.with.path <- function(x,
 #'           \code{adj_list}, \code{adj.list}, \code{weight_list}, \code{weight.list}, etc.)
 #' }
 #' @param z Numeric vector of height values for each vertex (required unless x is graph.3d).
-#' @param layout Layout algorithm name (character) or a numeric matrix of 2D coordinates (n x 2).
+#' @param layout Layout algorithm name (character) or a numeric matrix of 3D coordinates (n x 2).
 #' @param conn.points Logical; connect vertices with edges in 3D.
 #' @param use.spheres Logical; use spheres (TRUE) or points (FALSE) for vertices.
 #' @param graph.alpha Numeric in \eqn{[0,1]}; transparency for base graph.
@@ -1698,7 +1698,7 @@ plot.chain.with.path <- function(x,
 plot3D.graph <- function(x,
                          z = NULL,
                          layout = "kk",
-                         conn.points = TRUE,
+                         conn.points = FALSE,
                          use.spheres = TRUE,
                          graph.alpha = 0.7,
                          z.point.size = 0.5,
@@ -1772,7 +1772,7 @@ plot3D.graph <- function(x,
 
     rgl::clear3d()
 
-    ## ---- extract/construct graph and 2D layout ----
+    ## ---- extract/construct graph and 3D layout ----
     ## Extracting or constructing the graph object 'g'
     if (inherits(x, "graph.3d")) {
         g <- x$graph

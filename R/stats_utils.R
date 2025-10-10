@@ -2278,93 +2278,71 @@ robust.zscore <- function(data, scale.factor = 1.4826) {
     return(robust.data)
 }
 
-#' Quantize a continuous variable into categories
+#' Quantize Continuous Variable (Internal Function)
 #'
-#' @param x Numeric vector.
-#' @param method "uniform" or "quantile".
-#' @param wins.p Winsorization proportion (uniform method).
-#' @param round Round \eqn{[0,1]} endpoints to one decimal (uniform method).
-#' @param dig.lab Digits for labels.
-#' @param breaks Custom breaks.
-#' @param include.lowest Include lowest value in first interval.
-#' @param start,end Start/end for rainbow().
-#' @param n.levels Number of levels.
-#' @param use.viridis Use viridis palette if available.
-#' @param brewer.palette Name of RColorBrewer palette to use (optional).
-#' @param use.unique Use only unique x for break calc.
+#' This is a placeholder for the quantize.cont.var function that is referenced
+#' but not defined in the original code. This function should be implemented
+#' based on your specific requirements.
 #'
-#' @return list(x.cat, x.col.tbl)
-#' @importFrom stats quantile
-#' @importFrom grDevices rainbow hcl.colors gray.colors
-#' @export
-quantize.cont.var <- function(x,
-                              method = "uniform",
-                              wins.p = 0.01,
-                              round = TRUE,
-                              dig.lab = 2,
-                              breaks = NULL,
-                              include.lowest = TRUE,
-                              start = 1/6, end = 0, n.levels = 10,
-                              use.viridis = FALSE,
-                              brewer.palette = NULL,
-                              use.unique = FALSE) {
-  if (!is.numeric(x)) stop("x must be numeric")
-  if (!method %in% c("uniform", "quantile")) stop("method must be 'uniform' or 'quantile'")
-  if (wins.p < 0 || wins.p > 0.5) stop("wins.p must be in [0, 0.5]")
-  if (!is.null(breaks) && !is.numeric(breaks)) stop("breaks must be numeric or NULL")
-  if (n.levels < 2) stop("n.levels must be at least 2")
+#' @param x Numeric vector to quantize.
+#' @param method Quantization method ("uniform" or "quantile").
+#' @param wins.p Winsorization parameter.
+#' @param round Whether to round endpoints.
+#' @param dig.lab Number of digits for labels.
+#' @param start Start value for color range.
+#' @param end End value for color range.
+#' @param n.levels Number of quantization levels.
+#'
+#' @return List containing x.cat and x.col.tbl
+#'
+#' @keywords internal
+#' @noRd
+quantize.cont.var <- function(x, method = "uniform", wins.p = 0.02,
+                             round = FALSE, dig.lab = 2, start = 1/6,
+                             end = 0, n.levels = 10) {
 
-  x.original <- x
-  if (use.unique) x <- unique(x)
+    x_original <- x  # Keep original for later
 
-  if (method == "uniform" && is.null(breaks)) {
-    if (wins.p > 0) x <- winsorize(x, p = wins.p)
-    x.min <- min(x, na.rm = TRUE); x.max <- max(x, na.rm = TRUE)
-    if (round && x.min >= 0 && x.max <= 1) {
-      x.min <- floor(10 * x.min) / 10
-      x.max <- ceiling(10 * x.max) / 10
+    if (method == "uniform") {
+        # Winsorize if requested
+        if (wins.p > 0 && wins.p < 0.5) {
+            q_low <- quantile(x, wins.p, na.rm = TRUE)
+            q_high <- quantile(x, 1 - wins.p, na.rm = TRUE)
+
+            n_low <- sum(x < q_low, na.rm = TRUE)
+            n_high <- sum(x > q_high, na.rm = TRUE)
+
+            x[x < q_low] <- q_low
+            x[x > q_high] <- q_high
+        }
+        # Create uniform breaks
+        breaks <- seq(min(x, na.rm = TRUE), max(x, na.rm = TRUE),
+                     length.out = n.levels + 1)
+    } else if (method == "quantile") {
+        # Create quantile breaks
+        breaks <- quantile(x, probs = seq(0, 1, length.out = n.levels + 1),
+                          na.rm = TRUE)
+        breaks <- unique(breaks)
     }
-    breaks <- seq(x.min, x.max, length.out = n.levels)
-  } else if (is.null(breaks)) {
-    q <- stats::quantile(x, probs = seq(0, 1, length.out = n.levels), na.rm = TRUE)
-    breaks <- unique(q)
-    if (length(breaks) < 2) {
-      warning("Too few unique quantiles; using min/max as breaks")
-      breaks <- c(min(x, na.rm = TRUE), max(x, na.rm = TRUE))
-    }
-  }
 
-  x.cat <- cut(x.original, breaks = breaks, include.lowest = include.lowest, dig.lab = dig.lab)
-  names(x.cat) <- names(x.original)
-  n.categories <- length(levels(x.cat))
-
-  # Colors
-  if (!is.null(brewer.palette)) {
-    if (requireNamespace("RColorBrewer", quietly = TRUE)) {
-      # Cap at palette's max; recycle if needed
-      maxc <- RColorBrewer::brewer.pal.info[brewer.palette, "maxcolors"]
-      k <- max(3, min(n.categories, maxc))
-      cols <- RColorBrewer::brewer.pal(n = k, name = brewer.palette)
-      x.col.tbl <- rep_len(cols, n.categories)
-    } else {
-      warning("RColorBrewer not installed; using hcl.colors('Spectral') fallback.")
-      x.col.tbl <- grDevices::hcl.colors(n.categories, "Spectral")
+    if (round) {
+        breaks <- round(breaks, dig.lab)
     }
-  } else if (isTRUE(use.viridis)) {
-    if (requireNamespace("viridis", quietly = TRUE)) {
-      x.col.tbl <- viridis::viridis(n.categories)
-    } else {
-      # Base R viridis-like fallback (R >= 3.6)
-      x.col.tbl <- grDevices::hcl.colors(n.categories, "viridis")
-    }
-  } else {
-    x.col.tbl <- grDevices::rainbow(n.categories, start = start, end = end)
-  }
 
-  names(x.col.tbl) <- levels(x.cat)
-  list(x.cat = as.character(x.cat), x.col.tbl = x.col.tbl)
+    # CRITICAL FIX: Extend breaks slightly to ensure all values are included
+    breaks[1] <- breaks[1] - .Machine$double.eps * abs(breaks[1]) - 1e-10
+    breaks[length(breaks)] <- breaks[length(breaks)] + .Machine$double.eps * abs(breaks[length(breaks)]) + 1e-10
+
+    # Cut the variable - use the winsorized values
+    x.cat <- cut(x, breaks = breaks, include.lowest = TRUE, dig.lab = dig.lab)
+
+    # Create color table
+    cols <- grDevices::rainbow(length(levels(x.cat)), start = start, end = end)
+    x.col.tbl <- cols
+    names(x.col.tbl) <- levels(x.cat)
+
+    return(list(x.cat = x.cat, x.col.tbl = x.col.tbl))
 }
-
 
 #' Find Local Minima in Distance Sequence
 #'

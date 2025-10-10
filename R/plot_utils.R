@@ -8,7 +8,6 @@
 #' @param radius  numeric or NULL; if non-NULL, draw spheres with this radius
 #' @param col     color for points/spheres
 #' @param size    point size when radius is NULL
-#' @param open_new logical; open/close a new rgl device within this call
 #' @param axes,xlab,ylab,zlab standard rgl axis/label args
 #' @param ...     passed to rgl::plot3d()
 #'
@@ -18,7 +17,6 @@ plot3D.plain <- function(X,
                          radius = NULL,
                          col = "gray",
                          size = 3,
-                         open_new = TRUE,
                          axes = FALSE, xlab = "", ylab = "", zlab = "",
                          ...) {
   if (!requireNamespace("rgl", quietly = TRUE)) {
@@ -33,22 +31,44 @@ plot3D.plain <- function(X,
   old_opt <- options(rgl.useNULL = use_null)
   on.exit(options(old_opt), add = TRUE)
 
+  ## ---- open/clear device ----
+  ## Check if an rgl device is already open
+  if (rgl::cur3d() == 0) {
+      ## No device open, create a new one
+      if (use_null) {
+          ## Null device for headless environments
+          rgl::open3d()
+          on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+      } else {
+          ## Interactive: create a large square window
+          ## Get screen dimensions
+          screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
+
+          ## Calculate square window size (use ~80% of screen height for safety)
+          if (inherits(screen_info, "try-error")) {
+              ## Fallback if we can't get screen info
+              window_size <- 800
+          } else {
+              ## Estimate available screen space
+              ## par3d("windowRect") returns current window, not screen size
+              ## Use a reasonable maximum
+              window_size <- min(1200, 800)  ## Conservative default
+          }
+
+          rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
+      }
+  } else {
+      ## Device already open, use it (but don't close it on exit)
+      rgl::set3d(rgl::cur3d())
+  }
+
+  rgl::clear3d()
 
   if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
   if (ncol(X) != 3) stop("X must have exactly 3 columns")
 
   X <- as.matrix(X)
   storage.mode(X) <- "double"
-
-  # Manage device lifecycle locally if requested
-  if (isTRUE(open_new)) {
-    rgl::open3d()
-    if (use_null) {
-        ## Only close the device automatically if using null device
-        on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-    }
-    rgl::clear3d()
-  }
 
   ids <- if (!is.null(radius)) {
     rgl::plot3d(X,
@@ -62,15 +82,22 @@ plot3D.plain <- function(X,
 
   invisible(ids)
 }
+
 #' Creates 3D Plot with Continuous Color Coding
 #'
 #' Creates a 3D plot of a set of points defined by \code{X} color-coded by the values of \code{y}.
 #'
 #' @param X A matrix or data frame with 3 columns representing 3D coordinates.
 #' @param y A numeric vector of values to be used for color coding.
-#' @param subset A logical vector indicating which points to highlight (default is NULL).
-#' @param non.highlight.type Either "sphere" or "point" for non-highlighted points (default "sphere").
-#' @param non.highlight.color Color of non-highlighted points (default "gray").
+#' @param subset A logical vector indicating which points to color-code by \code{y} values
+#'   (default is NULL, which colors all points). When provided, points where \code{subset = TRUE}
+#'   are drawn as colored spheres based on \code{y}, while points where \code{subset = FALSE}
+#'   are drawn in \code{non.highlight.color} as background. Use this to emphasize a subset
+#'   of points while showing the rest for context.
+#' @param non.highlight.type Display style for non-highlighted points (where \code{subset = FALSE}):
+#'   either "sphere" or "point" (default "sphere").
+#' @param non.highlight.color Color for non-highlighted points (where \code{subset = FALSE});
+#'   default "gray".
 #' @param point.size Point size when \code{non.highlight.type="point"} (default 3).
 #' @param legend.title Legend title (default "").
 #' @param legend.cex Legend text size (default 2).
@@ -83,7 +110,6 @@ plot3D.plain <- function(X,
 #' @param quantize.dig.lab Digits for quantization labels (default 2).
 #' @param start,end Hue start/end for palette (defaults 1/6 and 0).
 #' @param n.levels Number of color levels (default 10).
-#' @param open_new Logical; open/close a new rgl device inside this function (default TRUE).
 #'
 #' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
 #'
@@ -104,14 +130,13 @@ plot3D.cont <- function(X,
                         quantize.wins.p = 0.02,
                         quantize.round = FALSE,
                         quantize.dig.lab = 2,
-                        start = 1/6, end = 0, n.levels = 10,
-                        open_new = TRUE) {
+                        start = 1/6, end = 0, n.levels = 10) {
 
-  # rgl is optional; error here because this function's purpose is plotting
-  if (!requireNamespace("rgl", quietly = TRUE)) {
-    stop("This function requires the optional package 'rgl' for 3D visualization. ",
-         "Install with install.packages('rgl').", call. = FALSE)
-  }
+    ## rgl is optional; error here because this function's purpose is plotting
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl' for 3D visualization. ",
+             "Install with install.packages('rgl').", call. = FALSE)
+    }
 
     ## Headless/CI-safe; harmless on desktops
     use_null <- (!interactive()) ||
@@ -120,121 +145,150 @@ plot3D.cont <- function(X,
     old_opt <- options(rgl.useNULL = use_null)
     on.exit(options(old_opt), add = TRUE)
 
-  # Validate inputs
-  if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
-  if (ncol(X) != 3) stop("X must have exactly 3 columns")
-  if (!is.numeric(y)) stop("y must be a numeric vector")
-  if (nrow(X) != length(y)) stop("Number of rows in X must match the length of y")
-  if (!is.null(subset) && length(subset) != length(y)) {
-    stop("Length of subset must match the length of y")
-  }
-  if (!non.highlight.type %in% c("sphere", "point")) {
-    stop("non.highlight.type must be either 'sphere' or 'point'")
-  }
-  if (!is.numeric(point.size) || point.size <= 0) {
-    stop("point.size must be a positive numeric value")
-  }
-
-  X <- as.matrix(X)
-  storage.mode(X) <- "double"
-
-  # Quantize continuous y -> categories & colors
-  q <- quantize.cont.var(
-    y,
-    method  = quantize.method,
-    wins.p  = quantize.wins.p,
-    round   = quantize.round,
-    dig.lab = quantize.dig.lab,
-    start = start, end = end, n.levels = n.levels
-  )
-  y.cat     <- q$x.cat
-  y.col.tbl <- q$x.col.tbl
-  y.cols    <- y.col.tbl[y.cat]
-
-  # Prepare subset; treat NAs as FALSE
-  if (is.null(subset)) {
-    subset <- rep(FALSE, length(y))
-  } else {
-    subset <- as.logical(subset)
-    subset[is.na(subset)] <- FALSE
-  }
-
-  # Choose a radius if none provided (scale-aware default)
-  radius_local <- radius
-  if (is.null(radius_local)) {
-    rng <- apply(X, 2, function(v) diff(range(v, na.rm = TRUE)))
-    # fallback to a small positive number if data are near-constant
-    radius_local <- max(1e-8, 0.01 * mean(rng))
-  }
-
-  # Manage device lifecycle locally if requested
-    if (isTRUE(open_new)) {
-        rgl::open3d()
+    ## ---- open/clear device ----
+    ## Check if an rgl device is already open
+    if (rgl::cur3d() == 0) {
+        ## No device open, create a new one
         if (use_null) {
-            ## Only close the device automatically if using null device
+            ## Null device for headless environments
+            rgl::open3d()
             on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+        } else {
+            ## Interactive: create a large square window
+            ## Get screen dimensions
+            screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
+
+            ## Calculate square window size (use ~80% of screen height for safety)
+            if (inherits(screen_info, "try-error")) {
+                ## Fallback if we can't get screen info
+                window_size <- 800
+            } else {
+                ## Estimate available screen space
+                ## par3d("windowRect") returns current window, not screen size
+                ## Use a reasonable maximum
+                window_size <- min(1200, 800)  ## Conservative default
+            }
+
+            rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
         }
-        rgl::clear3d()
-    }
-
-  # Base layer: non-highlighted points
-  if (any(!subset)) {
-    if (identical(non.highlight.type, "sphere")) {
-      plot3D.plain(
-        X[!subset, , drop = FALSE],
-        col      = non.highlight.color,
-        radius   = radius_local,
-        open_new = FALSE    # plot into the current device
-      )
     } else {
-      plot3D.plain(
-        X[!subset, , drop = FALSE],
-        col      = non.highlight.color,
-        size     = point.size,
-        open_new = FALSE
-      )
+        ## Device already open, use it (but don't close it on exit)
+        rgl::set3d(rgl::cur3d())
     }
-  } else {
-    # If no non-highlighted points, create an empty base so we can overlay
-    plot3D.plain(
-      X[FALSE, , drop = FALSE],
-      col      = non.highlight.color,
-      size     = point.size,
-      open_new = FALSE
+
+    rgl::clear3d()
+
+    ## Validate inputs
+    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
+    if (ncol(X) != 3) stop("X must have exactly 3 columns")
+    if (!is.numeric(y)) stop("y must be a numeric vector")
+    if (nrow(X) != length(y)) stop("Number of rows in X must match the length of y")
+    if (!is.null(subset) && length(subset) != length(y)) {
+        stop("Length of subset must match the length of y")
+    }
+    if (!non.highlight.type %in% c("sphere", "point")) {
+        stop("non.highlight.type must be either 'sphere' or 'point'")
+    }
+    if (!is.numeric(point.size) || point.size <= 0) {
+        stop("point.size must be a positive numeric value")
+    }
+
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+
+    ## Quantize continuous y -> categories & colors
+    q <- quantize.cont.var(
+        y,
+        method  = quantize.method,
+        wins.p  = quantize.wins.p,
+        round   = quantize.round,
+        dig.lab = quantize.dig.lab,
+        start = start, end = end, n.levels = n.levels
     )
-  }
+    y.cat     <- q$x.cat
+    y.col.tbl <- q$x.col.tbl
+    y.cols    <- y.col.tbl[y.cat]
 
-  # Overlay: highlighted points (always spheres with data-driven colors)
-  if (any(subset)) {
-    rgl::spheres3d(X[subset, , drop = FALSE], col = y.cols[subset], radius = radius_local)
-  }
+    ## Prepare subset; treat NAs as FALSE
+    if (is.null(subset)) {
+        subset <- rep(TRUE, length(y))
+    } else {
+        subset <- as.logical(subset)
+        subset[is.na(subset)] <- FALSE
+    }
 
-  # Legend: ensure all bins appear, including empty ones
-  y.cat.freq <- table(y.cat)
-  # Fill missing bins with zero
-  for (nm in names(y.col.tbl)) {
-    if (!nm %in% names(y.cat.freq)) y.cat.freq[nm] <- 0L
-  }
-  # Stable order by y.col.tbl names
-  y.cat.freq <- y.cat.freq[names(y.col.tbl)]
+    ## Choose a radius if none provided (scale-aware default)
+    radius_local <- radius
+    if (is.null(radius_local)) {
+        rng <- apply(X, 2, function(v) diff(range(v, na.rm = TRUE)))
+        ## fallback to a small positive number if data are near-constant
+        radius_local <- max(1e-8, 0.01 * mean(rng))
+    }
 
-  maxlen <- max(nchar(names(y.col.tbl)), 5) + 2
-  legend.labs <- vapply(names(y.col.tbl), function(x) {
-    sprintf(sprintf("%%-%ds%%5s", maxlen), x, sprintf("(%s)", y.cat.freq[[x]]))
-  }, character(1))
+    ## Show which points have NA colors
+    if (any(is.na(y.cols))) {
+        cat("WARNING: Some points have NA colors!\n")
+        cat("Indices with NA colors:", which(is.na(y.cols)), "\n")
+    }
 
-  rgl::legend3d("topleft",
-                legend = legend.labs,
-                fill   = unname(y.col.tbl),
-                inset  = 0.05,
-                cex    = legend.cex,
-                title  = legend.title)
+    ## Base layer: non-highlighted points
+    if (any(!subset)) {
+        if (identical(non.highlight.type, "sphere")) {
+            plot3D.plain(
+                X[!subset, , drop = FALSE],
+                col      = non.highlight.color,
+                radius   = radius_local,
+                open_new = FALSE    # plot into the current device
+            )
+        } else {
+            plot3D.plain(
+                X[!subset, , drop = FALSE],
+                col      = non.highlight.color,
+                size     = point.size,
+                open_new = FALSE
+            )
+        }
+    } else {
+        ## If no non-highlighted points, create an empty base so we can overlay
+        plot3D.plain(
+            X[FALSE, , drop = FALSE],
+            col      = non.highlight.color,
+            size     = point.size,
+            open_new = FALSE
+        )
+    }
 
-  invisible(list(
-    y.cols     = y.cols,
-    y.col.tbl  = y.col.tbl,
-    legend.labs = legend.labs
-  ))
+    ## Overlay: highlighted points (always spheres with data-driven colors)
+    if (any(subset)) {
+        rgl::spheres3d(X[subset, , drop = FALSE], col = y.cols[subset], radius = radius_local)
+    }
+
+    ## Legend: ensure all bins appear, including empty ones
+    y.cat.freq <- table(y.cat)
+    ## Fill missing bins with zero
+    for (nm in names(y.col.tbl)) {
+        if (!nm %in% names(y.cat.freq)) y.cat.freq[nm] <- 0L
+    }
+    ## Stable order by y.col.tbl names
+    y.cat.freq <- y.cat.freq[names(y.col.tbl)]
+
+    maxlen <- max(nchar(names(y.col.tbl)), 5) + 2
+    legend.labs <- vapply(names(y.col.tbl), function(x) {
+        sprintf(sprintf("%%-%ds%%5s", maxlen), x, sprintf("(%s)", y.cat.freq[[x]]))
+    }, character(1))
+
+    rgl::legend3d("topleft",
+                  legend = legend.labs,
+                  fill   = unname(y.col.tbl),
+                  inset  = 0.05,
+                  cex    = legend.cex,
+                  title  = legend.title)
+
+    invisible(list(
+        y.cols     = y.cols,
+        y.col.tbl  = y.col.tbl,
+        legend.labs = legend.labs
+    ))
 }
 
 #' Plot Output from lcor.1D()
@@ -669,7 +723,6 @@ show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
 #' @param pal.type Palette type: "numeric", "brewer", or "mclust".
 #' @param brewer.pal.n Number of colors in the RColorBrewer palette.
 #' @param brewer.pal Name of the RColorBrewer palette.
-#' @param open.3d Logical. Whether to open a new 3D window.
 #' @param show.legend Logical. Whether to show the legend.
 #' @param sort.legend.labs.by.freq Logical. Sort legend labels by frequency.
 #' @param sort.legend.labs.by.name Logical. Sort legend labels alphabetically.
@@ -718,7 +771,6 @@ plot3D.cltrs <- function(X,
                          pal.type = "numeric",
                          brewer.pal.n = 3,
                          brewer.pal = "Set1",
-                         open.3d = FALSE,
                          show.legend = TRUE,
                          sort.legend.labs.by.freq = FALSE,
                          sort.legend.labs.by.name = FALSE,
@@ -731,10 +783,10 @@ plot3D.cltrs <- function(X,
                          zlab = "",
                          ...) {
 
-  if (!requireNamespace("rgl", quietly = TRUE)) {
-    stop("This function requires the optional package 'rgl' for 3D visualization. ",
-         "Install with install.packages('rgl').", call. = FALSE)
-  }
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl' for 3D visualization. ",
+             "Install with install.packages('rgl').", call. = FALSE)
+    }
 
     ## Headless/CI-safe; harmless on desktops
     use_null <- (!interactive()) ||
@@ -743,139 +795,163 @@ plot3D.cltrs <- function(X,
     old_opt <- options(rgl.useNULL = use_null)
     on.exit(options(old_opt), add = TRUE)
 
-  if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
-  if (ncol(X) != 3) stop("X must have exactly 3 columns")
-  if (!is.null(cltr) && length(cltr) != nrow(X)) stop("Length of cltr must match nrow(X)")
-
-  legend.cltr.labs <- NULL
-  ids <- NULL
-  cltr.centers <- NULL
-
-  x <- X[, 1]; y <- X[, 2]; z <- X[, 3]
-
-    if (isTRUE(open.3d)){
-        rgl::open3d()
+    ## ---- open/clear device ----
+    ## Check if an rgl device is already open
+    if (rgl::cur3d() == 0) {
+        ## No device open, create a new one
         if (use_null) {
-            ## Only close the device automatically if using null device
+            ## Null device for headless environments
+            rgl::open3d()
             on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-        }
-        rgl::clear3d()
-    }
-
-  if (!is.null(cltr)) {
-    cltr <- as.character(cltr)
-    cltr.labs <- names(sort(table(cltr)))
-    nCl <- length(cltr.labs)
-
-    if (is.null(cltr.col.tbl)) {
-      if (nCl <= 8) pal.type <- "numeric"
-      if (nCl > 19) {
-        brewer.pal <- "Spectral"; brewer.pal.n <- 11
-        cltr.labs <- sample(cltr.labs)
-      }
-
-      if (pal.type == "brewer") {
-        if (requireNamespace("RColorBrewer", quietly = TRUE)) {
-          col.pal <- grDevices::colorRampPalette(
-            rev(RColorBrewer::brewer.pal(brewer.pal.n, brewer.pal))
-          )
-          cltr.col.tbl <- col.pal(nCl)
         } else {
-          warning("RColorBrewer not installed; using hcl.colors('Spectral') fallback.")
-          cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
-        }
-      } else if (pal.type == "numeric") {
-        cltr.col.tbl <- if (nCl < 8) 2:(nCl + 1) else seq_len(nCl)
-      } else if (pal.type == "mclust") {
-        if (!requireNamespace("mclust", quietly = TRUE)) {
-          warning("mclust not installed; using hcl.colors('Spectral') fallback.")
-          cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
-        } else {
-          cltr.col.tbl <- mclust::mclust.options("classPlotColors")[seq_len(nCl)]
-        }
-      } else {
-        stop(sprintf("Unrecognized pal.type='%s'", pal.type))
-      }
-      names(cltr.col.tbl) <- cltr.labs
-    }
+            ## Interactive: create a large square window
+            ## Get screen dimensions
+            screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
 
-    if (!is.null(ref.cltr)) {
-      ref.cltr <- as.character(ref.cltr)
-      if (!(ref.cltr %in% cltr.labs)) warning(ref.cltr, " is not in cltr.labs")
-      cltr.col.tbl[ref.cltr] <- ref.cltr.color
-    }
+            ## Calculate square window size (use ~80% of screen height for safety)
+            if (inherits(screen_info, "try-error")) {
+                ## Fallback if we can't get screen info
+                window_size <- 800
+            } else {
+                ## Estimate available screen space
+                ## par3d("windowRect") returns current window, not screen size
+                ## Use a reasonable maximum
+                window_size <- min(1200, 800)  ## Conservative default
+            }
 
-    cltr.cols <- cltr.col.tbl[cltr]
-    if (nCl == 1 && !add) {
-      ids <- rgl::plot3d(x, y, z, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
+            rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
+        }
     } else {
-      if (!is.na(radius)) {
-        if (!add) {
-          if (is.null(ref.cltr)) {
-            ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
-                               main = title, type = "s", radius = radius, ...)
-          } else {
-            idx <- cltr != ref.cltr
-            ids <- rgl::plot3d(x[idx], y[idx], z[idx], col = cltr.cols[idx], axes = axes,
-                               xlab = xlab, ylab = ylab, zlab = zlab, main = title, type = "s", radius = radius, ...)
-            if (show.ref.cltr) rgl::spheres3d(x[!idx], y[!idx], z[!idx], col = ref.cltr.color, radius = radius)
-          }
-        }
-      } else if (!add) {
-        ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
-      }
-
-      if (show.cltr.labels) {
-        cltr.centers <- matrix(nrow = length(cltr.labs), ncol = 3,
-                               dimnames = list(cltr.labs, c("x","y","z")))
-        for (j in seq_along(cltr.labs)) {
-          idx <- cltr == cltr.labs[j]
-          idx[is.na(idx)] <- FALSE
-          s <- sum(idx)
-          if (s > 1) cltr.centers[j, ] <- apply(X[idx, , drop = FALSE], 2, median)
-          else if (s == 1) cltr.centers[j, ] <- as.numeric(X[idx, ])
-        }
-        rgl::text3d(x = cltr.centers[,1], y = cltr.centers[,2], z = cltr.centers[,3],
-                    texts = rownames(cltr.centers), font = 2, cex = cex.labs, adj = c(0.5, 1))
-      }
-
-      cltr.freq <- table(cltr)
-      if (!is.null(ref.cltr)) cltr.freq <- cltr.freq[setdiff(names(cltr.freq), ref.cltr)]
-
-      if (isTRUE(show.legend)) {
-        for (xnm in names(cltr.col.tbl)) if (!(xnm %in% names(cltr.freq))) cltr.freq[xnm] <- 0L
-        if (isTRUE(sort.legend.labs.by.freq)) {
-          o <- order(cltr.freq[names(cltr.col.tbl)], decreasing = TRUE); cltr.col.tbl <- cltr.col.tbl[o]
-        } else if (isTRUE(sort.legend.labs.by.name)) {
-          o <- order(names(cltr.col.tbl)); cltr.col.tbl <- cltr.col.tbl[o]
-        }
-        if (isTRUE(filter.out.freq.0.cltrs)) {
-          cltr.freq <- cltr.freq[names(cltr.col.tbl)]
-          keep <- cltr.freq != 0L
-          cltr.col.tbl <- cltr.col.tbl[keep]; cltr.freq <- cltr.freq[keep]
-        }
-        maxlen <- max(nchar(names(cltr.col.tbl))) + 2
-        legend.cltr.labs <- vapply(names(cltr.col.tbl), function(xnm) {
-          sprintf(sprintf("%%-%ds%%5s", maxlen), xnm, sprintf("(%s)", cltr.freq[xnm]))
-        }, character(1))
-        rgl::legend3d("topleft", legend = legend.cltr.labs, fill = cltr.col.tbl, inset = 0.05,
-                      cex = 1.5, title = legend.title)
-      } else {
-        legend.cltr.labs <- NULL
-        try(rgl::legend3d(), silent = TRUE)
-      }
+        ## Device already open, use it (but don't close it on exit)
+        rgl::set3d(rgl::cur3d())
     }
-  } else {
-    ids <- rgl::plot3d(X, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
-    cltr.col.tbl <- NULL; cltr.labs <- NULL
-    try(rgl::legend3d(), silent = TRUE)
-  }
 
-  invisible(list(ids = ids,
-                 cltr.col.tbl = cltr.col.tbl,
-                 cltr.labs = if (!is.null(cltr)) cltr.labs else NULL,
-                 legend.cltr.labs = legend.cltr.labs,
-                 cltr.centers = cltr.centers))
+    rgl::clear3d()
+
+    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
+    if (ncol(X) != 3) stop("X must have exactly 3 columns")
+    if (!is.null(cltr) && length(cltr) != nrow(X)) stop("Length of cltr must match nrow(X)")
+
+    legend.cltr.labs <- NULL
+    ids <- NULL
+    cltr.centers <- NULL
+
+    x <- X[, 1]; y <- X[, 2]; z <- X[, 3]
+
+    if (!is.null(cltr)) {
+        cltr <- as.character(cltr)
+        cltr.labs <- names(sort(table(cltr)))
+        nCl <- length(cltr.labs)
+
+        if (is.null(cltr.col.tbl)) {
+            if (nCl <= 8) pal.type <- "numeric"
+            if (nCl > 19) {
+                brewer.pal <- "Spectral"; brewer.pal.n <- 11
+                cltr.labs <- sample(cltr.labs)
+            }
+
+            if (pal.type == "brewer") {
+                if (requireNamespace("RColorBrewer", quietly = TRUE)) {
+                    col.pal <- grDevices::colorRampPalette(
+                                              rev(RColorBrewer::brewer.pal(brewer.pal.n, brewer.pal))
+                                          )
+                    cltr.col.tbl <- col.pal(nCl)
+                } else {
+                    warning("RColorBrewer not installed; using hcl.colors('Spectral') fallback.")
+                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
+                }
+            } else if (pal.type == "numeric") {
+                cltr.col.tbl <- if (nCl < 8) 2:(nCl + 1) else seq_len(nCl)
+            } else if (pal.type == "mclust") {
+                if (!requireNamespace("mclust", quietly = TRUE)) {
+                    warning("mclust not installed; using hcl.colors('Spectral') fallback.")
+                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
+                } else {
+                    cltr.col.tbl <- mclust::mclust.options("classPlotColors")[seq_len(nCl)]
+                }
+            } else {
+                stop(sprintf("Unrecognized pal.type='%s'", pal.type))
+            }
+            names(cltr.col.tbl) <- cltr.labs
+        }
+
+        if (!is.null(ref.cltr)) {
+            ref.cltr <- as.character(ref.cltr)
+            if (!(ref.cltr %in% cltr.labs)) warning(ref.cltr, " is not in cltr.labs")
+            cltr.col.tbl[ref.cltr] <- ref.cltr.color
+        }
+
+        cltr.cols <- cltr.col.tbl[cltr]
+        if (nCl == 1 && !add) {
+            ids <- rgl::plot3d(x, y, z, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
+        } else {
+            if (!is.na(radius)) {
+                if (!add) {
+                    if (is.null(ref.cltr)) {
+                        ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+                                           main = title, type = "s", radius = radius, ...)
+                    } else {
+                        idx <- cltr != ref.cltr
+                        ids <- rgl::plot3d(x[idx], y[idx], z[idx], col = cltr.cols[idx], axes = axes,
+                                           xlab = xlab, ylab = ylab, zlab = zlab, main = title, type = "s", radius = radius, ...)
+                        if (show.ref.cltr) rgl::spheres3d(x[!idx], y[!idx], z[!idx], col = ref.cltr.color, radius = radius)
+                    }
+                }
+            } else if (!add) {
+                ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
+            }
+
+            if (show.cltr.labels) {
+                cltr.centers <- matrix(nrow = length(cltr.labs), ncol = 3,
+                                       dimnames = list(cltr.labs, c("x","y","z")))
+                for (j in seq_along(cltr.labs)) {
+                    idx <- cltr == cltr.labs[j]
+                    idx[is.na(idx)] <- FALSE
+                    s <- sum(idx)
+                    if (s > 1) cltr.centers[j, ] <- apply(X[idx, , drop = FALSE], 2, median)
+                    else if (s == 1) cltr.centers[j, ] <- as.numeric(X[idx, ])
+                }
+                rgl::text3d(x = cltr.centers[,1], y = cltr.centers[,2], z = cltr.centers[,3],
+                            texts = rownames(cltr.centers), font = 2, cex = cex.labs, adj = c(0.5, 1))
+            }
+
+            cltr.freq <- table(cltr)
+            if (!is.null(ref.cltr)) cltr.freq <- cltr.freq[setdiff(names(cltr.freq), ref.cltr)]
+
+            if (isTRUE(show.legend)) {
+                for (xnm in names(cltr.col.tbl)) if (!(xnm %in% names(cltr.freq))) cltr.freq[xnm] <- 0L
+                if (isTRUE(sort.legend.labs.by.freq)) {
+                    o <- order(cltr.freq[names(cltr.col.tbl)], decreasing = TRUE); cltr.col.tbl <- cltr.col.tbl[o]
+                } else if (isTRUE(sort.legend.labs.by.name)) {
+                    o <- order(names(cltr.col.tbl)); cltr.col.tbl <- cltr.col.tbl[o]
+                }
+                if (isTRUE(filter.out.freq.0.cltrs)) {
+                    cltr.freq <- cltr.freq[names(cltr.col.tbl)]
+                    keep <- cltr.freq != 0L
+                    cltr.col.tbl <- cltr.col.tbl[keep]; cltr.freq <- cltr.freq[keep]
+                }
+                maxlen <- max(nchar(names(cltr.col.tbl))) + 2
+                legend.cltr.labs <- vapply(names(cltr.col.tbl), function(xnm) {
+                    sprintf(sprintf("%%-%ds%%5s", maxlen), xnm, sprintf("(%s)", cltr.freq[xnm]))
+                }, character(1))
+                rgl::legend3d("topleft", legend = legend.cltr.labs, fill = cltr.col.tbl, inset = 0.05,
+                              cex = 1.5, title = legend.title)
+            } else {
+                legend.cltr.labs <- NULL
+                try(rgl::legend3d(), silent = TRUE)
+            }
+        }
+    } else {
+        ids <- rgl::plot3d(X, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
+        cltr.col.tbl <- NULL; cltr.labs <- NULL
+        try(rgl::legend3d(), silent = TRUE)
+    }
+
+    invisible(list(ids = ids,
+                   cltr.col.tbl = cltr.col.tbl,
+                   cltr.labs = if (!is.null(cltr)) cltr.labs else NULL,
+                   legend.cltr.labs = legend.cltr.labs,
+                   cltr.centers = cltr.centers))
 }
 
 #' Highlight a Specific Cluster in 3D Space
@@ -2311,62 +2387,3 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
     invisible(NULL)
 }
 
-#' Quantize Continuous Variable (Internal Function)
-#'
-#' This is a placeholder for the quantize.cont.var function that is referenced
-#' but not defined in the original code. This function should be implemented
-#' based on your specific requirements.
-#'
-#' @param x Numeric vector to quantize.
-#' @param method Quantization method ("uniform" or "quantile").
-#' @param wins.p Winsorization parameter.
-#' @param round Whether to round endpoints.
-#' @param dig.lab Number of digits for labels.
-#' @param start Start value for color range.
-#' @param end End value for color range.
-#' @param n.levels Number of quantization levels.
-#'
-#' @return List containing x.cat and x.col.tbl
-#'
-#' @keywords internal
-#' @noRd
-quantize.cont.var <- function(x, method = "uniform", wins.p = 0.02,
-                             round = FALSE, dig.lab = 2, start = 1/6,
-                             end = 0, n.levels = 10) {
-
-    # This is a placeholder implementation
-    # You should replace this with your actual quantize.cont.var function
-
-    if (method == "uniform") {
-        # Winsorize if requested
-        if (wins.p > 0 && wins.p < 0.5) {
-            q_low <- quantile(x, wins.p, na.rm = TRUE)
-            q_high <- quantile(x, 1 - wins.p, na.rm = TRUE)
-            x[x < q_low] <- q_low
-            x[x > q_high] <- q_high
-        }
-
-        # Create uniform breaks
-        breaks <- seq(min(x, na.rm = TRUE), max(x, na.rm = TRUE),
-                     length.out = n.levels + 1)
-    } else if (method == "quantile") {
-        # Create quantile breaks
-        breaks <- quantile(x, probs = seq(0, 1, length.out = n.levels + 1),
-                          na.rm = TRUE)
-        breaks <- unique(breaks)
-    }
-
-    if (round) {
-        breaks <- round(breaks, dig.lab)
-    }
-
-    # Cut the variable
-    x.cat <- cut(x, breaks = breaks, include.lowest = TRUE, dig.lab = dig.lab)
-
-    # Create color table
-    cols <- grDevices::rainbow(length(levels(x.cat)), start = start, end = end)
-    x.col.tbl <- cols
-    names(x.col.tbl) <- levels(x.cat)
-
-    return(list(x.cat = x.cat, x.col.tbl = x.col.tbl))
-}
