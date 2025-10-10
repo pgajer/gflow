@@ -1393,6 +1393,10 @@ extern "C" SEXP S_create_iknn_graphs(
             Rf_error("n_cores cannot be NA.");
         }
         if (req > 0) num_threads = req;
+
+        //Rprintf("\tn_cores: %d\n", req);
+    } else {
+        //Rprintf("\tn_cores: NULL\n");
     }
 
     // Clamp to available threads
@@ -1406,18 +1410,18 @@ extern "C" SEXP S_create_iknn_graphs(
     // Messaging
     if (verbose) {
 #if defined(_OPENMP)
-        Rprintf("Using %d OpenMP thread%s\n", num_threads, (num_threads==1?"":"s"));
+        Rprintf("\tUsing %d OpenMP thread%s\n", num_threads, (num_threads==1?"":"s"));
 #else
         if (!Rf_isNull(s_n_cores) && num_threads > 1) {
-            Rprintf("OpenMP not enabled; running single-threaded.\n");
+            Rprintf("\tOpenMP not enabled; running single-threaded.\n");
         } else {
-            Rprintf("Running single-threaded.\n");
+            Rprintf("\tRunning single-threaded.\n");
         }
 #endif
     }
 
     if (verbose) {
-        Rprintf("Processing k values from %d to %d for %d vertices\n", kmin, kmax, n_vertices);
+        Rprintf("Processing k values from %d to %d for %d vertices\n", kmin - 1, kmax - 1, n_vertices);
     }
 
     // --- Precompute / allocate (pure C++; no R API here)
