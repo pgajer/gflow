@@ -801,10 +801,10 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
  *   - create_iknn_graph for initial graph construction
  *   - iknn_graph_t::prune_graph for graph pruning implementation
  */
-extern "C" SEXP S_create_single_iknn_graph(SEXP s_X,
-                                           SEXP s_k,
-                                           SEXP s_pruning_thld,
-                                           SEXP s_compute_full) {
+SEXP S_create_single_iknn_graph(SEXP s_X,
+                                SEXP s_k,
+                                SEXP s_pruning_thld,
+                                SEXP s_compute_full) {
     // --- dims(X) protected while reading
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
     if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
