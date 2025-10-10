@@ -1048,8 +1048,8 @@ graph.diffusion.smoother <- function(adj.list,
                 stop(sprintf("Invalid indices in adj.list[[%d]]", i), call. = FALSE)
             }
 
-            if (any(weight.list[[i]] <= 0)) {
-                stop(sprintf("Weights must be positive in weight.list[[%d]]", i),
+            if (any(weight.list[[i]] < 0)) {
+                stop(sprintf("Weights must be non-negative in weight.list[[%d]]", i),
                      call. = FALSE)
             }
         }
