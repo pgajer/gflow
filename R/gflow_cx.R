@@ -1152,3 +1152,797 @@ visualize.smoothing.steps <- function(gflow_result,
 
     invisible(NULL)
 }
+
+#' Classify Spurious Extrema Using Multiple Criteria
+#'
+#' @description
+#' Determines which extrema should be considered spurious using various criteria.
+#' Provides more sophisticated classification than a simple hop_idx threshold.
+#'
+#' @param hop_indices Numeric vector of hop indices for all extrema
+#' @param values Optional numeric vector of function values at extrema
+#' @param method Character string specifying classification method:
+#'   - "threshold": hop_idx <= threshold (default, backward compatible)
+#'   - "quantile": hop_idx <= quantile(hop_idx, probs = quantile_level)
+#'   - "outlier": statistical outlier detection based on hop_idx distribution
+#'   - "combined": uses both threshold and relative criteria
+#' @param threshold Numeric threshold for "threshold" and "combined" methods (default 2)
+#' @param quantile_level Quantile level for "quantile" method (default 0.25)
+#' @param verbose Logical; print diagnostic information (default FALSE)
+#'
+#' @return Logical vector indicating which extrema are spurious
+#'
+#' @examples
+#' \dontrun{
+#' # Simple threshold (backward compatible)
+#' spurious <- classify.spurious.extrema(hop_indices, method = "threshold", threshold = 2)
+#'
+#' # Quantile-based (adaptive to data)
+#' spurious <- classify.spurious.extrema(hop_indices, method = "quantile", quantile_level = 0.25)
+#'
+#' # Combined approach
+#' spurious <- classify.spurious.extrema(hop_indices, values, method = "combined")
+#' }
+#'
+#' @export
+classify.spurious.extrema <- function(hop_indices,
+                                     values = NULL,
+                                     method = c("threshold", "quantile", "outlier", "combined"),
+                                     threshold = 2,
+                                     quantile_level = 0.25,
+                                     verbose = FALSE) {
+
+  method <- match.arg(method)
+  n <- length(hop_indices)
+
+  # Handle edge cases
+  if (n == 0) return(logical(0))
+  if (n == 1) return(FALSE)  # Single extremum is not spurious
+
+  # Remove infinite values (global extrema) for analysis
+  finite_indices <- hop_indices[is.finite(hop_indices)]
+
+  if (length(finite_indices) == 0) {
+    # All extrema are global - none spurious
+    return(rep(FALSE, n))
+  }
+
+  if (verbose) {
+    cat("Spurious extrema classification:\n")
+    cat("  Method:", method, "\n")
+    cat("  Total extrema:", n, "\n")
+    cat("  Global extrema (hop_idx=Inf):", sum(is.infinite(hop_indices)), "\n")
+    cat("  Finite hop_idx range: [", min(finite_indices), ",", max(finite_indices), "]\n")
+    cat("  Median hop_idx:", median(finite_indices), "\n")
+  }
+
+  spurious <- switch(method,
+
+    threshold = {
+      # Simple threshold approach (original)
+      result <- hop_indices <= threshold
+      if (verbose) {
+        cat("  Threshold:", threshold, "\n")
+        cat("  Spurious count:", sum(result), "\n")
+      }
+      result
+    },
+
+    quantile = {
+      # Quantile-based approach (adaptive to data distribution)
+      cutoff <- quantile(finite_indices, probs = quantile_level)
+      result <- is.finite(hop_indices) & hop_indices <= cutoff
+      if (verbose) {
+        cat("  Quantile level:", quantile_level, "\n")
+        cat("  Cutoff value:", cutoff, "\n")
+        cat("  Spurious count:", sum(result), "\n")
+      }
+      result
+    },
+
+    outlier = {
+      # Statistical outlier detection using IQR method
+      # Extrema with unusually low hop_idx are spurious
+      q1 <- quantile(finite_indices, 0.25)
+      q3 <- quantile(finite_indices, 0.75)
+      iqr <- q3 - q1
+      lower_bound <- q1 - 1.5 * iqr
+
+      # In this context, we're looking for LOW outliers
+      result <- is.finite(hop_indices) & hop_indices < lower_bound
+
+      if (verbose) {
+        cat("  Q1:", q1, ", Q3:", q3, ", IQR:", iqr, "\n")
+        cat("  Lower bound:", lower_bound, "\n")
+        cat("  Spurious count:", sum(result), "\n")
+      }
+      result
+    },
+
+    combined = {
+      # Combined approach: must satisfy BOTH criteria
+      # 1. hop_idx <= threshold (absolute criterion)
+      # 2. hop_idx in lower quantile (relative criterion)
+
+      cutoff <- quantile(finite_indices, probs = quantile_level)
+      abs_criterion <- hop_indices <= threshold
+      rel_criterion <- is.finite(hop_indices) & hop_indices <= cutoff
+
+      result <- abs_criterion & rel_criterion
+
+      if (verbose) {
+        cat("  Absolute threshold:", threshold, "\n")
+        cat("  Relative cutoff (", quantile_level, " quantile):", cutoff, "\n")
+        cat("  Meeting absolute criterion:", sum(abs_criterion), "\n")
+        cat("  Meeting relative criterion:", sum(rel_criterion), "\n")
+        cat("  Meeting both (spurious):", sum(result), "\n")
+      }
+      result
+    }
+  )
+
+  # Never mark global extrema as spurious
+  spurious[is.infinite(hop_indices)] <- FALSE
+
+  return(spurious)
+}
+
+
+#' Enhanced Version of create.hop.nbhd.extrema.df with Improved Spurious Classification
+#'
+#' @description
+#' Creates a data frame containing information about local extrema with multiple
+#' options for classifying spurious extrema.
+#'
+#' @param result An object from compute.extrema.hop.nbhds() or create.gflow.cx()
+#' @param include_spurious Logical; whether to include spurious extrema (default TRUE)
+#' @param spurious_method Method for determining spurious extrema (see classify.spurious.extrema)
+#' @param threshold Threshold for hop_idx (default 2, or from result object)
+#' @param quantile_level Quantile level for quantile-based spurious detection (default 0.25)
+#' @param sort_by_value Logical; if TRUE, orders extrema by function value (default FALSE)
+#' @param vertex_column_name Character; name of the vertex column (default "vertex")
+#' @param verbose Logical; print diagnostic information (default FALSE)
+#'
+#' @return A data frame with columns:
+#'   \itemize{
+#'     \item vertex: Vertex index
+#'     \item hop_idx: Hop index of the extremum
+#'     \item is_max: 0 for minima, 1 for maxima
+#'     \item label: Label for the extremum
+#'     \item spurious: Logical; whether the extremum is considered spurious
+#'     \item value: Function value at the extremum (if available)
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # Original behavior (backward compatible)
+#' extrema_df <- create.hop.nbhd.extrema.df2(result)
+#'
+#' # Adaptive quantile-based spurious detection
+#' extrema_df <- create.hop.nbhd.extrema.df2(result,
+#'                                            spurious_method = "quantile",
+#'                                            quantile_level = 0.33)
+#'
+#' # Combined approach with diagnostics
+#' extrema_df <- create.hop.nbhd.extrema.df2(result,
+#'                                            spurious_method = "combined",
+#'                                            verbose = TRUE)
+#' }
+#'
+#' @export
+create.hop.nbhd.extrema.df2 <- function(result,
+                                       include_spurious = TRUE,
+                                       spurious_method = "threshold",
+                                       threshold = NULL,
+                                       quantile_level = 0.25,
+                                       sort_by_value = FALSE,
+                                       vertex_column_name = "vertex",
+                                       verbose = FALSE) {
+
+  # Check if the input has required components
+  if (!all(c("lmin_hop_nbhds", "lmax_hop_nbhds") %in% names(result))) {
+    stop("Input must have 'lmin_hop_nbhds' and 'lmax_hop_nbhds' components")
+  }
+
+  # Determine if we're dealing with gflow_cx object
+  is_gflow <- inherits(result, "gflow_cx")
+
+  # Determine threshold
+  if (is.null(threshold)) {
+    if (is_gflow) {
+      threshold <- attr(result, "hop_idx_threshold")
+    }
+    if (is.null(threshold)) {
+      threshold <- 2
+    }
+  }
+
+  # Extract data from minima
+  lmin_data <- lapply(result$lmin_hop_nbhds, function(x) {
+    list(
+      vertex = x$vertex,
+      hop_idx = x$hop_idx,
+      value = if ("value" %in% names(x)) x$value else NA
+    )
+  })
+
+  # Extract data from maxima
+  lmax_data <- lapply(result$lmax_hop_nbhds, function(x) {
+    list(
+      vertex = x$vertex,
+      hop_idx = x$hop_idx,
+      value = if ("value" %in% names(x)) x$value else NA
+    )
+  })
+
+  n_min <- length(lmin_data)
+  n_max <- length(lmax_data)
+
+  # Handle empty case
+  if (n_min + n_max == 0) {
+    return(data.frame(
+      vertex = integer(),
+      hop_idx = numeric(),
+      is_max = integer(),
+      label = character(),
+      spurious = logical(),
+      value = numeric(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # Extract data
+  vertices <- c(sapply(lmin_data, `[[`, "vertex"), sapply(lmax_data, `[[`, "vertex"))
+  hop_indices <- c(sapply(lmin_data, `[[`, "hop_idx"), sapply(lmax_data, `[[`, "hop_idx"))
+  is_max <- c(rep(0, n_min), rep(1, n_max))
+  values <- c(sapply(lmin_data, `[[`, "value"), sapply(lmax_data, `[[`, "value"))
+  has_values <- !all(is.na(values))
+
+  # Classify spurious extrema using enhanced method
+  spurious <- classify.spurious.extrema(
+    hop_indices = hop_indices,
+    values = if (has_values) values else NULL,
+    method = spurious_method,
+    threshold = threshold,
+    quantile_level = quantile_level,
+    verbose = verbose
+  )
+
+  # Filter spurious extrema if requested
+  if (!include_spurious) {
+    keep <- !spurious
+    vertices <- vertices[keep]
+    hop_indices <- hop_indices[keep]
+    is_max <- is_max[keep]
+    values <- values[keep]
+    spurious <- spurious[keep]
+
+    # Adjust counts after filtering
+    n_min <- sum(is_max == 0)
+    n_max <- sum(is_max == 1)
+  }
+
+  # Create labels
+  if (sort_by_value && has_values) {
+    labels <- character(length(vertices))
+
+    # Label maxima in descending order
+    if (n_max > 0) {
+      max_indices <- which(is_max == 1)
+      max_values <- values[max_indices]
+      ord <- order(max_values, decreasing = TRUE)
+      labels[max_indices[ord]] <- paste0("M", seq_len(n_max))
+    }
+
+    # Label minima in ascending order
+    if (n_min > 0) {
+      min_indices <- which(is_max == 0)
+      min_values <- values[min_indices]
+      ord <- order(min_values, decreasing = FALSE)
+      labels[min_indices[ord]] <- paste0("m", seq_len(n_min))
+    }
+  } else {
+    # Sequential labeling
+    labels <- c(
+      paste0("m", seq_len(n_min)),
+      paste0("M", seq_len(n_max))
+    )
+  }
+
+  # Create data frame
+  df <- data.frame(
+    hop_idx = hop_indices,
+    is_max = is_max,
+    label = labels,
+    spurious = spurious,
+    stringsAsFactors = FALSE
+  )
+
+  if (has_values) {
+    df$value <- values
+  }
+
+  # Add vertex column with requested name
+  df[[vertex_column_name]] <- vertices
+
+  # Reorder columns
+  col_order <- c(vertex_column_name, "hop_idx", "is_max", "label", "spurious")
+  if (has_values) {
+    col_order <- c(col_order, "value")
+  }
+
+  df <- df[, col_order]
+
+  return(df)
+}
+
+
+#' Analyze Extrema Distribution and Suggest Spurious Classification Parameters
+#'
+#' @description
+#' Provides diagnostic information about the distribution of hop indices
+#' to help choose appropriate parameters for spurious extrema classification.
+#'
+#' @param result An object from compute.extrema.hop.nbhds() or create.gflow.cx()
+#' @param plot Logical; if TRUE, create diagnostic plots (default TRUE)
+#'
+#' @return List with diagnostic information:
+#'   \itemize{
+#'     \item summary: Summary statistics of hop_idx distribution
+#'     \item suggested_threshold: Suggested threshold based on data
+#'     \item recommended_method: Recommended classification method
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' diagnostics <- analyze.extrema.distribution(result)
+#' print(diagnostics$summary)
+#' }
+#'
+#' @export
+analyze.extrema.distribution <- function(result, plot = TRUE) {
+
+  # Extract hop indices
+  lmin_hop <- sapply(result$lmin_hop_nbhds, function(x) x$hop_idx)
+  lmax_hop <- sapply(result$lmax_hop_nbhds, function(x) x$hop_idx)
+  all_hop <- c(lmin_hop, lmax_hop)
+
+  # Remove infinite values for analysis
+  finite_hop <- all_hop[is.finite(all_hop)]
+
+  if (length(finite_hop) == 0) {
+    return(list(
+      summary = "All extrema are global (hop_idx = Inf)",
+      suggested_threshold = Inf,
+      recommended_method = "threshold"
+    ))
+  }
+
+  # Compute statistics
+  hop_summary <- summary(finite_hop)
+  q25 <- quantile(finite_hop, 0.25)
+  q75 <- quantile(finite_hop, 0.75)
+  iqr <- q75 - q25
+
+  # Suggest threshold and method
+  if (iqr < 1) {
+    recommended_method <- "quantile"
+    suggested_threshold <- q25
+    rationale <- "Low IQR suggests using quantile-based method"
+  } else if (max(finite_hop) > 10) {
+    recommended_method <- "combined"
+    suggested_threshold <- min(3, q25)
+    rationale <- "Wide range suggests combined absolute/relative criteria"
+  } else {
+    recommended_method <- "threshold"
+    suggested_threshold <- max(1, floor(q25))
+    rationale <- "Moderate distribution suitable for simple threshold"
+  }
+
+  # Create diagnostic plot
+  if (plot) {
+    par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+    # Histogram
+    hist(finite_hop, breaks = max(10, length(unique(finite_hop))),
+         main = "Distribution of hop_idx",
+         xlab = "hop_idx", col = "lightblue", las = 1)
+    abline(v = suggested_threshold, col = "red", lwd = 2, lty = 2)
+    legend("topright", legend = paste("Suggested:", suggested_threshold),
+           col = "red", lty = 2, lwd = 2)
+
+    # Boxplot
+    boxplot(finite_hop, horizontal = TRUE, col = "lightgreen",
+            main = "Boxplot of hop_idx", xlab = "hop_idx", las = 1)
+    abline(v = suggested_threshold, col = "red", lwd = 2, lty = 2)
+  }
+
+  # Print summary
+  cat("\n=== Extrema Distribution Analysis ===\n\n")
+  cat("Total extrema:", length(all_hop), "\n")
+  cat("  Minima:", length(lmin_hop), "\n")
+  cat("  Maxima:", length(lmax_hop), "\n")
+  cat("  Global extrema (hop_idx=Inf):", sum(is.infinite(all_hop)), "\n\n")
+
+  cat("Finite hop_idx distribution:\n")
+  print(hop_summary)
+  cat("\nIQR:", iqr, "\n\n")
+
+  cat("RECOMMENDATIONS:\n")
+  cat("  Method:", recommended_method, "\n")
+  cat("  Threshold:", suggested_threshold, "\n")
+  cat("  Rationale:", rationale, "\n\n")
+
+  invisible(list(
+    summary = hop_summary,
+    iqr = iqr,
+    n_global = sum(is.infinite(all_hop)),
+    suggested_threshold = suggested_threshold,
+    recommended_method = recommended_method,
+    rationale = rationale
+  ))
+}
+
+### 000000000
+#' Interactive Threshold Selection Based on Expected Number of Extrema
+#'
+#' @description
+#' Helps determine appropriate hop_idx threshold by showing how many extrema
+#' would be retained at different threshold levels. Particularly useful when
+#' you have domain knowledge about the expected number of true extrema.
+#'
+#' @param extrema_df Data frame from create.hop.nbhd.extrema.df with hop_idx column
+#' @param expected_n_extrema Expected number of true extrema (NULL for no target)
+#' @param expected_range Optional vector c(min, max) for expected range
+#' @param plot Logical; create diagnostic plots (default TRUE)
+#' @param exclude_global Logical; exclude global extrema (hop_idx = Inf) from counts
+#'
+#' @return List with suggested thresholds and diagnostic information
+#'
+#' @examples
+#' \dontrun{
+#' # You expect 5-7 true extrema total
+#' suggestions <- suggest.threshold(
+#'   lextr.res$extrema_df,
+#'   expected_range = c(5, 7),
+#'   plot = TRUE
+#' )
+#' }
+#'
+#' @export
+suggest.threshold <- function(extrema_df,
+                             expected_n_extrema = NULL,
+                             expected_range = NULL,
+                             plot = TRUE,
+                             exclude_global = TRUE) {
+
+  # Extract hop indices
+  hop_idx <- extrema_df$hop_idx
+  is_max <- extrema_df$is_max
+
+  # Separate finite and infinite
+  finite_hop <- hop_idx[is.finite(hop_idx)]
+  n_global <- sum(is.infinite(hop_idx))
+
+  if (length(finite_hop) == 0) {
+    stop("All extrema are global (hop_idx = Inf)")
+  }
+
+  # Get unique hop_idx values
+  unique_hop <- sort(unique(finite_hop))
+
+  # Compute retention counts at each threshold
+  thresholds <- unique_hop
+  n_retained <- sapply(thresholds, function(t) {
+    base_count <- sum(hop_idx > t)
+    if (!exclude_global) base_count <- base_count + n_global
+    base_count
+  })
+
+  # Compute retention by type
+  n_retained_min <- sapply(thresholds, function(t) {
+    sum(hop_idx > t & is_max == 0)
+  })
+  n_retained_max <- sapply(thresholds, function(t) {
+    sum(hop_idx > t & is_max == 1)
+  })
+
+  # Create results table
+  retention_df <- data.frame(
+    threshold = thresholds,
+    n_retained = n_retained,
+    n_minima = n_retained_min,
+    n_maxima = n_retained_max,
+    pct_retained = round(100 * n_retained / length(hop_idx), 1)
+  )
+
+  # Find suggested thresholds based on expected counts
+  suggestions <- list()
+
+  if (!is.null(expected_n_extrema)) {
+    # Find threshold that gives closest to expected count
+    idx <- which.min(abs(n_retained - expected_n_extrema))
+    suggestions$threshold_for_expected <- thresholds[idx]
+    suggestions$n_at_threshold <- n_retained[idx]
+  }
+
+  if (!is.null(expected_range)) {
+    # Find thresholds bracketing the expected range
+    in_range_idx <- which(n_retained >= expected_range[1] &
+                          n_retained <= expected_range[2])
+    if (length(in_range_idx) > 0) {
+      suggestions$threshold_range <- range(thresholds[in_range_idx])
+      suggestions$recommended_threshold <- max(thresholds[in_range_idx])
+      suggestions$n_at_recommended <- n_retained[max(in_range_idx)]
+    } else {
+      # Find closest
+      below_range <- which(n_retained < expected_range[1])
+      above_range <- which(n_retained > expected_range[2])
+
+      if (length(below_range) > 0) {
+        suggestions$threshold_below_range <- thresholds[max(below_range)]
+        suggestions$n_below <- n_retained[max(below_range)]
+      }
+      if (length(above_range) > 0) {
+        suggestions$threshold_above_range <- thresholds[min(above_range)]
+        suggestions$n_above <- n_retained[min(above_range)]
+      }
+    }
+  }
+
+  # Statistical suggestions
+  q75 <- quantile(finite_hop, 0.75)
+  q90 <- quantile(finite_hop, 0.90)
+
+  suggestions$q75_threshold <- q75
+  suggestions$q90_threshold <- q90
+  suggestions$n_above_q75 <- sum(hop_idx > q75)
+  suggestions$n_above_q90 <- sum(hop_idx > q90)
+
+  # Print summary
+  cat("\n=== THRESHOLD SELECTION ANALYSIS ===\n\n")
+  cat("Total extrema:", length(hop_idx), "\n")
+  cat("  Minima:", sum(is_max == 0), "\n")
+  cat("  Maxima:", sum(is_max == 1), "\n")
+  if (n_global > 0) {
+    cat("  Global extrema (hop_idx=Inf):", n_global, "\n")
+  }
+  cat("\n")
+
+  cat("Hop index distribution:\n")
+  cat("  Range: [", min(finite_hop), ",", max(finite_hop), "]\n")
+  cat("  Median:", median(finite_hop), "\n")
+  cat("  Q75:", q75, "\n")
+  cat("  Q90:", q90, "\n\n")
+
+  cat("RETENTION TABLE (extrema with hop_idx > threshold):\n")
+  print(retention_df, row.names = FALSE)
+  cat("\n")
+
+  if (!is.null(expected_range) && !is.null(suggestions$recommended_threshold)) {
+    cat("RECOMMENDATION:\n")
+    cat("  To retain", expected_range[1], "-", expected_range[2], "extrema:\n")
+    cat("  Use threshold =", suggestions$recommended_threshold, "\n")
+    cat("  This retains:", suggestions$n_at_recommended, "extrema\n")
+    cat("    (", n_retained_min[thresholds == suggestions$recommended_threshold],
+        "minima,",
+        n_retained_max[thresholds == suggestions$recommended_threshold],
+        "maxima )\n\n")
+  } else if (!is.null(expected_range)) {
+    cat("NOTE: No threshold gives exactly", expected_range[1], "-",
+        expected_range[2], "extrema\n")
+    if (!is.null(suggestions$threshold_below_range)) {
+      cat("  Threshold", suggestions$threshold_below_range,
+          "gives", suggestions$n_below, "extrema (below range)\n")
+    }
+    if (!is.null(suggestions$threshold_above_range)) {
+      cat("  Threshold", suggestions$threshold_above_range,
+          "gives", suggestions$n_above, "extrema (above range)\n")
+    }
+    cat("\n")
+  }
+
+  # Create plots
+  if (plot) {
+    par(mfrow = c(2, 2), mar = c(4, 4, 3, 2))
+
+    # Plot 1: Histogram of hop_idx
+    hist(finite_hop, breaks = max(20, length(unique(finite_hop))),
+         main = "Distribution of hop_idx",
+         xlab = "hop_idx", col = "lightblue", las = 1)
+    if (!is.null(suggestions$recommended_threshold)) {
+      abline(v = suggestions$recommended_threshold, col = "red", lwd = 2, lty = 2)
+      text(suggestions$recommended_threshold, par("usr")[4] * 0.9,
+           paste("threshold =", suggestions$recommended_threshold),
+           pos = 4, col = "red", cex = 0.9)
+    }
+
+    # Plot 2: Retention curve
+    plot(thresholds, n_retained, type = "b", pch = 19,
+         main = "Extrema Retained vs Threshold",
+         xlab = "hop_idx threshold", ylab = "N extrema retained",
+         las = 1, col = "blue")
+    grid()
+    if (!is.null(expected_range)) {
+      abline(h = expected_range, col = "green", lty = 2, lwd = 2)
+      if (!is.null(suggestions$recommended_threshold)) {
+        abline(v = suggestions$recommended_threshold, col = "red", lwd = 2, lty = 2)
+        points(suggestions$recommended_threshold, suggestions$n_at_recommended,
+               pch = 19, col = "red", cex = 1.5)
+      }
+    }
+
+    # Plot 3: Minima vs Maxima retention
+    plot(thresholds, n_retained_min, type = "b", pch = 19,
+         main = "Retention by Type",
+         xlab = "hop_idx threshold", ylab = "N extrema retained",
+         las = 1, col = "blue", ylim = range(c(n_retained_min, n_retained_max)))
+    lines(thresholds, n_retained_max, type = "b", pch = 17, col = "red")
+    legend("topright", legend = c("Minima", "Maxima"),
+           col = c("blue", "red"), pch = c(19, 17), lty = 1)
+    grid()
+    if (!is.null(suggestions$recommended_threshold)) {
+      abline(v = suggestions$recommended_threshold, col = "darkgreen", lwd = 2, lty = 2)
+    }
+
+    # Plot 4: Cumulative distribution
+    ecdf_hop <- ecdf(finite_hop)
+    plot(ecdf_hop, main = "Cumulative Distribution of hop_idx",
+         xlab = "hop_idx", ylab = "Cumulative proportion",
+         las = 1, col = "blue", lwd = 2)
+    grid()
+    abline(h = c(0.75, 0.90), col = "gray", lty = 2)
+    abline(v = c(q75, q90), col = "gray", lty = 2)
+    if (!is.null(suggestions$recommended_threshold)) {
+      abline(v = suggestions$recommended_threshold, col = "red", lwd = 2, lty = 2)
+    }
+  }
+
+  # Return results
+  result <- list(
+    retention_table = retention_df,
+    suggestions = suggestions,
+    hop_idx_summary = summary(finite_hop),
+    n_global = n_global
+  )
+
+  invisible(result)
+}
+
+
+#' Compare Function Values of Retained Extrema at Different Thresholds
+#'
+#' @description
+#' Shows the actual extrema (with their function values) that would be retained
+#' at different threshold choices. Helps assess whether retained extrema make
+#' biological/domain sense.
+#'
+#' @param extrema_df Data frame with vertex, hop_idx, value, label columns
+#' @param thresholds Vector of thresholds to compare
+#' @param sort_by Character; how to sort results ("hop_idx", "value", or "vertex")
+#'
+#' @return List of data frames, one per threshold
+#'
+#' @examples
+#' \dontrun{
+#' # Compare what you'd retain at thresholds 2, 4, 6
+#' retained <- compare.retained.extrema(
+#'   lextr.res$extrema_df,
+#'   thresholds = c(2, 4, 6),
+#'   sort_by = "value"
+#' )
+#' }
+#'
+#' @export
+compare.retained.extrema <- function(extrema_df,
+                                    thresholds = c(2, 3, 4, 5),
+                                    sort_by = "hop_idx") {
+
+  results <- list()
+
+  for (t in thresholds) {
+    retained <- extrema_df[extrema_df$hop_idx > t, ]
+
+    # Sort according to preference
+    if (sort_by == "hop_idx") {
+      retained <- retained[order(-retained$hop_idx), ]
+    } else if (sort_by == "value" && "value" %in% names(retained)) {
+      retained <- retained[order(retained$value), ]
+    } else if (sort_by == "vertex") {
+      retained <- retained[order(retained$vertex), ]
+    }
+
+    cat("\n========================================\n")
+    cat("THRESHOLD =", t, " (retain", nrow(retained), "extrema)\n")
+    cat("========================================\n")
+
+    if (nrow(retained) > 0) {
+      # Print summary by type
+      n_min <- sum(retained$is_max == 0)
+      n_max <- sum(retained$is_max == 1)
+      cat("  Minima:", n_min, "\n")
+      cat("  Maxima:", n_max, "\n\n")
+
+      # Print the extrema
+      print(retained, row.names = FALSE)
+    } else {
+      cat("  (no extrema retained)\n")
+    }
+
+    results[[paste0("threshold_", t)]] <- retained
+  }
+
+  invisible(results)
+}
+
+
+#' Visualize Extrema on hop_idx vs value plot
+#'
+#' @description
+#' Creates a scatter plot showing hop_idx vs function value for all extrema,
+#' colored by type and marked by spurious classification. Helps visualize
+#' the relationship between stability (hop_idx) and extremal values.
+#'
+#' @param extrema_df Data frame with hop_idx, value, is_max columns
+#' @param threshold Optional threshold to draw as reference line
+#' @param main Plot title
+#'
+#' @export
+plot_extrema_stability <- function(extrema_df,
+                                   threshold = NULL,
+                                   main = "Extrema Stability vs Function Value") {
+
+  if (!"value" %in% names(extrema_df)) {
+    stop("extrema_df must have 'value' column")
+  }
+
+  # Separate minima and maxima
+  minima <- extrema_df[extrema_df$is_max == 0, ]
+  maxima <- extrema_df[extrema_df$is_max == 1, ]
+
+  # Replace Inf with a large value for plotting
+  finite_max <- max(extrema_df$hop_idx[is.finite(extrema_df$hop_idx)])
+  plot_hop <- extrema_df$hop_idx
+  plot_hop[is.infinite(plot_hop)] <- finite_max * 1.2
+
+  minima_plot_hop <- plot_hop[extrema_df$is_max == 0]
+  maxima_plot_hop <- plot_hop[extrema_df$is_max == 1]
+
+  # Create plot
+  plot(minima_plot_hop, minima$value,
+       pch = 19, col = "blue", cex = 1.2,
+       xlab = "hop_idx (Inf shown at right edge)",
+       ylab = "Function value",
+       main = main,
+       las = 1,
+       xlim = range(plot_hop),
+       ylim = range(extrema_df$value))
+
+  points(maxima_plot_hop, maxima$value,
+         pch = 17, col = "red", cex = 1.2)
+
+  grid()
+
+  # Add threshold line if specified
+  if (!is.null(threshold)) {
+    abline(v = threshold, col = "darkgreen", lwd = 2, lty = 2)
+    text(threshold, par("usr")[4], paste("threshold =", threshold),
+         pos = 4, col = "darkgreen", cex = 0.9, offset = 0.5)
+  }
+
+  # Add legend
+  legend("topleft",
+         legend = c("Minima", "Maxima"),
+         pch = c(19, 17),
+         col = c("blue", "red"),
+         pt.cex = 1.2,
+         bg = "white")
+
+  # Mark infinite hop_idx
+  if (any(is.infinite(extrema_df$hop_idx))) {
+    text(par("usr")[2], par("usr")[3],
+         "← Global extrema",
+         pos = 2, cex = 0.8, col = "gray40")
+  }
+}
+
