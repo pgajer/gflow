@@ -3390,3 +3390,307 @@ prepare.for.extrema.detection <- function(y,
 
   return(y.clean)
 }
+
+#' Break Ties in Compositional Data Matrix
+#'
+#' Resolves duplicate rows in a relative abundance or compositional data matrix
+#' by adding small, locally-informed perturbations that respect the structure of
+#' nearby communities. The perturbation is proportional to local variance estimated
+#' from a neighborhood defined either by k-nearest neighbors or by distance radius.
+#'
+#' @param rel.abund.mat Numeric matrix (n x p) of relative abundances where rows
+#'   represent samples and columns represent taxa/features. Rows should sum to 1
+#'   (or close to 1 within numerical precision). Can contain zeros.
+#' @param neighborhood.method Character string specifying how to define the
+#'   neighborhood for variance estimation. Either \code{"knn"} for k-nearest
+#'   neighbors or \code{"radius"} for distance-based threshold. Default is
+#'   \code{"knn"}.
+#' @param neighborhood.size Integer specifying the number of nearest neighbors
+#'   to use when \code{neighborhood.method = "knn"}. Default is 20.
+#' @param neighborhood.radius Numeric value specifying the distance threshold
+#'   when \code{neighborhood.method = "radius"}. Only samples within this
+#'   distance are included in the neighborhood. Default is 0.01.
+#' @param distance.metric Character string specifying the distance metric to use.
+#'   Options are:
+#'   \itemize{
+#'     \item \code{"euclidean"}: L² norm, \eqn{d(x,y) = \sqrt{\sum(x_i - y_i)^2}}
+#'     \item \code{"manhattan"}: L¹ norm, \eqn{d(x,y) = \sum|x_i - y_i|}
+#'     \item \code{"chebyshev"}: L∞ norm, \eqn{d(x,y) = \max_i |x_i - y_i|}
+#'     \item \code{"bray.curtis"}: \eqn{d(x,y) = \sum|x_i - y_i| / \sum(x_i + y_i)}
+#'   }
+#'   Default is \code{"euclidean"}.
+#' @param noise.scale Numeric value controlling the magnitude of perturbation.
+#'   The noise added to each taxon is drawn from \eqn{N(0, \sigma_i^2 \cdot
+#'   \text{noise.scale}^2)} where \eqn{\sigma_i} is the local standard deviation
+#'   for taxon i. Use very small values (e.g., 1e-10 to 1e-8) to minimally
+#'   affect downstream analyses. Default is 1e-10.
+#' @param min.neighborhood.size Integer specifying the minimum number of neighbors
+#'   required for valid variance estimation when using \code{neighborhood.method =
+#'   "radius"}. If fewer neighbors are found within the radius, the function falls
+#'   back to k-NN with this value. Default is 5.
+#' @param seed Integer seed for random number generation to ensure reproducibility.
+#'   If \code{NULL}, no seed is set. Default is \code{NULL}.
+#' @param verbose Logical indicating whether to print diagnostic information
+#'   including number of duplicates, neighborhood statistics, and warnings.
+#'   Default is \code{FALSE}.
+#'
+#' @return A numeric matrix with the same dimensions as \code{rel.abund.mat}
+#'   where duplicate rows have been perturbed to be unique. Rows are guaranteed
+#'   to sum to 1 (within numerical precision) and all values are non-negative.
+#'
+#' @details
+#' The function identifies duplicate rows and perturbs them by adding noise
+#' proportional to the local compositional variance. For each duplicate:
+#' \enumerate{
+#'   \item A neighborhood is identified using either k-NN or distance radius
+#'   \item Local variance is estimated for each taxon from the neighborhood
+#'   \item Gaussian noise scaled by local variance is added to each taxon
+#'   \item Negative values are set to zero
+#'   \item The composition is re-normalized to sum to 1
+#' }
+#'
+#' For taxa with zero local variance, the function uses a fallback strategy:
+#' first trying the minimum positive local variance scaled by 0.1, then falling
+#' back to global variance if necessary.
+#'
+#' When \code{neighborhood.method = "radius"} and too few neighbors are found
+#' (< \code{min.neighborhood.size}), the function automatically falls back to
+#' k-NN with \code{min.neighborhood.size} neighbors and reports this in verbose
+#' mode.
+#'
+#' @section Distance Metric Guidance:
+#' \itemize{
+#'   \item \strong{Manhattan (L¹)}: Sensitive to cumulative differences across
+#'     all taxa. Range: 0 to 2 for compositions.
+#'   \item \strong{Euclidean (L²)}: Standard geometric distance, penalizes large
+#'     single-taxon differences. Range: 0 to sqrt(2) for compositions.
+#'   \item \strong{Chebyshev (L∞)}: Focuses on maximum single-taxon difference.
+#'     Useful when you want uniform bounds on all taxa. Range: 0 to 1 for
+#'     compositions.
+#'   \item \strong{Bray-Curtis}: Normalized dissimilarity common in ecology,
+#'     scale-invariant. Range: 0 to 1.
+#' }
+#'
+#' @section Choosing Parameters:
+#' \itemize{
+#'   \item For high-dimensional sparse data (e.g., microbiome): Use larger
+#'     \code{neighborhood.size} (30-50) or larger \code{neighborhood.radius}
+#'     (0.05-0.1) to ensure sufficient neighbors.
+#'   \item For dense regions (e.g., samples dominated by single taxon): Use
+#'     smaller \code{neighborhood.radius} (0.001-0.01) to capture local structure.
+#'   \item Start with \code{noise.scale = 1e-10} and increase only if duplicates
+#'     remain after perturbation.
+#' }
+#'
+#' @examples
+#' # Simulate compositional data with duplicates
+#' set.seed(42)
+#' n <- 100
+#' p <- 50
+#' X <- matrix(rexp(n * p), nrow = n, ncol = p)
+#' X <- X / rowSums(X)  # normalize to compositions
+#'
+#' # Introduce some duplicates
+#' X[5, ] <- X[1, ]
+#' X[10, ] <- X[1, ]
+#' X[20, ] <- X[15, ]
+#'
+#' sum(duplicated(X))  # Should be 3
+#'
+#' # Break ties using k-NN with Euclidean distance
+#' X.dedup.knn <- break.composition.ties(
+#'   rel.abund.mat = X,
+#'   neighborhood.method = "knn",
+#'   neighborhood.size = 20,
+#'   distance.metric = "euclidean",
+#'   noise.scale = 1e-10,
+#'   seed = 123,
+#'   verbose = TRUE
+#' )
+#'
+#' sum(duplicated(X.dedup.knn))  # Should be 0
+#'
+#' # Break ties using radius method with Manhattan distance
+#' X.dedup.radius <- break.composition.ties(
+#'   rel.abund.mat = X,
+#'   neighborhood.method = "radius",
+#'   neighborhood.radius = 0.01,
+#'   distance.metric = "manhattan",
+#'   noise.scale = 1e-10,
+#'   seed = 123,
+#'   verbose = TRUE
+#' )
+#'
+#' # For L. iners dominated samples (restrictive neighborhood)
+#' X.dedup.linf <- break.composition.ties(
+#'   rel.abund.mat = X,
+#'   neighborhood.method = "radius",
+#'   neighborhood.radius = 0.01,
+#'   distance.metric = "chebyshev",  # L∞ ensures all taxa within bounds
+#'   noise.scale = 1e-10,
+#'   min.neighborhood.size = 10,
+#'   seed = 123,
+#'   verbose = TRUE
+#' )
+#'
+#' @seealso
+#' \code{\link{duplicated}} for identifying duplicate rows,
+#' \code{\link{prcomp}} for PCA-based alternative approaches
+#'
+#' @export
+break.composition.ties <- function(
+  rel.abund.mat,
+  neighborhood.method = c("knn", "radius"),
+  neighborhood.size = 20,
+  neighborhood.radius = 0.01,
+  distance.metric = c("euclidean", "manhattan", "chebyshev", "bray.curtis"),
+  noise.scale = 1e-10,
+  min.neighborhood.size = 5,
+  seed = NULL,
+  verbose = FALSE
+) {
+  # rel.abund.mat: n x p matrix of relative abundances (rows sum to 1)
+  # neighborhood.method: "knn" for k-nearest neighbors, "radius" for distance threshold
+  # neighborhood.size: k for knn method
+  # neighborhood.radius: distance threshold for radius method
+  # distance.metric: "euclidean" (L2), "manhattan" (L1), "chebyshev" (L∞), or "bray.curtis"
+  # noise.scale: multiplier for perturbation magnitude
+  # min.neighborhood.size: minimum neighbors required for valid variance estimate
+
+  if (!is.null(seed)) set.seed(seed)
+
+  neighborhood.method <- match.arg(neighborhood.method)
+  distance.metric <- match.arg(distance.metric)
+
+  n <- nrow(rel.abund.mat)
+  p <- ncol(rel.abund.mat)
+
+  # Identify duplicate rows
+  dup.rows <- duplicated(rel.abund.mat) | duplicated(rel.abund.mat, fromLast = TRUE)
+  n.dup <- sum(dup.rows)
+
+  if (verbose) {
+    cat("Total samples:", n, "\n")
+    cat("Duplicate samples:", n.dup, "\n")
+    cat("Neighborhood method:", neighborhood.method, "\n")
+    cat("Distance metric:", distance.metric, "\n")
+  }
+
+  if (n.dup == 0) {
+    if (verbose) cat("No duplicates found\n")
+    return(rel.abund.mat)
+  }
+
+  # Distance function
+  compute.distance <- function(x, y, metric) {
+    switch(metric,
+      euclidean = sqrt(sum((x - y)^2)),
+      manhattan = sum(abs(x - y)),
+      chebyshev = max(abs(x - y)),
+      bray.curtis = {
+        # Bray-Curtis dissimilarity: sum(|x_i - y_i|) / sum(x_i + y_i)
+        sum(abs(x - y)) / sum(x + y)
+      }
+    )
+  }
+
+  result <- rel.abund.mat
+  neighborhood.stats <- list()
+
+  for (i in which(dup.rows)) {
+    # Compute distances to all other samples
+    distances <- apply(rel.abund.mat, 1, function(x) {
+      compute.distance(x, rel.abund.mat[i, ], distance.metric)
+    })
+
+    # Select neighborhood based on method
+    if (neighborhood.method == "knn") {
+      # k nearest neighbors (excluding self at distance 0)
+      neighbor.idx <- order(distances)[2:(neighborhood.size + 1)]
+      max.dist <- max(distances[neighbor.idx])
+
+    } else {  # radius method
+      # All samples within radius (excluding self)
+      neighbor.idx <- which(distances > 0 & distances <= neighborhood.radius)
+      max.dist <- neighborhood.radius
+
+      # Check if we have enough neighbors
+      if (length(neighbor.idx) < min.neighborhood.size) {
+        if (verbose) {
+          cat(sprintf("Sample %d: Only %d neighbors within radius %.4f, ",
+                     i, length(neighbor.idx), neighborhood.radius))
+        }
+
+        # Fallback to knn with min.neighborhood.size
+        neighbor.idx <- order(distances)[2:(min.neighborhood.size + 1)]
+        max.dist <- max(distances[neighbor.idx])
+
+        if (verbose) {
+          cat(sprintf("using %d-NN fallback (max dist: %.4f)\n",
+                     min.neighborhood.size, max.dist))
+        }
+      }
+    }
+
+    neighborhood <- rel.abund.mat[neighbor.idx, , drop = FALSE]
+
+    if (verbose) {
+      neighborhood.stats[[as.character(i)]] <- list(
+        n.neighbors = length(neighbor.idx),
+        max.distance = max.dist,
+        mean.distance = mean(distances[neighbor.idx])
+      )
+    }
+
+    # Estimate local variance for each taxon
+    local.sd <- apply(neighborhood, 2, sd)
+
+    # For taxa with zero local variance, use fallback
+    zero.var.taxa <- local.sd == 0
+    if (any(zero.var.taxa)) {
+      min.positive.sd <- min(local.sd[!zero.var.taxa], na.rm = TRUE)
+      if (is.finite(min.positive.sd)) {
+        local.sd[zero.var.taxa] <- min.positive.sd * 0.1
+      } else {
+        # Ultimate fallback: use global variance
+        global.sd <- apply(rel.abund.mat, 2, sd)
+        local.sd[zero.var.taxa] <- global.sd[zero.var.taxa] * 0.1
+      }
+    }
+
+    # Add scaled noise proportional to local variance
+    noise <- rnorm(p, mean = 0, sd = local.sd * noise.scale)
+
+    # Apply perturbation
+    perturbed <- rel.abund.mat[i, ] + noise
+
+    # Ensure non-negativity
+    perturbed[perturbed < 0] <- 0
+
+    # Re-normalize to sum to 1 (preserve compositional constraint)
+    if (sum(perturbed) > 0) {
+      result[i, ] <- perturbed / sum(perturbed)
+    } else {
+      # Extremely rare case: add uniform tiny noise
+      result[i, ] <- (rel.abund.mat[i, ] + 1e-15) / (1 + p * 1e-15)
+    }
+  }
+
+  # Verify all duplicates are resolved
+  remaining.dup <- sum(duplicated(result))
+
+  if (verbose) {
+    cat("\nNeighborhood statistics:\n")
+    for (sample.id in names(neighborhood.stats)) {
+      stats <- neighborhood.stats[[sample.id]]
+      cat(sprintf("  Sample %s: %d neighbors, max dist: %.4f, mean dist: %.4f\n",
+                 sample.id, stats$n.neighbors, stats$max.distance, stats$mean.distance))
+    }
+    cat("\nRemaining duplicates after perturbation:", remaining.dup, "\n")
+    if (remaining.dup > 0) {
+      cat("WARNING: Some duplicates remain. Consider increasing noise.scale\n")
+    }
+  }
+
+  return(result)
+}
