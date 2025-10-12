@@ -24,7 +24,8 @@ extern "C" {
 		SEXP s_max_iterations,
 		SEXP s_max_ratio_threshold,
 		SEXP s_threshold_percentile,
-		SEXP s_test_stage
+		SEXP s_test_stage,
+		SEXP s_verbose
 		);
 
 #ifdef __cplusplus
