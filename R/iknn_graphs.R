@@ -8,25 +8,34 @@
 #'
 #' @param X A numeric matrix (or object coercible to a numeric matrix) with rows
 #'     = observations and columns = features.
+#'
 #' @param kmin Integer \eqn{\ge 1}, the minimum k.
+#'
 #' @param kmax Integer \eqn{> k_{\mathrm{min}}}, the maximum k.
+#'
 #' @param max.path.edge.ratio.deviation.thld Numeric in \eqn{[0, 0.2)}.
 #'     Geometric pruning removes an edge \eqn{(i,j)} when there exists an
 #'     alternative path between \eqn{i} and \eqn{j} whose path/edge length ratio
 #'     minus 1.0 is \emph{less than} this threshold. This is a deviation
 #'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
 #'     path-to-edge ratio R to \eqn{1 + \delta}.
+#'
 #' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
 #'     length above this percentile are considered for geometric pruning.
+#'
 #' @param compute.full Logical. If `TRUE`, return the pruned graphs; if `FALSE`,
 #'     return only edge statistics.
+#'
 #' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
 #'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
+#'
 #' @param variance.explained Numeric in \eqn{(0,1]} or `NULL`. If not `NULL`,
 #'     choose the smallest number of PCs whose cumulative variance explained
 #'     exceeds this threshold, capped by `pca.dim`.
+#'
 #' @param n.cores Integer or `NULL`. Number of CPU cores. `NULL` uses the
 #'     maximum available (OpenMP build only).
+#'
 #' @param verbose Logical; print progress and timing.
 #'
 #' @return A list of class `"iknn_graphs"` with entries:
@@ -130,7 +139,7 @@ create.iknn.graphs <- function(X,
             stop("variance.explained must be in (0, 1], or NULL.")
     }
 
-    ## PCA (optional)
+    ## PCA
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
         if (verbose) message("High-dimensional data detected. Performing PCA.")
@@ -201,7 +210,7 @@ create.iknn.graphs <- function(X,
     if (!is.null(result$k_statistics) && is.matrix(result$k_statistics) &&
         is.null(colnames(result$k_statistics))) {
         nc <- ncol(result$k_statistics)
-                                        # Common layouts: with k (8 cols) or without k (7 cols)
+        ## Common layouts: with k (8 cols) or without k (7 cols)
         if (nc == 8L) {
             colnames(result$k_statistics) <- c("k",
                                                "n_edges",
