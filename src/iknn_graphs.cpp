@@ -657,17 +657,14 @@ void print_iknn_graph(
 #include <algorithm>
 #include <limits>
 
-// ============================================================
-// DEBUG CONTROL
-// ============================================================
-#define DEBUG_CREATE_IKNN_GRAPH true
-
 iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
 
+    #define DEBUG_CREATE_IKNN_GRAPH 0
+
     std::string debug_dir;
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_CREATE_IKNN_GRAPH
         debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
-    }
+    #endif
 
     SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
     if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
@@ -684,7 +681,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
     int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
     double *distances = REAL(VECTOR_ELT(knn_res, 1));
 
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_CREATE_IKNN_GRAPH
         Rprintf("In create_iknn_graph() DEBUG block\n");
 
         std::vector<std::vector<index_t>> knn_indices_debug(n_points, std::vector<index_t>(k));
@@ -699,7 +696,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
             debug_dir + "phase_1a_knn_result.bin",
             knn_indices_debug, knn_distances_debug, n_points, k
         );
-    }
+    #endif
 
     UNPROTECT(1);
 
@@ -750,15 +747,15 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
                 res.graph[pt_i].emplace_back(iknn_vertex_t{pt_j, common_count, min_dist});
                 res.graph[pt_j].emplace_back(iknn_vertex_t{pt_i, common_count, min_dist});
 
-                if (DEBUG_CREATE_IKNN_GRAPH) {
+                #if DEBUG_CREATE_IKNN_GRAPH
                     edges_created.push_back({static_cast<index_t>(pt_i), static_cast<index_t>(pt_j)});
                     weights_created.push_back(min_dist);
-                }
+                #endif
             }
         }
     }
 
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_CREATE_IKNN_GRAPH
         debug_serialization::save_edge_list(
             debug_dir + "phase_1b_edges_pre_pruning.bin",
             edges_created, weights_created, "PHASE_1B_PRE_PRUNING"
@@ -773,7 +770,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
             debug_dir + "phase_final_connectivity.bin",
             component_ids, n_components
         );
-    }
+    #endif
 
     return res;
 }
@@ -950,12 +947,12 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
                                 // other
                                 SEXP s_compute_full) {
 
-    #define DEBUG_CREATE_IKNN_GRAPH true
+    #define DEBUG_S_CREATE_IKNN_GRAPH 0
 
     std::string debug_dir;
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_S_CREATE_IKNN_GRAPH
         debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
-    }
+    #endif
 
     // --- dims(X) protected while reading
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
@@ -1004,7 +1001,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
 
     set_wgraph_t temp_graph_for_pruning(iknn_graph);
 
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_S_CREATE_IKNN_GRAPH
         Rprintf("=== S_create_single_iknn_graph: Geometric Pruning ===\n");
         Rprintf("Parameters: max_path_edge_ratio_thld=%.3f, path_edge_ratio_percentile=%.3f\n",
                 max_path_edge_ratio_thld, path_edge_ratio_percentile);
@@ -1012,7 +1009,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
 
         Rprintf("=== Before geometric pruning ===\n");
         Rprintf("Edges before pruning: %d\n", n_edges);
-    }
+    #endif
 
     set_wgraph_t pruned_graph = temp_graph_for_pruning.prune_edges_geometrically(
         max_path_edge_ratio_thld,
@@ -1024,15 +1021,15 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     }
     n_edges_in_pruned_graph_sz /= 2;
 
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_S_CREATE_IKNN_GRAPH
         Rprintf("=== After geometric pruning ===\n");
         Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
         Rprintf("Edges removed: %d\n", n_edges - (int)n_edges_in_pruned_graph_sz);
         Rprintf("Pruning ratio: %.2f%%\n", 100.0 * (n_edges - n_edges_in_pruned_graph_sz) / n_edges);
-    }
+    #endif
 
     // ========== DEBUG OUTPUT (mirrors initialize_from_knn Phase 1C) ==========
-    if (DEBUG_CREATE_IKNN_GRAPH) {
+    #if DEBUG_S_CREATE_IKNN_GRAPH
         Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
 
         // Extract edges from pruned graph
@@ -1093,7 +1090,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         if (n_components > 1) {
             Rprintf("WARNING: Graph is disconnected after pruning!\n");
         }
-    }
+    #endif
     // ========== END DEBUG OUTPUT ==========
 
     const int n_edges_in_pruned_graph =

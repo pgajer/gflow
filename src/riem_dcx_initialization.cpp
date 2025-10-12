@@ -1,11 +1,38 @@
 /**
  * @file riem_dcx_initialization.cpp
+ *
  * @brief Initialization routines for Riemannian simplicial complex regression
  *
  * This file implements the geometric initialization phase that constructs
  * the simplicial complex from k-NN data, computes initial densities, and
  * assembles the initial Hodge Laplacian operators.
+ *
+ * DEBUG INSTRUMENTATION
+ * =====================
+ * This file contains debug serialization code controlled by DEBUG_INITIALIZE_FROM_KNN.
+ *
+ * To enable debugging:
+ * 1. Set DEBUG_INITIALIZE_FROM_KNN to 1 in this file
+ * 2. Create directory: mkdir -p /tmp/gflow_debug/initialize_from_knn
+ * 3. Recompile and run
+ * 4. Debug files will be written to /tmp/gflow_debug/initialize_from_knn/
+ *
+ * Debug files include:
+ * - phase_1a_knn_result.bin: k-NN computation results
+ * - phase_1b_edges_pre_pruning.bin: Edge list before geometric pruning
+ * - phase_1c_edges_post_pruning.bin: Edge list after geometric pruning
+ * - phase_1e_connectivity.bin: Final connectivity information
+ *
+ * Use R/debug_comparison.R::compare_debug_outputs() to compare with create_iknn_graph
+ *
+ * IMPORTANT: Debug code must remain disabled (flag = 0) for CRAN submission.
  */
+
+// ============================================================
+// DEBUG CONTROL
+// ============================================================
+// Creates files in /tmp/gflow_debug/initialize_from_knn/
+#define DEBUG_INITIALIZE_FROM_KNN 0
 
 #include "riem_dcx.hpp"
 #include "set_wgraph.hpp"
@@ -128,13 +155,6 @@ knn_result_t compute_knn_from_eigen(
 #include <limits>
 #include <unordered_set>
 
-// ============================================================
-// DEBUG CONTROL
-// ============================================================
-// Set to true to enable debug serialization
-// Creates files in /tmp/gflow_debug/initialize_from_knn/
-#define DEBUG_INITIALIZE_FROM_KNN true
-
 knn_result_t compute_knn_from_eigen(
     const Eigen::SparseMatrix<double>& X,
     int k
@@ -152,11 +172,11 @@ void riem_dcx_t::initialize_from_knn(
 
     // Setup debug directory if enabled
     std::string debug_dir;
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
         debug_dir = "/tmp/gflow_debug/initialize_from_knn/";
         // Note: In production code, you'd want to ensure this directory exists
         // For debugging, create it manually: mkdir -p /tmp/gflow_debug/initialize_from_knn/
-    }
+    #endif
 
     // ================================================================
     // PHASE 0: INITIALIZE DIMENSION STRUCTURE
@@ -190,12 +210,12 @@ void riem_dcx_t::initialize_from_knn(
         }
     }
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
         debug_serialization::save_knn_result(
             debug_dir + "phase_1a_knn_result.bin",
             knn_indices, knn_distances, n_points, k
         );
-    }
+    #endif
 
     neighbor_sets.resize(n_points);
     for (size_t i = 0; i < n_points; ++i) {
@@ -204,12 +224,12 @@ void riem_dcx_t::initialize_from_knn(
         }
     }
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
         debug_serialization::save_neighbor_sets(
             debug_dir + "phase_1a_neighbor_sets.bin",
             neighbor_sets
         );
-    }
+    #endif
 
     // ================================================================
     // PHASE 1B: EDGE CONSTRUCTION VIA NEIGHBORHOOD INTERSECTIONS
@@ -288,7 +308,7 @@ void riem_dcx_t::initialize_from_knn(
 	}
 
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
         debug_serialization::save_vertex_cofaces(
             debug_dir + "phase_1b_vertex_cofaces_pre_pruning.bin",
             vertex_cofaces
@@ -310,7 +330,7 @@ void riem_dcx_t::initialize_from_knn(
             debug_dir + "phase_1b_edges_pre_pruning.bin",
             edges_pre_pruning, weights_pre_pruning, "PHASE_1B_PRE_PRUNING"
         );
-    }
+    #endif
 
     // ================================================================
     // PHASE 1C: GEOMETRIC EDGE PRUNING
@@ -327,22 +347,23 @@ void riem_dcx_t::initialize_from_knn(
         }
     }
 
-    size_t n_edges_before_pruning = 0;
-    if (DEBUG_INITIALIZE_FROM_KNN) {
-        for (size_t i = 0; i < n_points; ++i) {
-            n_edges_before_pruning += vertex_cofaces[i].size() - 1;
-        }
-        n_edges_before_pruning /= 2;
 
-		Rprintf("=== Before geometric pruning ===\n");
-		Rprintf("Edges before: %zu\n", n_edges_before_pruning);
-    }
+    #if DEBUG_INITIALIZE_FROM_KNN
+	size_t n_edges_before_pruning = 0;
+    for (size_t i = 0; i < n_points; ++i) {
+		n_edges_before_pruning += vertex_cofaces[i].size() - 1;
+	}
+	n_edges_before_pruning /= 2;
+
+	Rprintf("=== Before geometric pruning ===\n");
+	Rprintf("Edges before: %zu\n", n_edges_before_pruning);
+    #endif
 
     set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
         max_ratio_threshold, threshold_percentile
     );
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
 		size_t n_edges_after_pruning = 0;
 		for (const auto& nbrs : pruned_graph.adjacency_list) {
 			n_edges_after_pruning += nbrs.size();
@@ -375,7 +396,7 @@ void riem_dcx_t::initialize_from_knn(
             max_ratio_threshold, threshold_percentile,
             n_edges_before_pruning, edges_post_pruning.size()
         );
-    }
+    #endif
 
     // ================================================================
     // PHASE 1D: FILTER vertex_cofaces IN PLACE
@@ -399,12 +420,12 @@ void riem_dcx_t::initialize_from_knn(
         vertex_cofaces[i].erase(new_end, vertex_cofaces[i].end());
     }
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
+    #if DEBUG_INITIALIZE_FROM_KNN
         debug_serialization::save_vertex_cofaces(
             debug_dir + "phase_1d_vertex_cofaces_post_pruning.bin",
             vertex_cofaces
         );
-    }
+    #endif
 
     // ================================================================
     // PHASE 1E: BUILD edge_registry AND ASSIGN FINAL INDICES
@@ -448,38 +469,38 @@ void riem_dcx_t::initialize_from_knn(
         }
     }
 
-    if (DEBUG_INITIALIZE_FROM_KNN) {
-        debug_serialization::save_vertex_cofaces(
-            debug_dir + "phase_1e_final_vertex_cofaces.bin",
-            vertex_cofaces
+    #if DEBUG_INITIALIZE_FROM_KNN
+	debug_serialization::save_vertex_cofaces(
+		debug_dir + "phase_1e_final_vertex_cofaces.bin",
+		vertex_cofaces
         );
 
-        std::vector<double> final_weights;
-        for (const auto& [i, j] : edge_list) {
-            for (size_t k_idx = 1; k_idx < vertex_cofaces[i].size(); ++k_idx) {
-                if (vertex_cofaces[i][k_idx].vertex_index == j) {
-                    final_weights.push_back(vertex_cofaces[i][k_idx].dist);
-                    break;
-                }
-            }
-        }
-        debug_serialization::save_edge_list(
-            debug_dir + "phase_1e_final_edge_registry.bin",
-            edge_list, final_weights, "PHASE_1E_FINAL"
+	std::vector<double> final_weights;
+	for (const auto& [i, j] : edge_list) {
+		for (size_t k_idx = 1; k_idx < vertex_cofaces[i].size(); ++k_idx) {
+			if (vertex_cofaces[i][k_idx].vertex_index == j) {
+				final_weights.push_back(vertex_cofaces[i][k_idx].dist);
+				break;
+			}
+		}
+	}
+	debug_serialization::save_edge_list(
+		debug_dir + "phase_1e_final_edge_registry.bin",
+		edge_list, final_weights, "PHASE_1E_FINAL"
         );
 
-        // Compute and save connectivity
-        std::vector<int> component_ids;
-        size_t n_components = debug_serialization::compute_connected_components_from_vertex_cofaces(
-            vertex_cofaces, component_ids
+	// Compute and save connectivity
+	std::vector<int> component_ids;
+	size_t n_components = debug_serialization::compute_connected_components_from_vertex_cofaces(
+		vertex_cofaces, component_ids
         );
-        debug_serialization::save_connectivity(
-            debug_dir + "phase_1e_connectivity.bin",
-            component_ids, n_components
+	debug_serialization::save_connectivity(
+		debug_dir + "phase_1e_connectivity.bin",
+		component_ids, n_components
         );
-    }
+    #endif
 
-		// ================================================================
+	// ================================================================
 	// PHASE 1F: BUILD TRIANGLES AND POPULATE edge_cofaces
 	// ================================================================
 
@@ -638,11 +659,6 @@ void riem_dcx_t::initialize_from_knn(
 				0.0
 			});
 	}
-
-
-	Rprintf("\nIn riem_dcx_t::initialize_from_knn() DEBUGGING early exit at line 609\n");
-    return;
-
 
     // ================================================================
     // PHASE 2: DENSITY INITIALIZATION

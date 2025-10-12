@@ -64,7 +64,7 @@ struct compare_edge_t {
  * Time Complexity: O(n^2 log n), where n is the number of points.
  * Space Complexity: O(n), where n is the number of points.
  *
- * @todo Consider implementing a more efficient version that doesn't recompute all nearest neighbors
+ * @todo Implement a more efficient version that doesn't recompute all nearest neighbors
  *       after each point is added to the MST.
  */
 std::vector<edge_t> data_mstree(const std::vector<double>& X, int nr_X, int nc_X) {
@@ -173,7 +173,7 @@ std::vector<edge_t> data_mstree(const std::vector<double>& X, int nr_X, int nc_X
  * @note This function uses R's C API and should be compiled into a shared object
  *       before being called from R.
  *
- * @todo Consider adding more robust Rf_error checking and handling for production use.
+ * @todo Add more robust Rf_error checking and handling for production use.
  *
  * @todo If performance is critical, consider using Rcpp for easier and potentially
  *       more efficient R and C++ integration.

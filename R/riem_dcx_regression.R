@@ -78,6 +78,7 @@
 #'     \item \code{"cubic_spline"}: \eqn{f(\lambda) = 1/(1 + \eta\lambda^2)},
 #'           minimizing second derivatives. Produces spline-like smoothness.
 #'   }
+#' Default: "heat_kernel"
 #'
 #' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
 #'   for response. Iteration stops when the relative change in fitted values
@@ -295,12 +296,12 @@ fit.knn.riem.graph.regression <- function(
     density.normalization = 0,
     t.diffusion = 0,
     density.uniform.pull = 0,
-    response.penalty.exp = 0.3,
+    response.penalty.exp = 0,
     n.eigenpairs = 10,
-    filter.type = c("heat_kernel", "tikhonov", "cubic_spline"),
+    filter.type = "heat_kernel",
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
-    max.iterations = 50,
+    max.iterations = 10,
     max.ratio.threshold = 0.1,
     threshold.percentile = 0.5,
     pca.dim = 100,
@@ -653,7 +654,7 @@ fit.knn.riem.graph.regression <- function(
     attr(fit, "n") <- n
     attr(fit, "d") <- d
     attr(fit, "k") <- k
-    if (!is.null(pca_info)) attr(result, "pca") <- pca_info
+    if (!is.null(pca_info)) attr(fit, "pca") <- pca_info
 
     return(fit)
 }

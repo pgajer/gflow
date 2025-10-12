@@ -1,3 +1,19 @@
+/**
+ * @file debug_serialization.hpp
+ * @brief Debugging utilities for ikNN graph construction verification
+ *
+ * This file provides functions to serialize intermediate data structures
+ * during ikNN graph construction to binary files for detailed comparison
+ * and debugging.
+ *
+ * These functions are only called when DEBUG flags are enabled in source files.
+ * When disabled (default), they add zero overhead as the calls are removed
+ * by the preprocessor.
+ *
+ * Usage: Set DEBUG_INITIALIZE_FROM_KNN or DEBUG_CREATE_IKNN_GRAPH to 1
+ * in the respective source files to enable debugging output.
+ */
+
 #ifndef DEBUG_SERIALIZATION_HPP
 #define DEBUG_SERIALIZATION_HPP
 

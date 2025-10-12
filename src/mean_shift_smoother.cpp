@@ -287,8 +287,6 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother(const st
  * @see kernel_fn() function for computing kernel weights
  * @see median() function for computing median k-distances
  *
- * @todo Consider adding input validation to check for empty datasets or inconsistent
- *       feature dimensions.
  * @todo Explore parallelization opportunities, especially for the k-NN computations
  *       and per-point calculations within each iteration.
  * @todo Implement an early stopping criterion based on the convergence of point positions
@@ -449,7 +447,6 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_smoother(
  * @see kernel_fn() function for computing kernel weights
  * @see median() function for computing median k-distances
  *
- * @todo Consider adding Rf_error checking for input parameters and handling of edge cases.
  * @todo Explore possibilities for parallelization to further improve performance.
  */
 std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precomputed(const std::vector<std::vector<double>>& X,
@@ -622,7 +619,7 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_precompu
  * @see kernel_fn
  * @see mean_shift_smoother_results_t
  *
- * @todo Consider adding parallelization for improved performance on large datasets.
+ * @todo Add parallelization for improved performance on large datasets.
  * @todo Explore adaptive step size mechanisms for potentially faster convergence.
  */
 std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_grad_field_averaging(const std::vector<std::vector<double>>& X,
@@ -827,7 +824,6 @@ std::unique_ptr<mean_shift_smoother_results_t> mean_shift_data_smoother_with_gra
  *       allowing for more accurate gradient estimation as points move. However, the step size remains constant.
  *
  * @Rf_warning The current implementation does not include a mechanism to adapt the step size dynamically.
- *          Consider implementing such a mechanism for truly adaptive behavior.
  *
  * @pre The input data matrix X must not be empty and all rows must have the same number of columns.
  * @pre k and density_k must be positive integers less than the number of points in X.
@@ -1111,7 +1107,6 @@ std::unique_ptr<mean_shift_smoother_results_t> knn_adaptive_mean_shift_data_smoo
  *       - decrease_factor: Factor to decrease step size when gradients are inconsistent (default: 0.5).
  *
  * @Rf_warning The adaptive step size mechanism may lead to very small or very large step sizes in certain scenarios.
- *          Consider implementing bounds on step sizes if needed for your specific application.
  *
  * @pre The input data matrix X must not be empty and all rows must have the same number of columns.
  * @pre k and density_k must be positive integers less than the number of points in X.
@@ -1529,7 +1524,7 @@ SEXP S_mean_shift_data_smoother_with_grad_field_averaging(SEXP s_X,
  * @see kernel_fn
  * @see mean_shift_smoother_results_t
  *
- * @todo Consider adding user-configurable parameters for momentum, increase_factor, and decrease_factor.
+ * @todo Add user-configurable parameters for momentum, increase_factor, and decrease_factor.
  * @todo Implement minimum and maximum bounds for step sizes to prevent extreme values.
  * @todo Explore alternative convergence criteria based on step size magnitudes or gradient changes.
  * @todo Investigate potential performance optimizations for the adaptive mechanism on large datasets.

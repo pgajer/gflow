@@ -142,7 +142,6 @@ vbw_maelog_t vbw_maelog(
     double ridge_lambda,
     double tolerance) {
 
-    // Consider adding checks like:
     if (x.size() != variable_bandwidth.size()) {
         Rf_error("x and variable_bandwidth must have same size");
     }

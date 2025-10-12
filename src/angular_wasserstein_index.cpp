@@ -59,7 +59,7 @@ extern "C" {
  *       will significantly impact the overall performance of this function.
  *
  * @Rf_warning This function may be computationally expensive for large datasets or
- *          high values of k. Consider performance implications for your use case.
+ *          high values of k.
  *
  * Example usage:
  * @code

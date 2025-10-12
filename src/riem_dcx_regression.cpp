@@ -1126,7 +1126,7 @@ void riem_dcx_t::select_diffusion_parameters(
     // Ensure spectral decomposition is available
     if (!spectral_cache.is_valid) {
         if (verbose) {
-            Rprintf("Computing spectral decomposition for parameter selection...\n");
+            Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
         }
         compute_spectral_decomposition();
     }
@@ -1147,7 +1147,7 @@ void riem_dcx_t::select_diffusion_parameters(
                     0.1 / lambda_2, 0.5 / lambda_2, 1.0 / lambda_2);
         }
     } else if (verbose) {
-        Rprintf("Using user-provided t_diffusion = %.6f\n", t_diffusion);
+        Rprintf("\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
     }
 
     // Auto-select beta_damping if not provided by user
@@ -1162,7 +1162,7 @@ void riem_dcx_t::select_diffusion_parameters(
                     beta_damping, beta_damping * t_diffusion);
         }
     } else if (verbose) {
-        Rprintf("Using user-provided beta_damping = %.6f\n", beta_damping);
+        Rprintf("\tUsing user-provided beta_damping = %.6f\n", beta_damping);
     }
 
     // Diagnostic checks and warnings
@@ -1195,14 +1195,14 @@ void riem_dcx_t::select_diffusion_parameters(
 
     // Final summary if verbose
     if (verbose) {
-        Rprintf("\nDiffusion parameter summary:\n");
-        Rprintf("  lambda_2 (spectral gap):  %.6f\n", lambda_2);
-        Rprintf("  t (diffusion time): %.6f %s\n", t_diffusion,
+        Rprintf("\n\tDiffusion parameter summary:\n");
+        Rprintf("  \tlambda_2 (spectral gap):  %.6f\n", lambda_2);
+        Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
                 t_auto_selected ? "[auto]" : "[user]");
-        Rprintf("  beta (damping):        %.6f %s\n", beta_damping,
+        Rprintf("  \tbeta (damping):        %.6f %s\n", beta_damping,
                 beta_auto_selected ? "[auto]" : "[user]");
-        Rprintf("  Diffusion scale:    %.3f (t lambda_2)\n", diffusion_scale);
-        Rprintf("  Damping ratio:      %.3f (beta t)\n", damping_ratio);
+        Rprintf("  \tDiffusion scale:    %.3f (t lambda_2)\n", diffusion_scale);
+        Rprintf("  \tDamping ratio:      %.3f (beta t)\n", damping_ratio);
     }
 }
 
