@@ -214,8 +214,9 @@ deg0_lowess_graph_smoothing_t deg0_lowess_graph_smoothing(
         // 4. Create new graph from smoothed data
         set_wgraph_t new_graph;
         size_t ncc = 0;
+        const double path_edge_ratio_percentile = 0.5;
         if (iter < max_iterations - 1) {  // Skip for last iteration to save time
-            new_graph = create_iknn_graph_from_matrix(new_X, k, pruning_thld, verbose);
+            new_graph = create_iknn_graph_from_matrix(new_X, k, pruning_thld, path_edge_ratio_percentile, verbose);
 
             // Find the number of connected components of the new graph
             ncc = new_graph.count_connected_components();

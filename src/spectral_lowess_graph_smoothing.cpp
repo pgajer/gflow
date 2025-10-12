@@ -231,8 +231,9 @@ spectral_lowess_graph_smoothing_t spectral_lowess_graph_smoothing(
         // 4. Create new graph from smoothed data
         set_wgraph_t new_graph;
         size_t ncc = 0;
+        const double path_edge_ratio_percentile = 0.5;
         if (iter < max_iterations - 1) {  // Skip for last iteration to save time
-            new_graph = create_iknn_graph_from_matrix(new_X, k, pruning_thld, verbose);
+            new_graph = create_iknn_graph_from_matrix(new_X, k, pruning_thld, path_edge_ratio_percentile, verbose);
 
             // Find the number of connected components of the new graph
             ncc = new_graph.count_connected_components();
@@ -586,7 +587,8 @@ double compute_difference_with_mapping(
 set_wgraph_t create_iknn_graph_from_matrix(
     const std::vector<std::vector<double>>& X,
     size_t k,
-    double pruning_thld,
+    double max_path_edge_ratio_thld,
+    double path_edge_ratio_percentile,
     bool verbose) {
 
     if (X.empty()) {
@@ -612,17 +614,22 @@ set_wgraph_t create_iknn_graph_from_matrix(
 
     // Create parameters for S_create_single_iknn_graph
     SEXP r_k = PROTECT(Rf_ScalarInteger(k));
-    SEXP r_pruning_thld = PROTECT(Rf_ScalarReal(pruning_thld));
+    SEXP r_max_path_edge_ratio_thld = PROTECT(Rf_ScalarReal(max_path_edge_ratio_thld));
+    SEXP r_path_edge_ratio_percentile = PROTECT(Rf_ScalarReal(path_edge_ratio_percentile));
     SEXP r_compute_full = PROTECT(Rf_ScalarLogical(0)); // Don't need full components
 
     // Call S_create_single_iknn_graph
     if (verbose) {
-        Rprintf("Creating ikNN graph with k=%zu, pruning_thld=%.4f\n", k, pruning_thld);
+        Rprintf("Creating ikNN graph with k=%zu\nmax_path_edge_ratio_thld=%.4f\npath_edge_ratio_percentile=%.4f\n",
+                k, max_path_edge_ratio_thld, path_edge_ratio_percentile);
     }
 
     auto start_time = std::chrono::steady_clock::now();
-    SEXP r_graph = PROTECT(S_create_single_iknn_graph(r_matrix, r_k, r_pruning_thld, r_compute_full));
-
+    SEXP r_graph = PROTECT(S_create_single_iknn_graph(r_matrix,
+                                                      r_k,
+                                                      r_max_path_edge_ratio_thld,
+                                                      r_path_edge_ratio_percentile,
+                                                      r_compute_full));
     if (verbose) {
         elapsed_time(start_time, "Graph construction complete", true);
     }
@@ -656,7 +663,7 @@ set_wgraph_t create_iknn_graph_from_matrix(
 
     set_wgraph_t result(adj_list, weight_list);
 
-    UNPROTECT(5);  // r_matrix, r_k, r_pruning_thld, r_compute_full, r_graph
+    UNPROTECT(6);  // r_matrix, r_k, r_max_path_edge_ratio_thld, r_path_edge_ratio_percentile, r_compute_full, r_graph
     return result;
 }
 

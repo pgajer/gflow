@@ -14,7 +14,8 @@ extern "C" {
 	SEXP S_create_single_iknn_graph(
 		SEXP s_X,
 		SEXP s_k,
-		SEXP s_pruning_thld,
+        SEXP s_max_path_edge_ratio_thld,
+        SEXP s_path_edge_ratio_percentile,
 		SEXP s_compute_full
 		);
 
