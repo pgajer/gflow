@@ -89,7 +89,8 @@ deg0_lowess_graph_smoothing_t deg0_lowess_graph_smoothing(
 set_wgraph_t create_iknn_graph_from_matrix(
     const std::vector<std::vector<double>>& X,
     size_t k,
-    double pruning_thld,
+    double max_path_edge_ratio_thld,
+    double path_edge_ratio_percentile,
     bool verbose);
 
 double compute_difference(

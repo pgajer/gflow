@@ -7,19 +7,30 @@
 #'
 #' @param X A numeric matrix where rows represent data points and columns represent features.
 #'        Data frames will be coerced to matrices.
+#'
 #' @param k Integer scalar. The number of nearest neighbors to consider for each point.
 #'        Must be positive and less than the number of data points.
-#' @param pruning.thld numeric, controlling intensity of the geometric edge pruning.
-#'         Edge weight relative deviation is computed as
-#'         rel_dev = (w_ij + w_jk) / w_ik - 1.0;
-#'         Geometric pruning is performed on all edges with rel_dev < pruning_thld
+#'
+#' @param max.path.edge.ratio.deviation.thld Numeric in \eqn{[0, 0.2)}.
+#'     Geometric pruning removes an edge \eqn{(i,j)} when there exists an
+#'     alternative path between \eqn{i} and \eqn{j} whose path/edge length ratio
+#'     minus 1.0 is \emph{less than} this threshold. This is a deviation
+#'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
+#'     path-to-edge ratio R to \eqn{1 + \delta}.
+#'
+#' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
+#'     length above this percentile are considered for geometric pruning.
+#'
 #' @param compute.full Logical scalar. If TRUE, computes additional graph components and metrics.
 #'        If FALSE, computes only essential components. Default value: FALSE.
+#'
 #' @param pca.dim Maximum number of principal components to use if dimensionality reduction
 #'        is applied (default: 100). Set to NULL to skip dimensionality reduction.
+#'
 #' @param variance.explained Percentage of variance to be explained by the principal components
 #'        (default: 0.99). If this threshold can be met with fewer components than pca.dim,
 #'        the smaller number will be used. Set to NULL to use exactly pca.dim components.
+#'
 #' @param verbose Logical. If TRUE, print progress messages. Default is TRUE.
 #'
 #' @return An object of class "IkNN" (inheriting from "list") containing:
@@ -54,7 +65,8 @@
 #' @export
 create.single.iknn.graph <- function(X,
                                      k,
-                                     pruning.thld = 0.1,
+                                     max.path.edge.ratio.deviation.thld = 0.1,
+                                     path.edge.ratio.percentile = 0.5,
                                      compute.full = FALSE,
                                      pca.dim = 100,
                                      variance.explained = 0.99,
@@ -87,9 +99,14 @@ create.single.iknn.graph <- function(X,
         stop("k must be a positive integer less than the number of data points")
     }
 
-    if (!is.numeric(pruning.thld) || length(pruning.thld) != 1 || pruning.thld <= 0 || pruning.thld >= 0.2) {
-        stop("pruning.thld must be a positive numeric value less then 0.2")
-    }
+    if (!is.numeric(max.path.edge.ratio.deviation.thld) || length(max.path.edge.ratio.deviation.thld) != 1)
+        stop("max.path.edge.ratio.deviation.thld must be numeric.")
+    if (max.path.edge.ratio.deviation.thld < 0 || max.path.edge.ratio.deviation.thld >= 0.2)
+        stop("max.path.edge.ratio.deviation.thld must be in [0, 0.2).")
+
+    if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
+        path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
+        stop("path.edge.ratio.percentile must be in [0, 1].")
 
     if (!is.logical(compute.full) || length(compute.full) != 1) {
         stop("compute.full must be a single logical value")
@@ -110,7 +127,7 @@ create.single.iknn.graph <- function(X,
         }
     }
 
-    ## PCA dimensionality reduction if needed
+    ## PCA (optional)
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
         if (verbose) {
@@ -170,16 +187,18 @@ create.single.iknn.graph <- function(X,
 
     result <- .Call(S_create_single_iknn_graph,
                     X,
-                    as.integer(k + 1),
-                    as.double(pruning.thld),
+                    as.integer(k + 1L),
+                    as.double(max.path.edge.ratio.deviation.thld + 1.0),
+                    as.double(path.edge.ratio.percentile),
                     as.logical(compute.full),
                     PACKAGE = "gflow")
 
     attr(result, "k") <- k
-    attr(result, "pruning_threshold") <- pruning.thld
+    attr(result, "max.path.edge.ratio.deviation.thld") <- max.path.edge.ratio.deviation.thld
+    attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
     attr(result, "call") <- match.call()
 
-                                        # Add PCA-related attributes if PCA was performed
+    ## Add PCA-related attributes if PCA was performed
     if (!is.null(pca_info)) {
         attr(result, "pca") <- pca_info
     }

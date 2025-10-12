@@ -139,7 +139,7 @@ create.iknn.graphs <- function(X,
             stop("variance.explained must be in (0, 1], or NULL.")
     }
 
-    ## PCA
+    ## PCA (optional)
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
         if (verbose) message("High-dimensional data detected. Performing PCA.")
