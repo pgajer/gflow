@@ -119,7 +119,7 @@ extern "C" SEXP create_gcv_component(const riem_dcx_t& dcx) {
 }
 
 extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
-    const int n_fields = 6;
+    const int n_fields = 8;  // Expanded from 6 to 8
     SEXP graph = PROTECT(Rf_allocVector(VECSXP, n_fields));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
     int idx = 0;
@@ -182,6 +182,47 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
     }
     SET_VECTOR_ELT(graph, idx++, s_edge_list);
     UNPROTECT(1);
+
+    // ---- adjacency list and edge lengths by vertex ----
+
+    // adj.list (list of integer vectors)
+    SET_STRING_ELT(names, idx, Rf_mkChar("adj.list"));
+    SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, static_cast<size_t>(n_verts)));
+
+    for (Eigen::Index i = 0; i < n_verts; ++i) {
+        const auto& nbhrs = dcx.vertex_cofaces[i];
+        // Note: nbhrs[0] corresponds to vertex i itself, so we skip it
+        const size_t n_neighbors = nbhrs.size() - 1;
+
+        SEXP RA = PROTECT(Rf_allocVector(INTSXP, (R_len_t)n_neighbors));
+        int* A  = INTEGER(RA);
+        for (size_t j = 1; j < nbhrs.size(); ++j) {
+            *A++ = (int)nbhrs[j].vertex_index + 1;  // +1 for R's 1-based indexing
+        }
+        SET_VECTOR_ELT(adj_list, i, RA);
+        UNPROTECT(1); // RA
+    }
+    SET_VECTOR_ELT(graph, idx++, adj_list);
+    UNPROTECT(1); // adj_list
+
+    // edge.length.list (list of numeric vectors)
+    SET_STRING_ELT(names, idx, Rf_mkChar("edge.length.list"));
+    SEXP edge_length_list = PROTECT(Rf_allocVector(VECSXP, static_cast<size_t>(n_verts)));
+
+    for (Eigen::Index i = 0; i < n_verts; ++i) {
+        const auto& nbhrs = dcx.vertex_cofaces[i];
+        const size_t n_neighbors = nbhrs.size() - 1;
+
+        SEXP RD = PROTECT(Rf_allocVector(REALSXP, (R_len_t)n_neighbors));
+        double* D = REAL(RD);
+        for (size_t j = 1; j < nbhrs.size(); ++j) {
+            *D++ = nbhrs[j].dist;
+        }
+        SET_VECTOR_ELT(edge_length_list, i, RD);
+        UNPROTECT(1); // RD
+    }
+    SET_VECTOR_ELT(graph, idx++, edge_length_list);
+    UNPROTECT(1); // edge_length_list
 
     Rf_setAttrib(graph, R_NamesSymbol, names);
     UNPROTECT(2); // names, graph
@@ -376,6 +417,9 @@ extern "C" SEXP create_gamma_selection_component(const riem_dcx_t& dcx) {
  * @param s_epsilon_y Response convergence threshold (REALSXP)
  * @param s_epsilon_rho Density convergence threshold (REALSXP)
  * @param s_max_iterations Maximum iteration count (INTSXP)
+ * @param s_threshold_percentile
+ * @param s_test_stage
+ * @param s_verbose SEXP object (logical) controlling progress reporting during computation
  *
  * @return External pointer to fitted riem_dcx_t object with class attribute
  *
@@ -399,7 +443,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_max_iterations,
     SEXP s_max_ratio_threshold,
     SEXP s_threshold_percentile,
-    SEXP s_test_stage
+    SEXP s_test_stage,
+    SEXP s_verbose
 ) {
     // ================================================================
     // PART I: INPUT EXTRACTION (same as before)
@@ -769,6 +814,21 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         Rf_error("test_stage must be at least -1 (got %d)", test_stage);
     }
 
+    // -------------------- s_verbose --------------------
+    if (TYPEOF(s_verbose) != LGLSXP ||
+        Rf_length(s_verbose) != 1) {
+        Rf_error("verbose must be a single logical value");
+    }
+
+    const int verbose_int = LOGICAL(s_verbose)[0];
+
+    if (verbose_int == NA_LOGICAL) {
+        Rf_error("verbose cannot be NA");
+    }
+
+    const bool verbose = (verbose_int != 0);
+
+
     // ================================================================
     // PART II: CALL MEMBER FUNCTION
     // ================================================================
@@ -777,13 +837,23 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     try {
         dcx.fit_knn_riem_graph_regression(
-            X_sparse, y, k,
-            use_counting_measure, density_normalization,
-            t_diffusion, beta_damping, gamma_modulation,
-            n_eigenpairs, filter_type,
-            epsilon_y, epsilon_rho, max_iterations,
-            max_ratio_threshold, threshold_percentile,
-            test_stage
+            X_sparse,
+            y,
+            k,
+            use_counting_measure,
+            density_normalization,
+            t_diffusion,
+            beta_damping,
+            gamma_modulation,
+            n_eigenpairs,
+            filter_type,
+            epsilon_y,
+            epsilon_rho,
+            max_iterations,
+            max_ratio_threshold,
+            threshold_percentile,
+            test_stage,
+            verbose
             );
 
     } catch (const std::exception& e) {
@@ -899,7 +969,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_resid);
     UNPROTECT(1);
 
-    // Component 3: optimal.iteration (NEW)
+    // Component 3: optimal.iteration
     SET_STRING_ELT(names, component_idx, Rf_mkChar("optimal.iteration"));
     SET_VECTOR_ELT(result, component_idx++, Rf_ScalarInteger(optimal_iteration + 1));  // R uses 1-based indexing
 
