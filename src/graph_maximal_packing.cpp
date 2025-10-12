@@ -712,17 +712,6 @@ std::pair<size_t, double> set_wgraph_t::get_vertex_eccentricity(size_t start_ver
  * @pre The graph must have non-negative edge weights
  * @pre grid_size must be positive
  */
-#if 0
-// Consider return struct
-struct packing_t {
-	double graph_diameter;
-	double packing_radius;
-	std::vector<size_t> vertices;
-};
-
-packing_t get_last_packing_info() const;
-#endif
-
 std::vector<size_t> set_wgraph_t::create_maximal_packing(
 	size_t grid_size,
 	size_t max_iterations,

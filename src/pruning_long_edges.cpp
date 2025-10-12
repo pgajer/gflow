@@ -1,5 +1,4 @@
 /*!
-
   Functions for pruning long edges of a graph, where by a 'long' edge I mean an
   edge for which there is an alternative path between the vertices of the edge.
 
@@ -34,21 +33,6 @@
   path exists and returns 0 otherwise. I want to use this function to first look
   at the distribution of alternative path lengths in synthetic data and then
   figure out a threshold for that length of the path in the isize pruning.
-
-
-  [Claude 3.5] comments
-
-  The proposed modification to constrain the length of the alternative path is a good approach to address the limitations of the original algorithm. Here are some thoughts and potential improvements:
-a. Adaptive threshold: Instead of using a fixed threshold for the alternative path length, consider using an adaptive threshold based on the original edge length or the graph's properties. For example, you could use a multiple of the average edge length in the graph.
-b. Path quality metric: In addition to the path length, consider incorporating a path quality metric that takes into account both the length and the isize of the edges in the alternative path. This could help ensure that you're not just finding shorter paths, but also paths that maintain the graph's important connections.
-c. Local density consideration: Take into account the local density of the graph when deciding whether to prune an edge. In areas of high density, you might allow longer alternative paths, while in sparse areas, you might be more conservative.
-d. Iterative pruning: Consider an iterative approach where you prune edges in multiple passes, updating the graph and recalculating alternative paths after each pass. This could help maintain the graph's overall structure more effectively.
-e. Topological preservation: Implement checks to ensure that pruning an edge doesn't change the graph's topological properties, such as connectivity or the number of connected components.
-f. Edge weight consideration: If edge weights are available (beyond just isize), incorporate them into the decision-making process for pruning.
-g. Parallelization: The current implementation processes edges sequentially. Consider parallelizing the pruning process for large graphs to improve performance.
-h. Visualization and analysis tools: Develop tools to visualize the distribution of alternative path lengths and the effects of pruning on the graph structure. This can help in fine-tuning the algorithm and understanding its behavior on different types of data.
-These modifications and considerations should help improve the robustness and effectiveness of the isize pruning algorithm while addressing the concerns about preserving the graph's topology and important connections.
-
  */
 
 #include "msr2.h"
