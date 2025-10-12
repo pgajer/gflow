@@ -34,7 +34,7 @@
 #include "kNN_r.h"            // for S_kNN()
 #include "kNN.h"              // for struct iknn_vertex_tt
 #include "cpp_utils.hpp"      // for debugging
-#include "progress_utils.hpp" // for elapsed.time
+#include "progress_utils.hpp" // for elapsed_time
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "edge_pruning_stats.hpp"
 
@@ -45,7 +45,6 @@
 #include <utility>
 #include <limits>
 #include <unordered_map>
-#include <chrono>
 #include <iomanip>
 #include <sstream>
 #include <queue>
@@ -647,6 +646,138 @@ void print_iknn_graph(
  * @note The function uses the ANN library for kNN computation and R's SEXP structures.
  * Ensure the ANN library is properly linked and included in your project.
  */
+
+/**
+ * @file iknn_graph.cpp (or wherever create_iknn_graph is defined)
+ */
+
+
+#include "debug_serialization.hpp"
+#include <algorithm>
+#include <limits>
+
+// ============================================================
+// DEBUG CONTROL
+// ============================================================
+#define DEBUG_CREATE_IKNN_GRAPH true
+
+iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
+
+    std::string debug_dir;
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
+    }
+
+    SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+        UNPROTECT(1);
+        Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
+    }
+    const size_t n_points = Rf_asInteger(s_dim);
+    UNPROTECT(1);
+
+    size_t k = Rf_asInteger(Rk);
+
+    // Finding kNN's for all points of X
+    SEXP knn_res = PROTECT(S_kNN(RX, Rk));
+    int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
+    double *distances = REAL(VECTOR_ELT(knn_res, 1));
+
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        Rprintf("In create_iknn_graph() DEBUG block\n");
+
+        std::vector<std::vector<index_t>> knn_indices_debug(n_points, std::vector<index_t>(k));
+        std::vector<std::vector<double>> knn_distances_debug(n_points, std::vector<double>(k));
+        for (size_t i = 0; i < n_points; ++i) {
+            for (size_t j = 0; j < k; ++j) {
+                knn_indices_debug[i][j] = indices[i + n_points * j];
+                knn_distances_debug[i][j] = distances[i + n_points * j];
+            }
+        }
+        debug_serialization::save_knn_result(
+            debug_dir + "phase_1a_knn_result.bin",
+            knn_indices_debug, knn_distances_debug, n_points, k
+        );
+    }
+
+    UNPROTECT(1);
+
+    std::vector<int> nn_i(k);
+    std::vector<int> nn_j(k);
+    std::vector<int> sorted_nn_i(k);
+    std::vector<int> sorted_nn_j(k);
+
+    iknn_graph_t res(n_points);
+
+    size_t n_points_minus_one = n_points - 1;
+    std::vector<int> intersection;
+
+    std::vector<std::pair<index_t, index_t>> edges_created;
+    std::vector<double> weights_created;
+
+    for (size_t pt_i = 0; pt_i < n_points_minus_one; pt_i++) {
+        for (size_t j = 0; j < k; j++) {
+            nn_i[j] = indices[pt_i + n_points * j];
+            sorted_nn_i[j] = nn_i[j];
+        }
+        std::sort(sorted_nn_i.begin(), sorted_nn_i.end());
+
+        for (size_t pt_j = pt_i + 1; pt_j < n_points; pt_j++) {
+            for (size_t j = 0; j < k; j++) {
+                nn_j[j] = indices[pt_j + n_points * j];
+                sorted_nn_j[j] = nn_j[j];
+            }
+            std::sort(sorted_nn_j.begin(), sorted_nn_j.end());
+
+            intersection.clear();
+            std::set_intersection(sorted_nn_i.begin(), sorted_nn_i.end(),
+                                sorted_nn_j.begin(), sorted_nn_j.end(),
+                                std::back_inserter(intersection));
+
+            size_t common_count = intersection.size();
+
+            if (common_count > 0) {
+                double min_dist = std::numeric_limits<double>::max();
+                for (int x_k : intersection) {
+                    size_t idx_i = std::find(nn_i.begin(), nn_i.end(), x_k) - nn_i.begin();
+                    size_t idx_j = std::find(nn_j.begin(), nn_j.end(), x_k) - nn_j.begin();
+                    double dist_i_k = distances[pt_i + n_points * idx_i];
+                    double dist_j_k = distances[pt_j + n_points * idx_j];
+                    min_dist = std::min(min_dist, dist_i_k + dist_j_k);
+                }
+
+                res.graph[pt_i].emplace_back(iknn_vertex_t{pt_j, common_count, min_dist});
+                res.graph[pt_j].emplace_back(iknn_vertex_t{pt_i, common_count, min_dist});
+
+                if (DEBUG_CREATE_IKNN_GRAPH) {
+                    edges_created.push_back({static_cast<index_t>(pt_i), static_cast<index_t>(pt_j)});
+                    weights_created.push_back(min_dist);
+                }
+            }
+        }
+    }
+
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        debug_serialization::save_edge_list(
+            debug_dir + "phase_1b_edges_pre_pruning.bin",
+            edges_created, weights_created, "PHASE_1B_PRE_PRUNING"
+        );
+
+        // Compute connectivity
+        std::vector<int> component_ids;
+        size_t n_components = debug_serialization::compute_connected_components_from_iknn_graph(
+            res, component_ids
+        );
+        debug_serialization::save_connectivity(
+            debug_dir + "phase_final_connectivity.bin",
+            component_ids, n_components
+        );
+    }
+
+    return res;
+}
+
+#if 0
 iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
 
     SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
@@ -718,6 +849,7 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
 
     return res;
 }
+#endif
 
 /**
  * @brief Computes and prunes an intersection-weighted k-nearest neighbors graph,
@@ -805,6 +937,14 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
                                 SEXP s_k,
                                 SEXP s_pruning_thld,
                                 SEXP s_compute_full) {
+
+    #define DEBUG_CREATE_IKNN_GRAPH true
+
+    std::string debug_dir;
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
+    }
+
     // --- dims(X) protected while reading
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
     if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
@@ -847,30 +987,110 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     size_t n_edges_in_pruned_graph_sz = 0;
 
 #if USE_GEOMETRIC_PRUNING_IN_SINGLE_IKNN_GRAPH
-    set_wgraph_t pruned_graph(iknn_graph);
-    auto rel_devs = pruned_graph.compute_edge_weight_rel_deviations();
+    set_wgraph_t temp_graph_for_pruning(iknn_graph);
+    // Match the parameters used in initialize_from_knn
+    // These should be passed as arguments to the R function
+    const double max_ratio_threshold = 1.1;
+    const double threshold_percentile = 0.5;
 
-    for (size_t i = 0; i < rel_devs.size(); ++i) {
-        if (rel_devs[i].rel_deviation < pruning_thld) {
-            const size_t u = rel_devs[i].source;
-            const size_t v = rel_devs[i].target;
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        Rprintf("=== S_create_single_iknn_graph: Geometric Pruning ===\n");
+        Rprintf("Parameters: max_ratio_threshold=%.3f, threshold_percentile=%.3f\n",
+                max_ratio_threshold, threshold_percentile);
+        Rprintf("Edges before pruning: %d\n", n_edges);
 
-            // do not isolate a vertex
-            if (pruned_graph.adjacency_list[u].size() <= 1) continue;
-            if (pruned_graph.adjacency_list[v].size() <= 1) continue;
-
-            pruned_graph.remove_edge(u, v);
-        }
+        Rprintf("=== Before geometric pruning ===\n");
+        Rprintf("Edges before pruning: %d\n", n_edges);
     }
+
+    set_wgraph_t pruned_graph = temp_graph_for_pruning.prune_edges_geometrically(
+        max_ratio_threshold,
+        threshold_percentile
+        );
+    
 
     for (const auto& nbrs : pruned_graph.adjacency_list) {
         n_edges_in_pruned_graph_sz += nbrs.size();
     }
     n_edges_in_pruned_graph_sz /= 2;
+
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        Rprintf("=== After geometric pruning ===\n");
+        Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
+        Rprintf("Edges removed: %d\n", n_edges - (int)n_edges_in_pruned_graph_sz);
+        Rprintf("Pruning ratio: %.2f%%\n", 100.0 * (n_edges - n_edges_in_pruned_graph_sz) / n_edges);
+    }
+
+// ========== DEBUG OUTPUT (mirrors initialize_from_knn Phase 1C) ==========
+    if (DEBUG_CREATE_IKNN_GRAPH) {
+        Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
+
+        // Extract edges from pruned graph
+        std::vector<std::pair<index_t, index_t>> edges_post_pruning;
+        std::vector<double> weights_post_pruning;
+
+        const size_t n_vertices = pruned_graph.adjacency_list.size();
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
+                index_t j = edge_info.vertex;
+                if (j > i) {  // Only count each edge once
+                    edges_post_pruning.push_back({
+                            static_cast<index_t>(i),
+                            static_cast<index_t>(j)
+                        });
+                    weights_post_pruning.push_back(edge_info.weight);
+                }
+            }
+        }
+
+        // Save binary edge list (for exact comparison)
+        debug_serialization::save_edge_list(
+            debug_dir + "phase_1c_edges_post_pruning.bin",
+            edges_post_pruning,
+            weights_post_pruning,
+            "PHASE_1C_POST_PRUNING_GEOMETRIC"
+            );
+
+        // Save CSV (for easy inspection in R)
+        debug_serialization::save_edge_list_csv(
+            debug_dir + "phase_1c_edges_post_pruning.csv",
+            edges_post_pruning,
+            weights_post_pruning
+            );
+
+        // Save pruning parameters (for verification)
+        debug_serialization::save_pruning_params(
+            debug_dir + "phase_1c_pruning_params.bin",
+            max_ratio_threshold,
+            threshold_percentile,
+            static_cast<size_t>(n_edges),  // n_edges_before
+            edges_post_pruning.size()       // n_edges_after
+            );
+
+        // Compute and save connectivity
+        std::vector<int> component_ids;
+        size_t n_components = debug_serialization::compute_connected_components_from_set_wgraph(
+            pruned_graph, component_ids
+            );
+
+        debug_serialization::save_connectivity(
+            debug_dir + "phase_1e_connectivity.bin",
+            component_ids,
+            n_components
+            );
+
+        Rprintf("Connected components after pruning: %zu\n", n_components);
+        if (n_components > 1) {
+            Rprintf("WARNING: Graph is disconnected after pruning!\n");
+        }
+    }
+    // ========== END DEBUG OUTPUT ==========
+
     const int n_edges_in_pruned_graph =
         (n_edges_in_pruned_graph_sz > static_cast<size_t>(INT_MAX))
-            ? INT_MAX
-            : static_cast<int>(n_edges_in_pruned_graph_sz);
+        ? INT_MAX
+        : static_cast<int>(n_edges_in_pruned_graph_sz);
+
 #else
     const int max_alt_path_length = 2;
     vect_wgraph_t pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
