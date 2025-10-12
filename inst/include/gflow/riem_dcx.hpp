@@ -81,10 +81,15 @@ struct detailed_convergence_status_t {
     int iteration;
     std::string message;
 
-    // Additional diagnostics
-    double response_change_rate;        // Rate of change in response
-    double density_change_rate;         // Rate of change in densities
-    int estimated_iterations_remaining; // Rough estimate to convergence
+    // Rate diagnostics
+    double response_change_rate;
+    double density_change_rate;
+    int estimated_iterations_remaining;
+
+    // GCV diagnostics
+    double gcv_current;
+    double gcv_change;        // Current - previous (negative means improvement)
+    double gcv_change_rate;   // Rate of GCV change
 };
 
 /**
@@ -816,7 +821,7 @@ struct riem_dcx_t {
 
     // GCV tracking across iterations
     struct gcv_history_t {
-        std::vector<gcv_result_t> iterations;  // One gcv_result_t per iteration
+        std::vector<gcv_result_t> iterations;
 
         void clear() {
             iterations.clear();
@@ -824,6 +829,14 @@ struct riem_dcx_t {
 
         void add(const gcv_result_t& result) {
             iterations.push_back(result);
+        }
+
+        size_t size() const {
+            return iterations.size();
+        }
+
+        bool empty() const {
+            return iterations.empty();
         }
     } gcv_history;
 
@@ -884,7 +897,8 @@ struct riem_dcx_t {
         int max_iterations,
         double max_ratio_threshold,
         double threshold_percentile,
-        int test_stage
+        int test_stage,
+        bool verbose
     );
 
     /**
@@ -960,9 +974,11 @@ struct riem_dcx_t {
         const vec_t& y_hat_prev,
         const vec_t& y_hat_curr,
         double epsilon_y,
+        double epsilon_rho,
         int iteration,
         int max_iterations,
-        const std::vector<double>& response_change_history
+        const std::vector<double>& response_change_history,
+        const gcv_history_t& gcv_history
         );
 
     /**
@@ -1120,5 +1136,10 @@ private:
      */
     double compute_simplex_volume(
         const std::vector<index_t>& vertices
-    ) const;
+        ) const;
+
+    std::string format_gcv_history(
+        const gcv_history_t& gcv_history,
+        int max_display
+        ) const;
 };
