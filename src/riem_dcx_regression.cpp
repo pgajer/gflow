@@ -1,7 +1,8 @@
 #include "riem_dcx.hpp"
-#include "iknn_vertex.hpp" // for iknn_vertex_t
+#include "iknn_vertex.hpp"    // for iknn_vertex_t
 #include "kNN.h"
 #include "set_wgraph.hpp"
+#include "progress_utils.hpp" // for elapsed_time
 
 #include <Eigen/Core>
 #include <Eigen/Dense>  // For Eigen::MatrixXd
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <limits>
 #include <algorithm>
+#include <iomanip>
 
 // ============================================================
 // INITIALIZATION HELPERS (private member functions)
@@ -2661,10 +2663,12 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
     const vec_t& y_hat_prev,
     const vec_t& y_hat_curr,
     double epsilon_y,
+    double epsilon_rho,
     int iteration,
     int max_iterations,
-    const std::vector<double>& response_change_history
-) {
+    const std::vector<double>& response_change_history,
+    const gcv_history_t& gcv_history
+    ) {
     detailed_convergence_status_t status;
     status.iteration = iteration;
     status.converged = false;
@@ -2710,6 +2714,39 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
                 }
             }
         }
+    }
+
+    // Compute GCV diagnostics
+    const int n_gcv = gcv_history.iterations.size();
+    if (n_gcv > 0) {
+        status.gcv_current = gcv_history.iterations[n_gcv - 1].gcv_optimal;
+
+        if (n_gcv > 1) {
+            double prev_gcv = gcv_history.iterations[n_gcv - 2].gcv_optimal;
+            status.gcv_change = status.gcv_current - prev_gcv;
+
+            // Compute GCV change rate
+            if (n_gcv >= 3) {
+                double prev_prev_gcv = gcv_history.iterations[n_gcv - 3].gcv_optimal;
+                double prev_change = prev_gcv - prev_prev_gcv;
+
+                // Avoid division by zero
+                if (std::abs(prev_change) > 1e-15) {
+                    status.gcv_change_rate = status.gcv_change / prev_change;
+                } else {
+                    status.gcv_change_rate = 0.0;
+                }
+            } else {
+                status.gcv_change_rate = 0.0;
+            }
+        } else {
+            status.gcv_change = 0.0;
+            status.gcv_change_rate = 0.0;
+        }
+    } else {
+        status.gcv_current = 0.0;
+        status.gcv_change = 0.0;
+        status.gcv_change_rate = 0.0;
     }
 
     // Convergence determination
@@ -3300,6 +3337,60 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
     return status;
 }
 
+/**
+ * @brief Format GCV history with trend indicators
+ *
+ * Creates a string showing GCV evolution across iterations with visual
+ * indicators: '\' for decrease (improvement), '/' for increase (degradation).
+ *
+ * Example output: "0.0452 / 0.0389 \ 0.0367 \ 0.0351"
+ * Indicates: increased from iter 0->1, then decreased in 1->2 and 2->3
+ *
+ * @param gcv_history GCV history object containing all GCV results
+ * @param max_display Maximum number of recent iterations to display (default: 10)
+ * @return Formatted string with GCV values and trend indicators
+ */
+std::string riem_dcx_t::format_gcv_history(
+    const gcv_history_t& gcv_history,
+    int max_display
+) const {
+    std::string result;
+    char buffer[32];  // Buffer for snprintf
+
+    const int n_iters = static_cast<int>(gcv_history.iterations.size());
+    if (n_iters == 0) {
+        return "N/A";
+    }
+
+    // Determine display window (show most recent max_display iterations)
+    int start_idx = std::max(0, n_iters - max_display);
+
+    // Add ellipsis if we're truncating history
+    if (start_idx > 0) {
+        result += "... ";
+    }
+
+    // Format first GCV value in display window
+    snprintf(buffer, sizeof(buffer), "%.6f",
+             gcv_history.iterations[start_idx].gcv_optimal);
+    result += buffer;
+
+    // Add subsequent values with trend indicators
+    for (int i = start_idx + 1; i < n_iters; ++i) {
+        double prev_gcv = gcv_history.iterations[i-1].gcv_optimal;
+        double curr_gcv = gcv_history.iterations[i].gcv_optimal;
+
+        // Choose indicator based on direction of change
+        const char* indicator = (curr_gcv < prev_gcv) ? " \\ " : " / ";
+        result += indicator;
+
+        snprintf(buffer, sizeof(buffer), "%.6f", curr_gcv);
+        result += buffer;
+    }
+
+    return result;
+}
+
 // ============================================================
 // MAIN REGRESSION METHOD
 // ============================================================
@@ -3649,6 +3740,8 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
  *              geometric pruning. Typical: 0.5 (median). Lower percentiles
  *              produce more aggressive pruning.
  *
+ * @param[in] verbose (logical) controlling progress reporting during computation
+ *
  * @pre X.rows() must equal y.size()
  * @pre k must be less than X.rows()
  * @pre All epsilon values must be positive
@@ -3704,15 +3797,22 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     int max_iterations,
     double max_ratio_threshold,
     double threshold_percentile,
-    int test_stage
+    int test_stage,
+    bool verbose
 ) {
     // ================================================================
     // PART I: INITIALIZATION
     // ================================================================
 
+    auto total_time = std::chrono::steady_clock::now();
+    auto phase_time = std::chrono::steady_clock::now();
+
     // --------------------------------------------------------------
     // Phase 1-4: Build geometric structure
     // --------------------------------------------------------------
+
+    if (verbose) Rprintf("Phase 1-4: Build geometric structure ... ");
+
     initialize_from_knn(
         X, k,
         use_counting_measure,
@@ -3753,6 +3853,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // --------------------------------------------------------------
     // Phase 4.5: Select or validate diffusion parameters
     // --------------------------------------------------------------
+
+    if (verbose) {
+        elapsed_time(phase_time, "DONE", true);
+        Rprintf("Phase 4.5: Select or validate diffusion parameters ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
+
     select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
 
     if (test_stage == 1) {
@@ -3763,6 +3870,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // --------------------------------------------------------------
     // Phase 5: Initial response smoothing
     // --------------------------------------------------------------
+
+    if (verbose) {
+        elapsed_time(phase_time, "DONE", true);
+        Rprintf("Phase 5: Initial response smoothing ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
+
     gcv_history.clear();
     auto gcv_result = smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type
@@ -3888,6 +4002,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 1: Density diffusion
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 1: Density diffusion ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         // Extract current vertex densities from vertex_cofaces
         for (size_t i = 0; i < n_vertices; ++i) {
             rho_vertex_prev[i] = vertex_cofaces[i][0].density;
@@ -3926,6 +4047,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 2: Edge density update
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 2: Edge density update ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         update_edge_densities_from_vertices();
 
         if (test_stage == 4) {
@@ -3936,6 +4064,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 3: Update vertex mass matrix from evolved densities
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 3: Update vertex mass matrix from evolved densities ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         update_vertex_metric_from_density();  // Updates only M[0]
 
         if (test_stage == 5) {
@@ -3946,6 +4081,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 4: Rebuild edge mass matrix from evolved densities
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 4: Rebuild edge mass matrix from evolved densities ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         update_edge_mass_matrix();  // Compute fresh \eqn{M_1} from current \eqn{\rho_0}
 
         if (test_stage == 6) {
@@ -3954,11 +4096,17 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         }
 
         // --------------------------------------------------------------
-        // Step 5: Apply response-coherence modulation to fresh \eqn{M_1}
+        // Step 5: Apply response-coherence modulation to fresh M[1]
         // --------------------------------------------------------------
         // Start conservative, increase gradually
         // double gamma_eff = gamma_modulation * std::min(1.0, iter / 5.0);
         // apply_response_coherence_modulation(y_hat_curr, gamma_eff);
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 5: Apply response-coherence modulation to fresh M[1] ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
 
         if (gamma_modulation > 0.0) {
             apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
@@ -3972,6 +4120,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 6: Laplacian reassembly
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 6: Laplacian reassembly ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         assemble_operators();
         spectral_cache.invalidate();
 
@@ -3994,6 +4149,13 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
         // Step 7: Response smoothing
         // --------------------------------------------------------------
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            Rprintf("itr %d: Step 7: Response smoothing ... ", iter);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         gcv_result = smooth_response_via_spectral_filter(
             y, n_eigenpairs, filter_type
         );
@@ -4008,16 +4170,19 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             return;
         }
 
-        // --------------------------------------------------------------
-        // Step 8: Convergence check (simplified version)
-        // --------------------------------------------------------------
+        // ----------------------------------------------------------------
+        // Step 8: Convergence check and detailed reporting
+        // ----------------------------------------------------------------
+
         auto status = check_convergence_detailed(
             y_hat_prev,
             y_hat_curr,
             epsilon_y,
+            epsilon_rho,
             iter,
             max_iterations,
-            response_change_history
+            response_change_history,
+            gcv_history  // Add this argument
             );
 
         if (test_stage == 10) {
@@ -4027,12 +4192,26 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         response_change_history.push_back(status.response_change);
 
-        Rprintf("Iteration %d: response_change=%.6f\n",
-                iter, status.response_change);
+        // Enhanced reporting with GCV trajectory
+        if (verbose) {
+            Rprintf("Iteration %d: response_change=%.6e", iter, status.response_change);
 
-        if (status.estimated_iterations_remaining > 0) {
-            Rprintf("  Estimated iterations remaining: %d\n",
-                    status.estimated_iterations_remaining);
+            // Add GCV trend information
+            std::string gcv_display = format_gcv_history(gcv_history, 10);
+            Rprintf(", GCV: %s", gcv_display.c_str());
+
+            // Add change indicator for current iteration
+            if (gcv_history.size() > 1) {
+                if (status.gcv_change < 0) {
+                    Rprintf(" [improving: %.2e]", status.gcv_change);
+                } else if (status.gcv_change > 0) {
+                    Rprintf(" [degrading: +%.2e]", status.gcv_change);
+                } else {
+                    Rprintf(" [stable]");
+                }
+            }
+
+            Rprintf("\n");
         }
 
         if (status.converged) {
@@ -4040,6 +4219,34 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             converged = true;
             n_iterations = iter;
             break;
+        }
+
+        // Detecting problematic GCV trends
+        if (gcv_history.size() >= 3 && status.gcv_change > 0) {
+            // Check if GCV has been increasing for multiple iterations
+            int consecutive_increases = 1;
+            for (int i = static_cast<int>(gcv_history.size()) - 2; i >= 1; --i) {
+                // FIXED: Access the gcv_optimal field from the iterations vector
+                if (gcv_history.iterations[i].gcv_optimal >
+                    gcv_history.iterations[i-1].gcv_optimal) {
+                    consecutive_increases++;
+                } else {
+                    break;
+                }
+            }
+
+            if (consecutive_increases >= 3) {
+                Rf_warning("GCV has increased for %d consecutive iterations. "
+                           "This may indicate:\n"
+                           "  - Over-aggressive geometric modulation (try reducing gamma)\n"
+                           "  - Numerical instability (check for near-zero densities)\n"
+                           "  - Need for parameter adjustment",
+                           consecutive_increases);
+            }
+        }
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
         }
 
         ///// testing
@@ -4058,6 +4265,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     // Store response change history
     response_changes = response_change_history;
 
-    // Optional: store density changes if tracked
+    // Maybe in the future: store density changes if tracked
     // density_changes = ...;
+
+    if (verbose) {
+        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(total_time, "Total elapsed time", true);
+    }
 }
