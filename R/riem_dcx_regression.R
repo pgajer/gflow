@@ -106,9 +106,18 @@
 #'     length above this percentile are considered for geometric pruning.
 #'     Default 0.5.
 #'
+#' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
+#'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
+#'
+#' @param variance.explained Numeric in \eqn{(0,1]} or `NULL`. If not `NULL`,
+#'     choose the smallest number of PCs whose cumulative variance explained
+#'     exceeds this threshold, capped by `pca.dim`.
+#'
 #' @param test.stage Integer for internal testing. Set to -1 for normal operation
 #'     (default). Values 0-10 stop execution at intermediate stages for debugging.
 #'     Not intended for end users.
+#'
+#' @param verbose Logical; print progress and timing.
 #'
 #' @return An object of class \code{c("knn.riem.fit", "list")}, which is
 #'   a list containing:
@@ -294,7 +303,10 @@ fit.knn.riem.graph.regression <- function(
     max.iterations = 50,
     max.ratio.threshold = 0.1,
     threshold.percentile = 0.5,
-    test.stage
+    pca.dim = 100,
+    variance.explained = 0.99,
+    test.stage = -1,
+    verbose = TRUE
 ) {
     # ==================== Feature Matrix Validation ====================
 
@@ -547,6 +559,58 @@ fit.knn.riem.graph.regression <- function(
         threshold.percentile < 0 || threshold.percentile > 1) {
         stop("threshold.percentile must be in [0, 1].")
     }
+
+    # verbose
+    if (!is.logical(verbose) || length(verbose) != 1)
+        stop("verbose must be TRUE/FALSE.")
+
+    # pca.dim
+    if (!is.null(pca.dim)) {
+        if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
+            stop("pca.dim must be a positive integer or NULL.")
+    }
+
+    # variance.explained
+    if (!is.null(variance.explained)) {
+        if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
+            variance.explained <= 0 || variance.explained > 1)
+            stop("variance.explained must be in (0, 1], or NULL.")
+    }
+
+    ## PCA (optional)
+    pca_info <- NULL
+    if (!is.null(pca.dim) && ncol(X) > pca.dim) {
+        if (verbose) message("High-dimensional data detected. Performing PCA.")
+        original_dim <- ncol(X)
+        if (!is.null(variance.explained)) {
+            pca_analysis <- pca.optimal.components(
+                X, variance.threshold = variance.explained, max.components = pca.dim
+            )
+            n_components <- pca_analysis$n.components
+            if (verbose) {
+                message(sprintf("Using %d PCs (explains %.2f%% variance)",
+                                n_components, 100 * pca_analysis$variance.explained))
+            }
+            X <- pca.project(X, pca_analysis$pca.result, n_components)
+            pca_info <- list(
+                original_dim = original_dim,
+                n_components = n_components,
+                variance_explained = pca_analysis$variance.explained,
+                cumulative_variance = pca_analysis$cumulative.variance
+            )
+        } else {
+            if (verbose) message(sprintf("Projecting to first %d PCs", pca.dim))
+            pca_result <- prcomp(X)
+            X <- pca.project(X, pca_result, pca.dim)
+            variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
+            pca_info <- list(
+                original_dim = original_dim,
+                n_components = pca.dim,
+                variance_explained = variance_explained
+            )
+        }
+    }
+
         
     # ==================== String Parameter Validation ====================
 
@@ -559,7 +623,7 @@ fit.knn.riem.graph.regression <- function(
         S_fit_knn_riem_graph_regression,
         X,
         as.double(y),
-        as.integer(k),
+        as.integer(k + 1L), # this is to account for the fact that ANN library is set up to return for query point as the first elements of the list of kNN's
         as.logical(use.counting.measure),
         as.double(density.normalization),
         as.double(t.diffusion),
@@ -570,9 +634,10 @@ fit.knn.riem.graph.regression <- function(
         as.double(epsilon.y),
         as.double(epsilon.rho),
         as.integer(max.iterations),
-        as.double(max.ratio.threshold),
+        as.double(max.ratio.threshold + 1.0),
         as.double(threshold.percentile),
         as.integer(test.stage),
+        as.logical(verbose),
         PACKAGE = "gflow"
     )
 
@@ -588,6 +653,7 @@ fit.knn.riem.graph.regression <- function(
     attr(fit, "n") <- n
     attr(fit, "d") <- d
     attr(fit, "k") <- k
+    if (!is.null(pca_info)) attr(result, "pca") <- pca_info
 
     return(fit)
 }
