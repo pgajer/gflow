@@ -17,49 +17,17 @@
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
 #'   selects k via cross-validation (NOT YET IMPLEMENTED).
 #'
-#' @param use.counting.measure Logical scalar. If TRUE (default), uses uniform
-#'   vertex weights (counting measure). If FALSE, uses distance-based weights
-#'   inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon + d_k(x))^{-\alpha}}.
-#'   Distance-based weights are useful when sampling density varies across
-#'   the feature space.
+#' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
+#'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
 #'
-#' @param density.normalization Numeric scalar, non-negative. Specifies target
-#'   sum for normalized vertex densities. If 0 (default), densities are
-#'   normalized to sum to n (giving average vertex density = 1). If positive,
-#'   densities sum to the specified value. Most users should use the default.
-#'   Set to 1.0 for probability interpretation, or to a large value (e.g., 1e6)
-#'   for very large graphs to avoid numerical underflow.
+#' @param variance.explained Numeric in \eqn{(0,1]} or `NULL`. If not `NULL`,
+#'     choose the smallest number of PCs whose cumulative variance explained
+#'     exceeds this threshold, capped by `pca.dim`.
 #'
-#' @param t.diffusion Diffusion time parameter (non-negative). Controls how much
-#'   vertex density evolves in each iteration. If 0 (default), automatically
-#'   selected as \eqn{0.5/\lambda_2} where \eqn{\lambda_2} is the spectral gap.
-#'   Larger values produce more aggressive density updates; smaller values are
-#'   more conservative. Typical range is \eqn{0.1/\lambda_2} to \eqn{1.0/\lambda_2}.
-#'   Set to 0 for automatic selection (recommended).
-#'
-#' @param density.uniform.pull Restoring force strength (non-negative).
-#'   Controls how strongly vertex densities are pulled back toward uniform
-#'   distribution during diffusion, preventing excessive concentration. If 0
-#'   (default), automatically selected as 0.1/t.diffusion to maintain a 10:1
-#'   ratio of diffusion to restoration. Larger values prevent concentration but
-#'   may over-smooth; smaller values allow more geometric structure but risk
-#'   collapse. Set to 0 for automatic selection (recommended). Former beta.damping.
-#'
-#' @param response.penalty.exp Response penalty exponent that controls the rate
-#'     of edge weight reduction as response variation increases, via the penalty
-#'     function \eqn{\Gamma(\Delta) = (1 + \Delta^2/\sigma^2)^{-\gamma}}. Larger
-#'     values create steeper penalties (sharper adaptation to response changes);
-#'     smaller values create gentler penalties. For smooth responses use
-#'     0.5-0.75; for discontinuous responses use 1.5-2.0. When set to 0,
-#'     disables response-coherence modulation entirely (geometry remains fixed
-#'     based on feature space only). When negative (e.g., -1), triggers
-#'     automatic selection via first-iteration GCV evaluation over a default
-#'     grid {0.05, 0.1, 0.2, ..., 0.9, 1.0, 1.2, ..., 2.0}. Automatic selection
-#'     efficiently determines the optimal value by evaluating GCV after a single
-#'     iteration for each candidate, then uses the selected value for the full
-#'     iterative refinement. Recommended when the response smoothness
-#'     characteristics are unknown or when exploring new datasets. When
-#'     positive, must be less than 2.0 and Default 0.3.
+#' @param max.iterations Integer scalar, positive. Maximum number of iterations.
+#'   Default 50. Typical convergence occurs within 5-10 iterations for
+#'   well-chosen parameters. If maximum iterations reached without convergence,
+#'   a warning is issued.
 #'
 #' @param n.eigenpairs Integer scalar in the range 10 to n. Number of Laplacian
 #'   eigenpairs to compute for spectral filtering. Default 200. Larger values
@@ -99,21 +67,65 @@
 #'   }
 #'   Default: \code{"heat_kernel"}
 #'
-#' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
-#'   for response. Iteration stops when the relative change in fitted values
-#'   \eqn{||\hat{y}^{(\ell)} - \hat{y}^{(\ell-1)}|| / ||\hat{y}^{(\ell-1)}||}
-#'   falls below this value. Default 1e-4. Smaller values require more iterations
-#'   but give more precise convergence.
+#' @param t.diffusion Diffusion time parameter (non-negative). Controls how much
+#'   vertex density evolves in each iteration. If 0 (default), automatically
+#'   selected as \eqn{0.5/\lambda_2} where \eqn{\lambda_2} is the spectral gap.
+#'   Larger values produce more aggressive density updates; smaller values are
+#'   more conservative. Typical range is \eqn{0.1/\lambda_2} to \eqn{1.0/\lambda_2}.
+#'   Set to 0 for automatic selection (recommended).
 #'
-#' @param epsilon.rho Numeric scalar, positive. Relative convergence threshold
-#'   for densities. Iteration stops when
-#'   \eqn{\max_p ||\rho_p^{(\ell)} - \rho_p^{(\ell-1)}|| / ||\rho_p^{(\ell-1)}||}
-#'   falls below this value across all dimensions. Default 1e-4.
+#' @param density.uniform.pull Restoring force strength (non-negative).
+#'   Controls how strongly vertex densities are pulled back toward uniform
+#'   distribution during diffusion, preventing excessive concentration. If 0
+#'   (default), automatically selected as 0.1/t.diffusion to maintain a 10:1
+#'   ratio of diffusion to restoration. Larger values prevent concentration but
+#'   may over-smooth; smaller values allow more geometric structure but risk
+#'   collapse. Set to 0 for automatic selection (recommended). Former beta.damping.
 #'
-#' @param max.iterations Integer scalar, positive. Maximum number of iterations.
-#'   Default 50. Typical convergence occurs within 5-10 iterations for
-#'   well-chosen parameters. If maximum iterations reached without convergence,
-#'   a warning is issued.
+#' @param response.penalty.exp Response penalty exponent that controls the rate
+#'     of edge weight reduction as response variation increases, via the penalty
+#'     function \eqn{\Gamma(\Delta) = (1 + \Delta^2/\sigma^2)^{-\gamma}}. Larger
+#'     values create steeper penalties (sharper adaptation to response changes);
+#'     smaller values create gentler penalties. For smooth responses use
+#'     0.5-0.75; for discontinuous responses use 1.5-2.0. When set to 0,
+#'     disables response-coherence modulation entirely (geometry remains fixed
+#'     based on feature space only). When negative (e.g., -1), triggers
+#'     automatic selection via first-iteration GCV evaluation over a default
+#'     grid {0.05, 0.1, 0.2, ..., 0.9, 1.0, 1.2, ..., 2.0}. Automatic selection
+#'     efficiently determines the optimal value by evaluating GCV after a single
+#'     iteration for each candidate, then uses the selected value for the full
+#'     iterative refinement. Recommended when the response smoothness
+#'     characteristics are unknown or when exploring new datasets. When
+#'     positive, must be less than 2.0 and Default 0.3.
+#'
+#' @param use.counting.measure Logical scalar. If TRUE (default), uses uniform
+#'   vertex weights (counting measure). If FALSE, uses distance-based weights
+#'   inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon + d_k(x))^{-\alpha}}.
+#'   Distance-based weights are useful when sampling density varies across
+#'   the feature space.
+#'
+#' @param density.normalization Numeric scalar, non-negative. Specifies target
+#'   sum for normalized vertex densities. If 0 (default), densities are
+#'   normalized to sum to n (giving average vertex density = 1). If positive,
+#'   densities sum to the specified value. Most users should use the default.
+#'   Set to 1.0 for probability interpretation, or to a large value (e.g., 1e6)
+#'   for very large graphs to avoid numerical underflow.
+#'
+#' @param density.alpha Exponent alpha in \eqn{[1,2]} for distance-based
+#'                     reference measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}.
+#'                     Larger values (near 2) create stronger density-adaptive
+#'                     weighting, concentrating measure on densely sampled
+#'                     regions. Smaller values (near 1) produce more uniform
+#'                     weighting. Only used when use_counting_measure = FALSE.
+#'                     Default: 1.5.
+#'
+#' @param density.epsilon Regularization parameter epsilon > 0 in reference
+#'                       measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}.
+#'                       Prevents numerical issues when nearest neighbor
+#'                       distances are very small. Should be small relative to
+#'                       typical k-NN distances but large enough for stability.
+#'                       Only used when use_counting_measure = FALSE.
+#'                       Default: 1e-10.
 #'
 #' @param max.ratio.threshold Numeric in the range 0 to 0.2.
 #'     Geometric pruning removes an edge (i,j) when there exists an
@@ -126,12 +138,16 @@
 #'     length above this percentile are considered for geometric pruning.
 #'     Default 0.5.
 #'
-#' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
-#'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
+#' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
+#'   for response. Iteration stops when the relative change in fitted values
+#'   \eqn{||\hat{y}^{(\ell)} - \hat{y}^{(\ell-1)}|| / ||\hat{y}^{(\ell-1)}||}
+#'   falls below this value. Default 1e-4. Smaller values require more iterations
+#'   but give more precise convergence.
 #'
-#' @param variance.explained Numeric in \eqn{(0,1]} or `NULL`. If not `NULL`,
-#'     choose the smallest number of PCs whose cumulative variance explained
-#'     exceeds this threshold, capped by `pca.dim`.
+#' @param epsilon.rho Numeric scalar, positive. Relative convergence threshold
+#'   for densities. Iteration stops when
+#'   \eqn{\max_p ||\rho_p^{(\ell)} - \rho_p^{(\ell-1)}|| / ||\rho_p^{(\ell-1)}||}
+#'   falls below this value across all dimensions. Default 1e-4.
 #'
 #' @param test.stage Integer for internal testing. Set to -1 for normal operation
 #'     (default). Values 0-10 stop execution at intermediate stages for debugging.
@@ -250,10 +266,26 @@
 #'         for n = 5000
 #' }
 #'
-#' @references
-#' Van der Waerden, B. L. (1975). \emph{Algebra}. Springer-Verlag.
-#' (Writing style inspiration)
+#' @note \strong{Graph Connectivity Requirement:}
+#'   The k-nearest neighbor graph must be fully connected (form a single
+#'   connected component). If the graph is disconnected, the function will
+#'   terminate with an error. To explore connectivity structure before fitting:
+#'   \itemize{
+#'     \item Use \code{create.iknn.graphs()} to examine connectivity across
+#'           multiple k values
+#'     \item Use \code{create.single.iknn.graph()} to inspect the graph
+#'           structure for a specific k
+#'     \item Examine connected components in the returned graph objects
+#'   }
 #'
+#'   Common solutions for disconnected graphs:
+#'   \itemize{
+#'     \item Increase k to add more edges between vertices
+#'     \item Remove isolated outlier observations
+#'     \item Verify that your distance metric is appropriate for the data
+#'   }
+#'
+#' @references
 #' Lim, L. H. (2020). Hodge Laplacians on graphs. \emph{SIAM Review}, 62(3), 685-715.
 #' (Hodge theory on simplicial complexes)
 #'
@@ -310,27 +342,29 @@
 fit.knn.riem.graph.regression <- function(
     X,
     y,
-    k = NULL,
-    use.counting.measure = TRUE,
-    density.normalization = 0,
+    k,
+    pca.dim = 100,
+    variance.explained = 0.99,
+    max.iterations = 10,
+    n.eigenpairs = 10,
+    filter.type = "heat_kernel",
     t.diffusion = 0,
     density.uniform.pull = 0,
     response.penalty.exp = 0,
-    n.eigenpairs = 10,
-    filter.type = "heat_kernel",
-    epsilon.y = 1e-4,
-    epsilon.rho = 1e-4,
-    max.iterations = 10,
+    use.counting.measure = TRUE,
+    density.normalization = 0,
+    density.alpha = 1.5,
+    density.epsilon = 1e-10,
     max.ratio.threshold = 0.1,
     threshold.percentile = 0.5,
-    pca.dim = 100,
-    variance.explained = 0.99,
+    epsilon.y = 1e-4,
+    epsilon.rho = 1e-4,
     test.stage = -1,
     verbose = TRUE
 ) {
-    # ==================== Feature Matrix Validation ====================
+    ## ==================== Feature Matrix Validation ====================
 
-    # Check X type
+    ## Check X type
     is.dense <- is.matrix(X)
     is.sparse <- inherits(X, "dgCMatrix")
 
@@ -338,16 +372,16 @@ fit.knn.riem.graph.regression <- function(
         stop("X must be a numeric matrix or sparse matrix (dgCMatrix from Matrix package)")
     }
 
-    # For dense matrix, check numeric
+    ## For dense matrix, check numeric
     if (is.dense && !is.numeric(X)) {
         stop("X must be numeric")
     }
 
-    # Extract dimensions
+    ## Extract dimensions
     n <- nrow(X)
     d <- ncol(X)
 
-    # Check dimensions
+    ## Check dimensions
     if (is.null(n) || is.null(d) || n < 1 || d < 1) {
         stop("X must have valid dimensions (positive rows and columns)")
     }
@@ -356,7 +390,7 @@ fit.knn.riem.graph.regression <- function(
         stop(sprintf("X must have at least 10 observations (got n=%d)", n))
     }
 
-    # Check for NA/Inf in X
+    ## Check for NA/Inf in X
     if (is.dense) {
         if (anyNA(X)) {
             stop("X cannot contain NA values")
@@ -364,10 +398,10 @@ fit.knn.riem.graph.regression <- function(
         if (any(!is.finite(X))) {
             stop("X cannot contain infinite values")
         }
-        # Ensure storage mode is double
+        ## Ensure storage mode is double
         storage.mode(X) <- "double"
     } else {
-        # For sparse matrix, check x slot
+        ## For sparse matrix, check x slot
         if (anyNA(X@x)) {
             stop("X cannot contain NA values")
         }
@@ -376,9 +410,9 @@ fit.knn.riem.graph.regression <- function(
         }
     }
 
-    # ==================== Response Vector Validation ====================
+    ## ==================== Response Vector Validation ====================
 
-    # Check y type and length
+    ## Check y type and length
     if (!is.numeric(y)) {
         stop("y must be numeric")
     }
@@ -388,7 +422,7 @@ fit.knn.riem.graph.regression <- function(
                      length(y), n))
     }
 
-    # Check for NA/Inf in y
+    ## Check for NA/Inf in y
     if (anyNA(y)) {
         stop("y cannot contain NA values")
     }
@@ -397,25 +431,19 @@ fit.knn.riem.graph.regression <- function(
         stop("y cannot contain infinite values")
     }
 
-    # Ensure y is a vector (not matrix)
+    ## Ensure y is a vector (not matrix)
     y <- as.vector(y)
 
-    # ==================== Parameter k Validation ====================
-
-    if (is.null(k)) {
-        stop("Automatic k selection not yet implemented.\n",
-             "Please specify k manually. Recommended starting value: k = ",
-             ceiling(log(n)), " (roughly log(n))")
-    }
+    ## ==================== Parameter k Validation ====================
 
     if (!is.numeric(k) || length(k) != 1) {
         stop("k must be a single numeric value")
     }
 
-    # Convert to integer
+    ## Convert to integer
     k <- as.integer(k)
 
-    # Check range
+    ## Check range
     if (k < 2) {
         stop(sprintf("k must be at least 2 (got k=%d)", k))
     }
@@ -424,7 +452,23 @@ fit.knn.riem.graph.regression <- function(
         stop(sprintf("k must be less than n (got k=%d, n=%d)", k, n))
     }
 
-    # ==================== Logical Parameter Validation ====================
+    ## Validate density.alpha
+    if (!is.numeric(density.alpha) || length(density.alpha) != 1) {
+        stop("density.alpha must be a single numeric value")
+    }
+    if (!is.finite(density.alpha) || density.alpha < 1.0 || density.alpha > 2.0) {
+        stop("density.alpha must be finite and in [1, 2], got ", density.alpha)
+    }
+
+    ## Validate density.epsilon
+    if (!is.numeric(density.epsilon) || length(density.epsilon) != 1) {
+        stop("density.epsilon must be a single numeric value")
+    }
+    if (!is.finite(density.epsilon) || density.epsilon <= 0) {
+        stop("density.epsilon must be finite and positive, got ", density.epsilon)
+    }
+
+    ## ==================== Logical Parameter Validation ====================
 
     if (!is.logical(use.counting.measure) || length(use.counting.measure) != 1) {
         stop("use.counting.measure must be TRUE or FALSE")
@@ -434,9 +478,9 @@ fit.knn.riem.graph.regression <- function(
         stop("use.counting.measure cannot be NA")
     }
 
-    # ==================== Numeric Parameter Validation ====================
+    ## ==================== Numeric Parameter Validation ====================
 
-    # density.normalization
+    ## density.normalization
     if (!is.numeric(density.normalization) || length(density.normalization) != 1) {
         stop("density.normalization must be a single numeric value")
     }
@@ -450,7 +494,7 @@ fit.knn.riem.graph.regression <- function(
                      density.normalization))
     }
 
-    # t.diffusion
+    ## t.diffusion
     if (!is.numeric(t.diffusion) || length(t.diffusion) != 1) {
         stop("t.diffusion must be a single numeric value")
     }
@@ -464,7 +508,7 @@ fit.knn.riem.graph.regression <- function(
                      t.diffusion))
     }
 
-    # density.uniform.pull
+    ## density.uniform.pull
     if (!is.numeric(density.uniform.pull) || length(density.uniform.pull) != 1) {
         stop("density.uniform.pull must be a single numeric value")
     }
@@ -478,7 +522,7 @@ fit.knn.riem.graph.regression <- function(
                      density.uniform.pull))
     }
 
-    # response.penalty.exp
+    ## response.penalty.exp
     if (!is.numeric(response.penalty.exp) || length(response.penalty.exp) != 1) {
         stop("response.penalty.exp must be a single numeric value")
     }
@@ -492,7 +536,7 @@ fit.knn.riem.graph.regression <- function(
                         response.penalty.exp))
     }
 
-    # n.eigenpairs
+    ## n.eigenpairs
     if (!is.numeric(n.eigenpairs) || length(n.eigenpairs) != 1) {
         stop("n.eigenpairs must be a single numeric value")
     }
@@ -507,14 +551,14 @@ fit.knn.riem.graph.regression <- function(
         stop(sprintf("n.eigenpairs cannot exceed n (got %d, n=%d)", n.eigenpairs, n))
     }
 
-    # Warn if n.eigenpairs seems too small
+    ## Warn if n.eigenpairs seems too small
     if (n.eigenpairs < 50 && n > 100) {
         warning(sprintf(paste0("n.eigenpairs=%d may be too small for n=%d observations.\n",
                               "Consider n.eigenpairs >= 100 for better frequency resolution."),
                        n.eigenpairs, n))
     }
 
-    # epsilon.y
+    ## epsilon.y
     if (!is.numeric(epsilon.y) || length(epsilon.y) != 1) {
         stop("epsilon.y must be a single numeric value")
     }
@@ -531,7 +575,7 @@ fit.knn.riem.graph.regression <- function(
         warning(sprintf("epsilon.y=%.3f is very large; convergence may be premature", epsilon.y))
     }
 
-    # epsilon.rho
+    ## epsilon.rho
     if (!is.numeric(epsilon.rho) || length(epsilon.rho) != 1) {
         stop("epsilon.rho must be a single numeric value")
     }
@@ -548,7 +592,7 @@ fit.knn.riem.graph.regression <- function(
         warning(sprintf("epsilon.rho=%.3f is very large; convergence may be premature", epsilon.rho))
     }
 
-    # max.iterations
+    ## max.iterations
     if (!is.numeric(max.iterations) || length(max.iterations) != 1) {
         stop("max.iterations must be a single numeric value")
     }
@@ -565,7 +609,7 @@ fit.knn.riem.graph.regression <- function(
                        max.iterations))
     }
 
-    # max.ratio.threshold
+    ## max.ratio.threshold
     if (!is.numeric(max.ratio.threshold) || length(max.ratio.threshold) != 1) {
         stop("max.ratio.threshold must be numeric.")
     }
@@ -574,23 +618,23 @@ fit.knn.riem.graph.regression <- function(
         stop("max.ratio.threshold must be in [0, 0.2).")
     }
         
-    # threshold.percentile
+    ## threshold.percentile
     if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1 ||
         threshold.percentile < 0 || threshold.percentile > 1) {
         stop("threshold.percentile must be in [0, 1].")
     }
 
-    # verbose
+    ## verbose
     if (!is.logical(verbose) || length(verbose) != 1)
         stop("verbose must be TRUE/FALSE.")
 
-    # pca.dim
+    ## pca.dim
     if (!is.null(pca.dim)) {
         if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
             stop("pca.dim must be a positive integer or NULL.")
     }
 
-    # variance.explained
+    ## variance.explained
     if (!is.null(variance.explained)) {
         if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
             variance.explained <= 0 || variance.explained > 1)
@@ -632,12 +676,12 @@ fit.knn.riem.graph.regression <- function(
     }
 
         
-    # ==================== String Parameter Validation ====================
+    ## ==================== String Parameter Validation ====================
 
-    # Match filter.type
+    ## Match filter.type
     filter.type <- match.arg(filter.type)
 
-    # ==================== Call C++ Function ====================
+    ## ==================== Call C++ Function ====================
 
     fit <- .Call(
         S_fit_knn_riem_graph_regression,
@@ -656,20 +700,22 @@ fit.knn.riem.graph.regression <- function(
         as.integer(max.iterations),
         as.double(max.ratio.threshold + 1.0),
         as.double(threshold.percentile),
+        as.double(density.alpha),
+        as.double(density.epsilon),
         as.integer(test.stage),
         as.logical(verbose),
         PACKAGE = "gflow"
     )
 
-    # ==================== Post-Processing ====================
+    ## ==================== Post-Processing ====================
 
-    # Add class
+    ## Add class
     class(fit) <- c("knn.riem.fit", "riem.dcx")
 
-    # Store call for reproducibility
+    ## Store call for reproducibility
     attr(fit, "call") <- match.call()
 
-    # Store key parameters for summary()
+    ## Store key parameters for summary()
     attr(fit, "n") <- n
     attr(fit, "d") <- d
     attr(fit, "k") <- k

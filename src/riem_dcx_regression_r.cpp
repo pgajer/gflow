@@ -296,9 +296,11 @@ extern "C" SEXP create_parameters_component(
     rdcx_filter_type_t filter_type,
     double epsilon_y,
     double epsilon_rho,
-    int max_iterations
+    int max_iterations,
+    double density_alpha,
+    double density_epsilon
 ) {
-    const int n_fields = 11;
+    const int n_fields = 13;
     SEXP params = PROTECT(Rf_allocVector(VECSXP, n_fields));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
     int idx = 0;
@@ -362,6 +364,13 @@ extern "C" SEXP create_parameters_component(
 
     SET_STRING_ELT(names, idx, Rf_mkChar("max.iterations"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(max_iterations));
+
+    SET_STRING_ELT(names, idx, Rf_mkChar("density.alpha"));
+    SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_alpha));
+
+    SET_STRING_ELT(names, idx, Rf_mkChar("density.epsilon"));
+    SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_epsilon));
+
 
     Rf_setAttrib(params, R_NamesSymbol, names);
     UNPROTECT(2); // names, params
@@ -467,6 +476,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_max_iterations,
     SEXP s_max_ratio_threshold,
     SEXP s_threshold_percentile,
+    SEXP s_density_alpha,
+    SEXP s_density_epsilon,
     SEXP s_test_stage,
     SEXP s_verbose
 ) {
@@ -829,6 +840,31 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
                  threshold_percentile);
     }
 
+    // -------------------- density.alpha --------------------
+
+    if (TYPEOF(s_density_alpha) != REALSXP || Rf_length(s_density_alpha) != 1) {
+        Rf_error("density.alpha must be a single numeric value");
+    }
+
+    const double density_alpha = REAL(s_density_alpha)[0];
+
+    if (!R_FINITE(density_alpha) || density_alpha < 1.0 || density_alpha > 2.0) {
+        Rf_error("density.alpha must be finite and in [1, 2] (got %.3f)", density_alpha);
+    }
+
+    // -------------------- density.epsilon --------------------
+
+    if (TYPEOF(s_density_epsilon) != REALSXP || Rf_length(s_density_epsilon) != 1) {
+        Rf_error("density.epsilon must be a single numeric value");
+    }
+
+    const double density_epsilon = REAL(s_density_epsilon)[0];
+
+    if (!R_FINITE(density_epsilon) || density_epsilon <= 0.0) {
+        Rf_error("density.epsilon must be a finite positive number (got %.3e)",
+                 density_epsilon);
+    }
+
     // -------------------- s_test_stage --------------------
 
     if (TYPEOF(s_test_stage) != INTSXP || Rf_length(s_test_stage) != 1) {
@@ -883,6 +919,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
             max_iterations,
             max_ratio_threshold,
             threshold_percentile,
+            density_alpha,
+            density_epsilon,
             test_stage,
             verbose
             );
@@ -1021,7 +1059,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_params = PROTECT(create_parameters_component(
                                 k, use_counting_measure, density_normalization,
                                 t_diffusion, beta_damping, gamma_modulation,
-                                n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations
+                                n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations,
+                                density_alpha, density_epsilon
                                 ));
     SET_VECTOR_ELT(result, component_idx++, s_params);
     UNPROTECT(1);

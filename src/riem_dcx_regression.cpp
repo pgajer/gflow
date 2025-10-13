@@ -3830,6 +3830,8 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     int max_iterations,
     double max_ratio_threshold,
     double threshold_percentile,
+    double density_alpha,
+    double density_epsilon,
     int test_stage,
     bool verbose
     ) {
@@ -3851,7 +3853,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         use_counting_measure,
         density_normalization,
         max_ratio_threshold,
-        threshold_percentile
+        threshold_percentile,
+        density_alpha,
+        density_epsilon
         );
 
     // Store original response EARLY, before any possible early returns

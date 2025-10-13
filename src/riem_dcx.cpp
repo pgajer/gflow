@@ -12,71 +12,6 @@
 
 
 /**
- * @brief Initialize reference measure for density computation
- *
- * Constructs the reference measure μ that assigns base weights to vertices
- * before any geometric evolution. The reference measure provides the starting
- * point for density estimation.
- *
- * Two approaches serve different data characteristics:
- * - Counting measure treats all points equally (appropriate for uniform sampling)
- * - Distance-based measure down-weights points in dense regions (appropriate
- *   when sampling density varies)
- *
- * The formula μ({x}) = (ε + d_k(x))^(-α) with α ∈ [1,2] provides a robust
- * local density surrogate without bandwidth selection, addressing kernel density
- * estimation instability in moderate-to-high dimensions.
- *
- * @param knn_neighbors k-nearest neighbor indices for each point
- * @param knn_distances k-nearest neighbor distances for each point
- * @param use_counting_measure If true, use uniform weights; if false, use distance-based
- * @param density_normalization Target sum for normalized weights (typically n)
- */
-void riem_dcx_t::initialize_reference_measure(
-    const std::vector<std::vector<index_t>>& knn_neighbors,
-    const std::vector<std::vector<double>>& knn_distances,
-    bool use_counting_measure,
-    double density_normalization
-) {
-    const size_t n = knn_neighbors.size();
-    std::vector<double> vertex_weights(n);
-
-    if (use_counting_measure) {
-		// Counting measure: each vertex has unit weight
-        std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
-    } else {
-		// Distance-based measure using d_k distances
-        // Formula: w(x) = (ε + d_k(x))^(-α)
-        // where d_k(x) is the distance to the kth nearest neighbor
-
-		const double epsilon = 1e-10;  // Regularization to prevent division by zero
-        const double alpha = 1.5;      // Exponent in [1, 2] for density estimation
-
-        // For each vertex, extract distance to kth (last) neighbor
-        for (size_t i = 0; i < n; ++i) {
-            // The last element in knn_distances[i] is d_k(x_i)
-            const double d_k = knn_distances[i].back();
-
-            // Compute weight: points in dense regions (small d_k) get higher weights
-            vertex_weights[i] = std::pow(epsilon + d_k, -alpha);
-        }
-    }
-
-    // Normalize to target sum
-    double total = std::accumulate(vertex_weights.begin(),
-                                   vertex_weights.end(), 0.0);
-    double target = (density_normalization > 0.0) ?
-                    density_normalization : static_cast<double>(n);
-    if (total > 1e-15) {
-        double scale = target / total;
-        for (double& w : vertex_weights) w *= scale;
-    }
-
-    // Store in member variable for use by other modules
-    this->reference_measure = std::move(vertex_weights);
-}
-
-/**
  * @brief Extend the complex by one dimension, preserving all existing structure
  *
  * @details
@@ -260,4 +195,85 @@ void riem_dcx_t::extend_by_one_dim(index_t n_new) {
 
 	// Initialize Laplacian (empty, to be assembled later)
 	L.L[p_new] = spmat_t();
+}
+
+/**
+ * @brief Compute number of connected components in the graph
+ *
+ * This function performs a depth-first search traversal from each unvisited vertex
+ * to identify connected components in the graph represented by vertex_cofaces.
+ * The graph is defined by the k-nearest neighbor structure, where each vertex i
+ * is connected to vertices j appearing in vertex_cofaces[i] (excluding the self-loop
+ * at position 0).
+ *
+ * Two vertices belong to the same connected component if and only if there exists
+ * a path of edges connecting them. For the regression framework to function properly,
+ * the graph must be connected (have exactly one component), ensuring that geometric
+ * information can propagate across the entire domain.
+ *
+ * The algorithm maintains component labels for each vertex. Starting from each
+ * unlabeled vertex, it conducts a depth-first search to label all reachable vertices
+ * with the same component identifier. The total number of distinct components equals
+ * the number of such searches required to label all vertices.
+ *
+ * @return Number of connected components in the graph (1 indicates a connected graph)
+ *
+ * @note This function should be called after vertex_cofaces is populated but before
+ *       any geometric computations, to ensure the graph structure is valid.
+ *
+ * @note Time complexity: O(n + m) where n is the number of vertices and m is the
+ *       total number of edges. Space complexity: O(n) for component labels and stack.
+ */
+int riem_dcx_t::compute_connected_components() {
+    const size_t n_vertices = vertex_cofaces.size();
+
+    // Validate that vertex_cofaces is populated
+    if (n_vertices == 0) {
+        return 0;
+    }
+
+    // Component assignment for each vertex (-1 = unvisited)
+    std::vector<int> component_id(n_vertices, -1);
+
+    // Stack for depth-first search traversal
+    std::vector<index_t> stack;
+    stack.reserve(n_vertices);  // Avoid reallocations during traversal
+
+    int num_components = 0;
+
+    // Process each vertex as a potential seed for a new component
+    for (size_t seed = 0; seed < n_vertices; ++seed) {
+        // Skip vertices already assigned to a component
+        if (component_id[seed] >= 0) {
+            continue;
+        }
+
+        // Start new component from this seed
+        stack.clear();
+        stack.push_back(seed);
+        component_id[seed] = num_components;
+
+        // Depth-first search to find all vertices in this component
+        while (!stack.empty()) {
+            index_t v = stack.back();
+            stack.pop_back();
+
+            // Examine all neighbors of v
+            // Note: vertex_cofaces[v][0] is the self-loop, skip it
+            for (size_t k = 1; k < vertex_cofaces[v].size(); ++k) {
+                index_t neighbor = vertex_cofaces[v][k].vertex_index;
+
+                // If neighbor hasn't been visited, add to current component
+                if (component_id[neighbor] < 0) {
+                    component_id[neighbor] = num_components;
+                    stack.push_back(neighbor);
+                }
+            }
+        }
+
+        // Finished exploring this component
+        ++num_components;
+    }
+
+    return num_components;
 }
