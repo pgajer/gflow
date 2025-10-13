@@ -899,6 +899,8 @@ struct riem_dcx_t {
         int max_iterations,
         double max_ratio_threshold,
         double threshold_percentile,
+        double density_alpha,
+        double density_epsilon,
         int test_stage,
         bool verbose
     );
@@ -1034,8 +1036,16 @@ struct riem_dcx_t {
         bool use_counting_measure,
         double density_normalization,
         double max_ratio_threshold,
-        double threshold_percentile
+        double threshold_percentile,
+        double density_alpha,
+        double density_epsilon
         );
+
+    /**
+     * @brief Compute number of connected components in graph
+     * @return Number of connected components (1 = connected)
+     */
+    int compute_connected_components();
 
     /**
      * @brief Assemble all Laplacian operators from current metric
@@ -1096,7 +1106,9 @@ private:
         const std::vector<std::vector<index_t>>& knn_neighbors,
         const std::vector<std::vector<double>>& knn_distances,
         bool use_counting_measure,
-        double density_normalization
+        double density_normalization,
+        double alpha,
+        double epsilon
     );
 
     /**
