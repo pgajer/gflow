@@ -277,3 +277,22 @@ int riem_dcx_t::compute_connected_components() {
 
     return num_components;
 }
+
+/**
+ * @brief Assemble all Laplacian operators from current metric
+ *
+ * Updates all Hodge Laplacians based on the current state of the metric
+ * and boundary maps. Should be called after any change to the metric.
+ */
+void riem_dcx_t::assemble_operators() {
+	// Populate L.c1 from vertex_cofaces before assembly
+	L.c1.resize(edge_registry.size());
+	for (size_t i = 0; i < vertex_cofaces.size(); ++i) {
+		for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+			index_t e = vertex_cofaces[i][k].simplex_index;
+			L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-15);
+		}
+	}
+
+	L.assemble_all(g);
+}
