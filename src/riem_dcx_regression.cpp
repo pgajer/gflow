@@ -889,6 +889,8 @@ void riem_dcx_t::update_edge_mass_matrix() {
  *                     100-200 eigenpairs is more efficient and sufficient for
  *                     most filtering operations.
  *
+ * @param verbose If true, print timing and diagnostic information.
+ *
  * @throws std::runtime_error if L[0] is not properly initialized or if
  *                            eigendecomposition fails
  *
@@ -902,7 +904,18 @@ void riem_dcx_t::update_edge_mass_matrix() {
  *       consider using sparse iterative solvers (Spectra/ARPACK) to compute
  *       only the smallest eigenpairs.
  */
-void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
+void riem_dcx_t::compute_spectral_decomposition(
+    int n_eigenpairs,
+    bool verbose
+    ) {
+    auto decomp_start = std::chrono::steady_clock::now();
+    auto phase_time = std::chrono::steady_clock::now();
+
+    if (verbose) {
+        Rprintf("  Spectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
+                L.L[0].rows(), n_eigenpairs);
+    }
+
     // Validate that Laplacian exists
     if (L.L.empty() || L.L[0].rows() == 0) {
         Rf_error("compute_spectral_decomposition: vertex Laplacian L[0] not initialized");
@@ -910,6 +923,17 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 
     // Select appropriate Laplacian (use normalized if available)
     const spmat_t& L0 = (L.L0_sym.rows() > 0) ? L.L0_sym : L.L[0];
+
+    if (verbose) {
+        if (L.L0_sym.rows() > 0) {
+            Rprintf("  Using L0_sym (normalized Laplacian)\n");
+        } else {
+            Rprintf("  WARNING: Using L[0] (non-normalized) - L0_sym not available!\n");
+            Rprintf("    Possible reasons: c1.size()=%zu, B[1].cols()=%ld\n",
+                    L.c1.size(), L.B.size() > 1 ? (long)L.B[1].cols() : -1L);
+        }
+    }
+
     const int n_vertices = L0.rows();
 
     // Validate and bound parameters
@@ -920,6 +944,11 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 
     // For small graphs or near-full decomposition, use dense solver
     if (n_eigenpairs >= n_vertices - 2 || n_vertices <= 1000) {
+        if (verbose) {
+            Rprintf("  Using dense solver (n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
 
@@ -936,6 +965,12 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
         if (spectral_cache.eigenvalues.size() >= 2) {
             spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
         }
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            elapsed_time(decomp_start, "  Total decomposition time", true);
+        }
+
         return;
     }
 
@@ -945,6 +980,11 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 
     int nev = n_eigenpairs;
     int ncv = std::min(2 * nev + 10, n_vertices);
+
+    if (verbose) {
+        Rprintf("  Using sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv);
+        phase_time = std::chrono::steady_clock::now();
+    }
 
     if (ncv <= nev) {
         ncv = std::min(nev + 5, n_vertices);
@@ -956,6 +996,10 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
     // ============================================================
     // PRIMARY ATTEMPT: Standard parameters
     // ============================================================
+    if (verbose) {
+        Rprintf("    Attempt 1: Standard parameters (maxit=1000, tol=1e-10) ... ");
+    }
+
     Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
     eigs.init();
 
@@ -974,22 +1018,39 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
         return;
     }
 
+    if (verbose) {
+        Rprintf("Failed (status=%d)\n", static_cast<int>(eigs.info()));
+    }
+
     // ============================================================
     // TIER 1: Relaxed convergence criteria
     // ============================================================
+
+    if (verbose) {
+        Rprintf("    Tier 1: Relaxed convergence criteria ... \n");
+    }
+
     std::vector<std::pair<int, double>> tier1_attempts = {
         {2000, 1e-8},
         {3000, 1e-6},
         {5000, 1e-4}
     };
 
-    for (const auto& [adjusted_maxit, adjusted_tol] : tier1_attempts) {
+    for (size_t idx = 0; idx < tier1_attempts.size(); ++idx) {
+        const auto& [adjusted_maxit, adjusted_tol] = tier1_attempts[idx];
+
+        if (verbose) {
+            Rprintf("      Attempt %zu: maxit=%d, tol=%.2e ... ",
+                    idx + 2, adjusted_maxit, adjusted_tol);
+        }
+
         eigs.init();
         eigs.compute(Spectra::SortRule::SmallestAlge, adjusted_maxit, adjusted_tol);
 
         if (eigs.info() == Spectra::CompInfo::Successful) {
-            Rprintf("Spectral decomposition converged with relaxed parameters: "
-                    "maxit=%d, tol=%.2e\n", adjusted_maxit, adjusted_tol);
+            if (verbose) {
+                Rprintf("Success\n");
+            }
 
             spectral_cache.eigenvalues = eigs.eigenvalues();
             spectral_cache.eigenvectors = eigs.eigenvectors();
@@ -998,13 +1059,24 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
             if (spectral_cache.eigenvalues.size() >= 2) {
                 spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
             }
+
+            if (verbose) {
+                elapsed_time(decomp_start, "  Total decomposition time", true);
+            }
             return;
+        }
+
+        if (verbose) {
+            Rprintf("Failed\n");
         }
     }
 
     // ============================================================
     // TIER 2: Enlarged Krylov subspace with relaxed criteria
     // ============================================================
+    if (verbose) {
+        Rprintf("    Tier 2: Enlarged Krylov subspace ... \n");
+    }
 
     int max_ncv = std::min(
         static_cast<int>(1 << static_cast<int>(std::log2(n_vertices))),
@@ -1013,7 +1085,13 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 
     std::vector<int> ncv_multipliers = {2, 4, 8, 16};
 
+    int multiplier_idx = 1;
     for (int multiplier : ncv_multipliers) {
+        if (verbose) {
+            Rprintf("      Attempt %u: Using multiplier=%d ... ", multiplier_idx++, multiplier);
+            phase_time = std::chrono::steady_clock::now();
+        }
+
         int adjusted_ncv = std::min(multiplier * ncv, max_ncv);
 
         if (adjusted_ncv <= ncv) continue;
@@ -1041,11 +1119,20 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
                 return;
             }
         }
+
+        if (verbose) {
+            elapsed_time(phase_time, "DONE", true);
+            elapsed_time(decomp_start, "  Total decomposition time", true);
+        }
     }
 
     // ============================================================
     // TIER 3: Dense fallback for small-medium problems
     // ============================================================
+    if (verbose) {
+        Rprintf("    Tier 3: Dense fallback for small-medium problems ... \n");
+    }
+
     if (n_vertices <= 2000) {
         Rf_warning("Sparse eigendecomposition failed; falling back to dense solver "
                    "for n=%d vertices", n_vertices);
@@ -1067,6 +1154,11 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
             Rprintf("Dense eigendecomposition successful\n");
             return;
         }
+    }
+
+    if (verbose) {
+        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(decomp_start, "  Total decomposition time (failed)", true);
     }
 
     // ============================================================
@@ -1121,14 +1213,26 @@ void riem_dcx_t::compute_spectral_decomposition(int n_eigenpairs) {
 void riem_dcx_t::select_diffusion_parameters(
     double& t_diffusion,
     double& beta_damping,
+    int n_eigenpairs_hint,  // Hint about how many we'll need later
     bool verbose
 ) {
     // Ensure spectral decomposition is available
     if (!spectral_cache.is_valid) {
+        // For parameter selection, we only need lambda_2 (first 3 eigenpairs)
+        // But if we know we'll need more for filtering, compute them now
+        int n_to_compute = std::max(3, n_eigenpairs_hint);
+
         if (verbose) {
             Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
+            if (n_to_compute > 3) {
+                Rprintf("\t(computing %d eigenpairs to avoid recomputation for filtering)\n",
+                        n_to_compute);
+            } else {
+                Rprintf("\t(computing 3 eigenpairs for lambda_2 estimation)\n");
+            }
         }
-        compute_spectral_decomposition();
+
+        compute_spectral_decomposition(n_to_compute, verbose);
     }
 
     const double lambda_2 = spectral_cache.lambda_2;
@@ -1330,7 +1434,8 @@ gamma_selection_result_t riem_dcx_t::select_gamma_first_iteration(
     const vec_t& y,
     const std::vector<double>& gamma_grid,
     int n_eigenpairs,
-    rdcx_filter_type_t filter_type
+    rdcx_filter_type_t filter_type,
+    bool verbose
 ) {
     // Assumes initialization already done (K, rho, M, L all built)
     // and initial smoothing already computed
@@ -1360,7 +1465,10 @@ gamma_selection_result_t riem_dcx_t::select_gamma_first_iteration(
 
         // Compute one smoothing
         auto gcv_res = smooth_response_via_spectral_filter(
-            y, n_eigenpairs, filter_type
+            y,
+            n_eigenpairs,
+            filter_type,
+            verbose
         );
 
         result.gcv_scores[i] = gcv_res.gcv_optimal;
@@ -2370,7 +2478,8 @@ namespace {
 gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const vec_t& y,
     int n_eigenpairs,
-    rdcx_filter_type_t filter_type
+    rdcx_filter_type_t filter_type,
+    bool verbose
     ) {
 
     // ================================================================
@@ -2447,7 +2556,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     // Use cached decomposition if valid and sufficient
     if (!spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs) {
-        compute_spectral_decomposition(n_eigenpairs);
+        compute_spectral_decomposition(n_eigenpairs, verbose);
     }
 
     // Extract needed eigenpairs from cache
@@ -3897,7 +4006,10 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         phase_time = std::chrono::steady_clock::now();
     }
 
-    select_diffusion_parameters(t_diffusion, beta_damping, /*verbose=*/true);
+    select_diffusion_parameters(t_diffusion,
+                                beta_damping,
+                                n_eigenpairs,
+                                verbose);
 
     if (test_stage == 1) {
         Rprintf("TEST_STAGE 1: Stopped after parameter selection\n");
@@ -3916,7 +4028,10 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
     gcv_history.clear();
     auto gcv_result = smooth_response_via_spectral_filter(
-        y, n_eigenpairs, filter_type
+        y,
+        n_eigenpairs,
+        filter_type,
+        verbose
         );
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
@@ -3959,7 +4074,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         // Perform gamma selection
         auto gamma_result = select_gamma_first_iteration(
-            y, gamma_grid, n_eigenpairs, filter_type
+            y,
+            gamma_grid,
+            n_eigenpairs,
+            filter_type,
+            verbose
             );
 
         // Use selected gamma
@@ -4194,7 +4313,10 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         }
 
         gcv_result = smooth_response_via_spectral_filter(
-            y, n_eigenpairs, filter_type
+            y,
+            n_eigenpairs,
+            filter_type,
+            verbose
             );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);

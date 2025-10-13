@@ -926,7 +926,8 @@ struct riem_dcx_t {
         const vec_t& y,
         const std::vector<double>& gamma_grid,
         int n_eigenpairs,
-        rdcx_filter_type_t filter_type
+        rdcx_filter_type_t filter_type,
+        bool verbose
         );
 
     /**
@@ -957,7 +958,8 @@ struct riem_dcx_t {
     gcv_result_t smooth_response_via_spectral_filter(
         const vec_t& y,
         int n_eigenpairs,
-        rdcx_filter_type_t filter_type
+        rdcx_filter_type_t filter_type,
+        bool verbose
         );
 
     /**
@@ -1088,7 +1090,10 @@ private:
     /**
      * @brief Compute and cache spectral decomposition of vertex Laplacian
      */
-    void compute_spectral_decomposition(int n_eigenpairs = -1);
+    void compute_spectral_decomposition(
+        int n_eigenpairs,
+        bool verbose
+        );
 
     /**
      * @brief Automatically select diffusion and damping parameters
@@ -1096,7 +1101,8 @@ private:
     void select_diffusion_parameters(
         double& t_diffusion,
         double& beta_damping,
-        bool verbose = false
+        int n_eigenpairs,
+        bool verbose
         );
 
     /**
