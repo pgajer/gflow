@@ -34,10 +34,12 @@ constexpr index_t NO_EDGE = std::numeric_limits<index_t>::max();
  * @brief Filter type enumeration for spectral filtering
  */
 enum class rdcx_filter_type_t {
-    HEAT_KERNEL,   ///< f(λ) = exp(-ηλ), exponential decay
-    TIKHONOV,      ///< f(λ) = 1/(1 + ηλ), rational decay
-    CUBIC_SPLINE,  ///< f(λ) = 1/(1 + ηλ²), spline smoothness
-    GAUSSIAN       ///< f(λ) = exp(-ηλ^2)
+    HEAT_KERNEL,        ///< f(λ) = exp(-ηλ)
+    TIKHONOV,           ///< f(λ) = 1/(1 + ηλ)
+    CUBIC_SPLINE,       ///< f(λ) = 1/(1 + ηλ²)
+    GAUSSIAN,           ///< f(λ) = exp(-ηλ²)
+    EXPONENTIAL,        ///< f(λ) = exp(-η·√λ)
+    BUTTERWORTH         ///< f(λ) = 1/(1+(λ/η)^(2n))
 };
 
 /**

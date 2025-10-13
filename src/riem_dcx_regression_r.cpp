@@ -324,10 +324,34 @@ extern "C" SEXP create_parameters_component(
     SET_STRING_ELT(names, idx, Rf_mkChar("n.eigenpairs"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(n_eigenpairs));
 
+
     SET_STRING_ELT(names, idx, Rf_mkChar("filter.type"));
-    const char* filter_str = (filter_type == rdcx_filter_type_t::HEAT_KERNEL) ? "heat_kernel" :
-                             (filter_type == rdcx_filter_type_t::TIKHONOV) ? "tikhonov" :
-                             "cubic_spline";
+
+    const char* filter_str;
+    switch (filter_type) {
+    case rdcx_filter_type_t::HEAT_KERNEL:
+        filter_str = "heat_kernel";
+        break;
+    case rdcx_filter_type_t::TIKHONOV:
+        filter_str = "tikhonov";
+        break;
+    case rdcx_filter_type_t::CUBIC_SPLINE:
+        filter_str = "cubic_spline";
+        break;
+    case rdcx_filter_type_t::GAUSSIAN:
+        filter_str = "gaussian";
+        break;
+    case rdcx_filter_type_t::EXPONENTIAL:
+        filter_str = "exponential";
+        break;
+    case rdcx_filter_type_t::BUTTERWORTH:
+        filter_str = "butterworth";
+        break;
+    default:
+        filter_str = "unknown";
+        break;
+    }
+
     SET_VECTOR_ELT(params, idx++, Rf_mkString(filter_str));
 
     SET_STRING_ELT(names, idx, Rf_mkChar("epsilon.y"));
@@ -725,8 +749,15 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
         filter_type = rdcx_filter_type_t::TIKHONOV;
     } else if (strcmp(filter_str, "cubic_spline") == 0) {
         filter_type = rdcx_filter_type_t::CUBIC_SPLINE;
+    } else if (strcmp(filter_str, "gaussian") == 0) {
+        filter_type = rdcx_filter_type_t::GAUSSIAN;
+    } else if (strcmp(filter_str, "exponential") == 0) {
+        filter_type = rdcx_filter_type_t::EXPONENTIAL;
+    } else if (strcmp(filter_str, "butterworth") == 0) {
+        filter_type = rdcx_filter_type_t::BUTTERWORTH;
     } else {
-        Rf_error("filter.type must be 'heat_kernel', 'tikhonov', or 'cubic_spline' (got '%s')",
+        Rf_error("filter.type must be 'heat_kernel', 'tikhonov', 'cubic_spline', "
+                 "'gaussian', 'exponential', or 'butterworth' (got '%s')",
                  filter_str);
     }
 

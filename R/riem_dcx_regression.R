@@ -66,19 +66,38 @@
 #'   capture more frequency components but increase computation time. Must be
 #'   less than the number of observations n.
 #'
-#' @param filter.type Character scalar. Spectral filter type for response
-#'   smoothing. One of:
-#'   \itemize{
-#'     \item \code{"heat_kernel"} (default): \eqn{f(\lambda) = \exp(-\eta\lambda)},
-#'           corresponding to solving the heat equation. Provides exponential
-#'           decay of high frequencies.
-#'     \item \code{"tikhonov"}: \eqn{f(\lambda) = 1/(1 + \eta\lambda)},
-#'           corresponding to Tikhonov regularization. Gentler high-frequency
-#'           attenuation than heat kernel.
-#'     \item \code{"cubic_spline"}: \eqn{f(\lambda) = 1/(1 + \eta\lambda^2)},
-#'           minimizing second derivatives. Produces spline-like smoothness.
+#' @param filter.type Character string specifying the spectral filter type for
+#'   response smoothing. The filter determines how high-frequency (rapid variation)
+#'   components are attenuated relative to low-frequency (smooth) components.
+#'   The smoothing parameter is selected automatically via generalized cross-validation.
+#'   Available options:
+#'   \describe{
+#'     \item{\code{"heat_kernel"}}{Exponential decay exp(-η·λ). General-purpose
+#'       filter with smooth, progressive attenuation. Most commonly used and
+#'       recommended as the default choice. Equivalent to heat diffusion for
+#'       time η.}
+#'     \item{\code{"tikhonov"}}{Rational decay 1/(1+η·λ). Corresponds to
+#'       Tikhonov regularization. Gentler than heat kernel, preserves more
+#'       mid-frequency detail and linear trends. Good when moderate smoothing
+#'       is sufficient.}
+#'     \item{\code{"cubic_spline"}}{Spline smoothness 1/(1+η·λ²). Minimizes
+#'       second derivatives of the fitted function. Produces very smooth,
+#'       spline-like results. Excellent when the response should vary gradually
+#'       and continuously.}
+#'     \item{\code{"gaussian"}}{Super-exponential decay exp(-η·λ²). The most
+#'       aggressive smoothing among exponential filters. Produces extremely
+#'       smooth results with minimal oscillations. Use when maximum smoothness
+#'       is desired and fine-scale features are noise.}
+#'     \item{\code{"exponential"}}{Intermediate decay exp(-η·√λ). Less aggressive
+#'       than heat kernel. Maintains more detail in mid-frequency range while
+#'       still providing meaningful smoothing. Useful for preserving moderate-scale
+#'       features while removing high-frequency noise.}
+#'     \item{\code{"butterworth"}}{Smooth cutoff 1/(1+(λ/η)⁴). Fourth-order
+#'       rational filter providing clear frequency separation with reduced
+#'       ringing artifacts compared to ideal low-pass filters. Good balance
+#'       between sharp cutoff and smooth transition.}
 #'   }
-#' Default: "heat_kernel"
+#'   Default: \code{"heat_kernel"}
 #'
 #' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
 #'   for response. Iteration stops when the relative change in fitted values
