@@ -2180,122 +2180,135 @@ void riem_dcx_t::apply_response_coherence_modulation(
 
 namespace {
 
-/**
- * @brief Apply spectral filter function to eigenvalues
- *
- * @param lambda Eigenvalue (or array of eigenvalues)
- * @param eta Smoothing parameter
- * @param filter_type Type of spectral filter
- * @return Filter weight(s) in [0,1]
- */
-inline double apply_filter_function(
-    double lambda,
-    double eta,
-    rdcx_filter_type_t filter_type
-) {
-    switch (filter_type) {
-    case rdcx_filter_type_t::HEAT_KERNEL:
-        return std::exp(-eta * lambda);
+    /**
+     * @brief Apply spectral filter function to eigenvalues
+     *
+     * @param lambda Eigenvalue (or array of eigenvalues)
+     * @param eta Smoothing parameter
+     * @param filter_type Type of spectral filter
+     * @return Filter weight(s) in [0,1]
+     */
+    inline double apply_filter_function(
+        double lambda,
+        double eta,
+        rdcx_filter_type_t filter_type
+        ) {
+        switch (filter_type) {
+        case rdcx_filter_type_t::HEAT_KERNEL:
+            return std::exp(-eta * lambda);
 
-    case rdcx_filter_type_t::TIKHONOV:
-        return 1.0 / (1.0 + eta * lambda);
+        case rdcx_filter_type_t::TIKHONOV:
+            return 1.0 / (1.0 + eta * lambda);
 
-    case rdcx_filter_type_t::CUBIC_SPLINE:
-        return 1.0 / (1.0 + eta * lambda * lambda);
+        case rdcx_filter_type_t::CUBIC_SPLINE:
+            return 1.0 / (1.0 + eta * lambda * lambda);
 
-    case rdcx_filter_type_t::GAUSSIAN:
-        return std::exp(-eta * lambda * lambda);
+        case rdcx_filter_type_t::GAUSSIAN:
+            return std::exp(-eta * lambda * lambda);
 
-    default:
-        Rf_error("Unsupported filter type");
-        return 0.0;
-    }
-}
+            // NEW CASES:
+        case rdcx_filter_type_t::EXPONENTIAL:
+            return std::exp(-eta * std::sqrt(std::max(lambda, 0.0)));
 
-/**
- * @brief Compute filter weights for all eigenvalues
- */
-Eigen::VectorXd compute_filter_weights(
-    const vec_t& eigenvalues,
-    double eta,
-    rdcx_filter_type_t filter_type
-) {
-    const int m = eigenvalues.size();
-    Eigen::VectorXd weights(m);
+        case rdcx_filter_type_t::BUTTERWORTH:
+            // Using order n = 2 (standard choice)
+        {
+            double ratio = lambda / eta;
+            return 1.0 / (1.0 + ratio * ratio * ratio * ratio);
+        }
 
-    for (int i = 0; i < m; ++i) {
-        weights[i] = apply_filter_function(eigenvalues[i], eta, filter_type);
+        default:
+            Rf_error("Unsupported filter type");
+            return 0.0;
+        }
     }
 
-    return weights;
-}
+    /**
+     * @brief Compute filter weights for all eigenvalues
+     */
+    Eigen::VectorXd compute_filter_weights(
+        const vec_t& eigenvalues,
+        double eta,
+        rdcx_filter_type_t filter_type
+        ) {
+        const int m = eigenvalues.size();
+        Eigen::VectorXd weights(m);
 
-/**
- * @brief Compute GCV score for given smoothing parameter
- *
- * GCV score = ||y - y_hat||^{2} / (n - trace(S))^{2}
- * where trace(S) = sum of filter weights (effective degrees of freedom)
- */
-double compute_gcv_score(
-    const vec_t& y,
-    const vec_t& y_hat,
-    const Eigen::VectorXd& filter_weights
-) {
-    const double n = static_cast<double>(y.size());
-    const double trace_S = filter_weights.sum();
+        for (int i = 0; i < m; ++i) {
+            weights[i] = apply_filter_function(eigenvalues[i], eta, filter_type);
+        }
 
-    double residual_norm_sq = (y - y_hat).squaredNorm();
-    double denom = n - trace_S;
-
-    // Handle edge case where trace is close to n
-    if (std::abs(denom) < 1e-10) {
-        denom = 1e-10;
+        return weights;
     }
 
-    return residual_norm_sq / (denom * denom);
-}
+    /**
+     * @brief Compute GCV score for given smoothing parameter
+     *
+     * GCV score = ||y - y_hat||^{2} / (n - trace(S))^{2}
+     * where trace(S) = sum of filter weights (effective degrees of freedom)
+     */
+    double compute_gcv_score(
+        const vec_t& y,
+        const vec_t& y_hat,
+        const Eigen::VectorXd& filter_weights
+        ) {
+        const double n = static_cast<double>(y.size());
+        const double trace_S = filter_weights.sum();
 
-/**
- * @brief Generate logarithmically-spaced grid for smoothing parameter
- */
-std::vector<double> generate_eta_grid(
-    double lambda_max,
-    rdcx_filter_type_t filter_type,
-    int n_candidates
-) {
-    const double eps = 1e-10;
-    double eta_min = eps;
-    double eta_max;
+        double residual_norm_sq = (y - y_hat).squaredNorm();
+        double denom = n - trace_S;
 
-    // Determine appropriate eta_max based on filter type
-    switch (filter_type) {
-    case rdcx_filter_type_t::HEAT_KERNEL:
-    case rdcx_filter_type_t::GAUSSIAN:
-        // For exponential filters: -log(eps)/lambda_max
-        eta_max = (lambda_max > 0) ? -std::log(eps) / lambda_max : 1.0;
-        break;
+        // Handle edge case where trace is close to n
+        if (std::abs(denom) < 1e-10) {
+            denom = 1e-10;
+        }
 
-    case rdcx_filter_type_t::TIKHONOV:
-    case rdcx_filter_type_t::CUBIC_SPLINE:
-        // For rational filters: 1/eps
-        eta_max = 1.0 / eps;
-        break;
-
-    default:
-        eta_max = 1.0;
-        break;
+        return residual_norm_sq / (denom * denom);
     }
 
-    // Generate logarithmic grid
-    std::vector<double> eta_grid(n_candidates);
-    for (int i = 0; i < n_candidates; ++i) {
-        double t = static_cast<double>(i + 1) / static_cast<double>(n_candidates);
-        eta_grid[i] = std::exp(std::log(eta_min) + t * (std::log(eta_max) - std::log(eta_min)));
+    /**
+     * @brief Generate logarithmically-spaced grid for smoothing parameter
+     */
+    std::vector<double> generate_eta_grid(
+        double lambda_max,
+        rdcx_filter_type_t filter_type,
+        int n_candidates
+        ) {
+        const double eps = 1e-10;
+        double eta_min = eps;
+        double eta_max;
+
+        // Determine appropriate eta_max based on filter type
+        switch (filter_type) {
+        case rdcx_filter_type_t::HEAT_KERNEL:
+        case rdcx_filter_type_t::GAUSSIAN:
+        case rdcx_filter_type_t::EXPONENTIAL:
+            // For exponential filters: -log(eps)/lambda_max
+            eta_max = (lambda_max > 0) ?
+                -std::log(eps) / lambda_max : 1.0;
+            break;
+
+        case rdcx_filter_type_t::TIKHONOV:
+        case rdcx_filter_type_t::CUBIC_SPLINE:
+        case rdcx_filter_type_t::BUTTERWORTH:
+            // For rational filters: 1/eps
+            eta_max = 1.0 / eps;
+            break;
+
+        default:
+            eta_max = 1.0;
+            break;
+        }
+
+        // Generate logarithmic grid
+        std::vector<double> eta_grid(n_candidates);
+        for (int i = 0; i < n_candidates; ++i) {
+            double t = static_cast<double>(i + 1) / static_cast<double>(n_candidates);
+            eta_grid[i] = std::exp(std::log(eta_min) + t * (std::log(eta_max) - std::log(eta_min)));
+        }
+
+        return eta_grid;
     }
-
-    return eta_grid;
-}
-
 } // anonymous namespace
 
 // ============================================================
@@ -2323,10 +2336,30 @@ std::vector<double> generate_eta_grid(
  *                     More eigenpairs capture finer-scale variation.
  *                     Typical values: 50-200 for most applications.
  * @param filter_type Type of spectral filter to apply:
- *        - HEAT_KERNEL: exp(-η\lambda), exponential decay
- *        - TIKHONOV: 1/(1+η\lambda), rational decay
- *        - CUBIC_SPLINE: 1/(1+η\lambda^{2}), spline smoothness
- *        - GAUSSIAN: exp(-η\lambda^{2}), aggressive high-frequency attenuation
+ *        - HEAT_KERNEL: exp(-η·λ), exponential decay. General-purpose filter
+ *          providing smooth, progressive high-frequency attenuation. Most
+ *          commonly used filter for routine applications.
+ *
+ *        - TIKHONOV: 1/(1+η·λ), rational decay. Corresponds to Tikhonov
+ *          regularization. Gentler attenuation than heat kernel, better
+ *          preserves linear trends and mid-frequency components.
+ *
+ *        - CUBIC_SPLINE: 1/(1+η·λ²), spline smoothness. Minimizes second
+ *          derivatives, producing very smooth results similar to cubic
+ *          splines. Excellent when response should vary gradually along paths.
+ *
+ *        - GAUSSIAN: exp(-η·λ²), super-exponential decay. Most aggressive
+ *          high-frequency attenuation among exponential filters. Produces
+ *          extremely smooth results with minimal oscillations or ringing.
+ *
+ *        - EXPONENTIAL: exp(-η·√λ), intermediate decay. Less aggressive than
+ *          heat kernel, maintains more structure in mid-frequency range.
+ *          Useful when moderate smoothing is desired without excessive blur.
+ *
+ *        - BUTTERWORTH: 1/(1+(λ/η)⁴), smooth rational cutoff. Fourth-order
+ *          rational filter (n=2) providing clear frequency separation with
+ *          reduced ringing compared to ideal low-pass filters. Good balance
+ *          between sharpness and smoothness of cutoff.
  *
  * @return gcv_result_t structure containing:
  *         - eta_optimal: Selected smoothing parameter
@@ -2419,7 +2452,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
 
     // Extract needed eigenpairs from cache
     const int m = std::min(n_eigenpairs,
-                          static_cast<int>(spectral_cache.eigenvalues.size()));
+                           static_cast<int>(spectral_cache.eigenvalues.size()));
 
     vec_t eigenvalues = spectral_cache.eigenvalues.head(m);
     Eigen::MatrixXd eigenvectors = spectral_cache.eigenvectors.leftCols(m);
@@ -2446,7 +2479,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
 
     std::vector<double> eta_grid = generate_eta_grid(
         lambda_max, filter_type, n_candidates
-    );
+        );
 
     // ================================================================
     // STEP 4: EVALUATE GCV FOR EACH CANDIDATE PARAMETER
@@ -2463,7 +2496,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
         // Compute filter weights for this eta
         Eigen::VectorXd filter_weights = compute_filter_weights(
             eigenvalues, eta, filter_type
-        );
+            );
 
         // Apply filter in spectral domain
         vec_t y_filtered_spectral = filter_weights.asDiagonal() * y_spectral;
@@ -2554,7 +2587,7 @@ convergence_status_t riem_dcx_t::check_convergence(
     double epsilon_y,
     int iteration,
     int max_iterations
-) {
+    ) {
     // Initialize status structure
     convergence_status_t status;
     status.iteration = iteration;
@@ -2822,7 +2855,7 @@ convergence_status_t riem_dcx_t::check_convergence_with_geometry(
     double epsilon_rho,
     int iteration,
     int max_iterations
-) {
+    ) {
     // Initialize status structure
     convergence_status_t status;
     status.iteration = iteration;
@@ -3075,7 +3108,7 @@ convergence_status_t riem_dcx_t::check_convergence_with_rho(
     double epsilon_rho,
     int iteration,
     int max_iterations
-) {
+    ) {
     // Initialize status structure
     convergence_status_t status;
     status.iteration = iteration;
@@ -3245,7 +3278,7 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
     int iteration,
     int max_iterations,
     const std::vector<double>& response_change_history
-) {
+    ) {
     detailed_convergence_status_t status;
     status.iteration = iteration;
     status.converged = false;
@@ -3353,7 +3386,7 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_with_rho_detailed(
 std::string riem_dcx_t::format_gcv_history(
     const gcv_history_t& gcv_history,
     int max_display
-) const {
+    ) const {
     std::string result;
     char buffer[32];  // Buffer for snprintf
 
@@ -3799,7 +3832,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     double threshold_percentile,
     int test_stage,
     bool verbose
-) {
+    ) {
     // ================================================================
     // PART I: INITIALIZATION
     // ================================================================
@@ -3819,7 +3852,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         density_normalization,
         max_ratio_threshold,
         threshold_percentile
-    );
+        );
 
     // Store original response EARLY, before any possible early returns
     sig.y = y;
@@ -3880,7 +3913,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     gcv_history.clear();
     auto gcv_result = smooth_response_via_spectral_filter(
         y, n_eigenpairs, filter_type
-    );
+        );
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
     sig.y_hat_hist.push_back(y_hat_curr);
@@ -3923,7 +3956,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Perform gamma selection
         auto gamma_result = select_gamma_first_iteration(
             y, gamma_grid, n_eigenpairs, filter_type
-        );
+            );
 
         // Use selected gamma
         gamma_modulation = gamma_result.gamma_optimal;
@@ -4017,7 +4050,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // Apply damped heat diffusion
         vec_t rho_vertex_new = apply_damped_heat_diffusion(
             rho_vertex_prev, t_diffusion, beta_damping
-        );
+            );
 
         // Store evolved densities
         density_history.add(rho_vertex_new);
@@ -4158,7 +4191,7 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
         gcv_result = smooth_response_via_spectral_filter(
             y, n_eigenpairs, filter_type
-        );
+            );
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
 
