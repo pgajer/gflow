@@ -47,11 +47,11 @@
 #'
 #' @export
 prof.fn <- function(id,
-                   S,
-                   bm.tx = NULL,
-                   n.prof = 5,
-                   k.neighbors = 1,
-                   verbose = FALSE) {
+                    S,
+                    bm.tx = NULL,
+                    n.prof = 5,
+                    k.neighbors = 1,
+                    verbose = FALSE) {
     # Input validation
     if (!is.matrix(S) && !is.data.frame(S)) {
         stop("S must be a matrix or data.frame")

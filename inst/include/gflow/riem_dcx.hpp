@@ -589,6 +589,23 @@ struct riem_dcx_t {
         }
     } density_history;
 
+    /**
+     * @brief Cached spectral decomposition of vertex Laplacian
+     *
+     * Stores eigenvalues and eigenvectors of L[0] to avoid recomputation.
+     * Updated whenever the Laplacian is reassembled during iteration.
+     */
+    struct spectral_cache_t {
+        vec_t eigenvalues;           ///< Eigenvalues in ascending order
+        Eigen::MatrixXd eigenvectors; ///< Corresponding eigenvectors (columns)
+        bool is_valid;               ///< True if cache contains current L[0] spectrum
+        double lambda_2;             ///< Spectral gap (second smallest eigenvalue)
+
+        spectral_cache_t() : is_valid(false), lambda_2(0.0) {}
+
+        void invalidate() { is_valid = false; }
+    } spectral_cache;
+
     // ----------------------------------------------------------------
     // Geometric Data (for regression)
     // ----------------------------------------------------------------
@@ -616,7 +633,29 @@ struct riem_dcx_t {
     // ================================================================
 
     /**
-     * @brief Fit kNN Riemannian graph regression model
+     * @brief Fit Riemannian graph regression model using iterative geometric refinement
+     *
+     * @param X Feature matrix (sparse, n x d)
+     * @param y Response vector (length n)
+     * @param k Number of nearest neighbors
+     * @param use_counting_measure If true, use counting measure; else distance-based
+     * @param density_normalization Normalization mode for densities
+     * @param t_diffusion Diffusion time parameter (if <= 0, auto-select using t_scale_factor)
+     * @param beta_damping Damping parameter (if <= 0, auto-select using beta_coefficient_factor)
+     * @param gamma_modulation Response-coherence modulation strength
+     * @param t_scale_factor Scale factor for auto-selecting t (controls diffusion scale t*lambda_2)
+     * @param beta_coefficient_factor Factor for auto-selecting beta (controls damping coefficient beta*t)
+     * @param n_eigenpairs Number of eigenpairs for spectral filtering
+     * @param filter_type Type of spectral filter to apply
+     * @param epsilon_y Convergence threshold for response
+     * @param epsilon_rho Convergence threshold for density
+     * @param max_iterations Maximum number of iterations
+     * @param max_ratio_threshold Maximum ratio threshold for edge pruning
+     * @param threshold_percentile Percentile for adaptive threshold
+     * @param density_alpha Power for distance-based density (default 1.5)
+     * @param density_epsilon Regularization for distance-based density (default 1e-10)
+     * @param test_stage For debugging: stop at specific stage (default -1, run all)
+     * @param verbose Print progress information
      */
     void fit_knn_riem_graph_regression(
         const spmat_t& X,
@@ -627,6 +666,8 @@ struct riem_dcx_t {
         double t_diffusion,
         double beta_damping,
         double gamma_modulation,
+        double t_scale_factor,
+        double beta_coefficient_factor,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type,
         double epsilon_y,
@@ -638,7 +679,7 @@ struct riem_dcx_t {
         double density_epsilon,
         int test_stage,
         bool verbose
-    );
+        );
 
     /**
      * @brief Build boundary operator B[1] from edge_registry
@@ -798,23 +839,6 @@ private:
 
     std::vector<std::unordered_set<index_t>> neighbor_sets;
 
-    /**
-     * @brief Cached spectral decomposition of vertex Laplacian
-     *
-     * Stores eigenvalues and eigenvectors of L[0] to avoid recomputation.
-     * Updated whenever the Laplacian is reassembled during iteration.
-     */
-    struct spectral_cache_t {
-        vec_t eigenvalues;           ///< Eigenvalues in ascending order
-        Eigen::MatrixXd eigenvectors; ///< Corresponding eigenvectors (columns)
-        bool is_valid;               ///< True if cache contains current L[0] spectrum
-        double lambda_2;             ///< Spectral gap (second smallest eigenvalue)
-
-        spectral_cache_t() : is_valid(false), lambda_2(0.0) {}
-
-        void invalidate() { is_valid = false; }
-    } spectral_cache;
-
     // ================================================================
     // INTERNAL HELPERS
     // ================================================================
@@ -833,6 +857,8 @@ private:
     void select_diffusion_parameters(
         double& t_diffusion,
         double& beta_damping,
+        double t_scale_factor,
+        double beta_coefficient_factor,
         int n_eigenpairs,
         bool verbose
         );

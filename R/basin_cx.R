@@ -2906,24 +2906,18 @@ extract.basins.vertices <- function(basin_cx, basin_ids) {
 #'   \item{profiles}{A list of data frames containing the taxonomic profiles for
 #'         each vertex.}
 #'
-#' @details
-#' The function first creates taxonomic profiles for each vertex using the external
-#' prof.fn function. It then generates labels based on the most abundant taxa above
-#' the specified threshold. If multiple vertices get the same label, the function
-#' ensures uniqueness by adding additional taxa information. The labels consist of
-#' two-letter shortcuts for each taxon name, created by taking the first letter of
-#' the first two parts of the underscore-separated name.
-#'
-#' @note
-#' This function requires an external prof.fn function that is not defined here.
-#' The prof.fn function should take an ID, state.space, and taxonomy as arguments and
-#' return a data frame with taxa names in the first column and their abundances in
-#' the second column.
+#' @details The function first creates taxonomic profiles for each vertex using
+#'     the prof.fn function. It then generates labels based on the most abundant
+#'     taxa above the specified threshold. If multiple vertices get the same
+#'     label, the function ensures uniqueness by adding additional taxa
+#'     information. The labels consist of two-letter shortcuts for each taxon
+#'     name, created by taking the first letter of the first two parts of the
+#'     underscore-separated name.
 #'
 #' @export
 create.taxonomic.labels <- function(vertices,
                                     state.space,
-                                    taxonomy,
+                                    taxonomy = NULL,
                                     min.relAb.thld = 0.05
                                     ) {
 
@@ -2951,15 +2945,15 @@ create.taxonomic.labels <- function(vertices,
         # Store profile
         profiles[[as.character(vertex)]] <- profile
 
-        abundances <- as.numeric(profile[, 2])
+        abundances <- as.numeric(profile[, 1])
         above.threshold <- which(abundances >= min.relAb.thld)
 
         if (length(above.threshold) > 0) {
-            taxa.names <- profile[above.threshold, 1]
+            taxa.names <- rownames(profile)[above.threshold][1]
             shortcuts <- sapply(taxa.names, create.shortcut)
             labels[i] <- paste(shortcuts, collapse = "")
         } else {
-            labels[i] <- create.shortcut(profile[1, 1])
+            labels[i] <- create.shortcut(rownames(profile)[1])
         }
     }
 
@@ -2974,7 +2968,7 @@ create.taxonomic.labels <- function(vertices,
 
                 current.taxa <- ceiling(nchar(labels[idx])/2)
                 if (current.taxa < nrow(profile)) {
-                    new.taxon <- create.shortcut(profile[current.taxa + 1, 1])
+                    new.taxon <- create.shortcut(rownames(profile)[current.taxa + 1][1])
                     labels[idx] <- paste0(labels[idx], new.taxon)
                 }
             }
