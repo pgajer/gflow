@@ -1461,15 +1461,15 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
     if (!is.na(x$nrmse.range)) {
       cat(sprintf("  NRMSE (range):   %.2f%%\n", x$nrmse.range * 100))
     }
-    if (!is.na(x$nrmse.sd)) {
-      cat(sprintf("  NRMSE (std dev): %.2f%%\n", x$nrmse.sd * 100))
-    }
+    ## if (!is.na(x$nrmse.sd)) {
+    ##   cat(sprintf("  NRMSE (std dev): %.2f%%\n", x$nrmse.sd * 100))
+    ## }
     if (!is.na(x$nmae.range)) {
       cat(sprintf("  NMAE (range):    %.2f%%\n", x$nmae.range * 100))
     }
-    if (!is.na(x$cv.rmse)) {
-      cat(sprintf("  CV-RMSE:         %.2f%%\n", x$cv.rmse * 100))
-    }
+    ## if (!is.na(x$cv.rmse)) {
+    ##   cat(sprintf("  CV-RMSE:         %.2f%%\n", x$cv.rmse * 100))
+    ## }
     cat("\n")
 
     cat("Response Characteristics:\n")
@@ -1520,9 +1520,9 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
   cat("========================================================\n")
   cat("Normalized Error Metrics:\n")
   cat("  NRMSE (range)   = RMSE / range(y)  [scale-free error]\n")
-  cat("  NRMSE (std dev) = RMSE / sd(y)     [error relative to variability]\n")
+  ##cat("  NRMSE (std dev) = RMSE / sd(y)     [error relative to variability]\n")
   cat("  NMAE (range)    = MAE / range(y)   [scale-free absolute error]\n")
-  cat("  CV-RMSE         = RMSE / |mean(y)| [coefficient of variation]\n")
+  ##cat("  CV-RMSE         = RMSE / |mean(y)| [coefficient of variation]\n")
   cat("\n")
   cat("Interpretation: Normalized metrics express error as a percentage\n")
   cat("of response scale. Values < 10% typically indicate excellent fit,\n")
