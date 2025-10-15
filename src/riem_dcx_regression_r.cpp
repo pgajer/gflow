@@ -292,6 +292,8 @@ extern "C" SEXP create_parameters_component(
     double t_diffusion,
     double beta_damping,
     double gamma_modulation,
+    double t_scale_factor,
+    double beta_coefficient_factor,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
     double epsilon_y,
@@ -299,34 +301,50 @@ extern "C" SEXP create_parameters_component(
     int max_iterations,
     double density_alpha,
     double density_epsilon
-) {
-    const int n_fields = 13;
+    ) {
+
+    const int n_fields = 15;
     SEXP params = PROTECT(Rf_allocVector(VECSXP, n_fields));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
     int idx = 0;
 
+    // k
     SET_STRING_ELT(names, idx, Rf_mkChar("k"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(k));
 
+    // use.counting.measure
     SET_STRING_ELT(names, idx, Rf_mkChar("use.counting.measure"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarLogical(use_counting_measure));
 
+    // density.normalization
     SET_STRING_ELT(names, idx, Rf_mkChar("density.normalization"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_normalization));
 
+    // t.diffusion
     SET_STRING_ELT(names, idx, Rf_mkChar("t.diffusion"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(t_diffusion));
 
+    // beta.damping (formerly density.uniform.pull)
     SET_STRING_ELT(names, idx, Rf_mkChar("beta.damping"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(beta_damping));
 
-    SET_STRING_ELT(names, idx, Rf_mkChar("gamma.modulation"));
+    // response.penalty.exp (formerly gamma.modulation)
+    SET_STRING_ELT(names, idx, Rf_mkChar("response.penalty.exp"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(gamma_modulation));
 
+    // NEW: t.scale.factor
+    SET_STRING_ELT(names, idx, Rf_mkChar("t.scale.factor"));
+    SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(t_scale_factor));
+
+    // NEW: beta.coefficient.factor
+    SET_STRING_ELT(names, idx, Rf_mkChar("beta.coefficient.factor"));
+    SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(beta_coefficient_factor));
+
+    // n.eigenpairs
     SET_STRING_ELT(names, idx, Rf_mkChar("n.eigenpairs"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(n_eigenpairs));
 
-
+    // filter.type
     SET_STRING_ELT(names, idx, Rf_mkChar("filter.type"));
 
     const char* filter_str;
@@ -356,18 +374,23 @@ extern "C" SEXP create_parameters_component(
 
     SET_VECTOR_ELT(params, idx++, Rf_mkString(filter_str));
 
+    // epsilon.y
     SET_STRING_ELT(names, idx, Rf_mkChar("epsilon.y"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(epsilon_y));
 
+    // epsilon.rho
     SET_STRING_ELT(names, idx, Rf_mkChar("epsilon.rho"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(epsilon_rho));
 
+    // max.iterations
     SET_STRING_ELT(names, idx, Rf_mkChar("max.iterations"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarInteger(max_iterations));
 
+    // density.alpha
     SET_STRING_ELT(names, idx, Rf_mkChar("density.alpha"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_alpha));
 
+    // density.epsilon
     SET_STRING_ELT(names, idx, Rf_mkChar("density.epsilon"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_epsilon));
 
@@ -431,6 +454,84 @@ extern "C" SEXP create_gamma_selection_component(const riem_dcx_t& dcx) {
     return gamma_sel;
 }
 
+extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
+                                          int optimal_iter,
+                                          rdcx_filter_type_t filter_type) {
+    const int n_fields = 2;
+    SEXP spectral = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    if (!dcx.spectral_cache.is_valid) {
+        Rf_warning("Spectral cache not valid");
+        UNPROTECT(2);
+        return R_NilValue;
+    }
+
+    const size_t n_eigen = dcx.spectral_cache.eigenvalues.size();
+    const Eigen::Index n_verts = dcx.spectral_cache.eigenvectors.rows();
+
+    // Get the optimal eta from GCV history
+    double eta_opt = dcx.gcv_history.iterations[optimal_iter].eta_optimal;
+
+    // 1. filtered.eigenvalues: F_η(λ)
+    SET_STRING_ELT(names, idx, Rf_mkChar("filtered.eigenvalues"));
+    SEXP s_f_lambda = PROTECT(Rf_allocVector(REALSXP, n_eigen));
+
+    // Apply filter based on type
+    for (size_t i = 0; i < n_eigen; ++i) {
+        double lambda = dcx.spectral_cache.eigenvalues[i];
+        double filtered_value;
+
+        switch (filter_type) {
+            case rdcx_filter_type_t::HEAT_KERNEL:
+                filtered_value = std::exp(-eta_opt * lambda);
+                break;
+            case rdcx_filter_type_t::TIKHONOV:
+                filtered_value = 1.0 / (1.0 + eta_opt * lambda);
+                break;
+            case rdcx_filter_type_t::CUBIC_SPLINE:
+                filtered_value = 1.0 / (1.0 + eta_opt * lambda * lambda);
+                break;
+            case rdcx_filter_type_t::GAUSSIAN:
+                filtered_value = std::exp(-eta_opt * lambda * lambda);
+                break;
+            case rdcx_filter_type_t::EXPONENTIAL:
+                filtered_value = std::exp(-eta_opt * std::sqrt(std::max(lambda, 0.0)));
+                break;
+            case rdcx_filter_type_t::BUTTERWORTH: {
+                // Default to n=2 for Butterworth
+                double ratio = lambda / std::max(eta_opt, 1e-15);
+                filtered_value = 1.0 / (1.0 + ratio * ratio * ratio * ratio);
+                break;
+            }
+            default:
+                filtered_value = 1.0;
+                break;
+        }
+
+        REAL(s_f_lambda)[i] = filtered_value;
+    }
+    SET_VECTOR_ELT(spectral, idx++, s_f_lambda);
+    UNPROTECT(1);
+
+    // 2. eigenvectors: V
+    SET_STRING_ELT(names, idx, Rf_mkChar("eigenvectors"));
+    SEXP s_V = PROTECT(Rf_allocMatrix(REALSXP, n_verts, n_eigen));
+    double* V_data = REAL(s_V);
+    for (size_t j = 0; j < n_eigen; ++j) {
+        for (Eigen::Index i = 0; i < n_verts; ++i) {
+            V_data[i + j * n_verts] = dcx.spectral_cache.eigenvectors(i, j);
+        }
+    }
+    SET_VECTOR_ELT(spectral, idx++, s_V);
+    UNPROTECT(1);
+
+    Rf_setAttrib(spectral, R_NamesSymbol, names);
+    UNPROTECT(2);
+    return spectral;
+}
+
 /**
  * @brief R interface for kNN Riemannian graph regression
  *
@@ -469,6 +570,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_t_diffusion,
     SEXP s_beta_damping,
     SEXP s_gamma_modulation,
+    SEXP s_t_scale_factor,
+    SEXP s_beta_coefficient_factor,
     SEXP s_n_eigenpairs,
     SEXP s_filter_type,
     SEXP s_epsilon_y,
@@ -484,7 +587,6 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     // ================================================================
     // PART I: INPUT EXTRACTION (same as before)
     // ================================================================
-
 
     // -------------------- Feature Matrix X --------------------
 
@@ -721,6 +823,30 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
                  gamma_modulation);
     }
 
+    // -------------------- scale.factor --------------------
+    if (TYPEOF(s_t_scale_factor) != REALSXP || Rf_length(s_t_scale_factor) != 1) {
+        Rf_error("t.scale.factor must be a single numeric");
+    }
+
+    const double t_scale_factor = REAL(s_t_scale_factor)[0];
+
+    if (!R_FINITE(t_scale_factor)) {
+        Rf_error("t.scale.factor must be a finite number (got %.3f)",
+                 t_scale_factor);
+    }
+
+    // -------------------- beta.coefficient.factor --------------------
+    if (TYPEOF(s_beta_coefficient_factor) != REALSXP || Rf_length(s_beta_coefficient_factor) != 1) {
+        Rf_error("beta.coefficient.factor must be a single numeric");
+    }
+
+    const double beta_coefficient_factor = REAL(s_beta_coefficient_factor)[0];
+
+    if (!R_FINITE(beta_coefficient_factor)) {
+        Rf_error("beta.coefficient.factor must be a finite number (got %.3f)",
+                 beta_coefficient_factor);
+    }
+
     // -------------------- n.eigenpairs --------------------
 
     if (TYPEOF(s_n_eigenpairs) != INTSXP || Rf_length(s_n_eigenpairs) != 1) {
@@ -912,6 +1038,8 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
             t_diffusion,
             beta_damping,
             gamma_modulation,
+            t_scale_factor,
+            beta_coefficient_factor,
             n_eigenpairs,
             filter_type,
             epsilon_y,
@@ -1007,7 +1135,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     // ---------- Main result list ----------
 
-    const int n_components = 10;  // Changed from 8 to 9 to add optimal.iteration
+    const int n_components = 11;
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -1059,6 +1187,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SEXP s_params = PROTECT(create_parameters_component(
                                 k, use_counting_measure, density_normalization,
                                 t_diffusion, beta_damping, gamma_modulation,
+                                t_scale_factor, beta_coefficient_factor,
                                 n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations,
                                 density_alpha, density_epsilon
                                 ));
@@ -1100,6 +1229,12 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gamma.selection"));
     SEXP s_gamma_sel = PROTECT(create_gamma_selection_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gamma_sel);
+    UNPROTECT(1);
+
+    // Component 11: spectral
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
+    SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
+    SET_VECTOR_ELT(result, component_idx++, s_spectral);
     UNPROTECT(1);
 
     // Set names attribute

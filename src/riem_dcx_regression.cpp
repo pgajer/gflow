@@ -730,7 +730,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
     for (size_t i = 0; i < n_vertices; ++i) {
         // Apply regularization to ensure strict positivity
         // Density is stored in self-loop at position [0]
-        double mass = std::max(vertex_cofaces[i][0].density, 1e-15);
+        double mass = std::max(vertex_cofaces[i][0].density, 1e-10);
 
         // Update in place (\eqn{M_0} is diagonal, so coeffRef is efficient)
         g.M[0].coeffRef(i, i) = mass;
@@ -912,8 +912,27 @@ void riem_dcx_t::compute_spectral_decomposition(
     auto phase_time = std::chrono::steady_clock::now();
 
     if (verbose) {
-        Rprintf("  Spectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
+        Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
                 L.L[0].rows(), n_eigenpairs);
+
+        #ifdef EIGEN_USE_OPENMP
+            Rprintf("\tEigen OpenMP: ENABLED\n");
+        #else
+            Rprintf("\tEigen OpenMP: DISABLED\n");
+        #endif
+
+        #ifdef _OPENMP
+            Rprintf("\tOpenMP threads available: %d\n", omp_get_max_threads());
+            Rprintf("\tEigen threads: %d\n", Eigen::nbThreads());
+        #else
+            Rprintf("\tOpenMP: NOT AVAILABLE\n");
+        #endif
+
+        #ifdef EIGEN_DONT_VECTORIZE
+            Rprintf("\tEigen vectorization: DISABLED\n");
+        #else
+            Rprintf("\tEigen vectorization: ENABLED\n");
+        #endif
     }
 
     // Validate that Laplacian exists
@@ -926,11 +945,33 @@ void riem_dcx_t::compute_spectral_decomposition(
 
     if (verbose) {
         if (L.L0_sym.rows() > 0) {
-            Rprintf("  Using L0_sym (normalized Laplacian)\n");
+            Rprintf("\tUsing L0_sym (normalized Laplacian)\n");
         } else {
-            Rprintf("  WARNING: Using L[0] (non-normalized) - L0_sym not available!\n");
+            Rprintf("\tWARNING: Using L[0] (non-normalized) - L0_sym not available!\n");
             Rprintf("    Possible reasons: c1.size()=%zu, B[1].cols()=%ld\n",
                     L.c1.size(), L.B.size() > 1 ? (long)L.B[1].cols() : -1L);
+        }
+
+        // Checking for potential ill-conditioning before attempting decomposition
+        bool potential_issues = false;
+
+        if (L.c1.size() > 0) {  // Eigen::VectorXd uses .size(), not .empty()
+            double c_min = L.c1.minCoeff();
+            int n_near_reg = 0;
+            for (int i = 0; i < L.c1.size(); ++i) {
+                if (L.c1[i] < 1e-10) n_near_reg++;
+            }
+
+            if (c_min < 1e-12 || n_near_reg > L.c1.size() * 0.05) {
+                Rprintf("\tWARNING: Detected %d edges (%.1f%%) with conductance < 1e-10\n",
+                        n_near_reg, 100.0 * n_near_reg / L.c1.size());
+                Rprintf("\t         This may cause spectral decomposition failure\n");
+                potential_issues = true;
+            }
+        }
+
+        if (potential_issues && L0.rows() > 1000) {
+            Rprintf("\tSuggestion: Consider using dense solver for more robust decomposition\n");
         }
     }
 
@@ -945,7 +986,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // For small graphs or near-full decomposition, use dense solver
     if (n_eigenpairs >= n_vertices - 2 || n_vertices <= 1000) {
         if (verbose) {
-            Rprintf("  Using dense solver (n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
+            Rprintf("\tUsing dense solver (n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
             phase_time = std::chrono::steady_clock::now();
         }
 
@@ -982,7 +1023,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     int ncv = std::min(2 * nev + 10, n_vertices);
 
     if (verbose) {
-        Rprintf("  Using sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv);
+        Rprintf("\tUsing sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv);
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -1020,6 +1061,165 @@ void riem_dcx_t::compute_spectral_decomposition(
 
     if (verbose) {
         Rprintf("Failed (status=%d)\n", static_cast<int>(eigs.info()));
+
+        // ============================================================
+        // DIAGNOSTIC INFORMATION: Edge conductance distribution
+        // ============================================================
+
+        if (L.c1.size() > 0) {  // Eigen::VectorXd uses .size()
+            Rprintf("\n    DIAGNOSTIC: Edge conductance statistics\n");
+
+            const int n_edges = L.c1.size();
+            std::vector<double> c1_sorted(n_edges);
+            for (int i = 0; i < n_edges; ++i) {
+                c1_sorted[i] = L.c1[i];
+            }
+            std::sort(c1_sorted.begin(), c1_sorted.end());
+
+            double c_min = c1_sorted[0];
+            double c_q1 = c1_sorted[n_edges / 4];
+            double c_median = c1_sorted[n_edges / 2];
+            double c_q3 = c1_sorted[(3 * n_edges) / 4];
+            double c_max = c1_sorted[n_edges - 1];
+
+            Rprintf("    Edge conductances: min=%.2e, Q1=%.2e, median=%.2e, Q3=%.2e, max=%.2e\n",
+                    c_min, c_q1, c_median, c_q3, c_max);
+
+            // Count near-regularization conductances
+            int n_near_reg_12 = 0;
+            int n_near_reg_10 = 0;
+            for (int i = 0; i < n_edges; ++i) {
+                if (c1_sorted[i] < 1e-12) n_near_reg_12++;
+                if (c1_sorted[i] < 1e-10) n_near_reg_10++;
+            }
+
+            Rprintf("    Edges with conductance < 1e-12: %d/%d (%.1f%%)\n",
+                    n_near_reg_12, n_edges, 100.0 * n_near_reg_12 / n_edges);
+            Rprintf("    Edges with conductance < 1e-10: %d/%d (%.1f%%)\n",
+                    n_near_reg_10, n_edges, 100.0 * n_near_reg_10 / n_edges);
+        }
+
+        // ============================================================
+        // DIAGNOSTIC INFORMATION: Normalized Laplacian conditioning
+        // ============================================================
+
+        if (L.L0_sym.rows() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
+            Rprintf("\n    DIAGNOSTIC: Normalized Laplacian conditioning\n");
+
+            const int n = g.M[0].rows();
+            double m_min = std::numeric_limits<double>::max();
+            double m_max = 0.0;
+
+            for (int i = 0; i < n; ++i) {
+                double m = g.M[0].coeff(i, i);
+                m_min = std::min(m_min, m);
+                m_max = std::max(m_max, m);
+            }
+
+            double mass_ratio = m_max / m_min;
+            Rprintf("    Vertex mass M[0]: min=%.2e, max=%.2e, ratio=%.2e\n",
+                    m_min, m_max, mass_ratio);
+
+            // Compute vertex degree distribution from L_div (before normalization)
+            // D_ii = sum of incident edge conductances
+            std::vector<double> vertex_degrees(n, 0.0);
+            for (int e = 0; e < L.c1.size(); ++e) {
+                double c = L.c1[e];
+                if (c <= 0) continue;
+
+                // Find endpoints of edge e from B[1]
+                if (L.B.size() > 1 && e < L.B[1].cols()) {
+                    for (spmat_t::InnerIterator it(L.B[1], e); it; ++it) {
+                        int v = it.row();
+                        vertex_degrees[v] += c;
+                    }
+                }
+            }
+
+            std::sort(vertex_degrees.begin(), vertex_degrees.end());
+            double d_min = vertex_degrees[0];
+            double d_q1 = vertex_degrees[n / 4];
+            double d_median = vertex_degrees[n / 2];
+            double d_q3 = vertex_degrees[(3 * n) / 4];
+            double d_max = vertex_degrees[n - 1];
+
+            Rprintf("    Vertex degrees (conductance sums): min=%.2e, Q1=%.2e, median=%.2e, Q3=%.2e, max=%.2e\n",
+                    d_min, d_q1, d_median, d_q3, d_max);
+
+            double degree_ratio = 0.0;  // Declare it here before using it
+            if (d_min > 0) {
+                degree_ratio = d_max / d_min;
+                Rprintf("    Degree ratio (max/min): %.2e\n", degree_ratio);
+            }
+
+            // Estimate normalized Laplacian conditioning from D^{-1/2} entries
+            // D^{-1/2}_ii = 1/sqrt(D_ii) = 1/sqrt(sum of incident conductances)
+            double Dinv_min = (d_max > 0) ? 1.0 / std::sqrt(d_max) : 0.0;
+            double Dinv_max = (d_min > 0) ? 1.0 / std::sqrt(d_min) : 0.0;
+            double Dinv_ratio = (Dinv_min > 0) ? Dinv_max / Dinv_min : 0.0;
+
+            Rprintf("    D^{-1/2} range: [%.2e, %.2e], ratio=%.2e\n",
+                    Dinv_min, Dinv_max, Dinv_ratio);
+
+            // Warn if conditioning is poor
+            if (degree_ratio > 1e8) {
+                Rprintf("    WARNING: Extreme degree ratio suggests ill-conditioning\n");
+            }
+            if (d_min < 1e-10) {
+                Rprintf("    WARNING: Near-zero vertex degrees detected\n");
+            }
+
+            // Check if we should fallback to dense solver
+            bool extreme_ill_conditioning = false;
+            if (L.c1.size() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
+                // Compute degree ratio
+                const int n = g.M[0].rows();
+                std::vector<double> vertex_degrees(n, 0.0);
+                for (int e = 0; e < L.c1.size(); ++e) {
+                    double c = L.c1[e];
+                    if (c <= 0) continue;
+                    if (L.B.size() > 1 && e < L.B[1].cols()) {
+                        for (spmat_t::InnerIterator it(L.B[1], e); it; ++it) {
+                            vertex_degrees[it.row()] += c;
+                        }
+                    }
+                }
+
+                double d_min = *std::min_element(vertex_degrees.begin(), vertex_degrees.end());
+                double d_max = *std::max_element(vertex_degrees.begin(), vertex_degrees.end());
+
+                if (d_min > 0 && d_max / d_min > 1e12) {
+                    extreme_ill_conditioning = true;
+                }
+            }
+
+            // Attempt dense solver fallback for ill-conditioned cases
+            if (extreme_ill_conditioning && n_vertices <= 5000) {
+                Rprintf("\n    Attempting dense solver fallback due to extreme ill-conditioning...\n");
+                Rprintf("    (This may take longer but should be more robust)\n");
+
+                Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
+                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
+
+                if (dense_solver.info() == Eigen::Success) {
+                    int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
+                    spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
+                    spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
+                    spectral_cache.is_valid = true;
+
+                    if (spectral_cache.eigenvalues.size() >= 2) {
+                        spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                    }
+
+                    Rprintf("    Dense solver succeeded!\n");
+                    return;
+                } else {
+                    Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
+                }
+            }
+        }
+
+        Rprintf("\n");
     }
 
     // ============================================================
@@ -1176,47 +1376,65 @@ void riem_dcx_t::compute_spectral_decomposition(
  * @brief Automatically select diffusion and damping parameters
  *
  * Implements the hybrid strategy combining spectral gap analysis with
- * coordinated parameter selection. If the spectral decomposition has not
+ * user-controlled scale factors. If the spectral decomposition has not
  * been computed, triggers computation automatically.
  *
  * The selection follows these principles:
- * 1. Diffusion time t scales inversely with spectral gap \eqn{\lambda_2}
- * 2. Damping parameter \beta maintains fixed ratio with t
+ * 1. Diffusion time t scales inversely with spectral gap lambda_2
+ * 2. Damping parameter beta maintains fixed coefficient with t
  * 3. User-provided values (> 0) are respected and not overridden
  * 4. Safety warnings for extreme parameter combinations
  *
  * @param t_diffusion Reference to diffusion time parameter (input/output).
- *                    If <= 0 on input, automatically set to \eqn{0.5/\lambda_2}.
+ *                    If <= 0 on input, automatically set to t_scale_factor/lambda_2.
  *                    If > 0 on input, left unchanged (user override).
  *
  * @param beta_damping Reference to damping parameter (input/output).
- *                     If <= 0 on input, automatically set to 0.1/t_diffusion.
+ *                     If <= 0 on input, automatically set to beta_coefficient_factor/t_diffusion.
  *                     If > 0 on input, left unchanged (user override).
+ *
+ * @param t_scale_factor Scale factor for t auto-selection. Controls diffusion scale t*lambda_2.
+ *                       Typical values: 0.15 (conservative), 0.5 (moderate), 1.0 (aggressive).
+ *
+ * @param beta_coefficient_factor Factor for beta auto-selection. Controls damping coefficient beta*t.
+ *                                Typical values: 0.05 (light), 0.1 (moderate), 0.2 (strong).
+ *
+ * @param n_eigenpairs_hint Hint about how many eigenpairs will be needed for filtering.
+ *                          If we compute spectral decomposition, compute this many to avoid recomputation.
  *
  * @param verbose If true, print diagnostic information about selected parameters
  *
  * @pre L[0] must be properly assembled
+ * @pre t_scale_factor > 0 and beta_coefficient_factor > 0
  * @post t_diffusion > 0 and beta_damping > 0
  * @post spectral_cache.is_valid == true
- *
- * @note This function can be called multiple times during iteration if
- *       adaptive parameter adjustment is desired, though the current design
- *       uses fixed parameters throughout.
- *
- * Example usage in fit_knn_riem_graph_regression():
- * @code
- * // After initial Laplacian assembly
- * select_diffusion_parameters(t_diffusion, beta_damping, verbose);
- * // Now t_diffusion and beta_damping are set (either auto or user-provided)
- * @endcode
  */
 void riem_dcx_t::select_diffusion_parameters(
     double& t_diffusion,
     double& beta_damping,
-    int n_eigenpairs_hint,  // Hint about how many we'll need later
+    double t_scale_factor,
+    double beta_coefficient_factor,
+    int n_eigenpairs_hint,
     bool verbose
 ) {
+    // ============================================================
+    // Validate scale factors
+    // ============================================================
+
+    if (t_scale_factor <= 0.0) {
+        Rf_error("t_scale_factor must be positive (got %.3e). Typical range: [0.1, 1.0]",
+                 t_scale_factor);
+    }
+
+    if (beta_coefficient_factor <= 0.0) {
+        Rf_error("beta_coefficient_factor must be positive (got %.3e). Typical range: [0.05, 0.3]",
+                 beta_coefficient_factor);
+    }
+
+    // ============================================================
     // Ensure spectral decomposition is available
+    // ============================================================
+
     if (!spectral_cache.is_valid) {
         // For parameter selection, we only need lambda_2 (first 3 eigenpairs)
         // But if we know we'll need more for filtering, compute them now
@@ -1237,76 +1455,97 @@ void riem_dcx_t::select_diffusion_parameters(
 
     const double lambda_2 = spectral_cache.lambda_2;
 
+    // ============================================================
     // Auto-select t_diffusion if not provided by user
+    // ============================================================
+
     bool t_auto_selected = false;
     if (t_diffusion <= 0.0) {
-        // Use moderate default: 0.5/\lambda_2
-        t_diffusion = 0.5 / lambda_2;
+        // Use user-provided scale factor instead of hardcoded 0.5
+        t_diffusion = t_scale_factor / lambda_2;
         t_auto_selected = true;
 
         if (verbose) {
             Rprintf("Auto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
                     t_diffusion, lambda_2);
             Rprintf("  Conservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
-                    0.1 / lambda_2, 0.5 / lambda_2, 1.0 / lambda_2);
+                    0.1 / lambda_2,
+                    t_scale_factor / lambda_2,
+                    1.0 / lambda_2);
         }
     } else if (verbose) {
-        Rprintf("\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
+        Rprintf("\n\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
     }
 
+    // ============================================================
     // Auto-select beta_damping if not provided by user
+    // ============================================================
+
     bool beta_auto_selected = false;
     if (beta_damping <= 0.0) {
-        // Coordinate with t: damping is 10% of diffusion scale
-        beta_damping = 0.1 / t_diffusion;
+        // Use user-provided coefficient factor instead of hardcoded 0.1
+        beta_damping = beta_coefficient_factor / t_diffusion;
         beta_auto_selected = true;
 
         if (verbose) {
-            Rprintf("Auto-selected beta_damping = %.6f (ratio beta t = %.3f)\n",
-                    beta_damping, beta_damping * t_diffusion);
+            Rprintf("\tAuto-selected beta_damping = %.6f (damping coefficient beta*t = %.3f)\n",
+                    beta_damping, beta_coefficient_factor);
         }
     } else if (verbose) {
         Rprintf("\tUsing user-provided beta_damping = %.6f\n", beta_damping);
     }
 
+    // ============================================================
     // Diagnostic checks and warnings
+    // ============================================================
+
     const double diffusion_scale = t_diffusion * lambda_2;
 
-    if (diffusion_scale > 3.0) {
-        Rf_warning("Large diffusion scale (t lambda_2 = %.2f): density may change dramatically per iteration. "
-                   "Consider reducing t_diffusion to %.6f for more conservative updates.",
+    if (diffusion_scale > 1.5) {
+        Rf_warning("Large diffusion scale (t*lambda_2 = %.2f): density may change dramatically per iteration. "
+                   "Consider reducing t_scale_factor to %.3f for more conservative updates.",
                    diffusion_scale, 1.0 / lambda_2);
     }
 
     if (diffusion_scale < 0.05) {
-        Rf_warning("Small diffusion scale (t lambda_2 = %.2f): convergence may be very slow. "
-                   "Consider increasing t_diffusion to %.6f for faster updates.",
+        Rf_warning("Small diffusion scale (t*lambda_2 = %.2f): convergence may be very slow. "
+                   "Consider increasing t_scale_factor to %.3f for faster updates.",
                    diffusion_scale, 0.3 / lambda_2);
     }
 
-    const double damping_ratio = beta_damping * t_diffusion;
+    const double damping_coefficient = beta_damping * t_diffusion;
 
-    if (damping_ratio > 0.5) {
-        Rf_warning("High damping ratio (beta t = %.2f): may over-suppress geometric structure. "
-                   "Typical range is [0.05, 0.2].", damping_ratio);
+    if (damping_coefficient > 0.5) {
+        Rf_warning("High damping coefficient (beta*t = %.2f): may over-suppress geometric structure. "
+                   "Typical range is [0.05, 0.2]. Consider reducing beta_coefficient_factor.",
+                   damping_coefficient);
     }
 
-    if (damping_ratio < 0.01) {
-        Rf_warning("Low damping ratio (beta t = %.3f): density may collapse onto small regions. "
-                   "Consider increasing beta_damping to %.6f.",
-                   damping_ratio, 0.05 / t_diffusion);
+    if (damping_coefficient < 0.01) {
+        Rf_warning("Low damping coefficient (beta*t = %.3f): density may collapse onto small regions. "
+                   "Consider increasing beta_coefficient_factor.",
+                   damping_coefficient);
     }
 
+    // ============================================================
     // Final summary if verbose
+    // ============================================================
+
     if (verbose) {
         Rprintf("\n\tDiffusion parameter summary:\n");
         Rprintf("  \tlambda_2 (spectral gap):  %.6f\n", lambda_2);
         Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
                 t_auto_selected ? "[auto]" : "[user]");
+        if (t_auto_selected) {
+            Rprintf("  \t  (from t.scale.factor = %.3f)\n", t_scale_factor);
+        }
         Rprintf("  \tbeta (damping):        %.6f %s\n", beta_damping,
                 beta_auto_selected ? "[auto]" : "[user]");
-        Rprintf("  \tDiffusion scale:    %.3f (t lambda_2)\n", diffusion_scale);
-        Rprintf("  \tDamping ratio:      %.3f (beta t)\n", damping_ratio);
+        if (beta_auto_selected) {
+            Rprintf("  \t  (from beta.coefficient.factor = %.3f)\n", beta_coefficient_factor);
+        }
+        Rprintf("  \tDiffusion scale:       %.3f (t*lambda_2)\n", diffusion_scale);
+        Rprintf("  \tDamping coefficient:   %.3f (beta*t)\n", damping_coefficient);
     }
 }
 
@@ -3850,6 +4089,10 @@ std::string riem_dcx_t::format_gcv_history(
  *              Range: 0-2. Default: 1.0. Set to 0 to disable modulation entirely.
  *              Larger values create stronger geometric adaptation.
  *
+ * @param[in] t_scale_factor Scale factor for auto-selecting t (controls diffusion scale t*lambda_2)
+ *
+ * @param[in] beta_coefficient_factor Factor for auto-selecting beta (controls damping coefficient beta*t)
+ *
  * @param[in] n_eigenpairs Number of eigenpairs to compute for spectral filtering.
  *              More eigenpairs capture finer response variation but increase
  *              computation. Typical: 50-200. Use min(n/5, 200) as default.
@@ -3932,6 +4175,8 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     double t_diffusion,
     double beta_damping,
     double gamma_modulation,
+    double t_scale_factor,
+    double beta_coefficient_factor,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
     double epsilon_y,
@@ -4002,12 +4247,14 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
 
     if (verbose) {
         elapsed_time(phase_time, "DONE", true);
-        Rprintf("Phase 4.5: Select or validate diffusion parameters ... ");
+        Rprintf("Phase 4.5: Select diffusion parameters ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
     select_diffusion_parameters(t_diffusion,
                                 beta_damping,
+                                t_scale_factor,
+                                beta_coefficient_factor,
                                 n_eigenpairs,
                                 verbose);
 
@@ -4140,12 +4387,11 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
     vec_t rho_vertex_prev(n_vertices);  // Allocate once
     std::vector<double> response_change_history;
 
-    Rprintf("\n");
-    Rprintf("Starting iterative refinement...\n");
     if (gamma_auto_selected) {
+        Rprintf("\n");
         Rprintf("(using auto-selected gamma = %.3f)\n", gamma_modulation);
+        Rprintf("\n");
     }
-    Rprintf("\n");
 
     // Initialize convergence tracking
     converged = false;
@@ -4160,8 +4406,8 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         // --------------------------------------------------------------
 
         if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 1: Density diffusion ... ", iter);
+            // elapsed_time(phase_time, "DONE", true);
+            Rprintf("\nitr %d: Step 1: Density diffusion ... ", iter);
             phase_time = std::chrono::steady_clock::now();
         }
 
@@ -4385,7 +4631,6 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
             // Check if GCV has been increasing for multiple iterations
             int consecutive_increases = 1;
             for (int i = static_cast<int>(gcv_history.size()) - 2; i >= 1; --i) {
-                // FIXED: Access the gcv_optimal field from the iterations vector
                 if (gcv_history.iterations[i].gcv_optimal >
                     gcv_history.iterations[i-1].gcv_optimal) {
                     consecutive_increases++;
@@ -4403,6 +4648,72 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
                            consecutive_increases);
             }
         }
+
+        // Check if GCV has stabilized
+        if (gcv_history.size() >= 3) {
+            double gcv_variation = 0.0;
+            for (size_t i = gcv_history.size() - 3; i < gcv_history.size() - 1; ++i) {
+                double change = std::abs(gcv_history.iterations[i+1].gcv_optimal -
+                                         gcv_history.iterations[i].gcv_optimal);
+                gcv_variation = std::max(gcv_variation, change);
+            }
+
+            double gcv_current = gcv_history.iterations.back().gcv_optimal;
+            double gcv_relative_variation = gcv_variation / gcv_current;
+
+            // ADAPTIVE THRESHOLD: Using relative criterion for large GCV, absolute for small
+            bool gcv_converged = false;
+
+            if (gcv_current > 1e-3) {
+                // For typical GCV values, using relative criterion
+                gcv_converged = (gcv_relative_variation < 1e-4);  // Relaxed from 1e-5
+            } else {
+                // For very small GCV values, we use absolute criterion to avoid numerical issues
+                gcv_converged = (gcv_variation < 5e-8);
+            }
+
+            if (gcv_converged) {
+                // Set convergence state
+                converged = true;
+                n_iterations = iter;
+
+                if (gcv_current > 1e-3) {
+                    Rprintf("Converged: GCV stable (relative variation %.2e < 1e-4)\n",
+                            gcv_relative_variation);
+                } else {
+                    Rprintf("Converged: GCV stable (absolute variation %.2e < 1e-8)\n",
+                            gcv_variation);
+                }
+
+                break;
+            }
+        }
+
+        #if 0
+        const double gcv_relative_variation_thld = 1e-3;
+        if (gcv_history.size() >= 3) {
+            double gcv_variation = 0.0;
+            for (size_t i = gcv_history.size() - 3; i < gcv_history.size() - 1; ++i) {
+                double change = std::abs(gcv_history.iterations[i+1].gcv_optimal -
+                                         gcv_history.iterations[i].gcv_optimal);
+                gcv_variation = std::max(gcv_variation, change);
+            }
+
+            double gcv_relative_variation = gcv_variation / gcv_history.iterations.back().gcv_optimal;
+            if (gcv_relative_variation < gcv_relative_variation_thld) {
+                // Set convergence state
+                converged = true;
+                n_iterations = iter;
+
+                // Print convergence message
+                Rprintf("Converged: GCV stable (relative variation %.2e < 1e-5)\n",
+                        gcv_relative_variation);
+
+                // Break out of iteration loop
+                break;
+            }
+        }
+        #endif
 
         if (verbose) {
             elapsed_time(phase_time, "DONE", true);
