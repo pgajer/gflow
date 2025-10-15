@@ -290,7 +290,7 @@ void riem_dcx_t::assemble_operators() {
 	for (size_t i = 0; i < vertex_cofaces.size(); ++i) {
 		for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
 			index_t e = vertex_cofaces[i][k].simplex_index;
-			L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-15);
+			L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-10);
 		}
 	}
 
