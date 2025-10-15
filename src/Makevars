@@ -2,7 +2,14 @@
 PKG_CPPFLAGS = -I. -IANN
 PKG_CPPFLAGS += -I../inst/include/gflow
 PKG_CPPFLAGS += -I../inst/include -DR_NO_REMAP
-PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE
+#PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE
+# Only disable parallelization on problematic platforms
+ifeq ($(OS),Windows_NT)
+    PKG_CPPFLAGS += -DEIGEN_DONT_PARALLELIZE
+else
+    # Enable Eigen parallelization on Unix-like systems
+    PKG_CPPFLAGS += -DEIGEN_USE_OPENMP
+endif
 PKG_CPPFLAGS += -D_Alignof=__alignof__
 # Neutralize ANN's DLL decorations (harmless on non-Windows too)
 PKG_CPPFLAGS += -DDLL_API=

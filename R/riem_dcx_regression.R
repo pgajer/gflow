@@ -68,19 +68,20 @@
 #'   Default: \code{"heat_kernel"}
 #'
 #' @param t.diffusion Diffusion time parameter (non-negative). Controls how much
-#'   vertex density evolves in each iteration. If 0 (default), automatically
-#'   selected as \eqn{0.5/\lambda_2} where \eqn{\lambda_2} is the spectral gap.
-#'   Larger values produce more aggressive density updates; smaller values are
-#'   more conservative. Typical range is \eqn{0.1/\lambda_2} to \eqn{1.0/\lambda_2}.
-#'   Set to 0 for automatic selection (recommended).
+#'     vertex density evolves in each iteration. If 0 (default), automatically
+#'     selected as \eqn{0.5/\lambda_2} where \eqn{\lambda_2} is the spectral
+#'     gap. Larger values produce more aggressive density updates; smaller
+#'     values are more conservative. Typical range is \eqn{0.1/\lambda_2} to
+#'     \eqn{1.0/\lambda_2}. Set to 0 for automatic selection (recommended).
 #'
-#' @param density.uniform.pull Restoring force strength (non-negative).
-#'   Controls how strongly vertex densities are pulled back toward uniform
-#'   distribution during diffusion, preventing excessive concentration. If 0
-#'   (default), automatically selected as 0.1/t.diffusion to maintain a 10:1
-#'   ratio of diffusion to restoration. Larger values prevent concentration but
-#'   may over-smooth; smaller values allow more geometric structure but risk
-#'   collapse. Set to 0 for automatic selection (recommended). Former beta.damping.
+#' @param density.uniform.pull Restoring force strength (non-negative). Controls
+#'     how strongly vertex densities are pulled back toward uniform distribution
+#'     during diffusion, preventing excessive concentration. If 0 (default),
+#'     automatically selected as 0.1/t.diffusion to maintain a 10:1 ratio of
+#'     diffusion to restoration. Larger values prevent concentration but may
+#'     over-smooth; smaller values allow more geometric structure but risk
+#'     collapse. Set to 0 for automatic selection (recommended). Former
+#'     beta.damping.
 #'
 #' @param response.penalty.exp Response penalty exponent that controls the rate
 #'     of edge weight reduction as response variation increases, via the penalty
@@ -98,11 +99,41 @@
 #'     characteristics are unknown or when exploring new datasets. When
 #'     positive, must be less than 2.0 and Default 0.3.
 #'
-#' @param use.counting.measure Logical scalar. If TRUE (default), uses uniform
-#'   vertex weights (counting measure). If FALSE, uses distance-based weights
-#'   inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon + d_k(x))^{-\alpha}}.
-#'   Distance-based weights are useful when sampling density varies across
-#'   the feature space.
+#' @param t.scale.factor Diffusion scale factor (positive numeric). Controls the
+#'     dimensionless product \eqn{t \cdot \lambda_2} when \code{t.diffusion = 0}
+#'     (automatic selection), where \eqn{\lambda_2} is the spectral gap of the
+#'     graph Laplacian. This parameter determines how aggressively density
+#'     diffuses per iteration relative to the graph's intrinsic geometric scale.
+#'     Conservative values \eqn{(0.1-0.2)} produce slow but stable density
+#'     evolution, requiring more iterations but reducing risk of oscillation.
+#'     Moderate values \eqn{(0.4-0.6)} balance speed and stability for typical
+#'     applications. Aggressive values \eqn{(0.8-1.0)} accelerate convergence but may
+#'     cause oscillatory behavior when geometric-response feedback is strong.
+#'     The scale factor is ignored when \code{t.diffusion > 0} (manual
+#'     specification). Typical range: \eqn{[0.1, 1.0]}. Default: 0.5
+#'
+#' @param beta.coef.factor Damping coefficient factor (positive numeric).
+#'     Controls the product \eqn{\beta \cdot t} when \code{density.uniform.pull
+#'     = 0} (automatic selection). This parameter determines the strength of the
+#'     restoring force toward uniform distribution during each iteration step.
+#'     The damping prevents excessive concentration of density in small regions
+#'     while allowing genuine accumulation in well-connected areas. Light
+#'     damping (0.05) permits strong concentration and is appropriate when the
+#'     data distribution is expected to be highly non-uniform. Moderate damping
+#'     (0.1) provides balanced geometric adaptation for most applications.
+#'     Strong damping (0.2-0.3) prevents concentration aggressively and is
+#'     appropriate when maintaining dispersed density is important or when the
+#'     response varies smoothly without sharp boundaries. The coefficient factor
+#'     is ignored when \code{density.uniform.pull > 0} (manual specification). A
+#'     coefficient of 0.1 means the restoring force contributes approximately
+#'     10\% as much as the identity term in the system matrix. Typical range:
+#'     \eqn{[0.05, 0.3]}. Default: 0.1
+#'
+#' @param use.counting.measure Logical scalar. If TRUE, uses uniform vertex
+#'     weights (counting measure). If FALSE, uses distance-based weights
+#'     inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon +
+#'     d_k(x))^{-\alpha}}. Distance-based weights are useful when sampling
+#'     density varies across the feature space. Default: FALSE.
 #'
 #' @param density.normalization Numeric scalar, non-negative. Specifies target
 #'   sum for normalized vertex densities. If 0 (default), densities are
@@ -351,7 +382,9 @@ fit.knn.riem.graph.regression <- function(
     t.diffusion = 0,
     density.uniform.pull = 0,
     response.penalty.exp = 0,
-    use.counting.measure = TRUE,
+    t.scale.factor = 0.5,
+    beta.coef.factor = 0.1,
+    use.counting.measure = FALSE,
     density.normalization = 0,
     density.alpha = 1.5,
     density.epsilon = 1e-10,
@@ -468,7 +501,7 @@ fit.knn.riem.graph.regression <- function(
         stop("density.epsilon must be finite and positive, got ", density.epsilon)
     }
 
-    ## ==================== Logical Parameter Validation ====================
+    ## ==================== Parameter use.counting.measure Validation ====================
 
     if (!is.logical(use.counting.measure) || length(use.counting.measure) != 1) {
         stop("use.counting.measure must be TRUE or FALSE")
@@ -534,6 +567,46 @@ fit.knn.riem.graph.regression <- function(
     if (response.penalty.exp > 2.0) {
         warning(sprintf("response.penalty.exp=%.3f must be less than 2.0.\n",
                         response.penalty.exp))
+    }
+
+    ## t.scale.factor
+    if (!is.numeric(t.scale.factor) || length(t.scale.factor) != 1) {
+        stop("t.scale.factor must be a single numeric value")
+    }
+
+    if (t.scale.factor <= 0) {
+        stop("t.scale.factor must be positive (got ", t.scale.factor,
+             "). Typical range: [0.1, 1.0]")
+    }
+
+    if (t.scale.factor < 0.05) {
+        warning("Very small t.scale.factor (", t.scale.factor,
+                "): convergence will be extremely slow. Consider increasing to at least 0.1.")
+    }
+
+    if (t.scale.factor > 2.0) {
+        warning("Very large t.scale.factor (", t.scale.factor,
+                "): may cause oscillations. Consider reducing to below 1.0.")
+    }
+
+    ## beta.coef.factor
+    if (!is.numeric(beta.coef.factor) || length(beta.coef.factor) != 1) {
+        stop("beta.coef.factor must be a single numeric value")
+    }
+
+    if (beta.coef.factor <= 0) {
+        stop("beta.coef.factor must be positive (got ", beta.coef.factor,
+             "). Typical range: [0.05, 0.3]")
+    }
+
+    if (beta.coef.factor < 0.01) {
+        warning("Very small beta.coef.factor (", beta.coef.factor,
+                "): density may collapse. Consider increasing to at least 0.05.")
+    }
+
+    if (beta.coef.factor > 0.5) {
+        warning("Very large beta.coef.factor (", beta.coef.factor,
+                "): may over-suppress structure. Consider reducing to below 0.3.")
     }
 
     ## n.eigenpairs
@@ -693,6 +766,8 @@ fit.knn.riem.graph.regression <- function(
         as.double(t.diffusion),
         as.double(density.uniform.pull),
         as.double(response.penalty.exp),
+        as.double(t.scale.factor),
+        as.double(beta.coef.factor),
         as.integer(n.eigenpairs),
         as.character(filter.type),
         as.double(epsilon.y),
@@ -920,4 +995,542 @@ print.summary.knn.riem.fit <- function(x, digits = 4, ...) {
     cat("========================================================\n")
 
     invisible(x)
+}
+
+#' Diagnostic Plots for k-NN Riemannian Graph Regression
+#'
+#' @param results.list List of fitted model objects from fit.knn.riem.graph.regression
+#' @param k.values Vector of k values corresponding to results.list
+#' @param response Vector of observed response values (for computing relative ranges)
+#' @param main.title Optional main title for the entire plot grid
+#' @param mark.optimal Logical; if TRUE, mark the k selected by GCV in red
+#'
+#' @return Invisibly returns a data frame with all diagnostic metrics
+#' @export
+k.diagnostics.plots <- function(results.list,
+                                 k.values,
+                                 response,
+                                 main.title = "k-NN Bandwidth Diagnostics",
+                                 mark.optimal = TRUE) {
+
+  n.models <- length(results.list)
+  if (length(k.values) != n.models) {
+    stop("Length of k.values must match length of results.list")
+  }
+
+    ## Compute all diagnostics
+    gcv.scores <- numeric(n.models)
+    range.lower <- numeric(n.models)
+    range.upper <- numeric(n.models)
+    stability.corr <- rep(NA_real_, n.models)
+    n.extrema <- numeric(n.models)
+
+    y.mean <- mean(response)
+
+    for (j in seq_len(n.models)) {
+        fit <- results.list[[j]]
+
+        ## GCV score
+        gcv.scores[j] <- fit$gcv$gcv.optimal[fit$optimal.iteration]
+
+        ## Fitted values range (winsorized)
+        fitted.wins <- winsorize(fit$fitted.values, p = 0.02)
+        range.lower[j] <- min(fitted.wins) / y.mean
+        range.upper[j] <- max(fitted.wins) / y.mean
+
+        ## Stability correlation
+        if (j > 1) {
+            fit.prev <- results.list[[j - 1]]
+            stability.corr[j] <- cor(fit.prev$fitted.values, fit$fitted.values)
+        }
+
+        ## Number of local extrema
+        extrema.res <- compute.extrema.hop.nbhds(
+            fit$graph$adj.list,
+            fit$graph$edge.length.list,
+            fit$fitted.values
+        )
+        n.extrema[j] <- nrow(extrema.res$extrema_df)
+    }
+
+    ## Find optimal k by GCV
+    optimal.idx <- which.min(gcv.scores)
+    optimal.k <- k.values[optimal.idx]
+
+    ## Set up 2x2 plotting grid
+    old.par <- par(mfrow = c(2, 2),
+                   mar = c(4, 4, 2.5, 1),
+                   oma = c(0, 0, 2, 0))
+    on.exit(par(old.par))
+
+    ## Plot 1: GCV scores (expressed as deviation from minimum)
+    gcv.min <- min(gcv.scores)
+    gcv.relative <- (gcv.scores - gcv.min) / gcv.min * 100  # percent increase from minimum
+
+    plot(k.values, gcv.relative,
+         type = "b",
+         pch = 19,
+         col = "steelblue",
+         xlab = "Neighborhood size k",
+         ylab = "GCV increase from minimum (%)",
+         main = "Cross-Validation Criterion",
+         las = 1,
+         panel.first = grid(col = "gray90", lty = 1))
+
+    if (mark.optimal) {
+        abline(v = optimal.k, col = "firebrick", lwd = 2, lty = 2)
+        abline(h = 0, col = "gray40", lty = 1)
+        text(optimal.k, max(gcv.relative),
+             labels = paste0("k = ", optimal.k),
+             pos = 4, col = "firebrick", cex = 0.9)
+    }
+
+    ## Plot 2: Fitted values range
+    y.range <- range(c(range.lower, range.upper))
+    plot(k.values, range.lower,
+         type = "n",
+         ylim = y.range,
+         xlab = "Neighborhood size k",
+         ylab = "Relative range (normalized by mean response)",
+         main = "Prediction Range Stability",
+         las = 1,
+         panel.first = grid(col = "gray90", lty = 1))
+
+    ## Add shaded region
+    polygon(c(k.values, rev(k.values)),
+            c(range.lower, rev(range.upper)),
+            col = adjustcolor("steelblue", alpha.f = 0.3),
+            border = NA)
+
+    lines(k.values, range.lower, type = "b", pch = 19, col = "steelblue")
+    lines(k.values, range.upper, type = "b", pch = 19, col = "steelblue")
+    abline(h = 1, col = "gray40", lwd = 1.5, lty = 1)
+
+    if (mark.optimal) {
+        abline(v = optimal.k, col = "firebrick", lwd = 2, lty = 2)
+    }
+
+    ## Add legend
+    legend("topright",
+           legend = c("Lower bound", "Upper bound", "Mean response"),
+           col = c("steelblue", "steelblue", "gray40"),
+           lty = c(1, 1, 1),
+           lwd = c(1, 1, 1.5),
+           pch = c(19, 19, NA),
+           bty = "n",
+           cex = 0.8)
+
+    ## Plot 3: Stability correlation
+    plot(k.values, stability.corr,
+         type = "b",
+         pch = 19,
+         col = "steelblue",
+         xlab = "Neighborhood size k",
+         ylab = "Correlation with k-1 fit",
+         main = "Fit Stability Across k",
+         las = 1,
+         ylim = c(0, 1),
+         panel.first = grid(col = "gray90", lty = 1))
+
+    if (mark.optimal) {
+        abline(v = optimal.k, col = "firebrick", lwd = 2, lty = 2)
+    }
+
+    ## Plot 4: Number of extrema
+    plot(k.values, n.extrema,
+         type = "b",
+         pch = 19,
+         col = "steelblue",
+         xlab = "Neighborhood size k",
+         ylab = "Count",
+         main = "Geometric Complexity (Local Extrema)",
+         las = 1,
+         panel.first = grid(col = "gray90", lty = 1))
+
+    if (mark.optimal) {
+        abline(v = optimal.k, col = "firebrick", lwd = 2, lty = 2)
+    }
+
+    ## Add overall title
+    mtext(main.title, outer = TRUE, cex = 1.2, font = 2)
+
+    ## Return diagnostic data frame
+    diagnostics.df <- data.frame(
+        k = k.values,
+        gcv = gcv.scores,
+        range.lower = range.lower,
+        range.upper = range.upper,
+        stability.corr = stability.corr,
+        n.extrema = n.extrema,
+        is.optimal = k.values == optimal.k
+    )
+
+    invisible(diagnostics.df)
+}
+
+#' Extract Optimal k from Diagnostics Data Frame
+#'
+#' @param diag.df Data frame returned by k.diagnostics.plots
+#'
+#' @return A list with optimal k value and its index
+#' @export
+get.rcx.optimal.k <- function(diag.df) {
+  if (!any(diag.df$is.optimal)) {
+    stop("No optimal k found in diagnostics data frame")
+  }
+
+  optimal.idx <- which(diag.df$is.optimal)
+  optimal.k <- diag.df$k[optimal.idx]
+
+  list(
+    k = optimal.k,
+    idx = optimal.idx,
+    gcv = diag.df$gcv[optimal.idx]
+  )
+}
+
+#' Refit Riemannian Graph Regression Model with New Response(s)
+#'
+#' @description
+#' Apply the learned spectral filter from a fitted model to new response
+#' variable(s) using the same graph geometry. This is computationally
+#' efficient as it reuses the cached eigendecomposition without rebuilding
+#' the graph or recomputing the Laplacian.
+#'
+#' @param fitted.model A fitted model object from \code{fit.knn.riem.graph.regression}
+#' @param y.new New response data. Can be:
+#'   \itemize{
+#'     \item A numeric vector of length n (single response)
+#'     \item A numeric matrix of dimension n × p (p response variables)
+#'   }
+#'   where n must match the number of observations in the original fit.
+#'
+#' @return A list with components:
+#'   \itemize{
+#'     \item \code{fitted.values}: Fitted values (vector if y.new is vector,
+#'           matrix if y.new is matrix)
+#'     \item \code{residuals}: Residuals (same shape as y.new)
+#'     \item \code{n.responses}: Number of response variables (1 for vector,
+#'           p for matrix)
+#'   }
+#'
+#' @details
+#' The function applies the learned spectral operator
+#' \eqn{\hat{y} = V \text{diag}(F_\eta(\Lambda)) V^T y} where V and
+#' \eqn{F_\eta(\Lambda)} are cached from the optimal iteration of the
+#' original fit. For matrix input, the operation is applied column-wise,
+#' fitting all response variables simultaneously using the same geometry.
+#'
+#' This is particularly useful for:
+#' \itemize{
+#'   \item Bootstrap resampling (fit multiple bootstrap responses)
+#'   \item Permutation testing (fit permuted responses)
+#'   \item Multivariate regression (multiple outcomes sharing feature space)
+#'   \item Cross-validation (refit on different subsets)
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Fit initial model
+#' fit <- fit.knn.riem.graph.regression(X, y, k = 15)
+#'
+#' # Single new response
+#' y.new <- y + rnorm(length(y), sd = 0.1)
+#' refit.single <- refit.knn.riem.graph.regression(fit, y.new)
+#'
+#' # Multiple responses (e.g., bootstrap)
+#' Y.boot <- replicate(100, sample(y, replace = TRUE))
+#' refit.multi <- refit.knn.riem.graph.regression(fit, Y.boot)
+#' dim(refit.multi$fitted.values)  # n × 100
+#' }
+#'
+#' @export
+refit.knn.riem.graph.regression <- function(fitted.model, y.new) {
+
+    ## Validate input
+    if (!inherits(fitted.model, "knn.riem.fit")) {
+        stop("fitted.model must be a 'knn.riem.fit' object from fit.knn.riem.graph.regression()")
+    }
+
+    if (is.null(fitted.model$spectral)) {
+        stop("Fitted model does not contain spectral component. ",
+             "Cannot refit without cached eigendecomposition.")
+    }
+
+    ## Extract spectral components
+    V <- fitted.model$spectral$eigenvectors
+    f_lambda <- fitted.model$spectral$filtered.eigenvalues
+    n <- nrow(V)
+
+    ## Validate and prepare y.new
+    is_matrix <- is.matrix(y.new)
+
+    if (is_matrix) {
+        if (nrow(y.new) != n) {
+            stop(sprintf("Number of rows in y.new (%d) must match fitted model (%d)",
+                         nrow(y.new), n))
+        }
+        n_responses <- ncol(y.new)
+    } else {
+        ## Convert vector to column matrix for uniform handling
+        if (length(y.new) != n) {
+            stop(sprintf("Length of y.new (%d) must match fitted model (%d)",
+                         length(y.new), n))
+        }
+        y.new <- as.matrix(y.new, ncol = 1)
+        n_responses <- 1
+    }
+
+    ## Apply spectral filter: Ŷ = V diag(F_η(λ)) V^T Y
+    ## This formula works for both single and multiple responses
+    Vt_Y <- crossprod(V, y.new)           # V^T Y: (m × n) × (n × p) = m × p
+    filtered <- f_lambda * Vt_Y           # Element-wise: m × p (broadcasts f_lambda)
+    Y.hat <- V %*% filtered               # V × filtered: (n × m) × (m × p) = n × p
+
+    ## Compute residuals
+    residuals <- y.new - Y.hat
+
+    ## Return in appropriate format
+    result <- list(
+        fitted.values = if (n_responses == 1) as.vector(Y.hat) else Y.hat,
+        residuals = if (n_responses == 1) as.vector(residuals) else residuals,
+        n.responses = n_responses
+    )
+
+    class(result) <- c("knn.riem.refit", "list")
+    return(result)
+}
+
+#' @export
+print.knn.riem.refit <- function(x, ...) {
+  cat("\nRefitted Riemannian Graph Regression\n")
+  cat("====================================\n\n")
+
+  if (x$n.responses == 1) {
+    cat(sprintf("Single response variable (n = %d)\n", length(x$fitted.values)))
+    cat(sprintf("RMSE: %.4f\n", sqrt(mean(x$residuals^2))))
+    cat(sprintf("MAE:  %.4f\n", mean(abs(x$residuals))))
+  } else {
+    cat(sprintf("Multiple responses (n = %d, p = %d)\n",
+                nrow(x$fitted.values), x$n.responses))
+    rmse_by_col <- apply(x$residuals, 2, function(r) sqrt(mean(r^2)))
+    cat(sprintf("Mean RMSE across responses: %.4f\n", mean(rmse_by_col)))
+    cat(sprintf("RMSE range: [%.4f, %.4f]\n", min(rmse_by_col), max(rmse_by_col)))
+  }
+
+  invisible(x)
+}
+
+#' @export
+summary.knn.riem.refit <- function(object, ...) {
+  n_resp <- object$n.responses
+  n_obs <- if (n_resp == 1) length(object$fitted.values) else nrow(object$fitted.values)
+
+  if (n_resp == 1) {
+    # Single response summary
+    y_hat <- object$fitted.values
+    resid <- object$residuals
+    y_obs <- y_hat + resid  # Reconstruct observed values
+
+    # Basic fit quality metrics
+    rss <- sum(resid^2)
+    tss <- sum((y_obs - mean(y_obs))^2)
+    r_squared <- 1 - rss / tss
+    adj_r_squared <- 1 - (1 - r_squared) * (n_obs - 1) / (n_obs - 2)
+    rmse <- sqrt(mean(resid^2))
+    mae <- mean(abs(resid))
+
+    # Normalization factors
+    y_range <- diff(range(y_obs))
+    y_sd <- sd(y_obs)
+    y_mean <- mean(y_obs)
+
+    # Relative metrics
+    nrmse_range <- if (y_range > 0) rmse / y_range else NA
+    nrmse_sd <- if (y_sd > 0) rmse / y_sd else NA
+    nmae_range <- if (y_range > 0) mae / y_range else NA
+
+    # CV-RMSE (only if y is positive or mean is not near zero)
+    cv_rmse <- if (abs(y_mean) > 1e-10) rmse / abs(y_mean) else NA
+
+    result <- list(
+      n = n_obs,
+      n.responses = 1,
+
+      # Absolute metrics
+      rmse = rmse,
+      mae = mae,
+      r.squared = r_squared,
+      adj.r.squared = adj_r_squared,
+
+      # Relative metrics
+      nrmse.range = nrmse_range,
+      nrmse.sd = nrmse_sd,
+      nmae.range = nmae_range,
+      cv.rmse = cv_rmse,
+
+      # Response characteristics
+      residual.range = range(resid),
+      fitted.range = range(y_hat),
+      y.range = range(y_obs),
+      y.mean = y_mean,
+      y.sd = y_sd
+    )
+
+  } else {
+    # Multiple responses summary
+    Y_hat <- object$fitted.values
+    Resid <- object$residuals
+    Y_obs <- Y_hat + Resid
+
+    # Compute metrics for each response
+    rmse_vec <- apply(Resid, 2, function(r) sqrt(mean(r^2)))
+    mae_vec <- apply(Resid, 2, function(r) mean(abs(r)))
+
+    r_squared_vec <- sapply(1:n_resp, function(j) {
+      rss <- sum(Resid[, j]^2)
+      tss <- sum((Y_obs[, j] - mean(Y_obs[, j]))^2)
+      1 - rss / tss
+    })
+
+    # Compute normalized metrics for each response
+    nrmse_range_vec <- sapply(1:n_resp, function(j) {
+      y_range <- diff(range(Y_obs[, j]))
+      if (y_range > 0) rmse_vec[j] / y_range else NA
+    })
+
+    nrmse_sd_vec <- sapply(1:n_resp, function(j) {
+      y_sd <- sd(Y_obs[, j])
+      if (y_sd > 0) rmse_vec[j] / y_sd else NA
+    })
+
+    result <- list(
+      n = n_obs,
+      n.responses = n_resp,
+
+      # Absolute metrics
+      rmse.mean = mean(rmse_vec),
+      rmse.sd = sd(rmse_vec),
+      rmse.range = range(rmse_vec),
+
+      mae.mean = mean(mae_vec),
+      mae.sd = sd(mae_vec),
+      mae.range = range(mae_vec),
+
+      r.squared.mean = mean(r_squared_vec),
+      r.squared.sd = sd(r_squared_vec),
+      r.squared.range = range(r_squared_vec),
+
+      # Normalized metrics (averaged across responses)
+      nrmse.range.mean = mean(nrmse_range_vec, na.rm = TRUE),
+      nrmse.sd.mean = mean(nrmse_sd_vec, na.rm = TRUE),
+
+      # Per-response details
+      per.response = data.frame(
+        response = 1:n_resp,
+        rmse = rmse_vec,
+        mae = mae_vec,
+        r.squared = r_squared_vec,
+        nrmse.range = nrmse_range_vec,
+        nrmse.sd = nrmse_sd_vec
+      )
+    )
+  }
+
+  class(result) <- "summary.knn.riem.refit"
+  return(result)
+}
+
+#' @export
+print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
+  cat("\n")
+  cat("========================================================\n")
+  cat("Refitted Riemannian Graph Regression Summary\n")
+  cat("========================================================\n\n")
+
+  if (x$n.responses == 1) {
+    # Single response output
+    cat("Fit Quality (Absolute):\n")
+    cat(sprintf("  Observations:    n = %d\n", x$n))
+    cat(sprintf("  RMSE:            %.4f\n", x$rmse))
+    cat(sprintf("  MAE:             %.4f\n", x$mae))
+    cat(sprintf("  R-squared:       %.4f\n", x$r.squared))
+    cat(sprintf("  Adj. R-squared:  %.4f\n\n", x$adj.r.squared))
+
+    cat("Fit Quality (Relative):\n")
+    if (!is.na(x$nrmse.range)) {
+      cat(sprintf("  NRMSE (range):   %.2f%%\n", x$nrmse.range * 100))
+    }
+    if (!is.na(x$nrmse.sd)) {
+      cat(sprintf("  NRMSE (std dev): %.2f%%\n", x$nrmse.sd * 100))
+    }
+    if (!is.na(x$nmae.range)) {
+      cat(sprintf("  NMAE (range):    %.2f%%\n", x$nmae.range * 100))
+    }
+    if (!is.na(x$cv.rmse)) {
+      cat(sprintf("  CV-RMSE:         %.2f%%\n", x$cv.rmse * 100))
+    }
+    cat("\n")
+
+    cat("Response Characteristics:\n")
+    cat(sprintf("  Mean:            %.4f\n", x$y.mean))
+    cat(sprintf("  Std Dev:         %.4f\n", x$y.sd))
+    cat(sprintf("  Observed range:  [%.4f, %.4f]\n", x$y.range[1], x$y.range[2]))
+    cat(sprintf("  Fitted range:    [%.4f, %.4f]\n", x$fitted.range[1], x$fitted.range[2]))
+    cat(sprintf("  Residual range:  [%.4f, %.4f]\n", x$residual.range[1], x$residual.range[2]))
+
+  } else {
+    # Multiple responses output
+    cat(sprintf("Number of responses:       p = %d\n", x$n.responses))
+    cat(sprintf("Observations per response: n = %d\n\n", x$n))
+
+    cat("Fit Quality - Absolute (across all responses):\n")
+    cat(sprintf("  RMSE:       %.4f ± %.4f  [%.4f, %.4f]\n",
+                x$rmse.mean, x$rmse.sd, x$rmse.range[1], x$rmse.range[2]))
+    cat(sprintf("  MAE:        %.4f ± %.4f  [%.4f, %.4f]\n",
+                x$mae.mean, x$mae.sd, x$mae.range[1], x$mae.range[2]))
+    cat(sprintf("  R-squared:  %.4f ± %.4f  [%.4f, %.4f]\n\n",
+                x$r.squared.mean, x$r.squared.sd,
+                x$r.squared.range[1], x$r.squared.range[2]))
+
+    cat("Fit Quality - Relative (averaged across responses):\n")
+    if (!is.na(x$nrmse.range.mean)) {
+      cat(sprintf("  NRMSE (range):   %.2f%%\n", x$nrmse.range.mean * 100))
+    }
+    if (!is.na(x$nrmse.sd.mean)) {
+      cat(sprintf("  NRMSE (std dev): %.2f%%\n\n", x$nrmse.sd.mean * 100))
+    }
+
+    # Show per-response details if not too many
+    if (x$n.responses <= 10) {
+      cat("Per-Response Details:\n")
+      print(x$per.response, digits = digits, row.names = FALSE)
+    } else {
+      cat(sprintf("Per-response details available in $per.response (use summary(fit)$per.response)\n"))
+      cat("Showing first 5 and last 5 responses:\n\n")
+      to_show <- rbind(
+        head(x$per.response, 5),
+        tail(x$per.response, 5)
+      )
+      print(to_show, digits = digits, row.names = FALSE)
+    }
+  }
+
+  cat("\n")
+  cat("========================================================\n")
+  cat("Normalized Error Metrics:\n")
+  cat("  NRMSE (range)   = RMSE / range(y)  [scale-free error]\n")
+  cat("  NRMSE (std dev) = RMSE / sd(y)     [error relative to variability]\n")
+  cat("  NMAE (range)    = MAE / range(y)   [scale-free absolute error]\n")
+  cat("  CV-RMSE         = RMSE / |mean(y)| [coefficient of variation]\n")
+  cat("\n")
+  cat("Interpretation: Normalized metrics express error as a percentage\n")
+  cat("of response scale. Values < 10% typically indicate excellent fit,\n")
+  cat("10-20% good fit, > 30% may warrant investigation.\n")
+  cat("\n")
+  cat("Note: This summary reflects fit quality using a pre-learned\n")
+  cat("      spectral operator from the original model. No iteration\n")
+  cat("      or parameter optimization was performed.\n")
+
+  invisible(x)
 }

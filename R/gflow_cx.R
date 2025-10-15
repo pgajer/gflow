@@ -1833,7 +1833,7 @@ suggest.threshold <- function(extrema_df,
 #' )
 #' }
 #'
-#' @export
+#' @export compare.retained.extrema
 compare.retained.extrema <- function(extrema_df,
                                     thresholds = c(2, 3, 4, 5),
                                     sort_by = "hop_idx") {

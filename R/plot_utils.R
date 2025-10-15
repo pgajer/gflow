@@ -155,7 +155,6 @@ plot3D.cont <- function(X,
             on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
         } else {
             ## Interactive: create a large square window
-            ## Get screen dimensions
             screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
 
             ## Calculate square window size (use ~80% of screen height for safety)
@@ -171,12 +170,42 @@ plot3D.cont <- function(X,
 
             rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
         }
+
     } else {
         ## Device already open, use it (but don't close it on exit)
         rgl::set3d(rgl::cur3d())
     }
 
     rgl::clear3d()
+
+    ## if (rgl::cur3d() == 0) {
+    ##     ## No device open, create a new one
+    ##     if (use_null) {
+    ##         ## Null device for headless environments
+    ##         rgl::open3d()
+    ##         on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    ##     } else {
+    ##         ## Interactive: create a large square window
+    ##         ## Get screen dimensions
+    ##         screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
+
+    ##         ## Calculate square window size (use ~80% of screen height for safety)
+    ##         if (inherits(screen_info, "try-error")) {
+    ##             ## Fallback if we can't get screen info
+    ##             window_size <- 800
+    ##         } else {
+    ##             ## Estimate available screen space
+    ##             ## par3d("windowRect") returns current window, not screen size
+    ##             ## Use a reasonable maximum
+    ##             window_size <- min(1200, 800)  ## Conservative default
+    ##         }
+
+    ##         rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
+    ##     }
+    ## } else {
+    ##     ## Device already open, use it (but don't close it on exit)
+    ##     rgl::set3d(rgl::cur3d())
+    ## }
 
     ## Validate inputs
     if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
