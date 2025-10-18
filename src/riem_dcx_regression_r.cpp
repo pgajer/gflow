@@ -583,7 +583,7 @@ extern "C" SEXP create_extremality_component(
  *       performed on the R side in fit.knn.riem.graph.regression().
  *       Additional defensive checks are included here for robustness.
  */
-extern "C" SEXP S_fit_knn_riem_graph_regression(
+extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_X,
     SEXP s_y,
     SEXP s_k,
@@ -1051,7 +1051,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     riem_dcx_t dcx;  // Stack allocation now! No need for new/delete
 
     try {
-        dcx.fit_knn_riem_graph_regression(
+        dcx.fit_rdgraph_regression(
             X_sparse,
             y,
             k,

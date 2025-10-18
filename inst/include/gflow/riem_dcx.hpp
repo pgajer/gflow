@@ -657,7 +657,7 @@ struct riem_dcx_t {
      * @param test_stage For debugging: stop at specific stage (default -1, run all)
      * @param verbose Print progress information
      */
-    void fit_knn_riem_graph_regression(
+    void fit_rdgraph_regression(
         const spmat_t& X,
         const vec_t& y,
         index_t k,

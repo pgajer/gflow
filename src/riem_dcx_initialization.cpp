@@ -275,7 +275,7 @@ knn_result_t compute_knn_from_eigen(
  * @post Metric matrices g.M[0] and g.M[1] are constructed
  * @post Boundary operators B[1] and B[2] are assembled
  * @post Hodge Laplacians L.L[0] and L.L[1] are assembled
- * @post The object is ready for fit_knn_riem_graph_regression() to proceed
+ * @post The object is ready for fit_rdgraph_regression() to proceed
  *       with iterative refinement
  *
  * @note To explore graph connectivity before calling this function, use
@@ -286,7 +286,7 @@ knn_result_t compute_knn_from_eigen(
  *       recommended for data with highly variable local density, where k-NN
  *       construction may create spurious long-range edges in sparse regions.
  *
- * @see fit_knn_riem_graph_regression() for the main regression function
+ * @see fit_rdgraph_regression() for the main regression function
  * @see compute_connected_components() for connectivity validation
  * @see initialize_reference_measure() for density weighting details
  */

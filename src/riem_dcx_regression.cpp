@@ -709,7 +709,7 @@ void riem_dcx_t::build_boundary_operator_from_triangles() {
  * @see compute_edge_mass_matrix() for Step 4 (builds \eqn{M_1})
  * @see apply_response_coherence_modulation() for Step 5 (modulates \eqn{M_1})
  * @see assemble_operators() for Step 6 (rebuilds L_0 from updated metric)
- * @see fit_knn_riem_graph_regression() for complete iteration context
+ * @see fit_rdgraph_regression() for complete iteration context
  */
 void riem_dcx_t::update_vertex_metric_from_density() {
     const size_t n_vertices = vertex_cofaces.size();
@@ -863,7 +863,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
  * @see compute_edge_mass_matrix() for the initial mass matrix construction
  * @see update_vertex_metric_from_density() for \eqn{M_0} update (previous step)
  * @see apply_response_coherence_modulation() for \eqn{M_1} modulation (next step)
- * @see fit_knn_riem_graph_regression() for complete iteration context
+ * @see fit_rdgraph_regression() for complete iteration context
  */
 void riem_dcx_t::update_edge_mass_matrix() {
     // For now, just call the full computation
@@ -1653,7 +1653,7 @@ void riem_dcx_t::select_diffusion_parameters(
  *
  * @see apply_response_coherence_modulation() for modulation mechanism
  * @see smooth_response_via_spectral_filter() for GCV computation
- * @see fit_knn_riem_graph_regression() for main algorithm context
+ * @see fit_rdgraph_regression() for main algorithm context
  *
  * Example usage:
  * @code
@@ -1936,7 +1936,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * or disconnected regions receive low density.
  *
  * ITERATION CONTEXT:
- * Within each iteration of fit_knn_riem_graph_regression():
+ * Within each iteration of fit_rdgraph_regression():
  *   Step 1: Density diffusion evolves vertex densities via damped heat equation
  *   Step 2: Edge density update \leftarrow THIS FUNCTION
  *   Step 3: Vertex mass matrix update (builds \eqn{M_0} from vertex densities)
@@ -2228,7 +2228,7 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
  *
  * @see compute_edge_mass_matrix() for Step 4 (builds \eqn{M_1} before modulation)
  * @see assemble_operators() for Step 6 (uses modulated \eqn{M_1} to build L_0)
- * @see fit_knn_riem_graph_regression() for complete iteration context
+ * @see fit_rdgraph_regression() for complete iteration context
  */
 void riem_dcx_t::apply_response_coherence_modulation(
     const vec_t& y_hat,
@@ -4028,7 +4028,7 @@ std::string riem_dcx_t::format_gcv_history(
  * Eigen::VectorXd y = ...;             // n response vector
  *
  * // Fit with default parameters
- * complex.fit_knn_riem_graph_regression(
+ * complex.fit_rdgraph_regression(
  *     X, y,
  *     20,                              // k neighbors
  *     true,                            // use counting measure
@@ -4167,7 +4167,7 @@ std::string riem_dcx_t::format_gcv_history(
  * @see apply_damped_heat_diffusion() for density evolution
  * @see apply_response_coherence_modulation() for edge modulation
  */
-void riem_dcx_t::fit_knn_riem_graph_regression(
+void riem_dcx_t::fit_rdgraph_regression(
     const spmat_t& X,
     const vec_t& y,
     index_t k,
