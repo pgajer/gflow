@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-	SEXP S_fit_knn_riem_graph_regression(
+	SEXP S_fit_rdgraph_regression(
 		SEXP s_X,
 		SEXP s_y,
 		SEXP s_k,

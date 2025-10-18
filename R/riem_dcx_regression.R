@@ -332,7 +332,7 @@
 #' X <- matrix(rnorm(n * 3), n, 3)
 #' y <- sin(2 * pi * X[,1]) + 0.5 * X[,2]^2 + rnorm(n, sd = 0.2)
 #'
-#' fit <- fit.knn.riem.graph.regression(X, y, k = 15)
+#' fit <- fit.rdgraph.regression(X, y, k = 15)
 #' y.hat <- fitted(fit)
 #' plot(y, y.hat, asp = 1, main = "Fitted vs Actual")
 #' abline(0, 1, col = "red")
@@ -342,13 +342,13 @@
 #' y <- ifelse(X[,1]^2 + X[,2]^2 < 0.5, 1, 0) + rnorm(n, sd = 0.1)
 #'
 #' # Use larger gamma for sharper boundary detection
-#' fit <- fit.knn.riem.graph.regression(X, y, k = 20, response.penalty.exp = 1.5)
+#' fit <- fit.rdgraph.regression(X, y, k = 20, response.penalty.exp = 1.5)
 #' y.hat <- fitted(fit)
 #'
 #' # Example 3: Using sparse matrix input
 #' library(Matrix)
 #' X.sparse <- Matrix(X, sparse = TRUE)
-#' fit <- fit.knn.riem.graph.regression(X.sparse, y, k = 15)
+#' fit <- fit.rdgraph.regression(X.sparse, y, k = 15)
 #'
 #' # Example 4: Automatic response.penalty.exp selection
 #' # When optimal gamma is unknown, use automatic selection
@@ -358,7 +358,7 @@
 #' y <- ifelse(X[,1] > 0, sin(3*X[,2]), 2*X[,2]^2) + rnorm(n, sd = 0.1)
 #'
 #' # Let algorithm select optimal gamma
-#' fit.auto <- fit.knn.riem.graph.regression(X, y, k = 20,
+#' fit.auto <- fit.rdgraph.regression(X, y, k = 20,
 #'                                            response.penalty.exp = -1)
 #' cat("Selected gamma:", fit.auto$parameters$response.penalty.exp, "\n")
 #' cat("Optimal iteration:", fit.auto$optimal.iteration, "\n")
@@ -370,7 +370,7 @@
 #' \code{\link{summary}} for model summaries
 #'
 #' @export
-fit.knn.riem.graph.regression <- function(
+fit.rdgraph.regression <- function(
     X,
     y,
     k,
@@ -999,7 +999,7 @@ print.summary.knn.riem.fit <- function(x, digits = 4, ...) {
 
 #' Diagnostic Plots for k-NN Riemannian Graph Regression
 #'
-#' @param results.list List of fitted model objects from fit.knn.riem.graph.regression
+#' @param results.list List of fitted model objects from fit.rdgraph.regression
 #' @param k.values Vector of k values corresponding to results.list
 #' @param response Vector of observed response values (for computing relative ranges)
 #' @param main.title Optional main title for the entire plot grid
@@ -1197,7 +1197,7 @@ get.rcx.optimal.k <- function(diag.df) {
 #' efficient as it reuses the cached eigendecomposition without rebuilding
 #' the graph or recomputing the Laplacian.
 #'
-#' @param fitted.model A fitted model object from \code{fit.knn.riem.graph.regression}
+#' @param fitted.model A fitted model object from \code{fit.rdgraph.regression}
 #' @param y.new New response data. Can be:
 #'   \itemize{
 #'     \item A numeric vector of length n (single response)
@@ -1232,24 +1232,24 @@ get.rcx.optimal.k <- function(diag.df) {
 #' @examples
 #' \dontrun{
 #' # Fit initial model
-#' fit <- fit.knn.riem.graph.regression(X, y, k = 15)
+#' fit <- fit.rdgraph.regression(X, y, k = 15)
 #'
 #' # Single new response
 #' y.new <- y + rnorm(length(y), sd = 0.1)
-#' refit.single <- refit.knn.riem.graph.regression(fit, y.new)
+#' refit.single <- refit.rdgraph.regression(fit, y.new)
 #'
 #' # Multiple responses (e.g., bootstrap)
 #' Y.boot <- replicate(100, sample(y, replace = TRUE))
-#' refit.multi <- refit.knn.riem.graph.regression(fit, Y.boot)
+#' refit.multi <- refit.rdgraph.regression(fit, Y.boot)
 #' dim(refit.multi$fitted.values)  # n × 100
 #' }
 #'
 #' @export
-refit.knn.riem.graph.regression <- function(fitted.model, y.new) {
+refit.rdgraph.regression <- function(fitted.model, y.new) {
 
     ## Validate input
     if (!inherits(fitted.model, "knn.riem.fit")) {
-        stop("fitted.model must be a 'knn.riem.fit' object from fit.knn.riem.graph.regression()")
+        stop("fitted.model must be a 'knn.riem.fit' object from fit.rdgraph.regression()")
     }
 
     if (is.null(fitted.model$spectral)) {
@@ -1620,15 +1620,15 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
 #' Typically m << n (perhaps 20-50 extrema in a graph of 2000 vertices), making
 #' Stage 3 tractable even though each hop-extremp computation requires BFS.
 #'
-#' @param dcx Output from \code{fit.knn.riem.graph.regression()}, a list containing
+#' @param dcx Output from \code{fit.rdgraph.regression()}, a list containing
 #'   the fitted model components including \code{vertex_cofaces}, \code{y_hat},
 #'   \code{vertex_density}, and \code{graph$adj_list}.
-#' @param extremp_quantile Numeric scalar in [0,1] giving the quantile threshold
+#' @param extremp_quantile Numeric scalar in \eqn{[0,1]} giving the quantile threshold
 #'   for initial extremp filtering. Vertices with extremp score above this
 #'   quantile are considered candidates. Default: 0.95 (top 5%).
 #' @param hop_extremp_threshold Numeric scalar in (0,1] giving the extremp
 #'   threshold for hop-extremp radius computation. Default: 0.90.
-#' @param eff_degree_quantile Numeric scalar in [0,1] giving the quantile
+#' @param eff_degree_quantile Numeric scalar in \eqn{[0,1]} giving the quantile
 #'   threshold for effective degree filtering. Vertices below this quantile
 #'   are discarded as poorly connected. Default: 0.10 (bottom 10%).
 #' @param max_hop Integer giving maximum hop distance to explore. Limits
@@ -1661,7 +1661,7 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
 #' @examples
 #' \dontrun{
 #' # Fit regression model
-#' dcx <- fit.knn.riem.graph.regression(X, y, k = 50)
+#' dcx <- fit.rdgraph.regression(X, y, k = 50)
 #'
 #' # Detect probabilistic extrema with default parameters
 #' pextrema <- compute.pextrema.nbhds(dcx)
@@ -1711,7 +1711,7 @@ compute.pextrema.nbhds <- function(dcx,
 
     # Validate dcx is a riem.dcx object
     if (!inherits(dcx, "riem.dcx")) {
-        stop("dcx must be an object of class 'riem.dcx' (output from fit.knn.riem.graph.regression)")
+        stop("dcx must be an object of class 'riem.dcx' (output from fit.rdgraph.regression)")
     }
 
     required_fields <- c("fitted.values", "graph")
@@ -2033,7 +2033,7 @@ compute.pextrema.nbhds <- function(dcx,
 #' - Validation and methodological rigor
 #' - Detailed extremum characterization for reporting
 #'
-#' @param dcx A fitted riem.dcx object from fit.knn.riem.graph.regression()
+#' @param dcx A fitted riem.dcx object from fit.rdgraph.regression()
 #' @param extremality_quantile Numeric in (0,1). Quantile threshold for initial
 #'   extremality score filtering. Default 0.95 keeps vertices with extremality
 #'   scores above the 95th percentile.
@@ -2057,7 +2057,7 @@ compute.pextrema.nbhds <- function(dcx,
 #'   \item{value}{Numeric: function value \hat{y}(v) at the vertex}
 #'   \item{rel_value}{Numeric: relative value normalized by mean(\hat{y})}
 #'   \item{type}{Character: "max" for g-local maxima, "min" for g-local minima}
-#'   \item{extremality}{Numeric in [-1, 1]: extremality score. Sign indicates
+#'   \item{extremality}{Numeric in \eqn{[-1, 1]}: extremality score. Sign indicates
 #'         type, magnitude indicates strength. ±1 is perfect g-local extremum.}
 #'   \item{eff_degree}{Numeric: effective degree measuring vertex connectivity}
 #'   \item{g_extremality_radius}{Integer: spatial persistence measured as maximum
@@ -2075,7 +2075,7 @@ compute.pextrema.nbhds <- function(dcx,
 #' @examples
 #' \dontrun{
 #' # Fit regression model
-#' dcx <- fit.knn.riem.graph.regression(X, y, k = 50)
+#' dcx <- fit.rdgraph.regression(X, y, k = 50)
 #'
 #' # Detect g-extrema with default parameters
 #' gextrema <- compute.gextrema.nbhds(dcx)
@@ -2107,7 +2107,7 @@ compute.pextrema.nbhds <- function(dcx,
 #' }
 #'
 #' @seealso \code{\link{compute.pextrema.nbhds}} for probabilistic detection,
-#'   \code{\link{fit.knn.riem.graph.regression}} for model fitting
+#'   \code{\link{fit.rdgraph.regression}} for model fitting
 #'
 #' @export
 compute.gextrema.nbhds <- function(dcx,
@@ -2124,7 +2124,7 @@ compute.gextrema.nbhds <- function(dcx,
 
     # Validate dcx is a riem.dcx object
     if (!inherits(dcx, "riem.dcx")) {
-        stop("dcx must be an object of class 'riem.dcx' (output from fit.knn.riem.graph.regression)")
+        stop("dcx must be an object of class 'riem.dcx' (output from fit.rdgraph.regression)")
     }
 
     required_fields <- c("fitted.values", "graph")
@@ -2190,7 +2190,7 @@ compute.gextrema.nbhds <- function(dcx,
         # This requires calling the coboundary operator
         stop("extremality.scores not found in dcx$optimal.fit. ",
              "This function requires a dcx object with pre-computed extremality scores. ",
-             "Please ensure fit.knn.riem.graph.regression() was called with extremality computation enabled, ",
+             "Please ensure fit.rdgraph.regression() was called with extremality computation enabled, ",
              "or use compute.pextrema.nbhds() which computes scores internally.")
     }
 
