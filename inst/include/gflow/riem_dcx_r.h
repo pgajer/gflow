@@ -28,6 +28,17 @@ extern "C" {
 		SEXP s_verbose
 		);
 
+	SEXP S_compute_hop_extremp_radii_batch(
+		SEXP s_adj_list,
+		SEXP s_edge_densities,
+		SEXP s_vertex_densities,
+		SEXP s_candidates,
+		SEXP s_y,
+		SEXP s_p_threshold,
+		SEXP s_detect_maxima,
+		SEXP s_max_hop
+		);
+
 #ifdef __cplusplus
 }
 #endif

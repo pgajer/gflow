@@ -691,6 +691,29 @@ struct riem_dcx_t {
      */
     void build_boundary_operator_from_triangles();
 
+    /**
+     * @brief Compute the coboundary operator ∂₁* with full non-diagonal metric
+     *
+     * This implements the solution of: M₁ x = B₁ᵀ M₀ f where M₁ may be
+     *   non-diagonal (full edge mass matrix with correlations).
+     */
+    vec_t compute_coboundary_del1star_full(
+        const vec_t& f,
+        bool use_iterative,
+        double cg_tol = 1e-10,
+        int cg_maxit = 1000
+        ) const;
+
+    /**
+     * @brief Compute extremality scores using full non-diagonal metric
+     */
+    vec_t compute_all_extremality_scores_full(
+        const vec_t& f,
+        bool use_iterative = false,
+        double cg_tol = 1e-10,
+        int cg_maxit = 1000
+        ) const;
+
     // ================================================================
     // ITERATION HELPER METHODS
     // ================================================================
@@ -835,6 +858,17 @@ struct riem_dcx_t {
      */
     void extend_by_one_dim(index_t n_new);
 
+    /**
+     * @brief Batch computation of hop-extremp radii
+     */
+    std::vector<size_t> compute_hop_extremp_radii_batch(
+        const std::vector<size_t>& vertices,
+        const vec_t& y,
+        double p_threshold = 0.90,
+        bool detect_maxima = true,
+        size_t max_hop = 20
+        ) const;
+
 private:
 
     std::vector<std::unordered_set<index_t>> neighbor_sets;
@@ -842,6 +876,30 @@ private:
     // ================================================================
     // INTERNAL HELPERS
     // ================================================================
+
+    /**
+     * @brief Compute effective degrees for all vertices
+     *
+     * Uses initial edge densities from vertex_cofaces to compute connectivity strength.
+     */
+    vec_t compute_effective_degrees() const;
+
+    /**
+     * @brief Compute hop-extremp radius for a single vertex
+     *
+     * @param vertex Vertex index
+     * @param y Function values (typically from sig.y_hat_hist.back())
+     * @param p_threshold Extremp threshold (default 0.90)
+     * @param detect_maxima True for maxp, false for minp
+     * @param max_hop Maximum hop distance to explore
+     */
+    size_t compute_hop_extremp_radius(
+        size_t vertex,
+        const vec_t& y,
+        double p_threshold = 0.90,
+        bool detect_maxima = true,
+        size_t max_hop = 20
+        ) const;
 
     /**
      * @brief Compute and cache spectral decomposition of vertex Laplacian
