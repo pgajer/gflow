@@ -1170,7 +1170,7 @@ void riem_dcx_t::compute_spectral_decomposition(
             }
 
             // Check if we should fallback to dense solver
-            bool extreme_ill_conditioning = false;
+            // bool extreme_ill_conditioning = false;
             if (L.c1.size() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
                 // Compute degree ratio
                 const int n = g.M[0].rows();
@@ -1189,34 +1189,35 @@ void riem_dcx_t::compute_spectral_decomposition(
                 double d_max = *std::max_element(vertex_degrees.begin(), vertex_degrees.end());
 
                 if (d_min > 0 && d_max / d_min > 1e12) {
-                    extreme_ill_conditioning = true;
+                    // extreme_ill_conditioning = true;
+                    Rprintf("\n    Detected extreme ill-conditioning (d_max / d_min > 1e12)\n");
                 }
             }
 
             // Attempt dense solver fallback for ill-conditioned cases
-            if (extreme_ill_conditioning && n_vertices <= 5000) {
-                Rprintf("\n    Attempting dense solver fallback due to extreme ill-conditioning...\n");
-                Rprintf("    (This may take longer but should be more robust)\n");
+            // if (extreme_ill_conditioning && n_vertices <= 5000) {
+            Rprintf("\n    Attempting dense solver fallback ...\n");
+            Rprintf("    (This may take longer but should be more robust)\n");
 
-                Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
-                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
+            Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
 
-                if (dense_solver.info() == Eigen::Success) {
-                    int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
-                    spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
-                    spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
-                    spectral_cache.is_valid = true;
+            if (dense_solver.info() == Eigen::Success) {
+                int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
+                spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
+                spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
+                spectral_cache.is_valid = true;
 
-                    if (spectral_cache.eigenvalues.size() >= 2) {
-                        spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
-                    }
-
-                    Rprintf("    Dense solver succeeded!\n");
-                    return;
-                } else {
-                    Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
+                if (spectral_cache.eigenvalues.size() >= 2) {
+                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
                 }
+
+                Rprintf("    Dense solver succeeded!\n");
+                return;
+            } else {
+                Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
             }
+            //}
         }
 
         Rprintf("\n");
@@ -1333,7 +1334,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         Rprintf("    Tier 3: Dense fallback for small-medium problems ... \n");
     }
 
-    if (n_vertices <= 2000) {
+    if (n_vertices <= 5000) {
         Rf_warning("Sparse eigendecomposition failed; falling back to dense solver "
                    "for n=%d vertices", n_vertices);
 
@@ -1466,9 +1467,9 @@ void riem_dcx_t::select_diffusion_parameters(
         t_auto_selected = true;
 
         if (verbose) {
-            Rprintf("Auto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
+            Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
                     t_diffusion, lambda_2);
-            Rprintf("  Conservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
+            Rprintf("\tConservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
                     0.1 / lambda_2,
                     t_scale_factor / lambda_2,
                     1.0 / lambda_2);
@@ -4211,6 +4212,9 @@ void riem_dcx_t::fit_knn_riem_graph_regression(
         density_alpha,
         density_epsilon
         );
+
+    // Compute effective degrees for all vertices based on edge densities
+    // vec_t eff_deg = compute_effective_degrees();
 
     // Store original response EARLY, before any possible early returns
     sig.y = y;
