@@ -154,7 +154,7 @@ ggraph <- function(adj.list, weight.list = NULL) {
 #' @param z A numeric vector containing z values for each vertex in the graph
 #' @return An object of class "graph.3d"
 #' @export
-graph.3d <- function(plot.result, z) {
+create.graph.3d.obj <- function(plot.result, z) {
   # Validate inputs
   if (!is.list(plot.result) || is.null(plot.result$graph) || is.null(plot.result$layout)) {
     stop("plot.result must be a list containing 'graph' and 'layout' elements, as returned by plot.graph()")
