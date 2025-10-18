@@ -532,6 +532,28 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
     return spectral;
 }
 
+extern "C" SEXP create_extremality_component(
+    const riem_dcx_t& dcx,
+    const vec_t& y_hat
+) {
+    const Eigen::Index n = y_hat.size();
+
+    // Compute extremality scores using full non-diagonal metric
+    const bool use_iterative = false;
+    vec_t extremality = dcx.compute_all_extremality_scores_full(y_hat,
+                                                                use_iterative);
+
+
+    // Convert to R vector
+    SEXP s_extremality = PROTECT(Rf_allocVector(REALSXP, n));
+    for (Eigen::Index i = 0; i < n; ++i) {
+        REAL(s_extremality)[i] = extremality[i];
+    }
+
+    UNPROTECT(1);
+    return s_extremality;
+}
+
 /**
  * @brief R interface for kNN Riemannian graph regression
  *
@@ -1135,7 +1157,7 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
 
     // ---------- Main result list ----------
 
-    const int n_components = 11;
+    const int n_components = 12;
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
@@ -1235,6 +1257,12 @@ extern "C" SEXP S_fit_knn_riem_graph_regression(
     SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
     SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
     SET_VECTOR_ELT(result, component_idx++, s_spectral);
+    UNPROTECT(1);
+
+    // Component 12: extremality.scores
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("extremality.scores"));
+    SEXP s_extremality = PROTECT(create_extremality_component(dcx, y_hat_final));
+    SET_VECTOR_ELT(result, component_idx++, s_extremality);
     UNPROTECT(1);
 
     // Set names attribute
