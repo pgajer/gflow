@@ -14,16 +14,27 @@ extern "C" {
 		SEXP s_k,
 		SEXP s_use_counting_measure,
 		SEXP s_density_normalization,
+
 		SEXP s_t_diffusion,
 		SEXP s_beta_damping,
 		SEXP s_gamma_modulation,
+		SEXP s_t_scale_factor,
+		SEXP s_beta_coefficient_factor,
+
 		SEXP s_n_eigenpairs,
 		SEXP s_filter_type,
 		SEXP s_epsilon_y,
 		SEXP s_epsilon_rho,
 		SEXP s_max_iterations,
+
 		SEXP s_max_ratio_threshold,
 		SEXP s_threshold_percentile,
+		SEXP s_density_alpha,
+		SEXP s_density_epsilon,
+		SEXP s_compute_extremality,
+
+		SEXP s_p_threshold,
+		SEXP s_max_hop,
 		SEXP s_test_stage,
 		SEXP s_verbose
 		);

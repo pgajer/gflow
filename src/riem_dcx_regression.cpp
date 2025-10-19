@@ -915,24 +915,24 @@ void riem_dcx_t::compute_spectral_decomposition(
         Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
                 L.L[0].rows(), n_eigenpairs);
 
-        #ifdef EIGEN_USE_OPENMP
-            Rprintf("\tEigen OpenMP: ENABLED\n");
-        #else
-            Rprintf("\tEigen OpenMP: DISABLED\n");
-        #endif
+        // #ifdef EIGEN_USE_OPENMP
+        //     Rprintf("\tEigen OpenMP: ENABLED\n");
+        // #else
+        //     Rprintf("\tEigen OpenMP: DISABLED\n");
+        // #endif
 
-        #ifdef _OPENMP
-            Rprintf("\tOpenMP threads available: %d\n", omp_get_max_threads());
-            Rprintf("\tEigen threads: %d\n", Eigen::nbThreads());
-        #else
-            Rprintf("\tOpenMP: NOT AVAILABLE\n");
-        #endif
+        // #ifdef _OPENMP
+        //     Rprintf("\tOpenMP threads available: %d\n", omp_get_max_threads());
+        //     Rprintf("\tEigen threads: %d\n", Eigen::nbThreads());
+        // #else
+        //     Rprintf("\tOpenMP: NOT AVAILABLE\n");
+        // #endif
 
-        #ifdef EIGEN_DONT_VECTORIZE
-            Rprintf("\tEigen vectorization: DISABLED\n");
-        #else
-            Rprintf("\tEigen vectorization: ENABLED\n");
-        #endif
+        // #ifdef EIGEN_DONT_VECTORIZE
+        //     Rprintf("\tEigen vectorization: DISABLED\n");
+        // #else
+        //     Rprintf("\tEigen vectorization: ENABLED\n");
+        // #endif
     }
 
     // Validate that Laplacian exists
@@ -1818,15 +1818,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     }
 
     // ========================================================================
-    // Part 2: Build system matrix A = I + t(L_0 + \beta I)
+    // Part 2: Build system matrix A = I + t(L_0 + β I)
     // ========================================================================
 
     // Start with identity matrix
     spmat_t I(n, n);
     I.setIdentity();
 
-    // Build system matrix: A = I + t*L_0 + t*\beta *I = (1 + t*\beta )*I + t*L_0
-    // We compute this efficiently by scaling operations
+    // Build system matrix: A = I + t*L_0 + t*β*I = (1 + t*β)*I + t*L_0
     const double identity_coeff = 1.0 + t * beta;
     spmat_t A = identity_coeff * I + t * L.L[0];
 
@@ -1834,28 +1833,30 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     A.makeCompressed();
 
     // ========================================================================
-    // Part 3: Build right-hand side b = \rho_current + t\beta u
+    // Part 3: Build right-hand side b = ρ_current + tβ u
     // ========================================================================
 
-    // Uniform distribution vector u = (1, 1, ..., 1)^{T}
+    // Uniform distribution vector u = (1, 1, ..., 1)^T
     vec_t u = vec_t::Ones(n);
 
-    // Right-hand side: b = \rho_current + t*\beta *u
+    // Right-hand side: b = ρ_current + t*β*u
     vec_t b = rho_current + (t * beta) * u;
 
     // ========================================================================
-    // Part 4: Solve linear system A*\rho_new = b using conjugate gradient
+    // Part 4: Solve linear system A*ρ_new = b using conjugate gradient
     // ========================================================================
 
     // Initialize conjugate gradient solver
     // We use CG since A is symmetric positive definite
-    Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper> cg;
+    // Use built-in diagonal preconditioner (automatically extracted from A)
+    Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper,
+                             Eigen::DiagonalPreconditioner<double>> cg;
 
     // Set solver parameters
-    cg.setMaxIterations(1000);
-    cg.setTolerance(1e-10);
+    cg.setMaxIterations(2000);  // Increased from 1000
+    cg.setTolerance(1e-8);      // Relaxed from 1e-10
 
-    // Compute the factorization
+    // Compute the preconditioned factorization
     cg.compute(A);
 
     if (cg.info() != Eigen::Success) {
@@ -1878,7 +1879,6 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // ========================================================================
 
     // Clip any small negative values that arose from numerical error
-    // This can happen near zero due to finite precision arithmetic
     for (Eigen::Index i = 0; i < n; ++i) {
         if (rho_new[i] < 0.0) {
             if (rho_new[i] < -1e-8) {
@@ -4692,32 +4692,6 @@ void riem_dcx_t::fit_rdgraph_regression(
                 break;
             }
         }
-
-        #if 0
-        const double gcv_relative_variation_thld = 1e-3;
-        if (gcv_history.size() >= 3) {
-            double gcv_variation = 0.0;
-            for (size_t i = gcv_history.size() - 3; i < gcv_history.size() - 1; ++i) {
-                double change = std::abs(gcv_history.iterations[i+1].gcv_optimal -
-                                         gcv_history.iterations[i].gcv_optimal);
-                gcv_variation = std::max(gcv_variation, change);
-            }
-
-            double gcv_relative_variation = gcv_variation / gcv_history.iterations.back().gcv_optimal;
-            if (gcv_relative_variation < gcv_relative_variation_thld) {
-                // Set convergence state
-                converged = true;
-                n_iterations = iter;
-
-                // Print convergence message
-                Rprintf("Converged: GCV stable (relative variation %.2e < 1e-5)\n",
-                        gcv_relative_variation);
-
-                // Break out of iteration loop
-                break;
-            }
-        }
-        #endif
 
         if (verbose) {
             elapsed_time(phase_time, "DONE", true);
