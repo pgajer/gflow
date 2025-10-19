@@ -532,33 +532,254 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
     return spectral;
 }
 
+/**
+ * @brief Create extremality component with hop radii and neighborhood sizes
+ *
+ * Computes extremality scores and optionally their spatial persistence (hop radii)
+ * along with the size of each hop-extremality neighborhood. When hop radius
+ * computation is enabled, only vertices exceeding the extremality threshold have
+ * their radii and neighborhood sizes computed, while others are assigned NA.
+ *
+ * MOTIVATION FOR NEIGHBORHOOD SIZES
+ * ==================================
+ *
+ * The neighborhood size provides crucial geometric context for interpreting
+ * hop-extremality radii. Two vertices with identical hop radius can have
+ * vastly different neighborhood sizes:
+ * - Small neighborhood: Sparse region, linear structure, less evidence
+ * - Large neighborhood: Dense region, concentrated structure, more evidence
+ *
+ * This information enables:
+ * - Statistical confidence weighting (weight by sqrt(neighborhood_size))
+ * - Geometric understanding (distinguish sparse vs dense extrema)
+ * - Significance assessment (larger neighborhoods = more robust extrema)
+ * - Visualization (color-code by neighborhood size)
+ *
+ * @param dcx The fitted Riemannian density complex
+ * @param y_hat Fitted values at optimal GCV iteration
+ * @param p_threshold Extremality threshold in (0,1] for candidate selection
+ * @param max_hop Maximum hop distance to explore
+ *
+ * @return R list with components:
+ *   - scores: numeric vector of extremality scores in [-1,1] or NaN
+ *   - hop.extremality.radii: numeric vector (hop radius for candidates, NA otherwise)
+ *   - hop.neighborhood.sizes: numeric vector (neighborhood size for candidates, NA otherwise)
+ *
+ * @note The hop_neighborhood_sizes vector is parallel to hop_extremality_radii.
+ *       Both are NA for vertices with |extremality| < p_threshold.
+ *       Both are -1 (encoded from SIZE_MAX) for global extrema.
+ *
+ * @complexity O(n·m) for extremality scores + O(k·(V+E)) for hop radii,
+ *             where k is number of candidates (typically k << n)
+ */
 extern "C" SEXP create_extremality_component(
     const riem_dcx_t& dcx,
-    const vec_t& y_hat
-) {
+    const vec_t& y_hat,
+    double p_threshold,
+    size_t max_hop
+    ) {
+
     const Eigen::Index n = y_hat.size();
 
-    // Compute extremality scores using full non-diagonal metric
-    const bool use_iterative = false;
-    vec_t extremality = dcx.compute_all_extremality_scores_full(y_hat,
-                                                                use_iterative);
+    // ================================================================
+    // COMPUTE EXTREMALITY SCORES
+    // ================================================================
 
+    // Use iterative solver with relaxed tolerance to avoid factorization
+    // failures when M[1] has numerical issues
+    const bool use_iterative = true;
+    const double cg_tol = 1e-6;
+    const int cg_maxit = 5000;
 
-    // Convert to R vector
+    vec_t extremality = dcx.compute_all_extremality_scores_full(
+        y_hat,
+        use_iterative,
+        cg_tol,
+        cg_maxit
+    );
+
+    // Convert extremality scores to R vector
     SEXP s_extremality = PROTECT(Rf_allocVector(REALSXP, n));
     for (Eigen::Index i = 0; i < n; ++i) {
         REAL(s_extremality)[i] = extremality[i];
     }
 
-    UNPROTECT(1);
-    return s_extremality;
+    // ================================================================
+    // DETERMINE RETURN STRUCTURE
+    // ================================================================
+
+    int n_fields = 3;  // scores, hop_extremality_radii, hop_neighborhood_sizes
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+
+    // Field 1: scores (always present)
+    SET_STRING_ELT(names, 0, Rf_mkChar("scores"));
+    SET_VECTOR_ELT(result, 0, s_extremality);
+
+    // ================================================================
+    // COMPUTE HOP-EXTREMALITY RADII AND NEIGHBORHOOD SIZES
+    // ================================================================
+
+    // Initialize hop radii vector with NA for all vertices
+    SEXP s_hop_radii = PROTECT(Rf_allocVector(REALSXP, n));
+    double* hop_radii_ptr = REAL(s_hop_radii);
+    for (Eigen::Index i = 0; i < n; ++i) {
+        hop_radii_ptr[i] = NA_REAL;
+    }
+
+    // Initialize neighborhood sizes vector with NA for all vertices
+    SEXP s_hop_sizes = PROTECT(Rf_allocVector(REALSXP, n));
+    double* hop_sizes_ptr = REAL(s_hop_sizes);
+    for (Eigen::Index i = 0; i < n; ++i) {
+        hop_sizes_ptr[i] = NA_REAL;
+    }
+
+    // ================================================================
+    // IDENTIFY CANDIDATES BY SIGN
+    // ================================================================
+
+    std::vector<size_t> maxima_candidates;
+    std::vector<size_t> minima_candidates;
+
+    for (Eigen::Index i = 0; i < n; ++i) {
+        double extr = extremality[i];
+
+        // Skip NaN extremality scores
+        if (std::isnan(extr)) {
+            continue;
+        }
+
+        // Check if above threshold
+        if (std::abs(extr) >= p_threshold) {
+            if (extr > 0) {
+                maxima_candidates.push_back(static_cast<size_t>(i));
+            } else {
+                minima_candidates.push_back(static_cast<size_t>(i));
+            }
+        }
+    }
+
+    // ================================================================
+    // COMPUTE HOP RADII AND SIZES FOR MAXIMA CANDIDATES
+    // ================================================================
+
+    if (!maxima_candidates.empty()) {
+        auto [max_radii, max_sizes] = dcx.compute_hop_extremality_radii_batch(
+            maxima_candidates,
+            y_hat,
+            p_threshold,
+            true,  // detect_maxima
+            max_hop
+        );
+
+        // Store results
+        for (size_t i = 0; i < maxima_candidates.size(); ++i) {
+            size_t vertex = maxima_candidates[i];
+            size_t radius = max_radii[i];
+            size_t size = max_sizes[i];
+
+            if (radius == std::numeric_limits<size_t>::max()) {
+                // Global maximum: encode as -1
+                hop_radii_ptr[vertex] = -1.0;
+                hop_sizes_ptr[vertex] = -1.0;  // SIZE_MAX encoded as -1
+            } else {
+                hop_radii_ptr[vertex] = static_cast<double>(radius);
+                hop_sizes_ptr[vertex] = static_cast<double>(size);
+            }
+        }
+    }
+
+    // ================================================================
+    // COMPUTE HOP RADII AND SIZES FOR MINIMA CANDIDATES
+    // ================================================================
+
+    if (!minima_candidates.empty()) {
+        auto [min_radii, min_sizes] = dcx.compute_hop_extremality_radii_batch(
+            minima_candidates,
+            y_hat,
+            p_threshold,
+            false,  // detect_maxima
+            max_hop
+        );
+
+        // Store results
+        for (size_t i = 0; i < minima_candidates.size(); ++i) {
+            size_t vertex = minima_candidates[i];
+            size_t radius = min_radii[i];
+            size_t size = min_sizes[i];
+
+            if (radius == std::numeric_limits<size_t>::max()) {
+                // Global minimum: encode as -1
+                hop_radii_ptr[vertex] = -1.0;
+                hop_sizes_ptr[vertex] = -1.0;  // SIZE_MAX encoded as -1
+            } else {
+                hop_radii_ptr[vertex] = static_cast<double>(radius);
+                hop_sizes_ptr[vertex] = static_cast<double>(size);
+            }
+        }
+    }
+
+    // Field 2: hop_extremality_radii
+    SET_STRING_ELT(names, 1, Rf_mkChar("hop.extremality.radii"));
+    SET_VECTOR_ELT(result, 1, s_hop_radii);
+
+    // Field 3: hop_neighborhood_sizes
+    SET_STRING_ELT(names, 2, Rf_mkChar("hop.neighborhood.sizes"));
+    SET_VECTOR_ELT(result, 2, s_hop_sizes);
+
+    // Set names attribute
+    Rf_setAttrib(result, R_NamesSymbol, names);
+
+    UNPROTECT(5); // s_hop_sizes, s_hop_radii, names, result, s_extremality
+    return result;
 }
 
 /**
- * @brief R interface for kNN Riemannian graph regression
+ * @brief R interface for kNN Riemannian density graph regression
  *
  * Constructs 1-skeleton kNN complex and iteratively refines geometry to
  * reflect response structure for conditional expectation estimation.
+ *
+ * PARAMETER ADDITIONS FOR EXTREMALITY ANALYSIS
+ * =============================================
+ *
+ * Three new parameters enable optional extremality analysis during fitting:
+ *
+ * compute_extremality: When FALSE (default), extremality scores are not computed.
+ * This is useful for applications like optimal k selection where only fitted
+ * values and GCV scores are needed. When TRUE, computes Riemannian extremality
+ * scores for all vertices at the optimal GCV iteration.
+ *
+ * p_threshold: Extremality threshold in (0,1] used for candidate selection when
+ * computing hop-extremality radii. Only vertices with |extremality| ≥ p_threshold
+ * have their hop radii computed. Default 0.90 matches compute.gextrema.nbhds().
+ *
+ * max_hop: Maximum hop distance to explore when computing hop-extremality radii.
+ * Default 20 balances computational cost against capturing long-range persistence.
+ * Vertices maintaining extremality above threshold beyond max_hop are assigned
+ * radius = max_hop (not infinity, to distinguish from global extrema).
+ *
+ * EXTREMALITY OUTPUT STRUCTURE
+ * =============================
+ *
+ * When compute_extremality=FALSE:
+ *   extremality.scores component is not included in the result
+ *
+ * When compute_extremality=TRUE without hop radii:
+ *   extremality.scores = list(scores = numeric vector)
+ *
+ * When compute_extremality=TRUE with hop radii:
+ *   extremality.scores = list(
+ *     scores = numeric vector of extremality in [-1,1] or NaN,
+ *     hop_extremality_radii = numeric vector with:
+ *       - hop radius for vertices with |extremality| ≥ p_threshold
+ *       - NA for vertices below threshold
+ *       - -1 for global extrema
+ *       - 0 for vertices failing threshold even at hop 1
+ *   )
+ *
+ * This structure allows users to identify strong local extrema (high |extremality|)
+ * and assess their spatial persistence (large hop radius) in a single fitting call.
  *
  * @param s_X Feature matrix (dense REALSXP or sparse dgCMatrix)
  * @param s_y Response vector (REALSXP)
@@ -574,14 +795,41 @@ extern "C" SEXP create_extremality_component(
  * @param s_epsilon_rho Density convergence threshold (REALSXP)
  * @param s_max_iterations Maximum iteration count (INTSXP)
  * @param s_threshold_percentile
+ * @param s_density_alpha Density alpha parameter in [1,2] (REALSXP)
+ * @param s_density_epsilon Density regularization epsilon (REALSXP)
+ * @param s_compute_extremality Logical: compute extremality scores? (LGLSXP)
+ * @param s_p_threshold Extremality threshold for hop radii, 0=skip (REALSXP)
+ * @param s_max_hop Maximum hop distance for radii computation (INTSXP)
  * @param s_test_stage
  * @param s_verbose SEXP object (logical) controlling progress reporting during computation
  *
- * @return External pointer to fitted riem_dcx_t object with class attribute
+ * @return R list of class c("knn.riem.fit", "list") with components:
+ *   - fitted.values: Fitted values at optimal GCV iteration
+ *   - residuals: Residuals y - fitted.values
+ *   - optimal.fit: List with detailed fitting information
+ *   - graph: List with graph structure
+ *   - iteration: Convergence diagnostics
+ *   - parameters: Input parameters
+ *   - y: Original response vector
+ *   - gcv: GCV history across iterations
+ *   - density: Density evolution history
+ *   - gamma.selection: Gamma parameter selection info
+ *   - spectral: Spectral decomposition at optimal iteration
+ *   - extremality: Extremality analysis (only if compute_extremality=TRUE)
+ *     R list with components:
+ *     - scores: numeric vector of extremality scores in [-1,1] or NaN
+ *     - hop.extremality.radii: numeric vector (hop radius for candidates, NA otherwise)
+ *     - hop.neighborhood.sizes: numeric vector (neighborhood size for candidates, NA otherwise)
+ *
+ * @note Input validation is performed on the R side in fit.rdgraph.regression().
+ *       Additional defensive checks are included here for robustness.
  *
  * @note This function is called from R via .Call(). Input validation is
  *       performed on the R side in fit.knn.riem.graph.regression().
  *       Additional defensive checks are included here for robustness.
+ * @note Setting compute_extremality=FALSE reduces computational cost and memory
+ *       usage, making this suitable for large-scale k-selection procedures where
+ *       extremality analysis is not needed.
  */
 extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_X,
@@ -603,6 +851,9 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_threshold_percentile,
     SEXP s_density_alpha,
     SEXP s_density_epsilon,
+    SEXP s_compute_extremality,
+    SEXP s_p_threshold,
+    SEXP s_max_hop,
     SEXP s_test_stage,
     SEXP s_verbose
 ) {
@@ -1000,6 +1251,57 @@ extern "C" SEXP S_fit_rdgraph_regression(
         Rf_error("density.alpha must be finite and in [1, 2] (got %.3f)", density_alpha);
     }
 
+    // -------------------- s_compute_extremality --------------------
+
+    if (TYPEOF(s_compute_extremality) != LGLSXP ||
+        Rf_length(s_compute_extremality) != 1) {
+        Rf_error("compute_extremality must be a single logical value");
+    }
+
+    const int compute_extremality_int = LOGICAL(s_compute_extremality)[0];
+
+    if (compute_extremality_int == NA_LOGICAL) {
+        Rf_error("compute_extremality cannot be NA");
+    }
+
+    const bool compute_extremality = (compute_extremality_int != 0);
+
+    // -------------------- s_p_threshold --------------------
+
+    if (TYPEOF(s_p_threshold) != REALSXP || Rf_length(s_p_threshold) != 1) {
+        Rf_error("p_threshold must be a single numeric value");
+    }
+
+    const double p_threshold = REAL(s_p_threshold)[0];
+
+    // When p_threshold is 0, skip hop radius computation
+    // Otherwise validate it's in (0,1]
+    if (p_threshold < 0.0 || p_threshold > 1.0) {
+        Rf_error("p_threshold must be in [0,1], got %.3f", p_threshold);
+    }
+
+    if (compute_extremality && p_threshold > 0.0 && !R_FINITE(p_threshold)) {
+        Rf_error("p_threshold must be finite when computing hop radii");
+    }
+
+    // -------------------- s_max_hop --------------------
+
+    if (TYPEOF(s_max_hop) != INTSXP || Rf_length(s_max_hop) != 1) {
+        Rf_error("max_hop must be a single integer value");
+    }
+
+    const int max_hop_int = INTEGER(s_max_hop)[0];
+
+    if (max_hop_int == NA_INTEGER) {
+        Rf_error("max_hop cannot be NA");
+    }
+
+    if (max_hop_int <= 0) {
+        Rf_error("max_hop must be positive, got %d", max_hop_int);
+    }
+
+    const size_t max_hop = static_cast<size_t>(max_hop_int);
+
     // -------------------- density.epsilon --------------------
 
     if (TYPEOF(s_density_epsilon) != REALSXP || Rf_length(s_density_epsilon) != 1) {
@@ -1099,7 +1401,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     bool has_fitted_values = !dcx.sig.y_hat_hist.empty();
     bool has_gcv_history = !dcx.gcv_history.iterations.empty();
-    vec_t y_hat_final;
+    vec_t y_hat_raw;
     int optimal_iteration = -1;
 
     if (has_fitted_values && has_gcv_history) {
@@ -1109,7 +1411,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
                        "gcv_history has %d entries. Using last iteration.",
                        (int)dcx.sig.y_hat_hist.size(),
                        (int)dcx.gcv_history.iterations.size());
-            y_hat_final = dcx.sig.y_hat_hist.back();
+            y_hat_raw = dcx.sig.y_hat_hist.back();
             optimal_iteration = (int)dcx.sig.y_hat_hist.size() - 1;
         } else {
             // Find iteration with minimum GCV score
@@ -1125,7 +1427,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
             }
 
             // Use fitted values from the iteration with minimum GCV
-            y_hat_final = dcx.sig.y_hat_hist[min_idx];
+            y_hat_raw = dcx.sig.y_hat_hist[min_idx];
             optimal_iteration = (int)min_idx;
 
             // Inform user if optimal iteration differs from final iteration
@@ -1140,12 +1442,12 @@ extern "C" SEXP S_fit_rdgraph_regression(
         // GCV history unavailable (should not happen in normal operation)
         // Fall back to last iteration
         Rf_warning("GCV history unavailable. Using last iteration's fitted values.");
-        y_hat_final = dcx.sig.y_hat_hist.back();
+        y_hat_raw = dcx.sig.y_hat_hist.back();
         optimal_iteration = (int)dcx.sig.y_hat_hist.size() - 1;
     } else {
         // Early termination: use observed y as placeholder
         // This allows the result structure to be consistent
-        y_hat_final = y;
+        y_hat_raw = y;
         optimal_iteration = -1;
 
         // Warn user if this wasn't intentional
@@ -1155,56 +1457,81 @@ extern "C" SEXP S_fit_rdgraph_regression(
         }
     }
 
+    // -------------------- Preprocess Fitted Values --------------------
+
+    // Create a copy for preprocessing (leaves y_hat_raw unchanged)
+    vec_t y_hat = y_hat_raw;
+
+    // Apply preprocessing pipeline for binary conditional expectations
+    // This handles slow diffusion convergence at isolated vertices
+    dcx.prepare_binary_cond_exp(
+        y_hat,
+        0.02,     // p_right: winsorize top 2%
+        true,     // apply_right_winsorization
+        1e-10,    // noise_scale: relative to range
+        123,      // seed: for reproducibility
+        verbose   // verbose: match user's verbosity setting
+        );
+    
+    if (verbose) {
+        Rprintf("Preprocessing complete:\n");
+        Rprintf("  Raw range: [%.6f, %.6f]\n",
+                y_hat_raw.minCoeff(), y_hat_raw.maxCoeff());
+        Rprintf("  Preprocessed range: [%.6f, %.6f]\n",
+                y_hat.minCoeff(), y_hat.maxCoeff());
+    }
+
     // ---------- Main result list ----------
 
-    const int n_components = 12;
+    int n_components = 12;
+    if (compute_extremality) {
+        n_components++;
+    }
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
 
     // Component 1: fitted.values
-    SET_STRING_ELT(names, component_idx, Rf_mkChar("fitted.values"));
-    SEXP s_fitted = PROTECT(Rf_allocVector(REALSXP, n));
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("raw.fitted.values"));
+    SEXP s_raw_fitted = PROTECT(Rf_allocVector(REALSXP, n));
     for (Eigen::Index i = 0; i < n; ++i) {
-        REAL(s_fitted)[i] = y_hat_final[i];
+        REAL(s_raw_fitted)[i] = y_hat_raw[i];
     }
-    SET_VECTOR_ELT(result, component_idx++, s_fitted);
+    SET_VECTOR_ELT(result, component_idx++, s_raw_fitted);
     UNPROTECT(1);
 
-    // Component 2: residuals
+    // Component 3: residuals (computed using preprocessed fitted values)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
     SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
-    // Safe access: both y_hat_final and y are guaranteed to have size n
     for (Eigen::Index i = 0; i < n; ++i) {
         double residual;
         if (dcx.sig.y.size() == n) {
-            residual = dcx.sig.y[i] - y_hat_final[i];
+            residual = dcx.sig.y[i] - y_hat[i];  // Use preprocessed y_hat
         } else {
-            // Early termination: use input y
-            residual = y[i] - y_hat_final[i];
+            residual = y[i] - y_hat[i];  // Use preprocessed y_hat
         }
         REAL(s_resid)[i] = residual;
     }
     SET_VECTOR_ELT(result, component_idx++, s_resid);
     UNPROTECT(1);
 
-    // Component 3: optimal.iteration
+    // Component 4: optimal.iteration
     SET_STRING_ELT(names, component_idx, Rf_mkChar("optimal.iteration"));
     SET_VECTOR_ELT(result, component_idx++, Rf_ScalarInteger(optimal_iteration + 1));  // R uses 1-based indexing
 
-    // Component 4: graph (nested list)
+    // Component 5: graph (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("graph"));
     SEXP s_graph = PROTECT(create_graph_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_graph);
     UNPROTECT(1);
 
-    // Component 5: iteration (nested list)
+    // Component 6: iteration (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("iteration"));
     SEXP s_iteration = PROTECT(create_iteration_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_iteration);
     UNPROTECT(1);
 
-    // Component 6: parameters (nested list)
+    // Component 7: parameters (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("parameters"));
     SEXP s_params = PROTECT(create_parameters_component(
                                 k, use_counting_measure, density_normalization,
@@ -1216,7 +1543,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_params);
     UNPROTECT(1);
 
-    // Component 7: y (original response)
+    // Component 8: y (original response)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("y"));
     SEXP s_y_copy = PROTECT(Rf_allocVector(REALSXP, n));
 
@@ -1235,35 +1562,43 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_y_copy);
     UNPROTECT(1);
 
-    // Component 8: gcv (nested list)
+    // Component 9: gcv (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gcv"));
     SEXP s_gcv = PROTECT(create_gcv_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gcv);
     UNPROTECT(1);
 
-    // Component 9: density
+    // Component 10: density
     SET_STRING_ELT(names, component_idx, Rf_mkChar("density"));
     SEXP s_density = PROTECT(create_density_history_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_density);
     UNPROTECT(1);
 
-    // Component 10: gamma.selection
+    // Component 11: gamma.selection
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gamma.selection"));
     SEXP s_gamma_sel = PROTECT(create_gamma_selection_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gamma_sel);
     UNPROTECT(1);
 
-    // Component 11: spectral
+    // Component 12: spectral
     SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
     SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
     SET_VECTOR_ELT(result, component_idx++, s_spectral);
     UNPROTECT(1);
 
-    // Component 12: extremality.scores
-    SET_STRING_ELT(names, component_idx, Rf_mkChar("extremality.scores"));
-    SEXP s_extremality = PROTECT(create_extremality_component(dcx, y_hat_final));
-    SET_VECTOR_ELT(result, component_idx++, s_extremality);
-    UNPROTECT(1);
+    // Component 13: extremality.scores
+    if (compute_extremality) {
+        SET_STRING_ELT(names, component_idx, Rf_mkChar("extremality"));
+
+        SEXP s_extremality = PROTECT(create_extremality_component(
+                                         dcx,
+                                         y_hat_raw,
+                                         p_threshold,
+                                         max_hop
+                                         ));
+        SET_VECTOR_ELT(result, component_idx++, s_extremality);
+        UNPROTECT(1);
+    }
 
     // Set names attribute
     Rf_setAttrib(result, R_NamesSymbol, names);

@@ -704,6 +704,14 @@ struct riem_dcx_t {
         int cg_maxit = 1000
         ) const;
 
+
+    /**
+     * @brief Compute the coboundary operator ∂₁* with full diagonal metric
+     *
+     * This implements the solution of: M₁ x = B₁ᵀ M₀ f where M₁ is the diagonal metric.
+     */
+    vec_t compute_coboundary_del1star(const vec_t& f) const;
+
     /**
      * @brief Compute extremality scores using full non-diagonal metric
      */
@@ -867,6 +875,66 @@ struct riem_dcx_t {
         double p_threshold = 0.90,
         bool detect_maxima = true,
         size_t max_hop = 20
+        ) const;
+
+
+    /**
+     * @brief Compute extremality score at a reference vertex (diagonal metric)
+     *
+     * Computes the generalized extremality score:
+     *
+     *   extr(v; U, f) = ∑_{j∈U} (w_v f_v - w_j f_j) / ∑_{j∈U} |w_j f_j - w_v f_v|
+     */
+    double extremality(
+        size_t ref_vertex,
+        const std::vector<size_t>& vertices  // Pass by const reference!
+        ) const;
+
+    /**
+     * @brief Compute hop-extremality radius for a vertex
+     */
+    std::pair<size_t, size_t> compute_hop_extremality_radius(
+        size_t vertex,
+        const vec_t& y,
+        double p_threshold,
+        bool detect_maxima,
+        size_t max_hop
+        ) const;
+
+    /**
+     * @brief Compute hop-extremality radii for multiple vertices
+     */
+    std::pair<std::vector<size_t>, std::vector<size_t>>
+    compute_hop_extremality_radii_batch(
+        const std::vector<size_t>& vertices,
+        const vec_t& y,
+        double p_threshold,
+        bool detect_maxima,
+        size_t max_hop
+        ) const;
+
+    /**
+     * @brief Break ties in function values with adaptive noise
+     */
+    void break_ties(
+        vec_t& y,
+        double noise_scale = 1e-10,
+        double min_abs_noise = 1e-12,
+        bool preserve_bounds = true,
+        int seed = 123,
+        bool verbose = false
+        ) const;
+
+    /**
+     * @brief Prepare binary conditional expectation for extrema detection
+     */
+    void prepare_binary_cond_exp(
+        vec_t& y_hat,
+        double p_right = 0.01,
+        bool apply_right_winsorization = true,
+        double noise_scale = 1e-10,
+        int seed = 123,
+        bool verbose = false
         ) const;
 
 private:

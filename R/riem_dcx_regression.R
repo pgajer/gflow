@@ -158,6 +158,35 @@
 #'                       Only used when use_counting_measure = FALSE.
 #'                       Default: 1e-10.
 #'
+#' @param compute.extremality Logical; compute Riemannian extremality scores
+#'   during fitting? When TRUE, extremality scores are computed for all vertices
+#'   at the optimal GCV iteration using the full Riemannian metric via the
+#'   coboundary operator. When FALSE (default), extremality analysis is skipped,
+#'   reducing computation time and memory usage. Set to FALSE for applications
+#'   like k-selection where only fitted values and GCV scores are needed. Set to
+#'   TRUE for comprehensive extrema detection and characterization. See Details
+#'   for extremality score computation. Default: TRUE.
+#'
+#' @param p.threshold Numeric in \eqn{[0, 1]}; extremality threshold for hop radius
+#'   computation. Only used when compute.extremality = TRUE. When p.threshold = 0,
+#'   only extremality scores are computed without hop radii (faster). When
+#'   p.threshold > 0, hop-extremality radii are computed for all vertices with
+#'   |extremality| >= p.threshold, measuring spatial persistence of extremal
+#'   character. Non-candidates are assigned NA. Typical values are 0.85-0.95.
+#'   Higher thresholds select fewer, stronger extrema. See compute.gextrema.nbhds()
+#'   for interpretation of hop radii. Default: 0.95.
+#'
+#' @param max.hop Integer; maximum hop distance for extremality radius computation.
+#'   Only used when compute.extremality = TRUE and p.threshold > 0. Controls how
+#'   far the BFS traversal extends when computing hop-extremality radii. Vertices
+#'   maintaining |extremality| >= p.threshold beyond max.hop are assigned radius
+#'   = max.hop (not infinity, to distinguish from global extrema). Larger values
+#'   capture more persistent extrema but increase computation. Typical range is
+#'   10-50 depending on graph diameter and application. For dense graphs or when
+#'   computational cost is a concern, use smaller values (10-20). For sparse graphs
+#'   or when long-range persistence is important, use larger values (30-50).
+#'   Default: 30.
+#'
 #' @param max.ratio.threshold Numeric in the range 0 to 0.2.
 #'     Geometric pruning removes an edge (i,j) when there exists an
 #'     alternative path between i and j whose path/edge length ratio
@@ -200,6 +229,20 @@
 #'     \item \code{y}: Original response values
 #'     \item \code{gcv}: List with GCV information for each iteration
 #'     \item \code{density}: List with density history
+#'     \item{extremality.scores}{(Only present if compute.extremality = TRUE)
+#'     List containing extremality analysis:
+#'     \describe{
+#'       \item{scores}{Numeric vector of Riemannian extremality scores in \eqn{[-1, 1]}
+#'         or NaN for isolated vertices. Values near +1 indicate local maxima,
+#'         near -1 indicate local minima, near 0 indicate saddles or plateaus.}
+#'       \item{hop_extremality_radii}{(Only present if p.threshold > 0)
+#'         Numeric vector of hop-extremality radii. For vertices with
+#'         |extremality| >= p.threshold, gives the maximum hop distance
+#'         maintaining extremality above threshold. NA for non-candidates,
+#'         -1 for global extrema (Inf in R after conversion), 0 for vertices
+#'         failing threshold at hop 1.}
+#'     }
+#'   }
 #'   }
 #'
 #' @details
@@ -231,6 +274,75 @@
 #'   \item \strong{Laplacian reassembly}: Recompute \eqn{L_0} with updated metric
 #'   \item \strong{Response smoothing}: Re-filter response using new geometry
 #'   \item \strong{Convergence check}: Test if response and densities stabilized
+#' }
+#'
+#' \strong{Extremality Analysis During Fitting}
+#'
+#' When compute.extremality = TRUE, the function computes Riemannian extremality
+#' scores at the optimal GCV iteration, optionally with spatial persistence
+#' measures (hop-extremality radii). This integrated approach is more efficient
+#' than post-processing because:
+#' \itemize{
+#'   \item The internal graph structures are already in memory
+#'   \item Extremality scores use the same fitted values selected by GCV
+#'   \item Results are guaranteed to be consistent with the returned fit
+#' }
+#'
+#' The extremality score at vertex v is computed via the coboundary operator:
+#' \deqn{\text{extr}(v; \hat{y}, g) = -\frac{\sum_{e \ni v} \rho_1(e) \cdot [\partial_1^*(\hat{y})](e)}{\sum_{e \ni v} \rho_1(e) \cdot |[\partial_1^*(\hat{y})](e)|}}
+#'
+#' where \eqn{\partial_1^*(\hat{y})} is the coboundary computed by solving
+#' \eqn{M_1 x = B_1^T M_0 \hat{y}} with the full (potentially non-diagonal)
+#' edge mass matrix \eqn{M_1}. Values near +1 indicate local maxima, values
+#' near -1 indicate local minima, and values near 0 indicate saddle points or
+#' plateaus.
+#'
+#' When p.threshold > 0, hop-extremality radii are computed for vertices with
+#' |\code{extremality}| >= p.threshold. For a vertex v, the hop-extremality radius is:
+#' \deqn{r_\tau(v) = \max\{h \geq 1 : |\text{extr}^{(h)}(v; \hat{y})| \geq \tau\}}
+#'
+#' where \eqn{\text{extr}^{(h)}(v; \hat{y})} is the extremality computed over the
+#' h-hop neighborhood. Large hop radii indicate persistent, stable extrema while
+#' small hop radii suggest local noise fluctuations.
+#'
+#' \strong{Computational Cost}
+#'
+#' Extremality score computation: O(m^{1.5}) for first call (includes solving
+#' \eqn{M_1 x = B_1^T M_0 \hat{y}} via Cholesky factorization or iterative CG),
+#' where m is the number of edges. For typical kNN graphs with m = O(kn), this
+#' is O((kn)^{1.5}).
+#'
+#' Hop radius computation: O(k · d · h) where k is the number of candidates
+#' (typically O(√n)), d is average degree, and h is average hop radius at
+#' termination (typically << max.hop due to early stopping).
+#'
+#' For large-scale problems (n > 10,000), consider:
+#' \itemize{
+#'   \item Set compute.extremality = FALSE during k-selection
+#'   \item Use p.threshold = 0 to skip hop radius computation
+#'   \item Increase p.threshold to reduce candidate count (e.g., 0.95 instead of 0.90)
+#'   \item Decrease max.hop if only local persistence matters
+#' }
+#'
+#' \strong{Using the Extremality Results}
+#'
+#' When compute.extremality = TRUE, the returned fit object contains an
+#' additional component \code{extremality.scores}, which is a list with:
+#' \itemize{
+#'   \item \code{scores}: Numeric vector of extremality scores for all vertices
+#'   \item \code{hop_extremality_radii}: Numeric vector of hop radii (only if p.threshold > 0)
+#'         Values: hop radius for candidates, NA for non-candidates, -1 for global extrema
+#' }
+#'
+#' Access these via:
+#' \preformatted{
+#' fit <- fit.rdgraph.regression(X, y, k = 50, compute.extremality = TRUE)
+#' extremality_scores <- fit$extremality.scores$scores
+#' hop_radii <- fit$extremality.scores$hop_extremality_radii  # if p.threshold > 0
+#'
+#' # Identify strong maxima
+#' strong_maxima <- which(extremality_scores >= 0.90)
+#' persistent_maxima <- strong_maxima[hop_radii[strong_maxima] >= 5]
 #' }
 #'
 #' \strong{Geometric Interpretation}
@@ -362,6 +474,56 @@
 #'                                            response.penalty.exp = -1)
 #' cat("Selected gamma:", fit.auto$parameters$response.penalty.exp, "\n")
 #' cat("Optimal iteration:", fit.auto$optimal.iteration, "\n")
+#'
+#' # Example 5: Computing extremality scores during fitting
+#' set.seed(789)
+#' n <- 300
+#' X <- matrix(rnorm(n * 2), n, 2)
+#' # Function with clear local maxima and minima
+#' y <- sin(2 * pi * X[,1]) * cos(2 * pi * X[,2]) + rnorm(n, sd = 0.1)
+#'
+#' # Fit with extremality analysis
+#' fit_with_extr <- fit.rdgraph.regression(X, y, k = 20,
+#'                                         compute.extremality = TRUE,
+#'                                         p.threshold = 0.90,
+#'                                         max.hop = 20)
+#'
+#' # Extract extremality scores
+#' extr_scores <- fit_with_extr$extremality
+#' hop_radii <- fit_with_extr$extremality_extremality_radii
+#'
+#' # Identify persistent extrema
+#' strong_maxima <- which(extr_scores >= 0.90 & !is.na(hop_radii) & hop_radii >= 5)
+#' strong_minima <- which(extr_scores <= -0.90 & !is.na(hop_radii) & hop_radii >= 5)
+#'
+#' cat("Found", length(strong_maxima), "persistent maxima\n")
+#' cat("Found", length(strong_minima), "persistent minima\n")
+#'
+#' # Visualize extremality scores
+#' plot(X[,1], X[,2], col = rainbow(100)[cut(extr_scores, 100)],
+#'      pch = 19, main = "Extremality Scores")
+#' points(X[strong_maxima, 1], X[strong_maxima, 2], pch = 24, cex = 1.5, col = "red")
+#' points(X[strong_minima, 1], X[strong_minima, 2], pch = 25, cex = 1.5, col = "blue")
+#'
+#' # Example 6: K-selection without extremality (faster)
+#' # For large-scale k-selection, skip extremality computation
+#' k_values <- c(10, 15, 20, 25, 30)
+#' gcv_scores <- numeric(length(k_values))
+#'
+#' for (i in seq_along(k_values)) {
+#'     fit <- fit.rdgraph.regression(X, y, k = k_values[i],
+#'                                   compute.extremality = FALSE,  # Skip for speed
+#'                                   verbose = FALSE)
+#'     gcv_scores[i] <- fit$gcv$gcv.optimal[fit$optimal.iteration]
+#' }
+#'
+#' optimal_k <- k_values[which.min(gcv_scores)]
+#' cat("Optimal k:", optimal_k, "\n")
+#'
+#' # Now fit with optimal k and compute extremality
+#' final_fit <- fit.rdgraph.regression(X, y, k = optimal_k,
+#'                                     compute.extremality = TRUE,
+#'                                     p.threshold = 0.90)
 #' }
 #'
 #' @seealso
@@ -388,6 +550,9 @@ fit.rdgraph.regression <- function(
     density.normalization = 0,
     density.alpha = 1.5,
     density.epsilon = 1e-10,
+    compute.extremality = TRUE,
+    p.threshold = 0.95,
+    max.hop = 30L,
     max.ratio.threshold = 0.1,
     threshold.percentile = 0.5,
     epsilon.y = 1e-4,
@@ -485,7 +650,8 @@ fit.rdgraph.regression <- function(
         stop(sprintf("k must be less than n (got k=%d, n=%d)", k, n))
     }
 
-    ## Validate density.alpha
+    ## ==================== Parameter density.alpha ====================
+
     if (!is.numeric(density.alpha) || length(density.alpha) != 1) {
         stop("density.alpha must be a single numeric value")
     }
@@ -493,12 +659,60 @@ fit.rdgraph.regression <- function(
         stop("density.alpha must be finite and in [1, 2], got ", density.alpha)
     }
 
-    ## Validate density.epsilon
+    ## ==================== Parameter density.epsilon ====================
+
     if (!is.numeric(density.epsilon) || length(density.epsilon) != 1) {
         stop("density.epsilon must be a single numeric value")
     }
     if (!is.finite(density.epsilon) || density.epsilon <= 0) {
         stop("density.epsilon must be finite and positive, got ", density.epsilon)
+    }
+
+    ## ==================== Parameter compute.extremality Validation ====================
+
+    if (!is.logical(compute.extremality) || length(compute.extremality) != 1) {
+        stop("compute.extremality must be TRUE or FALSE")
+    }
+
+    if (is.na(compute.extremality)) {
+        stop("compute.extremality cannot be NA")
+    }
+
+    ## ==================== Parameter p.threshold Validation ====================
+
+    if (!is.numeric(p.threshold) || length(p.threshold) != 1) {
+        stop("p.threshold must be a single numeric value")
+    }
+
+    if (is.na(p.threshold) || !is.finite(p.threshold)) {
+        stop("p.threshold must be finite")
+    }
+
+    ## p.threshold = 0 is allowed to skip hop radius computation
+    ## Otherwise it must be in (0, 1]
+    if (p.threshold < 0 || p.threshold > 1) {
+        stop(sprintf("p.threshold must be in [0, 1], got %.3f", p.threshold))
+    }
+    ## ==================== Parameter max.hop Validation ====================
+
+    if (!is.numeric(max.hop) || length(max.hop) != 1) {
+        stop("max.hop must be a single numeric value")
+    }
+
+    ## Convert to integer
+    max.hop <- as.integer(max.hop)
+
+    if (is.na(max.hop)) {
+        stop("max.hop cannot be NA")
+    }
+
+    if (max.hop < 1) {
+        stop(sprintf("max.hop must be at least 1 (got %d)", max.hop))
+    }
+
+    ## Practical upper bound check
+    if (max.hop > 1000) {
+        warning(sprintf("max.hop = %d is unusually large; typical values are 10-50", max.hop))
     }
 
     ## ==================== Parameter use.counting.measure Validation ====================
@@ -757,7 +971,7 @@ fit.rdgraph.regression <- function(
     ## ==================== Call C++ Function ====================
 
     fit <- .Call(
-        S_fit_knn_riem_graph_regression,
+        S_fit_rdgraph_regression,
         X,
         as.double(y),
         as.integer(k + 1L), # this is to account for the fact that ANN library is set up to return for query point as the first elements of the list of kNN's
@@ -777,6 +991,9 @@ fit.rdgraph.regression <- function(
         as.double(threshold.percentile),
         as.double(density.alpha),
         as.double(density.epsilon),
+        as.logical(compute.extremality),
+        as.double(p.threshold),
+        as.integer(max.hop),
         as.integer(test.stage),
         as.logical(verbose),
         PACKAGE = "gflow"
@@ -1953,471 +2170,6 @@ compute.pextrema.nbhds <- function(dcx,
     return(results)
 }
 
-
-#' Compute Riemannian Metric-Based Extrema Neighborhoods
-#'
-#' @description
-#' Identifies local extrema using the full Riemannian metric structure and computes
-#' their extremality scores via the coboundary operator. This approach respects
-#' geometric correlations between edges and provides theoretically rigorous
-#' extremum detection on Riemannian density complexes.
-#'
-#' @details
-#' The function implements g-local extrema detection, where "g" denotes the
-#' Riemannian metric that determines the coboundary operator ∂₁*. Unlike
-#' probabilistic approaches (maxp/minp) that use simple density weighting,
-#' this method accounts for the full geometric structure including non-orthogonal
-#' edge inner products encoded in the edge mass matrix.
-#'
-#' \strong{Mathematical Foundation}
-#'
-#' A vertex v is a τ-strong g-extremum if its extremality score satisfies:
-#' \deqn{\text{extr}(v; \hat{y}, g) = -\frac{\sum_{e \ni v} \rho_1(e) \cdot [\partial_1^*(\hat{y})](e)}{\sum_{e \ni v} \rho_1(e) \cdot |[\partial_1^*(\hat{y})](e)|} \geq \tau}
-#'
-#' where ∂₁*(\hat{y}) is computed by solving M₁ x = B₁ᵀ M₀ \hat{y} with the full
-#' (potentially non-diagonal) edge mass matrix M₁. When |extr(v)| = 1, the vertex
-#' is a perfect g-local extremum; when 0 < |extr(v)| < 1, it approximates an
-#' extremum to degree |extr(v)|.
-#'
-#' The sign of extr(v) indicates type:
-#' - extr(v) > 0: g-local maximum (gradients point inward)
-#' - extr(v) < 0: g-local minimum (gradients point outward)
-#'
-#' \strong{Three-Stage Detection Pipeline}
-#'
-#' Stage 1 (Extremality Scoring): Compute extremality scores for all vertices
-#' using the full Riemannian metric. This involves computing the coboundary
-#' operator ∂₁*(\hat{y}) via solving M₁ x = B₁ᵀ M₀ \hat{y}, then aggregating
-#' weighted contributions at each vertex. The first call factors M₁ (expensive),
-#' but subsequent calls reuse the factorization (fast).
-#'
-#' Stage 2 (Connectivity Filtering): Compute effective degrees and filter out
-#' poorly connected vertices (outliers). This is the same as in compute.pextrema.nbhds()
-#' and removes vertices below the eff_degree_quantile threshold.
-#'
-#' Stage 3 (Spatial Persistence): For candidates passing filters, compute the
-#' g-extremality radius using the extremality threshold. This measures how far
-#' the extremality property extends into the neighborhood, distinguishing genuine
-#' extrema from noise fluctuations.
-#'
-#' \strong{Comparison with Probabilistic Detection}
-#'
-#' compute.pextrema.nbhds() (Probabilistic):
-#' - Uses maxp/minp scores based on sign counting with density weights
-#' - Treats edges as orthogonal (ignores geometric correlations)
-#' - Fast O(m) computation always
-#' - Approximate but robust for exploratory analysis
-#'
-#' compute.gextrema.nbhds() (Riemannian):
-#' - Uses extremality scores from coboundary operator
-#' - Respects full geometric structure with edge correlations
-#' - First call O(m^1.5) with factorization, subsequent O(m + n)
-#' - Theoretically rigorous, essential for final analysis
-#'
-#' For most graphs with weak edge correlations, both methods give similar results.
-#' For complex geometries with significant triple intersections (dense regions,
-#' high-degree vertices), the Riemannian approach provides more accurate detection
-#' by accounting for geometric structure the probabilistic method ignores.
-#'
-#' \strong{When to Use Each Method}
-#'
-#' Use compute.pextrema.nbhds() for:
-#' - Exploratory data analysis and quick screening
-#' - Initial extrema identification in pipelines
-#' - Situations where approximate detection suffices
-#' - Very large graphs where computational cost is prohibitive
-#'
-#' Use compute.gextrema.nbhds() for:
-#' - Final production analysis requiring theoretical correctness
-#' - Complex geometries where edge correlations are significant
-#' - Validation and methodological rigor
-#' - Detailed extremum characterization for reporting
-#'
-#' @param dcx A fitted riem.dcx object from fit.rdgraph.regression()
-#' @param extremality_quantile Numeric in (0,1). Quantile threshold for initial
-#'   extremality score filtering. Default 0.95 keeps vertices with extremality
-#'   scores above the 95th percentile.
-#' @param g_extremality_threshold Numeric in (0,1). Threshold for g-extremality
-#'   radius computation. Default 0.90 requires extremality to remain above 0.90
-#'   in expanded neighborhoods.
-#' @param eff_degree_quantile Numeric in (0,1). Lower quantile threshold for
-#'   effective degree filtering. Default 0.10 removes vertices in the bottom 10%
-#'   of connectivity. Use 0 to disable this filter.
-#' @param max_hop Integer. Maximum hop distance to explore for g-extremality radius.
-#'   Default 20. Larger values increase computation but capture more persistent extrema.
-#' @param use_iterative Logical. If TRUE, use iterative CG solver for coboundary
-#'   computation instead of direct Cholesky factorization. Default FALSE. Use TRUE
-#'   for very large graphs where factorization memory is prohibitive.
-#' @param compute_hop_idx Logical. If TRUE, also compute classical binary hop_idx
-#'   for comparison. Default FALSE. Adds computational cost but enables validation.
-#'
-#' @return A data frame with one row per detected g-extremum, containing:
-#' \describe{
-#'   \item{vertex}{Integer: vertex index (1-indexed)}
-#'   \item{value}{Numeric: function value \hat{y}(v) at the vertex}
-#'   \item{rel_value}{Numeric: relative value normalized by mean(\hat{y})}
-#'   \item{type}{Character: "max" for g-local maxima, "min" for g-local minima}
-#'   \item{extremality}{Numeric in \eqn{[-1, 1]}: extremality score. Sign indicates
-#'         type, magnitude indicates strength. ±1 is perfect g-local extremum.}
-#'   \item{eff_degree}{Numeric: effective degree measuring vertex connectivity}
-#'   \item{g_extremality_radius}{Integer: spatial persistence measured as maximum
-#'         hop distance maintaining extremality above threshold. Inf indicates
-#'         global extremum.}
-#'   \item{hop_idx}{Integer (optional): classical binary hop radius. Only present
-#'         if compute_hop_idx = TRUE. NA if vertex is not a classical extremum.}
-#'   \item{metric_type}{Character: "diagonal" or "non-diagonal", indicating
-#'         whether the edge mass matrix has off-diagonal correlations}
-#'   \item{label}{Character: extremum label. Maxima labeled M1, M2, ... in
-#'         descending order by value. Minima labeled m1, m2, ... in ascending
-#'         order by value.}
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' # Fit regression model
-#' dcx <- fit.rdgraph.regression(X, y, k = 50)
-#'
-#' # Detect g-extrema with default parameters
-#' gextrema <- compute.gextrema.nbhds(dcx)
-#'
-#' # Use more stringent filtering
-#' gextrema_strict <- compute.gextrema.nbhds(
-#'   dcx,
-#'   extremality_quantile = 0.99,
-#'   g_extremality_threshold = 0.95
-#' )
-#'
-#' # Compare with probabilistic detection
-#' pextrema <- compute.pextrema.nbhds(dcx)
-#' gextrema <- compute.gextrema.nbhds(dcx)
-#'
-#' # Examine differences in detected extrema
-#' setdiff(gextrema$vertex, pextrema$vertex)  # In g but not p
-#' setdiff(pextrema$vertex, gextrema$vertex)  # In p but not g
-#'
-#' # Compare spatial persistence measures
-#' merge_data <- merge(
-#'   pextrema[, c("vertex", "hop_extremp_radius")],
-#'   gextrema[, c("vertex", "g_extremality_radius")],
-#'   by = "vertex"
-#' )
-#' with(merge_data, plot(hop_extremp_radius, g_extremality_radius,
-#'      main = "Probabilistic vs Riemannian Persistence"))
-#' abline(0, 1, col = "red")
-#' }
-#'
-#' @seealso \code{\link{compute.pextrema.nbhds}} for probabilistic detection,
-#'   \code{\link{fit.rdgraph.regression}} for model fitting
-#'
-#' @export
-compute.gextrema.nbhds <- function(dcx,
-                                    extremality_quantile = 0.95,
-                                    g_extremality_threshold = 0.90,
-                                    eff_degree_quantile = 0.10,
-                                    max_hop = 20L,
-                                    use_iterative = FALSE,
-                                    compute_hop_idx = FALSE) {
-
-    # ================================================================
-    # ARGUMENT VALIDATION
-    # ================================================================
-
-    # Validate dcx is a riem.dcx object
-    if (!inherits(dcx, "riem.dcx")) {
-        stop("dcx must be an object of class 'riem.dcx' (output from fit.rdgraph.regression)")
-    }
-
-    required_fields <- c("fitted.values", "graph")
-    missing_fields <- setdiff(required_fields, names(dcx$optimal.fit))
-    if (length(missing_fields) > 0) {
-        stop(sprintf("dcx$optimal.fit is missing required fields: %s",
-                     paste(missing_fields, collapse = ", ")))
-    }
-
-    required_graph_fields <- c("adj.list", "vertex.densities", "edge.densities")
-    missing_graph_fields <- setdiff(required_graph_fields, names(dcx$optimal.fit$graph))
-    if (length(missing_graph_fields) > 0) {
-        stop(sprintf("dcx$optimal.fit$graph is missing required fields: %s",
-                     paste(missing_graph_fields, collapse = ", ")))
-    }
-
-    # Validate quantile parameters
-    if (!is.numeric(extremality_quantile) || extremality_quantile <= 0 || extremality_quantile >= 1) {
-        stop("extremality_quantile must be in (0, 1)")
-    }
-
-    if (!is.numeric(g_extremality_threshold) || g_extremality_threshold <= 0 || g_extremality_threshold > 1) {
-        stop("g_extremality_threshold must be in (0, 1]")
-    }
-
-    if (!is.numeric(eff_degree_quantile) || eff_degree_quantile < 0 || eff_degree_quantile >= 1) {
-        stop("eff_degree_quantile must be in [0, 1)")
-    }
-
-    # Validate max_hop
-    if (!is.numeric(max_hop) || max_hop <= 0 || max_hop != as.integer(max_hop)) {
-        stop("max_hop must be a positive integer")
-    }
-    max_hop <- as.integer(max_hop)
-
-    # Validate logical flags
-    if (!is.logical(use_iterative) || length(use_iterative) != 1) {
-        stop("use_iterative must be a single logical value")
-    }
-
-    if (!is.logical(compute_hop_idx) || length(compute_hop_idx) != 1) {
-        stop("compute_hop_idx must be a single logical value")
-    }
-
-    # ================================================================
-    # EXTRACT DATA FROM DCX OBJECT
-    # ================================================================
-
-    adj.list <- dcx$optimal.fit$graph$adj.list
-    yhat <- dcx$optimal.fit$fitted.values
-    vertex_densities <- dcx$optimal.fit$graph$vertex.densities
-    edge_densities <- dcx$optimal.fit$graph$edge.densities
-    n <- length(yhat)
-    Ey <- mean(yhat)
-
-    # Check for extremality scores in dcx object (if pre-computed)
-    if (!is.null(dcx$optimal.fit$extremality.scores)) {
-        # Use pre-computed extremality scores
-        extremality_scores <- dcx$optimal.fit$extremality.scores
-        message("Using pre-computed extremality scores from dcx object")
-    } else {
-        # Need to compute extremality scores via C++ interface
-        # This requires calling the coboundary operator
-        stop("extremality.scores not found in dcx$optimal.fit. ",
-             "This function requires a dcx object with pre-computed extremality scores. ",
-             "Please ensure fit.rdgraph.regression() was called with extremality computation enabled, ",
-             "or use compute.pextrema.nbhds() which computes scores internally.")
-    }
-
-    # ================================================================
-    # STAGE 1: EXTREMALITY SCORE FILTERING
-    # ================================================================
-
-    # The extremality scores are in [-1, 1]
-    # Positive values indicate maxima, negative indicate minima
-    # We filter by absolute value to get strong extrema of either type
-
-    abs_extremality <- abs(extremality_scores)
-    extremality_threshold <- quantile(abs_extremality, probs = extremality_quantile, na.rm = TRUE)
-
-    # Candidates are vertices with high absolute extremality
-    candidates <- which(abs_extremality >= extremality_threshold & !is.na(extremality_scores))
-
-    if (length(candidates) == 0) {
-        warning("No candidates found meeting extremality threshold. Returning empty data frame.")
-        return(data.frame(
-            vertex = integer(),
-            value = numeric(),
-            rel_value = numeric(),
-            type = character(),
-            extremality = numeric(),
-            eff_degree = numeric(),
-            g_extremality_radius = integer(),
-            metric_type = character(),
-            label = character(),
-            stringsAsFactors = FALSE
-        ))
-    }
-
-    message(sprintf("Stage 1: %d candidates with |extremality| >= %.3f (%.0f%% quantile)",
-                    length(candidates), extremality_threshold, extremality_quantile * 100))
-
-    # ================================================================
-    # STAGE 2: CONNECTIVITY FILTERING
-    # ================================================================
-
-    # Compute effective degrees
-    # This could be pre-computed and stored in dcx, but we compute here for flexibility
-    eff_degree <- compute.effective.degrees(adj.list, edge_densities)
-
-    # Filter by effective degree if threshold > 0
-    if (eff_degree_quantile > 0) {
-        eff_degree_threshold <- quantile(eff_degree, probs = eff_degree_quantile, na.rm = TRUE)
-        candidates <- candidates[eff_degree[candidates] >= eff_degree_threshold]
-
-        if (length(candidates) == 0) {
-            warning("No candidates remain after effective degree filtering. Returning empty data frame.")
-            return(data.frame(
-                vertex = integer(),
-                value = numeric(),
-                rel_value = numeric(),
-                type = character(),
-                extremality = numeric(),
-                eff_degree = numeric(),
-                g_extremality_radius = integer(),
-                metric_type = character(),
-                label = character(),
-                stringsAsFactors = FALSE
-            ))
-        }
-
-        message(sprintf("Stage 2: %d candidates with eff_degree >= %.2f (%.0f%% quantile)",
-                        length(candidates), eff_degree_threshold, eff_degree_quantile * 100))
-    } else {
-        message("Stage 2: Effective degree filtering disabled (eff_degree_quantile = 0)")
-    }
-
-    # ================================================================
-    # STAGE 3: SPATIAL PERSISTENCE (G-EXTREMALITY RADIUS)
-    # ================================================================
-
-    # Separate maxima and minima candidates
-    max_candidates <- candidates[extremality_scores[candidates] > 0]
-    min_candidates <- candidates[extremality_scores[candidates] < 0]
-
-    message(sprintf("Stage 3: Computing g-extremality radii for %d maxima and %d minima",
-                    length(max_candidates), length(min_candidates)))
-
-    # For g-extremality radius, we need to call C++ code
-    # This is analogous to the hop-extremp radius computation in compute.pextrema.nbhds()
-    # but uses the extremality threshold on the full metric scores
-
-    # NOTE: This requires a C++ function S_compute_hop_gextrema_radii_batch
-    # which computes hop radius using extremality scores instead of maxp/minp
-    # For now, we'll use a placeholder that needs to be implemented
-
-    results <- data.frame(
-        vertex = integer(),
-        value = numeric(),
-        rel_value = numeric(),
-        type = character(),
-        extremality = numeric(),
-        eff_degree = numeric(),
-        g_extremality_radius = integer(),
-        metric_type = character(),
-        stringsAsFactors = FALSE
-    )
-
-    # Determine metric type from dcx object
-    metric_type <- if (!is.null(dcx$optimal.fit$graph$metric_type)) {
-        dcx$optimal.fit$graph$metric_type
-    } else {
-        "unknown"
-    }
-
-    # Process maxima
-    if (length(max_candidates) > 0) {
-        # TODO: Replace with actual C++ call when S_compute_hop_gextrema_radii_batch is implemented
-        # For now, use a placeholder that returns hop radius = 1 for all
-        hop_g_max_radii <- rep(1L, length(max_candidates))
-
-        # In the full implementation, this would be:
-        # hop_g_max_radii <- .Call("S_compute_hop_gextrema_radii_batch",
-        #                           dcx$vertex_cofaces,
-        #                           as.integer(max_candidates),
-        #                           yhat,
-        #                           g_extremality_threshold,
-        #                           TRUE,  # detect_maxima
-        #                           max_hop,
-        #                           PACKAGE = "gflow")
-
-        max_df <- data.frame(
-            vertex = max_candidates,
-            value = yhat[max_candidates],
-            rel_value = yhat[max_candidates] / Ey,
-            type = "max",
-            extremality = extremality_scores[max_candidates],
-            eff_degree = eff_degree[max_candidates],
-            g_extremality_radius = hop_g_max_radii,
-            metric_type = metric_type,
-            stringsAsFactors = FALSE
-        )
-
-        results <- rbind(results, max_df)
-    }
-
-    # Process minima
-    if (length(min_candidates) > 0) {
-        # TODO: Replace with actual C++ call
-        hop_g_min_radii <- rep(1L, length(min_candidates))
-
-        # In the full implementation:
-        # hop_g_min_radii <- .Call("S_compute_hop_gextrema_radii_batch",
-        #                           dcx$vertex_cofaces,
-        #                           as.integer(min_candidates),
-        #                           yhat,
-        #                           g_extremality_threshold,
-        #                           FALSE,  # detect_minima
-        #                           max_hop,
-        #                           PACKAGE = "gflow")
-
-        min_df <- data.frame(
-            vertex = min_candidates,
-            value = yhat[min_candidates],
-            rel_value = yhat[min_candidates] / Ey,
-            type = "min",
-            extremality = extremality_scores[min_candidates],
-            eff_degree = eff_degree[min_candidates],
-            g_extremality_radius = hop_g_min_radii,
-            metric_type = metric_type,
-            stringsAsFactors = FALSE
-        )
-
-        results <- rbind(results, min_df)
-    }
-
-    # ================================================================
-    # OPTIONAL: CLASSICAL HOP_IDX COMPUTATION
-    # ================================================================
-
-    if (compute_hop_idx) {
-        message("Computing classical hop_idx for comparison...")
-
-        extr.res <- compute.extrema.hop.nbhds(adj.list,
-                                              dcx$optimal.fit$graph$edge.length.list,
-                                              yhat)
-
-        # Add hop_idx column
-        results$hop_idx <- NA_integer_
-
-        # Populate hop_idx for vertices that are classical extrema
-        classical.extr <- results$vertex[results$vertex %in% extr.res$extrema_df$vertex]
-        for (v in classical.extr) {
-            results$hop_idx[results$vertex == v] <-
-                extr.res$extrema_df$hop_idx[extr.res$extrema_df$vertex == v]
-        }
-    }
-
-    # ================================================================
-    # SORT AND LABEL
-    # ================================================================
-
-    if (nrow(results) == 0) {
-        results$label <- character()
-        return(results)
-    }
-
-    # Separate maxima and minima for sorting and labeling
-    max_subset <- results[results$type == "max", ]
-    min_subset <- results[results$type == "min", ]
-
-    # Sort maxima by value (descending) and label M1, M2, ...
-    if (nrow(max_subset) > 0) {
-        max_subset <- max_subset[order(-max_subset$value), ]
-        max_subset$label <- paste0("M", seq_len(nrow(max_subset)))
-    }
-
-    # Sort minima by value (ascending) and label m1, m2, ...
-    if (nrow(min_subset) > 0) {
-        min_subset <- min_subset[order(min_subset$value), ]
-        min_subset$label <- paste0("m", seq_len(nrow(min_subset)))
-    }
-
-    # Combine: maxima first, then minima
-    results <- rbind(max_subset, min_subset)
-    rownames(results) <- NULL
-
-    message(sprintf("Found %d g-local maxima and %d g-local minima",
-                    nrow(max_subset), nrow(min_subset)))
-
-    return(results)
-}
-
 #' Compute Effective Degrees for All Vertices
 #'
 #' @description
@@ -2434,13 +2186,13 @@ compute.gextrema.nbhds <- function(dcx,
 #' @keywords internal
 compute.effective.degrees <- function(adj.list, edge_densities) {
     n <- length(adj.list)
-    eff_degree <- numeric(n)
+    eff.deg <- numeric(n)
 
     for (i in seq_len(n)) {
         if (length(adj.list[[i]]) > 0 && length(edge_densities[[i]]) > 0) {
-            eff_degree[i] <- sum(edge_densities[[i]], na.rm = TRUE)
+            eff.deg[i] <- sum(edge_densities[[i]], na.rm = TRUE)
         }
     }
 
-    return(eff_degree)
+    return(eff.deg)
 }
