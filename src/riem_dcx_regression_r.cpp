@@ -1500,6 +1500,15 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_raw_fitted);
     UNPROTECT(1);
 
+    // Component 2: fitted.values (after preprocessing: winsorized + tie-broken)
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("fitted.values"));
+    SEXP s_fitted = PROTECT(Rf_allocVector(REALSXP, n));
+    for (Eigen::Index i = 0; i < n; ++i) {
+        REAL(s_fitted)[i] = y_hat[i];
+    }
+    SET_VECTOR_ELT(result, component_idx++, s_fitted);
+    UNPROTECT(1);
+
     // Component 3: residuals (computed using preprocessed fitted values)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
     SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
