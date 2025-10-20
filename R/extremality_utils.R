@@ -671,25 +671,27 @@ compute.extrema.geodesic.distances <- function(extremality.df,
 
 #' Cluster extrema using graph-aware hierarchical clustering
 #'
-#' @param geodesic_dist Geodesic distance matrix between extrema
+#' @param geodesic.dist Geodesic distance matrix between extrema
 #' @param extremality.df Extremality summary data frame
+#' @param extrema.type Type of extrema to summarize: "max" or "min"
 #' @param method Linkage method for hclust
 #' @param density.weight Weight for density-based similarity (0-1)
 #' @return hclust object with clustering results
-cluster.extrema.graph.aware <- function(geodesic_dist,
+cluster.extrema.graph.aware <- function(geodesic.dist,
                                         extremality.df,
+                                        extrema.type = "max",
                                         method = "complete",
                                         density.weight = 0.3) {
     # Extract maxima
-    maxima_df <- extremality.df[extremality.df$type == "max", ]
+    extrema.df <- extremality.df[extremality.df$type == extrema.type, ]
 
     # Normalize geodesic distances to [0, 1]
-    max_dist <- max(geodesic_dist[is.finite(geodesic_dist)])
-    geodesic_norm <- geodesic_dist / max_dist
+    max_dist <- max(geodesic.dist[is.finite(geodesic.dist)])
+    geodesic_norm <- geodesic.dist / max_dist
 
     # Create density-based similarity matrix
     # Vertices with similar neighborhood sizes are more likely to cluster
-    nbhd_sizes <- maxima_df$extremality.nbhd.size
+    nbhd_sizes <- extrema.df$extremality.nbhd.size
     nbhd_sizes[is.infinite(nbhd_sizes)] <- max(nbhd_sizes[is.finite(nbhd_sizes)])
 
     # Pairwise ratios of neighborhood sizes (symmetric)
@@ -725,7 +727,7 @@ cluster.extrema.graph.aware <- function(geodesic_dist,
 #' respect the graph's metric and density structure.
 #'
 #' @param extremality.df Data frame from extremality.summary() with cluster assignments
-#' @param geodesic_dist Distance matrix (geodesic distances between extrema)
+#' @param geodesic.dist Distance matrix (geodesic distances between extrema)
 #' @param representative.method Method for selecting cluster representative:
 #'   - "medoid": vertex minimizing sum of distances to cluster members (default)
 #'   - "centroid": vertex closest to cluster centroid in distance space
@@ -759,18 +761,18 @@ cluster.extrema.graph.aware <- function(geodesic_dist,
 #' @examples
 #' \dontrun{
 #' # Using medoid (default)
-#' summary_medoid <- compute.cluster.summary(extremality.df, geodesic_dist)
+#' summary_medoid <- compute.cluster.summary(extremality.df, geodesic.dist)
 #'
 #' # Using maximum persistence
 #' summary_persist <- compute.cluster.summary(
-#'   extremality.df, geodesic_dist,
+#'   extremality.df, geodesic.dist,
 #'   representative.method = "max_persistence"
 #' )
 #' }
 #'
 #' @export
 compute.cluster.summary <- function(extremality.df,
-                                    geodesic_dist,
+                                    geodesic.dist,
                                     representative.method = c("medoid", "centroid",
                                                              "max_extremality",
                                                              "max_persistence",
@@ -821,7 +823,7 @@ compute.cluster.summary <- function(extremality.df,
         if (representative.method == "medoid") {
             # Medoid: minimize sum of distances to all cluster members
             member_labels <- cluster_members$label
-            cluster_dist <- geodesic_dist[member_labels, member_labels, drop = FALSE]
+            cluster_dist <- geodesic.dist[member_labels, member_labels, drop = FALSE]
 
             # Sum of distances for each vertex
             dist_sums <- rowSums(cluster_dist)
@@ -832,7 +834,7 @@ compute.cluster.summary <- function(extremality.df,
         } else if (representative.method == "centroid") {
             # Centroid: closest to mean position in distance space
             member_labels <- cluster_members$label
-            cluster_dist <- geodesic_dist[member_labels, member_labels, drop = FALSE]
+            cluster_dist <- geodesic.dist[member_labels, member_labels, drop = FALSE]
 
             # Compute centroid (mean of distances)
             centroid <- colMeans(cluster_dist)
@@ -915,7 +917,7 @@ compute.cluster.summary <- function(extremality.df,
 #' @examples
 #' \dontrun{
 #' # Get cluster summary with representatives
-#' cluster_summary <- compute.cluster.summary(extremality.df, geodesic_dist)
+#' cluster_summary <- compute.cluster.summary(extremality.df, geodesic.dist)
 #'
 #' # Extract representatives for plotting
 #' representatives <- extract.cluster.representatives(extremality.df, cluster_summary)
@@ -962,14 +964,14 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 #' useful for understanding how different strategies affect the choice.
 #'
 #' @param extremality.df Data frame from extremality.summary()
-#' @param geodesic_dist Geodesic distance matrix
+#' @param geodesic.dist Geodesic distance matrix
 #' @param cluster_id Specific cluster to examine
 #'
 #' @return Data frame comparing representatives from different methods
 #'
 #' @export
 compare.representative.methods <- function(extremality.df,
-                                          geodesic_dist,
+                                          geodesic.dist,
                                           cluster_id) {
 
     methods <- c("medoid", "centroid", "max_extremality",
@@ -987,7 +989,7 @@ compare.representative.methods <- function(extremality.df,
     )
 
     for (method in methods) {
-        summary <- compute.cluster.summary(extremality.df, geodesic_dist,
+        summary <- compute.cluster.summary(extremality.df, geodesic.dist,
                                           representative.method = method)
 
         cluster_row <- summary[summary$cluster == cluster_id, ]
@@ -1023,7 +1025,7 @@ compare.representative.methods <- function(extremality.df,
 #'   vertex-level extremality information
 #' @param dbscan_clusters Integer vector of cluster assignments from dbscan::dbscan().
 #'   Length must equal the number of extrema. Cluster 0 represents noise points.
-#' @param geodesic_dist Distance matrix (geodesic distances between extrema).
+#' @param geodesic.dist Distance matrix (geodesic distances between extrema).
 #'   Optional but required if representative.method is "medoid" or "centroid".
 #' @param representative.method Method for selecting cluster representative:
 #'   - "medoid": vertex minimizing sum of distances to cluster members (default)
@@ -1064,16 +1066,16 @@ compare.representative.methods <- function(extremality.df,
 #'
 #' Representative Selection:
 #'
-#' For distance-based methods (medoid, centroid), geodesic_dist is required.
+#' For distance-based methods (medoid, centroid), geodesic.dist is required.
 #' For property-based methods (max_extremality, max_persistence, max_support),
-#' geodesic_dist is optional.
+#' geodesic.dist is optional.
 #'
 #' @examples
 #' \dontrun{
 #' library(dbscan)
 #'
 #' # Compute geodesic distances
-#' geodesic_dist <- compute.extrema.geodesic.distances(
+#' geodesic.dist <- compute.extrema.geodesic.distances(
 #'     extremality.df,
 #'     rdcx.obj$optimal.fit$graph$adj.list,
 #'     rdcx.obj$optimal.fit$graph$edge.length.list
@@ -1082,7 +1084,7 @@ compare.representative.methods <- function(extremality.df,
 #' # Run DBSCAN
 #' maxima_df <- extremality.df[extremality.df$type == "max", ]
 #' maxima_labels <- maxima_df$label
-#' maxima_dist <- geodesic_dist[maxima_labels, maxima_labels]
+#' maxima_dist <- geodesic.dist[maxima_labels, maxima_labels]
 #'
 #' db <- dbscan(maxima_dist, eps = 2.5, minPts = 2)
 #'
@@ -1090,7 +1092,7 @@ compare.representative.methods <- function(extremality.df,
 #' dbscan_summary <- compute.dbscan.cluster.summary(
 #'     extremality.df,
 #'     db$cluster,
-#'     geodesic_dist = geodesic_dist,
+#'     geodesic.dist = geodesic.dist,
 #'     representative.method = "medoid"
 #' )
 #'
@@ -1100,7 +1102,7 @@ compare.representative.methods <- function(extremality.df,
 #' dbscan_summary_with_noise <- compute.dbscan.cluster.summary(
 #'     extremality.df,
 #'     db$cluster,
-#'     geodesic_dist = geodesic_dist,
+#'     geodesic.dist = geodesic.dist,
 #'     include.noise = TRUE
 #' )
 #' }
@@ -1112,7 +1114,7 @@ compare.representative.methods <- function(extremality.df,
 #' @export
 compute.dbscan.cluster.summary <- function(extremality.df,
                                           dbscan_clusters,
-                                          geodesic_dist = NULL,
+                                          geodesic.dist = NULL,
                                           representative.method = c("medoid", "centroid",
                                                                    "max_extremality",
                                                                    "max_persistence",
@@ -1124,8 +1126,8 @@ compute.dbscan.cluster.summary <- function(extremality.df,
     extrema.type <- match.arg(extrema.type)
 
     # Validate distance matrix if needed
-    if (representative.method %in% c("medoid", "centroid") && is.null(geodesic_dist)) {
-        stop("geodesic_dist is required for representative.method = '",
+    if (representative.method %in% c("medoid", "centroid") && is.null(geodesic.dist)) {
+        stop("geodesic.dist is required for representative.method = '",
              representative.method, "'")
     }
 
@@ -1178,7 +1180,7 @@ compute.dbscan.cluster.summary <- function(extremality.df,
         cluster_members <- extrema_subset[extrema_subset$cluster == cl, ]
 
         # Select representative
-        rep_info <- select_representative(cluster_members, geodesic_dist,
+        rep_info <- select_representative(cluster_members, geodesic.dist,
                                          representative.method)
 
         # Compute statistics
@@ -1253,11 +1255,11 @@ compute.dbscan.cluster.summary <- function(extremality.df,
 
 #' Helper: Select representative from cluster members
 #' @keywords internal
-select_representative <- function(cluster_members, geodesic_dist, method) {
+select_representative <- function(cluster_members, geodesic.dist, method) {
 
     if (method == "medoid") {
         member_labels <- cluster_members$label
-        cluster_dist <- geodesic_dist[member_labels, member_labels, drop = FALSE]
+        cluster_dist <- geodesic.dist[member_labels, member_labels, drop = FALSE]
         dist_sums <- rowSums(cluster_dist)
         medoid_idx <- which.min(dist_sums)
         return(list(
@@ -1267,7 +1269,7 @@ select_representative <- function(cluster_members, geodesic_dist, method) {
 
     } else if (method == "centroid") {
         member_labels <- cluster_members$label
-        cluster_dist <- geodesic_dist[member_labels, member_labels, drop = FALSE]
+        cluster_dist <- geodesic.dist[member_labels, member_labels, drop = FALSE]
         centroid <- colMeans(cluster_dist)
         dist_to_centroid <- apply(cluster_dist, 1, function(row) {
             sqrt(sum((row - centroid)^2))
@@ -1364,7 +1366,7 @@ compute_cluster_stats <- function(cluster_members) {
 #' dbscan_summary <- compute.dbscan.cluster.summary(
 #'     extremality.df,
 #'     db$cluster,
-#'     geodesic_dist = geodesic_dist
+#'     geodesic.dist = geodesic.dist
 #' )
 #'
 #' # Extract representatives for plotting
