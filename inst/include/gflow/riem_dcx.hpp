@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basin.hpp"
 #include "iknn_vertex.hpp"
 
 #include <vector>
@@ -937,6 +938,11 @@ struct riem_dcx_t {
         bool verbose = false
         ) const;
 
+    basin_t find_rho_extremum_basin(
+        size_t vertex,
+        const vec_t& y_hat,
+        bool detect_maxima
+        ) const;
 private:
 
     std::vector<std::unordered_set<index_t>> neighbor_sets;
