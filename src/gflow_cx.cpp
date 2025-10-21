@@ -183,7 +183,7 @@ hop_nbhd_t set_wgraph_t::compute_extremum_hop_nbhd(
 
                 visited[u] = true;
 
-                // Check if this vertex violates the extremum condition
+                // Check if this vertex violates the extremum condition <<---- this condition is incorrect; it should be between vertices of each edge
                 bool is_violation = (detect_maxima && y[u] > y[vertex]) ||
                     (!detect_maxima && y[u] < y[vertex]);
 
