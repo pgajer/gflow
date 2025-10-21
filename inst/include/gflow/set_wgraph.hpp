@@ -514,7 +514,14 @@ struct set_wgraph_t {
 		bool detect_maxima
 		) const;
 
+	// this incorrectly computes basins and should be deprecated
 	size_t compute_extremum_hop_index(
+		size_t vertex,
+		const std::vector<double>& y,
+		bool detect_maxima
+		) const;
+
+	hop_nbhd_t compute_basin_of_attraction(
 		size_t vertex,
 		const std::vector<double>& y,
 		bool detect_maxima
