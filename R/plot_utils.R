@@ -2379,7 +2379,7 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
 
 #' Label End Points in 3D Embedding of a Graph
 #'
-#' Adds labeled red spheres to specific points in a 3D graph visualization.
+#' Adds labeled spheres to specific points in a 3D graph visualization.
 #' This function renders 3D spheres at specified coordinates and attaches
 #' text labels adjacent to them.
 #'
@@ -2390,6 +2390,11 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
 #'   representations of row indices in \code{graph.3d}, and the values are
 #'   the labels to display at those points. Names must be coercible to
 #'   integers within the valid row range of \code{graph.3d}.
+#'
+#' @param col Color of end point spheres.
+#' @param radius Radius of end point spheres.
+#' @param lab.cex End point labels cex graphical parameter.
+#' @param lab.adj End point labels adj graphical parameter.
 #'
 #' @return NULL (invisibly). This function is called for its side effects
 #'   of adding spheres and text labels to the current rgl 3D plot.
@@ -2420,7 +2425,13 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
 #' @seealso \code{\link[rgl]{spheres3d}}, \code{\link[rgl]{texts3d}}
 #'
 #' @export
-label.end.pts <- function(graph.3d, end.labels) {
+label.end.pts <- function(graph.3d,
+                          end.labels,
+                          col = "blue",
+                          radius = 0.4,
+                          lab.cex = 2,
+                          lab.adj = c(-0.5, 0)
+                          ) {
     # Check if graph.3d is provided and is a matrix
     if (missing(graph.3d)) {
         stop("'graph.3d' is required but was not provided")
@@ -2484,180 +2495,9 @@ label.end.pts <- function(graph.3d, end.labels) {
     }
 
     # Main function logic
-    rgl::spheres3d(graph.3d[idx, ], radius = 0.4, col = "red")
+    rgl::spheres3d(graph.3d[idx, ], radius = radius, col = col)
     rgl::texts3d(graph.3d[idx, ],
-                 texts = end.labels, adj = c(-0.5, 0), cex = 2)
-
-    invisible(NULL)
-}
-
-#' Label Local Extrema in 3D Plot
-#'
-#' Adds labeled line segments to a 3D plot at positions of local extrema
-#'
-#' @param graph.3d A matrix with 3 columns representing 3D coordinates
-#' @param extrema.df Data frame with columns: vertex, label, is_max (from compute.extrema.hop.nbhds)
-#' @param extrema.type Character string specifying which extrema to plot: "both" (default), "maxima", or "minima".
-#' @param offset Numeric vector of length 3 specifying the offset for line segments. Default c(0, 0, 0.25).
-#' @param with.labels Logical. Whether to show labels. Default TRUE.
-#' @param lab.cex Character expansion factor for labels. Default 1.5.
-#' @param lab.adj Adjustment parameter for label positioning. Default c(0, 0).
-#' @param C Scaling factor for label position relative to stick center. Default -1.
-#' @param pwd Line width for segments. Default 5.
-#' @param separate.colors Logical. If TRUE and extrema.type="both", plot maxima and minima with different colors. Default TRUE.
-#' @param col.max Color for maxima. Default "red".
-#' @param col.min Color for minima. Default "blue".
-#' @param col Color for all extrema when separate.colors=FALSE. Default "black".
-#' @param ... Additional arguments passed to bin.segments3d().
-#'
-#' @return Invisibly returns NULL.
-#'
-#' @examples
-#' \dontrun{
-#' # Plot both maxima and minima with different colors
-#' label.extrema.3d(graph.3d, extrema.df)
-#'
-#' # Plot only maxima
-#' label.extrema.3d(graph.3d, extrema.df, extrema.type = "maxima")
-#'
-#' # Plot only minima
-#' label.extrema.3d(graph.3d, extrema.df, extrema.type = "minima")
-#'
-#' # Plot both with same color
-#' label.extrema.3d(graph.3d, extrema.df, separate.colors = FALSE, col = "purple")
-#' }
-#'
-#' @export
-label.extrema.3d <- function(graph.3d,
-                             extrema.df,
-                             extrema.type = c("both", "maxima", "minima"),
-                             offset = c(0, 0, 0.25),
-                             with.labels = TRUE,
-                             lab.cex = 1.5,
-                             lab.adj = c(0, 0),
-                             C = -1,
-                             pwd = 5,
-                             separate.colors = TRUE,
-                             col.max = "red",
-                             col.min = "blue",
-                             col = "black",
-                             ...) {
-
-    # Match extrema.type argument
-    extrema.type <- match.arg(extrema.type)
-
-    # graph.3d is a matrix with 3 columns
-    S <- graph.3d
-
-    if (!is.matrix(S) && !is.data.frame(S)) {
-        stop("graph.3d must be a matrix or data.frame")
-    }
-
-    if (ncol(S) != 3) {
-        stop("graph.3d must have 3 columns")
-    }
-
-    # Ensure rownames exist
-    if (is.null(rownames(S))) {
-        rownames(S) <- as.character(1:nrow(S))
-    }
-
-    # Filter extrema.df based on extrema.type
-    if (extrema.type == "maxima") {
-        extrema.df <- extrema.df[extrema.df$is_max == 1, ]
-    } else if (extrema.type == "minima") {
-        extrema.df <- extrema.df[extrema.df$is_max == 0, ]
-    }
-
-    # Check if we have any extrema to plot
-    if (nrow(extrema.df) == 0) {
-        warning("No extrema to plot based on extrema.type='", extrema.type, "'")
-        return(invisible(NULL))
-    }
-
-    # Create binary vector indicating which vertices are extrema
-    y <- rep(0, nrow(S))
-    names(y) <- rownames(S)
-
-    # Mark extrema vertices as 1
-    extrema_vertices <- as.character(extrema.df$vertex)
-    y[extrema_vertices] <- 1
-
-    # Create label table mapping vertex IDs to labels
-    lab.tbl <- extrema.df$label
-    names(lab.tbl) <- as.character(extrema.df$vertex)
-
-    # Plot based on settings
-    if (extrema.type == "both" && separate.colors) {
-        # Plot maxima and minima separately with different colors
-
-        # Maxima
-        is_maxima <- extrema.df$is_max == 1
-        if (any(is_maxima)) {
-            y_max <- rep(0, nrow(S))
-            names(y_max) <- rownames(S)
-            max_vertices <- as.character(extrema.df$vertex[is_maxima])
-            y_max[max_vertices] <- 1
-
-            lab.tbl.max <- extrema.df$label[is_maxima]
-            names(lab.tbl.max) <- max_vertices
-
-            bin.segments3d(S, y_max,
-                          offset = offset,
-                          with.labels = with.labels,
-                          lab.tbl = lab.tbl.max,
-                          lab.cex = lab.cex,
-                          lab.adj = lab.adj,
-                          C = C,
-                          pwd = pwd,
-                          col = col.max,
-                          ...)
-        }
-
-        # Minima
-        is_minima <- extrema.df$is_max == 0
-        if (any(is_minima)) {
-            y_min <- rep(0, nrow(S))
-            names(y_min) <- rownames(S)
-            min_vertices <- as.character(extrema.df$vertex[is_minima])
-            y_min[min_vertices] <- 1
-
-            lab.tbl.min <- extrema.df$label[is_minima]
-            names(lab.tbl.min) <- min_vertices
-
-            bin.segments3d(S, y_min,
-                          offset = offset,
-                          with.labels = with.labels,
-                          lab.tbl = lab.tbl.min,
-                          lab.cex = lab.cex,
-                          lab.adj = lab.adj,
-                          C = C,
-                          pwd = pwd,
-                          col = col.min,
-                          ...)
-        }
-
-    } else {
-        # Plot all selected extrema with the same style
-        # Use appropriate color based on extrema.type
-        plot.col <- col
-        if (extrema.type == "maxima") {
-            plot.col <- col.max
-        } else if (extrema.type == "minima") {
-            plot.col <- col.min
-        }
-
-        bin.segments3d(S, y,
-                      offset = offset,
-                      with.labels = with.labels,
-                      lab.tbl = lab.tbl,
-                      lab.cex = lab.cex,
-                      lab.adj = lab.adj,
-                      C = C,
-                      pwd = pwd,
-                      col = plot.col,
-                      ...)
-    }
+                 texts = end.labels, adj = lab.adj, cex = lab.cex)
 
     invisible(NULL)
 }
