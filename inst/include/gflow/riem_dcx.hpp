@@ -744,7 +744,8 @@ struct riem_dcx_t {
     vec_t apply_damped_heat_diffusion(
         const vec_t& rho_current,
         double t,
-        double beta
+        double beta,
+        bool verbose
         );
 
     /**
@@ -848,7 +849,8 @@ struct riem_dcx_t {
         double max_ratio_threshold,
         double threshold_percentile,
         double density_alpha,
-        double density_epsilon
+        double density_epsilon,
+        bool verbose
         );
 
     /**
@@ -1003,8 +1005,9 @@ private:
         const std::vector<std::vector<double>>& knn_distances,
         bool use_counting_measure,
         double density_normalization,
-        double alpha,
-        double epsilon
+        double density_alpha,
+        double density_epsilon,
+        bool verbose
     );
 
     /**

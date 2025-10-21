@@ -298,7 +298,8 @@ void riem_dcx_t::initialize_from_knn(
     double max_ratio_threshold,
     double threshold_percentile,
 	double density_alpha,
-	double density_epsilon
+	double density_epsilon,
+	bool verbose
 ) {
     const size_t n_points = static_cast<size_t>(X.rows());
 
@@ -839,7 +840,8 @@ void riem_dcx_t::initialize_from_knn(
         use_counting_measure,
         density_normalization,
 		density_alpha,
-		density_epsilon
+		density_epsilon,
+		verbose
     );
 
     // Compute initial densities from reference measure
@@ -906,41 +908,130 @@ void riem_dcx_t::initialize_reference_measure(
     const std::vector<std::vector<double>>& knn_distances,
     bool use_counting_measure,
     double density_normalization,
-	double density_alpha = 1.5,
-	double density_epsilon = 1e-10
+    double density_alpha,
+    double density_epsilon,
+	bool verbose
 ) {
     const size_t n = knn_neighbors.size();
     std::vector<double> vertex_weights(n);
 
     if (use_counting_measure) {
-		// Counting measure: each vertex has unit weight
+        // Counting measure: uniform weights
         std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
     } else {
-		// Distance-based measure using d_k distances
-        // Formula: w(x) = (ε + d_k(x))^(-α)
-        // where d_k(x) is the distance to the kth nearest neighbor
+        // ================================================================
+        // ROBUST DISTANCE-BASED MEASURE
+        // ================================================================
 
-        // For each vertex, extract distance to kth (last) neighbor
+        // Step 1: Collect all k-th neighbor distances
+        std::vector<double> all_dk(n);
         for (size_t i = 0; i < n; ++i) {
-            // The last element in knn_distances[i] is d_k(x_i)
-            const double d_k = knn_distances[i].back();
+            all_dk[i] = knn_distances[i].back();  // Last neighbor distance
+        }
 
-            // Compute weight: points in dense regions (small d_k) get higher weights
+        // Step 2: Compute robust statistics for scaling
+        std::vector<double> sorted_dk = all_dk;
+        std::sort(sorted_dk.begin(), sorted_dk.end());
+
+        double d_median = sorted_dk[n / 2];
+        // double d_q1 = sorted_dk[n / 4];
+        // double d_q3 = sorted_dk[(3 * n) / 4];
+        // double d_iqr = d_q3 - d_q1;
+
+        // Step 3: Define reasonable bounds to prevent extreme ratios
+        // Allow at most 100:1 ratio in raw d_k values
+        double d_min_allowed = d_median / 10.0;
+        double d_max_allowed = d_median * 10.0;
+
+		if (verbose)
+			Rprintf("  Reference measure: d_k range [%.3e, %.3e], median=%.3e\n",
+					sorted_dk[0], sorted_dk[n-1], d_median);
+
+        int n_clamped_low = 0;
+        int n_clamped_high = 0;
+
+        // Step 4: Compute weights with bounded d_k
+        for (size_t i = 0; i < n; ++i) {
+            double d_k = all_dk[i];
+
+            // Clamp to reasonable bounds
+            if (d_k < d_min_allowed) {
+                d_k = d_min_allowed;
+                n_clamped_low++;
+            }
+            if (d_k > d_max_allowed) {
+                d_k = d_max_allowed;
+                n_clamped_high++;
+            }
+
+            // Apply power law with regularization
+            // w(x) = (ε + d_k)^(-α)
             vertex_weights[i] = std::pow(density_epsilon + d_k, -density_alpha);
+        }
+
+        if (n_clamped_low > 0 || n_clamped_high > 0) {
+			if (verbose)
+            Rprintf("  Clamped %d vertices to lower bound, %d to upper bound (prevents extreme weights)\n",
+                    n_clamped_low, n_clamped_high);
+        }
+
+        // Step 5: Additional safety - limit final weight ratio to 1000:1
+        double w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
+        double w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
+        double initial_ratio = w_max / w_min;
+
+        if (initial_ratio > 1000.0) {
+			if (verbose)
+				Rprintf("  Initial weight ratio %.2e exceeds 1000:1. Applying compression...\n",
+						initial_ratio);
+
+            // Use log-compression to reduce dynamic range
+            // w_compressed = log(1 + w/w_median)
+            double w_median = sorted_dk[n/2];  // Reuse sorted array
+            std::nth_element(vertex_weights.begin(),
+							 vertex_weights.begin() + n/2,
+							 vertex_weights.end());
+            w_median = vertex_weights[n/2];
+
+            for (size_t i = 0; i < n; ++i) {
+                vertex_weights[i] = std::log(1.0 + vertex_weights[i] / w_median);
+            }
+
+            w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
+            w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
+            double compressed_ratio = w_max / w_min;
+
+			if (verbose)
+				Rprintf("  After compression: weight ratio = %.2e\n", compressed_ratio);
         }
     }
 
     // Normalize to target sum
-    double total = std::accumulate(vertex_weights.begin(),
-                                   vertex_weights.end(), 0.0);
+    double total = std::accumulate(vertex_weights.begin(), vertex_weights.end(), 0.0);
     double target = (density_normalization > 0.0) ?
                     density_normalization : static_cast<double>(n);
+
     if (total > 1e-15) {
         double scale = target / total;
-        for (double& w : vertex_weights) w *= scale;
+        for (double& w : vertex_weights) {
+            w *= scale;
+        }
     }
 
-    // Store in member variable for use by other modules
+    // Final safety check
+    double final_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
+    double final_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
+    double final_ratio = final_max / final_min;
+
+	if (verbose)
+		Rprintf("  Final reference measure: range [%.3e, %.3e], ratio=%.2e\n",
+				final_min, final_max, final_ratio);
+
+    if (final_ratio > 1e6) {
+        Rf_warning("Reference measure has extreme ratio %.2e. "
+                   "Consider using use_counting_measure=TRUE for more uniform initialization.",
+                   final_ratio);
+    }
+
     this->reference_measure = std::move(vertex_weights);
 }
-

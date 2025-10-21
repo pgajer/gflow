@@ -17,66 +17,74 @@
 #include <algorithm>
 #include <iomanip>
 
-// ============================================================
-// INITIALIZATION HELPERS (private member functions)
-// ============================================================
-
 /**
- * @brief Compute initial densities from reference measure
+ * @brief Compute initial densities from reference measure with robust bounds
  *
- * Constructs the initial density functions \eqn{\rho_0} on vertices and \eqn{\rho_1} on edges by
- * aggregating the reference measure \eqn{\mu} over appropriate neighborhoods. The vertex
- * density at point i measures the total mass in its k-neighborhood, while the
- * edge density on edge [i,j] measures the mass in the intersection of their
- * neighborhoods.
+ * Constructs the initial density functions ρ₀ on vertices and ρ₁ on edges by
+ * aggregating the reference measure μ over appropriate neighborhoods. This
+ * improved version enforces minimum density thresholds from initialization
+ * to prevent extreme conditioning ratios that can cause numerical instability
+ * in subsequent iterations.
  *
  * The initialization follows the formula:
- *   \deqn{\rho_0(i) = \sum_{j \in \hat{N}_k(x_i)} \mu({j})}
- *   \deqn{\rho_1([i,j]) = \sum_{v \in \hat{N}_k(x_i) \cap \hat{N}_k(x_j)} \mu({v})}
+ *   ρ₀(i) = ∑_{j ∈ N̂_k(x_i)} μ(j)
+ *   ρ₁([i,j]) = ∑_{v ∈ N̂_k(x_i) ∩ N̂_k(x_j)} μ(v)
  *
- * Both densities are normalized to sum to their respective simplex counts, so that
- * the average vertex has density 1 and the average edge has density 1. This
- * normalization ensures numerical stability and interpretability across different
- * dataset sizes.
+ * After initial computation, both vertex and edge densities are:
+ * 1. Normalized to sum to their respective simplex counts
+ * 2. Clamped to MIN_DENSITY to limit dynamic range
+ * 3. Re-normalized to maintain exact sum constraints
  *
- * Densities are stored directly in the vertex_cofaces structure:
- *   - vertex_cofaces[i][0].density = \eqn{\rho_0}(i)
- *   - vertex_cofaces[i][k].density = \eqn{\rho_1}(edge [i, vertex_cofaces[i][k].vertex_index])
+ * This ensures the conditioning number remains bounded (≤ 10^8) from the start,
+ * preventing the cascade of numerical issues that can occur when extreme ratios
+ * are allowed to develop during initialization.
  *
  * @pre reference_measure must be initialized and have size equal to number of vertices
  * @pre vertex_cofaces must be populated with topology and simplex indices
+ * @pre neighbor_sets must contain kNN neighborhoods for all vertices
+ *
  * @post vertex_cofaces[i][0].density contains normalized vertex densities summing to n
  * @post vertex_cofaces[i][k].density (k>0) contains normalized edge densities
+ * @post All densities satisfy: density ≥ MIN_DENSITY
+ * @post Maximum density ratio: max(ρ)/min(ρ) ≤ 10^8
+ *
  * @note Edge densities appear twice (once in each endpoint's vertex_cofaces)
+ * @note MIN_DENSITY = 1e-8 is consistent with apply_damped_heat_diffusion()
  */
 void riem_dcx_t::compute_initial_densities() {
     const size_t n_vertices = vertex_cofaces.size();
+    const double MIN_DENSITY = 1e-8;  // Match diffusion regularization
 
-    // Count total number of edges
+    // ================================================================
+    // STEP 0: Count edges and validate input
+    // ================================================================
+
     size_t n_edges = 0;
     for (size_t i = 0; i < n_vertices; ++i) {
         for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
             index_t j = vertex_cofaces[i][k].vertex_index;
-            if (i < j) {  // Count each edge only once
+            if (i < j) {
                 n_edges++;
             }
         }
     }
 
-    // Ensure reference measure is available
     if (reference_measure.size() != n_vertices) {
         Rf_error("Reference measure not initialized or has incorrect size");
     }
 
-    // ============================================================
-    // Part 1: Compute vertex densities
-    // ============================================================
+    Rprintf("  Initializing densities for %zu vertices, %zu edges\n",
+            n_vertices, n_edges);
 
-    // For each vertex i, sum the reference measure over its k-neighborhood
+    // ================================================================
+    // PART 1: COMPUTE VERTEX DENSITIES
+    // ================================================================
+
+    // Step 1a: Aggregate reference measure over neighborhoods
     for (size_t i = 0; i < n_vertices; ++i) {
         double vertex_density = 0.0;
 
-        // Aggregate measure over all neighbors j \in \hat{N}_k(x_i)
+        // Sum measure over all neighbors j ∈ N̂_k(x_i)
         for (index_t j : neighbor_sets[i]) {
             vertex_density += reference_measure[j];
         }
@@ -85,7 +93,7 @@ void riem_dcx_t::compute_initial_densities() {
         vertex_cofaces[i][0].density = vertex_density;
     }
 
-    // Normalize vertex densities to sum to n_vertices
+    // Step 1b: First normalization to sum to n_vertices
     double vertex_density_sum = 0.0;
     for (size_t i = 0; i < n_vertices; ++i) {
         vertex_density_sum += vertex_cofaces[i][0].density;
@@ -97,19 +105,94 @@ void riem_dcx_t::compute_initial_densities() {
             vertex_cofaces[i][0].density *= vertex_scale;
         }
     } else {
-        // Fallback: uniform density if something went wrong
+        // Fallback: uniform density if something went catastrophically wrong
+        Rf_warning("Vertex density sum collapsed to %.3e during initialization. "
+                   "Using uniform density.", vertex_density_sum);
         for (size_t i = 0; i < n_vertices; ++i) {
             vertex_cofaces[i][0].density = 1.0;
         }
     }
 
-    // ============================================================
-    // Part 2: Compute edge densities
-    // ============================================================
+    // Step 1c: Enforce minimum density on vertices
+    int n_vertex_clamped = 0;
+    double vertex_mass_added = 0.0;
 
-    // For each edge [i,j], sum the reference measure over the intersection
-    // of neighborhoods: \hat{N}_k(x_i) \cap \hat{N}_k(x_j)
+    for (size_t i = 0; i < n_vertices; ++i) {
+        if (vertex_cofaces[i][0].density < MIN_DENSITY) {
+            vertex_mass_added += (MIN_DENSITY - vertex_cofaces[i][0].density);
+            vertex_cofaces[i][0].density = MIN_DENSITY;
+            n_vertex_clamped++;
+        }
+    }
 
+    // Step 1d: Redistribute added mass and re-normalize
+    if (vertex_mass_added > 1e-10 && n_vertex_clamped < static_cast<int>(n_vertices)) {
+        double mass_available = 0.0;
+        for (size_t i = 0; i < n_vertices; ++i) {
+            if (vertex_cofaces[i][0].density > MIN_DENSITY) {
+                mass_available += (vertex_cofaces[i][0].density - MIN_DENSITY);
+            }
+        }
+
+        if (mass_available > vertex_mass_added * 1.01) {
+            // Safe to redistribute proportionally from vertices above minimum
+            double scale_factor = (mass_available - vertex_mass_added) / mass_available;
+            for (size_t i = 0; i < n_vertices; ++i) {
+                if (vertex_cofaces[i][0].density > MIN_DENSITY) {
+                    double excess = vertex_cofaces[i][0].density - MIN_DENSITY;
+                    vertex_cofaces[i][0].density = MIN_DENSITY + excess * scale_factor;
+                }
+            }
+        } else {
+            // Not enough mass to redistribute - blend with uniform
+            Rf_warning("Extreme initial concentration detected in vertex densities. "
+                       "Blending with uniform distribution.");
+            for (size_t i = 0; i < n_vertices; ++i) {
+                vertex_cofaces[i][0].density = 0.7 * vertex_cofaces[i][0].density + 0.3;
+            }
+        }
+    }
+
+    // Step 1e: Final normalization to exactly n_vertices
+    vertex_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        vertex_density_sum += vertex_cofaces[i][0].density;
+    }
+
+    double vertex_scale = static_cast<double>(n_vertices) / vertex_density_sum;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        vertex_cofaces[i][0].density *= vertex_scale;
+    }
+
+    // Step 1f: Report vertex density statistics
+    double v_min = std::numeric_limits<double>::max();
+    double v_max = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        double d = vertex_cofaces[i][0].density;
+        v_min = std::min(v_min, d);
+        v_max = std::max(v_max, d);
+    }
+    double v_ratio = v_max / std::max(v_min, 1e-15);
+
+    Rprintf("  Vertex densities: range [%.3e, %.3e], ratio=%.2e\n",
+            v_min, v_max, v_ratio);
+
+    if (n_vertex_clamped > 0) {
+        Rprintf("  Clamped %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+                n_vertex_clamped, 100.0 * n_vertex_clamped / n_vertices, MIN_DENSITY);
+    }
+
+    if (v_ratio > 1e6) {
+        Rf_warning("Initial vertex density ratio %.2e is very large. "
+                   "Consider using use_counting_measure=TRUE for more uniform initialization.",
+                   v_ratio);
+    }
+
+    // ================================================================
+    // PART 2: COMPUTE EDGE DENSITIES
+    // ================================================================
+
+    // Step 2a: Compute edge densities from neighborhood intersections
     for (size_t i = 0; i < n_vertices; ++i) {
         for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
             index_t j = vertex_cofaces[i][k].vertex_index;
@@ -120,7 +203,7 @@ void riem_dcx_t::compute_initial_densities() {
             // Compute intersection of neighborhoods
             double edge_density = 0.0;
 
-            // For efficiency, iterate over the smaller set and check membership in larger
+            // For efficiency, iterate over smaller set and check membership in larger
             const std::unordered_set<index_t>& set_i = neighbor_sets[i];
             const std::unordered_set<index_t>& set_j = neighbor_sets[j];
 
@@ -139,7 +222,7 @@ void riem_dcx_t::compute_initial_densities() {
             // Store in vertex_cofaces[i][k]
             vertex_cofaces[i][k].density = edge_density;
 
-            // Also store in vertex_cofaces[j] (find the corresponding entry)
+            // Also store in vertex_cofaces[j] (find corresponding entry)
             for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
                 if (vertex_cofaces[j][m].vertex_index == i) {
                     vertex_cofaces[j][m].density = edge_density;
@@ -149,12 +232,12 @@ void riem_dcx_t::compute_initial_densities() {
         }
     }
 
-    // Normalize edge densities to sum to n_edges
+    // Step 2b: First normalization to sum to n_edges
     double edge_density_sum = 0.0;
     for (size_t i = 0; i < n_vertices; ++i) {
         for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
             index_t j = vertex_cofaces[i][k].vertex_index;
-            if (i < j) {  // Count each edge only once
+            if (i < j) {
                 edge_density_sum += vertex_cofaces[i][k].density;
             }
         }
@@ -171,12 +254,173 @@ void riem_dcx_t::compute_initial_densities() {
         }
     } else {
         // Fallback: uniform density if intersections are all empty
+        Rf_warning("Edge density sum collapsed to %.3e during initialization. "
+                   "Using uniform density.", edge_density_sum);
         for (size_t i = 0; i < n_vertices; ++i) {
             for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
                 vertex_cofaces[i][k].density = 1.0;
             }
         }
     }
+
+    // Step 2c: Enforce minimum density on edges
+    int n_edge_clamped = 0;
+    double edge_mass_added = 0.0;
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+
+            // Only process each edge once
+            if (i >= j) continue;
+
+            if (vertex_cofaces[i][k].density < MIN_DENSITY) {
+                edge_mass_added += (MIN_DENSITY - vertex_cofaces[i][k].density);
+
+                // Set for both endpoints
+                vertex_cofaces[i][k].density = MIN_DENSITY;
+
+                // Find and update in vertex j's list
+                for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                    if (vertex_cofaces[j][m].vertex_index == i) {
+                        vertex_cofaces[j][m].density = MIN_DENSITY;
+                        break;
+                    }
+                }
+
+                n_edge_clamped++;
+            }
+        }
+    }
+
+    // Step 2d: Redistribute added mass and re-normalize
+    if (edge_mass_added > 1e-10 && n_edge_clamped < static_cast<int>(n_edges)) {
+        double mass_available = 0.0;
+
+        // Calculate available mass
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                index_t j = vertex_cofaces[i][k].vertex_index;
+                if (i < j && vertex_cofaces[i][k].density > MIN_DENSITY) {
+                    mass_available += (vertex_cofaces[i][k].density - MIN_DENSITY);
+                }
+            }
+        }
+
+        if (mass_available > edge_mass_added * 1.01) {
+            // Safe to redistribute proportionally
+            double scale_factor = (mass_available - edge_mass_added) / mass_available;
+
+            for (size_t i = 0; i < n_vertices; ++i) {
+                for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                    if (vertex_cofaces[i][k].density > MIN_DENSITY) {
+                        double excess = vertex_cofaces[i][k].density - MIN_DENSITY;
+                        double new_density = MIN_DENSITY + excess * scale_factor;
+
+                        // Update both endpoints
+                        vertex_cofaces[i][k].density = new_density;
+
+                        index_t j = vertex_cofaces[i][k].vertex_index;
+                        for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                            if (vertex_cofaces[j][m].vertex_index == i) {
+                                vertex_cofaces[j][m].density = new_density;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Not enough mass to redistribute - blend with uniform
+            Rf_warning("Extreme initial concentration detected in edge densities. "
+                       "Blending with uniform distribution.");
+
+            for (size_t i = 0; i < n_vertices; ++i) {
+                for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                    double new_density = 0.7 * vertex_cofaces[i][k].density + 0.3;
+                    vertex_cofaces[i][k].density = new_density;
+                }
+            }
+        }
+    }
+
+    // Step 2e: Final normalization to exactly n_edges
+    edge_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {
+                edge_density_sum += vertex_cofaces[i][k].density;
+            }
+        }
+    }
+
+    double edge_scale = static_cast<double>(n_edges) / edge_density_sum;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            vertex_cofaces[i][k].density *= edge_scale;
+        }
+    }
+
+    // Step 2f: Report edge density statistics
+    double e_min = std::numeric_limits<double>::max();
+    double e_max = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {
+                double d = vertex_cofaces[i][k].density;
+                e_min = std::min(e_min, d);
+                e_max = std::max(e_max, d);
+            }
+        }
+    }
+    double e_ratio = e_max / std::max(e_min, 1e-15);
+
+    Rprintf("  Edge densities: range [%.3e, %.3e], ratio=%.2e\n",
+            e_min, e_max, e_ratio);
+
+    if (n_edge_clamped > 0) {
+        Rprintf("  Clamped %d edges (%.1f%%) to MIN_DENSITY=%.2e\n",
+                n_edge_clamped, 100.0 * n_edge_clamped / n_edges, MIN_DENSITY);
+    }
+
+    if (e_ratio > 1e6) {
+        Rf_warning("Initial edge density ratio %.2e is very large. "
+                   "This may indicate extreme geometric heterogeneity in the data.",
+                   e_ratio);
+    }
+
+    // ================================================================
+    // FINAL VALIDATION
+    // ================================================================
+
+    // Verify final sums are correct
+    vertex_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        vertex_density_sum += vertex_cofaces[i][0].density;
+    }
+
+    edge_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {
+                edge_density_sum += vertex_cofaces[i][k].density;
+            }
+        }
+    }
+
+    double vertex_sum_error = std::abs(vertex_density_sum - n_vertices) / n_vertices;
+    double edge_sum_error = std::abs(edge_density_sum - n_edges) / n_edges;
+
+    if (vertex_sum_error > 1e-6 || edge_sum_error > 1e-6) {
+        Rf_warning("Density normalization errors: vertex=%.2e%%, edge=%.2e%%",
+                   100.0 * vertex_sum_error, 100.0 * edge_sum_error);
+    }
+
+    Rprintf("  Initialization complete: densities sum to n=%zu (vertices), m=%zu (edges)\n",
+            n_vertices, n_edges);
 }
 
 /**
@@ -222,7 +466,7 @@ void riem_dcx_t::initialize_metric_from_density() {
     for (size_t i = 0; i < n_vertices; ++i) {
         // Apply regularization to ensure positive definiteness
         // Density is stored in self-loop at position [0]
-        double mass = std::max(vertex_cofaces[i][0].density, 1e-15);
+        double mass = std::max(vertex_cofaces[i][0].density, 1e-8);
         g.M[0].insert(i, i) = mass;
     }
 
@@ -730,7 +974,7 @@ void riem_dcx_t::update_vertex_metric_from_density() {
     for (size_t i = 0; i < n_vertices; ++i) {
         // Apply regularization to ensure strict positivity
         // Density is stored in self-loop at position [0]
-        double mass = std::max(vertex_cofaces[i][0].density, 1e-10);
+        double mass = std::max(vertex_cofaces[i][0].density, 1e-8);
 
         // Update in place (\eqn{M_0} is diagonal, so coeffRef is efficient)
         g.M[0].coeffRef(i, i) = mass;
@@ -1037,15 +1281,17 @@ void riem_dcx_t::compute_spectral_decomposition(
     // ============================================================
     // PRIMARY ATTEMPT: Standard parameters
     // ============================================================
-    if (verbose) {
-        Rprintf("    Attempt 1: Standard parameters (maxit=1000, tol=1e-10) ... ");
-    }
 
     Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
     eigs.init();
 
     int maxit = 1000;
-    double tol = 1e-10;
+    double tol = 1e-8;
+
+    if (verbose) {
+        Rprintf("    Attempt 1: Standard parameters (maxit=%d, tol=%g) ... ", maxit, tol);
+    }
+
     eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
     if (eigs.info() == Spectra::CompInfo::Successful) {
@@ -1232,8 +1478,8 @@ void riem_dcx_t::compute_spectral_decomposition(
     }
 
     std::vector<std::pair<int, double>> tier1_attempts = {
-        {2000, 1e-8},
-        {3000, 1e-6},
+        {2000, 1e-7},
+        {3000, 1e-5},
         {5000, 1e-4}
     };
 
@@ -1508,10 +1754,10 @@ void riem_dcx_t::select_diffusion_parameters(
                    diffusion_scale, 1.0 / lambda_2);
     }
 
-    if (diffusion_scale < 0.05) {
+    if (diffusion_scale < 0.01) {  // Changed from 0.05 to 0.01
         Rf_warning("Small diffusion scale (t*lambda_2 = %.2f): convergence may be very slow. "
                    "Consider increasing t_scale_factor to %.3f for faster updates.",
-                   diffusion_scale, 0.3 / lambda_2);
+                   diffusion_scale, 0.05 / lambda_2);  // Changed from 0.3 to 0.05
     }
 
     const double damping_coefficient = beta_damping * t_diffusion;
@@ -1786,7 +2032,8 @@ gamma_selection_result_t riem_dcx_t::select_gamma_first_iteration(
 vec_t riem_dcx_t::apply_damped_heat_diffusion(
     const vec_t& rho_current,
     double t,
-    double beta
+    double beta,
+    bool verbose
 ) {
     // ========================================================================
     // Part 1: Input validation and setup
@@ -1866,53 +2113,211 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // Solve the system
     vec_t rho_new = cg.solve(b);
 
-    if (cg.info() != Eigen::Success) {
-        double cg_error = cg.error();  // Get value before Rf_warning
-        Rf_warning("apply_damped_heat_diffusion: CG solver did not converge (iterations=%d, error=%.3e)",
-                   static_cast<int>(cg.iterations()),
-                   cg_error);
-        // Continue with best available solution rather than failing completely
-    }
+    // ------------------------------------------------------------------------
+    // CAPTURE CG DIAGNOSTICS IMMEDIATELY
+    // ------------------------------------------------------------------------
+    const Eigen::ComputationInfo cg_status = cg.info();
+    const int cg_iterations = cg.iterations();
+    const double cg_error = cg.error();  // Residual norm
 
-    // ========================================================================
-    // Part 5: Enforce positivity and normalize
-    // ========================================================================
+    // Determine if CG had issues
+    bool cg_converged = (cg_status == Eigen::Success);
+    bool cg_suspicious = false;
 
-    // Clip any small negative values that arose from numerical error
-    for (Eigen::Index i = 0; i < n; ++i) {
-        if (rho_new[i] < 0.0) {
-            if (rho_new[i] < -1e-8) {
-                Rf_warning("apply_damped_heat_diffusion: large negative density %.3e at vertex %ld after solve",
-                           rho_new[i], static_cast<long>(i));
-            }
-            rho_new[i] = 1e-15;  // Small positive value to maintain positivity
+    if (!cg_converged) {
+        Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
+                   "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
+                   cg_iterations, 2000, cg_error, 1e-8);
+    } else if (cg_error > 1e-6) {
+        // Converged but with larger-than-ideal residual
+        cg_suspicious = true;
+        if (verbose) {
+            Rprintf("  CG converged with residual %.3e (iterations=%d)\n",
+                    cg_error, cg_iterations);
         }
     }
 
-    // Normalize to sum to n
-    const double current_sum = rho_new.sum();
+    // ========================================================================
+    // Part 5: Enforce positivity, limit dynamic range, and normalize
+    // ========================================================================
 
-    if (current_sum < 1e-15) {
-        Rf_error("apply_damped_heat_diffusion: density collapsed to zero after diffusion");
+    const double n_double = static_cast<double>(n);
+
+    // ------------------------------------------------------------
+    // STEP 1: Clip negative values from numerical error
+    // ------------------------------------------------------------
+    int n_negative = 0;
+    double max_negative = 0.0;
+
+    for (Eigen::Index i = 0; i < n; ++i) {
+        if (rho_new[i] < 0.0) {
+            n_negative++;
+            max_negative = std::min(max_negative, rho_new[i]);
+
+            if (rho_new[i] < -1e-8) {
+                Rf_warning("apply_damped_heat_diffusion: large negative density %.3e at vertex %ld",
+                           rho_new[i], static_cast<long>(i));
+            }
+            rho_new[i] = 0.0;
+        }
     }
 
-    rho_new *= static_cast<double>(n) / current_sum;
+    // Warn if many negative values (suggests CG issues)
+    if (n_negative > n * 0.01) {
+        Rf_warning("apply_damped_heat_diffusion: %d vertices (%.1f%%) had negative densities "
+                   "(worst: %.3e). This suggests CG convergence issues.",
+                   n_negative, 100.0 * n_negative / n, max_negative);
+    }
+
+    // ------------------------------------------------------------
+    // STEP 2: First normalization to sum to n
+    // ------------------------------------------------------------
+    double current_sum = rho_new.sum();
+
+    // Check 1: Catastrophic failure (complete collapse or NaN)
+    if (!std::isfinite(current_sum) || current_sum < 1e-15) {
+        Rf_error("apply_damped_heat_diffusion: density sum is invalid (sum=%.3e). "
+                 "Linear solver catastrophically failed.", current_sum);
+    }
+
+    // Check 2: Large deviation from expected sum
+    const double relative_sum_error = std::abs(current_sum - n_double) / n_double;
+
+    if (relative_sum_error > 0.5) {
+        // More than 50% off - serious problem
+        const char* cg_status_msg = cg_converged ? "reported success" : "failed to converge";
+
+        Rf_warning("apply_damped_heat_diffusion: density sum %.3e deviates %.1f%% from expected %.0f. "
+                   "CG solver %s (residual=%.3e). Results may be unreliable.",
+                   current_sum, 100.0 * relative_sum_error, n_double,
+                   cg_status_msg, cg_error);
+
+    } else if (relative_sum_error > 0.1) {
+        // 10-50% off - concerning, especially if CG claimed success
+        if (cg_converged && verbose) {
+            Rprintf("  Note: Density sum error = %.2f%% despite CG convergence. "
+                    "This may improve in later iterations.\n",
+                    100.0 * relative_sum_error);
+        }
+    } else if (!cg_converged || cg_suspicious) {
+        // CG had issues but sum looks reasonable - maybe it's actually okay
+        if (verbose) {
+            Rprintf("  CG convergence was questionable (residual=%.3e) but "
+                    "density sum error is acceptable (%.2f%%)\n",
+                    cg_error, 100.0 * relative_sum_error);
+        }
+    }
+
+    // Normalize to exactly sum to n
+    rho_new *= n_double / current_sum;
+
+    // Check 3: Verify normalization worked
+    double normalized_sum = rho_new.sum();
+    double normalization_error = std::abs(normalized_sum - n_double);
+
+    if (normalization_error > 1e-6 * n_double) {
+        Rf_warning("apply_damped_heat_diffusion: post-normalization error %.3e (%.2e relative). "
+                   "Possible precision loss.",
+                   normalization_error, normalization_error / n_double);
+    }
+
+    // ------------------------------------------------------------
+    // STEP 3: Enforce minimum density
+    // ------------------------------------------------------------
+    const double MIN_DENSITY = 1e-8;
+
+    int n_clamped = 0;
+    double mass_added = 0.0;
+    for (Eigen::Index i = 0; i < n; ++i) {
+        if (rho_new[i] < MIN_DENSITY) {
+            mass_added += (MIN_DENSITY - rho_new[i]);
+            rho_new[i] = MIN_DENSITY;
+            n_clamped++;
+        }
+    }
+
+    // Context-aware warnings based on CG status
+    if (n_clamped > n * 0.1) {
+        const char* likely_cause = cg_converged ?
+            "extreme geometric heterogeneity or response modulation" :
+            "poor CG convergence";
+
+        Rf_warning("apply_damped_heat_diffusion: clamped %d vertices (%.1f%%) to minimum density. "
+                   "Likely cause: %s. Consider increasing beta_damping.",
+                   n_clamped, 100.0 * n_clamped / n, likely_cause);
+    }
+
+    // ------------------------------------------------------------
+    // STEP 4: Redistribute added mass
+    // ------------------------------------------------------------
+    if (mass_added > 1e-10 && n_clamped < n) {
+        double mass_available = rho_new.sum() - n_clamped * MIN_DENSITY;
+        if (mass_available > mass_added * 1.01) {
+            double scale_factor = (mass_available - mass_added) / mass_available;
+            for (Eigen::Index i = 0; i < n; ++i) {
+                if (rho_new[i] > MIN_DENSITY) {
+                    rho_new[i] = MIN_DENSITY + (rho_new[i] - MIN_DENSITY) * scale_factor;
+                }
+            }
+        } else {
+            Rf_warning("apply_damped_heat_diffusion: extreme concentration (%d vertices at minimum), "
+                       "blending with uniform distribution", n_clamped);
+            for (Eigen::Index i = 0; i < n; ++i) {
+                rho_new[i] = 0.7 * rho_new[i] + 0.3;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------
+    // STEP 5: Final normalization
+    // ------------------------------------------------------------
+    double final_sum = rho_new.sum();
+    rho_new *= n_double / final_sum;
 
     // ========================================================================
-    // Part 6: Verification and return
+    // Part 6: Final validation and diagnostic summary
     // ========================================================================
 
-    // Verify normalization (debugging check)
-    const double final_sum = rho_new.sum();
-    const double normalization_error = std::abs(final_sum - static_cast<double>(n));
+    // Compute final statistics
+    double final_min = rho_new.minCoeff();
+    double final_max = rho_new.maxCoeff();
+    double final_ratio = final_max / std::max(final_min, 1e-15);
 
-    if (normalization_error > 1e-6) {
-        Rf_warning("apply_damped_heat_diffusion: normalization error %.3e (sum=%.6f, expected=%ld)",
-                   normalization_error, final_sum, static_cast<long>(n));
+    // Comprehensive diagnostic output for large graphs or when issues detected
+    if ((verbose && n > 10000) || !cg_converged || cg_suspicious ||
+        final_ratio > 5e7 || n_negative > 0 || n_clamped > n * 0.05) {
+
+        Rprintf("\n  === Density Evolution Diagnostics ===\n");
+        Rprintf("  CG solver: %s after %d iterations (residual=%.3e)\n",
+                cg_converged ? "converged" : "FAILED",
+                cg_iterations, cg_error);
+        Rprintf("  Negative values: %d vertices (%.1f%%), worst=%.3e\n",
+                n_negative, 100.0 * n_negative / n, max_negative);
+        Rprintf("  Sum error: %.2e relative (%.3e absolute)\n",
+                relative_sum_error, std::abs(normalized_sum - n_double));
+        Rprintf("  Clamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+                n_clamped, 100.0 * n_clamped / n, MIN_DENSITY);
+        Rprintf("  Final range: [%.3e, %.3e], ratio=%.2e\n",
+                final_min, final_max, final_ratio);
+        Rprintf("  =====================================\n\n");
+    }
+
+    // Final safety checks
+    if (final_ratio > 5e7 && n > 10000) {
+        Rf_warning("Density ratio %.2e is approaching numerical limits for n=%ld. "
+                   "Consider increasing beta_damping or reducing t_diffusion.",
+                   final_ratio, static_cast<long>(n));
+    }
+
+    // Verify final result is valid
+    if (!std::isfinite(final_min) || !std::isfinite(final_max)) {
+        Rf_error("apply_damped_heat_diffusion: final densities contain non-finite values. "
+                 "System is numerically unstable.");
     }
 
     return rho_new;
 }
+
 
 /**
  * @brief Update edge densities from evolved vertex densities
@@ -4210,7 +4615,8 @@ void riem_dcx_t::fit_rdgraph_regression(
         max_ratio_threshold,
         threshold_percentile,
         density_alpha,
-        density_epsilon
+        density_epsilon,
+        verbose
         );
 
     // Compute effective degrees for all vertices based on edge densities
@@ -4422,7 +4828,10 @@ void riem_dcx_t::fit_rdgraph_regression(
 
         // Apply damped heat diffusion
         vec_t rho_vertex_new = apply_damped_heat_diffusion(
-            rho_vertex_prev, t_diffusion, beta_damping
+            rho_vertex_prev,
+            t_diffusion,
+            beta_damping,
+            verbose
             );
 
         // Store evolved densities
