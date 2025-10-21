@@ -26,7 +26,7 @@ void write_nbr_extrema(
     const std::vector<size_t>& nbr_lmax,
     size_t offset,
     const std::string& prefix
-) {
+	) {
     // Ensure output directory exists
     if (!std::filesystem::exists(out_dir)) {
         if (!std::filesystem::create_directories(out_dir)) {
@@ -88,9 +88,9 @@ void write_nbr_extrema(
  * @return basin_t structures. If 'vertex' is not a local extremum, 'basin' component of basin_t will be an empty vector
  */
 struct geodesic_t {
-std::vector<size_t> vertices;  ///< vertices of the path
-std::vector<double> distances; ///< distance of each vertex to the reference vertex
-std::vector<double> y;         ///< y values at vertices
+	std::vector<size_t> vertices;  ///< vertices of the path
+	std::vector<double> distances; ///< distance of each vertex to the reference vertex
+	std::vector<double> y;         ///< y values at vertices
 };
 
 basin_t set_wgraph_t::find_gflow_basin(
@@ -98,52 +98,52 @@ basin_t set_wgraph_t::find_gflow_basin(
     const std::vector<double>& y,
     size_t min_basin_size,
     size_t min_path_size, // the minimum size of the shortest path for which non-linear regression condition for basin expansion is going to be applied
-double q_edge_thld,
-bool detect_maxima
+	double q_edge_thld,
+	bool detect_maxima
     ) const {
 
- // amagelo() model parameter values
- // maybe in the future these may be passed via function arguments or a small struct, to avoid hard‐coding them deep inside this search routine.
-size_t grid_size = 100;
-double min_bw_factor = 0.05;
-double max_bw_factor = 0.5;
-size_t n_bws = 20;
-bool use_global_bw_grid = true;
-bool with_bw_predictions = false;
-bool log_grid = true;
-size_t domain_min_size = 4;
-size_t kernel_type = 7;
-double dist_normalization_factor = 1.1;
-size_t n_cleveland_iterations = 1;
-double blending_coef = 0.0;
-bool use_linear_blending = false;
-double precision = 1e-4;
-double small_depth_threshold = 0.05;
+	// amagelo() model parameter values
+	// maybe in the future these may be passed via function arguments or a small struct, to avoid hard‐coding them deep inside this search routine.
+	size_t grid_size = 100;
+	double min_bw_factor = 0.05;
+	double max_bw_factor = 0.5;
+	size_t n_bws = 20;
+	bool use_global_bw_grid = true;
+	bool with_bw_predictions = false;
+	bool log_grid = true;
+	size_t domain_min_size = 4;
+	size_t kernel_type = 7;
+	double dist_normalization_factor = 1.1;
+	size_t n_cleveland_iterations = 1;
+	double blending_coef = 0.0;
+	bool use_linear_blending = false;
+	double precision = 1e-4;
+	double small_depth_threshold = 0.05;
     double depth_similarity_tol  = 0.0001;
-bool verbose = false;
+	bool verbose = false;
 
- // Initializing output basin
-basin_t basin;
- // Record the seed (reference) vertex
-basin.reachability_map.ref_vertex = vertex;
-basin.reachability_map.distances[vertex]    = 0.0;
-basin.reachability_map.predecessors[vertex] = INVALID_VERTEX;
- // Include the seed in the basin’s vertex list
-basin.reachability_map.sorted_vertices.push_back({
-basin.reachability_map.ref_vertex,       // the seed
-0.0                                      // zero distance to itself
-});
- // Store its value and extremum‐type
-basin.value      = y[vertex];
-basin.is_maximum = detect_maxima;
+	// Initializing output basin
+	basin_t basin;
+	// Record the seed (reference) vertex
+	basin.reachability_map.ref_vertex = vertex;
+	basin.reachability_map.distances[vertex]    = 0.0;
+	basin.reachability_map.predecessors[vertex] = INVALID_VERTEX;
+	// Include the seed in the basin’s vertex list
+	basin.reachability_map.sorted_vertices.push_back({
+			basin.reachability_map.ref_vertex,       // the seed
+			0.0                                      // zero distance to itself
+		});
+	// Store its value and extremum‐type
+	basin.value      = y[vertex];
+	basin.is_maximum = detect_maxima;
 
 
- // Initialize priority queue for Dijkstra's algorithm
-     // Using min-heap with pairs of (distance, grid_vertex)
+	// Initialize priority queue for Dijkstra's algorithm
+	// Using min-heap with pairs of (distance, grid_vertex)
     using queue_entry = std::pair<double, size_t>;
     std::priority_queue<queue_entry, std::vector<queue_entry>, std::greater<>> pq;
 
- // Implement a bounded Dijkstra's algorithm
+	// Implement a bounded Dijkstra's algorithm
     size_t n_vertices = adjacency_list.size();
     std::vector<double> dist(n_vertices, INFINITY);
     std::vector<size_t> prev(n_vertices, INVALID_VERTEX);  // Using INVALID_VERTEX as sentinel
@@ -152,137 +152,137 @@ basin.is_maximum = detect_maxima;
     pq.push({0, vertex});
 
     while (!pq.empty()) {
-auto [d, u] = pq.top();
-pq.pop();
+		auto [d, u] = pq.top();
+		pq.pop();
 
         if (d > dist[u]) continue;  // Skip if we've found a better path already
 
- // Explore neighbors - this allows alternative paths through u to be explored even when monotonicity condition at u is not met
+		// Explore neighbors - this allows alternative paths through u to be explored even when monotonicity condition at u is not met
         for (const auto& edge : adjacency_list[u]) {
             size_t v = edge.vertex;
             double w = edge.weight;
-double new_dist = dist[u] + w;
+			double new_dist = dist[u] + w;
             if (new_dist < dist[v]) {
                 dist[v] = new_dist;
                 prev[v] = u;
                 pq.push({dist[v], v});
             }
-}
+		}
 
-if (u != vertex) {  // Don't include the ref vertex itself
+		if (u != vertex) {  // Don't include the ref vertex itself
 
-             // Calculate delta_y with appropriate sign
+			// Calculate delta_y with appropriate sign
             double delta_y = y[u] - y[vertex];
 
-             // Check extremum condition based on detect_maxima flag
+			// Check extremum condition based on detect_maxima flag
             bool condition_met = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
 
             if (condition_met) {
 
-                 // Determine the number of elements shortst_path_len in the
-                 // shortest path - should we enhance pq to be a pq of a struct
-                 // that holds this an possibly the whole path info of each
-                 // vertex or we simply reconstruct the path on the fly?
+				// Determine the number of elements shortst_path_len in the
+				// shortest path - should we enhance pq to be a pq of a struct
+				// that holds this an possibly the whole path info of each
+				// vertex or we simply reconstruct the path on the fly?
 
- // Reconstruct the shortest path from u to 'vertex'
-geodesic_t geodesic;
-{
-std::vector<size_t> path;
-for (size_t curr = u; curr != INVALID_VERTEX; curr = prev[curr]) {
-path.push_back(curr);
-if (curr == vertex) break;
-}
-std::reverse(path.begin(), path.end());
+				// Reconstruct the shortest path from u to 'vertex'
+				geodesic_t geodesic;
+				{
+					std::vector<size_t> path;
+					for (size_t curr = u; curr != INVALID_VERTEX; curr = prev[curr]) {
+						path.push_back(curr);
+						if (curr == vertex) break;
+					}
+					std::reverse(path.begin(), path.end());
 
-size_t n_path_vertices = path.size();
-geodesic.y.resize(n_path_vertices);
-geodesic.distances.resize(n_path_vertices);
-for (size_t i = 0; i < n_path_vertices; ++i) {
-geodesic.y[i] = y[path[i]];
-geodesic.distances[i] = dist[path[i]];
-}
-geodesic.vertices = std::move(path);
+					size_t n_path_vertices = path.size();
+					geodesic.y.resize(n_path_vertices);
+					geodesic.distances.resize(n_path_vertices);
+					for (size_t i = 0; i < n_path_vertices; ++i) {
+						geodesic.y[i] = y[path[i]];
+						geodesic.distances[i] = dist[path[i]];
+					}
+					geodesic.vertices = std::move(path);
 
-double max_edge_weight = 0;
-for (size_t i = 1; i < n_path_vertices; ++i) {
-double edge_weight = geodesic.distances[i] - geodesic.distances[i-1];
-if (edge_weight > max_edge_weight) {
-max_edge_weight = edge_weight;
-}
-}
+					double max_edge_weight = 0;
+					for (size_t i = 1; i < n_path_vertices; ++i) {
+						double edge_weight = geodesic.distances[i] - geodesic.distances[i-1];
+						if (edge_weight > max_edge_weight) {
+							max_edge_weight = edge_weight;
+						}
+					}
 
-if (max_edge_weight > q_edge_thld) {
-continue;
-}
-}
+					if (max_edge_weight > q_edge_thld) {
+						continue;
+					}
+				}
 
-if (geodesic.vertices.size() >= min_path_size) {
- // Fit a non-linear regression model to (distances, y) components of 'geodesic'
+				if (geodesic.vertices.size() >= min_path_size) {
+					// Fit a non-linear regression model to (distances, y) components of 'geodesic'
 
-amagelo_t amagelo_fit = amagelo(
-geodesic.distances,
-geodesic.y,
-grid_size,
-min_bw_factor,
-max_bw_factor,
-n_bws,
-use_global_bw_grid,
-with_bw_predictions,
-log_grid,
-domain_min_size,
-kernel_type,
-dist_normalization_factor,
-n_cleveland_iterations,
-blending_coef,
-use_linear_blending,
-precision,
-small_depth_threshold,
-depth_similarity_tol,
-verbose
-);
+					amagelo_t amagelo_fit = amagelo(
+						geodesic.distances,
+						geodesic.y,
+						grid_size,
+						min_bw_factor,
+						max_bw_factor,
+						n_bws,
+						use_global_bw_grid,
+						with_bw_predictions,
+						log_grid,
+						domain_min_size,
+						kernel_type,
+						dist_normalization_factor,
+						n_cleveland_iterations,
+						blending_coef,
+						use_linear_blending,
+						precision,
+						small_depth_threshold,
+						depth_similarity_tol,
+						verbose
+						);
 
-                     // Check monotonicity of amagelo_fit.predictions from that model
- // Note that amagelo sorts the input data in the increasing order of x-value, so (distances, y) will be sorted so that distances_sorted is in the increasing order
+					// Check monotonicity of amagelo_fit.predictions from that model
+					// Note that amagelo sorts the input data in the increasing order of x-value, so (distances, y) will be sorted so that distances_sorted is in the increasing order
 
-bool is_monotonic = true;
-if (detect_maxima) {
- // the orientation of the (distances_sorted, y_sorted)
- // data is in the increasing distance from the local
- // maximum vertex, so we want to test if the differences
- // of all consecutive predictions of the model are
- // negative
-for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
-if (amagelo_fit.predictions[i] > amagelo_fit.predictions[i-1]) {
-is_monotonic = false;
-break;
-}
-}
-} else {
-for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
-if (amagelo_fit.predictions[i] < amagelo_fit.predictions[i-1]) {
-is_monotonic = false;
-break;
-}
-}
-}
+					bool is_monotonic = true;
+					if (detect_maxima) {
+						// the orientation of the (distances_sorted, y_sorted)
+						// data is in the increasing distance from the local
+						// maximum vertex, so we want to test if the differences
+						// of all consecutive predictions of the model are
+						// negative
+						for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
+							if (amagelo_fit.predictions[i] > amagelo_fit.predictions[i-1]) {
+								is_monotonic = false;
+								break;
+							}
+						}
+					} else {
+						for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
+							if (amagelo_fit.predictions[i] < amagelo_fit.predictions[i-1]) {
+								is_monotonic = false;
+								break;
+							}
+						}
+					}
 
-                     // If distance_predictions is stricly monotonically decreasing. when detect_maxima = true, we record u and explore its neighbors.
-                     // Otherwise, we not add u to the basin and we do not explore its neighbors
+					// If distance_predictions is stricly monotonically decreasing. when detect_maxima = true, we record u and explore its neighbors.
+					// Otherwise, we not add u to the basin and we do not explore its neighbors
 
                     if (is_monotonic) {
-                         // Store vertex with its distance
-basin.reachability_map.sorted_vertices.push_back({u, d}); // the shortest path between u and 'vertex' has at least min_path_size vertices and y is monotonic along that path so we add it to the reachability map
-basin.reachability_map.distances[u]    = d;
-basin.reachability_map.predecessors[u] = prev[u];
+						// Store vertex with its distance
+						basin.reachability_map.sorted_vertices.push_back({u, d}); // the shortest path between u and 'vertex' has at least min_path_size vertices and y is monotonic along that path so we add it to the reachability map
+						basin.reachability_map.distances[u]    = d;
+						basin.reachability_map.predecessors[u] = prev[u];
 
                     } else {
                         continue; // we are not going to explore the neighbors of u as we already know that y cannot be monotonic along a longer geodesic containing u
                     }
                 } else {
-                     // Store vertex with its distance
-basin.reachability_map.sorted_vertices.push_back({u, d}); // the shortest path between u and vertex has less than min_path_size vertices, so u is small hop distance from 'vertex', although the shortest path to u may have long edges !!! Explore it when testing
-basin.reachability_map.distances[u]    = d;
-basin.reachability_map.predecessors[u] = prev[u];
+					// Store vertex with its distance
+					basin.reachability_map.sorted_vertices.push_back({u, d}); // the shortest path between u and vertex has less than min_path_size vertices, so u is small hop distance from 'vertex', although the shortest path to u may have long edges !!! Explore it when testing
+					basin.reachability_map.distances[u]    = d;
+					basin.reachability_map.predecessors[u] = prev[u];
                 }
 
             } else { // condition_met is not met
@@ -291,12 +291,12 @@ basin.reachability_map.predecessors[u] = prev[u];
         }
     }
 
-if (basin.reachability_map.sorted_vertices.size() < min_basin_size) {
-basin.reachability_map.sorted_vertices.clear();
-return basin;
-}
+	if (basin.reachability_map.sorted_vertices.size() < min_basin_size) {
+		basin.reachability_map.sorted_vertices.clear();
+		return basin;
+	}
 
- // Sort vertices by distance in descending order
+	// Sort vertices by distance in descending order
     std::sort(basin.reachability_map.sorted_vertices.begin(), basin.reachability_map.sorted_vertices.end(),
               [](const vertex_info_t& a, const vertex_info_t& b) {
                   return a.distance > b.distance;
@@ -316,84 +316,84 @@ return basin;
  */
 std::pair<std::vector<basin_t>, std::vector<basin_t>> set_wgraph_t::find_gflow_basins(
     const std::vector<double>& y,
-size_t min_basin_size,
+	size_t min_basin_size,
     size_t min_path_size,
-double q_edge_thld
+	double q_edge_thld
     ) const {
 
- // Phase 1:  Process each vertex as a potential extremum; checking local extremum conditions only within the set of each vertex's neighbors
-std::vector<size_t> lmin_candidates; // indices of vertices that satisfy local min condition over the set of its neighbors
+	// Phase 1:  Process each vertex as a potential extremum; checking local extremum conditions only within the set of each vertex's neighbors
+	std::vector<size_t> lmin_candidates; // indices of vertices that satisfy local min condition over the set of its neighbors
     std::vector<size_t> lmax_candidates; // indices of vertices that satisfy local max condition over the set of its neighbors
 
     for (size_t vertex = 0; vertex < adjacency_list.size(); ++vertex) {
 
- // Checking if vertex is a local minimum within the set of its neighbors
+		// Checking if vertex is a local minimum within the set of its neighbors
         bool lmin_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
+		for (const auto& edge : adjacency_list[vertex]) {
             if (y[edge.vertex] <= y[vertex]) { // vertex cannot be a lmin of y
-lmin_condition_met = false;
+				lmin_condition_met = false;
                 break;
             }
         }
 
-if(lmin_condition_met) {
-lmin_candidates.push_back(vertex);
-continue; // there is no point of checking if it is a local maximum
-}
+		if(lmin_condition_met) {
+			lmin_candidates.push_back(vertex);
+			continue; // there is no point of checking if it is a local maximum
+		}
 
- // Checking if vertex is a local minimum within the set of its neighbors
-bool lmax_condition_met = true;
-for (const auto& edge : adjacency_list[vertex]) {
-if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
-lmax_condition_met = false;
+		// Checking if vertex is a local minimum within the set of its neighbors
+		bool lmax_condition_met = true;
+		for (const auto& edge : adjacency_list[vertex]) {
+			if (y[edge.vertex] >= y[vertex]) { // vertex cannot be a lmax of y
+				lmax_condition_met = false;
                 break;
             }
         }
 
-if(lmax_condition_met) {
-lmax_candidates.push_back(vertex);
-}
+		if(lmax_condition_met) {
+			lmax_candidates.push_back(vertex);
+		}
     }
 
-std::vector<basin_t> lmin_basins;
-std::vector<basin_t> lmax_basins;
+	std::vector<basin_t> lmin_basins;
+	std::vector<basin_t> lmax_basins;
 
- // Phase 2: For each vertex of lmin_candidates check if it is a local
- // minimum within the set of core_basin_size neighbors
-bool detect_maxima = false;
-for (const auto& vertex : lmin_candidates) {
-auto basin =  find_gflow_basin(
-vertex,
-y,
-min_basin_size,
-min_path_size,
-q_edge_thld,
-detect_maxima);
+	// Phase 2: For each vertex of lmin_candidates check if it is a local
+	// minimum within the set of core_basin_size neighbors
+	bool detect_maxima = false;
+	for (const auto& vertex : lmin_candidates) {
+		auto basin =  find_gflow_basin(
+			vertex,
+			y,
+			min_basin_size,
+			min_path_size,
+			q_edge_thld,
+			detect_maxima);
 
-if (basin.reachability_map.sorted_vertices.size()) {
-lmin_basins.push_back(basin);
-}
-}
+		if (basin.reachability_map.sorted_vertices.size()) {
+			lmin_basins.push_back(basin);
+		}
+	}
 
 
- // Phase 3: For each vertex of lmax_candidates check if it is a local
- // maximum within the set of core_basin_size neighbors
-detect_maxima = true;
-for (const auto& vertex : lmax_candidates) {
-auto basin =  find_gflow_basin(
-vertex,
-y,
-min_basin_size,
-min_path_size,
-q_edge_thld,
-detect_maxima);
+	// Phase 3: For each vertex of lmax_candidates check if it is a local
+	// maximum within the set of core_basin_size neighbors
+	detect_maxima = true;
+	for (const auto& vertex : lmax_candidates) {
+		auto basin =  find_gflow_basin(
+			vertex,
+			y,
+			min_basin_size,
+			min_path_size,
+			q_edge_thld,
+			detect_maxima);
 
-if (basin.reachability_map.sorted_vertices.size()) {
-lmax_basins.push_back(basin);
-}
-}
+		if (basin.reachability_map.sorted_vertices.size()) {
+			lmax_basins.push_back(basin);
+		}
+	}
 
-return std::make_pair(lmin_basins, lmax_basins);
+	return std::make_pair(lmin_basins, lmax_basins);
 }
 
 
@@ -411,24 +411,24 @@ basin_t set_wgraph_t::find_local_extremum(
     const std::vector<double>& y,
     size_t min_basin_size,
     bool detect_maxima
-) const {
+	) const {
     basin_t basin;
     basin.value      = y[vertex];
     basin.is_maximum = detect_maxima;
     basin.reachability_map.ref_vertex = vertex;
 
 #if 0
-     // 1. Check immediate extremum condition
+	// 1. Check immediate extremum condition
     for (const auto& edge : adjacency_list[vertex]) {
         double neigh_val = y[edge.vertex];
         if (detect_maxima ? (neigh_val > y[vertex]) : (neigh_val < y[vertex])) {
-             // Not a local extremum
+			// Not a local extremum
             return basin;  // sorted_vertices empty
         }
     }
 #endif
 
-     // 2. Initialize Dijkstra structures
+	// 2. Initialize Dijkstra structures
     size_t n = adjacency_list.size();
     std::vector<double> dist(n, INFINITY);
     std::vector<size_t> prev(n, INVALID_VERTEX);
@@ -438,18 +438,18 @@ basin_t set_wgraph_t::find_local_extremum(
     dist[vertex] = 0.0;
     pq.push({0.0, vertex});
 
-     // Seed the basin with the reference vertex
+	// Seed the basin with the reference vertex
     basin.reachability_map.distances[vertex]    = 0.0;
     basin.reachability_map.predecessors[vertex] = INVALID_VERTEX;
     basin.reachability_map.sorted_vertices.push_back({vertex, 0.0});
 
-     // 3. Perform bounded Dijkstra until we have min_basin_size vertices
+	// 3. Perform bounded Dijkstra until we have min_basin_size vertices
     size_t count = 1;  // already have the seed
     while (!pq.empty() && count < min_basin_size) {
         auto [d, u] = pq.top(); pq.pop();
         if (d > dist[u]) continue;  // stale entry
 
-         // Explore neighbors
+		// Explore neighbors
         for (const auto& edge : adjacency_list[u]) {
             size_t v = edge.vertex;
             double nd = d + edge.weight;
@@ -461,7 +461,7 @@ basin_t set_wgraph_t::find_local_extremum(
         }
 
         if (u != vertex) {
-             // Add to basin
+			// Add to basin
             basin.reachability_map.sorted_vertices.push_back({u, d});
             basin.reachability_map.distances[u]    = d;
             basin.reachability_map.predecessors[u] = prev[u];
@@ -469,20 +469,20 @@ basin_t set_wgraph_t::find_local_extremum(
         }
     }
 
-     // 4. If we didn't reach the required size, clear and return empty
+	// 4. If we didn't reach the required size, clear and return empty
     if (count < min_basin_size) {
         basin.reachability_map.sorted_vertices.clear();
         return basin;
     }
 
-     // 5. Sort vertices by descending distance
+	// 5. Sort vertices by descending distance
     std::sort(
         basin.reachability_map.sorted_vertices.begin(),
         basin.reachability_map.sorted_vertices.end(),
         [](const vertex_info_t& a, const vertex_info_t& b) {
             return a.distance > b.distance;
         }
-    );
+		);
 
     return basin;
 }
@@ -665,9 +665,9 @@ std::pair<std::vector<size_t>, std::vector<size_t>> set_wgraph_t::find_nbr_extre
 std::vector<int> set_wgraph_t::watershed_edge_weighted(
     const std::vector<double>& y,
     size_t min_basin_size
-) const {
+	) const {
     size_t n = adjacency_list.size();
-     // 1. Normalize y -> yhat in [0,1]
+	// 1. Normalize y -> yhat in [0,1]
     double y_min = *std::min_element(y.begin(), y.end());
     double y_max = *std::max_element(y.begin(), y.end());
     double range = (y_max > y_min ? y_max - y_min : 1.0);
@@ -676,7 +676,7 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
         yhat[i] = (y[i] - y_min) / range;
     }
 
-     // 2. Gather & sort all edge weights for quantile computation
+	// 2. Gather & sort all edge weights for quantile computation
     std::vector<double> all_w;
     all_w.reserve(n * 4); // rough estimate
     for (size_t u = 0; u < n; ++u) {
@@ -687,7 +687,7 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
     std::sort(all_w.begin(), all_w.end());
     size_t m = all_w.size();
 
-     // 3. Build per-vertex barrier map: barrier_map[u][v] = B(u,v)
+	// 3. Build per-vertex barrier map: barrier_map[u][v] = B(u,v)
     std::vector<std::unordered_map<size_t,double>> barrier_map(n);
     for (size_t u = 0; u < n; ++u) {
         for (auto const &e : adjacency_list[u]) {
@@ -700,11 +700,11 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
         }
     }
 
-     // 4. Find true local minima basins (size >= min_basin_size)
+	// 4. Find true local minima basins (size >= min_basin_size)
     auto bas_pair = find_local_extrema(y, min_basin_size);
     const auto &lmin_basins = bas_pair.first;
 
-     // 5. Initialize labels (0 = unassigned)
+	// 5. Initialize labels (0 = unassigned)
     std::vector<int> label(n, 0);
     int next_label = 1;
     for (auto const &b : lmin_basins) {
@@ -712,14 +712,14 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
         label[u] = next_label++;
     }
 
-     // 6. Priority-flood from each minima marker
+	// 6. Priority-flood from each minima marker
     struct Entry { double pr; size_t v; int reg; };
     struct Cmp { bool operator()(Entry const &a, Entry const &b) const {
         return a.pr > b.pr;
     }};
     std::priority_queue<Entry, std::vector<Entry>, Cmp> pq;
 
-     // Seed neighbors of each minima
+	// Seed neighbors of each minima
     for (auto const &b : lmin_basins) {
         size_t u = b.reachability_map.ref_vertex;
         int reg = label[u];
@@ -732,7 +732,7 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
         }
     }
 
-     // Flood assign
+	// Flood assign
     while (!pq.empty()) {
         auto cur = pq.top(); pq.pop();
         size_t v = cur.v; int reg = cur.reg; double pr = cur.pr;
@@ -789,19 +789,19 @@ basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
     const std::vector<double>& y,
     bool detect_maxima
     ) const {
-     // Initialize basin structure with extremum properties
+	// Initialize basin structure with extremum properties
     basin_t basin;
     basin.value      = y[vertex];                 // Function value at extremum
     basin.is_maximum = detect_maxima;             // Type of extremum (max or min)
     basin.reachability_map.ref_vertex = vertex;   // Reference vertex for paths
     basin.min_monotonicity_span = INFINITY;       // needed for making sure min_monotonicity_span is set when the reason for basin termination is that we got to an end of the graph
     basin.min_span_vertex       = INVALID_VERTEX; // if no violations were found during exploration we never find basin.min_span_vertex
-     // Seed the basin with the reference vertex (extremum)
+	// Seed the basin with the reference vertex (extremum)
     basin.reachability_map.distances[vertex]    = 0.0;
     basin.reachability_map.predecessors[vertex] = INVALID_VERTEX;
     basin.reachability_map.sorted_vertices.push_back({vertex, 0.0});
 
-     // Initialize Dijkstra's algorithm data structures
+	// Initialize Dijkstra's algorithm data structures
     size_t n = adjacency_list.size();             // Total number of vertices in graph
     std::vector<double> dist(n, INFINITY);        // Shortest path distances
     std::vector<size_t> prev(n, INVALID_VERTEX);  // Predecessor vertices in shortest paths
@@ -810,67 +810,67 @@ basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
     using queue_entry = std::pair<double, size_t>;
     std::priority_queue<queue_entry, std::vector<queue_entry>, std::greater<queue_entry>> pq;
 
-     // Initialize starting vertex
+	// Initialize starting vertex
     dist[vertex] = 0.0;
     pq.push({0.0, vertex});
     is_in_pq[vertex] = true;  // Mark extremum as in queue
 
-     // Perform monotonicity-constrained Dijkstra's algorithm
+	// Perform monotonicity-constrained Dijkstra's algorithm
     while (!pq.empty()) {
-         // Get closest vertex from priority queue
+		// Get closest vertex from priority queue
         auto [d, u] = pq.top(); pq.pop();
         is_in_pq[u] = false;  // No longer in queue
 
-         // Skip if we've already found a shorter path to u
+		// Skip if we've already found a shorter path to u
         if (d > dist[u]) continue;
 
-         // For all vertices except the extremum itself
+		// For all vertices except the extremum itself
         if (u != vertex) {
-             // Check if monotonicity condition is maintained
+			// Check if monotonicity condition is maintained
             double delta_y = y[u] - y[prev[u]];
 
-             // For maxima: values must decrease (delta_y < 0)
-             // For minima: values must increase (delta_y > 0)
+			// For maxima: values must decrease (delta_y < 0)
+			// For minima: values must increase (delta_y > 0)
             bool condition_met = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
 
             if (!condition_met) {
-                 // *** MONOTONICITY VIOLATION BOUNDARY ***
-                 // When monotonicity is violated, calculate monotonicity span
+				// *** MONOTONICITY VIOLATION BOUNDARY ***
+				// When monotonicity is violated, calculate monotonicity span
 
-                 // For maxima: span = y[vertex] - y[prev[u]]
-                 // For minima: span = y[prev[u]] - y[vertex]
+				// For maxima: span = y[vertex] - y[prev[u]]
+				// For minima: span = y[prev[u]] - y[vertex]
                 double curr_span = detect_maxima ? (y[vertex] - y[prev[u]]) : (y[prev[u]] - y[vertex]);
 
-                 // Store the monotonicity span for this boundary vertex (prev[u])
+				// Store the monotonicity span for this boundary vertex (prev[u])
                 basin.boundary_monotonicity_spans_map[prev[u]] = curr_span;
 
-                 // Update minimum span if this violation gives a smaller valid span
+				// Update minimum span if this violation gives a smaller valid span
                 constexpr double eps = 1e-12;  // Small epsilon to handle floating-point precision
                 if (curr_span > eps && curr_span < basin.min_monotonicity_span) {
                     basin.min_monotonicity_span = curr_span;
                     basin.min_span_vertex = prev[u];  // Last valid vertex before violation
                 }
 
-                 // Add the last valid vertex to boundary map
-                 // (the vertex before monotonicity violation)
+				// Add the last valid vertex to boundary map
+				// (the vertex before monotonicity violation)
                 basin.boundary_vertices_map[dist[prev[u]]] = prev[u];
 
-                 // Skip exploring neighbors of violating vertex
+				// Skip exploring neighbors of violating vertex
                 continue;
             }
 
-             // If monotonicity is maintained, add vertex to basin
+			// If monotonicity is maintained, add vertex to basin
             basin.reachability_map.sorted_vertices.push_back({u, d});
             basin.reachability_map.distances[u] = d;
             basin.reachability_map.predecessors[u] = prev[u];
         }
 
-         // Explore neighbors of acceptable vertices (including extremum)
+		// Explore neighbors of acceptable vertices (including extremum)
         for (const auto& edge : adjacency_list[u]) {
             size_t v = edge.vertex;
             double nd = d + edge.weight;  // New distance to v
 
-             // If we found a shorter path to v
+			// If we found a shorter path to v
             if (nd < dist[v]) {
                 dist[v] = nd;         // Update distance
                 prev[v] = u;          // Update predecessor
@@ -911,7 +911,7 @@ basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
 		}
     }
 
-     // Sort vertices by descending distance for easier downstream analysis
+	// Sort vertices by descending distance for easier downstream analysis
     std::sort(
         basin.reachability_map.sorted_vertices.begin(),
         basin.reachability_map.sorted_vertices.end(),
@@ -1104,7 +1104,7 @@ basin_t set_wgraph_t::find_local_extremum_bfs_basin(
         [](const vertex_info_t& a, const vertex_info_t& b) {
             return a.distance > b.distance;
         }
-    );
+		);
 
     return basin;
 }
