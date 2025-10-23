@@ -966,7 +966,6 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
     return(result)
 }
 
-
 #' Summarize Basins of Attraction
 #'
 #' @description
@@ -987,6 +986,15 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
 #' vertices. Higher percentile values indicate that an extremum lies in a
 #' sparser region of the graph.
 #'
+#' The hop-k distance measure provides complementary information about isolation
+#' at a specified graph distance. By examining vertices at exactly \code{hop_k}
+#' steps from each extremum, we assess whether the extremum lies in a locally
+#' sparse or dense region at that specific scale. This measure is particularly
+#' informative when the immediate neighborhood (captured by \code{mean.nbrs.dist})
+#' does not fully characterize the local geometry. The percentile rank
+#' \code{p.mean.hopk.dist} enables comparison of this extended neighborhood
+#' isolation across all vertices.
+#'
 #' The basin size quantifies the extent of the extremum's region of influence.
 #' Larger basins suggest more prominent features in the function landscape.
 #' The hop index indicates the maximum graph distance from the extremum to
@@ -1000,9 +1008,15 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
 #'
 #' @param object An object of class \code{"basins_of_attraction"} returned by
 #'   \code{compute.basins.of.attraction}.
-#' @param edgelen.list A list of numeric vectors containing edge lengths.
-#'   Element \code{i} contains the lengths of edges incident to vertex \code{i}.
+#' @param adj.list A list of integer vectors representing the graph adjacency structure.
+#'   Element \code{i} contains the vertex indices of neighbors of vertex \code{i}.
 #'   Must have length equal to the number of vertices in the graph.
+#' @param edgelen.list A list of numeric vectors containing edge lengths.
+#'   Element \code{i} contains the lengths of edges incident to vertex \code{i},
+#'   parallel to \code{adj.list[[i]]}. Must have length equal to the number of
+#'   vertices in the graph.
+#' @param hop_k Integer specifying the hop distance for computing extended
+#'   neighborhood isolation. Default is 2. Must be a positive integer.
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return A data frame of class \code{"basin_summary"} with one row per
@@ -1016,8 +1030,9 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
 #'   \item{hop.idx}{Maximum hop distance within the basin}
 #'   \item{basin.size}{Number of vertices in the basin}
 #'   \item{p.d1}{Percentile rank of nearest neighbor distance (density measure)}
-#'   \item{p.mean.nbrs.dist}{Percentile rank of mean neighbor distance
-#'     (density measure)}
+#'   \item{p.mean.nbrs.dist}{Percentile rank of mean neighbor distance (density measure)}
+#'   \item{p.mean.hopk.dist}{Percentile rank of mean hop-k distance (extended isolation measure)}
+#'   \item{deg}{Degree of the vertex}
 #'
 #' @examples
 #' \dontrun{
@@ -1029,9 +1044,12 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
 #'   rep(1.0, length(nbrs))  # uniform edge lengths
 #' })
 #'
-#' # Generate summary
-#' basin_summary <- summary(basins, edgelen.list)
+#' # Generate summary with default hop_k = 2
+#' basin_summary <- summary(basins, adj.list, edgelen.list)
 #' print(basin_summary)
+#'
+#' # Generate summary with custom hop distance
+#' basin_summary_h3 <- summary(basins, adj.list, edgelen.list, hop_k = 3)
 #'
 #' # Identify most prominent maximum
 #' max_basins <- subset(basin_summary, type == "max")
@@ -1039,23 +1057,42 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
 #' cat("Most prominent maximum:", most_prominent$label, "\n")
 #' cat("Basin size:", most_prominent$basin.size, "\n")
 #'
-#' # Find extrema in sparse regions
-#' sparse_extrema <- subset(basin_summary, p.mean.nbrs.dist > 0.75)
-#' print(sparse_extrema[, c("label", "type", "value", "p.mean.nbrs.dist")])
+#' # Find extrema in sparse regions (both immediate and extended neighborhoods)
+#' sparse_extrema <- subset(basin_summary,
+#'                          p.mean.nbrs.dist > 0.75 & p.mean.hopk.dist > 0.75)
+#' print(sparse_extrema[, c("label", "type", "value",
+#'                          "p.mean.nbrs.dist", "p.mean.hopk.dist")])
 #' }
 #'
 #' @seealso \code{\link{compute.basins.of.attraction}} for computing the basins
 #'
 #' @export
-summary.basins_of_attraction <- function(object, edgelen.list, ...) {
+summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop_k = 2, ...) {
 
     if (!inherits(object, "basins_of_attraction")) {
         stop("Input must be of class 'basins_of_attraction'")
     }
 
+    if (length(adj.list) != object$n_vertices) {
+        stop("Length of adj.list must equal number of vertices")
+    }
+
     if (length(edgelen.list) != object$n_vertices) {
         stop("Length of edgelen.list must equal number of vertices")
     }
+
+    # Validate that adj.list and edgelen.list are parallel structures
+    for (i in seq_len(object$n_vertices)) {
+        if (length(adj.list[[i]]) != length(edgelen.list[[i]])) {
+            stop(sprintf("Mismatch at vertex %d: adj.list has %d neighbors but edgelen.list has %d lengths",
+                        i, length(adj.list[[i]]), length(edgelen.list[[i]])))
+        }
+    }
+
+    if (!is.numeric(hop_k) || length(hop_k) != 1 || hop_k < 1 || hop_k != as.integer(hop_k)) {
+        stop("hop_k must be a positive integer")
+    }
+    hop_k <- as.integer(hop_k)
 
     y <- object$y
     n <- object$n_vertices
@@ -1063,21 +1100,34 @@ summary.basins_of_attraction <- function(object, edgelen.list, ...) {
     # Compute distance metrics
     d1 <- numeric(n)
     mean.nbrs.dist <- numeric(n)
+    deg <- numeric(n)
 
     for (i in seq_len(n)) {
         if (length(edgelen.list[[i]]) > 0) {
             d1[i] <- min(edgelen.list[[i]])
             mean.nbrs.dist[i] <- mean(edgelen.list[[i]])
+            deg[i] <- length(edgelen.list[[i]])
         } else {
             d1[i] <- Inf
             mean.nbrs.dist[i] <- Inf
+            deg[i] <- 0
         }
+    }
+
+    # Compute hop-k distance metric
+    mean.hopk.dist <- numeric(n)
+
+    # Compute hop-k neighborhoods for each vertex using BFS
+    for (i in seq_len(n)) {
+        mean.hopk.dist[i] <- compute_mean_hopk_distance(i, adj.list, edgelen.list, hop_k)
     }
 
     # Compute density percentiles
     p.d1 <- sapply(d1, function(x) sum(d1 <= x) / n)
     p.mean.nbrs.dist <- sapply(mean.nbrs.dist, function(x)
                                 sum(mean.nbrs.dist <= x) / n)
+    p.mean.hopk.dist <- sapply(mean.hopk.dist, function(x)
+                                sum(mean.hopk.dist <= x) / n)
 
     # Initialize results
     results <- data.frame(
@@ -1090,6 +1140,8 @@ summary.basins_of_attraction <- function(object, edgelen.list, ...) {
         basin.size = integer(),
         p.d1 = numeric(),
         p.mean.nbrs.dist = numeric(),
+        p.mean.hopk.dist = numeric(),
+        deg = numeric(),
         stringsAsFactors = FALSE
     )
 
@@ -1109,6 +1161,8 @@ summary.basins_of_attraction <- function(object, edgelen.list, ...) {
         # Add density metrics
         min.df$p.d1 <- p.d1[min.df$vertex]
         min.df$p.mean.nbrs.dist <- p.mean.nbrs.dist[min.df$vertex]
+        min.df$p.mean.hopk.dist <- p.mean.hopk.dist[min.df$vertex]
+        min.df$deg = deg[min.df$vertex]
 
         # Sort by value and assign labels
         min.df <- min.df[order(min.df$value), ]
@@ -1133,6 +1187,8 @@ summary.basins_of_attraction <- function(object, edgelen.list, ...) {
         # Add density metrics
         max.df$p.d1 <- p.d1[max.df$vertex]
         max.df$p.mean.nbrs.dist <- p.mean.nbrs.dist[max.df$vertex]
+        max.df$p.mean.hopk.dist <- p.mean.hopk.dist[max.df$vertex]
+        max.df$deg = deg[max.df$vertex]
 
         # Sort by value and assign labels
         max.df <- max.df[order(-max.df$value), ]
@@ -1148,7 +1204,104 @@ summary.basins_of_attraction <- function(object, edgelen.list, ...) {
     return(results)
 }
 
-# Optional: print method for raw basins object
+#' Compute mean hop-k distance for a vertex
+#'
+#' @description
+#' Helper function to compute the mean distance from a vertex to all vertices
+#' at exactly hop-k distance in the graph.
+#'
+#' @details
+#' We perform breadth-first search to identify all vertices at exactly \code{hop_k}
+#' graph distance from the given vertex. For each such vertex found, we compute
+#' the geodesic distance by summing edge lengths along the shortest path. The
+#' function returns the mean of these distances. If no vertices exist at hop-k
+#' distance, the function returns infinity to indicate isolation.
+#'
+#' @param vertex Integer vertex index (1-based)
+#' @param adj.list List of integer vectors representing graph adjacency
+#' @param edgelen.list List of edge length vectors parallel to adjacency list
+#' @param hop_k Integer hop distance to query
+#'
+#' @return Numeric value representing mean distance to hop-k neighbors,
+#'   or Inf if no vertices exist at that hop distance
+#'
+#' @keywords internal
+compute_mean_hopk_distance <- function(vertex, adj.list, edgelen.list, hop_k) {
+    n <- length(adj.list)
+
+    # BFS initialization
+    visited <- rep(FALSE, n)
+    hop_distance <- rep(-1, n)
+    predecessor <- rep(NA_integer_, n)
+
+    # Queue for BFS: stores vertex indices
+    queue <- integer(0)
+
+    # Initialize with starting vertex
+    visited[vertex] <- TRUE
+    hop_distance[vertex] <- 0
+    queue <- c(queue, vertex)
+
+    # Perform BFS
+    while (length(queue) > 0) {
+        current <- queue[1]
+        queue <- queue[-1]
+
+        # Stop if we've gone beyond hop_k
+        if (hop_distance[current] >= hop_k) {
+            next
+        }
+
+        # Explore neighbors
+        neighbors <- adj.list[[current]]
+        if (length(neighbors) > 0) {
+            for (neighbor in neighbors) {
+                if (!visited[neighbor]) {
+                    visited[neighbor] <- TRUE
+                    hop_distance[neighbor] <- hop_distance[current] + 1
+                    predecessor[neighbor] <- current
+                    queue <- c(queue, neighbor)
+                }
+            }
+        }
+    }
+
+    # Find all vertices at exactly hop_k distance
+    hopk_vertices <- which(hop_distance == hop_k)
+
+    if (length(hopk_vertices) == 0) {
+        return(Inf)
+    }
+
+    # Compute geodesic distances to hop-k vertices by tracing back paths
+    distances <- numeric(length(hopk_vertices))
+
+    for (i in seq_along(hopk_vertices)) {
+        v <- hopk_vertices[i]
+        total_dist <- 0
+        current <- v
+
+        # Trace back to source vertex
+        while (!is.na(predecessor[current])) {
+            prev <- predecessor[current]
+
+            # Find edge length from prev to current
+            # Need to find which neighbor index current is in prev's adjacency list
+            neighbor_idx <- which(adj.list[[prev]] == current)
+            if (length(neighbor_idx) > 0) {
+                total_dist <- total_dist + edgelen.list[[prev]][neighbor_idx[1]]
+            }
+
+            current <- prev
+        }
+
+        distances[i] <- total_dist
+    }
+
+    return(mean(distances))
+}
+
+#' @export
 print.basins_of_attraction <- function(x, ...) {
     cat("Basins of Attraction\n")
     cat("====================\n")
@@ -1157,4 +1310,588 @@ print.basins_of_attraction <- function(x, ...) {
     cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
     cat("\nUse summary() to generate detailed basin statistics\n")
     invisible(x)
+}
+
+
+#' Cluster Local Extrema Based on Basin Overlap
+#'
+#' @description
+#' Identifies clusters of local extrema (either maxima or minima) whose basins
+#' of attraction exhibit substantial overlap or containment relationships. The
+#' function uses basin labels from \code{\link{summary.basins_of_attraction}}
+#' to ensure consistency with other analyses and returns both numeric cluster
+#' assignments and a convenient cluster membership list.
+#'
+#' @details
+#' The clustering problem arises naturally in Morse-Smale analysis when multiple
+#' local extrema are positioned close together in the function landscape, creating
+#' basins that either overlap substantially or exhibit containment relationships
+#' where a smaller basin lies entirely within a larger one. Traditional similarity
+#' measures like the Jaccard index may fail to detect such containment patterns
+#' because they normalize by the union size rather than the smaller set size.
+#'
+#' We address this by employing the overlap coefficient, also known as the
+#' Szymkiewicz-Simpson index, which measures basin similarity through the ratio
+#' of intersection size to the minimum basin size. For two basins $A$ and $B$,
+#' the overlap coefficient is defined as
+#' $$
+#' \text{OC}(A,B) = \frac{|A \cap B|}{\min(|A|, |B|)}
+#' $$
+#' This measure equals one when either basin is completely contained in the other,
+#' making it ideal for detecting nested or highly overlapping basin structures.
+#'
+#' The overlap distance, given by $d(A,B) = 1 - \text{OC}(A,B)$, converts this
+#' similarity into a proper metric. We construct a threshold graph where basins
+#' are connected by edges whenever their overlap distance falls below the
+#' specified threshold. Connected components of this graph define clusters of
+#' similar basins. Within each cluster, basins likely represent the same or
+#' closely related features in the underlying function landscape.
+#'
+#' The function internally calls \code{\link{summary.basins_of_attraction}} to
+#' obtain consistent basin labels. These labels follow the convention that minima
+#' are labeled m1, m2, ... in order of increasing function value (so m1 is the
+#' global minimum), while maxima are labeled M1, M2, ... in order of decreasing
+#' function value (so M1 is the global maximum). This labeling scheme ensures
+#' that clustering results align with other basin analyses.
+#'
+#' The function operates exclusively on basins of a single extremum type to
+#' maintain the interpretability of clusters. Mixing ascending and descending
+#' basins would conflate fundamentally different topological features.
+#'
+#' The overlap graph returned by the function can be visualized using standard
+#' graph visualization tools to examine the structure of basin relationships.
+#'
+#' @param basins.obj An object of class \code{"basins_of_attraction"} returned by
+#'   \code{\link{compute.basins.of.attraction}}. This object contains the
+#'   complete basin structure for both local minima and local maxima.
+#' @param edgelen.list A list of numeric vectors containing edge lengths.
+#'   Element \code{i} contains the lengths of edges incident to vertex \code{i}.
+#'   Must have length equal to the number of vertices in the graph. This parameter
+#'   is passed to \code{\link{summary.basins_of_attraction}} to generate
+#'   consistent basin labels and compute basin characteristics.
+#' @param extrema.type Character string specifying which type of extrema to
+#'   cluster. Must be either \code{"max"} for local maxima (descending basins)
+#'   or \code{"min"} for local minima (ascending basins). Default is \code{"max"}.
+#' @param overlap.threshold Numeric value in the interval \eqn{[0, 1]} specifying the
+#'   threshold for the overlap distance below which basins are considered similar
+#'   and connected in the clustering graph. Smaller values produce more conservative
+#'   clustering with tighter similarity requirements. For example, a threshold of
+#'   0.15 requires that basins share at least 85% overlap relative to the smaller
+#'   basin. Default is 0.1, corresponding to 90% overlap.
+#'
+#' @return A list containing the clustering results with the following components:
+#'   \describe{
+#'     \item{cluster.assignments}{Named integer vector where names are basin
+#'       labels from \code{summary.basins_of_attraction} (\code{M1}, \code{M2}, ...
+#'       for maxima or \code{m1}, \code{m2}, ... for minima) and values are cluster
+#'       identifiers. Basins with the same cluster identifier belong to the same
+#'       cluster.}
+#'     \item{clusters}{Named list where names are cluster identifiers (as character
+#'       strings) and values are character vectors of basin labels belonging to each
+#'       cluster. This provides a convenient inverse mapping from clusters to their
+#'       member basins.}
+#'     \item{overlap.distances}{Symmetric matrix of pairwise overlap distances
+#'       between all basins. Rows and columns are labeled with basin identifiers
+#'       from \code{summary.basins_of_attraction}. Diagonal entries are zero.}
+#'     \item{basin.vertices}{Named list where each element contains the integer
+#'       vector of vertex indices belonging to the corresponding basin. Names
+#'       match basin labels from \code{summary.basins_of_attraction}.}
+#'     \item{overlap.graph}{List with components \code{adj_list} and
+#'       \code{weight_list} representing the overlap graph structure. In this graph,
+#'       vertices correspond to basins and edges connect basins whose overlap
+#'       distance is below the threshold. Edge weights are the overlap distances.
+#'       Vertex names in the adjacency list match basin labels.}
+#'     \item{basin.summary}{Data frame from \code{summary.basins_of_attraction}
+#'       filtered to include only the extrema of the specified type. Contains
+#'       detailed information about each basin including label, vertex, value,
+#'       basin size, and density metrics.}
+#'     \item{n.clusters}{Integer scalar giving the total number of distinct
+#'       clusters identified.}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # Compute basins of attraction for a function on a graph
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#'
+#' # Generate basin summary with consistent labels
+#' basin.df <- summary(basins, edgelen.list)
+#' print(basin.df)
+#'
+#' # Cluster local maxima using the same labels
+#' max.clusters <- cluster.local.extrema(basins,
+#'                                       edgelen.list,
+#'                                       extrema.type = "max",
+#'                                       overlap.threshold = 0.15)
+#'
+#' # Report clustering results
+#' cat("Found", max.clusters$n.clusters, "clusters among",
+#'     nrow(max.clusters$basin.summary), "maxima\n")
+#'
+#' # Examine cluster assignments
+#' print(max.clusters$cluster.assignments)
+#'
+#' # View clusters and their members
+#' print(max.clusters$clusters)
+#'
+#' # Identify multi-basin clusters
+#' multi.basin.clusters <- Filter(function(x) length(x) > 1,
+#'                                max.clusters$clusters)
+#' if (length(multi.basin.clusters) > 0) {
+#'   cat("\nClusters with multiple basins:\n")
+#'   for (cluster.id in names(multi.basin.clusters)) {
+#'     cat("Cluster", cluster.id, ":",
+#'         paste(multi.basin.clusters[[cluster.id]], collapse = ", "), "\n")
+#'   }
+#' }
+#'
+#' # Inspect basin characteristics for clustered maxima
+#' clustered.labels <- unlist(multi.basin.clusters)
+#' clustered.basins <- max.clusters$basin.summary[
+#'   max.clusters$basin.summary$label %in% clustered.labels,
+#' ]
+#' print(clustered.basins[, c("label", "vertex", "value", "basin.size")])
+#'
+#' # Check overlap distances
+#' print(round(max.clusters$overlap.distances, 3))
+#'
+#' # Visualize the overlap graph
+#' library(igraph)
+#' n.basins <- length(max.clusters$overlap.graph$adj_list)
+#' edge.list <- matrix(nrow = 0, ncol = 2)
+#' edge.weights <- numeric(0)
+#' for (i in seq_len(n.basins)) {
+#'   neighbors <- max.clusters$overlap.graph$adj_list[[i]]
+#'   if (length(neighbors) > 0) {
+#'     for (j in seq_along(neighbors)) {
+#'       neighbor <- neighbors[j]
+#'       if (i < neighbor) {  # Avoid duplicate edges
+#'         edge.list <- rbind(edge.list, c(i, neighbor))
+#'         edge.weights <- c(edge.weights,
+#'                          max.clusters$overlap.graph$weight_list[[i]][j])
+#'       }
+#'     }
+#'   }
+#' }
+#' if (nrow(edge.list) > 0) {
+#'   g <- graph_from_edgelist(edge.list, directed = FALSE)
+#'   V(g)$name <- names(max.clusters$overlap.graph$adj_list)
+#'   E(g)$weight <- edge.weights
+#'   plot(g, vertex.label = V(g)$name,
+#'        edge.label = round(E(g)$weight, 2),
+#'        main = "Basin Overlap Graph")
+#' }
+#'
+#' # Similarly cluster local minima
+#' min.clusters <- cluster.local.extrema(basins,
+#'                                       edgelen.list,
+#'                                       extrema.type = "min",
+#'                                       overlap.threshold = 0.15)
+#' print(min.clusters$clusters)
+#' }
+#'
+#' @seealso
+#' \code{\link{compute.basins.of.attraction}} for computing basins of attraction,
+#' \code{\link{summary.basins_of_attraction}} for generating basin summaries with
+#' consistent labels,
+#' \code{\link{create.basin.cx}} for comprehensive basin complex analysis with
+#' automatic clustering and simplification
+#'
+#' @export
+cluster.local.extrema <- function(basins.obj,
+                                  edgelen.list,
+                                  extrema.type = "max",
+                                  overlap.threshold = 0.1) {
+    ## Input validation
+    if (!inherits(basins.obj, "basins_of_attraction")) {
+        stop("basins.obj must be of class 'basins_of_attraction'")
+    }
+
+    if (!extrema.type %in% c("max", "min")) {
+        stop("extrema.type must be either 'max' or 'min'")
+    }
+
+    if (!is.numeric(overlap.threshold) || length(overlap.threshold) != 1) {
+        stop("overlap.threshold must be a single numeric value")
+    }
+
+    if (overlap.threshold < 0 || overlap.threshold > 1) {
+        stop("overlap.threshold must be in the interval [0, 1]")
+    }
+
+    ## Generate basin summary to get consistent labels
+    basin.summary <- summary(basins.obj, edgelen.list)
+
+    ## Filter to selected extrema type
+    if (extrema.type == "max") {
+        basin.summary <- basin.summary[basin.summary$type == "max", ]
+    } else {
+        basin.summary <- basin.summary[basin.summary$type == "min", ]
+    }
+
+    ## Handle case with no extrema of this type
+    if (nrow(basin.summary) == 0) {
+        warning(paste("No", extrema.type, "basins found in basins.obj"))
+        return(list(
+            cluster.assignments = integer(0),
+            clusters = list(),
+            overlap.distances = matrix(numeric(0), 0, 0),
+            basin.vertices = list(),
+            overlap.graph = list(adj_list = list(), weight_list = list()),
+            basin.summary = basin.summary,
+            n.clusters = 0
+        ))
+    }
+
+    ## Extract the appropriate basins using the summary order
+    if (extrema.type == "max") {
+        basin.list <- basins.obj$lmax_basins
+    } else {
+        basin.list <- basins.obj$lmin_basins
+    }
+
+    ## Extract vertices for each basin in summary order
+    basin.vertices.list <- list()
+    for (i in seq_len(nrow(basin.summary))) {
+        label <- basin.summary$label[i]
+        vertex <- basin.summary$vertex[i]
+
+        ## Find the basin with this vertex
+        for (basin in basin.list) {
+            if (basin$vertex == vertex) {
+                basin.vertices.list[[label]] <- basin$basin_df[, 1]
+                break
+            }
+        }
+    }
+
+    ## Compute overlap distance matrix
+    overlap.dists <- overlap_distance_matrix(basin.vertices.list)
+
+    ## Create threshold graph
+    overlap.graph <- create_threshold_distance_graph(
+        overlap.dists,
+        threshold = overlap.threshold
+    )
+
+    ## Find connected components (clusters)
+    cluster.assignments <- graph.connected.components(overlap.graph$adj_list)
+    names(cluster.assignments) <- rownames(overlap.dists)
+
+    ## Create inverse mapping: clusters -> basin labels
+    cluster.ids <- sort(unique(cluster.assignments))
+    clusters.list <- list()
+    for (cluster.id in cluster.ids) {
+        basin.labels <- names(cluster.assignments)[cluster.assignments == cluster.id]
+        clusters.list[[as.character(cluster.id)]] <- basin.labels
+    }
+
+    ## Return clustering information
+    list(
+        cluster.assignments = cluster.assignments,
+        clusters = clusters.list,
+        overlap.distances = overlap.dists,
+        basin.vertices = basin.vertices.list,
+        overlap.graph = overlap.graph,
+        basin.summary = basin.summary,
+        n.clusters = length(cluster.ids)
+    )
+}
+
+#' Merge Clustered Basins of Attraction
+#'
+#' @description
+#' Merges basins of attraction for local extrema that belong to the same cluster,
+#' creating a simplified basin structure where each cluster is represented by a
+#' single basin with its highest-valued (for maxima) or lowest-valued (for minima)
+#' extremum as the representative. The function preserves complete information about
+#' which extrema were merged for downstream analysis and gradient trajectory construction.
+#'
+#' @details
+#' When multiple local extrema have highly overlapping or nested basins of attraction,
+#' they often represent the same topological feature fragmented by noise or sampling
+#' artifacts. This function addresses the problem by consolidating such extrema into
+#' unified basin structures.
+#'
+#' We begin by identifying cluster representatives according to a natural ordering
+#' principle. For maxima, we select the extremum with the largest function value as
+#' the representative, since it corresponds to the highest point in the cluster. For
+#' minima, we select the extremum with the smallest function value, corresponding to
+#' the lowest point. This choice ensures that the representative captures the most
+#' extreme manifestation of the topological feature.
+#'
+#' The merged basin is constructed as the set-theoretic union of all basins within
+#' the cluster. This union represents the complete region of influence for the
+#' topological feature. We preserve the basin structure of the representative extremum
+#' but extend its vertex set to include all vertices from absorbed basins.
+#'
+#' The function maintains complete transparency about the merging operation through
+#' detailed metadata. For each merged basin, we record which extrema were absorbed,
+#' providing their vertex indices, labels, and function values. This information proves
+#' essential for downstream analyses, particularly gradient trajectory construction,
+#' where paths may terminate at absorbed extrema that no longer exist as separate
+#' basins but must still be interpretable.
+#'
+#' The output object retains the structure of a standard basins of attraction result
+#' but includes additional metadata fields documenting the simplification. This design
+#' ensures compatibility with existing analysis pipelines while providing the
+#' information needed to handle edge cases involving absorbed extrema.
+#'
+#' @param basins.obj An object of class \code{"basins_of_attraction"} returned by
+#'   \code{\link{compute.basins.of.attraction}}. This object contains the original
+#'   basin structure before merging.
+#' @param clustering.result An object returned by \code{\link{cluster.local.extrema}}
+#'   containing cluster assignments and basin metadata for the extrema type to be
+#'   merged.
+#' @param extrema.type Character string specifying which type of extrema were clustered.
+#'   Must be either \code{"max"} for local maxima or \code{"min"} for local minima.
+#'   This should match the \code{extrema.type} used in the clustering step.
+#'
+#' @return An object of class \code{"basins_of_attraction"} with the same structure
+#'   as the input \code{basins.obj} but with clustered basins merged. The object
+#'   contains:
+#'   \describe{
+#'     \item{lmin_basins}{List of basin structures for local minima (merged if
+#'       \code{extrema.type = "min"}).}
+#'     \item{lmax_basins}{List of basin structures for local maxima (merged if
+#'       \code{extrema.type = "max"}).}
+#'     \item{n_vertices}{Total number of vertices in the graph.}
+#'     \item{y}{Copy of the input function values.}
+#'     \item{merge.info}{List containing detailed information about the merging
+#'       operation with components:
+#'       \describe{
+#'         \item{extrema.type}{Type of extrema that were merged (\code{"max"} or
+#'           \code{"min"}).}
+#'         \item{n.clusters}{Number of clusters identified.}
+#'         \item{n.merged}{Number of clusters that involved merging (size > 1).}
+#'         \item{cluster.representatives}{Named character vector mapping cluster IDs
+#'           to representative basin labels.}
+#'         \item{absorbed.extrema}{Data frame with one row per absorbed extremum
+#'           containing columns:
+#'           \describe{
+#'             \item{absorbed.label}{Original label of the absorbed extremum.}
+#'             \item{absorbed.vertex}{Vertex index of the absorbed extremum.}
+#'             \item{absorbed.value}{Function value at the absorbed extremum.}
+#'             \item{representative.label}{Label of the representative basin that
+#'               absorbed this extremum.}
+#'             \item{representative.vertex}{Vertex index of the representative.}
+#'             \item{representative.value}{Function value at the representative.}
+#'             \item{cluster.id}{Cluster identifier.}
+#'           }}
+#'         \item{basin.size.changes}{Data frame showing how basin sizes changed due
+#'           to merging, with columns \code{label}, \code{original.size},
+#'           \code{merged.size}, \code{size.increase}.}
+#'       }}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # Compute basins of attraction
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#'
+#' # Generate basin summary
+#' basin.df <- summary(basins, edgelen.list)
+#'
+#' # Cluster local maxima
+#' max.clusters <- cluster.local.extrema(basins,
+#'                                       edgelen.list,
+#'                                       extrema.type = "max",
+#'                                       overlap.threshold = 0.15)
+#'
+#' # Merge clustered basins
+#' merged.basins <- merge.clustered.basins(basins,
+#'                                         max.clusters,
+#'                                         extrema.type = "max")
+#'
+#' # Examine merge information
+#' print(merged.basins$merge.info$absorbed.extrema)
+#'
+#' # See which basins grew
+#' print(merged.basins$merge.info$basin.size.changes)
+#'
+#' # Verify the number of maxima decreased
+#' cat("Original maxima:", length(basins$lmax_basins), "\n")
+#' cat("Merged maxima:", length(merged.basins$lmax_basins), "\n")
+#'
+#' # Use merged basins for downstream analysis
+#' # Note: gradient trajectories computed with original y values may
+#' # terminate at absorbed extrema vertices, which can be mapped back
+#' # to representatives using merge.info$absorbed.extrema
+#' }
+#'
+#' @seealso
+#' \code{\link{cluster.local.extrema}} for clustering basins,
+#' \code{\link{compute.basins.of.attraction}} for computing basins,
+#' \code{\link{summary.basins_of_attraction}} for basin summaries
+#'
+#' @export
+merge.clustered.basins <- function(basins.obj,
+                                   clustering.result,
+                                   extrema.type) {
+    ## Input validation
+    if (!inherits(basins.obj, "basins_of_attraction")) {
+        stop("basins.obj must be of class 'basins_of_attraction'")
+    }
+
+    if (!extrema.type %in% c("max", "min")) {
+        stop("extrema.type must be either 'max' or 'min'")
+    }
+
+    ## Extract components
+    basin.summary <- clustering.result$basin.summary
+    clusters <- clustering.result$clusters
+    cluster.assignments <- clustering.result$cluster.assignments
+    basin.vertices <- clustering.result$basin.vertices
+
+    ## Get original basin list
+    if (extrema.type == "max") {
+        original.basins <- basins.obj$lmax_basins
+    } else {
+        original.basins <- basins.obj$lmin_basins
+    }
+
+    ## Initialize merged basin list and tracking structures
+    merged.basins <- list()
+    cluster.representatives <- character(0)
+    absorbed.extrema.df <- data.frame(
+        absorbed.label = character(),
+        absorbed.vertex = integer(),
+        absorbed.value = numeric(),
+        representative.label = character(),
+        representative.vertex = integer(),
+        representative.value = numeric(),
+        cluster.id = character(),
+        stringsAsFactors = FALSE
+    )
+
+    basin.size.changes <- data.frame(
+        label = character(),
+        original.size = integer(),
+        merged.size = integer(),
+        size.increase = integer(),
+        stringsAsFactors = FALSE
+    )
+
+    ## Process each cluster
+    for (cluster.id in names(clusters)) {
+        basin.labels <- clusters[[cluster.id]]
+
+        if (length(basin.labels) == 1) {
+            ## Single-basin cluster: just copy the basin
+            label <- basin.labels[1]
+            vertex.idx <- basin.summary$vertex[basin.summary$label == label]
+
+            ## Find original basin
+            for (basin in original.basins) {
+                if (basin$vertex == vertex.idx) {
+                    merged.basins[[label]] <- basin
+                    break
+                }
+            }
+
+            cluster.representatives[cluster.id] <- label
+
+        } else {
+            ## Multi-basin cluster: merge required
+
+            ## Find representative (max value for maxima, min value for minima)
+            cluster.basin.info <- basin.summary[basin.summary$label %in% basin.labels, ]
+
+            if (extrema.type == "max") {
+                rep.idx <- which.max(cluster.basin.info$value)
+            } else {
+                rep.idx <- which.min(cluster.basin.info$value)
+            }
+
+            rep.label <- cluster.basin.info$label[rep.idx]
+            rep.vertex <- cluster.basin.info$vertex[rep.idx]
+            rep.value <- cluster.basin.info$value[rep.idx]
+
+            cluster.representatives[cluster.id] <- rep.label
+
+            ## Get representative's original basin
+            rep.basin <- NULL
+            for (basin in original.basins) {
+                if (basin$vertex == rep.vertex) {
+                    rep.basin <- basin
+                    break
+                }
+            }
+
+            ## Compute union of all basin vertices in cluster
+            union.vertices <- unique(unlist(basin.vertices[basin.labels]))
+            union.vertices <- sort(union.vertices)
+
+            ## Create merged basin structure
+            merged.basin <- rep.basin
+
+            ## Update basin_df to include all union vertices
+            ## Keep hop distances from representative; set others to NA or max hop + 1
+            original.vertices <- rep.basin$basin_df[, 1]
+            max.hop <- max(rep.basin$basin_df[, 2])
+
+            new.vertices <- setdiff(union.vertices, original.vertices)
+            if (length(new.vertices) > 0) {
+                ## Add new vertices with hop distance = max.hop + 1
+                new.rows <- cbind(new.vertices, rep(max.hop + 1, length(new.vertices)))
+                merged.basin$basin_df <- rbind(rep.basin$basin_df, new.rows)
+
+                ## Sort by vertex index
+                merged.basin$basin_df <- merged.basin$basin_df[order(merged.basin$basin_df[, 1]), ]
+            }
+
+            ## Store merged basin with representative's label
+            merged.basins[[rep.label]] <- merged.basin
+
+            ## Record absorbed extrema
+            absorbed.labels <- setdiff(basin.labels, rep.label)
+            for (absorbed.label in absorbed.labels) {
+                absorbed.info <- cluster.basin.info[cluster.basin.info$label == absorbed.label, ]
+
+                absorbed.extrema.df <- rbind(absorbed.extrema.df, data.frame(
+                                                                      absorbed.label = absorbed.label,
+                                                                      absorbed.vertex = absorbed.info$vertex,
+                                                                      absorbed.value = absorbed.info$value,
+                                                                      representative.label = rep.label,
+                                                                      representative.vertex = rep.vertex,
+                                                                      representative.value = rep.value,
+                                                                      cluster.id = cluster.id,
+                                                                      stringsAsFactors = FALSE
+                                                                  ))
+            }
+
+            ## Record basin size change
+            original.size <- nrow(rep.basin$basin_df)
+            merged.size <- nrow(merged.basin$basin_df)
+
+            basin.size.changes <- rbind(basin.size.changes, data.frame(
+                                                                label = rep.label,
+                                                                original.size = original.size,
+                                                                merged.size = merged.size,
+                                                                size.increase = merged.size - original.size,
+                                                                stringsAsFactors = FALSE
+                                                            ))
+        }
+    }
+
+    ## Create result object
+    result <- basins.obj
+
+    if (extrema.type == "max") {
+        result$lmax_basins <- merged.basins
+    } else {
+        result$lmin_basins <- merged.basins
+    }
+
+    ## Add merge information
+    result$merge.info <- list(
+        extrema.type = extrema.type,
+        n.clusters = length(clusters),
+        n.merged = sum(sapply(clusters, length) > 1),
+        cluster.representatives = cluster.representatives,
+        absorbed.extrema = absorbed.extrema.df,
+        basin.size.changes = basin.size.changes
+    )
+
+    return(result)
 }
