@@ -50,6 +50,12 @@ extern "C" {
 		SEXP s_max_hop
 		);
 
+	SEXP S_compute_basins_of_attraction(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y
+		);
+
 #ifdef __cplusplus
 }
 #endif
