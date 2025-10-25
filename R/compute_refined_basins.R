@@ -30,7 +30,7 @@
 #'       \item{y}{Vector of function values}
 #'       \item{adj.list}{Adjacency list (graph structure)}
 #'       \item{edge.length.list}{Edge lengths (if provided)}
-#'       \item{n_vertices}{Number of vertices}
+#'       \item{n.vertices}{Number of vertices}
 #'     }
 #'     The basin lists are named with extremum labels from the final summary,
 #'     enabling direct access and simplifying merge operations.
@@ -328,6 +328,10 @@ compute.refined.basins <- function(adj.list,
     if (is.null(current.basins$edge.length.list)) {
         current.basins$edge.length.list <- edge.length.list
     }
+
+    current.basins$hop.k <- hop.k
+    current.basins$n.vertices <- current.basins$n_vertices
+    current.basins$n_vertices <- NULL
 
     if (verbose) {
         n.max.final <- sum(final.summary$type == "max")
