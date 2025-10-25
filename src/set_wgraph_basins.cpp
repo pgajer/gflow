@@ -3,46 +3,85 @@
 #include <R_ext/Print.h>
 
 /**
- * @brief Computes the basin of attraction for a given local extremum.
+ * @brief Computes the gradient basin of attraction for a given local extremum with terminal extrema
  *
- * @details This function determines the complete basin of attraction by following all paths
- *          where the extremum property is maintained. Unlike the hop neighborhood version,
- *          this function does not stop at the first violation but continues exploring all
- *          non-violating paths to their full extent.
+ * @details This function determines the complete basin of attraction by following all gradient
+ *          flow trajectories where the extremum property is maintained. The basin consists of
+ *          all vertices reachable from the given extremum via monotone paths, along with
+ *          predecessor information that enables reconstruction of individual gradient trajectories
+ *          and identification of terminal extrema where trajectories terminate.
  *
- *          The function performs a breadth-first search (BFS) starting from the given vertex
- *          and includes all vertices that can be reached via monotone paths (strictly
- *          increasing for minima, strictly decreasing for maxima). The search continues
- *          along each path as long as the extremum condition relative to the origin vertex
- *          is satisfied.
+ *          The function performs a breadth-first search starting from the given vertex and
+ *          includes all vertices that can be reached via monotone paths. For a local minimum,
+ *          monotonicity requires that function values strictly increase along each edge of the
+ *          path (y[w] > y[prev] for each step). For a local maximum, function values must
+ *          strictly decrease along each edge (y[w] < y[prev] for each step). The search
+ *          continues along each path as long as the monotonicity condition is satisfied.
+ *
+ *          In addition to identifying basin membership, the function detects terminal extrema,
+ *          which are local extrema of the opposite type reachable within the basin. For a
+ *          descending basin from a local maximum M_j, terminal extrema are local minima
+ *          {m_1, m_2, ...} where gradient trajectories terminate. Similarly, for an ascending
+ *          basin from a local minimum m_i, terminal extrema are local maxima {M_1, M_2, ...}.
+ *          These terminal extrema define the valid gradient flow cells of the form (m_i, M_j),
+ *          which represent unions of all gradient trajectories connecting the extremum pair.
+ *
+ *          The predecessor map enables complete trajectory reconstruction. For any vertex v in
+ *          the basin, following the predecessor chain backwards (v -> predecessors[v] ->
+ *          predecessors[predecessors[v]] -> ...) traces the unique gradient trajectory from
+ *          the origin extremum to v. This supports downstream analyses such as monotonicity
+ *          testing for biomarker discovery along gradient flow cells.
  *
  *          Global extrema are processed identically to other vertices, with their basin
- *          potentially encompassing the entire graph if no violations exist.
+ *          potentially encompassing the entire graph if no monotonicity violations exist.
  *
  * Basin membership criteria:
- * - For a local minimum at v: vertex u is in the basin if it can be reached from v
- *   via a path where y strictly increases along each edge (y[w] > y[prev] for each step)
- * - For a local maximum at v: vertex u is in the basin if it can be reached from v
- *   via a path where y strictly decreases along each edge (y[w] < y[prev] for each step)
+ * - For a local minimum at vertex: A vertex u belongs to the basin if it can be reached from
+ *   vertex via a path where y strictly increases along each edge
+ * - For a local maximum at vertex: A vertex u belongs to the basin if it can be reached from
+ *   vertex via a path where y strictly decreases along each edge
  *
- * The hop_idx field in the result now represents:
- * - The maximum hop distance within the basin
+ * Terminal extrema detection:
+ * - For a descending basin (from maximum): A basin vertex u is a terminal minimum if all its
+ *   neighbors w satisfy y[w] >= y[u]
+ * - For an ascending basin (from minimum): A basin vertex u is a terminal maximum if all its
+ *   neighbors w satisfy y[w] <= y[u]
+ *
+ * The hop_idx field represents:
+ * - The maximum hop distance (graph distance) from vertex to any basin member
  * - std::numeric_limits<size_t>::max() if the basin is empty (vertex is not a 1-hop extremum)
- * - Otherwise, the actual maximum distance from vertex to any basin member
+ * - Otherwise, the actual maximum distance within the basin
  *
  * @param vertex Index of the vertex (local extremum) whose basin to compute
  * @param y Vector of function values at each vertex
  * @param detect_maxima If true, computes basin for a maximum; otherwise, for a minimum
- * @return hop_nbhd_t Structure containing vertex, max distance, hop distance map, and boundary map
+ *
+ * @return gradient_basin_t Structure containing:
+ *         - vertex: The origin extremum
+ *         - value: Function value at origin
+ *         - is_maximum: Basin type indicator
+ *         - hop_idx: Maximum hop distance in basin
+ *         - hop_dist_map: All basin vertices mapped to their hop distances
+ *         - predecessors: Predecessor map for trajectory reconstruction
+ *         - y_nbhd_bd_map: Boundary vertices (adjacent to but outside basin) with their values
+ *         - terminal_extrema: Vector of terminal extremum indices (access values via y vector)
+ *
+ * @note The function returns a basin with empty hop_dist_map if vertex is not a local extremum
+ *       in its 1-hop neighborhood, indicated by hop_idx = std::numeric_limits<size_t>::max()
+ *
+ * @note Terminal extrema values should be accessed from the original y vector as y[terminal_extrema[i]]
+ *       to avoid redundant storage and improve iteration performance
  */
-hop_nbhd_t set_wgraph_t::compute_basin_of_attraction(
+gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
     size_t vertex,
     const std::vector<double>& y,
     bool detect_maxima
     ) const {
 
-    hop_nbhd_t result;
-    result.vertex  = vertex;
+    gradient_basin_t result;
+    result.vertex = vertex;
+    result.value = y[vertex];
+    result.is_maximum = detect_maxima;
 
     // Check if vertex is a local extremum in its 1-hop neighborhood
     bool is_local_extremum = true;
@@ -74,6 +113,7 @@ hop_nbhd_t set_wgraph_t::compute_basin_of_attraction(
     // Initialize with the start vertex
     result.hop_dist_map[vertex] = 0;
     hop_distance[vertex] = 0;
+    predecessor[vertex] = std::numeric_limits<size_t>::max();
     q.push(vertex);
 
     size_t max_hop_distance = 0;
@@ -99,11 +139,35 @@ hop_nbhd_t set_wgraph_t::compute_basin_of_attraction(
 
             // Add vertex to basin
             result.hop_dist_map[u] = static_cast<size_t>(hop_distance[u]);
+            result.predecessors[u] = prev;
             max_hop_distance = std::max(max_hop_distance,
                                        static_cast<size_t>(hop_distance[u]));
+
+            // Check if u is a terminal extremum (opposite type from origin)
+            bool is_terminal_extremum = true;
+            for (const auto& edge : adjacency_list[u]) {
+                size_t w = edge.vertex;
+                // For descending basin (from max), terminals are minima: neighbors satisfy y[w] >= y[u]
+                // For ascending basin (from min), terminals are maxima: neighbors satisfy y[w] <= y[u]
+                if (detect_maxima) {
+                    if (y[w] < y[u]) {
+                        is_terminal_extremum = false;
+                        break;
+                    }
+                } else {
+                    if (y[w] > y[u]) {
+                        is_terminal_extremum = false;
+                        break;
+                    }
+                }
+            }
+
+            if (is_terminal_extremum) {
+                result.terminal_extrema.push_back(u);
+            }
         }
 
-        // Explore neighbors
+        // Explore neighbors for BFS expansion
         for (const auto& edge : adjacency_list[u]) {
             size_t v = edge.vertex;
 

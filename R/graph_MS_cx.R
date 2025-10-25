@@ -758,11 +758,11 @@ create.lmin.lmax.label.indicators <- function(lmin.labels, lmax.labels, state.sp
 #' 4. Number of complementary critical points (minima for maxima and vice versa)
 #' @export
 create.lmin.lmax.frequency.tables <- function(MS.res,
-                                    lmin.labels,
-                                    lmax.labels,
-                                    rel.condEy,
-                                    freq.thld = 100,
-                                    outcome.name = "outcome") {
+                                              lmin.labels,
+                                              lmax.labels,
+                                              rel.condEy,
+                                              freq.thld = 100,
+                                              outcome.name = "outcome") {
 
     # Helper function to create frequency table for one type of critical point
     create.single.freq.table <- function(point.type, labels, other.type) {
