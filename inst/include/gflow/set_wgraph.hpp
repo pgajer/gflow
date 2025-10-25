@@ -30,6 +30,7 @@
 #include "geodesic_stats.hpp"
 #include "harmonic_extender.hpp"
 #include "gflow_cx.hpp"
+#include "gradient_basin.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -521,7 +522,7 @@ struct set_wgraph_t {
 		bool detect_maxima
 		) const;
 
-	hop_nbhd_t compute_basin_of_attraction(
+	gradient_basin_t compute_basin_of_attraction(
 		size_t vertex,
 		const std::vector<double>& y,
 		bool detect_maxima
