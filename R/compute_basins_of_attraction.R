@@ -234,16 +234,16 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
         stop("Input must be of class 'basins_of_attraction'")
     }
 
-    if (length(adj.list) != object$n_vertices) {
+    if (length(adj.list) != object$n.vertices) {
         stop("Length of adj.list must equal number of vertices")
     }
 
-    if (length(edgelen.list) != object$n_vertices) {
+    if (length(edgelen.list) != object$n.vertices) {
         stop("Length of edgelen.list must equal number of vertices")
     }
 
     # Validate that adj.list and edgelen.list are parallel structures
-    for (i in seq_len(object$n_vertices)) {
+    for (i in seq_len(object$n.vertices)) {
         if (length(adj.list[[i]]) != length(edgelen.list[[i]])) {
             stop(sprintf("Mismatch at vertex %d: adj.list has %d neighbors but edgelen.list has %d lengths",
                         i, length(adj.list[[i]]), length(edgelen.list[[i]])))
@@ -256,7 +256,7 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
     hop.k <- as.integer(hop.k)
 
     y <- object$y
-    n <- object$n_vertices
+    n <- object$n.vertices
 
     # Compute distance metrics
     d1 <- numeric(n)
@@ -468,7 +468,7 @@ compute_mean_hopk_distance <- function(vertex, adj.list, edgelen.list, hop.k) {
 print.basins_of_attraction <- function(x, ...) {
     cat("Basins of Attraction\n")
     cat("====================\n")
-    cat(sprintf("Number of vertices: %d\n", x$n_vertices))
+    cat(sprintf("Number of vertices: %d\n", x$n.vertices))
     cat(sprintf("Local minima: %d\n", length(x$lmin_basins)))
     cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
     cat("\nUse summary() to generate detailed basin statistics\n")

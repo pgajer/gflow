@@ -79,12 +79,6 @@
 #'   the losing basin to be absorbed. This basin will be removed from the basin list,
 #'   its vertices incorporated into the winner's basin, and its complete structure
 #'   preserved in the winner's absorbed_extrema list.
-#' @param extrema.type Character string specifying which type of extrema are being
-#'   merged. Must be either \code{"max"} for local maxima or \code{"min"} for
-#'   local minima. Both specified basins must be of this type.
-#' @param edgelen.list Optional list of numeric vectors containing edge lengths,
-#'   with the same structure as the adjacency list. Used to compute geodesic paths
-#'   between loser and winner extrema. If NULL, hop distances are used instead.
 #'
 #' @return An object of class \code{"basins_of_attraction"} with the same structure
 #'   as the input \code{basins.obj} but with the specified basins merged. The object
@@ -122,9 +116,7 @@
 #' # Labels are now directly accessible as names
 #' merged.basins <- merge.two.extrema(basins,
 #'                                    winner.label = "42",
-#'                                    loser.label = "37",
-#'                                    extrema.type = "min",
-#'                                    edgelen.list = edgelen.list)
+#'                                    loser.label = "37")
 #'
 #' # Examine merge information
 #' print(merged.basins$merge.info$operations)
@@ -142,54 +134,137 @@
 merge.two.extrema <- function(basins.obj,
                               winner.label,
                               loser.label,
-                              extrema.type,
-                              edgelen.list = NULL) {
+                              verbose = FALSE) {
     
     ## Validate inputs
-    if (!extrema.type %in% c("max", "min")) {
-        stop("extrema.type must be either 'max' or 'min'")
-    }
-    
     if (!is.list(basins.obj)) {
         stop("basins.obj must be a list")
     }
-    
-    required.components <- c("lmax_basins", "lmin_basins", "n_vertices", "y")
-    if (!all(required.components %in% names(basins.obj))) {
-        stop("basins.obj must contain lmax_basins, lmin_basins, n_vertices, and y components")
+
+    required.components <- c("lmax_basins", "lmin_basins", "y")
+    if (!all(required.components %in% names(basins.obj$basins))) {
+        stop("basins.obj$basins must contain lmax_basins, lmin_basins, and y components")
     }
-    
+
+    required.components <- c("lmax_basins", "lmin_basins", "y", "adj.list", "edge.length.list")
+    missing.components <- setdiff(required.components, names(basins.obj$basins))
+    if (length(missing.components) > 0) {
+        stop(sprintf("basins.obj must contain: %s. Missing: %s",
+                     paste(required.components, collapse = ", "),
+                     paste(missing.components, collapse = ", ")))
+    }
+
+    adj.list <- basins.obj$basins$adj.list
+    edgelen.list <- basins.obj$basins$edge.length.list
+
     ## Convert labels to character for consistent indexing
     winner.label.char <- as.character(winner.label)
     loser.label.char <- as.character(loser.label)
-    
-    ## Determine which basin list to work with
-    if (extrema.type == "max") {
-        basin.list <- basins.obj$lmax_basins
+
+    ## Automatically determine extrema type by checking which basin list contains both labels
+    if (verbose) cat("  Detecting extrema type from labels...\n")
+
+    winner.loser.labels <- c(winner.label.char, loser.label.char)
+
+    ## Check if both labels are in lmax_basins
+    ## NOTE: Use intersect() not intersection()
+    common.in.max <- intersect(winner.loser.labels, names(basins.obj$basins$lmax_basins))
+    extrema.type <- NA
+    if (length(common.in.max) == 2) {
+        ## Both labels found in maxima
+        basin.list <- basins.obj$basins$lmax_basins
         list.name <- "lmax_basins"
+        extrema.type <- "max"
+        if (verbose) {
+            cat(sprintf("    Detected: maximum (both labels in lmax_basins)\n"))
+        }
     } else {
-        basin.list <- basins.obj$lmin_basins
-        list.name <- "lmin_basins"
+        ## Check if both labels are in lmin_basins
+        common.in.min <- intersect(winner.loser.labels, names(basins.obj$basins$lmin_basins))
+        if (length(common.in.min) == 2) {
+            ## Both labels found in minima
+            basin.list <- basins.obj$basins$lmin_basins
+            list.name <- "lmin_basins"
+            extrema.type <- "min"
+            if (verbose) {
+                cat(sprintf("    Detected: minimum (both labels in lmin_basins)\n"))
+            }
+        } else {
+            ## ERROR CASE: Labels not both in same list
+            ## Determine what went wrong and provide helpful error message
+
+            ## Check where each label was found
+            winner.in.max <- winner.label.char %in% names(basins.obj$basins$lmax_basins)
+            winner.in.min <- winner.label.char %in% names(basins.obj$basins$lmin_basins)
+            loser.in.max <- loser.label.char %in% names(basins.obj$basins$lmax_basins)
+            loser.in.min <- loser.label.char %in% names(basins.obj$basins$lmin_basins)
+
+            ## Build informative error message based on what was found
+            error.msg <- sprintf("Cannot merge extrema '%s' and '%s': ",
+                                 winner.label.char, loser.label.char)
+
+            if (winner.in.max && loser.in.min) {
+                ## Winner is max, loser is min
+                error.msg <- paste0(error.msg,
+                                    sprintf("'%s' is a maximum but '%s' is a minimum. ",
+                                            winner.label.char, loser.label.char),
+                                    "Cannot merge extrema of different types.")
+
+            } else if (winner.in.min && loser.in.max) {
+                ## Winner is min, loser is max
+                error.msg <- paste0(error.msg,
+                                    sprintf("'%s' is a minimum but '%s' is a maximum. ",
+                                            winner.label.char, loser.label.char),
+                                    "Cannot merge extrema of different types.")
+
+            } else if (!winner.in.max && !winner.in.min && !loser.in.max && !loser.in.min) {
+                ## Neither label found anywhere
+                error.msg <- paste0(error.msg,
+                                    "Neither label found in basin lists.\n",
+                                    sprintf("  Available maxima: %s\n",
+                                            paste(names(basins.obj$basins$lmax_basins), collapse = ", ")),
+                                    sprintf("  Available minima: %s",
+                                            paste(names(basins.obj$basins$lmin_basins), collapse = ", ")))
+
+            } else if (!winner.in.max && !winner.in.min) {
+                ## Only winner not found
+                error.msg <- paste0(error.msg,
+                                    sprintf("Winner label '%s' not found in basin lists.\n",
+                                            winner.label.char),
+                                    sprintf("  Available maxima: %s\n",
+                                            paste(names(basins.obj$basins$lmax_basins), collapse = ", ")),
+                                    sprintf("  Available minima: %s",
+                                            paste(names(basins.obj$basins$lmin_basins), collapse = ", ")))
+
+            } else if (!loser.in.max && !loser.in.min) {
+                ## Only loser not found
+                error.msg <- paste0(error.msg,
+                                    sprintf("Loser label '%s' not found in basin lists.\n",
+                                            loser.label.char),
+                                    sprintf("  Available maxima: %s\n",
+                                            paste(names(basins.obj$basins$lmax_basins), collapse = ", ")),
+                                    sprintf("  Available minima: %s",
+                                            paste(names(basins.obj$basins$lmin_basins), collapse = ", ")))
+
+            } else {
+                ## Unexpected case (e.g., label in both lists somehow)
+                error.msg <- paste0(error.msg,
+                                    "Labels found in unexpected configuration.\n",
+                                    sprintf("  Winner '%s': in_maxima=%s, in_minima=%s\n",
+                                            winner.label.char, winner.in.max, winner.in.min),
+                                    sprintf("  Loser '%s': in_maxima=%s, in_minima=%s",
+                                            loser.label.char, loser.in.max, loser.in.min))
+            }
+
+            stop(error.msg)
+        }
     }
-    
+
     ## Validate that basin lists are named
     if (is.null(names(basin.list))) {
         stop(sprintf("%s must be a named list with extremum labels as names", list.name))
     }
-    
-    ## Validate that both labels exist in the basin list
-    if (!winner.label.char %in% names(basin.list)) {
-        stop(sprintf("Winner label '%s' not found in %s. Available labels: %s",
-                     winner.label.char, list.name,
-                     paste(names(basin.list), collapse = ", ")))
-    }
-    
-    if (!loser.label.char %in% names(basin.list)) {
-        stop(sprintf("Loser label '%s' not found in %s. Available labels: %s",
-                     loser.label.char, list.name,
-                     paste(names(basin.list), collapse = ", ")))
-    }
-    
+
     ## Extract winner and loser basins using label names
     winner.basin <- basin.list[[winner.label.char]]
     loser.basin <- basin.list[[loser.label.char]]
@@ -198,7 +273,7 @@ merge.two.extrema <- function(basins.obj,
     winner.vertex <- winner.basin$vertex
     loser.vertex <- loser.basin$vertex
     
-    y <- basins.obj$y
+    y <- basins.obj$basins$y
     winner.value <- y[winner.vertex]
     loser.value <- y[loser.vertex]
     
@@ -290,7 +365,7 @@ merge.two.extrema <- function(basins.obj,
     geodesic.result <- compute.geodesic.path(
         loser.vertex,
         winner.vertex,
-        basins.obj$adj.list,
+        adj.list,
         edgelen.list
     )
     
@@ -388,19 +463,22 @@ merge.two.extrema <- function(basins.obj,
     
     ## Update result object
     result <- basins.obj
-    
+
     if (extrema.type == "max") {
-        result$lmax_basins <- basin.list
+        result$basins$lmax_basins <- basin.list
     } else {
-        result$lmin_basins <- basin.list
+        result$basins$lmin_basins <- basin.list
     }
-    
+
+    ## Update summary
+    result$summary <- summary(result$basins, adj.list, edge.length.list, hop.k = basins.obj$basins$hop.k)
+
     ## Update or create merge.info
-    if (is.null(basins.obj$merge.info)) {
+    if (is.null(basins.obj$basins$merge.info)) {
         ## First merge operation
         operation.record$operation.id <- 1
         
-        result$merge.info <- list(
+        result$basins$merge.info <- list(
             operations = operation.record,
             absorbed.extrema = data.frame(
                 absorbed.label = loser.label.char,
@@ -415,16 +493,16 @@ merge.two.extrema <- function(basins.obj,
         )
     } else {
         ## Append to existing merge information
-        n.operations <- nrow(basins.obj$merge.info$operations)
+        n.operations <- nrow(basins.obj$basins$merge.info$operations)
         operation.record$operation.id <- n.operations + 1
         
-        result$merge.info$operations <- rbind(
-            basins.obj$merge.info$operations,
+        result$basins$merge.info$operations <- rbind(
+            basins.obj$basins$merge.info$operations,
             operation.record
         )
         
-        result$merge.info$absorbed.extrema <- rbind(
-            basins.obj$merge.info$absorbed.extrema,
+        result$basins$merge.info$absorbed.extrema <- rbind(
+            basins.obj$basins$merge.info$absorbed.extrema,
             data.frame(
                 absorbed.label = loser.label.char,
                 absorbed.vertex = loser.vertex,
@@ -437,6 +515,6 @@ merge.two.extrema <- function(basins.obj,
             )
         )
     }
-    
+
     return(result)
 }
