@@ -23,8 +23,19 @@
 #' @param verbose Logical indicating whether to print progress messages (default: FALSE)
 #'
 #' @return A list with two components:
-#'   \item{basins}{The refined basins object}
-#'   \item{summary}{A data frame summarizing the characteristics of the refined basins}
+#'   \item{basins}{The refined basins object containing:
+#'     \describe{
+#'       \item{lmax_basins}{Named list of maximum basins}
+#'       \item{lmin_basins}{Named list of minimum basins}
+#'       \item{y}{Vector of function values}
+#'       \item{adj.list}{Adjacency list (graph structure)}
+#'       \item{edge.length.list}{Edge lengths (if provided)}
+#'       \item{n_vertices}{Number of vertices}
+#'     }
+#'     The basin lists are named with extremum labels from the final summary,
+#'     enabling direct access and simplifying merge operations.
+#'   }
+#'   \item{summary}{A data frame summarizing characteristics of refined basins}
 #'
 #' @details
 #' The refinement process consists of several stages. First, the function computes
@@ -300,6 +311,22 @@ compute.refined.basins <- function(adj.list,
 
     if (length(min.vertices) > 0) {
         names(current.basins$lmin_basins) <- as.character(min.vertices)
+    }
+
+    ## Store graph structure in basins object for downstream operations
+    ## This makes the basins object self-contained and eliminates the need
+    ## to pass adj.list and edge.length.list to merge.two.extrema()
+    if (verbose) {
+        cat("Storing graph structure in basins object...\n")
+    }
+
+    ## Always store adj.list (required for merge operations)
+    if (is.null(current.basins$adj.list)) {
+        current.basins$adj.list <- adj.list
+    }
+
+    if (is.null(current.basins$edge.length.list)) {
+        current.basins$edge.length.list <- edge.length.list
     }
 
     if (verbose) {
