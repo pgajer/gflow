@@ -53,7 +53,8 @@ extern "C" {
 	SEXP S_compute_basins_of_attraction(
 		SEXP s_adj_list,
 		SEXP s_weight_list,
-		SEXP s_y
+		SEXP s_y,
+		SEXP s_with_trajectories
 		);
 
 #ifdef __cplusplus

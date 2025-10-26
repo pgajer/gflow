@@ -20,6 +20,7 @@
 #' @param apply.maxima.clustering Logical indicating whether to cluster and merge maxima (default: TRUE)
 #' @param apply.minima.clustering Logical indicating whether to cluster and merge minima (default: TRUE)
 #' @param apply.geometric.filter Logical indicating whether to apply geometric filtering (default: TRUE)
+#' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #' @param verbose Logical indicating whether to print progress messages (default: FALSE)
 #'
 #' @return A list with two components:
@@ -108,6 +109,7 @@ compute.refined.basins <- function(adj.list,
                                    apply.maxima.clustering = TRUE,
                                    apply.minima.clustering = TRUE,
                                    apply.geometric.filter = TRUE,
+                                   with.trajectories = FALSE,
                                    verbose = FALSE) {
   
     ## Validate inputs
@@ -134,10 +136,11 @@ compute.refined.basins <- function(adj.list,
 
     current.basins <- compute.basins.of.attraction(adj.list,
                                                    edge.length.list,
-                                                   fitted.values)
+                                                   fitted.values,
+                                                   with.trajectories)
 
     if (verbose) {
-        initial.summary <- summary(current.basins, adj.list, edge.length.list)
+        initial.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
         n.max <- sum(initial.summary$type == "max")
         n.min <- sum(initial.summary$type == "min")
         cat(sprintf("  Found %d maxima and %d minima\n", n.max, n.min))
@@ -155,7 +158,7 @@ compute.refined.basins <- function(adj.list,
                                                     max.rel.value.min = max.rel.value.min)
 
         if (verbose) {
-            relvalue.summary <- summary(current.basins, adj.list, edge.length.list)
+            relvalue.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
             n.max <- sum(relvalue.summary$type == "max")
             n.min <- sum(relvalue.summary$type == "min")
             cat(sprintf("  Retained %d maxima and %d minima\n", n.max, n.min))
@@ -193,7 +196,7 @@ compute.refined.basins <- function(adj.list,
                                                  extrema.type = "max")
 
         if (verbose) {
-            merged.max.summary <- summary(current.basins, adj.list, edge.length.list)
+            merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
             n.max <- sum(merged.max.summary$type == "max")
             cat(sprintf("  Result: %d maxima after merging\n", n.max))
         }
@@ -230,7 +233,7 @@ compute.refined.basins <- function(adj.list,
                                                  extrema.type = "min")
 
         if (verbose) {
-            merged.min.summary <- summary(current.basins, adj.list, edge.length.list)
+            merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
             n.min <- sum(merged.min.summary$type == "min")
             cat(sprintf("  Result: %d minima after merging\n", n.min))
         }
@@ -300,17 +303,27 @@ compute.refined.basins <- function(adj.list,
         cat("Populating extrema labels in basins object...\n")
     }
 
-    ## Extract vertex IDs for maxima and minima
-    max.vertices <- final.summary$label[final.summary$type == "max"]
-    min.vertices <- final.summary$label[final.summary$type == "min"]
+    ## Create lookup tables: vertex -> label
+    max.summary <- final.summary[final.summary$type == "max", ]
+    min.summary <- final.summary[final.summary$type == "min", ]
 
-    ## Name the basin list elements using vertex IDs
-    if (length(max.vertices) > 0) {
-        names(current.basins$lmax_basins) <- as.character(max.vertices)
+    max.vertex.to.label <- setNames(max.summary$label, max.summary$vertex)
+    min.vertex.to.label <- setNames(min.summary$label, min.summary$vertex)
+
+    ## Name the basin list elements by looking up each basin's vertex
+    if (length(current.basins$lmax_basins) > 0) {
+        basin.vertices <- sapply(current.basins$lmax_basins, function(b) b$vertex)
+        names(current.basins$lmax_basins) <- as.character(max.vertex.to.label[as.character(basin.vertices)])
     }
 
-    if (length(min.vertices) > 0) {
-        names(current.basins$lmin_basins) <- as.character(min.vertices)
+    if (length(current.basins$lmin_basins) > 0) {
+        basin.vertices <- sapply(current.basins$lmin_basins, function(b) b$vertex)
+        names(current.basins$lmin_basins) <- as.character(min.vertex.to.label[as.character(basin.vertices)])
+    }
+
+    if (verbose) {
+        cat("  Assigned", length(current.basins$lmax_basins), "maximum labels\n")
+        cat("  Assigned", length(current.basins$lmin_basins), "minimum labels\n")
     }
 
     ## Store graph structure in basins object for downstream operations
@@ -330,8 +343,6 @@ compute.refined.basins <- function(adj.list,
     }
 
     current.basins$hop.k <- hop.k
-    current.basins$n.vertices <- current.basins$n_vertices
-    current.basins$n_vertices <- NULL
 
     if (verbose) {
         n.max.final <- sum(final.summary$type == "max")

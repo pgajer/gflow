@@ -37,6 +37,7 @@
 #'   \code{adj.list[[i]]}. Must have the same structure as \code{adj.list}.
 #' @param y A numeric vector of function values at each vertex. The length
 #'   must equal the number of vertices (i.e., \code{length(adj.list)}).
+#' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #'
 #' @return An object of class \code{"basins_of_attraction"} containing:
 #'   \item{lmin_basins}{A list of basin structures for local minima. Each
@@ -93,7 +94,10 @@
 #'   summary statistics
 #'
 #' @export
-compute.basins.of.attraction <- function(adj.list, weight.list, y) {
+compute.basins.of.attraction <- function(adj.list,
+                                         weight.list,
+                                         y,
+                                         with.trajectories = FALSE) {
     # Input validation
     if (!is.list(adj.list) || !is.list(weight.list)) {
         stop("adj.list and weight.list must be lists")
@@ -115,6 +119,7 @@ compute.basins.of.attraction <- function(adj.list, weight.list, y) {
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),
+                    as.logical(with.trajectories),
                     PACKAGE = "gflow")
 
     # Add metadata
@@ -234,16 +239,16 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
         stop("Input must be of class 'basins_of_attraction'")
     }
 
-    if (length(adj.list) != object$n.vertices) {
+    if (length(adj.list) != object$n_vertices) {
         stop("Length of adj.list must equal number of vertices")
     }
 
-    if (length(edgelen.list) != object$n.vertices) {
+    if (length(edgelen.list) != object$n_vertices) {
         stop("Length of edgelen.list must equal number of vertices")
     }
 
     # Validate that adj.list and edgelen.list are parallel structures
-    for (i in seq_len(object$n.vertices)) {
+    for (i in seq_len(object$n_vertices)) {
         if (length(adj.list[[i]]) != length(edgelen.list[[i]])) {
             stop(sprintf("Mismatch at vertex %d: adj.list has %d neighbors but edgelen.list has %d lengths",
                         i, length(adj.list[[i]]), length(edgelen.list[[i]])))
@@ -256,7 +261,7 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
     hop.k <- as.integer(hop.k)
 
     y <- object$y
-    n <- object$n.vertices
+    n <- object$n_vertices
 
     # Compute distance metrics
     d1 <- numeric(n)
@@ -284,7 +289,7 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
     }
 
     # Compute density percentiles
-    p.d1 <- sapply(d1, function(x) sum(d1 <= x) / n)
+    ## p.d1 <- sapply(d1, function(x) sum(d1 <= x) / n)
     p.mean.nbrs.dist <- sapply(mean.nbrs.dist, function(x) sum(mean.nbrs.dist <= x) / n)
     p.mean.hopk.dist <- sapply(mean.hopk.dist, function(x) sum(mean.hopk.dist <= x) / n)
     p.deg <- sapply(deg, function(x) sum(deg >= x) / n)
@@ -468,7 +473,7 @@ compute_mean_hopk_distance <- function(vertex, adj.list, edgelen.list, hop.k) {
 print.basins_of_attraction <- function(x, ...) {
     cat("Basins of Attraction\n")
     cat("====================\n")
-    cat(sprintf("Number of vertices: %d\n", x$n.vertices))
+    cat(sprintf("Number of vertices: %d\n", x$n_vertices))
     cat(sprintf("Local minima: %d\n", length(x$lmin_basins)))
     cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
     cat("\nUse summary() to generate detailed basin statistics\n")
