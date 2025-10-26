@@ -55,127 +55,95 @@ void enumerate_all_paths(
 }
 
 /**
- * @brief Computes the gradient basin of attraction for a given local extremum with terminal extrema
+ * @brief Enumerate the K shortest monotone paths from terminal to origin
  *
- * @details This function determines the complete basin of attraction by following all gradient
- *          flow trajectories where the extremum property is maintained. The basin consists of
- *          all vertices reachable from the given extremum via monotone paths, along with
- *          predecessor information that enables reconstruction of individual gradient trajectories
- *          and identification of terminal extrema where trajectories terminate.
+ * Uses breadth-first traversal of path space to find paths in order of
+ * increasing length. Stops after finding K paths or exhausting all paths.
+ * This provides a tractable subset of the complete path ensemble while
+ * preserving the shortest (highest signal) trajectories.
  *
- *          The function performs a breadth-first search starting from the given vertex and
- *          includes all vertices that can be reached via monotone paths. For a local minimum,
- *          monotonicity requires that function values strictly increase along each edge of the
- *          path (y[w] > y[prev] for each step). For a local maximum, function values must
- *          strictly decrease along each edge (y[w] < y[prev] for each step). The search
- *          continues along each path as long as the monotonicity condition is satisfied.
- *
- *          In addition to identifying basin membership, the function detects terminal extrema,
- *          which are local extrema of the opposite type reachable within the basin. For a
- *          descending basin from a local maximum M_j, terminal extrema are local minima
- *          {m_1, m_2, ...} where gradient trajectories terminate. Similarly, for an ascending
- *          basin from a local minimum m_i, terminal extrema are local maxima {M_1, M_2, ...}.
- *          These terminal extrema define the valid gradient flow cells of the form (m_i, M_j),
- *          which represent unions of all gradient trajectories connecting the extremum pair.
- *
- *          The predecessor map enables complete trajectory reconstruction. For any vertex v in
- *          the basin, following the predecessor chain backwards (v -> predecessors[v] ->
- *          predecessors[predecessors[v]] -> ...) traces the unique gradient trajectory from
- *          the origin extremum to v. This supports downstream analyses such as monotonicity
- *          testing for biomarker discovery along gradient flow cells.
- *
- *          Global extrema are processed identically to other vertices, with their basin
- *          potentially encompassing the entire graph if no monotonicity violations exist.
- *
- * Basin membership criteria:
- * - For a local minimum at vertex: A vertex u belongs to the basin if it can be reached from
- *   vertex via a path where y strictly increases along each edge
- * - For a local maximum at vertex: A vertex u belongs to the basin if it can be reached from
- *   vertex via a path where y strictly decreases along each edge
- *
- * Terminal extrema detection:
- * - For a descending basin (from maximum): A basin vertex u is a terminal minimum if all its
- *   neighbors w satisfy y[w] >= y[u]
- * - For an ascending basin (from minimum): A basin vertex u is a terminal maximum if all its
- *   neighbors w satisfy y[w] <= y[u]
- *
- * The hop_idx field represents:
- * - The maximum hop distance (graph distance) from vertex to any basin member
- * - std::numeric_limits<size_t>::max() if the basin is empty (vertex is not a 1-hop extremum)
- * - Otherwise, the actual maximum distance within the basin
- *
- * @param vertex Index of the vertex (local extremum) whose basin to compute
- * @param y Vector of function values at each vertex
- * @param detect_maxima If true, computes basin for a maximum; otherwise, for a minimum
- *
- * @return gradient_basin_t Structure containing:
- *         - vertex: The origin extremum
- *         - value: Function value at origin
- *         - is_maximum: Basin type indicator
- *         - hop_idx: Maximum hop distance in basin
- *         - hop_dist_map: All basin vertices mapped to their hop distances
- *         - predecessors: Predecessor map for trajectory reconstruction
- *         - y_nbhd_bd_map: Boundary vertices (adjacent to but outside basin) with their values
- *         - terminal_extrema: Vector of terminal extremum indices (access values via y vector)
- *
- * @note The function returns a basin with empty hop_dist_map if vertex is not a local extremum
- *       in its 1-hop neighborhood, indicated by hop_idx = std::numeric_limits<size_t>::max()
- *
- * @note Terminal extrema values should be accessed from the original y vector as y[terminal_extrema[i]]
- *       to avoid redundant storage and improve iteration performance
+ * @param terminal Starting vertex (m-terminal extremum)
+ * @param origin Target vertex (basin maximum or minimum)
+ * @param all_predecessors Map from vertex to its predecessors in gradient flow
+ * @param max_paths Maximum number of paths to enumerate (default: 20)
+ * @return Vector of paths, each path is a vector of vertices from terminal to origin
  */
+std::vector<std::vector<size_t>> enumerate_k_shortest_paths(
+    size_t terminal,
+    size_t origin,
+    const std::unordered_map<size_t, std::vector<size_t>>& all_predecessors,
+    size_t max_paths
+) {
+    std::vector<std::vector<size_t>> result_paths;
+
+    // Queue stores partial paths for breadth-first exploration
+    // BFS naturally finds shorter paths before longer ones
+    std::queue<std::vector<size_t>> path_queue;
+
+    // Initialize with single-vertex path containing just the terminal
+    std::vector<size_t> initial_path = {terminal};
+    path_queue.push(initial_path);
+
+    while (!path_queue.empty() && result_paths.size() < max_paths) {
+        std::vector<size_t> current_path = path_queue.front();
+        path_queue.pop();
+
+        size_t current_vertex = current_path.back();
+
+        // Check if we've reached the origin
+        if (current_vertex == origin) {
+            result_paths.push_back(current_path);
+            continue;
+        }
+
+        // Expand this path by following each predecessor
+        auto it = all_predecessors.find(current_vertex);
+        if (it != all_predecessors.end()) {
+            for (size_t pred : it->second) {
+                // Cycle detection (shouldn't happen with monotonicity, but be safe)
+                if (std::find(current_path.begin(), current_path.end(), pred)
+                    != current_path.end()) {
+                    continue;
+                }
+
+                // Create new path by appending predecessor
+                std::vector<size_t> new_path = current_path;
+                new_path.push_back(pred);
+                path_queue.push(new_path);
+            }
+        }
+    }
+
+    return result_paths;
+}
+
 /**
- * @brief Compute gradient basin with optional trajectory enumeration.
+ * @brief Compute gradient basin with K-shortest path trajectory enumeration.
  *
  * Performs breadth-first search from a local extremum to identify all vertices
- * reachable via monotone paths. Terminals are identified structurally as vertices
- * with no successors in the basin (s-terminals). When requested, enumerates all
- * gradient flow trajectories from terminals to the extremum.
+ * reachable via monotone paths (basin membership). Then constructs the complete
+ * monotone directed acyclic graph including all monotone edges within the basin.
+ * Terminals are identified as local extrema within the basin (m-terminals), ensuring
+ * all trajectories represent complete gradient descent to true local minima.
  *
- * @param vertex Index of the extremum vertex
+ * For computational tractability, enumerates only the K shortest paths from each
+ * terminal (default K=20), providing sufficient statistical power while maintaining
+ * efficiency. Path length is measured by number of edges (hop distance).
+ *
+ * @param vertex Index of the extremum vertex (basin origin)
  * @param y Function values at each vertex
- * @param detect_maxima True for descending basins (from maximum), false for ascending (from minimum)
- * @param with_trajectories If true, enumerate all trajectories (computationally expensive)
+ * @param detect_maxima True for descending basins (from maximum), false for ascending
+ * @param with_trajectories If true, enumerate K-shortest paths from m-terminals
+ * @param k_paths Number of shortest paths to enumerate per terminal (default: 20)
  *
- * @return gradient_basin_t Complete basin structure with optional trajectories
+ * @return gradient_basin_t Complete basin structure with K-shortest trajectories
  */
-/**
- * @brief Compute gradient basin with optional trajectory enumeration.
- *
- * Performs breadth-first search from a local extremum to identify all vertices
- * reachable via monotone paths. After BFS, reconstructs all valid monotone edges
- * within the basin (not just BFS tree edges) to correctly identify gradient flow
- * structure. Terminals are identified structurally as vertices with no successors.
- *
- * @param vertex Index of the extremum vertex
- * @param y Function values at each vertex
- * @param detect_maxima True for descending basins (from maximum), false for ascending (from minimum)
- * @param with_trajectories If true, enumerate all trajectories (computationally expensive)
- *
- * @return gradient_basin_t Complete basin structure with optional trajectories
- */
-/**
- * @brief Compute gradient basin with optional trajectory enumeration using shortest paths.
- *
- * Performs breadth-first search from a local extremum to identify all vertices
- * reachable via monotone paths. Builds all_predecessors during BFS, including only
- * edges that maintain optimal hop distance (shortest monotone paths). Terminals are
- * identified structurally as vertices with no successors. This approach ensures
- * perfect trajectory coverage while maintaining computational tractability.
- *
- * @param vertex Index of the extremum vertex
- * @param y Function values at each vertex
- * @param detect_maxima True for descending basins (from maximum), false for ascending (from minimum)
- * @param with_trajectories If true, enumerate all shortest monotone paths
- *
- * @return gradient_basin_t Complete basin structure with optional trajectories
- */
-// Strategy: Full Monotone DAG with m-Terminals Only
 gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
     size_t vertex,
     const std::vector<double>& y,
     bool detect_maxima,
-    bool with_trajectories
+    bool with_trajectories,
+    size_t k_paths
     ) const {
 
     gradient_basin_t result;
@@ -188,11 +156,13 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
     for (const auto& edge : adjacency_list[vertex]) {
         size_t u = edge.vertex;
         if (detect_maxima) {
+            // For maximum: all neighbors must have strictly smaller values
             if (y[u] >= y[vertex]) {
                 is_local_extremum = false;
                 break;
             }
         } else {
+            // For minimum: all neighbors must have strictly larger values
             if (y[u] <= y[vertex]) {
                 is_local_extremum = false;
                 break;
@@ -205,8 +175,8 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
         return result;
     }
 
-    // BFS to determine basin membership ONLY
-    // (hop distance used only for diagnostics, not for predecessor selection)
+    // BFS to determine basin membership
+    // Hop distance used only for diagnostics, not for predecessor selection
     std::vector<int> hop_distance(adjacency_list.size(), -1);
     std::queue<size_t> q;
 
@@ -216,7 +186,7 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
 
     size_t max_hop_distance = 0;
 
-    // Simple BFS to find all reachable vertices via monotone edges
+    // BFS: identify all vertices reachable via monotone edges
     while (!q.empty()) {
         size_t u = q.front();
         q.pop();
@@ -228,15 +198,15 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
                 continue;  // Already visited
             }
 
-            // Check monotonicity
+            // Check monotonicity condition for edge u -> v
             double delta_y = y[v] - y[u];
             bool monotone = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
 
             if (!monotone) {
-                continue;
+                continue;  // Skip non-monotone edges
             }
 
-            // Add to basin
+            // Add v to basin
             hop_distance[v] = hop_distance[u] + 1;
             result.hop_dist_map[v] = static_cast<size_t>(hop_distance[v]);
             q.push(v);
@@ -248,8 +218,8 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
 
     result.hop_idx = max_hop_distance;
 
-    // Now build ALL_PREDECESSORS with ALL monotone edges in the basin
-    // (no hop distance restriction)
+    // Build complete monotone DAG: include ALL monotone edges within basin
+    // This captures the full gradient flow structure, not just BFS tree edges
     for (const auto& [v, _] : result.hop_dist_map) {
         result.all_predecessors[v] = std::vector<size_t>();
     }
@@ -273,73 +243,82 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
         }
     }
 
-    // Identify m-terminals ONLY (local minima within basin)
+    // Identify m-terminals: local minima/maxima within the basin
+    // These represent true gradient descent endpoints
     std::vector<size_t> m_terminals;
     for (const auto& [u, hop] : result.hop_dist_map) {
         if (u == vertex) continue;  // Skip origin
 
-        bool is_local_min_in_basin = true;
+        bool is_local_extremum_in_basin = true;
         for (const auto& edge : adjacency_list[u]) {
             size_t w = edge.vertex;
 
-            // Only consider neighbors in the basin
+            // Only consider neighbors within the basin
             if (result.hop_dist_map.find(w) == result.hop_dist_map.end()) {
                 continue;
             }
 
             if (detect_maxima) {
+                // For descending basin: terminal if no downhill neighbors in basin
                 if (y[w] < y[u]) {
-                    is_local_min_in_basin = false;
+                    is_local_extremum_in_basin = false;
                     break;
                 }
             } else {
+                // For ascending basin: terminal if no uphill neighbors in basin
                 if (y[w] > y[u]) {
-                    is_local_min_in_basin = false;
+                    is_local_extremum_in_basin = false;
                     break;
                 }
             }
         }
 
-        if (is_local_min_in_basin) {
+        if (is_local_extremum_in_basin) {
             m_terminals.push_back(u);
         }
     }
 
-    // Use ONLY m-terminals
+    // Use m-terminals for cell structure
     result.terminal_extrema = m_terminals;
 
-    Rprintf("\n=== Basin Structure Diagnostic ===\n");
-    Rprintf("Basin vertex: %zu (y=%.6f)\n", vertex, y[vertex]);
-    Rprintf("Basin size: %zu vertices\n", result.hop_dist_map.size());
-    Rprintf("Max hop distance: %zu\n", max_hop_distance);
-    Rprintf("m-terminals (local min in basin): %zu\n", m_terminals.size());
-    Rprintf("Using FULL monotone DAG (all monotone edges)\n");
-    Rprintf("===================================\n\n");
-
-    // Compute trajectories if requested
+    // Diagnostic output
     if (with_trajectories) {
-        // Set a per-terminal path limit to prevent explosion
-        const size_t MAX_PATHS_PER_TERMINAL = 50000;
+        Rprintf("\n=== Basin Structure Diagnostic ===\n");
+        Rprintf("Basin vertex: %zu (y=%.6f)\n", vertex, y[vertex]);
+        Rprintf("Basin size: %zu vertices\n", result.hop_dist_map.size());
+        Rprintf("Max hop distance: %zu\n", max_hop_distance);
+        Rprintf("m-terminals: %zu\n", m_terminals.size());
+        Rprintf("Strategy: K-shortest paths (K=%zu per terminal)\n", k_paths);
+        Rprintf("Using FULL monotone DAG (all monotone edges)\n");
+        Rprintf("===================================\n\n");
+    }
 
-        // Enumerate all monotone paths from m-terminals
+    // Enumerate K-shortest paths from each m-terminal
+    if (with_trajectories) {
+        size_t total_paths = 0;
+        size_t terminals_at_limit = 0;
+
         for (size_t terminal : result.terminal_extrema) {
             trajectory_set_t traj_set;
             traj_set.terminal_vertex = terminal;
 
-            std::vector<size_t> empty_path;
-            enumerate_all_paths(terminal, vertex, result.all_predecessors,
-                              empty_path, traj_set.trajectories);
+            // Enumerate K shortest paths from this terminal
+            traj_set.trajectories = enumerate_k_shortest_paths(
+                terminal,
+                vertex,
+                result.all_predecessors,
+                k_paths
+            );
 
-            // Check if we hit path limit
-            if (traj_set.trajectories.size() >= MAX_PATHS_PER_TERMINAL) {
-                Rprintf("WARNING: Terminal %zu hit path limit (%zu paths)\n",
-                       terminal, traj_set.trajectories.size());
+            total_paths += traj_set.trajectories.size();
+            if (traj_set.trajectories.size() >= k_paths) {
+                terminals_at_limit++;
             }
 
             result.trajectory_sets.push_back(traj_set);
         }
 
-        // Coverage diagnostic
+        // Verify trajectory coverage
         std::unordered_set<size_t> vertices_in_trajectories;
         for (const auto& traj_set : result.trajectory_sets) {
             for (const auto& traj : traj_set.trajectories) {
@@ -351,34 +330,34 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
 
         size_t basin_size = result.hop_dist_map.size();
         size_t covered = vertices_in_trajectories.size();
+        size_t uncovered = basin_size - covered;
 
         Rprintf("\n=== Trajectory Coverage Diagnostic ===\n");
         Rprintf("Basin vertex: %zu, Basin size: %zu\n", vertex, basin_size);
         Rprintf("Vertices in trajectories: %zu\n", covered);
-        Rprintf("Uncovered vertices: %zu\n", basin_size - covered);
+        Rprintf("Uncovered vertices: %zu\n", uncovered);
 
-        if (covered == basin_size) {
+        if (uncovered == 0) {
             Rprintf("SUCCESS: Perfect trajectory coverage (100%%)!\n");
         } else {
             Rprintf("WARNING: Incomplete coverage (%.1f%%)\n",
                    100.0 * covered / basin_size);
+            Rprintf("Consider increasing K (currently %zu) for complete coverage\n", k_paths);
         }
 
-        // Path statistics
-        size_t total_paths = 0;
+        // Path enumeration statistics
         size_t min_paths = std::numeric_limits<size_t>::max();
-        size_t max_paths = 0;
+        size_t max_paths_found = 0;
         std::vector<size_t> path_lengths;
 
         for (const auto& traj_set : result.trajectory_sets) {
             size_t n = traj_set.trajectories.size();
-            total_paths += n;
             if (n > 0) {
                 min_paths = std::min(min_paths, n);
-                max_paths = std::max(max_paths, n);
+                max_paths_found = std::max(max_paths_found, n);
             }
 
-            // Sample path lengths
+            // Collect path lengths for statistics
             for (const auto& traj : traj_set.trajectories) {
                 path_lengths.push_back(traj.size());
             }
@@ -391,14 +370,22 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
             size_t min_length = path_lengths.front();
             size_t max_length = path_lengths.back();
 
+            double avg_length = 0.0;
+            for (size_t len : path_lengths) {
+                avg_length += len;
+            }
+            avg_length /= path_lengths.size();
+
             Rprintf("\nPath enumeration statistics:\n");
             Rprintf("  Total paths: %zu\n", total_paths);
+            Rprintf("  Terminals at K-limit: %zu / %zu\n",
+                   terminals_at_limit, result.terminal_extrema.size());
             Rprintf("  Paths per terminal: min=%zu, avg=%.1f, max=%zu\n",
                    min_paths,
                    static_cast<double>(total_paths) / result.terminal_extrema.size(),
-                   max_paths);
-            Rprintf("  Path lengths: min=%zu, median=%zu, max=%zu\n",
-                   min_length, median_length, max_length);
+                   max_paths_found);
+            Rprintf("  Path lengths: min=%zu, median=%zu, mean=%.1f, max=%zu\n",
+                   min_length, median_length, avg_length, max_length);
         }
 
         Rprintf("======================================\n\n");
@@ -424,4 +411,3 @@ gradient_basin_t set_wgraph_t::compute_basin_of_attraction(
 
     return result;
 }
-

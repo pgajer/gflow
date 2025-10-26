@@ -39,7 +39,8 @@ extern "C" SEXP S_compute_basins_of_attraction(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_y,
-    SEXP s_with_trajectories
+    SEXP s_with_trajectories,
+	SEXP s_k_paths
     ) {
 
     // Input validation and conversion
@@ -50,6 +51,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
     bool with_trajectories = Rf_asLogical(s_with_trajectories);
+	size_t k_paths = static_cast<size_t>(Rf_asInteger(s_k_paths));
 
     // Build graph
     set_wgraph_t graph(adj_list, weight_list);
@@ -76,7 +78,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     // Compute basins
     std::vector<gradient_basin_t> min_basins;
     for (size_t m : local_minima) {
-        gradient_basin_t basin = graph.compute_basin_of_attraction(m, y, false, with_trajectories);
+        gradient_basin_t basin = graph.compute_basin_of_attraction(m, y, false, with_trajectories, k_paths);
         if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
             min_basins.push_back(basin);
         }
@@ -84,7 +86,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
 
     std::vector<gradient_basin_t> max_basins;
     for (size_t M : local_maxima) {
-        gradient_basin_t basin = graph.compute_basin_of_attraction(M, y, true, with_trajectories);
+        gradient_basin_t basin = graph.compute_basin_of_attraction(M, y, true, with_trajectories, k_paths);
         if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
             max_basins.push_back(basin);
         }
