@@ -162,6 +162,8 @@ compute.refined.basins <- function(adj.list,
             n.max <- sum(relvalue.summary$type == "max")
             n.min <- sum(relvalue.summary$type == "min")
             cat(sprintf("  Retained %d maxima and %d minima\n", n.max, n.min))
+            cat("relvalue.summary:\n")
+            print(relvalue.summary)
         }
     } else {
         if (verbose) {
@@ -199,6 +201,8 @@ compute.refined.basins <- function(adj.list,
             merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
             n.max <- sum(merged.max.summary$type == "max")
             cat(sprintf("  Result: %d maxima after merging\n", n.max))
+            cat("merged.max.summary:\n")
+            print(merged.max.summary)
         }
     } else {
         if (verbose) {
@@ -236,6 +240,8 @@ compute.refined.basins <- function(adj.list,
             merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
             n.min <- sum(merged.min.summary$type == "min")
             cat(sprintf("  Result: %d minima after merging\n", n.min))
+            cat("merged.min.summary:\n")
+            print(merged.min.summary)
         }
     } else {
         if (verbose) {
@@ -265,6 +271,8 @@ compute.refined.basins <- function(adj.list,
             n.max.after <- length(good.max.vertices)
             cat(sprintf("  Maxima: %d -> %d (removed %d)\n",
                         n.max.before, n.max.after, n.max.before - n.max.after))
+            cat("geom.summary:\n")
+            print(geom.summary)
         }
 
         ## Filter minima
@@ -301,6 +309,8 @@ compute.refined.basins <- function(adj.list,
     ## Populate names in lmin_basins and lmax_basins using extrema labels
     if (verbose) {
         cat("Populating extrema labels in basins object...\n")
+        cat("final.summary:\n")
+        print(final.summary)
     }
 
     ## Create lookup tables: vertex -> label
