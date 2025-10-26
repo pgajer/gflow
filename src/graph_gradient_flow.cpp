@@ -214,7 +214,7 @@ std::vector<vertex_shortest_path_info_t> set_wgraph_t::get_vertex_shortest_paths
 
     // Reconstruct non-overlapping paths
     // std::vector<vertex_path_t> paths = reconstruct_graph_paths(
-    //     const_cast<reachability_map_t&>(reachability_map));
+    //     const_castreachability_map_t&>(reachability_map));
 
     std::vector<vertex_path_t> paths = reconstruct_graph_paths(reachability_map);
 
