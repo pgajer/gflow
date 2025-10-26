@@ -116,26 +116,30 @@ identify.gradient.flow.cells <- function(basins.obj) {
     cells.list <- list()
     
     # Iterate through all minima
-    for (i in seq_along(basins.obj$lmin_basins)) {
-        min.basin <- basins.obj$lmin_basins[[i]]
+    for (i in seq_along(basins.obj$basins$lmin_basins)) {
+        min.basin <- basins.obj$basins$lmin_basins[[i]]
         m.i <- min.basin$vertex
+        min.basin.label <- names(basins.obj$basins$lmin_basins)[i]
         
         if (length(min.basin$terminal_extrema) == 0) next
         
         # For each terminal maximum of this minimum
         for (M.j in min.basin$terminal_extrema) {
             # Find the corresponding maximum basin
-            max.basin.idx <- which(sapply(basins.obj$lmax_basins, 
+            max.basin.idx <- which(sapply(basins.obj$basins$lmax_basins,
                                          function(b) b$vertex == M.j))
             
             if (length(max.basin.idx) == 0) next
             
-            max.basin <- basins.obj$lmax_basins[[max.basin.idx]]
+            max.basin <- basins.obj$basins$lmax_basins[[max.basin.idx]]
+            max.basin.label <- names(basins.obj$basins$lmax_basins)[max.basin.idx]
             
             # Verify reciprocal reachability
             if (m.i %in% max.basin$terminal_extrema) {
                 # Valid cell found
                 cells.list[[length(cells.list) + 1]] <- data.frame(
+                    min.label = min.basin.label,
+                    max.label = max.basin.label,
                     min.vertex = m.i,
                     max.vertex = M.j,
                     min.value = min.basin$value,
@@ -151,6 +155,8 @@ identify.gradient.flow.cells <- function(basins.obj) {
     
     if (length(cells.list) == 0) {
         return(data.frame(
+            min.label = "",
+            max.label = "",
             min.vertex = integer(),
             max.vertex = integer(),
             min.value = numeric(),
@@ -209,17 +215,17 @@ identify.gradient.flow.cells <- function(basins.obj) {
 extract.cell.trajectory <- function(basins.obj, min.vertex, max.vertex, 
                                     interior.vertex) {
     # Find relevant basins
-    min.basin.idx <- which(sapply(basins.obj$lmin_basins, 
+    min.basin.idx <- which(sapply(basins.obj$basins$lmin_basins,
                                   function(b) b$vertex == min.vertex))
-    max.basin.idx <- which(sapply(basins.obj$lmax_basins, 
+    max.basin.idx <- which(sapply(basins.obj$basins$lmax_basins,
                                   function(b) b$vertex == max.vertex))
     
     if (length(min.basin.idx) == 0 || length(max.basin.idx) == 0) {
         stop("Specified extrema not found in basins object")
     }
     
-    min.basin <- basins.obj$lmin_basins[[min.basin.idx]]
-    max.basin <- basins.obj$lmax_basins[[max.basin.idx]]
+    min.basin <- basins.obj$basins$lmin_basins[[min.basin.idx]]
+    max.basin <- basins.obj$basins$lmax_basins[[max.basin.idx]]
     
     # Extract ascending trajectory: min -> interior
     asc.traj <- extract.gradient.trajectory(min.basin, interior.vertex)
@@ -240,7 +246,7 @@ extract.cell.trajectory <- function(basins.obj, min.vertex, max.vertex,
     complete.traj <- c(asc.traj, desc.traj[-1])
     
     # Extract y values
-    y.vals <- basins.obj$y[complete.traj]
+    y.vals <- basins.obj$basins$y[complete.traj]
     
     # Check monotonicity
     # Should increase along ascending segment, decrease along descending segment
@@ -272,17 +278,17 @@ extract.cell.trajectory <- function(basins.obj, min.vertex, max.vertex,
 #'
 #' @export
 compute.cell.vertices <- function(basins.obj, min.vertex, max.vertex) {
-    min.basin.idx <- which(sapply(basins.obj$lmin_basins, 
+    min.basin.idx <- which(sapply(basins.obj$basins$lmin_basins,
                                   function(b) b$vertex == min.vertex))
-    max.basin.idx <- which(sapply(basins.obj$lmax_basins, 
+    max.basin.idx <- which(sapply(basins.obj$basins$lmax_basins,
                                   function(b) b$vertex == max.vertex))
     
     if (length(min.basin.idx) == 0 || length(max.basin.idx) == 0) {
         return(integer(0))
     }
     
-    min.basin <- basins.obj$lmin_basins[[min.basin.idx]]
-    max.basin <- basins.obj$lmax_basins[[max.basin.idx]]
+    min.basin <- basins.obj$basins$lmin_basins[[min.basin.idx]]
+    max.basin <- basins.obj$basins$lmax_basins[[max.basin.idx]]
     
     # Get basin vertex sets
     min.vertices <- min.basin$basin_df[, 1]
@@ -307,21 +313,310 @@ compute.cell.vertices <- function(basins.obj, min.vertex, max.vertex) {
 #'
 #' @export
 is.valid.cell <- function(basins.obj, min.vertex, max.vertex) {
-    min.basin.idx <- which(sapply(basins.obj$lmin_basins, 
+    min.basin.idx <- which(sapply(basins.obj$basins$lmin_basins,
                                   function(b) b$vertex == min.vertex))
-    max.basin.idx <- which(sapply(basins.obj$lmax_basins, 
+    max.basin.idx <- which(sapply(basins.obj$basins$lmax_basins,
                                   function(b) b$vertex == max.vertex))
     
     if (length(min.basin.idx) == 0 || length(max.basin.idx) == 0) {
         return(FALSE)
     }
     
-    min.basin <- basins.obj$lmin_basins[[min.basin.idx]]
-    max.basin <- basins.obj$lmax_basins[[max.basin.idx]]
+    min.basin <- basins.obj$basins$lmin_basins[[min.basin.idx]]
+    max.basin <- basins.obj$basins$lmax_basins[[max.basin.idx]]
     
     # Check bidirectional reachability
     max.in.min <- max.vertex %in% min.basin$terminal_extrema
     min.in.max <- min.vertex %in% max.basin$terminal_extrema
     
     max.in.min && min.in.max
+}
+
+#' Extract Gradient Flow Cells for a Local Maximum Basin
+#'
+#' Identifies all gradient flow cells within a local maximum basin, where each
+#' cell corresponds to a terminal extremum and contains all vertices whose
+#' gradient trajectories pass through that extremum on their way to the maximum.
+#'
+#' @param basins.obj Basin object containing the basin structure and
+#'   predecessors vector from \code{compute.basins.of.attraction}
+#' @param max.basin.label Character string identifying the local maximum basin
+#'   (e.g., "M1", "M2")
+#' @param verbose Logical indicating whether to print diagnostic information
+#'   about the cell extraction process. Default is FALSE.
+#'
+#' @return A list with components:
+#'   \item{max.basin.label}{The label of the maximum basin}
+#'   \item{max.vertex}{The vertex index of the local maximum}
+#'   \item{cells}{A named list where each element corresponds to a terminal
+#'     extremum}
+#'
+#' @details
+#' For a descending basin from a local maximum, the predecessor chain points
+#' backward toward the maximum (i.e., predecessors[v] is the next vertex on
+#' the path from v to the maximum). Terminal extrema are local minima where
+#' gradient flow "starts" before flowing upward to the maximum.
+#'
+#' To construct gradient flow cells, we build a reverse graph (successors) where
+#' successors[u] contains all vertices v such that predecessors[v] = u. Then,
+#' for each terminal extremum, we perform an upstream search to find all vertices
+#' whose path to the maximum passes through that terminal.
+#'
+#' @export
+extract.gradient.flow.cells <- function(basins.obj,
+                                        max.basin.label,
+                                        verbose = FALSE) {
+
+    if (!max.basin.label %in% names(basins.obj$basins$lmax_basins)) {
+        stop("Basin label '", max.basin.label, "' not found in lmax_basins")
+    }
+
+    max.basin.idx <- which(names(basins.obj$basins$lmax_basins) == max.basin.label)
+    max.basin <- basins.obj$basins$lmax_basins[[max.basin.idx]]
+
+    if (is.null(max.basin$trajectory_sets) || length(max.basin$trajectory_sets) == 0) {
+        stop("Trajectories not found in basin object.\n",
+             "Please recompute basins with with.trajectories = TRUE")
+    }
+
+    max.vertex <- max.basin$vertex
+    terminal.extrema <- max.basin$terminal_extrema
+    basin.vertices <- as.integer(max.basin$basin_df[, 1])
+    basin.size <- length(basin.vertices)
+
+    absorbed.extrema <- if (!is.null(max.basin$absorbed_extrema)) {
+                            max.basin$absorbed_extrema
+                        } else {
+                            integer(0)
+                        }
+
+    if (verbose) {
+        cat("\n===== Extracting Gradient Flow Cells =====\n")
+        cat("Basin:", max.basin.label, "\n")
+        cat("Maximum vertex:", max.vertex, "\n")
+        cat("Basin size:", basin.size, "vertices\n")
+        cat("Number of terminal extrema:", length(terminal.extrema), "\n")
+        ## cat("Terminal extrema:", paste(terminal.extrema, collapse = ", "), "\n")
+        ## if (length(absorbed.extrema) > 0) {
+        ##   cat("Absorbed extrema:", paste(absorbed.extrema, collapse = ", "), "\n")
+        ##   cat("Note: Basin size may include vertices from absorbed extrema\n")
+        ## }
+        ## cat("\n")
+    }
+
+    ## Extract cells from pre-computed trajectory sets
+    ## if (verbose) {
+    ##     cat("Extracting cells from pre-computed trajectories...\n")
+    ## }
+
+    cells <- vector("list", length(max.basin$trajectory_sets))
+    names(cells) <- paste0("cell_", sapply(max.basin$trajectory_sets,
+                                           function(ts) ts$terminal_vertex))
+
+    for (i in seq_along(max.basin$trajectory_sets)) {
+        traj_set <- max.basin$trajectory_sets[[i]]
+        term.vertex <- traj_set$terminal_vertex
+        trajectories <- traj_set$trajectories
+
+        ## All trajectories in this set start from the same terminal vertex
+        ## Each trajectory is a path: [terminal, ..., maximum]
+        ## Extract all unique vertices that appear in any trajectory
+        cell.vertices <- unique(unlist(trajectories))
+        cell.vertices <- sort(cell.vertices)
+
+        ## Keep trajectories as a simple numbered list
+        ## since they all start from the same terminal
+        trajectories.list <- trajectories
+
+        ## Build a mapping: which trajectories pass through each vertex?
+        vertex.to.trajectories <- vector("list", max(basin.vertices))
+        for (j in seq_along(trajectories)) {
+            traj <- trajectories[[j]]
+            for (v in traj) {
+                vertex.to.trajectories[[v]] <- c(vertex.to.trajectories[[v]], j)
+            }
+        }
+
+        cells[[i]] <- list(
+            terminal.vertex = term.vertex,
+            cell.vertices = cell.vertices,
+            cell.size = length(cell.vertices),
+            trajectories = trajectories.list,  # Simple list, all starting from terminal
+            n.trajectories = length(trajectories),
+            vertex.to.trajectories = vertex.to.trajectories[cell.vertices]  # For querying
+        )
+
+        ## if (verbose && i <= 5) {
+        ##   cat(sprintf("  Cell %d (terminal %d): %d vertices, %d trajectories\n",
+        ##               i, term.vertex, length(cell.vertices), length(trajectories)))
+        ##   # Show trajectory length distribution
+        ##   traj.lengths <- sapply(trajectories, length)
+        ##   cat(sprintf("    Trajectory lengths: min=%d, median=%.0f, max=%d\n",
+        ##               min(traj.lengths), median(traj.lengths), max(traj.lengths)))
+        ## }
+    }
+
+    ## if (verbose && length(max.basin$trajectory_sets) > 5) {
+    ##     cat("  ... (", length(max.basin$trajectory_sets) - 5,
+    ##         " more cells processed)\n", sep = "")
+    ## }
+
+    ## Validation: check coverage and overlaps
+    all.cell.vertices <- unique(unlist(lapply(cells, function(x) x$cell.vertices)))
+    unassigned <- setdiff(basin.vertices, all.cell.vertices)
+
+    ## Check for vertices appearing in multiple cells
+    vertex.to.cells <- vector("list", max(basin.vertices))
+    for (i in seq_along(cells)) {
+        for (v in cells[[i]]$cell.vertices) {
+            vertex.to.cells[[v]] <- c(vertex.to.cells[[v]], i)
+        }
+    }
+
+    overlapping.vertices <- integer(0)
+    for (v in basin.vertices) {
+        if (length(vertex.to.cells[[v]]) > 1) {
+            overlapping.vertices <- c(overlapping.vertices, v)
+        }
+    }
+
+    if (verbose) {
+        cat("\n===== Validation Summary =====\n")
+        cat("Basin size:              ", basin.size, "\n")
+        cat("Total assigned vertices: ", length(all.cell.vertices), "\n")
+    }
+
+    ## Build diagnostics
+    diagnostics <- list(
+        basin.size = basin.size,
+        total.assigned = length(all.cell.vertices),
+        size.match = (length(all.cell.vertices) == basin.size),
+        n.unassigned = length(unassigned),
+        n.overlapping = length(overlapping.vertices),
+        has.absorbed.extrema = length(absorbed.extrema) > 0,
+        n.absorbed.extrema = length(absorbed.extrema),
+        total.trajectories = sum(sapply(cells, function(x) x$n.trajectories))
+    )
+
+    result <- list(
+        max.basin.label = max.basin.label,
+        max.vertex = max.vertex,
+        cells = cells,
+        unassigned.vertices = unassigned,
+        overlapping.vertices = overlapping.vertices,
+        absorbed.extrema = absorbed.extrema,
+        diagnostics = diagnostics,
+        n.cells = length(cells),
+        total.assigned.vertices = length(all.cell.vertices)
+    )
+
+    class(result) <- c("gradient_flow_cells", "list")
+    return(result)
+}
+
+#' Print Method for Gradient Flow Cells
+#'
+#' @param x An object of class "gradient_flow_cells"
+#' @param ... Additional arguments (not used)
+#'
+#' @export
+print.gradient_flow_cells <- function(x, ...) {
+    cat("Gradient Flow Cells for Basin:", x$max.basin.label, "\n")
+    cat("Maximum vertex:", x$max.vertex, "\n")
+    cat("Number of cells:", x$n.cells, "\n")
+    cat("Total assigned vertices:", x$total.assigned.vertices, "\n")
+
+    if (x$diagnostics$n.unassigned > 0) {
+        cat("WARNING: Unassigned vertices:", x$diagnostics$n.unassigned, "\n")
+    }
+
+    if (x$diagnostics$n.overlapping > 0) {
+        cat("WARNING: Overlapping vertices:", x$diagnostics$n.overlapping, "\n")
+    }
+
+    if (x$diagnostics$has.absorbed.extrema) {
+        cat("Absorbed extrema:", x$diagnostics$n.absorbed.extrema, "\n")
+    }
+
+    if (!x$diagnostics$size.match) {
+        cat("WARNING: Cell sizes do not sum to basin size\n")
+        cat("  Basin size:", x$diagnostics$basin.size, "\n")
+        cat("  Sum of cells:", x$total.assigned.vertices, "\n")
+    }
+
+    cat("\nCell Summary:\n")
+    for (i in seq_along(x$cells)) {
+        cell <- x$cells[[i]]
+        cat(sprintf("  %s: terminal vertex = %d, size = %d, trajectories = %d\n",
+                    names(x$cells)[i], cell$terminal.vertex, cell$cell.size,
+                    cell$n.trajectories))
+    }
+
+    cat("\nTotal trajectories:", x$diagnostics$total.trajectories, "\n")
+
+    invisible(x)
+}
+
+#' Summary Method for Gradient Flow Cells
+#'
+#' @param object An object of class "gradient_flow_cells"
+#' @param ... Additional arguments (not used)
+#'
+#' @export
+summary.gradient_flow_cells <- function(object, ...) {
+    cat("===== Gradient Flow Cells Summary =====\n\n")
+    cat("Basin:", object$max.basin.label, "\n")
+    cat("Maximum vertex:", object$max.vertex, "\n\n")
+
+    cat("Structure:\n")
+    cat("  Number of cells:", object$n.cells, "\n")
+    cat("  Basin size:", object$diagnostics$basin.size, "vertices\n")
+    cat("  Assigned vertices:", object$total.assigned.vertices, "\n")
+    cat("  Unassigned vertices:", object$diagnostics$n.unassigned, "\n")
+    cat("  Overlapping vertices:", object$diagnostics$n.overlapping, "\n")
+    cat("  Total trajectories:", object$diagnostics$total.trajectories, "\n\n")
+
+    if (object$diagnostics$has.absorbed.extrema) {
+        cat("Merged structure:\n")
+        cat("  Absorbed extrema:", object$diagnostics$n.absorbed.extrema, "\n")
+        if (length(object$absorbed.extrema) > 0) {
+            cat("  Absorbed vertex indices:",
+                paste(head(object$absorbed.extrema, 10), collapse = ", "))
+            if (length(object$absorbed.extrema) > 10) cat(", ...")
+            cat("\n")
+        }
+        cat("\n")
+    }
+
+    cat("Cell details:\n")
+    for (i in seq_along(object$cells)) {
+        cell <- object$cells[[i]]
+        cat(sprintf("  Cell %d: terminal = %d\n", i, cell$terminal.vertex))
+        cat(sprintf("    Vertices: %d\n", cell$cell.size))
+        cat(sprintf("    Trajectories: %d\n", cell$n.trajectories))
+
+        if (length(cell$trajectories) > 0) {
+            traj.lengths <- sapply(cell$trajectories, length)
+            traj.lengths <- traj.lengths[traj.lengths > 0]
+            if (length(traj.lengths) > 0) {
+                cat(sprintf("    Trajectory lengths: min = %d, median = %.1f, max = %d\n",
+                            min(traj.lengths), median(traj.lengths), max(traj.lengths)))
+            }
+        }
+        cat("\n")
+    }
+
+    if (!object$diagnostics$size.match) {
+        cat("Validation:\n")
+        cat("  WARNING: Size mismatch detected\n")
+        cat("  Basin size:", object$diagnostics$basin.size, "\n")
+        cat("  Sum of cells:", object$total.assigned.vertices, "\n")
+        cat("  Difference:",
+            object$diagnostics$basin.size - object$total.assigned.vertices, "\n\n")
+    } else {
+        cat("Validation: PASSED (perfect partition)\n\n")
+    }
+
+    cat("======================================\n")
+    invisible(object)
 }

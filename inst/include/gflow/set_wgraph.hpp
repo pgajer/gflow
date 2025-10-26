@@ -525,7 +525,8 @@ struct set_wgraph_t {
 	gradient_basin_t compute_basin_of_attraction(
 		size_t vertex,
 		const std::vector<double>& y,
-		bool detect_maxima
+		bool detect_maxima,
+		bool with_trajectories
 		) const;
 
 	hop_nbhd_t compute_extremum_hop_nbhd(
