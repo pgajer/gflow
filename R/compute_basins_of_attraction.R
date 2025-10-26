@@ -38,7 +38,6 @@
 #' @param y A numeric vector of function values at each vertex. The length
 #'   must equal the number of vertices (i.e., \code{length(adj.list)}).
 #' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
-#' @param k.paths The maximal number of trajectories per cell - the shortest k.paths paths are chosen.
 #'
 #' @return An object of class \code{"basins_of_attraction"} containing:
 #'   \item{lmin_basins}{A list of basin structures for local minima. Each
@@ -98,8 +97,8 @@
 compute.basins.of.attraction <- function(adj.list,
                                          weight.list,
                                          y,
-                                         with.trajectories = FALSE,
-                                         k.paths = 20) {
+                                         with.trajectories = FALSE
+                                         ) {
     # Input validation
     if (!is.list(adj.list) || !is.list(weight.list)) {
         stop("adj.list and weight.list must be lists")
@@ -122,7 +121,6 @@ compute.basins.of.attraction <- function(adj.list,
                     weight.list,
                     as.numeric(y),
                     as.logical(with.trajectories),
-                     as.integer(k.paths),
                     PACKAGE = "gflow")
 
     # Add metadata

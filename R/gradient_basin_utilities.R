@@ -263,7 +263,6 @@ extract.cell.trajectory <- function(basins.obj, min.vertex, max.vertex,
     )
 }
 
-
 #' Compute Cell Vertices (Intersection of Ascending and Descending Basins)
 #'
 #' @description
@@ -576,17 +575,17 @@ summary.gradient_flow_cells <- function(object, ...) {
     cat("  Overlapping vertices:", object$diagnostics$n.overlapping, "\n")
     cat("  Total trajectories:", object$diagnostics$total.trajectories, "\n\n")
 
-    if (object$diagnostics$has.absorbed.extrema) {
-        cat("Merged structure:\n")
-        cat("  Absorbed extrema:", object$diagnostics$n.absorbed.extrema, "\n")
-        if (length(object$absorbed.extrema) > 0) {
-            cat("  Absorbed vertex indices:",
-                paste(head(object$absorbed.extrema, 10), collapse = ", "))
-            if (length(object$absorbed.extrema) > 10) cat(", ...")
-            cat("\n")
-        }
-        cat("\n")
-    }
+    ## if (object$diagnostics$has.absorbed.extrema) {
+    ##     cat("Merged structure:\n")
+    ##     cat("  Absorbed extrema:", object$diagnostics$n.absorbed.extrema, "\n")
+    ##     if (length(object$absorbed.extrema) > 0) {
+    ##         cat("  Absorbed vertex indices:",
+    ##             paste(head(object$absorbed.extrema, 10), collapse = ", "))
+    ##         if (length(object$absorbed.extrema) > 10) cat(", ...")
+    ##         cat("\n")
+    ##     }
+    ##     cat("\n")
+    ## }
 
     cat("Cell details:\n")
     for (i in seq_along(object$cells)) {

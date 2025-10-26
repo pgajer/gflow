@@ -398,6 +398,29 @@ struct set_wgraph_t {
 		bool detect_maxima
 		) const;
 
+	std::vector<size_t> find_shortest_monotonic_path(
+		size_t source,
+		size_t target,
+		const std::vector<double>& y,
+		bool detect_maxima
+		) const;
+
+	std::vector<size_t> find_shortest_monotonic_within_basin_path(
+		size_t source,
+		size_t target,
+		const std::vector<double>& y,
+		bool detect_maxima,
+		const std::unordered_set<size_t>& basin_vertices
+		) const;
+
+	gradient_basin_t compute_geodesic_basin(
+		size_t vertex,
+		const std::vector<double>& y,
+		bool detect_maxima,
+		bool with_trajectories
+		) const;
+
+
 	basin_t find_local_extremum_bfs_basin(
 		size_t vertex,
 		const std::vector<double>& y,

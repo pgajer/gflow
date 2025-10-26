@@ -54,8 +54,8 @@ extern "C" {
 		SEXP s_adj_list,
 		SEXP s_weight_list,
 		SEXP s_y,
-		SEXP s_with_trajectories,
-		SEXP s_k_paths
+		SEXP s_with_trajectories
+		//SEXP s_k_paths
 		);
 
 #ifdef __cplusplus
