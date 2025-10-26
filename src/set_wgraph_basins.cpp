@@ -4,70 +4,53 @@
 #include <R_ext/Print.h>
 
 /**
- * @brief Recursively enumerate all paths from a starting vertex to the origin extremum.
+ * @brief Enumerate paths with early stopping after K paths found
  *
- * This function uses the all_predecessors map to recursively build all possible paths
- * from start_vertex back to the origin of the basin. Due to convergence in gradient flow,
- * the number of paths can grow exponentially with basin size.
- *
- * @param start_vertex Vertex to start path enumeration from
- * @param origin_vertex The basin origin (extremum)
- * @param all_predecessors Map of vertex to all its valid predecessors
- * @param current_path Current path being constructed (passed by value for recursion)
- * @param all_paths Output vector accumulating all discovered paths
- * @param max_paths Safety limit to prevent memory exhaustion (default 1000000)
- *
- * @note Paths are stored in order from start_vertex to origin_vertex
+ * Uses depth-first recursive enumeration but stops after finding K complete paths.
+ * Simpler and more efficient than BFS over path space for finding K paths.
  */
-void enumerate_all_paths(
-    size_t start_vertex,
-    size_t origin_vertex,
+void enumerate_k_paths_recursive(
+    size_t current,
+    size_t target,
     const std::unordered_map<size_t, std::vector<size_t>>& all_predecessors,
-    std::vector<size_t> current_path,
-    std::vector<std::vector<size_t>>& all_paths,
-    size_t max_paths = 1000000
+    std::vector<size_t>& current_path,
+    std::vector<std::vector<size_t>>& result_paths,
+    size_t max_paths
 ) {
-    // Safety check to prevent memory exhaustion
-    if (all_paths.size() >= max_paths) {
+    // Early termination if we have enough paths
+    if (result_paths.size() >= max_paths) {
         return;
     }
 
-    current_path.push_back(start_vertex);
-
-    // Base case: reached the origin
-    if (start_vertex == origin_vertex) {
-        all_paths.push_back(current_path);
+    // Base case: reached target
+    if (current == target) {
+        result_paths.push_back(current_path);
         return;
     }
 
-    // Recursive case: explore all predecessors
-    auto it = all_predecessors.find(start_vertex);
-    if (it != all_predecessors.end() && !it->second.empty()) {
+    // Recursive case: try each predecessor
+    auto it = all_predecessors.find(current);
+    if (it != all_predecessors.end()) {
         for (size_t pred : it->second) {
-            enumerate_all_paths(pred, origin_vertex, all_predecessors,
-                              current_path, all_paths, max_paths);
+            // Check we haven't already visited this vertex (cycle detection)
+            if (std::find(current_path.begin(), current_path.end(), pred)
+                != current_path.end()) {
+                continue;
+            }
+
+            current_path.push_back(pred);
+            enumerate_k_paths_recursive(pred, target, all_predecessors,
+                                       current_path, result_paths, max_paths);
+            current_path.pop_back();
+
+            // Early exit if we have enough paths
+            if (result_paths.size() >= max_paths) {
+                return;
+            }
         }
-    } else {
-		// If no predecessors found and we haven't reached origin, path is incomplete
-		// (shouldn't happen in well-formed basin, but we handle it gracefully)
-		REPORT_ERROR("No predecessors found and we haven't reached origin, path is incomplete!");
-	}
+    }
 }
 
-/**
- * @brief Enumerate the K shortest monotone paths from terminal to origin
- *
- * Uses breadth-first traversal of path space to find paths in order of
- * increasing length. Stops after finding K paths or exhausting all paths.
- * This provides a tractable subset of the complete path ensemble while
- * preserving the shortest (highest signal) trajectories.
- *
- * @param terminal Starting vertex (m-terminal extremum)
- * @param origin Target vertex (basin maximum or minimum)
- * @param all_predecessors Map from vertex to its predecessors in gradient flow
- * @param max_paths Maximum number of paths to enumerate (default: 20)
- * @return Vector of paths, each path is a vector of vertices from terminal to origin
- */
 std::vector<std::vector<size_t>> enumerate_k_shortest_paths(
     size_t terminal,
     size_t origin,
@@ -75,44 +58,10 @@ std::vector<std::vector<size_t>> enumerate_k_shortest_paths(
     size_t max_paths
 ) {
     std::vector<std::vector<size_t>> result_paths;
+    std::vector<size_t> current_path = {terminal};
 
-    // Queue stores partial paths for breadth-first exploration
-    // BFS naturally finds shorter paths before longer ones
-    std::queue<std::vector<size_t>> path_queue;
-
-    // Initialize with single-vertex path containing just the terminal
-    std::vector<size_t> initial_path = {terminal};
-    path_queue.push(initial_path);
-
-    while (!path_queue.empty() && result_paths.size() < max_paths) {
-        std::vector<size_t> current_path = path_queue.front();
-        path_queue.pop();
-
-        size_t current_vertex = current_path.back();
-
-        // Check if we've reached the origin
-        if (current_vertex == origin) {
-            result_paths.push_back(current_path);
-            continue;
-        }
-
-        // Expand this path by following each predecessor
-        auto it = all_predecessors.find(current_vertex);
-        if (it != all_predecessors.end()) {
-            for (size_t pred : it->second) {
-                // Cycle detection (shouldn't happen with monotonicity, but be safe)
-                if (std::find(current_path.begin(), current_path.end(), pred)
-                    != current_path.end()) {
-                    continue;
-                }
-
-                // Create new path by appending predecessor
-                std::vector<size_t> new_path = current_path;
-                new_path.push_back(pred);
-                path_queue.push(new_path);
-            }
-        }
-    }
+    enumerate_k_paths_recursive(terminal, origin, all_predecessors,
+                                current_path, result_paths, max_paths);
 
     return result_paths;
 }
