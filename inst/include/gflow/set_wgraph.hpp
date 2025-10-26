@@ -522,11 +522,13 @@ struct set_wgraph_t {
 		bool detect_maxima
 		) const;
 
+	// In set_wgraph.hpp or wherever the declaration is:
 	gradient_basin_t compute_basin_of_attraction(
 		size_t vertex,
 		const std::vector<double>& y,
 		bool detect_maxima,
-		bool with_trajectories
+		bool with_trajectories,
+		size_t k_paths
 		) const;
 
 	hop_nbhd_t compute_extremum_hop_nbhd(
