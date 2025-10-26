@@ -1,11 +1,11 @@
 #include "set_wgraph.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
-// #include "error_utils.h"
 
 #include <vector>
 
 #include <R.h>
 #include <Rinternals.h>
+
 /**
  * @brief SEXP interface for computing gradient basins of attraction for local extrema.
  *
@@ -36,207 +36,258 @@
  *         - terminal_extrema: integer vector of terminal extrema vertices (1-based)
  */
 extern "C" SEXP S_compute_basins_of_attraction(
-	SEXP s_adj_list,
-	SEXP s_weight_list,
-	SEXP s_y
-	) {
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_with_trajectories
+    ) {
 
-	// ---- Input validation and conversion ----
-	std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
-	std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+    // Input validation and conversion
+    std::vector<std::vector<int>> adj_list       = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
 
-	// Convert numeric vector directly
-	double* y_ptr = REAL(s_y);
-	std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
+    double* y_ptr = REAL(s_y);
+    std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
-	// ---- Build graph ----
-	set_wgraph_t graph(adj_list, weight_list);
+    bool with_trajectories = Rf_asLogical(s_with_trajectories);
 
-	// ---- Identify local extrema ----
-	size_t n = y.size();
-	std::vector<size_t> local_minima;
-	std::vector<size_t> local_maxima;
+    // Build graph
+    set_wgraph_t graph(adj_list, weight_list);
 
-	for (size_t v = 0; v < n; ++v) {
-		bool is_local_min = true;
-		bool is_local_max = true;
+    // Identify local extrema
+    size_t n = y.size();
+    std::vector<size_t> local_minima;
+    std::vector<size_t> local_maxima;
 
-		for (const auto& edge : graph.adjacency_list[v]) {
-			size_t u = edge.vertex;
-			if (y[u] <= y[v]) {
-				is_local_min = false;
-			}
-			if (y[u] >= y[v]) {
-				is_local_max = false;
-			}
-		}
+    for (size_t v = 0; v < n; ++v) {
+        bool is_local_min = true;
+        bool is_local_max = true;
 
-		if (is_local_min) {
-			local_minima.push_back(v);
-		}
-		if (is_local_max) {
-			local_maxima.push_back(v);
-		}
-	}
+        for (const auto& edge : graph.adjacency_list[v]) {
+            size_t u = edge.vertex;
+            if (y[u] >= y[v]) is_local_max = false;
+            if (y[u] <= y[v]) is_local_min = false;
+        }
 
-	// ---- Compute basins for all extrema ----
-	std::vector<gradient_basin_t> lmin_basins;
-	std::vector<gradient_basin_t> lmax_basins;
+        if (is_local_min) local_minima.push_back(v);
+        if (is_local_max) local_maxima.push_back(v);
+    }
 
-	for (size_t vertex : local_minima) {
-		lmin_basins.push_back(graph.compute_basin_of_attraction(vertex, y, false));
-	}
+    // Compute basins
+    std::vector<gradient_basin_t> min_basins;
+    for (size_t m : local_minima) {
+        gradient_basin_t basin = graph.compute_basin_of_attraction(m, y, false, with_trajectories);
+        if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
+            min_basins.push_back(basin);
+        }
+    }
 
-	for (size_t vertex : local_maxima) {
-		lmax_basins.push_back(graph.compute_basin_of_attraction(vertex, y, true));
-	}
+    std::vector<gradient_basin_t> max_basins;
+    for (size_t M : local_maxima) {
+        gradient_basin_t basin = graph.compute_basin_of_attraction(M, y, true, with_trajectories);
+        if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
+            max_basins.push_back(basin);
+        }
+    }
 
-	// ---- Build R objects ----
-	SEXP r_lmin_basins = PROTECT(Rf_allocVector(VECSXP, lmin_basins.size()));
-	SEXP r_lmax_basins = PROTECT(Rf_allocVector(VECSXP, lmax_basins.size()));
+    // Convert to R format
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
+    SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));
+    SET_STRING_ELT(r_result_names, 1, Rf_mkChar("lmax_basins"));
+    Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
 
-	// Helper lambda to populate one gradient basin
-	auto fill_basin = [&](const gradient_basin_t& basin, SEXP r_basin) {
-		// Names: vertex, value, hop_idx, basin_df, basin_bd_df, predecessors, terminal_extrema
-		SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
-		SET_STRING_ELT(names, 0, Rf_mkChar("vertex"));
-		SET_STRING_ELT(names, 1, Rf_mkChar("value"));
-		SET_STRING_ELT(names, 2, Rf_mkChar("hop_idx"));
-		SET_STRING_ELT(names, 3, Rf_mkChar("basin_df"));
-		SET_STRING_ELT(names, 4, Rf_mkChar("basin_bd_df"));
-		SET_STRING_ELT(names, 5, Rf_mkChar("predecessors"));
-		SET_STRING_ELT(names, 6, Rf_mkChar("terminal_extrema"));
-		Rf_setAttrib(r_basin, R_NamesSymbol, names);
+    // Helper lambda to convert basin to R
+    auto basin_to_r = [&](const gradient_basin_t& basin) -> SEXP {
+        bool is_empty_basin = (basin.hop_idx == std::numeric_limits<size_t>::max());
 
-		bool is_empty_basin = (basin.hop_idx == std::numeric_limits<size_t>::max());
+        // Determine number of fields
+        int n_fields = with_trajectories ? 8 : 7;
 
-		// vertex (1-based)
-		SEXP r_vertex = PROTECT(Rf_ScalarInteger(
-									static_cast<int>(basin.vertex) + 1
-									));
+        SEXP r_basin = PROTECT(Rf_allocVector(VECSXP, n_fields));
+        SEXP r_basin_names = PROTECT(Rf_allocVector(STRSXP, n_fields));
 
-		// value
-		SEXP r_value  = PROTECT(Rf_ScalarReal(basin.value));
+        int field_idx = 0;
 
-		// hop index
-		SEXP r_hop_idx;
-		if (is_empty_basin) {
-			r_hop_idx = PROTECT(Rf_ScalarReal(R_NaN));
-		} else {
-			r_hop_idx = PROTECT(Rf_ScalarReal(static_cast<double>(basin.hop_idx)));
-		}
+        // Standard fields (0-6)
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("vertex"));
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("value"));
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("hop_idx"));
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("basin_df"));
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("basin_bd_df"));
+        SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("terminal_extrema"));
 
-		// basin matrix (vertex, hop_distance)
-		SEXP r_basin_df;
-		if (is_empty_basin) {
-			r_basin_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
-		} else {
-			size_t m = basin.hop_dist_map.size();
-			r_basin_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
-			double *pr = REAL(r_basin_df);
-			size_t i = 0;
-			for (const auto& [v, d] : basin.hop_dist_map) {
-				pr[i]     = v + 1;  // convert to 1-based
-				pr[i + m] = d;
-				i++;
-			}
-		}
+        if (with_trajectories) {
+            SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("all_predecessors"));
+            SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("trajectory_sets"));
+        } else {
+            SET_STRING_ELT(r_basin_names, field_idx++, Rf_mkChar("all_predecessors"));
+        }
 
-		// basin_bd matrix (vertex, y_value)
-		SEXP r_basin_bd_df;
-		if (is_empty_basin) {
-			r_basin_bd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2)); // empty matrix
-		} else {
-			size_t m = basin.y_nbhd_bd_map.size();
-			r_basin_bd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
-			double *pr_bd = REAL(r_basin_bd_df);
-			size_t i = 0;
-			for (const auto& [v, y_val] : basin.y_nbhd_bd_map) {
-				pr_bd[i]     = v + 1;  // convert to 1-based
-				pr_bd[i + m] = y_val;
-				i++;
-			}
-		}
+        Rf_setAttrib(r_basin, R_NamesSymbol, r_basin_names);
 
-		// predecessors vector
-		// Create a vector of size n where predecessors[i] = predecessor of vertex i
-		// Use 0 to indicate no predecessor (since R uses 1-based indexing)
-		SEXP r_predecessors;
-		if (is_empty_basin) {
-			r_predecessors = PROTECT(Rf_allocVector(INTSXP, n));
-			int *p_pred = INTEGER(r_predecessors);
-			for (size_t i = 0; i < n; ++i) {
-				p_pred[i] = 0;  // no predecessor
-			}
-		} else {
-			r_predecessors = PROTECT(Rf_allocVector(INTSXP, n));
-			int *p_pred = INTEGER(r_predecessors);
+        field_idx = 0;
 
-			// Initialize all to 0 (no predecessor)
-			for (size_t i = 0; i < n; ++i) {
-				p_pred[i] = 0;
-			}
+        // vertex (1-based)
+        SEXP r_vertex = PROTECT(Rf_ScalarInteger(basin.vertex + 1));
+        SET_VECTOR_ELT(r_basin, field_idx++, r_vertex);
 
-			// Fill in predecessors for basin vertices
-			for (const auto& [v, pred_v] : basin.predecessors) {
-				if (pred_v != std::numeric_limits<size_t>::max()) {
-					p_pred[v] = static_cast<int>(pred_v) + 1;  // convert to 1-based
-				}
-				// if pred_v is max(), leave as 0 (no predecessor - this is the origin)
-			}
-		}
+        // value
+        SEXP r_value = PROTECT(Rf_ScalarReal(basin.value));
+        SET_VECTOR_ELT(r_basin, field_idx++, r_value);
 
-		// terminal_extrema vector
-		SEXP r_terminal_extrema;
-		if (is_empty_basin || basin.terminal_extrema.empty()) {
-			r_terminal_extrema = PROTECT(Rf_allocVector(INTSXP, 0)); // empty vector
-		} else {
-			size_t m = basin.terminal_extrema.size();
-			r_terminal_extrema = PROTECT(Rf_allocVector(INTSXP, m));
-			int *p_term = INTEGER(r_terminal_extrema);
-			for (size_t i = 0; i < m; ++i) {
-				p_term[i] = static_cast<int>(basin.terminal_extrema[i]) + 1;  // convert to 1-based
-			}
-		}
+        // hop_idx
+        SEXP r_hop_idx;
+        if (is_empty_basin) {
+            r_hop_idx = PROTECT(Rf_ScalarInteger(NA_INTEGER));
+        } else {
+            r_hop_idx = PROTECT(Rf_ScalarInteger(basin.hop_idx));
+        }
+        SET_VECTOR_ELT(r_basin, field_idx++, r_hop_idx);
 
-		// Set list entries
-		SET_VECTOR_ELT(r_basin, 0, r_vertex);
-		SET_VECTOR_ELT(r_basin, 1, r_value);
-		SET_VECTOR_ELT(r_basin, 2, r_hop_idx);
-		SET_VECTOR_ELT(r_basin, 3, r_basin_df);
-		SET_VECTOR_ELT(r_basin, 4, r_basin_bd_df);
-		SET_VECTOR_ELT(r_basin, 5, r_predecessors);
-		SET_VECTOR_ELT(r_basin, 6, r_terminal_extrema);
+        // basin_df matrix
+        SEXP r_basin_df;
+        if (is_empty_basin) {
+            r_basin_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2));
+        } else {
+            size_t m = basin.hop_dist_map.size();
+            r_basin_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
+            double *pr = REAL(r_basin_df);
+            size_t i = 0;
+            for (const auto& [v, d] : basin.hop_dist_map) {
+                pr[i]     = v + 1;
+                pr[i + m] = d;
+                i++;
+            }
+        }
 
-		UNPROTECT(8); // names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_predecessors, r_terminal_extrema
-	};
+        SEXP basin_colnames = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(basin_colnames, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(basin_colnames, 1, Rf_mkChar("hop_distance"));
+        SEXP basin_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SET_VECTOR_ELT(basin_dimnames, 0, R_NilValue);
+        SET_VECTOR_ELT(basin_dimnames, 1, basin_colnames);
+        Rf_setAttrib(r_basin_df, R_DimNamesSymbol, basin_dimnames);
+        SET_VECTOR_ELT(r_basin, field_idx++, r_basin_df);
+        UNPROTECT(2);
 
-	// Fill minima basins
-	for (size_t i = 0; i < lmin_basins.size(); ++i) {
-		SEXP r_basin = PROTECT(Rf_allocVector(VECSXP, 7));
-		fill_basin(lmin_basins[i], r_basin);
-		SET_VECTOR_ELT(r_lmin_basins, i, r_basin);
-		UNPROTECT(1); // r_basin
-	}
+        // basin_bd_df matrix
+        SEXP r_basin_bd_df;
+        if (is_empty_basin) {
+            r_basin_bd_df = PROTECT(Rf_allocMatrix(REALSXP, 0, 2));
+        } else {
+            size_t m = basin.y_nbhd_bd_map.size();
+            r_basin_bd_df = PROTECT(Rf_allocMatrix(REALSXP, m, 2));
+            double *pr_bd = REAL(r_basin_bd_df);
+            size_t i = 0;
+            for (const auto& [v, y_val] : basin.y_nbhd_bd_map) {
+                pr_bd[i]     = v + 1;
+                pr_bd[i + m] = y_val;
+                i++;
+            }
+        }
 
-	// Fill maxima basins
-	for (size_t i = 0; i < lmax_basins.size(); ++i) {
-		SEXP r_basin = PROTECT(Rf_allocVector(VECSXP, 7));
-		fill_basin(lmax_basins[i], r_basin);
-		SET_VECTOR_ELT(r_lmax_basins, i, r_basin);
-		UNPROTECT(1); // r_basin
-	}
+        SEXP basin_bd_colnames = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(basin_bd_colnames, 0, Rf_mkChar("vertex"));
+        SET_STRING_ELT(basin_bd_colnames, 1, Rf_mkChar("y_value"));
+        SEXP basin_bd_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SET_VECTOR_ELT(basin_bd_dimnames, 0, R_NilValue);
+        SET_VECTOR_ELT(basin_bd_dimnames, 1, basin_bd_colnames);
+        Rf_setAttrib(r_basin_bd_df, R_DimNamesSymbol, basin_bd_dimnames);
+        SET_VECTOR_ELT(r_basin, field_idx++, r_basin_bd_df);
+        UNPROTECT(2);
 
-	// Name the two top-level components
-	SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
-	SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
-	SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));
-	SET_STRING_ELT(r_result_names, 1, Rf_mkChar("lmax_basins"));
-	Rf_setAttrib(r_result, R_NamesSymbol, r_result_names);
-	SET_VECTOR_ELT(r_result, 0, r_lmin_basins);
-	SET_VECTOR_ELT(r_result, 1, r_lmax_basins);
+        // terminal_extrema vector
+        SEXP r_term_extrema = PROTECT(Rf_allocVector(INTSXP, basin.terminal_extrema.size()));
+        int *p_term = INTEGER(r_term_extrema);
+        for (size_t i = 0; i < basin.terminal_extrema.size(); ++i) {
+            p_term[i] = basin.terminal_extrema[i] + 1;
+        }
+        SET_VECTOR_ELT(r_basin, field_idx++, r_term_extrema);
 
-	UNPROTECT(4); // r_lmin_basins, r_lmax_basins, r_result, r_result_names
+        // all_predecessors (empty if not with_trajectories)
+        SEXP r_all_pred;
+        if (with_trajectories) {
+            r_all_pred = PROTECT(Rf_allocVector(VECSXP, n));
+            for (size_t v = 0; v < n; ++v) {
+                auto it = basin.all_predecessors.find(v);
+                if (it != basin.all_predecessors.end() && !it->second.empty()) {
+                    const std::vector<size_t>& preds = it->second;
+                    SEXP r_preds_v = PROTECT(Rf_allocVector(INTSXP, preds.size()));
+                    int *p_preds_v = INTEGER(r_preds_v);
+                    for (size_t j = 0; j < preds.size(); ++j) {
+                        p_preds_v[j] = preds[j] + 1;
+                    }
+                    SET_VECTOR_ELT(r_all_pred, v, r_preds_v);
+                    UNPROTECT(1);
+                } else {
+                    SET_VECTOR_ELT(r_all_pred, v, Rf_allocVector(INTSXP, 0));
+                }
+            }
+        } else {
+            r_all_pred = PROTECT(Rf_allocVector(VECSXP, 0));
+        }
+        SET_VECTOR_ELT(r_basin, field_idx++, r_all_pred);
 
-	return r_result;
+        // trajectory_sets (only if with_trajectories)
+        if (with_trajectories) {
+            SEXP r_traj_sets = PROTECT(Rf_allocVector(VECSXP, basin.trajectory_sets.size()));
+
+            for (size_t i = 0; i < basin.trajectory_sets.size(); ++i) {
+                const trajectory_set_t& traj_set = basin.trajectory_sets[i];
+
+                SEXP r_tset = PROTECT(Rf_allocVector(VECSXP, 2));
+                SEXP r_tset_names = PROTECT(Rf_allocVector(STRSXP, 2));
+                SET_STRING_ELT(r_tset_names, 0, Rf_mkChar("terminal_vertex"));
+                SET_STRING_ELT(r_tset_names, 1, Rf_mkChar("trajectories"));
+                Rf_setAttrib(r_tset, R_NamesSymbol, r_tset_names);
+
+                // terminal_vertex
+                SEXP r_tvert = PROTECT(Rf_ScalarInteger(traj_set.terminal_vertex + 1));
+                SET_VECTOR_ELT(r_tset, 0, r_tvert);
+
+                // trajectories (list of integer vectors)
+                SEXP r_trajs = PROTECT(Rf_allocVector(VECSXP, traj_set.trajectories.size()));
+                for (size_t j = 0; j < traj_set.trajectories.size(); ++j) {
+                    const std::vector<size_t>& traj = traj_set.trajectories[j];
+                    SEXP r_traj = PROTECT(Rf_allocVector(INTSXP, traj.size()));
+                    int *p_traj = INTEGER(r_traj);
+                    for (size_t k = 0; k < traj.size(); ++k) {
+                        p_traj[k] = traj[k] + 1;
+                    }
+                    SET_VECTOR_ELT(r_trajs, j, r_traj);
+                    UNPROTECT(1);
+                }
+                SET_VECTOR_ELT(r_tset, 1, r_trajs);
+
+                SET_VECTOR_ELT(r_traj_sets, i, r_tset);
+                UNPROTECT(4); // r_tset, r_tset_names, r_tvert, r_trajs
+            }
+
+            SET_VECTOR_ELT(r_basin, field_idx++, r_traj_sets);
+            UNPROTECT(1); // r_traj_sets
+        }
+
+		UNPROTECT(9); // r_basin, r_basin_names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_term_extrema, r_all_pred
+        return r_basin;
+    };
+
+    // Convert basins
+    SEXP r_min_basins = PROTECT(Rf_allocVector(VECSXP, min_basins.size()));
+    for (size_t i = 0; i < min_basins.size(); ++i) {
+        SEXP r_basin = basin_to_r(min_basins[i]);
+        SET_VECTOR_ELT(r_min_basins, i, r_basin);
+    }
+    SET_VECTOR_ELT(r_result, 0, r_min_basins);
+
+    SEXP r_max_basins = PROTECT(Rf_allocVector(VECSXP, max_basins.size()));
+    for (size_t i = 0; i < max_basins.size(); ++i) {
+        SEXP r_basin = basin_to_r(max_basins[i]);
+        SET_VECTOR_ELT(r_max_basins, i, r_basin);
+    }
+    SET_VECTOR_ELT(r_result, 1, r_max_basins);
+
+    UNPROTECT(4);
+    return r_result;
 }
+
