@@ -31,6 +31,7 @@
 #include "harmonic_extender.hpp"
 #include "gflow_cx.hpp"
 #include "gradient_basin.hpp"
+#include "comono_coefficient.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -179,14 +180,9 @@ struct set_wgraph_t {
 		return adjacency_list.size();
 	}
 
-	/**
-	 * @brief Compute the median edge length in the graph.
-	 */
 	double compute_median_edge_length() const;
-
+	double compute_quantile_edge_length(double quantile) const;
 	void compute_graph_diameter();
-
-	// SEXP convert_to_Rlist() const;
 
 	// ----------------------------------------------------------------
 	//
@@ -395,7 +391,8 @@ struct set_wgraph_t {
 	basin_t find_local_extremum_geodesic_basin(
 		size_t vertex,
 		const std::vector<double>& y,
-		bool detect_maxima
+		bool detect_maxima,
+		double edge_length_thld
 		) const;
 
 	std::vector<size_t> find_shortest_monotonic_path(
@@ -417,6 +414,7 @@ struct set_wgraph_t {
 		size_t vertex,
 		const std::vector<double>& y,
 		bool detect_maxima,
+		double edge_length_thld,
 		bool with_trajectories
 		) const;
 
@@ -588,8 +586,6 @@ struct set_wgraph_t {
 		const std::vector<double>& y,
 		size_t min_basin_size
 		) const;
-
-	// -------- other --------
 
 	gradient_flow_t compute_gradient_flow(
 		std::vector<double>& y,
@@ -868,7 +864,7 @@ struct set_wgraph_t {
 		bool verbose = false
 		) const;
 
-// Laplacian construction functions
+	// Laplacian construction functions
 	/**
 	 * @brief Constructs the standard combinatorial Laplacian matrix L = D - A
 	 *
@@ -983,7 +979,7 @@ struct set_wgraph_t {
 	std::string
 	laplacian_type_to_string(laplacian_type_t type) const;
 
-// Convenience wrappers for specific Laplacian types
+	// Convenience wrappers for specific Laplacian types
 	/**
 	 * @brief Computes the spectrum of the normalized graph Laplacian
 	 *
@@ -1217,7 +1213,6 @@ struct set_wgraph_t {
 
 	// ----------------------------------------------------------------
 
-
 	std::pair<size_t, double> get_vertex_eccentricity(
 		size_t start_vertex
 		) const;
@@ -1405,6 +1400,33 @@ struct set_wgraph_t {
 		const std::optional<std::vector<double>>& weights = std::nullopt
 		) const;
 
+	// ----------------------------------------------------------------
+	// Co-monotonicity coefficient methods
+	// ----------------------------------------------------------------
+
+	/**
+	 * @brief Compute co-monotonicity coefficient between two functions on vertices
+	 */
+	comono_result_t comono(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		comono_type_t type = comono_type_t::UNIT
+		) const;
+
+	comono_matrix_result_t comono_matrix(
+		const std::vector<double>& y,
+		const Eigen::MatrixXd& Z,
+		comono_type_t type = comono_type_t::UNIT
+		) const;
+
+	/**
+	 * @brief Compute global co-monotonicity coefficient (scalar summary)
+	 */
+	double comono_global(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		comono_type_t type = comono_type_t::UNIT
+		) const;
 
 private:
 	// Cache for computation - updated to use shortest_paths_t
