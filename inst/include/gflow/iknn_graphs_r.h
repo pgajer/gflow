@@ -16,6 +16,7 @@ extern "C" {
 		SEXP s_k,
         SEXP s_max_path_edge_ratio_thld,
         SEXP s_path_edge_ratio_percentile,
+		SEXP s_threshold_percentile,
 		SEXP s_compute_full
 		);
 
@@ -26,6 +27,7 @@ extern "C" {
 		// pruning parameters
 		SEXP s_max_path_edge_ratio_thld,
 		SEXP s_path_edge_ratio_percentile,
+		SEXP s_threshold_percentile,
 		// other
 		SEXP s_compute_full,
 		SEXP s_n_cores,

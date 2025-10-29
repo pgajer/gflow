@@ -625,11 +625,15 @@ set_wgraph_t create_iknn_graph_from_matrix(
     }
 
     auto start_time = std::chrono::steady_clock::now();
+    // Create the SEXP for threshold_percentile with value 0.1
+    SEXP r_threshold_percentile = PROTECT(Rf_ScalarReal(0.1));
     SEXP r_graph = PROTECT(S_create_single_iknn_graph(r_matrix,
                                                       r_k,
                                                       r_max_path_edge_ratio_thld,
                                                       r_path_edge_ratio_percentile,
+                                                      r_threshold_percentile,
                                                       r_compute_full));
+    UNPROTECT(1);  // r_threshold_percentile
     if (verbose) {
         elapsed_time(start_time, "Graph construction complete", true);
     }

@@ -794,7 +794,20 @@ extern "C" SEXP create_extremality_component(
  * @param s_epsilon_y Response convergence threshold (REALSXP)
  * @param s_epsilon_rho Density convergence threshold (REALSXP)
  * @param s_max_iterations Maximum iteration count (INTSXP)
- * @param s_threshold_percentile
+ *
+ * @param s_max_path_edge_ratio_thld SEXP object (double) Maximum acceptable ratio of
+ *        alternative path length to edge length for geometric pruning.
+ *        Edges with ratio <= this value will be pruned. If <= 0, this pruning stage is skipped.
+ *
+ * @param s_path_edge_ratio_percentile SEXP object (double) Percentile threshold (0.0-1.0)
+ *        for edge lengths to consider in geometric pruning. Only edges with length
+ *        greater than this percentile are considered for pruning.
+ *
+ * @param s_threshold_percentile SEXP object (double) Percentile threshold for quantile-based
+ *        edge length pruning. Valid range is [0.0, 0.5]. Value of 0.0 disables quantile pruning.
+ *        When > 0, edges in the top (1 - threshold_percentile) quantile by length are
+ *        removed if their removal preserves connectivity. For example, 0.9 removes top 10% of edges.
+ *
  * @param s_density_alpha Density alpha parameter in [1,2] (REALSXP)
  * @param s_density_epsilon Density regularization epsilon (REALSXP)
  * @param s_compute_extremality Logical: compute extremality scores? (LGLSXP)
@@ -848,6 +861,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_epsilon_rho,
     SEXP s_max_iterations,
     SEXP s_max_ratio_threshold,
+    SEXP s_path_edge_ratio_percentile,
     SEXP s_threshold_percentile,
     SEXP s_density_alpha,
     SEXP s_density_epsilon,
@@ -1226,6 +1240,13 @@ extern "C" SEXP S_fit_rdgraph_regression(
                  max_ratio_threshold);
     }
 
+    // -------------------- path.edge.ratio.percentile --------------------
+    if (TYPEOF(s_path_edge_ratio_percentile) != REALSXP || Rf_length(s_path_edge_ratio_percentile) != 1) {
+        Rf_error("path.edge.ratio.percentile must be a single numeric value");
+    }
+
+    const double path_edge_ratio_percentile = Rf_asReal(s_path_edge_ratio_percentile);
+
     // -------------------- threshold.percentile --------------------
 
     if (TYPEOF(s_threshold_percentile) != REALSXP || Rf_length(s_threshold_percentile) != 1) {
@@ -1234,8 +1255,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     const double threshold_percentile = REAL(s_threshold_percentile)[0];
 
-    if (!R_FINITE(threshold_percentile) || threshold_percentile <= 0.0) {
-        Rf_error("threshold.percentile must be a finite positive number (got %.3e)",
+    if (!R_FINITE(threshold_percentile) || threshold_percentile < 0.0) {
+        Rf_error("threshold.percentile must be a non-negative number (got %.3e)",
                  threshold_percentile);
     }
 
@@ -1370,6 +1391,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
             epsilon_rho,
             max_iterations,
             max_ratio_threshold,
+            path_edge_ratio_percentile,
             threshold_percentile,
             density_alpha,
             density_epsilon,

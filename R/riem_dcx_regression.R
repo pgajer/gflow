@@ -194,9 +194,16 @@
 #'     threshold in the range 0 to 0.2. Internally we compare the
 #'     path-to-edge ratio R to \eqn{1 + \delta}. Default 0.1.
 #'
-#' @param threshold.percentile Numeric in the range 0 to 1. Only edges with
+#' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
 #'     length above this percentile are considered for geometric pruning.
-#'     Default 0.5.
+#'
+#' @param threshold.percentile Numeric in \eqn{[0, 0.5]}. Percentile threshold for
+#'     quantile-based edge length pruning. Default is 0 (no quantile pruning).
+#'     When greater than 0, edges in the top (1 - threshold.percentile) quantile
+#'     by length are removed if their removal preserves graph connectivity.
+#'     For example, threshold.percentile = 0.9 removes edges in the top 10\% by length.
+#'     This pruning is applied after geometric pruning and targets unusually long edges
+#'     based on absolute edge lengths rather than path-to-edge ratios.
 #'
 #' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
 #'   for response. Iteration stops when the relative change in fitted values
@@ -554,7 +561,8 @@ fit.rdgraph.regression <- function(
     p.threshold = 0.95,
     max.hop = 30L,
     max.ratio.threshold = 0.1,
-    threshold.percentile = 0.5,
+    path.edge.ratio.percentile = 0.5,
+    threshold.percentile = 0,
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
     test.stage = -1,
@@ -904,11 +912,15 @@ fit.rdgraph.regression <- function(
     if (max.ratio.threshold < 0 || max.ratio.threshold >= 0.2) {
         stop("max.ratio.threshold must be in [0, 0.2).")
     }
-        
+
+    if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
+        path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
+        stop("path.edge.ratio.percentile must be in [0, 1].")
+
     ## threshold.percentile
     if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1 ||
-        threshold.percentile < 0 || threshold.percentile > 1) {
-        stop("threshold.percentile must be in [0, 1].")
+        threshold.percentile < 0 || threshold.percentile > 0.5) {
+        stop("threshold.percentile must be in [0, 0.5].")
     }
 
     ## verbose
@@ -988,6 +1000,7 @@ fit.rdgraph.regression <- function(
         as.double(epsilon.rho),
         as.integer(max.iterations),
         as.double(max.ratio.threshold + 1.0),
+        as.double(path.edge.ratio.percentile),
         as.double(threshold.percentile),
         as.double(density.alpha),
         as.double(density.epsilon),

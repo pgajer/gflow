@@ -32,11 +32,41 @@
 #' @param adj.list A list of integer vectors representing the graph's adjacency
 #'   structure. Element \code{i} contains the indices of vertices adjacent to
 #'   vertex \code{i}. Indices should be 1-based.
+#'
 #' @param weight.list A list of numeric vectors containing edge weights.
 #'   Element \code{i} contains weights corresponding to the edges in
 #'   \code{adj.list[[i]]}. Must have the same structure as \code{adj.list}.
+#'
 #' @param y A numeric vector of function values at each vertex. The length
 #'   must equal the number of vertices (i.e., \code{length(adj.list)}).
+#'
+#' @param edge.length.quantile.thld Numeric value in (0, 1] specifying the quantile
+#'   of the graph's edge length distribution to use as a threshold for basin
+#'   construction. This parameter prevents "basin jumping" pathology by excluding
+#'   long edges that may cause trajectories to skip over intermediate critical points.
+#'
+#'   The parameter is always interpreted as a quantile. For example,
+#'   \code{edge.length.quantile.thld = 0.75} means that only edges with length
+#'   at or below the 75th percentile are used during basin construction; edges
+#'   longer than this threshold are excluded.
+#'
+#'   Common values:
+#'   \itemize{
+#'     \item \code{0.50}: Use only edges at or below median length (conservative)
+#'     \item \code{0.75}: Use edges at or below third quartile (moderate)
+#'     \item \code{0.90}: Exclude only the longest 10\% of edges (liberal)
+#'     \item \code{1.00}: Use all edges, no constraint (original behavior)
+#'   }
+#'
+#'   During basin construction, an edge is traversed only if both the monotonicity
+#'   condition is satisfied AND the edge length does not exceed the computed
+#'   threshold. This geometric constraint is essential when the graph contains
+#'   edges spanning large distances relative to local neighborhood scales.
+#'
+#' @note The parameter must satisfy \code{0 < edge.length.quantile.thld <= 1}.
+#'   Values outside this range will trigger an error. To disable edge length
+#'   filtering entirely, use \code{edge.length.quantile.thld = 1.0}.
+#'
 #' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #'
 #' @return An object of class \code{"basins_of_attraction"} containing:
@@ -97,6 +127,7 @@
 compute.basins.of.attraction <- function(adj.list,
                                          weight.list,
                                          y,
+                                         edge.length.quantile.thld = 0.9,
                                          with.trajectories = FALSE
                                          ) {
     # Input validation
@@ -112,6 +143,25 @@ compute.basins.of.attraction <- function(adj.list,
         stop("Length of y must match the number of vertices")
     }
 
+    ## Validate edge.length.quantile.thld
+    if (!is.numeric(edge.length.quantile.thld) || length(edge.length.quantile.thld) != 1) {
+        stop("edge.length.quantile.thld must be a single numeric value")
+    }
+
+    if (is.na(edge.length.quantile.thld)) {
+        stop("edge.length.quantile.thld cannot be NA")
+    }
+
+    if (edge.length.quantile.thld <= 0 || edge.length.quantile.thld > 1) {
+        stop("edge.length.quantile.thld must be in the range (0, 1]; got ",
+             edge.length.quantile.thld)
+    }
+
+    if (edge.length.quantile.thld < 0.1) {
+        warning("edge.length.quantile.thld is very small (", edge.length.quantile.thld,
+                "), which may result in highly fragmented or disconnected basins")
+    }
+
     # Convert to 0-based indexing for C++
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
@@ -120,6 +170,7 @@ compute.basins.of.attraction <- function(adj.list,
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),
+                    as.numeric(edge.length.quantile.thld),
                     as.logical(with.trajectories),
                     PACKAGE = "gflow")
 
@@ -479,4 +530,212 @@ print.basins_of_attraction <- function(x, ...) {
     cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
     cat("\nUse summary() to generate detailed basin statistics\n")
     invisible(x)
+}
+
+
+#' Draw a Single Cell Trajectory in 3D Space
+#'
+#' Visualizes a single trajectory from a cell object in 3D using rgl graphics.
+#' The function draws spheres at trajectory vertices, connecting segments, and
+#' optionally directional arrows along the path.
+#'
+#' @param i Integer index specifying which trajectory to draw from the cell's
+#'   trajectories list
+#' @param cell List object containing trajectory data with components:
+#'   \itemize{
+#'     \item \code{trajectories}: List of trajectory vertex sequences
+#'     \item \code{terminal.vertex}: Terminal vertex identifier
+#'   }
+#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
+#'   segments. Default is FALSE
+#' @param arrow.size Numeric scaling factor for arrow size. Default is 1
+#' @param col Character string specifying color for trajectory spheres.
+#'   Default is "cyan"
+#' @param terminal.radius Numeric radius for terminal vertex spheres.
+#'   Default is 0.3
+#' @param radius Numeric radius for trajectory vertex spheres. Default is 0.15
+#' @param terminal.vertex.adj Numeric vector of length 2 for text label
+#'   adjustment. Default is c(0,0)
+#' @param terminal.vertex.cex Numeric character expansion factor for terminal
+#'   vertex labels. Default is 3
+#'
+#' @details
+#' The function expects a global \code{graph.3d} object containing 3D coordinates
+#' for graph vertices. Trajectory vertices are drawn as cyan spheres connected
+#' by gray segments. When \code{with.arrows = TRUE}, red arrows are drawn at
+#' 40-60% along each segment to indicate trajectory direction.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' # Assumes graph.3d and cell object are defined
+#' draw.cell.trajectory(1, my.cell, with.arrows = TRUE, arrow.size = 1.5)
+#' }
+#'
+#' @export
+draw.cell.trajectory <- function(i, cell, with.arrows = FALSE, arrow.size = 1,
+                                 col = "cyan", terminal.radius = 0.3, radius = 0.15,
+                                 terminal.vertex.adj = c(0,0), terminal.vertex.cex = 3) {
+    traj <- cell$trajectories[[i]]
+    n <- length(traj)
+
+    # NOTE: Remove or fix this line - M1.cells appears to be hardcoded
+    # spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
+
+    spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
+    texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
+            adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+    spheres3d(graph.3d[traj,], radius = radius, col = "cyan")
+
+    ## Create pairs of consecutive points
+    segment.indices <- c(rbind(traj[-n], traj[-1]))
+    M <- graph.3d[segment.indices, ]
+    rgl::segments3d(M, col = "gray", lwd = 5)
+
+    if (with.arrows) {
+        for (j in 1:(n - 1)) {
+            start <- graph.3d[traj[j], ]
+            end <- graph.3d[traj[j + 1], ]
+            mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
+            mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
+            rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
+                        width = 0.5, s = arrow.size)
+        }
+    }
+}
+
+#' Draw All Trajectories for a Cell in 3D Space
+#'
+#' Visualizes all trajectories from a cell object in 3D using rgl graphics.
+#' Iterates through all trajectories in the cell, drawing spheres at vertices,
+#' connecting segments, and optionally directional arrows.
+#'
+#' @param cell List object containing trajectory data with components:
+#'   \itemize{
+#'     \item \code{trajectories}: List of trajectory vertex sequences
+#'     \item \code{terminal.vertex}: Terminal vertex identifier
+#'   }
+#' @param with.edges Logical; if TRUE, draws line segments connecting trajectory
+#'   vertices. Default is TRUE
+#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
+#'   segments. Default is TRUE
+#' @param arrow.size Numeric scaling factor for arrow size. Default is 1
+#' @param arrow.width Numeric line width for connecting segments. Default is 1
+#' @param col Character string specifying color for trajectory spheres.
+#'   Default is "cyan"
+#' @param terminal.radius Numeric radius for terminal vertex spheres.
+#'   Default is 0.3
+#' @param radius Numeric radius for trajectory vertex spheres. Default is 0.15
+#' @param terminal.vertex.adj Numeric vector of length 2 for text label
+#'   adjustment. Default is c(0,0)
+#' @param terminal.vertex.cex Numeric character expansion factor for terminal
+#'   vertex labels. Default is 2
+#'
+#' @details
+#' The function expects a global \code{graph.3d} object containing 3D coordinates
+#' for graph vertices. For each trajectory in the cell, vertices are drawn as
+#' spheres in the specified color, with optional connecting segments and
+#' directional arrows. Arrows are positioned at 40-60% along each segment.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' # Assumes graph.3d and cell object are defined
+#' draw.cell.trajectories(my.cell, with.arrows = FALSE, with.edges = TRUE)
+#' }
+#'
+#' @export
+draw.cell.trajectories <- function(cell,
+                                   with.edges = TRUE,
+                                   with.arrows = TRUE,
+                                   arrow.size = 1,
+                                   arrow.width = 1,
+                                   col = "cyan",
+                                   terminal.radius = 0.3,
+                                   radius = 0.15,
+                                   terminal.vertex.adj = c(0,0),
+                                   terminal.vertex.cex = 2) {
+    for (i in seq_along(cell$trajectories)) {
+        traj <- cell$trajectories[[i]]
+        n <- length(traj)
+
+        # NOTE: Remove or fix this line - M1.cells appears to be hardcoded
+        # spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
+
+        spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
+        texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
+                adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+        spheres3d(graph.3d[traj,], radius = radius, col = col)
+
+        ## Create edges
+        if (with.edges) {
+            segment.indices <- c(rbind(traj[-n], traj[-1]))
+            M <- graph.3d[segment.indices, ]
+            rgl::segments3d(M, col = "gray", lwd = arrow.width)
+        }
+
+        if (with.arrows) {
+            for (j in 1:(n - 1)) {
+                start <- graph.3d[traj[j], ]
+                end <- graph.3d[traj[j + 1], ]
+                mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
+                mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
+                rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
+                            width = 0.5, s = arrow.size)
+            }
+        }
+    }
+}
+
+#' Draw Basin Vertices in 3D Space
+#'
+#' Visualizes the vertices belonging to a specific basin from a basins object
+#' in 3D using rgl graphics. Searches for the basin in either local minima or
+#' local maxima basins and draws the constituent vertices as spheres.
+#'
+#' @param basins.obj List object containing basin analysis results with structure:
+#'   \itemize{
+#'     \item \code{basins$lmin_basins}: Named list of local minima basins
+#'     \item \code{basins$lmax_basins}: Named list of local maxima basins
+#'   }
+#'   Each basin contains a \code{basin_df} data frame where the first column
+#'   contains vertex indices.
+#' @param basin.label Character string identifying the basin to draw. Must match
+#'   a name in either \code{lmin_basins} or \code{lmax_basins}
+#' @param radius Numeric radius for basin vertex spheres. Default is 0.15
+#' @param col Character string specifying color for basin spheres. Default is "cyan"
+#'
+#' @details
+#' The function expects a global \code{graph.3d} object containing 3D coordinates
+#' for graph vertices. It searches for \code{basin.label} first in local minima
+#' basins, then in local maxima basins. If the basin is not found in either,
+#' an error is thrown.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' # Assumes graph.3d and final.basins are defined
+#' draw.basin(final.basins, "M1", radius = 0.2, col = "cyan")
+#' }
+#'
+#' @export
+draw.basin <- function(basins.obj, basin.label, radius = 0.15, col = "cyan") {
+
+    basin <- NULL
+    if (basin.label %in% names(basins.obj$basins$lmin_basins)) {
+        basin <- basins.obj$basins$lmin_basins[[basin.label]]
+    } else if (basin.label %in% names(basins.obj$basins$lmax_basins)) {
+        basin <- basins.obj$basins$lmax_basins[[basin.label]]
+    } else {
+        stop(basin.label, " not found")
+    }
+
+    basin.vertices <- basin$basin_df[,1]
+    spheres3d(graph.3d[basin.vertices,], radius = radius, col = col)
 }

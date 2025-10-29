@@ -9,10 +9,15 @@
 #' @param adj.list Adjacency list representation of the graph structure
 #' @param edge.length.list List of edge lengths corresponding to the adjacency list
 #' @param fitted.values Numeric vector of fitted values at each vertex
+#' @param edge.length.quantile.thld Numeric value in (0, 1] specifying the quantile
+#'   of the graph's edge length distribution to use as a threshold for basin
+#'   construction. This parameter prevents "basin jumping" pathology by excluding
+#'   long edges that may cause trajectories to skip over intermediate critical points.
 #' @param min.rel.value.max Minimum relative value threshold for maxima (default: 1.1)
 #' @param max.rel.value.min Maximum relative value threshold for minima (default: 0.9)
 #' @param max.overlap.threshold Overlap threshold for clustering maxima (default: 0.15)
 #' @param min.overlap.threshold Overlap threshold for clustering minima (default: 0.15)
+#' @param p.mean.nbrs.dist.threshold Threshold for mean nearest neighbors distance percentile (default: 0.9)
 #' @param p.mean.hopk.dist.threshold Threshold for mean hop-k distance percentile (default: 0.9)
 #' @param p.deg.threshold Threshold for degree percentile (default: 0.9)
 #' @param hop.k Parameter for hop-k distance calculation in summary (default: 2)
@@ -73,8 +78,11 @@
 #' @examples
 #' \dontrun{
 #' # Compute refined basins with default parameters
-#' result <- compute.refined.basins(adj.list, edge.length.list, 
-#'                                  fitted.values, verbose = TRUE)
+#' result <- compute.refined.basins(adj.list,
+#'                                  edge.length.list,
+#'                                  fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  verbose = TRUE)
 #'
 #' # Access the refined basins and summary
 #' refined.basins <- result$basins
@@ -82,6 +90,7 @@
 #'
 #' # Use custom thresholds for more aggressive filtering
 #' result <- compute.refined.basins(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
 #'                                  min.rel.value.max = 1.2,
 #'                                  max.rel.value.min = 0.8,
 #'                                  p.mean.hopk.dist.threshold = 0.85,
@@ -89,6 +98,7 @@
 #'
 #' # Skip clustering steps
 #' result <- compute.refined.basins(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
 #'                                  apply.maxima.clustering = FALSE,
 #'                                  apply.minima.clustering = FALSE,
 #'                                  verbose = TRUE)
@@ -98,10 +108,12 @@
 compute.refined.basins <- function(adj.list,
                                    edge.length.list,
                                    fitted.values,
+                                   edge.length.quantile.thld = 0.9,
                                    min.rel.value.max = 1.1,
                                    max.rel.value.min = 0.9,
                                    max.overlap.threshold = 0.15,
                                    min.overlap.threshold = 0.15,
+                                   p.mean.nbrs.dist.threshold = 0.9,
                                    p.mean.hopk.dist.threshold = 0.9,
                                    p.deg.threshold = 0.9,
                                    hop.k = 2,
@@ -137,6 +149,7 @@ compute.refined.basins <- function(adj.list,
     current.basins <- compute.basins.of.attraction(adj.list,
                                                    edge.length.list,
                                                    fitted.values,
+                                                   edge.length.quantile.thld,
                                                    with.trajectories)
 
     if (verbose) {
@@ -252,8 +265,8 @@ compute.refined.basins <- function(adj.list,
     ## Step 5: Filter by geometric characteristics
     if (apply.geometric.filter) {
         if (verbose) {
-            cat(sprintf("\nStep 5: Filtering by geometric characteristics (p.mean.hopk.dist < %.2f, p.deg < %.2f)...\n",
-                        p.mean.hopk.dist.threshold, p.deg.threshold))
+            cat(sprintf("\nStep 5: Filtering by geometric characteristics:\np.mean.nbrs.dist < %.2f p.mean.hopk.dist < %.2f, p.deg < %.2f ...\n",
+                        p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold, p.deg.threshold))
         }
 
         ## Get summary with geometric characteristics
@@ -262,6 +275,7 @@ compute.refined.basins <- function(adj.list,
         ## Filter maxima
         max.basin.df <- geom.summary[geom.summary$type == "max", ]
         good.max.vertices <- max.basin.df$vertex[
+                                              max.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
                                               max.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
                                               max.basin.df$p.deg < p.deg.threshold
                                           ]

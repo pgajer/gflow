@@ -15,7 +15,7 @@
 /**
  * @brief Creates a new graph with long edges pruned while preserving connectivity
  *
- * This function prunes the graph by removing edges with weights greater than the median,
+ * This function prunes the graph by removing edges with weights greater than threshold_percentile,
  * but only if their endpoints remain connected by alternate paths.
  *
  * The pruning algorithm:

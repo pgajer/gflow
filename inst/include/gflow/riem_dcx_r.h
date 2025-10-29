@@ -28,11 +28,12 @@ extern "C" {
 		SEXP s_max_iterations,
 
 		SEXP s_max_ratio_threshold,
+		SEXP s_path_edge_ratio_percentile,
 		SEXP s_threshold_percentile,
 		SEXP s_density_alpha,
 		SEXP s_density_epsilon,
-		SEXP s_compute_extremality,
 
+		SEXP s_compute_extremality,
 		SEXP s_p_threshold,
 		SEXP s_max_hop,
 		SEXP s_test_stage,
@@ -54,6 +55,7 @@ extern "C" {
 		SEXP s_adj_list,
 		SEXP s_weight_list,
 		SEXP s_y,
+		SEXP s_edge_length_thld,
 		SEXP s_with_trajectories
 		//SEXP s_k_paths
 		);

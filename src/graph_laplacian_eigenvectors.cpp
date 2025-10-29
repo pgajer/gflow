@@ -1809,6 +1809,7 @@ set_wgraph_t::get_edge_weight(size_t u, size_t v) const {
     // If edge doesn't exist, return infinity
     return std::numeric_limits<double>::infinity();
 }
+
 /**
  * @brief Computes kernel weight based on distance and kernel type
  *

@@ -296,6 +296,7 @@ void riem_dcx_t::initialize_from_knn(
     bool use_counting_measure,
     double density_normalization,
     double max_ratio_threshold,
+	double path_edge_ratio_percentile,
     double threshold_percentile,
 	double density_alpha,
 	double density_epsilon,
@@ -529,43 +530,71 @@ void riem_dcx_t::initialize_from_knn(
     #endif
 
     set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
-        max_ratio_threshold, threshold_percentile
+        max_ratio_threshold,
+		path_edge_ratio_percentile
     );
 
     #if DEBUG_INITIALIZE_FROM_KNN
-		size_t n_edges_after_pruning = 0;
-		for (const auto& nbrs : pruned_graph.adjacency_list) {
-			n_edges_after_pruning += nbrs.size();
+	size_t n_edges_after_pruning = 0;
+	for (const auto& nbrs : pruned_graph.adjacency_list) {
+		n_edges_after_pruning += nbrs.size();
+	}
+	n_edges_after_pruning /= 2;
+
+	Rprintf("=== After geometric pruning ===\n");
+	Rprintf("Edges after: %zu\n", n_edges_after_pruning);
+	Rprintf("Edges removed: %zu\n", n_edges_before_pruning - n_edges_after_pruning);
+
+	std::vector<std::pair<index_t, index_t>> edges_post_pruning;
+	std::vector<double> weights_post_pruning;
+	for (size_t i = 0; i < n_points; ++i) {
+		for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
+			index_t j = edge_info.vertex;
+			if (j > i) {
+				edges_post_pruning.push_back({static_cast<index_t>(i), j});
+				weights_post_pruning.push_back(edge_info.weight);
+			}
 		}
-		n_edges_after_pruning /= 2;
+	}
 
-		Rprintf("=== After geometric pruning ===\n");
-		Rprintf("Edges after: %zu\n", n_edges_after_pruning);
-		Rprintf("Edges removed: %zu\n", n_edges_before_pruning - n_edges_after_pruning);
-
-        std::vector<std::pair<index_t, index_t>> edges_post_pruning;
-        std::vector<double> weights_post_pruning;
-        for (size_t i = 0; i < n_points; ++i) {
-            for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
-                index_t j = edge_info.vertex;
-                if (j > i) {
-                    edges_post_pruning.push_back({static_cast<index_t>(i), j});
-                    weights_post_pruning.push_back(edge_info.weight);
-                }
-            }
-        }
-
-        debug_serialization::save_edge_list(
-            debug_dir + "phase_1c_edges_post_pruning.bin",
-            edges_post_pruning, weights_post_pruning, "PHASE_1C_POST_PRUNING"
+	debug_serialization::save_edge_list(
+		debug_dir + "phase_1c_edges_post_pruning.bin",
+		edges_post_pruning, weights_post_pruning, "PHASE_1C_POST_PRUNING"
         );
 
-        debug_serialization::save_pruning_params(
-            debug_dir + "phase_1c_pruning_params.bin",
-            max_ratio_threshold, threshold_percentile,
-            n_edges_before_pruning, edges_post_pruning.size()
+	debug_serialization::save_pruning_params(
+		debug_dir + "phase_1c_pruning_params.bin",
+		max_ratio_threshold, threshold_percentile,
+		n_edges_before_pruning, edges_post_pruning.size()
         );
     #endif
+
+	// ---- Quantile-based edge length pruning
+	if (threshold_percentile > 0.0) {
+        #if DEBUG_INITIALIZE_FROM_KNN
+		Rprintf("=== Applying quantile-based edge length pruning ===\n");
+		Rprintf("threshold_percentile=%.3f (removing top %.1f%% of edges by length)\n",
+				threshold_percentile, 100.0 * (1.0 - threshold_percentile));
+        #endif
+
+		pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
+
+		// Recount edges after quantile pruning
+		size_t n_edges_in_pruned_graph_sz = 0;
+		for (const auto& nbrs : pruned_graph.adjacency_list) {
+			n_edges_in_pruned_graph_sz += nbrs.size();
+		}
+		n_edges_in_pruned_graph_sz /= 2;
+
+        #if DEBUG_INITIALIZE_FROM_KNN
+		Rprintf("=== After quantile pruning ===\n");
+		Rprintf("Edges after quantile pruning: %zu\n", n_edges_in_pruned_graph_sz);
+		Rprintf("Additional edges removed: %zu\n",
+				n_edges_after_geometric_sz - n_edges_in_pruned_graph_sz);
+        #endif
+	}
+
+
 
     // ================================================================
     // PHASE 1D: FILTER vertex_cofaces IN PLACE
@@ -944,7 +973,7 @@ void riem_dcx_t::initialize_reference_measure(
         double d_max_allowed = d_median * 10.0;
 
 		if (verbose)
-			Rprintf("  Reference measure: d_k range [%.3e, %.3e], median=%.3e\n",
+			Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
 					sorted_dk[0], sorted_dk[n-1], d_median);
 
         int n_clamped_low = 0;
@@ -971,7 +1000,7 @@ void riem_dcx_t::initialize_reference_measure(
 
         if (n_clamped_low > 0 || n_clamped_high > 0) {
 			if (verbose)
-            Rprintf("  Clamped %d vertices to lower bound, %d to upper bound (prevents extreme weights)\n",
+            Rprintf("\tClamped %d vertices to lower bound, %d to upper bound (prevents extreme weights)\n",
                     n_clamped_low, n_clamped_high);
         }
 
@@ -982,7 +1011,7 @@ void riem_dcx_t::initialize_reference_measure(
 
         if (initial_ratio > 1000.0) {
 			if (verbose)
-				Rprintf("  Initial weight ratio %.2e exceeds 1000:1. Applying compression...\n",
+				Rprintf("\tInitial weight ratio %.2e exceeds 1000:1. Applying compression...\n",
 						initial_ratio);
 
             // Use log-compression to reduce dynamic range
@@ -1002,7 +1031,7 @@ void riem_dcx_t::initialize_reference_measure(
             double compressed_ratio = w_max / w_min;
 
 			if (verbose)
-				Rprintf("  After compression: weight ratio = %.2e\n", compressed_ratio);
+				Rprintf("\tAfter compression: weight ratio = %.2e\n", compressed_ratio);
         }
     }
 
@@ -1024,7 +1053,7 @@ void riem_dcx_t::initialize_reference_measure(
     double final_ratio = final_max / final_min;
 
 	if (verbose)
-		Rprintf("  Final reference measure: range [%.3e, %.3e], ratio=%.2e\n",
+		Rprintf("\tFinal reference measure: range [%.3e, %.3e], ratio=%.2e\n",
 				final_min, final_max, final_ratio);
 
     if (final_ratio > 1e6) {

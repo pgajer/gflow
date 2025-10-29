@@ -772,6 +772,7 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
  * @param vertex The vertex to treat as a local extremum
  * @param y Vector of function values at each vertex
  * @param detect_maxima If true, detect a maximum basin; if false, detect a minimum basin
+ * @param edge_length_thld Edge length threshold for basin construction
  *
  * @return A basin_t structure containing:
  *         - value: Function value at the extremum
@@ -781,14 +782,82 @@ std::vector<int> set_wgraph_t::watershed_edge_weighted(
  *         - depth_vertex: Vertex at which the depth/prominence is realized
  *         - boundary_vertices_map: Map of distances to boundary vertices, sorted by increasing distance
  *
+ * @details The edge_length_thld parameter imposes a geometric constraint on
+ *          basin growth by excluding edges whose Riemannian length exceeds
+ *          the specified threshold. This prevents the "basin jumping" pathology
+ *          where long edges cause trajectories to skip over intermediate critical
+ *          points or violate local monotonicity structure.
+ *
+ *          During basin exploration, an edge [u,v] is only traversed if both:
+ *          1. The monotonicity condition is satisfied (function values increase
+ *             for minima or decrease for maxima), AND
+ *          2. The edge length satisfies: length([u,v]) <= edge_length_thld
+ *
+ *          When an edge fails the length constraint, vertex u is treated as a
+ *          boundary vertex of the basin, exactly as if the monotonicity condition
+ *          had been violated.
+ *
+ * @section setting Setting the Threshold
+ *
+ *          The threshold is typically set as a quantile of the empirical edge
+ *          length distribution. Common choices:
+ *
+ *          - **50th percentile (median)**: Conservative, excludes longest half of edges
+ *          - **75th percentile**: Moderate, balances completeness with pathology prevention
+ *          - **90th percentile**: Liberal, only excludes the longest 10% of edges
+ *          - **std::numeric_limits<double>::infinity()**: No constraint (original behavior)
+ *
+ *          Example calculation in R:
+ *          @code{.r}
+ *          ## Compute edge length quantile from graph
+ *          edge_lengths <- get_edge_lengths(graph)
+ *          edge_length_thld <- quantile(edge_lengths, probs = 0.75)
+ *          @endcode
+ *
+ * @section behavior Behavioral Notes
+ *
+ *          - **No constraint**: Pass std::numeric_limits<double>::infinity() to
+ *            disable edge length filtering entirely, recovering original basin
+ *            construction behavior
+ *
+ *          - **Non-existent edges**: The get_edge_weight() function returns
+ *            INFINITY for non-existent edges, which automatically fails the
+ *            threshold test (correct behavior)
+ *
+ *          - **Zero threshold**: Passing 0.0 would restrict basins to single
+ *            vertices (typically not useful)
+ *
+ *          - **Negative threshold**: Not recommended; interpreted as "no edges
+ *            satisfy constraint"
+ *
+ * @section motivation Geometric Motivation
+ *
+ *          In discrete geometric data analysis, long edges often indicate
+ *          regions where the graph structure poorly represents the underlying
+ *          geometry. A long edge [v_i, v_j] with y(v_j) > y(v_i) may appear
+ *          to satisfy gradient ascent locally, yet span a region where the
+ *          response function attains intermediate extrema. By excluding such
+ *          edges, we enforce that gradient flows respect the local structure
+ *          of the response surface at the resolution captured by shorter edges.
+ *
+ * @warning This constraint is applied uniformly across the entire graph. In
+ *          regions with naturally varying edge density, a global quantile may
+ *          be too restrictive in sparse regions or too permissive in dense regions.
+ *          Consider the spatial distribution of edge lengths when selecting the
+ *          threshold.
+ *
+ * @see compute_geodesic_basin() Wrapper that passes threshold to basin computation
+ *
  * @note This function assumes the caller has already verified that 'vertex' is a local extremum.
  *       It does not perform the initial extremum check.
  */
 basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
     size_t vertex,
     const std::vector<double>& y,
-    bool detect_maxima
+    bool detect_maxima,
+	double edge_length_thld
     ) const {
+
 	// Initialize basin structure with extremum properties
     basin_t basin;
     basin.value      = y[vertex];                 // Function value at extremum
@@ -831,11 +900,22 @@ basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
 
 			// For maxima: values must decrease (delta_y < 0)
 			// For minima: values must increase (delta_y > 0)
-            bool condition_met = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
+			bool monotonicity_ok = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
+			double edge_length = get_edge_weight(prev[u], u);
+			bool edge_length_ok = (edge_length <= edge_length_thld);
+			bool condition_met = monotonicity_ok && edge_length_ok;
 
             if (!condition_met) {
-				// *** MONOTONICITY VIOLATION BOUNDARY ***
-				// When monotonicity is violated, calculate monotonicity span
+				// *** MONOTONICITY OR EDGE LENGTH VIOLATION BOUNDARY ***
+				// Boundary reached when either:
+				// 1. Monotonicity is violated, OR
+				// 2. Edge length exceeds threshold
+
+				// Could add diagnostic info about which constraint failed
+				// if (!monotonicity_ok) { /* monotonicity violation */ }
+				// if (!edge_length_ok) { /* edge length violation */ }
+
+				// When monotonicity or edge length is violated, calculate monotonicity span
 
 				// For maxima: span = y[vertex] - y[prev[u]]
 				// For minima: span = y[prev[u]] - y[vertex]

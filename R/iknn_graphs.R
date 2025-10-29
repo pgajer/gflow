@@ -23,6 +23,14 @@
 #' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
 #'     length above this percentile are considered for geometric pruning.
 #'
+#' @param threshold.percentile Numeric in \eqn{[0, 0.5]}. Percentile threshold for
+#'     quantile-based edge length pruning. Default is 0 (no quantile pruning).
+#'     When greater than 0, edges in the top (1 - threshold.percentile) quantile
+#'     by length are removed if their removal preserves graph connectivity.
+#'     For example, threshold.percentile = 0.9 removes edges in the top 10\% by length.
+#'     This pruning is applied after geometric pruning and targets unusually long edges
+#'     based on absolute edge lengths rather than path-to-edge ratios.
+#'
 #' @param compute.full Logical. If `TRUE`, return the pruned graphs; if `FALSE`,
 #'     return only edge statistics.
 #'
@@ -86,6 +94,7 @@ create.iknn.graphs <- function(X,
                                kmax,
                                max.path.edge.ratio.deviation.thld = 0.1,
                                path.edge.ratio.percentile = 0.5,
+                               threshold.percentile = 0,
                                compute.full = TRUE,
                                pca.dim = 100,
                                variance.explained = 0.99,
@@ -128,6 +137,15 @@ create.iknn.graphs <- function(X,
         stop("compute.full must be TRUE/FALSE.")
     if (!is.logical(verbose) || length(verbose) != 1)
         stop("verbose must be TRUE/FALSE.")
+
+    if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1)
+        stop("threshold.percentile must be numeric.")
+    if (threshold.percentile < 0 || threshold.percentile > 0.5)
+        stop("threshold.percentile must be in [0, 0.5].")
+
+    if (!is.logical(compute.full) || length(compute.full) != 1) {
+        stop("compute.full must be a single logical value")
+    }
 
     if (!is.null(pca.dim)) {
         if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
@@ -181,6 +199,7 @@ create.iknn.graphs <- function(X,
                     as.integer(kmax + 1L),
                     as.double(max.path.edge.ratio.deviation.thld + 1.0),
                     as.double(path.edge.ratio.percentile),
+                    as.double(threshold.percentile),
                     as.logical(compute.full),
                     if (is.null(n.cores)) NULL else as.integer(n.cores),
                     as.logical(verbose),

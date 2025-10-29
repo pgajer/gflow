@@ -308,6 +308,8 @@ set_wgraph_t::set_wgraph_t(const std::vector<std::vector<int>>& adj_list,
             adjacency_list[i].insert(edge);
         }
     }
+
+    ensure_edge_weights_computed();
 }
 
 /**
@@ -1303,4 +1305,185 @@ std::vector<double> set_wgraph_t::extract_edge_lengths(const path_t& path) const
     }
 
     return edge_lengths;
+}
+
+/**
+ * @brief Compute the median edge length in the graph.
+ *
+ * Collects all edge weights from adjacency_list and returns their median value.
+ * Utilizes std::nth_element for O(E) average‐case performance.
+ *
+ * @return Median of all edge lengths, or 0.0 if the graph contains no edges.
+ */
+double set_wgraph_t::compute_median_edge_length() const {
+
+    // 1) Gather all edge lengths into a single vector
+    size_t total_degree = std::accumulate(
+        adjacency_list.begin(), adjacency_list.end(), size_t(0),
+        [](size_t sum, const auto& nbrs) { return sum + nbrs.size(); }
+    );
+    size_t n_edges = total_degree / 2;  // integer division
+
+    // 2) Collect each undirected edge exactly once
+    std::vector<double> lengths;
+    lengths.reserve(n_edges);
+    for (size_t i = 0; i < adjacency_list.size(); ++i) {
+        for (auto const& edge : adjacency_list[i]) {
+            size_t j = edge.vertex;
+            if (j > i) {
+                lengths.push_back(edge.weight);
+            }
+        }
+    }
+
+    // 2) Handle empty graph
+    if (lengths.empty()) {
+        return 0.0;
+    }
+
+    size_t n = lengths.size();
+    size_t mid = n / 2;
+
+    // 3) Partition around the middle
+    std::nth_element(lengths.begin(), lengths.begin() + mid, lengths.end());
+    double median = lengths[mid];
+
+    // 4) If even count, average with max of lower half
+    if (n % 2 == 0) {
+        double lowerMax = *std::max_element(lengths.begin(), lengths.begin() + mid);
+        median = (lowerMax + median) / 2.0;
+    }
+
+    return median;
+}
+
+/**
+ * @brief Compute a specified quantile of edge lengths in the graph
+ *
+ * @details Collects all edge weights from the adjacency list and computes the
+ *          requested quantile using partial sorting. This function generalizes
+ *          median computation to arbitrary quantiles, enabling flexible edge
+ *          length thresholding for basin construction algorithms.
+ *
+ *          The quantile is computed using linear interpolation between the two
+ *          nearest order statistics when the quantile position falls between
+ *          discrete indices. This matches the R default quantile method (type 7).
+ *
+ * @param quantile Quantile to compute, must be in [0, 1]
+ *                 - 0.00: minimum edge length
+ *                 - 0.25: first quartile
+ *                 - 0.50: median edge length
+ *                 - 0.75: third quartile
+ *                 - 1.00: maximum edge length
+ *
+ * @return Edge length at the specified quantile. Returns 0.0 if graph has no edges.
+ *         Returns infinity if quantile parameter is invalid.
+ *
+ * @complexity Time: O(E) average case using std::nth_element, where E = number of edges
+ *             Space: O(E) for temporary storage of edge lengths
+ *
+ * @note Each undirected edge is counted once to avoid duplication in quantile calculation
+ *
+ * @warning For quantile = 1.0, returns the maximum edge length. To disable edge
+ *          length constraints entirely, pass std::numeric_limits<double>::infinity()
+ *          as the threshold, not the result of this function with quantile = 1.0
+ *
+ * @see compute_median_edge_length() Special case with quantile = 0.5
+ * @see compute_geodesic_basin() Uses quantile-based thresholds for edge filtering
+ *
+ * @section algorithm Algorithm Description
+ *
+ * We employ std::nth_element for efficient quantile computation without full sorting.
+ * The algorithm partitions the edge length array such that all elements before the
+ * quantile position are smaller and all elements after are larger, achieving O(E)
+ * average complexity. For interpolation cases, we additionally find the adjacent
+ * element using std::max_element on the lower partition.
+ *
+ * @section examples Usage Examples
+ *
+ * @code{.cpp}
+ * set_wgraph_t graph;
+ * // ... initialize graph ...
+ *
+ * double median_length = graph.compute_quantile_edge_length(0.50);
+ * double q75_length = graph.compute_quantile_edge_length(0.75);
+ * double q90_length = graph.compute_quantile_edge_length(0.90);
+ * double max_length = graph.compute_quantile_edge_length(1.00);
+ * @endcode
+ */
+double set_wgraph_t::compute_quantile_edge_length(double quantile) const {
+
+    // Validate quantile parameter
+    if (quantile < 0.0 || quantile > 1.0) {
+        Rf_error("quantile must be in [0, 1], got %f", quantile);
+    }
+
+    // Handle special case: quantile >= 1.0 means no constraint
+    if (quantile >= 1.0) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    // Collect all edge lengths into a single vector
+    // Count total edges (each undirected edge counted once)
+    size_t total_degree = std::accumulate(
+        adjacency_list.begin(), adjacency_list.end(), size_t(0),
+        [](size_t sum, const auto& nbrs) { return sum + nbrs.size(); }
+    );
+    size_t n_edges_estimate = total_degree / 2;
+
+    // Reserve space and collect each undirected edge exactly once
+    std::vector<double> lengths;
+    lengths.reserve(n_edges_estimate);
+
+    for (size_t i = 0; i < adjacency_list.size(); ++i) {
+        for (const auto& edge : adjacency_list[i]) {
+            size_t j = edge.vertex;
+            // Only collect edge once (when j > i to avoid duplicates)
+            if (j > i) {
+                lengths.push_back(edge.weight);
+            }
+        }
+    }
+
+    // Handle empty graph
+    if (lengths.empty()) {
+        return 0.0;
+    }
+
+    // Handle special case: quantile = 0 returns minimum
+    if (quantile <= 0.0) {
+        return *std::min_element(lengths.begin(), lengths.end());
+    }
+
+    size_t n = lengths.size();
+
+    // Compute quantile position using linear interpolation formula
+    // This matches R's default quantile method (type 7)
+    double h = (n - 1) * quantile;
+    size_t lower_idx = static_cast<size_t>(std::floor(h));
+    size_t upper_idx = static_cast<size_t>(std::ceil(h));
+    double fraction = h - std::floor(h);
+
+    // Partition around the lower quantile position
+    std::nth_element(lengths.begin(),
+                     lengths.begin() + lower_idx,
+                     lengths.end());
+    double lower_value = lengths[lower_idx];
+
+    // If indices are the same (no interpolation needed), return the value
+    if (lower_idx == upper_idx) {
+        return lower_value;
+    }
+
+    // For interpolation, need the upper value
+    // Use nth_element again on the remaining portion
+    std::nth_element(lengths.begin() + lower_idx + 1,
+                     lengths.begin() + upper_idx,
+                     lengths.end());
+    double upper_value = lengths[upper_idx];
+
+    // Linear interpolation between lower and upper values
+    double result = lower_value + fraction * (upper_value - lower_value);
+
+    return result;
 }

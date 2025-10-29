@@ -63,10 +63,11 @@ extern "C" {
                           SEXP s_max_alt_path_length);
 
     SEXP S_create_single_iknn_graph(
-        SEXP RX,
-        SEXP Rk,
+        SEXP s_X,
+        SEXP s_k,
         SEXP s_max_path_edge_ratio_thld,
         SEXP s_path_edge_ratio_percentile,
+        SEXP s_threshold_percentile,
         SEXP s_compute_full
         );
 
@@ -77,6 +78,7 @@ extern "C" {
         // pruning parameters
         SEXP s_max_path_edge_ratio_thld,
         SEXP s_path_edge_ratio_percentile,
+        SEXP s_threshold_percentile,
         // other
         SEXP s_compute_full,
         SEXP s_n_cores,
@@ -857,7 +859,8 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
  * This function performs the following operations:
  * 1. Constructs an intersection-weighted k-nearest neighbors (IWD-kNN) graph
  * 2. Computes intersection sizes and distances for each edge
- * 3. Prunes the graph using iknn_graph.prune_graph()
+ * 3. Applies geometric pruning based on path-to-edge length ratios
+ *    If requested, applies quantile-based edge length pruning
  * 4. If compute_full is TRUE:
  *    - Computes all graph components including original graph metrics
  * 5. Always computes:
@@ -884,6 +887,11 @@ iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
  * @param s_path_edge_ratio_percentile SEXP object (double) Percentile threshold (0.0-1.0)
  *        for edge lengths to consider in geometric pruning. Only edges with length
  *        greater than this percentile are considered for pruning.
+ *
+ * @param s_threshold_percentile SEXP object (double) Percentile threshold for quantile-based
+ *        edge length pruning. Valid range is [0.0, 0.5]. Value of 0.0 disables quantile pruning.
+ *        When > 0, edges in the top (1 - threshold_percentile) quantile by length are
+ *        removed if their removal preserves connectivity. For example, 0.9 removes top 10% of edges.
  *
  * @param s_compute_full SEXP object (logical) controlling computation of optional components:
  *        - TRUE: Compute all graph components and metrics
@@ -944,6 +952,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
                                 // pruning parameters
                                 SEXP s_max_path_edge_ratio_thld,
                                 SEXP s_path_edge_ratio_percentile,
+                                SEXP s_threshold_percentile,
                                 // other
                                 SEXP s_compute_full) {
 
@@ -954,7 +963,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
     #endif
 
-    // --- dims(X) protected while reading
+    // --- Validate and extract dimensions
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
     if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
         UNPROTECT(1);
@@ -963,10 +972,20 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     const int n_vertices = INTEGER(s_dim)[0];
     UNPROTECT(1); // s_dim
 
+    // --- Validate and extract pruning parameters
     if (!Rf_isReal(s_max_path_edge_ratio_thld) || !Rf_isReal(s_path_edge_ratio_percentile))
         Rf_error("Threshold/percentile must be numeric.");
     const double max_path_edge_ratio_thld   = Rf_asReal(s_max_path_edge_ratio_thld);
     const double path_edge_ratio_percentile = Rf_asReal(s_path_edge_ratio_percentile);
+
+    // --- Validate and extract quantile pruning parameter
+    if (!Rf_isReal(s_threshold_percentile))
+        Rf_error("threshold_percentile must be numeric.");
+    const double threshold_percentile = Rf_asReal(s_threshold_percentile);
+
+    if (threshold_percentile < 0.0 || threshold_percentile > 0.5) {
+        Rf_error("threshold_percentile must be in [0.0, 0.5]. Got %.3f", threshold_percentile);
+    }
 
     const int compute_full = (Rf_asLogical(s_compute_full) == TRUE);
 
@@ -996,8 +1015,8 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         }
     }
 
-    // Geometric pruning section
-    size_t n_edges_in_pruned_graph_sz = 0;
+    // ---- Stage 1: Geometric pruning based on path-to-edge ratios
+    size_t n_edges_after_geometric_sz = 0;
 
     set_wgraph_t temp_graph_for_pruning(iknn_graph);
 
@@ -1005,9 +1024,6 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         Rprintf("=== S_create_single_iknn_graph: Geometric Pruning ===\n");
         Rprintf("Parameters: max_path_edge_ratio_thld=%.3f, path_edge_ratio_percentile=%.3f\n",
                 max_path_edge_ratio_thld, path_edge_ratio_percentile);
-        Rprintf("Edges before pruning: %d\n", n_edges);
-
-        Rprintf("=== Before geometric pruning ===\n");
         Rprintf("Edges before pruning: %d\n", n_edges);
     #endif
 
@@ -1017,27 +1033,52 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         );
 
     for (const auto& nbrs : pruned_graph.adjacency_list) {
-        n_edges_in_pruned_graph_sz += nbrs.size();
+        n_edges_after_geometric_sz += nbrs.size();
     }
-    n_edges_in_pruned_graph_sz /= 2;
+    n_edges_after_geometric_sz /= 2;
 
     #if DEBUG_S_CREATE_IKNN_GRAPH
         Rprintf("=== After geometric pruning ===\n");
-        Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
-        Rprintf("Edges removed: %d\n", n_edges - (int)n_edges_in_pruned_graph_sz);
-        Rprintf("Pruning ratio: %.2f%%\n", 100.0 * (n_edges - n_edges_in_pruned_graph_sz) / n_edges);
+        Rprintf("Edges after pruning: %zu\n", n_edges_after_geometric_sz);
+        Rprintf("Edges removed: %d\n", n_edges - (int)n_edges_after_geometric_sz);
+        Rprintf("Pruning ratio: %.2f%%\n", 100.0 * (n_edges - n_edges_after_geometric_sz) / n_edges);
     #endif
 
-    // ========== DEBUG OUTPUT (mirrors initialize_from_knn Phase 1C) ==========
-    #if DEBUG_S_CREATE_IKNN_GRAPH
-        Rprintf("Edges after pruning: %zu\n", n_edges_in_pruned_graph_sz);
+    // ---- Stage 2: Quantile-based edge length pruning (if requested)
+    size_t n_edges_in_pruned_graph_sz = n_edges_after_geometric_sz;
 
+    if (threshold_percentile > 0.0) {
+        #if DEBUG_S_CREATE_IKNN_GRAPH
+            Rprintf("=== Applying quantile-based edge length pruning ===\n");
+            Rprintf("threshold_percentile=%.3f (removing top %.1f%% of edges by length)\n",
+                    threshold_percentile, 100.0 * (1.0 - threshold_percentile));
+        #endif
+
+        pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
+
+        // Recount edges after quantile pruning
+        n_edges_in_pruned_graph_sz = 0;
+        for (const auto& nbrs : pruned_graph.adjacency_list) {
+            n_edges_in_pruned_graph_sz += nbrs.size();
+        }
+        n_edges_in_pruned_graph_sz /= 2;
+
+        #if DEBUG_S_CREATE_IKNN_GRAPH
+            Rprintf("=== After quantile pruning ===\n");
+            Rprintf("Edges after quantile pruning: %zu\n", n_edges_in_pruned_graph_sz);
+            Rprintf("Additional edges removed: %zu\n",
+                    n_edges_after_geometric_sz - n_edges_in_pruned_graph_sz);
+        #endif
+    }
+
+    // ========== DEBUG OUTPUT ==========
+    #if DEBUG_S_CREATE_IKNN_GRAPH
         // Extract edges from pruned graph
         std::vector<std::pair<index_t, index_t>> edges_post_pruning;
         std::vector<double> weights_post_pruning;
 
-        const size_t n_vertices = pruned_graph.adjacency_list.size();
-        for (size_t i = 0; i < n_vertices; ++i) {
+        const size_t n_vertices_sz = pruned_graph.adjacency_list.size();
+        for (size_t i = 0; i < n_vertices_sz; ++i) {
             for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
                 index_t j = edge_info.vertex;
                 if (j > i) {  // Only count each edge once
@@ -1055,7 +1096,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
             debug_dir + "phase_1c_edges_post_pruning.bin",
             edges_post_pruning,
             weights_post_pruning,
-            "PHASE_1C_POST_PRUNING_GEOMETRIC"
+            "PHASE_1C_POST_PRUNING_ALL"
             );
 
         // Save CSV (for easy inspection in R)
@@ -1063,15 +1104,6 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
             debug_dir + "phase_1c_edges_post_pruning.csv",
             edges_post_pruning,
             weights_post_pruning
-            );
-
-        // Save pruning parameters (for verification)
-        debug_serialization::save_pruning_params(
-            debug_dir + "phase_1c_pruning_params.bin",
-            max_path_edge_ratio_thld,
-            path_edge_ratio_percentile,
-            static_cast<size_t>(n_edges),  // n_edges_before
-            edges_post_pruning.size()       // n_edges_after
             );
 
         // Compute and save connectivity
@@ -1086,7 +1118,7 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
             n_components
             );
 
-        Rprintf("Connected components after pruning: %zu\n", n_components);
+        Rprintf("Connected components after all pruning: %zu\n", n_components);
         if (n_components > 1) {
             Rprintf("WARNING: Graph is disconnected after pruning!\n");
         }
@@ -1226,7 +1258,6 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     UNPROTECT(1); // r_result
     return r_result;
 }
-
 
 // -----------------------------------------------------------------------------------------------
 //
@@ -1486,9 +1517,8 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
  * @details
  * For a given range of k values [kmin, kmax], this function:
  * 1. Constructs and analyzes intersection-weighted k-nearest neighbors (IWD-kNN) graphs
- * 2. Applies two different pruning strategies to each graph:
- *    - Geometric pruning: Removes edges where alternative paths exist with better geometric properties
- *    - Intersection-size pruning: Removes edges where alternative paths with larger intersection sizes exist
+ * 2. Applies geometric pruning based on path-to-edge ratios
+ *    Optionally applies quantile-based edge length pruning
  * 3. Computes comprehensive statistics for each graph and pruning method
  * 4. Optionally returns the full pruned graph structures for further analysis
  *
@@ -1515,6 +1545,11 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
  * @param s_path_edge_ratio_percentile SEXP object (double) Percentile threshold (0.0-1.0)
  *        for edge lengths to consider in geometric pruning. Only edges with length
  *        greater than this percentile are considered for pruning.
+ *
+ * @param s_threshold_percentile SEXP object (double) Percentile threshold for quantile-based
+ *        edge length pruning. Valid range is [0.0, 0.5]. Value of 0.0 disables quantile pruning.
+ *        When > 0, edges in the top (1 - threshold_percentile) quantile by length are
+ *        removed if their removal preserves connectivity. For example, 0.9 removes top 10% of edges.
  *
  * @param s_compute_full SEXP object (logical) controlling computation of optional components:
  *                      - TRUE: Store complete pruned graph structures for both pruning methods
@@ -1555,13 +1590,14 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
  * - set_wgraph_t::prune_edges_geometrically(): Geometric pruning implementation
  * - iknn_graph_t::prune_graph(): Intersection-size pruning implementation
  */
-extern "C" SEXP S_create_iknn_graphs(
+SEXP S_create_iknn_graphs(
     SEXP s_X,
     SEXP s_kmin,
     SEXP s_kmax,
     // pruning parameters
     SEXP s_max_path_edge_ratio_thld,
     SEXP s_path_edge_ratio_percentile,
+    SEXP s_threshold_percentile,
     // other
     SEXP s_compute_full,
     SEXP s_n_cores,
@@ -1589,6 +1625,15 @@ extern "C" SEXP S_create_iknn_graphs(
         Rf_error("Threshold/percentile must be numeric.");
     const double max_path_edge_ratio_thld   = Rf_asReal(s_max_path_edge_ratio_thld);
     const double path_edge_ratio_percentile = Rf_asReal(s_path_edge_ratio_percentile);
+
+    // --- Validate and extract quantile pruning parameter
+    if (!Rf_isReal(s_threshold_percentile))
+        Rf_error("threshold_percentile must be numeric.");
+    const double threshold_percentile = Rf_asReal(s_threshold_percentile);
+
+    if (threshold_percentile < 0.0 || threshold_percentile > 0.5) {
+        Rf_error("threshold_percentile must be in [0.0, 0.5]. Got %.3f", threshold_percentile);
+    }
 
     if (!Rf_isLogical(s_compute_full) || !Rf_isLogical(s_verbose))
         Rf_error("compute_full and verbose must be logical.");
@@ -1633,6 +1678,10 @@ extern "C" SEXP S_create_iknn_graphs(
 
     if (verbose) {
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin - 1, kmax - 1, n_vertices);
+        if (threshold_percentile > 0.0) {
+            Rprintf("Quantile pruning enabled: removing top %.1f%% of edges by length\n",
+                    100.0 * (1.0 - threshold_percentile));
+        }
     }
 
     // --- Precompute / allocate (pure C++; no R API here)
@@ -1654,8 +1703,8 @@ extern "C" SEXP S_create_iknn_graphs(
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic) if(num_threads>1) default(none) \
     shared(k_values, knn_results, max_path_edge_ratio_thld, path_edge_ratio_percentile, \
-           geom_pruned_graphs, isize_pruned_graphs, k_statistics, all_edge_pruning_stats, \
-           max_alt_path_length)
+           threshold_percentile, geom_pruned_graphs, isize_pruned_graphs, k_statistics, \
+           all_edge_pruning_stats, max_alt_path_length)
 #endif
     for (int k_idx = 0; k_idx < (int)k_values.size(); ++k_idx) {
         const int k = k_values[k_idx];
@@ -1669,11 +1718,22 @@ extern "C" SEXP S_create_iknn_graphs(
         }
         n_edges_sz /= 2;
 
-        // Geometric pruning
+        // Stage 1: Geometric pruning
         set_wgraph_t pruned_graph(iknn_graph);
         if (max_path_edge_ratio_thld > 0) {
             pruned_graph = pruned_graph.prune_edges_geometrically(
                 max_path_edge_ratio_thld, path_edge_ratio_percentile);
+        }
+
+        size_t n_edges_after_geometric_sz = 0;
+        for (const auto& nbrs : pruned_graph.adjacency_list) {
+            n_edges_after_geometric_sz += nbrs.size();
+        }
+        n_edges_after_geometric_sz /= 2;
+
+        // Stage 2: Quantile-based edge length pruning (if requested)
+        if (threshold_percentile > 0.0) {
+            pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
         }
 
         size_t n_edges_pruned_sz = 0;
@@ -1682,7 +1742,7 @@ extern "C" SEXP S_create_iknn_graphs(
         }
         n_edges_pruned_sz /= 2;
 
-        // Intersection-size pruning
+        // Stage 3: Intersection-size pruning
         vect_wgraph_t isize_pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
 
         size_t n_edges_isize_pruned_sz = 0;
@@ -1722,7 +1782,7 @@ extern "C" SEXP S_create_iknn_graphs(
     auto serial_start_time = std::chrono::steady_clock::now();
     if (verbose) Rprintf("Creating return list objects ... ");
 
-    // --- Return list
+    // --- Return list (same structure as before)
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 4));
 
     // names
@@ -1736,6 +1796,7 @@ extern "C" SEXP S_create_iknn_graphs(
         UNPROTECT(1);
     }
 
+    // [Rest of the return value construction code remains the same as original]
     // 3: edge_pruning_stats (list of matrices)
     {
         const int nK = kmax - kmin + 1;

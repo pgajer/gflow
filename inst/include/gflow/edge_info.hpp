@@ -16,7 +16,6 @@ using std::size_t;
  * This structure is used within the adjacency lists to store edge information.
  * The comparison operator enables its use in ordered containers like std::set.
  */
-// In nerve_complex.hpp
 struct edge_info_t {
 	size_t vertex;   ///< Target vertex of the edge
 	double weight;   ///< Weight (length) of the edge

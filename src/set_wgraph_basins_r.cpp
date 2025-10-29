@@ -22,6 +22,8 @@
  * @param s_adj_list R list of integer vectors representing the adjacency list (0-based in C++)
  * @param s_weight_list R list of numeric vectors representing edge weights
  * @param s_y R numeric vector of function values at each vertex
+ * @param s_edge_length_quantile_thld Edge length threshold for basin construction
+ * @param s_with_trajectories Set to true to return gradient trajectories
  *
  * @return R list with two components:
  *         - lmin_basins: list of basin structures for local minima
@@ -39,6 +41,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_y,
+	SEXP s_edge_length_quantile_thld,
     SEXP s_with_trajectories
     ) {
 
@@ -49,10 +52,28 @@ extern "C" SEXP S_compute_basins_of_attraction(
     double* y_ptr = REAL(s_y);
     std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
+	// ------ s_edge_length_quantile_thld validation/conversion
+	if (!Rf_isReal(s_edge_length_quantile_thld) || LENGTH(s_edge_length_quantile_thld) != 1) {
+			Rf_error("edge_length_quantile_thld must be a single numeric value");
+	}
+
+	double edge_length_quantile_thld = REAL(s_edge_length_quantile_thld)[0];
+
+	if (std::isnan(edge_length_quantile_thld)) {
+		Rf_error("edge_length_quantile_thld cannot be NA");
+	}
+
+	if (edge_length_quantile_thld < 0.0) {
+		Rf_error("edge_length_quantile_thld must be non-negative");
+	}
+
+	// ------ s_with_trajectories conversion
     bool with_trajectories = Rf_asLogical(s_with_trajectories);
 
     // Build graph
     set_wgraph_t graph(adj_list, weight_list);
+
+	double edge_length_thld = graph.compute_quantile_edge_length(edge_length_quantile_thld);
 
     // Identify local extrema (same as before)
     size_t n = y.size();
@@ -76,7 +97,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     // Compute basins using GEODESIC method
     std::vector<gradient_basin_t> min_basins;
     for (size_t m : local_minima) {
-        gradient_basin_t basin = graph.compute_geodesic_basin(m, y, false, with_trajectories);
+        gradient_basin_t basin = graph.compute_geodesic_basin(m, y, false, edge_length_thld, with_trajectories);
         if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
             min_basins.push_back(basin);
         }
@@ -84,13 +105,13 @@ extern "C" SEXP S_compute_basins_of_attraction(
 
     std::vector<gradient_basin_t> max_basins;
     for (size_t M : local_maxima) {
-        gradient_basin_t basin = graph.compute_geodesic_basin(M, y, true, with_trajectories);
+        gradient_basin_t basin = graph.compute_geodesic_basin(M, y, true, edge_length_thld, with_trajectories);
         if (basin.hop_idx != std::numeric_limits<size_t>::max()) {
             max_basins.push_back(basin);
         }
     }
 
-	    // Convert to R format
+	// Convert to R format
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
     SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
     SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));

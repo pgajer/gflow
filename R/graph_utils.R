@@ -2582,3 +2582,296 @@ compute.graph.diameter <- function(adj.list, weight.list) {
         diameter_path = path
     ))
 }
+
+#' Extract Edge Lengths from Undirected Graph
+#'
+#' Extracts edge lengths from an undirected graph represented as adjacency lists,
+#' avoiding duplicate edges. Provides three implementation methods optimized for
+#' different use cases.
+#'
+#' @param adj.list A list of integer vectors representing the adjacency list of
+#'   an undirected graph. Each element \code{adj.list[[i]]} contains the vertex
+#'   indices adjacent to vertex \code{i}.
+#' @param edge.length.list A list of numeric vectors containing edge lengths.
+#'   Each element \code{edge.length.list[[i]]} contains the edge lengths
+#'   corresponding to the neighbors in \code{adj.list[[i]]} (same order).
+#' @param method Character string specifying the extraction method. One of:
+#'   \itemize{
+#'     \item \code{"preallocate"}: Pre-allocates memory and uses explicit loops.
+#'       Good for moderate-sized graphs with clear iteration logic.
+#'     \item \code{"vectorized"}: Uses vectorized operations with \code{lapply}.
+#'       Generally fastest for most graphs (default).
+#'     \item \code{"parallel"}: Uses parallel processing via \code{parallel::mclapply}.
+#'       Best for very large graphs on multi-core systems. Not available on Windows.
+#'   }
+#' @param mc.cores Integer specifying the number of cores to use when
+#'   \code{method = "parallel"}. Default is 2. Ignored for other methods.
+#'
+#' @return A numeric vector containing all unique edge lengths from the graph.
+#'   Each edge appears once (duplicates from undirected representation are removed
+#'   by only including edges where \code{i < j}).
+#'
+#' @details
+#' All three methods produce identical results but with different performance
+#' characteristics:
+#'
+#' \strong{Pre-allocate method:} Calculates the total number of edges upfront
+#' and allocates the result vector, then fills it using nested loops. This avoids
+#' the major performance penalty of growing vectors dynamically.
+#'
+#' \strong{Vectorized method:} Processes each vertex's adjacency list in a
+#' vectorized manner, filtering neighbors and extracting lengths in bulk. This
+#' is typically 2-3x faster than the pre-allocate method for most graph sizes.
+#'
+#' \strong{Parallel method:} Distributes the work across multiple CPU cores.
+#' Most beneficial for graphs with thousands of vertices. Note that parallel
+#' processing has overhead, so it may be slower for small graphs.
+#'
+#' The adjacency list and edge length list must be parallel structures where
+#' \code{edge.length.list[[i]][k]} is the length of the edge connecting vertex
+#' \code{i} to vertex \code{adj.list[[i]][k]}.
+#'
+#' @examples
+#' # Create a simple undirected graph
+#' # Graph: 1--2--3
+#' #        |
+#' #        4
+#' adj.list <- list(
+#'   c(2, 4),     # vertex 1 connects to 2, 4
+#'   c(1, 3),     # vertex 2 connects to 1, 3
+#'   c(2),        # vertex 3 connects to 2
+#'   c(1)         # vertex 4 connects to 1
+#' )
+#'
+#' edge.length.list <- list(
+#'   c(1.5, 2.0),  # lengths for edges 1-2 and 1-4
+#'   c(1.5, 3.2),  # lengths for edges 2-1 and 2-3
+#'   c(3.2),       # length for edge 3-2
+#'   c(2.0)        # length for edge 4-1
+#' )
+#'
+#' # Extract edge lengths using different methods
+#' extract.edge.lengths(adj.list, edge.length.list, method = "vectorized")
+#' # Returns: c(1.5, 2.0, 3.2)
+#'
+#' # Compare methods
+#' all.equal(
+#'   extract.edge.lengths(adj.list, edge.length.list, method = "preallocate"),
+#'   extract.edge.lengths(adj.list, edge.length.list, method = "vectorized")
+#' )
+#'
+#' @export
+extract.edge.lengths <- function(adj.list,
+                                  edge.length.list,
+                                  method = c("vectorized", "preallocate", "parallel"),
+                                  mc.cores = 2) {
+
+  # Validate inputs
+  method <- match.arg(method)
+
+  if (!is.list(adj.list) || !is.list(edge.length.list)) {
+    stop("Both adj.list and edge.length.list must be lists")
+  }
+
+  if (length(adj.list) != length(edge.length.list)) {
+    stop("adj.list and edge.length.list must have the same length")
+  }
+
+  if (length(adj.list) == 0) {
+    return(numeric(0))
+  }
+
+  # Dispatch to appropriate method
+  edge.lengths <- switch(
+    method,
+    preallocate = {
+      # Pre-allocate memory approach
+      total.edges <- sum(lengths(adj.list)) / 2
+      edge.lengths <- numeric(total.edges)
+      idx <- 1
+
+      for (i in seq_along(adj.list)) {
+        neighbors <- adj.list[[i]]
+        for (j.idx in seq_along(neighbors)) {
+          j <- neighbors[j.idx]
+          if (i < j) {
+            edge.lengths[idx] <- edge.length.list[[i]][j.idx]
+            idx <- idx + 1
+          }
+        }
+      }
+      edge.lengths
+    },
+
+    vectorized = {
+      # Vectorized approach
+      unlist(lapply(seq_along(adj.list), function(i) {
+        neighbors <- adj.list[[i]]
+        valid.idx <- which(neighbors > i)
+        if (length(valid.idx) == 0) {
+          return(numeric(0))
+        }
+        edge.length.list[[i]][valid.idx]
+      }))
+    },
+
+    parallel = {
+      # Parallel approach
+      if (!requireNamespace("parallel", quietly = TRUE)) {
+        stop("Package 'parallel' is required for method = 'parallel'")
+      }
+
+      if (mc.cores < 1) {
+        stop("mc.cores must be at least 1")
+      }
+
+      unlist(parallel::mclapply(seq_along(adj.list), function(i) {
+        neighbors <- adj.list[[i]]
+        valid.idx <- which(neighbors > i)
+        if (length(valid.idx) == 0) {
+          return(numeric(0))
+        }
+        edge.length.list[[i]][valid.idx]
+      }, mc.cores = mc.cores))
+    }
+  )
+
+  return(edge.lengths)
+}
+
+#' Extract Edge Lengths Along a Trajectory Path
+#'
+#' Given a trajectory (path) through an undirected graph, extracts the edge
+#' lengths for each consecutive pair of vertices along the path.
+#'
+#' @param traj Integer vector representing a path through the graph, where each
+#'   element is a vertex index and consecutive elements define edges along the path.
+#' @param adj.list A list of integer vectors representing the adjacency list of
+#'   an undirected graph. Each element \code{adj.list[[i]]} contains the vertex
+#'   indices adjacent to vertex \code{i}.
+#' @param edge.length.list A list of numeric vectors containing edge lengths.
+#'   Each element \code{edge.length.list[[i]]} contains the edge lengths
+#'   corresponding to the neighbors in \code{adj.list[[i]]} (same order).
+#' @param add.quantiles Set to TRUE to add edge.quantiles column to the result list.
+#'
+#' @return A data frame with three columns:
+#'   \itemize{
+#'     \item \code{first.vertex}: The first vertex of each edge
+#'     \item \code{second.vertex}: The second vertex of each edge
+#'     \item \code{edge.length}: The length of the edge
+#'   }
+#'   The data frame has \code{length(traj) - 1} rows, one for each edge in the path.
+#'
+#' @details
+#' For each consecutive pair of vertices in the trajectory, the function searches
+#' for the edge in the adjacency list. Since the graph is undirected, the edge
+#' (v1, v2) may be stored in either \code{adj.list[[v1]]} or \code{adj.list[[v2]]}.
+#' The function checks both locations and returns an error if the edge is not found.
+#'
+#' @examples
+#' # Create a simple graph
+#' adj.list <- list(
+#'   c(2, 3),     # vertex 1 connects to 2, 3
+#'   c(1, 3),     # vertex 2 connects to 1, 3
+#'   c(1, 2, 4),  # vertex 3 connects to 1, 2, 4
+#'   c(3)         # vertex 4 connects to 3
+#' )
+#'
+#' edge.length.list <- list(
+#'   c(1.5, 2.0),
+#'   c(1.5, 3.2),
+#'   c(2.0, 3.2, 4.1),
+#'   c(4.1)
+#' )
+#'
+#' # Extract edge lengths along a path
+#' traj <- c(1, 2, 3, 4)
+#' extract.trajectory.edge.lengths(traj, adj.list, edge.length.list)
+#' #   first.vertex second.vertex edge.length
+#' # 1            1             2         1.5
+#' # 2            2             3         3.2
+#' # 3            3             4         4.1
+#'
+#' @export
+extract.trajectory.edge.lengths <- function(traj,
+                                            adj.list,
+                                            edge.length.list,
+                                            add.quantiles = FALSE) {
+
+    ## Validate inputs
+    if (!is.numeric(traj) && !is.integer(traj)) {
+        stop("traj must be a numeric or integer vector")
+    }
+
+    if (length(traj) < 2) {
+        stop("traj must contain at least 2 vertices to form an edge")
+    }
+
+    if (!is.list(adj.list) || !is.list(edge.length.list)) {
+        stop("Both adj.list and edge.length.list must be lists")
+    }
+
+    if (length(adj.list) != length(edge.length.list)) {
+        stop("adj.list and edge.length.list must have the same length")
+    }
+
+    ## Initialize result vectors
+    n.edges <- length(traj) - 1
+    first.vertex <- integer(n.edges)
+    second.vertex <- integer(n.edges)
+    edge.length <- numeric(n.edges)
+
+    ## Extract edge length for each consecutive pair
+    for (i in seq_len(n.edges)) {
+        v1 <- traj[i]
+        v2 <- traj[i + 1]
+
+        ## Validate vertex indices
+        if (v1 < 1 || v1 > length(adj.list)) {
+            stop(sprintf("Vertex %d (position %d in trajectory) is out of bounds", v1, i))
+        }
+        if (v2 < 1 || v2 > length(adj.list)) {
+            stop(sprintf("Vertex %d (position %d in trajectory) is out of bounds", v2, i + 1))
+        }
+
+        ## Try to find edge in v1's adjacency list
+        pos <- match(v2, adj.list[[v1]])
+
+        if (!is.na(pos)) {
+            ## Found edge in v1's adjacency list
+            edge.length[i] <- edge.length.list[[v1]][pos]
+        } else {
+            ## Try v2's adjacency list (undirected graph)
+            pos <- match(v1, adj.list[[v2]])
+
+            if (!is.na(pos)) {
+                edge.length[i] <- edge.length.list[[v2]][pos]
+            } else {
+                stop(sprintf("Edge (%d, %d) not found in graph at trajectory position %d",
+                             v1, v2, i))
+            }
+        }
+
+        first.vertex[i] <- v1
+        second.vertex[i] <- v2
+    }
+
+    ## Return as data frame
+    result <- data.frame(
+        first.vertex = first.vertex,
+        second.vertex = second.vertex,
+        edge.length = edge.length,
+        stringsAsFactors = FALSE
+    )
+
+    ## Add quantiles if requested
+    if (add.quantiles) {
+        if (is.null(all.edge.lengths)) {
+            ## Extract all edge lengths if not provided
+            all.edge.lengths <- extract.edge.lengths(adj.list, edge.length.list)
+        }
+        result$edge.quantile <- ecdf(all.edge.lengths)(result$edge.length)
+    }
+
+    return(result)
+}
