@@ -61,6 +61,7 @@
 #include "cv_deg0.h"
 #include "riem_dcx_r.h"
 #include "comono_coefficient_r.h"
+#include "partition_graph_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -196,11 +197,16 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_comono_cor", (DL_FUNC) &S_comono_cor, 5},
+  {"S_comono_proportion", (DL_FUNC) &S_comono_proportion, 6},
+  {"S_comono_cor_matrix", (DL_FUNC) &S_comono_cor_matrix, 5},
+  {"S_comono_proportion_matrix", (DL_FUNC) &S_comono_proportion_matrix, 6},
+  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
   {"S_comono_matrix", (DL_FUNC) &S_comono_matrix, 5},
   {"S_comono", (DL_FUNC) &S_comono, 5},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
-  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 25},
+  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 30},
   {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
   {"S_set_function_values", (DL_FUNC) &S_set_function_values, 2},

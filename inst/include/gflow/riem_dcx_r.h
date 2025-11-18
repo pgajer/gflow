@@ -12,6 +12,12 @@ extern "C" {
 		SEXP s_X,
 		SEXP s_y,
 		SEXP s_k,
+		SEXP s_with_posterior,
+		SEXP s_return_posterior_samples,
+
+		SEXP s_credible_level,
+		SEXP s_n_posterior_samples,
+		SEXP s_posterior_seed,
 		SEXP s_use_counting_measure,
 		SEXP s_density_normalization,
 

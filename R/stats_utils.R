@@ -127,8 +127,6 @@ normalize.and.inv.logit <- function(x, y.min = -3, y.max = 3) {
     y
 }
 
-
-
 #' Empirical Cumulative Distribution Function (ECDF)
 #'
 #' Calculates the empirical cumulative distribution function (ECDF) for a given vector of data.
@@ -579,7 +577,7 @@ derivative.second.order.method <- function(y, dx)
 #' @param xrange The minimum of x and the maximum of x that is to be mapped to ymin and ymax, respectively.
 #' @return A numeric vector of the same length as 'x' with values linearly transformed to the range \code{[ymin, ymax]}.
 #' @export
-scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
+scale.to.range <- function(x, ymin, ymax, xrange = NULL) {
 
     if( !is.numeric(x) ) {
         stop("x has to be numeric.")

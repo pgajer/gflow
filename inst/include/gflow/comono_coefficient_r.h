@@ -15,13 +15,45 @@ extern "C" {
 		SEXP s_z,
 		SEXP s_type
 		);
-
 	SEXP S_comono_matrix(
 		SEXP s_adj_list,
 		SEXP s_weight_list,
 		SEXP s_y,
 		SEXP s_Z,
 		SEXP s_type
+		);
+
+	SEXP S_comono_cor(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_z,
+		SEXP s_type
+		);
+    SEXP S_comono_cor_matrix(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_Z,
+		SEXP s_type
+		);
+
+
+	SEXP S_comono_proportion(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_z,
+		SEXP s_tau_y,
+		SEXP s_tau_z
+		);
+    SEXP S_comono_proportion_matrix(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_Z,
+		SEXP s_tau_y,
+		SEXP s_tau_z
 		);
 
 #ifdef __cplusplus

@@ -593,6 +593,7 @@ magelo <- function(x,
 #'        "top", "topright", "right", or "center"
 #' @param legend.inset Numeric value for inset distance from the margins as a fraction
 #'        of the plot region (default: 0.05)
+#' @param pred.legend.label Prediction legend label
 #' @param ... Additional parameters passed to plot methods
 #'
 #' @export
@@ -617,6 +618,7 @@ plot.magelo <- function(x, type = "fit",
                        with.legend = TRUE,
                        legend.position = "topright",
                        legend.inset = 0.05,
+                       pred.legend.label = "Predictions",
                        ...) {
 
     if (!inherits(x, "magelo")) {
@@ -658,6 +660,7 @@ plot.magelo <- function(x, type = "fit",
                              with.legend = with.legend,
                              legend.position = legend.position,
                              legend.inset = legend.inset,
+                             pred.legend.label = pred.legend.label,
                              ...)
            },
            "diagnostic" = {
@@ -677,11 +680,11 @@ magelo.plot.fit <- function(x, title, xlab, ylab, with.y.true,
                            with.legend = TRUE,
                            legend.position = "topright",
                            legend.inset = 0.05,
+                           pred.legend.label = "Predictions",
                            ...) {
 
     # Determine which predictions to use
     predictions <- x$gpredictions
-    pred_label <- "Predictions"
 
     # Calculate y-limits if not provided
     if (is.null(ylim)) {
@@ -745,7 +748,7 @@ magelo.plot.fit <- function(x, title, xlab, ylab, with.y.true,
             legend_pchs <- c(legend_pchs, 1)
         }
 
-        legend_items <- c(legend_items, pred_label)
+        legend_items <- c(legend_items, pred.legend.label)
         legend_cols <- c(legend_cols, ma.col)
         legend_ltys <- c(legend_ltys, 1)
         legend_pchs <- c(legend_pchs, NA)
