@@ -96,15 +96,25 @@ struct detailed_convergence_status_t {
 };
 
 /**
- * @brief Complete result structure for regression fitting
+ * @brief Summary of posterior distribution for fitted values
+ *
+ * @details
+ * Contains vertex-wise credible interval bounds and posterior standard deviations
+ * from Bayesian inference on the response surface. Enables direct probability
+ * statements about fitted values and uncertainty quantification for downstream
+ * inference tasks like co-monotonicity testing.
  */
-struct regression_result_t {
-    vec_t y_hat_final;                      ///< Final fitted values
-    int n_iterations;                       ///< Number of iterations performed
-    bool converged;                         ///< Convergence status
-    std::vector<double> response_changes;   ///< History of response changes
-    std::vector<double> density_changes;    ///< History of density changes
-    std::vector<vec_t> y_hat_history;       ///< Full fitted values history
+struct posterior_summary_t {
+    vec_t lower;              // Lower credible bounds (length n)
+    vec_t upper;              // Upper credible bounds (length n)
+    vec_t posterior_sd;       // Posterior standard deviations (length n)
+    double credible_level;    // Coverage probability
+    double sigma_hat;         // Estimated residual SD
+
+    // Optional: full posterior samples (n × B matrix)
+    // Empty if return_samples = false to save memory
+    Eigen::MatrixXd samples;
+    bool has_samples;         // Flag indicating if samples are stored
 };
 
 // ================================================================
@@ -597,10 +607,11 @@ struct riem_dcx_t {
      * Updated whenever the Laplacian is reassembled during iteration.
      */
     struct spectral_cache_t {
-        vec_t eigenvalues;           ///< Eigenvalues in ascending order
+        vec_t eigenvalues;            ///< Eigenvalues in ascending order
         Eigen::MatrixXd eigenvectors; ///< Corresponding eigenvectors (columns)
-        bool is_valid;               ///< True if cache contains current L[0] spectrum
-        double lambda_2;             ///< Spectral gap (second smallest eigenvalue)
+        vec_t filtered_eigenvalues;   ///< Filter weights f_eta(lambda_j) from optimal iteratio
+        bool is_valid;                ///< True if cache contains current L[0] spectrum
+        double lambda_2;              ///< Spectral gap (second smallest eigenvalue)
 
         spectral_cache_t() : is_valid(false), lambda_2(0.0) {}
 
@@ -635,28 +646,6 @@ struct riem_dcx_t {
 
     /**
      * @brief Fit Riemannian graph regression model using iterative geometric refinement
-     *
-     * @param X Feature matrix (sparse, n x d)
-     * @param y Response vector (length n)
-     * @param k Number of nearest neighbors
-     * @param use_counting_measure If true, use counting measure; else distance-based
-     * @param density_normalization Normalization mode for densities
-     * @param t_diffusion Diffusion time parameter (if <= 0, auto-select using t_scale_factor)
-     * @param beta_damping Damping parameter (if <= 0, auto-select using beta_coefficient_factor)
-     * @param gamma_modulation Response-coherence modulation strength
-     * @param t_scale_factor Scale factor for auto-selecting t (controls diffusion scale t*lambda_2)
-     * @param beta_coefficient_factor Factor for auto-selecting beta (controls damping coefficient beta*t)
-     * @param n_eigenpairs Number of eigenpairs for spectral filtering
-     * @param filter_type Type of spectral filter to apply
-     * @param epsilon_y Convergence threshold for response
-     * @param epsilon_rho Convergence threshold for density
-     * @param max_iterations Maximum number of iterations
-     * @param max_ratio_threshold Maximum ratio threshold for edge pruning
-     * @param threshold_percentile Percentile for adaptive threshold
-     * @param density_alpha Power for distance-based density (default 1.5)
-     * @param density_epsilon Regularization for distance-based density (default 1e-10)
-     * @param test_stage For debugging: stop at specific stage (default -1, run all)
-     * @param verbose Print progress information
      */
     void fit_rdgraph_regression(
         const spmat_t& X,
@@ -681,6 +670,22 @@ struct riem_dcx_t {
         double density_epsilon,
         int test_stage,
         bool verbose
+        );
+
+    /**
+     * @brief Compute Bayesian posterior credible intervals for fitted response values
+     */
+    posterior_summary_t compute_posterior_summary(
+        const Eigen::MatrixXd& V,
+        const vec_t& eigenvalues,
+        const vec_t& filtered_eigenvalues,
+        const vec_t& y,
+        const vec_t& y_hat,
+        double eta,
+        double credible_level,
+        int n_samples,
+        unsigned int seed,
+        bool return_samples
         );
 
     /**

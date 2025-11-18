@@ -1,293 +1,6 @@
 ##
-## Graph related functions
+## Graph utilities
 ##
-
-#' Create a 2D or 3D Embedding of a Graph
-#'
-#' This function takes an adjacency list representation of a graph and produces
-#' a 2D or 3D embedding using either the Fruchterman-Reingold or
-#' Kamada-Kawai algorithm. It can handle both weighted and unweighted graphs.
-#'
-#' @param adj.list A list representing the adjacency list of the graph.
-#' @param weights.list An optional list of numeric vectors representing the weights
-#'   of the edges. If provided, each element should correspond to the weights of
-#'   the edges in the same position in adj.list.
-#' @param invert.weights Logical, if TRUE (default), inverts the weights (1/weight)
-#'   before applying them to the Fruchterman-Reingold algorithm. Has no effect on
-#'   Kamada-Kawai algorithm or when weights are not provided.
-#' @param dim Integer, either 2 or 3, specifying the dimension of the embedding.
-#'   Default is 3.
-#' @param method Character string specifying the layout algorithm to use.
-#'   Either "fr" for Fruchterman-Reingold or "kk" for Kamada-Kawai.
-#'   Default is "fr".
-#' @param verbose Logical, if TRUE (default), print progress messages.
-#'
-#' @return A matrix representing the graph embedding, with each row
-#'   corresponding to a vertex and containing its coordinates.
-#'
-#' @details
-#' The function can handle both weighted and unweighted graphs. When weights are provided,
-#' they are interpreted differently by the two layout algorithms:
-#'
-#' - Fruchterman-Reingold (FR): Weights are interpreted as spring constants. Higher
-#'   weights mean stronger springs, pulling vertices closer together. By default,
-#'   weights are inverted (1/weight) so that higher original weights result in
-#'   greater distances between vertices, matching the intuition of weights as distances.
-#'
-#' - Kamada-Kawai (KK): Weights are interpreted as distances. Higher weights mean
-#'   greater distances between vertices.
-#'
-#' The `invert.weights` parameter allows control over this behavior for the FR algorithm.
-#' When TRUE (default), it inverts the weights for FR to match the distance interpretation.
-#' When FALSE, it uses the weights as-is, where higher weights pull vertices closer.
-#'
-#' @importFrom igraph graph_from_edgelist E layout_with_fr layout_with_kk
-#'
-#' @examples
-#' # Unweighted graph
-#' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
-#' embedding <- graph.embedding(adj.list, dim = 2, method = "fr")
-#'
-#' # Weighted graph
-#' weights.list <- list(c(0.1, 0.2), c(0.1, 0.3), c(0.2, 0.3))
-#' embedding_weighted <- graph.embedding(adj.list, weights.list, dim = 2, method = "kk")
-#'
-#' @export
-graph.embedding <- function(adj.list,
-                            weights.list = NULL,
-                            invert.weights = TRUE,
-                            dim = 3,
-                            method = c("fr", "kk"),
-                            verbose = TRUE) {
-
-    if (!requireNamespace("igraph", quietly = TRUE)) {
-        stop("Package 'igraph' is required. Please install it.")
-    }
-
-    if (!is.list(adj.list)) {
-        stop("adj.list must be a list")
-    }
-
-    if (!is.numeric(dim) || length(dim) != 1 || dim %% 1 != 0 || !(dim %in% c(2, 3))) {
-        stop("dim must be either 2 or 3")
-    }
-
-    method <- match.arg(method)
-
-    if (!is.logical(verbose)) {
-        stop("verbose must be a logical value")
-    }
-
-    # Convert integer weights to numeric if necessary
-    if (!is.null(weights.list)) {
-        if (!is.list(weights.list) || length(weights.list) != length(adj.list)) {
-            stop("weights.list must be a list with the same length as adj.list")
-        }
-        if (!all(mapply(function(a, w) length(a) == length(w), adj.list, weights.list))) {
-            stop("Each element of weights.list must have the same length as the corresponding element of adj.list")
-        }
-        # Convert to numeric (this will work for both integer and numeric inputs)
-        weights.list <- lapply(weights.list, as.numeric)
-    }
-
-    if (verbose) {
-        routine.ptm <- proc.time()
-        ptm <- proc.time()
-        cat("Converting the graph adjacency list to edge matrix ... ")
-    }
-
-    res <- convert.adjacency.to.edge.matrix(adj.list, weights.list)
-
-
-    if (verbose) {
-        elapsed.time(ptm)
-        ptm <- proc.time()
-        cat("Creating an igraph graph from the edge matrix ... ")
-    }
-
-    g <- igraph::graph_from_edgelist(res$edge.matrix, directed = FALSE)
-
-    if (!is.null(weights.list)) {
-
-        if (invert.weights) {
-            igraph::E(g)$weight = 1 / res$weights
-        } else {
-            igraph::E(g)$weight = res$weights
-        }
-    }
-
-    if (verbose) {
-        elapsed.time(ptm)
-        ptm <- proc.time()
-        cat("Creating a graph layout ... ")
-    }
-
-    graph.embedding <- switch(method,
-                              fr = igraph::layout_with_fr(g, dim = dim),
-                              kk = igraph::layout_with_kk(g, dim = dim)
-                              )
-    if (verbose) {
-        elapsed.time(ptm)
-        txt <- sprintf("Total elapsed time")
-        elapsed.time(routine.ptm, txt, with.brackets = FALSE)
-    }
-
-    return(graph.embedding)
-}
-
-
-#' @title Plot a Graph with Colored Vertices
-#' @description Creates a visualization of a graph where vertices are colored according
-#'              to a numeric function value, using base R graphics. The function displays
-#'              the graph structure with edges as lines and vertices as colored points,
-#'              with an optional color scale legend.
-#'
-#' @param embedding A numeric matrix with dimensions n x 2, where n is the number of
-#'                 vertices. Contains the 2D coordinates for each vertex, typically
-#'                 generated by a graph embedding algorithm.
-#' @param adj.list A list of length n, where each element i contains a numeric vector
-#'                of indices representing the vertices adjacent to vertex i.
-#' @param vertex.colors A numeric vector of length n containing the function values
-#'                     used to color the vertices.
-#' @param vertex.size Numeric scalar controlling the size of vertices (default: 1).
-#'                   Uses the same scale as base R's cex parameter
-#' @param edge.alpha Numeric scalar between 0 and 1 controlling edge transparency
-#'                  (default: 0.2). Higher values make edges more opaque.
-#' @param color.palette Optional vector of colors defining the color gradient for
-#'                     vertices. If NULL (default), uses a blue-white-red gradient.
-#' @param main Character string for the plot title (default: "").
-#' @param add.legend Logical indicating whether to add a color scale legend
-#'                  (default: TRUE).
-#'
-#' @return No return value; produces a plot as a side effect.
-#'
-#' @details The function creates a 2D visualization of a graph structure where:
-#'          - Edges are drawn as semi-transparent lines
-#'          - Vertices are drawn as colored points
-#'          - Colors are mapped to vertex_colors values using a continuous gradient
-#'          - The aspect ratio is maintained at 1:1
-#'          - Axes and tick marks are suppressed
-#'          An optional color scale legend can be added to interpret vertex colors.
-#'
-#' @examples
-#' \dontrun{
-#' # Basic usage with simulated data
-#' n <- 100  # number of vertices
-#' embedding <- matrix(rnorm(2*n), ncol=2)
-#' adj.list <- lapply(1:n, function(i) sample(1:n, 5))
-#' vertex.colors <- rnorm(n)
-#' plot.colored.graph(embedding, adj.list, vertex.colors)
-#'
-#' # Custom styling
-#' plot2D.colored.graph(
-#'     embedding,
-#'     adj.list,
-#'     vertex.colors,
-#'     vertex.size = 1.5,
-#'     edge.alpha = 0.3,
-#'     color.palette = colorRampPalette(c("navy", "white", "darkred"))(100),
-#'     main = "My Graph",
-#'     add.legend = TRUE
-#' )
-#' }
-#'
-#' @note The function temporarily modifies graphical parameters using par()
-#'       but restores them before exiting.
-#'
-#' @importFrom grDevices colorRampPalette rgb
-#' @importFrom graphics strwidth text
-#' @export
-plot2D.colored.graph <- function(embedding, adj.list, vertex.colors,
-                               vertex.size = 1,
-                               edge.alpha = 0.2,
-                               color.palette = NULL,
-                               main = "",
-                               add.legend = TRUE) {
-
-    # If no color palette is provided, create a default one
-    if (is.null(color.palette)) {
-        # Create a blue to red color palette
-        cols <- grDevices::colorRampPalette(c("blue", "white", "red"))(100)
-        # Scale the vertex colors to 1-100 for color mapping
-        color.indices <- round((vertex.colors - min(vertex.colors)) /
-                             (max(vertex.colors) - min(vertex.colors)) * 99 + 1)
-        point.colors <- cols[color.indices]
-    } else {
-        # Use provided color palette
-        cols <- color.palette
-        color.indices <- round((vertex.colors - min(vertex.colors)) /
-                             (max(vertex.colors) - min(vertex.colors)) * (length(cols) - 1) + 1)
-        point.colors <- cols[color.indices]
-    }
-
-    # Calculate plot margins
-    mar.right <- if(add.legend) 4 else 1
-    par(mar = c(1, 1, 2, mar.right))
-
-    # Create empty plot
-    plot(embedding[,1], embedding[,2],
-         type = "n",
-         xlab = "", ylab = "",
-         xaxt = "n", yaxt = "n",
-         main = main,
-         asp = 1)  # Keep aspect ratio 1:1
-
-    # Draw edges
-    # Convert edge alpha to hex color
-    edge.col <- grDevices::rgb(0, 0, 0, edge.alpha)
-
-    # Draw all edges
-    for(i in seq_along(adj.list)) {
-        if(length(adj.list[[i]]) > 0) {
-            segments(embedding[i,1], embedding[i,2],
-                    embedding[adj.list[[i]],1], embedding[adj.list[[i]],2],
-                    col = edge.col)
-        }
-    }
-
-    # Draw vertices
-    points(embedding[,1], embedding[,2],
-           pch = 19,
-           cex = vertex.size,
-           col = point.colors)
-
-    # Add legend if requested
-    if(add.legend) {
-        # Create legend values
-        legend.vals <- round(seq(min(vertex.colors), max(vertex.colors), length.out = 5), 2)
-        legend.cols <- cols[round(seq(1, length(cols), length.out = 5))]
-
-        # Add color scale legend
-        par(xpd = TRUE)  # Allow plotting in margins
-        legend.x <- par("usr")[2] * 1.02  # Just outside the plot
-        legend.y <- mean(par("usr")[3:4])
-
-        # Draw color bar
-        gradient.bars <- length(cols)
-        bar.height <- (par("usr")[4] - par("usr")[3]) / gradient.bars
-
-        for(i in 1:gradient.bars) {
-            rect(legend.x,
-                 par("usr")[3] + (i-1) * bar.height,
-                 legend.x + graphics::strwidth("M"),  # Width of one character
-                 par("usr")[3] + i * bar.height,
-                 col = cols[i],
-                 border = NA)
-        }
-
-        # Add text labels
-        graphics::text(legend.x + graphics::strwidth("M") * 1.5,
-             seq(par("usr")[3], par("usr")[4], length.out = 5),
-             labels = legend.vals,
-             adj = 0,
-             cex = 0.8)
-    }
-
-    # Reset par
-    par(xpd = FALSE)
-}
-
-
 
 #' Create Pruned Intersection Size List
 #'
@@ -511,43 +224,6 @@ compare.adj.lists <- function(adj.list1, adj.list2) {
       cat("\n")
       return(FALSE)
   }
-}
-
-#' Converts a graph adjacency list to an adjacency matrix
-#'
-#' This function converts a given graph adjacency list into an adjacency matrix,
-#' where each entry in the matrix indicates whether there is an edge between the corresponding nodes.
-#'
-#' @param adj.list A list representing the adjacency list of a graph. Each element of the list
-#'        is a vector of node indices that the corresponding node is connected to.
-#' @param weights.list (optional) A list of the same length as `adj.list`, where each element
-#'        is a vector of weights for the edges connecting the corresponding node to the nodes in `adj.list`.
-#'        If not provided, the adjacency matrix will be binary (1 for edges and 0 for no edges).
-#' @return A matrix representing the adjacency matrix of the graph.
-#' @examples
-#' adj.list <- list(c(2, 4), c(1, 3), c(2, 4), c(1, 3))
-#' weights.list <- list(c(2, 4), c(2, 3), c(3, 1), c(4, 1))
-#' convert.adjacency.list.to.adjacency.matrix(adj.list)
-#' convert.adjacency.list.to.adjacency.matrix(adj.list, weights.list)
-#' @export
-convert.adjacency.list.to.adjacency.matrix <- function(adj.list, weights.list = NULL) {
-
-  n <- length(adj.list)
-  adj.matrix <- matrix(0, nrow = n, ncol = n)
-
-  for (i in seq_along(adj.list)) {
-    for (j in seq_along(adj.list[[i]])) {
-      node <- adj.list[[i]][j]
-      if (!is.null(weights.list)) {
-        weight <- weights.list[[i]][j]
-        adj.matrix[i, node] <- weight
-      } else {
-        adj.matrix[i, node] <- 1
-      }
-    }
-  }
-
-  adj.matrix
 }
 
 #' Converts a graph adjacency matrix to an adjacency list
@@ -2874,4 +2550,194 @@ extract.trajectory.edge.lengths <- function(traj,
     }
 
     return(result)
+}
+
+#' Convert Adjacency List to Adjacency Matrix
+#'
+#' Converts a graph represented as an adjacency list (with optional edge
+#' weights) to an adjacency matrix representation. For undirected graphs, the
+#' function ensures the resulting matrix is symmetric.
+#'
+#' @param adj.list List of integer vectors representing the adjacency list of
+#'   the graph. Each element \code{adj.list[[i]]} contains the neighbor indices
+#'   of vertex \code{i} (1-based indexing).
+#' @param weight.list Optional list of numeric vectors containing edge weights.
+#'   Each element \code{weight.list[[i]]} contains weights corresponding to
+#'   edges in \code{adj.list[[i]]}. If \code{NULL} (default), creates a binary
+#'   adjacency matrix with 1 for edges and 0 for non-edges.
+#' @param mode Character string specifying the graph type. Options are:
+#'   \itemize{
+#'     \item \code{"undirected"}: Creates a symmetric matrix (default). For
+#'       undirected graphs, if an edge appears in both directions with different
+#'       weights, the average is used.
+#'     \item \code{"directed"}: Creates a potentially asymmetric matrix where
+#'       \code{adj.matrix[i,j]} represents the edge from vertex i to vertex j.
+#'   }
+#' @param remove.self.loops Logical indicating whether to remove self-loops
+#'   (edges from a vertex to itself) by setting diagonal entries to 0. Default
+#'   is \code{TRUE}.
+#'
+#' @return A numeric matrix of dimension \code{n x n} where \code{n} is the
+#'   number of vertices. For weighted graphs, entries contain edge weights. For
+#'   binary graphs, entries are 0 or 1. For undirected graphs, the matrix is
+#'   symmetric.
+#'
+#' @details
+#' The adjacency matrix provides a dense representation of the graph structure.
+#' For undirected graphs, the function ensures symmetry by setting both
+#' \code{adj.matrix[i,j]} and \code{adj.matrix[j,i]} when an edge exists. If
+#' the adjacency list stores each undirected edge twice (once from each
+#' endpoint) with potentially different weights, the function uses the average
+#' weight to ensure consistency.
+#'
+#' For directed graphs, the adjacency list is interpreted as storing outgoing
+#' edges, so \code{adj.list[[i]]} contains the successors of vertex i and
+#' \code{adj.matrix[i,j]} represents the edge from i to j.
+#'
+#' The function validates that all vertex indices in the adjacency list are
+#' within the valid range \code{[1, n]} where \code{n} is the number of
+#' vertices. Self-loops can be optionally removed for cleaner geometric
+#' analysis, though some applications may require their preservation.
+#'
+#' @examples
+#' ## Simple triangle graph (undirected, binary)
+#' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
+#' adj.mat <- convert.adjacency.list.to.adjacency.matrix(adj.list)
+#'
+#' ## Weighted undirected graph
+#' adj.list <- list(c(2, 4), c(1, 3), c(2, 4), c(1, 3))
+#' weight.list <- list(c(0.5, 0.8), c(0.5, 0.3), c(0.3, 0.6), c(0.8, 0.6))
+#' adj.mat.weighted <- convert.adjacency.list.to.adjacency.matrix(
+#'   adj.list, weight.list, mode = "undirected"
+#' )
+#'
+#' ## Directed graph (asymmetric matrix)
+#' adj.mat.dir <- convert.adjacency.list.to.adjacency.matrix(
+#'   adj.list, weight.list, mode = "directed"
+#' )
+#'
+#' @export
+convert.adjacency.list.to.adjacency.matrix <- function(adj.list,
+                                                       weight.list = NULL,
+                                                       mode = "undirected",
+                                                       remove.self.loops = TRUE) {
+
+  ## Input validation
+  if (!is.list(adj.list)) {
+    stop("adj.list must be a list")
+  }
+
+  n <- length(adj.list)
+
+  if (n == 0) {
+    stop("adj.list cannot be empty")
+  }
+
+  ## Validate weight.list if provided
+  if (!is.null(weight.list)) {
+    if (!is.list(weight.list)) {
+      stop("weight.list must be a list")
+    }
+
+    if (length(weight.list) != n) {
+      stop("weight.list must have the same length as adj.list")
+    }
+
+    ## Check matching lengths for each vertex
+    for (i in seq_len(n)) {
+      if (length(adj.list[[i]]) != length(weight.list[[i]])) {
+        stop(sprintf(
+          "Length mismatch at vertex %d: adj.list has %d neighbors but weight.list has %d weights",
+          i, length(adj.list[[i]]), length(weight.list[[i]])
+        ))
+      }
+    }
+  }
+
+  ## Match mode argument
+  mode <- match.arg(mode)
+
+  ## Initialize adjacency matrix
+  adj.matrix <- matrix(0, nrow = n, ncol = n)
+
+  ## For undirected graphs, track edge counts to compute averages
+  if (mode == "undirected" && !is.null(weight.list)) {
+    edge.count <- matrix(0, nrow = n, ncol = n)
+  }
+
+  ## Build adjacency matrix
+  for (i in seq_len(n)) {
+    neighbors <- adj.list[[i]]
+
+    if (length(neighbors) == 0) {
+      next
+    }
+
+    ## Validate vertex indices
+    if (any(neighbors < 1) || any(neighbors > n)) {
+      invalid.idx <- neighbors[neighbors < 1 | neighbors > n]
+      stop(sprintf(
+        "Invalid vertex indices in adj.list[[%d]]: %s (valid range is 1 to %d)",
+        i, paste(invalid.idx, collapse = ", "), n
+      ))
+    }
+
+    ## Optionally remove self-loops
+    if (remove.self.loops) {
+      keep.idx <- neighbors != i
+      neighbors <- neighbors[keep.idx]
+
+      if (!is.null(weight.list)) {
+        weight.list[[i]] <- weight.list[[i]][keep.idx]
+      }
+    }
+
+    if (length(neighbors) == 0) {
+      next
+    }
+
+    ## Set matrix entries
+    if (is.null(weight.list)) {
+      ## Binary adjacency matrix
+      adj.matrix[i, neighbors] <- 1
+
+      if (mode == "undirected") {
+        adj.matrix[neighbors, i] <- 1
+      }
+    } else {
+      ## Weighted adjacency matrix
+      weights <- weight.list[[i]]
+
+      if (mode == "directed") {
+        ## For directed graphs, simply set the entries
+        adj.matrix[i, neighbors] <- weights
+      } else {
+        ## For undirected graphs, accumulate weights and counts
+        adj.matrix[i, neighbors] <- adj.matrix[i, neighbors] + weights
+        edge.count[i, neighbors] <- edge.count[i, neighbors] + 1
+
+        ## Also set symmetric entries
+        for (j in seq_along(neighbors)) {
+          neighbor <- neighbors[j]
+          weight <- weights[j]
+          adj.matrix[neighbor, i] <- adj.matrix[neighbor, i] + weight
+          edge.count[neighbor, i] <- edge.count[neighbor, i] + 1
+        }
+      }
+    }
+  }
+
+  ## For undirected weighted graphs, compute averages
+  if (mode == "undirected" && !is.null(weight.list)) {
+    ## Avoid division by zero
+    edge.count[edge.count == 0] <- 1
+    adj.matrix <- adj.matrix / edge.count
+  }
+
+  ## Ensure diagonal is zero if self-loops were removed
+  if (remove.self.loops) {
+    diag(adj.matrix) <- 0
+  }
+
+  return(adj.matrix)
 }

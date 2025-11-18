@@ -2,6 +2,7 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <cstring>
+#include <set>
 
 // Forward declare conversion utilities from SEXP_cpp_conversion_utils.cpp
 // These should be available if that file is compiled into the package
@@ -9,7 +10,6 @@ namespace sexp_utils {
     Eigen::SparseMatrix<double> sexp_to_eigen_sparse(SEXP s_X);
     // Add other utility declarations as needed
 }
-
 
 // ================================================================
 // HELPER FUNCTIONS TO BUILD NESTED COMPONENTS
@@ -454,6 +454,50 @@ extern "C" SEXP create_gamma_selection_component(const riem_dcx_t& dcx) {
     return gamma_sel;
 }
 
+
+extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx) {
+    const int n_fields = 2;
+    SEXP spectral = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    if (!dcx.spectral_cache.is_valid) {
+        Rf_warning("Spectral cache not valid");
+        UNPROTECT(2);
+        return R_NilValue;
+    }
+
+    const size_t n_eigen = dcx.spectral_cache.eigenvalues.size();
+    const Eigen::Index n_verts = dcx.spectral_cache.eigenvectors.rows();
+
+    // 1. filtered.eigenvalues: F_η(λ) - now pre-computed
+    SET_STRING_ELT(names, idx, Rf_mkChar("filtered.eigenvalues"));
+    SEXP s_f_lambda = PROTECT(Rf_allocVector(REALSXP, n_eigen));
+
+    for (size_t i = 0; i < n_eigen; ++i) {
+        REAL(s_f_lambda)[i] = dcx.spectral_cache.filtered_eigenvalues[i];
+    }
+    SET_VECTOR_ELT(spectral, idx++, s_f_lambda);
+    UNPROTECT(1);
+
+    // 2. eigenvectors: V (unchanged)
+    SET_STRING_ELT(names, idx, Rf_mkChar("eigenvectors"));
+    SEXP s_V = PROTECT(Rf_allocMatrix(REALSXP, n_verts, n_eigen));
+    double* V_data = REAL(s_V);
+    for (size_t j = 0; j < n_eigen; ++j) {
+        for (Eigen::Index i = 0; i < n_verts; ++i) {
+            V_data[i + j * n_verts] = dcx.spectral_cache.eigenvectors(i, j);
+        }
+    }
+    SET_VECTOR_ELT(spectral, idx++, s_V);
+    UNPROTECT(1);
+
+    Rf_setAttrib(spectral, R_NamesSymbol, names);
+    UNPROTECT(2);
+    return spectral;
+}
+
+#if 0
 extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
                                           int optimal_iter,
                                           rdcx_filter_type_t filter_type) {
@@ -468,7 +512,7 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
         return R_NilValue;
     }
 
-    const size_t n_eigen = dcx.spectral_cache.eigenvalues.size();
+    const size_t n_eigen = dcx. 1spectral_cache.eigenvalues.size();
     const Eigen::Index n_verts = dcx.spectral_cache.eigenvectors.rows();
 
     // Get the optimal eta from GCV history
@@ -531,6 +575,7 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
     UNPROTECT(2);
     return spectral;
 }
+#endif
 
 /**
  * @brief Create extremality component with hop radii and neighborhood sizes
@@ -735,6 +780,128 @@ extern "C" SEXP create_extremality_component(
 }
 
 /**
+ * @brief Package posterior summary into R list structure
+ *
+ * @details
+ * Converts C++ posterior_summary_t structure into an R named list with components
+ * accessible from R code. The returned list contains credible interval bounds,
+ * posterior standard deviations, and metadata about the inference procedure.
+ *
+ * All numeric vectors are converted to R REALSXP with proper memory protection.
+ * The returned SEXP must be PROTECTed by the caller if used in further computations.
+ *
+ * @param summary C++ posterior_summary_t structure from compute_posterior_summary()
+ *
+ * @return R named list (SEXP) with components:
+ *   - lower: Numeric vector (length n) of lower credible bounds
+ *   - upper: Numeric vector (length n) of upper credible bounds
+ *   - sd: Numeric vector (length n) of posterior standard deviations
+ *   - credible.level: Scalar numeric coverage probability
+ *   - sigma: Scalar numeric estimated residual SD
+ *
+ * @note The returned SEXP is already PROTECTed internally and should be
+ *   UNPROTECTed by the caller when no longer needed.
+ */
+extern "C" SEXP create_posterior_component(const posterior_summary_t& summary) {
+    const int n = summary.lower.size();
+
+        // Determine list size based on whether samples are included
+    int n_components = summary.has_samples ? 6 : 5;
+    SEXP s_posterior = PROTECT(Rf_allocVector(VECSXP, n_components));
+    SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
+
+    // ================================================================
+    // Component 1: Lower credible bounds
+    // ================================================================
+
+    SEXP s_lower = PROTECT(Rf_allocVector(REALSXP, n));
+    double* p_lower = REAL(s_lower);
+    for (int i = 0; i < n; ++i) {
+        p_lower[i] = summary.lower[i];
+    }
+    SET_VECTOR_ELT(s_posterior, 0, s_lower);
+    SET_STRING_ELT(s_names, 0, Rf_mkChar("lower"));
+
+    // ================================================================
+    // Component 2: Upper credible bounds
+    // ================================================================
+
+    SEXP s_upper = PROTECT(Rf_allocVector(REALSXP, n));
+    double* p_upper = REAL(s_upper);
+    for (int i = 0; i < n; ++i) {
+        p_upper[i] = summary.upper[i];
+    }
+    SET_VECTOR_ELT(s_posterior, 1, s_upper);
+    SET_STRING_ELT(s_names, 1, Rf_mkChar("upper"));
+
+    // ================================================================
+    // Component 3: Posterior standard deviations
+    // ================================================================
+
+    SEXP s_sd = PROTECT(Rf_allocVector(REALSXP, n));
+    double* p_sd = REAL(s_sd);
+    for (int i = 0; i < n; ++i) {
+        p_sd[i] = summary.posterior_sd[i];
+    }
+    SET_VECTOR_ELT(s_posterior, 2, s_sd);
+    SET_STRING_ELT(s_names, 2, Rf_mkChar("sd"));
+
+    // ================================================================
+    // Component 4: Credible level
+    // ================================================================
+
+    SEXP s_level = PROTECT(Rf_allocVector(REALSXP, 1));
+    REAL(s_level)[0] = summary.credible_level;
+    SET_VECTOR_ELT(s_posterior, 3, s_level);
+    SET_STRING_ELT(s_names, 3, Rf_mkChar("credible.level"));
+
+    // ================================================================
+    // Component 5: Estimated sigma
+    // ================================================================
+
+    SEXP s_sigma = PROTECT(Rf_allocVector(REALSXP, 1));
+    REAL(s_sigma)[0] = summary.sigma_hat;
+    SET_VECTOR_ELT(s_posterior, 4, s_sigma);
+    SET_STRING_ELT(s_names, 4, Rf_mkChar("sigma"));
+
+    // ================================================================
+    // Component 6: Posterior samples (optional)
+    // ================================================================
+
+    if (summary.has_samples) {
+        const int n_samples = summary.samples.cols();
+
+        SEXP s_samples = PROTECT(Rf_allocMatrix(REALSXP, n, n_samples));
+        double* p_samples = REAL(s_samples);
+
+        // Copy column-major: R stores matrices in column-major order like Eigen
+        for (int j = 0; j < n_samples; ++j) {
+            for (int i = 0; i < n; ++i) {
+                p_samples[i + j * n] = summary.samples(i, j);
+            }
+        }
+
+        SET_VECTOR_ELT(s_posterior, 5, s_samples);
+        SET_STRING_ELT(s_names, 5, Rf_mkChar("samples"));
+
+        UNPROTECT(1);  // s_samples
+    }
+
+    // ================================================================
+    // Attach names and return
+    // ================================================================
+
+    Rf_setAttrib(s_posterior, R_NamesSymbol, s_names);
+
+    // UNPROTECT all temporary allocations (7 total)
+    // s_posterior, s_names, s_lower, s_upper, s_sd, s_level, s_sigma
+    UNPROTECT(7);
+
+    // Return the list (caller must PROTECT if storing)
+    return s_posterior;
+}
+
+/**
  * @brief R interface for kNN Riemannian density graph regression
  *
  * Constructs 1-skeleton kNN complex and iteratively refines geometry to
@@ -848,6 +1015,11 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_X,
     SEXP s_y,
     SEXP s_k,
+    SEXP s_with_posterior,
+    SEXP s_return_posterior_samples,
+    SEXP s_credible_level,
+    SEXP s_n_posterior_samples,
+    SEXP s_posterior_seed,
     SEXP s_use_counting_measure,
     SEXP s_density_normalization,
     SEXP s_t_diffusion,
@@ -1040,6 +1212,39 @@ extern "C" SEXP S_fit_rdgraph_regression(
     }
 
     const index_t k = static_cast<index_t>(k_raw);
+
+    // ==================== Posterior Inference Parameters ====================
+
+    if (!Rf_isLogical(s_with_posterior) || LENGTH(s_with_posterior) != 1) {
+        Rf_error("with_posterior must be a single logical value");
+    }
+    bool with_posterior = static_cast<bool>(LOGICAL(s_with_posterior)[0]);
+
+    if (!Rf_isLogical(s_return_posterior_samples) || LENGTH(s_return_posterior_samples) != 1) {
+        Rf_error("return_posterior_samples must be a single logical value");
+    }
+    bool return_posterior_samples = Rf_asLogical(s_return_posterior_samples);
+
+    if (!Rf_isReal(s_credible_level) || LENGTH(s_credible_level) != 1) {
+        Rf_error("credible_level must be a single numeric value");
+    }
+    double credible_level = REAL(s_credible_level)[0];
+    if (with_posterior && (credible_level <= 0.0 || credible_level >= 1.0)) {
+        Rf_error("credible_level must be in (0, 1), got %f", credible_level);
+    }
+
+    if (!Rf_isInteger(s_n_posterior_samples) || LENGTH(s_n_posterior_samples) != 1) {
+        Rf_error("n_posterior_samples must be a single integer value");
+    }
+    int n_posterior_samples = INTEGER(s_n_posterior_samples)[0];
+    if (with_posterior && n_posterior_samples < 100) {
+        Rf_error("n_posterior_samples must be at least 100, got %d", n_posterior_samples);
+    }
+
+    if (!Rf_isInteger(s_posterior_seed) || LENGTH(s_posterior_seed) != 1) {
+        Rf_error("posterior_seed must be a single integer value");
+    }
+    unsigned int posterior_seed = static_cast<unsigned int>(INTEGER(s_posterior_seed)[0]);
 
     // -------------------- use.counting.measure --------------------
 
@@ -1479,42 +1684,27 @@ extern "C" SEXP S_fit_rdgraph_regression(
         }
     }
 
-    // -------------------- Preprocess Fitted Values --------------------
-
-    // Create a copy for preprocessing (leaves y_hat_raw unchanged)
-    vec_t y_hat = y_hat_raw;
-
-    // Apply preprocessing pipeline for binary conditional expectations
-    // This handles slow diffusion convergence at isolated vertices
-    dcx.prepare_binary_cond_exp(
-        y_hat,
-        0.02,     // p_right: winsorize top 2%
-        true,     // apply_right_winsorization
-        1e-10,    // noise_scale: relative to range
-        123,      // seed: for reproducibility
-        verbose   // verbose: match user's verbosity setting
-        );
-    
-    if (verbose) {
-        Rprintf("Preprocessing complete:\n");
-        Rprintf("  Raw range: [%.6f, %.6f]\n",
-                y_hat_raw.minCoeff(), y_hat_raw.maxCoeff());
-        Rprintf("  Preprocessed range: [%.6f, %.6f]\n",
-                y_hat.minCoeff(), y_hat.maxCoeff());
-    }
-
     // ---------- Main result list ----------
 
-    int n_components = 12;
+    int n_components = 11;
     if (compute_extremality) {
         n_components++;
     }
+    if (with_posterior) {
+        n_components++;  // Add posterior component
+    }
+
+    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    if (y_binary) {
+        n_components++;  // Add posterior component
+    }
+
     SEXP result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_components));
     int component_idx = 0;
 
     // Component 1: fitted.values
-    SET_STRING_ELT(names, component_idx, Rf_mkChar("raw.fitted.values"));
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("fitted.values"));
     SEXP s_raw_fitted = PROTECT(Rf_allocVector(REALSXP, n));
     for (Eigen::Index i = 0; i < n; ++i) {
         REAL(s_raw_fitted)[i] = y_hat_raw[i];
@@ -1523,28 +1713,69 @@ extern "C" SEXP S_fit_rdgraph_regression(
     UNPROTECT(1);
 
     // Component 2: fitted.values (after preprocessing: winsorized + tie-broken)
-    SET_STRING_ELT(names, component_idx, Rf_mkChar("fitted.values"));
-    SEXP s_fitted = PROTECT(Rf_allocVector(REALSXP, n));
-    for (Eigen::Index i = 0; i < n; ++i) {
-        REAL(s_fitted)[i] = y_hat[i];
-    }
-    SET_VECTOR_ELT(result, component_idx++, s_fitted);
-    UNPROTECT(1);
+    if (y_binary) {
+        // -------------------- Preprocess Fitted Values --------------------
+        // Create a copy for preprocessing (leaves y_hat_raw unchanged)
+        vec_t y_hat = y_hat_raw;
 
-    // Component 3: residuals (computed using preprocessed fitted values)
-    SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
-    SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
-    for (Eigen::Index i = 0; i < n; ++i) {
-        double residual;
-        if (dcx.sig.y.size() == n) {
-            residual = dcx.sig.y[i] - y_hat[i];  // Use preprocessed y_hat
-        } else {
-            residual = y[i] - y_hat[i];  // Use preprocessed y_hat
+        // Apply preprocessing pipeline for binary conditional expectations
+        // This handles slow diffusion convergence at isolated vertices
+        dcx.prepare_binary_cond_exp(
+            y_hat,
+            0.02,     // p_right: winsorize top 2%
+            true,     // apply_right_winsorization
+            1e-10,    // noise_scale: relative to range
+            123,      // seed: for reproducibility
+            verbose   // verbose: match user's verbosity setting
+            );
+
+        if (verbose) {
+            Rprintf("Preprocessing complete:\n");
+            Rprintf("  Raw range: [%.6f, %.6f]\n",
+                    y_hat_raw.minCoeff(), y_hat_raw.maxCoeff());
+            Rprintf("  Preprocessed range: [%.6f, %.6f]\n",
+                    y_hat.minCoeff(), y_hat.maxCoeff());
         }
-        REAL(s_resid)[i] = residual;
+
+        SET_STRING_ELT(names, component_idx, Rf_mkChar("binary.clipped.fitted.values"));
+        SEXP s_fitted = PROTECT(Rf_allocVector(REALSXP, n));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            REAL(s_fitted)[i] = y_hat[i];
+        }
+        SET_VECTOR_ELT(result, component_idx++, s_fitted);
+        UNPROTECT(1);
+
+        // Component 3: residuals (computed using preprocessed fitted values)
+        SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
+        SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            double residual;
+            if (dcx.sig.y.size() == n) {
+                residual = dcx.sig.y[i] - y_hat[i];
+            } else {
+                residual = y[i] - y_hat[i];
+            }
+            REAL(s_resid)[i] = residual;
+        }
+        SET_VECTOR_ELT(result, component_idx++, s_resid);
+        UNPROTECT(1);
+
+    } else {
+        // Component 3: residuals (computed using preprocessed fitted values)
+        SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
+        SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            double residual;
+            if (dcx.sig.y.size() == n) {
+                residual = dcx.sig.y[i] - y_hat_raw[i];
+            } else {
+                residual = y[i] - y_hat_raw[i];
+            }
+            REAL(s_resid)[i] = residual;
+        }
+        SET_VECTOR_ELT(result, component_idx++, s_resid);
+        UNPROTECT(1);
     }
-    SET_VECTOR_ELT(result, component_idx++, s_resid);
-    UNPROTECT(1);
 
     // Component 4: optimal.iteration
     SET_STRING_ELT(names, component_idx, Rf_mkChar("optimal.iteration"));
@@ -1613,7 +1844,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     // Component 12: spectral
     SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
-    SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
+    SEXP s_spectral = PROTECT(create_spectral_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_spectral);
     UNPROTECT(1);
 
@@ -1629,6 +1860,49 @@ extern "C" SEXP S_fit_rdgraph_regression(
                                          ));
         SET_VECTOR_ELT(result, component_idx++, s_extremality);
         UNPROTECT(1);
+    }
+
+    // ================================================================
+    // POSTERIOR INFERENCE (OPTIONAL)
+    // ================================================================
+
+    if (with_posterior) {
+        // Extract necessary components from dcx
+        // Assumes dcx has public access to spectral_cache and optimal iteration results
+        const Eigen::MatrixXd& V = dcx.spectral_cache.eigenvectors;
+        const vec_t& eigenvalues = dcx.spectral_cache.eigenvalues;
+        const vec_t& filtered_eigenvalues = dcx.spectral_cache.filtered_eigenvalues;
+        double eta_opt = dcx.gcv_history.iterations[optimal_iteration].eta_optimal;
+
+        try {
+            posterior_summary_t posterior = dcx.compute_posterior_summary(
+                V,
+                eigenvalues,
+                filtered_eigenvalues,
+                y,
+                y_hat_raw,
+                eta_opt,
+                credible_level,
+                n_posterior_samples,
+                posterior_seed,
+                return_posterior_samples
+                );
+
+            // Package into SEXP and add to result list
+            SEXP s_posterior_component = PROTECT(create_posterior_component(posterior));
+
+            // Add as new field to result list
+            // Assumes result list was created earlier with space for posterior component
+            // You'll need to adjust list size and indexing accordingly
+            SET_VECTOR_ELT(result, component_idx, s_posterior_component);
+            SET_STRING_ELT(names, component_idx, Rf_mkChar("posterior"));
+
+            UNPROTECT(1);  // s_posterior_component
+
+        } catch (const std::exception& e) {
+            Rf_warning("Posterior computation failed: %s. Continuing without posterior inference.", e.what());
+            // Don't fail entire computation, just skip posterior
+        }
     }
 
     // Set names attribute

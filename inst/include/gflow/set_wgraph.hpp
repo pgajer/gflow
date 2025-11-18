@@ -1405,6 +1405,25 @@ struct set_wgraph_t {
 	// ----------------------------------------------------------------
 
 	/**
+	 * @brief Compute correlation-type co-monotonicity coefficients
+	 */
+	comono_result_t comono_cor(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		comono_type_t type = comono_type_t::DERIVATIVE
+		) const;
+
+	/**
+	 * @brief Compute thresholded proportion-of-agreements co-monotonicity coefficients
+	 */
+	comono_result_t comono_proportion(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		double tau_y = 0.0,
+		double tau_z = 0.0
+		) const;
+
+	/**
 	 * @brief Compute co-monotonicity coefficient between two functions on vertices
 	 */
 	comono_result_t comono(

@@ -5,6 +5,7 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include <numeric>    // For std::accumulate
 
 #include <R.h>
 #include <Rinternals.h>
@@ -537,5 +538,680 @@ extern "C" SEXP S_comono_matrix(
     Rf_setAttrib(r_result, R_NamesSymbol, r_names);
     UNPROTECT(2);
 
+    return r_result;
+}
+
+
+#if 0
+/**
+ * @brief Efficiently compute co-monotonicity for multiple z vectors
+ *
+ * @details
+ * This function is optimized for permutation testing. It pre-computes
+ * all y-dependent quantities once and reuses them for multiple z vectors.
+ * This is much faster than calling comono() repeatedly.
+ *
+ * @param y Vector of response values
+ * @param Z_batch Matrix where each column is a z vector to test
+ * @param type Co-monotonicity type
+ *
+ * @return Matrix where column j contains vertex coefficients for Z_batch[,j]
+ */
+Eigen::MatrixXd set_wgraph_t::comono_batch(
+    const std::vector<double>& y,
+    const Eigen::MatrixXd& Z_batch,
+    comono_type_t type = comono_type_t::UNIT
+) const {
+    const size_t n_vertices = num_vertices();
+    const size_t n_vectors = Z_batch.cols();
+
+    // Pre-compute y edge differences and weights (reused for all z)
+    std::vector<std::vector<double>> y_edge_diffs(n_vertices);
+    std::vector<std::vector<double>> edge_weights(n_vertices);
+    std::vector<std::vector<size_t>> neighbor_indices(n_vertices);
+
+    // ... [same pre-computation as in comono_matrix] ...
+
+    // Compute for each z vector
+    Eigen::MatrixXd result(n_vertices, n_vectors);
+
+    #pragma omp parallel for if(n_vectors > 10)
+    for (size_t col = 0; col < n_vectors; ++col) {
+        for (size_t v = 0; v < n_vertices; ++v) {
+            // ... [same per-vertex computation] ...
+            result(v, col) = vertex_coeff;
+        }
+    }
+
+    return result;
+}
+#endif
+
+
+/**
+ * R interface for correlation-type co-monotonicity
+ *
+ * @param s_adj_list R list of integer vectors (0-based adjacency list)
+ * @param s_weight_list R list of numeric vectors (edge weights)
+ * @param s_y R numeric vector (response values)
+ * @param s_z R numeric vector (feature values)
+ * @param s_type R string ("unit" or "derivative")
+ * @return R list with vertex_coefficients, mean, median, counts
+ */
+extern "C" SEXP S_comono_cor(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_z,
+    SEXP s_type
+) {
+    // Convert R inputs to C++ types
+    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+
+    // Convert y and z
+    double* y_ptr = REAL(s_y);
+    size_t n_y = LENGTH(s_y);
+    std::vector<double> y(y_ptr, y_ptr + n_y);
+
+    double* z_ptr = REAL(s_z);
+    size_t n_z = LENGTH(s_z);
+    std::vector<double> z(z_ptr, z_ptr + n_z);
+
+    // Parse type string
+    const char* type_str = CHAR(STRING_ELT(s_type, 0));
+    comono_type_t type;
+    if (std::string(type_str) == "unit") {
+        type = comono_type_t::UNIT;
+    } else if (std::string(type_str) == "derivative") {
+        type = comono_type_t::DERIVATIVE;
+    } else {
+        Rf_error("Unknown type '%s'. Must be 'unit' or 'derivative'", type_str);
+    }
+
+    // Build graph and compute co-monotonicity
+    set_wgraph_t graph(adj_list, weight_list);
+    comono_result_t result = graph.comono_cor(y, z, type);
+
+    // Build R return list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 5));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5));
+
+    // vertex.coefficients
+    SEXP r_coeffs = PROTECT(Rf_allocVector(REALSXP, result.vertex_coefficients.size()));
+    std::copy(result.vertex_coefficients.begin(), result.vertex_coefficients.end(), REAL(r_coeffs));
+    SET_VECTOR_ELT(r_result, 0, r_coeffs);
+    SET_STRING_ELT(r_names, 0, Rf_mkChar("vertex.coefficients"));
+
+    // mean.coefficient
+    SEXP r_mean = PROTECT(Rf_ScalarReal(result.mean_coefficient));
+    SET_VECTOR_ELT(r_result, 1, r_mean);
+    SET_STRING_ELT(r_names, 1, Rf_mkChar("mean.coefficient"));
+
+    // median.coefficient
+    SEXP r_median = PROTECT(Rf_ScalarReal(result.median_coefficient));
+    SET_VECTOR_ELT(r_result, 2, r_median);
+    SET_STRING_ELT(r_names, 2, Rf_mkChar("median.coefficient"));
+
+    // n.positive, n.negative, n.zero
+    SEXP r_counts = PROTECT(Rf_allocVector(INTSXP, 3));
+    INTEGER(r_counts)[0] = static_cast<int>(result.n_positive);
+    INTEGER(r_counts)[1] = static_cast<int>(result.n_negative);
+    INTEGER(r_counts)[2] = static_cast<int>(result.n_zero);
+    SET_VECTOR_ELT(r_result, 3, r_counts);
+    SET_STRING_ELT(r_names, 3, Rf_mkChar("counts"));
+
+    // Add count names
+    SEXP r_count_names = PROTECT(Rf_allocVector(STRSXP, 3));
+    SET_STRING_ELT(r_count_names, 0, Rf_mkChar("n.positive"));
+    SET_STRING_ELT(r_count_names, 1, Rf_mkChar("n.negative"));
+    SET_STRING_ELT(r_count_names, 2, Rf_mkChar("n.zero"));
+    Rf_setAttrib(r_counts, R_NamesSymbol, r_count_names);
+
+    // Set list names
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+
+    UNPROTECT(7);
+    return r_result;
+}
+
+/**
+ * R interface for proportion-based co-monotonicity
+ *
+ * @param s_adj_list R list of integer vectors (0-based adjacency list)
+ * @param s_weight_list R list of numeric vectors (edge weights)
+ * @param s_y R numeric vector (response values)
+ * @param s_z R numeric vector (feature values)
+ * @param s_tau_y R numeric scalar (threshold for |Delta_y|)
+ * @param s_tau_z R numeric scalar (threshold for |Delta_z|)
+ * @return R list with vertex_coefficients, mean, median, counts
+ */
+extern "C" SEXP S_comono_proportion(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_z,
+    SEXP s_tau_y,
+    SEXP s_tau_z
+) {
+    // Convert R inputs to C++ types
+    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+
+    // Convert y and z
+    double* y_ptr = REAL(s_y);
+    size_t n_y = LENGTH(s_y);
+    std::vector<double> y(y_ptr, y_ptr + n_y);
+
+    double* z_ptr = REAL(s_z);
+    size_t n_z = LENGTH(s_z);
+    std::vector<double> z(z_ptr, z_ptr + n_z);
+
+    // Extract thresholds
+    double tau_y = Rf_asReal(s_tau_y);
+    double tau_z = Rf_asReal(s_tau_z);
+
+    // Build graph and compute co-monotonicity
+    set_wgraph_t graph(adj_list, weight_list);
+    comono_result_t result = graph.comono_proportion(y, z, tau_y, tau_z);
+
+    // Build R return list (same structure as above)
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 5));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5));
+
+    SEXP r_coeffs = PROTECT(Rf_allocVector(REALSXP, result.vertex_coefficients.size()));
+    std::copy(result.vertex_coefficients.begin(), result.vertex_coefficients.end(), REAL(r_coeffs));
+    SET_VECTOR_ELT(r_result, 0, r_coeffs);
+    SET_STRING_ELT(r_names, 0, Rf_mkChar("vertex.coefficients"));
+
+    SEXP r_mean = PROTECT(Rf_ScalarReal(result.mean_coefficient));
+    SET_VECTOR_ELT(r_result, 1, r_mean);
+    SET_STRING_ELT(r_names, 1, Rf_mkChar("mean.coefficient"));
+
+    SEXP r_median = PROTECT(Rf_ScalarReal(result.median_coefficient));
+    SET_VECTOR_ELT(r_result, 2, r_median);
+    SET_STRING_ELT(r_names, 2, Rf_mkChar("median.coefficient"));
+
+    SEXP r_counts = PROTECT(Rf_allocVector(INTSXP, 3));
+    INTEGER(r_counts)[0] = static_cast<int>(result.n_positive);
+    INTEGER(r_counts)[1] = static_cast<int>(result.n_negative);
+    INTEGER(r_counts)[2] = static_cast<int>(result.n_zero);
+    SET_VECTOR_ELT(r_result, 3, r_counts);
+    SET_STRING_ELT(r_names, 3, Rf_mkChar("counts"));
+
+    SEXP r_count_names = PROTECT(Rf_allocVector(STRSXP, 3));
+    SET_STRING_ELT(r_count_names, 0, Rf_mkChar("n.positive"));
+    SET_STRING_ELT(r_count_names, 1, Rf_mkChar("n.negative"));
+    SET_STRING_ELT(r_count_names, 2, Rf_mkChar("n.zero"));
+    Rf_setAttrib(r_counts, R_NamesSymbol, r_count_names);
+
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+
+    UNPROTECT(7);
+    return r_result;
+}
+
+/**
+ * R interface for correlation-type co-monotonicity with multiple features
+ *
+ * Computes co-monotonicity between response y and each column of feature matrix Z.
+ * More efficient than calling S_comono_cor repeatedly because edge differences
+ * for y are computed only once and reused across all features.
+ *
+ * @param s_adj_list R list of integer vectors (0-based adjacency list)
+ * @param s_weight_list R list of numeric vectors (edge weights)
+ * @param s_y R numeric vector (response values, length n)
+ * @param s_Z R numeric matrix (feature values, n x m)
+ * @param s_type R string ("unit" or "derivative")
+ * @return R list with:
+ *   - column.coefficients: n x m matrix of vertex-level coefficients
+ *   - column.means: vector of length m with mean coefficient per feature
+ *   - column.medians: vector of length m with median coefficient per feature
+ *   - column.counts: m x 3 matrix with (n.positive, n.negative, n.zero) per feature
+ */
+extern "C" SEXP S_comono_cor_matrix(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_Z,
+    SEXP s_type
+) {
+    // Convert R inputs to C++ types
+    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+
+    // Convert y
+    double* y_ptr = REAL(s_y);
+    size_t n = LENGTH(s_y);
+    std::vector<double> y(y_ptr, y_ptr + n);
+
+    // Convert Z matrix
+    // R stores matrices in column-major order
+    double* Z_ptr = REAL(s_Z);
+    int* Z_dims = INTEGER(Rf_getAttrib(s_Z, R_DimSymbol));
+    size_t n_rows = Z_dims[0];
+    size_t n_cols = Z_dims[1];
+
+    if (n_rows != n) {
+        Rf_error("Number of rows in Z (%zu) must match length of y (%zu)", n_rows, n);
+    }
+
+    // Parse type string
+    const char* type_str = CHAR(STRING_ELT(s_type, 0));
+    comono_type_t type;
+    if (std::string(type_str) == "unit") {
+        type = comono_type_t::UNIT;
+    } else if (std::string(type_str) == "derivative") {
+        type = comono_type_t::DERIVATIVE;
+    } else {
+        Rf_error("Unknown type '%s'. Must be 'unit' or 'derivative'", type_str);
+    }
+
+    // Build graph
+    set_wgraph_t graph(adj_list, weight_list);
+
+    // Precompute y-dependent quantities for efficiency
+    // For each vertex, store: (weight, delta_y, delta_y^2) for each edge
+    const double MIN_DENOMINATOR = 1e-10;
+
+    struct EdgeYInfo {
+        size_t neighbor;
+        double weight;
+        double delta_y;
+        double delta_y_sq;
+    };
+
+    std::vector<std::vector<EdgeYInfo>> y_info(n);
+    std::vector<double> y_denom(n);  // sqrt(sum w (delta_y)^2) per vertex
+
+    // Precompute for all vertices
+    for (size_t v = 0; v < n; ++v) {
+        double sum_y_sq = 0.0;
+
+        for (const auto& edge_info : adj_list[v]) {
+            size_t u = edge_info;
+            double edge_length = weight_list[v][&edge_info - &adj_list[v][0]];
+
+            double delta_y = y[u] - y[v];
+
+            // Compute weight
+            double weight = 1.0;
+            if (type == comono_type_t::DERIVATIVE) {
+                if (edge_length > 1e-10) {
+                    weight = 1.0 / (edge_length * edge_length);
+                } else {
+                    continue;  // Skip degenerate edges
+                }
+            }
+
+            EdgeYInfo info;
+            info.neighbor = u;
+            info.weight = weight;
+            info.delta_y = delta_y;
+            info.delta_y_sq = weight * delta_y * delta_y;
+
+            y_info[v].push_back(info);
+            sum_y_sq += info.delta_y_sq;
+        }
+
+        y_denom[v] = std::sqrt(sum_y_sq);
+    }
+
+    // Allocate output matrix (n x m) for vertex-level coefficients
+    SEXP r_coeffs_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_rows, n_cols));
+    double* coeffs_ptr = REAL(r_coeffs_matrix);
+
+    // Allocate output vectors for summary statistics
+    SEXP r_means = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    SEXP r_medians = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    SEXP r_counts_matrix = PROTECT(Rf_allocMatrix(INTSXP, n_cols, 3));
+
+    double* means_ptr = REAL(r_means);
+    double* medians_ptr = REAL(r_medians);
+    int* counts_ptr = INTEGER(r_counts_matrix);
+
+    // Compute co-monotonicity for each feature (column of Z)
+    for (size_t j = 0; j < n_cols; ++j) {
+        // Extract column j from Z
+        std::vector<double> z(n);
+        for (size_t i = 0; i < n; ++i) {
+            z[i] = Z_ptr[i + j * n_rows];  // Column-major indexing
+        }
+
+        // Compute coefficient for each vertex
+        std::vector<double> vertex_coeffs(n);
+        size_t n_pos = 0, n_neg = 0, n_zero = 0;
+        const double epsilon = 1e-10;
+
+        for (size_t v = 0; v < n; ++v) {
+            double numerator = 0.0;
+            double sum_z_sq = 0.0;
+
+            // Use precomputed y info
+            for (const auto& info : y_info[v]) {
+                double delta_z = z[info.neighbor] - z[v];
+
+                numerator += info.weight * info.delta_y * delta_z;
+                sum_z_sq += info.weight * delta_z * delta_z;
+            }
+
+            double denom_z = std::sqrt(sum_z_sq);
+
+            // Check numerical stability
+            if (y_denom[v] > MIN_DENOMINATOR && denom_z > MIN_DENOMINATOR) {
+                vertex_coeffs[v] = numerator / (y_denom[v] * denom_z);
+
+                // Clamp to [-1, 1]
+                if (vertex_coeffs[v] > 1.0) vertex_coeffs[v] = 1.0;
+                else if (vertex_coeffs[v] < -1.0) vertex_coeffs[v] = -1.0;
+            } else {
+                vertex_coeffs[v] = 0.0;
+            }
+
+            // Store in output matrix (column-major)
+            coeffs_ptr[v + j * n_rows] = vertex_coeffs[v];
+
+            // Count signs
+            if (vertex_coeffs[v] > epsilon) ++n_pos;
+            else if (vertex_coeffs[v] < -epsilon) ++n_neg;
+            else ++n_zero;
+        }
+
+        // Compute mean
+        means_ptr[j] = std::accumulate(vertex_coeffs.begin(), vertex_coeffs.end(), 0.0) / n;
+
+        // Compute median
+        std::sort(vertex_coeffs.begin(), vertex_coeffs.end());
+        if (n % 2 == 0) {
+            medians_ptr[j] = 0.5 * (vertex_coeffs[n/2 - 1] + vertex_coeffs[n/2]);
+        } else {
+            medians_ptr[j] = vertex_coeffs[n/2];
+        }
+
+        // Store counts (row-major in counts matrix)
+        counts_ptr[j + 0 * n_cols] = static_cast<int>(n_pos);
+        counts_ptr[j + 1 * n_cols] = static_cast<int>(n_neg);
+        counts_ptr[j + 2 * n_cols] = static_cast<int>(n_zero);
+    }
+
+    // Build return list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 4));
+
+    SET_VECTOR_ELT(r_result, 0, r_coeffs_matrix);
+    SET_STRING_ELT(r_names, 0, Rf_mkChar("column.coefficients"));
+
+    SET_VECTOR_ELT(r_result, 1, r_means);
+    SET_STRING_ELT(r_names, 1, Rf_mkChar("column.means"));
+
+    SET_VECTOR_ELT(r_result, 2, r_medians);
+    SET_STRING_ELT(r_names, 2, Rf_mkChar("column.medians"));
+
+    SET_VECTOR_ELT(r_result, 3, r_counts_matrix);
+    SET_STRING_ELT(r_names, 3, Rf_mkChar("column.counts"));
+
+    // Add row/column names to counts matrix
+    SEXP r_count_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP r_count_rownames = PROTECT(Rf_allocVector(STRSXP, n_cols));
+    SEXP r_count_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+
+    // Feature names as row names (if Z has colnames)
+    SEXP Z_dimnames = Rf_getAttrib(s_Z, R_DimNamesSymbol);
+    if (!Rf_isNull(Z_dimnames) && LENGTH(Z_dimnames) >= 2) {
+        SEXP Z_colnames = VECTOR_ELT(Z_dimnames, 1);
+        if (!Rf_isNull(Z_colnames)) {
+            for (size_t j = 0; j < n_cols; ++j) {
+                SET_STRING_ELT(r_count_rownames, j, STRING_ELT(Z_colnames, j));
+            }
+        }
+    }
+
+    SET_STRING_ELT(r_count_colnames, 0, Rf_mkChar("n.positive"));
+    SET_STRING_ELT(r_count_colnames, 1, Rf_mkChar("n.negative"));
+    SET_STRING_ELT(r_count_colnames, 2, Rf_mkChar("n.zero"));
+
+    SET_VECTOR_ELT(r_count_dimnames, 0, r_count_rownames);
+    SET_VECTOR_ELT(r_count_dimnames, 1, r_count_colnames);
+    Rf_setAttrib(r_counts_matrix, R_DimNamesSymbol, r_count_dimnames);
+
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+
+    UNPROTECT(9);
+    return r_result;
+}
+
+/**
+ * R interface for proportion-based co-monotonicity with multiple features
+ *
+ * Computes threshold-filtered co-monotonicity between response y and each
+ * column of feature matrix Z. Accepts per-feature thresholds for adaptive
+ * filtering.
+ *
+ * @param s_adj_list R list of integer vectors (0-based adjacency list)
+ * @param s_weight_list R list of numeric vectors (edge weights)
+ * @param s_y R numeric vector (response values, length n)
+ * @param s_Z R numeric matrix (feature values, n x m)
+ * @param s_tau_y R numeric scalar (threshold for |Delta_y|)
+ * @param s_tau_z R numeric vector of length m (thresholds for |Delta_z| per feature)
+ *               Can also be scalar, which is replicated for all features
+ * @return R list with:
+ *   - column.coefficients: n x m matrix of vertex-level coefficients
+ *   - column.means: vector of length m with mean coefficient per feature
+ *   - column.medians: vector of length m with median coefficient per feature
+ *   - column.counts: m x 3 matrix with (n.positive, n.negative, n.zero) per feature
+ */
+extern "C" SEXP S_comono_proportion_matrix(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_Z,
+    SEXP s_tau_y,
+    SEXP s_tau_z
+) {
+    // Convert R inputs to C++ types
+    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+
+    // Convert y
+    double* y_ptr = REAL(s_y);
+    size_t n = LENGTH(s_y);
+    std::vector<double> y(y_ptr, y_ptr + n);
+
+    // Convert Z matrix
+    double* Z_ptr = REAL(s_Z);
+    int* Z_dims = INTEGER(Rf_getAttrib(s_Z, R_DimSymbol));
+    size_t n_rows = Z_dims[0];
+    size_t n_cols = Z_dims[1];
+
+    if (n_rows != n) {
+        Rf_error("Number of rows in Z (%zu) must match length of y (%zu)", n_rows, n);
+    }
+
+    // Extract tau_y (scalar)
+    double tau_y = Rf_asReal(s_tau_y);
+    if (tau_y < 0.0) {
+        Rf_error("tau_y must be non-negative");
+    }
+
+    // Extract tau_z (vector or scalar)
+    std::vector<double> tau_z_vec(n_cols);
+    size_t tau_z_len = LENGTH(s_tau_z);
+
+    if (tau_z_len == 1) {
+        // Scalar: replicate for all features
+        double tau_z_scalar = Rf_asReal(s_tau_z);
+        if (tau_z_scalar < 0.0) {
+            Rf_error("tau_z must be non-negative");
+        }
+        std::fill(tau_z_vec.begin(), tau_z_vec.end(), tau_z_scalar);
+    } else if (tau_z_len == n_cols) {
+        // Vector: one threshold per feature
+        double* tau_z_ptr = REAL(s_tau_z);
+        for (size_t j = 0; j < n_cols; ++j) {
+            if (tau_z_ptr[j] < 0.0) {
+                Rf_error("All elements of tau_z must be non-negative");
+            }
+            tau_z_vec[j] = tau_z_ptr[j];
+        }
+    } else {
+        Rf_error("tau_z must be scalar or vector of length %zu (number of features)", n_cols);
+    }
+
+    // Build graph
+    set_wgraph_t graph(adj_list, weight_list);
+
+    // Precompute y-dependent quantities
+    struct EdgeInfo {
+        size_t neighbor;
+        double abs_delta_y;
+        double delta_y;
+    };
+
+    std::vector<std::vector<EdgeInfo>> edge_info(n);
+    std::vector<size_t> n_edges(n);  // Total edges per vertex
+
+    for (size_t v = 0; v < n; ++v) {
+        n_edges[v] = adj_list[v].size();
+
+        for (size_t idx = 0; idx < adj_list[v].size(); ++idx) {
+            size_t u = adj_list[v][idx];
+            double delta_y = y[u] - y[v];
+
+            EdgeInfo info;
+            info.neighbor = u;
+            info.delta_y = delta_y;
+            info.abs_delta_y = std::abs(delta_y);
+
+            edge_info[v].push_back(info);
+        }
+    }
+
+    // Allocate output structures
+    SEXP r_coeffs_matrix = PROTECT(Rf_allocMatrix(REALSXP, n_rows, n_cols));
+    SEXP r_means = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    SEXP r_medians = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    SEXP r_counts_matrix = PROTECT(Rf_allocMatrix(INTSXP, n_cols, 3));
+
+    double* coeffs_ptr = REAL(r_coeffs_matrix);
+    double* means_ptr = REAL(r_means);
+    double* medians_ptr = REAL(r_medians);
+    int* counts_ptr = INTEGER(r_counts_matrix);
+
+    // Compute co-monotonicity for each feature
+    for (size_t j = 0; j < n_cols; ++j) {
+        // Extract column j from Z
+        std::vector<double> z(n);
+        for (size_t i = 0; i < n; ++i) {
+            z[i] = Z_ptr[i + j * n_rows];
+        }
+
+        double tau_z = tau_z_vec[j];
+
+        // Compute coefficient for each vertex
+        std::vector<double> vertex_coeffs(n);
+        size_t n_pos = 0, n_neg = 0, n_zero = 0;
+        const double epsilon = 1e-10;
+
+        for (size_t v = 0; v < n; ++v) {
+            if (n_edges[v] == 0) {
+                vertex_coeffs[v] = 0.0;
+                coeffs_ptr[v + j * n_rows] = 0.0;
+                ++n_zero;
+                continue;
+            }
+
+            int agreement_count = 0;
+            int disagreement_count = 0;
+
+            for (const auto& info : edge_info[v]) {
+                double delta_z = z[info.neighbor] - z[v];
+                double abs_delta_z = std::abs(delta_z);
+
+                // Check thresholds
+                bool y_meaningful = info.abs_delta_y > tau_y;
+                bool z_meaningful = abs_delta_z > tau_z;
+
+                if (y_meaningful && z_meaningful) {
+                    double product = info.delta_y * delta_z;
+
+                    if (product > 0.0) {
+                        ++agreement_count;
+                    } else if (product < 0.0) {
+                        ++disagreement_count;
+                    }
+                }
+            }
+
+            // Compute coefficient
+            double net = static_cast<double>(agreement_count - disagreement_count);
+            double total = static_cast<double>(n_edges[v]);
+            vertex_coeffs[v] = net / total;
+
+            // Store in matrix
+            coeffs_ptr[v + j * n_rows] = vertex_coeffs[v];
+
+            // Count signs
+            if (vertex_coeffs[v] > epsilon) ++n_pos;
+            else if (vertex_coeffs[v] < -epsilon) ++n_neg;
+            else ++n_zero;
+        }
+
+        // Compute summary statistics
+        means_ptr[j] = std::accumulate(vertex_coeffs.begin(), vertex_coeffs.end(), 0.0) / n;
+
+        std::sort(vertex_coeffs.begin(), vertex_coeffs.end());
+        if (n % 2 == 0) {
+            medians_ptr[j] = 0.5 * (vertex_coeffs[n/2 - 1] + vertex_coeffs[n/2]);
+        } else {
+            medians_ptr[j] = vertex_coeffs[n/2];
+        }
+
+        counts_ptr[j + 0 * n_cols] = static_cast<int>(n_pos);
+        counts_ptr[j + 1 * n_cols] = static_cast<int>(n_neg);
+        counts_ptr[j + 2 * n_cols] = static_cast<int>(n_zero);
+    }
+
+    // Build return list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 4));
+
+    SET_VECTOR_ELT(r_result, 0, r_coeffs_matrix);
+    SET_STRING_ELT(r_names, 0, Rf_mkChar("column.coefficients"));
+
+    SET_VECTOR_ELT(r_result, 1, r_means);
+    SET_STRING_ELT(r_names, 1, Rf_mkChar("column.means"));
+
+    SET_VECTOR_ELT(r_result, 2, r_medians);
+    SET_STRING_ELT(r_names, 2, Rf_mkChar("column.medians"));
+
+    SET_VECTOR_ELT(r_result, 3, r_counts_matrix);
+    SET_STRING_ELT(r_names, 3, Rf_mkChar("column.counts"));
+
+    // Add dimension names to counts matrix
+    SEXP r_count_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+    SEXP r_count_rownames = PROTECT(Rf_allocVector(STRSXP, n_cols));
+    SEXP r_count_colnames = PROTECT(Rf_allocVector(STRSXP, 3));
+
+    SEXP Z_dimnames = Rf_getAttrib(s_Z, R_DimNamesSymbol);
+    if (!Rf_isNull(Z_dimnames) && LENGTH(Z_dimnames) >= 2) {
+        SEXP Z_colnames = VECTOR_ELT(Z_dimnames, 1);
+        if (!Rf_isNull(Z_colnames)) {
+            for (size_t j = 0; j < n_cols; ++j) {
+                SET_STRING_ELT(r_count_rownames, j, STRING_ELT(Z_colnames, j));
+            }
+        }
+    }
+
+    SET_STRING_ELT(r_count_colnames, 0, Rf_mkChar("n.positive"));
+    SET_STRING_ELT(r_count_colnames, 1, Rf_mkChar("n.negative"));
+    SET_STRING_ELT(r_count_colnames, 2, Rf_mkChar("n.zero"));
+
+    SET_VECTOR_ELT(r_count_dimnames, 0, r_count_rownames);
+    SET_VECTOR_ELT(r_count_dimnames, 1, r_count_colnames);
+    Rf_setAttrib(r_counts_matrix, R_DimNamesSymbol, r_count_dimnames);
+
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+
+    UNPROTECT(9);
     return r_result;
 }

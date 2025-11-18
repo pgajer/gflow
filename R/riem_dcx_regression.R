@@ -17,6 +17,42 @@
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
 #'   selects k via cross-validation (NOT YET IMPLEMENTED).
 #'
+#' @param with.posterior Logical indicating whether to compute Bayesian posterior
+#'   credible intervals for fitted values. When \code{TRUE}, the function generates
+#'   Monte Carlo samples from the posterior distribution of the response surface
+#'   and returns vertex-wise credible interval bounds and posterior standard
+#'   deviations. This enables direct probabilistic statements about fitted values
+#'   rather than relying on frequentist p-values. Posterior inference adds minimal
+#'   computational overhead as it reuses the cached spectral decomposition. Default
+#'   is \code{FALSE}.
+#'
+#' @param return.posterior.samples Set to TRUE to add posterior samples to the output list.
+#'
+#' @param credible.level Numeric value in (0, 1) specifying the posterior
+#'   probability mass contained in the credible intervals. For example,
+#'   \code{credible.level = 0.95} produces 95\% credible intervals such that
+#'   P(y_lower < y_true < y_upper | data) = 0.95 at each vertex. Unlike
+#'   frequentist confidence intervals, these admit direct probability
+#'   interpretation: given the observed data and smoothness prior, there is
+#'   95\% posterior probability that the true response lies within the interval.
+#'   Typical values are 0.90, 0.95, or 0.99. Only used when
+#'   \code{with.posterior = TRUE}. Default is 0.95.
+#'
+#' @param n.posterior.samples Integer specifying the number of Monte Carlo samples
+#'   to draw from the posterior distribution for computing credible intervals and
+#'   posterior standard deviations. Larger values provide more accurate quantile
+#'   estimates but increase computation time linearly. Values between 1000-2000
+#'   typically provide good accuracy. For n vertices and m eigenpairs, generating
+#'   B samples requires O(Bnm) operations, which is negligible compared to the
+#'   initial spectral decomposition for typical B values. Only used when
+#'   \code{with.posterior = TRUE}. Must be at least 100. Default is 1000.
+#'
+#' @param posterior.seed Integer seed for the random number generator used in
+#'   posterior sampling, enabling reproducible credible intervals across runs.
+#'   If \code{NULL}, a random seed is generated automatically. Specify an integer
+#'   value to ensure identical posterior samples and credible bounds in repeated
+#'   analyses. Only used when \code{with.posterior = TRUE}. Default is \code{NULL}.
+#'
 #' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
 #'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
 #'
@@ -543,6 +579,11 @@ fit.rdgraph.regression <- function(
     X,
     y,
     k,
+    with.posterior = FALSE,
+    return.posterior.samples = FALSE,
+    credible.level = 0.95,
+    n.posterior.samples = 1000,
+    posterior.seed = NULL,
     pca.dim = 100,
     variance.explained = 0.99,
     max.iterations = 10,
@@ -557,7 +598,7 @@ fit.rdgraph.regression <- function(
     density.normalization = 0,
     density.alpha = 1.5,
     density.epsilon = 1e-10,
-    compute.extremality = TRUE,
+    compute.extremality = FALSE,
     p.threshold = 0.95,
     max.hop = 30L,
     max.ratio.threshold = 0.1,
@@ -656,6 +697,23 @@ fit.rdgraph.regression <- function(
 
     if (k >= n) {
         stop(sprintf("k must be less than n (got k=%d, n=%d)", k, n))
+    }
+
+    ## ==================== Posterior Parameters ====================
+
+    if (!is.logical(with.posterior) || length(with.posterior) != 1)
+        stop("with.posterior must be TRUE or FALSE")
+
+    if (!is.numeric(credible.level) || length(credible.level) != 1 ||
+        credible.level <= 0 || credible.level >= 1)
+        stop("credible.level must be in (0, 1)")
+
+    if (!is.numeric(n.posterior.samples) || length(n.posterior.samples) != 1 ||
+        n.posterior.samples < 100)
+        stop("n.posterior.samples must be >= 100")
+
+    if (is.null(posterior.seed)) {
+        posterior.seed <- sample.int(.Machine$integer.max, 1)
     }
 
     ## ==================== Parameter density.alpha ====================
@@ -987,6 +1045,11 @@ fit.rdgraph.regression <- function(
         X,
         as.double(y),
         as.integer(k + 1L), # this is to account for the fact that ANN library is set up to return for query point as the first elements of the list of kNN's
+        as.logical(with.posterior),
+        as.logical(return.posterior.samples),
+        as.double(credible.level),
+        as.integer(n.posterior.samples),
+        as.integer(posterior.seed),
         as.logical(use.counting.measure),
         as.double(density.normalization),
         as.double(t.diffusion),
