@@ -60,7 +60,7 @@
 #include "mean_shift_smoother_r.h"
 #include "cv_deg0.h"
 #include "riem_dcx_r.h"
-#include "comono_coefficient_r.h"
+#include "lcor_r.h"
 #include "partition_graph_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -197,6 +197,8 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_lcor", (DL_FUNC) &S_lcor, 9},
+  {"S_lcor_instrumented", (DL_FUNC) &S_lcor, 9},
   {"S_comono_cor", (DL_FUNC) &S_comono_cor, 5},
   {"S_comono_proportion", (DL_FUNC) &S_comono_proportion, 6},
   {"S_comono_cor_matrix", (DL_FUNC) &S_comono_cor_matrix, 5},

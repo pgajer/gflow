@@ -1,5 +1,5 @@
 #include "set_wgraph.hpp"
-#include "comono_coefficient.hpp"
+#include "lcor.hpp"
 #include "error_utils.h"
 #include <cmath>
 #include <algorithm>

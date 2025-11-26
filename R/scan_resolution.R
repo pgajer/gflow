@@ -107,8 +107,8 @@
 #'   a single clustering run at each resolution. Values of 50-100 are recommended
 #'   for robust results. Higher values increase computational cost linearly.
 #' @param consensus.method Character string specifying how to select the consensus
-#'   partition from multiple runs. Options are "best.modularity" (select run with
-#'   highest modularity) or "median" (select partition with highest average similarity
+#'   partition from multiple runs. Options are "max.modularity" (select run with
+#'   highest modularity) or "max.avg.similarity" (select partition with highest average similarity
 #'   to other runs). Only used when n.consensus.runs > 1. Default is "median".
 #' @param return.partitions Logical indicating whether to return the full partition
 #'   membership vectors for each resolution. Setting to TRUE enables downstream
@@ -235,7 +235,7 @@ scan.resolution <- function(adj.list,
                            resolution.seq = seq(0.1, 2.5, by = 0.1),
                            method = c("ari", "nmi", "vi"),
                            n.consensus.runs = 1,
-                           consensus.method = "median",
+                           consensus.method = "max.avg.similarity",
                            return.partitions = TRUE) {
 
     method <- match.arg(method)
@@ -314,11 +314,11 @@ scan.resolution <- function(adj.list,
             all.memberships <- lapply(runs, function(x) x$membership)
 
             ## Select consensus partition
-            if (consensus.method == "best.modularity") {
+            if (consensus.method == "max.modularity") {
                 best.idx <- which.max(all.modularities)
                 result <- runs[[best.idx]]
 
-            } else if (consensus.method == "median") {
+            } else if (consensus.method == "max.avg.similarity") {
                 ## Find partition with highest average similarity to others
                 similarity.matrix <- matrix(0, n.consensus.runs, n.consensus.runs)
                 for (ii in seq_len(n.consensus.runs - 1)) {

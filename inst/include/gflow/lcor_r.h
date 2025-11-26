@@ -1,5 +1,5 @@
-#ifndef COMONO_COEFFICIENT_R_H
-#define COMONO_COEFFICIENT_R_H
+#ifndef LCOR_R_H
+#define LCOR_R_H
 
 #include <R.h>
 #include <Rinternals.h>
@@ -56,8 +56,32 @@ extern "C" {
 		SEXP s_tau_z
 		);
 
+	SEXP S_lcor_instrumented(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_z,
+		SEXP s_type,
+		SEXP s_y_diff_type,
+		SEXP s_z_diff_type,
+		SEXP s_epsilon,
+		SEXP s_winsorize_quantile
+		);
+
+	SEXP S_lcor(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_z,
+		SEXP s_type,
+		SEXP s_y_diff_type,
+		SEXP s_z_diff_type,
+		SEXP s_epsilon,
+		SEXP s_winsorize_quantile
+		);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif // COMONO_COEFFICIENT_R_H
+#endif // LCOR_R_H
