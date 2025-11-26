@@ -608,3 +608,222 @@ extern "C" SEXP S_lcor(
 
     return r_vertex_coeffs;
 }
+
+/**
+ * @brief SEXP interface for computing local correlation between a vector and matrix columns
+ *
+ * @param s_adj_list R list of integer vectors (0-based adjacency structure)
+ * @param s_weight_list R list of numeric vectors (edge weights/lengths)
+ * @param s_y R numeric vector of response function values
+ * @param s_Z R numeric matrix of feature function values
+ * @param s_type R character: "unit", "derivative", or "sign"
+ * @param s_y_diff_type R character: "difference" or "logratio"
+ * @param s_z_diff_type R character: "difference" or "logratio"
+ * @param s_epsilon R numeric scalar: pseudocount (0 = adaptive)
+ * @param s_winsorize_quantile R numeric scalar: winsorization quantile (0 = none)
+ * @return R list with column.coefficients, mean.coefficients, etc.
+ */
+extern "C" SEXP S_lcor_vector_matrix(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_Z,
+    SEXP s_type,
+    SEXP s_y_diff_type,
+    SEXP s_z_diff_type,
+    SEXP s_epsilon,
+    SEXP s_winsorize_quantile
+) {
+    // ---- Input validation and conversion ----
+
+    std::vector<std::vector<int>> adj_list = convert_adj_list_from_R(s_adj_list);
+    std::vector<std::vector<double>> weight_list = convert_weight_list_from_R(s_weight_list);
+
+    // Convert y vector
+    if (!Rf_isReal(s_y)) {
+        Rf_error("s_y must be a numeric vector");
+    }
+    double* y_ptr = REAL(s_y);
+    size_t n_y = LENGTH(s_y);
+    std::vector<double> y(y_ptr, y_ptr + n_y);
+
+    // Convert Z matrix
+    if (!Rf_isMatrix(s_Z) || !Rf_isReal(s_Z)) {
+        Rf_error("s_Z must be a numeric matrix");
+    }
+
+    int* dims = INTEGER(Rf_getAttrib(s_Z, R_DimSymbol));
+    int n_rows = dims[0];
+    int n_cols = dims[1];
+
+    double* Z_ptr = REAL(s_Z);
+    Eigen::Map<Eigen::MatrixXd> Z(Z_ptr, n_rows, n_cols);
+
+    // Validate dimensions
+    size_t n_vertices = adj_list.size();
+    if (n_y != n_vertices) {
+        Rf_error("Length of y (%d) does not match number of vertices (%d)",
+                 static_cast<int>(n_y), static_cast<int>(n_vertices));
+    }
+    if (static_cast<size_t>(n_rows) != n_vertices) {
+        Rf_error("Number of rows in Z (%d) does not match number of vertices (%d)",
+                 n_rows, static_cast<int>(n_vertices));
+    }
+
+    // Convert type string
+    if (!Rf_isString(s_type) || LENGTH(s_type) != 1) {
+        Rf_error("s_type must be a single character string");
+    }
+    const char* type_cstr = CHAR(STRING_ELT(s_type, 0));
+    std::string type_str(type_cstr);
+
+    lcor_type_t lcor_type;
+    if (type_str == "unit") {
+        lcor_type = lcor_type_t::UNIT;
+    } else if (type_str == "derivative") {
+        lcor_type = lcor_type_t::DERIVATIVE;
+    } else if (type_str == "sign") {
+        lcor_type = lcor_type_t::SIGN;
+    } else {
+        Rf_error("Invalid type '%s'. Must be 'unit', 'derivative', or 'sign'",
+                 type_cstr);
+    }
+
+    // Convert y_diff_type string
+    if (!Rf_isString(s_y_diff_type) || LENGTH(s_y_diff_type) != 1) {
+        Rf_error("s_y_diff_type must be a single character string");
+    }
+    const char* y_diff_type_cstr = CHAR(STRING_ELT(s_y_diff_type, 0));
+    std::string y_diff_type_str(y_diff_type_cstr);
+
+    edge_diff_type_t y_diff_type;
+    if (y_diff_type_str == "difference") {
+        y_diff_type = edge_diff_type_t::DIFFERENCE;
+    } else if (y_diff_type_str == "logratio") {
+        y_diff_type = edge_diff_type_t::LOGRATIO;
+    } else {
+        Rf_error("Invalid y_diff_type '%s'. Must be 'difference' or 'logratio'",
+                 y_diff_type_cstr);
+    }
+
+    // Convert z_diff_type string
+    if (!Rf_isString(s_z_diff_type) || LENGTH(s_z_diff_type) != 1) {
+        Rf_error("s_z_diff_type must be a single character string");
+    }
+    const char* z_diff_type_cstr = CHAR(STRING_ELT(s_z_diff_type, 0));
+    std::string z_diff_type_str(z_diff_type_cstr);
+
+    edge_diff_type_t z_diff_type;
+    if (z_diff_type_str == "difference") {
+        z_diff_type = edge_diff_type_t::DIFFERENCE;
+    } else if (z_diff_type_str == "logratio") {
+        z_diff_type = edge_diff_type_t::LOGRATIO;
+    } else {
+        Rf_error("Invalid z_diff_type '%s'. Must be 'difference' or 'logratio'",
+                 z_diff_type_cstr);
+    }
+
+    // Convert epsilon
+    if (!Rf_isReal(s_epsilon) || LENGTH(s_epsilon) != 1) {
+        Rf_error("s_epsilon must be a single numeric value");
+    }
+    double epsilon = REAL(s_epsilon)[0];
+
+    // Convert winsorize_quantile
+    if (!Rf_isReal(s_winsorize_quantile) || LENGTH(s_winsorize_quantile) != 1) {
+        Rf_error("s_winsorize_quantile must be a single numeric value");
+    }
+    double winsorize_quantile = REAL(s_winsorize_quantile)[0];
+
+    // ---- Build graph and compute ----
+    set_wgraph_t graph(adj_list, weight_list);
+
+    lcor_vector_matrix_result_t result = graph.lcor_vector_matrix(
+        y, Z, lcor_type, y_diff_type, z_diff_type, epsilon, winsorize_quantile
+    );
+
+    // ---- Build R return object ----
+
+    const int n_components = 8;
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_components));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_components));
+
+    int idx = 0;
+
+    // column.coefficients (list of vectors)
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("column.coefficients"));
+    SEXP r_col_coeffs = PROTECT(Rf_allocVector(VECSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        SEXP r_col = PROTECT(Rf_allocVector(REALSXP, n_vertices));
+        double* col_ptr = REAL(r_col);
+        for (size_t i = 0; i < n_vertices; ++i) {
+            col_ptr[i] = result.column_coefficients[col][i];
+        }
+        SET_VECTOR_ELT(r_col_coeffs, col, r_col);
+        UNPROTECT(1);
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_col_coeffs);
+    UNPROTECT(1);
+
+    // mean.coefficients
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("mean.coefficients"));
+    SEXP r_means = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        REAL(r_means)[col] = result.mean_coefficients[col];
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_means);
+    UNPROTECT(1);
+
+    // median.coefficients
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("median.coefficients"));
+    SEXP r_medians = PROTECT(Rf_allocVector(REALSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        REAL(r_medians)[col] = result.median_coefficients[col];
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_medians);
+    UNPROTECT(1);
+
+    // n.positive
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.positive"));
+    SEXP r_n_positive = PROTECT(Rf_allocVector(INTSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        INTEGER(r_n_positive)[col] = static_cast<int>(result.n_positive[col]);
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_n_positive);
+    UNPROTECT(1);
+
+    // n.negative
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.negative"));
+    SEXP r_n_negative = PROTECT(Rf_allocVector(INTSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        INTEGER(r_n_negative)[col] = static_cast<int>(result.n_negative[col]);
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_n_negative);
+    UNPROTECT(1);
+
+    // n.zero
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.zero"));
+    SEXP r_n_zero = PROTECT(Rf_allocVector(INTSXP, n_cols));
+    for (int col = 0; col < n_cols; ++col) {
+        INTEGER(r_n_zero)[col] = static_cast<int>(result.n_zero[col]);
+    }
+    SET_VECTOR_ELT(r_result, idx++, r_n_zero);
+    UNPROTECT(1);
+
+    // y.lower
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("y.lower"));
+    SEXP r_y_lower = PROTECT(Rf_ScalarReal(result.y_lower));
+    SET_VECTOR_ELT(r_result, idx++, r_y_lower);
+    UNPROTECT(1);
+
+    // y.upper
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("y.upper"));
+    SEXP r_y_upper = PROTECT(Rf_ScalarReal(result.y_upper));
+    SET_VECTOR_ELT(r_result, idx++, r_y_upper);
+    UNPROTECT(1);
+
+    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+    UNPROTECT(2);  // r_result, r_names
+
+    return r_result;
+}

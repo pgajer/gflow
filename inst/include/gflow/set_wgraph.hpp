@@ -1469,6 +1469,19 @@ struct set_wgraph_t {
 		) const;
 
 	/**
+     * @brief Compute local correlation between a vector y and each column of matrix Z
+     */
+    lcor_vector_matrix_result_t lcor_vector_matrix(
+        const std::vector<double>& y,
+        const Eigen::MatrixXd& Z,
+        lcor_type_t weight_type,
+        edge_diff_type_t y_diff_type,
+        edge_diff_type_t z_diff_type,
+        double epsilon,
+        double winsorize_quantile
+		) const;
+
+	/**
 	 * @brief Compute correlation-type co-monotonicity coefficients
 	 */
 	comono_result_t comono_cor(

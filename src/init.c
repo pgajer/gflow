@@ -199,6 +199,7 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 static const R_CallMethodDef CallMethods[] = {
   {"S_lcor", (DL_FUNC) &S_lcor, 9},
   {"S_lcor_instrumented", (DL_FUNC) &S_lcor, 9},
+  {"S_lcor_vector_matrix", (DL_FUNC) &S_lcor_vector_matrix, 9},
   {"S_comono_cor", (DL_FUNC) &S_comono_cor, 5},
   {"S_comono_proportion", (DL_FUNC) &S_comono_proportion, 6},
   {"S_comono_cor_matrix", (DL_FUNC) &S_comono_cor_matrix, 5},

@@ -80,6 +80,18 @@ extern "C" {
 		SEXP s_winsorize_quantile
 		);
 
+	SEXP S_lcor_vector_matrix(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_Z,
+		SEXP s_type,
+		SEXP s_y_diff_type,
+		SEXP s_z_diff_type,
+		SEXP s_epsilon,
+		SEXP s_winsorize_quantile
+		);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,114 +1,384 @@
-#' Local Correlation Coefficients with Flexible Edge Difference Types
+
+#' Local Correlation Between a Vector and Matrix Columns
 #'
 #' Compute vertex-level correlation coefficients measuring the alignment of
-#' directional changes between two functions on a graph, with support for both
-#' continuous (standard differences) and compositional (log-ratios) data.
+#' directional changes between a response vector y and each column of a
+#' feature matrix Z on a graph.
 #'
 #' @param adj.list List of integer vectors containing 1-based vertex indices.
 #'   Element i contains the neighbors of vertex i.
 #' @param weight.list List of numeric vectors containing edge weights.
 #'   Must have same structure as adj.list.
 #' @param y Numeric vector of response function values (length = number of vertices).
-#' @param z Numeric vector of feature function values (length = number of vertices).
+#' @param Z Numeric matrix or data frame of feature function values.
+#'   Number of rows must equal the number of vertices.
 #' @param type Character scalar specifying weighting scheme:
-#'   \itemize{
-#'     \item "unit": Equal weights (w_e = 1)
-#'     \item "derivative": Geometric weights (w_e = 1/length^2)
-#'     \item "sign": Sign-based (typically not used with correlation)
+#'   "unit", "derivative", or "sign".
+#' @param y.diff.type Character scalar specifying edge difference type for y:
+#'   "difference" or "logratio".
+#' @param z.diff.type Character scalar specifying edge difference type for Z columns.
+#' @param epsilon Numeric scalar for pseudocount in log-ratios (0 = adaptive).
+#' @param winsorize.quantile Numeric scalar for winsorization (0 = none).
+#'
+#' @return A list with class "lcor_vector_matrix_result" containing:
+#'   column.coefficients, mean.coefficients, median.coefficients,
+#'   n.positive, n.negative, n.zero, y.lower, y.upper
+#'
+#' @export
+lcor.vector.matrix <- function(adj.list,
+                               weight.list,
+                               y,
+                               Z,
+                               type = c("derivative", "unit", "sign"),
+                               y.diff.type = c("difference", "logratio"),
+                               z.diff.type = c("difference", "logratio"),
+                               epsilon = 0,
+                               winsorize.quantile = 0) {
+
+    ## Match arguments
+    type <- match.arg(type)
+    y.diff.type <- match.arg(y.diff.type)
+    z.diff.type <- match.arg(z.diff.type)
+
+    ## Input validation
+    if (!is.list(adj.list)) stop("adj.list must be a list")
+    if (!is.list(weight.list)) stop("weight.list must be a list")
+    if (!is.numeric(y)) stop("y must be a numeric vector")
+
+    if (is.data.frame(Z)) Z <- as.matrix(Z)
+    if (!is.matrix(Z) || !is.numeric(Z)) stop("Z must be a numeric matrix")
+
+    if (!is.numeric(epsilon) || length(epsilon) != 1)
+        stop("epsilon must be a single numeric value")
+    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1)
+        stop("winsorize.quantile must be a single numeric value")
+
+    n.vertices <- length(adj.list)
+
+    if (length(y) != n.vertices)
+        stop(sprintf("Length of y (%d) must equal number of vertices (%d)",
+                     length(y), n.vertices))
+    if (nrow(Z) != n.vertices)
+        stop(sprintf("nrow(Z) (%d) must equal number of vertices (%d)",
+                     nrow(Z), n.vertices))
+    if (length(weight.list) != n.vertices)
+        stop(sprintf("Length of weight.list (%d) must equal number of vertices (%d)",
+                     length(weight.list), n.vertices))
+
+    ## Store column names
+    z.col.names <- colnames(Z)
+    if (is.null(z.col.names)) z.col.names <- paste0("Z", seq_len(ncol(Z)))
+
+    ## Convert to 0-based indexing
+    adj.list.0 <- lapply(adj.list, function(x) as.integer(x - 1))
+
+    ## Call C++ function
+    result <- .Call(
+        "S_lcor_vector_matrix",
+        adj.list.0, weight.list,
+        as.numeric(y), Z,
+        as.character(type),
+        as.character(y.diff.type),
+        as.character(z.diff.type),
+        as.numeric(epsilon),
+        as.numeric(winsorize.quantile),
+        PACKAGE = "gflow"
+    )
+
+    ## Add names
+    names(result$column.coefficients) <- z.col.names
+    names(result$mean.coefficients) <- z.col.names
+    names(result$median.coefficients) <- z.col.names
+    names(result$n.positive) <- z.col.names
+    names(result$n.negative) <- z.col.names
+    names(result$n.zero) <- z.col.names
+
+    ## Add metadata
+    result$type <- type
+    result$y.diff.type <- y.diff.type
+    result$z.diff.type <- z.diff.type
+    result$epsilon <- epsilon
+    result$winsorize.quantile <- winsorize.quantile
+    result$n.vertices <- n.vertices
+    result$n.columns <- ncol(Z)
+
+    class(result) <- c("lcor_vector_matrix_result", "list")
+    return(result)
+}
+
+#' @export
+print.lcor_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...) {
+    cat("Local Correlation Vector-Matrix Result\n")
+    cat("=======================================\n\n")
+    cat("Parameters:\n")
+    cat("  Weighting type:", x$type, "\n")
+    cat("  Y difference type:", x$y.diff.type, "\n")
+    cat("  Z difference type:", x$z.diff.type, "\n")
+    cat("  Vertices:", x$n.vertices, ", Columns:", x$n.columns, "\n\n")
+
+    n.show <- min(x$n.columns, max.show)
+    cat("Mean coefficients (first", n.show, "columns):\n")
+    print(round(x$mean.coefficients[seq_len(n.show)], digits))
+
+    if (x$n.columns > max.show)
+        cat("  ... and", x$n.columns - max.show, "more columns\n")
+
+    invisible(x)
+}
+
+#' @export
+summary.lcor_vector_matrix_result <- function(object, ...) {
+    cat("Local Correlation Vector-Matrix Summary\n")
+    cat("========================================\n\n")
+    cat("Mean coefficients:\n")
+    print(summary(object$mean.coefficients))
+    cat("\nTop 5 columns by |mean|:\n")
+    if (object$n.columns > 0) {
+        top.idx <- order(abs(object$mean.coefficients), decreasing = TRUE)[
+            seq_len(min(5, object$n.columns))]
+        print(data.frame(
+            Column = names(object$mean.coefficients)[top.idx],
+            Mean = round(object$mean.coefficients[top.idx], 4),
+            Median = round(object$median.coefficients[top.idx], 4)
+        ), row.names = FALSE)
+    }
+    invisible(object)
+}
+
+#' @export
+as.matrix.lcor_vector_matrix_result <- function(x, ...) {
+    coef.mat <- do.call(cbind, x$column.coefficients)
+    colnames(coef.mat) <- names(x$column.coefficients)
+    return(coef.mat)
+}
+
+
+#' Local Correlation Coefficients on Graphs
+#'
+#' Compute vertex-level correlation coefficients measuring the alignment of
+#' directional changes between functions defined on graph vertices. This function
+#' provides a unified interface supporting vector-vector, vector-matrix, and
+#' matrix-matrix computations with automatic dispatch based on input types.
+#'
+#' @param adj.list List of integer vectors containing 1-based vertex indices.
+#'   Element i contains the neighbors of vertex i.
+#' @param weight.list List of numeric vectors containing edge weights (lengths).
+#'   Must have same structure as adj.list.
+#' @param y Numeric vector, matrix, or data frame of function values.
+#'   For vectors, length must equal the number of vertices.
+#'   For matrices/data frames, number of rows must equal the number of vertices.
+#' @param z Numeric vector, matrix, or data frame of function values.
+#'   Dimension requirements match those for y.
+#' @param type Character scalar specifying the weighting scheme:
+#'   \describe{
+#'     \item{"derivative"}{Geometric weights (w_e = 1/length^2). Normalizes by
+#'       edge length squared, making the measure analogous to comparing derivatives.
+#'       Appropriate when functions represent continuous quantities sampled at
+#'       irregular spatial positions. This is the default.}
+#'     \item{"unit"}{Equal weights (w_e = 1). Treats all edges equally regardless
+#'       of length. Appropriate when edge lengths are comparable or when counting
+#'       directional agreements without geometric normalization.}
+#'     \item{"sign"}{Sign-based weighting. Uses only the sign of edge products,
+#'       providing robustness to outliers at the cost of magnitude information.}
 #'   }
 #' @param y.diff.type Character scalar specifying edge difference type for y:
-#'   \itemize{
-#'     \item "difference": Standard differences (continuous data)
-#'     \item "logratio": Log-ratios (compositional data)
+#'   \describe{
+#'     \item{"difference"}{Standard differences: Delta_e f = f(u) - f(v).
+#'       Appropriate for continuous data in Euclidean space.}
+#'     \item{"logratio"}{Log-ratios: Delta_e f = log((f(u) + epsilon) / (f(v) + epsilon)).
+#'       Appropriate for compositional data (relative abundances, proportions).
+#'       The log transformation maps multiplicative changes to an additive scale,
+#'       corresponding to the Aitchison distance on the simplex.}
 #'   }
 #' @param z.diff.type Character scalar specifying edge difference type for z.
 #'   Same options as y.diff.type.
-#' @param epsilon Numeric scalar for pseudocount in log-ratios.
-#'   If 0 (default), computed adaptively as 1e-6 * min(non-zero values).
-#' @param winsorize.quantile Numeric scalar for winsorization.
-#'   If 0 (default), no winsorization. If > 0 (e.g., 0.05), clips edge
-#'   differences to [q, 1-q] percentiles for robustness.
+#' @param epsilon Numeric scalar for pseudocount in log-ratio transformations.
+#'   If 0 (default), computed adaptively as 1e-6 times the minimum non-zero value.
+#'   Only used when the corresponding diff.type is "logratio".
+#' @param winsorize.quantile Numeric scalar for winsorization of edge differences.
+#'   If 0 (default), no winsorization is applied.
+#'   If positive (e.g., 0.025), clips edge differences to the [q, 1-q] percentile
+#'   range for robustness against outliers.
+#' @param instrumented Logical scalar. If TRUE and both y and z are vectors,
+#'   returns additional diagnostic information including edge-level differences
+#'   and weights. Ignored for matrix inputs. Default is FALSE.
+#' @param mc.cores Integer scalar specifying the number of cores for parallel
+#'   computation in the matrix-matrix case. Default is 1 (sequential).
+#'   Note that parallel::mclapply is not available on Windows.
 #'
-#' @return A list with components:
+#' @return The return type depends on the input types:
+#'
+#'   \strong{Vector-vector (y and z both vectors):}
+#'   A list with class "lcor_result" containing:
 #'   \describe{
-#'     \item{vertex.coefficients}{Numeric vector of correlation coefficients at each vertex}
-#'     \item{vertex.delta.y}{List of numeric vectors, edge differences for y at each vertex}
-#'     \item{vertex.delta.z}{List of numeric vectors, edge differences for z at each vertex}
-#'     \item{vertex.weights}{List of numeric vectors, edge weights at each vertex}
-#'     \item{all.delta.y}{Numeric vector of all y edge differences (pre-winsorization)}
-#'     \item{all.delta.z}{Numeric vector of all z edge differences (pre-winsorization)}
-#'     \item{y.lower}{Lower winsorization bound for y (-Inf if none)}
-#'     \item{y.upper}{Upper winsorization bound for y (+Inf if none)}
-#'     \item{z.lower}{Lower winsorization bound for z (-Inf if none)}
-#'     \item{z.upper}{Upper winsorization bound for z (+Inf if none)}
+#'     \item{vertex.coefficients}{Numeric vector of correlation coefficients
+#'       at each vertex, values in [-1, 1].}
+#'   }
+#'   If instrumented = TRUE, additionally contains:
+#'   \describe{
+#'     \item{vertex.delta.y}{List of edge differences for y at each vertex.}
+#'     \item{vertex.delta.z}{List of edge differences for z at each vertex.}
+#'     \item{vertex.weights}{List of edge weights at each vertex.}
+#'     \item{all.delta.y}{All y edge differences (pre-winsorization).}
+#'     \item{all.delta.z}{All z edge differences (pre-winsorization).}
+#'     \item{y.lower, y.upper}{Winsorization bounds for y.}
+#'     \item{z.lower, z.upper}{Winsorization bounds for z.}
+#'   }
+#'
+#'   \strong{Vector-matrix (y vector, z matrix) or matrix-vector (y matrix, z vector):}
+#'   A list with class "lcor_vector_matrix_result" containing:
+#'   \describe{
+#'     \item{column.coefficients}{List of numeric vectors, one per column of the
+#'       matrix input. Each vector contains vertex-wise coefficients.}
+#'     \item{mean.coefficients}{Numeric vector of mean coefficients per column.}
+#'     \item{median.coefficients}{Numeric vector of median coefficients per column.}
+#'     \item{n.positive}{Integer vector of positive coefficient counts per column.}
+#'     \item{n.negative}{Integer vector of negative coefficient counts per column.}
+#'     \item{n.zero}{Integer vector of zero coefficient counts per column.}
+#'     \item{y.lower, y.upper}{Winsorization bounds for the vector input.}
+#'   }
+#'   For matrix-vector input, the attribute "transposed" is set to TRUE to indicate
+#'   that roles were swapped internally.
+#'
+#'   \strong{Matrix-matrix (y and z both matrices):}
+#'   A list with class "lcor_matrix_matrix_result" containing:
+#'   \describe{
+#'     \item{pair.coefficients}{List of numeric vectors, one per column pair.
+#'       Each vector contains vertex-wise coefficients.}
+#'     \item{mean.coefficients}{Numeric vector of mean coefficients per pair.}
+#'     \item{pair.names}{Character vector of pair names in "col_y:col_z" format.}
+#'     \item{pair.indices}{Two-column integer matrix of (i, j) pair indices.}
+#'     \item{symmetric}{Logical indicating whether y and z are identical
+#'       (only upper triangular pairs computed).}
 #'   }
 #'
 #' @details
 #' The local correlation coefficient at vertex v measures the alignment of
 #' directional changes in y and z within v's neighborhood:
 #'
-#' \deqn{lcor(y,z)(v) = \frac{\sum w_e \Delta_e y \cdot \Delta_e z}
-#'                           {\sqrt{\sum w_e (\Delta_e y)^2} \sqrt{\sum w_e (\Delta_e z)^2}}}
+#' \deqn{lcor(y,z)(v) = \frac{\sum_e w_e \Delta_e y \cdot \Delta_e z}
+#'                           {\sqrt{\sum_e w_e (\Delta_e y)^2}
+#'                            \sqrt{\sum_e w_e (\Delta_e z)^2}}}
 #'
-#' The key innovation is flexible edge difference types:
-#' \itemize{
-#'   \item Standard differences: \eqn{\Delta_e f = f(u) - f(v)}
-#'   \item Log-ratios: \eqn{\Delta_e f = \log((f(u) + \epsilon) / (f(v) + \epsilon))}
-#' }
+#' where the sum is over edges e incident to vertex v, and Delta_e f denotes the
+#' edge difference (either standard or log-ratio). This correlation-style
+#' normalization makes the coefficient scale-invariant and interpretable as the
+#' cosine of the angle between gradient vectors in the appropriate geometry.
 #'
-#' This enables appropriate treatment of different data types:
-#' \itemize{
-#'   \item Continuous vs. continuous: Use "difference" for both
-#'   \item Continuous vs. compositional: Use "difference" for continuous, "logratio" for compositional
-#'   \item Compositional vs. compositional: Use "logratio" for both
-#' }
+#' @section Dispatch Behavior:
 #'
-#' Log-ratios are appropriate for compositional data (relative abundances,
-#' proportions) because they respect the simplex geometry via the Aitchison
-#' distance. The correlation of log-ratio gradients measures directional
-#' alignment in the natural geometry for compositional data.
+#' The function automatically dispatches to specialized implementations based on
+#' input types:
+#'
+#' \strong{Case (a) Vector-Vector:} Computes a single local correlation between
+#' two functions. This is the fundamental operation underlying all other cases.
+#'
+#' \strong{Case (b) Vector-Matrix:} Efficiently computes correlations between one
+#' vector y and each column of matrix Z. The implementation pre-computes y-dependent
+#' quantities once and reuses them across columns, providing significant speedup
+#' over repeated vector-vector calls.
+#'
+#' \strong{Case (c) Matrix-Vector:} Equivalent to case (b) with roles swapped.
+#' The function internally calls the vector-matrix implementation with y and z
+#' exchanged and diff.types appropriately swapped.
+#'
+#' \strong{Case (d) Matrix-Matrix:} Computes correlations between all pairs of
+#' columns from y and z. When y and z are identical (checked via identical()),
+#' only upper triangular pairs are computed to avoid redundancy. Parallel
+#' computation via mc.cores can accelerate this case substantially.
+#'
+#' @section Edge Difference Types:
+#'
+#' The flexibility to specify different edge difference types enables appropriate
+#' treatment of mixed data:
+#'
+#' \strong{Continuous vs. compositional:} Use "difference" for y (e.g., clinical
+#' severity score) and "logratio" for z (e.g., bacterial relative abundances).
+#'
+#' \strong{Compositional vs. compositional:} Use "logratio" for both when
+#' analyzing co-variation of relative abundances in microbiome data.
+#'
+#' \strong{Continuous vs. continuous:} Use "difference" for both when analyzing
+#' standard numeric measurements.
+#'
+#' @section Geometric Interpretation:
+#'
+#' With derivative weighting, the local correlation coefficient converges to
+#' cos(theta) where theta is the angle between gradient vectors (or their
+#' log-ratio analogs for compositional data). Values near +1 indicate parallel
+#' gradients (functions increase together), values near -1 indicate anti-parallel
+#' gradients (one increases while the other decreases), and values near 0
+#' indicate orthogonal gradients (no directional relationship).
 #'
 #' @examples
 #' \dontrun{
-#' # Continuous response vs. compositional feature
-#' library(gflow)
 #'
-#' # Build graph (example: 3-vertex triangle)
-#' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
-#' weight.list <- list(c(1, 1), c(1, 1), c(1, 1))
+#' # Build a simple graph (triangle)
+#' adj.list <- list(c(2L, 3L), c(1L, 3L), c(1L, 2L))
+#' weight.list <- list(c(1.0, 1.0), c(1.0, 1.0), c(1.0, 1.0))
 #'
-#' # Data
-#' severity <- c(0.1, 0.5, 0.9)      # Continuous (disease severity)
-#' abundance <- c(0.01, 0.10, 0.50)  # Compositional (bacterial abundance)
-#'
-#' # Compute local correlation
-#' result <- lcor(
-#'   adj.list, weight.list,
-#'   severity, abundance,
-#'   type = "derivative",
-#'   y.diff.type = "difference",   # Continuous
-#'   z.diff.type = "logratio",     # Compositional
-#'   epsilon = 0,                   # Adaptive
-#'   winsorize.quantile = 0         # No winsorization
-#' )
-#'
-#' # Examine results
+#' # Case (a): Vector-vector
+#' y <- c(1.0, 2.0, 3.0)
+#' z <- c(2.0, 4.0, 5.0)
+#' result <- lcor(adj.list, weight.list, y, z, type = "unit")
 #' print(result$vertex.coefficients)
-#' hist(result$all.delta.z, main = "Distribution of log-ratios")
+#'
+#' # Case (b): Vector-matrix (feature screening)
+#' # Compare response against multiple bacterial abundances
+#' response <- rnorm(100)
+#' abundances <- matrix(runif(100 * 50), nrow = 100, ncol = 50)
+#' colnames(abundances) <- paste0("ASV", 1:50)
+#'
+#' # Assume graph is built from the data
+#' result <- lcor(adj.list, weight.list,
+#'                response, abundances,
+#'                type = "derivative",
+#'                y.diff.type = "difference",
+#'                z.diff.type = "logratio")
+#'
+#' # Identify top features by absolute mean correlation
+#' top.features <- order(abs(result$mean.coefficients), decreasing = TRUE)[1:10]
+#' print(names(result$mean.coefficients)[top.features])
+#'
+#' # Case (c): Matrix-vector (same as b with roles swapped)
+#' result <- lcor(adj.list, weight.list,
+#'                abundances, response,
+#'                type = "derivative",
+#'                y.diff.type = "logratio",
+#'                z.diff.type = "difference")
+#'
+#' # Case (d): Matrix-matrix (pairwise correlations)
+#' # Compute local correlation tensor for compositional data
+#' Z <- abundances[, 1:10]  # First 10 ASVs
+#' result <- lcor(adj.list, weight.list,
+#'                Z, Z,
+#'                type = "unit",
+#'                y.diff.type = "logratio",
+#'                z.diff.type = "logratio",
+#'                mc.cores = 4)
+#'
+#' # Result contains upper triangular pairs only since y == z
+#' print(result$pair.names[1:5])
 #'
 #' # With winsorization for robustness
-#' result.robust <- lcor(
-#'   adj.list, weight.list,
-#'   severity, abundance,
-#'   type = "derivative",
-#'   y.diff.type = "difference",
-#'   z.diff.type = "logratio",
-#'   epsilon = 1e-6,
-#'   winsorize.quantile = 0.05     # Clip to 5th/95th percentiles
-#' )
+#' result <- lcor(adj.list, weight.list, y, z,
+#'                type = "derivative",
+#'                winsorize.quantile = 0.025)
+#'
+#' # With instrumented output for diagnostics
+#' result <- lcor(adj.list, weight.list, y, z,
+#'                type = "derivative",
+#'                instrumented = TRUE)
+#' hist(result$all.delta.y, main = "Distribution of y edge differences")
 #' }
 #'
-#' @seealso \code{\link{comono}} for the standard difference-only version
+#' @seealso
+#' \code{\link{lcor.vector.matrix}} for direct vector-matrix computation,
+#' \code{\link{lcor.matrix.matrix}} for direct matrix-matrix computation,
+#' \code{\link{comono}} for co-monotonicity coefficients with ratio normalization
+#'
+#' @references
+#' Pawel Gajer and Jacques Ravel (2025). From Global to Local Correlation: Geometric Decomposition of Statistical Inference. \emph{arXiv:2511.04599}.
 #'
 #' @export
 lcor <- function(adj.list,
@@ -120,84 +390,118 @@ lcor <- function(adj.list,
                  z.diff.type = c("difference", "logratio"),
                  epsilon = 0,
                  winsorize.quantile = 0,
-                 instrumented = FALSE) {
+                 instrumented = FALSE,
+                 mc.cores = 1L) {
 
     ## Match arguments
     type <- match.arg(type)
     y.diff.type <- match.arg(y.diff.type)
     z.diff.type <- match.arg(z.diff.type)
 
-    ## Validate inputs
-    if (!is.list(adj.list)) {
-        stop("adj.list must be a list")
-    }
-    if (!is.list(weight.list)) {
-        stop("weight.list must be a list")
-    }
-    if (!is.numeric(y)) {
-        stop("y must be a numeric vector")
-    }
-    if (!is.numeric(z)) {
-        stop("z must be a numeric vector")
-    }
-    if (!is.numeric(epsilon) || length(epsilon) != 1) {
+    ## Detect input types FIRST
+    y.is.matrix <- is.matrix(y) || is.data.frame(y)
+    z.is.matrix <- is.matrix(z) || is.data.frame(z)
+
+    ## Convert data frames to matrices
+    if (is.data.frame(y)) y <- as.matrix(y)
+    if (is.data.frame(z)) z <- as.matrix(z)
+
+    ## Validate common inputs
+    if (!is.list(adj.list)) stop("adj.list must be a list")
+    if (!is.list(weight.list)) stop("weight.list must be a list")
+    if (!is.numeric(epsilon) || length(epsilon) != 1)
         stop("epsilon must be a single numeric value")
-    }
-    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1) {
+    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1)
         stop("winsorize.quantile must be a single numeric value")
-    }
 
     n.vertices <- length(adj.list)
-
-    if (length(y) != n.vertices) {
-        stop("Length of y must equal number of vertices")
-    }
-    if (length(z) != n.vertices) {
-        stop("Length of z must equal number of vertices")
-    }
-    if (length(weight.list) != n.vertices) {
+    if (length(weight.list) != n.vertices)
         stop("Length of weight.list must equal number of vertices")
+
+    ## Validate y dimensions
+    if (y.is.matrix) {
+        if (!is.numeric(y)) stop("y must be numeric")
+        if (nrow(y) != n.vertices)
+            stop("nrow(y) must equal number of vertices")
+    } else {
+        if (!is.numeric(y)) stop("y must be a numeric vector")
+        if (length(y) != n.vertices)
+            stop("length(y) must equal number of vertices")
     }
 
-    ## Convert to 0-based indexing for C++
+    ## Validate z dimensions
+    if (z.is.matrix) {
+        if (!is.numeric(z)) stop("z must be numeric")
+        if (nrow(z) != n.vertices)
+            stop("nrow(z) must equal number of vertices")
+    } else {
+        if (!is.numeric(z)) stop("z must be a numeric vector")
+        if (length(z) != n.vertices)
+            stop("length(z) must equal number of vertices")
+    }
+
+    ## Dispatch based on input types
+    if (!y.is.matrix && !z.is.matrix) {
+        ## Case a): vector-vector
+        result <- lcor.vector.vector(adj.list, weight.list, y, z,
+                                     type, y.diff.type, z.diff.type,
+                                     epsilon, winsorize.quantile,
+                                     instrumented)
+        return(result)
+
+    } else if (!y.is.matrix && z.is.matrix) {
+        ## Case b): vector-matrix
+        result <- lcor.vector.matrix(adj.list, weight.list, y, z,
+                                     type, y.diff.type, z.diff.type,
+                                     epsilon, winsorize.quantile)
+        return(result)
+
+    } else if (y.is.matrix && !z.is.matrix) {
+        ## Case c): matrix-vector (transpose of case b)
+        result <- lcor.vector.matrix(adj.list, weight.list,
+                                     z, y,           ## swap y and z
+                                     type,
+                                     z.diff.type,    ## swap diff types
+                                     y.diff.type,
+                                     epsilon, winsorize.quantile)
+        attr(result, "transposed") <- TRUE
+        return(result)
+
+    } else {
+        ## Case d): matrix-matrix
+        result <- lcor.matrix.matrix(adj.list, weight.list, y, z,
+                                     type, y.diff.type, z.diff.type,
+                                     epsilon, winsorize.quantile,
+                                     mc.cores)
+        return(result)
+    }
+}
+
+## Internal helper for vector-vector case (extracts current logic)
+lcor.vector.vector <- function(adj.list, weight.list, y, z,
+                                type, y.diff.type, z.diff.type,
+                                epsilon, winsorize.quantile,
+                                instrumented) {
+    n.vertices <- length(adj.list)
     adj.list.0 <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    ## Call C++ function
-    result <- NULL
     if (instrumented) {
-        result <- .Call(
-            "S_lcor_instrumented",
-            adj.list.0,
-            weight.list,
-            as.numeric(y),
-            as.numeric(z),
-            as.character(type),
-            as.character(y.diff.type),
-            as.character(z.diff.type),
-            as.numeric(epsilon),
-            as.numeric(winsorize.quantile),
-            PACKAGE = "gflow"
-        )
+        result <- .Call("S_lcor_instrumented",
+                        adj.list.0, weight.list,
+                        as.numeric(y), as.numeric(z),
+                        type, y.diff.type, z.diff.type,
+                        as.numeric(epsilon), as.numeric(winsorize.quantile),
+                        PACKAGE = "gflow")
     } else {
-        result <- .Call(
-            "S_lcor",
-            adj.list.0,
-            weight.list,
-            as.numeric(y),
-            as.numeric(z),
-            as.character(type),
-            as.character(y.diff.type),
-            as.character(z.diff.type),
-            as.numeric(epsilon),
-            as.numeric(winsorize.quantile),
-            PACKAGE = "gflow"
-        )
+        result <- .Call("S_lcor",
+                        adj.list.0, weight.list,
+                        as.numeric(y), as.numeric(z),
+                        type, y.diff.type, z.diff.type,
+                        as.numeric(epsilon), as.numeric(winsorize.quantile),
+                        PACKAGE = "gflow")
     }
 
-    ## Add class for method dispatch
     class(result) <- c("lcor_result", "list")
-
-    ## Add metadata
     attr(result, "type") <- type
     attr(result, "y.diff.type") <- y.diff.type
     attr(result, "z.diff.type") <- z.diff.type
@@ -206,61 +510,4 @@ lcor <- function(adj.list,
     attr(result, "n.vertices") <- n.vertices
 
     return(result)
-}
-
-#' Print method for lcor results
-#'
-#' @param x An object of class "lcor_result"
-#' @param ... Additional arguments (ignored)
-#' @export
-print.lcor_result <- function(x, ...) {
-  cat("Local Correlation Result\n")
-  cat("========================\n\n")
-
-  cat("Parameters:\n")
-  cat("  Weighting type:", attr(x, "type"), "\n")
-  cat("  Y difference type:", attr(x, "y.diff.type"), "\n")
-  cat("  Z difference type:", attr(x, "z.diff.type"), "\n")
-  cat("  Epsilon:", attr(x, "epsilon"), "\n")
-  cat("  Winsorize quantile:", attr(x, "winsorize.quantile"), "\n\n")
-
-  cat("Results:\n")
-  cat("  Number of vertices:", attr(x, "n.vertices"), "\n")
-  cat("  Mean coefficient:", mean(x$vertex.coefficients), "\n")
-  cat("  Median coefficient:", median(x$vertex.coefficients), "\n")
-  cat("  Range:", paste(range(x$vertex.coefficients), collapse = " to "), "\n\n")
-
-  # Show winsorization bounds if applicable
-  if (is.finite(x$y.lower)) {
-    cat("Winsorization bounds:\n")
-    cat("  Y: [", x$y.lower, ", ", x$y.upper, "]\n", sep = "")
-    cat("  Z: [", x$z.lower, ", ", x$z.upper, "]\n", sep = "")
-  }
-
-  invisible(x)
-}
-
-#' Summary method for lcor results
-#'
-#' @param object An object of class "lcor_result"
-#' @param ... Additional arguments (ignored)
-#' @export
-summary.lcor_result <- function(object, ...) {
-  cat("Local Correlation Summary\n")
-  cat("=========================\n\n")
-
-  cat("Vertex coefficients:\n")
-  print(summary(object$vertex.coefficients))
-
-  if (length(object$all.delta.y) > 0) {
-    cat("\nY edge differences (n =", length(object$all.delta.y), "):\n")
-    print(summary(object$all.delta.y))
-  }
-
-  if (length(object$all.delta.z) > 0) {
-    cat("\nZ edge differences (n =", length(object$all.delta.z), "):\n")
-    print(summary(object$all.delta.z))
-  }
-
-  invisible(object)
 }
