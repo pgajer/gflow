@@ -454,9 +454,22 @@ extern "C" SEXP create_gamma_selection_component(const riem_dcx_t& dcx) {
     return gamma_sel;
 }
 
-
-extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx) {
-    const int n_fields = 2;
+/**
+ * @brief Create spectral component for R return value
+ *
+ *  Exports 5 fields:
+ *   1. eigenvalues         - raw λ values
+ *   2. filtered.eigenvalues - F_η(λ) filter weights
+ *   3. eigenvectors        - V matrix
+ *   4. eta.optimal         - optimal smoothing parameter
+ *   5. filter.type         - filter type string
+ *
+ * The raw eigenvalues enable per-column GCV in refit.rdgraph.regression()
+ */
+extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
+                                          int optimal_iter,
+                                          rdcx_filter_type_t filter_type) {
+    const int n_fields = 5;  // CHANGED from 2 to 5
     SEXP spectral = PROTECT(Rf_allocVector(VECSXP, n_fields));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
     int idx = 0;
@@ -470,55 +483,23 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx) {
     const size_t n_eigen = dcx.spectral_cache.eigenvalues.size();
     const Eigen::Index n_verts = dcx.spectral_cache.eigenvectors.rows();
 
-    // 1. filtered.eigenvalues: F_η(λ) - now pre-computed
-    SET_STRING_ELT(names, idx, Rf_mkChar("filtered.eigenvalues"));
-    SEXP s_f_lambda = PROTECT(Rf_allocVector(REALSXP, n_eigen));
-
-    for (size_t i = 0; i < n_eigen; ++i) {
-        REAL(s_f_lambda)[i] = dcx.spectral_cache.filtered_eigenvalues[i];
-    }
-    SET_VECTOR_ELT(spectral, idx++, s_f_lambda);
-    UNPROTECT(1);
-
-    // 2. eigenvectors: V (unchanged)
-    SET_STRING_ELT(names, idx, Rf_mkChar("eigenvectors"));
-    SEXP s_V = PROTECT(Rf_allocMatrix(REALSXP, n_verts, n_eigen));
-    double* V_data = REAL(s_V);
-    for (size_t j = 0; j < n_eigen; ++j) {
-        for (Eigen::Index i = 0; i < n_verts; ++i) {
-            V_data[i + j * n_verts] = dcx.spectral_cache.eigenvectors(i, j);
-        }
-    }
-    SET_VECTOR_ELT(spectral, idx++, s_V);
-    UNPROTECT(1);
-
-    Rf_setAttrib(spectral, R_NamesSymbol, names);
-    UNPROTECT(2);
-    return spectral;
-}
-
-#if 0
-extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
-                                          int optimal_iter,
-                                          rdcx_filter_type_t filter_type) {
-    const int n_fields = 2;
-    SEXP spectral = PROTECT(Rf_allocVector(VECSXP, n_fields));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
-    int idx = 0;
-
-    if (!dcx.spectral_cache.is_valid) {
-        Rf_warning("Spectral cache not valid");
-        UNPROTECT(2);
-        return R_NilValue;
-    }
-
-    const size_t n_eigen = dcx. 1spectral_cache.eigenvalues.size();
-    const Eigen::Index n_verts = dcx.spectral_cache.eigenvectors.rows();
-
     // Get the optimal eta from GCV history
     double eta_opt = dcx.gcv_history.iterations[optimal_iter].eta_optimal;
 
-    // 1. filtered.eigenvalues: F_η(λ)
+    // ================================================================
+    // 1. eigenvalues: raw λ values (NEW - enables per-column GCV)
+    // ================================================================
+    SET_STRING_ELT(names, idx, Rf_mkChar("eigenvalues"));
+    SEXP s_lambda = PROTECT(Rf_allocVector(REALSXP, n_eigen));
+    for (size_t i = 0; i < n_eigen; ++i) {
+        REAL(s_lambda)[i] = dcx.spectral_cache.eigenvalues[i];
+    }
+    SET_VECTOR_ELT(spectral, idx++, s_lambda);
+    UNPROTECT(1);
+
+    // ================================================================
+    // 2. filtered.eigenvalues: F_η(λ)
+    // ================================================================
     SET_STRING_ELT(names, idx, Rf_mkChar("filtered.eigenvalues"));
     SEXP s_f_lambda = PROTECT(Rf_allocVector(REALSXP, n_eigen));
 
@@ -559,7 +540,9 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
     SET_VECTOR_ELT(spectral, idx++, s_f_lambda);
     UNPROTECT(1);
 
-    // 2. eigenvectors: V
+    // ================================================================
+    // 3. eigenvectors: V
+    // ================================================================
     SET_STRING_ELT(names, idx, Rf_mkChar("eigenvectors"));
     SEXP s_V = PROTECT(Rf_allocMatrix(REALSXP, n_verts, n_eigen));
     double* V_data = REAL(s_V);
@@ -571,11 +554,50 @@ extern "C" SEXP create_spectral_component(const riem_dcx_t& dcx,
     SET_VECTOR_ELT(spectral, idx++, s_V);
     UNPROTECT(1);
 
+    // ================================================================
+    // 4. eta.optimal: optimal smoothing parameter (NEW)
+    // ================================================================
+    SET_STRING_ELT(names, idx, Rf_mkChar("eta.optimal"));
+    SEXP s_eta = PROTECT(Rf_ScalarReal(eta_opt));
+    SET_VECTOR_ELT(spectral, idx++, s_eta);
+    UNPROTECT(1);
+
+    // ================================================================
+    // 5. filter.type: string name of filter (NEW)
+    // ================================================================
+    SET_STRING_ELT(names, idx, Rf_mkChar("filter.type"));
+    const char* filter_name;
+    switch (filter_type) {
+        case rdcx_filter_type_t::HEAT_KERNEL:
+            filter_name = "heat_kernel";
+            break;
+        case rdcx_filter_type_t::TIKHONOV:
+            filter_name = "tikhonov";
+            break;
+        case rdcx_filter_type_t::CUBIC_SPLINE:
+            filter_name = "cubic_spline";
+            break;
+        case rdcx_filter_type_t::GAUSSIAN:
+            filter_name = "gaussian";
+            break;
+        case rdcx_filter_type_t::EXPONENTIAL:
+            filter_name = "exponential";
+            break;
+        case rdcx_filter_type_t::BUTTERWORTH:
+            filter_name = "butterworth";
+            break;
+        default:
+            filter_name = "unknown";
+            break;
+    }
+    SEXP s_filter_type = PROTECT(Rf_mkString(filter_name));
+    SET_VECTOR_ELT(spectral, idx++, s_filter_type);
+    UNPROTECT(1);
+
     Rf_setAttrib(spectral, R_NamesSymbol, names);
     UNPROTECT(2);
     return spectral;
 }
-#endif
 
 /**
  * @brief Create extremality component with hop radii and neighborhood sizes
@@ -1844,7 +1866,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     // Component 12: spectral
     SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
-    SEXP s_spectral = PROTECT(create_spectral_component(dcx));
+    SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
     SET_VECTOR_ELT(result, component_idx++, s_spectral);
     UNPROTECT(1);
 
