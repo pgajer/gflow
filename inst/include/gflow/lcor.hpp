@@ -198,4 +198,41 @@ struct comono_matrix_result_t {
     size_t n_columns;
 };
 
+/**
+ * @struct lcor_vector_matrix_result_t
+ * @brief Result structure for vector-matrix local correlation computation
+ *
+ * Contains vertex-wise local correlation coefficients for each column of Z,
+ * along with summary statistics and diagnostic information.
+ */
+struct lcor_vector_matrix_result_t {
+    /// Vertex coefficients for each column: column_coefficients[j][v]
+    std::vector<std::vector<double>> column_coefficients;
+
+    /// Mean coefficient for each column
+    std::vector<double> mean_coefficients;
+
+    /// Median coefficient for each column
+    std::vector<double> median_coefficients;
+
+    /// Count of positive coefficients per column
+    std::vector<size_t> n_positive;
+
+    /// Count of negative coefficients per column
+    std::vector<size_t> n_negative;
+
+    /// Count of zero coefficients per column
+    std::vector<size_t> n_zero;
+
+    /// Number of vertices in graph
+    size_t n_vertices;
+
+    /// Number of columns in Z
+    size_t n_columns;
+
+    /// Winsorization bounds for y edge differences
+    double y_lower = -std::numeric_limits<double>::max();
+    double y_upper = std::numeric_limits<double>::max();
+};
+
 #endif // LCOR_HPP
