@@ -13,7 +13,8 @@
 #'
 #' @param fitted.model A fitted model object of class \code{"knn.riem.fit"}
 #'   returned by \code{\link{fit.rdgraph.regression}}. Must contain the
-#'   \code{spectral} component with cached eigendecomposition.
+#'   \code{spectral} component with cached eigendecomposition. For per-column
+#'   GCV, the model must include raw eigenvalues (requires updated gflow).
 #'
 #' @param y.new New response variable(s). Either a numeric vector of length n,
 #'   or a numeric matrix with n rows where each column is a separate response.
@@ -23,18 +24,7 @@
 #'   (default), use the filtered eigenvalues from the original fit for all
 #'   columns. Setting \code{TRUE} is recommended when columns represent
 #'   features with heterogeneous smoothness (e.g., different phylotypes).
-#'
-#' @param filter.type Character string specifying the spectral filter type.
-#'   Only used when \code{per.column.gcv = TRUE}. Options are:
-#'   \describe{
-#'     \item{\code{"heat_kernel"}}{exp(-eta * lambda). Default and recommended
-#'       for general use.}
-#'     \item{\code{"tikhonov"}}{1/(1 + eta * lambda). Gentler attenuation,
-#'       better preserves linear trends.}
-#'     \item{\code{"cubic_spline"}}{1/(1 + eta * lambda^2). Very smooth results.}
-#'     \item{\code{"gaussian"}}{exp(-eta * lambda^2). Aggressive smoothing.}
-#'   }
-#'   If \code{NULL}, uses the filter type from the original fit.
+#'   Requires fitted model with raw eigenvalues stored.
 #'
 #' @param n.candidates Integer. Number of candidate eta values for GCV grid
 #'   search. Only used when \code{per.column.gcv = TRUE}. Default is 40.
@@ -86,16 +76,17 @@
 #' the number of cores. For very large n (>10000), consider limiting n.cores
 #' to avoid memory pressure.
 #'
-#' \strong{Performance considerations:} Per-column GCV adds computational cost
-#' proportional to n.candidates times the number of columns. For large matrices
-#' (>100 columns), parallel processing with \code{n.cores > 1} is recommended.
-#' Typical speedup is near-linear up to 4-8 cores, with diminishing returns
-#' beyond that due to memory bandwidth limitations.
+#' \strong{Backward compatibility:} Models fitted with older versions of gflow
+#' may not contain raw eigenvalues. In this case, per-column GCV is not
+#' available and the function will stop with an informative error if requested.
 #'
 #' @examples
 #' \dontrun{
 #' # Fit initial model on binary outcome
 #' fit <- fit.rdgraph.regression(X, y.binary, k = 15)
+#'
+#' # Quick refit using same smoothing (original behavior)
+#' Z.hat.quick <- refit.rdgraph.regression(fit, Z.abundances)
 #'
 #' # Smooth phylotype abundances with per-column GCV (parallel)
 #' Z.hat <- refit.rdgraph.regression(fit, Z.abundances,
@@ -118,12 +109,11 @@
 #'
 #' @export
 refit.rdgraph.regression <- function(fitted.model,
-                                     y.new,
-                                     per.column.gcv = TRUE,
-                                     filter.type = NULL,
-                                     n.candidates = 40L,
-                                     n.cores = 1L,
-                                     verbose = FALSE) {
+                                      y.new,
+                                      per.column.gcv = FALSE,
+                                      n.candidates = 40L,
+                                      n.cores = 1L,
+                                      verbose = FALSE) {
 
     ## ================================================================
     ## INPUT VALIDATION
@@ -147,9 +137,19 @@ refit.rdgraph.regression <- function(fitted.model,
 
     ## Extract spectral components
     V <- fitted.model$spectral$eigenvectors
-    eigenvalues <- fitted.model$spectral$filtered.eigenvalues
+    f.lambda <- fitted.model$spectral$filtered.eigenvalues
     n <- nrow(V)
     m <- ncol(V)
+
+    ## Check for raw eigenvalues (required for per-column GCV)
+    has.raw.eigenvalues <- !is.null(fitted.model$spectral$eigenvalues)
+
+    if (per.column.gcv && !has.raw.eigenvalues) {
+        stop("Per-column GCV requires raw eigenvalues in the fitted model.\n",
+             "Your fitted model only contains filtered.eigenvalues.\n",
+             "Please refit the model with an updated version of gflow that\n",
+             "exports raw eigenvalues, or use per.column.gcv = FALSE.")
+    }
 
     ## Validate and prepare y.new
     is.matrix.input <- is.matrix(y.new)
@@ -186,21 +186,21 @@ refit.rdgraph.regression <- function(fitted.model,
 
         start.time <- Sys.time()
 
-        ## Determine filter type
+        ## Extract raw eigenvalues and filter type from fitted model
+        eigenvalues <- fitted.model$spectral$eigenvalues
+        filter.type <- fitted.model$spectral$filter.type
+
+        ## Default to heat_kernel if filter.type not stored (older models)
         if (is.null(filter.type)) {
-            filter.type <- fitted.model$spectral$filter.type
-            if (is.null(filter.type)) {
-                filter.type <- "heat_kernel"
-                if (verbose) {
-                    message("No filter.type specified and none in fitted model; ",
-                            "using 'heat_kernel'")
-                }
+            filter.type <- "heat_kernel"
+            if (verbose) {
+                message("Filter type not stored in model; using 'heat_kernel'")
             }
         }
 
-        filter.type <- match.arg(filter.type,
-                                  c("heat_kernel", "tikhonov", "cubic_spline",
-                                    "gaussian", "exponential", "butterworth"))
+        if (verbose) {
+            message(sprintf("Using '%s' filter for per-column GCV", filter.type))
+        }
 
         ## Project all responses onto eigenbasis once: V^T Y (m x p)
         Vt.Y <- crossprod(V, y.new)
@@ -383,11 +383,9 @@ refit.rdgraph.regression <- function(fitted.model,
         ## ORIGINAL BEHAVIOR: Use fixed filtered eigenvalues from fit
         ## ============================================================
 
-        f.lambda <- fitted.model$spectral$filtered.eigenvalues
-
         if (is.null(f.lambda)) {
             stop("Fitted model does not contain filtered.eigenvalues. ",
-                 "Use per.column.gcv = TRUE or refit the original model.")
+                 "Cannot refit without spectral filter information.")
         }
 
         ## Apply spectral filter: Y_hat = V diag(f_lambda) V^T Y
@@ -580,7 +578,7 @@ select.eta.gcv.single.fast <- function(y.obs, y.spectral, V,
 
 
 ## ============================================================
-## UPDATED PRINT AND SUMMARY METHODS
+## PRINT AND SUMMARY METHODS
 ## ============================================================
 
 #' @export
