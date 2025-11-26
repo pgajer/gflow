@@ -1460,6 +1460,32 @@ k.diagnostics.plots <- function(results.list,
 
     invisible(diagnostics.df)
 }
+#' Compute Effective Degrees for All Vertices
+#'
+#' @description
+#' Helper function that computes effective degrees by summing edge densities
+#' incident to each vertex. This measures connectivity strength accounting for
+#' edge weights.
+#'
+#' @param adj.list List of integer vectors giving neighbor indices for each vertex
+#' @param edge_densities List of numeric vectors giving edge densities parallel
+#'   to adj.list structure
+#'
+#' @return Numeric vector of effective degrees, one per vertex
+#'
+#' @keywords internal
+compute.effective.degrees <- function(adj.list, edge_densities) {
+    n <- length(adj.list)
+    eff.deg <- numeric(n)
+
+    for (i in seq_len(n)) {
+        if (length(adj.list[[i]]) > 0 && length(edge_densities[[i]]) > 0) {
+            eff.deg[i] <- sum(edge_densities[[i]], na.rm = TRUE)
+        }
+    }
+
+    return(eff.deg)
+}
 
 #' Extract Optimal k from Diagnostics Data Frame
 #'
@@ -1480,352 +1506,6 @@ get.rcx.optimal.k <- function(diag.df) {
     idx = optimal.idx,
     gcv = diag.df$gcv[optimal.idx]
   )
-}
-
-#' Refit Riemannian Graph Regression Model with New Response(s)
-#'
-#' @description
-#' Apply the learned spectral filter from a fitted model to new response
-#' variable(s) using the same graph geometry. This is computationally
-#' efficient as it reuses the cached eigendecomposition without rebuilding
-#' the graph or recomputing the Laplacian.
-#'
-#' @param fitted.model A fitted model object from \code{fit.rdgraph.regression}
-#' @param y.new New response data. Can be:
-#'   \itemize{
-#'     \item A numeric vector of length n (single response)
-#'     \item A numeric matrix of dimension n × p (p response variables)
-#'   }
-#'   where n must match the number of observations in the original fit.
-#'
-#' @return A list with components:
-#'   \itemize{
-#'     \item \code{fitted.values}: Fitted values (vector if y.new is vector,
-#'           matrix if y.new is matrix)
-#'     \item \code{residuals}: Residuals (same shape as y.new)
-#'     \item \code{n.responses}: Number of response variables (1 for vector,
-#'           p for matrix)
-#'   }
-#'
-#' @details
-#' The function applies the learned spectral operator
-#' \eqn{\hat{y} = V \text{diag}(F_\eta(\Lambda)) V^T y} where V and
-#' \eqn{F_\eta(\Lambda)} are cached from the optimal iteration of the
-#' original fit. For matrix input, the operation is applied column-wise,
-#' fitting all response variables simultaneously using the same geometry.
-#'
-#' This is particularly useful for:
-#' \itemize{
-#'   \item Bootstrap resampling (fit multiple bootstrap responses)
-#'   \item Permutation testing (fit permuted responses)
-#'   \item Multivariate regression (multiple outcomes sharing feature space)
-#'   \item Cross-validation (refit on different subsets)
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' # Fit initial model
-#' fit <- fit.rdgraph.regression(X, y, k = 15)
-#'
-#' # Single new response
-#' y.new <- y + rnorm(length(y), sd = 0.1)
-#' refit.single <- refit.rdgraph.regression(fit, y.new)
-#'
-#' # Multiple responses (e.g., bootstrap)
-#' Y.boot <- replicate(100, sample(y, replace = TRUE))
-#' refit.multi <- refit.rdgraph.regression(fit, Y.boot)
-#' dim(refit.multi$fitted.values)  # n × 100
-#' }
-#'
-#' @export
-refit.rdgraph.regression <- function(fitted.model, y.new) {
-
-    ## Validate input
-    if (!inherits(fitted.model, "knn.riem.fit")) {
-        stop("fitted.model must be a 'knn.riem.fit' object from fit.rdgraph.regression()")
-    }
-
-    if (is.null(fitted.model$spectral)) {
-        stop("Fitted model does not contain spectral component. ",
-             "Cannot refit without cached eigendecomposition.")
-    }
-
-    ## Extract spectral components
-    V <- fitted.model$spectral$eigenvectors
-    f_lambda <- fitted.model$spectral$filtered.eigenvalues
-    n <- nrow(V)
-
-    ## Validate and prepare y.new
-    is_matrix <- is.matrix(y.new)
-
-    if (is_matrix) {
-        if (nrow(y.new) != n) {
-            stop(sprintf("Number of rows in y.new (%d) must match fitted model (%d)",
-                         nrow(y.new), n))
-        }
-        n_responses <- ncol(y.new)
-    } else {
-        ## Convert vector to column matrix for uniform handling
-        if (length(y.new) != n) {
-            stop(sprintf("Length of y.new (%d) must match fitted model (%d)",
-                         length(y.new), n))
-        }
-        y.new <- as.matrix(y.new, ncol = 1)
-        n_responses <- 1
-    }
-
-    ## Apply spectral filter: Ŷ = V diag(F_η(λ)) V^T Y
-    ## This formula works for both single and multiple responses
-    Vt_Y <- crossprod(V, y.new)           # V^T Y: (m × n) × (n × p) = m × p
-    filtered <- f_lambda * Vt_Y           # Element-wise: m × p (broadcasts f_lambda)
-    Y.hat <- V %*% filtered               # V × filtered: (n × m) × (m × p) = n × p
-
-    ## Compute residuals
-    residuals <- y.new - Y.hat
-
-    ## Return in appropriate format
-    result <- list(
-        fitted.values = if (n_responses == 1) as.vector(Y.hat) else Y.hat,
-        residuals = if (n_responses == 1) as.vector(residuals) else residuals,
-        n.responses = n_responses
-    )
-
-    class(result) <- c("knn.riem.refit", "list")
-    return(result)
-}
-
-#' @export
-print.knn.riem.refit <- function(x, ...) {
-  cat("\nRefitted Riemannian Graph Regression\n")
-  cat("====================================\n\n")
-
-  if (x$n.responses == 1) {
-    cat(sprintf("Single response variable (n = %d)\n", length(x$fitted.values)))
-    cat(sprintf("RMSE: %.4f\n", sqrt(mean(x$residuals^2))))
-    cat(sprintf("MAE:  %.4f\n", mean(abs(x$residuals))))
-  } else {
-    cat(sprintf("Multiple responses (n = %d, p = %d)\n",
-                nrow(x$fitted.values), x$n.responses))
-    rmse_by_col <- apply(x$residuals, 2, function(r) sqrt(mean(r^2)))
-    cat(sprintf("Mean RMSE across responses: %.4f\n", mean(rmse_by_col)))
-    cat(sprintf("RMSE range: [%.4f, %.4f]\n", min(rmse_by_col), max(rmse_by_col)))
-  }
-
-  invisible(x)
-}
-
-#' @export
-summary.knn.riem.refit <- function(object, ...) {
-  n_resp <- object$n.responses
-  n_obs <- if (n_resp == 1) length(object$fitted.values) else nrow(object$fitted.values)
-
-  if (n_resp == 1) {
-    # Single response summary
-    y_hat <- object$fitted.values
-    resid <- object$residuals
-    y_obs <- y_hat + resid  # Reconstruct observed values
-
-    # Basic fit quality metrics
-    rss <- sum(resid^2)
-    tss <- sum((y_obs - mean(y_obs))^2)
-    r_squared <- 1 - rss / tss
-    adj_r_squared <- 1 - (1 - r_squared) * (n_obs - 1) / (n_obs - 2)
-    rmse <- sqrt(mean(resid^2))
-    mae <- mean(abs(resid))
-
-    # Normalization factors
-    y_range <- diff(range(y_obs))
-    y_sd <- sd(y_obs)
-    y_mean <- mean(y_obs)
-
-    # Relative metrics
-    nrmse_range <- if (y_range > 0) rmse / y_range else NA
-    nrmse_sd <- if (y_sd > 0) rmse / y_sd else NA
-    nmae_range <- if (y_range > 0) mae / y_range else NA
-
-    # CV-RMSE (only if y is positive or mean is not near zero)
-    cv_rmse <- if (abs(y_mean) > 1e-10) rmse / abs(y_mean) else NA
-
-    result <- list(
-      n = n_obs,
-      n.responses = 1,
-
-      # Absolute metrics
-      rmse = rmse,
-      mae = mae,
-      r.squared = r_squared,
-      adj.r.squared = adj_r_squared,
-
-      # Relative metrics
-      nrmse.range = nrmse_range,
-      nrmse.sd = nrmse_sd,
-      nmae.range = nmae_range,
-      cv.rmse = cv_rmse,
-
-      # Response characteristics
-      residual.range = range(resid),
-      fitted.range = range(y_hat),
-      y.range = range(y_obs),
-      y.mean = y_mean,
-      y.sd = y_sd
-    )
-
-  } else {
-    # Multiple responses summary
-    Y_hat <- object$fitted.values
-    Resid <- object$residuals
-    Y_obs <- Y_hat + Resid
-
-    # Compute metrics for each response
-    rmse_vec <- apply(Resid, 2, function(r) sqrt(mean(r^2)))
-    mae_vec <- apply(Resid, 2, function(r) mean(abs(r)))
-
-    r_squared_vec <- sapply(1:n_resp, function(j) {
-      rss <- sum(Resid[, j]^2)
-      tss <- sum((Y_obs[, j] - mean(Y_obs[, j]))^2)
-      1 - rss / tss
-    })
-
-    # Compute normalized metrics for each response
-    nrmse_range_vec <- sapply(1:n_resp, function(j) {
-      y_range <- diff(range(Y_obs[, j]))
-      if (y_range > 0) rmse_vec[j] / y_range else NA
-    })
-
-    nrmse_sd_vec <- sapply(1:n_resp, function(j) {
-      y_sd <- sd(Y_obs[, j])
-      if (y_sd > 0) rmse_vec[j] / y_sd else NA
-    })
-
-    result <- list(
-      n = n_obs,
-      n.responses = n_resp,
-
-      # Absolute metrics
-      rmse.mean = mean(rmse_vec),
-      rmse.sd = sd(rmse_vec),
-      rmse.range = range(rmse_vec),
-
-      mae.mean = mean(mae_vec),
-      mae.sd = sd(mae_vec),
-      mae.range = range(mae_vec),
-
-      r.squared.mean = mean(r_squared_vec),
-      r.squared.sd = sd(r_squared_vec),
-      r.squared.range = range(r_squared_vec),
-
-      # Normalized metrics (averaged across responses)
-      nrmse.range.mean = mean(nrmse_range_vec, na.rm = TRUE),
-      nrmse.sd.mean = mean(nrmse_sd_vec, na.rm = TRUE),
-
-      # Per-response details
-      per.response = data.frame(
-        response = 1:n_resp,
-        rmse = rmse_vec,
-        mae = mae_vec,
-        r.squared = r_squared_vec,
-        nrmse.range = nrmse_range_vec,
-        nrmse.sd = nrmse_sd_vec
-      )
-    )
-  }
-
-  class(result) <- "summary.knn.riem.refit"
-  return(result)
-}
-
-#' @export
-print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
-  cat("\n")
-  cat("========================================================\n")
-  cat("Refitted Riemannian Graph Regression Summary\n")
-  cat("========================================================\n\n")
-
-  if (x$n.responses == 1) {
-    # Single response output
-    cat("Fit Quality (Absolute):\n")
-    cat(sprintf("  Observations:    n = %d\n", x$n))
-    cat(sprintf("  RMSE:            %.4f\n", x$rmse))
-    cat(sprintf("  MAE:             %.4f\n", x$mae))
-    cat(sprintf("  R-squared:       %.4f\n", x$r.squared))
-    cat(sprintf("  Adj. R-squared:  %.4f\n\n", x$adj.r.squared))
-
-    cat("Fit Quality (Relative):\n")
-    if (!is.na(x$nrmse.range)) {
-      cat(sprintf("  NRMSE (range):   %.2f%%\n", x$nrmse.range * 100))
-    }
-    ## if (!is.na(x$nrmse.sd)) {
-    ##   cat(sprintf("  NRMSE (std dev): %.2f%%\n", x$nrmse.sd * 100))
-    ## }
-    if (!is.na(x$nmae.range)) {
-      cat(sprintf("  NMAE (range):    %.2f%%\n", x$nmae.range * 100))
-    }
-    ## if (!is.na(x$cv.rmse)) {
-    ##   cat(sprintf("  CV-RMSE:         %.2f%%\n", x$cv.rmse * 100))
-    ## }
-    cat("\n")
-
-    cat("Response Characteristics:\n")
-    cat(sprintf("  Mean:            %.4f\n", x$y.mean))
-    cat(sprintf("  Std Dev:         %.4f\n", x$y.sd))
-    cat(sprintf("  Observed range:  [%.4f, %.4f]\n", x$y.range[1], x$y.range[2]))
-    cat(sprintf("  Fitted range:    [%.4f, %.4f]\n", x$fitted.range[1], x$fitted.range[2]))
-    cat(sprintf("  Residual range:  [%.4f, %.4f]\n", x$residual.range[1], x$residual.range[2]))
-
-  } else {
-    # Multiple responses output
-    cat(sprintf("Number of responses:       p = %d\n", x$n.responses))
-    cat(sprintf("Observations per response: n = %d\n\n", x$n))
-
-    cat("Fit Quality - Absolute (across all responses):\n")
-    cat(sprintf("  RMSE:       %.4f ± %.4f  [%.4f, %.4f]\n",
-                x$rmse.mean, x$rmse.sd, x$rmse.range[1], x$rmse.range[2]))
-    cat(sprintf("  MAE:        %.4f ± %.4f  [%.4f, %.4f]\n",
-                x$mae.mean, x$mae.sd, x$mae.range[1], x$mae.range[2]))
-    cat(sprintf("  R-squared:  %.4f ± %.4f  [%.4f, %.4f]\n\n",
-                x$r.squared.mean, x$r.squared.sd,
-                x$r.squared.range[1], x$r.squared.range[2]))
-
-    cat("Fit Quality - Relative (averaged across responses):\n")
-    if (!is.na(x$nrmse.range.mean)) {
-      cat(sprintf("  NRMSE (range):   %.2f%%\n", x$nrmse.range.mean * 100))
-    }
-    if (!is.na(x$nrmse.sd.mean)) {
-      cat(sprintf("  NRMSE (std dev): %.2f%%\n\n", x$nrmse.sd.mean * 100))
-    }
-
-    # Show per-response details if not too many
-    if (x$n.responses <= 10) {
-      cat("Per-Response Details:\n")
-      print(x$per.response, digits = digits, row.names = FALSE)
-    } else {
-      cat(sprintf("Per-response details available in $per.response (use summary(fit)$per.response)\n"))
-      cat("Showing first 5 and last 5 responses:\n\n")
-      to_show <- rbind(
-        head(x$per.response, 5),
-        tail(x$per.response, 5)
-      )
-      print(to_show, digits = digits, row.names = FALSE)
-    }
-  }
-
-  cat("\n")
-  cat("========================================================\n")
-  cat("Normalized Error Metrics:\n")
-  cat("  NRMSE (range)   = RMSE / range(y)  [scale-free error]\n")
-  ##cat("  NRMSE (std dev) = RMSE / sd(y)     [error relative to variability]\n")
-  cat("  NMAE (range)    = MAE / range(y)   [scale-free absolute error]\n")
-  ##cat("  CV-RMSE         = RMSE / |mean(y)| [coefficient of variation]\n")
-  cat("\n")
-  cat("Interpretation: Normalized metrics express error as a percentage\n")
-  cat("of response scale. Values < 10% typically indicate excellent fit,\n")
-  cat("10-20% good fit, > 30% may warrant investigation.\n")
-  cat("\n")
-  cat("Note: This summary reflects fit quality using a pre-learned\n")
-  cat("      spectral operator from the original model. No iteration\n")
-  cat("      or parameter optimization was performed.\n")
-
-  invisible(x)
 }
 
 #' Compute Probabilistic Extrema Neighborhoods
@@ -2244,31 +1924,4 @@ compute.pextrema.nbhds <- function(dcx,
     }
 
     return(results)
-}
-
-#' Compute Effective Degrees for All Vertices
-#'
-#' @description
-#' Helper function that computes effective degrees by summing edge densities
-#' incident to each vertex. This measures connectivity strength accounting for
-#' edge weights.
-#'
-#' @param adj.list List of integer vectors giving neighbor indices for each vertex
-#' @param edge_densities List of numeric vectors giving edge densities parallel
-#'   to adj.list structure
-#'
-#' @return Numeric vector of effective degrees, one per vertex
-#'
-#' @keywords internal
-compute.effective.degrees <- function(adj.list, edge_densities) {
-    n <- length(adj.list)
-    eff.deg <- numeric(n)
-
-    for (i in seq_len(n)) {
-        if (length(adj.list[[i]]) > 0 && length(edge_densities[[i]]) > 0) {
-            eff.deg[i] <- sum(edge_densities[[i]], na.rm = TRUE)
-        }
-    }
-
-    return(eff.deg)
 }
