@@ -41,6 +41,8 @@ Imports:
     transport
 Suggests:
     rgl,
+    foreach,
+    doParallel,
     randomForest,
     np,
     mgcv,
