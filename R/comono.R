@@ -1009,7 +1009,7 @@ comono.cor.matrix <- function(adj.list, weight.list, y, Z, type = "derivative") 
 #' @details
 #' For each feature (column j of Z), computes the proportion-based co-monotonicity
 #' at each vertex v by counting directional agreements among edges where both
-#' |Delta_y| > tau.y and |Delta_z_j| > tau.z[j].
+#' \eqn{|Delta_y| > tau.y and |Delta_z_j| > tau.z[j].}
 #'
 #' Per-feature adaptive thresholds (vector tau.z) are recommended for microbiome
 #' data where different phylotypes have different abundance scales and noise levels.

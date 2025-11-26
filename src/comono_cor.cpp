@@ -1,11 +1,11 @@
 #include "set_wgraph.hpp"
-#include "comono_coefficient.hpp"
+#include "lcor.hpp"
 #include "error_utils.h"
 #include <cmath>
 #include <algorithm>
 #include <numeric>
 
-#define DEBUG_COMONO_COR 1  // Set to 1 to enable correlation debugging
+#define DEBUG_COMONO_COR 0  // Set to 1 to enable correlation debugging
 
 /**
  * @brief Compute correlation-type co-monotonicity coefficients

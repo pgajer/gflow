@@ -557,7 +557,7 @@ lcor_result_t set_wgraph_t::lcor_two_pass_instrumented(
  * std::vector<double> abundance = ...;          // Relative abundance (compositional)
  *
  * // Compare continuous response to compositional feature using appropriate transformations
- * auto result = graph.lcor(
+ * auto result = graph.lcor_instrumented(
  *     response,                              // y: continuous data
  *     abundance,                             // z: compositional data
  *     lcor_type_t::DERIVATIVE,            // Geometric weighting
@@ -572,7 +572,7 @@ lcor_result_t set_wgraph_t::lcor_two_pass_instrumented(
  * std::cout << "Positive vertices: " << result.n_positive << std::endl;
  *
  * // With winsorization for robustness
- * auto robust_result = graph.lcor(
+ * auto robust_result = graph.lcor_intrumented(
  *     response, abundance,
  *     lcor_type_t::DERIVATIVE,
  *     edge_diff_type_t::DIFFERENCE,

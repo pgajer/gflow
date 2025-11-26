@@ -4,13 +4,16 @@
 #' Performs clustering multiple times and identifies consensus community structure
 #' by finding the partition that has highest average similarity to all other runs.
 #'
-#' @param adj.list Graph adjacency list
-#' @param weight.list Graph weight list
-#' @param resolution Resolution parameter
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Graph weight list.
+#' @param resolution Resolution parameter.
 #' @param n.runs Number of independent clustering runs. Default is 100.
-#' @param method Consensus method: "median" (partition with median ARI to others),
-#'   "best.modularity" (highest modularity), or "agreement.matrix" (cluster the
+#' @param method Consensus method: "max.avg.similarity" (partition with maximum mean ARI to others),
+#'   "max.modularity" (highest modularity), or "agreement.matrix" (cluster the
 #'   co-assignment matrix). Default is "median".
+#' @param return.all Set to TRUE to return all runs.
+#' @param hc.method Linkage method in hclust() for "agreement.matrix" method.
+#' @param verbose Set to TRUE to print progress messages.
 #'
 #' @return List with components:
 #' \describe{
@@ -26,18 +29,23 @@ consensus.clustering <- function(adj.list,
                                  weight.list = NULL,
                                  resolution = 1.0,
                                  n.runs = 100,
-                                 method = c("median", "best.modularity", "agreement.matrix"),
-                                 return.all = FALSE) {
+                                 method = c("max.avg.similarity", "max.modularity", "agreement.matrix"),
+                                 return.all = FALSE,
+                                 hc.method = "average",
+                                 verbose = TRUE) {
 
     method <- match.arg(method)
     n <- length(adj.list)
 
     ## Run clustering multiple times
-    cat(sprintf("Running %d clustering iterations...\n", n.runs))
+    if (verbose) {
+        cat(sprintf("Running %d clustering iterations...\n", n.runs))
+    }
+
     results <- vector("list", n.runs)
 
     for (i in seq_len(n.runs)) {
-        if (i %% 10 == 0) {
+        if (verbose && i %% 10 == 0) {
             cat(sprintf("  Iteration %d/%d\n", i, n.runs))
         }
         results[[i]] <- cluster.comono.graph(adj.list, weight.list,
@@ -49,7 +57,7 @@ consensus.clustering <- function(adj.list,
     modularities <- sapply(results, function(x) x$modularity)
 
     ## Select consensus based on method
-    if (method == "best.modularity") {
+    if (method == "max.modularity") {
         ## Simply choose the run with highest modularity
         best.idx <- which.max(modularities)
         consensus <- results[[best.idx]]
@@ -60,30 +68,39 @@ consensus.clustering <- function(adj.list,
         })
         stability <- mean(ari.values)
 
-    } else if (method == "median") {
-        ## Find partition with median similarity to all others
+    } else if (method == "max.avg.similarity") {
+    if (verbose) {
         cat("Computing pairwise similarities...\n")
-        n.pairs <- n.runs * (n.runs - 1) / 2
-        similarity.matrix <- matrix(0, n.runs, n.runs)
+    }
 
-        for (i in seq_len(n.runs - 1)) {
-            for (j in (i + 1):n.runs) {
+    similarity.matrix <- diag(1.0, n.runs, n.runs)  # Start with identity
+
+    for (i in seq_len(n.runs - 1)) {
+        for (j in (i + 1):n.runs) {
+            if (length(unique(memberships[[i]])) == 1 &&
+                length(unique(memberships[[j]])) == 1) {
+                ## Both trivial - identical
+                ari <- 1.0
+            } else {
+                ## At least one non-trivial
                 ari <- igraph::compare(memberships[[i]], memberships[[j]],
-                                      method = "adjusted.rand")
-                similarity.matrix[i, j] <- ari
-                similarity.matrix[j, i] <- ari
+                                       method = "adjusted.rand")
             }
+            similarity.matrix[i, j] <- ari
+            similarity.matrix[j, i] <- ari
         }
+    }
 
-        ## Find partition with highest average similarity
-        avg.similarity <- rowMeans(similarity.matrix)
-        median.idx <- which.max(avg.similarity)
-        consensus <- results[[median.idx]]
-        stability <- avg.similarity[median.idx]
+    avg.similarity <- rowMeans(similarity.matrix)
+    best.idx <- which.max(avg.similarity)  # Clearer naming
+    consensus <- results[[best.idx]]
+    stability <- avg.similarity[best.idx]
 
     } else if (method == "agreement.matrix") {
         ## Build co-assignment matrix: how often are vertices i,j in same community?
-        cat("Building agreement matrix...\n")
+        if (verbose) {
+            cat("Building agreement matrix...\n")
+        }
         agreement <- matrix(0, n, n)
 
         for (membership in memberships) {
@@ -100,9 +117,11 @@ consensus.clustering <- function(adj.list,
         agreement <- agreement / n.runs
 
         ## Cluster the agreement matrix itself
-        cat("Clustering agreement matrix...\n")
+        if (verbose) {
+            cat("Clustering agreement matrix...\n")
+        }
         dissimilarity <- 1 - agreement
-        hc <- hclust(as.dist(dissimilarity), method = "average")
+        hc <- hclust(as.dist(dissimilarity), method = hc.method)
 
         ## Cut tree to get similar number of clusters as typical run
         median.k <- median(sapply(results, function(x) x$n.clusters))

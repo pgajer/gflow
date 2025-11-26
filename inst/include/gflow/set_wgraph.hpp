@@ -31,7 +31,7 @@
 #include "harmonic_extender.hpp"
 #include "gflow_cx.hpp"
 #include "gradient_basin.hpp"
-#include "comono_coefficient.hpp"
+#include "lcor.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -1401,8 +1401,72 @@ struct set_wgraph_t {
 		) const;
 
 	// ----------------------------------------------------------------
-	// Co-monotonicity coefficient methods
+	// Local correlation methods
 	// ----------------------------------------------------------------
+
+	// instrumented
+	lcor_result_t lcor_instrumented(
+        const std::vector<double>& y,
+        const std::vector<double>& z,
+        lcor_type_t weight_type,
+        edge_diff_type_t y_diff_type,
+        edge_diff_type_t z_diff_type,
+        double epsilon,
+        double winsorize_quantile
+		) const;
+
+	lcor_result_t lcor_one_pass_instrumented(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon_y,
+		double epsilon_z
+		) const;
+
+	lcor_result_t lcor_two_pass_instrumented(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon_y,
+		double epsilon_z,
+		double winsorize_quantile
+		) const;
+
+	// Production versions (return only coefficients)
+	std::vector<double> lcor(
+        const std::vector<double>& y,
+        const std::vector<double>& z,
+        lcor_type_t weight_type,
+        edge_diff_type_t y_diff_type,
+        edge_diff_type_t z_diff_type,
+        double epsilon,
+        double winsorize_quantile
+		) const;
+
+	std::vector<double> lcor_one_pass(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon_y,
+		double epsilon_z
+		) const;
+
+	std::vector<double> lcor_two_pass(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon_y,
+		double epsilon_z,
+		double winsorize_quantile
+		) const;
 
 	/**
 	 * @brief Compute correlation-type co-monotonicity coefficients
