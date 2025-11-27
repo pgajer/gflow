@@ -89,7 +89,8 @@ extern "C" {
 		SEXP s_y_diff_type,
 		SEXP s_z_diff_type,
 		SEXP s_epsilon,
-		SEXP s_winsorize_quantile
+		SEXP s_winsorize_quantile,
+		SEXP s_instrumented
 		);
 
 #ifdef __cplusplus

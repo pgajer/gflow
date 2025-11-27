@@ -9,7 +9,7 @@
 #' of the response surface by iteratively extracting vertex groups with
 #' maximal stability (gap size).
 #'
-#' @param data.matrix Data matrix (vertices × features)
+#' @param data.matrix Data matrix (vertices x features)
 #' @param linkage.method Hierarchical clustering linkage. Default "ward.D2"
 #' @param distance.metric Distance metric for dist(). Default "euclidean"
 #' @param min.cluster.size Minimum number of elements per extracted cluster

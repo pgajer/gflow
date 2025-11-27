@@ -203,36 +203,20 @@ struct comono_matrix_result_t {
  * @brief Result structure for vector-matrix local correlation computation
  *
  * Contains vertex-wise local correlation coefficients for each column of Z,
- * along with summary statistics and diagnostic information.
+ * stored as a matrix, along with winsorization bounds when applicable.
  */
 struct lcor_vector_matrix_result_t {
-    /// Vertex coefficients for each column: column_coefficients[j][v]
-    std::vector<std::vector<double>> column_coefficients;
+    /// Coefficient matrix: coefficients(v, j) = lcor(y, z_j)(v)
+    /// Stored in column-major order for R compatibility
+    Eigen::MatrixXd coefficients;
 
-    /// Mean coefficient for each column
-    std::vector<double> mean_coefficients;
-
-    /// Median coefficient for each column
-    std::vector<double> median_coefficients;
-
-    /// Count of positive coefficients per column
-    std::vector<size_t> n_positive;
-
-    /// Count of negative coefficients per column
-    std::vector<size_t> n_negative;
-
-    /// Count of zero coefficients per column
-    std::vector<size_t> n_zero;
-
-    /// Number of vertices in graph
-    size_t n_vertices;
-
-    /// Number of columns in Z
-    size_t n_columns;
-
-    /// Winsorization bounds for y edge differences
+    /// Winsorization bounds for y edge differences (scalars)
     double y_lower = -std::numeric_limits<double>::max();
     double y_upper = std::numeric_limits<double>::max();
+
+    /// Winsorization bounds for z edge differences (per-column vectors)
+    std::vector<double> z_lower;
+    std::vector<double> z_upper;
 };
 
 #endif // LCOR_HPP
