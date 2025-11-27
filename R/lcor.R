@@ -72,28 +72,47 @@
 #'   \strong{Vector-matrix (y vector, z matrix) or matrix-vector (y matrix, z vector):}
 #'   An object of class "lcor_vector_matrix_result".
 #'   If instrumented = FALSE, a numeric matrix of dimension (n.vertices x n.columns)
-#'   where column j contains local correlation coefficients between y and \code{z[,j]}.
+#'   where column j contains local correlation coefficients between the vector
+#'   and the j-th column of the matrix.
 #'   If instrumented = TRUE, a list containing:
 #'   \describe{
 #'     \item{column.coefficients}{Matrix (n.vertices x n.columns) of local
-#'       correlations. Column j contains \code{lcor(y, z[,j])} at each vertex.}
-#'     \item{y.lower, y.upper}{Scalar winsorization bounds for y edge differences.}
+#'       correlations.}
+#'     \item{y.lower, y.upper}{Scalar winsorization bounds for the vector input.}
 #'     \item{z.lower, z.upper}{Numeric vectors of length n.columns giving
-#'       per-column winsorization bounds for z edge differences.}
+#'       per-column winsorization bounds for the matrix input.}
 #'   }
-#'   For matrix-vector input (y matrix, z vector), the attribute "transposed"
-#'   is set to TRUE, and column j corresponds to \code{lcor(y[,j], z)}.
+#'   For matrix-vector input, the attribute "transposed" is set to TRUE.
 #'
-#'   \strong{Matrix-matrix (y and z both matrices):}
-#'   A list with class "lcor_matrix_matrix_result" containing:
+#'   \strong{Matrix-matrix with identical(y, z) = TRUE (symmetric case):}
+#'   An object of class "lcor_matrix_matrix_result" with attribute symmetric = TRUE.
+#'   Only upper triangular pairs (i, j) with i < j are computed.
+#'   If instrumented = FALSE, a numeric matrix of dimension (n.vertices x n.pairs)
+#'   where n.pairs = ncol(y) * (ncol(y) - 1) / 2. Column names are in
+#'   "col_i:col_j" format.
+#'   If instrumented = TRUE, a list containing:
 #'   \describe{
-#'     \item{pair.coefficients}{List of numeric vectors, one per column pair.
-#'       Each vector contains vertex-wise coefficients.}
-#'     \item{mean.coefficients}{Numeric vector of mean coefficients per pair.}
-#'     \item{pair.names}{Character vector of pair names in "col_y:col_z" format.}
-#'     \item{pair.indices}{Two-column integer matrix of (i, j) pair indices.}
-#'     \item{symmetric}{Logical indicating whether y and z are identical
-#'       (only upper triangular pairs computed).}
+#'     \item{pair.coefficients}{Matrix (n.vertices x n.pairs) of local correlations.}
+#'     \item{pair.names}{Character vector of pair names in "col_i:col_j" format.}
+#'     \item{pair.indices}{Integer matrix (n.pairs x 2) of column index pairs.}
+#'     \item{column.lower, column.upper}{Numeric vectors of winsorization bounds
+#'       for each column (shared between y and z since they are identical).}
+#'   }
+#'
+#'   \strong{Matrix-matrix with identical(y, z) = FALSE (asymmetric case):}
+#'   An object of class "lcor_matrix_matrix_result" with attribute symmetric = FALSE.
+#'   All pairs (i, j) for i in 1:ncol(y) and j in 1:ncol(z) are computed.
+#'   If instrumented = FALSE, a 3D numeric array of dimension
+#'   (n.vertices x ncol(y) x ncol(z)). Element \code{[v, i, j]} contains
+#'   \code{lcor(y[,i], z[,j])} at vertex v.
+#'   If instrumented = TRUE, a list containing:
+#'   \describe{
+#'     \item{pair.coefficients}{3D array (n.vertices x ncol(y) x ncol(z)) of
+#'       local correlations.}
+#'     \item{y.column.lower, y.column.upper}{Numeric vectors of winsorization
+#'       bounds for each column of y.}
+#'     \item{z.column.lower, z.column.upper}{Numeric vectors of winsorization
+#'       bounds for each column of z.}
 #'   }
 #'
 #' @details
@@ -650,6 +669,620 @@ summary.lcor_vector_matrix_result <- function(object, ...) {
             PropPositive = round(colMeans(coef.mat[, top.idx, drop = FALSE] > 1e-10), 3)
         )
         print(top.df, row.names = FALSE)
+    }
+
+    invisible(object)
+}
+
+################################################################################
+#
+# lcor.matrix.matrix() Implementation
+#
+# Computes local correlation between all pairs of columns from matrices y and z.
+# - Symmetric case (y == z): computes upper triangular pairs only
+# - Asymmetric case (y != z): computes all pairs
+#
+################################################################################
+
+
+#' Local Correlation Between All Column Pairs of Two Matrices
+#'
+#' Compute vertex-level correlation coefficients between all pairs of columns
+#' from matrices y and z. When y and z are identical, only upper triangular
+#' pairs are computed to avoid redundancy.
+#'
+#' @param adj.list List of integer vectors containing 1-based vertex indices.
+#'   Element i contains the neighbors of vertex i.
+#' @param weight.list List of numeric vectors containing edge weights.
+#'   Must have same structure as adj.list.
+#' @param y Numeric matrix or data frame of function values.
+#'   Number of rows must equal the number of vertices.
+#' @param z Numeric matrix or data frame of function values.
+#'   Number of rows must equal the number of vertices.
+#' @param type Character scalar specifying weighting scheme:
+#'   "derivative" (default), "unit", or "sign".
+#' @param y.diff.type Character scalar specifying edge difference type for y columns:
+#'   "difference" (default) or "logratio".
+#' @param z.diff.type Character scalar specifying edge difference type for z columns:
+#'   "difference" (default) or "logratio".
+#' @param epsilon Numeric scalar for pseudocount in log-ratios (0 = adaptive).
+#' @param winsorize.quantile Numeric scalar for winsorization (0 = none).
+#' @param instrumented Logical. If FALSE (default), returns coefficient array only.
+#'   If TRUE, returns list with coefficients and winsorization bounds.
+#' @param mc.cores Integer specifying number of cores for parallel computation.
+#'   Default is 1 (sequential). Note: parallelization via mclapply is not
+#'   available on Windows.
+#'
+#' @return Depends on whether y and z are identical and the instrumented parameter:
+#'
+#'   \strong{Symmetric case (identical(y, z) is TRUE):}
+#'
+#'   If instrumented = FALSE: A numeric matrix of dimension (n.vertices x n.pairs)
+#'   where n.pairs = ncol(y) * (ncol(y) - 1) / 2. Column k contains local
+#'   correlation coefficients for the k-th upper triangular pair.
+#'   Column names are in "col_i:col_j" format.
+#'
+#'   If instrumented = TRUE: A list containing:
+#'   \describe{
+#'     \item{pair.coefficients}{Matrix (n.vertices x n.pairs) of local correlations.}
+#'     \item{pair.names}{Character vector of pair names in "col_i:col_j" format.}
+#'     \item{pair.indices}{Integer matrix (n.pairs x 2) of column index pairs (i, j).}
+#'     \item{column.lower}{Numeric vector of lower winsorization bounds for each
+#'       column of y (= z).}
+#'     \item{column.upper}{Numeric vector of upper winsorization bounds for each
+#'       column of y (= z).}
+#'   }
+#'
+#'   \strong{Asymmetric case (identical(y, z) is FALSE):}
+#'
+#'   If instrumented = FALSE: A 3D numeric array of dimension
+#'   (n.vertices x ncol(y) x ncol(z)). Element \code{[v, i, j]} contains the local
+#'   correlation coefficient \code{lcor(y[,i], z[,j])} at vertex v.
+#'
+#'   If instrumented = TRUE: A list containing:
+#'   \describe{
+#'     \item{pair.coefficients}{3D array (n.vertices x ncol(y) x ncol(z)) of
+#'       local correlations.}
+#'     \item{y.column.lower}{Numeric vector of lower winsorization bounds for
+#'       each column of y.}
+#'     \item{y.column.upper}{Numeric vector of upper winsorization bounds for
+#'       each column of y.}
+#'     \item{z.column.lower}{Numeric vector of lower winsorization bounds for
+#'       each column of z.}
+#'     \item{z.column.upper}{Numeric vector of upper winsorization bounds for
+#'       each column of z.}
+#'   }
+#'
+#'   In both cases, the result has class "lcor_matrix_matrix_result" and
+#'   attribute "symmetric" indicating which case applies.
+#'
+#' @details
+#' This function computes local correlations between all relevant pairs of
+#' columns from y and z. For each pair (i, j), it computes:
+#'
+#' \deqn{lcor(y_i, z_j)(v) = \frac{\sum w_e \Delta_e y_i \cdot \Delta_e z_j}
+#'                                {\sqrt{\sum w_e (\Delta_e y_i)^2}
+#'                                 \sqrt{\sum w_e (\Delta_e z_j)^2}}}
+#'
+#' at each vertex v.
+#'
+#' @section Symmetric Detection:
+#'
+#' The function uses \code{identical(y, z)} to detect the symmetric case.
+#' This checks for object identity, not just numerical equality. If you want
+#' symmetric treatment for numerically equal but distinct objects, pass the
+#' same object for both y and z.
+#'
+#' @section Parallelization:
+#'
+#' When mc.cores > 1, the function uses \code{parallel::mclapply} to distribute
+#' pair computations across cores. This provides near-linear speedup for large
+#' numbers of pairs. Note that mclapply uses forking, which is not available
+#' on Windows; on Windows, the function falls back to sequential execution
+#' regardless of mc.cores.
+#'
+#' @section Memory Considerations:
+#'
+#' For p columns in y and q columns in z, the result requires storage for
+#' n.vertices * p * q coefficients in the asymmetric case, or
+#' n.vertices * p * (p-1) / 2 in the symmetric case. For large matrices,
+#' consider processing in batches.
+#'
+#' @examples
+#' \dontrun{
+#' library(gflow)
+#'
+#' # Symmetric case: local correlation tensor for compositional data
+#' Z <- abundances[, 1:20]  # First 20 ASVs
+#' result <- lcor.matrix.matrix(
+#'   adj.list, weight.list,
+#'   Z, Z,
+#'   type = "unit",
+#'   y.diff.type = "logratio",
+#'   z.diff.type = "logratio",
+#'   mc.cores = 4
+#' )
+#'
+#' # Result is matrix with 20*19/2 = 190 pairs
+#' dim(result)  # n.vertices x 190
+#'
+#' # Find pairs with strongest mean correlation
+#' pair.means <- colMeans(result)
+#' top.pairs <- order(abs(pair.means), decreasing = TRUE)[1:10]
+#' print(colnames(result)[top.pairs])
+#'
+#' # Asymmetric case: correlations between two different feature sets
+#' Y <- clinical.scores    # n x 5 matrix of clinical variables
+#' Z <- abundances[, 1:50] # n x 50 matrix of abundances
+#' result <- lcor.matrix.matrix(
+#'   adj.list, weight.list,
+#'   Y, Z,
+#'   type = "derivative",
+#'   y.diff.type = "difference",
+#'   z.diff.type = "logratio"
+#' )
+#'
+#' # Result is 3D array
+#' dim(result)  # n.vertices x 5 x 50
+#'
+#' # Mean correlation between clinical variable 2 and all ASVs
+#' mean.cors <- colMeans(result[, 2, ])
+#' }
+#'
+#' @seealso
+#' \code{\link{lcor}} for the unified interface,
+#' \code{\link{lcor.vector.matrix}} for vector-matrix computation
+#'
+#' @export
+lcor.matrix.matrix <- function(adj.list,
+                                weight.list,
+                                y,
+                                z,
+                                type = c("derivative", "unit", "sign"),
+                                y.diff.type = c("difference", "logratio"),
+                                z.diff.type = c("difference", "logratio"),
+                                epsilon = 0,
+                                winsorize.quantile = 0,
+                                instrumented = FALSE,
+                                mc.cores = 1L) {
+
+    ## Match arguments
+    type <- match.arg(type)
+    y.diff.type <- match.arg(y.diff.type)
+    z.diff.type <- match.arg(z.diff.type)
+
+    ## Convert data frames to matrices
+    if (is.data.frame(y)) y <- as.matrix(y)
+    if (is.data.frame(z)) z <- as.matrix(z)
+
+    ## Input validation
+    if (!is.list(adj.list)) stop("adj.list must be a list")
+    if (!is.list(weight.list)) stop("weight.list must be a list")
+    if (!is.matrix(y) || !is.numeric(y)) stop("y must be a numeric matrix")
+    if (!is.matrix(z) || !is.numeric(z)) stop("z must be a numeric matrix")
+    if (!is.numeric(epsilon) || length(epsilon) != 1)
+        stop("epsilon must be a single numeric value")
+    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1)
+        stop("winsorize.quantile must be a single numeric value")
+    if (!is.logical(instrumented) || length(instrumented) != 1)
+        stop("instrumented must be a single logical value")
+    if (!is.numeric(mc.cores) || length(mc.cores) != 1 || mc.cores < 1)
+        stop("mc.cores must be a positive integer")
+
+    mc.cores <- as.integer(mc.cores)
+    n.vertices <- length(adj.list)
+    n.cols.y <- ncol(y)
+    n.cols.z <- ncol(z)
+
+    if (nrow(y) != n.vertices)
+        stop(sprintf("nrow(y) (%d) must equal number of vertices (%d)",
+                     nrow(y), n.vertices))
+    if (nrow(z) != n.vertices)
+        stop(sprintf("nrow(z) (%d) must equal number of vertices (%d)",
+                     nrow(z), n.vertices))
+    if (length(weight.list) != n.vertices)
+        stop(sprintf("Length of weight.list (%d) must equal number of vertices (%d)",
+                     length(weight.list), n.vertices))
+
+    ## Get column names
+    y.col.names <- colnames(y)
+    if (is.null(y.col.names)) y.col.names <- paste0("Y", seq_len(n.cols.y))
+
+    z.col.names <- colnames(z)
+    if (is.null(z.col.names)) z.col.names <- paste0("Z", seq_len(n.cols.z))
+
+    ## Convert to 0-based indexing for C++
+    adj.list.0 <- lapply(adj.list, function(x) as.integer(x - 1))
+
+    ## Detect symmetric case
+    symmetric <- identical(y, z)
+
+    ## Build list of pairs to compute
+    if (symmetric) {
+        ## Upper triangular pairs only: (1,2), (1,3), ..., (m-1, m)
+        if (n.cols.y < 2) {
+            stop("For symmetric case, y must have at least 2 columns")
+        }
+        pairs <- combn(seq_len(n.cols.y), 2, simplify = FALSE)
+        n.pairs <- length(pairs)
+        pair.names <- sapply(pairs, function(p) {
+            paste0(y.col.names[p[1]], ":", y.col.names[p[2]])
+        })
+    } else {
+        ## All pairs: (1,1), (1,2), ..., (p, q)
+        pairs <- vector("list", n.cols.y * n.cols.z)
+        pair.names <- character(n.cols.y * n.cols.z)
+        idx <- 1
+        for (i in seq_len(n.cols.y)) {
+            for (j in seq_len(n.cols.z)) {
+                pairs[[idx]] <- c(i, j)
+                pair.names[idx] <- paste0(y.col.names[i], ":", z.col.names[j])
+                idx <- idx + 1
+            }
+        }
+        n.pairs <- length(pairs)
+    }
+
+    ## Define the worker function for a single pair
+    compute.pair <- function(pair) {
+        i <- pair[1]
+        j <- pair[2]
+
+        if (instrumented) {
+            ## Call instrumented version to get bounds
+            res <- .Call(
+                "S_lcor_instrumented",
+                adj.list.0,
+                weight.list,
+                as.numeric(y[, i]),
+                as.numeric(z[, j]),
+                as.character(type),
+                as.character(y.diff.type),
+                as.character(z.diff.type),
+                as.numeric(epsilon),
+                as.numeric(winsorize.quantile),
+                PACKAGE = "gflow"
+            )
+            return(res)
+        } else {
+            ## Call non-instrumented version for coefficients only
+            res <- .Call(
+                "S_lcor",
+                adj.list.0,
+                weight.list,
+                as.numeric(y[, i]),
+                as.numeric(z[, j]),
+                as.character(type),
+                as.character(y.diff.type),
+                as.character(z.diff.type),
+                as.numeric(epsilon),
+                as.numeric(winsorize.quantile),
+                PACKAGE = "gflow"
+            )
+            return(res)
+        }
+    }
+
+    ## Execute computation (parallel or sequential)
+    if (mc.cores > 1 && .Platform$OS.type != "windows") {
+        results <- parallel::mclapply(pairs, compute.pair, mc.cores = mc.cores)
+    } else {
+        results <- lapply(pairs, compute.pair)
+    }
+
+    ## Assemble results based on symmetric/asymmetric and instrumented flags
+    if (symmetric) {
+        result <- .assemble.symmetric.result(
+            results, pairs, pair.names, n.vertices, n.cols.y,
+            y.col.names, instrumented
+        )
+    } else {
+        result <- .assemble.asymmetric.result(
+            results, pairs, n.vertices, n.cols.y, n.cols.z,
+            y.col.names, z.col.names, instrumented
+        )
+    }
+
+    ## Add common attributes
+    attr(result, "type") <- type
+    attr(result, "y.diff.type") <- y.diff.type
+    attr(result, "z.diff.type") <- z.diff.type
+    attr(result, "epsilon") <- epsilon
+    attr(result, "winsorize.quantile") <- winsorize.quantile
+    attr(result, "n.vertices") <- n.vertices
+    attr(result, "symmetric") <- symmetric
+    attr(result, "instrumented") <- instrumented
+
+    class(result) <- c("lcor_matrix_matrix_result",
+                       if (instrumented) "list" else class(result))
+
+    return(result)
+}
+
+
+## Internal helper: assemble symmetric case results
+.assemble.symmetric.result <- function(results, pairs, pair.names, n.vertices,
+                                        n.cols, col.names, instrumented) {
+    n.pairs <- length(pairs)
+
+    if (!instrumented) {
+        ## Simple case: just coefficient matrix
+        coef.mat <- matrix(NA_real_, nrow = n.vertices, ncol = n.pairs)
+        for (k in seq_len(n.pairs)) {
+            coef.mat[, k] <- results[[k]]
+        }
+        colnames(coef.mat) <- pair.names
+        return(coef.mat)
+
+    } else {
+        ## Instrumented: extract coefficients and bounds
+        coef.mat <- matrix(NA_real_, nrow = n.vertices, ncol = n.pairs)
+        pair.indices <- matrix(NA_integer_, nrow = n.pairs, ncol = 2)
+
+        ## Track bounds for each column (may appear in multiple pairs)
+        ## Use first occurrence for each column's bounds
+        column.lower <- rep(NA_real_, n.cols)
+        column.upper <- rep(NA_real_, n.cols)
+        names(column.lower) <- col.names
+        names(column.upper) <- col.names
+
+        for (k in seq_len(n.pairs)) {
+            res <- results[[k]]
+            i <- pairs[[k]][1]
+            j <- pairs[[k]][2]
+
+            coef.mat[, k] <- res$vertex.coefficients
+            pair.indices[k, ] <- c(i, j)
+
+            ## Store bounds for columns i and j if not yet recorded
+            ## y bounds correspond to column i, z bounds to column j
+            if (is.na(column.lower[i])) {
+                column.lower[i] <- res$y.lower
+                column.upper[i] <- res$y.upper
+            }
+            if (is.na(column.lower[j])) {
+                column.lower[j] <- res$z.lower
+                column.upper[j] <- res$z.upper
+            }
+        }
+
+        colnames(coef.mat) <- pair.names
+        colnames(pair.indices) <- c("i", "j")
+
+        return(list(
+            pair.coefficients = coef.mat,
+            pair.names = pair.names,
+            pair.indices = pair.indices,
+            column.lower = column.lower,
+            column.upper = column.upper
+        ))
+    }
+}
+
+
+## Internal helper: assemble asymmetric case results
+.assemble.asymmetric.result <- function(results, pairs, n.vertices,
+                                         n.cols.y, n.cols.z,
+                                         y.col.names, z.col.names,
+                                         instrumented) {
+
+    if (!instrumented) {
+        ## Simple case: 3D array
+        coef.array <- array(NA_real_,
+                            dim = c(n.vertices, n.cols.y, n.cols.z),
+                            dimnames = list(NULL, y.col.names, z.col.names))
+
+        for (k in seq_along(pairs)) {
+            i <- pairs[[k]][1]
+            j <- pairs[[k]][2]
+            coef.array[, i, j] <- results[[k]]
+        }
+        return(coef.array)
+
+    } else {
+        ## Instrumented: 3D array plus per-column bounds
+        coef.array <- array(NA_real_,
+                            dim = c(n.vertices, n.cols.y, n.cols.z),
+                            dimnames = list(NULL, y.col.names, z.col.names))
+
+        ## Track bounds for each column of y and z
+        y.column.lower <- rep(NA_real_, n.cols.y)
+        y.column.upper <- rep(NA_real_, n.cols.y)
+        z.column.lower <- rep(NA_real_, n.cols.z)
+        z.column.upper <- rep(NA_real_, n.cols.z)
+        names(y.column.lower) <- y.col.names
+        names(y.column.upper) <- y.col.names
+        names(z.column.lower) <- z.col.names
+        names(z.column.upper) <- z.col.names
+
+        for (k in seq_along(pairs)) {
+            res <- results[[k]]
+            i <- pairs[[k]][1]
+            j <- pairs[[k]][2]
+
+            coef.array[, i, j] <- res$vertex.coefficients
+
+            ## Store bounds if not yet recorded
+            if (is.na(y.column.lower[i])) {
+                y.column.lower[i] <- res$y.lower
+                y.column.upper[i] <- res$y.upper
+            }
+            if (is.na(z.column.lower[j])) {
+                z.column.lower[j] <- res$z.lower
+                z.column.upper[j] <- res$z.upper
+            }
+        }
+
+        return(list(
+            pair.coefficients = coef.array,
+            y.column.lower = y.column.lower,
+            y.column.upper = y.column.upper,
+            z.column.lower = z.column.lower,
+            z.column.upper = z.column.upper
+        ))
+    }
+}
+
+
+#' Print Method for lcor_matrix_matrix_result
+#'
+#' @param x An object of class "lcor_matrix_matrix_result"
+#' @param digits Number of digits for printing
+#' @param ... Additional arguments (ignored)
+#' @export
+print.lcor_matrix_matrix_result <- function(x, digits = 4, ...) {
+    cat("Local Correlation Matrix-Matrix Result\n")
+    cat("=======================================\n\n")
+
+    symmetric <- attr(x, "symmetric")
+    instrumented <- attr(x, "instrumented")
+
+    cat("Parameters:\n")
+    cat("  Weighting type:", attr(x, "type"), "\n")
+    cat("  Y difference type:", attr(x, "y.diff.type"), "\n")
+    cat("  Z difference type:", attr(x, "z.diff.type"), "\n")
+    cat("  Symmetric:", symmetric, "\n")
+    cat("  Instrumented:", instrumented, "\n")
+    cat("  Vertices:", attr(x, "n.vertices"), "\n\n")
+
+    ## Get coefficient structure
+    if (instrumented) {
+        coeffs <- x$pair.coefficients
+    } else {
+        coeffs <- x
+    }
+
+    if (symmetric) {
+        ## Matrix case
+        n.pairs <- ncol(coeffs)
+        cat("Pairs computed:", n.pairs, "(upper triangular)\n\n")
+
+        pair.means <- colMeans(coeffs)
+        cat("Summary of pair mean coefficients:\n")
+        print(summary(pair.means))
+
+        ## Top pairs
+        cat("\nTop 5 pairs by |mean coefficient|:\n")
+        top.idx <- order(abs(pair.means), decreasing = TRUE)[seq_len(min(5, n.pairs))]
+        top.df <- data.frame(
+            Pair = colnames(coeffs)[top.idx],
+            Mean = round(pair.means[top.idx], digits)
+        )
+        print(top.df, row.names = FALSE)
+
+    } else {
+        ## 3D array case
+        dims <- dim(coeffs)
+        cat("Dimensions:", dims[1], "vertices x",
+            dims[2], "y-columns x", dims[3], "z-columns\n")
+        cat("Total pairs:", dims[2] * dims[3], "\n\n")
+
+        ## Overall summary
+        cat("Summary of all coefficients:\n")
+        print(summary(as.vector(coeffs)))
+
+        ## Mean across vertices for each (y, z) pair
+        pair.means <- apply(coeffs, c(2, 3), mean)
+        cat("\nMean coefficient matrix (y-cols as rows, z-cols as cols):\n")
+        print(round(pair.means[seq_len(min(5, dims[2])),
+                               seq_len(min(5, dims[3]))], digits))
+        if (dims[2] > 5 || dims[3] > 5) {
+            cat("  ... (showing first 5x5 block)\n")
+        }
+    }
+
+    invisible(x)
+}
+
+
+#' Summary Method for lcor_matrix_matrix_result
+#'
+#' @param object An object of class "lcor_matrix_matrix_result"
+#' @param ... Additional arguments (ignored)
+#' @export
+summary.lcor_matrix_matrix_result <- function(object, ...) {
+    cat("Local Correlation Matrix-Matrix Summary\n")
+    cat("========================================\n\n")
+
+    symmetric <- attr(object, "symmetric")
+    instrumented <- attr(object, "instrumented")
+
+    if (instrumented) {
+        coeffs <- object$pair.coefficients
+    } else {
+        coeffs <- object
+    }
+
+    if (symmetric) {
+        pair.means <- colMeans(coeffs)
+        pair.medians <- apply(coeffs, 2, median)
+
+        cat("Pair statistics:\n")
+        cat("  Number of pairs:", length(pair.means), "\n")
+        cat("  Mean of pair means:", round(mean(pair.means), 4), "\n")
+        cat("  SD of pair means:", round(sd(pair.means), 4), "\n\n")
+
+        cat("Distribution of pair mean coefficients:\n")
+        print(summary(pair.means))
+
+        if (instrumented && attr(object, "winsorize.quantile") > 0) {
+            cat("\nWinsorization bounds by column:\n")
+            bounds.df <- data.frame(
+                Column = names(object$column.lower),
+                Lower = round(object$column.lower, 4),
+                Upper = round(object$column.upper, 4)
+            )
+            print(head(bounds.df, 10), row.names = FALSE)
+            if (length(object$column.lower) > 10) {
+                cat("  ... and", length(object$column.lower) - 10, "more columns\n")
+            }
+        }
+
+    } else {
+        dims <- dim(coeffs)
+
+        cat("Array dimensions:\n")
+        cat("  Vertices:", dims[1], "\n")
+        cat("  Y columns:", dims[2], "\n")
+        cat("  Z columns:", dims[3], "\n")
+        cat("  Total pairs:", dims[2] * dims[3], "\n\n")
+
+        ## Compute mean matrix
+        pair.means <- apply(coeffs, c(2, 3), mean)
+
+        cat("Summary of vertex-averaged coefficients:\n")
+        print(summary(as.vector(pair.means)))
+
+        ## Strongest associations
+        cat("\nTop 5 (y, z) pairs by |mean coefficient|:\n")
+        abs.means <- abs(pair.means)
+        top.idx <- order(abs.means, decreasing = TRUE)[1:min(5, length(abs.means))]
+        top.coords <- arrayInd(top.idx, dim(pair.means))
+
+        top.df <- data.frame(
+            Y = dimnames(coeffs)[[2]][top.coords[, 1]],
+            Z = dimnames(coeffs)[[3]][top.coords[, 2]],
+            Mean = round(pair.means[top.idx], 4)
+        )
+        print(top.df, row.names = FALSE)
+
+        if (instrumented && attr(object, "winsorize.quantile") > 0) {
+            cat("\nY column winsorization bounds:\n")
+            y.bounds <- data.frame(
+                Column = names(object$y.column.lower),
+                Lower = round(object$y.column.lower, 4),
+                Upper = round(object$y.column.upper, 4)
+            )
+            print(head(y.bounds, 5), row.names = FALSE)
+
+            cat("\nZ column winsorization bounds:\n")
+            z.bounds <- data.frame(
+                Column = names(object$z.column.lower),
+                Lower = round(object$z.column.lower, 4),
+                Upper = round(object$z.column.upper, 4)
+            )
+            print(head(z.bounds, 5), row.names = FALSE)
+        }
     }
 
     invisible(object)
