@@ -1069,30 +1069,14 @@ std::vector<double> set_wgraph_t::lcor(
  * of matrix Z. The implementation pre-computes y-dependent quantities once and
  * reuses them across all columns.
  *
- * ALGORITHMIC STRUCTURE
- *
- * The computation proceeds in two phases:
- *
- * Phase 1 (Setup): For each vertex v, pre-compute and store:
- *   - Edge differences Delta_e y for all incident edges
- *   - Edge weights w_e based on the weighting scheme
- *   - Neighbor indices for efficient column traversal
- *   - (Optional) Collect all Delta_e y values for winsorization bound computation
- *
- * Phase 2 (Column processing): For each column j of Z:
- *   - Compute Delta_e z_j using stored neighbor indices
- *   - (Optional) Apply winsorization clipping to Delta_e z_j
- *   - Compute correlation coefficient using pre-computed y quantities
- *   - Compute summary statistics (mean, median, counts)
- *
  * @param y Response function values at vertices (length = num_vertices)
- * @param Z Feature matrix where each column is a function on vertices
+ * @param Z Feature matrix (rows = num_vertices, columns = number of features)
  * @param weight_type Weighting scheme (UNIT, DERIVATIVE, or SIGN)
  * @param y_diff_type Edge difference type for y (DIFFERENCE or LOGRATIO)
  * @param z_diff_type Edge difference type for Z columns (DIFFERENCE or LOGRATIO)
  * @param epsilon Pseudocount for log-ratio transformations (0 = adaptive)
  * @param winsorize_quantile Quantile for winsorization (0 = none)
- * @return lcor_vector_matrix_result_t with coefficients and statistics
+ * @return lcor_vector_matrix_result_t with coefficient matrix and bounds
  */
 lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
     const std::vector<double>& y,
@@ -1106,7 +1090,6 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
     const size_t n_vertices = num_vertices();
     const size_t n_columns = static_cast<size_t>(Z.cols());
     const double MIN_DENOMINATOR = 1e-10;
-    const double COEFF_EPSILON = 1e-10;
 
     // ---- Input validation ----
     if (y.size() != n_vertices) {
@@ -1124,7 +1107,6 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
         epsilon_y = compute_adaptive_epsilon(y);
     }
 
-    // For Z columns, compute adaptive epsilon from all columns
     double epsilon_z = epsilon;
     if (z_diff_type == edge_diff_type_t::LOGRATIO && epsilon_z <= 0.0 && n_columns > 0) {
         double min_nonzero = std::numeric_limits<double>::max();
@@ -1143,18 +1125,10 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
 
     // ---- Initialize result ----
     lcor_vector_matrix_result_t result;
-    result.column_coefficients.resize(n_columns);
-    result.mean_coefficients.resize(n_columns, 0.0);
-    result.median_coefficients.resize(n_columns, 0.0);
-    result.n_positive.resize(n_columns, 0);
-    result.n_negative.resize(n_columns, 0);
-    result.n_zero.resize(n_columns, 0);
-    result.n_vertices = n_vertices;
-    result.n_columns = n_columns;
-
-    for (size_t col = 0; col < n_columns; ++col) {
-        result.column_coefficients[col].resize(n_vertices, 0.0);
-    }
+    result.coefficients.resize(n_vertices, n_columns);
+    result.coefficients.setZero();
+    result.z_lower.resize(n_columns, -std::numeric_limits<double>::max());
+    result.z_upper.resize(n_columns, std::numeric_limits<double>::max());
 
     // ---- Phase 1: Pre-compute y-dependent quantities ----
 
@@ -1248,8 +1222,8 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
 
         // If winsorizing, collect z edge differences for this column
         std::vector<double> all_delta_z;
-        double z_lower = -std::numeric_limits<double>::max();
-        double z_upper = std::numeric_limits<double>::max();
+        double z_lower_col = -std::numeric_limits<double>::max();
+        double z_upper_col = std::numeric_limits<double>::max();
 
         if (need_winsorization) {
             all_delta_z.reserve(total_edges);
@@ -1263,17 +1237,18 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
                 }
             }
             auto bounds = compute_winsorize_bounds(all_delta_z, winsorize_quantile);
-            z_lower = bounds.first;
-            z_upper = bounds.second;
+            z_lower_col = bounds.first;
+            z_upper_col = bounds.second;
+            result.z_lower[col] = z_lower_col;
+            result.z_upper[col] = z_upper_col;
         }
 
-        std::vector<double>& coeffs = result.column_coefficients[col];
-
+        // Compute coefficient at each vertex for this column
         for (size_t v = 0; v < n_vertices; ++v) {
             const size_t n_neighbors = neighbor_indices[v].size();
 
             if (n_neighbors == 0 || denom_y[v] < MIN_DENOMINATOR) {
-                coeffs[v] = 0.0;
+                result.coefficients(v, col) = 0.0;
                 continue;
             }
 
@@ -1293,7 +1268,7 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
                     Z(u, col), Z(v, col), z_diff_type, epsilon_z
                 );
                 if (need_winsorization) {
-                    delta_z = winsorize_clip(delta_z, z_lower, z_upper);
+                    delta_z = winsorize_clip(delta_z, z_lower_col, z_upper_col);
                 }
 
                 numerator += weight * delta_y * delta_z;
@@ -1302,37 +1277,15 @@ lcor_vector_matrix_result_t set_wgraph_t::lcor_vector_matrix(
 
             const double denom_z = std::sqrt(sum_z_squared);
             if (denom_z > MIN_DENOMINATOR) {
-                coeffs[v] = numerator / (denom_y[v] * denom_z);
-                if (coeffs[v] > 1.0) coeffs[v] = 1.0;
-                else if (coeffs[v] < -1.0) coeffs[v] = -1.0;
+                double coeff = numerator / (denom_y[v] * denom_z);
+                // Clamp to [-1, 1]
+                if (coeff > 1.0) coeff = 1.0;
+                else if (coeff < -1.0) coeff = -1.0;
+                result.coefficients(v, col) = coeff;
             } else {
-                coeffs[v] = 0.0;
+                result.coefficients(v, col) = 0.0;
             }
         }
-
-        // ---- Compute summary statistics for this column ----
-
-        double sum = std::accumulate(coeffs.begin(), coeffs.end(), 0.0);
-        result.mean_coefficients[col] = sum / static_cast<double>(n_vertices);
-
-        std::vector<double> sorted = coeffs;
-        std::sort(sorted.begin(), sorted.end());
-        if (n_vertices % 2 == 0) {
-            result.median_coefficients[col] =
-                0.5 * (sorted[n_vertices/2 - 1] + sorted[n_vertices/2]);
-        } else {
-            result.median_coefficients[col] = sorted[n_vertices/2];
-        }
-
-        size_t n_pos = 0, n_neg = 0, n_zero = 0;
-        for (double c : coeffs) {
-            if (c > COEFF_EPSILON) ++n_pos;
-            else if (c < -COEFF_EPSILON) ++n_neg;
-            else ++n_zero;
-        }
-        result.n_positive[col] = n_pos;
-        result.n_negative[col] = n_neg;
-        result.n_zero[col] = n_zero;
     }
 
     return result;

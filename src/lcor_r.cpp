@@ -200,7 +200,8 @@ extern "C" SEXP S_lcor_instrumented(
     SEXP s_z_diff_type,
     SEXP s_epsilon,
     SEXP s_winsorize_quantile
-) {
+    ) {
+
     // ---- Input validation and conversion ----
     
     // Convert adjacency and weight lists from R to C++
@@ -610,7 +611,7 @@ extern "C" SEXP S_lcor(
 }
 
 /**
- * @brief SEXP interface for computing local correlation between a vector and matrix columns
+ * @brief SEXP interface for vector-matrix local correlation with instrumented option
  *
  * @param s_adj_list R list of integer vectors (0-based adjacency structure)
  * @param s_weight_list R list of numeric vectors (edge weights/lengths)
@@ -621,7 +622,10 @@ extern "C" SEXP S_lcor(
  * @param s_z_diff_type R character: "difference" or "logratio"
  * @param s_epsilon R numeric scalar: pseudocount (0 = adaptive)
  * @param s_winsorize_quantile R numeric scalar: winsorization quantile (0 = none)
- * @return R list with column.coefficients, mean.coefficients, etc.
+ * @param s_instrumented R logical: if TRUE, return list with bounds; if FALSE, return matrix
+ *
+ * @return If instrumented = FALSE: R matrix (n_vertices x n_columns) of coefficients
+ *         If instrumented = TRUE: R list with column.coefficients, y.lower, y.upper, z.lower, z.upper
  */
 extern "C" SEXP S_lcor_vector_matrix(
     SEXP s_adj_list,
@@ -632,7 +636,8 @@ extern "C" SEXP S_lcor_vector_matrix(
     SEXP s_y_diff_type,
     SEXP s_z_diff_type,
     SEXP s_epsilon,
-    SEXP s_winsorize_quantile
+    SEXP s_winsorize_quantile,
+    SEXP s_instrumented
 ) {
     // ---- Input validation and conversion ----
 
@@ -735,6 +740,12 @@ extern "C" SEXP S_lcor_vector_matrix(
     }
     double winsorize_quantile = REAL(s_winsorize_quantile)[0];
 
+    // Convert instrumented flag
+    if (!Rf_isLogical(s_instrumented) || LENGTH(s_instrumented) != 1) {
+        Rf_error("s_instrumented must be a single logical value");
+    }
+    bool instrumented = (LOGICAL(s_instrumented)[0] == TRUE);
+
     // ---- Build graph and compute ----
     set_wgraph_t graph(adj_list, weight_list);
 
@@ -742,88 +753,77 @@ extern "C" SEXP S_lcor_vector_matrix(
         y, Z, lcor_type, y_diff_type, z_diff_type, epsilon, winsorize_quantile
     );
 
-    // ---- Build R return object ----
+    // ---- Build R return object based on instrumented flag ----
 
-    const int n_components = 8;
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_components));
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_components));
+    if (!instrumented) {
+        // Return just the coefficient matrix
+        SEXP r_coeffs = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_cols));
+        double* coeffs_ptr = REAL(r_coeffs);
 
-    int idx = 0;
-
-    // column.coefficients (list of vectors)
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("column.coefficients"));
-    SEXP r_col_coeffs = PROTECT(Rf_allocVector(VECSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        SEXP r_col = PROTECT(Rf_allocVector(REALSXP, n_vertices));
-        double* col_ptr = REAL(r_col);
-        for (size_t i = 0; i < n_vertices; ++i) {
-            col_ptr[i] = result.column_coefficients[col][i];
+        // Copy data (Eigen is column-major, same as R)
+        for (int col = 0; col < n_cols; ++col) {
+            for (size_t row = 0; row < n_vertices; ++row) {
+                coeffs_ptr[col * n_vertices + row] = result.coefficients(row, col);
+            }
         }
-        SET_VECTOR_ELT(r_col_coeffs, col, r_col);
+
         UNPROTECT(1);
+        return r_coeffs;
+
+    } else {
+        // Return list with coefficients and winsorization bounds
+        const int n_components = 5;
+        SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_components));
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_components));
+
+        int idx = 0;
+
+        // Component 1: column.coefficients (matrix)
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("column.coefficients"));
+        SEXP r_coeffs = PROTECT(Rf_allocMatrix(REALSXP, n_vertices, n_cols));
+        double* coeffs_ptr = REAL(r_coeffs);
+        for (int col = 0; col < n_cols; ++col) {
+            for (size_t row = 0; row < n_vertices; ++row) {
+                coeffs_ptr[col * n_vertices + row] = result.coefficients(row, col);
+            }
+        }
+        SET_VECTOR_ELT(r_result, idx++, r_coeffs);
+        UNPROTECT(1);  // r_coeffs
+
+        // Component 2: y.lower (scalar)
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("y.lower"));
+        SEXP r_y_lower = PROTECT(Rf_ScalarReal(result.y_lower));
+        SET_VECTOR_ELT(r_result, idx++, r_y_lower);
+        UNPROTECT(1);
+
+        // Component 3: y.upper (scalar)
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("y.upper"));
+        SEXP r_y_upper = PROTECT(Rf_ScalarReal(result.y_upper));
+        SET_VECTOR_ELT(r_result, idx++, r_y_upper);
+        UNPROTECT(1);
+
+        // Component 4: z.lower (vector, one per column)
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("z.lower"));
+        SEXP r_z_lower = PROTECT(Rf_allocVector(REALSXP, n_cols));
+        for (int col = 0; col < n_cols; ++col) {
+            REAL(r_z_lower)[col] = result.z_lower[col];
+        }
+        SET_VECTOR_ELT(r_result, idx++, r_z_lower);
+        UNPROTECT(1);
+
+        // Component 5: z.upper (vector, one per column)
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("z.upper"));
+        SEXP r_z_upper = PROTECT(Rf_allocVector(REALSXP, n_cols));
+        for (int col = 0; col < n_cols; ++col) {
+            REAL(r_z_upper)[col] = result.z_upper[col];
+        }
+        SET_VECTOR_ELT(r_result, idx++, r_z_upper);
+        UNPROTECT(1);
+
+        // Set names attribute
+        Rf_setAttrib(r_result, R_NamesSymbol, r_names);
+
+        UNPROTECT(2);  // r_result, r_names
+        return r_result;
     }
-    SET_VECTOR_ELT(r_result, idx++, r_col_coeffs);
-    UNPROTECT(1);
-
-    // mean.coefficients
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("mean.coefficients"));
-    SEXP r_means = PROTECT(Rf_allocVector(REALSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        REAL(r_means)[col] = result.mean_coefficients[col];
-    }
-    SET_VECTOR_ELT(r_result, idx++, r_means);
-    UNPROTECT(1);
-
-    // median.coefficients
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("median.coefficients"));
-    SEXP r_medians = PROTECT(Rf_allocVector(REALSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        REAL(r_medians)[col] = result.median_coefficients[col];
-    }
-    SET_VECTOR_ELT(r_result, idx++, r_medians);
-    UNPROTECT(1);
-
-    // n.positive
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.positive"));
-    SEXP r_n_positive = PROTECT(Rf_allocVector(INTSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        INTEGER(r_n_positive)[col] = static_cast<int>(result.n_positive[col]);
-    }
-    SET_VECTOR_ELT(r_result, idx++, r_n_positive);
-    UNPROTECT(1);
-
-    // n.negative
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.negative"));
-    SEXP r_n_negative = PROTECT(Rf_allocVector(INTSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        INTEGER(r_n_negative)[col] = static_cast<int>(result.n_negative[col]);
-    }
-    SET_VECTOR_ELT(r_result, idx++, r_n_negative);
-    UNPROTECT(1);
-
-    // n.zero
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.zero"));
-    SEXP r_n_zero = PROTECT(Rf_allocVector(INTSXP, n_cols));
-    for (int col = 0; col < n_cols; ++col) {
-        INTEGER(r_n_zero)[col] = static_cast<int>(result.n_zero[col]);
-    }
-    SET_VECTOR_ELT(r_result, idx++, r_n_zero);
-    UNPROTECT(1);
-
-    // y.lower
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("y.lower"));
-    SEXP r_y_lower = PROTECT(Rf_ScalarReal(result.y_lower));
-    SET_VECTOR_ELT(r_result, idx++, r_y_lower);
-    UNPROTECT(1);
-
-    // y.upper
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("y.upper"));
-    SEXP r_y_upper = PROTECT(Rf_ScalarReal(result.y_upper));
-    SET_VECTOR_ELT(r_result, idx++, r_y_upper);
-    UNPROTECT(1);
-
-    Rf_setAttrib(r_result, R_NamesSymbol, r_names);
-    UNPROTECT(2);  // r_result, r_names
-
-    return r_result;
 }

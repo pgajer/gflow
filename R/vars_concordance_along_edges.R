@@ -84,6 +84,7 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
 }
 
 ## Enhanced diagnostic function
+#' @export
 print.concordance.test <- function(result) {
     cat("\n")
     cat("=" , rep("=", 70), "\n", sep = "")
@@ -130,6 +131,7 @@ print.concordance.test <- function(result) {
 }
 
 ## Visualization function
+#' @export
 plot.concordance.test <- function(result, main = "Permutation Test Results") {
 
     par(mfrow = c(1, 2))
