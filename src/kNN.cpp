@@ -55,7 +55,7 @@ knn_result_t kNN(const std::vector<std::vector<double>>& X, int k) {
         for (int j = 0; j < k; ++j) {
             const size_t off = static_cast<size_t>(i) * k + j;
             out.indices[off]   = nnIdx[j];
-            out.distances[off] = std::sqrt(static_cast<double>(nnDist[j]));
+            out.distances[off] = ANN_ROOT(static_cast<double>(nnDist[j]));
         }
     }
 
@@ -113,7 +113,7 @@ SEXP S_kNN(SEXP RX, SEXP Rk) {
             kdTree->annkSearch(dataPts[i], k, nnIdx.data(), nnDist.data(), 0.0);
             for (int j = 0; j < k; ++j) {
                 INTEGER(nn_i)[i + n * j] = nnIdx[j];
-                REAL(nn_d)[i + n * j]    = std::sqrt(static_cast<double>(nnDist[j]));
+                REAL(nn_d)[i + n * j]    = ANN_ROOT(static_cast<double>(nnDist[j]));
             }
         }
 

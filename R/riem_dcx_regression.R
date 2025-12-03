@@ -1301,10 +1301,10 @@ print.summary.knn.riem.fit <- function(x, digits = 4, ...) {
 #' @return Invisibly returns a data frame with all diagnostic metrics
 #' @export
 k.diagnostics.plots <- function(results.list,
-                                 k.values,
-                                 response,
-                                 main.title = "k-NN Bandwidth Diagnostics",
-                                 mark.optimal = TRUE) {
+                                k.values,
+                                response,
+                                main.title = "k-NN Bandwidth Diagnostics",
+                                mark.optimal = TRUE) {
 
   n.models <- length(results.list)
   if (length(k.values) != n.models) {
@@ -1585,9 +1585,9 @@ get.rcx.optimal.k <- function(diag.df) {
 #' filters, computational cost scales with the number of genuine extrema rather
 #' than total vertices. For a graph with n vertices and average degree k:
 #' \itemize{
-#'   \item Stage 1 (extremp scores): O(n*k) - single pass over all vertices
-#'   \item Stage 2 (effective degrees): O(n*k) - already computed, just filter
-#'   \item Stage 3 (hop-extremp radii): O(m*(n+E)) where m is number of candidates
+#'   \item Stage 1 (extremp scores): `O(n*k)` - single pass over all vertices
+#'   \item Stage 2 (effective degrees): `O(n*k)` - already computed, just filter
+#'   \item Stage 3 (hop-extremp radii): `O(m*(n+E))` where m is number of candidates
 #' }
 #'
 #' Typically m << n (perhaps 20-50 extrema in a graph of 2000 vertices), making
@@ -1672,11 +1672,11 @@ get.rcx.optimal.k <- function(diag.df) {
 #'
 #' @export
 compute.pextrema.nbhds <- function(dcx,
-                                    extremp_quantile = 0.95,
-                                    hop_extremp_threshold = 0.90,
-                                    eff_degree_quantile = 0.10,
-                                    max_hop = 20L,
-                                    compute_hop_idx = FALSE) {
+                                   extremp_quantile = 0.95,
+                                   hop_extremp_threshold = 0.90,
+                                   eff_degree_quantile = 0.10,
+                                   max_hop = 20L,
+                                   compute_hop_idx = FALSE) {
 
     # ================================================================
     # ARGUMENT VALIDATION

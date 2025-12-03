@@ -62,11 +62,11 @@
 #'
 #' @export
 graph.embedding <- function(adj.list,
-                           weights.list = NULL,
-                           invert.weights = TRUE,
-                           dim = 2,
-                           method = c("fr", "kk"),
-                           verbose = FALSE) {
+                            weights.list = NULL,
+                            invert.weights = TRUE,
+                            dim = 2,
+                            method = c("fr", "kk"),
+                            verbose = FALSE) {
 
   ## Check igraph availability
   if (!requireNamespace("igraph", quietly = TRUE)) {
