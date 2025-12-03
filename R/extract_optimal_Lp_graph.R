@@ -1,41 +1,97 @@
 #' Extract Optimal Power Transformation Graph
 #'
 #' Given GCV values across a grid of power transformation exponents,
-#' finds the optimal p using magelo smoothing and extracts the
-#' corresponding graph, fitted values, and diagnostics.
+#' finds the optimal p and extracts the corresponding graph, fitted values,
+#' and diagnostics. The optimal p can be determined in three ways: (1) by
+#' fitting a magelo smoother to the GCV curve and finding its minimum,
+#' (2) by providing a pre-fitted magelo object, or (3) by directly specifying
+#' a target p value.
+#'
+#' When a target p is specified directly, the function bypasses magelo smoothing
+#' entirely and extracts results for the grid point closest to the specified
+#' value. This is useful when the user has already identified the optimal p
+#' through other means or wishes to examine results at a specific transformation
+#' exponent.
+#'
+#' When a pre-fitted magelo object is provided, the function uses its smoothed
+#' predictions to determine the optimal p, avoiding redundant computation when
+#' the smoother has already been fit for exploratory purposes.
 #'
 #' @param summary.df Data frame with columns 'p' and 'gcv' (and optionally
-#'     others)
-#' @param out.dir Directory containing Lp_experiment_*.rds files
-#' @param data.tag Tag identifying the dataset (e.g., "5k_Zambia")
-#' @param L1.normalize If TRUE, extracts optimal graph using L1 normalized after
-#'     the power transformation data.
-#' @param plot.dir Directory for saving plots (NULL to skip plotting)
-#' @param magelo.params List of parameters passed to magelo() (default: empty
-#'     list)
-#' @param save.results Logical; if TRUE, save extracted results to out.dir
-#' @param verbose Logical; print progress messages
+#'     others). Required unless \code{p} is specified directly.
+#' @param out.dir Directory containing Lp_experiment_*.rds files.
+#' @param data.tag Tag identifying the dataset (e.g., "5k_Zambia").
+#' @param p Numeric scalar specifying the target power transformation exponent
+#'     directly. If provided, magelo smoothing is bypassed and the function
+#'     extracts results for the grid point closest to this value. Default is
+#'     NULL.
+#' @param magelo.fit An object of class "magelo" from a previous call to
+#'     \code{magelo()}. If provided (and \code{p} is NULL), this pre-fitted
+#'     smoother is used instead of fitting a new one. The object must contain
+#'     at minimum the fields \code{xgrid}, \code{gpredictions}, and
+#'     \code{gpredictions.CrI}. Default is NULL.
+#' @param L1.normalize If TRUE, extracts optimal graph using L1 normalized
+#'     (after the power transformation) data.
+#' @param plot.dir Directory for saving plots (NULL to skip plotting).
+#' @param magelo.params List of parameters passed to \code{magelo()} when
+#'     fitting a new smoother. Ignored if \code{p} or \code{magelo.fit} is
+#'     provided.
+#' @param save.results Logical; if TRUE, save extracted results to out.dir.
+#' @param verbose Logical; print progress messages.
 #'
 #' @return A list containing:
-#'   \item{p.opt}{Selected optimal p (closest grid point to smoothed minimum)}
-#'   \item{p.opt.tag}{Tag string for optimal p}
-#'   \item{p.smoothed.min}{Smoothed GCV minimum location}
-#'   \item{p.equivalent.range}{Range of p values with overlapping CrI}
-#'   \item{k.opt}{Optimal k at selected p}
-#'   \item{gcv}{GCV at optimal (p, k)}
-#'   \item{n.extrema}{Number of local extrema at optimal}
-#'   \item{fitted.values}{sPTB conditional expectation estimates}
-#'   \item{adj.list}{Adjacency list of optimal graph}
-#'   \item{edgelen.list}{Edge lengths of optimal graph}
-#'   \item{rcx.fit}{Full regression fit object at optimal}
-#'   \item{embed.3d}{List of 3D embeddings}
-#'   \item{magelo.fit}{The magelo smoother object}
-#'   \item{summary.df}{Input summary data frame (for reference)}
+#'   \item{p.opt}{Selected optimal p (closest grid point to target).}
+#'   \item{p.opt.tag}{Tag string for optimal p.}
+#'   \item{p.smoothed.min}{Smoothed GCV minimum location (NULL if p was
+#'       specified directly).}
+#'   \item{p.equivalent.range}{Range of p values with overlapping CrI (NULL if
+#'       p was specified directly).}
+#'   \item{k.opt}{Optimal k at selected p.}
+#'   \item{gcv}{GCV at optimal (p, k).}
+#'   \item{n.extrema}{Number of local extrema at optimal.}
+#'   \item{fitted.values}{sPTB conditional expectation estimates.}
+#'   \item{adj.list}{Adjacency list of optimal graph.}
+#'   \item{edgelen.list}{Edge lengths of optimal graph.}
+#'   \item{rcx.fit}{Full regression fit object at optimal.}
+#'   \item{embed.3d}{List of 3D embeddings.}
+#'   \item{magelo.fit}{The magelo smoother object (NULL if p was specified
+#'       directly).}
+#'   \item{summary.df}{Input summary data frame (for reference).}
+#'
+#' @examples
+#' \dontrun{
+#' ## Example 1: Automatic optimal p selection via magelo
+#' opt.analysis <- extract.optimal.Lp.graph(
+#'   summary.df = summary.df,
+#'   out.dir = out.dir,
+#'   data.tag = "5k_Zambia"
+#' )
+#'
+#' ## Example 2: Re-use a pre-fitted magelo object
+#' gcv.fit <- magelo(summary.df$p, summary.df$gcv)
+#' plot(gcv.fit, with.pts = TRUE)
+#' opt.analysis <- extract.optimal.Lp.graph(
+#'   summary.df = summary.df,
+#'   out.dir = out.dir,
+#'   data.tag = "5k_Zambia",
+#'   magelo.fit = gcv.fit
+#' )
+#'
+#' ## Example 3: Directly specify target p
+#' opt.analysis <- extract.optimal.Lp.graph(
+#'   summary.df = summary.df,
+#'   out.dir = out.dir,
+#'   data.tag = "5k_Zambia",
+#'   p = 0.25
+#' )
+#' }
 #'
 #' @export
 extract.optimal.Lp.graph <- function(summary.df,
                                      out.dir,
                                      data.tag,
+                                     p = NULL,
+                                     magelo.fit = NULL,
                                      L1.normalize = FALSE,
                                      plot.dir = NULL,
                                      magelo.params = list(),
@@ -45,77 +101,212 @@ extract.optimal.Lp.graph <- function(summary.df,
   ## ================================================================
   ## Input validation
   ## ================================================================
-  required.cols <- c("p", "gcv")
-  missing.cols <- setdiff(required.cols, names(summary.df))
-  if (length(missing.cols) > 0) {
-    stop("summary.df missing required columns: ", paste(missing.cols, collapse = ", "))
-  }
-
   if (!dir.exists(out.dir)) {
     stop("Output directory does not exist: ", out.dir)
   }
 
+  ## Validate p parameter if provided
+  if (!is.null(p)) {
+    if (!is.numeric(p) || length(p) != 1 || !is.finite(p)) {
+      stop("'p' must be a single finite numeric value")
+    }
+    if (p <= 0) {
+      stop("'p' must be positive")
+    }
+  }
+
+  ## Validate magelo.fit if provided
+  if (!is.null(magelo.fit)) {
+    if (!inherits(magelo.fit, "magelo")) {
+      stop("'magelo.fit' must be an object of class 'magelo'")
+    }
+    required.magelo.fields <- c("xgrid", "gpredictions")
+    missing.fields <- setdiff(required.magelo.fields, names(magelo.fit))
+    if (length(missing.fields) > 0) {
+      stop("'magelo.fit' is missing required fields: ",
+           paste(missing.fields, collapse = ", "))
+    }
+    ## Check for CrI field (warn if missing but don't fail)
+    if (!"gpredictions.CrI" %in% names(magelo.fit)) {
+      warning("'magelo.fit' does not contain 'gpredictions.CrI'; ",
+              "equivalent p range will not be computed")
+    }
+  }
+
+  ## Validate summary.df only when needed (not using direct p specification)
+  if (is.null(p)) {
+    if (missing(summary.df) || is.null(summary.df)) {
+      stop("'summary.df' is required when 'p' is not specified directly")
+    }
+    required.cols <- c("p", "gcv")
+    missing.cols <- setdiff(required.cols, names(summary.df))
+    if (length(missing.cols) > 0) {
+      stop("summary.df missing required columns: ",
+           paste(missing.cols, collapse = ", "))
+    }
+  }
+
+  ## Determine mode of operation
+  use.direct.p <- !is.null(p)
+  use.prefitted.magelo <- !is.null(magelo.fit) && !use.direct.p
+
   ## ================================================================
-  ## Fit magelo smoother to GCV curve
+  ## Determine optimal p based on mode
   ## ================================================================
-  if (verbose) cat("Fitting magelo smoother to GCV curve...\n")
+  gcv.smooth <- NULL
+  p.smoothed.min <- NULL
+  p.equivalent.range <- NULL
 
-  magelo.args <- c(list(x = summary.df$p, y = summary.df$gcv), magelo.params)
-  gcv.smooth <- do.call(magelo, magelo.args)
+  if (use.direct.p) {
+    ## Mode 1: Direct p specification - bypass magelo entirely
+    if (verbose) {
+      cat("Using directly specified p =", p, "\n")
+    }
 
-  ## Extract smoothed minimum
-  min.idx <- which.min(gcv.smooth$gpredictions)
-  p.smoothed.min <- gcv.smooth$xgrid[min.idx]
+    ## Determine p grid from available files if summary.df not provided
+    if (missing(summary.df) || is.null(summary.df)) {
+      ## Extract available p values from filenames
+      pattern <- if (L1.normalize) {
+        sprintf("Lp_experiment_L1_normalized_p.*_%s\\.rds$", data.tag)
+      } else {
+        sprintf("Lp_experiment_p.*_%s\\.rds$", data.tag)
+      }
+      available.files <- list.files(out.dir, pattern = pattern)
+      if (length(available.files) == 0) {
+        stop("No Lp experiment files found in: ", out.dir)
+      }
+      ## Extract p values from filenames
+      p.pattern <- "p([0-9]+)"
+      p.matches <- regmatches(available.files, regexpr(p.pattern, available.files))
+      p.grid <- as.numeric(gsub("p", "0.", p.matches))
+      p.grid <- sort(unique(p.grid))
+      if (verbose) {
+        cat("  Found", length(p.grid), "available p values:",
+            paste(head(p.grid, 5), collapse = ", "),
+            if (length(p.grid) > 5) "...", "\n")
+      }
+    } else {
+      p.grid <- summary.df$p
+    }
 
-  if (verbose) {
-    cat("  Smoothed GCV minimum at p =", round(p.smoothed.min, 4), "\n")
+    ## Find closest grid point
+    p.opt.idx <- which.min(abs(p.grid - p))
+    p.opt <- p.grid[p.opt.idx]
+
+    if (verbose) {
+      cat("  Closest grid point: p =", p.opt, "\n")
+      cat("  Distance from target:", round(abs(p.opt - p), 5), "\n")
+    }
+
+  } else if (use.prefitted.magelo) {
+    ## Mode 2: Use pre-fitted magelo object
+    if (verbose) cat("Using pre-fitted magelo object...\n")
+
+    gcv.smooth <- magelo.fit
+
+    ## Extract smoothed minimum
+    min.idx <- which.min(gcv.smooth$gpredictions)
+    p.smoothed.min <- gcv.smooth$xgrid[min.idx]
+
+    if (verbose) {
+      cat("  Smoothed GCV minimum at p =", round(p.smoothed.min, 4), "\n")
+    }
+
+    ## Find closest grid point to smoothed minimum
+    p.grid <- summary.df$p
+    p.opt.idx <- which.min(abs(p.grid - p.smoothed.min))
+    p.opt <- p.grid[p.opt.idx]
+
+    if (verbose) {
+      cat("  Closest grid point: p =", p.opt, "\n")
+      cat("  Distance from smoothed min:",
+          round(abs(p.opt - p.smoothed.min), 5), "\n")
+    }
+
+    ## Compute equivalent p range using credible intervals if available
+    if ("gpredictions.CrI" %in% names(gcv.smooth) &&
+        !is.null(gcv.smooth$gpredictions.CrI)) {
+      gcv.lower <- gcv.smooth$gpredictions.CrI[1, ]
+      gcv.upper <- gcv.smooth$gpredictions.CrI[2, ]
+      gcv.upper.at.min <- gcv.upper[min.idx]
+
+      ## p values whose lower CI is below upper CI at minimum (overlapping CrI)
+      equivalent.to.min <- gcv.lower <= gcv.upper.at.min
+      p.equivalent.range <- range(gcv.smooth$xgrid[equivalent.to.min])
+
+      if (verbose) {
+        cat("  Equivalent p range (CrI overlap): [",
+            round(p.equivalent.range[1], 3), ",",
+            round(p.equivalent.range[2], 3), "]\n")
+      }
+    }
+
+  } else {
+    ## Mode 3: Fit new magelo smoother
+    if (verbose) cat("Fitting magelo smoother to GCV curve...\n")
+
+    magelo.args <- c(list(x = summary.df$p, y = summary.df$gcv), magelo.params)
+    gcv.smooth <- do.call(magelo, magelo.args)
+
+    ## Extract smoothed minimum
+    min.idx <- which.min(gcv.smooth$gpredictions)
+    p.smoothed.min <- gcv.smooth$xgrid[min.idx]
+
+    if (verbose) {
+      cat("  Smoothed GCV minimum at p =", round(p.smoothed.min, 4), "\n")
+    }
+
+    ## Find closest grid point to smoothed minimum
+    p.grid <- summary.df$p
+    p.opt.idx <- which.min(abs(p.grid - p.smoothed.min))
+    p.opt <- p.grid[p.opt.idx]
+
+    if (verbose) {
+      cat("  Closest grid point: p =", p.opt, "\n")
+      cat("  Distance from smoothed min:",
+          round(abs(p.opt - p.smoothed.min), 5), "\n")
+    }
+
+    ## Compute equivalent p range using credible intervals
+    gcv.lower <- gcv.smooth$gpredictions.CrI[1, ]
+    gcv.upper <- gcv.smooth$gpredictions.CrI[2, ]
+    gcv.upper.at.min <- gcv.upper[min.idx]
+
+    ## p values whose lower CI is below upper CI at minimum (overlapping CrI)
+    equivalent.to.min <- gcv.lower <= gcv.upper.at.min
+    p.equivalent.range <- range(gcv.smooth$xgrid[equivalent.to.min])
+
+    if (verbose) {
+      cat("  Equivalent p range (CrI overlap): [",
+          round(p.equivalent.range[1], 3), ",",
+          round(p.equivalent.range[2], 3), "]\n")
+    }
   }
 
   ## ================================================================
-  ## Find closest grid point to smoothed minimum
+  ## Generate p tag and load results file
   ## ================================================================
-  p.grid <- summary.df$p
-  p.opt.idx <- which.min(abs(p.grid - p.smoothed.min))
-  p.opt <- p.grid[p.opt.idx]
-
-  make.p.tag <- function(p) gsub("\\.", "", sprintf("p%g", p))
+  make.p.tag <- function(p.val) gsub("\\.", "", sprintf("p%g", p.val))
   p.opt.tag <- make.p.tag(p.opt)
 
   if (verbose) {
-    cat("  Closest grid point: p =", p.opt, "(", p.opt.tag, ")\n")
-    cat("  Distance from smoothed min:", round(abs(p.opt - p.smoothed.min), 5), "\n")
-  }
-
-  ## ================================================================
-  ## Compute equivalent p range using credible intervals
-  ## ================================================================
-  gcv.lower <- gcv.smooth$gpredictions.CrI[1, ]
-  gcv.upper <- gcv.smooth$gpredictions.CrI[2, ]
-  gcv.upper.at.min <- gcv.upper[min.idx]
-
-  ## p values whose lower CI is below upper CI at minimum (overlapping CrI)
-  equivalent.to.min <- gcv.lower <= gcv.upper.at.min
-  p.equivalent.range <- range(gcv.smooth$xgrid[equivalent.to.min])
-
-  if (verbose) {
-    cat("  Equivalent p range (CrI overlap): [",
-        round(p.equivalent.range[1], 3), ",",
-        round(p.equivalent.range[2], 3), "]\n")
+    cat("  Tag:", p.opt.tag, "\n")
   }
 
   ## ================================================================
   ## Load full results for optimal p
   ## ================================================================
-    make.rds.filename <- function(p.tag, data.tag, L1.normalize) {
-        if (L1.normalize) {
-            sprintf("Lp_experiment_L1_normalized_%s_%s.rds", p.tag, data.tag)
-        } else {
-            sprintf("Lp_experiment_%s_%s.rds", p.tag, data.tag)
-        }
+  make.rds.filename <- function(p.tag, d.tag, L1.norm) {
+    if (L1.norm) {
+      sprintf("Lp_experiment_L1_normalized_%s_%s.rds", p.tag, d.tag)
+    } else {
+      sprintf("Lp_experiment_%s_%s.rds", p.tag, d.tag)
     }
+  }
 
-    opt.results.file <- file.path(out.dir,
-                                  make.rds.filename(p.opt.tag, data.tag, L1.normalize))
+  opt.results.file <- file.path(out.dir,
+                                make.rds.filename(p.opt.tag, data.tag,
+                                                  L1.normalize))
 
   if (!file.exists(opt.results.file)) {
     stop("Results file not found: ", opt.results.file,
@@ -153,7 +344,7 @@ extract.optimal.Lp.graph <- function(summary.df,
   n.extrema.opt <- k.diag$n.extrema[k.diag$k == k.opt]
 
   ## Embeddings
- embed.3d <- opt.experiment$embed.3d
+  embed.3d <- opt.experiment$embed.3d
 
   if (verbose) {
     cat("\nOptimal configuration:\n")
@@ -199,15 +390,19 @@ extract.optimal.Lp.graph <- function(summary.df,
     magelo.fit = gcv.smooth,
 
     ## Reference data
-    summary.df = summary.df,
+    summary.df = if (!missing(summary.df)) summary.df else NULL,
     data.tag = data.tag,
-    results.file = opt.results.file
+    results.file = opt.results.file,
+
+    ## Mode information
+    mode = if (use.direct.p) "direct_p" else if (use.prefitted.magelo)
+             "prefitted_magelo" else "fitted_magelo"
   )
 
   ## ================================================================
   ## Generate plots if requested
   ## ================================================================
-  if (!is.null(plot.dir)) {
+  if (!is.null(plot.dir) && !is.null(gcv.smooth)) {
     if (!dir.exists(plot.dir)) {
       dir.create(plot.dir, recursive = TRUE)
     }
@@ -223,22 +418,46 @@ extract.optimal.Lp.graph <- function(summary.df,
          xlab = "p", ylab = "", legend.position = "topleft")
     mtext("GCV", 2, line = 4.5)
 
-    ## Shade equivalent region
-    usr <- par("usr")
-    rect(p.equivalent.range[1], usr[3],
-         p.equivalent.range[2], usr[4],
-         col = rgb(0, 0.5, 0, 0.1), border = NA)
+    ## Shade equivalent region if available
+    if (!is.null(p.equivalent.range)) {
+      usr <- par("usr")
+      rect(p.equivalent.range[1], usr[3],
+           p.equivalent.range[2], usr[4],
+           col = rgb(0, 0.5, 0, 0.1), border = NA)
+    }
 
     ## Mark smoothed minimum and selected grid point
-    abline(v = p.smoothed.min, col = "darkgreen", lty = 2, lwd = 1.5)
+    if (!is.null(p.smoothed.min)) {
+      abline(v = p.smoothed.min, col = "darkgreen", lty = 2, lwd = 1.5)
+      mtext(round(p.smoothed.min, 3), 1, at = p.smoothed.min,
+            line = 0.5, cex = 0.8)
+    }
     abline(v = p.opt, col = "blue", lty = 3, lwd = 1.5)
-    mtext(round(p.smoothed.min, 3), 1, at = p.smoothed.min, line = 0.5, cex = 0.8)
+
+    legend.items <- c("Selected grid point")
+    legend.cols <- c("blue")
+    legend.ltys <- c(3)
+    legend.pchs <- c(NA)
+
+    if (!is.null(p.smoothed.min)) {
+      legend.items <- c("Smoothed minimum", legend.items)
+      legend.cols <- c("darkgreen", legend.cols)
+      legend.ltys <- c(2, legend.ltys)
+      legend.pchs <- c(NA, legend.pchs)
+    }
+
+    if (!is.null(p.equivalent.range)) {
+      legend.items <- c(legend.items, "Equivalent region")
+      legend.cols <- c(legend.cols, rgb(0, 0.5, 0, 0.5))
+      legend.ltys <- c(legend.ltys, NA)
+      legend.pchs <- c(legend.pchs, 15)
+    }
 
     legend("topright",
-           c("Smoothed minimum", "Selected grid point", "Equivalent region"),
-           col = c("darkgreen", "blue", rgb(0, 0.5, 0, 0.5)),
-           lty = c(2, 3, NA), lwd = c(1.5, 1.5, NA),
-           pch = c(NA, NA, 15), pt.cex = 2,
+           legend.items,
+           col = legend.cols,
+           lty = legend.ltys, lwd = 1.5,
+           pch = legend.pchs, pt.cex = 2,
            cex = 0.8, bg = "white")
 
     par(op)
@@ -289,6 +508,10 @@ extract.optimal.Lp.graph <- function(summary.df,
     dev.off()
 
     if (verbose) cat("Fitted values plot saved to:", pdf.fitted, "\n")
+  } else if (!is.null(plot.dir) && is.null(gcv.smooth)) {
+    if (verbose) {
+      cat("\nNote: GCV plot not generated (no magelo fit available).\n")
+    }
   }
 
   ## ================================================================
