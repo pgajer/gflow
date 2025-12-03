@@ -1,4 +1,11 @@
 //----------------------------------------------------------------------
+// GFLOW CONFIGURATION NOTE:
+// This ANN library is configured for L1 (Manhattan) distance.
+// To switch to L2 (Euclidean), comment out L1 macros (lines ~344-347)
+// and uncomment L2 macros (lines ~336-339), then rebuild the package.
+//----------------------------------------------------------------------
+
+//----------------------------------------------------------------------
 // File:			ANN.h
 // Programmer:		Sunil Arya and David Mount
 // Description:		Basic include file for approximate nearest
@@ -333,18 +340,18 @@ const ANNbool	ANN_ALLOW_SELF_MATCH	= ANNtrue;
 //----------------------------------------------------------------------
 //	Use the following for the Euclidean norm
 //----------------------------------------------------------------------
-#define ANN_POW(v)			((v)*(v))
-#define ANN_ROOT(x)			sqrt(x)
-#define ANN_SUM(x,y)		((x) + (y))
-#define ANN_DIFF(x,y)		((y) - (x))
+// #define ANN_POW(v)			((v)*(v))
+// #define ANN_ROOT(x)			sqrt(x)
+// #define ANN_SUM(x,y)		((x) + (y))
+// #define ANN_DIFF(x,y)		((y) - (x))
 
 //----------------------------------------------------------------------
 //	Use the following for the L_1 (Manhattan) norm
 //----------------------------------------------------------------------
-// #define ANN_POW(v)		fabs(v)
-// #define ANN_ROOT(x)		(x)
-// #define ANN_SUM(x,y)		((x) + (y))
-// #define ANN_DIFF(x,y)	((y) - (x))
+#define ANN_POW(v)		fabs(v)
+#define ANN_ROOT(x)		(x)
+#define ANN_SUM(x,y)		((x) + (y))
+#define ANN_DIFF(x,y)	((y) - (x))
 
 //----------------------------------------------------------------------
 //	Use the following for a general L_p norm

@@ -1,51 +1,49 @@
 #' KLaPS (Kernel Laplacian Power Smoothing) Low-Pass Smoother
 #'
 #' @description
-#' Applies a family of low‑pass filters by projecting the vertex‑valued signal `y`
-#' onto the subspace spanned by the first \(k\) Laplacian eigenvectors, for a grid of
-#' candidate \(k\) values.  Three selection criteria (eigengap, GCV, spectral‑energy)
-#' are computed to choose the optimal \(k\).
+#' Applies a family of low-pass filters by projecting the vertex-valued signal `y`
+#' onto the subspace spanned by the first \eqn{k} Laplacian eigenvectors, for a grid of
+#' candidate \eqn{k} values. Three selection criteria (eigengap, GCV, spectral-energy)
+#' are computed to choose the optimal \eqn{k}.
 #'
-#' @param adj.list      List of integer vectors; adjacency list (1‑based indices).
+#' @param adj.list      List of integer vectors; adjacency list (1-based indices).
 #' @param weight.list   List of numeric vectors; edge weights matching `adj.list`.
-#' @param y             Numeric vector of length \(\vert V\vert\); signal on each vertex.
+#' @param y             Numeric vector of length \eqn{|V|}; signal on each vertex.
 #' @param n.evectors.to.compute Integer; number of Laplacian eigenvectors to precompute.
-#' @param min.num.eigenvectors  Integer; minimum \(k\) to test (≥1).
-#' @param max.num.eigenvectors  Integer; maximum \(k\) to test (≤ `n.evectors.to.compute`).
-#' @param tau_factor
-#'     Positive real scaling factor that determines the kernel bandwidth \(\tau\) as a fraction of the graph diameter.
-#'     The kernel bandwidth is computed as:
-#'         \[
-#'         \tau = \text{tau\_factor} \times \text{graph diameter}
-#'         \]
-#'     Smaller `tau_factor` values result in more localized smoothing; larger values make smoothing more global.
-#'
-#' @param radius_factor A real scaling factor of tau radius that is not less than 1. Default 10.
-#'
-#' @param laplacian_power
+#' @param min.num.eigenvectors  Integer; minimum \eqn{k} to test (>= 1).
+#' @param max.num.eigenvectors  Integer; maximum \eqn{k} to test (<= `n.evectors.to.compute`).
+#' @param tau.factor
+#'     Positive real scaling factor that determines the kernel bandwidth
+#'     \eqn{\tau}{tau} as a fraction of the graph diameter.
+#'     The kernel bandwidth is computed as
+#'     \eqn{\tau = \textrm{tau.factor} \times \textrm{diameter}}{tau = tau.factor * diameter}.
+#'     Smaller `tau.factor` values result in more localized smoothing; larger values
+#'     make smoothing more global.
+#' @param radius.factor A real scaling factor of tau radius that is not less than 1. Default 10.
+#' @param laplacian.power
 #'     Positive odd integer specifying the power to which (I - L) is raised.
 #'     Higher values apply stronger smoothing by repeatedly reinforcing low-pass filtering.
-#'     Typically, larger `laplacian_power` requires smaller `tau_factor` to maintain the smoothing scale.
-#' @param n.candidates Integer; number of candidate \(k\) values (grid size).
-#' @param log.grid     Logical; if `TRUE`, log‑spaced grid of \(k\), else linear.
+#'     Typically, larger `laplacian.power` requires smaller `tau.factor` to maintain the smoothing scale.
+#' @param n.candidates Integer; number of candidate \eqn{k} values (grid size).
+#' @param log.grid     Logical; if `TRUE`, log-spaced grid of \eqn{k}, else linear.
 #' @param energy.threshold Numeric; fraction of total spectral energy for the energy criterion (e.g. 0.9).
-#' @param with.k.predictions Logical; if `TRUE`, return full matrix of reconstructions for each \(k\).
+#' @param with.k.predictions Logical; if `TRUE`, return full matrix of reconstructions for each \eqn{k}.
 #' @param verbose      Logical; if `TRUE`, print progress messages.
 #'
 #' @return
-#' An object of class `"klaps_low_pass_smoother"`—a list with components:
+#' An object of class `"klaps_low_pass_smoother"` - a list with components:
 #' \describe{
 #'   \item{evalues}{Numeric vector of Laplacian eigenvalues.}
 #'   \item{evectors}{Matrix of Laplacian eigenvectors (columns).}
-#'   \item{candidate.ks}{Integer vector of tested \(k\) values.}
-#'   \item{eigengaps}{Numeric vector \(\lambda_{i+1}-\lambda_i\).}
-#'   \item{gcv.scores}{Numeric vector of GCV scores per candidate \(k\).}
-#'   \item{spectral.energy}{Numeric vector of cumulative energy per \(k\).}
+#'   \item{candidate.ks}{Integer vector of tested \eqn{k} values.}
+#'   \item{eigengaps}{Numeric vector \eqn{\lambda_{i+1} - \lambda_i}{lambda[i+1] - lambda[i]}.}
+#'   \item{gcv.scores}{Numeric vector of GCV scores per candidate \eqn{k}.}
+#'   \item{spectral.energy}{Numeric vector of cumulative energy per \eqn{k}.}
 #'   \item{opt.k.eigengap}{Index in `candidate.ks` of largest eigengap.}
 #'   \item{opt.k.gcv}{Index of minimal GCV score.}
-#'   \item{opt.k.spectral.energy}{Index of first \(k\) meeting `energy.threshold`.}
+#'   \item{opt.k.spectral.energy}{Index of first \eqn{k} meeting `energy.threshold`.}
 #'   \item{used.method}{String code of the method actually used (e.g. `"GCV"`).}
-#'   \item{predictions}{Numeric vector—final low‑pass output at optimal \(k\).}
+#'   \item{predictions}{Numeric vector - final low-pass output at optimal \eqn{k}.}
 #'   \item{k.predictions}{Optional matrix of full reconstructions (if `with.k.predictions=TRUE`).}
 #' }
 #' @export

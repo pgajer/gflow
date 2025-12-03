@@ -17,15 +17,13 @@
 #'
 #' We address this by employing the overlap coefficient, also known as the
 #' Szymkiewicz-Simpson index, which measures basin similarity through the ratio
-#' of intersection size to the minimum basin size. For two basins $A$ and $B$,
+#' of intersection size to the minimum basin size. For two basins \eqn{A} and \eqn{B},
 #' the overlap coefficient is defined as
-#' $$
-#' \text{OC}(A,B) = \frac{|A \cap B|}{\min(|A|, |B|)}
-#' $$
+#' \deqn{\text{OC}(A,B) = \frac{|A \cap B|}{\min(|A|, |B|)}}
 #' This measure equals one when either basin is completely contained in the other,
 #' making it ideal for detecting nested or highly overlapping basin structures.
 #'
-#' The overlap distance, given by $d(A,B) = 1 - \text{OC}(A,B)$, converts this
+#' The overlap distance, given by \eqn{d(A,B) = 1 - \text{OC}(A,B)}, converts this
 #' similarity into a proper metric. We construct a threshold graph where basins
 #' are connected by edges whenever their overlap distance falls below the
 #' specified threshold. Connected components of this graph define clusters of

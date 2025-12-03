@@ -818,7 +818,7 @@ comono.proportion <- function(adj.list, weight.list, y, z,
 #'
 #' @param X Numeric matrix of phylotype abundances (samples x phylotypes).
 #' @param adj.list List of neighbor indices (1-based).
-#' @param quantile.cutoff Quantile for threshold (default 0.25 = filter bottom 25\%).
+#' @param quantile.cutoff Quantile for threshold (default 0.25 = filter bottom 25%).
 #'
 #' @return Numeric vector of thresholds, one per phylotype (column of X).
 #'

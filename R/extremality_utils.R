@@ -969,7 +969,7 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 #'
 #' @return Data frame comparing representatives from different methods
 #'
-#' @export
+#' @export compare.representative.methods
 compare.representative.methods <- function(extremality.df,
                                           geodesic.dist,
                                           cluster_id) {

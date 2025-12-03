@@ -415,7 +415,7 @@ visualize.mgcp.cluster <- function(data.matrix,
 #' compare.mgcp.clusters(comono.smooth, mgcp.result, cluster.ids = c(1, 4, 12))
 #' }
 #'
-#' @export
+#' @export compare.mgcp.clusters
 compare.mgcp.clusters <- function(data.matrix,
                                   mgcp.result,
                                   cluster.ids,

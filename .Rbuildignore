@@ -59,3 +59,4 @@
 ^tests/manual$
 ^inst/examples$
 ^src/tests$
+^presentations$
