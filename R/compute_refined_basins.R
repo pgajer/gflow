@@ -20,6 +20,8 @@
 #' @param p.mean.nbrs.dist.threshold Threshold for mean nearest neighbors distance percentile (default: 0.9)
 #' @param p.mean.hopk.dist.threshold Threshold for mean hop-k distance percentile (default: 0.9)
 #' @param p.deg.threshold Threshold for degree percentile (default: 0.9)
+#' @param min.basin.size Minimum basin size threshold. Extrema with basins
+#'   containing fewer than this many vertices are removed. Default is 1 (no filtering).
 #' @param hop.k Parameter for hop-k distance calculation in summary (default: 2)
 #' @param apply.relvalue.filter Logical indicating whether to apply relative value filtering (default: TRUE)
 #' @param apply.maxima.clustering Logical indicating whether to cluster and merge maxima (default: TRUE)
@@ -116,6 +118,7 @@ compute.refined.basins <- function(adj.list,
                                    p.mean.nbrs.dist.threshold = 0.9,
                                    p.mean.hopk.dist.threshold = 0.9,
                                    p.deg.threshold = 0.9,
+                                   min.basin.size = 1,
                                    hop.k = 2,
                                    apply.relvalue.filter = TRUE,
                                    apply.maxima.clustering = TRUE,
@@ -264,11 +267,13 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
-    ## Step 5: Filter by geometric characteristics
+    ## Step 5: Filter by geometric characteristics and basin size
     if (apply.geometric.filter) {
         if (verbose) {
-            cat(sprintf("\nStep 5: Filtering by geometric characteristics:\np.mean.nbrs.dist < %.2f p.mean.hopk.dist < %.2f, p.deg < %.2f ...\n",
-                        p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold, p.deg.threshold))
+            cat(sprintf("\nStep 5: Filtering by geometric characteristics and basin size:\n"))
+            cat(sprintf("  p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, p.deg < %.2f, basin.size >= %d ...\n",
+                        p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold,
+                        p.deg.threshold, min.basin.size))
         }
 
         ## Get summary with geometric characteristics
@@ -279,7 +284,8 @@ compute.refined.basins <- function(adj.list,
         good.max.vertices <- max.basin.df$vertex[
                                               max.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
                                               max.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
-                                              max.basin.df$p.deg < p.deg.threshold
+                                              max.basin.df$p.deg < p.deg.threshold &
+                                              max.basin.df$basin.size >= min.basin.size
                                           ]
 
         if (verbose) {
@@ -295,7 +301,8 @@ compute.refined.basins <- function(adj.list,
         min.basin.df <- geom.summary[geom.summary$type == "min", ]
         good.min.vertices <- min.basin.df$vertex[
                                               min.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
-                                              min.basin.df$p.deg < p.deg.threshold
+                                              min.basin.df$p.deg < p.deg.threshold &
+                                              min.basin.df$basin.size >= min.basin.size
                                           ]
 
         if (verbose) {
