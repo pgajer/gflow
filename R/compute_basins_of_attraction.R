@@ -424,6 +424,115 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
     return(results)
 }
 
+## ============================================================================
+## S3 Generics and Methods for Extracting Local Extrema Summaries
+## ============================================================================
+
+#' Extract Local Minima from Basin Summary
+#'
+#' @description
+#' Returns the subset of a basin summary data frame containing only local minima.
+#'
+#' @param object An object of class \code{"basin_summary"} returned by
+#'   \code{summary.basins_of_attraction}.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return A data frame of class \code{"basin_summary"} containing only rows
+#'   where \code{type == "min"}, preserving all columns from the original summary.
+#'
+#' @examples
+#' \dontrun{
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#' summ <- summary(basins, adj.list, edgelen.list)
+#'
+#' # Extract only local minima
+#' min.summ <- lmin(summ)
+#'
+#' # Work with minima only
+#' print(min.summ)
+#' }
+#'
+#' @seealso \code{\link{lmax.basin_summary}}, \code{\link{summary.basins_of_attraction}}
+#'
+#' @export
+lmin.basin_summary <- function(object, ...) {
+    result <- object[object$type == "min", , drop = FALSE]
+    rownames(result) <- NULL
+    class(result) <- c("basin_summary", "data.frame")
+    return(result)
+}
+
+
+#' Extract Local Maxima from Basin Summary
+#'
+#' @description
+#' Returns the subset of a basin summary data frame containing only local maxima.
+#'
+#' @param object An object of class \code{"basin_summary"} returned by
+#'   \code{summary.basins_of_attraction}.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return A data frame of class \code{"basin_summary"} containing only rows
+#'   where \code{type == "max"}, preserving all columns from the original summary.
+#'
+#' @examples
+#' \dontrun{
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#' summ <- summary(basins, adj.list, edgelen.list)
+#'
+#' # Extract only local maxima
+#' max.summ <- lmax(summ)
+#'
+#' # Work with maxima only
+#' print(max.summ)
+#' }
+#'
+#' @seealso \code{\link{lmin.basin_summary}}, \code{\link{summary.basins_of_attraction}}
+#'
+#' @export
+lmax.basin_summary <- function(object, ...) {
+    result <- object[object$type == "max", , drop = FALSE]
+    rownames(result) <- NULL
+    class(result) <- c("basin_summary", "data.frame")
+    return(result)
+}
+
+
+#' Extract Local Minima
+#'
+#' @description
+#' Generic function for extracting local minima information from an object.
+#'
+#' @param object An object containing local extrema information.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return Local minima information, format depends on the method.
+#'
+#' @seealso \code{\link{lmin.basin_summary}}
+#'
+#' @export
+lmin <- function(object, ...) {
+    UseMethod("lmin")
+}
+
+
+#' Extract Local Maxima
+#'
+#' @description
+#' Generic function for extracting local maxima information from an object.
+#'
+#' @param object An object containing local extrema information.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return Local maxima information, format depends on the method.
+#'
+#' @seealso \code{\link{lmax.basin_summary}}
+#'
+#' @export
+lmax <- function(object, ...) {
+    UseMethod("lmax")
+}
+
 #' Compute mean hop-k distance for a vertex
 #'
 #' @description
@@ -738,4 +847,197 @@ draw.basin <- function(basins.obj, basin.label, radius = 0.15, col = "cyan") {
 
     basin.vertices <- basin$basin_df[,1]
     spheres3d(graph.3d[basin.vertices,], radius = radius, col = col)
+}
+
+
+## ============================================================================
+## S3 Generic and Method for Basin Extraction
+## ============================================================================
+
+#' Extract Basin of Attraction for a Specific Extremum
+#'
+#' @description
+#' Retrieves the basin of attraction associated with a specified local extremum
+#' from a basins_of_attraction object. The extremum can be identified either by
+#' its vertex index or by its character label when a summary data frame is provided.
+#'
+#' @details
+#' This method provides convenient access to individual basins within a
+#' basins_of_attraction object. When working interactively with basin analysis
+#' results, users often need to extract specific basins for further examination
+#' or visualization. The function supports two identification methods to
+#' accommodate different workflows.
+#'
+#' Direct vertex identification requires knowing the 1-based vertex index of the
+#' local extremum. This approach is useful when the extremum of interest was
+#' identified through other means, such as domain knowledge or visualization.
+#'
+#' Label-based identification uses the systematic labels assigned by
+#' \code{summary.basins_of_attraction}: lowercase labels (m1, m2, ...) for minima
+#' ordered by increasing function value, and uppercase labels (M1, M2, ...) for
+#' maxima ordered by decreasing function value. This approach requires passing
+#' the summary data frame and is particularly convenient when referencing extrema
+#' by their relative prominence.
+#'
+#' The \code{type} argument controls what information is returned. The "full"
+#' option returns the complete basin structure including the extremum vertex,
+#' function value, hop index, basin membership with hop distances, and boundary
+#' vertices. The "vertices" option returns only the vector of vertex indices
+#' belonging to the basin, which is useful for subsetting other data structures
+#' or for visualization purposes.
+#'
+#' @param object An object of class \code{"basins_of_attraction"} returned by
+#'   \code{compute.basins.of.attraction}.
+#' @param id Either an integer specifying the vertex index (1-based) of a local
+#'   extremum, or a character string specifying the extremum label (e.g., "m1",
+#'   "M2") when \code{summary.df} is provided.
+#' @param summary.df Optional data frame of class \code{"basin_summary"} returned
+#'   by \code{summary.basins_of_attraction}. Required when \code{id} is a
+#'   character label. Default is \code{NULL}.
+#' @param type Character string specifying the return type. Either \code{"full"}
+#'   to return the complete basin structure, or \code{"vertices"} to return only
+#'   the vector of basin vertex indices. Default is \code{"full"}.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return Depending on \code{type}:
+#'   \describe{
+#'     \item{type = "full"}{A list containing the complete basin structure:
+#'       \code{vertex} (extremum index), \code{value} (function value at extremum),
+#'       \code{hop_idx} (maximum hop distance), \code{basin_df} (matrix of basin
+#'       vertices and hop distances), and \code{basin_bd_df} (matrix of boundary
+#'       vertices and function values).}
+#'     \item{type = "vertices"}{An integer vector of 1-based vertex indices
+#'       belonging to the basin.}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # Compute basins of attraction
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#'
+#' # Extract basin by vertex index (vertex 42 is a local minimum)
+#' basin.full <- basin(basins, id = 42)
+#' basin.verts <- basin(basins, id = 42, type = "vertices")
+#'
+#' # Extract basin by label using summary
+#' summ <- summary(basins, adj.list, edgelen.list)
+#' basin.m1 <- basin(basins, id = "m1", summary.df = summ)
+#' basin.M1.verts <- basin(basins, id = "M1", summary.df = summ, type = "vertices")
+#'
+#' # Use basin vertices for subsetting
+#' verts <- basin(basins, id = "m1", summary.df = summ, type = "vertices")
+#' y.in.basin <- y[verts]
+#' }
+#'
+#' @seealso \code{\link{compute.basins.of.attraction}} for computing basins,
+#'   \code{\link{summary.basins_of_attraction}} for generating basin summaries,
+#'   \code{\link{find.basin.by.vertex}}, \code{\link{get.basin.vertex.from.label}}
+#'
+#' @export
+basin.basins_of_attraction <- function(object, id,
+                                       summary.df = NULL,
+                                       type = c("full", "vertices"),
+                                       ...) {
+    type <- match.arg(type)
+
+    ## Resolve id to vertex index and extremum type
+    if (is.character(id)) {
+        ## Label-based lookup: can use summary.df or infer type from label pattern
+        extremum.type <- get.extrema.type.from.label(id)
+
+        if (!is.null(summary.df)) {
+            ## Use summary.df for lookup
+            if (!inherits(summary.df, "basin_summary")) {
+                stop("summary.df must be of class 'basin_summary' from summary.basins_of_attraction()")
+            }
+
+            label.idx <- which(summary.df$label == id)
+            if (length(label.idx) == 0) {
+                stop(sprintf("Label '%s' not found in summary.df. Available labels: %s",
+                             id, paste(summary.df$label, collapse = ", ")))
+            }
+
+            vertex.id <- summary.df$vertex[label.idx]
+            extremum.type <- summary.df$type[label.idx]
+        } else {
+            ## No summary.df: infer type from label and search
+            if (is.null(extremum.type)) {
+                stop(sprintf("Cannot determine extremum type from label '%s'. ", id),
+                     "Provide summary.df or use a standard label format (m1, m2, ..., M1, M2, ...)")
+            }
+            vertex.id <- NULL  # Will search by matching label pattern
+        }
+    } else if (is.numeric(id)) {
+        ## Direct vertex index lookup
+        vertex.id <- as.integer(id)
+        if (vertex.id < 1 || vertex.id > object$n_vertices) {
+            stop(sprintf("Vertex index %d is out of range [1, %d]",
+                         vertex.id, object$n_vertices))
+        }
+        extremum.type <- NULL  # Will be determined by searching both lists
+    } else {
+        stop("id must be either an integer vertex index or a character label")
+    }
+
+    ## Find the basin in the appropriate list
+    basin.result <- NULL
+
+    if (!is.null(vertex.id)) {
+        ## Search by vertex id
+        if (is.null(extremum.type) || extremum.type == "min") {
+            for (i in seq_along(object$lmin_basins)) {
+                if (object$lmin_basins[[i]]$vertex == vertex.id) {
+                    basin.result <- object$lmin_basins[[i]]
+                    break
+                }
+            }
+        }
+
+        if (is.null(basin.result) && (is.null(extremum.type) || extremum.type == "max")) {
+            for (i in seq_along(object$lmax_basins)) {
+                if (object$lmax_basins[[i]]$vertex == vertex.id) {
+                    basin.result <- object$lmax_basins[[i]]
+                    break
+                }
+            }
+        }
+    } else {
+        ## Character label without summary.df: need summary to resolve
+        stop("summary.df must be provided when id is a character label")
+    }
+
+    ## Check if basin was found
+    if (is.null(basin.result)) {
+        if (!is.null(vertex.id)) {
+            stop(sprintf("Vertex %d is not a local extremum", vertex.id))
+        } else {
+            stop(sprintf("Basin with id '%s' not found", id))
+        }
+    }
+
+    ## Return based on type
+    if (type == "full") {
+        return(basin.result)
+    } else {
+        ## type == "vertices"
+        return(as.integer(basin.result$basin_df[, 1]))
+    }
+}
+
+
+#' Extract Basin of Attraction
+#'
+#' @description
+#' Generic function for extracting a basin of attraction from an object.
+#'
+#' @param object An object containing basin of attraction information.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return Basin information, format depends on the method.
+#'
+#' @seealso \code{\link{basin.basins_of_attraction}}
+#'
+#' @export
+basin <- function(object, ...) {
+    UseMethod("basin")
 }
