@@ -73,7 +73,7 @@
 #'
 #' ## Run analysis for a grid of p values
 #' p.grid <- seq(0.5, 1, by = 0.05)
-#' results <- compute.Lp.sptb.graphs(
+#' results <- compute.Lp.graphs(
 #'   X = sptb.zmb.data$X,
 #'   y = sptb.zmb.data$y,
 #'   p = p.grid,
@@ -90,21 +90,21 @@
 #' @importFrom grDevices dev.off pdf
 #' @importFrom utils modifyList
 #' @export
-compute.Lp.sptb.graphs <- function(X,
-                                   y,
-                                   p,
-                                   k.min = 6,
-                                   k.max = 12,
-                                   L1.normalize = FALSE,
-                                   out.dir = NULL,
-                                   plot.dir = NULL,
-                                   data.tag = "data",
-                                   skip.existing = TRUE,
-                                   n.cores = 1,
-                                   iknn.params = list(),
-                                   regression.params = list(),
-                                   n.embeddings = 5,
-                                   verbose = TRUE) {
+compute.Lp.graphs <- function(X,
+                              y,
+                              p,
+                              k.min = 6,
+                              k.max = 12,
+                              L1.normalize = FALSE,
+                              out.dir = NULL,
+                              plot.dir = NULL,
+                              data.tag = "data",
+                              skip.existing = TRUE,
+                              n.cores = 1,
+                              iknn.params = list(),
+                              regression.params = list(),
+                              n.embeddings = 5,
+                              verbose = TRUE) {
 
     ## ==========================================================================
     ## Input validation
@@ -508,7 +508,7 @@ compute.Lp.sptb.graphs <- function(X,
 
 #' Load Results from Power Transformation Experiment
 #'
-#' Loads and combines results saved by \code{\link{compute.Lp.sptb.graphs}}
+#' Loads and combines results saved by \code{\link{compute.Lp.graphs}}
 #' for multiple power transformation exponents.
 #'
 #' @param p.values Numeric vector of power transformation exponents whose
@@ -518,14 +518,14 @@ compute.Lp.sptb.graphs <- function(X,
 #'   tag used when results were saved).
 #' @param L1.normalize Logical; if TRUE, load results generated with L1
 #'   normalization. Must match the setting used in
-#'   \code{\link{compute.Lp.sptb.graphs}}.
+#'   \code{\link{compute.Lp.graphs}}.
 #'
 #' @return A named list (keyed by p.tag, e.g., "p05", "p075") where each
 #'   element contains the full results object saved by
-#'   \code{\link{compute.Lp.sptb.graphs}}, including graphs, regression fits,
+#'   \code{\link{compute.Lp.graphs}}, including graphs, regression fits,
 #'   and diagnostics. Returns an empty list if no results are found.
 #'
-#' @seealso \code{\link{compute.Lp.sptb.graphs}} for generating results,
+#' @seealso \code{\link{compute.Lp.graphs}} for generating results,
 #'   \code{\link{summary.Lp.results}} for extracting summary statistics.
 #'
 #' @examples
@@ -598,7 +598,7 @@ load.Lp.results <- function(p.values,
 #'   results are found.
 #'
 #' @seealso \code{\link{load.Lp.results}} for loading results,
-#'   \code{\link{compute.Lp.sptb.graphs}} for generating results.
+#'   \code{\link{compute.Lp.graphs}} for generating results.
 #'
 #' @examples
 #' \dontrun{
