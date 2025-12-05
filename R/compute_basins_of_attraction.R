@@ -1041,3 +1041,111 @@ basin.basins_of_attraction <- function(object, id,
 basin <- function(object, ...) {
     UseMethod("basin")
 }
+
+#' Extract All Basins of Attraction
+#'
+#' @description
+#' Retrieves vertex membership for all basins of attraction, returning a named
+#' list where each element contains the vertex indices belonging to that basin.
+#'
+#' @details
+#' This function provides a convenient way to extract all basin memberships
+#' simultaneously. In the statistical Morse-Smale framework, basins of attraction
+#' are not necessarily disjoint: a vertex may belong to multiple basins when
+#' the function landscape contains saddle regions or when noise creates
+#' ambiguous gradient directions. The list structure accommodates this
+#' overlapping membership.
+#'
+#' The returned list is named using the systematic labels from the basin summary:
+#' lowercase labels (m1, m2, ...) for minima ordered by increasing function value,
+#' and uppercase labels (M1, M2, ...) for maxima ordered by decreasing function
+#' value. The list ordering follows the summary data frame, with minima appearing
+#' before maxima by default.
+#'
+#' This function is particularly useful for visualization tasks where basin
+#' membership needs to be mapped to colors or symbols, for computing overlap
+#' statistics between basins, or for subsetting data by basin membership.
+#'
+#' @param object An object of class \code{"basins_of_attraction"} returned by
+#'   \code{compute.basins.of.attraction}.
+#' @param summary.df A data frame of class \code{"basin_summary"} returned by
+#'   \code{summary.basins_of_attraction}. Required for basin labeling.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return A named list where each element is an integer vector of 1-based
+#'   vertex indices belonging to that basin. Names correspond to basin labels
+#'   from the summary (e.g., "m1", "m2", "M1", "M2").
+#'
+#' @examples
+#' \dontrun{
+#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#' summ <- summary(basins, adj.list, edgelen.list)
+#'
+#' # Get all basin memberships
+#' all.basins <- basins(basins, summary.df = summ)
+#'
+#' # Access individual basins by name
+#' m1.verts <- all.basins[["m1"]]
+#' M1.verts <- all.basins[["M1"]]
+#'
+#' # Compute basin sizes
+#' basin.sizes <- sapply(all.basins, length)
+#'
+#' # Find vertices in multiple basins (overlap)
+#' all.verts <- unlist(all.basins)
+#' overlap.verts <- unique(all.verts[duplicated(all.verts)])
+#'
+#' # Create basin membership indicator matrix
+#' n <- length(y)
+#' membership <- sapply(all.basins, function(b) seq_len(n) %in% b)
+#' }
+#'
+#' @seealso \code{\link{basin.basins_of_attraction}} for extracting a single basin,
+#'   \code{\link{compute.basins.of.attraction}} for computing basins,
+#'   \code{\link{summary.basins_of_attraction}} for generating basin summaries
+#'
+#' @export
+basins.basins_of_attraction <- function(object, summary.df, ...) {
+    ## Validate inputs
+    if (!inherits(object, "basins_of_attraction")) {
+        stop("object must be of class 'basins_of_attraction'")
+    }
+    if (!inherits(summary.df, "basin_summary")) {
+        stop("summary.df must be of class 'basin_summary' from summary.basins_of_attraction()")
+    }
+
+    ## Initialize result list
+    n.basins <- nrow(summary.df)
+    result <- vector("list", n.basins)
+    names(result) <- summary.df$label
+
+    ## Extract vertices for each basin
+    for (i in seq_len(n.basins)) {
+        result[[i]] <- basin.basins_of_attraction(
+            object,
+            id = summary.df$label[i],
+            summary.df = summary.df,
+            type = "vertices"
+        )
+    }
+
+    return(result)
+}
+
+
+#' Extract All Basins of Attraction
+#'
+#' @description
+#' Generic function for extracting all basins of attraction from an object.
+#'
+#' @param object An object containing basins of attraction information.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return A list of basin memberships, format depends on the method.
+#'
+#' @seealso \code{\link{basins.basins_of_attraction}}
+#'
+#' @export
+basins <- function(object, ...) {
+    UseMethod("basins")
+}
