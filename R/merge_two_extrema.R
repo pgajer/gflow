@@ -154,8 +154,15 @@ merge.two.extrema <- function(basins.obj,
                      paste(missing.components, collapse = ", ")))
     }
 
+    ## Extract graph structure with fallback for naming variations
     adj.list <- basins.obj$basins$adj.list
-    edgelen.list <- basins.obj$basins$edge.length.list
+    edgelen.list <- if (!is.null(basins.obj$basins$edge.length.list)) {
+                        basins.obj$basins$edge.length.list
+                    } else if (!is.null(basins.obj$basins$edgelen.list)) {
+                        basins.obj$basins$edgelen.list
+                    } else {
+                        stop("basins.obj$basins must contain edge.length.list or edgelen.list")
+                    }
 
     ## Convert labels to character for consistent indexing
     winner.label.char <- as.character(winner.label)
@@ -471,7 +478,7 @@ merge.two.extrema <- function(basins.obj,
     }
 
     ## Update summary
-    result$summary <- summary(result$basins, adj.list, edge.length.list, hop.k = basins.obj$basins$hop.k)
+    result$summary <- summary(result$basins, adj.list, edgelen.list, hop.k = basins.obj$basins$hop.k)
 
     ## Update or create merge.info
     if (is.null(basins.obj$basins$merge.info)) {
@@ -518,3 +525,7 @@ merge.two.extrema <- function(basins.obj,
 
     return(result)
 }
+
+#' @rdname merge.two.extrema
+#' @export
+merge.two.basins <- merge.two.extrema
