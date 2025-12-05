@@ -30,20 +30,38 @@
 #' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #' @param verbose Logical indicating whether to print progress messages (default: FALSE)
 #'
-#' @return A list with two components:
-#'   \item{basins}{The refined basins object containing:
-#'     \describe{
-#'       \item{lmax_basins}{Named list of maximum basins}
-#'       \item{lmin_basins}{Named list of minimum basins}
-#'       \item{y}{Vector of function values}
-#'       \item{adj.list}{Adjacency list (graph structure)}
-#'       \item{edge.length.list}{Edge lengths (if provided)}
-#'       \item{n.vertices}{Number of vertices}
+#' @return A list of class \code{"basins_of_attraction"} with the following components:
+#'   \describe{
+#'     \item{basins}{The refined basins object containing:
+#'       \describe{
+#'         \item{lmax_basins}{Named list of maximum basins, where names correspond
+#'           to labels (M1, M2, ...) from the summary. Each basin contains a
+#'           \code{vertex} (the extremum location) and \code{basin_df} (data frame
+#'           of basin vertices with gradient flow information).}
+#'         \item{lmin_basins}{Named list of minimum basins, with analogous structure
+#'           and labels (m1, m2, ...).}
+#'         \item{y}{Numeric vector of function values at each vertex.}
+#'         \item{adj.list}{Adjacency list representation of the graph structure.}
+#'         \item{edge.length.list}{List of edge lengths corresponding to the
+#'           adjacency list.}
+#'         \item{n.vertices}{Integer giving the number of vertices in the graph.}
+#'         \item{hop.k}{The hop distance parameter used for summary statistics.}
+#'       }
 #'     }
-#'     The basin lists are named with extremum labels from the final summary,
-#'     enabling direct access and simplifying merge operations.
+#'     \item{summary}{A data frame with one row per retained extremum, containing:
+#'       label, vertex index, function value, relative value, extremum type,
+#'       hop index, basin size, distance percentiles, degree, and degree percentile.
+#'       Minima are labeled m1, m2, ... in order of increasing value; maxima are
+#'       labeled M1, M2, ... in order of decreasing value.}
+#'     \item{max.overlap.dist}{Symmetric matrix of pairwise overlap distances
+#'       between maximum basins, with row and column names matching the summary
+#'       labels. Returns \code{NULL} if fewer than two maxima remain after
+#'       refinement.}
+#'     \item{min.overlap.dist}{Symmetric matrix of pairwise overlap distances
+#'       between minimum basins, with row and column names matching the summary
+#'       labels. Returns \code{NULL} if fewer than two minima remain after
+#'       refinement.}
 #'   }
-#'   \item{summary}{A data frame summarizing characteristics of refined basins}
 #'
 #' @details
 #' The refinement process consists of several stages. First, the function computes
@@ -384,10 +402,54 @@ compute.refined.basins <- function(adj.list,
         cat(sprintf("Final structure: %d maxima and %d minima\n", n.max.final, n.min.final))
     }
 
+    ## Compute final overlap distance matrices for diagnostics
+    if (verbose) {
+        cat("Computing final overlap distance matrices...\n")
+    }
+
+    max.overlap.dist <- NULL
+    min.overlap.dist <- NULL
+
+    ## Compute overlap distances for maxima
+    if (length(current.basins$lmax_basins) > 1) {
+        max.summary <- final.summary[final.summary$type == "max", ]
+        max.vertices.list <- list()
+        for (i in seq_len(nrow(max.summary))) {
+            label <- max.summary$label[i]
+            vertex <- max.summary$vertex[i]
+            for (basin in current.basins$lmax_basins) {
+                if (basin$vertex == vertex) {
+                    max.vertices.list[[label]] <- basin$basin_df[, 1]
+                    break
+                }
+            }
+        }
+        max.overlap.dist <- compute.overlap.distance.matrix(max.vertices.list)
+    }
+
+    ## Compute overlap distances for minima
+    if (length(current.basins$lmin_basins) > 1) {
+        min.summary <- final.summary[final.summary$type == "min", ]
+        min.vertices.list <- list()
+        for (i in seq_len(nrow(min.summary))) {
+            label <- min.summary$label[i]
+            vertex <- min.summary$vertex[i]
+            for (basin in current.basins$lmin_basins) {
+                if (basin$vertex == vertex) {
+                    min.vertices.list[[label]] <- basin$basin_df[, 1]
+                    break
+                }
+            }
+        }
+        min.overlap.dist <- compute.overlap.distance.matrix(min.vertices.list)
+    }
+
     ## Return both basins and summary
     result <- list(
         basins = current.basins,
-        summary = final.summary
+        summary = final.summary,
+        max.overlap.dist = max.overlap.dist,
+        min.overlap.dist = min.overlap.dist
     )
 
     class(result) <- "basins_of_attraction"

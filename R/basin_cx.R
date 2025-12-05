@@ -944,8 +944,8 @@ calculate_basin_distances <- function(basin_cx, lmin_basins_vertices_list, lmax_
   basin_cx$lmax_intersection_dists <- intersection_size_matrix(lmax_basins_vertices_list)
 
   ## Calculate overlap distances
-  basin_cx$lmin_overlap_dists <- overlap_distance_matrix(lmin_basins_vertices_list)
-  basin_cx$lmax_overlap_dists <- overlap_distance_matrix(lmax_basins_vertices_list)
+  basin_cx$lmin_overlap_dists <- compute.overlap.distance.matrix(lmin_basins_vertices_list)
+  basin_cx$lmax_overlap_dists <- compute.overlap.distance.matrix(lmax_basins_vertices_list)
 
   ## Calculate relative distance matrices
   if (!is.null(basin_cx$lmin_dist_mat) && nrow(basin_cx$lmin_dist_mat) > 0) {
@@ -962,12 +962,12 @@ calculate_basin_distances <- function(basin_cx, lmin_basins_vertices_list, lmax_
 ## 7. Creates clusters based on overlap
 cluster_basins_by_overlap <- function(basin_cx, lmin_basin_ids, lmax_basin_ids, basin_merge_overlap_thld) {
   ## Create overlap distance graphs
-  lmax_overlap_dists_graph <- create_threshold_distance_graph(
+  lmax_overlap_dists_graph <- .create.threshold.distance.graph(
     basin_cx$lmax_overlap_dists,
     threshold = basin_merge_overlap_thld
   )
 
-  lmin_overlap_dists_graph <- create_threshold_distance_graph(
+  lmin_overlap_dists_graph <- .create.threshold.distance.graph(
     basin_cx$lmin_overlap_dists,
     threshold = basin_merge_overlap_thld
   )
@@ -1290,55 +1290,8 @@ intersection_size_matrix <- function(basin_vertices_list) {
 }
 
 
-#' Compute Pairwise Overlap Distance Matrix
-#'
-#' @param basin_vertices_list A list of integer vectors.
-#' @return A symmetric matrix where entry \eqn{(i, j) = 1 - (|A \cap B| / \min(|A|, |B|)),}
-#'         measuring the overlap distance between vectors i and j.
-overlap_distance_matrix <- function(basin_vertices_list) {
-    n_basins <- length(basin_vertices_list)
-    if (n_basins == 0) return(matrix(0, 0, 0))
-
-    basin_ids <- names(basin_vertices_list)
-    result <- matrix(0, nrow = n_basins, ncol = n_basins)
-    rownames(result) <- basin_ids
-    colnames(result) <- basin_ids
-
-    ## Calculate overlap distances (1 - Jaccard index)
-    for (i in 1:n_basins) {
-        vertices_i <- basin_vertices_list[[i]]
-        size_i <- length(vertices_i)
-        result[i, i] <- 0  ## Self distance = 0
-
-        for (j in (i+1):n_basins) {
-            if (j <= n_basins) {  ## Ensure we don't go out of bounds
-                vertices_j <- basin_vertices_list[[j]]
-                size_j <- length(vertices_j)
-
-                ## Calculate overlap distance
-                intersection_size <- length(intersect(vertices_i, vertices_j))
-
-                min_size <- min(size_i, size_j)
-
-                if (min_size > 0) {
-                    dist <- 1 - (intersection_size / min_size)
-                } else {
-                    dist <- 1  ## If both sets are empty, set distance to 1
-                }
-
-                ## Store the overlap distance in both directions
-                result[i, j] <- dist
-                result[j, i] <- dist
-            }
-        }
-    }
-
-    return(result)
-}
-
-
 ## Create a graph from a distance matrix with edges connecting vertices under a threshold
-create_threshold_distance_graph <- function(distance_matrix, threshold, include.names = TRUE) {
+.create.threshold.distance.graph <- function(distance_matrix, threshold, include.names = TRUE) {
 
     n_vertices <- nrow(distance_matrix)
     if (n_vertices == 0) {

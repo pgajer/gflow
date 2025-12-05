@@ -253,10 +253,10 @@ cluster.local.extrema <- function(basins.obj,
     }
 
     ## Compute overlap distance matrix
-    overlap.dists <- overlap_distance_matrix(basin.vertices.list)
+    overlap.dists <- compute.overlap.distance.matrix(basin.vertices.list)
 
     ## Create threshold graph
-    overlap.graph <- create_threshold_distance_graph(
+    overlap.graph <- .create.threshold.distance.graph(
         overlap.dists,
         threshold = overlap.threshold
     )
@@ -283,4 +283,51 @@ cluster.local.extrema <- function(basins.obj,
         basin.summary = basin.summary,
         n.clusters = length(cluster.ids)
     )
+}
+
+#' Compute Pairwise Overlap Distance Matrix
+#'
+#' @param basin_vertices_list A list of integer vectors.
+#' @return A symmetric matrix where entry \eqn{(i, j) = 1 - (|A \cap B| / \min(|A|, |B|)),}
+#'         measuring the overlap distance between vectors i and j.
+#' @export
+compute.overlap.distance.matrix <- function(basin_vertices_list) {
+    n_basins <- length(basin_vertices_list)
+    if (n_basins == 0) return(matrix(0, 0, 0))
+
+    basin_ids <- names(basin_vertices_list)
+    result <- matrix(0, nrow = n_basins, ncol = n_basins)
+    rownames(result) <- basin_ids
+    colnames(result) <- basin_ids
+
+    ## Calculate overlap distances (1 - Jaccard index)
+    for (i in 1:n_basins) {
+        vertices_i <- basin_vertices_list[[i]]
+        size_i <- length(vertices_i)
+        result[i, i] <- 0  ## Self distance = 0
+
+        for (j in (i+1):n_basins) {
+            if (j <= n_basins) {  ## Ensure we don't go out of bounds
+                vertices_j <- basin_vertices_list[[j]]
+                size_j <- length(vertices_j)
+
+                ## Calculate overlap distance
+                intersection_size <- length(intersect(vertices_i, vertices_j))
+
+                min_size <- min(size_i, size_j)
+
+                if (min_size > 0) {
+                    dist <- 1 - (intersection_size / min_size)
+                } else {
+                    dist <- 1  ## If both sets are empty, set distance to 1
+                }
+
+                ## Store the overlap distance in both directions
+                result[i, j] <- dist
+                result[j, i] <- dist
+            }
+        }
+    }
+
+    return(result)
 }
