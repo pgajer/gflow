@@ -157,6 +157,8 @@ compute.refined.basins <- function(adj.list,
         n.max <- sum(initial.summary$type == "max")
         n.min <- sum(initial.summary$type == "min")
         cat(sprintf("  Found %d maxima and %d minima\n", n.max, n.min))
+        cat("initial.summary:\n")
+        print(initial.summary)
     }
 
     ## Step 2: Filter by relative values
