@@ -32,6 +32,7 @@
 #include "gflow_cx.hpp"
 #include "gradient_basin.hpp"
 #include "lcor.hpp"
+#include "lslope.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -1399,6 +1400,53 @@ struct set_wgraph_t {
 		double tolerance,
 		const std::optional<std::vector<double>>& weights = std::nullopt
 		) const;
+
+	// ----------------------------------------------------------------
+	// Local slope (asymmetric association) methods
+	// ----------------------------------------------------------------
+
+	std::pair<size_t, double> find_gradient_edge(
+		size_t v,
+		const std::vector<double>& y,
+		edge_diff_type_t y_diff_type,
+		double epsilon_y,
+		bool ascending
+		) const;
+
+	lslope_result_t lslope_gradient(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lslope_type_t slope_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon,
+		double sigmoid_alpha,
+		sigmoid_type_t sigmoid_type,
+		bool ascending
+		) const;
+
+	lslope_nbhd_result_t lslope_neighborhood(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon,
+		double winsorize_quantile
+		) const;
+
+	std::vector<double> lslope(
+		const std::vector<double>& y,
+		const std::vector<double>& z,
+		lslope_type_t slope_type,
+		lcor_type_t weight_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon,
+		double sigmoid_alpha,
+		bool ascending
+		) const;
+
 
 	// ----------------------------------------------------------------
 	// Local correlation methods

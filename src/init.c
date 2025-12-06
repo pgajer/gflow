@@ -62,6 +62,7 @@
 #include "riem_dcx_r.h"
 #include "lcor_r.h"
 #include "partition_graph_r.h"
+#include "lslope_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -197,6 +198,9 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  {"S_lslope_gradient_instrumented", (DL_FUNC) &S_lslope_gradient_instrumented, 10},
+  {"S_lslope_gradient", (DL_FUNC) &S_lslope_gradient, 10},
+  {"S_lslope_neighborhood", (DL_FUNC) &S_lslope_neighborhood, 8},
   {"S_lcor", (DL_FUNC) &S_lcor, 9},
   {"S_lcor_instrumented", (DL_FUNC) &S_lcor_instrumented, 9},
   {"S_lcor_vector_matrix", (DL_FUNC) &S_lcor_vector_matrix, 10},
