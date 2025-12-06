@@ -21,7 +21,12 @@
 #' @param p.mean.hopk.dist.threshold Threshold for mean hop-k distance percentile (default: 0.9)
 #' @param p.deg.threshold Threshold for degree percentile (default: 0.9)
 #' @param min.basin.size Minimum basin size threshold. Extrema with basins
-#'   containing fewer than this many vertices are removed. Default is 1 (no filtering).
+#'   containing fewer than this many vertices are removed. Default is 10.
+#' @param expand.basins Logical indicating whether to expand basins to cover all
+#'   graph vertices (default: TRUE). When TRUE, vertices not covered by any
+#'   retained basin are assigned to the nearest basin based on shortest path
+#'   distance in the weighted graph. This ensures complete coverage after
+#'   filtering removes spurious extrema.
 #' @param hop.k Parameter for hop-k distance calculation in summary (default: 2)
 #' @param apply.relvalue.filter Logical indicating whether to apply relative value filtering (default: TRUE)
 #' @param apply.maxima.clustering Logical indicating whether to cluster and merge maxima (default: TRUE)
@@ -61,6 +66,20 @@
 #'       between minimum basins, with row and column names matching the summary
 #'       labels. Returns \code{NULL} if fewer than two minima remain after
 #'       refinement.}
+#'     \item{max.vertices.list}{Named list of integer vectors containing vertex
+#'       indices for each maximum basin. Names match basin labels from the summary.}
+#'     \item{min.vertices.list}{Named list of integer vectors containing vertex
+#'       indices for each minimum basin. Names match basin labels from the summary.}
+#'     \item{expanded.max.vertices.list}{If \code{expand.basins = TRUE}, a named
+#'       list of expanded maximum basins covering all graph vertices. Otherwise
+#'       \code{NULL}.}
+#'     \item{expanded.min.vertices.list}{If \code{expand.basins = TRUE}, a named
+#'       list of expanded minimum basins covering all graph vertices. Otherwise
+#'       \code{NULL}.}
+#'     \item{stage.history}{A data frame recording the number of maxima and minima
+#'       before and after each refinement stage, facilitating reproducible reporting.}
+#'     \item{parameters}{A named list of all parameter values used in the refinement
+#'       process, enabling exact replication and automated report generation.}
 #'   }
 #'
 #' @details
@@ -89,7 +108,15 @@
 #' structural characteristics. Basins with high values of mean hop-k distance or
 #' degree percentiles may represent spurious features or boundary artifacts. The
 #' thresholds \code{p.mean.hopk.dist.threshold} and \code{p.deg.threshold}
-#' determine which basins to retain based on these geometric measures.
+#' determine which basins to retain based on these geometric measures. Additionally,
+#' basins with fewer than \code{min.basin.size} vertices are removed as they lack
+#' sufficient statistical support.
+#'
+#' When \code{expand.basins = TRUE}, an additional step assigns uncovered vertices
+#' to their nearest retained basin. After filtering spurious extrema, some vertices
+#' may not belong to any retained basin. These are reassigned based on shortest
+#' path distance in the weighted graph, ensuring complete coverage for downstream
+#' analyses that require every vertex to have a basin assignment.
 #'
 #' Each filtering stage can be disabled by setting the corresponding logical
 #' parameter to FALSE, allowing users to customize the refinement pipeline
@@ -108,11 +135,20 @@
 #' refined.basins <- result$basins
 #' basin.summary <- result$summary
 #'
+#' # View stage history
+#' print(result$stage.history)
+#'
+#' # Generate methods paragraph
+#' report <- generate.refinement.report(result)
+#' cat(report)
+#'
 #' # Use custom thresholds for more aggressive filtering
 #' result <- compute.refined.basins(adj.list, edge.length.list, fitted.values,
 #'                                  edge.length.quantile.thld = 0.9,
 #'                                  min.rel.value.max = 1.2,
 #'                                  max.rel.value.min = 0.8,
+#'                                  min.basin.size = 10,
+#'                                  expand.basins = TRUE,
 #'                                  p.mean.hopk.dist.threshold = 0.85,
 #'                                  verbose = TRUE)
 #'
@@ -123,6 +159,9 @@
 #'                                  apply.minima.clustering = FALSE,
 #'                                  verbose = TRUE)
 #' }
+#'
+#' @seealso \code{\link{generate.refinement.report}} for automated report generation,
+#'   \code{\link{expand.basins.to.cover}} for the basin expansion algorithm
 #'
 #' @export
 compute.refined.basins <- function(adj.list,
@@ -136,7 +175,8 @@ compute.refined.basins <- function(adj.list,
                                    p.mean.nbrs.dist.threshold = 0.9,
                                    p.mean.hopk.dist.threshold = 0.9,
                                    p.deg.threshold = 0.9,
-                                   min.basin.size = 1,
+                                   min.basin.size = 10,
+                                   expand.basins = TRUE,
                                    hop.k = 2,
                                    apply.relvalue.filter = TRUE,
                                    apply.maxima.clustering = TRUE,
@@ -144,7 +184,7 @@ compute.refined.basins <- function(adj.list,
                                    apply.geometric.filter = TRUE,
                                    with.trajectories = FALSE,
                                    verbose = FALSE) {
-  
+
     ## Validate inputs
     if (!is.list(adj.list)) {
         stop("adj.list must be a list")
@@ -162,6 +202,17 @@ compute.refined.basins <- function(adj.list,
         stop("fitted.values must have the same length as adj.list")
     }
 
+    ## Initialize stage history tracking
+    stage.history <- data.frame(
+        stage = character(),
+        description = character(),
+        n.max.before = integer(),
+        n.max.after = integer(),
+        n.min.before = integer(),
+        n.min.after = integer(),
+        stringsAsFactors = FALSE
+    )
+
     ## Step 1: Compute initial basins of attraction
     if (verbose) {
         cat("Step 1: Computing initial basins of attraction...\n")
@@ -173,10 +224,22 @@ compute.refined.basins <- function(adj.list,
                                                    edge.length.quantile.thld,
                                                    with.trajectories)
 
+    initial.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+    n.max <- sum(initial.summary$type == "max")
+    n.min <- sum(initial.summary$type == "min")
+
+    stage.history <- rbind(stage.history, data.frame(
+        stage = "initial",
+        description = sprintf("Initial basins (edge quantile = %.2f)",
+                              edge.length.quantile.thld),
+        n.max.before = NA_integer_,
+        n.max.after = n.max,
+        n.min.before = NA_integer_,
+        n.min.after = n.min,
+        stringsAsFactors = FALSE
+    ))
+
     if (verbose) {
-        initial.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
-        n.max <- sum(initial.summary$type == "max")
-        n.min <- sum(initial.summary$type == "min")
         cat(sprintf("  Found %d maxima and %d minima\n", n.max, n.min))
         cat("initial.summary:\n")
         print(initial.summary)
@@ -184,6 +247,10 @@ compute.refined.basins <- function(adj.list,
 
     ## Step 2: Filter by relative values
     if (apply.relvalue.filter) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
         if (verbose) {
             cat(sprintf("\nStep 2: Filtering by relative values (max >= %.2f, min <= %.2f)...\n",
                         min.rel.value.max, max.rel.value.min))
@@ -193,11 +260,23 @@ compute.refined.basins <- function(adj.list,
                                                     min.rel.value.max = min.rel.value.max,
                                                     max.rel.value.min = max.rel.value.min)
 
+        relvalue.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(relvalue.summary$type == "max")
+        n.min.after <- sum(relvalue.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "relvalue",
+            description = sprintf("Relative value filter (max >= %.2f, min <= %.2f)",
+                                  min.rel.value.max, max.rel.value.min),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
         if (verbose) {
-            relvalue.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
-            n.max <- sum(relvalue.summary$type == "max")
-            n.min <- sum(relvalue.summary$type == "min")
-            cat(sprintf("  Retained %d maxima and %d minima\n", n.max, n.min))
+            cat(sprintf("  Retained %d maxima and %d minima\n", n.max.after, n.min.after))
             cat("relvalue.summary:\n")
             print(relvalue.summary)
         }
@@ -209,6 +288,10 @@ compute.refined.basins <- function(adj.list,
 
     ## Step 3: Cluster and merge maxima
     if (apply.maxima.clustering) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
         if (verbose) {
             cat(sprintf("\nStep 3: Clustering maxima (overlap threshold = %.2f)...\n",
                         max.overlap.threshold))
@@ -221,8 +304,8 @@ compute.refined.basins <- function(adj.list,
                                               overlap.threshold = max.overlap.threshold)
 
         if (verbose) {
-            n.clusters <- length(unique(max.clusters$cluster))
-            n.singletons <- sum(table(max.clusters$cluster) == 1)
+            n.clusters <- length(unique(max.clusters$cluster.assignments))
+            n.singletons <- sum(table(max.clusters$cluster.assignments) == 1)
             n.merged <- n.clusters - n.singletons
             cat(sprintf("  Found %d clusters (%d singletons, %d to be merged)\n",
                         n.clusters, n.singletons, n.merged))
@@ -233,10 +316,23 @@ compute.refined.basins <- function(adj.list,
                                                  max.clusters,
                                                  extrema.type = "max")
 
+        merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(merged.max.summary$type == "max")
+        n.min.after <- sum(merged.max.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "merge.max",
+            description = sprintf("Cluster and merge maxima (overlap threshold = %.2f)",
+                                  max.overlap.threshold),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
         if (verbose) {
-            merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
-            n.max <- sum(merged.max.summary$type == "max")
-            cat(sprintf("  Result: %d maxima after merging\n", n.max))
+            cat(sprintf("  Result: %d maxima after merging\n", n.max.after))
             cat("merged.max.summary:\n")
             print(merged.max.summary)
         }
@@ -248,6 +344,10 @@ compute.refined.basins <- function(adj.list,
 
     ## Step 4: Cluster and merge minima
     if (apply.minima.clustering) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
         if (verbose) {
             cat(sprintf("\nStep 4: Clustering minima (overlap threshold = %.2f)...\n",
                         min.overlap.threshold))
@@ -260,8 +360,8 @@ compute.refined.basins <- function(adj.list,
                                               overlap.threshold = min.overlap.threshold)
 
         if (verbose) {
-            n.clusters <- length(unique(min.clusters$cluster))
-            n.singletons <- sum(table(min.clusters$cluster) == 1)
+            n.clusters <- length(unique(min.clusters$cluster.assignments))
+            n.singletons <- sum(table(min.clusters$cluster.assignments) == 1)
             n.merged <- n.clusters - n.singletons
             cat(sprintf("  Found %d clusters (%d singletons, %d to be merged)\n",
                         n.clusters, n.singletons, n.merged))
@@ -272,10 +372,23 @@ compute.refined.basins <- function(adj.list,
                                                  min.clusters,
                                                  extrema.type = "min")
 
+        merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(merged.min.summary$type == "max")
+        n.min.after <- sum(merged.min.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "merge.min",
+            description = sprintf("Cluster and merge minima (overlap threshold = %.2f)",
+                                  min.overlap.threshold),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
         if (verbose) {
-            merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
-            n.min <- sum(merged.min.summary$type == "min")
-            cat(sprintf("  Result: %d minima after merging\n", n.min))
+            cat(sprintf("  Result: %d minima after merging\n", n.min.after))
             cat("merged.min.summary:\n")
             print(merged.min.summary)
         }
@@ -287,6 +400,10 @@ compute.refined.basins <- function(adj.list,
 
     ## Step 5: Filter by geometric characteristics and basin size
     if (apply.geometric.filter) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
         if (verbose) {
             cat(sprintf("\nStep 5: Filtering by geometric characteristics and basin size:\n"))
             cat(sprintf("  p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, p.deg < %.2f, basin.size >= %d ...\n",
@@ -307,7 +424,6 @@ compute.refined.basins <- function(adj.list,
                                           ]
 
         if (verbose) {
-            n.max.before <- nrow(max.basin.df)
             n.max.after <- length(good.max.vertices)
             cat(sprintf("  Maxima: %d -> %d (removed %d)\n",
                         n.max.before, n.max.after, n.max.before - n.max.after))
@@ -324,7 +440,6 @@ compute.refined.basins <- function(adj.list,
                                           ]
 
         if (verbose) {
-            n.min.before <- nrow(min.basin.df)
             n.min.after <- length(good.min.vertices)
             cat(sprintf("  Minima: %d -> %d (removed %d)\n",
                         n.min.before, n.min.after, n.min.before - n.min.after))
@@ -333,6 +448,20 @@ compute.refined.basins <- function(adj.list,
         ## Combine good extrema and filter basins
         good.extrema <- c(good.min.vertices, good.max.vertices)
         current.basins <- filter.basins(current.basins, good.extrema)
+
+        n.max.after <- length(good.max.vertices)
+        n.min.after <- length(good.min.vertices)
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "geometric",
+            description = sprintf("Geometric filter (p.dist < %.2f, p.deg < %.2f, size >= %d)",
+                                  p.mean.hopk.dist.threshold, p.deg.threshold, min.basin.size),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
 
     } else {
         if (verbose) {
@@ -378,13 +507,10 @@ compute.refined.basins <- function(adj.list,
     }
 
     ## Store graph structure in basins object for downstream operations
-    ## This makes the basins object self-contained and eliminates the need
-    ## to pass adj.list and edge.length.list to merge.two.extrema()
     if (verbose) {
         cat("Storing graph structure in basins object...\n")
     }
 
-    ## Always store adj.list (required for merge operations)
     if (is.null(current.basins$adj.list)) {
         current.basins$adj.list <- adj.list
     }
@@ -395,25 +521,13 @@ compute.refined.basins <- function(adj.list,
 
     current.basins$hop.k <- hop.k
 
+    ## Construct vertices lists for maxima and minima
     if (verbose) {
-        n.max.final <- sum(final.summary$type == "max")
-        n.min.final <- sum(final.summary$type == "min")
-        cat("\nRefinement complete!\n")
-        cat(sprintf("Final structure: %d maxima and %d minima\n", n.max.final, n.min.final))
+        cat("Constructing basin vertices lists...\n")
     }
 
-    ## Compute final overlap distance matrices for diagnostics
-    if (verbose) {
-        cat("Computing final overlap distance matrices...\n")
-    }
-
-    max.overlap.dist <- NULL
-    min.overlap.dist <- NULL
-
-    ## Compute overlap distances for maxima
-    if (length(current.basins$lmax_basins) > 1) {
-        max.summary <- final.summary[final.summary$type == "max", ]
-        max.vertices.list <- list()
+    max.vertices.list <- list()
+    if (nrow(max.summary) > 0) {
         for (i in seq_len(nrow(max.summary))) {
             label <- max.summary$label[i]
             vertex <- max.summary$vertex[i]
@@ -424,13 +538,10 @@ compute.refined.basins <- function(adj.list,
                 }
             }
         }
-        max.overlap.dist <- compute.overlap.distance.matrix(max.vertices.list)
     }
 
-    ## Compute overlap distances for minima
-    if (length(current.basins$lmin_basins) > 1) {
-        min.summary <- final.summary[final.summary$type == "min", ]
-        min.vertices.list <- list()
+    min.vertices.list <- list()
+    if (nrow(min.summary) > 0) {
         for (i in seq_len(nrow(min.summary))) {
             label <- min.summary$label[i]
             vertex <- min.summary$vertex[i]
@@ -441,15 +552,121 @@ compute.refined.basins <- function(adj.list,
                 }
             }
         }
+    }
+
+    ## Compute final overlap distance matrices for diagnostics
+    if (verbose) {
+        cat("Computing final overlap distance matrices...\n")
+    }
+
+    max.overlap.dist <- NULL
+    min.overlap.dist <- NULL
+
+    if (length(max.vertices.list) > 1) {
+        max.overlap.dist <- compute.overlap.distance.matrix(max.vertices.list)
+    }
+
+    if (length(min.vertices.list) > 1) {
         min.overlap.dist <- compute.overlap.distance.matrix(min.vertices.list)
     }
 
-    ## Return both basins and summary
+    ## Step 6 (optional): Expand basins to cover all vertices
+    expanded.max.vertices.list <- NULL
+    expanded.min.vertices.list <- NULL
+
+    if (expand.basins) {
+        if (verbose) {
+            cat("\nStep 6: Expanding basins to cover all vertices...\n")
+        }
+
+        n.vertices <- length(adj.list)
+
+        ## Count coverage before expansion
+        n.covered.max <- length(unique(unlist(max.vertices.list)))
+        n.covered.min <- length(unique(unlist(min.vertices.list)))
+
+        ## Expand maximum basins
+        if (length(max.vertices.list) > 0) {
+            expanded.max.vertices.list <- expand.basins.to.cover(
+                basins.vertices.list = max.vertices.list,
+                adj.list = adj.list,
+                weight.list = edge.length.list,
+                n.vertices = n.vertices
+            )
+            n.expanded.max <- length(unique(unlist(expanded.max.vertices.list)))
+
+            if (verbose) {
+                cat(sprintf("  Maxima basins: %d -> %d vertices covered\n",
+                            n.covered.max, n.expanded.max))
+            }
+        }
+
+        ## Expand minimum basins
+        if (length(min.vertices.list) > 0) {
+            expanded.min.vertices.list <- expand.basins.to.cover(
+                basins.vertices.list = min.vertices.list,
+                adj.list = adj.list,
+                weight.list = edge.length.list,
+                n.vertices = n.vertices
+            )
+            n.expanded.min <- length(unique(unlist(expanded.min.vertices.list)))
+
+            if (verbose) {
+                cat(sprintf("  Minima basins: %d -> %d vertices covered\n",
+                            n.covered.min, n.expanded.min))
+            }
+        }
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "expand",
+            description = "Expand basins to cover all vertices",
+            n.max.before = n.covered.max,
+            n.max.after = n.vertices,
+            n.min.before = n.covered.min,
+            n.min.after = n.vertices,
+            stringsAsFactors = FALSE
+        ))
+
+    } else {
+        if (verbose) {
+            cat("\nStep 6: Skipping basin expansion\n")
+        }
+    }
+
+    ## Store parameters for reporting
+    parameters <- list(
+        edge.length.quantile.thld = edge.length.quantile.thld,
+        min.rel.value.max = min.rel.value.max,
+        max.rel.value.min = max.rel.value.min,
+        max.overlap.threshold = max.overlap.threshold,
+        min.overlap.threshold = min.overlap.threshold,
+        p.mean.nbrs.dist.threshold = p.mean.nbrs.dist.threshold,
+        p.mean.hopk.dist.threshold = p.mean.hopk.dist.threshold,
+        p.deg.threshold = p.deg.threshold,
+        min.basin.size = min.basin.size,
+        expand.basins = expand.basins,
+        hop.k = hop.k
+    )
+
+    if (verbose) {
+        n.max.final <- sum(final.summary$type == "max")
+        n.min.final <- sum(final.summary$type == "min")
+        cat("\nRefinement complete!\n")
+        cat(sprintf("Final structure: %d maxima and %d minima\n", n.max.final, n.min.final))
+    }
+
+    ## Return basins, summary, diagnostics, history, and parameters
     result <- list(
         basins = current.basins,
         summary = final.summary,
         max.overlap.dist = max.overlap.dist,
-        min.overlap.dist = min.overlap.dist
+        min.overlap.dist = min.overlap.dist,
+        max.vertices.list = max.vertices.list,
+        min.vertices.list = min.vertices.list,
+        expanded.max.vertices.list = expanded.max.vertices.list,
+        expanded.min.vertices.list = expanded.min.vertices.list,
+        stage.history = stage.history,
+        parameters = parameters
     )
 
     class(result) <- "basins_of_attraction"
@@ -458,29 +675,322 @@ compute.refined.basins <- function(adj.list,
 }
 
 
+#' Expand Basins to Cover All Graph Vertices
+#'
+#' Assigns uncovered vertices to their nearest basin based on shortest path
+#' distance in the graph. This is useful after filtering spurious extrema,
+#' when some vertices may no longer belong to any retained basin.
+#'
+#' @param basins.vertices.list A named list of integer vectors, where each
+#'   element contains the vertex indices belonging to a basin. Names should
+#'   correspond to basin labels (e.g., "M1", "M2", ... or "m1", "m2", ...).
+#' @param adj.list Adjacency list representation of the graph. Element \code{i}
+#'   contains the indices of vertices adjacent to vertex \code{i}.
+#' @param weight.list List of edge weights (typically edge lengths) corresponding
+#'   to the adjacency list. Element \code{i} contains the weights of edges
+#'   incident to vertex \code{i}.
+#' @param n.vertices Integer specifying the total number of vertices in the graph.
+#'   If \code{NULL} (default), inferred from the length of \code{adj.list}.
+#'
+#' @return A named list with the same structure as \code{basins.vertices.list},
+#'   where each basin has been expanded to include its nearest uncovered vertices.
+#'   The union of all returned basins covers all graph vertices.
+#'
+#' @details
+#' After filtering spurious local extrema, the union of retained basins may not
+#' cover the entire graph. Vertices that belonged to removed basins are left
+#' unassigned. This function reassigns such vertices to the nearest retained
+#' basin based on shortest path distance in the weighted graph.
+#'
+#' For each uncovered vertex, the function computes the shortest path distance
+#' to all covered vertices, identifies the closest covered vertex, and assigns
+#' the uncovered vertex to the basin containing that closest vertex. Ties are
+#' broken arbitrarily (by the order in which basins appear in the input list).
+#'
+#' The function uses \code{igraph::distances()} for efficient shortest path
+#' computation, restricting the calculation to distances from uncovered vertices
+#' to covered vertices rather than computing the full distance matrix.
+#'
+#' @examples
+#' \dontrun{
+#' # After computing refined basins
+#' result <- compute.refined.basins(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  min.basin.size = 10)
+#'
+#' # Expand maximum basins to cover all vertices
+#' expanded.max.basins <- expand.basins.to.cover(
+#'     basins.vertices.list = result$max.vertices.list,
+#'     adj.list = adj.list,
+#'     weight.list = edge.length.list,
+#'     n.vertices = length(adj.list)
+#' )
+#'
+#' # Verify full coverage
+#' all.vertices <- unique(unlist(expanded.max.basins))
+#' length(all.vertices) == length(adj.list)  # Should be TRUE
+#' }
+#'
+#' @seealso \code{\link{compute.refined.basins}} for computing refined basins
+#'
+#' @importFrom igraph graph_from_data_frame distances E
+#'
+#' @export
+expand.basins.to.cover <- function(basins.vertices.list,
+                                   adj.list,
+                                   weight.list,
+                                   n.vertices = NULL) {
+
+    ## Validate inputs
+    if (!is.list(basins.vertices.list) || length(basins.vertices.list) == 0) {
+        stop("basins.vertices.list must be a non-empty list")
+    }
+
+    if (!is.list(adj.list) || !is.list(weight.list)) {
+        stop("adj.list and weight.list must be lists")
+    }
+
+    if (length(adj.list) != length(weight.list)) {
+        stop("adj.list and weight.list must have the same length")
+    }
+
+    if (is.null(n.vertices)) {
+        n.vertices <- length(adj.list)
+    }
+
+    ## Compute union of all basin vertices
+    covered.vertices <- unique(unlist(basins.vertices.list))
+
+    ## Find uncovered vertices
+    all.vertices <- seq_len(n.vertices)
+    uncovered.vertices <- setdiff(all.vertices, covered.vertices)
+
+    ## If all vertices are covered, return input unchanged
+    if (length(uncovered.vertices) == 0) {
+        return(basins.vertices.list)
+    }
+
+    ## Create lookup: covered vertex -> basin label
+    vertex.to.basin <- character(n.vertices)
+    for (basin.label in names(basins.vertices.list)) {
+        basin.vertices <- basins.vertices.list[[basin.label]]
+        vertex.to.basin[basin.vertices] <- basin.label
+    }
+
+    ## Build igraph from adjacency list and weight list
+    edge.list <- data.frame(
+        from = integer(0),
+        to = integer(0),
+        weight = numeric(0)
+    )
+
+    for (i in seq_len(n.vertices)) {
+        if (length(adj.list[[i]]) > 0) {
+            neighbors <- adj.list[[i]]
+            ## Only add edges in one direction (i < j) to avoid duplicates
+            mask <- neighbors > i
+            if (any(mask)) {
+                new.edges <- data.frame(
+                    from = i,
+                    to = neighbors[mask],
+                    weight = weight.list[[i]][mask]
+                )
+                edge.list <- rbind(edge.list, new.edges)
+            }
+        }
+    }
+
+    ## Create the graph
+    g <- igraph::graph_from_data_frame(
+        edge.list,
+        directed = FALSE,
+        vertices = data.frame(name = as.character(seq_len(n.vertices)))
+    )
+
+    ## Compute distances from uncovered vertices to covered vertices only
+    dist.matrix <- igraph::distances(
+        g,
+        v = as.character(uncovered.vertices),
+        to = as.character(covered.vertices),
+        weights = igraph::E(g)$weight
+    )
+
+    ## Initialize expanded basins as copies of input
+    expanded.basins <- lapply(basins.vertices.list, function(x) x)
+
+    ## Assign each uncovered vertex to its nearest basin
+    for (i in seq_along(uncovered.vertices)) {
+        v <- uncovered.vertices[i]
+        distances.to.covered <- dist.matrix[i, ]
+
+        ## Find closest covered vertex
+        min.idx <- which.min(distances.to.covered)
+        closest.covered <- covered.vertices[min.idx]
+
+        ## Look up which basin the closest covered vertex belongs to
+        target.basin <- vertex.to.basin[closest.covered]
+
+        ## Add uncovered vertex to that basin
+        expanded.basins[[target.basin]] <- c(expanded.basins[[target.basin]], v)
+    }
+
+    return(expanded.basins)
+}
+
+
+#' Generate Text Report of Basin Refinement Process
+#'
+#' Creates a paragraph suitable for inclusion in a methods section describing
+#' the basin refinement process with specific parameter values and counts.
+#'
+#' @param basins.result Object returned by \code{compute.refined.basins()}
+#' @param response.name Character string naming the response variable in LaTeX
+#'   format (default: "\\widehat{\\text{sPTB}}")
+#'
+#' @return Character string containing the formatted paragraph ready for
+#'   inclusion in a LaTeX document.
+#'
+#' @examples
+#' \dontrun{
+#' result <- compute.refined.basins(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  min.basin.size = 10,
+#'                                  expand.basins = TRUE,
+#'                                  verbose = TRUE)
+#'
+#' report <- generate.refinement.report(result)
+#' cat(report)
+#'
+#' ## Write to file for inclusion in Rmd/LaTeX document
+#' writeLines(report, "refinement_methods.tex")
+#' }
+#'
+#' @seealso \code{\link{compute.refined.basins}} for computing refined basins
+#'
+#' @export
+generate.refinement.report <- function(basins.result,
+                                       response.name = "\\widehat{\\text{sPTB}}") {
+
+    params <- basins.result$parameters
+    history <- basins.result$stage.history
+
+    ## Extract counts from each stage
+    initial <- history[history$stage == "initial", ]
+    relvalue <- history[history$stage == "relvalue", ]
+    merge.max <- history[history$stage == "merge.max", ]
+    merge.min <- history[history$stage == "merge.min", ]
+    geometric <- history[history$stage == "geometric", ]
+    expand <- history[history$stage == "expand", ]
+
+    ## Handle case where some stages may have been skipped
+    if (nrow(relvalue) == 0) {
+        relvalue <- initial
+        relvalue$n.max.before <- initial$n.max.after
+        relvalue$n.min.before <- initial$n.min.after
+    }
+
+    if (nrow(merge.max) == 0) {
+        merge.max <- relvalue
+        merge.max$n.max.before <- relvalue$n.max.after
+        merge.max$n.min.before <- relvalue$n.min.after
+    }
+
+    if (nrow(merge.min) == 0) {
+        merge.min <- merge.max
+        merge.min$n.max.before <- merge.max$n.max.after
+        merge.min$n.min.before <- merge.max$n.min.after
+    }
+
+    if (nrow(geometric) == 0) {
+        geometric <- merge.min
+        geometric$n.max.before <- merge.min$n.max.after
+        geometric$n.min.before <- merge.min$n.min.after
+    }
+
+    ## Build the main paragraph
+    para <- sprintf(
+"The refinement begins by computing basins of attraction for all local extrema of $%s$ on the ikNN graph. To prevent trajectories from jumping across distant regions of the graph, we restricted basin computation to edges below the %.0fth percentile of the edge length distribution. This initial step identified %d local maxima and %d local minima.
+
+The first filtering stage removes extrema whose values lie too close to the median of $%s$. We define the relative value of an extremum as its fitted value divided by the median. Maxima with relative values below %.2f and minima with relative values above %.2f were eliminated, as such extrema represent minor fluctuations rather than prominent features of the response surface. This step retained %d maxima and %d minima.
+
+The second stage addresses geometric redundancy by clustering extrema whose basins exhibit substantial overlap. We applied an overlap threshold of %.0f%% for maxima and %.0f%% for minima. Within each cluster, we merged the constituent basins, retaining the extremum with the most extreme value as the representative. This clustering and merging process reduced the count to %d maxima and %d minima.
+
+The final automated stage filters extrema based on structural characteristics of their basins and basin size. We removed extrema exceeding the %.0fth percentile threshold for mean distance to neighbors or degree, and eliminated extrema whose basins contained fewer than %d samples. This filtering yielded %d maxima and %d minima.",
+        response.name,
+        params$edge.length.quantile.thld * 100,
+        initial$n.max.after, initial$n.min.after,
+        response.name,
+        params$min.rel.value.max, params$max.rel.value.min,
+        relvalue$n.max.after, relvalue$n.min.after,
+        params$max.overlap.threshold * 100, params$min.overlap.threshold * 100,
+        merge.min$n.max.after, merge.min$n.min.after,
+        params$p.mean.hopk.dist.threshold * 100, params$min.basin.size,
+        geometric$n.max.after, geometric$n.min.after
+    )
+
+    ## Add expansion paragraph if applicable
+    if (nrow(expand) > 0 && params$expand.basins) {
+        n.vertices <- expand$n.max.after  # Total vertices after expansion
+        n.uncovered.max <- n.vertices - expand$n.max.before
+        n.uncovered.min <- n.vertices - expand$n.min.before
+
+        expand.para <- sprintf(
+"
+
+After filtering, %d vertices were not covered by any maximum basin and %d vertices were not covered by any minimum basin. These uncovered vertices, which originally belonged to basins of removed spurious extrema, were reassigned to the nearest retained basin based on shortest path distance in the weighted graph. This ensures complete coverage of all %d graph vertices for downstream analyses.",
+            n.uncovered.max, n.uncovered.min, n.vertices
+        )
+
+        para <- paste0(para, expand.para)
+    }
+
+    return(para)
+}
+
+
 #' Print Method for Refined Basins
 #'
-#' @param x A refined.basins object
+#' @param x A basins_of_attraction object from compute.refined.basins()
 #' @param ... Additional arguments passed to print methods
 #'
 #' @export
-print.refined.basins <- function(x, ...) {
-  cat("Refined Basins of Attraction\n")
-  cat("============================\n\n")
-  
-  n.max <- sum(x$summary$type == "max")
-  n.min <- sum(x$summary$type == "min")
-  
-  cat(sprintf("Number of maxima: %d\n", n.max))
-  cat(sprintf("Number of minima: %d\n", n.min))
-  cat(sprintf("Total extrema: %d\n\n", n.max + n.min))
-  
-  cat("Basin summary (first 10 rows):\n")
-  print(head(x$summary, 10))
-  
-  if (nrow(x$summary) > 10) {
-    cat(sprintf("\n... and %d more rows\n", nrow(x$summary) - 10))
-  }
-  
-  invisible(x)
+print.basins_of_attraction <- function(x, ...) {
+    cat("Refined Basins of Attraction\n")
+    cat("============================\n\n")
+
+    n.max <- sum(x$summary$type == "max")
+    n.min <- sum(x$summary$type == "min")
+
+    cat(sprintf("Number of maxima: %d\n", n.max))
+    cat(sprintf("Number of minima: %d\n", n.min))
+    cat(sprintf("Total extrema: %d\n\n", n.max + n.min))
+
+    ## Report coverage
+    if (!is.null(x$max.vertices.list)) {
+        n.covered.max <- length(unique(unlist(x$max.vertices.list)))
+        cat(sprintf("Vertices covered by maxima basins: %d\n", n.covered.max))
+    }
+    if (!is.null(x$min.vertices.list)) {
+        n.covered.min <- length(unique(unlist(x$min.vertices.list)))
+        cat(sprintf("Vertices covered by minima basins: %d\n", n.covered.min))
+    }
+
+    ## Report expansion if applicable
+    if (!is.null(x$expanded.max.vertices.list)) {
+        n.expanded <- length(unique(unlist(x$expanded.max.vertices.list)))
+        cat(sprintf("Vertices after maxima expansion: %d\n", n.expanded))
+    }
+    if (!is.null(x$expanded.min.vertices.list)) {
+        n.expanded <- length(unique(unlist(x$expanded.min.vertices.list)))
+        cat(sprintf("Vertices after minima expansion: %d\n", n.expanded))
+    }
+
+    cat("\nBasin summary (first 10 rows):\n")
+    print(head(x$summary, 10))
+
+    if (nrow(x$summary) > 10) {
+        cat(sprintf("\n... and %d more rows\n", nrow(x$summary) - 10))
+    }
+
+    invisible(x)
 }
