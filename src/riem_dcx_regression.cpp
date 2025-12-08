@@ -7,6 +7,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>  // For Eigen::MatrixXd
 #include <Eigen/Sparse> // For Eigen::SparseMatrix, Triplet
+#include <Eigen/Cholesky>  // For LDLT solver
 #include <Spectra/SymEigsSolver.h>          // For SymEigsSolver
 #include <Spectra/MatOp/SparseSymMatProd.h> // For SparseSymMatProd
 
@@ -1684,6 +1685,190 @@ void riem_dcx_t::select_diffusion_parameters(
     // ============================================================
 
     if (!spectral_cache.is_valid) {
+        int n_to_compute = std::max(3, n_eigenpairs_hint);
+
+        if (verbose) {
+            Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
+            if (n_to_compute > 3) {
+                Rprintf("\t(computing %d eigenpairs to avoid recomputation for filtering)\n",
+                        n_to_compute);
+            } else {
+                Rprintf("\t(computing 3 eigenpairs for lambda_2 estimation)\n");
+            }
+        }
+
+        compute_spectral_decomposition(n_to_compute, verbose);
+    }
+
+    const double lambda_2 = spectral_cache.lambda_2;
+
+    // ============================================================
+    // SAFEGUARD: Handle very small spectral gap
+    // ============================================================
+
+    // More conservative bounds for poorly-connected graphs
+    const double MIN_LAMBDA_2 = 0.01;      // Was 0.001 - now 10x more conservative
+    const double MAX_T_DIFFUSION = 20.0;   // Was 50.0 - reduced by 2.5x
+    const double MIN_BETA_DAMPING = 1e-4;  // Was 1e-6 - increased 100x
+
+    if (lambda_2 < MIN_LAMBDA_2) {
+        if (verbose) {
+            Rprintf("\n\tWARNING: Very small spectral gap (lambda_2 = %.6f < %.6f)\n",
+                    lambda_2, MIN_LAMBDA_2);
+            Rprintf("\t         This indicates weak graph connectivity.\n");
+            Rprintf("\t         Applying safeguards to prevent numerical instability.\n");
+        }
+
+        Rf_warning("Very small spectral gap (lambda_2 = %.6f): graph may be nearly disconnected. "
+                   "Consider using a smaller k value or checking for outliers.",
+                   lambda_2);
+    }
+
+    const double lambda_2_effective = std::max(lambda_2, MIN_LAMBDA_2);
+
+    // ============================================================
+    // Auto-select t_diffusion if not provided by user
+    // ============================================================
+
+    bool t_auto_selected = false;
+    if (t_diffusion <= 0.0) {
+        t_diffusion = t_scale_factor / lambda_2_effective;
+        t_auto_selected = true;
+
+        // Enforce upper bound
+        if (t_diffusion > MAX_T_DIFFUSION) {
+            if (verbose) {
+                Rprintf("\n\tCapping t_diffusion from %.2f to %.2f (numerical stability)\n",
+                        t_diffusion, MAX_T_DIFFUSION);
+            }
+            t_diffusion = MAX_T_DIFFUSION;
+        }
+
+        if (verbose) {
+            Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
+                    t_diffusion, lambda_2);
+            if (lambda_2 < MIN_LAMBDA_2) {
+                Rprintf("\t  (using effective lambda_2 = %.6f due to small spectral gap)\n",
+                        lambda_2_effective);
+            }
+            Rprintf("\tConservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
+                    0.1 / lambda_2_effective,
+                    t_scale_factor / lambda_2_effective,
+                    1.0 / lambda_2_effective);
+        }
+    } else if (verbose) {
+        Rprintf("\n\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
+    }
+
+    // ============================================================
+    // Auto-select beta_damping if not provided by user
+    // ============================================================
+
+    bool beta_auto_selected = false;
+    if (beta_damping <= 0.0) {
+        beta_damping = beta_coefficient_factor / t_diffusion;
+        beta_auto_selected = true;
+
+        // Enforce minimum beta
+        if (beta_damping < MIN_BETA_DAMPING) {
+            if (verbose) {
+                Rprintf("\tRaising beta_damping from %.2e to %.2e (stability)\n",
+                        beta_damping, MIN_BETA_DAMPING);
+            }
+            beta_damping = MIN_BETA_DAMPING;
+        }
+
+        if (verbose) {
+            Rprintf("\tAuto-selected beta_damping = %.6f (damping coefficient beta*t = %.3f)\n",
+                    beta_damping, beta_coefficient_factor);
+        }
+    } else if (verbose) {
+        Rprintf("\tUsing user-provided beta_damping = %.6f\n", beta_damping);
+    }
+
+    // ============================================================
+    // Diagnostic checks and warnings
+    // ============================================================
+
+    const double diffusion_scale = t_diffusion * lambda_2;
+
+    if (diffusion_scale > 1.5) {
+        Rf_warning("Large diffusion scale (t*lambda_2 = %.2f): density may change dramatically per iteration. "
+                   "Consider reducing t_scale_factor to %.3f for more conservative updates.",
+                   diffusion_scale, 1.0 / lambda_2);
+    }
+
+    if (diffusion_scale < 0.01) {
+        Rf_warning("Small diffusion scale (t*lambda_2 = %.2f): convergence may be very slow. "
+                   "Consider increasing t_scale_factor to %.3f for faster updates.",
+                   diffusion_scale, 0.05 / lambda_2);
+    }
+
+    const double damping_coefficient = beta_damping * t_diffusion;
+
+    if (damping_coefficient > 0.5) {
+        Rf_warning("High damping coefficient (beta*t = %.2f): may over-suppress geometric structure. "
+                   "Typical range is [0.05, 0.2]. Consider reducing beta_coefficient_factor.",
+                   damping_coefficient);
+    }
+
+    if (damping_coefficient < 0.01) {
+        Rf_warning("Low damping coefficient (beta*t = %.3f): density may collapse onto small regions. "
+                   "Consider increasing beta_coefficient_factor.",
+                   damping_coefficient);
+    }
+
+    // ============================================================
+    // Final summary if verbose
+    // ============================================================
+
+    if (verbose) {
+        Rprintf("\n\tDiffusion parameter summary:\n");
+        Rprintf("  \tlambda_2 (spectral gap):  %.6f%s\n", lambda_2,
+                lambda_2 < MIN_LAMBDA_2 ? " [SMALL - using safeguards]" : "");
+        Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
+                t_auto_selected ? "[auto]" : "[user]");
+        if (t_auto_selected) {
+            Rprintf("  \t  (from t.scale.factor = %.3f)\n", t_scale_factor);
+        }
+        Rprintf("  \tbeta (damping):        %.6f %s\n", beta_damping,
+                beta_auto_selected ? "[auto]" : "[user]");
+        if (beta_auto_selected) {
+            Rprintf("  \t  (from beta.coefficient.factor = %.3f)\n", beta_coefficient_factor);
+        }
+        Rprintf("  \tDiffusion scale:       %.3f (t*lambda_2)\n", diffusion_scale);
+        Rprintf("  \tDamping coefficient:   %.3f (beta*t)\n", damping_coefficient);
+    }
+}
+
+#if 0
+void riem_dcx_t::select_diffusion_parameters(
+    double& t_diffusion,
+    double& beta_damping,
+    double t_scale_factor,
+    double beta_coefficient_factor,
+    int n_eigenpairs_hint,
+    bool verbose
+) {
+    // ============================================================
+    // Validate scale factors
+    // ============================================================
+
+    if (t_scale_factor <= 0.0) {
+        Rf_error("t_scale_factor must be positive (got %.3e). Typical range: [0.1, 1.0]",
+                 t_scale_factor);
+    }
+
+    if (beta_coefficient_factor <= 0.0) {
+        Rf_error("beta_coefficient_factor must be positive (got %.3e). Typical range: [0.05, 0.3]",
+                 beta_coefficient_factor);
+    }
+
+    // ============================================================
+    // Ensure spectral decomposition is available
+    // ============================================================
+
+    if (!spectral_cache.is_valid) {
         // For parameter selection, we only need lambda_2 (first 3 eigenpairs)
         // But if we know we'll need more for filtering, compute them now
         int n_to_compute = std::max(3, n_eigenpairs_hint);
@@ -1796,6 +1981,7 @@ void riem_dcx_t::select_diffusion_parameters(
         Rprintf("  \tDamping coefficient:   %.3f (beta*t)\n", damping_coefficient);
     }
 }
+#endif
 
 /**
  * @brief Select optimal gamma parameter via first-iteration GCV evaluation
@@ -2091,51 +2277,150 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     vec_t b = rho_current + (t * beta) * u;
 
     // ========================================================================
-    // Part 4: Solve linear system A*ρ_new = b using conjugate gradient
+    // Part 4: Solve linear system A*ρ_new = b
+    //         Hybrid approach: Try CG first, fall back to direct solve if needed
     // ========================================================================
 
-    // Initialize conjugate gradient solver
-    // We use CG since A is symmetric positive definite
-    // Use built-in diagonal preconditioner (automatically extracted from A)
-    Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper,
-                             Eigen::DiagonalPreconditioner<double>> cg;
+    vec_t rho_new;
+    bool cg_converged = false;
+    bool used_direct_solver = false;
+    int cg_iterations = 0;
+    double cg_error = 0.0;
 
-    // Set solver parameters
-    cg.setMaxIterations(2000);  // Increased from 1000
-    cg.setTolerance(1e-8);      // Relaxed from 1e-10
+    // Threshold for considering CG solution acceptable
+    const double CG_RESIDUAL_THRESHOLD = 1e-4;  // More lenient than tolerance
+    const int DIRECT_SOLVER_THRESHOLD = 2500;   // Use direct for n < this
 
-    // Compute the preconditioned factorization
-    cg.compute(A);
+    // ------------------------------------------------------------------------
+    // ATTEMPT 1: Conjugate Gradient (fast for well-conditioned systems)
+    // ------------------------------------------------------------------------
+    if (n > DIRECT_SOLVER_THRESHOLD) {
+        Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper,
+                                 Eigen::DiagonalPreconditioner<double>> cg;
 
-    if (cg.info() != Eigen::Success) {
-        Rf_error("apply_damped_heat_diffusion: failed to initialize CG solver");
+        cg.setMaxIterations(2000);
+        cg.setTolerance(1e-8);
+        cg.compute(A);
+
+        if (cg.info() == Eigen::Success) {
+            rho_new = cg.solve(b);
+            cg_iterations = cg.iterations();
+            cg_error = cg.error();
+            cg_converged = (cg.info() == Eigen::Success && cg_error < CG_RESIDUAL_THRESHOLD);
+
+            // Quick check: if many negative values, CG solution is garbage
+            if (cg_converged) {
+                int n_negative_quick = 0;
+                for (Eigen::Index i = 0; i < n; ++i) {
+                    if (rho_new[i] < -1e-6) n_negative_quick++;
+                }
+                // If more than 10% negative, CG failed despite claiming success
+                if (n_negative_quick > n * 0.1) {
+                    cg_converged = false;
+                    if (verbose) {
+                        Rprintf("  CG reported success but %.1f%% vertices negative - rejecting solution\n",
+                                100.0 * n_negative_quick / n);
+                    }
+                }
+            }
+        }
+
+        // CG diagnostics
+        const Eigen::ComputationInfo cg_status = cg.info();
+        const int cg_iterations = cg.iterations();
+        const double cg_error = cg.error();  // Residual norm
+
+        // Determine if CG had issues
+        bool cg_converged = (cg_status == Eigen::Success);
+        if (!cg_converged) {
+            Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
+                       "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
+                       cg_iterations, 2000, cg_error, 1e-8);
+        } else if (cg_error > 1e-6) {
+            // Converged but with larger-than-ideal residual
+            if (verbose) {
+                Rprintf("  CG converged with residual %.3e (iterations=%d)\n",
+                        cg_error, cg_iterations);
+            }
+        }
     }
 
-    // Solve the system
-    vec_t rho_new = cg.solve(b);
-
     // ------------------------------------------------------------------------
-    // CAPTURE CG DIAGNOSTICS IMMEDIATELY
+    // ATTEMPT 2: Direct solver fallback (robust but O(n³))
     // ------------------------------------------------------------------------
-    const Eigen::ComputationInfo cg_status = cg.info();
-    const int cg_iterations = cg.iterations();
-    const double cg_error = cg.error();  // Residual norm
+    if (!cg_converged || n <= DIRECT_SOLVER_THRESHOLD) {
+        used_direct_solver = true;
 
-    // Determine if CG had issues
-    bool cg_converged = (cg_status == Eigen::Success);
-    bool cg_suspicious = false;
+        if (verbose) {
+            Rprintf("  CG failed (residual=%.3e, iter=%d). Using direct solver for n=%ld...\n",
+                    cg_error, cg_iterations, static_cast<long>(n));
+        }
 
-    if (!cg_converged) {
+        if (!cg_converged && n > 5000) {
+            Rf_warning("Direct solver fallback for large matrix (n=%ld) may be slow. "
+                       "Consider adjusting parameters.", static_cast<long>(n));
+        }
+
+        // Convert sparse A to dense for direct solve
+        // For n < 2500, this is ~32MB and very fast
+        Eigen::MatrixXd A_dense = Eigen::MatrixXd(A);
+
+        // Use LDLT (robust Cholesky for symmetric positive semi-definite)
+        Eigen::LDLT<Eigen::MatrixXd> ldlt(A_dense);
+
+        if (ldlt.info() == Eigen::Success) {
+            rho_new = ldlt.solve(b);
+
+            // Verify solution quality
+            double direct_residual = (A_dense * rho_new - b).norm() / b.norm();
+
+            if (verbose) {
+                Rprintf("  Direct solver: residual=%.3e\n", direct_residual);
+            }
+
+            if (direct_residual > 1e-6) {
+                Rf_warning("apply_damped_heat_diffusion: Direct solver residual %.3e is unexpectedly large",
+                           direct_residual);
+            }
+        } else {
+            // LDLT failed - matrix might not be positive definite
+            // Try LU as last resort
+            Eigen::PartialPivLU<Eigen::MatrixXd> lu(A_dense);
+            rho_new = lu.solve(b);
+
+            double lu_residual = (A_dense * rho_new - b).norm() / b.norm();
+
+            if (verbose) {
+                Rprintf("  LDLT failed, LU solver: residual=%.3e\n", lu_residual);
+            }
+
+            if (lu_residual > 1e-4) {
+                Rf_error("apply_damped_heat_diffusion: Both LDLT and LU solvers produced "
+                         "unacceptable residuals (%.3e). System may be singular.", lu_residual);
+            }
+        }
+    } else if (!cg_converged) {
+        // Large matrix and CG failed - no good fallback
+        Rf_error("apply_damped_heat_diffusion: CG solver failed for large matrix (n=%ld). "
+                 "Consider reducing t_diffusion or increasing beta_damping.",
+                 static_cast<long>(n));
+    }
+
+    // Update diagnostic flags for downstream reporting
+    bool cg_suspicious = (cg_converged && cg_error > 1e-6);
+
+    if (!cg_converged && !used_direct_solver) {
         Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
                    "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
                    cg_iterations, 2000, cg_error, 1e-8);
-    } else if (cg_error > 1e-6) {
-        // Converged but with larger-than-ideal residual
-        cg_suspicious = true;
-        if (verbose) {
-            Rprintf("  CG converged with residual %.3e (iterations=%d)\n",
-                    cg_error, cg_iterations);
-        }
+    }
+
+    if (used_direct_solver) {
+        Rprintf("  Solver: DIRECT (fallback from CG)\n");
+    } else {
+        Rprintf("  Solver: CG %s after %d iterations (residual=%.3e)\n",
+                cg_converged ? "converged" : "FAILED",
+                cg_iterations, cg_error);
     }
 
     // ========================================================================
