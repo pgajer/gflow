@@ -1,8 +1,13 @@
 #' Refit Riemannian Graph Regression with New Response(s)
 #'
-#' Apply spectral filtering from a fitted model to new response variable(s).
+#' Apply spectral filtering from a fitted model to new response variable(s),
+#' with optional Bayesian posterior inference for uncertainty quantification.
+#'
 #' This function uses the cached eigendecomposition from an existing fit,
 #' avoiding the computational cost of rebuilding the geometric structure.
+#' When posterior sampling is enabled, vertex-wise credible intervals are
+#' computed using Monte Carlo sampling from the posterior distribution of
+#' the smoothed response.
 #'
 #' When \code{per.column.gcv = TRUE}, each column of \code{y.new} receives its
 #' own GCV-selected smoothing parameter eta. This is appropriate when columns
@@ -14,7 +19,7 @@
 #' @param fitted.model A fitted model object of class \code{"knn.riem.fit"}
 #'   returned by \code{\link{fit.rdgraph.regression}}. Must contain the
 #'   \code{spectral} component with cached eigendecomposition. For per-column
-#'   GCV, the model must include raw eigenvalues (requires updated gflow).
+#'   GCV, the model must include raw eigenvalues.
 #'
 #' @param y.new New response variable(s). Either a numeric vector of length n,
 #'   or a numeric matrix with n rows where each column is a separate response.
@@ -30,13 +35,32 @@
 #'   search. Only used when \code{per.column.gcv = TRUE}. Default is 40.
 #'
 #' @param n.cores Integer. Number of CPU cores for parallel processing.
-#'   Default is 1 (sequential). When \code{n.cores > 1} and per-column GCV is
-#'   enabled, columns are processed in parallel using \pkg{foreach} and
-#'   \pkg{doParallel}. Ignored when \code{per.column.gcv = FALSE}.
+#'   Default is 1 (sequential). When \code{n.cores > 1}, columns are processed
+#'   in parallel using \pkg{foreach} and \pkg{doParallel}.
 #'
 #' @param verbose Logical. If \code{TRUE}, print progress information during
-#'   per-column GCV selection. Default is \code{FALSE}. Note that progress
-#'   reporting is limited in parallel mode.
+#'   per-column GCV selection and posterior computation. Default is \code{FALSE}.
+#'
+#' @param with.posterior Logical. If \code{TRUE}, compute Bayesian posterior
+#'   credible intervals for the smoothed response at each vertex. Default is
+#'   \code{FALSE}. Posterior computation adds moderate computational cost
+#'   (approximately 20-50\% overhead per column).
+#'
+#' @param return.posterior.samples Logical. If \code{TRUE} and
+#'   \code{with.posterior = TRUE}, return the full matrix of posterior samples.
+#'   Default is \code{FALSE}. For multi-column input with many responses,
+#'   storing samples may require substantial memory (n * n.posterior.samples *
+#'   n.responses * 8 bytes).
+#'
+#' @param credible.level Numeric in (0, 1). Coverage probability for credible
+#'   intervals. Default is 0.95 for 95\% credible intervals.
+#'
+#' @param n.posterior.samples Integer. Number of Monte Carlo samples for
+#'   posterior inference. Larger values provide more accurate quantile estimates.
+#'   Default is 1000. Values below 100 are not recommended.
+#'
+#' @param posterior.seed Integer. Random seed for reproducible posterior samples.
+#'   Default is 12345.
 #'
 #' @return A list of class \code{"knn.riem.refit"} containing:
 #'   \describe{
@@ -56,6 +80,16 @@
 #'       of cores actually used for computation.}
 #'     \item{\code{elapsed.time}}{(Only if \code{per.column.gcv = TRUE})
 #'       Elapsed wall-clock time in seconds.}
+#'     \item{\code{posterior}}{(Only if \code{with.posterior = TRUE}) List with:
+#'       \describe{
+#'         \item{\code{lower}}{Lower credible bounds (vector or matrix).}
+#'         \item{\code{upper}}{Upper credible bounds (vector or matrix).}
+#'         \item{\code{sd}}{Posterior standard deviations (vector or matrix).}
+#'         \item{\code{sigma}}{Estimated residual SD (scalar or vector).}
+#'         \item{\code{credible.level}}{Coverage probability used.}
+#'         \item{\code{samples}}{(Optional) Posterior samples if requested.}
+#'       }
+#'     }
 #'   }
 #'
 #' @details
@@ -70,39 +104,40 @@
 #' \deqn{GCV(\eta) = \frac{\|y - \hat{y}_\eta\|^2}{(n - \mathrm{tr}(S_\eta))^2}}
 #' where tr(S_eta) = sum of filter weights is the effective degrees of freedom.
 #'
+#' \strong{Posterior inference:} When \code{with.posterior = TRUE}, the function
+#' computes Bayesian credible intervals by drawing samples from the posterior
+#' distribution of the smoothed response. The posterior follows from a Bayesian
+#' interpretation of spectral smoothing where coefficients in the eigenbasis
+#' have posterior variance inversely proportional to (1 + eta * lambda_j).
+#'
 #' \strong{Parallel processing:} When \code{n.cores > 1}, the function uses
 #' \pkg{foreach} with \pkg{doParallel} backend. Each worker receives a copy of
 #' the eigenvector matrix V and filter weights, so memory usage scales with
 #' the number of cores. For very large n (>10000), consider limiting n.cores
 #' to avoid memory pressure.
 #'
-#' \strong{Backward compatibility:} Models fitted with older versions of gflow
-#' may not contain raw eigenvalues. In this case, per-column GCV is not
-#' available and the function will stop with an informative error if requested.
-#'
 #' @examples
 #' \dontrun{
-#' # Fit initial model on binary outcome
+#' ## Fit initial model on binary outcome
 #' fit <- fit.rdgraph.regression(X, y.binary, k = 15)
 #'
-#' # Quick refit using same smoothing (original behavior)
+#' ## Quick refit using same smoothing (original behavior)
 #' Z.hat.quick <- refit.rdgraph.regression(fit, Z.abundances)
 #'
-#' # Smooth phylotype abundances with per-column GCV (parallel)
+#' ## Smooth phylotype abundances with per-column GCV (parallel)
 #' Z.hat <- refit.rdgraph.regression(fit, Z.abundances,
 #'                                    per.column.gcv = TRUE,
 #'                                    n.cores = 4)
 #'
-#' # Examine the selected smoothing parameters
-#' hist(Z.hat$eta.optimal, main = "Optimal eta by phylotype")
+#' ## With posterior inference for uncertainty quantification
+#' Z.hat.uq <- refit.rdgraph.regression(fit, Z.abundances,
+#'                                       per.column.gcv = TRUE,
+#'                                       with.posterior = TRUE,
+#'                                       credible.level = 0.95,
+#'                                       n.posterior.samples = 1000)
 #'
-#' # Compare effective degrees of freedom across phylotypes
-#' plot(Z.hat$effective.df, Z.hat$gcv.scores,
-#'      xlab = "Effective df", ylab = "GCV score")
-#'
-#' # Check timing
-#' cat(sprintf("Processed %d columns in %.1f seconds using %d cores\n",
-#'             Z.hat$n.responses, Z.hat$elapsed.time, Z.hat$n.cores.used))
+#' ## Access credible intervals
+#' CI.width <- Z.hat.uq$posterior$upper - Z.hat.uq$posterior$lower
 #' }
 #'
 #' @seealso \code{\link{fit.rdgraph.regression}} for initial model fitting
@@ -113,7 +148,12 @@ refit.rdgraph.regression <- function(fitted.model,
                                       per.column.gcv = FALSE,
                                       n.candidates = 40L,
                                       n.cores = 1L,
-                                      verbose = FALSE) {
+                                      verbose = FALSE,
+                                      with.posterior = FALSE,
+                                      return.posterior.samples = FALSE,
+                                      credible.level = 0.95,
+                                      n.posterior.samples = 1000L,
+                                      posterior.seed = 12345L) {
 
     ## ================================================================
     ## INPUT VALIDATION
@@ -135,13 +175,25 @@ refit.rdgraph.regression <- function(fitted.model,
         n.cores <- 1L
     }
 
+    ## Validate posterior parameters
+    if (with.posterior) {
+        if (credible.level <= 0 || credible.level >= 1) {
+            stop("credible.level must be in (0, 1)")
+        }
+        n.posterior.samples <- as.integer(n.posterior.samples)
+        if (n.posterior.samples < 100L) {
+            warning("n.posterior.samples < 100 may produce unreliable quantiles")
+        }
+        posterior.seed <- as.integer(posterior.seed)
+    }
+
     ## Extract spectral components
     V <- fitted.model$spectral$eigenvectors
     f.lambda <- fitted.model$spectral$filtered.eigenvalues
     n <- nrow(V)
     m <- ncol(V)
 
-    ## Check for raw eigenvalues (required for per-column GCV)
+    ## Check for raw eigenvalues (required for per-column GCV and posterior)
     has.raw.eigenvalues <- !is.null(fitted.model$spectral$eigenvalues)
 
     if (per.column.gcv && !has.raw.eigenvalues) {
@@ -149,6 +201,12 @@ refit.rdgraph.regression <- function(fitted.model,
              "Your fitted model only contains filtered.eigenvalues.\n",
              "Please refit the model with an updated version of gflow that\n",
              "exports raw eigenvalues, or use per.column.gcv = FALSE.")
+    }
+
+    if (with.posterior && !has.raw.eigenvalues) {
+        stop("Posterior inference requires raw eigenvalues in the fitted model.\n",
+             "Your fitted model only contains filtered.eigenvalues.\n",
+             "Please refit the model with an updated version of gflow.")
     }
 
     ## Validate and prepare y.new
@@ -176,6 +234,16 @@ refit.rdgraph.regression <- function(fitted.model,
         bad.cols <- which(apply(y.new, 2, function(x) any(!is.finite(x))))
         stop(sprintf("y.new contains non-finite values in column(s): %s",
                      paste(bad.cols, collapse = ", ")))
+    }
+
+    ## Warn about memory for posterior samples with many columns
+    if (with.posterior && return.posterior.samples && n.responses > 10L) {
+        mem.mb <- n * n.posterior.samples * n.responses * 8 / 1e6
+        warning(sprintf(
+            "Storing posterior samples for %d columns will require ~%.0f MB.\n",
+            n.responses, mem.mb),
+            "Consider setting return.posterior.samples = FALSE.",
+            call. = FALSE)
     }
 
     ## ================================================================
@@ -297,6 +365,7 @@ refit.rdgraph.regression <- function(fitted.model,
             eta.optimal <- results.list$eta.optimal
             gcv.scores <- results.list$gcv.min
             effective.df <- results.list$effective.df
+            best.idx.vec <- results.list$best.idx
             n.cores.used <- n.cores.use
 
         } else {
@@ -312,6 +381,7 @@ refit.rdgraph.regression <- function(fitted.model,
             eta.optimal <- numeric(n.responses)
             gcv.scores <- numeric(n.responses)
             effective.df <- numeric(n.responses)
+            best.idx.vec <- integer(n.responses)
 
             if (verbose && n.responses > 1L) {
                 message(sprintf("Selecting eta via GCV for %d response(s)...",
@@ -333,6 +403,7 @@ refit.rdgraph.regression <- function(fitted.model,
                 eta.optimal[j] <- gcv.result$eta.optimal
                 gcv.scores[j] <- gcv.result$gcv.min
                 effective.df[j] <- gcv.result$effective.df
+                best.idx.vec[j] <- gcv.result$best.idx
 
                 if (verbose && n.responses > 1L) setTxtProgressBar(pb, j)
             }
@@ -362,6 +433,106 @@ refit.rdgraph.regression <- function(fitted.model,
         ## Compute residuals
         residuals <- y.new - Y.hat
 
+        ## ============================================================
+        ## POSTERIOR INFERENCE (PER-COLUMN GCV CASE)
+        ## ============================================================
+
+        posterior <- NULL
+
+        if (with.posterior) {
+
+            if (verbose) {
+                message("Computing posterior credible intervals...")
+            }
+
+            ## Initialize storage for posterior summaries
+            posterior.lower <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.upper <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.sd <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.sigma <- numeric(n.responses)
+
+            ## Optionally store samples
+            if (return.posterior.samples) {
+                posterior.samples <- vector("list", n.responses)
+            }
+
+            if (verbose && n.responses > 1L) {
+                pb.post <- txtProgressBar(min = 0, max = n.responses, style = 3)
+            }
+
+            for (j in seq_len(n.responses)) {
+
+                ## Get the filtered eigenvalues for this column's optimal eta
+                filtered.eigenvalues.j <- filter.weights.matrix[, best.idx.vec[j]]
+
+                ## Call C++ posterior computation
+                post.j <- .Call(
+                    S_compute_posterior_summary,
+                    V,
+                    eigenvalues,
+                    filtered.eigenvalues.j,
+                    y.new[, j],
+                    Y.hat[, j],
+                    eta.optimal[j],
+                    credible.level,
+                    n.posterior.samples,
+                    posterior.seed + j - 1L,  # Different seed per column
+                    return.posterior.samples,
+                    PACKAGE = "gflow"
+                )
+
+                posterior.lower[, j] <- post.j$lower
+                posterior.upper[, j] <- post.j$upper
+                posterior.sd[, j] <- post.j$sd
+                posterior.sigma[j] <- post.j$sigma
+
+                if (return.posterior.samples) {
+                    posterior.samples[[j]] <- post.j$samples
+                }
+
+                if (verbose && n.responses > 1L) {
+                    setTxtProgressBar(pb.post, j)
+                }
+            }
+
+            if (verbose && n.responses > 1L) {
+                close(pb.post)
+            }
+
+            ## Preserve column names
+            if (!is.null(col.names)) {
+                colnames(posterior.lower) <- col.names
+                colnames(posterior.upper) <- col.names
+                colnames(posterior.sd) <- col.names
+                names(posterior.sigma) <- col.names
+                if (return.posterior.samples) {
+                    names(posterior.samples) <- col.names
+                }
+            }
+
+            ## Assemble posterior component
+            posterior <- list(
+                lower = if (n.responses == 1L) as.vector(posterior.lower) else posterior.lower,
+                upper = if (n.responses == 1L) as.vector(posterior.upper) else posterior.upper,
+                sd = if (n.responses == 1L) as.vector(posterior.sd) else posterior.sd,
+                sigma = if (n.responses == 1L) posterior.sigma[1] else posterior.sigma,
+                credible.level = credible.level,
+                n.samples = n.posterior.samples
+            )
+
+            if (return.posterior.samples) {
+                posterior$samples <- if (n.responses == 1L) {
+                    posterior.samples[[1]]
+                } else {
+                    posterior.samples
+                }
+            }
+
+            if (verbose) {
+                message("Posterior computation complete.")
+            }
+        }
+
         ## Build result
         result <- list(
             fitted.values = if (n.responses == 1L) as.vector(Y.hat) else Y.hat,
@@ -376,6 +547,10 @@ refit.rdgraph.regression <- function(fitted.model,
             n.cores.used = n.cores.used,
             elapsed.time = elapsed.time
         )
+
+        if (with.posterior) {
+            result$posterior <- posterior
+        }
 
     } else {
 
@@ -396,6 +571,129 @@ refit.rdgraph.regression <- function(fitted.model,
         ## Compute residuals
         residuals <- y.new - Y.hat
 
+        ## ============================================================
+        ## POSTERIOR INFERENCE (FIXED FILTER CASE)
+        ## ============================================================
+
+        posterior <- NULL
+
+        if (with.posterior) {
+
+            ## For fixed filter case, we need the original eta
+            ## Try to extract from gcv component
+            eta.original <- NULL
+
+            if (!is.null(fitted.model$gcv) && !is.null(fitted.model$gcv$eta.optimal)) {
+                ## Use the last iteration's optimal eta
+                eta.vec <- fitted.model$gcv$eta.optimal
+                eta.original <- eta.vec[length(eta.vec)]
+            } else if (!is.null(fitted.model$iteration) &&
+                       !is.null(fitted.model$iteration$eta.optimal)) {
+                eta.vec <- fitted.model$iteration$eta.optimal
+                eta.original <- eta.vec[length(eta.vec)]
+            }
+
+            if (is.null(eta.original)) {
+                stop("Cannot perform posterior inference without eta value.\n",
+                     "The fitted model does not contain gcv$eta.optimal.\n",
+                     "Please use per.column.gcv = TRUE for posterior inference,\n",
+                     "or refit with a newer version of gflow.")
+            }
+
+            eigenvalues <- fitted.model$spectral$eigenvalues
+
+            if (verbose) {
+                message(sprintf("Computing posterior with eta = %.4e from original fit",
+                                eta.original))
+            }
+
+            ## Initialize storage for posterior summaries
+            posterior.lower <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.upper <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.sd <- matrix(0, nrow = n, ncol = n.responses)
+            posterior.sigma <- numeric(n.responses)
+
+            if (return.posterior.samples) {
+                posterior.samples <- vector("list", n.responses)
+            }
+
+            if (verbose && n.responses > 1L) {
+                message(sprintf("Computing posterior for %d response(s)...", n.responses))
+                pb.post <- txtProgressBar(min = 0, max = n.responses, style = 3)
+            }
+
+            for (j in seq_len(n.responses)) {
+
+                ## Call C++ posterior computation
+                ## All columns use the same eta and filtered eigenvalues
+                post.j <- .Call(
+                    S_compute_posterior_summary,
+                    V,
+                    eigenvalues,
+                    f.lambda,
+                    y.new[, j],
+                    Y.hat[, j],
+                    eta.original,
+                    credible.level,
+                    n.posterior.samples,
+                    posterior.seed + j - 1L,
+                    return.posterior.samples,
+                    PACKAGE = "gflow"
+                )
+
+                posterior.lower[, j] <- post.j$lower
+                posterior.upper[, j] <- post.j$upper
+                posterior.sd[, j] <- post.j$sd
+                posterior.sigma[j] <- post.j$sigma
+
+                if (return.posterior.samples) {
+                    posterior.samples[[j]] <- post.j$samples
+                }
+
+                if (verbose && n.responses > 1L) {
+                    setTxtProgressBar(pb.post, j)
+                }
+            }
+
+            if (verbose && n.responses > 1L) {
+                close(pb.post)
+            }
+
+            ## Preserve column names
+            if (!is.null(col.names)) {
+                colnames(posterior.lower) <- col.names
+                colnames(posterior.upper) <- col.names
+                colnames(posterior.sd) <- col.names
+                names(posterior.sigma) <- col.names
+                if (return.posterior.samples) {
+                    names(posterior.samples) <- col.names
+                }
+            }
+
+            ## Assemble posterior component
+            posterior <- list(
+                lower = if (n.responses == 1L) as.vector(posterior.lower) else posterior.lower,
+                upper = if (n.responses == 1L) as.vector(posterior.upper) else posterior.upper,
+                sd = if (n.responses == 1L) as.vector(posterior.sd) else posterior.sd,
+                sigma = if (n.responses == 1L) posterior.sigma[1] else posterior.sigma,
+                credible.level = credible.level,
+                n.samples = n.posterior.samples,
+                eta.used = eta.original
+            )
+
+            if (return.posterior.samples) {
+                posterior$samples <- if (n.responses == 1L) {
+                    posterior.samples[[1]]
+                } else {
+                    posterior.samples
+                }
+            }
+
+            if (verbose) {
+                message("Posterior computation complete.")
+            }
+        }
+
         ## Build result
         result <- list(
             fitted.values = if (n.responses == 1L) as.vector(Y.hat) else Y.hat,
@@ -403,6 +701,10 @@ refit.rdgraph.regression <- function(fitted.model,
             n.responses = n.responses,
             per.column.gcv = FALSE
         )
+
+        if (with.posterior) {
+            result$posterior <- posterior
+        }
     }
 
     class(result) <- c("knn.riem.refit", "list")
@@ -449,44 +751,48 @@ generate.eta.grid <- function(eigenvalues, filter.type, n.candidates) {
 
 #' Compute filter weights for all eigenvalues and all eta candidates
 #'
-#' @param eigenvalues Vector of eigenvalues (length m)
-#' @param eta.grid Vector of eta candidates (length n.candidates)
-#' @param filter.type Character string specifying filter type
-#' @return Matrix of filter weights (m x n.candidates)
+#' @param eigenvalues Vector of eigenvalues
+#' @param eta.grid Vector of eta values
+#' @param filter.type Filter type string
+#' @return Matrix of filter weights (m x length(eta.grid))
 #' @keywords internal
 compute.filter.weights.matrix <- function(eigenvalues, eta.grid, filter.type) {
 
     m <- length(eigenvalues)
     n.eta <- length(eta.grid)
 
-    ## Create outer product structure for vectorized computation
-    ## Lambda: m x 1, Eta: 1 x n.eta -> Lambda.Eta: m x n.eta
-    lambda.mat <- matrix(eigenvalues, nrow = m, ncol = n.eta)
-    eta.mat <- matrix(eta.grid, nrow = m, ncol = n.eta, byrow = TRUE)
+    ## Pre-allocate matrix (eigenvalues in rows, eta in columns)
+    weights <- matrix(0, nrow = m, ncol = n.eta)
 
-    weights <- switch(filter.type,
-        "heat_kernel" = exp(-eta.mat * lambda.mat),
-        "tikhonov" = 1 / (1 + eta.mat * lambda.mat),
-        "cubic_spline" = 1 / (1 + eta.mat * lambda.mat^2),
-        "gaussian" = exp(-eta.mat * lambda.mat^2),
-        "exponential" = exp(-eta.mat * sqrt(pmax(lambda.mat, 0))),
-        "butterworth" = {
-            ratio <- lambda.mat / eta.mat
-            1 / (1 + ratio^4)
-        },
-        stop("Unknown filter type: ", filter.type)
-    )
+    for (k in seq_len(n.eta)) {
+        eta <- eta.grid[k]
+
+        weights[, k] <- switch(filter.type,
+            "heat_kernel" = exp(-eta * eigenvalues),
+            "tikhonov" = 1.0 / (1.0 + eta * eigenvalues),
+            "cubic_spline" = 1.0 / (1.0 + eta * eigenvalues^2),
+            "gaussian" = exp(-eta * eigenvalues^2),
+            "exponential" = exp(-eta * sqrt(pmax(eigenvalues, 0))),
+            "butterworth" = {
+                ## Order-2 Butterworth: 1/(1 + (lambda/eta)^4)
+                x <- eigenvalues / eta
+                1.0 / (1.0 + x^4)
+            },
+            ## Default to heat kernel
+            exp(-eta * eigenvalues)
+        )
+    }
 
     return(weights)
 }
 
 
-#' Select optimal eta for a single response column via GCV
+#' Single-column GCV selection with full fitted values
 #'
-#' @param y.obs Observed response vector (length n)
-#' @param y.spectral Spectral coefficients V^T y (length m)
-#' @param V Eigenvector matrix (n x m)
-#' @param filter.weights.matrix Pre-computed filter weights (m x n.candidates)
+#' @param y.obs Observed response vector
+#' @param y.spectral Spectral coefficients V^T y
+#' @param V Eigenvector matrix
+#' @param filter.weights.matrix Pre-computed filter weights (m x n.eta)
 #' @param eta.grid Vector of eta candidates
 #' @return List with y.hat, eta.optimal, gcv.min, effective.df
 #' @keywords internal
@@ -494,24 +800,18 @@ select.eta.gcv.single <- function(y.obs, y.spectral, V,
                                    filter.weights.matrix, eta.grid) {
 
     n <- length(y.obs)
+    m <- length(y.spectral)
     n.eta <- length(eta.grid)
 
     ## Compute filtered spectral coefficients for all eta: m x n.eta
-    ## y.spectral is m x 1, filter.weights.matrix is m x n.eta
-    filtered.spectral <- y.spectral * filter.weights.matrix  # broadcast
+    filtered.spectral <- y.spectral * filter.weights.matrix
 
     ## Compute predictions for all eta: n x n.eta
-    ## V is n x m, filtered.spectral is m x n.eta
     Y.hat.all <- V %*% filtered.spectral
 
-    ## Compute GCV scores for all eta (vectorized)
-    ## Residuals: n x n.eta
+    ## Compute RSS and effective df for all eta
     residuals.all <- y.obs - Y.hat.all
-
-    ## RSS for each eta
     rss <- colSums(residuals.all^2)
-
-    ## Effective df = trace(S) = sum of filter weights
     trace.S <- colSums(filter.weights.matrix)
 
     ## GCV score = RSS / (n - trace(S))^2
@@ -525,21 +825,21 @@ select.eta.gcv.single <- function(y.obs, y.spectral, V,
         y.hat = Y.hat.all[, best.idx],
         eta.optimal = eta.grid[best.idx],
         gcv.min = gcv.scores[best.idx],
-        effective.df = trace.S[best.idx]
+        effective.df = trace.S[best.idx],
+        best.idx = best.idx
     ))
 }
 
 
-#' Fast GCV selection without storing intermediate predictions
+#' Fast single-column GCV selection (returns only scalars)
 #'
-#' This version is optimized for parallel execution where we only need
-#' the optimal index, not the full prediction matrix. The actual y.hat
-#' is computed after parallel collection using the returned best.idx.
+#' Optimized version that doesn't return full y.hat vector.
+#' Used in parallel processing where we reconstruct y.hat afterward.
 #'
-#' @param y.obs Observed response vector (length n)
-#' @param y.spectral Spectral coefficients V^T y (length m)
-#' @param V Eigenvector matrix (n x m)
-#' @param filter.weights.matrix Pre-computed filter weights (m x n.candidates)
+#' @param y.obs Observed response vector
+#' @param y.spectral Spectral coefficients V^T y
+#' @param V Eigenvector matrix
+#' @param filter.weights.matrix Pre-computed filter weights (m x n.eta)
 #' @param eta.grid Vector of eta candidates
 #' @param trace.S.all Pre-computed trace(S) for all eta candidates
 #' @return List with eta.optimal, gcv.min, effective.df, best.idx
@@ -597,6 +897,14 @@ print.knn.riem.refit <- function(x, ...) {
             cat(sprintf("  Effective df:   %.1f\n", x$effective.df))
             cat(sprintf("  GCV score:      %.4e\n", x$gcv.scores))
         }
+
+        if (!is.null(x$posterior)) {
+            cat(sprintf("\nPosterior inference (%.0f%% credible intervals):\n",
+                        x$posterior$credible.level * 100))
+            cat(sprintf("  Residual sigma: %.4f\n", x$posterior$sigma))
+            ci.width <- x$posterior$upper - x$posterior$lower
+            cat(sprintf("  Mean CI width:  %.4f\n", mean(ci.width)))
+        }
     } else {
         cat(sprintf("Multiple responses (n = %d, p = %d)\n",
                     nrow(x$fitted.values), x$n.responses))
@@ -617,6 +925,17 @@ print.knn.riem.refit <- function(x, ...) {
                             if (x$n.cores.used > 1) "s" else "",
                             x$n.responses / x$elapsed.time))
             }
+        }
+
+        if (!is.null(x$posterior)) {
+            cat(sprintf("\nPosterior inference (%.0f%% credible intervals):\n",
+                        x$posterior$credible.level * 100))
+            cat(sprintf("  Sigma range:    [%.4f, %.4f]\n",
+                        min(x$posterior$sigma), max(x$posterior$sigma)))
+            ci.width <- x$posterior$upper - x$posterior$lower
+            mean.ci.width <- colMeans(ci.width)
+            cat(sprintf("  Mean CI width:  [%.4f, %.4f]\n",
+                        min(mean.ci.width), max(mean.ci.width)))
         }
     }
 
@@ -654,6 +973,14 @@ summary.knn.riem.refit <- function(object, ...) {
             n.cores.used = object$n.cores.used,
             elapsed.time = object$elapsed.time
         )
+
+        if (!is.null(object$posterior)) {
+            result$posterior.summary <- list(
+                credible.level = object$posterior$credible.level,
+                sigma = object$posterior$sigma,
+                mean.ci.width = mean(object$posterior$upper - object$posterior$lower)
+            )
+        }
     } else {
         ## Multiple response summary
         Y.hat <- object$fitted.values
@@ -683,6 +1010,15 @@ summary.knn.riem.refit <- function(object, ...) {
             n.cores.used = object$n.cores.used,
             elapsed.time = object$elapsed.time
         )
+
+        if (!is.null(object$posterior)) {
+            ci.width <- object$posterior$upper - object$posterior$lower
+            result$posterior.summary <- list(
+                credible.level = object$posterior$credible.level,
+                sigma.range = range(object$posterior$sigma),
+                mean.ci.width.by.col = colMeans(ci.width)
+            )
+        }
     }
 
     class(result) <- "summary.knn.riem.refit"
@@ -709,6 +1045,13 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
             cat(sprintf("  Optimal eta:    %.*e\n", digits, x$eta.optimal))
             cat(sprintf("  Effective df:   %.1f\n", x$effective.df))
         }
+
+        if (!is.null(x$posterior.summary)) {
+            cat(sprintf("\nPosterior inference (%.0f%% CI):\n",
+                        x$posterior.summary$credible.level * 100))
+            cat(sprintf("  Residual sigma: %.*f\n", digits, x$posterior.summary$sigma))
+            cat(sprintf("  Mean CI width:  %.*f\n", digits, x$posterior.summary$mean.ci.width))
+        }
     } else {
         cat(sprintf("\nFit quality summary across %d responses:\n", x$n.responses))
 
@@ -731,6 +1074,15 @@ print.summary.knn.riem.refit <- function(x, digits = 4, ...) {
                             x$elapsed.time, x$n.cores.used,
                             if (x$n.cores.used > 1) "s" else ""))
             }
+        }
+
+        if (!is.null(x$posterior.summary)) {
+            cat(sprintf("\nPosterior inference (%.0f%% CI):\n",
+                        x$posterior.summary$credible.level * 100))
+            cat(sprintf("  Sigma range: [%.4f, %.4f]\n",
+                        x$posterior.summary$sigma.range[1],
+                        x$posterior.summary$sigma.range[2]))
+            print.quantile.summary(x$posterior.summary$mean.ci.width.by.col, "CI width")
         }
     }
 
