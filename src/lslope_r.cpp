@@ -458,6 +458,7 @@ extern "C" SEXP S_lslope_neighborhood(
     }
     SET_VECTOR_ELT(r_result, 0, r_coeffs);
     SET_STRING_ELT(r_names, 0, Rf_mkChar("vertex.coefficients"));
+    UNPROTECT(1);
 
     // 2. sd.y
     SEXP r_sd_y = PROTECT(Rf_allocVector(REALSXP, n_vertices));
@@ -466,6 +467,7 @@ extern "C" SEXP S_lslope_neighborhood(
     }
     SET_VECTOR_ELT(r_result, 1, r_sd_y);
     SET_STRING_ELT(r_names, 1, Rf_mkChar("sd.y"));
+    UNPROTECT(1);
 
     // 3. sd.z
     SEXP r_sd_z = PROTECT(Rf_allocVector(REALSXP, n_vertices));
@@ -474,6 +476,7 @@ extern "C" SEXP S_lslope_neighborhood(
     }
     SET_VECTOR_ELT(r_result, 2, r_sd_z);
     SET_STRING_ELT(r_names, 2, Rf_mkChar("sd.z"));
+    UNPROTECT(1);
 
     // 4. lcor
     SEXP r_lcor = PROTECT(Rf_allocVector(REALSXP, n_vertices));
@@ -482,6 +485,7 @@ extern "C" SEXP S_lslope_neighborhood(
     }
     SET_VECTOR_ELT(r_result, 3, r_lcor);
     SET_STRING_ELT(r_names, 3, Rf_mkChar("lcor"));
+    UNPROTECT(1);
 
     // 5. mean.coefficient
     SET_VECTOR_ELT(r_result, 4, Rf_ScalarReal(result.mean_coefficient));
@@ -493,7 +497,7 @@ extern "C" SEXP S_lslope_neighborhood(
 
     Rf_setAttrib(r_result, R_NamesSymbol, r_names);
 
-    UNPROTECT(8);  // r_result, r_names, + 6 components (scalars don't need separate PROTECT)
+    UNPROTECT(2);
 
     return r_result;
 }
