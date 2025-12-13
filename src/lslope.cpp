@@ -234,14 +234,75 @@ lslope_result_t set_wgraph_t::lslope_gradient(
 
     // Second pass: apply sigmoid normalization if requested
     if (slope_type == lslope_type_t::GRADIENT_SLOPE_NORMALIZED) {
-        // Calibrate sigmoid_alpha if not specified
+
+        // Calibrate sigmoid_alpha based on data when user requests automatic calibration
+        // (indicated by sigmoid_alpha <= 0)
+        //
+        // For each sigmoid type σ, we solve for alpha such that:
+        //   σ(alpha * median_abs) = 0.5
+
+        // The median represents a "typical" slope magnitude in the sense that
+        // half of the absolute slopes are smaller and half are larger. Mapping
+        // this typical value to the midpoint of the sigmoid's positive range
+        // ensures balanced utilization of the output range. Slopes with
+        // absolute value smaller than the median_abs produce outputs in (-0.5,
+        // 0.5), while slopes larger than the median produce outputs in
+        // (-1, -0.5) \cup (0.5, 1).
+        // This prevents both saturation (where α is too large and nearly all
+        // outputs cluster near ±1) and compression (where α is too small and
+        // all outputs cluster near 0).
+
         if (sigmoid_alpha <= 0.0) {
             double median_abs = compute_median_abs(raw_slopes);
-            // Set alpha so that median slope maps to ~0.5 after sigmoid
-            // tanh(alpha * median) ≈ 0.5 => alpha * median ≈ 0.549
-            // arctan: (2/π) * arctan(alpha * median) ≈ 0.5 => alpha * median ≈ π/4
-            sigmoid_alpha = 0.549 / median_abs;  // For tanh
+
+            // Guard against degenerate case of zero or near-zero slopes
+            const double min_median = 1e-10;
+            if (median_abs < min_median) {
+                median_abs = min_median;
+            }
+
+            if (sigmoid_type == sigmoid_type_t::TANH) {
+                // Hyperbolic tangent: sigma(x) = tanh(alpha * x)
+                //
+                // Note for those familiar with logistic regression: the rescaled logistic
+                // sigma_L(x) = 2/(1 + exp(-x)) - 1, which has range (-1, 1), is equivalent
+                // to tanh with a scale factor of 1/2. To see this:
+                //
+                //   2/(1 + exp(-x)) - 1 = (2 - 1 - exp(-x)) / (1 + exp(-x))
+                //                       = (1 - exp(-x)) / (1 + exp(-x))
+                //
+                // Multiplying numerator and denominator by exp(x/2):
+                //
+                //                       = (exp(x/2) - exp(-x/2)) / (exp(x/2) + exp(-x/2))
+                //                       = tanh(x/2)
+                //
+                // Thus tanh(alpha * x) = 2/(1 + exp(-2*alpha*x)) - 1, and there is no need
+                // for a separate rescaled logistic sigmoid type.
+                //
+                // Solve: tanh(alpha * m) = 0.5
+                // => alpha * m = arctanh(0.5)
+                // => alpha = arctanh(0.5) / m
+                sigmoid_alpha = std::atanh(0.5) / median_abs;
+
+            } else if (sigmoid_type == sigmoid_type_t::ARCTAN) {
+                // Scaled arctan: sigma(x) = (2/pi) * arctan(x)
+                // Solve: (2/pi) * arctan(alpha * m) = 0.5
+                // => arctan(alpha * m) = pi/4
+                // => alpha * m = tan(pi/4) = 1
+                // => alpha = 1 / m
+                sigmoid_alpha = 1.0 / median_abs;
+
+            } else if (sigmoid_type == sigmoid_type_t::ALGEBRAIC) {
+                // Algebraic sigmoid: sigma(x) = x / sqrt(alpha^{-2} + x^2)
+                // Solve: m / sqrt(alpha^{-2} + m^2) = 0.5
+                // => m^2 / (alpha^{-2} + m^2) = 0.25
+                // => 4 * m^2 = alpha^{-2} + m^2
+                // => 3 * m^2 = alpha^{-2}
+                // => alpha = 1 / (sqrt(3) * m)
+                sigmoid_alpha = 1.0 / (std::sqrt(3.0) * median_abs);
+            }
         }
+
         result.sigmoid_alpha = sigmoid_alpha;
 
         for (size_t v = 0; v < n_vertices; ++v) {

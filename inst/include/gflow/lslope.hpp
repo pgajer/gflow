@@ -1,6 +1,7 @@
 #ifndef LSLOPE_HPP
 #define LSLOPE_HPP
 
+#include <Eigen/Dense>
 #include <vector>
 #include <limits>
 #include <cmath>
@@ -55,9 +56,11 @@ enum class lslope_type_t {
      * Gradient-restricted slope with sigmoid normalization
      *
      * At vertex v, applies sigmoid transformation to bound the slope:
-     *   β̃_∇y(z)(v) = σ_α(β_∇y(z)(v)) = tanh(α · β_∇y(z)(v))
+     *   β̃_∇y(z)(v) = σ_α(β_∇y(z)(v))
      *
      * where α is a scale parameter (default: calibrated from median absolute slope).
+     *
+     * Example: σ_α(β_∇y(z)(v)) = tanh(α · β_∇y(z)(v))
      *
      * Range: (-1, +1)
      * Provides numerical stability near extrema where Δy is small.
@@ -182,6 +185,39 @@ struct lslope_nbhd_result_t {
     double median_coefficient = 0.0;
 };
 
+/**
+ * @struct lslope_vector_matrix_result_t
+ * @brief Result structure for vector-matrix local slope computation
+ *
+ * Contains the coefficient matrix (n_vertices x n_columns) along with
+ * shared gradient structure information from the directing function y.
+ * Used by lslope_vector_matrix() for efficient batch computation.
+ */
+struct lslope_vector_matrix_result_t {
+    /// Coefficient matrix: coefficients(v, j) = lslope(Z_j; y)(v)
+    /// Stored in column-major order for R compatibility
+    Eigen::MatrixXd coefficients;
+
+    /// Gradient edge neighbor for each vertex (shared across all columns)
+    /// Value is std::numeric_limits<size_t>::max() for local extrema
+    std::vector<size_t> gradient_neighbors;
+
+    /// Delta y along gradient edge for each vertex (shared across all columns)
+    std::vector<double> gradient_delta_y;
+
+    /// Boolean mask: true if vertex is a local extremum of y
+    std::vector<bool> is_local_extremum;
+
+    /// Number of local maxima of y (when ascending = true)
+    size_t n_local_maxima = 0;
+
+    /// Number of local minima of y (when ascending = false)
+    size_t n_local_minima = 0;
+
+    /// Sigmoid scale parameter used (for GRADIENT_SLOPE_NORMALIZED)
+    /// Calibrated from data if input sigmoid_alpha = 0
+    double sigmoid_alpha = 1.0;
+};
 
 /**
  * @brief Apply sigmoid transformation to a value

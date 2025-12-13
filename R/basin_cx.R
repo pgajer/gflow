@@ -2168,9 +2168,9 @@ plot_basin_cx_graph <- function(basin_cx_graph,
     ## Load the graph.embedding function or implement it
     ## This is a placeholder - we'd need to implement or import a graph embedding function
     coords <- graph.embedding(
-      adj_list = basin_cx_graph$adjacency_list,
-      weights_list = weights_list,
-      invert_weights = invert_weights,
+      adj.list = basin_cx_graph$adjacency_list,
+      weights.list = weights_list,
+      invert.weights = invert_weights,
       dim = 2,
       method = method,
       verbose = FALSE

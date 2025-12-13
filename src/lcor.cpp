@@ -520,11 +520,6 @@ lcor_result_t set_wgraph_t::lcor_two_pass_instrumented(
  * If ε = 0 (default), it is computed adaptively as 1e-6 times the minimum
  * non-zero value in the data.
  *
- * COMPARISON TO comono_cor():
- * This function generalizes comono_cor() by allowing flexible edge difference
- * types. When y_diff_type = z_diff_type = DIFFERENCE, it is equivalent to
- * comono_cor() with the same weight_type.
- *
  * @param y Response function values at vertices (length = num_vertices)
  * @param z Feature function values at vertices (length = num_vertices)
  * @param weight_type Weighting scheme:
@@ -598,7 +593,6 @@ lcor_result_t set_wgraph_t::lcor_two_pass_instrumented(
  * - Relative abundance vs. relative abundance
  * - Any two compositional features
  *
- * @see comono_cor() for the standard difference-only version
  * @see edge_diff_type_t for details on difference type selection
  */
 lcor_result_t set_wgraph_t::lcor_instrumented(

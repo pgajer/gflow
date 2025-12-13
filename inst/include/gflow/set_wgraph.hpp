@@ -1447,6 +1447,17 @@ struct set_wgraph_t {
 		bool ascending
 		) const;
 
+	lslope_vector_matrix_result_t lslope_vector_matrix(
+		const std::vector<double>& y,
+		const Eigen::MatrixXd& Z,
+		lslope_type_t slope_type,
+		edge_diff_type_t y_diff_type,
+		edge_diff_type_t z_diff_type,
+		double epsilon,
+		double sigmoid_alpha,
+		bool ascending,
+		int n_threads = 0
+		) const;
 
 	// ----------------------------------------------------------------
 	// Local correlation methods
@@ -1527,49 +1538,6 @@ struct set_wgraph_t {
         edge_diff_type_t z_diff_type,
         double epsilon,
         double winsorize_quantile
-		) const;
-
-	/**
-	 * @brief Compute correlation-type co-monotonicity coefficients
-	 */
-	comono_result_t comono_cor(
-		const std::vector<double>& y,
-		const std::vector<double>& z,
-		comono_type_t type = comono_type_t::DERIVATIVE
-		) const;
-
-	/**
-	 * @brief Compute thresholded proportion-of-agreements co-monotonicity coefficients
-	 */
-	comono_result_t comono_proportion(
-		const std::vector<double>& y,
-		const std::vector<double>& z,
-		double tau_y = 0.0,
-		double tau_z = 0.0
-		) const;
-
-	/**
-	 * @brief Compute co-monotonicity coefficient between two functions on vertices
-	 */
-	comono_result_t comono(
-		const std::vector<double>& y,
-		const std::vector<double>& z,
-		comono_type_t type = comono_type_t::UNIT
-		) const;
-
-	comono_matrix_result_t comono_matrix(
-		const std::vector<double>& y,
-		const Eigen::MatrixXd& Z,
-		comono_type_t type = comono_type_t::UNIT
-		) const;
-
-	/**
-	 * @brief Compute global co-monotonicity coefficient (scalar summary)
-	 */
-	double comono_global(
-		const std::vector<double>& y,
-		const std::vector<double>& z,
-		comono_type_t type = comono_type_t::UNIT
 		) const;
 
 private:
