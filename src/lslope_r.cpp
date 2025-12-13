@@ -40,6 +40,7 @@ static const size_t LSLOPE_R_INVALID_VERTEX = std::numeric_limits<size_t>::max()
  * @param s_z_diff_type R character: "difference" or "logratio"
  * @param s_epsilon R numeric: pseudocount (0 = adaptive)
  * @param s_sigmoid_alpha R numeric: sigmoid scale (0 = auto-calibrate)
+ * @param s_sigmoid_type R character: "tanh", "arctan", or "algebraic"
  * @param s_ascending R logical: use ascending (TRUE) or descending (FALSE) gradient
  *
  * @return R list with components:
@@ -64,6 +65,7 @@ extern "C" SEXP S_lslope_gradient_instrumented(
     SEXP s_z_diff_type,
     SEXP s_epsilon,
     SEXP s_sigmoid_alpha,
+    SEXP s_sigmoid_type,
     SEXP s_ascending
 ) {
     // ---- Input validation and conversion ----
@@ -164,6 +166,25 @@ extern "C" SEXP S_lslope_gradient_instrumented(
     }
     double sigmoid_alpha = REAL(s_sigmoid_alpha)[0];
 
+    // Convert sigmoid_type
+    if (!Rf_isString(s_sigmoid_type) || LENGTH(s_sigmoid_type) != 1) {
+        Rf_error("s_sigmoid_type must be a single character string");
+    }
+    const char* sigmoid_type_cstr = CHAR(STRING_ELT(s_sigmoid_type, 0));
+    std::string sigmoid_type_str(sigmoid_type_cstr);
+
+    sigmoid_type_t sigmoid_type;
+    if (sigmoid_type_str == "tanh") {
+        sigmoid_type = sigmoid_type_t::TANH;
+    } else if (sigmoid_type_str == "arctan") {
+        sigmoid_type = sigmoid_type_t::ARCTAN;
+    } else if (sigmoid_type_str == "algebraic") {
+        sigmoid_type = sigmoid_type_t::ALGEBRAIC;
+    } else {
+        Rf_error("Invalid sigmoid_type '%s'. Must be 'tanh', 'arctan', or 'algebraic'",
+                 sigmoid_type_cstr);
+    }
+
     // Convert ascending
     if (!Rf_isLogical(s_ascending) || LENGTH(s_ascending) != 1) {
         Rf_error("s_ascending must be a single logical value");
@@ -175,8 +196,15 @@ extern "C" SEXP S_lslope_gradient_instrumented(
 
     // ---- Compute local slope ----
     lslope_result_t result = graph.lslope_gradient(
-        y, z, slope_type, y_diff_type, z_diff_type,
-        epsilon, sigmoid_alpha, sigmoid_type_t::TANH, ascending
+        y,
+        z,
+        slope_type,
+        y_diff_type,
+        z_diff_type,
+        epsilon,
+        sigmoid_alpha,
+        sigmoid_type,
+        ascending
     );
 
     // ---- Build R return object ----
@@ -287,6 +315,7 @@ extern "C" SEXP S_lslope_gradient(
     SEXP s_z_diff_type,
     SEXP s_epsilon,
     SEXP s_sigmoid_alpha,
+    SEXP s_sigmoid_type,
     SEXP s_ascending
 ) {
     // ---- Input validation and conversion ----
@@ -344,20 +373,53 @@ extern "C" SEXP S_lslope_gradient(
     // Parse scalars
     double epsilon = Rf_isReal(s_epsilon) ? REAL(s_epsilon)[0] : 0.0;
     double sigmoid_alpha = Rf_isReal(s_sigmoid_alpha) ? REAL(s_sigmoid_alpha)[0] : 0.0;
+
+    // Convert sigmoid_type
+    if (!Rf_isString(s_sigmoid_type) || LENGTH(s_sigmoid_type) != 1) {
+        Rf_error("s_sigmoid_type must be a single character string");
+    }
+    const char* sigmoid_type_cstr = CHAR(STRING_ELT(s_sigmoid_type, 0));
+    std::string sigmoid_type_str(sigmoid_type_cstr);
+
+    sigmoid_type_t sigmoid_type;
+    if (sigmoid_type_str == "tanh") {
+        sigmoid_type = sigmoid_type_t::TANH;
+    } else if (sigmoid_type_str == "arctan") {
+        sigmoid_type = sigmoid_type_t::ARCTAN;
+    } else if (sigmoid_type_str == "algebraic") {
+        sigmoid_type = sigmoid_type_t::ALGEBRAIC;
+    } else {
+        Rf_error("Invalid sigmoid_type '%s'. Must be 'tanh', 'arctan', or 'algebraic'",
+                 sigmoid_type_cstr);
+    }
+
+    // Convert ascending
+    if (!Rf_isLogical(s_ascending) || LENGTH(s_ascending) != 1) {
+        Rf_error("s_ascending must be a single logical value");
+    }
+
     bool ascending = Rf_isLogical(s_ascending) ? (LOGICAL(s_ascending)[0] == TRUE) : true;
 
     // Build graph and compute
     set_wgraph_t graph(adj_list, weight_list);
-    auto coeffs = graph.lslope(
-        y, z, slope_type, lcor_type_t::UNIT,
-        y_diff_type, z_diff_type, epsilon, sigmoid_alpha, ascending
-    );
+
+    lslope_result_t result = graph.lslope_gradient(
+        y,
+        z,
+        slope_type,
+        y_diff_type,
+        z_diff_type,
+        epsilon,
+        sigmoid_alpha,
+        sigmoid_type,
+        ascending
+        );
 
     // Return vector
     SEXP r_coeffs = PROTECT(Rf_allocVector(REALSXP, n_vertices));
     double* coeffs_ptr = REAL(r_coeffs);
     for (size_t i = 0; i < n_vertices; ++i) {
-        coeffs_ptr[i] = coeffs[i];
+        coeffs_ptr[i] = result.vertex_coefficients[i];
     }
     UNPROTECT(1);
 

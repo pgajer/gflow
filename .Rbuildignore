@@ -60,3 +60,6 @@
 ^inst/examples$
 ^src/tests$
 ^presentations$
+^analysis_output$
+^data$
+^figures$

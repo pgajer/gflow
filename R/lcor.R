@@ -32,8 +32,7 @@
 #'       Appropriate for continuous data in Euclidean space.}
 #'     \item{"logratio"}{Log-ratios: Delta_e f = log((f(u) + epsilon) / (f(v) + epsilon)).
 #'       Appropriate for compositional data (relative abundances, proportions).
-#'       The log transformation maps multiplicative changes to an additive scale,
-#'       corresponding to the Aitchison distance on the simplex.}
+#'       The log transformation maps multiplicative changes to an additive scale.}
 #'   }
 #' @param z.diff.type Character scalar specifying edge difference type for z.
 #'   Same options as y.diff.type.

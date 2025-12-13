@@ -44,7 +44,7 @@
 #' @param with.posterior Logical. If \code{TRUE}, compute Bayesian posterior
 #'   credible intervals for the smoothed response at each vertex. Default is
 #'   \code{FALSE}. Posterior computation adds moderate computational cost
-#'   (approximately 20-50\% overhead per column).
+#'   (approximately 20-50% overhead per column).
 #'
 #' @param return.posterior.samples Logical. If \code{TRUE} and
 #'   \code{with.posterior = TRUE}, return the full matrix of posterior samples.
@@ -53,7 +53,7 @@
 #'   n.responses * 8 bytes).
 #'
 #' @param credible.level Numeric in (0, 1). Coverage probability for credible
-#'   intervals. Default is 0.95 for 95\% credible intervals.
+#'   intervals. Default is 0.95 for 95% credible intervals.
 #'
 #' @param n.posterior.samples Integer. Number of Monte Carlo samples for
 #'   posterior inference. Larger values provide more accurate quantile estimates.
@@ -80,14 +80,14 @@
 #'       of cores actually used for computation.}
 #'     \item{\code{elapsed.time}}{(Only if \code{per.column.gcv = TRUE})
 #'       Elapsed wall-clock time in seconds.}
-#'     \item{\code{posterior}}{(Only if \code{with.posterior = TRUE}) List with:
-#'       \describe{
-#'         \item{\code{lower}}{Lower credible bounds (vector or matrix).}
-#'         \item{\code{upper}}{Upper credible bounds (vector or matrix).}
-#'         \item{\code{sd}}{Posterior standard deviations (vector or matrix).}
-#'         \item{\code{sigma}}{Estimated residual SD (scalar or vector).}
-#'         \item{\code{credible.level}}{Coverage probability used.}
-#'         \item{\code{samples}}{(Optional) Posterior samples if requested.}
+#'     \item{\code{posterior}}{(Only if \code{with.posterior = TRUE}) A list containing:
+#'       \itemize{
+#'         \item \code{lower}: Lower credible bounds (vector or matrix).
+#'         \item \code{upper}: Upper credible bounds (vector or matrix).
+#'         \item \code{sd}: Posterior standard deviations (vector or matrix).
+#'         \item \code{sigma}: Estimated residual SD (scalar or vector).
+#'         \item \code{credible.level}: Coverage probability used.
+#'         \item \code{samples}: (Optional) Posterior samples if requested.
 #'       }
 #'     }
 #'   }

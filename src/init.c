@@ -65,6 +65,9 @@
 #include "lslope_r.h"
 #include "riem_dcx_posterior_r.h"
 #include "lcor_posterior_r.h"
+#include "wasserstein_weighted_r.h"
+#include "lslope_wasserstein_test_r.h"
+#include "magelo_external_bb.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -200,82 +203,70 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
-  {"S_lcor_with_posterior_internal", (DL_FUNC) &S_lcor_with_posterior_internal, 16},
-  {"S_compute_posterior_summary", (DL_FUNC) &S_compute_posterior_summary, 10},
-  {"S_lslope_gradient_instrumented", (DL_FUNC) &S_lslope_gradient_instrumented, 10},
-  {"S_lslope_gradient", (DL_FUNC) &S_lslope_gradient, 10},
+  // =========================================================================
+  // Weighted Wasserstein distance functions
+  // =========================================================================
+  {"S_wasserstein_distance_weighted",         (DL_FUNC) &S_wasserstein_distance_weighted,         4},
+  {"S_wasserstein_distance_unweighted",       (DL_FUNC) &S_wasserstein_distance_unweighted,       2},
+  {"S_bayesian_bootstrap_wasserstein",        (DL_FUNC) &S_bayesian_bootstrap_wasserstein,        4},
+  {"S_vertex_bayesian_bootstrap_wasserstein", (DL_FUNC) &S_vertex_bayesian_bootstrap_wasserstein, 7},
+
+  // =========================================================================
+  // lslope Wasserstein test functions
+  // =========================================================================
+
+  {"S_lslope_wasserstein_test", (DL_FUNC) &S_lslope_wasserstein_test, 14},
+  {"S_generate_paired_lslope_samples", (DL_FUNC) &S_generate_paired_lslope_samples, 10},
+
+  // =========================================================================
+  // lslope
+  // =========================================================================
+  {"S_lslope_gradient_instrumented", (DL_FUNC) &S_lslope_gradient_instrumented, 11},
+  {"S_lslope_gradient", (DL_FUNC) &S_lslope_gradient, 11},
   {"S_lslope_neighborhood", (DL_FUNC) &S_lslope_neighborhood, 8},
+  {"S_lslope_vector_matrix", (DL_FUNC) &S_lslope_vector_matrix, 11},
+
+  // =========================================================================
+  // lcor
+  // =========================================================================
   {"S_lcor", (DL_FUNC) &S_lcor, 9},
   {"S_lcor_instrumented", (DL_FUNC) &S_lcor_instrumented, 9},
   {"S_lcor_vector_matrix", (DL_FUNC) &S_lcor_vector_matrix, 10},
-  {"S_comono_cor", (DL_FUNC) &S_comono_cor, 5},
-  {"S_comono_proportion", (DL_FUNC) &S_comono_proportion, 6},
-  {"S_comono_cor_matrix", (DL_FUNC) &S_comono_cor_matrix, 5},
-  {"S_comono_proportion_matrix", (DL_FUNC) &S_comono_proportion_matrix, 6},
-  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
-  {"S_comono_matrix", (DL_FUNC) &S_comono_matrix, 5},
-  {"S_comono", (DL_FUNC) &S_comono, 5},
-  {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
-  {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
-  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 30},
-  {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
-  {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
-  {"S_set_function_values", (DL_FUNC) &S_set_function_values, 2},
-  {"S_set_weight_scheme", (DL_FUNC) &S_set_weight_scheme, 3},
-  {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
-  {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
-  {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
-  {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
-  {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
-  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
-  {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
-  {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
-  {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
-  {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
-  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
-  {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
-  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
-  {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
-  {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
-  {"S_graph_spectral_filter", (DL_FUNC) &S_graph_spectral_filter, 19},
-  {"S_klaps_low_pass_smoother", (DL_FUNC) &S_klaps_low_pass_smoother, 14},
-  {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
-  {"S_graph_kernel_smoother", (DL_FUNC) &S_graph_kernel_smoother, 17},
-  {"S_graph_deg0_lowess_buffer_cv", (DL_FUNC) &S_graph_deg0_lowess_buffer_cv, 16},
-  {"S_deg0_lowess_graph_smoothing", (DL_FUNC) &S_deg0_lowess_graph_smoothing, 20},
-  {"S_graph_deg0_lowess_cv_mat", (DL_FUNC) &S_graph_deg0_lowess_cv_mat, 14},
-  {"S_graph_deg0_lowess_cv", (DL_FUNC) &S_graph_deg0_lowess_cv, 14},
-  {"S_graph_deg0_lowess", (DL_FUNC) &S_graph_deg0_lowess, 7},
-  {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6}, 
-  {"S_test_monotonic_reachability_map", (DL_FUNC) &S_test_monotonic_reachability_map, 6},
-  {"S_spectral_lowess_graph_smoothing", (DL_FUNC) &S_spectral_lowess_graph_smoothing, 20},
-  {"S_graph_spectral_lowess_mat", (DL_FUNC) &S_graph_spectral_lowess_mat, 15},
-  {"S_graph_spectral_ma_lowess", (DL_FUNC) &S_graph_spectral_ma_lowess, 13},
-  {"S_graph_spectral_lowess", (DL_FUNC) &S_graph_spectral_lowess, 13},
-  {"S_nada_graph_spectral_lowess", (DL_FUNC) &S_nada_graph_spectral_lowess, 13},
-  {"S_compute_geodesic_stats", (DL_FUNC) &S_compute_geodesic_stats, 9},
-  {"S_compute_vertex_geodesic_stats", (DL_FUNC) &S_compute_vertex_geodesic_stats, 8},
-  {"S_agemalo", (DL_FUNC) &S_agemalo, 19},
-  {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
-  {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
-  {"S_create_maximal_packing", (DL_FUNC) &S_create_maximal_packing, 5},
-  {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
-  {"S_remove_redundant_edges", (DL_FUNC) &S_remove_redundant_edges, 2},
-  {"S_compute_edge_weight_rel_deviations", (DL_FUNC) &S_compute_edge_weight_rel_deviations, 2},
-  {"S_compute_edge_weight_deviations", (DL_FUNC) &S_compute_edge_weight_deviations, 2},
-  {"S_adaptive_uggmalo", (DL_FUNC) &S_adaptive_uggmalo, 18},
-  {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
-  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
+  {"S_lcor_with_posterior_internal", (DL_FUNC) &S_lcor_with_posterior_internal, 16},
+
+  // =========================================================================
+  // data graphs
+  // =========================================================================
   {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 6},
   {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 9},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
-  {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
-  {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
-  {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
-  {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
-  {"S_create_uniform_grid_graph", (DL_FUNC) &S_create_uniform_grid_graph, 5},
-  {"S_compute_graph_analysis_sequence", (DL_FUNC) &S_compute_graph_analysis_sequence, 6},
+  {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
+  {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
+  {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
+  {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
+
+  {"S_mstree", (DL_FUNC) &S_mstree, 1},
+  {"S_create_hHN_graph", (DL_FUNC) &S_create_hHN_graph, 3},
+  {"S_create_path_graph_plus", (DL_FUNC) &S_create_path_graph_plus, 3},
+  {"S_create_path_graph_plm", (DL_FUNC) &S_create_path_graph_plm, 3},
+  {"S_create_path_graph_series", (DL_FUNC) &S_create_path_graph_series, 3},
+  {"S_kNN", (DL_FUNC) &S_kNN, 2},
+
+  {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
+
+  {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
+
+  // =========================================================================
+  // graph utilities
+  // =========================================================================
+  {"S_graph_connected_components", (DL_FUNC) &S_graph_connected_components, 1},
+  {"S_shortest_path", (DL_FUNC) &S_shortest_path, 3},
+  {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
+  {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
+  {"S_estimate_local_complexity", (DL_FUNC) &S_estimate_local_complexity, 5},
+  {"S_estimate_binary_local_complexity", (DL_FUNC) &S_estimate_binary_local_complexity, 6},
+  {"S_estimate_ma_binary_local_complexity_quadratic", (DL_FUNC) &S_estimate_ma_binary_local_complexity_quadratic, 4},
   {"S_find_shortest_alt_path", (DL_FUNC) &S_find_shortest_alt_path, 5},
   {"S_shortest_alt_path_length", (DL_FUNC) &S_shortest_alt_path_length, 5},
   {"S_wgraph_prune_long_edges", (DL_FUNC) &S_wgraph_prune_long_edges, 5},
@@ -286,8 +277,62 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_convert_adjacency_to_edge_matrix_unordered_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_unordered_set, 1},
   {"S_angular_wasserstein_index", (DL_FUNC) &S_angular_wasserstein_index, 3},
   {"S_compute_mstree_total_length", (DL_FUNC) &S_compute_mstree_total_length, 1},
-  {"S_graph_mad", (DL_FUNC) &S_graph_mad, 2},
-  {"S_graph_kmean", (DL_FUNC) &S_graph_kmean, 5},
+  {"S_cv_imputation", (DL_FUNC) &S_cv_imputation, 12},
+  {"S_prop_nbhrs_with_smaller_y", (DL_FUNC) &S_prop_nbhrs_with_smaller_y, 2},
+  {"S_graph_spectrum", (DL_FUNC) &S_graph_spectrum, 2},
+  {"S_graph_spectrum_plus", (DL_FUNC) &S_graph_spectrum_plus, 3},
+
+  {"S_loc_const_vertices", (DL_FUNC) &S_loc_const_vertices, 3},
+  {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
+  {"S_test_monotonic_reachability_map", (DL_FUNC) &S_test_monotonic_reachability_map, 6},
+  {"S_compute_geodesic_stats", (DL_FUNC) &S_compute_geodesic_stats, 9},
+  {"S_compute_vertex_geodesic_stats", (DL_FUNC) &S_compute_vertex_geodesic_stats, 8},
+  {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
+  {"S_create_maximal_packing", (DL_FUNC) &S_create_maximal_packing, 5},
+  {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
+  {"S_remove_redundant_edges", (DL_FUNC) &S_remove_redundant_edges, 2},
+  {"S_compute_edge_weight_rel_deviations", (DL_FUNC) &S_compute_edge_weight_rel_deviations, 2},
+  {"S_compute_edge_weight_deviations", (DL_FUNC) &S_compute_edge_weight_deviations, 2},
+  {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
+  {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
+  {"S_create_uniform_grid_graph", (DL_FUNC) &S_create_uniform_grid_graph, 5},
+  {"S_compute_graph_analysis_sequence", (DL_FUNC) &S_compute_graph_analysis_sequence, 6},
+
+  // =========================================================================
+  // univariate regression
+  // =========================================================================
+  {"S_generate_dirichlet_weights", (DL_FUNC) &S_generate_dirichlet_weights, 2},
+  {"S_llm_1D_fit_and_predict_global_BB_external", (DL_FUNC) &S_llm_1D_fit_and_predict_global_BB_external, 12},
+  {"S_get_BB_Eyg_external", (DL_FUNC) &S_get_BB_Eyg_external, 18},
+
+  // =========================================================================
+  // regression over graphs
+  // =========================================================================
+  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 30},
+
+  // old
+  {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
+  {"S_graph_spectral_filter", (DL_FUNC) &S_graph_spectral_filter, 19},
+  {"S_klaps_low_pass_smoother", (DL_FUNC) &S_klaps_low_pass_smoother, 14},
+  {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
+  {"S_graph_kernel_smoother", (DL_FUNC) &S_graph_kernel_smoother, 17},
+  {"S_graph_deg0_lowess_buffer_cv", (DL_FUNC) &S_graph_deg0_lowess_buffer_cv, 16},
+  {"S_deg0_lowess_graph_smoothing", (DL_FUNC) &S_deg0_lowess_graph_smoothing, 20},
+  {"S_graph_deg0_lowess_cv_mat", (DL_FUNC) &S_graph_deg0_lowess_cv_mat, 14},
+  {"S_graph_deg0_lowess_cv", (DL_FUNC) &S_graph_deg0_lowess_cv, 14},
+  {"S_graph_deg0_lowess", (DL_FUNC) &S_graph_deg0_lowess, 7},
+  {"S_spectral_lowess_graph_smoothing", (DL_FUNC) &S_spectral_lowess_graph_smoothing, 20},
+  {"S_graph_spectral_lowess_mat", (DL_FUNC) &S_graph_spectral_lowess_mat, 15},
+  {"S_graph_spectral_ma_lowess", (DL_FUNC) &S_graph_spectral_ma_lowess, 13},
+  {"S_graph_spectral_lowess", (DL_FUNC) &S_graph_spectral_lowess, 13},
+  {"S_nada_graph_spectral_lowess", (DL_FUNC) &S_nada_graph_spectral_lowess, 13},
+  {"S_agemalo", (DL_FUNC) &S_agemalo, 19},
+  {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
+  {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
+  {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
+  {"S_adaptive_uggmalo", (DL_FUNC) &S_adaptive_uggmalo, 18},
+  {"S_graph_spectral_smoother", (DL_FUNC) &S_graph_spectral_smoother, 17},
+  {"S_graph_diffusion_smoother", (DL_FUNC) &S_graph_diffusion_smoother, 13},
   {"S_univariate_gkmm", (DL_FUNC) &S_univariate_gkmm, 15},
   {"S_upgmalo", (DL_FUNC) &S_upgmalo, 16},
   {"S_pgmalo", (DL_FUNC) &S_pgmalo, 17},
@@ -306,44 +351,64 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_wmabilo", (DL_FUNC) &S_wmabilo, 10},
   {"S_mabilo", (DL_FUNC) &S_mabilo, 11},
   {"S_mabilo_with_smoothed_errors", (DL_FUNC) &S_mabilo_with_smoothed_errors, 10},
-  {"S_cv_imputation", (DL_FUNC) &S_cv_imputation, 12},
-  {"S_prop_nbhrs_with_smaller_y", (DL_FUNC) &S_prop_nbhrs_with_smaller_y, 2},
-  {"S_graph_spectrum", (DL_FUNC) &S_graph_spectrum, 2},
-  {"S_graph_spectrum_plus", (DL_FUNC) &S_graph_spectrum_plus, 3},
-  {"S_loc_const_vertices", (DL_FUNC) &S_loc_const_vertices, 3},
-  {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
-  {"S_graph_diffusion_smoother", (DL_FUNC) &S_graph_diffusion_smoother, 13},
+  {"S_graph_mad", (DL_FUNC) &S_graph_mad, 2},
+  {"S_graph_kmean", (DL_FUNC) &S_graph_kmean, 5},
   {"S_ext_graph_diffusion_smoother", (DL_FUNC) &S_ext_graph_diffusion_smoother, 23},
   {"S_instrumented_gds", (DL_FUNC) &S_instrumented_gds, 14},
+
+  {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
+
   {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},
   {"S_mean_shift_data_smoother_with_grad_field_averaging", (DL_FUNC) &S_mean_shift_data_smoother_with_grad_field_averaging, 8},
   {"S_mean_shift_data_smoother_adaptive", (DL_FUNC) &S_mean_shift_data_smoother_adaptive, 8},
-  {"S_graph_spectral_smoother", (DL_FUNC) &S_graph_spectral_smoother, 17},
-  {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
-  {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
-  {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
-  {"S_shortest_path", (DL_FUNC) &S_shortest_path, 3},
-  {"S_mstree", (DL_FUNC) &S_mstree, 1},
-  {"S_create_hHN_graph", (DL_FUNC) &S_create_hHN_graph, 3},
-  {"S_create_path_graph_plus", (DL_FUNC) &S_create_path_graph_plus, 3},
-  {"S_create_path_graph_plm", (DL_FUNC) &S_create_path_graph_plm, 3},
-  {"S_create_path_graph_series", (DL_FUNC) &S_create_path_graph_series, 3},
-  {"S_kNN", (DL_FUNC) &S_kNN, 2},
-  //{"S_kNN_v2", (DL_FUNC) &S_kNN_v2, 2},
-  {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
-  {"S_ecdf", (DL_FUNC) &S_ecdf, 1},
-  {"S_rlaplace", (DL_FUNC) &S_rlaplace, 4},
-  {"S_graph_connected_components", (DL_FUNC) &S_graph_connected_components, 1},
-  {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
-  {"S_estimate_local_complexity", (DL_FUNC) &S_estimate_local_complexity, 5},
-  {"S_estimate_binary_local_complexity", (DL_FUNC) &S_estimate_binary_local_complexity, 6},
-  {"S_estimate_ma_binary_local_complexity_quadratic", (DL_FUNC) &S_estimate_ma_binary_local_complexity_quadratic, 4},
-  {"S_pdistr", (DL_FUNC) &S_pdistr, 2},
-  {"S_lwcor", (DL_FUNC) &S_lwcor, 3},
-  {"S_lwcor_yY", (DL_FUNC) &S_lwcor_yY, 4},
+
   {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
   {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
   {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
+
+  // =========================================================================
+  // gradient flow
+  // =========================================================================
+  {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
+  {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
+  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
+
+  {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
+  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
+  {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
+  {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
+  {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
+  {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
+  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
+  {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
+  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
+  {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6},
+  {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
+  {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
+  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
+  {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
+  {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
+
+  // =========================================================================
+  // stat utilities
+  // =========================================================================
+  {"S_ecdf", (DL_FUNC) &S_ecdf, 1},
+  {"S_rlaplace", (DL_FUNC) &S_rlaplace, 4},
+  {"S_pdistr", (DL_FUNC) &S_pdistr, 2},
+  {"S_lwcor", (DL_FUNC) &S_lwcor, 3},
+  {"S_lwcor_yY", (DL_FUNC) &S_lwcor_yY, 4},
+
+  // =========================================================================
+  // other
+  // =========================================================================
+  {"S_set_function_values", (DL_FUNC) &S_set_function_values, 2},
+  {"S_set_weight_scheme", (DL_FUNC) &S_set_weight_scheme, 3},
+
+  // =========================================================================
+  // to remove
+  // =========================================================================
+  //{"S_kNN_v2", (DL_FUNC) &S_kNN_v2, 2},
+  //
   {NULL, NULL, 0}
 };
 

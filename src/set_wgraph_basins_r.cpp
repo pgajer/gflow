@@ -41,7 +41,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     SEXP s_adj_list,
     SEXP s_weight_list,
     SEXP s_y,
-	SEXP s_edge_length_quantile_thld,
+    SEXP s_edge_length_quantile_thld,
     SEXP s_with_trajectories
     ) {
 
@@ -52,28 +52,28 @@ extern "C" SEXP S_compute_basins_of_attraction(
     double* y_ptr = REAL(s_y);
     std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
-	// ------ s_edge_length_quantile_thld validation/conversion
-	if (!Rf_isReal(s_edge_length_quantile_thld) || LENGTH(s_edge_length_quantile_thld) != 1) {
-			Rf_error("edge_length_quantile_thld must be a single numeric value");
-	}
+    // ------ s_edge_length_quantile_thld validation/conversion
+    if (!Rf_isReal(s_edge_length_quantile_thld) || LENGTH(s_edge_length_quantile_thld) != 1) {
+            Rf_error("edge_length_quantile_thld must be a single numeric value");
+    }
 
-	double edge_length_quantile_thld = REAL(s_edge_length_quantile_thld)[0];
+    double edge_length_quantile_thld = REAL(s_edge_length_quantile_thld)[0];
 
-	if (std::isnan(edge_length_quantile_thld)) {
-		Rf_error("edge_length_quantile_thld cannot be NA");
-	}
+    if (std::isnan(edge_length_quantile_thld)) {
+        Rf_error("edge_length_quantile_thld cannot be NA");
+    }
 
-	if (edge_length_quantile_thld < 0.0) {
-		Rf_error("edge_length_quantile_thld must be non-negative");
-	}
+    if (edge_length_quantile_thld < 0.0) {
+        Rf_error("edge_length_quantile_thld must be non-negative");
+    }
 
-	// ------ s_with_trajectories conversion
+    // ------ s_with_trajectories conversion
     bool with_trajectories = Rf_asLogical(s_with_trajectories);
 
     // Build graph
     set_wgraph_t graph(adj_list, weight_list);
 
-	double edge_length_thld = graph.compute_quantile_edge_length(edge_length_quantile_thld);
+    double edge_length_thld = graph.compute_quantile_edge_length(edge_length_quantile_thld);
 
     // Identify local extrema (same as before)
     size_t n = y.size();
@@ -111,7 +111,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
         }
     }
 
-	// Convert to R format
+    // Convert to R format
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 2));
     SEXP r_result_names = PROTECT(Rf_allocVector(STRSXP, 2));
     SET_STRING_ELT(r_result_names, 0, Rf_mkChar("lmin_basins"));
@@ -289,7 +289,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
             UNPROTECT(1); // r_traj_sets
         }
 
-		UNPROTECT(9); // r_basin, r_basin_names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_term_extrema, r_all_pred
+        UNPROTECT(9); // r_basin, r_basin_names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_term_extrema, r_all_pred
         return r_basin;
     };
 
@@ -319,7 +319,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     SEXP s_weight_list,
     SEXP s_y,
     SEXP s_with_trajectories,
-	SEXP s_k_paths
+    SEXP s_k_paths
     ) {
 
     // Input validation and conversion
@@ -330,7 +330,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
     std::vector<double> y(y_ptr, y_ptr + LENGTH(s_y));
 
     bool with_trajectories = Rf_asLogical(s_with_trajectories);
-	size_t k_paths = static_cast<size_t>(Rf_asInteger(s_k_paths));
+    size_t k_paths = static_cast<size_t>(Rf_asInteger(s_k_paths));
 
     // Build graph
     set_wgraph_t graph(adj_list, weight_list);
@@ -549,7 +549,7 @@ extern "C" SEXP S_compute_basins_of_attraction(
             UNPROTECT(1); // r_traj_sets
         }
 
-		UNPROTECT(9); // r_basin, r_basin_names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_term_extrema, r_all_pred
+        UNPROTECT(9); // r_basin, r_basin_names, r_vertex, r_value, r_hop_idx, r_basin_df, r_basin_bd_df, r_term_extrema, r_all_pred
         return r_basin;
     };
 
