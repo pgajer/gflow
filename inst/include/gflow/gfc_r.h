@@ -28,6 +28,7 @@ extern "C" {
  * @param s_max_rel_value_min Maximum relative value for minima
  * @param s_max_overlap_threshold Overlap threshold for maxima clustering
  * @param s_min_overlap_threshold Overlap threshold for minima clustering
+ * @param s_p_mean_nbrs_dist_threshold Mean neighbor distance percentile threshold (maxima only)
  * @param s_p_mean_hopk_dist_threshold Hop-k distance percentile threshold
  * @param s_p_deg_threshold Degree percentile threshold
  * @param s_min_basin_size Minimum basin size
@@ -50,6 +51,7 @@ SEXP S_compute_gfc(
     SEXP s_max_rel_value_min,
     SEXP s_max_overlap_threshold,
     SEXP s_min_overlap_threshold,
+    SEXP s_p_mean_nbrs_dist_threshold,
     SEXP s_p_mean_hopk_dist_threshold,
     SEXP s_p_deg_threshold,
     SEXP s_min_basin_size,
@@ -73,6 +75,7 @@ SEXP S_compute_gfc(
  * @param s_max_rel_value_min Maximum relative value for minima
  * @param s_max_overlap_threshold Overlap threshold for maxima clustering
  * @param s_min_overlap_threshold Overlap threshold for minima clustering
+ * @param s_p_mean_nbrs_dist_threshold Mean neighbor distance percentile threshold
  * @param s_p_mean_hopk_dist_threshold Hop-k distance percentile threshold
  * @param s_p_deg_threshold Degree percentile threshold
  * @param s_min_basin_size Minimum basin size
@@ -96,6 +99,7 @@ SEXP S_compute_gfc_matrix(
     SEXP s_max_rel_value_min,
     SEXP s_max_overlap_threshold,
     SEXP s_min_overlap_threshold,
+    SEXP s_p_mean_nbrs_dist_threshold,
     SEXP s_p_mean_hopk_dist_threshold,
     SEXP s_p_deg_threshold,
     SEXP s_min_basin_size,

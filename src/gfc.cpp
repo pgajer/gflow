@@ -3,13 +3,14 @@
  * @brief Implementation of Gradient Flow Complex computation with refinement pipeline
  *
  * This file implements the GFC computation pipeline, including basin computation,
- * filtering, clustering, and expansion stages. The implementation leverages
- * existing set_wgraph_t methods for core operations while adding the refinement
- * logic specific to the association analysis framework.
+ * filtering, clustering, and expansion stages. The implementation uses
+ * compute_geodesic_basin() which builds basins via monotone BFS with edge length
+ * filtering, matching the behavior of R's compute.basins.of.attraction().
  */
 
 #include "gfc.hpp"
 #include "set_wgraph.hpp"
+#include "gradient_basin.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -47,7 +48,7 @@ Eigen::MatrixXd compute_overlap_distance_matrix(
         basin_sets[i].insert(basin_vertices[i].begin(), basin_vertices[i].end());
     }
 
-    // Compute pairwise overlap distances
+    // Compute pairwise overlap distances using Szymkiewicz-Simpson coefficient
     for (size_t i = 0; i < n_basins; ++i) {
         const auto& set_i = basin_sets[i];
         const size_t size_i = set_i.size();
@@ -72,7 +73,7 @@ Eigen::MatrixXd compute_overlap_distance_matrix(
                 }
             }
 
-            // Szymkiewicz-Simpson overlap coefficient
+            // Szymkiewicz-Simpson overlap coefficient: d = 1 - |A∩B| / min(|A|,|B|)
             const size_t min_size = std::min(size_i, size_j);
             double d = (min_size > 0)
                 ? 1.0 - static_cast<double>(intersection_size) / static_cast<double>(min_size)
@@ -214,14 +215,10 @@ std::vector<int> expand_basins_to_cover(
         return assignment;
     }
 
-    // For each uncovered vertex, find nearest basin via Dijkstra
-    // This is done by running multi-source Dijkstra from all basin vertices
-
-    // Initialize distances
+    // Multi-source Dijkstra from all basin vertices
     std::vector<double> dist(n_vertices, std::numeric_limits<double>::infinity());
     std::vector<int> nearest_basin(n_vertices, -1);
 
-    // Priority queue: (distance, vertex)
     using pq_entry = std::pair<double, size_t>;
     std::priority_queue<pq_entry, std::vector<pq_entry>, std::greater<pq_entry>> pq;
 
@@ -387,7 +384,7 @@ void cluster_and_merge_basins(
             merged_basin.vertices.assign(vertex_union.begin(), vertex_union.end());
             std::sort(merged_basin.vertices.begin(), merged_basin.vertices.end());
 
-            // Recompute hop distances (simplified: assign max_hop + 1 to new vertices)
+            // Recompute hop distances from the new representative
             merged_basin.hop_distances.resize(merged_basin.vertices.size());
             std::unordered_set<size_t> original_vertices(
                 basins[rep_idx].vertices.begin(),
@@ -396,7 +393,6 @@ void cluster_and_merge_basins(
 
             for (size_t i = 0; i < merged_basin.vertices.size(); ++i) {
                 size_t v = merged_basin.vertices[i];
-                // Find original hop distance if vertex was in representative basin
                 auto it = std::find(basins[rep_idx].vertices.begin(),
                                     basins[rep_idx].vertices.end(), v);
                 if (it != basins[rep_idx].vertices.end()) {
@@ -426,6 +422,7 @@ void cluster_and_merge_basins(
 void filter_by_geometry(
     std::vector<extremum_summary_t>& summaries,
     std::vector<basin_compact_t>& basins,
+    double p_mean_nbrs_dist_threshold,
     double p_mean_hopk_dist_threshold,
     double p_deg_threshold,
     int min_basin_size
@@ -440,8 +437,14 @@ void filter_by_geometry(
     for (size_t i = 0; i < summaries.size(); ++i) {
         bool keep = true;
 
-        // Check geometric criteria
-        if (summaries[i].mean_hopk_dist >= p_mean_hopk_dist_threshold) {
+        // Apply all geometric filters symmetrically to both maxima and minima.
+        // All four filters (p_mean_nbrs_dist, p_mean_hopk_dist, p_deg, min_basin_size)
+        // are applied consistently to both types of extrema, matching the R
+        // compute.refined.basins() implementation.
+        if (summaries[i].p_mean_nbrs_dist >= p_mean_nbrs_dist_threshold) {
+            keep = false;
+        }
+        if (summaries[i].p_mean_hopk_dist >= p_mean_hopk_dist_threshold) {
             keep = false;
         }
         if (summaries[i].deg_percentile >= p_deg_threshold) {
@@ -459,6 +462,71 @@ void filter_by_geometry(
 
     summaries = std::move(filtered_summaries);
     basins = std::move(filtered_basins);
+}
+
+/**
+ * @brief Compute mean distance to neighbors for a vertex
+ */
+double compute_mean_nbrs_dist(
+    const set_wgraph_t& graph,
+    size_t vertex
+) {
+    double sum_dist = 0.0;
+    int n_nbrs = 0;
+    
+    for (const auto& edge : graph.adjacency_list[vertex]) {
+        sum_dist += edge.weight;
+        ++n_nbrs;
+    }
+    
+    return (n_nbrs > 0) ? sum_dist / n_nbrs : 0.0;
+}
+
+/**
+ * @brief Compute mean hop-k distance for a vertex
+ * 
+ * Computes the mean weighted distance to all vertices within k hops.
+ */
+double compute_mean_hopk_dist(
+    const set_wgraph_t& graph,
+    size_t vertex,
+    int hop_k
+) {
+    if (hop_k <= 0) {
+        return 0.0;
+    }
+    
+    // BFS to find vertices within hop_k hops
+    std::vector<bool> visited(graph.num_vertices(), false);
+    std::vector<double> distances(graph.num_vertices(), 0.0);
+    std::queue<std::pair<size_t, int>> q;
+    
+    visited[vertex] = true;
+    distances[vertex] = 0.0;
+    q.push({vertex, 0});
+    
+    double sum_dist = 0.0;
+    int count = 0;
+    
+    while (!q.empty()) {
+        auto [v, hop] = q.front();
+        q.pop();
+        
+        if (hop < hop_k) {
+            for (const auto& edge : graph.adjacency_list[v]) {
+                size_t u = edge.vertex;
+                if (!visited[u]) {
+                    visited[u] = true;
+                    distances[u] = distances[v] + edge.weight;
+                    sum_dist += distances[u];
+                    ++count;
+                    q.push({u, hop + 1});
+                }
+            }
+        }
+    }
+    
+    return (count > 0) ? sum_dist / count : 0.0;
 }
 
 std::vector<extremum_summary_t> compute_basin_summaries(
@@ -479,9 +547,27 @@ std::vector<extremum_summary_t> compute_basin_summaries(
         degrees[v] = static_cast<int>(graph.adjacency_list[v].size());
     }
 
-    // Sort degrees for percentile computation
+    // Compute mean neighbor distances for all vertices
+    std::vector<double> mean_nbrs_dists(n_vertices);
+    for (size_t v = 0; v < n_vertices; ++v) {
+        mean_nbrs_dists[v] = compute_mean_nbrs_dist(graph, v);
+    }
+
+    // Compute mean hop-k distances for all vertices
+    std::vector<double> mean_hopk_dists(n_vertices);
+    for (size_t v = 0; v < n_vertices; ++v) {
+        mean_hopk_dists[v] = compute_mean_hopk_dist(graph, v, hop_k);
+    }
+
+    // Sort for percentile computation
     std::vector<int> sorted_degrees = degrees;
     std::sort(sorted_degrees.begin(), sorted_degrees.end());
+
+    std::vector<double> sorted_nbrs_dists = mean_nbrs_dists;
+    std::sort(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end());
+
+    std::vector<double> sorted_hopk_dists = mean_hopk_dists;
+    std::sort(sorted_hopk_dists.begin(), sorted_hopk_dists.end());
 
     for (size_t b = 0; b < n_basins; ++b) {
         const auto& basin = basins[b];
@@ -498,43 +584,29 @@ std::vector<extremum_summary_t> compute_basin_summaries(
             ? basin.extremum_value / y_median
             : 1.0;
 
-        // Degree percentile
-        int deg = degrees[basin.extremum_vertex];
-        auto it = std::lower_bound(sorted_degrees.begin(), sorted_degrees.end(), deg);
+        // Degree and degree percentile
+        summary.degree = degrees[basin.extremum_vertex];
+        auto deg_it = std::lower_bound(sorted_degrees.begin(), sorted_degrees.end(),
+                                       summary.degree);
         summary.deg_percentile = static_cast<double>(
-            std::distance(sorted_degrees.begin(), it)
+            std::distance(sorted_degrees.begin(), deg_it)
         ) / static_cast<double>(n_vertices);
 
-        // Mean distance to neighbors (simplified computation)
-        double sum_nbr_dist = 0.0;
-        int n_nbrs = 0;
-        for (const auto& edge : graph.adjacency_list[basin.extremum_vertex]) {
-            sum_nbr_dist += edge.weight;
-            ++n_nbrs;
-        }
-        summary.mean_nbrs_dist = (n_nbrs > 0) ? sum_nbr_dist / n_nbrs : 0.0;
+        // Mean neighbor distance percentile
+        double nbrs_dist = mean_nbrs_dists[basin.extremum_vertex];
+        auto nbrs_it = std::lower_bound(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end(),
+                                        nbrs_dist);
+        summary.p_mean_nbrs_dist = static_cast<double>(
+            std::distance(sorted_nbrs_dists.begin(), nbrs_it)
+        ) / static_cast<double>(n_vertices);
 
-        // Mean hop-k distance percentile (simplified: use mean neighbor distance as proxy)
-        // A full implementation would compute actual hop-k neighborhoods
-        summary.mean_hopk_dist = summary.mean_nbrs_dist;
-    }
-
-    // Convert mean_hopk_dist to percentiles
-    if (n_basins > 1) {
-        std::vector<double> hopk_values(n_basins);
-        for (size_t b = 0; b < n_basins; ++b) {
-            hopk_values[b] = summaries[b].mean_hopk_dist;
-        }
-        std::vector<double> sorted_hopk = hopk_values;
-        std::sort(sorted_hopk.begin(), sorted_hopk.end());
-
-        for (size_t b = 0; b < n_basins; ++b) {
-            auto it = std::lower_bound(sorted_hopk.begin(), sorted_hopk.end(),
-                                       hopk_values[b]);
-            summaries[b].mean_hopk_dist = static_cast<double>(
-                std::distance(sorted_hopk.begin(), it)
-            ) / static_cast<double>(n_basins);
-        }
+        // Mean hop-k distance percentile
+        double hopk_dist = mean_hopk_dists[basin.extremum_vertex];
+        auto hopk_it = std::lower_bound(sorted_hopk_dists.begin(), sorted_hopk_dists.end(),
+                                        hopk_dist);
+        summary.p_mean_hopk_dist = static_cast<double>(
+            std::distance(sorted_hopk_dists.begin(), hopk_it)
+        ) / static_cast<double>(n_vertices);
     }
 
     return summaries;
@@ -589,59 +661,105 @@ gfc_result_t compute_gfc(
     }
 
     // ========================================================================
-    // Step 1: Compute initial basins
+    // Step 1: Compute initial basins using hop neighborhood method
     // ========================================================================
 
     if (verbose) {
         Rprintf("Step 1: Computing initial basins of attraction...\n");
     }
 
-    // Find local extrema
+    // Find local extrema using the same method as R
     auto [lmin_vertices, lmax_vertices] = graph.find_nbr_extrema(y);
 
-    // Compute basins for each extremum
+    // Compute edge length threshold using compute_quantile_edge_length
+    // This matches R's compute.basins.of.attraction which uses edge.length.quantile.thld
+    // to prevent "basin jumping" through long edges
+    double edge_length_thld = graph.compute_quantile_edge_length(params.edge_length_quantile_thld);
+
+    // Compute basins using compute_geodesic_basin (same as R's S_compute_basins_of_attraction)
     std::vector<basin_compact_t> max_basins;
     std::vector<basin_compact_t> min_basins;
 
     // Maximum basins
     for (size_t vertex : lmax_vertices) {
-        auto basin = graph.find_local_extremum_bfs_basin(vertex, y, true);
+        // Use compute_geodesic_basin with with_trajectories=false
+        // Parameters: vertex, y, detect_maxima, edge_length_thld, with_trajectories
+        auto grad_basin = graph.compute_geodesic_basin(vertex, y, true, edge_length_thld, false);
+
+        // Skip invalid extrema (hop_idx == max indicates not a valid local extremum)
+        if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {
+            continue;
+        }
 
         basin_compact_t compact;
         compact.extremum_vertex = vertex;
         compact.extremum_value = y[vertex];
         compact.is_maximum = true;
 
-        // Extract vertices and hop distances from basin_t
-        for (const auto& vi : basin.reachability_map.sorted_vertices) {
-            compact.vertices.push_back(vi.vertex);
-            compact.hop_distances.push_back(static_cast<int>(vi.distance));
+        // Convert gradient_basin_t to basin_compact_t
+        for (const auto& [v, hop_dist] : grad_basin.hop_dist_map) {
+            compact.vertices.push_back(v);
+            compact.hop_distances.push_back(static_cast<int>(hop_dist));
         }
 
-        compact.max_hop_distance = compact.hop_distances.empty()
-            ? 0
-            : *std::max_element(compact.hop_distances.begin(), compact.hop_distances.end());
+        // Sort vertices for consistency
+        std::vector<size_t> indices(compact.vertices.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            return compact.vertices[a] < compact.vertices[b];
+        });
+
+        std::vector<size_t> sorted_vertices(compact.vertices.size());
+        std::vector<int> sorted_hop_distances(compact.hop_distances.size());
+        for (size_t i = 0; i < indices.size(); ++i) {
+            sorted_vertices[i] = compact.vertices[indices[i]];
+            sorted_hop_distances[i] = compact.hop_distances[indices[i]];
+        }
+        compact.vertices = std::move(sorted_vertices);
+        compact.hop_distances = std::move(sorted_hop_distances);
+
+        compact.max_hop_distance = static_cast<int>(grad_basin.hop_idx);
 
         max_basins.push_back(std::move(compact));
     }
 
     // Minimum basins
     for (size_t vertex : lmin_vertices) {
-        auto basin = graph.find_local_extremum_bfs_basin(vertex, y, false);
+        // Parameters: vertex, y, detect_maxima, edge_length_thld, with_trajectories
+        auto grad_basin = graph.compute_geodesic_basin(vertex, y, false, edge_length_thld, false);
+
+        // Skip invalid extrema
+        if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {
+            continue;
+        }
 
         basin_compact_t compact;
         compact.extremum_vertex = vertex;
         compact.extremum_value = y[vertex];
         compact.is_maximum = false;
 
-        for (const auto& vi : basin.reachability_map.sorted_vertices) {
-            compact.vertices.push_back(vi.vertex);
-            compact.hop_distances.push_back(static_cast<int>(vi.distance));
+        for (const auto& [v, hop_dist] : grad_basin.hop_dist_map) {
+            compact.vertices.push_back(v);
+            compact.hop_distances.push_back(static_cast<int>(hop_dist));
         }
 
-        compact.max_hop_distance = compact.hop_distances.empty()
-            ? 0
-            : *std::max_element(compact.hop_distances.begin(), compact.hop_distances.end());
+        // Sort vertices
+        std::vector<size_t> indices(compact.vertices.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            return compact.vertices[a] < compact.vertices[b];
+        });
+
+        std::vector<size_t> sorted_vertices(compact.vertices.size());
+        std::vector<int> sorted_hop_distances(compact.hop_distances.size());
+        for (size_t i = 0; i < indices.size(); ++i) {
+            sorted_vertices[i] = compact.vertices[indices[i]];
+            sorted_hop_distances[i] = compact.hop_distances[indices[i]];
+        }
+        compact.vertices = std::move(sorted_vertices);
+        compact.hop_distances = std::move(sorted_hop_distances);
+
+        compact.max_hop_distance = static_cast<int>(grad_basin.hop_idx);
 
         min_basins.push_back(std::move(compact));
     }
@@ -766,7 +884,8 @@ gfc_result_t compute_gfc(
 
     if (params.apply_geometric_filter) {
         if (verbose) {
-            Rprintf("Step 5: Geometric filtering (hopk < %.2f, deg < %.2f, size >= %d)...\n",
+            Rprintf("Step 5: Geometric filtering (nbrs < %.2f, hopk < %.2f, deg < %.2f, size >= %d)...\n",
+                    params.p_mean_nbrs_dist_threshold,
                     params.p_mean_hopk_dist_threshold,
                     params.p_deg_threshold,
                     params.min_basin_size);
@@ -775,15 +894,27 @@ gfc_result_t compute_gfc(
         int n_max_before = static_cast<int>(max_basins.size());
         int n_min_before = static_cast<int>(min_basins.size());
 
+        // Recompute summaries after merging for accurate percentiles
+        max_summaries = gfc_internal::compute_basin_summaries(
+            graph, max_basins, y, result.y_median, params.hop_k
+        );
+        min_summaries = gfc_internal::compute_basin_summaries(
+            graph, min_basins, y, result.y_median, params.hop_k
+        );
+
+        // Filter maxima
         gfc_internal::filter_by_geometry(
             max_summaries, max_basins,
+            params.p_mean_nbrs_dist_threshold,
             params.p_mean_hopk_dist_threshold,
             params.p_deg_threshold,
             params.min_basin_size
         );
 
+        // Filter minima
         gfc_internal::filter_by_geometry(
             min_summaries, min_basins,
+            params.p_mean_nbrs_dist_threshold,
             params.p_mean_hopk_dist_threshold,
             params.p_deg_threshold,
             params.min_basin_size
@@ -817,7 +948,6 @@ gfc_result_t compute_gfc(
             Rprintf("Step 6: Expanding basins to cover all vertices...\n");
         }
 
-        // Extract vertex sets
         std::vector<std::vector<size_t>> max_vertex_sets(max_basins.size());
         std::vector<std::vector<size_t>> min_vertex_sets(min_basins.size());
 
@@ -835,7 +965,6 @@ gfc_result_t compute_gfc(
             graph, min_vertex_sets, n
         );
 
-        // Count coverage
         int n_covered_max = 0, n_covered_min = 0;
         for (size_t v = 0; v < n; ++v) {
             if (result.expanded_max_assignment[v] >= 0) ++n_covered_max;
@@ -900,16 +1029,13 @@ std::vector<gfc_result_t> compute_gfc_matrix(
 
     #pragma omp parallel for schedule(dynamic) if(n_cores > 1)
     for (int j = 0; j < p; ++j) {
-        // Extract column j
         std::vector<double> y_j(n);
         for (int i = 0; i < n; ++i) {
             y_j[i] = Y(i, j);
         }
 
-        // Compute GFC for this column (verbose = false in parallel)
         results[j] = compute_gfc(graph, y_j, params, false);
 
-        // Progress reporting (only in sequential mode)
         #pragma omp critical
         {
             if (verbose && n_cores == 1 && (j + 1) % progress_interval == 0) {

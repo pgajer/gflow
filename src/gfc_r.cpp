@@ -94,8 +94,8 @@ static SEXP summaries_to_dataframe(
         return s_df;
     }
 
-    // Create columns
-    const int n_cols = 9;
+    // Create columns (11 columns matching R output)
+    const int n_cols = 11;
     SEXP s_df = PROTECT(Rf_allocVector(VECSXP, n_cols));
     SEXP s_colnames = PROTECT(Rf_allocVector(STRSXP, n_cols));
 
@@ -105,23 +105,26 @@ static SEXP summaries_to_dataframe(
     SEXP s_value = PROTECT(Rf_allocVector(REALSXP, n_total));
     SEXP s_rel_value = PROTECT(Rf_allocVector(REALSXP, n_total));
     SEXP s_type = PROTECT(Rf_allocVector(STRSXP, n_total));
+    SEXP s_hop_idx = PROTECT(Rf_allocVector(INTSXP, n_total));
     SEXP s_basin_size = PROTECT(Rf_allocVector(INTSXP, n_total));
-    SEXP s_hop_index = PROTECT(Rf_allocVector(INTSXP, n_total));
-    SEXP s_mean_hopk = PROTECT(Rf_allocVector(REALSXP, n_total));
-    SEXP s_deg_pct = PROTECT(Rf_allocVector(REALSXP, n_total));
+    SEXP s_p_mean_nbrs = PROTECT(Rf_allocVector(REALSXP, n_total));
+    SEXP s_p_mean_hopk = PROTECT(Rf_allocVector(REALSXP, n_total));
+    SEXP s_deg = PROTECT(Rf_allocVector(INTSXP, n_total));
+    SEXP s_p_deg = PROTECT(Rf_allocVector(REALSXP, n_total));
 
     int* p_vertex = INTEGER(s_vertex);
     double* p_value = REAL(s_value);
     double* p_rel_value = REAL(s_rel_value);
+    int* p_hop_idx = INTEGER(s_hop_idx);
     int* p_basin_size = INTEGER(s_basin_size);
-    int* p_hop_index = INTEGER(s_hop_index);
-    double* p_mean_hopk = REAL(s_mean_hopk);
-    double* p_deg_pct = REAL(s_deg_pct);
+    double* p_mean_nbrs = REAL(s_p_mean_nbrs);
+    double* p_mean_hopk = REAL(s_p_mean_hopk);
+    int* p_deg = INTEGER(s_deg);
+    double* p_p_deg = REAL(s_p_deg);
 
     int row = 0;
 
     // Fill minima (m1, m2, ... in order of increasing value)
-    // Sort by value first
     std::vector<size_t> min_order(n_min);
     for (int i = 0; i < n_min; ++i) min_order[i] = i;
     std::sort(min_order.begin(), min_order.end(), [&](size_t a, size_t b) {
@@ -138,10 +141,12 @@ static SEXP summaries_to_dataframe(
         p_value[row] = s.value;
         p_rel_value[row] = s.rel_value;
         SET_STRING_ELT(s_type, row, Rf_mkChar("min"));
+        p_hop_idx[row] = s.hop_index;
         p_basin_size[row] = s.basin_size;
-        p_hop_index[row] = s.hop_index;
-        p_mean_hopk[row] = s.mean_hopk_dist;
-        p_deg_pct[row] = s.deg_percentile;
+        p_mean_nbrs[row] = s.p_mean_nbrs_dist;
+        p_mean_hopk[row] = s.p_mean_hopk_dist;
+        p_deg[row] = s.degree;
+        p_p_deg[row] = s.deg_percentile;
         ++row;
     }
 
@@ -162,10 +167,12 @@ static SEXP summaries_to_dataframe(
         p_value[row] = s.value;
         p_rel_value[row] = s.rel_value;
         SET_STRING_ELT(s_type, row, Rf_mkChar("max"));
+        p_hop_idx[row] = s.hop_index;
         p_basin_size[row] = s.basin_size;
-        p_hop_index[row] = s.hop_index;
-        p_mean_hopk[row] = s.mean_hopk_dist;
-        p_deg_pct[row] = s.deg_percentile;
+        p_mean_nbrs[row] = s.p_mean_nbrs_dist;
+        p_mean_hopk[row] = s.p_mean_hopk_dist;
+        p_deg[row] = s.degree;
+        p_p_deg[row] = s.deg_percentile;
         ++row;
     }
 
@@ -186,17 +193,23 @@ static SEXP summaries_to_dataframe(
     SET_STRING_ELT(s_colnames, col, Rf_mkChar("type"));
     SET_VECTOR_ELT(s_df, col++, s_type);
 
+    SET_STRING_ELT(s_colnames, col, Rf_mkChar("hop.idx"));
+    SET_VECTOR_ELT(s_df, col++, s_hop_idx);
+
     SET_STRING_ELT(s_colnames, col, Rf_mkChar("basin.size"));
     SET_VECTOR_ELT(s_df, col++, s_basin_size);
 
-    SET_STRING_ELT(s_colnames, col, Rf_mkChar("hop.index"));
-    SET_VECTOR_ELT(s_df, col++, s_hop_index);
+    SET_STRING_ELT(s_colnames, col, Rf_mkChar("p.mean.nbrs.dist"));
+    SET_VECTOR_ELT(s_df, col++, s_p_mean_nbrs);
 
     SET_STRING_ELT(s_colnames, col, Rf_mkChar("p.mean.hopk.dist"));
-    SET_VECTOR_ELT(s_df, col++, s_mean_hopk);
+    SET_VECTOR_ELT(s_df, col++, s_p_mean_hopk);
+
+    SET_STRING_ELT(s_colnames, col, Rf_mkChar("deg"));
+    SET_VECTOR_ELT(s_df, col++, s_deg);
 
     SET_STRING_ELT(s_colnames, col, Rf_mkChar("p.deg"));
-    SET_VECTOR_ELT(s_df, col++, s_deg_pct);
+    SET_VECTOR_ELT(s_df, col++, s_p_deg);
 
     // Set names
     Rf_setAttrib(s_df, R_NamesSymbol, s_colnames);
@@ -213,7 +226,7 @@ static SEXP summaries_to_dataframe(
     SEXP s_class = PROTECT(Rf_mkString("data.frame"));
     Rf_setAttrib(s_df, R_ClassSymbol, s_class);
 
-    UNPROTECT(13);  // All allocations
+    UNPROTECT(15);  // All allocations
 
     return s_df;
 }
@@ -362,7 +375,7 @@ static SEXP gfc_result_to_R(const gfc_result_t& result) {
     SET_VECTOR_ELT(s_result, idx++, s_min_memb);
     UNPROTECT(1);
 
-    // expanded.max.assignment - integer vector (1-based, 0 = unassigned)
+    // expanded.max.assignment - integer vector (1-based, NA if unassigned)
     SEXP s_exp_max = PROTECT(Rf_allocVector(INTSXP, n));
     int* p_exp_max = INTEGER(s_exp_max);
     for (int v = 0; v < n; ++v) {
@@ -420,6 +433,7 @@ extern "C" SEXP S_compute_gfc(
     SEXP s_max_rel_value_min,
     SEXP s_max_overlap_threshold,
     SEXP s_min_overlap_threshold,
+    SEXP s_p_mean_nbrs_dist_threshold,
     SEXP s_p_mean_hopk_dist_threshold,
     SEXP s_p_deg_threshold,
     SEXP s_min_basin_size,
@@ -438,6 +452,7 @@ extern "C" SEXP S_compute_gfc(
     params.max_rel_value_min = Rf_asReal(s_max_rel_value_min);
     params.max_overlap_threshold = Rf_asReal(s_max_overlap_threshold);
     params.min_overlap_threshold = Rf_asReal(s_min_overlap_threshold);
+    params.p_mean_nbrs_dist_threshold = Rf_asReal(s_p_mean_nbrs_dist_threshold);
     params.p_mean_hopk_dist_threshold = Rf_asReal(s_p_mean_hopk_dist_threshold);
     params.p_deg_threshold = Rf_asReal(s_p_deg_threshold);
     params.min_basin_size = Rf_asInteger(s_min_basin_size);
@@ -481,6 +496,7 @@ extern "C" SEXP S_compute_gfc_matrix(
     SEXP s_max_rel_value_min,
     SEXP s_max_overlap_threshold,
     SEXP s_min_overlap_threshold,
+    SEXP s_p_mean_nbrs_dist_threshold,
     SEXP s_p_mean_hopk_dist_threshold,
     SEXP s_p_deg_threshold,
     SEXP s_min_basin_size,
@@ -500,6 +516,7 @@ extern "C" SEXP S_compute_gfc_matrix(
     params.max_rel_value_min = Rf_asReal(s_max_rel_value_min);
     params.max_overlap_threshold = Rf_asReal(s_max_overlap_threshold);
     params.min_overlap_threshold = Rf_asReal(s_min_overlap_threshold);
+    params.p_mean_nbrs_dist_threshold = Rf_asReal(s_p_mean_nbrs_dist_threshold);
     params.p_mean_hopk_dist_threshold = Rf_asReal(s_p_mean_hopk_dist_threshold);
     params.p_deg_threshold = Rf_asReal(s_p_deg_threshold);
     params.min_basin_size = Rf_asInteger(s_min_basin_size);
