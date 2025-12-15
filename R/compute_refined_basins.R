@@ -434,6 +434,7 @@ compute.refined.basins <- function(adj.list,
         ## Filter minima
         min.basin.df <- geom.summary[geom.summary$type == "min", ]
         good.min.vertices <- min.basin.df$vertex[
+                                              min.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
                                               min.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
                                               min.basin.df$p.deg < p.deg.threshold &
                                               min.basin.df$basin.size >= min.basin.size

@@ -203,6 +203,31 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 
 static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
+  // gradient flow
+  // =========================================================================
+  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        19},
+  {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 20},
+  {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
+  {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
+  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
+
+  {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
+  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
+  {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
+  {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
+  {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
+  {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
+  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
+  {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
+  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
+  {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6},
+  {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
+  {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
+  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
+  {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
+  {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
+
+  // =========================================================================
   // lslope
   // =========================================================================
   {"S_lslope_gradient_instrumented", (DL_FUNC) &S_lslope_gradient_instrumented, 11},
@@ -349,31 +374,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
   {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
   {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
-
-  // =========================================================================
-  // gradient flow
-  // =========================================================================
-  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        18},
-  {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 19},
-  {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
-  {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
-  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
-
-  {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
-  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
-  {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
-  {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
-  {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
-  {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
-  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
-  {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
-  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
-  {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6},
-  {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
-  {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
-  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
-  {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
-  {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
 
   // =========================================================================
   // stat utilities

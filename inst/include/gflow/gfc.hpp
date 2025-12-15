@@ -60,6 +60,7 @@ struct gfc_params_t {
 
     // Geometric filtering parameters
     bool apply_geometric_filter = true;
+    double p_mean_nbrs_dist_threshold = 0.9;  ///< Percentile threshold for mean neighbor distance (maxima only)
     double p_mean_hopk_dist_threshold = 0.9;  ///< Percentile threshold for hop-k distance
     double p_deg_threshold = 0.9;             ///< Percentile threshold for degree
     int min_basin_size = 10;                  ///< Minimum basin size to retain
@@ -109,15 +110,16 @@ struct extremum_summary_t {
     double rel_value;           ///< Relative to median (value / median)
     bool is_maximum;            ///< Type of extremum
     int basin_size;             ///< Number of vertices in basin
-    int hop_index;              ///< Maximum hop distance in basin
-    double mean_hopk_dist;      ///< Mean hop-k distance (for geometric filter)
+    int hop_index;              ///< Maximum hop distance in basin (hop_idx)
+    double p_mean_nbrs_dist;    ///< Percentile of mean distance to neighbors
+    double p_mean_hopk_dist;    ///< Percentile of mean hop-k distance
     double deg_percentile;      ///< Degree percentile of extremum vertex
-    double mean_nbrs_dist;      ///< Mean distance to neighbors
+    int degree;                 ///< Degree of extremum vertex
 
     extremum_summary_t()
         : vertex(0), value(0.0), rel_value(1.0), is_maximum(true),
-          basin_size(0), hop_index(0), mean_hopk_dist(0.0),
-          deg_percentile(0.0), mean_nbrs_dist(0.0) {}
+          basin_size(0), hop_index(0), p_mean_nbrs_dist(0.0),
+          p_mean_hopk_dist(0.0), deg_percentile(0.0), degree(0) {}
 };
 
 /**
@@ -353,22 +355,27 @@ void cluster_and_merge_basins(
  * @brief Filter basins by geometric characteristics
  *
  * Removes basins whose extrema have:
+ * - Mean neighbor distance percentile >= threshold (maxima only)
  * - Mean hop-k distance percentile >= threshold
  * - Degree percentile >= threshold
  * - Basin size < minimum
  *
  * @param summaries Vector of extremum summaries (modified in place)
  * @param basins Vector of basins (modified in place)
+ * @param p_mean_nbrs_dist_threshold Threshold for neighbor distance percentile (maxima only)
  * @param p_mean_hopk_dist_threshold Threshold for hop-k distance percentile
  * @param p_deg_threshold Threshold for degree percentile
  * @param min_basin_size Minimum basin size
+ * @param is_maximum Whether these are maximum basins
  */
 void filter_by_geometry(
     std::vector<extremum_summary_t>& summaries,
     std::vector<basin_compact_t>& basins,
+    double p_mean_nbrs_dist_threshold,
     double p_mean_hopk_dist_threshold,
     double p_deg_threshold,
-    int min_basin_size
+    int min_basin_size,
+    bool is_maximum
 );
 
 /**
