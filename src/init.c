@@ -65,9 +65,8 @@
 #include "lslope_r.h"
 #include "riem_dcx_posterior_r.h"
 #include "lcor_posterior_r.h"
-#include "wasserstein_weighted_r.h"
-#include "lslope_wasserstein_test_r.h"
 #include "magelo_external_bb.h"
+#include "gfc_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -203,21 +202,6 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
-  // =========================================================================
-  // Weighted Wasserstein distance functions
-  // =========================================================================
-  {"S_wasserstein_distance_weighted",         (DL_FUNC) &S_wasserstein_distance_weighted,         4},
-  {"S_wasserstein_distance_unweighted",       (DL_FUNC) &S_wasserstein_distance_unweighted,       2},
-  {"S_bayesian_bootstrap_wasserstein",        (DL_FUNC) &S_bayesian_bootstrap_wasserstein,        4},
-  {"S_vertex_bayesian_bootstrap_wasserstein", (DL_FUNC) &S_vertex_bayesian_bootstrap_wasserstein, 7},
-
-  // =========================================================================
-  // lslope Wasserstein test functions
-  // =========================================================================
-
-  {"S_lslope_wasserstein_test", (DL_FUNC) &S_lslope_wasserstein_test, 14},
-  {"S_generate_paired_lslope_samples", (DL_FUNC) &S_generate_paired_lslope_samples, 10},
-
   // =========================================================================
   // lslope
   // =========================================================================
@@ -369,6 +353,8 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // gradient flow
   // =========================================================================
+  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        18},
+  {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 19},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
   {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
