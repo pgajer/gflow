@@ -25,9 +25,9 @@ std::vector<std::vector<double>> convert_weight_list_from_R(SEXP s_weight_list);
 // Helper: Convert basin_compact_t to R list
 // ============================================================================
 
-static SEXP basin_compact_to_R(const basin_compact_t& basin) {
-    // Create R list with 5 components
-    const int n_components = 5;
+static SEXP basin_compact_to_R(const basin_compact_t& basin, bool with_trajectories) {
+    // Determine number of components
+    const int n_components = with_trajectories ? 7 : 5;
     SEXP s_basin = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
 
@@ -66,6 +66,61 @@ static SEXP basin_compact_to_R(const basin_compact_t& basin) {
     // max.hop.distance
     SET_STRING_ELT(s_names, idx, Rf_mkChar("max.hop.distance"));
     SET_VECTOR_ELT(s_basin, idx++, Rf_ScalarInteger(basin.max_hop_distance));
+
+    // Trajectory data (only if with_trajectories)
+    if (with_trajectories) {
+        // terminal.extrema (1-based)
+        const int n_terminals = static_cast<int>(basin.terminal_extrema.size());
+        SEXP s_terminals = PROTECT(Rf_allocVector(INTSXP, n_terminals));
+        int* p_terminals = INTEGER(s_terminals);
+        for (int i = 0; i < n_terminals; ++i) {
+            p_terminals[i] = static_cast<int>(basin.terminal_extrema[i]) + 1;
+        }
+        SET_STRING_ELT(s_names, idx, Rf_mkChar("terminal.extrema"));
+        SET_VECTOR_ELT(s_basin, idx++, s_terminals);
+        UNPROTECT(1);
+
+        // trajectory.sets
+        const int n_traj_sets = static_cast<int>(basin.trajectory_sets.size());
+        SEXP s_traj_sets = PROTECT(Rf_allocVector(VECSXP, n_traj_sets));
+
+        for (int i = 0; i < n_traj_sets; ++i) {
+            const trajectory_set_t& traj_set = basin.trajectory_sets[i];
+
+            SEXP s_tset = PROTECT(Rf_allocVector(VECSXP, 2));
+            SEXP s_tset_names = PROTECT(Rf_allocVector(STRSXP, 2));
+            SET_STRING_ELT(s_tset_names, 0, Rf_mkChar("terminal.vertex"));
+            SET_STRING_ELT(s_tset_names, 1, Rf_mkChar("trajectories"));
+            Rf_setAttrib(s_tset, R_NamesSymbol, s_tset_names);
+
+            // terminal.vertex (1-based)
+            SEXP s_tvert = PROTECT(Rf_ScalarInteger(static_cast<int>(traj_set.terminal_vertex) + 1));
+            SET_VECTOR_ELT(s_tset, 0, s_tvert);
+
+            // trajectories (list of integer vectors, 1-based)
+            const int n_trajs = static_cast<int>(traj_set.trajectories.size());
+            SEXP s_trajs = PROTECT(Rf_allocVector(VECSXP, n_trajs));
+            for (int j = 0; j < n_trajs; ++j) {
+                const std::vector<size_t>& traj = traj_set.trajectories[j];
+                const int traj_len = static_cast<int>(traj.size());
+                SEXP s_traj = PROTECT(Rf_allocVector(INTSXP, traj_len));
+                int* p_traj = INTEGER(s_traj);
+                for (int k = 0; k < traj_len; ++k) {
+                    p_traj[k] = static_cast<int>(traj[k]) + 1;
+                }
+                SET_VECTOR_ELT(s_trajs, j, s_traj);
+                UNPROTECT(1);
+            }
+            SET_VECTOR_ELT(s_tset, 1, s_trajs);
+
+            SET_VECTOR_ELT(s_traj_sets, i, s_tset);
+            UNPROTECT(4);  // s_tset, s_tset_names, s_tvert, s_trajs
+        }
+
+        SET_STRING_ELT(s_names, idx, Rf_mkChar("trajectory.sets"));
+        SET_VECTOR_ELT(s_basin, idx++, s_traj_sets);
+        UNPROTECT(1);  // s_traj_sets
+    }
 
     Rf_setAttrib(s_basin, R_NamesSymbol, s_names);
     UNPROTECT(2);  // s_basin, s_names
@@ -305,7 +360,7 @@ static SEXP stage_history_to_dataframe(const std::vector<stage_counts_t>& histor
 // Helper: Convert gfc_result_t to R list
 // ============================================================================
 
-static SEXP gfc_result_to_R(const gfc_result_t& result) {
+static SEXP gfc_result_to_R(const gfc_result_t& result, bool with_trajectories) {
     const int n_components = 10;
     SEXP s_result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
@@ -316,7 +371,7 @@ static SEXP gfc_result_to_R(const gfc_result_t& result) {
     const int n_max = static_cast<int>(result.max_basins.size());
     SEXP s_max_basins = PROTECT(Rf_allocVector(VECSXP, n_max));
     for (int i = 0; i < n_max; ++i) {
-        SET_VECTOR_ELT(s_max_basins, i, basin_compact_to_R(result.max_basins[i]));
+        SET_VECTOR_ELT(s_max_basins, i, basin_compact_to_R(result.max_basins[i], with_trajectories));
     }
     SET_STRING_ELT(s_names, idx, Rf_mkChar("max.basins"));
     SET_VECTOR_ELT(s_result, idx++, s_max_basins);
@@ -326,7 +381,7 @@ static SEXP gfc_result_to_R(const gfc_result_t& result) {
     const int n_min = static_cast<int>(result.min_basins.size());
     SEXP s_min_basins = PROTECT(Rf_allocVector(VECSXP, n_min));
     for (int i = 0; i < n_min; ++i) {
-        SET_VECTOR_ELT(s_min_basins, i, basin_compact_to_R(result.min_basins[i]));
+        SET_VECTOR_ELT(s_min_basins, i, basin_compact_to_R(result.min_basins[i], with_trajectories));
     }
     SET_STRING_ELT(s_names, idx, Rf_mkChar("min.basins"));
     SET_VECTOR_ELT(s_result, idx++, s_min_basins);
@@ -443,6 +498,7 @@ extern "C" SEXP S_compute_gfc(
     SEXP s_apply_minima_clustering,
     SEXP s_apply_geometric_filter,
     SEXP s_hop_k,
+    SEXP s_with_trajectories,
     SEXP s_verbose
 ) {
     // Extract parameters
@@ -462,6 +518,7 @@ extern "C" SEXP S_compute_gfc(
     params.apply_minima_clustering = Rf_asLogical(s_apply_minima_clustering);
     params.apply_geometric_filter = Rf_asLogical(s_apply_geometric_filter);
     params.hop_k = Rf_asInteger(s_hop_k);
+    params.with_trajectories = Rf_asLogical(s_with_trajectories);
 
     bool verbose = Rf_asLogical(s_verbose);
 
@@ -484,7 +541,7 @@ extern "C" SEXP S_compute_gfc(
     gfc_result_t result = compute_gfc(graph, y, params, verbose);
 
     // Convert to R
-    return gfc_result_to_R(result);
+    return gfc_result_to_R(result, params.with_trajectories);
 }
 
 extern "C" SEXP S_compute_gfc_matrix(
@@ -559,7 +616,7 @@ extern "C" SEXP S_compute_gfc_matrix(
     // Convert to R list of results
     SEXP s_results = PROTECT(Rf_allocVector(VECSXP, p));
     for (int j = 0; j < p; ++j) {
-        SET_VECTOR_ELT(s_results, j, gfc_result_to_R(results[j]));
+        SET_VECTOR_ELT(s_results, j, gfc_result_to_R(results[j], false));
     }
 
     // Add names if Y has column names

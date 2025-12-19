@@ -67,6 +67,7 @@
 #include "lcor_posterior_r.h"
 #include "magelo_external_bb.h"
 #include "gfc_r.h"
+#include "gfassoc_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -203,9 +204,20 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 
 static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
+  //  Gradient flow association functions
+  // =========================================================================
+  {"S_gfassoc_membership",      (DL_FUNC) &S_gfassoc_membership,      3},
+  {"S_gfassoc_polarity",        (DL_FUNC) &S_gfassoc_polarity,        4},
+  {"S_gfassoc_association",     (DL_FUNC) &S_gfassoc_association,     3},
+  {"S_gfassoc_basin_character", (DL_FUNC) &S_gfassoc_basin_character, 5},
+  {"S_gfassoc_overlap",         (DL_FUNC) &S_gfassoc_overlap,         3},
+  {"S_gfassoc_deviation",       (DL_FUNC) &S_gfassoc_deviation,       1},
+  {"S_gfcor",                   (DL_FUNC) &S_gfcor,                   8},
+
+  // =========================================================================
   // gradient flow
   // =========================================================================
-  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        19},
+  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        20},
   {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 20},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},

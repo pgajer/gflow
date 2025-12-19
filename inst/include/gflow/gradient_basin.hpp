@@ -28,7 +28,7 @@ struct gradient_basin_t {
 
     // All valid predecessors for complete trajectory reconstruction
     std::unordered_map<size_t, std::vector<size_t>> all_predecessors; // vertex -> all valid predecessors
-	// Complete trajectory enumeration (populated only if requested)
+    // Complete trajectory enumeration (populated only if requested)
     std::vector<trajectory_set_t> trajectory_sets;   // trajectories organized by terminal
 
     std::unordered_map<size_t, double> y_nbhd_bd_map; // boundary vertices -> y value

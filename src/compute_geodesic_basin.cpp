@@ -297,7 +297,7 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
     size_t vertex,
     const std::vector<double>& y,
     bool detect_maxima,
-	double edge_length_thld,
+    double edge_length_thld,
     bool with_trajectories
     ) const {
 
@@ -314,9 +314,9 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
 
     // Step 1: Get geodesic basin using Dijkstra with monotonicity constraints
     basin_t geodesic_basin = find_local_extremum_geodesic_basin(vertex,
-																y,
-																detect_maxima,
-																edge_length_thld);
+                                                                y,
+                                                                detect_maxima,
+                                                                edge_length_thld);
 
     // Step 2: Build hop distance map (for diagnostics and compatibility)
     std::unordered_map<size_t, size_t> hop_map;
@@ -391,7 +391,7 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
 
     result.terminal_extrema = m_terminals;
 
-	#if DEBUG__compute_geodesic_basin
+    #if DEBUG__compute_geodesic_basin
     Rprintf("\n=== Geodesic Basin Structure ===\n");
     Rprintf("Basin vertex: %zu (y=%.6f)\n", vertex, y[vertex]);
     Rprintf("Basin size: %zu vertices\n", geodesic_basin.reachability_map.distances.size());
@@ -399,7 +399,7 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
     Rprintf("m-terminals: %zu\n", m_terminals.size());
     Rprintf("Method: m-terminals with constrained Dijkstra gap-filling\n");
     Rprintf("================================\n\n");
-	#endif
+    #endif
 
     // ========================================================================
     // PHASE 2: BUILD TRAJECTORY SETS WITH M-TERMINAL COVERAGE
@@ -424,11 +424,11 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
         // --------------------------------------------------------------------
         // PHASE 2.1: PRIMARY PATH CONSTRUCTION
         // --------------------------------------------------------------------
-		#if DEBUG__compute_geodesic_basin
+        #if DEBUG__compute_geodesic_basin
         Rprintf("Phase 1: Constructing primary paths from m-terminals...\n");
-		#endif
+        #endif
 
-		for (size_t term : m_terminals) {
+        for (size_t term : m_terminals) {
             // Trace geodesic path from terminal to origin
             std::vector<size_t> path;
             size_t curr = term;
@@ -472,26 +472,26 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
         size_t basin_size = geodesic_basin.reachability_map.distances.size();
 
         #if DEBUG__compute_geodesic_basin
-		size_t initial_coverage = covered_vertices.size();
+        size_t initial_coverage = covered_vertices.size();
         Rprintf("  Primary paths cover %zu/%zu vertices (%.1f%%)\n",
                initial_coverage, basin_size,
                100.0 * initial_coverage / basin_size);
-		#endif
+        #endif
 
-		// Create basin vertex set
-		std::unordered_set<size_t> basin_vertices;
-		for (const auto& [v, dist] : geodesic_basin.reachability_map.distances) {
-			basin_vertices.insert(v);
-		}
+        // Create basin vertex set
+        std::unordered_set<size_t> basin_vertices;
+        for (const auto& [v, dist] : geodesic_basin.reachability_map.distances) {
+            basin_vertices.insert(v);
+        }
 
         // --------------------------------------------------------------------
         // PHASE 2.2: GAP-FILLING VIA CONSTRAINED DIJKSTRA
         // --------------------------------------------------------------------
         if (covered_vertices.size() < basin_size) {
 
-			#if DEBUG__compute_geodesic_basin
-			Rprintf("\nPhase 2: Gap-filling using constrained Dijkstra...\n");
-			#endif
+            #if DEBUG__compute_geodesic_basin
+            Rprintf("\nPhase 2: Gap-filling using constrained Dijkstra...\n");
+            #endif
 
             size_t gap_fill_count = 0;
             size_t no_path_count = 0;
@@ -582,24 +582,24 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
                 }
             }
 
-			#if DEBUG__compute_geodesic_basin
+            #if DEBUG__compute_geodesic_basin
             Rprintf("  Gap-filling added %zu trajectories\n", gap_fill_count);
             if (no_path_count > 0) {
                 Rprintf("  WARNING: %zu vertices have no monotonic path to any m-terminal\n", no_path_count);
             }
             Rprintf("  Final coverage: %zu/%zu vertices (%.1f%%)\n",
                    covered_vertices.size(), basin_size,
-					100.0 * covered_vertices.size() / basin_size);
-			#endif
+                    100.0 * covered_vertices.size() / basin_size);
+            #endif
         }
 
         // ====================================================================
         // FINAL DIAGNOSTICS AND STATISTICS
         // ====================================================================
 
-		#if DEBUG__compute_geodesic_basin
-		size_t final_uncovered = basin_size - covered_vertices.size();
-		Rprintf("\n=== Trajectory Coverage Summary ===\n");
+        #if DEBUG__compute_geodesic_basin
+        size_t final_uncovered = basin_size - covered_vertices.size();
+        Rprintf("\n=== Trajectory Coverage Summary ===\n");
         Rprintf("Basin size: %zu vertices\n", basin_size);
         Rprintf("Covered vertices: %zu\n", covered_vertices.size());
         Rprintf("Uncovered vertices: %zu\n", final_uncovered);
@@ -609,9 +609,9 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
         } else {
             Rprintf("Coverage: %.1f%%\n", 100.0 * covered_vertices.size() / basin_size);
         }
-		#endif
+        #endif
 
-		// Path statistics
+        // Path statistics
         size_t total_paths = 0;
         std::vector<size_t> path_lengths;
         std::vector<size_t> paths_per_terminal;
@@ -630,7 +630,7 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
             std::sort(path_lengths.begin(), path_lengths.end());
             std::sort(paths_per_terminal.begin(), paths_per_terminal.end());
 
-			#if DEBUG__compute_geodesic_basin
+            #if DEBUG__compute_geodesic_basin
             Rprintf("\nPath statistics:\n");
             Rprintf("  Total paths: %zu\n", total_paths);
             Rprintf("  Paths per terminal: min=%zu, median=%zu, max=%zu\n",
@@ -640,13 +640,13 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
             Rprintf("  Path lengths: min=%zu, median=%zu, max=%zu\n",
                    path_lengths.front(),
                    path_lengths[path_lengths.size() / 2],
-					path_lengths.back());
-			#endif
+                    path_lengths.back());
+            #endif
         }
 
-		#if DEBUG__compute_geodesic_basin
+        #if DEBUG__compute_geodesic_basin
         Rprintf("===================================\n\n");
-		#endif
+        #endif
     }
 
     // ========================================================================
