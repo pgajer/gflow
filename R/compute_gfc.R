@@ -53,6 +53,11 @@
 #'   filtering based on hop distance and degree. Default is TRUE.
 #' @param hop.k Parameter for hop-k distance calculation in summary statistics.
 #'   Default is 2.
+#' @param with.trajectories Logical indicating whether to return gradient
+#'   trajectories for each basin. When TRUE, the result includes complete
+#'   trajectory information enabling reconstruction of all gradient flow paths.
+#'   This is computationally more expensive and produces larger output objects.
+#'   Default is FALSE.
 #' @param verbose Logical indicating whether to print progress messages.
 #'   Default is FALSE.
 #'
@@ -151,6 +156,7 @@ compute.gfc <- function(adj.list,
                         apply.minima.clustering = TRUE,
                         apply.geometric.filter = TRUE,
                         hop.k = 2L,
+                        with.trajectories = FALSE,
                         verbose = FALSE) {
 
     ## ========================================================================
@@ -222,6 +228,7 @@ compute.gfc <- function(adj.list,
         as.logical(apply.minima.clustering),
         as.logical(apply.geometric.filter),
         as.integer(hop.k),
+        as.logical(with.trajectories),
         as.logical(verbose),
         PACKAGE = "gflow"
     )
@@ -263,7 +270,8 @@ compute.gfc <- function(adj.list,
         apply.maxima.clustering = apply.maxima.clustering,
         apply.minima.clustering = apply.minima.clustering,
         apply.geometric.filter = apply.geometric.filter,
-        hop.k = hop.k
+        hop.k = hop.k,
+        with.trajectories = with.trajectories
     )
 
     ## ========================================================================
@@ -444,4 +452,303 @@ compute.gfc.matrix <- function(adj.list,
 ## Null-coalescing operator (if not already defined)
 `%||%` <- function(x, y) {
     if (is.null(x)) y else x
+}
+
+
+#' Extract Gradient Trajectories from GFC Result
+#'
+#' @description
+#' Generic function for extracting gradient trajectories from a gradient flow
+#' complex object.
+#'
+#' @param object An object containing gradient flow information.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return Trajectory information, format depends on the method.
+#'
+#' @seealso \code{\link{trajectories.gfc}}
+#'
+#' @export
+trajectories <- function(object, ...) {
+    UseMethod("trajectories")
+}
+
+
+#' Extract Gradient Trajectories from GFC Result
+#'
+#' @description
+#' Extracts gradient trajectories for a specified basin from a GFC result object.
+#' Trajectories are grouped by their terminal vertex (the extremum opposite to
+#' the basin's defining extremum), with classification of terminals as spurious
+#' or non-spurious based on the refined extrema in the GFC.
+#'
+#' @param object A gfc object from \code{compute.gfc()} computed with
+#'   \code{with.trajectories = TRUE}.
+#' @param basin.id Either a character label (e.g., "M1", "m3") or an integer
+#'   vertex index identifying the basin.
+#' @param include.paths Logical indicating whether to include the full
+#'   trajectory paths in the output. Default is TRUE. Set to FALSE for
+#'   summary information only.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return A list with class \code{"gfc_trajectories"} containing:
+#'   \describe{
+#'     \item{extremum}{List with \code{vertex}, \code{value}, \code{type},
+#'       and \code{label} for the basin's defining extremum.}
+#'     \item{terminal.groups}{Named list of trajectory groups, one per terminal
+#'       vertex. Each group contains:
+#'       \describe{
+#'         \item{terminal.vertex}{Integer vertex index of the terminal.}
+#'         \item{terminal.label}{Character label if non-spurious, NA otherwise.}
+#'         \item{terminal.type}{Either "non.spurious" or "spurious".}
+#'         \item{terminal.value}{Function value at the terminal vertex.}
+#'         \item{n.trajectories}{Number of trajectories in this group.}
+#'         \item{mean.length}{Mean trajectory length (number of vertices).}
+#'         \item{trajectories}{List of integer vectors (if include.paths=TRUE).}
+#'       }
+#'     }
+#'     \item{n.terminals}{Total number of terminal vertices.}
+#'     \item{n.spurious.terminals}{Number of spurious terminal vertices.}
+#'     \item{n.trajectories}{Total number of trajectories across all groups.}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
+#'                    with.trajectories = TRUE)
+#'
+#' ## Extract trajectories for maximum basin M1
+#' traj.M1 <- trajectories(gfc, "M1")
+#' print(traj.M1)
+#'
+#' ## Examine trajectories starting from non-spurious minimum m3
+#' traj.M1$terminal.groups$m3$trajectories
+#'
+#' ## Summary only (no path data)
+#' traj.M1.summary <- trajectories(gfc, "M1", include.paths = FALSE)
+#' }
+#'
+#' @seealso \code{\link{compute.gfc}} for computing GFC with trajectories
+#'
+#' @export
+trajectories.gfc <- function(object, basin.id, include.paths = TRUE, ...) {
+
+    ## ========================================================================
+    ## Validate input
+    ## ========================================================================
+
+    if (!inherits(object, "gfc")) {
+        stop("object must be of class 'gfc'")
+    }
+
+    ## Check that trajectories were computed
+    sample.basin <- NULL
+    if (length(object$max.basins) > 0) {
+        sample.basin <- object$max.basins[[1]]
+    } else if (length(object$min.basins) > 0) {
+        sample.basin <- object$min.basins[[1]]
+    }
+
+    if (is.null(sample.basin) ||
+        is.null(sample.basin$trajectory.sets)) {
+        stop("GFC object does not contain trajectory data. ",
+             "Recompute with with.trajectories = TRUE")
+    }
+
+    ## ========================================================================
+    ## Resolve basin.id to basin object and metadata
+    ## ========================================================================
+
+    basin <- NULL
+    basin.label <- NULL
+    basin.type <- NULL
+
+    if (is.character(basin.id)) {
+        ## Label-based lookup
+        basin.label <- basin.id
+
+        ## Determine type from label pattern
+        if (grepl("^M[0-9]+$", basin.id)) {
+            basin.type <- "max"
+            idx <- which(names(object$max.basins) == basin.id)
+            if (length(idx) == 1) {
+                basin <- object$max.basins[[idx]]
+            }
+        } else if (grepl("^m[0-9]+$", basin.id)) {
+            basin.type <- "min"
+            idx <- which(names(object$min.basins) == basin.id)
+            if (length(idx) == 1) {
+                basin <- object$min.basins[[idx]]
+            }
+        }
+
+        if (is.null(basin)) {
+            stop(sprintf("Basin '%s' not found. Available basins: %s",
+                         basin.id,
+                         paste(c(names(object$max.basins),
+                                 names(object$min.basins)),
+                               collapse = ", ")))
+        }
+
+    } else if (is.numeric(basin.id)) {
+        ## Vertex-based lookup
+        vertex.id <- as.integer(basin.id)
+
+        ## Search in max.basins
+        for (i in seq_along(object$max.basins)) {
+            if (object$max.basins[[i]]$vertex == vertex.id) {
+                basin <- object$max.basins[[i]]
+                basin.label <- names(object$max.basins)[i]
+                basin.type <- "max"
+                break
+            }
+        }
+
+        ## Search in min.basins if not found
+        if (is.null(basin)) {
+            for (i in seq_along(object$min.basins)) {
+                if (object$min.basins[[i]]$vertex == vertex.id) {
+                    basin <- object$min.basins[[i]]
+                    basin.label <- names(object$min.basins)[i]
+                    basin.type <- "min"
+                    break
+                }
+            }
+        }
+
+        if (is.null(basin)) {
+            stop(sprintf("Vertex %d is not a basin extremum in this GFC",
+                         vertex.id))
+        }
+
+    } else {
+        stop("basin.id must be either a character label or numeric vertex index")
+    }
+
+    ## ========================================================================
+    ## Build set of non-spurious extrema for terminal classification
+    ## ========================================================================
+
+    ## Non-spurious extrema are those in the GFC summary
+    non.spurious.vertices <- object$summary$vertex
+    non.spurious.labels <- object$summary$label
+    names(non.spurious.labels) <- as.character(non.spurious.vertices)
+
+    ## Determine expected terminal type (opposite of basin type)
+    expected.terminal.type <- if (basin.type == "max") "min" else "max"
+
+    ## ========================================================================
+    ## Process trajectory sets
+    ## ========================================================================
+
+    terminal.groups <- list()
+    total.trajectories <- 0
+
+    for (traj.set in basin$trajectory.sets) {
+
+        terminal.vertex <- traj.set$terminal.vertex
+        terminal.vertex.char <- as.character(terminal.vertex)
+
+        ## Classify terminal
+        if (terminal.vertex %in% non.spurious.vertices) {
+            terminal.label <- non.spurious.labels[terminal.vertex.char]
+            terminal.type <- "non.spurious"
+            group.name <- terminal.label
+        } else {
+            terminal.label <- NA_character_
+            terminal.type <- "spurious"
+            group.name <- paste0("spurious.", terminal.vertex)
+        }
+
+        ## Get terminal value from fitted values if available
+        ## (We don't have y in the gfc object, so use basin info or NA)
+        terminal.value <- NA_real_
+
+        ## Compute trajectory statistics
+        n.traj <- length(traj.set$trajectories)
+        total.trajectories <- total.trajectories + n.traj
+
+        traj.lengths <- sapply(traj.set$trajectories, length)
+        mean.length <- if (n.traj > 0) mean(traj.lengths) else NA_real_
+
+        ## Build group entry
+        group <- list(
+            terminal.vertex = terminal.vertex,
+            terminal.label = terminal.label,
+            terminal.type = terminal.type,
+            terminal.value = terminal.value,
+            n.trajectories = n.traj,
+            mean.length = mean.length
+        )
+
+        if (include.paths) {
+            group$trajectories <- traj.set$trajectories
+        }
+
+        terminal.groups[[group.name]] <- group
+    }
+
+    ## ========================================================================
+    ## Build result
+    ## ========================================================================
+
+    n.terminals <- length(terminal.groups)
+    n.spurious <- sum(sapply(terminal.groups, function(g) g$terminal.type == "spurious"))
+
+    result <- list(
+        extremum = list(
+            vertex = basin$vertex,
+            value = basin$value,
+            type = basin.type,
+            label = basin.label
+        ),
+        terminal.groups = terminal.groups,
+        n.terminals = n.terminals,
+        n.spurious.terminals = n.spurious,
+        n.trajectories = total.trajectories
+    )
+
+    class(result) <- c("gfc_trajectories", "list")
+
+    return(result)
+}
+
+
+#' Print Method for GFC Trajectories
+#'
+#' @param x A gfc_trajectories object from trajectories.gfc()
+#' @param ... Additional arguments (unused)
+#'
+#' @export
+print.gfc_trajectories <- function(x, ...) {
+
+    cat("GFC Trajectories\n")
+    cat("================\n\n")
+
+    cat(sprintf("Basin: %s (vertex %d, %s, value = %.4f)\n",
+                x$extremum$label,
+                x$extremum$vertex,
+                x$extremum$type,
+                x$extremum$value))
+
+    cat(sprintf("\nTerminal vertices: %d (%d non-spurious, %d spurious)\n",
+                x$n.terminals,
+                x$n.terminals - x$n.spurious.terminals,
+                x$n.spurious.terminals))
+
+    cat(sprintf("Total trajectories: %d\n\n", x$n.trajectories))
+
+    if (length(x$terminal.groups) > 0) {
+        cat("Terminal groups:\n")
+
+        for (name in names(x$terminal.groups)) {
+            g <- x$terminal.groups[[name]]
+            status <- if (g$terminal.type == "spurious") "[spurious]" else ""
+            cat(sprintf("  %s (v%d) %s: %d trajectories, mean length %.1f\n",
+                        name, g$terminal.vertex, status,
+                        g$n.trajectories, g$mean.length))
+        }
+    }
+
+    invisible(x)
 }

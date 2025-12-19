@@ -61,6 +61,7 @@ SEXP S_compute_gfc(
     SEXP s_apply_minima_clustering,
     SEXP s_apply_geometric_filter,
     SEXP s_hop_k,
+	SEXP s_with_trajectories,
     SEXP s_verbose
 );
 

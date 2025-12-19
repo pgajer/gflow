@@ -682,9 +682,8 @@ gfc_result_t compute_gfc(
 
     // Maximum basins
     for (size_t vertex : lmax_vertices) {
-        // Use compute_geodesic_basin with with_trajectories=false
         // Parameters: vertex, y, detect_maxima, edge_length_thld, with_trajectories
-        auto grad_basin = graph.compute_geodesic_basin(vertex, y, true, edge_length_thld, false);
+        auto grad_basin = graph.compute_geodesic_basin(vertex, y, true, edge_length_thld, params.with_trajectories);
 
         // Skip invalid extrema (hop_idx == max indicates not a valid local extremum)
         if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {
@@ -720,13 +719,19 @@ gfc_result_t compute_gfc(
 
         compact.max_hop_distance = static_cast<int>(grad_basin.hop_idx);
 
+        // Copy trajectory data if requested
+        if (params.with_trajectories) {
+            compact.trajectory_sets = std::move(grad_basin.trajectory_sets);
+            compact.terminal_extrema = std::move(grad_basin.terminal_extrema);
+        }
+
         max_basins.push_back(std::move(compact));
     }
 
     // Minimum basins
     for (size_t vertex : lmin_vertices) {
         // Parameters: vertex, y, detect_maxima, edge_length_thld, with_trajectories
-        auto grad_basin = graph.compute_geodesic_basin(vertex, y, false, edge_length_thld, false);
+        auto grad_basin = graph.compute_geodesic_basin(vertex, y, false, edge_length_thld, params.with_trajectories);
 
         // Skip invalid extrema
         if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {

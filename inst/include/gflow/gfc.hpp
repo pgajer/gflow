@@ -27,6 +27,8 @@
 
 #include <Eigen/Core>
 
+#include "gradient_basin.hpp" // trajectory_set_t
+
 // Forward declaration
 struct set_wgraph_t;
 
@@ -70,6 +72,8 @@ struct gfc_params_t {
 
     // Auxiliary parameters
     int hop_k = 2;  ///< Hop distance for summary statistics
+    bool with_trajectories = false;
+    int max_chain_depth = 5;
 
     // Default constructor with sensible defaults
     gfc_params_t() = default;
@@ -93,6 +97,10 @@ struct basin_compact_t {
     std::vector<size_t> vertices;      ///< Basin member vertices (0-based)
     std::vector<int> hop_distances;    ///< Hop distance from extremum for each vertex
     int max_hop_distance;              ///< Maximum hop distance in basin
+
+    // Trajectory data (only populated when with_trajectories=true)
+    std::vector<trajectory_set_t> trajectory_sets;
+    std::vector<size_t> terminal_extrema;
 
     basin_compact_t()
         : extremum_vertex(0), extremum_value(0.0), is_maximum(true), max_hop_distance(0) {}
@@ -141,9 +149,33 @@ struct stage_counts_t {
           n_min_before(min_b), n_min_after(min_a) {}
 };
 
-// ============================================================================
-// Result Structures
-// ============================================================================
+/**
+ * @brief A complete trajectory connecting a non-spurious minimum to a
+ *        non-spurious maximum, potentially passing through spurious extrema.
+ *
+ * The path vector contains vertices from min_vertex to max_vertex, following
+ * the gradient flow direction (ascending from minimum to maximum).
+ */
+struct joined_trajectory_t {
+    size_t min_vertex;                          ///< Non-spurious local minimum (start)
+    size_t max_vertex;                          ///< Non-spurious local maximum (end)
+    std::vector<size_t> path;                   ///< Full vertex sequence from min to max
+    std::vector<size_t> intermediate_extrema;   ///< Spurious extrema traversed (in order from min to max)
+    double total_change;                        ///< y[max] - y[min]
+    double path_length;                         ///< Sum of edge weights along path
+};
+
+/**
+ * @brief Represents a chain from a spurious extremum to a non-spurious one.
+ *
+ * Used during the recursive extension process to find paths from spurious
+ * minima back to non-spurious minima (or spurious maxima to non-spurious maxima).
+ */
+struct extension_chain_t {
+    size_t target_vertex;                       ///< Non-spurious extremum reached
+    std::vector<size_t> extension_path;         ///< Path from target to starting spurious extremum
+    std::vector<size_t> intermediates;          ///< Spurious extrema traversed in chain
+};
 
 /**
  * @brief Complete GFC result for a single function
@@ -179,6 +211,12 @@ struct gfc_result_t {
 
     // Parameters used (for reproducibility)
     gfc_params_t params;
+
+    // Joined trajectories (only populated when with_trajectories=true)
+    std::vector<joined_trajectory_t> joined_trajectories;
+
+    // Cell map: (min_vertex, max_vertex) -> indices into joined_trajectories
+    std::map<std::pair<size_t, size_t>, std::vector<size_t>> cell_map;
 
     gfc_result_t() : n_vertices(0), y_median(0.0) {}
 };
@@ -305,6 +343,98 @@ std::vector<gfc_result_t> compute_gfc_matrix(
     int n_cores = 1,
     bool verbose = false
 );
+
+// ============================================================================
+// Trajectory Joining Functions
+// ============================================================================
+
+/**
+ * @brief Join paths by concatenating at a shared vertex
+ *
+ * @param path1 First path (ends at connection point)
+ * @param path2 Second path (starts at connection point)
+ * @return Joined path with connection point appearing once
+ */
+std::vector<size_t> join_paths(
+    const std::vector<size_t>& path1,
+    const std::vector<size_t>& path2
+);
+
+/**
+ * @brief Reverse a path
+ */
+std::vector<size_t> reverse_path(const std::vector<size_t>& path);
+
+/**
+ * @brief Compute sum of edge weights along a path
+ */
+double compute_path_length(
+    const set_wgraph_t& graph,
+    const std::vector<size_t>& path
+);
+
+/**
+ * @brief Build cell map from joined trajectories
+ *
+ * @param joined_trajectories Vector of all joined trajectories
+ * @return Map from (min_vertex, max_vertex) pairs to trajectory indices
+ */
+std::map<std::pair<size_t, size_t>, std::vector<size_t>> build_cell_map(
+    const std::vector<joined_trajectory_t>& joined_trajectories
+);
+
+/**
+ * @brief Find extension chains from a spurious extremum to non-spurious targets
+ *
+ * Recursively explores basins of spurious extrema to find paths to non-spurious extrema.
+ *
+ * @param spurious_vertex Starting spurious extremum
+ * @param is_min True if spurious_vertex is a minimum
+ * @param all_max_basins Map of all maximum basins (including spurious)
+ * @param all_min_basins Map of all minimum basins (including spurious)
+ * @param non_spurious_targets Set of non-spurious extrema of the target type
+ * @param depth_remaining Maximum recursion depth
+ * @param visited Set of already-visited vertices (for cycle detection)
+ * @return Vector of extension chains found
+ */
+std::vector<extension_chain_t> find_extension_chains(
+    size_t spurious_vertex,
+    bool is_min,
+    const std::unordered_map<size_t, gradient_basin_t>& all_max_basins,
+    const std::unordered_map<size_t, gradient_basin_t>& all_min_basins,
+    const std::unordered_set<size_t>& non_spurious_targets,
+    int depth_remaining,
+    std::unordered_set<size_t> visited = {}
+);
+
+/**
+ * @brief Compute all joined trajectories from basins
+ *
+ * For each trajectory in a non-spurious maximum's basin:
+ * - If terminal is non-spurious minimum: use directly
+ * - If terminal is spurious minimum: extend via chain finding
+ *
+ * @param graph The weighted graph
+ * @param y Function values
+ * @param all_max_basins_full Full gradient basins for all maxima
+ * @param all_min_basins_full Full gradient basins for all minima
+ * @param non_spurious_max Set of non-spurious maximum vertices
+ * @param non_spurious_min Set of non-spurious minimum vertices
+ * @param max_chain_depth Maximum depth for extension chain search
+ * @param verbose Print progress information
+ * @return Vector of joined trajectories
+ */
+std::vector<joined_trajectory_t> compute_joined_trajectories(
+    const set_wgraph_t& graph,
+    const std::vector<double>& y,
+    const std::unordered_map<size_t, gradient_basin_t>& all_max_basins_full,
+    const std::unordered_map<size_t, gradient_basin_t>& all_min_basins_full,
+    const std::unordered_set<size_t>& non_spurious_max,
+    const std::unordered_set<size_t>& non_spurious_min,
+    int max_chain_depth,
+    bool verbose
+);
+
 
 // ============================================================================
 // Internal Pipeline Functions (exposed for testing)
