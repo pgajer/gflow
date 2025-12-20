@@ -33,6 +33,8 @@
 #include "gradient_basin.hpp"
 #include "lcor.hpp"
 #include "lslope.hpp"
+#include "gfc.hpp"
+#include "se_tree.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -323,6 +325,47 @@ struct set_wgraph_t {
 	// graph gradient flow related functions
 	//
 	// ----------------------------------------------------------------
+	std::unordered_map<size_t, std::unordered_map<size_t, double>>
+	compute_edge_length_weights(
+		double bandwidth
+		) const;
+
+	std::vector<double> compute_vertex_density() const;
+
+	std::pair<size_t, bool> find_modulated_gradient_neighbor(
+		size_t v,
+		const std::vector<double>& y,
+		bool ascending,
+		gflow_modulation_t modulation,
+		const std::vector<double>& density,
+		const std::unordered_map<size_t, std::unordered_map<size_t, double>>& edge_weights
+		) const;
+
+	bbasin_t compute_single_basin(
+    size_t extremum_vertex,
+    const std::vector<double>& y,
+    bool is_maximum,
+    gflow_modulation_t modulation,
+    const std::vector<double>& density,
+    const std::unordered_map<size_t, std::unordered_map<size_t, double>>& edge_weights
+		) const;
+
+	std::unordered_map<size_t, bbasin_t> compute_gfc_basins(
+		const std::vector<double>& y,
+		const gfc_basin_params_t& params,
+		bool verbose
+		) const;
+
+	se_tree_t build_se_tree(
+		size_t root_vertex,
+		const std::unordered_map<size_t, bbasin_t>& basins,
+		const std::unordered_set<size_t>& spurious_min,
+		const std::unordered_set<size_t>& spurious_max,
+		bool verbose
+		) const;
+
+	// ------------------------------------------------------------------------
+
 	monotonic_reachability_map_t compute_monotonic_reachability_map(
 		size_t ref_vertex,
 		const std::vector<double>& y,
