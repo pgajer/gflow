@@ -129,6 +129,120 @@ static SEXP basin_compact_to_R(const basin_compact_t& basin, bool with_trajector
 }
 
 // ============================================================================
+// Helper: Convert single joined trajectory to R list
+// ============================================================================
+
+static SEXP joined_trajectory_to_R(const joined_trajectory_t& jt) {
+    const int n_components = 6;
+    SEXP s_traj = PROTECT(Rf_allocVector(VECSXP, n_components));
+    SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
+
+    int idx = 0;
+
+    // min.vertex (1-based)
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("min.vertex"));
+    SET_VECTOR_ELT(s_traj, idx++, Rf_ScalarInteger(static_cast<int>(jt.min_vertex) + 1));
+
+    // max.vertex (1-based)
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("max.vertex"));
+    SET_VECTOR_ELT(s_traj, idx++, Rf_ScalarInteger(static_cast<int>(jt.max_vertex) + 1));
+
+    // path (integer vector, 1-based)
+    const int path_len = static_cast<int>(jt.path.size());
+    SEXP s_path = PROTECT(Rf_allocVector(INTSXP, path_len));
+    int* p_path = INTEGER(s_path);
+    for (int i = 0; i < path_len; ++i) {
+        p_path[i] = static_cast<int>(jt.path[i]) + 1;
+    }
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("path"));
+    SET_VECTOR_ELT(s_traj, idx++, s_path);
+    UNPROTECT(1);
+
+    // intermediate.extrema (integer vector, 1-based)
+    const int n_inter = static_cast<int>(jt.intermediate_extrema.size());
+    SEXP s_inter = PROTECT(Rf_allocVector(INTSXP, n_inter));
+    int* p_inter = INTEGER(s_inter);
+    for (int i = 0; i < n_inter; ++i) {
+        p_inter[i] = static_cast<int>(jt.intermediate_extrema[i]) + 1;
+    }
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("intermediate.extrema"));
+    SET_VECTOR_ELT(s_traj, idx++, s_inter);
+    UNPROTECT(1);
+
+    // total.change
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("total.change"));
+    SET_VECTOR_ELT(s_traj, idx++, Rf_ScalarReal(jt.total_change));
+
+    // path.length
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("path.length"));
+    SET_VECTOR_ELT(s_traj, idx++, Rf_ScalarReal(jt.path_length));
+
+    Rf_setAttrib(s_traj, R_NamesSymbol, s_names);
+    UNPROTECT(2);  // s_traj, s_names
+
+    return s_traj;
+}
+
+// ============================================================================
+// Helper: Convert all joined trajectories to R list
+// ============================================================================
+
+static SEXP joined_trajectories_to_R(const std::vector<joined_trajectory_t>& trajectories) {
+    const int n = static_cast<int>(trajectories.size());
+    SEXP s_list = PROTECT(Rf_allocVector(VECSXP, n));
+
+    for (int i = 0; i < n; ++i) {
+        SET_VECTOR_ELT(s_list, i, joined_trajectory_to_R(trajectories[i]));
+    }
+
+    UNPROTECT(1);
+    return s_list;
+}
+
+// ============================================================================
+// Helper: Convert cell map to R named list
+// ============================================================================
+
+/**
+ * Converts the cell map to an R named list where names are "min_vertex-max_vertex"
+ * and values are integer vectors of trajectory indices (1-based).
+ */
+static SEXP cell_map_to_R(
+    const std::map<std::pair<size_t, size_t>, std::vector<size_t>>& cell_map
+) {
+    const int n_cells = static_cast<int>(cell_map.size());
+    SEXP s_list = PROTECT(Rf_allocVector(VECSXP, n_cells));
+    SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_cells));
+
+    int idx = 0;
+    for (const auto& [key, indices] : cell_map) {
+        // Create name: "minVertex-maxVertex" (1-based)
+        char name_buf[64];
+        snprintf(name_buf, sizeof(name_buf), "%d-%d",
+                 static_cast<int>(key.first) + 1,
+                 static_cast<int>(key.second) + 1);
+        SET_STRING_ELT(s_names, idx, Rf_mkChar(name_buf));
+
+        // Create integer vector of indices (1-based)
+        const int n_idx = static_cast<int>(indices.size());
+        SEXP s_indices = PROTECT(Rf_allocVector(INTSXP, n_idx));
+        int* p = INTEGER(s_indices);
+        for (int i = 0; i < n_idx; ++i) {
+            p[i] = static_cast<int>(indices[i]) + 1;
+        }
+        SET_VECTOR_ELT(s_list, idx, s_indices);
+        UNPROTECT(1);
+
+        ++idx;
+    }
+
+    Rf_setAttrib(s_list, R_NamesSymbol, s_names);
+    UNPROTECT(2);
+
+    return s_list;
+}
+
+// ============================================================================
 // Helper: Convert extremum_summary_t to R data frame row
 // ============================================================================
 
@@ -360,18 +474,22 @@ static SEXP stage_history_to_dataframe(const std::vector<stage_counts_t>& histor
 // Helper: Convert gfc_result_t to R list
 // ============================================================================
 
-static SEXP gfc_result_to_R(const gfc_result_t& result, bool with_trajectories) {
-    const int n_components = 10;
+static SEXP gfc_result_to_R(const gfc_result_t& result) {
+    // Determine number of components (12 if trajectories, 10 otherwise)
+    const bool has_trajectories = !result.joined_trajectories.empty();
+    const int n_components = has_trajectories ? 12 : 10;
+
     SEXP s_result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
 
     int idx = 0;
+    const bool with_traj = result.params.with_trajectories;
 
     // max.basins - list of basins
     const int n_max = static_cast<int>(result.max_basins.size());
     SEXP s_max_basins = PROTECT(Rf_allocVector(VECSXP, n_max));
     for (int i = 0; i < n_max; ++i) {
-        SET_VECTOR_ELT(s_max_basins, i, basin_compact_to_R(result.max_basins[i], with_trajectories));
+        SET_VECTOR_ELT(s_max_basins, i, basin_compact_to_R(result.max_basins[i], with_traj));
     }
     SET_STRING_ELT(s_names, idx, Rf_mkChar("max.basins"));
     SET_VECTOR_ELT(s_result, idx++, s_max_basins);
@@ -381,7 +499,7 @@ static SEXP gfc_result_to_R(const gfc_result_t& result, bool with_trajectories) 
     const int n_min = static_cast<int>(result.min_basins.size());
     SEXP s_min_basins = PROTECT(Rf_allocVector(VECSXP, n_min));
     for (int i = 0; i < n_min; ++i) {
-        SET_VECTOR_ELT(s_min_basins, i, basin_compact_to_R(result.min_basins[i], with_trajectories));
+        SET_VECTOR_ELT(s_min_basins, i, basin_compact_to_R(result.min_basins[i], with_traj));
     }
     SET_STRING_ELT(s_names, idx, Rf_mkChar("min.basins"));
     SET_VECTOR_ELT(s_result, idx++, s_min_basins);
@@ -468,6 +586,20 @@ static SEXP gfc_result_to_R(const gfc_result_t& result, bool with_trajectories) 
     SET_STRING_ELT(s_names, idx, Rf_mkChar("y.median"));
     SET_VECTOR_ELT(s_result, idx++, Rf_ScalarReal(result.y_median));
 
+    // NEW: joined.trajectories (if available)
+    if (has_trajectories) {
+        SEXP s_joined = PROTECT(joined_trajectories_to_R(result.joined_trajectories));
+        SET_STRING_ELT(s_names, idx, Rf_mkChar("joined.trajectories"));
+        SET_VECTOR_ELT(s_result, idx++, s_joined);
+        UNPROTECT(1);
+
+        // NEW: cell.map
+        SEXP s_cell_map = PROTECT(cell_map_to_R(result.cell_map));
+        SET_STRING_ELT(s_names, idx, Rf_mkChar("cell.map"));
+        SET_VECTOR_ELT(s_result, idx++, s_cell_map);
+        UNPROTECT(1);
+    }
+
     Rf_setAttrib(s_result, R_NamesSymbol, s_names);
 
     UNPROTECT(2);  // s_result, s_names
@@ -499,6 +631,7 @@ extern "C" SEXP S_compute_gfc(
     SEXP s_apply_geometric_filter,
     SEXP s_hop_k,
     SEXP s_with_trajectories,
+    SEXP s_max_chain_depth,
     SEXP s_verbose
 ) {
     // Extract parameters
@@ -519,6 +652,7 @@ extern "C" SEXP S_compute_gfc(
     params.apply_geometric_filter = Rf_asLogical(s_apply_geometric_filter);
     params.hop_k = Rf_asInteger(s_hop_k);
     params.with_trajectories = Rf_asLogical(s_with_trajectories);
+    params.max_chain_depth = Rf_asInteger(s_max_chain_depth);
 
     bool verbose = Rf_asLogical(s_verbose);
 
@@ -541,7 +675,7 @@ extern "C" SEXP S_compute_gfc(
     gfc_result_t result = compute_gfc(graph, y, params, verbose);
 
     // Convert to R
-    return gfc_result_to_R(result, params.with_trajectories);
+    return gfc_result_to_R(result);
 }
 
 extern "C" SEXP S_compute_gfc_matrix(
@@ -616,7 +750,7 @@ extern "C" SEXP S_compute_gfc_matrix(
     // Convert to R list of results
     SEXP s_results = PROTECT(Rf_allocVector(VECSXP, p));
     for (int j = 0; j < p; ++j) {
-        SET_VECTOR_ELT(s_results, j, gfc_result_to_R(results[j], false));
+        SET_VECTOR_ELT(s_results, j, gfc_result_to_R(results[j]));
     }
 
     // Add names if Y has column names
@@ -631,4 +765,83 @@ extern "C" SEXP S_compute_gfc_matrix(
     UNPROTECT(1);
 
     return s_results;
+}
+
+void debug_extension_search(
+    size_t query_vertex,
+    bool query_is_min,
+    const std::unordered_map<size_t, gradient_basin_t>& all_max_basins,
+    const std::unordered_map<size_t, gradient_basin_t>& all_min_basins,
+    const std::unordered_set<size_t>& non_spurious_max,
+    const std::unordered_set<size_t>& non_spurious_min,
+    int max_depth
+    );
+
+extern "C" SEXP S_debug_extension_search(
+    SEXP s_adj_list,
+    SEXP s_weight_list,
+    SEXP s_y,
+    SEXP s_query_vertex,      // 1-based
+    SEXP s_query_is_min,
+    SEXP s_edge_length_quantile_thld,
+    SEXP s_max_depth,
+    SEXP s_non_spurious_max,  // 1-based integer vector
+    SEXP s_non_spurious_min   // 1-based integer vector
+) {
+    // Convert inputs
+    auto adj_list = convert_adj_list_from_R(s_adj_list);
+    auto weight_list = convert_weight_list_from_R(s_weight_list);
+    set_wgraph_t graph(adj_list, weight_list);
+
+    const int n = LENGTH(s_y);
+    std::vector<double> y(n);
+    const double* p_y = REAL(s_y);
+    for (int i = 0; i < n; ++i) y[i] = p_y[i];
+
+    size_t query_vertex = static_cast<size_t>(Rf_asInteger(s_query_vertex) - 1);
+    bool query_is_min = Rf_asLogical(s_query_is_min);
+    double edge_thld = graph.compute_quantile_edge_length(Rf_asReal(s_edge_length_quantile_thld));
+    int max_depth = Rf_asInteger(s_max_depth);
+
+    // Build non-spurious sets
+    std::unordered_set<size_t> non_spurious_max, non_spurious_min;
+    int* p_max = INTEGER(s_non_spurious_max);
+    for (int i = 0; i < LENGTH(s_non_spurious_max); ++i) {
+        non_spurious_max.insert(static_cast<size_t>(p_max[i] - 1));
+    }
+    int* p_min = INTEGER(s_non_spurious_min);
+    for (int i = 0; i < LENGTH(s_non_spurious_min); ++i) {
+        non_spurious_min.insert(static_cast<size_t>(p_min[i] - 1));
+    }
+
+    // Compute ALL basins with trajectories
+    auto [lmin_vertices, lmax_vertices] = graph.find_nbr_extrema(y);
+
+    std::unordered_map<size_t, gradient_basin_t> all_max_basins, all_min_basins;
+
+    for (size_t v : lmax_vertices) {
+        auto gb = graph.compute_geodesic_basin(v, y, true, edge_thld, true);
+        if (gb.hop_idx != std::numeric_limits<size_t>::max()) {
+            all_max_basins[v] = std::move(gb);
+        }
+    }
+    for (size_t v : lmin_vertices) {
+        auto gb = graph.compute_geodesic_basin(v, y, false, edge_thld, true);
+        if (gb.hop_idx != std::numeric_limits<size_t>::max()) {
+            all_min_basins[v] = std::move(gb);
+        }
+    }
+
+    Rprintf("Computed %zu max basins, %zu min basins\n",
+            all_max_basins.size(), all_min_basins.size());
+
+    // Run debug
+    debug_extension_search(
+        query_vertex, query_is_min,
+        all_max_basins, all_min_basins,
+        non_spurious_max, non_spurious_min,
+        max_depth
+    );
+
+    return R_NilValue;
 }

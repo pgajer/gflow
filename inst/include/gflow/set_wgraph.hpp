@@ -1540,6 +1540,8 @@ struct set_wgraph_t {
         double winsorize_quantile
 		) const;
 
+	double get_edge_weight(size_t u, size_t v) const;
+
 private:
 	// Cache for computation - updated to use shortest_paths_t
 	mutable std::unordered_map<size_t, shortest_paths_t> paths_cache;
@@ -1553,8 +1555,6 @@ private:
 		size_t center_vertex,
 		const kernel_params_t& params
 		) const;
-
-	double get_edge_weight(size_t u, size_t v) const;
 
 	// Helper methods for gradient flow computation
 	std::optional<std::pair<size_t, bool>> check_local_extremum(
