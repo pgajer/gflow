@@ -232,8 +232,8 @@ compute.gfc <- function(adj.list,
         stop("with.trajectories must be a single logical value")
     }
 
-    if (!is.numeric(max.chain.depth) || max.chain.depth < 1) {
-        stop("max.chain.depth must be a positive integer")
+    if (!is.numeric(max.chain.depth) || max.chain.depth < 0) {
+        stop("max.chain.depth must be a non-negative integer")
     }
 
     ## ========================================================================

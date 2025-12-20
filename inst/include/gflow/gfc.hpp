@@ -85,6 +85,49 @@ struct gfc_params_t {
 // ============================================================================
 
 /**
+ * @brief Gradient flow modulation type for basin computation
+ */
+enum class gflow_modulation_t {
+    NONE = 0,      ///< Standard gradient flow (steepest ascent/descent)
+    DENSITY = 1,   ///< Density-modulated: ρ(u) · Δŷ
+    EDGELEN = 2,   ///< Edge-length-modulated: dl([v,u]) · Δŷ
+    DENSITY_EDGELEN = 3  ///< Combined: ρ(u) · dl([v,u]) · Δŷ
+};
+
+/**
+ * @brief Basin structure with boundary information
+ *
+ * Represents the basin of attraction of a local extremum, including
+ * the boundary vertices needed for Dirichlet harmonic extension.
+ */
+struct bbasin_t {
+    size_t extremum_vertex;           ///< Local extremum vertex (basin attractor)
+    double value;                     ///< Function value at extremum
+    bool is_maximum;                  ///< True for max basin, false for min basin
+    std::vector<size_t> vertices;     ///< Interior vertices of the basin
+    std::vector<size_t> boundary;     ///< Boundary vertices (neighbors outside basin)
+
+    // Optional: for diagnostics
+    size_t hop_idx;                   ///< Hop index of the extremum (if computed)
+};
+
+/**
+ * @brief Parameters for modulated gradient flow basin computation
+ */
+struct gfc_basin_params_t {
+    gflow_modulation_t modulation = gflow_modulation_t::NONE;
+
+    // For DENSITY modulation: density at each vertex
+    // If empty and DENSITY requested, compute from d1^{-1}
+    std::vector<double> density;
+
+    // For EDGELEN modulation: pre-computed edge length weights
+    // If empty and EDGELEN requested, compute from edge length distribution
+    // dl([v,u]) = kernel_density(length([v,u])) / max_density
+    double edgelen_bandwidth = -1.0;  // KDE bandwidth; -1 = automatic (Silverman)
+};
+
+/**
  * @brief Compact representation of a single basin for output
  *
  * This structure provides a lightweight representation of a basin

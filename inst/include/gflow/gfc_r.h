@@ -127,6 +127,16 @@ extern "C" {
 		SEXP s_non_spurious_min   // 1-based integer vector
 		);
 
+	SEXP S_compute_gfc_basins(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_y,
+		SEXP s_modulation_type,
+		SEXP s_density,
+		SEXP s_edgelen_bandwidth,
+		SEXP s_verbose
+		);
+
 #ifdef __cplusplus
 }
 #endif
