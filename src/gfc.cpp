@@ -18,6 +18,7 @@
 #include <queue>
 #include <limits>
 #include <unordered_set>
+#include <unordered_map>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -676,6 +677,10 @@ gfc_result_t compute_gfc(
     // to prevent "basin jumping" through long edges
     double edge_length_thld = graph.compute_quantile_edge_length(params.edge_length_quantile_thld);
 
+    // Declare maps to store ALL basins (for trajectory joining later)
+    std::unordered_map<size_t, gradient_basin_t> all_max_basins_full;
+    std::unordered_map<size_t, gradient_basin_t> all_min_basins_full;
+
     // Compute basins using compute_geodesic_basin (same as R's S_compute_basins_of_attraction)
     std::vector<basin_compact_t> max_basins;
     std::vector<basin_compact_t> min_basins;
@@ -688,6 +693,11 @@ gfc_result_t compute_gfc(
         // Skip invalid extrema (hop_idx == max indicates not a valid local extremum)
         if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {
             continue;
+        }
+
+        // Store full basin if trajectories requested
+        if (params.with_trajectories) {
+            all_max_basins_full[vertex] = grad_basin;
         }
 
         basin_compact_t compact;
@@ -721,7 +731,7 @@ gfc_result_t compute_gfc(
 
         // Copy trajectory data if requested
         if (params.with_trajectories) {
-            compact.trajectory_sets = std::move(grad_basin.trajectory_sets);
+            compact.trajectory_sets  = std::move(grad_basin.trajectory_sets);
             compact.terminal_extrema = std::move(grad_basin.terminal_extrema);
         }
 
@@ -736,6 +746,11 @@ gfc_result_t compute_gfc(
         // Skip invalid extrema
         if (grad_basin.hop_idx == std::numeric_limits<size_t>::max()) {
             continue;
+        }
+
+        // Store full basin if trajectories requested
+        if (params.with_trajectories) {
+            all_min_basins_full[vertex] = grad_basin;
         }
 
         basin_compact_t compact;
@@ -765,6 +780,12 @@ gfc_result_t compute_gfc(
         compact.hop_distances = std::move(sorted_hop_distances);
 
         compact.max_hop_distance = static_cast<int>(grad_basin.hop_idx);
+
+        // Copy trajectory data to compact if requested
+        if (params.with_trajectories) {
+            compact.trajectory_sets  = std::move(grad_basin.trajectory_sets);
+            compact.terminal_extrema = std::move(grad_basin.terminal_extrema);
+        }
 
         min_basins.push_back(std::move(compact));
     }
@@ -934,6 +955,51 @@ gfc_result_t compute_gfc(
         if (verbose) {
             Rprintf("  Retained %zu maxima and %zu minima\n",
                     max_basins.size(), min_basins.size());
+        }
+    }
+
+    // ========================================================================
+    // After all filtering, collect non-spurious extrema vertices
+    // ========================================================================
+
+    std::unordered_set<size_t> non_spurious_max;
+    std::unordered_set<size_t> non_spurious_min;
+
+    for (const auto& basin : max_basins) {
+        non_spurious_max.insert(basin.extremum_vertex);
+    }
+    for (const auto& basin : min_basins) {
+        non_spurious_min.insert(basin.extremum_vertex);
+    }
+
+    // ========================================================================
+    // Compute joined trajectories (before expansion, after filtering)
+    // ========================================================================
+
+    if (params.max_chain_depth) {
+        if (params.with_trajectories) {
+            if (verbose) {
+                Rprintf("Computing joined trajectories (max chain depth = %d)...\n",
+                        params.max_chain_depth);
+            }
+
+            result.joined_trajectories = compute_joined_trajectories(
+                graph, y,
+                all_max_basins_full,
+                all_min_basins_full,
+                non_spurious_max,
+                non_spurious_min,
+                params.max_chain_depth,
+                verbose
+                );
+
+            result.cell_map = build_cell_map(result.joined_trajectories);
+
+            if (verbose) {
+                Rprintf("  Created %zu joined trajectories in %zu cells\n",
+                        result.joined_trajectories.size(),
+                        result.cell_map.size());
+            }
         }
     }
 

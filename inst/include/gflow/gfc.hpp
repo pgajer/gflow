@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <queue>
 #include <cmath>
+#include <map>
 
 #include <Eigen/Core>
 

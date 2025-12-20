@@ -217,7 +217,8 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // gradient flow
   // =========================================================================
-  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        20},
+  {"S_debug_extension_search", (DL_FUNC) &S_debug_extension_search, 9},
+  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        21},
   {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 20},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
