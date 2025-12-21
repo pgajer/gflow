@@ -13,13 +13,13 @@
 #' @param modulation Character string specifying gradient flow modulation:
 #'   \describe{
 #'     \item{"none"}{Standard gradient flow (steepest ascent/descent)}
-#'     \item{"density"}{Density-modulated: ρ(u) · Δŷ, favors high-density regions}
-#'     \item{"edgelen"}{Edge-length-modulated: dl([v,u]) · Δŷ, penalizes atypical edges}
-#'     \item{"density_edgelen"}{Combined: ρ(u) · dl([v,u]) · Δŷ}
+#'     \item{"density"}{Density-modulated: \eqn{\rho(u) \cdot \Delta \hat{y}}, favors high-density regions}
+#'     \item{"edgelen"}{Edge-length-modulated: \eqn{dl([v,u]) \cdot \Delta \hat{y}}, penalizes atypical edges}
+#'     \item{"density_edgelen"}{Combined: \eqn{\rho(u) \cdot dl([v,u]) \cdot \Delta \hat{y}}}
 #'   }
 #' @param density Optional numeric vector of density values at each vertex.
 #'   If NULL and modulation includes "density", computed from nearest neighbor
-#'   distances as ρ(v) = 1/d₁(v).
+#'   distances as \eqn{\rho(v) = 1/d_1(v)}.
 #' @param edgelen.bandwidth Bandwidth for edge length KDE. If negative (default),
 #'   uses Silverman's rule of thumb.
 #' @param verbose Logical; if TRUE, print progress information.
@@ -36,14 +36,14 @@
 #'   Names are formatted as "min_V" or "max_V" where V is the vertex index.
 #'
 #' @details
-#' The gradient flow at vertex v follows the edge [v,u] that maximizes the
+#' The gradient flow at vertex v follows the edge \eqn{[v,u]} that maximizes the
 #' modulated gradient score. For ascending flow (to maxima), this is:
 #'
 #' \itemize{
-#'   \item none: max(ŷ(u) - ŷ(v))
-#'   \item density: max(ρ(u) · (ŷ(u) - ŷ(v)))
-#'   \item edgelen: max(dl([v,u]) · (ŷ(u) - ŷ(v)))
-#'   \item density_edgelen: max(ρ(u) · dl([v,u]) · (ŷ(u) - ŷ(v)))
+#'   \item none: \eqn{\max(\hat{y}(u) - \hat{y}(v))}
+#'   \item density: \eqn{\max(\rho(u) · (\hat{y}(u) - \hat{y}(v)))}
+#'   \item edgelen: \eqn{\max(dl([v,u]) · (\hat{y}(u) - \hat{y}(v)))}
+#'   \item density_edgelen: \eqn{\max(\rho(u) · dl([v,u]) · (\hat{y}(u) - \hat{y}(v)))}
 #' }
 #'
 #' The density modulation favors flow through high-density regions, avoiding
@@ -72,12 +72,12 @@
 #'
 #' @export
 compute.gfc.basins <- function(adj.list,
-                                weight.list,
-                                y,
-                                modulation = c("none", "density", "edgelen", "density_edgelen"),
-                                density = NULL,
-                                edgelen.bandwidth = -1.0,
-                                verbose = TRUE) {
+                               weight.list,
+                               y,
+                               modulation = c("none", "density", "edgelen", "density_edgelen"),
+                               density = NULL,
+                               edgelen.bandwidth = -1.0,
+                               verbose = TRUE) {
 
     ## Input validation
     if (!is.list(adj.list)) {
@@ -181,7 +181,7 @@ print.gfc_basins <- function(x, ...) {
 
     print(df, row.names = FALSE)
 
-    invisible(x)
+    invisible(df)
 }
 
 
