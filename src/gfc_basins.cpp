@@ -86,8 +86,7 @@ set_wgraph_t::compute_edge_length_weights(double bandwidth) const {
 /**
  * @brief Compute vertex density from nearest neighbor distances
  *
- * Estimates density as the conditional expectation of d_1^{-1},
- * where d_1(v) is the distance to the nearest neighbor of v.
+ * Computes d_1^{-1}, where d_1(v) is the distance to the nearest neighbor of v.
  *
  * @return Vector of density values, normalized to [0,1]
  */

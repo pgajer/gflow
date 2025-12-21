@@ -137,6 +137,12 @@ extern "C" {
 		SEXP s_verbose
 		);
 
+	SEXP S_compute_vertex_density(
+		SEXP s_adj_list,
+		SEXP s_weight_list,
+		SEXP s_normalize
+		);
+
 #ifdef __cplusplus
 }
 #endif

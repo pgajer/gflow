@@ -150,7 +150,6 @@
 #'                    p.mean.hopk.dist.threshold = 0.9,
 #'                    p.deg.threshold = 0.9,
 #'                    verbose = TRUE)
-#' }
 #'
 #' ## With trajectories for downstream analysis
 #' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
@@ -937,4 +936,570 @@ print.gfc_trajectories <- function(x, ...) {
     }
 
     invisible(x)
+}
+
+
+#' Extract Cell Trajectories from GFC Result
+#'
+#' @description
+#' Extracts gradient flow trajectories for a specific cell (min-max pair)
+#' from a GFC result object. A cell is defined by a pair of non-spurious
+#' extrema (one minimum, one maximum).
+#'
+#' @param gfc A gfc object from compute.gfc() with trajectories computed.
+#' @param min.id Minimum extremum identifier: either a label (e.g., "m4") or a
+#'     vertex index (integer, 1-based).
+#' @param max.id Maximum extremum identifier: either a label (e.g., "M1") or a
+#'     vertex index (integer, 1-based).
+#' @param map Optional integer vector mapping subgraph indices to original graph
+#'     vertices. If provided, trajectory vertices are converted to subgraph
+#'     indices. Specifically, \code{map[i]} gives the original graph vertex
+#'     corresponding to subgraph vertex i. Vertices not found in map are
+#'     returned as NA with a warning.
+#'
+#' @return A list of class "gfc_cell_trajectories" containing:
+#'   \describe{
+#'     \item{min.vertex}{Minimum vertex index (in output coordinate system)}
+#'     \item{max.vertex}{Maximum vertex index (in output coordinate system)}
+#'     \item{min.label}{Minimum label (e.g., "m4")}
+#'     \item{max.label}{Maximum label (e.g., "M1")}
+#'     \item{min.value}{Function value at minimum}
+#'     \item{max.value}{Function value at maximum}
+#'     \item{trajectories}{List of trajectory vertex vectors}
+#'     \item{n.trajectories}{Number of trajectories}
+#'     \item{mapped}{Logical; TRUE if vertices were mapped to subgraph indices}
+#'     \item{original.min.vertex}{Original minimum vertex (before mapping)}
+#'     \item{original.max.vertex}{Original maximum vertex (before mapping)}
+#'   }
+#'
+#' @details
+#' The function first resolves the min.id and max.id to vertex indices and
+#' labels using the gfc summary. It then extracts all trajectories that
+#' connect these two extrema.
+#'
+#' When working with a subgraph (e.g., the extended basin of a maximum),
+#' the map parameter allows converting trajectory vertices to subgraph
+#' indices. If map = M1.vertices where \code{M1.vertices[i]} is the original
+#' graph vertex corresponding to subgraph vertex i, then the returned
+#' trajectories will use subgraph indices 1, 2, ..., length(M1.vertices).
+#'
+#' @examples
+#' \dontrun{
+#' gfc <- compute.gfc(adj.list, weight.list, fitted.values,
+#'                     with.trajectories = TRUE)
+#'
+#' # Extract by labels
+#' cell.traj <- cell.trajectories.gfc(gfc, min.id = "m4", max.id = "M1")
+#'
+#' # Extract by vertex indices
+#' cell.traj <- cell.trajectories.gfc(gfc, min.id = 509, max.id = 1147)
+#'
+#' # Extract and map to subgraph indices
+#' M1.vertices <- gfc$max.basins[["M1"]]$vertices
+#' cell.traj <- cell.trajectories.gfc(gfc, "m4", "M1", map = M1.vertices)
+#' }
+#'
+#' @seealso \code{\link{compute.gfc}}, \code{\link{trajectories.gfc}}
+#'
+#' @export
+cell.trajectories.gfc <- function(gfc,
+                                   min.id,
+                                   max.id,
+                                   map = NULL) {
+
+    ## ========================================================================
+    ## Input validation
+    ## ========================================================================
+
+    if (!inherits(gfc, "gfc")) {
+        stop("gfc must be a gfc object from compute.gfc()")
+    }
+
+    if (is.null(gfc$joined.trajectories) && is.null(gfc$max.basins)) {
+        stop("gfc does not contain trajectory information. ",
+             "Use with.trajectories = TRUE in compute.gfc()")
+    }
+
+    summary.df <- gfc$summary
+
+    ## ========================================================================
+    ## Resolve min.id to vertex and label
+    ## ========================================================================
+
+    if (is.character(min.id)) {
+        ## Label provided
+        min.label <- min.id
+        idx <- match(min.label, summary.df$label)
+        if (is.na(idx)) {
+            stop(sprintf("Minimum label '%s' not found in summary", min.label))
+        }
+        min.vertex <- summary.df$vertex[idx]
+        min.value <- summary.df$value[idx]
+        min.type <- summary.df$type[idx]
+    } else if (is.numeric(min.id)) {
+        ## Vertex index provided
+        min.vertex <- as.integer(min.id)
+        idx <- match(min.vertex, summary.df$vertex)
+        if (is.na(idx)) {
+            stop(sprintf("Minimum vertex %d not found in summary", min.vertex))
+        }
+        min.label <- summary.df$label[idx]
+        min.value <- summary.df$value[idx]
+        min.type <- summary.df$type[idx]
+    } else {
+        stop("min.id must be a character label or numeric vertex index")
+    }
+
+    ## Verify it's a minimum
+    if (min.type != "min") {
+        stop(sprintf("'%s' (vertex %d) is not a minimum, it is a %s",
+                     min.label, min.vertex, min.type))
+    }
+
+    ## ========================================================================
+    ## Resolve max.id to vertex and label
+    ## ========================================================================
+
+    if (is.character(max.id)) {
+        ## Label provided
+        max.label <- max.id
+        idx <- match(max.label, summary.df$label)
+        if (is.na(idx)) {
+            stop(sprintf("Maximum label '%s' not found in summary", max.label))
+        }
+        max.vertex <- summary.df$vertex[idx]
+        max.value <- summary.df$value[idx]
+        max.type <- summary.df$type[idx]
+    } else if (is.numeric(max.id)) {
+        ## Vertex index provided
+        max.vertex <- as.integer(max.id)
+        idx <- match(max.vertex, summary.df$vertex)
+        if (is.na(idx)) {
+            stop(sprintf("Maximum vertex %d not found in summary", max.vertex))
+        }
+        max.label <- summary.df$label[idx]
+        max.value <- summary.df$value[idx]
+        max.type <- summary.df$type[idx]
+    } else {
+        stop("max.id must be a character label or numeric vertex index")
+    }
+
+    ## Verify it's a maximum
+    if (max.type != "max") {
+        stop(sprintf("'%s' (vertex %d) is not a maximum, it is a %s",
+                     max.label, max.vertex, max.type))
+    }
+
+    ## ========================================================================
+    ## Extract trajectories for this cell
+    ## ========================================================================
+
+    trajectories <- list()
+
+    ## Check if joined trajectories are available
+    if (!is.null(gfc$joined.trajectories)) {
+        ## Joined trajectories: look for this specific cell
+        for (traj in gfc$joined.trajectories) {
+            if (traj$min.vertex == min.vertex && traj$max.vertex == max.vertex) {
+                trajectories[[length(trajectories) + 1]] <- traj$path
+            }
+        }
+    } else if (!is.null(gfc$max.basins[[max.label]])) {
+        ## Fall back to max.basins trajectory sets
+        max.basin <- gfc$max.basins[[max.label]]
+
+        if (!is.null(max.basin$trajectory.sets)) {
+            for (traj.set in max.basin$trajectory.sets) {
+                ## Check if any trajectory in this set ends at min.vertex
+                terminal <- traj.set$terminal.vertex
+                if (terminal == min.vertex) {
+                    ## Add all paths in this trajectory set
+                    for (path in traj.set$trajectories) {
+                        trajectories[[length(trajectories) + 1]] <- path
+                    }
+                }
+            }
+        }
+    }
+
+    if (length(trajectories) == 0) {
+        warning(sprintf("No trajectories found for cell %s -> %s",
+                        max.label, min.label))
+    }
+
+    ## ========================================================================
+    ## Apply vertex mapping if provided
+    ## ========================================================================
+
+    original.min.vertex <- min.vertex
+    original.max.vertex <- max.vertex
+    mapped <- FALSE
+
+    if (!is.null(map)) {
+        mapped <- TRUE
+        map <- as.integer(map)
+
+        ## Map extrema vertices
+        min.vertex.mapped <- match(min.vertex, map)
+        max.vertex.mapped <- match(max.vertex, map)
+
+        if (is.na(min.vertex.mapped)) {
+            warning(sprintf("Minimum vertex %d not found in map", min.vertex))
+        }
+        if (is.na(max.vertex.mapped)) {
+            warning(sprintf("Maximum vertex %d not found in map", max.vertex))
+        }
+
+        min.vertex <- min.vertex.mapped
+        max.vertex <- max.vertex.mapped
+
+        ## Map trajectory vertices
+        n.unmapped <- 0
+        trajectories <- lapply(trajectories, function(path) {
+            mapped.path <- match(path, map)
+            n.na <- sum(is.na(mapped.path))
+            if (n.na > 0) {
+                n.unmapped <<- n.unmapped + n.na
+            }
+            return(mapped.path)
+        })
+
+        if (n.unmapped > 0) {
+            warning(sprintf("%d trajectory vertices not found in map (returned as NA)",
+                            n.unmapped))
+        }
+    }
+
+    ## ========================================================================
+    ## Build result
+    ## ========================================================================
+
+    result <- list(
+        min.vertex = min.vertex,
+        max.vertex = max.vertex,
+        min.label = min.label,
+        max.label = max.label,
+        min.value = min.value,
+        max.value = max.value,
+        trajectories = trajectories,
+        n.trajectories = length(trajectories),
+        mapped = mapped,
+        original.min.vertex = original.min.vertex,
+        original.max.vertex = original.max.vertex
+    )
+
+    class(result) <- "gfc_cell_trajectories"
+
+    return(result)
+}
+
+
+#' Print Method for gfc_cell_trajectories Objects
+#'
+#' @param x A gfc_cell_trajectories object
+#' @param max.print Maximum number of trajectories to print details for
+#' @param ... Additional arguments (ignored)
+#'
+#' @export
+print.gfc_cell_trajectories <- function(x, max.print = 5, ...) {
+
+    cat("GFC Cell Trajectories\n")
+    cat("=====================\n")
+    cat(sprintf("Cell: %s (vertex %d) -> %s (vertex %d)\n",
+                x$max.label,
+                if (x$mapped) x$original.max.vertex else x$max.vertex,
+                x$min.label,
+                if (x$mapped) x$original.min.vertex else x$min.vertex))
+    cat(sprintf("Value change: %.4f -> %.4f (delta = %.4f)\n",
+                x$max.value, x$min.value, x$max.value - x$min.value))
+    cat(sprintf("Trajectories: %d\n", x$n.trajectories))
+
+    if (x$mapped) {
+        cat(sprintf("Vertices mapped to subgraph indices (min -> %s, max -> %s)\n",
+                    ifelse(is.na(x$min.vertex), "NA", as.character(x$min.vertex)),
+                    ifelse(is.na(x$max.vertex), "NA", as.character(x$max.vertex))))
+    }
+
+    if (x$n.trajectories > 0) {
+        cat("\nTrajectory lengths:\n")
+        lengths <- sapply(x$trajectories, length)
+        cat(sprintf("  Min: %d, Max: %d, Mean: %.1f\n",
+                    min(lengths), max(lengths), mean(lengths)))
+
+        n.show <- min(max.print, x$n.trajectories)
+        cat(sprintf("\nFirst %d trajectories:\n", n.show))
+        for (i in seq_len(n.show)) {
+            path <- x$trajectories[[i]]
+            if (length(path) <= 10) {
+                path.str <- paste(path, collapse = " -> ")
+            } else {
+                path.str <- paste(
+                    c(paste(head(path, 4), collapse = " -> "),
+                      "...",
+                      paste(tail(path, 3), collapse = " -> ")),
+                    collapse = " -> "
+                )
+            }
+            cat(sprintf("  [%d] (%d vertices): %s\n", i, length(path), path.str))
+        }
+
+        if (x$n.trajectories > max.print) {
+            cat(sprintf("  ... and %d more trajectories\n",
+                        x$n.trajectories - max.print))
+        }
+    }
+
+    invisible(x)
+}
+
+
+#' Get All Trajectory Vertices as a Single Vector
+#'
+#' @description
+#' Extracts all unique vertices from cell trajectories.
+#'
+#' @param cell.traj A gfc_cell_trajectories object
+#' @param unique Logical; if TRUE (default), return unique vertices only
+#'
+#' @return Integer vector of vertex indices
+#'
+#' @export
+trajectory.vertices <- function(cell.traj, unique = TRUE) {
+
+    if (!inherits(cell.traj, "gfc_cell_trajectories")) {
+        stop("cell.traj must be a gfc_cell_trajectories object")
+    }
+
+    all.vertices <- unlist(cell.traj$trajectories)
+
+    if (unique) {
+        all.vertices <- unique(all.vertices)
+    }
+
+    return(all.vertices)
+}
+
+
+#' Convert Trajectory to Edge List
+#'
+#' @description
+#' Converts trajectory paths to an edge list suitable for graph operations
+#' or visualization.
+#'
+#' @param cell.traj A gfc_cell_trajectories object
+#' @param weighted Logical; if TRUE, include edge counts as weights
+#'
+#' @return A data frame with columns 'from', 'to', and optionally 'weight'
+#'
+#' @export
+trajectory.edges <- function(cell.traj, weighted = FALSE) {
+
+    if (!inherits(cell.traj, "gfc_cell_trajectories")) {
+        stop("cell.traj must be a gfc_cell_trajectories object")
+    }
+
+    if (cell.traj$n.trajectories == 0) {
+        return(data.frame(from = integer(0), to = integer(0)))
+    }
+
+    ## Collect all edges
+    edges <- list()
+    for (path in cell.traj$trajectories) {
+        if (length(path) < 2) next
+        for (i in seq_len(length(path) - 1)) {
+            edges[[length(edges) + 1]] <- c(path[i], path[i + 1])
+        }
+    }
+
+    if (length(edges) == 0) {
+        return(data.frame(from = integer(0), to = integer(0)))
+    }
+
+    edge.df <- data.frame(
+        from = sapply(edges, `[`, 1),
+        to = sapply(edges, `[`, 2)
+    )
+
+    if (weighted) {
+        ## Count edge occurrences
+        edge.key <- paste(edge.df$from, edge.df$to, sep = "-")
+        edge.counts <- table(edge.key)
+
+        ## Get unique edges with counts
+        unique.edges <- unique(edge.df)
+        unique.key <- paste(unique.edges$from, unique.edges$to, sep = "-")
+        unique.edges$weight <- as.integer(edge.counts[unique.key])
+
+        return(unique.edges)
+    }
+
+    return(unique(edge.df))
+}
+
+
+#' Draw a Single Cell Trajectory in 3D Space
+#'
+#' Visualizes a single trajectory from a cell object in 3D using rgl graphics.
+#' The function draws spheres at trajectory vertices, connecting segments, and
+#' optionally directional arrows along the path.
+#'
+#' @param graph.3d A matrix of 3D coordinates for graph vertices
+#' @param i Integer index specifying which trajectory to draw from the cell's
+#'   trajectories list
+#' @param cell List object containing trajectory data with components:
+#'   \itemize{
+#'     \item \code{trajectories}: List of trajectory vertex sequences
+#'     \item \code{terminal.vertex}: Terminal vertex identifier
+#'   }
+#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
+#'   segments. Default is FALSE
+#' @param arrow.size Numeric scaling factor for arrow size. Default is 1
+#' @param col Character string specifying color for trajectory spheres.
+#'   Default is "cyan"
+#' @param terminal.radius Numeric radius for terminal vertex spheres.
+#'   Default is 0.3
+#' @param radius Numeric radius for trajectory vertex spheres. Default is 0.15
+#' @param terminal.vertex.adj Numeric vector of length 2 for text label
+#'   adjustment. Default is c(0,0)
+#' @param terminal.vertex.cex Numeric character expansion factor for terminal
+#'   vertex labels. Default is 3
+#'
+#' @details
+#' Trajectory vertices are drawn as cyan spheres connected by gray segments.
+#' When \code{with.arrows = TRUE}, red arrows are drawn at 40-60% along each
+#' segment to indicate trajectory direction.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' # Assumes graph.3d and cell object are defined
+#' draw.cell.trajectory(graph.3d, 1, my.cell, with.arrows = TRUE, arrow.size = 1.5)
+#' }
+#'
+#' @export
+draw.cell.trajectory <- function(graph.3d,
+                                 i,
+                                 cell,
+                                 with.arrows = FALSE,
+                                 arrow.size = 1,
+                                 col = "cyan",
+                                 terminal.radius = 0.3,
+                                 radius = 0.15,
+                                 terminal.vertex.adj = c(0,0),
+                                 terminal.vertex.cex = 3) {
+    traj <- cell$trajectories[[i]]
+    n <- length(traj)
+
+    rgl::spheres3d(graph.3d[cell$min.vertex,], radius = terminal.radius, col = col)
+    rgl::texts3d(graph.3d[cell$min.vertex,], texts = cell$min.vertex,
+                 adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+
+    rgl::spheres3d(graph.3d[cell$max.vertex,], radius = terminal.radius, col = col)
+    rgl::texts3d(graph.3d[cell$max.vertex,], texts = cell$max.vertex,
+                 adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+
+    rgl::spheres3d(graph.3d[traj,], radius = radius, col = "cyan")
+
+    ## Create pairs of consecutive points
+    segment.indices <- c(rbind(traj[-n], traj[-1]))
+    M <- graph.3d[segment.indices, ]
+    rgl::segments3d(M, col = "gray", lwd = 5)
+
+    if (with.arrows) {
+        for (j in 1:(n - 1)) {
+            start <- graph.3d[traj[j], ]
+            end <- graph.3d[traj[j + 1], ]
+            mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
+            mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
+            rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
+                        width = 0.5, s = arrow.size)
+        }
+    }
+}
+
+#' Draw All Trajectories for a Cell in 3D Space
+#'
+#' Visualizes all trajectories from a cell object in 3D using rgl graphics.
+#' Iterates through all trajectories in the cell, drawing spheres at vertices,
+#' connecting segments, and optionally directional arrows.
+#'
+#' @param cell List object containing trajectory data with components:
+#'   \itemize{
+#'     \item \code{trajectories}: List of trajectory vertex sequences
+#'     \item \code{terminal.vertex}: Terminal vertex identifier
+#'   }
+#' @param with.edges Logical; if TRUE, draws line segments connecting trajectory
+#'   vertices. Default is TRUE
+#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
+#'   segments. Default is TRUE
+#' @param arrow.size Numeric scaling factor for arrow size. Default is 1
+#' @param arrow.width Numeric line width for connecting segments. Default is 1
+#' @param col Character string specifying color for trajectory spheres.
+#'   Default is "cyan"
+#' @param terminal.radius Numeric radius for terminal vertex spheres.
+#'   Default is 0.3
+#' @param radius Numeric radius for trajectory vertex spheres. Default is 0.15
+#' @param terminal.vertex.adj Numeric vector of length 2 for text label
+#'   adjustment. Default is c(0,0)
+#' @param terminal.vertex.cex Numeric character expansion factor for terminal
+#'   vertex labels. Default is 2
+#'
+#' @details
+#' The function expects a global \code{graph.3d} object containing 3D coordinates
+#' for graph vertices. For each trajectory in the cell, vertices are drawn as
+#' spheres in the specified color, with optional connecting segments and
+#' directional arrows. Arrows are positioned at 40-60% along each segment.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' # Assumes graph.3d and cell object are defined
+#' draw.cell.trajectories(my.cell, with.arrows = FALSE, with.edges = TRUE)
+#' }
+#'
+#' @export
+draw.cell.trajectories <- function(cell,
+                                   with.edges = TRUE,
+                                   with.arrows = TRUE,
+                                   arrow.size = 1,
+                                   arrow.width = 1,
+                                   col = "cyan",
+                                   terminal.radius = 0.3,
+                                   radius = 0.15,
+                                   terminal.vertex.adj = c(0,0),
+                                   terminal.vertex.cex = 2) {
+    for (i in seq_along(cell$trajectories)) {
+        traj <- cell$trajectories[[i]]
+        n <- length(traj)
+
+        # NOTE: Remove or fix this line - M1.cells appears to be hardcoded
+        # spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
+
+        spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
+        texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
+                adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+        spheres3d(graph.3d[traj,], radius = radius, col = col)
+
+        ## Create edges
+        if (with.edges) {
+            segment.indices <- c(rbind(traj[-n], traj[-1]))
+            M <- graph.3d[segment.indices, ]
+            rgl::segments3d(M, col = "gray", lwd = arrow.width)
+        }
+
+        if (with.arrows) {
+            for (j in 1:(n - 1)) {
+                start <- graph.3d[traj[j], ]
+                end <- graph.3d[traj[j + 1], ]
+                mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
+                mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
+                rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
+                            width = 0.5, s = arrow.size)
+            }
+        }
+    }
 }
