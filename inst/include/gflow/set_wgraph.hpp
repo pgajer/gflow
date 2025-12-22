@@ -35,6 +35,7 @@
 #include "lslope.hpp"
 #include "gfc.hpp"
 #include "se_tree.hpp"
+#include "harmonic_extension.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -659,6 +660,52 @@ struct set_wgraph_t {
 	circular_param_result_t parameterize_circular_graph_with_reference(
 		size_t reference_vertex,
 		bool use_edge_lengths = true
+		) const;
+
+	// ========================================================================
+    // Harmonic Extension Methods
+    // ========================================================================
+
+	/**
+     * @brief Compute tubular neighborhood of a trajectory
+     * @return Tuple of (vertices, hop distances, nearest trajectory index)
+     */
+    std::tuple<std::vector<size_t>, std::vector<int>, std::vector<size_t>>
+    compute_tubular_neighborhood(
+        const std::vector<size_t>& trajectory,
+        int radius,
+        const std::unordered_set<size_t>& basin_restriction = {}
+    ) const;
+
+    /**
+     * @brief Solve harmonic extension via Gauss-Seidel iteration
+     */
+    std::vector<double> solve_harmonic_extension(
+        const std::vector<size_t>& tubular_vertices,
+        const std::unordered_set<size_t>& trajectory_set,
+        const std::unordered_map<size_t, double>& trajectory_coords,
+        const std::vector<double>& initial_coords,
+        bool use_edge_weights,
+        int max_iterations,
+        double tolerance,
+        int& n_iterations,
+        double& final_max_change
+		) const;
+
+    /**
+     * @brief Compute arc-length coordinates for trajectory vertices
+     */
+    std::pair<std::vector<double>, double> compute_arc_length_coords(
+        const std::vector<size_t>& trajectory
+		) const;
+
+    /**
+     * @brief Compute harmonic extension of trajectory coordinates
+     */
+    harmonic_extension_result_t compute_harmonic_extension(
+        const std::vector<size_t>& trajectory,
+        const harmonic_extension_params_t& params,
+        bool verbose = false
 		) const;
 
 	// ----------------------------------------------------------------
