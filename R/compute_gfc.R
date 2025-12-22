@@ -272,10 +272,60 @@ compute.gfc <- function(adj.list,
     )
 
     ## ========================================================================
-    ## Add names to basins based on summary labels (match by vertex)
+    ## Fix assignment index mapping to match summary label order
     ## ========================================================================
 
     if (nrow(result$summary) > 0) {
+        ## The expanded assignments use indices based on basin vector position,
+        ## but summary labels (M1, M2, ...) are assigned by sorted value.
+        ## We need to create a mapping from vector position to label index.
+
+        ## Get maxima in summary order (this is how labels were assigned)
+        max.summary <- result$summary[result$summary$type == "max", ]
+        min.summary <- result$summary[result$summary$type == "min", ]
+
+        ## Build mapping: for each basin in max.basins (by position),
+        ## find which label index (1, 2, ...) it should have
+        if (length(result$max.basins) > 0 && length(result$expanded.max.assignment) > 0) {
+            ## Get extremum vertices in basin vector order
+            basin.vertices.order <- sapply(result$max.basins, function(b) b$vertex)
+
+            ## For each basin position, find its row in the sorted summary
+            ## The summary row index IS the label number (M1 = row 1 among maxima)
+            position.to.label.idx <- match(basin.vertices.order, max.summary$vertex)
+
+            ## Now remap the assignment vector
+            ## Old: assignment[v] = position in max.basins (1-based)
+            ## New: assignment[v] = label index (1 = M1, 2 = M2, ...)
+            old.assignment <- result$expanded.max.assignment
+            new.assignment <- rep(NA_integer_, length(old.assignment))
+
+            for (v in seq_along(old.assignment)) {
+                old.idx <- old.assignment[v]
+                if (!is.na(old.idx) && old.idx >= 1 && old.idx <= length(position.to.label.idx)) {
+                    new.assignment[v] <- position.to.label.idx[old.idx]
+                }
+            }
+            result$expanded.max.assignment <- new.assignment
+        }
+
+        ## Same fix for minima
+        if (length(result$min.basins) > 0 && length(result$expanded.min.assignment) > 0) {
+            basin.vertices.order <- sapply(result$min.basins, function(b) b$vertex)
+            position.to.label.idx <- match(basin.vertices.order, min.summary$vertex)
+
+            old.assignment <- result$expanded.min.assignment
+            new.assignment <- rep(NA_integer_, length(old.assignment))
+
+            for (v in seq_along(old.assignment)) {
+                old.idx <- old.assignment[v]
+                if (!is.na(old.idx) && old.idx >= 1 && old.idx <= length(position.to.label.idx)) {
+                    new.assignment[v] <- position.to.label.idx[old.idx]
+                }
+            }
+            result$expanded.min.assignment <- new.assignment
+        }
+
         ## Build vertex-to-label lookup from summary
         vertex.to.label <- result$summary$label
         names(vertex.to.label) <- as.character(result$summary$vertex)
@@ -938,6 +988,24 @@ print.gfc_trajectories <- function(x, ...) {
     invisible(x)
 }
 
+#' Extract Cell Trajectories from GFC Objects
+#'
+#' Generic function to extract gradient flow trajectories for a specific
+#' cell (min-max pair) from GFC-related objects.
+#'
+#' @param x A GFC object.
+#' @param min.id Minimum extremum identifier.
+#' @param max.id Maximum extremum identifier.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return An object containing cell trajectory information.
+#'
+#' @seealso \code{\link{cell.trajectories.gfc}}
+#'
+#' @export
+cell.trajectories <- function(x, min.id, max.id, ...) {
+    UseMethod("cell.trajectories")
+}
 
 #' Extract Cell Trajectories from GFC Result
 #'
@@ -1414,7 +1482,7 @@ draw.cell.trajectory <- function(graph.3d,
             mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
             mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
             rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
-                        width = 0.5, s = arrow.size)
+                         width = 0.5, s = arrow.size)
         }
     }
 }
@@ -1502,4 +1570,381 @@ draw.cell.trajectories <- function(cell,
             }
         }
     }
+}
+
+
+#' Diagnose Missing Trajectory Vertices
+#'
+#' Identifies vertices in a basin that are not covered by any trajectory.
+#'
+#' @param gfc A gfc object with trajectories.
+#' @param max.id Maximum basin identifier (label or vertex).
+#'
+#' @return List with diagnostic information.
+#'
+#' @export
+diagnose.trajectory.coverage <- function(gfc, max.id, debug = TRUE) {
+
+    ## Resolve max.id
+    if (is.character(max.id)) {
+        max.label <- max.id
+        idx <- match(max.label, gfc$summary$label)
+        max.vertex <- gfc$summary$vertex[idx]
+    } else {
+        max.vertex <- as.integer(max.id)
+        idx <- match(max.vertex, gfc$summary$vertex)
+        max.label <- gfc$summary$label[idx]
+    }
+
+    ## Debug: understand the assignment encoding
+    if (debug) {
+        cat("=== Debug Information ===\n")
+        cat(sprintf("max.label: %s, max.vertex: %d\n", max.label, max.vertex))
+
+        ## Check what values are in expanded.max.assignment
+        cat("\nexpanded.max.assignment unique values:\n")
+        print(table(gfc$expanded.max.assignment, useNA = "ifany"))
+
+        ## Check the summary to understand maxima ordering
+        max.summary <- gfc$summary[gfc$summary$type == "max", ]
+        cat("\nMaxima in summary (order matters):\n")
+        print(max.summary[, c("label", "vertex")])
+
+        ## What index is M1 in the maxima list?
+        max.labels <- gfc$summary$label[gfc$summary$type == "max"]
+        max.position <- match(max.label, max.labels)
+        cat(sprintf("\n%s is at position %d in maxima list\n", max.label, max.position))
+    }
+
+    ## Get basin object
+    basin <- gfc$max.basins[[max.label]]
+    traj.vertices <- basin$vertices
+
+    if (debug) {
+        cat(sprintf("\nbasin$vertices: n=%d, range=[%d, %d]\n",
+                    length(traj.vertices), min(traj.vertices), max(traj.vertices)))
+        cat(sprintf("First 10: %s\n", paste(head(traj.vertices, 10), collapse = ", ")))
+
+        ## Check if max.vertex is in basin$vertices
+        cat(sprintf("max.vertex %d in basin$vertices: %s\n",
+                    max.vertex, max.vertex %in% traj.vertices))
+    }
+
+    ## Try different interpretations of the assignment
+    max.index.from.label <- as.integer(sub("M", "", max.label))
+    max.position.in.list <- match(max.label,
+                                   gfc$summary$label[gfc$summary$type == "max"])
+
+    if (debug) {
+        cat(sprintf("\nTrying different assignment interpretations:\n"))
+        cat(sprintf("  Using label number (M1 -> 1): %d vertices\n",
+                    sum(gfc$expanded.max.assignment == max.index.from.label, na.rm = TRUE)))
+        cat(sprintf("  Using position in max list: %d vertices\n",
+                    sum(gfc$expanded.max.assignment == max.position.in.list, na.rm = TRUE)))
+        cat(sprintf("  Using vertex index directly: %d vertices\n",
+                    sum(gfc$expanded.max.assignment == max.vertex, na.rm = TRUE)))
+    }
+
+    ## Determine correct interpretation
+    ## Check which interpretation puts max.vertex in its own basin
+    for (interp in c("label_number", "position", "vertex")) {
+        test.idx <- switch(interp,
+                           label_number = max.index.from.label,
+                           position = max.position.in.list,
+                           vertex = max.vertex)
+        test.basin <- which(gfc$expanded.max.assignment == test.idx)
+        if (max.vertex %in% test.basin) {
+            if (debug) {
+                cat(sprintf("\n>>> Correct interpretation: '%s' (value=%d)\n",
+                            interp, test.idx))
+            }
+            basin.vertices <- test.basin
+            break
+        }
+    }
+
+    if (!exists("basin.vertices")) {
+        warning("Could not determine correct assignment interpretation")
+        basin.vertices <- which(gfc$expanded.max.assignment == max.index.from.label)
+    }
+
+    ## Now compare
+    missing.vertices <- setdiff(basin.vertices, traj.vertices)
+    extra.vertices <- setdiff(traj.vertices, basin.vertices)
+    overlap.vertices <- intersect(basin.vertices, traj.vertices)
+
+    if (debug) {
+        cat(sprintf("\n=== Coverage Analysis ===\n"))
+        cat(sprintf("Expanded basin vertices: %d\n", length(basin.vertices)))
+        cat(sprintf("Trajectory vertices: %d\n", length(traj.vertices)))
+        cat(sprintf("Overlap: %d\n", length(overlap.vertices)))
+        cat(sprintf("Missing (in basin, not in traj): %d\n", length(missing.vertices)))
+        cat(sprintf("Extra (in traj, not in basin): %d\n", length(extra.vertices)))
+    }
+
+    result <- list(
+        max.label = max.label,
+        max.vertex = max.vertex,
+        basin.vertices = basin.vertices,
+        traj.vertices = traj.vertices,
+        n.basin.vertices = length(basin.vertices),
+        n.traj.vertices = length(traj.vertices),
+        n.overlap = length(overlap.vertices),
+        n.missing = length(missing.vertices),
+        n.extra = length(extra.vertices),
+        missing.vertices = sort(missing.vertices),
+        extra.vertices = sort(extra.vertices),
+        overlap.vertices = sort(overlap.vertices)
+    )
+
+    return(invisible(result))
+}
+
+old.diagnose.trajectory.coverage <- function(gfc, max.id) {
+
+    ## Resolve max.id
+    if (is.character(max.id)) {
+        max.label <- max.id
+        idx <- match(max.label, gfc$summary$label)
+        max.vertex <- gfc$summary$vertex[idx]
+    } else {
+        max.vertex <- as.integer(max.id)
+        idx <- match(max.vertex, gfc$summary$vertex)
+        max.label <- gfc$summary$label[idx]
+    }
+
+    max.index <- as.integer(sub("M","",max.label))
+
+    ## Get basin vertices
+    basin <- gfc$max.basins[[max.label]]
+    traj.vertices <- basin$vertices
+    basin.vertices <- which(gfc$expanded.max.assignment == max.index)
+
+    ## Find vertices in basin but not in any trajectory
+    missing.vertices <- setdiff(basin.vertices, traj.vertices)
+
+    ## Find vertices in trajectories but not in basin (shouldn't happen)
+    extra.vertices <- setdiff(traj.vertices, basin.vertices)
+
+    result <- list(
+        max.label = max.label,
+        max.vertex = max.vertex,
+        n.basin.vertices = length(basin.vertices),
+        n.traj.vertices = length(traj.vertices),
+        n.missing = length(missing.vertices),
+        n.extra = length(extra.vertices),
+        missing.vertices = sort(missing.vertices),
+        extra.vertices = sort(extra.vertices),
+        coverage = length(traj.vertices) / length(basin.vertices)
+    )
+
+    cat(sprintf("Trajectory Coverage Diagnosis for %s (vertex %d)\n",
+                max.label, max.vertex))
+    cat(sprintf("  Basin vertices: %d\n", result$n.basin.vertices))
+    cat(sprintf("  Trajectory vertices: %d\n", result$n.traj.vertices))
+    cat(sprintf("  Missing from trajectories: %d (%.1f%%)\n",
+                result$n.missing, 100 * (1 - result$coverage)))
+    cat(sprintf("  Extra (not in basin): %d\n", result$n.extra))
+
+    if (result$n.missing > 0 && result$n.missing <= 20) {
+        cat(sprintf("  Missing vertices: %s\n",
+                    paste(result$missing.vertices, collapse = ", ")))
+    }
+
+    return(invisible(result))
+}
+
+#' Trace Gradient Flow from a Single Vertex
+#'
+#' Manually traces the ascending gradient flow from a vertex to diagnose
+#' why it may not be part of expected trajectories.
+#'
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Edge weight list (can be modulated).
+#' @param y Function values.
+#' @param start.vertex Starting vertex (1-based).
+#' @param max.steps Maximum steps to prevent infinite loops.
+#' @param verbose Print each step.
+#'
+#' @return List with trajectory and diagnostic info.
+#'
+#' @export
+trace.gradient.flow <- function(adj.list,
+                                 weight.list,
+                                 y,
+                                 start.vertex,
+                                 max.steps = 100,
+                                 verbose = TRUE) {
+
+    trajectory <- start.vertex
+    current <- start.vertex
+    step <- 0
+
+    if (verbose) {
+        cat(sprintf("Tracing ascending gradient from vertex %d (y = %.4f)\n",
+                    start.vertex, y[start.vertex]))
+    }
+
+    while (step < max.steps) {
+        nbrs <- adj.list[[current]]
+        weights <- weight.list[[current]]
+
+        if (length(nbrs) == 0) {
+            if (verbose) cat("  No neighbors - isolated vertex\n")
+            break
+        }
+
+        ## Find neighbor with maximum y value (ascending gradient)
+        y.nbrs <- y[nbrs]
+        best.idx <- which.max(y.nbrs)
+        best.nbr <- nbrs[best.idx]
+        best.y <- y.nbrs[best.idx]
+
+        if (verbose) {
+            cat(sprintf("  Step %d: v=%d (y=%.4f) -> ", step + 1, current, y[current]))
+        }
+
+        ## Check if we can ascend
+        if (best.y <= y[current]) {
+            if (verbose) {
+                cat(sprintf("LOCAL MAX (no higher neighbor)\n"))
+                cat(sprintf("    Neighbors: %s\n", paste(nbrs, collapse = ", ")))
+                cat(sprintf("    Neighbor y: %s\n",
+                            paste(round(y.nbrs, 4), collapse = ", ")))
+            }
+            break
+        }
+
+        if (verbose) {
+            cat(sprintf("v=%d (y=%.4f, delta=%.4f)\n",
+                        best.nbr, best.y, best.y - y[current]))
+        }
+
+        ## Check for cycle
+        if (best.nbr %in% trajectory) {
+            if (verbose) cat("  CYCLE DETECTED!\n")
+            break
+        }
+
+        trajectory <- c(trajectory, best.nbr)
+        current <- best.nbr
+        step <- step + 1
+    }
+
+    if (step >= max.steps) {
+        if (verbose) cat("  Max steps reached\n")
+    }
+
+    terminal <- trajectory[length(trajectory)]
+
+    result <- list(
+        start.vertex = start.vertex,
+        terminal.vertex = terminal,
+        trajectory = trajectory,
+        n.steps = length(trajectory) - 1,
+        start.y = y[start.vertex],
+        terminal.y = y[terminal],
+        delta.y = y[terminal] - y[start.vertex]
+    )
+
+    if (verbose) {
+        cat(sprintf("\nSummary: %d -> %d in %d steps, y: %.4f -> %.4f\n",
+                    start.vertex, terminal, result$n.steps,
+                    result$start.y, result$terminal.y))
+    }
+
+    return(invisible(result))
+}
+
+#' Diagnose Gradient Flow for Missing Vertices
+#'
+#' Traces gradient flow for vertices that are missing from trajectories
+#' to understand where they actually flow.
+#'
+#' @param gfc A gfc object.
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Edge weight list used in compute.gfc().
+#' @param y Function values.
+#' @param max.id Maximum basin to diagnose.
+#' @param max.diagnose Maximum number of missing vertices to diagnose.
+#'
+#' @return Data frame with flow destinations for missing vertices.
+#'
+#' @export
+diagnose.missing.flows <- function(gfc,
+                                    adj.list,
+                                    weight.list,
+                                    y,
+                                    max.id,
+                                    max.diagnose = 50) {
+
+    ## Get missing vertices
+    coverage <- diagnose.trajectory.coverage(gfc, max.id)
+    missing <- coverage$missing.vertices
+
+    if (length(missing) == 0) {
+        cat("No missing vertices to diagnose.\n")
+        return(NULL)
+    }
+
+    n.diagnose <- min(length(missing), max.diagnose)
+    cat(sprintf("\nDiagnosing gradient flow for %d missing vertices...\n\n",
+                n.diagnose))
+
+    ## Get expected maximum vertex
+    expected.max <- coverage$max.vertex
+
+    ## Trace each missing vertex
+    results <- data.frame(
+        vertex = integer(n.diagnose),
+        terminal = integer(n.diagnose),
+        reaches.expected = logical(n.diagnose),
+        n.steps = integer(n.diagnose),
+        y.start = numeric(n.diagnose),
+        y.terminal = numeric(n.diagnose)
+    )
+
+    terminal.counts <- list()
+
+    for (i in seq_len(n.diagnose)) {
+        v <- missing[i]
+        flow <- trace.gradient.flow(adj.list, weight.list, y, v, verbose = FALSE)
+
+        results$vertex[i] <- v
+        results$terminal[i] <- flow$terminal.vertex
+        results$reaches.expected[i] <- (flow$terminal.vertex == expected.max)
+        results$n.steps[i] <- flow$n.steps
+        results$y.start[i] <- flow$start.y
+        results$y.terminal[i] <- flow$terminal.y
+
+        ## Count terminals
+        term.key <- as.character(flow$terminal.vertex)
+        if (is.null(terminal.counts[[term.key]])) {
+            terminal.counts[[term.key]] <- 0
+        }
+        terminal.counts[[term.key]] <- terminal.counts[[term.key]] + 1
+    }
+
+    ## Summary
+    cat("Terminal destination summary:\n")
+    for (term in names(terminal.counts)) {
+        term.v <- as.integer(term)
+        ## Find label if it's a known extremum
+        label.idx <- match(term.v, gfc$summary$vertex)
+        if (!is.na(label.idx)) {
+            label <- gfc$summary$label[label.idx]
+        } else {
+            label <- "(not in summary)"
+        }
+        cat(sprintf("  Vertex %s %s: %d vertices\n",
+                    term, label, terminal.counts[[term]]))
+    }
+
+    cat(sprintf("\nReach expected maximum (%d): %d / %d (%.1f%%)\n",
+                expected.max,
+                sum(results$reaches.expected),
+                n.diagnose,
+                100 * mean(results$reaches.expected)))
+
+    return(results)
 }

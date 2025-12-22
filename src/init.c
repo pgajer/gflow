@@ -68,6 +68,7 @@
 #include "magelo_external_bb.h"
 #include "gfc_r.h"
 #include "gfassoc_r.h"
+#include "harmonic_extension_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -203,6 +204,12 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  // =========================================================================
+  //  Harmonic extension
+  // =========================================================================
+  {"S_compute_harmonic_extension", (DL_FUNC) &S_compute_harmonic_extension, 9},
+  {"S_select_max_density_trajectory", (DL_FUNC) &S_select_max_density_trajectory, 2},
+
   // =========================================================================
   //  Gradient flow association functions
   // =========================================================================
