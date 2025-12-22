@@ -39,6 +39,7 @@ extern "C" SEXP S_compute_harmonic_extension(
     SEXP s_weight_list,
     SEXP s_trajectory,
     SEXP s_tube_radius,
+    SEXP s_tube_type,        // NEW: "hop" or "geodesic"
     SEXP s_use_edge_weights,
     SEXP s_max_iterations,
     SEXP s_tolerance,
@@ -60,7 +61,16 @@ extern "C" SEXP S_compute_harmonic_extension(
 
     // Build parameters
     harmonic_extension_params_t params;
-    params.tube_radius = Rf_asInteger(s_tube_radius);
+    params.tube_radius = Rf_asReal(s_tube_radius);
+
+    // Parse tube type
+    const char* type_str = CHAR(STRING_ELT(s_tube_type, 0));
+    if (std::strcmp(type_str, "geodesic") == 0) {
+        params.tube_type = tube_radius_type_t::GEODESIC;
+    } else {
+        params.tube_type = tube_radius_type_t::HOP;
+    }
+
     params.use_edge_weights = Rf_asLogical(s_use_edge_weights);
     params.max_iterations = Rf_asInteger(s_max_iterations);
     params.tolerance = Rf_asReal(s_tolerance);
@@ -82,7 +92,7 @@ extern "C" SEXP S_compute_harmonic_extension(
     );
 
     // Convert result to R list
-    const int n_components = 10;
+    const int n_components = 12;  // Updated count
     SEXP s_result = PROTECT(Rf_allocVector(VECSXP, n_components));
     SEXP s_names = PROTECT(Rf_allocVector(STRSXP, n_components));
 
@@ -135,7 +145,17 @@ extern "C" SEXP S_compute_harmonic_extension(
     SET_VECTOR_ELT(s_result, idx++, s_hd);
     UNPROTECT(1);
 
-	// nearest.traj.idx (1-based trajectory index)
+    // geodesic.distances
+    SEXP s_gd = PROTECT(Rf_allocVector(REALSXP, n_tv));
+    double* p_gd = REAL(s_gd);
+    for (int i = 0; i < n_tv; ++i) {
+        p_gd[i] = result.geodesic_distances[i];
+    }
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("geodesic.distances"));
+    SET_VECTOR_ELT(s_result, idx++, s_gd);
+    UNPROTECT(1);
+
+    // nearest.traj.idx (1-based trajectory index)
     SEXP s_nti = PROTECT(Rf_allocVector(INTSXP, n_tv));
     int* p_nti = INTEGER(s_nti);
     for (int i = 0; i < n_tv; ++i) {
@@ -163,9 +183,15 @@ extern "C" SEXP S_compute_harmonic_extension(
     SET_STRING_ELT(s_names, idx, Rf_mkChar("final.max.change"));
     SET_VECTOR_ELT(s_result, idx++, Rf_ScalarReal(result.final_max_change));
 
-    // tube.radius (for reference)
+    // tube.radius
     SET_STRING_ELT(s_names, idx, Rf_mkChar("tube.radius"));
-    SET_VECTOR_ELT(s_result, idx++, Rf_ScalarInteger(params.tube_radius));
+    SET_VECTOR_ELT(s_result, idx++, Rf_ScalarReal(result.tube_radius));
+
+    // tube.type
+    const char* result_type_str = (result.tube_type == tube_radius_type_t::GEODESIC)
+                                   ? "geodesic" : "hop";
+    SET_STRING_ELT(s_names, idx, Rf_mkChar("tube.type"));
+    SET_VECTOR_ELT(s_result, idx++, Rf_mkString(result_type_str));
 
     Rf_setAttrib(s_result, R_NamesSymbol, s_names);
 

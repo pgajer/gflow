@@ -28,7 +28,8 @@
 
 #include <Eigen/Core>
 
-#include "gradient_basin.hpp" // trajectory_set_t
+#include "gradient_basin.hpp"   // For trajectory_set_t
+#include "gflow_modulation.hpp" // For gflow_modulation_t
 
 // Forward declaration
 struct set_wgraph_t;
@@ -83,16 +84,6 @@ struct gfc_params_t {
 // ============================================================================
 // Basin Data Structures
 // ============================================================================
-
-/**
- * @brief Gradient flow modulation type for basin computation
- */
-enum class gflow_modulation_t {
-    NONE = 0,      ///< Standard gradient flow (steepest ascent/descent)
-    DENSITY = 1,   ///< Density-modulated: ρ(u) · Δŷ
-    EDGELEN = 2,   ///< Edge-length-modulated: dl([v,u]) · Δŷ
-    DENSITY_EDGELEN = 3  ///< Combined: ρ(u) · dl([v,u]) · Δŷ
-};
 
 /**
  * @brief Basin structure with boundary information
@@ -548,8 +539,7 @@ void filter_by_geometry(
     double p_mean_nbrs_dist_threshold,
     double p_mean_hopk_dist_threshold,
     double p_deg_threshold,
-    int min_basin_size,
-    bool is_maximum
+    int min_basin_size
 );
 
 /**

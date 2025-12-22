@@ -12,103 +12,6 @@
 #include <R_ext/Print.h>
 
 /**
- * @brief Compute tubular neighborhood of a trajectory via BFS
- *
- * @param trajectory Ordered vertices of the trajectory
- * @param radius Maximum hop distance from trajectory
- * @param basin_restriction If non-empty, restrict to these vertices
- * @return Tuple of (tubular vertices, hop distances, nearest trajectory index)
- */
-std::tuple<std::vector<size_t>, std::vector<int>, std::vector<size_t>>
-set_wgraph_t::compute_tubular_neighborhood(
-    const std::vector<size_t>& trajectory,
-    int radius,
-    const std::unordered_set<size_t>& basin_restriction
-) const {
-
-    std::vector<size_t> tubular_vertices;
-    std::vector<int> hop_distances;
-    std::vector<size_t> nearest_traj_idx;
-
-    // Track visited vertices: vertex -> (hop distance, trajectory index)
-    std::unordered_map<size_t, std::pair<int, size_t>> visited;
-
-    // Build trajectory vertex to index map
-    std::unordered_map<size_t, size_t> traj_vertex_to_idx;
-    for (size_t i = 0; i < trajectory.size(); ++i) {
-        traj_vertex_to_idx[trajectory[i]] = i;
-    }
-
-    // Initialize BFS queue with trajectory vertices at distance 0
-    // Queue entries: (vertex, hop distance, source trajectory index)
-    std::queue<std::tuple<size_t, int, size_t>> bfs_queue;
-
-    for (size_t i = 0; i < trajectory.size(); ++i) {
-        size_t v = trajectory[i];
-        if (basin_restriction.empty() || basin_restriction.count(v) > 0) {
-            visited[v] = {0, i};
-            bfs_queue.push({v, 0, i});
-        }
-    }
-
-    // BFS expansion
-    while (!bfs_queue.empty()) {
-        auto [u, dist, traj_idx] = bfs_queue.front();
-        bfs_queue.pop();
-
-        // Explore neighbors if within radius
-        if (dist < radius) {
-            for (const auto& edge : adjacency_list[u]) {
-                size_t w = edge.vertex;
-
-                // Skip if outside basin restriction
-                if (!basin_restriction.empty() && basin_restriction.count(w) == 0) {
-                    continue;
-                }
-
-                // Check if already visited
-                auto it = visited.find(w);
-                if (it != visited.end()) {
-                    // Already visited - but check if this path is equally short
-                    // and comes from a trajectory vertex with closer coordinate
-                    // (This handles ties by preferring the closer trajectory vertex)
-                    if (it->second.first == dist + 1) {
-                        // Same distance - could update to closer trajectory vertex
-                        // but for simplicity we keep first discovery
-                    }
-                    continue;
-                }
-
-                // Check if w is itself a trajectory vertex
-                auto traj_it = traj_vertex_to_idx.find(w);
-                if (traj_it != traj_vertex_to_idx.end()) {
-                    // w is on trajectory - use its own index
-                    visited[w] = {0, traj_it->second};
-                    // Don't expand from here as it's already seeded
-                } else {
-                    // w is not on trajectory - inherit source from u
-                    visited[w] = {dist + 1, traj_idx};
-                    bfs_queue.push({w, dist + 1, traj_idx});
-                }
-            }
-        }
-    }
-
-    // Collect results
-    tubular_vertices.reserve(visited.size());
-    hop_distances.reserve(visited.size());
-    nearest_traj_idx.reserve(visited.size());
-
-    for (const auto& [v, info] : visited) {
-        tubular_vertices.push_back(v);
-        hop_distances.push_back(info.first);
-        nearest_traj_idx.push_back(info.second);
-    }
-
-    return {tubular_vertices, hop_distances, nearest_traj_idx};
-}
-
-/**
  * @brief Compute arc-length coordinates for trajectory vertices
  *
  * @param trajectory Ordered vertices from minimum to maximum
@@ -261,16 +164,217 @@ std::vector<double> set_wgraph_t::solve_harmonic_extension(
 }
 
 /**
+ * @brief Compute tubular neighborhood using hop distance (BFS)
+ */
+tubular_neighborhood_t set_wgraph_t::compute_tubular_neighborhood_hop(
+    const std::vector<size_t>& trajectory,
+    int hop_radius,
+    const std::unordered_set<size_t>& basin_restriction
+) const {
+
+    tubular_neighborhood_t result;
+
+    // Track visited vertices: vertex -> (hop dist, geodesic dist, traj idx)
+    struct vertex_info {
+        int hop_dist;
+        double geo_dist;
+        size_t traj_idx;
+    };
+    std::unordered_map<size_t, vertex_info> visited;
+
+    // Build trajectory vertex to index map
+    std::unordered_map<size_t, size_t> traj_vertex_to_idx;
+    for (size_t i = 0; i < trajectory.size(); ++i) {
+        traj_vertex_to_idx[trajectory[i]] = i;
+    }
+
+    // BFS queue: (vertex, hop distance, geodesic distance, source traj index)
+    std::queue<std::tuple<size_t, int, double, size_t>> bfs_queue;
+
+    // Initialize with trajectory vertices
+    for (size_t i = 0; i < trajectory.size(); ++i) {
+        size_t v = trajectory[i];
+        if (basin_restriction.empty() || basin_restriction.count(v) > 0) {
+            visited[v] = {0, 0.0, i};
+            bfs_queue.push({v, 0, 0.0, i});
+        }
+    }
+
+    // BFS expansion
+    while (!bfs_queue.empty()) {
+        auto [u, hop_dist, geo_dist, traj_idx] = bfs_queue.front();
+        bfs_queue.pop();
+
+        if (hop_dist < hop_radius) {
+            for (const auto& edge : adjacency_list[u]) {
+                size_t w = edge.vertex;
+
+                if (!basin_restriction.empty() && basin_restriction.count(w) == 0) {
+                    continue;
+                }
+
+                if (visited.count(w) > 0) {
+                    continue;
+                }
+
+                // Check if w is on trajectory
+                auto traj_it = traj_vertex_to_idx.find(w);
+                if (traj_it != traj_vertex_to_idx.end()) {
+                    visited[w] = {0, 0.0, traj_it->second};
+                } else {
+                    double new_geo_dist = geo_dist + edge.weight;
+                    visited[w] = {hop_dist + 1, new_geo_dist, traj_idx};
+                    bfs_queue.push({w, hop_dist + 1, new_geo_dist, traj_idx});
+                }
+            }
+        }
+    }
+
+    // Collect results
+    result.vertices.reserve(visited.size());
+    result.hop_distances.reserve(visited.size());
+    result.geodesic_distances.reserve(visited.size());
+    result.nearest_traj_idx.reserve(visited.size());
+
+    for (const auto& [v, info] : visited) {
+        result.vertices.push_back(v);
+        result.hop_distances.push_back(info.hop_dist);
+        result.geodesic_distances.push_back(info.geo_dist);
+        result.nearest_traj_idx.push_back(info.traj_idx);
+    }
+
+    return result;
+}
+
+/**
+ * @brief Compute tubular neighborhood using geodesic distance (multi-source Dijkstra)
+ */
+tubular_neighborhood_t set_wgraph_t::compute_tubular_neighborhood_geodesic(
+    const std::vector<size_t>& trajectory,
+    double geodesic_radius,
+    const std::unordered_set<size_t>& basin_restriction
+) const {
+
+    tubular_neighborhood_t result;
+
+    const size_t n = adjacency_list.size();
+
+    // Distance and predecessor tracking
+    std::vector<double> geo_dist(n, std::numeric_limits<double>::infinity());
+    std::vector<int> hop_dist(n, std::numeric_limits<int>::max());
+    std::vector<size_t> nearest_traj(n, INVALID_VERTEX);
+    std::vector<bool> finalized(n, false);
+
+    // Build trajectory vertex to index map
+    std::unordered_map<size_t, size_t> traj_vertex_to_idx;
+    for (size_t i = 0; i < trajectory.size(); ++i) {
+        traj_vertex_to_idx[trajectory[i]] = i;
+    }
+
+    // Priority queue: (geodesic distance, hop distance, vertex, traj index)
+    using pq_entry = std::tuple<double, int, size_t, size_t>;
+    std::priority_queue<pq_entry, std::vector<pq_entry>, std::greater<pq_entry>> pq;
+
+    // Initialize with trajectory vertices
+    for (size_t i = 0; i < trajectory.size(); ++i) {
+        size_t v = trajectory[i];
+        if (basin_restriction.empty() || basin_restriction.count(v) > 0) {
+            geo_dist[v] = 0.0;
+            hop_dist[v] = 0;
+            nearest_traj[v] = i;
+            pq.push({0.0, 0, v, i});
+        }
+    }
+
+    // Multi-source Dijkstra
+    while (!pq.empty()) {
+        auto [d, h, u, traj_idx] = pq.top();
+        pq.pop();
+
+        if (finalized[u]) {
+            continue;
+        }
+        finalized[u] = true;
+
+        // Stop if beyond geodesic radius (for this vertex)
+        // But continue processing queue for other paths
+        if (d > geodesic_radius) {
+            continue;
+        }
+
+        // Explore neighbors
+        for (const auto& edge : adjacency_list[u]) {
+            size_t w = edge.vertex;
+
+            if (finalized[w]) {
+                continue;
+            }
+
+            if (!basin_restriction.empty() && basin_restriction.count(w) == 0) {
+                continue;
+            }
+
+            double new_geo_dist = d + edge.weight;
+
+            // Only add if within radius
+            if (new_geo_dist > geodesic_radius) {
+                continue;
+            }
+
+            // Check if w is on trajectory - use its own index
+            auto traj_it = traj_vertex_to_idx.find(w);
+            size_t w_traj_idx = (traj_it != traj_vertex_to_idx.end())
+                                 ? traj_it->second : traj_idx;
+            double w_geo_dist = (traj_it != traj_vertex_to_idx.end())
+                                 ? 0.0 : new_geo_dist;
+            int w_hop_dist = (traj_it != traj_vertex_to_idx.end())
+                              ? 0 : h + 1;
+
+            if (w_geo_dist < geo_dist[w]) {
+                geo_dist[w] = w_geo_dist;
+                hop_dist[w] = w_hop_dist;
+                nearest_traj[w] = w_traj_idx;
+                pq.push({w_geo_dist, w_hop_dist, w, w_traj_idx});
+            }
+        }
+    }
+
+    // Collect results - only vertices that were reached within radius
+    for (size_t v = 0; v < n; ++v) {
+        if (finalized[v] && geo_dist[v] <= geodesic_radius) {
+            result.vertices.push_back(v);
+            result.hop_distances.push_back(hop_dist[v]);
+            result.geodesic_distances.push_back(geo_dist[v]);
+            result.nearest_traj_idx.push_back(nearest_traj[v]);
+        }
+    }
+
+    return result;
+}
+
+/**
+ * @brief Compute tubular neighborhood (dispatcher)
+ */
+tubular_neighborhood_t set_wgraph_t::compute_tubular_neighborhood(
+    const std::vector<size_t>& trajectory,
+    double radius,
+    tube_radius_type_t radius_type,
+    const std::unordered_set<size_t>& basin_restriction
+) const {
+
+    if (radius_type == tube_radius_type_t::HOP) {
+        return compute_tubular_neighborhood_hop(
+            trajectory, static_cast<int>(radius), basin_restriction
+        );
+    } else {
+        return compute_tubular_neighborhood_geodesic(
+            trajectory, radius, basin_restriction
+        );
+    }
+}
+
+/**
  * @brief Compute harmonic extension of trajectory coordinates
- *
- * Given a geodesic trajectory through a basin, this function computes
- * arc-length coordinates for the trajectory vertices and extends them
- * harmonically to a tubular neighborhood.
- *
- * @param trajectory Ordered vertices from minimum to maximum
- * @param params Extension parameters
- * @param verbose Print progress information
- * @return Complete harmonic extension result
  */
 harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
     const std::vector<size_t>& trajectory,
@@ -280,6 +384,8 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
 
     harmonic_extension_result_t result;
     result.trajectory = trajectory;
+    result.tube_type = params.tube_type;
+    result.tube_radius = params.tube_radius;
 
     if (trajectory.empty()) {
         if (verbose) {
@@ -288,11 +394,14 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
         return result;
     }
 
+    const char* type_str = (params.tube_type == tube_radius_type_t::HOP)
+                            ? "hop" : "geodesic";
+
     if (verbose) {
         Rprintf("Computing harmonic extension for trajectory of %zu vertices\n",
                 trajectory.size());
-        Rprintf("  Tube radius: %d hops\n", params.tube_radius);
-        Rprintf("  Edge weights: %s\n",
+        Rprintf("  Tube radius: %.2f (%s)\n", params.tube_radius, type_str);
+        Rprintf("  Laplacian weights: %s\n",
                 params.use_edge_weights ? "inverse length" : "unit");
     }
 
@@ -305,26 +414,43 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
         Rprintf("  Trajectory length: %.4f\n", total_length);
     }
 
-    // Step 2: Compute tubular neighborhood with nearest trajectory indices
-    auto [tubular_verts, hop_dists, nearest_idx] = compute_tubular_neighborhood(
-        trajectory, params.tube_radius, params.basin_restriction
+    // Step 2: Compute tubular neighborhood
+    auto tube_nbhd = compute_tubular_neighborhood(
+        trajectory,
+        params.tube_radius,
+        params.tube_type,
+        params.basin_restriction
     );
-    result.tubular_vertices = tubular_verts;
-    result.hop_distances = hop_dists;
-    result.nearest_traj_idx = nearest_idx;
+
+    result.tubular_vertices = tube_nbhd.vertices;
+    result.hop_distances = tube_nbhd.hop_distances;
+    result.geodesic_distances = tube_nbhd.geodesic_distances;
+    result.nearest_traj_idx = tube_nbhd.nearest_traj_idx;
 
     if (verbose) {
-        Rprintf("  Tubular neighborhood: %zu vertices\n", tubular_verts.size());
+        Rprintf("  Tubular neighborhood: %zu vertices\n", tube_nbhd.vertices.size());
+
+        // Summary statistics
+        if (!tube_nbhd.geodesic_distances.empty()) {
+            double max_geo = *std::max_element(
+                tube_nbhd.geodesic_distances.begin(),
+                tube_nbhd.geodesic_distances.end()
+            );
+            int max_hop = *std::max_element(
+                tube_nbhd.hop_distances.begin(),
+                tube_nbhd.hop_distances.end()
+            );
+            Rprintf("    Max geodesic distance: %.4f\n", max_geo);
+            Rprintf("    Max hop distance: %d\n", max_hop);
+        }
 
         // Count by hop distance
-        std::vector<int> hop_counts(params.tube_radius + 1, 0);
-        for (int d : hop_dists) {
-            if (d <= params.tube_radius) {
-                hop_counts[d]++;
-            }
+        std::map<int, int> hop_counts;
+        for (int h : tube_nbhd.hop_distances) {
+            hop_counts[h]++;
         }
-        for (int d = 0; d <= params.tube_radius; ++d) {
-            Rprintf("    Hop %d: %d vertices\n", d, hop_counts[d]);
+        for (const auto& [h, count] : hop_counts) {
+            Rprintf("    Hop %d: %d vertices\n", h, count);
         }
     }
 
@@ -337,9 +463,9 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
     }
 
     // Step 3: Build initial coordinates from nearest trajectory vertex
-    std::vector<double> initial_coords(tubular_verts.size());
-    for (size_t i = 0; i < tubular_verts.size(); ++i) {
-        initial_coords[i] = traj_coords[nearest_idx[i]];
+    std::vector<double> initial_coords(tube_nbhd.vertices.size());
+    for (size_t i = 0; i < tube_nbhd.vertices.size(); ++i) {
+        initial_coords[i] = traj_coords[tube_nbhd.nearest_traj_idx[i]];
     }
 
     if (verbose) {
@@ -351,7 +477,7 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
     double max_change;
 
     result.extended_coords = solve_harmonic_extension(
-        tubular_verts,
+        tube_nbhd.vertices,
         trajectory_set,
         trajectory_coord_map,
         initial_coords,
@@ -371,8 +497,8 @@ harmonic_extension_result_t set_wgraph_t::compute_harmonic_extension(
     }
 
     // Build vertex to index map
-    for (size_t i = 0; i < tubular_verts.size(); ++i) {
-        result.vertex_to_idx[tubular_verts[i]] = i;
+    for (size_t i = 0; i < tube_nbhd.vertices.size(); ++i) {
+        result.vertex_to_idx[tube_nbhd.vertices[i]] = i;
     }
 
     // Validate coordinates are in [0, 1]
