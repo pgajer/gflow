@@ -36,6 +36,7 @@
 #include "gfc.hpp"
 #include "se_tree.hpp"
 #include "harmonic_extension.hpp"
+#include "gfc_flow.hpp"
 
 #include <cstddef>
 #include <vector>        // For std::vector used throughout the code
@@ -322,10 +323,36 @@ struct set_wgraph_t {
 		) const;
 
 	// ----------------------------------------------------------------
-	//
-	// graph gradient flow related functions
-	//
+	// Gradient flow trajectory members
 	// ----------------------------------------------------------------
+	// the first three are for compute_gfc_flow
+	std::vector<size_t> follow_gradient_trajectory(
+        size_t start_vertex,
+        const std::vector<double>& y,
+        bool ascending,
+        gflow_modulation_t modulation,
+        const std::vector<double>& density,
+        double edge_length_thld,
+        const std::vector<bool>& visited,
+        size_t max_length
+    ) const;
+
+    gflow_trajectory_t join_trajectories_at_vertex(
+        size_t vertex,
+        const std::vector<double>& y,
+        gflow_modulation_t modulation,
+        const std::vector<double>& density,
+        double edge_length_thld,
+        const std::vector<bool>& visited,
+        size_t max_length
+    ) const;
+
+
+    int check_nbr_extremum_type(
+        size_t vertex,
+        const std::vector<double>& y
+		) const;
+
 	std::unordered_map<size_t, std::unordered_map<size_t, double>>
 	compute_edge_length_weights(
 		double bandwidth
@@ -666,15 +693,39 @@ struct set_wgraph_t {
     // Harmonic Extension Methods
     // ========================================================================
 
-	/**
-     * @brief Compute tubular neighborhood of a trajectory
-     * @return Tuple of (vertices, hop distances, nearest trajectory index)
+    /**
+     * @brief Compute tubular neighborhood using hop distance (BFS)
      */
-    std::tuple<std::vector<size_t>, std::vector<int>, std::vector<size_t>>
-    compute_tubular_neighborhood(
+    tubular_neighborhood_t compute_tubular_neighborhood_hop(
         const std::vector<size_t>& trajectory,
-        int radius,
+        int hop_radius,
         const std::unordered_set<size_t>& basin_restriction = {}
+    ) const;
+
+    /**
+     * @brief Compute tubular neighborhood using geodesic distance (Dijkstra)
+     */
+    tubular_neighborhood_t compute_tubular_neighborhood_geodesic(
+        const std::vector<size_t>& trajectory,
+        double geodesic_radius,
+        const std::unordered_set<size_t>& basin_restriction = {}
+    ) const;
+
+    /**
+     * @brief Compute tubular neighborhood (dispatcher)
+     */
+    tubular_neighborhood_t compute_tubular_neighborhood(
+        const std::vector<size_t>& trajectory,
+        double radius,
+        tube_radius_type_t radius_type,
+        const std::unordered_set<size_t>& basin_restriction = {}
+    ) const;
+
+    /**
+     * @brief Compute arc-length coordinates for trajectory vertices
+     */
+    std::pair<std::vector<double>, double> compute_arc_length_coords(
+        const std::vector<size_t>& trajectory
     ) const;
 
     /**
@@ -690,14 +741,7 @@ struct set_wgraph_t {
         double tolerance,
         int& n_iterations,
         double& final_max_change
-		) const;
-
-    /**
-     * @brief Compute arc-length coordinates for trajectory vertices
-     */
-    std::pair<std::vector<double>, double> compute_arc_length_coords(
-        const std::vector<size_t>& trajectory
-		) const;
+    ) const;
 
     /**
      * @brief Compute harmonic extension of trajectory coordinates
@@ -707,7 +751,7 @@ struct set_wgraph_t {
         const harmonic_extension_params_t& params,
         bool verbose = false
 		) const;
-
+	
 	// ----------------------------------------------------------------
 	//
 	// graph_spectral_lowess related functions

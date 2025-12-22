@@ -69,6 +69,7 @@
 #include "gfc_r.h"
 #include "gfassoc_r.h"
 #include "harmonic_extension_r.h"
+#include "gfc_flow_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -207,7 +208,7 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   //  Harmonic extension
   // =========================================================================
-  {"S_compute_harmonic_extension", (DL_FUNC) &S_compute_harmonic_extension, 9},
+  {"S_compute_harmonic_extension", (DL_FUNC) &S_compute_harmonic_extension, 10},
   {"S_select_max_density_trajectory", (DL_FUNC) &S_select_max_density_trajectory, 2},
 
   // =========================================================================
@@ -224,14 +225,20 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // gradient flow
   // =========================================================================
-  {"S_compute_vertex_density", (DL_FUNC) &S_compute_vertex_density, 3},
-  {"S_compute_gfc_basins", (DL_FUNC) &S_compute_gfc_basins, 7},
-  {"S_debug_extension_search", (DL_FUNC) &S_debug_extension_search, 9},
-  {"S_compute_gfc",        (DL_FUNC) &S_compute_gfc,        21},
-  {"S_compute_gfc_matrix", (DL_FUNC) &S_compute_gfc_matrix, 20},
+  {"S_compute_gfc_flow",        (DL_FUNC) &S_compute_gfc_flow,        6},
+  {"S_compute_gfc_flow_matrix", (DL_FUNC) &S_compute_gfc_flow_matrix, 7},
+  {"S_compute_gfc",             (DL_FUNC) &S_compute_gfc,        21},
+  {"S_compute_vertex_density",  (DL_FUNC) &S_compute_vertex_density, 3},
+  {"S_compute_gfc_basins",      (DL_FUNC) &S_compute_gfc_basins, 7},
+  {"S_debug_extension_search",  (DL_FUNC) &S_debug_extension_search, 9},
+  {"S_compute_gfc_matrix",      (DL_FUNC) &S_compute_gfc_matrix, 20},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
-  {"S_partition_graph", (DL_FUNC) &S_partition_graph, 4},
+  {"S_partition_graph",        (DL_FUNC) &S_partition_graph, 4},
+
+  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
+  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
+  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
 
   {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
   {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
@@ -239,13 +246,10 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
   {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
   {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
-  {"S_create_basin_cx", (DL_FUNC) &S_create_basin_cx, 3},
   {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
-  {"S_find_gflow_basins", (DL_FUNC) &S_find_gflow_basins, 6},
   {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6},
   {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
   {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
-  {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
   {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
   {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
 

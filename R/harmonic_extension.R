@@ -9,9 +9,19 @@
 #' @param weight.list Edge weight list (edge lengths).
 #' @param trajectory Integer vector of trajectory vertices in order from
 #'   minimum to maximum (1-based indexing).
-#' @param tube.radius Integer; radius of tubular neighborhood in hops.
+#' @param tube.radius Numeric; radius of tubular neighborhood. Interpretation
+#'   depends on \code{tube.type}.
+#' @param tube.type Character; type of radius measurement. One of:
+#'   \describe{
+#'     \item{\code{"hop"}}{Combinatorial distance: count of edge traversals.
+#'       Fast (BFS), but treats all edges equally.}
+#'     \item{\code{"geodesic"}}{Geometric distance: sum of edge weights along
+#'       shortest path. Respects edge lengths, excluding geometrically distant
+#'       vertices even if few hops away.}
+#'   }
 #' @param use.edge.weights Logical; if \code{TRUE} (default), use inverse
-#'   edge length as Laplacian weights. If \code{FALSE}, use unit weights.
+#'   edge length as Laplacian weights for the harmonic solver. If \code{FALSE},
+#'   use unit weights.
 #' @param max.iterations Integer; maximum iterations for Gauss-Seidel solver.
 #' @param tolerance Numeric; convergence tolerance for solver.
 #' @param basin.restriction Optional integer vector of vertices to restrict
@@ -24,6 +34,8 @@
 #'   \item{trajectory.length}{Total geodesic length of trajectory.}
 #'   \item{tubular.vertices}{All vertices in tubular neighborhood (1-based).}
 #'   \item{hop.distances}{Hop distance from trajectory for each tubular vertex.}
+#'   \item{geodesic.distances}{Geodesic distance from trajectory for each
+#'     tubular vertex.}
 #'   \item{nearest.traj.idx}{Index (1-based) into trajectory of the nearest
 #'     trajectory vertex for each tubular vertex.}
 #'   \item{extended.coords}{Harmonic extension coordinates for all tubular
@@ -31,6 +43,7 @@
 #'   \item{n.iterations}{Number of solver iterations.}
 #'   \item{final.max.change}{Final maximum coordinate change (convergence).}
 #'   \item{tube.radius}{Tube radius used.}
+#'   \item{tube.type}{Type of radius used ("hop" or "geodesic").}
 #'
 #' @details
 #' The harmonic extension is computed by solving the discrete Laplace equation
@@ -39,9 +52,20 @@
 #' Non-trajectory vertices in the tubular neighborhood receive coordinates
 #' via the unique harmonic function that matches the boundary conditions.
 #'
-#' The harmonic extension minimizes the Dirichlet energy (sum of squared
-#' differences across edges) and satisfies the maximum principle: all
-#' extended coordinates lie within \eqn{[0, 1]}.
+#' The choice of \code{tube.type} affects which vertices are included:
+#' \describe{
+#'   \item{Hop-based}{Includes all vertices reachable in at most \code{tube.radius}
+#'     edge traversals. Simple and fast, but may include geometrically distant
+#'     vertices connected by long edges.}
+#'   \item{Geodesic-based}{Includes all vertices within geodesic distance
+#'     \code{tube.radius} from the trajectory. Respects the metric structure
+#'     of the graph, excluding vertices that are geometrically far even if
+
+#'     topologically close.}
+#' }
+#'
+#' For graphs with highly variable edge lengths, geodesic-based neighborhoods
+#' typically provide more geometrically meaningful results.
 #'
 #' @examples
 #' \dontrun{
@@ -55,20 +79,25 @@
 #' )
 #' best.traj <- cell.traj$trajectories[[best.idx]]
 #'
-#' # Compute harmonic extension
+#' # Compute harmonic extension with geodesic radius
 #' hext <- compute.harmonic.extension(
 #'     adj.list, weight.list,
 #'     trajectory = best.traj,
-#'     tube.radius = 3,
+#'     tube.radius = 0.5,
+#'     tube.type = "geodesic",
 #'     verbose = TRUE
 #' )
 #'
-#' # Access extended coordinates
-#' coords <- data.frame(
-#'     vertex = hext$tubular.vertices,
-#'     coord = hext$extended.coords,
-#'     hop = hext$hop.distances
+#' # Compare hop vs geodesic neighborhood sizes
+#' hext.hop <- compute.harmonic.extension(
+#'     adj.list, weight.list,
+#'     trajectory = best.traj,
+#'     tube.radius = 2,
+#'     tube.type = "hop"
 #' )
+#'
+#' cat("Hop neighborhood:", length(hext.hop$tubular.vertices), "vertices\n")
+#' cat("Geodesic neighborhood:", length(hext$tubular.vertices), "vertices\n")
 #' }
 #'
 #' @seealso \code{\link{select.max.density.trajectory}},
@@ -76,14 +105,15 @@
 #'
 #' @export
 compute.harmonic.extension <- function(adj.list,
-                                        weight.list,
-                                        trajectory,
-                                        tube.radius = 2L,
-                                        use.edge.weights = TRUE,
-                                        max.iterations = 1000L,
-                                        tolerance = 1e-8,
-                                        basin.restriction = NULL,
-                                        verbose = TRUE) {
+                                       weight.list,
+                                       trajectory,
+                                       tube.radius = 2,
+                                       tube.type = c("hop", "geodesic"),
+                                       use.edge.weights = TRUE,
+                                       max.iterations = 1000L,
+                                       tolerance = 1e-8,
+                                       basin.restriction = NULL,
+                                       verbose = TRUE) {
 
     ## ========================================================================
     ## Input validation
@@ -113,9 +143,16 @@ compute.harmonic.extension <- function(adj.list,
         stop("trajectory vertices must be between 1 and n.vertices")
     }
 
-    tube.radius <- as.integer(tube.radius)
-    if (tube.radius < 1) {
-        stop("tube.radius must be at least 1")
+    tube.type <- match.arg(tube.type)
+
+    tube.radius <- as.numeric(tube.radius)
+    if (tube.radius <= 0) {
+        stop("tube.radius must be positive")
+    }
+
+    if (tube.type == "hop" && tube.radius != floor(tube.radius)) {
+        warning("tube.radius rounded to integer for hop-based neighborhood")
+        tube.radius <- floor(tube.radius)
     }
 
     ## ========================================================================
@@ -146,7 +183,8 @@ compute.harmonic.extension <- function(adj.list,
         adj.list.0based,
         weight.list,
         trajectory.0based,
-        tube.radius,
+        as.numeric(tube.radius),
+        as.character(tube.type),
         as.logical(use.edge.weights),
         as.integer(max.iterations),
         as.numeric(tolerance),
@@ -157,6 +195,104 @@ compute.harmonic.extension <- function(adj.list,
 
     return(result)
 }
+
+
+#' Print Method for harmonic_extension Objects
+#'
+#' @param x A \code{harmonic_extension} object.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.harmonic_extension <- function(x, ...) {
+
+    cat("Harmonic Extension of Trajectory Coordinates\n")
+    cat("=============================================\n")
+    cat(sprintf("Trajectory: %d vertices, length %.4f\n",
+                length(x$trajectory), x$trajectory.length))
+    cat(sprintf("Tubular neighborhood: %d vertices\n",
+                length(x$tubular.vertices)))
+    cat(sprintf("  Radius: %.2f (%s)\n", x$tube.radius, x$tube.type))
+    cat(sprintf("Solver: %d iterations, final change %.2e\n",
+                x$n.iterations, x$final.max.change))
+
+    ## Distance summaries
+    cat(sprintf("\nDistance from trajectory:\n"))
+    cat(sprintf("  Hop: max %d, median %d\n",
+                max(x$hop.distances),
+                as.integer(median(x$hop.distances))))
+    cat(sprintf("  Geodesic: max %.4f, median %.4f\n",
+                max(x$geodesic.distances),
+                median(x$geodesic.distances)))
+
+    ## Coordinate summary
+    cat(sprintf("\nExtended coordinates:\n"))
+    cat(sprintf("  Range: [%.4f, %.4f]\n",
+                min(x$extended.coords), max(x$extended.coords)))
+    cat(sprintf("  Mean: %.4f, SD: %.4f\n",
+                mean(x$extended.coords), sd(x$extended.coords)))
+
+    ## Count by hop distance
+    hop.table <- table(x$hop.distances)
+    cat(sprintf("\nVertices by hop distance:\n"))
+    for (h in names(hop.table)) {
+        cat(sprintf("  Hop %s: %d vertices\n", h, hop.table[h]))
+    }
+
+    invisible(x)
+}
+
+
+#' Create Data Frame of Extended Coordinates
+#'
+#' Extracts the harmonic extension results as a data frame suitable for
+#' downstream analysis.
+#'
+#' @param x A \code{harmonic_extension} object.
+#' @param y Optional numeric vector of response values (e.g., fitted values).
+#' @param density Optional numeric vector of density values.
+#' @param row.names Ignored (for S3 method compatibility).
+#' @param optional Ignored (for S3 method compatibility).
+#' @param ... Additional arguments (ignored).
+#'
+#' @return A data frame with columns:
+#'   \item{vertex}{Vertex index (1-based)}
+#'   \item{coord}{Extended coordinate in \eqn{[0, 1]}}
+#'   \item{hop.dist}{Hop distance from trajectory}
+#'   \item{geo.dist}{Geodesic distance from trajectory}
+#'   \item{nearest.traj.vertex}{Nearest trajectory vertex (1-based)}
+#'   \item{on.trajectory}{Logical; TRUE if vertex is on the trajectory}
+#'   \item{y}{Response value (if provided)}
+#'   \item{density}{Density value (if provided)}
+#'
+#' @export
+as.data.frame.harmonic_extension <- function(x, row.names = NULL,
+                                              optional = FALSE,
+                                              y = NULL, density = NULL, ...) {
+
+    df <- data.frame(
+        vertex = x$tubular.vertices,
+        coord = x$extended.coords,
+        hop.dist = x$hop.distances,
+        geo.dist = x$geodesic.distances,
+        nearest.traj.vertex = x$trajectory[x$nearest.traj.idx],
+        on.trajectory = x$tubular.vertices %in% x$trajectory
+    )
+
+    if (!is.null(y)) {
+        df$y <- y[x$tubular.vertices]
+    }
+
+    if (!is.null(density)) {
+        df$density <- density[x$tubular.vertices]
+    }
+
+    ## Sort by coordinate
+    df <- df[order(df$coord), ]
+    rownames(df) <- NULL
+
+    return(df)
+}
+
 
 
 #' Select Trajectory with Maximal Mean Density
@@ -219,42 +355,6 @@ select.max.density.trajectory <- function(trajectories, density) {
     return(result)
 }
 
-
-#' Print Method for harmonic_extension Objects
-#'
-#' @param x A \code{harmonic_extension} object.
-#' @param ... Additional arguments (ignored).
-#'
-#' @export
-print.harmonic_extension <- function(x, ...) {
-
-    cat("Harmonic Extension of Trajectory Coordinates\n")
-    cat("=============================================\n")
-    cat(sprintf("Trajectory: %d vertices, length %.4f\n",
-                length(x$trajectory), x$trajectory.length))
-    cat(sprintf("Tubular neighborhood: %d vertices (radius %d hops)\n",
-                length(x$tubular.vertices), x$tube.radius))
-    cat(sprintf("Solver: %d iterations, final change %.2e\n",
-                x$n.iterations, x$final.max.change))
-
-    ## Coordinate summary
-    cat(sprintf("\nExtended coordinates:\n"))
-    cat(sprintf("  Range: [%.4f, %.4f]\n",
-                min(x$extended.coords), max(x$extended.coords)))
-    cat(sprintf("  Mean: %.4f, SD: %.4f\n",
-                mean(x$extended.coords), sd(x$extended.coords)))
-
-    ## Count by hop distance
-    hop.table <- table(x$hop.distances)
-    cat(sprintf("\nVertices by hop distance:\n"))
-    for (h in names(hop.table)) {
-        cat(sprintf("  Hop %s: %d vertices\n", h, hop.table[h]))
-    }
-
-    invisible(x)
-}
-
-
 #' Get Coordinate for a Specific Vertex
 #'
 #' @param hext A \code{harmonic_extension} object.
@@ -277,47 +377,4 @@ get.extended.coord <- function(hext, vertex) {
     }
 
     return(hext$extended.coords[idx])
-}
-
-
-#' Create Data Frame of Extended Coordinates
-#'
-#' Extracts the harmonic extension results as a data frame suitable for
-#' downstream analysis.
-#'
-#' @param hext A \code{harmonic_extension} object.
-#' @param y Optional numeric vector of response values (e.g., fitted values).
-#' @param density Optional numeric vector of density values.
-#'
-#' @return A data frame with columns:
-#'   \item{vertex}{Vertex index (1-based)}
-#'   \item{coord}{Extended coordinate in \eqn{[0, 1]}}
-#'   \item{hop}{Hop distance from trajectory}
-#'   \item{on.trajectory}{Logical; TRUE if vertex is on the trajectory}
-#'   \item{y}{Response value (if provided)}
-#'   \item{density}{Density value (if provided)}
-#'
-#' @export
-as.data.frame.harmonic_extension <- function(hext, y = NULL, density = NULL) {
-
-    df <- data.frame(
-        vertex = hext$tubular.vertices,
-        coord = hext$extended.coords,
-        hop = hext$hop.distances,
-        on.trajectory = hext$tubular.vertices %in% hext$trajectory
-    )
-
-    if (!is.null(y)) {
-        df$y <- y[hext$tubular.vertices]
-    }
-
-    if (!is.null(density)) {
-        df$density <- density[hext$tubular.vertices]
-    }
-
-    ## Sort by coordinate
-    df <- df[order(df$coord), ]
-    rownames(df) <- NULL
-
-    return(df)
 }
