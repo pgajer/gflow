@@ -327,26 +327,25 @@ struct set_wgraph_t {
 	// ----------------------------------------------------------------
 	// the first three are for compute_gfc_flow
 	std::vector<size_t> follow_gradient_trajectory(
-        size_t start_vertex,
-        const std::vector<double>& y,
-        bool ascending,
-        gflow_modulation_t modulation,
-        const std::vector<double>& density,
-        double edge_length_thld,
-        const std::vector<bool>& visited,
-        size_t max_length
-    ) const;
+		size_t start_vertex,
+		const std::vector<double>& y,
+		bool ascending,
+		gflow_modulation_t modulation,
+		const std::vector<double>& density,
+		const edge_weight_map_t& edge_length_weights,
+		double edge_length_thld,
+		size_t max_length
+		) const;
 
-    gflow_trajectory_t join_trajectories_at_vertex(
-        size_t vertex,
-        const std::vector<double>& y,
-        gflow_modulation_t modulation,
-        const std::vector<double>& density,
-        double edge_length_thld,
-        const std::vector<bool>& visited,
-        size_t max_length
-    ) const;
-
+	gflow_trajectory_t join_trajectories_at_vertex(
+		size_t vertex,
+		const std::vector<double>& y,
+		gflow_modulation_t modulation,
+		const std::vector<double>& density,
+		const edge_weight_map_t& edge_length_weights,
+		double edge_length_thld,
+		size_t max_length
+		) const;
 
     int check_nbr_extremum_type(
         size_t vertex,

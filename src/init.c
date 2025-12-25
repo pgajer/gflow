@@ -70,6 +70,7 @@
 #include "gfassoc_r.h"
 #include "harmonic_extension_r.h"
 #include "gfc_flow_r.h"
+#include "madag_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -225,6 +226,12 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // gradient flow
   // =========================================================================
+  {"S_construct_madag", (DL_FUNC) &S_construct_madag, 6},
+  {"S_enumerate_cell_trajectories", (DL_FUNC) &S_enumerate_cell_trajectories, 4},
+  {"S_sample_cell_trajectories", (DL_FUNC) &S_sample_cell_trajectories, 5},
+  {"S_trajectory_similarity_matrix", (DL_FUNC) &S_trajectory_similarity_matrix, 2},
+  {"S_identify_bottlenecks", (DL_FUNC) &S_identify_bottlenecks, 3},
+
   {"S_compute_gfc_flow",        (DL_FUNC) &S_compute_gfc_flow,        6},
   {"S_compute_gfc_flow_matrix", (DL_FUNC) &S_compute_gfc_flow_matrix, 7},
   {"S_compute_gfc",             (DL_FUNC) &S_compute_gfc,        21},

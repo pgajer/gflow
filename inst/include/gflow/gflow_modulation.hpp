@@ -21,18 +21,21 @@
  *   Prefers directions toward higher-density regions, useful when
  *   the function should follow population concentrations.
  *
- * - EDGELEN: score = Δy / d(v,u)
- *   Normalizes by edge length, preferring shorter edges for the same
- *   function change. Prevents "basin jumping" through long edges.
+ * - EDGELEN: score = dl([v,u]) · Δy
+ *   Multiplies by the edge length density weight dl, which is the
+ *   max-normalized KDE of edge lengths evaluated at this edge's length.
+ *   Edges near the mode of the length distribution receive weight ≈ 1,
+ *   while very short or very long edges are down-weighted. This prevents
+ *   "basin jumping" through atypical edges.
  *
- * - DENSITY_EDGELEN: score = ρ(u) · Δy / d(v,u)
+ * - DENSITY_EDGELEN: score = ρ(u) · dl([v,u]) · Δy
  *   Combined modulation incorporating both effects.
  */
 enum class gflow_modulation_t {
     NONE = 0,           ///< Standard gradient flow: Δy
     DENSITY = 1,        ///< Density-modulated: ρ(u) · Δy
-    EDGELEN = 2,        ///< Edge-length-modulated: Δy / d(v,u)
-    DENSITY_EDGELEN = 3 ///< Combined: ρ(u) · Δy / d(v,u)
+    EDGELEN = 2,        ///< Edge-length-modulated: dl([v,u]) · Δy
+    DENSITY_EDGELEN = 3 ///< Combined: ρ(u) · dl([v,u]) · Δy
 };
 
 /**
