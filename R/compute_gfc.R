@@ -1487,6 +1487,162 @@ draw.cell.trajectory <- function(graph.3d,
     }
 }
 
+#' Draw a Trajectory in 3D Space
+#'
+#' Visualizes a trajectory as a sequence of vertices in 3D using rgl graphics.
+#' The function draws spheres at trajectory vertices with highlighted terminal
+#' points, connecting segments between consecutive vertices, and optionally
+#' directional arrows indicating flow direction along the path.
+#'
+#' @param graph.3d A matrix of 3D coordinates for graph vertices where each row
+#'   corresponds to a vertex and columns represent x, y, z coordinates.
+#' @param vertices Integer vector specifying the ordered sequence of vertex
+#'   indices defining the trajectory. The first element is treated as the
+#'   source and the last as the destination.
+#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
+#'   segments to indicate flow direction. Default is FALSE.
+#' @param arrow.size Numeric scaling factor for arrow size when with.arrows is
+#'   TRUE. Default is 1.
+#' @param col Character string specifying color for trajectory spheres.
+#'   Default is "cyan".
+#' @param terminal.col Character string specifying color for terminal vertex
+#'   spheres. If NULL, uses the value of col. Default is NULL.
+#' @param segment.col Character string specifying color for connecting segments.
+#'   Default is "gray".
+#' @param arrow.col Character string specifying color for directional arrows.
+#'   Default is "red".
+#' @param terminal.radius Numeric radius for terminal vertex spheres.
+#'   Default is 0.3.
+#' @param radius Numeric radius for interior trajectory vertex spheres.
+#'   Default is 0.15.
+#' @param segment.lwd Numeric line width for connecting segments. Default is 5.
+#' @param with.labels Logical; if TRUE, draws text labels at terminal vertices
+#'   showing vertex indices. Default is TRUE.
+#' @param terminal.vertex.adj Numeric vector of length 2 for text label
+#'   adjustment relative to terminal vertices. Default is c(0,0).
+#' @param terminal.vertex.cex Numeric character expansion factor for terminal
+#'   vertex labels. Default is 3.
+#'
+#' @details
+#' The trajectory is rendered as a sequence of spheres connected by line
+#' segments. Terminal vertices at the start and end of the trajectory are
+#' drawn with larger spheres to distinguish them from interior vertices.
+#' When with.arrows is TRUE, flat arrows are drawn at the midpoint of each
+#' segment spanning from 40 percent to 60 percent along the edge to indicate
+#' the direction of flow from source to destination.
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @examples
+#' \dontrun{
+#' ## Draw a simple trajectory through vertices 1, 5, 12, 8
+#' draw.trajectory(graph.3d, vertices = c(1, 5, 12, 8))
+#'
+#' ## Draw with directional arrows and custom colors
+#' draw.trajectory(graph.3d, vertices = c(1, 5, 12, 8),
+#'                 with.arrows = TRUE, col = "blue", arrow.col = "orange")
+#' }
+#'
+#' @export
+draw.trajectory <- function(graph.3d,
+                            vertices,
+                            with.arrows = FALSE,
+                            arrow.size = 1,
+                            col = "cyan",
+                            terminal.col = NULL,
+                            segment.col = "gray",
+                            arrow.col = "red",
+                            terminal.radius = 0.3,
+                            radius = 0.15,
+                            segment.lwd = 5,
+                            with.labels = TRUE,
+                            terminal.vertex.adj = c(0, 0),
+                            terminal.vertex.cex = 3) {
+
+    n <- length(vertices)
+    if (n < 2) {
+        warning("Trajectory must contain at least 2 vertices")
+        return(invisible(NULL))
+    }
+
+    if (is.null(terminal.col)) {
+        terminal.col <- col
+    }
+
+    source.vertex <- vertices[1]
+    dest.vertex <- vertices[n]
+
+    ## Draw terminal vertices with larger spheres
+    rgl::spheres3d(graph.3d[source.vertex, ], radius = terminal.radius,
+                   col = terminal.col)
+    rgl::spheres3d(graph.3d[dest.vertex, ], radius = terminal.radius,
+                   col = terminal.col)
+
+    ## Draw labels at terminal vertices
+    if (with.labels) {
+        rgl::texts3d(graph.3d[source.vertex, ], texts = source.vertex,
+                     adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+        rgl::texts3d(graph.3d[dest.vertex, ], texts = dest.vertex,
+                     adj = terminal.vertex.adj, cex = terminal.vertex.cex)
+    }
+
+    ## Draw interior vertices with smaller spheres
+    if (n > 2) {
+        interior.vertices <- vertices[2:(n - 1)]
+        rgl::spheres3d(graph.3d[interior.vertices, ], radius = radius, col = col)
+    }
+
+    ## Draw connecting segments
+    segment.indices <- c(rbind(vertices[-n], vertices[-1]))
+    M <- graph.3d[segment.indices, ]
+    rgl::segments3d(M, col = segment.col, lwd = segment.lwd)
+
+    ## Draw directional arrows if requested
+    if (with.arrows) {
+        for (j in 1:(n - 1)) {
+            start <- graph.3d[vertices[j], ]
+            end <- graph.3d[vertices[j + 1], ]
+            mid.start <- start * 0.6 + end * 0.4
+            mid.end <- start * 0.4 + end * 0.6
+            rgl::arrow3d(mid.start, mid.end, type = "flat", col = arrow.col,
+                         width = 0.5, s = arrow.size)
+        }
+    }
+
+    invisible(NULL)
+}
+
+#' Draw a Single Cell Trajectory in 3D Space
+#'
+#' Visualizes a single trajectory from a cell object in 3D using rgl graphics.
+#' This is a convenience wrapper around \code{\link{draw.trajectory}} that
+#' extracts the trajectory vertex sequence from a cell's trajectory list.
+#'
+#' @param graph.3d A matrix of 3D coordinates for graph vertices where each row
+#'   corresponds to a vertex and columns represent x, y, z coordinates.
+#' @param i Integer index specifying which trajectory to draw from the cell's
+#'   trajectories list.
+#' @param cell List object containing trajectory data with component
+#'   \code{trajectories}, a list of trajectory vertex sequences.
+#' @inheritDotParams draw.trajectory -vertices
+#'
+#' @return None. Function is called for its side effect of adding 3D graphics
+#'   to the current rgl device.
+#'
+#' @seealso \code{\link{draw.trajectory}} for the underlying drawing function
+#'   and full parameter documentation.
+#'
+#' @examples
+#' \dontrun{
+#' draw.cell.trajectory(graph.3d, 1, my.cell, with.arrows = TRUE)
+#' }
+#'
+#' @export
+draw.cell.trajectory <- function(graph.3d, i, cell, ...) {
+    draw.trajectory(graph.3d, vertices = cell$trajectories[[i]], ...)
+}
+
 #' Draw All Trajectories for a Cell in 3D Space
 #'
 #' Visualizes all trajectories from a cell object in 3D using rgl graphics.
@@ -1571,7 +1727,6 @@ draw.cell.trajectories <- function(cell,
         }
     }
 }
-
 
 #' Diagnose Missing Trajectory Vertices
 #'

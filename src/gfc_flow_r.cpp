@@ -94,19 +94,19 @@ static SEXP basin_extended_to_R(const basin_extended_t& basin) {
     // extremum_vertex (1-based)
     SEXP r_ext = PROTECT(Rf_ScalarInteger(static_cast<int>(basin.extremum_vertex) + 1));
     SET_VECTOR_ELT(r_basin, idx, r_ext);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("extremum_vertex"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("extremum.vertex"));
     UNPROTECT(1); ++idx;
 
     // extremum_value
     SEXP r_val = PROTECT(Rf_ScalarReal(basin.extremum_value));
     SET_VECTOR_ELT(r_basin, idx, r_val);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("extremum_value"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("extremum.value"));
     UNPROTECT(1); ++idx;
 
     // is_maximum
     SEXP r_max = PROTECT(Rf_ScalarLogical(basin.is_maximum ? TRUE : FALSE));
     SET_VECTOR_ELT(r_basin, idx, r_max);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("is_maximum"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("is.maximum"));
     UNPROTECT(1); ++idx;
 
     // vertices (1-based)
@@ -127,32 +127,32 @@ static SEXP basin_extended_to_R(const basin_extended_t& basin) {
         hptr[i] = basin.hop_distances[i];
     }
     SET_VECTOR_ELT(r_basin, idx, r_hop);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("hop_distances"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("hop.distances"));
     UNPROTECT(1); ++idx;
 
     // max_hop_distance
     SEXP r_mhop = PROTECT(Rf_ScalarInteger(basin.max_hop_distance));
     SET_VECTOR_ELT(r_basin, idx, r_mhop);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("max_hop_distance"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("max.hop.distance"));
     UNPROTECT(1); ++idx;
 
     // is_spurious
     SEXP r_spur = PROTECT(Rf_ScalarLogical(basin.is_spurious ? TRUE : FALSE));
     SET_VECTOR_ELT(r_basin, idx, r_spur);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("is_spurious"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("is.spurious"));
     UNPROTECT(1); ++idx;
 
     // filter_stage
     SEXP r_stage = PROTECT(Rf_mkString(filter_stage_to_string(basin.filter_stage).c_str()));
     SET_VECTOR_ELT(r_basin, idx, r_stage);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("filter_stage"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("filter.stage"));
     UNPROTECT(1); ++idx;
 
     // merged_into (1-based or NA)
     SEXP r_merged = PROTECT(Rf_ScalarInteger(
         basin.merged_into >= 0 ? basin.merged_into + 1 : NA_INTEGER));
     SET_VECTOR_ELT(r_basin, idx, r_merged);
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("merged_into"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("merged.into"));
     UNPROTECT(1); ++idx;
 
     // label
@@ -187,54 +187,54 @@ static SEXP trajectory_to_R(const gflow_trajectory_t& traj) {
 
     // start_vertex (1-based)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(static_cast<int>(traj.start_vertex) + 1));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("start_vertex"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("start.vertex"));
     ++idx;
 
     // end_vertex (1-based)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(static_cast<int>(traj.end_vertex) + 1));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("end_vertex"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("end.vertex"));
     ++idx;
 
     // starts_at_lmin
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarLogical(traj.starts_at_lmin ? TRUE : FALSE));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("starts_at_lmin"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("starts.at.lmin"));
     ++idx;
 
     // ends_at_lmax
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarLogical(traj.ends_at_lmax ? TRUE : FALSE));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("ends_at_lmax"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("ends.at.lmax"));
     ++idx;
 
     // total_change
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarReal(traj.total_change));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("total_change"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("total.change"));
     ++idx;
 
     // trajectory_id (1-based)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(traj.trajectory_id + 1));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("trajectory_id"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("trajectory.id"));
     ++idx;
 
     // start_is_spurious
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarLogical(traj.start_is_spurious ? TRUE : FALSE));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("start_is_spurious"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("start.is.spurious"));
     ++idx;
 
     // end_is_spurious
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarLogical(traj.end_is_spurious ? TRUE : FALSE));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("end_is_spurious"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("end.is.spurious"));
     ++idx;
 
     // start_basin_idx (1-based or NA)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(
         traj.start_basin_idx >= 0 ? traj.start_basin_idx + 1 : NA_INTEGER));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("start_basin_idx"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("start.basin.idx"));
     ++idx;
 
     // end_basin_idx (1-based or NA)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(
         traj.end_basin_idx >= 0 ? traj.end_basin_idx + 1 : NA_INTEGER));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("end_basin_idx"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("end.basin.idx"));
     ++idx;
 
     Rf_setAttrib(r_traj, R_NamesSymbol, r_names);
@@ -300,17 +300,17 @@ static SEXP summaries_extended_to_R(const std::vector<extremum_summary_extended_
     SEXP r_colnames = PROTECT(Rf_allocVector(STRSXP, 14));
     SET_STRING_ELT(r_colnames, 0, Rf_mkChar("vertex"));
     SET_STRING_ELT(r_colnames, 1, Rf_mkChar("value"));
-    SET_STRING_ELT(r_colnames, 2, Rf_mkChar("rel_value"));
-    SET_STRING_ELT(r_colnames, 3, Rf_mkChar("is_maximum"));
-    SET_STRING_ELT(r_colnames, 4, Rf_mkChar("basin_size"));
-    SET_STRING_ELT(r_colnames, 5, Rf_mkChar("hop_index"));
-    SET_STRING_ELT(r_colnames, 6, Rf_mkChar("p_mean_nbrs_dist"));
-    SET_STRING_ELT(r_colnames, 7, Rf_mkChar("p_mean_hopk_dist"));
+    SET_STRING_ELT(r_colnames, 2, Rf_mkChar("rel.value"));
+    SET_STRING_ELT(r_colnames, 3, Rf_mkChar("is.maximum"));
+    SET_STRING_ELT(r_colnames, 4, Rf_mkChar("basin.size"));
+    SET_STRING_ELT(r_colnames, 5, Rf_mkChar("hop.index"));
+    SET_STRING_ELT(r_colnames, 6, Rf_mkChar("p.mean.nbrs.dist"));
+    SET_STRING_ELT(r_colnames, 7, Rf_mkChar("p.mean.hopk.dist"));
     SET_STRING_ELT(r_colnames, 8, Rf_mkChar("degree"));
-    SET_STRING_ELT(r_colnames, 9, Rf_mkChar("deg_percentile"));
-    SET_STRING_ELT(r_colnames, 10, Rf_mkChar("is_spurious"));
-    SET_STRING_ELT(r_colnames, 11, Rf_mkChar("filter_stage"));
-    SET_STRING_ELT(r_colnames, 12, Rf_mkChar("merged_into"));
+    SET_STRING_ELT(r_colnames, 9, Rf_mkChar("deg.percentile"));
+    SET_STRING_ELT(r_colnames, 10, Rf_mkChar("is.spurious"));
+    SET_STRING_ELT(r_colnames, 11, Rf_mkChar("filter.stage"));
+    SET_STRING_ELT(r_colnames, 12, Rf_mkChar("merged.into"));
     SET_STRING_ELT(r_colnames, 13, Rf_mkChar("label"));
     Rf_setAttrib(r_df, R_NamesSymbol, r_colnames);
 
@@ -362,14 +362,14 @@ static SEXP int_vec_to_R(const std::vector<int>& vec, bool one_based = true) {
 
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
-    // 26 elements total
-    const int n_elements = 26;
+    // 29 elements total
+    const int n_elements = 29;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
     int idx = 0;
 
-    // 0: max_basins_all
+    // 0: max.basins.all
     {
         R_xlen_t nb = static_cast<R_xlen_t>(result.max_basins_all.size());
         SEXP r_basins = PROTECT(Rf_allocVector(VECSXP, nb));
@@ -379,12 +379,12 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
             UNPROTECT(1);
         }
         SET_VECTOR_ELT(r_result, idx, r_basins);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("max_basins_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.basins.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 1: min_basins_all
+    // 1: min.basins.all
     {
         R_xlen_t nb = static_cast<R_xlen_t>(result.min_basins_all.size());
         SEXP r_basins = PROTECT(Rf_allocVector(VECSXP, nb));
@@ -394,115 +394,115 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
             UNPROTECT(1);
         }
         SET_VECTOR_ELT(r_result, idx, r_basins);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("min_basins_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.basins.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 2: max_summaries_all
+    // 2: max.summaries.all
     {
         SEXP r_sum = PROTECT(summaries_extended_to_R(result.max_summaries_all));
         SET_VECTOR_ELT(r_result, idx, r_sum);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("max_summaries_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.summaries.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 3: min_summaries_all
+    // 3: min.summaries.all
     {
         SEXP r_sum = PROTECT(summaries_extended_to_R(result.min_summaries_all));
         SET_VECTOR_ELT(r_result, idx, r_sum);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("min_summaries_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.summaries.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 4: retained_max_indices (1-based)
+    // 4: retained.max.indices (1-based)
     {
         SEXP r_idx = PROTECT(int_vec_to_R(result.retained_max_indices, true));
         SET_VECTOR_ELT(r_result, idx, r_idx);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("retained_max_indices"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("retained.max.indices"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 5: retained_min_indices (1-based)
+    // 5: retained.min.indices (1-based)
     {
         SEXP r_idx = PROTECT(int_vec_to_R(result.retained_min_indices, true));
         SET_VECTOR_ELT(r_result, idx, r_idx);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("retained_min_indices"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("retained.min.indices"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 6: spurious_max_indices (1-based)
+    // 6: spurious.max.indices (1-based)
     {
         SEXP r_idx = PROTECT(int_vec_to_R(result.spurious_max_indices, true));
         SET_VECTOR_ELT(r_result, idx, r_idx);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("spurious_max_indices"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("spurious.max.indices"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 7: spurious_min_indices (1-based)
+    // 7: spurious.min.indices (1-based)
     {
         SEXP r_idx = PROTECT(int_vec_to_R(result.spurious_min_indices, true));
         SET_VECTOR_ELT(r_result, idx, r_idx);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("spurious_min_indices"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("spurious.min.indices"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 8: max_membership_all
+    // 8: max.membership.all
     {
         SEXP r_mem = PROTECT(membership_to_R(result.max_membership_all, true));
         SET_VECTOR_ELT(r_result, idx, r_mem);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("max_membership_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.membership.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 9: min_membership_all
+    // 9: min.membership.all
     {
         SEXP r_mem = PROTECT(membership_to_R(result.min_membership_all, true));
         SET_VECTOR_ELT(r_result, idx, r_mem);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("min_membership_all"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.membership.all"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 10: max_membership_retained
+    // 10: max.membership.retained
     {
         SEXP r_mem = PROTECT(membership_to_R(result.max_membership_retained, true));
         SET_VECTOR_ELT(r_result, idx, r_mem);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("max_membership_retained"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.membership.retained"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 11: min_membership_retained
+    // 11: min.membership.retained
     {
         SEXP r_mem = PROTECT(membership_to_R(result.min_membership_retained, true));
         SET_VECTOR_ELT(r_result, idx, r_mem);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("min_membership_retained"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.membership.retained"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 12: max_assignment
+    // 12: max.assignment
     {
         SEXP r_assign = PROTECT(int_vec_to_R(result.max_assignment, true));
         SET_VECTOR_ELT(r_result, idx, r_assign);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("max_assignment"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.assignment"));
         UNPROTECT(1);
         ++idx;
     }
 
-    // 13: min_assignment
+    // 13: min.assignment
     {
         SEXP r_assign = PROTECT(int_vec_to_R(result.min_assignment, true));
         SET_VECTOR_ELT(r_result, idx, r_assign);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("min_assignment"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.assignment"));
         UNPROTECT(1);
         ++idx;
     }
@@ -522,42 +522,33 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         ++idx;
     }
 
-    // 15: vertex_trajectory
-    {
-        SEXP r_vt = PROTECT(int_vec_to_R(result.vertex_trajectory, true));
-        SET_VECTOR_ELT(r_result, idx, r_vt);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("vertex_trajectory"));
-        UNPROTECT(1);
-        ++idx;
-    }
-
-    // 16: n_lmin_trajectories
+    // 15: n.lmin.trajectories
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_lmin_trajectories));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_lmin_trajectories"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.lmin.trajectories"));
     ++idx;
 
-    // 17: n_join_trajectories
+    // 16: n.join.trajectories
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_join_trajectories));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_join_trajectories"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.join.trajectories"));
     ++idx;
 
-    // 18: n_vertices
+    // 17: n.vertices
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(static_cast<int>(result.n_vertices)));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_vertices"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.vertices"));
     ++idx;
 
-    // 19: y_median
+    // 18: y.median
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarReal(result.y_median));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("y_median"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("y.median"));
     ++idx;
 
-    // 20: modulation
+    // 19: modulation
     SET_VECTOR_ELT(r_result, idx, 
         Rf_mkString(gflow_modulation_to_string(result.params.modulation).c_str()));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("modulation"));
     ++idx;
 
-    // 21: stage_history
+    // 20: stage_history
     {
         R_xlen_t ns = static_cast<R_xlen_t>(result.stage_history.size());
         SEXP r_stages = PROTECT(Rf_allocVector(VECSXP, 5));
@@ -583,10 +574,10 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
 
         SEXP r_stage_names = PROTECT(Rf_allocVector(STRSXP, 5));
         SET_STRING_ELT(r_stage_names, 0, Rf_mkChar("stage"));
-        SET_STRING_ELT(r_stage_names, 1, Rf_mkChar("n_max_before"));
-        SET_STRING_ELT(r_stage_names, 2, Rf_mkChar("n_max_after"));
-        SET_STRING_ELT(r_stage_names, 3, Rf_mkChar("n_min_before"));
-        SET_STRING_ELT(r_stage_names, 4, Rf_mkChar("n_min_after"));
+        SET_STRING_ELT(r_stage_names, 1, Rf_mkChar("n.max.before"));
+        SET_STRING_ELT(r_stage_names, 2, Rf_mkChar("n.max.after"));
+        SET_STRING_ELT(r_stage_names, 3, Rf_mkChar("n.min.before"));
+        SET_STRING_ELT(r_stage_names, 4, Rf_mkChar("n.min.after"));
         Rf_setAttrib(r_stages, R_NamesSymbol, r_stage_names);
 
         SEXP r_rownames = PROTECT(Rf_allocVector(INTSXP, 2));
@@ -596,30 +587,287 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         Rf_setAttrib(r_stages, R_ClassSymbol, Rf_mkString("data.frame"));
 
         SET_VECTOR_ELT(r_result, idx, r_stages);
-        SET_STRING_ELT(r_names, idx, Rf_mkChar("stage_history"));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("stage.history"));
         UNPROTECT(8);
         ++idx;
     }
 
-    // 22: n_max_retained
+    // 21: n_max_retained
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_max_retained));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_max_retained"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.max.retained"));
     ++idx;
 
-    // 23: n_min_retained
+    // 22: n.min.retained
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_min_retained));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_min_retained"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.min.retained"));
     ++idx;
 
-    // 24: n_max_spurious
+    // 23: n.max.spurious
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_max_spurious));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_max_spurious"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.max.spurious"));
     ++idx;
 
-    // 25: n_min_spurious
+    // 24: n.min.spurious
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_min_spurious));
-    SET_STRING_ELT(r_names, idx, Rf_mkChar("n_min_spurious"));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.min.spurious"));
     ++idx;
+
+    // ========================================================================
+    // 25: n.max.all (total max basins = retained + spurious)
+    // ========================================================================
+    SET_VECTOR_ELT(r_result, idx,
+                   Rf_ScalarInteger(static_cast<int>(result.max_basins_all.size())));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.max.all"));
+    ++idx;
+
+    // ========================================================================
+    // 26: n.min.all (total min basins = retained + spurious)
+    // ========================================================================
+    SET_VECTOR_ELT(r_result, idx,
+                   Rf_ScalarInteger(static_cast<int>(result.min_basins_all.size())));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.min.all"));
+    ++idx;
+
+    // ========================================================================
+    // 27: summary.all (combined data frame of ALL extrema: min + max)
+    // ========================================================================
+    {
+        R_xlen_t n_min = static_cast<R_xlen_t>(result.min_summaries_all.size());
+        R_xlen_t n_max = static_cast<R_xlen_t>(result.max_summaries_all.size());
+        R_xlen_t n_total = n_min + n_max;
+
+        // 14 columns
+        const int n_cols = 14;
+        SEXP r_df = PROTECT(Rf_allocVector(VECSXP, n_cols));
+        SEXP r_col_names = PROTECT(Rf_allocVector(STRSXP, n_cols));
+
+        SEXP r_label = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_vertex = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_value = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_rel_value = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_type = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_is_spurious = PROTECT(Rf_allocVector(LGLSXP, n_total));
+        SEXP r_filter_stage = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_merged_into = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_basin_size = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_hop_index = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_p_mean_nbrs_dist = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_p_mean_hopk_dist = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_degree = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_deg_percentile = PROTECT(Rf_allocVector(REALSXP, n_total));
+
+        R_xlen_t row = 0;
+
+        // Fill minima first
+        for (R_xlen_t i = 0; i < n_min; ++i) {
+            const auto& s = result.min_summaries_all[i];
+            SET_STRING_ELT(r_label, row, Rf_mkChar(s.label.c_str()));
+            INTEGER(r_vertex)[row] = static_cast<int>(s.vertex) + 1;
+            REAL(r_value)[row] = s.value;
+            REAL(r_rel_value)[row] = s.rel_value;
+            SET_STRING_ELT(r_type, row, Rf_mkChar("min"));
+            LOGICAL(r_is_spurious)[row] = s.is_spurious ? TRUE : FALSE;
+            SET_STRING_ELT(r_filter_stage, row,
+                           Rf_mkChar(filter_stage_to_string(s.filter_stage).c_str()));
+            INTEGER(r_merged_into)[row] = (s.merged_into >= 0) ?
+                (static_cast<int>(s.merged_into) + 1) : NA_INTEGER;
+            INTEGER(r_basin_size)[row] = s.basin_size;
+            INTEGER(r_hop_index)[row] = s.hop_index;
+            REAL(r_p_mean_nbrs_dist)[row] = s.p_mean_nbrs_dist;
+            REAL(r_p_mean_hopk_dist)[row] = s.p_mean_hopk_dist;
+            INTEGER(r_degree)[row] = s.degree;
+            REAL(r_deg_percentile)[row] = s.deg_percentile;
+            ++row;
+        }
+
+        // Fill maxima
+        for (R_xlen_t i = 0; i < n_max; ++i) {
+            const auto& s = result.max_summaries_all[i];
+            SET_STRING_ELT(r_label, row, Rf_mkChar(s.label.c_str()));
+            INTEGER(r_vertex)[row] = static_cast<int>(s.vertex) + 1;
+            REAL(r_value)[row] = s.value;
+            REAL(r_rel_value)[row] = s.rel_value;
+            SET_STRING_ELT(r_type, row, Rf_mkChar("max"));
+            LOGICAL(r_is_spurious)[row] = s.is_spurious ? TRUE : FALSE;
+            SET_STRING_ELT(r_filter_stage, row,
+                           Rf_mkChar(filter_stage_to_string(s.filter_stage).c_str()));
+            INTEGER(r_merged_into)[row] = (s.merged_into >= 0) ?
+                (static_cast<int>(s.merged_into) + 1) : NA_INTEGER;
+            INTEGER(r_basin_size)[row] = s.basin_size;
+            INTEGER(r_hop_index)[row] = s.hop_index;
+            REAL(r_p_mean_nbrs_dist)[row] = s.p_mean_nbrs_dist;
+            REAL(r_p_mean_hopk_dist)[row] = s.p_mean_hopk_dist;
+            INTEGER(r_degree)[row] = s.degree;
+            REAL(r_deg_percentile)[row] = s.deg_percentile;
+            ++row;
+        }
+
+        // Set columns in data frame
+        SET_VECTOR_ELT(r_df, 0, r_label);
+        SET_VECTOR_ELT(r_df, 1, r_vertex);
+        SET_VECTOR_ELT(r_df, 2, r_value);
+        SET_VECTOR_ELT(r_df, 3, r_rel_value);
+        SET_VECTOR_ELT(r_df, 4, r_type);
+        SET_VECTOR_ELT(r_df, 5, r_is_spurious);
+        SET_VECTOR_ELT(r_df, 6, r_filter_stage);
+        SET_VECTOR_ELT(r_df, 7, r_merged_into);
+        SET_VECTOR_ELT(r_df, 8, r_basin_size);
+        SET_VECTOR_ELT(r_df, 9, r_hop_index);
+        SET_VECTOR_ELT(r_df, 10, r_p_mean_nbrs_dist);
+        SET_VECTOR_ELT(r_df, 11, r_p_mean_hopk_dist);
+        SET_VECTOR_ELT(r_df, 12, r_degree);
+        SET_VECTOR_ELT(r_df, 13, r_deg_percentile);
+
+        // Column names (dot.snake format)
+        SET_STRING_ELT(r_col_names, 0, Rf_mkChar("label"));
+        SET_STRING_ELT(r_col_names, 1, Rf_mkChar("vertex"));
+        SET_STRING_ELT(r_col_names, 2, Rf_mkChar("value"));
+        SET_STRING_ELT(r_col_names, 3, Rf_mkChar("rel.value"));
+        SET_STRING_ELT(r_col_names, 4, Rf_mkChar("type"));
+        SET_STRING_ELT(r_col_names, 5, Rf_mkChar("is.spurious"));
+        SET_STRING_ELT(r_col_names, 6, Rf_mkChar("filter.stage"));
+        SET_STRING_ELT(r_col_names, 7, Rf_mkChar("merged.into"));
+        SET_STRING_ELT(r_col_names, 8, Rf_mkChar("basin.size"));
+        SET_STRING_ELT(r_col_names, 9, Rf_mkChar("hop.index"));
+        SET_STRING_ELT(r_col_names, 10, Rf_mkChar("p.mean.nbrs.dist"));
+        SET_STRING_ELT(r_col_names, 11, Rf_mkChar("p.mean.hopk.dist"));
+        SET_STRING_ELT(r_col_names, 12, Rf_mkChar("degree"));
+        SET_STRING_ELT(r_col_names, 13, Rf_mkChar("deg.percentile"));
+        Rf_setAttrib(r_df, R_NamesSymbol, r_col_names);
+
+        // Row names (compact form)
+        SEXP r_rownames = PROTECT(Rf_allocVector(INTSXP, 2));
+        INTEGER(r_rownames)[0] = NA_INTEGER;
+        INTEGER(r_rownames)[1] = -static_cast<int>(n_total);
+        Rf_setAttrib(r_df, R_RowNamesSymbol, r_rownames);
+
+        // Set class
+        Rf_setAttrib(r_df, R_ClassSymbol, Rf_mkString("data.frame"));
+
+        SET_VECTOR_ELT(r_result, idx, r_df);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("summary.all"));
+        UNPROTECT(17);  // r_df, r_col_names, 14 columns, r_rownames
+        ++idx;
+    }
+
+    // ========================================================================
+    // 28: summary (combined data frame of RETAINED extrema only)
+    // ========================================================================
+    {
+        R_xlen_t n_min_ret = static_cast<R_xlen_t>(result.retained_min_indices.size());
+        R_xlen_t n_max_ret = static_cast<R_xlen_t>(result.retained_max_indices.size());
+        R_xlen_t n_total = n_min_ret + n_max_ret;
+
+        const int n_cols = 14;
+        SEXP r_df = PROTECT(Rf_allocVector(VECSXP, n_cols));
+        SEXP r_col_names = PROTECT(Rf_allocVector(STRSXP, n_cols));
+
+        SEXP r_label = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_vertex = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_value = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_rel_value = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_type = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_is_spurious = PROTECT(Rf_allocVector(LGLSXP, n_total));
+        SEXP r_filter_stage = PROTECT(Rf_allocVector(STRSXP, n_total));
+        SEXP r_merged_into = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_basin_size = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_hop_index = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_p_mean_nbrs_dist = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_p_mean_hopk_dist = PROTECT(Rf_allocVector(REALSXP, n_total));
+        SEXP r_degree = PROTECT(Rf_allocVector(INTSXP, n_total));
+        SEXP r_deg_percentile = PROTECT(Rf_allocVector(REALSXP, n_total));
+
+        R_xlen_t row = 0;
+
+        // Fill retained minima
+        for (R_xlen_t i = 0; i < n_min_ret; ++i) {
+            int summary_idx = result.retained_min_indices[i];
+            const auto& s = result.min_summaries_all[summary_idx];
+            SET_STRING_ELT(r_label, row, Rf_mkChar(s.label.c_str()));
+            INTEGER(r_vertex)[row] = static_cast<int>(s.vertex) + 1;
+            REAL(r_value)[row] = s.value;
+            REAL(r_rel_value)[row] = s.rel_value;
+            SET_STRING_ELT(r_type, row, Rf_mkChar("min"));
+            LOGICAL(r_is_spurious)[row] = FALSE;
+            SET_STRING_ELT(r_filter_stage, row, Rf_mkChar("none"));
+            INTEGER(r_merged_into)[row] = NA_INTEGER;
+            INTEGER(r_basin_size)[row] = s.basin_size;
+            INTEGER(r_hop_index)[row] = s.hop_index;
+            REAL(r_p_mean_nbrs_dist)[row] = s.p_mean_nbrs_dist;
+            REAL(r_p_mean_hopk_dist)[row] = s.p_mean_hopk_dist;
+            INTEGER(r_degree)[row] = s.degree;
+            REAL(r_deg_percentile)[row] = s.deg_percentile;
+            ++row;
+        }
+
+        // Fill retained maxima
+        for (R_xlen_t i = 0; i < n_max_ret; ++i) {
+            int summary_idx = result.retained_max_indices[i];
+            const auto& s = result.max_summaries_all[summary_idx];
+            SET_STRING_ELT(r_label, row, Rf_mkChar(s.label.c_str()));
+            INTEGER(r_vertex)[row] = static_cast<int>(s.vertex) + 1;
+            REAL(r_value)[row] = s.value;
+            REAL(r_rel_value)[row] = s.rel_value;
+            SET_STRING_ELT(r_type, row, Rf_mkChar("max"));
+            LOGICAL(r_is_spurious)[row] = FALSE;
+            SET_STRING_ELT(r_filter_stage, row, Rf_mkChar("none"));
+            INTEGER(r_merged_into)[row] = NA_INTEGER;
+            INTEGER(r_basin_size)[row] = s.basin_size;
+            INTEGER(r_hop_index)[row] = s.hop_index;
+            REAL(r_p_mean_nbrs_dist)[row] = s.p_mean_nbrs_dist;
+            REAL(r_p_mean_hopk_dist)[row] = s.p_mean_hopk_dist;
+            INTEGER(r_degree)[row] = s.degree;
+            REAL(r_deg_percentile)[row] = s.deg_percentile;
+            ++row;
+        }
+
+        // Set columns
+        SET_VECTOR_ELT(r_df, 0, r_label);
+        SET_VECTOR_ELT(r_df, 1, r_vertex);
+        SET_VECTOR_ELT(r_df, 2, r_value);
+        SET_VECTOR_ELT(r_df, 3, r_rel_value);
+        SET_VECTOR_ELT(r_df, 4, r_type);
+        SET_VECTOR_ELT(r_df, 5, r_is_spurious);
+        SET_VECTOR_ELT(r_df, 6, r_filter_stage);
+        SET_VECTOR_ELT(r_df, 7, r_merged_into);
+        SET_VECTOR_ELT(r_df, 8, r_basin_size);
+        SET_VECTOR_ELT(r_df, 9, r_hop_index);
+        SET_VECTOR_ELT(r_df, 10, r_p_mean_nbrs_dist);
+        SET_VECTOR_ELT(r_df, 11, r_p_mean_hopk_dist);
+        SET_VECTOR_ELT(r_df, 12, r_degree);
+        SET_VECTOR_ELT(r_df, 13, r_deg_percentile);
+
+        // Column names (dot.snake format)
+        SET_STRING_ELT(r_col_names, 0, Rf_mkChar("label"));
+        SET_STRING_ELT(r_col_names, 1, Rf_mkChar("vertex"));
+        SET_STRING_ELT(r_col_names, 2, Rf_mkChar("value"));
+        SET_STRING_ELT(r_col_names, 3, Rf_mkChar("rel.value"));
+        SET_STRING_ELT(r_col_names, 4, Rf_mkChar("type"));
+        SET_STRING_ELT(r_col_names, 5, Rf_mkChar("is.spurious"));
+        SET_STRING_ELT(r_col_names, 6, Rf_mkChar("filter.stage"));
+        SET_STRING_ELT(r_col_names, 7, Rf_mkChar("merged.into"));
+        SET_STRING_ELT(r_col_names, 8, Rf_mkChar("basin.size"));
+        SET_STRING_ELT(r_col_names, 9, Rf_mkChar("hop.index"));
+        SET_STRING_ELT(r_col_names, 10, Rf_mkChar("p.mean.nbrs.dist"));
+        SET_STRING_ELT(r_col_names, 11, Rf_mkChar("p.mean.hopk.dist"));
+        SET_STRING_ELT(r_col_names, 12, Rf_mkChar("degree"));
+        SET_STRING_ELT(r_col_names, 13, Rf_mkChar("deg.percentile"));
+        Rf_setAttrib(r_df, R_NamesSymbol, r_col_names);
+
+        // Row names
+        SEXP r_rownames = PROTECT(Rf_allocVector(INTSXP, 2));
+        INTEGER(r_rownames)[0] = NA_INTEGER;
+        INTEGER(r_rownames)[1] = -static_cast<int>(n_total);
+        Rf_setAttrib(r_df, R_RowNamesSymbol, r_rownames);
+
+        // Class
+        Rf_setAttrib(r_df, R_ClassSymbol, Rf_mkString("data.frame"));
+
+        SET_VECTOR_ELT(r_result, idx, r_df);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("summary"));
+        UNPROTECT(17);
+        ++idx;
+    }
 
     Rf_setAttrib(r_result, R_NamesSymbol, r_names);
     UNPROTECT(2);
