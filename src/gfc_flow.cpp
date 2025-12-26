@@ -661,26 +661,33 @@ gfc_flow_result_t compute_gfc_flow(
             lmin, y, true,
             params.modulation, density, edge_length_weights,
             edge_length_thld, params.max_trajectory_length
-        );
+            );
 
         if (traj.empty()) continue;
 
         size_t lmax = traj.back();
 
-        for (size_t v : traj) {
-            vertex_to_lmins[v].insert(lmin);
-            vertex_to_lmaxs[v].insert(lmax);
-            vertex_to_trajs[v].push_back(trajectory_id);
-            covered[v] = true;
+        // Check if trajectory ends at a true local maximum
+        bool ends_at_true_lmax = (lmax_set.count(lmax) > 0);
+
+        // Only contribute to basin assignments if trajectory reaches true extremum
+        if (ends_at_true_lmax) {
+            for (size_t v : traj) {
+                vertex_to_lmins[v].insert(lmin);
+                vertex_to_lmaxs[v].insert(lmax);
+                vertex_to_trajs[v].push_back(trajectory_id);
+                covered[v] = true;
+            }
         }
 
+        // Always store trajectory if requested (for diagnostic purposes)
         if (params.store_trajectories) {
             gflow_trajectory_t gft;
             gft.vertices = std::move(traj);
             gft.start_vertex = lmin;
             gft.end_vertex = lmax;
             gft.starts_at_lmin = true;
-            gft.ends_at_lmax = (lmax_set.count(lmax) > 0);
+            gft.ends_at_lmax = ends_at_true_lmax;
             gft.total_change = y[lmax] - y[lmin];
             gft.trajectory_id = trajectory_id;
             result.trajectories.push_back(std::move(gft));
@@ -714,7 +721,7 @@ gfc_flow_result_t compute_gfc_flow(
         gflow_trajectory_t joined = graph.join_trajectories_at_vertex(
             v, y, params.modulation, density, edge_length_weights,
             edge_length_thld, params.max_trajectory_length
-        );
+            );
 
         if (joined.vertices.empty()) {
             covered[v] = true;
@@ -724,15 +731,25 @@ gfc_flow_result_t compute_gfc_flow(
         size_t lmin = joined.start_vertex;
         size_t lmax = joined.end_vertex;
 
-        for (size_t u : joined.vertices) {
-            vertex_to_lmins[u].insert(lmin);
-            vertex_to_lmaxs[u].insert(lmax);
-            vertex_to_trajs[u].push_back(trajectory_id);
-            covered[u] = true;
+        // Check if trajectory endpoints are valid
+        bool starts_at_true_lmin = (lmin_set.count(lmin) > 0);
+        bool ends_at_true_lmax = (lmax_set.count(lmax) > 0);
+
+        // Only contribute to basin assignments if both endpoints are valid
+        if (starts_at_true_lmin && ends_at_true_lmax) {
+            for (size_t u : joined.vertices) {
+                vertex_to_lmins[u].insert(lmin);
+                vertex_to_lmaxs[u].insert(lmax);
+                vertex_to_trajs[u].push_back(trajectory_id);
+                covered[u] = true;
+            }
         }
 
+        // Always store trajectory if requested (for diagnostic purposes)
         if (params.store_trajectories) {
             joined.trajectory_id = trajectory_id;
+            joined.starts_at_lmin = starts_at_true_lmin;
+            // ends_at_lmax already set in join_trajectories_at_vertex
             result.trajectories.push_back(std::move(joined));
         }
 
@@ -742,9 +759,14 @@ gfc_flow_result_t compute_gfc_flow(
 
     if (verbose) {
         size_t n_covered = std::count(covered.begin(), covered.end(), true);
+        size_t n_uncovered_final = n - n_covered;
         Rprintf("  Total trajectories: %zu, coverage: %zu/%zu (%.1f%%)\n",
                 result.trajectories.size(), n_covered, n,
                 100.0 * n_covered / n);
+        if (n_uncovered_final > 0) {
+            Rprintf("  Note: %zu vertices uncovered (isolated by edge length threshold)\n",
+                    n_uncovered_final);
+        }
     }
 
     // ========================================================================

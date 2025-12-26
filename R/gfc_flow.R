@@ -483,11 +483,32 @@ print.gfc.flow <- function(x, ...) {
         cat(sprintf("  End spurious only: %d\n", n.end.spurious))
         cat(sprintf("  Both endpoints spurious: %d\n", n.both.spurious))
     }
+    cat("\n")
+
+    ## -------------------------------------------------------------------------
+    ## Coverage information
+    ## -------------------------------------------------------------------------
+
+    uncov <- uncovered.vertices.gfc.flow(x)
+
+    cat("COVERAGE:\n")
+    cat(sprintf("  Covered: %d/%d vertices (%.1f%%)\n",
+                uncov$n.total - uncov$n.uncovered,
+                uncov$n.total,
+                uncov$coverage * 100))
+
+    if (uncov$n.uncovered > 0) {
+        cat(sprintf("  Uncovered: %d (isolated by edge length threshold)\n",
+                    uncov$n.uncovered))
+        if (uncov$n.local.minima > 0 || uncov$n.local.maxima > 0) {
+            cat(sprintf("    Including: %d local minima, %d local maxima without valid basins\n",
+                        uncov$n.local.minima, uncov$n.local.maxima))
+        }
+    }
 
     cat("\n")
     invisible(x)
 }
-
 
 #' Summary Method for gfc.flow Objects
 #'
@@ -1829,4 +1850,148 @@ vertex.cell.trajectory.gfc.flow <- function(gfc.flow, vertex, min.id, max.id,
 
     ## No matching trajectory found
     return(NULL)
+}
+
+#' Get Uncovered Vertices from GFC Flow Result
+#'
+#' Returns information about vertices that are not assigned to any basin,
+#' typically because they are isolated by the edge length threshold. This
+#' includes identification of any local extrema among the uncovered vertices.
+#'
+#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
+#'
+#' @return A list with components:
+#'   \describe{
+#'     \item{vertices}{Integer vector of uncovered vertex indices (1-based).}
+#'     \item{n.uncovered}{Total number of uncovered vertices.}
+#'     \item{n.total}{Total number of vertices in the graph.}
+#'     \item{coverage}{Fraction of vertices covered (assigned to at least
+#'       one basin).}
+#'     \item{local.minima}{Integer vector of uncovered vertices that are
+#'       local minima.}
+#'     \item{local.maxima}{Integer vector of uncovered vertices that are
+#'       local maxima.}
+#'     \item{n.local.minima}{Number of uncovered local minima.}
+#'     \item{n.local.maxima}{Number of uncovered local maxima.}
+#'     \item{by.type}{Data frame with columns: vertex, type ("regular",
+#'       "lmin", "lmax").}
+#'   }
+#'
+#' @details
+#' Uncovered vertices arise when the edge length threshold prevents
+#' trajectories from reaching valid endpoints. These vertices are typically
+#' isolated outliers connected to the main graph only through atypically
+#' long edges.
+#'
+#' Local extrema among uncovered vertices represent minima or maxima that
+#' were identified in the initial extrema detection but could not form
+#' valid basins because no trajectories with valid endpoints passed
+#' through them.
+#'
+#' @examples
+#' \dontrun{
+#' result <- compute.gfc.flow(adj.list, weight.list, y,
+#'                            edge.length.quantile.thld = 0.9)
+#' uncov <- uncovered.vertices.gfc.flow(result)
+#' cat("Uncovered:", uncov$n.uncovered, "vertices\n")
+#' cat("Including:", uncov$n.local.minima, "local minima,",
+#'     uncov$n.local.maxima, "local maxima\n")
+#' }
+#'
+#' @seealso \code{\link{compute.gfc.flow}}, \code{\link{summary.gfc.flow}}
+#'
+#' @export
+uncovered.vertices.gfc.flow <- function(gfc.flow) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    n <- gfc.flow$n.vertices
+
+    ## -------------------------------------------------------------------------
+    ## Find all vertices in any basin
+    ## -------------------------------------------------------------------------
+
+    covered.vertices <- integer(0)
+
+    if (!is.null(gfc.flow$min.basins.all)) {
+        for (basin in gfc.flow$min.basins.all) {
+            covered.vertices <- c(covered.vertices, basin$vertices)
+        }
+    }
+
+    if (!is.null(gfc.flow$max.basins.all)) {
+        for (basin in gfc.flow$max.basins.all) {
+            covered.vertices <- c(covered.vertices, basin$vertices)
+        }
+    }
+
+    covered.vertices <- unique(covered.vertices)
+    uncovered.vertices <- setdiff(seq_len(n), covered.vertices)
+
+    ## -------------------------------------------------------------------------
+    ## Identify local extrema from trajectories
+    ## -------------------------------------------------------------------------
+
+    all.lmin <- integer(0)
+    all.lmax <- integer(0)
+
+    if (!is.null(gfc.flow$trajectories)) {
+        for (traj in gfc.flow$trajectories) {
+            if (isTRUE(traj$starts.at.lmin)) {
+                all.lmin <- c(all.lmin, traj$start.vertex)
+            }
+            if (isTRUE(traj$ends.at.lmax)) {
+                all.lmax <- c(all.lmax, traj$end.vertex)
+            }
+        }
+        all.lmin <- unique(all.lmin)
+        all.lmax <- unique(all.lmax)
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Find uncovered local extrema
+    ## -------------------------------------------------------------------------
+
+    uncovered.lmin <- intersect(uncovered.vertices, all.lmin)
+    uncovered.lmax <- intersect(uncovered.vertices, all.lmax)
+
+    ## -------------------------------------------------------------------------
+    ## Build type classification
+    ## -------------------------------------------------------------------------
+
+    if (length(uncovered.vertices) > 0) {
+        types <- rep("regular", length(uncovered.vertices))
+        types[uncovered.vertices %in% uncovered.lmin] <- "lmin"
+        types[uncovered.vertices %in% uncovered.lmax] <- "lmax"
+
+        by.type <- data.frame(
+            vertex = uncovered.vertices,
+            type = types,
+            stringsAsFactors = FALSE
+        )
+    } else {
+        by.type <- data.frame(
+            vertex = integer(0),
+            type = character(0),
+            stringsAsFactors = FALSE
+        )
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Return result
+    ## -------------------------------------------------------------------------
+
+    list(
+        vertices = uncovered.vertices,
+        n.uncovered = length(uncovered.vertices),
+        n.total = n,
+        coverage = 1 - length(uncovered.vertices) / n,
+        local.minima = uncovered.lmin,
+        local.maxima = uncovered.lmax,
+        n.local.minima = length(uncovered.lmin),
+        n.local.maxima = length(uncovered.lmax),
+        by.type = by.type
+    )
 }
