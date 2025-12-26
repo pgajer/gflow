@@ -352,6 +352,27 @@ int set_wgraph_t::check_nbr_extremum_type(
     return 0;
 }
 
+/**
+ * @brief Follow gradient trajectory from a starting vertex to a local extremum
+ *
+ * Traces a path through the graph following the gradient direction
+ * (ascending or descending) with optional modulation. The trajectory continues
+ * until reaching a true local extremum where no further progress can be made.
+ *
+ * Modulation options:
+ * - NONE: Steepest ascent/descent (max |Δy|)
+ * - DENSITY: Density-weighted steepest (max ρ(u) · Δy)
+ * - EDGELEN: Edge-length-weighted steepest (max w(d) · Δy)
+ * - DENSITY_EDGELEN: Combined density and edge-length weighting
+ * - CLOSEST: Lexicographic rule - among ascending neighbors, pick closest
+ *
+ * The CLOSEST modulation implements a lexicographic ordering:
+ *   Level 1: Filter to A(v) = {u : y(u) > y(v)} (ascending) or
+ *                    D(v) = {u : y(u) < y(v)} (descending)
+ *   Level 2: Among the filtered set, select the neighbor with minimum edge weight
+ *
+ * This approach minimizes basin-jumping by preferring small steps over steep ones.
+ */
 std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
     size_t start_vertex,
     const std::vector<double>& y,
@@ -365,13 +386,16 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
     std::vector<size_t> trajectory;
     const size_t n = adjacency_list.size();
 
+    // Validate inputs
     if (start_vertex >= n || y.size() != n) {
         return trajectory;
     }
 
+    // Check if density is required but not provided
     bool needs_density = (modulation == gflow_modulation_t::DENSITY ||
                           modulation == gflow_modulation_t::DENSITY_EDGELEN);
     if (needs_density && density.size() != n) {
+        // Fall back to NONE or EDGELEN
         if (modulation == gflow_modulation_t::DENSITY) {
             modulation = gflow_modulation_t::NONE;
         } else {
@@ -379,9 +403,12 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
         }
     }
 
+    // Check if edge length weights are required but not provided
+    // Note: CLOSEST does NOT need precomputed edge_length_weights - it uses raw edge.weight
     bool needs_edge_weights = (modulation == gflow_modulation_t::EDGELEN ||
                                modulation == gflow_modulation_t::DENSITY_EDGELEN);
     if (needs_edge_weights && edge_length_weights.empty()) {
+        // Fall back to NONE or DENSITY
         if (modulation == gflow_modulation_t::EDGELEN) {
             modulation = gflow_modulation_t::NONE;
         } else {
@@ -389,7 +416,9 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
         }
     }
 
+    // Track vertices in this trajectory to avoid self-loops
     std::unordered_set<size_t> trajectory_set;
+
     trajectory.push_back(start_vertex);
     trajectory_set.insert(start_vertex);
 
@@ -397,45 +426,109 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
 
     while (trajectory.size() < max_length) {
         size_t best_next = INVALID_VERTEX;
-        double best_score = ascending ? -std::numeric_limits<double>::infinity()
-                                      : std::numeric_limits<double>::infinity();
 
-        for (const auto& edge : adjacency_list[current]) {
-            size_t u = edge.vertex;
-            double edge_len = edge.weight;
+        // ====================================================================
+        // CLOSEST modulation: Lexicographic selection
+        // ====================================================================
+        if (modulation == gflow_modulation_t::CLOSEST) {
+            double min_distance = std::numeric_limits<double>::infinity();
 
-            if (edge_len > edge_length_thld) continue;
-            if (trajectory_set.count(u) > 0) continue;
+            for (const auto& edge : adjacency_list[current]) {
+                size_t u = edge.vertex;
+                double edge_len = edge.weight;
 
-            double delta_y = y[u] - y[current];
+                // Skip if edge is too long
+                if (edge_len > edge_length_thld) {
+                    continue;
+                }
 
-            if (ascending && delta_y <= 0) continue;
-            if (!ascending && delta_y >= 0) continue;
+                // Skip if already in this trajectory (avoid loops)
+                if (trajectory_set.count(u) > 0) {
+                    continue;
+                }
 
-            double target_dens = needs_density ? density[u] : 1.0;
+                double delta_y = y[u] - y[current];
 
-            double edge_weight = 1.0;
-            if (needs_edge_weights) {
-                auto it_v = edge_length_weights.find(current);
-                if (it_v != edge_length_weights.end()) {
-                    auto it_u = it_v->second.find(u);
-                    if (it_u != it_v->second.end()) {
-                        edge_weight = it_u->second;
-                    }
+                // Level 1: Filter to strictly ascending/descending neighbors
+                if (ascending && delta_y <= 0) {
+                    continue;
+                }
+                if (!ascending && delta_y >= 0) {
+                    continue;
+                }
+
+                // Level 2: Among valid neighbors, select closest (minimum edge weight)
+                if (edge_len < min_distance) {
+                    min_distance = edge_len;
+                    best_next = u;
                 }
             }
+        }
+        // ====================================================================
+        // Other modulations: Score-based selection
+        // ====================================================================
+        else {
+            double best_score = ascending ? -std::numeric_limits<double>::infinity()
+                                          : std::numeric_limits<double>::infinity();
 
-            double score = compute_modulated_score(delta_y, edge_weight, target_dens, modulation);
+            for (const auto& edge : adjacency_list[current]) {
+                size_t u = edge.vertex;
+                double edge_len = edge.weight;
 
-            bool is_better = ascending ? (score > best_score) : (score < best_score);
-            if (is_better) {
-                best_score = score;
-                best_next = u;
+                // Skip if edge is too long
+                if (edge_len > edge_length_thld) {
+                    continue;
+                }
+
+                // Skip if already in this trajectory (avoid loops within the trajectory)
+                if (trajectory_set.count(u) > 0) {
+                    continue;
+                }
+
+                double delta_y = y[u] - y[current];
+
+                // Skip if not moving in desired direction
+                if (ascending && delta_y <= 0) {
+                    continue;
+                }
+                if (!ascending && delta_y >= 0) {
+                    continue;
+                }
+
+                // Get density for modulation (default 1.0 if not used)
+                double target_dens = needs_density ? density[u] : 1.0;
+
+                // Get edge length weight for modulation (default 1.0 if not used)
+                double edge_weight = 1.0;
+                if (needs_edge_weights) {
+                    // Look up the precomputed edge length weight
+                    auto it_v = edge_length_weights.find(current);
+                    if (it_v != edge_length_weights.end()) {
+                        auto it_u = it_v->second.find(u);
+                        if (it_u != it_v->second.end()) {
+                            edge_weight = it_u->second;
+                        }
+                    }
+                }
+
+                // Compute modulated score
+                double score = compute_modulated_score(delta_y, edge_weight, target_dens, modulation);
+
+                // Check if this is better
+                bool is_better = ascending ? (score > best_score) : (score < best_score);
+                if (is_better) {
+                    best_score = score;
+                    best_next = u;
+                }
             }
         }
 
-        if (best_next == INVALID_VERTEX) break;
+        // If no valid neighbor found, we've reached a local extremum
+        if (best_next == INVALID_VERTEX) {
+            break;
+        }
 
+        // Move to best neighbor
         trajectory.push_back(best_next);
         trajectory_set.insert(best_next);
         current = best_next;
@@ -645,14 +738,6 @@ gfc_flow_result_t compute_gfc_flow(
 
         ++trajectory_id;
         ++result.n_join_trajectories;
-    }
-
-    // Store first trajectory for backward compatibility
-    result.vertex_trajectory.resize(n, -1);
-    for (size_t v = 0; v < n; ++v) {
-        if (!vertex_to_trajs[v].empty()) {
-            result.vertex_trajectory[v] = vertex_to_trajs[v][0];
-        }
     }
 
     if (verbose) {

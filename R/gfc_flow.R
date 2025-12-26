@@ -11,8 +11,7 @@
 #' \enumerate{
 #'   \item Identify all local minima using neighborhood comparison
 #'   \item From each local minimum, trace an ascending trajectory following
-#'         the steepest gradient (with optional modulation) until reaching
-#'         a local maximum
+#'         the selected modulation strategy until reaching a local maximum
 #'   \item Assign all trajectory vertices to both the starting min-basin
 #'         and ending max-basin
 #'   \item For any unvisited vertices, trace both ascending and descending
@@ -21,19 +20,43 @@
 #'         overlap-based clustering, geometric filtering)
 #' }
 #'
-#' The trajectory-first approach naturally covers all vertices without
-#' requiring a separate expansion step, making Step 7 of \code{compute.gfc()}
-#' unnecessary.
-#'
 #' @section Modulation Options:
-#' The \code{modulation} parameter controls how the steepest direction is
-#' determined. With \code{"NONE"}, standard gradient flow uses raw function
-#' differences. With \code{"DENSITY"}, the flow is density-modulated to prefer
-#' higher-density regions. With \code{"EDGELEN"}, the score is multiplied by
-#' a KDE-based edge length density weight dl, where edges near the mode of the
-#' length distribution receive weight near 1 and atypical (very short or very
-#' long) edges are down-weighted; this prevents basin jumping through outlier
-#' edges. With \code{"DENSITY_EDGELEN"}, both modulations are combined.
+#' The \code{modulation} parameter controls how the next vertex is selected
+#' at each step of the trajectory:
+#'
+#' \describe{
+#'   \item{\code{"NONE"}}{Standard steepest ascent/descent. Selects the neighbor
+#'     maximizing the function difference \eqn{|y(u) - y(v)|}. This is the
+#'     classical gradient flow approach but may cause basin jumping near
+#'     separatrices when adjacent basins have very different gradient magnitudes.}
+#'
+#'   \item{\code{"DENSITY"}}{Density-modulated flow. Multiplies the gradient by
+#'     vertex density to prefer higher-density regions: \eqn{\rho(u) \cdot \Delta y}.}
+#'
+#'   \item{\code{"EDGELEN"}}{Edge-length modulated flow. Multiplies the gradient
+#'     by a KDE-based edge length weight that down-weights atypically long edges:
+#'     \eqn{w(d(v,u)) \cdot \Delta y}. This prevents basin jumping through outlier
+#'     edges but still uses a multiplicative score that can be dominated by
+#'     extreme gradient contrasts.}
+#'
+#'   \item{\code{"DENSITY_EDGELEN"}}{Combined density and edge-length modulation.}
+#'
+#'   \item{\code{"CLOSEST"}}{Lexicographic closest ascending neighbor rule. This
+#'     implements a two-level selection:
+#'     \enumerate{
+#'       \item Filter to ascending neighbors: \eqn{A(v) = \{u \in N(v) : y(u) > y(v)\}}
+#'       \item Among \eqn{A(v)}, select the closest: \eqn{u^* = \arg\min_{u \in A(v)} d(v,u)}
+#'     }
+#'     This approach minimizes basin-jumping errors by taking the smallest step
+#'     that makes progress. Unlike multiplicative scores, the lexicographic rule
+#'     cannot be overridden by extreme gradient contrasts between adjacent basins.
+#'     Requires no tuning parameters beyond the standard edge length threshold.
+#'
+#'     The theoretical justification is that any monotonically ascending discrete
+#'     path will reach the correct local maximum provided consecutive steps remain
+#'     within the same basin. By selecting the closest ascending neighbor, we
+#'     maximize the probability of staying within the basin of the current vertex.}
+#' }
 #'
 #' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
 #'   contains the 1-based indices of vertices adjacent to vertex \code{i}.
@@ -43,11 +66,11 @@
 #' @param y Numeric vector of function values at each vertex.
 #' @param density Optional numeric vector of density values at each vertex.
 #'   Required if \code{modulation} is \code{"DENSITY"} or
-#'   \code{"DENSITY_EDGELEN"}. If not provided, these modulations fall back
-#'   to \code{"NONE"} or \code{"EDGELEN"} respectively.
+#'   \code{"DENSITY_EDGELEN"}. Ignored for \code{"CLOSEST"}.
 #' @param modulation Character string specifying gradient modulation strategy.
-#'   One of \code{"NONE"}, \code{"DENSITY"}, \code{"EDGELEN"}, or
-#'   \code{"DENSITY_EDGELEN"}. Default is \code{"NONE"}.
+#'   One of \code{"NONE"}, \code{"DENSITY"}, \code{"EDGELEN"},
+#'   \code{"DENSITY_EDGELEN"}, or \code{"CLOSEST"}. Default is \code{"CLOSEST"}.
+#'   See Details for descriptions of each option.
 #' @param edge.length.quantile.thld Numeric in (0,1]. Quantile threshold for
 #'   edge length filtering during trajectory computation. Edges longer than
 #'   this quantile are not traversed. Default is 0.9.
@@ -84,44 +107,16 @@
 #' @param verbose Logical. Whether to print progress messages. Default is
 #'   \code{FALSE}.
 #'
-#' @return A list of class \code{"gfc.flow"} containing:
-#'   \item{max.basins}{List of maximum basin structures, each containing
-#'     \code{extremum.vertex}, \code{extremum.value}, \code{is.maximum},
-#'     \code{vertices}, \code{hop.distances}, \code{max.hop.distance}.}
-#'   \item{min.basins}{List of minimum basin structures with the same fields.}
-#'   \item{max.assignment}{Integer vector where \code{max.assignment[v]} is the
-#'     1-based index of the max basin containing vertex \code{v}, or \code{NA}.}
-#'   \item{min.assignment}{Integer vector for min basin assignments.}
-#'   \item{summary}{Data frame summarizing all retained extrema with columns:
-#'     \code{label} (m1, m2, ... for minima; M1, M2, ... for maxima),
-#'     \code{vertex}, \code{value}, \code{rel.value}, \code{type},
-#'     \code{hop.index}, \code{basin.size}, \code{p.mean.nbrs.dist},
-#'     \code{p.mean.hopk.dist}, \code{degree}, \code{deg.percentile}.}
-#'   \item{trajectories}{List of trajectory structures (if
-#'     \code{store.trajectories = TRUE}), each containing \code{vertices},
-#'     \code{start.vertex}, \code{end.vertex}, \code{starts.at.lmin},
-#'     \code{ends.at.lmax}, \code{total.change}, \code{trajectory.id}.}
-#'   \item{vertex.trajectory}{Integer vector mapping vertices to trajectories.}
-#'   \item{n.lmin.trajectories}{Number of trajectories started from local minima.}
-#'   \item{n.join.trajectories}{Number of trajectories from joining operations.}
-#'   \item{n.vertices}{Total number of vertices.}
-#'   \item{y.median}{Median of function values.}
-#'   \item{stage.history}{Data frame tracking extrema counts through pipeline.}
-#'   \item{modulation}{Modulation strategy used.}
-#'
-#' @seealso \code{\link{compute.gfc}} for the extrema-first approach,
-#'   \code{\link{cell.trajectories.gfc.flow}} for extracting cell trajectories,
-#'   \code{\link{list.cells.gfc.flow}} for listing all cells,
-#'   \code{\link{vertex.cell.gfc.flow}} for identifying cell membership,
-#'   \code{\link{vertex.trajectory.gfc.flow}} for retrieving vertex trajectories
+#' @return A list of class \code{"gfc.flow"} containing basin and trajectory
+#'   information. See the original function documentation for full details.
 #'
 #' @examples
 #' \dontrun{
 #' ## Create a simple graph
 #' adj.list <- list(
-#'   c(2L, 3L),      # vertex 1 connects to 2, 3
-#'   c(1L, 3L, 4L),  # vertex 2 connects to 1, 3, 4
-#'   c(1L, 2L, 4L),  # etc.
+#'   c(2L, 3L),
+#'   c(1L, 3L, 4L),
+#'   c(1L, 2L, 4L),
 #'   c(2L, 3L)
 #' )
 #' weight.list <- list(
@@ -132,13 +127,20 @@
 #' )
 #' y <- c(0.5, 1.2, 0.8, 2.0)
 #'
-#' ## Compute GFC using trajectory approach
-#' result <- compute.gfc.flow(adj.list, weight.list, y)
+#' ## Standard steepest ascent (may have basin jumping issues)
+#' result.steep <- compute.gfc.flow(adj.list, weight.list, y,
+#'                                  modulation = "NONE")
 #'
-#' ## With edge-length modulation to prevent basin jumping
-#' result2 <- compute.gfc.flow(adj.list, weight.list, y,
-#'                             modulation = "EDGELEN")
+#' ## Edge-length modulated (reduces but doesn't eliminate jumping)
+#' result.edgelen <- compute.gfc.flow(adj.list, weight.list, y,
+#'                                    modulation = "EDGELEN")
+#'
+#' ## Closest ascending neighbor (lexicographic, no tuning needed)
+#' result.closest <- compute.gfc.flow(adj.list, weight.list, y,
+#'                                    modulation = "CLOSEST")
 #' }
+#'
+#' @seealso \code{\link{compute.gfc}} for the extrema-first approach
 #'
 #' @export
 compute.gfc.flow <- function(
@@ -146,7 +148,7 @@ compute.gfc.flow <- function(
     weight.list,
     y,
     density = NULL,
-    modulation = c("NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
+    modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     edge.length.quantile.thld = 0.9,
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
@@ -257,59 +259,74 @@ compute.gfc.flow <- function(
     )
 
     ## -------------------------------------------------------------------------
-    ## Convert names from snake_case to dot.snake for R convention
+    ## Post-process result
     ## -------------------------------------------------------------------------
 
-    names(result) <- gsub("_", ".", names(result))
+    result <- .postprocess.gfc.flow(result)
 
-    ## Rename basin list elements
-    result$max.basins <- lapply(result$max.basins, function(basin) {
-        names(basin) <- gsub("_", ".", names(basin))
-        basin
-    })
-    result$min.basins <- lapply(result$min.basins, function(basin) {
-        names(basin) <- gsub("_", ".", names(basin))
-        basin
-    })
+    result$call <- match.call()
+    class(result) <- c("gfc.flow", "list")
 
-    ## Rename trajectory list elements if present
-    if (store.trajectories && length(result$trajectories) > 0) {
-        result$trajectories <- lapply(result$trajectories, function(traj) {
-            names(traj) <- gsub("_", ".", names(traj))
-            traj
-        })
-    }
+    return(result)
+}
 
-    ## Rename stage.history columns
-    if (!is.null(result$stage.history)) {
-        names(result$stage.history) <- gsub("_", ".", names(result$stage.history))
-    }
-
-    ## Rename summaries columns
-    if (!is.null(result$max.summaries)) {
-        names(result$max.summaries) <- gsub("_", ".", names(result$max.summaries))
-    }
-    if (!is.null(result$min.summaries)) {
-        names(result$min.summaries) <- gsub("_", ".", names(result$min.summaries))
-    }
+#' Post-process GFC Flow Result
+#'
+#' Builds combined summary tables from C++ output. Since C++ now returns
+#' dot.snake names directly, no name conversion is needed.
+#'
+#' @param result Raw result from .Call(S_compute_gfc_flow, ...)
+#' @return Processed gfc.flow object
+#'
+#' @keywords internal
+.postprocess.gfc.flow <- function(result) {
 
     ## -------------------------------------------------------------------------
-    ## Build combined summary table (like compute.gfc())
+    ## Build combined summary table (all extrema) with sorting
     ## -------------------------------------------------------------------------
+
+    result$summary.all <- .build.summary.all(result)
+
+    ## -------------------------------------------------------------------------
+    ## Build retained-only summary (inherits sorting from summary.all)
+    ## -------------------------------------------------------------------------
+
+    result$summary <- .build.summary.retained(result)
+
+    ## -------------------------------------------------------------------------
+    ## Set class
+    ## -------------------------------------------------------------------------
+
+    class(result) <- c("gfc.flow", "list")
+
+    return(result)
+}
+
+
+#' Build Summary Table for All Extrema
+#'
+#' Combines min and max summaries from C++, adds type column, reorders columns,
+#' and sorts by: (1) is.spurious, (2) type, (3) label number.
+#'
+#' @param result Raw gfc.flow result from C++
+#' @return Sorted data frame with all extrema (retained + spurious)
+#'
+#' @keywords internal
+.build.summary.all <- function(result) {
 
     summary.table <- NULL
 
-    if (!is.null(result$min.summaries) && nrow(result$min.summaries) > 0) {
-        min.summary <- result$min.summaries
+    ## Add minima
+    if (!is.null(result$min.summaries.all) && nrow(result$min.summaries.all) > 0) {
+        min.summary <- result$min.summaries.all
         min.summary$type <- "min"
-        min.summary$label <- paste0("m", seq_len(nrow(min.summary)))
         summary.table <- min.summary
     }
 
-    if (!is.null(result$max.summaries) && nrow(result$max.summaries) > 0) {
-        max.summary <- result$max.summaries
+    ## Add maxima
+    if (!is.null(result$max.summaries.all) && nrow(result$max.summaries.all) > 0) {
+        max.summary <- result$max.summaries.all
         max.summary$type <- "max"
-        max.summary$label <- paste0("M", seq_len(nrow(max.summary)))
         if (is.null(summary.table)) {
             summary.table <- max.summary
         } else {
@@ -317,53 +334,447 @@ compute.gfc.flow <- function(
         }
     }
 
-    if (!is.null(summary.table)) {
-        ## Reorder columns to match compute.gfc() format
-        col.order <- c("label", "vertex", "value", "rel.value", "type",
-                       "hop.index", "basin.size", "p.mean.nbrs.dist",
-                       "p.mean.hopk.dist", "degree", "deg.percentile")
-        col.order <- col.order[col.order %in% names(summary.table)]
-        summary.table <- summary.table[, col.order, drop = FALSE]
-
-        ## Sort: minima first (by value), then maxima (by value descending)
-        min.rows <- summary.table$type == "min"
-        max.rows <- summary.table$type == "max"
-
-        if (any(min.rows) && any(max.rows)) {
-            min.part <- summary.table[min.rows, , drop = FALSE]
-            max.part <- summary.table[max.rows, , drop = FALSE]
-            min.part <- min.part[order(min.part$value), , drop = FALSE]
-            max.part <- max.part[order(-max.part$value), , drop = FALSE]
-            summary.table <- rbind(min.part, max.part)
-        } else if (any(min.rows)) {
-            summary.table <- summary.table[order(summary.table$value), , drop = FALSE]
-        } else {
-            summary.table <- summary.table[order(-summary.table$value), , drop = FALSE]
-        }
-
-        ## Re-assign labels after sorting
-        n.min <- sum(summary.table$type == "min")
-        n.max <- sum(summary.table$type == "max")
-        if (n.min > 0) {
-            summary.table$label[summary.table$type == "min"] <- paste0("m", seq_len(n.min))
-        }
-        if (n.max > 0) {
-            summary.table$label[summary.table$type == "max"] <- paste0("M", seq_len(n.max))
-        }
-
-        rownames(summary.table) <- NULL
+    if (is.null(summary.table) || nrow(summary.table) == 0) {
+        return(NULL)
     }
 
-    result$summary <- summary.table
-
     ## -------------------------------------------------------------------------
-    ## Add metadata and class
+    ## Reorder columns for clarity
     ## -------------------------------------------------------------------------
 
-    result$call <- match.call()
-    class(result) <- c("gfc.flow", "list")
+    col.order <- c("label", "vertex", "value", "rel.value", "type",
+                   "is.spurious", "filter.stage", "merged.into",
+                   "basin.size", "hop.index", "p.mean.nbrs.dist",
+                   "p.mean.hopk.dist", "degree", "deg.percentile")
+    col.order <- col.order[col.order %in% names(summary.table)]
+    summary.table <- summary.table[, col.order, drop = FALSE]
+
+    ## -------------------------------------------------------------------------
+    ## Sort by: is.spurious (FALSE first), type (min first), label number
+    ## -------------------------------------------------------------------------
+
+    summary.table <- .sort.summary.df(summary.table)
+
+    return(summary.table)
+}
+
+
+#' Build Summary Table for Retained Extrema Only
+#'
+#' Filters summary.all to retained extrema and removes spurious-specific columns.
+#' Sorting is inherited from summary.all.
+#'
+#' @param result Processed gfc.flow result (must have summary.all already built)
+#' @return Data frame with retained extrema only
+#'
+#' @keywords internal
+.build.summary.retained <- function(result) {
+
+    summary.all <- result$summary.all
+
+    if (is.null(summary.all) || nrow(summary.all) == 0) {
+        return(NULL)
+    }
+
+    ## Filter to retained only (already sorted from summary.all)
+    summary.retained <- summary.all[!summary.all$is.spurious, , drop = FALSE]
+
+    if (nrow(summary.retained) == 0) {
+        return(NULL)
+    }
+
+    ## Remove spurious-specific columns for cleaner output
+    summary.retained$is.spurious <- NULL
+    summary.retained$filter.stage <- NULL
+    summary.retained$merged.into <- NULL
+
+    rownames(summary.retained) <- NULL
+
+    return(summary.retained)
+}
+
+
+#' Sort Summary Data Frame
+#'
+#' Sorts a summary data frame by:
+#'   1. is.spurious (FALSE first, TRUE second)
+#'   2. type (min first, max second)
+#'   3. numeric part of label
+#'
+#' @param df Data frame with label, is.spurious, type columns
+#' @return Sorted data frame with reset row names
+#'
+#' @keywords internal
+.sort.summary.df <- function(df) {
+
+    if (is.null(df) || nrow(df) == 0) {
+        return(df)
+    }
+
+    ## Extract numeric suffix from label: m1 -> 1, M12 -> 12, sm3 -> 3, sM7 -> 7
+    label.number <- as.integer(gsub("^[smSM]+", "", df$label))
+
+    ## Create sort keys
+    sort.key.spurious <- as.integer(df$is.spurious)
+    sort.key.type <- ifelse(df$type == "min", 0L, 1L)
+
+    ## Get sort order
+    ord <- order(sort.key.spurious, sort.key.type, label.number)
+
+    ## Return sorted data frame with reset row names
+    sorted.df <- df[ord, , drop = FALSE]
+    rownames(sorted.df) <- NULL
+
+    return(sorted.df)
+}
+
+#' Print Method for gfc.flow Objects
+#'
+#' @param x A gfc.flow object
+#' @param ... Additional arguments (ignored)
+#'
+#' @export
+print.gfc.flow <- function(x, ...) {
+    cat("Gradient Flow Complex (trajectory-first approach)\n")
+    cat("==================================================\n")
+    cat(sprintf("Vertices: %d\n", x$n.vertices))
+    cat(sprintf("Median y: %.4f\n", x$y.median))
+    cat(sprintf("Modulation: %s\n", x$modulation))
+    cat("\n")
+
+    cat("EXTREMA:\n")
+    cat(sprintf("  Retained: %d minima (m1-%s), %d maxima (M1-%s)\n",
+                x$n.min.retained,
+                if (x$n.min.retained > 0) paste0("m", x$n.min.retained) else "none",
+                x$n.max.retained,
+                if (x$n.max.retained > 0) paste0("M", x$n.max.retained) else "none"))
+    cat(sprintf("  Spurious: %d minima (sm1-%s), %d maxima (sM1-%s)\n",
+                x$n.min.spurious,
+                if (x$n.min.spurious > 0) paste0("sm", x$n.min.spurious) else "none",
+                x$n.max.spurious,
+                if (x$n.max.spurious > 0) paste0("sM", x$n.max.spurious) else "none"))
+    cat(sprintf("  Total: %d minima, %d maxima\n",
+                x$n.min.all, x$n.max.all))
+    cat("\n")
+
+    cat("TRAJECTORIES:\n")
+    cat(sprintf("  Total: %d (%d from minima, %d from joins)\n",
+                length(x$trajectories),
+                x$n.lmin.trajectories,
+                x$n.join.trajectories))
+
+    ## Count trajectories by endpoint status
+    if (length(x$trajectories) > 0) {
+        n.both.retained <- sum(sapply(x$trajectories, function(t) {
+            !t$start.is.spurious && !t$end.is.spurious
+        }))
+        n.start.spurious <- sum(sapply(x$trajectories, function(t) {
+            t$start.is.spurious && !t$end.is.spurious
+        }))
+        n.end.spurious <- sum(sapply(x$trajectories, function(t) {
+            !t$start.is.spurious && t$end.is.spurious
+        }))
+        n.both.spurious <- sum(sapply(x$trajectories, function(t) {
+            t$start.is.spurious && t$end.is.spurious
+        }))
+
+        cat(sprintf("  Both endpoints retained: %d\n", n.both.retained))
+        cat(sprintf("  Start spurious only: %d\n", n.start.spurious))
+        cat(sprintf("  End spurious only: %d\n", n.end.spurious))
+        cat(sprintf("  Both endpoints spurious: %d\n", n.both.spurious))
+    }
+
+    cat("\n")
+    invisible(x)
+}
+
+
+#' Summary Method for gfc.flow Objects
+#'
+#' @param object A gfc.flow object
+#' @param ... Additional arguments (ignored)
+#'
+#' @export
+summary.gfc.flow <- function(object, ...) {
+    print(object)
+    cat("SUMMARY TABLE (all extrema):\n")
+    if (!is.null(object$summary.all) && nrow(object$summary.all) > 0) {
+        print(object$summary.all)
+    } else {
+        cat("  (none)\n")
+    }
+    invisible(object)
+}
+
+
+#' Get Basin by Label
+#'
+#' Retrieves a basin structure by its label (m1, M2, sm3, sM4, etc.)
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param label Character label of the basin
+#'
+#' @return The basin structure, or NULL if not found
+#'
+#' @examples
+#' \donttest{
+#' ## Get retained maximum M1
+#' basin.M1 <- get.basin(gfc.flow.res, "M1")
+#'
+#' ## Get spurious minimum sm2
+#' basin.sm2 <- get.basin(gfc.flow.res, "sm2")
+#' }
+#'
+#' @export
+get.basin <- function(gfc.flow, label) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    ## Determine if min or max from label prefix
+    is.min <- grepl("^s?m[0-9]", label)
+
+    basins <- if (is.min) gfc.flow$min.basins.all else gfc.flow$max.basins.all
+
+    if (is.null(basins)) return(NULL)
+
+    for (basin in basins) {
+        if (!is.null(basin$label) && basin$label == label) {
+            return(basin)
+        }
+    }
+
+    return(NULL)
+}
+
+
+#' List Retained Extrema
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param type "min", "max", or "all"
+#'
+#' @return Data frame of retained extrema
+#'
+#' @export
+list.retained <- function(gfc.flow, type = c("all", "min", "max")) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    type <- match.arg(type)
+
+    if (is.null(gfc.flow$summary.all)) return(NULL)
+
+    retained <- gfc.flow$summary.all[!gfc.flow$summary.all$is.spurious, , drop = FALSE]
+
+    if (type == "min") {
+        retained <- retained[retained$type == "min", , drop = FALSE]
+    } else if (type == "max") {
+        retained <- retained[retained$type == "max", , drop = FALSE]
+    }
+
+    rownames(retained) <- NULL
+    return(retained)
+}
+
+
+#' List Spurious Extrema
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param type "min", "max", or "all"
+#' @param filter.stage Optional: filter by stage ("relvalue", "cluster.merge", "geometric")
+#'
+#' @return Data frame of spurious extrema
+#'
+#' @export
+list.spurious <- function(gfc.flow, type = c("all", "min", "max"),
+                          filter.stage = NULL) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    type <- match.arg(type)
+
+    if (is.null(gfc.flow$summary.all)) return(NULL)
+
+    spurious <- gfc.flow$summary.all[gfc.flow$summary.all$is.spurious, , drop = FALSE]
+
+    if (type == "min") {
+        spurious <- spurious[spurious$type == "min", , drop = FALSE]
+    } else if (type == "max") {
+        spurious <- spurious[spurious$type == "max", , drop = FALSE]
+    }
+
+    if (!is.null(filter.stage)) {
+        spurious <- spurious[spurious$filter.stage == filter.stage, , drop = FALSE]
+    }
+
+    rownames(spurious) <- NULL
+    return(spurious)
+}
+
+
+#' Get Vertices for Harmonic Repair
+#'
+#' Returns the vertices of a spurious basin that need harmonic repair,
+#' along with the boundary vertices and their values.
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param label Label of a spurious extremum (e.g., "sm1", "sM2")
+#' @param y Original function values (used to set boundary values)
+#' @param adj.list Adjacency list (for finding boundary)
+#'
+#' @return A list with:
+#'   \item{interior.vertices}{Vertices to be repaired}
+#'   \item{boundary.vertices}{Vertices on the boundary}
+#'   \item{boundary.values}{Current y values at boundary}
+#'   \item{extremum.vertex}{The spurious extremum vertex}
+#'
+#' @export
+get.harmonic.repair.vertices <- function(gfc.flow, label, y, adj.list) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    basin <- get.basin(gfc.flow, label)
+    if (is.null(basin)) {
+        stop(sprintf("Basin '%s' not found", label))
+    }
+
+    if (!basin$is.spurious) {
+        warning(sprintf("Basin '%s' is not spurious", label))
+    }
+
+    basin.vertices <- basin$vertices
+    basin.set <- as.integer(basin.vertices)
+
+    ## Find boundary: vertices in basin with neighbors outside basin
+    boundary.vertices <- c()
+    for (v in basin.vertices) {
+        nbrs <- adj.list[[v]]
+        if (any(!(nbrs %in% basin.set))) {
+            boundary.vertices <- c(boundary.vertices, v)
+        }
+    }
+
+    ## Interior = basin - boundary
+    interior.vertices <- setdiff(basin.vertices, boundary.vertices)
+
+    ## Get boundary values
+    boundary.values <- y[boundary.vertices]
+    names(boundary.values) <- boundary.vertices
+
+    list(
+        interior.vertices = interior.vertices,
+        boundary.vertices = boundary.vertices,
+        boundary.values = boundary.values,
+        extremum.vertex = basin$extremum.vertex,
+        label = label
+    )
+}
+
+
+#' Get Trajectories by Endpoint Status
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param start.retained Logical: require start endpoint retained? (NA = any)
+#' @param end.retained Logical: require end endpoint retained? (NA = any)
+#'
+#' @return List of matching trajectories
+#'
+#' @export
+get.trajectories.by.status <- function(gfc.flow,
+                                       start.retained = NA,
+                                       end.retained = NA) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+        return(list())
+    }
+
+    result <- list()
+    for (traj in gfc.flow$trajectories) {
+        match <- TRUE
+
+        if (!is.na(start.retained)) {
+            if (start.retained && traj$start.is.spurious) match <- FALSE
+            if (!start.retained && !traj$start.is.spurious) match <- FALSE
+        }
+
+        if (!is.na(end.retained)) {
+            if (end.retained && traj$end.is.spurious) match <- FALSE
+            if (!end.retained && !traj$end.is.spurious) match <- FALSE
+        }
+
+        if (match) {
+            result[[length(result) + 1]] <- traj
+        }
+    }
 
     return(result)
+}
+
+
+#' Count Cell Membership Statistics
+#'
+#' @param gfc.flow A gfc.flow object
+#'
+#' @return List with membership statistics
+#'
+#' @export
+count.cell.memberships <- function(gfc.flow) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    n <- gfc.flow$n.vertices
+
+    ## Count memberships using ALL basins
+    n.max.all <- sapply(gfc.flow$max.membership.all, length)
+    n.min.all <- sapply(gfc.flow$min.membership.all, length)
+
+    n.cells.all <- ifelse(
+        n.max.all > 0 & n.min.all > 0,
+        n.max.all * n.min.all,
+        0
+    )
+
+    ## Count using RETAINED basins only
+    n.max.ret <- sapply(gfc.flow$max.membership.retained, length)
+    n.min.ret <- sapply(gfc.flow$min.membership.retained, length)
+
+    n.cells.retained <- ifelse(
+        n.max.ret > 0 & n.min.ret > 0,
+        n.max.ret * n.min.ret,
+        0
+    )
+
+    list(
+        ## Using ALL basins (should be 100% coverage)
+        n.with.any.membership = sum(n.cells.all > 0),
+        n.no.any.membership = sum(n.cells.all == 0),
+        n.multi.membership.all = sum(n.cells.all > 1),
+        max.memberships.all = max(n.cells.all),
+
+        ## Using RETAINED basins only
+        n.with.retained.membership = sum(n.cells.retained > 0),
+        n.no.retained.membership = sum(n.cells.retained == 0),
+        n.multi.membership.retained = sum(n.cells.retained > 1),
+        max.memberships.retained = max(n.cells.retained)
+    )
+}
+
+## Helper: null-coalescing operator
+`%||%` <- function(x, y) {
+    if (is.null(x)) y else x
 }
 
 
@@ -381,7 +792,7 @@ compute.gfc.flow <- function(
 #' @param modulation Character string specifying gradient modulation.
 #' @param n.cores Integer number of OpenMP threads. Default is 1 (sequential).
 #' @param verbose Logical. Print progress messages.
-#' @param ... Additional arguments passed to \code{compute.gfc.flow()}.
+#' @param ... Additional arguments passed to internal C++ function.
 #'
 #' @return List of \code{gfc.flow} results, one per column of \code{Y}.
 #'
@@ -396,12 +807,24 @@ compute.gfc.flow.matrix <- function(
     modulation = c("NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     n.cores = 1L,
     verbose = FALSE,
-    ...
+    edge.length.quantile.thld = 0.9,
+    apply.relvalue.filter = TRUE,
+    min.rel.value.max = 1.1,
+    max.rel.value.min = 0.9,
+    apply.maxima.clustering = TRUE,
+    apply.minima.clustering = TRUE,
+    max.overlap.threshold = 0.15,
+    min.overlap.threshold = 0.15,
+    apply.geometric.filter = TRUE,
+    p.mean.nbrs.dist.threshold = 0.9,
+    p.mean.hopk.dist.threshold = 0.9,
+    p.deg.threshold = 0.9,
+    min.basin.size = 10L,
+    hop.k = 2L,
+    store.trajectories = TRUE,
+    max.trajectory.length = 10000L
 ) {
-    ## -------------------------------------------------------------------------
     ## Input validation
-    ## -------------------------------------------------------------------------
-
     if (!is.matrix(Y)) {
         stop("Y must be a matrix")
     }
@@ -413,47 +836,34 @@ compute.gfc.flow.matrix <- function(
 
     modulation <- match.arg(modulation)
 
-    ## -------------------------------------------------------------------------
-    ## Convert adjacency list to 0-based
-    ## -------------------------------------------------------------------------
-
+    ## Convert adjacency list to 0-based indexing
     adj.list.0based <- lapply(adj.list, function(x) {
-        if (length(x) == 0) {
-            return(integer(0))
-        }
+        if (length(x) == 0) return(integer(0))
         as.integer(x - 1L)
     })
 
-    ## -------------------------------------------------------------------------
-    ## Build parameter list from ...
-    ## -------------------------------------------------------------------------
-
-    dots <- list(...)
-
+    ## Build parameters
     params <- list(
-        edge_length_quantile_thld = as.double(dots$edge.length.quantile.thld %||% 0.9),
-        apply_relvalue_filter = as.logical(dots$apply.relvalue.filter %||% TRUE),
-        min_rel_value_max = as.double(dots$min.rel.value.max %||% 1.1),
-        max_rel_value_min = as.double(dots$max.rel.value.min %||% 0.9),
-        apply_maxima_clustering = as.logical(dots$apply.maxima.clustering %||% TRUE),
-        apply_minima_clustering = as.logical(dots$apply.minima.clustering %||% TRUE),
-        max_overlap_threshold = as.double(dots$max.overlap.threshold %||% 0.15),
-        min_overlap_threshold = as.double(dots$min.overlap.threshold %||% 0.15),
-        apply_geometric_filter = as.logical(dots$apply.geometric.filter %||% TRUE),
-        p_mean_nbrs_dist_threshold = as.double(dots$p.mean.nbrs.dist.threshold %||% 0.9),
-        p_mean_hopk_dist_threshold = as.double(dots$p.mean.hopk.dist.threshold %||% 0.9),
-        p_deg_threshold = as.double(dots$p.deg.threshold %||% 0.9),
-        min_basin_size = as.integer(dots$min.basin.size %||% 10L),
-        hop_k = as.integer(dots$hop.k %||% 2L),
+        edge_length_quantile_thld = as.double(edge.length.quantile.thld),
+        apply_relvalue_filter = as.logical(apply.relvalue.filter),
+        min_rel_value_max = as.double(min.rel.value.max),
+        max_rel_value_min = as.double(max.rel.value.min),
+        apply_maxima_clustering = as.logical(apply.maxima.clustering),
+        apply_minima_clustering = as.logical(apply.minima.clustering),
+        max_overlap_threshold = as.double(max.overlap.threshold),
+        min_overlap_threshold = as.double(min.overlap.threshold),
+        apply_geometric_filter = as.logical(apply.geometric.filter),
+        p_mean_nbrs_dist_threshold = as.double(p.mean.nbrs.dist.threshold),
+        p_mean_hopk_dist_threshold = as.double(p.mean.hopk.dist.threshold),
+        p_deg_threshold = as.double(p.deg.threshold),
+        min_basin_size = as.integer(min.basin.size),
+        hop_k = as.integer(hop.k),
         modulation = as.character(modulation),
-        store_trajectories = as.logical(dots$store.trajectories %||% TRUE),
-        max_trajectory_length = as.integer(dots$max.trajectory.length %||% 10000L)
+        store_trajectories = as.logical(store.trajectories),
+        max_trajectory_length = as.integer(max.trajectory.length)
     )
 
-    ## -------------------------------------------------------------------------
     ## Call C++ implementation
-    ## -------------------------------------------------------------------------
-
     results <- .Call(
         S_compute_gfc_flow_matrix,
         adj.list.0based,
@@ -466,131 +876,10 @@ compute.gfc.flow.matrix <- function(
         PACKAGE = "gflow"
     )
 
-    ## -------------------------------------------------------------------------
     ## Post-process each result
-    ## -------------------------------------------------------------------------
-
-    results <- lapply(results, function(result) {
-        names(result) <- gsub("_", ".", names(result))
-
-        result$max.basins <- lapply(result$max.basins, function(basin) {
-            names(basin) <- gsub("_", ".", names(basin))
-            basin
-        })
-        result$min.basins <- lapply(result$min.basins, function(basin) {
-            names(basin) <- gsub("_", ".", names(basin))
-            basin
-        })
-
-        if (length(result$trajectories) > 0) {
-            result$trajectories <- lapply(result$trajectories, function(traj) {
-                names(traj) <- gsub("_", ".", names(traj))
-                traj
-            })
-        }
-
-        if (!is.null(result$stage.history)) {
-            names(result$stage.history) <- gsub("_", ".", names(result$stage.history))
-        }
-
-        class(result) <- c("gfc.flow", "list")
-        result
-    })
+    results <- lapply(results, .postprocess.gfc.flow.v2)
 
     return(results)
-}
-
-
-#' Print Method for gfc.flow Objects
-#'
-#' @param x A \code{gfc.flow} object.
-#' @param ... Additional arguments (ignored).
-#'
-#' @export
-print.gfc.flow <- function(x, ...) {
-    cat("Gradient Flow Complex (Trajectory-First)\n")
-    cat("=========================================\n")
-    cat(sprintf("Vertices: %d\n", x$n.vertices))
-    cat(sprintf("Modulation: %s\n", x$modulation))
-    cat(sprintf("Maximum basins: %d\n", length(x$max.basins)))
-    cat(sprintf("Minimum basins: %d\n", length(x$min.basins)))
-    cat(sprintf("Trajectories: %d (%d from lmin, %d from joins)\n",
-                x$n.lmin.trajectories + x$n.join.trajectories,
-                x$n.lmin.trajectories,
-                x$n.join.trajectories))
-    cat(sprintf("y median: %.4f\n", x$y.median))
-
-    if (!is.null(x$summary) && nrow(x$summary) > 0) {
-        cat("\nExtremum summary:\n")
-        print(x$summary, row.names = FALSE)
-    }
-
-    invisible(x)
-}
-
-
-#' Summary Method for gfc.flow Objects
-#'
-#' @param object A \code{gfc.flow} object.
-#' @param ... Additional arguments (ignored).
-#'
-#' @export
-summary.gfc.flow <- function(object, ...) {
-    cat("Gradient Flow Complex Summary\n")
-    cat("=============================\n\n")
-
-    cat("Graph:\n")
-    cat(sprintf("  Vertices: %d\n", object$n.vertices))
-    cat(sprintf("  y range: [%.4f, %.4f], median: %.4f\n",
-                min(sapply(object$min.basins, function(b) b$extremum.value)),
-                max(sapply(object$max.basins, function(b) b$extremum.value)),
-                object$y.median))
-
-    cat("\nTrajectory computation:\n")
-    cat(sprintf("  Modulation: %s\n", object$modulation))
-    cat(sprintf("  Total trajectories: %d\n",
-                object$n.lmin.trajectories + object$n.join.trajectories))
-    cat(sprintf("    From local minima: %d\n", object$n.lmin.trajectories))
-    cat(sprintf("    From joining: %d\n", object$n.join.trajectories))
-
-    cat("\nBasins after refinement:\n")
-    cat(sprintf("  Maximum basins: %d\n", length(object$max.basins)))
-    cat(sprintf("  Minimum basins: %d\n", length(object$min.basins)))
-
-    if (length(object$max.basins) > 0) {
-        max.sizes <- sapply(object$max.basins, function(b) length(b$vertices))
-        cat(sprintf("  Max basin sizes: min=%d, median=%d, max=%d\n",
-                    min(max.sizes), median(max.sizes), max(max.sizes)))
-    }
-
-    if (length(object$min.basins) > 0) {
-        min.sizes <- sapply(object$min.basins, function(b) length(b$vertices))
-        cat(sprintf("  Min basin sizes: min=%d, median=%d, max=%d\n",
-                    min(min.sizes), median(min.sizes), max(min.sizes)))
-    }
-
-    ## Coverage statistics
-    max.covered <- sum(!is.na(object$max.assignment))
-    min.covered <- sum(!is.na(object$min.assignment))
-    cat(sprintf("\nCoverage:\n"))
-    cat(sprintf("  Max basins: %d/%d vertices (%.1f%%)\n",
-                max.covered, object$n.vertices, 100 * max.covered / object$n.vertices))
-    cat(sprintf("  Min basins: %d/%d vertices (%.1f%%)\n",
-                min.covered, object$n.vertices, 100 * min.covered / object$n.vertices))
-
-    ## Print summary table
-    if (!is.null(object$summary) && nrow(object$summary) > 0) {
-        cat("\nExtremum summary:\n")
-        print(object$summary, row.names = FALSE)
-    }
-
-    invisible(object)
-}
-
-
-## Helper: null-coalescing operator
-`%||%` <- function(x, y) {
-    if (is.null(x)) y else x
 }
 
 
@@ -602,71 +891,32 @@ summary.gfc.flow <- function(object, ...) {
 #'
 #' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()} with
 #'   trajectories computed (i.e., \code{store.trajectories = TRUE}).
-#' @param min.id Minimum extremum identifier: either a label (e.g., "m4") or a
-#'   vertex index (integer, 1-based).
-#' @param max.id Maximum extremum identifier: either a label (e.g., "M1") or a
-#'   vertex index (integer, 1-based).
+#' @param min.id Minimum extremum identifier: either a label (e.g., "m4", "sm1")
+#'   or a vertex index (integer, 1-based).
+#' @param max.id Maximum extremum identifier: either a label (e.g., "M1", "sM2")
+#'   or a vertex index (integer, 1-based).
 #' @param map Optional integer vector mapping graph indices to subgraph
 #'   vertices. If provided, trajectory vertices are converted to subgraph
-#'   indices. Specifically, \code{map[i]} gives the original graph vertex
-#'   corresponding to subgraph vertex i. Vertices not found in map are
-#'   returned as NA with a warning.
+#'   indices.
 #'
 #' @return A list of class \code{"gfc_cell_trajectories"} containing:
 #'   \item{min.vertex}{Minimum vertex index (in output coordinate system).}
 #'   \item{max.vertex}{Maximum vertex index (in output coordinate system).}
-#'   \item{min.label}{Minimum label (e.g., "m4").}
-#'   \item{max.label}{Maximum label (e.g., "M1").}
+#'   \item{min.label}{Minimum label (e.g., "m4", "sm1").}
+#'   \item{max.label}{Maximum label (e.g., "M1", "sM2").}
 #'   \item{min.value}{Function value at minimum.}
 #'   \item{max.value}{Function value at maximum.}
+#'   \item{min.is.spurious}{TRUE if minimum is spurious.}
+#'   \item{max.is.spurious}{TRUE if maximum is spurious.}
 #'   \item{trajectories}{List of trajectory vertex vectors.}
 #'   \item{n.trajectories}{Number of trajectories.}
 #'   \item{mapped}{Logical; TRUE if vertices were mapped to subgraph indices.}
-#'   \item{original.min.vertex}{Original minimum vertex (before mapping).}
-#'   \item{original.max.vertex}{Original maximum vertex (before mapping).}
-#'
-#' @details
-#' The function first resolves the min.id and max.id to vertex indices and
-#' labels using the gfc.flow summary. It then extracts all trajectories that
-#' connect these two extrema (trajectories where \code{start.vertex} equals
-#' the minimum vertex and \code{end.vertex} equals the maximum vertex).
-#'
-#' When working with a subgraph (e.g., the extended basin of a maximum),
-#' the map parameter allows converting trajectory vertices to subgraph
-#' indices. If \code{map = M1.vertices} where \code{M1.vertices[i]} is the
-#' original graph vertex corresponding to subgraph vertex i, then the returned
-#' trajectories will use subgraph indices 1, 2, ..., length(M1.vertices).
-#'
-#' @examples
-#' \donttest{
-#' ## Assuming gfc.flow.res is a result from compute.gfc.flow()
-#' ## with store.trajectories = TRUE
-#'
-#' ## Extract by labels
-#' cell.traj <- cell.trajectories.gfc.flow(gfc.flow.res,
-#'                                         min.id = "m4", max.id = "M1")
-#'
-#' ## Extract by vertex indices
-#' cell.traj <- cell.trajectories.gfc.flow(gfc.flow.res,
-#'                                         min.id = 509, max.id = 1147)
-#'
-#' ## Extract and map to subgraph indices
-#' M1.vertices <- gfc.flow.res$max.basins[[1]]$vertices
-#' cell.traj <- cell.trajectories.gfc.flow(gfc.flow.res, "m4", "M1",
-#'                                         map = M1.vertices)
-#' }
-#'
-#' @seealso \code{\link{compute.gfc.flow}}, \code{\link{trajectory.vertices.gfc.flow}}
 #'
 #' @export
 cell.trajectories.gfc.flow <- function(gfc.flow,
                                        min.id,
                                        max.id,
                                        map = NULL) {
-
-    ## =========================================================================
-    ## Input validation
-    ## =========================================================================
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
@@ -677,7 +927,8 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
              "Use store.trajectories = TRUE in compute.gfc.flow()")
     }
 
-    summary.df <- gfc.flow$summary
+    ## Use summary.all for v2 structure (includes spurious extrema)
+    summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
     if (is.null(summary.df) || nrow(summary.df) == 0) {
         stop("gfc.flow does not contain a summary table")
     }
@@ -687,7 +938,6 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
     ## =========================================================================
 
     if (is.character(min.id)) {
-        ## Label provided
         min.label <- min.id
         idx <- match(min.label, summary.df$label)
         if (is.na(idx)) {
@@ -696,8 +946,12 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.vertex <- summary.df$vertex[idx]
         min.value <- summary.df$value[idx]
         min.type <- summary.df$type[idx]
+        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
+            summary.df$is.spurious[idx]
+        } else {
+            FALSE
+        }
     } else if (is.numeric(min.id)) {
-        ## Vertex index provided
         min.vertex <- as.integer(min.id)
         idx <- match(min.vertex, summary.df$vertex)
         if (is.na(idx)) {
@@ -706,11 +960,15 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.label <- summary.df$label[idx]
         min.value <- summary.df$value[idx]
         min.type <- summary.df$type[idx]
+        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
+            summary.df$is.spurious[idx]
+        } else {
+            FALSE
+        }
     } else {
         stop("min.id must be a character label or numeric vertex index")
     }
 
-    ## Verify it's a minimum
     if (min.type != "min") {
         stop(sprintf("'%s' (vertex %d) is not a minimum, it is a %s",
                      min.label, min.vertex, min.type))
@@ -721,7 +979,6 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
     ## =========================================================================
 
     if (is.character(max.id)) {
-        ## Label provided
         max.label <- max.id
         idx <- match(max.label, summary.df$label)
         if (is.na(idx)) {
@@ -730,8 +987,12 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         max.vertex <- summary.df$vertex[idx]
         max.value <- summary.df$value[idx]
         max.type <- summary.df$type[idx]
+        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
+            summary.df$is.spurious[idx]
+        } else {
+            FALSE
+        }
     } else if (is.numeric(max.id)) {
-        ## Vertex index provided
         max.vertex <- as.integer(max.id)
         idx <- match(max.vertex, summary.df$vertex)
         if (is.na(idx)) {
@@ -740,11 +1001,15 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         max.label <- summary.df$label[idx]
         max.value <- summary.df$value[idx]
         max.type <- summary.df$type[idx]
+        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
+            summary.df$is.spurious[idx]
+        } else {
+            FALSE
+        }
     } else {
         stop("max.id must be a character label or numeric vertex index")
     }
 
-    ## Verify it's a maximum
     if (max.type != "max") {
         stop(sprintf("'%s' (vertex %d) is not a maximum, it is a %s",
                      max.label, max.vertex, max.type))
@@ -757,7 +1022,6 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
     trajectories <- list()
 
     for (traj in gfc.flow$trajectories) {
-        ## In gfc.flow, trajectories have start.vertex (lmin) and end.vertex (lmax)
         if (traj$start.vertex == min.vertex && traj$end.vertex == max.vertex) {
             trajectories[[length(trajectories) + 1]] <- traj$vertices
         }
@@ -780,7 +1044,6 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         mapped <- TRUE
         map <- as.integer(map)
 
-        ## Map extrema vertices
         min.vertex.mapped <- match(min.vertex, map)
         max.vertex.mapped <- match(max.vertex, map)
 
@@ -794,7 +1057,6 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.vertex <- min.vertex.mapped
         max.vertex <- max.vertex.mapped
 
-        ## Map trajectory vertices
         n.unmapped <- 0
         trajectories <- lapply(trajectories, function(path) {
             mapped.path <- match(path, map)
@@ -822,6 +1084,8 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         max.label = max.label,
         min.value = min.value,
         max.value = max.value,
+        min.is.spurious = min.is.spurious,
+        max.is.spurious = max.is.spurious,
         trajectories = trajectories,
         n.trajectories = length(trajectories),
         mapped = mapped,
@@ -846,10 +1110,15 @@ print.gfc_cell_trajectories <- function(x, max.print = 5, ...) {
 
     cat("GFC Cell Trajectories\n")
     cat("=====================\n")
-    cat(sprintf("Cell: %s (vertex %d) <-> %s (vertex %d)\n",
-                x$min.label,
+
+    ## Show spurious status if available
+    min.status <- if (!is.null(x$min.is.spurious) && x$min.is.spurious) " [SPURIOUS]" else ""
+    max.status <- if (!is.null(x$max.is.spurious) && x$max.is.spurious) " [SPURIOUS]" else ""
+
+    cat(sprintf("Cell: %s%s (vertex %d) <-> %s%s (vertex %d)\n",
+                x$min.label, min.status,
                 if (x$mapped) x$original.min.vertex else x$min.vertex,
-                x$max.label,
+                x$max.label, max.status,
                 if (x$mapped) x$original.max.vertex else x$max.vertex))
     cat(sprintf("Values: %.4f (min) to %.4f (max), delta = %.4f\n",
                 x$min.value, x$max.value, x$max.value - x$min.value))
@@ -942,64 +1211,61 @@ trajectory.edges.gfc.flow <- function(cell.traj, weighted = FALSE) {
         return(data.frame(from = integer(0), to = integer(0)))
     }
 
-    ## Build edge list from all trajectories
-    edges <- lapply(cell.traj$trajectories, function(path) {
-        if (length(path) < 2) {
-            return(data.frame(from = integer(0), to = integer(0)))
+    all.edges <- list()
+
+    for (path in cell.traj$trajectories) {
+        if (length(path) < 2) next
+
+        for (i in seq_len(length(path) - 1)) {
+            from <- path[i]
+            to <- path[i + 1]
+            key <- paste(from, to, sep = "-")
+            if (is.null(all.edges[[key]])) {
+                all.edges[[key]] <- list(from = from, to = to, count = 0)
+            }
+            all.edges[[key]]$count <- all.edges[[key]]$count + 1
         }
-        data.frame(
-            from = path[-length(path)],
-            to = path[-1]
-        )
-    })
+    }
 
-    edge.df <- do.call(rbind, edges)
-
-    if (nrow(edge.df) == 0) {
+    if (length(all.edges) == 0) {
         return(data.frame(from = integer(0), to = integer(0)))
     }
 
+    result <- data.frame(
+        from = sapply(all.edges, function(e) e$from),
+        to = sapply(all.edges, function(e) e$to)
+    )
+
     if (weighted) {
-        ## Count edge occurrences
-        edge.key <- paste(edge.df$from, edge.df$to, sep = "-")
-        edge.counts <- table(edge.key)
-
-        ## Build unique edge list with weights
-        unique.edges <- unique(edge.df)
-        unique.key <- paste(unique.edges$from, unique.edges$to, sep = "-")
-        unique.edges$weight <- as.integer(edge.counts[unique.key])
-
-        return(unique.edges)
+        result$weight <- sapply(all.edges, function(e) e$count)
     }
 
-    return(unique(edge.df))
+    rownames(result) <- NULL
+    return(result)
 }
 
 
 #' List All Cells in GFC Flow Result
 #'
-#' Returns a summary of all min-max pairs (cells) with trajectories connecting them.
+#' Enumerates all cells (min-max pairs) in a gfc.flow result, including cells
+#' with spurious endpoints.
 #'
 #' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
+#' @param include.spurious Logical; if TRUE (default), include cells with
+#'   spurious endpoints.
 #'
 #' @return A data frame with columns:
 #'   \item{min.label}{Minimum label.}
 #'   \item{max.label}{Maximum label.}
 #'   \item{min.vertex}{Minimum vertex index.}
 #'   \item{max.vertex}{Maximum vertex index.}
+#'   \item{min.is.spurious}{TRUE if minimum is spurious.}
+#'   \item{max.is.spurious}{TRUE if maximum is spurious.}
 #'   \item{n.trajectories}{Number of trajectories connecting this pair.}
-#'   \item{total.vertices}{Total vertices across all trajectories (with repeats).}
 #'   \item{unique.vertices}{Number of unique vertices in trajectories.}
 #'
-#' @examples
-#' \donttest{
-#' ## List all cells
-#' cells <- list.cells.gfc.flow(gfc.flow.res)
-#' print(cells)
-#' }
-#'
 #' @export
-list.cells.gfc.flow <- function(gfc.flow) {
+list.cells.gfc.flow <- function(gfc.flow, include.spurious = TRUE) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
@@ -1011,13 +1277,14 @@ list.cells.gfc.flow <- function(gfc.flow) {
             max.label = character(0),
             min.vertex = integer(0),
             max.vertex = integer(0),
+            min.is.spurious = logical(0),
+            max.is.spurious = logical(0),
             n.trajectories = integer(0),
-            total.vertices = integer(0),
             unique.vertices = integer(0)
         ))
     }
 
-    summary.df <- gfc.flow$summary
+    summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
 
     ## Collect cell information
     cells <- list()
@@ -1031,14 +1298,14 @@ list.cells.gfc.flow <- function(gfc.flow) {
             cells[[key]] <- list(
                 min.vertex = min.v,
                 max.vertex = max.v,
+                start.is.spurious = traj$start.is.spurious %||% FALSE,
+                end.is.spurious = traj$end.is.spurious %||% FALSE,
                 n.trajectories = 0,
-                total.vertices = 0,
                 all.vertices = c()
             )
         }
 
         cells[[key]]$n.trajectories <- cells[[key]]$n.trajectories + 1
-        cells[[key]]$total.vertices <- cells[[key]]$total.vertices + length(traj$vertices)
         cells[[key]]$all.vertices <- c(cells[[key]]$all.vertices, traj$vertices)
     }
 
@@ -1048,8 +1315,9 @@ list.cells.gfc.flow <- function(gfc.flow) {
         max.label = character(length(cells)),
         min.vertex = integer(length(cells)),
         max.vertex = integer(length(cells)),
+        min.is.spurious = logical(length(cells)),
+        max.is.spurious = logical(length(cells)),
         n.trajectories = integer(length(cells)),
-        total.vertices = integer(length(cells)),
         unique.vertices = integer(length(cells)),
         stringsAsFactors = FALSE
     )
@@ -1068,9 +1336,16 @@ list.cells.gfc.flow <- function(gfc.flow) {
         result$max.label[i] <- max.label
         result$min.vertex[i] <- cell$min.vertex
         result$max.vertex[i] <- cell$max.vertex
+        result$min.is.spurious[i] <- cell$start.is.spurious
+        result$max.is.spurious[i] <- cell$end.is.spurious
         result$n.trajectories[i] <- cell$n.trajectories
-        result$total.vertices[i] <- cell$total.vertices
         result$unique.vertices[i] <- length(unique(cell$all.vertices))
+    }
+
+    ## Optionally filter out spurious cells
+    if (!include.spurious) {
+        keep <- !result$min.is.spurious & !result$max.is.spurious
+        result <- result[keep, , drop = FALSE]
     }
 
     ## Sort by number of trajectories (descending)
@@ -1081,638 +1356,18 @@ list.cells.gfc.flow <- function(gfc.flow) {
 }
 
 
-#' Identify All Cell Memberships for a Vertex (Multi-valued)
+#' Identify Cell Membership for a Single Vertex
 #'
-#' Given a single vertex index, identifies ALL cells (min-max pairs)
-#' the vertex belongs to. In discrete graphs, a vertex can lie on multiple
-#' trajectories and thus belong to multiple cells.
+#' @param gfc.flow A gfc.flow object.
+#' @param vertex Single integer vertex index (1-based).
 #'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
-#' @param vertex Integer vertex index (1-based).
-#'
-#' @return A data frame with one row per cell membership containing:
-#'   \item{vertex}{The input vertex index.}
-#'   \item{min.basin.idx}{The minimum basin index (1-based).}
-#'   \item{max.basin.idx}{The maximum basin index (1-based).}
-#'   \item{min.vertex}{The minimum (start) vertex of the cell.}
-#'   \item{max.vertex}{The maximum (end) vertex of the cell.}
-#'   \item{min.label}{The minimum label (e.g., "m1") if available.}
-#'   \item{max.label}{The maximum label (e.g., "M1") if available.}
-#'
-#'   If the vertex belongs to no cells, returns an empty data frame.
-#'
-#' @details
-#' Unlike the original single-valued \code{vertex.cell.gfc.flow()}, this
-#' function correctly handles the discrete graph setting where trajectory
-#' uniqueness fails. A vertex can belong to multiple cells if it lies on
-#' the intersection of multiple gradient flow trajectories.
-#'
-#' The function uses the \code{max.membership} and \code{min.membership}
-#' lists in the gfc.flow object, which contain all basin indices for each
-#' vertex.
-#'
-#' @examples
-#' \donttest{
-#' ## Find all cell memberships for a vertex
-#' cells <- vertex.cell.gfc.flow(gfc.flow.res, 150)
-#' cat("Vertex 150 belongs to", nrow(cells), "cell(s)\n")
-#'
-#' ## A vertex at the intersection of trajectories may belong to multiple cells
-#' if (nrow(cells) > 1) {
-#'     cat("Multi-cell membership detected:\n")
-#'     print(cells)
-#' }
-#' }
-#'
-#' @seealso \code{\link{vertex.cells.gfc.flow}} for querying multiple vertices,
-#'   \code{\link{vertex.trajectory.gfc.flow}} for trajectory lookup
+#' @return A data frame with all cell memberships for this vertex.
 #'
 #' @export
 vertex.cell.gfc.flow <- function(gfc.flow, vertex) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
-    }
-
-    vertex <- as.integer(vertex)
-    if (length(vertex) != 1) {
-        stop("vertex must be a single integer; use vertex.cells.gfc.flow() for multiple vertices")
-    }
-
-    if (vertex < 1 || vertex > gfc.flow$n.vertices) {
-        stop(sprintf("vertex must be in range [1, %d]", gfc.flow$n.vertices))
-    }
-
-    ## Check if multi-valued membership is available
-    if (is.null(gfc.flow$max.membership) || is.null(gfc.flow$min.membership)) {
-        ## Fall back to single-valued approach using trajectories
-        return(.vertex.cell.single.valued(gfc.flow, vertex))
-    }
-
-    ## Get multi-valued membership
-    max.basins.idx <- gfc.flow$max.membership[[vertex]]
-    min.basins.idx <- gfc.flow$min.membership[[vertex]]
-
-    ## If no memberships, return empty data frame
-    if (length(max.basins.idx) == 0 || length(min.basins.idx) == 0) {
-        return(data.frame(
-            vertex = integer(0),
-            min.basin.idx = integer(0),
-            max.basin.idx = integer(0),
-            min.vertex = integer(0),
-            max.vertex = integer(0),
-            min.label = character(0),
-            max.label = character(0),
-            stringsAsFactors = FALSE
-        ))
-    }
-
-    ## Build all (min, max) combinations this vertex belongs to
-    ## A vertex belongs to cell (m, M) if it's in both m's basin and M's basin
-    combinations <- expand.grid(
-        min.basin.idx = min.basins.idx,
-        max.basin.idx = max.basins.idx
-    )
-
-    n.cells <- nrow(combinations)
-
-    result <- data.frame(
-        vertex = rep(vertex, n.cells),
-        min.basin.idx = combinations$min.basin.idx,
-        max.basin.idx = combinations$max.basin.idx,
-        min.vertex = integer(n.cells),
-        max.vertex = integer(n.cells),
-        min.label = character(n.cells),
-        max.label = character(n.cells),
-        stringsAsFactors = FALSE
-    )
-
-    summary.df <- gfc.flow$summary
-
-    for (i in seq_len(n.cells)) {
-        min.idx <- combinations$min.basin.idx[i]
-        max.idx <- combinations$max.basin.idx[i]
-
-        ## Get extremum vertices from basin structures
-        min.v <- gfc.flow$min.basins[[min.idx]]$extremum.vertex
-        max.v <- gfc.flow$max.basins[[max.idx]]$extremum.vertex
-
-        result$min.vertex[i] <- min.v
-        result$max.vertex[i] <- max.v
-
-        ## Look up labels from summary
-        if (!is.null(summary.df) && nrow(summary.df) > 0) {
-            min.match <- match(min.v, summary.df$vertex)
-            max.match <- match(max.v, summary.df$vertex)
-
-            result$min.label[i] <- if (!is.na(min.match)) {
-                summary.df$label[min.match]
-            } else {
-                paste0("v", min.v)
-            }
-
-            result$max.label[i] <- if (!is.na(max.match)) {
-                summary.df$label[max.match]
-            } else {
-                paste0("v", max.v)
-            }
-        } else {
-            result$min.label[i] <- paste0("v", min.v)
-            result$max.label[i] <- paste0("v", max.v)
-        }
-    }
-
-    return(result)
-}
-
-#' Identify All Cell Memberships for Multiple Vertices
-#'
-#' Given a vector of vertex indices, identifies all cell memberships for
-#' each vertex. This is the vectorized version of \code{vertex.cell.gfc.flow()}.
-#'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
-#' @param vertices Integer vector of vertex indices (1-based).
-#'
-#' @return A data frame with one row per (vertex, cell) pair containing:
-#'   \item{vertex}{The vertex index.}
-#'   \item{min.basin.idx}{The minimum basin index (1-based).}
-#'   \item{max.basin.idx}{The maximum basin index (1-based).}
-#'   \item{min.vertex}{The minimum (start) vertex of the cell.}
-#'   \item{max.vertex}{The maximum (end) vertex of the cell.}
-#'   \item{min.label}{The minimum label if available.}
-#'   \item{max.label}{The maximum label if available.}
-#'
-#' @details
-#' This function efficiently queries cell membership for multiple vertices.
-#' The result is a "long" data frame where vertices with multiple cell
-#' memberships have multiple rows.
-#'
-#' @examples
-#' \donttest{
-#' ## Query multiple vertices
-#' cells <- vertex.cells.gfc.flow(gfc.flow.res, c(100, 200, 300))
-#'
-#' ## Count cell memberships per vertex
-#' table(cells$vertex)
-#'
-#' ## Find vertices with multiple cell memberships
-#' multi.cell.vertices <- names(which(table(cells$vertex) > 1))
-#' }
-#'
-#' @seealso \code{\link{vertex.cell.gfc.flow}} for single vertex queries
-#'
-#' @export
-vertex.cells.gfc.flow <- function(gfc.flow, vertices) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
-    }
-
-    vertices <- as.integer(vertices)
-
-    if (any(vertices < 1 | vertices > gfc.flow$n.vertices)) {
-        stop(sprintf("vertices must be in range [1, %d]", gfc.flow$n.vertices))
-    }
-
-    ## Collect results for all vertices
-    result.list <- lapply(vertices, function(v) {
-        vertex.cell.gfc.flow(gfc.flow, v)
-    })
-
-    ## Combine into single data frame
-    result <- do.call(rbind, result.list)
-
-    if (is.null(result) || nrow(result) == 0) {
-        return(data.frame(
-            vertex = integer(0),
-            min.basin.idx = integer(0),
-            max.basin.idx = integer(0),
-            min.vertex = integer(0),
-            max.vertex = integer(0),
-            min.label = character(0),
-            max.label = character(0),
-            stringsAsFactors = FALSE
-        ))
-    }
-
-    rownames(result) <- NULL
-    return(result)
-}
-
-#' Get Primary Cell Assignment for a Vertex (Backward Compatible)
-#'
-#' Returns a single cell assignment for a vertex, using the first
-#' basin assignment. This provides backward compatibility with code
-#' that expects single-valued cell membership.
-#'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
-#' @param vertex Integer vertex index (1-based).
-#'
-#' @return A named list with single values:
-#'   \item{vertex}{The input vertex index.}
-#'   \item{min.vertex}{The minimum vertex of the primary cell, or NA.}
-#'   \item{max.vertex}{The maximum vertex of the primary cell, or NA.}
-#'   \item{min.label}{The minimum label, or NA.}
-#'   \item{max.label}{The maximum label, or NA.}
-#'   \item{n.cells}{Total number of cells this vertex belongs to.}
-#'
-#' @details
-#' When a vertex belongs to multiple cells, this function returns only
-#' the first one (based on basin ordering). Use \code{vertex.cell.gfc.flow()}
-#' to get all cell memberships.
-#'
-#' @export
-vertex.primary.cell.gfc.flow <- function(gfc.flow, vertex) {
-
-    all.cells <- vertex.cell.gfc.flow(gfc.flow, vertex)
-
-    if (nrow(all.cells) == 0) {
-        return(list(
-            vertex = vertex,
-            min.vertex = NA_integer_,
-            max.vertex = NA_integer_,
-            min.label = NA_character_,
-            max.label = NA_character_,
-            n.cells = 0L
-        ))
-    }
-
-    ## Return first cell with count
-    list(
-        vertex = vertex,
-        min.vertex = all.cells$min.vertex[1],
-        max.vertex = all.cells$max.vertex[1],
-        min.label = all.cells$min.label[1],
-        max.label = all.cells$max.label[1],
-        n.cells = nrow(all.cells)
-    )
-}
-
-#' Count Vertices with Multiple Cell Memberships
-#'
-#' Counts how many vertices belong to more than one cell, which indicates
-#' trajectory convergence/divergence in the discrete graph.
-#'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
-#'
-#' @return A list containing:
-#'   \item{n.multi.membership}{Number of vertices with >1 cell membership.}
-#'   \item{n.single.membership}{Number of vertices with exactly 1 cell membership.}
-#'   \item{n.no.membership}{Number of vertices with no cell membership.}
-#'   \item{max.memberships}{Maximum number of cells any vertex belongs to.}
-#'   \item{multi.membership.vertices}{Vector of vertices with >1 cell membership.}
-#'
-#' @details
-#' In discrete graphs, trajectory uniqueness fails and vertices can belong
-#' to multiple cells. This function provides summary statistics about the
-#' extent of multi-valued membership in the result.
-#'
-#' @examples
-#' \donttest{
-#' ## Check for multi-membership
-#' stats <- count.multi.memberships.gfc.flow(gfc.flow.res)
-#' cat(sprintf("%d vertices have multiple cell memberships\n",
-#'             stats$n.multi.membership))
-#' }
-#'
-#' @export
-count.multi.memberships.gfc.flow <- function(gfc.flow) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
-    }
-
-    n <- gfc.flow$n.vertices
-
-    ## Count memberships per vertex
-    n.max.memberships <- sapply(seq_len(n), function(v) {
-        length(gfc.flow$max.membership[[v]])
-    })
-
-    n.min.memberships <- sapply(seq_len(n), function(v) {
-        length(gfc.flow$min.membership[[v]])
-    })
-
-    ## Number of cells = product of membership counts (if both >0)
-    n.cell.memberships <- ifelse(
-        n.max.memberships > 0 & n.min.memberships > 0,
-        n.max.memberships * n.min.memberships,
-        0
-    )
-
-    multi.idx <- which(n.cell.memberships > 1)
-
-    list(
-        n.multi.membership = length(multi.idx),
-        n.single.membership = sum(n.cell.memberships == 1),
-        n.no.membership = sum(n.cell.memberships == 0),
-        max.memberships = max(n.cell.memberships),
-        multi.membership.vertices = multi.idx
-    )
-}
-
-#' Get All Trajectories Containing a Vertex (Multi-valued)
-#'
-#' Given a vertex, returns all trajectories that pass through it.
-#' This replaces the single-valued trajectory lookup.
-#'
-#' @param gfc.flow A gfc.flow object with trajectories stored.
-#' @param vertex Integer vertex index (1-based).
-#'
-#' @return A list of trajectory structures, or empty list if none found.
-#'
-#' @details
-#' Unlike the original implementation that returns only the first trajectory,
-#' this function searches all trajectories to find those containing the vertex.
-#' This is necessary because in discrete graphs, a vertex can lie on multiple
-#' distinct trajectories.
-#'
-#' @export
-vertex.all.trajectories.gfc.flow <- function(gfc.flow, vertex) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
-    }
-
-    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
-        return(list())
-    }
-
-    vertex <- as.integer(vertex)
-    if (vertex < 1 || vertex > gfc.flow$n.vertices) {
-        stop(sprintf("vertex must be in range [1, %d]", gfc.flow$n.vertices))
-    }
-
-    ## Search all trajectories
-    result <- list()
-    for (traj in gfc.flow$trajectories) {
-        if (vertex %in% traj$vertices) {
-            traj$query.vertex <- vertex
-            result[[length(result) + 1]] <- traj
-        }
-    }
-
-    return(result)
-}
-
-#' @keywords internal
-.vertex.cell.single.valued <- function(gfc.flow, vertex) {
-
-    ## Fall back to trajectory-based lookup
-    if (is.null(gfc.flow$vertex.trajectory)) {
-        return(data.frame(
-            vertex = vertex,
-            min.basin.idx = NA_integer_,
-            max.basin.idx = NA_integer_,
-            min.vertex = NA_integer_,
-            max.vertex = NA_integer_,
-            min.label = NA_character_,
-            max.label = NA_character_,
-            stringsAsFactors = FALSE
-        ))
-    }
-
-    tid <- gfc.flow$vertex.trajectory[vertex]
-
-    if (is.na(tid) || tid < 1 || tid > length(gfc.flow$trajectories)) {
-        return(data.frame(
-            vertex = vertex,
-            min.basin.idx = NA_integer_,
-            max.basin.idx = NA_integer_,
-            min.vertex = NA_integer_,
-            max.vertex = NA_integer_,
-            min.label = NA_character_,
-            max.label = NA_character_,
-            stringsAsFactors = FALSE
-        ))
-    }
-
-    traj <- gfc.flow$trajectories[[tid]]
-    summary.df <- gfc.flow$summary
-
-    min.v <- traj$start.vertex
-    max.v <- traj$end.vertex
-
-    min.label <- paste0("v", min.v)
-    max.label <- paste0("v", max.v)
-
-    if (!is.null(summary.df) && nrow(summary.df) > 0) {
-        min.match <- match(min.v, summary.df$vertex)
-        max.match <- match(max.v, summary.df$vertex)
-
-        if (!is.na(min.match)) min.label <- summary.df$label[min.match]
-        if (!is.na(max.match)) max.label <- summary.df$label[max.match]
-    }
-
-    data.frame(
-        vertex = vertex,
-        min.basin.idx = NA_integer_,  # Not available in trajectory-based approach
-        max.basin.idx = NA_integer_,
-        min.vertex = min.v,
-        max.vertex = max.v,
-        min.label = min.label,
-        max.label = max.label,
-        stringsAsFactors = FALSE
-    )
-}
-
-#' Print Method Update for gfc.flow Objects
-#'
-#' Updated print method that reports multi-membership statistics.
-#'
-#' @param x A gfc.flow object.
-#' @param ... Additional arguments (ignored).
-#'
-#' @export
-print.gfc.flow <- function(x, ...) {
-    cat("Gradient Flow Complex (trajectory-first approach)\n")
-    cat("==================================================\n")
-    cat(sprintf("Vertices: %d\n", x$n.vertices))
-    cat(sprintf("Median y: %.4f\n", x$y.median))
-    cat(sprintf("Modulation: %s\n", x$modulation))
-    cat("\n")
-    cat(sprintf("Minima basins: %d\n", length(x$min.basins)))
-    cat(sprintf("Maxima basins: %d\n", length(x$max.basins)))
-    cat(sprintf("Trajectories: %d (%d from minima, %d from joins)\n",
-                length(x$trajectories),
-                x$n.lmin.trajectories,
-                x$n.join.trajectories))
-
-    ## Report multi-membership if available
-    if (!is.null(x$max.membership) && !is.null(x$min.membership)) {
-        stats <- count.multi.memberships.gfc.flow(x)
-        if (stats$n.multi.membership > 0) {
-            cat(sprintf("\nMulti-cell membership: %d vertices (max %d cells/vertex)\n",
-                        stats$n.multi.membership,
-                        stats$max.memberships))
-        }
-    }
-
-    cat("\n")
-    invisible(x)
-}
-
-#' Retrieve Trajectories Containing Specific Vertices
-#'
-#' Given one or more vertex indices, retrieves the full trajectory data
-#' for trajectories containing those vertices.
-#'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()} with
-#'   trajectories stored (i.e., \code{store.trajectories = TRUE}).
-#' @param vertices Integer vector of vertex indices (1-based).
-#' @param unique.trajectories Logical; if TRUE (default), return each
-#'   trajectory only once even if multiple query vertices belong to it.
-#'
-#' @return A list of trajectory structures, each containing:
-#'   \item{vertices}{Integer vector of vertices along the trajectory path.}
-#'   \item{start.vertex}{The minimum (start) vertex.}
-#'   \item{end.vertex}{The maximum (end) vertex.}
-#'   \item{starts.at.lmin}{Logical; TRUE if start is a local minimum.}
-#'   \item{ends.at.lmax}{Logical; TRUE if end is a local maximum.}
-#'   \item{total.change}{Total function value change along trajectory.}
-#'   \item{trajectory.id}{The trajectory ID.}
-#'   \item{query.vertices}{The query vertices that matched this trajectory.}
-#'
-#'   If no trajectories are found, returns an empty list.
-#'
-#' @details
-#' This function retrieves full trajectory data for vertices of interest.
-#' Each returned trajectory includes a \code{query.vertices} field indicating
-#' which of the input vertices belong to that trajectory.
-#'
-#' When \code{unique.trajectories = TRUE} (default), each trajectory appears
-#' at most once in the output, with all matching query vertices collected
-#' in the \code{query.vertices} field. When FALSE, trajectories may appear
-#' multiple times if multiple query vertices belong to them.
-#'
-#' @examples
-#' \donttest{
-#' ## Get trajectory for a single vertex
-#' trajs <- vertex.trajectory.gfc.flow(gfc.flow.res, 150)
-#' if (length(trajs) > 0) {
-#'     print(trajs[[1]]$vertices)
-#' }
-#'
-#' ## Get trajectories for multiple vertices
-#' trajs <- vertex.trajectory.gfc.flow(gfc.flow.res, c(100, 200, 300))
-#' cat("Found", length(trajs), "unique trajectories\n")
-#'
-#' ## Get all trajectory instances (may have duplicates)
-#' trajs <- vertex.trajectory.gfc.flow(gfc.flow.res, c(100, 200),
-#'                                     unique.trajectories = FALSE)
-#' }
-#'
-#' @seealso \code{\link{vertex.cell.gfc.flow}} for lightweight cell lookup,
-#'   \code{\link{cell.trajectories.gfc.flow}} for extracting all trajectories
-#'   in a specific cell
-#'
-#' @export
-vertex.trajectory.gfc.flow <- function(gfc.flow, vertices,
-                                       unique.trajectories = TRUE) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
-    }
-
-    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
-        warning("gfc.flow does not contain trajectory data. ",
-                "Use store.trajectories = TRUE in compute.gfc.flow()")
-        return(list())
-    }
-
-    vertices <- as.integer(vertices)
-
-    if (any(vertices < 1 | vertices > gfc.flow$n.vertices)) {
-        stop(sprintf("vertices must be in range [1, %d]", gfc.flow$n.vertices))
-    }
-
-    ## Get trajectory assignments
-    if (is.null(gfc.flow$vertex.trajectory)) {
-        warning("No vertex-to-trajectory mapping available")
-        return(list())
-    }
-
-    traj.ids <- gfc.flow$vertex.trajectory[vertices]
-
-    ## Handle unique trajectories
-    if (unique.trajectories) {
-        ## Group query vertices by trajectory
-        traj.to.vertices <- list()
-
-        for (i in seq_along(vertices)) {
-            tid <- traj.ids[i]
-            if (!is.na(tid) && tid >= 1 && tid <= length(gfc.flow$trajectories)) {
-                key <- as.character(tid)
-                if (is.null(traj.to.vertices[[key]])) {
-                    traj.to.vertices[[key]] <- c()
-                }
-                traj.to.vertices[[key]] <- c(traj.to.vertices[[key]], vertices[i])
-            }
-        }
-
-        ## Build result list
-        result <- list()
-        for (key in names(traj.to.vertices)) {
-            tid <- as.integer(key)
-            traj <- gfc.flow$trajectories[[tid]]
-            traj$query.vertices <- traj.to.vertices[[key]]
-            result[[length(result) + 1]] <- traj
-        }
-
-    } else {
-        ## Return one trajectory per query vertex (may have duplicates)
-        result <- list()
-
-        for (i in seq_along(vertices)) {
-            tid <- traj.ids[i]
-            if (!is.na(tid) && tid >= 1 && tid <= length(gfc.flow$trajectories)) {
-                traj <- gfc.flow$trajectories[[tid]]
-                traj$query.vertices <- vertices[i]
-                result[[length(result) + 1]] <- traj
-            }
-        }
-    }
-
-    return(result)
-}
-
-
-#' Find Vertices in the Same Cell
-#'
-#' Given a vertex index, finds all other vertices that belong to the same
-#' cell (share the same min-max pair).
-#'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
-#' @param vertex Integer vertex index (1-based).
-#' @param include.query Logical; if TRUE, include the query vertex in the
-#'   result. Default is TRUE.
-#'
-#' @return An integer vector of vertex indices belonging to the same cell,
-#'   or NULL if the vertex is not assigned to any cell.
-#'
-#' @details
-#' This function finds all vertices that flow to the same minimum and
-#' from the same maximum as the query vertex. This is useful for
-#' identifying the full extent of a Morse-Smale cell.
-#'
-#' Note that this searches through all trajectories in the cell, not just
-#' the trajectory containing the query vertex. Two vertices in the same
-#' cell may be on different trajectories.
-#'
-#' @examples
-#' \donttest{
-#' ## Find all vertices in the same cell as vertex 150
-#' cell.verts <- cell.vertices.gfc.flow(gfc.flow.res, 150)
-#' cat("Cell contains", length(cell.verts), "vertices\n")
-#' }
-#'
-#' @seealso \code{\link{vertex.cell.gfc.flow}}, \code{\link{cell.trajectories.gfc.flow}}
-#'
-#' @export
-cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
+        stop("gfc.flow must be a gfc.flow object")
     }
 
     vertex <- as.integer(vertex)
@@ -1724,15 +1379,263 @@ cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
         stop(sprintf("vertex must be in range [1, %d]", gfc.flow$n.vertices))
     }
 
-    ## Get cell info for this vertex
+    ## Use v2 structure if available
+    if (!is.null(gfc.flow$max.membership.all) && !is.null(gfc.flow$min.membership.all)) {
+        max.basin.indices <- gfc.flow$max.membership.all[[vertex]]
+        min.basin.indices <- gfc.flow$min.membership.all[[vertex]]
+
+        if (length(max.basin.indices) == 0 || length(min.basin.indices) == 0) {
+            return(data.frame(
+                vertex = integer(0),
+                min.basin.idx = integer(0),
+                max.basin.idx = integer(0),
+                min.label = character(0),
+                max.label = character(0),
+                min.is.spurious = logical(0),
+                max.is.spurious = logical(0),
+                stringsAsFactors = FALSE
+            ))
+        }
+
+        ## Build all combinations
+        combos <- expand.grid(
+            min.basin.idx = min.basin.indices,
+            max.basin.idx = max.basin.indices
+        )
+
+        n.cells <- nrow(combos)
+
+        result <- data.frame(
+            vertex = rep(vertex, n.cells),
+            min.basin.idx = combos$min.basin.idx,
+            max.basin.idx = combos$max.basin.idx,
+            min.label = character(n.cells),
+            max.label = character(n.cells),
+            min.is.spurious = logical(n.cells),
+            max.is.spurious = logical(n.cells),
+            stringsAsFactors = FALSE
+        )
+
+        for (i in seq_len(n.cells)) {
+            min.idx <- combos$min.basin.idx[i]
+            max.idx <- combos$max.basin.idx[i]
+
+            result$min.label[i] <- gfc.flow$min.basins.all[[min.idx]]$label %||% paste0("m", min.idx)
+            result$max.label[i] <- gfc.flow$max.basins.all[[max.idx]]$label %||% paste0("M", max.idx)
+            result$min.is.spurious[i] <- gfc.flow$min.basins.all[[min.idx]]$is.spurious %||% FALSE
+            result$max.is.spurious[i] <- gfc.flow$max.basins.all[[max.idx]]$is.spurious %||% FALSE
+        }
+
+        return(result)
+    }
+
+    ## Fall back to trajectory-based lookup (v1 structure)
+    return(.vertex.cell.gfc.flow.v1(gfc.flow, vertex))
+}
+
+#' Identify Cell Membership for Multiple Vertices
+#'
+#' @param gfc.flow A gfc.flow object.
+#' @param vertices Integer vector of vertex indices (1-based).
+#'
+#' @return A long-format data frame with all cell memberships.
+#'
+#' @export
+vertex.cells.gfc.flow <- function(gfc.flow, vertices) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    vertices <- as.integer(vertices)
+
+    results <- lapply(vertices, function(v) {
+        vertex.cell.gfc.flow(gfc.flow, v)
+    })
+
+    do.call(rbind, results)
+}
+
+
+#' Get Primary Cell Membership (Single-Valued)
+#'
+#' Returns the first cell membership for a vertex (for backward compatibility).
+#'
+#' @param gfc.flow A gfc.flow object.
+#' @param vertex Single integer vertex index.
+#'
+#' @return A single-row data frame with primary cell membership and count.
+#'
+#' @export
+vertex.primary.cell.gfc.flow <- function(gfc.flow, vertex) {
+
+    all.cells <- vertex.cell.gfc.flow(gfc.flow, vertex)
+
+    if (nrow(all.cells) == 0) {
+        return(data.frame(
+            vertex = vertex,
+            min.label = NA_character_,
+            max.label = NA_character_,
+            n.total.cells = 0L,
+            stringsAsFactors = FALSE
+        ))
+    }
+
+    primary <- all.cells[1, , drop = FALSE]
+    primary$n.total.cells <- nrow(all.cells)
+
+    return(primary)
+}
+
+#' Count Multi-Membership Statistics
+#'
+#' @param gfc.flow A gfc.flow object.
+#'
+#' @return List with membership statistics (legacy interface).
+#'
+#' @export
+count.multi.memberships.gfc.flow <- function(gfc.flow) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    n <- gfc.flow$n.vertices
+
+    ## Use v2 structure if available
+    if (!is.null(gfc.flow$max.membership.all) && !is.null(gfc.flow$min.membership.all)) {
+        n.max.all <- sapply(gfc.flow$max.membership.all, length)
+        n.min.all <- sapply(gfc.flow$min.membership.all, length)
+
+        n.cells.all <- ifelse(
+            n.max.all > 0 & n.min.all > 0,
+            n.max.all * n.min.all,
+            0
+        )
+
+        ## Use retained membership if available
+        if (!is.null(gfc.flow$max.membership.retained) && !is.null(gfc.flow$min.membership.retained)) {
+            n.max.ret <- sapply(gfc.flow$max.membership.retained, length)
+            n.min.ret <- sapply(gfc.flow$min.membership.retained, length)
+
+            n.cells.retained <- ifelse(
+                n.max.ret > 0 & n.min.ret > 0,
+                n.max.ret * n.min.ret,
+                0
+            )
+        } else {
+            n.cells.retained <- n.cells.all
+        }
+
+        return(list(
+            n.multi.membership = sum(n.cells.retained > 1),
+            n.single.membership = sum(n.cells.retained == 1),
+            n.no.membership = sum(n.cells.retained == 0),
+            max.memberships = max(n.cells.retained),
+            multi.membership.vertices = which(n.cells.retained > 1)
+        ))
+    }
+
+    ## Fall back to v1 trajectory-based counting
+    n.max.memberships <- sapply(seq_len(n), function(v) {
+        if (is.null(gfc.flow$max.membership)) return(0)
+        length(gfc.flow$max.membership[[v]])
+    })
+    n.min.memberships <- sapply(seq_len(n), function(v) {
+        if (is.null(gfc.flow$min.membership)) return(0)
+        length(gfc.flow$min.membership[[v]])
+    })
+
+    n.cells <- ifelse(
+        n.max.memberships > 0 & n.min.memberships > 0,
+        n.max.memberships * n.min.memberships,
+        0
+    )
+
+    list(
+        n.multi.membership = sum(n.cells > 1),
+        n.single.membership = sum(n.cells == 1),
+        n.no.membership = sum(n.cells == 0),
+        max.memberships = max(n.cells),
+        multi.membership.vertices = which(n.cells > 1)
+    )
+}
+
+#' Get All Trajectories Passing Through a Vertex
+#'
+#' @param gfc.flow A gfc.flow object.
+#' @param vertex Single integer vertex index.
+#'
+#' @return List of trajectory structures passing through the vertex.
+#'
+#' @export
+vertex.all.trajectories.gfc.flow <- function(gfc.flow, vertex) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    vertex <- as.integer(vertex)
+    if (length(vertex) != 1) {
+        stop("vertex must be a single integer")
+    }
+
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+        return(list())
+    }
+
+    result <- list()
+    for (traj in gfc.flow$trajectories) {
+        if (vertex %in% traj$vertices) {
+            result[[length(result) + 1]] <- traj
+        }
+    }
+
+    return(result)
+}
+
+#' Find Vertices in the Same Cell
+#'
+#' @param gfc.flow A gfc.flow object.
+#' @param vertex Single integer vertex index.
+#' @param include.query If TRUE, include the query vertex in result.
+#'
+#' @return Integer vector of vertex indices in the same cell.
+#'
+#' @export
+cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    vertex <- as.integer(vertex)
+    if (length(vertex) != 1) {
+        stop("vertex must be a single integer")
+    }
+
+    if (vertex < 1 || vertex > gfc.flow$n.vertices) {
+        stop(sprintf("vertex must be in range [1, %d]", gfc.flow$n.vertices))
+    }
+
     cell.info <- vertex.cell.gfc.flow(gfc.flow, vertex)
 
-    if (is.na(cell.info$min.vertex) || is.na(cell.info$max.vertex)) {
+    if (nrow(cell.info) == 0) {
         return(NULL)
     }
 
-    min.v <- cell.info$min.vertex
-    max.v <- cell.info$max.vertex
+    ## Use first cell (primary)
+    min.label <- cell.info$min.label[1]
+    max.label <- cell.info$max.label[1]
+
+    ## Get vertices from summary
+    summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
+    min.v <- summary.df$vertex[summary.df$label == min.label]
+    max.v <- summary.df$vertex[summary.df$label == max.label]
+
+    if (length(min.v) == 0 || length(max.v) == 0) {
+        return(NULL)
+    }
 
     ## Find all vertices in trajectories with this min-max pair
     all.vertices <- c()
@@ -1753,289 +1656,12 @@ cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
 }
 
 
-## ====================================================================================
-## Here are helper functions for working with gfc.flow objects
-## that preserve ALL extrema (retained + spurious) with full classification.
-##
-## Labeling convention:
-##   - Retained minima: m1, m2, m3, ...
-##   - Retained maxima: M1, M2, M3, ...
-##   - Spurious minima: sm1, sm2, sm3, ...
-##   - Spurious maxima: sM1, sM2, sM3, ...
-##
-## Key fields in result:
-##   - max.basins.all / min.basins.all: ALL basins with is.spurious flag
-##   - max.summaries.all / min.summaries.all: ALL summaries with full info
-##   - retained.max.indices / retained.min.indices: indices of retained basins
-##   - spurious.max.indices / spurious.min.indices: indices of spurious basins
-##   - max.membership.all / min.membership.all: membership in ALL basins
-##   - max.membership.retained / min.membership.retained: membership in retained only
-## ====================================================================================
-
-#' Post-process GFC Flow Result
-#'
-#' Converts snake_case names to dot.snake and builds convenience structures.
-#'
-#' @param result Raw result from .Call(S_compute_gfc_flow, ...)
-#' @return Processed gfc.flow object
-#'
-#' @keywords internal
-.postprocess.gfc.flow <- function(result) {
-
-    ## Convert all names from snake_case to dot.snake
-    names(result) <- gsub("_", ".", names(result))
-
-    ## Process basin list elements
-    process.basin <- function(basin) {
-        names(basin) <- gsub("_", ".", names(basin))
-        basin
-    }
-
-    result$max.basins.all <- lapply(result$max.basins.all, process.basin)
-    result$min.basins.all <- lapply(result$min.basins.all, process.basin)
-
-    ## Process trajectory list elements
-    if (!is.null(result$trajectories) && length(result$trajectories) > 0) {
-        result$trajectories <- lapply(result$trajectories, function(traj) {
-            names(traj) <- gsub("_", ".", names(traj))
-            traj
-        })
-    }
-
-    ## Process summary data frames
-    if (!is.null(result$max.summaries.all)) {
-        names(result$max.summaries.all) <- gsub("_", ".", names(result$max.summaries.all))
-    }
-    if (!is.null(result$min.summaries.all)) {
-        names(result$min.summaries.all) <- gsub("_", ".", names(result$min.summaries.all))
-    }
-
-    ## Process stage history
-    if (!is.null(result$stage.history)) {
-        names(result$stage.history) <- gsub("_", ".", names(result$stage.history))
-    }
-
-    ## Build combined summary table (all extrema)
-    result$summary.all <- .build.summary.all(result)
-
-    ## Build retained-only summary (for backward compatibility)
-    result$summary <- .build.summary.retained(result)
-
-    ## Add convenience accessors
-    result$n.max.all <- length(result$max.basins.all)
-    result$n.min.all <- length(result$min.basins.all)
-
-    class(result) <- c("gfc.flow", "list")
-
-    return(result)
-}
-
-
-#' Build Summary Table for All Extrema
-#'
-#' @param result Processed gfc.flow result
-#' @return Data frame with all extrema (retained + spurious)
-#'
-#' @keywords internal
-.build.summary.all <- function(result) {
-
-    summary.table <- NULL
-
-    if (!is.null(result$min.summaries.all) && nrow(result$min.summaries.all) > 0) {
-        min.summary <- result$min.summaries.all
-        min.summary$type <- "min"
-        summary.table <- min.summary
-    }
-
-    if (!is.null(result$max.summaries.all) && nrow(result$max.summaries.all) > 0) {
-        max.summary <- result$max.summaries.all
-        max.summary$type <- "max"
-        if (is.null(summary.table)) {
-            summary.table <- max.summary
-        } else {
-            summary.table <- rbind(summary.table, max.summary)
-        }
-    }
-
-    if (!is.null(summary.table)) {
-        ## Reorder columns
-        col.order <- c("label", "vertex", "value", "rel.value", "type",
-                       "is.spurious", "filter.stage", "merged.into",
-                       "hop.index", "basin.size", "p.mean.nbrs.dist",
-                       "p.mean.hopk.dist", "degree", "deg.percentile")
-        col.order <- col.order[col.order %in% names(summary.table)]
-        summary.table <- summary.table[, col.order, drop = FALSE]
-
-        ## Sort: retained first (by value), then spurious
-        ## Within each group: minima by ascending value, maxima by descending value
-        summary.table <- summary.table[order(
-            summary.table$is.spurious,
-            ifelse(summary.table$type == "min", 1, 2),
-            ifelse(summary.table$type == "min",
-                   summary.table$value,
-                   -summary.table$value)
-        ), ]
-
-        rownames(summary.table) <- NULL
-    }
-
-    return(summary.table)
-}
-
-
-#' Build Summary Table for Retained Extrema Only
-#'
-#' @param result Processed gfc.flow result
-#' @return Data frame with retained extrema only
-#'
-#' @keywords internal
-.build.summary.retained <- function(result) {
-
-    summary.all <- result$summary.all
-
-    if (is.null(summary.all)) return(NULL)
-
-    ## Filter to retained only
-    summary.retained <- summary.all[!summary.all$is.spurious, , drop = FALSE]
-
-    if (nrow(summary.retained) == 0) return(NULL)
-
-    ## Remove spurious-specific columns for cleaner output
-    summary.retained$is.spurious <- NULL
-    summary.retained$filter.stage <- NULL
-    summary.retained$merged.into <- NULL
-
-    rownames(summary.retained) <- NULL
-
-    return(summary.retained)
-}
-
-
-#' Print Method for gfc.flow Objects
-#'
-#' @param x A gfc.flow object
-#' @param ... Additional arguments (ignored)
-#'
-#' @export
-print.gfc.flow <- function(x, ...) {
-    cat("Gradient Flow Complex (trajectory-first approach)\n")
-    cat("==================================================\n")
-    cat(sprintf("Vertices: %d\n", x$n.vertices))
-    cat(sprintf("Median y: %.4f\n", x$y.median))
-    cat(sprintf("Modulation: %s\n", x$modulation))
-    cat("\n")
-
-    cat("EXTREMA:\n")
-    cat(sprintf("  Retained: %d minima (m1-%s), %d maxima (M1-%s)\n",
-                x$n.min.retained,
-                if (x$n.min.retained > 0) paste0("m", x$n.min.retained) else "none",
-                x$n.max.retained,
-                if (x$n.max.retained > 0) paste0("M", x$n.max.retained) else "none"))
-    cat(sprintf("  Spurious: %d minima (sm1-%s), %d maxima (sM1-%s)\n",
-                x$n.min.spurious,
-                if (x$n.min.spurious > 0) paste0("sm", x$n.min.spurious) else "none",
-                x$n.max.spurious,
-                if (x$n.max.spurious > 0) paste0("sM", x$n.max.spurious) else "none"))
-    cat(sprintf("  Total: %d minima, %d maxima\n",
-                x$n.min.all, x$n.max.all))
-    cat("\n")
-
-    cat("TRAJECTORIES:\n")
-    cat(sprintf("  Total: %d (%d from minima, %d from joins)\n",
-                length(x$trajectories),
-                x$n.lmin.trajectories,
-                x$n.join.trajectories))
-
-    ## Count trajectories by endpoint status
-    if (length(x$trajectories) > 0) {
-        n.both.retained <- sum(sapply(x$trajectories, function(t) {
-            !t$start.is.spurious && !t$end.is.spurious
-        }))
-        n.start.spurious <- sum(sapply(x$trajectories, function(t) {
-            t$start.is.spurious && !t$end.is.spurious
-        }))
-        n.end.spurious <- sum(sapply(x$trajectories, function(t) {
-            !t$start.is.spurious && t$end.is.spurious
-        }))
-        n.both.spurious <- sum(sapply(x$trajectories, function(t) {
-            t$start.is.spurious && t$end.is.spurious
-        }))
-
-        cat(sprintf("  Both endpoints retained: %d\n", n.both.retained))
-        cat(sprintf("  Start spurious only: %d\n", n.start.spurious))
-        cat(sprintf("  End spurious only: %d\n", n.end.spurious))
-        cat(sprintf("  Both endpoints spurious: %d\n", n.both.spurious))
-    }
-
-    cat("\n")
-    invisible(x)
-}
-
-
-#' Summary Method for gfc.flow Objects
-#'
-#' @param object A gfc.flow object
-#' @param ... Additional arguments (ignored)
-#'
-#' @export
-summary.gfc.flow <- function(object, ...) {
-    print(object)
-    cat("SUMMARY TABLE (all extrema):\n")
-    if (!is.null(object$summary.all)) {
-        print(object$summary.all)
-    } else {
-        cat("  (none)\n")
-    }
-    invisible(object)
-}
-
-
-#' Get Basin by Label
-#'
-#' Retrieves a basin by its label (m1, M2, sm3, sM4, etc.)
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param label Character label of the basin
-#'
-#' @return The basin structure, or NULL if not found
-#'
-#' @examples
-#' \donttest{
-#' ## Get retained maximum M1
-#' basin.M1 <- get.basin(gfc.flow.res, "M1")
-#'
-#' ## Get spurious minimum sm2
-#' basin.sm2 <- get.basin(gfc.flow.res, "sm2")
-#' }
-#'
-#' @export
-get.basin <- function(gfc.flow, label) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    ## Determine if min or max from label prefix
-    is.min <- grepl("^s?m", label)
-
-    basins <- if (is.min) gfc.flow$min.basins.all else gfc.flow$max.basins.all
-
-    for (basin in basins) {
-        if (basin$label == label) {
-            return(basin)
-        }
-    }
-
-    return(NULL)
-}
-
-
 #' Get Summary Row by Label
 #'
-#' @param gfc.flow A gfc.flow object
-#' @param label Character label
+#' @param gfc.flow A gfc.flow object.
+#' @param label Character label (e.g., "m1", "M2", "sm3").
 #'
-#' @return Data frame row from summary.all, or NULL
+#' @return Data frame row from summary.all, or NULL.
 #'
 #' @export
 get.summary <- function(gfc.flow, label) {
@@ -2044,322 +1670,163 @@ get.summary <- function(gfc.flow, label) {
         stop("gfc.flow must be a gfc.flow object")
     }
 
-    if (is.null(gfc.flow$summary.all)) return(NULL)
+    summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
 
-    idx <- which(gfc.flow$summary.all$label == label)
+    if (is.null(summary.df)) return(NULL)
+
+    idx <- which(summary.df$label == label)
     if (length(idx) == 0) return(NULL)
 
-    gfc.flow$summary.all[idx, , drop = FALSE]
+    summary.df[idx, , drop = FALSE]
 }
 
 
-#' List Retained Extrema
+#' Get All Cells for a Vertex (alias for vertex.cell.gfc.flow)
 #'
-#' @param gfc.flow A gfc.flow object
-#' @param type "min", "max", or "all"
+#' @param gfc.flow A gfc.flow object.
+#' @param vertex Single integer vertex index.
 #'
-#' @return Data frame of retained extrema
-#'
-#' @export
-list.retained <- function(gfc.flow, type = c("all", "min", "max")) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    type <- match.arg(type)
-
-    if (is.null(gfc.flow$summary.all)) return(NULL)
-
-    retained <- gfc.flow$summary.all[!gfc.flow$summary.all$is.spurious, , drop = FALSE]
-
-    if (type == "min") {
-        retained <- retained[retained$type == "min", , drop = FALSE]
-    } else if (type == "max") {
-        retained <- retained[retained$type == "max", , drop = FALSE]
-    }
-
-    rownames(retained) <- NULL
-    return(retained)
-}
-
-
-#' List Spurious Extrema
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param type "min", "max", or "all"
-#' @param filter.stage Optional: filter by stage ("relvalue", "cluster_merge", "geometric")
-#'
-#' @return Data frame of spurious extrema
-#'
-#' @export
-list.spurious <- function(gfc.flow, type = c("all", "min", "max"),
-                          filter.stage = NULL) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    type <- match.arg(type)
-
-    if (is.null(gfc.flow$summary.all)) return(NULL)
-
-    spurious <- gfc.flow$summary.all[gfc.flow$summary.all$is.spurious, , drop = FALSE]
-
-    if (type == "min") {
-        spurious <- spurious[spurious$type == "min", , drop = FALSE]
-    } else if (type == "max") {
-        spurious <- spurious[spurious$type == "max", , drop = FALSE]
-    }
-
-    if (!is.null(filter.stage)) {
-        spurious <- spurious[spurious$filter.stage == filter.stage, , drop = FALSE]
-    }
-
-    rownames(spurious) <- NULL
-    return(spurious)
-}
-
-
-#' Get Vertices for Harmonic Repair
-#'
-#' Returns the vertices of a spurious basin that need harmonic repair,
-#' along with the boundary vertices and their values.
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param label Label of a spurious extremum (e.g., "sm1", "sM2")
-#' @param y Original function values (used to set boundary values)
-#' @param adj.list Adjacency list (for finding boundary)
-#'
-#' @return A list with:
-#'   \item{interior.vertices}{Vertices to be repaired}
-#'   \item{boundary.vertices}{Vertices on the boundary}
-#'   \item{boundary.values}{Current y values at boundary}
-#'   \item{extremum.vertex}{The spurious extremum vertex}
-#'
-#' @details
-#' The interior vertices are those in the spurious basin excluding the
-#' boundary. The boundary vertices are those in the basin that have
-#' neighbors outside the basin. After harmonic extension, the interior
-#' values are replaced while boundary values are preserved.
-#'
-#' @export
-get.harmonic.repair.vertices <- function(gfc.flow, label, y, adj.list) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    basin <- get.basin(gfc.flow, label)
-    if (is.null(basin)) {
-        stop(sprintf("Basin '%s' not found", label))
-    }
-
-    if (!basin$is.spurious) {
-        warning(sprintf("Basin '%s' is not spurious", label))
-    }
-
-    basin.vertices <- basin$vertices
-    basin.set <- as.integer(basin.vertices)
-
-    ## Find boundary: vertices in basin with neighbors outside basin
-    boundary.vertices <- c()
-    for (v in basin.vertices) {
-        nbrs <- adj.list[[v]]
-        if (any(!(nbrs %in% basin.set))) {
-            boundary.vertices <- c(boundary.vertices, v)
-        }
-    }
-
-    ## Interior = basin - boundary
-    interior.vertices <- setdiff(basin.vertices, boundary.vertices)
-
-    ## Get boundary values
-    boundary.values <- y[boundary.vertices]
-    names(boundary.values) <- boundary.vertices
-
-    list(
-        interior.vertices = interior.vertices,
-        boundary.vertices = boundary.vertices,
-        boundary.values = boundary.values,
-        extremum.vertex = basin$extremum.vertex,
-        label = label
-    )
-}
-
-
-#' Get Trajectories by Endpoint Status
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param start.retained Logical: require start endpoint retained? (NA = any)
-#' @param end.retained Logical: require end endpoint retained? (NA = any)
-#'
-#' @return List of matching trajectories
-#'
-#' @examples
-#' \donttest{
-#' ## Get trajectories with both endpoints retained
-#' trajs.clean <- get.trajectories.by.status(gfc.flow.res,
-#'                                           start.retained = TRUE,
-#'                                           end.retained = TRUE)
-#'
-#' ## Get trajectories ending at spurious maxima (for repair analysis)
-#' trajs.spurious.end <- get.trajectories.by.status(gfc.flow.res,
-#'                                                   end.retained = FALSE)
-#' }
-#'
-#' @export
-get.trajectories.by.status <- function(gfc.flow,
-                                       start.retained = NA,
-                                       end.retained = NA) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
-        return(list())
-    }
-
-    result <- list()
-    for (traj in gfc.flow$trajectories) {
-        match <- TRUE
-
-        if (!is.na(start.retained)) {
-            if (start.retained && traj$start.is.spurious) match <- FALSE
-            if (!start.retained && !traj$start.is.spurious) match <- FALSE
-        }
-
-        if (!is.na(end.retained)) {
-            if (end.retained && traj$end.is.spurious) match <- FALSE
-            if (!end.retained && !traj$end.is.spurious) match <- FALSE
-        }
-
-        if (match) {
-            result[[length(result) + 1]] <- traj
-        }
-    }
-
-    return(result)
-}
-
-
-#' Vertex Cell Membership (All Basins)
-#'
-#' Returns cell membership for a vertex considering ALL basins (retained + spurious).
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param vertex Integer vertex index (1-based)
-#'
-#' @return Data frame with all cell memberships
+#' @return Data frame with all cell memberships.
 #'
 #' @export
 vertex.cell.all <- function(gfc.flow, vertex) {
+    vertex.cell.gfc.flow(gfc.flow, vertex)
+}
+
+#' Get Trajectory for a Vertex Within a Specific Cell
+#'
+#' Returns the trajectory passing through a vertex that belongs to a specific
+#' cell defined by its minimum and maximum extrema. A cell is uniquely
+#' identified by its (min, max) endpoint pair.
+#'
+#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()} with
+#'   trajectories computed (i.e., \code{store.trajectories = TRUE}).
+#' @param vertex Single integer vertex index (1-based).
+#' @param min.id Minimum extremum identifier: either a label (e.g., "m4", "sm1")
+#'   or a vertex index (integer, 1-based).
+#' @param max.id Maximum extremum identifier: either a label (e.g., "M1", "sM2")
+#'   or a vertex index (integer, 1-based).
+#' @param map Optional integer vector mapping graph indices to subgraph
+#'   vertices. If provided, trajectory vertices are converted to subgraph
+#'   indices.
+#'
+#' @return A trajectory structure (list) if found, or NULL if no trajectory
+#'   passes through the vertex within the specified cell. If \code{map} is
+#'   provided, the returned trajectory has its vertex indices remapped.
+#'
+#' @details
+#' This function is useful when a vertex belongs to multiple cells (due to
+#' overlapping basins) and you need to retrieve the specific trajectory
+#' associated with a particular cell. For vertices with unique cell membership,
+#' \code{vertex.trajectory.gfc.flow()} may be simpler to use.
+#'
+#' @examples
+#' \dontrun{
+#' ## Get trajectory for vertex 100 in cell (m2, M3)
+#' traj <- vertex.cell.trajectory.gfc.flow(gfc.flow.res, 100, "m2", "M3")
+#'
+#' ## Using vertex indices instead of labels
+#' traj <- vertex.cell.trajectory.gfc.flow(gfc.flow.res, 100, 432, 718)
+#'
+#' ## With subgraph mapping
+#' traj <- vertex.cell.trajectory.gfc.flow(gfc.flow.res, 100, "m2", "M3",
+#'                                         map = subgraph.map)
+#' }
+#'
+#' @seealso \code{\link{vertex.trajectory.gfc.flow}},
+#'   \code{\link{vertex.cell.gfc.flow}}, \code{\link{cell.trajectories.gfc.flow}}
+#'
+#' @export
+vertex.cell.trajectory.gfc.flow <- function(gfc.flow, vertex, min.id, max.id,
+                                            map = NULL) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object")
     }
 
     vertex <- as.integer(vertex)
+    if (length(vertex) != 1) {
+        stop("vertex must be a single integer")
+    }
+
     if (vertex < 1 || vertex > gfc.flow$n.vertices) {
         stop(sprintf("vertex must be in range [1, %d]", gfc.flow$n.vertices))
     }
 
-    ## Get membership in ALL basins
-    max.basin.indices <- gfc.flow$max.membership.all[[vertex]]
-    min.basin.indices <- gfc.flow$min.membership.all[[vertex]]
-
-    if (length(max.basin.indices) == 0 || length(min.basin.indices) == 0) {
-        return(data.frame(
-            vertex = integer(0),
-            min.basin.idx = integer(0),
-            max.basin.idx = integer(0),
-            min.label = character(0),
-            max.label = character(0),
-            min.is.spurious = logical(0),
-            max.is.spurious = logical(0),
-            stringsAsFactors = FALSE
-        ))
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+        warning("gfc.flow does not contain trajectory data")
+        return(NULL)
     }
 
-    ## Build all combinations
-    combos <- expand.grid(
-        min.basin.idx = min.basin.indices,
-        max.basin.idx = max.basin.indices
-    )
+    ## -------------------------------------------------------------------------
+    ## Resolve min.id to vertex index
+    ## -------------------------------------------------------------------------
 
-    n.cells <- nrow(combos)
-
-    result <- data.frame(
-        vertex = rep(vertex, n.cells),
-        min.basin.idx = combos$min.basin.idx,
-        max.basin.idx = combos$max.basin.idx,
-        min.label = character(n.cells),
-        max.label = character(n.cells),
-        min.is.spurious = logical(n.cells),
-        max.is.spurious = logical(n.cells),
-        stringsAsFactors = FALSE
-    )
-
-    for (i in seq_len(n.cells)) {
-        min.idx <- combos$min.basin.idx[i]
-        max.idx <- combos$max.basin.idx[i]
-
-        result$min.label[i] <- gfc.flow$min.basins.all[[min.idx]]$label
-        result$max.label[i] <- gfc.flow$max.basins.all[[max.idx]]$label
-        result$min.is.spurious[i] <- gfc.flow$min.basins.all[[min.idx]]$is.spurious
-        result$max.is.spurious[i] <- gfc.flow$max.basins.all[[max.idx]]$is.spurious
+    if (is.character(min.id)) {
+        ## Label provided - look up in summary
+        summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
+        if (is.null(summary.df)) {
+            stop("No summary table available to resolve label")
+        }
+        min.row <- summary.df[summary.df$label == min.id, ]
+        if (nrow(min.row) == 0) {
+            stop(sprintf("Minimum label '%s' not found in summary", min.id))
+        }
+        min.vertex <- min.row$vertex[1]
+    } else {
+        ## Vertex index provided
+        min.vertex <- as.integer(min.id)
+        if (min.vertex < 1 || min.vertex > gfc.flow$n.vertices) {
+            stop(sprintf("min.id vertex must be in range [1, %d]",
+                         gfc.flow$n.vertices))
+        }
     }
 
-    return(result)
-}
+    ## -------------------------------------------------------------------------
+    ## Resolve max.id to vertex index
+    ## -------------------------------------------------------------------------
 
-
-#' Count Cell Membership Statistics
-#'
-#' @param gfc.flow A gfc.flow object
-#'
-#' @return List with membership statistics
-#'
-#' @export
-count.cell.memberships <- function(gfc.flow) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
+    if (is.character(max.id)) {
+        ## Label provided - look up in summary
+        summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
+        if (is.null(summary.df)) {
+            stop("No summary table available to resolve label")
+        }
+        max.row <- summary.df[summary.df$label == max.id, ]
+        if (nrow(max.row) == 0) {
+            stop(sprintf("Maximum label '%s' not found in summary", max.id))
+        }
+        max.vertex <- max.row$vertex[1]
+    } else {
+        ## Vertex index provided
+        max.vertex <- as.integer(max.id)
+        if (max.vertex < 1 || max.vertex > gfc.flow$n.vertices) {
+            stop(sprintf("max.id vertex must be in range [1, %d]",
+                         gfc.flow$n.vertices))
+        }
     }
 
-    n <- gfc.flow$n.vertices
+    ## -------------------------------------------------------------------------
+    ## Find trajectory matching cell and containing vertex
+    ## -------------------------------------------------------------------------
 
-    ## Count memberships using ALL basins
-    n.max.memberships <- sapply(gfc.flow$max.membership.all, length)
-    n.min.memberships <- sapply(gfc.flow$min.membership.all, length)
+    for (traj in gfc.flow$trajectories) {
+        if (traj$start.vertex == min.vertex &&
+            traj$end.vertex == max.vertex &&
+            vertex %in% traj$vertices) {
 
-    n.cell.memberships.all <- ifelse(
-        n.max.memberships > 0 & n.min.memberships > 0,
-        n.max.memberships * n.min.memberships,
-        0
-    )
+            ## Found matching trajectory
+            if (!is.null(map)) {
+                ## Remap vertices to subgraph indices
+                traj$vertices <- map[traj$vertices]
+                traj$start.vertex <- map[traj$start.vertex]
+                traj$end.vertex <- map[traj$end.vertex]
+            }
 
-    ## Count using RETAINED basins only
-    n.max.retained <- sapply(gfc.flow$max.membership.retained, length)
-    n.min.retained <- sapply(gfc.flow$min.membership.retained, length)
+            return(traj)
+        }
+    }
 
-    n.cell.memberships.retained <- ifelse(
-        n.max.retained > 0 & n.min.retained > 0,
-        n.max.retained * n.min.retained,
-        0
-    )
-
-    list(
-        ## Using ALL basins
-        n.with.any.membership = sum(n.cell.memberships.all > 0),
-        n.multi.membership.all = sum(n.cell.memberships.all > 1),
-        max.memberships.all = max(n.cell.memberships.all),
-
-        ## Using RETAINED basins only
-        n.with.retained.membership = sum(n.cell.memberships.retained > 0),
-        n.no.retained.membership = sum(n.cell.memberships.retained == 0),
-        n.multi.membership.retained = sum(n.cell.memberships.retained > 1),
-        max.memberships.retained = max(n.cell.memberships.retained)
-    )
+    ## No matching trajectory found
+    return(NULL)
 }

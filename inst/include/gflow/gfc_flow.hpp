@@ -243,9 +243,6 @@ struct gfc_flow_result_t {
     /// All computed trajectories with endpoint spurious flags
     std::vector<gflow_trajectory_t> trajectories;
 
-    /// Single-valued vertex to trajectory assignment (first trajectory)
-    std::vector<int> vertex_trajectory;
-
     /// Number of trajectories started from local minima
     int n_lmin_trajectories;
 
