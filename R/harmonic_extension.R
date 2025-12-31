@@ -156,6 +156,36 @@ compute.harmonic.extension <- function(adj.list,
     }
 
     ## ========================================================================
+    ## Validate trajectory connectivity
+    ## ========================================================================
+
+    ## Check that consecutive vertices in the trajectory are neighbors in the graph
+    disconnected.pairs <- list()
+    for (i in seq_len(length(trajectory) - 1)) {
+        v.from <- trajectory[i]
+        v.to <- trajectory[i + 1]
+        neighbors <- adj.list[[v.from]]
+        if (!(v.to %in% neighbors)) {
+            disconnected.pairs[[length(disconnected.pairs) + 1]] <- c(i, i + 1)
+        }
+    }
+
+    if (length(disconnected.pairs) > 0) {
+        n.disc <- length(disconnected.pairs)
+        first.pair <- disconnected.pairs[[1]]
+        stop(sprintf(
+            paste0("trajectory is not a valid path in the graph: ",
+                   "%d of %d consecutive vertex pairs are not neighbors. ",
+                   "First disconnection: vertices %d and %d at positions %d and %d. ",
+                   "Use construct.path.through.waypoints() to convert an ordered ",
+                   "vertex set into a connected path."),
+            n.disc, length(trajectory) - 1,
+            trajectory[first.pair[1]], trajectory[first.pair[2]],
+            first.pair[1], first.pair[2]
+        ))
+    }
+
+    ## ========================================================================
     ## Convert to 0-based indexing for C++
     ## ========================================================================
 
