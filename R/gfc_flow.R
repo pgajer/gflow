@@ -208,6 +208,17 @@ compute.gfc.flow <- function(
         stop("edge.length.quantile.thld must be in (0, 1]")
     }
 
+    ## -------------------------------------------------------
+    ## Breaking ties (if any)
+    ## -------------------------------------------------------
+
+    y <- break.ties(y,
+                    noise.scale = 1e-15,
+                    min.abs.noise = 1e-16,
+                    preserve.bounds = TRUE,
+                    seed = NULL,
+                    verbose = FALSE)
+
     ## -------------------------------------------------------------------------
     ## Convert adjacency list to 0-based indexing for C++
     ## -------------------------------------------------------------------------
@@ -275,7 +286,7 @@ compute.gfc.flow <- function(
 #' Builds combined summary tables from C++ output. Since C++ now returns
 #' dot.snake names directly, no name conversion is needed.
 #'
-#' @param result Raw result from .Call(S_compute_gfc_flow, ...)
+#' @param result Raw result from .Call(1S_compute_gfc_flow, ...)
 #' @return Processed gfc.flow object
 #'
 #' @keywords internal
@@ -1119,23 +1130,18 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
     return(result)
 }
 
-
 #' Print Method for gfc_cell_trajectories Objects
 #'
 #' @param x A gfc_cell_trajectories object.
-#' @param max.print Maximum number of trajectories to print details for.
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
-print.gfc_cell_trajectories <- function(x, max.print = 5, ...) {
-
+print.gfc_cell_trajectories <- function(x, ...) {
     cat("GFC Cell Trajectories\n")
     cat("=====================\n")
-
     ## Show spurious status if available
     min.status <- if (!is.null(x$min.is.spurious) && x$min.is.spurious) " [SPURIOUS]" else ""
     max.status <- if (!is.null(x$max.is.spurious) && x$max.is.spurious) " [SPURIOUS]" else ""
-
     cat(sprintf("Cell: %s%s (vertex %d) <-> %s%s (vertex %d)\n",
                 x$min.label, min.status,
                 if (x$mapped) x$original.min.vertex else x$min.vertex,
@@ -1144,45 +1150,20 @@ print.gfc_cell_trajectories <- function(x, max.print = 5, ...) {
     cat(sprintf("Values: %.4f (min) to %.4f (max), delta = %.4f\n",
                 x$min.value, x$max.value, x$max.value - x$min.value))
     cat(sprintf("Trajectories: %d\n", x$n.trajectories))
-
     if (x$mapped) {
         cat(sprintf("Vertices mapped to subgraph indices (min -> %s, max -> %s)\n",
                     ifelse(is.na(x$min.vertex), "NA", as.character(x$min.vertex)),
                     ifelse(is.na(x$max.vertex), "NA", as.character(x$max.vertex))))
     }
-
     if (x$n.trajectories > 0) {
-        cat("\nTrajectory lengths:\n")
         lengths <- sapply(x$trajectories, length)
-        cat(sprintf("  Min: %d, Max: %d, Mean: %.1f\n",
+        cat(sprintf("Trajectory lengths: Min: %d, Max: %d, Mean: %.1f\n",
                     min(lengths), max(lengths), mean(lengths)))
-
-        n.show <- min(max.print, x$n.trajectories)
-        cat(sprintf("\nFirst %d trajectories:\n", n.show))
-        for (i in seq_len(n.show)) {
-            path <- x$trajectories[[i]]
-            if (length(path) <= 10) {
-                path.str <- paste(path, collapse = " -> ")
-            } else {
-                path.str <- paste(
-                    c(paste(head(path, 4), collapse = " -> "),
-                      "...",
-                      paste(tail(path, 3), collapse = " -> ")),
-                    collapse = " -> "
-                )
-            }
-            cat(sprintf("  [%d] (%d vertices): %s\n", i, length(path), path.str))
-        }
-
-        if (x$n.trajectories > max.print) {
-            cat(sprintf("  ... and %d more trajectories\n",
-                        x$n.trajectories - max.print))
-        }
+        n.unique.vertices <- length(unique(unlist(x$trajectories)))
+        cat(sprintf("Number of vertices: %d\n", n.unique.vertices))
     }
-
     invisible(x)
 }
-
 
 #' Get All Trajectory Vertices as a Single Vector
 #'
@@ -1993,5 +1974,215 @@ uncovered.vertices.gfc.flow <- function(gfc.flow) {
         n.local.minima = length(uncovered.lmin),
         n.local.maxima = length(uncovered.lmax),
         by.type = by.type
+    )
+}
+
+#' Compute Maximum Edge Length for Each Cell Trajectory
+#'
+#' For each trajectory in a cell.trajectories object, computes the maximum
+#' edge length along the trajectory path. This is useful for identifying
+#' trajectories that traverse unusually long edges, which may indicate
+#' paths through isolated or outlier vertices.
+#'
+#' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
+#'   contains the 1-based indices of vertices adjacent to vertex \code{i}.
+#' @param weight.list List of numeric vectors. Each element
+#'   \code{weight.list[[i]]} contains the edge weights (distances) corresponding
+#'   to \code{adj.list[[i]]}.
+#' @param cell.trajectories Output from \code{cell.trajectories.gfc.flow()},
+#'   a list of trajectory objects each containing a \code{vertices} field.
+#'
+#' @return Numeric vector of length equal to \code{length(cell.trajectories)},
+#'   where the i-th element is the maximum edge length along the i-th
+#'   trajectory. Returns \code{NA} for trajectories with fewer than 2 vertices
+#'   or if an edge is not found in the adjacency structure.
+#'
+#' @examples
+#' \dontrun{
+#' cell.trajs <- cell.trajectories.gfc.flow(gfc.flow.res, "m2", "M7")
+#' max.lens <- cell.trajectories.max.edge.length(adj.list, weight.list, cell.trajs)
+#'
+#' ## Find trajectories with edges exceeding the threshold
+#' threshold <- gfc.flow.res$edge.length.thld
+#' which(max.lens > threshold)
+#' }
+#'
+#' @seealso \code{\link{cell.trajectories.gfc.flow}}
+#'
+#' @export
+cell.trajectories.max.edge.length <- function(adj.list,
+                                              weight.list,
+                                              cell.trajectories) {
+
+    n.traj <- length(cell.trajectories$trajectories)
+
+    if (n.traj == 0) {
+        return(numeric(0))
+    }
+
+    max.edge.lengths <- numeric(n.traj)
+
+    for (i in seq_len(n.traj)) {
+        vertices <- cell.trajectories$trajectories[[i]]
+        n.v <- length(vertices)
+
+        if (n.v < 2) {
+            max.edge.lengths[i] <- NA_real_
+            next
+        }
+
+        max.len <- 0
+        edge.not.found <- FALSE
+
+        for (j in seq_len(n.v - 1)) {
+            v1 <- vertices[j]
+            v2 <- vertices[j + 1]
+
+            ## Find edge weight from v1 to v2
+            nbrs <- adj.list[[v1]]
+            idx <- which(nbrs == v2)
+
+            if (length(idx) == 0) {
+                warning(sprintf("Edge (%d, %d) not found in trajectory %d",
+                                v1, v2, i))
+                edge.not.found <- TRUE
+                break
+            }
+
+            edge.len <- weight.list[[v1]][idx[1]]
+            if (edge.len > max.len) {
+                max.len <- edge.len
+            }
+        }
+
+        max.edge.lengths[i] <- if (edge.not.found) NA_real_ else max.len
+    }
+
+    return(max.edge.lengths)
+}
+
+#' Compute Monotonicity Statistics for Cell Trajectories
+#'
+#' For each trajectory in a cell.trajectories object, evaluates whether the
+#' graph distance from the starting vertex increases monotonically along the
+#' trajectory. This diagnostic helps identify trajectories that "wander" away
+#' from and back toward the starting extremum rather than progressing smoothly.
+#'
+#' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
+#'   contains the 1-based indices of vertices adjacent to vertex \code{i}.
+#' @param weight.list List of numeric vectors. Each element
+#'   \code{weight.list[[i]]} contains the edge weights (distances) corresponding
+#'   to \code{adj.list[[i]]}.
+#' @param cell.trajectories Output from \code{cell.trajectories.gfc.flow()},
+#'   containing a \code{trajectories} element which is a list of trajectory
+#'   objects each with a \code{vertices} field.
+#'
+#' @return A data frame with one row per trajectory and three columns:
+#'   \describe{
+#'     \item{n.mono}{Number of consecutive vertex pairs where the distance
+#'       from the start vertex increases, i.e., where
+#'       \eqn{d(x_0, v_{j+1}) > d(x_0, v_j)}.}
+#'     \item{n.vert}{Number of consecutive vertex pairs in the trajectory
+#'       (equal to the number of vertices minus one).}
+#'     \item{p.mono}{Proportion of monotonic transitions: \code{n.mono / n.vert}.
+#'       A value of 1.0 indicates perfect distance monotonicity.}
+#'   }
+#'
+#' @details
+#' The function computes shortest path distances from each trajectory's
+#' starting vertex using igraph's optimized shortest path algorithms.
+#' For trajectories sharing the same start vertex (common within a cell),
+#' distances are computed once and cached for efficiency.
+#'
+#' A trajectory with \code{p.mono = 1.0} is fully monotonic: every step
+#' along the trajectory moves further from the starting extremum in terms
+#' of graph distance. Lower values indicate trajectories that backtrack
+#' or take detours, which may suggest paths through geometrically isolated
+#' vertices.
+#'
+#' @examples
+#' \dontrun{
+#' cell.trajs <- cell.trajectories.gfc.flow(gfc.flow.res, "m2", "M7")
+#' mono.stats <- cell.trajectories.monotonicity(adj.list, weight.list, cell.trajs)
+#'
+#' ## Find non-monotonic trajectories
+#' which(mono.stats$p.mono < 1.0)
+#'
+#' ## Summary of monotonicity across all trajectories
+#' summary(mono.stats$p.mono)
+#' }
+#'
+#' @seealso \code{\link{cell.trajectories.gfc.flow}},
+#'   \code{\link{cell.trajectories.max.edge.length}}
+#'
+#' @export
+cell.trajectories.monotonicity <- function(adj.list,
+                                           weight.list,
+                                           cell.trajectories) {
+
+    trajs <- cell.trajectories$trajectories
+    n.traj <- length(trajs)
+
+    if (n.traj == 0) {
+        return(data.frame(
+            n.mono = integer(0),
+            n.vert = integer(0),
+            p.mono = numeric(0)
+        ))
+    }
+
+    ## Build igraph object
+    graph.obj <- convert.adjacency.to.edge.matrix(adj.list, weight.list)
+    g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+    igraph::E(g)$weight <- graph.obj$weights
+
+    ## Cache distances by start vertex to avoid recomputation
+    dist.cache <- list()
+
+    n.mono <- integer(n.traj)
+    n.vert <- integer(n.traj)
+
+    for (i in seq_len(n.traj)) {
+        vertices <- trajs[[i]]
+        n.v <- length(vertices)
+
+        if (n.v < 2) {
+            n.mono[i] <- 0L
+            n.vert[i] <- 0L
+            next
+        }
+
+        start <- vertices[1]
+        start.key <- as.character(start)
+
+        ## Get or compute distances from start vertex
+        if (is.null(dist.cache[[start.key]])) {
+            dist.cache[[start.key]] <- as.numeric(
+                igraph::distances(g, v = start, mode = "all")
+            )
+        }
+        dist.from.start <- dist.cache[[start.key]]
+
+        ## Count monotonic transitions
+        n.vert[i] <- n.v - 1L
+        mono.count <- 0L
+
+        for (j in seq_len(n.v - 1)) {
+            d.current <- dist.from.start[vertices[j]]
+            d.next <- dist.from.start[vertices[j + 1]]
+            if (d.next > d.current) {
+                mono.count <- mono.count + 1L
+            }
+        }
+
+        n.mono[i] <- mono.count
+    }
+
+    p.mono <- ifelse(n.vert > 0, n.mono / n.vert, NA_real_)
+
+    data.frame(
+        n.mono = n.mono,
+        n.vert = n.vert,
+        p.mono = p.mono
     )
 }
