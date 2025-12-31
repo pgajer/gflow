@@ -2273,3 +2273,137 @@ construct.path.through.waypoints <- function(igraph.obj, waypoints) {
 
     return(connected.path)
 }
+
+#' Compute Trajectory Distances to a Target Vertex
+#'
+#' For each trajectory in a list, computes the minimum graph distance from any
+#' vertex in the trajectory to a specified target vertex. This is useful for
+#' identifying trajectories that pass near a landmark vertex (e.g., a community
+#' state type centroid) without necessarily including it.
+#'
+#' @param trajectories A list of integer vectors, where each vector contains
+#'   vertex indices forming a trajectory. Vertex indices should be 1-based.
+#' @param target.vertex Integer specifying the target vertex index (1-based).
+#' @param adj.list List of integer vectors specifying the adjacency structure.
+#'   Each element \code{adj.list[[i]]} contains the indices of vertices
+#'   adjacent to vertex \code{i}.
+#' @param weight.list List of numeric vectors specifying edge weights
+#'   (lengths). Each element \code{weight.list[[i]]} contains the weights
+#'   of edges from vertex \code{i} to its neighbors in \code{adj.list[[i]]}.
+#'
+#' @return A list with components:
+#'   \describe{
+#'     \item{min.distances}{Numeric vector of length equal to the number of
+#'       trajectories. Each element is the minimum graph distance from any
+#'       vertex in the corresponding trajectory to the target vertex.}
+#'     \item{nearest.vertices}{Integer vector of the trajectory vertex that
+#'       achieves the minimum distance to the target for each trajectory.}
+#'     \item{nearest.positions}{Integer vector of the position within each
+#'       trajectory where the nearest vertex occurs (1-based).}
+#'     \item{target.vertex}{The target vertex index (for reference).}
+#'   }
+#'
+#' @details
+#' The function constructs an igraph object from the adjacency and weight lists,
+#' then computes shortest path distances from the target vertex to all vertices
+#' in the graph. For each trajectory, it identifies the vertex with the smallest
+#' distance to the target and records both the distance and the vertex identity.
+#'
+#' Trajectories that pass through the target vertex will have a minimum distance
+#' of zero.
+#'
+#' @seealso \code{\link{vertex.all.trajectories.gfc.flow}} for extracting
+#'   trajectories from a GFC flow result, \code{\link{cell.trajectories}} for
+#'   extracting trajectories within a specific cell
+#'
+#' @examples
+#' \dontrun{
+#' ## Get all trajectories descending to minimum m2
+#' m2.trajs <- vertex.all.trajectories.gfc.flow(gfc.res, m2.vertex)
+#'
+#' ## Find which trajectories pass closest to the Li landmark
+#' traj.dists <- trajectory.distances.to.vertex(
+#'     trajectories = m2.trajs,
+#'     target.vertex = Li.vertex,
+#'     adj.list = adj.list,
+#'     weight.list = weight.list
+#' )
+#'
+#' ## Select trajectories within distance 0.5 of Li
+#' near.Li.idx <- which(traj.dists$min.distances < 0.5)
+#' }
+#'
+#' @export
+trajectory.distances.to.vertex <- function(trajectories,
+                                           target.vertex,
+                                           adj.list,
+                                           weight.list) {
+
+    ## Input validation
+    if (!is.list(trajectories)) {
+        stop("trajectories must be a list")
+    }
+
+    if (length(trajectories) == 0) {
+        return(list(
+            min.distances = numeric(0),
+            nearest.vertices = integer(0),
+            nearest.positions = integer(0),
+            target.vertex = target.vertex
+        ))
+    }
+
+    target.vertex <- as.integer(target.vertex)
+    if (length(target.vertex) != 1) {
+        stop("target.vertex must be a single integer")
+    }
+
+    n.vertices <- length(adj.list)
+    if (target.vertex < 1 || target.vertex > n.vertices) {
+        stop("target.vertex must be between 1 and the number of vertices")
+    }
+
+    ## Build adjacency matrix and igraph object
+    adj.mat <- convert.adjacency.list.to.adjacency.matrix(
+        adj.list,
+        weight.list
+    )
+
+    gr <- igraph::graph_from_adjacency_matrix(
+        adj.mat,
+        mode = "undirected",
+        weighted = TRUE,
+        diag = FALSE
+    )
+
+    ## Compute distances from target vertex to all vertices in graph
+    all.dists <- igraph::distances(
+        gr,
+        v = target.vertex,
+        to = igraph::V(gr),
+        weights = igraph::E(gr)$weight
+    )[1, ]
+
+    ## For each trajectory, find minimum distance to target
+    n.trajs <- length(trajectories)
+    min.distances <- numeric(n.trajs)
+    nearest.vertices <- integer(n.trajs)
+    nearest.positions <- integer(n.trajs)
+
+    for (i in seq_len(n.trajs)) {
+        traj <- trajectories[[i]]
+        traj.dists <- all.dists[traj]
+        min.pos <- which.min(traj.dists)
+
+        min.distances[i] <- traj.dists[min.pos]
+        nearest.vertices[i] <- traj[min.pos]
+        nearest.positions[i] <- min.pos
+    }
+
+    return(list(
+        min.distances = min.distances,
+        nearest.vertices = nearest.vertices,
+        nearest.positions = nearest.positions,
+        target.vertex = target.vertex
+    ))
+}
