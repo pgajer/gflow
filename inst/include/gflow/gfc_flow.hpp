@@ -250,6 +250,16 @@ struct gfc_flow_result_t {
     int n_join_trajectories;
 
     // ========================================================================
+    // OVERLAP DISTANCES
+    // ========================================================================
+
+    /// Pairwise overlap distances for ALL maxima basins
+    Eigen::MatrixXd max_overlap_dist;
+
+    /// Pairwise overlap distances for ALL minima basins
+    Eigen::MatrixXd min_overlap_dist;
+
+    // ========================================================================
     // PIPELINE HISTORY
     // ========================================================================
     
@@ -262,6 +272,7 @@ struct gfc_flow_result_t {
     
     size_t n_vertices;
     double y_median;
+    double edge_length_thld;
     gfc_flow_params_t params;
 
     // ========================================================================

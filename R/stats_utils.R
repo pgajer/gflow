@@ -3067,11 +3067,11 @@ winsorize <- function(x, p = 0.01, verbose = FALSE) {
 #'
 #' @export
 break.ties <- function(y,
-                      noise.scale = 1e-10,
-                      min.abs.noise = 1e-12,
-                      preserve.bounds = TRUE,
-                      seed = NULL,
-                      verbose = FALSE) {
+                       noise.scale = 1e-10,
+                       min.abs.noise = 1e-12,
+                       preserve.bounds = TRUE,
+                       seed = NULL,
+                       verbose = FALSE) {
 
   if (!is.null(seed)) set.seed(seed)
 

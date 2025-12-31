@@ -546,7 +546,7 @@ extract.optimal.Lp.graph <- function(summary.df,
     ## ================================================================
     if (save.results) {
         save.file <- file.path(out.dir,
-                               sprintf("sptb_optimal_Lp_analysis_%s.rds", data.tag))
+                               sprintf("sptb_optimal_Lp_analysis_%s_%s.rds", p.opt.tag, data.tag))
         saveRDS(result, save.file)
         if (verbose) cat("\nResults saved to:", save.file, "\n")
         result$save.file <- save.file

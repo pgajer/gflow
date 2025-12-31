@@ -92,13 +92,10 @@ void mark_spurious_by_geometry(
             should_filter = true;
         }
         
-        // Check geometric criteria (only for maxima typically)
-        if (summaries[i].is_maximum) {
-            if (summaries[i].p_mean_nbrs_dist > p_mean_nbrs_dist_threshold) {
-                should_filter = true;
-            }
+        if (summaries[i].p_mean_nbrs_dist > p_mean_nbrs_dist_threshold) {
+            should_filter = true;
         }
-        
+
         if (summaries[i].p_mean_hopk_dist > p_mean_hopk_dist_threshold) {
             should_filter = true;
         }
@@ -117,10 +114,167 @@ void mark_spurious_by_geometry(
 }
 
 /**
+ * @brief Cluster and merge basins based on overlap, marking merged ones as spurious
+ *
+ * Uses the same clustering algorithm as gfc_internal::cluster_and_merge_basins():
+ * - Computes overlap distance matrix using Szymkiewicz-Simpson coefficient
+ * - Creates threshold graph and finds connected components
+ * - For each cluster, selects representative (most extreme value)
+ * - Merges all vertices from cluster members into representative basin
+ * - Marks non-representative basins as spurious with tracking info
+ *
+ * @param summaries Vector of extremum summaries (modified in place)
+ * @param basins Vector of basins (modified in place)
+ * @param overlap_threshold Distance threshold for clustering (edges where d < threshold)
+ * @param is_maximum True for maxima (pick highest), false for minima (pick lowest)
+ * @return Overlap distance matrix for the active (non-spurious) basins at time of call
+ */
+Eigen::MatrixXd cluster_and_merge_basins(
+    std::vector<extremum_summary_extended_t>& summaries,
+    std::vector<basin_extended_t>& basins,
+    double overlap_threshold,
+    bool is_maximum
+) {
+    // Get indices of currently non-spurious basins
+    std::vector<int> active_indices;
+    for (size_t i = 0; i < basins.size(); ++i) {
+        if (!basins[i].is_spurious) {
+            active_indices.push_back(static_cast<int>(i));
+        }
+    }
+
+    const size_t n = active_indices.size();
+
+    if (n <= 1) {
+        // Return empty or 1x1 matrix
+        Eigen::MatrixXd dist(n, n);
+        dist.setZero();
+        return dist;
+    }
+
+    // Extract vertex vectors for active basins (for compute_overlap_distance_matrix)
+    std::vector<std::vector<size_t>> basin_vertices(n);
+    for (size_t i = 0; i < n; ++i) {
+        basin_vertices[i] = basins[active_indices[i]].vertices;
+    }
+
+    // Compute overlap distance matrix using the standard function
+    Eigen::MatrixXd dist_matrix = compute_overlap_distance_matrix(basin_vertices);
+
+    // Create threshold graph and find connected components
+    std::vector<std::vector<int>> threshold_graph = create_threshold_graph(
+        dist_matrix, overlap_threshold);
+    std::vector<int> cluster_assignment = find_connected_components(threshold_graph);
+
+    // Find number of clusters
+    int n_clusters = 0;
+    for (int c : cluster_assignment) {
+        n_clusters = std::max(n_clusters, c + 1);
+    }
+
+    // Group basins by cluster
+    std::vector<std::vector<size_t>> clusters(n_clusters);
+    for (size_t i = 0; i < n; ++i) {
+        clusters[cluster_assignment[i]].push_back(i);
+    }
+
+    // Process each cluster
+    for (int c = 0; c < n_clusters; ++c) {
+        const auto& cluster_members = clusters[c];
+
+        if (cluster_members.size() <= 1) {
+            continue;  // Nothing to merge
+        }
+
+        // Find representative (most extreme value)
+        size_t rep_local = cluster_members[0];
+        int rep_global = active_indices[rep_local];
+        double rep_value = summaries[rep_global].value;
+
+        for (size_t local_idx : cluster_members) {
+            int global_idx = active_indices[local_idx];
+            double val = summaries[global_idx].value;
+            if ((is_maximum && val > rep_value) || (!is_maximum && val < rep_value)) {
+                rep_value = val;
+                rep_local = local_idx;
+                rep_global = global_idx;
+            }
+        }
+
+        // Collect hop distance info from all member basins BEFORE modifying anything
+        std::unordered_map<size_t, int> vertex_min_hop;
+        int max_hop = 0;
+
+        for (size_t local_idx : cluster_members) {
+            int global_idx = active_indices[local_idx];
+            const auto& member_basin = basins[global_idx];
+            for (size_t vi = 0; vi < member_basin.vertices.size(); ++vi) {
+                size_t v = member_basin.vertices[vi];
+                int hop = member_basin.hop_distances[vi];
+                auto it = vertex_min_hop.find(v);
+                if (it == vertex_min_hop.end() || hop < it->second) {
+                    vertex_min_hop[v] = hop;
+                }
+                max_hop = std::max(max_hop, hop);
+            }
+        }
+
+        // Merge vertices from all cluster members into representative
+        std::unordered_set<size_t> vertex_union;
+        for (size_t local_idx : cluster_members) {
+            int global_idx = active_indices[local_idx];
+            for (size_t v : basins[global_idx].vertices) {
+                vertex_union.insert(v);
+            }
+        }
+
+        // Update representative basin with merged vertices
+        basin_extended_t& rep_basin = basins[rep_global];
+
+        // Update vertices
+        rep_basin.vertices.assign(vertex_union.begin(), vertex_union.end());
+        std::sort(rep_basin.vertices.begin(), rep_basin.vertices.end());
+
+        // Assign hop distances using pre-collected info
+        rep_basin.hop_distances.resize(rep_basin.vertices.size());
+        int new_max_hop = 0;
+        for (size_t i = 0; i < rep_basin.vertices.size(); ++i) {
+            size_t v = rep_basin.vertices[i];
+            auto it = vertex_min_hop.find(v);
+            if (it != vertex_min_hop.end()) {
+                rep_basin.hop_distances[i] = it->second;
+            } else {
+                rep_basin.hop_distances[i] = max_hop + 1;
+            }
+            new_max_hop = std::max(new_max_hop, rep_basin.hop_distances[i]);
+        }
+        rep_basin.max_hop_distance = new_max_hop;
+
+        // Update representative summary
+        summaries[rep_global].basin_size = static_cast<int>(rep_basin.vertices.size());
+        summaries[rep_global].hop_index = rep_basin.max_hop_distance;
+
+        // Mark non-representative basins as spurious
+        for (size_t local_idx : cluster_members) {
+            int global_idx = active_indices[local_idx];
+            if (global_idx != rep_global) {
+                summaries[global_idx].is_spurious = true;
+                summaries[global_idx].filter_stage = filter_stage_t::CLUSTER_MERGE;
+                summaries[global_idx].merged_into = rep_global;
+                basins[global_idx].is_spurious = true;
+                basins[global_idx].filter_stage = filter_stage_t::CLUSTER_MERGE;
+                basins[global_idx].merged_into = rep_global;
+            }
+        }
+    }
+
+    return dist_matrix;
+}
+
+/**
  * @brief Cluster and merge basins, marking merged ones as spurious
  *
- * This is more complex - we need to track which basins are merged into which.
- * The "winner" of each cluster remains retained, others become spurious.
+ * This function was used initially in place of cluster_and_merge_basins.
  */
 void cluster_and_mark_spurious(
     std::vector<extremum_summary_extended_t>& summaries,
@@ -431,16 +585,14 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
         // CLOSEST modulation: Lexicographic selection
         // ====================================================================
         if (modulation == gflow_modulation_t::CLOSEST) {
-            double min_distance = std::numeric_limits<double>::infinity();
+            double min_distance_short = std::numeric_limits<double>::infinity();
+            double min_distance_any = std::numeric_limits<double>::infinity();
+            size_t best_short = INVALID_VERTEX;
+            size_t best_any = INVALID_VERTEX;
 
             for (const auto& edge : adjacency_list[current]) {
                 size_t u = edge.vertex;
                 double edge_len = edge.weight;
-
-                // Skip if edge is too long
-                if (edge_len > edge_length_thld) {
-                    continue;
-                }
 
                 // Skip if already in this trajectory (avoid loops)
                 if (trajectory_set.count(u) > 0) {
@@ -449,7 +601,7 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
 
                 double delta_y = y[u] - y[current];
 
-                // Level 1: Filter to strictly ascending/descending neighbors
+                // Filter to strictly ascending/descending neighbors
                 if (ascending && delta_y <= 0) {
                     continue;
                 }
@@ -457,13 +609,23 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
                     continue;
                 }
 
-                // Level 2: Among valid neighbors, select closest (minimum edge weight)
-                if (edge_len < min_distance) {
-                    min_distance = edge_len;
-                    best_next = u;
+                // Track best among ALL valid neighbors (fallback)
+                if (edge_len < min_distance_any) {
+                    min_distance_any = edge_len;
+                    best_any = u;
+                }
+
+                // Track best among SHORT valid neighbors (preferred)
+                if (edge_len <= edge_length_thld && edge_len < min_distance_short) {
+                    min_distance_short = edge_len;
+                    best_short = u;
                 }
             }
+
+            // Prefer short edge, but use any valid edge if no short ones exist
+            best_next = (best_short != INVALID_VERTEX) ? best_short : best_any;
         }
+
         // ====================================================================
         // Other modulations: Score-based selection
         // ====================================================================
@@ -621,6 +783,7 @@ gfc_flow_result_t compute_gfc_flow(
     std::unordered_set<size_t> lmax_set(lmax_vertices.begin(), lmax_vertices.end());
 
     double edge_length_thld = graph.compute_quantile_edge_length(params.edge_length_quantile_thld);
+    result.edge_length_thld = edge_length_thld;
 
     edge_weight_map_t edge_length_weights;
     bool needs_edge_weights = (params.modulation == gflow_modulation_t::EDGELEN ||
@@ -949,19 +1112,19 @@ gfc_flow_result_t compute_gfc_flow(
         if (verbose) {
             Rprintf("Step 5b: Clustering maxima...\n");
         }
-        
+
         int n_max_before = count_retained(result.max_basins_all);
         int n_min_before = count_retained(result.min_basins_all);
-        
-        gfc_flow_internal::cluster_and_mark_spurious(
+
+        result.max_overlap_dist = gfc_flow_internal::cluster_and_merge_basins(
             result.max_summaries_all, result.max_basins_all,
             params.max_overlap_threshold, true);
-        
+
         int n_max_after = count_retained(result.max_basins_all);
-        
+
         result.stage_history.emplace_back("merge.max",
             n_max_before, n_max_after, n_min_before, n_min_before);
-        
+
         if (verbose) {
             Rprintf("  Maxima: %d -> %d\n", n_max_before, n_max_after);
         }
@@ -972,19 +1135,19 @@ gfc_flow_result_t compute_gfc_flow(
         if (verbose) {
             Rprintf("Step 5c: Clustering minima...\n");
         }
-        
+
         int n_max_before = count_retained(result.max_basins_all);
         int n_min_before = count_retained(result.min_basins_all);
-        
-        gfc_flow_internal::cluster_and_mark_spurious(
+
+        result.min_overlap_dist = gfc_flow_internal::cluster_and_merge_basins(
             result.min_summaries_all, result.min_basins_all,
             params.min_overlap_threshold, false);
-        
+
         int n_min_after = count_retained(result.min_basins_all);
-        
+
         result.stage_history.emplace_back("merge.min",
             n_max_before, n_max_before, n_min_before, n_min_after);
-        
+
         if (verbose) {
             Rprintf("  Minima: %d -> %d\n", n_min_before, n_min_after);
         }
