@@ -362,8 +362,8 @@ static SEXP int_vec_to_R(const std::vector<int>& vec, bool one_based = true) {
 
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
-    // 29 elements total
-    const int n_elements = 29;
+    // 30 elements total
+    const int n_elements = 32;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
@@ -866,6 +866,101 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         SET_VECTOR_ELT(r_result, idx, r_df);
         SET_STRING_ELT(r_names, idx, Rf_mkChar("summary"));
         UNPROTECT(17);
+        ++idx;
+    }
+
+    // ========================================================================
+    // 29: edge.length.thld
+    // ========================================================================
+    {
+        SET_VECTOR_ELT(r_result, idx, Rf_ScalarReal(result.edge_length_thld));
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("edge.length.thld"));
+        ++idx;
+    }
+
+    // ========================================================================
+    // 30: max.overlap.dist (Eigen matrix -> R matrix)
+    // ========================================================================
+    {
+        R_xlen_t nrow = result.max_overlap_dist.rows();
+        R_xlen_t ncol = result.max_overlap_dist.cols();
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* mat_ptr = REAL(r_mat);
+
+        // Copy data (Eigen is column-major like R)
+        for (R_xlen_t j = 0; j < ncol; ++j) {
+            for (R_xlen_t i = 0; i < nrow; ++i) {
+                mat_ptr[i + j * nrow] = result.max_overlap_dist(i, j);
+            }
+        }
+
+        // Add row/column names using basin labels
+        if (nrow > 0) {
+            SEXP r_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+            SEXP r_rownames = PROTECT(Rf_allocVector(STRSXP, nrow));
+            SEXP r_colnames = PROTECT(Rf_allocVector(STRSXP, ncol));
+
+            for (R_xlen_t i = 0; i < nrow; ++i) {
+                SET_STRING_ELT(r_rownames, i,
+                               Rf_mkChar(result.max_summaries_all[i].label.c_str()));
+            }
+            for (R_xlen_t j = 0; j < ncol; ++j) {
+                SET_STRING_ELT(r_colnames, j,
+                               Rf_mkChar(result.max_summaries_all[j].label.c_str()));
+            }
+
+            SET_VECTOR_ELT(r_dimnames, 0, r_rownames);
+            SET_VECTOR_ELT(r_dimnames, 1, r_colnames);
+            Rf_setAttrib(r_mat, R_DimNamesSymbol, r_dimnames);
+            UNPROTECT(3);  // r_dimnames, r_rownames, r_colnames
+        }
+
+        SET_VECTOR_ELT(r_result, idx, r_mat);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("max.overlap.dist"));
+        UNPROTECT(1);  // r_mat
+        ++idx;
+    }
+
+    // ========================================================================
+    // 31: min.overlap.dist (Eigen matrix -> R matrix)
+    // ========================================================================
+    {
+        R_xlen_t nrow = result.min_overlap_dist.rows();
+        R_xlen_t ncol = result.min_overlap_dist.cols();
+        SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
+        double* mat_ptr = REAL(r_mat);
+
+        // Copy data (Eigen is column-major like R)
+        for (R_xlen_t j = 0; j < ncol; ++j) {
+            for (R_xlen_t i = 0; i < nrow; ++i) {
+                mat_ptr[i + j * nrow] = result.min_overlap_dist(i, j);
+            }
+        }
+
+        // Add row/column names using basin labels
+        if (nrow > 0) {
+            SEXP r_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+            SEXP r_rownames = PROTECT(Rf_allocVector(STRSXP, nrow));
+            SEXP r_colnames = PROTECT(Rf_allocVector(STRSXP, ncol));
+
+            for (R_xlen_t i = 0; i < nrow; ++i) {
+                SET_STRING_ELT(r_rownames, i,
+                               Rf_mkChar(result.min_summaries_all[i].label.c_str()));
+            }
+            for (R_xlen_t j = 0; j < ncol; ++j) {
+                SET_STRING_ELT(r_colnames, j,
+                               Rf_mkChar(result.min_summaries_all[j].label.c_str()));
+            }
+
+            SET_VECTOR_ELT(r_dimnames, 0, r_rownames);
+            SET_VECTOR_ELT(r_dimnames, 1, r_colnames);
+            Rf_setAttrib(r_mat, R_DimNamesSymbol, r_dimnames);
+            UNPROTECT(3);  // r_dimnames, r_rownames, r_colnames
+        }
+
+        SET_VECTOR_ELT(r_result, idx, r_mat);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("min.overlap.dist"));
+        UNPROTECT(1);  // r_mat
         ++idx;
     }
 

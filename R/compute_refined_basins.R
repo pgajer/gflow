@@ -213,7 +213,19 @@ compute.refined.basins <- function(adj.list,
         stringsAsFactors = FALSE
     )
 
+    ## -------------------------------------------------------
+    ## Step 0: Breaking ties (if any)
+    ## -------------------------------------------------------
+    fitted.values <- break.ties(fitted.values,
+                                noise.scale = 1e-10,
+                                min.abs.noise = 1e-12,
+                                preserve.bounds = TRUE,
+                                seed = NULL,
+                                verbose = FALSE)
+
+    ## -------------------------------------------------------
     ## Step 1: Compute initial basins of attraction
+    ## -------------------------------------------------------
     if (verbose) {
         cat("Step 1: Computing initial basins of attraction...\n")
     }
@@ -245,7 +257,9 @@ compute.refined.basins <- function(adj.list,
         print(initial.summary)
     }
 
+    ## -------------------------------------------------------
     ## Step 2: Filter by relative values
+    ## -------------------------------------------------------
     if (apply.relvalue.filter) {
         current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
         n.max.before <- sum(current.summary$type == "max")
@@ -286,7 +300,9 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
+    ## -------------------------------------------------------
     ## Step 3: Cluster and merge maxima
+    ## -------------------------------------------------------
     if (apply.maxima.clustering) {
         current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
         n.max.before <- sum(current.summary$type == "max")
@@ -342,7 +358,9 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
+    ## -------------------------------------------------------
     ## Step 4: Cluster and merge minima
+    ## -------------------------------------------------------
     if (apply.minima.clustering) {
         current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
         n.max.before <- sum(current.summary$type == "max")
@@ -398,7 +416,9 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
+    ## ------------------------------------------------------------
     ## Step 5: Filter by geometric characteristics and basin size
+    ## ------------------------------------------------------------
     if (apply.geometric.filter) {
         current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
         n.max.before <- sum(current.summary$type == "max")
@@ -470,7 +490,9 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
+    ## -------------------------------------------------------
     ## Generate final summary
+    ## -------------------------------------------------------
     if (verbose) {
         cat(sprintf("\nGenerating final summary (hop.k = %d)...\n", hop.k))
     }
@@ -555,7 +577,9 @@ compute.refined.basins <- function(adj.list,
         }
     }
 
+    ## ----------------------------------------------------------
     ## Compute final overlap distance matrices for diagnostics
+    ## ----------------------------------------------------------
     if (verbose) {
         cat("Computing final overlap distance matrices...\n")
     }

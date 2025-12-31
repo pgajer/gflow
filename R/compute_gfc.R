@@ -235,6 +235,16 @@ compute.gfc <- function(adj.list,
         stop("max.chain.depth must be a non-negative integer")
     }
 
+    ## -------------------------------------------------------
+    ## Breaking ties (if any)
+    ## -------------------------------------------------------
+    fitted.values <- break.ties(fitted.values,
+                                noise.scale = 1e-15,
+                                min.abs.noise = 1e-16,
+                                preserve.bounds = TRUE,
+                                seed = NULL,
+                                verbose = FALSE)
+
     ## ========================================================================
     ## Convert to 0-based indexing for C++
     ## ========================================================================
@@ -244,6 +254,7 @@ compute.gfc <- function(adj.list,
     ## ========================================================================
     ## Call C++ implementation
     ## ========================================================================
+
 
     result <- .Call(
         S_compute_gfc,
