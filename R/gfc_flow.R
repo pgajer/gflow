@@ -2447,8 +2447,145 @@ select.closest.longest.trajectory <- function(trajectories,
         best.idx = best.idx,
         trajectory = trajectories[[best.idx]],
         min.distance = traj.dists$min.distances[best.idx],
-        n.vertices = length(trajectories[[best.idx]]),
+        n.vertices = length(trajectories[[best.idx]]$vertices),
         n.tied = length(tied.idx),
         tied.idx = tied.idx
+    ))
+}
+
+#' Compute Vertex Distances to a Trajectory
+#'
+#' For each vertex in a given set, computes the minimum graph distance to any
+#' vertex in a trajectory. This is useful for characterizing how far vertices
+#' in a tubular neighborhood are from the central path.
+#'
+#' @param vertices Integer vector of vertex indices for which to compute
+#'   distances. Vertex indices should be 1-based.
+#' @param trajectory.vertices Integer vector of vertex indices forming the
+#'   trajectory (or any reference vertex set). Vertex indices should be 1-based.
+#' @param adj.list List of integer vectors specifying the adjacency structure.
+#'   Each element \code{adj.list[[i]]} contains the indices of vertices
+#'   adjacent to vertex \code{i}.
+#' @param weight.list List of numeric vectors specifying edge weights
+#'   (lengths). Each element \code{weight.list[[i]]} contains the weights
+#'   of edges from vertex \code{i} to its neighbors in \code{adj.list[[i]]}.
+#'
+#' @return A list with components:
+#'   \describe{
+#'     \item{min.distances}{Numeric vector of length equal to the number of
+#'       input vertices. Each element is the minimum graph distance from the
+#'       corresponding vertex to any vertex in the trajectory.}
+#'     \item{nearest.traj.vertices}{Integer vector of the trajectory vertex
+#'       that is closest to each input vertex.}
+#'     \item{nearest.traj.positions}{Integer vector of the position within
+#'       the trajectory where the nearest vertex occurs (1-based). Useful
+#'       when trajectory order is meaningful.}
+#'     \item{vertices}{The input vertices (for reference).}
+#'     \item{trajectory.vertices}{The trajectory vertices (for reference).}
+#'   }
+#'
+#' @details
+#' The function constructs an igraph object from the adjacency and weight lists,
+#' then computes shortest path distances from all trajectory vertices to all
+#' input vertices. For each input vertex, it identifies the trajectory vertex
+#' with the smallest distance.
+#'
+#' Vertices that are part of the trajectory will have a minimum distance of zero.
+#'
+#' @seealso \code{\link{trajectory.distances.to.vertex}} for the inverse
+#'   operation (distance from trajectories to a single vertex),
+#'   \code{\link{compute.harmonic.extension}} which produces tubular
+#'   neighborhoods that can be analyzed with this function
+#'
+#' @examples
+#' \dontrun{
+#' ## Compute harmonic extension to get tubular neighborhood
+#' hext <- compute.harmonic.extension(adj.list, weight.list, trajectory,
+#'                                    tube.radius = 2)
+#'
+#' ## Get distances from tubular vertices to the trajectory
+#' tube.dists <- vertex.distances.to.trajectory(
+#'     vertices = hext$tubular.vertices,
+#'     trajectory.vertices = trajectory,
+#'     adj.list = adj.list,
+#'     weight.list = weight.list
+#' )
+#'
+#' ## Vertices on the trajectory have distance 0
+#' sum(tube.dists$min.distances == 0)  # equals length(trajectory)
+#' }
+#'
+#' @export
+vertex.distances.to.trajectory <- function(vertices,
+                                           trajectory.vertices,
+                                           adj.list,
+                                           weight.list) {
+
+    ## Input validation
+    if (length(vertices) == 0) {
+        return(list(
+            min.distances = numeric(0),
+            nearest.traj.vertices = integer(0),
+            nearest.traj.positions = integer(0),
+            vertices = vertices,
+            trajectory.vertices = trajectory.vertices
+        ))
+    }
+
+    if (length(trajectory.vertices) == 0) {
+        stop("trajectory.vertices must contain at least one vertex")
+    }
+
+    vertices <- as.integer(vertices)
+    trajectory.vertices <- as.integer(trajectory.vertices)
+
+    n.graph.vertices <- length(adj.list)
+
+    if (any(vertices < 1) || any(vertices > n.graph.vertices)) {
+        stop("all vertices must be between 1 and the number of graph vertices")
+    }
+
+    if (any(trajectory.vertices < 1) || any(trajectory.vertices > n.graph.vertices)) {
+        stop("all trajectory.vertices must be between 1 and the number of graph vertices")
+    }
+
+    ## Build adjacency matrix and igraph object
+    adj.mat <- convert.adjacency.list.to.adjacency.matrix(adj.list, weight.list)
+
+    gr <- igraph::graph_from_adjacency_matrix(
+        adj.mat,
+        mode = "undirected",
+        weighted = TRUE,
+        diag = FALSE
+    )
+
+    ## Compute distances from all trajectory vertices to all input vertices
+    ## Result is a matrix: rows = trajectory vertices, cols = input vertices
+    dist.mat <- igraph::distances(
+        gr,
+        v = trajectory.vertices,
+        to = vertices,
+        weights = igraph::E(gr)$weight
+    )
+
+    ## For each input vertex (column), find the trajectory vertex (row) with min distance
+    n.vertices <- length(vertices)
+    min.distances <- numeric(n.vertices)
+    nearest.traj.vertices <- integer(n.vertices)
+    nearest.traj.positions <- integer(n.vertices)
+
+    for (j in seq_len(n.vertices)) {
+        min.row.idx <- which.min(dist.mat[, j])
+        min.distances[j] <- dist.mat[min.row.idx, j]
+        nearest.traj.vertices[j] <- trajectory.vertices[min.row.idx]
+        nearest.traj.positions[j] <- min.row.idx
+    }
+
+    return(list(
+        min.distances = min.distances,
+        nearest.traj.vertices = nearest.traj.vertices,
+        nearest.traj.positions = nearest.traj.positions,
+        vertices = vertices,
+        trajectory.vertices = trajectory.vertices
     ))
 }
