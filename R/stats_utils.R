@@ -3670,3 +3670,270 @@ break.composition.ties <- function(
 
   return(result)
 }
+
+#' Compute Tukey's Fence Threshold for Outlier Detection
+#'
+#' Computes the upper fence threshold using Tukey's interquartile range (IQR)
+#' method. Values exceeding this threshold are considered potential outliers.
+#' This is the classical approach from exploratory data analysis, requiring
+#' no distributional assumptions.
+#'
+#' @param x Numeric vector of values. Missing values are removed before
+#'   computation.
+#' @param k Multiplier for the IQR. The default \code{k = 1.5} identifies
+#'   standard outliers; \code{k = 3} identifies extreme outliers. Must be
+#'   positive.
+#' @param type Character string specifying which fence to compute. One of
+#'   \code{"upper"} (default), \code{"lower"}, or \code{"both"}.
+#'
+#' @return For \code{type = "upper"} or \code{type = "lower"}, a single numeric
+#'   value giving the threshold. For \code{type = "both"}, a named numeric
+#'   vector with elements \code{lower} and \code{upper}.
+#'
+#' @details
+#' Tukey's fences are defined as:
+#' \itemize{
+#'   \item Lower fence: Q1 - k * IQR
+#'   \item Upper fence: Q3 + k * IQR
+#' }
+#' where Q1 and Q3 are the first and third quartiles, and IQR = Q3 - Q1.
+#'
+#' The default multiplier k = 1.5 corresponds to approximately 2.7 standard
+#' deviations from the mean for normally distributed data, flagging roughly
+#' 0.7\% of observations as outliers. The choice of k = 1.5 is a well-established
+#' default in exploratory data analysis and does not require justification
+#' beyond citing the method.
+#'
+#' @references
+#' Tukey, J. W. (1977). \emph{Exploratory Data Analysis}. Addison-Wesley.
+#'
+#' @seealso \code{\link{compute.mad.threshold}} for a robust alternative,
+#'   \code{\link{find.elbow.threshold}} for a data-driven approach
+#'
+#' @examples
+#' x <- c(rnorm(100), 5, 6)  # two outliers
+#' threshold <- compute.tukey.threshold(x)
+#' outliers <- x[x > threshold]
+#'
+#' ## Both fences
+#' fences <- compute.tukey.threshold(x, type = "both")
+#' inliers <- x[x >= fences["lower"] & x <= fences["upper"]]
+#'
+#' @export
+compute.tukey.threshold <- function(x, k = 1.5, type = c("upper", "lower", "both")) {
+
+    type <- match.arg(type)
+
+    if (!is.numeric(x)) {
+        stop("x must be a numeric vector")
+    }
+
+    if (k <= 0) {
+        stop("k must be positive")
+    }
+
+    x <- x[!is.na(x)]
+
+    if (length(x) < 4) {
+        stop("x must have at least 4 non-missing values")
+    }
+
+    q <- quantile(x, probs = c(0.25, 0.75))
+    iqr <- q[2] - q[1]
+
+    lower.fence <- q[1] - k * iqr
+    upper.fence <- q[2] + k * iqr
+
+    switch(type,
+           upper = upper.fence,
+           lower = lower.fence,
+           both = c(lower = lower.fence, upper = upper.fence))
+}
+
+
+#' Compute MAD-Based Threshold for Outlier Detection
+#'
+#' Computes an outlier threshold using the median absolute deviation (MAD),
+#' a robust measure of spread. Values exceeding the median plus k times the
+#' MAD are considered potential outliers. This method is more resistant to
+#' the influence of outliers than standard deviation-based approaches.
+#'
+#' @param x Numeric vector of values. Missing values are removed before
+#'   computation.
+#' @param k Multiplier for the MAD. The default \code{k = 2.5} provides
+#'   moderate sensitivity. Higher values are more conservative. Must be
+#'   positive.
+#' @param type Character string specifying which threshold to compute. One of
+#'   \code{"upper"} (default), \code{"lower"}, or \code{"both"}.
+#' @param constant Scale factor for MAD to achieve consistency with the
+#'   standard deviation for normal distributions. The default 1.4826 makes
+#'   MAD an unbiased estimator of the standard deviation when the data are
+#'   normally distributed.
+#'
+#' @return For \code{type = "upper"} or \code{type = "lower"}, a single numeric
+#'   value giving the threshold. For \code{type = "both"}, a named numeric
+#'   vector with elements \code{lower} and \code{upper}.
+#'
+#' @details
+#' The thresholds are defined as:
+#' \itemize{
+#'   \item Lower threshold: median(x) - k * MAD(x)
+#'   \item Upper threshold: median(x) + k * MAD(x)
+#' }
+#'
+#' The MAD is computed as the median of absolute deviations from the median,
+#' scaled by the constant factor. Unlike the standard deviation, the MAD has
+#' a breakdown point of 50\%, meaning it remains reliable even when up to
+#' half the data are outliers.
+#'
+#' For normally distributed data with the default constant, k = 2.5 corresponds
+#' approximately to the bounds of a 98.8\% confidence interval.
+#'
+#' @references
+#' Rousseeuw, P. J., & Croux, C. (1993). Alternatives to the median absolute
+#' deviation. \emph{Journal of the American Statistical Association}, 88(424),
+#' 1273-1283.
+#'
+#' @seealso \code{\link{compute.tukey.threshold}} for the classical IQR-based
+#'   approach, \code{\link[stats]{mad}} for the underlying MAD computation
+#'
+#' @examples
+#' x <- c(rnorm(100), 5, 6)  # two outliers
+#' threshold <- compute.mad.threshold(x)
+#' outliers <- x[x > threshold]
+#'
+#' ## More conservative threshold
+#' threshold.conservative <- compute.mad.threshold(x, k = 3)
+#'
+#' @export
+compute.mad.threshold <- function(x,
+                                  k = 2.5,
+                                  type = c("upper", "lower", "both"),
+                                  constant = 1.4826) {
+
+    type <- match.arg(type)
+
+    if (!is.numeric(x)) {
+        stop("x must be a numeric vector")
+    }
+
+    if (k <= 0) {
+        stop("k must be positive")
+    }
+
+    x <- x[!is.na(x)]
+
+    if (length(x) < 2) {
+        stop("x must have at least 2 non-missing values")
+    }
+
+    med <- median(x)
+    mad.val <- mad(x, constant = constant)
+
+    lower.threshold <- med - k * mad.val
+    upper.threshold <- med + k * mad.val
+
+    switch(type,
+           upper = upper.threshold,
+           lower = lower.threshold,
+           both = c(lower = lower.threshold, upper = upper.threshold))
+}
+
+
+#' Find Elbow Threshold Using Maximum Curvature
+#'
+#' Identifies a threshold at the elbow (knee) point of sorted values, where
+#' the rate of increase changes most sharply. This data-driven approach finds
+#' a natural break point without requiring distributional assumptions or
+#' predefined multipliers.
+#'
+#' @param x Numeric vector of values. Missing values are removed before
+#'   computation.
+#' @param plot Logical indicating whether to produce a diagnostic plot showing
+#'   the sorted values and identified elbow point. Default is \code{FALSE}.
+#'
+#' @return A single numeric value giving the threshold at the elbow point.
+#'   Values exceeding this threshold may be considered outliers or belonging
+#'   to a different regime.
+#'
+#' @details
+#' The elbow point is found by the following procedure. The values are sorted
+#' in ascending order and plotted against their rank (normalized to the unit
+#' interval). A reference line is drawn from the first point to the last point.
+#' The elbow is identified as the point with maximum perpendicular distance
+#' from this reference line.
+#'
+#' This method is particularly useful when the data consist of a bulk of
+#' similar values plus a tail of larger values, and there is a natural
+#' transition point between them. It adapts to the data distribution without
+#' requiring specification of sensitivity parameters.
+#'
+#' The method assumes that values of interest (non-outliers) form the initial
+#' bulk of the sorted distribution. If the distribution is multimodal or
+#' lacks a clear elbow, the result may not be meaningful.
+#'
+#' @references
+#' Satopaa, V., Albrecht, J., Irwin, D., & Raghavan, B. (2011). Finding a
+#' "kneedle" in a haystack: Detecting knee points in system behavior.
+#' \emph{Proceedings of the 31st International Conference on Distributed
+#' Computing Systems Workshops}, 166-171.
+#'
+#' @seealso \code{\link{compute.tukey.threshold}} and
+#'   \code{\link{compute.mad.threshold}} for parametric alternatives
+#'
+#' @examples
+#' ## Data with a natural break point
+#' x <- c(rnorm(80, mean = 0, sd = 0.1), rnorm(20, mean = 0.5, sd = 0.1))
+#' threshold <- find.elbow.threshold(x)
+#'
+#' ## Visualize the result
+#' threshold <- find.elbow.threshold(x, plot = TRUE)
+#' abline(v = threshold, col = "red", lty = 2)
+#'
+#' @export
+find.elbow.threshold <- function(x, plot = FALSE) {
+
+    if (!is.numeric(x)) {
+        stop("x must be a numeric vector")
+    }
+
+    x <- x[!is.na(x)]
+
+    if (length(x) < 3) {
+        stop("x must have at least 3 non-missing values")
+    }
+
+    x.sorted <- sort(x)
+    n <- length(x.sorted)
+
+    ## Normalize to [0,1] for both axes
+    x.norm <- (seq_len(n) - 1) / (n - 1)
+    y.range <- max(x.sorted) - min(x.sorted)
+
+    if (y.range == 0) {
+        ## All values identical; return that value
+        return(x.sorted[1])
+    }
+
+    y.norm <- (x.sorted - min(x.sorted)) / y.range
+
+    ## Line from (0, y.norm[1]) to (1, y.norm[n])
+    ## Perpendicular distance from point (x.norm[i], y.norm[i]) to this line
+    ## Line equation: a*x + b*y + c = 0, where a = (y_n - y_1), b = -1, c = y_1
+    a <- y.norm[n] - y.norm[1]
+    b <- -1
+    c <- y.norm[1]
+
+    distances <- abs(a * x.norm + b * y.norm + c) / sqrt(a^2 + b^2)
+    elbow.idx <- which.max(distances)
+
+    if (plot) {
+        plot(seq_len(n), x.sorted, type = "l",
+             xlab = "Rank", ylab = "Sorted values",
+             main = "Elbow Detection")
+        points(elbow.idx, x.sorted[elbow.idx], col = "red", pch = 19, cex = 1.5)
+        abline(h = x.sorted[elbow.idx], col = "red", lty = 2)
+    }
+
+    return(x.sorted[elbow.idx])
+}
