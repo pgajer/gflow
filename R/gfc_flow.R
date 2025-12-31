@@ -2392,11 +2392,11 @@ trajectory.distances.to.vertex <- function(trajectories,
 
     for (i in seq_len(n.trajs)) {
         traj <- trajectories[[i]]
-        traj.dists <- all.dists[traj]
+        traj.dists <- all.dists[traj$vertices]
         min.pos <- which.min(traj.dists)
 
         min.distances[i] <- traj.dists[min.pos]
-        nearest.vertices[i] <- traj[min.pos]
+        nearest.vertices[i] <- traj$vertices[min.pos]
         nearest.positions[i] <- min.pos
     }
 
@@ -2405,5 +2405,50 @@ trajectory.distances.to.vertex <- function(trajectories,
         nearest.vertices = nearest.vertices,
         nearest.positions = nearest.positions,
         target.vertex = target.vertex
+    ))
+}
+
+#' Select Best Trajectory by Distance and Length
+#'
+#' Among trajectories closest to a target vertex, selects the one with the
+#' most vertices. This is useful when multiple trajectories are equally close
+#' to a landmark and a tiebreaker is needed.
+#'
+#' @param trajectories A list of integer vectors, each representing a trajectory.
+#' @param traj.dists Output from \code{\link{trajectory.distances.to.vertex}}.
+#' @param distance.tolerance Numeric tolerance for considering distances equal.
+#'   Trajectories within this tolerance of the minimum distance are considered
+#'   tied. Default is 1e-9.
+#'
+#' @return A list with components:
+#'   \describe{
+#'     \item{best.idx}{Index of the selected trajectory in the input list.}
+#'     \item{trajectory}{The selected trajectory (integer vector of vertices).}
+#'     \item{min.distance}{Distance from the selected trajectory to the target.}
+#'     \item{n.vertices}{Number of vertices in the selected trajectory.}
+#'     \item{n.tied}{Number of trajectories tied at the minimum distance.}
+#'     \item{tied.idx}{Indices of all tied trajectories.}
+#'   }
+#'
+#' @export
+select.closest.longest.trajectory <- function(trajectories,
+                                              traj.dists,
+                                              distance.tolerance = 1e-9) {
+
+    min.dist <- min(traj.dists$min.distances)
+    tied.idx <- which(abs(traj.dists$min.distances - min.dist) < distance.tolerance)
+
+    ## Among tied trajectories, find the longest
+    tied.lengths <- sapply(trajectories[tied.idx], length)
+    best.local.idx <- which.max(tied.lengths)
+    best.idx <- tied.idx[best.local.idx]
+
+    return(list(
+        best.idx = best.idx,
+        trajectory = trajectories[[best.idx]],
+        min.distance = traj.dists$min.distances[best.idx],
+        n.vertices = length(trajectories[[best.idx]]),
+        n.tied = length(tied.idx),
+        tied.idx = tied.idx
     ))
 }
