@@ -2186,3 +2186,90 @@ cell.trajectories.monotonicity <- function(adj.list,
         p.mono = p.mono
     )
 }
+
+
+#' Construct a Connected Graph Path Through Waypoint Vertices
+#'
+#' Given a set of waypoint vertices in a specified order, constructs a connected
+#' path in the graph by computing shortest paths between consecutive waypoints
+#' and concatenating the results. This is useful when you have a set of vertices
+#' that should be traversed in a particular order but are not necessarily
+#' adjacent in the graph.
+#'
+#' The function iteratively computes shortest paths between consecutive
+#' waypoints using edge weights if available. The resulting path visits all
+#' waypoints in the specified order, with intermediate vertices inserted as
+#' needed to maintain graph connectivity.
+#'
+#' @param igraph.obj An igraph graph object. Should be connected, at least
+#'   among the waypoint vertices. Edge weights, if present, are used for
+#'   shortest path computation.
+#' @param waypoints Integer vector of vertex indices specifying the waypoints
+#'   to connect, in the desired traversal order. Must contain at least two
+#'   vertices. Vertex indices should be valid for the given graph (1-based).
+#'
+#' @return Integer vector of vertex indices forming a connected path through
+#'   all waypoints. The path starts at \code{waypoints[1]} and ends at
+#'   \code{waypoints[length(waypoints)]}, visiting all intermediate waypoints
+#'   in order. The returned path may contain vertices not in the original
+#'   waypoints if shortest paths require intermediate steps.
+#'
+#' @details
+#' When waypoints are derived from distance-ordering (e.g., sorting vertices
+#' by graph distance from a reference point), consecutive waypoints in the
+#' sorted order are typically close in the graph but not necessarily adjacent.
+#' This function resolves that gap by inserting the shortest path between
+#' each consecutive pair.
+#'
+#' The function assumes the graph is connected between all waypoint pairs.
+#' If any two consecutive waypoints are in disconnected components, the
+#' shortest path computation will fail.
+#'
+#' @seealso \code{\link{compute.harmonic.extension}} which requires a connected
+#'   path as input
+#'
+#' @examples
+#' \dontrun{
+#' ## Suppose we have vertices sorted by distance from a reference point
+#' ## but they don't form a connected path
+#' ordered.vertices <- c(10, 25, 18, 42, 37)
+#'
+#' ## Construct a connected path through these waypoints
+#' connected.path <- construct.path.through.waypoints(gr, ordered.vertices)
+#'
+#' ## Now the path can be used for harmonic extension
+#' hext <- compute.harmonic.extension(
+#'     adj.list = adj.list,
+#'     weight.list = weight.list,
+#'     trajectory = connected.path,
+#'     tube.radius = 1
+#' )
+#' }
+#'
+#' @export
+construct.path.through.waypoints <- function(igraph.obj, waypoints) {
+    ## Start with the first waypoint
+    connected.path <- waypoints[1]
+
+    for (i in seq_len(length(waypoints) - 1)) {
+        from.v <- waypoints[i]
+        to.v <- waypoints[i + 1]
+
+        ## Compute shortest path between consecutive waypoints
+        sp <- igraph::shortest_paths(
+            igraph.obj,
+            from = from.v,
+            to = to.v,
+            weights = igraph::E(igraph.obj)$weight,
+            output = "vpath"
+        )
+
+        ## Extract path vertices (excluding the starting vertex to avoid duplicates)
+        path.vertices <- as.integer(sp$vpath[[1]])
+        if (length(path.vertices) > 1) {
+            connected.path <- c(connected.path, path.vertices[-1])
+        }
+    }
+
+    return(connected.path)
+}
