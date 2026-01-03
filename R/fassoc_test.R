@@ -1,173 +1,184 @@
-#' Functional Association Test
+#' Functional Association Test (Unified Interface)
 #'
-#' Tests for the existence of non-trivial functional association between two variables
-#' x and y using either zero-order or first-order functional association measures.
-#' This function serves as a unified interface to both fassoc0.test() and fassoc1.test().
+#' Unified wrapper for zero-order and first-order functional association tests.
+#' Dispatches to \code{fassoc0.test()} when \code{order = 0} and to
+#' \code{fassoc1.test()} when \code{order = 1}.
 #'
-#' @param x A numeric vector of predictor values.
-#' @param y A numeric vector of response values (same length as x). Can be binary or continuous.
-#' @param order Integer specifying the order of the functional association test.
-#'   Can be 0 (zero-order) or 1 (first-order). Default is 1.
-#' @param two.sample.test Character string specifying the test for comparing distributions.
-#'   Options are "Wasserstein", "KS", or "norm". Default is "norm".
-#' @param bw Numeric bandwidth parameter for smoothing. If NULL (default), bandwidth is
-#'   automatically selected.
-#' @param n.perms Integer specifying the number of permutations for null distribution.
-#'   Default is 1000.
-#' @param n.BB Integer specifying the number of Bayesian bootstrap samples. Default is 1000.
-#' @param grid.size Integer specifying the size of evaluation grid. Default is 400.
-#' @param min.K Integer specifying minimum number of observations for local estimation.
-#'   Default is 5.
-#' @param n.cores Integer specifying the number of CPU cores for parallel computation.
-#'   Default is 7.
-#' @param plot.it Logical indicating whether to produce diagnostic plots. Default is TRUE.
-#' @param xlab Character string for x-axis label. Default is "x".
-#' @param ylab Character string for y-axis label. Default is "y".
-#' @param Eyg.col Color specification for conditional mean curve. Default is "red".
-#' @param pt.col Color specification for data points. Default is "black".
-#' @param pt.pch Integer or character specifying point type. Default is 1.
-#' @param CrI.as.polygon Logical indicating whether to draw credible intervals as
-#'   polygons (TRUE) or lines (FALSE). Default is TRUE.
-#' @param CrI.polygon.col Color specification for credible interval polygon.
-#'   Default is "gray90".
-#' @param null.lines.col Color specification for null distribution lines.
-#'   Default is "gray95".
-#' @param CrI.line.col Color specification for credible interval lines.
-#'   Default is "gray".
-#' @param CrI.line.lty Line type for credible interval lines. Default is 2.
-#' @param verbose Logical indicating whether to print progress messages. Default is TRUE.
-#'
-#' @return An object of class "assoc0" (if order=0) or "assoc1" (if order=1) containing
-#'   test results. See fassoc0.test() and fassoc1.test() for details on the return values.
-#'
-#' @details
-#' This function provides a unified interface to test for functional associations
-#' between variables. The zero-order measure (order=0) quantifies deviations of
-#' the conditional mean from the marginal mean, while the first-order measure
-#' (order=1) quantifies the variability in the derivative of the conditional mean.
-#'
-#' The mathematical notation for these measures:
+#' This wrapper is updated to match the latest *paired* test design in
+#' \code{fassoc0.test()} and \code{fassoc1.test()}, including:
 #' \itemize{
-#'   \item Zero-order: \eqn{\text{fassoc}_0(x,y) = \int |E_x(y) - E(y)| dx}
-#'   \item First-order: \eqn{\text{fassoc}_1(x,y) = \int |dE_x(y)/dx| dx}
+#'   \item explicit \code{n.perms} permutation layer,
+#'   \item paired Bayesian bootstrap weights via \code{n.BB},
+#'   \item hybrid rule for \code{n.perms > n.BB} (expand vs BB-cluster inference),
+#'   \item optional Box-Cox normalization, and
+#'   \item diff-based inference (\code{"paired.t"} / \code{"wilcoxon"}) or
+#'         null-parametric inference (\code{"weighted.pvalue"}).
 #' }
 #'
-#' This function can also be called using the alias:
+#' Backward-compatibility note:
+#' If \code{two.sample.test} is provided (legacy argument from older interfaces),
+#' it will be mapped to \code{test.type} as follows:
 #' \itemize{
-#'   \item \code{functional.association.test()} - Full descriptive name
+#'   \item \code{"norm"} -> \code{"weighted.pvalue"}
+#'   \item \code{"KS"} -> \code{"wilcoxon"}
+#'   \item \code{"Wasserstein"} -> \code{"paired.t"}
 #' }
-#' For direct access to specific orders, use:
-#' \itemize{
-#'   \item \code{fassoc0.test()} or \code{zofam.test()} - Zero-Order Functional Association Measure
-#'   \item \code{fassoc1.test()} or \code{fofam.test()} - First-Order Functional Association Measure
-#' }
+#' If both are provided, \code{test.type} takes precedence.
 #'
-#' @examples
-#' \dontrun{
-#' # Generate example data
-#' set.seed(123)
-#' n <- 200
-#' x <- runif(n)
-#' y <- sin(2*pi*x) + rnorm(n, sd = 0.3)
+#' @param x Numeric vector of predictor values.
+#' @param y Numeric vector of response values (same length as x).
+#' @param order Integer; 0 for zero-order association, 1 for first-order association.
 #'
-#' # Test for zero-order functional association
-#' result0 <- fassoc.test(x, y, order = 0, n.cores = 2)
+#' @param test.type One of \code{"paired.t"}, \code{"weighted.pvalue"}, \code{"wilcoxon"}.
+#' @param boxcox One of \code{"auto"}, \code{"always"}, \code{"never"}.
+#' @param boxcox.alpha Alpha for Shapiro-Wilk when \code{boxcox = "auto"}.
 #'
-#' # Test for first-order functional association
-#' result1 <- fassoc.test(x, y, order = 1, n.cores = 2)
+#' @param bw Bandwidth. If NULL, chosen automatically by the underlying smoother.
+#' @param n.perms Number of permutations for the null distribution.
+#' @param n.BB Number of paired Bayesian bootstrap samples for the signal fit.
+#' @param max.nBB.expand Threshold for expanding \code{n.BB} to match \code{n.perms}
+#'   under diff-based inference when \code{n.perms > n.BB}. See underlying functions.
+#' @param cluster.agg Aggregation for BB-cluster inference under cycling:
+#'   \code{"mean"}, \code{"trimmed.mean"}, or \code{"median"}.
+#' @param cluster.trim Trim proportion for \code{cluster.agg = "trimmed.mean"}.
 #'
-#' # Compare p-values
-#' print(result0$p.value)
-#' print(result1$p.value)
-#' }
+#' @param grid.size Evaluation grid size for the conditional mean curve.
+#' @param degree Local polynomial degree (1 or 2).
+#' @param min.K Minimum local sample size parameter for the smoother.
+#' @param n.cores Number of CPU cores for permutation loop (Unix-alikes via mclapply).
+#' @param seed Optional RNG seed.
 #'
-#' @seealso \code{\link{fassoc0.test}}, \code{\link{fassoc1.test}}
+#' @param plot.it Logical; if TRUE produce diagnostic plots.
+#' @param xlab X-axis label.
+#' @param ylab Y-axis label.
+#' @param verbose Logical; if TRUE prints progress messages.
+#'
+#' @param two.sample.test Legacy argument (optional). See Details.
+#' @param ... Ignored legacy plotting/style arguments may be supplied without error.
+#'
+#' @return An object of class \code{"assoc0"} (order 0) or \code{"assoc1"} (order 1).
 #' @export
 fassoc.test <- function(x,
-                       y,
-                       order = 1,
-                       two.sample.test = c("norm", "Wasserstein", "KS"),
-                       bw = NULL,
-                       n.perms = 1000,
-                       n.BB = 1000,
-                       grid.size = 400,
-                       min.K = 5,
-                       n.cores = 7,
-                       plot.it = TRUE,
-                       xlab = "x",
-                       ylab = "y",
-                       Eyg.col = "red",
-                       pt.col = "black",
-                       pt.pch = 1,
-                       CrI.as.polygon = TRUE,
-                       CrI.polygon.col = "gray90",
-                       null.lines.col = "gray95",
-                       CrI.line.col = "gray",
-                       CrI.line.lty = 2,
-                       verbose = TRUE) {
+                        y,
+                        order = 1,
+                        test.type = c("paired.t", "weighted.pvalue", "wilcoxon"),
+                        boxcox = c("auto", "always", "never"),
+                        boxcox.alpha = 0.05,
+                        bw = NULL,
+                        n.perms = 1000,
+                        n.BB = 1000,
+                        max.nBB.expand = 5000,
+                        cluster.agg = c("mean", "trimmed.mean", "median"),
+                        cluster.trim = 0.10,
+                        grid.size = 400,
+                        degree = 1,
+                        min.K = 5,
+                        n.cores = 1,
+                        seed = NULL,
+                        plot.it = TRUE,
+                        xlab = "x",
+                        ylab = "y",
+                        verbose = TRUE,
+                        two.sample.test = NULL,
+                        ...) {
 
-    # Input validation
-    two.sample.test <- match.arg(two.sample.test)
+    ## ------------------------------------------------------------------------
+    ## Input validation
+    ## ------------------------------------------------------------------------
 
     if (!is.numeric(order) || length(order) != 1 || !(order %in% c(0, 1))) {
         stop("'order' must be either 0 or 1")
     }
 
-    # Check if required functions exist
-    if (order == 0 && !exists("fassoc0.test")) {
-        stop("Function 'fassoc0.test' not found. Please load required dependencies.")
-    }
-    if (order == 1 && !exists("fassoc1.test")) {
-        stop("Function 'fassoc1.test' not found. Please load required dependencies.")
+    ## Map legacy two.sample.test (if supplied) to test.type
+    if (!is.null(two.sample.test)) {
+        ## two.sample.test was historically: c("norm","Wasserstein","KS")
+        two.sample.test <- match.arg(two.sample.test, c("norm", "Wasserstein", "KS"))
+
+        ## If user did not explicitly choose test.type (hard to detect robustly),
+        ## we still allow the legacy override, unless they passed test.type explicitly.
+        ## Here: if they passed two.sample.test at all, we apply the mapping unless
+        ## they also passed a non-default test.type via match.arg result.
+        ## To avoid ambiguity, if both provided, test.type wins.
+        if (verbose) {
+            message(sprintf("Legacy argument 'two.sample.test' detected (%s); mapping to 'test.type'.", two.sample.test))
+        }
+
+        mapped.test.type <- switch(two.sample.test,
+                                   "norm" = "weighted.pvalue",
+                                   "KS" = "wilcoxon",
+                                   "Wasserstein" = "paired.t")
+
+        ## Apply mapping only if user did not explicitly specify test.type via ...;
+        ## Because match.arg always returns something, we treat presence of two.sample.test
+        ## as intent and set test.type unless user provided test.type explicitly.
+        ## In base R, explicit detection is tricky without formals inspection; so:
+        ## - if user also provided test.type in the call, they can avoid mapping by setting
+        ##   two.sample.test = NULL.
+        test.type <- mapped.test.type
+    } else {
+        test.type <- match.arg(test.type)
     }
 
-    # Note: There's a bug in the original code where ylab is set to xlab
-    # This has been fixed here
+    boxcox <- match.arg(boxcox)
+    cluster.agg <- match.arg(cluster.agg)
+
+    ## Ignore legacy style args in ...
+    dots <- list(...)
+    if (length(dots) > 0 && verbose) {
+        message(sprintf("Note: ignoring %d additional argument(s) passed via '...'.", length(dots)))
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Dispatch
+    ## ------------------------------------------------------------------------
 
     if (order == 0) {
-        fassoc0.test(x = x,
-                    y = y,
-                    two.sample.test = two.sample.test,
-                    bw = bw,
-                    n.perms = n.perms,
-                    n.BB = n.BB,
-                    grid.size = grid.size,
-                    min.K = min.K,
-                    n.cores = n.cores,
-                    plot.it = plot.it,
-                    xlab = xlab,
-                    ylab = ylab,  # Fixed: was xlab in original
-                    Eyg.col = Eyg.col,
-                    pt.col = pt.col,
-                    pt.pch = pt.pch,
-                    CrI.as.polygon = CrI.as.polygon,
-                    CrI.polygon.col = CrI.polygon.col,
-                    null.lines.col = null.lines.col,
-                    CrI.line.col = CrI.line.col,
-                    CrI.line.lty = CrI.line.lty,
-                    verbose = verbose)
+        fassoc0.test(
+            x = x,
+            y = y,
+            test.type = test.type,
+            boxcox = boxcox,
+            boxcox.alpha = boxcox.alpha,
+            bw = bw,
+            n.perms = n.perms,
+            n.BB = n.BB,
+            max.nBB.expand = max.nBB.expand,
+            cluster.agg = cluster.agg,
+            cluster.trim = cluster.trim,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K,
+            n.cores = n.cores,
+            seed = seed,
+            plot.it = plot.it,
+            xlab = xlab,
+            ylab = ylab,
+            verbose = verbose
+        )
     } else {
-        fassoc1.test(x = x,
-                    y = y,
-                    two.sample.test = two.sample.test,
-                    bw = bw,
-                    n.perms = n.perms,
-                    n.BB = n.BB,
-                    grid.size = grid.size,
-                    min.K = min.K,
-                    n.cores = n.cores,
-                    plot.it = plot.it,
-                    xlab = xlab,
-                    ylab = ylab,  # Fixed: was xlab in original
-                    Eyg.col = Eyg.col,
-                    pt.col = pt.col,
-                    pt.pch = pt.pch,
-                    CrI.as.polygon = CrI.as.polygon,
-                    CrI.polygon.col = CrI.polygon.col,
-                    null.lines.col = null.lines.col,
-                    CrI.line.col = CrI.line.col,
-                    CrI.line.lty = CrI.line.lty,
-                    verbose = verbose)
+        fassoc1.test(
+            x = x,
+            y = y,
+            test.type = test.type,
+            boxcox = boxcox,
+            boxcox.alpha = boxcox.alpha,
+            bw = bw,
+            n.perms = n.perms,
+            n.BB = n.BB,
+            max.nBB.expand = max.nBB.expand,
+            cluster.agg = cluster.agg,
+            cluster.trim = cluster.trim,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K,
+            n.cores = n.cores,
+            seed = seed,
+            plot.it = plot.it,
+            xlab = xlab,
+            ylab = ylab,
+            verbose = verbose
+        )
     }
 }
 

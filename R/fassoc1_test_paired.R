@@ -15,118 +15,49 @@
 ## @date 2025
 ## ============================================================================
 
-
-#' Tests for First-Order Functional Association Between Two Variables
+#' Tests for First-Order Functional Association Between Two Variables (Paired BB + Permutations; Hybrid Pairing)
 #'
 #' Computes and tests the first-order functional association measure between two
-#' variables x and y. The function estimates the integral of |dE_x(y)/dx|, where
-#' E_x(y) is the conditional mean of y given x. This measure captures the strength
-#' of the derivative relationship between variables.
+#' variables x and y. The statistic is based on the total absolute first difference
+#' of the conditional mean curve E(y|x) over a uniform grid:
+#'   delta1 = sum(|diff(E(y|x))|)
 #'
-#' @param x A numeric vector of predictor values.
-#' @param y A numeric vector of response values (same length as x). Can be binary
-#'   or continuous.
-#' @param test.type Character string specifying the test for inference. Options are:
-#'   \describe{
-#'     \item{"paired.t"}{Paired t-test on differences (signal - null). Most powerful
-#'       when differences are approximately normal.}
-#'     \item{"weighted.pvalue"}{Weighted p-value integrating over signal uncertainty.
-#'       Assumes null distribution is approximately normal after Box-Cox.}
-#'     \item{"wilcoxon"}{Wilcoxon signed-rank test on differences. Distribution-free,
-#'       most robust to non-normality.}
-#'   }
-#'   Default is "paired.t".
-#' @param boxcox Character string controlling Box-Cox transformation:
-#'   \describe{
-#'     \item{"auto"}{Apply Box-Cox if Shapiro-Wilk test rejects normality (default)}
-#'     \item{"always"}{Always apply Box-Cox transformation}
-#'     \item{"never"}{Never apply Box-Cox transformation}
-#'   }
-#' @param boxcox.alpha Significance level for Shapiro-Wilk normality test when
-#'   boxcox = "auto". Default is 0.05.
-#' @param bw Numeric bandwidth parameter for smoothing. If NULL (default), bandwidth
-#'   is automatically selected.
-#' @param n.BB Integer specifying the number of paired Bayesian bootstrap samples.
-#'   Default is 1000. Each BB sample generates one signal and one null value using
-#'   the same weights.
-#' @param grid.size Integer specifying the size of evaluation grid. Default is 400.
-#' @param degree Integer specifying the polynomial degree (1 or 2). Default is 1.
-#' @param min.K Integer specifying minimum number of observations for local
-#'   estimation. Default is 5.
-#' @param n.cores Integer specifying the number of CPU cores for parallel
-#'   computation. Default is 1 (not yet implemented).
-#' @param seed Integer random seed for reproducibility. Default is NULL.
-#' @param plot.it Logical indicating whether to produce diagnostic plots.
-#'   Default is TRUE.
-#' @param xlab Character string for x-axis label. Default is "x".
-#' @param ylab Character string for y-axis label. Default is "y".
-#' @param verbose Logical indicating whether to print progress messages.
-#'   Default is TRUE.
+#' This implementation uses paired Bayesian bootstrap (BB) weights for signal and
+#' null computations, plus an explicit permutation null with n.perms permutations.
 #'
-#' @return An object of class "assoc1" containing:
-#'   \describe{
-#'     \item{Delta1}{The total change in conditional mean (E_y(x_max) - E_y(x_min))}
-#'     \item{delta1}{The first-order functional association measure (point estimate)}
-#'     \item{delta1.z}{Normalized effect size: (delta1 - null.mean) / null.sd}
-#'     \item{delta1.robust.z}{Robust normalized effect size: (delta1 - null.median) / null.mad}
-#'     \item{p.value}{The p-value for the test of association}
-#'     \item{log.p.value}{Natural logarithm of the p-value}
-#'     \item{test.type}{The test type used}
-#'     \item{signal.delta1}{Vector of signal BB samples}
-#'     \item{null.delta1}{Vector of null BB samples (paired with signal)}
-#'     \item{diff.delta1}{Vector of differences (signal - null)}
-#'     \item{null.mean}{Mean of null distribution}
-#'     \item{null.sd}{Standard deviation of null distribution}
-#'     \item{null.median}{Median of null distribution}
-#'     \item{null.mad}{Median absolute deviation of null distribution (scaled)}
-#'     \item{boxcox.applied}{Logical indicating if Box-Cox was applied}
-#'     \item{boxcox.lambda}{Box-Cox lambda parameter (if applied)}
-#'     \item{shapiro.pvalue.raw}{Shapiro-Wilk p-value on raw differences}
-#'     \item{shapiro.pvalue.bc}{Shapiro-Wilk p-value after Box-Cox (if applied)}
-#'     \item{signal.Eyg}{Matrix of signal gpredictions (ng x n.BB)}
-#'     \item{null.Eyg}{Matrix of null gpredictions (ng x n.BB)}
-#'     \item{x}{Input predictor values (sorted)}
-#'     \item{y}{Input response values (sorted by x)}
-#'     \item{xgrid}{Grid points}
-#'     \item{n.BB}{Number of BB samples}
-#'   }
+#' Hybrid pairing rule (requested):
+#'   - If test.type is diff-based (paired.t / wilcoxon) and n.perms <= n.BB:
+#'       use unique BB columns (no cycling).
+#'   - If test.type is diff-based and n.perms > n.BB:
+#'       * if n.perms <= max.nBB.expand: expand n.BB to n.perms (regenerate lambda and recompute signal)
+#'       * else: cycle BB columns and do inference on BB-cluster summaries (valid under cycling-induced dependence)
+#'   - If test.type is weighted.pvalue: cycling is allowed (differences are not the inference target).
 #'
-#' @details
-#' The first-order functional association measure captures the variability in the
-#' derivative of the conditional mean function. Unlike the zero-order measure which
-#' looks at deviations from the mean, this measure is sensitive to the rate of
-#' change in the relationship between x and y.
+#' @param x Numeric vector of predictor values.
+#' @param y Numeric vector of response values (same length as x). Can be binary or continuous.
+#' @param test.type One of "paired.t", "weighted.pvalue", or "wilcoxon".
+#' @param boxcox One of "auto", "always", or "never" controlling Box-Cox normalization.
+#' @param boxcox.alpha Alpha for Shapiro-Wilk in boxcox="auto".
+#' @param bw Bandwidth. If NULL, automatically selected by magelo.
+#' @param n.perms Number of permutations for null distribution. Default 1000.
+#' @param n.BB Number of BB samples for signal. Default 1000.
+#' @param max.nBB.expand Threshold for expanding BB to match permutations in diff-based tests.
+#'   If n.perms > n.BB and n.perms <= max.nBB.expand, n.BB is expanded to n.perms.
+#'   Default 5000.
+#' @param cluster.agg Aggregation for BB-cluster summaries when cycling is used:
+#'   "mean", "trimmed.mean", or "median". Default "mean".
+#' @param cluster.trim Trim proportion (0 to <0.5) for cluster.agg="trimmed.mean". Default 0.10.
+#' @param grid.size Grid size for gpredictions. Default 400.
+#' @param degree Local polynomial degree (1 or 2). Default 1.
+#' @param min.K Minimum neighbors. Default 5.
+#' @param n.cores Cores for permutation loop on Unix-alikes via parallel::mclapply. Default 1.
+#' @param seed Optional RNG seed.
+#' @param plot.it If TRUE, produces diagnostics plots. Default TRUE.
+#' @param xlab X-axis label.
+#' @param ylab Y-axis label.
+#' @param verbose If TRUE, prints progress messages. Default TRUE.
 #'
-#' This implementation uses PAIRED Bayesian bootstrap weights: for each bootstrap
-#' index b, the same weight vector lambda_b is used for both the signal (original y)
-#' and null (permuted y) computations. The only difference between paired samples
-#' is the permutation destroying the x-y association. This pairing reduces variance
-#' and ensures the test is comparing like with like.
-#'
-#' The test statistic is delta1 = sum(|diff(Eyg)|), the sum of absolute differences
-#' in the conditional mean across the grid. Under H0 (no association), permuting y
-#' should not systematically change this measure.
-#'
-#' @examples
-#' \dontrun{
-#' # Generate example data with nonlinear relationship
-#' set.seed(123)
-#' n <- 200
-#' x <- runif(n)
-#' y <- sin(4 * pi * x) + rnorm(n, sd = 0.2)
-#'
-#' # Test for first-order functional association
-#' result <- fassoc1.test(x, y, n.BB = 500, seed = 42)
-#'
-#' # View results
-#' print(result)
-#'
-#' # Plot diagnostics
-#' plot(result, type = "diff")
-#' }
-#'
-#' @importFrom stats shapiro.test t.test wilcox.test pnorm sd quantile
-#' @importFrom graphics plot points lines abline polygon hist par legend
+#' @return An object of class "assoc1" with signal/null summaries and test results.
 #' @export
 fassoc1.test <- function(x,
                          y,
@@ -134,7 +65,11 @@ fassoc1.test <- function(x,
                          boxcox = c("auto", "always", "never"),
                          boxcox.alpha = 0.05,
                          bw = NULL,
+                         n.perms = 1000,
                          n.BB = 1000,
+                         max.nBB.expand = 5000,
+                         cluster.agg = c("mean", "trimmed.mean", "median"),
+                         cluster.trim = 0.10,
                          grid.size = 400,
                          degree = 1,
                          min.K = 5,
@@ -145,111 +80,136 @@ fassoc1.test <- function(x,
                          ylab = "y",
                          verbose = TRUE) {
 
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
     ## Input validation
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
 
     test.type <- match.arg(test.type)
     boxcox <- match.arg(boxcox)
+    cluster.agg <- match.arg(cluster.agg)
 
-    if (!is.numeric(x) || !is.numeric(y)) {
-        stop("Both 'x' and 'y' must be numeric vectors")
+    if (!is.numeric(x) || !is.numeric(y)) stop("Both 'x' and 'y' must be numeric vectors")
+    if (length(x) != length(y)) stop("'x' and 'y' must have the same length")
+
+    if (!is.null(bw) && (!is.numeric(bw) || length(bw) != 1 || bw <= 0)) {
+        stop("'bw' must be NULL or a positive numeric scalar")
     }
 
-    if (length(x) != length(y)) {
-        stop("'x' and 'y' must have the same length")
+    if (!is.numeric(n.perms) || length(n.perms) != 1 || n.perms < 100) stop("'n.perms' must be at least 100")
+    if (!is.numeric(n.BB) || length(n.BB) != 1 || n.BB < 100) stop("'n.BB' must be at least 100")
+
+    if (!is.numeric(max.nBB.expand) || length(max.nBB.expand) != 1 || max.nBB.expand < 100) {
+        stop("'max.nBB.expand' must be at least 100")
     }
 
-    if (!is.null(bw) && (!is.numeric(bw) || bw <= 0)) {
-        stop("'bw' must be NULL or a positive numeric value")
+    if (!is.numeric(cluster.trim) || length(cluster.trim) != 1 || cluster.trim < 0 || cluster.trim >= 0.5) {
+        stop("'cluster.trim' must be in [0, 0.5)")
     }
 
-    if (!is.numeric(n.BB) || n.BB < 100) {
-        stop("'n.BB' must be at least 100")
-    }
+    if (!is.numeric(grid.size) || length(grid.size) != 1 || grid.size < 10) stop("'grid.size' must be at least 10")
+    if (!is.numeric(degree) || length(degree) != 1 || !(degree %in% c(1, 2))) stop("'degree' must be 1 or 2")
+    if (!is.numeric(min.K) || length(min.K) != 1 || min.K < 2) stop("'min.K' must be at least 2")
+    if (!is.numeric(n.cores) || length(n.cores) != 1 || n.cores < 1) stop("'n.cores' must be at least 1")
 
-    if (!is.numeric(grid.size) || grid.size < 10) {
-        stop("'grid.size' must be at least 10")
-    }
-
-    if (!is.numeric(degree) || !(degree %in% c(1, 2))) {
-        stop("'degree' must be 1 or 2")
-    }
-
-    if (!is.numeric(min.K) || min.K < 2) {
-        stop("'min.K' must be at least 2")
-    }
-
-    if (!is.numeric(boxcox.alpha) || boxcox.alpha <= 0 || boxcox.alpha >= 1) {
+    if (!is.numeric(boxcox.alpha) || length(boxcox.alpha) != 1 || boxcox.alpha <= 0 || boxcox.alpha >= 1) {
         stop("'boxcox.alpha' must be between 0 and 1")
     }
 
-    ## Convert to integers
+    n.perms <- as.integer(n.perms)
     n.BB <- as.integer(n.BB)
+    max.nBB.expand <- as.integer(max.nBB.expand)
     grid.size <- as.integer(grid.size)
     degree <- as.integer(degree)
     min.K <- as.integer(min.K)
+    n.cores <- as.integer(n.cores)
 
-    ## Set seed if provided
     if (!is.null(seed)) {
+        if (n.cores > 1) RNGkind("L'Ecuyer-CMRG")
         set.seed(seed)
     }
 
-    if (verbose) {
-        routine.ptm <- proc.time()
-        message("First-Order Functional Association Test (Paired BB)")
-        message(sprintf("  n = %d, n.BB = %d, test.type = %s",
-                        length(x), n.BB, test.type))
-    }
-
-    nx <- length(x)
-
-    ## Check for binary y
-    y.binary <- all(y %in% c(0, 1))
-
-    ## Remove non-finite values
+    ## Remove non-finite
     idx <- is.finite(x) & is.finite(y)
     if (sum(idx) < length(x)) {
         warning(sprintf("Removed %d non-finite values", length(x) - sum(idx)))
         x <- x[idx]
         y <- y[idx]
-        nx <- length(x)
     }
 
-    if (nx <= 2 * min.K) {
-        stop(sprintf("Sample size (%d) must be greater than 2 * min.K (%d)",
-                     nx, 2 * min.K))
-    }
+    nx <- length(x)
+    if (nx <= 2 * min.K) stop(sprintf("Sample size (%d) must be greater than 2 * min.K (%d)", nx, 2 * min.K))
 
-    ## ========================================================================
-    ## Generate shared BB weights
-    ## ========================================================================
+    uses.diffs <- test.type %in% c("paired.t", "wilcoxon")
 
     if (verbose) {
-        message("Generating Dirichlet weights...")
-        ptm <- proc.time()
+        routine.ptm <- proc.time()
+        message("First-Order Functional Association Test (Paired BB + Permutations; Hybrid Pairing)")
+        message(sprintf("  n = %d, n.BB = %d, n.perms = %d, test.type = %s", nx, n.BB, n.perms, test.type))
     }
 
-    ## Generate weights matrix: nx rows, n.BB columns
-    ## Each column is a Dirichlet(1,...,1) sample scaled to sum to nx
-    if (exists("generate.dirichlet.weights")) {
-        lambda <- generate.dirichlet.weights(nx, n.BB)
-    } else {
-        ## Fallback R implementation
-        lambda <- matrix(0, nrow = nx, ncol = n.BB)
-        for (b in seq_len(n.BB)) {
-            e <- rexp(nx, rate = 1)
-            lambda[, b] <- e / sum(e) * nx
+    ## ------------------------------------------------------------------------
+    ## Helper: generate Dirichlet weights
+    ## ------------------------------------------------------------------------
+
+    generate.lambda <- function(nx, n.BB) {
+        if (exists("generate.dirichlet.weights")) {
+            generate.dirichlet.weights(nx, n.BB)
+        } else {
+            ## Fallback: exponential normalization, scaled to sum nx
+            lam <- matrix(0, nrow = nx, ncol = n.BB)
+            for (b in seq_len(n.BB)) {
+                e <- rexp(nx, rate = 1)
+                lam[, b] <- e / sum(e) * nx
+            }
+            lam
         }
     }
 
-    if (verbose) {
-        message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
+    ## ------------------------------------------------------------------------
+    ## Hybrid decision: expand or cluster if needed (diff-based tests only)
+    ## ------------------------------------------------------------------------
+
+    pairing.strategy <- "standard"
+    expanded.nBB <- FALSE
+    cycling.used <- FALSE
+    do.cluster.inference <- FALSE
+
+    if (uses.diffs && n.perms > n.BB) {
+        if (n.perms <= max.nBB.expand) {
+            pairing.strategy <- "expand"
+            expanded.nBB <- TRUE
+            if (verbose) {
+                message(sprintf("  Hybrid rule: expanding n.BB from %d to %d (<= max.nBB.expand = %d).",
+                                n.BB, n.perms, max.nBB.expand))
+            }
+            n.BB <- n.perms
+        } else {
+            pairing.strategy <- "cluster"
+            cycling.used <- TRUE
+            do.cluster.inference <- TRUE
+            if (verbose) {
+                message(sprintf("  Hybrid rule: n.perms (%d) > n.BB (%d) and > max.nBB.expand (%d); using BB-cluster inference (%s).",
+                                n.perms, n.BB, max.nBB.expand, cluster.agg))
+            }
+        }
     }
 
-    ## ========================================================================
-    ## Compute signal BB samples
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Generate paired BB weights (lambda)
+    ## ------------------------------------------------------------------------
+
+    if (verbose) {
+        message("Generating Dirichlet weights (paired BB)...")
+        ptm <- proc.time()
+    }
+
+    lambda <- generate.lambda(nx, n.BB)
+
+    if (verbose) message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
+
+    ## ------------------------------------------------------------------------
+    ## Signal fit (n.BB BB draws)
+    ## ------------------------------------------------------------------------
 
     if (verbose) {
         message("Computing signal BB samples...")
@@ -257,332 +217,337 @@ fassoc1.test <- function(x,
     }
 
     if (exists("magelo.with.external.BB")) {
-        signal.fit <- magelo.with.external.BB(x, y, lambda,
-                                              bw = bw,
-                                              grid.size = grid.size,
-                                              degree = degree,
-                                              min.K = min.K)
+        signal.fit <- magelo.with.external.BB(
+            x = x,
+            y = y,
+            lambda = lambda,
+            bw = bw,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K
+        )
     } else {
-        ## Fallback: use magelo if available, but weights won't be paired
-        warning("magelo.with.external.BB not found. Using unpaired BB weights.")
-
-        if (!exists("magelo")) {
-            stop("Neither magelo.with.external.BB nor magelo found")
-        }
-
-        signal.fit <- magelo(x, y, bw = bw, grid.size = grid.size,
-                             degree = degree, min.K = min.K,
-                             n.BB = n.BB, get.BB.gpredictions = TRUE)
-        signal.fit$BB.gpredictions <- signal.fit$BB.gpredictions
+        if (!exists("magelo")) stop("Neither magelo.with.external.BB nor magelo found")
+        y.binary <- all(y %in% c(0, 1))
+        warning("magelo.with.external.BB not found. Using magelo(); BB pairing is not guaranteed.")
+        signal.fit <- magelo(
+            x = x,
+            y = y,
+            bw = bw,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K,
+            y.binary = y.binary,
+            n.BB = n.BB,
+            get.BB.gpredictions = TRUE,
+            get.gpredictions.CrI = FALSE,
+            get.predictions.CrI = FALSE,
+            get.BB.predictions = FALSE
+        )
     }
 
     xgrid <- signal.fit$xgrid
     signal.Eyg <- signal.fit$BB.gpredictions
     bw.used <- signal.fit$opt.bw
 
-    ## Compute delta1 for each BB sample: sum of absolute derivatives
     signal.delta1 <- apply(signal.Eyg, 2, function(z) sum(abs(diff(z))))
 
-    ## Point estimate
     if (!is.null(signal.fit$gpredictions)) {
         Eyg <- signal.fit$gpredictions
         delta1 <- sum(abs(diff(Eyg)))
         Delta1 <- Eyg[length(Eyg)] - Eyg[1]
     } else {
-        ## Use median of BB samples
-        delta1 <- median(signal.delta1)
-        Delta1 <- NA
+        delta1 <- stats::median(signal.delta1)
+        Delta1 <- NA_real_
     }
 
-    if (verbose) {
-        message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
+    if (verbose) message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
+
+    ## ------------------------------------------------------------------------
+    ## Pairing indices for null permutations
+    ## ------------------------------------------------------------------------
+
+    if (uses.diffs) {
+        if (!do.cluster.inference) {
+            ## No cycling needed: ensure unique BB column for each permutation
+            ## Here, n.BB >= n.perms is guaranteed (either original or expanded)
+            bb.idx <- seq_len(n.perms)
+            cycling.used <- FALSE
+        } else {
+            ## Cycling (n.perms > n.BB): will do BB-cluster inference
+            bb.idx <- ((seq_len(n.perms) - 1L) %% n.BB) + 1L
+        }
+    } else {
+        ## weighted.pvalue does not require independent paired differences
+        if (n.perms <= n.BB) {
+            bb.idx <- sample.int(n.BB, size = n.perms, replace = FALSE)
+        } else {
+            bb.idx <- ((seq_len(n.perms) - 1L) %% n.BB) + 1L
+        }
     }
 
-    ## ========================================================================
-    ## Compute null BB samples (permuted y, SAME weights)
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Compute permutation null
+    ## ------------------------------------------------------------------------
 
     if (verbose) {
-        message("Computing null BB samples with paired weights...")
+        message("Computing permutation null...")
         ptm <- proc.time()
     }
 
-    ## Generate one permutation for all BB samples
-    ## (We could use different permutations for each BB, but using one
-    ## permutation keeps the pairing cleaner)
-    y.perm <- sample(y)
+    perm.worker <- function(i) {
+        b <- bb.idx[i]
+        lambda.i <- lambda[, b, drop = FALSE]
+        y.perm <- sample(y)
 
-    if (exists("magelo.with.external.BB")) {
-        null.fit <- magelo.with.external.BB(x, y.perm, lambda,
-                                            bw = bw.used,  # Use same bw
-                                            grid.size = grid.size,
-                                            degree = degree,
-                                            min.K = min.K)
-    } else {
-        ## Fallback with unpaired weights
-        null.fit <- magelo(x, y.perm, bw = bw.used, grid.size = grid.size,
-                           degree = degree, min.K = min.K,
-                           n.BB = n.BB, get.BB.gpredictions = TRUE)
-    }
-
-    null.Eyg <- null.fit$BB.gpredictions
-    null.delta1 <- apply(null.Eyg, 2, function(z) sum(abs(diff(z))))
-
-    if (verbose) {
-        message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
-    }
-
-    ## ========================================================================
-    ## Compute paired differences
-    ## ========================================================================
-
-    diff.delta1 <- signal.delta1 - null.delta1
-
-    ## ========================================================================
-    ## Normality assessment and Box-Cox transformation
-    ## ========================================================================
-
-    if (verbose) {
-        message("Assessing normality...")
-    }
-
-    ## Test normality of differences
-    shapiro.raw <- tryCatch(
-        shapiro.test(diff.delta1),
-        error = function(e) list(p.value = NA)
-    )
-    shapiro.pvalue.raw <- shapiro.raw$p.value
-
-    ## Decide on Box-Cox
-    boxcox.applied <- FALSE
-    boxcox.lambda <- NA
-    shapiro.pvalue.bc <- NA
-
-    apply.boxcox <- FALSE
-    if (boxcox == "always") {
-        apply.boxcox <- TRUE
-    } else if (boxcox == "auto") {
-        if (!is.na(shapiro.pvalue.raw) && shapiro.pvalue.raw < boxcox.alpha) {
-            apply.boxcox <- TRUE
-        }
-    }
-
-    ## For Box-Cox on differences, handle negative values by shifting
-    diff.for.test <- diff.delta1
-
-    if (apply.boxcox) {
-        diff.for.bc <- diff.delta1
-        shift <- 0
-
-        if (min(diff.for.bc) <= 0) {
-            shift <- abs(min(diff.for.bc)) + 0.01 * sd(diff.for.bc)
-            diff.for.bc <- diff.for.bc + shift
-        }
-
-        ## Find optimal lambda via Box-Cox MLE
-        if (exists("boxcox.mle")) {
-            bc.fit <- tryCatch(
-                boxcox.mle(diff.for.bc ~ 1),
-                error = function(e) NULL
+        if (exists("magelo.with.external.BB")) {
+            null.fit.i <- magelo.with.external.BB(
+                x = x,
+                y = y.perm,
+                lambda = lambda.i,
+                bw = bw.used,
+                grid.size = grid.size,
+                degree = degree,
+                min.K = min.K
             )
-
-            if (!is.null(bc.fit)) {
-                boxcox.lambda <- bc.fit$lambda
-                boxcox.applied <- TRUE
-
-                ## Apply transformation
-                if (abs(boxcox.lambda) > .Machine$double.eps) {
-                    diff.for.test <- (diff.for.bc^boxcox.lambda - 1) / boxcox.lambda
-                } else {
-                    diff.for.test <- log(diff.for.bc)
-                }
-
-                ## Test normality after transformation
-                shapiro.bc <- tryCatch(
-                    shapiro.test(diff.for.test),
-                    error = function(e) list(p.value = NA)
-                )
-                shapiro.pvalue.bc <- shapiro.bc$p.value
-            }
+            eyg.i <- null.fit.i$BB.gpredictions[, 1]
         } else {
-            ## boxcox.mle not available, try log transform
-            if (all(diff.for.bc > 0)) {
-                diff.for.test <- log(diff.for.bc)
-                boxcox.lambda <- 0
-                boxcox.applied <- TRUE
+            ## magelo fallback
+            y.binary <- all(y %in% c(0, 1))
+            null.fit.i <- magelo(
+                x = x,
+                y = y.perm,
+                bw = bw.used,
+                grid.size = grid.size,
+                degree = degree,
+                min.K = min.K,
+                y.binary = y.binary,
+                n.BB = 1L,
+                get.BB.gpredictions = TRUE,
+                get.gpredictions.CrI = FALSE,
+                get.predictions.CrI = FALSE,
+                get.BB.predictions = FALSE
+            )
+            eyg.i <- null.fit.i$BB.gpredictions[, 1]
+        }
 
-                shapiro.bc <- tryCatch(
-                    shapiro.test(diff.for.test),
-                    error = function(e) list(p.value = NA)
-                )
-                shapiro.pvalue.bc <- shapiro.bc$p.value
-            }
+        d1 <- sum(abs(diff(eyg.i)))
+        list(null.delta1 = d1, null.Eyg = eyg.i, bb.col = b)
+    }
+
+    if (n.cores > 1 &&
+        requireNamespace("parallel", quietly = TRUE) &&
+        .Platform$OS.type == "unix") {
+        res.list <- parallel::mclapply(seq_len(n.perms), perm.worker, mc.cores = n.cores)
+    } else {
+        if (n.cores > 1 && verbose) {
+            message("  Note: parallel permutation requires Unix-alike + parallel::mclapply; running sequentially.")
+        }
+        res.list <- lapply(seq_len(n.perms), perm.worker)
+    }
+
+    null.delta1 <- vapply(res.list, function(z) z$null.delta1, numeric(1))
+    null.Eyg <- do.call(cbind, lapply(res.list, function(z) z$null.Eyg))
+    null.bb.col <- vapply(res.list, function(z) z$bb.col, integer(1))
+
+    if (verbose) message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
+
+    ## ------------------------------------------------------------------------
+    ## Paired differences and (optional) BB-cluster summaries
+    ## ------------------------------------------------------------------------
+
+    diff.delta1 <- signal.delta1[null.bb.col] - null.delta1
+
+    inference.vector <- NULL
+    inference.unit <- NULL
+    diff.delta1.cluster.stat <- NULL
+    diff.delta1.cluster.n <- NULL
+
+    if (uses.diffs) {
+        if (!do.cluster.inference) {
+            inference.vector <- diff.delta1
+            inference.unit <- "paired.differences"
+        } else {
+            ## Cluster summaries by BB column
+            agg.fun <- switch(cluster.agg,
+                              "mean" = function(z) mean(z),
+                              "median" = function(z) stats::median(z),
+                              "trimmed.mean" = function(z) mean(z, trim = cluster.trim))
+
+            diff.delta1.cluster.stat <- tapply(diff.delta1, INDEX = null.bb.col, FUN = agg.fun)
+            diff.delta1.cluster.stat <- as.numeric(diff.delta1.cluster.stat)
+
+            diff.delta1.cluster.n <- tapply(diff.delta1, INDEX = null.bb.col, FUN = length)
+            diff.delta1.cluster.n <- as.integer(diff.delta1.cluster.n)
+
+            inference.vector <- diff.delta1.cluster.stat
+            inference.unit <- "bb.cluster.summaries"
         }
     }
 
-    ## ========================================================================
-    ## Perform hypothesis test
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Testing / transformations
+    ## ------------------------------------------------------------------------
 
-    if (verbose) {
-        message(sprintf("Performing %s test...", test.type))
-    }
+    boxcox.applied <- FALSE
+    boxcox.lambda <- NA_real_
+    shapiro.pvalue.raw <- NA_real_
+    shapiro.pvalue.bc <- NA_real_
 
-    if (test.type == "paired.t") {
-        ## Paired t-test on differences
-        ## H0: mean(diff) = 0
-        ## H1: mean(diff) > 0 (signal has larger association than null)
+    p.value <- NA_real_
 
-        t.result <- t.test(diff.for.test, mu = 0, alternative = "greater")
-        p.value <- t.result$p.value
+    if (test.type %in% c("paired.t", "wilcoxon")) {
 
-    } else if (test.type == "weighted.pvalue") {
-        ## Weighted p-value approach
-        ## Fit normal to null distribution, compute weighted p-value over signal
+        sh.raw <- tryCatch(stats::shapiro.test(inference.vector), error = function(e) list(p.value = NA_real_))
+        shapiro.pvalue.raw <- sh.raw$p.value
 
-        ## Transform values if Box-Cox was applied
-        if (boxcox.applied) {
-            null.for.test <- null.delta1
-            shift <- 0
+        apply.boxcox <- FALSE
+        if (boxcox == "always") apply.boxcox <- TRUE
+        if (boxcox == "auto" && !is.na(shapiro.pvalue.raw) && shapiro.pvalue.raw < boxcox.alpha) apply.boxcox <- TRUE
+
+        vec.for.test <- inference.vector
+
+        if (apply.boxcox) {
             if (min(null.for.test) <= 0) {
-                shift <- abs(min(null.for.test)) + 0.01 * sd(null.for.test)
+                s <- stats::sd(null.for.test)
+                eps <- ifelse(is.finite(s) && s > 0, 0.01 * s, 1e-8)
+                shift <- abs(min(null.for.test)) + eps
                 null.for.test <- null.for.test + shift
-            }
-
-            if (abs(boxcox.lambda) > .Machine$double.eps) {
-                null.for.test <- (null.for.test^boxcox.lambda - 1) / boxcox.lambda
-            } else {
-                null.for.test <- log(null.for.test)
-            }
-
-            signal.for.test <- signal.delta1
-            if (min(signal.for.test) <= 0) {
                 signal.for.test <- signal.for.test + shift
             }
-            if (abs(boxcox.lambda) > .Machine$double.eps) {
-                signal.for.test <- (signal.for.test^boxcox.lambda - 1) / boxcox.lambda
+
+            if (exists("boxcox.mle")) {
+                bc.fit <- tryCatch(boxcox.mle(null.for.test ~ 1), error = function(e) NULL)
+                if (!is.null(bc.fit)) {
+                    boxcox.lambda <- bc.fit$lambda
+                    boxcox.applied <- TRUE
+
+                    if (abs(boxcox.lambda) > .Machine$double.eps) {
+                        null.for.test <- (null.for.test^boxcox.lambda - 1) / boxcox.lambda
+                        signal.for.test <- (signal.for.test^boxcox.lambda - 1) / boxcox.lambda
+                    } else {
+                        null.for.test <- log(null.for.test)
+                        signal.for.test <- log(signal.for.test)
+                    }
+
+                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test), error = function(e) list(p.value = NA_real_))
+                    shapiro.pvalue.bc <- sh.bc$p.value
+                }
             } else {
-                signal.for.test <- log(signal.for.test)
+                ## Fallback: log transform if positive
+                if (all(null.for.test > 0)) {
+                    null.for.test <- log(null.for.test)
+                    signal.for.test <- log(signal.for.test)
+                    boxcox.lambda <- 0
+                    boxcox.applied <- TRUE
+
+                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test), error = function(e) list(p.value = NA_real_))
+                    shapiro.pvalue.bc <- sh.bc$p.value
+                }
             }
-        } else {
-            null.for.test <- null.delta1
-            signal.for.test <- signal.delta1
         }
 
         mu <- mean(null.for.test)
-        sigma <- sd(null.for.test)
+        sigma <- stats::sd(null.for.test)
 
         if (exists("weighted.p.value")) {
-            p.value <- weighted.p.value(signal.for.test, mu, sigma,
-                                        alternative = "greater")
+            p.value <- weighted.p.value(signal.for.test, mu, sigma, alternative = "greater")
         } else {
-            ## Fallback: compute average p-value manually
-            p.values <- pnorm(signal.for.test, mean = mu, sd = sigma,
-                              lower.tail = FALSE)
-            p.value <- mean(p.values)
+            ## Fallback: average upper-tail normal p-values across signal BB draws
+            p.value <- mean(stats::pnorm(signal.for.test, mean = mu, sd = sigma, lower.tail = FALSE))
         }
 
-    } else if (test.type == "wilcoxon") {
-        ## Wilcoxon signed-rank test on differences
-        ## H0: median(diff) = 0
-        ## H1: median(diff) > 0
-
-        wilcox.result <- wilcox.test(diff.delta1, mu = 0, alternative = "greater")
-        p.value <- wilcox.result$p.value
+        inference.unit <- "weighted.pvalue"
     }
 
-    log.p.value <- log(max(p.value, .Machine$double.eps))
+    p.value <- max(p.value, .Machine$double.eps)
+    log.p.value <- log(p.value)
 
-    ## ========================================================================
-    ## Compute normalized effect sizes
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Effect sizes (relative to permutation null)
+    ## ------------------------------------------------------------------------
 
-    ## Null distribution statistics
     null.mean <- mean(null.delta1)
-    null.sd <- sd(null.delta1)
-    null.median <- median(null.delta1)
-    null.mad <- mad(null.delta1, constant = 1.4826)  # scaled to be consistent with SD
+    null.sd <- stats::sd(null.delta1)
+    null.median <- stats::median(null.delta1)
+    null.mad <- stats::mad(null.delta1, constant = 1.4826)
 
-    ## Normalized delta1: z-score relative to null
-    ## How many SDs is the point estimate from the null mean?
-    if (null.sd > .Machine$double.eps) {
-        delta1.z <- (delta1 - null.mean) / null.sd
-    } else {
-        delta1.z <- NA
-    }
+    delta1.z <- if (is.finite(null.sd) && null.sd > .Machine$double.eps) (delta1 - null.mean) / null.sd else NA_real_
+    delta1.robust.z <- if (is.finite(null.mad) && null.mad > .Machine$double.eps) (delta1 - null.median) / null.mad else NA_real_
 
-    ## Robust normalized delta1: using median and MAD
-    ## More robust to outliers in null distribution
-    if (null.mad > .Machine$double.eps) {
-        delta1.robust.z <- (delta1 - null.median) / null.mad
-    } else {
-        delta1.robust.z <- NA
-    }
-
-    ## ========================================================================
-    ## Create diagnostic plots
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Diagnostic plots
+    ## ------------------------------------------------------------------------
 
     if (plot.it) {
-        op <- par(mfrow = c(1, 2), mar = c(3.5, 3.5, 2, 0.5),
-                  mgp = c(2, 0.5, 0), tcl = -0.3)
-        on.exit(par(op), add = TRUE)
+        op <- graphics::par(mfrow = c(1, 2), mar = c(3.5, 3.5, 2, 0.5),
+                            mgp = c(2, 0.5, 0), tcl = -0.3)
+        on.exit(graphics::par(op), add = TRUE)
 
-        ## Plot 1: Conditional mean estimates
-        signal.Eyg.mean <- rowMeans(signal.Eyg)
-        signal.Eyg.q <- apply(signal.Eyg, 1, quantile, probs = c(0.025, 0.975))
+        ## Plot 1: Conditional mean estimates (signal BB band vs permutation-null band)
+        signal.mean <- rowMeans(signal.Eyg)
+        signal.q <- apply(signal.Eyg, 1, stats::quantile, probs = c(0.025, 0.975))
 
-        null.Eyg.mean <- rowMeans(null.Eyg)
-        null.Eyg.q <- apply(null.Eyg, 1, quantile, probs = c(0.025, 0.975))
+        null.mean.curve <- rowMeans(null.Eyg)
+        null.q <- apply(null.Eyg, 1, stats::quantile, probs = c(0.025, 0.975))
 
-        ylim <- range(c(y, signal.Eyg.q, null.Eyg.q), na.rm = TRUE)
+        ylim <- range(c(y, signal.q, null.q), na.rm = TRUE)
 
-        plot(x, y, las = 1, ylim = ylim, xlab = xlab, ylab = ylab,
-             main = "Conditional Mean", col = "gray70", pch = 16, cex = 0.5)
+        graphics::plot(x, y, las = 1, ylim = ylim, xlab = xlab, ylab = ylab,
+                       main = "Conditional Mean", col = "gray70", pch = 16, cex = 0.5)
 
-        ## Null band
-        polygon(c(xgrid, rev(xgrid)),
-                c(null.Eyg.q[1, ], rev(null.Eyg.q[2, ])),
-                col = adjustcolor("blue", alpha.f = 0.2), border = NA)
+        graphics::polygon(c(xgrid, rev(xgrid)),
+                          c(null.q[1, ], rev(null.q[2, ])),
+                          col = grDevices::adjustcolor("blue", alpha.f = 0.2), border = NA)
+        graphics::polygon(c(xgrid, rev(xgrid)),
+                          c(signal.q[1, ], rev(signal.q[2, ])),
+                          col = grDevices::adjustcolor("red", alpha.f = 0.2), border = NA)
 
-        ## Signal band
-        polygon(c(xgrid, rev(xgrid)),
-                c(signal.Eyg.q[1, ], rev(signal.Eyg.q[2, ])),
-                col = adjustcolor("red", alpha.f = 0.2), border = NA)
+        graphics::lines(xgrid, signal.mean, col = "red", lwd = 2)
+        graphics::lines(xgrid, null.mean.curve, col = "blue", lwd = 2, lty = 2)
 
-        lines(xgrid, signal.Eyg.mean, col = "red", lwd = 2)
-        lines(xgrid, null.Eyg.mean, col = "blue", lwd = 2, lty = 2)
+        graphics::legend("topright",
+                         legend = c("Signal E(y|x)", "Null E(y|x)"),
+                         col = c("red", "blue"),
+                         lty = c(1, 2), lwd = 2, cex = 0.8, bty = "n")
 
-        legend("topright",
-               legend = c("Signal E(y|x)", "Null E(y|x)"),
-               col = c("red", "blue"),
-               lty = c(1, 2), lwd = 2, cex = 0.8, bty = "n")
+        ## Plot 2: Histogram of inference vector
+        if (uses.diffs) {
+            vec <- inference.vector
+            if (!do.cluster.inference) {
+                main.txt <- "Paired Differences"
+                xlab.txt <- "signal - null"
+            } else {
+                main.txt <- sprintf("BB-Cluster Summaries (%s)", cluster.agg)
+                xlab.txt <- "cluster(summary(signal - null))"
+            }
+        } else {
+            vec <- null.delta1
+            main.txt <- "Permutation Null (delta1)"
+            xlab.txt <- "delta1 (null)"
+        }
 
-        ## Plot 2: Histogram of paired differences
-        hist(diff.delta1, breaks = 30, main = "Paired Differences",
-             xlab = expression(delta[1]^signal - delta[1]^null),
-             col = "lightblue", border = "white", las = 1)
-        abline(v = 0, col = "red", lwd = 2, lty = 2)
-        abline(v = mean(diff.delta1), col = "darkblue", lwd = 2)
+        graphics::hist(vec, breaks = 30, main = main.txt, xlab = xlab.txt,
+                       col = "lightblue", border = "white", las = 1)
+        graphics::abline(v = 0, col = "red", lwd = 2, lty = 2)
+        graphics::abline(v = mean(vec), col = "darkblue", lwd = 2)
 
-        ## Add p-value text
-        text.x <- quantile(diff.delta1, 0.95)
-        text.y <- par("usr")[4] * 0.9
-        text(text.x, text.y, labels = sprintf("p = %.4f", p.value),
-             adj = c(1, 1), cex = 0.9)
+        tx <- stats::quantile(vec, 0.95)
+        ty <- graphics::par("usr")[4] * 0.9
+        graphics::text(tx, ty, labels = sprintf("p = %.4g", p.value),
+                       adj = c(1, 1), cex = 0.9)
     }
 
     if (verbose) {
         message(sprintf("Done. p-value = %.4g", p.value))
-        message(sprintf("Total time: %.2f sec",
-                        (proc.time() - routine.ptm)[3]))
+        message(sprintf("Total time: %.2f sec", (proc.time() - routine.ptm)[3]))
     }
 
-    ## ========================================================================
-    ## Prepare output
-    ## ========================================================================
+    ## ------------------------------------------------------------------------
+    ## Output
+    ## ------------------------------------------------------------------------
 
-    output <- list(
+    out <- list(
         Delta1 = Delta1,
         delta1 = delta1,
         delta1.z = delta1.z,
@@ -590,34 +555,65 @@ fassoc1.test <- function(x,
         p.value = p.value,
         log.p.value = log.p.value,
         test.type = test.type,
+
+        ## Hybrid pairing diagnostics
+        pairing.strategy = pairing.strategy,
+        expanded.nBB = expanded.nBB,
+        cycling.used = cycling.used,
+        do.cluster.inference = do.cluster.inference,
+        cluster.agg = cluster.agg,
+        cluster.trim = cluster.trim,
+
+        ## Signal (BB)
         signal.delta1 = signal.delta1,
+        signal.Eyg = signal.Eyg,
+
+        ## Null (permutations)
         null.delta1 = null.delta1,
+        null.Eyg = null.Eyg,
+        null.bb.col = null.bb.col,
+
+        ## Differences
         diff.delta1 = diff.delta1,
+        diff.delta1.cluster.stat = diff.delta1.cluster.stat,
+        diff.delta1.cluster.n = diff.delta1.cluster.n,
+
+        ## Inference bookkeeping
+        inference.unit = inference.unit,
+        inference.n = if (is.null(inference.vector)) NA_integer_ else length(inference.vector),
+
+        ## Null summary
         null.mean = null.mean,
         null.sd = null.sd,
         null.median = null.median,
         null.mad = null.mad,
+
+        ## Box-Cox diagnostics
         boxcox.applied = boxcox.applied,
         boxcox.lambda = boxcox.lambda,
         shapiro.pvalue.raw = shapiro.pvalue.raw,
         shapiro.pvalue.bc = shapiro.pvalue.bc,
-        signal.Eyg = signal.Eyg,
-        null.Eyg = null.Eyg,
+
+        ## Misc
         x = x,
         y = y,
         xgrid = xgrid,
         opt.bw = bw.used,
         grid.size = grid.size,
         degree = degree,
+        min.K = min.K,
         n.BB = n.BB,
+        n.perms = n.perms,
+        max.nBB.expand = max.nBB.expand,
         lambda = lambda,
         call = match.call()
     )
 
-    class(output) <- "assoc1"
-
-    return(output)
+    class(out) <- "assoc1"
+    out
 }
+
+
 
 
 #' @rdname fassoc1.test
