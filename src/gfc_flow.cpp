@@ -113,6 +113,21 @@ void mark_spurious_by_geometry(
     }
 }
 
+    Eigen::MatrixXd get_overlap_distance_matrix(std::vector<basin_extended_t>& basins) {
+        const size_t n = basins.size();
+
+        // Extract vertex sets from basins
+        std::vector<std::vector<size_t>> basin_vertices(n);
+        for (size_t i = 0; i < n; ++i) {
+            basin_vertices[i] = basins[i].vertices;
+        }
+
+        // Compute overlap distance matrix
+        Eigen::MatrixXd dist_matrix = compute_overlap_distance_matrix(basin_vertices);
+
+        return dist_matrix;
+    }
+
 /**
  * @brief Cluster and merge basins based on overlap, marking merged ones as spurious
  *
@@ -1128,6 +1143,9 @@ gfc_flow_result_t compute_gfc_flow(
         if (verbose) {
             Rprintf("  Maxima: %d -> %d\n", n_max_before, n_max_after);
         }
+    } else {
+
+        result.max_overlap_dist = gfc_flow_internal::get_overlap_distance_matrix(result.max_basins_all);
     }
 
     // 5c: Cluster minima
@@ -1151,6 +1169,9 @@ gfc_flow_result_t compute_gfc_flow(
         if (verbose) {
             Rprintf("  Minima: %d -> %d\n", n_min_before, n_min_after);
         }
+    } else {
+
+        result.min_overlap_dist = gfc_flow_internal::get_overlap_distance_matrix(result.min_basins_all);
     }
 
     // 5d: Geometric filter
