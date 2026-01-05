@@ -802,7 +802,7 @@ gfc_flow_result_t compute_gfc_flow(
     // ========================================================================
 
     if (verbose) {
-        Rprintf("Step 2: Tracing trajectories...\n");
+        Rprintf("Step 2: Tracing lmin trajectories...\n");
     }
 
     // Multi-valued membership tracking during trajectory tracing
