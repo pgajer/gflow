@@ -1167,9 +1167,3 @@ update.mabilog <- function(object, ...) {
     eval(call, parent.frame())
 }
 
-# ============================================================================
-# UTILITY OPERATOR
-# ============================================================================
-
-# Default value operator (internal use)
-`%||%` <- function(a, b) if (is.null(a)) b else a
