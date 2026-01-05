@@ -396,9 +396,11 @@ fassoc1.test <- function(x,
 
     p.value <- NA_real_
 
-    if (test.type %in% c("paired.t", "wilcoxon")) {
+    if (test.type == "paired.t") {
 
-        sh.raw <- tryCatch(stats::shapiro.test(inference.vector), error = function(e) list(p.value = NA_real_))
+        ## Normality check on inference.vector
+        sh.raw <- tryCatch(stats::shapiro.test(inference.vector),
+                           error = function(e) list(p.value = NA_real_))
         shapiro.pvalue.raw <- sh.raw$p.value
 
         apply.boxcox <- FALSE
@@ -406,6 +408,72 @@ fassoc1.test <- function(x,
         if (boxcox == "auto" && !is.na(shapiro.pvalue.raw) && shapiro.pvalue.raw < boxcox.alpha) apply.boxcox <- TRUE
 
         vec.for.test <- inference.vector
+
+        if (apply.boxcox) {
+            ## Box-Cox requires positivity; shift if needed
+            vec.bc <- vec.for.test
+            if (min(vec.bc) <= 0) {
+                s <- stats::sd(vec.bc)
+                eps <- ifelse(is.finite(s) && s > 0, 0.01 * s, 1e-8)
+                vec.bc <- vec.bc + abs(min(vec.bc)) + eps
+            }
+
+            if (exists("boxcox.mle")) {
+                bc.fit <- tryCatch(boxcox.mle(vec.bc ~ 1), error = function(e) NULL)
+                if (!is.null(bc.fit)) {
+                    boxcox.lambda <- bc.fit$lambda
+                    boxcox.applied <- TRUE
+
+                    if (abs(boxcox.lambda) > .Machine$double.eps) {
+                        vec.for.test <- (vec.bc^boxcox.lambda - 1) / boxcox.lambda
+                    } else {
+                        vec.for.test <- log(vec.bc)
+                    }
+
+                    sh.bc <- tryCatch(stats::shapiro.test(vec.for.test),
+                                      error = function(e) list(p.value = NA_real_))
+                    shapiro.pvalue.bc <- sh.bc$p.value
+                }
+            } else {
+                ## Fallback: log transform
+                if (all(vec.bc > 0)) {
+                    vec.for.test <- log(vec.bc)
+                    boxcox.lambda <- 0
+                    boxcox.applied <- TRUE
+
+                    sh.bc <- tryCatch(stats::shapiro.test(vec.for.test),
+                                      error = function(e) list(p.value = NA_real_))
+                    shapiro.pvalue.bc <- sh.bc$p.value
+                }
+            }
+        }
+
+        t.res <- stats::t.test(vec.for.test, mu = 0, alternative = "greater")
+        p.value <- t.res$p.value
+        inference.unit <- if (!do.cluster.inference) "paired.differences" else "bb.cluster.summaries"
+
+    } else if (test.type == "wilcoxon") {
+
+        ## Signed-rank test on inference.vector (diffs or BB-cluster summaries)
+        w.res <- stats::wilcox.test(inference.vector, mu = 0, alternative = "greater")
+        p.value <- w.res$p.value
+        inference.unit <- if (!do.cluster.inference) "paired.differences" else "bb.cluster.summaries"
+
+        ## Box-Cox diagnostics are not meaningful here; leave as NA
+
+    } else if (test.type == "weighted.pvalue") {
+
+        ## Fit (optionally Box-Cox) Normal approximation to the permutation null (null.delta1)
+        sh.raw <- tryCatch(stats::shapiro.test(null.delta1),
+                           error = function(e) list(p.value = NA_real_))
+        shapiro.pvalue.raw <- sh.raw$p.value
+
+        apply.boxcox <- FALSE
+        if (boxcox == "always") apply.boxcox <- TRUE
+        if (boxcox == "auto" && !is.na(shapiro.pvalue.raw) && shapiro.pvalue.raw < boxcox.alpha) apply.boxcox <- TRUE
+
+        null.for.test <- null.delta1
+        signal.for.test <- signal.delta1
 
         if (apply.boxcox) {
             if (min(null.for.test) <= 0) {
@@ -430,18 +498,19 @@ fassoc1.test <- function(x,
                         signal.for.test <- log(signal.for.test)
                     }
 
-                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test), error = function(e) list(p.value = NA_real_))
+                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test),
+                                      error = function(e) list(p.value = NA_real_))
                     shapiro.pvalue.bc <- sh.bc$p.value
                 }
             } else {
-                ## Fallback: log transform if positive
                 if (all(null.for.test > 0)) {
                     null.for.test <- log(null.for.test)
                     signal.for.test <- log(signal.for.test)
                     boxcox.lambda <- 0
                     boxcox.applied <- TRUE
 
-                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test), error = function(e) list(p.value = NA_real_))
+                    sh.bc <- tryCatch(stats::shapiro.test(null.for.test),
+                                      error = function(e) list(p.value = NA_real_))
                     shapiro.pvalue.bc <- sh.bc$p.value
                 }
             }
@@ -453,7 +522,6 @@ fassoc1.test <- function(x,
         if (exists("weighted.p.value")) {
             p.value <- weighted.p.value(signal.for.test, mu, sigma, alternative = "greater")
         } else {
-            ## Fallback: average upper-tail normal p-values across signal BB draws
             p.value <- mean(stats::pnorm(signal.for.test, mean = mu, sd = sigma, lower.tail = FALSE))
         }
 
