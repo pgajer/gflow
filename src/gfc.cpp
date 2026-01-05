@@ -269,366 +269,429 @@ std::vector<int> expand_basins_to_cover(
 
 namespace gfc_internal {
 
-void filter_by_relvalue(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double min_rel_value_max,
-    double max_rel_value_min,
-    bool is_maximum
-) {
-    if (summaries.size() != basins.size()) {
-        return;  // Safety check
-    }
-
-    std::vector<extremum_summary_t> filtered_summaries;
-    std::vector<basin_compact_t> filtered_basins;
-
-    for (size_t i = 0; i < summaries.size(); ++i) {
-        bool keep = false;
-
-        if (is_maximum) {
-            keep = (summaries[i].rel_value >= min_rel_value_max);
-        } else {
-            keep = (summaries[i].rel_value <= max_rel_value_min);
+    /**
+     * @brief Filter extrema by relative value
+     *
+     * Removes maxima with relative value < min_rel_value_max
+     * and minima with relative value > max_rel_value_min.
+     *
+     * @param summaries Vector of extremum summaries (modified in place)
+     * @param basins Vector of basins (modified in place)
+     * @param min_rel_value_max Threshold for maxima
+     * @param max_rel_value_min Threshold for minima
+     * @param is_maximum Whether these are maximum basins
+     */
+    void filter_by_relvalue(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double min_rel_value_max,
+        double max_rel_value_min,
+        bool is_maximum
+        ) {
+        if (summaries.size() != basins.size()) {
+            return;  // Safety check
         }
 
-        if (keep) {
-            filtered_summaries.push_back(std::move(summaries[i]));
-            filtered_basins.push_back(std::move(basins[i]));
-        }
-    }
+        std::vector<extremum_summary_t> filtered_summaries;
+        std::vector<basin_compact_t> filtered_basins;
 
-    summaries = std::move(filtered_summaries);
-    basins = std::move(filtered_basins);
-}
+        for (size_t i = 0; i < summaries.size(); ++i) {
+            bool keep = false;
 
-void cluster_and_merge_basins(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double overlap_threshold,
-    bool is_maximum
-) {
-    const size_t n = basins.size();
-
-    if (n <= 1) {
-        return;  // Nothing to cluster
-    }
-
-    // Extract vertex sets from basins
-    std::vector<std::vector<size_t>> basin_vertices(n);
-    for (size_t i = 0; i < n; ++i) {
-        basin_vertices[i] = basins[i].vertices;
-    }
-
-    // Compute overlap distance matrix
-    Eigen::MatrixXd dist_matrix = compute_overlap_distance_matrix(basin_vertices);
-
-    // Create threshold graph and find connected components
-    std::vector<std::vector<int>> threshold_graph = create_threshold_graph(
-        dist_matrix, overlap_threshold
-    );
-    std::vector<int> cluster_assignment = find_connected_components(threshold_graph);
-
-    // Find number of clusters
-    int n_clusters = 0;
-    for (int c : cluster_assignment) {
-        n_clusters = std::max(n_clusters, c + 1);
-    }
-
-    // Merge basins within each cluster
-    std::vector<extremum_summary_t> merged_summaries;
-    std::vector<basin_compact_t> merged_basins;
-
-    for (int c = 0; c < n_clusters; ++c) {
-        // Find all basins in this cluster
-        std::vector<size_t> cluster_members;
-        for (size_t i = 0; i < n; ++i) {
-            if (cluster_assignment[i] == c) {
-                cluster_members.push_back(i);
-            }
-        }
-
-        if (cluster_members.empty()) {
-            continue;
-        }
-
-        // Find representative (most extreme value)
-        size_t rep_idx = cluster_members[0];
-        for (size_t idx : cluster_members) {
             if (is_maximum) {
-                if (summaries[idx].value > summaries[rep_idx].value) {
-                    rep_idx = idx;
-                }
+                keep = (summaries[i].rel_value >= min_rel_value_max);
             } else {
-                if (summaries[idx].value < summaries[rep_idx].value) {
-                    rep_idx = idx;
-                }
+                keep = (summaries[i].rel_value <= max_rel_value_min);
             }
+
+            if (keep) {
+                filtered_summaries.push_back(std::move(summaries[i]));
+                filtered_basins.push_back(std::move(basins[i]));
+           }
         }
 
-        // Create merged basin
-        basin_compact_t merged_basin = basins[rep_idx];
+        summaries = std::move(filtered_summaries);
+        basins = std::move(filtered_basins);
+    }
 
-        if (cluster_members.size() > 1) {
-            // Union all vertices from cluster members
-            std::unordered_set<size_t> vertex_union;
-            int max_hop = 0;
+    /**
+     * @brief Cluster basins by overlap and merge within clusters
+     *
+     * Performs single-linkage clustering based on overlap distance,
+     * then merges basins within each cluster by taking the union
+     * of vertices and keeping the most extreme representative.
+     *
+     * @param summaries Vector of extremum summaries (modified in place)
+     * @param basins Vector of basins (modified in place)
+     * @param overlap_threshold Distance threshold for clustering
+     * @param is_maximum Whether these are maximum basins
+     */
+    void cluster_and_merge_basins(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double overlap_threshold,
+        bool is_maximum
+        ) {
+        const size_t n = basins.size();
 
-            for (size_t idx : cluster_members) {
-                for (size_t v : basins[idx].vertices) {
-                    vertex_union.insert(v);
-                }
-                max_hop = std::max(max_hop, basins[idx].max_hop_distance);
-            }
+        if (n <= 1) {
+            return;  // Nothing to cluster
+        }
 
-            // Update merged basin vertices
-            merged_basin.vertices.assign(vertex_union.begin(), vertex_union.end());
-            std::sort(merged_basin.vertices.begin(), merged_basin.vertices.end());
+        // Extract vertex sets from basins
+        std::vector<std::vector<size_t>> basin_vertices(n);
+        for (size_t i = 0; i < n; ++i) {
+            basin_vertices[i] = basins[i].vertices;
+        }
 
-            // Recompute hop distances from the new representative
-            merged_basin.hop_distances.resize(merged_basin.vertices.size());
-            std::unordered_set<size_t> original_vertices(
-                basins[rep_idx].vertices.begin(),
-                basins[rep_idx].vertices.end()
+        // Compute overlap distance matrix
+        Eigen::MatrixXd dist_matrix = compute_overlap_distance_matrix(basin_vertices);
+
+        // Create threshold graph and find connected components
+        std::vector<std::vector<int>> threshold_graph = create_threshold_graph(
+            dist_matrix, overlap_threshold
             );
+        std::vector<int> cluster_assignment = find_connected_components(threshold_graph);
 
-            for (size_t i = 0; i < merged_basin.vertices.size(); ++i) {
-                size_t v = merged_basin.vertices[i];
-                auto it = std::find(basins[rep_idx].vertices.begin(),
-                                    basins[rep_idx].vertices.end(), v);
-                if (it != basins[rep_idx].vertices.end()) {
-                    size_t orig_idx = std::distance(basins[rep_idx].vertices.begin(), it);
-                    merged_basin.hop_distances[i] = basins[rep_idx].hop_distances[orig_idx];
+        // Find number of clusters
+        int n_clusters = 0;
+        for (int c : cluster_assignment) {
+            n_clusters = std::max(n_clusters, c + 1);
+        }
+
+        // Merge basins within each cluster
+        std::vector<extremum_summary_t> merged_summaries;
+        std::vector<basin_compact_t> merged_basins;
+
+        for (int c = 0; c < n_clusters; ++c) {
+            // Find all basins in this cluster
+            std::vector<size_t> cluster_members;
+            for (size_t i = 0; i < n; ++i) {
+                if (cluster_assignment[i] == c) {
+                    cluster_members.push_back(i);
+                }
+            }
+
+            if (cluster_members.empty()) {
+                continue;
+            }
+
+            // Find representative (most extreme value)
+            size_t rep_idx = cluster_members[0];
+            for (size_t idx : cluster_members) {
+                if (is_maximum) {
+                    if (summaries[idx].value > summaries[rep_idx].value) {
+                        rep_idx = idx;
+                    }
                 } else {
-                    merged_basin.hop_distances[i] = max_hop + 1;
+                    if (summaries[idx].value < summaries[rep_idx].value) {
+                        rep_idx = idx;
+                    }
                 }
             }
 
-            merged_basin.max_hop_distance = max_hop + 1;
+            // Create merged basin
+            basin_compact_t merged_basin = basins[rep_idx];
+
+            if (cluster_members.size() > 1) {
+                // Union all vertices from cluster members
+                std::unordered_set<size_t> vertex_union;
+                int max_hop = 0;
+
+                for (size_t idx : cluster_members) {
+                    for (size_t v : basins[idx].vertices) {
+                        vertex_union.insert(v);
+                    }
+                    max_hop = std::max(max_hop, basins[idx].max_hop_distance);
+                }
+
+                // Update merged basin vertices
+                merged_basin.vertices.assign(vertex_union.begin(), vertex_union.end());
+                std::sort(merged_basin.vertices.begin(), merged_basin.vertices.end());
+
+                // Recompute hop distances from the new representative
+                merged_basin.hop_distances.resize(merged_basin.vertices.size());
+                std::unordered_set<size_t> original_vertices(
+                    basins[rep_idx].vertices.begin(),
+                    basins[rep_idx].vertices.end()
+                    );
+
+                for (size_t i = 0; i < merged_basin.vertices.size(); ++i) {
+                    size_t v = merged_basin.vertices[i];
+                    auto it = std::find(basins[rep_idx].vertices.begin(),
+                                        basins[rep_idx].vertices.end(), v);
+                    if (it != basins[rep_idx].vertices.end()) {
+                        size_t orig_idx = std::distance(basins[rep_idx].vertices.begin(), it);
+                        merged_basin.hop_distances[i] = basins[rep_idx].hop_distances[orig_idx];
+                    } else {
+                        merged_basin.hop_distances[i] = max_hop + 1;
+                    }
+                }
+
+                merged_basin.max_hop_distance = max_hop + 1;
+            }
+
+            // Update summary for merged basin
+            extremum_summary_t merged_summary = summaries[rep_idx];
+            merged_summary.basin_size = static_cast<int>(merged_basin.vertices.size());
+            merged_summary.hop_index = merged_basin.max_hop_distance;
+
+            merged_summaries.push_back(std::move(merged_summary));
+            merged_basins.push_back(std::move(merged_basin));
         }
 
-        // Update summary for merged basin
-        extremum_summary_t merged_summary = summaries[rep_idx];
-        merged_summary.basin_size = static_cast<int>(merged_basin.vertices.size());
-        merged_summary.hop_index = merged_basin.max_hop_distance;
-
-        merged_summaries.push_back(std::move(merged_summary));
-        merged_basins.push_back(std::move(merged_basin));
+        summaries = std::move(merged_summaries);
+        basins = std::move(merged_basins);
     }
 
-    summaries = std::move(merged_summaries);
-    basins = std::move(merged_basins);
-}
+    /**
+     * @brief Filter basins by geometric characteristics
+     *
+     * Removes basins whose extrema have:
+     * - Mean neighbor distance percentile >= threshold (maxima only)
+     * - Mean hop-k distance percentile >= threshold
+     * - Degree percentile >= threshold
+     * - Basin size < minimum
+     *
+     * @param summaries Vector of extremum summaries (modified in place)
+     * @param basins Vector of basins (modified in place)
+     * @param p_mean_nbrs_dist_threshold Threshold for neighbor distance percentile (maxima only)
+     * @param p_mean_hopk_dist_threshold Threshold for hop-k distance percentile
+     * @param p_deg_threshold Threshold for degree percentile
+     * @param min_basin_size Minimum basin size
+     * @param is_maximum Whether these are maximum basins
+     */
+    void filter_by_geometry(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double p_mean_nbrs_dist_threshold,
+        double p_mean_hopk_dist_threshold,
+        double p_deg_threshold,
+        int min_basin_size
+        ) {
+        if (summaries.size() != basins.size()) {
+            return;
+        }
 
-void filter_by_geometry(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double p_mean_nbrs_dist_threshold,
-    double p_mean_hopk_dist_threshold,
-    double p_deg_threshold,
-    int min_basin_size
-) {
-    if (summaries.size() != basins.size()) {
-        return;
+        std::vector<extremum_summary_t> filtered_summaries;
+        std::vector<basin_compact_t> filtered_basins;
+
+        for (size_t i = 0; i < summaries.size(); ++i) {
+            bool keep = true;
+
+            // Apply all geometric filters symmetrically to both maxima and minima.
+            // All four filters (p_mean_nbrs_dist, p_mean_hopk_dist, p_deg, min_basin_size)
+            // are applied consistently to both types of extrema, matching the R
+            // compute.refined.basins() implementation.
+            if (summaries[i].p_mean_nbrs_dist >= p_mean_nbrs_dist_threshold) {
+                keep = false;
+            }
+            if (summaries[i].p_mean_hopk_dist >= p_mean_hopk_dist_threshold) {
+                keep = false;
+            }
+            if (summaries[i].deg_percentile >= p_deg_threshold) {
+                keep = false;
+            }
+            if (summaries[i].basin_size < min_basin_size) {
+                keep = false;
+            }
+
+            if (keep) {
+                filtered_summaries.push_back(std::move(summaries[i]));
+                filtered_basins.push_back(std::move(basins[i]));
+            }
+        }
+
+        summaries = std::move(filtered_summaries);
+        basins = std::move(filtered_basins);
     }
 
-    std::vector<extremum_summary_t> filtered_summaries;
-    std::vector<basin_compact_t> filtered_basins;
-
-    for (size_t i = 0; i < summaries.size(); ++i) {
-        bool keep = true;
-
-        // Apply all geometric filters symmetrically to both maxima and minima.
-        // All four filters (p_mean_nbrs_dist, p_mean_hopk_dist, p_deg, min_basin_size)
-        // are applied consistently to both types of extrema, matching the R
-        // compute.refined.basins() implementation.
-        if (summaries[i].p_mean_nbrs_dist >= p_mean_nbrs_dist_threshold) {
-            keep = false;
+    /**
+     * @brief Compute mean distance to neighbors for a vertex
+     */
+    double compute_mean_nbrs_dist(
+        const set_wgraph_t& graph,
+        size_t vertex
+        ) {
+        double sum_dist = 0.0;
+        int n_nbrs = 0;
+    
+        for (const auto& edge : graph.adjacency_list[vertex]) {
+            sum_dist += edge.weight;
+            ++n_nbrs;
         }
-        if (summaries[i].p_mean_hopk_dist >= p_mean_hopk_dist_threshold) {
-            keep = false;
-        }
-        if (summaries[i].deg_percentile >= p_deg_threshold) {
-            keep = false;
-        }
-        if (summaries[i].basin_size < min_basin_size) {
-            keep = false;
-        }
-
-        if (keep) {
-            filtered_summaries.push_back(std::move(summaries[i]));
-            filtered_basins.push_back(std::move(basins[i]));
-        }
+    
+        return (n_nbrs > 0) ? sum_dist / n_nbrs : 0.0;
     }
 
-    summaries = std::move(filtered_summaries);
-    basins = std::move(filtered_basins);
-}
-
-/**
- * @brief Compute mean distance to neighbors for a vertex
- */
-double compute_mean_nbrs_dist(
-    const set_wgraph_t& graph,
-    size_t vertex
-) {
-    double sum_dist = 0.0;
-    int n_nbrs = 0;
+    /**
+     * @brief Compute mean hop-k distance for a vertex
+     *
+     * Computes the mean weighted distance to all vertices within k hops.
+     */
+    double compute_mean_hopk_dist(
+        const set_wgraph_t& graph,
+        size_t vertex,
+        int hop_k
+        ) {
+        if (hop_k <= 0) {
+            return 0.0;
+        }
     
-    for (const auto& edge : graph.adjacency_list[vertex]) {
-        sum_dist += edge.weight;
-        ++n_nbrs;
-    }
+        // BFS to find vertices within hop_k hops
+        std::vector<bool> visited(graph.num_vertices(), false);
+        std::vector<double> distances(graph.num_vertices(), 0.0);
+        std::queue<std::pair<size_t, int>> q;
     
-    return (n_nbrs > 0) ? sum_dist / n_nbrs : 0.0;
-}
-
-/**
- * @brief Compute mean hop-k distance for a vertex
- * 
- * Computes the mean weighted distance to all vertices within k hops.
- */
-double compute_mean_hopk_dist(
-    const set_wgraph_t& graph,
-    size_t vertex,
-    int hop_k
-) {
-    if (hop_k <= 0) {
-        return 0.0;
-    }
+        visited[vertex] = true;
+        distances[vertex] = 0.0;
+        q.push({vertex, 0});
     
-    // BFS to find vertices within hop_k hops
-    std::vector<bool> visited(graph.num_vertices(), false);
-    std::vector<double> distances(graph.num_vertices(), 0.0);
-    std::queue<std::pair<size_t, int>> q;
+        double sum_dist = 0.0;
+        int count = 0;
     
-    visited[vertex] = true;
-    distances[vertex] = 0.0;
-    q.push({vertex, 0});
-    
-    double sum_dist = 0.0;
-    int count = 0;
-    
-    while (!q.empty()) {
-        auto [v, hop] = q.front();
-        q.pop();
+        while (!q.empty()) {
+            auto [v, hop] = q.front();
+            q.pop();
         
-        if (hop < hop_k) {
-            for (const auto& edge : graph.adjacency_list[v]) {
-                size_t u = edge.vertex;
-                if (!visited[u]) {
-                    visited[u] = true;
-                    distances[u] = distances[v] + edge.weight;
-                    sum_dist += distances[u];
-                    ++count;
-                    q.push({u, hop + 1});
+            if (hop < hop_k) {
+                for (const auto& edge : graph.adjacency_list[v]) {
+                    size_t u = edge.vertex;
+                    if (!visited[u]) {
+                        visited[u] = true;
+                        distances[u] = distances[v] + edge.weight;
+                        sum_dist += distances[u];
+                        ++count;
+                        q.push({u, hop + 1});
+                    }
                 }
             }
         }
-    }
     
-    return (count > 0) ? sum_dist / count : 0.0;
-}
-
-std::vector<extremum_summary_t> compute_basin_summaries(
-    const set_wgraph_t& graph,
-    const std::vector<basin_compact_t>& basins,
-    const std::vector<double>& y,
-    double y_median,
-    int hop_k
-) {
-    const size_t n_basins = basins.size();
-    const size_t n_vertices = graph.num_vertices();
-
-    std::vector<extremum_summary_t> summaries(n_basins);
-
-    // Compute vertex degrees for percentile calculation
-    std::vector<int> degrees(n_vertices);
-    for (size_t v = 0; v < n_vertices; ++v) {
-        degrees[v] = static_cast<int>(graph.adjacency_list[v].size());
+        return (count > 0) ? sum_dist / count : 0.0;
     }
 
-    // Compute mean neighbor distances for all vertices
-    std::vector<double> mean_nbrs_dists(n_vertices);
-    for (size_t v = 0; v < n_vertices; ++v) {
-        mean_nbrs_dists[v] = compute_mean_nbrs_dist(graph, v);
+    /**
+     * @brief Compute summary statistics for basins
+     *
+     * Computes relative values, hop distances, and geometric measures
+     * for each basin.
+     *
+     * @param graph The weighted graph
+     * @param basins Vector of basins
+     * @param y Function values
+     * @param y_median Median of y values
+     * @param hop_k Hop distance for statistics
+     * @return Vector of summary statistics
+     */
+    std::vector<extremum_summary_t> compute_basin_summaries(
+        const set_wgraph_t& graph,
+        const std::vector<basin_compact_t>& basins,
+        const std::vector<double>& y,
+        double y_median,
+        int hop_k
+        ) {
+        const size_t n_basins = basins.size();
+        const size_t n_vertices = graph.num_vertices();
+
+        std::vector<extremum_summary_t> summaries(n_basins);
+
+        // Compute vertex degrees for percentile calculation
+        std::vector<int> degrees(n_vertices);
+        for (size_t v = 0; v < n_vertices; ++v) {
+            degrees[v] = static_cast<int>(graph.adjacency_list[v].size());
+        }
+
+        // Compute mean neighbor distances for all vertices
+        std::vector<double> mean_nbrs_dists(n_vertices);
+        for (size_t v = 0; v < n_vertices; ++v) {
+            mean_nbrs_dists[v] = compute_mean_nbrs_dist(graph, v);
+        }
+
+        // Compute mean hop-k distances for all vertices
+        std::vector<double> mean_hopk_dists(n_vertices);
+        for (size_t v = 0; v < n_vertices; ++v) {
+            mean_hopk_dists[v] = compute_mean_hopk_dist(graph, v, hop_k);
+        }
+
+        // Sort for percentile computation
+        std::vector<int> sorted_degrees = degrees;
+        std::sort(sorted_degrees.begin(), sorted_degrees.end());
+
+        std::vector<double> sorted_nbrs_dists = mean_nbrs_dists;
+        std::sort(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end());
+
+        std::vector<double> sorted_hopk_dists = mean_hopk_dists;
+        std::sort(sorted_hopk_dists.begin(), sorted_hopk_dists.end());
+
+        for (size_t b = 0; b < n_basins; ++b) {
+            const auto& basin = basins[b];
+            extremum_summary_t& summary = summaries[b];
+
+            summary.vertex = basin.extremum_vertex;
+            summary.value = basin.extremum_value;
+            summary.is_maximum = basin.is_maximum;
+            summary.basin_size = static_cast<int>(basin.vertices.size());
+            summary.hop_index = basin.max_hop_distance;
+
+            // Relative value
+            summary.rel_value = (std::abs(y_median) > 1e-10)
+                ? basin.extremum_value / y_median
+                : 1.0;
+
+            // Degree and degree percentile
+            summary.degree = degrees[basin.extremum_vertex];
+            auto deg_it = std::lower_bound(sorted_degrees.begin(), sorted_degrees.end(),
+                                           summary.degree);
+            summary.deg_percentile = static_cast<double>(
+                std::distance(sorted_degrees.begin(), deg_it)
+                ) / static_cast<double>(n_vertices);
+
+            // Mean neighbor distance percentile
+            double nbrs_dist = mean_nbrs_dists[basin.extremum_vertex];
+            auto nbrs_it = std::lower_bound(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end(),
+                                            nbrs_dist);
+            summary.p_mean_nbrs_dist = static_cast<double>(
+                std::distance(sorted_nbrs_dists.begin(), nbrs_it)
+                ) / static_cast<double>(n_vertices);
+
+            // Mean hop-k distance percentile
+            double hopk_dist = mean_hopk_dists[basin.extremum_vertex];
+            auto hopk_it = std::lower_bound(sorted_hopk_dists.begin(), sorted_hopk_dists.end(),
+                                            hopk_dist);
+            summary.p_mean_hopk_dist = static_cast<double>(
+                std::distance(sorted_hopk_dists.begin(), hopk_it)
+                ) / static_cast<double>(n_vertices);
+        }
+
+        return summaries;
     }
 
-    // Compute mean hop-k distances for all vertices
-    std::vector<double> mean_hopk_dists(n_vertices);
-    for (size_t v = 0; v < n_vertices; ++v) {
-        mean_hopk_dists[v] = compute_mean_hopk_dist(graph, v, hop_k);
-    }
+    /**
+     * @brief Build membership vectors from basins
+     *
+     * For each vertex, determines which basins contain it.
+     *
+     * @param basins Vector of basins
+     * @param n_vertices Total number of vertices
+     * @return membership[v] = vector of basin indices containing v
+     */
+    std::vector<std::vector<int>> build_membership_vectors(
+        const std::vector<basin_compact_t>& basins,
+        size_t n_vertices
+        ) {
+        std::vector<std::vector<int>> membership(n_vertices);
 
-    // Sort for percentile computation
-    std::vector<int> sorted_degrees = degrees;
-    std::sort(sorted_degrees.begin(), sorted_degrees.end());
-
-    std::vector<double> sorted_nbrs_dists = mean_nbrs_dists;
-    std::sort(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end());
-
-    std::vector<double> sorted_hopk_dists = mean_hopk_dists;
-    std::sort(sorted_hopk_dists.begin(), sorted_hopk_dists.end());
-
-    for (size_t b = 0; b < n_basins; ++b) {
-        const auto& basin = basins[b];
-        extremum_summary_t& summary = summaries[b];
-
-        summary.vertex = basin.extremum_vertex;
-        summary.value = basin.extremum_value;
-        summary.is_maximum = basin.is_maximum;
-        summary.basin_size = static_cast<int>(basin.vertices.size());
-        summary.hop_index = basin.max_hop_distance;
-
-        // Relative value
-        summary.rel_value = (std::abs(y_median) > 1e-10)
-            ? basin.extremum_value / y_median
-            : 1.0;
-
-        // Degree and degree percentile
-        summary.degree = degrees[basin.extremum_vertex];
-        auto deg_it = std::lower_bound(sorted_degrees.begin(), sorted_degrees.end(),
-                                       summary.degree);
-        summary.deg_percentile = static_cast<double>(
-            std::distance(sorted_degrees.begin(), deg_it)
-        ) / static_cast<double>(n_vertices);
-
-        // Mean neighbor distance percentile
-        double nbrs_dist = mean_nbrs_dists[basin.extremum_vertex];
-        auto nbrs_it = std::lower_bound(sorted_nbrs_dists.begin(), sorted_nbrs_dists.end(),
-                                        nbrs_dist);
-        summary.p_mean_nbrs_dist = static_cast<double>(
-            std::distance(sorted_nbrs_dists.begin(), nbrs_it)
-        ) / static_cast<double>(n_vertices);
-
-        // Mean hop-k distance percentile
-        double hopk_dist = mean_hopk_dists[basin.extremum_vertex];
-        auto hopk_it = std::lower_bound(sorted_hopk_dists.begin(), sorted_hopk_dists.end(),
-                                        hopk_dist);
-        summary.p_mean_hopk_dist = static_cast<double>(
-            std::distance(sorted_hopk_dists.begin(), hopk_it)
-        ) / static_cast<double>(n_vertices);
-    }
-
-    return summaries;
-}
-
-std::vector<std::vector<int>> build_membership_vectors(
-    const std::vector<basin_compact_t>& basins,
-    size_t n_vertices
-) {
-    std::vector<std::vector<int>> membership(n_vertices);
-
-    for (int b = 0; b < static_cast<int>(basins.size()); ++b) {
-        for (size_t v : basins[b].vertices) {
-            if (v < n_vertices) {
-                membership[v].push_back(b);
+        for (int b = 0; b < static_cast<int>(basins.size()); ++b) {
+            for (size_t v : basins[b].vertices) {
+                if (v < n_vertices) {
+                    membership[v].push_back(b);
+                }
             }
         }
-    }
 
-    return membership;
-}
+        return membership;
+    }
 
 } // namespace gfc_internal
 
@@ -641,7 +704,7 @@ gfc_result_t compute_gfc(
     const std::vector<double>& y,
     const gfc_params_t& params,
     bool verbose
-) {
+    ) {
     gfc_result_t result;
     result.n_vertices = graph.num_vertices();
     result.params = params;
@@ -793,10 +856,10 @@ gfc_result_t compute_gfc(
     // Compute initial summaries
     auto max_summaries = gfc_internal::compute_basin_summaries(
         graph, max_basins, y, result.y_median, params.hop_k
-    );
+        );
     auto min_summaries = gfc_internal::compute_basin_summaries(
         graph, min_basins, y, result.y_median, params.hop_k
-    );
+        );
 
     // Record initial counts
     result.stage_history.emplace_back(
@@ -805,7 +868,7 @@ gfc_result_t compute_gfc(
         static_cast<int>(max_basins.size()),
         static_cast<int>(min_basins.size()),
         static_cast<int>(min_basins.size())
-    );
+        );
 
     if (verbose) {
         Rprintf("  Found %zu maxima and %zu minima\n",
@@ -828,17 +891,17 @@ gfc_result_t compute_gfc(
         gfc_internal::filter_by_relvalue(
             max_summaries, max_basins,
             params.min_rel_value_max, params.max_rel_value_min, true
-        );
+            );
         gfc_internal::filter_by_relvalue(
             min_summaries, min_basins,
             params.min_rel_value_max, params.max_rel_value_min, false
-        );
+            );
 
         result.stage_history.emplace_back(
             "relvalue",
             n_max_before, static_cast<int>(max_basins.size()),
             n_min_before, static_cast<int>(min_basins.size())
-        );
+            );
 
         if (verbose) {
             Rprintf("  Retained %zu maxima and %zu minima\n",
@@ -862,13 +925,13 @@ gfc_result_t compute_gfc(
         gfc_internal::cluster_and_merge_basins(
             max_summaries, max_basins,
             params.max_overlap_threshold, true
-        );
+            );
 
         result.stage_history.emplace_back(
             "merge.max",
             n_max_before, static_cast<int>(max_basins.size()),
             n_min_before, static_cast<int>(min_basins.size())
-        );
+            );
 
         if (verbose) {
             Rprintf("  Result: %zu maxima after merging\n", max_basins.size());
@@ -891,13 +954,13 @@ gfc_result_t compute_gfc(
         gfc_internal::cluster_and_merge_basins(
             min_summaries, min_basins,
             params.min_overlap_threshold, false
-        );
+            );
 
         result.stage_history.emplace_back(
             "merge.min",
             n_max_before, static_cast<int>(max_basins.size()),
             n_min_before, static_cast<int>(min_basins.size())
-        );
+            );
 
         if (verbose) {
             Rprintf("  Result: %zu minima after merging\n", min_basins.size());
@@ -923,10 +986,10 @@ gfc_result_t compute_gfc(
         // Recompute summaries after merging for accurate percentiles
         max_summaries = gfc_internal::compute_basin_summaries(
             graph, max_basins, y, result.y_median, params.hop_k
-        );
+            );
         min_summaries = gfc_internal::compute_basin_summaries(
             graph, min_basins, y, result.y_median, params.hop_k
-        );
+            );
 
         // Filter maxima
         gfc_internal::filter_by_geometry(
@@ -935,7 +998,7 @@ gfc_result_t compute_gfc(
             params.p_mean_hopk_dist_threshold,
             params.p_deg_threshold,
             params.min_basin_size
-        );
+            );
 
         // Filter minima
         gfc_internal::filter_by_geometry(
@@ -944,13 +1007,13 @@ gfc_result_t compute_gfc(
             params.p_mean_hopk_dist_threshold,
             params.p_deg_threshold,
             params.min_basin_size
-        );
+            );
 
         result.stage_history.emplace_back(
             "geometric",
             n_max_before, static_cast<int>(max_basins.size()),
             n_min_before, static_cast<int>(min_basins.size())
-        );
+            );
 
         if (verbose) {
             Rprintf("  Retained %zu maxima and %zu minima\n",
@@ -1031,10 +1094,10 @@ gfc_result_t compute_gfc(
 
         result.expanded_max_assignment = expand_basins_to_cover(
             graph, max_vertex_sets, n
-        );
+            );
         result.expanded_min_assignment = expand_basins_to_cover(
             graph, min_vertex_sets, n
-        );
+            );
 
         int n_covered_max = 0, n_covered_min = 0;
         for (size_t v = 0; v < n; ++v) {
@@ -1046,7 +1109,7 @@ gfc_result_t compute_gfc(
             "expand",
             static_cast<int>(max_basins.size()), n_covered_max,
             static_cast<int>(min_basins.size()), n_covered_min
-        );
+            );
 
         if (verbose) {
             Rprintf("  Max coverage: %d/%zu, Min coverage: %d/%zu\n",
@@ -1077,7 +1140,7 @@ std::vector<gfc_result_t> compute_gfc_matrix(
     const gfc_params_t& params,
     int n_cores,
     bool verbose
-) {
+    ) {
     const int n = static_cast<int>(Y.rows());
     const int p = static_cast<int>(Y.cols());
 
@@ -1098,7 +1161,7 @@ std::vector<gfc_result_t> compute_gfc_matrix(
 
     int progress_interval = std::max(1, p / 20);
 
-    #pragma omp parallel for schedule(dynamic) if(n_cores > 1)
+#pragma omp parallel for schedule(dynamic) if(n_cores > 1)
     for (int j = 0; j < p; ++j) {
         std::vector<double> y_j(n);
         for (int i = 0; i < n; ++i) {
@@ -1107,7 +1170,7 @@ std::vector<gfc_result_t> compute_gfc_matrix(
 
         results[j] = compute_gfc(graph, y_j, params, false);
 
-        #pragma omp critical
+#pragma omp critical
         {
             if (verbose && n_cores == 1 && (j + 1) % progress_interval == 0) {
                 Rprintf("  Processed %d/%d functions (%.0f%%)\n",
