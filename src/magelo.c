@@ -753,10 +753,21 @@ void C_loo_llm_1D(const double *x,
       for ( int j = 0; j < nrTnn; j++ )
       {
         ix = Tnn_i[j + iK]; // index of x in the i-th column and j-th row of Tnn_i = the j-th NN of the i-th xg
+
+        if (ix < 0 || ix >= nx) {
+          Rf_error("Tnn_i out of bounds: ix=%d nx=%d (ig=%d j=%d nrTnn=%d ncTnn=%d)",
+                   ix, nx, ig, j, nrTnn, ncTnn);
+        }
+
         Tnn_ix[ ig + ix*ncTnn ] = j;
 
-        if ( Tnn_w[j + iK] > 0 )
-        {
+        if ( Tnn_w[j + iK] > 0 ) {
+
+          if (nx_lm[ix] >= max_n_models) {
+            Rf_error("max_n_models too small for ix=%d: max_n_models=%d need>=%d (ig=%d j=%d)",
+                     ix, max_n_models, nx_lm[ix] + 1, ig, j);
+          }
+
           x_lm[ nx_lm[ix] + ix*max_n_models] = ig;
           nx_lm[ix]++;
         }
@@ -797,6 +808,11 @@ void C_loo_llm_1D(const double *x,
     {
       for ( int i = 0; i < nx; i++ )
       {
+        if (nx_lm[i] > max_n_models) {
+          Rf_error("nx_lm[%d]=%d exceeds max_n_models=%d (heap corruption likely earlier)",
+                   i, nx_lm[i], max_n_models);
+        }
+
         for ( int j = 0; j < nx_lm[i]; j++ )
         {
           ixg = x_lm[j + i*max_n_models];
