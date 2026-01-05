@@ -477,105 +477,42 @@ std::vector<joined_trajectory_t> compute_joined_trajectories(
 
 namespace gfc_internal {
 
-/**
- * @brief Filter extrema by relative value
- *
- * Removes maxima with relative value < min_rel_value_max
- * and minima with relative value > max_rel_value_min.
- *
- * @param summaries Vector of extremum summaries (modified in place)
- * @param basins Vector of basins (modified in place)
- * @param min_rel_value_max Threshold for maxima
- * @param max_rel_value_min Threshold for minima
- * @param is_maximum Whether these are maximum basins
- */
-void filter_by_relvalue(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double min_rel_value_max,
-    double max_rel_value_min,
-    bool is_maximum
-);
+    void filter_by_relvalue(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double min_rel_value_max,
+        double max_rel_value_min,
+        bool is_maximum
+        );
 
-/**
- * @brief Cluster basins by overlap and merge within clusters
- *
- * Performs single-linkage clustering based on overlap distance,
- * then merges basins within each cluster by taking the union
- * of vertices and keeping the most extreme representative.
- *
- * @param summaries Vector of extremum summaries (modified in place)
- * @param basins Vector of basins (modified in place)
- * @param overlap_threshold Distance threshold for clustering
- * @param is_maximum Whether these are maximum basins
- */
-void cluster_and_merge_basins(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double overlap_threshold,
-    bool is_maximum
-);
+    void cluster_and_merge_basins(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double overlap_threshold,
+        bool is_maximum
+        );
 
-/**
- * @brief Filter basins by geometric characteristics
- *
- * Removes basins whose extrema have:
- * - Mean neighbor distance percentile >= threshold (maxima only)
- * - Mean hop-k distance percentile >= threshold
- * - Degree percentile >= threshold
- * - Basin size < minimum
- *
- * @param summaries Vector of extremum summaries (modified in place)
- * @param basins Vector of basins (modified in place)
- * @param p_mean_nbrs_dist_threshold Threshold for neighbor distance percentile (maxima only)
- * @param p_mean_hopk_dist_threshold Threshold for hop-k distance percentile
- * @param p_deg_threshold Threshold for degree percentile
- * @param min_basin_size Minimum basin size
- * @param is_maximum Whether these are maximum basins
- */
-void filter_by_geometry(
-    std::vector<extremum_summary_t>& summaries,
-    std::vector<basin_compact_t>& basins,
-    double p_mean_nbrs_dist_threshold,
-    double p_mean_hopk_dist_threshold,
-    double p_deg_threshold,
-    int min_basin_size
-);
+    void filter_by_geometry(
+        std::vector<extremum_summary_t>& summaries,
+        std::vector<basin_compact_t>& basins,
+        double p_mean_nbrs_dist_threshold,
+        double p_mean_hopk_dist_threshold,
+        double p_deg_threshold,
+        int min_basin_size
+        );
 
-/**
- * @brief Compute summary statistics for basins
- *
- * Computes relative values, hop distances, and geometric measures
- * for each basin.
- *
- * @param graph The weighted graph
- * @param basins Vector of basins
- * @param y Function values
- * @param y_median Median of y values
- * @param hop_k Hop distance for statistics
- * @return Vector of summary statistics
- */
-std::vector<extremum_summary_t> compute_basin_summaries(
-    const set_wgraph_t& graph,
-    const std::vector<basin_compact_t>& basins,
-    const std::vector<double>& y,
-    double y_median,
-    int hop_k
-);
+    std::vector<extremum_summary_t> compute_basin_summaries(
+        const set_wgraph_t& graph,
+        const std::vector<basin_compact_t>& basins,
+        const std::vector<double>& y,
+        double y_median,
+        int hop_k
+        );
 
-/**
- * @brief Build membership vectors from basins
- *
- * For each vertex, determines which basins contain it.
- *
- * @param basins Vector of basins
- * @param n_vertices Total number of vertices
- * @return membership[v] = vector of basin indices containing v
- */
-std::vector<std::vector<int>> build_membership_vectors(
-    const std::vector<basin_compact_t>& basins,
-    size_t n_vertices
-);
+    std::vector<std::vector<int>> build_membership_vectors(
+        const std::vector<basin_compact_t>& basins,
+        size_t n_vertices
+        );
 
 } // namespace gfc_internal
 
