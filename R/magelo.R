@@ -321,7 +321,7 @@ magelo <- function(x,
             opt.bw.fn.loocv <- function(logbw)
             {
                 bw <- exp(logbw)
-                max.models <- 10*ceiling( 2*bw / x.widthg )
+                max.models <- ng ## 10*ceiling( 2*bw / x.widthg )
                 nn.r <- get.bws(nn.d, min.K, bw)
                 rw <- row.weighting(nn.d, nn.r, nn.kernel)
                 nn.w <- rw$nn.w
@@ -406,7 +406,7 @@ magelo <- function(x,
 
                 bw <- exp(logbw)
 
-                max.models <- 10*ceiling( 2*bw / x.widthg )
+                max.models <- ng # 10*ceiling( 2*bw / x.widthg )
                 nn.r <- get.bws(nn.d, min.K, bw)
                 rw <- row.weighting(nn.d, nn.r, nn.kernel)
                 nn.w <- rw$nn.w
@@ -730,8 +730,8 @@ magelo.plot.fit <- function(x, title, xlab, ylab, with.y.true,
     }
 
     ## Add true values if available and requested
-    if (with.y.true && !is.null(x$pars$y.true) && length(x$pars$y.true) == length(x$pars$x)) {
-        lines(x$pars$x, x$pars$y.true, col = true.col)
+    if (with.y.true && !is.null(x$params$y.true) && length(x$params$y.true) == length(x$params$x)) {
+        lines(x$params$x, x$params$y.true, col = true.col)
     }
 
     # Add legend if requested
@@ -1490,7 +1490,7 @@ loo.llm.1D <- function(x, y, grid.size = 400, degree = 2, f = 0.2, bw = NULL, mi
 
     ## An estimate of the maximum of the number of models associated with a
     ## single value of x.
-    max.models <- ceiling( 2*bw / dxgrid )
+    max.models <- ng ## ceiling( 2*bw / dxgrid )
 
     K <- ncol(nn.i) # number of NN's = nrow(t(nn.'s))
 
@@ -2199,7 +2199,8 @@ rllm.2os.1D <- function(x, y1, y2, grid.size = 400, degree = 2, f = NULL, bw = N
     ## Sorting x and y
     o <- order(x)
     x <- x[o]
-    y <- y[o]
+    y1 <- y1[o]
+    y2 <- y2[o]
 
     ng <- grid.size
 
