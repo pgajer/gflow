@@ -804,12 +804,6 @@ count.cell.memberships <- function(gfc.flow) {
     )
 }
 
-## Helper: null-coalescing operator
-`%||%` <- function(x, y) {
-    if (is.null(x)) y else x
-}
-
-
 #' Compute GFC Flow for Multiple Functions
 #'
 #' @description
@@ -1246,35 +1240,68 @@ trajectory.edges.gfc.flow <- function(cell.traj, weighted = FALSE) {
     return(result)
 }
 
+#' List Cells
+#'
+#' S3 generic for listing cells (min-max pairs) in a gradient-flow style object.
+#'
+#' @param x An object for which cells can be listed.
+#' @param ... Passed to methods.
+#'
+#' @export
+list.cells <- function(x, ...) {
+    UseMethod("list.cells")
+}
 
-#' List All Cells in GFC Flow Result
+#' @export
+list.cells.default <- function(x, ...) {
+    stop("No list.cells() method for class: ", paste(class(x), collapse = ", "))
+}
+
+
+#' List All Cells in Gradient Flow Result
 #'
 #' Enumerates all cells (min-max pairs) in a gfc.flow result, including cells
-#' with spurious endpoints.
+#' with spurious endpoints (unless excluded).
 #'
 #' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
 #' @param include.spurious Logical; if TRUE (default), include cells with
 #'   spurious endpoints.
+#' @param loc.min Optional. If non-NULL, filter to cells with this minimum
+#'   endpoint. Can be a vertex index (numeric/integer) or a label (character).
+#' @param loc.max Optional. If non-NULL, filter to cells with this maximum
+#'   endpoint. Can be a vertex index (numeric/integer) or a label (character).
+#' @param include.spurious.flags Logical; if TRUE, include logical columns
+#'   \code{min.is.spurious} and \code{max.is.spurious} in the returned data
+#'   frame. Default FALSE.
+#' @param ... Extra parameters.
 #'
 #' @return A data frame with columns:
 #'   \item{min.label}{Minimum label.}
 #'   \item{max.label}{Maximum label.}
 #'   \item{min.vertex}{Minimum vertex index.}
 #'   \item{max.vertex}{Maximum vertex index.}
-#'   \item{min.is.spurious}{TRUE if minimum is spurious.}
-#'   \item{max.is.spurious}{TRUE if maximum is spurious.}
 #'   \item{n.trajectories}{Number of trajectories connecting this pair.}
 #'   \item{unique.vertices}{Number of unique vertices in trajectories.}
+#'   If \code{include.spurious.flags = TRUE}, also includes:
+#'   \item{min.is.spurious}{TRUE if the minimum endpoint is spurious.}
+#'   \item{max.is.spurious}{TRUE if the maximum endpoint is spurious.}
 #'
 #' @export
-list.cells.gfc.flow <- function(gfc.flow, include.spurious = TRUE) {
+list.cells.gfc.flow <- function(x,
+                                include.spurious = TRUE,
+                                loc.min = NULL,
+                                loc.max = NULL,
+                                include.spurious.flags = FALSE,
+                                ...) {
+
+    gfc.flow <- x
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
     }
 
     if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
-        return(data.frame(
+        result <- data.frame(
             min.label = character(0),
             max.label = character(0),
             min.vertex = integer(0),
@@ -1282,13 +1309,60 @@ list.cells.gfc.flow <- function(gfc.flow, include.spurious = TRUE) {
             min.is.spurious = logical(0),
             max.is.spurious = logical(0),
             n.trajectories = integer(0),
-            unique.vertices = integer(0)
-        ))
+            unique.vertices = integer(0),
+            stringsAsFactors = FALSE
+        )
+
+        if (!include.spurious.flags) {
+            result$min.is.spurious <- NULL
+            result$max.is.spurious <- NULL
+        }
+
+        return(result)
     }
 
     summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
 
+    ## ------------------------------------------------------------------------
+    ## Helper: resolve loc spec (label or vertex) to a vertex index
+    ## ------------------------------------------------------------------------
+    resolve.loc.to.vertex <- function(loc, labels, vertices) {
+        if (is.null(loc)) return(NULL)
+
+        ## Numeric/integer: treat as vertex index
+        if (is.numeric(loc) && length(loc) == 1) {
+            return(as.integer(loc))
+        }
+
+        ## Character: could be label or numeric string
+        if (is.character(loc) && length(loc) == 1) {
+            if (grepl("^[0-9]+$", loc)) {
+                return(as.integer(loc))
+            }
+
+            ## Try resolve via summary.df label -> vertex
+            if (!is.null(summary.df) && all(c("label", "vertex") %in% names(summary.df))) {
+                idx <- match(loc, summary.df$label)
+                if (!is.na(idx)) {
+                    return(as.integer(summary.df$vertex[idx]))
+                }
+            }
+
+            ## Fall back: allow filtering by label directly
+            if (loc %in% labels) {
+                return(NA_integer_)
+            }
+
+            stop("Could not resolve loc specification '", loc,
+                 "' to a vertex. Provide a valid label or vertex index.")
+        }
+
+        stop("loc must be NULL, a single vertex index, or a single label string.")
+    }
+
+    ## ------------------------------------------------------------------------
     ## Collect cell information
+    ## ------------------------------------------------------------------------
     cells <- list()
 
     for (traj in gfc.flow$trajectories) {
@@ -1300,18 +1374,26 @@ list.cells.gfc.flow <- function(gfc.flow, include.spurious = TRUE) {
             cells[[key]] <- list(
                 min.vertex = min.v,
                 max.vertex = max.v,
-                start.is.spurious = traj$start.is.spurious %||% FALSE,
-                end.is.spurious = traj$end.is.spurious %||% FALSE,
-                n.trajectories = 0,
-                all.vertices = c()
+                min.is.spurious = traj$start.is.spurious %||% FALSE,
+                max.is.spurious = traj$end.is.spurious %||% FALSE,
+                n.trajectories = 0L,
+                all.vertices = integer(0)
             )
+        } else {
+            ## If spurious flags disagree across trajectories, keep TRUE
+            cells[[key]]$min.is.spurious <- cells[[key]]$min.is.spurious |
+                (traj$start.is.spurious %||% FALSE)
+            cells[[key]]$max.is.spurious <- cells[[key]]$max.is.spurious |
+                (traj$end.is.spurious %||% FALSE)
         }
 
-        cells[[key]]$n.trajectories <- cells[[key]]$n.trajectories + 1
+        cells[[key]]$n.trajectories <- cells[[key]]$n.trajectories + 1L
         cells[[key]]$all.vertices <- c(cells[[key]]$all.vertices, traj$vertices)
     }
 
+    ## ------------------------------------------------------------------------
     ## Build result data frame
+    ## ------------------------------------------------------------------------
     result <- data.frame(
         min.label = character(length(cells)),
         max.label = character(length(cells)),
@@ -1336,25 +1418,218 @@ list.cells.gfc.flow <- function(gfc.flow, include.spurious = TRUE) {
 
         result$min.label[i] <- min.label
         result$max.label[i] <- max.label
-        result$min.vertex[i] <- cell$min.vertex
-        result$max.vertex[i] <- cell$max.vertex
-        result$min.is.spurious[i] <- cell$start.is.spurious
-        result$max.is.spurious[i] <- cell$end.is.spurious
-        result$n.trajectories[i] <- cell$n.trajectories
+        result$min.vertex[i] <- as.integer(cell$min.vertex)
+        result$max.vertex[i] <- as.integer(cell$max.vertex)
+        result$min.is.spurious[i] <- isTRUE(cell$min.is.spurious)
+        result$max.is.spurious[i] <- isTRUE(cell$max.is.spurious)
+        result$n.trajectories[i] <- as.integer(cell$n.trajectories)
         result$unique.vertices[i] <- length(unique(cell$all.vertices))
     }
 
+    ## ------------------------------------------------------------------------
     ## Optionally filter out spurious cells
+    ## ------------------------------------------------------------------------
     if (!include.spurious) {
         keep <- !result$min.is.spurious & !result$max.is.spurious
         result <- result[keep, , drop = FALSE]
     }
 
+    ## ------------------------------------------------------------------------
+    ## Filter by loc.min / loc.max (vertex index or label)
+    ## ------------------------------------------------------------------------
+    if (!is.null(loc.min) && nrow(result) > 0) {
+        v.min <- resolve.loc.to.vertex(loc.min, result$min.label, result$min.vertex)
+        if (is.na(v.min)) {
+            result <- result[result$min.label == loc.min, , drop = FALSE]
+        } else {
+            result <- result[result$min.vertex == v.min, , drop = FALSE]
+        }
+    }
+
+    if (!is.null(loc.max) && nrow(result) > 0) {
+        v.max <- resolve.loc.to.vertex(loc.max, result$max.label, result$max.vertex)
+        if (is.na(v.max)) {
+            result <- result[result$max.label == loc.max, , drop = FALSE]
+        } else {
+            result <- result[result$max.vertex == v.max, , drop = FALSE]
+        }
+    }
+
+    ## ------------------------------------------------------------------------
     ## Sort by number of trajectories (descending)
-    result <- result[order(-result$n.trajectories), ]
+    ## ------------------------------------------------------------------------
+    if (nrow(result) > 0) {
+        result <- result[order(-result$n.trajectories), , drop = FALSE]
+    }
     rownames(result) <- NULL
 
+    ## ------------------------------------------------------------------------
+    ## Optionally drop spurious flag columns from the output
+    ## ------------------------------------------------------------------------
+    if (!include.spurious.flags) {
+        result$min.is.spurious <- NULL
+        result$max.is.spurious <- NULL
+    }
+
     return(result)
+}
+
+#' List Basins
+#'
+#' Enumerates basin-level summaries for minima or maxima in a \code{gfc.flow}
+#' result. Basin sizes are taken from \code{gfc.flow$summary} /
+#' \code{gfc.flow$summary.all}. The number of incident cells is computed from
+#' \code{list.cells()}.
+#'
+#' @param x An object for which basins can be listed.
+#' @param ... Passed to methods.
+#'
+#' @export
+list.basins <- function(x, ...) {
+    UseMethod("list.basins")
+}
+
+#' @export
+list.basins.default <- function(x, ...) {
+    stop("No list.basins() method for class: ", paste(class(x), collapse = ", "))
+}
+
+#' List Basins for gfc.flow
+#'
+#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param type One of \code{"min"} or \code{"max"}.
+#' @param include.spurious Logical; if TRUE (default), include basins whose
+#'   defining extremum is spurious.
+#' @param include.spurious.flags Logical; if TRUE, include spurious-related
+#'   columns from \code{summary.all} (e.g., \code{is.spurious}, \code{filter.stage},
+#'   \code{merged.into}). Default FALSE.
+#' @param loc Optional. If non-NULL, filter to a single basin extremum (vertex
+#'   index or label).
+#'
+#' @return A data frame with basin-level columns including:
+#'   \item{label}{Extremum label.}
+#'   \item{vertex}{Extremum vertex index.}
+#'   \item{type}{\code{"min"} or \code{"max"}.}
+#'   \item{basin.size}{Number of vertices in the basin (from summary/all).}
+#'   \item{n.cells}{Number of incident cells (min-max pairs).}
+#'   \item{n.trajectories}{Total number of trajectories across incident cells.}
+#'
+#' @export
+list.basins.gfc.flow <- function(x,
+                                 type = c("min", "max"),
+                                 include.spurious = TRUE,
+                                 include.spurious.flags = FALSE,
+                                 loc = NULL,
+                                 ...) {
+
+    type <- match.arg(type)
+
+    if (!inherits(x, "gfc.flow")) {
+        stop("x must be a gfc.flow object from compute.gfc.flow()")
+    }
+
+    summary.all.df <- x$summary.all %||% x$summary
+    if (is.null(summary.all.df) || nrow(summary.all.df) == 0) {
+        out <- data.frame(
+            label = character(0),
+            vertex = integer(0),
+            type = character(0),
+            basin.size = integer(0),
+            n.cells = integer(0),
+            n.trajectories = integer(0),
+            stringsAsFactors = FALSE
+        )
+        return(out)
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Build baseline basin table from summary.all
+    ## ------------------------------------------------------------------------
+    basins.df <- summary.all.df[summary.all.df$type == type, , drop = FALSE]
+
+    ## Ensure required fields exist
+    if (!("basin.size" %in% names(basins.df))) {
+        stop("summary/all is missing 'basin.size' column")
+    }
+
+    ## Endpoint-only spurious filtering (uses summary.all$is.spurious if present)
+    if (!include.spurious && ("is.spurious" %in% names(basins.df))) {
+        basins.df <- basins.df[!basins.df$is.spurious, , drop = FALSE]
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Compute n.cells and n.trajectories from list.cells()
+    ## ------------------------------------------------------------------------
+    cells.df <- list.cells(x, include.spurious = TRUE, include.spurious.flags = FALSE)
+
+    if (nrow(cells.df) > 0 && nrow(basins.df) > 0) {
+        if (type == "min") {
+            key.v <- cells.df$min.vertex
+        } else {
+            key.v <- cells.df$max.vertex
+        }
+
+        n.cells.by.v <- as.integer(table(key.v))
+        v.levels <- as.integer(names(table(key.v)))
+
+        ## Sum trajectories per extremum
+        ## (table is used for counts; for sums we do a small loop for clarity)
+        n.traj.by.v <- integer(length(v.levels))
+        for (i in seq_along(v.levels)) {
+            v <- v.levels[i]
+            idx <- which(key.v == v)
+            n.traj.by.v[i] <- sum(cells.df$n.trajectories[idx])
+        }
+
+        agg.df <- data.frame(
+            vertex = v.levels,
+            n.cells = n.cells.by.v,
+            n.trajectories = n.traj.by.v,
+            stringsAsFactors = FALSE
+        )
+
+        basins.df <- merge(basins.df, agg.df, by = "vertex", all.x = TRUE, sort = FALSE)
+        basins.df$n.cells[is.na(basins.df$n.cells)] <- 0L
+        basins.df$n.trajectories[is.na(basins.df$n.trajectories)] <- 0L
+    } else {
+        basins.df$n.cells <- integer(nrow(basins.df))
+        basins.df$n.trajectories <- integer(nrow(basins.df))
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Filter by loc (vertex index or label)
+    ## ------------------------------------------------------------------------
+    if (!is.null(loc) && nrow(basins.df) > 0) {
+        if (is.numeric(loc) && length(loc) == 1) {
+            basins.df <- basins.df[basins.df$vertex == as.integer(loc), , drop = FALSE]
+        } else if (is.character(loc) && length(loc) == 1) {
+            basins.df <- basins.df[basins.df$label == loc, , drop = FALSE]
+        } else {
+            stop("loc must be NULL, a single vertex index, or a single label string.")
+        }
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Output shaping
+    ## ------------------------------------------------------------------------
+    ## Keep a clean, stable column set; optionally keep spurious-related fields.
+    keep.cols <- c("label", "vertex", "type", "basin.size", "n.cells", "n.trajectories")
+
+    if (include.spurious.flags) {
+        extra.cols <- intersect(c("is.spurious", "filter.stage", "merged.into"), names(basins.df))
+        keep.cols <- c(keep.cols, extra.cols)
+    }
+
+    keep.cols <- intersect(keep.cols, names(basins.df))
+    basins.df <- basins.df[, keep.cols, drop = FALSE]
+
+    ## Sort: biggest basins first, then most cells, then most trajectories
+    if (nrow(basins.df) > 0) {
+        basins.df <- basins.df[order(-basins.df$basin.size, -basins.df$n.cells, -basins.df$n.trajectories), , drop = FALSE]
+    }
+    rownames(basins.df) <- NULL
+
+    basins.df
 }
 
 
