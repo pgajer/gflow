@@ -1499,12 +1499,14 @@ list.basins.default <- function(x, ...) {
 #' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
 #' @param type One of \code{"min"} or \code{"max"}.
 #' @param include.spurious Logical; if TRUE (default), include basins whose
-#'   defining extremum is spurious.
+#'     defining extremum is spurious.
+#' @param with.rel.value Numeric. Logical; if TRUE (default), includes relative
+#'     value (value/median) for local extrema.
 #' @param include.spurious.flags Logical; if TRUE, include spurious-related
-#'   columns from \code{summary.all} (e.g., \code{is.spurious}, \code{filter.stage},
-#'   \code{merged.into}). Default FALSE.
+#'     columns from \code{summary.all} (e.g., \code{is.spurious},
+#'     \code{filter.stage}, \code{merged.into}). Default FALSE.
 #' @param loc Optional. If non-NULL, filter to a single basin extremum (vertex
-#'   index or label).
+#'     index or label).
 #'
 #' @return A data frame with basin-level columns including:
 #'   \item{label}{Extremum label.}
@@ -1518,6 +1520,7 @@ list.basins.default <- function(x, ...) {
 list.basins.gfc.flow <- function(x,
                                  type = c("min", "max"),
                                  include.spurious = TRUE,
+                                 with.rel.value = TRUE,
                                  include.spurious.flags = FALSE,
                                  loc = NULL,
                                  ...) {
@@ -1613,7 +1616,11 @@ list.basins.gfc.flow <- function(x,
     ## Output shaping
     ## ------------------------------------------------------------------------
     ## Keep a clean, stable column set; optionally keep spurious-related fields.
-    keep.cols <- c("label", "vertex", "type", "basin.size", "n.cells", "n.trajectories")
+    keep.cols <- c("label", "vertex", "basin.size", "n.cells", "n.trajectories")
+
+    if (isTRUE(with.rel.value) && ("rel.value" %in% names(basins.df))) {
+        keep.cols <- c(keep.cols, "rel.value")
+    }
 
     if (include.spurious.flags) {
         extra.cols <- intersect(c("is.spurious", "filter.stage", "merged.into"), names(basins.df))
