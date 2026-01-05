@@ -677,38 +677,48 @@ get.harmonic.repair.vertices <- function(gfc.flow, label, y, adj.list) {
         stop(sprintf("Basin '%s' not found", label))
     }
 
-    if (!basin$is.spurious) {
-        warning(sprintf("Basin '%s' is not spurious", label))
-    }
+    extremum.vertex <- as.integer(basin$extremum.vertex)
+    repair.vertices <- unique(as.integer(basin$vertices))
 
-    basin.vertices <- basin$vertices
-    basin.set <- as.integer(basin.vertices)
+    compute.boundary.interior <- function(vertices) {
+        v.set <- as.integer(vertices)
+        boundary.vertices <- integer(0)
 
-    ## Find boundary: vertices in basin with neighbors outside basin
-    boundary.vertices <- c()
-    for (v in basin.vertices) {
-        nbrs <- adj.list[[v]]
-        if (any(!(nbrs %in% basin.set))) {
-            boundary.vertices <- c(boundary.vertices, v)
+        for (v in v.set) {
+            nbrs <- adj.list[[v]]
+            if (length(nbrs) == 0) next
+            if (any(!(nbrs %in% v.set))) {
+                boundary.vertices <- c(boundary.vertices, v)
+            }
         }
+
+        boundary.vertices <- unique(as.integer(boundary.vertices))
+        interior.vertices <- setdiff(v.set, boundary.vertices)
+
+        list(boundary.vertices = boundary.vertices,
+             interior.vertices = as.integer(interior.vertices))
     }
 
-    ## Interior = basin - boundary
-    interior.vertices <- setdiff(basin.vertices, boundary.vertices)
+    bi <- compute.boundary.interior(repair.vertices)
 
-    ## Get boundary values
-    boundary.values <- y[boundary.vertices]
-    names(boundary.values) <- boundary.vertices
+    ## Fallback: ensure extremum.vertex is interior (so it can be modified)
+    if (!extremum.vertex %in% bi$interior.vertices) {
+        repair.vertices <- unique(c(repair.vertices, as.integer(adj.list[[extremum.vertex]])))
+        bi <- compute.boundary.interior(repair.vertices)
+    }
+
+    boundary.values <- y[bi$boundary.vertices]
+    names(boundary.values) <- as.character(bi$boundary.vertices)
 
     list(
-        interior.vertices = interior.vertices,
-        boundary.vertices = boundary.vertices,
+        interior.vertices = bi$interior.vertices,
+        boundary.vertices = bi$boundary.vertices,
         boundary.values = boundary.values,
-        extremum.vertex = basin$extremum.vertex,
-        label = label
+        extremum.vertex = extremum.vertex,
+        label = label,
+        repair.vertices = repair.vertices
     )
 }
-
 
 #' Get Trajectories by Endpoint Status
 #'
@@ -1616,7 +1626,7 @@ list.basins.gfc.flow <- function(x,
     ## Output shaping
     ## ------------------------------------------------------------------------
     ## Keep a clean, stable column set; optionally keep spurious-related fields.
-    keep.cols <- c("label", "vertex", "basin.size", "n.cells", "n.trajectories")
+    keep.cols <- c("label", "basin.size", "n.cells", "n.trajectories")
 
     if (isTRUE(with.rel.value) && ("rel.value" %in% names(basins.df))) {
         keep.cols <- c(keep.cols, "rel.value")
@@ -2870,4 +2880,553 @@ vertex.distances.to.trajectory <- function(vertices,
         vertices = vertices,
         trajectory.vertices = trajectory.vertices
     ))
+}
+
+#' Merge Basins in a Trajectory-First Gradient Flow Complex (gfc.flow)
+#'
+#' @description
+#' Merges (absorbs) a set of "loser" extrema basins into corresponding "winner"
+#' extrema basins by modifying trajectories: each trajectory that ends at a loser
+#' extremum is extended by a connector path from the loser to the winner.
+#'
+#' The connector is computed on the domain graph. Initially, only the weighted
+#' shortest-path connector is implemented (via \pkg{igraph}). The public API is
+#' designed so that \code{"high.saddle"} and \code{"high.saddle.shortest"} can be
+#' added later without refactoring.
+#'
+#' @details
+#' For each merge pair \eqn{lM \to wM} (or \eqn{lm \to wm} for minima), and for each
+#' trajectory \eqn{T=(u_0,\ldots,u_m=lM)} ending at the loser, the function replaces it
+#' with \eqn{T'=(u_0,\ldots,u_m=lM,\ldots,wM)} by appending a connector path
+#' \eqn{P(lM,wM)} (excluding the first vertex to avoid duplication).
+#'
+#' After trajectory rewrites, the function rebuilds:
+#' \itemize{
+#'   \item \code{max.membership.all}, \code{min.membership.all} from trajectories
+#'   \item \code{max.basins.all}, \code{min.basins.all} vertices and hop distances
+#'   \item \code{basin.size} in \code{min.summaries.all} / \code{max.summaries.all}
+#'   \item \code{summary.all} and \code{summary} via \code{.postprocess.gfc.flow()}
+#' }
+#'
+#' Note: fields such as \code{max.overlap.dist} / \code{min.overlap.dist} are not
+#' recomputed here and should be treated as stale after merging.
+#'
+#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param adj.list Adjacency list of the domain graph (1-based vertex indices).
+#' @param weight.list Parallel list of edge weights; \code{weight.list[[i]]} must
+#'   align with \code{adj.list[[i]]}.
+#' @param merge.map Named character/integer vector specifying merges. Names are
+#'   losers, values are winners. Each element can be a label (e.g., \code{"M4"})
+#'   or a vertex index (e.g., \code{1814}).
+#' @param losers Optional vector of losers (labels or vertex indices). Used if
+#'   \code{merge.map} is not supplied.
+#' @param winners Optional vector of winners (labels or vertex indices). If length
+#'   1 and \code{losers} has length > 1, the winner is recycled.
+#' @param type Extremum type to merge: \code{"max"} or \code{"min"}.
+#' @param connector.method Connector policy. Currently only \code{"shortest"} is
+#'   implemented. \code{"high.saddle"} and \code{"high.saddle.shortest"} are
+#'   reserved for future implementations.
+#' @param mark.loser.spurious Logical. If TRUE, marks loser extrema as spurious
+#'   and sets \code{merged.into} to the winner label in summaries and basin records.
+#' @param merge.filter.stage Character string to write to \code{filter.stage} for
+#'   merged losers (only used when \code{mark.loser.spurious=TRUE}).
+#' @param verbose Logical.
+#'
+#' @return A modified \code{gfc.flow} object with updated trajectories and derived
+#'   basin/membership/summary fields.
+#'
+#' @export
+merge.basins.gfc.flow <- function(x,
+                                  adj.list,
+                                  weight.list,
+                                  merge.map = NULL,
+                                  losers = NULL,
+                                  winners = NULL,
+                                  type = c("max", "min"),
+                                  connector.method = c("shortest",
+                                                       "high.saddle",
+                                                       "high.saddle.shortest"),
+                                  mark.loser.spurious = TRUE,
+                                  merge.filter.stage = "MERGE",
+                                  verbose = TRUE) {
+
+    ## ------------------------------------------------------------------------
+    ## Basic validation
+    ## ------------------------------------------------------------------------
+
+    type <- match.arg(type)
+    connector.method <- match.arg(connector.method)
+
+    if (!inherits(x, "gfc.flow")) {
+        stop("x must be a gfc.flow object from compute.gfc.flow()")
+    }
+
+    if (is.null(adj.list) || is.null(weight.list)) {
+        stop("adj.list and weight.list must be supplied (domain graph definition).")
+    }
+
+    if (length(adj.list) != length(weight.list)) {
+        stop("adj.list and weight.list must have the same length.")
+    }
+
+    if (is.null(x$trajectories) || length(x$trajectories) == 0) {
+        stop("x$trajectories is empty; merging requires stored trajectories.")
+    }
+
+    if (!requireNamespace("igraph", quietly = TRUE)) {
+        stop("Package 'igraph' is required for connector path finding.")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Merge specification (merge.map, or losers+winners)
+    ## ------------------------------------------------------------------------
+
+    if (is.null(merge.map)) {
+        if (is.null(losers) || is.null(winners)) {
+            stop("Provide merge.map, or provide both losers and winners.")
+        }
+        if (length(winners) == 1L && length(losers) > 1L) {
+            winners <- rep(winners, length(losers))
+        }
+        if (length(losers) != length(winners)) {
+            stop("losers and winners must have the same length (or winners length 1).")
+        }
+        merge.map <- winners
+        names(merge.map) <- losers
+    }
+
+    if (is.null(names(merge.map)) || any(names(merge.map) == "")) {
+        stop("merge.map must be a named vector: names are losers, values are winners.")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Resolve labels/vertex indices to vertices for the requested extremum type
+    ## ------------------------------------------------------------------------
+
+    summary.df <- x$summary.all
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        summary.df <- x$summary
+    }
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        stop("x has no summary tables (summary.all / summary).")
+    }
+
+    summary.df.type <- summary.df[summary.df$type == type, , drop = FALSE]
+    if (nrow(summary.df.type) == 0) {
+        stop("No extrema of requested type='", type, "' found in x$summary(.all).")
+    }
+
+    label.to.vertex <- setNames(as.integer(summary.df.type$vertex), summary.df.type$label)
+    vertex.to.label <- setNames(as.character(summary.df.type$label), as.character(summary.df.type$vertex))
+
+    resolve.to.vertex <- function(loc) {
+        if (is.numeric(loc) && length(loc) == 1L) {
+            return(as.integer(loc))
+        }
+        if (is.character(loc) && length(loc) == 1L) {
+            if (grepl("^[0-9]+$", loc)) {
+                return(as.integer(loc))
+            }
+            if (!is.na(label.to.vertex[loc])) {
+                return(as.integer(label.to.vertex[loc]))
+            }
+            stop("Could not resolve extremum label '", loc, "' for type='", type, "'.")
+        }
+        stop("Each loser/winner must be a single label or a single vertex index.")
+    }
+
+    loser.loc <- names(merge.map)
+    winner.loc <- as.vector(merge.map)
+
+    loser.vertex <- vapply(loser.loc, resolve.to.vertex, integer(1))
+    winner.vertex <- vapply(winner.loc, resolve.to.vertex, integer(1))
+
+    if (any(loser.vertex == winner.vertex)) {
+        stop("Some merges map a loser to itself (loser == winner).")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Collapse transitive merges (A->B, B->C => A->C), and detect cycles
+    ## ------------------------------------------------------------------------
+
+    map.vertex <- setNames(as.integer(winner.vertex), as.character(loser.vertex))
+
+    resolve.winner.vertex <- function(v, map) {
+        seen <- integer(0)
+        cur <- as.integer(v)
+        while (!is.na(map[as.character(cur)])) {
+            if (cur %in% seen) {
+                stop("Cycle detected in merge mapping involving vertex ", cur, ".")
+            }
+            seen <- c(seen, cur)
+            cur <- as.integer(map[as.character(cur)])
+        }
+        cur
+    }
+
+    final.winner.vertex <- vapply(loser.vertex, resolve.winner.vertex, integer(1), map = map.vertex)
+    map.vertex <- setNames(as.integer(final.winner.vertex), as.character(loser.vertex))
+
+    ## Keep unique losers after collapsing
+    keep.idx <- !duplicated(names(map.vertex))
+    map.vertex <- map.vertex[keep.idx]
+
+    loser.vertex <- as.integer(names(map.vertex))
+    winner.vertex <- as.integer(unname(map.vertex))
+
+    loser.label <- ifelse(!is.na(vertex.to.label[as.character(loser.vertex)]),
+                          vertex.to.label[as.character(loser.vertex)],
+                          paste0("v", loser.vertex))
+    winner.label <- ifelse(!is.na(vertex.to.label[as.character(winner.vertex)]),
+                           vertex.to.label[as.character(winner.vertex)],
+                           paste0("v", winner.vertex))
+
+    if (verbose) {
+        cat("merge.basins.gfc.flow(): merging ", length(loser.vertex), " ", type, " basin(s)\n", sep = "")
+        for (i in seq_along(loser.vertex)) {
+            cat("  ", loser.label[i], " (v", loser.vertex[i], ") -> ",
+                winner.label[i], " (v", winner.vertex[i], ")\n", sep = "")
+        }
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Build igraph and compute connector paths
+    ## ------------------------------------------------------------------------
+
+    if (connector.method != "shortest") {
+        stop("connector.method='", connector.method, "' is reserved but not implemented yet. ",
+             "Use connector.method='shortest' for now.")
+    }
+
+    n.vertices <- x$n.vertices %||% length(adj.list)
+
+    ## Build directed edge list, then collapse to undirected with min weight
+    edge.from <- integer(0)
+    edge.to <- integer(0)
+    edge.weight <- double(0)
+
+    for (i in seq_len(length(adj.list))) {
+        nbrs <- adj.list[[i]]
+        if (length(nbrs) == 0) next
+
+        wts <- weight.list[[i]]
+        if (is.null(wts) || length(wts) != length(nbrs)) {
+            stop("weight.list[[", i, "]] must align with adj.list[[", i, "]].")
+        }
+
+        edge.from <- c(edge.from, rep.int(i, length(nbrs)))
+        edge.to <- c(edge.to, as.integer(nbrs))
+        edge.weight <- c(edge.weight, as.double(wts))
+    }
+
+    g.df <- data.frame(
+        from = as.character(edge.from),
+        to = as.character(edge.to),
+        weight = as.double(edge.weight),
+        stringsAsFactors = FALSE
+    )
+
+    v.df <- data.frame(name = as.character(seq_len(n.vertices)), stringsAsFactors = FALSE)
+
+    g <- igraph::graph_from_data_frame(g.df, directed = TRUE, vertices = v.df)
+    g <- igraph::as.undirected(g, mode = "collapse",
+                               edge.attr.comb = list(weight = "min"))
+    g <- igraph::simplify(g,
+                          remove.multiple = TRUE,
+                          remove.loops = TRUE,
+                          edge.attr.comb = list(weight = "min"))
+
+    e.weight <- igraph::E(g)$weight
+    if (is.null(e.weight)) {
+        stop("Failed to assign edge weights in igraph object.")
+    }
+
+    connector.by.loser <- vector("list", length(loser.vertex))
+    names(connector.by.loser) <- as.character(loser.vertex)
+
+    for (i in seq_along(loser.vertex)) {
+        from.v <- as.character(loser.vertex[i])
+        to.v <- as.character(winner.vertex[i])
+
+        sp <- igraph::shortest_paths(
+            g,
+            from = from.v,
+            to = to.v,
+            weights = igraph::E(g)$weight,
+            output = "vpath"
+        )
+
+        vpath <- sp$vpath[[1]]
+        if (length(vpath) == 0) {
+            stop("No path found between loser vertex ", loser.vertex[i],
+                 " and winner vertex ", winner.vertex[i], ".")
+        }
+
+        path.vertices <- as.integer(igraph::as_ids(vpath))
+        connector.by.loser[[as.character(loser.vertex[i])]] <- path.vertices
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Modify trajectories by appending connectors
+    ## ------------------------------------------------------------------------
+
+    map.winner.by.loser <- setNames(as.integer(winner.vertex), as.character(loser.vertex))
+
+    n.modified <- 0L
+    for (k in seq_along(x$trajectories)) {
+        traj <- x$trajectories[[k]]
+        l.v <- as.integer(traj$end.vertex)
+
+        w.v <- map.winner.by.loser[as.character(l.v)]
+        if (is.na(w.v)) next
+
+        connector <- connector.by.loser[[as.character(l.v)]]
+        if (is.null(connector) || length(connector) < 2L) {
+            stop("Internal error: invalid connector for loser vertex ", l.v, ".")
+        }
+
+        ## Append connector excluding the first vertex (loser extremum)
+        traj$vertices <- c(as.integer(traj$vertices), as.integer(connector[-1L]))
+        traj$end.vertex <- as.integer(w.v)
+
+        x$trajectories[[k]] <- traj
+        n.modified <- n.modified + 1L
+    }
+
+    if (verbose) {
+        cat("  Modified trajectories: ", n.modified, "\n", sep = "")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Update summaries: mark losers merged (optional), and update basin.size later
+    ## ------------------------------------------------------------------------
+
+    if (type == "max" && !is.null(x$max.summaries.all)) {
+        max.sum <- x$max.summaries.all
+
+        for (i in seq_along(loser.vertex)) {
+            idx.l <- match(loser.vertex[i], max.sum$vertex)
+            idx.w <- match(winner.vertex[i], max.sum$vertex)
+            if (!is.na(idx.l)) {
+                if (mark.loser.spurious) {
+                    max.sum$is.spurious[idx.l] <- TRUE
+                    if ("filter.stage" %in% names(max.sum)) {
+                        max.sum$filter.stage[idx.l] <- merge.filter.stage
+                    }
+                }
+                if ("merged.into" %in% names(max.sum)) {
+                    max.sum$merged.into[idx.l] <- if (!is.na(idx.w)) {
+                        as.character(max.sum$label[idx.w])
+                    } else {
+                        winner.label[i]
+                    }
+                }
+            }
+        }
+
+        x$max.summaries.all <- max.sum
+    }
+
+    if (type == "min" && !is.null(x$min.summaries.all)) {
+        min.sum <- x$min.summaries.all
+
+        for (i in seq_along(loser.vertex)) {
+            idx.l <- match(loser.vertex[i], min.sum$vertex)
+            idx.w <- match(winner.vertex[i], min.sum$vertex)
+            if (!is.na(idx.l)) {
+                if (mark.loser.spurious) {
+                    min.sum$is.spurious[idx.l] <- TRUE
+                    if ("filter.stage" %in% names(min.sum)) {
+                        min.sum$filter.stage[idx.l] <- merge.filter.stage
+                    }
+                }
+                if ("merged.into" %in% names(min.sum)) {
+                    min.sum$merged.into[idx.l] <- if (!is.na(idx.w)) {
+                        as.character(min.sum$label[idx.w])
+                    } else {
+                        winner.label[i]
+                    }
+                }
+            }
+        }
+
+        x$min.summaries.all <- min.sum
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Rebuild membership lists from trajectories
+    ## ------------------------------------------------------------------------
+
+    rebuild.membership <- function(trajs, extrema.vertices, which.end = c("start", "end")) {
+        which.end <- match.arg(which.end)
+
+        mem <- vector("list", length(extrema.vertices))
+        names(mem) <- as.character(extrema.vertices)
+        for (i in seq_along(mem)) mem[[i]] <- integer(0)
+
+        for (traj in trajs) {
+            ext.v <- if (which.end == "start") as.integer(traj$start.vertex) else as.integer(traj$end.vertex)
+            key <- as.character(ext.v)
+            if (is.na(key) || is.null(mem[[key]])) next
+            mem[[key]] <- c(mem[[key]], as.integer(traj$vertices))
+        }
+
+        mem <- lapply(mem, function(v) unique(as.integer(v)))
+        mem
+    }
+
+    ## Use existing basin lists as the authoritative set of extrema vertices (all)
+    max.vertices.all <- if (!is.null(x$max.basins.all) && length(x$max.basins.all) > 0) {
+        vapply(x$max.basins.all, function(b) as.integer(b$extremum.vertex), integer(1))
+    } else {
+        summary.df$vertex[summary.df$type == "max"]
+    }
+
+    min.vertices.all <- if (!is.null(x$min.basins.all) && length(x$min.basins.all) > 0) {
+        vapply(x$min.basins.all, function(b) as.integer(b$extremum.vertex), integer(1))
+    } else {
+        summary.df$vertex[summary.df$type == "min"]
+    }
+
+    max.mem.all <- rebuild.membership(x$trajectories, max.vertices.all, which.end = "end")
+    min.mem.all <- rebuild.membership(x$trajectories, min.vertices.all, which.end = "start")
+
+    x$max.membership.all <- max.mem.all
+    x$min.membership.all <- min.mem.all
+
+    ## ------------------------------------------------------------------------
+    ## Update basin vertices + hop distances in basins.all
+    ## ------------------------------------------------------------------------
+
+    compute.hop.distances <- function(ext.v, verts) {
+        if (length(verts) == 0) {
+            return(list(hop.distances = integer(0), max.hop.distance = 0L))
+        }
+
+        d.mat <- igraph::distances(
+            g,
+            v = as.character(ext.v),
+            to = as.character(verts),
+            weights = NULL,
+            mode = "all"
+        )
+
+        hop <- as.integer(d.mat[1, ])
+        if (any(!is.finite(hop))) {
+            ## Should not happen in typical connected basins, but guard anyway
+            hop[!is.finite(hop)] <- NA_integer_
+        }
+
+        list(
+            hop.distances = hop,
+            max.hop.distance = if (length(hop) > 0) max(hop, na.rm = TRUE) else 0L
+        )
+    }
+
+    update.basins.all <- function(basins.all, mem.all, type) {
+        if (is.null(basins.all) || length(basins.all) == 0) return(basins.all)
+
+        for (i in seq_along(basins.all)) {
+            b <- basins.all[[i]]
+            ext.v <- as.integer(b$extremum.vertex)
+
+            verts <- mem.all[[as.character(ext.v)]]
+            if (is.null(verts)) verts <- integer(0)
+
+            b$vertices <- as.integer(verts)
+
+            hop.info <- compute.hop.distances(ext.v, verts)
+            b$hop.distances <- hop.info$hop.distances
+            b$max.hop.distance <- as.integer(hop.info$max.hop.distance)
+
+            ## If requested, mark merged losers as spurious in basin records too
+            if (mark.loser.spurious && ext.v %in% loser.vertex && type == type) {
+                b$is.spurious <- TRUE
+                if (!is.null(b$filter.stage)) b$filter.stage <- merge.filter.stage
+                if (!is.null(b$merged.into)) {
+                    j <- match(ext.v, loser.vertex)
+                    b$merged.into <- winner.label[j]
+                }
+            }
+
+            basins.all[[i]] <- b
+        }
+
+        basins.all
+    }
+
+    x$max.basins.all <- update.basins.all(x$max.basins.all, x$max.membership.all, "max")
+    x$min.basins.all <- update.basins.all(x$min.basins.all, x$min.membership.all, "min")
+
+    ## ------------------------------------------------------------------------
+    ## Update basin.size in min/max summaries (ALL), then rebuild summary tables
+    ## ------------------------------------------------------------------------
+
+    update.basin.size <- function(sum.df, mem.all) {
+        if (is.null(sum.df) || nrow(sum.df) == 0) return(sum.df)
+        if (!("basin.size" %in% names(sum.df))) return(sum.df)
+
+        bs <- integer(nrow(sum.df))
+        for (i in seq_len(nrow(sum.df))) {
+            v <- as.integer(sum.df$vertex[i])
+            vv <- mem.all[[as.character(v)]]
+            bs[i] <- if (is.null(vv)) 0L else length(vv)
+        }
+        sum.df$basin.size <- as.integer(bs)
+        sum.df
+    }
+
+    if (!is.null(x$max.summaries.all)) {
+        x$max.summaries.all <- update.basin.size(x$max.summaries.all, x$max.membership.all)
+    }
+    if (!is.null(x$min.summaries.all)) {
+        x$min.summaries.all <- update.basin.size(x$min.summaries.all, x$min.membership.all)
+    }
+
+    ## Recompute retained/spurious indices and counts from basins.all flags
+    recompute.indices <- function(basins.all) {
+        if (is.null(basins.all) || length(basins.all) == 0) {
+            return(list(retained = integer(0), spurious = integer(0)))
+        }
+        is.spur <- vapply(basins.all, function(b) isTRUE(b$is.spurious), logical(1))
+        list(
+            retained = which(!is.spur),
+            spurious = which(is.spur)
+        )
+    }
+
+    idx.max <- recompute.indices(x$max.basins.all)
+    idx.min <- recompute.indices(x$min.basins.all)
+
+    x$retained.max.indices <- as.integer(idx.max$retained)
+    x$spurious.max.indices <- as.integer(idx.max$spurious)
+    x$retained.min.indices <- as.integer(idx.min$retained)
+    x$spurious.min.indices <- as.integer(idx.min$spurious)
+
+    x$n.max.retained <- length(x$retained.max.indices)
+    x$n.min.retained <- length(x$retained.min.indices)
+    x$n.max.spurious <- length(x$spurious.max.indices)
+    x$n.min.spurious <- length(x$spurious.min.indices)
+
+    ## Rebuild summary/all summary using existing internal postprocessor
+    x <- .postprocess.gfc.flow(x)
+
+    ## ------------------------------------------------------------------------
+    ## Attach merge report
+    ## ------------------------------------------------------------------------
+
+    merge.report <- data.frame(
+        type = type,
+        loser.label = loser.label,
+        winner.label = winner.label,
+        loser.vertex = loser.vertex,
+        winner.vertex = winner.vertex,
+        connector.length = vapply(connector.by.loser[as.character(loser.vertex)], length, integer(1)),
+        stringsAsFactors = FALSE
+    )
+
+    x$merge.report <- merge.report
+
+    class(x) <- unique(c("gfc.flow", class(x)))
+    x
 }
