@@ -552,13 +552,6 @@ compute.gfc.matrix <- function(adj.list,
     return(result)
 }
 
-
-## Null-coalescing operator (if not already defined)
-`%||%` <- function(x, y) {
-    if (is.null(x)) y else x
-}
-
-
 # =============================================================================
 # Helper Functions for Basin Lookup
 # =============================================================================
