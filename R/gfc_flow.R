@@ -3430,3 +3430,105 @@ merge.basins.gfc.flow <- function(x,
     class(x) <- unique(c("gfc.flow", class(x)))
     x
 }
+
+#' Get Cell Vertices for a (min, max) Pair
+#'
+#' @description
+#' Returns the set of domain-graph vertices belonging to the $\hat{y}$-cell
+#' determined by a minimum extremum and a maximum extremum. In a trajectory-first
+#' \code{gfc.flow} object, a cell is represented by the union of vertices from all
+#' trajectories that start at the given minimum and end at the given maximum.
+#'
+#' @param gfc.flow A \code{gfc.flow} object from \code{compute.gfc.flow()} with
+#'   trajectories computed (i.e., \code{store.trajectories = TRUE}).
+#' @param min.id Minimum extremum identifier: either a label (e.g., \code{"m4"},
+#'   \code{"sm1"}) or a vertex index (integer, 1-based).
+#' @param max.id Maximum extremum identifier: either a label (e.g., \code{"M1"},
+#'   \code{"sM2"}) or a vertex index (integer, 1-based).
+#'
+#' @return An integer vector of unique vertex indices in the requested cell.
+#'
+#' @export
+cell.vertices <- function(gfc.flow, min.id, max.id) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object.")
+    }
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+        stop("gfc.flow has no trajectories. Recompute with store.trajectories = TRUE.")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Resolve labels / indices to vertices
+    ## ------------------------------------------------------------------------
+
+    summary.df <- gfc.flow$summary.all
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        summary.df <- gfc.flow$summary
+    }
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        stop("gfc.flow does not contain summary tables (summary.all / summary).")
+    }
+
+    min.df <- summary.df[summary.df$type == "min", , drop = FALSE]
+    max.df <- summary.df[summary.df$type == "max", , drop = FALSE]
+
+    if (nrow(min.df) == 0) stop("No minima found in gfc.flow summary tables.")
+    if (nrow(max.df) == 0) stop("No maxima found in gfc.flow summary tables.")
+
+    min.label.to.vertex <- setNames(as.integer(min.df$vertex), as.character(min.df$label))
+    max.label.to.vertex <- setNames(as.integer(max.df$vertex), as.character(max.df$label))
+
+    resolve.extremum.vertex <- function(id, label.to.vertex, what) {
+
+        if (length(id) != 1L) {
+            stop(what, ".id must be a single label or a single vertex index.")
+        }
+
+        if (is.numeric(id)) {
+            v <- as.integer(id)
+            if (is.na(v) || v < 1L) stop("Invalid ", what, " vertex index.")
+            return(v)
+        }
+
+        if (!is.character(id)) {
+            stop(what, ".id must be a character label or a numeric vertex index.")
+        }
+
+        if (grepl("^[0-9]+$", id)) {
+            v <- as.integer(id)
+            if (is.na(v) || v < 1L) stop("Invalid ", what, " vertex index string.")
+            return(v)
+        }
+
+        v <- label.to.vertex[id]
+        if (is.na(v)) {
+            stop("Could not resolve ", what, " label '", id, "'.")
+        }
+
+        as.integer(v)
+    }
+
+    min.vertex <- resolve.extremum.vertex(min.id, min.label.to.vertex, "min")
+    max.vertex <- resolve.extremum.vertex(max.id, max.label.to.vertex, "max")
+
+    ## ------------------------------------------------------------------------
+    ## Collect cell vertices from trajectories
+    ## ------------------------------------------------------------------------
+
+    verts <- integer(0)
+
+    for (traj in gfc.flow$trajectories) {
+
+        sv <- as.integer(traj$start.vertex)
+        ev <- as.integer(traj$end.vertex)
+
+        if (is.na(sv) || is.na(ev)) next
+
+        if (sv == min.vertex && ev == max.vertex) {
+            verts <- c(verts, as.integer(traj$vertices))
+        }
+    }
+
+    unique(as.integer(verts))
+}
