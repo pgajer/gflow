@@ -571,11 +571,13 @@ struct set_wgraph_t {
 		const basin_t& absorbed_basin
 		) const;
 
-	void perform_harmonic_smoothing(
+	harmonic_smoothing_stats_t perform_harmonic_smoothing(
 		std::vector<double>& harmonic_predictions,
-		std::unordered_set<size_t>& region_vertices,
+		const std::unordered_set<size_t>& region_vertices,
 		int max_iterations,
-		double tolerance
+		double tolerance,
+		bool edge_weight_is_distance,
+		bool verbose
 		) const;
 
 	double basin_cx_difference(

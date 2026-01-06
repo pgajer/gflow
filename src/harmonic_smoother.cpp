@@ -520,123 +520,239 @@ void set_wgraph_t::perform_harmonic_repair(
 }
 
 
-
 /**
- * @brief Performs harmonic smoothing of function values within a specified region
+ * @brief Harmonic (Dirichlet) smoothing within a region, keeping boundary values fixed.
  *
- * @details This function implements Laplacian smoothing (harmonic interpolation) of values
- *          inside a given basin region, while keeping the boundary values fixed. It solves
- *          the discrete Laplace equation within the interior of the region using iterative
- *          relaxation methods.
+ * @details
+ * This function performs harmonic smoothing (discrete Laplace equation) on the induced
+ * subgraph G[R] of a weighted graph, where R is the region vertex set.
  *
- * The algorithm proceeds through these key steps:
- * 1. Identify the boundary of the input region (vertices that have neighbors outside the region)
- * 2. Mark boundary vertices - their values will remain fixed throughout the smoothing process
- * 3. Iteratively update interior vertex values using a weighted average of neighbor values
- * 4. Continue until convergence or maximum iterations reached
+ * Boundary vertices B are defined as vertices in R that have at least one neighbor
+ * outside R. Boundary values are held fixed, and interior vertices I = R \ B are
+ * iteratively updated so that for each v in I:
  *
- * This harmonic smoothing preserves the overall shape of the function while removing
- * local fluctuations and ensuring the values satisfy the discrete Laplace equation.
- * The resulting values minimize the Dirichlet energy (sum of squared differences)
- * across the edges in the region, subject to the boundary constraints.
+ *   f(v) = sum_{u in N(v) ∩ R} c(v,u) f(u) / sum_{u in N(v) ∩ R} c(v,u),
  *
- * Mathematically, for each interior vertex v, the smoothed value f(v) satisfies:
- *    f(v) = ∑(w_{v,u} * f(u)) / ∑(w_{v,u})
- * where w_{v,u} is the weight (typically inverse of edge length) between v and u,
- * and the sum is over all neighbors u of v.
+ * where c(v,u) are conductances. If edge weights represent distances, conductances
+ * are taken as c = 1/(d + eps). If edge weights are already conductances/affinities,
+ * use c = w directly.
  *
- * @param[in,out] harmonic_predictions Vector of function values to be smoothed in place
- * @param[in] region The basin region to smooth within, with fixed boundaries
- * @param[in] max_iterations Maximum number of relaxation iterations to perform (default: 100)
- * @param[in] tolerance Convergence threshold for value changes (default: 1e-6)
+ * The function also computes and reports the residual measure:
  *
- * @pre The size of harmonic_predictions must match the number of vertices in the graph
- * @pre The region must have valid vertices with indices less than the graph size
+ *   max_{v in I} | f(v) - avg_w( f(N(v) ∩ R) ) |
  *
- * @post The values in harmonic_predictions are smoothed within the region, with boundary values preserved
+ * which quantifies how close the final solution is to being harmonic on the interior.
  *
- * @note This function modifies the harmonic_predictions vector in place
- * @note The smoothing is weighted by inverse edge lengths to respect the graph geometry
- * @note The boundary is defined as vertices in the region with at least one neighbor outside the region
+ * @param[in,out] harmonic_predictions Full graph vector of values, modified in place on interior vertices.
+ * @param[in] region_vertices Vertex set R to smooth within.
+ * @param[in] max_iterations Maximum number of iterations.
+ * @param[in] tolerance Convergence threshold applied to both max_change and max_residual.
+ * @param[in] edge_weight_is_distance If true, treat edge.weight as distance (use 1/(d+eps));
+ *                                    otherwise treat edge.weight as conductance (use w).
+ * @param[in] verbose If true, prints progress and final diagnostics.
  *
- * @see basin_t
- * @see create_basin_cx
+ * @return harmonic_smoothing_stats_t Diagnostics for the run.
  */
-void set_wgraph_t::perform_harmonic_smoothing(
+harmonic_smoothing_stats_t set_wgraph_t::perform_harmonic_smoothing(
     std::vector<double>& harmonic_predictions,
-    std::unordered_set<size_t>& region_vertices,
+    const std::unordered_set<size_t>& region_vertices,
     int max_iterations,
-    double tolerance
+    double tolerance,
+    bool edge_weight_is_distance,
+    bool verbose
 ) const {
-     // Return if region is empty or too small
-    if (region_vertices.size() <= 5) {
-        REPORT_WARNING("WARNING: region_vertices size %zu is too small for effective harmonic smoothing\n",
-                region_vertices.size());
-        return;
+
+    harmonic_smoothing_stats_t stats;
+    stats.num_region = region_vertices.size();
+
+    ensure_edge_weights_computed();
+
+    // ---- Basic validation
+    if (region_vertices.empty()) {
+        REPORT_WARNING("perform_harmonic_smoothing: region_vertices is empty");
+        return stats;
+    }
+    if (harmonic_predictions.size() != adjacency_list.size()) {
+        REPORT_ERROR("perform_harmonic_smoothing: harmonic_predictions size (%zu) != graph size (%zu)",
+                     harmonic_predictions.size(), adjacency_list.size());
+    }
+    if (max_iterations <= 0) {
+        REPORT_WARNING("perform_harmonic_smoothing: max_iterations <= 0 (got %d)", max_iterations);
+        return stats;
+    }
+    if (!(tolerance > 0.0)) {
+        REPORT_WARNING("perform_harmonic_smoothing: tolerance must be > 0 (got %g)", tolerance);
+        return stats;
     }
 
-     // 1. Identify boundary vertices (vertices in the region with degree 1 or neighbors outside)
+    for (const size_t v : region_vertices) {
+        if (v >= adjacency_list.size()) {
+            REPORT_ERROR("perform_harmonic_smoothing: region vertex %zu out of range (graph size %zu)",
+                         v, adjacency_list.size());
+        }
+    }
+
+    const double eps = 1e-10;
+
+    auto conductance_of = [&](double edge_weight) -> double {
+        if (edge_weight_is_distance) {
+            return 1.0 / (edge_weight + eps);
+        }
+        return (edge_weight > 0.0) ? edge_weight : 0.0;
+    };
+
+    // ---- Identify boundary B: v in R with at least one neighbor outside R
     std::unordered_set<size_t> boundary_vertices;
-    for (const size_t& v : region_vertices) {
-         // Check if vertex is of degree 1 or has neighbors outside the region
- // Modifying the definition of the boundary to exclude deg 1 vertices as for harmonic smoothing we need to focus on vertices that have neighbors not in the region
-for (const auto& edge : adjacency_list[v]) {
-if (region_vertices.count(edge.vertex) == 0) {
- // This is a boundary vertex
-boundary_vertices.insert(v);
-break;
-}
-}
-}
+    boundary_vertices.reserve(region_vertices.size());
 
-     // 2. Creating interior vertices set (region vertices that are not boundary vertices)
+    for (const size_t v : region_vertices) {
+        for (const auto& edge : adjacency_list[v]) {
+            if (region_vertices.count(edge.vertex) == 0) {
+                boundary_vertices.insert(v);
+                break;
+            }
+        }
+    }
+
+    stats.num_boundary = boundary_vertices.size();
+
+    if (boundary_vertices.empty()) {
+        REPORT_WARNING("perform_harmonic_smoothing: boundary is empty; Dirichlet problem ill-posed on a closed region. No changes made.");
+        return stats;
+    }
+
+    // ---- Interior I = R \ B
     std::unordered_set<size_t> interior_vertices;
-    for (const auto& vertex : region_vertices) {
-        if (boundary_vertices.find(vertex) == boundary_vertices.end()) {
-            interior_vertices.insert(vertex);
+    interior_vertices.reserve(region_vertices.size() - boundary_vertices.size());
+
+    for (const size_t v : region_vertices) {
+        if (boundary_vertices.count(v) == 0) {
+            interior_vertices.insert(v);
         }
     }
 
-     // Return if we have no interior vertices to smooth
+    stats.num_interior = interior_vertices.size();
+
     if (interior_vertices.empty()) {
-        Rprintf("Warning: No interior vertices to smooth\n");
-        return;
+        if (verbose) {
+            Rprintf("perform_harmonic_smoothing: no interior vertices; nothing to smooth.\n");
+        }
+        return stats;
     }
 
-     // 3. Iterative relaxation for harmonic interpolation
-    std::vector<double> new_values = harmonic_predictions;
-    for (int iter = 0; iter < max_iterations; ++iter) {
-        bool converged = true;
+    auto weighted_avg_in_region = [&](size_t v, const std::vector<double>& values, double& out_wsum) -> double {
+        double sum = 0.0;
+        double wsum = 0.0;
 
-         // Update each interior vertex value
-        for (const size_t& v : interior_vertices) {
-             // Average the values of neighbors
-            double sum = 0.0;
-            double weight_sum = 0.0;
-            for (const auto& edge : adjacency_list[v]) {
-                 // Use inverse of edge weight as weighting factor
-                double weight = 1.0 / (edge.weight + 1e-10); // Avoid division by zero
-                sum += harmonic_predictions[edge.vertex] * weight;
-                weight_sum += weight;
+        for (const auto& edge : adjacency_list[v]) {
+            const size_t u = edge.vertex;
+            if (region_vertices.count(u) == 0) {
+                continue; // restrict to N(v) ∩ R
             }
-
-            if (weight_sum > 0) {
-                double weighted_avg = sum / weight_sum;
-                if (std::abs(new_values[v] - weighted_avg) > tolerance) {
-                    converged = false;
-                }
-                new_values[v] = weighted_avg;
+            const double c = conductance_of(edge.weight);
+            if (c <= 0.0) {
+                continue;
             }
+            sum += c * values[u];
+            wsum += c;
         }
 
-         // Update the values for next iteration
-        for (const size_t& v : interior_vertices) {
+        out_wsum = wsum;
+        return (wsum > 0.0) ? (sum / wsum) : values[v];
+    };
+
+    // Boundary hull for optional warning
+    double boundary_min = std::numeric_limits<double>::infinity();
+    double boundary_max = -std::numeric_limits<double>::infinity();
+    for (const size_t b : boundary_vertices) {
+        boundary_min = std::min(boundary_min, harmonic_predictions[b]);
+        boundary_max = std::max(boundary_max, harmonic_predictions[b]);
+    }
+
+    // Reserve per-iteration diagnostics
+    stats.max_change.reserve(static_cast<size_t>(max_iterations));
+    stats.max_residual.reserve(static_cast<size_t>(max_iterations));
+
+    // ---- Iterative relaxation (Jacobi)
+    std::vector<double> new_values = harmonic_predictions;
+
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        double max_change_iter = 0.0;
+
+        // Propose updates
+        for (const size_t v : interior_vertices) {
+            double wsum = 0.0;
+            const double avg = weighted_avg_in_region(v, harmonic_predictions, wsum);
+
+            const double proposed = (wsum > 0.0) ? avg : harmonic_predictions[v];
+
+            const double change = std::abs(proposed - harmonic_predictions[v]);
+            if (change > max_change_iter) {
+                max_change_iter = change;
+            }
+            new_values[v] = proposed;
+        }
+
+        // Commit updates
+        for (const size_t v : interior_vertices) {
             harmonic_predictions[v] = new_values[v];
         }
 
-         // Break if converged
-        if (converged) {
+        // Residual after update:
+        // max_{v in I} | f(v) - avg_w( f(N(v) ∩ R) ) |
+        double max_residual_iter = 0.0;
+        for (const size_t v : interior_vertices) {
+            double wsum = 0.0;
+            const double avg = weighted_avg_in_region(v, harmonic_predictions, wsum);
+            if (wsum <= 0.0) {
+                continue;
+            }
+            const double residual = std::abs(harmonic_predictions[v] - avg);
+            if (residual > max_residual_iter) {
+                max_residual_iter = residual;
+            }
+        }
+
+        // Record diagnostics
+        stats.max_change.push_back(max_change_iter);
+        stats.max_residual.push_back(max_residual_iter);
+        stats.num_iterations = iter + 1;
+
+        // Convergence: require both to be small
+        if (max_change_iter < tolerance && max_residual_iter < tolerance) {
+            stats.converged = true;
             break;
         }
     }
+
+    // Optional convex-hull warning
+    {
+        const double hull_eps = 10.0 * tolerance;
+        bool violated = false;
+        for (const size_t v : interior_vertices) {
+            const double x = harmonic_predictions[v];
+            if (x < boundary_min - hull_eps || x > boundary_max + hull_eps) {
+                violated = true;
+                break;
+            }
+        }
+        if (violated) {
+            REPORT_WARNING("perform_harmonic_smoothing: interior values exceed boundary convex hull (possible negative/zero weights, leakage, or ill-conditioned conductances).");
+        }
+    }
+
+    if (verbose) {
+        const double last_change = stats.max_change.empty() ? 0.0 : stats.max_change.back();
+        const double last_resid  = stats.max_residual.empty() ? 0.0 : stats.max_residual.back();
+        Rprintf("perform_harmonic_smoothing: iters=%d converged=%s last_max_change=%g last_max_residual=%g |R|=%zu |B|=%zu |I|=%zu\n",
+                stats.num_iterations,
+                stats.converged ? "true" : "false",
+                last_change,
+                last_resid,
+                stats.num_region,
+                stats.num_boundary,
+                stats.num_interior);
+    }
+
+    return stats;
 }
