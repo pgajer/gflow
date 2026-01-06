@@ -73,5 +73,23 @@ struct harmonic_smoother_t {
     }
 };
 
+/**
+ * @brief Diagnostics for harmonic smoothing.
+ *
+ * Stores per-iteration diagnostics:
+ * - max_change[k]   = max_{v in I} |f_{k}(v) - f_{k-1}(v)|
+ * - max_residual[k] = max_{v in I} |f_k(v) - avg_w(f_k(N(v) ∩ R))|
+ */
+struct harmonic_smoothing_stats_t {
+    int num_iterations = 0;
+    bool converged = false;
+
+    std::vector<double> max_change;   // length == num_iterations
+    std::vector<double> max_residual; // length == num_iterations
+
+    size_t num_region = 0;
+    size_t num_boundary = 0;
+    size_t num_interior = 0;
+};
 
 #endif // HARMONIC_SMOOTHER_H_

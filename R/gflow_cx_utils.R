@@ -467,14 +467,14 @@ find.hop.distances <- function(adj.list, start.vertex, max.hops = Inf) {
 #'
 #' @export
 apply.harmonic.extension <- function(subgraph,
-                                    method = c("weighted_mean", "harmonic_iterative",
-                                              "harmonic_eigen", "biharmonic_harmonic",
-                                              "boundary_smoothed"),
-                                    max_iterations = 100,
-                                    tolerance = 1e-6,
-                                    sigma = 1.0,
-                                    record_iterations = TRUE,
-                                    verbose = FALSE) {
+                                     method = c("weighted_mean", "harmonic_iterative",
+                                                "harmonic_eigen", "biharmonic_harmonic",
+                                                "boundary_smoothed"),
+                                     max_iterations = 100,
+                                     tolerance = 1e-6,
+                                     sigma = 1.0,
+                                     record_iterations = TRUE,
+                                     verbose = FALSE) {
 
   method <- match.arg(method)
 
