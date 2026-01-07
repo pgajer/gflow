@@ -37,6 +37,7 @@
 #include "progress_utils.hpp" // for elapsed_time
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "edge_pruning_stats.hpp"
+#include "debug_serialization.hpp"
 
 #include <vector>
 #include <unordered_set>
@@ -49,6 +50,7 @@
 #include <sstream>
 #include <queue>
 #include <numeric>    // for std::iota
+#include <algorithm>
 
 #include <ANN/ANN.h>  // ANN library header
 
@@ -649,16 +651,6 @@ void print_iknn_graph(
  * @note The function uses the ANN library for kNN computation and R's SEXP structures.
  * Ensure the ANN library is properly linked and included in your project.
  */
-
-/**
- * @file iknn_graph.cpp (or wherever create_iknn_graph is defined)
- */
-
-
-#include "debug_serialization.hpp"
-#include <algorithm>
-#include <limits>
-
 iknn_graph_t create_iknn_graph(SEXP RX, SEXP Rk) {
 
     #define DEBUG_CREATE_IKNN_GRAPH 0
