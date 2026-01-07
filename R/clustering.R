@@ -75,14 +75,14 @@
 #'
 #' @export
 hdbscan.cltr <- function(X,
-                        method = "dunn",
-                        min.pts = 5:50,
-                        min.prop = 0.1,
-                        max.prop = 0.5,
-                        n.test.cltr = 10,
-                        soft.K = 20,
-                        n.cores = 10,
-                        verbose = FALSE)
+                         method = "dunn",
+                         min.pts = 5:50,
+                         min.prop = 0.1,
+                         max.prop = 0.5,
+                         n.test.cltr = 10,
+                         soft.K = 20,
+                         n.cores = 10,
+                         verbose = FALSE)
 {
     ## Check required packages
     needs_clv <- method %in% c("dunn", "connectivity", "all")
