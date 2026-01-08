@@ -847,3 +847,446 @@ clusters.reorder <- function(cltr, decreasing = TRUE) {
 
   return(new_cltr)
 }
+
+
+#' Select Number of Clusters for a Hierarchical Clustering
+#'
+#' Evaluate candidate cuts (numbers of clusters) for a given \code{hclust} object
+#' and select the best cut using internal cluster validity criteria.
+#'
+#' This routine is designed to support (i) a focused "core" panel of indices that
+#' are commonly used for k-selection, and (ii) an optional extended diagnostics
+#' panel obtained from \code{fpc::cluster.stats()}.
+#'
+#' @param hc A \code{hclust} object, typically from \code{hclust()}.
+#' @param X Optional numeric matrix (rows = observations). Required for computing
+#'   \code{connectivity} via \code{clValid::connectivity()} and for computing
+#'   \code{d} if \code{d} is not provided.
+#' @param d Optional \code{dist} object. Used for Dunn/silhouette and for
+#'   \code{fpc::cluster.stats()}.
+#' @param method Criterion used to select the "best" number of clusters. One of
+#'   \code{"dunn"}, \code{"silhouette"}, \code{"ch"}, \code{"wb.ratio"},
+#'   \code{"connectivity"}, or \code{"all"}.
+#' @param k Integer vector of candidate numbers of clusters. If \code{NULL},
+#'   defaults to \code{2:min(50, n-1)} where \code{n} is the number of observations.
+#' @param neighb.size Integer kNN size used for \code{clValid::connectivity()}.
+#'   Default is 10.
+#' @param stats.level Controls how many indices are returned in \code{scores}:
+#'   \code{"core"}, \code{"extended"}, or \code{"all"}. Default is \code{"core"}.
+#' @param with.fpc.stats Logical; if \code{TRUE} and \code{fpc} is available,
+#'   compute indices via \code{fpc::cluster.stats()}. Default is \code{TRUE}.
+#' @param with.connectivity Logical; if \code{TRUE}, compute connectivity when
+#'   possible (requires \code{X} and \code{clValid}). Default is \code{TRUE}.
+#' @param include.slow Logical; if \code{TRUE} and \code{stats.level="all"},
+#'   attempt to include indices that can be slow for large \code{n} (e.g., G2/G3).
+#'   Default is \code{FALSE}.
+#' @param n.cores Integer; if > 1 and \code{foreach/doParallel} are available,
+#'   attempt parallel evaluation across \code{k}. Default is 1.
+#' @param verbose Logical; print progress. Default is \code{FALSE}.
+#'
+#' @return A list with components:
+#' \itemize{
+#'   \item \code{scores}: data.frame with one row per candidate \code{k} and
+#'         columns for each computed index.
+#'   \item \code{opt.k}: named integer vector of selected \code{k} values (per metric).
+#'   \item \code{best}: list of best cluster assignments per metric (per \code{opt.k}).
+#'   \item \code{clusters}: list of cluster assignments for each \code{k}.
+#'   \item \code{directions}: named character vector indicating optimization
+#'         direction (maximize/minimize) for indices used in automated selection.
+#' }
+#'
+#' @references
+#' \url{https://cran.r-project.org/package=fpc}
+#' \url{https://cran.r-project.org/package=cluster}
+#' \url{https://cran.r-project.org/package=clValid}
+#'
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' X <- rbind(matrix(rnorm(200), ncol = 2),
+#'            matrix(rnorm(200, mean = 3), ncol = 2))
+#' d <- dist(X)
+#' hc <- hclust(d, method = "ward.D2")
+#'
+#' res <- hclust.select.k(hc, X = X, d = d,
+#'                        method = "all",
+#'                        stats.level = "extended",
+#'                        with.connectivity = TRUE,
+#'                        verbose = TRUE)
+#'
+#' res$opt.k
+#' head(res$scores)
+#' table(res$best$silhouette)
+#' }
+#'
+#' @export
+hclust.select.k <- function(hc,
+                            X = NULL,
+                            d = NULL,
+                            method = c("dunn", "silhouette", "ch", "wb.ratio",
+                                       "connectivity", "all"),
+                            k = NULL,
+                            neighb.size = 10L,
+                            stats.level = c("core", "extended", "all"),
+                            with.fpc.stats = TRUE,
+                            with.connectivity = TRUE,
+                            include.slow = FALSE,
+                            n.cores = 1L,
+                            verbose = FALSE) {
+
+    ## ---------------------------------------------------------------------
+    ## Helpers
+    ## ---------------------------------------------------------------------
+
+    null.coalesce <- function(a, b) {
+        if (!is.null(a)) a else b
+    }
+
+    is.scalar.int <- function(x) {
+        is.numeric(x) && length(x) == 1L && is.finite(x)
+    }
+
+    take.numeric <- function(x) {
+        if (is.null(x)) return(NA_real_)
+        if (length(x) == 0L) return(NA_real_)
+        as.numeric(x[1L])
+    }
+
+    ## Known optimization directions for automated selection
+    ## (Only include indices with stable interpretation across use cases.)
+    directions <- c(
+        dunn = "maximize",
+        silhouette = "maximize",
+        ch = "maximize",
+        wb.ratio = "minimize",
+        connectivity = "minimize"
+    )
+
+    ## Map selection metric name to score column name
+    method <- match.arg(method)
+    stats.level <- match.arg(stats.level)
+
+    ## ---------------------------------------------------------------------
+    ## Input validation
+    ## ---------------------------------------------------------------------
+
+    if (!inherits(hc, "hclust")) {
+        stop("hc must be a 'hclust' object.")
+    }
+
+    if (!is.scalar.int(neighb.size) || neighb.size < 1L) {
+        stop("neighb.size must be a positive integer.")
+    }
+    neighb.size <- as.integer(neighb.size)
+
+    if (!is.scalar.int(n.cores) || n.cores < 1L) {
+        stop("n.cores must be a positive integer.")
+    }
+    n.cores <- as.integer(n.cores)
+
+    ## Infer n
+    n <- length(hc$order)
+    if (!is.null(X)) {
+        if (!is.matrix(X)) X <- as.matrix(X)
+        if (!is.numeric(X)) stop("X must be numeric.")
+        if (nrow(X) != n) {
+            stop("nrow(X) does not match the number of observations in hc.")
+        }
+    }
+
+    if (is.null(k)) {
+        k.max <- min(50L, n - 1L)
+        if (k.max < 2L) stop("Need at least 2 observations.")
+        k <- 2L:k.max
+    } else {
+        k <- as.integer(k)
+        k <- k[is.finite(k)]
+        k <- sort(unique(k))
+        k <- k[k >= 2L & k <= (n - 1L)]
+        if (length(k) == 0L) stop("No valid k values after filtering (need 2 <= k <= n-1).")
+    }
+
+    ## Distances
+    if (!is.null(d) && !inherits(d, "dist")) {
+        stop("d must be a 'dist' object.")
+    }
+    if (is.null(d)) {
+        if (is.null(X)) {
+            stop("Provide either d (dist) or X (to compute dist(X)).")
+        }
+        d <- stats::dist(X)
+    }
+
+    ## Suggested-package availability
+    has.fpc <- requireNamespace("fpc", quietly = TRUE)
+    has.cluster <- requireNamespace("cluster", quietly = TRUE)
+    has.clValid <- requireNamespace("clValid", quietly = TRUE)
+    has.foreach <- requireNamespace("foreach", quietly = TRUE)
+    has.doParallel <- requireNamespace("doParallel", quietly = TRUE)
+
+    if (with.fpc.stats && !has.fpc) {
+        with.fpc.stats <- FALSE
+        if (verbose) cat("Note: package 'fpc' not available; skipping fpc::cluster.stats().\n")
+    }
+    if (with.connectivity && !has.clValid) {
+        with.connectivity <- FALSE
+        if (verbose) cat("Note: package 'clValid' not available; skipping connectivity.\n")
+    }
+    if (with.connectivity && is.null(X)) {
+        with.connectivity <- FALSE
+        if (verbose) cat("Note: X not provided; skipping connectivity.\n")
+    }
+
+    ## If silhouette is requested but cluster not installed, we can still use
+    ## fpc::cluster.stats() when available (it provides avg.silwidth).
+    if ((method %in% c("silhouette", "all")) && !has.cluster && !with.fpc.stats) {
+        stop("Selecting by silhouette requires either package 'cluster' or package 'fpc'.")
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Cluster assignments for each k (computed once)
+    ## ---------------------------------------------------------------------
+
+    clusters <- vector("list", length(k))
+    names(clusters) <- as.character(k)
+
+    for (i in seq_along(k)) {
+        clusters[[i]] <- stats::cutree(hc, k = k[i])
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Decide which fpc stats to keep
+    ## ---------------------------------------------------------------------
+
+    core.keep <- c("dunn", "avg.silwidth", "ch", "wb.ratio")
+
+    ## Extended: add a small number of additional, often-useful diagnostics
+    extended.keep <- unique(c(
+        core.keep,
+        "pearsongamma",
+        "entropy",
+        "widestgap",
+        "sindex"
+    ))
+
+    ## All: try to include everything that cluster.stats returns, but optionally
+    ## filter out known slow ones unless include.slow = TRUE.
+    ## Note: We do not attempt to compute indices requiring alt.clustering.
+    slow.names <- c("g2", "g3")
+
+    keep.names <- switch(stats.level,
+        core = core.keep,
+        extended = extended.keep,
+        all = NULL
+    )
+
+    ## ---------------------------------------------------------------------
+    ## Worker to compute metrics for one k
+    ## ---------------------------------------------------------------------
+
+    compute.one <- function(ki, cl) {
+
+        out <- list()
+        out$k <- ki
+
+        ## fpc stats (distance-based)
+        fpc.stats <- NULL
+        if (with.fpc.stats) {
+            fpc.stats <- tryCatch(
+                fpc::cluster.stats(d = d, clustering = cl),
+                error = function(e) NULL
+            )
+        }
+
+        ## Dunn
+        ## Prefer fpc when available; otherwise try clValid::dunn on distance matrix.
+        out$dunn <- NA_real_
+        if (!is.null(fpc.stats) && "dunn" %in% names(fpc.stats)) {
+            out$dunn <- take.numeric(fpc.stats$dunn)
+        } else if (has.clValid) {
+            out$dunn <- tryCatch(
+                clValid::dunn(as.matrix(d), clusters = cl),
+                error = function(e) NA_real_
+            )
+        }
+
+        ## Silhouette (mean)
+        ## Prefer cluster::silhouette if available; otherwise fall back to fpc avg.silwidth.
+        out$silhouette <- NA_real_
+        if (has.cluster) {
+            out$silhouette <- tryCatch({
+                si <- cluster::silhouette(cl, d)
+                mean(si[, "sil_width"])
+            }, error = function(e) NA_real_)
+        } else if (!is.null(fpc.stats) && "avg.silwidth" %in% names(fpc.stats)) {
+            out$silhouette <- take.numeric(fpc.stats$avg.silwidth)
+        }
+
+        ## Calinski-Harabasz
+        out$ch <- NA_real_
+        if (!is.null(fpc.stats) && "ch" %in% names(fpc.stats)) {
+            out$ch <- take.numeric(fpc.stats$ch)
+        }
+
+        ## W/B ratio
+        out$wb.ratio <- NA_real_
+        if (!is.null(fpc.stats) && "wb.ratio" %in% names(fpc.stats)) {
+            out$wb.ratio <- take.numeric(fpc.stats$wb.ratio)
+        }
+
+        ## Connectivity (requires X)
+        out$connectivity <- NA_real_
+        if (with.connectivity) {
+            out$connectivity <- tryCatch(
+                clValid::connectivity(clusters = cl, Data = X, neighbSize = neighb.size),
+                error = function(e) NA_real_
+            )
+        }
+
+        ## Optional extra fpc stats into out$fpc (for table assembly)
+        out$fpc <- NULL
+        if (!is.null(fpc.stats)) {
+            ## Keep either specified subset or everything (minus slow unless requested).
+            if (!is.null(keep.names)) {
+                keep <- intersect(keep.names, names(fpc.stats))
+            } else {
+                keep <- names(fpc.stats)
+                if (!include.slow) keep <- setdiff(keep, slow.names)
+            }
+
+            ## Convert to a named numeric vector when possible
+            v <- suppressWarnings(as.numeric(fpc.stats[keep]))
+            names(v) <- keep
+
+            ## Some components are not numeric scalars; coerce failures to NA
+            bad <- !is.finite(v)
+            v[bad] <- NA_real_
+
+            out$fpc <- v
+        }
+
+        out
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Evaluate across k (optionally parallel)
+    ## ---------------------------------------------------------------------
+
+    can.parallel <- (n.cores > 1L && has.foreach && has.doParallel)
+    if (can.parallel) {
+        doParallel::registerDoParallel(n.cores)
+        on.exit(doParallel::stopImplicitCluster(), add = TRUE)
+
+        res <- foreach::foreach(i = seq_along(k), .inorder = TRUE) %dopar% {
+            compute.one(k[i], clusters[[i]])
+        }
+    } else {
+        res <- vector("list", length(k))
+        for (i in seq_along(k)) {
+            if (verbose) cat(sprintf("\rEvaluating k = %d", k[i]))
+            res[[i]] <- compute.one(k[i], clusters[[i]])
+        }
+        if (verbose) cat("\n")
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Assemble score table
+    ## ---------------------------------------------------------------------
+
+    base.scores <- data.frame(
+        k = vapply(res, function(r) r$k, integer(1L)),
+        dunn = vapply(res, function(r) r$dunn, numeric(1L)),
+        silhouette = vapply(res, function(r) r$silhouette, numeric(1L)),
+        ch = vapply(res, function(r) r$ch, numeric(1L)),
+        wb.ratio = vapply(res, function(r) r$wb.ratio, numeric(1L)),
+        connectivity = vapply(res, function(r) r$connectivity, numeric(1L)),
+        stringsAsFactors = FALSE
+    )
+
+    ## Add fpc-derived columns according to stats.level
+    if (stats.level != "core" && with.fpc.stats) {
+        ## Collect union of fpc names across k
+        fpc.names <- unique(unlist(lapply(res, function(r) names(r$fpc)), use.names = FALSE))
+        fpc.names <- setdiff(fpc.names, c("dunn", "avg.silwidth", "ch", "wb.ratio"))
+
+        if (length(fpc.names) > 0L) {
+            fpc.mat <- matrix(NA_real_, nrow = nrow(base.scores), ncol = length(fpc.names))
+            colnames(fpc.mat) <- fpc.names
+
+            for (i in seq_along(res)) {
+                v <- res[[i]]$fpc
+                if (!is.null(v)) {
+                    common <- intersect(names(v), fpc.names)
+                    if (length(common) > 0L) {
+                        fpc.mat[i, common] <- v[common]
+                    }
+                }
+            }
+
+            scores <- cbind(base.scores, as.data.frame(fpc.mat, stringsAsFactors = FALSE))
+        } else {
+            scores <- base.scores
+        }
+    } else {
+        scores <- base.scores
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Select optima and prepare "best" clusterings
+    ## ---------------------------------------------------------------------
+
+    pick.best.k <- function(score.vec, direction) {
+        ok <- is.finite(score.vec)
+        if (!any(ok)) return(NA_integer_)
+        if (direction == "maximize") {
+            as.integer(scores$k[which.max(ifelse(ok, score.vec, -Inf))])
+        } else if (direction == "minimize") {
+            as.integer(scores$k[which.min(ifelse(ok, score.vec, Inf))])
+        } else {
+            NA_integer_
+        }
+    }
+
+    opt.k <- integer(0)
+    best <- list()
+
+    add.best <- function(metric.name, score.col) {
+        dir <- directions[[metric.name]]
+        kk <- pick.best.k(scores[[score.col]], dir)
+        if (!is.na(kk)) {
+            opt.k[[metric.name]] <<- kk
+            best[[metric.name]] <<- clusters[[as.character(kk)]]
+        }
+    }
+
+    if (method == "all") {
+        add.best("dunn", "dunn")
+        add.best("silhouette", "silhouette")
+        add.best("ch", "ch")
+        add.best("wb.ratio", "wb.ratio")
+        if (with.connectivity) add.best("connectivity", "connectivity")
+    } else {
+        if (method == "dunn") add.best("dunn", "dunn")
+        if (method == "silhouette") add.best("silhouette", "silhouette")
+        if (method == "ch") add.best("ch", "ch")
+        if (method == "wb.ratio") add.best("wb.ratio", "wb.ratio")
+        if (method == "connectivity") {
+            if (!with.connectivity) {
+                stop("connectivity selection requested, but connectivity could not be computed (need X and clValid).")
+            }
+            add.best("connectivity", "connectivity")
+        }
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Return
+    ## ---------------------------------------------------------------------
+
+    list(
+        scores = scores,
+        opt.k = opt.k,
+        best = best,
+        clusters = clusters,
+        directions = directions
+    )
+}
