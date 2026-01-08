@@ -297,34 +297,3 @@ print.basin.filter.info <- function(filter.info) {
   
   invisible(filter.info)
 }
-
-
-#' Enhanced Print Method for Filtered Basins of Attraction
-#'
-#' @description
-#' Prints information about a basins_of_attraction object, including
-#' filtering information if present.
-#'
-#' @param x An object of class \code{"basins_of_attraction"}.
-#' @param ... Additional arguments (currently unused).
-#'
-#' @return Invisibly returns the input object.
-#'
-#' @export
-print.basins_of_attraction <- function(x, ...) {
-  cat("Basins of Attraction\n")
-  cat("====================\n")
-  cat(sprintf("Number of vertices: %d\n", x$n_vertices))
-  cat(sprintf("Local minima: %d\n", length(x$lmin_basins)))
-  cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
-  
-  ## Print filtering information if present
-  if (!is.null(x$filter.info)) {
-    cat("\n")
-    print.basin.filter.info(x$filter.info)
-  } else {
-    cat("\nUse summary() to generate detailed basin statistics\n")
-  }
-  
-  invisible(x)
-}

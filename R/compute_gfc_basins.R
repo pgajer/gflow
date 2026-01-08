@@ -193,7 +193,7 @@ print.gfc_basins <- function(x, ...) {
 #' @return The basin structure, or NULL if not found
 #'
 #' @export
-get.basin <- function(basins, query) {
+get.basin.of.gfc.basins <- function(basins, query) {
     if (is.character(query)) {
         return(basins[[query]])
     } else if (is.numeric(query)) {

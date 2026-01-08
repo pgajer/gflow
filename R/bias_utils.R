@@ -2451,7 +2451,7 @@ get.1d.binary.models.MABs <- function(xt, df, y.min = -3, y.max = 3,
     }
 
     # Helper function for normalization and inverse logit
-    normalize.and.inv.logit <- function(y, y.min, y.max) {
+    normalize.and.inverse.logit <- function(y, y.min, y.max) {
         # Min-max normalization to [y.min, y.max]
         y.norm <- (y - min(y)) / (max(y) - min(y)) * (y.max - y.min) + y.min
         # Inverse logit transformation
@@ -2479,7 +2479,7 @@ get.1d.binary.models.MABs <- function(xt, df, y.min = -3, y.max = 3,
             }
 
             yt <- df[, dataset.i]
-            dy <- normalize.and.inv.logit(yt, y.min, y.max)  # True probability of success
+            dy <- normalize.and.inverse.logit(yt, y.min, y.max)  # True probability of success
 
             # Sample binary outcomes from probabilities
             by <- numeric(n.samples)
@@ -2567,7 +2567,7 @@ get.1d.binary.models.MABs <- function(xt, df, y.min = -3, y.max = 3,
                     }
 
                     yt <- df[, dataset.i]
-                    dy <- normalize.and.inv.logit(yt, y.min, y.max)
+                    dy <- normalize.and.inverse.logit(yt, y.min, y.max)
 
                     by <- numeric(n.samples)
                     for (j in seq_len(n.samples)) {
@@ -2602,7 +2602,7 @@ get.1d.binary.models.MABs <- function(xt, df, y.min = -3, y.max = 3,
                                  .packages = c("randomForest", "mgcv", "glmnet", "stats")) %dopar% {
 
                     yt <- df[, dataset.i]
-                    dy <- normalize.and.inv.logit(yt, y.min, y.max)
+                    dy <- normalize.and.inverse.logit(yt, y.min, y.max)
 
                     by <- numeric(n.samples)
                     for (j in seq_len(n.samples)) {
