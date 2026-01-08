@@ -1,0 +1,279 @@
+#' Cluster trajectories within a single (m, M) GFC cell
+#'
+#' Builds a kNN-sparsified trajectory similarity graph for a given cell
+#' `(m, M)` in a `gfc.flow` object and clusters the trajectories using
+#' Leiden community detection (via **igraph**).
+#'
+#' The similarity between trajectories is computed from overlap of intermediate
+#' vertices (optionally excluding the endpoints `m` and `M`). The default
+#' similarity is IDF-weighted Jaccard, which downweights “hub” vertices that are
+#' visited by many trajectories.
+#'
+#' If `k` is a vector, the function performs a simple sensitivity analysis over
+#' multiple k values, computes stability metrics between consecutive kNN graphs
+#' (degree-distribution Jensen–Shannon divergence and edge-set edit distance),
+#' and selects an “optimal” `k` by minimizing a standardized combined score.
+#'
+#' @param gfc.flow A `gfc.flow` object from [compute.gfc.flow()] with
+#'   `store.trajectories = TRUE`.
+#' @param min.id Minimum extremum identifier: label (e.g., `"m4"`) or vertex
+#'   index (integer, 1-based).
+#' @param max.id Maximum extremum identifier: label (e.g., `"M4"`) or vertex
+#'   index (integer, 1-based).
+#' @param similarity Similarity type. One of `"idf.jaccard"`, `"jaccard"`.
+#' @param overlap.mode Overlap rule. One of `"any"`, `"min.shared"`,
+#'   `"min.frac"`, `"min.subpath"`.
+#' @param min.shared Minimum number of shared intermediate vertices (used when
+#'   `overlap.mode = "min.shared"`).
+#' @param min.frac Minimum shared fraction (used when `overlap.mode = "min.frac"`).
+#' @param min.subpath Minimum length of a shared contiguous subpath (in vertices)
+#'   (used when `overlap.mode = "min.subpath"`).
+#' @param exclude.endpoints Logical; exclude `m` and `M` from overlap.
+#' @param idf.smooth Nonnegative smoothing constant added to `df(v)` in IDF.
+#' @param k Integer scalar or integer vector. If a vector, runs sensitivity
+#'   analysis across all values.
+#' @param knn.select Controls how kNN neighbors are selected when
+#'   `similarity = "idf.jaccard"`:
+#'   `"weighted"` selects top-k using the weighted similarity,
+#'   `"raw"` selects top-k using raw Jaccard while still using the weighted
+#'   similarity for edge weights.
+#' @param symmetrize How to symmetrize kNN edges: `"mutual"`, `"union"`, `"none"`.
+#'   `"none"` is treated as `"union"`.
+#' @param leiden.resolution Leiden resolution parameter.
+#' @param leiden.n.iter Number of Leiden refinement iterations.
+#' @param seed Optional integer seed passed to igraph.
+#' @param n.cores Number of threads used in similarity construction (C++).
+#' @param return.graph Logical; return an igraph object for the selected `k`.
+#' @param return.all Logical; if `k` is a vector, return results for all `k`.
+#' @param verbose Logical.
+#'
+#' @return A list with fields:
+#'   * `k` Selected k value (scalar).
+#'   * `membership` Integer vector of community labels (length = number of trajectories).
+#'   * `graph` Optional igraph object (if `return.graph = TRUE`).
+#'   * `edge.list` Data frame with columns `from`, `to`, `weight` (trajectory indices).
+#'   * `cell.trajectories` The `gfc_cell_trajectories` object used.
+#'   * `sensitivity` Present if `length(k) > 1`: results and stability metrics across k.
+#'
+#' @export
+cluster.cell.trajectories <- function(gfc.flow,
+                                      min.id,
+                                      max.id,
+                                      similarity = c("idf.jaccard", "jaccard"),
+                                      overlap.mode = c("any", "min.shared", "min.frac", "min.subpath"),
+                                      min.shared = 2L,
+                                      min.frac = 0.05,
+                                      min.subpath = 4L,
+                                      exclude.endpoints = TRUE,
+                                      idf.smooth = 1.0,
+                                      k = 15L,
+                                      knn.select = c("weighted", "raw"),
+                                      symmetrize = c("mutual", "union", "none"),
+                                      leiden.resolution = 1.0,
+                                      leiden.n.iter = 2L,
+                                      seed = NULL,
+                                      n.cores = 1L,
+                                      return.graph = TRUE,
+                                      return.all = TRUE,
+                                      verbose = TRUE) {
+
+    similarity <- match.arg(similarity)
+    overlap.mode <- match.arg(overlap.mode)
+    knn.select <- match.arg(knn.select)
+    symmetrize <- match.arg(symmetrize)
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
+    }
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0L) {
+        stop("gfc.flow does not contain trajectory information. ",
+             "Use store.trajectories = TRUE in compute.gfc.flow()")
+    }
+    if (!requireNamespace("igraph", quietly = TRUE)) {
+        stop("Package 'igraph' is required for Leiden clustering")
+    }
+
+    k <- as.integer(k)
+    if (anyNA(k) || length(k) < 1L || any(k < 1L)) {
+        stop("k must be a positive integer or an integer vector of positive values")
+    }
+    k <- sort(unique(k))
+
+    n.cores <- as.integer(n.cores)
+    if (is.na(n.cores) || n.cores < 1L) n.cores <- 1L
+
+    ## ---------------------------------------------------------------------
+    ## Extract trajectories for the (min, max) cell
+    ## ---------------------------------------------------------------------
+    cell.traj <- cell.trajectories.gfc.flow(gfc.flow, min.id, max.id)
+    trajs <- cell.traj$trajectories
+    n.traj <- length(trajs)
+    if (n.traj < 2L) {
+        stop("Cell has fewer than 2 trajectories; clustering is not meaningful")
+    }
+
+    ## Convert to 0-based indexing for C++
+    trajs.0 <- lapply(trajs, function(x) as.integer(x - 1L))
+
+    ## ---------------------------------------------------------------------
+    ## Internal helpers for stability metrics
+    ## ---------------------------------------------------------------------
+
+    internal.js.divergence <- function(deg1, deg2) {
+        ## Jensen–Shannon divergence between discrete degree distributions
+        t1 <- table(deg1)
+        t2 <- table(deg2)
+        supp <- union(names(t1), names(t2))
+        p <- as.numeric(t1[supp]); p[is.na(p)] <- 0
+        q <- as.numeric(t2[supp]); q[is.na(q)] <- 0
+        p <- p / sum(p)
+        q <- q / sum(q)
+        m <- 0.5 * (p + q)
+        kl <- function(a, b) {
+            idx <- a > 0
+            sum(a[idx] * log(a[idx] / b[idx]))
+        }
+        0.5 * kl(p, m) + 0.5 * kl(q, m)
+    }
+
+    internal.edge.keys <- function(edge.df) {
+        if (nrow(edge.df) == 0L) return(character(0))
+        a <- pmin(edge.df$from, edge.df$to)
+        b <- pmax(edge.df$from, edge.df$to)
+        paste(a, b, sep = "-")
+    }
+
+    internal.edit.distance <- function(edge.df1, edge.df2) {
+        e1 <- unique(internal.edge.keys(edge.df1))
+        e2 <- unique(internal.edge.keys(edge.df2))
+        length(setdiff(e1, e2)) + length(setdiff(e2, e1))
+    }
+
+    internal.scale.safe <- function(x) {
+        s <- stats::sd(x)
+        if (is.na(s) || s == 0) return(rep(0, length(x)))
+        (x - mean(x)) / s
+    }
+
+    internal.pick.k <- function(k.values, js.div, edit.dist) {
+        ## Metrics are computed for transitions i -> i+1.
+        if (length(k.values) <= 1L) return(k.values[1L])
+        score <- internal.scale.safe(js.div) + internal.scale.safe(edit.dist)
+        ## Assign transition score to the right endpoint k[i+1]
+        k.cand <- k.values[-1L]
+        k.cand[which.min(score)]
+    }
+
+    ## ---------------------------------------------------------------------
+    ## For each k: build trajectory graph (C++), run Leiden (R)
+    ## ---------------------------------------------------------------------
+    results <- vector("list", length(k))
+    names(results) <- as.character(k)
+
+    for (ii in seq_along(k)) {
+        k0 <- k[[ii]]
+        if (verbose) {
+            message(sprintf("Building trajectory kNN graph: k = %d", k0))
+        }
+
+        g.raw <- .Call(
+            S_cluster_cell_trajectories,
+            trajs.0,
+            similarity,
+            overlap.mode,
+            as.integer(min.shared),
+            as.double(min.frac),
+            as.integer(min.subpath),
+            as.logical(exclude.endpoints),
+            as.double(idf.smooth),
+            as.integer(k0),
+            symmetrize,
+            knn.select,
+            as.integer(n.cores)
+        )
+
+        edge.df <- data.frame(
+            from = as.integer(g.raw$edge.from),
+            to = as.integer(g.raw$edge.to),
+            weight = as.double(g.raw$edge.weight),
+            stringsAsFactors = FALSE
+        )
+
+        ## igraph construction
+        if (nrow(edge.df) == 0L) {
+            ## Degenerate: no edges, every trajectory becomes singleton
+            membership <- seq_len(n.traj)
+            g <- igraph::make_empty_graph(n = n.traj, directed = FALSE)
+        } else {
+            g <- igraph::graph_from_data_frame(edge.df, directed = FALSE, vertices = data.frame(name = seq_len(n.traj)))
+            igraph::E(g)$weight <- edge.df$weight
+            membership <- igraph::membership(
+                igraph::cluster_leiden(
+                    g,
+                    weights = igraph::E(g)$weight,
+                    resolution_parameter = leiden.resolution,
+                    n_iterations = as.integer(leiden.n.iter),
+                    seed = seed
+                )
+            )
+        }
+
+        results[[ii]] <- list(
+            k = k0,
+            edge.list = edge.df,
+            membership = as.integer(membership),
+            graph = if (return.graph) g else NULL
+        )
+    }
+
+    ## ---------------------------------------------------------------------
+    ## If k is a vector: compute stability metrics and select k
+    ## ---------------------------------------------------------------------
+    if (length(k) > 1L) {
+        js.div <- numeric(length(k) - 1L)
+        edit.dist <- numeric(length(k) - 1L)
+
+        for (ii in seq_len(length(k) - 1L)) {
+            g1 <- results[[ii]]$graph
+            g2 <- results[[ii + 1L]]$graph
+
+            d1 <- igraph::degree(g1)
+            d2 <- igraph::degree(g2)
+            js.div[[ii]] <- internal.js.divergence(d1, d2)
+            edit.dist[[ii]] <- internal.edit.distance(results[[ii]]$edge.list, results[[ii + 1L]]$edge.list)
+        }
+
+        k.opt <- internal.pick.k(k, js.div, edit.dist)
+        best <- results[[match(as.character(k.opt), names(results))]]
+
+        sensitivity <- list(
+            k.values = k,
+            js.div = js.div,
+            edit.distance = edit.dist,
+            k.optimal = k.opt,
+            results = if (return.all) results else NULL
+        )
+
+        out <- list(
+            k = best$k,
+            membership = best$membership,
+            graph = best$graph,
+            edge.list = best$edge.list,
+            cell.trajectories = cell.traj,
+            sensitivity = sensitivity
+        )
+        class(out) <- "gfc_cell_trajectory_clustering"
+        return(out)
+    }
+
+    ## Single-k output
+    out <- list(
+        k = results[[1L]]$k,
+        membership = results[[1L]]$membership,
+        graph = results[[1L]]$graph,
+        edge.list = results[[1L]]$edge.list,
+        cell.trajectories = cell.traj
+    )
+    class(out) <- "gfc_cell_trajectory_clustering"
+    out
+}
