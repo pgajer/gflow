@@ -3937,3 +3937,180 @@ find.elbow.threshold <- function(x, plot = FALSE) {
 
     return(x.sorted[elbow.idx])
 }
+
+#' L2 normalization of the rows of a matrix
+#'
+#' Geometrically, the L2 normalization is nothing but a projection onto the unit
+#' sphere.
+#'
+#' @param U numeric matrix (n x m).
+#' @param eps Small positive constant.
+#' @return row-normalized matrix where each row has L2 norm 1 (unless norm < eps).
+#'
+#' @export
+L2.normalize.matrix <- function(U, eps = 1e-12) {
+
+  if (!is.matrix(U) || !is.numeric(U)) {
+    stop("U must be a numeric matrix.")
+  }
+
+  row.norms <- sqrt(rowSums(U * U))
+  row.norms[row.norms < eps] <- 1.0
+
+    U / row.norms
+}
+
+#' Arcsine square-root (angular) transform for proportions
+#'
+#' @description
+#' Applies the arcsine square-root (angular) transformation
+#' \deqn{y = \arcsin(\sqrt{x})}
+#' to proportion data \eqn{x \in [0,1]}. This transformation is often used as a
+#' variance-stabilizing map for proportion-like data and expands the scale near
+#' 0 and 1.
+#'
+#' @param x Numeric vector, matrix, or array of proportions in \eqn{[0,1]}.
+#' @param clip Logical; if TRUE (default), values are clipped to \eqn{[0,1]}
+#'   before transforming.
+#' @param eps Nonnegative numeric; if \code{clip = TRUE}, values in
+#'   \eqn{[-eps, 1+eps]} are clipped to \eqn{[0,1]}, otherwise an error is thrown.
+#' @return An object of the same shape as \code{x} containing transformed values
+#'   in radians.
+#'
+#' @examples
+#' x <- c(0, 0.1, 0.5, 0.9, 1)
+#' arcsin.sqrt.transform(x)
+#'
+#' X <- matrix(runif(12), nrow = 3)
+#' arcsin.sqrt.transform(X)
+#'
+#' @export
+arcsin.sqrt.transform <- function(x, clip = TRUE, eps = 0) {
+    ## Input validation
+    if (!is.numeric(x)) {
+        stop("x must be numeric.")
+    }
+    if (!is.logical(clip) || length(clip) != 1L) {
+        stop("clip must be a logical scalar.")
+    }
+    eps <- as.numeric(eps)
+    if (!is.finite(eps) || eps < 0) {
+        stop("eps must be a nonnegative finite number.")
+    }
+
+    ## Handle missing values
+    y <- x
+
+    if (clip) {
+        ## Allow small numerical spillover controlled by eps
+        bad.low <- which(is.finite(y) & (y < -eps))
+        bad.high <- which(is.finite(y) & (y > 1 + eps))
+        if (length(bad.low) > 0L || length(bad.high) > 0L) {
+            stop("x contains values outside [0,1] beyond the allowed eps tolerance.")
+        }
+        y[is.finite(y) & y < 0] <- 0
+        y[is.finite(y) & y > 1] <- 1
+    } else {
+        if (any(is.finite(y) & (y < 0 | y > 1))) {
+            stop("x must be in [0,1] when clip = FALSE.")
+        }
+    }
+
+    asin(sqrt(y))
+}
+
+#' Construct spectral vertex features from graph Laplacian eigenvectors
+#'
+#' @description
+#' Builds a vertex feature matrix \eqn{Z} from the first \code{m} eigenvectors of a
+#' graph Laplacian (or related operator), with optional column-wise weighting by
+#' \code{filtered.eigenvalues} and optional row normalization. This is useful for
+#' defining low-dimensional geometry-aware feature vectors at vertices, for example
+#' as inputs to trajectory comparison methods (e.g., DTW on feature sequences).
+#'
+#' @details
+#' Let \eqn{U} be the \eqn{n \times K} matrix of eigenvectors (columns) and let
+#' \eqn{w_1,\ldots,w_m} denote the first \code{m} entries of \code{filtered.eigenvalues}.
+#' The function returns a matrix \eqn{Z} with \code{m} columns:
+#' \itemize{
+#'   \item \code{weight.type = "none"}: \eqn{Z = U_{[,1:m]}}
+#'   \item \code{weight.type = "sqrt.filtered"}: \eqn{Z = U_{[,1:m]} \, \mathrm{diag}(\sqrt{w})}
+#'   \item \code{weight.type = "filtered"}: \eqn{Z = U_{[,1:m]} \, \mathrm{diag}(w)}
+#' }
+#' If \code{row.normalize = TRUE}, each row of \eqn{Z} is then scaled to have unit
+#' \eqn{\ell_2} norm, with norms below \code{eps} treated as 1 to avoid division by
+#' near-zero values.
+#'
+#' @param eigenvectors Numeric matrix of eigenvectors with vertices in rows and
+#'   eigenvectors in columns (dimension \code{n x K}).
+#' @param filtered.eigenvalues Optional numeric vector of nonnegative weights
+#'   associated with eigenvectors. Required when \code{weight.type != "none"}.
+#' @param m Integer scalar giving the number of eigenvectors/features to use.
+#'   Must satisfy \code{1 <= m <= ncol(eigenvectors)}.
+#' @param weight.type Character string specifying column-wise weighting. One of
+#'   \code{"none"}, \code{"sqrt.filtered"}, \code{"filtered"}.
+#' @param row.normalize Logical; if \code{TRUE}, row-normalize the resulting
+#'   feature matrix to unit \eqn{\ell_2} norm.
+#' @param eps Nonnegative numeric scalar. Rows with \eqn{\ell_2} norm below \code{eps}
+#'   are treated as having norm 1 when \code{row.normalize = TRUE}.
+#'
+#' @return Numeric matrix with \code{nrow(eigenvectors)} rows and \code{m} columns,
+#'   containing the constructed spectral features.
+#'
+#' @examples
+#' ## Example: unweighted first 10 eigenvectors with row normalization
+#' set.seed(1)
+#' U <- matrix(rnorm(100 * 20), nrow = 100, ncol = 20)
+#' Z <- spectral.features(U, m = 10, weight.type = "none", row.normalize = TRUE)
+#' dim(Z)
+#'
+#' ## Example: heat-kernel style weighting via filtered eigenvalues
+#' w <- exp(-0.1 * seq_len(20))
+#' Z.w <- spectral.features(U, filtered.eigenvalues = w,
+#'                          m = 10, weight.type = "sqrt.filtered",
+#'                          row.normalize = TRUE)
+#'
+#' @export
+spectral.features <- function(eigenvectors,
+                              filtered.eigenvalues = NULL,
+                              m = 20L,
+                              weight.type = c("none", "sqrt.filtered", "filtered"),
+                              row.normalize = TRUE,
+                              eps = 1e-12) {
+
+    weight.type <- match.arg(weight.type)
+
+    if (!is.matrix(eigenvectors) || !is.numeric(eigenvectors)) {
+        stop("eigenvectors must be a numeric matrix.")
+    }
+    m <- as.integer(m)
+    if (m < 1L || m > ncol(eigenvectors)) {
+        stop("m must satisfy 1 <= m <= ncol(eigenvectors).")
+    }
+
+    U <- eigenvectors[, seq_len(m), drop = FALSE]
+
+    if (weight.type != "none") {
+        if (is.null(filtered.eigenvalues)) {
+            stop("filtered.eigenvalues is required when weight.type != 'none'.")
+        }
+        w <- as.numeric(filtered.eigenvalues)[seq_len(m)]
+        if (any(!is.finite(w)) || any(w < 0)) {
+            stop("filtered.eigenvalues must be finite and nonnegative.")
+        }
+
+        if (weight.type == "sqrt.filtered") {
+            U <- sweep(U, 2, sqrt(w), "*")
+        } else if (weight.type == "filtered") {
+            U <- sweep(U, 2, w, "*")
+        }
+    }
+
+    if (row.normalize) {
+        row.norms <- sqrt(rowSums(U * U))
+        row.norms[row.norms < eps] <- 1.0
+        U <- U / row.norms
+    }
+
+    U
+}

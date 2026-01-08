@@ -355,81 +355,53 @@ print.gflow_cx <- function(x, ...) {
 #' Create Data Frame of Extrema Information from Hop Neighborhoods
 #'
 #' @description
-#' Extracts and formats extrema information from hop neighborhood results into a
-#'     convenient data frame format. This function works with results from
-#'     \code{\link{create.gflow.cx}}.
+#' Extracts and formats local extrema information from hop-neighborhood results
+#' into a data frame.
 #'
-#' @param result An object containing hop neighborhood information, typically
-#'     from \code{create.gflow.cx()}. Must contain components named
-#'     \code{lmin_hop_nbhds} and \code{lmax_hop_nbhds}.
-#' @param include_spurious Logical; whether to include spurious extrema in the
-#'     output. Default is TRUE. Spurious extrema are those with hop index less
-#'     than or equal to the threshold.
-#' @param threshold Numeric scalar specifying the threshold for identifying
-#'     spurious extrema. Extrema with hop_idx <= threshold are marked as
-#'     spurious. If NULL (default), attempts to extract the threshold from the
-#'     result object or uses 2.
-#' @param sort_by_value Logical; if TRUE, orders extrema by their function
-#'     values (ascending for minima, descending for maxima). If FALSE (default),
-#'     preserves the original order.
-#' @param vertex_column_name Character string specifying the name for the vertex
-#'     column in the output data frame. Default is "vertex".
+#' @param result A list-like object containing hop neighborhood information.
+#'   Must contain components \code{lmin_hop_nbhds} and \code{lmax_hop_nbhds}.
+#'   If \code{inherits(result, "gflow_cx")}, the spurious threshold may be read
+#'   from an attribute (see \code{threshold}).
+#' @param include_spurious Logical scalar. If FALSE, remove extrema with
+#'   \code{hop_idx <= threshold}.
+#' @param threshold Numeric scalar or NULL. If NULL and \code{result} is a
+#'   \code{gflow_cx}, attempts to read \code{attr(result, "hop.idx.threshold")}
+#'   and then \code{attr(result, "hop_idx_threshold")} for backward compatibility.
+#'   If still NULL, defaults to 2.
+#' @param sort_by_value Logical scalar. If TRUE, labels (and optionally rows)
+#'   are ordered by function value: minima ascending, maxima descending.
+#' @param vertex_column_name Character scalar. Name of the vertex column.
+#' @param label_style Character scalar. Either \code{"mM"} (default; labels m1/M1)
+#'   or \code{"minmax"} (labels min1/max1).
+#' @param reorder Logical scalar. If TRUE, reorder rows so minima (ascending value)
+#'   come first, followed by maxima (descending value). Defaults to \code{sort_by_value}.
 #'
-#' @return A data frame with the following columns:
-#'   \describe{
-#'     \item{vertex}{Integer vertex indices (1-based)}
-#'     \item{hop_idx}{Numeric hop index values for each extremum}
-#'     \item{is_max}{Integer indicator: 0 for minima, 1 for maxima}
-#'     \item{label}{Character labels for extrema (e.g., "m1", "m2" for minima,
-#'       "M1", "M2" for maxima)}
-#'     \item{value}{Numeric function values at extrema (NA if not available)}
-#'     \item{spurious}{Logical indicating whether the extremum is spurious}
+#' @return A data frame with columns:
+#'   \itemize{
+#'     \item vertex (or renamed): integer vertex index
+#'     \item hop_idx: numeric hop index
+#'     \item is_max: integer 0 (min) / 1 (max)
+#'     \item label: character extremum label
+#'     \item value: numeric extremum value (NA if unavailable)
+#'     \item spurious: logical flag (\code{hop_idx <= threshold})
 #'   }
 #'
-#'   The vertex column may be renamed based on \code{vertex_column_name}.
-#'
-#' @details
-#' Labels are assigned to extrema based on their function values:
-#' \itemize{
-#'   \item Minima are labeled "m1", "m2", etc., in ascending order of function value
-#'   \item Maxima are labeled "M1", "M2", etc., in descending order of function value
-#' }
-#'
-#' This labeling scheme ensures that "m1" is the global minimum among detected
-#' minima, and "M1" is the global maximum among detected maxima.
-#'
-#' @examples
-#' \dontrun{
-#' # Create example graph and compute hop neighborhoods
-#' adj.list <- list(c(2,3), c(1,3,4), c(1,2,4), c(2,3))
-#' weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1,1))
-#' y <- c(0, 1, 0.5, 2)  # Minima at vertices 1,3 and maxima at vertices 2,4
-#'
-#' # Using with create.gflow.cx
-#' result <- create.gflow.cx(adj.list, weight.list, y, verbose = FALSE)
-#' extrema_df <- create.hop.nbhd.extrema.df(result)
-#' print(extrema_df)
-#'
-#' # Exclude spurious extrema
-#' significant_extrema <- create.hop.nbhd.extrema.df(
-#'   result,
-#'   include_spurious = FALSE,
-#'   threshold = 2
-#' )
-#' print(significant_extrema)
-#' }
 #' @export
 create.hop.nbhd.extrema.df <- function(result,
                                        include_spurious = TRUE,
                                        threshold = NULL,
                                        sort_by_value = FALSE,
-                                       vertex_column_name = "vertex") {
+                                       vertex_column_name = "vertex",
+                                       label_style = c("mM", "minmax"),
+                                       reorder = sort_by_value) {
 
+    ## ------------------------------------------------------------------------
     ## Input validation
+    ## ------------------------------------------------------------------------
+
     if (!is.list(result)) {
         stop("result must be a list")
     }
-
     if (!all(c("lmin_hop_nbhds", "lmax_hop_nbhds") %in% names(result))) {
         stop("Input must have 'lmin_hop_nbhds' and 'lmax_hop_nbhds' components")
     }
@@ -437,169 +409,169 @@ create.hop.nbhd.extrema.df <- function(result,
     if (!is.logical(include_spurious) || length(include_spurious) != 1) {
         stop("include_spurious must be a single logical value")
     }
-
     if (!is.logical(sort_by_value) || length(sort_by_value) != 1) {
         stop("sort_by_value must be a single logical value")
     }
-
+    if (!is.logical(reorder) || length(reorder) != 1) {
+        stop("reorder must be a single logical value")
+    }
     if (!is.character(vertex_column_name) || length(vertex_column_name) != 1) {
         stop("vertex_column_name must be a single character string")
     }
 
-    ## Determine if we're dealing with gflow_cx object
-    is_gflow <- inherits(result, "gflow_cx")
+    label_style <- match.arg(label_style)
 
-    ## Determine threshold for spurious extrema
+    ## ------------------------------------------------------------------------
+    ## Threshold resolution (support both attribute names)
+    ## ------------------------------------------------------------------------
+
+    is.gflow <- inherits(result, "gflow_cx")
+
     if (is.null(threshold)) {
-        if (is_gflow && !is.null(attr(result, "hop.idx.threshold"))) {
+        if (is.gflow) {
             threshold <- attr(result, "hop.idx.threshold")
-        } else {
-            threshold <- 2  # Default if not found
+            if (is.null(threshold)) {
+                threshold <- attr(result, "hop_idx_threshold")
+            }
+        }
+        if (is.null(threshold)) {
+            threshold <- 2
         }
     }
 
-    if (!is.numeric(threshold) || length(threshold) != 1 || threshold < 0) {
+    if (!is.numeric(threshold) || length(threshold) != 1 || is.na(threshold) || threshold < 0) {
         stop("threshold must be a single non-negative numeric value")
     }
 
-    ## Extract data from minima
-    lmin_data <- lapply(result$lmin_hop_nbhds, function(x) {
-        list(
-            vertex = x$vertex,
-            hop_idx = x$hop_idx,
-            value = if ("value" %in% names(x)) x$value else NA_real_
+    ## ------------------------------------------------------------------------
+    ## Extract extrema vectors
+    ## ------------------------------------------------------------------------
+
+    extract.extrema <- function(x.list) {
+        n <- length(x.list)
+        if (n == 0) {
+            return(list(
+                vertex = integer(0),
+                hop_idx = numeric(0),
+                value = numeric(0)
+            ))
+        }
+
+        vertex <- vapply(x.list, function(x) as.integer(x$vertex), integer(1))
+        hop.idx <- vapply(x.list, function(x) as.double(x$hop_idx), numeric(1))
+        value <- vapply(
+            x.list,
+            function(x) {
+                if ("value" %in% names(x)) as.double(x$value) else NA_real_
+            },
+            numeric(1)
         )
-    })
 
-    ## Extract data from maxima
-    lmax_data <- lapply(result$lmax_hop_nbhds, function(x) {
-        list(
-            vertex = x$vertex,
-            hop_idx = x$hop_idx,
-            value = if ("value" %in% names(x)) x$value else NA_real_
-        )
-    })
+        list(vertex = vertex, hop_idx = hop.idx, value = value)
+    }
 
-    n_min <- length(lmin_data)
-    n_max <- length(lmax_data)
+    min.data <- extract.extrema(result$lmin_hop_nbhds)
+    max.data <- extract.extrema(result$lmax_hop_nbhds)
 
-    ## Handle empty case
-    if (n_min + n_max == 0) {
+    n.min <- length(min.data$vertex)
+    n.max <- length(max.data$vertex)
+
+    ## Empty case
+    if (n.min + n.max == 0) {
         df <- data.frame(
-            vertex = integer(),
-            hop_idx = numeric(),
-            is_max = integer(),
-            label = character(),
-            value = numeric(),
-            spurious = logical(),
+            vertex = integer(0),
+            hop_idx = numeric(0),
+            is_max = integer(0),
+            label = character(0),
+            value = numeric(0),
+            spurious = logical(0),
             stringsAsFactors = FALSE
         )
         names(df)[1] <- vertex_column_name
         return(df)
     }
 
-    ## Extract vectors
-    if (n_min > 0) {
-        min_vertices <- vapply(lmin_data, `[[`, integer(1), "vertex")
-        min_hop_indices <- vapply(lmin_data, `[[`, numeric(1), "hop_idx")
-        min_values <- vapply(lmin_data, `[[`, numeric(1), "value")
-    } else {
-        min_vertices <- integer()
-        min_hop_indices <- numeric()
-        min_values <- numeric()
-    }
+    vertex <- c(min.data$vertex, max.data$vertex)
+    hop.idx <- c(min.data$hop_idx, max.data$hop_idx)
+    is.max <- c(rep(0L, n.min), rep(1L, n.max))
+    value <- c(min.data$value, max.data$value)
 
-    if (n_max > 0) {
-        max_vertices <- vapply(lmax_data, `[[`, integer(1), "vertex")
-        max_hop_indices <- vapply(lmax_data, `[[`, numeric(1), "hop_idx")
-        max_values <- vapply(lmax_data, `[[`, numeric(1), "value")
-    } else {
-        max_vertices <- integer()
-        max_hop_indices <- numeric()
-        max_values <- numeric()
-    }
+    spurious <- hop.idx <= threshold
 
-    ## Combine data
-    vertices <- c(min_vertices, max_vertices)
-    hop_indices <- c(min_hop_indices, max_hop_indices)
-    is_max <- c(rep(0L, n_min), rep(1L, n_max))
-    values <- c(min_values, max_values)
-
-    ## Determine spurious extrema
-    spurious <- hop_indices <= threshold
-
-    ## Filter spurious extrema if requested
     if (!include_spurious) {
         keep <- !spurious
-        vertices <- vertices[keep]
-        hop_indices <- hop_indices[keep]
-        is_max <- is_max[keep]
-        values <- values[keep]
+        vertex <- vertex[keep]
+        hop.idx <- hop.idx[keep]
+        is.max <- is.max[keep]
+        value <- value[keep]
         spurious <- spurious[keep]
-
-        # Update counts
-        n_min <- sum(is_max == 0)
-        n_max <- sum(is_max == 1)
+        n.min <- sum(is.max == 0L)
+        n.max <- sum(is.max == 1L)
     }
 
-    ## Create labels
-    labels <- character(length(vertices))
+    ## ------------------------------------------------------------------------
+    ## Labeling
+    ## ------------------------------------------------------------------------
 
-    if (n_min > 0) {
-        min_idx <- which(is_max == 0)
-        if (all(is.na(values[min_idx]))) {
-            # No values available, use original order
-            labels[min_idx] <- paste0("m", seq_len(n_min))
+    min.prefix <- if (label_style == "mM") "m" else "min"
+    max.prefix <- if (label_style == "mM") "M" else "max"
+
+    labels <- character(length(vertex))
+
+    if (n.min > 0) {
+        idx <- which(is.max == 0L)
+        if (sort_by_value && !all(is.na(value[idx]))) {
+            ord <- order(value[idx], na.last = TRUE)
+            labels[idx[ord]] <- paste0(min.prefix, seq_len(n.min))
         } else {
-            # Sort by value (ascending for minima)
-            ord <- order(values[min_idx], na.last = TRUE)
-            labels[min_idx[ord]] <- paste0("m", seq_len(n_min))
+            labels[idx] <- paste0(min.prefix, seq_len(n.min))
         }
     }
 
-    if (n_max > 0) {
-        max_idx <- which(is_max == 1)
-        if (all(is.na(values[max_idx]))) {
-            # No values available, use original order
-            labels[max_idx] <- paste0("M", seq_len(n_max))
+    if (n.max > 0) {
+        idx <- which(is.max == 1L)
+        if (sort_by_value && !all(is.na(value[idx]))) {
+            ord <- order(value[idx], decreasing = TRUE, na.last = TRUE)
+            labels[idx[ord]] <- paste0(max.prefix, seq_len(n.max))
         } else {
-            # Sort by value (descending for maxima)
-            ord <- order(values[max_idx], decreasing = TRUE, na.last = TRUE)
-            labels[max_idx[ord]] <- paste0("M", seq_len(n_max))
+            labels[idx] <- paste0(max.prefix, seq_len(n.max))
         }
     }
 
-    ## Create data frame
     df <- data.frame(
-        vertex = vertices,
-        hop_idx = hop_indices,
-        is_max = is_max,
+        vertex = vertex,
+        hop_idx = hop.idx,
+        is_max = is.max,
         label = labels,
-        value = values,
+        value = value,
         spurious = spurious,
         stringsAsFactors = FALSE
     )
 
-    ## Rename vertex column if requested
+    ## Rename vertex column
     if (vertex_column_name != "vertex") {
         names(df)[1] <- vertex_column_name
     }
 
-    ## Sort if requested
-    if (sort_by_value && !all(is.na(values))) {
-        # Sort minima ascending, maxima descending
-        min_order <- if (n_min > 0) order(df$value[df$is_max == 0], na.last = TRUE) else integer()
-        max_order <- if (n_max > 0) order(df$value[df$is_max == 1], decreasing = TRUE, na.last = TRUE) else integer()
+    ## Optional reordering
+    if (reorder && sort_by_value && !all(is.na(df$value))) {
+        min.rows <- which(df$is_max == 0L)
+        max.rows <- which(df$is_max == 1L)
 
-        min_rows <- which(df$is_max == 0)[min_order]
-        max_rows <- which(df$is_max == 1)[max_order]
+        min.ord <- if (length(min.rows) > 0) order(df$value[min.rows], na.last = TRUE) else integer(0)
+        max.ord <- if (length(max.rows) > 0) order(df$value[max.rows], decreasing = TRUE, na.last = TRUE) else integer(0)
 
-        df <- df[c(min_rows, max_rows), ]
+        df <- df[c(min.rows[min.ord], max.rows[max.ord]), , drop = FALSE]
         rownames(df) <- NULL
     }
 
-    return(df)
+    ## Ensure vertex column is first (already is), but keep explicit ordering stable
+    col.order <- c(vertex_column_name, "hop_idx", "is_max", "label", "value", "spurious")
+    df <- df[, col.order, drop = FALSE]
+
+    df
 }
+
 
 #' Visualize Smoothing Steps from Gradient Flow Complex
 #'

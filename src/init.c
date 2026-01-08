@@ -71,6 +71,7 @@
 #include "harmonic_extension_r.h"
 #include "gfc_flow_r.h"
 #include "madag_r.h"
+#include "traj_clustering_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -206,6 +207,9 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 static const R_CallMethodDef CallMethods[] = {
+  // clustering cell trajectories
+  {"S_cluster_cell_trajectories", (DL_FUNC) &S_cluster_cell_trajectories, 12},
+
   // =========================================================================
   //  Harmonic extension
   // =========================================================================

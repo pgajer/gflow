@@ -1136,38 +1136,148 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
 
 #' Print Method for gfc_cell_trajectories Objects
 #'
-#' @param x A gfc_cell_trajectories object.
+#' @description
+#' Prints a compact summary of a \code{gfc_cell_trajectories} object, including
+#' the cell endpoints (min/max), function values, number of trajectories, and
+#' trajectory length diagnostics. Optionally prints the first few trajectories
+#' with truncation for readability.
+#'
+#' @param x A \code{gfc_cell_trajectories} object.
+#' @param max.print Integer scalar. Maximum number of trajectories to print in
+#'   detail. Default is 5. Use 0 to suppress printing trajectories.
 #' @param ... Additional arguments (ignored).
 #'
+#' @return Invisibly returns \code{x}.
+#'
 #' @export
-print.gfc_cell_trajectories <- function(x, ...) {
+print.gfc_cell_trajectories <- function(x, max.print = 5L, ...) {
+
+    ## ------------------------------------------------------------------------
+    ## Input validation (lightweight; do not over-fail in print methods)
+    ## ------------------------------------------------------------------------
+
+    if (!is.list(x)) {
+        stop("print.gfc_cell_trajectories: x must be a list-like object")
+    }
+
+    if (!is.numeric(max.print) || length(max.print) != 1 || is.na(max.print) || max.print < 0) {
+        stop("print.gfc_cell_trajectories: max.print must be a single non-negative number")
+    }
+    max.print <- as.integer(max.print)
+
+    ## ------------------------------------------------------------------------
+    ## Header
+    ## ------------------------------------------------------------------------
+
     cat("GFC Cell Trajectories\n")
     cat("=====================\n")
-    ## Show spurious status if available
-    min.status <- if (!is.null(x$min.is.spurious) && x$min.is.spurious) " [SPURIOUS]" else ""
-    max.status <- if (!is.null(x$max.is.spurious) && x$max.is.spurious) " [SPURIOUS]" else ""
-    cat(sprintf("Cell: %s%s (vertex %d) <-> %s%s (vertex %d)\n",
-                x$min.label, min.status,
-                if (x$mapped) x$original.min.vertex else x$min.vertex,
-                x$max.label, max.status,
-                if (x$mapped) x$original.max.vertex else x$max.vertex))
-    cat(sprintf("Values: %.4f (min) to %.4f (max), delta = %.4f\n",
-                x$min.value, x$max.value, x$max.value - x$min.value))
-    cat(sprintf("Trajectories: %d\n", x$n.trajectories))
-    if (x$mapped) {
-        cat(sprintf("Vertices mapped to subgraph indices (min -> %s, max -> %s)\n",
-                    ifelse(is.na(x$min.vertex), "NA", as.character(x$min.vertex)),
-                    ifelse(is.na(x$max.vertex), "NA", as.character(x$max.vertex))))
+
+    ## ------------------------------------------------------------------------
+    ## Endpoint reporting (prefer original vertices if mapped)
+    ## ------------------------------------------------------------------------
+
+    mapped <- isTRUE(x$mapped)
+
+    min.vertex.orig <- if (mapped) x$original.min.vertex else x$min.vertex
+    max.vertex.orig <- if (mapped) x$original.max.vertex else x$max.vertex
+
+    min.label <- if (!is.null(x$min.label)) as.character(x$min.label) else "min"
+    max.label <- if (!is.null(x$max.label)) as.character(x$max.label) else "max"
+
+    min.spurious <- isTRUE(x$min.is.spurious)
+    max.spurious <- isTRUE(x$max.is.spurious)
+
+    min.status <- if (min.spurious) " [SPURIOUS]" else ""
+    max.status <- if (max.spurious) " [SPURIOUS]" else ""
+
+    cat(sprintf(
+        "Cell: %s%s (vertex %s) <-> %s%s (vertex %s)\n",
+        min.label, min.status,
+        ifelse(is.null(min.vertex.orig) || is.na(min.vertex.orig), "NA", as.character(min.vertex.orig)),
+        max.label, max.status,
+        ifelse(is.null(max.vertex.orig) || is.na(max.vertex.orig), "NA", as.character(max.vertex.orig))
+    ))
+
+    ## Values (only if present)
+    if (!is.null(x$min.value) && !is.null(x$max.value) &&
+        is.finite(x$min.value) && is.finite(x$max.value)) {
+        delta.value <- x$max.value - x$min.value
+        cat(sprintf(
+            "Values: %.4f (min) to %.4f (max), delta = %.4f\n",
+            x$min.value, x$max.value, delta.value
+        ))
     }
-    if (x$n.trajectories > 0) {
-        lengths <- sapply(x$trajectories, length)
-        cat(sprintf("Trajectory lengths: Min: %d, Max: %d, Mean: %.1f\n",
-                    min(lengths), max(lengths), mean(lengths)))
-        n.unique.vertices <- length(unique(unlist(x$trajectories)))
-        cat(sprintf("Number of vertices: %d\n", n.unique.vertices))
+
+    n.trajectories <- if (!is.null(x$n.trajectories)) as.integer(x$n.trajectories) else NA_integer_
+    if (!is.na(n.trajectories)) {
+        cat(sprintf("Trajectories: %d\n", n.trajectories))
     }
+
+    ## ------------------------------------------------------------------------
+    ## Mapped indices reporting (show mapped endpoints when available)
+    ## ------------------------------------------------------------------------
+
+    if (mapped) {
+        cat(sprintf(
+            "Vertices mapped to subgraph indices (min -> %s, max -> %s)\n",
+            ifelse(is.null(x$min.vertex) || is.na(x$min.vertex), "NA", as.character(x$min.vertex)),
+            ifelse(is.null(x$max.vertex) || is.na(x$max.vertex), "NA", as.character(x$max.vertex))
+        ))
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Trajectory diagnostics
+    ## ------------------------------------------------------------------------
+
+    traj.list <- x$trajectories
+    has.traj <- is.list(traj.list) && length(traj.list) > 0L
+
+    if (has.traj) {
+        lengths <- vapply(traj.list, length, integer(1))
+
+        cat(sprintf(
+            "Trajectory lengths: Min: %d, Max: %d, Mean: %.1f\n",
+            min(lengths), max(lengths), mean(lengths)
+        ))
+
+        ## Unique vertices count (diagnostic)
+        all.vertices <- unlist(traj.list, use.names = FALSE)
+        n.unique.vertices <- length(unique(all.vertices))
+        cat(sprintf("Number of vertices (unique across all trajectories): %d\n", n.unique.vertices))
+
+        ## Optional: show first max.print trajectories
+        if (max.print > 0L) {
+            n.show <- min(max.print, length(traj.list))
+            cat(sprintf("\nFirst %d trajectories:\n", n.show))
+
+            for (i in seq_len(n.show)) {
+                path <- traj.list[[i]]
+
+                if (length(path) <= 10L) {
+                    path.str <- paste(path, collapse = " -> ")
+                } else {
+                    path.str <- paste(
+                        c(
+                            paste(head(path, 4L), collapse = " -> "),
+                            "...",
+                            paste(tail(path, 3L), collapse = " -> ")
+                        ),
+                        collapse = " -> "
+                    )
+                }
+
+                cat(sprintf("  [%d] (%d vertices): %s\n", i, length(path), path.str))
+            }
+
+            if (length(traj.list) > n.show) {
+                cat(sprintf("  ... and %d more trajectories\n", length(traj.list) - n.show))
+            }
+        }
+    }
+
     invisible(x)
 }
+
 
 #' Get All Trajectory Vertices as a Single Vector
 #'

@@ -630,19 +630,6 @@ compute_mean_hopk_distance <- function(vertex, adj.list, edgelen.list, hop.k) {
     return(mean(distances))
 }
 
-#' @export
-print.basins_of_attraction <- function(x, ...) {
-    cat("Basins of Attraction\n")
-    cat("====================\n")
-    cat(sprintf("Number of vertices: %d\n", x$n_vertices))
-    cat(sprintf("Local minima: %d\n", length(x$lmin_basins)))
-    cat(sprintf("Local maxima: %d\n", length(x$lmax_basins)))
-    cat("\nUse summary() to generate detailed basin statistics\n")
-    invisible(x)
-}
-
-
-
 #' Draw Basin Vertices in 3D Space
 #'
 #' Visualizes the vertices belonging to a specific basin from a basins object

@@ -104,7 +104,7 @@ find.basin.by.label <- function(label, basins.obj, extrema.type) {
 #' @return Basin structure (list), or NULL if not found
 #'
 #' @export
-find.basin.by.vertex <- function(vertex, basins.obj, extrema.type) {
+find.basin.by.vertex.in.basins.of.attraction <- function(vertex, basins.obj, extrema.type) {
     idx <- find.basin.idx.by.vertex(vertex, basins.obj, extrema.type)
     
     if (is.null(idx)) {
