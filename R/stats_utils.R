@@ -2276,70 +2276,167 @@ robust.zscore <- function(data, scale.factor = 1.4826) {
     return(robust.data)
 }
 
-#' Quantize Continuous Variable (Internal Function)
-#'
-#' This is a placeholder for the quantize.cont.var function that is referenced
-#' but not defined in the original code. This function should be implemented
-#' based on your specific requirements.
+#' Quantize Continuous Variable (Internal)
 #'
 #' @param x Numeric vector to quantize.
 #' @param method Quantization method ("uniform" or "quantile").
 #' @param wins.p Winsorization parameter.
 #' @param round Whether to round endpoints.
 #' @param dig.lab Number of digits for labels.
-#' @param start Start value for color range.
-#' @param end End value for color range.
-#' @param n.levels Number of quantization levels.
+#' @param start Start value for rainbow palette (used only when \code{color.palette} is NULL).
+#' @param end End value for rainbow palette (used only when \code{color.palette} is NULL).
+#' @param n.levels Number of quantization levels (bins).
+#' @param color.palette Palette specification:
+#'   \itemize{
+#'     \item \code{NULL}: defaults to \code{grDevices::rainbow}.
+#'     \item If \code{palette.type="discrete"}: either a function \code{function(n)} returning n colors,
+#'           or a character vector of colors (length >= n.bins).
+#'     \item If \code{palette.type="value"}: a function \code{function(x)} returning colors for numeric x
+#'           (e.g., \code{circlize::colorRamp2(...)}).
+#'   }
+#' @param palette.type "discrete" or "value" (see \code{color.palette}).
+#' @param na.color Color used for NA bins (returned in the table as \code{"NA"} only if you choose to add it).
 #'
-#' @return List containing x.cat and x.col.tbl
+#' @return List with:
+#'   \itemize{
+#'     \item \code{x.cat}: factor of bin assignments
+#'     \item \code{x.col.tbl}: named character vector mapping bin labels to colors
+#'     \item \code{breaks}: numeric vector of breaks used
+#'     \item \code{bin.values}: representative numeric value per bin (midpoint), useful for value palettes
+#'   }
 #'
 #' @keywords internal
 #' @noRd
-quantize.cont.var <- function(x, method = "uniform", wins.p = 0.02,
-                             round = FALSE, dig.lab = 2, start = 1/6,
-                             end = 0, n.levels = 10) {
+quantize.cont.var <- function(x,
+                             method = c("uniform", "quantile"),
+                             wins.p = 0.02,
+                             round = FALSE,
+                             dig.lab = 2,
+                             start = 1/6,
+                             end = 0,
+                             n.levels = 10,
+                             color.palette = NULL,
+                             palette.type = c("discrete", "value"),
+                             na.color = "gray80") {
 
-    x_original <- x  # Keep original for later
+    method <- match.arg(method)
+    palette.type <- match.arg(palette.type)
 
-    if (method == "uniform") {
-        # Winsorize if requested
-        if (wins.p > 0 && wins.p < 0.5) {
-            q_low <- quantile(x, wins.p, na.rm = TRUE)
-            q_high <- quantile(x, 1 - wins.p, na.rm = TRUE)
+    x.original <- x
 
-            n_low <- sum(x < q_low, na.rm = TRUE)
-            n_high <- sum(x > q_high, na.rm = TRUE)
+    ## ------------------------------------------------------------------------
+    ## Build breaks (possibly winsorizing for the break computation)
+    ## ------------------------------------------------------------------------
+    x.work <- x
 
-            x[x < q_low] <- q_low
-            x[x > q_high] <- q_high
+    if (identical(method, "uniform")) {
+
+        if (!is.numeric(wins.p) || length(wins.p) != 1 || is.na(wins.p) || wins.p < 0 || wins.p >= 0.5) {
+            stop("wins.p must be a single numeric value in [0, 0.5).")
         }
-        # Create uniform breaks
-        breaks <- seq(min(x, na.rm = TRUE), max(x, na.rm = TRUE),
-                     length.out = n.levels + 1)
-    } else if (method == "quantile") {
-        # Create quantile breaks
-        breaks <- quantile(x, probs = seq(0, 1, length.out = n.levels + 1),
-                          na.rm = TRUE)
+
+        if (wins.p > 0) {
+            q.low <- as.numeric(stats::quantile(x.work, wins.p, na.rm = TRUE))
+            q.high <- as.numeric(stats::quantile(x.work, 1 - wins.p, na.rm = TRUE))
+
+            x.work[x.work < q.low] <- q.low
+            x.work[x.work > q.high] <- q.high
+        }
+
+        breaks <- seq(min(x.work, na.rm = TRUE),
+                      max(x.work, na.rm = TRUE),
+                      length.out = n.levels + 1L)
+
+    } else {
+
+        breaks <- as.numeric(stats::quantile(x.work,
+                                             probs = seq(0, 1, length.out = n.levels + 1L),
+                                             na.rm = TRUE))
         breaks <- unique(breaks)
+
+        ## If quantiles collapse (ties), degrade n.levels implicitly
+        if (length(breaks) < 2L) {
+            stop("Quantile breaks collapsed (insufficient unique values in x).")
+        }
     }
 
-    if (round) {
+    if (isTRUE(round)) {
         breaks <- round(breaks, dig.lab)
     }
 
-    # CRITICAL FIX: Extend breaks slightly to ensure all values are included
+    ## Extend breaks slightly so cut() includes endpoints robustly
     breaks[1] <- breaks[1] - .Machine$double.eps * abs(breaks[1]) - 1e-10
     breaks[length(breaks)] <- breaks[length(breaks)] + .Machine$double.eps * abs(breaks[length(breaks)]) + 1e-10
 
-    # Cut the variable - use the winsorized values
-    x.cat <- cut(x, breaks = breaks, include.lowest = TRUE, dig.lab = dig.lab)
+    ## ------------------------------------------------------------------------
+    ## Bin assignments (use x.work for assignment so winsorization is respected)
+    ## ------------------------------------------------------------------------
+    x.cat <- cut(x.work, breaks = breaks, include.lowest = TRUE, dig.lab = dig.lab)
 
-    # Create color table
-    cols <- grDevices::rainbow(length(levels(x.cat)), start = start, end = end)
-    x.col.tbl <- cols
-    names(x.col.tbl) <- levels(x.cat)
+    bin.levels <- levels(x.cat)
+    n.bins <- length(bin.levels)
 
-    return(list(x.cat = x.cat, x.col.tbl = x.col.tbl))
+    ## Representative value per bin (midpoint), for palette.type="value"
+    ## Note: cut() intervals correspond to successive breaks
+    bin.values <- (breaks[-length(breaks)] + breaks[-1]) / 2
+    ## If quantile breaks were unique()'d, bins count matches length(breaks)-1
+    if (length(bin.values) != n.bins) {
+        ## This can happen if cut() dropped some levels; realign conservatively
+        ## by parsing levels is possible but heavy; simplest is truncate to min length
+        m <- min(length(bin.values), n.bins)
+        bin.values <- bin.values[seq_len(m)]
+        bin.levels <- bin.levels[seq_len(m)]
+        n.bins <- m
+        x.cat <- factor(x.cat, levels = bin.levels, ordered = is.ordered(x.cat))
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Build color table
+    ## ------------------------------------------------------------------------
+    cols <- NULL
+
+    if (identical(palette.type, "discrete")) {
+
+        if (is.null(color.palette)) {
+            cols <- grDevices::rainbow(n.bins, start = start, end = end)
+
+        } else if (is.function(color.palette)) {
+            cols <- color.palette(n.bins)
+
+        } else if (is.character(color.palette)) {
+            if (length(color.palette) < n.bins) {
+                stop("If color.palette is a character vector, it must have length >= number of bins.")
+            }
+            cols <- color.palette[seq_len(n.bins)]
+
+        } else {
+            stop("For palette.type = 'discrete', color.palette must be NULL, a function(n), or a character vector.")
+        }
+
+    } else {
+
+        ## palette.type == "value"
+        if (!is.function(color.palette)) {
+            stop("For palette.type = 'value', color.palette must be a function(x) returning colors.")
+        }
+
+        cols <- color.palette(bin.values)
+
+        if (!is.character(cols) || length(cols) != n.bins) {
+            stop("For palette.type = 'value', color.palette(bin.values) must return a character vector of length equal to number of bins.")
+        }
+    }
+
+    x.col.tbl <- as.character(cols)
+    names(x.col.tbl) <- bin.levels
+
+    list(
+        x.cat = x.cat,
+        x.col.tbl = x.col.tbl,
+        breaks = breaks,
+        bin.values = bin.values,
+        x.original = x.original
+    )
 }
 
 #' Find Local Minima in Distance Sequence
