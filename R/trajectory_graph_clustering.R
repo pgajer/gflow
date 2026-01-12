@@ -277,3 +277,113 @@ cluster.cell.trajectories <- function(gfc.flow,
     class(out) <- "gfc_cell_trajectory_clustering"
     out
 }
+
+#' Trajectory-Cluster Vertex Sets
+#'
+#' Given a \code{gfc_cell_trajectories} object and a clustering of its trajectories
+#' (e.g., obtained by cutting an \code{hclust} built from a trajectory distance),
+#' return, for each cluster, the unique set of vertex indices that appear in any
+#' trajectory assigned to that cluster.
+#'
+#' @param cell.trajs A \code{gfc_cell_trajectories} object, typically returned by
+#'   \code{cell.trajectories()}, containing a \code{$trajectories} field that is a
+#'   list of integer vectors (vertex indices).
+#' @param cltrs A vector of cluster assignments for the trajectories (e.g., the
+#'   output of \code{cutree(hc, k)}). Must have length equal to
+#'   \code{length(cell.trajs$trajectories)} (or \code{cell.trajs$n.trajectories}).
+#' @param sort Logical; if TRUE, sort the returned vertex indices within each
+#'   cluster. Default is TRUE.
+#' @param drop.empty Logical; if TRUE, omit clusters with zero assigned
+#'   trajectories (can arise if \code{cltrs} has unused levels). Default is TRUE.
+#'
+#' @return A named list. Each element corresponds to one cluster and is an
+#'   integer vector of unique vertex indices appearing in trajectories assigned
+#'   to that cluster. Names are \code{"cl<id>"} where \code{<id>} is the cluster
+#'   label.
+#'
+#' @examples
+#' \dontrun{
+#' m4.M4.trajs <- cell.trajectories(gfc.res, "m4", "M4", map = NULL)
+#' D.hausdorff <- trajectory.dist(traj.list = m4.M4.trajs$trajectories,
+#'                                method = "hausdorff",
+#'                                pre,
+#'                                n.cores = 1L,
+#'                                verbose = TRUE)
+#' hc.hausdorff <- hclust(D.hausdorff$dist, method = "ward.D2")
+#' hc.hausdorff.cltrs <- cutree(hc.hausdorff, k = 2)
+#'
+#' cl.vtx <- trajectory.cluster.vertices(m4.M4.trajs, hc.hausdorff.cltrs)
+#' str(cl.vtx)
+#' }
+#'
+#' @export
+trajectory.cluster.vertices <- function(cell.trajs,
+                                        cltrs,
+                                        sort = TRUE,
+                                        drop.empty = TRUE) {
+
+    ## ---------------------------------------------------------------------
+    ## Input validation
+    ## ---------------------------------------------------------------------
+
+    if (is.null(cell.trajs) || !is.list(cell.trajs) || is.null(cell.trajs$trajectories)) {
+        stop("cell.trajs must be a gfc_cell_trajectories-like object with a $trajectories field.")
+    }
+
+    traj.list <- cell.trajs$trajectories
+    if (!is.list(traj.list)) {
+        stop("cell.trajs$trajectories must be a list of integer vectors.")
+    }
+
+    n.traj <- length(traj.list)
+
+    if (length(cltrs) != n.traj) {
+        stop(sprintf("Length mismatch: length(cltrs)=%d but length(cell.trajs$trajectories)=%d.",
+                     length(cltrs), n.traj))
+    }
+
+    ## Normalize cluster labels
+    if (is.factor(cltrs)) {
+        cl.vec <- as.character(cltrs)
+    } else {
+        cl.vec <- cltrs
+    }
+
+    if (anyNA(cl.vec)) {
+        stop("cltrs contains NA values; cannot assign trajectories to clusters.")
+    }
+
+    ## Ensure labels are character for stable naming
+    cl.vec <- as.character(cl.vec)
+    cl.ids <- unique(cl.vec)
+    cl.ids <- cl.ids[order(cl.ids)]
+
+    ## ---------------------------------------------------------------------
+    ## Build per-cluster vertex sets
+    ## ---------------------------------------------------------------------
+
+    idx.by.cl <- split(seq_len(n.traj), cl.vec)
+
+    if (isTRUE(drop.empty)) {
+        idx.by.cl <- idx.by.cl[names(idx.by.cl) %in% cl.ids]
+    }
+
+    out <- lapply(names(idx.by.cl), function(cl) {
+
+        idx <- idx.by.cl[[cl]]
+        if (length(idx) == 0L) {
+            v <- integer(0)
+        } else {
+            v <- unique(unlist(traj.list[idx], use.names = FALSE))
+            v <- as.integer(v)
+            v <- v[!is.na(v)]
+            if (isTRUE(sort) && length(v) > 1L) v <- sort(v)
+        }
+
+        v
+    })
+
+    names(out) <- paste0("cl", names(idx.by.cl))
+
+    out
+}
