@@ -39,6 +39,7 @@
 #' @param legend.pos Character; legend position in grid mode. Default "topleft".
 #' @param show.legend Logical; show legend. Default TRUE.
 #' @param legend.cex Numeric; legend text size. Default 0.8.
+#' @param legend.inset Numeric; legend inset parameter. Default 0.05.
 #' @param ols.col Color for OLS line. Default "black".
 #' @param ols.lwd Numeric; OLS line width. Default 1.
 #' @param ols.lty Integer; OLS line type. Default 1.
@@ -80,6 +81,7 @@ plot.trajectory.hurdle.association <- function(z,
                                                legend.pos = "topleft",
                                                show.legend = TRUE,
                                                legend.cex = 0.8,
+                                               legend.inset = 0.05,
                                                ols.col = "black",
                                                ols.lwd = 1,
                                                ols.lty = 1,
@@ -93,190 +95,219 @@ plot.trajectory.hurdle.association <- function(z,
   overlay.draw <- match.arg(overlay.draw)
 
   dat <- prep.trajectory.hurdle.association.data(
-    z = z, y.hat = y.hat, trajectories = trajectories,
-    trj.id = trj.id, eps = eps,
-    z.transform = z.transform, z.pseudo = z.pseudo,
-    include.noncarriers = include.noncarriers
+      z = z, y.hat = y.hat, trajectories = trajectories,
+      trj.id = trj.id, eps = eps,
+      z.transform = z.transform, z.pseudo = z.pseudo,
+      include.noncarriers = include.noncarriers
   )
 
-  if (nrow(dat) == 0L) stop("No data available for requested trj.id.")
+    if (nrow(dat) == 0L) stop("No data available for requested trj.id.")
 
-  if (is.null(ylab)) ylab <- paste0("z.tr (", z.transform, ")")
-  if (is.null(main)) main <- paste0("Trajectory association: ", z.transform)
+    if (is.null(ylab)) ylab <- paste0("z.tr (", z.transform, ")")
+    if (is.null(main)) main <- paste0("Trajectory association: ", z.transform)
 
-  has.mass <- requireNamespace("MASS", quietly = TRUE)
+    has.mass <- requireNamespace("MASS", quietly = TRUE)
 
-  ## ----------------------------------------------------------------------
-  ## Helper: compute median curve in overlay mode via interpolation to grid
-  ## ----------------------------------------------------------------------
-  compute.median.curve <- function(dat, trjs, use = c("carriers", "all"), n.grid = 101L) {
-    use <- match.arg(use)
+    ## ----------------------------------------------------------------------
+    ## Helper: compute median curve in overlay mode via interpolation to grid
+    ## ----------------------------------------------------------------------
+    compute.median.curve <- function(dat, trjs, use = c("carriers", "all"), n.grid = 101L) {
+        use <- match.arg(use)
 
-    dt.use <- dat
-    if (use == "carriers") dt.use <- dt.use[dt.use$det == 1L, , drop = FALSE]
-    if (nrow(dt.use) == 0L) return(NULL)
+        dt.use <- dat
+        if (use == "carriers") dt.use <- dt.use[dt.use$det == 1L, , drop = FALSE]
+        if (nrow(dt.use) == 0L) return(NULL)
 
-    x.rng <- range(dt.use$y.hat, na.rm = TRUE)
-    if (!all(is.finite(x.rng)) || x.rng[2] <= x.rng[1]) return(NULL)
+        x.rng <- range(dt.use$y.hat, na.rm = TRUE)
+        if (!all(is.finite(x.rng)) || x.rng[2] <= x.rng[1]) return(NULL)
 
-    x.grid <- seq(x.rng[1], x.rng[2], length.out = as.integer(n.grid))
-    z.mat <- matrix(NA_real_, nrow = length(x.grid), ncol = length(trjs))
+        x.grid <- seq(x.rng[1], x.rng[2], length.out = as.integer(n.grid))
+        z.mat <- matrix(NA_real_, nrow = length(x.grid), ncol = length(trjs))
 
-    for (j in seq_along(trjs)) {
-      t <- trjs[j]
-      dt.t <- dt.use[dt.use$trajectory == t, , drop = FALSE]
-      if (nrow(dt.t) < 2L) next
+        for (j in seq_along(trjs)) {
+            t <- trjs[j]
+            dt.t <- dt.use[dt.use$trajectory == t, , drop = FALSE]
+            if (nrow(dt.t) < 2L) next
 
-      o <- order(dt.t$y.hat)
-      x <- dt.t$y.hat[o]
-      zt <- dt.t$z.tr[o]
+            o <- order(dt.t$y.hat)
+            x <- dt.t$y.hat[o]
+            zt <- dt.t$z.tr[o]
 
-      ## Remove non-finite
-      ok <- is.finite(x) & is.finite(zt)
-      x <- x[ok]
-      zt <- zt[ok]
-      if (length(x) < 2L) next
-      if (length(unique(x)) < 2L) next
+            ## Remove non-finite
+            ok <- is.finite(x) & is.finite(zt)
+            x <- x[ok]
+            zt <- zt[ok]
+            if (length(x) < 2L) next
+            if (length(unique(x)) < 2L) next
 
-      ## Interpolate without extrapolation
-      ap <- stats::approx(x = x, y = zt, xout = x.grid, rule = 1, ties = "ordered")
-      z.mat[, j] <- ap$y
+            ## Interpolate without extrapolation
+            ap <- stats::approx(x = x, y = zt, xout = x.grid, rule = 1, ties = "ordered")
+            z.mat[, j] <- ap$y
+        }
+
+        med <- apply(z.mat, 1, function(v) stats::median(v, na.rm = TRUE))
+        n.ok <- apply(z.mat, 1, function(v) sum(is.finite(v)))
+
+        keep <- is.finite(med) & (n.ok >= 2L)
+        if (!any(keep)) return(NULL)
+
+        list(x = x.grid[keep], y = med[keep])
     }
 
-    med <- apply(z.mat, 1, function(v) stats::median(v, na.rm = TRUE))
-    n.ok <- apply(z.mat, 1, function(v) sum(is.finite(v)))
+    ## ----------------------------------------------------------------------
+    ## Display modes
+    ## ----------------------------------------------------------------------
+    trjs <- sort(unique(dat$trajectory))
 
-    keep <- is.finite(med) & (n.ok >= 2L)
-    if (!any(keep)) return(NULL)
+    if (display == "overlay") {
 
-    list(x = x.grid[keep], y = med[keep])
-  }
+        ## Decide what to draw
+        dt.draw <- dat
+        if (overlay.draw == "carriers") dt.draw <- dt.draw[dt.draw$det == 1L, , drop = FALSE]
+        if (nrow(dt.draw) == 0L) stop("No points to draw under overlay.draw setting.")
 
-  ## ----------------------------------------------------------------------
-  ## Display modes
-  ## ----------------------------------------------------------------------
-  trjs <- sort(unique(dat$trajectory))
+        xlim <- range(dt.draw$y.hat, na.rm = TRUE)
+        ylim <- range(dt.draw$z.tr, na.rm = TRUE)
 
-  if (display == "overlay") {
+        plot(NA, NA,
+             xlim = xlim, ylim = ylim,
+             xlab = xlab, ylab = ylab,
+             main = main)
 
-    ## Decide what to draw
-    dt.draw <- dat
-    if (overlay.draw == "carriers") dt.draw <- dt.draw[dt.draw$det == 1L, , drop = FALSE]
-    if (nrow(dt.draw) == 0L) stop("No points to draw under overlay.draw setting.")
+        col.use <- grDevices::adjustcolor(overlay.col, alpha.f = overlay.alpha)
 
-    xlim <- range(dt.draw$y.hat, na.rm = TRUE)
-    ylim <- range(dt.draw$z.tr, na.rm = TRUE)
+        ## Draw each trajectory as a sorted curve in y.hat
+        for (t in trjs) {
+            dt.t <- dt.draw[dt.draw$trajectory == t, , drop = FALSE]
+            if (nrow(dt.t) == 0L) next
+            o <- order(dt.t$y.hat)
+            x <- dt.t$y.hat[o]
+            zt <- dt.t$z.tr[o]
 
-    plot(NA, NA,
-         xlim = xlim, ylim = ylim,
-         xlab = xlab, ylab = ylab,
-         main = main)
+            if (overlay.type %in% c("l", "b")) {
+                lines(x, zt, col = col.use, lwd = overlay.lwd)
+            }
+            if (overlay.type %in% c("p", "b")) {
+                points(x, zt, pch = pch.carrier, cex = cex, col = col.use)
+            }
+        }
 
-    col.use <- grDevices::adjustcolor(overlay.col, alpha.f = overlay.alpha)
+        ## Optional median curve
+        if (isTRUE(median.curve)) {
+            med <- compute.median.curve(dat = dat, trjs = trjs, use = overlay.draw, n.grid = median.n.grid)
+            if (!is.null(med)) {
+                lines(med$x, med$y, col = median.col, lwd = median.lwd, lty = median.lty)
+            }
+        }
 
-    ## Draw each trajectory as a sorted curve in y.hat
+        if (isTRUE(show.legend)) {
+
+            leg <- c(paste0("Trajectories (n=", length(trjs), ")"))
+            col <- c(grDevices::adjustcolor(overlay.col, alpha.f = overlay.alpha))
+            lty <- c(1)
+            lwd <- c(overlay.lwd)
+
+            if (isTRUE(median.curve)) {
+                leg <- c(leg, "Median curve")
+                col <- c(col, median.col)
+                lty <- c(lty, median.lty)
+                lwd <- c(lwd, median.lwd)
+            }
+
+            legend(legend.pos,
+                   legend = leg,
+                   col = col,
+                   lty = lty,
+                   lwd = lwd,
+                   bty = "n",
+                   inset = legend.inset,
+                   cex = legend.cex)
+        }
+
+        return(invisible(dat))
+    }
+
+    ## ----------------------------------------------------------------------
+    ## Grid mode (current behavior, with line-style controls)
+    ## ----------------------------------------------------------------------
+    n.trj <- length(trjs)
+    ncol <- if (n.trj <= 2L) n.trj else ceiling(sqrt(n.trj))
+    nrow <- ceiling(n.trj / ncol)
+
+    old.par <- par(no.readonly = TRUE)
+    on.exit(par(old.par), add = TRUE)
+    par(mfrow = c(nrow, ncol), mar = c(4, 4, 3, 1))
+
     for (t in trjs) {
-      dt.t <- dt.draw[dt.draw$trajectory == t, , drop = FALSE]
-      if (nrow(dt.t) == 0L) next
-      o <- order(dt.t$y.hat)
-      x <- dt.t$y.hat[o]
-      zt <- dt.t$z.tr[o]
 
-      if (overlay.type %in% c("l", "b")) {
-        lines(x, zt, col = col.use, lwd = overlay.lwd)
-      }
-      if (overlay.type %in% c("p", "b")) {
-        points(x, zt, pch = pch.carrier, cex = cex, col = col.use)
-      }
+        dt <- dat[dat$trajectory == t, , drop = FALSE]
+        is.carrier <- dt$det == 1L
+        dt.car <- dt[is.carrier, , drop = FALSE]
+        dt.ncar <- dt[!is.carrier, , drop = FALSE]
+
+        plot(dt$y.hat, dt$z.tr,
+             type = "n",
+             main = paste0(main, " (trj ", t, ")"),
+             xlab = xlab,
+             ylab = ylab)
+
+        if (nrow(dt.ncar) > 0L) {
+            points(dt.ncar$y.hat, dt.ncar$z.tr, pch = pch.noncarrier, cex = cex)
+        }
+        if (nrow(dt.car) > 0L) {
+            points(dt.car$y.hat, dt.car$z.tr, pch = pch.carrier, cex = cex)
+        }
+
+        if (nrow(dt.car) >= 3L && length(unique(dt.car$y.hat)) > 1L) {
+
+            if (isTRUE(add.ols)) {
+                fit.lm <- stats::lm(z.tr ~ y.hat, data = dt.car)
+                xs <- seq(min(dt.car$y.hat, na.rm = TRUE),
+                          max(dt.car$y.hat, na.rm = TRUE),
+                          length.out = 100)
+                ys <- stats::predict(fit.lm, newdata = data.frame(y.hat = xs))
+                lines(xs, ys, lty = ols.lty, lwd = ols.lwd, col = ols.col)
+            }
+
+            if (isTRUE(add.robust) && has.mass) {
+                fit.rlm <- suppressWarnings(MASS::rlm(z.tr ~ y.hat, data = dt.car, maxit = 100))
+                xs <- seq(min(dt.car$y.hat, na.rm = TRUE),
+                          max(dt.car$y.hat, na.rm = TRUE),
+                          length.out = 100)
+                ys <- as.numeric(stats::predict(fit.rlm, newdata = data.frame(y.hat = xs)))
+                lines(xs, ys, lty = robust.lty, lwd = robust.lwd, col = robust.col)
+            }
+
+            if (isTRUE(add.spearman) && isTRUE(show.legend)) {
+                sp <- suppressWarnings(stats::cor.test(dt.car$y.hat, dt.car$z.tr,
+                                                       method = "spearman", exact = FALSE))
+                rho <- as.numeric(sp$estimate)[1]
+                pval <- as.numeric(sp$p.value)[1]
+
+                legend.txt <- c(
+                    paste0("k=", nrow(dt.car)),
+                    paste0("Spearman rho=", sprintf("%.3f", rho)),
+                    paste0("p=", signif(pval, 3))
+                )
+                if (isTRUE(add.ols)) legend.txt <- c(legend.txt, "OLS")
+                if (isTRUE(add.robust) && has.mass) legend.txt <- c(legend.txt, "Huber rlm")
+
+                legend(legend.pos,
+                       legend = legend.txt,
+                       bty = "n",
+                       inset = legend.inset,
+                       cex = legend.cex)
+            }
+
+        } else if (isTRUE(show.legend)) {
+            legend(legend.pos,
+                   legend = c(paste0("k=", nrow(dt.car)), "Too few carriers for fit"),
+                   inset = legend.inset,
+                   bty = "n", cex = legend.cex)
+        }
     }
 
-    ## Optional median curve
-    if (isTRUE(median.curve)) {
-      med <- compute.median.curve(dat = dat, trjs = trjs, use = overlay.draw, n.grid = median.n.grid)
-      if (!is.null(med)) {
-        lines(med$x, med$y, col = median.col, lwd = median.lwd, lty = median.lty)
-      }
-    }
-
-    return(invisible(dat))
-  }
-
-  ## ----------------------------------------------------------------------
-  ## Grid mode (current behavior, with line-style controls)
-  ## ----------------------------------------------------------------------
-  n.trj <- length(trjs)
-  ncol <- if (n.trj <= 2L) n.trj else ceiling(sqrt(n.trj))
-  nrow <- ceiling(n.trj / ncol)
-
-  old.par <- par(no.readonly = TRUE)
-  on.exit(par(old.par), add = TRUE)
-  par(mfrow = c(nrow, ncol), mar = c(4, 4, 3, 1))
-
-  for (t in trjs) {
-
-    dt <- dat[dat$trajectory == t, , drop = FALSE]
-    is.carrier <- dt$det == 1L
-    dt.car <- dt[is.carrier, , drop = FALSE]
-    dt.ncar <- dt[!is.carrier, , drop = FALSE]
-
-    plot(dt$y.hat, dt$z.tr,
-         type = "n",
-         main = paste0(main, " (trj ", t, ")"),
-         xlab = xlab,
-         ylab = ylab)
-
-    if (nrow(dt.ncar) > 0L) {
-      points(dt.ncar$y.hat, dt.ncar$z.tr, pch = pch.noncarrier, cex = cex)
-    }
-    if (nrow(dt.car) > 0L) {
-      points(dt.car$y.hat, dt.car$z.tr, pch = pch.carrier, cex = cex)
-    }
-
-    if (nrow(dt.car) >= 3L && length(unique(dt.car$y.hat)) > 1L) {
-
-      if (isTRUE(add.ols)) {
-        fit.lm <- stats::lm(z.tr ~ y.hat, data = dt.car)
-        xs <- seq(min(dt.car$y.hat, na.rm = TRUE),
-                  max(dt.car$y.hat, na.rm = TRUE),
-                  length.out = 100)
-        ys <- stats::predict(fit.lm, newdata = data.frame(y.hat = xs))
-        lines(xs, ys, lty = ols.lty, lwd = ols.lwd, col = ols.col)
-      }
-
-      if (isTRUE(add.robust) && has.mass) {
-        fit.rlm <- suppressWarnings(MASS::rlm(z.tr ~ y.hat, data = dt.car, maxit = 100))
-        xs <- seq(min(dt.car$y.hat, na.rm = TRUE),
-                  max(dt.car$y.hat, na.rm = TRUE),
-                  length.out = 100)
-        ys <- as.numeric(stats::predict(fit.rlm, newdata = data.frame(y.hat = xs)))
-        lines(xs, ys, lty = robust.lty, lwd = robust.lwd, col = robust.col)
-      }
-
-      if (isTRUE(add.spearman) && isTRUE(show.legend)) {
-        sp <- suppressWarnings(stats::cor.test(dt.car$y.hat, dt.car$z.tr,
-                                              method = "spearman", exact = FALSE))
-        rho <- as.numeric(sp$estimate)[1]
-        pval <- as.numeric(sp$p.value)[1]
-
-        legend.txt <- c(
-          paste0("k=", nrow(dt.car)),
-          paste0("Spearman rho=", sprintf("%.3f", rho)),
-          paste0("p=", signif(pval, 3))
-        )
-        if (isTRUE(add.ols)) legend.txt <- c(legend.txt, "OLS")
-        if (isTRUE(add.robust) && has.mass) legend.txt <- c(legend.txt, "Huber rlm")
-
-        legend(legend.pos, legend = legend.txt, bty = "n", cex = legend.cex)
-      }
-
-    } else if (isTRUE(show.legend)) {
-      legend(legend.pos,
-             legend = c(paste0("k=", nrow(dt.car)), "Too few carriers for fit"),
-             bty = "n", cex = legend.cex)
-    }
-  }
-
-  invisible(dat)
+    invisible(dat)
 }
 
 #' Prepare trajectory-wise hurdle association plot data
