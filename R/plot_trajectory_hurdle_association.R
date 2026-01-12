@@ -1,53 +1,109 @@
-#' Plot transformed abundance vs y.hat for selected trajectories
+#' Plot trajectory-wise hurdle association between a transformed response and y.hat
+#'
+#' @description
+#' Visualizes the association between a transformed response \code{z.tr} and a
+#' trajectory coordinate \code{y.hat} across one or more trajectories (paths),
+#' with special handling of zeros / non-detections in \code{z} via a detection
+#' indicator \code{det = I(z > eps)}.
 #'
 #' @details
-#' Visualizes z.tr vs y.hat for one or more trajectories, optionally including:
-#'   - carrier vs noncarrier points
-#'   - OLS and/or Huber M-estimator regression lines (carriers only)
-#'   - Spearman rho annotation (carriers only)
-#'   - an overlay mode (single panel) for many trajectories
-#'   - an optional median association curve in overlay mode
+#' The function first constructs long-form per-sample data using
+#' \code{prep.trajectory.hurdle.association.data()} (one row per retained sample
+#' within each selected trajectory). It then provides two display modes:
 #'
-#' @param z Numeric vector (length n.samples) of abundances (relative or absolute).
-#' @param y.hat Numeric vector (length n.samples), monotone score along trajectory.
-#' @param trajectories List of integer vectors, sample indices per trajectory.
-#' @param trj.id Integer vector of trajectory ids to plot.
-#' @param eps Numeric scalar; detection threshold. Default 0.
-#' @param z.transform Character; "log", "logit", or "arcsin-sqrt".
-#' @param z.pseudo Numeric pseudo-count for transforms requiring it. Default 1e-6.
-#' @param include.noncarriers Logical; include noncarriers in plot data. Default TRUE.
-#' @param add.ols Logical; add OLS line (grid mode). Default TRUE.
-#' @param add.robust Logical; add Huber rlm line (grid mode). Default TRUE.
-#' @param add.spearman Logical; add Spearman annotation (grid mode). Default TRUE.
-#' @param display Character; "grid" or "overlay". Default "overlay".
-#' @param overlay.type Character; "b", "l", or "p". Default "b".
-#' @param overlay.draw Character; "carriers" or "all". Default "carriers".
-#' @param overlay.col Color for overlay trajectories. Default "grey40".
-#' @param overlay.lwd Numeric line width for overlay trajectories. Default 1.
-#' @param overlay.alpha Numeric in (0,1]; alpha for overlay trajectories. Default 0.5.
-#' @param median.curve Logical; add median curve in overlay mode. Default FALSE.
-#' @param median.n.grid Integer; grid size for median curve. Default 101.
-#' @param median.col Color for median curve. Default "black".
+#' \enumerate{
+#' \item \code{display = "grid"}: small multiples (one panel per trajectory),
+#' showing carrier and noncarrier points (optional) and optionally adding OLS
+#' and Huber M-estimator lines among carriers, plus per-panel Spearman summary.
+#' \item \code{display = "overlay"}: a single panel overlaying trajectories as
+#' faint polylines/points, optionally adding a robust median curve and an
+#' additional fitted summary curve (piecewise-linear or smooth spline) to
+#' communicate overall profile shape.
+#' }
+#'
+#' In overlay mode, the summary fit is, by default, applied to the median curve
+#' (recommended for clean communication). Alternatively, it may be applied to
+#' pooled points across all selected trajectories.
+#'
+#' @param z Numeric vector (length \code{n.samples}) of response values.
+#' @param y.hat Numeric vector (length \code{n.samples}) giving a trajectory
+#'   coordinate or score (x-axis).
+#' @param trajectories List of integer vectors; each element contains sample
+#'   indices defining a trajectory.
+#' @param trj.id Integer vector of trajectory identifiers (1-based) to plot.
+#' @param eps Numeric scalar; detection threshold. Values with \code{z <= eps}
+#'   are treated as non-detections. Default 0.
+#' @param z.transform Character; one of \code{"log"}, \code{"logit"},
+#'   \code{"arcsin-sqrt"}.
+#' @param z.pseudo Numeric pseudo-count used by transforms requiring stabilization
+#'   near 0 and/or 1 (notably \code{"log"} and \code{"logit"}). Default \code{1e-6}.
+#' @param include.noncarriers Logical; if \code{TRUE}, include noncarriers
+#'   (det==0) in the plotting data. If \code{FALSE}, include carriers only.
+#' @param add.ols Logical; in grid mode, add OLS line among carriers. Default TRUE.
+#' @param add.robust Logical; in grid mode, add Huber M-estimator line (MASS::rlm)
+#'   among carriers if MASS is available. Default TRUE.
+#' @param add.spearman Logical; in grid mode, annotate each panel with Spearman
+#'   rho/p among carriers. Default TRUE.
+#' @param display Character; \code{"grid"} or \code{"overlay"}. Default \code{"grid"}.
+#'
+#' @param overlay.type Character; overlay drawing type: \code{"b"}, \code{"l"},
+#'   or \code{"p"}. Default \code{"b"}.
+#' @param overlay.draw Character; \code{"carriers"} or \code{"all"}. Default
+#'   \code{"carriers"}.
+#' @param overlay.col Color for overlay trajectories. Default \code{"grey40"}.
+#' @param overlay.lwd Numeric; overlay line width. Default 1.
+#' @param overlay.alpha Numeric in (0,1]; overlay alpha. Default 0.5.
+#'
+#' @param median.curve Logical; in overlay mode, add median curve. Default FALSE.
+#' @param median.n.grid Integer; grid size for median curve interpolation. Default 101.
+#' @param median.col Color for median curve. Default \code{"red"}.
 #' @param median.lwd Numeric; median curve line width. Default 2.
 #' @param median.lty Integer; median curve line type. Default 1.
-#' @param pch.carrier Integer point character. Default 19.
-#' @param pch.noncarrier Integer point character. Default 1.
+#'
+#' @param summary.fit Character; \code{"none"}, \code{"piecewise"}, or \code{"spline"}.
+#'   Default \code{"none"}. Overlay mode only.
+#' @param summary.fit.to Character; \code{"median"} or \code{"pooled"}.
+#'   Default \code{"median"}. Overlay mode only.
+#' @param summary.fit.col Color for summary fit curve. Default \code{"blue"}.
+#' @param summary.fit.lwd Numeric; summary fit line width. Default 3.
+#' @param summary.fit.lty Integer; summary fit line type. Default 3.
+#'
+#' @param piecewise.n.breaks Integer; number of breakpoints for piecewise fit.
+#'   Default 1 (two segments). Overlay mode only.
+#' @param piecewise.breaks Optional numeric vector of explicit breakpoints in
+#'   \code{y.hat} units. If provided, overrides automatic selection.
+#' @param piecewise.min.span.frac Numeric in (0,0.5); excludes candidate
+#'   breakpoints too close to range ends (fraction of x-range). Default 0.1.
+#' @param piecewise.grid.n Integer; number of candidate breakpoints for
+#'   one-break grid search. Default 51.
+#'
+#' @param spline.df Optional numeric degrees of freedom for \code{smooth.spline}.
+#' @param spline.spar Optional numeric smoothing parameter for \code{smooth.spline}.
+#'
+#' @param pch.carrier Integer; carrier point symbol. Default 19.
+#' @param pch.noncarrier Integer; noncarrier point symbol. Default 1.
 #' @param cex Numeric point size. Default 0.8.
-#' @param main Character; main title. Default NULL.
-#' @param xlab Character; x label. Default "y.hat".
-#' @param ylab Character; y label. Default NULL.
-#' @param legend.pos Character; legend position in grid mode. Default "topleft".
+#'
+#' @param main Character main title. Default NULL.
+#' @param xlab Character x-axis label. Default \code{"y.hat"}.
+#' @param ylab Character y-axis label. Default NULL.
+#'
+#' @param legend.pos Legend position (passed to \code{legend()}). Default \code{"topleft"}.
 #' @param show.legend Logical; show legend. Default TRUE.
 #' @param legend.cex Numeric; legend text size. Default 0.8.
 #' @param legend.inset Numeric; legend inset parameter. Default 0.05.
-#' @param ols.col Color for OLS line. Default "black".
+#'
+#' @param ols.col Color for OLS line. Default \code{"black"}.
 #' @param ols.lwd Numeric; OLS line width. Default 1.
 #' @param ols.lty Integer; OLS line type. Default 1.
-#' @param robust.col Color for robust line. Default "black".
+#' @param robust.col Color for robust line. Default \code{"black"}.
 #' @param robust.lwd Numeric; robust line width. Default 1.
 #' @param robust.lty Integer; robust line type. Default 2.
 #'
-#' @return Invisibly returns the long-form plot data.frame.
+#' @return
+#' Invisibly returns the long-form plotting \code{data.frame}. When overlay mode
+#' computes a median curve and/or summary fit, the returned object has an
+#' attribute \code{"summary.fit"} containing fit details.
 #'
 #' @export
 plot.trajectory.hurdle.association <- function(z,
@@ -57,11 +113,11 @@ plot.trajectory.hurdle.association <- function(z,
                                                eps = 0,
                                                z.transform = c("log", "logit", "arcsin-sqrt"),
                                                z.pseudo = 1e-6,
-                                               include.noncarriers = FALSE,
-                                               add.ols = FALSE,
-                                               add.robust = FALSE,
-                                               add.spearman = FALSE,
-                                               display = c("overlay", "grid"),
+                                               include.noncarriers = TRUE,
+                                               add.ols = TRUE,
+                                               add.robust = TRUE,
+                                               add.spearman = TRUE,
+                                               display = c("grid", "overlay"),
                                                overlay.type = c("b", "l", "p"),
                                                overlay.draw = c("carriers", "all"),
                                                overlay.col = "grey40",
@@ -69,9 +125,20 @@ plot.trajectory.hurdle.association <- function(z,
                                                overlay.alpha = 0.5,
                                                median.curve = FALSE,
                                                median.n.grid = 101L,
-                                               median.col = "black",
+                                               median.col = "red",
                                                median.lwd = 2,
                                                median.lty = 1,
+                                               summary.fit = c("none", "piecewise", "spline"),
+                                               summary.fit.to = c("median", "pooled"),
+                                               summary.fit.col = "blue",
+                                               summary.fit.lwd = 3,
+                                               summary.fit.lty = 3,
+                                               piecewise.n.breaks = 1L,
+                                               piecewise.breaks = NULL,
+                                               piecewise.min.span.frac = 0.1,
+                                               piecewise.grid.n = 51L,
+                                               spline.df = NULL,
+                                               spline.spar = NULL,
                                                pch.carrier = 19,
                                                pch.noncarrier = 1,
                                                cex = 0.8,
@@ -93,75 +160,208 @@ plot.trajectory.hurdle.association <- function(z,
   display <- match.arg(display)
   overlay.type <- match.arg(overlay.type)
   overlay.draw <- match.arg(overlay.draw)
+  summary.fit <- match.arg(summary.fit)
+  summary.fit.to <- match.arg(summary.fit.to)
+
+  stopifnot(is.numeric(z))
+  stopifnot(is.numeric(y.hat))
+  stopifnot(length(z) == length(y.hat))
+  stopifnot(is.list(trajectories))
+
+  if (!exists("prep.trajectory.hurdle.association.data", mode = "function")) {
+    stop("prep.trajectory.hurdle.association.data() not found. Please add it to the package namespace.")
+  }
 
   dat <- prep.trajectory.hurdle.association.data(
-      z = z, y.hat = y.hat, trajectories = trajectories,
-      trj.id = trj.id, eps = eps,
-      z.transform = z.transform, z.pseudo = z.pseudo,
-      include.noncarriers = include.noncarriers
+    z = z,
+    y.hat = y.hat,
+    trajectories = trajectories,
+    trj.id = trj.id,
+    eps = eps,
+    z.transform = z.transform,
+    z.pseudo = z.pseudo,
+    include.noncarriers = include.noncarriers
   )
 
-    if (nrow(dat) == 0L) stop("No data available for requested trj.id.")
+  if (nrow(dat) == 0L) stop("No data available for requested trj.id.")
 
-    if (is.null(ylab)) ylab <- paste0("z.tr (", z.transform, ")")
-    if (is.null(main)) main <- paste0("Trajectory association: ", z.transform)
+  if (is.null(ylab)) ylab <- paste0("z.tr (", z.transform, ")")
+  if (is.null(main)) main <- paste0("Trajectory association: ", z.transform)
 
-    has.mass <- requireNamespace("MASS", quietly = TRUE)
+  trjs <- sort(unique(dat$trajectory))
+  has.mass <- requireNamespace("MASS", quietly = TRUE)
 
-    ## ----------------------------------------------------------------------
-    ## Helper: compute median curve in overlay mode via interpolation to grid
-    ## ----------------------------------------------------------------------
-    compute.median.curve <- function(dat, trjs, use = c("carriers", "all"), n.grid = 101L) {
-        use <- match.arg(use)
+  ## ------------------------------------------------------------------------
+  ## Helpers (overlay mode): median curve + summary fits
+  ## ------------------------------------------------------------------------
+  compute.median.curve <- function(dat, trjs, use = c("carriers", "all"), n.grid = 101L) {
+    use <- match.arg(use)
 
-        dt.use <- dat
-        if (use == "carriers") dt.use <- dt.use[dt.use$det == 1L, , drop = FALSE]
-        if (nrow(dt.use) == 0L) return(NULL)
+    dt.use <- dat
+    if (use == "carriers") dt.use <- dt.use[dt.use$det == 1L, , drop = FALSE]
+    if (nrow(dt.use) == 0L) return(NULL)
 
-        x.rng <- range(dt.use$y.hat, na.rm = TRUE)
-        if (!all(is.finite(x.rng)) || x.rng[2] <= x.rng[1]) return(NULL)
+    x.rng <- range(dt.use$y.hat, na.rm = TRUE)
+    if (!all(is.finite(x.rng)) || x.rng[2] <= x.rng[1]) return(NULL)
 
-        x.grid <- seq(x.rng[1], x.rng[2], length.out = as.integer(n.grid))
-        z.mat <- matrix(NA_real_, nrow = length(x.grid), ncol = length(trjs))
+    x.grid <- seq(x.rng[1], x.rng[2], length.out = as.integer(n.grid))
+    z.mat <- matrix(NA_real_, nrow = length(x.grid), ncol = length(trjs))
 
-        for (j in seq_along(trjs)) {
-            t <- trjs[j]
-            dt.t <- dt.use[dt.use$trajectory == t, , drop = FALSE]
-            if (nrow(dt.t) < 2L) next
+    for (j in seq_along(trjs)) {
+      t <- trjs[j]
+      dt.t <- dt.use[dt.use$trajectory == t, , drop = FALSE]
+      if (nrow(dt.t) < 2L) next
 
-            o <- order(dt.t$y.hat)
-            x <- dt.t$y.hat[o]
-            zt <- dt.t$z.tr[o]
+      o <- order(dt.t$y.hat)
+      x <- dt.t$y.hat[o]
+      zt <- dt.t$z.tr[o]
 
-            ## Remove non-finite
-            ok <- is.finite(x) & is.finite(zt)
-            x <- x[ok]
-            zt <- zt[ok]
-            if (length(x) < 2L) next
-            if (length(unique(x)) < 2L) next
+      ok <- is.finite(x) & is.finite(zt)
+      x <- x[ok]
+      zt <- zt[ok]
+      if (length(x) < 2L) next
+      if (length(unique(x)) < 2L) next
 
-            ## Interpolate without extrapolation
-            ap <- stats::approx(x = x, y = zt, xout = x.grid, rule = 1, ties = "ordered")
-            z.mat[, j] <- ap$y
-        }
-
-        med <- apply(z.mat, 1, function(v) stats::median(v, na.rm = TRUE))
-        n.ok <- apply(z.mat, 1, function(v) sum(is.finite(v)))
-
-        keep <- is.finite(med) & (n.ok >= 2L)
-        if (!any(keep)) return(NULL)
-
-        list(x = x.grid[keep], y = med[keep])
+      ap <- stats::approx(x = x, y = zt, xout = x.grid, rule = 1, ties = "ordered")
+      z.mat[, j] <- ap$y
     }
 
-    ## ----------------------------------------------------------------------
-    ## Display modes
-    ## ----------------------------------------------------------------------
-    trjs <- sort(unique(dat$trajectory))
+    med <- apply(z.mat, 1, function(v) stats::median(v, na.rm = TRUE))
+    n.ok <- apply(z.mat, 1, function(v) sum(is.finite(v)))
 
+    keep <- is.finite(med) & (n.ok >= 2L)
+    if (!any(keep)) return(NULL)
+
+    list(x = x.grid[keep], y = med[keep], n.ok = n.ok[keep])
+  }
+
+    fit.spline <- function(x, y, xout,
+                           df = NULL,
+                           spar = NULL) {
+
+        ok <- is.finite(x) & is.finite(y)
+        x <- x[ok]; y <- y[ok]
+        if (length(x) < 4L) return(NULL)
+        if (length(unique(x)) < 3L) return(NULL)
+
+        if (!is.null(df)) {
+            fit <- stats::smooth.spline(x = x, y = y, df = df)
+        } else if (!is.null(spar)) {
+            fit <- stats::smooth.spline(x = x, y = y, spar = spar)
+        } else {
+            fit <- stats::smooth.spline(x = x, y = y)
+        }
+
+        pr <- stats::predict(fit, x = xout)
+
+        list(
+            fit = fit,
+            x = pr$x,
+            y = pr$y,
+            spline.df = as.numeric(fit$df)[1],
+            spline.spar = as.numeric(fit$spar)[1]
+        )
+    }
+
+    fit.piecewise <- function(x, y, xout,
+                              n.breaks = 1L,
+                              breaks = NULL,
+                              min.span.frac = 0.1,
+                              grid.n = 51L) {
+
+        ok <- is.finite(x) & is.finite(y)
+        x <- x[ok]; y <- y[ok]
+        if (length(x) < 6L) return(NULL)
+        if (length(unique(x)) < 4L) return(NULL)
+
+        n.breaks <- as.integer(n.breaks)
+        if (is.na(n.breaks) || n.breaks < 1L) n.breaks <- 1L
+
+        x.rng <- range(x, na.rm = TRUE)
+        if (!all(is.finite(x.rng)) || x.rng[2] <= x.rng[1]) return(NULL)
+
+        ## If explicit breaks provided, use them (sorted, unique)
+        if (!is.null(breaks)) {
+            br <- sort(unique(as.numeric(breaks)))
+            br <- br[is.finite(br)]
+            br <- br[br > x.rng[1] & br < x.rng[2]]
+            if (length(br) == 0L) return(NULL)
+            n.breaks <- length(br)
+            breaks.use <- br
+
+        } else {
+            ## Automatic selection:
+            if (n.breaks == 1L) {
+                ## Grid search for one breakpoint minimizing SSE
+                span <- (x.rng[2] - x.rng[1])
+                lo <- x.rng[1] + min.span.frac * span
+                hi <- x.rng[2] - min.span.frac * span
+                if (!is.finite(lo) || !is.finite(hi) || hi <= lo) return(NULL)
+
+                cand <- seq(lo, hi, length.out = as.integer(grid.n))
+                best.sse <- Inf
+                best.b <- NA_real_
+
+                for (b in cand) {
+                    i1 <- x <= b
+                    i2 <- x > b
+                    if (sum(i1) < 3L || sum(i2) < 3L) next
+                    f1 <- stats::lm(y[i1] ~ x[i1])
+                    f2 <- stats::lm(y[i2] ~ x[i2])
+                    rss <- sum(stats::residuals(f1)^2) + sum(stats::residuals(f2)^2)
+                    if (is.finite(rss) && rss < best.sse) {
+                        best.sse <- rss
+                        best.b <- b
+                    }
+                }
+
+                if (!is.finite(best.b)) return(NULL)
+                breaks.use <- best.b
+
+            } else {
+                ## For >1 breakpoints, use quantile-based breaks (stable, dependency-free)
+                probs <- seq(0, 1, length.out = n.breaks + 2L)
+                br <- as.numeric(stats::quantile(x, probs = probs[-c(1, length(probs))], na.rm = TRUE))
+                br <- sort(unique(br))
+                br <- br[br > x.rng[1] & br < x.rng[2]]
+                if (length(br) < 1L) return(NULL)
+                breaks.use <- br
+                n.breaks <- length(breaks.use)
+            }
+        }
+
+        ## Fit separate OLS in each segment and predict on xout
+        breaks.use <- sort(as.numeric(breaks.use))
+        seg.cuts <- c(-Inf, breaks.use, Inf)
+
+        yhat <- rep(NA_real_, length(xout))
+        models <- vector("list", length(seg.cuts) - 1L)
+
+        for (s in seq_len(length(seg.cuts) - 1L)) {
+            lo <- seg.cuts[s]
+            hi <- seg.cuts[s + 1L]
+            idx <- (x > lo) & (x <= hi)
+            if (sum(idx) < 3L) next
+
+            models[[s]] <- stats::lm(y[idx] ~ x[idx])
+
+            idx.out <- (xout > lo) & (xout <= hi)
+            if (any(idx.out)) {
+                yhat[idx.out] <- stats::predict(models[[s]], newdata = data.frame(x = xout[idx.out]))
+            }
+        }
+
+        keep <- is.finite(yhat)
+        if (!any(keep)) return(NULL)
+
+        list(breaks = breaks.use, models = models, x = xout[keep], y = yhat[keep])
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Overlay mode
+    ## ------------------------------------------------------------------------
     if (display == "overlay") {
 
-        ## Decide what to draw
         dt.draw <- dat
         if (overlay.draw == "carriers") dt.draw <- dt.draw[dt.draw$det == 1L, , drop = FALSE]
         if (nrow(dt.draw) == 0L) stop("No points to draw under overlay.draw setting.")
@@ -192,26 +392,86 @@ plot.trajectory.hurdle.association <- function(z,
             }
         }
 
-        ## Optional median curve
-        if (isTRUE(median.curve)) {
+        ## Median curve (compute if requested OR needed for summary fit to median)
+        summary.attr <- list()
+        med <- NULL
+        need.med <- isTRUE(median.curve) || (summary.fit != "none" && summary.fit.to == "median")
+
+        if (isTRUE(need.med)) {
             med <- compute.median.curve(dat = dat, trjs = trjs, use = overlay.draw, n.grid = median.n.grid)
-            if (!is.null(med)) {
+            if (!is.null(med) && isTRUE(median.curve)) {
                 lines(med$x, med$y, col = median.col, lwd = median.lwd, lty = median.lty)
+            }
+            summary.attr$median.curve <- med
+        }
+
+        ## Summary fit (overlay only)
+        fit.obj <- NULL
+        if (summary.fit != "none") {
+
+            if (summary.fit.to == "median") {
+                if (is.null(med)) {
+                    stop("summary.fit.to = 'median' requested but median curve could not be computed.")
+                }
+                x.fit <- med$x
+                y.fit <- med$y
+            } else {
+                ## pooled
+                x.fit <- dt.draw$y.hat
+                y.fit <- dt.draw$z.tr
+            }
+
+            xout <- seq(min(x.fit, na.rm = TRUE), max(x.fit, na.rm = TRUE), length.out = 200L)
+
+            if (summary.fit == "spline") {
+                fit.obj <- fit.spline(x = x.fit, y = y.fit, xout = xout, df = spline.df, spar = spline.spar)
+                if (!is.null(fit.obj)) {
+                    lines(fit.obj$x, fit.obj$y, col = summary.fit.col, lwd = summary.fit.lwd, lty = summary.fit.lty)
+                }
+            } else if (summary.fit == "piecewise") {
+                fit.obj <- fit.piecewise(x = x.fit, y = y.fit, xout = xout,
+                                         n.breaks = piecewise.n.breaks,
+                                         breaks = piecewise.breaks,
+                                         min.span.frac = piecewise.min.span.frac,
+                                         grid.n = piecewise.grid.n)
+                if (!is.null(fit.obj)) {
+                    lines(fit.obj$x, fit.obj$y, col = summary.fit.col, lwd = summary.fit.lwd, lty = summary.fit.lty)
+                }
             }
         }
 
+        summary.attr$summary.fit <- list(
+            method = summary.fit,
+            fit.to = summary.fit.to,
+            fit.obj = fit.obj,
+            spline.df = if (!is.null(fit.obj$spline.df)) fit.obj$spline.df else NULL,
+            spline.spar = if (!is.null(fit.obj$spline.spar)) fit.obj$spline.spar else NULL
+        )
+
+        ## Overlay legend (single global legend)
         if (isTRUE(show.legend)) {
+            leg <- character(0)
+            col <- character(0)
+            lty <- integer(0)
+            lwd <- numeric(0)
 
-            leg <- c(paste0("Trajectories (n=", length(trjs), ")"))
-            col <- c(grDevices::adjustcolor(overlay.col, alpha.f = overlay.alpha))
-            lty <- c(1)
-            lwd <- c(overlay.lwd)
+            leg <- c(leg, paste0("Trajectories (n=", length(trjs), ")"))
+            col <- c(col, col.use)
+            lty <- c(lty, 1L)
+            lwd <- c(lwd, overlay.lwd)
 
-            if (isTRUE(median.curve)) {
+            if (isTRUE(median.curve) && !is.null(med)) {
                 leg <- c(leg, "Median curve")
                 col <- c(col, median.col)
                 lty <- c(lty, median.lty)
                 lwd <- c(lwd, median.lwd)
+            }
+
+            if (summary.fit != "none" && !is.null(fit.obj)) {
+                leg <- c(leg, paste0("Summary fit: ", summary.fit, " (", summary.fit.to, ")"))
+                col <- c(col, summary.fit.col)
+                lty <- c(lty, summary.fit.lty)
+                lwd <- c(lwd, summary.fit.lwd)
             }
 
             legend(legend.pos,
@@ -224,12 +484,13 @@ plot.trajectory.hurdle.association <- function(z,
                    cex = legend.cex)
         }
 
+        attr(dat, "summary.fit") <- summary.attr
         return(invisible(dat))
     }
 
-    ## ----------------------------------------------------------------------
-    ## Grid mode (current behavior, with line-style controls)
-    ## ----------------------------------------------------------------------
+    ## ------------------------------------------------------------------------
+    ## Grid mode (small multiples)
+    ## ------------------------------------------------------------------------
     n.trj <- length(trjs)
     ncol <- if (n.trj <= 2L) n.trj else ceiling(sqrt(n.trj))
     nrow <- ceiling(n.trj / ncol)
@@ -309,6 +570,8 @@ plot.trajectory.hurdle.association <- function(z,
 
     invisible(dat)
 }
+
+
 
 #' Prepare trajectory-wise hurdle association plot data
 #'
