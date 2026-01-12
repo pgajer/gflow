@@ -872,7 +872,17 @@ clusters.reorder <- function(cltr, decreasing = TRUE) {
 #' @param neighb.size Integer kNN size used for \code{clValid::connectivity()}.
 #'   Default is 10.
 #' @param stats.level Controls how many indices are returned in \code{scores}:
-#'   \code{"core"}, \code{"extended"}, or \code{"all"}. Default is \code{"core"}.
+#'   \code{"core"}, \code{"extended"}, or \code{"all"}.
+#'   \code{"core"} returns a focused set of k-selection indices: \code{"dunn"},
+#'   \code{"avg.silwidth"}, \code{"ch"}, and \code{"wb.ratio"}.
+#'   \code{"extended"} returns \code{"core"} plus additional diagnostics:
+#'   \code{"pearsongamma"}, \code{"entropy"}, \code{"widestgap"}, and \code{"sindex"}.
+#'   \code{"all"} attempts to return all scalar indices produced by
+#'   \code{fpc::cluster.stats()} (subject to \code{include.slow}); note that this
+#'   can substantially increase computation time for large \code{n}, and some
+#'   returned components are descriptive diagnostics rather than k-selection criteria.
+#'   When \code{stats.level="all"}, indices known to be slow (e.g., \code{"g2"},
+#'   \code{"g3"}) are omitted unless \code{include.slow=TRUE}. Default is \code{"core"}.
 #' @param with.fpc.stats Logical; if \code{TRUE} and \code{fpc} is available,
 #'   compute indices via \code{fpc::cluster.stats()}. Default is \code{TRUE}.
 #' @param with.connectivity Logical; if \code{TRUE}, compute connectivity when
@@ -965,6 +975,24 @@ hclust.select.k <- function(hc,
     ## Map selection metric name to score column name
     method <- match.arg(method)
     stats.level <- match.arg(stats.level)
+
+    call <- match.call()
+
+    args <- list(
+        method = method,
+        k = k,
+        neighb.size = neighb.size,
+        stats.level = stats.level,
+        with.fpc.stats = with.fpc.stats,
+        with.connectivity = with.connectivity,
+        include.slow = include.slow,
+        n.cores = n.cores,
+        verbose = verbose
+    )
+
+    ## Tracking what data inputs were actually provided
+    args$has.X <- !is.null(X)
+    args$has.d <- !is.null(d)
 
     ## ---------------------------------------------------------------------
     ## Input validation
@@ -1282,11 +1310,648 @@ hclust.select.k <- function(hc,
     ## Return
     ## ---------------------------------------------------------------------
 
-    list(
+    out <- list(
         scores = scores,
         opt.k = opt.k,
         best = best,
         clusters = clusters,
-        directions = directions
+        directions = directions,
+        call = call,
+        args = args
     )
+
+    class(out) <- c("hclust_select_k", "list")
+    out
+}
+
+#' Print Method for hclust_select_k Objects
+#'
+#' Prints a concise report for objects returned by \code{hclust.select.k()},
+#' including available metrics, selected \code{k} values, and a brief
+#' disagreement summary across metrics (when applicable).
+#'
+#' @param x An object of class \code{"hclust_select_k"}, typically returned by
+#'   \code{hclust.select.k()}.
+#' @param ... Additional arguments (ignored).
+#' @param top.n Integer; number of top-scoring \code{k} values to display per
+#'   selection-grade metric (when available). Default is 5.
+#'
+#' @return Invisibly returns \code{x}.
+#'
+#' @export
+print.hclust_select_k <- function(x, ..., top.n = 5L) {
+
+    if (is.null(x$scores) || !is.data.frame(x$scores)) {
+        stop("Invalid object: missing scores.")
+    }
+
+    scores <- x$scores
+    k <- scores$k
+
+    cat("hclust.select.k result\n")
+    cat("======================\n")
+
+    if (!is.null(x$call)) {
+        cat("Call:\n")
+        cat("  ")
+        dput(x$call)
+    }
+
+    cat(sprintf("Candidate k: %d to %d (n = %d)\n",
+                min(k), max(k), length(k)))
+
+    ## Report which metrics are present (non-NA)
+    metric.cols <- setdiff(names(scores), "k")
+    avail <- vapply(metric.cols, function(nm) any(is.finite(scores[[nm]])), logical(1L))
+    avail.metrics <- metric.cols[avail]
+
+    cat("Available metrics:\n")
+    if (length(avail.metrics) == 0L) {
+        cat("  (none)\n")
+    } else {
+        cat("  ", paste(avail.metrics, collapse = ", "), "\n", sep = "")
+    }
+
+    ## opt.k summary
+    if (!is.null(x$opt.k) && length(x$opt.k) > 0L) {
+        cat("Selected k (opt.k):\n")
+        for (nm in names(x$opt.k)) {
+            cat(sprintf("  %-13s %d\n", nm, x$opt.k[[nm]]))
+        }
+
+        ## Disagreement summary across metrics
+        opt.k.vec <- as.integer(unlist(x$opt.k, use.names = FALSE))
+        opt.k.names <- names(x$opt.k)
+        ok <- is.finite(opt.k.vec)
+
+        if (sum(ok) >= 2L) {
+            opt.k.ok <- opt.k.vec[ok]
+            rng <- range(opt.k.ok)
+            cat("Disagreement summary (across selected metrics):\n")
+            cat(sprintf("  range: %d to %d (spread = %d)\n",
+                        rng[1L], rng[2L], rng[2L] - rng[1L]))
+            cat(sprintf("  mean: %.3f; sd: %.3f\n",
+                        mean(opt.k.ok), stats::sd(opt.k.ok)))
+
+            ## Optional: show which metric picked min/max k
+            min.idx <- which.min(opt.k.ok)
+            max.idx <- which.max(opt.k.ok)
+            ## Map back to names (handle ties by first)
+            opt.k.ok.names <- opt.k.names[ok]
+            cat(sprintf("  min k chosen by: %s\n", opt.k.ok.names[min.idx]))
+            cat(sprintf("  max k chosen by: %s\n", opt.k.ok.names[max.idx]))
+        } else {
+            cat("Disagreement summary: not available (fewer than 2 selected metrics).\n")
+        }
+
+    } else {
+        cat("Selected k (opt.k): (none)\n")
+    }
+
+    ## Show top rows per selection-grade metric if present
+    top.n <- as.integer(top.n)
+    if (is.finite(top.n) && top.n > 0L) {
+
+        ## Directions are stored in object; fall back to defaults
+        directions <- x$directions
+        if (is.null(directions)) {
+            directions <- c(dunn = "maximize",
+                            silhouette = "maximize",
+                            ch = "maximize",
+                            wb.ratio = "minimize",
+                            connectivity = "minimize")
+        }
+
+        show.metrics <- intersect(names(directions), names(scores))
+        show.metrics <- show.metrics[vapply(show.metrics, function(nm) any(is.finite(scores[[nm]])), logical(1L))]
+
+        if (length(show.metrics) > 0L) {
+            cat("\nTop k by metric:\n")
+            for (m in show.metrics) {
+                v <- scores[[m]]
+                ok <- is.finite(v)
+                if (!any(ok)) next
+
+                ord <- if (directions[[m]] == "maximize") {
+                    order(v, decreasing = TRUE, na.last = NA)
+                } else {
+                    order(v, decreasing = FALSE, na.last = NA)
+                }
+                ord <- head(ord, top.n)
+
+                cat(sprintf("  %s (%s):\n", m, directions[[m]]))
+                for (ii in ord) {
+                    cat(sprintf("    k=%d  %s=%.6g\n", scores$k[ii], m, scores[[m]][ii]))
+                }
+            }
+        }
+    }
+
+    invisible(x)
+}
+
+
+#' Plot Method for hclust_select_k Objects
+#'
+#' Produces base R diagnostic plots of cluster validity indices (scores) versus
+#' candidate numbers of clusters \code{k}.
+#'
+#' @param x An object of class \code{"hclust_select_k"}, typically returned by
+#'   \code{hclust.select.k()}.
+#' @param ... Additional graphical parameters passed to \code{plot()}.
+#' @param metric Character; which metric to plot. One of
+#'   \code{"dunn"}, \code{"silhouette"}, \code{"ch"}, \code{"wb.ratio"},
+#'   \code{"connectivity"}, or \code{"all"}. Default is \code{"dunn"}.
+#' @param show.opt Logical; if TRUE, draw a vertical line at the selected
+#'   \code{k} (if available) for the plotted metric(s). Default is TRUE.
+#' @param pch Plotting character used for points. Default is 16.
+#' @param lty Line type used for connecting lines. Default is 1.
+#' @param main Optional plot title. If NULL, a default title is used.
+#' @param xlab X-axis label. Default is \code{"k"}.
+#' @param ylab Y-axis label. If NULL, defaults to the metric name.
+#'
+#' @return Invisibly returns \code{x}.
+#'
+#' @export
+plot.hclust_select_k <- function(x,
+                                 ...,
+                                 metric = c("dunn", "silhouette", "ch", "wb.ratio", "connectivity", "all"),
+                                 show.opt = TRUE,
+                                 pch = 16,
+                                 lty = 1,
+                                 main = NULL,
+                                 xlab = "k",
+                                 ylab = NULL) {
+
+    if (is.null(x$scores) || !is.data.frame(x$scores)) {
+        stop("Invalid object: missing scores.")
+    }
+
+    scores <- x$scores
+    metric <- match.arg(metric)
+
+    directions <- x$directions
+    if (is.null(directions)) {
+        directions <- c(dunn = "maximize",
+                        silhouette = "maximize",
+                        ch = "maximize",
+                        wb.ratio = "minimize",
+                        connectivity = "minimize")
+    }
+
+    `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+    plot.one <- function(m) {
+
+        if (!m %in% names(scores)) {
+            stop(sprintf("Metric '%s' is not present in scores.", m))
+        }
+
+        v <- scores[[m]]
+        ok <- is.finite(v)
+
+        if (!any(ok)) {
+            plot.new()
+            title(main = sprintf("%s (not available)", m))
+            return(invisible(NULL))
+        }
+
+        yy <- v
+        yy.lab <- ylab %||% m
+
+        mm.main <- if (is.null(main)) {
+            sprintf("%s (%s)", m, directions[[m]] %||% "n/a")
+        } else {
+            main
+        }
+
+        plot(scores$k[ok], yy[ok],
+             type = "b",
+             pch = pch,
+             lty = lty,
+             xlab = xlab,
+             ylab = yy.lab,
+             main = mm.main,
+             ...)
+
+        if (isTRUE(show.opt) && !is.null(x$opt.k) && m %in% names(x$opt.k)) {
+            kk <- x$opt.k[[m]]
+            abline(v = kk, lty = 2)
+        }
+
+        invisible(NULL)
+    }
+
+    if (metric == "all") {
+
+        ## Plot only selection-grade metrics that exist and have finite values
+        plot.metrics <- intersect(names(directions), names(scores))
+        plot.metrics <- plot.metrics[vapply(plot.metrics, function(nm) any(is.finite(scores[[nm]])), logical(1L))]
+
+        if (length(plot.metrics) == 0L) {
+            stop("No plottable metrics found in scores.")
+        }
+
+        old.par <- par(no.readonly = TRUE)
+        on.exit(par(old.par), add = TRUE)
+
+        n.panels <- length(plot.metrics)
+        if (n.panels <= 4L) {
+            par(mfrow = c(2L, 2L))
+        } else {
+            par(mfrow = c(3L, 2L))
+        }
+
+        for (m in plot.metrics) plot.one(m)
+
+    } else {
+        plot.one(metric)
+    }
+
+    invisible(x)
+}
+
+#' Describe an Object
+#'
+#' S3 generic that returns a compact, class-specific description intended to
+#' assist interpretation of an object and its key diagnostics.
+#'
+#' @param x An R object.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return A class-specific object (often a \code{data.frame}) describing \code{x}.
+#'
+#' @export
+describe <- function(x, ...) {
+    UseMethod("describe")
+}
+
+#' Describe a hclust_select_k Object
+#'
+#' Returns a compact reference describing cluster validity metrics available in
+#' a \code{"hclust_select_k"} object, including optimization direction and brief
+#' interpretation notes.
+#'
+#' @param x An object of class \code{"hclust_select_k"}, typically returned by
+#'   \code{hclust.select.k()}.
+#' @param ... Additional arguments (ignored).
+#' @param include.unavailable Logical; if TRUE, include all known metrics in the
+#'   output even if not computed for \code{x}. Default is FALSE (show only
+#'   computed metrics).
+#' @param metric Optional character; if provided, restrict output to a single
+#'   metric (e.g., \code{"silhouette"}). If \code{NULL}, include all selected metrics.
+#' @param format Character; one of \code{"table"} or \code{"cards"}. \code{"table"}
+#'   returns a data.frame (default). \code{"cards"} prints one metric at a time
+#'   and invisibly returns the same data.frame.
+#'
+#' @return A \code{data.frame} with columns \code{metric}, \code{direction},
+#'   \code{what.it.measures}, \code{pros}, \code{cons}. If \code{format="cards"},
+#'   the table is returned invisibly.
+#'
+#' @export
+describe.hclust_select_k <- function(x,
+                                     ...,
+                                     include.unavailable = FALSE,
+                                     metric = NULL,
+                                     format = c("cards", "table")) {
+
+    if (is.null(x$scores) || !is.data.frame(x$scores)) {
+        stop("Invalid object: missing scores.")
+    }
+
+    format <- match.arg(format)
+
+    tab <- data.frame(
+        metric = c("silhouette", "ch", "dunn", "wb.ratio", "connectivity"),
+        direction = c("maximize", "maximize", "maximize", "minimize", "minimize"),
+        what.it.measures = c(
+            "Mean silhouette width: separation vs within-cluster cohesion (distance-based).",
+            "Calinski-Harabasz: between-cluster dispersion relative to within-cluster dispersion.",
+            "Dunn index: min inter-cluster separation / max intra-cluster diameter.",
+            "Within/between dispersion ratio (smaller indicates better separation relative to spread).",
+            "Neighbor consistency: penalizes nearby points assigned to different clusters (kNN-based)."
+        ),
+        pros = c(
+            "Often a good general-purpose internal check; penalizes over-splitting when clusters become too similar.",
+            "Fast and often stable; often selects a smaller number of clusters when the data contain a few well-separated groups.",
+            "Rewards compact, well-separated clusters; can detect clear separation.",
+            "Useful as a compactness/separation diagnostic; sometimes aligns with ‘spherical cluster’ intuition.",
+            "Captures local structure; useful for manifold-like data where local neighborhoods matter."
+        ),
+        cons = c(
+            "Can favor convex / evenly sized clusters; may be conservative under chaining or strong density gradients.",
+            "Can favor small k in some geometries; sensitive to distance scaling and to elongated clusters.",
+            "Sensitive to outliers/singletons because it uses extreme distances; can push to large k to shrink diameters.",
+            "Can monotonically improve with larger k in some cases (risk of over-splitting); interpret with other metrics.",
+            "Depends on neighb.size and requires X; can disagree with distance-based compactness indices."
+        ),
+        stringsAsFactors = FALSE
+    )
+
+    ## Filter to computed metrics unless include.unavailable=TRUE
+    if (!isTRUE(include.unavailable)) {
+        scores <- x$scores
+        keep <- tab$metric %in% names(scores)
+        keep <- keep & vapply(tab$metric, function(m) any(is.finite(scores[[m]])), logical(1L))
+        tab <- tab[keep, , drop = FALSE]
+    }
+
+    ## Restrict to one metric if requested
+    if (!is.null(metric)) {
+        metric <- as.character(metric)[1L]
+        if (!metric %in% tab$metric) {
+            stop(sprintf("Unknown or unavailable metric '%s'. Available: %s",
+                         metric, paste(tab$metric, collapse = ", ")))
+        }
+        tab <- tab[tab$metric == metric, , drop = FALSE]
+    }
+
+    if (format == "table") {
+        return(tab)
+    }
+
+    ## format == "cards"
+    for (i in seq_len(nrow(tab))) {
+        cat(sprintf("%s (%s)\n", tab$metric[i], tab$direction[i]))
+        cat(strrep("-", nchar(tab$metric[i]) + nchar(tab$direction[i]) + 3L), "\n", sep = "")
+        cat("Measures: ", tab$what.it.measures[i], "\n", sep = "")
+        cat("Pros:     ", tab$pros[i], "\n", sep = "")
+        cat("Cons:     ", tab$cons[i], "\n", sep = "")
+        if (i < nrow(tab)) cat("\n")
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Interpretation note: metric disagreement patterns (quantile-based grouping)
+    ## -------------------------------------------------------------------------
+
+    if (!is.null(x$opt.k) && length(x$opt.k) > 1L) {
+
+        opt <- x$opt.k
+
+        ## Heuristic grouping: "small-k leaning" vs "large-k leaning" metrics
+        ## (based on typical behavior in practice, not a theorem)
+        small.k.metrics <- intersect(c("silhouette", "ch"), names(opt))
+        large.k.metrics <- intersect(c("dunn", "wb.ratio", "connectivity"), names(opt))
+
+        small.k <- opt[small.k.metrics]
+        large.k <- opt[large.k.metrics]
+
+        if (length(small.k) > 0L && length(large.k) > 0L) {
+
+            ## Trigger note when the groups are clearly separated
+            if (max(small.k) <= min(large.k)) {
+
+                fmt <- function(v) {
+                    paste(sprintf("%s=%d", names(v), as.integer(v)), collapse = ", ")
+                }
+
+                cat("\nInterpretation note\n")
+                cat("-------------------\n")
+                cat("Some metrics favor small k: ", fmt(small.k), "\n", sep = "")
+                cat("Other metrics favor large k: ", fmt(large.k), "\n", sep = "")
+                cat("This pattern can indicate chaining/gradual structure, elongated clusters,\n")
+                cat("outlier sensitivity, or a distance scaling effect. Consider inspecting the\n")
+                cat("dendrogram and cluster size distribution at candidate k values.\n")
+            }
+        }
+    }
+
+
+    if (!is.null(x$opt.k) && length(x$opt.k) > 1L && !is.null(x$scores)) {
+
+        scores <- x$scores
+        k.min <- min(scores$k)
+        k.max <- max(scores$k)
+
+        opt <- x$opt.k
+        opt.k <- as.integer(unlist(opt, use.names = TRUE))
+        opt.k <- opt.k[is.finite(opt.k)]
+
+        if (length(opt.k) >= 2L) {
+
+            ## Define small/large groups by quartiles of selected k values
+            q1 <- as.numeric(stats::quantile(opt.k, probs = 0.25, type = 7, names = FALSE))
+            q3 <- as.numeric(stats::quantile(opt.k, probs = 0.75, type = 7, names = FALSE))
+
+            small.idx <- opt.k <= q1
+            large.idx <- opt.k >= q3
+
+            small <- opt.k[small.idx]
+            large <- opt.k[large.idx]
+
+            ## Only print if there is a meaningful separation and both groups exist
+            if (length(small) > 0L && length(large) > 0L) {
+
+                ## Explicit separation check (avoid printing for mild spread)
+                if (max(small) < min(large)) {
+
+                    fmt <- function(v) {
+                        v <- v[order(v)]
+                        paste(sprintf("%s=%d", names(v), as.integer(v)), collapse = ", ")
+                    }
+
+                    cat("\nInterpretation note\n")
+                    cat("-------------------\n")
+                    cat(sprintf("Selected k values span %d to %d (k.min=%d, k.max=%d).\n",
+                                min(opt.k), max(opt.k), k.min, k.max))
+                    cat(sprintf("Small-k group: k <= %d: %s\n",
+                                as.integer(q1), fmt(small)))
+                    cat(sprintf("Large-k group: k >= %d: %s\n",
+                                as.integer(q3), fmt(large)))
+
+                    cat("This split often indicates either (i) gradual/chaining structure in the dendrogram,\n")
+                    cat("(ii) elongated clusters being split into smaller pieces, (iii) outlier sensitivity,\n")
+                    cat("or (iv) distance scaling effects.\n")
+
+                    ## Boundary-driven recommendation
+                    at.max <- names(opt.k)[opt.k == k.max]
+                    at.min <- names(opt.k)[opt.k == k.min]
+
+                    if (length(at.max) > 0L) {
+                        cat(sprintf("Boundary flag: %s selected k.max=%d.\n",
+                                    paste(at.max, collapse = ", "), k.max))
+                        cat("Recommendation: treat this as a potential over-splitting signature.\n")
+                        cat("Consider (a) reducing k.max (e.g., set k to 2:20), (b) inspecting cluster sizes\n")
+                        cat("for singletons/tiny clusters, and (c) checking whether the corresponding index\n")
+                        cat("improves almost monotonically with k.\n")
+                    }
+
+                    if (length(at.min) > 0L) {
+                        cat(sprintf("Boundary flag: %s selected k.min=%d.\n",
+                                    paste(at.min, collapse = ", "), k.min))
+                        cat("Recommendation: verify whether the data may genuinely have very few clusters,\n")
+                        cat("or whether the distance definition is compressing structure (e.g., too aggressive\n")
+                        cat("normalization / scaling).\n")
+                    }
+                }
+            }
+        }
+    }
+
+    invisible(tab)
+}
+
+#' Summary Method for hclust_select_k Objects
+#'
+#' Returns a ranked shortlist of candidate \code{k} values using rank aggregation
+#' across computed selection-grade metrics. Optionally returns a table for all
+#' candidate \code{k} values.
+#'
+#' Metrics that are not computed (i.e., have no finite values in
+#' \code{object$scores}) are automatically excluded from aggregation and omitted
+#' from the returned columns.
+#'
+#' @param object An object of class \code{"hclust_select_k"}, typically returned
+#'   by \code{hclust.select.k()}.
+#' @param ... Additional arguments (ignored).
+#' @param metrics Character vector of metric column names to include in the rank
+#'   aggregation. If \code{NULL}, uses selection-grade metrics found in
+#'   \code{object$directions} that are present and computed in \code{object$scores}.
+#' @param top.n Integer; number of \code{k} values to return in the shortlist
+#'   (before adding forced \code{opt.k} rows). Default is 10.
+#' @param min.metrics Integer; require at least this many metrics to contribute
+#'   (finite ranks) for a given \code{k} to be eligible. Default is 1.
+#' @param ties.method Character; passed to \code{rank()} (default \code{"average"}).
+#' @param include.opt.k Logical; if TRUE, force inclusion of \code{k} values in
+#'   \code{object$opt.k} in the returned shortlist (when present). Default is TRUE.
+#' @param return Character; one of \code{"shortlist"}, \code{"all"}, or \code{"both"}.
+#'   Default is \code{"shortlist"}.
+#'
+#' @return If \code{return="shortlist"}, a data.frame shortlist. If
+#'   \code{return="all"}, a data.frame with one row per candidate \code{k}. If
+#'   \code{return="both"}, a list with components \code{shortlist} and \code{all}.
+#'
+#' @export
+summary.hclust_select_k <- function(object,
+                                    ...,
+                                    metrics = NULL,
+                                    top.n = 10L,
+                                    min.metrics = 1L,
+                                    ties.method = "average",
+                                    include.opt.k = TRUE,
+                                    return = c("shortlist", "all", "both")) {
+
+    if (is.null(object$scores) || !is.data.frame(object$scores)) {
+        stop("Invalid object: missing scores.")
+    }
+
+    scores <- object$scores
+
+    directions <- object$directions
+    if (is.null(directions)) {
+        directions <- c(dunn = "maximize",
+                        silhouette = "maximize",
+                        ch = "maximize",
+                        wb.ratio = "minimize",
+                        connectivity = "minimize")
+    }
+
+    return <- match.arg(return)
+
+    ## ---------------------------------------------------------------------
+    ## Decide which metrics to aggregate, skipping any not computed
+    ## ---------------------------------------------------------------------
+
+    if (is.null(metrics)) {
+        metrics <- intersect(names(directions), names(scores))
+    } else {
+        metrics <- intersect(as.character(metrics), names(scores))
+        metrics <- intersect(metrics, names(directions))
+    }
+
+    metrics <- metrics[vapply(metrics, function(m) any(is.finite(scores[[m]])), logical(1L))]
+
+    if (length(metrics) == 0L) {
+        stop("No computed metrics available for aggregation.")
+    }
+
+    top.n <- as.integer(top.n)
+    if (!is.finite(top.n) || top.n < 1L) top.n <- 10L
+
+    min.metrics <- as.integer(min.metrics)
+    if (!is.finite(min.metrics) || min.metrics < 1L) min.metrics <- 1L
+
+    ## ---------------------------------------------------------------------
+    ## Compute per-metric ranks (lower is better)
+    ## ---------------------------------------------------------------------
+
+    rank.mat <- matrix(NA_real_, nrow = nrow(scores), ncol = length(metrics))
+    colnames(rank.mat) <- paste0("rank.", metrics)
+
+    for (j in seq_along(metrics)) {
+        m <- metrics[j]
+        v <- scores[[m]]
+        ok <- is.finite(v)
+        if (!any(ok)) next
+
+        r <- rep(NA_real_, length(v))
+
+        if (directions[[m]] == "maximize") {
+            r[ok] <- rank(-v[ok], ties.method = ties.method)
+        } else if (directions[[m]] == "minimize") {
+            r[ok] <- rank(v[ok], ties.method = ties.method)
+        } else {
+            next
+        }
+
+        rank.mat[, j] <- r
+    }
+
+    n.metrics.used <- rowSums(is.finite(rank.mat))
+    agg.rank <- rowMeans(rank.mat, na.rm = TRUE)
+
+    out <- data.frame(
+        k = scores$k,
+        agg.rank = agg.rank,
+        n.metrics = n.metrics.used,
+        stringsAsFactors = FALSE
+    )
+
+    out <- cbind(out, as.data.frame(rank.mat, stringsAsFactors = FALSE))
+    out <- cbind(out, scores[, metrics, drop = FALSE])
+
+    ## Mark k values that match any per-metric optimum
+    out$is.opt <- FALSE
+    if (isTRUE(include.opt.k) && !is.null(object$opt.k) && length(object$opt.k) > 0L) {
+        opt.k.vec <- as.integer(unlist(object$opt.k, use.names = FALSE))
+        opt.k.vec <- opt.k.vec[is.finite(opt.k.vec)]
+        if (length(opt.k.vec) > 0L) {
+            out$is.opt <- out$k %in% unique(opt.k.vec)
+        }
+    }
+
+    ## Filter to eligible rows (for ranking output)
+    keep <- is.finite(out$agg.rank) & (out$n.metrics >= min.metrics)
+    out.eligible <- out[keep, , drop = FALSE]
+
+    ## Full table request
+    if (return == "all") {
+        ## Return all k rows (still omitting non-computed metric columns by design)
+        ## If you want to keep ineligible rows, return 'out' instead of out.eligible.
+        return(out.eligible)
+    }
+
+    ## Shortlist
+    if (nrow(out.eligible) == 0L) {
+        if (return == "both") {
+            return(list(shortlist = out.eligible, all = out.eligible))
+        }
+        return(out.eligible)
+    }
+
+    out.eligible <- out.eligible[order(out.eligible$agg.rank, -out.eligible$n.metrics, out.eligible$k), , drop = FALSE]
+    shortlist <- head(out.eligible, top.n)
+
+    if (isTRUE(include.opt.k) && any(out.eligible$is.opt)) {
+        opt.rows <- out.eligible[out.eligible$is.opt, , drop = FALSE]
+        shortlist <- rbind(shortlist, opt.rows)
+        shortlist <- shortlist[!duplicated(shortlist$k), , drop = FALSE]
+        shortlist <- shortlist[order(shortlist$agg.rank, -shortlist$n.metrics, shortlist$k), , drop = FALSE]
+    }
+
+    if (return == "both") {
+        list(shortlist = shortlist, all = out.eligible)
+    } else {
+        shortlist
+    }
 }
