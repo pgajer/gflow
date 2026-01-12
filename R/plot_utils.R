@@ -89,31 +89,27 @@ plot3D.plain <- function(X,
 #'
 #' @param X A matrix or data frame with 3 columns representing 3D coordinates.
 #' @param y A numeric vector of values to be used for color coding.
-#' @param subset A logical vector indicating which points to color-code by \code{y} values
-#'   (default is NULL, which colors all points). When provided, points where \code{subset = TRUE}
-#'   are drawn as colored spheres based on \code{y}, while points where \code{subset = FALSE}
-#'   are drawn in \code{non.highlight.color} as background. Use this to emphasize a subset
-#'   of points while showing the rest for context.
-#' @param non.highlight.type Display style for non-highlighted points (where \code{subset = FALSE}):
-#'   either "sphere" or "point" (default "sphere").
-#' @param non.highlight.color Color for non-highlighted points (where \code{subset = FALSE});
-#'   default "gray".
-#' @param point.size Point size when \code{non.highlight.type="point"} (default 3).
-#' @param legend.title Legend title (default "").
-#' @param legend.cex Legend text size (default 2).
-#' @param legend.side Side of the plot for the legend (default 3).
-#' @param legend.line Line position for the legend (default 0.5).
-#' @param radius Sphere radius (default NULL, that is, auto-scale).
-#' @param quantize.method Method for quantizing y values: "uniform" or "quantile" (default "uniform").
-#' @param quantize.wins.p Winsorization parameter for "uniform" (default 0.02).
-#' @param quantize.round Logical; round quantization endpoints (default FALSE).
-#' @param quantize.dig.lab Digits for quantization labels (default 2).
-#' @param start,end Hue start/end for palette (defaults 1/6 and 0).
-#' @param n.levels Number of color levels (default 10).
+#' @param subset Logical vector indicating which points to color-code by \code{y} values.
+#' @param non.highlight.type Display style for non-highlighted points.
+#' @param non.highlight.color Color for non-highlighted points.
+#' @param point.size Point size when \code{non.highlight.type="point"}.
+#' @param legend.title Legend title.
+#' @param legend.cex Legend text size.
+#' @param legend.side Side of the plot for the legend.
+#' @param legend.line Line position for the legend.
+#' @param radius Sphere radius.
+#' @param quantize.method Method for quantizing y values: "uniform" or "quantile".
+#' @param quantize.wins.p Winsorization parameter for "uniform".
+#' @param quantize.round Logical; round quantization endpoints.
+#' @param quantize.dig.lab Digits for quantization labels.
+#' @param start,end Hue start/end for rainbow palette (used only when \code{color.palette} is NULL).
+#' @param n.levels Number of color levels.
+#' @param color.palette Palette specification. See \code{\link{quantize.cont.var}}.
+#' @param palette.type Palette type: "discrete" (function(n) or vector) or "value" (function(x)).
+#' @param na.color Color for points with NA \code{y} (or NA bin assignment).
 #'
 #' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
 #'
-#' @seealso \code{\link{plot3D.plain}}, \code{\link[rgl]{plot3d}}, \code{\link[rgl]{spheres3d}}
 #' @export
 plot3D.cont <- function(X,
                         y,
@@ -130,13 +126,18 @@ plot3D.cont <- function(X,
                         quantize.wins.p = 0.02,
                         quantize.round = FALSE,
                         quantize.dig.lab = 2,
-                        start = 1/6, end = 0, n.levels = 10) {
+                        start = 1/6, end = 0, n.levels = 10,
+                        color.palette = NULL,
+                        palette.type = c("discrete", "value"),
+                        na.color = "gray80") {
 
     ## rgl is optional; error here because this function's purpose is plotting
     if (!requireNamespace("rgl", quietly = TRUE)) {
         stop("This function requires the optional package 'rgl' for 3D visualization. ",
              "Install with install.packages('rgl').", call. = FALSE)
     }
+
+    palette.type <- match.arg(palette.type)
 
     ## Headless/CI-safe; harmless on desktops
     use_null <- (!interactive()) ||
@@ -146,22 +147,15 @@ plot3D.cont <- function(X,
     on.exit(options(old_opt), add = TRUE)
 
     ## ---- open/clear device ----
-    ## Check if an rgl device is already open
     if (rgl::cur3d() == 0) {
-        ## No device open, create a new one
         if (use_null) {
-            ## Null device for headless environments
             rgl::open3d()
             on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
         } else {
-            ## Interactive: create a large square window
-            ## Use a reasonable default size (can't query screen info without a device)
             window_size <- 800
             rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
         }
-
     } else {
-        ## Device already open, use it (but don't close it on exit)
         rgl::set3d(rgl::cur3d())
     }
 
@@ -188,15 +182,22 @@ plot3D.cont <- function(X,
     ## Quantize continuous y -> categories & colors
     q <- quantize.cont.var(
         y,
-        method  = quantize.method,
-        wins.p  = quantize.wins.p,
-        round   = quantize.round,
+        method = quantize.method,
+        wins.p = quantize.wins.p,
+        round = quantize.round,
         dig.lab = quantize.dig.lab,
-        start = start, end = end, n.levels = n.levels
+        start = start,
+        end = end,
+        n.levels = n.levels,
+        color.palette = color.palette,
+        palette.type = palette.type,
+        na.color = na.color
     )
-    y.cat     <- q$x.cat
+
+    y.cat <- q$x.cat
     y.col.tbl <- q$x.col.tbl
-    y.cols    <- y.col.tbl[y.cat]
+    y.cols <- y.col.tbl[as.character(y.cat)]
+    y.cols[is.na(y.cols)] <- na.color
 
     ## Prepare subset; treat NAs as FALSE
     if (is.null(subset)) {
@@ -210,14 +211,7 @@ plot3D.cont <- function(X,
     radius_local <- radius
     if (is.null(radius_local)) {
         rng <- apply(X, 2, function(v) diff(range(v, na.rm = TRUE)))
-        ## fallback to a small positive number if data are near-constant
         radius_local <- max(1e-8, 0.01 * mean(rng))
-    }
-
-    ## Show which points have NA colors
-    if (any(is.na(y.cols))) {
-        cat("WARNING: Some points have NA colors!\n")
-        cat("Indices with NA colors:", which(is.na(y.cols)), "\n")
     }
 
     ## Base layer: non-highlighted points
@@ -225,24 +219,23 @@ plot3D.cont <- function(X,
         if (identical(non.highlight.type, "sphere")) {
             plot3D.plain(
                 X[!subset, , drop = FALSE],
-                col      = non.highlight.color,
-                radius   = radius_local,
-                open_new = FALSE    # plot into the current device
+                col = non.highlight.color,
+                radius = radius_local,
+                open_new = FALSE
             )
         } else {
             plot3D.plain(
                 X[!subset, , drop = FALSE],
-                col      = non.highlight.color,
-                size     = point.size,
+                col = non.highlight.color,
+                size = point.size,
                 open_new = FALSE
             )
         }
     } else {
-        ## If no non-highlighted points, create an empty base so we can overlay
         plot3D.plain(
             X[FALSE, , drop = FALSE],
-            col      = non.highlight.color,
-            size     = point.size,
+            col = non.highlight.color,
+            size = point.size,
             open_new = FALSE
         )
     }
@@ -253,12 +246,10 @@ plot3D.cont <- function(X,
     }
 
     ## Legend: ensure all bins appear, including empty ones
-    y.cat.freq <- table(y.cat)
-    ## Fill missing bins with zero
+    y.cat.freq <- table(y.cat, useNA = "no")
     for (nm in names(y.col.tbl)) {
         if (!nm %in% names(y.cat.freq)) y.cat.freq[nm] <- 0L
     }
-    ## Stable order by y.col.tbl names
     y.cat.freq <- y.cat.freq[names(y.col.tbl)]
 
     maxlen <- max(nchar(names(y.col.tbl)), 5) + 2
@@ -268,14 +259,14 @@ plot3D.cont <- function(X,
 
     rgl::legend3d("topleft",
                   legend = legend.labs,
-                  fill   = unname(y.col.tbl),
-                  inset  = 0.05,
-                  cex    = legend.cex,
-                  title  = legend.title)
+                  fill = unname(y.col.tbl),
+                  inset = 0.05,
+                  cex = legend.cex,
+                  title = legend.title)
 
     invisible(list(
-        y.cols     = y.cols,
-        y.col.tbl  = y.col.tbl,
+        y.cols = y.cols,
+        y.col.tbl = y.col.tbl,
         legend.labs = legend.labs
     ))
 }
