@@ -20,6 +20,8 @@
 #'         overlap-based clustering, geometric filtering)
 #' }
 #'
+#' Retained extrema are numbered by descending basin size.
+#'
 #' @section Modulation Options:
 #' The \code{modulation} parameter controls how the next vertex is selected
 #' at each step of the trajectory:
@@ -97,6 +99,7 @@
 #' @param p.deg.threshold Numeric in \eqn{[0,1]}. Degree percentile threshold.
 #'   Default is 0.9.
 #' @param min.basin.size Integer. Minimum basin size to retain. Default is 10.
+#' @param min.n.trajectories Integer. Minimum number of basin trajectories to retain the basin. Default is 0.
 #' @param hop.k Integer. Hop distance for computing summary statistics.
 #'   Default is 2.
 #' @param store.trajectories Logical. Whether to store full trajectory
@@ -162,6 +165,7 @@ compute.gfc.flow <- function(
     p.mean.hopk.dist.threshold = 0.9,
     p.deg.threshold = 0.9,
     min.basin.size = 10L,
+    min.n.trajectories = 0L,
     hop.k = 2L,
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
@@ -208,6 +212,13 @@ compute.gfc.flow <- function(
         stop("edge.length.quantile.thld must be in (0, 1]")
     }
 
+    if (!is.numeric(min.n.trajectories) || length(min.n.trajectories) != 1L) {
+        stop("min.n.trajectories must be a single integer-like value")
+    }
+    if (min.n.trajectories < 0) {
+        stop("min.n.trajectories must be >= 0")
+    }
+
     ## -------------------------------------------------------
     ## Breaking ties (if any)
     ## -------------------------------------------------------
@@ -248,6 +259,7 @@ compute.gfc.flow <- function(
         p_mean_hopk_dist_threshold = as.double(p.mean.hopk.dist.threshold),
         p_deg_threshold = as.double(p.deg.threshold),
         min_basin_size = as.integer(min.basin.size),
+        min_n_trajectories = as.integer(min.n.trajectories),
         hop_k = as.integer(hop.k),
         modulation = as.character(modulation),
         store_trajectories = as.logical(store.trajectories),
@@ -274,6 +286,8 @@ compute.gfc.flow <- function(
     ## -------------------------------------------------------------------------
 
     result <- .postprocess.gfc.flow(result)
+
+    result$y <- y
 
     result$call <- match.call()
     class(result) <- c("gfc.flow", "list")
@@ -1625,6 +1639,11 @@ list.basins.default <- function(x, ...) {
 #' @param include.spurious.flags Logical; if TRUE, include spurious-related
 #'     columns from \code{summary.all} (e.g., \code{is.spurious},
 #'     \code{filter.stage}, \code{merged.into}). Default FALSE.
+#' @param include.absorbed Logial; if FALSE, absorbed extrema are not shown.
+#'     Default FALSE.
+#' @param group.by.spurious Logical; if TRUE, lists retained (refined) extrema
+#'     first and then spurious extrema, each block sorted by basin size (and
+#'     then ties).
 #' @param loc Optional. If non-NULL, filter to a single basin extremum (vertex
 #'     index or label).
 #'
@@ -1642,6 +1661,8 @@ list.basins.gfc.flow <- function(x,
                                  include.spurious = TRUE,
                                  with.rel.value = TRUE,
                                  include.spurious.flags = FALSE,
+                                 include.absorbed = FALSE,
+                                 group.by.spurious = TRUE,
                                  loc = NULL,
                                  ...) {
 
@@ -1669,6 +1690,17 @@ list.basins.gfc.flow <- function(x,
     ## Build baseline basin table from summary.all
     ## ------------------------------------------------------------------------
     basins.df <- summary.all.df[summary.all.df$type == type, , drop = FALSE]
+
+    if (isTRUE(group.by.spurious) && !("is.spurious" %in% names(basins.df))) {
+
+        ## Fallback: infer spuriousness from label prefix (sM*, sm*)
+        if ("label" %in% names(basins.df)) {
+            lab <- as.character(basins.df$label)
+            basins.df$is.spurious <- grepl("^(sM|sm)", lab)
+        } else {
+            basins.df$is.spurious <- FALSE
+        }
+    }
 
     ## Ensure required fields exist
     if (!("basin.size" %in% names(basins.df))) {
@@ -1742,6 +1774,38 @@ list.basins.gfc.flow <- function(x,
         keep.cols <- c(keep.cols, "rel.value")
     }
 
+    ## Drop absorbed (size 0) if requested
+    if (!isTRUE(include.absorbed) && nrow(basins.df) > 0) {
+        basins.df <- basins.df[basins.df$basin.size > 0L, , drop = FALSE]
+    }
+
+    ## Sort: either grouped (retained first, spurious second) or global
+    if (nrow(basins.df) > 0) {
+
+        if (isTRUE(group.by.spurious)) {
+
+            ## Ensure is.spurious exists (defensive)
+            if (!("is.spurious" %in% names(basins.df))) {
+                basins.df$is.spurious <- FALSE
+            }
+
+            ## Retained first, then spurious; each block sorted by basin.size etc.
+            ord <- order(basins.df$is.spurious,
+                         -basins.df$basin.size,
+                         -basins.df$n.cells,
+                         -basins.df$n.trajectories)
+
+            basins.df <- basins.df[ord, , drop = FALSE]
+
+        } else {
+
+            ## Global sort (current behavior)
+            basins.df <- basins.df[order(-basins.df$basin.size,
+                                         -basins.df$n.cells,
+                                         -basins.df$n.trajectories), , drop = FALSE]
+        }
+    }
+
     if (include.spurious.flags) {
         extra.cols <- intersect(c("is.spurious", "filter.stage", "merged.into"), names(basins.df))
         keep.cols <- c(keep.cols, extra.cols)
@@ -1750,13 +1814,511 @@ list.basins.gfc.flow <- function(x,
     keep.cols <- intersect(keep.cols, names(basins.df))
     basins.df <- basins.df[, keep.cols, drop = FALSE]
 
-    ## Sort: biggest basins first, then most cells, then most trajectories
-    if (nrow(basins.df) > 0) {
-        basins.df <- basins.df[order(-basins.df$basin.size, -basins.df$n.cells, -basins.df$n.trajectories), , drop = FALSE]
-    }
     rownames(basins.df) <- NULL
-
     basins.df
+}
+
+#' Relabel Basins in a Trajectory-First Gradient Flow Complex (gfc.flow)
+#'
+#' @description
+#' Reassigns extremum labels (e.g., \code{M1}, \code{M2}, \code{sM1}, \code{m1}, \code{sm1})
+#' in a \code{gfc.flow} object so that numbering reflects the *current* basin ranking
+#' (by default, descending basin size). This is particularly useful after one or more
+#' rounds of basin merging with \code{merge.basins.gfc.flow()}, where some extrema may
+#' be absorbed and end up with \code{basin.size == 0} and/or stale labels.
+#'
+#' The function updates labels consistently across:
+#' \itemize{
+#'   \item \code{x$max.summaries.all}, \code{x$min.summaries.all}
+#'   \item \code{x$max.basins.all}, \code{x$min.basins.all}
+#'   \item \code{x$summary.all} and \code{x$summary} (if present)
+#'   \item overlap matrices dimnames (\code{x$max.overlap.dist}, \code{x$min.overlap.dist}) (if present)
+#'   \item \code{x$merge.report} label columns (if present)
+#' }
+#'
+#' By default, any extremum with \code{basin.size == 0} is treated as absorbed and
+#' forced to be spurious (to avoid retained labels like \code{M8} having empty basins).
+#'
+#' @param x A \code{gfc.flow} object.
+#' @param rank.by Character string specifying ranking criterion for labeling.
+#'   Currently supported: \code{"basin.size"} (default). (Reserved: \code{"n.trajectories"}, \code{"value"}.)
+#' @param tie.break Character vector specifying tie-break order. Supported values:
+#'   \code{"n.trajectories"}, \code{"value"}, \code{"vertex"}.
+#'   Default is \code{c("n.trajectories","value","vertex")}.
+#' @param compute.n.trajectories Logical. If TRUE and \code{x$trajectories} exists,
+#'   computes number of trajectories per extremum and uses it as a tie-breaker (and
+#'   stores it internally for mapping decisions; it does not add a new column to summaries).
+#' @param enforce.absorbed.spurious Logical. If TRUE (default), any extremum with
+#'   \code{basin.size == 0} is forced to \code{is.spurious = TRUE}. If \code{filter.stage}
+#'   is present and empty/\code{"none"}, it is set to \code{absorbed.filter.stage}.
+#' @param absorbed.filter.stage Character string used for \code{filter.stage} when
+#'   forcing absorbed extrema to spurious. Default is \code{"absorbed"}.
+#' @param relabel.spurious Logical. If TRUE (default), spurious extrema are relabeled
+#'   \code{sM1, sM2, ...} / \code{sm1, sm2, ...} according to the chosen ranking.
+#'   If FALSE, spurious labels are left unchanged but retained labels are still relabeled.
+#' @param store.label.map Logical. If TRUE (default), stores old->new label maps in
+#'   \code{x$label.map.history}.
+#' @param verbose Logical.
+#'
+#' @return A modified \code{gfc.flow} object with relabeled basins/summaries.
+#'
+#' @export
+relabel.basins.gfc.flow <- function(x,
+                                    rank.by = c("basin.size"),
+                                    tie.break = c("n.trajectories", "value", "vertex"),
+                                    compute.n.trajectories = TRUE,
+                                    enforce.absorbed.spurious = TRUE,
+                                    absorbed.filter.stage = "absorbed",
+                                    relabel.spurious = TRUE,
+                                    store.label.map = TRUE,
+                                    verbose = FALSE) {
+
+    ## ---------------------------------------------------------------------
+    ## Basic validation and helpers
+    ## ---------------------------------------------------------------------
+
+    if (!inherits(x, "gfc.flow")) {
+        stop("x must be a gfc.flow object from compute.gfc.flow()")
+    }
+
+    rank.by <- match.arg(rank.by)
+
+    `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+    .is.empty.stage <- function(s) {
+        is.null(s) || is.na(s) || (is.character(s) && (s == "" || s == "none"))
+    }
+
+    .safe.as.char <- function(v) {
+        if (is.null(v)) return(NULL)
+        if (is.character(v)) return(v)
+        if (is.factor(v)) return(as.character(v))
+        as.character(v)
+    }
+
+    .update.merged.into <- function(v, label.map) {
+        if (is.null(v)) return(v)
+
+        ## In your objects merged.into sometimes is integer NA; sometimes character label.
+        if (is.numeric(v) || is.integer(v)) {
+            return(v)
+        }
+
+        v.ch <- .safe.as.char(v)
+        if (is.null(v.ch)) return(v)
+
+        repl <- label.map[v.ch]
+        idx <- which(!is.na(repl))
+        if (length(idx) > 0L) v.ch[idx] <- repl[idx]
+        v.ch
+    }
+
+    .order.extrema <- function(df,
+                               is.maximum,
+                               basin.size,
+                               n.trajectories,
+                               value,
+                               vertex,
+                               rank.by,
+                               tie.break) {
+
+        ## Primary key (currently only basin.size supported)
+        ord.keys <- list()
+
+        if (rank.by == "basin.size") {
+            ord.keys <- c(ord.keys, list(-basin.size))
+        } else if (rank.by == "n.trajectories") {
+            ord.keys <- c(ord.keys, list(-n.trajectories))
+        } else if (rank.by == "value") {
+            ## maxima: high first, minima: low first
+            ord.keys <- c(ord.keys, list(if (is.maximum) -value else value))
+        } else {
+            stop("Unsupported rank.by='", rank.by, "'.")
+        }
+
+        ## Tie-breaks
+        for (tb in tie.break) {
+            if (tb == "n.trajectories") {
+                ord.keys <- c(ord.keys, list(-n.trajectories))
+            } else if (tb == "value") {
+                ord.keys <- c(ord.keys, list(if (is.maximum) -value else value))
+            } else if (tb == "vertex") {
+                ord.keys <- c(ord.keys, list(vertex))
+            } else {
+                stop("Unsupported tie.break element: '", tb, "'.")
+            }
+        }
+
+        do.call(order, c(ord.keys, list(na.last = TRUE)))
+    }
+
+    .compute.ntraj <- function(trajs, type) {
+        ## Returns integer named vector: names are vertex indices (as character), values are counts
+        if (is.null(trajs) || length(trajs) == 0L) return(integer(0))
+
+        if (type == "max") {
+            end.v <- vapply(trajs, function(tr) as.integer(tr$end.vertex), integer(1))
+            ok <- vapply(trajs, function(tr) isTRUE(tr$ends.at.lmax), logical(1))
+            end.v <- end.v[ok]
+            if (length(end.v) == 0L) return(integer(0))
+            tab <- table(end.v)
+            out <- as.integer(tab)
+            names(out) <- names(tab)
+            return(out)
+        }
+
+        if (type == "min") {
+            start.v <- vapply(trajs, function(tr) as.integer(tr$start.vertex), integer(1))
+            ok <- vapply(trajs, function(tr) isTRUE(tr$starts.at.lmin), logical(1))
+            start.v <- start.v[ok]
+            if (length(start.v) == 0L) return(integer(0))
+            tab <- table(start.v)
+            out <- as.integer(tab)
+            names(out) <- names(tab)
+            return(out)
+        }
+
+        stop("type must be 'max' or 'min'")
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Identify source summary/basin tables
+    ## ---------------------------------------------------------------------
+
+    if (is.null(x$max.summaries.all) || is.null(x$min.summaries.all) ||
+        is.null(x$max.basins.all) || is.null(x$min.basins.all)) {
+        stop("x must contain max/min summaries and basins: max.summaries.all, min.summaries.all, max.basins.all, min.basins.all.")
+    }
+
+    max.sum <- x$max.summaries.all
+    min.sum <- x$min.summaries.all
+
+    if (!all(c("vertex", "value", "basin.size", "label") %in% names(max.sum))) {
+        stop("x$max.summaries.all is missing required columns (vertex, value, basin.size, label).")
+    }
+    if (!all(c("vertex", "value", "basin.size", "label") %in% names(min.sum))) {
+        stop("x$min.summaries.all is missing required columns (vertex, value, basin.size, label).")
+    }
+
+    if (length(x$max.basins.all) != nrow(max.sum) || length(x$min.basins.all) != nrow(min.sum)) {
+        stop("Length of basins.all does not match number of rows in summaries.all (max or min).")
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Compute trajectory counts (optional, for tie-breaking)
+    ## ---------------------------------------------------------------------
+
+    ntraj.max <- integer(0)
+    ntraj.min <- integer(0)
+
+    if (isTRUE(compute.n.trajectories)) {
+        if (is.null(x$trajectories) || length(x$trajectories) == 0L) {
+            if (verbose) {
+                cat("relabel.basins.gfc.flow(): compute.n.trajectories=TRUE but x$trajectories is missing/empty; using 0 for all.\n")
+            }
+        } else {
+            ntraj.max <- .compute.ntraj(x$trajectories, "max")
+            ntraj.min <- .compute.ntraj(x$trajectories, "min")
+        }
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Enforce absorbed->spurious if requested (basin.size == 0)
+    ## ---------------------------------------------------------------------
+
+    .enforce.absorbed <- function(sum.df, basins.all) {
+        if (!isTRUE(enforce.absorbed.spurious)) return(list(sum.df = sum.df, basins.all = basins.all))
+
+        if (!("is.spurious" %in% names(sum.df))) {
+            sum.df$is.spurious <- FALSE
+        }
+        if (!("filter.stage" %in% names(sum.df))) {
+            sum.df$filter.stage <- rep.int("none", nrow(sum.df))
+        }
+
+        for (i in seq_len(nrow(sum.df))) {
+            if (isTRUE(sum.df$basin.size[i] == 0L)) {
+                ## Force spurious at both levels
+                sum.df$is.spurious[i] <- TRUE
+                if (.is.empty.stage(sum.df$filter.stage[i])) {
+                    sum.df$filter.stage[i] <- absorbed.filter.stage
+                }
+
+                if (!is.null(basins.all[[i]])) {
+                    basins.all[[i]]$is.spurious <- TRUE
+                    if (!is.null(basins.all[[i]]$filter.stage) && .is.empty.stage(basins.all[[i]]$filter.stage)) {
+                        basins.all[[i]]$filter.stage <- absorbed.filter.stage
+                    }
+                }
+            }
+        }
+
+        list(sum.df = sum.df, basins.all = basins.all)
+    }
+
+    tmp <- .enforce.absorbed(max.sum, x$max.basins.all)
+    max.sum <- tmp$sum.df
+    x$max.basins.all <- tmp$basins.all
+
+    tmp <- .enforce.absorbed(min.sum, x$min.basins.all)
+    min.sum <- tmp$sum.df
+    x$min.basins.all <- tmp$basins.all
+
+    ## Ensure is.spurious exists (after enforcement)
+    if (!("is.spurious" %in% names(max.sum))) max.sum$is.spurious <- FALSE
+    if (!("is.spurious" %in% names(min.sum))) min.sum$is.spurious <- FALSE
+
+    ## ---------------------------------------------------------------------
+    ## Build new labels and maps
+    ## ---------------------------------------------------------------------
+
+    .relabel.one <- function(sum.df, basins.all, type, ntraj.map) {
+        is.maximum <- (type == "max")
+
+        vertex <- as.integer(sum.df$vertex)
+        value <- as.double(sum.df$value)
+        basin.size <- as.integer(sum.df$basin.size)
+
+        n.trajectories <- integer(length(vertex))
+        if (length(ntraj.map) > 0L) {
+            idx <- match(as.character(vertex), names(ntraj.map))
+            ok <- which(!is.na(idx))
+            if (length(ok) > 0L) n.trajectories[ok] <- as.integer(ntraj.map[idx[ok]])
+        }
+
+        is.spurious <- as.logical(sum.df$is.spurious)
+
+        retained.idx <- which(!is.spurious)
+        spurious.idx <- which(is.spurious)
+
+        ## Order retained and spurious separately
+        ord.ret <- retained.idx
+        if (length(ord.ret) > 0L) {
+            ord <- .order.extrema(sum.df[ord.ret, , drop = FALSE],
+                                  is.maximum = is.maximum,
+                                  basin.size = basin.size[ord.ret],
+                                  n.trajectories = n.trajectories[ord.ret],
+                                  value = value[ord.ret],
+                                  vertex = vertex[ord.ret],
+                                  rank.by = rank.by,
+                                  tie.break = tie.break)
+            ord.ret <- ord.ret[ord]
+        }
+
+        ord.spu <- spurious.idx
+        if (length(ord.spu) > 0L) {
+            ord <- .order.extrema(sum.df[ord.spu, , drop = FALSE],
+                                  is.maximum = is.maximum,
+                                  basin.size = basin.size[ord.spu],
+                                  n.trajectories = n.trajectories[ord.spu],
+                                  value = value[ord.spu],
+                                  vertex = vertex[ord.spu],
+                                  rank.by = rank.by,
+                                  tie.break = tie.break)
+            ord.spu <- ord.spu[ord]
+        }
+
+        ## Assign labels
+        old.labels <- .safe.as.char(sum.df$label)
+        new.labels <- old.labels
+
+        if (is.maximum) {
+            retained.prefix <- "M"
+            spurious.prefix <- "sM"
+        } else {
+            retained.prefix <- "m"
+            spurious.prefix <- "sm"
+        }
+
+        ## Retained renumbering
+        if (length(ord.ret) > 0L) {
+            new.labels[ord.ret] <- hooking <- paste0(retained.prefix, seq_along(ord.ret))
+        }
+
+        ## Spurious renumbering (optional)
+        if (isTRUE(relabel.spurious) && length(ord.spu) > 0L) {
+            new.labels[ord.spu] <- paste0(spurious.prefix, seq_along(ord.spu))
+        }
+
+        ## Build maps
+        label.map <- setNames(new.labels, old.labels)
+        vertex.map <- setNames(new.labels, as.character(vertex))
+
+        ## Update summaries and basins
+        sum.df$label <- as.character(new.labels)
+        for (i in seq_along(basins.all)) {
+            if (!is.null(basins.all[[i]])) {
+                basins.all[[i]]$label <- as.character(new.labels[i])
+            }
+        }
+
+        ## Update merged.into if it is a label string
+        if ("merged.into" %in% names(sum.df)) {
+            sum.df$merged.into <- .update.merged.into(sum.df$merged.into, label.map)
+        }
+        for (i in seq_along(basins.all)) {
+            if (!is.null(basins.all[[i]]) && !is.null(basins.all[[i]]$merged.into)) {
+                basins.all[[i]]$merged.into <- .update.merged.into(basins.all[[i]]$merged.into, label.map)
+            }
+        }
+
+        list(sum.df = sum.df,
+             basins.all = basins.all,
+             label.map = label.map,
+             vertex.map = vertex.map,
+             n.trajectories = n.trajectories)
+    }
+
+    max.res <- .relabel.one(max.sum, x$max.basins.all, "max", ntraj.max)
+    min.res <- .relabel.one(min.sum, x$min.basins.all, "min", ntraj.min)
+
+    x$max.summaries.all <- max.res$sum.df
+    x$min.summaries.all <- min.res$sum.df
+    x$max.basins.all <- max.res$basins.all
+    x$min.basins.all <- min.res$basins.all
+
+    ## ---------------------------------------------------------------------
+    ## Update summary.all and summary (if present) using vertex->label maps
+    ## ---------------------------------------------------------------------
+
+    .update.summary.df <- function(df) {
+        if (is.null(df) || nrow(df) == 0L) return(df)
+        if (!all(c("vertex", "type", "label") %in% names(df))) return(df)
+
+        for (i in seq_len(nrow(df))) {
+            v <- as.character(df$vertex[i])
+            if (df$type[i] == "max") {
+                lab <- max.res$vertex.map[v]
+            } else if (df$type[i] == "min") {
+                lab <- min.res$vertex.map[v]
+            } else {
+                lab <- NA_character_
+            }
+
+            if (!is.na(lab)) df$label[i] <- lab
+        }
+
+        if ("merged.into" %in% names(df)) {
+            ## merged.into could refer to labels; update using both maps
+            label.map.all <- c(max.res$label.map, min.res$label.map)
+            df$merged.into <- .update.merged.into(df$merged.into, label.map.all)
+        }
+
+        df
+    }
+
+    x$summary.all <- .update.summary.df(x$summary.all)
+    x$summary <- .update.summary.df(x$summary)
+
+    ## ---------------------------------------------------------------------
+    ## Update overlap matrices dimnames (if present)
+    ## ---------------------------------------------------------------------
+
+    .update.overlap.dimnames <- function(mat, label.map) {
+        if (is.null(mat)) return(mat)
+        dn <- dimnames(mat)
+        if (is.null(dn) || length(dn) != 2L) return(mat)
+        rn <- dn[[1]]
+        cn <- dn[[2]]
+        if (!is.null(rn)) {
+            repl <- label.map[rn]
+            idx <- which(!is.na(repl))
+            if (length(idx) > 0L) rn[idx] <- repl[idx]
+        }
+        if (!is.null(cn)) {
+            repl <- label.map[cn]
+            idx <- which(!is.na(repl))
+            if (length(idx) > 0L) cn[idx] <- repl[idx]
+        }
+        dimnames(mat) <- list(rn, cn)
+        mat
+    }
+
+    if (!is.null(x$max.overlap.dist)) {
+        x$max.overlap.dist <- .update.overlap.dimnames(x$max.overlap.dist, max.res$label.map)
+    }
+    if (!is.null(x$min.overlap.dist)) {
+        x$min.overlap.dist <- .update.overlap.dimnames(x$min.overlap.dist, min.res$label.map)
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Update merge.report label columns (if present)
+    ## ---------------------------------------------------------------------
+
+    if (!is.null(x$merge.report) && is.data.frame(x$merge.report)) {
+        mr <- x$merge.report
+
+        if ("type" %in% names(mr)) {
+            if ("loser.label" %in% names(mr)) {
+                idx.max <- which(mr$type == "max")
+                idx.min <- which(mr$type == "min")
+                if (length(idx.max) > 0L) {
+                    repl <- max.res$label.map[as.character(mr$loser.label[idx.max])]
+                    ok <- which(!is.na(repl))
+                    if (length(ok) > 0L) mr$loser.label[idx.max[ok]] <- repl[ok]
+                }
+                if (length(idx.min) > 0L) {
+                    repl <- min.res$label.map[as.character(mr$loser.label[idx.min])]
+                    ok <- which(!is.na(repl))
+                    if (length(ok) > 0L) mr$loser.label[idx.min[ok]] <- repl[ok]
+                }
+            }
+
+            if ("winner.label" %in% names(mr)) {
+                idx.max <- which(mr$type == "max")
+                idx.min <- which(mr$type == "min")
+                if (length(idx.max) > 0L) {
+                    repl <- max.res$label.map[as.character(mr$winner.label[idx.max])]
+                    ok <- which(!is.na(repl))
+                    if (length(ok) > 0L) mr$winner.label[idx.max[ok]] <- repl[ok]
+                }
+                if (length(idx.min) > 0L) {
+                    repl <- min.res$label.map[as.character(mr$winner.label[idx.min])]
+                    ok <- which(!is.na(repl))
+                    if (length(ok) > 0L) mr$winner.label[idx.min[ok]] <- repl[ok]
+                }
+            }
+        } else {
+            ## If type missing, best effort: update both via combined map
+            label.map.all <- c(max.res$label.map, min.res$label.map)
+            if ("loser.label" %in% names(mr)) mr$loser.label <- .update.merged.into(mr$loser.label, label.map.all)
+            if ("winner.label" %in% names(mr)) mr$winner.label <- .update.merged.into(mr$winner.label, label.map.all)
+        }
+
+        x$merge.report <- mr
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Store label maps (optional)
+    ## ---------------------------------------------------------------------
+
+    if (isTRUE(store.label.map)) {
+        hist <- x$label.map.history %||% list()
+        hist[[length(hist) + 1L]] <- list(
+            call = match.call(),
+            rank.by = rank.by,
+            tie.break = tie.break,
+            relabel.spurious = relabel.spurious,
+            enforce.absorbed.spurious = enforce.absorbed.spurious,
+            absorbed.filter.stage = absorbed.filter.stage,
+            max.label.map = max.res$label.map,
+            min.label.map = min.res$label.map
+        )
+        x$label.map.history <- hist
+    }
+
+    if (verbose) {
+        n.max.ret <- sum(!as.logical(x$max.summaries.all$is.spurious))
+        n.max.spu <- sum(as.logical(x$max.summaries.all$is.spurious))
+        n.min.ret <- sum(!as.logical(x$min.summaries.all$is.spurious))
+        n.min.spu <- sum(as.logical(x$min.summaries.all$is.spurious))
+
+        cat("relabel.basins.gfc.flow(): relabeled maxima (retained=", n.max.ret, ", spurious=", n.max.spu, ")\n", sep = "")
+        cat("relabel.basins.gfc.flow(): relabeled minima (retained=", n.min.ret, ", spurious=", n.min.spu, ")\n", sep = "")
+    }
+
+    class(x) <- unique(c("gfc.flow", class(x)))
+    x
 }
 
 
@@ -3023,23 +3585,24 @@ vertex.distances.to.trajectory <- function(vertices,
 #'
 #' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
 #' @param adj.list Adjacency list of the domain graph (1-based vertex indices).
-#' @param weight.list Parallel list of edge weights; \code{weight.list[[i]]} must
-#'   align with \code{adj.list[[i]]}.
+#' @param weight.list Parallel list of edge weights; \code{weight.list[[i]]}
+#'     must align with \code{adj.list[[i]]}.
 #' @param merge.map Named character/integer vector specifying merges. Names are
-#'   losers, values are winners. Each element can be a label (e.g., \code{"M4"})
-#'   or a vertex index (e.g., \code{1814}).
+#'     losers, values are winners. Each element can be a label (e.g.,
+#'     \code{"M4"}) or a vertex index (e.g., \code{1814}).
 #' @param losers Optional vector of losers (labels or vertex indices). Used if
-#'   \code{merge.map} is not supplied.
-#' @param winners Optional vector of winners (labels or vertex indices). If length
-#'   1 and \code{losers} has length > 1, the winner is recycled.
+#'     \code{merge.map} is not supplied.
+#' @param winners Optional vector of winners (labels or vertex indices). If
+#'     length 1 and \code{losers} has length > 1, the winner is recycled.
 #' @param type Extremum type to merge: \code{"max"} or \code{"min"}.
-#' @param connector.method Connector policy. Currently only \code{"shortest"} is
-#'   implemented. \code{"high.saddle"} and \code{"high.saddle.shortest"} are
-#'   reserved for future implementations.
+#' @param connector.method Connector policy. Currently only \code{"closest"} and
+#'     \code{"shortest"} methods are implemented. \code{"high.saddle"} and
+#'     \code{"high.saddle.shortest"} are reserved for future implementations.
 #' @param mark.loser.spurious Logical. If TRUE, marks loser extrema as spurious
-#'   and sets \code{merged.into} to the winner label in summaries and basin records.
-#' @param merge.filter.stage Character string to write to \code{filter.stage} for
-#'   merged losers (only used when \code{mark.loser.spurious=TRUE}).
+#'     and sets \code{merged.into} to the winner label in summaries and basin
+#'     records.
+#' @param merge.filter.stage Character string to write to \code{filter.stage}
+#'     for merged losers (only used when \code{mark.loser.spurious=TRUE}).
 #' @param verbose Logical.
 #'
 #' @return A modified \code{gfc.flow} object with updated trajectories and derived
@@ -3053,7 +3616,8 @@ merge.basins.gfc.flow <- function(x,
                                   losers = NULL,
                                   winners = NULL,
                                   type = c("max", "min"),
-                                  connector.method = c("shortest",
+                                  connector.method = c("closest",
+                                                       "shortest",
                                                        "high.saddle",
                                                        "high.saddle.shortest"),
                                   mark.loser.spurious = TRUE,
@@ -3203,9 +3767,9 @@ merge.basins.gfc.flow <- function(x,
     ## Build igraph and compute connector paths
     ## ------------------------------------------------------------------------
 
-    if (connector.method != "shortest") {
+    if (!connector.method %in% c("shortest", "closest")) {
         stop("connector.method='", connector.method, "' is reserved but not implemented yet. ",
-             "Use connector.method='shortest' for now.")
+             "Use connector.method='shortest' or 'closest' for now.")
     }
 
     n.vertices <- x$n.vertices %||% length(adj.list)
@@ -3251,29 +3815,181 @@ merge.basins.gfc.flow <- function(x,
         stop("Failed to assign edge weights in igraph object.")
     }
 
+    ## ------------------------------------------------------------------------
+    ## Precompute winner basin vertex sets (needed for connector.method='closest')
+    ## ------------------------------------------------------------------------
     connector.by.loser <- vector("list", length(loser.vertex))
     names(connector.by.loser) <- as.character(loser.vertex)
 
-    for (i in seq_along(loser.vertex)) {
-        from.v <- as.character(loser.vertex[i])
-        to.v <- as.character(winner.vertex[i])
+    if (connector.method == "closest") {
 
-        sp <- igraph::shortest_paths(
-            g,
-            from = from.v,
-            to = to.v,
-            weights = igraph::E(g)$weight,
-            output = "vpath"
-        )
-
-        vpath <- sp$vpath[[1]]
-        if (length(vpath) == 0) {
-            stop("No path found between loser vertex ", loser.vertex[i],
-                 " and winner vertex ", winner.vertex[i], ".")
+        basins.all <- if (type == "max") x$max.basins.all else x$min.basins.all
+        if (is.null(basins.all) || length(basins.all) == 0L) {
+            stop("connector.method='closest' requires ", type, ".basins.all in x.")
         }
 
-        path.vertices <- as.integer(igraph::as_ids(vpath))
-        connector.by.loser[[as.character(loser.vertex[i])]] <- path.vertices
+        basin.vertices.by.ext <- lapply(basins.all, function(b) as.integer(b$vertices))
+        names(basin.vertices.by.ext) <- vapply(basins.all, function(b) as.character(b$extremum.vertex), character(1))
+
+        ## Prefer next.up if present (fast O(path)), fallback to scanning trajectories
+        .asc.path.x.to.w <- function(x.vertex,
+                                     w.vertex,
+                                     trajectories,
+                                     next.up = NULL,
+                                     max.steps = 100000L) {
+
+            x.vertex <- as.integer(x.vertex)
+            w.vertex <- as.integer(w.vertex)
+
+            ## ------------------------------------------------------------
+            ## Primary: follow next.up if available
+            ## ------------------------------------------------------------
+            if (!is.null(next.up)) {
+                cur <- x.vertex
+                path <- cur
+                seen <- integer(0)
+                n.steps <- 0L
+
+                while (cur != w.vertex) {
+                    n.steps <- n.steps + 1L
+                    if (n.steps > max.steps) {
+                        break
+                    }
+                    if (cur %in% seen) {
+                        break
+                    }
+                    seen <- c(seen, cur)
+
+                    nxt <- next.up[cur]
+                    if (is.na(nxt)) {
+                        break
+                    }
+                    cur <- as.integer(nxt)
+                    path <- c(path, cur)
+                }
+
+                if (length(path) >= 1L && tail(path, 1L) == w.vertex) {
+                    return(path)
+                }
+                ## else: fall through to trajectory-suffix fallback
+            }
+
+            ## ------------------------------------------------------------
+            ## Fallback: find a stored trajectory ending at w.vertex that contains x.vertex
+            ## ------------------------------------------------------------
+            for (tr in trajectories) {
+                if (as.integer(tr$end.vertex) != w.vertex) next
+                vv <- as.integer(tr$vertices)
+                pos <- match(x.vertex, vv)
+                if (!is.na(pos)) {
+                    return(vv[pos:length(vv)])
+                }
+            }
+
+            stop("Could not recover a path from x=", x.vertex, " to winner=", w.vertex,
+                 " via next.up nor via stored trajectories.")
+        }
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Compute connector paths
+    ## ------------------------------------------------------------------------
+
+    closest.x.by.loser <- list()
+
+    for (i in seq_along(loser.vertex)) {
+
+        l.v <- as.integer(loser.vertex[i])
+        w.v <- as.integer(winner.vertex[i])
+
+        from.v <- as.character(l.v)
+        to.v <- as.character(w.v)
+
+        if (connector.method == "closest") {
+
+            w.basin <- basin.vertices.by.ext[[as.character(w.v)]]
+            if (is.null(w.basin) || length(w.basin) == 0L) {
+                stop("Winner vertex ", w.v, " has empty or missing basin vertices.")
+            }
+
+            ## Dijkstra distances from loser to all vertices in winner basin
+            d <- igraph::distances(
+                             g,
+                             v = from.v,
+                             to = as.character(w.basin),
+                             weights = igraph::E(g)$weight,
+                             mode = "all"
+                         )
+
+            d <- as.numeric(d[1, ])
+            if (all(!is.finite(d))) {
+                stop("No finite path from loser vertex ", l.v, " to any vertex in winner basin of ", w.v, ".")
+            }
+
+            ## Choose closest basin vertex x (deterministic tie-break by vertex id)
+            ok <- which(is.finite(d))
+            w.basin.ok <- w.basin[ok]
+            d.ok <- d[ok]
+            ord <- order(d.ok, w.basin.ok)
+            x.v <- as.integer(w.basin.ok[ord[1]])
+
+            closest.x.by.loser[[as.character(l.v)]] <- as.integer(x.v)
+
+            ## P(lM, x): weighted shortest path lM -> x
+            sp.lx <- igraph::shortest_paths(
+                                 g,
+                                 from = from.v,
+                                 to = as.character(x.v),
+                                 weights = igraph::E(g)$weight,
+                                 output = "vpath"
+                             )
+
+            vpath.lx <- sp.lx$vpath[[1]]
+            if (length(vpath.lx) == 0) {
+                stop("No path found between loser vertex ", l.v, " and closest basin vertex x=", x.v, ".")
+            }
+
+            path.lx <- as.integer(igraph::as_ids(vpath.lx))
+
+            ## P(x, wM): follow ascent map inside winner basin (next.up preferred), otherwise a stored trajectory suffix
+            next.up <- x$next.up
+            if (!is.null(next.up)) {
+                next.up <- as.integer(next.up)  ## already 1-based in R, NA for maxima
+            }
+
+            path.xw <- .asc.path.x.to.w(
+                x.vertex = x.v,
+                w.vertex = w.v,
+                trajectories = x$trajectories,
+                next.up = next.up
+            )
+
+            ## Combine: [lM ... x] + [x ... wM] without duplicating x
+            if (length(path.xw) < 2L) {
+                stop("Internal error: path.xw too short for x=", x.v, " -> wM=", w.v, ".")
+            }
+
+            connector.by.loser[[as.character(l.v)]] <- c(path.lx, path.xw[-1L])
+
+        } else if (connector.method == "shortest") {
+
+            sp <- igraph::shortest_paths(
+                              g,
+                              from = from.v,
+                              to = to.v,
+                              weights = igraph::E(g)$weight,
+                              output = "vpath"
+                          )
+
+            vpath <- sp$vpath[[1]]
+            if (length(vpath) == 0) {
+                stop("No path found between loser vertex ", l.v,
+                     " and winner vertex ", w.v, ".")
+            }
+
+            connector.by.loser[[as.character(l.v)]] <- as.integer(igraph::as_ids(vpath))
+
+        }
     }
 
     ## ------------------------------------------------------------------------
@@ -3298,6 +4014,74 @@ merge.basins.gfc.flow <- function(x,
         ## Append connector excluding the first vertex (loser extremum)
         traj$vertices <- c(as.integer(traj$vertices), as.integer(connector[-1L]))
         traj$end.vertex <- as.integer(w.v)
+
+        ## ----------------------------------------------------------------
+        ## Attach traj$y.hat.modified (monotone repair along the merged path)
+        ## ----------------------------------------------------------------
+
+        y.hat.global <- x$y
+        if (is.null(y.hat.global)) {
+            stop("merge.basins.gfc.flow(): cannot compute traj$y.hat.modified because x$y.hat (or x$y) is missing.")
+        }
+
+        ## Ensure a clean state if this trajectory was previously processed
+        traj$y.hat.modified <- NULL
+
+        if (connector.method == "closest") {
+
+            ## Original trajectory length before appending the connector
+            orig.len <- length(traj$vertices) - (length(connector) - 1L)
+
+            ## Closest basin vertex x for this loser
+            x.v <- closest.x.by.loser[[as.character(l.v)]]
+            if (is.null(x.v) || length(x.v) != 1L || is.na(x.v)) {
+                stop("merge.basins.gfc.flow(): missing closest basin vertex x for loser vertex ", l.v, ".")
+            }
+
+            ## Position of x within the connector (connector includes lM as first element)
+            pos.x.in.connector <- match(as.integer(x.v), as.integer(connector))
+            if (is.na(pos.x.in.connector)) {
+                stop("merge.basins.gfc.flow(): internal error: x not found in connector for loser vertex ", l.v, ".")
+            }
+
+            ## Position of x in the new trajectory after appending connector[-1]
+            ## - original trajectory ends at lM (connector[1])
+            ## - appended part is connector[2..]
+            idx.x <- orig.len + (pos.x.in.connector - 1L)
+
+            new.vertices <- as.integer(traj$vertices)
+            if (idx.x < 1L || idx.x > length(new.vertices) || new.vertices[idx.x] != as.integer(x.v)) {
+                stop("merge.basins.gfc.flow(): internal error locating x within the modified trajectory for loser vertex ", l.v, ".")
+            }
+
+            y.path <- as.double(y.hat.global[new.vertices])
+
+            ## Find x' on the ORIGINAL trajectory T (indices 1..orig.len):
+            ## last vertex with y.hat(x') < y.hat(x)
+            cand <- which(y.path[seq_len(orig.len)] < y.path[idx.x])
+
+            if (length(cand) > 0L) {
+                idx.xprime <- max(cand)
+
+                ## Linear interpolation (harmonic extension on a path)
+                seg.idx <- idx.xprime:idx.x
+                seg.len <- length(seg.idx)
+
+                if (seg.len >= 2L) {
+                    y0 <- y.path[idx.xprime]
+                    y1 <- y.path[idx.x]
+                    t <- (0:(seg.len - 1L)) / (seg.len - 1L)
+                    y.path[seg.idx] <- y0 + t * (y1 - y0)
+                }
+                ## seg.len == 1L implies no change
+
+                traj$y.hat.modified <- y.path
+            } else {
+                ## No eligible x' found under the strict rule; leave NULL
+                ## (You may optionally relax to <= if you want more repairs.)
+                traj$y.hat.modified <- NULL
+            }
+        }
 
         x$trajectories[[k]] <- traj
         n.modified <- n.modified + 1L

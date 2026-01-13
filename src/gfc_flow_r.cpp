@@ -72,6 +72,7 @@ static gfc_flow_params_t parse_gfc_flow_params(SEXP s_params) {
     params.p_mean_hopk_dist_threshold = get_list_double(s_params, "p_mean_hopk_dist_threshold", 0.9);
     params.p_deg_threshold = get_list_double(s_params, "p_deg_threshold", 0.9);
     params.min_basin_size = get_list_int(s_params, "min_basin_size", 10);
+    params.min_n_trajectories = get_list_int(s_params, "min_n_trajectories", 0);
     params.hop_k = get_list_int(s_params, "hop_k", 2);
 
     std::string mod_str = get_list_string(s_params, "modulation", "NONE");
@@ -362,8 +363,8 @@ static SEXP int_vec_to_R(const std::vector<int>& vec, bool one_based = true) {
 
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
-    // 30 elements total
-    const int n_elements = 32;
+
+    const int n_elements = 33;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
@@ -961,6 +962,17 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         SET_VECTOR_ELT(r_result, idx, r_mat);
         SET_STRING_ELT(r_names, idx, Rf_mkChar("min.overlap.dist"));
         UNPROTECT(1);  // r_mat
+        ++idx;
+    }
+
+    // ========================================================================
+    // 32: next.up (single-step ascent pointer, 1-based with NA)
+    // ========================================================================
+    {
+        SEXP r_next = PROTECT(int_vec_to_R(result.next_up, true));
+        SET_VECTOR_ELT(r_result, idx, r_next);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("next.up"));
+        UNPROTECT(1);
         ++idx;
     }
 
