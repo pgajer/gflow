@@ -50,10 +50,12 @@ using edge_weight_map_t = std::unordered_map<size_t, std::unordered_map<size_t, 
  * @brief Filter stage at which an extremum was marked spurious
  */
 enum class filter_stage_t {
-    NONE = 0,           ///< Not filtered (retained)
-    RELVALUE = 1,       ///< Filtered by relative value
-    CLUSTER_MERGE = 2,  ///< Merged during clustering
-    GEOMETRIC = 3       ///< Filtered by geometric criteria
+    NONE = 0,            ///< Not filtered (retained)
+    RELVALUE = 1,        ///< Filtered by relative value
+    CLUSTER_MERGE = 2,   ///< Merged during clustering
+    MIN_BASIN_SIZE = 3,  ///< Filtered by minimum basin size
+    MIN_N_TRAJ = 4,      ///< Filtered by minimum number of trajectories
+    GEOMETRIC = 5        ///< Filtered by geometric criteria
 };
 
 /**
@@ -64,6 +66,8 @@ inline std::string filter_stage_to_string(filter_stage_t stage) {
         case filter_stage_t::NONE: return "none";
         case filter_stage_t::RELVALUE: return "relvalue";
         case filter_stage_t::CLUSTER_MERGE: return "cluster_merge";
+        case filter_stage_t::MIN_BASIN_SIZE: return "min_basin_size";
+        case filter_stage_t::MIN_N_TRAJ: return "min_n_trajectories";
         case filter_stage_t::GEOMETRIC: return "geometric";
         default: return "unknown";
     }
@@ -235,6 +239,13 @@ struct gfc_flow_result_t {
     
     /// min_assignment[v] = first retained min basin index for vertex v (-1 if none)
     std::vector<int> min_assignment;
+
+    // ========================================================================
+    // ASCENT MAP (single-step pointers)
+    // ========================================================================
+
+    /// next_up[v] = next vertex on ascending trajectory from v (0-based), or -1 if none
+    std::vector<int> next_up;
 
     // ========================================================================
     // TRAJECTORIES (ALL, with endpoint classification)

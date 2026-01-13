@@ -67,7 +67,12 @@ struct gfc_params_t {
     double p_mean_nbrs_dist_threshold = 0.9;  ///< Percentile threshold for mean neighbor distance (maxima only)
     double p_mean_hopk_dist_threshold = 0.9;  ///< Percentile threshold for hop-k distance
     double p_deg_threshold = 0.9;             ///< Percentile threshold for degree
+
     int min_basin_size = 10;                  ///< Minimum basin size to retain
+
+    /// Minimum number of trajectories required to keep an extremum non-spurious
+    /// 0 disables this criterion
+    int min_n_trajectories = 0;
 
     // Basin expansion
     bool expand_basins = true;  ///< Whether to expand basins to cover all vertices
