@@ -2071,7 +2071,7 @@ list.cells.gfc.flow <- function(x,
             min.is.spurious = logical(0),
             max.is.spurious = logical(0),
             n.trajectories = integer(0),
-            unique.vertices = integer(0),
+            n.vertices = integer(0),
             stringsAsFactors = FALSE
         )
 
@@ -2093,8 +2093,8 @@ list.cells.gfc.flow <- function(x,
         if (!include.min.vertex) result$min.vertex <- NULL
         if (!include.max.vertex) result$max.vertex <- NULL
 
-        ## Always keep min.label, n.trajectories, unique.vertices (+ optional y cols)
-        keep.cols <- c("min.label", "n.trajectories", "unique.vertices")
+        ## Always keep min.label, n.trajectories, n.vertices (+ optional y cols)
+        keep.cols <- c("min.label", "n.trajectories", "n.vertices")
         if (include.max.label) keep.cols <- c(keep.cols, "max.label")
         if (include.min.vertex) keep.cols <- c(keep.cols, "min.vertex")
         if (include.max.vertex) keep.cols <- c(keep.cols, "max.vertex")
@@ -2188,7 +2188,7 @@ list.cells.gfc.flow <- function(x,
         min.is.spurious = logical(length(cells)),
         max.is.spurious = logical(length(cells)),
         n.trajectories = integer(length(cells)),
-        unique.vertices = integer(length(cells)),
+        n.vertices = integer(length(cells)),
         stringsAsFactors = FALSE
     )
 
@@ -2218,7 +2218,7 @@ list.cells.gfc.flow <- function(x,
         result$min.is.spurious[i] <- isTRUE(cell$min.is.spurious)
         result$max.is.spurious[i] <- isTRUE(cell$max.is.spurious)
         result$n.trajectories[i] <- as.integer(cell$n.trajectories)
-        result$unique.vertices[i] <- length(uv)
+        result$n.vertices[i] <- length(uv)
 
         if (!is.null(y.bin)) {
             yy <- y.bin[uv]
@@ -2286,7 +2286,7 @@ list.cells.gfc.flow <- function(x,
     if (!include.max.vertex) result$max.vertex <- NULL
 
     ## Enforce stable, user-facing column order
-    keep.cols <- c("min.label", "n.trajectories", "unique.vertices")
+    keep.cols <- c("min.label", "n.trajectories", "n.vertices")
     if (include.max.label) keep.cols <- c(keep.cols, "max.label")
     if (include.min.vertex) keep.cols <- c(keep.cols, "min.vertex")
     if (include.max.vertex) keep.cols <- c(keep.cols, "max.vertex")
