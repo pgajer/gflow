@@ -552,49 +552,6 @@ summary.gfc.flow <- function(object, ...) {
     invisible(object)
 }
 
-
-#' Get Basin by Label
-#'
-#' Retrieves a basin structure by its label (m1, M2, sm3, sM4, etc.)
-#'
-#' @param gfc.flow A gfc.flow object
-#' @param label Character label of the basin
-#'
-#' @return The basin structure, or NULL if not found
-#'
-#' @examples
-#' \donttest{
-#' ## Get retained maximum M1
-#' basin.M1 <- get.basin(gfc.flow.res, "M1")
-#'
-#' ## Get spurious minimum sm2
-#' basin.sm2 <- get.basin(gfc.flow.res, "sm2")
-#' }
-#'
-#' @export
-get.basin <- function(gfc.flow, label) {
-
-    if (!inherits(gfc.flow, "gfc.flow")) {
-        stop("gfc.flow must be a gfc.flow object")
-    }
-
-    ## Determine if min or max from label prefix
-    is.min <- grepl("^s?m[0-9]", label)
-
-    basins <- if (is.min) gfc.flow$min.basins.all else gfc.flow$max.basins.all
-
-    if (is.null(basins)) return(NULL)
-
-    for (basin in basins) {
-        if (!is.null(basin$label) && basin$label == label) {
-            return(basin)
-        }
-    }
-
-    return(NULL)
-}
-
-
 #' List Retained Extrema
 #'
 #' @param gfc.flow A gfc.flow object
@@ -932,41 +889,311 @@ compute.gfc.flow.matrix <- function(
     return(results)
 }
 
+#' Extract Basin Trajectories from GFC Objects
+#'
+#' Generic function to extract gradient flow trajectories for a specific basin
+#' from GFC-related objects.
+#'
+#' @param x A GFC object.
+#' @param basin.id Local extremum identifier.
+#' @param ... Additional arguments passed to methods.
+#'
+#' @return An object containing basin trajectory information.
+#'
+#' @seealso \code{\link{basin.trajectories.gfc.flow}}
+#'
+#' @export
+basin.trajectories <- function(x, basin.id, ...) {
+    UseMethod("basin.trajectories")
+}
 
-#' Extract Cell Trajectories from GFC Flow Result
+#' Extract Trajectories for a Basin (gfc.flow)
 #'
-#' Extracts gradient flow trajectories for a specific cell (min-max pair)
-#' from a gfc.flow result object. A cell is defined by a pair of extrema
-#' (one minimum, one maximum) that are connected by gradient flow trajectories.
+#' Extracts all stored trajectories associated with a single extremum (a basin)
+#' from a \code{gfc.flow} object. For a maximum basin, this returns all trajectories
+#' whose \code{end.vertex} equals the basin maximum and that end at a local maximum.
+#' For a minimum basin, this returns all trajectories whose \code{start.vertex}
+#' equals the basin minimum and that start at a local minimum.
 #'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()} with
-#'   trajectories computed (i.e., \code{store.trajectories = TRUE}).
-#' @param min.id Minimum extremum identifier: either a label (e.g., "m4", "sm1")
-#'   or a vertex index (integer, 1-based).
-#' @param max.id Maximum extremum identifier: either a label (e.g., "M1", "sM2")
-#'   or a vertex index (integer, 1-based).
-#' @param map Optional integer vector mapping graph indices to subgraph
-#'   vertices. If provided, trajectory vertices are converted to subgraph
-#'   indices.
+#' @param gfc.flow A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param basin.id Basin identifier. Can be:
+#'   \itemize{
+#'     \item a label (character), e.g. \code{"M1"} or \code{"m2"}
+#'     \item a vertex index (numeric/integer), matching \code{summary(.all)$vertex}
+#'     \item (fallback) an integer row index within the extrema of the inferred type
+#'       (only used if it does not match any vertex index)
+#'   }
+#' @param map Optional integer vector giving a vertex mapping (domain vertex IDs);
+#'   if provided, returned trajectory vertices are mapped to indices via \code{match()}.
+#' @param trajectory.format Output format for \code{result$trajectories}.
+#'   \describe{
+#'     \item{\code{"vertices"}}{(Default) List of integer vectors (vertex indices).}
+#'     \item{\code{"with.y.hat.modified"}}{List of lists with \code{$vertices} and
+#'       \code{$y.hat.modified} (NULL if not available).}
+#'   }
 #'
-#' @return A list of class \code{"gfc_cell_trajectories"} containing:
-#'   \item{min.vertex}{Minimum vertex index (in output coordinate system).}
-#'   \item{max.vertex}{Maximum vertex index (in output coordinate system).}
-#'   \item{min.label}{Minimum label (e.g., "m4", "sm1").}
-#'   \item{max.label}{Maximum label (e.g., "M1", "sM2").}
-#'   \item{min.value}{Function value at minimum.}
-#'   \item{max.value}{Function value at maximum.}
-#'   \item{min.is.spurious}{TRUE if minimum is spurious.}
-#'   \item{max.is.spurious}{TRUE if maximum is spurious.}
-#'   \item{trajectories}{List of trajectory vertex vectors.}
-#'   \item{n.trajectories}{Number of trajectories.}
-#'   \item{mapped}{Logical; TRUE if vertices were mapped to subgraph indices.}
+#' @return An object of class \code{gfc_basin_trajectories} with components:
+#'   \itemize{
+#'     \item \code{type} (\code{"min"} or \code{"max"})
+#'     \item \code{basin.vertex}, \code{basin.label}, \code{basin.value}
+#'     \item \code{basin.is.spurious}
+#'     \item \code{trajectories} (format controlled by \code{trajectory.format})
+#'     \item \code{n.trajectories}
+#'     \item \code{mapped}, \code{original.basin.vertex}
+#'   }
+#'
+#' @export
+basin.trajectories.gfc.flow <- function(gfc.flow,
+                                        basin.id,
+                                        map = NULL,
+                                        trajectory.format = c("vertices", "with.y.hat.modified")) {
+
+    trajectory.format <- match.arg(trajectory.format)
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
+    }
+
+    if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+        stop("gfc.flow does not contain trajectory information. ",
+             "Use store.trajectories = TRUE in compute.gfc.flow()")
+    }
+
+    summary.df <- gfc.flow$summary.all %||% gfc.flow$summary
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        stop("gfc.flow does not contain a summary table (summary.all / summary)")
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Resolve basin.id to (type, vertex, label, value, is.spurious)
+    ## ---------------------------------------------------------------------
+
+    resolve.by.label <- function(lbl) {
+        idx <- match(lbl, summary.df$label)
+        if (is.na(idx)) {
+            stop("basin.id label '", lbl, "' not found in summary(.all).")
+        }
+        list(
+            idx = idx,
+            type = as.character(summary.df$type[idx]),
+            vertex = as.integer(summary.df$vertex[idx]),
+            label = as.character(summary.df$label[idx]),
+            value = as.double(summary.df$value[idx]),
+            is.spurious = if ("is.spurious" %in% names(summary.df)) isTRUE(summary.df$is.spurious[idx]) else FALSE
+        )
+    }
+
+    resolve.by.vertex.or_row <- function(v) {
+        v <- as.integer(v)
+
+        ## First: treat as vertex index if present
+        idx <- match(v, as.integer(summary.df$vertex))
+        if (!is.na(idx)) {
+            return(list(
+                idx = idx,
+                type = as.character(summary.df$type[idx]),
+                vertex = as.integer(summary.df$vertex[idx]),
+                label = as.character(summary.df$label[idx]),
+                value = as.double(summary.df$value[idx]),
+                is.spurious = if ("is.spurious" %in% names(summary.df)) isTRUE(summary.df$is.spurious[idx]) else FALSE
+            ))
+        }
+
+        ## Fallback: treat as row index within maxima or minima depending on label conventions
+        ## If basin.id does not match a vertex, we need an inferred type.
+        ## Heuristic: if labels are present and v is within maxima or minima counts,
+        ## use ordering as they appear in summary.df by type.
+        ## Prefer maxima if v fits maxima, else minima if v fits minima.
+        max.idx <- which(summary.df$type == "max")
+        min.idx <- which(summary.df$type == "min")
+
+        if (length(max.idx) > 0L && v >= 1L && v <= length(max.idx)) {
+            idx2 <- max.idx[v]
+            return(list(
+                idx = idx2,
+                type = "max",
+                vertex = as.integer(summary.df$vertex[idx2]),
+                label = as.character(summary.df$label[idx2]),
+                value = as.double(summary.df$value[idx2]),
+                is.spurious = if ("is.spurious" %in% names(summary.df)) isTRUE(summary.df$is.spurious[idx2]) else FALSE
+            ))
+        }
+
+        if (length(min.idx) > 0L && v >= 1L && v <= length(min.idx)) {
+            idx2 <- min.idx[v]
+            return(list(
+                idx = idx2,
+                type = "min",
+                vertex = as.integer(summary.df$vertex[idx2]),
+                label = as.character(summary.df$label[idx2]),
+                value = as.double(summary.df$value[idx2]),
+                is.spurious = if ("is.spurious" %in% names(summary.df)) isTRUE(summary.df$is.spurious[idx2]) else FALSE
+            ))
+        }
+
+        stop("Could not resolve basin.id=", v, " as a vertex or as a row index within maxima/minima.")
+    }
+
+    info <- NULL
+    if (is.character(basin.id) && length(basin.id) == 1L) {
+        info <- resolve.by.label(basin.id)
+    } else if (is.numeric(basin.id) && length(basin.id) == 1L) {
+        info <- resolve.by.vertex.or_row(basin.id)
+    } else {
+        stop("basin.id must be a single label (character) or a single numeric value.")
+    }
+
+    basin.type <- info$type
+    if (!basin.type %in% c("min", "max")) {
+        stop("Resolved basin.type is not 'min' or 'max'. Got: ", basin.type)
+    }
+
+    basin.vertex <- as.integer(info$vertex)
+    basin.label <- as.character(info$label)
+    basin.value <- as.double(info$value)
+    basin.is.spurious <- isTRUE(info$is.spurious)
+
+    ## ---------------------------------------------------------------------
+    ## Extract trajectories for this basin
+    ## ---------------------------------------------------------------------
+
+    trajectories <- list()
+
+    for (traj in gfc.flow$trajectories) {
+
+        if (basin.type == "max") {
+            if (!isTRUE(traj$ends.at.lmax)) next
+            if (as.integer(traj$end.vertex) != basin.vertex) next
+        } else {
+            if (!isTRUE(traj$starts.at.lmin)) next
+            if (as.integer(traj$start.vertex) != basin.vertex) next
+        }
+
+        if (trajectory.format == "vertices") {
+            trajectories[[length(trajectories) + 1L]] <- as.integer(traj$vertices)
+        } else {
+            trajectories[[length(trajectories) + 1L]] <- list(
+                vertices = as.integer(traj$vertices),
+                y.hat.modified = traj$y.hat.modified %||% NULL
+            )
+        }
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Apply vertex mapping if provided
+    ## ---------------------------------------------------------------------
+
+    original.basin.vertex <- basin.vertex
+    mapped <- FALSE
+
+    if (!is.null(map)) {
+        mapped <- TRUE
+        map <- as.integer(map)
+
+        basin.vertex.mapped <- match(basin.vertex, map)
+        if (is.na(basin.vertex.mapped)) {
+            warning("Basin vertex ", basin.vertex, " not found in map.")
+        }
+        basin.vertex <- basin.vertex.mapped
+
+        n.unmapped <- 0L
+
+        if (trajectory.format == "vertices") {
+
+            trajectories <- lapply(trajectories, function(path) {
+                v <- as.integer(path)
+                mapped.v <- match(v, map)
+                n.na <- sum(is.na(mapped.v))
+                if (n.na > 0L) n.unmapped <<- n.unmapped + n.na
+                mapped.v
+            })
+
+        } else {
+
+            trajectories <- lapply(trajectories, function(tr) {
+                v <- as.integer(tr$vertices)
+                mapped.v <- match(v, map)
+
+                n.na <- sum(is.na(mapped.v))
+                if (n.na > 0L) n.unmapped <<- n.unmapped + n.na
+
+                ## Keep alignment: if vertex becomes NA, set corresponding y.hat.modified to NA_real_
+                if (!is.null(tr$y.hat.modified)) {
+                    yh <- as.numeric(tr$y.hat.modified)
+                    if (length(yh) != length(v)) {
+                        ## Defensive: if inconsistent, drop modified values
+                        yh <- NULL
+                    } else {
+                        yh[is.na(mapped.v)] <- NA_real_
+                    }
+                    tr$y.hat.modified <- yh
+                }
+
+                tr$vertices <- mapped.v
+                tr
+            })
+        }
+
+        if (n.unmapped > 0L) {
+            warning(n.unmapped, " trajectory vertices not found in map (returned as NA).")
+        }
+    }
+
+    ## ---------------------------------------------------------------------
+    ## Build result
+    ## ---------------------------------------------------------------------
+
+    result <- list(
+        type = basin.type,
+        basin.vertex = basin.vertex,
+        basin.label = basin.label,
+        basin.value = basin.value,
+        basin.is.spurious = basin.is.spurious,
+        trajectories = trajectories,
+        n.trajectories = length(trajectories),
+        mapped = mapped,
+        original.basin.vertex = original.basin.vertex
+    )
+
+    class(result) <- "gfc_basin_trajectories"
+    result
+}
+
+#' Extract Trajectories for a Given Gradient Flow Cell (gfc.flow)
+#'
+#' Extracts all stored trajectories connecting a specified minimum and maximum
+#' (a gradient-flow cell) from a \code{gfc.flow} object.
+#'
+#' @param gfc.flow A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param min.id Minimum identifier: label (character) or vertex index (numeric/integer).
+#' @param max.id Maximum identifier: label (character) or vertex index (numeric/integer).
+#' @param map Optional integer vector giving a vertex mapping (domain vertex IDs);
+#'   if provided, returned trajectory vertices are mapped to indices via \code{match()}.
+#' @param trajectory.format Output format for \code{result$trajectories}.
+#'   \describe{
+#'     \item{\code{"vertices"}}{(Default) List of integer vectors (vertex indices).}
+#'     \item{\code{"with.y.hat.modified"}}{List of lists with \code{$vertices} and
+#'       \code{$y.hat.modified} (NULL if not available).}
+#'   }
+#'
+#' @return An object of class \code{gfc_cell_trajectories} with components:
+#'   \itemize{
+#'     \item \code{min.vertex}, \code{max.vertex}, \code{min.label}, \code{max.label}
+#'     \item \code{min.value}, \code{max.value}
+#'     \item \code{min.is.spurious}, \code{max.is.spurious}
+#'     \item \code{trajectories} (format controlled by \code{trajectory.format})
+#'     \item \code{n.trajectories}
+#'     \item \code{mapped}, \code{original.min.vertex}, \code{original.max.vertex}
+#'   }
 #'
 #' @export
 cell.trajectories.gfc.flow <- function(gfc.flow,
                                        min.id,
                                        max.id,
-                                       map = NULL) {
+                                       map = NULL,
+                                       trajectory.format = c("vertices", "with.y.hat.modified")) {
+
+    trajectory.format <- match.arg(trajectory.format)
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
@@ -996,11 +1223,7 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.vertex <- summary.df$vertex[idx]
         min.value <- summary.df$value[idx]
         min.type <- summary.df$type[idx]
-        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
-            summary.df$is.spurious[idx]
-        } else {
-            FALSE
-        }
+        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) summary.df$is.spurious[idx] else FALSE
     } else if (is.numeric(min.id)) {
         min.vertex <- as.integer(min.id)
         idx <- match(min.vertex, summary.df$vertex)
@@ -1010,11 +1233,7 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.label <- summary.df$label[idx]
         min.value <- summary.df$value[idx]
         min.type <- summary.df$type[idx]
-        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
-            summary.df$is.spurious[idx]
-        } else {
-            FALSE
-        }
+        min.is.spurious <- if ("is.spurious" %in% names(summary.df)) summary.df$is.spurious[idx] else FALSE
     } else {
         stop("min.id must be a character label or numeric vertex index")
     }
@@ -1037,11 +1256,7 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         max.vertex <- summary.df$vertex[idx]
         max.value <- summary.df$value[idx]
         max.type <- summary.df$type[idx]
-        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
-            summary.df$is.spurious[idx]
-        } else {
-            FALSE
-        }
+        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) summary.df$is.spurious[idx] else FALSE
     } else if (is.numeric(max.id)) {
         max.vertex <- as.integer(max.id)
         idx <- match(max.vertex, summary.df$vertex)
@@ -1051,11 +1266,7 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         max.label <- summary.df$label[idx]
         max.value <- summary.df$value[idx]
         max.type <- summary.df$type[idx]
-        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) {
-            summary.df$is.spurious[idx]
-        } else {
-            FALSE
-        }
+        max.is.spurious <- if ("is.spurious" %in% names(summary.df)) summary.df$is.spurious[idx] else FALSE
     } else {
         stop("max.id must be a character label or numeric vertex index")
     }
@@ -1073,7 +1284,15 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
 
     for (traj in gfc.flow$trajectories) {
         if (traj$start.vertex == min.vertex && traj$end.vertex == max.vertex) {
-            trajectories[[length(trajectories) + 1]] <- traj$vertices
+
+            if (trajectory.format == "vertices") {
+                trajectories[[length(trajectories) + 1]] <- as.integer(traj$vertices)
+            } else {
+                trajectories[[length(trajectories) + 1]] <- list(
+                    vertices = as.integer(traj$vertices),
+                    y.hat.modified = traj$y.hat.modified %||% NULL
+                )
+            }
         }
     }
 
@@ -1107,17 +1326,44 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
         min.vertex <- min.vertex.mapped
         max.vertex <- max.vertex.mapped
 
-        n.unmapped <- 0
-        trajectories <- lapply(trajectories, function(path) {
-            mapped.path <- match(path, map)
-            n.na <- sum(is.na(mapped.path))
-            if (n.na > 0) {
-                n.unmapped <<- n.unmapped + n.na
-            }
-            return(mapped.path)
-        })
+        n.unmapped <- 0L
 
-        if (n.unmapped > 0) {
+        if (trajectory.format == "vertices") {
+
+            trajectories <- lapply(trajectories, function(path) {
+                mapped.path <- match(as.integer(path), map)
+                n.na <- sum(is.na(mapped.path))
+                if (n.na > 0L) n.unmapped <<- n.unmapped + n.na
+                mapped.path
+            })
+
+        } else {
+
+            trajectories <- lapply(trajectories, function(tr) {
+                v <- as.integer(tr$vertices)
+                mapped.v <- match(v, map)
+
+                n.na <- sum(is.na(mapped.v))
+                if (n.na > 0L) n.unmapped <<- n.unmapped + n.na
+
+                ## Keep alignment: if vertex becomes NA, set corresponding y.hat.modified to NA_real_
+                if (!is.null(tr$y.hat.modified)) {
+                    yh <- as.numeric(tr$y.hat.modified)
+                    if (length(yh) != length(v)) {
+                        ## Defensive: if inconsistent, drop modified values
+                        yh <- NULL
+                    } else {
+                        yh[is.na(mapped.v)] <- NA_real_
+                    }
+                    tr$y.hat.modified <- yh
+                }
+
+                tr$vertices <- mapped.v
+                tr
+            })
+        }
+
+        if (n.unmapped > 0L) {
             warning(sprintf("%d trajectory vertices not found in map (returned as NA)",
                             n.unmapped))
         }
@@ -1144,8 +1390,339 @@ cell.trajectories.gfc.flow <- function(gfc.flow,
     )
 
     class(result) <- "gfc_cell_trajectories"
+    result
+}
 
-    return(result)
+#' Summary Method for gfc_cell_trajectories Objects
+#'
+#' @param object A \code{gfc_cell_trajectories} object returned by
+#'   \code{cell.trajectories.gfc.flow()}.
+#' @param ... Additional arguments (ignored).
+#' @param length.quantiles Numeric vector of quantiles to report for trajectory lengths.
+#' @param max.show Integer. Number of example trajectories (by id) to show in the summary.
+#'
+#' @return A list of class \code{summary.gfc_cell_trajectories}.
+#'
+#' @export
+summary.gfc_cell_trajectories <- function(object,
+                                          ...,
+                                          length.quantiles = c(0, 0.25, 0.5, 0.75, 1),
+                                          max.show = 10L) {
+
+    x <- object
+
+    if (!inherits(x, "gfc_cell_trajectories")) {
+        stop("summary.gfc_cell_trajectories(): object must inherit from 'gfc_cell_trajectories'")
+    }
+
+    trajectories <- x$trajectories %||% list()
+    n.traj <- length(trajectories)
+
+    ## Detect trajectory format and extract vertices
+    get.vertices <- function(tr) {
+        if (is.list(tr) && !is.null(tr$vertices)) {
+            return(as.integer(tr$vertices))
+        }
+        as.integer(tr)
+    }
+
+    has.modified <- logical(n.traj)
+    lengths <- integer(n.traj)
+
+    if (n.traj > 0L) {
+        for (i in seq_len(n.traj)) {
+            tr <- trajectories[[i]]
+            vv <- get.vertices(tr)
+            lengths[i] <- length(vv)
+
+            if (is.list(tr) && !is.null(tr$y.hat.modified)) {
+                yh <- tr$y.hat.modified
+                has.modified[i] <- is.numeric(yh) && length(yh) == length(vv)
+            } else {
+                has.modified[i] <- FALSE
+            }
+        }
+    }
+
+    len.stats <- NULL
+    if (n.traj > 0L) {
+        qs <- stats::quantile(lengths, probs = length.quantiles, names = TRUE, type = 7, na.rm = TRUE)
+        len.stats <- list(
+            min = as.integer(min(lengths)),
+            max = as.integer(max(lengths)),
+            mean = as.double(mean(lengths)),
+            median = as.double(stats::median(lengths)),
+            quantiles = qs
+        )
+    } else {
+        len.stats <- list(min = NA_integer_, max = NA_integer_, mean = NA_real_, median = NA_real_, quantiles = NA)
+    }
+
+    show.ids <- integer(0)
+    if (n.traj > 0L) {
+        max.show <- as.integer(max.show)
+        max.show <- max(0L, max.show)
+        show.ids <- seq_len(min(max.show, n.traj))
+    }
+
+    out <- list(
+        kind = "cell",
+        min.label = x$min.label %||% NA_character_,
+        max.label = x$max.label %||% NA_character_,
+        min.vertex = x$min.vertex %||% NA_integer_,
+        max.vertex = x$max.vertex %||% NA_integer_,
+        min.value = x$min.value %||% NA_real_,
+        max.value = x$max.value %||% NA_real_,
+        min.is.spurious = isTRUE(x$min.is.spurious),
+        max.is.spurious = isTRUE(x$max.is.spurious),
+        mapped = isTRUE(x$mapped),
+        original.min.vertex = x$original.min.vertex %||% NA_integer_,
+        original.max.vertex = x$original.max.vertex %||% NA_integer_,
+        n.trajectories = as.integer(n.traj),
+        n.with.modified.y.hat = as.integer(sum(has.modified)),
+        frac.with.modified.y.hat = if (n.traj > 0L) as.double(mean(has.modified)) else NA_real_,
+        trajectory.lengths = lengths,
+        trajectory.length.stats = len.stats,
+        example.trajectory.ids = show.ids
+    )
+
+    class(out) <- c("summary.gfc_cell_trajectories", "list")
+    out
+}
+
+
+#' Summary Method for gfc_basin_trajectories Objects
+#'
+#' @param object A \code{gfc_basin_trajectories} object returned by
+#'   \code{basin.trajectories.gfc.flow()}.
+#' @param ... Additional arguments (ignored).
+#' @param length.quantiles Numeric vector of quantiles to report for trajectory lengths.
+#' @param max.show Integer. Number of example trajectories (by id) to show in the summary.
+#'
+#' @return A list of class \code{summary.gfc_basin_trajectories}.
+#'
+#' @export
+summary.gfc_basin_trajectories <- function(object,
+                                           ...,
+                                           length.quantiles = c(0, 0.25, 0.5, 0.75, 1),
+                                           max.show = 10L) {
+
+    x <- object
+
+    if (!inherits(x, "gfc_basin_trajectories")) {
+        stop("summary.gfc_basin_trajectories(): object must inherit from 'gfc_basin_trajectories'")
+    }
+
+    trajectories <- x$trajectories %||% list()
+    n.traj <- length(trajectories)
+
+    get.vertices <- function(tr) {
+        if (is.list(tr) && !is.null(tr$vertices)) {
+            return(as.integer(tr$vertices))
+        }
+        as.integer(tr)
+    }
+
+    has.modified <- logical(n.traj)
+    lengths <- integer(n.traj)
+
+    if (n.traj > 0L) {
+        for (i in seq_len(n.traj)) {
+            tr <- trajectories[[i]]
+            vv <- get.vertices(tr)
+            lengths[i] <- length(vv)
+
+            if (is.list(tr) && !is.null(tr$y.hat.modified)) {
+                yh <- tr$y.hat.modified
+                has.modified[i] <- is.numeric(yh) && length(yh) == length(vv)
+            } else {
+                has.modified[i] <- FALSE
+            }
+        }
+    }
+
+    len.stats <- NULL
+    if (n.traj > 0L) {
+        qs <- stats::quantile(lengths, probs = length.quantiles, names = TRUE, type = 7, na.rm = TRUE)
+        len.stats <- list(
+            min = as.integer(min(lengths)),
+            max = as.integer(max(lengths)),
+            mean = as.double(mean(lengths)),
+            median = as.double(stats::median(lengths)),
+            quantiles = qs
+        )
+    } else {
+        len.stats <- list(min = NA_integer_, max = NA_integer_, mean = NA_real_, median = NA_real_, quantiles = NA)
+    }
+
+    show.ids <- integer(0)
+    if (n.traj > 0L) {
+        max.show <- as.integer(max.show)
+        max.show <- max(0L, max.show)
+        show.ids <- seq_len(min(max.show, n.traj))
+    }
+
+    out <- list(
+        kind = "basin",
+        type = x$type %||% NA_character_,
+        basin.label = x$basin.label %||% NA_character_,
+        basin.vertex = x$basin.vertex %||% NA_integer_,
+        basin.value = x$basin.value %||% NA_real_,
+        basin.is.spurious = isTRUE(x$basin.is.spurious),
+        mapped = isTRUE(x$mapped),
+        original.basin.vertex = x$original.basin.vertex %||% NA_integer_,
+        n.trajectories = as.integer(n.traj),
+        n.with.modified.y.hat = as.integer(sum(has.modified)),
+        frac.with.modified.y.hat = if (n.traj > 0L) as.double(mean(has.modified)) else NA_real_,
+        trajectory.lengths = lengths,
+        trajectory.length.stats = len.stats,
+        example.trajectory.ids = show.ids
+    )
+
+    class(out) <- c("summary.gfc_basin_trajectories", "list")
+    out
+}
+
+#' Print Method for summary.gfc_cell_trajectories Objects
+#'
+#' @param x A \code{summary.gfc_cell_trajectories} object produced by
+#'   \code{summary.gfc_cell_trajectories()}.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return \code{x} invisibly.
+#'
+#' @export
+print.summary.gfc_cell_trajectories <- function(x, ...) {
+
+    if (!inherits(x, "summary.gfc_cell_trajectories")) {
+        stop("print.summary.gfc_cell_trajectories(): x must inherit from 'summary.gfc_cell_trajectories'")
+    }
+
+    cat("GFC Cell Trajectories Summary\n")
+    cat("=============================\n")
+
+    cat(sprintf("Cell: %s (v%d)%s  ->  %s (v%d)%s\n",
+                x$min.label, as.integer(x$min.vertex),
+                if (isTRUE(x$min.is.spurious)) " [SPURIOUS]" else "",
+                x$max.label, as.integer(x$max.vertex),
+                if (isTRUE(x$max.is.spurious)) " [SPURIOUS]" else ""))
+
+    if (isTRUE(x$mapped)) {
+        cat(sprintf("Mapped vertices: min v%d, max v%d (original: min v%d, max v%d)\n",
+                    as.integer(x$min.vertex), as.integer(x$max.vertex),
+                    as.integer(x$original.min.vertex), as.integer(x$original.max.vertex)))
+    }
+
+    if (is.finite(x$min.value) && is.finite(x$max.value)) {
+        cat(sprintf("Extremum values: min=%.6g, max=%.6g\n", as.double(x$min.value), as.double(x$max.value)))
+    }
+
+    cat(sprintf("Trajectories: %d\n", as.integer(x$n.trajectories)))
+
+    if (is.finite(x$frac.with.modified.y.hat)) {
+        cat(sprintf("With y.hat.modified: %d (%.1f%%)\n",
+                    as.integer(x$n.with.modified.y.hat),
+                    100 * as.double(x$frac.with.modified.y.hat)))
+    } else {
+        cat("With y.hat.modified: NA\n")
+    }
+
+    s <- x$trajectory.length.stats
+    if (is.list(s) && is.finite(s$mean)) {
+        cat(sprintf("Trajectory lengths: min=%d, median=%.1f, mean=%.2f, max=%d\n",
+                    as.integer(s$min),
+                    as.double(s$median),
+                    as.double(s$mean),
+                    as.integer(s$max)))
+
+        if (!is.null(s$quantiles) && !all(is.na(s$quantiles))) {
+            q <- s$quantiles
+            ## Print quantiles compactly
+            q.names <- names(q)
+            q.str <- paste0(q.names, "=", format(as.numeric(q), digits = 4), collapse = ", ")
+            cat("Length quantiles: ", q.str, "\n", sep = "")
+        }
+    } else {
+        cat("Trajectory lengths: NA (no trajectories)\n")
+    }
+
+    if (!is.null(x$example.trajectory.ids) && length(x$example.trajectory.ids) > 0L) {
+        cat("Example trajectory ids: ", paste(x$example.trajectory.ids, collapse = ", "), "\n", sep = "")
+    }
+
+    invisible(x)
+}
+
+
+#' Print Method for summary.gfc_basin_trajectories Objects
+#'
+#' @param x A \code{summary.gfc_basin_trajectories} object produced by
+#'   \code{summary.gfc_basin_trajectories()}.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return \code{x} invisibly.
+#'
+#' @export
+print.summary.gfc_basin_trajectories <- function(x, ...) {
+
+    if (!inherits(x, "summary.gfc_basin_trajectories")) {
+        stop("print.summary.gfc_basin_trajectories(): x must inherit from 'summary.gfc_basin_trajectories'")
+    }
+
+    cat("GFC Basin Trajectories Summary\n")
+    cat("==============================\n")
+
+    type.str <- if (!is.null(x$type) && is.character(x$type) && length(x$type) == 1L) x$type else "NA"
+    if (type.str == "max") type.str <- "Maximum basin"
+    if (type.str == "min") type.str <- "Minimum basin"
+
+    cat(sprintf("%s: %s (v%d)%s\n",
+                type.str,
+                x$basin.label, as.integer(x$basin.vertex),
+                if (isTRUE(x$basin.is.spurious)) " [SPURIOUS]" else ""))
+
+    if (isTRUE(x$mapped)) {
+        cat(sprintf("Mapped vertex: v%d (original: v%d)\n",
+                    as.integer(x$basin.vertex), as.integer(x$original.basin.vertex)))
+    }
+
+    if (is.finite(x$basin.value)) {
+        cat(sprintf("Extremum value: %.6g\n", as.double(x$basin.value)))
+    }
+
+    cat(sprintf("Trajectories: %d\n", as.integer(x$n.trajectories)))
+
+    if (is.finite(x$frac.with.modified.y.hat)) {
+        cat(sprintf("With y.hat.modified: %d (%.1f%%)\n",
+                    as.integer(x$n.with.modified.y.hat),
+                    100 * as.double(x$frac.with.modified.y.hat)))
+    } else {
+        cat("With y.hat.modified: NA\n")
+    }
+
+    s <- x$trajectory.length.stats
+    if (is.list(s) && is.finite(s$mean)) {
+        cat(sprintf("Trajectory lengths: min=%d, median=%.1f, mean=%.2f, max=%d\n",
+                    as.integer(s$min),
+                    as.double(s$median),
+                    as.double(s$mean),
+                    as.integer(s$max)))
+
+        if (!is.null(s$quantiles) && !all(is.na(s$quantiles))) {
+            q <- s$quantiles
+            q.names <- names(q)
+            q.str <- paste0(q.names, "=", format(as.numeric(q), digits = 4), collapse = ", ")
+            cat("Length quantiles: ", q.str, "\n", sep = "")
+        }
+    } else {
+        cat("Trajectory lengths: NA (no trajectories)\n")
+    }
+
+    if (!is.null(x$example.trajectory.ids) && length(x$example.trajectory.ids) > 0L) {
+        cat("Example trajectory ids: ", paste(x$example.trajectory.ids, collapse = ", "), "\n", sep = "")
+    }
+
+    invisible(x)
 }
 
 #' Print Method for gfc_cell_trajectories Objects
@@ -1391,13 +1968,13 @@ list.cells.default <- function(x, ...) {
     stop("No list.cells() method for class: ", paste(class(x), collapse = ", "))
 }
 
-
 #' List All Cells in Gradient Flow Result
 #'
 #' Enumerates all cells (min-max pairs) in a gfc.flow result, including cells
-#' with spurious endpoints (unless excluded).
+#' with spurious endpoints (unless excluded). Optionally augments each cell
+#' with binary outcome counts over unique cell vertices.
 #'
-#' @param gfc.flow A gfc.flow object from \code{compute.gfc.flow()}.
+#' @param x A gfc.flow object from \code{compute.gfc.flow()}.
 #' @param include.spurious Logical; if TRUE (default), include cells with
 #'   spurious endpoints.
 #' @param loc.min Optional. If non-NULL, filter to cells with this minimum
@@ -1407,18 +1984,34 @@ list.cells.default <- function(x, ...) {
 #' @param include.spurious.flags Logical; if TRUE, include logical columns
 #'   \code{min.is.spurious} and \code{max.is.spurious} in the returned data
 #'   frame. Default FALSE.
+#' @param y Optional. A binary outcome vector of length \code{x$n.vertices}
+#'   (or length equal to the number of vertices). Must be coded as 0/1 or
+#'   logical. If provided, adds columns \code{"n(y = 1)"}, \code{"n(y = 0)"},
+#'   \code{"ratio"}, \code{"rel.ratio"} computed over unique cell vertices.
+#' @param include.max.label Logical; if TRUE include \code{max.label} column.
+#'   Default FALSE.
+#' @param include.min.vertex Logical; if TRUE include \code{min.vertex} column.
+#'   Default FALSE.
+#' @param include.max.vertex Logical; if TRUE include \code{max.vertex} column.
+#'   Default FALSE.
 #' @param ... Extra parameters.
 #'
-#' @return A data frame with columns:
+#' @return A data frame with (always) columns:
 #'   \item{min.label}{Minimum label.}
-#'   \item{max.label}{Maximum label.}
-#'   \item{min.vertex}{Minimum vertex index.}
-#'   \item{max.vertex}{Maximum vertex index.}
 #'   \item{n.trajectories}{Number of trajectories connecting this pair.}
 #'   \item{unique.vertices}{Number of unique vertices in trajectories.}
+#'   Optionally includes endpoint columns depending on flags:
+#'   \item{max.label}{Maximum label (if \code{include.max.label = TRUE}).}
+#'   \item{min.vertex}{Minimum vertex index (if \code{include.min.vertex = TRUE}).}
+#'   \item{max.vertex}{Maximum vertex index (if \code{include.max.vertex = TRUE}).}
 #'   If \code{include.spurious.flags = TRUE}, also includes:
 #'   \item{min.is.spurious}{TRUE if the minimum endpoint is spurious.}
 #'   \item{max.is.spurious}{TRUE if the maximum endpoint is spurious.}
+#'   If \code{y} is provided, also includes:
+#'   \item{n(y = 1)}{Count of outcome==1 among unique cell vertices.}
+#'   \item{n(y = 0)}{Count of outcome==0 among unique cell vertices.}
+#'   \item{ratio}{\code{n(y=1) / (n(y=0)+n(y=1))}.}
+#'   \item{rel.ratio}{\code{ratio / mean(y)} (global prevalence).}
 #'
 #' @export
 list.cells.gfc.flow <- function(x,
@@ -1426,6 +2019,10 @@ list.cells.gfc.flow <- function(x,
                                 loc.min = NULL,
                                 loc.max = NULL,
                                 include.spurious.flags = FALSE,
+                                y = NULL,
+                                include.max.label = FALSE,
+                                include.min.vertex = FALSE,
+                                include.max.vertex = FALSE,
                                 ...) {
 
     gfc.flow <- x
@@ -1434,7 +2031,38 @@ list.cells.gfc.flow <- function(x,
         stop("gfc.flow must be a gfc.flow object from compute.gfc.flow()")
     }
 
+    ## ------------------------------------------------------------------------
+    ## Validate y (optional binary outcome)
+    ## ------------------------------------------------------------------------
+    y.bin <- NULL
+    y.mean <- NA_real_
+
+    if (!is.null(y)) {
+        if (is.logical(y)) {
+            y.bin <- as.integer(y)
+        } else if (is.numeric(y)) {
+            if (!all(y %in% c(0, 1, NA))) {
+                stop("y must be binary coded as 0/1 (or logical).")
+            }
+            y.bin <- as.integer(y)
+        } else {
+            stop("y must be numeric 0/1 or logical.")
+        }
+
+        n.v <- gfc.flow$n.vertices %||% length(y.bin)
+        if (length(y.bin) != n.v) {
+            stop("y must have length equal to the number of vertices (x$n.vertices).")
+        }
+
+        y.mean <- mean(y.bin, na.rm = TRUE)
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Empty trajectories -> empty result with correct columns
+    ## ------------------------------------------------------------------------
     if (is.null(gfc.flow$trajectories) || length(gfc.flow$trajectories) == 0) {
+
+        ## Build full internal schema then drop columns per flags (consistent behavior)
         result <- data.frame(
             min.label = character(0),
             max.label = character(0),
@@ -1447,10 +2075,34 @@ list.cells.gfc.flow <- function(x,
             stringsAsFactors = FALSE
         )
 
+        if (!is.null(y.bin)) {
+            result[["n(y = 1)"]] <- integer(0)
+            result[["n(y = 0)"]] <- integer(0)
+            result$ratio <- numeric(0)
+            result$rel.ratio <- numeric(0)
+        }
+
+        ## Drop spurious flags if not requested
         if (!include.spurious.flags) {
             result$min.is.spurious <- NULL
             result$max.is.spurious <- NULL
         }
+
+        ## Drop endpoint columns according to flags
+        if (!include.max.label) result$max.label <- NULL
+        if (!include.min.vertex) result$min.vertex <- NULL
+        if (!include.max.vertex) result$max.vertex <- NULL
+
+        ## Always keep min.label, n.trajectories, unique.vertices (+ optional y cols)
+        keep.cols <- c("min.label", "n.trajectories", "unique.vertices")
+        if (include.max.label) keep.cols <- c(keep.cols, "max.label")
+        if (include.min.vertex) keep.cols <- c(keep.cols, "min.vertex")
+        if (include.max.vertex) keep.cols <- c(keep.cols, "max.vertex")
+        if (include.spurious.flags) keep.cols <- c(keep.cols, "min.is.spurious", "max.is.spurious")
+        if (!is.null(y.bin)) keep.cols <- c(keep.cols, "n(y = 1)", "n(y = 0)", "ratio", "rel.ratio")
+
+        keep.cols <- keep.cols[keep.cols %in% names(result)]
+        result <- result[, keep.cols, drop = FALSE]
 
         return(result)
     }
@@ -1495,7 +2147,7 @@ list.cells.gfc.flow <- function(x,
     }
 
     ## ------------------------------------------------------------------------
-    ## Collect cell information
+    ## Collect cell information (keyed by min.vertex-max.vertex)
     ## ------------------------------------------------------------------------
     cells <- list()
 
@@ -1526,7 +2178,7 @@ list.cells.gfc.flow <- function(x,
     }
 
     ## ------------------------------------------------------------------------
-    ## Build result data frame
+    ## Build result data frame (full internal schema)
     ## ------------------------------------------------------------------------
     result <- data.frame(
         min.label = character(length(cells)),
@@ -1540,6 +2192,13 @@ list.cells.gfc.flow <- function(x,
         stringsAsFactors = FALSE
     )
 
+    if (!is.null(y.bin)) {
+        result[["n(y = 1)"]] <- integer(length(cells))
+        result[["n(y = 0)"]] <- integer(length(cells))
+        result$ratio <- numeric(length(cells))
+        result$rel.ratio <- numeric(length(cells))
+    }
+
     for (i in seq_along(cells)) {
         cell <- cells[[i]]
 
@@ -1550,6 +2209,8 @@ list.cells.gfc.flow <- function(x,
         min.label <- if (!is.na(min.idx)) summary.df$label[min.idx] else paste0("v", cell$min.vertex)
         max.label <- if (!is.na(max.idx)) summary.df$label[max.idx] else paste0("v", cell$max.vertex)
 
+        uv <- unique(cell$all.vertices)
+
         result$min.label[i] <- min.label
         result$max.label[i] <- max.label
         result$min.vertex[i] <- as.integer(cell$min.vertex)
@@ -1557,7 +2218,22 @@ list.cells.gfc.flow <- function(x,
         result$min.is.spurious[i] <- isTRUE(cell$min.is.spurious)
         result$max.is.spurious[i] <- isTRUE(cell$max.is.spurious)
         result$n.trajectories[i] <- as.integer(cell$n.trajectories)
-        result$unique.vertices[i] <- length(unique(cell$all.vertices))
+        result$unique.vertices[i] <- length(uv)
+
+        if (!is.null(y.bin)) {
+            yy <- y.bin[uv]
+            n1 <- sum(yy == 1L, na.rm = TRUE)
+            n0 <- sum(yy == 0L, na.rm = TRUE)
+            denom <- n0 + n1
+
+            ratio <- if (denom > 0) n1 / denom else NA_real_
+            rel.ratio <- if (!is.na(ratio) && is.finite(y.mean) && y.mean > 0) ratio / y.mean else NA_real_
+
+            result[["n(y = 1)"]][i] <- as.integer(n1)
+            result[["n(y = 0)"]][i] <- as.integer(n0)
+            result$ratio[i] <- ratio
+            result$rel.ratio[i] <- rel.ratio
+        }
     }
 
     ## ------------------------------------------------------------------------
@@ -1598,12 +2274,27 @@ list.cells.gfc.flow <- function(x,
     rownames(result) <- NULL
 
     ## ------------------------------------------------------------------------
-    ## Optionally drop spurious flag columns from the output
+    ## Output shaping (drop columns per flags)
     ## ------------------------------------------------------------------------
     if (!include.spurious.flags) {
         result$min.is.spurious <- NULL
         result$max.is.spurious <- NULL
     }
+
+    if (!include.max.label) result$max.label <- NULL
+    if (!include.min.vertex) result$min.vertex <- NULL
+    if (!include.max.vertex) result$max.vertex <- NULL
+
+    ## Enforce stable, user-facing column order
+    keep.cols <- c("min.label", "n.trajectories", "unique.vertices")
+    if (include.max.label) keep.cols <- c(keep.cols, "max.label")
+    if (include.min.vertex) keep.cols <- c(keep.cols, "min.vertex")
+    if (include.max.vertex) keep.cols <- c(keep.cols, "max.vertex")
+    if (include.spurious.flags) keep.cols <- c(keep.cols, "min.is.spurious", "max.is.spurious")
+    if (!is.null(y.bin)) keep.cols <- c(keep.cols, "n(y = 1)", "n(y = 0)", "ratio", "rel.ratio")
+
+    keep.cols <- keep.cols[keep.cols %in% names(result)]
+    result <- result[, keep.cols, drop = FALSE]
 
     return(result)
 }
@@ -4325,6 +5016,179 @@ merge.basins.gfc.flow <- function(x,
     x
 }
 
+#' Get Basin by Label
+#'
+#' Retrieves a basin structure by its label (m1, M2, sm3, sM4, etc.)
+#'
+#' @param gfc.flow A gfc.flow object
+#' @param label Character label of the basin
+#'
+#' @return The basin structure, or NULL if not found
+#'
+#' @examples
+#' \donttest{
+#' ## Get retained maximum M1
+#' basin.M1 <- get.basin(gfc.flow.res, "M1")
+#'
+#' ## Get spurious minimum sm2
+#' basin.sm2 <- get.basin(gfc.flow.res, "sm2")
+#' }
+#'
+#' @export
+get.basin <- function(gfc.flow, label) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object")
+    }
+
+    ## Determine if min or max from label prefix
+    is.min <- grepl("^s?m[0-9]", label)
+
+    basins <- if (is.min) gfc.flow$min.basins.all else gfc.flow$max.basins.all
+
+    if (is.null(basins)) return(NULL)
+
+    for (basin in basins) {
+        if (!is.null(basin$label) && basin$label == label) {
+            return(basin)
+        }
+    }
+
+    return(NULL)
+}
+
+#' Extract Vertices Belonging to a Single Basin in a gfc.flow Object
+#'
+#' @description
+#' Returns the set of domain-graph vertices assigned to a *single* basin (minimum
+#' or maximum) in a trajectory-first \code{gfc.flow} object (as produced by
+#' \code{\link{compute.gfc.flow}}).
+#'
+#' Internally, the function resolves \code{basin.id} to an extremum label using
+#' \code{gfc.flow$summary.all} (preferred) or \code{gfc.flow$summary}, and then
+#' retrieves the basin structure via \code{\link{get.basin}}. The returned basin
+#' vertex set is \code{basin$vertices}.
+#'
+#' @param gfc.flow A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param basin.id Basin identifier. Either:
+#'   \itemize{
+#'     \item a character extremum label (e.g., \code{"M1"}, \code{"m3"},
+#'           \code{"sM2"}, \code{"sm7"}), or
+#'     \item a single numeric vertex index (1-based) corresponding to an extremum
+#'           present in \code{gfc.flow$summary.all} / \code{gfc.flow$summary}.
+#'   }
+#' @param type Character string. Only used when \code{basin.id} is numeric.
+#'   One of \code{"auto"} (default), \code{"min"}, or \code{"max"}.
+#'   If \code{"auto"}, the type is inferred from the summary table row matching
+#'   \code{basin.id}.
+#' @param include.extremum Logical; if TRUE (default), ensure the extremum vertex
+#'   is included in the returned set (defensive; typically already included).
+#' @param unique Logical; if TRUE (default), return unique vertices.
+#' @param sort Logical; if TRUE (default), sort returned vertices increasingly.
+#'
+#' @return An integer vector of basin vertex indices (1-based).
+#'
+#' @examples
+#' \dontrun{
+#' ## By label
+#' v.M1 <- basin.vertices(gfc.flow.res, "M1")
+#'
+#' ## By vertex (infer type from summary)
+#' v.1147 <- basin.vertices(gfc.flow.res, 1147)
+#'
+#' ## By vertex with explicit type (useful if you ever have ambiguity)
+#' v.min.509 <- basin.vertices(gfc.flow.res, 509, type = "min")
+#' }
+#'
+#' @export
+basin.vertices <- function(gfc.flow,
+                           basin.id,
+                           type = c("auto", "min", "max"),
+                           include.extremum = TRUE,
+                           unique = TRUE,
+                           sort = TRUE) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object.")
+    }
+
+    type <- match.arg(type)
+
+    ## Prefer summary.all (includes spurious); fall back to summary
+    summary.df <- gfc.flow$summary.all
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        summary.df <- gfc.flow$summary
+    }
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        stop("gfc.flow does not contain summary tables (summary.all / summary).")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Resolve basin.id -> label
+    ## ------------------------------------------------------------------------
+    basin.label <- NULL
+
+    if (is.character(basin.id)) {
+        if (length(basin.id) != 1L) {
+            stop("basin.id must be a single label or a single vertex index.")
+        }
+        basin.label <- basin.id
+
+    } else if (is.numeric(basin.id)) {
+
+        if (length(basin.id) != 1L) {
+            stop("basin.id must be a single label or a single vertex index.")
+        }
+
+        basin.vertex <- as.integer(basin.id)
+        if (is.na(basin.vertex) || basin.vertex < 1L) {
+            stop("Invalid basin.id vertex index.")
+        }
+
+        rows <- summary.df[summary.df$vertex == basin.vertex, , drop = FALSE]
+        if (nrow(rows) == 0) {
+            stop("Vertex ", basin.vertex, " not found in gfc.flow summary tables.")
+        }
+
+        if (type != "auto") {
+            rows <- rows[rows$type == type, , drop = FALSE]
+            if (nrow(rows) == 0) {
+                stop("Vertex ", basin.vertex, " is not a '", type, "' extremum in this gfc.flow object.")
+            }
+        }
+
+        ## If multiple rows match (unlikely), take the first deterministically
+        basin.label <- as.character(rows$label[1])
+
+    } else {
+        stop("basin.id must be a character label or a numeric vertex index.")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Retrieve basin and return vertices
+    ## ------------------------------------------------------------------------
+    basin <- get.basin(gfc.flow, basin.label)
+    if (is.null(basin)) {
+        stop("Basin '", basin.label, "' not found.")
+    }
+
+    basin.vertices <- as.integer(basin$vertices)
+
+    if (isTRUE(include.extremum) && !is.null(basin$extremum.vertex)) {
+        basin.vertices <- c(basin.vertices, as.integer(basin$extremum.vertex))
+    }
+
+    if (isTRUE(unique)) {
+        basin.vertices <- unique(basin.vertices)
+    }
+    if (isTRUE(sort)) {
+        basin.vertices <- sort(basin.vertices)
+    }
+
+    basin.vertices
+}
+
+
 #' Get Cell Vertices for a (min, max) Pair
 #'
 #' @description
@@ -4425,4 +5289,1313 @@ cell.vertices <- function(gfc.flow, min.id, max.id) {
     }
 
     unique(as.integer(verts))
+}
+
+#' Compute carriers-per-trajectory matrix k_{jT} for many phylotypes
+#'
+#' @param Z Numeric matrix (samples x phylotypes) of relative abundance.
+#' @param trajectories List of integer vectors; each vector are sample indices
+#'   (columns of Z) belonging to a trajectory.
+#' @param eps Numeric scalar; treat z > eps as "detected". Default 0.
+#'
+#' @return Integer matrix \code{k.mat} of dimension (n.phylotypes x n.trajectories),
+#'   where \code{k.mat[j, t]} = number of samples on trajectory t with \code{Z[j, ] > eps}.
+#'
+#' @export
+compute.carriers.per.trajectory.mat <- function(Z, trajectories, eps = 0) {
+
+  stopifnot(is.matrix(Z))
+  stopifnot(is.list(trajectories))
+  stopifnot(length(trajectories) > 0L)
+
+  n.phi <- ncol(Z)
+  n.trj <- length(trajectories)
+
+  k.mat <- matrix(0L, nrow = n.phi, ncol = n.trj)
+  rownames(k.mat) <- colnames(Z)
+  colnames(k.mat) <- paste0("T", seq_len(n.trj))
+
+  for (t in seq_len(n.trj)) {
+    idx <- trajectories[[t]]
+    if (length(idx) == 0L) next
+    ## rowSums over logical matrix is fast; avoid creating huge objects
+    k.mat[, t] <- colSums(Z[idx, , drop = FALSE] > eps)
+  }
+
+  k.mat
+}
+
+#' Evaluates a range of prevalence thresholds for DA analysis
+#'
+#' @param X.rel Relative abundance matrix (samples × features)
+#' @param y Binary response vector (named and aligned to samples)
+#' @param basin.vertices Vector of vertex IDs for subsetting
+#' @param counts Raw count matrix (features × samples)
+#' @param prevalences Numeric vector of prevalence thresholds (0–1)
+#' @param min.count Integer minimal count threshold for inputs
+#' @param plot.pdf Path to save diagnostic plots (optional)
+#' @return A list with summary metrics and detailed outputs by prevalence
+#'
+#' @export
+basin.prev.eval <- function(
+                            X.rel,
+                            y,
+                            basin.vertices,
+                            counts,
+                            prevalences = seq(0.05, 0.50, by = 0.05),
+                            min.count = 10L, plot.pdf = NULL
+                            ) {
+    ## store results in list
+    res.list <- vector("list", length(prevalences))
+    names(res.list) <- paste0("p", prevalences * 100)
+
+    summary.df <- data.frame(
+        prevalence = prevalences,
+        nFeatures = NA_integer_,
+        nSig = NA_integer_,
+        medianAbsLogFC = NA_real_,
+        stringsAsFactors = FALSE
+    )
+
+    for (i in seq_along(prevalences)) {
+        p <- prevalences[i]
+
+        ## prepare inputs with this threshold
+        inp <- prepare.basin.da.inputs(
+            X.rel = X.rel, y = y,
+            basin.vertices = basin.vertices,
+            counts = counts,
+            min.prevalence = p,
+            min.count = min.count
+        )
+
+        ## number of retained features
+        summary.df$nFeatures[i] <- nrow(inp$counts.C)
+
+        if (summary.df$nFeatures[i] > 1) {
+            ## run edgeR DA
+            da <- run.da.edger(inp$counts.C, inp$y.C)
+
+            ## record results
+            res.list[[i]] <- da
+
+            ## count of significant features at FDR < 0.1
+            sig.idx <- which(da$FDR < 0.10)
+            summary.df$nSig[i] <- length(sig.idx)
+
+            ## median absolute logFC (magnitude of signal)
+            summary.df$medianAbsLogFC[i] <- median(abs(da$logFC), na.rm = TRUE)
+        } else {
+            res.list[[i]] <- NULL
+            summary.df$nSig[i] <- 0
+            summary.df$medianAbsLogFC[i] <- NA
+        }
+    }
+
+    ## diagnostic plots
+    if (!is.null(plot.pdf)) {
+        pdf(plot.pdf)
+
+        ## plot 1: retained features vs prevalence
+        plot(
+            summary.df$prevalence, summary.df$nFeatures,
+            type = "b", xlab = "Prevalence threshold",
+            ylab = "Number of features retained",
+            main = "Feature retention vs prevalence"
+        )
+
+        ## plot 2: number of significant features vs prevalence
+        plot(
+            summary.df$prevalence, summary.df$nSig,
+            type = "b", xlab = "Prevalence threshold",
+            ylab = "Number of significant DA features (FDR < 0.1)",
+            main = "DA signal vs prevalence"
+        )
+
+        ## plot 3: median |logFC| vs prevalence
+        plot(
+            summary.df$prevalence, summary.df$medianAbsLogFC,
+            type = "b", xlab = "Prevalence threshold",
+            ylab = "Median absolute logFC",
+            main = "Effect size trend vs prevalence"
+        )
+
+        dev.off()
+    }
+
+    return(list(summary = summary.df, details = res.list))
+}
+
+## ============================================================================
+## Helper: summarize prevalence diagnostic results and recommend thresholds
+## ============================================================================
+
+#' Summarize systematic prevalence evaluation results and recommend a threshold
+#'
+#' @param results A results object returned by basin.prev.eval().
+#'   Must contain a data.frame `results$summary` with columns:
+#'   prevalence, nFeatures, nSig, and (optionally) medianAbsLogFC.
+#' @param unstable.delta.nsig Integer; flag an "unstable" step if the absolute
+#'   change in nSig between adjacent prevalence thresholds is >= this value.
+#' @param unstable.frac.nsig Numeric in \eqn{[0,1]}; alternative instability criterion:
+#'   flag if abs(delta.nSig) >= unstable.frac.nsig * max(nSig.prev, nSig.next).
+#'   Either criterion triggers a flag.
+#' @param stable.window Integer; window size (number of adjacent steps) used by
+#'   Rule A (stability-first) to check local stability.
+#' @param stable.max.delta.nsig Integer; for Rule A, require that abs(delta.nSig)
+#'   is <= this value across the next `stable.window` steps.
+#' @param b.min.features Integer; for Rule B, only consider thresholds with
+#'   nFeatures >= this value.
+#' @param b.min.sig Integer; for Rule B, only consider thresholds with nSig >= this value.
+#' @param c.target.features Integer; for Rule C, aim for approximately this many
+#'   retained features (interpretability-first).
+#' @param c.min.sig Integer; for Rule C, require at least this many discoveries.
+#' @param avoid.unstable Logical; if TRUE, avoid selecting thresholds that are
+#'   adjacent to unstable jumps.
+#'
+#' @return A list with:
+#'   - summary.aug: results$summary augmented with sig.rate and deltas
+#'   - unstable.steps: integer indices of steps flagged as unstable (between i-1 and i)
+#'   - unstable.prevalence: prevalence values at the right end of unstable steps
+#'   - recommend: list with rule.a, rule.b, rule.c recommended prevalence values
+#'   - recommend.idx: corresponding row indices in summary.aug
+#'
+#' @export
+summarize.prev.eval <- function(results,
+                                unstable.delta.nsig = 8L,
+                                unstable.frac.nsig = 0.50,
+                                stable.window = 2L,
+                                stable.max.delta.nsig = 4L,
+                                b.min.features = 30L,
+                                b.min.sig = 5L,
+                                c.target.features = 35L,
+                                c.min.sig = 5L,
+                                avoid.unstable = TRUE) {
+
+    if (is.null(results$summary) || !is.data.frame(results$summary)) {
+        stop("results must contain a data.frame results$summary")
+    }
+
+    sm <- results$summary
+
+    req.cols <- c("prevalence", "nFeatures", "nSig")
+    if (!all(req.cols %in% names(sm))) {
+        stop("results$summary must contain columns: prevalence, nFeatures, nSig")
+    }
+
+    ## Ensure ordering by prevalence
+    sm <- sm[order(sm$prevalence), , drop = FALSE]
+    rownames(sm) <- NULL
+
+    ## Compute signal density
+    sm$sig.rate <- ifelse(sm$nFeatures > 0, sm$nSig / sm$nFeatures, NA_real_)
+
+    ## Adjacent-step deltas
+    sm$delta.nSig <- c(NA_integer_, diff(as.integer(sm$nSig)))
+    sm$delta.nFeatures <- c(NA_integer_, diff(as.integer(sm$nFeatures)))
+    sm$delta.sig.rate <- c(NA_real_, diff(as.numeric(sm$sig.rate)))
+
+    ## Flag unstable steps (step i is between i-1 and i)
+    abs.delta.nsig <- abs(sm$delta.nSig)
+    frac.delta.nsig <- rep(NA_real_, nrow(sm))
+    for (i in seq_len(nrow(sm))) {
+        if (i == 1L) next
+        denom <- max(sm$nSig[i - 1L], sm$nSig[i], na.rm = TRUE)
+        frac.delta.nsig[i] <- if (denom > 0) abs.delta.nsig[i] / denom else 0
+    }
+
+    sm$unstable.step <- FALSE
+    for (i in seq_len(nrow(sm))) {
+        if (i == 1L) next
+        crit.a <- is.finite(abs.delta.nsig[i]) && abs.delta.nsig[i] >= as.integer(unstable.delta.nsig)
+        crit.b <- is.finite(frac.delta.nsig[i]) && frac.delta.nsig[i] >= as.numeric(unstable.frac.nsig)
+        sm$unstable.step[i] <- isTRUE(crit.a || crit.b)
+    }
+
+    unstable.steps <- which(sm$unstable.step)
+    unstable.prevalence <- if (length(unstable.steps) > 0) sm$prevalence[unstable.steps] else numeric(0)
+
+    ## Helper: mark rows to avoid if adjacent to unstable steps
+    sm$near.unstable <- FALSE
+    if (avoid.unstable && length(unstable.steps) > 0) {
+        near.idx <- unique(c(unstable.steps, unstable.steps - 1L, unstable.steps + 1L))
+        near.idx <- near.idx[near.idx >= 1L & near.idx <= nrow(sm)]
+        sm$near.unstable[near.idx] <- TRUE
+    }
+
+    ## --------------------------------------------------------------------------
+    ## Rule A: Stability-first
+    ## Pick the lowest prevalence such that the next `stable.window` steps
+    ## have abs(delta.nSig) <= stable.max.delta.nsig, and (optionally) not near unstable.
+    ## --------------------------------------------------------------------------
+    rule.a.idx <- NA_integer_
+    if (nrow(sm) >= (stable.window + 1L)) {
+        for (i in seq_len(nrow(sm))) {
+            ## Need i+1 .. i+stable.window to exist (deltas defined there)
+            j.end <- i + as.integer(stable.window)
+            if (j.end > nrow(sm)) break
+
+            window.idx <- (i + 1L):j.end
+            ok.delta <- all(abs(sm$delta.nSig[window.idx]) <= as.integer(stable.max.delta.nsig), na.rm = TRUE)
+            ok.unstable <- TRUE
+            if (avoid.unstable) ok.unstable <- !isTRUE(sm$near.unstable[i])
+
+            if (isTRUE(ok.delta) && isTRUE(ok.unstable)) {
+                rule.a.idx <- i
+                break
+            }
+        }
+    }
+
+    ## --------------------------------------------------------------------------
+    ## Rule B: Signal density (maximize nSig/nFeatures with constraints)
+    ## --------------------------------------------------------------------------
+    cand.b <- which(sm$nFeatures >= as.integer(b.min.features) & sm$nSig >= as.integer(b.min.sig))
+    if (avoid.unstable) cand.b <- cand.b[!sm$near.unstable[cand.b]]
+
+    rule.b.idx <- NA_integer_
+    if (length(cand.b) > 0) {
+        best <- cand.b[which.max(sm$sig.rate[cand.b])]
+        ## Tie-breaker: prefer lower prevalence for stability and inclusiveness
+        ties <- cand.b[sm$sig.rate[cand.b] == sm$sig.rate[best]]
+        rule.b.idx <- ties[which.min(sm$prevalence[ties])]
+    }
+
+    ## --------------------------------------------------------------------------
+    ## Rule C: Interpretability-first (target a smaller feature set)
+    ## Choose prevalence whose nFeatures is closest to c.target.features,
+    ## subject to nSig >= c.min.sig (and optionally not near unstable).
+    ## --------------------------------------------------------------------------
+    cand.c <- which(sm$nSig >= as.integer(c.min.sig))
+    if (avoid.unstable) cand.c <- cand.c[!sm$near.unstable[cand.c]]
+
+    rule.c.idx <- NA_integer_
+    if (length(cand.c) > 0) {
+        dist <- abs(sm$nFeatures[cand.c] - as.integer(c.target.features))
+        best <- cand.c[which.min(dist)]
+        ## Tie-breaker: prefer higher prevalence (more stringent) if equally close
+        ties <- cand.c[dist == min(dist)]
+        rule.c.idx <- ties[which.max(sm$prevalence[ties])]
+    }
+
+    recommend <- list(
+        rule.a = if (is.finite(rule.a.idx)) sm$prevalence[rule.a.idx] else NA_real_,
+        rule.b = if (is.finite(rule.b.idx)) sm$prevalence[rule.b.idx] else NA_real_,
+        rule.c = if (is.finite(rule.c.idx)) sm$prevalence[rule.c.idx] else NA_real_
+    )
+
+    recommend.idx <- list(
+        rule.a = rule.a.idx,
+        rule.b = rule.b.idx,
+        rule.c = rule.c.idx
+    )
+
+    list(
+        summary.aug = sm,
+        unstable.steps = unstable.steps,
+        unstable.prevalence = unstable.prevalence,
+        recommend = recommend,
+        recommend.idx = recommend.idx
+    )
+}
+
+#' Two-stage FDR control for basin-specific differential abundance scans
+#'
+#' @param pval.mat Numeric matrix of p-values with rows = taxa and cols = basins.
+#' @param q Target FDR level (e.g., 0.10).
+#' @param basin.global.method Method to aggregate basin-level p-values.
+#'   Currently "simes" or "fisher".
+#'
+#' @return List with selected.basins, basin.pvals, within.q, and within.adj.p (list).
+#'
+#' @export
+two.stage.basin.fdr <- function(pval.mat,
+                                q = 0.10,
+                                basin.global.method = c("simes", "fisher")) {
+    basin.global.method <- match.arg(basin.global.method)
+
+    ## Basin-level p-values
+    basin.pvals <- apply(pval.mat, 2L, function(p) {
+        p <- p[is.finite(p)]
+        m <- length(p)
+        if (m == 0L) return(NA_real_)
+
+        if (basin.global.method == "simes") {
+            p.sort <- sort(p)
+            min(p.sort * m / seq_len(m))
+        } else {
+            ## Fisher's method
+            stat <- -2 * sum(log(p))
+            stats::pchisq(stat, df = 2 * m, lower.tail = FALSE)
+        }
+    })
+
+    ## Stage 1: select basins
+    basin.qvals <- p.adjust(basin.pvals, method = "BH")
+    selected.basins <- which(basin.qvals <= q)
+
+    m.basins <- ncol(pval.mat)
+    r.sel <- length(selected.basins)
+
+    ## BB-style within-basin target (simple version)
+    within.q <- if (r.sel == 0L) 0 else q * r.sel / m.basins
+
+    ## Stage 2: within selected basins
+    within.adj.p <- vector("list", length = r.sel)
+    names(within.adj.p) <- colnames(pval.mat)[selected.basins]
+
+    for (k in seq_along(selected.basins)) {
+        b <- selected.basins[k]
+        within.adj.p[[k]] <- p.adjust(pval.mat[, b], method = "BH")
+    }
+
+    list(
+        selected.basins = selected.basins,
+        basin.pvals = basin.pvals,
+        basin.qvals = basin.qvals,
+        within.q = within.q,
+        within.adj.p = within.adj.p
+    )
+}
+
+## ============================================================================
+## Helper: extract per-prevalence DA tables from results
+## ============================================================================
+
+#' Extract per-prevalence differential abundance tables from a basin.prev.eval result
+#'
+#' @param results A basin.prev.eval results object.
+#' @param prefer.names Character vector of candidate element names that may hold
+#'   a list of DA tables keyed by prevalence.
+#'
+#' @return A named list of data.frames, one per prevalence, with rownames = taxa.
+#'
+#' @export
+extract.da.tables.by.prevalence <- function(results,
+                                            prefer.names = c("da.tables",
+                                                             "edger.tables",
+                                                             "tables",
+                                                             "by.prevalence",
+                                                             "per.prevalence",
+                                                             "fits",
+                                                             "tests")) {
+
+    ## 1) Direct hit by preferred names
+    for (nm in prefer.names) {
+        if (!is.null(results[[nm]]) && is.list(results[[nm]])) {
+            x <- results[[nm]]
+
+            ## Must be a list of data.frames with rownames
+            ok <- all(vapply(x, function(z) is.data.frame(z) && nrow(z) > 0, logical(1)), na.rm = TRUE)
+            if (ok) return(x)
+        }
+    }
+
+    ## 2) Search recursively one level deep for a list-of-data.frames
+    for (nm in names(results)) {
+        x <- results[[nm]]
+        if (!is.list(x)) next
+
+        ok <- all(vapply(x, function(z) is.data.frame(z) && nrow(z) > 0, logical(1)), na.rm = TRUE)
+        if (ok) return(x)
+    }
+
+    stop("Could not locate a list of per-prevalence DA tables inside results.\n",
+         "Please inspect names(results) and identify which element holds the per-prevalence DA tables.")
+}
+
+## ============================================================================
+## Taxon-level robustness summary across prevalence thresholds
+## ============================================================================
+
+#' Taxon-level significance frequency across prevalence thresholds
+#'
+#' @param results basin.prev.eval() result object.
+#' @param fdr.level FDR cutoff used to count a taxon as significant.
+#' @param tables.name Optional; name of results element that stores a list of
+#'   per-prevalence DA tables. If NULL, tries to auto-detect.
+#' @param fdr.col Column name for FDR in each DA table.
+#' @param logfc.col Column name for logFC in each DA table.
+#'
+#' @return data.frame with per-taxon summaries: n.tested, n.sig, sig.freq,
+#'   longest.sig.run, min.fdr, mean.logfc, sign.pos.freq, sign.flip.count.
+#'
+#' @export
+taxon.sig.frequency <- function(results,
+                                fdr.level = 0.10,
+                                tables.name = NULL,
+                                fdr.col = "FDR",
+                                logfc.col = "logFC") {
+
+    ## ---- locate per-prevalence tables ----
+    if (is.null(tables.name)) {
+        cand <- c("da.tables", "edger.tables", "tables", "by.prevalence", "per.prevalence", "tests")
+        tables.name <- cand[cand %in% names(results)][1L]
+    }
+    if (is.na(tables.name) || is.null(tables.name) || is.null(results[[tables.name]])) {
+        stop("Could not find per-prevalence DA tables in results. ",
+             "Please set tables.name to the element holding the list of tables.")
+    }
+
+    da.tables <- results[[tables.name]]
+    if (!is.list(da.tables) || length(da.tables) == 0L) {
+        stop("results[[tables.name]] must be a non-empty list of data.frames.")
+    }
+
+    ## ---- order thresholds by numeric prevalence extracted from list names ----
+    prev.names <- names(da.tables)
+    if (is.null(prev.names)) prev.names <- as.character(seq_along(da.tables))
+    prev.num <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", prev.names)))
+
+    ord <- order(prev.num, prev.names)
+    da.tables <- da.tables[ord]
+    prev.num <- prev.num[ord]
+    prev.names <- prev.names[ord]
+
+    ## ---- union of taxa across thresholds ----
+    taxa.all <- sort(unique(unlist(lapply(da.tables, rownames))))
+    n.taxa <- length(taxa.all)
+    n.thr <- length(da.tables)
+
+    ## Matrices: tested, significant, logFC
+    tested.mat <- matrix(FALSE, nrow = n.taxa, ncol = n.thr,
+                         dimnames = list(taxa.all, prev.names))
+    sig.mat <- matrix(FALSE, nrow = n.taxa, ncol = n.thr,
+                      dimnames = list(taxa.all, prev.names))
+    logfc.mat <- matrix(NA_real_, nrow = n.taxa, ncol = n.thr,
+                        dimnames = list(taxa.all, prev.names))
+    fdr.mat <- matrix(NA_real_, nrow = n.taxa, ncol = n.thr,
+                      dimnames = list(taxa.all, prev.names))
+
+    ## Fill
+    for (k in seq_len(n.thr)) {
+        tab <- da.tables[[k]]
+        if (!is.data.frame(tab) || nrow(tab) == 0L) next
+        if (!(fdr.col %in% names(tab))) stop("Missing ", fdr.col, " in table: ", prev.names[k])
+        if (!(logfc.col %in% names(tab))) stop("Missing ", logfc.col, " in table: ", prev.names[k])
+
+        tx <- rownames(tab)
+        idx <- match(tx, taxa.all)
+        tested.mat[idx, k] <- TRUE
+        fdr.mat[idx, k] <- tab[[fdr.col]]
+        logfc.mat[idx, k] <- tab[[logfc.col]]
+        sig.mat[idx, k] <- is.finite(tab[[fdr.col]]) & (tab[[fdr.col]] <= fdr.level)
+    }
+
+    ## ---- per-taxon summaries ----
+    n.tested <- rowSums(tested.mat)
+    n.sig <- rowSums(sig.mat)
+    sig.freq <- ifelse(n.tested > 0, n.sig / n.tested, NA_real_)
+    min.fdr <- apply(fdr.mat, 1L, function(v) suppressWarnings(min(v, na.rm = TRUE)))
+    min.fdr[is.infinite(min.fdr)] <- NA_real_
+    mean.logfc <- apply(logfc.mat, 1L, function(v) mean(v, na.rm = TRUE))
+
+    ## Direction summaries
+    sign.pos.freq <- apply(logfc.mat, 1L, function(v) {
+        v <- v[is.finite(v)]
+        if (length(v) == 0L) return(NA_real_)
+        mean(v > 0)
+    })
+
+    sign.flip.count <- apply(logfc.mat, 1L, function(v) {
+        v <- v[is.finite(v)]
+        if (length(v) <= 1L) return(0L)
+        s <- sign(v)
+        ## remove zeros to avoid trivial flips around 0
+        s <- s[s != 0]
+        if (length(s) <= 1L) return(0L)
+        sum(s[-1L] != s[-length(s)])
+    })
+
+    ## Longest contiguous run of significance (across thresholds)
+    longest.sig.run <- apply(sig.mat, 1L, function(v) {
+        if (!any(v)) return(0L)
+        r <- rle(v)
+        max(r$lengths[r$values])
+    })
+
+    out <- data.frame(
+        taxon = taxa.all,
+        n.tested = as.integer(n.tested),
+        n.sig = as.integer(n.sig),
+        sig.freq = sig.freq,
+        longest.sig.run = as.integer(longest.sig.run),
+        min.fdr = min.fdr,
+        mean.logfc = mean.logfc,
+        sign.pos.freq = sign.pos.freq,
+        sign.flip.count = as.integer(sign.flip.count),
+        stringsAsFactors = FALSE
+    )
+
+    ## Rank: prioritize robustness then strength
+    out <- out[order(-out$sig.freq, -out$longest.sig.run, out$min.fdr), ]
+    rownames(out) <- NULL
+    out
+}
+
+#' Count Feature Carriers Within a Vertex/Sample Subset
+#'
+#' @description
+#' Given a samples-by-features matrix \code{X} and a subset \code{vertex.ids}
+#' (either row names or integer row indices), compute for each feature (column)
+#' the number \code{k} and proportion \code{p} of subset rows for which
+#' \code{X[row, feature] > eps}.
+#'
+#' This is useful as a lightweight prevalence/coverage summary within a basin
+#' (or any vertex subset) when \code{X} contains relative abundances or counts.
+#'
+#' @param X A numeric matrix (or data.frame coercible to a numeric matrix) with
+#'   samples/vertices in rows and features (e.g., phylotypes) in columns.
+#'   Row names are required if \code{vertex.ids} is character.
+#' @param vertex.ids A vector of row identifiers. May be character (matched to
+#'   \code{rownames(X)}) or numeric/integer (treated as 1-based row indices).
+#' @param eps A non-negative numeric threshold. A feature is considered present
+#'   in a vertex if \code{X > eps}. Default is 0.
+#' @param drop.missing Logical; if TRUE (default), when \code{vertex.ids} is
+#'   character, silently drop IDs not found in \code{rownames(X)}. If FALSE,
+#'   error on any missing IDs.
+#'
+#' @return A \code{data.frame} with two columns:
+#'   \itemize{
+#'     \item \code{k}: integer counts of vertices with \code{X > eps}
+#'     \item \code{p}: numeric proportions \code{k / length(vertex.ids.resolved)}
+#'   }
+#'   Row names correspond to \code{colnames(X)}.
+#'
+#' @examples
+#' \dontrun{
+#' ## X: samples x phylotypes matrix
+#' ## ids: subset of rownames(X) for a basin/region
+#' prev.df <- count.feature.carriers(X, vertex.ids = ids, eps = 0)
+#' head(prev.df)
+#'
+#' ## using integer indices
+#' prev.df2 <- count.feature.carriers(X, vertex.ids = c(1L, 5L, 10L), eps = 1e-6)
+#' }
+#'
+#' @export
+count.feature.carriers <- function(X,
+                                   vertex.ids,
+                                   eps = 0,
+                                   drop.missing = TRUE) {
+
+    ## ---- basic checks ----
+    if (is.data.frame(X)) {
+        X <- as.matrix(X)
+    }
+    if (!is.matrix(X)) {
+        stop("X must be a matrix or a data.frame coercible to a matrix.")
+    }
+    if (is.null(colnames(X))) {
+        stop("X must have column names (feature names).")
+    }
+
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0) {
+        stop("eps must be a single non-negative numeric value.")
+    }
+
+    if (missing(vertex.ids) || length(vertex.ids) == 0L) {
+        stop("vertex.ids must be a non-empty vector of row names or row indices.")
+    }
+
+    ## ---- resolve vertex.ids to integer row indices ----
+    idx <- NULL
+
+    if (is.character(vertex.ids)) {
+
+        rn <- rownames(X)
+        if (is.null(rn)) {
+            stop("X must have row names when vertex.ids is character.")
+        }
+
+        idx <- match(vertex.ids, rn)
+        missing.ids <- is.na(idx)
+
+        if (any(missing.ids)) {
+            if (!isTRUE(drop.missing)) {
+                stop("Some vertex.ids were not found in rownames(X): ",
+                     paste(vertex.ids[missing.ids], collapse = ", "))
+            }
+            idx <- idx[!missing.ids]
+        }
+
+    } else if (is.numeric(vertex.ids) || is.integer(vertex.ids)) {
+
+        idx <- as.integer(vertex.ids)
+        idx <- idx[!is.na(idx)]
+        idx <- idx[idx >= 1L & idx <= nrow(X)]
+
+    } else {
+        stop("vertex.ids must be character (rownames) or numeric/integer (row indices).")
+    }
+
+    if (length(idx) == 0L) {
+        stop("No valid vertices remain after resolving vertex.ids.")
+    }
+
+    ## ---- compute k and p per feature ----
+    X.sub <- X[idx, , drop = FALSE]
+
+    k <- colSums(X.sub > eps)
+    k <- as.integer(k)
+    p <- as.numeric(k) / length(idx)
+
+    out <- data.frame(k = k, p = p, stringsAsFactors = FALSE)
+    rownames(out) <- colnames(X)
+
+    o <- order(k, decreasing = TRUE)
+    out <- out[o,]
+
+    out
+}
+
+#' Count Feature Carriers Within a Basin in a gfc.flow Object
+#'
+#' @description
+#' Given a \code{gfc.flow} object, a basin identifier, and a samples-by-features
+#' matrix \code{X}, compute for each feature (column of \code{X}) the number
+#' \code{k} and proportion \code{p} of basin vertices for which
+#' \code{X[vertex, feature] > eps}.
+#'
+#' The basin identifier \code{basin.id} may be an extremum label (e.g., \code{"M1"},
+#' \code{"m3"}, \code{"sM2"}, \code{"sm7"}) or a numeric vertex index (1-based)
+#' corresponding to an extremum present in \code{gfc.flow$summary.all} /
+#' \code{gfc.flow$summary}. When numeric, \code{type} can be used to disambiguate.
+#'
+#' @param gfc.flow A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param basin.id Basin identifier: a single character label or a single numeric
+#'   vertex index (1-based).
+#' @param X A numeric matrix (or data.frame coercible to a numeric matrix) with
+#'   samples/vertices in rows and features in columns. If \code{basin.id} resolves
+#'   to numeric vertex indices, row names are not required. If you prefer to match
+#'   by sample IDs, ensure \code{rownames(X)} are present and pass \code{match.by="rownames"}.
+#' @param eps A non-negative numeric threshold. A feature is considered present
+#'   in a vertex if \code{X > eps}. Default is 0.
+#' @param type Character string. Only used when \code{basin.id} is numeric.
+#'   One of \code{"auto"} (default), \code{"min"}, or \code{"max"}.
+#' @param match.by Character string controlling how basin vertices are mapped to
+#'   rows of \code{X}. One of:
+#'   \itemize{
+#'     \item \code{"index"} (default): treat basin vertices as 1-based row indices into \code{X}
+#'     \item \code{"rownames"}: treat basin vertices as row names of \code{X} (requires rownames)
+#'   }
+#' @param drop.missing Logical; only relevant for \code{match.by="rownames"}.
+#'   If TRUE (default), silently drop basin vertices not found in \code{rownames(X)}.
+#'   If FALSE, error if any are missing.
+#' @param include.extremum Logical; if TRUE (default), ensure the extremum vertex is
+#'   included in the basin vertex set (defensive).
+#' @param unique Logical; if TRUE (default), unique the resolved vertex set.
+#' @param sort Logical; if TRUE (default), sort the resolved vertex set.
+#'
+#' @return A \code{data.frame} with columns:
+#'   \itemize{
+#'     \item \code{k}: integer counts of basin vertices with \code{X > eps}
+#'     \item \code{p}: numeric proportions \code{k / n.vertices}
+#'   }
+#'   Row names correspond to \code{colnames(X)}.
+#'
+#' @examples
+#' \dontrun{
+#' ## By basin label
+#' res.M1 <- basin.feature.carriers(gfc.flow.res, "M1", X.rel, eps = 0)
+#'
+#' ## By extremum vertex index
+#' res.v <- basin.feature.carriers(gfc.flow.res, 1147, X.rel, eps = 1e-6, type = "max")
+#' }
+#'
+#' @export
+basin.feature.carriers <- function(gfc.flow,
+                                   basin.id,
+                                   X,
+                                   eps = 0,
+                                   type = c("auto", "min", "max"),
+                                   match.by = c("index", "rownames"),
+                                   drop.missing = TRUE,
+                                   include.extremum = TRUE,
+                                   unique = TRUE,
+                                   sort = TRUE) {
+
+    if (!inherits(gfc.flow, "gfc.flow")) {
+        stop("gfc.flow must be a gfc.flow object.")
+    }
+
+    type <- match.arg(type)
+    match.by <- match.arg(match.by)
+
+    if (is.data.frame(X)) {
+        X <- as.matrix(X)
+    }
+    if (!is.matrix(X)) {
+        stop("X must be a matrix or a data.frame coercible to a matrix.")
+    }
+    if (is.null(colnames(X))) {
+        stop("X must have column names (feature names).")
+    }
+
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0) {
+        stop("eps must be a single non-negative numeric value.")
+    }
+
+    ## ---- resolve basin.id -> basin label ----
+    summary.df <- gfc.flow$summary.all
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        summary.df <- gfc.flow$summary
+    }
+    if (is.null(summary.df) || nrow(summary.df) == 0) {
+        stop("gfc.flow does not contain summary tables (summary.all / summary).")
+    }
+
+    basin.label <- NULL
+    if (is.character(basin.id)) {
+
+        if (length(basin.id) != 1L) {
+            stop("basin.id must be a single label or a single vertex index.")
+        }
+        basin.label <- basin.id
+
+    } else if (is.numeric(basin.id) || is.integer(basin.id)) {
+
+        if (length(basin.id) != 1L) {
+            stop("basin.id must be a single label or a single vertex index.")
+        }
+
+        basin.vertex <- as.integer(basin.id)
+        if (is.na(basin.vertex) || basin.vertex < 1L) {
+            stop("Invalid basin.id vertex index.")
+        }
+
+        rows <- summary.df[summary.df$vertex == basin.vertex, , drop = FALSE]
+        if (nrow(rows) == 0) {
+            stop("Vertex ", basin.vertex, " not found in gfc.flow summary tables.")
+        }
+
+        if (type != "auto") {
+            rows <- rows[rows$type == type, , drop = FALSE]
+            if (nrow(rows) == 0) {
+                stop("Vertex ", basin.vertex, " is not a '", type, "' extremum in this gfc.flow object.")
+            }
+        }
+
+        basin.label <- as.character(rows$label[1])
+
+    } else {
+        stop("basin.id must be character (label) or numeric/integer (vertex index).")
+    }
+
+    ## ---- retrieve basin vertices ----
+    basin <- get.basin(gfc.flow, basin.label)
+    if (is.null(basin)) {
+        stop("Basin '", basin.label, "' not found.")
+    }
+
+    vertex.ids <- as.integer(basin$vertices)
+
+    if (isTRUE(include.extremum) && !is.null(basin$extremum.vertex)) {
+        vertex.ids <- c(vertex.ids, as.integer(basin$extremum.vertex))
+    }
+
+    if (isTRUE(unique)) {
+        vertex.ids <- unique(vertex.ids)
+    }
+    if (isTRUE(sort)) {
+        vertex.ids <- sort(vertex.ids)
+    }
+
+    if (length(vertex.ids) == 0L) {
+        stop("Resolved basin vertex set is empty for basin '", basin.label, "'.")
+    }
+
+    ## ---- map basin vertices to rows of X ----
+    if (match.by == "index") {
+
+        idx <- vertex.ids
+        idx <- idx[!is.na(idx)]
+        idx <- idx[idx >= 1L & idx <= nrow(X)]
+
+        if (length(idx) == 0L) {
+            stop("No basin vertices map to valid row indices of X (match.by='index').")
+        }
+
+    } else {
+
+        rn <- rownames(X)
+        if (is.null(rn)) {
+            stop("X must have row names when match.by='rownames'.")
+        }
+
+        idx <- match(as.character(vertex.ids), rn)
+        missing.ids <- is.na(idx)
+
+        if (any(missing.ids)) {
+            if (!isTRUE(drop.missing)) {
+                stop("Some basin vertices were not found in rownames(X): ",
+                     paste(vertex.ids[missing.ids], collapse = ", "))
+            }
+            idx <- idx[!missing.ids]
+        }
+
+        if (length(idx) == 0L) {
+            stop("No basin vertices map to rownames(X) (match.by='rownames').")
+        }
+    }
+
+    ## ---- compute k and p per feature ----
+    X.sub <- X[idx, , drop = FALSE]
+
+    k <- colSums(X.sub > eps)
+    k <- as.integer(k)
+    p <- as.numeric(k) / length(idx)
+
+    out <- data.frame(k = k, p = p, stringsAsFactors = FALSE)
+    rownames(out) <- colnames(X)
+
+    out
+}
+
+#' Plot Feature Prevalence from Carrier Summaries
+#'
+#' @description
+#' Visualize prevalence proportions computed by \code{count.feature.carriers()}
+#' or \code{basin.feature.carriers()}. The input \code{carriers.df} must have
+#' columns \code{k} and \code{p}, with feature names in \code{rownames(carriers.df)}.
+#'
+#' The function can use either base R graphics or ggplot2, controlled by
+#' \code{use.ggplot}. Features can be restricted to the top \code{top.m} by
+#' prevalence or filtered by \code{min.p}.
+#'
+#' @param carriers.df A data.frame with columns \code{k} (integer) and \code{p}
+#'     (numeric in \eqn{[0,1]}) and row names corresponding to feature/phylotype
+#'     names.
+#' @param top.m Optional integer; if provided, plot only the \code{top.m} most
+#'     prevalent features by \code{p}.
+#' @param min.p Optional numeric in \eqn{[0,1]}; if provided, plot only features
+#'     with \code{p >= min.p}. Applied after \code{top.m} if both are provided.
+#' @param sort.by Character string specifying sort key. One of \code{"p"}
+#'     (default) or \code{"k"}.
+#' @param decreasing Logical; if TRUE (default), sort decreasing.
+#' @param use.ggplot Logical; if TRUE use ggplot2 (requires ggplot2 installed),
+#'     otherwise use base R graphics.
+#' @param plot.type Character string; one of \code{"lollipop"} (default),
+#'     \code{"bar"}, or \code{"dot"}.
+#' @param title Optional plot title.
+#' @param xlab Optional x-axis label.
+#' @param show.values Logical; if TRUE, annotate prevalence values on the plot
+#'     (ggplot2 only).
+#' @param cex.labels Numeric; base R only, label size for y-axis feature names.
+#'
+#' @param stick.col Color for stick/segment lines (lollipop only). Default "grey30".
+#' @param point.col Color for points (lollipop and dot). Default "black".
+#' @param bar.fill Fill color for bars (bar plot only). Default "grey70".
+#' @param label.col Color for feature (y-axis) labels. Default "black".
+#' @param label.font Base R only: font for y-axis labels (1=plain, 2=bold,
+#'   3=italic, 4=bold.italic). Default 1.
+#' @param label.face ggplot2 only: face for y-axis labels. One of \code{"plain"},
+#'   \code{"bold"}, \code{"italic"}, \code{"bold.italic"}. Default "plain".
+#'
+#' @param ... Additional arguments passed to base plotting functions (base R) or
+#'   ignored (ggplot2) except where supported.
+#'
+#' @return Invisibly returns the (possibly filtered/reordered) data.frame used for
+#'   plotting. If \code{use.ggplot=TRUE}, also returns the ggplot object as
+#'   attribute \code{"plot"}.
+#'
+#' @export
+plot.feature.prevalence <- function(carriers.df,
+                                   top.m = NULL,
+                                   min.p = NULL,
+                                   sort.by = c("p", "k"),
+                                   decreasing = TRUE,
+                                   use.ggplot = FALSE,
+                                   plot.type = c("lollipop", "bar", "dot"),
+                                   title = NULL,
+                                   xlab = NULL,
+                                   show.values = FALSE,
+                                   cex.labels = 0.8,
+                                   stick.col = "grey30",
+                                   point.col = "black",
+                                   bar.fill = "grey70",
+                                   label.col = "black",
+                                   label.font = 1,
+                                   label.face = c("plain", "bold", "italic", "bold.italic"),
+                                   ...) {
+
+    ## ---- validation ----
+    if (!is.data.frame(carriers.df)) {
+        stop("carriers.df must be a data.frame with columns 'k' and 'p'.")
+    }
+    if (!all(c("k", "p") %in% names(carriers.df))) {
+        stop("carriers.df must contain columns 'k' and 'p'.")
+    }
+    if (is.null(rownames(carriers.df))) {
+        stop("carriers.df must have row names corresponding to feature names.")
+    }
+
+    sort.by <- match.arg(sort.by)
+    plot.type <- match.arg(plot.type)
+    label.face <- match.arg(label.face)
+
+    if (!is.null(top.m)) {
+        if (!is.numeric(top.m) || length(top.m) != 1L || is.na(top.m) || top.m < 1) {
+            stop("top.m must be a single positive integer (or NULL).")
+        }
+        top.m <- as.integer(top.m)
+    }
+
+    if (!is.null(min.p)) {
+        if (!is.numeric(min.p) || length(min.p) != 1L || is.na(min.p) || min.p < 0 || min.p > 1) {
+            stop("min.p must be a single numeric value in [0,1] (or NULL).")
+        }
+    }
+
+    if (!is.numeric(label.font) || length(label.font) != 1L || is.na(label.font) ||
+        !(label.font %in% c(1, 2, 3, 4))) {
+        stop("label.font must be one of 1 (plain), 2 (bold), 3 (italic), 4 (bold.italic).")
+    }
+
+    ## ---- normalize columns ----
+    carriers.df$k <- as.integer(carriers.df$k)
+    carriers.df$p <- as.numeric(carriers.df$p)
+
+    ## ---- sort ----
+    ord <- order(carriers.df[[sort.by]], decreasing = isTRUE(decreasing), na.last = TRUE)
+    carriers.df <- carriers.df[ord, , drop = FALSE]
+
+    ## ---- top.m / min.p filtering ----
+    if (!is.null(top.m) && nrow(carriers.df) > top.m) {
+        carriers.df <- carriers.df[seq_len(top.m), , drop = FALSE]
+    }
+    if (!is.null(min.p)) {
+        carriers.df <- carriers.df[carriers.df$p >= min.p, , drop = FALSE]
+    }
+
+    if (nrow(carriers.df) == 0L) {
+        stop("No features remain after filtering (top.m/min.p).")
+    }
+
+    ## ---- plotting order: most prevalent on top ----
+    plot.df <- carriers.df[nrow(carriers.df):1, , drop = FALSE]
+    feature.names <- rownames(plot.df)
+
+    ## ---- ggplot2 backend ----
+    if (isTRUE(use.ggplot)) {
+
+        if (!requireNamespace("ggplot2", quietly = TRUE)) {
+            stop("ggplot2 is required when use.ggplot=TRUE. Please install it.")
+        }
+
+        df.gg <- data.frame(
+            feature = factor(feature.names, levels = feature.names),
+            k = plot.df$k,
+            p = plot.df$p,
+            stringsAsFactors = FALSE
+        )
+
+        if (is.null(xlab)) {
+            xlab <- "Proportion (p)"
+        }
+
+        gg <- ggplot2::ggplot(df.gg, ggplot2::aes(x = p, y = feature))
+
+        if (plot.type == "lollipop") {
+            gg <- gg +
+                ggplot2::geom_segment(
+                    ggplot2::aes(x = 0, xend = p, y = feature, yend = feature),
+                    color = stick.col
+                ) +
+                ggplot2::geom_point(color = point.col)
+        } else if (plot.type == "bar") {
+            gg <- gg + ggplot2::geom_col(fill = bar.fill)
+        } else if (plot.type == "dot") {
+            gg <- gg + ggplot2::geom_point(color = point.col)
+        }
+
+        if (isTRUE(show.values)) {
+            gg <- gg + ggplot2::geom_text(
+                ggplot2::aes(label = sprintf("%.3f", p)),
+                hjust = -0.1,
+                size = 3
+            )
+            gg <- gg + ggplot2::expand_limits(x = max(df.gg$p, na.rm = TRUE) * 1.1)
+        }
+
+        gg <- gg +
+            ggplot2::labs(title = title, x = xlab, y = NULL) +
+            ggplot2::theme_bw() +
+            ggplot2::theme(
+                axis.text.y = ggplot2::element_text(face = label.face, color = label.col)
+            )
+
+        print(gg)
+
+        attr(plot.df, "plot") <- gg
+        return(invisible(plot.df))
+    }
+
+    ## ---- base R backend ----
+    if (is.null(xlab)) {
+        xlab <- "Proportion (p)"
+    }
+
+    y.pos <- seq_len(nrow(plot.df))
+
+    old.par <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(old.par), add = TRUE)
+
+    graphics::par(mar = c(4, max(6, min(20, 0.6 * max(nchar(feature.names)))), 2, 1))
+
+    if (plot.type == "lollipop") {
+
+        graphics::plot(plot.df$p, y.pos,
+                       xlim = c(0, max(plot.df$p, na.rm = TRUE)),
+                       yaxt = "n",
+                       ylab = "",
+                       xlab = xlab,
+                       main = title,
+                       pch = 16,
+                       col = point.col,
+                       ...)
+
+        graphics::segments(x0 = 0, y0 = y.pos, x1 = plot.df$p, y1 = y.pos, col = stick.col)
+
+        graphics::axis(2,
+                       at = y.pos,
+                       labels = feature.names,
+                       las = 2,
+                       cex.axis = cex.labels,
+                       col.axis = label.col,
+                       font = label.font)
+
+    } else if (plot.type == "bar") {
+
+        graphics::barplot(plot.df$p,
+                          horiz = TRUE,
+                          names.arg = feature.names,
+                          las = 1,
+                          xlab = xlab,
+                          main = title,
+                          cex.names = cex.labels,
+                          col = bar.fill,
+                          ...)
+
+        ## Enforce label styling for barplot names (base barplot has limited control)
+        ## This is best-effort: it sets global axis label font/color for subsequent axis calls.
+        ## Users needing strict control should use lollipop/dot or ggplot backend.
+        graphics::par(col.axis = label.col, font.axis = label.font)
+
+    } else if (plot.type == "dot") {
+
+        graphics::plot(plot.df$p, y.pos,
+                       xlim = c(0, max(plot.df$p, na.rm = TRUE)),
+                       yaxt = "n",
+                       ylab = "",
+                       xlab = xlab,
+                       main = title,
+                       pch = 16,
+                       col = point.col,
+                       ...)
+
+        graphics::axis(2,
+                       at = y.pos,
+                       labels = feature.names,
+                       las = 2,
+                       cex.axis = cex.labels,
+                       col.axis = label.col,
+                       font = label.font)
+    }
+
+    invisible(plot.df)
+}
+
+#' Fit Smooth-Spline Curves to the Mean/Median 3D Trajectory
+#'
+#' @description
+#' Given a 3D embedding of graph vertices and a list of trajectories (each a vector
+#' of vertex indices), this function:
+#' 1) resamples all trajectories to a common length (to make them comparable),
+#' 2) computes a pointwise mean or median trajectory in 3D,
+#' 3) fits a smooth spline to each coordinate as a function of trajectory index.
+#'
+#' The spline fit for coordinate i uses:
+#' \deqn{fit_i = stats::smooth.spline(x = seq_along(y_i), y = y_i, df = df)}
+#' where \eqn{y_i} is the i-th coordinate of the mean/median trajectory.
+#'
+#' @param embed.3d Numeric matrix/data.frame with exactly 3 columns; row r gives
+#'   the 3D coordinates for vertex r (1-based indexing).
+#' @param trajectories List of integer vectors; each vector is a trajectory of
+#'   vertex indices (1-based). Trajectories may have different lengths.
+#' @param df Degrees of freedom passed to \code{stats::smooth.spline}. If \code{NULL},
+#'   GCV-based selection is used by \code{smooth.spline}.
+#' @param center One of \code{"mean"} or \code{"median"}; how to compute the
+#'   representative (pointwise) trajectory after resampling.
+#' @param target.length Integer common length used after resampling. If \code{NULL},
+#'   uses \code{round(stats::median(lengths(trajectories)))}.
+#' @param grid.length Integer number of points on which to evaluate the fitted
+#'   splines for the returned smoothed curve. If \code{NULL}, uses \code{target.length}.
+#'
+#' @return A list with class \code{"gfc_mean_trajectory_spline"} containing:
+#' \describe{
+#'   \item{center}{Centering method used: "mean" or "median".}
+#'   \item{df}{Degrees of freedom used (input df; may be NULL).}
+#'   \item{target.length}{Common resampling length used.}
+#'   \item{t}{Integer vector \code{1:target.length}.}
+#'   \item{t.grid}{Numeric vector for spline evaluation (length \code{grid.length}).}
+#'   \item{traj.center}{Matrix (target.length x 3): pointwise mean/median trajectory.}
+#'   \item{fits}{List of three \code{smooth.spline} objects (x/y/z).}
+#'   \item{traj.smooth}{Matrix (grid.length x 3): spline-smoothed trajectory.}
+#'   \item{resampled.trajs}{List of matrices; each is (target.length x 3) resampled coordinates.}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' res <- fit.trajectory.smooth.splines(embed.3d, trajectories, df = NULL, center = "median")
+#' plot(res$traj.smooth[,1], res$traj.smooth[,2], type = "l")
+#' }
+#'
+#' @export
+fit.trajectory.smooth.splines <- function(embed.3d,
+                                         trajectories,
+                                         df = NULL,
+                                         center = c("mean", "median"),
+                                         target.length = NULL,
+                                         grid.length = NULL) {
+
+    ## -------------------------------------------------------------------------
+    ## Validate inputs
+    ## -------------------------------------------------------------------------
+
+    if (!is.matrix(embed.3d)) {
+        embed.3d <- try(as.matrix(embed.3d), silent = TRUE)
+        if (inherits(embed.3d, "try-error")) stop("embed.3d must be a matrix or coercible to a matrix.")
+    }
+    if (!is.numeric(embed.3d)) stop("embed.3d must be numeric.")
+    if (ncol(embed.3d) != 3L) stop("embed.3d must have exactly 3 columns.")
+
+    if (!is.list(trajectories) || length(trajectories) == 0L) {
+        stop("trajectories must be a non-empty list of integer vectors.")
+    }
+
+    trajectories <- lapply(trajectories, function(v) as.integer(v))
+    traj.lengths <- lengths(trajectories)
+
+    if (any(traj.lengths < 2L)) stop("All trajectories must have length >= 2.")
+    if (any(!is.finite(traj.lengths))) stop("Invalid trajectory lengths detected.")
+
+    n.vertices <- nrow(embed.3d)
+    bad.idx <- which(unlist(lapply(trajectories, function(v) any(v < 1L | v > n.vertices))))
+    if (length(bad.idx) > 0L) {
+        stop("Some trajectories contain vertex indices outside [1, nrow(embed.3d)].")
+    }
+
+    center <- match.arg(center)
+
+    if (is.null(target.length)) {
+        target.length <- as.integer(max(2L, round(stats::median(traj.lengths))))
+    } else {
+        target.length <- as.integer(target.length)
+        if (length(target.length) != 1L || is.na(target.length) || target.length < 2L) {
+            stop("target.length must be a single integer >= 2, or NULL.")
+        }
+    }
+
+    if (is.null(grid.length)) {
+        grid.length <- target.length
+    } else {
+        grid.length <- as.integer(grid.length)
+        if (length(grid.length) != 1L || is.na(grid.length) || grid.length < 2L) {
+            stop("grid.length must be a single integer >= 2, or NULL.")
+        }
+    }
+
+    ## Optional sanity check: same start/end across trajectories
+    starts <- vapply(trajectories, function(v) v[1], integer(1))
+    ends <- vapply(trajectories, function(v) v[length(v)], integer(1))
+    if (length(unique(starts)) != 1L || length(unique(ends)) != 1L) {
+        warning("Trajectories do not all share the same start and/or end vertex.")
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Helper: resample a single polyline (in 3D) to target.length via index-time
+    ## -------------------------------------------------------------------------
+
+    resample.one <- function(coords, target.length) {
+        ## coords: (L x 3)
+        t.old <- seq_len(nrow(coords))
+        t.new <- seq(from = 1, to = nrow(coords), length.out = target.length)
+
+        x.new <- stats::approx(t.old, coords[, 1], xout = t.new, rule = 2)$y
+        y.new <- stats::approx(t.old, coords[, 2], xout = t.new, rule = 2)$y
+        z.new <- stats::approx(t.old, coords[, 3], xout = t.new, rule = 2)$y
+
+        cbind(x.new, y.new, z.new)
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Convert trajectories to coordinate matrices and resample
+    ## -------------------------------------------------------------------------
+
+    resampled.trajs <- lapply(trajectories, function(vtx) {
+        coords <- embed.3d[vtx, , drop = FALSE]
+        resample.one(coords, target.length = target.length)
+    })
+
+    ## Stack into array: (target.length x 3 x n.traj)
+    n.traj <- length(resampled.trajs)
+    arr <- array(NA_real_, dim = c(target.length, 3L, n.traj))
+    for (k in seq_len(n.traj)) {
+        arr[, , k] <- resampled.trajs[[k]]
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Pointwise center trajectory
+    ## -------------------------------------------------------------------------
+
+    traj.center <- matrix(NA_real_, nrow = target.length, ncol = 3L)
+    if (center == "mean") {
+        traj.center[, 1] <- rowMeans(arr[, 1, , drop = FALSE], dims = 2)
+        traj.center[, 2] <- rowMeans(arr[, 2, , drop = FALSE], dims = 2)
+        traj.center[, 3] <- rowMeans(arr[, 3, , drop = FALSE], dims = 2)
+    } else {
+        traj.center[, 1] <- apply(arr[, 1, , drop = FALSE], 1, stats::median)
+        traj.center[, 2] <- apply(arr[, 2, , drop = FALSE], 1, stats::median)
+        traj.center[, 3] <- apply(arr[, 3, , drop = FALSE], 1, stats::median)
+    }
+    colnames(traj.center) <- c("x", "y", "z")
+
+    ## -------------------------------------------------------------------------
+    ## Fit smooth splines to each coordinate
+    ## -------------------------------------------------------------------------
+
+    t <- seq_len(target.length)
+
+    fit.x <- stats::smooth.spline(x = t, y = traj.center[, 1], df = df)
+    fit.y <- stats::smooth.spline(x = t, y = traj.center[, 2], df = df)
+    fit.z <- stats::smooth.spline(x = t, y = traj.center[, 3], df = df)
+
+    t.grid <- seq(from = 1, to = target.length, length.out = grid.length)
+
+    x.hat <- stats::predict(fit.x, x = t.grid)$y
+    y.hat <- stats::predict(fit.y, x = t.grid)$y
+    z.hat <- stats::predict(fit.z, x = t.grid)$y
+
+    traj.smooth <- cbind(x.hat, y.hat, z.hat)
+    colnames(traj.smooth) <- c("x", "y", "z")
+
+    ## -------------------------------------------------------------------------
+    ## Return
+    ## -------------------------------------------------------------------------
+
+    out <- list(
+        center = center,
+        df = df,
+        target.length = target.length,
+        t = t,
+        t.grid = t.grid,
+        traj.center = traj.center,
+        fits = list(x = fit.x, y = fit.y, z = fit.z),
+        traj.smooth = traj.smooth,
+        resampled.trajs = resampled.trajs
+    )
+
+    class(out) <- c("gfc_mean_trajectory_spline", "list")
+    out
 }
