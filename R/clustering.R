@@ -1339,7 +1339,7 @@ hclust.select.k <- function(hc,
 #' @return Invisibly returns \code{x}.
 #'
 #' @export
-print.hclust_select_k <- function(x, ..., top.n = 5L) {
+print.hclust_select_k <- function(x, ..., top.n = 0L) {
 
     if (is.null(x$scores) || !is.data.frame(x$scores)) {
         stop("Invalid object: missing scores.")
