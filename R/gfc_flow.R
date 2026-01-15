@@ -6152,6 +6152,149 @@ basin.feature.carriers <- function(gfc.flow,
     out
 }
 
+#' Count Feature Carriers Over an Explicit Vertex Set
+#'
+#' @description
+#' Given a vector of vertex indices \code{vertices} and a samples-by-features
+#' matrix \code{X}, compute for each feature (column of \code{X}) the number
+#' \code{k} and proportion \code{p} of supplied vertices for which
+#' \code{X[vertex, feature] > eps}.
+#'
+#' This is a vertex-set analogue of \code{basin.feature.carriers()}, intended
+#' for situations where the region of interest is provided directly as an index
+#' vector rather than looked up from a basin in a \code{gfc.flow} object.
+#'
+#' @param vertices Integer or numeric vector identifying the vertices/samples
+#'   to include. Interpretation depends on \code{match.by}.
+#' @param X A numeric matrix (or data.frame coercible to a numeric matrix) with
+#'   samples/vertices in rows and features in columns.
+#' @param eps A non-negative numeric threshold. A feature is considered present
+#'   in a vertex if \code{X > eps}. Default is 0.
+#' @param match.by Character string controlling how \code{vertices} are mapped to
+#'   rows of \code{X}. One of:
+#'   \itemize{
+#'     \item \code{"index"} (default): treat \code{vertices} as 1-based row indices into \code{X}
+#'     \item \code{"rownames"}: treat \code{vertices} as row names of \code{X} (requires rownames)
+#'   }
+#' @param drop.missing Logical; only relevant for \code{match.by="rownames"}.
+#'   If TRUE (default), silently drop vertices not found in \code{rownames(X)}.
+#'   If FALSE, error if any are missing.
+#' @param unique Logical; if TRUE (default), unique the resolved vertex set.
+#' @param sort Logical; if TRUE (default), sort the resolved vertex set (after uniquing).
+#'
+#' @return A \code{data.frame} with columns:
+#'   \itemize{
+#'     \item \code{k}: integer counts of vertices with \code{X > eps}
+#'     \item \code{p}: numeric proportions \code{k / n.vertices.mapped}
+#'   }
+#'   Row names correspond to \code{colnames(X)}.
+#'
+#' @examples
+#' \dontrun{
+#' ## Using row indices
+#' v <- c(10, 25, 30, 31)
+#' res <- vertices.feature.carriers(v, X.rel, eps = 0)
+#'
+#' ## Using rownames(X) as vertex IDs (character)
+#' v.ids <- c("30-00544-05", "30-00603-05")
+#' res2 <- vertices.feature.carriers(v.ids, X.rel, match.by = "rownames")
+#' }
+#'
+#' @export
+vertices.feature.carriers <- function(vertices,
+                                      X,
+                                      eps = 0,
+                                      match.by = c("index", "rownames"),
+                                      drop.missing = TRUE,
+                                      unique = TRUE,
+                                      sort = TRUE) {
+
+    ## ---- validate vertices ----
+    if (is.null(vertices) || length(vertices) == 0L) {
+        stop("vertices must be a non-empty vector.")
+    }
+
+    match.by <- match.arg(match.by)
+
+    ## ---- coerce/validate X ----
+    if (is.data.frame(X)) {
+        X <- as.matrix(X)
+    }
+    if (!is.matrix(X)) {
+        stop("X must be a matrix or a data.frame coercible to a matrix.")
+    }
+    if (!is.numeric(X)) {
+        stop("X must be numeric.")
+    }
+    if (is.null(colnames(X))) {
+        stop("X must have column names (feature names).")
+    }
+
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0) {
+        stop("eps must be a single non-negative numeric value.")
+    }
+
+    ## ---- normalize vertex ids (optional unique/sort) ----
+    v <- vertices
+    if (isTRUE(unique)) {
+        v <- unique(v)
+    }
+    if (isTRUE(sort)) {
+        ## Sort in a stable, type-aware way
+        if (is.numeric(v) || is.integer(v)) {
+            v <- sort(as.integer(v))
+        } else {
+            v <- sort(as.character(v))
+        }
+    }
+
+    ## ---- map vertices to rows of X ----
+    if (match.by == "index") {
+
+        idx <- as.integer(v)
+        idx <- idx[!is.na(idx)]
+        idx <- idx[idx >= 1L & idx <= nrow(X)]
+
+        if (length(idx) == 0L) {
+            stop("No supplied vertices map to valid row indices of X (match.by='index').")
+        }
+
+    } else {
+
+        rn <- rownames(X)
+        if (is.null(rn)) {
+            stop("X must have row names when match.by='rownames'.")
+        }
+
+        idx <- match(as.character(v), rn)
+        missing <- is.na(idx)
+
+        if (any(missing)) {
+            if (!isTRUE(drop.missing)) {
+                stop("Some vertices were not found in rownames(X): ",
+                     paste(as.character(v)[missing], collapse = ", "))
+            }
+            idx <- idx[!missing]
+        }
+
+        if (length(idx) == 0L) {
+            stop("No supplied vertices map to rownames(X) (match.by='rownames').")
+        }
+    }
+
+    ## ---- compute k and p per feature ----
+    X.sub <- X[idx, , drop = FALSE]
+
+    k <- colSums(X.sub > eps)
+    k <- as.integer(k)
+    p <- as.numeric(k) / length(idx)
+
+    out <- data.frame(k = k, p = p, stringsAsFactors = FALSE)
+    rownames(out) <- colnames(X)
+
+    out
+}
+
 #' Plot Feature Prevalence from Carrier Summaries
 #'
 #' @description
@@ -6453,11 +6596,11 @@ plot.feature.prevalence <- function(carriers.df,
 #'
 #' @export
 fit.trajectory.smooth.splines <- function(embed.3d,
-                                         trajectories,
-                                         df = NULL,
-                                         center = c("mean", "median"),
-                                         target.length = NULL,
-                                         grid.length = NULL) {
+                                          trajectories,
+                                          df = NULL,
+                                          center = c("mean", "median"),
+                                          target.length = NULL,
+                                          grid.length = NULL) {
 
     ## -------------------------------------------------------------------------
     ## Validate inputs
