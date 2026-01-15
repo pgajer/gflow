@@ -1335,11 +1335,12 @@ hclust.select.k <- function(hc,
 #' @param ... Additional arguments (ignored).
 #' @param top.n Integer; number of top-scoring \code{k} values to display per
 #'   selection-grade metric (when available). Default is 5.
+#' @param show.call Logical; if TRUE, prints function call.
 #'
 #' @return Invisibly returns \code{x}.
 #'
 #' @export
-print.hclust_select_k <- function(x, ..., top.n = 0L) {
+print.hclust_select_k <- function(x, ..., top.n = 0L, show.call = FALSE) {
 
     if (is.null(x$scores) || !is.data.frame(x$scores)) {
         stop("Invalid object: missing scores.")
@@ -1351,7 +1352,7 @@ print.hclust_select_k <- function(x, ..., top.n = 0L) {
     cat("hclust.select.k result\n")
     cat("======================\n")
 
-    if (!is.null(x$call)) {
+    if (!is.null(x$call) && show.call) {
         cat("Call:\n")
         cat("  ")
         dput(x$call)
