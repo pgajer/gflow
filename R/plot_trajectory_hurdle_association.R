@@ -639,7 +639,7 @@ plot.trajectory.hurdle.association <- function(z,
 #' )
 #'
 #' @keywords internal
-prep.trajectory.hurdle.association.data <- function(z,
+prep.trajectory.hurdle.association.data.v1 <- function(z,
                                                     y.hat,
                                                     trajectories,
                                                     trj.id = NULL,
@@ -705,6 +705,227 @@ prep.trajectory.hurdle.association.data <- function(z,
         z.tr <- rep(NA_real_, length(z.keep))
         if (length(z.keep) > 0L) {
             ## Apply transform to kept points (carriers-only if requested)
+            z.tr <- transform.z(z.keep)
+        }
+
+        out[[j]] <- data.frame(
+            trajectory = as.integer(t),
+            sample.index = as.integer(idx.keep),
+            y.hat = as.numeric(yh.keep),
+            z = as.numeric(z.keep),
+            det = as.integer(det.keep),
+            z.tr = as.numeric(z.tr)
+        )
+    }
+
+    out <- out[!vapply(out, is.null, logical(1))]
+    if (length(out) == 0L) {
+        return(data.frame(trajectory = integer(),
+                          sample.index = integer(),
+                          y.hat = numeric(),
+                          z = numeric(),
+                          det = integer(),
+                          z.tr = numeric()))
+    }
+
+    do.call(rbind, out)
+}
+
+
+## -------------------------------------------------------------------------
+## prep.trajectory.hurdle.association.data()
+##   Now supports trajectories as either:
+##     - integer vectors of vertex indices, OR
+##     - trajectory objects with $vertices and optional $y.hat.modified
+## -------------------------------------------------------------------------
+
+#' Prepare trajectory-wise hurdle association plot data
+#'
+#' @description
+#' Prepares long-form, per-sample data for visualizing the association between a
+#' transformed response \code{z} and a trajectory coordinate \code{y.hat} within
+#' selected trajectories.
+#'
+#' @details
+#' For each selected trajectory, this function:
+#' \enumerate{
+#'   \item extracts the sample indices for that trajectory,
+#'   \item computes a detection indicator \code{det = I(z > eps)},
+#'   \item optionally restricts to carriers (\code{det == 1}) when
+#'         \code{include.noncarriers = FALSE},
+#'   \item applies \code{z.transform} to the retained \code{z} values to produce
+#'         \code{z.tr}.
+#' }
+#'
+#' The returned data are suitable for overlay or faceted visualization, and for
+#' fitting trajectory-specific models of \code{z.tr ~ y.hat} among carriers.
+#'
+#' @param z Numeric vector of response values (length \code{n.samples}).
+#' @param y.hat Numeric vector (length \code{n.samples}) giving the trajectory
+#'   coordinate or score (e.g., a monotone risk score) used on the x-axis.
+#' @param trajectories List of integer vectors; each element contains sample
+#'   indices defining a trajectory.
+#' @param trj.id Integer vector of trajectory identifiers (1-based) to include.
+#'   If \code{NULL}, all trajectories are used.
+#' @param eps Numeric scalar; detection threshold. Values with \code{z <= eps}
+#'   are treated as non-detections. Default is 0.
+#' @param z.transform Character string specifying the transform applied to \code{z}
+#'   on retained points. One of \code{"log"}, \code{"logit"}, \code{"arcsin-sqrt"}.
+#' @param z.pseudo Numeric pseudo-count used by transforms requiring stabilization
+#'   near 0 and/or 1 (notably \code{"log"} and \code{"logit"}). Default is \code{1e-6}.
+#' @param include.noncarriers Logical; if \code{TRUE}, include both detected and
+#'   non-detected points in the output. If \code{FALSE}, include detected points
+#'   only (\code{det == 1}). Default is \code{TRUE}.
+#'
+#' @return
+#' A \code{data.frame} with one row per retained sample within each selected
+#' trajectory and the following columns:
+#' \describe{
+#'   \item{trajectory}{Integer trajectory identifier (1-based).}
+#'   \item{sample.index}{Integer sample index in the original vectors.}
+#'   \item{y.hat}{Numeric trajectory coordinate.}
+#'   \item{z}{Numeric original response.}
+#'   \item{det}{Integer detection indicator (\code{1} if \code{z > eps}, else \code{0}).}
+#'   \item{z.tr}{Numeric transformed response.}
+#' }
+#'
+#' @examples
+#' ## Example uses toy data; replace with your objects in practice
+#' z <- c(0, 0.1, 0.2, 0, 0.3)
+#' y.hat <- seq_along(z)
+#' trajectories <- list(c(1L, 2L, 3L), c(3L, 4L, 5L))
+#' prep.trajectory.hurdle.association.data(
+#'   z = z,
+#'   y.hat = y.hat,
+#'   trajectories = trajectories,
+#'   trj.id = 1L,
+#'   eps = 0,
+#'   z.transform = "log",
+#'   include.noncarriers = FALSE
+#' )
+#'
+#' @keywords internal
+prep.trajectory.hurdle.association.data <- function(z,
+                                                    y.hat,
+                                                    trajectories,
+                                                    trj.id = NULL,
+                                                    eps = 0,
+                                                    z.transform = c("log", "logit", "arcsin-sqrt"),
+                                                    z.pseudo = 1e-6,
+                                                    include.noncarriers = TRUE) {
+
+    z.transform <- match.arg(z.transform)
+
+    stopifnot(is.numeric(z))
+    stopifnot(is.numeric(y.hat))
+    stopifnot(length(z) == length(y.hat))
+    stopifnot(is.list(trajectories))
+
+    if (is.null(trj.id)) trj.id <- seq_along(trajectories)
+    trj.id <- as.integer(trj.id)
+    trj.id <- trj.id[is.finite(trj.id)]
+    trj.id <- trj.id[trj.id >= 1L & trj.id <= length(trajectories)]
+    trj.id <- unique(trj.id)
+
+    ## Transform helper (vectorized)
+    transform.z <- function(z.vec) {
+        if (z.transform == "log") {
+            return(log(z.vec + z.pseudo))
+        }
+        if (z.transform == "logit") {
+            z.clamp <- pmin(pmax(z.vec, z.pseudo), 1 - z.pseudo)
+            return(stats::qlogis(z.clamp))
+        }
+        if (z.transform == "arcsin-sqrt") {
+            if (any(z.vec < 0, na.rm = TRUE) || any(z.vec > 1, na.rm = TRUE)) {
+                stop("z.transform = 'arcsin-sqrt' requires z in [0,1].")
+            }
+            z.clamp <- pmin(pmax(z.vec, 0), 1)
+            return(asin(sqrt(z.clamp)))
+        }
+        stop("Unknown z.transform")
+    }
+
+    ## Extract trajectory vertices and a y.hat vector aligned to them
+    ## If trajectory provides y.hat.modified, prefer it.
+    get.traj.idx.and.yhat <- function(tr, y.hat.global) {
+
+        ## Case 1: trajectory is a plain integer vector
+        if (is.atomic(tr) && is.integer(tr) || is.numeric(tr)) {
+            idx <- as.integer(tr)
+            yh <- as.numeric(y.hat.global[idx])
+            return(list(idx = idx, yh = yh))
+        }
+
+        ## Case 2: trajectory is a list object with $vertices
+        if (is.list(tr) && !is.null(tr$vertices)) {
+            idx <- as.integer(tr$vertices)
+
+            if (!is.null(tr$y.hat.modified)) {
+                yh.mod <- as.numeric(tr$y.hat.modified)
+                if (length(yh.mod) == length(idx) && all(is.finite(yh.mod) | is.na(yh.mod))) {
+                    return(list(idx = idx, yh = yh.mod))
+                }
+            }
+
+            ## Fallback: global y.hat on vertices
+            yh <- as.numeric(y.hat.global[idx])
+            return(list(idx = idx, yh = yh))
+        }
+
+        stop("Each element of trajectories must be an integer vector or a trajectory list with $vertices.")
+    }
+
+    out <- vector("list", length(trj.id))
+
+    for (j in seq_along(trj.id)) {
+        t <- trj.id[j]
+
+        tr <- trajectories[[t]]
+        tmp <- get.traj.idx.and.yhat(tr, y.hat)
+        idx <- tmp$idx
+        yh.t <- tmp$yh
+
+        idx <- idx[!is.na(idx)]
+        idx <- idx[idx >= 1L & idx <= length(z)]
+        if (length(idx) == 0L) next
+
+        ## IMPORTANT: idx filtering must be applied to yh.t as well (same positions)
+        ## Keep only those positions that survived idx bounds filtering.
+        ## We do it by rebuilding a mask on the original trajectory positions.
+        ## Safer: recompute a keep mask using original positions.
+        ## Here: since we re-filtered idx directly, align by taking y.hat on filtered idx,
+        ## unless we are using a modified y.hat vector.
+        ##
+        ## If we used modified y.hat (yh.t came from tr$y.hat.modified), it must be
+        ## filtered consistently with idx. We enforce this by reconstructing using match:
+        if (is.list(tr) && !is.null(tr$vertices) && !is.null(tr$y.hat.modified) &&
+            length(tr$y.hat.modified) == length(tr$vertices)) {
+
+            pos <- match(idx, as.integer(tr$vertices))
+            if (any(is.na(pos))) {
+                ## Fallback: safest
+                yh.t <- as.numeric(y.hat[idx])
+            } else {
+                yh.t <- as.numeric(tr$y.hat.modified[pos])
+            }
+        } else {
+            yh.t <- as.numeric(y.hat[idx])
+        }
+
+        z.t <- z[idx]
+        det <- as.integer(z.t > eps)
+
+        keep <- rep(TRUE, length(idx))
+        if (!isTRUE(include.noncarriers)) keep <- det == 1L
+
+        idx.keep <- idx[keep]
+        z.keep <- z.t[keep]
+        yh.keep <- yh.t[keep]
+        det.keep <- det[keep]
+
+        z.tr <- rep(NA_real_, length(z.keep))
+        if (length(z.keep) > 0L) {
             z.tr <- transform.z(z.keep)
         }
 
