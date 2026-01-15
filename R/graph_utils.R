@@ -2741,3 +2741,237 @@ convert.adjacency.list.to.adjacency.matrix <- function(adj.list,
 
   return(adj.matrix)
 }
+
+#' Geodesic Disk in a Weighted Graph
+#'
+#' @description
+#' Computes the geodesic disk (weighted shortest-path neighborhood) around a
+#' specified center vertex in an undirected weighted graph represented by an
+#' adjacency list and a parallel edge-weight list. The disk is defined either
+#' by a fixed geodesic radius \code{radius} or by a target disk size \code{n},
+#' in which case the smallest radius that includes at least \code{n} reachable
+#' vertices is used (ties at the cutoff distance are included).
+#'
+#' @param adj.list A list of integer vectors (1-based) giving the adjacency list.
+#'   Element \code{adj.list[[v]]} contains the neighbors of vertex \code{v}.
+#' @param weight.list A list of numeric vectors, parallel to \code{adj.list}.
+#'   Element \code{weight.list[[v]]} contains nonnegative edge lengths for edges
+#'   \code{(v, adj.list[[v]][j])}, in the same order.
+#' @param center.vertex Integer scalar (1-based). The center vertex of the disk.
+#' @param radius Numeric scalar or \code{NULL}. If not \code{NULL}, the disk
+#'   contains all vertices with weighted shortest-path distance \code{<= radius}
+#'   from \code{center.vertex}.
+#' @param n Integer scalar or \code{NULL}. If not \code{NULL}, the disk radius is
+#'   chosen as the smallest radius that includes at least \code{n} reachable
+#'   vertices from \code{center.vertex} (including the center). If fewer than
+#'   \code{n} vertices are reachable (disconnected graph), all reachable vertices
+#'   are returned and the effective radius equals the maximum reachable distance.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{vertices}{Integer vector (1-based) of vertices in the disk, sorted by
+#'     increasing geodesic distance (ties broken by vertex id through stable ordering
+#'     of \code{order}).}
+#'   \item{radius}{Numeric scalar giving the effective radius used. If \code{radius}
+#'     was supplied, this equals \code{radius}; if \code{n} was supplied, this is the
+#'     computed cutoff radius.}
+#'   \item{dists}{Named numeric vector of geodesic distances from \code{center.vertex}
+#'     to \code{vertices}. Names are the vertex indices (as character). The ordering
+#'     matches \code{vertices}.}
+#' }
+#'
+#' @details
+#' The function constructs an undirected \code{igraph} object and computes weighted
+#' shortest-path distances from \code{center.vertex} using \code{igraph::distances()}.
+#' Edge weights are interpreted as edge lengths and must be finite and nonnegative.
+#'
+#' The input representation does not need to be perfectly symmetric; edges are formed
+#' once using the convention \code{v < u} to avoid double counting. If your adjacency
+#' list is directed or contains asymmetric weights, you should pre-process it to the
+#' intended undirected representation before calling this function.
+#'
+#' @examples
+#' ## Simple 4-vertex graph: 1--2--4 and 1--3--4
+#' adj.list <- list(
+#'   c(2L, 3L),
+#'   c(1L, 4L),
+#'   c(1L, 4L),
+#'   c(2L, 3L)
+#' )
+#' weight.list <- list(
+#'   c(1, 2),
+#'   c(1, 1),
+#'   c(2, 1),
+#'   c(1, 1)
+#' )
+#'
+#' ## Radius-based disk
+#' geodesic.disk(adj.list, weight.list, center.vertex = 1L, radius = 2.0)
+#'
+#' ## Size-based disk (request 3 vertices)
+#' geodesic.disk(adj.list, weight.list, center.vertex = 1L, n = 3L)
+#'
+#' @importFrom igraph graph_from_data_frame distances E V
+#' @export
+geodesic.disk <- function(adj.list,
+                          weight.list,
+                          center.vertex,
+                          radius = NULL,
+                          n = NULL) {
+
+    ## -------------------------------------------------------------------------
+    ## Input validation
+    ## -------------------------------------------------------------------------
+
+    if (!is.list(adj.list) || !is.list(weight.list)) {
+        stop("adj.list and weight.list must be lists.")
+    }
+    if (length(adj.list) != length(weight.list)) {
+        stop("adj.list and weight.list must have the same length.")
+    }
+
+    n.vertices <- length(adj.list)
+
+    if (!is.numeric(center.vertex) || length(center.vertex) != 1L || is.na(center.vertex)) {
+        stop("center.vertex must be a single non-NA integer (1-based).")
+    }
+    center.vertex <- as.integer(center.vertex)
+    if (center.vertex < 1L || center.vertex > n.vertices) {
+        stop(sprintf("center.vertex must be in [1, %d].", n.vertices))
+    }
+
+    if (is.null(radius) && is.null(n)) {
+        stop("Exactly one of radius or n must be provided (cannot both be NULL).")
+    }
+    if (!is.null(radius) && !is.null(n)) {
+        stop("Exactly one of radius or n must be provided (cannot both be non-NULL).")
+    }
+
+    if (!is.null(radius)) {
+        if (!is.numeric(radius) || length(radius) != 1L || is.na(radius)) {
+            stop("radius must be a single non-NA numeric value.")
+        }
+        radius <- as.numeric(radius)
+        if (radius < 0) stop("radius must be nonnegative.")
+    }
+
+    if (!is.null(n)) {
+        if (!is.numeric(n) || length(n) != 1L || is.na(n)) {
+            stop("n must be a single non-NA integer value.")
+        }
+        n <- as.integer(n)
+        if (n < 1L) stop("n must be >= 1.")
+    }
+
+    for (v in seq_len(n.vertices)) {
+        if (length(adj.list[[v]]) != length(weight.list[[v]])) {
+            stop(sprintf("Mismatch at vertex %d: adj.list[[%d]] and weight.list[[%d]] differ in length.",
+                         v, v, v))
+        }
+        if (length(adj.list[[v]]) > 0L) {
+            nbrs <- as.integer(adj.list[[v]])
+            if (any(nbrs < 1L | nbrs > n.vertices)) {
+                stop(sprintf("adj.list[[%d]] contains out-of-range vertex indices.", v))
+            }
+        }
+        if (length(weight.list[[v]]) > 0L) {
+            ww <- as.numeric(weight.list[[v]])
+            if (any(!is.finite(ww))) stop(sprintf("Non-finite edge weight at vertex %d.", v))
+            if (any(ww < 0)) stop(sprintf("Negative edge weight at vertex %d (unsupported).", v))
+        }
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Build undirected edge list (avoid double counting via v < u)
+    ## -------------------------------------------------------------------------
+
+    from <- integer(0L)
+    to <- integer(0L)
+    wts <- numeric(0L)
+
+    for (v in seq_len(n.vertices)) {
+        nbrs <- as.integer(adj.list[[v]])
+        if (length(nbrs) == 0L) next
+        ww <- as.numeric(weight.list[[v]])
+
+        keep <- which(nbrs > v)
+        if (length(keep) > 0L) {
+            from <- c(from, rep.int(v, length(keep)))
+            to <- c(to, nbrs[keep])
+            wts <- c(wts, ww[keep])
+        }
+    }
+
+    edge.df <- data.frame(from = from, to = to, weight = wts)
+
+    ## -------------------------------------------------------------------------
+    ## Compute distances from center
+    ## -------------------------------------------------------------------------
+
+    g <- igraph::graph_from_data_frame(edge.df, directed = FALSE, vertices = seq_len(n.vertices))
+    if (nrow(edge.df) > 0L) {
+        igraph::E(g)$weight <- edge.df$weight
+        d <- as.numeric(igraph::distances(g,
+                                         v = center.vertex,
+                                         to = igraph::V(g),
+                                         weights = igraph::E(g)$weight)[1, ])
+    } else {
+        ## No edges: only the center has distance 0, others are unreachable
+        d <- rep.int(Inf, n.vertices)
+        d[center.vertex] <- 0
+    }
+
+    ## Only reachable vertices have finite distances
+    d.ok <- is.finite(d)
+
+    ## Helper: build a sorted, aligned disk output for a given membership idx
+    build.out <- function(idx, radius.used) {
+        in.disk <- which(idx)
+        dists <- as.numeric(d[idx])
+        o <- order(dists)
+        in.disk <- in.disk[o]
+        dists <- dists[o]
+        names(dists) <- as.character(in.disk)
+
+        list(vertices = as.integer(in.disk),
+             radius = as.numeric(radius.used),
+             dists = dists)
+    }
+
+    ## -------------------------------------------------------------------------
+    ## Radius-based disk
+    ## -------------------------------------------------------------------------
+
+    if (!is.null(radius)) {
+        radius.used <- radius
+        idx <- d.ok & (d <= radius.used)
+        return(build.out(idx, radius.used))
+    }
+
+    ## -------------------------------------------------------------------------
+    ## n-based disk: choose smallest radius that includes at least n reachable vertices
+    ## -------------------------------------------------------------------------
+
+    d.reach <- d[d.ok]
+    if (length(d.reach) == 0L) {
+        ## Completely isolated: center only
+        dists <- 0
+        names(dists) <- as.character(center.vertex)
+        return(list(vertices = as.integer(center.vertex),
+                    radius = 0,
+                    dists = dists))
+    }
+
+    d.sorted <- sort(d.reach)
+
+    if (n > length(d.sorted)) {
+        ## Not enough reachable vertices in this component: return all reachable
+        radius.used <- max(d.sorted)
+        idx <- d.ok
+        return(build.out(idx, radius.used))
+    }
+
+    radius.used <- d.sorted[n]
+    idx <- d.ok & (d <= radius.used)
+    build.out(idx, radius.used)
+}
