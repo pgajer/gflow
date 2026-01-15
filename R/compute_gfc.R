@@ -1075,9 +1075,9 @@ cell.trajectories <- function(x, min.id, max.id, ...) {
 #'
 #' @export
 cell.trajectories.gfc <- function(gfc,
-                                   min.id,
-                                   max.id,
-                                   map = NULL) {
+                                  min.id,
+                                  max.id,
+                                  map = NULL) {
 
     ## ========================================================================
     ## Input validation
