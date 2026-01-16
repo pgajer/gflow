@@ -486,3 +486,576 @@ plot.quantile.bin.diagnostics <- function(bin.res,
 
     invisible(TRUE)
 }
+
+
+#' Create a PDF of Distance Diagnostics for Multiple Features
+#'
+#' @description
+#' Generates a multi-page PDF containing diagnostic plots for a set of features:
+#' (i) abundance vs distance (logit transform) among carriers, (ii) optional CLR
+#' abundance vs distance among carriers, and (iii) presence/absence vs distance
+#' with a binned prevalence curve. Optionally, if quantile-bin results are supplied,
+#' adds bin-summary diagnostics via \code{\link{plot.quantile.bin.diagnostics}}.
+#'
+#' @param pdf.file Character scalar. Path to the output PDF file.
+#' @param features Character vector of feature names (columns of \code{X}).
+#' @param X Numeric matrix (or coercible data.frame) with vertices in rows and features in columns.
+#' @param vertices Integer vector of vertex indices (1-based) defining the plotted set (e.g., disk).
+#' @param dists Numeric vector of distances for \code{vertices} (named by vertex id or aligned).
+#' @param eps Non-negative numeric scalar. Carrier threshold; \code{X > eps}. Default is 0.
+#' @param pseudo.count Positive numeric scalar. Pseudocount for logit transform and CLR. Default is \code{1e-6}.
+#' @param do.clr Logical. If TRUE (default), compute CLR within \code{vertices} and plot CLR diagnostics.
+#' @param spline.df Optional numeric. Degrees of freedom for \code{\link[stats]{smooth.spline}}.
+#'   If NULL (default), smoothing is chosen internally.
+#' @param distance.transform Character string. One of \code{"raw"} or \code{"rank"}.
+#'   Passed to \code{plot.abundance.distance.diagnostics} and \code{plot.presence.distance.diagnostics}.
+#' @param xlab Optional character scalar. If provided, used as x-axis label for all plots; if NULL,
+#'   plot functions choose a default based on \code{distance.transform}.
+#' @param bin.results Optional named list of quantile-bin results. If provided, the function will attempt
+#'   to add bin diagnostics for each feature using \code{plot.quantile.bin.diagnostics}. This can be either:
+#'   \itemize{
+#'     \item a list keyed by feature name with entries that contain \code{$clr} and/or \code{$logit}, or
+#'     \item a list keyed by \code{"feature||sector"} as in the SPT quantile-bin output (in which case,
+#'       pass \code{bin.key.fun} to specify how to find the key).
+#'   }
+#' @param bin.key.fun Optional function. If \code{bin.results} is keyed by something other than \code{feature},
+#'   provide a function \code{function(feature) key} returning the lookup key in \code{bin.results}.
+#'   Default is NULL (use \code{feature} directly).
+#' @param include.bin.plots Logical. If TRUE and \code{bin.results} is provided, include bin diagnostics.
+#'   Default is TRUE.
+#'
+#' @return Invisibly returns TRUE.
+#'
+#' @export
+make.disk.diagnostics.pdf <- function(pdf.file,
+                                      features,
+                                      X,
+                                      vertices,
+                                      dists,
+                                      eps = 0,
+                                      pseudo.count = 1e-6,
+                                      do.clr = TRUE,
+                                      spline.df = NULL,
+                                      distance.transform = c("raw", "rank"),
+                                      xlab = NULL,
+                                      bin.results = NULL,
+                                      bin.key.fun = NULL,
+                                      include.bin.plots = TRUE) {
+
+    distance.transform <- match.arg(distance.transform)
+
+    if (!is.character(pdf.file) || length(pdf.file) != 1L || is.na(pdf.file)) {
+        stop("pdf.file must be a single character path.")
+    }
+    if (length(features) == 0L) stop("No features supplied.")
+    if (is.data.frame(X)) X <- as.matrix(X)
+    if (!is.matrix(X) || !is.numeric(X)) stop("X must be a numeric matrix (or coercible data.frame).")
+    if (is.null(colnames(X))) stop("X must have column names (feature names).")
+
+    vertices <- as.integer(vertices)
+    vertices <- vertices[!is.na(vertices)]
+    vertices <- vertices[vertices >= 1L & vertices <= nrow(X)]
+    if (length(vertices) == 0L) stop("vertices is empty after filtering to valid indices.")
+
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0) stop("eps must be a single non-negative numeric.")
+    if (!is.numeric(pseudo.count) || length(pseudo.count) != 1L || is.na(pseudo.count) || pseudo.count <= 0) {
+        stop("pseudo.count must be a single positive numeric.")
+    }
+
+    ## Precompute CLR matrix over vertices if requested
+    clr.mat <- NULL
+    if (isTRUE(do.clr)) {
+        X.sub <- X[vertices, , drop = FALSE]
+        clr.mat <- compute.clr.disk(X.sub, pseudo.count = pseudo.count)
+        ## clr.mat rows are aligned to 'vertices' order used here
+    }
+
+    ## Key resolver for bin.results
+    if (!is.null(bin.results) && isTRUE(include.bin.plots)) {
+        if (!is.list(bin.results)) stop("bin.results must be a list when provided.")
+        if (is.null(bin.key.fun)) {
+            bin.key.fun <- function(feature) feature
+        }
+        if (!is.function(bin.key.fun)) stop("bin.key.fun must be a function(feature) -> key.")
+    }
+
+    grDevices::pdf(pdf.file, width = 8.5, height = 6.5)
+    on.exit(grDevices::dev.off(), add = TRUE)
+
+    for (f in features) {
+
+        if (!f %in% colnames(X)) {
+            ## Skip missing features (defensive)
+            next
+        }
+
+        ## 1) logit-abundance diagnostics among carriers
+        plot.abundance.distance.diagnostics(
+            feature = f,
+            X = X,
+            vertices = vertices,
+            dists = dists,
+            eps = eps,
+            pseudo.count = pseudo.count,
+            use.clr = FALSE,
+            main.prefix = "logit: ",
+            spline.df = spline.df,
+            distance.transform = distance.transform,
+            xlab = xlab
+        )
+
+        ## 2) CLR-abundance diagnostics among carriers (sensitivity)
+        if (isTRUE(do.clr)) {
+            plot.abundance.distance.diagnostics(
+                feature = f,
+                X = X,
+                vertices = vertices,
+                dists = dists,
+                eps = eps,
+                pseudo.count = pseudo.count,
+                use.clr = TRUE,
+                clr.mat = clr.mat,
+                main.prefix = "CLR: ",
+                spline.df = spline.df,
+                distance.transform = distance.transform,
+                xlab = xlab
+            )
+        }
+
+        ## 3) presence/absence diagnostic
+        plot.presence.distance.diagnostics(
+            feature = f,
+            X = X,
+            vertices = vertices,
+            dists = dists,
+            eps = eps,
+            main.prefix = "presence: ",
+            distance.transform = distance.transform,
+            xlab = xlab
+        )
+
+        ## 4) optional quantile-bin diagnostics
+        if (!is.null(bin.results) && isTRUE(include.bin.plots)) {
+
+            key <- bin.key.fun(f)
+            br <- bin.results[[key]]
+
+            ## Allow br to be either a bin-res directly or a list with $clr/$logit
+            if (!is.null(br)) {
+
+                ## CLR bin plots if present
+                if (is.list(br) && !is.null(br$clr)) {
+                    plot.quantile.bin.diagnostics(
+                        bin.res = br$clr,
+                        what = "abundance",
+                        main = paste0("qbin CLR abundance: ", f),
+                        xlab = "distance (bin midpoint)",
+                        ylab = "CLR (bin median)"
+                    )
+                    ## presence bins (if available)
+                    if (!is.null(br$clr$bins) &&
+                        all(c("d.mid.all", "presence.p") %in% names(br$clr$bins))) {
+                        plot.quantile.bin.diagnostics(
+                            bin.res = br$clr,
+                            what = "presence",
+                            main = paste0("qbin presence: ", f),
+                            xlab = "distance (bin midpoint)",
+                            ylab = "prevalence"
+                        )
+                    }
+                }
+
+                ## logit bin plots if present
+                if (is.list(br) && !is.null(br$logit)) {
+                    plot.quantile.bin.diagnostics(
+                        bin.res = br$logit,
+                        what = "abundance",
+                        main = paste0("qbin logit abundance: ", f),
+                        xlab = "distance (bin midpoint)",
+                        ylab = "logit (bin median)"
+                    )
+                }
+
+                ## If br itself is a bin-res (rare), plot abundance as default
+                if (!is.list(br$clr) && !is.list(br$logit) && !is.null(br$bins)) {
+                    plot.quantile.bin.diagnostics(
+                        bin.res = br,
+                        what = "abundance",
+                        main = paste0("qbin abundance: ", f)
+                    )
+                }
+            }
+        }
+    }
+
+    invisible(TRUE)
+}
+
+#' Create a PDF of SPT Sector Diagnostics for Feature–Distance Associations
+#'
+#' @description
+#' Generates a multi-page PDF of diagnostic plots for directional (SPT sector) analyses.
+#' Panels are selected from \code{spt.res$sector.results} and plotted using the vertices
+#' and distances stored in \code{spt.res$sector.map}. For each selected (feature, sector)
+#' pair, the function can produce:
+#' \itemize{
+#'   \item abundance vs distance diagnostics on the logit scale (among carriers),
+#'   \item optional CLR abundance vs distance diagnostics (among carriers),
+#'   \item presence/absence vs distance diagnostics with a binned prevalence curve,
+#'   \item optional quantile-bin summary diagnostics if \code{spt.res$bin.results} is present.
+#' }
+#'
+#' The distance axis can be either raw geodesic distance or rank-transformed distance
+#' (\code{distance.transform="rank"}), which is often more robust when a small number of
+#' vertices at very small distances induce leverage.
+#'
+#' @param pdf.file Character scalar. Path to the output PDF file.
+#' @param spt.res List. Result returned by \code{test.disk.feature.distance.association.spt()},
+#'   containing at least \code{$sector.results} and \code{$sector.map}. If quantile-bin outputs
+#'   are present, \code{$bin.results} may also be used.
+#' @param X Numeric matrix (or coercible data.frame) with vertices in rows and features in columns.
+#' @param eps Non-negative numeric scalar. Carrier threshold; points are treated as carriers if
+#'   \code{X[vertex, feature] > eps}. Default is 0.
+#' @param pseudo.count Positive numeric scalar. Pseudocount used for the logit transform and CLR.
+#'   Default is \code{1e-6}.
+#' @param do.clr Logical. If TRUE (default), compute CLR within each plotted sector and include CLR
+#'   abundance diagnostics.
+#' @param spline.df Optional numeric. Degrees of freedom passed to \code{\link[stats]{smooth.spline}}.
+#'   If NULL (default), \code{smooth.spline} selects smoothing internally.
+#' @param distance.transform Character string. One of \code{"raw"} or \code{"rank"}.
+#'   Passed to \code{plot.abundance.distance.diagnostics()} and \code{plot.presence.distance.diagnostics()}.
+#' @param xlab Optional character scalar. X-axis label used for raw/rank diagnostic plots. If NULL
+#'   (default), a label is chosen based on \code{distance.transform} and the sector id.
+#'
+#' @param alpha Numeric scalar in \code{(0,1)}. Threshold used to select (feature, sector) pairs
+#'   from \code{spt.res$sector.results}. Default is 0.05. If no rows satisfy the selection rule,
+#'   the function falls back to the top-ranked rows by available p-values.
+#' @param select.by Character string controlling how panels are selected. One of:
+#'   \code{"any"}, \code{"clr.lm.p.adj"}, \code{"clr.spearman.p.adj"}, \code{"lm.p.adj"},
+#'   \code{"spearman.p.adj"}, \code{"presence.p.adj"}.
+#'   If \code{"any"} (default), a row is selected if any available adjusted p-value family is
+#'   \code{<= alpha}.
+#' @param order.by Character string controlling the ordering of panels in the PDF. One of
+#'   \code{"sector"} (default), \code{"feature"}, or \code{"p"}.
+#' @param max.panels Integer or \code{Inf}. Maximum number of (feature, sector) panels to plot.
+#'   Default is \code{Inf}.
+#'
+#' @param include.bin.plots Logical. If TRUE (default) and \code{spt.res$bin.results} is present,
+#'   include quantile-bin diagnostic plots via \code{plot.quantile.bin.diagnostics()}.
+#' @param include.bin.logit Logical. If TRUE (default), include logit-bin abundance plots when available.
+#' @param include.bin.clr Logical. If TRUE (default), include CLR-bin abundance and presence plots when available.
+#'
+#' @param include.logit Logical. If TRUE (default), include logit-scale abundance diagnostics.
+#' @param include.presence Logical. If TRUE (default), include presence/absence diagnostics.
+#'
+#' @return Invisibly returns TRUE. Called for its side effects (PDF creation).
+#'
+#' @examples
+#' \dontrun{
+#' ## After running an SPT analysis:
+#' ## spt.res <- test.disk.feature.distance.association.spt(...)
+#'
+#' make.spt.diagnostics.pdf(
+#'   pdf.file = "M1_spt_rank_diagnostics.pdf",
+#'   spt.res = spt.res,
+#'   X = phi.zmb,
+#'   eps = 0,
+#'   distance.transform = "rank",
+#'   alpha = 0.05,
+#'   select.by = "any",
+#'   order.by = "sector"
+#' )
+#' }
+#'
+#' @seealso
+#' \code{\link{test.disk.feature.distance.association.spt}},
+#' \code{\link{plot.abundance.distance.diagnostics}},
+#' \code{\link{plot.presence.distance.diagnostics}},
+#' \code{\link{plot.quantile.bin.diagnostics}}
+#'
+#' @export
+make.spt.diagnostics.pdf <- function(pdf.file,
+                                     spt.res,
+                                     X,
+                                     eps = 0,
+                                     pseudo.count = 1e-6,
+                                     do.clr = TRUE,
+                                     spline.df = NULL,
+                                     distance.transform = c("raw", "rank"),
+                                     xlab = NULL,
+                                     ## Selection of (feature, sector) panels to plot
+                                     alpha = 0.05,
+                                     select.by = c("any", "clr.lm.p.adj", "clr.spearman.p.adj",
+                                                   "lm.p.adj", "spearman.p.adj", "presence.p.adj"),
+                                     order.by = c("sector", "feature", "p"),
+                                     max.panels = Inf,
+                                     ## Include quantile-bin diagnostics if present
+                                     include.bin.plots = TRUE,
+                                     include.bin.logit = TRUE,
+                                     include.bin.clr = TRUE,
+                                     ## Plot toggles
+                                     include.logit = TRUE,
+                                     include.presence = TRUE) {
+
+    distance.transform <- match.arg(distance.transform)
+    select.by <- match.arg(select.by)
+    order.by <- match.arg(order.by)
+
+    if (!is.character(pdf.file) || length(pdf.file) != 1L || is.na(pdf.file)) {
+        stop("pdf.file must be a single character path.")
+    }
+    if (is.data.frame(X)) X <- as.matrix(X)
+    if (!is.matrix(X) || !is.numeric(X)) stop("X must be a numeric matrix (or coercible data.frame).")
+    if (is.null(colnames(X))) stop("X must have column names (feature names).")
+
+    if (!is.list(spt.res) || is.null(spt.res$sector.results) || is.null(spt.res$sector.map)) {
+        stop("spt.res must be an SPT result list with components $sector.results and $sector.map.")
+    }
+
+    sector.df <- spt.res$sector.results
+    sector.map <- spt.res$sector.map
+    bin.results <- spt.res$bin.results
+
+    if (!is.data.frame(sector.df) || nrow(sector.df) == 0L) stop("spt.res$sector.results is empty.")
+    if (!is.data.frame(sector.map) || nrow(sector.map) == 0L) stop("spt.res$sector.map is empty.")
+    if (!all(c("vertex", "dist", "sector") %in% names(sector.map))) {
+        stop("spt.res$sector.map must contain columns: vertex, dist, sector.")
+    }
+
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0) stop("eps must be a single non-negative numeric.")
+    if (!is.numeric(pseudo.count) || length(pseudo.count) != 1L || is.na(pseudo.count) || pseudo.count <= 0) {
+        stop("pseudo.count must be a single positive numeric.")
+    }
+    if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha) || alpha <= 0 || alpha >= 1) {
+        stop("alpha must be a single numeric in (0, 1).")
+    }
+    if (!is.numeric(max.panels) || length(max.panels) != 1L || is.na(max.panels) || max.panels < 1) {
+        stop("max.panels must be a single integer >= 1 (or Inf).")
+    }
+
+    ## ---- helpers ----
+    compute.clr.disk <- function(X.sub, pseudo.count = 1e-6) {
+        log.X <- log(X.sub + pseudo.count)
+        row.center <- rowMeans(log.X)
+        sweep(log.X, 1, row.center, FUN = "-")
+    }
+
+    get.sector.vertices.dists <- function(sector.map, sector) {
+        idx <- which(sector.map$sector == sector)
+        v <- as.integer(sector.map$vertex[idx])
+        d <- as.numeric(sector.map$dist[idx])
+        ok <- is.finite(d) & !is.na(v)
+        v <- v[ok]
+        d <- d[ok]
+        names(d) <- as.character(v)
+        list(vertices = v, dists = d)
+    }
+
+    ## ---- choose panels to plot ----
+    ## We use adjusted p-values when available; otherwise fall back to raw p-values.
+    has.col <- function(nm) nm %in% names(sector.df)
+
+    get.p <- function(nm) {
+        if (has.col(nm)) return(sector.df[[nm]])
+        rep(NA_real_, nrow(sector.df))
+    }
+
+    p.pres <- get.p("presence.p.adj")
+    p.spear <- if (has.col("spearman.p.adj")) get.p("spearman.p.adj") else get.p("spearman.p")
+    p.lm <- if (has.col("lm.p.adj")) get.p("lm.p.adj") else get.p("lm.p")
+    p.clr.spear <- if (has.col("clr.spearman.p.adj")) get.p("clr.spearman.p.adj") else get.p("clr.spearman.p")
+    p.clr.lm <- if (has.col("clr.lm.p.adj")) get.p("clr.lm.p.adj") else get.p("clr.lm.p")
+
+    keep <- rep(FALSE, nrow(sector.df))
+
+    if (select.by == "any") {
+        ## Keep if any available p-value family is <= alpha
+        keep <- keep | (is.finite(p.pres) & p.pres <= alpha)
+        keep <- keep | (is.finite(p.spear) & p.spear <= alpha)
+        keep <- keep | (is.finite(p.lm) & p.lm <= alpha)
+        keep <- keep | (is.finite(p.clr.spear) & p.clr.spear <= alpha)
+        keep <- keep | (is.finite(p.clr.lm) & p.clr.lm <= alpha)
+    } else {
+        p.sel <- get.p(select.by)
+        keep <- is.finite(p.sel) & (p.sel <= alpha)
+    }
+
+    sub.df <- sector.df[keep, , drop = FALSE]
+
+    ## If nothing passes alpha, fall back to the top-ranked rows by clr.lm.p.adj (if present)
+    if (nrow(sub.df) == 0L) {
+        if (has.col("clr.lm.p.adj") && any(is.finite(sector.df$clr.lm.p.adj))) {
+            o <- order(sector.df$clr.lm.p.adj)
+        } else if (has.col("clr.lm.p") && any(is.finite(sector.df$clr.lm.p))) {
+            o <- order(sector.df$clr.lm.p)
+        } else if (has.col("lm.p.adj") && any(is.finite(sector.df$lm.p.adj))) {
+            o <- order(sector.df$lm.p.adj)
+        } else {
+            o <- seq_len(nrow(sector.df))
+        }
+        sub.df <- sector.df[o, , drop = FALSE]
+    }
+
+    ## Ordering
+    if (order.by == "sector" && has.col("sector")) {
+        ## Within sector order by clr.lm.p.adj if present, else by lm.p.adj / lm.p
+        if (has.col("clr.lm.p.adj")) {
+            sub.df <- sub.df[order(sub.df$sector, sub.df$clr.lm.p.adj), , drop = FALSE]
+        } else if (has.col("lm.p.adj")) {
+            sub.df <- sub.df[order(sub.df$sector, sub.df$lm.p.adj), , drop = FALSE]
+        } else if (has.col("lm.p")) {
+            sub.df <- sub.df[order(sub.df$sector, sub.df$lm.p), , drop = FALSE]
+        } else {
+            sub.df <- sub.df[order(sub.df$sector), , drop = FALSE]
+        }
+    } else if (order.by == "feature" && has.col("feature")) {
+        if (has.col("clr.lm.p.adj")) {
+            sub.df <- sub.df[order(sub.df$feature, sub.df$clr.lm.p.adj), , drop = FALSE]
+        } else {
+            sub.df <- sub.df[order(sub.df$feature), , drop = FALSE]
+        }
+    } else if (order.by == "p") {
+        if (has.col("clr.lm.p.adj")) {
+            sub.df <- sub.df[order(sub.df$clr.lm.p.adj), , drop = FALSE]
+        } else if (has.col("lm.p.adj")) {
+            sub.df <- sub.df[order(sub.df$lm.p.adj), , drop = FALSE]
+        } else if (has.col("lm.p")) {
+            sub.df <- sub.df[order(sub.df$lm.p), , drop = FALSE]
+        }
+    }
+
+    ## Cap number of panels
+    if (is.finite(max.panels) && nrow(sub.df) > max.panels) {
+        sub.df <- sub.df[seq_len(as.integer(max.panels)), , drop = FALSE]
+    }
+
+    ## ---- produce PDF ----
+    grDevices::pdf(pdf.file, width = 8.5, height = 6.5)
+    on.exit(grDevices::dev.off(), add = TRUE)
+
+    for (i in seq_len(nrow(sub.df))) {
+
+        f <- as.character(sub.df$feature[i])
+        s <- as.integer(sub.df$sector[i])
+
+        if (!f %in% colnames(X)) next
+
+        sd <- get.sector.vertices.dists(sector.map, s)
+        v.s <- sd$vertices
+        d.s <- sd$dists
+
+        if (length(v.s) < 2L) next
+
+        ## Compute sector CLR if requested
+        clr.s <- NULL
+        if (isTRUE(do.clr)) {
+            clr.s <- compute.clr.disk(X[v.s, , drop = FALSE], pseudo.count = pseudo.count)
+            ## clr.s rows aligned to v.s order
+        }
+
+        ## Choose an informative x-label if not provided
+        xlab.use <- xlab
+        if (is.null(xlab.use)) {
+            if (distance.transform == "rank") {
+                xlab.use <- paste0("rank(distance) within sector ", s)
+            } else {
+                xlab.use <- paste0("geodesic distance within sector ", s)
+            }
+        }
+
+        ## --- (1) logit abundance scatter/hex diagnostics ---
+        if (isTRUE(include.logit)) {
+            plot.abundance.distance.diagnostics(
+                feature = f,
+                X = X,
+                vertices = v.s,
+                dists = d.s,
+                eps = eps,
+                pseudo.count = pseudo.count,
+                use.clr = FALSE,
+                main.prefix = paste0("SPT sector ", s, " | logit: "),
+                spline.df = spline.df,
+                distance.transform = distance.transform,
+                xlab = xlab.use
+            )
+        }
+
+        ## --- (2) CLR abundance diagnostics ---
+        if (isTRUE(do.clr) && !is.null(clr.s)) {
+            plot.abundance.distance.diagnostics(
+                feature = f,
+                X = X,
+                vertices = v.s,
+                dists = d.s,
+                eps = eps,
+                pseudo.count = pseudo.count,
+                use.clr = TRUE,
+                clr.mat = clr.s,
+                main.prefix = paste0("SPT sector ", s, " | CLR: "),
+                spline.df = spline.df,
+                distance.transform = distance.transform,
+                xlab = xlab.use
+            )
+        }
+
+        ## --- (3) presence diagnostics ---
+        if (isTRUE(include.presence)) {
+            plot.presence.distance.diagnostics(
+                feature = f,
+                X = X,
+                vertices = v.s,
+                dists = d.s,
+                eps = eps,
+                n.bins = 10L,
+                main.prefix = paste0("SPT sector ", s, " | presence: "),
+                distance.transform = distance.transform,
+                xlab = xlab.use
+            )
+        }
+
+        ## --- (4) quantile-bin diagnostics if available ---
+        if (isTRUE(include.bin.plots) && !is.null(bin.results) && length(bin.results) > 0L) {
+
+            key <- paste0(f, "||", s)
+            br <- bin.results[[key]]
+            if (!is.null(br) && is.list(br)) {
+
+                if (isTRUE(include.bin.clr) && !is.null(br$clr)) {
+
+                    plot.quantile.bin.diagnostics(
+                        bin.res = br$clr,
+                        what = "abundance",
+                        main = paste0("SPT sector ", s, " | qbin CLR abundance: ", f),
+                        xlab = "distance (bin midpoint)",
+                        ylab = "CLR (bin median)"
+                    )
+
+                    if (!is.null(br$clr$bins) &&
+                        is.data.frame(br$clr$bins) &&
+                        all(c("d.mid.all", "presence.p") %in% names(br$clr$bins))) {
+
+                        plot.quantile.bin.diagnostics(
+                            bin.res = br$clr,
+                            what = "presence",
+                            main = paste0("SPT sector ", s, " | qbin presence: ", f),
+                            xlab = "distance (bin midpoint)",
+                            ylab = "prevalence"
+                        )
+                    }
+                }
+
+                if (isTRUE(include.bin.logit) && !is.null(br$logit)) {
+                    plot.quantile.bin.diagnostics(
+                        bin.res = br$logit,
+                        what = "abundance",
+                        main = paste0("SPT sector ", s, " | qbin logit abundance: ", f),
+                        xlab = "distance (bin midpoint)",
+                        ylab = "logit (bin median)"
+                    )
+                }
+            }
+        }
+    }
+
+    invisible(TRUE)
+}
