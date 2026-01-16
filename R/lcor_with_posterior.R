@@ -1,8 +1,8 @@
 ## ============================================================================
-## lslope with Posterior Uncertainty Propagation
+## lcor with Posterior Uncertainty Propagation
 ## ============================================================================
 ##
-## This function computes lslope() statistics with full posterior uncertainty
+## This function computes lcor() statistics with full posterior uncertainty
 ## quantification arising from spectral smoothing. Two modes are supported:
 ##
 ## Mode 1 (Original): Pass pre-computed posterior samples in Z.hat.samples
