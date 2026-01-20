@@ -11,7 +11,7 @@
 #'   each row represents a data point in d-dimensional space.
 #' @param q.thld Numeric scalar between 0 and 1 (exclusive). The quantile
 #'   threshold for MST completion. Edges are added between points whose
-#'   distance is below the q.thld-quantile of MST edge weights. Default is 0.9.
+#'   distance is below the q.thld-quantile of MST edge weights. Default is 0.1.
 #' @param pca.dim Positive integer or NULL. If provided and \code{ncol(X) > pca.dim},
 #'   dimensionality is reduced to this many principal components before graph
 #'   construction. Must be less than min(n-1, p) where n is the number of
@@ -93,7 +93,7 @@
 #'
 #' @export
 create.cmst.graph <- function(X,
-                              q.thld = 0.9,
+                              q.thld = 0.1,
                               pca.dim = 100,
                               variance.explained = 0.99,
                               verbose = TRUE) {
