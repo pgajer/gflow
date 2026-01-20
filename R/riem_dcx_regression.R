@@ -12,6 +12,10 @@
 #' @param y Numeric vector of length n containing response values. Cannot
 #'   contain NA or infinite values.
 #'
+#' @param y.vertices NULL or an integer vector of vertex indices over which the
+#'     conditional expectation of y will be estimated. If y.vertices = NULL, the
+#'     conditional expectation of y will be estimted over all vertices.
+#'
 #' @param k Integer scalar giving the number of nearest neighbors. Must satisfy
 #'   \eqn{2 \le k < n}. Larger k produces smoother fits but may oversmooth
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
@@ -578,6 +582,7 @@
 fit.rdgraph.regression <- function(
     X,
     y,
+    y.vertices = NULL,
     k,
     with.posterior = FALSE,
     return.posterior.samples = FALSE,
@@ -659,27 +664,71 @@ fit.rdgraph.regression <- function(
 
     ## ==================== Response Vector Validation ====================
 
-    ## Check y type and length
+    ## Semi-supervised option:
+    ## - if y.vertices is NULL: y must be length n (current behavior)
+    ## - if y.vertices is provided: y must be length length(y.vertices), and will be
+    ##   embedded into a length-n vector for C++ (unlabeled entries set to 0 and ignored by mask)
+
     if (!is.numeric(y)) {
         stop("y must be numeric")
     }
 
-    if (length(y) != n) {
-        stop(sprintf("Length of y (%d) must equal number of rows in X (%d)",
-                     length(y), n))
-    }
+    if (is.null(y.vertices)) {
 
-    ## Check for NA/Inf in y
-    if (anyNA(y)) {
-        stop("y cannot contain NA values")
-    }
+        if (length(y) != n) {
+            stop(sprintf("Length of y (%d) must equal number of rows in X (%d)",
+                         length(y), n))
+        }
 
-    if (any(!is.finite(y))) {
-        stop("y cannot contain infinite values")
-    }
+        if (anyNA(y)) {
+            stop("y cannot contain NA values")
+        }
+        if (any(!is.finite(y))) {
+            stop("y cannot contain infinite values")
+        }
 
-    ## Ensure y is a vector (not matrix)
-    y <- as.vector(y)
+        y <- as.vector(y)
+
+    } else {
+
+        ## Validate y.vertices
+        if (!is.numeric(y.vertices) && !is.integer(y.vertices)) {
+            stop("y.vertices must be an integer (or numeric coercible to integer) vector")
+        }
+        y.vertices <- as.integer(y.vertices)
+
+        if (length(y.vertices) < 1L) {
+            stop("y.vertices must have positive length")
+        }
+        if (anyNA(y.vertices)) {
+            stop("y.vertices cannot contain NA")
+        }
+        if (any(y.vertices < 1L | y.vertices > n)) {
+            stop("y.vertices must be in 1..n (vertex indices are 1-based)")
+        }
+        if (anyDuplicated(y.vertices)) {
+            stop("y.vertices cannot contain duplicates")
+        }
+
+        ## Validate y values on labeled vertices
+        if (length(y) != length(y.vertices)) {
+            stop(sprintf("In semi-supervised mode, length(y) (%d) must equal length(y.vertices) (%d)",
+                         length(y), length(y.vertices)))
+        }
+        if (anyNA(y)) {
+            stop("y cannot contain NA values (provide y only for labeled vertices)")
+        }
+        if (any(!is.finite(y))) {
+            stop("y cannot contain infinite values")
+        }
+
+        y <- as.vector(y)
+
+        ## Embed into full vector for C++ (unlabeled entries are ignored there)
+        y.full <- numeric(n)
+        y.full[y.vertices] <- y
+        y <- y.full
+    }
 
     ## ==================== Parameter k Validation ====================
 
@@ -1044,6 +1093,7 @@ fit.rdgraph.regression <- function(
         S_fit_rdgraph_regression,
         X,
         as.double(y),
+        if (is.null(y.vertices)) NULL else as.integer(y.vertices),
         as.integer(k + 1L), # this is to account for the fact that ANN library is set up to return for query point as the first elements of the list of kNN's
         as.logical(with.posterior),
         as.logical(return.posterior.samples),
@@ -1089,8 +1139,32 @@ fit.rdgraph.regression <- function(
     attr(fit, "k") <- k
     if (!is.null(pca_info)) attr(fit, "pca") <- pca_info
 
+    if (!is.null(y.vertices)) {
+        attr(fit, "y.vertices") <- as.integer(y.vertices)
+    }
+
     return(fit)
 }
+
+#' Semi-supervised Riemannian Graph Regression (subset-labeled y)
+#'
+#' Convenience wrapper around \code{fit.rdgraph.regression()} for the case when
+#' \code{y} is provided only on a subset of vertices specified by \code{y.vertices}.
+#'
+#' @param X Feature matrix (dense numeric matrix or dgCMatrix).
+#' @param y Numeric vector of response values for labeled vertices only.
+#' @param y.vertices Integer vector of labeled vertex indices (1-based).
+#' @param ... Passed to \code{fit.rdgraph.regression()}; must include \code{k} and other tuning parameters.
+#'
+#' @return An object of class \code{c("knn.riem.fit", "riem.dcx")}.
+#' @export
+fit.rdgraph.regression.semiy <- function(X, y, y.vertices, ...) {
+    if (missing(y.vertices) || is.null(y.vertices)) {
+        stop("y.vertices must be provided (integer 1-based indices of labeled vertices)")
+    }
+    fit.rdgraph.regression(X = X, y = y, y.vertices = y.vertices, ...)
+}
+
 
 #' Extract Fitted Values from kNN Riemannian Regression Fit
 #'

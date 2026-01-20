@@ -650,6 +650,7 @@ struct riem_dcx_t {
     void fit_rdgraph_regression(
         const spmat_t& X,
         const vec_t& y,
+        const std::vector<index_t>& y_vertices,
         index_t k,
         bool use_counting_measure,
         double density_normalization,
@@ -778,6 +779,20 @@ struct riem_dcx_t {
         );
 
     /**
+     * @brief Semi-supervised spectral smoothing:
+     *        fit a low-pass field on all vertices using y observed only on y_vertices.
+     *
+     * y is always length n (unlabeled entries ignored); y_vertices provides the labeled set.
+     */
+    gcv_result_t smooth_response_via_spectral_filter_semiy(
+        const vec_t& y,
+        const std::vector<index_t>& y_vertices,
+        int n_eigenpairs,
+        rdcx_filter_type_t filter_type,
+        bool verbose
+        );
+
+    /**
      * @brief Check convergence of iterative refinement procedure (simplified version)
      */
     convergence_status_t check_convergence(
@@ -794,6 +809,7 @@ struct riem_dcx_t {
     detailed_convergence_status_t check_convergence_detailed(
         const vec_t& y_hat_prev,
         const vec_t& y_hat_curr,
+        const std::vector<index_t>& y_vertices,
         double epsilon_y,
         double epsilon_rho,
         int iteration,

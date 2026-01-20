@@ -11,6 +11,7 @@ extern "C" {
 	SEXP S_fit_rdgraph_regression(
 		SEXP s_X,
 		SEXP s_y,
+		SEXP s_y_vertices,
 		SEXP s_k,
 		SEXP s_with_posterior,
 		SEXP s_return_posterior_samples,

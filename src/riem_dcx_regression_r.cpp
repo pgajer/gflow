@@ -1036,6 +1036,7 @@ extern "C" SEXP create_posterior_component(const posterior_summary_t& summary) {
 extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_X,
     SEXP s_y,
+    SEXP s_y_vertices,
     SEXP s_k,
     SEXP s_with_posterior,
     SEXP s_return_posterior_samples,
@@ -1214,6 +1215,56 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     for (R_xlen_t i = 0; i < y_len; ++i) {
         y[i] = y_data[i];
+    }
+
+    // -------------------- Semi-supervised label set y.vertices --------------------
+    // If s_y_vertices is non-NULL, it provides 1-based indices of labeled vertices.
+    // We convert to 0-based indices and build a boolean mask for downstream use.
+
+    std::vector<index_t> y_vertices;
+    std::vector<char> y_mask((size_t)n_points, 1); // default: all labeled
+    bool has_y_vertices = (s_y_vertices != R_NilValue);
+
+    if (has_y_vertices) {
+        if (TYPEOF(s_y_vertices) != INTSXP) {
+            Rf_error("y.vertices must be an integer vector (or NULL)");
+        }
+
+        const R_xlen_t m = Rf_xlength(s_y_vertices);
+        if (m < 1) {
+            Rf_error("y.vertices must have positive length when provided");
+        }
+
+        // Build mask: start with all unlabeled
+        std::fill(y_mask.begin(), y_mask.end(), (char)0);
+
+        // Copy and validate, convert to 0-based
+        std::vector<index_t> idx;
+        idx.reserve((size_t)m);
+
+        const int* v_ptr = INTEGER(s_y_vertices);
+        for (R_xlen_t j = 0; j < m; ++j) {
+            const int v = v_ptr[j];
+            if (v == NA_INTEGER) {
+                Rf_error("y.vertices cannot contain NA");
+            }
+            if (v < 1 || v > (int)n_points) {
+                Rf_error("y.vertices entries must be in 1..n (got %d, n=%ld)", v, (long)n_points);
+            }
+            idx.push_back((index_t)(v - 1)); // 0-based
+        }
+
+        std::sort(idx.begin(), idx.end());
+        for (size_t j = 1; j < idx.size(); ++j) {
+            if (idx[j] == idx[j - 1]) {
+                Rf_error("y.vertices cannot contain duplicates");
+            }
+        }
+
+        y_vertices = std::move(idx);
+        for (size_t j = 0; j < y_vertices.size(); ++j) {
+            y_mask[(size_t)y_vertices[j]] = (char)1;
+        }
     }
 
     // -------------------- Parameter k --------------------
@@ -1604,6 +1655,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
         dcx.fit_rdgraph_regression(
             X_sparse,
             y,
+            y_vertices,
             k,
             use_counting_measure,
             density_normalization,
@@ -1770,7 +1822,13 @@ extern "C" SEXP S_fit_rdgraph_regression(
         // Component 3: residuals (computed using preprocessed fitted values)
         SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
         SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
+
         for (Eigen::Index i = 0; i < n; ++i) {
+            if (has_y_vertices && y_mask[(size_t)i] == 0) {
+                REAL(s_resid)[i] = NA_REAL;
+                continue;
+            }
+
             double residual;
             if (dcx.sig.y.size() == n) {
                 residual = dcx.sig.y[i] - y_hat[i];
@@ -1779,6 +1837,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
             }
             REAL(s_resid)[i] = residual;
         }
+
         SET_VECTOR_ELT(result, component_idx++, s_resid);
         UNPROTECT(1);
 
@@ -1786,7 +1845,13 @@ extern "C" SEXP S_fit_rdgraph_regression(
         // Component 3: residuals (computed using preprocessed fitted values)
         SET_STRING_ELT(names, component_idx, Rf_mkChar("residuals"));
         SEXP s_resid = PROTECT(Rf_allocVector(REALSXP, n));
+
         for (Eigen::Index i = 0; i < n; ++i) {
+            if (has_y_vertices && y_mask[(size_t)i] == 0) {
+                REAL(s_resid)[i] = NA_REAL;
+                continue;
+            }
+
             double residual;
             if (dcx.sig.y.size() == n) {
                 residual = dcx.sig.y[i] - y_hat_raw[i];
@@ -1795,6 +1860,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
             }
             REAL(s_resid)[i] = residual;
         }
+
         SET_VECTOR_ELT(result, component_idx++, s_resid);
         UNPROTECT(1);
     }

@@ -1160,25 +1160,6 @@ void riem_dcx_t::compute_spectral_decomposition(
     if (verbose) {
         Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
                 L.L[0].rows(), n_eigenpairs);
-
-        // #ifdef EIGEN_USE_OPENMP
-        //     Rprintf("\tEigen OpenMP: ENABLED\n");
-        // #else
-        //     Rprintf("\tEigen OpenMP: DISABLED\n");
-        // #endif
-
-        // #ifdef _OPENMP
-        //     Rprintf("\tOpenMP threads available: %d\n", omp_get_max_threads());
-        //     Rprintf("\tEigen threads: %d\n", Eigen::nbThreads());
-        // #else
-        //     Rprintf("\tOpenMP: NOT AVAILABLE\n");
-        // #endif
-
-        // #ifdef EIGEN_DONT_VECTORIZE
-        //     Rprintf("\tEigen vectorization: DISABLED\n");
-        // #else
-        //     Rprintf("\tEigen vectorization: ENABLED\n");
-        // #endif
     }
 
     // Validate that Laplacian exists
@@ -3570,6 +3551,237 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
 }
 
 /**
+ * @brief Semi-supervised spectral smoothing of a vertex signal with labels observed on a subset of vertices.
+ *
+ * This routine computes a smooth field $\hat y \in \mathbb{R}^n$ over all graph vertices
+ * when the response $y$ is observed only on a labeled subset of vertices.
+ *
+ * Let $L \subset \{0,\dots,n-1\}$ denote the labeled vertex set (provided by @p y_vertices) and
+ * let $P$ be the diagonal masking operator with $P_{ii}=1$ if $i\in L$ and $P_{ii}=0$ otherwise.
+ * The method fits a low-frequency spectral representation $f \approx V a$, where $V\in\mathbb{R}^{n\times m}$
+ * contains the first $m$ eigenvectors of the symmetrized 0-form Laplacian (typically $L_{0,\mathrm{sym}}$),
+ * and solves the masked Tikhonov problem in the spectral subspace:
+ * $$
+ * \min_{a\in\mathbb{R}^m} \|P(y - Va)\|_2^2 + \eta\, a^\top \Lambda a,
+ * $$
+ * where $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_m)$ contains the corresponding eigenvalues.
+ *
+ * This yields the $m\times m$ linear system:
+ * $$
+ * (A + \eta\Lambda)a = b,
+ * \quad\text{with}\quad
+ * A = V^\top P V,\;\; b = V^\top P y.
+ * $$
+ * For each candidate $\eta$ (generated consistently with the supervised smoother),
+ * the fitted field is $\hat y = V a$. The tuning parameter $\eta$ is selected by a
+ * labeled-set GCV criterion:
+ * $$
+ * \mathrm{GCV}(\eta) = \frac{\|P(y-\hat y)\|_2^2}{(n_{\mathrm{eff}} - \mathrm{df}(\eta))^2},
+ * \quad n_{\mathrm{eff}} = \mathrm{tr}(P) = |L|,
+ * \quad \mathrm{df}(\eta) = \mathrm{tr}\!\left((A+\eta\Lambda)^{-1}A\right).
+ * $$
+ *
+ * @param y Length-\f$n\f$ numeric vector of response values. Values at unlabeled vertices
+ *   are ignored (the data-fit term is applied only to @p y_vertices). The vector must be finite.
+ * @param y_vertices Vector of 0-based labeled vertex indices. Must be non-empty, sortedness is not required
+ *   (duplicates are not allowed), and each index must lie in \f$[0, n-1]\f$.
+ * @param n_eigenpairs Number of eigenpairs \f$m\f$ to use in the spectral approximation. Must be positive.
+ *   If larger than feasible, it will be reduced internally.
+ * @param filter_type Filter family used to generate the candidate \f$\eta\f$ grid (kept consistent with the
+ *   fully supervised smoother). Note: in this semi-supervised formulation, \f$\eta\f$ acts as a Tikhonov
+ *   regularization parameter in the spectral subspace.
+ * @param verbose If true, emits diagnostic output (eigenpair computation, grid generation and selection).
+ *
+ * @return A @c gcv_result_t containing:
+ *   - @c eta_optimal: selected \f$\eta^\star\f$,
+ *   - @c gcv_optimal: GCV score at \f$\eta^\star\f$,
+ *   - @c y_hat: fitted field \f$\hat y\f$ over all vertices,
+ *   - @c eta_grid and @c gcv_scores: candidate grid and corresponding scores.
+ *
+ * @pre The graph Laplacian (and in particular the 0-form Laplacian and its symmetrized variant used for
+ *   spectral decomposition) must be initialized (e.g., via @c assemble_operators()).
+ * @pre The spectral cache must either be valid with at least @p n_eigenpairs eigenpairs, or eigenpairs
+ *   will be computed internally via @c compute_spectral_decomposition().
+ * @pre If @p y_vertices is non-empty, it must contain unique indices in [0,
+ * n-1], and @p gamma_modulation must be 0.
+ *
+ * @warning If a connected component of the graph contains no labeled vertices, the labeled-set objective
+ *   provides no data constraint on that component. This routine returns a global field, but downstream
+ *   logic should consider explicit handling of unlabeled components (e.g., fill with global labeled mean
+ *   or mark as NA) if extrema/basin computations are sensitive to this case.
+ *
+ * @note This method is a semi-supervised extension of the spectral low-pass smoother that preserves the
+ *   eigenbasis machinery while enforcing the data-fit term only on labeled vertices.
+ */
+gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter_semiy(
+    const vec_t& y,
+    const std::vector<index_t>& y_vertices,
+    int n_eigenpairs,
+    rdcx_filter_type_t filter_type,
+    bool verbose
+    ) {
+
+    if (y_vertices.empty()) {
+        Rf_error("smooth_response_via_spectral_filter_semiy: y_vertices is empty; "
+                 "use smooth_response_via_spectral_filter() instead");
+    }
+
+    // Validate Laplacian
+    if (L.L.empty() || L.L[0].rows() == 0) {
+        Rf_error("smooth_response_via_spectral_filter_semiy: vertex Laplacian L[0] not initialized");
+    }
+
+    const int n_vertices = L.L[0].rows();
+    if (y.size() != n_vertices) {
+        Rf_error("smooth_response_via_spectral_filter_semiy: response vector size (%d) "
+                 "does not match number of vertices (%d)",
+                 (int)y.size(), n_vertices);
+    }
+
+    // Validate n_eigenpairs
+    if (n_eigenpairs <= 0) {
+        Rf_error("smooth_response_via_spectral_filter_semiy: n_eigenpairs must be positive, got %d",
+                 n_eigenpairs);
+    }
+    const int max_feasible_eigenpairs = std::max(1, n_vertices - 2);
+    if (n_eigenpairs > max_feasible_eigenpairs) {
+        Rf_warning("smooth_response_via_spectral_filter_semiy: requested n_eigenpairs=%d exceeds "
+                   "maximum feasible value %d for n_vertices=%d; reducing to %d",
+                   n_eigenpairs, max_feasible_eigenpairs, n_vertices, max_feasible_eigenpairs);
+        n_eigenpairs = max_feasible_eigenpairs;
+    }
+
+    // Validate finite y
+    for (int i = 0; i < y.size(); ++i) {
+        if (!std::isfinite(y[i])) {
+            Rf_error("smooth_response_via_spectral_filter_semiy: response vector contains "
+                     "non-finite value at index %d", i);
+        }
+    }
+
+    // Validate y_vertices: range + duplicates
+    std::vector<index_t> idx = y_vertices;
+    std::sort(idx.begin(), idx.end());
+    for (size_t j = 0; j < idx.size(); ++j) {
+        if (idx[j] < 0 || idx[j] >= (index_t)n_vertices) {
+            Rf_error("smooth_response_via_spectral_filter_semiy: y_vertices out of range");
+        }
+        if (j > 0 && idx[j] == idx[j - 1]) {
+            Rf_error("smooth_response_via_spectral_filter_semiy: y_vertices contains duplicates");
+        }
+    }
+
+    const double n_eff = (double)idx.size();
+
+    // Ensure spectral decomposition
+    const bool need_recompute = !spectral_cache.is_valid ||
+        spectral_cache.eigenvalues.size() < n_eigenpairs;
+
+    if (need_recompute) {
+        compute_spectral_decomposition(n_eigenpairs, verbose);
+    }
+
+    const int m = std::min(n_eigenpairs,
+                           static_cast<int>(spectral_cache.eigenvalues.size()));
+
+    vec_t eigenvalues = spectral_cache.eigenvalues.head(m);
+    Eigen::MatrixXd V = spectral_cache.eigenvectors.leftCols(m);
+
+    if (V.rows() != n_vertices) {
+        Rf_error("smooth_response_via_spectral_filter_semiy: eigenvector rows (%d) "
+                 "do not match n_vertices (%d)", (int)V.rows(), n_vertices);
+    }
+
+    // Build Py (mask applied to y)
+    vec_t Py = vec_t::Zero(n_vertices);
+    for (size_t j = 0; j < idx.size(); ++j) {
+        Py[(int)idx[j]] = y[(int)idx[j]];
+    }
+
+    // b = V^T P y
+    vec_t b = V.transpose() * Py;
+
+    // A = V^T P V (row-mask)
+    Eigen::MatrixXd Vw = V;
+    for (int i = 0; i < n_vertices; ++i) {
+        // If unlabeled, zero-out the row (P_ii = 0)
+        // Since P is 0/1, sqrt(P) = P, so this is equivalent to row scaling
+        // by sqrt(P_ii).
+        // (We could do faster using a sparse selection, but this is robust.)
+        // Mark labeled rows only:
+        // We use binary_search because idx is sorted.
+        if (!std::binary_search(idx.begin(), idx.end(), (index_t)i)) {
+            Vw.row(i).setZero();
+        }
+    }
+    Eigen::MatrixXd A = Vw.transpose() * Vw;
+
+    // Candidate eta grid (same as supervised)
+    const int n_candidates = 40;
+    const double lambda_max = eigenvalues[m - 1];
+    std::vector<double> eta_grid = generate_eta_grid(lambda_max, filter_type, n_candidates);
+
+    std::vector<double> gcv_scores(n_candidates);
+    double best_gcv = std::numeric_limits<double>::max();
+    int best_idx = 0;
+    vec_t best_y_hat = vec_t::Zero(n_vertices);
+
+    // Precompute diagonal Lambda
+    Eigen::MatrixXd Lambda = eigenvalues.asDiagonal();
+
+    for (int i = 0; i < n_candidates; ++i) {
+        const double eta = eta_grid[i];
+
+        Eigen::MatrixXd M = A + eta * Lambda;
+
+        Eigen::LDLT<Eigen::MatrixXd> ldlt(M);
+        if (ldlt.info() != Eigen::Success) {
+            gcv_scores[i] = std::numeric_limits<double>::infinity();
+            continue;
+        }
+
+        // Solve for spectral coefficients a
+        vec_t a = ldlt.solve(b);
+
+        // y_hat on all vertices
+        vec_t y_hat = V * a;
+
+        // RSS on labeled vertices only
+        double rss = 0.0;
+        for (size_t j = 0; j < idx.size(); ++j) {
+            const int v = (int)idx[j];
+            const double r = y[v] - y_hat[v];
+            rss += r * r;
+        }
+
+        // df(eta) = tr( (A + eta*Lambda)^{-1} A )
+        Eigen::MatrixXd MinvA = ldlt.solve(A);
+        double df = MinvA.trace();
+
+        double denom = n_eff - df;
+        if (std::abs(denom) < 1e-10) denom = 1e-10;
+
+        const double gcv = rss / (denom * denom);
+        gcv_scores[i] = gcv;
+
+        if (gcv < best_gcv) {
+            best_gcv = gcv;
+            best_idx = i;
+            best_y_hat = y_hat;
+        }
+    }
+
+    gcv_result_t result;
+    result.eta_optimal = eta_grid[best_idx];
+    result.gcv_optimal = best_gcv;
+    result.y_hat = best_y_hat;
+    result.gcv_scores = gcv_scores;
+    result.eta_grid = eta_grid;
+
+    return result;
+}
+
+/**
  * @brief Check convergence of iterative refinement procedure (simplified version)
  *
  * This function determines whether the iterative refinement process has
@@ -3711,6 +3923,8 @@ convergence_status_t riem_dcx_t::check_convergence(
  *
  * @param y_hat_prev Fitted response values from previous iteration
  * @param y_hat_curr Fitted response values from current iteration
+ * @param y_vertices Vector of 0-based labeled vertex indices. Must be non-empty, sortedness is not required
+ *   (duplicates are not allowed), and each index must lie in \f$[0, n-1]\f$.
  * @param epsilon_y Convergence threshold for response relative change
  * @param iteration Current iteration number (1-indexed)
  * @param max_iterations Maximum allowed iterations
@@ -3734,53 +3948,84 @@ convergence_status_t riem_dcx_t::check_convergence(
 detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
     const vec_t& y_hat_prev,
     const vec_t& y_hat_curr,
+    const std::vector<index_t>& y_vertices,
     double epsilon_y,
     double epsilon_rho,
     int iteration,
     int max_iterations,
     const std::vector<double>& response_change_history,
     const gcv_history_t& gcv_history
-    ) {
+) {
     detailed_convergence_status_t status;
     status.iteration = iteration;
     status.converged = false;
     status.response_change = 0.0;
-    status.max_density_change = 0.0;  // Not tracked in simplified version
+    status.max_density_change = 0.0;
     status.response_change_rate = 0.0;
-    status.density_change_rate = 0.0;  // Not tracked in simplified version
+    status.density_change_rate = 0.0;
     status.estimated_iterations_remaining = -1;
+
+    const Eigen::Index n = y_hat_prev.size();
+    if (y_hat_curr.size() != n) {
+        Rf_error("check_convergence_detailed: y_hat_prev and y_hat_curr must have same length");
+    }
+
+    auto compute_relative_change = [&](const vec_t& a, const vec_t& b) -> double {
+        // Computes ||b-a|| / ||a|| either globally (if y_vertices empty)
+        // or restricted to labeled vertices.
+        double denom = 0.0;
+        double numer = 0.0;
+
+        if (y_vertices.empty()) {
+            denom = a.norm();
+            if (denom < 1e-15) denom = 1.0;
+            numer = (b - a).norm();
+            return numer / denom;
+        }
+
+        // Labeled-only
+        for (size_t j = 0; j < y_vertices.size(); ++j) {
+            const index_t v = y_vertices[j];
+            if (v < 0 || v >= (index_t)n) {
+                Rf_error("check_convergence_detailed: y_vertices out of range");
+            }
+            const double av = a[(Eigen::Index)v];
+            const double dv = b[(Eigen::Index)v] - av;
+            denom += av * av;
+            numer += dv * dv;
+        }
+
+        denom = std::sqrt(denom);
+        if (denom < 1e-15) denom = 1.0;
+        numer = std::sqrt(numer);
+        return numer / denom;
+    };
 
     // Maximum iterations check
     if (iteration >= max_iterations) {
-        double y_norm_prev = y_hat_prev.norm();
-        if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
-        status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+        status.response_change = compute_relative_change(y_hat_prev, y_hat_curr);
         status.message = "Maximum iterations reached";
         return status;
     }
 
     // Response convergence
-    double y_norm_prev = y_hat_prev.norm();
-    if (y_norm_prev < 1e-15) y_norm_prev = 1.0;
-    status.response_change = (y_hat_curr - y_hat_prev).norm() / y_norm_prev;
+    status.response_change = compute_relative_change(y_hat_prev, y_hat_curr);
 
     // Estimate convergence rate if history is available
     if (response_change_history.size() >= 2) {
-        // Simple linear extrapolation of convergence rate
-        size_t n = response_change_history.size();
-        double recent_change = response_change_history[n-1];
-        double prev_change = response_change_history[n-2];
+        size_t n_hist = response_change_history.size();
+        double recent_change = response_change_history[n_hist - 1];
+        double prev_change = response_change_history[n_hist - 2];
 
         if (prev_change > 1e-15) {
             status.response_change_rate = recent_change / prev_change;
 
-            // Estimate iterations to convergence assuming geometric decay
             if (status.response_change_rate < 1.0 && status.response_change_rate > 0.01) {
                 double log_current = std::log(std::max(recent_change, 1e-15));
                 double log_target = std::log(epsilon_y);
                 double log_rate = std::log(status.response_change_rate);
 
-                if (log_rate < -1e-6) {  // Ensure decreasing
+                if (log_rate < -1e-6) {
                     status.estimated_iterations_remaining =
                         static_cast<int>(std::ceil((log_target - log_current) / log_rate));
                 }
@@ -3788,8 +4033,8 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
         }
     }
 
-    // Compute GCV diagnostics
-    const int n_gcv = gcv_history.iterations.size();
+    // Compute GCV diagnostics (unchanged)
+    const int n_gcv = (int)gcv_history.iterations.size();
     if (n_gcv > 0) {
         status.gcv_current = gcv_history.iterations[n_gcv - 1].gcv_optimal;
 
@@ -3797,12 +4042,10 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
             double prev_gcv = gcv_history.iterations[n_gcv - 2].gcv_optimal;
             status.gcv_change = status.gcv_current - prev_gcv;
 
-            // Compute GCV change rate
             if (n_gcv >= 3) {
                 double prev_prev_gcv = gcv_history.iterations[n_gcv - 3].gcv_optimal;
                 double prev_change = prev_gcv - prev_prev_gcv;
 
-                // Avoid division by zero
                 if (std::abs(prev_change) > 1e-15) {
                     status.gcv_change_rate = status.gcv_change / prev_change;
                 } else {
@@ -3826,11 +4069,12 @@ detailed_convergence_status_t riem_dcx_t::check_convergence_detailed(
 
     if (response_converged) {
         status.converged = true;
-        status.message = "Converged: response stable";
+        status.message = y_vertices.empty()
+            ? "Converged: response stable"
+            : "Converged: labeled response stable";
     } else {
         status.message = "Iteration in progress";
 
-        // Add convergence estimate to message if available
         if (status.estimated_iterations_remaining > 0 &&
             status.estimated_iterations_remaining < 100) {
             status.message += " (est. " +
@@ -4586,6 +4830,12 @@ std::string riem_dcx_t::format_gcv_history(
  * high-frequency components. The smoothing parameter eta is selected via
  * Generalized Cross-Validation (GCV) to balance fidelity and smoothness.
  *
+ * If @p y_vertices is non-empty (semi-supervised mode), the response smoothing
+ * step solves a masked objective in the spectral subspace, enforcing fidelity
+ * only on labeled vertices. The GCV criterion and residual diagnostics are
+ * computed on the labeled set only; fitted values are returned for all vertices
+ * as a smooth extension.
+ *
  * **Step 8: Convergence Check** We monitor relative changes in both response
  * and densities. Convergence is declared when:
  *   - ||y_hat^(ell+1) - y_hat^(ell)|| / ||y_hat^(ell)|| < epsilon_y (response stability)
@@ -4639,6 +4889,11 @@ std::string riem_dcx_t::format_gcv_history(
  * **gamma_modulation:** Controls response-coherence modulation strength. Range:
  * 0-2.0. Larger gamma creates stronger geometric adaptation to response structure.
  * Use gamma = 1.0 as default. Set gamma = 0 to disable modulation entirely.
+ *
+ * Semi-supervised mode restriction: when @p y_vertices is provided (labels
+ * observed on a subset of vertices), response-coherence modulation is disabled
+ * and @p gamma_modulation must be 0. This avoids using the unlabeled
+ * extrapolated response field to drive geometric updates.
  *
  * **n_eigenpairs:** Number of eigenpairs for spectral filtering. Typical range:
  * 50-200. More eigenpairs capture finer response variation but increase
@@ -4707,6 +4962,13 @@ std::string riem_dcx_t::format_gcv_history(
  * - Loosening convergence thresholds
  * - Checking for nearly-disconnected geometry
  *
+ * Semi-supervised mode warning: if the graph contains connected components
+ * with no labeled vertices, the masked objective provides no data constraint on
+ * those components. Implementations should explicitly handle Laplacian
+ * nullspace modes in such components (e.g., by excluding unconstrained
+ * zero-eigenvalue modes or adding a small ridge regularization) and downstream
+ * analyses should treat extrema in unlabeled components with caution.
+ *
  * ## Example Usage
  *
  * @code
@@ -4751,6 +5013,15 @@ std::string riem_dcx_t::format_gcv_history(
  * @param[in] y Response vector (n x 1). Can be any real-valued signal defined
  *              on the data points. Method works for both smooth and discontinuous
  *              responses.
+ *
+ * @param[in] y_vertices Optional labeled vertex set for semi-supervised
+ *              regression. If empty, the response @p y is assumed observed on
+ *              all vertices (fully supervised mode). If non-empty, @p y is
+ *              interpreted as a length-n vector whose values are meaningful
+ *              only on indices in @p y_vertices, and the fitted field is
+ *              computed on all vertices by minimizing a masked data-fit term on
+ *              the labeled set plus a Laplacian smoothness penalty in a
+ *              low-frequency spectral subspace.
  *
  * @param[in] k Number of nearest neighbors for graph construction. Controls
  *              local neighborhood size. Typical: 10-50. Larger k captures more
@@ -4860,6 +5131,7 @@ std::string riem_dcx_t::format_gcv_history(
 void riem_dcx_t::fit_rdgraph_regression(
     const spmat_t& X,
     const vec_t& y,
+    const std::vector<index_t>& y_vertices, // labeled vertex set; empty => all vertices labeled
     index_t k,
     bool use_counting_measure,
     double density_normalization,
@@ -4911,6 +5183,12 @@ void riem_dcx_t::fit_rdgraph_regression(
 
     // Store original response EARLY, before any possible early returns
     sig.y = y;
+
+    if (!y_vertices.empty()) {
+        if (gamma_modulation != 0.0) {
+            Rf_error("Semi-supervised mode (y.vertices provided) requires gamma_modulation = 0");
+        }
+    }
 
     // Validate triangle construction for response-coherence
     bool has_triangles = false;
@@ -4971,12 +5249,11 @@ void riem_dcx_t::fit_rdgraph_regression(
     }
 
     gcv_history.clear();
-    auto gcv_result = smooth_response_via_spectral_filter(
-        y,
-        n_eigenpairs,
-        filter_type,
-        verbose
-        );
+
+    auto gcv_result = (y_vertices.empty())
+        ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose)
+        : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose);
+
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
     sig.y_hat_hist.push_back(y_hat_curr);
@@ -5094,6 +5371,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     converged = false;
     n_iterations = 0;
     response_changes.clear();
+    double prev_lambda_2 = NA_REAL;
 
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
@@ -5114,7 +5392,7 @@ void riem_dcx_t::fit_rdgraph_regression(
         }
 
         // Apply damped heat diffusion
-        vec_t rho_vertex_new = apply_damped_heat_diffusion(
+        vec_t rho_vertex_new = apply_damped_heat_diffusion (
             rho_vertex_prev,
             t_diffusion,
             beta_damping,
@@ -5232,17 +5510,6 @@ void riem_dcx_t::fit_rdgraph_regression(
         assemble_operators();
         spectral_cache.invalidate();
 
-        // Test if eigenvalues are changing
-        static double prev_lambda_2 = 0.0;
-        if (iter == 1) {
-            prev_lambda_2 = spectral_cache.lambda_2;
-        } else {
-            double lambda_change = std::abs(spectral_cache.lambda_2 - prev_lambda_2);
-            Rprintf("  lambda_2 changed: %.6e -> %.6e (Delta = %.6e)\n",
-                    prev_lambda_2, spectral_cache.lambda_2, lambda_change);
-            prev_lambda_2 = spectral_cache.lambda_2;
-        }
-
         if (test_stage == 8) {
             Rprintf("TEST_STAGE 8: Stopped after assemble_operators()\n");
             return;
@@ -5258,17 +5525,28 @@ void riem_dcx_t::fit_rdgraph_regression(
             phase_time = std::chrono::steady_clock::now();
         }
 
-        gcv_result = smooth_response_via_spectral_filter(
-            y,
-            n_eigenpairs,
-            filter_type,
-            verbose
-            );
+        gcv_result = (y_vertices.empty())
+            ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose)
+            : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose);
+
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
 
         // Store GCV result for this iteration
         gcv_history.add(gcv_result);
+
+        // Test if eigenvalues are changing
+        if (verbose) {
+            double curr_lambda_2 = spectral_cache.lambda_2;  // now current (computed during smoothing)
+            if (!R_finite(prev_lambda_2)) {
+                prev_lambda_2 = curr_lambda_2;
+            } else {
+                double delta = std::abs(curr_lambda_2 - prev_lambda_2);
+                Rprintf("  lambda_2 changed: %.6e -> %.6e (Delta = %.6e)\n",
+                        prev_lambda_2, curr_lambda_2, delta);
+                prev_lambda_2 = curr_lambda_2;
+            }
+        }
 
         if (test_stage == 9) {
             Rprintf("TEST_STAGE 9: Stopped after smooth_response_via_spectral_filter()\n");
@@ -5282,6 +5560,7 @@ void riem_dcx_t::fit_rdgraph_regression(
         auto status = check_convergence_detailed(
             y_hat_prev,
             y_hat_curr,
+            y_vertices,
             epsilon_y,
             epsilon_rho,
             iter,

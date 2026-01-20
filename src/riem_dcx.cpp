@@ -287,16 +287,16 @@ int riem_dcx_t::compute_connected_components() {
  * and boundary maps. Should be called after any change to the metric.
  */
 void riem_dcx_t::assemble_operators() {
-	// Populate L.c1 from vertex_cofaces before assembly
-	L.c1.resize(edge_registry.size());
-	for (size_t i = 0; i < vertex_cofaces.size(); ++i) {
-		for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
-			index_t e = vertex_cofaces[i][k].simplex_index;
-			L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-10);
-		}
-	}
+    // Populate L.c1 from vertex_cofaces before assembly
+    L.c1.resize(edge_registry.size());
+    for (size_t i = 0; i < vertex_cofaces.size(); ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t e = vertex_cofaces[i][k].simplex_index;
+            L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-10);
+        }
+    }
 
-	L.assemble_all(g);
+    L.assemble_all(g);
 }
 
 /**
@@ -775,7 +775,7 @@ extern "C" SEXP S_compute_hop_extremp_radii_batch(
     SEXP s_p_threshold,
     SEXP s_detect_maxima,
     SEXP s_max_hop
-	) {
+    ) {
     // ================================================================
     // INPUT VALIDATION
     // ================================================================
