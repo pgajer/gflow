@@ -403,10 +403,26 @@ compute.Lp.graphs <- function(X,
 
         `%dopar%` <- foreach::`%dopar%`
 
+        if (1) { # this is not CRAN safe
+            ## --- ensure dev gflow is loaded on each worker (not the installed one)
+            gflow.path <- normalizePath(".", mustWork = TRUE)  ## adjust: path to your package root
+
+            parallel::clusterExport(cl, varlist = "gflow.path", envir = environment())
+
+            parallel::clusterEvalQ(cl, {
+                if (!requireNamespace("pkgload", quietly = TRUE)) {
+                    stop("pkgload is required on workers. Install it.")
+                }
+                ## Load the dev package into the worker session
+                pkgload::load_all(gflow.path, compile = FALSE, attach = TRUE, export_all = FALSE)
+                NULL
+            })
+        }
+
         results <- foreach::foreach(
                                 i = seq_along(p.to.compute),
                                 .errorhandling = "pass",
-                                .packages = "gflow",
+                                ## .packages = "gflow",
                                 .verbose = FALSE
                             ) %dopar% {
                                 single.p <- p.to.compute[i]
