@@ -666,8 +666,7 @@ fit.rdgraph.regression <- function(
 
     ## Semi-supervised option:
     ## - if y.vertices is NULL: y must be length n (current behavior)
-    ## - if y.vertices is provided: y must be length length(y.vertices), and will be
-    ##   embedded into a length-n vector for C++ (unlabeled entries set to 0 and ignored by mask)
+    ## - if y.vertices is provided: y over unlabeled entries will be set to 0 and ignored by mask
 
     if (!is.numeric(y)) {
         stop("y must be numeric")
@@ -710,11 +709,6 @@ fit.rdgraph.regression <- function(
             stop("y.vertices cannot contain duplicates")
         }
 
-        ## Validate y values on labeled vertices
-        if (length(y) != length(y.vertices)) {
-            stop(sprintf("In semi-supervised mode, length(y) (%d) must equal length(y.vertices) (%d)",
-                         length(y), length(y.vertices)))
-        }
         if (anyNA(y)) {
             stop("y cannot contain NA values (provide y only for labeled vertices)")
         }
@@ -726,7 +720,7 @@ fit.rdgraph.regression <- function(
 
         ## Embed into full vector for C++ (unlabeled entries are ignored there)
         y.full <- numeric(n)
-        y.full[y.vertices] <- y
+        y.full[y.vertices] <- y[y.vertices]
         y <- y.full
     }
 
