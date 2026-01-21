@@ -2264,6 +2264,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     vec_t rho_new;
     bool cg_converged = false;
+    bool cg_attempted = false;
     bool used_direct_solver = false;
     int cg_iterations = 0;
     double cg_error = 0.0;
@@ -2279,14 +2280,18 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
         Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper,
                                  Eigen::DiagonalPreconditioner<double>> cg;
 
+        cg_attempted = true;
         cg.setMaxIterations(2000);
         cg.setTolerance(1e-8);
         cg.compute(A);
 
+        // CG diagnostics
+        const Eigen::ComputationInfo cg_status = cg.info();
+        cg_iterations = cg.iterations();
+        cg_error = cg.error();  // Residual norm
+
         if (cg.info() == Eigen::Success) {
             rho_new = cg.solve(b);
-            cg_iterations = cg.iterations();
-            cg_error = cg.error();
             cg_converged = (cg.info() == Eigen::Success && cg_error < CG_RESIDUAL_THRESHOLD);
 
             // Quick check: if many negative values, CG solution is garbage
@@ -2305,11 +2310,6 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                 }
             }
         }
-
-        // CG diagnostics
-        const Eigen::ComputationInfo cg_status = cg.info();
-        const int cg_iterations = cg.iterations();
-        const double cg_error = cg.error();  // Residual norm
 
         // Determine if CG had issues
         bool cg_converged = (cg_status == Eigen::Success);
@@ -2332,7 +2332,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     if (!cg_converged || n <= DIRECT_SOLVER_THRESHOLD) {
         used_direct_solver = true;
 
-        if (verbose) {
+        if (verbose && cg_attempted && !cg_converged) {
             Rprintf("  CG failed (residual=%.3e, iter=%d). Using direct solver for n=%ld...\n",
                     cg_error, cg_iterations, static_cast<long>(n));
         }
@@ -2396,12 +2396,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                    cg_iterations, 2000, cg_error, 1e-8);
     }
 
-    if (used_direct_solver) {
-        Rprintf("  Solver: DIRECT (fallback from CG)\n");
-    } else {
-        Rprintf("  Solver: CG %s after %d iterations (residual=%.3e)\n",
-                cg_converged ? "converged" : "FAILED",
-                cg_iterations, cg_error);
+    if (verbose) {
+        if (used_direct_solver) {
+            Rprintf("  Solver: DIRECT (n <= DIRECT_SOLVER_THRESHOLD)\n");
+        } else {
+            Rprintf("  Solver: CG %s after %d iterations (residual=%.3e)\n",
+                    cg_converged ? "converged" : "FAILED",
+                    cg_iterations, cg_error);
+        }
     }
 
     // ========================================================================
@@ -2466,7 +2468,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                     "This may improve in later iterations.\n",
                     100.0 * relative_sum_error);
         }
-    } else if (!cg_converged || cg_suspicious) {
+    } else if (cg_attempted && (!cg_converged || cg_suspicious)) {
         // CG had issues but sum looks reasonable - maybe it's actually okay
         if (verbose) {
             Rprintf("  CG convergence was questionable (residual=%.3e) but "
