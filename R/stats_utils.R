@@ -2654,45 +2654,69 @@ find.barrier <- function(distances, idx, direction = c("left", "right")) {
 #' Internal helper function that identifies local minima in a numeric vector
 #' and returns the corresponding k values at those positions.
 #'
-#' @param x A numeric vector in which to find local minima
-#' @param k.values A numeric vector of k values corresponding to positions in x
+#' @param x A numeric vector in which to find local minima.
+#' @param k.values A numeric vector of k values corresponding to positions in x.
+#' @param include.boundary Character string controlling whether boundary points
+#'   (first/last element) can be considered local minima. Options:
+#'   \itemize{
+#'     \item \code{"both"}: (default) allow both first and last elements to be minima
+#'     \item \code{"none"}: consider only strict interior minima
+#'     \item \code{"left"}: allow only the first element
+#'     \item \code{"right"}: allow only the last element
+#'   }
 #'
 #' @return A numeric vector containing the k values at positions where local minima occur.
-#'   Returns an empty numeric vector if x has fewer than 3 elements or no local minima exist.
+#'   Returns an empty numeric vector if x has fewer than 2 elements (or fewer than 3
+#'   for interior-only detection) or if no minima exist under the chosen rule.
 #'
 #' @details
-#' A local minimum is defined as a point where the value is less than both its
-#' immediate neighbors. The function uses second differences to identify these points.
+#' Interior local minima are defined strictly as \eqn{x[i-1] > x[i] < x[i+1]}.
+#' If \code{include.boundary} allows endpoints, then boundary minima are defined
+#' one-sided as \eqn{x[1] < x[2]} (left) and/or \eqn{x[n] < x[n-1]} (right).
 #'
 #' @keywords internal
 #' @noRd
-internal.find.local.minima <- function(x, k.values) {
-  # Input validation
-  if (!is.numeric(x)) {
-    stop("x must be a numeric vector")
-  }
-  if (!is.numeric(k.values)) {
-    stop("k.values must be a numeric vector")
-  }
-  if (length(x) != length(k.values)) {
-    stop("x and k.values must have the same length")
-  }
+internal.find.local.minima <- function(x, k.values,
+                                      include.boundary = c("both", "none", "left", "right")) {
 
-  # Need at least 3 points to have a local minimum
-  if (length(x) < 3) {
-    return(numeric(0))
-  }
+    ## Input validation
+    if (!is.numeric(x)) {
+        stop("x must be a numeric vector")
+    }
+    if (!is.numeric(k.values)) {
+        stop("k.values must be a numeric vector")
+    }
+    if (length(x) != length(k.values)) {
+        stop("x and k.values must have the same length")
+    }
 
-  # Find local minima
-  # A point is a local minimum if x[i-1] > x[i] < x[i+1]
-  n <- length(x)
-  is.min <- logical(n)
+    include.boundary <- match.arg(include.boundary)
 
-  for (i in 2:(n-1)) {
-    is.min[i] <- x[i] < x[i-1] && x[i] < x[i+1]
-  }
+    n <- length(x)
 
-  k.values[is.min]
+    ## Need at least 2 points to even talk about boundary minima
+    if (n < 2) {
+        return(numeric(0))
+    }
+
+    is.min <- rep(FALSE, n)
+
+    ## Interior minima need at least 3 points
+    if (n >= 3) {
+        for (i in 2:(n - 1)) {
+            is.min[i] <- (x[i] < x[i - 1]) && (x[i] < x[i + 1])
+        }
+    }
+
+    ## Optional boundary minima (one-sided)
+    if (include.boundary %in% c("both", "left")) {
+        is.min[1] <- (x[1] < x[2])
+    }
+    if (include.boundary %in% c("both", "right")) {
+        is.min[n] <- (x[n] < x[n - 1])
+    }
+
+    k.values[is.min]
 }
 
 #' Pearson Weighted Correlation Coefficient
