@@ -1641,16 +1641,22 @@ SEXP S_create_iknn_graphs(
             Rf_error("n_cores must be NULL or a length-1 integer.");
         }
         int req = INTEGER(s_n_cores)[0];
+        // Rprintf("\treq: %d\n", req);
         if (req == NA_INTEGER) {
             Rf_error("n_cores cannot be NA.");
         }
         if (req > 0) num_threads = req;
+    } else {
+        num_threads = gflow_get_num_procs();
     }
 
     // Clamp to available threads
-    const int max_t = gflow_get_max_threads();  // 1 when OpenMP is absent
+    const int max_t = gflow_get_num_procs(); // gflow_get_max_threads();  // 1 when OpenMP is absent
+    // Rprintf("\tmax_t: %d\n", max_t);
+
     if (num_threads > max_t) num_threads = max_t;
     if (num_threads < 1)     num_threads = 1;
+    // Rprintf("\tnum_threads: %d\n", num_threads);
 
     // Set threads (no-op if OpenMP is absent)
     gflow_set_num_threads(num_threads);
