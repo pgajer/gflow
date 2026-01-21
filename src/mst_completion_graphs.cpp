@@ -4,7 +4,6 @@
 #include <numeric>
 
 #include "mst_completion_graphs.hpp"
-// #include "cpp_utils.hpp"
 #include "error_utils.h" // For REPORT_ERROR
 
 #include <vector>
