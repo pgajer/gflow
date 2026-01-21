@@ -12,9 +12,11 @@
 #' @param y Numeric vector of length n containing response values. Cannot
 #'   contain NA or infinite values.
 #'
-#' @param y.vertices NULL or an integer vector of vertex indices over which the
-#'     conditional expectation of y will be estimated. If y.vertices = NULL, the
-#'     conditional expectation of y will be estimted over all vertices.
+#' @param y.vertices Indices of labeled vertices; only these contribute to the
+#'     data-fit term; fitted field is returned on all vertices. NULL or an
+#'     integer vector of vertex indices over which the conditional expectation
+#'     of y will be estimated. If y.vertices = NULL, the conditional expectation
+#'     of y will be estimted over all vertices.
 #'
 #' @param k Integer scalar giving the number of nearest neighbors. Must satisfy
 #'   \eqn{2 \le k < n}. Larger k produces smoother fits but may oversmooth
@@ -900,11 +902,6 @@ fit.rdgraph.regression <- function(
     if (t.scale.factor <= 0) {
         stop("t.scale.factor must be positive (got ", t.scale.factor,
              "). Typical range: [0.1, 1.0]")
-    }
-
-    if (t.scale.factor < 0.05) {
-        warning("Very small t.scale.factor (", t.scale.factor,
-                "): convergence will be extremely slow. Consider increasing to at least 0.1.")
     }
 
     if (t.scale.factor > 2.0) {
