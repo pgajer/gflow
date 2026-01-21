@@ -2240,9 +2240,16 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     spmat_t I(n, n);
     I.setIdentity();
 
-    // Build system matrix: A = I + t*L_0 + t*β*I = (1 + t*β)*I + t*L_0
+    // Build system matrix: A = (1 + t*β) I + t * L0
     const double identity_coeff = 1.0 + t * beta;
-    spmat_t A = identity_coeff * I + t * L.L[0];
+
+    // Prefer symmetric normalized Laplacian when available.
+    // This avoids using L.L[0], which may be non-symmetric in the Euclidean inner product.
+    const spmat_t& L0 = (L.L0_sym.rows() == n && L.L0_sym.cols() == n)
+        ? L.L0_sym
+        : L.L[0];
+
+    spmat_t A = identity_coeff * I + t * L0;
 
     // Compress for efficient solve
     A.makeCompressed();
@@ -2346,22 +2353,40 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
         // For n < 2500, this is ~32MB and very fast
         Eigen::MatrixXd A_dense = Eigen::MatrixXd(A);
 
+        // Symmetry diagnostics on the *assembled* matrix (before any symmetrization)
+        double rel_asym_frob = NA_REAL;
+        double max_abs_asym = NA_REAL;
+        {
+            Eigen::MatrixXd A_diff = A_dense - A_dense.transpose();
+            const double asym_frob = A_diff.norm();              // Frobenius norm
+            const double A_frob = std::max(A_dense.norm(), 1e-30);
+            rel_asym_frob = asym_frob / A_frob;
+            max_abs_asym = A_diff.cwiseAbs().maxCoeff();
+        }
+
+        // Enforce symmetry explicitly for LDLT.
+        // (Even if A is mathematically symmetric, small numerical asymmetries can appear.)
+        A_dense = 0.5 * (A_dense + A_dense.transpose());
+
         // Use LDLT (robust Cholesky for symmetric positive semi-definite)
         Eigen::LDLT<Eigen::MatrixXd> ldlt(A_dense);
 
         if (ldlt.info() == Eigen::Success) {
             rho_new = ldlt.solve(b);
 
-            // Verify solution quality
-            double direct_residual = (A_dense * rho_new - b).norm() / b.norm();
+            const double denom = std::max(b.norm(), 1e-30);
+            const double direct_residual = (A_dense * rho_new - b).norm() / denom;
 
             if (verbose) {
                 Rprintf("  Direct solver: residual=%.3e\n", direct_residual);
             }
 
-            if (direct_residual > 1e-6) {
-                Rf_warning("apply_damped_heat_diffusion: Direct solver residual %.3e is unexpectedly large",
-                           direct_residual);
+            // Strict and meaningful threshold now that A is symmetric-consistent
+            if (direct_residual > 1e-8) {
+                Rf_warning("apply_damped_heat_diffusion: Direct solver residual %.3e exceeds threshold %.1e. "
+                           "Symmetry diagnostics (pre-symmetrization): rel_asym_frob=%.3e, max_abs_asym=%.3e. "
+                           "This may indicate assembly/conditioning issues.",
+                           direct_residual, 1e-8, rel_asym_frob, max_abs_asym);
             }
         } else {
             // LDLT failed - matrix might not be positive definite
@@ -2557,13 +2582,17 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
         final_ratio > 5e7 || n_negative > 0 || n_clamped > n * 0.05) {
 
         Rprintf("\n  === Density Evolution Diagnostics ===\n");
-        Rprintf("  CG solver: %s after %d iterations (residual=%.3e)\n",
-                cg_converged ? "converged" : "FAILED",
-                cg_iterations, cg_error);
+
+        if (cg_attempted) {
+            Rprintf("  CG solver: %s after %d iterations (residual=%.3e)\n",
+                    cg_converged ? "converged" : "FAILED",
+                    cg_iterations, cg_error);
+        }
+
         Rprintf("  Negative values: %d vertices (%.1f%%), worst=%.3e\n",
                 n_negative, 100.0 * n_negative / n, max_negative);
-        Rprintf("  Sum error: %.2e relative (%.3e absolute)\n",
-                relative_sum_error, std::abs(normalized_sum - n_double));
+        Rprintf("  Pre-normalization mass deviation: %.2e relative (sum=%.6e, target=%.0f)\n",
+                relative_sum_error, current_sum, n_double);
         Rprintf("  Clamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
                 n_clamped, 100.0 * n_clamped / n, MIN_DENSITY);
         Rprintf("  Final range: [%.3e, %.3e], ratio=%.2e\n",
@@ -5375,6 +5404,15 @@ void riem_dcx_t::fit_rdgraph_regression(
     response_changes.clear();
     double prev_lambda_2 = NA_REAL;
 
+    // Early-stop: best-so-far GCV plateau tracking
+    const double gcv_improve_eps = 1e-7;  // requested scale
+    const int gcv_patience = 4;          // 3–5; choose 4 as default
+    double best_gcv_so_far = gcv_history.iterations.back().gcv_optimal;
+    int gcv_no_improve_count = 0;
+    std::vector<double> density_change_rel_history;
+    density_change_rel_history.reserve(max_iterations);
+    vec_t rho_prev_iter;  // for density change across iterations
+
     for (int iter = 1; iter <= max_iterations; ++iter) {
         y_hat_prev = y_hat_curr;
 
@@ -5409,17 +5447,23 @@ void riem_dcx_t::fit_rdgraph_regression(
             vertex_cofaces[i][0].density = rho_vertex_new[i];
         }
 
-        // Test if density evolution is working
-        static vec_t rho_prev_iter;
+        double density_change_rel = NA_REAL;
+
         if (iter == 1) {
-            rho_prev_iter = rho_vertex_prev;
+            rho_prev_iter = rho_vertex_new;
         } else {
-            double density_change_norm = (rho_vertex_new - rho_prev_iter).norm();
-            double density_norm = rho_prev_iter.norm();
-            Rprintf("  Density L2 change: %.6e (relative: %.6e)\n",
-                    density_change_norm, density_change_norm / density_norm);
+            const double density_change_norm = (rho_vertex_new - rho_prev_iter).norm();
+            const double density_norm = std::max(rho_prev_iter.norm(), 1e-15);
+            density_change_rel = density_change_norm / density_norm;
+            rho_prev_iter = rho_vertex_new;
+
+            if (verbose) {
+                Rprintf("  Density L2 change: %.6e (relative: %.6e)\n",
+                        density_change_norm, density_change_rel);
+            }
         }
-        rho_prev_iter = rho_vertex_new;
+
+        density_change_rel_history.push_back(density_change_rel);
 
         if (test_stage == 3) {
             Rprintf("TEST_STAGE 3: Stopped after first diffusion\n");
@@ -5484,14 +5528,14 @@ void riem_dcx_t::fit_rdgraph_regression(
         // double gamma_eff = gamma_modulation * std::min(1.0, iter / 5.0);
         // apply_response_coherence_modulation(y_hat_curr, gamma_eff);
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 5: Apply response-coherence modulation to fresh M[1] ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         if (gamma_modulation > 0.0) {
             apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
+
+            if (verbose) {
+                elapsed_time(phase_time, "DONE", true);
+                Rprintf("itr %d: Step 5: Apply response-coherence modulation to fresh M[1] ... ", iter);
+                phase_time = std::chrono::steady_clock::now();
+            }
         }
 
         if (test_stage == 7) {
@@ -5536,6 +5580,33 @@ void riem_dcx_t::fit_rdgraph_regression(
 
         // Store GCV result for this iteration
         gcv_history.add(gcv_result);
+
+        // --------------------------------------------------------------
+        // Early-stop: stop if best-so-far GCV has plateaued
+        // --------------------------------------------------------------
+        {
+            const double gcv_curr = gcv_history.iterations.back().gcv_optimal;
+
+            if (gcv_curr < best_gcv_so_far - gcv_improve_eps) {
+                best_gcv_so_far = gcv_curr;
+                gcv_no_improve_count = 0;
+            } else {
+                gcv_no_improve_count++;
+            }
+
+            if (gcv_no_improve_count >= gcv_patience) {
+                converged = true;
+                n_iterations = iter;
+
+                if (verbose) {
+                    Rprintf("Early stop: best GCV has not improved by more than %.1e for %d consecutive iterations "
+                            "(best=%.6e, current=%.6e)\n",
+                            gcv_improve_eps, gcv_patience, best_gcv_so_far, gcv_curr);
+                }
+
+                break;
+            }
+        }
 
         // Test if eigenvalues are changing
         if (verbose) {
@@ -5630,6 +5701,8 @@ void riem_dcx_t::fit_rdgraph_regression(
             }
         }
 
+#if 0
+        // Old GCV stabilization rule (replaced by best-so-far plateau early stop)
         // Check if GCV has stabilized
         if (gcv_history.size() >= 3) {
             double gcv_variation = 0.0;
@@ -5667,6 +5740,75 @@ void riem_dcx_t::fit_rdgraph_regression(
                 }
 
                 break;
+            }
+        }
+#endif
+
+        // --------------------------------------------------------------
+        // Observed non-convergence diagnostics (warning-level)
+        // --------------------------------------------------------------
+        // Thresholds:
+        //     * (K = 5) iterations window
+        //     * (\epsilon_{\text{gcv}} = 1\times 10^{-7}) (same as plateau rule)
+        //     * (\epsilon_{\rho} = 1\times 10^{-3}) for density stabilization (tune later)
+        //     * “response high” if `status.response_change > 10 * epsilon_y`
+        {
+            const int K = 5;
+            const double eps_gcv = 1e-7;
+            const double eps_rho = 1e-3;
+
+            // 1) If GCV has not improved meaningfully in the last K iterations, warn once.
+            //    (Use the same notion as the plateau logic, but as a diagnostic message.)
+            if (iter >= K) {
+                double best_recent = std::numeric_limits<double>::infinity();
+                double best_before = std::numeric_limits<double>::infinity();
+
+                const int n_g = (int)gcv_history.iterations.size();
+                const int start_recent = std::max(0, n_g - K);
+                for (int i = start_recent; i < n_g; ++i) {
+                    best_recent = std::min(best_recent, gcv_history.iterations[i].gcv_optimal);
+                }
+                for (int i = 0; i < start_recent; ++i) {
+                    best_before = std::min(best_before, gcv_history.iterations[i].gcv_optimal);
+                }
+
+                if (std::isfinite(best_before) && std::isfinite(best_recent)) {
+                    if (best_before - best_recent < eps_gcv) {
+                        // You may want to rate-limit this warning (e.g. only once).
+                        // Use a static flag to avoid spamming.
+                        static bool warned_gcv_plateau = false;
+                        if (!warned_gcv_plateau) {
+                            warned_gcv_plateau = true;
+                            Rf_warning("Observed non-convergence: best GCV has not improved by more than %.1e "
+                                       "over the last %d iterations (best_before=%.6e, best_recent=%.6e).",
+                                       eps_gcv, K, best_before, best_recent);
+                        }
+                    }
+                }
+            }
+
+            // 2) If density has stabilized but response remains unstable, warn once.
+            if (iter >= K) {
+                double max_rho_rel = 0.0;
+                for (int k = 0; k < K; ++k) {
+                    const double v = density_change_rel_history[density_change_rel_history.size() - 1 - k];
+                    if (R_finite(v)) {
+                        max_rho_rel = std::max(max_rho_rel, v);
+                    }
+                }
+
+                if (max_rho_rel < eps_rho && status.response_change > 10.0 * epsilon_y) {
+                    static bool warned_rho_vs_y = false;
+                    if (!warned_rho_vs_y) {
+                        warned_rho_vs_y = true;
+                        Rf_warning("Observed non-convergence: geometry appears stable "
+                                   "(max relative density L2 change over last %d iterations = %.3e < %.3e) "
+                                   "but response remains unstable (response_change=%.3e > 10*epsilon_y=%.3e). "
+                                   "Consider adjusting spectral filtering (n.eigenpairs / eta grid) or "
+                                   "reducing modulation parameters.",
+                                   K, max_rho_rel, eps_rho, status.response_change, 10.0 * epsilon_y);
+                    }
+                }
             }
         }
 
