@@ -206,7 +206,12 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 }
 #endif
 
+SEXP S_gflow_openmp_diag();
+
 static const R_CallMethodDef CallMethods[] = {
+  // diagnostic
+  {"S_gflow_openmp_diag", (DL_FUNC) &S_gflow_openmp_diag, 0},
+
   // clustering cell trajectories
   {"S_cluster_cell_trajectories", (DL_FUNC) &S_cluster_cell_trajectories, 12},
 
