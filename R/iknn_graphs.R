@@ -271,7 +271,7 @@ create.iknn.graphs <- function(X,
 #' about the connectivity and structure of the graphs for different k values.
 #'
 #' @param object An object of class 'iknn_graphs', typically the output of create.iknn.graphs().
-#' @param use_isize_pruned Logical. If TRUE, computes and displays statistics for the intersection-size
+#' @param use.isize.pruned Logical. If TRUE, computes and displays statistics for the intersection-size
 #'        pruned graphs (isize_pruned_graphs). If FALSE (default), computes statistics for the
 #'        geometrically pruned graphs (geom_pruned_graphs).
 #' @param ... Additional arguments passed to or from other methods (not currently used).
@@ -315,13 +315,13 @@ create.iknn.graphs <- function(X,
 #' summary(iknn.res)
 #'
 #' # Summarize the intersection-size pruned graphs
-#' summary(iknn.res, use_isize_pruned = TRUE)
+#' summary(iknn.res, use.isize.pruned = TRUE)
 #'
 #' @seealso \code{\link{create.iknn.graphs}} for creating intersection kNN graphs.
 #'
 #' @export
 summary.iknn_graphs <- function(object,
-                                use_isize_pruned = FALSE,
+                                use.isize.pruned = FALSE,
                                 ...) {
 
     ## Check if the object is of the correct class
@@ -330,7 +330,7 @@ summary.iknn_graphs <- function(object,
     }
 
     ## Determine which graphs to use
-    if (use_isize_pruned) {
+    if (use.isize.pruned) {
         graphs_to_use <- object$isize_pruned_graphs
         graph_type <- "intersection-size pruned"
         if (is.null(graphs_to_use)) {
@@ -426,70 +426,204 @@ summary.iknn_graphs <- function(object,
 }
 
 
-# Updated helper function to compute stability metrics
-compute.stability.metrics <- function(graphs, k.values, graph_type = "geom") {
+#' Compute Stability Metrics Across a Sequence of IkNN Graphs
+#'
+#' @description
+#' Computes stability diagnostics across the pruned IkNN graphs produced by
+#' \code{\link{create.iknn.graphs}}. Metrics include:
+#' \itemize{
+#'   \item Edit distances between consecutive graphs (edge-set symmetric difference)
+#'   \item Jensen-Shannon divergence between degree profiles of consecutive graphs
+#'   \item Edge counts in pruned graphs across k
+#'   \item Piecewise linear fits and breakpoints for each diagnostic curve
+#'   \item Local minima locations for each diagnostic curve
+#' }
+#'
+#' The function derives \code{k.values} from the \code{"kmin"} and \code{"kmax"}
+#' attributes attached to the input \code{iknn_graphs} object.
+#'
+#' @param graphs An object of class \code{"iknn_graphs"} returned by
+#'   \code{\link{create.iknn.graphs}}.
+#' @param graph.type Character string, either \code{"geom"} or \code{"isize"},
+#'   selecting which pruned graph sequence is analyzed.
+#'
+#' @return An object of class \code{"iknn_stability_metrics"} (a list) with fields:
+#' \describe{
+#'   \item{k.values}{Integer vector of k values analyzed.}
+#'   \item{graph.type}{Which pruned graph sequence was used (\code{"geom"} or \code{"isize"}).}
+#'   \item{edit.distances}{Numeric vector of length \code{length(k.values)-1}.}
+#'   \item{js.div}{Numeric vector of length \code{length(k.values)-1}.}
+#'   \item{n.edges}{Numeric vector of length \code{length(k.values)} (if available).}
+#'   \item{n.edges.in.pruned.graph}{Numeric vector of length \code{length(k.values)}.}
+#'   \item{edge.reduction.ratio}{Numeric vector of length \code{length(k.values)} (if available).}
+#'   \item{*.pwlm}{Piecewise linear model objects for each curve (if \code{fit.pwlm} exists).}
+#'   \item{*.breakpoint}{Estimated breakpoint for each curve (if \code{fit.pwlm} exists).}
+#'   \item{*.lmin}{Local minima k values for each curve (if \code{internal.find.local.minima} exists).}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' graphs <- create.iknn.graphs(X, kmin = 6, kmax = 15, n.cores = 4)
+#' stab <- compute.stability.metrics(graphs, graph.type = "geom")
+#' plot(stab)
+#' ok <- find.optimal.k(stab)
+#' ok$opt.k
+#' }
+#'
+#' @export
+compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
 
-    # Initialize results
-    n.edges <- numeric(length(k.values))
-    n.edges.in.pruned.graph <- numeric(length(k.values))
-    edge.reduction.ratio <- numeric(length(k.values))
-    js.div <- numeric(length(k.values) - 1)
+    graph.type <- match.arg(graph.type)
 
-    # Get the appropriate column name based on graph type
-    if (graph_type == "geom") {
-        edge_col <- "n_edges_in_geom_pruned_graph"
-        ratio_col <- "geom_edge_reduction_ratio"
-    } else {
-        edge_col <- "n_edges_in_isize_pruned_graph"
-        ratio_col <- "isize_edge_reduction_ratio"
+    if (!inherits(graphs, "iknn_graphs")) {
+        stop("graphs must be an object of class 'iknn_graphs' returned by create.iknn.graphs().")
     }
 
-    # Compute basic metrics
-    for (i in seq_along(k.values)) {
-        graph <- graphs[[i]]
+    kmin <- attr(graphs, "kmin")
+    kmax <- attr(graphs, "kmax")
 
-        # Count edges in the graph
-        if (!is.null(graph$adj_list)) {
-            n.edges.in.pruned.graph[i] <- sum(sapply(graph$adj_list, length)) / 2
+    if (!is.numeric(kmin) || !is.numeric(kmax) || length(kmin) != 1 || length(kmax) != 1) {
+        stop("graphs must have numeric scalar attributes 'kmin' and 'kmax'.")
+    }
+
+    k.values <- as.integer(kmin:kmax)
+
+    graphs.list <- if (graph.type == "geom") graphs$geom_pruned_graphs else graphs$isize_pruned_graphs
+
+    if (is.null(graphs.list)) {
+        stop("Requested pruned graphs are not available. Recompute create.iknn.graphs(..., compute.full = TRUE).")
+    }
+
+    if (length(graphs.list) != length(k.values)) {
+        stop("Length mismatch: pruned graph list length does not match kmin:kmax.")
+    }
+
+    ## ------------------------------------------------------------------------
+    ## Prefer k_statistics for edge counts if present
+    ## ------------------------------------------------------------------------
+
+    k.stats <- graphs$k_statistics
+    have.k.stats <- !is.null(k.stats) && is.matrix(k.stats) && nrow(k.stats) >= length(k.values)
+
+    n.edges <- rep(NA_real_, length(k.values))
+    n.edges.in.pruned.graph <- rep(NA_real_, length(k.values))
+    edge.reduction.ratio <- rep(NA_real_, length(k.values))
+
+    if (have.k.stats) {
+
+        ## Determine row mapping: either explicit 'k' column, or assume order
+        if (!is.null(colnames(k.stats)) && ("k" %in% colnames(k.stats))) {
+            row.idx <- match(k.values, as.integer(k.stats[, "k"]))
+        } else {
+            ## Assume the matrix rows already correspond to kmin:kmax
+            row.idx <- seq_along(k.values)
         }
 
-        # Compute JS divergence for consecutive graphs
-        if (i < length(k.values)) {
-            next_graph <- graphs[[i + 1]]
-            js.div[i] <- compute.degrees.js.divergence(graph, next_graph)
+        ## Choose columns based on graph.type
+        if (!is.null(colnames(k.stats))) {
+            if (graph.type == "geom") {
+                edge.col <- "n_edges_in_geom_pruned_graph"
+                ratio.col <- "geom_edge_reduction_ratio"
+            } else {
+                edge.col <- "n_edges_in_isize_pruned_graph"
+                ratio.col <- "isize_edge_reduction_ratio"
+            }
+
+            if ("n_edges" %in% colnames(k.stats)) {
+                n.edges <- as.numeric(k.stats[row.idx, "n_edges"])
+            }
+            if (edge.col %in% colnames(k.stats)) {
+                n.edges.in.pruned.graph <- as.numeric(k.stats[row.idx, edge.col])
+            }
+            if (ratio.col %in% colnames(k.stats)) {
+                edge.reduction.ratio <- as.numeric(k.stats[row.idx, ratio.col])
+            }
         }
     }
 
-    ## Compute edit distances
-    edit.distances <- compute.edit.distances(graphs, k.values)
-    edit.distances.lmin <- internal.find.local.minima(edit.distances, k.values)
+    ## ------------------------------------------------------------------------
+    ## Fallback: count pruned edges directly if missing
+    ## ------------------------------------------------------------------------
 
-    ## Fit piecewise linear models
-    edit.distances.model <- fit.pwlm(k.values[-length(k.values)], edit.distances)
-    edge.model <- fit.pwlm(k.values, n.edges.in.pruned.graph)
-    js.model <- fit.pwlm(k.values[-length(k.values)], js.div)
+    if (any(!is.finite(n.edges.in.pruned.graph))) {
+        for (i in seq_along(k.values)) {
+            g <- graphs.list[[i]]
+            if (!is.null(g$adj_list)) {
+                n.edges.in.pruned.graph[i] <- sum(vapply(g$adj_list, length, integer(1))) / 2
+            }
+        }
+    }
 
-    ## Find local minima
-    edit.distances.lmin <- internal.find.local.minima(edit.distances, k.values)
-    edge.lmin <- internal.find.local.minima(n.edges.in.pruned.graph, k.values)
-    js.lmin <- internal.find.local.minima(js.div, k.values)
+    if (any(!is.finite(edge.reduction.ratio)) && any(is.finite(n.edges)) && all(is.finite(n.edges.in.pruned.graph))) {
+        edge.reduction.ratio <- (n.edges - n.edges.in.pruned.graph) / n.edges
+    }
 
-    list(
-        edit.distances = edit.distances,
-        edit.distances.lmin = edit.distances.lmin,
-        edit.distances.pwlm = edit.distances.model$model,
-        edit.distances.breakpoint = edit.distances.model$breakpoint,
+    ## ------------------------------------------------------------------------
+    ## Consecutive-graph metrics: JS divergence and edit distance
+    ## ------------------------------------------------------------------------
+
+    js.div <- numeric(max(0L, length(k.values) - 1L))
+    if (length(k.values) >= 2L) {
+        for (i in seq_len(length(k.values) - 1L)) {
+            js.div[i] <- compute.degrees.js.divergence(graphs.list[[i]], graphs.list[[i + 1L]])
+        }
+    }
+
+    edit.distances <- compute.edit.distances(graphs.list)
+
+    ## ------------------------------------------------------------------------
+    ## Local minima + piecewise linear models (if helpers exist)
+    ## ------------------------------------------------------------------------
+
+    have.lmin <- exists("internal.find.local.minima", mode = "function")
+    have.pwlm <- exists("fit.pwlm", mode = "function")
+
+    edit.distances.lmin <- integer(0)
+    edge.lmin <- integer(0)
+    js.lmin <- integer(0)
+
+    edit.distances.model <- NULL
+    edge.model <- NULL
+    js.model <- NULL
+
+    if (have.lmin && length(k.values) >= 2L) {
+        edit.distances.lmin <- internal.find.local.minima(edit.distances, k.values[-length(k.values)])
+        js.div.lmin <- internal.find.local.minima(js.div, k.values[-length(k.values)])
+    }
+    if (have.lmin) {
+        edge.lmin <- internal.find.local.minima(n.edges.in.pruned.graph, k.values)
+    }
+
+    if (have.pwlm && length(k.values) >= 2L) {
+        edit.distances.model <- fit.pwlm(k.values[-length(k.values)], edit.distances)
+        js.model <- fit.pwlm(k.values[-length(k.values)], js.div)
+    }
+    if (have.pwlm) {
+        edge.model <- fit.pwlm(k.values, n.edges.in.pruned.graph)
+    }
+
+    result <- list(
+        k.values = k.values,
+        k.tr = k.values[-length(k.values)],
+        graph.type = graph.type,
         n.edges = n.edges,
         n.edges.in.pruned.graph = n.edges.in.pruned.graph,
         edge.reduction.ratio = edge.reduction.ratio,
-        n.edges.lmin = edge.lmin,
-        edge.pwlm = edge.model$model,
-        edge.breakpoint = edge.model$breakpoint,
+        edit.distances = edit.distances,
         js.div = js.div,
-        js.lmin = js.lmin,
-        js.div.pwlm = js.model$model,
-        js.div.breakpoint = js.model$breakpoint
+        edit.distances.lmin = edit.distances.lmin,
+        n.edges.lmin = edge.lmin,
+        js.div.lmin = js.div.lmin,
+        edit.distances.pwlm = if (!is.null(edit.distances.model)) edit.distances.model$model else NULL,
+        edit.distances.breakpoint = if (!is.null(edit.distances.model)) edit.distances.model$breakpoint else NA_real_,
+        n.edges.in.pruned.graph.pwlm = if (!is.null(edge.model)) edge.model$model else NULL,
+        n.edges.in.pruned.graph.breakpoint = if (!is.null(edge.model)) edge.model$breakpoint else NA_real_,
+        js.div.pwlm = if (!is.null(js.model)) js.model$model else NULL,
+        js.div.breakpoint = if (!is.null(js.model)) js.model$breakpoint else NA_real_
     )
+
+    class(result) <- c("iknn_stability_metrics", "list")
+    return(result)
 }
 
 
@@ -519,46 +653,53 @@ compute.degrees.js.divergence <- function(g1, g2) {
 }
 
 
-# Helper function to compute edit distances between graphs
-compute.edit.distances <- function(graphs, k.values) {
-    n <- length(graphs)
-    if (n < 2) return(numeric(0))
 
-    edit.distances <- numeric(n - 1)
+## ============================================================================
+## Helper: edit distance between consecutive graphs
+## ============================================================================
 
-    for (i in 1:(n-1)) {
-        g1 <- graphs[[i]]
-        g2 <- graphs[[i+1]]
+##' @keywords internal
+compute.edit.distances <- function(graphs.list) {
 
-        # Get adjacency lists
-        adj1 <- g1$adj_list
-        adj2 <- g2$adj_list
-
-        # Count edge differences
-        edges1 <- set()
-        edges2 <- set()
-
-        for (v in seq_along(adj1)) {
-            for (neighbor in adj1[[v]]) {
-                if (v < neighbor) {  # Avoid counting edges twice
-                    edges1 <- edges1 + set(paste(v, neighbor, sep="-"))
-                }
-            }
-        }
-
-        for (v in seq_along(adj2)) {
-            for (neighbor in adj2[[v]]) {
-                if (v < neighbor) {  # Avoid counting edges twice
-                    edges2 <- edges2 + set(paste(v, neighbor, sep="-"))
-                }
-            }
-        }
-
-        # Edit distance is the size of symmetric difference
-        edit.distances[i] <- length(setdiff(edges1, edges2)) + length(setdiff(edges2, edges1))
+    n.graphs <- length(graphs.list)
+    if (n.graphs < 2L) {
+        return(numeric(0))
     }
 
-    return(edit.distances)
+    edit.distances <- numeric(n.graphs - 1L)
+
+    edge.keys <- function(adj.list) {
+        ## Build undirected edge keys "i-j" with i < j, using 1-based vertex ids
+        keys <- character(0)
+
+        for (i in seq_along(adj.list)) {
+            nbrs <- adj.list[[i]]
+            if (length(nbrs) == 0) next
+            j <- nbrs[nbrs > i]
+            if (length(j) > 0) {
+                keys <- c(keys, paste(i, j, sep = "-"))
+            }
+        }
+
+        unique(keys)
+    }
+
+    for (i in seq_len(n.graphs - 1L)) {
+        g1 <- graphs.list[[i]]
+        g2 <- graphs.list[[i + 1L]]
+
+        if (is.null(g1$adj_list) || is.null(g2$adj_list)) {
+            stop("Each graph must contain an 'adj_list'.")
+        }
+
+        e1 <- edge.keys(g1$adj_list)
+        e2 <- edge.keys(g2$adj_list)
+
+        ## Symmetric difference size
+        edit.distances[i] <- length(setdiff(e1, e2)) + length(setdiff(e2, e1))
+    }
+
+    edit.distances
 }
 
 
@@ -569,6 +710,112 @@ if (!exists("set")) {
     }
 }
 
+#' Find Optimal k
+#'
+#' @description
+#' Two modes:
+#' \itemize{
+#'   \item If \code{x} is a birth-death matrix (legacy), uses edge persistence analysis.
+#'   \item If \code{x} is an \code{"iknn_stability_metrics"} object, selects k by
+#'     combining edit-distance, JS-divergence, and edge-count stability.
+#' }
+#'
+#' @param x Either a birth-death matrix (legacy interface) or an object returned by
+#'   \code{\link{compute.stability.metrics}}.
+#' @param ... Additional arguments (see details).
+#'
+#' @return A list with \code{opt.k} and diagnostic vectors. The exact fields depend on mode.
+#'
+#' @export
+find.optimal.k <- function(x, ...) {
+
+    if (inherits(x, "iknn_stability_metrics")) {
+        return(find.optimal.k.from.stability(x, ...))
+    }
+
+    ## Legacy behavior: treat x as birth.death.matrix
+    args <- list(...)
+    kmin <- args$kmin
+    kmax <- args$kmax
+    matrix.type <- args$matrix_type %||% "geom"
+
+    if (is.null(kmin) || is.null(kmax)) {
+        stop("For birth-death input, you must supply kmin and kmax (e.g., find.optimal.k(bd, kmin=..., kmax=...)).")
+    }
+
+    find.optimal.k.from.birth.death(x, kmin = kmin, kmax = kmax, matrix_type = matrix.type)
+}
+
+## ---------------------------------------------------------------------------
+## Stability-based optimal k
+## ---------------------------------------------------------------------------
+
+##' @keywords internal
+find.optimal.k.from.stability <- function(x,
+                                         weights = c(edist = 1, js = 1, edges = 1),
+                                         k.range = NULL) {
+
+    k.values <- x$k.values
+    n <- length(k.values)
+
+    if (n < 2L) {
+        return(list(
+            k.values = k.values,
+            stability.scores = numeric(0),
+            opt.k = if (n == 1L) k.values[1] else NA_integer_
+        ))
+    }
+
+    ## Comparable ks correspond to transitions k -> k+1
+    k.comp <- k.values[-n]
+    ed <- x$edit.distances
+    js <- x$js.div
+    ne <- x$n.edges.in.pruned.graph[-n]
+
+    ## Optional restriction of candidate range
+    if (!is.null(k.range)) {
+        keep <- (k.comp >= k.range[1]) & (k.comp <= k.range[2])
+        k.comp <- k.comp[keep]
+        ed <- ed[keep]
+        js <- js[keep]
+        ne <- ne[keep]
+    }
+
+    scale01 <- function(v) {
+        if (length(v) == 0) return(v)
+        r <- range(v, finite = TRUE)
+        if (!is.finite(r[1]) || !is.finite(r[2]) || r[1] == r[2]) {
+            return(rep(0.5, length(v)))
+        }
+        (v - r[1]) / (r[2] - r[1])
+    }
+
+    ed.bad <- scale01(ed)   ## higher is worse
+    js.bad <- scale01(js)   ## higher is worse
+    ne.good <- scale01(ne)  ## higher is better
+
+    ## Combine into a single stability score (higher is better)
+    w <- weights
+    score <- (1 - ed.bad)^w["edist"] * (1 - js.bad)^w["js"] * (ne.good)^w["edges"]
+
+    opt.k <- k.comp[which.max(score)]
+
+    list(
+        k.values = k.comp,
+        stability.scores = score,
+        opt.k = as.integer(opt.k),
+        components = list(
+            edit.distances = ed,
+            js.div = js,
+            n.edges.in.pruned.graph = ne
+        ),
+        weights = w
+    )
+}
+
+## ---------------------------------------------------------------------------
+## Legacy birth-death optimal k (your existing implementation, moved verbatim)
+## ---------------------------------------------------------------------------
 
 #' Find Optimal k Parameter Using Edge Persistence Analysis
 #'
@@ -618,9 +865,9 @@ if (!exists("set")) {
 #' @seealso
 #' \code{\link{create.iknn.graphs}} for generating the birth-death matrix
 #'
-#' @export
-find.optimal.k <- function(birth.death.matrix, kmin, kmax, matrix_type = "geom") {
-    # Handle empty birth/death matrix
+#' @keywords internal
+find.optimal.k.from.birth.death <- function(birth.death.matrix, kmin, kmax, matrix_type = "geom") {
+
     if (is.null(birth.death.matrix) || nrow(birth.death.matrix) == 0) {
         warning(paste("Empty", matrix_type, "birth/death matrix. Returning middle k value."))
         return(list(
@@ -630,40 +877,47 @@ find.optimal.k <- function(birth.death.matrix, kmin, kmax, matrix_type = "geom")
         ))
     }
 
-    # Calculate persistence of each edge
-    persistence <- birth.death.matrix[,"death_time"] - birth.death.matrix[,"birth_time"]
-
-    # For each k, calculate stability metrics
+    persistence <- birth.death.matrix[, "death_time"] - birth.death.matrix[, "birth_time"]
     stability.scores <- numeric(kmax - kmin + 1)
 
-    for(k in kmin:kmax) {
-        # Find edges that exist at k (birth_time <= k < death_time)
-        edges.at.k <- birth.death.matrix[,"birth_time"] <= k &
-                     birth.death.matrix[,"death_time"] > k
+    for (k in kmin:kmax) {
+
+        edges.at.k <- birth.death.matrix[, "birth_time"] <= k &
+            birth.death.matrix[, "death_time"] > k
 
         if (sum(edges.at.k) > 0) {
-            # Calculate stability score combining multiple factors:
-            # 1. Average persistence of edges present at k
-            avg.persistence <- mean(persistence[edges.at.k])
 
-            # 2. Proportion of persistent edges (those that continue to kmax+1)
+            avg.persistence <- mean(persistence[edges.at.k])
             persistent.ratio <- mean(birth.death.matrix[edges.at.k, "death_time"] == (kmax + 1))
 
-            # 3. Edge stability measure that penalizes recently born or soon-to-die edges
-            edge.stability <- mean(pmin(k - birth.death.matrix[edges.at.k, "birth_time"],
-                                        birth.death.matrix[edges.at.k, "death_time"] - k))
+            edge.stability <- mean(pmin(
+                k - birth.death.matrix[edges.at.k, "birth_time"],
+                birth.death.matrix[edges.at.k, "death_time"] - k
+            ))
 
             stability.scores[k - kmin + 1] <- avg.persistence * persistent.ratio * edge.stability
         }
     }
 
-    # Return k with highest stability score
     opt.k <- kmin - 1 + which.max(stability.scores)
 
-    list(stability.scores = stability.scores,
-         k.values = kmin:kmax,
-         opt.k = opt.k)
+    list(
+        stability.scores = stability.scores,
+        k.values = kmin:kmax,
+        opt.k = opt.k
+    )
 }
+
+#' Plot Method for IkNN Stability Metrics
+#'
+#' @param x An object returned by \code{\link{compute.stability.metrics}}.
+#' @param ... Passed to \code{\link{plot.IkNNgraphs}}.
+#'
+#' @export
+plot.iknn_stability_metrics <- function(x, ...) {
+    plot.IkNNgraphs(x, ...)
+}
+
 
 #' Plot Diagnostics for Intersection k-NN Graph Analysis
 #'
@@ -738,170 +992,94 @@ plot.IkNNgraphs <- function(x,
                             ...) {
 
     types <- c("diag")
-    type <- match.arg(type, types)
+    type <- match.arg(type, choices = types)
 
-    old.par <- par(no.readonly = TRUE)  # Save old par settings
-    on.exit(par(old.par), add = TRUE)   # Restore on exit
+    if (type != "diag") {
+        stop("Only type = 'diag' is currently supported.")
+    }
 
-    switch(type,
-           "diag" = {
+    if (!"k.values" %in% names(x)) {
+        stop("k.values not in x")
+    }
 
-               if (!"k.values" %in% names(x)) {
-                   stop("k.values not in x")
-               }
+    k.edge <- x$k.values
+    if (length(k.edge) < 1L) {
+        stop("k.values must have positive length.")
+    }
 
-               if (setequal(diags, c("edist","edge","deg"))) {
-                   par(mfrow = c(1,3), mar = mar, mgp = mgp, tcl = tcl)
+    ## Transition k values correspond to metrics between consecutive graphs (k -> k+1)
+    k.tr <- if (length(k.edge) >= 2L) k.edge[-length(k.edge)] else integer(0)
 
-                   plot(x$k.values, x$edit.distances, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$edit.distances.pwlm, add = TRUE, col = "red")
-                       abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$edit.distances.lmin, lty = 2, col = lmin.col)
-                   }
+    old.par <- par(no.readonly = TRUE)
+    on.exit(par(old.par), add = TRUE)
 
-                   plot(x$k.values, x$n.edges.in.pruned.graph, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Number of Edges in Pruned Graphs", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
-                       abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
-                   }
+    if (setequal(diags, c("edist","edge","deg"))) {
 
-                   plot(x$k.values, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Jensen-Shannon Divergence", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$js.div.pwlm, add = TRUE, col = "red")
-                       abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)  # Add a vertical line at the breakpoint
-                   }
-                   if (with.lmin) {
-                       abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
-                   }
+        par(mfrow = c(1,3), mar = mar, mgp = mgp, tcl = tcl)
 
-               } else if (setequal(diags, c("edist","edge"))) {
-                   par(mfrow = c(1,2), mar = mar, mgp = mgp, tcl = tcl)
+        ## ---- Edit distance (transition metric) ----
+        if (!"edit.distances" %in% names(x)) stop("edit.distances not in x")
+        if (length(x$edit.distances) != length(k.tr)) {
+            stop("Length mismatch: edit.distances must have length length(k.values)-1.")
+        }
 
-                   plot(x$k.values, x$edit.distances, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$edit.distances.pwlm, add = TRUE, col = "red")
-                       abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$edit.distances.lmin, lty = 2, col = lmin.col)
-                   }
+        plot(k.tr, x$edit.distances, las = 1, type = "b", xlab = "", ylab = "")
+        mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
+        mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
 
-                   plot(x$k.values, x$n.edges.in.pruned.graph, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Number of Edges in Pruned Graphs", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
-                       abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
-                   }
+        if (with.pwlm && "edit.distances.pwlm" %in% names(x)) {
+            plot(x$edit.distances.pwlm, add = TRUE, col = "red")
+            if ("edit.distances.breakpoint" %in% names(x)) {
+                abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
+            }
+        }
+        if (with.lmin && "edit.distances.lmin" %in% names(x)) {
+            abline(v = x$edit.distances.lmin, lty = 2, col = lmin.col)
+        }
 
-               } else if (setequal(diags, c("edist","deg"))) {
-                   par(mfrow = c(1,2), mar = mar, mgp = mgp, tcl = tcl)
+        ## ---- Edge count (per-graph metric) ----
+        if (!"n.edges.in.pruned.graph" %in% names(x)) stop("n.edges.in.pruned.graph not in x")
+        if (length(x$n.edges.in.pruned.graph) != length(k.edge)) {
+            stop("Length mismatch: n.edges.in.pruned.graph must have length length(k.values).")
+        }
 
-                   plot(x$k.values, x$edit.distances, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$edit.distances.pwlm, add = TRUE, col = "red")
-                       abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$edit.distances.lmin, lty = 2, col = lmin.col)
-                   }
+        plot(k.edge, x$n.edges.in.pruned.graph, las = 1, type = "b", xlab = "", ylab = "")
+        mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
+        mtext("Num. Edges in Pruned Graph", side = 2, line = yline, outer = FALSE)
 
-                   plot(x$k.values, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Jensen-Shannon Divergence", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$js.div.pwlm, add = TRUE, col = "red")
-                       abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)  # Add a vertical line at the breakpoint
-                   }
-                   if (with.lmin) {
-                       abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
-                   }
+        if (with.pwlm && "n.edges.in.pruned.graph.pwlm" %in% names(x)) {
+            plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
+            if ("n.edges.in.pruned.graph.breakpoint" %in% names(x)) {
+                abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
+            }
+        }
+        if (with.lmin && "n.edges.in.pruned.graph.lmin" %in% names(x)) {
+            abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
+        }
 
-               } else if (setequal(diags, c("edge","deg"))) {
-                   par(mfrow = c(1,2), mar = mar, mgp = mgp, tcl = tcl)
+        ## ---- JS divergence of degree profiles (transition metric) ----
+        if (!"js.div" %in% names(x)) stop("js.div not in x")
+        if (length(x$js.div) != length(k.tr)) {
+            stop("Length mismatch: js.div must have length length(k.values)-1.")
+        }
 
-                   plot(x$k.values, x$n.edges.in.pruned.graph, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Number of Edges in Pruned Graphs", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
-                       abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
-                   }
+        plot(k.tr, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
+        mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
+        mtext("JS Divergence (Degrees)", side = 2, line = yline, outer = FALSE)
 
-                   plot(x$k.values, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Jensen-Shannon Divergence", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$js.div.pwlm, add = TRUE, col = "red")
-                       abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)  # Add a vertical line at the breakpoint
-                   }
-                   if (with.lmin) {
-                       abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
-                   }
+        if (with.pwlm && "js.div.pwlm" %in% names(x)) {
+            plot(x$js.div.pwlm, add = TRUE, col = "red")
+            if ("js.div.breakpoint" %in% names(x)) {
+                abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)
+            }
+        }
+        if (with.lmin && "js.div.lmin" %in% names(x)) {
+            abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
+        }
 
-               } else if (setequal(diags, c("edist"))) {
-                   par(mar = mar, mgp = mgp, tcl = tcl)
+    } else {
+        stop("Currently supported diags combination is exactly c('edist','edge','deg').")
+    }
 
-                   plot(x$k.values, x$edit.distances, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$edit.distances.pwlm, add = TRUE, col = "red")
-                       abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$edit.distances.lmin, lty = 2, col = lmin.col)
-                   }
-
-               } else if (setequal(diags, c("edge"))) {
-                   par(mar = mar, mgp = mgp, tcl = tcl)
-
-                   plot(x$k.values, x$n.edges.in.pruned.graph, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Number of Edges in Pruned Graphs", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
-                       abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
-                   }
-                   if (with.lmin) {
-                       abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
-                   }
-
-               } else if (setequal(diags, c("deg"))) {
-                   par(mar = mar, mgp = mgp, tcl = tcl)
-
-                   plot(x$k.values, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
-                   mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-                   mtext("Jensen-Shannon Divergence", side = 2, line = yline, outer = FALSE)
-                   if (with.pwlm) {
-                       plot(x$js.div.pwlm, add = TRUE, col = "red")
-                       abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)  # Add a vertical line at the breakpoint
-                   }
-                   if (with.lmin) {
-                       abline(v = x$js.div.lmin, lty = 2, col = lmin.col)
-                   }
-               }
-           })
+    invisible(TRUE)
 }
