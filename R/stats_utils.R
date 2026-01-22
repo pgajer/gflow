@@ -4081,65 +4081,6 @@ L2.normalize.matrix <- function(U, eps = 1e-12) {
     U / row.norms
 }
 
-#' Arcsine square-root (angular) transform for proportions
-#'
-#' @description
-#' Applies the arcsine square-root (angular) transformation
-#' \deqn{y = \arcsin(\sqrt{x})}
-#' to proportion data \eqn{x \in [0,1]}. This transformation is often used as a
-#' variance-stabilizing map for proportion-like data and expands the scale near
-#' 0 and 1.
-#'
-#' @param x Numeric vector, matrix, or array of proportions in \eqn{[0,1]}.
-#' @param clip Logical; if TRUE (default), values are clipped to \eqn{[0,1]}
-#'   before transforming.
-#' @param eps Nonnegative numeric; if \code{clip = TRUE}, values in
-#'   \eqn{[-eps, 1+eps]} are clipped to \eqn{[0,1]}, otherwise an error is thrown.
-#' @return An object of the same shape as \code{x} containing transformed values
-#'   in radians.
-#'
-#' @examples
-#' x <- c(0, 0.1, 0.5, 0.9, 1)
-#' arcsin.sqrt.transform(x)
-#'
-#' X <- matrix(runif(12), nrow = 3)
-#' arcsin.sqrt.transform(X)
-#'
-#' @export
-arcsin.sqrt.transform <- function(x, clip = TRUE, eps = 0) {
-    ## Input validation
-    if (!is.numeric(x)) {
-        stop("x must be numeric.")
-    }
-    if (!is.logical(clip) || length(clip) != 1L) {
-        stop("clip must be a logical scalar.")
-    }
-    eps <- as.numeric(eps)
-    if (!is.finite(eps) || eps < 0) {
-        stop("eps must be a nonnegative finite number.")
-    }
-
-    ## Handle missing values
-    y <- x
-
-    if (clip) {
-        ## Allow small numerical spillover controlled by eps
-        bad.low <- which(is.finite(y) & (y < -eps))
-        bad.high <- which(is.finite(y) & (y > 1 + eps))
-        if (length(bad.low) > 0L || length(bad.high) > 0L) {
-            stop("x contains values outside [0,1] beyond the allowed eps tolerance.")
-        }
-        y[is.finite(y) & y < 0] <- 0
-        y[is.finite(y) & y > 1] <- 1
-    } else {
-        if (any(is.finite(y) & (y < 0 | y > 1))) {
-            stop("x must be in [0,1] when clip = FALSE.")
-        }
-    }
-
-    asin(sqrt(y))
-}
-
 #' Construct spectral vertex features from graph Laplacian eigenvectors
 #'
 #' @description
