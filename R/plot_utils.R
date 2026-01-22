@@ -2367,16 +2367,16 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
     invisible(NULL)
 }
 
-
 #' Label End Points in 3D Embedding of a Graph
 #'
 #' Adds labeled spheres to specific points in a 3D graph visualization.
 #' This function renders 3D spheres at specified coordinates and attaches
 #' text labels adjacent to them.
 #'
-#' @param graph.3d A numeric matrix with 3 columns representing x, y, and z
+#' @param graph.3d A numeric matrix (or data frame) with 3 columns representing x, y, and z
 #'   coordinates. Each row corresponds to a point in 3D space. Must have at
 #'   least as many rows as the maximum index specified in \code{end.labels}.
+#'
 #' @param end.labels A named character vector where the names are character
 #'   representations of row indices in \code{graph.3d}, and the values are
 #'   the labels to display at those points. Names must be coercible to
@@ -2385,32 +2385,50 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
 #' @param col Color of end point spheres.
 #' @param radius Radius of end point spheres.
 #' @param lab.cex End point labels cex graphical parameter.
-#' @param lab.adj End point labels adj graphical parameter.
+#'
+#' @param lab.adj End point labels \code{adj} parameter.
+#'   Supported forms:
+#'   \itemize{
+#'     \item \code{NULL}: use the internal default \code{c(-0.5, 0)}.
+#'     \item A single numeric: interpreted as \code{c(lab.adj, 0)}.
+#'     \item A numeric vector of length 2: used as \code{adj} for all labels.
+#'     \item A numeric matrix with \code{nrow(lab.adj) == length(end.labels)} and
+#'       \code{ncol(lab.adj) == 2}: per-label \code{adj}. Rows are matched to
+#'       \code{end.labels} in order; if \code{rownames(lab.adj)} are present and
+#'       exactly match \code{names(end.labels)}, the matrix is reordered accordingly.
+#'   }
 #'
 #' @return NULL (invisibly). This function is called for its side effects
 #'   of adding spheres and text labels to the current rgl 3D plot.
 #'
-#' @details
-#' The function creates red spheres with radius 0.4 at the specified points
-#' and places text labels with font size 2 (cex) slightly offset to the left
-#' and vertically centered relative to each sphere.
-#'
 #' @note This function requires an active rgl device to be open and assumes
-#'   the rgl package is loaded.
+#'   the rgl package is available.
 #'
 #' @examples
 #' \dontrun{
-#' # Create sample 3D coordinates
+#' ## Create sample 3D coordinates
 #' graph.3d <- matrix(rnorm(300), ncol = 3)
 #'
-#' # Define labels for specific points
+#' ## Define labels for specific points
 #' end.labels <- c("1" = "Point A", "50" = "Point B", "100" = "Point C")
 #'
-#' # Create initial 3D plot
+#' ## Create initial 3D plot
 #' rgl::plot3d(graph.3d)
 #'
-#' # Add labeled end points
+#' ## Default label placement
 #' label.end.pts(graph.3d, end.labels)
+#'
+#' ## Global adj for all labels
+#' label.end.pts(graph.3d, end.labels, lab.adj = c(-1, 0.5))
+#'
+#' ## Per-label adj (matrix)
+#' lab.adj.mat <- rbind(
+#'   c(-1,  0),
+#'   c( 0,  0),
+#'   c( 1,  0)
+#' )
+#' rownames(lab.adj.mat) <- names(end.labels)
+#' label.end.pts(graph.3d, end.labels, lab.adj = lab.adj.mat)
 #' }
 #'
 #' @seealso \code{\link[rgl]{spheres3d}}, \code{\link[rgl]{texts3d}}
@@ -2421,75 +2439,128 @@ label.end.pts <- function(graph.3d,
                           col = "blue",
                           radius = 0.4,
                           lab.cex = 2,
-                          lab.adj = c(-0.5, 0)
-                          ) {
-    # Check if graph.3d is provided and is a matrix
+                          lab.adj = c(-0.5, 0)) {
+
+    ## ---- Validate graph.3d
     if (missing(graph.3d)) {
         stop("'graph.3d' is required but was not provided")
     }
     if (!is.matrix(graph.3d) && !is.data.frame(graph.3d)) {
         stop("'graph.3d' must be a matrix or data frame")
     }
-    if (!is.numeric(as.matrix(graph.3d))) {
+
+    graph.3d.mat <- as.matrix(graph.3d)
+    if (!is.numeric(graph.3d.mat)) {
         stop("'graph.3d' must contain numeric values")
     }
-
-    # Check if graph.3d has 3 columns
-    if (ncol(graph.3d) != 3) {
+    if (ncol(graph.3d.mat) != 3) {
         stop("'graph.3d' must have exactly 3 columns (x, y, z coordinates), but has ",
-             ncol(graph.3d))
+             ncol(graph.3d.mat))
     }
-
-    # Check if graph.3d has at least one row
-    if (nrow(graph.3d) == 0) {
+    if (nrow(graph.3d.mat) == 0) {
         stop("'graph.3d' must have at least one row")
     }
 
-    # Check if end.labels is provided and is a vector
+    ## ---- Validate end.labels
     if (missing(end.labels)) {
         stop("'end.labels' is required but was not provided")
     }
     if (!is.vector(end.labels) || is.list(end.labels)) {
         stop("'end.labels' must be a vector")
     }
-
-    # Check if end.labels has names
-    if (is.null(names(end.labels)) || any(is.na(names(end.labels))) ||
-        any(names(end.labels) == "")) {
-        stop("'end.labels' must be a named vector with all names non-empty and non-NA")
-    }
-
-    # Check if end.labels is empty
     if (length(end.labels) == 0) {
         warning("'end.labels' is empty, no labels will be plotted")
         return(invisible(NULL))
     }
+    if (is.null(names(end.labels)) || any(is.na(names(end.labels))) || any(names(end.labels) == "")) {
+        stop("'end.labels' must be a named vector with all names non-empty and non-NA")
+    }
 
-    # Check if names can be converted to integers
-    idx <- tryCatch(
-        as.integer(names(end.labels)),
-        warning = function(w) {
-            stop("Names of 'end.labels' must be coercible to integers")
-        }
-    )
-
+    ## ---- Convert names(end.labels) to indices
+    idx <- suppressWarnings(as.integer(names(end.labels)))
     if (any(is.na(idx))) {
         stop("Names of 'end.labels' contain values that cannot be converted to integers: ",
              paste(names(end.labels)[is.na(idx)], collapse = ", "))
     }
-
-    # Check if indices are within valid range
-    if (any(idx < 1 | idx > nrow(graph.3d))) {
-        invalid_idx <- idx[idx < 1 | idx > nrow(graph.3d)]
-        stop("Names of 'end.labels' contain indices out of range [1, ", nrow(graph.3d), "]: ",
-             paste(unique(invalid_idx), collapse = ", "))
+    if (any(idx < 1L | idx > nrow(graph.3d.mat))) {
+        invalid.idx <- idx[idx < 1L | idx > nrow(graph.3d.mat)]
+        stop("Names of 'end.labels' contain indices out of range [1, ", nrow(graph.3d.mat), "]: ",
+             paste(unique(invalid.idx), collapse = ", "))
     }
 
-    # Main function logic
-    rgl::spheres3d(graph.3d[idx, ], radius = radius, col = col)
-    rgl::texts3d(graph.3d[idx, ],
-                 texts = end.labels, adj = lab.adj, cex = lab.cex)
+    ## ---- Normalize lab.adj into either:
+    ##      (a) a single numeric length-2 vector for all labels, or
+    ##      (b) an n x 2 matrix providing per-label adj
+    default.lab.adj <- c(-0.5, 0)
+
+    lab.adj.mat <- NULL
+    lab.adj.vec <- NULL
+
+    if (is.null(lab.adj)) {
+        lab.adj.vec <- default.lab.adj
+
+    } else if (is.matrix(lab.adj)) {
+        if (!is.numeric(lab.adj)) {
+            stop("'lab.adj' matrix must be numeric")
+        }
+        if (ncol(lab.adj) != 2) {
+            stop("'lab.adj' matrix must have exactly 2 columns (adj x and y)")
+        }
+        if (nrow(lab.adj) != length(end.labels)) {
+            stop("'lab.adj' matrix must have nrow(lab.adj) == length(end.labels). Got nrow(lab.adj) = ",
+                 nrow(lab.adj), " and length(end.labels) = ", length(end.labels))
+        }
+
+        ## If rownames match names(end.labels), reorder to that order
+        rn <- rownames(lab.adj)
+        if (!is.null(rn) && length(rn) == nrow(lab.adj) &&
+            setequal(rn, names(end.labels)) &&
+            all(names(end.labels) %in% rn)) {
+            lab.adj.mat <- lab.adj[names(end.labels), , drop = FALSE]
+        } else {
+            lab.adj.mat <- lab.adj
+        }
+
+        if (any(!is.finite(lab.adj.mat))) {
+            stop("'lab.adj' matrix cannot contain NA/NaN/Inf")
+        }
+
+    } else {
+        ## Numeric scalar or length-2 vector
+        if (!is.numeric(lab.adj)) {
+            stop("'lab.adj' must be NULL, numeric, or a numeric matrix")
+        }
+        if (length(lab.adj) == 1) {
+            lab.adj.vec <- c(as.numeric(lab.adj), 0)
+        } else if (length(lab.adj) == 2) {
+            lab.adj.vec <- as.numeric(lab.adj)
+        } else {
+            stop("'lab.adj' must be NULL, a numeric scalar, a numeric vector of length 2, ",
+                 "or a numeric matrix with nrow = length(end.labels) and 2 columns")
+        }
+
+        if (any(!is.finite(lab.adj.vec))) {
+            stop("'lab.adj' cannot contain NA/NaN/Inf")
+        }
+    }
+
+    ## ---- Draw spheres
+    rgl::spheres3d(graph.3d.mat[idx, , drop = FALSE], radius = radius, col = col)
+
+    ## ---- Draw text labels
+    if (is.null(lab.adj.mat)) {
+        ## One adj for all labels
+        rgl::texts3d(graph.3d.mat[idx, , drop = FALSE],
+                     texts = end.labels, adj = lab.adj.vec, cex = lab.cex)
+    } else {
+        ## Per-label adj: draw labels one-by-one
+        for (i in seq_along(idx)) {
+            rgl::texts3d(graph.3d.mat[idx[i], , drop = FALSE],
+                         texts = end.labels[i],
+                         adj = as.numeric(lab.adj.mat[i, ]),
+                         cex = lab.cex)
+        }
+    }
 
     invisible(NULL)
 }
-
