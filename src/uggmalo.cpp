@@ -197,7 +197,16 @@ uggmalo_t uggmalo(
     bool verbose
     ) {
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     // Validation of input parameters will be done in the parent R function
     uggmalo_t result;

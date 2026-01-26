@@ -102,7 +102,16 @@ agemalo_result_t ray_agemalo(
     result.errors.resize(n_vertices, INFINITY);
     result.scale.resize(n_vertices, INFINITY);
 
-	bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+	auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
 	// Define minimum and maximum bandwidth as a fraction of graph diameter
 	double max_bw = max_bw_factor * grid_graph.graph_diameter;

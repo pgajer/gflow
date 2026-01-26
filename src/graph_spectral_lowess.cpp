@@ -502,7 +502,17 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 		}
 	}
 
-	bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+	auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
 	if (y_binary) {
 		for (auto& p : result.predictions) {
 			p = std::clamp(p, 0.0, 1.0);

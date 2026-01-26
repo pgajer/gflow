@@ -212,7 +212,17 @@ std::pair<std::vector<double>, std::vector<int>> pgmalog_with_cv_weights(
     int h = path_graph.h;
     int desired_path_length = h + 1;
     int n_vertices = path_graph.vertex_paths.size();
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     // Initialize cache and collect unique paths
     std::map<itriplet_t, lm_loocv_t> model_cache;
@@ -524,7 +534,17 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog_with_bb_weights(
 
     int h = path_graph.h;
     int n_vertices = path_graph.vertex_paths.size();
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     std::vector<double> Ey(n_vertices);
     std::vector<double> errors(n_vertices);

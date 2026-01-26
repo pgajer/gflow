@@ -256,7 +256,17 @@ set_wgraph_t::klaps_low_pass_smoother(
 		}
 	}
 
-	bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+	auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
 	if (y_binary) {
 		for (size_t i = 0; i < result.predictions.size(); ++i) {
 			result.predictions[i] = std::clamp(result.predictions[i], 0.0, 1.0);

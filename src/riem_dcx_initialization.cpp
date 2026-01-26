@@ -300,7 +300,7 @@ void riem_dcx_t::initialize_from_knn(
     double threshold_percentile,
 	double density_alpha,
 	double density_epsilon,
-	bool verbose
+	verbose_level_t verbose_level
 ) {
     const size_t n_points = static_cast<size_t>(X.rows());
 
@@ -870,11 +870,11 @@ void riem_dcx_t::initialize_from_knn(
         density_normalization,
 		density_alpha,
 		density_epsilon,
-		verbose
+		verbose_level
     );
 
     // Compute initial densities from reference measure
-    compute_initial_densities();
+    compute_initial_densities(verbose_level);
 
     // ================================================================
     // PHASE 3: METRIC CONSTRUCTION
@@ -939,7 +939,7 @@ void riem_dcx_t::initialize_reference_measure(
     double density_normalization,
     double density_alpha,
     double density_epsilon,
-	bool verbose
+	verbose_level_t verbose_level
 ) {
     const size_t n = knn_neighbors.size();
     std::vector<double> vertex_weights(n);
@@ -972,9 +972,10 @@ void riem_dcx_t::initialize_reference_measure(
         double d_min_allowed = d_median / 10.0;
         double d_max_allowed = d_median * 10.0;
 
-		if (verbose)
+		if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
 			Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
 					sorted_dk[0], sorted_dk[n-1], d_median);
+		}
 
         int n_clamped_low = 0;
         int n_clamped_high = 0;
@@ -999,7 +1000,7 @@ void riem_dcx_t::initialize_reference_measure(
         }
 
         if (n_clamped_low > 0 || n_clamped_high > 0) {
-			if (verbose)
+			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
             Rprintf("\tClamped %d vertices to lower bound, %d to upper bound (prevents extreme weights)\n",
                     n_clamped_low, n_clamped_high);
         }
@@ -1010,7 +1011,7 @@ void riem_dcx_t::initialize_reference_measure(
         double initial_ratio = w_max / w_min;
 
         if (initial_ratio > 1000.0) {
-			if (verbose)
+			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
 				Rprintf("\tInitial weight ratio %.2e exceeds 1000:1. Applying compression...\n",
 						initial_ratio);
 
@@ -1030,7 +1031,7 @@ void riem_dcx_t::initialize_reference_measure(
             w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
             double compressed_ratio = w_max / w_min;
 
-			if (verbose)
+			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
 				Rprintf("\tAfter compression: weight ratio = %.2e\n", compressed_ratio);
         }
     }
@@ -1052,7 +1053,7 @@ void riem_dcx_t::initialize_reference_measure(
     double final_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
     double final_ratio = final_max / final_min;
 
-	if (verbose)
+	if (vl_at_least(verbose_level, verbose_level_t::TRACE))
 		Rprintf("\tFinal reference measure: range [%.3e, %.3e], ratio=%.2e\n",
 				final_min, final_max, final_ratio);
 

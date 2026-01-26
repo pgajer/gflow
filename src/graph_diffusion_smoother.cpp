@@ -235,7 +235,16 @@ graph_diffusion_smoother_mp(const std::vector<std::vector<int>>& graph,
         max_neighbors = std::max(max_neighbors, neighbors.size());
     }
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     if (y_binary && imputation_method == imputation_method_t::GLOBAL_MEAN_THRESHOLD) {
         binary_threshold = mean(y.data(), (int)y.size());
@@ -674,7 +683,16 @@ ext_graph_diffusion_smoother(const std::vector<std::vector<int>>& graph,
     std::vector<double> kernel_weights(max_neighbors);
     std::vector<double> vertex_edge_lengths(max_neighbors);
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     if (y_binary && imputation_method == imputation_method_t::GLOBAL_MEAN_THRESHOLD) {
         binary_threshold = mean(y.data(), (int)y.size());
@@ -2654,7 +2672,16 @@ graph_diffusion_smoother(const std::vector<std::vector<int>>& adj_list,
     std::vector<double> kernel_weights(max_neighbors);
     std::vector<double> vertex_weight_list(max_neighbors);
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     if (y_binary && binary_threshold < 0) {
         binary_threshold = mean(y.data(), (int)y.size());

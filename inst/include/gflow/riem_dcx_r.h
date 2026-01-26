@@ -43,8 +43,7 @@ extern "C" {
 		SEXP s_compute_extremality,
 		SEXP s_p_threshold,
 		SEXP s_max_hop,
-		SEXP s_test_stage,
-		SEXP s_verbose
+		SEXP s_verbose_level
 		);
 
 	SEXP S_compute_hop_extremp_radii_batch(

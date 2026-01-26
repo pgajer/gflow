@@ -287,12 +287,20 @@ int riem_dcx_t::compute_connected_components() {
  * and boundary maps. Should be called after any change to the metric.
  */
 void riem_dcx_t::assemble_operators() {
-    // Populate L.c1 from vertex_cofaces before assembly
+
+    // Populate edge conductances c1 from edge masses m1.
+    // Convention:
+    //   vertex_cofaces[i][k].density is the edge mass m1(e) (a measure).
+    //   The normalized graph Laplacian uses conductances c_e = 1/m1(e).
+    // This makes L0_sym consistent with the diagonal-metric Hodge 0-Laplacian:
+    //   L0 = B1 * diag(m1)^{-1} * B1^T * M0.
+
     L.c1.resize(edge_registry.size());
     for (size_t i = 0; i < vertex_cofaces.size(); ++i) {
         for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
             index_t e = vertex_cofaces[i][k].simplex_index;
-            L.c1[e] = std::max(vertex_cofaces[i][k].density, 1e-10);
+            double mass = std::max(vertex_cofaces[i][k].density, 1e-10);
+            L.c1[e] = 1.0 / mass;
         }
     }
 

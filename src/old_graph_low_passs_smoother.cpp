@@ -228,7 +228,17 @@ graph_spectral_smoother(const std::vector<std::vector<int>>& graph,
 
     (void)weights;
     int n_vertices = y.size();
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     if (y_binary && imputation_method == imputation_method_t::GLOBAL_MEAN_THRESHOLD) {
         binary_threshold = mean(y.data(), (int)y.size());

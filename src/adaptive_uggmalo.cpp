@@ -236,7 +236,17 @@ adaptive_uggmalo_result_t adaptive_uggmalo(
         Rprintf("grid_graph.grid_vertices.size(): %zu\n", grid_graph.grid_vertices.size());
     }
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
     size_t n_vertices = grid_graph.n_original_vertices;
     result.predictions.resize(n_vertices, INFINITY);
     result.errors.resize(n_vertices, INFINITY);
