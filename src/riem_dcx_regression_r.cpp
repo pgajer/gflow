@@ -1002,8 +1002,7 @@ extern "C" SEXP create_posterior_component(const posterior_summary_t& summary) {
  * @param s_compute_extremality Logical: compute extremality scores? (LGLSXP)
  * @param s_p_threshold Extremality threshold for hop radii, 0=skip (REALSXP)
  * @param s_max_hop Maximum hop distance for radii computation (INTSXP)
- * @param s_test_stage
- * @param s_verbose SEXP object (logical) controlling progress reporting during computation
+ * @param s_verbose_level SEXP object (integer) controlling progress reporting during computation; possible values: 0, 1, 2, 3, 4.
  *
  * @return R list of class c("knn.riem.fit", "list") with components:
  *   - fitted.values: Fitted values at optimal GCV iteration
@@ -1063,8 +1062,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_compute_extremality,
     SEXP s_p_threshold,
     SEXP s_max_hop,
-    SEXP s_test_stage,
-    SEXP s_verbose
+    SEXP s_verbose_level
 ) {
     // ================================================================
     // PART I: INPUT EXTRACTION (same as before)
@@ -1614,36 +1612,27 @@ extern "C" SEXP S_fit_rdgraph_regression(
                  density_epsilon);
     }
 
-    // -------------------- s_test_stage --------------------
+    // -------------------- s_verbose_level --------------------
 
-    if (TYPEOF(s_test_stage) != INTSXP || Rf_length(s_test_stage) != 1) {
-        Rf_error("test_stage must be a single integer");
+    if (TYPEOF(s_verbose_level) != INTSXP || Rf_length(s_verbose_level) != 1) {
+        Rf_error("verbose_level must be a single integer");
     }
 
-    const int test_stage = INTEGER(s_test_stage)[0];
+    const int verbose_level_int = INTEGER(s_verbose_level)[0];
 
-    if (test_stage == NA_INTEGER) {
-        Rf_error("test_stage cannot be NA");
+    if (verbose_level_int == NA_INTEGER) {
+        Rf_error("verbose_level cannot be NA");
     }
 
-    if (test_stage < -2) {
-        Rf_error("test_stage must be at least -1 (got %d)", test_stage);
+    if (verbose_level_int < 0) {
+        Rf_error("verbose_level must be at least 0 (got %d)", verbose_level_int);
     }
 
-    // -------------------- s_verbose --------------------
-    if (TYPEOF(s_verbose) != LGLSXP ||
-        Rf_length(s_verbose) != 1) {
-        Rf_error("verbose must be a single logical value");
+    if (verbose_level_int > 3) {
+        Rf_error("verbose_level must be at most 3 (got %d)", verbose_level_int);
     }
 
-    const int verbose_int = LOGICAL(s_verbose)[0];
-
-    if (verbose_int == NA_LOGICAL) {
-        Rf_error("verbose cannot be NA");
-    }
-
-    const bool verbose = (verbose_int != 0);
-
+    const verbose_level_t verbose_level = vl_from_int(verbose_level_int);
 
     // ================================================================
     // PART II: CALL MEMBER FUNCTION
@@ -1674,8 +1663,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
             threshold_percentile,
             density_alpha,
             density_epsilon,
-            test_stage,
-            verbose
+            verbose_level
             );
 
     } catch (const std::exception& e) {
@@ -1687,11 +1675,6 @@ extern "C" SEXP S_fit_rdgraph_regression(
     // ================================================================
 
     const Eigen::Index n = y.size();
-
-    // ---------- Handle test stages with early termination ----------
-    // When test_stage >= 0, the fit may have terminated early before
-    // computing fitted values. We handle this by providing appropriate
-    // placeholder values and diagnostic information.
 
     // ---------- Select fitted values based on minimum GCV ----------
     // Instead of simply using the last iteration's fitted values, we
@@ -1730,14 +1713,6 @@ extern "C" SEXP S_fit_rdgraph_regression(
             // Use fitted values from the iteration with minimum GCV
             y_hat_raw = dcx.sig.y_hat_hist[min_idx];
             optimal_iteration = (int)min_idx;
-
-            // Inform user if optimal iteration differs from final iteration
-            if (test_stage < 0 && min_idx != dcx.sig.y_hat_hist.size() - 1) {
-                Rprintf("Selected iteration %d (GCV = %.6e) over final iteration %d (GCV = %.6e)\n",
-                        (int)min_idx, min_gcv,
-                        (int)(dcx.sig.y_hat_hist.size() - 1),
-                        dcx.gcv_history.iterations.back().gcv_optimal);
-            }
         }
     } else if (has_fitted_values) {
         // GCV history unavailable (should not happen in normal operation)
@@ -1750,12 +1725,6 @@ extern "C" SEXP S_fit_rdgraph_regression(
         // This allows the result structure to be consistent
         y_hat_raw = y;
         optimal_iteration = -1;
-
-        // Warn user if this wasn't intentional
-        if (test_stage < 0) {
-            Rf_warning("No fitted values computed (unexpected early termination). "
-                       "Returning observed y values as placeholder.");
-        }
     }
 
     // ---------- Main result list ----------
@@ -1768,7 +1737,20 @@ extern "C" SEXP S_fit_rdgraph_regression(
         n_components++;  // Add posterior component
     }
 
+    #if 0
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const bool y_binary = is_binary01(y);
+    #endif
+
     bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+
     if (y_binary) {
         n_components++;  // Add posterior component
     }
@@ -1800,10 +1782,10 @@ extern "C" SEXP S_fit_rdgraph_regression(
             true,     // apply_right_winsorization
             1e-10,    // noise_scale: relative to range
             123,      // seed: for reproducibility
-            verbose   // verbose: match user's verbosity setting
+            verbose_level   // verbose: match user's verbosity setting
             );
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("Preprocessing complete:\n");
             Rprintf("  Raw range: [%.6f, %.6f]\n",
                     y_hat_raw.minCoeff(), y_hat_raw.maxCoeff());

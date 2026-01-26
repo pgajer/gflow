@@ -258,11 +258,7 @@
 #'   \eqn{\max_p ||\rho_p^{(\ell)} - \rho_p^{(\ell-1)}|| / ||\rho_p^{(\ell-1)}||}
 #'   falls below this value across all dimensions. Default 1e-4.
 #'
-#' @param test.stage Integer for internal testing. Set to -1 for normal operation
-#'     (default). Values 0-10 stop execution at intermediate stages for debugging.
-#'     Not intended for end users.
-#'
-#' @param verbose Logical; print progress and timing.
+#' @param verbose.level Integer in {0,1,2,3} controlling reporting.
 #'
 #' @return An object of class \code{c("knn.riem.fit", "list")}, which is
 #'   a list containing:
@@ -562,7 +558,7 @@
 #' for (i in seq_along(k_values)) {
 #'     fit <- fit.rdgraph.regression(X, y, k = k_values[i],
 #'                                   compute.extremality = FALSE,  # Skip for speed
-#'                                   verbose = FALSE)
+#'                                   verbose.level = 1)
 #'     gcv_scores[i] <- fit$gcv$gcv.optimal[fit$optimal.iteration]
 #' }
 #'
@@ -613,8 +609,7 @@ fit.rdgraph.regression <- function(
     threshold.percentile = 0,
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
-    test.stage = -1,
-    verbose = TRUE
+    verbose.level = 1
 ) {
     ## ==================== Feature Matrix Validation ====================
 
@@ -1021,9 +1016,9 @@ fit.rdgraph.regression <- function(
         stop("threshold.percentile must be in [0, 0.5].")
     }
 
-    ## verbose
-    if (!is.logical(verbose) || length(verbose) != 1)
-        stop("verbose must be TRUE/FALSE.")
+    ## verbose.level
+    if (length(verbose.level) != 1 || !(verbose.level %in% 0:3) )
+        stop("verbose.level must be an integer in {0,1,2,3}.")
 
     ## pca.dim
     if (!is.null(pca.dim)) {
@@ -1041,14 +1036,14 @@ fit.rdgraph.regression <- function(
     ## PCA (optional)
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
-        if (verbose) message("High-dimensional data detected. Performing PCA.")
+        if (verbose.level == 1) message("High-dimensional data detected. Performing PCA.")
         original_dim <- ncol(X)
         if (!is.null(variance.explained)) {
             pca_analysis <- pca.optimal.components(
                 X, variance.threshold = variance.explained, max.components = pca.dim
             )
             n_components <- pca_analysis$n.components
-            if (verbose) {
+            if (verbose.level == 1) {
                 message(sprintf("Using %d PCs (explains %.2f%% variance)",
                                 n_components, 100 * pca_analysis$variance.explained))
             }
@@ -1060,7 +1055,7 @@ fit.rdgraph.regression <- function(
                 cumulative_variance = pca_analysis$cumulative.variance
             )
         } else {
-            if (verbose) message(sprintf("Projecting to first %d PCs", pca.dim))
+            if (verbose.level == 1) message(sprintf("Projecting to first %d PCs", pca.dim))
             pca_result <- prcomp(X)
             X <- pca.project(X, pca_result, pca.dim)
             variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
@@ -1111,8 +1106,7 @@ fit.rdgraph.regression <- function(
         as.logical(compute.extremality),
         as.double(p.threshold),
         as.integer(max.hop),
-        as.integer(test.stage),
-        as.logical(verbose),
+        as.integer(verbose.level),
         PACKAGE = "gflow"
     )
 

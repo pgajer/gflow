@@ -20,6 +20,21 @@
 #include <Rinternals.h>             // For R C API functions
 
 /**
+ * @brief Convert an error-like quantity to a quality weight in (0, +inf).
+ *
+ * The model averaging code should downweight worse models. If mean_error is
+ * a true error (larger is worse), quality must be monotonically decreasing.
+ */
+static inline double error_to_quality(double mean_error,
+                                      double eps = 1e-12)
+{
+    if (!std::isfinite(mean_error) || mean_error < 0.0) {
+        return 0.0;
+    }
+    return 1.0 / (eps + mean_error);
+}
+
+/**
  * @brief Perform Adaptive Model Averaged Uniform Grid LOcal linear smoothing (AMAGELO) of 1D data
  *
  * AMAGELO is a nonparametric smoothing technique that uses:
@@ -107,14 +122,26 @@ amagelo_t amagelo(
     // Create a uniform grid graph from result.x_sorted
     auto [adj_list, weight_list] = create_chain_graph(result.x_sorted);
 
+    // Compute minimum positive spacing on the sorted x-grid.
+    // This must use result.x_sorted (NOT the original x) because x may arrive unsorted.
     double min_diff = INFINITY;
-    double d;
-    for (size_t i = 1; i < n_original_vertices; i++) {
-        if ((d = x[i] - x[i-1]) < min_diff) {
+    for (size_t i = 1; i < n_original_vertices; ++i) {
+        const double d = result.x_sorted[i] - result.x_sorted[i - 1];
+        if (d > 0.0 && d < min_diff) {
             min_diff = d;
         }
     }
-    double snap_tolerance = 1e-2 * min_diff;
+
+    // Fallback for duplicated x values (or fully degenerate spacing).
+    if (!std::isfinite(min_diff) || min_diff <= 0.0) {
+        const double x_range = result.x_sorted.back() - result.x_sorted.front();
+        min_diff = (x_range > 0.0 && n_original_vertices > 1)
+            ? x_range / static_cast<double>(n_original_vertices - 1)
+            : 1.0;
+    }
+
+    const double snap_tolerance = 1e-2 * min_diff;
+
     size_t start_vertex = 0;
     uniform_grid_graph_t x_graph = create_uniform_grid_graph(
         adj_list,
@@ -137,6 +164,11 @@ amagelo_t amagelo(
             return grid_coords_map[lhs] < grid_coords_map[rhs];
         }
         );
+
+    if (grid_vertices.size() != grid_size) {
+        Rf_error("amagelo: grid_vertices.size()=%zu does not match grid_size=%zu",
+                 grid_vertices.size(), grid_size);
+    }
 
     std::map<size_t, size_t> grid_idx_map;
     for (size_t grid_idx = 0; grid_idx < grid_size; ++grid_idx) {
@@ -173,10 +205,13 @@ amagelo_t amagelo(
     // Initialize result structure
     result.predictions.resize(n_original_vertices);
     result.grid_predictions.resize(grid_size);
-    result.bw_predictions.resize(
-        n_bws,
-        std::vector<double>(n_original_vertices, 0.0)
-        );
+
+    if (with_bw_predictions) {
+        result.bw_predictions.assign(n_bws, std::vector<double>(n_original_vertices, 0.0));
+    } else {
+        result.bw_predictions.clear();
+    }
+
     result.bw_errors.resize(n_bws, 0.0);
 
     if (verbose) {
@@ -194,20 +229,29 @@ amagelo_t amagelo(
     struct wpeme_t {
         double weight;
         double prediction;
-        double Rf_error;
-        double mean_error;
+        double error;      // pointwise LOOCV error at the vertex under this model
+        double mean_error; // model-average LOOCV error (quality)
 
         // Constructor needed for emplace_back(w,p,e,me)
         wpeme_t(double w, double p, double e, double me)
-            : weight(w), prediction(p), Rf_error(e), mean_error(me) {}
+            : weight(w), prediction(p), error(e), mean_error(me) {}
     };
 
-    std::vector<std::vector<std::vector<wpeme_t>>> bw_vertex_wpeme(n_bws); // wpe[bw_idx][i] stores a vector of {weight, prediction, Rf_error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
+    std::vector<std::vector<std::vector<wpeme_t>>> bw_vertex_wpeme(n_bws); // wpe[bw_idx][i] stores a vector of {weight, prediction, error, mean_error} values for each model that contains the i-th vertex in its support; these values will be used to compute the model averaged predictions
     for (size_t bw_idx = 0; bw_idx < n_bws; ++bw_idx) {
         bw_vertex_wpeme[bw_idx].resize(n_original_vertices);
     }
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
 
     std::vector<std::vector<ulm_t>> bw_grid_models(n_bws);  // bw_grid_models[bw_idx][grid_idx] ulm_t model at grid_idx at bw_idx
     for (size_t bw_idx = 0; bw_idx < n_bws; ++bw_idx) {
@@ -274,14 +318,54 @@ amagelo_t amagelo(
             }
 
             size_t nbhd_size = local_x.size();
+
+            // Fallback: if the bandwidth window captured no vertices, include the nearest x vertex.
+            // This prevents empty neighborhoods from propagating.
+            if (nbhd_size == 0) {
+                const double x0 = result.grid_coords[grid_idx];
+
+                // nearest index in sorted x
+                auto it = std::lower_bound(result.x_sorted.begin(), result.x_sorted.end(), x0);
+                size_t v = 0;
+                if (it == result.x_sorted.end()) {
+                    v = n_original_vertices - 1;
+                } else if (it == result.x_sorted.begin()) {
+                    v = 0;
+                } else {
+                    const size_t j = static_cast<size_t>(it - result.x_sorted.begin());
+                    const double d1 = std::fabs(result.x_sorted[j] - x0);
+                    const double d0 = std::fabs(result.x_sorted[j - 1] - x0);
+                    v = (d0 <= d1) ? (j - 1) : j;
+                }
+
+                local_vertices.push_back(v);
+                local_x.push_back(result.x_sorted[v]);
+                local_y.push_back(result.y_sorted[v]);
+                local_d.push_back(0.0);
+                nbhd_size = 1;
+            }
+
+            // Warn but do not proceed blindly into undefined behavior.
             if (nbhd_size < domain_min_size) {
-                REPORT_ERROR("local_x.size() < domain_min_size\n");
+                // Keep as a warning; small neighborhoods can still be fit as local-constant.
+                // REPORT_ERROR("WARNING: nbhd_size=%zu < domain_min_size=%zu\n", nbhd_size, domain_min_size);
             }
 
             std::vector<double> local_w = get_weights(local_d, dist_normalization_factor);
 
-            double tolerance = 1e-6;
-            double robust_scale = 6.0;
+            // Hard contract check: weights and data must match.
+            if (local_w.size() != nbhd_size) {
+                REPORT_ERROR("ERROR: local_w.size()=%zu does not match nbhd_size=%zu; forcing resize\n",
+                             local_w.size(), nbhd_size);
+                local_w.resize(nbhd_size, 0.0);
+                if (nbhd_size > 0 && std::accumulate(local_w.begin(), local_w.end(), 0.0) <= 0.0) {
+                    local_w.assign(nbhd_size, 1.0);
+                }
+            }
+
+            const double tolerance = 1e-6;
+            const double robust_scale = 6.0;
+
             ulm_t model = cleveland_ulm(
                 local_x.data(),
                 local_y.data(),
@@ -291,7 +375,11 @@ amagelo_t amagelo(
                 n_cleveland_iterations,
                 robust_scale);
 
-            double model_mean_error = std::accumulate(model.errors.begin(), model.errors.end(), 0.0) / model.errors.size();
+            double model_mean_error = std::numeric_limits<double>::infinity();
+            if (!model.errors.empty()) {
+                model_mean_error = std::accumulate(model.errors.begin(), model.errors.end(), 0.0) /
+                    static_cast<double>(model.errors.size());
+            }
 
             for (size_t i = 0; i < nbhd_size; ++i) {
                 bw_vertex_wpeme[bw_idx][ local_vertices[i] ].emplace_back(
@@ -325,22 +413,23 @@ amagelo_t amagelo(
 
             for (const auto& x : vertex_wpes) {
 
+                const double q = error_to_quality(x.mean_error);
+
                 if (blending_coef == 0.0) {
                     // Pure position weight
                     effective_weight = x.weight;
                 }
                 else if (blending_coef == 1.0) {
-                    // Full mean Rf_error influence
-                    effective_weight = x.mean_error * x.weight;
+                    // Full model-quality influence (downweight high error)
+                    effective_weight = q * x.weight;
                 }
                 else {
-                    // Smooth interpolation between the two approaches
                     if (use_linear_blending) {
-                        // Method 1: Linear interpolation of weights
-                        effective_weight = (1.0 - blending_coef) * x.weight + blending_coef * (x.mean_error * x.weight);
+                        // Linear blend between pure position weight and quality-scaled weight
+                        effective_weight = (1.0 - blending_coef) * x.weight + blending_coef * (q * x.weight);
                     } else {
-                        // Method 2: Power-based scaling
-                        effective_weight = x.weight * pow(x.mean_error, blending_coef);
+                        // Power blend: exponent interpolates between 0 (no quality) and 1 (full quality)
+                        effective_weight = x.weight * pow(q, blending_coef);
                     }
                 }
 
@@ -458,22 +547,23 @@ amagelo_t amagelo(
 
         for (const auto& x : gv_wpmes) {
 
+            const double q = error_to_quality(x.mean_error);
+
             if (blending_coef == 0.0) {
                 // Pure position weight
                 effective_weight = x.weight;
             }
             else if (blending_coef == 1.0) {
-                // Full mean Rf_error influence
-                effective_weight = x.mean_error * x.weight;
+                // Full model-quality influence (downweight high error)
+                effective_weight = q * x.weight;
             }
             else {
-                // Smooth interpolation between the two approaches
                 if (use_linear_blending) {
-                    // Method 1: Linear interpolation of weights
-                    effective_weight = (1.0 - blending_coef) * x.weight + blending_coef * (x.mean_error * x.weight);
+                    // Linear blend between pure position weight and quality-scaled weight
+                    effective_weight = (1.0 - blending_coef) * x.weight + blending_coef * (q * x.weight);
                 } else {
-                    // Method 2: Power-based scaling
-                    effective_weight = x.weight * pow(x.mean_error, blending_coef);
+                    // Power blend: exponent interpolates between 0 (no quality) and 1 (full quality)
+                    effective_weight = x.weight * pow(q, blending_coef);
                 }
             }
 

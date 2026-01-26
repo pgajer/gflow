@@ -765,7 +765,17 @@ mabilo_t mabilo_with_smoothed_errors(const std::vector<double>& x,
         return weights;
     };
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
     bool y_true_exists = !y_true.empty();
 
     int x_min_index = 0;
@@ -1321,7 +1331,17 @@ mabilo_t wmabilo(const std::vector<double>& x,
         return weights;
     };
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
     bool y_true_exists = !y_true.empty();
 
     int x_min_index = 0;
@@ -1662,7 +1682,17 @@ mabilo_t uwmabilo(const std::vector<double>& x,
         return weights;
     };
 
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
     bool y_true_exists = !y_true.empty();
 
     int x_min_index = 0;

@@ -3,6 +3,7 @@
 #include "basin.hpp"
 #include "iknn_vertex.hpp"
 
+#include <limits>
 #include <vector>
 #include <array>
 #include <unordered_map>
@@ -26,6 +27,28 @@ constexpr index_t NO_VERTEX = std::numeric_limits<index_t>::max();
 
 /// Sentinel value indicating no edge (used during construction)
 constexpr index_t NO_EDGE = std::numeric_limits<index_t>::max();
+
+// ============================================================
+// Verbosity levels (0..3) for logging
+// ============================================================
+
+enum class verbose_level_t : int {
+    QUIET    = 0,
+    PROGRESS = 1,
+    DEBUG    = 2,
+    TRACE    = 3
+};
+
+inline constexpr verbose_level_t vl_from_int(int x) noexcept {
+    return (x <= 0) ? verbose_level_t::QUIET
+         : (x == 1) ? verbose_level_t::PROGRESS
+         : (x == 2) ? verbose_level_t::DEBUG
+                    : verbose_level_t::TRACE;
+}
+
+inline constexpr bool vl_at_least(verbose_level_t vl, verbose_level_t thr) noexcept {
+    return static_cast<int>(vl) >= static_cast<int>(thr);
+}
 
 // ================================================================
 // SUPPORTING ENUMERATIONS AND STRUCTURES
@@ -669,8 +692,7 @@ struct riem_dcx_t {
         double threshold_percentile,
         double density_alpha,
         double density_epsilon,
-        int test_stage,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -742,7 +764,7 @@ struct riem_dcx_t {
         const std::vector<double>& gamma_grid,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -752,7 +774,7 @@ struct riem_dcx_t {
         const vec_t& rho_current,
         double t,
         double beta,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -775,7 +797,7 @@ struct riem_dcx_t {
         const vec_t& y,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -789,7 +811,7 @@ struct riem_dcx_t {
         const std::vector<index_t>& y_vertices,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -873,7 +895,7 @@ struct riem_dcx_t {
         double threshold_percentile,
         double density_alpha,
         double density_epsilon,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -944,11 +966,11 @@ struct riem_dcx_t {
      */
     void break_ties(
         vec_t& y,
-        double noise_scale = 1e-10,
-        double min_abs_noise = 1e-12,
-        bool preserve_bounds = true,
-        int seed = 123,
-        bool verbose = false
+        double noise_scale,
+        double min_abs_noise,
+        bool preserve_bounds,
+        int seed,
+        verbose_level_t verbose_level
         ) const;
 
     /**
@@ -956,11 +978,11 @@ struct riem_dcx_t {
      */
     void prepare_binary_cond_exp(
         vec_t& y_hat,
-        double p_right = 0.01,
-        bool apply_right_winsorization = true,
-        double noise_scale = 1e-10,
-        int seed = 123,
-        bool verbose = false
+        double p_right,
+        bool apply_right_winsorization,
+        double noise_scale,
+        int seed,
+        verbose_level_t verbose_level
         ) const;
 
     basin_t find_rho_extremum_basin(
@@ -1005,7 +1027,7 @@ private:
      */
     void compute_spectral_decomposition(
         int n_eigenpairs,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -1017,7 +1039,7 @@ private:
         double t_scale_factor,
         double beta_coefficient_factor,
         int n_eigenpairs,
-        bool verbose
+        verbose_level_t verbose_level
         );
 
     /**
@@ -1030,13 +1052,13 @@ private:
         double density_normalization,
         double density_alpha,
         double density_epsilon,
-        bool verbose
+        verbose_level_t verbose_level
     );
 
     /**
      * @brief Compute initial densities from reference measure
      */
-    void compute_initial_densities();
+    void compute_initial_densities(verbose_level_t verbose_level);
 
     /**
      * @brief Initialize metric from densities

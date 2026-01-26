@@ -466,7 +466,17 @@ std::vector<double> graph_kmean_wmad_cv(const std::vector<std::vector<int>>& gra
     std::vector<double> weights(n_vertices, 1.0);
 
     // Variables for weighted MAD Rf_error
-    bool y_binary = (std::set<double>(y.begin(), y.end()) == std::set<double>{0.0, 1.0});
+    auto is_binary01 = [](const std::vector<double>& yy, double tol = 1e-12) -> bool {
+        for (double v : yy) {
+            if (!(std::fabs(v) <= tol || std::fabs(v - 1.0) <= tol)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const bool y_binary = is_binary01(y);
+
     use_weighted_MAD_error &= y_binary;
     double n1 = 0;
     if (use_weighted_MAD_error) {

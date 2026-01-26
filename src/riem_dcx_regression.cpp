@@ -53,7 +53,7 @@
  * @note Edge densities appear twice (once in each endpoint's vertex_cofaces)
  * @note MIN_DENSITY = 1e-8 is consistent with apply_damped_heat_diffusion()
  */
-void riem_dcx_t::compute_initial_densities() {
+void riem_dcx_t::compute_initial_densities(verbose_level_t verbose_level) {
     const size_t n_vertices = vertex_cofaces.size();
     const double MIN_DENSITY = 1e-8;  // Match diffusion regularization
 
@@ -75,8 +75,10 @@ void riem_dcx_t::compute_initial_densities() {
         Rf_error("Reference measure not initialized or has incorrect size");
     }
 
-    Rprintf("  Initializing densities for %zu vertices, %zu edges\n",
-            n_vertices, n_edges);
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("  Initializing densities for %zu vertices, %zu edges\n",
+                n_vertices, n_edges);
+    }
 
     // ================================================================
     // PART 1: COMPUTE VERTEX DENSITIES
@@ -176,12 +178,14 @@ void riem_dcx_t::compute_initial_densities() {
     }
     double v_ratio = v_max / std::max(v_min, 1e-15);
 
-    Rprintf("  Vertex densities: range [%.3e, %.3e], ratio=%.2e\n",
-            v_min, v_max, v_ratio);
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("  Vertex densities: range [%.3e, %.3e], ratio=%.2e\n",
+                v_min, v_max, v_ratio);
 
-    if (n_vertex_clamped > 0) {
-        Rprintf("  Clamped %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
-                n_vertex_clamped, 100.0 * n_vertex_clamped / n_vertices, MIN_DENSITY);
+        if (n_vertex_clamped > 0) {
+            Rprintf("  Clamped %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+                    n_vertex_clamped, 100.0 * n_vertex_clamped / n_vertices, MIN_DENSITY);
+        }
     }
 
     if (v_ratio > 1e6) {
@@ -379,18 +383,22 @@ void riem_dcx_t::compute_initial_densities() {
     }
     double e_ratio = e_max / std::max(e_min, 1e-15);
 
-    Rprintf("  Edge densities: range [%.3e, %.3e], ratio=%.2e\n",
-            e_min, e_max, e_ratio);
-
-    if (n_edge_clamped > 0) {
-        Rprintf("  Clamped %d edges (%.1f%%) to MIN_DENSITY=%.2e\n",
-                n_edge_clamped, 100.0 * n_edge_clamped / n_edges, MIN_DENSITY);
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("  Edge densities: range [%.3e, %.3e], ratio=%.2e\n",
+                e_min, e_max, e_ratio);
     }
 
-    if (e_ratio > 1e6) {
-        Rf_warning("Initial edge density ratio %.2e is very large. "
-                   "This may indicate extreme geometric heterogeneity in the data.",
-                   e_ratio);
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        if (n_edge_clamped > 0) {
+            Rprintf("  Clamped %d edges (%.1f%%) to MIN_DENSITY=%.2e\n",
+                    n_edge_clamped, 100.0 * n_edge_clamped / n_edges, MIN_DENSITY);
+        }
+
+        if (e_ratio > 1e6) {
+            Rf_warning("Initial edge density ratio %.2e is very large. "
+                       "This may indicate extreme geometric heterogeneity in the data.",
+                       e_ratio);
+        }
     }
 
     // ================================================================
@@ -421,8 +429,10 @@ void riem_dcx_t::compute_initial_densities() {
                    100.0 * vertex_sum_error, 100.0 * edge_sum_error);
     }
 
-    Rprintf("  Initialization complete: densities sum to n=%zu (vertices), m=%zu (edges)\n",
-            n_vertices, n_edges);
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("  Initialization complete: densities sum to n=%zu (vertices), m=%zu (edges)\n",
+                n_vertices, n_edges);
+    }
 }
 
 /**
@@ -1152,14 +1162,22 @@ void riem_dcx_t::update_edge_mass_matrix() {
  */
 void riem_dcx_t::compute_spectral_decomposition(
     int n_eigenpairs,
-    bool verbose
+    verbose_level_t verbose_level
     ) {
+
     auto decomp_start = std::chrono::steady_clock::now();
     auto phase_time = std::chrono::steady_clock::now();
 
-    if (verbose) {
+    static bool printed_progress_header = false;
+
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
                 L.L[0].rows(), n_eigenpairs);
+        if (!printed_progress_header) {
+            Rprintf("\n\teigs: n=%ld nev=%d (details suppressed; use verbose.level>=2 for debug)\n",
+                    L.L[0].rows(), n_eigenpairs);
+            printed_progress_header = true;
+        }
     }
 
     // Validate that Laplacian exists
@@ -1170,7 +1188,8 @@ void riem_dcx_t::compute_spectral_decomposition(
     // Select appropriate Laplacian (use normalized if available)
     const spmat_t& L0 = (L.L0_sym.rows() > 0) ? L.L0_sym : L.L[0];
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+
         if (L.L0_sym.rows() > 0) {
             Rprintf("\tUsing L0_sym (normalized Laplacian)\n");
         } else {
@@ -1212,7 +1231,8 @@ void riem_dcx_t::compute_spectral_decomposition(
 
     // For small graphs or near-full decomposition, use dense solver
     if (n_eigenpairs >= n_vertices - 2 || n_vertices <= 1000) {
-        if (verbose) {
+
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\tUsing dense solver (n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
             phase_time = std::chrono::steady_clock::now();
         }
@@ -1234,7 +1254,7 @@ void riem_dcx_t::compute_spectral_decomposition(
             spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             elapsed_time(phase_time, "DONE", true);
             elapsed_time(decomp_start, "  Total decomposition time", true);
         }
@@ -1249,7 +1269,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     int nev = n_eigenpairs;
     int ncv = std::min(2 * nev + 10, n_vertices);
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("\tUsing sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv);
         phase_time = std::chrono::steady_clock::now();
     }
@@ -1271,7 +1291,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     int maxit = 1000;
     double tol = 1e-8;
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("    Attempt 1: Standard parameters (maxit=%d, tol=%g) ... ", maxit, tol);
     }
 
@@ -1288,7 +1308,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         return;
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("Failed (status=%d)\n", static_cast<int>(eigs.info()));
 
         // ============================================================
@@ -1332,7 +1352,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         // DIAGNOSTIC INFORMATION: Normalized Laplacian conditioning
         // ============================================================
 
-        if (L.L0_sym.rows() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && L.L0_sym.rows() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
             Rprintf("\n    DIAGNOSTIC: Normalized Laplacian conditioning\n");
 
             const int n = g.M[0].rows();
@@ -1456,7 +1476,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // TIER 1: Relaxed convergence criteria
     // ============================================================
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("    Tier 1: Relaxed convergence criteria ... \n");
     }
 
@@ -1469,7 +1489,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     for (size_t idx = 0; idx < tier1_attempts.size(); ++idx) {
         const auto& [adjusted_maxit, adjusted_tol] = tier1_attempts[idx];
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("      Attempt %zu: maxit=%d, tol=%.2e ... ",
                     idx + 2, adjusted_maxit, adjusted_tol);
         }
@@ -1478,7 +1498,8 @@ void riem_dcx_t::compute_spectral_decomposition(
         eigs.compute(Spectra::SortRule::SmallestAlge, adjusted_maxit, adjusted_tol);
 
         if (eigs.info() == Spectra::CompInfo::Successful) {
-            if (verbose) {
+
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 Rprintf("Success\n");
             }
 
@@ -1490,13 +1511,13 @@ void riem_dcx_t::compute_spectral_decomposition(
                 spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
             }
 
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 elapsed_time(decomp_start, "  Total decomposition time", true);
             }
             return;
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("Failed\n");
         }
     }
@@ -1504,7 +1525,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // ============================================================
     // TIER 2: Enlarged Krylov subspace with relaxed criteria
     // ============================================================
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("    Tier 2: Enlarged Krylov subspace ... \n");
     }
 
@@ -1517,7 +1538,8 @@ void riem_dcx_t::compute_spectral_decomposition(
 
     int multiplier_idx = 1;
     for (int multiplier : ncv_multipliers) {
-        if (verbose) {
+
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("      Attempt %u: Using multiplier=%d ... ", multiplier_idx++, multiplier);
             phase_time = std::chrono::steady_clock::now();
         }
@@ -1550,7 +1572,7 @@ void riem_dcx_t::compute_spectral_decomposition(
             }
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             elapsed_time(phase_time, "DONE", true);
             elapsed_time(decomp_start, "  Total decomposition time", true);
         }
@@ -1559,7 +1581,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // ============================================================
     // TIER 3: Dense fallback for small-medium problems
     // ============================================================
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("    Tier 3: Dense fallback for small-medium problems ... \n");
     }
 
@@ -1586,7 +1608,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         }
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         elapsed_time(phase_time, "DONE", true);
         elapsed_time(decomp_start, "  Total decomposition time (failed)", true);
     }
@@ -1645,7 +1667,7 @@ void riem_dcx_t::select_diffusion_parameters(
     double t_scale_factor,
     double beta_coefficient_factor,
     int n_eigenpairs_hint,
-    bool verbose
+    verbose_level_t verbose_level
 ) {
     // ============================================================
     // Validate scale factors
@@ -1668,7 +1690,7 @@ void riem_dcx_t::select_diffusion_parameters(
     if (!spectral_cache.is_valid) {
         int n_to_compute = std::max(3, n_eigenpairs_hint);
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
             if (n_to_compute > 3) {
                 Rprintf("\t(computing %d eigenpairs to avoid recomputation for filtering)\n",
@@ -1678,7 +1700,7 @@ void riem_dcx_t::select_diffusion_parameters(
             }
         }
 
-        compute_spectral_decomposition(n_to_compute, verbose);
+        compute_spectral_decomposition(n_to_compute, verbose_level);
     }
 
     const double lambda_2 = spectral_cache.lambda_2;
@@ -1693,7 +1715,7 @@ void riem_dcx_t::select_diffusion_parameters(
     const double MIN_BETA_DAMPING = 1e-4;  // Was 1e-6 - increased 100x
 
     if (lambda_2 < MIN_LAMBDA_2) {
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tWARNING: Very small spectral gap (lambda_2 = %.6f < %.6f)\n",
                     lambda_2, MIN_LAMBDA_2);
             Rprintf("\t         This indicates weak graph connectivity.\n");
@@ -1718,14 +1740,14 @@ void riem_dcx_t::select_diffusion_parameters(
 
         // Enforce upper bound
         if (t_diffusion > MAX_T_DIFFUSION) {
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("\n\tCapping t_diffusion from %.2f to %.2f (numerical stability)\n",
                         t_diffusion, MAX_T_DIFFUSION);
             }
             t_diffusion = MAX_T_DIFFUSION;
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
                     t_diffusion, lambda_2);
             if (lambda_2 < MIN_LAMBDA_2) {
@@ -1737,7 +1759,7 @@ void riem_dcx_t::select_diffusion_parameters(
                     t_scale_factor / lambda_2_effective,
                     1.0 / lambda_2_effective);
         }
-    } else if (verbose) {
+    } else if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\n\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
     }
 
@@ -1752,18 +1774,18 @@ void riem_dcx_t::select_diffusion_parameters(
 
         // Enforce minimum beta
         if (beta_damping < MIN_BETA_DAMPING) {
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("\tRaising beta_damping from %.2e to %.2e (stability)\n",
                         beta_damping, MIN_BETA_DAMPING);
             }
             beta_damping = MIN_BETA_DAMPING;
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\tAuto-selected beta_damping = %.6f (damping coefficient beta*t = %.3f)\n",
                     beta_damping, beta_coefficient_factor);
         }
-    } else if (verbose) {
+    } else if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\tUsing user-provided beta_damping = %.6f\n", beta_damping);
     }
 
@@ -1803,7 +1825,14 @@ void riem_dcx_t::select_diffusion_parameters(
     // Final summary if verbose
     // ============================================================
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("Phase 4.5: diffusion params: lambda2=%.6f t=%.6f%s beta=%.6f%s\n",
+                lambda_2,
+                t_diffusion, t_auto_selected ? " [auto]" : " [user]",
+                beta_damping, beta_auto_selected ? " [auto]" : " [user]");
+    }
+
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\n\tDiffusion parameter summary:\n");
         Rprintf("  \tlambda_2 (spectral gap):  %.6f%s\n", lambda_2,
                 lambda_2 < MIN_LAMBDA_2 ? " [SMALL - using safeguards]" : "");
@@ -1822,147 +1851,6 @@ void riem_dcx_t::select_diffusion_parameters(
     }
 }
 
-#if 0
-void riem_dcx_t::select_diffusion_parameters(
-    double& t_diffusion,
-    double& beta_damping,
-    double t_scale_factor,
-    double beta_coefficient_factor,
-    int n_eigenpairs_hint,
-    bool verbose
-) {
-    // ============================================================
-    // Validate scale factors
-    // ============================================================
-
-    if (t_scale_factor <= 0.0) {
-        Rf_error("t_scale_factor must be positive (got %.3e). Typical range: [0.1, 1.0]",
-                 t_scale_factor);
-    }
-
-    if (beta_coefficient_factor <= 0.0) {
-        Rf_error("beta_coefficient_factor must be positive (got %.3e). Typical range: [0.05, 0.3]",
-                 beta_coefficient_factor);
-    }
-
-    // ============================================================
-    // Ensure spectral decomposition is available
-    // ============================================================
-
-    if (!spectral_cache.is_valid) {
-        // For parameter selection, we only need lambda_2 (first 3 eigenpairs)
-        // But if we know we'll need more for filtering, compute them now
-        int n_to_compute = std::max(3, n_eigenpairs_hint);
-
-        if (verbose) {
-            Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
-            if (n_to_compute > 3) {
-                Rprintf("\t(computing %d eigenpairs to avoid recomputation for filtering)\n",
-                        n_to_compute);
-            } else {
-                Rprintf("\t(computing 3 eigenpairs for lambda_2 estimation)\n");
-            }
-        }
-
-        compute_spectral_decomposition(n_to_compute, verbose);
-    }
-
-    const double lambda_2 = spectral_cache.lambda_2;
-
-    // ============================================================
-    // Auto-select t_diffusion if not provided by user
-    // ============================================================
-
-    bool t_auto_selected = false;
-    if (t_diffusion <= 0.0) {
-        // Use user-provided scale factor instead of hardcoded 0.5
-        t_diffusion = t_scale_factor / lambda_2;
-        t_auto_selected = true;
-
-        if (verbose) {
-            Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
-                    t_diffusion, lambda_2);
-            Rprintf("\tConservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
-                    0.1 / lambda_2,
-                    t_scale_factor / lambda_2,
-                    1.0 / lambda_2);
-        }
-    } else if (verbose) {
-        Rprintf("\n\tUsing user-provided t_diffusion = %.6f\n", t_diffusion);
-    }
-
-    // ============================================================
-    // Auto-select beta_damping if not provided by user
-    // ============================================================
-
-    bool beta_auto_selected = false;
-    if (beta_damping <= 0.0) {
-        // Use user-provided coefficient factor instead of hardcoded 0.1
-        beta_damping = beta_coefficient_factor / t_diffusion;
-        beta_auto_selected = true;
-
-        if (verbose) {
-            Rprintf("\tAuto-selected beta_damping = %.6f (damping coefficient beta*t = %.3f)\n",
-                    beta_damping, beta_coefficient_factor);
-        }
-    } else if (verbose) {
-        Rprintf("\tUsing user-provided beta_damping = %.6f\n", beta_damping);
-    }
-
-    // ============================================================
-    // Diagnostic checks and warnings
-    // ============================================================
-
-    const double diffusion_scale = t_diffusion * lambda_2;
-
-    if (diffusion_scale > 1.5) {
-        Rf_warning("Large diffusion scale (t*lambda_2 = %.2f): density may change dramatically per iteration. "
-                   "Consider reducing t_scale_factor to %.3f for more conservative updates.",
-                   diffusion_scale, 1.0 / lambda_2);
-    }
-
-    if (diffusion_scale < 0.01) {  // Changed from 0.05 to 0.01
-        Rf_warning("Small diffusion scale (t*lambda_2 = %.2f): convergence may be very slow. "
-                   "Consider increasing t_scale_factor to %.3f for faster updates.",
-                   diffusion_scale, 0.05 / lambda_2);  // Changed from 0.3 to 0.05
-    }
-
-    const double damping_coefficient = beta_damping * t_diffusion;
-
-    if (damping_coefficient > 0.5) {
-        Rf_warning("High damping coefficient (beta*t = %.2f): may over-suppress geometric structure. "
-                   "Typical range is [0.05, 0.2]. Consider reducing beta_coefficient_factor.",
-                   damping_coefficient);
-    }
-
-    if (damping_coefficient < 0.01) {
-        Rf_warning("Low damping coefficient (beta*t = %.3f): density may collapse onto small regions. "
-                   "Consider increasing beta_coefficient_factor.",
-                   damping_coefficient);
-    }
-
-    // ============================================================
-    // Final summary if verbose
-    // ============================================================
-
-    if (verbose) {
-        Rprintf("\n\tDiffusion parameter summary:\n");
-        Rprintf("  \tlambda_2 (spectral gap):  %.6f\n", lambda_2);
-        Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
-                t_auto_selected ? "[auto]" : "[user]");
-        if (t_auto_selected) {
-            Rprintf("  \t  (from t.scale.factor = %.3f)\n", t_scale_factor);
-        }
-        Rprintf("  \tbeta (damping):        %.6f %s\n", beta_damping,
-                beta_auto_selected ? "[auto]" : "[user]");
-        if (beta_auto_selected) {
-            Rprintf("  \t  (from beta.coefficient.factor = %.3f)\n", beta_coefficient_factor);
-        }
-        Rprintf("  \tDiffusion scale:       %.3f (t*lambda_2)\n", diffusion_scale);
-        Rprintf("  \tDamping coefficient:   %.3f (beta*t)\n", damping_coefficient);
-    }
-}
-#endif
 
 /**
  * @brief Select optimal gamma parameter via first-iteration GCV evaluation
@@ -2089,7 +1977,7 @@ gamma_selection_result_t riem_dcx_t::select_gamma_first_iteration(
     const std::vector<double>& gamma_grid,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
-    bool verbose
+    verbose_level_t verbose_level
 ) {
     // Assumes initialization already done (K, rho, M, L all built)
     // and initial smoothing already computed
@@ -2122,7 +2010,7 @@ gamma_selection_result_t riem_dcx_t::select_gamma_first_iteration(
             y,
             n_eigenpairs,
             filter_type,
-            verbose
+            verbose_level
         );
 
         result.gcv_scores[i] = gcv_res.gcv_optimal;
@@ -2201,7 +2089,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     const vec_t& rho_current,
     double t,
     double beta,
-    bool verbose
+    verbose_level_t verbose_level
 ) {
     // ========================================================================
     // Part 1: Input validation and setup
@@ -2270,7 +2158,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // ========================================================================
 
     vec_t rho_new;
-    bool cg_converged = false;
+    bool cg_ok = false;
     bool cg_attempted = false;
     bool used_direct_solver = false;
     int cg_iterations = 0;
@@ -2293,24 +2181,24 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
         cg.compute(A);
 
         // CG diagnostics
-        const Eigen::ComputationInfo cg_status = cg.info();
+        // const Eigen::ComputationInfo cg_status = cg.info();
         cg_iterations = cg.iterations();
         cg_error = cg.error();  // Residual norm
 
         if (cg.info() == Eigen::Success) {
             rho_new = cg.solve(b);
-            cg_converged = (cg.info() == Eigen::Success && cg_error < CG_RESIDUAL_THRESHOLD);
+            cg_ok = (cg.info() == Eigen::Success && cg_error < CG_RESIDUAL_THRESHOLD);
 
             // Quick check: if many negative values, CG solution is garbage
-            if (cg_converged) {
+            if (cg_ok) {
                 int n_negative_quick = 0;
                 for (Eigen::Index i = 0; i < n; ++i) {
                     if (rho_new[i] < -1e-6) n_negative_quick++;
                 }
                 // If more than 10% negative, CG failed despite claiming success
                 if (n_negative_quick > n * 0.1) {
-                    cg_converged = false;
-                    if (verbose) {
+                    cg_ok = false;
+                    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                         Rprintf("  CG reported success but %.1f%% vertices negative - rejecting solution\n",
                                 100.0 * n_negative_quick / n);
                     }
@@ -2319,14 +2207,13 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
         }
 
         // Determine if CG had issues
-        bool cg_converged = (cg_status == Eigen::Success);
-        if (!cg_converged) {
+        if (!cg_ok) {
             Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
                        "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
                        cg_iterations, 2000, cg_error, 1e-8);
         } else if (cg_error > 1e-6) {
             // Converged but with larger-than-ideal residual
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 Rprintf("  CG converged with residual %.3e (iterations=%d)\n",
                         cg_error, cg_iterations);
             }
@@ -2336,15 +2223,15 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // ------------------------------------------------------------------------
     // ATTEMPT 2: Direct solver fallback (robust but O(n³))
     // ------------------------------------------------------------------------
-    if (!cg_converged || n <= DIRECT_SOLVER_THRESHOLD) {
+    if (!cg_ok || n <= DIRECT_SOLVER_THRESHOLD) {
         used_direct_solver = true;
 
-        if (verbose && cg_attempted && !cg_converged) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE) && cg_attempted && !cg_ok) {
             Rprintf("  CG failed (residual=%.3e, iter=%d). Using direct solver for n=%ld...\n",
                     cg_error, cg_iterations, static_cast<long>(n));
         }
 
-        if (!cg_converged && n > 5000) {
+        if (!cg_ok && n > 5000) {
             Rf_warning("Direct solver fallback for large matrix (n=%ld) may be slow. "
                        "Consider adjusting parameters.", static_cast<long>(n));
         }
@@ -2377,7 +2264,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
             const double denom = std::max(b.norm(), 1e-30);
             const double direct_residual = (A_dense * rho_new - b).norm() / denom;
 
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 Rprintf("  Direct solver: residual=%.3e\n", direct_residual);
             }
 
@@ -2396,7 +2283,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
             double lu_residual = (A_dense * rho_new - b).norm() / b.norm();
 
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 Rprintf("  LDLT failed, LU solver: residual=%.3e\n", lu_residual);
             }
 
@@ -2405,7 +2292,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                          "unacceptable residuals (%.3e). System may be singular.", lu_residual);
             }
         }
-    } else if (!cg_converged) {
+    } else if (!cg_ok) {
         // Large matrix and CG failed - no good fallback
         Rf_error("apply_damped_heat_diffusion: CG solver failed for large matrix (n=%ld). "
                  "Consider reducing t_diffusion or increasing beta_damping.",
@@ -2413,21 +2300,20 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     }
 
     // Update diagnostic flags for downstream reporting
-    bool cg_suspicious = (cg_converged && cg_error > 1e-6);
+    bool cg_suspicious = (cg_ok && cg_error > 1e-6);
 
-    if (!cg_converged && !used_direct_solver) {
+    if (!cg_ok && !used_direct_solver) {
         Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
                    "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
                    cg_iterations, 2000, cg_error, 1e-8);
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         if (used_direct_solver) {
-            Rprintf("  Solver: DIRECT (n <= DIRECT_SOLVER_THRESHOLD)\n");
+            Rprintf("  density diffusion: solver=DIRECT\n");
         } else {
-            Rprintf("  Solver: CG %s after %d iterations (residual=%.3e)\n",
-                    cg_converged ? "converged" : "FAILED",
-                    cg_iterations, cg_error);
+            Rprintf("  density diffusion: solver=CG %s iter=%d resid=%.3e\n",
+                    cg_ok ? "OK" : "FAIL", cg_iterations, cg_error);
         }
     }
 
@@ -2479,7 +2365,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     if (relative_sum_error > 0.5) {
         // More than 50% off - serious problem
-        const char* cg_status_msg = cg_converged ? "reported success" : "failed to converge";
+        const char* cg_status_msg = cg_ok ? "reported success" : "failed to converge";
 
         Rf_warning("apply_damped_heat_diffusion: density sum %.3e deviates %.1f%% from expected %.0f. "
                    "CG solver %s (residual=%.3e). Results may be unreliable.",
@@ -2488,14 +2374,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     } else if (relative_sum_error > 0.1) {
         // 10-50% off - concerning, especially if CG claimed success
-        if (cg_converged && verbose) {
+        if (cg_ok && vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("  Note: Density sum error = %.2f%% despite CG convergence. "
                     "This may improve in later iterations.\n",
                     100.0 * relative_sum_error);
         }
-    } else if (cg_attempted && (!cg_converged || cg_suspicious)) {
+    } else if (cg_attempted && (!cg_ok || cg_suspicious)) {
         // CG had issues but sum looks reasonable - maybe it's actually okay
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("  CG convergence was questionable (residual=%.3e) but "
                     "density sum error is acceptable (%.2f%%)\n",
                     cg_error, 100.0 * relative_sum_error);
@@ -2532,7 +2418,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     // Context-aware warnings based on CG status
     if (n_clamped > n * 0.1) {
-        const char* likely_cause = cg_converged ?
+        const char* likely_cause = cg_ok ?
             "extreme geometric heterogeneity or response modulation" :
             "poor CG convergence";
 
@@ -2577,28 +2463,52 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     double final_max = rho_new.maxCoeff();
     double final_ratio = final_max / std::max(final_min, 1e-15);
 
-    // Comprehensive diagnostic output for large graphs or when issues detected
-    if ((verbose && n > 10000) || !cg_converged || cg_suspicious ||
-        final_ratio > 5e7 || n_negative > 0 || n_clamped > n * 0.05) {
+    const bool solver_issue =
+        (cg_attempted && (!cg_ok || cg_suspicious)); // only meaningful if CG was used
+
+    const bool density_issue =
+        (n_negative > 0) ||
+        (n_clamped > n * 0.05) ||
+        (final_ratio > 5e7);
+
+    const bool mass_issue =
+        (relative_sum_error > 0.10); // tune: show only if >10% in DEBUG/TRACE; errors already warn
+
+    const bool issues = solver_issue || density_issue || mass_issue;
+
+    // Print diagnostics only when issues, except TRACE where we always print
+    if (issues || vl_at_least(verbose_level, verbose_level_t::TRACE)) {
 
         Rprintf("\n  === Density Evolution Diagnostics ===\n");
 
         if (cg_attempted) {
-            Rprintf("  CG solver: %s after %d iterations (residual=%.3e)\n",
-                    cg_converged ? "converged" : "FAILED",
-                    cg_iterations, cg_error);
+            Rprintf("  Solver: CG %s iter=%d resid=%.3e\n",
+                    cg_ok ? "OK" : "FAIL", cg_iterations, cg_error);
+        } else if (used_direct_solver) {
+            Rprintf("  Solver: DIRECT\n");
         }
 
-        Rprintf("  Negative values: %d vertices (%.1f%%), worst=%.3e\n",
-                n_negative, 100.0 * n_negative / n, max_negative);
-        Rprintf("  Pre-normalization mass deviation: %.2e relative (sum=%.6e, target=%.0f)\n",
-                relative_sum_error, current_sum, n_double);
-        Rprintf("  Clamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
-                n_clamped, 100.0 * n_clamped / n, MIN_DENSITY);
+        if (n_negative > 0 || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("  Negative values: %d vertices (%.1f%%), worst=%.3e\n",
+                    n_negative, 100.0 * n_negative / n, max_negative);
+        }
+
+        if (mass_issue || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("  Pre-normalization mass deviation: %.2e relative (sum=%.6e, target=%.0f)\n",
+                    relative_sum_error, current_sum, n_double);
+        }
+
+        if (n_clamped > 0 || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("  Clamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+                    n_clamped, 100.0 * n_clamped / n, MIN_DENSITY);
+        }
+
         Rprintf("  Final range: [%.3e, %.3e], ratio=%.2e\n",
                 final_min, final_max, final_ratio);
+
         Rprintf("  =====================================\n\n");
     }
+
 
     // Final safety checks
     if (final_ratio > 5e7 && n > 10000) {
@@ -3421,7 +3331,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const vec_t& y,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
-    bool verbose
+    verbose_level_t verbose_level
     ) {
 
     // ================================================================
@@ -3471,9 +3381,14 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     const bool need_recompute = !spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs;
 
-    if (need_recompute && n_vertices > 10000 && n_eigenpairs > 200) {
-        Rprintf("smooth_response_via_spectral_filter: computing %d eigenpairs for n=%d vertices; "
-                "this may take significant time...\n", n_eigenpairs, n_vertices);
+    static bool warned_big_eigs = false;
+
+    if (need_recompute && n_vertices > 10000 && n_eigenpairs > 200 &&
+        vl_at_least(verbose_level, verbose_level_t::DEBUG) && !warned_big_eigs) {
+
+        Rprintf("smooth_response_via_spectral_filter: computing %d eigenpairs for n=%d; may take time\n",
+                n_eigenpairs, n_vertices);
+        warned_big_eigs = true;
     }
 
     // Check for degenerate Laplacian (all zeros would indicate disconnected graph)
@@ -3498,7 +3413,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     // Use cached decomposition if valid and sufficient
     if (!spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs) {
-        compute_spectral_decomposition(n_eigenpairs, verbose);
+        compute_spectral_decomposition(n_eigenpairs, verbose_level);
     }
 
     // Extract needed eigenpairs from cache
@@ -3649,7 +3564,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter_semiy(
     const std::vector<index_t>& y_vertices,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
-    bool verbose
+    verbose_level_t verbose_level
     ) {
 
     if (y_vertices.empty()) {
@@ -3709,7 +3624,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter_semiy(
         spectral_cache.eigenvalues.size() < n_eigenpairs;
 
     if (need_recompute) {
-        compute_spectral_decomposition(n_eigenpairs, verbose);
+        compute_spectral_decomposition(n_eigenpairs, verbose_level);
     }
 
     const int m = std::min(n_eigenpairs,
@@ -5114,11 +5029,7 @@ std::string riem_dcx_t::format_gcv_history(
  *              Typical: 2.0-3.0. Use 2.5 as default. Larger values retain more
  *              edges (denser graph).
  *
- * @param[in] threshold_percentile Percentile for computing local scale in
- *              geometric pruning. Typical: 0.5 (median). Lower percentiles
- *              produce more aggressive pruning.
- *
- * @param[in] verbose (logical) controlling progress reporting during computation
+ * @param[in] verbose_level Integer in {0,1,2,3} controlling reporting
  *
  * @pre X.rows() must equal y.size()
  * @pre k must be less than X.rows()
@@ -5181,8 +5092,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     double threshold_percentile,
     double density_alpha,
     double density_epsilon,
-    int test_stage,
-    bool verbose
+    verbose_level_t verbose_level
     ) {
     // ================================================================
     // PART I: INITIALIZATION
@@ -5195,7 +5105,9 @@ void riem_dcx_t::fit_rdgraph_regression(
     // Phase 1-4: Build geometric structure
     // --------------------------------------------------------------
 
-    if (verbose) Rprintf("Phase 1-4: Build geometric structure ... ");
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("Phase 1-4: Build geometric structure ... ");
+    }
 
     initialize_from_knn(
         X, k,
@@ -5206,7 +5118,7 @@ void riem_dcx_t::fit_rdgraph_regression(
         threshold_percentile,
         density_alpha,
         density_epsilon,
-        verbose
+        verbose_level
         );
 
     // Compute effective degrees for all vertices based on edge densities
@@ -5242,17 +5154,15 @@ void riem_dcx_t::fit_rdgraph_regression(
                    gamma_modulation);
     }
 
-    if (test_stage == 0) {
-        Rprintf("TEST_STAGE 0: Stopped after initialize_from_knn\n");
-        return;
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
     }
 
     // --------------------------------------------------------------
     // Phase 4.5: Select or validate diffusion parameters
     // --------------------------------------------------------------
 
-    if (verbose) {
-        elapsed_time(phase_time, "DONE", true);
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Phase 4.5: Select diffusion parameters ... ");
         phase_time = std::chrono::steady_clock::now();
     }
@@ -5262,19 +5172,17 @@ void riem_dcx_t::fit_rdgraph_regression(
                                 t_scale_factor,
                                 beta_coefficient_factor,
                                 n_eigenpairs,
-                                verbose);
+                                verbose_level);
 
-    if (test_stage == 1) {
-        Rprintf("TEST_STAGE 1: Stopped after parameter selection\n");
-        return;
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        elapsed_time(phase_time, "DONE", true);
     }
 
     // --------------------------------------------------------------
     // Phase 5: Initial response smoothing
     // --------------------------------------------------------------
 
-    if (verbose) {
-        elapsed_time(phase_time, "DONE", true);
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
         Rprintf("Phase 5: Initial response smoothing ... ");
         phase_time = std::chrono::steady_clock::now();
     }
@@ -5282,8 +5190,8 @@ void riem_dcx_t::fit_rdgraph_regression(
     gcv_history.clear();
 
     auto gcv_result = (y_vertices.empty())
-        ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose)
-        : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose);
+        ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose_level)
+        : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose_level);
 
     vec_t y_hat_curr = gcv_result.y_hat;
     sig.y_hat_hist.clear();
@@ -5292,9 +5200,8 @@ void riem_dcx_t::fit_rdgraph_regression(
     // Store initial GCV results
     gcv_history.add(gcv_result);
 
-    if (test_stage == 2) {
-        Rprintf("TEST_STAGE 2: Stopped after initial smoothing\n");
-        return;
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
     }
 
     // --------------------------------------------------------------
@@ -5306,10 +5213,13 @@ void riem_dcx_t::fit_rdgraph_regression(
     bool gamma_auto_selected = false;
 
     if (gamma_modulation < 0.0) {
-        Rprintf("\n");
-        Rprintf("==========================================================\n");
-        Rprintf("AUTOMATIC GAMMA SELECTION VIA FIRST-ITERATION GCV\n");
-        Rprintf("==========================================================\n");
+
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("\n");
+            Rprintf("==========================================================\n");
+            Rprintf("AUTOMATIC GAMMA SELECTION VIA FIRST-ITERATION GCV\n");
+            Rprintf("==========================================================\n");
+        }
 
         // Define search grid
         std::vector<double> gamma_grid = {
@@ -5318,11 +5228,13 @@ void riem_dcx_t::fit_rdgraph_regression(
             1.0, 1.2, 1.4, 1.6, 1.8, 2.0
         };
 
-        Rprintf("Evaluating %d candidate gamma values...\n",
-                (int)gamma_grid.size());
-        Rprintf("Grid: [%.2f, %.2f, ..., %.2f, %.2f]\n",
-                gamma_grid.front(), gamma_grid[1],
-                gamma_grid[gamma_grid.size()-2], gamma_grid.back());
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("Evaluating %d candidate gamma values...\n",
+                    (int)gamma_grid.size());
+            Rprintf("Grid: [%.2f, %.2f, ..., %.2f, %.2f]\n",
+                    gamma_grid.front(), gamma_grid[1],
+                    gamma_grid[gamma_grid.size()-2], gamma_grid.back());
+        }
 
         // Perform gamma selection
         auto gamma_result = select_gamma_first_iteration(
@@ -5330,7 +5242,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             gamma_grid,
             n_eigenpairs,
             filter_type,
-            verbose
+            verbose_level
             );
 
         // Use selected gamma
@@ -5341,29 +5253,40 @@ void riem_dcx_t::fit_rdgraph_regression(
         gamma_selection_result = gamma_result;
         gamma_was_auto_selected = true;
 
-        Rprintf("\n");
-        Rprintf("GAMMA SELECTION COMPLETE\n");
-        Rprintf("  Selected gamma: %.3f\n", gamma_result.gamma_optimal);
-        Rprintf("  GCV score:      %.6e\n", gamma_result.gcv_optimal);
-
-        // Check if optimum is at boundary
-        if (gamma_modulation == gamma_grid.front()) {
-            Rf_warning("Optimal gamma is at lower grid boundary (%.3f). "
-                       "Consider exploring smaller values.", gamma_modulation);
-        }
-        if (gamma_modulation == gamma_grid.back()) {
-            Rf_warning("Optimal gamma is at upper grid boundary (%.3f). "
-                       "Consider exploring larger values.", gamma_modulation);
+        if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+            Rprintf("gamma auto-selected: %.3f (GCV=%.6e)\n",
+                    gamma_modulation, gamma_result.gcv_optimal);
         }
 
-        Rprintf("==========================================================\n");
-        Rprintf("\n");
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("\n");
+            Rprintf("GAMMA SELECTION COMPLETE\n");
+            Rprintf("  Selected gamma: %.3f\n", gamma_result.gamma_optimal);
+            Rprintf("  GCV score:      %.6e\n", gamma_result.gcv_optimal);
+
+            // Check if optimum is at boundary
+            if (gamma_modulation == gamma_grid.front()) {
+                Rf_warning("Optimal gamma is at lower grid boundary (%.3f). "
+                           "Consider exploring smaller values.", gamma_modulation);
+            }
+            if (gamma_modulation == gamma_grid.back()) {
+                Rf_warning("Optimal gamma is at upper grid boundary (%.3f). "
+                           "Consider exploring larger values.", gamma_modulation);
+            }
+
+            Rprintf("==========================================================\n");
+            Rprintf("\n");
+        }
 
     } else if (gamma_modulation == 0.0) {
-        Rprintf("Using gamma = 0 (no response-coherence modulation)\n");
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("Using gamma = 0 (no response-coherence modulation)\n");
+        }
         gamma_was_auto_selected = false;
     } else {
-        Rprintf("Using user-provided gamma = %.3f\n", gamma_modulation);
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("Using user-provided gamma = %.3f\n", gamma_modulation);
+        }
         gamma_was_auto_selected = false;
     }
 
@@ -5392,7 +5315,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     vec_t rho_vertex_prev(n_vertices);  // Allocate once
     std::vector<double> response_change_history;
 
-    if (gamma_auto_selected) {
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS) && gamma_auto_selected) {
         Rprintf("\n");
         Rprintf("(using auto-selected gamma = %.3f)\n", gamma_modulation);
         Rprintf("\n");
@@ -5414,17 +5337,14 @@ void riem_dcx_t::fit_rdgraph_regression(
     vec_t rho_prev_iter;  // for density change across iterations
 
     for (int iter = 1; iter <= max_iterations; ++iter) {
+
+        auto iter_time = std::chrono::steady_clock::now();
+
         y_hat_prev = y_hat_curr;
 
         // --------------------------------------------------------------
         // Step 1: Density diffusion
         // --------------------------------------------------------------
-
-        if (verbose) {
-            // elapsed_time(phase_time, "DONE", true);
-            Rprintf("\nitr %d: Step 1: Density diffusion ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
 
         // Extract current vertex densities from vertex_cofaces
         for (size_t i = 0; i < n_vertices; ++i) {
@@ -5436,7 +5356,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             rho_vertex_prev,
             t_diffusion,
             beta_damping,
-            verbose
+            verbose_level
             );
 
         // Store evolved densities
@@ -5457,7 +5377,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             density_change_rel = density_change_norm / density_norm;
             rho_prev_iter = rho_vertex_new;
 
-            if (verbose) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("  Density L2 change: %.6e (relative: %.6e)\n",
                         density_change_norm, density_change_rel);
             }
@@ -5465,61 +5385,23 @@ void riem_dcx_t::fit_rdgraph_regression(
 
         density_change_rel_history.push_back(density_change_rel);
 
-        if (test_stage == 3) {
-            Rprintf("TEST_STAGE 3: Stopped after first diffusion\n");
-            return;
-        }
-
         // --------------------------------------------------------------
         // Step 2: Edge density update
         // --------------------------------------------------------------
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 2: Edge density update ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         update_edge_densities_from_vertices();
-
-        if (test_stage == 4) {
-            Rprintf("TEST_STAGE 4: Stopped after edge density update\n");
-            return;
-        }
 
         // --------------------------------------------------------------
         // Step 3: Update vertex mass matrix from evolved densities
         // --------------------------------------------------------------
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 3: Update vertex mass matrix from evolved densities ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         update_vertex_metric_from_density();  // Updates only M[0]
-
-        if (test_stage == 5) {
-            Rprintf("TEST_STAGE 5: Stopped after update_vertex_metric_from_density()\n");
-            return;
-        }
 
         // --------------------------------------------------------------
         // Step 4: Rebuild edge mass matrix from evolved densities
         // --------------------------------------------------------------
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 4: Rebuild edge mass matrix from evolved densities ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         update_edge_mass_matrix();  // Compute fresh \eqn{M_1} from current \eqn{\rho_0}
-
-        if (test_stage == 6) {
-            Rprintf("TEST_STAGE 6: Stopped after update_edge_mass_matrix()\n");
-            return;
-        }
 
         // --------------------------------------------------------------
         // Step 5: Apply response-coherence modulation to fresh M[1]
@@ -5530,50 +5412,22 @@ void riem_dcx_t::fit_rdgraph_regression(
 
         if (gamma_modulation > 0.0) {
             apply_response_coherence_modulation(y_hat_curr, gamma_modulation);
-
-            if (verbose) {
-                elapsed_time(phase_time, "DONE", true);
-                Rprintf("itr %d: Step 5: Apply response-coherence modulation to fresh M[1] ... ", iter);
-                phase_time = std::chrono::steady_clock::now();
-            }
-        }
-
-        if (test_stage == 7) {
-            Rprintf("TEST_STAGE 7: Stopped after apply_response_coherence_modulation()\n");
-            return;
         }
 
         // --------------------------------------------------------------
         // Step 6: Laplacian reassembly
         // --------------------------------------------------------------
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 6: Laplacian reassembly ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         assemble_operators();
         spectral_cache.invalidate();
-
-        if (test_stage == 8) {
-            Rprintf("TEST_STAGE 8: Stopped after assemble_operators()\n");
-            return;
-        }
 
         // --------------------------------------------------------------
         // Step 7: Response smoothing
         // --------------------------------------------------------------
 
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-            Rprintf("itr %d: Step 7: Response smoothing ... ", iter);
-            phase_time = std::chrono::steady_clock::now();
-        }
-
         gcv_result = (y_vertices.empty())
-            ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose)
-            : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose);
+            ? smooth_response_via_spectral_filter(y, n_eigenpairs, filter_type, verbose_level)
+            : smooth_response_via_spectral_filter_semiy(y, y_vertices, n_eigenpairs, filter_type, verbose_level);
 
         y_hat_curr = gcv_result.y_hat;
         sig.y_hat_hist.push_back(y_hat_curr);
@@ -5598,7 +5452,7 @@ void riem_dcx_t::fit_rdgraph_regression(
                 converged = true;
                 n_iterations = iter;
 
-                if (verbose) {
+                if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
                     Rprintf("Early stop: best GCV has not improved by more than %.1e for %d consecutive iterations "
                             "(best=%.6e, current=%.6e)\n",
                             gcv_improve_eps, gcv_patience, best_gcv_so_far, gcv_curr);
@@ -5609,7 +5463,7 @@ void riem_dcx_t::fit_rdgraph_regression(
         }
 
         // Test if eigenvalues are changing
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             double curr_lambda_2 = spectral_cache.lambda_2;  // now current (computed during smoothing)
             if (!R_finite(prev_lambda_2)) {
                 prev_lambda_2 = curr_lambda_2;
@@ -5621,10 +5475,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             }
         }
 
-        if (test_stage == 9) {
-            Rprintf("TEST_STAGE 9: Stopped after smooth_response_via_spectral_filter()\n");
-            return;
-        }
+        double iter_sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - iter_time).count();
 
         // ----------------------------------------------------------------
         // Step 8: Convergence check and detailed reporting
@@ -5642,35 +5493,43 @@ void riem_dcx_t::fit_rdgraph_regression(
             gcv_history  // Add this argument
             );
 
-        if (test_stage == 10) {
-            Rprintf("TEST_STAGE 10: Stopped after check_convergence_detailed()\n");
-            return;
-        }
-
         response_change_history.push_back(status.response_change);
 
-        // Enhanced reporting with GCV trajectory
-        if (verbose) {
-            Rprintf("Iteration %d: response_change=%.6e", iter, status.response_change);
+        if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+            const double dy = status.response_change;          // already computed
+            const double drho = density_change_rel;            // NA for iter=1
+            const double gcv = gcv_history.iterations.back().gcv_optimal;
 
-            // Add GCV trend information
-            std::string gcv_display = format_gcv_history(gcv_history, 10);
-            Rprintf(", GCV: %s", gcv_display.c_str());
+            // Best-so-far
+            double best_gcv = gcv;
+            int best_itr = iter;  // current refinement iteration
 
-            // Add change indicator for current iteration
-            if (gcv_history.size() > 1) {
-                if (status.gcv_change < 0) {
-                    Rprintf(" [improving: %.2e]", status.gcv_change);
-                } else if (status.gcv_change > 0) {
-                    Rprintf(" [degrading: +%.2e]", status.gcv_change);
-                } else {
-                    Rprintf(" [stable]");
+            // Prefer best among refinement iterations (1..current)
+            for (size_t i = 1; i < gcv_history.iterations.size(); ++i) {
+                const double g = gcv_history.iterations[i].gcv_optimal;
+                if (g < best_gcv) {
+                    best_gcv = g;
+                    best_itr = static_cast<int>(i);  // i corresponds to refinement iteration
                 }
             }
 
-            Rprintf("\n");
+            const double lambda2 = spectral_cache.lambda_2;
+
+            if (iter == 1) {
+                Rprintf("itr %d/%d | dy=%.2e | drho=NA | gcv=%.6e (best=%.6e @itr %d) | lambda2=%.3e | %.2fs\n",
+                        iter, max_iterations, dy, gcv, best_gcv, best_itr, lambda2, iter_sec);
+            } else {
+                Rprintf("itr %d/%d | dy=%.2e | drho=%.2e | gcv=%.6e (best=%.6e @itr %d) | lambda2=%.3e | %.2fs\n",
+                        iter, max_iterations, dy, drho, gcv, best_gcv, best_itr, lambda2, iter_sec);
+            }
         }
 
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            std::string gcv_display = format_gcv_history(gcv_history, 10);
+            Rprintf("  DEBUG: GCV trajectory: %s\n", gcv_display.c_str());
+        }
+
+        // ??? do we need this?
         if (status.converged) {
             Rprintf("%s\n", status.message.c_str());
             converged = true;
@@ -5701,51 +5560,8 @@ void riem_dcx_t::fit_rdgraph_regression(
             }
         }
 
-#if 0
-        // Old GCV stabilization rule (replaced by best-so-far plateau early stop)
-        // Check if GCV has stabilized
-        if (gcv_history.size() >= 3) {
-            double gcv_variation = 0.0;
-            for (size_t i = gcv_history.size() - 3; i < gcv_history.size() - 1; ++i) {
-                double change = std::abs(gcv_history.iterations[i+1].gcv_optimal -
-                                         gcv_history.iterations[i].gcv_optimal);
-                gcv_variation = std::max(gcv_variation, change);
-            }
-
-            double gcv_current = gcv_history.iterations.back().gcv_optimal;
-            double gcv_relative_variation = gcv_variation / gcv_current;
-
-            // ADAPTIVE THRESHOLD: Using relative criterion for large GCV, absolute for small
-            bool gcv_converged = false;
-
-            if (gcv_current > 1e-3) {
-                // For typical GCV values, using relative criterion
-                gcv_converged = (gcv_relative_variation < 1e-4);  // Relaxed from 1e-5
-            } else {
-                // For very small GCV values, we use absolute criterion to avoid numerical issues
-                gcv_converged = (gcv_variation < 5e-8);
-            }
-
-            if (gcv_converged) {
-                // Set convergence state
-                converged = true;
-                n_iterations = iter;
-
-                if (gcv_current > 1e-3) {
-                    Rprintf("Converged: GCV stable (relative variation %.2e < 1e-4)\n",
-                            gcv_relative_variation);
-                } else {
-                    Rprintf("Converged: GCV stable (absolute variation %.2e < 1e-8)\n",
-                            gcv_variation);
-                }
-
-                break;
-            }
-        }
-#endif
-
         // --------------------------------------------------------------
-        // Observed non-convergence diagnostics (warning-level)
+        // Observed non-convergence diagnostics
         // --------------------------------------------------------------
         // Thresholds:
         //     * (K = 5) iterations window
@@ -5758,7 +5574,6 @@ void riem_dcx_t::fit_rdgraph_regression(
             const double eps_rho = 1e-3;
 
             // 1) If GCV has not improved meaningfully in the last K iterations, warn once.
-            //    (Use the same notion as the plateau logic, but as a diagnostic message.)
             if (iter >= K) {
                 double best_recent = std::numeric_limits<double>::infinity();
                 double best_before = std::numeric_limits<double>::infinity();
@@ -5774,14 +5589,15 @@ void riem_dcx_t::fit_rdgraph_regression(
 
                 if (std::isfinite(best_before) && std::isfinite(best_recent)) {
                     if (best_before - best_recent < eps_gcv) {
-                        // You may want to rate-limit this warning (e.g. only once).
-                        // Use a static flag to avoid spamming.
-                        static bool warned_gcv_plateau = false;
-                        if (!warned_gcv_plateau) {
-                            warned_gcv_plateau = true;
-                            Rf_warning("Observed non-convergence: best GCV has not improved by more than %.1e "
-                                       "over the last %d iterations (best_before=%.6e, best_recent=%.6e).",
-                                       eps_gcv, K, best_before, best_recent);
+
+                        static bool noted_gcv_plateau = false;
+                        if (!noted_gcv_plateau) {
+                            noted_gcv_plateau = true;
+
+                            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                                Rprintf("Note: GCV plateau over last %d iterations (best_before=%.6e, best_recent=%.6e; eps=%.1e)\n",
+                                        K, best_before, best_recent, eps_gcv);
+                            }
                         }
                     }
                 }
@@ -5801,7 +5617,7 @@ void riem_dcx_t::fit_rdgraph_regression(
                     static bool warned_rho_vs_y = false;
                     if (!warned_rho_vs_y) {
                         warned_rho_vs_y = true;
-                        Rf_warning("Observed non-convergence: geometry appears stable "
+                        Rf_warning("Potential non-convergence: geometry appears stable "
                                    "(max relative density L2 change over last %d iterations = %.3e < %.3e) "
                                    "but response remains unstable (response_change=%.3e > 10*epsilon_y=%.3e). "
                                    "Consider adjusting spectral filtering (n.eigenpairs / eta grid) or "
@@ -5811,13 +5627,6 @@ void riem_dcx_t::fit_rdgraph_regression(
                 }
             }
         }
-
-        if (verbose) {
-            elapsed_time(phase_time, "DONE", true);
-        }
-
-        ///// testing
-        // if (iter == 1) break;  // Only do one iteration for testing
     }
 
     // ================================================================
@@ -5839,7 +5648,7 @@ void riem_dcx_t::fit_rdgraph_regression(
         }
     }
 
-// Compute and store filtered eigenvalues from optimal iteration
+    // Compute and store filtered eigenvalues from optimal iteration
     if (spectral_cache.is_valid && !gcv_history.iterations.empty()) {
         const size_t n_eigen = spectral_cache.eigenvalues.size();
         const double eta_opt = gcv_history.iterations[optimal_iteration].eta_optimal;
@@ -5881,9 +5690,34 @@ void riem_dcx_t::fit_rdgraph_regression(
     // Store response change history
     response_changes = response_change_history;
 
-    if (verbose) {
-        elapsed_time(phase_time, "DONE", true);
-        elapsed_time(total_time, "Total elapsed time", true);
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        const double total_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - total_time).count();
+
+        int best_itr_final = 0;  // 0 = initial smoothing
+        double best_gcv_final = std::numeric_limits<double>::infinity();
+
+        if (!gcv_history.iterations.empty()) {
+
+            if (gcv_history.iterations.size() > 1) {
+                // Prefer best among refinement iterations (1..)
+                for (size_t i = 1; i < gcv_history.iterations.size(); ++i) {
+                    const double g = gcv_history.iterations[i].gcv_optimal;
+                    if (g < best_gcv_final) {
+                        best_gcv_final = g;
+                        best_itr_final = static_cast<int>(i);  // i == refinement iteration number
+                    }
+                }
+            } else {
+                // Only initial smoothing exists
+                best_gcv_final = gcv_history.iterations[0].gcv_optimal;
+                best_itr_final = 0;
+            }
+        }
+
+        Rprintf("DONE: %s; best GCV at itr %d (%.6e); total %.2fs\n",
+                converged ? "converged/early-stop" : "stopped by max_iterations",
+                best_itr_final, best_gcv_final, total_sec);
     }
 }
 

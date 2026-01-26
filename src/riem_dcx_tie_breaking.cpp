@@ -47,7 +47,7 @@ void riem_dcx_t::break_ties(
     double min_abs_noise,
     bool preserve_bounds,
     int seed,
-    bool verbose
+    verbose_level_t verbose_level
 ) const {
 
     const Eigen::Index n = y.size();
@@ -99,12 +99,12 @@ void riem_dcx_t::break_ties(
         }
     }
 
-    if (verbose && n_tied_values == 0) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE) && n_tied_values == 0) {
         Rprintf("break_ties: No ties to break\n");
         return;
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Breaking ties:\n");
         Rprintf("  Tied values: %zu\n", n_tied_values);
         Rprintf("  Noise magnitude: %.3e\n", noise_magnitude);
@@ -177,7 +177,7 @@ void riem_dcx_t::break_ties(
         }
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         // Count unique values after tie breaking
         std::unordered_set<double> unique_vals;
         for (Eigen::Index i = 0; i < n; ++i) {
@@ -223,7 +223,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
     bool apply_right_winsorization,
     double noise_scale,
     int seed,
-    bool verbose
+    verbose_level_t verbose_level
 ) const {
 
     const Eigen::Index n = y_hat.size();
@@ -232,14 +232,14 @@ void riem_dcx_t::prepare_binary_cond_exp(
         return;
     }
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("\n=== PREPARING BINARY CONDITIONAL EXPECTATION ===\n");
         Rprintf("Original range: [%.6f, %.6f]\n",
                 y_hat.minCoeff(), y_hat.maxCoeff());
     }
 
     // Step 1: Floor at 0
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Step 1: Flooring at 0\n");
     }
 
@@ -251,7 +251,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
         }
     }
 
-    if (verbose && n_floored > 0) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE) && n_floored > 0) {
         Rprintf("  Floored %d values (%.2f%%)\n",
                 n_floored, 100.0 * n_floored / n);
         Rprintf("  Range after floor: [%.6f, %.6f]\n",
@@ -260,7 +260,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
 
     // Step 2: Right winsorization (if requested)
     if (apply_right_winsorization) {
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("Step 2: Right winsorization (p = %.3f)\n", p_right);
         }
 
@@ -290,7 +290,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
             }
         }
 
-        if (verbose) {
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
             Rprintf("  Threshold: %.6f\n", threshold);
             Rprintf("  Winsorized %d values (%.2f%%)\n",
                     n_winsorized, 100.0 * n_winsorized / n);
@@ -300,7 +300,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
     }
 
     // Step 3: Ceiling at 1
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Step 3: Ceiling at 1\n");
     }
 
@@ -312,7 +312,7 @@ void riem_dcx_t::prepare_binary_cond_exp(
         }
     }
 
-    if (verbose && n_ceilinged > 0) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE) && n_ceilinged > 0) {
         Rprintf("  Ceilinged %d values (%.2f%%)\n",
                 n_ceilinged, 100.0 * n_ceilinged / n);
         Rprintf("  Range after ceiling: [%.6f, %.6f]\n",
@@ -320,13 +320,13 @@ void riem_dcx_t::prepare_binary_cond_exp(
     }
 
     // Step 4: Break ties
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Step 4: Breaking ties\n");
     }
 
-    break_ties(y_hat, noise_scale, 1e-12, true, seed, verbose);
+    break_ties(y_hat, noise_scale, 1e-12, true, seed, verbose_level);
 
-    if (verbose) {
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         Rprintf("Final range: [%.6f, %.6f]\n",
                 y_hat.minCoeff(), y_hat.maxCoeff());
         Rprintf("=== PREPARATION COMPLETE ===\n\n");
