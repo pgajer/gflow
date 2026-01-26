@@ -3,141 +3,176 @@
 #include <cmath>      // For fabs()
 #include <algorithm>  // For std::find, std::clamp
 #include <numeric>    // For std::accumulate
+#include <limits>
 
 #include "ulm.hpp"
 #include "error_utils.h"
 
+#include <R.h>
+#include <Rinternals.h>
+
 /**
- * @brief Fits a weighted linear model and computes predictions with LOOCV errors
+ * @file ulm.cpp
+ * @brief Weighted univariate linear model (ULM) with analytic LOOCV errors.
  *
- * This function fits a weighted linear regression model to one-dimensional data and computes
- * both predictions and their Leave-One-Out Cross-Validation (LOOCV) errors. For each point i,
- * the LOOCV squared Rf_error is computed as:
- * \f[
- *     \text{Rf_error}_i = \left(\frac{y_i - \hat{y}_i}{1 - h_i}\right)^2
- * \f]
- * where \f$h_i\f$ is the leverage statistic for weighted linear regression.
+ * This implementation fits a weighted linear regression with intercept:
+ *   y_i ≈ beta0 + beta1 * (x_i - x_wmean),
+ * where x_wmean and y_wmean are the weighted means. It returns fitted values
+ * at each input x_i and per-point LOOCV squared errors using the standard
+ * leverage-based formula:
  *
- * For the 1D case with predictor x and weights w, the weighted leverage \f$h_i\f$ at point i is:
- * \f[
- *     h_i = w_i\left(\frac{1}{\sum w_j} + \frac{(x_i - \bar{x}_w)^2}{\sum_{j=1}^n w_j(x_j - \bar{x}_w)^2}\right)
- * \f]
- * where \f$\bar{x}_w = \frac{\sum w_j x_j}{\sum w_j}\f$ is the weighted mean of x.
+ *   e_{-i} = (y_i - yhat_i) / (1 - h_ii),   LOOCV_i = e_{-i}^2,
  *
- * The fitted linear model makes predictions using:
- * \f[
- *     \hat{y}(x) = \bar{y}_w + \beta(x - \bar{x}_w)
- * \f]
- * where \f$\beta\f$ is the slope coefficient and \f$\bar{y}_w\f$ is the weighted mean of y.
+ * with special handling for degenerate neighborhoods where the weighted
+ * variance of x is (near) zero. In that case, the model reduces to a
+ * weighted mean (local-constant), and the hat diagonal is:
  *
- * @param y Vector of response variables
- * @param x Vector of predictor variables
- * @param w Vector of weights for weighted least squares regression
- * @param x_min_index Index of smallest x value in the larger dataset
- * @param x_max_index Index of largest x value in the larger dataset
- * @param y_binary Whether y values should be clamped to [0,1] range (default: false)
- * @param epsilon Small positive number for numerical stability (default: 1e-8)
+ *   h_ii = w_i / sum(w).
  *
- * @return ulm_t structure containing:
- *         Data components:
- *         - x: Original predictor values
- *         - w: Original weights
- *         - x_min_index: Index of smallest x value
- *         - x_max_index: Index of largest x value
+ * Robustness and safety features:
+ *   - Handles empty neighborhoods (n=0) safely.
+ *   - Validates x/y pointers when n>0.
+ *   - Validates weights for finiteness, non-negativity, and positive total weight.
+ *   - Sizes output vectors (predictions and errors) consistently (prevents OOB writes).
+ *   - Guards against division-by-zero / near-singular leverage computations.
+ *   - Clamps leverage to [0, 1) for numerical stability.
  *
- *         Model components:
- *         - slope: Fitted slope coefficient β
- *         - y_wmean: Weighted mean of response variable
- *         - x_wmean: Weighted mean of predictor variable
- *
- *         Model evaluation:
- *         - predictions: Vector of fitted values at each x point
- *         - errors: Vector of LOOCV squared errors at each point
- *
- *         Methods:
- *         - predict(pt_index): Returns prediction at given index
- *         - predict_with_error(pt_index): Returns pair of prediction and LOOCV Rf_error
- *
- * @throws REPORT_ERROR if:
- *         - Sum of weights is not positive
- *         - Prediction is requested for index outside [x_min_index, x_max_index]
- *
- * @note For constant x values (weighted variance less than epsilon), returns weighted mean of y
- *       with slope set to 0
- * @note When leverage h_i is within epsilon of 1, the LOOCV Rf_error is set to infinity
+ * Notes:
+ *   - This routine treats the provided weights as fixed. If used inside an
+ *     IRLS robustification loop (e.g., cleveland_ulm), the returned LOOCV
+ *     errors correspond to the final weighted WLS fit conditional on the final
+ *     weights (a common approximation).
  */
 ulm_t ulm(const double* x,
           const double* y,
           const std::vector<double>& w,
           bool y_binary,
-          double epsilon) {
+          double epsilon)
+{
+    const int n_points = static_cast<int>(w.size());
 
-    int n_points = w.size();
-
-    ulm_t results;  // We'll populate this with more information
-
-    // Create working copy of x for computations
-    std::vector<double> x_working(x, x + n_points);
-
-    // Weight validation
-    double total_weight = 0.0;
-    for (const auto& weight : w) {
-        total_weight += weight;
-    }
-    if (total_weight <= 0) REPORT_ERROR("total_weight: %.2f   Sum of weights must be positive", total_weight);
-
-    // Calculate weighted means - MODIFY THIS SECTION
-    // Store these in the results structure
+    ulm_t results;
+    results.slope = 0.0;
     results.x_wmean = 0.0;
     results.y_wmean = 0.0;
-    for (int i = 0; i < n_points; ++i) {
-        results.x_wmean += w[i] * x_working[i] / total_weight;
-        results.y_wmean += w[i] * y[i] / total_weight;
+
+    // Empty neighborhood: valid upstream outcome; return empty safely.
+    if (n_points == 0) {
+        results.predictions.clear();
+        results.errors.clear();
+        return results;
     }
 
-    // Center x_working around weighted mean for leverage calculation
+    // Defensive pointer validation when n > 0.
+    if (x == nullptr || y == nullptr) {
+        Rf_error("ulm(): null x/y pointer with n_points=%d", n_points);
+    }
+
+    // Validate weights and compute total weight.
+    double total_weight = 0.0;
+    for (int i = 0; i < n_points; ++i) {
+        const double wi = w[i];
+        if (!std::isfinite(wi)) {
+            Rf_error("ulm(): non-finite weight w[%d]=%g", i, wi);
+        }
+        if (wi < 0.0) {
+            Rf_error("ulm(): negative weight w[%d]=%g", i, wi);
+        }
+        total_weight += wi;
+    }
+
+    if (!std::isfinite(total_weight) || total_weight <= epsilon) {
+        Rf_error("ulm(): invalid total_weight=%g (n_points=%d)", total_weight, n_points);
+    }
+
+    // Working copy of x for centering and leverage computation.
+    std::vector<double> x_working(x, x + n_points);
+
+    // Weighted means.
+    double x_wmean = 0.0;
+    double y_wmean = 0.0;
+
+    for (int i = 0; i < n_points; ++i) {
+        x_wmean += w[i] * x_working[i];
+        y_wmean += w[i] * y[i];
+    }
+    x_wmean /= total_weight;
+    y_wmean /= total_weight;
+
+    results.x_wmean = x_wmean;
+    results.y_wmean = y_wmean;
+
+    // Center x around weighted mean and compute weighted sum of squares.
     double sum_wx_squared = 0.0;
     for (int i = 0; i < n_points; ++i) {
-        x_working[i] -= results.x_wmean;  // Now x is centered around its weighted mean
+        x_working[i] -= x_wmean;
         sum_wx_squared += w[i] * x_working[i] * x_working[i];
     }
 
-    // Calculate slope if x has sufficient variation - MODIFY THIS SECTION
-    results.slope = 0.0;
+    // Fit slope (local linear). If degenerate, slope stays 0.
+    double slope = 0.0;
     if (sum_wx_squared > epsilon) {
         double wxy_sum = 0.0;
         for (int i = 0; i < n_points; ++i) {
             wxy_sum += w[i] * x_working[i] * y[i];
         }
-        results.slope = wxy_sum / sum_wx_squared;
+        slope = wxy_sum / sum_wx_squared;
     }
+    results.slope = slope;
 
-    // Calculate predicted values - NO CHANGE NEEDED
+    // Size outputs (critical to avoid OOB writes).
     results.predictions.resize(n_points);
-    for (int i = 0; i < n_points; i++) {
-        results.predictions[i] = results.y_wmean + results.slope * (x[i] - results.x_wmean);
+    results.errors.resize(n_points);
+
+    // Predictions at original x.
+    for (int i = 0; i < n_points; ++i) {
+        double yhat = y_wmean + slope * (x[i] - x_wmean);
         if (y_binary) {
-            results.predictions[i] = std::clamp(results.predictions[i], 0.0, 1.0);
+            yhat = std::clamp(yhat, 0.0, 1.0);
         }
+        results.predictions[i] = yhat;
     }
 
-    // Calculate LOOCV components - NO CHANGE NEEDED
-    results.errors.resize(n_points);
+    // Analytic LOOCV squared errors using hat diagonals.
     for (int i = 0; i < n_points; ++i) {
-        // Calculate weighted leverage h_i
-        double h_i = w[i] * (1.0/total_weight + (x_working[i] * x_working[i]) / sum_wx_squared);
-        // Calculate LOOCV prediction Rf_error
-        if (std::abs(1.0 - h_i) > epsilon) {
-            double residual = (y[i] - results.predictions[i]) / (1.0 - h_i);
+
+        double h_i = 0.0;
+
+        if (sum_wx_squared <= epsilon) {
+            // Degenerate-x case: local-constant weighted mean.
+            h_i = (w[i] > 0.0) ? (w[i] / total_weight) : 0.0;
+        } else {
+            // Linear smoother hat diagonal with centered x:
+            // h_i = w_i * (1/sum(w) + x_i^2 / sum(w * x^2))
+            h_i = w[i] * (1.0 / total_weight + (x_working[i] * x_working[i]) / sum_wx_squared);
+        }
+
+        // Numerical hygiene.
+        if (!std::isfinite(h_i)) h_i = 0.0;
+        if (h_i < 0.0) h_i = 0.0;
+        if (h_i > 0.999999) h_i = 0.999999;
+
+        const double denom = 1.0 - h_i;
+
+        if (denom > epsilon) {
+            const double residual = (y[i] - results.predictions[i]) / denom;
+
+            if (!std::isfinite(residual)) {
+                // During debugging, fail fast to preserve the first bad context.
+                Rf_error("ulm(): non-finite LOOCV residual at i=%d (denom=%g, h=%g, y=%g, yhat=%g)",
+                         i, denom, h_i, y[i], results.predictions[i]);
+            }
+
             results.errors[i] = residual * residual;
         } else {
-            // Handle case where leverage is close to 1
+            // Leverage too close to 1: LOOCV undefined/infinite.
             results.errors[i] = std::numeric_limits<double>::infinity();
         }
     }
 
     return results;
 }
+
 
 /**
  * @brief Results structure for univariate linear and polynomial models
@@ -602,13 +637,18 @@ ulm_t cleveland_ulm(
                         abs_residuals.end());
         double median_abs_residual = abs_residuals[abs_residuals.size()/2];
 
+        // Convert MAD to sigma estimate under Normality (avoid zero).
+        const double mad_sigma = (median_abs_residual / 0.6745);
+
         // Avoid division by zero
         if (median_abs_residual < 1e-10) {
             break; // No need for further iterations, fit is already good
         }
 
         // Scale residuals
-        double scale = robust_scale * median_abs_residual;
+        // double scale = robust_scale * median_abs_residual;
+        const double scale = robust_scale * (mad_sigma + tolerance);
+
         for (auto& r : residuals) {
             r /= scale;
         }
