@@ -39,7 +39,6 @@
  * This measures the "smoothness" of f with respect to the geometry.
  */
 void laplacian_bundle_t::build_L0_sym_if_needed(const metric_family_t& g) {
-	// ========== VALIDATION: Check if we can build L0_sym ==========
 
 	// Need at least 2 dimensions (vertices and edges)
 	if (B.size() < 2) {
@@ -61,6 +60,11 @@ void laplacian_bundle_t::build_L0_sym_if_needed(const metric_family_t& g) {
 
 	// Need conductances c1 for each edge
 	// c1[e] represents the "strength" or "weight" of edge e
+
+	// In the DEC interpretation used in this package, c1[e] is derived from the
+	// edge 1-form mass as $c_e = 1/m_1(e)$ (up to a small floor), so larger
+	// edge mass implies weaker penalization of variation across that edge.
+
 	if (c1.size() != B[1].cols()) {
 		L0_sym.resize(0, 0);
 		return;
