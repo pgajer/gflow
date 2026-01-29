@@ -243,24 +243,84 @@ set_wgraph_t set_wgraph_t::prune_edges_geometrically(
     double max_ratio_threshold,
     double threshold_percentile) const
 {
-    // Compute edge pruning statistics
+    // Compute edge pruning statistics on the original graph.
+    // NOTE: These statistics certify that each edge is individually redundant
+    // w.r.t. the *original* graph (i.e., has an alternative path in G \ e).
+    // However, removing all such edges in a batch can disconnect the graph if
+    // alternative paths rely on edges that are also removed.
+    //
+    // To guarantee connectivity preservation, we prune sequentially and
+    // re-check the alternative-path condition in the *current* graph.
     edge_pruning_stats_t stats = compute_edge_pruning_stats(threshold_percentile);
-    
-    // Create a copy of the graph to prune
+
+    // Work on a copy of the graph.
     set_wgraph_t pruned_graph(*this);
-    
-    // Get edges that can be pruned based on the ratio threshold
-    std::vector<std::pair<size_t, size_t>> prunable_edges = 
-        stats.get_prunable_edges(max_ratio_threshold);
-    
-    // Remove all prunable edges
-    for (const auto& [source, target] : prunable_edges) {
-        pruned_graph.remove_edge(source, target);
+
+    // Collect candidate edges from stats (already filtered to long edges by
+    // threshold_percentile and to those that have some alternative path in the
+    // original graph). We store the original edge length to sort candidates.
+    struct candidate_edge_t {
+        size_t source;
+        size_t target;
+        double edge_length;
+    };
+
+    std::vector<candidate_edge_t> candidates;
+    candidates.reserve(stats.stats.size());
+    for (const auto& st : stats.stats) {
+        if (st.length_ratio <= max_ratio_threshold) {
+            candidates.push_back(candidate_edge_t{st.source, st.target, st.edge_length});
+        }
     }
-    
+
+    // Prune longer edges first (tends to remove the most geometrically redundant
+    // edges early while preserving short edges that often stabilize local structure).
+    std::sort(candidates.begin(), candidates.end(),
+              [](const candidate_edge_t& a, const candidate_edge_t& b) {
+                  return a.edge_length > b.edge_length;
+              });
+
+    // Helper: check whether an undirected edge exists in the current graph and
+    // retrieve its current weight.
+    auto get_edge_weight = [](const set_wgraph_t& g, size_t u, size_t v, double& w_out) -> bool {
+        if (u >= g.adjacency_list.size() || v >= g.adjacency_list.size()) return false;
+        const auto& nbrs = g.adjacency_list[u];
+        for (const auto& e : nbrs) {
+            if (e.vertex == v) {
+                w_out = e.weight;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Sequential safe pruning: before removing an edge, ensure that an
+    // alternative path still exists in the current graph (excluding that edge)
+    // and satisfies the ratio threshold.
+    for (const auto& ce : candidates) {
+        double w = 0.0;
+        if (!get_edge_weight(pruned_graph, ce.source, ce.target, w)) {
+            continue; // edge already removed by earlier steps or absent
+        }
+        if (!(w > 0.0)) {
+            continue;
+        }
+
+        const double alt_path_length =
+            pruned_graph.bidirectional_dijkstra_excluding_edge(ce.source, ce.target);
+
+        if (alt_path_length == std::numeric_limits<double>::infinity()) {
+            continue; // removing would disconnect endpoints
+        }
+
+        const double ratio = alt_path_length / w;
+        if (ratio <= max_ratio_threshold) {
+            pruned_graph.remove_edge(ce.source, ce.target);
+        }
+    }
+
     return pruned_graph;
 }
-
 
 /**
  * @brief Get the list of edges that can be pruned based on a length ratio threshold
