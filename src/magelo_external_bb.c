@@ -303,8 +303,6 @@ SEXP S_llm_1D_fit_and_predict_global_BB_external(
     SEXP s_nBB,
     SEXP s_lambda)
 {
-    int nrTnn = INTEGER(s_nrTnn)[0];
-    int ncTnn = INTEGER(s_ncTnn)[0];
     int nx    = INTEGER(s_nx)[0];
     int nBB   = INTEGER(s_nBB)[0];
 
