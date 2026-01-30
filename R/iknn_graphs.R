@@ -1083,3 +1083,648 @@ plot.IkNNgraphs <- function(x,
 
     invisible(TRUE)
 }
+
+#' Compute edit distances between consecutive graphs
+#'
+#' @description
+#' Computes a simple graph edit distance between consecutive graphs in a sequence.
+#' For each adjacent pair \eqn{(G_i, G_{i+1})}, the distance is defined as the size
+#' of the symmetric difference between their undirected edge sets.
+#'
+#' Each graph is expected to provide an adjacency list \code{adj_list} using
+#' \strong{1-based} vertex indices.
+#'
+#' @param graphs A list of graph objects. Each element must contain an
+#'   \code{adj_list} component, which is a list of integer neighbor vectors.
+#'
+#' @return A numeric vector of length \code{length(graphs) - 1L}. Entry \code{i}
+#'   gives the edit distance between \code{graphs[[i]]} and \code{graphs[[i + 1L]]}.
+#'   If \code{length(graphs) < 2L}, returns \code{numeric(0)}.
+#'
+#' @keywords internal
+#' @noRd
+internal.compute.edit.distances <- function(graphs) {
+    ## Graph edit distance between consecutive graphs = symmetric difference of edge sets
+    ## graphs: list of graph objects with adj_list (1-based)
+    n <- length(graphs)
+    if (n < 2) return(numeric(0))
+
+    edge.set <- function(adj.list) {
+        ## Build undirected edge keys "i-j" with i<j
+        keys <- character(0)
+        for (i in seq_along(adj.list)) {
+            nbrs <- adj.list[[i]]
+            if (length(nbrs) == 0) next
+            j <- nbrs[nbrs > i]
+            if (length(j) > 0) {
+                keys <- c(keys, paste(i, j, sep = "-"))
+            }
+        }
+        unique(keys)
+    }
+
+    out <- numeric(n - 1)
+    for (i in seq_len(n - 1)) {
+        e1 <- edge.set(graphs[[i]]$adj_list)
+        e2 <- edge.set(graphs[[i + 1]]$adj_list)
+        out[i] <- length(setdiff(e1, e2)) + length(setdiff(e2, e1))
+    }
+    out
+}
+
+#' Trim rows of \code{X} to the main connected component
+#'
+#' @description
+#' Given a data matrix \code{X} whose rows correspond to vertices in a graph,
+#' trims \code{X} to the largest connected component of the graph defined by an
+#' adjacency list.
+#'
+#' Connected components are computed by \code{graph.connected.components()}, which
+#' must return an integer component label for each vertex. Component labels need
+#' not be contiguous.
+#'
+#' @param X A numeric matrix. Rows correspond to vertices.
+#' @param adj.list A list representing the graph adjacency list using \strong{1-based}
+#'   vertex indices.
+#' @param verbose Logical. If \code{TRUE}, prints the number of vertices before and
+#'   after trimming.
+#'
+#' @return A list with components:
+#' \itemize{
+#'   \item \code{X}: The trimmed matrix \code{X[in.main, , drop = FALSE]}.
+#'   \item \code{kept}: A logical vector of length \code{nrow(X)} indicating which
+#'   rows/vertices were retained.
+#' }
+#'
+#' @keywords internal
+#' @noRd
+trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
+    cc <- graph.connected.components(adj.list)
+    cc.tbl <- table(cc)
+    main.cc <- as.integer(names(sort(cc.tbl, decreasing = TRUE)[1]))
+    in.main <- (cc == main.cc)
+
+    if (verbose) {
+        cat("Trimming to main connected component:\n")
+        cat("  vertices before:", nrow(X), "\n")
+        cat("  vertices kept  :", sum(in.main), "\n")
+    }
+
+    list(
+        X = X[in.main, , drop = FALSE],
+        kept = in.main
+    )
+}
+
+#' Select \code{k} within a relative tolerance of the global minimum edit distance
+#'
+#' @description
+#' Selects the smallest \code{k} in a connected-tail regime whose edit distance is
+#' within \code{(1 + eps)} times the minimum edit distance over that regime.
+#'
+#' The inputs \code{edit.distances} and \code{k.for.edit} are assumed to represent
+#' edit distances between consecutive graphs \eqn{(G_k, G_{k+1})}, with
+#' \code{k.for.edit[i]} giving the left endpoint \eqn{k} associated with
+#' \code{edit.distances[i]}.
+#'
+#' @param edit.distances Numeric vector of edit distances between consecutive graphs.
+#' @param k.for.edit Integer vector of the same length as \code{edit.distances},
+#'   giving the \eqn{k} values associated with each edit distance.
+#' @param k.cc Integer scalar. Start of the terminal connected tail; only values with
+#'   \code{k.for.edit >= k.cc} are eligible.
+#' @param eps Nonnegative numeric scalar. Relative tolerance; candidates satisfy
+#'   \code{d <= (1 + eps) * d.min} where \code{d.min} is the minimum over the eligible
+#'   regime.
+#'
+#' @return A list with components:
+#' \itemize{
+#'   \item \code{k.pick}: The selected \code{k} value.
+#'   \item \code{d.pick}: The edit distance at \code{k.pick}.
+#'   \item \code{d.min}: The minimum edit distance over eligible \code{k}.
+#'   \item \code{d.thld}: The threshold \code{(1 + eps) * d.min}.
+#'   \item \code{eps}: The input tolerance \code{eps}.
+#'   \item \code{candidates}: A data frame of eligible candidate \code{k} values and
+#'   their edit distances.
+#' }
+#'
+#' @keywords internal
+#' @noRd
+pick.k.within.eps.global.min <- function(edit.distances, k.for.edit, k.cc, eps = 0.05) {
+
+    if (!is.numeric(k.cc) || length(k.cc) != 1 || is.na(k.cc)) {
+        stop("k.cc must be a single non-NA numeric")
+    }
+    if (k.cc != as.integer(k.cc)) stop("k.cc must be integer-valued.")
+    k.cc <- as.integer(k.cc)
+
+    if (!is.numeric(edit.distances) || length(edit.distances) < 1) {
+        stop("edit.distances must be a non-empty numeric vector")
+    }
+
+    if (!is.numeric(k.for.edit) || length(k.for.edit) != length(edit.distances)) {
+        stop("k.for.edit must be numeric/integer and same length as edit.distances")
+    }
+    if (!all(k.for.edit == as.integer(k.for.edit))) {
+        stop("k.for.edit must be integer-valued")
+    }
+    k.for.edit <- as.integer(k.for.edit)
+    if (anyNA(k.for.edit)) stop("k.for.edit contains NA after coercion to integer.")
+    if (is.unsorted(k.for.edit, strictly = TRUE)) stop("k.for.edit must be strictly increasing.")
+
+    if (!is.numeric(eps) || length(eps) != 1 || eps < 0) {
+        stop("eps must be a single nonnegative numeric value")
+    }
+
+    keep <- (k.for.edit >= k.cc)
+    if (!any(keep)) {
+        stop("No k values satisfy k >= k.cc")
+    }
+
+    d.keep <- edit.distances[keep]
+    k.keep <- k.for.edit[keep]
+
+    ## Must check NA/finite before min/thresholding
+    if (all(is.na(d.keep))) {
+        stop("All edit distances are NA in the k >= k.cc regime.")
+    }
+    if (!any(is.finite(d.keep))) {
+        stop("No finite edit distances in the k >= k.cc regime.")
+    }
+
+    d.min <- min(d.keep, na.rm = TRUE)
+    d.thld <- (1 + eps) * d.min
+
+    cand.idx <- which(is.finite(d.keep) & d.keep <= d.thld)
+    if (length(cand.idx) == 0) {
+        stop("No candidates found. Check eps / inputs.")
+    }
+
+    k.pick <- as.integer(min(k.keep[cand.idx]))
+    d.pick <- d.keep[match(k.pick, k.keep)]
+    if (length(d.pick) != 1 || !is.finite(d.pick)) {
+        stop("Internal error computing d.pick")
+    }
+
+    list(
+        k.pick = k.pick,
+        d.pick = as.numeric(d.pick),
+        d.min = as.numeric(d.min),
+        d.thld = as.numeric(d.thld),
+        eps = eps,
+        candidates = data.frame(
+            k = k.keep[cand.idx],
+            edit.distance = d.keep[cand.idx]
+        )
+    )
+}
+
+#' Build ikNN graph sequence and select \code{k} by edit-distance stability
+#'
+#' @description
+#' Builds an intersection k-nearest-neighbor (ikNN) graph sequence for
+#' \code{k = kmin:kmax} using \code{create.iknn.graphs()}, then selects an
+#' optimal \code{k} based on stability of graph structure across the terminal
+#' connected tail.
+#'
+#' The procedure:
+#' \enumerate{
+#'   \item Construct a sequence of geometrically pruned ikNN graphs for \code{kmin:kmax}.
+#'   \item If all graphs in the range are disconnected, trim \code{X} to the largest
+#'         connected component of the graph at \code{k = kmin} and rebuild the graph sequence.
+#'   \item Define \code{k.cc} as the smallest \code{k} such that all graphs for \code{k' >= k}
+#'         are connected (terminal connected tail). Stop if no such tail exists in the range.
+#'   \item Compute edit distances between consecutive graphs in the tail regime and select
+#'         \code{k.opt} as the smallest \code{k >= k.cc} within a relative tolerance of the
+#'         minimum edit distance (via \code{pick.k.within.eps.global.min()}).
+#' }
+#'
+#' @param X Numeric matrix with rows corresponding to vertices/observations.
+#' @param kmin Integer \eqn{\ge 1}. Minimum k for the ikNN graph sequence.
+#' @param kmax Integer \eqn{\ge kmin}. Maximum k for the ikNN graph sequence.
+#'   Requires \code{nrow(X) > kmax}. If trimming is applied, this requirement must also
+#'   hold after trimming.
+#' @param pruning A named list of pruning parameters passed to \code{create.iknn.graphs()}:
+#'   \itemize{
+#'     \item \code{max.path.edge.ratio.deviation.thld}
+#'     \item \code{path.edge.ratio.percentile}
+#'     \item \code{threshold.percentile}
+#'   }
+#' @param n.cores Integer scalar or \code{NULL}. Number of cores passed to
+#'   \code{create.iknn.graphs()}.
+#' @param verbose Logical. If \code{TRUE}, prints progress messages.
+#'
+#' @return A list with components:
+#' \itemize{
+#'   \item \code{k.opt}: Selected k value.
+#'   \item \code{X.graphs}: The object returned by \code{create.iknn.graphs()}.
+#'   \item \code{X.graphs.stats}: Summary statistics from \code{summary(X.graphs)}.
+#'   \item \code{edit.distances}: Numeric vector of edit distances between consecutive
+#'   graphs in the regime used for selection.
+#'   \item \code{k.for.edit}: Integer vector of k values corresponding to \code{edit.distances}.
+#'   \item \code{pick.k.within.eps.global.min.res}: The full result returned by
+#'   \code{pick.k.within.eps.global.min()}.
+#'   \item \code{graph.opt}: The selected graph object at \code{k = k.opt} from the
+#'   geometrically pruned graph sequence.
+#' }
+#'
+#' @export
+build.iknn.graphs.and.selectk <- function(X,
+                                         kmin,
+                                         kmax,
+                                         pruning = list(
+                                             max.path.edge.ratio.deviation.thld = 0.1,
+                                             path.edge.ratio.percentile = 0.5,
+                                             threshold.percentile = 0
+                                         ),
+                                         n.cores = NULL,
+                                         verbose = TRUE) {
+
+    stopifnot(is.matrix(X))
+    stopifnot(nrow(X) > kmax)
+    stopifnot(kmin >= 1, kmax >= kmin)
+
+    stopifnot(kmin == as.integer(kmin), kmax == as.integer(kmax))
+    kmin <- as.integer(kmin); kmax <- as.integer(kmax)
+
+    k.values <- kmin:kmax
+
+    X.graphs <- create.iknn.graphs(
+        X,
+        kmin = kmin,
+        kmax = kmax,
+        max.path.edge.ratio.deviation.thld = pruning$max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = pruning$path.edge.ratio.percentile,
+        threshold.percentile = pruning$threshold.percentile,
+        compute.full = TRUE,
+        pca.dim = NULL,
+        variance.explained = NULL,
+        n.cores = n.cores,
+        verbose = verbose
+    )
+
+    X.graphs.stats <- summary(X.graphs)
+
+    any.connected <- any(X.graphs.stats$n_ccomp == 1)
+
+    if (!any.connected) {
+        if (verbose) {
+            cat("\nAll graphs in k range have >1 connected component.\n")
+            cat("Applying outlier trimming (largest CC) using graph at k = kmin.\n")
+        }
+
+        g0 <- X.graphs$geom_pruned_graphs[[1]]
+
+        if (is.null(g0$adj_list)) stop("geom_pruned_graphs[[1]] is missing adj_list.")
+
+        trim.res <- trim.X.to.main.cc(
+            X = X,
+            adj.list = g0$adj_list,
+            verbose = verbose
+        )
+        X <- trim.res$X
+
+        if (nrow(X) <= kmax) {
+            stop("After trimming to main CC, nrow(X) <= kmax. Reduce kmax or use a less aggressive trimming/pruning.")
+        }
+
+        if (verbose) cat("\nRebuilding ikNN graph sequence (after trimming)\n")
+
+        X.graphs <- create.iknn.graphs(
+            X,
+            kmin = kmin,
+            kmax = kmax,
+            max.path.edge.ratio.deviation.thld = pruning$max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile = pruning$path.edge.ratio.percentile,
+            threshold.percentile = pruning$threshold.percentile,
+            compute.full = TRUE,
+            n.cores = n.cores,
+            verbose = verbose
+        )
+        X.graphs.stats <- summary(X.graphs)
+    }
+
+    graphs <- X.graphs$geom_pruned_graphs
+    if (is.null(graphs)) stop("create.iknn.graphs() did not return geom_pruned_graphs (compute.full=TRUE required).")
+
+    ## Define k.cc as the start of the terminal connected tail
+    ## i.e., the smallest k such that all graphs for k' >= k are connected
+    n.ccomp.vec <- X.graphs.stats$n_ccomp
+
+    if (length(n.ccomp.vec) != length(k.values)) {
+        stop("Length mismatch: X.graphs.stats$n_ccomp must match kmin:kmax")
+    }
+
+    disc.idx <- which(n.ccomp.vec > 1)
+
+    if (length(disc.idx) == 0) {
+        ## All graphs are connected across the full k range
+        k.cc <- as.integer(kmin)
+    } else if (max(disc.idx) == length(k.values)) {
+        ## Last k is disconnected -> no terminal connected tail in this range
+        k.cc <- NA_integer_
+    } else {
+        ## First k after the last disconnected k
+        k.cc <- as.integer(k.values[max(disc.idx) + 1L])
+    }
+
+    ## Enforce that the tail is indeed connected
+    if (!is.na(k.cc)) {
+        tail.idx <- which(k.values >= k.cc)
+        if (any(n.ccomp.vec[tail.idx] > 1)) {
+            stop("Internal error: computed k.cc does not define a connected tail")
+        }
+    } else {
+        stop("No terminal connected tail in this k range. Increase kmax and/or relax pruning.")
+    }
+
+    if (verbose && k.cc > kmin)  {
+        cat("\nFound connected graphs starting at k =", k.cc, "\n")
+        cat("Restricting stability analysis to k in [", k.cc, ",", kmax, "]\n", sep = "")
+    }
+
+    keep.idx <- NULL
+    if (!is.na(k.cc) && k.cc > kmin) {
+        keep.idx <- which(k.values >= k.cc)
+        graphs.use <- X.graphs$geom_pruned_graphs[keep.idx]
+        k.values.use <- k.values[keep.idx]
+    } else {
+        graphs.use <- X.graphs$geom_pruned_graphs
+        k.values.use <- k.values
+    }
+
+    if (length(graphs.use) < 2L) {
+        stop("Need at least two graphs to compute edit distances; increase k range or adjust k.cc.")
+    }
+
+    if (verbose) {
+        cat("\nComputing edit distance between consecutive graphs\n")
+    }
+
+    edit.distances <- internal.compute.edit.distances(graphs.use)
+
+    if (length(edit.distances) != (length(graphs.use) - 1L)) {
+        stop("internal.compute.edit.distances() returned unexpected length.")
+    }
+
+    ## k values corresponding to edit.distances (pairs G_k vs G_{k+1})
+    k.for.edit <- k.values.use[-length(k.values.use)]
+
+    res.10 <- pick.k.within.eps.global.min(edit.distances, k.for.edit, k.cc = k.cc, eps = 0.10)
+
+    if (verbose) {
+        cat("\nSelected k.opt =", res.10$k.pick,
+            " (eps=0.10, d.pick=", res.10$d.pick,
+            ", d.min=", res.10$d.min, ")\n", sep = "")
+    }
+
+    k.opt <- res.10$k.pick
+
+    ## extract chosen graph
+    idx <- which(k.values == k.opt)
+    if (length(idx) != 1L) stop("Internal error: k.opt not found uniquely in kmin:kmax.")
+    g.opt <- graphs[[idx]]
+
+    if (verbose) {
+        cat(sprintf("DONE: k.opt=%d\n", k.opt))
+    }
+
+    out <- list(
+        k.opt = k.opt,
+        X.graphs = X.graphs,
+        X.graphs.stats = X.graphs.stats,
+        edit.distances = edit.distances,
+        k.for.edit = k.for.edit,
+        pick.k.within.eps.global.min.res = res.10,
+        graph.opt = g.opt
+    )
+
+    class(out) <- "build_iknn_graphs_and_selectk"
+
+    out
+}
+
+#' Plot method for \code{build_iknn_graphs_and_selectk} objects
+#'
+#' @description
+#' Produces a diagnostic stability plot for objects returned by
+#' \code{build.iknn.graphs.and.selectk()} with class
+#' \code{"build_iknn_graphs_and_selectk"}.
+#'
+#' The plot shows the edit distance between consecutive graphs in the
+#' selected regime (typically the terminal connected tail), as a function of
+#' \code{k} (the left endpoint of the consecutive pair \eqn{(G_k, G_{k+1})}).
+#' Vertical reference lines indicate \code{k.cc} (start of the connected tail)
+#' and \code{k.opt} (selected k).
+#'
+#' @param x An object of class \code{"build_iknn_graphs_and_selectk"}.
+#'   Must contain components \code{k.for.edit} and \code{edit.distances}. If present,
+#'   \code{k.cc} and \code{k.opt} are used for reference lines.
+#' @param ... Additional arguments passed to \code{plot()}.
+#' @param type Plot type passed to \code{plot()}. Default \code{"b"}.
+#' @param pch Plotting character passed to \code{plot()}. Default \code{16}.
+#' @param las Axis label style passed to \code{plot()}. Default \code{1}.
+#' @param xlab X-axis label. Default \code{"k (for consecutive pair)"}.
+#' @param ylab Y-axis label. Default \code{"Edit distance between consecutive graphs"}.
+#' @param main Plot title. Default \code{"ikNN graph stability: edit distance curve"}.
+#' @param add.grid Logical. If \code{TRUE}, adds a \code{grid()}.
+#' @param lty.k.cc Line type for \code{k.cc} reference line. Default \code{2}.
+#' @param lty.k.opt Line type for \code{k.opt} reference line. Default \code{3}.
+#' @param legend.pos Legend position passed to \code{legend()}. Default \code{"topright"}.
+#' @param legend.bty Legend box type passed to \code{legend()}. Default \code{"n"}.
+#' @param show.threshold A horizontal line corresponding to \eqn{(1+\varepsilon)d_{\min}} value.
+#'
+#' @return Invisibly returns \code{x}.
+#'
+#' @export
+plot.build_iknn_graphs_and_selectk <- function(
+    x,
+    ...,
+    type = "b",
+    pch = 16,
+    las = 1,
+    xlab = "k (for consecutive pair)",
+    ylab = "Edit distance between consecutive graphs",
+    main = "ikNN graph stability: edit distance curve",
+    add.grid = TRUE,
+    lty.k.cc = 2,
+    lty.k.opt = 3,
+    legend.pos = "topright",
+    legend.bty = "n",
+    show.threshold = FALSE
+) {
+
+    if (is.null(x) || !inherits(x, "build_iknn_graphs_and_selectk")) {
+        stop("x must be an object of class 'build_iknn_graphs_and_selectk'.")
+    }
+
+    if (is.null(x$k.for.edit) || is.null(x$edit.distances)) {
+        stop("x must contain components 'k.for.edit' and 'edit.distances'.")
+    }
+
+    k.for.edit <- x$k.for.edit
+    edit.distances <- x$edit.distances
+
+    if (!is.numeric(k.for.edit) || !is.numeric(edit.distances)) {
+        stop("'k.for.edit' and 'edit.distances' must be numeric.")
+    }
+
+    if (length(k.for.edit) != length(edit.distances)) {
+        stop("Length mismatch: length(k.for.edit) must equal length(edit.distances).")
+    }
+
+    ## Basic plot
+    graphics::plot(
+        k.for.edit,
+        edit.distances,
+        type = type,
+        pch = pch,
+        las = las,
+        xlab = xlab,
+        ylab = ylab,
+        main = main,
+        ...
+    )
+
+    if (isTRUE(add.grid)) {
+        graphics::grid()
+    }
+
+    ## Optional: horizontal threshold line at (1+eps)*d.min from stored picker result
+    if (isTRUE(show.threshold)) {
+        if (!is.null(x$pick.k.within.eps.global.min.res) &&
+            is.list(x$pick.k.within.eps.global.min.res) &&
+            !is.null(x$pick.k.within.eps.global.min.res$d.thld) &&
+            length(x$pick.k.within.eps.global.min.res$d.thld) == 1L &&
+            is.finite(x$pick.k.within.eps.global.min.res$d.thld)) {
+
+            d.thld <- x$pick.k.within.eps.global.min.res$d.thld
+            graphics::abline(h = d.thld, lty = 4)
+
+        } else {
+            warning("show.threshold=TRUE, but x$pick.k.within.eps.global.min.res$d.thld is missing or invalid.")
+        }
+    }
+
+    ## Optional reference lines
+    has.k.cc <- !is.null(x$k.cc) && is.finite(x$k.cc) && length(x$k.cc) == 1
+    has.k.opt <- !is.null(x$k.opt) && is.finite(x$k.opt) && length(x$k.opt) == 1
+
+    if (has.k.cc) {
+        graphics::abline(v = x$k.cc, lty = lty.k.cc)
+    }
+    if (has.k.opt) {
+        graphics::abline(v = x$k.opt, lty = lty.k.opt)
+    }
+
+    ## Legend
+    legend.items <- character(0)
+    if (has.k.cc) legend.items <- c(legend.items, paste0("k.cc = ", x$k.cc))
+    if (has.k.opt) legend.items <- c(legend.items, paste0("k.opt = ", x$k.opt))
+
+    if (isTRUE(show.threshold) &&
+        !is.null(x$pick.k.within.eps.global.min.res$d.thld) &&
+        length(x$pick.k.within.eps.global.min.res$d.thld) == 1L &&
+        is.finite(x$pick.k.within.eps.global.min.res$d.thld)) {
+        legend.items <- c(legend.items, paste0("d.thld = ", signif(x$pick.k.within.eps.global.min.res$d.thld, 6)))
+    }
+
+    if (length(legend.items) > 0) {
+        graphics::legend(
+            legend.pos,
+            legend = legend.items,
+            bty = legend.bty
+        )
+    }
+
+    invisible(x)
+}
+
+#' Print method for \code{build_iknn_graphs_and_selectk} objects
+#'
+#' @description
+#' Prints a compact textual summary for objects returned by
+#' \code{build.iknn.graphs.and.selectk()} with class
+#' \code{"build_iknn_graphs_and_selectk"}. This method does not produce any plots.
+#'
+#' @param x An object of class \code{"build_iknn_graphs_and_selectk"}.
+#' @param ... Unused.
+#'
+#' @return Invisibly returns \code{x}.
+#'
+#' @export
+print.build_iknn_graphs_and_selectk <- function(x, ...) {
+
+    if (is.null(x) || !inherits(x, "build_iknn_graphs_and_selectk")) {
+        stop("x must be an object of class 'build_iknn_graphs_and_selectk'.")
+    }
+
+    ## Safe getters
+    .get1 <- function(obj, nm) {
+        v <- obj[[nm]]
+        if (is.null(v)) return(NULL)
+        if (length(v) == 0) return(NULL)
+        v
+    }
+
+    k.opt <- .get1(x, "k.opt")
+    k.cc <- .get1(x, "k.cc")
+    k.for.edit <- .get1(x, "k.for.edit")
+    edit.distances <- .get1(x, "edit.distances")
+
+    ## Header
+    cat("build_iknn_graphs_and_selectk\n")
+
+    ## k summary
+    if (!is.null(k.cc)) cat("  k.cc :", k.cc, "\n")
+    if (!is.null(k.opt)) cat("  k.opt:", k.opt, "\n")
+
+    ## Edit distance summary
+    if (!is.null(k.for.edit) && !is.null(edit.distances) &&
+        is.numeric(k.for.edit) && is.numeric(edit.distances) &&
+        length(k.for.edit) == length(edit.distances) && length(edit.distances) > 0) {
+
+        cat("  edit distances (n =", length(edit.distances), ")\n")
+        cat("    k range:", min(k.for.edit), "to", max(k.for.edit), "\n")
+
+        fin <- is.finite(edit.distances)
+        if (any(fin)) {
+            d.min <- min(edit.distances[fin])
+            d.med <- stats::median(edit.distances[fin])
+            d.max <- max(edit.distances[fin])
+
+            cat("    min/median/max:", signif(d.min, 6), "/",
+                signif(d.med, 6), "/", signif(d.max, 6), "\n", sep = "")
+        } else {
+            cat("    all distances are non-finite\n")
+        }
+    } else {
+        cat("  edit distances: <not available>\n")
+    }
+
+    ## Picker summary if present
+    pick.res <- .get1(x, "pick.k.within.eps.global.min.res")
+    if (!is.null(pick.res) && is.list(pick.res)) {
+        eps <- pick.res$eps
+        d.thld <- pick.res$d.thld
+        d.min <- pick.res$d.min
+        if (!is.null(eps) || !is.null(d.min) || !is.null(d.thld)) {
+            cat("  selection rule\n")
+            if (!is.null(eps)) cat("    eps  :", eps, "\n")
+            if (!is.null(d.min)) cat("    d.min:", signif(d.min, 6), "\n")
+            if (!is.null(d.thld)) cat("    d.thld:", signif(d.thld, 6), "\n")
+        }
+    }
+
+    ## Graph sequence summary if present
+    stats <- .get1(x, "X.graphs.stats")
+    if (!is.null(stats) && is.data.frame(stats)) {
+        cat("  graph sequence stats: ", nrow(stats), " graphs\n", sep = "")
+        if (all(c("k", "n_ccomp", "edges") %in% names(stats))) {
+            ## Show first/last rows compactly
+            cat("    k:", stats$k[1], "to", stats$k[nrow(stats)], "\n")
+            cat("    n_ccomp (min/max):", min(stats$n_ccomp), "/", max(stats$n_ccomp), "\n")
+        }
+    }
+
+    invisible(x)
+}
