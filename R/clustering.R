@@ -1954,3 +1954,199 @@ summary.hclust_select_k <- function(object,
         shortlist
     }
 }
+
+
+#' Louvain clustering wrapper with optional seeding, weights, and repeated runs
+#'
+#' A convenience wrapper around \code{igraph::cluster_louvain()} that supports:
+#' \itemize{
+#' \item deterministic RNG control via \code{seed}
+#' \item optional edge weights (explicit vector, auto-detect, or forced unweighted)
+#' \item repeated runs (\code{n.itrs}) returning a membership matrix
+#' }
+#'
+#' @param graph An \code{igraph} graph object.
+#' @param weights Optional edge weights. If \code{NULL} (default), uses the
+#'   \code{weight} edge attribute if present; otherwise clustering is unweighted.
+#'   If \code{FALSE}, forces unweighted clustering even if \code{weight} exists.
+#'   If numeric, must be a vector of length \code{igraph::ecount(graph)}.
+#' @param seed Optional integer seed. If not \code{NULL}, the RNG is set for each
+#'   iteration as \code{seed + itr - 1}, yielding reproducible but not identical
+#'   results across iterations.
+#' @param n.itrs Positive integer number of clustering runs. If \code{n.itrs > 1},
+#'   returns a membership matrix with one column per run.
+#'
+#' @return If \code{n.itrs == 1}, an integer membership vector of length
+#'   \code{igraph::vcount(graph)}. If \code{n.itrs > 1}, an integer matrix of
+#'   dimension \code{vcount(graph)} by \code{n.itrs}; each column is a membership
+#'   vector.
+#'
+#' @examples
+#' \dontrun{
+#' library(igraph)
+#' g <- sample_gnp(50, 0.08)
+#' E(g)$weight <- runif(ecount(g))
+#'
+#' ## Uses E(g)$weight by default
+#' mem <- cluster.graph.louvain(g)
+#'
+#' ## Force unweighted
+#' mem0 <- cluster.graph.louvain(g, weights = FALSE)
+#'
+#' ## Repeat runs, reproducible
+#' mem.mat <- cluster.graph.louvain(g, seed = 1, n.itrs = 5)
+#' }
+#'
+#' @importFrom igraph cluster_louvain ecount vcount edge_attr_names membership
+#' @export
+cluster.graph.louvain <- function(graph, weights = NULL, seed = NULL, n.itrs = 1) {
+    if (!inherits(graph, "igraph")) stop("'graph' must be an igraph object.")
+    n.itrs <- as.integer(n.itrs)
+    if (!is.finite(n.itrs) || n.itrs < 1L) stop("'n.itrs' must be a positive integer.")
+
+    ## Resolve weights
+    w.use <- NULL
+    if (isFALSE(weights)) {
+        w.use <- NULL
+    } else if (is.null(weights)) {
+        if ("weight" %in% igraph::edge_attr_names(graph)) {
+            w.use <- igraph::E(graph)$weight
+        } else {
+            w.use <- NULL
+        }
+    } else {
+        if (!is.numeric(weights)) stop("'weights' must be NULL, FALSE, or a numeric vector.")
+        if (length(weights) != igraph::ecount(graph)) stop("'weights' must have length igraph::ecount(graph).")
+        w.use <- as.numeric(weights)
+    }
+
+    ## CRAN-safe: save/restore .Random.seed if we touch it
+    set.seed.local <- function(seed.value) {
+        had.seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+        old.seed <- if (had.seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+        on.exit({
+            if (had.seed) {
+                assign(".Random.seed", old.seed, envir = .GlobalEnv)
+            } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+                rm(".Random.seed", envir = .GlobalEnv)
+            }
+        }, add = TRUE)
+        set.seed(seed.value)
+        invisible(NULL)
+    }
+
+    n <- igraph::vcount(graph)
+
+    if (n.itrs == 1L) {
+        if (!is.null(seed)) set.seed.local(as.integer(seed))
+        cl <- igraph::cluster_louvain(graph, weights = w.use)
+        return(as.integer(igraph::membership(cl)))
+    }
+
+    mem.mat <- matrix(NA_integer_, nrow = n, ncol = n.itrs)
+    for (itr in seq_len(n.itrs)) {
+        if (!is.null(seed)) set.seed.local(as.integer(seed) + itr - 1L)
+        cl <- igraph::cluster_louvain(graph, weights = w.use)
+        mem.mat[, itr] <- as.integer(igraph::membership(cl))
+    }
+    colnames(mem.mat) <- paste0("itr.", seq_len(n.itrs))
+
+    mem.mat
+}
+
+#' Compute Congruence Between Graph Clusters and Labels
+#'
+#' @description
+#' Aligns graph-derived cluster labels to external Labels (for example Community State Type (CST))
+#' annotations using \code{sample.ids}, then computes agreement via the Adjusted
+#' Rand Index (ARI) and returns a CST-by-cluster contingency table.
+#'
+#' @details
+#' The function subsets \code{cst.labels} to \code{sample.ids} (by name matching),
+#' drops samples with missing CST labels, and requires a minimum number of labeled
+#' samples (default: 10) to compute ARI. Cluster labels are treated as a
+#' partition of \code{sample.ids}; CST labels are coerced to a factor partition.
+#'
+#' @param sample.ids Character vector of sample identifiers defining the ordering
+#'   of \code{cluster.labels}. Typically \code{rownames(X)} used for graph construction.
+#' @param cluster.labels Vector of cluster/community assignments aligned to
+#'   \code{sample.ids}. Must have the same length as \code{sample.ids}. Can be
+#'   numeric/integer or character/factor.
+#' @param labels Named vector of external labels, with \code{names(labels)}
+#'   giving sample identifiers. Values may be character, factor, or numeric.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{n}{Number of samples retained after alignment and removal of missing labels.}
+#'   \item{ari}{Adjusted Rand Index between \code{cluster.labels} and labels (over retained samples).}
+#'   \item{cst.table}{Contingency table of labels by cluster labels (over retained samples).}
+#' }
+#'
+#' @seealso \code{\link[mclust]{adjustedRandIndex}}
+#'
+#' @examples
+#' ## Two clusters vs two CSTs (toy)
+#' sample.ids <- c("s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10")
+#' cluster.labels <- c(1,1,1,1,1, 2,2,2,2,2)
+#' labels <- c(s1="I", s2="I", s3="I", s4="I", s5="I",
+#'                 s6="III", s7="III", s8="III", s9="III", s10="III")
+#' congruence.with.labels(sample.ids, cluster.labels, labels)
+#'
+#' @export
+congruence.with.labels <- function(sample.ids,
+                                cluster.labels,
+                                labels) {
+    ## ---- validate inputs (CRAN-safe defensive checks) ----
+    if (missing(sample.ids) || is.null(sample.ids)) {
+        stop("`sample.ids` must be a non-null vector of sample identifiers.")
+    }
+    if (!is.atomic(sample.ids)) stop("`sample.ids` must be an atomic vector.")
+    sample.ids <- as.character(sample.ids)
+    if (length(sample.ids) < 1L) stop("`sample.ids` must have positive length.")
+    if (anyNA(sample.ids)) stop("`sample.ids` must not contain NA.")
+    if (any(sample.ids == "")) stop("`sample.ids` must not contain empty strings.")
+    if (anyDuplicated(sample.ids)) stop("`sample.ids` must not contain duplicates.")
+
+    if (missing(cluster.labels) || is.null(cluster.labels)) {
+        stop("`cluster.labels` must be provided and non-null.")
+    }
+    if (!is.atomic(cluster.labels)) stop("`cluster.labels` must be an atomic vector.")
+    if (length(cluster.labels) != length(sample.ids)) {
+        stop("`cluster.labels` must have the same length as `sample.ids`.")
+    }
+    if (anyNA(cluster.labels)) stop("`cluster.labels` must not contain NA.")
+
+    if (missing(labels) || is.null(labels)) {
+        stop("`labels` must be provided and non-null.")
+    }
+    if (!is.atomic(labels)) stop("`labels` must be an atomic vector.")
+    nms <- names(labels)
+    if (is.null(nms) || length(nms) != length(labels)) {
+        stop("`labels` must be a named vector with names as sample identifiers.")
+    }
+    if (anyNA(nms) || any(nms == "")) {
+        stop("`labels` must have non-missing, non-empty names.")
+    }
+
+    ## ---- align CST labels to sample.ids ----
+    cst <- labels[sample.ids]
+    ok <- !is.na(cst)
+
+    if (sum(ok) < 10L) {
+        stop("Too few samples with CST labels after alignment (need at least 10).")
+    }
+
+    ## ---- compute ARI ----
+    ## coerce to partitions
+    cl.ok <- cluster.labels[ok]
+    cst.ok <- cst[ok]
+
+    ari <- mclust::adjustedRandIndex(as.integer(as.factor(cl.ok)),
+                                     as.integer(as.factor(cst.ok)))
+
+    list(
+        n = sum(ok),
+        ari = ari,
+        cst.table = table(cst.ok, cl.ok)
+    )
+}
