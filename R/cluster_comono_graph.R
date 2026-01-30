@@ -136,7 +136,7 @@ cluster.comono.graph <- function(adj.list,
     }
 
     ## Apply Louvain clustering
-    clusters <- cluster_louvain(g, resolution = resolution)
+    clusters <- igraph::cluster_louvain(g, resolution = resolution)
 
     return(list(
         membership = membership(clusters),
