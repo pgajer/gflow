@@ -1500,8 +1500,6 @@ plot.hclust_select_k <- function(x,
                         connectivity = "minimize")
     }
 
-    `%||%` <- function(a, b) if (!is.null(a)) a else b
-
     plot.one <- function(m) {
 
         if (!m %in% names(scores)) {
