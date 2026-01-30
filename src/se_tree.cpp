@@ -106,8 +106,6 @@ se_tree_t set_wgraph_t::build_se_tree(
         }
 
         // Find opposite-polarity extrema within this basin
-        const std::unordered_set<size_t>& target_set =
-            node.is_maximum ? spurious_min : spurious_max;
         const std::unordered_set<size_t>& ns_target_set =
             node.is_maximum ?
                 std::unordered_set<size_t>{} :  // Will check individually
