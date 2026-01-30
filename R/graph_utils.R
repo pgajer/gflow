@@ -2975,3 +2975,106 @@ geodesic.disk <- function(adj.list,
     idx <- d.ok & (d <= radius.used)
     build.out(idx, radius.used)
 }
+
+#' Convert an Adjacency List to an igraph Object
+#'
+#' @description
+#' Converts a 1-based adjacency list representation of an undirected graph into
+#' an \pkg{igraph} graph object. The input is assumed to be a list of length
+#' \code{n}, where element \code{adj.list[[v]]} contains integer neighbor indices
+#' in \code{1..n}. Self-loops are dropped. Duplicate neighbors are removed.
+#'
+#' @details
+#' The function constructs an undirected edge list by keeping only neighbor
+#' indices \code{w > v} for each vertex \code{v} to avoid duplicating edges.
+#' If no edges are present, an empty graph with \code{n} vertices is returned.
+#'
+#' @param adj.list A list of length \code{n}. Each element is an integer (or
+#'   numeric coercible to integer) vector of neighbor indices in \code{1..n}.
+#'
+#' @return An undirected \pkg{igraph} object with \code{n} vertices.
+#'
+#' @seealso \code{\link[igraph]{graph_from_edgelist}},
+#'   \code{\link[igraph]{make_empty_graph}}
+#'
+#' @examples
+#' ## 3-vertex path: 1--2--3
+#' adj <- list(c(2), c(1, 3), c(2))
+#' g <- adjlist.to.igraph(adj)
+#' igraph::vcount(g)
+#' igraph::ecount(g)
+#'
+#' @export
+adjlist.to.igraph <- function(adj.list) {
+    ## ---- validate inputs (CRAN-safe defensive checks) ----
+    if (missing(adj.list) || is.null(adj.list)) {
+        stop("`adj.list` must be a non-null list.")
+    }
+    if (!is.list(adj.list)) stop("`adj.list` must be a list.")
+    n <- length(adj.list)
+    if (n < 1L) stop("`adj.list` must have length >= 1.")
+
+    ## validate each adjacency vector and normalize
+    for (v in seq_len(n)) {
+        nv <- adj.list[[v]]
+
+        ## allow NULL/empty neighbors
+        if (is.null(nv) || length(nv) == 0L) {
+            adj.list[[v]] <- integer(0)
+            next
+        }
+
+        if (!is.numeric(nv)) {
+            suppressWarnings(nv <- as.numeric(nv))
+            if (!is.numeric(nv)) {
+                stop(sprintf("`adj.list[[%d]]` must be numeric/integer neighbor indices.", v))
+            }
+        }
+
+        if (any(!is.finite(nv))) {
+            stop(sprintf("`adj.list[[%d]]` contains non-finite neighbor indices.", v))
+        }
+
+        ## coerce to integer safely
+        nv.int <- as.integer(nv)
+        if (any(abs(nv - nv.int) > 0)) {
+            stop(sprintf("`adj.list[[%d]]` contains non-integer neighbor indices.", v))
+        }
+
+        ## range check
+        if (any(nv.int < 1L | nv.int > n)) {
+            stop(sprintf("`adj.list[[%d]]` has indices outside 1..%d.", v, n))
+        }
+
+        ## drop self-loops + duplicates
+        nv.int <- nv.int[nv.int != v]
+        if (length(nv.int) > 1L) nv.int <- unique(nv.int)
+
+        adj.list[[v]] <- nv.int
+    }
+
+    ## ---- build edge list (upper triangle only) ----
+    edges <- vector("list", n)
+    for (v in seq_len(n)) {
+        nv <- adj.list[[v]]
+        if (length(nv) == 0L) next
+        w <- nv[nv > v]
+        if (length(w) > 0L) edges[[v]] <- cbind(v, w)
+    }
+
+    ed <- do.call(rbind, edges)
+
+    if (is.null(ed) || nrow(ed) == 0L) {
+        g <- igraph::make_empty_graph(n = n, directed = FALSE)
+    } else {
+        ## ed must be a 2-col integer matrix for igraph
+        storage.mode(ed) <- "integer"
+        g <- igraph::graph_from_edgelist(ed, directed = FALSE)
+
+        ## ensure exactly n vertices (igraph may drop isolated vertices)
+        nv.g <- igraph::vcount(g)
+        if (nv.g < n) g <- igraph::add_vertices(g, n - nv.g)
+    }
+
+    g
+}
