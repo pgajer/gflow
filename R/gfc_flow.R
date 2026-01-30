@@ -2574,8 +2574,6 @@ relabel.basins.gfc.flow <- function(x,
 
     rank.by <- match.arg(rank.by)
 
-    `%||%` <- function(a, b) if (!is.null(a)) a else b
-
     .is.empty.stage <- function(s) {
         is.null(s) || is.na(s) || (is.character(s) && (s == "" || s == "none"))
     }
