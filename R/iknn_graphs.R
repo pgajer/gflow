@@ -1176,11 +1176,15 @@ trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
     )
 }
 
-#' Select \code{k} within a relative tolerance of the global minimum edit distance
+#' Select \code{k} by the first local minimum within a tolerance band
 #'
 #' @description
-#' Selects the smallest \code{k} in a connected-tail regime whose edit distance is
-#' within \code{(1 + eps)} times the minimum edit distance over that regime.
+#' Defines a tolerance band based on the global minimum edit distance over the
+#' terminal connected-tail regime (\code{k.for.edit >= k.cc}). Candidates are those
+#' \code{k} with \code{d(k) <= (1 + eps) * d.min}. Among candidates, the function
+#' selects the smallest \code{k} that is a (plateau-aware) local minimum of the edit
+#' distance curve. If no local minimum lies within the tolerance band, the function
+#' falls back to the smallest \code{k} attaining the global minimum \code{d.min}.
 #'
 #' The inputs \code{edit.distances} and \code{k.for.edit} are assumed to represent
 #' edit distances between consecutive graphs \eqn{(G_k, G_{k+1})}, with
@@ -1198,26 +1202,29 @@ trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
 #'
 #' @return A list with components:
 #' \itemize{
-#'   \item \code{k.pick}: The selected \code{k} value.
-#'   \item \code{d.pick}: The edit distance at \code{k.pick}.
-#'   \item \code{d.min}: The minimum edit distance over eligible \code{k}.
-#'   \item \code{d.thld}: The threshold \code{(1 + eps) * d.min}.
-#'   \item \code{eps}: The input tolerance \code{eps}.
-#'   \item \code{candidates}: A data frame of eligible candidate \code{k} values and
-#'   their edit distances.
+#'   \item \code{k.pick}: Selected \code{k} value.
+#'   \item \code{d.pick}: Edit distance at \code{k.pick}.
+#'   \item \code{d.min}: Minimum edit distance over eligible \code{k}.
+#'   \item \code{d.thld}: Threshold \code{(1 + eps) * d.min}.
+#'   \item \code{eps}: Input tolerance \code{eps}.
+#'   \item \code{candidates}: Data frame of candidate \code{k} values (within the band)
+#'     and their edit distances.
+#'   \item \code{local.minima}: Data frame of detected local minima (eligible regime)
+#'     and their edit distances.
 #' }
 #'
 #' @keywords internal
 #' @noRd
 pick.k.within.eps.global.min <- function(edit.distances, k.for.edit, k.cc, eps = 0.05) {
 
+    ## --- validate ---
     if (!is.numeric(k.cc) || length(k.cc) != 1 || is.na(k.cc)) {
         stop("k.cc must be a single non-NA numeric")
     }
     if (k.cc != as.integer(k.cc)) stop("k.cc must be integer-valued.")
     k.cc <- as.integer(k.cc)
 
-    if (!is.numeric(edit.distances) || length(edit.distances) < 1) {
+    if (!is.numeric(edit.distances) || length(edit.distances) < 1L) {
         stop("edit.distances must be a non-empty numeric vector")
     }
 
@@ -1231,39 +1238,81 @@ pick.k.within.eps.global.min <- function(edit.distances, k.for.edit, k.cc, eps =
     if (anyNA(k.for.edit)) stop("k.for.edit contains NA after coercion to integer.")
     if (is.unsorted(k.for.edit, strictly = TRUE)) stop("k.for.edit must be strictly increasing.")
 
-    if (!is.numeric(eps) || length(eps) != 1 || eps < 0) {
+    if (!is.numeric(eps) || length(eps) != 1L || eps < 0) {
         stop("eps must be a single nonnegative numeric value")
     }
 
     keep <- (k.for.edit >= k.cc)
-    if (!any(keep)) {
-        stop("No k values satisfy k >= k.cc")
-    }
+    if (!any(keep)) stop("No k values satisfy k >= k.cc")
 
     d.keep <- edit.distances[keep]
     k.keep <- k.for.edit[keep]
 
-    ## Must check NA/finite before min/thresholding
-    if (all(is.na(d.keep))) {
-        stop("All edit distances are NA in the k >= k.cc regime.")
-    }
-    if (!any(is.finite(d.keep))) {
-        stop("No finite edit distances in the k >= k.cc regime.")
-    }
+    if (all(is.na(d.keep))) stop("All edit distances are NA in the k >= k.cc regime.")
+    if (!any(is.finite(d.keep))) stop("No finite edit distances in the k >= k.cc regime.")
 
+    ## --- threshold band ---
     d.min <- min(d.keep, na.rm = TRUE)
     d.thld <- (1 + eps) * d.min
-
     cand.idx <- which(is.finite(d.keep) & d.keep <= d.thld)
-    if (length(cand.idx) == 0) {
-        stop("No candidates found. Check eps / inputs.")
+    if (length(cand.idx) == 0L) stop("No candidates found. Check eps / inputs.")
+
+    ## --- find local minima (plateau-aware) ---
+    n <- length(d.keep)
+
+    ## Indices of finite points only for comparisons
+    finite <- is.finite(d.keep)
+
+    ## Plateau-aware local minima:
+    ## Treat a run of equal values as a "plateau"; it is a local minimum if
+    ## its value <= the nearest finite neighbor on the left and right.
+    r <- rle(d.keep)
+    ends <- cumsum(r$lengths)
+    starts <- ends - r$lengths + 1L
+
+    local.min.idx <- integer(0)
+
+    for (m in seq_along(r$values)) {
+
+        v <- r$values[m]
+        if (!is.finite(v)) next
+
+        s <- starts[m]
+        e <- ends[m]
+
+        ## nearest finite neighbor on the left
+        left.idx <- if (s > 1L) max(which(finite[1:(s - 1L)])) else NA_integer_
+        left.ok <- if (is.na(left.idx)) TRUE else (v <= d.keep[left.idx])
+
+        ## nearest finite neighbor on the right
+        right.idx <- if (e < n) {
+            rr <- which(finite[(e + 1L):n])
+            if (length(rr) == 0L) NA_integer_ else (e + rr[1L])
+        } else NA_integer_
+        right.ok <- if (is.na(right.idx)) TRUE else (v <= d.keep[right.idx])
+
+        if (left.ok && right.ok) {
+            ## choose left edge of plateau as representative local-min location
+            local.min.idx <- c(local.min.idx, s)
+        }
     }
 
-    k.pick <- as.integer(min(k.keep[cand.idx]))
-    d.pick <- d.keep[match(k.pick, k.keep)]
-    if (length(d.pick) != 1 || !is.finite(d.pick)) {
-        stop("Internal error computing d.pick")
+    local.min.idx <- sort(unique(local.min.idx))
+
+    ## --- pick first local minimum within candidate band ---
+    pickable.idx <- intersect(local.min.idx, cand.idx)
+
+    if (length(pickable.idx) > 0L) {
+        k.pick.idx <- pickable.idx[1L]
+    } else {
+        ## Fallback: if no local minima are inside the band,
+        ## pick the smallest k achieving the global min (within keep)
+        min.idx <- which(is.finite(d.keep) & d.keep == d.min)
+        k.pick.idx <- min.idx[1L]
     }
+
+    k.pick <- as.integer(k.keep[k.pick.idx])
+    d.pick <- d.keep[k.pick.idx]
 
     list(
         k.pick = k.pick,
@@ -1274,6 +1323,10 @@ pick.k.within.eps.global.min <- function(edit.distances, k.for.edit, k.cc, eps =
         candidates = data.frame(
             k = k.keep[cand.idx],
             edit.distance = d.keep[cand.idx]
+        ),
+        local.minima = data.frame(
+            k = k.keep[local.min.idx],
+            edit.distance = d.keep[local.min.idx]
         )
     )
 }
@@ -1494,6 +1547,7 @@ build.iknn.graphs.and.selectk <- function(X,
         X.graphs.stats = X.graphs.stats,
         edit.distances = edit.distances,
         k.for.edit = k.for.edit,
+        k.cc = k.cc,
         pick.k.within.eps.global.min.res = res.10,
         graph.opt = g.opt
     )
