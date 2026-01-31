@@ -191,8 +191,18 @@ permutation.test.rdgraph <- function(fitted.model,
     ##       This is independent of the vertex-wise statistic controlled by `two.sided`.
     eps <- max(1e-6, 0.5 / n)
 
-    ## helper: clip to [eps, 1-eps]
-    clip01 <- function(x, eps) pmin(1 - eps, pmax(eps, x))
+    ## helper: clip to [eps, 1-eps] while preserving dimensions
+    clip01 <- function(x, eps) {
+        if (is.matrix(x) || length(dim(x)) == 2L || !is.null(dim(x))) {
+            x2 <- x
+            x2[x2 < eps] <- eps
+            x2[x2 > 1 - eps] <- 1 - eps
+            return(x2)
+        }
+
+        ## vector
+        pmin(1 - eps, pmax(eps, x))
+    }
 
     y.mean.eps <- clip01(y.mean, eps)
 
@@ -203,13 +213,19 @@ permutation.test.rdgraph <- function(fitted.model,
         global.stat.perm <- colSums((perm.fitted - y.mean)^2)
     } else if (stat == "log") {
         ## T2log = sum (log(yhat_eps) - log(ybar_eps))^2
+
         fitted.obs.eps <- clip01(fitted.obs, eps)
         perm.fitted.eps <- clip01(perm.fitted, eps)
+
+        if (!is.matrix(perm.fitted.eps)) stop("perm.fitted.eps is not a matrix after clipping.")
+        if (ncol(perm.fitted.eps) != n.perms) stop("Unexpected ncol(perm.fitted.eps) after clipping.")
 
         global.stat.obs <- sum((log(fitted.obs.eps) - log(y.mean.eps))^2)
 
         ## log(yhat_eps) is n x n.perms, subtract scalar log(ybar_eps)
-        global.stat.perm <- colSums((log(perm.fitted.eps) - log(y.mean.eps))^2)
+        lp <- log(perm.fitted.eps)  ## should remain n x n.perms
+        global.stat.perm <- colSums((lp - log(y.mean.eps))^2)
+
     } else if (stat == "logit") {
         ## T2logit = sum (logit(yhat_eps) - logit(ybar_eps))^2
         logit <- function(p) log(p / (1 - p))
@@ -217,9 +233,13 @@ permutation.test.rdgraph <- function(fitted.model,
         fitted.obs.eps <- clip01(fitted.obs, eps)
         perm.fitted.eps <- clip01(perm.fitted, eps)
 
+        if (!is.matrix(perm.fitted.eps)) stop("perm.fitted.eps is not a matrix after clipping.")
+        if (ncol(perm.fitted.eps) != n.perms) stop("Unexpected ncol(perm.fitted.eps) after clipping.")
+
         global.stat.obs <- sum((logit(fitted.obs.eps) - logit(y.mean.eps))^2)
 
-        global.stat.perm <- colSums((logit(perm.fitted.eps) - logit(y.mean.eps))^2)
+        lp <- logit(perm.fitted.eps)
+        global.stat.perm <- colSums((lp - logit(y.mean.eps))^2)
     }
 
     ## Upper-tail p-value with +1 correction
