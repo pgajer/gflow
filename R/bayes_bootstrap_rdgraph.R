@@ -27,6 +27,23 @@
 #'
 #' @param seed Integer or NULL. If not NULL, sets RNG seed.
 #'
+#' @param stat Character scalar specifying the global Bayesian bootstrap
+#'   statistic to compute from fitted fields. Must be one of \code{"l2"},
+#'   \code{"log"}, or \code{"logit"}.
+#'
+#'   Let \eqn{\hat y} be the fitted field and \eqn{\bar y} the global mean of
+#'   the original \code{y}. The global statistic is computed for the observed
+#'   fit and for each Bayesian bootstrap draw:
+#'   \itemize{
+#'     \item \code{"l2"}: \eqn{T_2(\hat y) = \sum_{v\in V} (\hat y(v) - \bar y)^2}
+#'     \item \code{"log"}: \eqn{T_{2,\log}(\hat y) = \sum_{v\in V} (\log(\hat y_\epsilon(v)) - \log(\bar y_\epsilon))^2}
+#'     \item \code{"logit"}: \eqn{T_{2,\mathrm{logit}}(\hat y) = \sum_{v\in V} (\mathrm{logit}(\hat y_\epsilon(v)) - \mathrm{logit}(\bar y_\epsilon))^2}
+#'   }
+#'
+#'   For \code{"log"} and \code{"logit"}, fitted values are clipped to
+#'   \eqn{[\epsilon, 1-\epsilon]} with \eqn{\epsilon = \max(10^{-6}, 0.5/n)}
+#'   to avoid infinities when fitted values are numerically 0 or 1.
+#'
 #' @param credible.level Numeric in (0, 1). Default 0.95.
 #'
 #' @param baseline Character specifying baseline for enrichment probabilities.
@@ -60,6 +77,7 @@ bayes.bootstrap.rdgraph <- function(fitted.model,
                                    per.column.gcv = FALSE,
                                    n.cores = 1L,
                                    seed = 12345L,
+                                   stat = c("l2", "log", "logit"),
                                    credible.level = 0.95,
                                    baseline = c("mean", "none"),
                                    return.draws = FALSE,
@@ -105,6 +123,8 @@ bayes.bootstrap.rdgraph <- function(fitted.model,
         set.seed(as.integer(seed))
     }
 
+    stat <- match.arg(stat)
+
     ## -----------------------------
     ## Bayesian bootstrap weights
     ## Dirichlet(1,...,1) via Exp(1)/sum
@@ -138,9 +158,63 @@ bayes.bootstrap.rdgraph <- function(fitted.model,
     }
 
     ## -----------------------------
+    ## Global Bayesian bootstrap statistic draws
+    ## -----------------------------
+    y.mean.global <- mean(y)
+
+    eps <- max(1e-6, 0.5 / n)
+
+    ## helper: clip to [eps, 1-eps] while preserving dimensions
+    clip01 <- function(x, eps) {
+        x2 <- x
+        x2[x2 < eps] <- eps
+        x2[x2 > 1 - eps] <- 1 - eps
+        x2
+    }
+
+    if (stat == "l2") {
+        ## Observed
+        global.stat.obs <- sum((fitted.obs - y.mean.global)^2)
+        ## Draws: column-wise sum
+        global.stat.draws <- colSums((draws - y.mean.global)^2)
+    } else if (stat == "log") {
+        fitted.obs.eps <- clip01(fitted.obs, eps)
+        draws.eps <- clip01(draws, eps)
+        y.mean.eps <- clip01(y.mean.global, eps)
+
+        global.stat.obs <- sum((log(fitted.obs.eps) - log(y.mean.eps))^2)
+
+        ld <- log(draws.eps)  ## n x n.draws
+        global.stat.draws <- colSums((ld - log(y.mean.eps))^2)
+    } else if (stat == "logit") {
+        logit <- function(p) log(p / (1 - p))
+
+        fitted.obs.eps <- clip01(fitted.obs, eps)
+        draws.eps <- clip01(draws, eps)
+        y.mean.eps <- clip01(y.mean.global, eps)
+
+        global.stat.obs <- sum((logit(fitted.obs.eps) - logit(y.mean.eps))^2)
+
+        ld <- logit(draws.eps)
+        global.stat.draws <- colSums((ld - logit(y.mean.eps))^2)
+    }
+
+    ## posterior summaries for the global statistic
+    alpha <- (1 - credible.level) / 2
+    global.stat.mean <- mean(global.stat.draws)
+    global.stat.ci <- as.double(stats::quantile(
+                                           global.stat.draws,
+                                           probs = c(alpha, 1 - alpha),
+                                           na.rm = TRUE,
+                                           names = FALSE
+                                       ))
+
+    ## optional: BB tail-area analog vs observed global statistic
+    global.prob.ge.obs <- mean(global.stat.draws >= global.stat.obs)
+
+    ## -----------------------------
     ## Summaries
     ## -----------------------------
-    alpha <- (1 - credible.level) / 2
     probs <- c(alpha, 0.5, 1 - alpha)
 
     lower <- apply(draws, 1, stats::quantile, probs = probs[1], na.rm = TRUE, names = FALSE)
@@ -150,6 +224,12 @@ bayes.bootstrap.rdgraph <- function(fitted.model,
 
     out <- list(
         fitted.obs = as.double(fitted.obs),
+        stat = stat,
+        y.mean.global = y.mean.global,
+        global.stat.obs = as.double(global.stat.obs),
+        global.stat.draws.mean = as.double(global.stat.mean),
+        global.stat.draws.ci = as.double(global.stat.ci),
+        global.prob.ge.obs = as.double(global.prob.ge.obs),
         lower = as.double(lower),
         median = as.double(median),
         upper = as.double(upper),
@@ -177,7 +257,10 @@ bayes.bootstrap.rdgraph <- function(fitted.model,
         out$baseline <- "none"
     }
 
-    if (return.draws) out$draws <- draws
+    if (return.draws) {
+        out$draws <- draws
+        out$global.stat.draws <- as.double(global.stat.draws)
+    }
 
     class(out) <- c("rdgraph_bayes_bootstrap", "list")
     return(out)
