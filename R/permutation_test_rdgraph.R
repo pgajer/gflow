@@ -28,6 +28,25 @@
 #'
 #' @param seed Integer or NULL. If not NULL, sets RNG seed for reproducibility.
 #'
+#' @param stat Character scalar specifying the global test statistic to compute
+#'   in addition to the vertex-wise p-values. Must be one of \code{"l2"},
+#'   \code{"log"}, or \code{"logit"}.
+#'
+#'   The global statistic is computed from the fitted field \eqn{\hat y} and
+#'   the global mean incidence \eqn{\bar y}:
+#'   \itemize{
+#'     \item \code{"l2"}: \eqn{T_2(\hat y) = \sum_{v\in V} (\hat y(v) - \bar y)^2}
+#'     \item \code{"log"}: \eqn{T_{2,\log}(\hat y) = \sum_{v\in V} (\log(\hat y_\epsilon(v)) - \log(\bar y_\epsilon))^2}
+#'     \item \code{"logit"}: \eqn{T_{2,\mathrm{logit}}(\hat y) = \sum_{v\in V} (\mathrm{logit}(\hat y_\epsilon(v)) - \mathrm{logit}(\bar y_\epsilon))^2}
+#'   }
+#'
+#'   For \code{"log"} and \code{"logit"}, fitted values are clipped to
+#'   \eqn{[\epsilon, 1-\epsilon]} with \eqn{\epsilon = \max(10^{-6}, 0.5/n)}
+#'   to avoid infinities when \eqn{\hat y(v)} is numerically 0 or 1.
+#'
+#'   The global permutation p-value is computed as
+#'   \eqn{p = (1 + \#\{b: T^{(b)} \ge T^{\mathrm{obs}}\})/(B+1)}.
+#'
 #' @param two.sided Logical. If TRUE (default), use absolute-value statistic.
 #'   If FALSE, uses one-sided statistic \eqn{\hat y(v) - \bar y} (upper-tail).
 #'
@@ -70,6 +89,7 @@ permutation.test.rdgraph <- function(fitted.model,
                                      per.column.gcv = TRUE,
                                      n.cores = 1L,
                                      seed = 12345L,
+                                     stat = c("l2","log","logit"),
                                      two.sided = TRUE,
                                      return.perm.fits = FALSE,
                                      verbose = TRUE) {
@@ -125,6 +145,8 @@ permutation.test.rdgraph <- function(fitted.model,
         set.seed(seed)
     }
 
+    stat <- match.arg(stat)
+
     ## ---------------------------------------------------------------------
     ## Build permutation matrix (n x n.perms)
     ## ---------------------------------------------------------------------
@@ -161,6 +183,48 @@ permutation.test.rdgraph <- function(fitted.model,
     ## ---------------------------------------------------------------------
     y.mean <- mean(y)
 
+    ## ---------------------------------------------------------------------
+    ## Global permutation test(s): T2 on probability / log / logit scale
+    ## ---------------------------------------------------------------------
+    ## Note: We compute one global statistic chosen by `stat`, using the same
+    ##       permuted fitted fields already available in `perm.fitted`.
+    ##       This is independent of the vertex-wise statistic controlled by `two.sided`.
+    eps <- max(1e-6, 0.5 / n)
+
+    ## helper: clip to [eps, 1-eps]
+    clip01 <- function(x, eps) pmin(1 - eps, pmax(eps, x))
+
+    y.mean.eps <- clip01(y.mean, eps)
+
+    if (stat == "l2") {
+        ## T2 = sum (yhat - ybar)^2
+        global.stat.obs <- sum((fitted.obs - y.mean)^2)
+        ## perm.fitted is n x n.perms: compute column-wise sum of squares
+        global.stat.perm <- colSums((perm.fitted - y.mean)^2)
+    } else if (stat == "log") {
+        ## T2log = sum (log(yhat_eps) - log(ybar_eps))^2
+        fitted.obs.eps <- clip01(fitted.obs, eps)
+        perm.fitted.eps <- clip01(perm.fitted, eps)
+
+        global.stat.obs <- sum((log(fitted.obs.eps) - log(y.mean.eps))^2)
+
+        ## log(yhat_eps) is n x n.perms, subtract scalar log(ybar_eps)
+        global.stat.perm <- colSums((log(perm.fitted.eps) - log(y.mean.eps))^2)
+    } else if (stat == "logit") {
+        ## T2logit = sum (logit(yhat_eps) - logit(ybar_eps))^2
+        logit <- function(p) log(p / (1 - p))
+
+        fitted.obs.eps <- clip01(fitted.obs, eps)
+        perm.fitted.eps <- clip01(perm.fitted, eps)
+
+        global.stat.obs <- sum((logit(fitted.obs.eps) - logit(y.mean.eps))^2)
+
+        global.stat.perm <- colSums((logit(perm.fitted.eps) - logit(y.mean.eps))^2)
+    }
+
+    ## Upper-tail p-value with +1 correction
+    global.p.value <- (sum(global.stat.perm >= global.stat.obs) + 1) / (n.perms + 1)
+
     if (two.sided) {
         stat.obs <- abs(fitted.obs - y.mean)
         stat.perm <- abs(perm.fitted - y.mean)
@@ -184,14 +248,19 @@ permutation.test.rdgraph <- function(fitted.model,
         q.value = q.value,
         stat.obs = stat.obs,
         y.mean = y.mean,
+        stat = stat,
+        global.stat.obs = global.stat.obs,
+        global.p.value = global.p.value,
         fitted.obs = fitted.obs,
         perm.refit = perm.refit,
+        eps = eps,
         call = match.call()
     )
 
     if (return.perm.fits) {
         out$perm.fitted.values <- perm.fitted
         out$stat.perm <- stat.perm
+        out$global.stat.perm <- global.stat.perm
     }
 
     class(out) <- c("rdgraph_permutation_test", "list")
