@@ -668,11 +668,11 @@ struct riem_dcx_t {
     // ----------------------------------------------------------------
 
     std::vector<double> dk_raw;
-    std::vector<double> dk_clamped;
+    std::vector<double> dk_used;
     double dk_lower = NA_REAL;
     double dk_upper = NA_REAL;
-    std::vector<index_t> dk_clamped_low;
-    std::vector<index_t> dk_clamped_high;
+    std::vector<index_t> dk_used_low;
+    std::vector<index_t> dk_used_high;
 
     // ================================================================
     // CONSTRUCTION METHODS
