@@ -609,8 +609,33 @@ fit.rdgraph.regression <- function(
     threshold.percentile = 0,
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
-    verbose.level = 1
-) {
+    ## reference.measure.type = c("dk_powerlaw", "counting", "user"),
+    ## reference.measure = NULL, # numeric vector length n; only used when type="user"
+    ## reference.measure.control = list(
+    ##     dk.bound.method = "median_factor",  ## or "quantile" later
+    ##     dk.median.factor = 10,              ## gives [median/10, median*10]
+    ##     alpha = density.alpha,              ## 1.5
+    ##     epsilon = density.epsilon,          ## 1e-10
+    ##     normalization.target = density.normalization, ## 0 => n
+    ##     max.weight.ratio = 1000             ## currently implicit via median.factor+alpha
+    ## )
+    verbose.level = 1,
+    ...
+    ) {
+
+    ## ==================== Dots / Deprecated Arguments ====================
+
+    dots <- list(...)
+
+    if ("verbose" %in% names(dots)) {
+        stop("fit.rdgraph.regression() does not have a logical 'verbose' argument. Use integer 'verbose.level'.")
+    }
+
+    if (length(dots) > 0) {
+        stop(sprintf("fit.rdgraph.regression(): unused argument(s): %s",
+                     paste(names(dots), collapse = ", ")))
+    }
+
     ## ==================== Feature Matrix Validation ====================
 
     ## Check X type
