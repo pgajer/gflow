@@ -41,11 +41,68 @@
 #include <limits>
 #include <unordered_set>
 #include <numeric>
+#include <cmath>
 
 knn_result_t compute_knn_from_eigen(
     const Eigen::SparseMatrix<double>& X,
     int k
     );
+
+static inline double median_of_copy(std::vector<double> x, bool average_even = false) {
+    const size_t n = x.size();
+    if (n == 0) return std::numeric_limits<double>::quiet_NaN();
+
+    auto mid = x.begin() + (n / 2);
+    std::nth_element(x.begin(), mid, x.end());
+    double m_hi = *mid;
+
+    if (!average_even || (n % 2 == 1)) {
+        return m_hi; // odd n -> exact median; even n -> upper median
+    }
+
+    auto mid_lo = x.begin() + (n / 2 - 1);
+    std::nth_element(x.begin(), mid_lo, x.end());
+    double m_lo = *mid_lo;
+
+    return 0.5 * (m_lo + m_hi);
+}
+
+static inline double positive_floor(double scale_hint) {
+    const double base = 1e-12;
+    if (!std::isfinite(scale_hint) || scale_hint <= 0.0) scale_hint = 1.0;
+    return base * std::max(1.0, scale_hint);
+}
+
+void validate_and_log_compress_weights_in_place(
+    std::vector<double>& vertex_weights,
+    bool average_even_median = false,
+    bool clamp_nonpositive_to_zero = false
+) {
+    const size_t n = vertex_weights.size();
+    if (n == 0) return;
+
+    for (size_t i = 0; i < n; ++i) {
+        if (!std::isfinite(vertex_weights[i])) {
+            Rf_error("vertex_weights contains non-finite values.");
+        }
+        if (vertex_weights[i] < 0.0) {
+            if (clamp_nonpositive_to_zero) vertex_weights[i] = 0.0;
+            else Rf_error("vertex_weights contains negative values.");
+        }
+    }
+
+    double w_median = median_of_copy(vertex_weights, average_even_median);
+
+    if (!std::isfinite(w_median) || w_median <= 0.0) {
+        w_median = positive_floor(1.0);
+    } else {
+        w_median = std::max(w_median, positive_floor(w_median));
+    }
+
+    for (size_t i = 0; i < n; ++i) {
+        vertex_weights[i] = std::log1p(vertex_weights[i] / w_median);
+    }
+}
 
 /**
  * @brief Initialize Riemannian simplicial complex from k-NN structure
@@ -952,11 +1009,20 @@ void riem_dcx_t::initialize_reference_measure(
         // ROBUST DISTANCE-BASED MEASURE
         // ================================================================
 
+		dk_raw.clear();
+		dk_clamped.clear();
+		dk_clamped_low.clear();
+		dk_clamped_high.clear();
+		dk_lower = NA_REAL;
+		dk_upper = NA_REAL;
+
         // Step 1: Collect all k-th neighbor distances
         std::vector<double> all_dk(n);
         for (size_t i = 0; i < n; ++i) {
             all_dk[i] = knn_distances[i].back();  // Last neighbor distance
         }
+		dk_raw = all_dk;
+		dk_clamped = all_dk;
 
         // Step 2: Compute robust statistics for scaling
         std::vector<double> sorted_dk = all_dk;
@@ -971,6 +1037,8 @@ void riem_dcx_t::initialize_reference_measure(
         // Allow at most 100:1 ratio in raw d_k values
         double d_min_allowed = d_median / 10.0;
         double d_max_allowed = d_median * 10.0;
+		dk_lower = d_min_allowed;
+		dk_upper = d_max_allowed;
 
 		if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
 			Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
@@ -987,12 +1055,16 @@ void riem_dcx_t::initialize_reference_measure(
             // Clamp to reasonable bounds
             if (d_k < d_min_allowed) {
                 d_k = d_min_allowed;
+				dk_clamped_low.push_back((index_t)i);
                 n_clamped_low++;
             }
             if (d_k > d_max_allowed) {
                 d_k = d_max_allowed;
+				dk_clamped_high.push_back((index_t)i);
                 n_clamped_high++;
             }
+
+			dk_clamped[i] = d_k;
 
             // Apply power law with regularization
             // w(x) = (ε + d_k)^(-α)
@@ -1017,15 +1089,7 @@ void riem_dcx_t::initialize_reference_measure(
 
             // Use log-compression to reduce dynamic range
             // w_compressed = log(1 + w/w_median)
-            double w_median = sorted_dk[n/2];  // Reuse sorted array
-            std::nth_element(vertex_weights.begin(),
-							 vertex_weights.begin() + n/2,
-							 vertex_weights.end());
-            w_median = vertex_weights[n/2];
-
-            for (size_t i = 0; i < n; ++i) {
-                vertex_weights[i] = std::log(1.0 + vertex_weights[i] / w_median);
-            }
+			validate_and_log_compress_weights_in_place(vertex_weights);
 
             w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
             w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
