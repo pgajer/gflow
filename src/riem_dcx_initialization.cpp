@@ -48,6 +48,9 @@ knn_result_t compute_knn_from_eigen(
     int k
     );
 
+// ================================================================
+// WEIGHT COMPRESSION HELPERS (reference measure stabilization)
+// ================================================================
 static inline double median_of_copy(std::vector<double> x, bool average_even = false) {
     const size_t n = x.size();
     if (n == 0) return std::numeric_limits<double>::quiet_NaN();
@@ -73,26 +76,26 @@ static inline double positive_floor(double scale_hint) {
     return base * std::max(1.0, scale_hint);
 }
 
-void validate_and_log_compress_weights_in_place(
-    std::vector<double>& vertex_weights,
+// log compression (robust, soft)
+static inline void validate_and_log_compress_weights_in_place(
+    std::vector<double>& w,
     bool average_even_median = false,
     bool clamp_nonpositive_to_zero = false
 ) {
-    const size_t n = vertex_weights.size();
+    const size_t n = w.size();
     if (n == 0) return;
 
     for (size_t i = 0; i < n; ++i) {
-        if (!std::isfinite(vertex_weights[i])) {
-            Rf_error("vertex_weights contains non-finite values.");
+        if (!std::isfinite(w[i])) {
+            Rf_error("reference_measure: vertex_weights contains non-finite values.");
         }
-        if (vertex_weights[i] < 0.0) {
-            if (clamp_nonpositive_to_zero) vertex_weights[i] = 0.0;
-            else Rf_error("vertex_weights contains negative values.");
+        if (w[i] < 0.0) {
+            if (clamp_nonpositive_to_zero) w[i] = 0.0;
+            else Rf_error("reference_measure: vertex_weights contains negative values.");
         }
     }
 
-    double w_median = median_of_copy(vertex_weights, average_even_median);
-
+    double w_median = median_of_copy(w, average_even_median);
     if (!std::isfinite(w_median) || w_median <= 0.0) {
         w_median = positive_floor(1.0);
     } else {
@@ -100,7 +103,30 @@ void validate_and_log_compress_weights_in_place(
     }
 
     for (size_t i = 0; i < n; ++i) {
-        vertex_weights[i] = std::log1p(vertex_weights[i] / w_median);
+        w[i] = std::log1p(w[i] / w_median);
+    }
+}
+
+// power compression to enforce exact ratio cap
+static inline void power_compress_weights_to_ratio_in_place(
+    std::vector<double>& w,
+    double target_ratio
+) {
+    if (!(target_ratio > 1.0) || w.empty()) return;
+
+    const double w_min = *std::min_element(w.begin(), w.end());
+    const double w_max = *std::max_element(w.begin(), w.end());
+
+    if (!std::isfinite(w_min) || !std::isfinite(w_max) || w_min <= 0.0) {
+        Rf_error("reference_measure: non-finite or non-positive weights encountered.");
+    }
+
+    const double ratio = w_max / w_min;
+    if (!(ratio > target_ratio)) return;
+
+    const double q = std::log(target_ratio) / std::log(ratio); // in (0,1)
+    for (size_t i = 0; i < w.size(); ++i) {
+        w[i] = std::pow(w[i], q);
     }
 }
 
@@ -1001,102 +1027,115 @@ void riem_dcx_t::initialize_reference_measure(
     const size_t n = knn_neighbors.size();
     std::vector<double> vertex_weights(n);
 
-    if (use_counting_measure) {
+	// Reset dk diagnostics each time
+	dk_raw.clear();
+	dk_used.clear();
+	dk_used_low.clear();
+	dk_used_high.clear();
+	dk_lower = NA_REAL;
+	dk_upper = NA_REAL;
+
+	if (use_counting_measure) {
         // Counting measure: uniform weights
         std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
-    } else {
+	} else {
         // ================================================================
-        // ROBUST DISTANCE-BASED MEASURE
+        // DISTANCE-BASED MEASURE (NO d_k CLAMPING; WEIGHT RATIO CAPPED)
         // ================================================================
 
-		dk_raw.clear();
-		dk_clamped.clear();
-		dk_clamped_low.clear();
-		dk_clamped_high.clear();
-		dk_lower = NA_REAL;
-		dk_upper = NA_REAL;
+        // Policy constants (TODO: expose at R level if desired)
+        const double target_weight_ratio = 1000.0;        // R
+        const double pathological_ratio_threshold = 1e12; // trigger robust (log) mode
 
-        // Step 1: Collect all k-th neighbor distances
+        // Step 1: Collect all k-th neighbor distances (raw d_k)
         std::vector<double> all_dk(n);
         for (size_t i = 0; i < n; ++i) {
             all_dk[i] = knn_distances[i].back();  // Last neighbor distance
+            if (!std::isfinite(all_dk[i]) || all_dk[i] < 0.0) {
+                Rf_error("reference_measure: non-finite or negative d_k encountered.");
+            }
         }
-		dk_raw = all_dk;
-		dk_clamped = all_dk;
 
-        // Step 2: Compute robust statistics for scaling
+        // Store dk diagnostics (no clamping for computation)
+        dk_raw = all_dk;
+        dk_used = all_dk; // equals raw because we do not clamp
+
+        // Step 2: Compute diagnostic bounds (legacy median-factor) ONLY for reporting
         std::vector<double> sorted_dk = all_dk;
         std::sort(sorted_dk.begin(), sorted_dk.end());
+        const double d_median = sorted_dk[n / 2];
 
-        double d_median = sorted_dk[n / 2];
-        // double d_q1 = sorted_dk[n / 4];
-        // double d_q3 = sorted_dk[(3 * n) / 4];
-        // double d_iqr = d_q3 - d_q1;
+        const double d_min_allowed = d_median / 10.0;
+        const double d_max_allowed = d_median * 10.0;
 
-        // Step 3: Define reasonable bounds to prevent extreme ratios
-        // Allow at most 100:1 ratio in raw d_k values
-        double d_min_allowed = d_median / 10.0;
-        double d_max_allowed = d_median * 10.0;
-		dk_lower = d_min_allowed;
-		dk_upper = d_max_allowed;
+        dk_lower = d_min_allowed;
+        dk_upper = d_max_allowed;
 
-		if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-			Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
-					sorted_dk[0], sorted_dk[n-1], d_median);
-		}
-
-        int n_clamped_low = 0;
-        int n_clamped_high = 0;
-
-        // Step 4: Compute weights with bounded d_k
+        // Record which vertices fall outside diagnostic bounds (would-have-been clamped)
         for (size_t i = 0; i < n; ++i) {
-            double d_k = all_dk[i];
-
-            // Clamp to reasonable bounds
+            const double d_k = all_dk[i];
             if (d_k < d_min_allowed) {
-                d_k = d_min_allowed;
-				dk_clamped_low.push_back((index_t)i);
-                n_clamped_low++;
+                dk_used_low.push_back((index_t)i);
+            } else if (d_k > d_max_allowed) {
+                dk_used_high.push_back((index_t)i);
             }
-            if (d_k > d_max_allowed) {
-                d_k = d_max_allowed;
-				dk_clamped_high.push_back((index_t)i);
-                n_clamped_high++;
-            }
-
-			dk_clamped[i] = d_k;
-
-            // Apply power law with regularization
-            // w(x) = (ε + d_k)^(-α)
-            vertex_weights[i] = std::pow(density_epsilon + d_k, -density_alpha);
         }
 
-        if (n_clamped_low > 0 || n_clamped_high > 0) {
-			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
-            Rprintf("\tClamped %d vertices to lower bound, %d to upper bound (prevents extreme weights)\n",
-                    n_clamped_low, n_clamped_high);
+        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
+                    sorted_dk.front(), sorted_dk.back(), d_median);
+            if (!dk_used_low.empty() || !dk_used_high.empty()) {
+                Rprintf("\tDiagnostic (no-clamp) bounds: [%.3e, %.3e]; outside: low=%d, high=%d\n",
+                        d_min_allowed, d_max_allowed,
+                        (int)dk_used_low.size(), (int)dk_used_high.size());
+            }
         }
 
-        // Step 5: Additional safety - limit final weight ratio to 1000:1
+        // Step 3: Raw weights from raw d_k
+        for (size_t i = 0; i < n; ++i) {
+            vertex_weights[i] = std::pow(density_epsilon + all_dk[i], -density_alpha);
+        }
+
+        // Step 4: Cap weight ratio to R
         double w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
         double w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
-        double initial_ratio = w_max / w_min;
+        double ratio = w_max / w_min;
 
-        if (initial_ratio > 1000.0) {
-			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
-				Rprintf("\tInitial weight ratio %.2e exceeds 1000:1. Applying compression...\n",
-						initial_ratio);
+        if (!std::isfinite(ratio) || ratio > target_weight_ratio) {
 
-            // Use log-compression to reduce dynamic range
-            // w_compressed = log(1 + w/w_median)
-			validate_and_log_compress_weights_in_place(vertex_weights);
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                Rprintf("\tInitial weight ratio = %.2e (target <= %.2e)\n",
+                        ratio, target_weight_ratio);
+            }
+
+            // Robust mode for pathological ratios
+            if (!std::isfinite(ratio) || ratio > pathological_ratio_threshold) {
+
+                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                    Rprintf("\tPathological ratio detected (%.2e). Applying log compression...\n", ratio);
+                }
+
+                validate_and_log_compress_weights_in_place(
+                    vertex_weights,
+                    /*average_even_median=*/false,
+                    /*clamp_nonpositive_to_zero=*/false
+					);
+
+                // After log compression, still enforce exact cap via power compression if needed
+                power_compress_weights_to_ratio_in_place(vertex_weights, target_weight_ratio);
+
+            } else {
+                // Normal case: enforce exact cap via power compression
+                power_compress_weights_to_ratio_in_place(vertex_weights, target_weight_ratio);
+            }
 
             w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
             w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
-            double compressed_ratio = w_max / w_min;
+            ratio = w_max / w_min;
 
-			if (vl_at_least(verbose_level, verbose_level_t::TRACE))
-				Rprintf("\tAfter compression: weight ratio = %.2e\n", compressed_ratio);
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                Rprintf("\tAfter compression: weight ratio = %.2e\n", ratio);
+            }
         }
     }
 

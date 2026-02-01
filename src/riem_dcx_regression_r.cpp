@@ -958,16 +958,16 @@ extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
         UNPROTECT(1);
     }
 
-    // dk.clamped (or NULL)
-    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped"));
-    if (dcx.dk_clamped.empty()) {
+    // dk.used (or NULL)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.used"));
+    if (dcx.dk_used.empty()) {
         SET_VECTOR_ELT(rm, idx++, R_NilValue);
     } else {
-        SEXP s_dk_clamped = PROTECT(Rf_allocVector(REALSXP, n));
+        SEXP s_dk_used = PROTECT(Rf_allocVector(REALSXP, n));
         for (Eigen::Index i = 0; i < n; ++i) {
-            REAL(s_dk_clamped)[i] = dcx.dk_clamped[(size_t)i];
+            REAL(s_dk_used)[i] = dcx.dk_used[(size_t)i];
         }
-        SET_VECTOR_ELT(rm, idx++, s_dk_clamped);
+        SET_VECTOR_ELT(rm, idx++, s_dk_used);
         UNPROTECT(1);
     }
 
@@ -979,20 +979,20 @@ extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
     SET_STRING_ELT(names, idx, Rf_mkChar("dk.upper"));
     SET_VECTOR_ELT(rm, idx++, Rf_ScalarReal(dcx.dk_upper));
 
-    // dk.clamped.low (1-based)
-    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped.low"));
-    SEXP s_low = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_clamped_low.size()));
-    for (R_len_t i = 0; i < (R_len_t)dcx.dk_clamped_low.size(); ++i) {
-        INTEGER(s_low)[i] = (int)dcx.dk_clamped_low[(size_t)i] + 1;
+    // dk.outside.low (1-based)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.outside.low"));
+    SEXP s_low = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_used_low.size()));
+    for (R_len_t i = 0; i < (R_len_t)dcx.dk_used_low.size(); ++i) {
+        INTEGER(s_low)[i] = (int)dcx.dk_used_low[(size_t)i] + 1;
     }
     SET_VECTOR_ELT(rm, idx++, s_low);
     UNPROTECT(1);
 
-    // dk.clamped.high (1-based)
-    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped.high"));
-    SEXP s_high = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_clamped_high.size()));
-    for (R_len_t i = 0; i < (R_len_t)dcx.dk_clamped_high.size(); ++i) {
-        INTEGER(s_high)[i] = (int)dcx.dk_clamped_high[(size_t)i] + 1;
+    // dk.outside.high (1-based)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.outside.high"));
+    SEXP s_high = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_used_high.size()));
+    for (R_len_t i = 0; i < (R_len_t)dcx.dk_used_high.size(); ++i) {
+        INTEGER(s_high)[i] = (int)dcx.dk_used_high[(size_t)i] + 1;
     }
     SET_VECTOR_ELT(rm, idx++, s_high);
     UNPROTECT(1);
