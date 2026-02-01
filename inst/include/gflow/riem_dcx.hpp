@@ -663,6 +663,17 @@ struct riem_dcx_t {
     gamma_selection_result_t gamma_selection_result;
     bool gamma_was_auto_selected = false;
 
+    // ----------------------------------------------------------------
+    // dk members
+    // ----------------------------------------------------------------
+
+    std::vector<double> dk_raw;
+    std::vector<double> dk_clamped;
+    double dk_lower = NA_REAL;
+    double dk_upper = NA_REAL;
+    std::vector<index_t> dk_clamped_low;
+    std::vector<index_t> dk_clamped_high;
+
     // ================================================================
     // CONSTRUCTION METHODS
     // ================================================================

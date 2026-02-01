@@ -923,6 +923,85 @@ extern "C" SEXP create_posterior_component(const posterior_summary_t& summary) {
     return s_posterior;
 }
 
+// ================================================================
+// REFERENCE MEASURE COMPONENT (dk diagnostics + weights)
+// ================================================================
+extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
+    const Eigen::Index n = (Eigen::Index)dcx.vertex_cofaces.size();
+
+    const int n_fields = 7;
+    SEXP rm = PROTECT(Rf_allocVector(VECSXP, n_fields));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
+    int idx = 0;
+
+    // weights (vertex mass / reference measure)
+    SET_STRING_ELT(names, idx, Rf_mkChar("weights"));
+    SEXP s_w = PROTECT(Rf_allocVector(REALSXP, n));
+    for (Eigen::Index i = 0; i < n; ++i) {
+        REAL(s_w)[i] = (i < (Eigen::Index)dcx.reference_measure.size())
+            ? dcx.reference_measure[(size_t)i]
+            : NA_REAL;
+    }
+    SET_VECTOR_ELT(rm, idx++, s_w);
+    UNPROTECT(1);
+
+    // dk.raw (or NULL)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.raw"));
+    if (dcx.dk_raw.empty()) {
+        SET_VECTOR_ELT(rm, idx++, R_NilValue);
+    } else {
+        SEXP s_dk_raw = PROTECT(Rf_allocVector(REALSXP, n));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            REAL(s_dk_raw)[i] = dcx.dk_raw[(size_t)i];
+        }
+        SET_VECTOR_ELT(rm, idx++, s_dk_raw);
+        UNPROTECT(1);
+    }
+
+    // dk.clamped (or NULL)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped"));
+    if (dcx.dk_clamped.empty()) {
+        SET_VECTOR_ELT(rm, idx++, R_NilValue);
+    } else {
+        SEXP s_dk_clamped = PROTECT(Rf_allocVector(REALSXP, n));
+        for (Eigen::Index i = 0; i < n; ++i) {
+            REAL(s_dk_clamped)[i] = dcx.dk_clamped[(size_t)i];
+        }
+        SET_VECTOR_ELT(rm, idx++, s_dk_clamped);
+        UNPROTECT(1);
+    }
+
+    // dk.lower
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.lower"));
+    SET_VECTOR_ELT(rm, idx++, Rf_ScalarReal(dcx.dk_lower));
+
+    // dk.upper
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.upper"));
+    SET_VECTOR_ELT(rm, idx++, Rf_ScalarReal(dcx.dk_upper));
+
+    // dk.clamped.low (1-based)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped.low"));
+    SEXP s_low = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_clamped_low.size()));
+    for (R_len_t i = 0; i < (R_len_t)dcx.dk_clamped_low.size(); ++i) {
+        INTEGER(s_low)[i] = (int)dcx.dk_clamped_low[(size_t)i] + 1;
+    }
+    SET_VECTOR_ELT(rm, idx++, s_low);
+    UNPROTECT(1);
+
+    // dk.clamped.high (1-based)
+    SET_STRING_ELT(names, idx, Rf_mkChar("dk.clamped.high"));
+    SEXP s_high = PROTECT(Rf_allocVector(INTSXP, (R_len_t)dcx.dk_clamped_high.size()));
+    for (R_len_t i = 0; i < (R_len_t)dcx.dk_clamped_high.size(); ++i) {
+        INTEGER(s_high)[i] = (int)dcx.dk_clamped_high[(size_t)i] + 1;
+    }
+    SET_VECTOR_ELT(rm, idx++, s_high);
+    UNPROTECT(1);
+
+    Rf_setAttrib(rm, R_NamesSymbol, names);
+    UNPROTECT(2); // names, rm
+    return rm;
+}
+
 /**
  * @brief R interface for kNN Riemannian density graph regression
  *
@@ -1729,7 +1808,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     // ---------- Main result list ----------
 
-    int n_components = 11;
+    int n_components = 12;
     if (compute_extremality) {
         n_components++;
     }
@@ -1875,7 +1954,13 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_params);
     UNPROTECT(1);
 
-    // Component 8: y (original response)
+    // Component 8: reference.measure (nested list)
+    SET_STRING_ELT(names, component_idx, Rf_mkChar("reference.measure"));
+    SEXP s_ref = PROTECT(create_reference_measure_component(dcx));
+    SET_VECTOR_ELT(result, component_idx++, s_ref);
+    UNPROTECT(1);
+
+    // Component 9: y (original response)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("y"));
     SEXP s_y_copy = PROTECT(Rf_allocVector(REALSXP, n));
 
@@ -1894,31 +1979,31 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SET_VECTOR_ELT(result, component_idx++, s_y_copy);
     UNPROTECT(1);
 
-    // Component 9: gcv (nested list)
+    // Component 10: gcv (nested list)
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gcv"));
     SEXP s_gcv = PROTECT(create_gcv_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gcv);
     UNPROTECT(1);
 
-    // Component 10: density
+    // Component 11: density
     SET_STRING_ELT(names, component_idx, Rf_mkChar("density"));
     SEXP s_density = PROTECT(create_density_history_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_density);
     UNPROTECT(1);
 
-    // Component 11: gamma.selection
+    // Component 12: gamma.selection
     SET_STRING_ELT(names, component_idx, Rf_mkChar("gamma.selection"));
     SEXP s_gamma_sel = PROTECT(create_gamma_selection_component(dcx));
     SET_VECTOR_ELT(result, component_idx++, s_gamma_sel);
     UNPROTECT(1);
 
-    // Component 12: spectral
+    // Component 13: spectral
     SET_STRING_ELT(names, component_idx, Rf_mkChar("spectral"));
     SEXP s_spectral = PROTECT(create_spectral_component(dcx, optimal_iteration, filter_type));
     SET_VECTOR_ELT(result, component_idx++, s_spectral);
     UNPROTECT(1);
 
-    // Component 13: extremality.scores
+    // Component 14: extremality.scores
     if (compute_extremality) {
         SET_STRING_ELT(names, component_idx, Rf_mkChar("extremality"));
 
