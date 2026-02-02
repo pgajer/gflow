@@ -400,8 +400,11 @@ struct laplacian_bundle_t {
     /// Hodge Laplacians L[p] = B[p+1]^T M[p+1]^{-1} B[p+1] + M[p]^{-1} B[p] M[p-1] B[p]^T
     std::vector<spmat_t> L;
 
-    /// Symmetrized vertex Laplacian L0_sym = M[0]^{-1/2} L[0] M[0]^{-1/2}
-    spmat_t L0_sym;
+    /// Mass-symmetrized vertex Laplacian L0_mass_sym = M[0]^{-1/2} L[0] M[0]^{-1/2}
+    /// Note: this is NOT the degree-normalized Laplacian; the nullvector is sqrt(mass).
+    spmat_t L0_mass_sym;
+
+    void build_L0_mass_sym_if_needed(const metric_family_t& g);
 
     /// Edge conductances (optional weights) for dimension 0 Laplacian
     vec_t c1;
@@ -415,11 +418,6 @@ struct laplacian_bundle_t {
      * @brief Apply inverse metric from the left to a matrix
      */
     spmat_t left_apply_Minv(const metric_family_t& g, int p, const spmat_t& T) const;
-
-    /**
-     * @brief Build symmetrized (normalized) vertex Laplacian for spectral analysis
-     */
-    void build_L0_sym_if_needed(const metric_family_t& g);
 
     /**
      * @brief Assemble all Hodge Laplacians from boundary maps and metric
@@ -693,6 +691,8 @@ struct riem_dcx_t {
         double gamma_modulation,
         double t_scale_factor,
         double beta_coefficient_factor,
+        int t_update_mode,
+        double t_update_max_mult,
         int n_eigenpairs,
         rdcx_filter_type_t filter_type,
         double epsilon_y,
@@ -1038,7 +1038,8 @@ private:
      */
     void compute_spectral_decomposition(
         int n_eigenpairs,
-        verbose_level_t verbose_level
+        verbose_level_t verbose_level,
+        bool phase45_mode = false
         );
 
     /**
