@@ -171,6 +171,14 @@
 #'     10\% as much as the identity term in the system matrix. Typical range:
 #'     \eqn{[0.05, 0.3]}. Default: 0.1
 #'
+#' @param t.update Character scalar. Either \code{"fixed"} (default) or \code{"per_iteration"}.
+#'   If \code{"per_iteration"}, the diffusion time \code{t.diffusion} is updated each iteration to keep
+#'   the diffusion scale \eqn{s = t \lambda_2} approximately constant using the current \eqn{\lambda_2}.
+#'   Only applied when \code{t.diffusion <= 0} (auto-selected t).
+#'
+#' @param t.update.max.mult Numeric scalar \eqn{\ge 1}. Maximum multiplicative change allowed for
+#'   \code{t.diffusion} in a single iteration when \code{t.update="per_iteration"} (default 1.25).
+#'
 #' @param use.counting.measure Logical scalar. If TRUE, uses uniform vertex
 #'     weights (counting measure). If FALSE, uses distance-based weights
 #'     inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon +
@@ -597,6 +605,8 @@ fit.rdgraph.regression <- function(
     response.penalty.exp = 0,
     t.scale.factor = 0.5,
     beta.coef.factor = 0.1,
+    t.update = c("fixed", "per_iteration"),
+    t.update.max.mult = 1.25,
     use.counting.measure = FALSE,
     density.normalization = 0,
     density.alpha = 1.5,
@@ -1098,6 +1108,16 @@ fit.rdgraph.regression <- function(
     ## Match filter.type
     filter.type <- match.arg(filter.type)
 
+    ## Match t.update
+    t.update <- match.arg(t.update)
+
+    if (!is.numeric(t.update.max.mult) || length(t.update.max.mult) != 1L ||
+        !is.finite(t.update.max.mult) || t.update.max.mult < 1.0) {
+        stop("t.update.max.mult must be a finite numeric scalar >= 1.0")
+    }
+
+    t.update.mode <- if (t.update == "fixed") 0L else 1L
+
     ## ==================== Call C++ Function ====================
 
     fit <- .Call(
@@ -1118,6 +1138,8 @@ fit.rdgraph.regression <- function(
         as.double(response.penalty.exp),
         as.double(t.scale.factor),
         as.double(beta.coef.factor),
+        as.integer(t.update.mode),
+        as.double(t.update.max.mult),
         as.integer(n.eigenpairs),
         as.character(filter.type),
         as.double(epsilon.y),
