@@ -220,7 +220,11 @@ graph_spectral_lowess_mat_t set_wgraph_t::graph_spectral_lowess_mat(
     }
 
     // Construct eigen solver to find eigenvalues closest to 0
-    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+    // ncv rule-of-thumb: 3*nev is often safer for hard problems
+    int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+    ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
     eigs.init();
     int maxit = 1000; // Increase maximum iterations
     double tol = 1e-10; // Tolerance for convergence

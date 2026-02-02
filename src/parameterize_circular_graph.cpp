@@ -66,7 +66,11 @@ circular_param_result_t set_wgraph_t::parameterize_circular_graph(bool use_edge_
     if (nev >= ncv) nev = ncv - 1;
     if (nev < 1)    nev = 1;
 
-    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+    // ncv rule-of-thumb: 3*nev is often safer for hard problems
+    int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+    ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
     eigs.init();
     const int maxit = 1000;
     const double tol = 1e-16;

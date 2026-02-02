@@ -388,7 +388,12 @@ set_wgraph_t::compute_graph_laplacian_spectrum(
 	}
 
 	// finally safe to ask Spectra for (nev,ncv)
-	Spectra::SymEigsSolver<decltype(op)> eigs(op, nev, ncv);
+
+	// ncv rule-of-thumb: 3*nev is often safer for hard problems
+	int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+	ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+	Spectra::SymEigsSolver<decltype(op)> eigs(op, nev, ncv_default);
 	eigs.init();
 	int maxit = 1000;
 	double tol = 1e-10;

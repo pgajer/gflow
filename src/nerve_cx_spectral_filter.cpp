@@ -553,7 +553,12 @@ compute_matrix_spectrum(
     // First attempt: try without regularization
     try {
         Spectra::SparseSymMatProd<double> op(reg_L);
-        Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+
+        // ncv rule-of-thumb: 3*nev is often safer for hard problems
+        int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+        ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+        Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
 
         eigs.init();
         int maxit = 1000;
