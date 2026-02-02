@@ -3,6 +3,7 @@
 #include "kNN.h"
 #include "set_wgraph.hpp"
 #include "progress_utils.hpp" // for elapsed_time
+#include "omp_compat.h"
 
 #include <Eigen/Core>
 #include <Eigen/Dense>  // For Eigen::MatrixXd
@@ -18,6 +19,134 @@
 #include <algorithm>
 #include <iomanip>
 #include <random>     // For std::mt19937
+
+// ================================================================
+// HARD SPECTRAL INVARIANTS (post-solve, post-sort)
+// ================================================================
+static inline bool eigenvalues_nondecreasing(const vec_t& vals, double tol) {
+    for (Eigen::Index i = 1; i < vals.size(); ++i) {
+        if (vals[i] + tol < vals[i - 1]) return false;
+    }
+    return true;
+}
+
+static inline double safe_norm(const Eigen::VectorXd& x) {
+    const double n = x.norm();
+    return (n > 0.0) ? n : 1.0;
+}
+
+// Enforce invariants for L0_mass_sym = M^{-1/2} L M^{-1/2}:
+// 1) vals sorted nondecreasing
+// 2) vals[0] ~ 0 (null mode exists; nullvector is ~sqrt(mass))
+// 3) residual of first eigenpair is small
+static inline void enforce_mass_sym_spectral_invariants_or_error(
+    const spmat_t& L0,
+    const vec_t& vals,
+    const Eigen::MatrixXd& vecs,
+    verbose_level_t verbose_level,
+    double lambda0_abs_tol = 1e-8,
+    double monotone_tol = 1e-12,
+    double eigpair_resid_tol = 1e-6
+) {
+    if (vals.size() == 0 || vecs.cols() == 0) {
+        Rf_error("spectral invariants: empty eigenvalues/eigenvectors");
+    }
+    if (vecs.cols() != vals.size()) {
+        Rf_error("spectral invariants: vecs.cols() != vals.size()");
+    }
+
+    // 2) Nondecreasing eigenvalues (post-sort requirement)
+    if (!eigenvalues_nondecreasing(vals, monotone_tol)) {
+        Rf_error("spectral invariants: eigenvalues not nondecreasing after sorting");
+    }
+
+    // 1) Near-zero first eigenvalue (mass-sym Laplacian should have lambda0 ~ 0)
+    // Allow tiny negative due to numerical noise.
+    const double lambda0 = vals[0];
+    if (!std::isfinite(lambda0) || std::abs(lambda0) > lambda0_abs_tol) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("DEBUG: lambda0=%.6e exceeds tolerance %.1e\n", lambda0, lambda0_abs_tol);
+        }
+        Rf_error("spectral invariants: lambda0 not near 0 for mass-sym Laplacian");
+    }
+
+    // 3) Quick eigenpair residual for first eigenpair
+    Eigen::VectorXd u0 = vecs.col(0);
+    Eigen::VectorXd r = (L0 * u0) - lambda0 * u0;
+    const double resid = r.norm() / safe_norm(u0);
+
+    if (!std::isfinite(resid) || resid > eigpair_resid_tol) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("DEBUG: first-eigenpair residual=%.6e exceeds tolerance %.1e\n",
+                    resid, eigpair_resid_tol);
+        }
+        Rf_error("spectral invariants: first eigenpair residual too large");
+    }
+}
+
+// ================================================================
+// EIGENPAIR ORDERING: enforce ascending eigenvalues + aligned vectors
+// ================================================================
+static inline bool is_nondecreasing(const vec_t& x, double tol = 0.0) {
+    for (Eigen::Index i = 1; i < x.size(); ++i) {
+        if (x[i] + tol < x[i - 1]) return false;
+    }
+    return true;
+}
+
+static inline bool is_nondecreasing_or_nonincreasing(const vec_t& x, double tol = 0.0) {
+    bool inc = true, dec = true;
+    for (Eigen::Index i = 1; i < x.size(); ++i) {
+        inc = inc && !(x[i] + tol < x[i - 1]);
+        dec = dec && !(x[i - 1] + tol < x[i]);
+    }
+    return inc || dec;
+}
+
+static void sort_eigenpairs_ascending_in_place(vec_t& vals, Eigen::MatrixXd& vecs) {
+    const Eigen::Index k = vals.size();
+    if (k <= 1) return;
+    if (vecs.cols() != k) {
+        Rf_error("sort_eigenpairs_ascending_in_place: vecs.cols() != vals.size()");
+    }
+
+    std::vector<int> ord((size_t)k);
+    for (Eigen::Index i = 0; i < k; ++i) ord[(size_t)i] = (int)i;
+
+    std::sort(ord.begin(), ord.end(), [&](int a, int b) {
+        return vals[a] < vals[b];
+    });
+
+    vec_t v2(k);
+    Eigen::MatrixXd U2(vecs.rows(), k);
+    for (Eigen::Index j = 0; j < k; ++j) {
+        const int src = ord[(size_t)j];
+        v2[j] = vals[src];
+        U2.col(j) = vecs.col(src);
+    }
+
+    vals = std::move(v2);
+    vecs = std::move(U2);
+}
+
+static void debug_print_eigs_order(const vec_t& vals, verbose_level_t verbose_level) {
+    if (!vl_at_least(verbose_level, verbose_level_t::TRACE)) return;
+    const Eigen::Index k = vals.size();
+    if (k == 0) return;
+
+    const double vmin = vals.minCoeff();
+    const double vmax = vals.maxCoeff();
+    Rprintf("\t[DEBUG eigs] k=%ld first=%.6e last=%.6e min=%.6e max=%.6e sorted=%s\n",
+            (long)k, vals[0], vals[k - 1], vmin, vmax,
+            is_nondecreasing(vals, 1e-15) ? "asc" : "no");
+
+    if (k >= 3) {
+        Rprintf("\t[DEBUG eigs] head3: %.6e %.6e %.6e | tail3: %.6e %.6e %.6e\n",
+                vals[0], vals[1], vals[2],
+                vals[k-3], vals[k-2], vals[k-1]);
+    }
+}
+
 
 /**
  * @brief Compute initial densities from reference measure with robust bounds
@@ -1127,6 +1256,92 @@ void riem_dcx_t::update_edge_mass_matrix() {
     compute_edge_mass_matrix();
 }
 
+// ================================================================
+// DEBUG HELPERS: Identify what "L0_mass_sym" actually is and sanity-check lambda_2
+// ================================================================
+static inline double rel_norm(const Eigen::VectorXd& x) {
+    const double n = x.norm();
+    return (n > 0.0) ? n : 1.0;
+}
+
+static void debug_print_L0_diagnostics(
+    const riem_dcx_t& dcx,
+    const spmat_t& L0,
+    const char* tag,
+    verbose_level_t verbose_level
+) {
+    if (!vl_at_least(verbose_level, verbose_level_t::TRACE)) return;
+
+    const Eigen::Index n = L0.rows();
+    Rprintf("\n\t[DEBUG L0] tag=%s n=%ld\n", tag, (long)n);
+
+    // Diagonal range + row sum range + Gershgorin upper bound
+    double diag_min = R_PosInf, diag_max = 0.0;
+    double rowsum_min = R_PosInf, rowsum_max = -R_PosInf;
+    double gersh_max = 0.0;
+
+    for (Eigen::Index i = 0; i < n; ++i) {
+        double d = L0.coeff(i, i);
+        diag_min = std::min(diag_min, d);
+        diag_max = std::max(diag_max, d);
+
+        double rowsum = 0.0;
+        double abs_off = 0.0;
+        for (spmat_t::InnerIterator it(L0, (int)i); it; ++it) {
+            rowsum += it.value();
+            if (it.row() != it.col()) abs_off += std::abs(it.value());
+        }
+        rowsum_min = std::min(rowsum_min, rowsum);
+        rowsum_max = std::max(rowsum_max, rowsum);
+
+        // Gershgorin: diag + sum abs(offdiag)
+        gersh_max = std::max(gersh_max, d + abs_off);
+    }
+
+    Rprintf("\t[DEBUG L0] diag range [%.3e, %.3e]\n", diag_min, diag_max);
+    Rprintf("\t[DEBUG L0] row-sum range [%.3e, %.3e]\n", rowsum_min, rowsum_max);
+    Rprintf("\t[DEBUG L0] Gershgorin upper bound ~ %.3e\n", gersh_max);
+
+    // Candidate null vectors
+    Eigen::VectorXd ones = Eigen::VectorXd::Ones(n);
+
+    // mass = diag(M[0])
+    Eigen::VectorXd mass(n);
+    for (Eigen::Index i = 0; i < n; ++i) {
+        double m = (dcx.g.M.size() > 0) ? dcx.g.M[0].coeff(i, i) : 0.0;
+        m = std::max(m, 1e-15);
+        mass[i] = m;
+    }
+    Eigen::VectorXd sqrt_mass = mass.array().sqrt().matrix();
+
+    // degree from conductances c1 and incidence B[1]
+    Eigen::VectorXd deg = Eigen::VectorXd::Zero(n);
+    if (dcx.L.B.size() > 1 && dcx.L.B[1].cols() > 0 && dcx.L.c1.size() == dcx.L.B[1].cols()) {
+        const spmat_t& B1 = dcx.L.B[1];
+        const Eigen::Index m = B1.cols();
+        for (Eigen::Index e = 0; e < m; ++e) {
+            double c = dcx.L.c1[(size_t)e];
+            if (!(c > 0.0) || !std::isfinite(c)) continue;
+            for (spmat_t::InnerIterator it(B1, (int)e); it; ++it) {
+                deg[it.row()] += c;
+            }
+        }
+    } else {
+        // fallback: use diagonal as a proxy
+        for (Eigen::Index i = 0; i < n; ++i) deg[i] = std::max(L0.coeff(i, i), 1e-15);
+    }
+    Eigen::VectorXd sqrt_deg = deg.array().max(1e-15).sqrt().matrix();
+
+    // Residuals: ||L0 v|| / ||v||
+    Eigen::VectorXd r1 = L0 * ones;
+    Eigen::VectorXd r2 = L0 * sqrt_mass;
+    Eigen::VectorXd r3 = L0 * sqrt_deg;
+
+    Rprintf("\t[DEBUG L0] null residual ||L0*1||/||1||           = %.3e\n", r1.norm() / rel_norm(ones));
+    Rprintf("\t[DEBUG L0] null residual ||L0*sqrt(mass)||/||.||  = %.3e\n", r2.norm() / rel_norm(sqrt_mass));
+    Rprintf("\t[DEBUG L0] null residual ||L0*sqrt(deg)||/||.||   = %.3e\n", r3.norm() / rel_norm(sqrt_deg));
+}
+
 /**
  * @brief Compute and cache spectral decomposition of vertex Laplacian
  *
@@ -1162,9 +1377,21 @@ void riem_dcx_t::update_edge_mass_matrix() {
  */
 void riem_dcx_t::compute_spectral_decomposition(
     int n_eigenpairs,
-    verbose_level_t verbose_level
-    ) {
+    verbose_level_t verbose_level,
+    bool phase45_mode,
+    bool pre_density_full_basis_mode
+) {
 
+    // Set Eigen to use available threads for parallel computation
+    unsigned int available_threads = gflow_get_max_threads();
+    if (available_threads == 0) available_threads = 4;  // Fallback if detection fails
+    Eigen::setNbThreads(available_threads);
+
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        Rprintf("\n\tIn compute_spectral_decomposition()\n\tEigen::nbThreads(): n=%d available_threads=%u\n",
+                Eigen::nbThreads(), available_threads);
+    }
+    
     auto decomp_start = std::chrono::steady_clock::now();
     auto phase_time = std::chrono::steady_clock::now();
 
@@ -1174,7 +1401,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
                 L.L[0].rows(), n_eigenpairs);
         if (!printed_progress_header) {
-            Rprintf("\n\teigs: n=%ld nev=%d (details suppressed; use verbose.level>=2 for debug)\n",
+            Rprintf("\n\teigs: n=%ld nev=%d\n",
                     L.L[0].rows(), n_eigenpairs);
             printed_progress_header = true;
         }
@@ -1186,14 +1413,19 @@ void riem_dcx_t::compute_spectral_decomposition(
     }
 
     // Select appropriate Laplacian (use normalized if available)
-    const spmat_t& L0 = (L.L0_sym.rows() > 0) ? L.L0_sym : L.L[0];
+    const spmat_t& L0 = (L.L0_mass_sym.rows() > 0) ? L.L0_mass_sym : L.L[0];
+
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        const char* tag = (L.L0_mass_sym.rows() > 0) ? "L0_mass_sym" : "L[0]";
+        debug_print_L0_diagnostics(*this, L0, tag, verbose_level);
+    }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
 
-        if (L.L0_sym.rows() > 0) {
-            Rprintf("\tUsing L0_sym (normalized Laplacian)\n");
+        if (L.L0_mass_sym.rows() > 0) {
+            Rprintf("\tUsing L0_mass_sym (M^{-1/2} L M^{-1/2})\n");
         } else {
-            Rprintf("\tWARNING: Using L[0] (non-normalized) - L0_sym not available!\n");
+            Rprintf("\tWARNING: Using L[0] (non-symmetrized) - L0_mass_sym not available!\n");
             Rprintf("    Possible reasons: c1.size()=%zu, B[1].cols()=%ld\n",
                     L.c1.size(), L.B.size() > 1 ? (long)L.B[1].cols() : -1L);
         }
@@ -1229,11 +1461,19 @@ void riem_dcx_t::compute_spectral_decomposition(
         n_eigenpairs = std::min(200, max_eigenpairs);
     }
 
-    // For small graphs or near-full decomposition, use dense solver
-    if (n_eigenpairs >= n_vertices - 2 || n_vertices <= 1000) {
+    // ------------------------------------------------------------
+    // Dense short-circuits:
+    // 1) Phase 4.5: we often only need a few eigenpairs (lambda2), and
+    //    the pre-density operator can be very ill-conditioned for sparse Krylov.
+    // 2) Phase 5 (pre-density full basis): avoid long failing sparse attempt.
+    // ------------------------------------------------------------
+    const bool small_nev = (n_eigenpairs <= 10);
+    const bool moderate_n = (n_vertices <= 5000);
 
+    if (moderate_n && ((phase45_mode && small_nev) || pre_density_full_basis_mode)) {
+        // Force dense solver path
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("\tUsing dense solver (n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
+            Rprintf("\tUsing dense solver (forced by mode; n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
             phase_time = std::chrono::steady_clock::now();
         }
 
@@ -1244,21 +1484,24 @@ void riem_dcx_t::compute_spectral_decomposition(
             Rf_error("Dense eigendecomposition failed");
         }
 
-        // Store full or partial results
         int n_to_extract = std::min(n_eigenpairs, (int)eigensolver.eigenvalues().size());
         spectral_cache.eigenvalues = eigensolver.eigenvalues().head(n_to_extract);
         spectral_cache.eigenvectors = eigensolver.eigenvectors().leftCols(n_to_extract);
-        spectral_cache.is_valid = true;
 
+        sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+        enforce_mass_sym_spectral_invariants_or_error(L0, spectral_cache.eigenvalues, spectral_cache.eigenvectors, verbose_level);
+
+        spectral_cache.is_valid = true;
         if (spectral_cache.eigenvalues.size() >= 2) {
             spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
         }
+
+        // debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             elapsed_time(phase_time, "DONE", true);
             elapsed_time(decomp_start, "  Total decomposition time", true);
         }
-
         return;
     }
 
@@ -1269,42 +1512,73 @@ void riem_dcx_t::compute_spectral_decomposition(
     int nev = n_eigenpairs;
     int ncv = std::min(2 * nev + 10, n_vertices);
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-        Rprintf("\tUsing sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv);
-        phase_time = std::chrono::steady_clock::now();
-    }
-
     if (ncv <= nev) {
         ncv = std::min(nev + 5, n_vertices);
     }
-
-    // Setup operator
-    Spectra::SparseSymMatProd<double> op(L0);
 
     // ============================================================
     // PRIMARY ATTEMPT: Standard parameters
     // ============================================================
 
-    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
-    eigs.init();
+    // ------------------------------------------------------------
+    // Phase 4.5 is often the worst-conditioned operator (pre-density evolution).
+    // Use more robust settings there ONLY.
+    // ------------------------------------------------------------
+    int ncv_default = std::max(2 * nev + 10, 150);
+    ncv_default = std::min(ncv_default, n_vertices);
 
     int maxit = 1000;
-    double tol = 1e-8;
+    double tol = 1e-6;
+
+    if (phase45_mode) {
+        // ncv_default = std::min(std::max(ncv_default, 250), n_vertices);
+        ncv_default = std::min(50, n_vertices);
+        tol = 1e-5;
+        maxit = 3000;
+    }
 
     if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        Rprintf("\tUsing sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv_default);
+        phase_time = std::chrono::steady_clock::now();
         Rprintf("    Attempt 1: Standard parameters (maxit=%d, tol=%g) ... ", maxit, tol);
     }
 
+    // Setup operator
+    Spectra::SparseSymMatProd<double> op(L0);
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
+    eigs.init();
     eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
+    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        elapsed_time(phase_time, "DONE", true);
+    }
+
     if (eigs.info() == Spectra::CompInfo::Successful) {
+
         spectral_cache.eigenvalues = eigs.eigenvalues();
         spectral_cache.eigenvectors = eigs.eigenvectors();
-        spectral_cache.is_valid = true;
 
+        // Diagnose ordering BEFORE sorting (this will tell us if Spectra returns reversed)
+        debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+        // Canonicalize
+        sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+
+        enforce_mass_sym_spectral_invariants_or_error(
+            L0,
+            spectral_cache.eigenvalues,
+            spectral_cache.eigenvectors,
+            verbose_level
+            );
+
+        spectral_cache.is_valid = true;
         if (spectral_cache.eigenvalues.size() >= 2) {
             spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
         }
+
+        // Confirm ordering AFTER sorting
+        debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
         return;
     }
 
@@ -1352,7 +1626,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         // DIAGNOSTIC INFORMATION: Normalized Laplacian conditioning
         // ============================================================
 
-        if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && L.L0_sym.rows() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && L.L0_mass_sym.rows() > 0 && g.M.size() > 0 && g.M[0].rows() > 0) {
             Rprintf("\n    DIAGNOSTIC: Normalized Laplacian conditioning\n");
 
             const int n = g.M[0].rows();
@@ -1452,16 +1726,39 @@ void riem_dcx_t::compute_spectral_decomposition(
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
 
             if (dense_solver.info() == Eigen::Success) {
+
                 int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
                 spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
                 spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
-                spectral_cache.is_valid = true;
 
+                // Canonicalize ordering (dense is already ascending, but keep invariant)
+                sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+
+                enforce_mass_sym_spectral_invariants_or_error(
+                    L0,
+                    spectral_cache.eigenvalues,
+                    spectral_cache.eigenvectors,
+                    verbose_level
+                    );
+
+                spectral_cache.is_valid = true;
                 if (spectral_cache.eigenvalues.size() >= 2) {
                     spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
                 }
 
+                // Confirm ordering AFTER sorting
+                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
                 Rprintf("    Dense solver succeeded!\n");
+
+                #if 0
+                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                    const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
+                    Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
+                    for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
+                    Rprintf("\n");
+                }
+                #endif
                 return;
             } else {
                 Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
@@ -1505,11 +1802,27 @@ void riem_dcx_t::compute_spectral_decomposition(
 
             spectral_cache.eigenvalues = eigs.eigenvalues();
             spectral_cache.eigenvectors = eigs.eigenvectors();
-            spectral_cache.is_valid = true;
 
+            // Diagnose ordering BEFORE sorting (this will tell us if Spectra returns reversed)
+            debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+            // Canonicalize
+            sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+
+            enforce_mass_sym_spectral_invariants_or_error(
+                L0,
+                spectral_cache.eigenvalues,
+                spectral_cache.eigenvectors,
+                verbose_level
+                );
+
+            spectral_cache.is_valid = true;
             if (spectral_cache.eigenvalues.size() >= 2) {
                 spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
             }
+
+            // Confirm ordering AFTER sorting
+            debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
 
             if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
                 elapsed_time(decomp_start, "  Total decomposition time", true);
@@ -1546,7 +1859,7 @@ void riem_dcx_t::compute_spectral_decomposition(
 
         int adjusted_ncv = std::min(multiplier * ncv, max_ncv);
 
-        if (adjusted_ncv <= ncv) continue;
+        if (adjusted_ncv <= ncv_default) continue;
 
         Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>>
             enlarged_eigs(op, nev, adjusted_ncv);
@@ -1563,11 +1876,37 @@ void riem_dcx_t::compute_spectral_decomposition(
 
                 spectral_cache.eigenvalues = enlarged_eigs.eigenvalues();
                 spectral_cache.eigenvectors = enlarged_eigs.eigenvectors();
-                spectral_cache.is_valid = true;
 
+                // Diagnose ordering BEFORE sorting (this will tell us if Spectra returns reversed)
+                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                // Canonicalize
+                sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+
+                enforce_mass_sym_spectral_invariants_or_error(
+                    L0,
+                    spectral_cache.eigenvalues,
+                    spectral_cache.eigenvectors,
+                    verbose_level
+                    );
+
+                spectral_cache.is_valid = true;
                 if (spectral_cache.eigenvalues.size() >= 2) {
                     spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
                 }
+
+                // Confirm ordering AFTER sorting
+                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                #if 0
+                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                    const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
+                    Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
+                    for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
+                    Rprintf("\n");
+                }
+                #endif
+
                 return;
             }
         }
@@ -1593,17 +1932,40 @@ void riem_dcx_t::compute_spectral_decomposition(
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
 
         if (dense_solver.info() == Eigen::Success) {
-            int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
 
+            int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
             spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
             spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
-            spectral_cache.is_valid = true;
 
+            // Canonicalize ordering (dense is already ascending, but keep invariant)
+            sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+
+            enforce_mass_sym_spectral_invariants_or_error(
+                L0,
+                spectral_cache.eigenvalues,
+                spectral_cache.eigenvectors,
+                verbose_level
+                );
+
+            spectral_cache.is_valid = true;
             if (spectral_cache.eigenvalues.size() >= 2) {
                 spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
             }
 
+            // Confirm ordering AFTER sorting
+            debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
             Rprintf("Dense eigendecomposition successful\n");
+
+            #if 0
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
+                Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
+                for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
+                Rprintf("\n");
+            }
+            #endif
+
             return;
         }
     }
@@ -1688,19 +2050,25 @@ void riem_dcx_t::select_diffusion_parameters(
     // ============================================================
 
     if (!spectral_cache.is_valid) {
-        int n_to_compute = std::max(3, n_eigenpairs_hint);
+
+        // ============================================================
+        // Phase 4.5 spectral needs:
+        // We only need lambda_2 (mass-sym Laplacian gap) to set t and beta.
+        // Computing a full basis here can be very expensive/unstable; defer full
+        // n_eigenpairs to later (it will be recomputed on demand when needed).
+        // ============================================================
+
+        const int nev_lambda2 = 5;
+        int n_to_compute = std::min(nev_lambda2, n_eigenpairs_hint);
+        n_to_compute = std::max(3, n_to_compute);
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
-            if (n_to_compute > 3) {
-                Rprintf("\t(computing %d eigenpairs to avoid recomputation for filtering)\n",
-                        n_to_compute);
-            } else {
-                Rprintf("\t(computing 3 eigenpairs for lambda_2 estimation)\n");
-            }
+            Rprintf("\t(computing %d eigenpairs for lambda_2 estimation; full basis deferred)\n",
+                    n_to_compute);
         }
 
-        compute_spectral_decomposition(n_to_compute, verbose_level);
+        compute_spectral_decomposition(n_to_compute, verbose_level, true, false);
     }
 
     const double lambda_2 = spectral_cache.lambda_2;
@@ -1716,13 +2084,13 @@ void riem_dcx_t::select_diffusion_parameters(
 
     if (lambda_2 < MIN_LAMBDA_2) {
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("\n\tWARNING: Very small spectral gap (lambda_2 = %.6f < %.6f)\n",
+            Rprintf("\n\tWARNING: Very small spectral gap (lambda_2 (mass-sym Laplacian gap) = %.6f < %.6f)\n",
                     lambda_2, MIN_LAMBDA_2);
             Rprintf("\t         This indicates weak graph connectivity.\n");
             Rprintf("\t         Applying safeguards to prevent numerical instability.\n");
         }
 
-        Rf_warning("Very small spectral gap (lambda_2 = %.6f): graph may be nearly disconnected. "
+        Rf_warning("Very small spectral gap (lambda_2 (mass-sym Laplacian gap) = %.6f): graph may be nearly disconnected. "
                    "Consider using a smaller k value or checking for outliers.",
                    lambda_2);
     }
@@ -1748,10 +2116,10 @@ void riem_dcx_t::select_diffusion_parameters(
         }
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 = %.6f)\n",
+            Rprintf("\n\tAuto-selected t_diffusion = %.6f (based on spectral gap lambda_2 (mass-sym Laplacian gap) = %.6f)\n",
                     t_diffusion, lambda_2);
             if (lambda_2 < MIN_LAMBDA_2) {
-                Rprintf("\t  (using effective lambda_2 = %.6f due to small spectral gap)\n",
+                Rprintf("\t  (using effective lambda_2 (mass-sym Laplacian gap) = %.6f due to small spectral gap)\n",
                         lambda_2_effective);
             }
             Rprintf("\tConservative: %.6f, Moderate: %.6f, Aggressive: %.6f\n",
@@ -1796,13 +2164,13 @@ void riem_dcx_t::select_diffusion_parameters(
     const double diffusion_scale = t_diffusion * lambda_2;
 
     if (diffusion_scale > 1.5) {
-        Rf_warning("Large diffusion scale (t*lambda_2 = %.2f): density may change dramatically per iteration. "
+        Rf_warning("Large diffusion scale (t*lambda_2 (mass-sym Laplacian gap) = %.2f): density may change dramatically per iteration. "
                    "Consider reducing t_scale_factor to %.3f for more conservative updates.",
                    diffusion_scale, 1.0 / lambda_2);
     }
 
     if (diffusion_scale < 0.01) {
-        Rf_warning("Small diffusion scale (t*lambda_2 = %.2f): convergence may be very slow. "
+        Rf_warning("Small diffusion scale (t*lambda_2 (mass-sym Laplacian gap) = %.2f): convergence may be very slow. "
                    "Consider increasing t_scale_factor to %.3f for faster updates.",
                    diffusion_scale, 0.05 / lambda_2);
     }
@@ -1834,7 +2202,7 @@ void riem_dcx_t::select_diffusion_parameters(
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\n\tDiffusion parameter summary:\n");
-        Rprintf("  \tlambda_2 (spectral gap):  %.6f%s\n", lambda_2,
+        Rprintf("  \tlambda_2 (mass-sym Laplacian gap):  %.6f%s\n", lambda_2,
                 lambda_2 < MIN_LAMBDA_2 ? " [SMALL - using safeguards]" : "");
         Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
                 t_auto_selected ? "[auto]" : "[user]");
@@ -2133,8 +2501,8 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     // Prefer symmetric normalized Laplacian when available.
     // This avoids using L.L[0], which may be non-symmetric in the Euclidean inner product.
-    const spmat_t& L0 = (L.L0_sym.rows() == n && L.L0_sym.cols() == n)
-        ? L.L0_sym
+    const spmat_t& L0 = (L.L0_mass_sym.rows() == n && L.L0_mass_sym.cols() == n)
+        ? L.L0_mass_sym
         : L.L[0];
 
     spmat_t A = identity_coeff * I + t * L0;
@@ -3413,7 +3781,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter(
     // Use cached decomposition if valid and sufficient
     if (!spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs) {
-        compute_spectral_decomposition(n_eigenpairs, verbose_level);
+        compute_spectral_decomposition(n_eigenpairs, verbose_level, false, false); // <<--- ???
     }
 
     // Extract needed eigenpairs from cache
@@ -3620,11 +3988,9 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter_semiy(
     const double n_eff = (double)idx.size();
 
     // Ensure spectral decomposition
-    const bool need_recompute = !spectral_cache.is_valid ||
-        spectral_cache.eigenvalues.size() < n_eigenpairs;
-
-    if (need_recompute) {
-        compute_spectral_decomposition(n_eigenpairs, verbose_level);
+    if (!spectral_cache.is_valid ||
+        spectral_cache.eigenvalues.size() < n_eigenpairs) {
+        compute_spectral_decomposition(n_eigenpairs, verbose_level); // <<--- ???
     }
 
     const int m = std::min(n_eigenpairs,
@@ -5001,6 +5367,14 @@ std::string riem_dcx_t::format_gcv_history(
  *
  * @param[in] beta_coefficient_factor Factor for auto-selecting beta (controls damping coefficient beta*t)
  *
+ * @param[in] t_update Character scalar. Either \code{"fixed"} (default) or \code{"per_iteration"}.
+ *   If \code{"per_iteration"}, the diffusion time \code{t.diffusion} is updated each iteration to keep
+ *   the diffusion scale \eqn{s = t \lambda_2} approximately constant using the current \eqn{\lambda_2}.
+ *   Only applied when \code{t.diffusion <= 0} (auto-selected t).
+ *
+ * @param[in] t_update_max_mult Numeric scalar \eqn{\ge 1}. Maximum multiplicative change allowed for
+ *   \code{t.diffusion} in a single iteration when \code{t.update="per_iteration"} (default 1.25).
+ *
  * @param[in] n_eigenpairs Number of eigenpairs to compute for spectral filtering.
  *              More eigenpairs capture finer response variation but increase
  *              computation. Typical: 50-200. Use min(n/5, 200) as default.
@@ -5082,6 +5456,8 @@ void riem_dcx_t::fit_rdgraph_regression(
     double gamma_modulation,
     double t_scale_factor,
     double beta_coefficient_factor,
+    int t_update_mode,
+    double t_update_max_mult,
     int n_eigenpairs,
     rdcx_filter_type_t filter_type,
     double epsilon_y,
@@ -5167,12 +5543,22 @@ void riem_dcx_t::fit_rdgraph_regression(
         phase_time = std::chrono::steady_clock::now();
     }
 
+    const bool t_auto = (t_diffusion <= 0.0);
+    const bool beta_auto = (beta_damping <= 0.0);
+
     select_diffusion_parameters(t_diffusion,
                                 beta_damping,
                                 t_scale_factor,
                                 beta_coefficient_factor,
                                 n_eigenpairs,
                                 verbose_level);
+
+    // Target diffusion scale s = t * lambda2 from Phase 4.5.
+    // Used for per-iteration t updates if enabled.
+    const double diffusion_scale_target = t_diffusion * spectral_cache.lambda_2;
+
+    // Clamp factor: limit multiplicative change in t per iteration
+    const double t_mult = std::max(1.0, t_update_max_mult);
 
     if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
         elapsed_time(phase_time, "DONE", true);
@@ -5469,9 +5855,46 @@ void riem_dcx_t::fit_rdgraph_regression(
                 prev_lambda_2 = curr_lambda_2;
             } else {
                 double delta = std::abs(curr_lambda_2 - prev_lambda_2);
-                Rprintf("  lambda_2 changed: %.6e -> %.6e (Delta = %.6e)\n",
+                Rprintf("  lambda_2 (mass-sym Laplacian gap) changed: %.6e -> %.6e (Delta = %.6e)\n",
                         prev_lambda_2, curr_lambda_2, delta);
                 prev_lambda_2 = curr_lambda_2;
+            }
+        }
+
+        // --------------------------------------------------------------
+        // Optional: per-iteration update of t_diffusion using current lambda_2
+        // Keeps diffusion scale s = t * lambda2 approximately constant.
+        // Update affects the NEXT iteration's density diffusion.
+        // --------------------------------------------------------------
+        if (t_update_mode == 1 && t_auto) {
+
+            const double lambda2_curr = spectral_cache.lambda_2;
+            if (!std::isfinite(lambda2_curr) || lambda2_curr <= 0.0) {
+                Rf_error("t.update per_iteration: invalid current lambda_2=%.3e", lambda2_curr);
+            }
+
+            double t_new = diffusion_scale_target / lambda2_curr;
+
+            // Safety clamp: limit multiplicative change per iteration
+            const double t_lo = t_diffusion / t_mult;
+            const double t_hi = t_diffusion * t_mult;
+            if (t_new < t_lo) t_new = t_lo;
+            if (t_new > t_hi) t_new = t_hi;
+
+            // Respect the same global cap as select_diffusion_parameters()
+            const double MAX_T_DIFFUSION = 20.0;
+            if (t_new > MAX_T_DIFFUSION) t_new = MAX_T_DIFFUSION;
+
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                Rprintf("  t.update: lambda2=%.6e, t: %.6e -> %.6e (target scale=%.6e)\n",
+                        lambda2_curr, t_diffusion, t_new, diffusion_scale_target);
+            }
+
+            t_diffusion = t_new;
+
+            // Keep damping coefficient beta*t fixed if beta was auto-selected
+            if (beta_auto) {
+                beta_damping = beta_coefficient_factor / t_diffusion;
             }
         }
 
@@ -5521,6 +5944,15 @@ void riem_dcx_t::fit_rdgraph_regression(
             } else {
                 Rprintf("itr %d/%d | dy=%.2e | drho=%.2e | gcv=%.6e (best=%.6e @itr %d) | lambda2=%.3e | %.2fs\n",
                         iter, max_iterations, dy, drho, gcv, best_gcv, best_itr, lambda2, iter_sec);
+            }
+
+            if (vl_at_least(verbose_level, verbose_level_t::TRACE) && spectral_cache.eigenvalues.size() >= 3) {
+                const char* tag = (L.L0_mass_sym.rows() > 0) ? "L0_mass_sym" : "L[0]";
+                Rprintf("  DEBUG: lambda2 source=%s, eig[0..2]=%.6e %.6e %.6e\n",
+                        tag,
+                        spectral_cache.eigenvalues[0],
+                        spectral_cache.eigenvalues[1],
+                        spectral_cache.eigenvalues[2]);
             }
         }
 
@@ -5654,6 +6086,10 @@ void riem_dcx_t::fit_rdgraph_regression(
         const double eta_opt = gcv_history.iterations[optimal_iteration].eta_optimal;
 
         spectral_cache.filtered_eigenvalues.resize(n_eigen);
+
+        if (!is_nondecreasing(spectral_cache.eigenvalues, 1e-15)) {
+            Rf_error("Spectral cache eigenvalues are not sorted; cannot apply filter safely.");
+        }
 
         for (size_t i = 0; i < n_eigen; ++i) {
             double lambda = spectral_cache.eigenvalues[i];
