@@ -1039,7 +1039,8 @@ private:
     void compute_spectral_decomposition(
         int n_eigenpairs,
         verbose_level_t verbose_level,
-        bool phase45_mode = false
+        bool phase45_mode = false,
+        bool pre_density_full_basis_mode = false
         );
 
     /**
