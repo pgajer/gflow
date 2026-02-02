@@ -1056,6 +1056,10 @@ extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
  * @param s_density_normalization Target density sum (REALSXP)
  * @param s_t_diffusion Heat diffusion time, 0=auto (REALSXP)
  * @param s_beta_damping Damping parameter, 0=auto (REALSXP)
+ *
+ * @param s_t_update_mode
+ * @param s_t_update_max_mult
+ *
  * @param s_gamma_modulation Response coherence exponent (REALSXP)
  * @param s_n_eigenpairs Number of eigenpairs for filtering (INTSXP)
  * @param s_filter_type Filter type string (STRSXP)
@@ -1128,6 +1132,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_gamma_modulation,
     SEXP s_t_scale_factor,
     SEXP s_beta_coefficient_factor,
+    SEXP s_t_update_mode,
+    SEXP s_t_update_max_mult,
     SEXP s_n_eigenpairs,
     SEXP s_filter_type,
     SEXP s_epsilon_y,
@@ -1489,6 +1495,24 @@ extern "C" SEXP S_fit_rdgraph_regression(
                  beta_coefficient_factor);
     }
 
+    // -------------------- t.update --------------------
+
+    if (TYPEOF(s_t_update_mode) != INTSXP || Rf_length(s_t_update_mode) != 1) {
+        Rf_error("t.update.mode must be a single integer (0=fixed, 1=per_iteration)");
+    }
+    const int t_update_mode = INTEGER(s_t_update_mode)[0];
+    if (t_update_mode == NA_INTEGER || (t_update_mode != 0 && t_update_mode != 1)) {
+        Rf_error("t.update.mode must be 0 (fixed) or 1 (per_iteration)");
+    }
+
+    if (TYPEOF(s_t_update_max_mult) != REALSXP || Rf_length(s_t_update_max_mult) != 1) {
+        Rf_error("t.update.max.mult must be a single numeric value >= 1.0");
+    }
+    const double t_update_max_mult = REAL(s_t_update_max_mult)[0];
+    if (!R_FINITE(t_update_max_mult) || t_update_max_mult < 1.0) {
+        Rf_error("t.update.max.mult must be finite and >= 1.0 (got %.3f)", t_update_max_mult);
+    }
+
     // -------------------- n.eigenpairs --------------------
 
     if (TYPEOF(s_n_eigenpairs) != INTSXP || Rf_length(s_n_eigenpairs) != 1) {
@@ -1732,6 +1756,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
             gamma_modulation,
             t_scale_factor,
             beta_coefficient_factor,
+            t_update_mode,
+            t_update_max_mult,
             n_eigenpairs,
             filter_type,
             epsilon_y,

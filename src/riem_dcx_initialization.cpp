@@ -218,7 +218,7 @@ static inline void power_compress_weights_to_ratio_in_place(
  * @post Simplicial complex S[0], S[1] populated with vertices and edges
  * @post Densities rho.rho[0], rho.rho[1] computed and normalized
  * @post Metric tensors g.M[0], g.M[1] constructed
- * @post Hodge Laplacian L.L[0] and normalized Laplacian L.L0_sym assembled
+ * @post Hodge Laplacian L.L[0] and mass-symmetrized Laplacian L.L0_mass_sym assembled
  * @post neighbor_sets member variable populated for subsequent use
  * @post reference_measure member variable populated
  *
