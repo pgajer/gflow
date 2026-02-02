@@ -97,7 +97,12 @@ std::unique_ptr<graph_spectrum_t> graph_spectrum(std::vector<std::vector<int>>& 
     }
 
     // Construct eigen solver object to find eigenvalues closest to 0
-    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+
+    // ncv rule-of-thumb: 3*nev is often safer for hard problems
+    int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+    ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
     eigs.init();
     eigs.compute(Spectra::SortRule::SmallestAlge);
 
@@ -221,7 +226,12 @@ std::unique_ptr<graph_spectrum_plus_t> graph_spectrum_plus(std::vector<std::vect
     }
 
     // Construct eigen solver object to find eigenvalues closest to 0
-    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+
+    // ncv rule-of-thumb: 3*nev is often safer for hard problems
+    int ncv_default = std::max(2 * nev + 10, 150);  // for nev=50 => at least 150
+    ncv_default = std::min(ncv_default, (int)L.rows()); // cannot exceed n
+
+    Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv_default);
     eigs.init();
     eigs.compute(Spectra::SortRule::SmallestAlge);
 

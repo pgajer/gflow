@@ -16,10 +16,9 @@
  * @param g Metric family containing vertex masses M[0] and edge information
  *
  * @details
- * This function constructs the normalized graph Laplacian L0_sym, which is the
- * symmetrized version of the standard graph Laplacian. This form is particularly
- * useful for spectral analysis because it has eigenvalues in [0, 2] and satisfies
- * nice properties for diffusion processes.
+ * This function constructs the mass-symmetrized vertex Laplacian L0_mass_sym:
+ *     L0_mass_sym = M[0]^{-1/2} L[0] M[0]^{-1/2}.
+ * This is NOT the classical degree-normalized Laplacian.
  *
  * MATHEMATICAL FORMULATION:
  *
@@ -30,31 +29,31 @@
  *
  * We construct:
  * 1. Standard graph Laplacian: L_div
- * 2. Mass matrix diagonal: D = diag(m_1, ..., m_n)
- * 3. Normalized Laplacian: L_sym = D^{-1/2} L_div D^{-1/2}
+ * 2. Mass matrix diagonal: M = diag(m_1, ..., m_n)
+ * 3. Normalized Laplacian: L_sym = M^{-1/2} L_div M^{-1/2}
  *
  * The normalized Laplacian has the property that for functions f on vertices:
- *   <f, L_sym f>_{ℓ²} = (1/2) Σ_{edges (i,j)} c_ij (f_i/√m_i - f_j/√m_j)²
+ *   <f, L_mass_sym f>_{ℓ²} = (1/2) Σ_{edges (i,j)} c_ij (f_i/√m_i - f_j/√m_j)²
  *
  * This measures the "smoothness" of f with respect to the geometry.
  */
-void laplacian_bundle_t::build_L0_sym_if_needed(const metric_family_t& g) {
+void laplacian_bundle_t::build_L0_mass_sym_if_needed(const metric_family_t& g) {
 
 	// Need at least 2 dimensions (vertices and edges)
 	if (B.size() < 2) {
-		L0_sym.resize(0, 0);
+		L0_mass_sym.resize(0, 0);
 		return;
 	}
 
 	// Need a non-empty boundary operator B[1] (vertex-edge incidence)
 	if (B[1].nonZeros() == 0) {
-		L0_sym.resize(0, 0);
+		L0_mass_sym.resize(0, 0);
 		return;
 	}
 
 	// Need vertex metric M[0]
 	if (g.M.empty() || g.M[0].rows() == 0) {
-		L0_sym.resize(0, 0);
+		L0_mass_sym.resize(0, 0);
 		return;
 	}
 
@@ -66,7 +65,7 @@ void laplacian_bundle_t::build_L0_sym_if_needed(const metric_family_t& g) {
 	// edge mass implies weaker penalization of variation across that edge.
 
 	if (c1.size() != B[1].cols()) {
-		L0_sym.resize(0, 0);
+		L0_mass_sym.resize(0, 0);
 		return;
 	}
 
@@ -177,7 +176,7 @@ void laplacian_bundle_t::build_L0_sym_if_needed(const metric_family_t& g) {
 	// The normalization makes vertices with large mass contribute less
 	// to the energy, balancing the influence of high-degree and low-degree vertices.
 
-	L0_sym = Dm05 * L0_div * Dm05;
+	L0_mass_sym = Dm05 * L0_div * Dm05;
 }
 
 /**
@@ -224,7 +223,7 @@ void laplacian_bundle_t::assemble_all(const metric_family_t& g) {
 		}
 	}
 
-	build_L0_sym_if_needed(g);
+	build_L0_mass_sym_if_needed(g);
 }
 
 /**
