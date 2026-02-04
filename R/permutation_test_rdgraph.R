@@ -21,6 +21,26 @@
 #'
 #' @param n.perms Integer \eqn{\ge 1}. Number of permutations.
 #'
+#' @param y.vertices Optional integer vector of labeled vertex indices (1-based).
+#'   If provided, only these vertices contribute to the refit objective; residuals
+#'   at unlabeled vertices are returned as \code{NA}. Values of \code{y.new} at
+#'   unlabeled vertices are ignored and may be \code{NA}.
+#' 
+#' @param subj.id Optional vector of length n giving subject IDs (e.g., woman IDs)
+#'   for repeated-measures data. If not \code{NULL}, permutations are performed
+#'   at the subject level (block permutation): the response label is permuted
+#'   across unique subjects and then assigned to all vertices belonging to that
+#'   subject. This preserves within-subject dependence and is recommended when
+#'   multiple samples per subject share the same outcome.
+#'
+#'   The current implementation requires \code{y} to be constant within subject.
+#'
+#' @param adj.list Adjacency list
+#'
+#' @param with.cluster Set to TRUE to compute cluster p-values
+#'
+#' @param cluster.threshold.quantile Cluster quantile threshold.
+#' 
 #' @param per.column.gcv Logical. Passed to \code{\link{refit.rdgraph.regression}}.
 #'   If TRUE, reselect eta by GCV for each permutation column.
 #'
@@ -29,15 +49,18 @@
 #' @param seed Integer or NULL. If not NULL, sets RNG seed for reproducibility.
 #'
 #' @param stat Character scalar specifying the global test statistic to compute
-#'   in addition to the vertex-wise p-values. Must be one of \code{"l2"},
-#'   \code{"log"}, or \code{"logit"}.
+#'     in addition to the vertex-wise p-values. Must be one of \code{"l2"},
+#'     \code{"l1"}, \code{"lp"}, \code{"log"}, \code{"logit"}, or \code{"max"}.
 #'
 #'   The global statistic is computed from the fitted field \eqn{\hat y} and
 #'   the global mean incidence \eqn{\bar y}:
 #'   \itemize{
+#'     \item \code{"l1"}: \eqn{T_1(\hat y) = \sum_{v\in V} |\hat y(v) - \bar y|}
 #'     \item \code{"l2"}: \eqn{T_2(\hat y) = \sum_{v\in V} (\hat y(v) - \bar y)^2}
+#'     \item \code{"lp"}: \eqn{T_p(\hat y) = \sum_{v\in V} |\hat y(v) - \bar y|^p}
 #'     \item \code{"log"}: \eqn{T_{2,\log}(\hat y) = \sum_{v\in V} (\log(\hat y_\epsilon(v)) - \log(\bar y_\epsilon))^2}
 #'     \item \code{"logit"}: \eqn{T_{2,\mathrm{logit}}(\hat y) = \sum_{v\in V} (\mathrm{logit}(\hat y_\epsilon(v)) - \mathrm{logit}(\bar y_\epsilon))^2}
+#'     \item \code{"max"}: \eqn{T_{\mathrm{max}}(\hat y) = \max_{v\in V} |\hat y(v) - \bar y|}
 #'   }
 #'
 #'   For \code{"log"} and \code{"logit"}, fitted values are clipped to
@@ -47,6 +70,8 @@
 #'   The global permutation p-value is computed as
 #'   \eqn{p = (1 + \#\{b: T^{(b)} \ge T^{\mathrm{obs}}\})/(B+1)}.
 #'
+#' @param lp.test.exponent Exponent in the Lp test. Default: 0.5.
+#' 
 #' @param two.sided Logical. If TRUE (default), use absolute-value statistic.
 #'   If FALSE, uses one-sided statistic \eqn{\hat y(v) - \bar y} (upper-tail).
 #'
@@ -86,10 +111,16 @@
 permutation.test.rdgraph <- function(fitted.model,
                                      y,
                                      n.perms,
+                                     y.vertices = NULL,
+                                     subj.id = NULL,
+                                     adj.list = NULL,
+                                     with.cluster = FALSE,
+                                     cluster.threshold.quantile = 0.95,
                                      per.column.gcv = TRUE,
                                      n.cores = 1L,
                                      seed = 12345L,
-                                     stat = c("l2","log","logit"),
+                                     stat = c("l2","l1","lp","log","logit","max"),
+                                     lp.test.exponent = 0.5,
                                      two.sided = TRUE,
                                      return.perm.fits = FALSE,
                                      verbose = TRUE) {
@@ -118,6 +149,18 @@ permutation.test.rdgraph <- function(fitted.model,
     }
     n.perms <- as.integer(n.perms)
 
+    if (!is.null(subj.id)) {
+        if (length(subj.id) != n) {
+            stop("subj.id must have length equal to length(y).")
+        }
+        if (anyNA(subj.id)) {
+            stop("subj.id contains NA; please impute/remove or treat missing IDs explicitly.")
+        }
+
+        n.subj.tmp <- length(unique(as.character(subj.id)))
+        if (n.subj.tmp < 2L) stop("Need at least 2 unique subjects for subj.id permutation.")
+    }
+    
     if (!is.logical(per.column.gcv) || length(per.column.gcv) != 1) {
         stop("per.column.gcv must be TRUE/FALSE.")
     }
@@ -154,9 +197,52 @@ permutation.test.rdgraph <- function(fitted.model,
         message(sprintf("Generating %d permutations for n = %d vertices...", n.perms, n))
     }
 
-    perm.idx <- replicate(n.perms, sample.int(n, size = n, replace = FALSE))
-    perm.y <- matrix(y[perm.idx], nrow = n, ncol = n.perms)
+    n.subj <- NULL
+    if (is.null(subj.id)) {
 
+        ## ------------------------------------------------------------
+        ## Vertex-level permutations (original behavior)
+        ## ------------------------------------------------------------
+        perm.idx <- replicate(n.perms, sample.int(n, size = n, replace = FALSE))
+        perm.y <- matrix(y[perm.idx], nrow = n, ncol = n.perms)
+
+    } else {
+
+        ## ------------------------------------------------------------
+        ## Subject-level (block) permutations
+        ## ------------------------------------------------------------
+        subj <- as.character(subj.id)
+        subj.levels <- unique(subj)
+        n.subj <- length(subj.levels)
+
+        ## Map each vertex to a subject index in 1..n.subj
+        subj.idx <- match(subj, subj.levels)
+        if (anyNA(subj.idx)) stop("Internal error: NA in subj.idx mapping.")
+
+        ## Require y be constant within subject (typical for woman-level outcomes)
+        ## If you want to allow within-subject variation, block-permutation needs a different design.
+
+        y.by.subj <- tapply(y, subj, function(z) z[1])
+        y.by.subj <- as.double(y.by.subj[subj.levels])
+
+        y.min <- tapply(y, subj, min)
+        y.max <- tapply(y, subj, max)
+        y.min <- as.double(y.min[subj.levels])
+        y.max <- as.double(y.max[subj.levels])
+        
+        if (any(y.min != y.max)) {
+            stop("y is not constant within subject; block permutation is ambiguous. ",
+                 "Either aggregate to subject-level first or revise the permutation scheme.")
+        }
+
+        ## Subject permutation indices: n.subj x n.perms
+        perm.subj.idx <- replicate(n.perms, sample.int(n.subj, size = n.subj, replace = FALSE))
+
+        ## Expand to vertex-level permuted y: n x n.perms
+        idx.mat <- perm.subj.idx[subj.idx, , drop = FALSE]  ## n x n.perms integer matrix
+        perm.y <- matrix(as.double(y.by.subj)[idx.mat], nrow = n, ncol = n.perms)
+    }
+    
     ## ---------------------------------------------------------------------
     ## Refit using cached spectral structure
     ## ---------------------------------------------------------------------
@@ -167,6 +253,7 @@ permutation.test.rdgraph <- function(fitted.model,
     perm.refit <- refit.rdgraph.regression(
         fitted.model = fitted.model,
         y.new = perm.y,
+        y.vertices = y.vertices,
         per.column.gcv = per.column.gcv,
         n.cores = n.cores,
         verbose = verbose
@@ -181,8 +268,10 @@ permutation.test.rdgraph <- function(fitted.model,
     ## ---------------------------------------------------------------------
     ## Compute vertex-wise permutation p-values
     ## ---------------------------------------------------------------------
-    y.mean <- mean(y)
 
+    y.mean.obs <- mean(y)
+    y.mean.perm <- colMeans(perm.y)
+    
     ## ---------------------------------------------------------------------
     ## Global permutation test(s): T2 on probability / log / logit scale
     ## ---------------------------------------------------------------------
@@ -204,59 +293,64 @@ permutation.test.rdgraph <- function(fitted.model,
         pmin(1 - eps, pmax(eps, x))
     }
 
-    y.mean.eps <- clip01(y.mean, eps)
+    y.mean.obs.eps <- clip01(y.mean.obs, eps)
 
     if (stat == "l2") {
         ## T2 = sum (yhat - ybar)^2
-        global.stat.obs <- sum((fitted.obs - y.mean)^2)
-        ## perm.fitted is n x n.perms: compute column-wise sum of squares
-        global.stat.perm <- colSums((perm.fitted - y.mean)^2)
+        global.stat.obs <- sum((fitted.obs - y.mean.obs)^2)
+        global.stat.perm <- colSums(sweep(perm.fitted, 2, y.mean.perm, FUN = "-")^2)
+    } else if (stat == "l1") {
+        global.stat.obs <- sum(abs(fitted.obs - y.mean.obs))
+        global.stat.perm <- colSums(abs(sweep(perm.fitted, 2, y.mean.perm, FUN = "-")))
+    } else if (stat == "lp") {
+        if (!is.numeric(lp.test.exponent) || length(lp.test.exponent) != 1L ||
+            !is.finite(lp.test.exponent) || lp.test.exponent <= 0) {
+            stop("lp.test.exponent must be a finite numeric scalar > 0.")
+        }
+        global.stat.obs <- sum(abs(fitted.obs - y.mean.obs)^lp.test.exponent)
+        global.stat.perm <- colSums(abs(sweep(perm.fitted, 2, y.mean.perm, FUN = "-"))^lp.test.exponent)
+
     } else if (stat == "log") {
-        ## T2log = sum (log(yhat_eps) - log(ybar_eps))^2
-
         fitted.obs.eps <- clip01(fitted.obs, eps)
-        perm.fitted.eps <- clip01(perm.fitted, eps)
+        y.mean.obs.eps <- clip01(y.mean.obs, eps)
 
-        if (!is.matrix(perm.fitted.eps)) stop("perm.fitted.eps is not a matrix after clipping.")
-        if (ncol(perm.fitted.eps) != n.perms) stop("Unexpected ncol(perm.fitted.eps) after clipping.")
+        global.stat.obs <- sum((log(fitted.obs.eps) - log(y.mean.obs.eps))^2)
 
-        global.stat.obs <- sum((log(fitted.obs.eps) - log(y.mean.eps))^2)
-
-        ## log(yhat_eps) is n x n.perms, subtract scalar log(ybar_eps)
-        lp <- log(perm.fitted.eps)  ## should remain n x n.perms
-        global.stat.perm <- colSums((lp - log(y.mean.eps))^2)
+        y.mean.perm.eps <- clip01(y.mean.perm, eps)
+        lp <- log(clip01(perm.fitted, eps))
+        global.stat.perm <- colSums(sweep(lp, 2, log(y.mean.perm.eps), FUN = "-")^2)
 
     } else if (stat == "logit") {
-        ## T2logit = sum (logit(yhat_eps) - logit(ybar_eps))^2
         logit <- function(p) log(p / (1 - p))
 
         fitted.obs.eps <- clip01(fitted.obs, eps)
-        perm.fitted.eps <- clip01(perm.fitted, eps)
+        y.mean.obs.eps <- clip01(y.mean.obs, eps)
+        global.stat.obs <- sum((logit(fitted.obs.eps) - logit(y.mean.obs.eps))^2)
 
-        if (!is.matrix(perm.fitted.eps)) stop("perm.fitted.eps is not a matrix after clipping.")
-        if (ncol(perm.fitted.eps) != n.perms) stop("Unexpected ncol(perm.fitted.eps) after clipping.")
-
-        global.stat.obs <- sum((logit(fitted.obs.eps) - logit(y.mean.eps))^2)
-
-        lp <- logit(perm.fitted.eps)
-        global.stat.perm <- colSums((lp - logit(y.mean.eps))^2)
+        y.mean.perm.eps <- clip01(y.mean.perm, eps)
+        lp <- logit(clip01(perm.fitted, eps))
+        global.stat.perm <- colSums(sweep(lp, 2, logit(y.mean.perm.eps), FUN = "-")^2)
+        
+    } else if (stat == "max") {
+        ## T2 = max |yhat - ybar|
+        global.stat.obs <- max(abs(fitted.obs - y.mean.obs))
+        global.stat.perm <- apply(abs(sweep(perm.fitted, 2, y.mean.perm, FUN = "-")), 2, max)
     }
 
     ## Upper-tail p-value with +1 correction
     global.p.value <- (sum(global.stat.perm >= global.stat.obs) + 1) / (n.perms + 1)
 
     if (two.sided) {
-        stat.obs <- abs(fitted.obs - y.mean)
-        stat.perm <- abs(perm.fitted - y.mean)
-        ## upper tail (two-sided via abs)
+        stat.obs <- abs(fitted.obs - y.mean.obs)
+        ## subtract permutation-specific means columnwise
+        stat.perm <- abs(sweep(perm.fitted, 2, y.mean.perm, FUN = "-"))
         ge.count <- rowSums(stat.perm >= stat.obs)
     } else {
-        stat.obs <- fitted.obs - y.mean
-        stat.perm <- perm.fitted - y.mean
-        ## upper tail only
+        stat.obs <- fitted.obs - y.mean.obs
+        stat.perm <- sweep(perm.fitted, 2, y.mean.perm, FUN = "-")
         ge.count <- rowSums(stat.perm >= stat.obs)
     }
-
+    
     ## Phipson-Smyth style +1 correction for exactness
     p.value <- (ge.count + 1) / (n.perms + 1)
 
@@ -264,11 +358,16 @@ permutation.test.rdgraph <- function(fitted.model,
     q.value <- stats::p.adjust(p.value, method = "BH")
 
     out <- list(
+        n.subj = n.subj,
+        y.mean.obs = y.mean.obs,
+        y.mean.perm = y.mean.perm,
+        
         p.value = p.value,
         q.value = q.value,
         stat.obs = stat.obs,
-        y.mean = y.mean,
+
         stat = stat,
+        global.stat.perm = global.stat.perm,
         global.stat.obs = global.stat.obs,
         global.p.value = global.p.value,
         fitted.obs = fitted.obs,
@@ -277,12 +376,186 @@ permutation.test.rdgraph <- function(fitted.model,
         call = match.call()
     )
 
+    if (with.cluster) {
+        if (is.null(adj.list)) stop("adj.list must be provided when with.cluster = TRUE.")
+        if (!is.list(adj.list) || length(adj.list) != n) stop("adj.list must be a list of length n.")
+
+        stat.obs.v <- stat.obs
+        stat.perm.mat <- stat.perm
+
+        threshold <- stats::quantile(as.double(stat.perm.mat),
+                                     probs = cluster.threshold.quantile,
+                                     na.rm = TRUE,
+                                     names = FALSE)
+
+        max.size.obs <- cluster.max.size(adj.list, stat.obs.v, threshold)
+        max.size.perm <- apply(stat.perm.mat, 2, function(x) cluster.max.size(adj.list, x, threshold))
+        cluster.size.p.value <- (sum(max.size.perm >= max.size.obs) + 1) / (n.perms + 1)
+
+        max.mass.obs <- cluster.max.mass(adj.list, stat.obs.v, threshold)
+        max.mass.perm <- apply(stat.perm.mat, 2, function(x) cluster.max.mass(adj.list, x, threshold))
+        cluster.mass.p.value <- (sum(max.mass.perm >= max.mass.obs) + 1) / (n.perms + 1)
+
+        out$threshold <- threshold
+        
+        out$max.mass.obs <- max.mass.obs
+        out$max.mass.perm <- max.mass.perm
+        out$cluster.mass.p.value <- cluster.mass.p.value
+
+        out$max.size.obs <- max.size.obs
+        out$max.size.perm <- max.size.perm
+        out$cluster.size.p.value <- cluster.size.p.value
+    }
+    
     if (return.perm.fits) {
         out$perm.fitted.values <- perm.fitted
         out$stat.perm <- stat.perm
-        out$global.stat.perm <- global.stat.perm
     }
 
     class(out) <- c("rdgraph_permutation_test", "list")
     return(out)
+}
+
+##' Maximum connected component size above a threshold on a graph
+##'
+##' @description
+##' Given a graph adjacency list and a per-vertex statistic \code{stat.v}, this
+##' function thresholds vertices by \code{stat.v >= threshold}, computes
+##' connected components in the induced subgraph, and returns the size of the
+##' largest component (cluster).
+##'
+##' This is intended for cluster-based permutation inference, where the observed
+##' field and each permuted field produce a set of suprathreshold vertices and
+##' one compares the observed maximum cluster size to the permutation null
+##' distribution of maximum cluster sizes.
+##'
+##' @param adj.list List of length n. Each element is an integer vector of
+##'   neighbor vertex indices in \code{1..n}. The graph is treated as undirected
+##'   for connectivity (i.e., connectivity is evaluated using the provided
+##'   neighbor links; if the underlying graph is directed, supply a symmetrized
+##'   adjacency list).
+##'
+##' @param stat.v Numeric vector of length n giving a per-vertex statistic
+##'   (e.g., \code{fitted.obs - y.mean} for one-sided tests, or
+##'   \code{abs(fitted.obs - y.mean)} for two-sided tests).
+##'
+##' @param threshold Numeric scalar. Vertices with \code{stat.v >= threshold}
+##'   are included in the suprathreshold induced subgraph.
+##'
+##' @return Integer scalar. Size (number of vertices) of the largest connected
+##'   component among suprathreshold vertices. Returns 0L if no vertex exceeds
+##'   \code{threshold}.
+##'
+##' @examples
+##' \dontrun{
+##' ## observed max cluster size above a threshold c
+##' c <- stats::quantile(as.double(stat.perm.mat), probs = 0.95, na.rm = TRUE)
+##' max.size.obs <- cluster.max.size(adj.list, stat.obs.v, threshold = c)
+##'
+##' ## permutation null of max cluster sizes
+##' max.size.perm <- apply(stat.perm.mat, 2, function(x) {
+##'     cluster.max.size(adj.list, x, threshold = c)
+##' })
+##'
+##' ## p-value (upper tail) with +1 correction
+##' p.cluster <- (sum(max.size.perm >= max.size.obs) + 1) / (length(max.size.perm) + 1)
+##' }
+cluster.max.size <- function(adj.list, stat.v, threshold) {
+    ## ------------------------------------------------------------
+    ## Input validation
+    ## ------------------------------------------------------------
+    if (!is.list(adj.list)) stop("adj.list must be a list.")
+    n <- length(adj.list)
+
+    if (!is.numeric(stat.v)) stop("stat.v must be numeric.")
+    stat.v <- as.double(stat.v)
+    if (length(stat.v) != n) {
+        stop("Length mismatch: length(stat.v) must equal length(adj.list).")
+    }
+
+    if (!is.numeric(threshold) || length(threshold) != 1L || !is.finite(threshold)) {
+        stop("threshold must be a finite numeric scalar.")
+    }
+
+    ## ------------------------------------------------------------
+    ## Identify suprathreshold vertices
+    ## ------------------------------------------------------------
+    keep <- which(stat.v >= threshold)
+    if (length(keep) == 0L) return(0L)
+
+    ## visited: TRUE means "do not visit / already handled"
+    ## mark all non-keep vertices as visited so BFS stays inside keep-set
+    visited <- rep(FALSE, n)
+    visited[-keep] <- TRUE
+
+    max.size <- 0L
+
+    ## ------------------------------------------------------------
+    ## BFS/DFS over induced subgraph to find component sizes
+    ## ------------------------------------------------------------
+    for (s in keep) {
+        if (visited[s]) next
+
+        ## start a new component
+        visited[s] <- TRUE
+        queue <- s
+        comp.size <- 0L
+
+        while (length(queue) > 0L) {
+            v <- queue[[1]]
+            queue <- queue[-1]
+
+            comp.size <- comp.size + 1L
+
+            nb <- adj.list[[v]]
+            if (length(nb) == 0L) next
+
+            ## keep only neighbors not yet visited
+            nb <- nb[!visited[nb]]
+
+            if (length(nb) > 0L) {
+                visited[nb] <- TRUE
+                queue <- c(queue, nb)
+            }
+        }
+
+        if (comp.size > max.size) max.size <- comp.size
+    }
+
+    max.size
+}
+
+cluster.max.mass <- function(adj.list, stat.v, threshold) {
+    ## stat.v: numeric vector length n
+    ## threshold: numeric scalar; keep vertices with stat.v >= threshold
+    n <- length(stat.v)
+    keep <- which(stat.v >= threshold)
+    if (length(keep) == 0L) return(0)
+
+    ## Build induced subgraph components on keep-set
+    ## Use a fast BFS/DFS on adj.list to avoid igraph dependency
+    visited <- rep(FALSE, n)
+    visited[-keep] <- TRUE
+
+    max.mass <- 0
+    for (s in keep) {
+        if (visited[s]) next
+        ## BFS
+        queue <- s
+        visited[s] <- TRUE
+        comp.mass <- 0
+        while (length(queue) > 0L) {
+            v <- queue[[1]]
+            queue <- queue[-1]
+            comp.mass <- comp.mass + stat.v[v]
+            nb <- adj.list[[v]]
+            nb <- nb[!visited[nb]]
+            if (length(nb) > 0L) {
+                visited[nb] <- TRUE
+                queue <- c(queue, nb)
+            }
+        }
+        if (comp.mass > max.mass) max.mass <- comp.mass
+    }
+    max.mass
 }
