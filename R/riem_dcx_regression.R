@@ -1071,7 +1071,7 @@ fit.rdgraph.regression <- function(
     ## PCA (optional)
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
-        if (verbose.level == 1) message("High-dimensional data detected. Performing PCA.")
+        if (verbose.level >= 1) message("High-dimensional data detected. Performing PCA.")
         original_dim <- ncol(X)
         if (!is.null(variance.explained)) {
             pca_analysis <- pca.optimal.components(
@@ -1090,7 +1090,7 @@ fit.rdgraph.regression <- function(
                 cumulative_variance = pca_analysis$cumulative.variance
             )
         } else {
-            if (verbose.level == 1) message(sprintf("Projecting to first %d PCs", pca.dim))
+            if (verbose.level >= 1) message(sprintf("Projecting to first %d PCs", pca.dim))
             pca_result <- prcomp(X)
             X <- pca.project(X, pca_result, pca.dim)
             variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
