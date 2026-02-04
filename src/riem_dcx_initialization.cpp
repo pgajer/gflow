@@ -383,6 +383,10 @@ void riem_dcx_t::initialize_from_knn(
     double threshold_percentile,
 	double density_alpha,
 	double density_epsilon,
+	bool clamp_dk,
+	double dk_clamp_median_factor,
+	double target_weight_ratio,
+	double pathological_ratio_threshold,
 	verbose_level_t verbose_level
 ) {
     const size_t n_points = static_cast<size_t>(X.rows());
@@ -953,6 +957,10 @@ void riem_dcx_t::initialize_from_knn(
         density_normalization,
 		density_alpha,
 		density_epsilon,
+		clamp_dk,
+		dk_clamp_median_factor,
+		target_weight_ratio,
+		pathological_ratio_threshold,
 		verbose_level
     );
 
@@ -983,37 +991,55 @@ void riem_dcx_t::initialize_from_knn(
 }
 
 /**
- * Initialize reference measure μ that provides base weights for vertices.
+ * @brief Initialize the reference measure (vertex weights) used by the Riemannian DCX solver.
  *
- * The reference measure serves as the starting point for density estimation
- * before any geometric evolution. We support two approaches:
+ * @details
+ * This method defines an initial per-vertex reference measure (a positive weight vector)
+ * used by downstream diffusion/regularization steps. Two modes are supported:
  *
- * When use_counting_measure = true, all points receive uniform weight,
- * appropriate for uniformly sampled data or when sampling density should not
- * influence the geometry.
+ * 1) Counting measure (uniform):
+ *    - If use_counting_measure == true, sets all weights to 1 and normalizes to the target sum.
  *
- * When use_counting_measure = false, we use distance-based weighting:
- *   μ({x_i}) = (ε + d_k(x_i))^(-α)
- * where d_k(x_i) is the distance to the k-th nearest neighbor. This formula
- * provides a robust local density surrogate without requiring bandwidth
- * selection, addressing kernel density estimation instability in moderate
- * to high dimensions.
+ * 2) Distance-based measure (robust density surrogate):
+ *    - Let d_k(i) be the k-th neighbor distance for vertex i (the last entry of knn_distances[i]).
+ *    - Raw weights are computed as:
+ *        w(i) = (density_epsilon + d_k_used(i))^{-density_alpha},
+ *      with input validation to prevent non-finite/invalid values.
  *
- * The exponent α controls the strength of density adaptation. Larger α values
- * (near 2) create stronger weighting toward densely sampled regions, while
- * smaller values (near 1) produce more uniform weighting. The regularization
- * parameter ε prevents numerical issues when distances are very small.
+ *    - Optional d_k clamping (new):
+ *      If clamp_dk == true, d_k_used(i) is clamped to:
+ *        [median(d_k) / dk_clamp_median_factor, median(d_k) * dk_clamp_median_factor]
+ *      before converting to weights.
+ *      If clamp_dk == false, NO clamping is performed; the same bounds are computed only
+ *      for diagnostics, and dk_used == dk_raw.
  *
- * After computing raw weights, the function normalizes them to sum to the
- * target value (typically n), ensuring numerical stability and consistent
- * interpretation across datasets of different sizes.
+ *    - Weight dynamic range control:
+ *      After raw weights are computed, their ratio is capped to a fixed policy target
+ *      (currently 1000:1). If the ratio is pathological (non-finite or extremely large),
+ *      an additional log-compression step is applied first, followed by an exact ratio cap.
  *
- * @param knn_neighbors k-nearest neighbor indices for each point
- * @param knn_distances k-nearest neighbor distances for each point
- * @param use_counting_measure If true, use uniform weights; if false, use distance-based
- * @param density_normalization Target sum for normalized weights (typically n)
- * @param density_alpha Exponent in [1, 2] for density estimation.
- * @param density_epsilon Regularization to prevent division by zero
+ * Diagnostics:
+ *  - dk_raw: raw d_k values
+ *  - dk_used: d_k values used to compute weights (equals dk_raw if clamp_dk == false)
+ *  - dk_lower, dk_upper: the median-factor bounds used (for reporting/diagnostics)
+ *  - dk_used_low/high: indices that fall outside bounds; if clamp_dk==true these were clamped,
+ *    otherwise these are "would-have-been clamped" indices.
+ *
+ * Normalization:
+ *  - The weights are scaled so that sum(weights) == target, where
+ *      target = density_normalization if > 0, else target = n.
+ *
+ * @param knn_neighbors List of kNN neighbor indices for each vertex (used for input validation only).
+ * @param knn_distances List of kNN neighbor distances for each vertex; must be same shape as knn_neighbors.
+ * @param use_counting_measure If true, use uniform weights (counting measure).
+ * @param density_normalization Target sum for the weights. If <= 0, uses n (number of vertices).
+ * @param density_alpha Exponent alpha in (epsilon + d_k)^{-alpha}. Must be finite and >= 0.
+ * @param density_epsilon Regularization epsilon added to d_k. Must be finite and >= 0.
+ * @param clamp_dk If true, clamp d_k prior to computing weights using median-factor bounds.
+ * @param dk_clamp_median_factor Median-factor for clamping bounds; must be finite and > 1.
+ * @param verbose_level Verbosity level for diagnostics.
+ *
+ * @throws Rf_error on invalid inputs or non-finite intermediate values.
  */
 void riem_dcx_t::initialize_reference_measure(
     const std::vector<std::vector<index_t>>& knn_neighbors,
@@ -1022,83 +1048,165 @@ void riem_dcx_t::initialize_reference_measure(
     double density_normalization,
     double density_alpha,
     double density_epsilon,
-	verbose_level_t verbose_level
+    bool clamp_dk,
+    double dk_clamp_median_factor,
+	double target_weight_ratio,
+	double pathological_ratio_threshold,
+    verbose_level_t verbose_level
 ) {
     const size_t n = knn_neighbors.size();
+    if (n == 0) {
+        Rf_error("reference_measure: empty kNN inputs (n=0).");
+    }
+    if (knn_distances.size() != n) {
+        Rf_error("reference_measure: knn_distances size mismatch (got %zu, expected %zu).",
+                 (size_t)knn_distances.size(), n);
+    }
+    if (!std::isfinite(density_alpha) || density_alpha < 0.0) {
+        Rf_error("reference_measure: density_alpha must be finite and >= 0.");
+    }
+    if (!std::isfinite(density_epsilon) || density_epsilon < 0.0) {
+        Rf_error("reference_measure: density_epsilon must be finite and >= 0.");
+    }
+    if (!std::isfinite(density_normalization)) {
+        Rf_error("reference_measure: density_normalization must be finite.");
+    }
+    if (!std::isfinite(dk_clamp_median_factor) || dk_clamp_median_factor <= 1.0) {
+        Rf_error("reference_measure: dk_clamp_median_factor must be finite and > 1.");
+    }
+
     std::vector<double> vertex_weights(n);
 
-	// Reset dk diagnostics each time
-	dk_raw.clear();
-	dk_used.clear();
-	dk_used_low.clear();
-	dk_used_high.clear();
-	dk_lower = NA_REAL;
-	dk_upper = NA_REAL;
+    // Reset dk diagnostics each time
+    dk_raw.clear();
+    dk_used.clear();
+    dk_used_low.clear();
+    dk_used_high.clear();
+    dk_lower = NA_REAL;
+    dk_upper = NA_REAL;
 
-	if (use_counting_measure) {
+    if (use_counting_measure) {
         // Counting measure: uniform weights
         std::fill(vertex_weights.begin(), vertex_weights.end(), 1.0);
-	} else {
+
+        // For counting measure we leave dk diagnostics empty/NA.
+    } else {
         // ================================================================
-        // DISTANCE-BASED MEASURE (NO d_k CLAMPING; WEIGHT RATIO CAPPED)
+        // DISTANCE-BASED MEASURE (OPTIONAL d_k CLAMPING; WEIGHT RATIO CAPPED)
         // ================================================================
 
-        // Policy constants (TODO: expose at R level if desired)
-        const double target_weight_ratio = 1000.0;        // R
-        const double pathological_ratio_threshold = 1e12; // trigger robust (log) mode
+        // Policy constants (kept internal for now)
+        // const double target_weight_ratio = 1000.0;        // enforce w_max / w_min <= this
+        // const double pathological_ratio_threshold = 1e12; // trigger log compression first
 
         // Step 1: Collect all k-th neighbor distances (raw d_k)
         std::vector<double> all_dk(n);
         for (size_t i = 0; i < n; ++i) {
-            all_dk[i] = knn_distances[i].back();  // Last neighbor distance
-            if (!std::isfinite(all_dk[i]) || all_dk[i] < 0.0) {
-                Rf_error("reference_measure: non-finite or negative d_k encountered.");
+            const auto& nbrs = knn_neighbors[i];
+            const auto& dists = knn_distances[i];
+
+            if (nbrs.size() != dists.size()) {
+                Rf_error("reference_measure: knn_neighbors/knn_distances row %zu size mismatch.", i + 1);
             }
+            if (dists.empty()) {
+                Rf_error("reference_measure: knn_distances row %zu is empty (need at least 1 neighbor).", i + 1);
+            }
+
+            const double d_k = dists.back();
+            if (!std::isfinite(d_k) || d_k < 0.0) {
+                Rf_error("reference_measure: non-finite or negative d_k at vertex %zu.", i + 1);
+            }
+            all_dk[i] = d_k;
         }
 
-        // Store dk diagnostics (no clamping for computation)
+        // Store dk diagnostics
         dk_raw = all_dk;
-        dk_used = all_dk; // equals raw because we do not clamp
+        dk_used = all_dk; // may be modified if clamping enabled
 
-        // Step 2: Compute diagnostic bounds (legacy median-factor) ONLY for reporting
+        // Step 2: Compute median-factor bounds
         std::vector<double> sorted_dk = all_dk;
         std::sort(sorted_dk.begin(), sorted_dk.end());
         const double d_median = sorted_dk[n / 2];
 
-        const double d_min_allowed = d_median / 10.0;
-        const double d_max_allowed = d_median * 10.0;
+        // Note: if d_median == 0, bounds become [0,0]; that's OK as long as (epsilon + d) > 0
+        const double d_min_allowed = d_median / dk_clamp_median_factor;
+        const double d_max_allowed = d_median * dk_clamp_median_factor;
 
         dk_lower = d_min_allowed;
         dk_upper = d_max_allowed;
 
-        // Record which vertices fall outside diagnostic bounds (would-have-been clamped)
+        // Step 3: Determine out-of-bounds indices; clamp if requested
         for (size_t i = 0; i < n; ++i) {
-            const double d_k = all_dk[i];
-            if (d_k < d_min_allowed) {
+            double d = all_dk[i];
+
+            const bool is_low  = (d < d_min_allowed);
+            const bool is_high = (d > d_max_allowed);
+
+            if (is_low) {
                 dk_used_low.push_back((index_t)i);
-            } else if (d_k > d_max_allowed) {
+                if (clamp_dk) d = d_min_allowed;
+            } else if (is_high) {
                 dk_used_high.push_back((index_t)i);
+                if (clamp_dk) d = d_max_allowed;
+            }
+
+            if (clamp_dk) {
+                dk_used[i] = d;
             }
         }
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
                     sorted_dk.front(), sorted_dk.back(), d_median);
+
             if (!dk_used_low.empty() || !dk_used_high.empty()) {
-                Rprintf("\tDiagnostic (no-clamp) bounds: [%.3e, %.3e]; outside: low=%d, high=%d\n",
-                        d_min_allowed, d_max_allowed,
-                        (int)dk_used_low.size(), (int)dk_used_high.size());
+                if (clamp_dk) {
+                    Rprintf("\tClamping enabled (factor=%.3g): bounds [%.3e, %.3e]; clamped: low=%d, high=%d\n",
+                            dk_clamp_median_factor, d_min_allowed, d_max_allowed,
+                            (int)dk_used_low.size(), (int)dk_used_high.size());
+                } else {
+                    Rprintf("\tDiagnostic (no-clamp) bounds [%.3e, %.3e]; outside: low=%d, high=%d\n",
+                            d_min_allowed, d_max_allowed,
+                            (int)dk_used_low.size(), (int)dk_used_high.size());
+                }
+            } else {
+                if (clamp_dk) {
+                    Rprintf("\tClamping enabled (factor=%.3g): no vertices outside bounds.\n",
+                            dk_clamp_median_factor);
+                }
             }
         }
 
-        // Step 3: Raw weights from raw d_k
+        // Step 4: Raw weights from d_k (clamped or raw depending on clamp_dk)
+        // w(i) = (epsilon + d_k_used(i))^{-alpha}
         for (size_t i = 0; i < n; ++i) {
-            vertex_weights[i] = std::pow(density_epsilon + all_dk[i], -density_alpha);
+            const double base = density_epsilon + dk_used[i];
+
+            if (!(base > 0.0)) {
+                // If alpha == 0, weight is 1 regardless (but still prefer a strict base check)
+                if (density_alpha == 0.0) {
+                    vertex_weights[i] = 1.0;
+                } else {
+                    Rf_error("reference_measure: density_epsilon + d_k must be > 0 (vertex %zu).", i + 1);
+                }
+            } else {
+                vertex_weights[i] = std::pow(base, -density_alpha);
+            }
+
+            if (!std::isfinite(vertex_weights[i]) || vertex_weights[i] < 0.0) {
+                Rf_error("reference_measure: non-finite or negative weight produced at vertex %zu.", i + 1);
+            }
         }
 
-        // Step 4: Cap weight ratio to R
+        // Step 5: Cap weight ratio to target_weight_ratio (if needed)
         double w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
         double w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
+
+        if (!(w_min > 0.0) || !std::isfinite(w_min) || !std::isfinite(w_max)) {
+            Rf_error("reference_measure: invalid weight range before compression (min=%.3e, max=%.3e).",
+                     w_min, w_max);
+        }
+
         double ratio = w_max / w_min;
 
         if (!std::isfinite(ratio) || ratio > target_weight_ratio) {
@@ -1119,7 +1227,7 @@ void riem_dcx_t::initialize_reference_measure(
                     vertex_weights,
                     /*average_even_median=*/false,
                     /*clamp_nonpositive_to_zero=*/false
-					);
+                );
 
                 // After log compression, still enforce exact cap via power compression if needed
                 power_compress_weights_to_ratio_in_place(vertex_weights, target_weight_ratio);
@@ -1131,6 +1239,12 @@ void riem_dcx_t::initialize_reference_measure(
 
             w_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
             w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
+
+            if (!(w_min > 0.0) || !std::isfinite(w_min) || !std::isfinite(w_max)) {
+                Rf_error("reference_measure: invalid weight range after compression (min=%.3e, max=%.3e).",
+                         w_min, w_max);
+            }
+
             ratio = w_max / w_min;
 
             if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
@@ -1141,30 +1255,45 @@ void riem_dcx_t::initialize_reference_measure(
 
     // Normalize to target sum
     double total = std::accumulate(vertex_weights.begin(), vertex_weights.end(), 0.0);
-    double target = (density_normalization > 0.0) ?
-                    density_normalization : static_cast<double>(n);
+    const double target = (density_normalization > 0.0) ?
+        density_normalization : static_cast<double>(n);
 
-    if (total > 1e-15) {
-        double scale = target / total;
+    if (!std::isfinite(total) || total <= 0.0) {
+        Rf_error("reference_measure: non-positive or non-finite total weight (total=%.3e).", total);
+    }
+    if (!std::isfinite(target) || target <= 0.0) {
+        Rf_error("reference_measure: invalid target normalization (target=%.3e).", target);
+    }
+
+    {
+        const double scale = target / total;
         for (double& w : vertex_weights) {
             w *= scale;
         }
     }
 
     // Final safety check
-    double final_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
-    double final_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
-    double final_ratio = final_max / final_min;
+    const double final_min = *std::min_element(vertex_weights.begin(), vertex_weights.end());
+    const double final_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
 
-	if (vl_at_least(verbose_level, verbose_level_t::DEBUG))
-		Rprintf("\tFinal reference measure: range [%.3e, %.3e], ratio=%.2e\n",
-				final_min, final_max, final_ratio);
+    if (!(final_min > 0.0) || !std::isfinite(final_min) || !std::isfinite(final_max)) {
+        Rf_error("reference_measure: invalid final weight range (min=%.3e, max=%.3e).",
+                 final_min, final_max);
+    }
+
+    const double final_ratio = final_max / final_min;
+
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("\tFinal reference measure: range [%.3e, %.3e], ratio=%.2e\n",
+                final_min, final_max, final_ratio);
+    }
 
     if (final_ratio > 1e6) {
         Rf_warning("Reference measure has extreme ratio %.2e. "
-                   "Consider using use_counting_measure=TRUE for more uniform initialization.",
+                   "Consider use_counting_measure=TRUE for more uniform initialization.",
                    final_ratio);
     }
 
     this->reference_measure = std::move(vertex_weights);
 }
+

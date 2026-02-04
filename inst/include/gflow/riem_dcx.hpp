@@ -676,26 +676,9 @@ struct riem_dcx_t {
     // METHODS
     // ================================================================
 
-    vec_t compute_rho_pre_randomwalk(int m,
-                                     double eta,
-                                     double kappa,
-                                     bool use_distance_weights = true,
-                                     double eps = 1e-12) const;
-
-    vec_t compute_rho_pre_row_randomwalk(int m,
-                                         double eta,
-                                         double kappa,
-                                         bool use_distance_weights = true,
-                                         double eps = 1e-12) const;
-                                                            
-    void apply_rho_preconditioner_and_rebuild(const vec_t& rho_pre);
-
-    bool maybe_apply_rho_preconditioner_from_R_options(int verbose_level);
-
-    
     /**
-     * @brief Fit Riemannian graph regression model using iterative geometric refinement
-     */
+    * @brief Fit Riemannian graph regression model using iterative geometric refinement
+    */
     void fit_rdgraph_regression(
         const spmat_t& X,
         const vec_t& y,
@@ -720,9 +703,30 @@ struct riem_dcx_t {
         double threshold_percentile,
         double density_alpha,
         double density_epsilon,
+        bool clamp_dk,
+        double dk_clamp_median_factor,
+        double target_weight_ratio,
+        double pathological_ratio_threshold,
         verbose_level_t verbose_level
         );
 
+    vec_t compute_rho_pre_randomwalk(int m,
+                                     double eta,
+                                     double kappa,
+                                     bool use_distance_weights = true,
+                                     double eps = 1e-12) const;
+
+    vec_t compute_rho_pre_row_randomwalk(int m,
+                                         double eta,
+                                         double kappa,
+                                         bool use_distance_weights = true,
+                                         double eps = 1e-12) const;
+                                                            
+    void apply_rho_preconditioner_and_rebuild(const vec_t& rho_pre);
+
+    bool maybe_apply_rho_preconditioner_from_R_options(int verbose_level);
+
+    
     /**
      * @brief Compute Bayesian posterior credible intervals for fitted response values
      */
@@ -911,22 +915,6 @@ struct riem_dcx_t {
     // ================================================================
 
     /**
-     * @brief Initialize Riemannian simplicial complex from k-NN structure
-     */
-    void initialize_from_knn(
-        const spmat_t& X,
-        index_t k,
-        bool use_counting_measure,
-        double density_normalization,
-        double max_ratio_threshold,
-        double path_edge_ratio_percentile,
-        double threshold_percentile,
-        double density_alpha,
-        double density_epsilon,
-        verbose_level_t verbose_level
-        );
-
-    /**
      * @brief Compute number of connected components in graph
      * @return Number of connected components (1 = connected)
      */
@@ -1082,8 +1070,32 @@ private:
         double density_normalization,
         double density_alpha,
         double density_epsilon,
+        bool clamp_dk,
+        double dk_clamp_median_factor,
+        double target_weight_ratio,
+        double pathological_ratio_threshold,
         verbose_level_t verbose_level
-    );
+        );
+
+    /**
+     * @brief Initialize Riemannian simplicial complex from k-NN structure
+     */
+    void initialize_from_knn(
+        const spmat_t& X,
+        index_t k,
+        bool use_counting_measure,
+        double density_normalization,
+        double max_ratio_threshold,
+        double path_edge_ratio_percentile,
+        double threshold_percentile,
+        double density_alpha,
+        double density_epsilon,
+        bool clamp_dk,
+        double dk_clamp_median_factor,
+        double target_weight_ratio,
+        double pathological_ratio_threshold,
+        verbose_level_t verbose_level
+        );
 
     /**
      * @brief Compute initial densities from reference measure

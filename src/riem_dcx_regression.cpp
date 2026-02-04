@@ -5634,6 +5634,10 @@ void riem_dcx_t::fit_rdgraph_regression(
     double threshold_percentile,
     double density_alpha,
     double density_epsilon,
+    bool clamp_dk,
+    double dk_clamp_median_factor,
+    double target_weight_ratio,
+    double pathological_ratio_threshold,
     verbose_level_t verbose_level
     ) {
     // ================================================================
@@ -5660,6 +5664,10 @@ void riem_dcx_t::fit_rdgraph_regression(
         threshold_percentile,
         density_alpha,
         density_epsilon,
+        clamp_dk,
+        dk_clamp_median_factor,
+        target_weight_ratio,
+        pathological_ratio_threshold,
         verbose_level
         );
 
@@ -6957,10 +6965,10 @@ vec_t riem_dcx_t::compute_rho_pre_randomwalk(int m,
  *      neighbor_info_t::vertex_index giving neighbor j and neighbor_info_t::dist giving edge length.
  */
 vec_t riem_dcx_t::compute_rho_pre_row_randomwalk(int m,
-                                                             double eta,
-                                                             double kappa,
-                                                             bool use_distance_weights,
-                                                             double eps) const
+                                                 double eta,
+                                                 double kappa,
+                                                 bool use_distance_weights,
+                                                 double eps) const
 {
     const size_t n = vertex_cofaces.size();
     vec_t rho_pre(n);
