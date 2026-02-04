@@ -139,7 +139,7 @@
 #'     iteration for each candidate, then uses the selected value for the full
 #'     iterative refinement. Recommended when the response smoothness
 #'     characteristics are unknown or when exploring new datasets. When
-#'     positive, must be less than 2.0 and Default 0.3.
+#'     positive, must be less than 2.0 and Default 0.
 #'
 #' @param t.scale.factor Diffusion scale factor (positive numeric). Controls the
 #'     dimensionless product \eqn{t \cdot \lambda_2} when \code{t.diffusion = 0}
@@ -171,13 +171,16 @@
 #'     10\% as much as the identity term in the system matrix. Typical range:
 #'     \eqn{[0.05, 0.3]}. Default: 0.1
 #'
-#' @param t.update Character scalar. Either \code{"fixed"} (default) or \code{"per_iteration"}.
-#'   If \code{"per_iteration"}, the diffusion time \code{t.diffusion} is updated each iteration to keep
-#'   the diffusion scale \eqn{s = t \lambda_2} approximately constant using the current \eqn{\lambda_2}.
-#'   Only applied when \code{t.diffusion <= 0} (auto-selected t).
+#' @param t.update Character scalar. Either \code{"fixed"} (default) or
+#'     \code{"per_iteration"}. If \code{"per_iteration"}, the diffusion time
+#'     \code{t.diffusion} is updated each iteration to keep the diffusion scale
+#'     \eqn{s = t \lambda_2} approximately constant using the current
+#'     \eqn{\lambda_2}. Only applied when \code{t.diffusion <= 0} (auto-selected
+#'     t).
 #'
-#' @param t.update.max.mult Numeric scalar \eqn{\ge 1}. Maximum multiplicative change allowed for
-#'   \code{t.diffusion} in a single iteration when \code{t.update="per_iteration"} (default 1.25).
+#' @param t.update.max.mult Numeric scalar \eqn{\ge 1}. Maximum multiplicative
+#'     change allowed for \code{t.diffusion} in a single iteration when
+#'     \code{t.update="per_iteration"} (default 1.25).
 #'
 #' @param use.counting.measure Logical scalar. If TRUE, uses uniform vertex
 #'     weights (counting measure). If FALSE, uses distance-based weights
@@ -193,21 +196,38 @@
 #'   for very large graphs to avoid numerical underflow.
 #'
 #' @param density.alpha Exponent alpha in \eqn{[1,2]} for distance-based
-#'                     reference measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}.
-#'                     Larger values (near 2) create stronger density-adaptive
-#'                     weighting, concentrating measure on densely sampled
-#'                     regions. Smaller values (near 1) produce more uniform
-#'                     weighting. Only used when use_counting_measure = FALSE.
-#'                     Default: 1.5.
+#'     reference measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}.
+#'     Larger values (near 2) create stronger density-adaptive weighting,
+#'     concentrating measure on densely sampled regions. Smaller values (near 1)
+#'     produce more uniform weighting. Only used when use_counting_measure =
+#'     FALSE. Default: 1.5.
 #'
 #' @param density.epsilon Regularization parameter epsilon > 0 in reference
-#'                       measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}.
-#'                       Prevents numerical issues when nearest neighbor
-#'                       distances are very small. Should be small relative to
-#'                       typical k-NN distances but large enough for stability.
-#'                       Only used when use_counting_measure = FALSE.
-#'                       Default: 1e-10.
+#'     measure formula \eqn{\mu(x) = (\epsilon + d_k(x))^{-\alpha}}. Prevents
+#'     numerical issues when nearest neighbor distances are very small. Should
+#'     be small relative to typical k-NN distances but large enough for
+#'     stability. Only used when use_counting_measure = FALSE. Default: 1e-10.
 #'
+#' @param clamp.dk Logical scalar. If \code{TRUE}, clamp the k-th neighbor distances
+#'   \eqn{d_k} used to construct the distance-based reference measure before converting
+#'   them to weights. Clamping uses median-factor bounds controlled by
+#'   \code{dk.clamp.median.factor}. If \code{FALSE}, no clamping is applied (bounds
+#'   may still be computed for diagnostics).
+#'
+#' @param dk.clamp.median.factor Numeric scalar \eqn{> 1}. Median-factor used to define
+#'   clamping bounds when \code{clamp.dk = TRUE}:
+#'   \eqn{[ \mathrm{median}(d_k) / f,\ \mathrm{median}(d_k) \cdot f ]}.
+#'   Larger values reduce clamping; smaller values increase clamping.
+#'
+#' @param target.weight.ratio Numeric scalar. Upper bound on the dynamic range of the
+#'   reference measure weights, enforcing \eqn{\max(w)/\min(w) \le R} via compression
+#'   when needed. Larger values reduce compression; smaller values increase compression.
+#'
+#' @param pathological.ratio.threshold Numeric scalar. Threshold for triggering a more
+#'   robust compression path when the initial weight ratio is extremely large or non-finite.
+#'   When \eqn{\max(w)/\min(w)} exceeds this value, an additional log-compression step
+#'   may be applied before enforcing \code{target.weight.ratio}.
+#' 
 #' @param compute.extremality Logical; compute Riemannian extremality scores
 #'   during fitting? When TRUE, extremality scores are computed for all vertices
 #'   at the optimal GCV iteration using the full Riemannian metric via the
@@ -611,6 +631,10 @@ fit.rdgraph.regression <- function(
     density.normalization = 0,
     density.alpha = 1.5,
     density.epsilon = 1e-10,
+    clamp.dk = FALSE,
+    dk.clamp.median.factor = 10.0,
+    target.weight.ratio = 1000,
+    pathological.ratio.threshold = 1e12,
     compute.extremality = FALSE,
     p.threshold = 0.95,
     max.hop = 30L,
@@ -809,6 +833,39 @@ fit.rdgraph.regression <- function(
         stop("density.epsilon must be finite and positive, got ", density.epsilon)
     }
 
+    ## ---- reference measure: d_k clamping + weight compression controls ----
+
+    if (!is.logical(clamp.dk) || length(clamp.dk) != 1L || is.na(clamp.dk)) {
+        stop("clamp.dk must be a single, non-NA logical.")
+    }
+
+    if (!is.numeric(dk.clamp.median.factor) || length(dk.clamp.median.factor) != 1L ||
+        is.na(dk.clamp.median.factor) || !is.finite(dk.clamp.median.factor) ||
+        dk.clamp.median.factor <= 1.0) {
+        stop(sprintf("dk.clamp.median.factor must be a single finite number > 1 (got %s).",
+                     format(dk.clamp.median.factor)))
+    }
+
+    if (!is.numeric(target.weight.ratio) || length(target.weight.ratio) != 1L ||
+        is.na(target.weight.ratio) || !is.finite(target.weight.ratio) ||
+        target.weight.ratio <= 10.0) {
+        stop(sprintf("target.weight.ratio must be a single finite number > 10 (got %s).",
+                     format(target.weight.ratio)))
+    }
+
+    if (!is.numeric(pathological.ratio.threshold) || length(pathological.ratio.threshold) != 1L ||
+        is.na(pathological.ratio.threshold) || !is.finite(pathological.ratio.threshold) ||
+        pathological.ratio.threshold <= 1e6) {
+        stop(sprintf("pathological.ratio.threshold must be a single finite number > 1e6 (got %s).",
+                     format(pathological.ratio.threshold)))
+    }
+
+    ## Strongly recommended for consistency with intended behavior
+    if (pathological.ratio.threshold <= target.weight.ratio) {
+        stop(sprintf("pathological.ratio.threshold must be > target.weight.ratio (got %.3e <= %.3e).",
+                     pathological.ratio.threshold, target.weight.ratio))
+    }
+    
     ## ==================== Parameter compute.extremality Validation ====================
 
     if (!is.logical(compute.extremality) || length(compute.extremality) != 1) {
@@ -1150,6 +1207,10 @@ fit.rdgraph.regression <- function(
         as.double(threshold.percentile),
         as.double(density.alpha),
         as.double(density.epsilon),
+        as.logical(clamp.dk),
+        as.double(dk.clamp.median.factor),
+        as.double(target.weight.ratio),
+        as.double(pathological.ratio.threshold),
         as.logical(compute.extremality),
         as.double(p.threshold),
         as.integer(max.hop),

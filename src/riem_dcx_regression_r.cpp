@@ -1144,6 +1144,10 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_threshold_percentile,
     SEXP s_density_alpha,
     SEXP s_density_epsilon,
+    SEXP s_clamp_dk,
+    SEXP s_dk_clamp_median_factor,
+    SEXP s_target_weight_ratio,
+    SEXP s_pathological_ratio_threshold,
     SEXP s_compute_extremality,
     SEXP s_p_threshold,
     SEXP s_max_hop,
@@ -1715,6 +1719,67 @@ extern "C" SEXP S_fit_rdgraph_regression(
                  density_epsilon);
     }
 
+    // -------------------- s_clamp_dk --------------------
+
+    if (TYPEOF(s_clamp_dk) != LGLSXP ||
+        Rf_length(s_clamp_dk) != 1) {
+        Rf_error("clamp_dk must be a single logical value");
+    }
+
+    const int clamp_dk_int = LOGICAL(s_clamp_dk)[0];
+
+    if (clamp_dk_int == NA_LOGICAL) {
+        Rf_error("clamp_dk cannot be NA");
+    }
+
+    const bool clamp_dk = (clamp_dk_int != 0);
+
+    
+    // -------------------- dk_clamp_median_factor --------------------
+
+    if (!Rf_isNumeric(s_dk_clamp_median_factor) || Rf_length(s_dk_clamp_median_factor) != 1) {
+        Rf_error("dk_clamp_median_factor must be a single numeric value");
+    }
+
+    const double dk_clamp_median_factor = Rf_asReal(s_dk_clamp_median_factor);
+
+    if (!R_FINITE(dk_clamp_median_factor) || dk_clamp_median_factor <= 1.0) {
+        Rf_error("dk_clamp_median_factor must be a finite number greater than 1 (got %.3e)",
+                 dk_clamp_median_factor);
+    }
+
+    // -------------------- target_weight_ratio --------------------
+
+    if (!Rf_isNumeric(s_target_weight_ratio) || Rf_length(s_target_weight_ratio) != 1) {
+        Rf_error("target_weight_ratio must be a single numeric value");
+    }
+
+    const double target_weight_ratio = Rf_asReal(s_target_weight_ratio);
+
+    if (!R_FINITE(target_weight_ratio) || target_weight_ratio <= 1.0) {
+        Rf_error("target_weight_ratio must be a finite number greater than 1 (got %.3e)",
+                 target_weight_ratio);
+    }
+
+   // -------------------- pathological_ratio_threshold --------------------
+
+    if (!Rf_isNumeric(s_pathological_ratio_threshold) || Rf_length(s_pathological_ratio_threshold) != 1) {
+        Rf_error("pathological_ratio_threshold must be a single numeric value");
+    }
+
+    const double pathological_ratio_threshold = Rf_asReal(s_pathological_ratio_threshold);
+
+    if (!R_FINITE(pathological_ratio_threshold) || pathological_ratio_threshold <= 1.0) {
+        Rf_error("pathological_ratio_threshold must be a finite number greater than 1 (got %.3e)",
+                 pathological_ratio_threshold);
+    }
+
+    if (pathological_ratio_threshold <= target_weight_ratio) {
+        Rf_error("pathological_ratio_threshold must be greater than target_weight_ratio "
+                 "(got %.3e <= %.3e).",
+                 pathological_ratio_threshold, target_weight_ratio);
+    }
+    
     // -------------------- s_verbose_level --------------------
 
     if (TYPEOF(s_verbose_level) != INTSXP || Rf_length(s_verbose_level) != 1) {
@@ -1744,32 +1809,36 @@ extern "C" SEXP S_fit_rdgraph_regression(
     riem_dcx_t dcx;  // Stack allocation now! No need for new/delete
 
     try {
-        dcx.fit_rdgraph_regression(
-            X_sparse,
-            y,
-            y_vertices,
-            k,
-            use_counting_measure,
-            density_normalization,
-            t_diffusion,
-            beta_damping,
-            gamma_modulation,
-            t_scale_factor,
-            beta_coefficient_factor,
-            t_update_mode,
-            t_update_max_mult,
-            n_eigenpairs,
-            filter_type,
-            epsilon_y,
-            epsilon_rho,
-            max_iterations,
-            max_ratio_threshold,
-            path_edge_ratio_percentile,
-            threshold_percentile,
-            density_alpha,
-            density_epsilon,
-            verbose_level
-            );
+    dcx.fit_rdgraph_regression(
+        X_sparse,
+        y,
+        y_vertices,
+        k,
+        use_counting_measure,
+        density_normalization,
+        t_diffusion,
+        beta_damping,
+        gamma_modulation,
+        t_scale_factor,
+        beta_coefficient_factor,
+        t_update_mode,
+        t_update_max_mult,
+        n_eigenpairs,
+        filter_type,
+        epsilon_y,
+        epsilon_rho,
+        max_iterations,
+        max_ratio_threshold,
+        path_edge_ratio_percentile,
+        threshold_percentile,
+        density_alpha,
+        density_epsilon,
+        clamp_dk,
+        dk_clamp_median_factor,
+        target_weight_ratio,
+        pathological_ratio_threshold,
+        verbose_level
+        );
 
     } catch (const std::exception& e) {
         Rf_error("Regression fitting failed: %s", e.what());

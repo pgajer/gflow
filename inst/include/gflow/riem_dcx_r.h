@@ -42,10 +42,15 @@ extern "C" {
 		SEXP s_threshold_percentile,
 		SEXP s_density_alpha,
 		SEXP s_density_epsilon,
+		SEXP s_clamp_dk,
+		SEXP s_dk_clamp_median_factor,
+		
+		SEXP s_target_weight_ratio,
+		SEXP s_pathological_ratio_threshold,	
 		SEXP s_compute_extremality,
 		SEXP s_p_threshold,
-
 		SEXP s_max_hop,
+		
 		SEXP s_verbose_level
 		);
 
