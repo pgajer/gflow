@@ -820,8 +820,8 @@ fit.rdgraph.regression <- function(
     if (!is.numeric(density.alpha) || length(density.alpha) != 1) {
         stop("density.alpha must be a single numeric value")
     }
-    if (!is.finite(density.alpha) || density.alpha < 1.0 || density.alpha > 2.0) {
-        stop("density.alpha must be finite and in [1, 2], got ", density.alpha)
+    if (!is.finite(density.alpha) || density.alpha < 0.1 || density.alpha > 2.0) {
+        stop("density.alpha must be finite and in [0.1, 2], got ", density.alpha)
     }
 
     ## ==================== Parameter density.epsilon ====================

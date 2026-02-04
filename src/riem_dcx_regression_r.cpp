@@ -1651,8 +1651,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     const double density_alpha = REAL(s_density_alpha)[0];
 
-    if (!R_FINITE(density_alpha) || density_alpha < 1.0 || density_alpha > 2.0) {
-        Rf_error("density.alpha must be finite and in [1, 2] (got %.3f)", density_alpha);
+    if (!R_FINITE(density_alpha) || density_alpha < 0.1 || density_alpha > 2.0) {
+        Rf_error("density.alpha must be finite and in [0.1, 2] (got %.3f)", density_alpha);
     }
 
     // -------------------- s_compute_extremality --------------------
