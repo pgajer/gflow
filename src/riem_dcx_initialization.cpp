@@ -1081,7 +1081,7 @@ void riem_dcx_t::initialize_reference_measure(
             }
         }
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tReference measure: d_k range [%.3e, %.3e], median=%.3e\n",
                     sorted_dk.front(), sorted_dk.back(), d_median);
             if (!dk_used_low.empty() || !dk_used_high.empty()) {
@@ -1103,7 +1103,7 @@ void riem_dcx_t::initialize_reference_measure(
 
         if (!std::isfinite(ratio) || ratio > target_weight_ratio) {
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("\tInitial weight ratio = %.2e (target <= %.2e)\n",
                         ratio, target_weight_ratio);
             }
@@ -1111,7 +1111,7 @@ void riem_dcx_t::initialize_reference_measure(
             // Robust mode for pathological ratios
             if (!std::isfinite(ratio) || ratio > pathological_ratio_threshold) {
 
-                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                     Rprintf("\tPathological ratio detected (%.2e). Applying log compression...\n", ratio);
                 }
 
@@ -1133,7 +1133,7 @@ void riem_dcx_t::initialize_reference_measure(
             w_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
             ratio = w_max / w_min;
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("\tAfter compression: weight ratio = %.2e\n", ratio);
             }
         }
@@ -1156,7 +1156,7 @@ void riem_dcx_t::initialize_reference_measure(
     double final_max = *std::max_element(vertex_weights.begin(), vertex_weights.end());
     double final_ratio = final_max / final_min;
 
-	if (vl_at_least(verbose_level, verbose_level_t::TRACE))
+	if (vl_at_least(verbose_level, verbose_level_t::DEBUG))
 		Rprintf("\tFinal reference measure: range [%.3e, %.3e], ratio=%.2e\n",
 				final_min, final_max, final_ratio);
 

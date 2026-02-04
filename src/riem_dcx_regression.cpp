@@ -1,3 +1,5 @@
+#include <Rcpp.h>
+
 #include "riem_dcx.hpp"
 #include "iknn_vertex.hpp"    // for iknn_vertex_t
 #include "kNN.h"
@@ -13,12 +15,171 @@
 #include <Spectra/MatOp/SparseSymMatProd.h> // For SparseSymMatProd
 
 #include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Print.h>   // Rprintf
+#include <R_ext/Error.h>   // Rf_error
 
 #include <cmath>
 #include <limits>
 #include <algorithm>
 #include <iomanip>
 #include <random>     // For std::mt19937
+#include <cstring>    // std::strcmp
+
+
+#if 0
+/**
+ * @brief Read rho^{pre} preconditioner parameters from R option "gflow.rho.pre.params".
+ *
+ * Accepted forms:
+ *   - NULL or FALSE: disabled (returns false)
+ *   - TRUE: enabled using current (possibly caller-set) defaults (returns true)
+ *   - list(...): enabled, reads fields:
+ *       m (integer),
+ *       eta (numeric),
+ *       kappa (numeric),
+ *       use_distance_weights (logical)
+ *
+ * Any missing fields keep the incoming defaults provided by the caller.
+ *
+ * @param m_pre  [in,out] default m; overwritten if list contains m
+ * @param eta_pre [in,out] default eta; overwritten if list contains eta
+ * @param kappa_pre [in,out] default kappa; overwritten if list contains kappa
+ * @param use_distance_weights [in,out] default flag; overwritten if list contains use_distance_weights
+ *
+ * @return true if preconditioner is enabled, false otherwise.
+ */
+static bool get_rho_pre_params_from_R_options(int& m_pre,
+                                              double& eta_pre,
+                                              double& kappa_pre,
+                                              bool& use_distance_weights)
+{
+    // Fetch option
+    SEXP opt = Rf_GetOption1(Rf_install("gflow.rho.pre.params"));
+
+    // Disabled if NULL or explicit FALSE
+    if (opt == R_NilValue) return false;
+    if (TYPEOF(opt) == LGLSXP && Rf_length(opt) == 1 && LOGICAL(opt)[0] == 0) return false;
+
+    // Enabled if TRUE
+    if (TYPEOF(opt) == LGLSXP && Rf_length(opt) == 1 && LOGICAL(opt)[0] == 1) {
+        // sanitize caller defaults
+        if (m_pre < 0) m_pre = 0;
+        if (!std::isfinite(eta_pre)) eta_pre = 1.0;
+        if (eta_pre < 0.0) eta_pre = 0.0;
+        if (eta_pre > 1.0) eta_pre = 1.0;
+        if (!(kappa_pre > 0.0) || !std::isfinite(kappa_pre)) kappa_pre = 1.0;
+        return true;
+    }
+
+    // Must be a named list to override defaults
+    if (TYPEOF(opt) != VECSXP) {
+        Rf_error("Option gflow.rho.pre.params must be NULL/FALSE/TRUE or a named list.");
+    }
+
+    SEXP nms = Rf_getAttrib(opt, R_NamesSymbol);
+    if (nms == R_NilValue) {
+        Rf_error("Option gflow.rho.pre.params must be a named list (fields: m, eta, kappa, use_distance_weights).");
+    }
+
+    auto list_get = [&](const char* name) -> SEXP {
+        const R_xlen_t n = XLENGTH(opt);
+        for (R_xlen_t i = 0; i < n; ++i) {
+            SEXP nm = STRING_ELT(nms, i);
+            if (nm == NA_STRING) continue;
+            if (std::strcmp(CHAR(nm), name) == 0) return VECTOR_ELT(opt, i);
+        }
+        return R_NilValue;
+    };
+
+    auto read_int1 = [&](SEXP x, int& out) -> bool {
+        if (x == R_NilValue) return false;
+        if (TYPEOF(x) == INTSXP && Rf_length(x) >= 1) {
+            int v = INTEGER(x)[0];
+            if (v == NA_INTEGER) return false;
+            out = v;
+            return true;
+        }
+        if (TYPEOF(x) == REALSXP && Rf_length(x) >= 1) {
+            double d = REAL(x)[0];
+            if (!std::isfinite(d)) return false;
+            out = static_cast<int>(std::llround(d));
+            return true;
+        }
+        // coercion fallback
+        SEXP xi = PROTECT(Rf_coerceVector(x, INTSXP));
+        bool ok = false;
+        if (Rf_length(xi) >= 1) {
+            int v = INTEGER(xi)[0];
+            if (v != NA_INTEGER) { out = v; ok = true; }
+        }
+        UNPROTECT(1);
+        return ok;
+    };
+
+    auto read_double1 = [&](SEXP x, double& out) -> bool {
+        if (x == R_NilValue) return false;
+        if (TYPEOF(x) == REALSXP && Rf_length(x) >= 1) {
+            double v = REAL(x)[0];
+            if (!std::isfinite(v)) return false;
+            out = v;
+            return true;
+        }
+        if (TYPEOF(x) == INTSXP && Rf_length(x) >= 1) {
+            int v = INTEGER(x)[0];
+            if (v == NA_INTEGER) return false;
+            out = static_cast<double>(v);
+            return true;
+        }
+        // coercion fallback
+        SEXP xr = PROTECT(Rf_coerceVector(x, REALSXP));
+        bool ok = false;
+        if (Rf_length(xr) >= 1) {
+            double v = REAL(xr)[0];
+            if (std::isfinite(v)) { out = v; ok = true; }
+        }
+        UNPROTECT(1);
+        return ok;
+    };
+
+    auto read_bool1 = [&](SEXP x, bool& out) -> bool {
+        if (x == R_NilValue) return false;
+        if (TYPEOF(x) == LGLSXP && Rf_length(x) >= 1) {
+            int v = LOGICAL(x)[0];
+            if (v == NA_LOGICAL) return false;
+            out = (v != 0);
+            return true;
+        }
+        // coercion fallback
+        SEXP xl = PROTECT(Rf_coerceVector(x, LGLSXP));
+        bool ok = false;
+        if (Rf_length(xl) >= 1) {
+            int v = LOGICAL(xl)[0];
+            if (v != NA_LOGICAL) { out = (v != 0); ok = true; }
+        }
+        UNPROTECT(1);
+        return ok;
+    };
+
+    // Override defaults if present
+    (void)read_int1(list_get("m"), m_pre);
+    (void)read_double1(list_get("eta"), eta_pre);
+    (void)read_double1(list_get("kappa"), kappa_pre);
+    (void)read_bool1(list_get("use_distance_weights"), use_distance_weights);
+
+    // Sanitize
+    if (m_pre < 0) m_pre = 0;
+
+    if (!std::isfinite(eta_pre)) eta_pre = 1.0;
+    if (eta_pre < 0.0) eta_pre = 0.0;
+    if (eta_pre > 1.0) eta_pre = 1.0;
+
+    if (!(kappa_pre > 0.0) || !std::isfinite(kappa_pre)) kappa_pre = 1.0;
+
+    return true; // list implies enabled
+}
+#endif
+
 
 // ================================================================
 // HARD SPECTRAL INVARIANTS (post-solve, post-sort)
@@ -205,7 +366,7 @@ void riem_dcx_t::compute_initial_densities(verbose_level_t verbose_level) {
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("  Initializing densities for %zu vertices, %zu edges\n",
+        Rprintf("\tInitializing densities for %zu vertices, %zu edges\n",
                 n_vertices, n_edges);
     }
 
@@ -308,11 +469,11 @@ void riem_dcx_t::compute_initial_densities(verbose_level_t verbose_level) {
     double v_ratio = v_max / std::max(v_min, 1e-15);
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("  Vertex densities: range [%.3e, %.3e], ratio=%.2e\n",
+        Rprintf("\tVertex densities: range [%.3e, %.3e], ratio=%.2e\n",
                 v_min, v_max, v_ratio);
 
         if (n_vertex_clamped > 0) {
-            Rprintf("  Clamped %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+            Rprintf("\tClamped %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
                     n_vertex_clamped, 100.0 * n_vertex_clamped / n_vertices, MIN_DENSITY);
         }
     }
@@ -513,13 +674,13 @@ void riem_dcx_t::compute_initial_densities(verbose_level_t verbose_level) {
     double e_ratio = e_max / std::max(e_min, 1e-15);
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("  Edge densities: range [%.3e, %.3e], ratio=%.2e\n",
+        Rprintf("\tEdge densities: range [%.3e, %.3e], ratio=%.2e\n",
                 e_min, e_max, e_ratio);
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         if (n_edge_clamped > 0) {
-            Rprintf("  Clamped %d edges (%.1f%%) to MIN_DENSITY=%.2e\n",
+            Rprintf("\tClamped %d edges (%.1f%%) to MIN_DENSITY=%.2e\n",
                     n_edge_clamped, 100.0 * n_edge_clamped / n_edges, MIN_DENSITY);
         }
 
@@ -559,7 +720,7 @@ void riem_dcx_t::compute_initial_densities(verbose_level_t verbose_level) {
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("  Initialization complete: densities sum to n=%zu (vertices), m=%zu (edges)\n",
+        Rprintf("\tInitialization complete: densities sum to n=%zu (vertices), m=%zu (edges)\n",
                 n_vertices, n_edges);
     }
 }
@@ -1387,10 +1548,10 @@ void riem_dcx_t::compute_spectral_decomposition(
     if (available_threads == 0) available_threads = 4;  // Fallback if detection fails
     Eigen::setNbThreads(available_threads);
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-        Rprintf("\n\tIn compute_spectral_decomposition()\n\tEigen::nbThreads(): n=%d available_threads=%u\n",
-                Eigen::nbThreads(), available_threads);
-    }
+    // if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    //     Rprintf("\n\tIn compute_spectral_decomposition()\n\tEigen::nbThreads(): n=%d available_threads=%u\n",
+    //             Eigen::nbThreads(), available_threads);
+    // }
     
     auto decomp_start = std::chrono::steady_clock::now();
     auto phase_time = std::chrono::steady_clock::now();
@@ -1398,11 +1559,9 @@ void riem_dcx_t::compute_spectral_decomposition(
     static bool printed_progress_header = false;
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("\n\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n",
-                L.L[0].rows(), n_eigenpairs);
+        // Rprintf("\tSpectral decomposition: n=%ld vertices, requested eigenpairs=%d\n", L.L[0].rows(), n_eigenpairs);
         if (!printed_progress_header) {
-            Rprintf("\n\teigs: n=%ld nev=%d\n",
-                    L.L[0].rows(), n_eigenpairs);
+            // Rprintf("\n\teigs: n=%ld nev=%d\n", L.L[0].rows(), n_eigenpairs);
             printed_progress_header = true;
         }
     }
@@ -1415,7 +1574,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // Select appropriate Laplacian (use normalized if available)
     const spmat_t& L0 = (L.L0_mass_sym.rows() > 0) ? L.L0_mass_sym : L.L[0];
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         const char* tag = (L.L0_mass_sym.rows() > 0) ? "L0_mass_sym" : "L[0]";
         debug_print_L0_diagnostics(*this, L0, tag, verbose_level);
     }
@@ -1467,10 +1626,10 @@ void riem_dcx_t::compute_spectral_decomposition(
     //    the pre-density operator can be very ill-conditioned for sparse Krylov.
     // 2) Phase 5 (pre-density full basis): avoid long failing sparse attempt.
     // ------------------------------------------------------------
-    const bool small_nev = (n_eigenpairs <= 10);
+    // const bool small_nev = (n_eigenpairs <= 10);
     const bool moderate_n = (n_vertices <= 5000);
 
-    if (moderate_n && ((phase45_mode && small_nev) || pre_density_full_basis_mode)) {
+    if (moderate_n && (phase45_mode || pre_density_full_basis_mode)) {
         // Force dense solver path
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\tUsing dense solver (forced by mode; n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
@@ -1500,7 +1659,6 @@ void riem_dcx_t::compute_spectral_decomposition(
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             elapsed_time(phase_time, "DONE", true);
-            elapsed_time(decomp_start, "  Total decomposition time", true);
         }
         return;
     }
@@ -1526,21 +1684,21 @@ void riem_dcx_t::compute_spectral_decomposition(
     // ------------------------------------------------------------
     int ncv_default = std::max(2 * nev + 10, 150);
     ncv_default = std::min(ncv_default, n_vertices);
-
+    
     int maxit = 1000;
     double tol = 1e-6;
 
-    if (phase45_mode) {
+    if (0 && phase45_mode) {
         // ncv_default = std::min(std::max(ncv_default, 250), n_vertices);
-        ncv_default = std::min(50, n_vertices);
+        ncv_default = std::min(25, n_vertices);
         tol = 1e-5;
-        maxit = 3000;
+        maxit = 1000;
     }
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("\tUsing sparse iterative solver (nev=%d, ncv=%d) ... \n", nev, ncv_default);
         phase_time = std::chrono::steady_clock::now();
-        Rprintf("    Attempt 1: Standard parameters (maxit=%d, tol=%g) ... ", maxit, tol);
+        Rprintf("\tAttempt 1: Standard parameters (maxit=%d, tol=%g) ... ", maxit, tol);
     }
 
     // Setup operator
@@ -1549,7 +1707,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     eigs.init();
     eigs.compute(Spectra::SortRule::SmallestAlge, maxit, tol);
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         elapsed_time(phase_time, "DONE", true);
     }
 
@@ -1752,7 +1910,7 @@ void riem_dcx_t::compute_spectral_decomposition(
                 Rprintf("    Dense solver succeeded!\n");
 
                 #if 0
-                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                     const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
                     Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
                     for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
@@ -1773,7 +1931,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // TIER 1: Relaxed convergence criteria
     // ============================================================
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("    Tier 1: Relaxed convergence criteria ... \n");
     }
 
@@ -1786,7 +1944,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     for (size_t idx = 0; idx < tier1_attempts.size(); ++idx) {
         const auto& [adjusted_maxit, adjusted_tol] = tier1_attempts[idx];
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("      Attempt %zu: maxit=%d, tol=%.2e ... ",
                     idx + 2, adjusted_maxit, adjusted_tol);
         }
@@ -1796,7 +1954,7 @@ void riem_dcx_t::compute_spectral_decomposition(
 
         if (eigs.info() == Spectra::CompInfo::Successful) {
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("Success\n");
             }
 
@@ -1824,13 +1982,13 @@ void riem_dcx_t::compute_spectral_decomposition(
             // Confirm ordering AFTER sorting
             debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-                elapsed_time(decomp_start, "  Total decomposition time", true);
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                elapsed_time(decomp_start, "\tTotal decomposition time", true);
             }
             return;
         }
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("Failed\n");
         }
     }
@@ -1838,7 +1996,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     // ============================================================
     // TIER 2: Enlarged Krylov subspace with relaxed criteria
     // ============================================================
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("    Tier 2: Enlarged Krylov subspace ... \n");
     }
 
@@ -1852,7 +2010,7 @@ void riem_dcx_t::compute_spectral_decomposition(
     int multiplier_idx = 1;
     for (int multiplier : ncv_multipliers) {
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("      Attempt %u: Using multiplier=%d ... ", multiplier_idx++, multiplier);
             phase_time = std::chrono::steady_clock::now();
         }
@@ -1899,7 +2057,7 @@ void riem_dcx_t::compute_spectral_decomposition(
                 debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
 
                 #if 0
-                if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                     const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
                     Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
                     for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
@@ -1911,16 +2069,16 @@ void riem_dcx_t::compute_spectral_decomposition(
             }
         }
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             elapsed_time(phase_time, "DONE", true);
-            elapsed_time(decomp_start, "  Total decomposition time", true);
+            elapsed_time(decomp_start, "\tTotal decomposition time", true);
         }
     }
 
     // ============================================================
     // TIER 3: Dense fallback for small-medium problems
     // ============================================================
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         Rprintf("    Tier 3: Dense fallback for small-medium problems ... \n");
     }
 
@@ -1958,7 +2116,7 @@ void riem_dcx_t::compute_spectral_decomposition(
             Rprintf("Dense eigendecomposition successful\n");
 
             #if 0
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
                 Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
                 for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
@@ -1970,9 +2128,9 @@ void riem_dcx_t::compute_spectral_decomposition(
         }
     }
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         elapsed_time(phase_time, "DONE", true);
-        elapsed_time(decomp_start, "  Total decomposition time (failed)", true);
+        elapsed_time(decomp_start, "\tTotal decomposition time (failed)", true);
     }
 
     // ============================================================
@@ -2058,17 +2216,23 @@ void riem_dcx_t::select_diffusion_parameters(
         // n_eigenpairs to later (it will be recomputed on demand when needed).
         // ============================================================
 
+        #if 0
         const int nev_lambda2 = 5;
         int n_to_compute = std::min(nev_lambda2, n_eigenpairs_hint);
         n_to_compute = std::max(3, n_to_compute);
+        #endif
 
+        int n_to_compute = n_eigenpairs_hint;
+
+        #if 0
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
-            Rprintf("\t(computing %d eigenpairs for lambda_2 estimation; full basis deferred)\n",
-                    n_to_compute);
+            Rprintf("\t(computing %d eigenpairs for lambda_2 estimation; full basis deferred)\n", n_to_compute);
         }
-
+        #endif
+        
         compute_spectral_decomposition(n_to_compute, verbose_level, true, false);
+        // compute_spectral_decomposition(n_to_compute, verbose_level, false, false);
     }
 
     const double lambda_2 = spectral_cache.lambda_2;
@@ -2201,7 +2365,7 @@ void riem_dcx_t::select_diffusion_parameters(
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-        Rprintf("\n\tDiffusion parameter summary:\n");
+        Rprintf("\tDiffusion parameter summary:\n");
         Rprintf("  \tlambda_2 (mass-sym Laplacian gap):  %.6f%s\n", lambda_2,
                 lambda_2 < MIN_LAMBDA_2 ? " [SMALL - using safeguards]" : "");
         Rprintf("  \tt (diffusion time): %.6f %s\n", t_diffusion,
@@ -2566,7 +2730,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                 // If more than 10% negative, CG failed despite claiming success
                 if (n_negative_quick > n * 0.1) {
                     cg_ok = false;
-                    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+                    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                         Rprintf("  CG reported success but %.1f%% vertices negative - rejecting solution\n",
                                 100.0 * n_negative_quick / n);
                     }
@@ -2581,7 +2745,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                        cg_iterations, 2000, cg_error, 1e-8);
         } else if (cg_error > 1e-6) {
             // Converged but with larger-than-ideal residual
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
                 Rprintf("  CG converged with residual %.3e (iterations=%d)\n",
                         cg_error, cg_iterations);
             }
@@ -2594,7 +2758,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     if (!cg_ok || n <= DIRECT_SOLVER_THRESHOLD) {
         used_direct_solver = true;
 
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE) && cg_attempted && !cg_ok) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && cg_attempted && !cg_ok) {
             Rprintf("  CG failed (residual=%.3e, iter=%d). Using direct solver for n=%ld...\n",
                     cg_error, cg_iterations, static_cast<long>(n));
         }
@@ -2632,9 +2796,11 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
             const double denom = std::max(b.norm(), 1e-30);
             const double direct_residual = (A_dense * rho_new - b).norm() / denom;
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-                Rprintf("  Direct solver: residual=%.3e\n", direct_residual);
+            #if 0
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                Rprintf("\tDirect solver: residual=%.3e\n", direct_residual);
             }
+            #endif
 
             // Strict and meaningful threshold now that A is symmetric-consistent
             if (direct_residual > 1e-8) {
@@ -2651,8 +2817,8 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
             double lu_residual = (A_dense * rho_new - b).norm() / b.norm();
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-                Rprintf("  LDLT failed, LU solver: residual=%.3e\n", lu_residual);
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                Rprintf("\tLDLT failed, LU solver: residual=%.3e\n", lu_residual);
             }
 
             if (lu_residual > 1e-4) {
@@ -2676,11 +2842,11 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                    cg_iterations, 2000, cg_error, 1e-8);
     }
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         if (used_direct_solver) {
-            Rprintf("  density diffusion: solver=DIRECT\n");
+            Rprintf("\tdensity diffusion: solver=DIRECT\n");
         } else {
-            Rprintf("  density diffusion: solver=CG %s iter=%d resid=%.3e\n",
+            Rprintf("\tdensity diffusion: solver=CG %s iter=%d resid=%.3e\n",
                     cg_ok ? "OK" : "FAIL", cg_iterations, cg_error);
         }
     }
@@ -2742,14 +2908,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 
     } else if (relative_sum_error > 0.1) {
         // 10-50% off - concerning, especially if CG claimed success
-        if (cg_ok && vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (cg_ok && vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("  Note: Density sum error = %.2f%% despite CG convergence. "
                     "This may improve in later iterations.\n",
                     100.0 * relative_sum_error);
         }
     } else if (cg_attempted && (!cg_ok || cg_suspicious)) {
         // CG had issues but sum looks reasonable - maybe it's actually okay
-        if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("  CG convergence was questionable (residual=%.3e) but "
                     "density sum error is acceptable (%.2f%%)\n",
                     cg_error, 100.0 * relative_sum_error);
@@ -2847,34 +3013,34 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // Print diagnostics only when issues, except TRACE where we always print
     if (issues || vl_at_least(verbose_level, verbose_level_t::TRACE)) {
 
-        Rprintf("\n  === Density Evolution Diagnostics ===\n");
+        Rprintf("\n\t=== Density Evolution Diagnostics ===\n");
 
         if (cg_attempted) {
-            Rprintf("  Solver: CG %s iter=%d resid=%.3e\n",
+            Rprintf("\tSolver: CG %s iter=%d resid=%.3e\n",
                     cg_ok ? "OK" : "FAIL", cg_iterations, cg_error);
         } else if (used_direct_solver) {
-            Rprintf("  Solver: DIRECT\n");
+            Rprintf("\tSolver: DIRECT\n");
         }
 
         if (n_negative > 0 || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("  Negative values: %d vertices (%.1f%%), worst=%.3e\n",
+            Rprintf("\tNegative values: %d vertices (%.1f%%), worst=%.3e\n",
                     n_negative, 100.0 * n_negative / n, max_negative);
         }
 
         if (mass_issue || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("  Pre-normalization mass deviation: %.2e relative (sum=%.6e, target=%.0f)\n",
+            Rprintf("\tPre-normalization mass deviation: %.2e relative (sum=%.6e, target=%.0f)\n",
                     relative_sum_error, current_sum, n_double);
         }
 
         if (n_clamped > 0 || vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("  Clamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
+            Rprintf("\tClamped: %d vertices (%.1f%%) to MIN_DENSITY=%.2e\n",
                     n_clamped, 100.0 * n_clamped / n, MIN_DENSITY);
         }
 
-        Rprintf("  Final range: [%.3e, %.3e], ratio=%.2e\n",
+        Rprintf("\tFinal range: [%.3e, %.3e], ratio=%.2e\n",
                 final_min, final_max, final_ratio);
 
-        Rprintf("  =====================================\n\n");
+        Rprintf("\t=====================================\n\n");
     }
 
 
@@ -3990,7 +4156,7 @@ gcv_result_t riem_dcx_t::smooth_response_via_spectral_filter_semiy(
     // Ensure spectral decomposition
     if (!spectral_cache.is_valid ||
         spectral_cache.eigenvalues.size() < n_eigenpairs) {
-        compute_spectral_decomposition(n_eigenpairs, verbose_level); // <<--- ???
+        compute_spectral_decomposition(n_eigenpairs, verbose_level, false, false); // <<--- ???
     }
 
     const int m = std::min(n_eigenpairs,
@@ -5533,13 +5699,113 @@ void riem_dcx_t::fit_rdgraph_regression(
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
         elapsed_time(phase_time, "DONE", true);
     }
-
+    
     // --------------------------------------------------------------
     // Phase 4.5: Select or validate diffusion parameters
     // --------------------------------------------------------------
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
-        Rprintf("Phase 4.5: Select diffusion parameters ... ");
+    #if 0
+    // Optional surrogate density preconditioner rho^{pre} (benchmarking gate via R option)
+    {
+        int m_pre = 44;
+        double eta_pre = 1.0;
+        double kappa_pre = 0.9;
+        bool use_distance_weights = true;
+
+        if (get_rho_pre_params_from_R_options(m_pre, eta_pre, kappa_pre, use_distance_weights)) {
+            const double eps_pre = 1e-12;
+            try {
+                Rprintf("Applying surrogate rho^{pre} preconditioner before Phase 4.5...\n");
+                phase_time = std::chrono::steady_clock::now();
+                vec_t rho_pre = compute_rho_pre_row_randomwalk(
+                    m_pre, eta_pre, kappa_pre, use_distance_weights, eps_pre
+                    );
+                apply_rho_preconditioner_and_rebuild(rho_pre);
+                elapsed_time(phase_time, "DONE", true);
+            } catch (const std::exception& e) {
+                Rf_error("Failed to apply rho^{pre} preconditioner: %s", e.what());
+            } catch (...) {
+                Rf_error("Failed to apply rho^{pre} preconditioner: unknown C++ exception.");
+            } 
+        } else {
+            Rprintf("NO use of surrogate rho^{pre} preconditioner\n");
+        }
+    }
+    
+    // Optional surrogate density preconditioner rho^{pre} (benchmarking gate via R option)
+    {
+        int m_pre = 44;
+        double eta_pre = 1.0;
+        double kappa_pre = 0.9;
+        bool use_distance_weights = true;
+
+        if (get_rho_pre_params_from_R_options(m_pre, eta_pre, kappa_pre, use_distance_weights)) {
+            const double eps_pre = 1e-12;
+
+            // A) compute rho^{pre}
+            vec_t rho_pre = compute_rho_pre_randomwalk(
+                m_pre,
+                eta_pre,
+                kappa_pre,
+                use_distance_weights,
+                eps_pre
+                );
+
+            // B–G) apply rho^{pre} and rebuild dependent objects
+            apply_rho_preconditioner_and_rebuild(rho_pre);
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Optional surrogate density preconditioner ρ^{pre}
+    // Gate via: options(gflow.rho.pre.params = ...)
+    // ------------------------------------------------------------
+    {
+        // Only print trace in verbose modes (TRACE or higher).
+        const bool verbose_trace = (verbose_level >= verbose_level_t::DEBUG);
+
+        int m_pre = 44;
+        double eta_pre = 1.0;
+        double kappa_pre = 0.9;
+        bool use_distance_weights = true;
+        double eps_pre = 1e-12;
+        bool enabled = false;
+
+        // Parse option; errors are raised via Rf_error.
+        parse_rho_pre_option(m_pre, eta_pre, kappa_pre, use_distance_weights, eps_pre, enabled, verbose_trace);
+
+        if (enabled) {
+            if (verbose_trace) {
+                Rprintf("Applying surrogate rho^{pre} preconditioner before Phase 4.5...\n");
+            }
+
+            try {
+                // A) compute rho^{pre}
+                vec_t rho_pre = compute_rho_pre_randomwalk(
+                    m_pre,
+                    eta_pre,
+                    kappa_pre,
+                    use_distance_weights,
+                    eps_pre
+                    );
+
+                // B–G) overwrite densities + rebuild geometry/operators + invalidate spectral cache
+                apply_rho_preconditioner_and_rebuild(rho_pre);
+
+                if (verbose_trace) {
+                    Rprintf("Surrogate rho^{pre} applied; operators rebuilt; spectral cache invalidated.\n");
+                }
+            } catch (const std::exception& e) {
+                Rf_error("Failed to apply rho^{pre} preconditioner: %s", e.what());
+            } catch (...) {
+                Rf_error("Failed to apply rho^{pre} preconditioner: unknown C++ exception.");
+            }
+        }
+    }
+    #endif
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("Phase 4.5: Select diffusion parameters ... \n");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -5560,7 +5826,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     // Clamp factor: limit multiplicative change in t per iteration
     const double t_mult = std::max(1.0, t_update_max_mult);
 
-    if (vl_at_least(verbose_level, verbose_level_t::TRACE)) {
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
         elapsed_time(phase_time, "DONE", true);
     }
 
@@ -5666,12 +5932,12 @@ void riem_dcx_t::fit_rdgraph_regression(
 
     } else if (gamma_modulation == 0.0) {
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("Using gamma = 0 (no response-coherence modulation)\n");
+            Rprintf("\tUsing gamma = 0 (no response-coherence modulation)\n");
         }
         gamma_was_auto_selected = false;
     } else {
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("Using user-provided gamma = %.3f\n", gamma_modulation);
+            Rprintf("\tUsing user-provided gamma = %.3f\n", gamma_modulation);
         }
         gamma_was_auto_selected = false;
     }
@@ -5764,7 +6030,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             rho_prev_iter = rho_vertex_new;
 
             if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                Rprintf("  Density L2 change: %.6e (relative: %.6e)\n",
+                Rprintf("\tDensity L2 change: %.6e (relative: %.6e)\n",
                         density_change_norm, density_change_rel);
             }
         }
@@ -5855,7 +6121,7 @@ void riem_dcx_t::fit_rdgraph_regression(
                 prev_lambda_2 = curr_lambda_2;
             } else {
                 double delta = std::abs(curr_lambda_2 - prev_lambda_2);
-                Rprintf("  lambda_2 (mass-sym Laplacian gap) changed: %.6e -> %.6e (Delta = %.6e)\n",
+                Rprintf("\tlambda_2 (mass-sym Laplacian gap) changed: %.6e -> %.6e (Delta = %.6e)\n",
                         prev_lambda_2, curr_lambda_2, delta);
                 prev_lambda_2 = curr_lambda_2;
             }
@@ -5886,7 +6152,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             if (t_new > MAX_T_DIFFUSION) t_new = MAX_T_DIFFUSION;
 
             if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                Rprintf("  t.update: lambda2=%.6e, t: %.6e -> %.6e (target scale=%.6e)\n",
+                Rprintf("\tt.update: lambda2=%.6e, t: %.6e -> %.6e (target scale=%.6e)\n",
                         lambda2_curr, t_diffusion, t_new, diffusion_scale_target);
             }
 
@@ -5946,9 +6212,9 @@ void riem_dcx_t::fit_rdgraph_regression(
                         iter, max_iterations, dy, drho, gcv, best_gcv, best_itr, lambda2, iter_sec);
             }
 
-            if (vl_at_least(verbose_level, verbose_level_t::TRACE) && spectral_cache.eigenvalues.size() >= 3) {
+            if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && spectral_cache.eigenvalues.size() >= 3) {
                 const char* tag = (L.L0_mass_sym.rows() > 0) ? "L0_mass_sym" : "L[0]";
-                Rprintf("  DEBUG: lambda2 source=%s, eig[0..2]=%.6e %.6e %.6e\n",
+                Rprintf("\tDEBUG: lambda2 source=%s, eig[0..2]=%.6e %.6e %.6e\n",
                         tag,
                         spectral_cache.eigenvalues[0],
                         spectral_cache.eigenvalues[1],
@@ -5958,7 +6224,7 @@ void riem_dcx_t::fit_rdgraph_regression(
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             std::string gcv_display = format_gcv_history(gcv_history, 10);
-            Rprintf("  DEBUG: GCV trajectory: %s\n", gcv_display.c_str());
+            Rprintf("\tDEBUG: GCV trajectory: %s\n", gcv_display.c_str());
         }
 
         // ??? do we need this?
@@ -6127,8 +6393,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     response_changes = response_change_history;
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        const double total_sec =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - total_time).count();
+        // const double total_sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - total_time).count();
 
         int best_itr_final = 0;  // 0 = initial smoothing
         double best_gcv_final = std::numeric_limits<double>::infinity();
@@ -6151,9 +6416,11 @@ void riem_dcx_t::fit_rdgraph_regression(
             }
         }
 
-        Rprintf("DONE: %s; best GCV at itr %d (%.6e); total %.2fs\n",
+        Rprintf("DONE: %s; best GCV at itr %d (%.6e)\n",
                 converged ? "converged/early-stop" : "stopped by max_iterations",
-                best_itr_final, best_gcv_final, total_sec);
+                best_itr_final, best_gcv_final);
+
+        elapsed_time(total_time, "Total Time: ", false);
     }
 }
 
@@ -6451,3 +6718,471 @@ posterior_summary_t riem_dcx_t::compute_posterior_summary(
 
     return summary;
 }
+
+
+/**
+ * @brief Compute surrogate preconditioner density rho^{pre} via lazy Markov push-forward.
+ *
+ * This implements the m-step "lazy" random-walk diffusion:
+ *
+ *   rho <- (1 - eta) * rho + eta * P^T * rho
+ *
+ * where P is row-stochastic, built from per-vertex outgoing neighbor weights w_{j->i}.
+ *
+ * Scatter form (numerically stable):
+ *   For each source vertex j:
+ *     distribute rho[j] to its neighbors i with probability P_{j->i}
+ *   The collected mass at i equals (P^T rho)[i].
+ *
+ * Weights:
+ *   - if use_distance_weights: w_{j->i} = exp( -dist_{j,i} / d0 ) with global median d0
+ *   - else:                   w_{j->i} = 1
+ *
+ * After m iterations, apply a power transform and renormalize:
+ *
+ *   rho <- rho^kappa
+ *   sum(rho) = n_vertices
+ *
+ * @param m Number of random-walk iterations (>= 0).
+ * @param eta Mixing parameter in [0, 1].
+ * @param kappa Power transform exponent (> 0).
+ * @param use_distance_weights If true, uses exp(-dist/d0) weights; otherwise uniform weights.
+ * @param eps Small positive floor used to avoid zero/negative issues.
+ *
+ * @return rho_pre Vector of length n_vertices with sum equal to n_vertices.
+ *
+ * @pre vertex_cofaces is populated; vertex_cofaces[j][0].density contains vertex densities.
+ * @pre For each vertex j, neighbors are listed in vertex_cofaces[j][k] for k > 0, with
+ *      neighbor_info_t::vertex_index giving neighbor i and neighbor_info_t::dist giving edge length.
+ */
+vec_t riem_dcx_t::compute_rho_pre_randomwalk(int m,
+                                                        double eta,
+                                                        double kappa,
+                                                        bool use_distance_weights,
+                                                        double eps) const
+{
+    const size_t n = vertex_cofaces.size();
+    vec_t rho_pre(n);
+
+    if (n == 0) {
+        return rho_pre; // empty
+    }
+
+    // ----------------------------
+    // Validate / sanitize inputs
+    // ----------------------------
+    if (m < 0) m = 0;
+    if (!std::isfinite(eta)) eta = 1.0;
+    if (eta < 0.0) eta = 0.0;
+    if (eta > 1.0) eta = 1.0;
+
+    if (!(kappa > 0.0) || !std::isfinite(kappa)) {
+        kappa = 1.0;
+    }
+
+    if (!(eps > 0.0) || !std::isfinite(eps)) {
+        eps = 1e-12;
+    }
+
+    // ----------------------------
+    // Load initial rho from vertex_cofaces[j][0].density
+    // Apply a tiny floor for safety.
+    // ----------------------------
+    vec_t rho_curr(n), rho_next(n);
+    for (size_t j = 0; j < n; ++j) {
+        double v = vertex_cofaces[j][0].density;
+        if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+        rho_curr[j] = v;
+    }
+
+    // ----------------------------
+    // Compute global median edge length d0 (over unique edges j<i)
+    // ----------------------------
+    double d0 = 1.0;
+    if (use_distance_weights) {
+        std::vector<double> dists;
+        dists.reserve(8 * n);
+
+        for (size_t j = 0; j < n; ++j) {
+            const auto& nbs = vertex_cofaces[j];
+            for (size_t k = 1; k < nbs.size(); ++k) {
+                const index_t i = nbs[k].vertex_index;
+                if (j >= static_cast<size_t>(i)) continue; // unique edges
+                const double d = nbs[k].dist;
+                if (d > 0.0 && std::isfinite(d)) dists.push_back(d);
+            }
+        }
+
+        if (!dists.empty()) {
+            const size_t mid = dists.size() / 2;
+            std::nth_element(dists.begin(), dists.begin() + mid, dists.end());
+            d0 = dists[mid];
+            if (!(d0 > 0.0) || !std::isfinite(d0)) d0 = 1.0;
+        } else {
+            d0 = 1.0;
+        }
+    }
+
+    // ----------------------------
+    // m iterations of lazy Markov push-forward:
+    // rho_next = (1-eta)*rho_curr + eta * P^T * rho_curr
+    //
+    // Scatter form:
+    //   initialize acc[i]=0
+    //   for each source j:
+    //     compute outgoing weights w_{j->i} and wsum_j
+    //     for each neighbor i:
+    //       acc[i] += (w_{j->i}/wsum_j) * rho_curr[j]
+    //   then rho_next[i] = (1-eta)*rho_curr[i] + eta*acc[i]
+    // ----------------------------
+    for (int it = 0; it < m; ++it) {
+        // accumulator for (P^T rho_curr)
+        rho_next.setZero();
+
+        // Build acc = P^T rho_curr by scattering from each source j
+        for (size_t j = 0; j < n; ++j) {
+            const auto& nbs = vertex_cofaces[j];
+            const double mass = rho_curr[j];
+
+            // If no neighbors, skip (mass only stays via (1-eta) term)
+            if (nbs.size() <= 1) continue;
+
+            // compute outgoing weight sum for row j
+            double wsum = 0.0;
+            for (size_t k = 1; k < nbs.size(); ++k) {
+                const double d = nbs[k].dist;
+                double w = 1.0;
+                if (use_distance_weights) {
+                    const double ratio = (d0 > 0.0) ? (d / d0) : d;
+                    w = std::exp(-ratio);
+                }
+                if (w > 0.0 && std::isfinite(w)) wsum += w;
+            }
+
+            if (!(wsum > 0.0) || !std::isfinite(wsum)) continue;
+
+            // scatter mass to neighbors
+            for (size_t k = 1; k < nbs.size(); ++k) {
+                const index_t i = nbs[k].vertex_index;
+                const double d = nbs[k].dist;
+
+                double w = 1.0;
+                if (use_distance_weights) {
+                    const double ratio = (d0 > 0.0) ? (d / d0) : d;
+                    w = std::exp(-ratio);
+                }
+                if (!(w > 0.0) || !std::isfinite(w)) continue;
+
+                const double pij = w / wsum;
+                // (P^T rho)[i] accumulates pij * rho[j]
+                rho_next[i] += pij * mass;
+            }
+        }
+
+        // Mix laziness and floor
+        for (size_t i = 0; i < n; ++i) {
+            double v = (1.0 - eta) * rho_curr[i] + eta * rho_next[i];
+            if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+            rho_next[i] = v;
+        }
+
+        rho_curr.swap(rho_next);
+    }
+
+    // ----------------------------
+    // Power transform: rho <- rho^kappa (with floor)
+    // ----------------------------
+    for (size_t i = 0; i < n; ++i) {
+        double v = rho_curr[i];
+        if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+        v = std::pow(v, kappa);
+        if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+        rho_pre[i] = v;
+    }
+
+    // ----------------------------
+    // Renormalize so sum(rho_pre) = n
+    // ----------------------------
+    double s = rho_pre.sum();
+    if (!(s > 0.0) || !std::isfinite(s)) {
+        rho_pre.setOnes();
+        return rho_pre;
+    }
+
+    rho_pre *= (static_cast<double>(n) / s);
+
+    // Final floor + exact re-normalization
+    for (size_t i = 0; i < n; ++i) {
+        if (!(rho_pre[i] > 0.0) || !std::isfinite(rho_pre[i])) rho_pre[i] = eps;
+    }
+    s = rho_pre.sum();
+    if (s > 0.0 && std::isfinite(s)) {
+        rho_pre *= (static_cast<double>(n) / s);
+    } else {
+        rho_pre.setOnes();
+    }
+
+    return rho_pre;
+}
+
+/**
+ * @brief Compute surrogate preconditioner density rho^{pre} via random-walk smoothing.
+ *
+ * Starting from the current vertex densities stored in vertex_cofaces[i][0].density,
+ * this computes a smoothed density using a lazy random walk:
+ *
+ *   rho <- (1 - eta) * rho + eta * P * rho
+ *
+ * where P is a row-stochastic matrix built from per-vertex neighbor weights w_ij.
+ *
+ * Weights:
+ *   - if use_distance_weights: w_ij = exp( -dist_ij / d0 ) with global median d0
+ *   - else:                   w_ij = 1
+ *
+ * After m iterations, apply a power transform and renormalize:
+ *
+ *   rho <- rho^kappa
+ *   sum(rho) = n_vertices
+ *
+ * @param m Number of random-walk iterations (>= 0).
+ * @param eta Mixing parameter in [0, 1].
+ * @param kappa Power transform exponent (> 0).
+ * @param use_distance_weights If true, uses exp(-dist/d0) weights; otherwise uniform weights.
+ * @param eps Small positive floor used to avoid zero/negative issues.
+ *
+ * @return rho_pre Vector of length n_vertices with sum equal to n_vertices.
+ *
+ * @pre vertex_cofaces is populated; vertex_cofaces[i][0].density contains vertex densities.
+ * @pre For each vertex i, neighbors are listed in vertex_cofaces[i][k] for k > 0, with
+ *      neighbor_info_t::vertex_index giving neighbor j and neighbor_info_t::dist giving edge length.
+ */
+vec_t riem_dcx_t::compute_rho_pre_row_randomwalk(int m,
+                                                             double eta,
+                                                             double kappa,
+                                                             bool use_distance_weights,
+                                                             double eps) const
+{
+    const size_t n = vertex_cofaces.size();
+    vec_t rho_pre(n);
+
+    if (n == 0) {
+        return rho_pre; // empty
+    }
+
+    // ----------------------------
+    // Validate / sanitize inputs
+    // ----------------------------
+    if (m < 0) m = 0;
+    if (!(eta >= 0.0 && eta <= 1.0)) {
+        // clamp
+        if (eta < 0.0) eta = 0.0;
+        if (eta > 1.0) eta = 1.0;
+    }
+    if (!(kappa > 0.0)) {
+        kappa = 1.0;
+    }
+    if (!(eps > 0.0)) {
+        eps = 1e-12;
+    }
+
+    // ----------------------------
+    // Load initial rho from vertex_cofaces[i][0].density
+    // (apply a tiny floor for safety)
+    // ----------------------------
+    vec_t rho_curr(n), rho_next(n);
+    for (size_t i = 0; i < n; ++i) {
+        double v = vertex_cofaces[i][0].density;
+        if (!(v > 0.0)) v = eps;
+        rho_curr[i] = v;
+    }
+
+    // ----------------------------
+    // Compute global median edge length d0 (over unique edges i<j)
+    // using neighbor_info_t::dist.
+    // ----------------------------
+    double d0 = 1.0;
+    if (use_distance_weights) {
+        std::vector<double> dists;
+        dists.reserve(8 * n); // heuristic; will grow if needed
+
+        for (size_t i = 0; i < n; ++i) {
+            const auto& nbs = vertex_cofaces[i];
+            for (size_t k = 1; k < nbs.size(); ++k) {
+                const index_t j = nbs[k].vertex_index;
+                if (i >= j) continue; // unique edges only
+                const double d = nbs[k].dist;
+                if (d > 0.0 && std::isfinite(d)) {
+                    dists.push_back(d);
+                }
+            }
+        }
+
+        if (!dists.empty()) {
+            const size_t mid = dists.size() / 2;
+            std::nth_element(dists.begin(), dists.begin() + mid, dists.end());
+            d0 = dists[mid];
+            if (!(d0 > 0.0) || !std::isfinite(d0)) {
+                d0 = 1.0;
+            }
+        } else {
+            // fallback if graph has no edges or no positive distances
+            d0 = 1.0;
+        }
+    }
+
+    // ----------------------------
+    // Random-walk smoothing iterations:
+    // rho_next[i] = (1-eta)*rho_curr[i] + eta * sum_j P_ij * rho_curr[j]
+    // where P_ij = w_ij / sum_j w_ij for neighbors j of i.
+    // ----------------------------
+    for (int it = 0; it < m; ++it) {
+        for (size_t i = 0; i < n; ++i) {
+            const auto& nbs = vertex_cofaces[i];
+
+            // Compute row sum of weights
+            double wsum = 0.0;
+            for (size_t k = 1; k < nbs.size(); ++k) {
+                const double d = nbs[k].dist;
+                double w = 1.0;
+                if (use_distance_weights) {
+                    // w = exp(-d/d0)
+                    // guard: if d0 is tiny, the ratio can explode
+                    const double ratio = d0 > 0.0 ? (d / d0) : d;
+                    w = std::exp(-ratio);
+                }
+                if (w > 0.0 && std::isfinite(w)) wsum += w;
+            }
+
+            double mixed = rho_curr[i]; // default (no neighbors)
+            if (wsum > 0.0 && std::isfinite(wsum)) {
+                double acc = 0.0;
+                for (size_t k = 1; k < nbs.size(); ++k) {
+                    const index_t j = nbs[k].vertex_index;
+                    const double d = nbs[k].dist;
+
+                    double w = 1.0;
+                    if (use_distance_weights) {
+                        const double ratio = d0 > 0.0 ? (d / d0) : d;
+                        w = std::exp(-ratio);
+                    }
+
+                    if (!(w > 0.0) || !std::isfinite(w)) continue;
+
+                    // P_ij = w/wsum, apply to rho_curr[j]
+                    acc += (w / wsum) * rho_curr[j];
+                }
+                mixed = (1.0 - eta) * rho_curr[i] + eta * acc;
+            }
+
+            // floor for safety
+            if (!(mixed > 0.0) || !std::isfinite(mixed)) mixed = eps;
+            rho_next[i] = mixed;
+        }
+
+        rho_curr.swap(rho_next);
+    }
+
+    // ----------------------------
+    // Power transform: rho <- rho^kappa (with floor)
+    // ----------------------------
+    for (size_t i = 0; i < n; ++i) {
+        double v = rho_curr[i];
+        if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+        // v^kappa
+        v = std::pow(v, kappa);
+        if (!(v > 0.0) || !std::isfinite(v)) v = eps;
+        rho_pre[i] = v;
+    }
+
+    // ----------------------------
+    // Renormalize so sum(rho_pre) = n
+    // ----------------------------
+    double s = rho_pre.sum();
+    if (!(s > 0.0) || !std::isfinite(s)) {
+        // fallback to uniform
+        rho_pre.setOnes();
+        return rho_pre;
+    }
+
+    const double scale = static_cast<double>(n) / s;
+    rho_pre *= scale;
+
+    // final floor
+    for (size_t i = 0; i < n; ++i) {
+        if (!(rho_pre[i] > 0.0) || !std::isfinite(rho_pre[i])) {
+            rho_pre[i] = eps;
+        }
+    }
+
+    // re-renormalize after flooring, to be exact
+    s = rho_pre.sum();
+    if (s > 0.0 && std::isfinite(s)) {
+        rho_pre *= (static_cast<double>(n) / s);
+    } else {
+        rho_pre.setOnes();
+    }
+
+    return rho_pre;
+}
+
+/**
+ * @brief Apply a precomputed surrogate vertex density rho^{pre} and rebuild dependent geometry/operators.
+ *
+ * This function is intended for benchmarking the effect of a surrogate density preconditioner
+ * on Phases 4.5 and 5 (Spectra eigensolves).
+ *
+ * It performs the following steps:
+ *  B) overwrite vertex_cofaces[i][0].density = rho_pre[i]
+ *  C) update_edge_densities_from_vertices()
+ *  D) update_vertex_metric_from_density()      (updates M0 / vertex metric)
+ *  E) update_edge_mass_matrix()                (rebuilds M1)
+ *  F) assemble_operators()                     (rebuild Laplacian / mass-sym operators etc.)
+ *  G) spectral_cache.invalidate()              (force recomputation of eigendecomposition)
+ *
+ * @param rho_pre Vector of length n_vertices containing the surrogate vertex densities.
+ *
+ * @throws std::runtime_error if rho_pre length mismatches number of vertices or values are invalid.
+ *
+ * @note This function does NOT change the public R interface; it is intended to be called
+ *       internally (e.g., gated by an R option) immediately before Phase 4.5.
+ */
+void riem_dcx_t::apply_rho_preconditioner_and_rebuild(const vec_t& rho_pre)
+{
+    // Basic size validation
+    const size_t n = vertex_cofaces.size();
+    if (static_cast<size_t>(rho_pre.size()) != n) {
+        Rcpp::stop(
+            "apply_rho_preconditioner_and_rebuild(): rho_pre has length %d but expected %d.",
+            static_cast<int>(rho_pre.size()), static_cast<int>(n)
+        );
+    }
+    if (n == 0) return;
+
+    // Validate contents: finite and strictly positive.
+    for (size_t i = 0; i < n; ++i) {
+        const double v = rho_pre[i];
+        if (!std::isfinite(v) || !(v > 0.0)) {
+            Rcpp::stop(
+                "apply_rho_preconditioner_and_rebuild(): rho_pre[%d] is invalid "
+                "(must be finite and > 0). Got: %g.",
+                static_cast<int>(i), v
+            );
+        }
+    }
+    
+    // B) Overwrite vertex densities
+    for (size_t i = 0; i < n; ++i) {
+        vertex_cofaces[i][0].density = rho_pre[i];
+    }
+
+    // C–F) Rebuild dependent structures
+    // These are the same logical rebuild steps used after each density update in the main loop.
+    update_edge_densities_from_vertices();
+    update_vertex_metric_from_density();  // updates M0 / vertex metric
+    update_edge_mass_matrix();            // rebuilds M1
+    assemble_operators();                 // rebuild operators based on updated masses/metrics
+
+    // G) Invalidate spectral cache so Phase 4.5/5 recompute eigensystem on the new operators
+    spectral_cache.invalidate();
+}
+

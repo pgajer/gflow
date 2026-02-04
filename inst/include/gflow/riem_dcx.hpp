@@ -673,9 +673,26 @@ struct riem_dcx_t {
     std::vector<index_t> dk_used_high;
 
     // ================================================================
-    // CONSTRUCTION METHODS
+    // METHODS
     // ================================================================
 
+    vec_t compute_rho_pre_randomwalk(int m,
+                                     double eta,
+                                     double kappa,
+                                     bool use_distance_weights = true,
+                                     double eps = 1e-12) const;
+
+    vec_t compute_rho_pre_row_randomwalk(int m,
+                                         double eta,
+                                         double kappa,
+                                         bool use_distance_weights = true,
+                                         double eps = 1e-12) const;
+                                                            
+    void apply_rho_preconditioner_and_rebuild(const vec_t& rho_pre);
+
+    bool maybe_apply_rho_preconditioner_from_R_options(int verbose_level);
+
+    
     /**
      * @brief Fit Riemannian graph regression model using iterative geometric refinement
      */
