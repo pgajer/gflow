@@ -3078,3 +3078,142 @@ adjlist.to.igraph <- function(adj.list) {
 
     g
 }
+
+#' Select a geodesic corridor (thickened path) in a weighted graph
+#'
+#' @description
+#' Given a vertex path (sequence of vertex ids), selects vertices that lie on or
+#' near the geodesic segment between consecutive path vertices, using the metric
+#' condition d(u,x) + d(x,v) <= d(u,v) * (1 + rel.tol) + abs.tol.
+#'
+#' @param graph An igraph object (undirected or directed).
+#' @param path Integer vector of vertex ids defining the polyline on the graph.
+#' @param weights Numeric vector of edge weights interpreted as lengths/distances
+#'   (same order as \code{E(graph)}), or \code{NULL} for unweighted.
+#' @param rel.tol Non-negative numeric scalar. Relative corridor thickness.
+#'   Typical values: 0.02 to 0.15.
+#' @param abs.tol Non-negative numeric scalar. Absolute corridor thickness in the
+#'   same units as \code{weights}.
+#' @param include.path Logical; if TRUE, always include the original \code{path}.
+#'
+#' @return Integer vector of selected vertex ids.
+#' @export
+select.path.corridor <- function(graph,
+                                 path,
+                                 weights = NULL,
+                                 rel.tol = 0.05,
+                                 abs.tol = 0,
+                                 include.path = TRUE) {
+  ## Basic checks
+  stopifnot(igraph::is_igraph(graph))
+  stopifnot(is.numeric(path), length(path) >= 2)
+  stopifnot(rel.tol >= 0, abs.tol >= 0)
+
+  n.v <- igraph::vcount(graph)
+  stopifnot(all(path >= 1L), all(path <= n.v))
+
+  path.u <- unique(as.integer(path))
+
+  ## Distances from each path vertex to all vertices (matrix: |path.u| x n.v)
+  d.to.all <- igraph::distances(graph,
+                                v = path.u,
+                                to = igraph::V(graph),
+                                weights = weights)
+
+  ## Distances among path vertices (matrix: |path.u| x |path.u|)
+  d.between <- igraph::distances(graph,
+                                 v = path.u,
+                                 to = path.u,
+                                 weights = weights)
+
+  keep <- rep(FALSE, n.v)
+
+  for (i in seq_len(length(path) - 1L)) {
+    u <- as.integer(path[i])
+    v <- as.integer(path[i + 1L])
+
+    iu <- match(u, path.u)
+    iv <- match(v, path.u)
+
+    d.u <- as.numeric(d.to.all[iu, ])
+    d.v <- as.numeric(d.to.all[iv, ])
+    d.uv <- as.numeric(d.between[iu, iv])
+
+    ## Corridor condition
+    d.sum <- d.u + d.v
+    ok <- is.finite(d.sum) & is.finite(d.uv) &
+      (d.sum <= d.uv * (1 + rel.tol) + abs.tol)
+
+    keep[ok] <- TRUE
+  }
+
+  if (isTRUE(include.path)) keep[as.integer(path)] <- TRUE
+  which(keep)
+}
+
+#' Select a graph-metric tube around a path
+#'
+#' @description
+#' Selects vertices within \code{max.dist} (graph shortest-path distance) of any
+#' vertex in \code{path}.
+#'
+#' @param graph An igraph object.
+#' @param path Integer vector of vertex ids.
+#' @param weights Edge weights as in \code{igraph::distances}.
+#' @param max.dist Non-negative numeric scalar; tube radius in graph-distance units.
+#'
+#' @return Integer vector of selected vertex ids.
+#' @export
+select.path.neighborhood <- function(graph,
+                                    path,
+                                    weights = NULL,
+                                    max.dist) {
+  stopifnot(igraph::is_igraph(graph))
+  stopifnot(is.numeric(path), length(path) >= 1)
+  stopifnot(is.numeric(max.dist), length(max.dist) == 1, max.dist >= 0)
+
+  path.u <- unique(as.integer(path))
+  d.mat <- igraph::distances(graph,
+                             v = path.u,
+                             to = igraph::V(graph),
+                             weights = weights)
+  d.min <- apply(d.mat, 2, min, na.rm = TRUE)
+  which(is.finite(d.min) & d.min <= max.dist)
+}
+
+#' Distance from points to a 3D polyline (minimum point-to-segment distance)
+#'
+#' @param x Numeric matrix n x 3 of point coordinates.
+#' @param poly Numeric matrix m x 3 of polyline vertices (in order).
+#'
+#' @return Numeric vector length n with distances to the polyline.
+#' @export
+dist.to.polyline.3d <- function(x, poly) {
+  stopifnot(is.matrix(x), ncol(x) == 3)
+  stopifnot(is.matrix(poly), ncol(poly) == 3, nrow(poly) >= 2)
+
+  n <- nrow(x)
+  d.min <- rep(Inf, n)
+
+  for (i in seq_len(nrow(poly) - 1L)) {
+    a <- poly[i, ]
+    b <- poly[i + 1L, ]
+    ab <- b - a
+    ab2 <- sum(ab * ab)
+
+    ## Degenerate segment guard
+    if (ab2 <= 0) next
+
+    ap <- sweep(x, 2, a, "-")
+    t <- drop(ap %*% ab) / ab2
+    t <- pmax(0, pmin(1, t))
+
+    proj <- sweep(matrix(t, n, 3) * rep(ab, each = n), 2, a, "+")
+    d <- sqrt(rowSums((x - proj) * (x - proj)))
+
+    d.min <- pmin(d.min, d)
+  }
+
+  d.min
+}
+
