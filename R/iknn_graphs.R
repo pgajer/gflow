@@ -1176,607 +1176,1011 @@ trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
     )
 }
 
-#' Select \code{k} by the first local minimum within a tolerance band
+#' Pick the smallest k within eps of the global optimum (max or min), optionally requiring a local extremum
 #'
 #' @description
-#' Defines a tolerance band based on the global minimum edit distance over the
-#' terminal connected-tail regime (\code{k.for.edit >= k.cc}). Candidates are those
-#' \code{k} with \code{d(k) <= (1 + eps) * d.min}. Among candidates, the function
-#' selects the smallest \code{k} that is a (plateau-aware) local minimum of the edit
-#' distance curve. If no local minimum lies within the tolerance band, the function
-#' falls back to the smallest \code{k} attaining the global minimum \code{d.min}.
+#' Selects a k value from a candidate grid based on a scalar metric evaluated at each k.
+#' For \code{direction="max"}, chooses the smallest k whose metric is within
+#' \code{(1 - eps)} of the global maximum. For \code{direction="min"}, chooses the
+#' smallest k whose metric is within \code{(1 + eps)} of the global minimum.
 #'
-#' The inputs \code{edit.distances} and \code{k.for.edit} are assumed to represent
-#' edit distances between consecutive graphs \eqn{(G_k, G_{k+1})}, with
-#' \code{k.for.edit[i]} giving the left endpoint \eqn{k} associated with
-#' \code{edit.distances[i]}.
+#' Optionally restricts to local extrema (maxima/minima) using a sliding window.
+#' Handles non-finite prefixes/suffixes safely (no \code{max(which(...))} pitfalls).
 #'
-#' @param edit.distances Numeric vector of edit distances between consecutive graphs.
-#' @param k.for.edit Integer vector of the same length as \code{edit.distances},
-#'   giving the \eqn{k} values associated with each edit distance.
-#' @param k.cc Integer scalar. Start of the terminal connected tail; only values with
-#'   \code{k.for.edit >= k.cc} are eligible.
-#' @param eps Nonnegative numeric scalar. Relative tolerance; candidates satisfy
-#'   \code{d <= (1 + eps) * d.min} where \code{d.min} is the minimum over the eligible
-#'   regime.
+#' @param metric Numeric vector of metric values (one per candidate k, aligned with \code{k.values}).
+#' @param k.values Integer/numeric vector of candidate k values. If NULL, uses \code{seq_along(metric)}.
+#' @param eps Non-negative numeric tolerance. For max: keep metric >= (1-eps)*max.
+#'   For min: keep metric <= (1+eps)*min.
+#' @param direction Character: "max" or "min".
+#' @param idx.ok Optional integer indices specifying eligible positions in \code{metric}.
+#' @param k.min Optional lower bound on k (inclusive).
+#' @param k.max Optional upper bound on k (inclusive).
+#' @param require.local.extremum Logical; if TRUE, restrict candidates to local extrema.
+#' @param window Integer >= 1, neighborhood half-width for local extremum detection.
+#' @param return.details Logical; if TRUE, returns a list with details and diagnostics.
 #'
-#' @return A list with components:
-#' \itemize{
-#'   \item \code{k.pick}: Selected \code{k} value.
-#'   \item \code{d.pick}: Edit distance at \code{k.pick}.
-#'   \item \code{d.min}: Minimum edit distance over eligible \code{k}.
-#'   \item \code{d.thld}: Threshold \code{(1 + eps) * d.min}.
-#'   \item \code{eps}: Input tolerance \code{eps}.
-#'   \item \code{candidates}: Data frame of candidate \code{k} values (within the band)
-#'     and their edit distances.
-#'   \item \code{local.minima}: Data frame of detected local minima (eligible regime)
-#'     and their edit distances.
-#' }
+#' @return If \code{return.details=FALSE}, returns the selected k (scalar) or NA.
+#'   If \code{return.details=TRUE}, returns a list with fields:
+#'   \code{k.opt}, \code{idx.opt}, \code{threshold}, \code{idx.candidates}, \code{idx.local}.
 #'
-#' @keywords internal
-#' @noRd
-pick.k.within.eps.global.min <- function(edit.distances, k.for.edit, k.cc, eps = 0.05) {
-
-    ## --- validate ---
-    if (!is.numeric(k.cc) || length(k.cc) != 1 || is.na(k.cc)) {
-        stop("k.cc must be a single non-NA numeric")
-    }
-    if (k.cc != as.integer(k.cc)) stop("k.cc must be integer-valued.")
-    k.cc <- as.integer(k.cc)
-
-    if (!is.numeric(edit.distances) || length(edit.distances) < 1L) {
-        stop("edit.distances must be a non-empty numeric vector")
-    }
-
-    if (!is.numeric(k.for.edit) || length(k.for.edit) != length(edit.distances)) {
-        stop("k.for.edit must be numeric/integer and same length as edit.distances")
-    }
-    if (!all(k.for.edit == as.integer(k.for.edit))) {
-        stop("k.for.edit must be integer-valued")
-    }
-    k.for.edit <- as.integer(k.for.edit)
-    if (anyNA(k.for.edit)) stop("k.for.edit contains NA after coercion to integer.")
-    if (is.unsorted(k.for.edit, strictly = TRUE)) stop("k.for.edit must be strictly increasing.")
-
-    if (!is.numeric(eps) || length(eps) != 1L || eps < 0) {
-        stop("eps must be a single nonnegative numeric value")
-    }
-
-    keep <- (k.for.edit >= k.cc)
-    if (!any(keep)) stop("No k values satisfy k >= k.cc")
-
-    d.keep <- edit.distances[keep]
-    k.keep <- k.for.edit[keep]
-
-    if (all(is.na(d.keep))) stop("All edit distances are NA in the k >= k.cc regime.")
-    if (!any(is.finite(d.keep))) stop("No finite edit distances in the k >= k.cc regime.")
-
-    ## --- threshold band ---
-    d.min <- min(d.keep, na.rm = TRUE)
-    d.thld <- (1 + eps) * d.min
-    cand.idx <- which(is.finite(d.keep) & d.keep <= d.thld)
-    if (length(cand.idx) == 0L) stop("No candidates found. Check eps / inputs.")
-
-    ## --- find local minima (plateau-aware) ---
-    n <- length(d.keep)
-
-    ## Indices of finite points only for comparisons
-    finite <- is.finite(d.keep)
-
-    ## Plateau-aware local minima:
-    ## Treat a run of equal values as a "plateau"; it is a local minimum if
-    ## its value <= the nearest finite neighbor on the left and right.
-    r <- rle(d.keep)
-    ends <- cumsum(r$lengths)
-    starts <- ends - r$lengths + 1L
-
-    local.min.idx <- integer(0)
-
-    for (m in seq_along(r$values)) {
-
-        v <- r$values[m]
-        if (!is.finite(v)) next
-
-        s <- starts[m]
-        e <- ends[m]
-
-        ## nearest finite neighbor on the left
-        left.idx <- if (s > 1L) max(which(finite[1:(s - 1L)])) else NA_integer_
-        left.ok <- if (is.na(left.idx)) TRUE else (v <= d.keep[left.idx])
-
-        ## nearest finite neighbor on the right
-        right.idx <- if (e < n) {
-            rr <- which(finite[(e + 1L):n])
-            if (length(rr) == 0L) NA_integer_ else (e + rr[1L])
-        } else NA_integer_
-        right.ok <- if (is.na(right.idx)) TRUE else (v <= d.keep[right.idx])
-
-        if (left.ok && right.ok) {
-            ## choose left edge of plateau as representative local-min location
-            local.min.idx <- c(local.min.idx, s)
-        }
-    }
-
-    local.min.idx <- sort(unique(local.min.idx))
-
-    ## --- pick first local minimum within candidate band ---
-    pickable.idx <- intersect(local.min.idx, cand.idx)
-
-    if (length(pickable.idx) > 0L) {
-        k.pick.idx <- pickable.idx[1L]
+#' @export
+pick.k.within.eps.global.max <- function(metric,
+                                         k.values = NULL,
+                                         eps = 0.05,
+                                         direction = c("max", "min"),
+                                         idx.ok = NULL,
+                                         k.min = -Inf,
+                                         k.max = Inf,
+                                         require.local.extremum = FALSE,
+                                         window = 1L,
+                                         return.details = FALSE) {
+    ## ---- validate ----
+    if (missing(metric) || is.null(metric)) stop("`metric` must be provided.")
+    metric <- as.double(metric)
+    n <- length(metric)
+    if (n < 1L) stop("`metric` must have length >= 1.")
+    if (is.null(k.values)) {
+        k.values <- seq_len(n)
     } else {
-        ## Fallback: if no local minima are inside the band,
-        ## pick the smallest k achieving the global min (within keep)
-        min.idx <- which(is.finite(d.keep) & d.keep == d.min)
-        k.pick.idx <- min.idx[1L]
+        if (length(k.values) != n) stop("`k.values` must have the same length as `metric`.")
+    }
+    k.values <- as.double(k.values)
+
+    direction <- match.arg(direction)
+    if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps < 0) {
+        stop("`eps` must be a single finite number >= 0.")
+    }
+    window <- as.integer(window)
+    if (!is.finite(window) || window < 1L) stop("`window` must be an integer >= 1.")
+
+    ## ---- eligibility mask ----
+    finite <- is.finite(metric) & is.finite(k.values)
+    keep <- finite & (k.values >= k.min) & (k.values <= k.max)
+    if (!is.null(idx.ok)) {
+        idx.ok <- as.integer(idx.ok)
+        idx.ok <- idx.ok[idx.ok >= 1L & idx.ok <= n]
+        keep2 <- rep(FALSE, n)
+        keep2[idx.ok] <- TRUE
+        keep <- keep & keep2
     }
 
-    k.pick <- as.integer(k.keep[k.pick.idx])
-    d.pick <- d.keep[k.pick.idx]
+    idx.keep <- which(keep)
+    if (length(idx.keep) == 0L) {
+        if (isTRUE(return.details)) {
+            return(list(k.opt = NA_real_, idx.opt = NA_integer_, threshold = NA_real_,
+                        idx.candidates = integer(0), idx.local = integer(0)))
+        }
+        return(NA_real_)
+    }
 
-    list(
-        k.pick = k.pick,
-        d.pick = as.numeric(d.pick),
-        d.min = as.numeric(d.min),
-        d.thld = as.numeric(d.thld),
-        eps = eps,
-        candidates = data.frame(
-            k = k.keep[cand.idx],
-            edit.distance = d.keep[cand.idx]
-        ),
-        local.minima = data.frame(
-            k = k.keep[local.min.idx],
-            edit.distance = d.keep[local.min.idx]
-        )
-    )
+    ## ---- compute global optimum on eligible set ----
+    m.keep <- metric[idx.keep]
+    if (direction == "max") {
+        m.opt <- max(m.keep)
+        thr <- (1 - eps) * m.opt
+        idx.cand <- idx.keep[metric[idx.keep] >= thr]
+    } else {
+        m.opt <- min(m.keep)
+        thr <- (1 + eps) * m.opt
+        idx.cand <- idx.keep[metric[idx.keep] <= thr]
+    }
+
+    if (length(idx.cand) == 0L) {
+        if (isTRUE(return.details)) {
+            return(list(k.opt = NA_real_, idx.opt = NA_integer_, threshold = thr,
+                        idx.candidates = integer(0), idx.local = integer(0)))
+        }
+        return(NA_real_)
+    }
+
+    ## ---- optionally restrict to local extrema ----
+    idx.local <- integer(0)
+    if (isTRUE(require.local.extremum)) {
+        ## local extremum test uses the full metric vector but respects finiteness
+        is.local <- rep(FALSE, n)
+        for (ii in idx.cand) {
+            lo <- max(1L, ii - window)
+            hi <- min(n, ii + window)
+            nb <- metric[lo:hi]
+            nb.ok <- is.finite(nb)
+            if (!any(nb.ok)) next
+            nb <- nb[nb.ok]
+
+            if (direction == "max") {
+                ## plateau-safe: point is local max if it attains neighborhood max
+                is.local[ii] <- isTRUE(all(metric[ii] >= nb))
+            } else {
+                is.local[ii] <- isTRUE(all(metric[ii] <= nb))
+            }
+        }
+        idx.local <- idx.cand[is.local[idx.cand]]
+
+        ## if no local extrema among candidates, fall back to candidates
+        if (length(idx.local) == 0L) idx.local <- idx.cand
+    } else {
+        idx.local <- idx.cand
+    }
+
+    ## ---- choose smallest k among remaining ----
+    ## (ties broken by smallest k; if multiple entries share same k, earliest index)
+    k.sub <- k.values[idx.local]
+    k.min.val <- min(k.sub, na.rm = TRUE)
+    idx.opt <- idx.local[which(k.sub == k.min.val)[1L]]
+    k.opt <- k.values[idx.opt]
+
+    if (isTRUE(return.details)) {
+        return(list(k.opt = k.opt, idx.opt = idx.opt, threshold = thr,
+                    idx.candidates = idx.cand, idx.local = idx.local))
+    }
+    k.opt
 }
 
-#' Build ikNN graph sequence and select \code{k} by edit-distance stability
+#' Build ikNN graphs over a k range and select k by edit-distance and/or CST mixing
 #'
 #' @description
-#' Builds an intersection k-nearest-neighbor (ikNN) graph sequence for
-#' \code{k = kmin:kmax} using \code{create.iknn.graphs()}, then selects an
-#' optimal \code{k} based on stability of graph structure across the terminal
-#' connected tail.
-#'
-#' The procedure:
-#' \enumerate{
-#'   \item Construct a sequence of geometrically pruned ikNN graphs for \code{kmin:kmax}.
-#'   \item If all graphs in the range are disconnected, trim \code{X} to the largest
-#'         connected component of the graph at \code{k = kmin} and rebuild the graph sequence.
-#'   \item Define \code{k.cc} as the smallest \code{k} such that all graphs for \code{k' >= k}
-#'         are connected (terminal connected tail). Stop if no such tail exists in the range.
-#'   \item Compute edit distances between consecutive graphs in the tail regime and select
-#'         \code{k.opt} as the smallest \code{k >= k.cc} within a relative tolerance of the
-#'         minimum edit distance (via \code{pick.k.within.eps.global.min()}).
-#' }
-#'
-#' @param X Numeric matrix with rows corresponding to vertices/observations.
-#' @param kmin Integer \eqn{\ge 1}. Minimum k for the ikNN graph sequence.
-#' @param kmax Integer \eqn{\ge kmin}. Maximum k for the ikNN graph sequence.
-#'   Requires \code{nrow(X) > kmax}. If trimming is applied, this requirement must also
-#'   hold after trimming.
-#' @param pruning A named list of pruning parameters passed to \code{create.iknn.graphs()}:
-#'   \itemize{
-#'     \item \code{max.path.edge.ratio.deviation.thld}
-#'     \item \code{path.edge.ratio.percentile}
-#'     \item \code{threshold.percentile}
-#'   }
-#' @param n.cores Integer scalar or \code{NULL}. Number of cores passed to
-#'   \code{create.iknn.graphs()}.
-#' @param verbose Logical. If \code{TRUE}, prints progress messages.
-#'
-#' @return A list with components:
+#' Builds a sequence of ikNN-derived graphs over \code{kmin:kmax} using \code{create.iknn.graphs()},
+#' optionally trims to the largest connected component if the sequence is disconnected, and selects
+#' an "optimal" k using:
 #' \itemize{
-#'   \item \code{k.opt}: Selected k value.
-#'   \item \code{X.graphs}: The object returned by \code{create.iknn.graphs()}.
-#'   \item \code{X.graphs.stats}: Summary statistics from \code{summary(X.graphs)}.
-#'   \item \code{edit.distances}: Numeric vector of edit distances between consecutive
-#'   graphs in the regime used for selection.
-#'   \item \code{k.for.edit}: Integer vector of k values corresponding to \code{edit.distances}.
-#'   \item \code{pick.k.within.eps.global.min.res}: The full result returned by
-#'   \code{pick.k.within.eps.global.min()}.
-#'   \item \code{graph.opt}: The selected graph object at \code{k = k.opt} from the
-#'   geometrically pruned graph sequence.
+#'   \item structural stability (minimum edit distance between consecutive graphs) and/or
+#'   \item external label coherence (e.g., CST mixing metrics; homophily/assortativity effect or z-score)
 #' }
+#'
+#' This function fixes common pitfalls:
+#' \enumerate{
+#'   \item Trimming uses the graph with the largest LCC in the range (not necessarily kmin).
+#'   \item After trimming, graphs are rebuilt with the same PCA settings (\code{pca.dim}, \code{variance.explained}).
+#'   \item Mixing selection defaults to metrics that can peak (e.g., effect/z/adjusted), rather than raw homophily.
+#'   \item Edge list conversion is duplicate-safe; optional \code{igraph::simplify()} is applied.
+#'   \item For edge lengths, weights can be converted to affinities using a fixed sigma across k.
+#' }
+#'
+#' @param X Numeric matrix (samples in rows, features in columns).
+#' @param kmin Integer scalar, minimum k.
+#' @param kmax Integer scalar, maximum k.
+#' @param method Character: "edit", "mixing", "both", or "none".
+#' @param pca.dim Optional integer for PCA dimension inside \code{create.iknn.graphs()}.
+#' @param variance.explained Optional numeric in (0,1] for PCA variance inside \code{create.iknn.graphs()}.
+#' @param trim.disconnected Logical; if TRUE and the sequence fails connectivity requirements,
+#'   trims to largest connected component of the best (largest-LCC) graph and rebuilds graphs.
+#'
+#' @param edit.min.lcc.frac Numeric in (0,1], default 1.0 (fully connected tail).
+#' @param edit.eps Numeric >=0, relative tolerance for edit-distance selection (minimization).
+#'
+#' @param labels Optional categorical labels (e.g., CST), either length nrow(X) or named by rownames(X).
+#'   Required for method "mixing" or "both".
+#' @param perm.blocks Optional vector/factor for block-wise label permutation (same length/names as labels).
+#' @param mixing.metric Character, one of:
+#'   \itemize{
+#'     \item "homophily" "homophily.z" "homophily.effect" "homophily.adjusted"
+#'     \item "assortativity" "assortativity.z" "assortativity.effect"
+#'     \item "conductance.median" "conductance.wmean" (minimization metrics)
+#'   }
+#' @param mixing.min.lcc.frac Numeric in (0,1], minimum LCC fraction required for mixing evaluation.
+#' @param mixing.eps Numeric >=0 tolerance used with \code{pick.k.within.eps.global.max()}.
+#' @param mixing.require.local.extremum Logical; if TRUE, prefers local extrema for mixing metric.
+#' @param mixing.window Integer neighborhood for local extremum detection.
+#' @param n.perm Integer number of permutations for mixing nulls.
+#'
+#' @param use.edge.weights Logical; if TRUE, uses graph edge weights when available.
+#' @param weights.are.edge.lengths Logical; if TRUE, interpret weights as lengths and convert to affinities.
+#' @param affinity.method "exp" or "inv". For exp: exp(-(d/sigma)^2). For inv: 1/(d+eps).
+#' @param affinity.sigma Optional positive scalar; if NULL, estimated once from a reference k graph.
+#' @param affinity.sigma.from Character: "k.cc.mixing" or "k.trim" or "k.max.lcc" to choose reference graph.
+#' @param affinity.eps Small positive scalar for inverse affinity.
+#' @param simplify.multiple Logical; if TRUE, simplifies multi-edges/loops and merges weights.
+#' @param seed Numeric; seed of a random number generator.
+#' @param n.cores Integer number of cores passed to \code{create.iknn.graphs()}.
+#' @param verbose Logical.
+#' @param ... Additional arguments forwarded to \code{create.iknn.graphs()} ONLY.
+#'
+#' @return Object of class "build_iknn_graphs_and_selectk" with fields:
+#'   \itemize{
+#'     \item X.graphs
+#'     \item k.values
+#'     \item connectivity (data.frame)
+#'     \item edit (data.frame or NULL)
+#'     \item mixing (data.frame or NULL)
+#'     \item k.cc.edit, k.opt.edit
+#'     \item k.cc.mixing, k.opt.mixing
+#'     \item trim (list)
+#'     \item params (list)
+#'   }
 #'
 #' @export
 build.iknn.graphs.and.selectk <- function(X,
                                          kmin,
                                          kmax,
-                                         pruning = list(
-                                             max.path.edge.ratio.deviation.thld = 0.1,
-                                             path.edge.ratio.percentile = 0.5,
-                                             threshold.percentile = 0
-                                         ),
-                                         n.cores = NULL,
-                                         verbose = TRUE) {
+                                         method = c("both", "edit", "mixing", "none"),
+                                         pca.dim = 100,
+                                         variance.explained = 0.99,
+                                         trim.disconnected = TRUE,
+                                         edit.min.lcc.frac = 1.0,
+                                         edit.eps = 0.05,
+                                         labels = NULL,
+                                         perm.blocks = NULL,
+                                         mixing.metric = c("homophily.effect",
+                                                          "homophily.z",
+                                                          "homophily.adjusted",
+                                                          "assortativity.effect",
+                                                          "assortativity.z",
+                                                          "homophily",
+                                                          "assortativity",
+                                                          "conductance.median",
+                                                          "conductance.wmean"),
+                                         mixing.min.lcc.frac = 0.98,
+                                         mixing.eps = 0.05,
+                                         mixing.require.local.extremum = TRUE,
+                                         mixing.window = 1L,
+                                         n.perm = 200L,
+                                         use.edge.weights = TRUE,
+                                         weights.are.edge.lengths = FALSE,
+                                         affinity.method = c("exp", "inv"),
+                                         affinity.sigma = NULL,
+                                         affinity.sigma.from = c("k.cc.mixing", "k.max.lcc", "k.trim"),
+                                         affinity.eps = 1e-8,
+                                         simplify.multiple = TRUE,
+                                         seed = 1L,
+                                         n.cores = 1L,
+                                         verbose = TRUE,
+                                         ...) {
 
-    stopifnot(is.matrix(X))
-    stopifnot(nrow(X) > kmax)
-    stopifnot(kmin >= 1, kmax >= kmin)
+    ## ---- validate X ----
+    if (missing(X) || is.null(X)) stop("`X` must be provided.")
+    X <- tryCatch(as.matrix(X), error = function(e) NULL)
+    if (is.null(X)) stop("`X` must be coercible to a matrix via as.matrix().")
+    suppressWarnings(storage.mode(X) <- "double")
+    if (!is.numeric(X)) stop("`X` must be numeric (or coercible to numeric).")
+    if (nrow(X) < 5L) stop("`X` must have at least 5 rows.")
+    if (ncol(X) < 1L) stop("`X` must have at least 1 column.")
 
-    stopifnot(kmin == as.integer(kmin), kmax == as.integer(kmax))
-    kmin <- as.integer(kmin); kmax <- as.integer(kmax)
+    sample.ids <- rownames(X)
+    if (is.null(sample.ids)) sample.ids <- as.character(seq_len(nrow(X)))
 
-    k.values <- kmin:kmax
+    kmin <- as.integer(kmin)
+    kmax <- as.integer(kmax)
+    if (!is.finite(kmin) || !is.finite(kmax) || kmin < 1L) stop("`kmin` must be an integer >= 1.")
+    if (kmax < kmin) stop("`kmax` must be >= kmin.")
+    if (kmax >= nrow(X)) {
+        kmax <- nrow(X) - 1L
+        if (isTRUE(verbose)) {
+            cat("NOTE: reducing kmax to nrow(X)-1 =", kmax, "\n")
+        }
+    }
+
+    method <- match.arg(method)
+    mixing.metric <- match.arg(mixing.metric)
+    affinity.method <- match.arg(affinity.method)
+    affinity.sigma.from <- match.arg(affinity.sigma.from)
+
+    n.cores <- as.integer(n.cores)
+    if (!is.finite(n.cores) || n.cores < 1L) stop("`n.cores` must be an integer >= 1.")
+
+    if (!is.numeric(edit.min.lcc.frac) || length(edit.min.lcc.frac) != 1L ||
+        !is.finite(edit.min.lcc.frac) || edit.min.lcc.frac <= 0 || edit.min.lcc.frac > 1) {
+        stop("`edit.min.lcc.frac` must be in (0,1].")
+    }
+    if (!is.numeric(mixing.min.lcc.frac) || length(mixing.min.lcc.frac) != 1L ||
+        !is.finite(mixing.min.lcc.frac) || mixing.min.lcc.frac <= 0 || mixing.min.lcc.frac > 1) {
+        stop("`mixing.min.lcc.frac` must be in (0,1].")
+    }
+
+    ## ---- helper: align named labels to sample.ids robustly ----
+    align.labels.to.sample.ids <- function(labels, sample.ids, min.match = 10L) {
+        if (is.null(names(labels))) stop("`labels` must be named (or length nrow(X) without names).")
+        min.match <- as.integer(min.match)
+        if (!is.finite(min.match) || min.match < 0L) stop("`min.match` must be an integer >= 0.")
+
+        ## strict match
+        lab0 <- labels[sample.ids]
+        n.match0 <- sum(!is.na(lab0))
+
+        if (n.match0 >= min.match) {
+            return(list(labels.aligned = as.character(lab0), used.make.names = FALSE))
+        }
+
+        ## fallback: make.names normalization
+        nm.sample <- make.names(sample.ids, unique = FALSE)
+        nm.labels <- make.names(names(labels), unique = FALSE)
+        labels.mn <- labels
+        names(labels.mn) <- nm.labels
+        lab1 <- labels.mn[nm.sample]
+        n.match1 <- sum(!is.na(lab1))
+
+        if (n.match1 >= min.match) {
+            warning("Label alignment succeeded only after make.names() normalization. ",
+                    "Consider normalizing rownames(X) and names(labels) consistently upstream.")
+            return(list(labels.aligned = as.character(lab1), used.make.names = TRUE))
+        }
+
+        stop(
+            "Label alignment failed: too few matches between rownames(X) and names(labels).\n",
+            "  matches strict: ", n.match0, " / ", length(sample.ids), "\n",
+            "  matches make.names: ", n.match1, " / ", length(sample.ids), "\n",
+            "  head(sample.ids): ", paste(utils::head(sample.ids, 5), collapse = ", "), "\n",
+            "  head(names(labels)): ", paste(utils::head(names(labels), 5), collapse = ", "), "\n",
+            "Fix: ensure rownames(X) equals names(labels) (or pass labels as an unnamed vector in row order)."
+        )
+    }
+
+    need.mixing <- method %in% c("mixing", "both")
+    labels.aligned <- NULL
+    blocks.aligned <- NULL
+
+    if (need.mixing) {
+        if (is.null(labels)) stop("`labels` must be provided when method includes 'mixing'.")
+
+        if (!is.null(names(labels))) {
+            ## if X has no rownames but labels are named and length matches, adopt label names
+            if (is.null(rownames(X)) && length(labels) == nrow(X) && length(unique(names(labels))) == nrow(X)) {
+                rownames(X) <- names(labels)
+                sample.ids <- rownames(X)
+            }
+
+            al <- align.labels.to.sample.ids(labels, sample.ids, min.match = 10L)
+            labels.aligned <- al$labels.aligned
+        } else {
+            if (length(labels) != nrow(X)) stop("`labels` must have length nrow(X) or be named by rownames(X).")
+            labels.aligned <- as.character(labels)
+            names(labels.aligned) <- sample.ids
+        }
+
+        ## optional: warn if many NA
+        n.lab <- sum(!is.na(labels.aligned))
+        if (n.lab < 10L) stop("Too few non-NA labels after alignment (n=", n.lab, ").")
+
+        if (!is.null(perm.blocks)) {
+            if (!is.null(names(perm.blocks))) {
+                blocks.aligned <- perm.blocks[sample.ids]
+            } else {
+                if (length(perm.blocks) != nrow(X)) stop("`perm.blocks` must have length nrow(X) or be named.")
+                blocks.aligned <- perm.blocks
+                names(blocks.aligned) <- sample.ids
+            }
+        }
+    }
+
+    ## ---- helper: build igraph + edge codes from (adj.list, weight.list) ----
+    adjlist.to.edge.mat <- function(adj.list, weight.list = NULL, n) {
+        has.w <- !is.null(weight.list)
+        e1 <- integer(0); e2 <- integer(0); ew <- numeric(0)
+
+        for (i in seq_len(n)) {
+            nb <- adj.list[[i]]
+            if (length(nb) == 0L) next
+            nb <- as.integer(nb)
+
+            if (!has.w) {
+                jj <- nb[nb > i]
+                if (length(jj) > 0L) {
+                    e1 <- c(e1, rep.int(i, length(jj)))
+                    e2 <- c(e2, jj)
+                    ew <- c(ew, rep.int(1.0, length(jj)))
+                }
+            } else {
+                wv <- as.double(weight.list[[i]])
+                if (length(wv) != length(nb)) stop("weight.list[[i]] length must match adj.list[[i]].")
+                keep <- (nb > i)
+                if (any(keep)) {
+                    e1 <- c(e1, rep.int(i, sum(keep)))
+                    e2 <- c(e2, nb[keep])
+                    ew <- c(ew, wv[keep])
+                }
+            }
+        }
+
+        if (length(e1) == 0L) {
+            return(list(edge.mat = matrix(integer(0), ncol = 2), weights = numeric(0)))
+        }
+
+        edge.mat <- cbind(e1, e2)
+        code <- (edge.mat[, 1] - 1L) * n + edge.mat[, 2]
+
+        ## merge duplicates defensively
+        if (length(code) != length(unique(code))) {
+            ## combine weights depending on semantics
+            comb <- if (isTRUE(weights.are.edge.lengths)) min else max
+            w.by.code <- tapply(ew, code, comb)
+            code.u <- as.integer(names(w.by.code))
+            ## decode back to (i,j)
+            i.u <- (code.u - 1L) %/% n + 1L
+            j.u <- (code.u - 1L) %% n + 1L
+            edge.mat <- cbind(as.integer(i.u), as.integer(j.u))
+            ew <- as.double(w.by.code)
+        }
+
+        list(edge.mat = edge.mat, weights = ew)
+    }
+
+    edge.codes.from.graph <- function(g.obj, n) {
+        el <- adjlist.to.edge.mat(g.obj$adj_list, g.obj$weight_list, n = n)
+        if (nrow(el$edge.mat) == 0L) return(integer(0))
+        code <- (el$edge.mat[, 1] - 1L) * n + el$edge.mat[, 2]
+        sort(unique(as.integer(code)))
+    }
+
+    jaccard.distance.codes <- function(a, b) {
+        a <- as.integer(a); b <- as.integer(b)
+        if (length(a) == 0L && length(b) == 0L) return(0)
+        if (length(a) == 0L || length(b) == 0L) return(1)
+        inter <- sum(!is.na(match(a, b)))
+        uni <- length(a) + length(b) - inter
+        if (uni <= 0L) return(0)
+        1 - (inter / uni)
+    }
+
+    make.igraph.from.graph <- function(g.obj, n, w.use) {
+        el <- adjlist.to.edge.mat(g.obj$adj_list, g.obj$weight_list, n = n)
+        g <- igraph::make_empty_graph(n = n, directed = FALSE)
+        if (nrow(el$edge.mat) > 0L) {
+            g <- igraph::add_edges(g, as.vector(t(el$edge.mat)))
+            if (!is.null(w.use) && length(w.use) == nrow(el$edge.mat)) {
+                igraph::E(g)$weight <- as.double(w.use)
+            } else {
+                ## keep raw weights if present
+                if (length(el$weights) == nrow(el$edge.mat)) igraph::E(g)$weight <- as.double(el$weights)
+            }
+        }
+        g
+    }
+
+    estimate.sigma.from.lengths <- function(d) {
+        d <- as.double(d)
+        d <- d[is.finite(d) & d > 0]
+        if (length(d) == 0L) return(1.0)
+        stats::median(d)
+    }
+
+    lengths.to.affinity <- function(d, sigma, method = "exp") {
+        d <- as.double(d)
+        if (!is.finite(sigma) || sigma <= 0) sigma <- estimate.sigma.from.lengths(d)
+        if (!is.finite(sigma) || sigma <= 0) sigma <- 1.0
+        if (method == "exp") {
+            w <- exp(- (d / sigma)^2)
+        } else {
+            w <- 1 / (d + affinity.eps)
+        }
+        w[!is.finite(w)] <- 0
+        w[w < 0] <- 0
+        w
+    }
+
+    ## ---- call mixing stats robustly across possible function signatures ----
+    call.mixing.stats <- function(igraph.obj, labels.vec, blocks.vec = NULL, w.vec = NULL, seed = 1L) {
+        fml <- tryCatch(names(formals(cst.graph.mixing.stats)), error = function(e) character(0))
+
+        args <- list(igraph.obj = igraph.obj, labels = labels.vec, n.perm = as.integer(n.perm), seed = as.integer(seed))
+        if ("perm.blocks" %in% fml) args$perm.blocks <- blocks.vec
+
+        ## Prefer passing edge.weights if supported; else rely on E(g)$weight
+        if (!is.null(w.vec)) {
+            if ("edge.weights" %in% fml) {
+                args$edge.weights <- w.vec
+            } else {
+                igraph::E(igraph.obj)$weight <- w.vec
+            }
+        }
+
+        do.call(cst.graph.mixing.stats, args)
+    }
+
+    extract.metric <- function(ms, metric.name, igraph.obj = NULL, labels.vec = NULL) {
+        ## helper to safely extract from old/new return structures
+        get1 <- function(x, path) {
+            cur <- x
+            for (nm in path) {
+                if (is.null(cur) || is.null(cur[[nm]])) return(NULL)
+                cur <- cur[[nm]]
+            }
+            cur
+        }
+
+        if (metric.name == "homophily") return(ms$homophily)
+
+        if (metric.name == "homophily.z") {
+            z <- get1(ms, c("permutation", "homophily", "z"))
+            if (is.null(z)) z <- get1(ms, c("permutation", "homophily.z", "z"))
+            if (is.null(z)) return(NA_real_)
+            return(as.double(z))
+        }
+
+        if (metric.name == "homophily.effect") {
+            eff <- get1(ms, c("permutation", "homophily", "effect"))
+            if (!is.null(eff)) return(eff)
+            mu <- get1(ms, c("permutation", "homophily.z", "mu"))
+            if (!is.null(mu) && is.finite(ms$homophily)) return(ms$homophily - mu)
+            return(NA_real_)
+        }
+
+        if (metric.name == "homophily.adjusted") {
+            adj <- ms$homophily.adjusted
+            if (!is.null(adj)) return(adj)
+
+            ## fallback: compute baseline using strength-weighted label proportions if graph provided
+            if (!is.null(igraph.obj) && !is.null(labels.vec)) {
+                w <- if ("weight" %in% igraph::edge_attr_names(igraph.obj)) igraph::E(igraph.obj)$weight else NULL
+                s <- igraph::strength(igraph.obj, weights = w)
+                ok <- !is.na(labels.vec)
+                if (sum(s[ok]) > 0) {
+                    p <- tapply(s[ok], labels.vec[ok], sum)
+                    p <- p / sum(s[ok])
+                    h0 <- sum(as.numeric(p)^2)
+                    if (is.finite(h0) && h0 < 1 && is.finite(ms$homophily)) return((ms$homophily - h0) / (1 - h0))
+                }
+            }
+            return(NA_real_)
+        }
+
+        if (metric.name == "assortativity") return(ms$assortativity)
+
+        if (metric.name == "assortativity.z") {
+            z <- get1(ms, c("permutation", "assortativity", "z"))
+            if (is.null(z)) z <- get1(ms, c("permutation", "assortativity.z", "z"))
+            if (is.null(z)) return(NA_real_)
+            return(as.double(z))
+        }
+
+        if (metric.name == "assortativity.effect") {
+            eff <- get1(ms, c("permutation", "assortativity", "effect"))
+            if (!is.null(eff)) return(eff)
+            mu <- get1(ms, c("permutation", "assortativity.z", "mu"))
+            if (!is.null(mu) && is.finite(ms$assortativity)) return(ms$assortativity - mu)
+            return(NA_real_)
+        }
+
+        if (metric.name == "conductance.median") {
+            v <- get1(ms, c("conductance.summary", "conductance.median"))
+            if (is.null(v)) return(NA_real_)
+            return(as.double(v))
+        }
+        if (metric.name == "conductance.wmean") {
+            v <- get1(ms, c("conductance.summary", "conductance.vol.weighted.mean"))
+            if (is.null(v)) return(NA_real_)
+            return(as.double(v))
+        }
+
+        NA_real_
+    }
+
+    metric.direction.default <- function(metric.name) {
+        if (metric.name %in% c("conductance.median", "conductance.wmean")) "min" else "max"
+    }
+
+    ## ---- build graphs (initial) ----
+    if (!exists("create.iknn.graphs", mode = "function")) {
+        stop("create.iknn.graphs() not found in the environment/namespace.")
+    }
 
     X.graphs <- create.iknn.graphs(
         X,
         kmin = kmin,
         kmax = kmax,
-        max.path.edge.ratio.deviation.thld = pruning$max.path.edge.ratio.deviation.thld,
-        path.edge.ratio.percentile = pruning$path.edge.ratio.percentile,
-        threshold.percentile = pruning$threshold.percentile,
+        pca.dim = pca.dim,
+        variance.explained = variance.explained,
         compute.full = TRUE,
-        pca.dim = NULL,
-        variance.explained = NULL,
         n.cores = n.cores,
-        verbose = verbose
+        verbose = verbose,
+        ...
     )
 
-    X.graphs.stats <- summary(X.graphs)
+    ## ---- locate k.values and graph list ----
+    k.values <- NULL
+    if (!is.null(X.graphs$k_statistics)) k.values <- X.graphs$k_statistics[,"k"]
+    if (!is.null(X.graphs$k.values)) k.values <- X.graphs$k.values
+    if (is.null(k.values) && !is.null(X.graphs$k)) k.values <- X.graphs$k
+    if (is.null(k.values)) k.values <- seq.int(kmin, kmax)
 
-    any.connected <- any(X.graphs.stats$n_ccomp == 1)
+    g.list <- NULL
+    if (!is.null(X.graphs$geom_pruned_graphs)) g.list <- X.graphs$geom_pruned_graphs
+    if (is.null(g.list)) stop("X.graphs$geom_pruned_graphs not found; cannot proceed.")
 
-    if (!any.connected) {
-        if (verbose) {
-            cat("\nAll graphs in k range have >1 connected component.\n")
-            cat("Applying outlier trimming (largest CC) using graph at k = kmin.\n")
+    if (length(g.list) != length(k.values)) {
+        stop("Length mismatch: geom_pruned_graphs and k.values.")
+    }
+
+    ## ---- connectivity diagnostics ----
+    compute.connectivity <- function(g.list, k.values, n) {
+        n.comp <- integer(length(k.values))
+        lcc.size <- integer(length(k.values))
+        lcc.frac <- numeric(length(k.values))
+        n.edges <- integer(length(k.values))
+
+        for (i in seq_along(k.values)) {
+            g.obj <- g.list[[i]]
+            el <- adjlist.to.edge.mat(g.obj$adj_list, g.obj$weight_list, n = n)
+            n.edges[i] <- nrow(el$edge.mat)
+
+            gi <- igraph::make_empty_graph(n = n, directed = FALSE)
+            if (nrow(el$edge.mat) > 0L) gi <- igraph::add_edges(gi, as.vector(t(el$edge.mat)))
+
+            comp <- igraph::components(gi)
+            n.comp[i] <- comp$no
+            lcc.size[i] <- max(comp$csize)
+            lcc.frac[i] <- lcc.size[i] / n
         }
 
-        g0 <- X.graphs$geom_pruned_graphs[[1]]
-
-        if (is.null(g0$adj_list)) stop("geom_pruned_graphs[[1]] is missing adj_list.")
-
-        trim.res <- trim.X.to.main.cc(
-            X = X,
-            adj.list = g0$adj_list,
-            verbose = verbose
+        data.frame(
+            k = as.integer(k.values),
+            n.edges = n.edges,
+            n.components = n.comp,
+            lcc.size = lcc.size,
+            lcc.frac = lcc.frac
         )
-        X <- trim.res$X
+    }
 
-        if (nrow(X) <= kmax) {
-            stop("After trimming to main CC, nrow(X) <= kmax. Reduce kmax or use a less aggressive trimming/pruning.")
+    conn <- compute.connectivity(g.list, k.values, n = nrow(X))
+
+    ## ---- connected-tail helper ----
+    find.k.cc <- function(conn.df, min.lcc.frac) {
+        bad <- which(conn.df$lcc.frac < min.lcc.frac)
+        if (length(bad) == 0L) return(conn.df$k[1L])
+        last.bad <- max(bad)
+        if (last.bad >= nrow(conn.df)) return(NA_integer_)
+        k.cc <- conn.df$k[last.bad + 1L]
+        ## verify tail
+        ok.tail <- which(conn.df$k >= k.cc)
+        if (!all(conn.df$lcc.frac[ok.tail] >= min.lcc.frac)) return(NA_integer_)
+        k.cc
+    }
+
+    k.cc.edit <- find.k.cc(conn, min.lcc.frac = edit.min.lcc.frac)
+
+    ## ---- trimming if needed ----
+    trim.info <- list(trimmed = FALSE, keep.idx = seq_len(nrow(X)), dropped.idx = integer(0), k.trim = NA_integer_)
+    if (isTRUE(trim.disconnected) && (is.na(k.cc.edit) && method %in% c("edit", "both"))) {
+        ## choose k with max LCC (tie -> smallest k)
+        best.idx <- which(conn$lcc.size == max(conn$lcc.size))
+        best.idx <- best.idx[which.min(conn$k[best.idx])]
+        k.trim <- conn$k[best.idx]
+        trim.info$k.trim <- k.trim
+
+        ## compute LCC vertices at k.trim
+        g.trim <- g.list[[best.idx]]
+        el <- adjlist.to.edge.mat(g.trim$adj_list, g.trim$weight_list, n = nrow(X))
+        gi <- igraph::make_empty_graph(n = nrow(X), directed = FALSE)
+        if (nrow(el$edge.mat) > 0L) gi <- igraph::add_edges(gi, as.vector(t(el$edge.mat)))
+        comp <- igraph::components(gi)
+        keep <- which(comp$membership == which.max(comp$csize))
+
+        if (length(keep) < 5L) stop("Trimming would leave too few vertices; aborting.")
+
+        if (isTRUE(verbose)) {
+            cat("Trimming to largest CC at k =", k.trim, " (n=", length(keep), " of ", nrow(X), ")\n", sep = "")
         }
 
-        if (verbose) cat("\nRebuilding ikNN graph sequence (after trimming)\n")
+        X <- X[keep, , drop = FALSE]
+        sample.ids <- sample.ids[keep]
 
+        if (need.mixing) {
+            labels.aligned <- labels.aligned[sample.ids]
+            if (!is.null(blocks.aligned)) blocks.aligned <- blocks.aligned[sample.ids]
+        }
+
+        trim.info$trimmed <- TRUE
+        trim.info$keep.idx <- keep
+        trim.info$dropped.idx <- setdiff(seq_len(nrow(gi)), keep)
+
+        ## rebuild graphs with same PCA settings
+        if (kmax >= nrow(X)) kmax <- nrow(X) - 1L
         X.graphs <- create.iknn.graphs(
             X,
             kmin = kmin,
             kmax = kmax,
-            max.path.edge.ratio.deviation.thld = pruning$max.path.edge.ratio.deviation.thld,
-            path.edge.ratio.percentile = pruning$path.edge.ratio.percentile,
-            threshold.percentile = pruning$threshold.percentile,
+            pca.dim = pca.dim,
+            variance.explained = variance.explained,
             compute.full = TRUE,
             n.cores = n.cores,
-            verbose = verbose
+            verbose = verbose,
+            ...
         )
-        X.graphs.stats <- summary(X.graphs)
+
+        ## refresh extracted fields
+        if (!is.null(X.graphs$k.values)) k.values <- X.graphs$k.values else if (!is.null(X.graphs$k)) k.values <- X.graphs$k else k.values <- seq.int(kmin, kmax)
+        if (!is.null(X.graphs$geom_pruned_graphs)) g.list <- X.graphs$geom_pruned_graphs else stop("Rebuilt X.graphs missing geom_pruned_graphs.")
+
+        conn <- compute.connectivity(g.list, k.values, n = nrow(X))
+        k.cc.edit <- find.k.cc(conn, min.lcc.frac = edit.min.lcc.frac)
     }
 
-    graphs <- X.graphs$geom_pruned_graphs
-    if (is.null(graphs)) stop("create.iknn.graphs() did not return geom_pruned_graphs (compute.full=TRUE required).")
+    ## k.cc for mixing eligibility (can differ from edit)
+    k.cc.mixing <- find.k.cc(conn, min.lcc.frac = mixing.min.lcc.frac)
 
-    ## Define k.cc as the start of the terminal connected tail
-    ## i.e., the smallest k such that all graphs for k' >= k are connected
-    n.ccomp.vec <- X.graphs.stats$n_ccomp
+    ## ---- edit-distance curve + selection ----
+    edit.df <- NULL
+    k.opt.edit <- NA_integer_
 
-    if (length(n.ccomp.vec) != length(k.values)) {
-        stop("Length mismatch: X.graphs.stats$n_ccomp must match kmin:kmax")
+    pick.k.within.eps.global.min.internal <- function(metric, k.values, eps = 0.05, idx.ok = NULL) {
+        pick.k.within.eps.global.max(metric = metric, k.values = k.values,
+                                     eps = eps, direction = "min", idx.ok = idx.ok,
+                                     require.local.extremum = FALSE, window = 1L,
+                                     return.details = FALSE)
     }
 
-    disc.idx <- which(n.ccomp.vec > 1)
+    if (method %in% c("edit", "both")) {
+        if (is.na(k.cc.edit)) stop("No connected tail found for edit selection; consider trim.disconnected=TRUE or relax edit.min.lcc.frac.")
 
-    if (length(disc.idx) == 0) {
-        ## All graphs are connected across the full k range
-        k.cc <- as.integer(kmin)
-    } else if (max(disc.idx) == length(k.values)) {
-        ## Last k is disconnected -> no terminal connected tail in this range
-        k.cc <- NA_integer_
-    } else {
-        ## First k after the last disconnected k
-        k.cc <- as.integer(k.values[max(disc.idx) + 1L])
-    }
-
-    ## Enforce that the tail is indeed connected
-    if (!is.na(k.cc)) {
-        tail.idx <- which(k.values >= k.cc)
-        if (any(n.ccomp.vec[tail.idx] > 1)) {
-            stop("Internal error: computed k.cc does not define a connected tail")
+        ## compute edge codes per k
+        edge.codes <- vector("list", length(k.values))
+        for (i in seq_along(k.values)) {
+            edge.codes[[i]] <- edge.codes.from.graph(g.list[[i]], n = nrow(X))
         }
-    } else {
-        stop("No terminal connected tail in this k range. Increase kmax and/or relax pruning.")
+
+        edit.dist <- rep(NA_real_, length(k.values))
+        for (i in seq_len(length(k.values) - 1L)) {
+            edit.dist[i] <- jaccard.distance.codes(edge.codes[[i]], edge.codes[[i + 1L]])
+        }
+
+        edit.df <- data.frame(
+            k = as.integer(k.values),
+            edit.dist.to.next = edit.dist
+        )
+
+        idx.ok <- which(edit.df$k >= k.cc.edit & is.finite(edit.df$edit.dist.to.next))
+        if (length(idx.ok) > 0L) {
+            k.opt.edit <- as.integer(pick.k.within.eps.global.min.internal(edit.df$edit.dist.to.next, edit.df$k, eps = edit.eps, idx.ok = idx.ok))
+        }
     }
 
-    if (verbose && k.cc > kmin)  {
-        cat("\nFound connected graphs starting at k =", k.cc, "\n")
-        cat("Restricting stability analysis to k in [", k.cc, ",", kmax, "]\n", sep = "")
+    ## ---- mixing curve + selection ----
+    mixing.df <- NULL
+    k.opt.mixing <- NA_integer_
+    sigma.used <- affinity.sigma
+
+    if (need.mixing) {
+        ## decide direction for selection
+        dir0 <- metric.direction.default(mixing.metric)
+
+        ## eligible indices for mixing evaluation
+        idx.mix <- which(conn$lcc.frac >= mixing.min.lcc.frac)
+        if (!is.na(k.cc.mixing)) idx.mix <- idx.mix[conn$k[idx.mix] >= k.cc.mixing]
+        if (length(idx.mix) == 0L) stop("No k values satisfy mixing connectivity constraint; relax mixing.min.lcc.frac or trim.disconnected.")
+
+        ## estimate sigma once if needed and weights are lengths
+        if (isTRUE(use.edge.weights) && isTRUE(weights.are.edge.lengths) && is.null(affinity.sigma)) {
+            idx.ref <- idx.mix[1L]
+            if (affinity.sigma.from == "k.max.lcc") {
+                idx.ref <- which(conn$lcc.size == max(conn$lcc.size))[1L]
+            } else if (affinity.sigma.from == "k.trim" && isTRUE(trim.info$trimmed)) {
+                idx.ref <- which(conn$k == trim.info$k.trim)
+                if (length(idx.ref) == 0L) idx.ref <- idx.mix[1L]
+            } else if (affinity.sigma.from == "k.cc.mixing") {
+                idx.ref <- idx.mix[1L]
+            }
+
+            ## pull raw lengths from reference graph edgelist
+            g.ref <- g.list[[idx.ref]]
+            el.ref <- adjlist.to.edge.mat(g.ref$adj_list, g.ref$weight_list, n = nrow(X))
+            sigma.used <- estimate.sigma.from.lengths(el.ref$weights)
+            if (isTRUE(verbose)) cat("Estimated affinity.sigma =", signif(sigma.used, 5), "from k =", conn$k[idx.ref], "\n")
+        }
+
+        ## compute metrics across k
+        k.out <- conn$k[idx.mix]
+        val <- rep(NA_real_, length(idx.mix))
+        val.z <- rep(NA_real_, length(idx.mix))
+        val.effect <- rep(NA_real_, length(idx.mix))
+        val.adj <- rep(NA_real_, length(idx.mix))
+        assort <- rep(NA_real_, length(idx.mix))
+        cond.med <- rep(NA_real_, length(idx.mix))
+        cond.wm <- rep(NA_real_, length(idx.mix))
+
+        for (jj in seq_along(idx.mix)) {
+            ii <- idx.mix[jj]
+
+            k0 <- conn$k[ii]
+            g.obj <- g.list[[ii]]
+            n0 <- nrow(X)
+
+            ## build igraph and prepare weights (affinity if needed)
+            el <- adjlist.to.edge.mat(g.obj$adj_list, g.obj$weight_list, n = n0)
+            if (nrow(el$edge.mat) == 0L) next
+
+            w.use <- NULL
+            if (isTRUE(use.edge.weights)) {
+                if (isTRUE(weights.are.edge.lengths)) {
+                    w.use <- lengths.to.affinity(el$weights, sigma = sigma.used, method = affinity.method)
+                } else {
+                    w.use <- el$weights
+                    w.use[!is.finite(w.use)] <- 0
+                    w.use[w.use < 0] <- 0
+                }
+            }
+
+            ig <- igraph::make_empty_graph(n = n0, directed = FALSE)
+            ig <- igraph::add_edges(ig, as.vector(t(el$edge.mat)))
+            igraph::E(ig)$weight <- el$weights
+
+            if (!is.null(w.use) && length(w.use) == nrow(el$edge.mat)) igraph::E(ig)$weight <- w.use
+
+            if (isTRUE(simplify.multiple)) {
+                comb.fun <- if (isTRUE(weights.are.edge.lengths)) "max" else "max"
+                ## after length->affinity conversion, use max for duplicates
+                ig <- igraph::simplify(ig, remove.multiple = TRUE, remove.loops = TRUE,
+                                       edge.attr.comb = list(weight = comb.fun, "ignore"))
+            }
+
+            ms <- call.mixing.stats(ig, labels.vec = labels.aligned, blocks.vec = blocks.aligned, w.vec = if (!("edge.weights" %in% names(formals(cst.graph.mixing.stats)))) NULL else igraph::E(ig)$weight, seed = seed)
+
+            k.out <- c(k.out, k0)
+
+            val[jj] <- extract.metric(ms, mixing.metric, igraph.obj = ig, labels.vec = labels.aligned)
+            val.z[jj] <- extract.metric(ms, "homophily.z", igraph.obj = ig, labels.vec = labels.aligned)
+            val.effect[jj] <- extract.metric(ms, "homophily.effect", igraph.obj = ig, labels.vec = labels.aligned)
+            val.adj[jj] <- extract.metric(ms, "homophily.adjusted", igraph.obj = ig, labels.vec = labels.aligned)
+            assort[jj] <- extract.metric(ms, "assortativity", igraph.obj = ig, labels.vec = labels.aligned)
+            cond.med[jj] <- extract.metric(ms, "conductance.median", igraph.obj = ig, labels.vec = labels.aligned)
+            cond.wm[jj] <- extract.metric(ms, "conductance.wmean", igraph.obj = ig, labels.vec = labels.aligned)
+        }
+
+        mixing.df <- data.frame(
+            k = as.integer(k.out),
+            metric = as.double(val),
+            homophily.z = as.double(val.z),
+            homophily.effect = as.double(val.effect),
+            homophily.adjusted = as.double(val.adj),
+            assortativity = as.double(assort),
+            conductance.median = as.double(cond.med),
+            conductance.wmean = as.double(cond.wm)
+        )
+        mixing.df <- mixing.df[order(mixing.df$k), , drop = FALSE]
+
+        ## select k on the chosen mixing.metric curve
+        metric.vec <- mixing.df$metric
+        k.vec <- mixing.df$k
+        idx.ok <- which(is.finite(metric.vec))
+
+        if (length(idx.ok) > 0L) {
+            k.opt.mixing <- pick.k.within.eps.global.max(
+                metric = metric.vec,
+                k.values = k.vec,
+                eps = mixing.eps,
+                direction = dir0,
+                idx.ok = idx.ok,
+                require.local.extremum = isTRUE(mixing.require.local.extremum),
+                window = mixing.window,
+                return.details = FALSE
+            )
+            k.opt.mixing <- as.integer(k.opt.mixing)
+        }
     }
 
-    keep.idx <- NULL
-    if (!is.na(k.cc) && k.cc > kmin) {
-        keep.idx <- which(k.values >= k.cc)
-        graphs.use <- X.graphs$geom_pruned_graphs[keep.idx]
-        k.values.use <- k.values[keep.idx]
-    } else {
-        graphs.use <- X.graphs$geom_pruned_graphs
-        k.values.use <- k.values
-    }
-
-    if (length(graphs.use) < 2L) {
-        stop("Need at least two graphs to compute edit distances; increase k range or adjust k.cc.")
-    }
-
-    if (verbose) {
-        cat("\nComputing edit distance between consecutive graphs\n")
-    }
-
-    edit.distances <- internal.compute.edit.distances(graphs.use)
-
-    if (length(edit.distances) != (length(graphs.use) - 1L)) {
-        stop("internal.compute.edit.distances() returned unexpected length.")
-    }
-
-    ## k values corresponding to edit.distances (pairs G_k vs G_{k+1})
-    k.for.edit <- k.values.use[-length(k.values.use)]
-
-    res.10 <- pick.k.within.eps.global.min(edit.distances, k.for.edit, k.cc = k.cc, eps = 0.10)
-
-    if (verbose) {
-        cat("\nSelected k.opt =", res.10$k.pick,
-            " (eps=0.10, d.pick=", res.10$d.pick,
-            ", d.min=", res.10$d.min, ")\n", sep = "")
-    }
-
-    k.opt <- res.10$k.pick
-
-    ## extract chosen graph
-    idx <- which(k.values == k.opt)
-    if (length(idx) != 1L) stop("Internal error: k.opt not found uniquely in kmin:kmax.")
-    g.opt <- graphs[[idx]]
-
-    if (verbose) {
-        cat(sprintf("DONE: k.opt=%d\n", k.opt))
-    }
-
+    ## ---- assemble return ----
     out <- list(
-        k.opt = k.opt,
         X.graphs = X.graphs,
-        X.graphs.stats = X.graphs.stats,
-        edit.distances = edit.distances,
-        k.for.edit = k.for.edit,
-        k.cc = k.cc,
-        pick.k.within.eps.global.min.res = res.10,
-        graph.opt = g.opt
+        k.values = as.integer(k.values),
+        connectivity = conn,
+        edit = edit.df,
+        mixing = mixing.df,
+        k.cc.edit = as.integer(k.cc.edit),
+        k.opt.edit = as.integer(k.opt.edit),
+        k.cc.mixing = as.integer(k.cc.mixing),
+        k.opt.mixing = as.integer(k.opt.mixing),
+        trim = trim.info,
+        params = list(
+            method = method,
+            kmin = kmin, kmax = kmax,
+            pca.dim = pca.dim,
+            variance.explained = variance.explained,
+            n.cores = n.cores,
+            edit.min.lcc.frac = edit.min.lcc.frac,
+            edit.eps = edit.eps,
+            mixing.metric = mixing.metric,
+            mixing.min.lcc.frac = mixing.min.lcc.frac,
+            mixing.eps = mixing.eps,
+            mixing.require.local.extremum = mixing.require.local.extremum,
+            mixing.window = mixing.window,
+            n.perm = n.perm,
+            use.edge.weights = use.edge.weights,
+            weights.are.edge.lengths = weights.are.edge.lengths,
+            affinity.method = affinity.method,
+            affinity.sigma = sigma.used,
+            affinity.eps = affinity.eps,
+            simplify.multiple = simplify.multiple
+        )
     )
-
     class(out) <- "build_iknn_graphs_and_selectk"
-
     out
 }
 
-#' Plot method for \code{build_iknn_graphs_and_selectk} objects
+#' Print method for build_iknn_graphs_and_selectk
 #'
-#' @description
-#' Produces a diagnostic stability plot for objects returned by
-#' \code{build.iknn.graphs.and.selectk()} with class
-#' \code{"build_iknn_graphs_and_selectk"}.
-#'
-#' The plot shows the edit distance between consecutive graphs in the
-#' selected regime (typically the terminal connected tail), as a function of
-#' \code{k} (the left endpoint of the consecutive pair \eqn{(G_k, G_{k+1})}).
-#' Vertical reference lines indicate \code{k.cc} (start of the connected tail)
-#' and \code{k.opt} (selected k).
-#'
-#' @param x An object of class \code{"build_iknn_graphs_and_selectk"}.
-#'   Must contain components \code{k.for.edit} and \code{edit.distances}. If present,
-#'   \code{k.cc} and \code{k.opt} are used for reference lines.
-#' @param ... Additional arguments passed to \code{plot()}.
-#' @param type Plot type passed to \code{plot()}. Default \code{"b"}.
-#' @param pch Plotting character passed to \code{plot()}. Default \code{16}.
-#' @param las Axis label style passed to \code{plot()}. Default \code{1}.
-#' @param xlab X-axis label. Default \code{"k (for consecutive pair)"}.
-#' @param ylab Y-axis label. Default \code{"Edit distance between consecutive graphs"}.
-#' @param main Plot title. Default \code{"ikNN graph stability: edit distance curve"}.
-#' @param add.grid Logical. If \code{TRUE}, adds a \code{grid()}.
-#' @param lty.k.cc Line type for \code{k.cc} reference line. Default \code{2}.
-#' @param lty.k.opt Line type for \code{k.opt} reference line. Default \code{3}.
-#' @param legend.pos Legend position passed to \code{legend()}. Default \code{"topright"}.
-#' @param legend.bty Legend box type passed to \code{legend()}. Default \code{"n"}.
-#' @param show.threshold A horizontal line corresponding to \eqn{(1+\varepsilon)d_{\min}} value.
-#'
-#' @return Invisibly returns \code{x}.
-#'
+#' @param x Object from build.iknn.graphs.and.selectk().
+#' @param ... Unused.
 #' @export
-plot.build_iknn_graphs_and_selectk <- function(
-    x,
-    ...,
-    type = "b",
-    pch = 16,
-    las = 1,
-    xlab = "k (for consecutive pair)",
-    ylab = "Edit distance between consecutive graphs",
-    main = "ikNN graph stability: edit distance curve",
-    add.grid = TRUE,
-    lty.k.cc = 2,
-    lty.k.opt = 3,
-    legend.pos = "topright",
-    legend.bty = "n",
-    show.threshold = FALSE
-) {
-
-    if (is.null(x) || !inherits(x, "build_iknn_graphs_and_selectk")) {
-        stop("x must be an object of class 'build_iknn_graphs_and_selectk'.")
-    }
-
-    if (is.null(x$k.for.edit) || is.null(x$edit.distances)) {
-        stop("x must contain components 'k.for.edit' and 'edit.distances'.")
-    }
-
-    k.for.edit <- x$k.for.edit
-    edit.distances <- x$edit.distances
-
-    if (!is.numeric(k.for.edit) || !is.numeric(edit.distances)) {
-        stop("'k.for.edit' and 'edit.distances' must be numeric.")
-    }
-
-    if (length(k.for.edit) != length(edit.distances)) {
-        stop("Length mismatch: length(k.for.edit) must equal length(edit.distances).")
-    }
-
-    ## Basic plot
-    graphics::plot(
-        k.for.edit,
-        edit.distances,
-        type = type,
-        pch = pch,
-        las = las,
-        xlab = xlab,
-        ylab = ylab,
-        main = main,
-        ...
-    )
-
-    if (isTRUE(add.grid)) {
-        graphics::grid()
-    }
-
-    ## Optional: horizontal threshold line at (1+eps)*d.min from stored picker result
-    if (isTRUE(show.threshold)) {
-        if (!is.null(x$pick.k.within.eps.global.min.res) &&
-            is.list(x$pick.k.within.eps.global.min.res) &&
-            !is.null(x$pick.k.within.eps.global.min.res$d.thld) &&
-            length(x$pick.k.within.eps.global.min.res$d.thld) == 1L &&
-            is.finite(x$pick.k.within.eps.global.min.res$d.thld)) {
-
-            d.thld <- x$pick.k.within.eps.global.min.res$d.thld
-            graphics::abline(h = d.thld, lty = 4)
-
-        } else {
-            warning("show.threshold=TRUE, but x$pick.k.within.eps.global.min.res$d.thld is missing or invalid.")
-        }
-    }
-
-    ## Optional reference lines
-    has.k.cc <- !is.null(x$k.cc) && is.finite(x$k.cc) && length(x$k.cc) == 1
-    has.k.opt <- !is.null(x$k.opt) && is.finite(x$k.opt) && length(x$k.opt) == 1
-
-    if (has.k.cc) {
-        graphics::abline(v = x$k.cc, lty = lty.k.cc)
-    }
-    if (has.k.opt) {
-        graphics::abline(v = x$k.opt, lty = lty.k.opt)
-    }
-
-    ## Legend
-    legend.items <- character(0)
-    if (has.k.cc) legend.items <- c(legend.items, paste0("k.cc = ", x$k.cc))
-    if (has.k.opt) legend.items <- c(legend.items, paste0("k.opt = ", x$k.opt))
-
-    if (isTRUE(show.threshold) &&
-        !is.null(x$pick.k.within.eps.global.min.res$d.thld) &&
-        length(x$pick.k.within.eps.global.min.res$d.thld) == 1L &&
-        is.finite(x$pick.k.within.eps.global.min.res$d.thld)) {
-        legend.items <- c(legend.items, paste0("d.thld = ", signif(x$pick.k.within.eps.global.min.res$d.thld, 6)))
-    }
-
-    if (length(legend.items) > 0) {
-        graphics::legend(
-            legend.pos,
-            legend = legend.items,
-            bty = legend.bty
-        )
-    }
-
+print.build_iknn_graphs_and_selectk <- function(x, ...) {
+    if (!inherits(x, "build_iknn_graphs_and_selectk")) stop("x must be class 'build_iknn_graphs_and_selectk'.")
+    cat("build.iknn.graphs.and.selectk result\n")
+    cat("  k range: ", min(x$k.values), " .. ", max(x$k.values), "\n", sep = "")
+    cat("  trimmed: ", isTRUE(x$trim$trimmed), "\n", sep = "")
+    if (isTRUE(x$trim$trimmed)) cat("  trim k:  ", x$trim$k.trim, "\n", sep = "")
+    cat("  k.cc.edit:    ", x$k.cc.edit, "\n", sep = "")
+    cat("  k.opt.edit:   ", x$k.opt.edit, "\n", sep = "")
+    cat("  k.cc.mixing:  ", x$k.cc.mixing, "\n", sep = "")
+    cat("  k.opt.mixing: ", x$k.opt.mixing, "\n", sep = "")
     invisible(x)
 }
 
-#' Print method for \code{build_iknn_graphs_and_selectk} objects
+#' Plot method for build_iknn_graphs_and_selectk
 #'
 #' @description
-#' Prints a compact textual summary for objects returned by
-#' \code{build.iknn.graphs.and.selectk()} with class
-#' \code{"build_iknn_graphs_and_selectk"}. This method does not produce any plots.
+#' Produces diagnostic plots without forwarding \code{...} to multiple panels.
+#' Customize panels via \code{connect.args}, \code{edit.args}, \code{mixing.args}.
 #'
-#' @param x An object of class \code{"build_iknn_graphs_and_selectk"}.
-#' @param ... Unused.
-#'
-#' @return Invisibly returns \code{x}.
-#'
+#' @param x Object from build.iknn.graphs.and.selectk().
+#' @param which Character vector selecting panels among: "connect", "edit", "mixing".
+#' @param connect.args Named list of arguments forwarded to the connectivity plot only.
+#' @param edit.args Named list of arguments forwarded to the edit plot only.
+#' @param mixing.args Named list of arguments forwarded to the mixing plot only.
+#' @param par.args Named list of arguments forwarded to \code{par()} (e.g., mfrow, mar).
 #' @export
-print.build_iknn_graphs_and_selectk <- function(x, ...) {
+plot.build_iknn_graphs_and_selectk <- function(x,
+                                              which = c("connect", "edit", "mixing"),
+                                              connect.args = list(),
+                                              edit.args = list(),
+                                              mixing.args = list(),
+                                              par.args = list()) {
+    if (!inherits(x, "build_iknn_graphs_and_selectk")) stop("x must be class 'build_iknn_graphs_and_selectk'.")
+    which <- unique(which)
 
-    if (is.null(x) || !inherits(x, "build_iknn_graphs_and_selectk")) {
-        stop("x must be an object of class 'build_iknn_graphs_and_selectk'.")
+    ## default layout: stacked panels
+    np <- length(which)
+    if (np < 1L) return(invisible(NULL))
+
+    par.default <- list(mfrow = c(np, 1), mar = c(3.2, 3.2, 1.5, 0.8), mgp = c(2.0, 0.6, 0), tcl = -0.3)
+    par.use <- utils::modifyList(par.default, par.args)
+
+    op <- do.call(graphics::par, par.use)
+    on.exit(graphics::par(op), add = TRUE)
+
+    ## ---- connectivity panel ----
+    if ("connect" %in% which) {
+        df <- x$connectivity
+        args <- list(df$k, df$lcc.frac,
+                     type = "l", las = 1,
+                     xlab = "k", ylab = "LCC fraction",
+                     main = "Connectivity (LCC fraction)")
+        args <- utils::modifyList(args, connect.args)
+        do.call(graphics::plot, args)
+
+        if (is.finite(x$k.cc.edit)) graphics::abline(v = x$k.cc.edit, lty = 2)
+        if (is.finite(x$k.cc.mixing)) graphics::abline(v = x$k.cc.mixing, lty = 3)
     }
 
-    ## Safe getters
-    .get1 <- function(obj, nm) {
-        v <- obj[[nm]]
-        if (is.null(v)) return(NULL)
-        if (length(v) == 0) return(NULL)
-        v
-    }
-
-    k.opt <- .get1(x, "k.opt")
-    k.cc <- .get1(x, "k.cc")
-    k.for.edit <- .get1(x, "k.for.edit")
-    edit.distances <- .get1(x, "edit.distances")
-
-    ## Header
-    cat("build_iknn_graphs_and_selectk\n")
-
-    ## k summary
-    if (!is.null(k.cc)) cat("  k.cc :", k.cc, "\n")
-    if (!is.null(k.opt)) cat("  k.opt:", k.opt, "\n")
-
-    ## Edit distance summary
-    if (!is.null(k.for.edit) && !is.null(edit.distances) &&
-        is.numeric(k.for.edit) && is.numeric(edit.distances) &&
-        length(k.for.edit) == length(edit.distances) && length(edit.distances) > 0) {
-
-        cat("  edit distances (n =", length(edit.distances), ")\n")
-        cat("    k range:", min(k.for.edit), "to", max(k.for.edit), "\n")
-
-        fin <- is.finite(edit.distances)
-        if (any(fin)) {
-            d.min <- min(edit.distances[fin])
-            d.med <- stats::median(edit.distances[fin])
-            d.max <- max(edit.distances[fin])
-
-            cat("    min/median/max:", signif(d.min, 6), "/",
-                signif(d.med, 6), "/", signif(d.max, 6), "\n", sep = "")
+    ## ---- edit panel ----
+    if ("edit" %in% which) {
+        if (is.null(x$edit)) {
+            graphics::plot.new()
+            graphics::title("Edit curve (not computed)")
         } else {
-            cat("    all distances are non-finite\n")
-        }
-    } else {
-        cat("  edit distances: <not available>\n")
-    }
+            df <- x$edit
+            args <- list(df$k, df$edit.dist.to.next,
+                         type = "l", las = 1,
+                         xlab = "k", ylab = "edit dist to next",
+                         main = "Edit distance between consecutive graphs")
+            args <- utils::modifyList(args, edit.args)
+            do.call(graphics::plot, args)
 
-    ## Picker summary if present
-    pick.res <- .get1(x, "pick.k.within.eps.global.min.res")
-    if (!is.null(pick.res) && is.list(pick.res)) {
-        eps <- pick.res$eps
-        d.thld <- pick.res$d.thld
-        d.min <- pick.res$d.min
-        if (!is.null(eps) || !is.null(d.min) || !is.null(d.thld)) {
-            cat("  selection rule\n")
-            if (!is.null(eps)) cat("    eps  :", eps, "\n")
-            if (!is.null(d.min)) cat("    d.min:", signif(d.min, 6), "\n")
-            if (!is.null(d.thld)) cat("    d.thld:", signif(d.thld, 6), "\n")
+            if (is.finite(x$k.cc.edit)) graphics::abline(v = x$k.cc.edit, lty = 2)
+            if (is.finite(x$k.opt.edit)) graphics::abline(v = x$k.opt.edit, lty = 3)
         }
     }
 
-    ## Graph sequence summary if present
-    stats <- .get1(x, "X.graphs.stats")
-    if (!is.null(stats) && is.data.frame(stats)) {
-        cat("  graph sequence stats: ", nrow(stats), " graphs\n", sep = "")
-        if (all(c("k", "n_ccomp", "edges") %in% names(stats))) {
-            ## Show first/last rows compactly
-            cat("    k:", stats$k[1], "to", stats$k[nrow(stats)], "\n")
-            cat("    n_ccomp (min/max):", min(stats$n_ccomp), "/", max(stats$n_ccomp), "\n")
+    ## ---- mixing panel ----
+    if ("mixing" %in% which) {
+        if (is.null(x$mixing)) {
+            graphics::plot.new()
+            graphics::title("Mixing curve (not computed)")
+        } else {
+            df <- x$mixing
+            args <- list(df$k, df$metric,
+                         type = "l", las = 1,
+                         xlab = "k", ylab = "mixing metric",
+                         main = paste0("Mixing metric: ", x$params$mixing.metric))
+            args <- utils::modifyList(args, mixing.args)
+            do.call(graphics::plot, args)
+
+            if (is.finite(x$k.cc.mixing)) graphics::abline(v = x$k.cc.mixing, lty = 2)
+            if (is.finite(x$k.opt.mixing)) graphics::abline(v = x$k.opt.mixing, lty = 3)
         }
     }
 

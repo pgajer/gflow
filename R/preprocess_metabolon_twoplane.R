@@ -22,7 +22,7 @@
 #'         then apply scaled asinh, winsorization, and robust z-scoring.
 #'   \item For detection columns: create 0/1 indicator and z-scale to unit variance,
 #'         optionally down-weight via det.weight.
-#'   \item Produce diagnostics (tables + plots + optional PCA).
+#'   \item Produce diagnostics (tables + optional PCA).
 #' }
 #'
 #' @param S Numeric matrix/data.frame: samples in rows, metabolites in columns.
@@ -38,22 +38,22 @@
 #' @param do.pca Logical: compute PCA on the final matrix for diagnostics.
 #' @param pca.max.rank Integer: maximum number of PCs to compute (prcomp rank cap).
 #' @param meta Optional data.frame with sample metadata aligned to rows of S.
-#' @param meta.color Optional character: a column name in meta to color the PCA scatter.
-#' @param make.plots Logical: if TRUE, produce diagnostic plots.
-#' @param plot.file Optional file path to write a multi-page PDF of diagnostic plots.
 #' @param verbose Logical: print a short preprocessing summary.
 #'
-#' @return A list with elements:
+#' @return An object of class \code{metabolon_twoplane} with elements:
 #' \itemize{
 #'   \item X: processed matrix (intensity + detection columns)
 #'   \item feature.table: per-feature diagnostics and tier assignment
 #'   \item name.map: mapping from raw feature names to safe names used internally
 #'   \item pca: prcomp object (or NULL)
+#'   \item pca.info: variance explained summaries from PCA (or NULL)
+#'   \item meta: sample metadata passed to preprocessing (or NULL)
 #'   \item diagnostics: list of summary stats and preprocessing parameters
 #' }
 #'
 #' @examples
-#' ## res <- preprocess.metabolon.twoplane(mb_ZB$S, plot.file = "metabolon_preproc_diagnostics.pdf")
+#' ## res <- preprocess.metabolon.twoplane(mb_ZB$S)
+#' ## plot(res)
 #' ## X <- res$X
 #'
 #' @export
@@ -70,9 +70,6 @@ preprocess.metabolon.twoplane <- function(S,
                                          do.pca = TRUE,
                                          pca.max.rank = 50L,
                                          meta = NULL,
-                                         meta.color = NULL,
-                                         make.plots = TRUE,
-                                         plot.file = NULL,
                                          verbose = TRUE) {
 
     ## ---- helpers (self-contained, CRAN-safe) ----
@@ -353,103 +350,153 @@ preprocess.metabolon.twoplane <- function(S,
         cat(msg)
     }
 
-    ## ---- diagnostic plots ----
-    if (isTRUE(make.plots)) {
-        if (!is.null(plot.file)) grDevices::pdf(plot.file, width = 10, height = 7)
-
-        ## (1) Missingness histogram with tier cutoffs
-        graphics::hist(
-            p.miss,
-            breaks = 30,
-            main = "Per-metabolite missingness",
-            xlab = "p.miss",
-            col = "gray",
-            border = "white"
-        )
-        graphics::abline(v = p.miss.A, lwd = 2, lty = 2)
-        graphics::abline(v = p.miss.B, lwd = 2, lty = 2)
-        graphics::mtext(paste0("p.miss.A=", p.miss.A, "   p.miss.B=", p.miss.B), side = 3, line = 0.2)
-
-        ## (2) Detection rate vs missingness (raw)
-        graphics::plot(
-            det.rate, p.miss,
-            pch = 16, cex = 0.6,
-            xlab = "Detection rate (1 - p.miss)",
-            ylab = "p.miss",
-            main = "Detection rate vs missingness"
-        )
-        graphics::abline(h = p.miss.A, lty = 2)
-        graphics::abline(h = p.miss.B, lty = 2)
-        graphics::abline(v = det.rate.bounds[1], lty = 3)
-        graphics::abline(v = det.rate.bounds[2], lty = 3)
-
-        ## (3) Asinh scales (intensity features)
-        if (sum(feature.table$keep.int) > 0L) {
-            aa.plot <- feature.table$asinh.scale[feature.table$keep.int]
-            aa.plot <- aa.plot[is.finite(aa.plot) & aa.plot > 0]
-            if (length(aa.plot) > 0L) {
-                graphics::hist(
-                    log10(aa.plot),
-                    breaks = 30,
-                    main = "log10(asinh scale) for intensity features",
-                    xlab = "log10(scale)",
-                    col = "gray",
-                    border = "white"
-                )
-            } else {
-                graphics::plot.new()
-                graphics::title("No finite asinh scales to plot.")
-            }
-        }
-
-        ## (4) Sample row-norms after preprocessing
-        row.norm <- sqrt(rowSums(X^2))
-        graphics::hist(
-            row.norm,
-            breaks = 30,
-            main = "Row norms after preprocessing",
-            xlab = "||x_i||_2",
-            col = "gray",
-            border = "white"
-        )
-
-        ## (5) PCA scree + PC1/PC2 scatter (optional)
-        if (!is.null(pca)) {
-            ve <- pca.info$var.explained
-            k <- seq_along(ve)
-            graphics::plot(k, ve, type = "b", pch = 16,
-                           xlab = "PC", ylab = "Variance explained",
-                           main = "PCA scree (on processed matrix)")
-
-            scores <- pca$x
-            x1 <- scores[, 1]
-            x2 <- scores[, 2]
-            main.txt <- "PCA: PC1 vs PC2"
-
-            if (!is.null(meta) && !is.null(meta.color) && meta.color %in% colnames(meta)) {
-                g <- meta[[meta.color]]
-                g <- as.factor(g)
-                col.vec <- as.integer(g)
-                graphics::plot(x1, x2, pch = 16, cex = 0.7, col = col.vec,
-                               xlab = "PC1", ylab = "PC2", main = paste0(main.txt, " (colored by ", meta.color, ")"))
-                graphics::legend("topright", legend = levels(g), col = seq_along(levels(g)), pch = 16, cex = 0.7)
-            } else {
-                graphics::plot(x1, x2, pch = 16, cex = 0.7,
-                               xlab = "PC1", ylab = "PC2", main = main.txt)
-            }
-        }
-
-        if (!is.null(plot.file)) grDevices::dev.off()
-    }
-
     ## ---- return ----
-    list(
+    structure(list(
         X = X,
         feature.table = feature.table[order(feature.table$p.miss), ],
         name.map = name.map,
         pca = pca,
+        pca.info = pca.info,
+        meta = meta,
         diagnostics = diagnostics
+    ), class = "metabolon_twoplane")
+}
+
+
+#' Plot preprocessing diagnostics for a metabolon_twoplane object
+#'
+#' @param x Object returned by preprocess.metabolon.twoplane().
+#' @param meta Optional data.frame with sample metadata aligned to rows of \code{x$X}.
+#'   Defaults to \code{x$meta}.
+#' @param meta.color Optional character: a column name in \code{meta} to color the PCA scatter.
+#' @param plot.file Optional file path to write a multi-page PDF of diagnostic plots.
+#' @param ... Unused; included for generic compatibility.
+#' @return Invisibly returns \code{x}.
+#' @export
+plot.metabolon_twoplane <- function(x,
+                                    meta = x$meta,
+                                    meta.color = NULL,
+                                    plot.file = NULL,
+                                    ...) {
+    if (missing(x) || is.null(x)) stop("`x` must be provided.")
+    if (!inherits(x, "metabolon_twoplane")) stop("`x` must inherit from class 'metabolon_twoplane'.")
+    if (is.null(x$X) || is.null(x$feature.table) || is.null(x$diagnostics)) {
+        stop("`x` is missing required components (`X`, `feature.table`, `diagnostics`).")
+    }
+
+    if (!is.null(plot.file)) {
+        grDevices::pdf(plot.file, width = 10, height = 7)
+        on.exit(grDevices::dev.off(), add = TRUE)
+    }
+
+    feature.table <- x$feature.table
+    diagnostics <- x$diagnostics
+    p.miss <- feature.table$p.miss
+    det.rate <- feature.table$det.rate
+    pca <- x$pca
+    pca.info <- x$pca.info
+
+    ## (1) Missingness histogram with tier cutoffs
+    graphics::hist(
+        p.miss,
+        breaks = 30,
+        main = "Per-metabolite missingness",
+        xlab = "p.miss",
+        col = "gray",
+        border = "white"
     )
+    graphics::abline(v = diagnostics$p.miss.A, lwd = 2, lty = 2)
+    graphics::abline(v = diagnostics$p.miss.B, lwd = 2, lty = 2)
+    graphics::mtext(
+        paste0("p.miss.A=", diagnostics$p.miss.A, "   p.miss.B=", diagnostics$p.miss.B),
+        side = 3,
+        line = 0.2
+    )
+
+    ## (2) Detection rate vs missingness (raw)
+    graphics::plot(
+        det.rate, p.miss,
+        pch = 16, cex = 0.6,
+        xlab = "Detection rate (1 - p.miss)",
+        ylab = "p.miss",
+        main = "Detection rate vs missingness"
+    )
+    graphics::abline(h = diagnostics$p.miss.A, lty = 2)
+    graphics::abline(h = diagnostics$p.miss.B, lty = 2)
+    graphics::abline(v = diagnostics$det.rate.bounds[1], lty = 3)
+    graphics::abline(v = diagnostics$det.rate.bounds[2], lty = 3)
+
+    ## (3) Asinh scales (intensity features)
+    if (sum(feature.table$keep.int) > 0L) {
+        aa.plot <- feature.table$asinh.scale[feature.table$keep.int]
+        aa.plot <- aa.plot[is.finite(aa.plot) & aa.plot > 0]
+        if (length(aa.plot) > 0L) {
+            graphics::hist(
+                log10(aa.plot),
+                breaks = 30,
+                main = "log10(asinh scale) for intensity features",
+                xlab = "log10(scale)",
+                col = "gray",
+                border = "white"
+            )
+        } else {
+            graphics::plot.new()
+            graphics::title("No finite asinh scales to plot.")
+        }
+    }
+
+    ## (4) Sample row-norms after preprocessing
+    row.norm <- sqrt(rowSums(x$X^2))
+    graphics::hist(
+        row.norm,
+        breaks = 30,
+        main = "Row norms after preprocessing",
+        xlab = "||x_i||_2",
+        col = "gray",
+        border = "white"
+    )
+
+    ## (5) PCA scree + PC1/PC2 scatter (optional)
+    if (!is.null(pca)) {
+        ve <- pca.info$var.explained
+        if (is.null(ve)) ve <- (pca$sdev^2) / sum(pca$sdev^2)
+        k <- seq_along(ve)
+        graphics::plot(
+            k, ve, type = "b", pch = 16,
+            xlab = "PC", ylab = "Variance explained",
+            main = "PCA scree (on processed matrix)"
+        )
+
+        scores <- pca$x
+        x1 <- scores[, 1]
+        x2 <- scores[, 2]
+        main.txt <- "PCA: PC1 vs PC2"
+
+        if (!is.null(meta) && !is.null(meta.color) && meta.color %in% colnames(meta)) {
+            g <- meta[[meta.color]]
+            g <- as.factor(g)
+            col.vec <- as.integer(g)
+            graphics::plot(
+                x1, x2, pch = 16, cex = 0.7, col = col.vec,
+                xlab = "PC1", ylab = "PC2",
+                main = paste0(main.txt, " (colored by ", meta.color, ")")
+            )
+            graphics::legend(
+                "topright",
+                legend = levels(g),
+                col = seq_along(levels(g)),
+                pch = 16,
+                cex = 0.7
+            )
+        } else {
+            graphics::plot(
+                x1, x2, pch = 16, cex = 0.7,
+                xlab = "PC1", ylab = "PC2", main = main.txt
+            )
+        }
+    }
+
+    invisible(x)
 }
 
 
@@ -533,7 +580,7 @@ diagnose.twoplane.geometry <- function(X, n.pairs = 5000L, seed = 1L) {
 #'
 #' @param e1 Integer vector of unique edge codes.
 #' @param e2 Integer vector of unique edge codes.
-#' @return Numeric scalar in [0,1].
+#' @return Numeric scalar in \eqn{[0,1]}.
 #' @export
 jaccard.edge.distance <- function(e1, e2) {
     e1 <- as.integer(e1); e2 <- as.integer(e2)
@@ -781,7 +828,7 @@ impute.two.thirds.min.pos <- function(S, frac = 2/3, replace.nonpos = TRUE) {
     list(S.filled = S, delta = delta)
 }
 
-#' Compute CLR-style log-ratio features (graph-friendly ratio embedding)
+#' Computes CLR-style log-ratio features
 #'
 #' @description
 #' Returns centered log-ratio (CLR) features: log(x) minus per-sample mean/median log(x).
@@ -891,216 +938,4 @@ logratio.to.refs.matrix <- function(S, refs, log.base = 10, zscore = TRUE) {
     }
 
     X
-}
-
-#' CST mixing statistics on a graph (homophily, assortativity, conductance) with permutation null
-#'
-#' @description
-#' Quantifies how much a categorical labeling (e.g., CST) mixes over a graph.
-#' Provides:
-#'   - weighted edge homophily (same-label edge fraction),
-#'   - Newman nominal assortativity coefficient r (categorical),
-#'   - per-label conductance (cut / min(vol, vol_complement)),
-#'   - permutation z-scores and p-values (optional stratified permutation).
-#'
-#' @param g An igraph graph object (undirected recommended).
-#' @param labels Vector of CST labels aligned to vertices (length vcount(g)).
-#'   Missing labels allowed (NA); edges involving NA endpoints are ignored.
-#' @param edge.weights Optional numeric vector of edge weights (length ecount(g)).
-#'   If NULL, unweighted (w=1) is used.
-#' @param n.perm Integer number of permutations for null distribution (0 disables).
-#' @param perm.blocks Optional factor/character vector (length vcount(g)) for within-block permutations
-#'   (e.g., subject id, batch). If NULL, global permutation is used.
-#' @param seed Integer RNG seed.
-#'
-#' @return List with observed metrics, per-label metrics, and permutation summaries.
-#' @export
-cst.graph.mixing.stats <- function(g,
-                                  labels,
-                                  edge.weights = NULL,
-                                  n.perm = 200L,
-                                  perm.blocks = NULL,
-                                  seed = 1L) {
-    if (!inherits(g, "igraph")) stop("`g` must be an igraph object.")
-    n <- igraph::vcount(g)
-    m <- igraph::ecount(g)
-    if (length(labels) != n) stop("`labels` must have length vcount(g).")
-
-    labels <- as.character(labels)
-    ok.v <- !is.na(labels)
-
-    ## edge list
-    ends <- igraph::ends(g, igraph::E(g), names = FALSE)
-    u <- ends[, 1]
-    v <- ends[, 2]
-
-    lab.u <- labels[u]
-    lab.v <- labels[v]
-    ok.e <- !is.na(lab.u) & !is.na(lab.v)
-
-    if (is.null(edge.weights)) {
-        w <- rep(1.0, m)
-    } else {
-        if (length(edge.weights) != m) stop("`edge.weights` length must equal ecount(g).")
-        w <- as.double(edge.weights)
-        if (any(!is.finite(w)) || any(w < 0)) stop("`edge.weights` must be finite and non-negative.")
-    }
-
-    ## weighted homophily on labeled edges
-    w.ok <- w[ok.e]
-    same <- (lab.u[ok.e] == lab.v[ok.e])
-    homophily <- if (sum(w.ok) > 0) sum(w.ok[same]) / sum(w.ok) else NA_real_
-
-    ## assortativity (nominal) on induced labeled subgraph
-    ## igraph assortativity_nominal is based on Newman mixing matrix (categorical). :contentReference[oaicite:3]{index=3}
-    r.assort <- NA_real_
-    if (sum(ok.v) >= 3L && sum(ok.e) >= 1L) {
-        g.sub <- igraph::induced_subgraph(g, vids = which(ok.v))
-        types <- as.integer(as.factor(labels[ok.v]))
-        r.assort <- igraph::assortativity_nominal(g.sub, types = types, directed = FALSE)
-    }
-
-    ## conductance per label (on labeled induced subgraph)
-    cond.by.label <- NULL
-    cond.summary <- NULL
-    if (sum(ok.v) >= 3L) {
-        g.sub <- igraph::induced_subgraph(g, vids = which(ok.v))
-        labs.sub <- labels[ok.v]
-        lev <- sort(unique(labs.sub))
-
-        ## degrees/strengths
-        if (is.null(edge.weights)) {
-            deg <- igraph::degree(g.sub)
-        } else {
-            ## weights on induced subgraph edges
-            ## pull weights for edges in g.sub by mapping original edge ids
-            ## easiest: recompute unweighted conductance by default when weighted graphs are not explicit
-            deg <- igraph::degree(g.sub)
-        }
-
-        ## edge endpoints in subgraph
-        ends2 <- igraph::ends(g.sub, igraph::E(g.sub), names = FALSE)
-        u2 <- ends2[, 1]
-        v2 <- ends2[, 2]
-        lab.u2 <- labs.sub[u2]
-        lab.v2 <- labs.sub[v2]
-
-        ## compute cut_l = #edges from label l to not-l
-        ## compute vol_l = sum(deg in label l)
-        vol.total <- sum(deg)
-        cut.l <- setNames(rep(0.0, length(lev)), lev)
-        vol.l <- setNames(rep(0.0, length(lev)), lev)
-
-        for (l in lev) {
-            in.l <- (labs.sub == l)
-            vol.l[l] <- sum(deg[in.l])
-        }
-        for (e in seq_along(u2)) {
-            a <- lab.u2[e]; b <- lab.v2[e]
-            if (!is.na(a) && !is.na(b) && a != b) {
-                cut.l[a] <- cut.l[a] + 1
-                cut.l[b] <- cut.l[b] + 1
-            }
-        }
-
-        cond <- rep(NA_real_, length(lev)); names(cond) <- lev
-        for (l in lev) {
-            vol.a <- vol.l[l]
-            vol.b <- vol.total - vol.a
-            denom <- min(vol.a, vol.b)
-            cond[l] <- if (denom > 0) cut.l[l] / denom else NA_real_
-        }
-
-        cond.by.label <- data.frame(
-            cst = lev,
-            vol = as.numeric(vol.l[lev]),
-            cut = as.numeric(cut.l[lev]),
-            conductance = as.numeric(cond[lev]),
-            stringsAsFactors = FALSE
-        )
-
-        ## summarize conductance (weighted by vol is often sensible)
-        w.vol <- cond.by.label$vol
-        ok.c <- is.finite(cond.by.label$conductance) & w.vol > 0
-        cond.summary <- list(
-            conductance.median = stats::median(cond.by.label$conductance[ok.c], na.rm = TRUE),
-            conductance.vol.weighted.mean = sum(cond.by.label$conductance[ok.c] * w.vol[ok.c]) / sum(w.vol[ok.c])
-        )
-    }
-
-    ## permutation nulls (assortativity + homophily)
-    perm.res <- NULL
-    n.perm <- as.integer(n.perm)
-    if (n.perm > 0L && sum(ok.v) >= 10L && sum(ok.e) >= 10L) {
-        permute.labels <- function(lbl, blocks = NULL) {
-            lbl2 <- lbl
-            idx <- which(!is.na(lbl2))
-            if (is.null(blocks)) {
-                lbl2[idx] <- sample(lbl2[idx], replace = FALSE)
-            } else {
-                if (length(blocks) != length(lbl2)) stop("perm.blocks must have length vcount(g).")
-                b <- blocks
-                for (bb in unique(b[idx])) {
-                    ii <- idx[b[idx] == bb]
-                    if (length(ii) >= 2L) lbl2[ii] <- sample(lbl2[ii], replace = FALSE)
-                }
-            }
-            lbl2
-        }
-
-        set.seed(seed)
-        r.null <- rep(NA_real_, n.perm)
-        h.null <- rep(NA_real_, n.perm)
-
-        for (b in seq_len(n.perm)) {
-            lbl.p <- permute.labels(labels, blocks = perm.blocks)
-
-            ## homophily
-            lab.u.p <- lbl.p[u]
-            lab.v.p <- lbl.p[v]
-            ok.e.p <- !is.na(lab.u.p) & !is.na(lab.v.p)
-            w.ok.p <- w[ok.e.p]
-            same.p <- (lab.u.p[ok.e.p] == lab.v.p[ok.e.p])
-            h.null[b] <- if (sum(w.ok.p) > 0) sum(w.ok.p[same.p]) / sum(w.ok.p) else NA_real_
-
-            ## assortativity
-            ok.v.p <- !is.na(lbl.p)
-            g.sub.p <- igraph::induced_subgraph(g, vids = which(ok.v.p))
-            types.p <- as.integer(as.factor(lbl.p[ok.v.p]))
-            r.null[b] <- igraph::assortativity_nominal(g.sub.p, types = types.p, directed = FALSE)
-        }
-
-        ## z-scores and (one-sided) p-values
-        z.from.null <- function(x, x.null) {
-            mu <- mean(x.null, na.rm = TRUE)
-            sd0 <- stats::sd(x.null, na.rm = TRUE)
-            if (!is.finite(sd0) || sd0 <= 0) return(list(z = NA_real_, mu = mu, sd = sd0))
-            list(z = (x - mu) / sd0, mu = mu, sd = sd0)
-        }
-        p.upper <- function(x, x.null) {
-            x.null <- x.null[is.finite(x.null)]
-            if (length(x.null) < 10L) return(NA_real_)
-            (1 + sum(x.null >= x)) / (1 + length(x.null))
-        }
-
-        perm.res <- list(
-            n.perm = n.perm,
-            homophily.null = h.null,
-            assortativity.null = r.null,
-            homophily.z = z.from.null(homophily, h.null),
-            assortativity.z = z.from.null(r.assort, r.null),
-            homophily.p = p.upper(homophily, h.null),
-            assortativity.p = p.upper(r.assort, r.null)
-        )
-    }
-
-    list(
-        n.vertices = n,
-        n.edges = m,
-        homophily = homophily,
-        assortativity = r.assort,
-        conductance.by.label = cond.by.label,
-        conductance.summary = cond.summary,
-        permutation = perm.res
-    )
 }
