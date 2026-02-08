@@ -186,7 +186,7 @@
 #'     weights (counting measure). If FALSE, uses distance-based weights
 #'     inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon +
 #'     d_k(x))^{-\alpha}}. Distance-based weights are useful when sampling
-#'     density varies across the feature space. Default: FALSE.
+#'     density varies across the feature space. Default: TRUE.
 #'
 #' @param density.normalization Numeric scalar, non-negative. Specifies target
 #'   sum for normalized vertex densities. If 0 (default), densities are
@@ -627,7 +627,7 @@ fit.rdgraph.regression <- function(
     beta.coef.factor = 0.1,
     t.update = c("fixed", "per_iteration"),
     t.update.max.mult = 1.25,
-    use.counting.measure = FALSE,
+    use.counting.measure = TRUE,
     density.normalization = 0,
     density.alpha = 1.5,
     density.epsilon = 1e-10,
