@@ -57,6 +57,11 @@
 #' @param filter.type Character. Passed to \code{fit.rdgraph.regression()} (default \code{"heat_kernel"}).
 #' @param t.scale.factor Numeric. Passed to \code{fit.rdgraph.regression()} (default 0.5).
 #' @param beta.coef.factor Numeric. Passed to \code{fit.rdgraph.regression()} (default 0.1).
+#' @param use.counting.measure Logical. If TRUE, uses uniform vertex weights
+#'     (counting measure). If FALSE, uses distance-based weights inversely
+#'     proportional to local k-NN density: \eqn{w(x) = (\epsilon +
+#'     d_k(x))^{-\alpha}}. Distance-based weights are useful when sampling
+#'     density varies across the feature space. Default: TRUE.
 #' @param verbose Logical. If TRUE, prints progress messages.
 #'
 #' @return A list with elements:
@@ -82,17 +87,18 @@ data.smoother <- function(
     path.edge.ratio.percentile = 0.5,
     threshold.percentile = 0,
     n.cores = 1L,
-    proxy.response = c("max.variance", "pc1"),
+    proxy.response = c("pc1","max.variance"),
     pca.center = TRUE,
     pca.scale = FALSE,
     ## selected fit.rdgraph.regression() parameters (posterior + other excluded params kept at defaults)
     pca.dim = 100,
     variance.explained = 0.99,
-    max.iterations = 10,
-    n.eigenpairs = 10,
+    max.iterations = 50,
+    n.eigenpairs = 50,
     filter.type = "heat_kernel",
     t.scale.factor = 0.5,
     beta.coef.factor = 0.1,
+    use.counting.measure = TRUE,
     verbose = FALSE
 ) {
 
@@ -196,6 +202,7 @@ data.smoother <- function(
 
     if (verbose) cat("Building ikNN graphs (geom pruned) for k in [", kmin, ", ", kmax, "]\n", sep = "")
 
+    ## Keep PCA/pruning params aligned with fit.rdgraph.regression() to avoid connectivity mismatches.
     X.graphs <- create.iknn.graphs(
         X,
         kmin = kmin,
@@ -204,8 +211,8 @@ data.smoother <- function(
         path.edge.ratio.percentile = path.edge.ratio.percentile,
         threshold.percentile = threshold.percentile,
         compute.full = TRUE,
-        pca.dim = NULL,
-        variance.explained = NULL,
+        pca.dim = pca.dim,
+        variance.explained = variance.explained,
         n.cores = n.cores,
         verbose = isTRUE(verbose)
     )
@@ -254,8 +261,8 @@ data.smoother <- function(
             path.edge.ratio.percentile = path.edge.ratio.percentile,
             threshold.percentile = threshold.percentile,
             compute.full = TRUE,
-            pca.dim = NULL,
-            variance.explained = NULL,
+            pca.dim = pca.dim,
+            variance.explained = variance.explained,
             n.cores = n.cores,
             verbose = isTRUE(verbose)
         )
@@ -364,6 +371,10 @@ data.smoother <- function(
             filter.type = filter.type,
             t.scale.factor = t.scale.factor,
             beta.coef.factor = beta.coef.factor,
+            use.counting.measure = use.counting.measure,
+            max.ratio.threshold = max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile = path.edge.ratio.percentile,
+            threshold.percentile = threshold.percentile,
             verbose.level = 0
         )
         list(
