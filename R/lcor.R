@@ -49,6 +49,13 @@
 #' @param mc.cores Integer scalar specifying the number of cores for parallel
 #'   computation in the matrix-matrix case. Default is 1 (sequential).
 #'   Note that parallel::mclapply is not available on Windows.
+#' @param hop.radius Integer scalar specifying the hop distance for local
+#'   neighborhoods. Default is 1 (immediate neighbors). When hop.radius > 1,
+#'   neighborhoods include all vertices reachable within hop.radius hops.
+#'   For \code{type = "derivative"}, edge lengths are replaced by shortest path
+#'   lengths (sum of edge lengths) among paths with at most hop.radius hops.
+#'   For \code{type = "unit"} or \code{type = "sign"}, all k-hop edges are
+#'   treated as having length 1.
 #'
 #' @return The return type depends on the input types:
 #'
@@ -172,6 +179,16 @@
 #' gradients (one increases while the other decreases), and values near 0
 #' indicate orthogonal gradients (no directional relationship).
 #'
+#' @section Hop Radius:
+#'
+#' By default, the local correlation at vertex v is computed using edges incident
+#' to v (hop.radius = 1). For hop.radius > 1, the neighborhood expands to all
+#' vertices within hop.radius hops of v. The computation is then performed on the
+#' k-hop star graph centered at v. For \code{type = "derivative"}, k-hop edges are
+#' weighted by the inverse squared shortest path length within the hop limit; for
+#' \code{type = "unit"} and \code{type = "sign"}, all k-hop edges are treated as
+#' having unit length.
+#'
 #' @examples
 #' \dontrun{
 #'
@@ -253,7 +270,8 @@ lcor <- function(adj.list,
                  epsilon = 0,
                  winsorize.quantile = 0,
                  instrumented = FALSE,
-                 mc.cores = 1L) {
+                 mc.cores = 1L,
+                 hop.radius = 1L) {
 
     ## Match arguments
     type <- match.arg(type)
@@ -308,14 +326,16 @@ lcor <- function(adj.list,
         result <- lcor.vector.vector(adj.list, weight.list, y, z,
                                      type, y.diff.type, z.diff.type,
                                      epsilon, winsorize.quantile,
-                                     instrumented)
+                                     instrumented, hop.radius)
         return(result)
 
     } else if (!y.is.matrix && z.is.matrix) {
         ## Case b): vector-matrix
         result <- lcor.vector.matrix(adj.list, weight.list, y, z,
                                      type, y.diff.type, z.diff.type,
-                                     epsilon, winsorize.quantile)
+                                     epsilon, winsorize.quantile,
+                                     instrumented = FALSE,
+                                     hop.radius = hop.radius)
         return(result)
 
     } else if (y.is.matrix && !z.is.matrix) {
@@ -325,7 +345,9 @@ lcor <- function(adj.list,
                                      type,
                                      z.diff.type,    ## swap diff types
                                      y.diff.type,
-                                     epsilon, winsorize.quantile)
+                                     epsilon, winsorize.quantile,
+                                     instrumented = FALSE,
+                                     hop.radius = hop.radius)
         attr(result, "transposed") <- TRUE
         return(result)
 
@@ -334,16 +356,53 @@ lcor <- function(adj.list,
         result <- lcor.matrix.matrix(adj.list, weight.list, y, z,
                                      type, y.diff.type, z.diff.type,
                                      epsilon, winsorize.quantile,
-                                     mc.cores)
+                                     instrumented = FALSE,
+                                     mc.cores = mc.cores,
+                                     hop.radius = hop.radius)
         return(result)
     }
+}
+
+## Internal helper to expand neighborhoods to hop radius
+.prepare_lcor_hop_graph <- function(adj.list, weight.list, hop.radius, type) {
+    if (!is.numeric(hop.radius) || length(hop.radius) != 1 ||
+        hop.radius < 1 || hop.radius != as.integer(hop.radius)) {
+        stop("hop.radius must be a positive integer")
+    }
+
+    hop.radius <- as.integer(hop.radius)
+    if (hop.radius <= 1L) {
+        return(list(adj.list = adj.list, weight.list = weight.list, hop.radius = hop.radius))
+    }
+
+    if (type == "derivative") {
+        pg <- create.path.graph(adj.list, weight.list, h = hop.radius)
+        adj.list <- pg$adj.list
+        weight.list <- pg$edge.length.list
+    } else {
+        unit.weights <- lapply(adj.list, function(neighbors) {
+            if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)
+        })
+        pg <- create.path.graph(adj.list, unit.weights, h = hop.radius)
+        adj.list <- pg$adj.list
+        weight.list <- lapply(adj.list, function(neighbors) {
+            if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)
+        })
+    }
+
+    return(list(adj.list = adj.list, weight.list = weight.list, hop.radius = hop.radius))
 }
 
 ## Internal helper for vector-vector case (extracts current logic)
 lcor.vector.vector <- function(adj.list, weight.list, y, z,
                                 type, y.diff.type, z.diff.type,
                                 epsilon, winsorize.quantile,
-                                instrumented) {
+                                instrumented, hop.radius = 1L) {
+    hop.graph <- .prepare_lcor_hop_graph(adj.list, weight.list, hop.radius, type)
+    adj.list <- hop.graph$adj.list
+    weight.list <- hop.graph$weight.list
+    hop.radius <- hop.graph$hop.radius
+
     n.vertices <- length(adj.list)
     adj.list.0 <- lapply(adj.list, function(x) as.integer(x - 1))
 
@@ -380,6 +439,7 @@ lcor.vector.vector <- function(adj.list, weight.list, y, z,
     attr(result, "epsilon") <- epsilon
     attr(result, "winsorize.quantile") <- winsorize.quantile
     attr(result, "n.vertices") <- n.vertices
+    attr(result, "hop.radius") <- hop.radius
 
     return(result)
 }
@@ -407,6 +467,13 @@ lcor.vector.vector <- function(adj.list, weight.list, y, z,
 #' @param winsorize.quantile Numeric scalar for winsorization (0 = none).
 #' @param instrumented Logical. If FALSE (default), returns coefficient matrix only.
 #'   If TRUE, returns list with coefficients and winsorization bounds.
+#' @param hop.radius Integer scalar specifying the hop distance for local
+#'   neighborhoods. Default is 1 (immediate neighbors). When hop.radius > 1,
+#'   neighborhoods include all vertices reachable within hop.radius hops.
+#'   For \code{type = "derivative"}, edge lengths are replaced by shortest path
+#'   lengths (sum of edge lengths) among paths with at most hop.radius hops.
+#'   For \code{type = "unit"} or \code{type = "sign"}, all k-hop edges are
+#'   treated as having length 1.
 #'
 #' @return Depends on the instrumented parameter:
 #'
@@ -439,6 +506,10 @@ lcor.vector.vector <- function(adj.list, weight.list, y, z,
 #' This function is optimized for the case where one response vector y is
 #' compared against many feature columns. The y-dependent quantities are
 #' computed once and reused across all columns.
+#'
+#' When hop.radius > 1, the neighborhood expands to all vertices within the
+#' specified hop distance, and the computation is performed on the resulting
+#' k-hop star graph.
 #'
 #' @section Computational Efficiency:
 #'
@@ -493,7 +564,8 @@ lcor.vector.matrix <- function(adj.list,
                                 z.diff.type = c("difference", "logratio"),
                                 epsilon = 0,
                                 winsorize.quantile = 0.025,
-                                instrumented = FALSE) {
+                                instrumented = FALSE,
+                                hop.radius = 1L) {
 
     ## Match arguments
     type <- match.arg(type)
@@ -526,6 +598,11 @@ lcor.vector.matrix <- function(adj.list,
     if (length(weight.list) != n.vertices)
         stop(sprintf("Length of weight.list (%d) must equal number of vertices (%d)",
                      length(weight.list), n.vertices))
+
+    hop.graph <- .prepare_lcor_hop_graph(adj.list, weight.list, hop.radius, type)
+    adj.list <- hop.graph$adj.list
+    weight.list <- hop.graph$weight.list
+    hop.radius <- hop.graph$hop.radius
 
     ## Store column names for output
     z.col.names <- colnames(Z)
@@ -572,6 +649,7 @@ lcor.vector.matrix <- function(adj.list,
     attr(result, "n.vertices") <- n.vertices
     attr(result, "n.columns") <- ncol(Z)
     attr(result, "instrumented") <- instrumented
+    attr(result, "hop.radius") <- hop.radius
 
     return(result)
 }
@@ -594,6 +672,7 @@ print.lcor_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...) {
     cat("  Z difference type:", attr(x, "z.diff.type"), "\n")
     cat("  Vertices:", attr(x, "n.vertices"),
         ", Columns:", attr(x, "n.columns"), "\n")
+    cat("  Hop radius:", attr(x, "hop.radius"), "\n")
     cat("  Instrumented:", attr(x, "instrumented"), "\n\n")
 
     ## Get coefficient matrix
@@ -711,6 +790,13 @@ summary.lcor_vector_matrix_result <- function(object, ...) {
 #' @param mc.cores Integer specifying number of cores for parallel computation.
 #'   Default is 1 (sequential). Note: parallelization via mclapply is not
 #'   available on Windows.
+#' @param hop.radius Integer scalar specifying the hop distance for local
+#'   neighborhoods. Default is 1 (immediate neighbors). When hop.radius > 1,
+#'   neighborhoods include all vertices reachable within hop.radius hops.
+#'   For \code{type = "derivative"}, edge lengths are replaced by shortest path
+#'   lengths (sum of edge lengths) among paths with at most hop.radius hops.
+#'   For \code{type = "unit"} or \code{type = "sign"}, all k-hop edges are
+#'   treated as having length 1.
 #'
 #' @return Depends on whether y and z are identical and the instrumented parameter:
 #'
@@ -764,6 +850,10 @@ summary.lcor_vector_matrix_result <- function(object, ...) {
 #'                                 \sqrt{\sum w_e (\Delta_e z_j)^2}}}
 #'
 #' at each vertex v.
+#'
+#' When hop.radius > 1, the neighborhood expands to all vertices within the
+#' specified hop distance, and the computation is performed on the resulting
+#' k-hop star graph.
 #'
 #' @section Symmetric Detection:
 #'
@@ -843,7 +933,8 @@ lcor.matrix.matrix <- function(adj.list,
                                 epsilon = 0,
                                 winsorize.quantile = 0,
                                 instrumented = FALSE,
-                                mc.cores = 1L) {
+                                mc.cores = 1L,
+                                hop.radius = 1L) {
 
     ## Match arguments
     type <- match.arg(type)
@@ -882,6 +973,11 @@ lcor.matrix.matrix <- function(adj.list,
     if (length(weight.list) != n.vertices)
         stop(sprintf("Length of weight.list (%d) must equal number of vertices (%d)",
                      length(weight.list), n.vertices))
+
+    hop.graph <- .prepare_lcor_hop_graph(adj.list, weight.list, hop.radius, type)
+    adj.list <- hop.graph$adj.list
+    weight.list <- hop.graph$weight.list
+    hop.radius <- hop.graph$hop.radius
 
     ## Get column names
     y.col.names <- colnames(y)
@@ -991,6 +1087,7 @@ lcor.matrix.matrix <- function(adj.list,
     attr(result, "n.vertices") <- n.vertices
     attr(result, "symmetric") <- symmetric
     attr(result, "instrumented") <- instrumented
+    attr(result, "hop.radius") <- hop.radius
 
     class(result) <- c("lcor_matrix_matrix_result",
                        if (instrumented) "list" else class(result))
@@ -1142,7 +1239,8 @@ print.lcor_matrix_matrix_result <- function(x, digits = 4, ...) {
     cat("  Z difference type:", attr(x, "z.diff.type"), "\n")
     cat("  Symmetric:", symmetric, "\n")
     cat("  Instrumented:", instrumented, "\n")
-    cat("  Vertices:", attr(x, "n.vertices"), "\n\n")
+    cat("  Vertices:", attr(x, "n.vertices"), "\n")
+    cat("  Hop radius:", attr(x, "hop.radius"), "\n\n")
 
     ## Get coefficient structure
     if (instrumented) {
