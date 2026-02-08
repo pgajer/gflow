@@ -658,6 +658,178 @@ kNN.cltr.imputation <- function(X, cltr, ref.cltr = 0, K = 20, use.geodesic.dist
     return(cltr2)
 }
 
+#' Graph kNN Imputation for Categorical Vertex Labels
+#'
+#' Imputes missing (NA) vertex labels using k-nearest neighbors defined by
+#' shortest-path distances in a weighted, undirected graph.
+#'
+#' @param adj.list List of integer vectors. Each vector contains indices of vertices
+#'        adjacent to the corresponding vertex. Indices should be 1-based.
+#' @param weight.list List of numeric vectors. Each vector contains weights (edge lengths)
+#'        corresponding to adjacencies in adj.list.
+#' @param y A categorical variable defined on the vertices of the undirected graph
+#'        given by (adj.list, weight.list). Missing values are coded as NA.
+#' @param k Number of nearest labeled neighbors used for imputation (default is 10).
+#'
+#' @return A vector of labels with NA values imputed where possible. The output
+#'         preserves the input type and names.
+#'
+#' @details
+#' For each vertex with \code{y[i] = NA}, the function computes shortest-path distances
+#' to all vertices, selects the \code{k} nearest vertices with non-NA labels (excluding
+#' the vertex itself), and assigns the majority label among those neighbors. Ties are
+#' broken by the nearest-neighbor order (smallest distance first). Imputation uses the
+#' original non-NA labels only; newly imputed values are not reused. If fewer than \code{k}
+#' labeled neighbors are reachable, all available labeled neighbors are used. If none are
+#' reachable, the value remains NA.
+#'
+#' @examples
+#' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
+#' weight.list <- list(c(1, 1), c(1, 1), c(1, 1))
+#' y <- c("A", NA, "B")
+#' graph.cltr.imputation(adj.list, weight.list, y, k = 2)
+#'
+#' @importFrom igraph graph_from_edgelist distances E make_empty_graph
+#'
+#' @export
+graph.cltr.imputation <- function(adj.list, weight.list, y, k = 10) {
+
+    # Input validation
+    if (!is.list(adj.list)) {
+        stop("adj.list must be a list")
+    }
+    if (!is.list(weight.list)) {
+        stop("weight.list must be a list")
+    }
+
+    n.vertices <- length(adj.list)
+
+    if (length(weight.list) != n.vertices) {
+        stop("adj.list and weight.list must have the same length")
+    }
+    if (length(y) != n.vertices) {
+        stop("y must have the same length as adj.list")
+    }
+
+    if (!is.numeric(k) || length(k) != 1 || k < 1 || k != floor(k)) {
+        stop("k must be a positive integer")
+    }
+
+    for (i in seq_len(n.vertices)) {
+        if (length(adj.list[[i]]) != length(weight.list[[i]])) {
+            stop(sprintf("Mismatch in lengths for vertex %d: adj.list has %d entries but weight.list has %d",
+                         i, length(adj.list[[i]]), length(weight.list[[i]])))
+        }
+
+        if (length(adj.list[[i]]) > 0) {
+            if (!is.numeric(adj.list[[i]])) {
+                stop(sprintf("adj.list[[%d]] must be a numeric vector", i))
+            }
+            if (any(is.na(adj.list[[i]]))) {
+                stop(sprintf("adj.list[[%d]] contains NA values", i))
+            }
+            if (any(adj.list[[i]] != floor(adj.list[[i]]))) {
+                stop(sprintf("adj.list[[%d]] must contain only integer values", i))
+            }
+            if (any(adj.list[[i]] < 1) || any(adj.list[[i]] > n.vertices)) {
+                stop(sprintf("adj.list[[%d]] contains invalid vertex indices", i))
+            }
+        }
+
+        if (length(weight.list[[i]]) > 0) {
+            if (!is.numeric(weight.list[[i]])) {
+                stop(sprintf("weight.list[[%d]] must be a numeric vector", i))
+            }
+            if (any(is.na(weight.list[[i]]))) {
+                stop(sprintf("weight.list[[%d]] contains NA values", i))
+            }
+            if (any(weight.list[[i]] <= 0)) {
+                stop(sprintf("All weights in weight.list[[%d]] must be positive", i))
+            }
+        }
+    }
+
+    # Quick return if there is nothing to impute
+    na.idx <- which(is.na(y))
+    if (length(na.idx) == 0) {
+        return(y)
+    }
+
+    if (!requireNamespace("igraph", quietly = TRUE)) {
+        stop("Package 'igraph' is required but not installed. Please install it using install.packages('igraph')")
+    }
+
+    # Build igraph object
+    graph.obj <- convert.adjacency.to.edge.matrix(adj.list, weight.list)
+    if (nrow(graph.obj$edge.matrix) == 0) {
+        g <- igraph::make_empty_graph(n = n.vertices, directed = FALSE)
+    } else {
+        g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
+        igraph::E(g)$weight <- graph.obj$weights
+    }
+
+    y2 <- y
+    y.obs <- y
+
+    # If all labels are missing, nothing can be imputed
+    if (all(is.na(y.obs))) {
+        warning("All y values are NA; nothing to impute.")
+        return(y)
+    }
+
+    # Compute distances from NA vertices to all vertices
+    dist.mat <- igraph::distances(
+        g,
+        v = na.idx,
+        to = seq_len(n.vertices),
+        weights = igraph::E(g)$weight
+    )
+
+    for (row.idx in seq_along(na.idx)) {
+        i <- na.idx[row.idx]
+        d <- dist.mat[row.idx, ]
+
+        # Exclude the vertex itself
+        d[i] <- Inf
+
+        ord <- order(d, na.last = NA)
+        if (length(ord) == 0) {
+            next
+        }
+
+        # Keep only finite distances
+        ord <- ord[is.finite(d[ord])]
+        if (length(ord) == 0) {
+            next
+        }
+
+        # Keep only neighbors with non-NA labels from the observed data
+        ord <- ord[!is.na(y.obs[ord])]
+        if (length(ord) == 0) {
+            next
+        }
+
+        nbr.idx <- ord[seq_len(min(k, length(ord)))]
+        nbr.vals <- y.obs[nbr.idx]
+        nbr.vals.chr <- as.character(nbr.vals)
+
+        votes <- table(nbr.vals.chr)
+        max.votes <- max(votes)
+        winners <- names(votes)[votes == max.votes]
+
+        # Tie-break by nearest-neighbor order
+        pick.idx <- which(nbr.vals.chr %in% winners)[1]
+        y2[i] <- nbr.vals[pick.idx]
+    }
+
+    # Preserve names if they existed
+    if (!is.null(names(y))) {
+        names(y2) <- names(y)
+    }
+
+    return(y2)
+}
+
 #' Enhanced kNN-Based Cluster Imputation with Majority Vote
 #'
 #' An improved version of kNN cluster imputation that uses true majority voting
