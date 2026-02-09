@@ -47,7 +47,7 @@
 #'     implements a two-level selection:
 #'     \enumerate{
 #'       \item Filter to ascending neighbors:
-#'         \eqn{A(v) = \lbrace u \in N(v) : y(u) > y(v) \rbrace}
+#'         \eqn{A(v) = \{ u \in N(v) : y(u) > y(v) \}}
 #'       \item Among \eqn{A(v)}, select the closest: \eqn{u^* = \arg\min_{u \in A(v)} d(v,u)}
 #'     }
 #'     This approach minimizes basin-jumping errors by taking the smallest step

@@ -1384,3 +1384,223 @@ summary.lcor_matrix_matrix_result <- function(object, ...) {
 
     invisible(object)
 }
+
+#' Vertex-local correlation heatmap for `lcor()` matrix outputs with pair-named columns
+#'
+#' Designed for `lcor()` results like your `lcor_matrix_matrix_result` where each row is
+#' a vertex and each column is a feature-pair named like "A:B" (often storing only the
+#' off-diagonal triangle).
+#'
+#' The function reconstructs the per-vertex p x q matrix (or p x p when symmetric),
+#' returns a ComplexHeatmap object, and returns a `map` that links each entry of the
+#' row vector back to (i, j) indices of the original X/Y column sets.
+#'
+#' @param lcor.out Output of `lcor()`: typically a numeric matrix (n.vertices x n.pairs).
+#' @param vertex Vertex selector: integer index (1..n) or a character rowname.
+#' @param x.names Optional colnames of the left matrix X (used for ordering + indices).
+#' @param y.names Optional colnames of the right matrix Y (used for ordering + indices).
+#'   If NULL and `symmetric=TRUE`, y.names is set to x.names.
+#' @param pair.sep.candidates Character vector of candidate separators for pair names.
+#'   For your object, ":" is the right one.
+#' @param symmetric Logical or NULL. If NULL, uses attr(lcor.out, "symmetric") when present.
+#' @param fill.diagonal Value to put on the diagonal when `symmetric=TRUE`.
+#' @param keep.all.features If TRUE and x.names/y.names provided, keep those axes even if
+#'   some features never appear in any pair (will yield NA rows/cols). If FALSE, drop
+#'   absent features but warn.
+#' @param heatmap.name Legend title.
+#' @param cluster.rows,cluster.columns Passed to ComplexHeatmap::Heatmap().
+#' @param draw If TRUE, draw immediately.
+#' @param ... Passed to ComplexHeatmap::Heatmap().
+#'
+#' @return List with `mat`, `map`, and `heatmap`.
+lcor.vertex.heatmap <- function(lcor.out,
+                                vertex,
+                                x.names = NULL,
+                                y.names = NULL,
+                                pair.sep.candidates = c(":", "__"),
+                                symmetric = NULL,
+                                fill.diagonal = 1,
+                                keep.all.features = FALSE,
+                                heatmap.name = "lcor",
+                                cluster.rows = FALSE,
+                                cluster.columns = FALSE,
+                                draw = TRUE,
+                                ...) {
+  ## --- deps ---
+  if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+    stop("Package 'ComplexHeatmap' is required.")
+  }
+  if (!requireNamespace("circlize", quietly = TRUE)) {
+    stop("Package 'circlize' is required (for colorRamp2).")
+  }
+
+  ## --- core checks ---
+  if (!is.matrix(lcor.out) || !is.numeric(lcor.out)) {
+    stop("`lcor.out` must be a numeric matrix (n.vertices x n.pairs).")
+  }
+
+  ## --- symmetric flag ---
+  sym.attr <- isTRUE(attr(lcor.out, "symmetric"))
+  if (is.null(symmetric)) symmetric <- sym.attr
+  symmetric <- isTRUE(symmetric)
+
+  ## --- vertex index ---
+  rn <- rownames(lcor.out)
+  if (is.character(vertex)) {
+    if (is.null(rn)) stop("`vertex` is character but `lcor.out` has no rownames.")
+    v.idx <- match(vertex, rn)
+    if (is.na(v.idx)) stop("`vertex` not found in `rownames(lcor.out)`.")
+  } else {
+    v.idx <- as.integer(vertex)
+  }
+  if (length(v.idx) != 1L || is.na(v.idx) || v.idx < 1L || v.idx > nrow(lcor.out)) {
+    stop("`vertex` must select exactly one row (1..n.vertices).")
+  }
+
+  ## --- pair colnames parsing ---
+  cn <- colnames(lcor.out)
+  if (is.null(cn)) stop("`lcor.out` must have colnames encoding feature pairs (e.g. 'A:B').")
+
+  sep.use <- NULL
+  parts.use <- NULL
+  for (sep.try in pair.sep.candidates) {
+    parts.try <- strsplit(cn, sep.try, fixed = TRUE)
+    ok <- all(vapply(parts.try, length, integer(1)) == 2L)
+    if (isTRUE(ok)) {
+      sep.use <- sep.try
+      parts.use <- parts.try
+      break
+    }
+  }
+  if (is.null(sep.use)) {
+    stop("Could not parse pair colnames. Try setting `pair.sep.candidates` to the correct separator.")
+  }
+
+  left.name <- vapply(parts.use, function(z) z[[1]], character(1))
+  right.name <- vapply(parts.use, function(z) z[[2]], character(1))
+  vals <- as.double(lcor.out[v.idx, ])
+
+  ## --- axis names + ordering ---
+  if (symmetric && is.null(y.names)) y.names <- x.names
+
+  if (symmetric) {
+    present <- unique(c(left.name, right.name))
+
+    ## choose axis order: prefer x.names if provided
+    if (!is.null(x.names)) {
+      missing <- setdiff(x.names, present)
+      if (length(missing) > 0L && !keep.all.features) {
+        warning("Dropping features absent from pair colnames: ", paste(missing, collapse = ", "))
+      }
+      if (keep.all.features) {
+        feat <- unique(c(x.names, setdiff(present, x.names)))
+      } else {
+        feat <- intersect(x.names, present)
+        feat <- unique(c(feat, setdiff(present, feat)))
+      }
+    } else {
+      ## stable by appearance
+      feat <- unique(c(left.name, right.name))
+    }
+
+    p <- length(feat)
+    mat <- matrix(NA_real_, nrow = p, ncol = p, dimnames = list(feat, feat))
+
+    i.idx <- match(left.name, feat)
+    j.idx <- match(right.name, feat)
+
+    ## fill both triangles
+    mat[cbind(i.idx, j.idx)] <- vals
+    mat[cbind(j.idx, i.idx)] <- vals
+    diag(mat) <- fill.diagonal
+
+    ## mapping back to original columns, if available
+    x.col <- if (!is.null(x.names)) match(left.name, x.names) else NA_integer_
+    y.col <- if (!is.null(x.names)) match(right.name, x.names) else NA_integer_
+
+    map <- data.frame(
+      k = seq_along(vals),
+      x.name = left.name,
+      y.name = right.name,
+      i = i.idx,
+      j = j.idx,
+      x.col = x.col,
+      y.col = y.col,
+      value = vals,
+      stringsAsFactors = FALSE
+    )
+
+  } else {
+    ## cross-block case: left are X features, right are Y features
+    x.feat.present <- unique(left.name)
+    y.feat.present <- unique(right.name)
+
+    if (!is.null(x.names)) {
+      missing.x <- setdiff(x.names, x.feat.present)
+      if (length(missing.x) > 0L && !keep.all.features) {
+        warning("Dropping X features absent from pair colnames: ", paste(missing.x, collapse = ", "))
+      }
+      x.feat <- if (keep.all.features) unique(c(x.names, setdiff(x.feat.present, x.names))) else {
+        tmp <- intersect(x.names, x.feat.present)
+        unique(c(tmp, setdiff(x.feat.present, tmp)))
+      }
+    } else {
+      x.feat <- unique(left.name)
+    }
+
+    if (!is.null(y.names)) {
+      missing.y <- setdiff(y.names, y.feat.present)
+      if (length(missing.y) > 0L && !keep.all.features) {
+        warning("Dropping Y features absent from pair colnames: ", paste(missing.y, collapse = ", "))
+      }
+      y.feat <- if (keep.all.features) unique(c(y.names, setdiff(y.feat.present, y.names))) else {
+        tmp <- intersect(y.names, y.feat.present)
+        unique(c(tmp, setdiff(y.feat.present, tmp)))
+      }
+    } else {
+      y.feat <- unique(right.name)
+    }
+
+    p <- length(x.feat)
+    q <- length(y.feat)
+    mat <- matrix(NA_real_, nrow = p, ncol = q, dimnames = list(x.feat, y.feat))
+
+    i.idx <- match(left.name, x.feat)
+    j.idx <- match(right.name, y.feat)
+    mat[cbind(i.idx, j.idx)] <- vals
+
+    x.col <- if (!is.null(x.names)) match(left.name, x.names) else NA_integer_
+    y.col <- if (!is.null(y.names)) match(right.name, y.names) else NA_integer_
+
+    map <- data.frame(
+      k = seq_along(vals),
+      x.name = left.name,
+      y.name = right.name,
+      i = i.idx,
+      j = j.idx,
+      x.col = x.col,
+      y.col = y.col,
+      value = vals,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  ## --- heatmap ---
+  v.label <- if (!is.null(rn)) rn[v.idx] else as.character(v.idx)
+  col.fun <- circlize::colorRamp2(c(-1, 0, 1), c("#2166AC", "#F7F7F7", "#B2182B"))
+
+  hm <- ComplexHeatmap::Heatmap(
+    mat,
+    name = heatmap.name,
+    col = col.fun,
+    na_col = "grey90",
+    cluster_rows = cluster.rows,
+    cluster_columns = cluster.columns,
+    column_title = paste0("local correlations @ vertex: ", v.label),
+    ...
+  )
+
+  if (isTRUE(draw)) ComplexHeatmap::draw(hm)
+
+  list(mat = mat, map = map, heatmap = hm)
+}

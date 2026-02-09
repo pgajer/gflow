@@ -1964,7 +1964,11 @@ build.iknn.graphs.and.selectk <- function(X,
         cond.med <- rep(NA_real_, length(idx.mix))
         cond.wm <- rep(NA_real_, length(idx.mix))
 
+        n <- length(idx.mix)
         for (jj in seq_along(idx.mix)) {
+
+            if (isTRUE(verbose)) cat("\r",jj,"/",n,"\n")
+
             ii <- idx.mix[jj]
 
             k0 <- conn$k[ii]

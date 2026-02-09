@@ -120,3 +120,74 @@ signif.df <- function(df,
 
     out
 }
+
+
+#' Map numeric values to a fixed color palette (min -> first, max -> last)
+#'
+#' Linearly rescales `x` into \eqn{[0, 1]} using `limits`, then assigns each value
+#' to a palette entry. By default, the smallest value maps to `palette[1]`
+#' and the largest maps to `palette[length(palette)]`.
+#'
+#' @param x Numeric vector to map.
+#' @param color.palette Character vector of colors (e.g., "#RRGGBB"), length >= 2.
+#' @param limits Numeric length-2 vector giving c(min, max) for mapping. If NULL,
+#'   uses range(x, na.rm=TRUE).
+#' @param na.color Color to use for NA / non-finite values in `x`.
+#' @param clip Logical; if TRUE, values outside `limits` are clamped to the
+#'   nearest endpoint color.
+#'
+#' @return Character vector of colors, same length as `x`.
+#' @examples
+#' cols <- map.values.to.palette(rel.sptb.hat, blue.yellow.red.color.palette)
+#' head(cols)
+map.values.to.palette <- function(x,
+                                  color.palette,
+                                  limits = NULL,
+                                  na.color = NA_character_,
+                                  clip = TRUE) {
+  ## Input validation
+  if (!is.numeric(x)) stop("`x` must be numeric.")
+  if (!is.character(color.palette) || length(color.palette) < 2L) {
+    stop("`color.palette` must be a character vector of length >= 2.")
+  }
+
+  if (is.null(limits)) {
+    limits <- range(x, na.rm = TRUE)
+  }
+  if (!is.numeric(limits) || length(limits) != 2L || anyNA(limits)) {
+    stop("`limits` must be a numeric vector of length 2 with no NA.")
+  }
+
+  lo <- limits[1]
+  hi <- limits[2]
+  if (!is.finite(lo) || !is.finite(hi)) stop("`limits` must be finite.")
+  if (hi < lo) stop("`limits[2]` must be >= `limits[1]`.")
+
+  n.colors <- length(color.palette)
+
+  ## Degenerate case: all values equal
+  if (hi == lo) {
+    out <- rep(na.color, length(x))
+    ok <- is.finite(x)
+    out[ok] <- color.palette[1L]
+    return(out)
+  }
+
+  ## Rescale to [0, 1]
+  t <- (x - lo) / (hi - lo)
+
+  ## Clamp if requested
+  if (isTRUE(clip)) {
+    t <- pmin(pmax(t, 0), 1)
+  }
+
+  ## Map to palette indices (min -> 1, max -> n.colors)
+  idx <- floor(t * (n.colors - 1L)) + 1L
+  idx <- pmin(pmax(idx, 1L), n.colors)
+
+  ## Fill output
+  out <- rep(na.color, length(x))
+  ok <- is.finite(x)
+  out[ok] <- color.palette[idx[ok]]
+  out
+}
