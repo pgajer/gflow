@@ -578,3 +578,118 @@ cluster.max.mass <- function(adj.list, stat.v, threshold) {
     }
     max.mass
 }
+
+#' Create a compact audit record from a permutation test result
+#'
+#' Reduce the output of \code{permutation.test.rdgraph()} (or a compatible list)
+#' to a compact "audit stub" suitable for saving to disk while preserving
+#' reproducibility-critical information (e.g., observed statistic, permutation
+#' null, test options, and RNG metadata).
+#'
+#' @param res A list, typically the return value of \code{permutation.test.rdgraph()}.
+#'   The function is tolerant to missing components and will keep only the fields
+#'   that are present and relevant.
+#' @param keep.vertex Logical scalar. If \code{TRUE}, retain vertex-wise outputs
+#'   when available (e.g., \code{p.value}, \code{q.value}, \code{stat.obs},
+#'   \code{fitted.obs}). Default is \code{FALSE}.
+#' @param keep.global.null Logical scalar. If \code{TRUE}, retain the permutation
+#'   null for the global statistic (typically \code{global.stat.perm}) when present.
+#'   This enables post-hoc diagnostics (null histograms, Monte Carlo uncertainty)
+#'   and verification of the reported p-value without rerunning refits. Default is
+#'   \code{TRUE}.
+#' @param keep.cluster Logical scalar. If \code{TRUE}, retain cluster-level
+#'   summaries when available (e.g., max cluster size/mass distributions and
+#'   corresponding p-values). Default is \code{TRUE}.
+#'
+#' @return
+#' A named list with class \code{c("rdgraph_permutation_test_audit", "list")}.
+#' The audit record typically includes:
+#' \itemize{
+#'   \item \code{global.p.value}: global permutation p-value (if present in \code{res})
+#'   \item \code{global.stat.obs}: observed global test statistic (if present)
+#'   \item \code{global.stat.perm}: permutation null vector (optional; controlled by \code{keep.global.null})
+#'   \item \code{n.perms}: number of permutations inferred from \code{global.stat.perm} (if present)
+#'   \item \code{stat}, \code{y.mean.obs}, \code{eps}: common test descriptors (if present)
+#'   \item \code{seed}, \code{two.sided}: extracted from \code{res$call} when available
+#'   \item \code{rng.kind}: current \code{RNGkind()} at time of auditing
+#'   \item \code{call}: call stored in \code{res} (if present)
+#'   \item optional sublists \code{vertex} and/or \code{cluster} (controlled by flags)
+#' }
+#'
+#' @details
+#' This helper is intended to be called immediately after
+#' \code{permutation.test.rdgraph()} to avoid saving large intermediate objects
+#' (e.g., permutation refits or fitted-value matrices) when only summary inference
+#' is needed. For strict reproducibility, ensure the permutation test itself is
+#' run with an explicit seed, and save the audited object alongside the inputs
+#' that define the test (e.g., graph, response vector, and relevant model settings).
+#'
+#' @examples
+#' ## Minimal mock object with the most common fields
+#' set.seed(1)
+#' res <- list(
+#'   global.p.value = 0.05,
+#'   global.stat.obs = 1.23,
+#'   global.stat.perm = rnorm(1000),
+#'   stat = "L2",
+#'   y.mean.obs = 0.4,
+#'   eps = 0,
+#'   call = quote(permutation.test.rdgraph(seed = 1, two.sided = TRUE))
+#' )
+#'
+#' audit <- perm.test.audit(res)
+#' audit$global.p.value
+#' length(audit$global.stat.perm)
+#'
+#' audit.small <- perm.test.audit(res, keep.global.null = FALSE)
+#' names(audit.small)
+#'
+#' @seealso \code{\link{RNGkind}}
+#' @export
+perm.test.audit <- function(res,
+                            keep.vertex = FALSE,
+                            keep.global.null = TRUE,
+                            keep.cluster = TRUE) {
+    stopifnot(is.list(res))
+
+    out <- list(
+        global.p.value = res$global.p.value,
+        global.stat.obs = res$global.stat.obs,
+        global.stat.perm = if (keep.global.null) res$global.stat.perm else NULL,
+        n.perms = if (!is.null(res$global.stat.perm)) length(res$global.stat.perm) else NA_integer_,
+        stat = res$stat,
+        y.mean.obs = res$y.mean.obs,
+        eps = res$eps,
+        call = res$call
+    )
+
+    ## Pull reproducibility knobs out of the call (since your current output
+    ## does not store them explicitly)
+    if (!is.null(res$call$seed)) out$seed <- as.integer(res$call$seed)
+    if (!is.null(res$call$two.sided)) out$two.sided <- isTRUE(res$call$two.sided)
+    out$rng.kind <- RNGkind()
+
+    if (keep.vertex) {
+        out$vertex <- list(
+            p.value = res$p.value,
+            q.value = res$q.value,
+            stat.obs = res$stat.obs,
+            fitted.obs = res$fitted.obs
+        )
+    }
+
+    if (keep.cluster && !is.null(res$cluster.size.p.value)) {
+        out$cluster <- list(
+            threshold = res$threshold,
+            max.size.obs = res$max.size.obs,
+            max.size.perm = res$max.size.perm,
+            cluster.size.p.value = res$cluster.size.p.value,
+            max.mass.obs = res$max.mass.obs,
+            max.mass.perm = res$max.mass.perm,
+            cluster.mass.p.value = res$cluster.mass.p.value
+        )
+    }
+
+    class(out) <- c("rdgraph_permutation_test_audit", "list")
+    out
+}
