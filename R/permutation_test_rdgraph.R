@@ -78,6 +78,8 @@
 #' @param return.perm.fits Logical. If TRUE, return the matrix of permuted
 #'   fitted values (can be large). Default FALSE.
 #'
+#' @param return.perm.refit Logical. If TRUE, return the output list of the refit function. Default FALSE.
+#'
 #' @param verbose Logical. If TRUE, print progress messages. Default TRUE.
 #'
 #' @return A list with components:
@@ -123,6 +125,7 @@ permutation.test.rdgraph <- function(fitted.model,
                                      lp.test.exponent = 0.5,
                                      two.sided = TRUE,
                                      return.perm.fits = FALSE,
+                                     return.perm.refit = FALSE,
                                      verbose = TRUE) {
     ## ---------------------------------------------------------------------
     ## Input validation
@@ -175,6 +178,9 @@ permutation.test.rdgraph <- function(fitted.model,
     }
     if (!is.logical(return.perm.fits) || length(return.perm.fits) != 1) {
         stop("return.perm.fits must be TRUE/FALSE.")
+    }
+    if (!is.logical(return.perm.refit) || length(return.perm.refit) != 1) {
+        stop("return.perm.refit must be TRUE/FALSE.")
     }
     if (!is.logical(verbose) || length(verbose) != 1) {
         stop("verbose must be TRUE/FALSE.")
@@ -357,6 +363,7 @@ permutation.test.rdgraph <- function(fitted.model,
     ## Multiple testing correction (BH/FDR)
     q.value <- stats::p.adjust(p.value, method = "BH")
 
+    rng.kind <- RNGkind()
     out <- list(
         n.subj = n.subj,
         y.mean.obs = y.mean.obs,
@@ -371,8 +378,16 @@ permutation.test.rdgraph <- function(fitted.model,
         global.stat.obs = global.stat.obs,
         global.p.value = global.p.value,
         fitted.obs = fitted.obs,
-        perm.refit = perm.refit,
+
         eps = eps,
+        n.perms = n.perms,
+        two.sided = two.sided,
+        seed = seed,
+        lp.test.exponent = lp.test.exponent,
+        per.column.gcv = per.column.gcv,
+        with.cluster = with.cluster,
+        cluster.threshold.quantile = cluster.threshold.quantile,
+        rng.kind = rng.kind,
         call = match.call()
     )
 
@@ -410,6 +425,10 @@ permutation.test.rdgraph <- function(fitted.model,
     if (return.perm.fits) {
         out$perm.fitted.values <- perm.fitted
         out$stat.perm <- stat.perm
+    }
+
+    if (return.perm.refit) {
+        out$perm.refit <- perm.refit
     }
 
     class(out) <- c("rdgraph_permutation_test", "list")
