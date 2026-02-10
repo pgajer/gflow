@@ -134,9 +134,9 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
 
     // edge.lengths
     SET_STRING_ELT(names, idx, Rf_mkChar("edge.lengths"));
-    const size_t n_edges = dcx.edge_lengths.size();
-    SEXP s_edge_lengths = PROTECT(Rf_allocVector(REALSXP, n_edges));
-    for (size_t e = 0; e < n_edges; ++e) {
+    const size_t n_edge_lengths = dcx.edge_lengths.size();
+    SEXP s_edge_lengths = PROTECT(Rf_allocVector(REALSXP, n_edge_lengths));
+    for (size_t e = 0; e < n_edge_lengths; ++e) {
         REAL(s_edge_lengths)[e] = dcx.edge_lengths[e];
     }
     SET_VECTOR_ELT(graph, idx++, s_edge_lengths);
@@ -173,6 +173,7 @@ extern "C" SEXP create_graph_component(const riem_dcx_t& dcx) {
 
     // edge.list (n_edges × 2 matrix)
     SET_STRING_ELT(names, idx, Rf_mkChar("edge.list"));
+    const size_t n_edges = dcx.edge_registry.size();
     SEXP s_edge_list = PROTECT(Rf_allocMatrix(INTSXP, n_edges, 2));
     int* edge_data = INTEGER(s_edge_list);
     for (size_t e = 0; e < n_edges; ++e) {
