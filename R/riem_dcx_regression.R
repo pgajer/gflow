@@ -286,6 +286,12 @@
 #'   \eqn{\max_p ||\rho_p^{(\ell)} - \rho_p^{(\ell-1)}|| / ||\rho_p^{(\ell-1)}||}
 #'   falls below this value across all dimensions. Default 1e-4.
 #'
+#' @param store.projected.X Logical scalar. If \code{TRUE}, store the exact
+#'     feature matrix used for fitting as \code{attr(fit, "X.used")}. When PCA
+#'     is applied, also stores the PCA-projected matrix as
+#'     \code{attr(fit, "pca")$X_projected}. Default is \code{FALSE} to avoid
+#'     increasing object size.
+#'
 #' @param verbose.level Integer in {0,1,2,3} controlling reporting.
 #'
 #' @return An object of class \code{c("knn.riem.fit", "list")}, which is
@@ -316,6 +322,13 @@
 #'         failing threshold at hop 1.}
 #'     }
 #'   }
+#'   }
+#'   When \code{store.projected.X = TRUE}, additional attributes are attached:
+#'   \itemize{
+#'     \item \code{attr(fit, "X.used")}: exact matrix passed to the C++ fitter
+#'           (PCA-projected if PCA was applied, otherwise validated input \code{X})
+#'     \item \code{attr(fit, "pca")$X_projected}: PCA-projected matrix (only
+#'           when PCA is applied)
 #'   }
 #'
 #' @details
@@ -653,6 +666,7 @@ fit.rdgraph.regression <- function(
     ##     normalization.target = density.normalization, ## 0 => n
     ##     max.weight.ratio = 1000             ## currently implicit via median.factor+alpha
     ## )
+    store.projected.X = FALSE,
     verbose.level = 1,
     ...
     ) {
@@ -688,6 +702,10 @@ fit.rdgraph.regression <- function(
     ## Extract dimensions
     n <- nrow(X)
     d <- ncol(X)
+
+    if (length(y) != n) {
+        stop("Length mismatch: length(y) != nrow(X).")
+    }
 
     ## Check dimensions
     if (is.null(n) || is.null(d) || n < 1 || d < 1) {
@@ -1125,6 +1143,11 @@ fit.rdgraph.regression <- function(
             stop("variance.explained must be in (0, 1], or NULL.")
     }
 
+    ## store.projected.X
+    if (!is.logical(store.projected.X) || length(store.projected.X) != 1 || is.na(store.projected.X)) {
+        stop("store.projected.X must be TRUE or FALSE.")
+    }
+
     ## PCA (optional)
     pca_info <- NULL
     if (!is.null(pca.dim) && ncol(X) > pca.dim) {
@@ -1156,6 +1179,10 @@ fit.rdgraph.regression <- function(
                 n_components = pca.dim,
                 variance_explained = variance_explained
             )
+        }
+
+        if (isTRUE(store.projected.X)) {
+            pca_info$X_projected <- X
         }
     }
 
@@ -1231,6 +1258,7 @@ fit.rdgraph.regression <- function(
     attr(fit, "d") <- d
     attr(fit, "k") <- k
     if (!is.null(pca_info)) attr(fit, "pca") <- pca_info
+    if (isTRUE(store.projected.X)) attr(fit, "X.used") <- X
 
     if (!is.null(y.vertices)) {
         attr(fit, "y.vertices") <- as.integer(y.vertices)
