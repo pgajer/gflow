@@ -1465,6 +1465,20 @@ build.iknn.graphs.and.selectk <- function(X,
         stop("`mixing.min.lcc.frac` must be in (0,1].")
     }
 
+    if (sum(duplicated(X))) {
+        ## Break ties using k-NN with Euclidean distance
+        X <- break.composition.ties(
+            rel.abund.mat = X,
+            neighborhood.method = "knn",
+            neighborhood.size = 20,
+            distance.metric = "euclidean",
+            noise.scale = 1e-10,
+            seed = 123,
+            verbose = verbose
+        )
+        X <- tryCatch(as.matrix(X), error = function(e) NULL)
+    }
+
     ## ---- helper: align named labels to sample.ids robustly ----
     align.labels.to.sample.ids <- function(labels, sample.ids, min.match = 10L) {
         if (is.null(names(labels))) stop("`labels` must be named (or length nrow(X) without names).")
