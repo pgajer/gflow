@@ -2,48 +2,57 @@
 #'
 #' @description
 #' Computes per-vertex diagnostics for repeated-measures concentration in
-#' neighborhoods of a graph returned by \code{fit.rdgraph.regression()}:
+#' neighborhoods of a graph returned by \code{fit.rdgraph.regression()}.
 #'
 #' \itemize{
 #'   \item \eqn{R(v) = |\hat N(v)| / \#\{\text{subjects in }\hat N(v)\}}
 #'   with \eqn{\hat N(v) = N(v) \cup \{v\}} (optional self-inclusion).
-#'   \item \code{p.max(v)}: maximum subject weight share in \eqn{N(v)}.
-#'   \item \code{s.eff(v)}: effective number of subjects
-#'   \eqn{1 / \sum_s p_{v,s}^2} in \eqn{N(v)}.
+#'   \item \code{p.max.conductance(v)}, \code{s.eff.conductance(v)}: subject
+#'   concentration in \eqn{N(v)} using conductance weights
+#'   \eqn{w_{ij} = 1/\rho_1(i,j)}.
+#'   \item \code{p.max.operator(v)}, \code{s.eff.operator(v)}: subject
+#'   concentration in \eqn{N(v)} using operator weights derived from
+#'   \code{L0.mass.sym} (off-diagonals of
+#'   \eqn{L_0^{\text{mass.sym}} = M^{-1/2} L_0 M^{-1/2}}) when available;
+#'   otherwise from the mass-sym reconstruction
+#'   \eqn{\{1/\rho_1(i,j)\}/\sqrt{\rho_0(i)\rho_0(j)}}.
 #' }
 #'
-#' The weighted diagnostics (\code{p.max}, \code{s.eff}) use edge weights derived
-#' from the fitted Laplacian inputs:
-#' \itemize{
-#'   \item \code{"conductance"}: \eqn{w_{ij} = 1/\rho_1(i,j)}
-#'   \item \code{"mass.sym"}: \eqn{w_{ij} = \{1/\rho_1(i,j)\} / \sqrt{\rho_0(i)\rho_0(j)}}
-#' }
-#' where \eqn{\rho_1} are edge densities and \eqn{\rho_0} are vertex densities in
-#' \code{fitted.model$graph}.
+#' For backward compatibility, the legacy columns \code{p.max} and \code{s.eff}
+#' are set according to \code{weight.type} (either conductance or operator).
 #'
 #' @param fitted.model Fitted object from \code{fit.rdgraph.regression()} (class
 #'   \code{"knn.riem.fit"}) or a list containing \code{$optimal.fit}.
 #' @param subject.id Vector of subject IDs of length \eqn{n} (one ID per vertex).
-#' @param weight.type Character scalar: \code{"conductance"} (default) or
-#'   \code{"mass.sym"}.
+#' @param weight.type Character scalar controlling the legacy columns
+#'   \code{n.subjects.weighted}, \code{weight.sum}, \code{p.max}, \code{s.eff}.
+#'   Choices: \code{"conductance"} (default) or \code{"mass.sym"}.
 #' @param include.self.in.R Logical scalar; if \code{TRUE} (default), include
 #'   vertex \eqn{v} in \eqn{\hat N(v)} for \code{R(v)}.
 #' @param edge.mass.floor Positive numeric floor applied to edge density before
 #'   inversion. Default \code{1e-10}.
-#' @param vertex.mass.floor Positive numeric floor for vertex densities when
-#'   \code{weight.type = "mass.sym"}. Default \code{1e-15}.
+#' @param vertex.mass.floor Positive numeric floor for vertex densities used in
+#'   the mass-sym reconstruction. Default \code{1e-15}.
+#' @param L0.mass.sym Optional \eqn{n\times n} matrix (dense or sparse) giving
+#'   \code{L0_mass_sym} used by the spectral smoother. If \code{NULL} (default),
+#'   operator weights are approximated via the mass-sym reconstruction from
+#'   \code{fitted.model$graph} densities.
+#' @param operator.offdiag.tol Non-negative tolerance for flagging positive
+#'   off-diagonals in \code{L0.mass.sym}. Used only for diagnostics.
 #'
 #' @return Data frame with one row per vertex and columns:
 #' \itemize{
 #'   \item \code{vertex}: vertex index (1-based)
-#'   \item \code{n.neighbors}: \eqn{|N(v)|}
+#'   \item \code{n.neighbors}: \eqn{|N(v)|} based on \code{fitted.model$graph$adj.list}
 #'   \item \code{n.hat}: \eqn{|\hat N(v)|} used in \code{R(v)}
 #'   \item \code{n.subjects.hat}: number of distinct subjects in \eqn{\hat N(v)}
 #'   \item \code{R}: multiplicity ratio
-#'   \item \code{n.subjects.weighted}: number of distinct subjects in \eqn{N(v)}
-#'   \item \code{weight.sum}: total neighbor weight at \eqn{v}
-#'   \item \code{p.max}: max subject weight share in \eqn{N(v)}
-#'   \item \code{s.eff}: effective number of subjects in \eqn{N(v)}
+#'   \item \code{n.subjects.conductance}, \code{weight.sum.conductance},
+#'   \code{p.max.conductance}, \code{s.eff.conductance}: conductance-based stats
+#'   \item \code{n.subjects.operator}, \code{weight.sum.operator},
+#'   \code{p.max.operator}, \code{s.eff.operator}: operator-based stats
+#'   \item \code{n.subjects.weighted}, \code{weight.sum}, \code{p.max}, \code{s.eff}:
+#'   legacy columns controlled by \code{weight.type}
 #' }
 #'
 #' @export
@@ -53,7 +62,9 @@ subject.neighborhood.stats <- function(
     weight.type = c("conductance", "mass.sym"),
     include.self.in.R = TRUE,
     edge.mass.floor = 1e-10,
-    vertex.mass.floor = 1e-15
+    vertex.mass.floor = 1e-15,
+    L0.mass.sym = NULL,
+    operator.offdiag.tol = 1e-12
 ) {
     weight.type <- match.arg(weight.type)
 
@@ -68,17 +79,22 @@ subject.neighborhood.stats <- function(
         is.na(vertex.mass.floor) || !is.finite(vertex.mass.floor) || vertex.mass.floor <= 0) {
         stop("vertex.mass.floor must be a single finite positive number.")
     }
+    if (!is.numeric(operator.offdiag.tol) || length(operator.offdiag.tol) != 1L ||
+        is.na(operator.offdiag.tol) || !is.finite(operator.offdiag.tol) || operator.offdiag.tol < 0) {
+        stop("operator.offdiag.tol must be a single finite non-negative number.")
+    }
 
-    wobj <- rdgraph.neighbor.weights(
+    ## Always compute conductance-based neighbor weights
+    wobj.conductance <- rdgraph.neighbor.weights(
         fitted.model = fitted.model,
-        weight.type = weight.type,
+        weight.type = "conductance",
         edge.mass.floor = edge.mass.floor,
         vertex.mass.floor = vertex.mass.floor,
         return.weights.df = FALSE
     )
 
-    adj.list <- wobj$adj.list
-    weight.list <- wobj$weight.list
+    adj.list <- wobj.conductance$adj.list
+    weight.list.conductance <- wobj.conductance$weight.list
     n <- length(adj.list)
 
     if (length(subject.id) != n) {
@@ -91,16 +107,104 @@ subject.neighborhood.stats <- function(
         stop("subject.id cannot contain NA values.")
     }
 
-    subject.index <- match(subject.id, unique(subject.id))
+    ## Map subjects to 1..S indices (stable)
+    subject.index <- as.integer(factor(subject.id))
+
+    ## Resolve L0_mass_sym if available (exact operator weights)
+    fit <- .resolve.rdgraph_fit_for_subject_stats(fitted.model)
+    L0.mass.sym.use <- L0.mass.sym
+    if (is.null(L0.mass.sym.use)) {
+        if (!is.null(fit$spectral) && is.list(fit$spectral)) {
+            if (!is.null(fit$spectral$L0_mass_sym)) {
+                L0.mass.sym.use <- fit$spectral$L0_mass_sym
+            } else if (!is.null(fit$spectral$L0.mass.sym)) {
+                L0.mass.sym.use <- fit$spectral$L0.mass.sym
+            }
+        }
+    }
+
+    operator.weight.source <- "mass.sym.reconstructed"
+    if (!is.null(L0.mass.sym.use)) {
+        d <- dim(L0.mass.sym.use)
+        if (length(d) != 2L || d[1L] != n || d[2L] != n) {
+            stop(sprintf(
+                "L0.mass.sym must be an %dx%d matrix (got %s).",
+                n, n, paste(d, collapse = "x")
+            ))
+        }
+        operator.weight.source <- "L0.mass.sym"
+    }
+
+    ## Fallback operator weights: mass.sym reconstruction from densities
+    ## (used when L0.mass.sym is not provided / not stored in fit)
+    weight.list.mass.sym <- NULL
+    if (is.null(L0.mass.sym.use)) {
+        weight.list.mass.sym <- tryCatch(
+            rdgraph.neighbor.weights(
+                fitted.model = fitted.model,
+                weight.type = "mass.sym",
+                edge.mass.floor = edge.mass.floor,
+                vertex.mass.floor = vertex.mass.floor,
+                return.weights.df = FALSE
+            )$weight.list,
+            error = function(e) {
+                warning(
+                    "Could not reconstruct mass.sym operator weights from fitted.model; ",
+                    "p.max.operator and s.eff.operator will be NA. Reason: ", conditionMessage(e),
+                    call. = FALSE
+                )
+                NULL
+            }
+        )
+    }
+
+    ## Small helper: subject concentration stats for a given (neighbors, weights)
+    .subject.weight.stats <- function(neighbors, weights) {
+        if (length(neighbors) == 0L) {
+            return(list(n.subjects = 0L, weight.sum = 0.0, p.max = NA_real_, s.eff = NA_real_))
+        }
+        if (length(weights) != length(neighbors)) {
+            stop("Internal error: neighbors and weights length mismatch.")
+        }
+
+        subj.weights <- tapply(weights, subject.index[neighbors], sum)
+        total.w <- sum(subj.weights)
+
+        n.subjects <- length(subj.weights)
+
+        if (!is.finite(total.w) || total.w <= 0.0) {
+            return(list(n.subjects = n.subjects, weight.sum = total.w, p.max = NA_real_, s.eff = NA_real_))
+        }
+
+        p <- as.numeric(subj.weights / total.w)
+
+        list(
+            n.subjects = n.subjects,
+            weight.sum = total.w,
+            p.max = max(p),
+            s.eff = 1.0 / sum(p^2)
+        )
+    }
 
     n.neighbors <- lengths(adj.list)
     n.hat <- n.neighbors + if (include.self.in.R) 1L else 0L
     n.subjects.hat <- integer(n)
     ratio.R <- rep(NA_real_, n)
-    n.subjects.weighted <- integer(n)
-    weight.sum <- numeric(n)
-    p.max <- rep(NA_real_, n)
-    s.eff <- rep(NA_real_, n)
+
+    n.subjects.conductance <- integer(n)
+    weight.sum.conductance <- numeric(n)
+    p.max.conductance <- rep(NA_real_, n)
+    s.eff.conductance <- rep(NA_real_, n)
+
+    n.subjects.operator <- integer(n)
+    weight.sum.operator <- numeric(n)
+    p.max.operator <- rep(NA_real_, n)
+    s.eff.operator <- rep(NA_real_, n)
+
+    max.pos.offdiag.operator <- NA_real_
+    if (!is.null(L0.mass.sym.use)) {
+        max.pos.offdiag.operator <- -Inf
+    }
 
     for (i in seq_len(n)) {
         nhat <- if (include.self.in.R) c(i, adj.list[[i]]) else adj.list[[i]]
@@ -115,21 +219,48 @@ subject.neighborhood.stats <- function(
         }
 
         neighbors <- as.integer(adj.list[[i]])
-        weights <- as.numeric(weight.list[[i]])
 
-        subj.weights <- tapply(weights, subject.index[neighbors], sum)
-        total.w <- sum(subj.weights)
+        ## Conductance weights: w_ij = 1 / rho_1(i,j)
+        weights.c <- as.numeric(weight.list.conductance[[i]])
+        stats.c <- .subject.weight.stats(neighbors, weights.c)
+        n.subjects.conductance[i] <- stats.c$n.subjects
+        weight.sum.conductance[i] <- stats.c$weight.sum
+        p.max.conductance[i] <- stats.c$p.max
+        s.eff.conductance[i] <- stats.c$s.eff
 
-        n.subjects.weighted[i] <- length(subj.weights)
-        weight.sum[i] <- total.w
-
-        if (!is.finite(total.w) || total.w <= 0.0) {
-            next
+        ## Operator weights: derived from L0_mass_sym off-diagonals when available,
+        ## otherwise from mass.sym reconstruction.
+        weights.o <- NULL
+        if (!is.null(L0.mass.sym.use)) {
+            x <- as.numeric(L0.mass.sym.use[i, neighbors])
+            if (any(is.finite(x) & x > operator.offdiag.tol)) {
+                max.pos.offdiag.operator <- max(max.pos.offdiag.operator, max(x[is.finite(x)], na.rm = TRUE))
+            }
+            weights.o <- pmax(0.0, -x)
+        } else if (!is.null(weight.list.mass.sym)) {
+            weights.o <- as.numeric(weight.list.mass.sym[[i]])
         }
 
-        p <- as.numeric(subj.weights / total.w)
-        p.max[i] <- max(p)
-        s.eff[i] <- 1.0 / sum(p^2)
+        if (!is.null(weights.o)) {
+            stats.o <- .subject.weight.stats(neighbors, weights.o)
+            n.subjects.operator[i] <- stats.o$n.subjects
+            weight.sum.operator[i] <- stats.o$weight.sum
+            p.max.operator[i] <- stats.o$p.max
+            s.eff.operator[i] <- stats.o$s.eff
+        }
+    }
+
+    ## Legacy columns preserved for backward compatibility, controlled by weight.type
+    if (weight.type == "conductance") {
+        n.subjects.weighted <- n.subjects.conductance
+        weight.sum <- weight.sum.conductance
+        p.max <- p.max.conductance
+        s.eff <- s.eff.conductance
+    } else {
+        n.subjects.weighted <- n.subjects.operator
+        weight.sum <- weight.sum.operator
+        p.max <- p.max.operator
+        s.eff <- s.eff.operator
     }
 
     out <- data.frame(
@@ -142,13 +273,27 @@ subject.neighborhood.stats <- function(
         weight.sum = weight.sum,
         p.max = p.max,
         s.eff = s.eff,
+        n.subjects.conductance = n.subjects.conductance,
+        weight.sum.conductance = weight.sum.conductance,
+        p.max.conductance = p.max.conductance,
+        s.eff.conductance = s.eff.conductance,
+        n.subjects.operator = n.subjects.operator,
+        weight.sum.operator = weight.sum.operator,
+        p.max.operator = p.max.operator,
+        s.eff.operator = s.eff.operator,
         stringsAsFactors = FALSE
     )
 
     attr(out, "weight.type") <- weight.type
     attr(out, "include.self.in.R") <- include.self.in.R
+    attr(out, "operator.weight.source") <- operator.weight.source
+    attr(out, "operator.offdiag.tol") <- operator.offdiag.tol
+    if (!is.null(L0.mass.sym.use)) {
+        attr(out, "operator.max.pos.offdiag") <- if (is.finite(max.pos.offdiag.operator)) max.pos.offdiag.operator else NA_real_
+    }
     out
 }
+
 
 #' Reconstruct Per-Vertex Laplacian Neighbor Weights
 #'
