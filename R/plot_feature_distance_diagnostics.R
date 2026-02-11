@@ -70,7 +70,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' (\code{distance.transform="rank"}), which is often more robust to leverage induced by a
 #' small number of vertices at very small distances.
 #'
-#' @param feature Character scalar. Feature (column) name in \code{X} to plot.
+#' @param x Character scalar. Feature (column) name in \code{X} to plot.
 #' @param X Numeric matrix (or coercible data.frame) with vertices in rows and features in columns.
 #' @param vertices Integer vector of vertex indices (1-based) to include in the plot.
 #' @param dists Numeric vector of distances for \code{vertices}. If named, names are treated as
@@ -96,6 +96,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #'   If \code{"rank"}, ranks are computed within the plotted vertex set and scaled to \code{(0, 1)}.
 #' @param xlab Optional character scalar. X-axis label. If NULL (default), a label is chosen based
 #'   on \code{distance.transform}.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return
 #' Invisibly returns a list with components \code{fit}, \code{hat}, \code{cooks}, and \code{marked}
@@ -116,7 +117,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' }
 #'
 #' @export
-plot.abundance.distance.diagnostics <- function(feature,
+plot.abundance.distance.diagnostics <- function(x,
                                                X,
                                                vertices,
                                                dists,
@@ -130,7 +131,9 @@ plot.abundance.distance.diagnostics <- function(feature,
                                                spline.df = NULL,
                                                label.n = 5L,
                                                distance.transform = c("raw", "rank"),
-                                               xlab = NULL) {
+                                               xlab = NULL,
+                                               ...) {
+    feature <- x
 
     distance.transform <- match.arg(distance.transform)
 
@@ -241,7 +244,7 @@ plot.abundance.distance.diagnostics <- function(feature,
 #' (\code{distance.transform="rank"}), which is often more robust to leverage induced by a
 #' small number of vertices at very small distances.
 #'
-#' @param feature Character scalar. Feature (column) name in \code{X} to plot.
+#' @param x Character scalar. Feature (column) name in \code{X} to plot.
 #' @param X Numeric matrix (or coercible data.frame) with vertices in rows and features in columns.
 #' @param vertices Integer vector of vertex indices (1-based) to include in the plot.
 #' @param dists Numeric vector of distances for \code{vertices}. If named, names are treated as
@@ -255,6 +258,7 @@ plot.abundance.distance.diagnostics <- function(feature,
 #'   If \code{"rank"}, ranks are computed within the plotted vertex set and scaled to \code{(0, 1)}.
 #' @param xlab Optional character scalar. X-axis label. If NULL (default), a label is chosen based
 #'   on \code{distance.transform}.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return
 #' Invisibly returns a list with components \code{mid} (bin midpoints) and \code{prev}
@@ -269,7 +273,7 @@ plot.abundance.distance.diagnostics <- function(feature,
 #' }
 #'
 #' @export
-plot.presence.distance.diagnostics <- function(feature,
+plot.presence.distance.diagnostics <- function(x,
                                               X,
                                               vertices,
                                               dists,
@@ -277,7 +281,9 @@ plot.presence.distance.diagnostics <- function(feature,
                                               n.bins = 10L,
                                               main.prefix = "",
                                               distance.transform = c("raw", "rank"),
-                                              xlab = NULL) {
+                                              xlab = NULL,
+                                              ...) {
+    feature <- x
 
     distance.transform <- match.arg(distance.transform)
 
@@ -351,7 +357,7 @@ plot.presence.distance.diagnostics <- function(feature,
 #' If \code{bin.res$tests} includes a trend test (\code{spearman} or \code{wls}), the plot
 #' annotates the corresponding test statistic and p-value (and BH-adjusted p-value when present).
 #'
-#' @param bin.res A list produced by a quantile-bin analysis routine, containing at least a
+#' @param x A list produced by a quantile-bin analysis routine, containing at least a
 #'   data.frame component \code{bin.res$bins}. For abundance plots, \code{bins} must contain
 #'   \code{d.mid} and \code{abundance}; for presence plots it must contain \code{d.mid.all} and
 #'   \code{presence.p}. Optional standard error columns (\code{abundance.se}, \code{presence.se})
@@ -364,6 +370,7 @@ plot.presence.distance.diagnostics <- function(feature,
 #' @param add.line Logical. If TRUE (default), connect binned points with a line.
 #' @param pch Numeric. Plotting character for binned points. Default is 16.
 #' @param cex Numeric. Point expansion factor. Default is 1.0.
+#' @param ... Additional arguments passed to low-level plotting calls.
 #'
 #' @return
 #' Invisibly returns TRUE. Called for its plotting side effects.
@@ -378,7 +385,7 @@ plot.presence.distance.diagnostics <- function(feature,
 #' }
 #'
 #' @export
-plot.quantile.bin.diagnostics <- function(bin.res,
+plot.quantile.bin.diagnostics <- function(x,
                                          what = c("abundance", "presence"),
                                          main = NULL,
                                          xlab = "distance (bin midpoint)",
@@ -386,7 +393,9 @@ plot.quantile.bin.diagnostics <- function(bin.res,
                                          show.se = TRUE,
                                          add.line = TRUE,
                                          pch = 16,
-                                         cex = 1.0) {
+                                         cex = 1.0,
+                                         ...) {
+    bin.res <- x
 
     what <- match.arg(what)
 

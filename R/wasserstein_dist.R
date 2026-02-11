@@ -102,17 +102,32 @@ wasserstein1d.test <- function(x, y, n.perms = 10000, n.cores = 7)
 {
   ## --- helpers -------------------------------------------------------------
   choose_cores <- function(requested) {
+    if (!is.numeric(requested) || length(requested) != 1L ||
+        is.na(requested) || !is.finite(requested)) {
+      requested <- 1L
+    }
+    requested <- max(1L, as.integer(requested))
+
     ## Respect CRAN check limiter
     check_limit <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
     if (nzchar(check_limit)) {
       ## CRAN asks you to limit to at most 2 in checks
       requested <- min(requested, 2L)
     }
+
     ## Respect getOption("mc.cores") if set; otherwise detect
     opt_mc <- getOption("mc.cores")
-    if (!is.null(opt_mc)) requested <- min(requested, as.integer(opt_mc))
+    if (!is.null(opt_mc) && is.numeric(opt_mc) && length(opt_mc) == 1L &&
+        is.finite(opt_mc) && !is.na(opt_mc)) {
+      requested <- min(requested, max(1L, as.integer(opt_mc)))
+    }
+
     dc <- tryCatch(parallel::detectCores(logical = FALSE), error = function(e) 1L)
+    if (!is.numeric(dc) || length(dc) != 1L || is.na(dc) || !is.finite(dc) || dc < 1L) {
+      dc <- 1L
+    }
     requested <- min(requested, max(1L, dc))
+
     max(1L, as.integer(requested))
   }
 
@@ -328,7 +343,7 @@ wasserstein.ipNNuv <- function(S,
         cat("\r",i)
         x <- as.numeric(S[i,])
         x.nn <- S[nn.i[i,],]
-        ##spheres3d(x.nn, col='blue', radius=0.0002)
+        ##rgl::spheres3d(x.nn, col='blue', radius=0.0002)
         n <- nrow(x.nn)
         L.nn <- numeric(n)
         for ( j in seq(n) )

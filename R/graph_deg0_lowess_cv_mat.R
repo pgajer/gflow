@@ -131,7 +131,7 @@ graph.deg0.lowess.cv.mat <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call(S_graph_deg0_lowess_cv_mat,
+    result <- .Call("S_graph_deg0_lowess_cv_mat",
                     adj.list.0based,
                     weight.list,
                     Y,

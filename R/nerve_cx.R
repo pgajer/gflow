@@ -31,7 +31,7 @@ create.nerve.complex <- function(X, k, max.dim = 2) {
         stop("max.dim must be at least 1")
     }
 
-    result <- .Call(S_create_nerve_complex,
+    result <- .Call("S_create_nerve_complex",
                     X,
                     as.integer(k + 1), # Note that ANN library is configured so that it includes the query point within the set of kNN's so we need to increase k by 1 to really get kNN's
                     as.integer(max.dim))
@@ -61,7 +61,7 @@ set.complex.function.values <- function(complex, values) {
   }
 
   # Call C++ function
-    .Call(S_set_function_values,
+    .Call("S_set_function_values",
           complex$complex_ptr,
           as.numeric(values))
 
@@ -112,7 +112,7 @@ set.complex.weight.scheme <- function(complex, weight.type, params = numeric(0))
   }
 
   # Call C++ function
-    .Call(S_set_weight_scheme,
+    .Call("S_set_weight_scheme",
           complex$complex_ptr,
           weight.type,
           as.numeric(params))
@@ -143,7 +143,7 @@ complex.laplacian.solve <- function(complex, lambda = 1.0,
   }
 
   # Call C++ function
-    result <- .Call(S_solve_full_laplacian,
+    result <- .Call("S_solve_full_laplacian",
                     complex$complex_ptr,
                     as.numeric(lambda),
                     as.numeric(dim.weights))
@@ -166,7 +166,7 @@ get.simplex.counts <- function(complex) {
     }
 
     ## Call C++ function
-    .Call(S_get_simplex_counts,
+    .Call("S_get_simplex_counts",
           complex$complex_ptr)
 }
 
@@ -185,7 +185,7 @@ extract.skeleton.graph <- function(complex) {
     }
 
     ## Call C++ function
-    result <- .Call(S_extract_skeleton_graph,
+    result <- .Call("S_extract_skeleton_graph",
                     complex$complex_ptr)
 
     return(result)

@@ -173,7 +173,7 @@ spectral.lowess.graph.smoothing <- function(
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call(S_spectral_lowess_graph_smoothing,
+    result <- .Call("S_spectral_lowess_graph_smoothing",
                     adj.list.0based,
                     weight.list,
                     X,

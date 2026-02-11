@@ -87,12 +87,12 @@ klaps.low.pass.smoother <- function(
 
     if (!is.numeric(min.num.eigenvectors)||length(min.num.eigenvectors)!=1
         || min.num.eigenvectors < 1)
-        stop("'min.num.eigenvectors' must be integer ≥ 1")
+        stop("'min.num.eigenvectors' must be integer >= 1")
 
     if (!is.numeric(max.num.eigenvectors)||length(max.num.eigenvectors)!=1
         || max.num.eigenvectors < min.num.eigenvectors
         || max.num.eigenvectors > n.evectors.to.compute)
-        stop("'max.num.eigenvectors' must satisfy min ≤ max ≤ n.evectors.to.compute")
+        stop("'max.num.eigenvectors' must satisfy min <= max <= n.evectors.to.compute")
 
     if (!is.numeric(tau.factor)||length(tau.factor)!=1
         || tau.factor <= 0 || tau.factor > 1)
@@ -107,7 +107,7 @@ klaps.low.pass.smoother <- function(
         stop("'laplacian.power' must be integer in [1, 10]")
 
     if (!is.numeric(n.candidates)||length(n.candidates)!=1||n.candidates < 1)
-        stop("'n.candidates' must be integer ≥ 1")
+        stop("'n.candidates' must be integer >= 1")
 
     if (!is.logical(log.grid)||length(log.grid)!=1)
         stop("'log.grid' must be a single logical")
@@ -153,7 +153,7 @@ klaps.low.pass.smoother <- function(
 #' @param ... Ignored
 #' @export
 print.klaps_low_pass_smoother <- function(x, ...) {
-    cat("Graph Low‑Pass Smoother\n")
+    cat("Graph Low-Pass Smoother\n")
     cat("========================\n")
     cat(sprintf("Number of vertices:           %d\n", length(x$predictions)))
     cat(sprintf("Number of candidates tested:  %d\n", length(x$candidate.ks)))
@@ -187,7 +187,7 @@ summary.klaps_low_pass_smoother <- function(object, ...) {
 #' @param ... Ignored
 #' @export
 print.summary.klaps_low_pass_smoother <- function(x, ...) {
-    cat("Summary of Graph Low‑Pass Smoother\n")
+    cat("Summary of Graph Low-Pass Smoother\n")
     cat("----------------------------------\n")
     cat(sprintf("Vertices:                 %d\n", x$n_vertices))
     cat(sprintf("Candidates tested:        %d\n", x$n_candidates))

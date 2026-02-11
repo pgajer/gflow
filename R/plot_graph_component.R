@@ -3,7 +3,7 @@
 #' Extracts and visualizes a single connected component from an igraph object
 #' with customizable vertex labels, sizes, and layout.
 #'
-#' @param graph An igraph object
+#' @param x An igraph object
 #' @param comp.id Integer specifying which component to plot (by component ID)
 #' @param show.labels Logical indicating whether to display vertex labels (default: TRUE)
 #' @param label.cex Numeric value controlling label text size (default: 0.7)
@@ -31,7 +31,7 @@
 #' }
 #'
 #' @export
-plot.component <- function(graph,
+plot.component <- function(x,
                            comp.id = 1,
                            show.labels = TRUE,
                            label.cex = 0.7,
@@ -43,6 +43,7 @@ plot.component <- function(graph,
                            layout.coords = NULL,
                            main = NULL,
                            ...) {
+    graph <- x
 
     ## Validate inputs
     if (!inherits(graph, "igraph")) {
@@ -124,7 +125,7 @@ plot.component <- function(graph,
 #'
 #' Visualizes multiple connected components in a multi-panel layout.
 #'
-#' @param graph An igraph object
+#' @param x An igraph object
 #' @param min.size Integer specifying minimum component size to plot (default: 3)
 #' @param max.components Integer specifying maximum number of components to plot (default: 12)
 #' @param show.labels Logical indicating whether to display vertex labels (default: FALSE)
@@ -144,13 +145,14 @@ plot.component <- function(graph,
 #' }
 #'
 #' @export
-plot.components.multi <- function(graph,
+plot.components.multi <- function(x,
                                   min.size = 3,
                                   max.components = 12,
                                   show.labels = FALSE,
                                   label.cex = 0.6,
                                   mfrow = NULL,
                                   ...) {
+  graph <- x
 
   ## Compute connected components
   comp <- igraph::components(graph)

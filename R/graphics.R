@@ -450,7 +450,7 @@ plot.ggraph <- function(x,
                         vertex.radius = 0.1,
                         vertex.label = NA,
                         layout = "kk",
-                        vertex.colory = NULL,
+                        vertex.color = NULL,
                         draw.edges = TRUE,
                         legend.cex = 1,
                         legend.position = "topleft",
@@ -461,6 +461,12 @@ plot.ggraph <- function(x,
                         ...) {
 
   if (!dim %in% c(2, 3)) stop("'dim' must be 2 or 3")
+  dots <- list(...)
+  # Backward compatibility for historical misspelling.
+  if (is.null(vertex.color) && !is.null(dots$vertex.colory)) {
+      vertex.color <- dots$vertex.colory
+  }
+  dots$vertex.colory <- NULL
 
     ## Extract from ggraph object
     graph.adj.list    <- x$adj.list
@@ -528,14 +534,19 @@ plot.ggraph <- function(x,
 
     ## 2D branch: uses base graphics; safe on headless (R uses an off-screen device)
     if (dim == 2) {
-        igraph::plot.igraph(
+        do.call(
+            igraph::plot.igraph,
+            c(
+                list(
                     g,
                     layout = layout_coords,
                     vertex.color = vertex.color,
                     vertex.size = vertex.size,
-                    vertex.label = vertex.label,
-                    ...
-                )
+                    vertex.label = vertex.label
+                ),
+                dots
+            )
+        )
         if (!is.null(y_info)) {
             graphics::legend(legend.position, xpd = NA,
                              legend = names(y_info$y.col.tbl),

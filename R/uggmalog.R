@@ -389,7 +389,7 @@ uggmalog <- function(adj.list,
                     n.bws, min.bw.factor, max.bw.factor))
   }
 
-    result <- .Call(S_uggmalog,
+    result <- .Call("S_uggmalog",
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),

@@ -10,8 +10,6 @@
 test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
                                  n.cores = parallel::detectCores() - 1) {
 
-    require(parallel)
-
     ## Observed test statistics
     obs.concordant <- mean((delta.y > 0 & delta.z > 0) |
                           (delta.y < 0 & delta.z < 0))
@@ -19,10 +17,10 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
     obs.phi <- cor(delta.y > 0, delta.z > 0)
 
     ## Parallel permutation
-    cl <- makeCluster(n.cores)
-    clusterExport(cl, c("delta.y", "delta.z"), envir = environment())
+    cl <- parallel::makeCluster(n.cores)
+    parallel::clusterExport(cl, c("delta.y", "delta.z"), envir = environment())
 
-    perm.results <- parLapply(cl, 1:n.perm, function(i) {
+    perm.results <- parallel::parLapply(cl, 1:n.perm, function(i) {
         z.perm <- sample(delta.z)
         concordant <- mean((delta.y > 0 & z.perm > 0) |
                           (delta.y < 0 & z.perm < 0))
@@ -30,7 +28,7 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
         c(concordant = concordant, phi = phi)
     })
 
-    stopCluster(cl)
+    parallel::stopCluster(cl)
 
     ## Extract results
     perm.matrix <- do.call(rbind, perm.results)
@@ -85,7 +83,8 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
 
 ## Enhanced diagnostic function
 #' @export
-print.concordance.test <- function(result) {
+print.concordance.test <- function(x, ...) {
+    result <- x
     cat("\n")
     cat("=" , rep("=", 70), "\n", sep = "")
     cat("  EDGE-WISE CONCORDANCE TEST\n")
@@ -132,7 +131,8 @@ print.concordance.test <- function(result) {
 
 ## Visualization function
 #' @export
-plot.concordance.test <- function(result, main = "Permutation Test Results") {
+plot.concordance.test <- function(x, main = "Permutation Test Results", ...) {
+    result <- x
 
     par(mfrow = c(1, 2))
 
@@ -171,6 +171,9 @@ plot.concordance.test <- function(result, main = "Permutation Test Results") {
 
 
 #' Chi-square test for 2x2 concordance table
+#'
+#' @param delta.y Numeric vector of edge-wise response differences.
+#' @param delta.z Numeric vector of edge-wise feature differences.
 test.concordance.chisq <- function(delta.y, delta.z) {
     tbl <- table(delta.y > 0, delta.z > 0)
     chi.result <- chisq.test(tbl)
@@ -195,6 +198,12 @@ test.concordance.chisq <- function(delta.y, delta.z) {
 #' Bayesian test: Is concordance proportion > 0.5?
 #'
 #' Uses Beta-Binomial model with weakly informative prior
+#'
+#' @param delta.y Numeric vector of edge-wise response differences.
+#' @param delta.z Numeric vector of edge-wise feature differences.
+#' @param prior.a Shape-1 parameter of the Beta prior on concordance probability.
+#' @param prior.b Shape-2 parameter of the Beta prior on concordance probability.
+#' @param n.samples Number of posterior samples used for Monte Carlo summaries.
 test.concordance.bayes <- function(delta.y, delta.z,
                                    prior.a = 1, prior.b = 1,
                                    n.samples = 10000) {
@@ -389,6 +398,13 @@ find.connected.components <- function(adj.list) {
 #' Permutation test for concordance component structure
 #'
 #' Tests whether observed large components are more extensive than expected
+#'
+#' @param vertex.delta.y Per-vertex edge-difference representation for response values.
+#' @param vertex.delta.z Per-vertex edge-difference representation for feature values.
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
+#' @param observed.subgraphs Observed concordance subgraph decomposition to evaluate.
+#' @param n.perm Number of permutations used for null distribution estimation.
 test.concordance.components <- function(vertex.delta.y, vertex.delta.z,
                                        adj.list, weight.list,
                                        observed.subgraphs,
@@ -456,6 +472,11 @@ test.concordance.components <- function(vertex.delta.y, vertex.delta.z,
 #' Find paths through concordance subgraph
 #'
 #' Identifies trajectories where y and z consistently move together
+#'
+#' @param concordant.subgraph Concordance subgraph object used for path search.
+#' @param start.vertices Vertex indices used as path starts.
+#' @param end.vertices Vertex indices used as path ends.
+#' @param max.path.length Maximum allowed path length (in hops).
 find.concordant.paths <- function(concordant.subgraph,
                                  start.vertices, end.vertices,
                                  max.path.length = 10) {
@@ -483,6 +504,11 @@ find.concordant.paths <- function(concordant.subgraph,
 #' Characterize concordance components
 #'
 #' Identifies shared features of vertices in large components
+#'
+#' @param subgraphs Concordance subgraph object produced by extraction utilities.
+#' @param X Feature matrix over vertices.
+#' @param y Numeric response vector.
+#' @param clinical.data Data frame of clinical covariates aligned to vertices.
 characterize.components <- function(subgraphs,
                                    X,  # Feature matrix
                                    y,  # Outcome
@@ -526,6 +552,10 @@ characterize.components <- function(subgraphs,
 #' Relate concordance components to gradient flow basins
 #'
 #' Tests whether concordance structure aligns with basin boundaries
+#'
+#' @param subgraphs Concordance subgraph object with component memberships.
+#' @param basin.assignments Vector or list assigning vertices to basin labels.
+#' @param basin.extrema Data frame or list describing basin extremal vertices.
 relate.concordance.to.basins <- function(subgraphs, basin.assignments,
                                         basin.extrema) {
 
@@ -562,6 +592,14 @@ relate.concordance.to.basins <- function(subgraphs, basin.assignments,
 #'
 #' For each pair of features, create concordance subgraph
 #' Then find meta-structure across all feature pairs
+#'
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
+#' @param y Numeric response vector over vertices.
+#' @param Z Numeric matrix of feature values over vertices.
+#' @param vertex.delta.y Per-vertex edge-difference structure for \code{y}.
+#' @param vertex.delta.Z List of per-vertex edge-difference structures for
+#'   columns of \code{Z}.
 build.concordance.network <- function(adj.list, weight.list,
                                      y, Z,  # Multiple features
                                      vertex.delta.y, vertex.delta.Z) {
@@ -613,22 +651,28 @@ build.concordance.network <- function(adj.list, weight.list,
 }
 
 #' Visualize concordance subgraph with components highlighted
-plot.concordance.subgraph <- function(subgraphs,
-                                     graph.layout,  # 2D or 3D coordinates
-                                     y.values,
-                                     highlight.large = TRUE) {
-
-    require(igraph)
+#'
+#' @param subgraphs Concordance subgraph object to visualize.
+#' @param graph.layout Optional graph layout coordinates or layout specifier.
+#' @param y.values Optional numeric vertex values used for coloring.
+#' @param highlight.large Logical; emphasize larger connected components.
+plot_concordance_subgraph <- function(subgraphs,
+                                      graph.layout,  # 2D or 3D coordinates
+                                      y.values,
+                                      highlight.large = TRUE) {
 
     ## Build igraph object
     edges.df <- do.call(rbind, lapply(subgraphs$concordant$edges, function(e) {
         data.frame(from = e$v, to = e$u)
     }))
 
-    g <- graph_from_data_frame(edges.df, directed = FALSE)
+    g <- igraph::graph_from_data_frame(edges.df, directed = FALSE)
+    vertex.ids <- as.numeric(igraph::V(g)$name)
 
     ## Color vertices by component
-    V(g)$component <- subgraphs$concordant$components$component.id[as.numeric(V(g)$name)]
+    component.ids <- subgraphs$concordant$components$component.id[vertex.ids]
+    g <- igraph::set_vertex_attr(g, "component", value = component.ids)
+    large.comp.ids <- character(0)
 
     if (highlight.large) {
         ## Large components get distinct colors
@@ -636,18 +680,20 @@ plot.concordance.subgraph <- function(subgraphs,
             subgraphs$concordant$large.components
         ]
 
-        V(g)$color <- ifelse(
-            V(g)$component %in% large.comp.ids,
-            rainbow(length(large.comp.ids))[match(V(g)$component, large.comp.ids)],
+        colors <- ifelse(
+            component.ids %in% large.comp.ids,
+            rainbow(length(large.comp.ids))[match(component.ids, large.comp.ids)],
             "gray80"
         )
+        g <- igraph::set_vertex_attr(g, "color", value = colors)
     }
 
     ## Size vertices by outcome value
-    V(g)$size <- scales::rescale(y.values[as.numeric(V(g)$name)], to = c(2, 10))
+    sizes <- scales::rescale(y.values[vertex.ids], to = c(2, 10))
+    g <- igraph::set_vertex_attr(g, "size", value = sizes)
 
     plot(g,
-         layout = graph.layout[as.numeric(V(g)$name), ],
+         layout = graph.layout[vertex.ids, ],
          main = "Concordance Subgraph (Large Components Highlighted)")
 
     ## Add legend
@@ -664,13 +710,12 @@ plot.concordance.subgraph <- function(subgraphs,
 #' @param concordant.subgraph The concordant subgraph from extract.concordance.subgraphs()
 #' @param method Community detection method ("louvain", "leiden", "infomap", "walktrap")
 #' @param min.module.size Minimum module size to consider
+#' @param resolution Resolution parameter used by methods that support multiscale partitioning.
 #' @return List with module assignments and quality metrics
 find.concordance.modules <- function(concordant.subgraph,
                                     method = "louvain",
                                     min.module.size = 10,
                                     resolution = 1.0) {
-
-    require(igraph)
 
     ## Build igraph object from concordant edges
     if (length(concordant.subgraph$edges) == 0) {
@@ -681,31 +726,32 @@ find.concordance.modules <- function(concordant.subgraph,
         data.frame(from = e$v, to = e$u, weight = 1/e$weight)  # Weight by inverse distance
     }))
 
-    g <- graph_from_data_frame(edges.df, directed = FALSE)
+    g <- igraph::graph_from_data_frame(edges.df, directed = FALSE)
 
     ## Apply community detection algorithm
     communities <- switch(method,
-        "louvain" = cluster_louvain(g, weights = E(g)$weight,
-                                     resolution = resolution),
+        "louvain" = igraph::cluster_louvain(g, weights = igraph::E(g)$weight,
+                                            resolution = resolution),
         "leiden" = {
             ## Requires leidenalg Python package via reticulate
             ## Or use igraph's implementation if available
-            cluster_leiden(g, weights = E(g)$weight,
-                          resolution_parameter = resolution)
+            igraph::cluster_leiden(g, weights = igraph::E(g)$weight,
+                                   resolution_parameter = resolution)
         },
-        "infomap" = cluster_infomap(g, e.weights = E(g)$weight),
-        "walktrap" = cluster_walktrap(g, weights = E(g)$weight, steps = 4),
-        "fast_greedy" = cluster_fast_greedy(g, weights = E(g)$weight),
+        "infomap" = igraph::cluster_infomap(g, e.weights = igraph::E(g)$weight),
+        "walktrap" = igraph::cluster_walktrap(g, weights = igraph::E(g)$weight, steps = 4),
+        "fast_greedy" = igraph::cluster_fast_greedy(g, weights = igraph::E(g)$weight),
         stop("Unknown method: ", method)
     )
 
     ## Extract module assignments for all vertices
-    n.vertices <- max(as.numeric(V(g)$name))
+    vertex.ids <- as.numeric(igraph::V(g)$name)
+    n.vertices <- max(vertex.ids)
     module.id <- rep(NA, n.vertices)
-    module.id[as.numeric(V(g)$name)] <- membership(communities)
+    module.id[vertex.ids] <- igraph::membership(communities)
 
     ## Get modules as vertex lists
-    modules.list <- split(as.numeric(V(g)$name), membership(communities))
+    modules.list <- split(vertex.ids, igraph::membership(communities))
     module.sizes <- sapply(modules.list, length)
 
     ## Filter by size
@@ -727,13 +773,17 @@ find.concordance.modules <- function(concordant.subgraph,
         modules = modules.list[large.modules],
         module.sizes = module.sizes[large.modules],
         module.metrics = module.metrics,
-        modularity = modularity(communities),
+        modularity = igraph::modularity(communities),
         n.modules = length(large.modules),
         method = method
     )
 }
 
 #' Compute quality metrics for a module
+#'
+#' @param vertices Integer vector of vertex indices defining the module.
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
 compute.module.metrics <- function(vertices, adj.list, weight.list) {
 
     ## Internal edges: both endpoints in module
@@ -796,32 +846,34 @@ compute.module.metrics <- function(vertices, adj.list, weight.list) {
 #'
 #' Finds nested sequence of dense subgraphs
 #' Higher k-cores = denser, more robust concordance signal
+#'
+#' @param concordant.subgraph Concordance subgraph object returned by extraction utilities.
+#' @param min.k Minimum core number retained in the decomposition output.
 find.concordance.kcores <- function(concordant.subgraph,
                                    min.k = 5) {
-
-    require(igraph)
 
     ## Build igraph
     edges.df <- do.call(rbind, lapply(concordant.subgraph$edges, function(e) {
         data.frame(from = e$v, to = e$u)
     }))
 
-    g <- graph_from_data_frame(edges.df, directed = FALSE)
+    g <- igraph::graph_from_data_frame(edges.df, directed = FALSE)
 
     ## Compute k-core decomposition
-    coreness <- coreness(g)
+    coreness <- igraph::coreness(g)
 
     ## Map back to full vertex set
-    n.vertices <- max(as.numeric(V(g)$name))
+    vertex.ids <- as.numeric(igraph::V(g)$name)
+    n.vertices <- max(vertex.ids)
     vertex.coreness <- rep(0, n.vertices)
-    vertex.coreness[as.numeric(V(g)$name)] <- coreness
+    vertex.coreness[vertex.ids] <- coreness
 
     ## Extract k-cores for k >= min.k
     kcores <- list()
     max.k <- max(coreness)
 
     for (k in min.k:max.k) {
-        vertices.in.kcore <- as.numeric(V(g)$name)[coreness >= k]
+        vertices.in.kcore <- vertex.ids[coreness >= k]
 
         if (length(vertices.in.kcore) > 0) {
             kcores[[as.character(k)]] <- list(
@@ -842,6 +894,10 @@ find.concordance.kcores <- function(concordant.subgraph,
 #' Find dense modules using local density peaks
 #'
 #' Identifies regions of locally high concordant edge density
+#'
+#' @param concordant.subgraph Concordance subgraph object used for local density scoring.
+#' @param min.module.size Minimum number of vertices required for a reported module.
+#' @param density.threshold.quantile Quantile threshold that defines dense candidate vertices.
 find.density.based.modules <- function(concordant.subgraph,
                                       min.module.size = 10,
                                       density.threshold.quantile = 0.9) {
@@ -939,6 +995,13 @@ assign.to.nearest.peak <- function(adj.list, peaks, density.score) {
 #' Test module concordance significance
 #'
 #' Permutation test: are modules more densely concordant than random?
+#'
+#' @param modules Module assignments or module vertex sets to test.
+#' @param vertex.delta.y Per-vertex edge-difference representation for response values.
+#' @param vertex.delta.z Per-vertex edge-difference representation for feature values.
+#' @param adj.list Graph adjacency list.
+#' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
+#' @param n.perm Number of permutations used to assess module significance.
 test.module.significance <- function(modules,
                                     vertex.delta.y, vertex.delta.z,
                                     adj.list, weight.list,

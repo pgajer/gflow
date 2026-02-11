@@ -51,7 +51,7 @@ elapsed.time <- function(start.time,
 #' integer-like (all finite values satisfy \code{x == floor(x)}) can optionally be
 #' retained as integers.
 #'
-#' @param df A data.frame.
+#' @param x A data.frame.
 #' @param digits Integer. Number of significant digits to keep. Default is 2.
 #' @param keep.integers Logical. If TRUE (default), numeric columns that are integer-like
 #'   are coerced to integer and not rounded.
@@ -65,19 +65,21 @@ elapsed.time <- function(start.time,
 #'
 #' @examples
 #' \dontrun{
-#' df.2sig <- signif.df(df, digits = 2)
-#' df.3sig <- signif.df(df, digits = 3, exclude = c("sector"))
+#' df.2sig <- signif_df(df, digits = 2)
+#' df.3sig <- signif_df(df, digits = 3, exclude = c("sector"))
 #' }
 #'
 #' @export
-signif.df <- function(df,
+signif_df <- function(x,
                       digits = 2L,
                       keep.integers = TRUE,
                       exclude = NULL,
                       include = NULL) {
 
+    df <- x
+
     if (!is.data.frame(df)) {
-        stop("df must be a data.frame.")
+        stop("x must be a data.frame.")
     }
 
     digits <- as.integer(digits)
@@ -138,8 +140,11 @@ signif.df <- function(df,
 #'
 #' @return Character vector of colors, same length as `x`.
 #' @examples
-#' cols <- map.values.to.palette(rel.sptb.hat, blue.yellow.red.color.palette)
+#' x <- c(-1, -0.2, 0, 0.4, 1, NA)
+#' pal <- c("#2166AC", "#F7F7F7", "#B2182B")
+#' cols <- map.values.to.palette(x, pal)
 #' head(cols)
+#' @export
 map.values.to.palette <- function(x,
                                   color.palette,
                                   limits = NULL,

@@ -89,13 +89,13 @@ set.boundary <- function(U, adj.list) {
 #' a gradient flow algorithm. Each basin consists of vertices that would flow
 #' towards a particular local maximum following the steepest ascent path.
 #'
-#' @param adj.list List where \code{adj.list[[i]]} contains indices of vertices
+#' @param object List where \code{object[[i]]} contains indices of vertices
 #'   adjacent to vertex i. Must be a valid adjacency list representation.
 #' @param weight.list List where \code{weight.list[[i]]} contains positive weights
-#'   of edges from vertex i to corresponding vertices in \code{adj.list[[i]]}.
+#'   of edges from vertex i to corresponding vertices in \code{object[[i]]}.
 #'   If \code{NULL}, uniform weights of 1 are used.
 #' @param y Numeric vector of values at each vertex. Must have the same length
-#'   as \code{adj.list}. Can contain \code{NA} values which are treated as
+#'   as \code{object}. Can contain \code{NA} values which are treated as
 #'   negative infinity.
 #' @param lmax.list List where each element contains:
 #'  \describe{
@@ -106,6 +106,7 @@ set.boundary <- function(U, adj.list) {
 #'   }
 #' @param verbose Logical; if \code{TRUE}, prints progress messages during
 #'   computation. Default is \code{FALSE}.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A named list of basins of attraction, where names correspond to labels
 #'   in \code{lmax.list}. Each element is an integer vector of vertex indices
@@ -160,11 +161,13 @@ set.boundary <- function(U, adj.list) {
 #' @seealso \code{\link{set.boundary}}, \code{\link{lmin.basins}},
 #'   \code{\link{compute.graph.gradient.flow}}
 #' @export
-lmax.basins <- function(adj.list,
+lmax.basins <- function(object,
                         weight.list = NULL,
                         y,
                         lmax.list,
-                        verbose = FALSE) {
+                        verbose = FALSE,
+                        ...) {
+    adj.list <- object
     ## Input validation
     if (!is.list(adj.list) || length(adj.list) == 0) {
         stop("adj.list must be a non-empty list")
@@ -356,13 +359,13 @@ lmax.basins <- function(adj.list,
 #' a gradient flow algorithm. Each basin consists of vertices that would flow
 #' towards a particular local minimum following the steepest descent path.
 #'
-#' @param adj.list List where \code{adj.list[[i]]} contains indices of vertices
+#' @param object List where \code{object[[i]]} contains indices of vertices
 #'   adjacent to vertex i. Must be a valid adjacency list representation.
 #' @param weight.list List where \code{weight.list[[i]]} contains positive weights
-#'   of edges from vertex i to corresponding vertices in \code{adj.list[[i]]}.
+#'   of edges from vertex i to corresponding vertices in \code{object[[i]]}.
 #'   If \code{NULL}, uniform weights of 1 are used.
 #' @param y Numeric vector of values at each vertex. Must have the same length
-#'   as \code{adj.list}. Can contain \code{NA} values which are treated as
+#'   as \code{object}. Can contain \code{NA} values which are treated as
 #'   positive infinity.
 #' @param lmin.list List where each element contains:
 #'   \describe{
@@ -373,6 +376,7 @@ lmax.basins <- function(adj.list,
 #'   }
 #' @param verbose Logical; if \code{TRUE}, prints progress messages during
 #'   computation. Default is \code{FALSE}.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A named list of basins of attraction, where names correspond to labels
 #'   in \code{lmin.list}. Each element is an integer vector of vertex indices
@@ -418,7 +422,8 @@ lmax.basins <- function(adj.list,
 #' @seealso \code{\link{set.boundary}}, \code{\link{lmax.basins}},
 #'   \code{\link{compute.graph.gradient.flow}}
 #' @export
-lmin.basins <- function(adj.list, weight.list = NULL, y, lmin.list, verbose = FALSE) {
+lmin.basins <- function(object, weight.list = NULL, y, lmin.list, verbose = FALSE, ...) {
+    adj.list <- object
     ## Input validation
     if (!is.list(adj.list) || length(adj.list) == 0) {
         stop("adj.list must be a non-empty list")

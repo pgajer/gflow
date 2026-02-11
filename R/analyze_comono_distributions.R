@@ -122,11 +122,13 @@ analyze.comono.distributions <- function(cm,
 
 #' Create Diagnostic Plots for Co-Monotonicity Distribution Analysis
 #'
-#' @param analysis.results Output from analyze.comono.distributions().
+#' @param x Output from analyze.comono.distributions().
 #' @param cell.id Specific cell ID to plot.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @export
-plot.comono.diagnostics <- function(analysis.results, cell.id) {
+plot.comono.diagnostics <- function(x, cell.id, ...) {
+  analysis.results <- x
 
   if (!inherits(analysis.results, "comono_analysis")) {
     stop("analysis.results must be output from analyze.comono.distributions()")

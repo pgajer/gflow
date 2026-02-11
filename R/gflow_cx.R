@@ -1601,7 +1601,7 @@ plot_extrema_stability <- function(extrema_df,
   # Mark infinite hop_idx
   if (any(is.infinite(extrema_df$hop_idx))) {
     text(par("usr")[2], par("usr")[3],
-         "← Global extrema",
+         "<- Global extrema",
          pos = 2, cex = 0.8, col = "gray40")
   }
 }

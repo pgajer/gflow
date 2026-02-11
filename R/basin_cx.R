@@ -119,7 +119,7 @@ create.basin.cx <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function (initial basin detection)
-    initial_basin_cx <- .Call(S_create_basin_cx,
+    initial_basin_cx <- .Call("S_create_basin_cx",
                               adj.list.0based,
                               weight.list,
                               as.numeric(y))
@@ -162,7 +162,7 @@ create.basin.cx <- function(adj.list,
     lmax.basin.ids <- sort(initial_basin_cx$basins_df$label[initial_basin_cx$basins_df$is_max == 1])
 
     ## Reorder basins for consistency
-    initial_basin_cx <- basin.dataframes.reorder(initial_basin_cx, lmin.basin.ids, lmax.basin.ids)
+    initial_basin_cx <- basin_dataframes_reorder(initial_basin_cx, lmin.basin.ids, lmax.basin.ids)
 
     ## Extract vertices for all basins for further analysis
     lmin.basins.vertices.list <- extract_basins_vertices(initial_basin_cx, lmin.basin.ids)
@@ -893,7 +893,7 @@ create.basins.df <- function(basin_cx, y) {
 #'
 #' @keywords internal
 #' @noRd
-basin.dataframes.reorder <- function(basin_cx, lmin_basin_ids, lmax_basin_ids) {
+basin_dataframes_reorder <- function(basin_cx, lmin_basin_ids, lmax_basin_ids) {
   ## Reorder minima basins dataframe
   if (length(lmin_basin_ids) > 0 && nrow(basin_cx$lmin_basins_df) > 0) {
     basin_cx$lmin_basins_df <- basin_cx$lmin_basins_df[lmin_basin_ids, ]
@@ -1664,13 +1664,17 @@ show.basin.basin_cx <- function(x, basin.label, ...) {
 #'
 #' Get the union of vertices from specified basins in a basin complex.
 #'
-#' @param x An object of class "basin_cx" returned by create.basin.cx().
+#' @param object An object of class "basin_cx" returned by create.basin.cx().
+#' @param x Backward-compatible alias for \code{object}.
 #' @param ids Character vector of basin labels (e.g., c("M1", "m2", "M3")).
+#' @param ... Additional arguments (ignored).
 #'
 #' @return An integer vector of vertex indices contained in the union of the specified basins.
 #'
 #' @export
-basins.union <- function(x, ids) {
+basins.union <- function(object, ids, x = object, ...) {
+    object <- x
+    x <- object
     ## Check if x is a basin_cx object
     if (!inherits(x, "basin_cx")) {
         stop("'x' must be an object of class 'basin_cx'")
@@ -2594,13 +2598,17 @@ plot.basin_cx <- function(x, y, ..., type = c("graph", "basins", "cells", "compa
 #' Merges one basin into another within a \code{basin_cx} object by updating
 #' vertices, labels, and the corresponding cell complex.
 #'
-#' @param basin_cx An object of class \code{basin_cx}, as returned by \code{create.basin.cx()}.
+#' @param object An object of class \code{basin_cx}, as returned by \code{create.basin.cx()}.
+#' @param basin_cx Backward-compatible alias for \code{object}.
 #' @param absorbing.label Label of the basin that will absorb another (e.g., "m1", "M2").
 #' @param absorbed.label Label of the basin to be absorbed (must be same type as \code{absorbing.label}).
+#' @param ... Additional arguments (ignored).
 #'
 #' @return A new \code{basin_cx} object with updated basins and cell complex.
 #' @export
-basin.cx.merge <- function(basin_cx, absorbing.label, absorbed.label) {
+basin.cx.merge <- function(object, absorbing.label, absorbed.label, basin_cx = object, ...) {
+    object <- basin_cx
+    basin_cx <- object
     stopifnot(inherits(basin_cx, "basin_cx"))
 
     # Declare variables to avoid R CMD check warnings

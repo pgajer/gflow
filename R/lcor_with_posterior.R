@@ -271,7 +271,7 @@ lcor.with.posterior.R <- function(adj.list,
     alpha.upper <- (1 + credible.level) / 2
 
     if (verbose && p > 5) {
-        pb <- txtProgressBar(min = 0, max = p, style = 3)
+        pb <- utils::txtProgressBar(min = 0, max = p, style = 3)
     }
 
     for (j in seq_len(p)) {
@@ -312,7 +312,7 @@ lcor.with.posterior.R <- function(adj.list,
         }
 
         if (verbose && p > 5) {
-            setTxtProgressBar(pb, j)
+            utils::setTxtProgressBar(pb, j)
         }
     }
 

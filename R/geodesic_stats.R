@@ -55,7 +55,7 @@ compute.geodesic.stats <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call the C++ function
-    result <- .Call(S_compute_geodesic_stats,
+    result <- .Call("S_compute_geodesic_stats",
                    adj.list.0based,
                    weight.list,
                    as.double(min.radius),
@@ -286,7 +286,7 @@ compute.vertex.geodesic.stats <- function(adj.list,
     grid.vertex.0based <- as.integer(grid.vertex - 1)
 
     ## Call the C++ function
-    result <- .Call(S_compute_vertex_geodesic_stats,
+    result <- .Call("S_compute_vertex_geodesic_stats",
                     adj.list.0based,
                     weight.list,
                     grid.vertex.0based,

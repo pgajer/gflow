@@ -128,8 +128,8 @@
 #'
 #' @seealso
 #' \code{\link{compute.basins.of.attraction}} for computing gradient flow basins,
-#' \code{\link{gfcomon}} for directed co-monotonicity analysis,
-#' \code{\link{gfassoc}} for comprehensive association analysis
+#' \code{gfcomon} for directed co-monotonicity analysis,
+#' \code{gfassoc} for comprehensive association analysis
 #'
 #' @export
 gfcor <- function(y.hat,

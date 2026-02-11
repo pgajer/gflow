@@ -192,7 +192,7 @@ extract.stable.clusters <- function(data.matrix,
   
   # Diagnostics
   if (plot.diagnostics && length(extracted.clusters) > 0) {
-    plot.cluster.extraction.diagnostics(
+    plot_cluster_extraction_diagnostics(
       data.matrix,
       cluster.assignments,
       extracted.clusters,
@@ -316,14 +316,10 @@ extract.cluster.members <- function(hclust.obj, cluster.id) {
 #' Creates diagnostic visualizations for iterative cluster extraction
 #'
 #' @keywords internal
-plot.cluster.extraction.diagnostics <- function(data.matrix,
+plot_cluster_extraction_diagnostics <- function(data.matrix,
                                                 cluster.assignments,
                                                 extracted.clusters,
                                                 summary.stats) {
-  
-  library(ComplexHeatmap)
-  library(circlize)
-  
   n.clusters <- length(extracted.clusters)
   
   # Create 2x2 layout
@@ -390,7 +386,7 @@ plot.cluster.extraction.diagnostics <- function(data.matrix,
     if (sum(assigned) > 0) {
       order.idx <- order(cluster.assignments)
       
-      row.ha <- rowAnnotation(
+      row.ha <- ComplexHeatmap::rowAnnotation(
         Cluster = factor(cluster.assignments[order.idx],
                         levels = 0:n.clusters),
         col = list(Cluster = setNames(
@@ -401,12 +397,12 @@ plot.cluster.extraction.diagnostics <- function(data.matrix,
         annotation_name_side = "top"
       )
       
-      col.fun <- colorRamp2(
+      col.fun <- circlize::colorRamp2(
         seq(min(data.matrix), max(data.matrix), length.out = 5),
         c("blue", "lightblue", "white", "pink", "red")
       )
       
-      ht <- Heatmap(
+      ht <- ComplexHeatmap::Heatmap(
         data.matrix[order.idx, ],
         name = "Value",
         col = col.fun,
@@ -420,7 +416,7 @@ plot.cluster.extraction.diagnostics <- function(data.matrix,
         row_title = c("Unassigned", paste("Cluster", 1:n.clusters))
       )
       
-      draw(ht)
+      ComplexHeatmap::draw(ht)
     }
   }
 }
@@ -437,9 +433,6 @@ plot.cluster.extraction.diagnostics <- function(data.matrix,
 #'
 #' @export
 analyze.extracted.clusters <- function(data.matrix, extraction.result) {
-  
-  library(cluster)
-  
   clusters <- extraction.result$clusters
   n.clusters <- extraction.result$n.clusters
   

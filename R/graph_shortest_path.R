@@ -50,7 +50,7 @@ shortest.path <- function(graph, edge.lengths, vertices) {
     ## Converting vertices to 0-based indexing
     vertices.0based <- as.integer(vertices - 1)
 
-    res <- .Call(S_shortest_path,
+    res <- .Call("S_shortest_path",
                  graph.0based,
                  edge.lengths,
                  vertices.0based)

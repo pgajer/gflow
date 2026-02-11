@@ -17,8 +17,9 @@
 #' account for ambiguity in basin boundaries.
 #'
 #' Cell membership is computed as the product of basin memberships. A Morse-Smale
-#' cell C_{ij} is the intersection of maximum basin B^+_i and minimum basin B^-_j.
-#' The cell membership gamma_{ij}(v) is normalized so that sum_{i,j} gamma_{ij}(v) = 1.
+#' cell \eqn{C_{ij}} is the intersection of maximum basin \eqn{B_i^+} and
+#' minimum basin \eqn{B_j^-}. The cell membership \eqn{\gamma_{ij}(v)} is
+#' normalized so that \eqn{\sum_{i,j}\gamma_{ij}(v)=1}.
 #'
 #' @param basins Object of class \code{"basins_of_attraction"} from
 #'   \code{compute.basins.of.attraction}.
@@ -174,12 +175,13 @@ gfassoc.polarity <- function(y,
 #'
 #' @details
 #' For two functions y and z with basin structures, the overlap matrix entry
-#' O^{++}_{ij} measures the effective intersection between y-maximum basin i
-#' and z-maximum basin j:
+#' \eqn{O_{ij}^{++}} measures the effective intersection between y-maximum basin
+#' i and z-maximum basin j:
 #'
-#'   O^{++}_{ij} = sum_v m_0(v) * mu^{y,+}_i(v) * mu^{z,+}_j(v)
+#'   \deqn{O_{ij}^{++} = \sum_v m_0(v)\,\mu_i^{y,+}(v)\,\mu_j^{z,+}(v)}
 #'
-#' where m_0(v) is vertex mass and mu are normalized membership weights.
+#' where \eqn{m_0(v)} is vertex mass and \eqn{\mu} are normalized membership
+#' weights.
 #'
 #' Four overlap matrices are computed:
 #'   O_pp: y-max with z-max (positive-positive association regions)
@@ -235,10 +237,10 @@ gfassoc.overlap <- function(y.membership,
 #' @details
 #' Under independence, the expected overlap is:
 #'
-#'   E_{ij} = (sum_k O_{ik}) * (sum_l O_{lj}) / (sum_{k,l} O_{kl})
+#'   \deqn{E_{ij} = \frac{(\sum_k O_{ik})(\sum_l O_{lj})}{\sum_{k,l} O_{kl}}}
 #'
-#' The raw deviation delta_{ij} = O_{ij} - E_{ij} measures the difference from
-#' expected. The standardized deviation zeta_{ij} follows the Pearson residual
+#' The raw deviation \eqn{\delta_{ij} = O_{ij} - E_{ij}} measures the difference
+#' from expected. The standardized deviation \eqn{\zeta_{ij}} follows the Pearson residual
 #' form, providing a scale-free measure suitable for comparing across different
 #' matrix sizes.
 #'
@@ -250,7 +252,7 @@ gfassoc.overlap <- function(y.membership,
 #'   \code{gfassoc.overlap}).
 #'
 #' @return A list containing:
-#'   \item{delta}{Matrix of raw deviations O_{ij} - E_{ij}.}
+#'   \item{delta}{Matrix of raw deviations \eqn{O_{ij} - E_{ij}}.}
 #'   \item{zeta}{Matrix of standardized Pearson residuals.}
 #'   \item{expected}{Matrix of expected overlaps under independence.}
 #'
@@ -280,7 +282,11 @@ gfassoc.deviation <- function(overlap.matrix) {
 #' @details
 #' The association character of y-maximum basin i is:
 #'
-#'   chi^{y,+}_i = sum_v m_0(v) * mu^{y,+}_i(v) * p_z(v) / sum_v m_0(v) * mu^{y,+}_i(v)
+#'   \deqn{
+#'   \chi_i^{y,+} =
+#'   \frac{\sum_v m_0(v)\,\mu_i^{y,+}(v)\,p_z(v)}
+#'        {\sum_v m_0(v)\,\mu_i^{y,+}(v)}
+#'   }
 #'
 #' This measures the average z-polarity within the y-maximum basin. Values near
 #' +1 indicate that the y-high region coincides with z-high (direct association).

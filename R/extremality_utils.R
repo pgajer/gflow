@@ -632,8 +632,6 @@ label.extremality.3d <- function(graph.3d,
 compute.extrema.geodesic.distances <- function(extremality.df,
                                                adj.list,
                                                edgelen.list) {
-    require(igraph)
-
     # Extract maxima vertices
     maxima_vertices <- extremality.df$vertex[extremality.df$type == "max"]
     n_maxima <- length(maxima_vertices)
@@ -652,15 +650,17 @@ compute.extrema.geodesic.distances <- function(extremality.df,
         }
     }
 
-    g <- graph_from_edgelist(edge_list, directed = FALSE)
-    E(g)$weight <- edge_weights
+    g <- igraph::graph_from_edgelist(edge_list, directed = FALSE)
+    g <- igraph::set_edge_attr(g, "weight", value = edge_weights)
 
     # Compute shortest path distances between all pairs of maxima
-    dist_matrix <- distances(g,
-                            v = maxima_vertices,
-                            to = maxima_vertices,
-                            mode = "all",
-                            weights = E(g)$weight)
+    dist_matrix <- igraph::distances(
+        g,
+        v = maxima_vertices,
+        to = maxima_vertices,
+        mode = "all",
+        weights = igraph::E(g)$weight
+    )
 
     rownames(dist_matrix) <- extremality.df$label[extremality.df$type == "max"]
     colnames(dist_matrix) <- extremality.df$label[extremality.df$type == "max"]

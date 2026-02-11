@@ -424,7 +424,7 @@ robust.zscore.vec <- function(x, eps = 1e-12) {
 #'   \item{floor.mass}{Named numeric vector of floor-mass values for each feature.}
 #' }
 #'
-#' @seealso \code{\link{floor.mass}}, \code{\link{preprocess.matrix.logshift}},
+#' @seealso \code{\link{floor_mass}}, \code{\link{preprocess.matrix.logshift}},
 #'   \code{\link{preprocess.matrix.asinh}}, \code{\link{preprocess.matrix.normscores}}
 #'
 #' @examples
@@ -432,7 +432,7 @@ robust.zscore.vec <- function(x, eps = 1e-12) {
 #' colnames(X) <- c("floor.heavy", "constant")
 #' select.features.by.floor.mass(X, floor.mass.max = 0.6)
 #'
-#' @export
+#' @rawNamespace export(select.features.by.floor.mass)
 select.features.by.floor.mass <- function(X,
                                          floor.mass.max = 0.60,
                                          tol = 1e-12) {
@@ -462,7 +462,7 @@ select.features.by.floor.mass <- function(X,
 
     ## ---- compute floor mass per feature ----
     fm <- vapply(seq_len(ncol(M)),
-                 function(j) floor.mass(M[, j], tol = tol),
+                 function(j) floor_mass(M[, j], tol = tol),
                  numeric(1))
 
     if (!is.null(colnames(M))) names(fm) <- colnames(M)
@@ -490,11 +490,11 @@ select.features.by.floor.mass <- function(X,
 #'   contains no finite values.
 #'
 #' @examples
-#' floor.mass(c(0, 0, 0, 1, 2))
-#' floor.mass(c(NA, NaN, Inf, -Inf))
+#' floor_mass(c(0, 0, 0, 1, 2))
+#' floor_mass(c(NA, NaN, Inf, -Inf))
 #'
 #' @export
-floor.mass <- function(x, tol = 1e-12) {
+floor_mass <- function(x, tol = 1e-12) {
     ## ---- validate inputs ----
     if (!is.numeric(x)) {
         suppressWarnings(x <- as.numeric(x))

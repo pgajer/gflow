@@ -870,7 +870,7 @@ expand.basins.to.cover <- function(basins.vertices.list,
 #'
 #' @param basins.result Object returned by \code{compute.refined.basins()}
 #' @param response.name Character string naming the response variable in LaTeX
-#'   format (default: "\\widehat{\\text{sPTB}}")
+#'   format, for example \code{"\\widehat{sPTB}"}.
 #'
 #' @return Character string containing the formatted paragraph ready for
 #'   inclusion in a LaTeX document.
@@ -894,7 +894,7 @@ expand.basins.to.cover <- function(basins.vertices.list,
 #'
 #' @export
 generate.refinement.report <- function(basins.result,
-                                       response.name = "\\widehat{\\text{sPTB}}") {
+                                       response.name = "\\widehat{sPTB}") {
 
     params <- basins.result$parameters
     history <- basins.result$stage.history

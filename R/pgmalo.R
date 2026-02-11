@@ -284,7 +284,7 @@ pgmalo <- function(neighbors,
     })
 
     # Call C++ implementation
-    result <- .Call(S_pgmalo,
+    result <- .Call("S_pgmalo",
                     neighbors.0based,
                     edge_lengths,
                     as.double(y),
@@ -803,7 +803,7 @@ upgmalo <- function(x,
     }
 
     # Call C++ implementation for univariate case
-    result <- .Call(S_upgmalo,
+    result <- .Call("S_upgmalo",
                     as.double(x),
                     as.double(y),
                     if (is.null(y.true)) double() else as.double(y.true),

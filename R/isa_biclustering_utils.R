@@ -301,7 +301,7 @@ summarize.bicluster.quality <- function(isa.result,
 #' @param rob.threshold Robustness threshold (higher = more stringent)
 #' @param plot.distribution If TRUE, plots robustness distribution
 #'
-#' @export
+#' @rawNamespace export(select.biclusters.by.robustness)
 select.biclusters.by.robustness <- function(isa.result,
                                            rob.threshold = NULL,
                                            plot.distribution = TRUE) {
@@ -373,7 +373,11 @@ select.biclusters.by.robustness <- function(isa.result,
 #' Identifies natural breaks in bicluster size distributions to separate
 #' signal from noise.
 #'
-#' @export
+#' @param n.samples.per.bc Integer vector with sample counts per bicluster.
+#' @param n.features.per.bc Integer vector with feature counts per bicluster.
+#' @param plot.diagnostics Logical; plot gap diagnostics used to choose thresholds.
+#'
+#' @rawNamespace export(select.thresholds.by.gaps)
 select.thresholds.by.gaps <- function(n.samples.per.bc,
                                       n.features.per.bc,
                                       plot.diagnostics = TRUE) {

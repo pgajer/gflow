@@ -114,13 +114,13 @@ graph.MS.cx <- function(graph, hop.list = NULL, core.graph, Ey) {
     results <- NULL
     if (!is.null(hop.list)) {
         hop.list <- lapply(hop.list, function(x) as.integer(x))
-        results <- .Call(S_graph_MS_cx_using_short_h_hops,
+        results <- .Call("S_graph_MS_cx_using_short_h_hops",
                          graph.0based,
                          hop.list,
                          core.graph.0based,
                          Ey)
     } else {
-        results <- .Call(S_graph_MS_cx_with_path_search,
+        results <- .Call("S_graph_MS_cx_with_path_search",
                          graph.0based,
                          core.graph.0based,
                          Ey)
@@ -202,7 +202,7 @@ graph.MS.cx <- function(graph, hop.list = NULL, core.graph, Ey) {
 ##     ## Converting each component of graph adjacency list to an integer vector
 ##     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-##     res <- .Call(S_graph_gradient_flow_trajectories, graph.0based, Ey)
+##     res <- .Call("S_graph_gradient_flow_trajectories", graph.0based, Ey)
 
 ##     res$trajectories <- lapply(res$trajectories, function(x) as.integer(x + 1))
 
@@ -260,7 +260,7 @@ graph.constrained.gradient.flow.trajectories <- function(graph, core.graph, Ey) 
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
     core.graph.0based <- lapply(core.graph, function(x) as.integer(x - 1))
 
-    res <- .Call(S_graph_constrained_gradient_flow_trajectories,
+    res <- .Call("S_graph_constrained_gradient_flow_trajectories",
                  graph.0based,
                  core.graph.0based,
                  Ey)

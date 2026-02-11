@@ -329,7 +329,7 @@ refit.rdgraph.regression <- function(fitted.model,
             if (verbose && n.responses > 1L) {
                 message(sprintf("Selecting eta via GCV for %d response(s)...",
                                 n.responses))
-                pb <- txtProgressBar(min = 0, max = n.responses, style = 3)
+                pb <- utils::txtProgressBar(min = 0, max = n.responses, style = 3)
             }
 
             ## Process each column
@@ -348,7 +348,7 @@ refit.rdgraph.regression <- function(fitted.model,
                 effective.df[j] <- gcv.result$effective.df
                 best.idx.vec[j] <- gcv.result$best.idx
 
-                if (verbose && n.responses > 1L) setTxtProgressBar(pb, j)
+                if (verbose && n.responses > 1L) utils::setTxtProgressBar(pb, j)
             }
 
             if (verbose && n.responses > 1L) {
@@ -400,7 +400,7 @@ refit.rdgraph.regression <- function(fitted.model,
             }
 
             if (verbose && n.responses > 1L) {
-                pb.post <- txtProgressBar(min = 0, max = n.responses, style = 3)
+                pb.post <- utils::txtProgressBar(min = 0, max = n.responses, style = 3)
             }
 
             for (j in seq_len(n.responses)) {
@@ -410,7 +410,7 @@ refit.rdgraph.regression <- function(fitted.model,
 
                 ## Call C++ posterior computation
                 post.j <- .Call(
-                    S_compute_posterior_summary,
+                    "S_compute_posterior_summary",
                     V,
                     eigenvalues,
                     filtered.eigenvalues.j,
@@ -434,7 +434,7 @@ refit.rdgraph.regression <- function(fitted.model,
                 }
 
                 if (verbose && n.responses > 1L) {
-                    setTxtProgressBar(pb.post, j)
+                    utils::setTxtProgressBar(pb.post, j)
                 }
             }
 

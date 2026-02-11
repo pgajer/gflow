@@ -40,6 +40,8 @@
 #' @param window.size Optional window size (passed via ... to dtw::dtw()).
 #' @param step.pattern DTW step pattern; see dtw::stepPattern().
 #' @param normalize Logical; return normalized distance if available.
+#' @param window.frac Fraction of trajectory length used to derive the default
+#'   Sakoe-Chiba window width when \code{window.size} is NULL.
 #' @return Numeric scalar distance.
 #'
 #' @export
@@ -753,6 +755,7 @@ hausdorff.distance.cost <- function(C) {
 #' X <- traj.points(traj, E)
 #' dim(X)
 #'
+#' @export
 traj.points <- function(traj, E) {
   if (!is.matrix(E) || !is.numeric(E)) {
     stop("E must be a numeric matrix.")
@@ -790,6 +793,7 @@ traj.points <- function(traj, E) {
 #' C <- point.dist.matrix(X, Y)
 #' dim(C)
 #'
+#' @export
 point.dist.matrix <- function(X, Y) {
   X <- as.matrix(X)
   Y <- as.matrix(Y)

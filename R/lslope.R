@@ -515,7 +515,8 @@ lslope.vector.matrix <- function(adj.list,
 #'
 #' At vertex v, for each column j:
 #' \deqn{lslope(Z_j; y)(v) = f(\Delta_{grad} Z_j / \Delta_{grad} y)}
-#' where f is identity (slope), tanh (normalized), or sign, and Delta_{grad}
+#' where f is identity (slope), tanh (normalized), or sign, and
+#' \eqn{\Delta_{grad}}
 #' denotes the difference along the gradient edge of y.
 #'
 #' @seealso \code{\link{lslope}} for the unified interface
@@ -585,6 +586,7 @@ lslope.vector.matrix.R <- function(adj.list,
         as.character(z.diff.type),
         as.numeric(epsilon),
         as.numeric(sigmoid.alpha),
+        "tanh",
         as.logical(ascending),
         PACKAGE = "gflow"
     )
@@ -614,6 +616,7 @@ lslope.vector.matrix.R <- function(adj.list,
             as.character(z.diff.type),
             as.numeric(epsilon),
             as.numeric(calibrated.sigmoid.alpha),  # Use calibrated alpha for consistency
+            "tanh",
             as.logical(ascending),
             PACKAGE = "gflow"
         )

@@ -724,9 +724,11 @@ knn.edit.distance.curve <- function(X,
 
 #' Plot kNN edit-distance diagnostics
 #'
-#' @param res Output of knn.edit.distance.curve().
+#' @param x Output of knn.edit.distance.curve().
+#' @param ... Additional arguments (currently ignored).
 #' @export
-plot.knn.edit.curve <- function(res) {
+plot.knn.edit.curve <- function(x, ...) {
+    res <- x
     curve <- res$curve
     op <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(op), add = TRUE)
@@ -787,7 +789,6 @@ robust.zscore.vec <- function(x, eps = 1e-8) {
 #' Implements the McMillan/Reid-style replacement used before log10 transforms:
 #' zeros were replaced by 2/3 of the minimum detected value per metabolite.
 #' Here we apply the same idea to NA (and optionally non-positive values).
-#' :contentReference[oaicite:4]{index=4}
 #'
 #' @param S Numeric matrix (samples x metabolites).
 #' @param frac Fraction of minimum positive used as replacement (default 2/3).
@@ -832,10 +833,11 @@ impute.two.thirds.min.pos <- function(S, frac = 2/3, replace.nonpos = TRUE) {
 #'
 #' @description
 #' Returns centered log-ratio (CLR) features: log(x) minus per-sample mean/median log(x).
-#' Euclidean distance on CLR features corresponds to Aitchison distance for compositions. :contentReference[oaicite:5]{index=5}
+#' Euclidean distance on CLR features corresponds to Aitchison distance for
+#' compositional data.
 #'
 #' @param S Numeric matrix (samples x metabolites).
-#' @param log.base Numeric; use 10 for log10 (matches Reid LC-MS processing). :contentReference[oaicite:6]{index=6}
+#' @param log.base Numeric; use 10 for log10 (matches Reid LC-MS processing).
 #' @param center Character: "mean" or "median" for per-sample centering.
 #' @param winsor.probs Optional winsorization probs on log scale (set NULL to disable).
 #' @param zscore Logical; if TRUE, robust z-score each metabolite after CLR.
@@ -877,7 +879,7 @@ logratio.clr.matrix <- function(S,
 #' @param n.refs Number of references to return.
 #' @param log.base Numeric; log base (10 recommended for Reid-style).
 #' @return Character vector of selected reference metabolite names.
-#' @export
+#' @rawNamespace export(select.stable.references)
 select.stable.references <- function(S,
                                     p.miss.max = 0.05,
                                     n.refs = 10L,

@@ -15,11 +15,11 @@
 #' Zero-Order Functional Association Test with Paired Bayesian Bootstrap and Permutations (Hybrid Pairing)
 #'
 #' Tests for the existence of non-trivial *zero-order* functional association between
-#' two variables $x$ and $y$ using the variability of the conditional mean curve
-#' $E(y|x)$ relative to the marginal mean $E(y)$.
+#' two variables \eqn{x} and \eqn{y} using the variability of the conditional
+#' mean curve \eqn{E(y \mid x)} relative to the marginal mean \eqn{E(y)}.
 #'
 #' The zero-order association measure is computed on a uniform grid as:
-#' $$\delta_0 = \frac{1}{G}\sum_{g=1}^{G}\left|E(y|x_g) - E(y)\right|.$$
+#' \deqn{\delta_0 = \frac{1}{G}\sum_{g=1}^{G}\left|E(y \mid x_g) - E(y)\right|.}
 #'
 #' This implementation uses paired Bayesian bootstrap (BB) weights for signal and
 #' permutation-null samples and supports an explicit permutation layer `n.perms`.

@@ -140,7 +140,7 @@ partition.graph <- function(adj.list, weight.list, partition,
   }
 
   ## Call C++ function
-  result <- .Call(S_partition_graph,
+  result <- .Call("S_partition_graph",
                   adj.list.0,
                   weight.list.numeric,
                   partition,

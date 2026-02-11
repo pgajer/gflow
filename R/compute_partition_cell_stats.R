@@ -135,7 +135,7 @@ compute.partition.cell.stats <- function(partition, y, compute.mad = TRUE) {
 #' @details
 #' This function provides access to the raw response values within each super-cell
 #' of a partition, enabling custom statistical analyses beyond summary statistics.
-#' Unlike \code{\link{compute.super.cell.stats}}, which returns aggregated summaries,
+#' Unlike \code{compute.super.cell.stats}, which returns aggregated summaries,
 #' this function returns the complete vector of values for each cell. The result
 #' is useful for visualization, distribution analysis, or computing custom statistics
 #' that require access to individual observations.
@@ -163,7 +163,7 @@ compute.partition.cell.stats <- function(partition, y, compute.mad = TRUE) {
 #' boxplot(cell.values, xlab = "Super-Cell", ylab = "Response Value")
 #' }
 #'
-#' @seealso \code{\link{compute.super.cell.stats}} for computing summary statistics
+#' @seealso \code{compute.super.cell.stats} for computing summary statistics
 #'   rather than extracting raw values.
 #'
 #' @export

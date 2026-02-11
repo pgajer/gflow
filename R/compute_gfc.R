@@ -755,16 +755,16 @@ trajectories.gfc <- function(object, basin.id,
     summarize.by <- match.arg(summarize.by)
 
     if (summarize.by == "cell") {
-        return(trajectories.by.cell(object, basin.id, include.paths))
+        return(trajectories_by_cell(object, basin.id, include.paths))
     } else {
-        return(trajectories.by.terminal(object, basin.id, include.paths))
+        return(trajectories_by_terminal(object, basin.id, include.paths))
     }
 }
 
 
 #' Summarize Trajectories by Raw Terminal
 #' @keywords internal
-trajectories.by.terminal <- function(object, basin.id, include.paths) {
+trajectories_by_terminal <- function(object, basin.id, include.paths) {
 
     ## Get basin info
     info <- get.basin.info(object, basin.id)
@@ -849,7 +849,7 @@ trajectories.by.terminal <- function(object, basin.id, include.paths) {
 
 #' Summarize Trajectories by Joined Cell
 #' @keywords internal
-trajectories.by.cell <- function(object, basin.id, include.paths) {
+trajectories_by_cell <- function(object, basin.id, include.paths) {
 
     ## Get basin info
     info <- get.basin.info(object, basin.id)
@@ -1018,7 +1018,8 @@ cell.trajectories <- function(x, min.id, max.id, ...) {
 #' from a GFC result object. A cell is defined by a pair of non-spurious
 #' extrema (one minimum, one maximum).
 #'
-#' @param gfc A gfc object from compute.gfc() with trajectories computed.
+#' @param x A gfc object from compute.gfc() with trajectories computed.
+#' @param gfc Backward-compatible alias for \code{x}.
 #' @param min.id Minimum extremum identifier: either a label (e.g., "m4") or a
 #'     vertex index (integer, 1-based).
 #' @param max.id Maximum extremum identifier: either a label (e.g., "M1") or a
@@ -1028,6 +1029,7 @@ cell.trajectories <- function(x, min.id, max.id, ...) {
 #'     indices. Specifically, \code{map[i]} gives the original graph vertex
 #'     corresponding to subgraph vertex i. Vertices not found in map are
 #'     returned as NA with a warning.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A list of class "gfc_cell_trajectories" containing:
 #'   \describe{
@@ -1074,10 +1076,14 @@ cell.trajectories <- function(x, min.id, max.id, ...) {
 #' @seealso \code{\link{compute.gfc}}, \code{\link{trajectories.gfc}}
 #'
 #' @export
-cell.trajectories.gfc <- function(gfc,
+cell.trajectories.gfc <- function(x,
                                   min.id,
                                   max.id,
-                                  map = NULL) {
+                                  map = NULL,
+                                  gfc = x,
+                                  ...) {
+    x <- gfc
+    gfc <- x
 
     ## ========================================================================
     ## Input validation
@@ -1562,12 +1568,12 @@ draw.cell.trajectories <- function(cell,
         n <- length(traj)
 
         # NOTE: Remove or fix this line - M1.cells appears to be hardcoded
-        # spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
+        # rgl::spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
 
-        spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
-        texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
+        rgl::spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
+        rgl::texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
                 adj = terminal.vertex.adj, cex = terminal.vertex.cex)
-        spheres3d(graph.3d[traj,], radius = radius, col = col)
+        rgl::spheres3d(graph.3d[traj,], radius = radius, col = col)
 
         ## Create edges
         if (with.edges) {
@@ -1595,6 +1601,7 @@ draw.cell.trajectories <- function(cell,
 #'
 #' @param gfc A gfc object with trajectories.
 #' @param max.id Maximum basin identifier (label or vertex).
+#' @param debug Logical; if TRUE, print detailed intermediate diagnostics.
 #'
 #' @return List with diagnostic information.
 #'

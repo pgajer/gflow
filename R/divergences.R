@@ -511,7 +511,7 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
         warning("Large matrices detected. Computation may take a while.")
     }
 
-    result <- .Call(S_angular_wasserstein_index, X, Y, as.integer(k + 1))
+    result <- .Call("S_angular_wasserstein_index", X, Y, as.integer(k + 1))
 
     return(result)
 }

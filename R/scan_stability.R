@@ -478,7 +478,8 @@ matrix_power <- function(M, t) {
 #' Evaluates the Markov stability of a given partition at a specific Markov time.
 #'
 #' @details
-#' The stability of a partition C = {C_1, ..., C_k} at Markov time t is defined as:
+#' The stability of a partition \eqn{C = \{C_1, \ldots, C_k\}} at Markov time
+#' \eqn{t} is defined as:
 #'
 #'   \deqn{r(t, C) = sum_{s=1}^{k} sum_{i,j in C_s} [P^t_{ij} - pi_i pi_j]}
 #'

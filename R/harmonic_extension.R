@@ -355,7 +355,7 @@ as.data.frame.harmonic_extension <- function(x, row.names = NULL,
 #' best.traj <- cell.traj$trajectories[[best.idx]]
 #' }
 #'
-#' @export
+#' @rawNamespace export(select.max.density.trajectory)
 select.max.density.trajectory <- function(trajectories, density) {
 
     if (!is.list(trajectories)) {
