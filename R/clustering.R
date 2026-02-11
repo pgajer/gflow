@@ -1806,7 +1806,7 @@ describe.hclust_select_k <- function(x,
             "Often a good general-purpose internal check; penalizes over-splitting when clusters become too similar.",
             "Fast and often stable; often selects a smaller number of clusters when the data contain a few well-separated groups.",
             "Rewards compact, well-separated clusters; can detect clear separation.",
-            "Useful as a compactness/separation diagnostic; sometimes aligns with ‘spherical cluster’ intuition.",
+            "Useful as a compactness/separation diagnostic; sometimes aligns with 'spherical cluster' intuition.",
             "Captures local structure; useful for manifold-like data where local neighborhoods matter."
         ),
         cons = c(

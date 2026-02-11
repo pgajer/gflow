@@ -159,7 +159,7 @@ ecdf.cpp <- function(x) {
       stop("x has to have at least two elements.")
   }
 
-  result <- .Call(S_ecdf, x)
+  result <- .Call("S_ecdf", x)
 
   return(result)
 }
@@ -577,7 +577,7 @@ derivative.second.order.method <- function(y, dx)
 #' @param xrange The minimum of x and the maximum of x that is to be mapped to ymin and ymax, respectively.
 #' @return A numeric vector of the same length as 'x' with values linearly transformed to the range \code{[ymin, ymax]}.
 #' @export
-scale.to.range <- function(x, ymin, ymax, xrange = NULL) {
+scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
 
     if( !is.numeric(x) ) {
         stop("x has to be numeric.")
@@ -3510,9 +3510,9 @@ prepare.for.extrema.detection <- function(y,
 #' @param distance.metric Character string specifying the distance metric to use.
 #'   Options are:
 #'   \itemize{
-#'     \item \code{"euclidean"}: L² norm, \eqn{d(x,y) = \sqrt{\sum(x_i - y_i)^2}}
-#'     \item \code{"manhattan"}: L¹ norm, \eqn{d(x,y) = \sum|x_i - y_i|}
-#'     \item \code{"chebyshev"}: L∞ norm, \eqn{d(x,y) = \max_i |x_i - y_i|}
+#'     \item \code{"euclidean"}: L2 norm, \eqn{d(x,y) = \sqrt{\sum(x_i - y_i)^2}}
+#'     \item \code{"manhattan"}: L1 norm, \eqn{d(x,y) = \sum|x_i - y_i|}
+#'     \item \code{"chebyshev"}: Linf norm, \eqn{d(x,y) = \max_i |x_i - y_i|}
 #'     \item \code{"bray.curtis"}: \eqn{d(x,y) = \sum|x_i - y_i| / \sum(x_i + y_i)}
 #'   }
 #'   Default is \code{"euclidean"}.
@@ -3557,11 +3557,11 @@ prepare.for.extrema.detection <- function(y,
 #'
 #' @section Distance Metric Guidance:
 #' \itemize{
-#'   \item \strong{Manhattan (L¹)}: Sensitive to cumulative differences across
+#'   \item \strong{Manhattan (L1)}: Sensitive to cumulative differences across
 #'     all taxa. Range: 0 to 2 for compositions.
-#'   \item \strong{Euclidean (L²)}: Standard geometric distance, penalizes large
+#'   \item \strong{Euclidean (L2)}: Standard geometric distance, penalizes large
 #'     single-taxon differences. Range: 0 to sqrt(2) for compositions.
-#'   \item \strong{Chebyshev (L∞)}: Focuses on maximum single-taxon difference.
+#'   \item \strong{Chebyshev (Linf)}: Focuses on maximum single-taxon difference.
 #'     Useful when you want uniform bounds on all taxa. Range: 0 to 1 for
 #'     compositions.
 #'   \item \strong{Bray-Curtis}: Normalized dissimilarity common in ecology,
@@ -3623,7 +3623,7 @@ prepare.for.extrema.detection <- function(y,
 #'   rel.abund.mat = X,
 #'   neighborhood.method = "radius",
 #'   neighborhood.radius = 0.01,
-#'   distance.metric = "chebyshev",  # L∞ ensures all taxa within bounds
+#'   distance.metric = "chebyshev",  # Linf ensures all taxa within bounds
 #'   noise.scale = 1e-10,
 #'   min.neighborhood.size = 10,
 #'   seed = 123,
@@ -3650,7 +3650,7 @@ break.composition.ties <- function(
   # neighborhood.method: "knn" for k-nearest neighbors, "radius" for distance threshold
   # neighborhood.size: k for knn method
   # neighborhood.radius: distance threshold for radius method
-  # distance.metric: "euclidean" (L2), "manhattan" (L1), "chebyshev" (L∞), or "bray.curtis"
+  # distance.metric: "euclidean" (L2), "manhattan" (L1), "chebyshev" (Linf), or "bray.curtis"
   # noise.scale: multiplier for perturbation magnitude
   # min.neighborhood.size: minimum neighbors required for valid variance estimate
 

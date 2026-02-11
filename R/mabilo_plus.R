@@ -157,7 +157,7 @@ mabilo.plus <- function(x,
     w <- rep(1.0, n)
 
     # Call the C++ implementation
-    result <- .Call(S_mabilo_plus,
+    result <- .Call("S_mabilo_plus",
                    as.double(x),
                    as.double(y),
                    as.double(y.true),

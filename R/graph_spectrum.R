@@ -105,7 +105,7 @@ graph.spectrum <- function(graph,
   graph.0 <- lapply(graph, function(x) if (length(x)) as.integer(x - 1L) else integer(0))
 
   if (return.Laplacian) {
-      ans <- .Call(S_graph_spectrum_plus,
+      ans <- .Call("S_graph_spectrum_plus",
                    graph.0,
                    as.integer(nev),
                    as.logical(return.dense))
@@ -124,7 +124,7 @@ graph.spectrum <- function(graph,
     }
     return(list(evalues = ans$evalues, evectors = ans$evectors, laplacian = ans$laplacian))
   } else {
-      ans <- .Call(S_graph_spectrum,
+      ans <- .Call("S_graph_spectrum",
                    graph.0,
                    as.integer(nev))
     return(list(evalues = ans$evalues, evectors = ans$evectors))

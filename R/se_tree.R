@@ -105,7 +105,7 @@ build.se.tree <- function(adj.list,
 
     ## Call C++
     result <- .Call(
-        S_build_se_tree,
+        "S_build_se_tree",
         adj.list.0based,
         weight.list,
         as.numeric(y),

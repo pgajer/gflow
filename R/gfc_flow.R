@@ -46,19 +46,16 @@
 #'   \item{\code{"CLOSEST"}}{Lexicographic closest ascending neighbor rule. This
 #'     implements a two-level selection:
 #'     \enumerate{
-#'       \item Filter to ascending neighbors:
-#'         \eqn{A(v) = \{ u \in N(v) : y(u) > y(v) \}}
-#'       \item Among \eqn{A(v)}, select the closest: \eqn{u^* = \arg\min_{u \in A(v)} d(v,u)}
+#'       \item Filter to ascending neighbors \eqn{u} satisfying
+#'         \eqn{y(u) > y(v)}.
+#'       \item Among those ascending neighbors, select the one with minimum
+#'         edge distance \eqn{d(v,u)}.
 #'     }
 #'     This approach minimizes basin-jumping errors by taking the smallest step
 #'     that makes progress. Unlike multiplicative scores, the lexicographic rule
 #'     cannot be overridden by extreme gradient contrasts between adjacent basins.
 #'     Requires no tuning parameters beyond the standard edge length threshold.
-#'
-#'     The theoretical justification is that any monotonically ascending discrete
-#'     path will reach the correct local maximum provided consecutive steps remain
-#'     within the same basin. By selecting the closest ascending neighbor, we
-#'     maximize the probability of staying within the basin of the current vertex.}
+#' }
 #' }
 #'
 #' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
@@ -800,7 +797,34 @@ count.cell.memberships <- function(gfc.flow) {
 #' @param modulation Character string specifying gradient modulation.
 #' @param n.cores Integer number of OpenMP threads. Default is 1 (sequential).
 #' @param verbose Logical. Print progress messages.
-#' @param ... Additional arguments passed to internal C++ function.
+#' @param edge.length.quantile.thld Numeric quantile threshold used by optional
+#'   edge-length filtering.
+#' @param apply.relvalue.filter Logical; apply relative-value-based basin
+#'   filtering.
+#' @param min.rel.value.max Numeric lower bound for local-maximum relative value
+#'   during filtering.
+#' @param max.rel.value.min Numeric upper bound for local-minimum relative value
+#'   during filtering.
+#' @param apply.maxima.clustering Logical; cluster nearby local maxima before
+#'   downstream filtering.
+#' @param apply.minima.clustering Logical; cluster nearby local minima before
+#'   downstream filtering.
+#' @param max.overlap.threshold Numeric overlap threshold used when clustering
+#'   maxima.
+#' @param min.overlap.threshold Numeric overlap threshold used when clustering
+#'   minima.
+#' @param apply.geometric.filter Logical; apply geometric filters to remove
+#'   unstable basins.
+#' @param p.mean.nbrs.dist.threshold Quantile threshold for mean neighbor
+#'   distance filter.
+#' @param p.mean.hopk.dist.threshold Quantile threshold for hop-k distance
+#'   filter.
+#' @param p.deg.threshold Quantile threshold for degree-based geometric
+#'   filtering.
+#' @param min.basin.size Minimum basin size retained after filtering.
+#' @param hop.k Hop radius used for hop-based geometric diagnostics.
+#' @param store.trajectories Logical; retain trajectory objects in each result.
+#' @param max.trajectory.length Integer maximum allowed trajectory length.
 #'
 #' @return List of \code{gfc.flow} results, one per column of \code{Y}.
 #'
@@ -895,16 +919,17 @@ compute.gfc.flow.matrix <- function(
 #' Generic function to extract gradient flow trajectories for a specific basin
 #' from GFC-related objects.
 #'
-#' @param x A GFC object.
-#' @param basin.id Local extremum identifier.
+#' @param object A GFC object.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @return An object containing basin trajectory information.
+#' @usage \method{basin}{trajectories}(object, ...)
 #'
 #' @seealso \code{\link{basin.trajectories.gfc.flow}}
 #'
+#' @method basin trajectories
 #' @export
-basin.trajectories <- function(x, basin.id, ...) {
+basin.trajectories <- function(object, ...) {
     UseMethod("basin.trajectories")
 }
 
@@ -916,7 +941,8 @@ basin.trajectories <- function(x, basin.id, ...) {
 #' For a minimum basin, this returns all trajectories whose \code{start.vertex}
 #' equals the basin minimum and that start at a local minimum.
 #'
-#' @param gfc.flow A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param object A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param gfc.flow Backward-compatible alias for \code{object}.
 #' @param basin.id Basin identifier. Can be:
 #'   \itemize{
 #'     \item a label (character), e.g. \code{"M1"} or \code{"m2"}
@@ -932,6 +958,7 @@ basin.trajectories <- function(x, basin.id, ...) {
 #'     \item{\code{"with.y.hat.modified"}}{List of lists with \code{$vertices} and
 #'       \code{$y.hat.modified} (NULL if not available).}
 #'   }
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return An object of class \code{gfc_basin_trajectories} with components:
 #'   \itemize{
@@ -944,10 +971,14 @@ basin.trajectories <- function(x, basin.id, ...) {
 #'   }
 #'
 #' @export
-basin.trajectories.gfc.flow <- function(gfc.flow,
+basin.trajectories.gfc.flow <- function(object,
                                         basin.id,
                                         map = NULL,
-                                        trajectory.format = c("vertices", "with.y.hat.modified")) {
+                                        trajectory.format = c("vertices", "with.y.hat.modified"),
+                                        gfc.flow = object,
+                                        ...) {
+    object <- gfc.flow
+    gfc.flow <- object
 
     trajectory.format <- match.arg(trajectory.format)
 
@@ -1165,7 +1196,8 @@ basin.trajectories.gfc.flow <- function(gfc.flow,
 #' Extracts all stored trajectories connecting a specified minimum and maximum
 #' (a gradient-flow cell) from a \code{gfc.flow} object.
 #'
-#' @param gfc.flow A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param gfc.flow Backward-compatible alias for \code{x}.
 #' @param min.id Minimum identifier: label (character) or vertex index (numeric/integer).
 #' @param max.id Maximum identifier: label (character) or vertex index (numeric/integer).
 #' @param map Optional integer vector giving a vertex mapping (domain vertex IDs);
@@ -1176,6 +1208,7 @@ basin.trajectories.gfc.flow <- function(gfc.flow,
 #'     \item{\code{"with.y.hat.modified"}}{List of lists with \code{$vertices} and
 #'       \code{$y.hat.modified} (NULL if not available).}
 #'   }
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return An object of class \code{gfc_cell_trajectories} with components:
 #'   \itemize{
@@ -1188,11 +1221,15 @@ basin.trajectories.gfc.flow <- function(gfc.flow,
 #'   }
 #'
 #' @export
-cell.trajectories.gfc.flow <- function(gfc.flow,
+cell.trajectories.gfc.flow <- function(x,
                                        min.id,
                                        max.id,
                                        map = NULL,
-                                       trajectory.format = c("vertices", "with.y.hat.modified")) {
+                                       trajectory.format = c("vertices", "with.y.hat.modified"),
+                                       gfc.flow = x,
+                                       ...) {
+    x <- gfc.flow
+    gfc.flow <- x
 
     trajectory.format <- match.arg(trajectory.format)
 
@@ -1852,7 +1889,7 @@ print.gfc_cell_trajectories <- function(x, max.print = 5L, ...) {
                         c(
                             paste(head(path, 4L), collapse = " -> "),
                             "...",
-                            paste(tail(path, 3L), collapse = " -> ")
+                            paste(utils::tail(path, 3L), collapse = " -> ")
                         ),
                         collapse = " -> "
                     )
@@ -2326,18 +2363,19 @@ list.basins.default <- function(x, ...) {
 #' @param type One of \code{"min"} or \code{"max"}.
 #' @param include.spurious Logical; if TRUE (default), include basins whose
 #'     defining extremum is spurious.
-#' @param with.rel.value Numeric. Logical; if TRUE (default), includes relative
+#' @param with.rel.value Logical; if TRUE (default), includes relative
 #'     value (value/median) for local extrema.
 #' @param include.spurious.flags Logical; if TRUE, include spurious-related
 #'     columns from \code{summary.all} (e.g., \code{is.spurious},
 #'     \code{filter.stage}, \code{merged.into}). Default FALSE.
-#' @param include.absorbed Logial; if FALSE, absorbed extrema are not shown.
+#' @param include.absorbed Logical; if FALSE, absorbed extrema are not shown.
 #'     Default FALSE.
 #' @param group.by.spurious Logical; if TRUE, lists retained (refined) extrema
 #'     first and then spurious extrema, each block sorted by basin size (and
 #'     then ties).
 #' @param loc Optional. If non-NULL, filter to a single basin extremum (vertex
 #'     index or label).
+#' @param ... Additional arguments reserved for method compatibility.
 #'
 #' @return A data frame with basin-level columns including:
 #'   \item{label}{Extremum label.}
@@ -3374,7 +3412,7 @@ vertex.cell.all <- function(gfc.flow, vertex) {
 #' This function is useful when a vertex belongs to multiple cells (due to
 #' overlapping basins) and you need to retrieve the specific trajectory
 #' associated with a particular cell. For vertices with unique cell membership,
-#' \code{vertex.trajectory.gfc.flow()} may be simpler to use.
+#' \code{vertex.all.trajectories.gfc.flow()} may be simpler to use.
 #'
 #' @examples
 #' \dontrun{
@@ -3389,7 +3427,7 @@ vertex.cell.all <- function(gfc.flow, vertex) {
 #'                                         map = subgraph.map)
 #' }
 #'
-#' @seealso \code{\link{vertex.trajectory.gfc.flow}},
+#' @seealso \code{\link{vertex.all.trajectories.gfc.flow}},
 #'   \code{\link{vertex.cell.gfc.flow}}, \code{\link{cell.trajectories.gfc.flow}}
 #'
 #' @export
@@ -3638,15 +3676,20 @@ uncovered.vertices.gfc.flow <- function(gfc.flow) {
 #' trajectories that traverse unusually long edges, which may indicate
 #' paths through isolated or outlier vertices.
 #'
-#' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
+#' @param x List of integer vectors. Each element \code{x[[i]]}
 #'   contains the 1-based indices of vertices adjacent to vertex \code{i}.
-#' @param weight.list List of numeric vectors. Each element
-#'   \code{weight.list[[i]]} contains the edge weights (distances) corresponding
-#'   to \code{adj.list[[i]]}.
-#' @param cell.trajectories Output from \code{cell.trajectories.gfc.flow()},
+#' @param min.id List of numeric vectors. Each element
+#'   \code{min.id[[i]]} contains edge weights corresponding to \code{x[[i]]}
+#'   (backward compatible alias: \code{weight.list}).
+#' @param max.id Output from \code{cell.trajectories.gfc.flow()},
 #'   a list of trajectory objects each containing a \code{vertices} field.
+#'   (backward compatible alias: \code{cell.trajectories}).
+#' @param adj.list Backward-compatible alias for \code{x}.
+#' @param weight.list Backward-compatible alias for \code{min.id}.
+#' @param cell.trajectories Backward-compatible alias for \code{max.id}.
+#' @param ... Additional arguments (currently ignored).
 #'
-#' @return Numeric vector of length equal to \code{length(cell.trajectories)},
+#' @return Numeric vector of length equal to \code{length(max.id$trajectories)},
 #'   where the i-th element is the maximum edge length along the i-th
 #'   trajectory. Returns \code{NA} for trajectories with fewer than 2 vertices
 #'   or if an edge is not found in the adjacency structure.
@@ -3664,9 +3707,19 @@ uncovered.vertices.gfc.flow <- function(gfc.flow) {
 #' @seealso \code{\link{cell.trajectories.gfc.flow}}
 #'
 #' @export
-cell.trajectories.max.edge.length <- function(adj.list,
-                                              weight.list,
-                                              cell.trajectories) {
+cell.trajectories.max.edge.length <- function(x,
+                                              min.id,
+                                              max.id,
+                                              adj.list = x,
+                                              weight.list = min.id,
+                                              cell.trajectories = max.id,
+                                              ...) {
+    x <- adj.list
+    min.id <- weight.list
+    max.id <- cell.trajectories
+    adj.list <- x
+    weight.list <- min.id
+    cell.trajectories <- max.id
 
     n.traj <- length(cell.trajectories$trajectories)
 
@@ -3722,14 +3775,19 @@ cell.trajectories.max.edge.length <- function(adj.list,
 #' trajectory. This diagnostic helps identify trajectories that "wander" away
 #' from and back toward the starting extremum rather than progressing smoothly.
 #'
-#' @param adj.list List of integer vectors. Each element \code{adj.list[[i]]}
+#' @param x List of integer vectors. Each element \code{x[[i]]}
 #'   contains the 1-based indices of vertices adjacent to vertex \code{i}.
-#' @param weight.list List of numeric vectors. Each element
-#'   \code{weight.list[[i]]} contains the edge weights (distances) corresponding
-#'   to \code{adj.list[[i]]}.
-#' @param cell.trajectories Output from \code{cell.trajectories.gfc.flow()},
+#' @param min.id List of numeric vectors. Each element
+#'   \code{min.id[[i]]} contains edge weights corresponding to \code{x[[i]]}
+#'   (backward compatible alias: \code{weight.list}).
+#' @param max.id Output from \code{cell.trajectories.gfc.flow()},
 #'   containing a \code{trajectories} element which is a list of trajectory
 #'   objects each with a \code{vertices} field.
+#'   (backward compatible alias: \code{cell.trajectories}).
+#' @param adj.list Backward-compatible alias for \code{x}.
+#' @param weight.list Backward-compatible alias for \code{min.id}.
+#' @param cell.trajectories Backward-compatible alias for \code{max.id}.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A data frame with one row per trajectory and three columns:
 #'   \describe{
@@ -3770,9 +3828,19 @@ cell.trajectories.max.edge.length <- function(adj.list,
 #'   \code{\link{cell.trajectories.max.edge.length}}
 #'
 #' @export
-cell.trajectories.monotonicity <- function(adj.list,
-                                           weight.list,
-                                           cell.trajectories) {
+cell.trajectories.monotonicity <- function(x,
+                                           min.id,
+                                           max.id,
+                                           adj.list = x,
+                                           weight.list = min.id,
+                                           cell.trajectories = max.id,
+                                           ...) {
+    x <- adj.list
+    min.id <- weight.list
+    max.id <- cell.trajectories
+    adj.list <- x
+    weight.list <- min.id
+    cell.trajectories <- max.id
 
     trajs <- cell.trajectories$trajectories
     n.traj <- length(trajs)
@@ -4084,7 +4152,7 @@ trajectory.distances.to.vertex <- function(trajectories,
 #'     \item{tied.idx}{Indices of all tied trajectories.}
 #'   }
 #'
-#' @export
+#' @rawNamespace export(select.closest.longest.trajectory)
 select.closest.longest.trajectory <- function(trajectories,
                                               traj.dists,
                                               distance.tolerance = 1e-9) {
@@ -4274,6 +4342,7 @@ vertex.distances.to.trajectory <- function(vertices,
 #' recomputed here and should be treated as stale after merging.
 #'
 #' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param y Optional alias for \code{adj.list}. Present for S3 signature compatibility.
 #' @param adj.list Adjacency list of the domain graph (1-based vertex indices).
 #' @param weight.list Parallel list of edge weights; \code{weight.list[[i]]}
 #'     must align with \code{adj.list[[i]]}.
@@ -4294,13 +4363,15 @@ vertex.distances.to.trajectory <- function(vertices,
 #' @param merge.filter.stage Character string to write to \code{filter.stage}
 #'     for merged losers (only used when \code{mark.loser.spurious=TRUE}).
 #' @param verbose Logical.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A modified \code{gfc.flow} object with updated trajectories and derived
 #'   basin/membership/summary fields.
 #'
 #' @export
 merge.basins.gfc.flow <- function(x,
-                                  adj.list,
+                                  y = NULL,
+                                  adj.list = y,
                                   weight.list,
                                   merge.map = NULL,
                                   losers = NULL,
@@ -4312,7 +4383,8 @@ merge.basins.gfc.flow <- function(x,
                                                        "high.saddle.shortest"),
                                   mark.loser.spurious = TRUE,
                                   merge.filter.stage = "MERGE",
-                                  verbose = TRUE) {
+                                  verbose = TRUE,
+                                  ...) {
 
     ## ------------------------------------------------------------------------
     ## Basic validation
@@ -4558,7 +4630,7 @@ merge.basins.gfc.flow <- function(x,
                     path <- c(path, cur)
                 }
 
-                if (length(path) >= 1L && tail(path, 1L) == w.vertex) {
+                if (length(path) >= 1L && utils::tail(path, 1L) == w.vertex) {
                     return(path)
                 }
                 ## else: fall through to trajectory-suffix fallback
@@ -5025,7 +5097,7 @@ merge.basins.gfc.flow <- function(x,
 #' @return The basin structure, or NULL if not found
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' ## Get retained maximum M1
 #' basin.M1 <- get.basin(gfc.flow.res, "M1")
 #'
@@ -5068,7 +5140,8 @@ get.basin <- function(gfc.flow, label) {
 #' retrieves the basin structure via \code{\link{get.basin}}. The returned basin
 #' vertex set is \code{basin$vertices}.
 #'
-#' @param gfc.flow A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param object A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param gfc.flow Backward-compatible alias for \code{object}.
 #' @param basin.id Basin identifier. Either:
 #'   \itemize{
 #'     \item a character extremum label (e.g., \code{"M1"}, \code{"m3"},
@@ -5084,6 +5157,7 @@ get.basin <- function(gfc.flow, label) {
 #'   is included in the returned set (defensive; typically already included).
 #' @param unique Logical; if TRUE (default), return unique vertices.
 #' @param sort Logical; if TRUE (default), sort returned vertices increasingly.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return An integer vector of basin vertex indices (1-based).
 #'
@@ -5100,12 +5174,16 @@ get.basin <- function(gfc.flow, label) {
 #' }
 #'
 #' @export
-basin.vertices <- function(gfc.flow,
+basin.vertices <- function(object,
                            basin.id,
                            type = c("auto", "min", "max"),
                            include.extremum = TRUE,
                            unique = TRUE,
-                           sort = TRUE) {
+                           sort = TRUE,
+                           gfc.flow = object,
+                           ...) {
+    object <- gfc.flow
+    gfc.flow <- object
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object.")
@@ -5191,7 +5269,8 @@ basin.vertices <- function(gfc.flow,
 #' Get Cell Vertices for a (min, max) Pair
 #'
 #' @description
-#' Returns the set of domain-graph vertices belonging to the $\hat{y}$-cell
+#' Returns the set of domain-graph vertices belonging to the
+#' \eqn{\hat{y}}-cell
 #' determined by a minimum extremum and a maximum extremum. In a trajectory-first
 #' \code{gfc.flow} object, a cell is represented by the union of vertices from all
 #' trajectories that start at the given minimum and end at the given maximum.
@@ -5290,7 +5369,7 @@ cell.vertices <- function(gfc.flow, min.id, max.id) {
     unique(as.integer(verts))
 }
 
-#' Compute carriers-per-trajectory matrix k_{jT} for many phylotypes
+#' Compute carriers-per-trajectory matrix \eqn{k_{jT}} for many phylotypes
 #'
 #' @param Z Numeric matrix (samples x phylotypes) of relative abundance.
 #' @param trajectories List of integer vectors; each vector are sample indices
@@ -5298,7 +5377,8 @@ cell.vertices <- function(gfc.flow, min.id, max.id) {
 #' @param eps Numeric scalar; treat z > eps as "detected". Default 0.
 #'
 #' @return Integer matrix \code{k.mat} of dimension (n.phylotypes x n.trajectories),
-#'   where \code{k.mat[j, t]} = number of samples on trajectory t with \code{Z[j, ] > eps}.
+#'   where \code{k.mat[j, t]} is the number of samples on trajectory \code{t}
+#'   with \code{Z[, j] > eps}.
 #'
 #' @export
 compute.carriers.per.trajectory.mat <- function(Z, trajectories, eps = 0) {
@@ -5326,24 +5406,30 @@ compute.carriers.per.trajectory.mat <- function(Z, trajectories, eps = 0) {
 
 #' Evaluates a range of prevalence thresholds for DA analysis
 #'
-#' @param X.rel Relative abundance matrix (samples × features)
+#' @param object Relative abundance matrix (samples × features)
+#' @param X.rel Backward-compatible alias for \code{object}.
 #' @param y Binary response vector (named and aligned to samples)
 #' @param basin.vertices Vector of vertex IDs for subsetting
 #' @param counts Raw count matrix (features × samples)
 #' @param prevalences Numeric vector of prevalence thresholds (0–1)
 #' @param min.count Integer minimal count threshold for inputs
 #' @param plot.pdf Path to save diagnostic plots (optional)
+#' @param ... Additional arguments (currently ignored).
 #' @return A list with summary metrics and detailed outputs by prevalence
 #'
 #' @export
 basin.prev.eval <- function(
-                            X.rel,
+                            object,
                             y,
                             basin.vertices,
                             counts,
                             prevalences = seq(0.05, 0.50, by = 0.05),
-                            min.count = 10L, plot.pdf = NULL
+                            min.count = 10L, plot.pdf = NULL,
+                            X.rel = object,
+                            ...
                             ) {
+    object <- X.rel
+    X.rel <- object
     ## store results in list
     res.list <- vector("list", length(prevalences))
     names(res.list) <- paste0("p", prevalences * 100)
@@ -5961,7 +6047,8 @@ count.feature.carriers <- function(X,
 #' corresponding to an extremum present in \code{gfc.flow$summary.all} /
 #' \code{gfc.flow$summary}. When numeric, \code{type} can be used to disambiguate.
 #'
-#' @param gfc.flow A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param object A \code{gfc.flow} object from \code{\link{compute.gfc.flow}}.
+#' @param gfc.flow Backward-compatible alias for \code{object}.
 #' @param basin.id Basin identifier: a single character label or a single numeric
 #'   vertex index (1-based).
 #' @param X A numeric matrix (or data.frame coercible to a numeric matrix) with
@@ -5985,6 +6072,7 @@ count.feature.carriers <- function(X,
 #'   included in the basin vertex set (defensive).
 #' @param unique Logical; if TRUE (default), unique the resolved vertex set.
 #' @param sort Logical; if TRUE (default), sort the resolved vertex set.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A \code{data.frame} with columns:
 #'   \itemize{
@@ -6003,7 +6091,7 @@ count.feature.carriers <- function(X,
 #' }
 #'
 #' @export
-basin.feature.carriers <- function(gfc.flow,
+basin.feature.carriers <- function(object,
                                    basin.id,
                                    X,
                                    eps = 0,
@@ -6012,7 +6100,11 @@ basin.feature.carriers <- function(gfc.flow,
                                    drop.missing = TRUE,
                                    include.extremum = TRUE,
                                    unique = TRUE,
-                                   sort = TRUE) {
+                                   sort = TRUE,
+                                   gfc.flow = object,
+                                   ...) {
+    object <- gfc.flow
+    gfc.flow <- object
 
     if (!inherits(gfc.flow, "gfc.flow")) {
         stop("gfc.flow must be a gfc.flow object.")
@@ -6163,8 +6255,9 @@ basin.feature.carriers <- function(gfc.flow,
 #' for situations where the region of interest is provided directly as an index
 #' vector rather than looked up from a basin in a \code{gfc.flow} object.
 #'
-#' @param vertices Integer or numeric vector identifying the vertices/samples
+#' @param object Integer or numeric vector identifying the vertices/samples
 #'   to include. Interpretation depends on \code{match.by}.
+#' @param vertices Backward-compatible alias for \code{object}.
 #' @param X A numeric matrix (or data.frame coercible to a numeric matrix) with
 #'   samples/vertices in rows and features in columns.
 #' @param eps A non-negative numeric threshold. A feature is considered present
@@ -6180,6 +6273,7 @@ basin.feature.carriers <- function(gfc.flow,
 #'   If FALSE, error if any are missing.
 #' @param unique Logical; if TRUE (default), unique the resolved vertex set.
 #' @param sort Logical; if TRUE (default), sort the resolved vertex set (after uniquing).
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A \code{data.frame} with columns:
 #'   \itemize{
@@ -6200,13 +6294,17 @@ basin.feature.carriers <- function(gfc.flow,
 #' }
 #'
 #' @export
-vertices.feature.carriers <- function(vertices,
+vertices.feature.carriers <- function(object,
                                       X,
                                       eps = 0,
                                       match.by = c("index", "rownames"),
                                       drop.missing = TRUE,
                                       unique = TRUE,
-                                      sort = TRUE) {
+                                      sort = TRUE,
+                                      vertices = object,
+                                      ...) {
+    object <- vertices
+    vertices <- object
 
     ## ---- validate vertices ----
     if (is.null(vertices) || length(vertices) == 0L) {
@@ -6305,7 +6403,7 @@ vertices.feature.carriers <- function(vertices,
 #' \code{use.ggplot}. Features can be restricted to the top \code{top.m} by
 #' prevalence or filtered by \code{min.p}.
 #'
-#' @param carriers.df A data.frame with columns \code{k} (integer) and \code{p}
+#' @param x A data.frame with columns \code{k} (integer) and \code{p}
 #'     (numeric in \eqn{[0,1]}) and row names corresponding to feature/phylotype
 #'     names.
 #' @param top.m Optional integer; if provided, plot only the \code{top.m} most
@@ -6342,7 +6440,7 @@ vertices.feature.carriers <- function(vertices,
 #'   attribute \code{"plot"}.
 #'
 #' @export
-plot.feature.prevalence <- function(carriers.df,
+plot.feature.prevalence <- function(x,
                                    top.m = NULL,
                                    min.p = NULL,
                                    sort.by = c("p", "k"),
@@ -6360,6 +6458,7 @@ plot.feature.prevalence <- function(carriers.df,
                                    label.font = 1,
                                    label.face = c("plain", "bold", "italic", "bold.italic"),
                                    ...) {
+    carriers.df <- x
 
     ## ---- validation ----
     if (!is.data.frame(carriers.df)) {

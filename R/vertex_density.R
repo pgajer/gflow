@@ -101,7 +101,7 @@ compute.vertex.density <- function(adj.list,
 #' @param weight.list Edge weight list. If NULL, extracted from fit.
 #'
 #' @return Numeric vector of smoothed density values (conditional expectation
-#'   of d_1^{-1}), normalized to \eqn{[0,1]}.
+#'   of \eqn{d_1^{-1}}, normalized to \eqn{[0,1]}.
 #'
 #' @details
 #' This function:

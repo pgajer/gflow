@@ -67,21 +67,24 @@
 #' merges in both the basin-level absorbed_extrema lists and the global merge.info
 #' component, allowing complete reconstruction of the simplification history.
 #'
-#' @param basins.obj An object of class \code{"basins_of_attraction"} returned by
+#' @param x An object of class \code{"basins_of_attraction"} returned by
 #'   \code{\link{compute.basins.of.attraction}} with gradient basin structures
 #'   including predecessors and terminal extrema. The basin lists (\code{lmax_basins}
 #'   and \code{lmin_basins}) must be named with extremum labels.
+#' @param y Optional alias for \code{winner.label} (kept for backward compatibility).
 #' @param winner.label Character string or numeric value specifying the label of
 #'   the winning basin that will absorb the other basin. This label must appear
-#'   as a name in the appropriate basin list (e.g., in \code{names(basins.obj$lmin_basins)}
+#'   as a name in the appropriate basin list (e.g., in \code{names(x$basins$lmin_basins)}
 #'   for minima).
 #' @param loser.label Character string or numeric value specifying the label of
 #'   the losing basin to be absorbed. This basin will be removed from the basin list,
 #'   its vertices incorporated into the winner's basin, and its complete structure
 #'   preserved in the winner's absorbed_extrema list.
+#' @param verbose Logical; if TRUE, print additional merge diagnostics.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return An object of class \code{"basins_of_attraction"} with the same structure
-#'   as the input \code{basins.obj} but with the specified basins merged. The object
+#'   as the input \code{x} but with the specified basins merged. The object
 #'   contains:
 #'   \describe{
 #'     \item{lmin_basins}{Named list of basin structures for local minima (modified
@@ -131,10 +134,19 @@
 #' }
 #'
 #' @export
-merge.two.extrema <- function(basins.obj,
-                              winner.label,
-                              loser.label,
-                              verbose = FALSE) {
+merge.two.extrema <- function(x,
+                              y = NULL,
+                              winner.label = NULL,
+                              loser.label = NULL,
+                              verbose = FALSE,
+                              ...) {
+    basins.obj <- x
+    if (is.null(winner.label)) {
+        winner.label <- y
+    }
+    if (is.null(winner.label) || is.null(loser.label)) {
+        stop("Both winner.label and loser.label must be provided.")
+    }
     
     ## Validate inputs
     if (!is.list(basins.obj)) {
@@ -528,4 +540,18 @@ merge.two.extrema <- function(basins.obj,
 
 #' @rdname merge.two.extrema
 #' @export
-merge.two.basins <- merge.two.extrema
+merge.two.basins <- function(x,
+                             y = NULL,
+                             winner.label = NULL,
+                             loser.label = NULL,
+                             verbose = FALSE,
+                             ...) {
+    merge.two.extrema(
+        x = x,
+        y = y,
+        winner.label = winner.label,
+        loser.label = loser.label,
+        verbose = verbose,
+        ...
+    )
+}

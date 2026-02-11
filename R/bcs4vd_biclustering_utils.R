@@ -4,7 +4,7 @@
 #' to create disjoint vertex assignments, filter phylotypes, and control annotation display.
 #' This produces a cleaner high-level overview of co-monotonicity patterns.
 #'
-#' @param data.matrix Numeric matrix to be visualized (n.vertices × n.phylotypes).
+#' @param data.matrix Numeric matrix to be visualized (n.vertices x n.phylotypes).
 #' @param biclust.result An object of class \code{Biclust} containing bi-clustering results.
 #' @param max.biclusters Integer specifying maximum number of bi-clusters to display.
 #'   Default is 10.
@@ -65,10 +65,6 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
                                          assignment.priority = c("first", "largest", "smallest"),
                                          show.phylotype.biclusters = TRUE,
                                          show.bicluster.labels = FALSE) {
-
-  library(ComplexHeatmap)
-  library(circlize)
-  library(grid)
 
   assignment.priority <- match.arg(assignment.priority)
   n.bc <- min(biclust.result@Number, max.biclusters)
@@ -186,12 +182,12 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
     as.character(bc.present)
   )
 
-  row.ha <- rowAnnotation(
+  row.ha <- ComplexHeatmap::rowAnnotation(
     BiCluster = factor(vertex.assignment.ordered, levels = bc.present),
     col = list(BiCluster = row.colors),
     show_legend = !show.bicluster.labels,
     annotation_name_side = "top",
-    simple_anno_size = unit(5, "mm")
+    simple_anno_size = grid::unit(5, "mm")
   )
 
   # Create column annotation for phylotypes (optional)
@@ -203,9 +199,9 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
     }
     colnames(phylo.membership) <- paste0("BC", 1:n.bc)
 
-    col.ha <- HeatmapAnnotation(
+    col.ha <- ComplexHeatmap::HeatmapAnnotation(
       BiCluster = phylo.membership,
-      col = list(BiCluster = colorRamp2(c(0, 1), c("white", "darkblue"))),
+      col = list(BiCluster = circlize::colorRamp2(c(0, 1), c("white", "darkblue"))),
       show_legend = FALSE,
       annotation_name_side = "left",
       annotation_name_rot = 0
@@ -215,13 +211,13 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
   }
 
   # Color scheme for co-monotonicity
-  col.fun <- colorRamp2(
+  col.fun <- circlize::colorRamp2(
     c(-1, -0.5, 0, 0.5, 1),
     c("blue", "lightblue", "white", "pink", "red")
   )
 
   # Create heatmap
-  ht <- Heatmap(
+  ht <- ComplexHeatmap::Heatmap(
     filtered.matrix,
     name = "Co-monotonicity",
     col = col.fun,
@@ -236,8 +232,8 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
     right_annotation = row.ha,
     row_split = factor(vertex.assignment.ordered, levels = bc.present),
     row_title_rot = 0,
-    row_title_gp = gpar(fontsize = 10, fontface = "bold"),
-    row_gap = unit(2, "mm"),
+    row_title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
+    row_gap = grid::unit(2, "mm"),
     border = TRUE,
     heatmap_legend_param = list(
       title = "Co-mono",
@@ -250,19 +246,19 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
   # Add bi-cluster labels if requested
   # CRITICAL FIX: Only create labels for bi-clusters that are actually present
   if (show.bicluster.labels) {
-    ht <- ht + rowAnnotation(
-      BC = anno_block(
-        gp = gpar(fill = NA, col = NA),
+    ht <- ht + ComplexHeatmap::rowAnnotation(
+      BC = ComplexHeatmap::anno_block(
+        gp = grid::gpar(fill = NA, col = NA),
         labels = bc.present,  # Use only present bi-clusters
-        labels_gp = gpar(fontsize = 10, fontface = "bold"),
+        labels_gp = grid::gpar(fontsize = 10, fontface = "bold"),
         labels_rot = 0,
         which = "row"
       ),
-      width = unit(8, "mm")
+      width = grid::unit(8, "mm")
     )
   }
 
-  ht.drawn <- draw(ht, heatmap_legend_side = "bottom")
+  ht.drawn <- ComplexHeatmap::draw(ht, heatmap_legend_side = "bottom")
 
   return(invisible(list(
     heatmap = ht,
@@ -286,8 +282,8 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
 #'
 #' @param biclust.result An object of class \code{Biclust} containing bi-clustering
 #'   results from the BCs4vd method. Must contain slots \code{@Number} (number of
-#'   bi-clusters), \code{@RowxNumber} (n.vertices × n.biclusters logical matrix
-#'   indicating vertex membership), and \code{@NumberxCol} (n.biclusters × n.phylotypes
+#'   bi-clusters), \code{@RowxNumber} (n.vertices x n.biclusters logical matrix
+#'   indicating vertex membership), and \code{@NumberxCol} (n.biclusters x n.phylotypes
 #'   logical matrix indicating phylotype membership).
 #' @param base.adj.list Optional list of adjacency lists representing the base graph
 #'   structure. If provided, the function will compute the number of connected components
@@ -305,7 +301,7 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
 #'   \item{N_Vertices}{Number of vertices (graph samples) in the bi-cluster}
 #'   \item{N_Phylotypes}{Number of phylotypes (bacterial taxa) in the bi-cluster}
 #'   \item{Block_Size}{Total number of matrix cells in the rectangular block
-#'     (N_Vertices × N_Phylotypes)}
+#'     (N_Vertices x N_Phylotypes)}
 #'   \item{N_Components}{Number of connected components in the base graph for this
 #'     vertex set (only if \code{base.adj.list} is provided)}
 #'   \item{Disconnected}{Logical indicating whether the vertex set spans multiple
@@ -328,7 +324,7 @@ visualize.bcs4vd.biclusters <- function(data.matrix,
 #' space. This can reveal convergent ecological patterns or redundant functional
 #' pathways operating in different parts of the compositional manifold.
 #'
-#' The block size (N_Vertices × N_Phylotypes) provides a measure of the overall
+#' The block size (N_Vertices x N_Phylotypes) provides a measure of the overall
 #' size of each bi-cluster and can be used to prioritize bi-clusters for further
 #' analysis. Larger blocks may represent more robust patterns, while smaller blocks
 #' might capture more specific or localized associations.
@@ -484,7 +480,7 @@ summarize.bcs4vd.biclusters <- function(biclust.result,
 #' to determine whether the bi-cluster represents a geometrically coherent region.
 #'
 #' @param comono.matrix Numeric matrix of co-monotonicity coefficients with dimensions
-#'   n.vertices × n.phylotypes. Rows represent vertices in the graph (samples or
+#'   n.vertices x n.phylotypes. Rows represent vertices in the graph (samples or
 #'   spatial locations) and columns represent phylotypes (bacterial taxa). Values
 #'   should typically be in the range \code{[-1, 1]}, where positive values indicate
 #'   similar directional associations with the response variable and negative values
@@ -518,7 +514,7 @@ summarize.bcs4vd.biclusters <- function(biclust.result,
 #' @details
 #' This function extracts and visualizes the rectangular block corresponding to a
 #' single bi-cluster from a co-monotonicity matrix. The extracted block has
-#' dimensions n.vertices.in.cluster × n.phylotypes.in.cluster and shows the
+#' dimensions n.vertices.in.cluster x n.phylotypes.in.cluster and shows the
 #' co-monotonicity patterns between the selected phylotypes and the response
 #' variable across the selected vertices.
 #'
@@ -651,13 +647,13 @@ visualize.bcs4vd.bicluster <- function(comono.matrix,
   }
 
   # Color scheme for co-monotonicity
-  col.fun <- colorRamp2(
+  col.fun <- circlize::colorRamp2(
     c(-1, -0.5, 0, 0.5, 1),
     c("blue", "lightblue", "white", "pink", "red")
   )
 
   # Create heatmap
-  ht <- Heatmap(
+  ht <- ComplexHeatmap::Heatmap(
     block,
     name = "Co-mono",
     col = col.fun,
@@ -665,8 +661,8 @@ visualize.bcs4vd.bicluster <- function(comono.matrix,
     cluster_columns = TRUE,
     show_row_names = show.row.names,
     show_column_names = show.col.names,
-    row_names_gp = gpar(fontsize = 8),
-    column_names_gp = gpar(fontsize = 8),
+    row_names_gp = grid::gpar(fontsize = 8),
+    column_names_gp = grid::gpar(fontsize = 8),
     column_labels = phylo.labels,
     row_labels = vertex.labels,
     column_title = paste0("Bi-cluster ", bc.number, ": ",
@@ -682,7 +678,7 @@ visualize.bcs4vd.bicluster <- function(comono.matrix,
   )
 
   # Draw heatmap
-  ht.drawn <- draw(ht, heatmap_legend_side = "right")
+  ht.drawn <- ComplexHeatmap::draw(ht, heatmap_legend_side = "right")
 
   result.list$heatmap <- ht
   result.list$drawn <- ht.drawn
@@ -764,7 +760,7 @@ check_connected_components <- function(adj.list, vertex.indices) {
 #'
 #' @param biclust.result An object of class \code{Biclust} containing bi-clustering
 #'   results from the BCs4vd method. Must contain slots \code{@Number} (number of
-#'   bi-clusters) and \code{@NumberxCol} (n.biclusters × n.phylotypes logical matrix
+#'   bi-clusters) and \code{@NumberxCol} (n.biclusters x n.phylotypes logical matrix
 #'   indicating phylotype membership in each bi-cluster).
 #' @param phylo.names Optional character vector of phylotype names. Length must equal
 #'   the number of phylotypes (columns) in the original co-monotonicity matrix. If
@@ -809,9 +805,9 @@ check_connected_components <- function(adj.list, vertex.indices) {
 #' @note This function is designed specifically for BCs4vd bi-clustering results
 #'   applied to co-monotonicity matrices in microbiome research. For a more detailed
 #'   analysis including which specific bi-clusters each phylotype belongs to, see
-#'   \code{\link{phylotype.bcs4vd.bicluster.detailed}}.
+#'   \code{phylotype.bcs4vd.bicluster.detailed}.
 #'
-#' @seealso \code{\link{phylotype.bcs4vd.bicluster.detailed}},
+#' @seealso \code{phylotype.bcs4vd.bicluster.detailed},
 #'   \code{\link{summarize.bcs4vd.biclusters}}, \code{\link[s4vd]{BCs4vd}}
 #'
 #' @examples
@@ -855,7 +851,7 @@ check_connected_components <- function(adj.list, vertex.indices) {
 #' @export
 phylotype.bcs4vd.bicluster.frequency <- function(biclust.result, phylo.names = NULL) {
 
-  # NumberxCol is n.biclusters × n.phylotypes
+  # NumberxCol is n.biclusters x n.phylotypes
   # Each column represents a phylotype
   # Each row represents a bi-cluster
   # Value is TRUE/1 if phylotype is in that bi-cluster
@@ -972,7 +968,7 @@ diagnose.bicluster.coherence <- function(data.matrix, biclust.result, bc.number)
 
   cat("Bi-cluster", bc.number, "Coherence Diagnostics:\n")
   cat("=====================================\n")
-  cat("Block size:", nrow(block), "×", ncol(block), "\n")
+  cat("Block size:", nrow(block), "x", ncol(block), "\n")
   cat("Variance explained by rank-1:", round(var.explained[1] * 100, 1), "%\n")
   cat("First 5 singular values:", round(svd.block$d[1:min(5, length(svd.block$d))], 2), "\n")
   cat("\nCorrelation structure:\n")
@@ -1036,9 +1032,6 @@ refine.biclusters <- function(data.matrix,
                               fallback.k = 2,
                               verbose = TRUE) {
 
-  library(biclust)
-  library(s4vd)
-
   fallback.method <- match.arg(fallback.method)
 
   # If not specified, identify bi-clusters needing refinement
@@ -1079,7 +1072,7 @@ refine.biclusters <- function(data.matrix,
     sub.data <- data.matrix[rows, cols, drop = FALSE]
 
     if (verbose) {
-      cat("  Sub-block size:", nrow(sub.data), "×", ncol(sub.data), "\n")
+      cat("  Sub-block size:", nrow(sub.data), "x", ncol(sub.data), "\n")
     }
 
     # Check if block is too small
@@ -1092,8 +1085,8 @@ refine.biclusters <- function(data.matrix,
 
     # Apply bi-clustering to subset with increased steps
     sub.bc <- tryCatch({
-      biclust(sub.data,
-             method = BCs4vd(),
+      biclust::biclust(sub.data,
+             method = s4vd::BCs4vd(),
              steps = max.steps,
              pceru = pceru,
              pcerv = pcerv,
@@ -1173,16 +1166,15 @@ apply.fallback.split <- function(sub.data, rows, cols, method, k, verbose) {
   # Detect natural number of clusters if k not specified
   if (is.null(k) || k < 2) {
     # Use gap statistic or silhouette
-    library(cluster)
     sil.scores <- numeric(min(5, nrow(sub.data) - 1))
     for (test.k in 2:min(5, nrow(sub.data) - 1)) {
       if (method == "kmeans") {
         km.test <- kmeans(sub.data, centers = test.k, nstart = 25)
-        sil <- silhouette(km.test$cluster, dist(sub.data))
+        sil <- cluster::silhouette(km.test$cluster, dist(sub.data))
       } else {
         hc.test <- hclust(dist(sub.data), method = "ward.D2")
         clust.test <- cutree(hc.test, k = test.k)
-        sil <- silhouette(clust.test, dist(sub.data))
+        sil <- cluster::silhouette(clust.test, dist(sub.data))
       }
       sil.scores[test.k - 1] <- mean(sil[, 3])
     }
@@ -1265,7 +1257,7 @@ diagnose.refinement.failure <- function(data.matrix, biclust.result, bc.number) 
   cat("==========================================\n\n")
 
   # Size check
-  cat("Block dimensions:", nrow(block), "×", ncol(block), "\n")
+  cat("Block dimensions:", nrow(block), "x", ncol(block), "\n")
   if (nrow(block) < 8) {
     cat("  WARNING: Too few rows for stable bi-clustering\n")
   }
@@ -1338,6 +1330,11 @@ diagnose.refinement.failure <- function(data.matrix, biclust.result, bc.number) 
 #'
 #' Split heterogeneous bi-cluster using k-means on vertex patterns
 #'
+#' @param data.matrix Numeric matrix used for biclustering.
+#' @param biclust.result Object containing the original biclustering result.
+#' @param bc.number Index of the bicluster to refine.
+#' @param k Number of k-means subclusters used for refinement.
+#'
 #' @export
 kmeans.refine.bicluster <- function(data.matrix, biclust.result, bc.number, k = 2) {
 
@@ -1351,17 +1348,15 @@ kmeans.refine.bicluster <- function(data.matrix, biclust.result, bc.number, k = 
   km <- kmeans(block, centers = k, nstart = 25)
 
   # Visualize split
-  library(ComplexHeatmap)
-
-  row.ha <- rowAnnotation(
+  row.ha <- ComplexHeatmap::rowAnnotation(
     KMeans = factor(km$cluster),
     col = list(KMeans = setNames(rainbow(k), as.character(1:k)))
   )
 
-  ht <- Heatmap(
+  ht <- ComplexHeatmap::Heatmap(
     block[order(km$cluster), ],
     name = "Co-mono",
-    col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+    col = circlize::colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
     cluster_rows = FALSE,
     cluster_columns = TRUE,
     row_split = factor(km$cluster[order(km$cluster)]),
@@ -1369,7 +1364,7 @@ kmeans.refine.bicluster <- function(data.matrix, biclust.result, bc.number, k = 
     right_annotation = row.ha
   )
 
-  draw(ht)
+  ComplexHeatmap::draw(ht)
 
   return(list(
     clusters = km$cluster,

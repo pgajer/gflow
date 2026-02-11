@@ -1,8 +1,19 @@
+# Generated overrides from configure.win (profile + sanitizer backend, if any)
+-include Makevars.win.local
+GFLOW_BUILD_PROFILE ?= dev
+
 # ---- Include paths
 PKG_CPPFLAGS = -I. -IANN
 PKG_CPPFLAGS += -I../inst/include/gflow
 PKG_CPPFLAGS += -I../inst/include -DR_NO_REMAP
-PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE
+ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
+    PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE
+else ifeq ($(GFLOW_BUILD_PROFILE),dev)
+    PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
+else
+    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using dev profile)
+    PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
+endif
 PKG_CPPFLAGS += -D_Alignof=__alignof__
 PKG_CPPFLAGS += -DDLL_EXPORTS
 PKG_CPPFLAGS += -DGFLOW_NO_TBB

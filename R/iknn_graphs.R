@@ -193,7 +193,7 @@ create.iknn.graphs <- function(X,
 
     ## Note on k: ANN returns self in its kNN sets, this is why k+1 is passed here (for kmin and kmax).
     ## We need to ensure the C++ labels/columns reflect the *original* k.
-    result <- .Call(S_create_iknn_graphs,
+    result <- .Call("S_create_iknn_graphs",
                     X,
                     as.integer(kmin + 1L),
                     as.integer(kmax + 1L),
@@ -456,9 +456,12 @@ summary.iknn_graphs <- function(object,
 #'   \item{n.edges}{Numeric vector of length \code{length(k.values)} (if available).}
 #'   \item{n.edges.in.pruned.graph}{Numeric vector of length \code{length(k.values)}.}
 #'   \item{edge.reduction.ratio}{Numeric vector of length \code{length(k.values)} (if available).}
-#'   \item{*.pwlm}{Piecewise linear model objects for each curve (if \code{fit.pwlm} exists).}
-#'   \item{*.breakpoint}{Estimated breakpoint for each curve (if \code{fit.pwlm} exists).}
-#'   \item{*.lmin}{Local minima k values for each curve (if \code{internal.find.local.minima} exists).}
+#'   \item{pwlm}{Named list of piecewise linear model objects for each diagnostic
+#'     curve (if \code{fit.pwlm} exists).}
+#'   \item{breakpoint}{Named numeric vector of estimated breakpoints for each
+#'     curve (if \code{fit.pwlm} exists).}
+#'   \item{lmin}{Named list of local-minima k values for each diagnostic curve
+#'     (if \code{internal.find.local.minima} exists).}
 #' }
 #'
 #' @examples
@@ -2130,13 +2133,15 @@ print.build_iknn_graphs_and_selectk <- function(x, ...) {
 #' @param edit.args Named list of arguments forwarded to the edit plot only.
 #' @param mixing.args Named list of arguments forwarded to the mixing plot only.
 #' @param par.args Named list of arguments forwarded to \code{par()} (e.g., mfrow, mar).
+#' @param ... Additional arguments (currently ignored).
 #' @export
 plot.build_iknn_graphs_and_selectk <- function(x,
                                               which = c("connect", "edit", "mixing"),
                                               connect.args = list(),
                                               edit.args = list(),
                                               mixing.args = list(),
-                                              par.args = list()) {
+                                              par.args = list(),
+                                              ...) {
     if (!inherits(x, "build_iknn_graphs_and_selectk")) stop("x must be class 'build_iknn_graphs_and_selectk'.")
     which <- unique(which)
 

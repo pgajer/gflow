@@ -21,6 +21,7 @@
 #' within their respective types.
 #'
 #' @examples
+#' \dontrun{
 #' # Filter maxima by hop index
 #' filtered.max <- extr.summary[extr.summary$type == "max" &
 #'                               extr.summary$hop.idx > 2, ]
@@ -35,6 +36,7 @@
 #' # Or relabel both at once
 #' filtered.both <- extr.summary[extr.summary$hop.idx > 2, ]
 #' relabeled.both <- relabel.extrema(filtered.both)
+#' }
 #'
 #' @export
 relabel.extrema <- function(extrema.df, sort.ascending = NULL) {
@@ -202,8 +204,8 @@ relabel.extrema <- function(extrema.df, sort.ascending = NULL) {
 #' }
 #'
 #' @seealso
-#' \code{\link{compute.graph.basin.complex}} for computing the basin complex of extrema,
-#' \code{\link{graph.watershed}} for watershed segmentation based on extrema.
+#' \code{compute.graph.basin.complex} for computing the basin complex of extrema,
+#' \code{graph.watershed} for watershed segmentation based on extrema.
 #'
 #' @export
 compute.extrema.hop.nbhds <- function(adj.list,
@@ -225,7 +227,7 @@ compute.extrema.hop.nbhds <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call(S_compute_extrema_hop_nbhds,
+    result <- .Call("S_compute_extrema_hop_nbhds",
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),
@@ -614,6 +616,7 @@ label.extrema.3d <- function(graph.3d,
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' # Extract neighborhood for maximum M1
 #' M1_nbhd <- get.nbrs(Z.extr.res, "M1")
 #'
@@ -624,6 +627,7 @@ label.extrema.3d <- function(graph.3d,
 #' M1_nbhd$vertex      # Get vertex index
 #' M1_nbhd$value       # Get value at vertex
 #' M1_nbhd$nbhd_df     # Get neighborhood dataframe
+#' }
 #'
 #' @seealso
 #' Related extrema analysis functions (if applicable)
@@ -659,4 +663,3 @@ get.nbrs <- function(extr.obj, id) {
 
   return(nbhd_list[[comp_idx]])
 }
-

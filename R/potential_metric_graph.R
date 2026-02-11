@@ -408,9 +408,21 @@ construct.potential.metric.graph <- function(adj.list,
 #' @param edge.length.transform Character: \code{"neglog"} or
 #'   \code{"reciprocal"} mapping operator similarities to edge lengths.
 #' @param edge.length.eps Positive floor used in similarity-to-length transform.
-#' @param pair.quantiles,pair.mode,n.landmarks,max.pairs,long.range.power,eta.blend,
-#'   lambda.local,lambda.ridge,max.iter,tol,min.edge.length,seed,verbose Passed to
-#'   \code{\link{construct.potential.metric.graph}}.
+#' @param pair.quantiles Length-2 numeric vector in \eqn{[0,1]} used to select
+#'   mid/long-range target pairs.
+#' @param pair.mode Character: \code{"landmark"} or \code{"all"} pair strategy.
+#' @param n.landmarks Integer number of landmarks when
+#'   \code{pair.mode = "landmark"}.
+#' @param max.pairs Maximum number of selected pairs used in fitting.
+#' @param long.range.power Non-negative exponent for pair weights.
+#' @param eta.blend Blend weight in \eqn{[0,1]} for edge-length initialization.
+#' @param lambda.local Non-negative regularization weight for local edge anchors.
+#' @param lambda.ridge Non-negative ridge regularization on edge lengths.
+#' @param max.iter Maximum number of outer optimization iterations.
+#' @param tol Relative objective-improvement tolerance for convergence.
+#' @param min.edge.length Strictly positive lower bound for edge lengths.
+#' @param seed Optional integer seed for any stochastic subsampling.
+#' @param verbose Logical; print iteration diagnostics.
 #'
 #' @return The same object as \code{construct.potential.metric.graph}, with an
 #' additional \code{$wrapper_info} list describing how topology/targets were derived.

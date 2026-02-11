@@ -32,7 +32,7 @@
 #' size of the intersection between sets.
 #' @examples
 #' covering.list <- list(c(1, 2), c(2, 3), c(1, 3, 4))
-#' nerve.graph(covering.list, n.cores = 2)
+#' nerve.graph(covering.list, n.cores = 1)
 #' @importFrom parallel detectCores makeCluster clusterExport parLapply stopCluster
 #' @export
 nerve.graph <- function(covering.list, n.cores = 1) {
@@ -416,7 +416,7 @@ join.graphs <- function(graph1, graph2, i1, i2) {
     graph1 <- lapply(graph1, function(x) as.integer(x - 1))
     graph2 <- lapply(graph2, function(x) as.integer(x - 1))
 
-    joined.graph <- .Call(S_join_graphs,
+    joined.graph <- .Call("S_join_graphs",
                     graph1,
                     graph2,
                     as.integer(i1 - 1),
@@ -524,7 +524,7 @@ create.star.graph <- function(sizes) {
     }
 
     ## sizes <- as.integer(sizes)
-    ## result <- .Call(S_create_star_graph, sizes)
+    ## result <- .Call("S_create_star_graph", sizes)
 
     n.chains <- length(sizes)
     if (n.chains < 2) {

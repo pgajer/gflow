@@ -27,7 +27,7 @@
 #' boxcox.transform(y, lambda = 0.5)
 #'
 #' @seealso \code{\link{boxcox.mle}}
-#' @export
+#' @rawNamespace export(boxcox.transform)
 boxcox.transform <- function(y, lambda) {
   if (any(y <= 0 | !is.finite(y))) {
     stop("Box-Cox requires y > 0 and finite.")
@@ -126,7 +126,7 @@ boxcox.transform <- function(y, lambda) {
 #' Box, G. E. P. and Cox, D. R. (1964).
 #' An analysis of transformations. \emph{Journal of the Royal Statistical Society. Series B}, \strong{26}(2), 211-252.
 #'
-#' @export
+#' @rawNamespace export(boxcox.mle)
 boxcox.mle <- function(formula,
                        data,
                        lambdas = seq(-2, 2, by = 0.1),

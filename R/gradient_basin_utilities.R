@@ -83,7 +83,8 @@ extract.vertices.terminating.at <- function(basin, terminal.vertex) {
 #' (m_i, M_j) exists if and only if M_j is reachable from m_i via ascending
 #' trajectories and m_i is reachable from M_j via descending trajectories.
 #'
-#' @param basins.obj Object of class "basins_of_attraction" with terminal extrema
+#' @param x Object of class "basins_of_attraction" with terminal extrema
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return Data frame with columns:
 #'   \itemize{
@@ -112,7 +113,8 @@ extract.vertices.terminating.at <- function(basin, terminal.vertex) {
 #' }
 #'
 #' @export
-identify.gradient.flow.cells <- function(basins.obj) {
+identify.gradient.flow.cells <- function(x, ...) {
+    basins.obj <- x
     cells.list <- list()
     
     # Iterate through all minima
@@ -646,6 +648,7 @@ summary.gradient_flow_cells <- function(object, ...) {
 #'          Cells are removed if they contain fewer than min.vertices unique vertices.
 #'
 #' @examples
+#' \dontrun{
 #' ## Extract cells from a basin
 #' flow.cells <- extract.gradient.flow.cells(basins.obj, max.basin.label = "M1")
 #'
@@ -658,6 +661,7 @@ summary.gradient_flow_cells <- function(object, ...) {
 #'   min.vertices = 100,
 #'   verbose = TRUE
 #' )
+#' }
 #'
 #' @export
 filter.cells.by.vertex.count <- function(flow.cells,
@@ -784,6 +788,7 @@ filter.cells.by.vertex.count <- function(flow.cells,
 #' @return Filtered gradient flow cells object
 #'
 #' @examples
+#' \dontrun{
 #' ## Keep cells between 50 and 200 vertices
 #' medium.cells <- filter.cells.by.criteria(
 #'   flow.cells,
@@ -804,6 +809,7 @@ filter.cells.by.vertex.count <- function(flow.cells,
 #'   min.vertices = 50,
 #'   min.trajectories = 10
 #' )
+#' }
 #'
 #' @export
 filter.cells.by.criteria <- function(flow.cells,

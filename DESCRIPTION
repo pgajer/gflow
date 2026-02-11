@@ -2,7 +2,12 @@ Package: gflow
 Title: Gradient Flow Data Analysis Framework
 Version: 0.1.0
 Authors@R:
-    person("Pawel", "Gajer", , "pgajer@gmail.com", role = c("aut", "cre"))
+    person(given = "Pawel",
+           family = "Gajer",
+           email = "pgajer@gmail.com",
+           role = c("aut", "cre"))
+Author: Pawel Gajer [aut, cre]
+Maintainer: Pawel Gajer <pgajer@gmail.com>
 Description: The gflow package implements geometric methods for analyzing
     high-dimensional data by exploiting the fact that most real-world
     high-dimensional datasets are highly structured and sparse, displaying an
@@ -41,8 +46,6 @@ Imports:
     transport
 Suggests:
     rgl,
-    foreach,
-    doParallel,
     randomForest,
     np,
     mgcv,
@@ -54,10 +57,25 @@ Suggests:
     dbscan,
     clValid,
     mclust,
+    MASS,
     RColorBrewer,
     viridis,
     Matrix,
     utils,
+    arm,
+    brglm2,
+    biclust,
+    circlize,
+    cluster,
+    ComplexHeatmap,
+    dtw,
+    fpc,
+    ggplot2,
+    hexbin,
+    logistf,
+    proxy,
+    s4vd,
+    scales,
     testthat (>= 3.0.0),
     rstan,
     HDInterval,

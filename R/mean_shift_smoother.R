@@ -283,7 +283,7 @@ meanshift.data.smoother <- function(X,
     # Call the appropriate C function based on method
     if (method.num == 0) {
         ## Basic method
-        result <- .Call(S_mean_shift_data_smoother,
+        result <- .Call("S_mean_shift_data_smoother",
                         X,
                         as.integer(k),
                         as.integer(density.k),
@@ -299,7 +299,7 @@ meanshift.data.smoother <- function(X,
     } else if (method.num == 1) {
         ## Precomputed method
         stop("Precomputed method not implemented yet")
-        ## result <- .Call(S_mean_shift_data_smoother_precomputed,
+        ## result <- .Call("S_mean_shift_data_smoother_precomputed",
         ##                X,
         ##                as.integer(k),
         ##                as.integer(n.steps),
@@ -309,7 +309,7 @@ meanshift.data.smoother <- function(X,
 
     } else if (method.num %in% c(2, 3)) {
         # Gradient field averaging methods
-        result <- .Call(S_mean_shift_data_smoother_with_grad_field_averaging,
+        result <- .Call("S_mean_shift_data_smoother_with_grad_field_averaging",
                        X,
                        as.integer(k),
                        as.integer(density.k),
@@ -320,7 +320,7 @@ meanshift.data.smoother <- function(X,
                        as.logical(average.direction.only))
     } else if (method.num %in% c(4, 5)) {
         # Adaptive methods
-        result <- .Call(S_mean_shift_data_smoother_adaptive,
+        result <- .Call("S_mean_shift_data_smoother_adaptive",
                        X,
                        as.integer(k),
                        as.integer(density.k),
@@ -332,7 +332,7 @@ meanshift.data.smoother <- function(X,
     } else if (method.num == 6) {
         ## KNN adaptive method
         stop("knn_adaptive_mean_shift_smoother not implemented yet")
-        ## result <- .Call(S_knn_adaptive_mean_shift_smoother,
+        ## result <- .Call("S_knn_adaptive_mean_shift_smoother",
         ##                X,
         ##                as.integer(k),
         ##                as.integer(density.k),

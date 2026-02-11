@@ -166,7 +166,7 @@ compute.basins.of.attraction <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     # Call C++ function
-    result <- .Call(S_compute_basins_of_attraction,
+    result <- .Call("S_compute_basins_of_attraction",
                     adj.list.0based,
                     weight.list,
                     as.numeric(y),
@@ -676,7 +676,7 @@ draw.basin <- function(basins.obj, basin.label, radius = 0.15, col = "cyan") {
     }
 
     basin.vertices <- basin$basin_df[,1]
-    spheres3d(graph.3d[basin.vertices,], radius = radius, col = col)
+    rgl::spheres3d(graph.3d[basin.vertices,], radius = radius, col = col)
 }
 
 
@@ -761,7 +761,8 @@ draw.basin <- function(basins.obj, basin.label, radius = 0.15, col = "cyan") {
 #'
 #' @seealso \code{\link{compute.basins.of.attraction}} for computing basins,
 #'   \code{\link{summary.basins_of_attraction}} for generating basin summaries,
-#'   \code{\link{find.basin.by.vertex}}, \code{\link{get.basin.vertex.from.label}}
+#'   \code{\link{find.basin.by.vertex.in.basins.of.attraction}},
+#'   \code{\link{get.basin.vertex.from.label}}
 #'
 #' @export
 basin.basins_of_attraction <- function(object, id,

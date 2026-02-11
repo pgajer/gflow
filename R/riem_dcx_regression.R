@@ -82,27 +82,27 @@
 #'   The smoothing parameter is selected automatically via generalized cross-validation.
 #'   Available options:
 #'   \describe{
-#'     \item{\code{"heat_kernel"}}{Exponential decay exp(-η·λ). General-purpose
+#'     \item{\code{"heat_kernel"}}{Exponential decay \eqn{\exp(-\eta \lambda)}. General-purpose
 #'       filter with smooth, progressive attenuation. Most commonly used and
 #'       recommended as the default choice. Equivalent to heat diffusion for
-#'       time η.}
-#'     \item{\code{"tikhonov"}}{Rational decay 1/(1+η·λ). Corresponds to
+#'       time \eqn{\eta}.}
+#'     \item{\code{"tikhonov"}}{Rational decay \eqn{1/(1+\eta \lambda)}. Corresponds to
 #'       Tikhonov regularization. Gentler than heat kernel, preserves more
 #'       mid-frequency detail and linear trends. Good when moderate smoothing
 #'       is sufficient.}
-#'     \item{\code{"cubic_spline"}}{Spline smoothness 1/(1+η·λ²). Minimizes
+#'     \item{\code{"cubic_spline"}}{Spline smoothness \eqn{1/(1+\eta \lambda^2)}. Minimizes
 #'       second derivatives of the fitted function. Produces very smooth,
 #'       spline-like results. Excellent when the response should vary gradually
 #'       and continuously.}
-#'     \item{\code{"gaussian"}}{Super-exponential decay exp(-η·λ²). The most
+#'     \item{\code{"gaussian"}}{Super-exponential decay \eqn{\exp(-\eta \lambda^2)}. The most
 #'       aggressive smoothing among exponential filters. Produces extremely
 #'       smooth results with minimal oscillations. Use when maximum smoothness
 #'       is desired and fine-scale features are noise.}
-#'     \item{\code{"exponential"}}{Intermediate decay exp(-η·√λ). Less aggressive
+#'     \item{\code{"exponential"}}{Intermediate decay \eqn{\exp(-\eta \sqrt{\lambda})}. Less aggressive
 #'       than heat kernel. Maintains more detail in mid-frequency range while
 #'       still providing meaningful smoothing. Useful for preserving moderate-scale
 #'       features while removing high-frequency noise.}
-#'     \item{\code{"butterworth"}}{Smooth cutoff 1/(1+(λ/η)⁴). Fourth-order
+#'     \item{\code{"butterworth"}}{Smooth cutoff \eqn{1/(1+(\lambda/\eta)^4)}. Fourth-order
 #'       rational filter providing clear frequency separation with reduced
 #'       ringing artifacts compared to ideal low-pass filters. Good balance
 #'       between sharp cutoff and smooth transition.}
@@ -134,7 +134,7 @@
 #'     disables response-coherence modulation entirely (geometry remains fixed
 #'     based on feature space only). When negative (e.g., -1), triggers
 #'     automatic selection via first-iteration GCV evaluation over a default
-#'     grid {0.05, 0.1, 0.2, ..., 0.9, 1.0, 1.2, ..., 2.0}. Automatic selection
+#'     grid c(0.05, 0.1, 0.2, ..., 0.9, 1.0, 1.2, ..., 2.0). Automatic selection
 #'     efficiently determines the optimal value by evaluating GCV after a single
 #'     iteration for each candidate, then uses the selected value for the full
 #'     iterative refinement. Recommended when the response smoothness
@@ -292,43 +292,33 @@
 #'     \code{attr(fit, "pca")$X_projected}. Default is \code{FALSE} to avoid
 #'     increasing object size.
 #'
-#' @param verbose.level Integer in {0,1,2,3} controlling reporting.
+#' @param verbose.level Integer in \code{c(0, 1, 2, 3)} controlling reporting.
+#' @param ... Additional advanced options forwarded to lower-level fitting routines.
 #'
 #' @return An object of class \code{c("knn.riem.fit", "list")}, which is
 #'   a list containing:
-#'   \itemize{
-#'     \item \code{fitted.values}: Numeric vector of fitted values (selected
-#'           from iteration with minimum GCV)
-#'     \item \code{residuals}: Numeric vector of residuals
-#'     \item \code{optimal.iteration}: Integer indicating which iteration's
-#'           fitted values were selected (1-indexed)
-#'     \item \code{graph}: List with graph structure information
-#'     \item \code{iteration}: List with convergence information
-#'     \item \code{parameters}: List of input parameters
-#'     \item \code{y}: Original response values
-#'     \item \code{gcv}: List with GCV information for each iteration
-#'     \item \code{density}: List with density history
-#'     \item{extremality.scores}{(Only present if compute.extremality = TRUE)
-#'     List containing extremality analysis:
-#'     \describe{
-#'       \item{scores}{Numeric vector of Riemannian extremality scores in \eqn{[-1, 1]}
-#'         or NaN for isolated vertices. Values near +1 indicate local maxima,
-#'         near -1 indicate local minima, near 0 indicate saddles or plateaus.}
-#'       \item{hop_extremality_radii}{(Only present if p.threshold > 0)
-#'         Numeric vector of hop-extremality radii. For vertices with
-#'         |extremality| >= p.threshold, gives the maximum hop distance
-#'         maintaining extremality above threshold. NA for non-candidates,
-#'         -1 for global extrema (Inf in R after conversion), 0 for vertices
-#'         failing threshold at hop 1.}
-#'     }
-#'   }
+#'   \describe{
+#'     \item{fitted.values}{Numeric vector of fitted values selected from the
+#'       iteration with minimum GCV.}
+#'     \item{residuals}{Numeric vector of residuals.}
+#'     \item{optimal.iteration}{Integer indicating which iteration's fitted
+#'       values were selected (1-indexed).}
+#'     \item{graph}{List with graph structure information.}
+#'     \item{iteration}{List with convergence information.}
+#'     \item{parameters}{List of input parameters.}
+#'     \item{y}{Original response values.}
+#'     \item{gcv}{List with GCV information for each iteration.}
+#'     \item{density}{List with density history.}
+#'     \item{extremality.scores}{(Only if \code{compute.extremality = TRUE})
+#'       List containing extremality diagnostics; includes \code{scores} and,
+#'       when \code{p.threshold > 0}, \code{hop_extremality_radii}.}
 #'   }
 #'   When \code{store.projected.X = TRUE}, additional attributes are attached:
-#'   \itemize{
-#'     \item \code{attr(fit, "X.used")}: exact matrix passed to the C++ fitter
-#'           (PCA-projected if PCA was applied, otherwise validated input \code{X})
-#'     \item \code{attr(fit, "pca")$X_projected}: PCA-projected matrix (only
-#'           when PCA is applied)
+#'   \describe{
+#'     \item{attr(fit, "X.used")}{Exact matrix passed to the C++ fitter
+#'       (PCA-projected if PCA was applied, otherwise validated input \code{X}).}
+#'     \item{attr(fit, "pca")$X_projected}{PCA-projected matrix (only when
+#'       PCA is applied).}
 #'   }
 #'
 #' @details
@@ -393,13 +383,13 @@
 #'
 #' \strong{Computational Cost}
 #'
-#' Extremality score computation: O(m^{1.5}) for first call (includes solving
+#' Extremality score computation: \eqn{O(m^{1.5})} for first call (includes solving
 #' \eqn{M_1 x = B_1^T M_0 \hat{y}} via Cholesky factorization or iterative CG),
 #' where m is the number of edges. For typical kNN graphs with m = O(kn), this
-#' is O((kn)^{1.5}).
+#' is \eqn{O((kn)^{1.5})}.
 #'
-#' Hop radius computation: O(k · d · h) where k is the number of candidates
-#' (typically O(√n)), d is average degree, and h is average hop radius at
+#' Hop radius computation: \eqn{O(k d h)} where \eqn{k} is the number of candidates
+#' (typically \eqn{O(\sqrt{n})}), \eqn{d} is average degree, and \eqn{h} is average hop radius at
 #' termination (typically << max.hop due to early stopping).
 #'
 #' For large-scale problems (n > 10,000), consider:
@@ -1340,7 +1330,7 @@ summary.knn.riem.fit <- function(object, ...) {
 
     # Convergence diagnostics
     final_response_change <- if (length(object$iteration$response.changes) > 0) {
-        tail(object$iteration$response.changes, 1)
+        utils::tail(object$iteration$response.changes, 1)
     } else {
         NA
     }

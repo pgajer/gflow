@@ -48,11 +48,11 @@
 #' with existing analysis pipelines while providing the complete information needed
 #' for advanced gradient flow analyses.
 #'
-#' @param basins.obj An object of class \code{"basins_of_attraction"} returned by
+#' @param x An object of class \code{"basins_of_attraction"} returned by
 #'   \code{\link{compute.basins.of.attraction}} with gradient basin structures
 #'   including predecessors and terminal extrema. This object contains the original
 #'   basin structure before merging.
-#' @param clustering.result An object returned by \code{\link{cluster.local.extrema}}
+#' @param y An object returned by \code{\link{cluster.local.extrema}}
 #'   containing cluster assignments and basin metadata for the extrema type to be
 #'   merged.
 #' @param extrema.type Character string specifying which type of extrema were clustered.
@@ -61,9 +61,10 @@
 #' @param edgelen.list Optional list of numeric vectors containing edge lengths,
 #'   with the same structure as the adjacency list. Used to compute geodesic paths
 #'   between absorbed and representative extrema. If NULL, hop distances are used.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return An object of class \code{"basins_of_attraction"} with the same structure
-#'   as the input \code{basins.obj} but with clustered basins merged. The object
+#'   as the input \code{x} but with clustered basins merged. The object
 #'   contains:
 #'   \describe{
 #'     \item{lmin_basins}{List of basin structures for local minima (merged if
@@ -155,10 +156,13 @@
 #' \code{\link{extract.gradient.trajectory}} for trajectory reconstruction
 #'
 #' @export
-merge.clustered.basins <- function(basins.obj,
-                                   clustering.result,
+merge.clustered.basins <- function(x,
+                                   y,
                                    extrema.type,
-                                   edgelen.list = NULL) {
+                                   edgelen.list = NULL,
+                                   ...) {
+    basins.obj <- x
+    clustering.result <- y
     ## Input validation
     if (!inherits(basins.obj, "basins_of_attraction")) {
         stop("basins.obj must be of class 'basins_of_attraction'")

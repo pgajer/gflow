@@ -25,7 +25,7 @@
 #' (recommended for clean communication). Alternatively, it may be applied to
 #' pooled points across all selected trajectories.
 #'
-#' @param z Numeric vector (length \code{n.samples}) of response values.
+#' @param x Numeric vector (length \code{n.samples}) of response values.
 #' @param y.hat Numeric vector (length \code{n.samples}) giving a trajectory
 #'   coordinate or score (x-axis).
 #' @param trajectories List of integer vectors; each element contains sample
@@ -99,6 +99,7 @@
 #' @param robust.col Color for robust line. Default \code{"black"}.
 #' @param robust.lwd Numeric; robust line width. Default 1.
 #' @param robust.lty Integer; robust line type. Default 2.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return
 #' Invisibly returns the long-form plotting \code{data.frame}. When overlay mode
@@ -106,7 +107,7 @@
 #' attribute \code{"summary.fit"} containing fit details.
 #'
 #' @export
-plot.trajectory.hurdle.association <- function(z,
+plot.trajectory.hurdle.association <- function(x,
                                                y.hat,
                                                trajectories,
                                                trj.id,
@@ -154,7 +155,9 @@ plot.trajectory.hurdle.association <- function(z,
                                                ols.lty = 1,
                                                robust.col = "black",
                                                robust.lwd = 1,
-                                               robust.lty = 2) {
+                                               robust.lty = 2,
+                                               ...) {
+  z <- x
 
   z.transform <- match.arg(z.transform)
   display <- match.arg(display)
@@ -624,6 +627,7 @@ plot.trajectory.hurdle.association <- function(z,
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' ## Example uses toy data; replace with your objects in practice
 #' z <- c(0, 0.1, 0.2, 0, 0.3)
 #' y.hat <- seq_along(z)
@@ -637,6 +641,7 @@ plot.trajectory.hurdle.association <- function(z,
 #'   z.transform = "log",
 #'   include.noncarriers = FALSE
 #' )
+#' }
 #'
 #' @keywords internal
 prep.trajectory.hurdle.association.data.v1 <- function(z,
@@ -790,6 +795,7 @@ prep.trajectory.hurdle.association.data.v1 <- function(z,
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' ## Example uses toy data; replace with your objects in practice
 #' z <- c(0, 0.1, 0.2, 0, 0.3)
 #' y.hat <- seq_along(z)
@@ -803,6 +809,7 @@ prep.trajectory.hurdle.association.data.v1 <- function(z,
 #'   z.transform = "log",
 #'   include.noncarriers = FALSE
 #' )
+#' }
 #'
 #' @keywords internal
 prep.trajectory.hurdle.association.data <- function(z,

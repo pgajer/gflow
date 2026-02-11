@@ -331,7 +331,7 @@ maelog <- function(x,
     }
 
     # Call the C++ implementation
-    res <- .Call(S_maelog,
+    res <- .Call("S_maelog",
                  x,
                  y,
                  fit.quadratic,

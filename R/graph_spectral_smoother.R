@@ -142,7 +142,7 @@ graph.spectral.smoother <- function(graph,
     # Converting each component of adj.list to an integer vector (0-based indexing)
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    result <- .Call(S_graph_spectral_smoother,
+    result <- .Call("S_graph_spectral_smoother",
                     graph.0based,
                     edge.lengths,
                     weights,

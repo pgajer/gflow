@@ -104,7 +104,7 @@ plot3D.plain <- function(X,
 #' @param quantize.dig.lab Digits for quantization labels.
 #' @param start,end Hue start/end for rainbow palette (used only when \code{color.palette} is NULL).
 #' @param n.levels Number of color levels.
-#' @param color.palette Palette specification. See \code{\link{quantize.cont.var}}.
+#' @param color.palette Palette specification. See \code{quantize.cont.var}.
 #' @param palette.type Palette type: "discrete" (function(n) or vector) or "value" (function(x)).
 #' @param na.color Color for points with NA \code{y} (or NA bin assignment).
 #'

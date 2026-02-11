@@ -233,7 +233,7 @@ construct.graph.gradient.flow <- function(adj.list,
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
 
     # Call C++ implementation
-    result <- .Call(S_construct_graph_gradient_flow,
+    result <- .Call("S_construct_graph_gradient_flow",
                     adj.list.0based,
                     weight.list,
                     y,
@@ -374,12 +374,13 @@ construct.graph.gradient.flow <- function(adj.list,
 #' The function updates the basin vertices, recomputes the cells based on the
 #' new basin configuration, and updates the local extrema table.
 #'
-#' @param flow An object of class \code{"ggflow"} returned by
+#' @param object An object of class \code{"ggflow"} returned by
 #'   \code{\link{construct.graph.gradient.flow}}.
 #' @param absorbing.label Character string specifying the label of the basin that
 #'   will absorb the other basin.
 #' @param absorbed.label Character string specifying the label of the basin that
 #'   will be absorbed.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A modified gradient flow object with merged basins and updated cells.
 #'
@@ -401,7 +402,8 @@ construct.graph.gradient.flow <- function(adj.list,
 #' @seealso \code{\link{construct.graph.gradient.flow}}, \code{\link{summary.ggflow}}
 #'
 #' @export
-basins.merge <- function(flow, absorbing.label, absorbed.label) {
+basins.merge <- function(object, absorbing.label, absorbed.label, ...) {
+    flow <- object
     if (!inherits(flow, "ggflow")) {
         stop("'flow' must be an object of class 'ggflow'", call. = FALSE)
     }

@@ -99,7 +99,7 @@ create.mknn.graph <- function(X, k) {
 
   # Call C++ implementation
   # Note: k+1 because the C++ code includes the point itself in the kNN search
-    result <- .Call(S_create_mknn_graph,
+    result <- .Call("S_create_mknn_graph",
                     X,
                     as.integer(k + 1))
 
@@ -353,7 +353,7 @@ create.mknn.graphs <- function(X,
 
     ## Call C++ implementation
     ## Note: Adding 1 to k values for C++ compatibility (includes self in kNN)
-    result <- .Call(S_create_mknn_graphs,
+    result <- .Call("S_create_mknn_graphs",
                     X,
                     as.integer(kmin + 1),
                     as.integer(kmax + 1),

@@ -340,7 +340,7 @@ ext.graph.diffusion.smoother <- function(graph,
     # Set n.cores to 1 (sequential) as specified in the original
     n.cores <- 1L
 
-    res <- .Call(S_ext_graph_diffusion_smoother,
+    res <- .Call("S_ext_graph_diffusion_smoother",
                  graph.0based,
                  edge.lengths,
                  weights,
@@ -586,7 +586,7 @@ instrumented.gds <- function(graph,
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
     # Call C++ implementation
-    result <- .Call(S_instrumented_gds,
+    result <- .Call("S_instrumented_gds",
                     graph.0based,
                     edge.lengths,
                     y,

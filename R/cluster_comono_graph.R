@@ -129,19 +129,19 @@ cluster.comono.graph <- function(adj.list,
     edge.mat <- do.call(rbind, edges)
 
     ## Create igraph object
-    g <- graph_from_edgelist(edge.mat, directed = FALSE)
+    g <- igraph::graph_from_edgelist(edge.mat, directed = FALSE)
 
     if (!is.null(weight.list) && length(weights) > 0) {
-        E(g)$weight <- unlist(weights)
+        igraph::E(g)$weight <- unlist(weights)
     }
 
     ## Apply Louvain clustering
     clusters <- igraph::cluster_louvain(g, resolution = resolution)
 
     return(list(
-        membership = membership(clusters),
-        modularity = modularity(clusters),
-        n.clusters = max(membership(clusters)),
-        sizes = table(membership(clusters))
+        membership = igraph::membership(clusters),
+        modularity = igraph::modularity(clusters),
+        n.clusters = max(igraph::membership(clusters)),
+        sizes = table(igraph::membership(clusters))
     ))
 }

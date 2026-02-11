@@ -364,11 +364,12 @@ trajectory.similarity.matrix <- function(
 #' These represent obligate intermediate states in the transition from minimum
 #' to maximum.
 #'
-#' @param madag A \code{madag} object from \code{\link{construct.madag}}.
+#' @param x A \code{madag} object from \code{\link{construct.madag}}.
 #' @param max.vertex Integer. The 1-based index of the maximum vertex defining
 #'   the cell.
 #' @param min.fraction Numeric. Minimum fraction of trajectories passing through
 #'   a vertex for it to be considered a bottleneck. Default is 0.5.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return Integer vector of 1-based indices of bottleneck vertices.
 #'
@@ -376,10 +377,12 @@ trajectory.similarity.matrix <- function(
 #'
 #' @export
 identify.bottlenecks <- function(
-    madag,
+    x,
     max.vertex,
-    min.fraction = 0.5
+    min.fraction = 0.5,
+    ...
 ) {
+    madag <- x
     if (!inherits(madag, "madag")) {
         stop("madag must be a 'madag' object")
     }

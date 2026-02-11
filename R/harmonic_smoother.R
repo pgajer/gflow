@@ -151,7 +151,7 @@ perform.harmonic.smoothing <- function(adj.list,
     ## Convert to 0-based indices for C++
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    result <- .Call(S_perform_harmonic_smoothing,
+    result <- .Call("S_perform_harmonic_smoothing",
                     adj.list.0based,
                     weight.list,
                     as.numeric(values),
@@ -370,7 +370,7 @@ harmonic.smoother <- function(adj.list,
     ## Convert to 0-based indices for C++
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
-    result <- .Call(S_harmonic_smoother,
+    result <- .Call("S_harmonic_smoother",
                     adj.list.0based,
                     weight.list,
                     as.numeric(values),

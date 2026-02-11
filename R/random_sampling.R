@@ -58,7 +58,7 @@ rlaplace <- function(n,
         seed <- as.integer(seed)
     }
 
-    .Call(S_rlaplace,
+    .Call("S_rlaplace",
           as.integer(n),
           as.double(location),
           as.double(scale),

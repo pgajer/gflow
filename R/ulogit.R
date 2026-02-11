@@ -170,7 +170,7 @@ ulogit <- function(x,
     }
 
     # Call the C implementation
-    result <- .Call(S_ulogit,
+    result <- .Call("S_ulogit",
                     as.double(x),
                     as.double(y),
                     as.double(w),
@@ -391,7 +391,7 @@ eigen.ulogit <- function(x,
     }
 
     # Call the C implementation
-    result <- .Call(S_eigen_ulogit,
+    result <- .Call("S_eigen_ulogit",
                     as.double(x),
                     as.double(y),
                     as.double(w),

@@ -93,7 +93,7 @@ gdensity <- function(x,
         stop("'verbose' must be a single logical value")
     }
 
-    result <- .Call(S_estimate_local_density_over_grid,
+    result <- .Call("S_estimate_local_density_over_grid",
                    as.double(x),
                    as.integer(grid.size),
                    as.double(poffset),

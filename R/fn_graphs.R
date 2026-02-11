@@ -50,7 +50,7 @@ construct.function.aware.graph <- function(adj.list,
   adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
   ## Call C++ function
-  result <- .Call(S_construct_function_aware_graph,
+  result <- .Call("S_construct_function_aware_graph",
                   adj.list.0based,
                   weight.list,
                   function.values,
@@ -112,7 +112,7 @@ analyze.function.aware.weights <- function(adj.list,
   adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
   ## Call C++ function
-  result <- .Call(S_analyze_function_aware_weights,
+  result <- .Call("S_analyze_function_aware_weights",
                   adj.list.0based,
                   weight.list,
                   function.values,

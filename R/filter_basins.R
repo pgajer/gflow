@@ -290,7 +290,7 @@ filter.basins <- function(basins.obj, good.extrema) {
 #' @return Invisibly returns the filter.info object.
 #'
 #' @keywords internal
-print.basin.filter.info <- function(filter.info) {
+print_basin_filter_info <- function(filter.info) {
   cat("Basin Filtering Summary\n")
   cat("=======================\n\n")
   

@@ -105,7 +105,7 @@ detect.strong.binary.partition <- function(data.matrix,
   
   # Plotting
   if (plot.diagnostics) {
-    plot.binary.partition.diagnostics(
+    plot_binary_partition_diagnostics(
       data.matrix,
       best.partition,
       data.hclust,
@@ -133,9 +133,6 @@ compute.binary.partition.diagnostics <- function(data.matrix,
                                                  partition, 
                                                  hclust,
                                                  cut.height) {
-  
-  library(cluster)
-  
   n <- nrow(data.matrix)
   data.dist <- dist(data.matrix)
   
@@ -178,7 +175,7 @@ compute.binary.partition.diagnostics <- function(data.matrix,
   gap.ratio <- between.dist / avg.within.diameter
   
   # Silhouette
-  sil <- silhouette(partition, data.dist)
+  sil <- cluster::silhouette(partition, data.dist)
   avg.sil <- mean(sil[, 3])
   
   # Height analysis
@@ -215,17 +212,13 @@ compute.binary.partition.diagnostics <- function(data.matrix,
 #' Plot Binary Partition Diagnostics
 #'
 #' @keywords internal
-plot.binary.partition.diagnostics <- function(data.matrix,
+plot_binary_partition_diagnostics <- function(data.matrix,
                                               partition,
                                               hclust,
                                               cut.height,
                                               scores,
                                               test.heights,
                                               diagnostics) {
-  
-  library(ComplexHeatmap)
-  library(circlize)
-  
   # Create 2x3 layout
   layout(matrix(c(1, 1, 2, 3, 4, 5), nrow = 2, byrow = TRUE))
   
@@ -314,14 +307,14 @@ plot.binary.partition.diagnostics <- function(data.matrix,
   layout(1)
   
   # Also create a heatmap with the partition
-  row.ha <- rowAnnotation(
+  row.ha <- ComplexHeatmap::rowAnnotation(
     Cluster = factor(partition),
     col = list(Cluster = c("1" = "blue", "2" = "red"))
   )
   
-  col.fun <- colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+  col.fun <- circlize::colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
   
-  ht <- Heatmap(
+  ht <- ComplexHeatmap::Heatmap(
     data.matrix[order(partition), ],
     name = "Co-mono",
     col = col.fun,
@@ -332,8 +325,8 @@ plot.binary.partition.diagnostics <- function(data.matrix,
     right_annotation = row.ha,
     show_row_names = FALSE,
     row_title = c("Cluster 1", "Cluster 2"),
-    row_title_gp = gpar(col = c("blue", "red"), fontsize = 14)
+    row_title_gp = grid::gpar(col = c("blue", "red"), fontsize = 14)
   )
   
-  draw(ht)
+  ComplexHeatmap::draw(ht)
 }

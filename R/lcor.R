@@ -254,7 +254,7 @@
 #' @seealso
 #' \code{\link{lcor.vector.matrix}} for direct vector-matrix computation,
 #' \code{\link{lcor.matrix.matrix}} for direct matrix-matrix computation,
-#' \code{\link{comono}} for co-monotonicity coefficients with ratio normalization
+#' \code{comono} for co-monotonicity coefficients with ratio normalization
 #'
 #' @references
 #' Pawel Gajer and Jacques Ravel (2025). From Global to Local Correlation: Geometric Decomposition of Statistical Inference. \emph{arXiv:2511.04599}.

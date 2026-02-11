@@ -158,7 +158,7 @@ wgraph.prune.long.edges <- function(graph,
     ## Converting graph to 0-based indexing
     graph.0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    result <- .Call(S_wgraph_prune_long_edges,
+    result <- .Call("S_wgraph_prune_long_edges",
                     graph.0based,
                     edge.lengths,
                     as.numeric(alt.path.len.ratio.thld),
@@ -341,7 +341,7 @@ convert.adjacency.to.edge.matrix <- function(adj.list, weights.list = NULL) {
     }
 
     adj.list <- lapply(adj.list, function(x) as.integer(x - 1))
-    return(.Call(S_convert_adjacency_to_edge_matrix,
+    return(.Call("S_convert_adjacency_to_edge_matrix",
                  adj.list,
                  weights.list,
                  PACKAGE = "gflow"))
@@ -707,7 +707,7 @@ graph.connected.components <- function(adj.list) {
     adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1))
 
     ## Call the C++ function
-    result <- .Call(S_graph_connected_components,
+    result <- .Call("S_graph_connected_components",
                     adj.list.0based)
 
     ## Check the result
@@ -2655,7 +2655,7 @@ convert.adjacency.list.to.adjacency.matrix <- function(adj.list,
   }
 
   ## Match mode argument
-  mode <- match.arg(mode)
+  mode <- match.arg(mode, choices = c("undirected", "directed"))
 
   ## Initialize adjacency matrix
   adj.matrix <- matrix(0, nrow = n, ncol = n)
@@ -3097,7 +3097,7 @@ adjlist.to.igraph <- function(adj.list) {
 #' @param include.path Logical; if TRUE, always include the original \code{path}.
 #'
 #' @return Integer vector of selected vertex ids.
-#' @export
+#' @rawNamespace export(select.path.corridor)
 select.path.corridor <- function(graph,
                                  path,
                                  weights = NULL,
@@ -3163,7 +3163,7 @@ select.path.corridor <- function(graph,
 #' @param max.dist Non-negative numeric scalar; tube radius in graph-distance units.
 #'
 #' @return Integer vector of selected vertex ids.
-#' @export
+#' @rawNamespace export(select.path.neighborhood)
 select.path.neighborhood <- function(graph,
                                     path,
                                     weights = NULL,
@@ -3216,4 +3216,3 @@ dist.to.polyline.3d <- function(x, poly) {
 
   d.min
 }
-

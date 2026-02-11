@@ -252,9 +252,11 @@ distance.quantile.bin.analysis <- function(x,
 }
 
 #' @export
-plot.distance.quantile.bins <- function(res,
+plot.distance.quantile.bins <- function(x,
                                        what = c("abundance", "presence"),
-                                       main = NULL) {
+                                       main = NULL,
+                                       ...) {
+    res <- x
 
     what <- match.arg(what)
     df <- res$bins
