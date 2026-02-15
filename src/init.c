@@ -338,7 +338,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
   {"S_create_uniform_grid_graph", (DL_FUNC) &S_create_uniform_grid_graph, 5},
-  {"S_compute_graph_analysis_sequence", (DL_FUNC) &S_compute_graph_analysis_sequence, 6},
 
   // =========================================================================
   // univariate regression

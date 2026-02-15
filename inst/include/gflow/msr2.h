@@ -564,13 +564,6 @@ extern "C" {
 
     SEXP S_cycle_sizes(SEXP RA);
 
-    SEXP S_compute_graph_analysis_sequence(SEXP s_adj_list,
-                                           SEXP s_weight_list,
-                                           SEXP s_y,
-                                           SEXP s_Ey,
-                                           SEXP s_h_values,
-                                           SEXP s_diffusion_params);
-
     void C_flm(const double *x,
                const double *y,
                const int    *rnr,
