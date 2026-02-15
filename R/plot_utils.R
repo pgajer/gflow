@@ -91,8 +91,9 @@ plot3D.plain <- function(X,
 #' @param y A numeric vector of values to be used for color coding.
 #' @param subset Logical vector indicating which points to color-code by \code{y} values.
 #' @param non.highlight.type Display style for non-highlighted points.
+#' @param highlight.type Display style for highlighted points (those in \code{subset}).
 #' @param non.highlight.color Color for non-highlighted points.
-#' @param point.size Point size when \code{non.highlight.type="point"}.
+#' @param point.size Point size when point rendering is used.
 #' @param legend.title Legend title.
 #' @param legend.cex Legend text size.
 #' @param legend.side Side of the plot for the legend.
@@ -115,6 +116,7 @@ plot3D.cont <- function(X,
                         y,
                         subset = NULL,
                         non.highlight.type = "sphere",
+                        highlight.type = c("sphere", "point"),
                         non.highlight.color = "gray",
                         point.size = 3,
                         legend.title = "",
@@ -137,6 +139,7 @@ plot3D.cont <- function(X,
              "Install with install.packages('rgl').", call. = FALSE)
     }
 
+    highlight.type <- match.arg(highlight.type)
     palette.type <- match.arg(palette.type)
 
     ## Headless/CI-safe; harmless on desktops
@@ -240,9 +243,13 @@ plot3D.cont <- function(X,
         )
     }
 
-    ## Overlay: highlighted points (always spheres with data-driven colors)
+    ## Overlay: highlighted points (data-driven colors; spheres or points)
     if (any(subset)) {
-        rgl::spheres3d(X[subset, , drop = FALSE], col = y.cols[subset], radius = radius_local)
+        if (identical(highlight.type, "sphere")) {
+            rgl::spheres3d(X[subset, , drop = FALSE], col = y.cols[subset], radius = radius_local)
+        } else {
+            rgl::points3d(X[subset, , drop = FALSE], col = y.cols[subset], size = point.size)
+        }
     }
 
     ## Legend: ensure all bins appear, including empty ones

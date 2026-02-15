@@ -10,6 +10,8 @@
 #include <Eigen/Sparse>
 #include <Eigen/IterativeLinearSolvers>
 
+#include <R_ext/Error.h>
+
 /**
  * @brief Build symmetrized (normalized) vertex Laplacian for spectral analysis
  *
@@ -176,7 +178,13 @@ void laplacian_bundle_t::build_L0_mass_sym_if_needed(const metric_family_t& g) {
 	// The normalization makes vertices with large mass contribute less
 	// to the energy, balancing the influence of high-degree and low-degree vertices.
 
-	L0_mass_sym = Dm05 * L0_div * Dm05;
+	try {
+		L0_mass_sym = Dm05 * L0_div * Dm05;
+	} catch (const std::bad_alloc&) {
+		L0_mass_sym.resize(0, 0);
+		Rf_warning("build_L0_mass_sym_if_needed: memory allocation failed while forming "
+		           "M^{-1/2} L M^{-1/2}. Falling back to L[0] for spectral computations.");
+	}
 }
 
 /**
@@ -191,8 +199,19 @@ void laplacian_bundle_t::assemble_all(const metric_family_t& g) {
 	const int P = static_cast<int>(g.M.size()) - 1;
 	L.assign(P + 1, spmat_t());
 
+	// L[1] can be prohibitively large (n_edges x n_edges) on big graphs.
+	// Regression uses L[0]; skip higher-order assembly beyond this threshold.
+	const Eigen::Index HIGHER_ORDER_LAPLACIAN_MAX_DIM = 50000;
+
 	for (int p = 0; p <= P; ++p) {
 		const Eigen::Index n = g.M[p].rows();
+
+		if (p >= 1 && n > HIGHER_ORDER_LAPLACIAN_MAX_DIM) {
+			L[p] = spmat_t(n, n);
+			Rf_warning("assemble_all: skipping L[%d] assembly for size=%ld to avoid excessive "
+			           "memory use; L[0] remains available.", p, static_cast<long>(n));
+			continue;
+		}
 
 		spmat_t up, down;
 		bool has_up = false, has_down = false;

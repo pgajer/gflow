@@ -23,6 +23,7 @@
 #include <limits>
 #include <algorithm>
 #include <iomanip>
+#include <new>
 #include <random>     // For std::mt19937
 #include <cstring>    // std::strcmp
 
@@ -856,6 +857,9 @@ void riem_dcx_t::compute_edge_mass_matrix() {
     const size_t n_edges = edge_registry.size();
     const size_t n_vertices = vertex_cofaces.size();
     std::vector<Eigen::Triplet<double>> triplets;
+    constexpr size_t OFFDIAG_EDGE_MASS_MAX_EDGES = 200000;
+    const bool use_full_offdiag = (n_edges <= OFFDIAG_EDGE_MASS_MAX_EDGES);
+    static bool warned_diagonal_only = false;
 
     // ========================================================================
     // Part 1: Add diagonal entries from edge densities in vertex_cofaces
@@ -875,6 +879,21 @@ void riem_dcx_t::compute_edge_mass_matrix() {
 
             triplets.emplace_back(edge_idx, edge_idx, diagonal);
         }
+    }
+
+    if (!use_full_offdiag) {
+        if (!warned_diagonal_only) {
+            Rf_warning("compute_edge_mass_matrix: n_edges=%ld exceeds %ld; using diagonal-only "
+                       "edge mass approximation to control memory use.",
+                       static_cast<long>(n_edges),
+                       static_cast<long>(OFFDIAG_EDGE_MASS_MAX_EDGES));
+            warned_diagonal_only = true;
+        }
+        g.M[1] = spmat_t(n_edges, n_edges);
+        g.M[1].setFromTriplets(triplets.begin(), triplets.end());
+        g.M[1].makeCompressed();
+        g.M_solver[1].reset();
+        return;
     }
 
     // ========================================================================
@@ -2621,6 +2640,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     const vec_t& rho_current,
     double t,
     double beta,
+    int dense_fallback_mode,
     verbose_level_t verbose_level
 ) {
     // ========================================================================
@@ -2694,31 +2714,50 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     bool cg_attempted = false;
     bool used_direct_solver = false;
     int cg_iterations = 0;
-    double cg_error = 0.0;
+    double cg_error = NA_REAL;
 
     // Threshold for considering CG solution acceptable
     const double CG_RESIDUAL_THRESHOLD = 1e-4;  // More lenient than tolerance
+    const int CG_MAX_ITER = 2000;
     const int DIRECT_SOLVER_THRESHOLD = 2500;   // Use direct for n < this
+    const dense_fallback_mode_t fallback_mode =
+        static_cast<dense_fallback_mode_t>(dense_fallback_mode);
+
+    if (dense_fallback_mode < static_cast<int>(dense_fallback_mode_t::AUTO) ||
+        dense_fallback_mode > static_cast<int>(dense_fallback_mode_t::ALWAYS)) {
+        Rf_error("apply_damped_heat_diffusion: invalid dense_fallback_mode=%d (expected 0, 1, or 2)",
+                 dense_fallback_mode);
+    }
+
+    const auto dense_memory_gib = [n]() -> double {
+        const long double nn = static_cast<long double>(n);
+        const long double bytes = nn * nn * static_cast<long double>(sizeof(double));
+        const long double gib = 1024.0L * 1024.0L * 1024.0L;
+        return static_cast<double>(bytes / gib);
+    };
+
+    const bool force_direct_solver = (fallback_mode == dense_fallback_mode_t::ALWAYS);
+    const bool allow_direct_solver = (fallback_mode != dense_fallback_mode_t::NEVER);
+    const bool should_attempt_cg =
+        !force_direct_solver &&
+        (fallback_mode == dense_fallback_mode_t::NEVER || n > DIRECT_SOLVER_THRESHOLD);
 
     // ------------------------------------------------------------------------
     // ATTEMPT 1: Conjugate Gradient (fast for well-conditioned systems)
     // ------------------------------------------------------------------------
-    if (n > DIRECT_SOLVER_THRESHOLD) {
+    if (should_attempt_cg) {
         Eigen::ConjugateGradient<spmat_t, Eigen::Lower|Eigen::Upper,
                                  Eigen::DiagonalPreconditioner<double>> cg;
 
         cg_attempted = true;
-        cg.setMaxIterations(2000);
+        cg.setMaxIterations(CG_MAX_ITER);
         cg.setTolerance(1e-8);
         cg.compute(A);
 
-        // CG diagnostics
-        // const Eigen::ComputationInfo cg_status = cg.info();
-        cg_iterations = cg.iterations();
-        cg_error = cg.error();  // Residual norm
-
         if (cg.info() == Eigen::Success) {
             rho_new = cg.solve(b);
+            cg_iterations = cg.iterations();
+            cg_error = cg.error();  // Residual norm
             cg_ok = (cg.info() == Eigen::Success && cg_error < CG_RESIDUAL_THRESHOLD);
 
             // Quick check: if many negative values, CG solution is garbage
@@ -2736,13 +2775,16 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                     }
                 }
             }
+        } else {
+            cg_iterations = cg.iterations();
+            cg_error = cg.error();
         }
 
         // Determine if CG had issues
         if (!cg_ok) {
             Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
                        "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
-                       cg_iterations, 2000, cg_error, 1e-8);
+                       cg_iterations, CG_MAX_ITER, cg_error, 1e-8);
         } else if (cg_error > 1e-6) {
             // Converged but with larger-than-ideal residual
             if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
@@ -2755,7 +2797,14 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
     // ------------------------------------------------------------------------
     // ATTEMPT 2: Direct solver fallback (robust but O(n³))
     // ------------------------------------------------------------------------
-    if (!cg_ok || n <= DIRECT_SOLVER_THRESHOLD) {
+    bool should_use_direct_solver = false;
+    if (force_direct_solver) {
+        should_use_direct_solver = true;
+    } else if (fallback_mode == dense_fallback_mode_t::AUTO) {
+        should_use_direct_solver = (n <= DIRECT_SOLVER_THRESHOLD) || !cg_ok;
+    }
+
+    if (should_use_direct_solver && allow_direct_solver) {
         used_direct_solver = true;
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && cg_attempted && !cg_ok) {
@@ -2763,14 +2812,23 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                     cg_error, cg_iterations, static_cast<long>(n));
         }
 
-        if (!cg_ok && n > 5000) {
-            Rf_warning("Direct solver fallback for large matrix (n=%ld) may be slow. "
-                       "Consider adjusting parameters.", static_cast<long>(n));
+        if (n > 5000) {
+            Rf_warning("apply_damped_heat_diffusion: direct solver for large matrix "
+                       "(n=%ld, estimated dense memory %.2f GiB) may be slow or memory-intensive.",
+                       static_cast<long>(n), dense_memory_gib());
         }
 
         // Convert sparse A to dense for direct solve
         // For n < 2500, this is ~32MB and very fast
-        Eigen::MatrixXd A_dense = Eigen::MatrixXd(A);
+        Eigen::MatrixXd A_dense;
+        try {
+            A_dense = Eigen::MatrixXd(A);
+        } catch (const std::bad_alloc&) {
+            Rf_error("apply_damped_heat_diffusion: dense solver allocation failed "
+                     "(n=%ld, estimated dense memory %.2f GiB). "
+                     "Retry with dense.fallback='never' to force iterative-only mode.",
+                     static_cast<long>(n), dense_memory_gib());
+        }
 
         // Symmetry diagnostics on the *assembled* matrix (before any symmetrization)
         double rel_asym_frob = NA_REAL;
@@ -2826,21 +2884,29 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
                          "unacceptable residuals (%.3e). System may be singular.", lu_residual);
             }
         }
-    } else if (!cg_ok) {
-        // Large matrix and CG failed - no good fallback
-        Rf_error("apply_damped_heat_diffusion: CG solver failed for large matrix (n=%ld). "
-                 "Consider reducing t_diffusion or increasing beta_damping.",
-                 static_cast<long>(n));
+    }
+
+    if (!cg_ok && !used_direct_solver) {
+        if (fallback_mode == dense_fallback_mode_t::NEVER) {
+            Rf_error("apply_damped_heat_diffusion: iterative solver failed with dense.fallback='never' "
+                     "(n=%ld, nnz=%ld, cg.iterations=%d/%d, cg.residual=%.3e, "
+                     "cg.accept.threshold=%.1e, estimated.dense.memory=%.2f GiB). "
+                     "Try reducing t_diffusion, increasing beta_damping, or using dense.fallback='auto'.",
+                     static_cast<long>(n),
+                     static_cast<long>(A.nonZeros()),
+                     cg_iterations,
+                     CG_MAX_ITER,
+                     cg_error,
+                     CG_RESIDUAL_THRESHOLD,
+                     dense_memory_gib());
+        } else {
+            Rf_error("apply_damped_heat_diffusion: CG solver failed (n=%ld, residual=%.3e).",
+                     static_cast<long>(n), cg_error);
+        }
     }
 
     // Update diagnostic flags for downstream reporting
-    bool cg_suspicious = (cg_ok && cg_error > 1e-6);
-
-    if (!cg_ok && !used_direct_solver) {
-        Rf_warning("apply_damped_heat_diffusion: CG solver did not converge "
-                   "(iterations=%d/%d, residual=%.3e, tolerance=%.3e)",
-                   cg_iterations, 2000, cg_error, 1e-8);
-    }
+    bool cg_suspicious = (cg_attempted && cg_ok && cg_error > 1e-6);
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
         if (used_direct_solver) {
@@ -5638,6 +5704,9 @@ void riem_dcx_t::fit_rdgraph_regression(
     double dk_clamp_median_factor,
     double target_weight_ratio,
     double pathological_ratio_threshold,
+    const std::string& knn_cache_path,
+    int knn_cache_mode,
+    int dense_fallback_mode,
     verbose_level_t verbose_level
     ) {
     // ================================================================
@@ -5648,11 +5717,11 @@ void riem_dcx_t::fit_rdgraph_regression(
     auto phase_time = std::chrono::steady_clock::now();
 
     // --------------------------------------------------------------
-    // Phase 1-4: Build geometric structure
+    // Phases 1-4: Build geometric structure
     // --------------------------------------------------------------
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("Phase 1-4: Build geometric structure ... ");
+        Rprintf("Phases 1-4: Build geometric structure\n");
     }
 
     initialize_from_knn(
@@ -5668,6 +5737,8 @@ void riem_dcx_t::fit_rdgraph_regression(
         dk_clamp_median_factor,
         target_weight_ratio,
         pathological_ratio_threshold,
+        knn_cache_path,
+        knn_cache_mode,
         verbose_level
         );
 
@@ -5953,6 +6024,12 @@ void riem_dcx_t::fit_rdgraph_regression(
     // ================================================================
     // PART II: ITERATIVE REFINEMENT
     // ================================================================
+    // Fast path: when counting measure is used and response-coherence modulation
+    // is disabled, the geometric updates are effectively no-ops.
+    const bool skip_iterative_refinement =
+        use_counting_measure && std::abs(gamma_modulation) <= 1e-15;
+    const int max_iterations_effective =
+        skip_iterative_refinement ? 0 : max_iterations;
 
     // Note: epsilon_rho parameter is accepted for API compatibility but not
     // used in the simplified convergence checking that monitors only response
@@ -5982,10 +6059,14 @@ void riem_dcx_t::fit_rdgraph_regression(
     }
 
     // Initialize convergence tracking
-    converged = false;
+    converged = skip_iterative_refinement;
     n_iterations = 0;
     response_changes.clear();
     double prev_lambda_2 = NA_REAL;
+
+    if (skip_iterative_refinement && vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("Skipping iterative refinement: use_counting_measure=TRUE and gamma=0 keep geometry fixed.\n");
+    }
 
     // Early-stop: best-so-far GCV plateau tracking
     const double gcv_improve_eps = 1e-7;  // requested scale
@@ -5993,10 +6074,10 @@ void riem_dcx_t::fit_rdgraph_regression(
     double best_gcv_so_far = gcv_history.iterations.back().gcv_optimal;
     int gcv_no_improve_count = 0;
     std::vector<double> density_change_rel_history;
-    density_change_rel_history.reserve(max_iterations);
+    density_change_rel_history.reserve(max_iterations_effective);
     vec_t rho_prev_iter;  // for density change across iterations
 
-    for (int iter = 1; iter <= max_iterations; ++iter) {
+    for (int iter = 1; iter <= max_iterations_effective; ++iter) {
 
         auto iter_time = std::chrono::steady_clock::now();
 
@@ -6016,6 +6097,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             rho_vertex_prev,
             t_diffusion,
             beta_damping,
+            dense_fallback_mode,
             verbose_level
             );
 
@@ -7193,4 +7275,3 @@ void riem_dcx_t::apply_rho_preconditioner_and_rebuild(const vec_t& rho_pre)
     // G) Invalidate spectral cache so Phase 4.5/5 recompute eigensystem on the new operators
     spectral_cache.invalidate();
 }
-

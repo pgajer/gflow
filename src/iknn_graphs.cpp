@@ -44,13 +44,23 @@
 #include <set>
 #include <memory>
 #include <utility>
+#include <string>
 #include <limits>
 #include <unordered_map>
+#include <cstdint>
+#include <cstddef>
+#include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <queue>
 #include <numeric>    // for std::iota
 #include <algorithm>
+#include <cmath>
+#include <chrono>
+#include <cstdio>
+#include <cerrno>
+#include <atomic>
 
 #include <ANN/ANN.h>  // ANN library header
 
@@ -70,7 +80,12 @@ extern "C" {
         SEXP s_max_path_edge_ratio_thld,
         SEXP s_path_edge_ratio_percentile,
         SEXP s_threshold_percentile,
-        SEXP s_compute_full
+        SEXP s_compute_full,
+        SEXP s_with_isize_pruning,
+        SEXP s_with_edge_pruning_stats,
+        SEXP s_knn_cache_path,
+        SEXP s_knn_cache_mode,
+        SEXP s_verbose
         );
 
     SEXP S_create_iknn_graphs(
@@ -83,12 +98,82 @@ extern "C" {
         SEXP s_threshold_percentile,
         // other
         SEXP s_compute_full,
+        SEXP s_with_isize_pruning,
+        SEXP s_with_edge_pruning_stats,
         SEXP s_n_cores,
+        SEXP s_parallel_mode,
+        SEXP s_hybrid_batch_size,
+        SEXP s_knn_cache_path,
+        SEXP s_knn_cache_mode,
         SEXP s_verbose
         );
+
+    SEXP S_compare_iknn_graph_builders(SEXP s_X,
+                                       SEXP s_k,
+                                       SEXP s_n_cores,
+                                       SEXP s_verbose);
 }
 
 iknn_graph_t create_iknn_graph(SEXP s_X, SEXP s_k);
+
+// Struct to hold kNN results for all points.
+struct knn_search_result_t {
+    std::vector<std::vector<int>> indices;      // [n_points][k]
+    std::vector<std::vector<double>> distances; // [n_points][k]
+    size_t n_points;
+    size_t k;
+
+    knn_search_result_t(size_t n, size_t k_val) : n_points(n), k(k_val) {
+        indices.resize(n_points, std::vector<int>(k));
+        distances.resize(n_points, std::vector<double>(k));
+    }
+};
+
+enum class knn_cache_mode_t : int {
+    none = 0,
+    read = 1,
+    write = 2,
+    readwrite = 3
+};
+
+enum class knn_cache_load_status_t : int {
+    loaded = 0,
+    not_found = 1,
+    invalid = 2,
+    io_error = 3
+};
+
+struct knn_cache_header_t {
+    char magic[8];
+    std::uint32_t version;
+    std::uint32_t endian_marker;
+    std::uint64_t n_points;
+    std::uint64_t n_features;
+    std::uint64_t k;
+};
+
+knn_search_result_t compute_knn(SEXP RX, int k);
+iknn_graph_t create_iknn_graph_pairscan_reference(const knn_search_result_t& knn_results, int k);
+iknn_graph_t create_iknn_graph_inverted_index(const knn_search_result_t& knn_results,
+                                              int k,
+                                              bool use_bucket_parallel,
+                                              int num_threads);
+void print_stage_running(const char* stage_name, bool verbose);
+void print_stage_done(const char* stage_name,
+                      const std::chrono::steady_clock::time_point& stage_start,
+                      bool verbose);
+knn_cache_load_status_t read_knn_cache_file(
+    const std::string& cache_path,
+    int expected_n_points,
+    int expected_n_features,
+    int required_k,
+    knn_search_result_t& out_knn_results,
+    std::string& out_reason);
+void write_knn_cache_file_atomic(
+    const std::string& cache_path,
+    const knn_search_result_t& knn_results,
+    int n_features);
+const char* knn_cache_mode_label(knn_cache_mode_t mode);
 
 std::vector<int> union_find(const std::vector<std::vector<int>>& adj_vect);
 std::unique_ptr<std::vector<std::vector<std::pair<int, int>>>> prune_long_edges(const std::unique_ptr<std::vector<std::vector<std::pair<int, int>>>>& wgraph, int version);
@@ -520,6 +605,153 @@ SEXP S_verify_pruning(SEXP s_X,
     return result;
 }
 
+SEXP S_compare_iknn_graph_builders(SEXP s_X,
+                                   SEXP s_k,
+                                   SEXP s_n_cores,
+                                   SEXP s_verbose) {
+    if (!Rf_isInteger(s_k)) {
+        Rf_error("k must be integer.");
+    }
+    const int k = Rf_asInteger(s_k);
+    if (k <= 0) {
+        Rf_error("k must be > 0.");
+    }
+
+    const bool verbose = (Rf_isLogical(s_verbose) && Rf_asLogical(s_verbose) == TRUE);
+
+    int num_threads = 1;
+    if (!Rf_isNull(s_n_cores)) {
+        if (!Rf_isInteger(s_n_cores) || Rf_length(s_n_cores) < 1) {
+            Rf_error("n_cores must be NULL or a length-1 integer.");
+        }
+        const int req = INTEGER(s_n_cores)[0];
+        if (req == NA_INTEGER) {
+            Rf_error("n_cores cannot be NA.");
+        }
+        if (req > 0) {
+            num_threads = req;
+        }
+    } else {
+        num_threads = gflow_get_num_procs();
+    }
+    if (num_threads < 1) {
+        num_threads = 1;
+    }
+    const int max_t = gflow_get_num_procs();
+    if (num_threads > max_t) {
+        num_threads = max_t;
+    }
+
+    auto knn_results = compute_knn(s_X, k);
+
+    auto t0 = std::chrono::steady_clock::now();
+    auto graph_ref = create_iknn_graph_pairscan_reference(knn_results, k);
+    const double ref_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t0
+    ).count();
+
+    t0 = std::chrono::steady_clock::now();
+    auto graph_new = create_iknn_graph_inverted_index(knn_results, k, num_threads > 1, num_threads);
+    const double new_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t0
+    ).count();
+
+    struct edge_value_t {
+        size_t isize;
+        double dist;
+    };
+    auto build_edge_map = [](const iknn_graph_t& g) {
+        std::unordered_map<std::uint64_t, edge_value_t> edge_map;
+        for (size_t i = 0; i < g.graph.size(); ++i) {
+            for (const auto& edge : g.graph[i]) {
+                if (i < edge.index) {
+                    const std::uint64_t key =
+                        (static_cast<std::uint64_t>(i) << 32U) |
+                        static_cast<std::uint64_t>(edge.index);
+                    edge_map.emplace(key, edge_value_t{edge.isize, edge.dist});
+                }
+            }
+        }
+        return edge_map;
+    };
+
+    auto edges_ref = build_edge_map(graph_ref);
+    auto edges_new = build_edge_map(graph_new);
+
+    int n_missing = 0;
+    int n_extra = 0;
+    int n_isize_mismatch = 0;
+    int n_dist_mismatch = 0;
+    double max_abs_dist_diff = 0.0;
+    constexpr double k_dist_tol = 1e-12;
+
+    for (const auto& kv : edges_ref) {
+        const auto it = edges_new.find(kv.first);
+        if (it == edges_new.end()) {
+            n_missing += 1;
+            continue;
+        }
+        if (kv.second.isize != it->second.isize) {
+            n_isize_mismatch += 1;
+        }
+        const double abs_diff = std::fabs(kv.second.dist - it->second.dist);
+        if (abs_diff > k_dist_tol) {
+            n_dist_mismatch += 1;
+        }
+        if (abs_diff > max_abs_dist_diff) {
+            max_abs_dist_diff = abs_diff;
+        }
+    }
+
+    for (const auto& kv : edges_new) {
+        if (edges_ref.find(kv.first) == edges_ref.end()) {
+            n_extra += 1;
+        }
+    }
+
+    const bool identical = (n_missing == 0 &&
+                            n_extra == 0 &&
+                            n_isize_mismatch == 0 &&
+                            n_dist_mismatch == 0);
+
+    if (verbose) {
+        Rprintf("pairscan_reference: %.3fs\n", ref_seconds);
+        Rprintf("inverted_index: %.3fs\n", new_seconds);
+        Rprintf("edge count ref/new: %zu / %zu\n", edges_ref.size(), edges_new.size());
+        Rprintf("missing=%d extra=%d isize_mismatch=%d dist_mismatch=%d max_abs_dist_diff=%.3e\n",
+                n_missing, n_extra, n_isize_mismatch, n_dist_mismatch, max_abs_dist_diff);
+    }
+
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 10));
+    SEXP names  = PROTECT(Rf_allocVector(STRSXP, 10));
+    SET_STRING_ELT(names, 0, Rf_mkChar("identical"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("n_edges_reference"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("n_edges_inverted"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("n_missing_edges"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("n_extra_edges"));
+    SET_STRING_ELT(names, 5, Rf_mkChar("n_isize_mismatch"));
+    SET_STRING_ELT(names, 6, Rf_mkChar("n_dist_mismatch"));
+    SET_STRING_ELT(names, 7, Rf_mkChar("max_abs_dist_diff"));
+    SET_STRING_ELT(names, 8, Rf_mkChar("reference_seconds"));
+    SET_STRING_ELT(names, 9, Rf_mkChar("inverted_seconds"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
+    UNPROTECT(1); // names
+
+    SET_VECTOR_ELT(result, 0, Rf_ScalarLogical(identical ? 1 : 0));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(static_cast<double>(edges_ref.size())));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(static_cast<double>(edges_new.size())));
+    SET_VECTOR_ELT(result, 3, Rf_ScalarInteger(n_missing));
+    SET_VECTOR_ELT(result, 4, Rf_ScalarInteger(n_extra));
+    SET_VECTOR_ELT(result, 5, Rf_ScalarInteger(n_isize_mismatch));
+    SET_VECTOR_ELT(result, 6, Rf_ScalarInteger(n_dist_mismatch));
+    SET_VECTOR_ELT(result, 7, Rf_ScalarReal(max_abs_dist_diff));
+    SET_VECTOR_ELT(result, 8, Rf_ScalarReal(ref_seconds));
+    SET_VECTOR_ELT(result, 9, Rf_ScalarReal(new_seconds));
+
+    UNPROTECT(1); // result
+    return result;
+}
+
 
 
 // ------------------------------------------------------------------------------------------
@@ -946,14 +1178,15 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
                                 SEXP s_path_edge_ratio_percentile,
                                 SEXP s_threshold_percentile,
                                 // other
-                                SEXP s_compute_full) {
+                                SEXP s_compute_full,
+                                SEXP s_with_isize_pruning,
+                                SEXP s_with_edge_pruning_stats,
+                                SEXP s_knn_cache_path,
+                                SEXP s_knn_cache_mode,
+                                SEXP s_verbose) {
 
-    #define DEBUG_S_CREATE_IKNN_GRAPH 0
-
-    std::string debug_dir;
-    #if DEBUG_S_CREATE_IKNN_GRAPH
-        debug_dir = "/tmp/gflow_debug/create_iknn_graph/";
-    #endif
+    const int max_alt_path_length = 2;
+    auto total_start_time = std::chrono::steady_clock::now();
 
     // --- Validate and extract dimensions
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
@@ -962,27 +1195,142 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         Rf_error("X must be a numeric matrix with valid dimensions.");
     }
     const int n_vertices = INTEGER(s_dim)[0];
+    const int n_features = INTEGER(s_dim)[1];
     UNPROTECT(1); // s_dim
 
+    if (!Rf_isInteger(s_k)) {
+        Rf_error("k must be integer.");
+    }
+    const int k = Rf_asInteger(s_k);
+    if (k <= 0) {
+        Rf_error("k must be > 0.");
+    }
+
     // --- Validate and extract pruning parameters
-    if (!Rf_isReal(s_max_path_edge_ratio_thld) || !Rf_isReal(s_path_edge_ratio_percentile))
+    if (!Rf_isReal(s_max_path_edge_ratio_thld) || !Rf_isReal(s_path_edge_ratio_percentile)) {
         Rf_error("Threshold/percentile must be numeric.");
+    }
     const double max_path_edge_ratio_thld   = Rf_asReal(s_max_path_edge_ratio_thld);
     const double path_edge_ratio_percentile = Rf_asReal(s_path_edge_ratio_percentile);
 
     // --- Validate and extract quantile pruning parameter
-    if (!Rf_isReal(s_threshold_percentile))
+    if (!Rf_isReal(s_threshold_percentile)) {
         Rf_error("threshold_percentile must be numeric.");
+    }
     const double threshold_percentile = Rf_asReal(s_threshold_percentile);
-
     if (threshold_percentile < 0.0 || threshold_percentile > 0.5) {
         Rf_error("threshold_percentile must be in [0.0, 0.5]. Got %.3f", threshold_percentile);
     }
 
-    const int compute_full = (Rf_asLogical(s_compute_full) == TRUE);
+    if (!Rf_isLogical(s_compute_full) ||
+        !Rf_isLogical(s_with_isize_pruning) ||
+        !Rf_isLogical(s_with_edge_pruning_stats) ||
+        !Rf_isLogical(s_verbose)) {
+        Rf_error("compute_full, with_isize_pruning, with_edge_pruning_stats, and verbose must be logical.");
+    }
+    const bool compute_full             = (Rf_asLogical(s_compute_full) == TRUE);
+    const bool with_isize_pruning       = (Rf_asLogical(s_with_isize_pruning) == TRUE);
+    const bool with_edge_pruning_stats  = (Rf_asLogical(s_with_edge_pruning_stats) == TRUE);
+    const bool verbose                  = (Rf_asLogical(s_verbose) == TRUE);
 
-    // ---- Create kNN graph (C++ side; no R allocations assumed)
-    auto iknn_graph = create_iknn_graph(s_X, s_k);
+    if (!Rf_isInteger(s_knn_cache_mode) || Rf_length(s_knn_cache_mode) < 1) {
+        Rf_error("knn.cache.mode must be a length-1 integer.");
+    }
+    const int knn_cache_mode_raw = INTEGER(s_knn_cache_mode)[0];
+    if (knn_cache_mode_raw == NA_INTEGER ||
+        knn_cache_mode_raw < static_cast<int>(knn_cache_mode_t::none) ||
+        knn_cache_mode_raw > static_cast<int>(knn_cache_mode_t::readwrite)) {
+        Rf_error("knn.cache.mode must be in {0,1,2,3}.");
+    }
+    const knn_cache_mode_t knn_cache_mode = static_cast<knn_cache_mode_t>(knn_cache_mode_raw);
+
+    std::string knn_cache_path;
+    if (!Rf_isNull(s_knn_cache_path)) {
+        if (TYPEOF(s_knn_cache_path) != STRSXP ||
+            Rf_length(s_knn_cache_path) != 1 ||
+            STRING_ELT(s_knn_cache_path, 0) == NA_STRING) {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar.");
+        }
+        const char* path_cstr = CHAR(STRING_ELT(s_knn_cache_path, 0));
+        if (path_cstr == nullptr || path_cstr[0] == '\0') {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar.");
+        }
+        knn_cache_path.assign(path_cstr);
+    }
+    if (knn_cache_mode != knn_cache_mode_t::none && knn_cache_path.empty()) {
+        Rf_error("knn.cache.path must be provided when knn.cache.mode is not 'none'.");
+    }
+
+    int num_threads = gflow_get_num_procs();
+    if (num_threads < 1) {
+        num_threads = 1;
+    }
+    gflow_set_num_threads(num_threads);
+
+    if (verbose) {
+#if defined(_OPENMP)
+        Rprintf("Using %d OpenMP thread%s for single-k graph construction\n",
+                num_threads, (num_threads == 1 ? "" : "s"));
+#else
+        Rprintf("OpenMP not enabled; running single-threaded.\n");
+#endif
+    }
+
+    auto stage_start = std::chrono::steady_clock::now();
+    print_stage_running("compute_knn", verbose);
+    knn_search_result_t knn_results(static_cast<size_t>(n_vertices), 0);
+    bool knn_cache_hit = false;
+    bool knn_cache_written = false;
+
+    if (knn_cache_mode == knn_cache_mode_t::read || knn_cache_mode == knn_cache_mode_t::readwrite) {
+        std::string cache_reason;
+        const knn_cache_load_status_t cache_status = read_knn_cache_file(
+            knn_cache_path,
+            n_vertices,
+            n_features,
+            k,
+            knn_results,
+            cache_reason
+        );
+        if (cache_status == knn_cache_load_status_t::loaded) {
+            knn_cache_hit = true;
+        } else if (cache_status == knn_cache_load_status_t::not_found &&
+                   knn_cache_mode == knn_cache_mode_t::readwrite) {
+            knn_cache_hit = false;
+        } else {
+            Rf_error("Failed to read kNN cache '%s': %s", knn_cache_path.c_str(), cache_reason.c_str());
+        }
+    }
+
+    if (!knn_cache_hit) {
+        knn_results = compute_knn(s_X, k);
+        if (knn_cache_mode == knn_cache_mode_t::write || knn_cache_mode == knn_cache_mode_t::readwrite) {
+            write_knn_cache_file_atomic(knn_cache_path, knn_results, n_features);
+            knn_cache_written = true;
+        }
+    }
+    print_stage_done("compute_knn", stage_start, verbose);
+    if (verbose && knn_cache_mode != knn_cache_mode_t::none) {
+        if (knn_cache_hit) {
+            Rprintf("[compute_knn] cache hit (%s, cached_k=%zu)\n",
+                    knn_cache_path.c_str(),
+                    knn_results.k);
+        } else if (knn_cache_written) {
+            Rprintf("[compute_knn] cache saved (%s, k=%d)\n",
+                    knn_cache_path.c_str(),
+                    k);
+        } else {
+            Rprintf("[compute_knn] cache mode: %s\n", knn_cache_mode_label(knn_cache_mode));
+        }
+    }
+
+    stage_start = std::chrono::steady_clock::now();
+    print_stage_running("graph_build (inverted index)", verbose);
+    auto iknn_graph = create_iknn_graph_inverted_index(knn_results,
+                                                       k,
+                                                       true,
+                                                       num_threads);
+    print_stage_done("graph_build (inverted index)", stage_start, verbose);
 
     // ---- Count total edges (undirected stored twice)
     int n_edges = 0;
@@ -995,170 +1343,143 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     n_edges /= 2;
 
     // ---- Build plain C++ adjacency/weight lists for original graph
-    std::vector<std::vector<int>>    adj_vect(n_vertices);
-    std::vector<std::vector<double>> dist_vect(n_vertices);
+    std::vector<std::vector<int>>    adj_vect(static_cast<size_t>(n_vertices));
+    std::vector<std::vector<double>> dist_vect(static_cast<size_t>(n_vertices));
     for (size_t i = 0; i < iknn_graph.graph.size(); ++i) {
         const auto& nbrs = iknn_graph.graph[i];
         adj_vect[i].reserve(nbrs.size());
         dist_vect[i].reserve(nbrs.size());
         for (const auto& nn : nbrs) {
-            adj_vect[i].push_back(nn.index);  // 0-based here
+            adj_vect[i].push_back(static_cast<int>(nn.index));  // 0-based here
             dist_vect[i].push_back(nn.dist);
         }
     }
 
-    // ---- Stage 1: Geometric pruning based on path-to-edge ratios
+    // ---- Stage 1/2: geometric + optional quantile pruning
+    const bool do_geometric_prune = (max_path_edge_ratio_thld > 1.0);
+    if (do_geometric_prune) {
+        stage_start = std::chrono::steady_clock::now();
+        print_stage_running("geometric_prune", verbose);
+    }
     size_t n_edges_after_geometric_sz = 0;
-
     set_wgraph_t temp_graph_for_pruning(iknn_graph);
+    set_wgraph_t pruned_graph = temp_graph_for_pruning;
 
-    #if DEBUG_S_CREATE_IKNN_GRAPH
-        Rprintf("=== S_create_single_iknn_graph: Geometric Pruning ===\n");
-        Rprintf("Parameters: max_path_edge_ratio_thld=%.3f, path_edge_ratio_percentile=%.3f\n",
-                max_path_edge_ratio_thld, path_edge_ratio_percentile);
-        Rprintf("Edges before pruning: %d\n", n_edges);
-    #endif
-
-    set_wgraph_t pruned_graph = temp_graph_for_pruning.prune_edges_geometrically(
-        max_path_edge_ratio_thld,
-        path_edge_ratio_percentile
+    if (do_geometric_prune) {
+        pruned_graph = pruned_graph.prune_edges_geometrically(
+            max_path_edge_ratio_thld,
+            path_edge_ratio_percentile,
+            verbose
         );
+        print_stage_done("geometric_prune", stage_start, verbose);
+    } else if (verbose) {
+        Rprintf("[geometric_prune] skipped (max.path.edge.ratio.deviation.thld=0)\n");
+    }
 
     for (const auto& nbrs : pruned_graph.adjacency_list) {
         n_edges_after_geometric_sz += nbrs.size();
     }
     n_edges_after_geometric_sz /= 2;
 
-    #if DEBUG_S_CREATE_IKNN_GRAPH
-        Rprintf("=== After geometric pruning ===\n");
-        Rprintf("Edges after pruning: %zu\n", n_edges_after_geometric_sz);
-        Rprintf("Edges removed: %d\n", n_edges - (int)n_edges_after_geometric_sz);
-        Rprintf("Pruning ratio: %.2f%%\n", 100.0 * (n_edges - n_edges_after_geometric_sz) / n_edges);
-    #endif
-
-    // ---- Stage 2: Quantile-based edge length pruning (if requested)
     size_t n_edges_in_pruned_graph_sz = n_edges_after_geometric_sz;
-
     if (threshold_percentile > 0.0) {
-        #if DEBUG_S_CREATE_IKNN_GRAPH
-            Rprintf("=== Applying quantile-based edge length pruning ===\n");
-            Rprintf("threshold_percentile=%.3f (removing top %.1f%% of edges by length)\n",
-                    threshold_percentile, 100.0 * (1.0 - threshold_percentile));
-        #endif
-
         pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
-
-        // Recount edges after quantile pruning
         n_edges_in_pruned_graph_sz = 0;
         for (const auto& nbrs : pruned_graph.adjacency_list) {
             n_edges_in_pruned_graph_sz += nbrs.size();
         }
         n_edges_in_pruned_graph_sz /= 2;
-
-        #if DEBUG_S_CREATE_IKNN_GRAPH
-            Rprintf("=== After quantile pruning ===\n");
-            Rprintf("Edges after quantile pruning: %zu\n", n_edges_in_pruned_graph_sz);
-            Rprintf("Additional edges removed: %zu\n",
-                    n_edges_after_geometric_sz - n_edges_in_pruned_graph_sz);
-        #endif
+    }
+    // ---- Stage 3: optional intersection-size pruning
+    vect_wgraph_t isize_pruned_graph;
+    size_t n_edges_isize_pruned_sz = 0;
+    if (with_isize_pruning) {
+        stage_start = std::chrono::steady_clock::now();
+        print_stage_running("isize_prune", verbose);
+        isize_pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
+        for (const auto& nbrs : isize_pruned_graph.adjacency_list) {
+            n_edges_isize_pruned_sz += nbrs.size();
+        }
+        n_edges_isize_pruned_sz /= 2;
+        print_stage_done("isize_prune", stage_start, verbose);
+    } else if (verbose) {
+        Rprintf("[isize_prune] skipped (with.isize.pruning=FALSE)\n");
     }
 
-    // ========== DEBUG OUTPUT ==========
-    #if DEBUG_S_CREATE_IKNN_GRAPH
-        // Extract edges from pruned graph
-        std::vector<std::pair<index_t, index_t>> edges_post_pruning;
-        std::vector<double> weights_post_pruning;
-
-        const size_t n_vertices_sz = pruned_graph.adjacency_list.size();
-        for (size_t i = 0; i < n_vertices_sz; ++i) {
-            for (const auto& edge_info : pruned_graph.adjacency_list[i]) {
-                index_t j = edge_info.vertex;
-                if (j > i) {  // Only count each edge once
-                    edges_post_pruning.push_back({
-                            static_cast<index_t>(i),
-                            static_cast<index_t>(j)
-                        });
-                    weights_post_pruning.push_back(edge_info.weight);
-                }
-            }
-        }
-
-        // Save binary edge list (for exact comparison)
-        debug_serialization::save_edge_list(
-            debug_dir + "phase_1c_edges_post_pruning.bin",
-            edges_post_pruning,
-            weights_post_pruning,
-            "PHASE_1C_POST_PRUNING_ALL"
-            );
-
-        // Save CSV (for easy inspection in R)
-        debug_serialization::save_edge_list_csv(
-            debug_dir + "phase_1c_edges_post_pruning.csv",
-            edges_post_pruning,
-            weights_post_pruning
-            );
-
-        // Compute and save connectivity
-        std::vector<int> component_ids;
-        size_t n_components = debug_serialization::compute_connected_components_from_set_wgraph(
-            pruned_graph, component_ids
-            );
-
-        debug_serialization::save_connectivity(
-            debug_dir + "phase_1e_connectivity.bin",
-            component_ids,
-            n_components
-            );
-
-        Rprintf("Connected components after all pruning: %zu\n", n_components);
-        if (n_components > 1) {
-            Rprintf("WARNING: Graph is disconnected after pruning!\n");
-        }
-    #endif
-    // ========== END DEBUG OUTPUT ==========
+    edge_pruning_stats_t edge_pruning_stats;
+    if (with_edge_pruning_stats) {
+        stage_start = std::chrono::steady_clock::now();
+        print_stage_running("edge_pruning_stats", verbose);
+        edge_pruning_stats = pruned_graph.compute_edge_pruning_stats(path_edge_ratio_percentile);
+        print_stage_done("edge_pruning_stats", stage_start, verbose);
+    } else if (verbose) {
+        Rprintf("[edge_pruning_stats] skipped (with.edge.pruning.stats=FALSE)\n");
+    }
 
     const int n_edges_in_pruned_graph =
         (n_edges_in_pruned_graph_sz > static_cast<size_t>(INT_MAX))
         ? INT_MAX
         : static_cast<int>(n_edges_in_pruned_graph_sz);
 
-    // -------- Result list
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 10));
+    const int removed = n_edges - n_edges_in_pruned_graph;
+    const double ratio = (n_edges > 0) ? (static_cast<double>(removed) / static_cast<double>(n_edges)) : 0.0;
 
-    // names
+    double n_edges_isize_d = NA_REAL;
+    double double_removed_d = NA_REAL;
+    double double_red_ratio = NA_REAL;
+    if (with_isize_pruning) {
+        n_edges_isize_d = static_cast<double>(n_edges_isize_pruned_sz);
+        double_removed_d = static_cast<double>(n_edges_in_pruned_graph_sz - n_edges_isize_pruned_sz);
+        double_red_ratio = (n_edges_in_pruned_graph_sz > 0)
+            ? (double_removed_d / static_cast<double>(n_edges_in_pruned_graph_sz))
+            : 0.0;
+    }
+
+    // -------- Result list
+    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 16));
     {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 10));
-        SET_STRING_ELT(names, 0, Rf_mkChar("adj_list"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("isize_list"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("weight_list"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("conn_comps"));
-        SET_STRING_ELT(names, 4, Rf_mkChar("pruned_adj_list"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("pruned_weight_list"));
-        SET_STRING_ELT(names, 6, Rf_mkChar("n_edges"));
-        SET_STRING_ELT(names, 7, Rf_mkChar("n_edges_in_pruned_graph"));
-        SET_STRING_ELT(names, 8, Rf_mkChar("n_removed_edges"));
-        SET_STRING_ELT(names, 9, Rf_mkChar("edge_reduction_ratio"));
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 16));
+        SET_STRING_ELT(names, 0,  Rf_mkChar("adj_list"));
+        SET_STRING_ELT(names, 1,  Rf_mkChar("isize_list"));
+        SET_STRING_ELT(names, 2,  Rf_mkChar("weight_list"));
+        SET_STRING_ELT(names, 3,  Rf_mkChar("conn_comps"));
+        SET_STRING_ELT(names, 4,  Rf_mkChar("pruned_adj_list"));
+        SET_STRING_ELT(names, 5,  Rf_mkChar("pruned_weight_list"));
+        SET_STRING_ELT(names, 6,  Rf_mkChar("n_edges"));
+        SET_STRING_ELT(names, 7,  Rf_mkChar("n_edges_in_pruned_graph"));
+        SET_STRING_ELT(names, 8,  Rf_mkChar("n_removed_edges"));
+        SET_STRING_ELT(names, 9,  Rf_mkChar("edge_reduction_ratio"));
+        SET_STRING_ELT(names, 10, Rf_mkChar("isize_pruned_adj_list"));
+        SET_STRING_ELT(names, 11, Rf_mkChar("isize_pruned_weight_list"));
+        SET_STRING_ELT(names, 12, Rf_mkChar("n_edges_in_isize_pruned_graph"));
+        SET_STRING_ELT(names, 13, Rf_mkChar("n_removed_edges_in_double_pruning"));
+        SET_STRING_ELT(names, 14, Rf_mkChar("double_edge_reduction_ratio"));
+        SET_STRING_ELT(names, 15, Rf_mkChar("edge_pruning_stats"));
         Rf_setAttrib(r_result, R_NamesSymbol, names);
         UNPROTECT(1); // names
     }
 
-    // ---- pruned lists
+    // ---- geometric pruned lists
     {
-        SEXP pruned_adj_list   = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        SEXP pruned_weight_list= PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP pruned_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP pruned_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
         for (int i = 0; i < n_vertices; ++i) {
             const auto& edges = pruned_graph.adjacency_list[static_cast<size_t>(i)];
 
-            SEXP RA = PROTECT(Rf_allocVector(INTSXP, (R_len_t)edges.size()));
-            int* A  = INTEGER(RA);
-            for (const auto& e : edges) { *A++ = (int)e.vertex + 1; }
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, static_cast<R_len_t>(edges.size())));
+            int* A = INTEGER(RA);
+            for (const auto& e : edges) {
+                *A++ = static_cast<int>(e.vertex) + 1;
+            }
             SET_VECTOR_ELT(pruned_adj_list, i, RA);
             UNPROTECT(1); // RA
 
-            SEXP RD = PROTECT(Rf_allocVector(REALSXP, (R_len_t)edges.size()));
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, static_cast<R_len_t>(edges.size())));
             double* D = REAL(RD);
-            for (const auto& e : edges) { *D++ = e.weight; }
+            for (const auto& e : edges) {
+                *D++ = e.weight;
+            }
             SET_VECTOR_ELT(pruned_weight_list, i, RD);
             UNPROTECT(1); // RD
         }
@@ -1168,71 +1489,143 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         UNPROTECT(2); // pruned_adj_list, pruned_weight_list
     }
 
-    // ---- stats (protect each scalar prior to SET_VECTOR_ELT)
+    // ---- scalar stats
     {
-        const int removed = n_edges - n_edges_in_pruned_graph;
-        const double ratio = (n_edges > 0) ? ((double)removed / (double)n_edges) : 0.0;
-
-        SEXP s0 = PROTECT(Rf_ScalarReal((double)n_edges));
+        SEXP s0 = PROTECT(Rf_ScalarReal(static_cast<double>(n_edges)));
         SET_VECTOR_ELT(r_result, 6, s0);
         UNPROTECT(1);
 
-        SEXP s1 = PROTECT(Rf_ScalarReal((double)n_edges_in_pruned_graph));
+        SEXP s1 = PROTECT(Rf_ScalarReal(static_cast<double>(n_edges_in_pruned_graph)));
         SET_VECTOR_ELT(r_result, 7, s1);
         UNPROTECT(1);
 
-        SEXP s2 = PROTECT(Rf_ScalarReal((double)removed));
+        SEXP s2 = PROTECT(Rf_ScalarReal(static_cast<double>(removed)));
         SET_VECTOR_ELT(r_result, 8, s2);
         UNPROTECT(1);
 
         SEXP s3 = PROTECT(Rf_ScalarReal(ratio));
         SET_VECTOR_ELT(r_result, 9, s3);
         UNPROTECT(1);
+
+        SEXP s4 = PROTECT(Rf_ScalarReal(n_edges_isize_d));
+        SET_VECTOR_ELT(r_result, 12, s4);
+        UNPROTECT(1);
+
+        SEXP s5 = PROTECT(Rf_ScalarReal(double_removed_d));
+        SET_VECTOR_ELT(r_result, 13, s5);
+        UNPROTECT(1);
+
+        SEXP s6 = PROTECT(Rf_ScalarReal(double_red_ratio));
+        SET_VECTOR_ELT(r_result, 14, s6);
+        UNPROTECT(1);
+    }
+
+    if (compute_full && with_isize_pruning) {
+        SEXP isize_adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP isize_weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+
+        for (int i = 0; i < n_vertices; ++i) {
+            const auto& edges = isize_pruned_graph.adjacency_list[static_cast<size_t>(i)];
+
+            SEXP RA = PROTECT(Rf_allocVector(INTSXP, static_cast<R_len_t>(edges.size())));
+            int* A = INTEGER(RA);
+            for (const auto& e : edges) {
+                *A++ = static_cast<int>(e.vertex) + 1;
+            }
+            SET_VECTOR_ELT(isize_adj_list, i, RA);
+            UNPROTECT(1);
+
+            SEXP RD = PROTECT(Rf_allocVector(REALSXP, static_cast<R_len_t>(edges.size())));
+            double* D = REAL(RD);
+            for (const auto& e : edges) {
+                *D++ = e.weight;
+            }
+            SET_VECTOR_ELT(isize_weight_list, i, RD);
+            UNPROTECT(1);
+        }
+
+        SET_VECTOR_ELT(r_result, 10, isize_adj_list);
+        SET_VECTOR_ELT(r_result, 11, isize_weight_list);
+        UNPROTECT(2); // isize_adj_list, isize_weight_list
+    } else {
+        SET_VECTOR_ELT(r_result, 10, R_NilValue);
+        SET_VECTOR_ELT(r_result, 11, R_NilValue);
+    }
+
+    if (with_edge_pruning_stats) {
+        const size_t nrows_sz = edge_pruning_stats.stats.size();
+        if (nrows_sz > static_cast<size_t>(INT_MAX)) {
+            Rf_error("Too many rows in edge pruning stats.");
+        }
+        SEXP edge_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, static_cast<R_len_t>(nrows_sz), 2));
+        double* data = REAL(edge_stats_matrix);
+        for (size_t i = 0; i < nrows_sz; ++i) {
+            data[i] = edge_pruning_stats.stats[i].edge_length;
+            data[i + nrows_sz] = edge_pruning_stats.stats[i].length_ratio;
+        }
+        SEXP dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue);
+        SEXP colnames = PROTECT(Rf_allocVector(STRSXP, 2));
+        SET_STRING_ELT(colnames, 0, Rf_mkChar("edge_length"));
+        SET_STRING_ELT(colnames, 1, Rf_mkChar("length_ratio"));
+        SET_VECTOR_ELT(dimnames, 1, colnames);
+        Rf_setAttrib(edge_stats_matrix, R_DimNamesSymbol, dimnames);
+        SET_VECTOR_ELT(r_result, 15, edge_stats_matrix);
+        UNPROTECT(3); // edge_stats_matrix, dimnames, colnames
+    } else {
+        SET_VECTOR_ELT(r_result, 15, R_NilValue);
     }
 
     // ---- optional full graph payload
     if (compute_full) {
-        SEXP adj_list               = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP adj_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
         SEXP intersection_size_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
-        SEXP weight_list            = PROTECT(Rf_allocVector(VECSXP, n_vertices));
+        SEXP weight_list = PROTECT(Rf_allocVector(VECSXP, n_vertices));
 
         for (int i = 0; i < n_vertices; ++i) {
             // adjacency
             {
-                const auto m = (R_len_t)adj_vect[i].size();
+                const auto m = static_cast<R_len_t>(adj_vect[static_cast<size_t>(i)].size());
                 SEXP RA = PROTECT(Rf_allocVector(INTSXP, m));
-                int* A  = INTEGER(RA);
-                for (int idx = 0; idx < m; ++idx) A[idx] = adj_vect[i][(size_t)idx] + 1;
+                int* A = INTEGER(RA);
+                for (int idx = 0; idx < m; ++idx) {
+                    A[idx] = adj_vect[static_cast<size_t>(i)][static_cast<size_t>(idx)] + 1;
+                }
                 SET_VECTOR_ELT(adj_list, i, RA);
                 UNPROTECT(1);
             }
             // intersection sizes
             {
-                const auto m = (R_len_t)iknn_graph.graph[i].size();
+                const auto m = static_cast<R_len_t>(iknn_graph.graph[static_cast<size_t>(i)].size());
                 SEXP RW = PROTECT(Rf_allocVector(INTSXP, m));
-                int* W  = INTEGER(RW);
-                for (int idx = 0; idx < m; ++idx) W[idx] = iknn_graph.graph[i][(size_t)idx].isize;
+                int* W = INTEGER(RW);
+                for (int idx = 0; idx < m; ++idx) {
+                    W[idx] = static_cast<int>(
+                        iknn_graph.graph[static_cast<size_t>(i)][static_cast<size_t>(idx)].isize
+                    );
+                }
                 SET_VECTOR_ELT(intersection_size_list, i, RW);
                 UNPROTECT(1);
             }
             // distances
             {
-                const auto m = (R_len_t)dist_vect[i].size();
+                const auto m = static_cast<R_len_t>(dist_vect[static_cast<size_t>(i)].size());
                 SEXP RD = PROTECT(Rf_allocVector(REALSXP, m));
                 double* D = REAL(RD);
-                for (int idx = 0; idx < m; ++idx) D[idx] = dist_vect[i][(size_t)idx];
+                for (int idx = 0; idx < m; ++idx) {
+                    D[idx] = dist_vect[static_cast<size_t>(i)][static_cast<size_t>(idx)];
+                }
                 SET_VECTOR_ELT(weight_list, i, RD);
                 UNPROTECT(1);
             }
         }
 
-        // connected components
         std::vector<int> conn_comps = union_find(adj_vect);
         if (conn_comps.size() > static_cast<size_t>(INT_MAX)) {
             UNPROTECT(3); // adj_list, intersection_size_list, weight_list
             Rf_error("Connected component vector too large for int lengths.");
         }
-        SEXP s_conn_comps = PROTECT(Rf_allocVector(INTSXP, (R_len_t)conn_comps.size()));
+        SEXP s_conn_comps = PROTECT(Rf_allocVector(INTSXP, static_cast<R_len_t>(conn_comps.size())));
         std::copy(conn_comps.begin(), conn_comps.end(), INTEGER(s_conn_comps));
 
         SET_VECTOR_ELT(r_result, 0, adj_list);
@@ -1245,6 +1638,10 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
         SET_VECTOR_ELT(r_result, 1, R_NilValue);
         SET_VECTOR_ELT(r_result, 2, R_NilValue);
         SET_VECTOR_ELT(r_result, 3, R_NilValue);
+    }
+
+    if (verbose) {
+        elapsed_time(total_start_time, "Total elapsed time", true);
     }
 
     UNPROTECT(1); // r_result
@@ -1404,19 +1801,6 @@ std::vector<std::vector<std::pair<int, int>>> prune_graph(
 }
 
 
-// New struct to hold kNN results
-struct knn_search_result_t {
-    std::vector<std::vector<int>> indices;     // [n_points][k]
-    std::vector<std::vector<double>> distances; // [n_points][k]
-    size_t n_points;
-    size_t k;
-
-    knn_search_result_t(size_t n, size_t k_val) : n_points(n), k(k_val) {
-        indices.resize(n_points, std::vector<int>(k));
-        distances.resize(n_points, std::vector<double>(k));
-    }
-};
-
 // Function to compute kNN once for max k
 knn_search_result_t compute_knn(SEXP RX, int k) {
     // assume RX is REAL matrix; assert minimally
@@ -1435,7 +1819,6 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
     UNPROTECT(1); // Rk
     int *indices_raw   = INTEGER(VECTOR_ELT(knn_res, 0));
     double *dist_raw   = REAL(VECTOR_ELT(knn_res, 1));
-    UNPROTECT(1); // knn_res
 
     knn_search_result_t result((size_t)n_points, (size_t)k);
 
@@ -1446,33 +1829,139 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
         }
     }
 
+    UNPROTECT(1); // knn_res
+
     return result;
 }
 
-// Modified create_iknn_graph that uses pre-computed kNN results
-iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
-    size_t n_points = knn_results.n_points;
+struct bucket_member_t {
+    int point;
+    double dist_to_common_neighbor;
+};
+
+struct edge_accumulator_t {
+    int isize;
+    double min_dist;
+};
+
+using edge_accumulator_map_t = std::unordered_map<std::uint64_t, edge_accumulator_t>;
+
+static inline std::uint64_t pack_edge_key(size_t u, size_t v) {
+    return (static_cast<std::uint64_t>(u) << 32U) | static_cast<std::uint64_t>(v);
+}
+
+static inline std::pair<size_t, size_t> unpack_edge_key(std::uint64_t key) {
+    return {
+        static_cast<size_t>(key >> 32U),
+        static_cast<size_t>(key & 0xFFFFFFFFULL)
+    };
+}
+
+static inline void accumulate_edge(edge_accumulator_map_t& edge_map,
+                                   size_t u,
+                                   size_t v,
+                                   double cand_dist) {
+    const std::uint64_t key = pack_edge_key(u, v);
+    auto it = edge_map.find(key);
+    if (it == edge_map.end()) {
+        edge_map.emplace(key, edge_accumulator_t{1, cand_dist});
+    } else {
+        it->second.isize += 1;
+        if (cand_dist < it->second.min_dist) {
+            it->second.min_dist = cand_dist;
+        }
+    }
+}
+
+static std::vector<std::vector<bucket_member_t>> build_inverted_knn_index(
+    const knn_search_result_t& knn_results,
+    int k,
+    size_t* pair_work_out) {
+
+    const size_t n_points = knn_results.n_points;
+    std::vector<size_t> bucket_counts(n_points, 0);
+
+    for (size_t i = 0; i < n_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            const int neighbor = knn_results.indices[i][static_cast<size_t>(j)];
+            if (neighbor >= 0 && static_cast<size_t>(neighbor) < n_points) {
+                bucket_counts[static_cast<size_t>(neighbor)] += 1;
+            }
+        }
+    }
+
+    std::vector<std::vector<bucket_member_t>> buckets(n_points);
+    for (size_t i = 0; i < n_points; ++i) {
+        buckets[i].reserve(bucket_counts[i]);
+    }
+
+    for (size_t i = 0; i < n_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            const int neighbor = knn_results.indices[i][static_cast<size_t>(j)];
+            if (neighbor < 0 || static_cast<size_t>(neighbor) >= n_points) {
+                continue;
+            }
+            buckets[static_cast<size_t>(neighbor)].push_back({
+                static_cast<int>(i),
+                knn_results.distances[i][static_cast<size_t>(j)]
+            });
+        }
+    }
+
+    if (pair_work_out != nullptr) {
+        size_t pair_work = 0;
+        for (const auto& bucket : buckets) {
+            const size_t m = bucket.size();
+            if (m > 1) {
+                pair_work += (m * (m - 1)) / 2;
+            }
+        }
+        *pair_work_out = pair_work;
+    }
+
+    return buckets;
+}
+
+static inline void process_bucket(const std::vector<bucket_member_t>& bucket,
+                                  edge_accumulator_map_t& edge_map) {
+    const size_t m = bucket.size();
+    for (size_t a = 0; a < m; ++a) {
+        const int pt_i = bucket[a].point;
+        const double dist_i = bucket[a].dist_to_common_neighbor;
+
+        for (size_t b = a + 1; b < m; ++b) {
+            const int pt_j = bucket[b].point;
+            if (pt_i == pt_j) {
+                continue;
+            }
+            const size_t u = (pt_i < pt_j) ? static_cast<size_t>(pt_i) : static_cast<size_t>(pt_j);
+            const size_t v = (pt_i < pt_j) ? static_cast<size_t>(pt_j) : static_cast<size_t>(pt_i);
+            accumulate_edge(edge_map, u, v, dist_i + bucket[b].dist_to_common_neighbor);
+        }
+    }
+}
+
+iknn_graph_t create_iknn_graph_pairscan_reference(const knn_search_result_t& knn_results, int k) {
+    const size_t n_points = knn_results.n_points;
     iknn_graph_t res(n_points);
 
-    std::vector<int> nn_i(k);
-    std::vector<int> nn_j(k);
-    std::vector<int> sorted_nn_i(k);
-    std::vector<int> sorted_nn_j(k);
+    std::vector<int> nn_i(static_cast<size_t>(k));
+    std::vector<int> nn_j(static_cast<size_t>(k));
+    std::vector<int> sorted_nn_i(static_cast<size_t>(k));
+    std::vector<int> sorted_nn_j(static_cast<size_t>(k));
     std::vector<int> intersection;
 
-    for (size_t pt_i = 0; pt_i < n_points - 1; pt_i++) {
-        // Get k nearest neighbors for point i
-        for (int j = 0; j < k; j++) {
-            nn_i[j] = knn_results.indices[pt_i][j];
-            sorted_nn_i[j] = nn_i[j];
+    for (size_t pt_i = 0; pt_i < n_points - 1; ++pt_i) {
+        for (int j = 0; j < k; ++j) {
+            nn_i[static_cast<size_t>(j)] = knn_results.indices[pt_i][static_cast<size_t>(j)];
+            sorted_nn_i[static_cast<size_t>(j)] = nn_i[static_cast<size_t>(j)];
         }
         std::sort(sorted_nn_i.begin(), sorted_nn_i.end());
 
-        for (size_t pt_j = pt_i + 1; pt_j < n_points; pt_j++) {
-            // Get k nearest neighbors for point j
-            for (int j = 0; j < k; j++) {
-                nn_j[j] = knn_results.indices[pt_j][j];
-                sorted_nn_j[j] = nn_j[j];
+        for (size_t pt_j = pt_i + 1; pt_j < n_points; ++pt_j) {
+            for (int j = 0; j < k; ++j) {
+                nn_j[static_cast<size_t>(j)] = knn_results.indices[pt_j][static_cast<size_t>(j)];
+                sorted_nn_j[static_cast<size_t>(j)] = nn_j[static_cast<size_t>(j)];
             }
             std::sort(sorted_nn_j.begin(), sorted_nn_j.end());
 
@@ -1483,14 +1972,18 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
                 std::back_inserter(intersection)
             );
 
-            size_t common_count = intersection.size();
+            const size_t common_count = intersection.size();
             if (common_count > 0) {
                 double min_dist = std::numeric_limits<double>::max();
                 for (int x_k : intersection) {
-                    size_t idx_i = std::find(nn_i.begin(), nn_i.end(), x_k) - nn_i.begin();
-                    size_t idx_j = std::find(nn_j.begin(), nn_j.end(), x_k) - nn_j.begin();
-                    double dist_i_k = knn_results.distances[pt_i][idx_i];
-                    double dist_j_k = knn_results.distances[pt_j][idx_j];
+                    const size_t idx_i = static_cast<size_t>(
+                        std::find(nn_i.begin(), nn_i.end(), x_k) - nn_i.begin()
+                    );
+                    const size_t idx_j = static_cast<size_t>(
+                        std::find(nn_j.begin(), nn_j.end(), x_k) - nn_j.begin()
+                    );
+                    const double dist_i_k = knn_results.distances[pt_i][idx_i];
+                    const double dist_j_k = knn_results.distances[pt_j][idx_j];
                     min_dist = std::min(min_dist, dist_i_k + dist_j_k);
                 }
 
@@ -1500,7 +1993,493 @@ iknn_graph_t create_iknn_graph(const knn_search_result_t& knn_results, int k) {
         }
     }
 
+    for (auto& neighbors : res.graph) {
+        std::sort(neighbors.begin(), neighbors.end(),
+                  [](const iknn_vertex_t& a, const iknn_vertex_t& b) {
+                      return a.index < b.index;
+                  });
+    }
+
     return res;
+}
+
+iknn_graph_t create_iknn_graph_inverted_index(const knn_search_result_t& knn_results,
+                                              int k,
+                                              bool use_bucket_parallel,
+                                              int num_threads) {
+    const size_t n_points = knn_results.n_points;
+    size_t bucket_pair_work = 0;
+    auto buckets = build_inverted_knn_index(knn_results, k, &bucket_pair_work);
+
+    edge_accumulator_map_t edge_map;
+
+    // Small workloads run faster in serial due to OpenMP overhead.
+    constexpr size_t k_min_parallel_pair_work = 200000;
+    const bool try_parallel = use_bucket_parallel &&
+                              num_threads > 1 &&
+                              bucket_pair_work >= k_min_parallel_pair_work;
+
+#ifdef _OPENMP
+    if (try_parallel) {
+        const int thread_count = std::max(1, std::min(num_threads, gflow_get_max_threads()));
+        if (thread_count > 1) {
+            std::vector<edge_accumulator_map_t> local_maps(static_cast<size_t>(thread_count));
+
+#pragma omp parallel num_threads(thread_count) default(none) shared(buckets, local_maps)
+            {
+                edge_accumulator_map_t& local_map = local_maps[static_cast<size_t>(gflow_get_thread_num())];
+
+#pragma omp for schedule(dynamic, 1)
+                for (int bucket_idx = 0; bucket_idx < static_cast<int>(buckets.size()); ++bucket_idx) {
+                    process_bucket(buckets[static_cast<size_t>(bucket_idx)], local_map);
+                }
+            }
+
+            size_t total_entries = 0;
+            for (const auto& local_map : local_maps) {
+                total_entries += local_map.size();
+            }
+            edge_map.reserve(total_entries);
+
+            for (auto& local_map : local_maps) {
+                for (const auto& kv : local_map) {
+                    const auto it = edge_map.find(kv.first);
+                    if (it == edge_map.end()) {
+                        edge_map.emplace(kv.first, kv.second);
+                    } else {
+                        it->second.isize += kv.second.isize;
+                        if (kv.second.min_dist < it->second.min_dist) {
+                            it->second.min_dist = kv.second.min_dist;
+                        }
+                    }
+                }
+            }
+        } else {
+            for (const auto& bucket : buckets) {
+                process_bucket(bucket, edge_map);
+            }
+        }
+    } else {
+        for (const auto& bucket : buckets) {
+            process_bucket(bucket, edge_map);
+        }
+    }
+#else
+    (void)num_threads;
+    for (const auto& bucket : buckets) {
+        process_bucket(bucket, edge_map);
+    }
+#endif
+
+    iknn_graph_t res(n_points);
+    std::vector<size_t> degree_counts(n_points, 0);
+    for (const auto& kv : edge_map) {
+        const auto [u, v] = unpack_edge_key(kv.first);
+        degree_counts[u] += 1;
+        degree_counts[v] += 1;
+    }
+    for (size_t i = 0; i < n_points; ++i) {
+        res.graph[i].reserve(degree_counts[i]);
+    }
+
+    for (const auto& kv : edge_map) {
+        const auto [u, v] = unpack_edge_key(kv.first);
+        const edge_accumulator_t& acc = kv.second;
+        res.graph[u].emplace_back(iknn_vertex_t{v, static_cast<size_t>(acc.isize), acc.min_dist});
+        res.graph[v].emplace_back(iknn_vertex_t{u, static_cast<size_t>(acc.isize), acc.min_dist});
+    }
+
+    for (auto& neighbors : res.graph) {
+        std::sort(neighbors.begin(), neighbors.end(),
+                  [](const iknn_vertex_t& a, const iknn_vertex_t& b) {
+                      return a.index < b.index;
+                  });
+    }
+
+    return res;
+}
+
+void print_stage_running(const char* stage_name, bool verbose) {
+    if (!verbose) {
+        return;
+    }
+    Rprintf("[%s] running...", stage_name);
+    R_FlushConsole();
+}
+
+void print_stage_done(const char* stage_name,
+                      const std::chrono::steady_clock::time_point& stage_start,
+                      bool verbose) {
+    if (!verbose) {
+        return;
+    }
+    const double elapsed_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - stage_start
+    ).count();
+    Rprintf("\r[%s] %.3fs\n", stage_name, elapsed_seconds);
+    R_FlushConsole();
+}
+
+namespace {
+
+constexpr char k_knn_cache_magic[8] = {'G', 'F', 'L', 'K', 'N', 'N', '0', '1'};
+constexpr std::uint32_t k_knn_cache_version = 1U;
+constexpr std::uint32_t k_knn_cache_endian_marker = 0x01020304U;
+std::atomic<std::uint64_t> g_knn_cache_tmp_counter(0U);
+
+template <typename T>
+bool write_binary(std::ofstream& out, const T& value) {
+    out.write(reinterpret_cast<const char*>(&value), sizeof(T));
+    return static_cast<bool>(out);
+}
+
+std::string make_knn_cache_tmp_path(const std::string& cache_path) {
+    const std::uint64_t ts = static_cast<std::uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count()
+    );
+    const std::uint64_t counter = g_knn_cache_tmp_counter.fetch_add(1U, std::memory_order_relaxed);
+    std::ostringstream oss;
+    oss << cache_path << ".tmp." << ts << "." << counter;
+    return oss.str();
+}
+
+} // namespace
+
+const char* knn_cache_mode_label(knn_cache_mode_t mode) {
+    switch (mode) {
+        case knn_cache_mode_t::read:
+            return "read";
+        case knn_cache_mode_t::write:
+            return "write";
+        case knn_cache_mode_t::readwrite:
+            return "readwrite";
+        case knn_cache_mode_t::none:
+        default:
+            return "none";
+    }
+}
+
+knn_cache_load_status_t read_knn_cache_file(
+    const std::string& cache_path,
+    int expected_n_points,
+    int expected_n_features,
+    int required_k,
+    knn_search_result_t& out_knn_results,
+    std::string& out_reason) {
+
+    errno = 0;
+    std::ifstream in(cache_path, std::ios::binary);
+    if (!in.is_open()) {
+        const int open_errno = errno;
+        if (open_errno == ENOENT) {
+            out_reason = "cache file does not exist";
+            return knn_cache_load_status_t::not_found;
+        }
+        out_reason = std::string("cannot open cache file: ") + std::strerror(open_errno);
+        return knn_cache_load_status_t::io_error;
+    }
+
+    knn_cache_header_t header{};
+    if (!in.read(reinterpret_cast<char*>(&header), sizeof(knn_cache_header_t))) {
+        out_reason = "cache file is truncated (header)";
+        return knn_cache_load_status_t::invalid;
+    }
+
+    if (std::memcmp(header.magic, k_knn_cache_magic, sizeof(k_knn_cache_magic)) != 0) {
+        out_reason = "cache magic mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.version != k_knn_cache_version) {
+        out_reason = "cache version mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.endian_marker != k_knn_cache_endian_marker) {
+        out_reason = "cache endianness mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.n_points != static_cast<std::uint64_t>(expected_n_points)) {
+        out_reason = "cache nrow mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.n_features != static_cast<std::uint64_t>(expected_n_features)) {
+        out_reason = "cache ncol mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.k < static_cast<std::uint64_t>(required_k)) {
+        out_reason = "cache k is smaller than required k";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.k > static_cast<std::uint64_t>(INT_MAX)) {
+        out_reason = "cache k exceeds INT_MAX";
+        return knn_cache_load_status_t::invalid;
+    }
+
+    const int cached_k = static_cast<int>(header.k);
+    knn_search_result_t loaded_knn(static_cast<size_t>(expected_n_points), static_cast<size_t>(cached_k));
+
+    for (int i = 0; i < expected_n_points; ++i) {
+        std::vector<int>& indices_row = loaded_knn.indices[static_cast<size_t>(i)];
+        in.read(reinterpret_cast<char*>(indices_row.data()), static_cast<std::streamsize>(cached_k * sizeof(int)));
+        if (!in) {
+            out_reason = "cache file is truncated (indices)";
+            return knn_cache_load_status_t::invalid;
+        }
+    }
+    for (int i = 0; i < expected_n_points; ++i) {
+        std::vector<double>& dist_row = loaded_knn.distances[static_cast<size_t>(i)];
+        in.read(reinterpret_cast<char*>(dist_row.data()), static_cast<std::streamsize>(cached_k * sizeof(double)));
+        if (!in) {
+            out_reason = "cache file is truncated (distances)";
+            return knn_cache_load_status_t::invalid;
+        }
+    }
+
+    char trailing = '\0';
+    if (in.read(&trailing, 1)) {
+        out_reason = "cache file has unexpected trailing bytes";
+        return knn_cache_load_status_t::invalid;
+    }
+
+    for (int i = 0; i < expected_n_points; ++i) {
+        const auto& idx_row = loaded_knn.indices[static_cast<size_t>(i)];
+        const auto& dist_row = loaded_knn.distances[static_cast<size_t>(i)];
+        for (int j = 0; j < cached_k; ++j) {
+            const int idx = idx_row[static_cast<size_t>(j)];
+            if (idx < 0 || idx >= expected_n_points) {
+                out_reason = "cache contains out-of-range neighbor index";
+                return knn_cache_load_status_t::invalid;
+            }
+            const double d = dist_row[static_cast<size_t>(j)];
+            if (!std::isfinite(d) || d < 0.0) {
+                out_reason = "cache contains invalid distance";
+                return knn_cache_load_status_t::invalid;
+            }
+        }
+    }
+
+    out_knn_results = std::move(loaded_knn);
+    out_reason.clear();
+    return knn_cache_load_status_t::loaded;
+}
+
+void write_knn_cache_file_atomic(
+    const std::string& cache_path,
+    const knn_search_result_t& knn_results,
+    int n_features) {
+
+    if (cache_path.empty()) {
+        Rf_error("knn.cache.path cannot be empty.");
+    }
+
+    const std::string tmp_path = make_knn_cache_tmp_path(cache_path);
+    knn_cache_header_t header{};
+    std::memcpy(header.magic, k_knn_cache_magic, sizeof(k_knn_cache_magic));
+    header.version = k_knn_cache_version;
+    header.endian_marker = k_knn_cache_endian_marker;
+    header.n_points = static_cast<std::uint64_t>(knn_results.n_points);
+    header.n_features = static_cast<std::uint64_t>(n_features);
+    header.k = static_cast<std::uint64_t>(knn_results.k);
+
+    {
+        std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+        if (!out.is_open()) {
+            Rf_error("Failed to create temp cache file '%s': %s",
+                     tmp_path.c_str(), std::strerror(errno));
+        }
+
+        if (!write_binary(out, header)) {
+            std::remove(tmp_path.c_str());
+            Rf_error("Failed to write cache header to '%s'.", tmp_path.c_str());
+        }
+
+        for (size_t i = 0; i < knn_results.n_points; ++i) {
+            const auto& idx_row = knn_results.indices[i];
+            out.write(reinterpret_cast<const char*>(idx_row.data()),
+                      static_cast<std::streamsize>(knn_results.k * sizeof(int)));
+            if (!out) {
+                std::remove(tmp_path.c_str());
+                Rf_error("Failed to write cache indices to '%s'.", tmp_path.c_str());
+            }
+        }
+        for (size_t i = 0; i < knn_results.n_points; ++i) {
+            const auto& dist_row = knn_results.distances[i];
+            out.write(reinterpret_cast<const char*>(dist_row.data()),
+                      static_cast<std::streamsize>(knn_results.k * sizeof(double)));
+            if (!out) {
+                std::remove(tmp_path.c_str());
+                Rf_error("Failed to write cache distances to '%s'.", tmp_path.c_str());
+            }
+        }
+
+        out.flush();
+        if (!out) {
+            std::remove(tmp_path.c_str());
+            Rf_error("Failed to flush temp cache file '%s'.", tmp_path.c_str());
+        }
+    }
+
+    if (std::rename(tmp_path.c_str(), cache_path.c_str()) != 0) {
+        const int rename_errno = errno;
+#ifdef _WIN32
+        std::remove(cache_path.c_str());
+        if (std::rename(tmp_path.c_str(), cache_path.c_str()) == 0) {
+            return;
+        }
+#endif
+        std::remove(tmp_path.c_str());
+        Rf_error("Failed to atomically move cache file '%s' to '%s': %s",
+                 tmp_path.c_str(), cache_path.c_str(), std::strerror(rename_errno));
+    }
+}
+
+enum class iknn_parallel_mode_t : int {
+    auto_mode = 0,
+    k = 1,
+    bucket = 2,
+    hybrid = 3
+};
+
+enum class iknn_execution_mode_t : int {
+    serial = 0,
+    k_parallel = 1,
+    bucket = 2,
+    hybrid = 3
+};
+
+const char* iknn_execution_mode_label(iknn_execution_mode_t mode) {
+    switch (mode) {
+        case iknn_execution_mode_t::k_parallel:
+            return "over k values";
+        case iknn_execution_mode_t::bucket:
+            return "over inverted-index buckets";
+        case iknn_execution_mode_t::hybrid:
+            return "hybrid (bucket build + k pruning)";
+        case iknn_execution_mode_t::serial:
+        default:
+            return "serial";
+    }
+}
+
+const char* iknn_parallel_mode_label(iknn_parallel_mode_t mode) {
+    switch (mode) {
+        case iknn_parallel_mode_t::k:
+            return "k";
+        case iknn_parallel_mode_t::bucket:
+            return "bucket";
+        case iknn_parallel_mode_t::hybrid:
+            return "hybrid";
+        case iknn_parallel_mode_t::auto_mode:
+        default:
+            return "auto";
+    }
+}
+
+size_t count_undirected_edges(const iknn_graph_t& graph) {
+    size_t edge_count = 0;
+    for (const auto& vertex_edges : graph.graph) {
+        edge_count += vertex_edges.size();
+    }
+    return edge_count / 2;
+}
+
+size_t count_undirected_edges(const set_wgraph_t& graph) {
+    size_t edge_count = 0;
+    for (const auto& nbrs : graph.adjacency_list) {
+        edge_count += nbrs.size();
+    }
+    return edge_count / 2;
+}
+
+size_t count_undirected_edges(const vect_wgraph_t& graph) {
+    size_t edge_count = 0;
+    for (const auto& nbrs : graph.adjacency_list) {
+        edge_count += nbrs.size();
+    }
+    return edge_count / 2;
+}
+
+void prune_iknn_graph_and_collect_stats(
+    const iknn_graph_t& iknn_graph,
+    double max_path_edge_ratio_thld,
+    double path_edge_ratio_percentile,
+    double threshold_percentile,
+    int max_alt_path_length,
+    bool with_isize_pruning,
+    bool with_edge_pruning_stats,
+    bool verbose_geometric_prune,
+    double na_real,
+    set_wgraph_t& out_geom_pruned_graph,
+    vect_wgraph_t* out_isize_pruned_graph,
+    edge_pruning_stats_t* out_edge_pruning_stats,
+    std::vector<double>& out_k_stats,
+    double& out_geom_prune_seconds,
+    double& out_isize_prune_seconds) {
+
+    const bool do_geometric_prune = (max_path_edge_ratio_thld > 1.0);
+    const size_t n_edges_sz = count_undirected_edges(iknn_graph);
+
+    auto stage_start = std::chrono::steady_clock::now();
+    set_wgraph_t pruned_graph(iknn_graph);
+    if (do_geometric_prune) {
+        pruned_graph = pruned_graph.prune_edges_geometrically(
+            max_path_edge_ratio_thld, path_edge_ratio_percentile, verbose_geometric_prune);
+    } else if (verbose_geometric_prune) {
+        Rprintf("[geometric_prune] skipped (threshold <= 1.0)\n");
+    }
+
+    if (threshold_percentile > 0.0) {
+        pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
+    }
+
+    const size_t n_edges_pruned_sz = count_undirected_edges(pruned_graph);
+    out_geom_prune_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - stage_start
+    ).count();
+
+    double n_edges_isize_d = na_real;
+    double double_removed_d = na_real;
+    double double_red_ratio = na_real;
+    out_isize_prune_seconds = 0.0;
+
+    if (with_isize_pruning) {
+        stage_start = std::chrono::steady_clock::now();
+        vect_wgraph_t isize_pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
+        const size_t n_edges_isize_pruned_sz = count_undirected_edges(isize_pruned_graph);
+        out_isize_prune_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - stage_start
+        ).count();
+
+        n_edges_isize_d = static_cast<double>(n_edges_isize_pruned_sz);
+        double_removed_d = static_cast<double>(n_edges_pruned_sz - n_edges_isize_pruned_sz);
+        double_red_ratio = (n_edges_pruned_sz > 0.0)
+            ? (double_removed_d / static_cast<double>(n_edges_pruned_sz))
+            : 0.0;
+
+        if (out_isize_pruned_graph != nullptr) {
+            *out_isize_pruned_graph = std::move(isize_pruned_graph);
+        }
+    }
+
+    const double n_edges_d        = static_cast<double>(n_edges_sz);
+    const double n_edges_pruned_d = static_cast<double>(n_edges_pruned_sz);
+    const double removed_d        = static_cast<double>(n_edges_sz - n_edges_pruned_sz);
+    const double red_ratio        = (n_edges_d > 0.0) ? (removed_d / n_edges_d) : 0.0;
+
+    out_k_stats = {
+        n_edges_d,
+        n_edges_pruned_d,
+        removed_d,
+        red_ratio,
+        n_edges_isize_d,
+        double_removed_d,
+        double_red_ratio
+    };
+
+    if (with_edge_pruning_stats && out_edge_pruning_stats != nullptr) {
+        *out_edge_pruning_stats = pruned_graph.compute_edge_pruning_stats(path_edge_ratio_percentile);
+    }
+
+    out_geom_pruned_graph = std::move(pruned_graph);
 }
 
 /**
@@ -1592,18 +2571,25 @@ SEXP S_create_iknn_graphs(
     SEXP s_threshold_percentile,
     // other
     SEXP s_compute_full,
+    SEXP s_with_isize_pruning,
+    SEXP s_with_edge_pruning_stats,
     SEXP s_n_cores,
+    SEXP s_parallel_mode,
+    SEXP s_hybrid_batch_size,
+    SEXP s_knn_cache_path,
+    SEXP s_knn_cache_mode,
     SEXP s_verbose) {
 
     const int  max_alt_path_length = 2; // for intersection pruning
 
     // --- Dimensions (protect while reading)
     SEXP s_dim = PROTECT(Rf_getAttrib(s_X, R_DimSymbol));
-    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
         UNPROTECT(1);
         Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
     }
     const int n_vertices = INTEGER(s_dim)[0];
+    const int n_features = INTEGER(s_dim)[1];
     UNPROTECT(1); // s_dim
 
     // --- Scalars / args
@@ -1627,10 +2613,64 @@ SEXP S_create_iknn_graphs(
         Rf_error("threshold_percentile must be in [0.0, 0.5]. Got %.3f", threshold_percentile);
     }
 
-    if (!Rf_isLogical(s_compute_full) || !Rf_isLogical(s_verbose))
-        Rf_error("compute_full and verbose must be logical.");
+    if (!Rf_isLogical(s_compute_full) ||
+        !Rf_isLogical(s_with_isize_pruning) ||
+        !Rf_isLogical(s_with_edge_pruning_stats) ||
+        !Rf_isLogical(s_verbose)) {
+        Rf_error("compute_full, with_isize_pruning, with_edge_pruning_stats, and verbose must be logical.");
+    }
     const bool compute_full = (Rf_asLogical(s_compute_full) == TRUE);
-    const bool verbose      = (Rf_asLogical(s_verbose) == TRUE);
+    const bool with_isize_pruning = (Rf_asLogical(s_with_isize_pruning) == TRUE);
+    const bool with_edge_pruning_stats = (Rf_asLogical(s_with_edge_pruning_stats) == TRUE);
+    const bool verbose = (Rf_asLogical(s_verbose) == TRUE);
+
+    if (!Rf_isInteger(s_parallel_mode) || Rf_length(s_parallel_mode) < 1) {
+        Rf_error("parallel_mode must be a length-1 integer.");
+    }
+    const int parallel_mode_raw = INTEGER(s_parallel_mode)[0];
+    if (parallel_mode_raw == NA_INTEGER ||
+        parallel_mode_raw < static_cast<int>(iknn_parallel_mode_t::auto_mode) ||
+        parallel_mode_raw > static_cast<int>(iknn_parallel_mode_t::hybrid)) {
+        Rf_error("parallel_mode must be in {0,1,2,3}.");
+    }
+    const iknn_parallel_mode_t requested_parallel_mode =
+        static_cast<iknn_parallel_mode_t>(parallel_mode_raw);
+
+    if (!Rf_isInteger(s_hybrid_batch_size) || Rf_length(s_hybrid_batch_size) < 1) {
+        Rf_error("hybrid_batch_size must be a length-1 integer.");
+    }
+    const int hybrid_batch_size = INTEGER(s_hybrid_batch_size)[0];
+    if (hybrid_batch_size == NA_INTEGER || hybrid_batch_size < 1) {
+        Rf_error("hybrid_batch_size must be a positive integer.");
+    }
+
+    if (!Rf_isInteger(s_knn_cache_mode) || Rf_length(s_knn_cache_mode) < 1) {
+        Rf_error("knn.cache.mode must be a length-1 integer.");
+    }
+    const int knn_cache_mode_raw = INTEGER(s_knn_cache_mode)[0];
+    if (knn_cache_mode_raw == NA_INTEGER ||
+        knn_cache_mode_raw < static_cast<int>(knn_cache_mode_t::none) ||
+        knn_cache_mode_raw > static_cast<int>(knn_cache_mode_t::readwrite)) {
+        Rf_error("knn.cache.mode must be in {0,1,2,3}.");
+    }
+    const knn_cache_mode_t knn_cache_mode = static_cast<knn_cache_mode_t>(knn_cache_mode_raw);
+
+    std::string knn_cache_path;
+    if (!Rf_isNull(s_knn_cache_path)) {
+        if (TYPEOF(s_knn_cache_path) != STRSXP ||
+            Rf_length(s_knn_cache_path) != 1 ||
+            STRING_ELT(s_knn_cache_path, 0) == NA_STRING) {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar.");
+        }
+        const char* path_cstr = CHAR(STRING_ELT(s_knn_cache_path, 0));
+        if (path_cstr == nullptr || path_cstr[0] == '\0') {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar.");
+        }
+        knn_cache_path.assign(path_cstr);
+    }
+    if (knn_cache_mode != knn_cache_mode_t::none && knn_cache_path.empty()) {
+        Rf_error("knn.cache.path must be provided when knn.cache.mode is not 'none'.");
+    }
 
     // --- n_cores handling (no R API used in parallel region)
     int num_threads = 1;
@@ -1641,7 +2681,6 @@ SEXP S_create_iknn_graphs(
             Rf_error("n_cores must be NULL or a length-1 integer.");
         }
         int req = INTEGER(s_n_cores)[0];
-        // Rprintf("\treq: %d\n", req);
         if (req == NA_INTEGER) {
             Rf_error("n_cores cannot be NA.");
         }
@@ -1650,21 +2689,66 @@ SEXP S_create_iknn_graphs(
         num_threads = gflow_get_num_procs();
     }
 
-    // Clamp to available threads
-    const int max_t = gflow_get_num_procs(); // gflow_get_max_threads();  // 1 when OpenMP is absent
-    // Rprintf("\tmax_t: %d\n", max_t);
-
+    const int max_t = gflow_get_num_procs();
     if (num_threads > max_t) num_threads = max_t;
     if (num_threads < 1)     num_threads = 1;
-    // Rprintf("\tnum_threads: %d\n", num_threads);
 
     // Set threads (no-op if OpenMP is absent)
     gflow_set_num_threads(num_threads);
 
+#if defined(_OPENMP)
+    const bool openmp_available = true;
+#else
+    const bool openmp_available = false;
+#endif
+
+    // --- Precompute / allocate (pure C++; no R API here)
+    std::vector<int> k_values(kmax - kmin + 1);
+    std::iota(k_values.begin(), k_values.end(), kmin);
+    const int n_k_values = static_cast<int>(k_values.size());
+    const bool can_parallel = openmp_available && (num_threads > 1);
+
+    iknn_execution_mode_t execution_mode = iknn_execution_mode_t::serial;
+    if (can_parallel) {
+        switch (requested_parallel_mode) {
+            case iknn_parallel_mode_t::k:
+                execution_mode = (n_k_values > 1)
+                    ? iknn_execution_mode_t::k_parallel
+                    : iknn_execution_mode_t::bucket;
+                break;
+            case iknn_parallel_mode_t::bucket:
+                execution_mode = iknn_execution_mode_t::bucket;
+                break;
+            case iknn_parallel_mode_t::hybrid:
+                execution_mode = (n_k_values > 1)
+                    ? iknn_execution_mode_t::hybrid
+                    : iknn_execution_mode_t::bucket;
+                break;
+            case iknn_parallel_mode_t::auto_mode:
+            default: {
+                const bool prefer_hybrid =
+                    (n_k_values > 1) &&
+                    (n_vertices >= 20000) &&
+                    (n_k_values < num_threads);
+                if (n_k_values == 1) {
+                    execution_mode = iknn_execution_mode_t::bucket;
+                } else if (prefer_hybrid) {
+                    execution_mode = iknn_execution_mode_t::hybrid;
+                } else {
+                    execution_mode = iknn_execution_mode_t::k_parallel;
+                }
+                break;
+            }
+        }
+    }
+
+    const int effective_hybrid_batch_size = std::max(1, std::min(hybrid_batch_size, n_k_values));
+    const bool do_geometric_prune = (max_path_edge_ratio_thld > 1.0);
+
     // Messaging
     if (verbose) {
 #if defined(_OPENMP)
-        Rprintf("\tUsing %d OpenMP thread%s\n", num_threads, (num_threads==1?"":"s"));
+        Rprintf("\tUsing %d OpenMP thread%s\n", num_threads, (num_threads == 1 ? "" : "s"));
 #else
         if (!Rf_isNull(s_n_cores) && num_threads > 1) {
             Rprintf("\tOpenMP not enabled; running single-threaded.\n");
@@ -1672,109 +2756,313 @@ SEXP S_create_iknn_graphs(
             Rprintf("\tRunning single-threaded.\n");
         }
 #endif
-    }
-
-    if (verbose) {
         Rprintf("Processing k values from %d to %d for %d vertices\n", kmin - 1, kmax - 1, n_vertices);
+        if (knn_cache_mode != knn_cache_mode_t::none) {
+            Rprintf("kNN cache mode: %s (%s)\n",
+                    knn_cache_mode_label(knn_cache_mode),
+                    knn_cache_path.c_str());
+        }
         if (threshold_percentile > 0.0) {
             Rprintf("Quantile pruning enabled: removing top %.1f%% of edges by length\n",
                     100.0 * (1.0 - threshold_percentile));
         }
+        Rprintf("Requested parallel.mode: %s\n", iknn_parallel_mode_label(requested_parallel_mode));
+        if (n_k_values == 1 && num_threads > 1) {
+            Rprintf("WARNING: kmin == kmax. Parallelism over k has one task and cannot saturate multiple cores.\n");
+        }
+        if (!can_parallel && num_threads > 1) {
+            Rprintf("NOTE: OpenMP parallel execution is unavailable; running serially.\n");
+        }
+        if (requested_parallel_mode == iknn_parallel_mode_t::k && n_k_values == 1 && can_parallel) {
+            Rprintf("Requested parallel.mode='k' with one k; using bucket mode instead.\n");
+        }
+        if (requested_parallel_mode == iknn_parallel_mode_t::hybrid && n_k_values == 1 && can_parallel) {
+            Rprintf("Requested parallel.mode='hybrid' with one k; using bucket mode instead.\n");
+        }
+        Rprintf("Parallel mode: %s\n", iknn_execution_mode_label(execution_mode));
+        if (execution_mode == iknn_execution_mode_t::hybrid) {
+            Rprintf("Hybrid batch size: %d\n", effective_hybrid_batch_size);
+        }
+        Rprintf("Starting graph processing\n");
     }
 
-    // --- Precompute / allocate (pure C++; no R API here)
-    std::vector<int> k_values(kmax - kmin + 1);
-    std::iota(k_values.begin(), k_values.end(), kmin);
-
-    if (verbose) Rprintf("Starting parallel graph processing\n");
     auto total_start_time    = std::chrono::steady_clock::now();
     auto parallel_start_time = std::chrono::steady_clock::now();
 
     // Compute kNN once for maximum k (pure C++; must not touch R API)
-    auto knn_results = compute_knn(s_X, kmax);
+    auto knn_start_time = std::chrono::steady_clock::now();
+    print_stage_running("compute_knn", verbose);
+    knn_search_result_t knn_results(static_cast<size_t>(n_vertices), 0);
+    bool knn_cache_hit = false;
+    bool knn_cache_written = false;
 
-    std::vector<set_wgraph_t>          geom_pruned_graphs(kmax - kmin + 1);
-    std::vector<vect_wgraph_t>         isize_pruned_graphs(kmax - kmin + 1);
-    std::vector<std::vector<double>>   k_statistics      (kmax - kmin + 1);
-    std::vector<edge_pruning_stats_t>  all_edge_pruning_stats(kmax - kmin + 1);
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) if(num_threads>1) default(none) \
-    shared(k_values, knn_results, max_path_edge_ratio_thld, path_edge_ratio_percentile, \
-           threshold_percentile, geom_pruned_graphs, isize_pruned_graphs, k_statistics, \
-           all_edge_pruning_stats, max_alt_path_length)
-#endif
-    for (int k_idx = 0; k_idx < (int)k_values.size(); ++k_idx) {
-        const int k = k_values[k_idx];
-
-        auto iknn_graph = create_iknn_graph(knn_results, k); // pure C++
-
-        // Count original edges (undirected; stored twice)
-        size_t n_edges_sz = 0;
-        for (const auto& vertex_edges : iknn_graph.graph) {
-            n_edges_sz += vertex_edges.size();
+    if (knn_cache_mode == knn_cache_mode_t::read || knn_cache_mode == knn_cache_mode_t::readwrite) {
+        std::string cache_reason;
+        const knn_cache_load_status_t cache_status = read_knn_cache_file(
+            knn_cache_path,
+            n_vertices,
+            n_features,
+            kmax,
+            knn_results,
+            cache_reason
+        );
+        if (cache_status == knn_cache_load_status_t::loaded) {
+            knn_cache_hit = true;
+        } else if (cache_status == knn_cache_load_status_t::not_found &&
+                   knn_cache_mode == knn_cache_mode_t::readwrite) {
+            knn_cache_hit = false;
+        } else {
+            Rf_error("Failed to read kNN cache '%s': %s", knn_cache_path.c_str(), cache_reason.c_str());
         }
-        n_edges_sz /= 2;
-
-        // Stage 1: Geometric pruning
-        set_wgraph_t pruned_graph(iknn_graph);
-        if (max_path_edge_ratio_thld > 0) {
-            pruned_graph = pruned_graph.prune_edges_geometrically(
-                max_path_edge_ratio_thld, path_edge_ratio_percentile);
-        }
-
-        size_t n_edges_after_geometric_sz = 0;
-        for (const auto& nbrs : pruned_graph.adjacency_list) {
-            n_edges_after_geometric_sz += nbrs.size();
-        }
-        n_edges_after_geometric_sz /= 2;
-
-        // Stage 2: Quantile-based edge length pruning (if requested)
-        if (threshold_percentile > 0.0) {
-            pruned_graph = pruned_graph.prune_long_edges(threshold_percentile);
-        }
-
-        size_t n_edges_pruned_sz = 0;
-        for (const auto& nbrs : pruned_graph.adjacency_list) {
-            n_edges_pruned_sz += nbrs.size();
-        }
-        n_edges_pruned_sz /= 2;
-
-        // Stage 3: Intersection-size pruning
-        vect_wgraph_t isize_pruned_graph = iknn_graph.prune_graph(max_alt_path_length);
-
-        size_t n_edges_isize_pruned_sz = 0;
-        for (const auto& nbrs : isize_pruned_graph.adjacency_list) {
-            n_edges_isize_pruned_sz += nbrs.size();
-        }
-        n_edges_isize_pruned_sz /= 2;
-
-        // Ratios with zero guards
-        const double n_edges_d           = (double)n_edges_sz;
-        const double n_edges_pruned_d    = (double)n_edges_pruned_sz;
-        const double removed_d           = (double)(n_edges_sz - n_edges_pruned_sz);
-        const double red_ratio           = (n_edges_d > 0.0) ? (removed_d / n_edges_d) : 0.0;
-        const double n_edges_isize_d     = (double)n_edges_isize_pruned_sz;
-        const double double_removed_d    = (double)(n_edges_pruned_sz - n_edges_isize_pruned_sz);
-        const double double_red_ratio    = (n_edges_pruned_d > 0.0) ? (double_removed_d / n_edges_pruned_d) : 0.0;
-
-        k_statistics[k_idx] = {
-            n_edges_d,
-            n_edges_pruned_d,
-            removed_d,
-            red_ratio,
-            n_edges_isize_d,
-            double_removed_d,
-            double_red_ratio
-        };
-
-        isize_pruned_graphs[k_idx]    = std::move(isize_pruned_graph);
-        all_edge_pruning_stats[k_idx] = pruned_graph.compute_edge_pruning_stats(path_edge_ratio_percentile);
-        geom_pruned_graphs[k_idx]     = std::move(pruned_graph);
     }
 
+    if (!knn_cache_hit) {
+        knn_results = compute_knn(s_X, kmax);
+        if (knn_cache_mode == knn_cache_mode_t::write || knn_cache_mode == knn_cache_mode_t::readwrite) {
+            write_knn_cache_file_atomic(knn_cache_path, knn_results, n_features);
+            knn_cache_written = true;
+        }
+    }
+
+    const double compute_knn_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - knn_start_time
+    ).count();
+    print_stage_done("compute_knn", knn_start_time, verbose);
+    if (verbose && knn_cache_mode != knn_cache_mode_t::none) {
+        if (knn_cache_hit) {
+            Rprintf("[compute_knn] cache hit (%s, cached_k=%zu)\n",
+                    knn_cache_path.c_str(),
+                    knn_results.k);
+        } else if (knn_cache_written) {
+            Rprintf("[compute_knn] cache saved (%s, k=%d)\n",
+                    knn_cache_path.c_str(),
+                    kmax);
+        } else {
+            Rprintf("[compute_knn] cache mode: %s\n", knn_cache_mode_label(knn_cache_mode));
+        }
+    }
+
+    const double na_real = std::numeric_limits<double>::quiet_NaN();
+
+    std::vector<set_wgraph_t>          geom_pruned_graphs(kmax - kmin + 1);
+    std::vector<vect_wgraph_t>         isize_pruned_graphs;
+    if (with_isize_pruning) {
+        isize_pruned_graphs.resize(kmax - kmin + 1);
+    }
+    std::vector<std::vector<double>>   k_statistics(kmax - kmin + 1, std::vector<double>(7, na_real));
+    std::vector<edge_pruning_stats_t>  all_edge_pruning_stats;
+    if (with_edge_pruning_stats) {
+        all_edge_pruning_stats.resize(kmax - kmin + 1);
+    }
+
+    double graph_build_seconds = 0.0;
+    double geom_prune_seconds = 0.0;
+    double isize_prune_seconds = 0.0;
+    auto graph_processing_stage_start = std::chrono::steady_clock::now();
+    print_stage_running("graph_build/geometric_prune/isize_prune", verbose);
+
+#ifdef _OPENMP
+    if (execution_mode == iknn_execution_mode_t::k_parallel) {
+#pragma omp parallel for schedule(dynamic) default(none) \
+    shared(k_values, knn_results, max_path_edge_ratio_thld, path_edge_ratio_percentile, \
+           threshold_percentile, max_alt_path_length, with_isize_pruning, \
+           with_edge_pruning_stats, na_real, geom_pruned_graphs, isize_pruned_graphs, \
+           all_edge_pruning_stats, k_statistics) \
+    reduction(+:graph_build_seconds, geom_prune_seconds, isize_prune_seconds)
+        for (int k_idx = 0; k_idx < static_cast<int>(k_values.size()); ++k_idx) {
+            const int k = k_values[static_cast<size_t>(k_idx)];
+
+            auto stage_start = std::chrono::steady_clock::now();
+            iknn_graph_t iknn_graph = create_iknn_graph_inverted_index(knn_results, k, false, 1);
+            graph_build_seconds += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - stage_start
+            ).count();
+
+            double local_geom_prune_seconds = 0.0;
+            double local_isize_prune_seconds = 0.0;
+            prune_iknn_graph_and_collect_stats(
+                iknn_graph,
+                max_path_edge_ratio_thld,
+                path_edge_ratio_percentile,
+                threshold_percentile,
+                max_alt_path_length,
+                with_isize_pruning,
+                with_edge_pruning_stats,
+                false,
+                na_real,
+                geom_pruned_graphs[static_cast<size_t>(k_idx)],
+                with_isize_pruning ? &isize_pruned_graphs[static_cast<size_t>(k_idx)] : nullptr,
+                with_edge_pruning_stats ? &all_edge_pruning_stats[static_cast<size_t>(k_idx)] : nullptr,
+                k_statistics[static_cast<size_t>(k_idx)],
+                local_geom_prune_seconds,
+                local_isize_prune_seconds
+            );
+            geom_prune_seconds += local_geom_prune_seconds;
+            isize_prune_seconds += local_isize_prune_seconds;
+        }
+    } else
+#endif
+    if (execution_mode == iknn_execution_mode_t::bucket) {
+        for (int k_idx = 0; k_idx < static_cast<int>(k_values.size()); ++k_idx) {
+            const int k = k_values[static_cast<size_t>(k_idx)];
+
+            auto stage_start = std::chrono::steady_clock::now();
+            iknn_graph_t iknn_graph = create_iknn_graph_inverted_index(knn_results, k, true, num_threads);
+            graph_build_seconds += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - stage_start
+            ).count();
+
+            double local_geom_prune_seconds = 0.0;
+            double local_isize_prune_seconds = 0.0;
+            prune_iknn_graph_and_collect_stats(
+                iknn_graph,
+                max_path_edge_ratio_thld,
+                path_edge_ratio_percentile,
+                threshold_percentile,
+                max_alt_path_length,
+                with_isize_pruning,
+                with_edge_pruning_stats,
+                verbose && n_k_values == 1,
+                na_real,
+                geom_pruned_graphs[static_cast<size_t>(k_idx)],
+                with_isize_pruning ? &isize_pruned_graphs[static_cast<size_t>(k_idx)] : nullptr,
+                with_edge_pruning_stats ? &all_edge_pruning_stats[static_cast<size_t>(k_idx)] : nullptr,
+                k_statistics[static_cast<size_t>(k_idx)],
+                local_geom_prune_seconds,
+                local_isize_prune_seconds
+            );
+            geom_prune_seconds += local_geom_prune_seconds;
+            isize_prune_seconds += local_isize_prune_seconds;
+        }
+    } else if (execution_mode == iknn_execution_mode_t::hybrid) {
+        const int batch_size = effective_hybrid_batch_size;
+        for (int batch_start = 0; batch_start < n_k_values; batch_start += batch_size) {
+            const int batch_end = std::min(batch_start + batch_size, n_k_values);
+            std::vector<iknn_graph_t> batch_graphs;
+            batch_graphs.reserve(static_cast<size_t>(batch_end - batch_start));
+
+            for (int k_idx = batch_start; k_idx < batch_end; ++k_idx) {
+                const int k = k_values[static_cast<size_t>(k_idx)];
+                auto stage_start = std::chrono::steady_clock::now();
+                batch_graphs.emplace_back(create_iknn_graph_inverted_index(knn_results, k, true, num_threads));
+                graph_build_seconds += std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - stage_start
+                ).count();
+            }
+
+#ifdef _OPENMP
+            if (batch_graphs.size() > 1) {
+#pragma omp parallel for schedule(dynamic) default(none) \
+    shared(batch_graphs, batch_start, max_path_edge_ratio_thld, path_edge_ratio_percentile, \
+           threshold_percentile, max_alt_path_length, with_isize_pruning, \
+           with_edge_pruning_stats, na_real, geom_pruned_graphs, isize_pruned_graphs, \
+           all_edge_pruning_stats, k_statistics) \
+    reduction(+:geom_prune_seconds, isize_prune_seconds)
+                for (int batch_idx = 0; batch_idx < static_cast<int>(batch_graphs.size()); ++batch_idx) {
+                    const int k_idx = batch_start + batch_idx;
+                    double local_geom_prune_seconds = 0.0;
+                    double local_isize_prune_seconds = 0.0;
+                    prune_iknn_graph_and_collect_stats(
+                        batch_graphs[static_cast<size_t>(batch_idx)],
+                        max_path_edge_ratio_thld,
+                        path_edge_ratio_percentile,
+                        threshold_percentile,
+                        max_alt_path_length,
+                        with_isize_pruning,
+                        with_edge_pruning_stats,
+                        false,
+                        na_real,
+                        geom_pruned_graphs[static_cast<size_t>(k_idx)],
+                        with_isize_pruning ? &isize_pruned_graphs[static_cast<size_t>(k_idx)] : nullptr,
+                        with_edge_pruning_stats ? &all_edge_pruning_stats[static_cast<size_t>(k_idx)] : nullptr,
+                        k_statistics[static_cast<size_t>(k_idx)],
+                        local_geom_prune_seconds,
+                        local_isize_prune_seconds
+                    );
+                    geom_prune_seconds += local_geom_prune_seconds;
+                    isize_prune_seconds += local_isize_prune_seconds;
+                }
+            } else
+#endif
+            {
+                for (int batch_idx = 0; batch_idx < static_cast<int>(batch_graphs.size()); ++batch_idx) {
+                    const int k_idx = batch_start + batch_idx;
+                    double local_geom_prune_seconds = 0.0;
+                    double local_isize_prune_seconds = 0.0;
+                    prune_iknn_graph_and_collect_stats(
+                        batch_graphs[static_cast<size_t>(batch_idx)],
+                        max_path_edge_ratio_thld,
+                        path_edge_ratio_percentile,
+                        threshold_percentile,
+                        max_alt_path_length,
+                        with_isize_pruning,
+                        with_edge_pruning_stats,
+                        false,
+                        na_real,
+                        geom_pruned_graphs[static_cast<size_t>(k_idx)],
+                        with_isize_pruning ? &isize_pruned_graphs[static_cast<size_t>(k_idx)] : nullptr,
+                        with_edge_pruning_stats ? &all_edge_pruning_stats[static_cast<size_t>(k_idx)] : nullptr,
+                        k_statistics[static_cast<size_t>(k_idx)],
+                        local_geom_prune_seconds,
+                        local_isize_prune_seconds
+                    );
+                    geom_prune_seconds += local_geom_prune_seconds;
+                    isize_prune_seconds += local_isize_prune_seconds;
+                }
+            }
+        }
+    } else {
+        for (int k_idx = 0; k_idx < static_cast<int>(k_values.size()); ++k_idx) {
+            const int k = k_values[static_cast<size_t>(k_idx)];
+
+            auto stage_start = std::chrono::steady_clock::now();
+            iknn_graph_t iknn_graph = create_iknn_graph_inverted_index(knn_results, k, false, 1);
+            graph_build_seconds += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - stage_start
+            ).count();
+
+            double local_geom_prune_seconds = 0.0;
+            double local_isize_prune_seconds = 0.0;
+            prune_iknn_graph_and_collect_stats(
+                iknn_graph,
+                max_path_edge_ratio_thld,
+                path_edge_ratio_percentile,
+                threshold_percentile,
+                max_alt_path_length,
+                with_isize_pruning,
+                with_edge_pruning_stats,
+                verbose && n_k_values == 1,
+                na_real,
+                geom_pruned_graphs[static_cast<size_t>(k_idx)],
+                with_isize_pruning ? &isize_pruned_graphs[static_cast<size_t>(k_idx)] : nullptr,
+                with_edge_pruning_stats ? &all_edge_pruning_stats[static_cast<size_t>(k_idx)] : nullptr,
+                k_statistics[static_cast<size_t>(k_idx)],
+                local_geom_prune_seconds,
+                local_isize_prune_seconds
+            );
+            geom_prune_seconds += local_geom_prune_seconds;
+            isize_prune_seconds += local_isize_prune_seconds;
+        }
+    }
+
+    print_stage_done("graph_build/geometric_prune/isize_prune",
+                     graph_processing_stage_start,
+                     verbose);
+
     if (verbose) {
-        elapsed_time(parallel_start_time, "\rParallel processing completed", true);
+        elapsed_time(parallel_start_time, "Graph processing completed", true);
+        Rprintf("[compute_knn] %.3fs\n", compute_knn_seconds);
+        Rprintf("[graph_build] %.3fs\n", graph_build_seconds);
+        if (do_geometric_prune) {
+            Rprintf("[geometric_prune] %.3fs\n", geom_prune_seconds);
+        } else {
+            Rprintf("[geometric_prune] skipped (max.path.edge.ratio.deviation.thld=0)\n");
+        }
+        if (with_isize_pruning) {
+            Rprintf("[isize_prune] %.3fs\n", isize_prune_seconds);
+        } else {
+            Rprintf("[isize_prune] skipped (with.isize.pruning=FALSE)\n");
+        }
     }
 
     auto serial_start_time = std::chrono::steady_clock::now();
@@ -1794,24 +3082,24 @@ SEXP S_create_iknn_graphs(
         UNPROTECT(1);
     }
 
-    // [Rest of the return value construction code remains the same as original]
-    // 3: edge_pruning_stats (list of matrices)
-    {
+    // 3: edge_pruning_stats (list of matrices, optional)
+    if (with_edge_pruning_stats) {
         const int nK = kmax - kmin + 1;
         SEXP edge_stats_list = PROTECT(Rf_allocVector(VECSXP, (R_len_t)nK));
 
         for (int k_idx = 0; k_idx < nK; ++k_idx) {
-            const auto& eps = all_edge_pruning_stats[k_idx];
+            const auto& eps = all_edge_pruning_stats[static_cast<size_t>(k_idx)];
             const size_t nrows_sz = eps.stats.size();
-            if (nrows_sz > static_cast<size_t>(INT_MAX))
+            if (nrows_sz > static_cast<size_t>(INT_MAX)) {
                 Rf_error("Too many rows in edge stats.");
+            }
 
             SEXP edge_stats_matrix = PROTECT(Rf_allocMatrix(REALSXP, (R_len_t)nrows_sz, 2));
             double* stats_data = REAL(edge_stats_matrix);
 
             for (size_t i = 0; i < nrows_sz; ++i) {
-                stats_data[i]               = eps.stats[i].edge_length;
-                stats_data[i + nrows_sz]    = eps.stats[i].length_ratio;
+                stats_data[i]            = eps.stats[i].edge_length;
+                stats_data[i + nrows_sz] = eps.stats[i].length_ratio;
             }
 
             SEXP stats_dimnames = PROTECT(Rf_allocVector(VECSXP, 2));
@@ -1826,7 +3114,6 @@ SEXP S_create_iknn_graphs(
             UNPROTECT(3); // edge_stats_matrix, stats_dimnames, stats_colnames
         }
 
-        // names for edge_stats_list
         {
             const int nK2 = kmax - kmin + 1;
             SEXP edge_stats_list_names = PROTECT(Rf_allocVector(STRSXP, (R_len_t)nK2));
@@ -1840,18 +3127,23 @@ SEXP S_create_iknn_graphs(
 
         SET_VECTOR_ELT(r_result, 3, edge_stats_list);
         UNPROTECT(1); // edge_stats_list
+    } else {
+        SET_VECTOR_ELT(r_result, 3, R_NilValue);
     }
 
     // 1 & 2: full graphs (optional)
     if (compute_full) {
         const int nK = kmax - kmin + 1;
         SEXP geom_pruned_graphs_list  = PROTECT(Rf_allocVector(VECSXP, (R_len_t)nK));
-        SEXP isize_pruned_graphs_list = PROTECT(Rf_allocVector(VECSXP, (R_len_t)nK));
+        SEXP isize_pruned_graphs_list = R_NilValue;
+        if (with_isize_pruning) {
+            isize_pruned_graphs_list = PROTECT(Rf_allocVector(VECSXP, (R_len_t)nK));
+        }
 
         for (int k_idx = 0; k_idx < nK; ++k_idx) {
             // --- geometric pruned
             {
-                const auto& pg = geom_pruned_graphs[k_idx];
+                const auto& pg = geom_pruned_graphs[static_cast<size_t>(k_idx)];
 
                 SEXP r_adj  = PROTECT(Rf_allocVector(VECSXP, (R_len_t)n_vertices));
                 SEXP r_wght = PROTECT(Rf_allocVector(VECSXP, (R_len_t)n_vertices));
@@ -1896,9 +3188,9 @@ SEXP S_create_iknn_graphs(
                 UNPROTECT(1); // r_pg
             }
 
-            // --- isize pruned
-            {
-                const auto& ig = isize_pruned_graphs[k_idx];
+            if (with_isize_pruning) {
+                // --- isize pruned
+                const auto& ig = isize_pruned_graphs[static_cast<size_t>(k_idx)];
 
                 SEXP r_adj  = PROTECT(Rf_allocVector(VECSXP, (R_len_t)n_vertices));
                 SEXP r_wght = PROTECT(Rf_allocVector(VECSXP, (R_len_t)n_vertices));
@@ -1943,8 +3235,13 @@ SEXP S_create_iknn_graphs(
         }
 
         SET_VECTOR_ELT(r_result, 1, geom_pruned_graphs_list);
-        SET_VECTOR_ELT(r_result, 2, isize_pruned_graphs_list);
-        UNPROTECT(2); // geom_pruned_graphs_list, isize_pruned_graphs_list
+        if (with_isize_pruning) {
+            SET_VECTOR_ELT(r_result, 2, isize_pruned_graphs_list);
+            UNPROTECT(2); // geom_pruned_graphs_list, isize_pruned_graphs_list
+        } else {
+            SET_VECTOR_ELT(r_result, 2, R_NilValue);
+            UNPROTECT(1); // geom_pruned_graphs_list
+        }
     } else {
         SET_VECTOR_ELT(r_result, 1, R_NilValue);
         SET_VECTOR_ELT(r_result, 2, R_NilValue);

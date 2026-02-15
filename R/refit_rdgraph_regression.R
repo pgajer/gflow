@@ -18,7 +18,8 @@
 #'   \code{eigenvectors}, \code{eigenvalues}, and \code{eta.optimal}.
 #'
 #' @param y.new New response variable(s). Either a numeric vector of length n,
-#'   or a numeric matrix with n rows where each column is a separate response.
+#'   or a numeric matrix-like object (base \code{matrix} or \code{Matrix}
+#'   class) with n rows where each column is a separate response.
 #'
 #' @param y.vertices Optional integer vector of labeled vertex indices (1-based).
 #'   If provided, only these vertices contribute to the refit objective; residuals
@@ -37,6 +38,11 @@
 #'
 #' @param n.cores Integer. Number of CPU cores for parallel processing.
 #'   Default is 1 (sequential). Used only for per-column GCV.
+#'
+#' @param block.size Optional positive integer. When provided and
+#'   \code{per.column.gcv = FALSE}, responses are processed in column blocks of
+#'   this size to reduce peak memory pressure for large multi-response inputs.
+#'   Ignored for single-response input.
 #'
 #' @param verbose Logical. If \code{TRUE}, print progress information. Default
 #'   is \code{FALSE}.
@@ -87,7 +93,8 @@ refit.rdgraph.regression <- function(fitted.model,
                                      return.posterior.samples = FALSE,
                                      credible.level = 0.95,
                                      n.posterior.samples = 1000L,
-                                     posterior.seed = 12345L) {
+                                     posterior.seed = 12345L,
+                                     block.size = NULL) {
 
     ## ================================================================
     ## INPUT VALIDATION
@@ -151,8 +158,32 @@ refit.rdgraph.regression <- function(fitted.model,
         n.cores <- 1L
     }
 
+    ## Validate block.size
+    if (is.null(block.size)) {
+        block.size <- NA_integer_
+    } else {
+        if (!is.numeric(block.size) || length(block.size) != 1L ||
+            is.na(block.size) || !is.finite(block.size) ||
+            block.size < 1 || block.size != floor(block.size)) {
+            stop("block.size must be NULL or a positive integer.")
+        }
+        block.size <- as.integer(block.size)
+    }
+
+    .as_dense_matrix <- function(x) {
+        if (inherits(x, "Matrix")) as.matrix(x) else x
+    }
+
+    .make_block_index <- function(p, bsize) {
+        if (is.na(bsize) || p <= 1L) {
+            return(list(seq_len(p)))
+        }
+        split(seq_len(p), ceiling(seq_len(p) / bsize))
+    }
+
     ## Prepare y.new
-    is.matrix.input <- is.matrix(y.new)
+    is.matrix.input <- is.matrix(y.new) || inherits(y.new, "Matrix")
+    is.sparse.input <- inherits(y.new, "sparseMatrix")
 
     if (is.matrix.input) {
         if (nrow(y.new) != n) {
@@ -171,21 +202,64 @@ refit.rdgraph.regression <- function(fitted.model,
         col.names <- NULL
     }
 
+    block.index <- .make_block_index(n.responses, block.size)
+    blockwise.enabled <- (n.responses > 1L && length(block.index) > 1L)
+
     ## Finite-value checks
     if (is.null(y.vertices)) {
         ## Supervised: all entries must be finite
-        if (any(!is.finite(y.new))) {
-            bad.cols <- which(apply(y.new, 2, function(x) any(!is.finite(x))))
-            stop(sprintf("y.new contains non-finite values in column(s): %s",
-                         paste(bad.cols, collapse = ", ")))
+        if (is.sparse.input) {
+            if (any(!is.finite(y.new@x))) {
+                bad.cols <- which(vapply(
+                    seq_len(n.responses),
+                    function(j) {
+                        xj <- y.new[, j, drop = FALSE]@x
+                        any(!is.finite(xj))
+                    },
+                    logical(1L)
+                ))
+                stop(sprintf("y.new contains non-finite sparse entries in column(s): %s",
+                             paste(bad.cols, collapse = ", ")))
+            }
+        } else {
+            y.new.dense <- .as_dense_matrix(y.new)
+            if (any(!is.finite(y.new.dense))) {
+                bad.cols <- which(vapply(
+                    seq_len(n.responses),
+                    function(j) any(!is.finite(y.new.dense[, j])),
+                    logical(1L)
+                ))
+                stop(sprintf("y.new contains non-finite values in column(s): %s",
+                             paste(bad.cols, collapse = ", ")))
+            }
         }
     } else {
         ## Semi-supervised: require finiteness only on labeled vertices
         y.lab <- y.new[y.vertices, , drop = FALSE]
-        if (any(!is.finite(y.lab))) {
-            bad.cols <- which(apply(y.lab, 2, function(x) any(!is.finite(x))))
-            stop(sprintf("y.new contains non-finite values on labeled vertices in column(s): %s",
-                         paste(bad.cols, collapse = ", ")))
+        if (inherits(y.lab, "sparseMatrix")) {
+            if (any(!is.finite(y.lab@x))) {
+                bad.cols <- which(vapply(
+                    seq_len(n.responses),
+                    function(j) {
+                        xj <- y.lab[, j, drop = FALSE]@x
+                        any(!is.finite(xj))
+                    },
+                    logical(1L)
+                ))
+                stop(sprintf("y.new contains non-finite sparse entries on labeled vertices in column(s): %s",
+                             paste(bad.cols, collapse = ", ")))
+            }
+        } else {
+            y.lab.dense <- .as_dense_matrix(y.lab)
+            if (any(!is.finite(y.lab.dense))) {
+                bad.cols <- which(vapply(
+                    seq_len(n.responses),
+                    function(j) any(!is.finite(y.lab.dense[, j])),
+                    logical(1L)
+                ))
+                stop(sprintf("y.new contains non-finite values on labeled vertices in column(s): %s",
+                             paste(bad.cols, collapse = ", ")))
+            }
         }
     }
 
@@ -194,6 +268,10 @@ refit.rdgraph.regression <- function(fitted.model,
     ## ================================================================
 
     if (per.column.gcv) {
+
+        if (blockwise.enabled && isTRUE(verbose)) {
+            message("block.size is ignored when per.column.gcv = TRUE.")
+        }
 
         start.time <- Sys.time()
 
@@ -489,6 +567,7 @@ refit.rdgraph.regression <- function(fitted.model,
             eta.grid = eta.grid,
             y.vertices = NULL,
             eta.used = NULL,
+            block.size.used = NA_integer_,
             n.cores.used = n.cores.used,
             elapsed.time = elapsed.time
         )
@@ -519,12 +598,38 @@ refit.rdgraph.regression <- function(fitted.model,
             stop("Length mismatch: length(filtered.eigenvalues) must equal ncol(eigenvectors).")
         }
 
-        ## Apply spectral filter: Y_hat = V diag(f.lambda) V^T Y
-        Vt.Y <- crossprod(V, y.new)      ## m x p
-        filtered <- f.lambda * Vt.Y      ## m x p (recycled down rows)
-        Y.hat <- V %*% filtered          ## n x p
+        if (blockwise.enabled && isTRUE(verbose)) {
+            message(sprintf(
+                "Fixed-eta refit in %d column blocks (block.size=%d).",
+                length(block.index), block.size
+            ))
+        }
 
-        residuals <- y.new - Y.hat
+        Y.hat <- matrix(0.0, nrow = n, ncol = n.responses)
+        residuals <- matrix(0.0, nrow = n, ncol = n.responses)
+        if (!is.null(col.names) && n.responses > 1L) {
+            colnames(Y.hat) <- col.names
+            colnames(residuals) <- col.names
+        }
+
+        for (bi in seq_along(block.index)) {
+            cols <- block.index[[bi]]
+
+            y.block <- y.new[, cols, drop = FALSE]
+
+            ## Apply spectral filter blockwise:
+            ## Y_hat_block = V diag(f.lambda) V^T Y_block
+            Vt.Y.block <- crossprod(V, y.block)
+            filtered.block <- f.lambda * Vt.Y.block
+            Y.hat.block <- .as_dense_matrix(V %*% filtered.block)
+
+            Y.hat[, cols] <- Y.hat.block
+            residuals[, cols] <- .as_dense_matrix(y.block) - Y.hat.block
+
+            if (blockwise.enabled && isTRUE(verbose)) {
+                message(sprintf("  processed block %d/%d", bi, length(block.index)))
+            }
+        }
 
         result <- list(
             fitted.values = if (n.responses == 1L) as.vector(Y.hat) else Y.hat,
@@ -532,7 +637,8 @@ refit.rdgraph.regression <- function(fitted.model,
             n.responses = n.responses,
             per.column.gcv = FALSE,
             y.vertices = NULL,
-            eta.used = eta.used
+            eta.used = eta.used,
+            block.size.used = if (blockwise.enabled) block.size else NA_integer_
         )
 
         class(result) <- c("knn.riem.refit", "list")
@@ -544,11 +650,16 @@ refit.rdgraph.regression <- function(fitted.model,
         ## SEMI-SUPERVISED: Masked spectral Tikhonov refit
         ## ------------------------------------------------------------
         ## Solve (A + eta*Lambda)a = b where A = V_L^T V_L, b = V_L^T y_L
+        if (blockwise.enabled && isTRUE(verbose)) {
+            message(sprintf(
+                "Semi-supervised fixed-eta refit in %d column blocks (block.size=%d).",
+                length(block.index), block.size
+            ))
+        }
+
         V.lab <- V[y.vertices, , drop = FALSE]          ## |L| x m
-        y.lab <- y.new[y.vertices, , drop = FALSE]      ## |L| x p
 
         A.mat <- crossprod(V.lab)                      ## m x m
-        b.mat <- crossprod(V.lab, y.lab)               ## m x p
 
         ## M = A + eta * diag(eigenvalues)
         M.mat <- A.mat
@@ -568,19 +679,31 @@ refit.rdgraph.regression <- function(fitted.model,
             chol.M <- tryCatch(chol(M2), error = function(e) NULL)
         }
 
-        if (!is.null(chol.M)) {
-            ## a = M^{-1} b using triangular solves
-            a.mat <- backsolve(chol.M, forwardsolve(t(chol.M), b.mat))
-        } else {
-            ## Final fallback
-            if (verbose) message("Cholesky retry failed; using solve(M, b).")
-            a.mat <- solve(M.mat, b.mat)
+        Y.hat <- matrix(0.0, nrow = n, ncol = n.responses)
+        residuals <- matrix(NA_real_, nrow = n, ncol = n.responses)
+
+        for (bi in seq_along(block.index)) {
+            cols <- block.index[[bi]]
+            y.lab.block <- y.new[y.vertices, cols, drop = FALSE]
+            b.block <- .as_dense_matrix(crossprod(V.lab, y.lab.block))
+
+            if (!is.null(chol.M)) {
+                ## a = M^{-1} b using triangular solves
+                a.block <- backsolve(chol.M, forwardsolve(t(chol.M), b.block))
+            } else {
+                ## Final fallback
+                if (verbose) message("Cholesky retry failed; using solve(M, b).")
+                a.block <- solve(M.mat, b.block)
+            }
+
+            Y.hat.block <- .as_dense_matrix(V %*% a.block)
+            Y.hat[, cols] <- Y.hat.block
+            residuals[y.vertices, cols] <- .as_dense_matrix(y.lab.block) - Y.hat.block[y.vertices, , drop = FALSE]
+
+            if (blockwise.enabled && isTRUE(verbose)) {
+                message(sprintf("  processed block %d/%d", bi, length(block.index)))
+            }
         }
-
-        Y.hat <- V %*% a.mat                            ## n x p
-
-        residuals <- y.new - Y.hat
-        residuals[-y.vertices, ] <- NA_real_
 
         if (!is.null(col.names) && n.responses > 1L) {
             colnames(Y.hat) <- col.names
@@ -593,12 +716,37 @@ refit.rdgraph.regression <- function(fitted.model,
             n.responses = n.responses,
             per.column.gcv = FALSE,
             y.vertices = as.integer(y.vertices),
-            eta.used = eta.used
+            eta.used = eta.used,
+            block.size.used = if (blockwise.enabled) block.size else NA_integer_
         )
 
         class(result) <- c("knn.riem.refit", "list")
         return(result)
     }
+}
+
+#' Blockwise Refit Wrapper for Riemannian Graph Regression
+#'
+#' Convenience wrapper around \code{\link{refit.rdgraph.regression}} that enables
+#' blockwise processing by default.
+#'
+#' @inheritParams refit.rdgraph.regression
+#' @param block.size Positive integer block size. Default is 250.
+#' @param ... Additional arguments passed to \code{\link{refit.rdgraph.regression}}.
+#'
+#' @return A \code{"knn.riem.refit"} object returned by
+#'   \code{\link{refit.rdgraph.regression}}.
+#' @export
+refit.blocked <- function(fitted.model,
+                          y.new,
+                          block.size = 250L,
+                          ...) {
+    refit.rdgraph.regression(
+        fitted.model = fitted.model,
+        y.new = y.new,
+        block.size = block.size,
+        ...
+    )
 }
 
 #' Compute filter weights for all eigenvalues and all eta candidates

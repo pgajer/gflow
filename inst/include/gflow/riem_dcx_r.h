@@ -45,14 +45,17 @@ extern "C" {
 		SEXP s_clamp_dk,
 		SEXP s_dk_clamp_median_factor,
 		
-		SEXP s_target_weight_ratio,
-		SEXP s_pathological_ratio_threshold,	
-		SEXP s_compute_extremality,
+			SEXP s_target_weight_ratio,
+			SEXP s_pathological_ratio_threshold,	
+			SEXP s_compute_extremality,
 		SEXP s_p_threshold,
 		SEXP s_max_hop,
+		SEXP s_knn_cache_path,
+		SEXP s_knn_cache_mode,
+		SEXP s_dense_fallback_mode,
 		
 		SEXP s_verbose_level
-		);
+			);
 
 	SEXP S_compute_hop_extremp_radii_batch(
 		SEXP s_adj_list,

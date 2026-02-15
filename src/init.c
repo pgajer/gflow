@@ -288,8 +288,8 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // data graphs
   // =========================================================================
-  {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 6},
-  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 9},
+  {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 11},
+  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 15},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
@@ -305,6 +305,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
 
   {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
+  {"S_compare_iknn_graph_builders", (DL_FUNC) &S_compare_iknn_graph_builders, 4},
 
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
 
@@ -359,7 +360,7 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // regression over graphs
   // =========================================================================
-  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 36},
+  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 39},
 
   // old
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},

@@ -275,6 +275,17 @@
 #'     This pruning is applied after geometric pruning and targets unusually long edges
 #'     based on absolute edge lengths rather than path-to-edge ratios.
 #'
+#' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
+#'   Used only when \code{knn.cache.mode != "none"}.
+#' @param knn.cache.mode Character cache mode:
+#'   \itemize{
+#'     \item \code{"none"}: always compute kNN; do not read/write cache.
+#'     \item \code{"read"}: read kNN from cache only; if cache is missing/invalid, error.
+#'     \item \code{"write"}: always compute kNN and atomically write/overwrite cache.
+#'     \item \code{"readwrite"}: read valid cache when available; if cache file is missing,
+#'       compute and write cache; if cache exists but is invalid, error.
+#'   }
+#'
 #' @param epsilon.y Numeric scalar, positive. Relative convergence threshold
 #'   for response. Iteration stops when the relative change in fitted values
 #'   \eqn{||\hat{y}^{(\ell)} - \hat{y}^{(\ell-1)}|| / ||\hat{y}^{(\ell-1)}||}
@@ -291,6 +302,14 @@
 #'     is applied, also stores the PCA-projected matrix as
 #'     \code{attr(fit, "pca")$X_projected}. Default is \code{FALSE} to avoid
 #'     increasing object size.
+#'
+#' @param dense.fallback Character scalar controlling dense direct-solver fallback
+#'   in the diffusion linear solve. \code{"auto"} (default) preserves current
+#'   behavior (direct solve for small systems and dense fallback after CG failure
+#'   on larger systems). \code{"never"} disables dense fallback and raises a
+#'   detailed iterative-solver error instead of attempting sparse-to-dense
+#'   allocation. \code{"always"} forces dense direct solve (debugging mode; can
+#'   require \eqn{O(n^2)} memory).
 #'
 #' @param verbose.level Integer in \code{c(0, 1, 2, 3)} controlling reporting.
 #' @param ... Additional advanced options forwarded to lower-level fitting routines.
@@ -644,6 +663,8 @@ fit.rdgraph.regression <- function(
     max.ratio.threshold = 0.1,
     path.edge.ratio.percentile = 0.5,
     threshold.percentile = 0,
+    knn.cache.path = NULL,
+    knn.cache.mode = c("none", "read", "write", "readwrite"),
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
     ## reference.measure.type = c("dk_powerlaw", "counting", "user"),
@@ -656,6 +677,7 @@ fit.rdgraph.regression <- function(
     ##     normalization.target = density.normalization, ## 0 => n
     ##     max.weight.ratio = 1000             ## currently implicit via median.factor+alpha
     ## )
+    dense.fallback = c("auto", "never", "always"),
     store.projected.X = FALSE,
     verbose.level = 1,
     ...
@@ -1116,6 +1138,14 @@ fit.rdgraph.regression <- function(
         stop("threshold.percentile must be in [0, 0.5].")
     }
 
+    knn.cache.mode <- match.arg(knn.cache.mode)
+    knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
+    knn.cache.mode.id <- switch(knn.cache.mode,
+                                none = 0L,
+                                read = 1L,
+                                write = 2L,
+                                readwrite = 3L)
+
     ## verbose.level
     if (length(verbose.level) != 1 || !(verbose.level %in% 0:3) )
         stop("verbose.level must be an integer in {0,1,2,3}.")
@@ -1185,6 +1215,15 @@ fit.rdgraph.regression <- function(
     ## Match t.update
     t.update <- match.arg(t.update)
 
+    ## Match dense.fallback
+    dense.fallback <- match.arg(dense.fallback)
+    dense.fallback.mode <- switch(
+        dense.fallback,
+        auto = 0L,
+        never = 1L,
+        always = 2L
+    )
+
     if (!is.numeric(t.update.max.mult) || length(t.update.max.mult) != 1L ||
         !is.finite(t.update.max.mult) || t.update.max.mult < 1.0) {
         stop("t.update.max.mult must be a finite numeric scalar >= 1.0")
@@ -1231,6 +1270,9 @@ fit.rdgraph.regression <- function(
         as.logical(compute.extremality),
         as.double(p.threshold),
         as.integer(max.hop),
+        if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
+        as.integer(knn.cache.mode.id),
+        as.integer(dense.fallback.mode),
         as.integer(verbose.level),
         PACKAGE = "gflow"
     )

@@ -34,9 +34,24 @@
 #'   pruning (passed to \code{create.iknn.graphs()}).
 #' @param threshold.percentile Numeric in \eqn{[0, 0.5]}. Optional quantile-based edge-length pruning
 #'   (passed to \code{create.iknn.graphs()}).
+#' @param knn.cache.path Optional character scalar path to a binary kNN cache file
+#'   passed to \code{create.iknn.graphs()}.
+#' @param knn.cache.mode Character cache mode passed to \code{create.iknn.graphs()}:
+#'   \itemize{
+#'     \item \code{"none"}: always compute kNN; do not read/write cache.
+#'     \item \code{"read"}: read kNN from cache only; if cache is missing/invalid, error.
+#'     \item \code{"write"}: always compute kNN and atomically write/overwrite cache.
+#'     \item \code{"readwrite"}: read valid cache when available; if cache file is missing,
+#'       compute and write cache; if cache exists but is invalid, error.
+#'   }
 #'
 #' @param n.cores Integer >= 1. Number of CPU cores to use for fitting across k values.
 #'   If \code{n.cores > 1}, requires the \pkg{foreach} and \pkg{doParallel} packages.
+#'
+#' @param block.size Optional positive integer. Passed to
+#'   \code{refit.rdgraph.regression()} to process response columns in blocks
+#'   during the final refit step. Useful for large multi-response matrices to
+#'   reduce peak memory use. Default \code{NULL} (no explicit block size).
 #'
 #' @param proxy.response Character. Proxy response used to select \code{k.best} by GCV.
 #'   Options:
@@ -57,6 +72,9 @@
 #' @param filter.type Character. Passed to \code{fit.rdgraph.regression()} (default \code{"heat_kernel"}).
 #' @param t.scale.factor Numeric. Passed to \code{fit.rdgraph.regression()} (default 0.5).
 #' @param beta.coef.factor Numeric. Passed to \code{fit.rdgraph.regression()} (default 0.1).
+#' @param dense.fallback Character. Passed to \code{fit.rdgraph.regression()}
+#'   to control dense direct-solver fallback in diffusion solves. Options are
+#'   \code{"auto"} (default), \code{"never"}, and \code{"always"}.
 #' @param use.counting.measure Logical. If TRUE, uses uniform vertex weights
 #'     (counting measure). If FALSE, uses distance-based weights inversely
 #'     proportional to local k-NN density: \eqn{w(x) = (\epsilon +
@@ -86,7 +104,10 @@ data.smoother <- function(
     max.path.edge.ratio.deviation.thld = 0.1,
     path.edge.ratio.percentile = 0.5,
     threshold.percentile = 0,
+    knn.cache.path = NULL,
+    knn.cache.mode = c("none", "read", "write", "readwrite"),
     n.cores = 1L,
+    block.size = NULL,
     proxy.response = c("pc1","max.variance"),
     pca.center = TRUE,
     pca.scale = FALSE,
@@ -98,6 +119,7 @@ data.smoother <- function(
     filter.type = "heat_kernel",
     t.scale.factor = 0.5,
     beta.coef.factor = 0.1,
+    dense.fallback = c("auto", "never", "always"),
     use.counting.measure = TRUE,
     verbose = FALSE
 ) {
@@ -192,9 +214,18 @@ data.smoother <- function(
 
     if (!.is.int.scalar(n.cores) || n.cores < 1) stop("n.cores must be a positive integer.")
     n.cores <- as.integer(n.cores)
+    if (!is.null(block.size)) {
+        if (!.is.int.scalar(block.size) || block.size < 1) {
+            stop("block.size must be NULL or a positive integer.")
+        }
+        block.size <- as.integer(block.size)
+    }
+    knn.cache.mode <- match.arg(knn.cache.mode)
+    knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
 
     ## Keep X as double
     if (!is.double(X)) storage.mode(X) <- "double"
+    dense.fallback <- match.arg(dense.fallback)
 
     ## -------------------------------------------------------------------------
     ## Build graph sequence (geom pruned)
@@ -213,6 +244,8 @@ data.smoother <- function(
         compute.full = TRUE,
         pca.dim = pca.dim,
         variance.explained = variance.explained,
+        knn.cache.path = knn.cache.path,
+        knn.cache.mode = knn.cache.mode,
         n.cores = n.cores,
         verbose = isTRUE(verbose)
     )
@@ -253,6 +286,15 @@ data.smoother <- function(
 
         ## Rebuild graphs after trimming
         if (verbose) cat("Rebuilding ikNN graph sequence (after trimming)\n")
+        rebuild.knn.cache.path <- knn.cache.path
+        rebuild.knn.cache.mode <- knn.cache.mode
+        if (!is.null(rebuild.knn.cache.path) && rebuild.knn.cache.mode %in% c("read", "readwrite")) {
+            if (verbose) {
+                cat("Trimming changed matrix dimensions; disabling kNN cache for rebuilt graph sequence.\n")
+            }
+            rebuild.knn.cache.path <- NULL
+            rebuild.knn.cache.mode <- "none"
+        }
         X.graphs <- create.iknn.graphs(
             X,
             kmin = kmin,
@@ -263,6 +305,8 @@ data.smoother <- function(
             compute.full = TRUE,
             pca.dim = pca.dim,
             variance.explained = variance.explained,
+            knn.cache.path = rebuild.knn.cache.path,
+            knn.cache.mode = rebuild.knn.cache.mode,
             n.cores = n.cores,
             verbose = isTRUE(verbose)
         )
@@ -371,6 +415,7 @@ data.smoother <- function(
             filter.type = filter.type,
             t.scale.factor = t.scale.factor,
             beta.coef.factor = beta.coef.factor,
+            dense.fallback = dense.fallback,
             use.counting.measure = use.counting.measure,
             max.ratio.threshold = max.path.edge.ratio.deviation.thld,
             path.edge.ratio.percentile = path.edge.ratio.percentile,
@@ -433,7 +478,11 @@ data.smoother <- function(
     ## Refit smoother to full matrix
     ## -------------------------------------------------------------------------
 
-    refit.res <- refit.rdgraph.regression(fit.best, as.matrix(X))
+    refit.res <- refit.rdgraph.regression(
+        fit.best,
+        X,
+        block.size = block.size
+    )
     X.smoothed <- refit.res$fitted.values
 
     ## -------------------------------------------------------------------------
