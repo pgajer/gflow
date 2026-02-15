@@ -15,9 +15,7 @@
 #include "ulm.hpp"
 #include "opt_bw.hpp"
 #include "graph_spectral_lowess.hpp"     // For graph_spectral_lowess_t
-#include "graph_spectral_lowess_mat.hpp" // For graph_spectral_lowess_mat_t
 #include "edge_pruning_stats.hpp"        // For edge_pruning_stats_t
-#include "nada_graph_spectral_lowess.hpp"// For nada_graph_spectral_lowess_t
 #include "graph_deg0_lowess_cv.hpp"
 #include "graph_deg0_lowess_cv_mat.hpp"
 #include "graph_deg0_lowess_buffer_cv.hpp"
@@ -779,26 +777,6 @@ struct set_wgraph_t {
 		bool verbose
 		) const;
 
-	/**
-	 * @brief Non-adaptive (no model averaging) spectral LOWESS implementation
-	 */
-	nada_graph_spectral_lowess_t nada_graph_spectral_lowess(
-		const std::vector<double>& y,
-		size_t n_evectors,
-		// bw parameters
-		size_t n_bws,
-		bool log_grid,
-		double min_bw_factor,
-		double max_bw_factor,
-		// kernel parameters
-		double dist_normalization_factor,
-		size_t kernel_type,
-		// other
-		double precision,
-		size_t n_cleveland_iterations,
-		bool verbose
-		) const;
-
 	std::vector<double> graph_deg0_lowess(
 		const std::vector<double>& y,
 		double bandwidth,
@@ -836,26 +814,6 @@ struct set_wgraph_t {
 		double precision,
 		bool verbose
 		);
-
-	// Matrix version of graph_spectral_lowess for multiple response variables
-	graph_spectral_lowess_mat_t graph_spectral_lowess_mat(
-		const std::vector<std::vector<double>>& Y,
-		size_t n_evectors,
-		// bw parameters
-		size_t n_bws,
-		bool log_grid,
-		double min_bw_factor,
-		double max_bw_factor,
-		// kernel parameters
-		double dist_normalization_factor,
-		size_t kernel_type,
-		// other
-		double precision,
-		size_t n_cleveland_iterations,
-		bool with_errors,
-		bool with_scale,
-		bool verbose
-		) const;
 
 	/**
 	 * @brief Perform degree-0 LOWESS with buffer zone cross-validation for bandwidth selection
