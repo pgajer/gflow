@@ -57,6 +57,7 @@
 #include "gfc_r.h"
 #include "gfassoc_r.h"
 #include "harmonic_extension_r.h"
+#include "diffusion_pseudotime_sparse_r.h"
 #include "gfc_flow_r.h"
 #include "madag_r.h"
 #include "traj_clustering_r.h"
@@ -208,6 +209,13 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_compute_harmonic_extension", (DL_FUNC) &S_compute_harmonic_extension, 10},
   {"S_select_max_density_trajectory", (DL_FUNC) &S_select_max_density_trajectory, 2},
+
+  // =========================================================================
+  //  Sparse diffusion/potential pseudotime
+  // =========================================================================
+  {"S_build_sparse_transition", (DL_FUNC) &S_build_sparse_transition, 5},
+  {"S_compute_diffusion_pseudotime_sparse", (DL_FUNC) &S_compute_diffusion_pseudotime_sparse, 12},
+  {"S_compute_potential_pseudotime_sparse", (DL_FUNC) &S_compute_potential_pseudotime_sparse, 12},
 
   // =========================================================================
   //  Gradient flow association functions
