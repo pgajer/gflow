@@ -31,8 +31,17 @@
 #'     This pruning is applied after geometric pruning and targets unusually long edges
 #'     based on absolute edge lengths rather than path-to-edge ratios.
 #'
-#' @param compute.full Logical. If `TRUE`, return the pruned graphs; if `FALSE`,
-#'     return only edge statistics.
+#' @param compute.full Logical controlling graph-list outputs.
+#'     If `TRUE`, return `geom_pruned_graphs` (and `isize_pruned_graphs` when
+#'     `with.isize.pruning = TRUE`).
+#'     If `FALSE`, both graph lists are `NULL` and only summary outputs are returned
+#'     (`k_statistics`, plus `edge_pruning_stats` when requested).
+#'
+#' @param with.isize.pruning Logical. If `TRUE`, compute and return
+#'     intersection-size pruned graphs/statistics. Default is `FALSE`.
+#'
+#' @param with.edge.pruning.stats Logical. If `TRUE`, compute and return
+#'     edge-level pruning statistics. Default is `FALSE`.
 #'
 #' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
 #'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
@@ -44,6 +53,26 @@
 #' @param n.cores Integer or `NULL`. Number of CPU cores. `NULL` uses the
 #'     maximum available (OpenMP build only).
 #'
+#' @param parallel.mode Character execution mode for graph construction:
+#'     `"auto"`, `"k"`, `"bucket"`, `"hybrid"` (or alias `"bucket.prune"`).
+#'     `"hybrid"` performs
+#'     bucket-parallel graph build and then k-parallel pruning in batches.
+#'
+#' @param hybrid.batch.size Positive integer batch size used when
+#'     `parallel.mode = "hybrid"`.
+#'
+#' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
+#'     Used only when `knn.cache.mode != "none"`.
+#'
+#' @param knn.cache.mode Character cache mode:
+#'   \itemize{
+#'     \item \code{"none"}: always compute kNN; do not read/write cache.
+#'     \item \code{"read"}: read kNN from cache only; if cache is missing/invalid, error.
+#'     \item \code{"write"}: always compute kNN and atomically write/overwrite cache.
+#'     \item \code{"readwrite"}: read valid cache when available; if cache file is missing,
+#'       compute and write cache; if cache exists but is invalid, error.
+#'   }
+#'
 #' @param verbose Logical; print progress and timing.
 #'
 #' @return A list of class `"iknn_graphs"` with entries:
@@ -53,10 +82,11 @@
 #'     Otherwise we add names consistent with what the C++ returns.)}
 #'   \item{geom_pruned_graphs}{If `compute.full=TRUE`, list of geometrically
 #'     pruned graphs (adjacency + weights); otherwise `NULL`.}
-#'   \item{isize_pruned_graphs}{If `compute.full=TRUE`, list of intersection-size
-#'     pruned graphs; otherwise `NULL`.}
-#'   \item{edge_pruning_stats}{List (per \eqn{k}) of matrices with edge-level
-#'     statistics (lengths, path/edge ratios, etc.).}
+#'   \item{isize_pruned_graphs}{If `compute.full=TRUE` and
+#'     `with.isize.pruning=TRUE`, list of intersection-size pruned graphs;
+#'     otherwise `NULL`.}
+#'   \item{edge_pruning_stats}{If `with.edge.pruning.stats=TRUE`, list (per
+#'     \eqn{k}) of edge-level statistics; otherwise `NULL`.}
 #' }
 #'
 #' @details
@@ -64,6 +94,12 @@
 #' `max.path.edge.ratio.deviation.thld` and the filtering percentile
 #' `path.edge.ratio.percentile`. Intersection-size pruning currently uses
 #' a maximum alternative path length of 2.
+#'
+#' Output behavior by flags:
+#' - `compute.full = FALSE`: both `geom_pruned_graphs` and `isize_pruned_graphs`
+#'   are `NULL`.
+#' - `compute.full = TRUE` and `with.isize.pruning = FALSE`:
+#'   `geom_pruned_graphs` is returned and `isize_pruned_graphs` is `NULL`.
 #'
 #' @examples
 #' # Generate sample data
@@ -96,10 +132,16 @@ create.iknn.graphs <- function(X,
                                path.edge.ratio.percentile = 0.5,
                                threshold.percentile = 0,
                                compute.full = TRUE,
+                               with.isize.pruning = FALSE,
+                               with.edge.pruning.stats = FALSE,
                                pca.dim = 100,
                                variance.explained = 0.99,
                                n.cores = NULL,
-                               verbose = FALSE) {
+                               parallel.mode = c("auto", "k", "bucket", "hybrid", "bucket.prune"),
+                               hybrid.batch.size = 2L,
+                               verbose = TRUE,
+                               knn.cache.path = NULL,
+                               knn.cache.mode = c("none", "read", "write", "readwrite")) {
 
     ## Coerce & basic checks
     if (!is.matrix(X)) {
@@ -135,8 +177,32 @@ create.iknn.graphs <- function(X,
 
     if (!is.logical(compute.full) || length(compute.full) != 1)
         stop("compute.full must be TRUE/FALSE.")
+    if (!is.logical(with.isize.pruning) || length(with.isize.pruning) != 1)
+        stop("with.isize.pruning must be TRUE/FALSE.")
+    if (!is.logical(with.edge.pruning.stats) || length(with.edge.pruning.stats) != 1)
+        stop("with.edge.pruning.stats must be TRUE/FALSE.")
     if (!is.logical(verbose) || length(verbose) != 1)
         stop("verbose must be TRUE/FALSE.")
+    parallel.mode <- match.arg(parallel.mode)
+    if (identical(parallel.mode, "bucket.prune")) {
+        parallel.mode <- "hybrid"
+    }
+    parallel.mode.id <- switch(parallel.mode,
+                               auto = 0L,
+                               k = 1L,
+                               bucket = 2L,
+                               hybrid = 3L)
+    if (!is.numeric(hybrid.batch.size) || length(hybrid.batch.size) != 1 ||
+        hybrid.batch.size < 1 || hybrid.batch.size != floor(hybrid.batch.size)) {
+        stop("hybrid.batch.size must be a positive integer.")
+    }
+    knn.cache.mode <- match.arg(knn.cache.mode)
+    knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
+    knn.cache.mode.id <- switch(knn.cache.mode,
+                                none = 0L,
+                                read = 1L,
+                                write = 2L,
+                                readwrite = 3L)
 
     if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1)
         stop("threshold.percentile must be numeric.")
@@ -191,6 +257,12 @@ create.iknn.graphs <- function(X,
         }
     }
 
+    if (verbose && !compute.full) {
+        message("compute.full=FALSE: geom_pruned_graphs and isize_pruned_graphs will be NULL; returning k_statistics (and edge_pruning_stats if requested).")
+    } else if (verbose && !with.isize.pruning) {
+        message("with.isize.pruning=FALSE: isize_pruned_graphs will be NULL.")
+    }
+
     ## Note on k: ANN returns self in its kNN sets, this is why k+1 is passed here (for kmin and kmax).
     ## We need to ensure the C++ labels/columns reflect the *original* k.
     result <- .Call("S_create_iknn_graphs",
@@ -201,7 +273,13 @@ create.iknn.graphs <- function(X,
                     as.double(path.edge.ratio.percentile),
                     as.double(threshold.percentile),
                     as.logical(compute.full),
+                    as.logical(with.isize.pruning),
+                    as.logical(with.edge.pruning.stats),
                     if (is.null(n.cores)) NULL else as.integer(n.cores),
+                    as.integer(parallel.mode.id),
+                    as.integer(hybrid.batch.size),
+                    if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
+                    as.integer(knn.cache.mode.id),
                     as.logical(verbose),
                     PACKAGE = "gflow")
 
@@ -257,6 +335,10 @@ create.iknn.graphs <- function(X,
     attr(result, "kmax") <- kmax
     attr(result, "max_path_edge_ratio_deviation_thld") <- max.path.edge.ratio.deviation.thld
     attr(result, "path_edge_ratio_percentile") <- path.edge.ratio.percentile
+    attr(result, "with.isize.pruning") <- with.isize.pruning
+    attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
+    attr(result, "parallel.mode") <- parallel.mode
+    attr(result, "hybrid.batch.size") <- as.integer(hybrid.batch.size)
     if (!is.null(pca_info)) attr(result, "pca") <- pca_info
     class(result) <- "iknn_graphs"
     result
@@ -309,7 +391,13 @@ create.iknn.graphs <- function(X,
 #' x <- matrix(rnorm(1000), ncol = 5)
 #'
 #' # Generate intersection kNN graphs
-#' iknn.res <- create.iknn.graphs(x, kmin = 3, kmax = 10, n.cores = 1)
+#' iknn.res <- create.iknn.graphs(
+#'   x,
+#'   kmin = 3,
+#'   kmax = 10,
+#'   n.cores = 1,
+#'   with.isize.pruning = TRUE
+#' )
 #'
 #' # Summarize the geometrically pruned graphs
 #' summary(iknn.res)
@@ -334,7 +422,7 @@ summary.iknn_graphs <- function(object,
         graphs_to_use <- object$isize_pruned_graphs
         graph_type <- "intersection-size pruned"
         if (is.null(graphs_to_use)) {
-            stop("Intersection-size pruned graphs not available. Set compute.full = TRUE when creating the graphs.")
+            stop("Intersection-size pruned graphs not available. Set compute.full = TRUE and with.isize.pruning = TRUE when creating the graphs.")
         }
     } else {
         graphs_to_use <- object$geom_pruned_graphs
@@ -494,6 +582,9 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
     graphs.list <- if (graph.type == "geom") graphs$geom_pruned_graphs else graphs$isize_pruned_graphs
 
     if (is.null(graphs.list)) {
+        if (graph.type == "isize") {
+            stop("Requested intersection-size pruned graphs are not available. Recompute with create.iknn.graphs(..., compute.full = TRUE, with.isize.pruning = TRUE).")
+        }
         stop("Requested pruned graphs are not available. Recompute create.iknn.graphs(..., compute.full = TRUE).")
     }
 

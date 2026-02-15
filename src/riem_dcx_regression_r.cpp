@@ -1086,7 +1086,9 @@ extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
  * @param s_compute_extremality Logical: compute extremality scores? (LGLSXP)
  * @param s_p_threshold Extremality threshold for hop radii, 0=skip (REALSXP)
  * @param s_max_hop Maximum hop distance for radii computation (INTSXP)
- * @param s_verbose_level SEXP object (integer) controlling progress reporting during computation; possible values: 0, 1, 2, 3, 4.
+ * @param s_dense_fallback_mode Integer fallback mode for diffusion linear solve:
+ *        0=auto, 1=never, 2=always (INTSXP)
+ * @param s_verbose_level SEXP object (integer) controlling progress reporting during computation; possible values: 0, 1, 2, 3.
  *
  * @return R list of class c("knn.riem.fit", "list") with components:
  *   - fitted.values: Fitted values at optimal GCV iteration
@@ -1152,6 +1154,9 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_compute_extremality,
     SEXP s_p_threshold,
     SEXP s_max_hop,
+    SEXP s_knn_cache_path,
+    SEXP s_knn_cache_mode,
+    SEXP s_dense_fallback_mode,
     SEXP s_verbose_level
 ) {
     // ================================================================
@@ -1707,6 +1712,51 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     const size_t max_hop = static_cast<size_t>(max_hop_int);
 
+    // -------------------- s_knn_cache_mode --------------------
+
+    if (TYPEOF(s_knn_cache_mode) != INTSXP || Rf_length(s_knn_cache_mode) != 1) {
+        Rf_error("knn.cache.mode must be a single integer in {0,1,2,3}");
+    }
+
+    const int knn_cache_mode = INTEGER(s_knn_cache_mode)[0];
+
+    if (knn_cache_mode == NA_INTEGER || knn_cache_mode < 0 || knn_cache_mode > 3) {
+        Rf_error("knn.cache.mode must be 0 (none), 1 (read), 2 (write), or 3 (readwrite)");
+    }
+
+    // -------------------- s_knn_cache_path --------------------
+
+    std::string knn_cache_path;
+    if (!Rf_isNull(s_knn_cache_path)) {
+        if (TYPEOF(s_knn_cache_path) != STRSXP ||
+            Rf_length(s_knn_cache_path) != 1 ||
+            STRING_ELT(s_knn_cache_path, 0) == NA_STRING) {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar");
+        }
+        const char* path_cstr = CHAR(STRING_ELT(s_knn_cache_path, 0));
+        if (path_cstr == nullptr || path_cstr[0] == '\0') {
+            Rf_error("knn.cache.path must be NULL or a non-empty character scalar");
+        }
+        knn_cache_path.assign(path_cstr);
+    }
+
+    if (knn_cache_mode != 0 && knn_cache_path.empty()) {
+        Rf_error("knn.cache.path must be provided when knn.cache.mode is not 'none'");
+    }
+
+    // -------------------- s_dense_fallback_mode --------------------
+
+    if (TYPEOF(s_dense_fallback_mode) != INTSXP || Rf_length(s_dense_fallback_mode) != 1) {
+        Rf_error("dense_fallback_mode must be a single integer (0=auto, 1=never, 2=always)");
+    }
+
+    const int dense_fallback_mode = INTEGER(s_dense_fallback_mode)[0];
+
+    if (dense_fallback_mode == NA_INTEGER ||
+        (dense_fallback_mode != 0 && dense_fallback_mode != 1 && dense_fallback_mode != 2)) {
+        Rf_error("dense_fallback_mode must be 0 (auto), 1 (never), or 2 (always)");
+    }
+
     // -------------------- density.epsilon --------------------
 
     if (TYPEOF(s_density_epsilon) != REALSXP || Rf_length(s_density_epsilon) != 1) {
@@ -1838,6 +1888,9 @@ extern "C" SEXP S_fit_rdgraph_regression(
         dk_clamp_median_factor,
         target_weight_ratio,
         pathological_ratio_threshold,
+        knn_cache_path,
+        knn_cache_mode,
+        dense_fallback_mode,
         verbose_level
         );
 

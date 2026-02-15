@@ -37,16 +37,12 @@
 #include "riem_dcx.hpp"
 #include "set_wgraph.hpp"
 #include "kNN.h"
+#include "progress_utils.hpp" // for elapsed_time
 #include <algorithm>
 #include <limits>
 #include <unordered_set>
 #include <numeric>
 #include <cmath>
-
-knn_result_t compute_knn_from_eigen(
-    const Eigen::SparseMatrix<double>& X,
-    int k
-    );
 
 // ================================================================
 // WEIGHT COMPRESSION HELPERS (reference measure stabilization)
@@ -239,11 +235,6 @@ static inline void power_compress_weights_to_ratio_in_place(
 #include <limits>
 #include <unordered_set>
 
-knn_result_t compute_knn_from_eigen(
-    const Eigen::SparseMatrix<double>& X,
-    int k
-);
-
 /**
  * @brief Initialize geometric complex from k-nearest neighbor structure
  *
@@ -387,9 +378,12 @@ void riem_dcx_t::initialize_from_knn(
 	double dk_clamp_median_factor,
 	double target_weight_ratio,
 	double pathological_ratio_threshold,
+	const std::string& knn_cache_path,
+	int knn_cache_mode,
 	verbose_level_t verbose_level
 ) {
     const size_t n_points = static_cast<size_t>(X.rows());
+    auto phase_time = std::chrono::steady_clock::now();
 
     // Setup debug directory if enabled
     std::string debug_dir;
@@ -417,15 +411,49 @@ void riem_dcx_t::initialize_from_knn(
     // ================================================================
     // PHASE 1A: K-NN COMPUTATION AND NEIGHBORHOOD CONSTRUCTION
     // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("  Phase 1: kNN neighborhoods ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
 
-    knn_result_t knn_result = compute_knn_from_eigen(X, k);
+    bool knn_cache_hit = false;
+    bool knn_cache_written = false;
+    knn_result_t knn_result = compute_knn_from_eigen(
+        X,
+        static_cast<int>(k),
+        knn_cache_path,
+        knn_cache_mode,
+        &knn_cache_hit,
+        &knn_cache_written
+    );
+
+    if (knn_result.k < static_cast<int>(k)) {
+        Rf_error("kNN results contain fewer neighbors than required (%d < %d)",
+                 knn_result.k,
+                 static_cast<int>(k));
+    }
+
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && knn_cache_mode != 0) {
+        if (knn_cache_hit) {
+            Rprintf("  [kNN cache] hit: %s (cached k=%d)\n",
+                    knn_cache_path.c_str(),
+                    knn_result.k);
+        } else if (knn_cache_written) {
+            Rprintf("  [kNN cache] wrote: %s (k=%d)\n",
+                    knn_cache_path.c_str(),
+                    knn_result.k);
+        } else {
+            Rprintf("  [kNN cache] mode=%d, no cache IO performed\n", knn_cache_mode);
+        }
+    }
 
     std::vector<std::vector<index_t>> knn_indices(n_points, std::vector<index_t>(k));
     std::vector<std::vector<double>> knn_distances(n_points, std::vector<double>(k));
+    const size_t knn_stride = static_cast<size_t>(knn_result.k);
 
     for (size_t i = 0; i < n_points; ++i) {
         for (size_t j = 0; j < k; ++j) {
-            const size_t offset = i * k + j;
+            const size_t offset = i * knn_stride + j;
             knn_indices[i][j] = static_cast<index_t>(knn_result.indices[offset]);
             knn_distances[i][j] = knn_result.distances[offset];
         }
@@ -452,9 +480,17 @@ void riem_dcx_t::initialize_from_knn(
         );
     #endif
 
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
+    }
+
     // ================================================================
     // PHASE 1B: EDGE CONSTRUCTION VIA NEIGHBORHOOD INTERSECTIONS
     // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("  Phase 2: simplicial graph build/pruning ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
 
 	// Initialize vertex_cofaces with self-loops
 	vertex_cofaces.resize(n_points);
@@ -945,9 +981,17 @@ void riem_dcx_t::initialize_from_knn(
 			});
 	}
 
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
+    }
+
     // ================================================================
     // PHASE 2: DENSITY INITIALIZATION
     // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("  Phase 3: reference measure + densities ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
 
     // Initialize reference measure
     initialize_reference_measure(
@@ -967,9 +1011,17 @@ void riem_dcx_t::initialize_from_knn(
     // Compute initial densities from reference measure
     compute_initial_densities(verbose_level);
 
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
+    }
+
     // ================================================================
     // PHASE 3: METRIC CONSTRUCTION
     // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("  Phase 4: metric + operators assembly ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
 
     initialize_metric_from_density();
 
@@ -988,6 +1040,10 @@ void riem_dcx_t::initialize_from_knn(
     // ================================================================
 
     assemble_operators();
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true);
+    }
 }
 
 /**
@@ -1296,4 +1352,3 @@ void riem_dcx_t::initialize_reference_measure(
 
     this->reference_measure = std::move(vertex_weights);
 }
-

@@ -616,7 +616,13 @@ set_wgraph_t create_iknn_graph_from_matrix(
     SEXP r_k = PROTECT(Rf_ScalarInteger(k));
     SEXP r_max_path_edge_ratio_thld = PROTECT(Rf_ScalarReal(max_path_edge_ratio_thld));
     SEXP r_path_edge_ratio_percentile = PROTECT(Rf_ScalarReal(path_edge_ratio_percentile));
+    SEXP r_threshold_percentile = PROTECT(Rf_ScalarReal(0.1));
     SEXP r_compute_full = PROTECT(Rf_ScalarLogical(0)); // Don't need full components
+    SEXP r_with_isize_pruning = PROTECT(Rf_ScalarLogical(0));
+    SEXP r_with_edge_pruning_stats = PROTECT(Rf_ScalarLogical(0));
+    SEXP r_knn_cache_path = PROTECT(R_NilValue);
+    SEXP r_knn_cache_mode = PROTECT(Rf_ScalarInteger(0));
+    SEXP r_verbose = PROTECT(Rf_ScalarLogical(verbose ? 1 : 0));
 
     // Call S_create_single_iknn_graph
     if (verbose) {
@@ -625,15 +631,17 @@ set_wgraph_t create_iknn_graph_from_matrix(
     }
 
     auto start_time = std::chrono::steady_clock::now();
-    // Create the SEXP for threshold_percentile with value 0.1
-    SEXP r_threshold_percentile = PROTECT(Rf_ScalarReal(0.1));
     SEXP r_graph = PROTECT(S_create_single_iknn_graph(r_matrix,
                                                       r_k,
                                                       r_max_path_edge_ratio_thld,
                                                       r_path_edge_ratio_percentile,
                                                       r_threshold_percentile,
-                                                      r_compute_full));
-    UNPROTECT(1);  // r_threshold_percentile
+                                                      r_compute_full,
+                                                      r_with_isize_pruning,
+                                                      r_with_edge_pruning_stats,
+                                                      r_knn_cache_path,
+                                                      r_knn_cache_mode,
+                                                      r_verbose));
     if (verbose) {
         elapsed_time(start_time, "Graph construction complete", true);
     }
@@ -667,7 +675,10 @@ set_wgraph_t create_iknn_graph_from_matrix(
 
     set_wgraph_t result(adj_list, weight_list);
 
-    UNPROTECT(6);  // r_matrix, r_k, r_max_path_edge_ratio_thld, r_path_edge_ratio_percentile, r_compute_full, r_graph
+    UNPROTECT(12);  // r_matrix, r_k, r_max_path_edge_ratio_thld, r_path_edge_ratio_percentile,
+                    // r_threshold_percentile, r_compute_full, r_with_isize_pruning,
+                    // r_with_edge_pruning_stats, r_knn_cache_path, r_knn_cache_mode,
+                    // r_verbose, r_graph
     return result;
 }
 

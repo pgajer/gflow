@@ -6,10 +6,13 @@
 #include <queue>         // For std::priority_queue
 #include <functional>    // For std::greater
 #include <mutex>         // For std::mutex
+#include <chrono>        // For timing-based progress updates
 
 #include "edge_pruning_stats.hpp" // For edge_pruning_stats_t
 #include "set_wgraph.hpp"     // For set_wgraph_t definition
 #include "error_utils.h"      // For REPORT_ERROR
+
+#include <R_ext/Print.h>      // For Rprintf, R_FlushConsole
 
 /**
  * @brief Compute the length of the shortest path between two vertices while excluding the direct edge between them
@@ -241,7 +244,8 @@ edge_pruning_stats_t set_wgraph_t::compute_edge_pruning_stats(double threshold_p
  */
 set_wgraph_t set_wgraph_t::prune_edges_geometrically(
     double max_ratio_threshold,
-    double threshold_percentile) const
+    double threshold_percentile,
+    bool verbose) const
 {
     // Compute edge pruning statistics on the original graph.
     // NOTE: These statistics certify that each edge is individually redundant
@@ -280,6 +284,53 @@ set_wgraph_t set_wgraph_t::prune_edges_geometrically(
                   return a.edge_length > b.edge_length;
               });
 
+    const size_t total_candidates = candidates.size();
+    size_t removed_edges = 0;
+    auto progress_start_time = std::chrono::steady_clock::now();
+    auto last_progress_time = progress_start_time;
+    const size_t progress_step = std::max<size_t>(1, total_candidates / 200); // ~0.5%
+
+    if (verbose) {
+        if (total_candidates == 0) {
+            Rprintf("[geometric_prune] no candidate edges to evaluate after prefilter\n");
+        } else {
+            Rprintf("[geometric_prune] evaluating candidates: 0.0%% (0/%zu), removed 0, ETA --:--",
+                    total_candidates);
+            R_FlushConsole();
+        }
+    }
+
+    auto report_progress = [&](size_t processed, bool force) {
+        if (!verbose || total_candidates == 0) {
+            return;
+        }
+
+        const bool step_boundary = (processed % progress_step == 0) || (processed == total_candidates);
+        if (!step_boundary && !force) {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const bool time_boundary =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_progress_time).count() >= 500;
+        if (!time_boundary && processed != total_candidates && !force) {
+            return;
+        }
+
+        const double elapsed = std::chrono::duration<double>(now - progress_start_time).count();
+        const double eta_seconds =
+            (processed > 0 && elapsed > 0.0)
+            ? (elapsed * static_cast<double>(total_candidates - processed) / static_cast<double>(processed))
+            : 0.0;
+        const int eta_minutes = static_cast<int>(eta_seconds) / 60;
+        const int eta_rem_seconds = static_cast<int>(eta_seconds) % 60;
+        const double pct = 100.0 * static_cast<double>(processed) / static_cast<double>(total_candidates);
+        Rprintf("\r[geometric_prune] evaluating candidates: %.1f%% (%zu/%zu), removed %zu, ETA %02d:%02d",
+                pct, processed, total_candidates, removed_edges, eta_minutes, eta_rem_seconds);
+        R_FlushConsole();
+        last_progress_time = now;
+    };
+
     // Helper: check whether an undirected edge exists in the current graph and
     // retrieve its current weight.
     auto get_edge_weight = [](const set_wgraph_t& g, size_t u, size_t v, double& w_out) -> bool {
@@ -297,12 +348,16 @@ set_wgraph_t set_wgraph_t::prune_edges_geometrically(
     // Sequential safe pruning: before removing an edge, ensure that an
     // alternative path still exists in the current graph (excluding that edge)
     // and satisfies the ratio threshold.
-    for (const auto& ce : candidates) {
+    for (size_t idx = 0; idx < total_candidates; ++idx) {
+        const auto& ce = candidates[idx];
+        const size_t processed = idx + 1;
         double w = 0.0;
         if (!get_edge_weight(pruned_graph, ce.source, ce.target, w)) {
+            report_progress(processed, false);
             continue; // edge already removed by earlier steps or absent
         }
         if (!(w > 0.0)) {
+            report_progress(processed, false);
             continue;
         }
 
@@ -310,13 +365,25 @@ set_wgraph_t set_wgraph_t::prune_edges_geometrically(
             pruned_graph.bidirectional_dijkstra_excluding_edge(ce.source, ce.target);
 
         if (alt_path_length == std::numeric_limits<double>::infinity()) {
+            report_progress(processed, false);
             continue; // removing would disconnect endpoints
         }
 
         const double ratio = alt_path_length / w;
         if (ratio <= max_ratio_threshold) {
             pruned_graph.remove_edge(ce.source, ce.target);
+            ++removed_edges;
         }
+        report_progress(processed, false);
+    }
+
+    if (verbose && total_candidates > 0) {
+        const double elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - progress_start_time
+        ).count();
+        Rprintf("\r[geometric_prune] done: 100.0%% (%zu/%zu), removed %zu, elapsed %.1fs\n",
+                total_candidates, total_candidates, removed_edges, elapsed);
+        R_FlushConsole();
     }
 
     return pruned_graph;

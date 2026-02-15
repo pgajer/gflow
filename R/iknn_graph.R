@@ -29,8 +29,16 @@
 #'     This pruning is applied after geometric pruning and targets unusually long edges
 #'     based on absolute edge lengths rather than path-to-edge ratios.
 #'
-#' @param compute.full Logical scalar. If TRUE, computes additional graph components and metrics.
-#'        If FALSE, computes only essential components. Default value: FALSE.
+#' @param compute.full Logical scalar controlling additional full-payload outputs.
+#'        If TRUE, includes `adj_list`, `isize_list`, `weight_list`, and `conn_comps`.
+#'        If FALSE, those components are returned as `NULL`.
+#'        The final graph payload (`pruned_adj_list`, `pruned_weight_list`) is returned in both cases.
+#'
+#' @param with.isize.pruning Logical scalar. If TRUE, compute intersection-size pruning
+#'        outputs and related statistics. Default is FALSE.
+#'
+#' @param with.edge.pruning.stats Logical scalar. If TRUE, compute edge-level pruning
+#'        statistics. Default is FALSE.
 #'
 #' @param pca.dim Maximum number of principal components to use if dimensionality reduction
 #'        is applied (default: 100). Set to NULL to skip dimensionality reduction.
@@ -39,12 +47,24 @@
 #'        (default: 0.99). If this threshold can be met with fewer components than pca.dim,
 #'        the smaller number will be used. Set to NULL to use exactly pca.dim components.
 #'
+#' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
+#'        Used only when `knn.cache.mode != "none"`.
+#'
+#' @param knn.cache.mode Character cache mode:
+#'   \itemize{
+#'     \item \code{"none"}: always compute kNN; do not read/write cache.
+#'     \item \code{"read"}: read kNN from cache only; if cache is missing/invalid, error.
+#'     \item \code{"write"}: always compute kNN and atomically write/overwrite cache.
+#'     \item \code{"readwrite"}: read valid cache when available; if cache file is missing,
+#'       compute and write cache; if cache exists but is invalid, error.
+#'   }
+#'
 #' @param verbose Logical. If TRUE, print progress messages. Default is TRUE.
 #'
 #' @return An object of class "IkNN" (inheriting from "list") containing:
 #' \describe{
-#'   \item{pruned_adj_list}{Adjacency lists after pruning (1-based indices)}
-#'   \item{pruned_weight_list}{Distances for edges in pruned graph}
+#'   \item{pruned_adj_list}{Adjacency lists for the final graph (1-based indices)}
+#'   \item{pruned_weight_list}{Edge weights for the final graph}
 #'   \item{n_edges}{Total number of edges in original graph}
 #'   \item{n_edges_in_pruned_graph}{Number of edges after pruning}
 #'   \item{n_removed_edges}{Number of edges removed by pruning}
@@ -64,6 +84,12 @@
 #'   \item{connected_components}{Alternative format of connected components}
 #' }
 #'
+#' @details
+#' `pruned_adj_list` and `pruned_weight_list` always contain the final graph after
+#' enabled pruning stages. If `max.path.edge.ratio.deviation.thld = 0` and
+#' `threshold.percentile = 0`, no geometric/quantile pruning is applied and these
+#' components are identical to the unpruned graph.
+#'
 #' @examples
 #' # Create sample data
 #' set.seed(123)
@@ -77,9 +103,13 @@ create.single.iknn.graph <- function(X,
                                      path.edge.ratio.percentile = 0.5,
                                      threshold.percentile = 0,
                                      compute.full = FALSE,
+                                     with.isize.pruning = FALSE,
+                                     with.edge.pruning.stats = FALSE,
                                      pca.dim = 100,
                                      variance.explained = 0.99,
-                                     verbose = TRUE) {
+                                     verbose = TRUE,
+                                     knn.cache.path = NULL,
+                                     knn.cache.mode = c("none", "read", "write", "readwrite")) {
     if (!is.matrix(X)) {
         X <- try(as.matrix(X), silent = TRUE)
         if (inherits(X, "try-error")) {
@@ -120,6 +150,12 @@ create.single.iknn.graph <- function(X,
     if (!is.logical(compute.full) || length(compute.full) != 1) {
         stop("compute.full must be a single logical value")
     }
+    if (!is.logical(with.isize.pruning) || length(with.isize.pruning) != 1) {
+        stop("with.isize.pruning must be a single logical value")
+    }
+    if (!is.logical(with.edge.pruning.stats) || length(with.edge.pruning.stats) != 1) {
+        stop("with.edge.pruning.stats must be a single logical value")
+    }
 
     ## Validate threshold.percentile parameter
     if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1)
@@ -145,6 +181,14 @@ create.single.iknn.graph <- function(X,
             stop("variance.explained must be a numeric value between 0 and 1, or NULL")
         }
     }
+
+    knn.cache.mode <- match.arg(knn.cache.mode)
+    knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
+    knn.cache.mode.id <- switch(knn.cache.mode,
+                                none = 0L,
+                                read = 1L,
+                                write = 2L,
+                                readwrite = 3L)
 
     ## PCA (optional)
     pca_info <- NULL
@@ -204,6 +248,13 @@ create.single.iknn.graph <- function(X,
         }
     }
 
+    if (verbose && !compute.full) {
+        message("compute.full=FALSE: adj_list/isize_list/weight_list/conn_comps will be NULL; pruned_adj_list/pruned_weight_list still return the final graph.")
+    }
+    if (verbose && max.path.edge.ratio.deviation.thld == 0 && threshold.percentile == 0) {
+        message("No geometric/quantile pruning requested: pruned_adj_list/pruned_weight_list will match the unpruned graph.")
+    }
+
     result <- .Call("S_create_single_iknn_graph",
                     X,
                     as.integer(k + 1L),
@@ -211,11 +262,18 @@ create.single.iknn.graph <- function(X,
                     as.double(path.edge.ratio.percentile),
                     as.double(threshold.percentile),
                     as.logical(compute.full),
+                    as.logical(with.isize.pruning),
+                    as.logical(with.edge.pruning.stats),
+                    if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
+                    as.integer(knn.cache.mode.id),
+                    as.logical(verbose),
                     PACKAGE = "gflow")
 
     attr(result, "k") <- k
     attr(result, "max.path.edge.ratio.deviation.thld") <- max.path.edge.ratio.deviation.thld
     attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
+    attr(result, "with.isize.pruning") <- with.isize.pruning
+    attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
     attr(result, "call") <- match.call()
 
     ## Add PCA-related attributes if PCA was performed
@@ -256,5 +314,3 @@ summary.IkNN <- function(object, ...) {
     cat("Number of removed edges:", object$n_removed_edges, "\n")  # Number of edges removed during pruning
     cat("Proportion of edges removed:", object$edge_reduction_ratio,"\n") # Proportion of edges removed (n_removed_edges / n_edges)
 }
-
-

@@ -6,6 +6,7 @@
 #include <limits>
 #include <vector>
 #include <array>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <algorithm>
@@ -64,6 +65,15 @@ enum class rdcx_filter_type_t {
     GAUSSIAN,           ///< f(λ) = exp(-ηλ²)
     EXPONENTIAL,        ///< f(λ) = exp(-η·√λ)
     BUTTERWORTH         ///< f(λ) = 1/(1+(λ/η)^(2n))
+};
+
+/**
+ * @brief Dense solver fallback mode for diffusion linear solves
+ */
+enum class dense_fallback_mode_t : int {
+    AUTO = 0,    ///< Existing behavior: direct for small systems, fallback after CG failure
+    NEVER = 1,   ///< Iterative-only mode: never allocate dense fallback
+    ALWAYS = 2   ///< Force dense direct solve
 };
 
 /**
@@ -707,6 +717,9 @@ struct riem_dcx_t {
         double dk_clamp_median_factor,
         double target_weight_ratio,
         double pathological_ratio_threshold,
+        const std::string& knn_cache_path,
+        int knn_cache_mode,
+        int dense_fallback_mode,
         verbose_level_t verbose_level
         );
 
@@ -806,6 +819,7 @@ struct riem_dcx_t {
         const vec_t& rho_current,
         double t,
         double beta,
+        int dense_fallback_mode,
         verbose_level_t verbose_level
         );
 
@@ -1094,6 +1108,8 @@ private:
         double dk_clamp_median_factor,
         double target_weight_ratio,
         double pathological_ratio_threshold,
+        const std::string& knn_cache_path,
+        int knn_cache_mode,
         verbose_level_t verbose_level
         );
 

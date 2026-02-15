@@ -275,7 +275,8 @@ struct set_wgraph_t {
 	 */
 	set_wgraph_t prune_edges_geometrically(
 		double max_ratio_threshold = 1.2,
-		double threshold_percentile = 0.5
+		double threshold_percentile = 0.5,
+		bool verbose = false
 		) const;
 
 	set_wgraph_t prune_long_edges(double threshold_percentile = 0.5) const;
