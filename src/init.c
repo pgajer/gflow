@@ -13,41 +13,31 @@
 #include "maelog_r.h"
 #include "adaptive_maelog_r.h"
 #include "magelog_r.h"
-#include "pgmalo_r.h"
 #include "pgmalog_r.h"
 #include "uniform_grid_graph_r.h"
 #include "centered_paths_r.h"
-#include "uggmalog_r.h"
 #include "uggmalo_r.h"
 #include "iknn_graphs_r.h"
 #include "mknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
 #include "kNN_r.h"       // for S_kNN()
 #include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
-#include "adaptive_uggmalo_r.h"
 #include "set_wgraph_r.h"
 #include "parameterize_circular_graph_r.h"
-#include "graph_diffusion_smoother_r.h"
 #include "graph_maximal_packing_r.h"
-#include "agemalo_r.h"
 #include "ray_agemalo_r.h"
 #include "geodesic_stats_r.h"
-#include "graph_spectral_lowess_r.h"
 #include "graph_spectral_ma_lowess_r.h"
 #include "graph_spectral_lowess_mat_r.h"
-#include "spectral_lowess_graph_smoothing_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
 #include "nada_graph_spectral_lowess_r.h"
 #include "graph_deg0_lowess_r.h"
 #include "graph_deg0_lowess_cv_r.h"
 #include "graph_deg0_lowess_cv_mat_r.h"
-#include "deg0_lowess_graph_smoothing_r.h"
 #include "graph_deg0_lowess_buffer_cv_r.h"
-#include "graph_kernel_smoother_r.h"
 #include "graph_bw_adaptive_spectral_smoother_r.h"
 #include "klaps_low_pass_smoother_r.h"
-#include "graph_spectral_filter_r.h"
 #include "mst_completion_graphs_r.h"
 #include "amagelo_r.h"
 #include "gflow_basins_r.h"
@@ -364,30 +354,19 @@ static const R_CallMethodDef CallMethods[] = {
 
   // old
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
-  {"S_graph_spectral_filter", (DL_FUNC) &S_graph_spectral_filter, 19},
   {"S_klaps_low_pass_smoother", (DL_FUNC) &S_klaps_low_pass_smoother, 14},
   {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
-  {"S_graph_kernel_smoother", (DL_FUNC) &S_graph_kernel_smoother, 17},
   {"S_graph_deg0_lowess_buffer_cv", (DL_FUNC) &S_graph_deg0_lowess_buffer_cv, 16},
-  {"S_deg0_lowess_graph_smoothing", (DL_FUNC) &S_deg0_lowess_graph_smoothing, 20},
   {"S_graph_deg0_lowess_cv_mat", (DL_FUNC) &S_graph_deg0_lowess_cv_mat, 14},
   {"S_graph_deg0_lowess_cv", (DL_FUNC) &S_graph_deg0_lowess_cv, 14},
   {"S_graph_deg0_lowess", (DL_FUNC) &S_graph_deg0_lowess, 7},
-  {"S_spectral_lowess_graph_smoothing", (DL_FUNC) &S_spectral_lowess_graph_smoothing, 20},
   {"S_graph_spectral_lowess_mat", (DL_FUNC) &S_graph_spectral_lowess_mat, 15},
   {"S_graph_spectral_ma_lowess", (DL_FUNC) &S_graph_spectral_ma_lowess, 13},
-  {"S_graph_spectral_lowess", (DL_FUNC) &S_graph_spectral_lowess, 13},
   {"S_nada_graph_spectral_lowess", (DL_FUNC) &S_nada_graph_spectral_lowess, 13},
-  {"S_agemalo", (DL_FUNC) &S_agemalo, 19},
   {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
-  {"S_uggmalog", (DL_FUNC) &S_uggmalog, 19},
   {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
-  {"S_adaptive_uggmalo", (DL_FUNC) &S_adaptive_uggmalo, 18},
   {"S_graph_spectral_smoother", (DL_FUNC) &S_graph_spectral_smoother, 17},
-  {"S_graph_diffusion_smoother", (DL_FUNC) &S_graph_diffusion_smoother, 13},
   {"S_univariate_gkmm", (DL_FUNC) &S_univariate_gkmm, 15},
-  {"S_upgmalo", (DL_FUNC) &S_upgmalo, 16},
-  {"S_pgmalo", (DL_FUNC) &S_pgmalo, 17},
   {"S_upgmalog", (DL_FUNC) &S_upgmalog, 17},
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
   {"S_eigen_ulogit", (DL_FUNC) &S_eigen_ulogit, 8},
@@ -405,10 +384,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_mabilo_with_smoothed_errors", (DL_FUNC) &S_mabilo_with_smoothed_errors, 10},
   {"S_graph_mad", (DL_FUNC) &S_graph_mad, 2},
   {"S_graph_kmean", (DL_FUNC) &S_graph_kmean, 5},
-  {"S_ext_graph_diffusion_smoother", (DL_FUNC) &S_ext_graph_diffusion_smoother, 23},
-  {"S_instrumented_gds", (DL_FUNC) &S_instrumented_gds, 14},
 
-  {"S_nerve_cx_spectral_filter", (DL_FUNC) &S_nerve_cx_spectral_filter, 12},
 
   {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},
   {"S_mean_shift_data_smoother_with_grad_field_averaging", (DL_FUNC) &S_mean_shift_data_smoother_with_grad_field_averaging, 8},

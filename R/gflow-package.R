@@ -75,6 +75,12 @@
 #'
 #' \strong{Conditional Expectation Estimation Methods:}
 #'
+#' \emph{Riemannian graph regression (current):}
+#' \itemize{
+#'   \item \code{\link{fit.rdgraph.regression}} - Main graph regression interface used in the current workflow
+#'   \item \code{\link{refit.rdgraph.regression}} - Efficient refitting/reuse of an existing rdgraph fit
+#' }
+#'
 #' \emph{Model-Averaged Local Regression (1D):}
 #' \itemize{
 #'   \item \code{\link{amagelo}} - Adaptive MAGELO with automatic bandwidth selection, extrema
@@ -87,44 +93,11 @@
 #'         neighborhoods and k-NN fallback
 #' }
 #'
-#' \emph{Graph-Based Local Regression Methods:}
+#' \emph{Additional smoothing and classification tools:}
 #' \itemize{
-#'   \item \code{\link{deg0.lowess.graph.smoothing}} - Locally weighted averaging using graph
-#'         distances with adaptive bandwidth selection
-#'   \item \code{\link{graph.spectral.lowess}} - Spectral embedding transforms graph distances
-#'         to Euclidean space for local linear regression
-#'   \item \code{\link{spectral.lowess.graph.smoothing}} - Includes Cleveland's robustness
-#'         iterations and multiple kernel options
-#' }
-#'
-#' \emph{Diffusion and Kernel Methods:}
-#' \itemize{
-#'   \item \code{\link{graph.kernel.smoother}} - Spatially-aware cross-validation with buffer
-#'         zones to prevent autocorrelation bias
-#'   \item \code{\link{graph.diffusion.smoother}} - Iterative diffusion for denoising and
-#'         interpolating missing values
 #'   \item \code{\link{harmonic.smoother}} - Solves discrete Laplace equation for smooth
 #'         interpolation with fixed boundary values
-#'   \item \code{\link{graph.spectral.filter}} - Frequency-based smoothing using Laplacian
-#'         eigendecomposition
-#' }
-#'
-#' \emph{Path and Geodesic Methods:}
-#' \itemize{
-#'   \item \code{\link{pgmalo}} - Piecewise segmentation with automatic change point detection
-#'         for data with structural breaks
-#'   \item \code{\link{agemalo}} - Adaptive geodesic regression using hierarchies of local
-#'         geodesics through maximal packing vertices
-#'   \item \code{\link{adaptive.uggmalo}} - Uniform grid approach with path-based local models
-#'         and cross-validated bandwidth selection
-#' }
-#'
-#' \emph{Specialized Methods:}
-#' \itemize{
-#'   \item \code{\link{magelog}}, \code{\link{mabilog}}, \code{\link{uggmalog}} - Log-space
-#'         variants for positive-valued responses
 #'   \item \code{\link{ulogit}} - Uniform grid logistic regression for binary outcomes on graphs
-#'   \item \code{\link{nerve.cx.spectral.filter}} - Spectral filtering over simplicial complexes
 #'   \item \code{\link{meanshift.data.smoother}} - Data denoising using mean-shift algorithm with adaptive step sizes
 #' }
 #'
