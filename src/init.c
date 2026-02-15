@@ -365,7 +365,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_nada_graph_spectral_lowess", (DL_FUNC) &S_nada_graph_spectral_lowess, 13},
   {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
   {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
-  {"S_graph_spectral_smoother", (DL_FUNC) &S_graph_spectral_smoother, 17},
   {"S_univariate_gkmm", (DL_FUNC) &S_univariate_gkmm, 15},
   {"S_upgmalog", (DL_FUNC) &S_upgmalog, 17},
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
