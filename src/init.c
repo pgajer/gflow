@@ -28,10 +28,8 @@
 #include "ray_agemalo_r.h"
 #include "geodesic_stats_r.h"
 #include "graph_spectral_ma_lowess_r.h"
-#include "graph_spectral_lowess_mat_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
-#include "nada_graph_spectral_lowess_r.h"
 #include "graph_deg0_lowess_r.h"
 #include "graph_deg0_lowess_cv_r.h"
 #include "graph_deg0_lowess_cv_mat_r.h"
@@ -359,9 +357,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_graph_deg0_lowess_cv_mat", (DL_FUNC) &S_graph_deg0_lowess_cv_mat, 14},
   {"S_graph_deg0_lowess_cv", (DL_FUNC) &S_graph_deg0_lowess_cv, 14},
   {"S_graph_deg0_lowess", (DL_FUNC) &S_graph_deg0_lowess, 7},
-  {"S_graph_spectral_lowess_mat", (DL_FUNC) &S_graph_spectral_lowess_mat, 15},
   {"S_graph_spectral_ma_lowess", (DL_FUNC) &S_graph_spectral_ma_lowess, 13},
-  {"S_nada_graph_spectral_lowess", (DL_FUNC) &S_nada_graph_spectral_lowess, 13},
   {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
   {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
   {"S_univariate_gkmm", (DL_FUNC) &S_univariate_gkmm, 15},
