@@ -392,20 +392,6 @@ extern "C" {
     SEXP S_graph_spectrum(SEXP Rgraph, SEXP Rnev);
     SEXP S_graph_spectrum_plus(SEXP Rgraph, SEXP Rnev, SEXP Rreturn_dense);
 
-    SEXP S_wmabilog(SEXP s_x,
-                    SEXP s_y,
-                    SEXP s_y_true,
-                    SEXP s_w,
-                    SEXP s_max_iterations,
-                    SEXP s_ridge_lambda,
-                    SEXP s_max_beta,
-                    SEXP s_tolerance,
-                    SEXP s_k_min,
-                    SEXP s_k_max,
-                    SEXP s_distance_kernel,
-                    SEXP s_dist_normalization_factor,
-                    SEXP s_verbose);
-
     SEXP S_mabilog(SEXP s_x,
                    SEXP s_y,
                    SEXP s_y_true,
@@ -421,20 +407,6 @@ extern "C" {
                    SEXP s_dist_normalization_factor,
                    SEXP s_verbose);
 
-    SEXP S_mabilog_with_smoothed_errors(SEXP s_x,
-                                        SEXP s_y,
-                                        SEXP s_y_true,
-                                        SEXP s_max_iterations,
-                                        SEXP s_ridge_lambda,
-                                        SEXP s_max_beta,
-                                        SEXP s_tolerance,
-                                        SEXP s_k_min,
-                                        SEXP s_k_max,
-                                        SEXP s_error_window_factor,
-                                        SEXP s_distance_kernel,
-                                        SEXP s_dist_normalization_factor,
-                                        SEXP s_verbose);
-
     SEXP S_mabilo(SEXP s_x,
                   SEXP s_y,
                   SEXP s_y_true,
@@ -446,28 +418,6 @@ extern "C" {
                   SEXP s_dist_normalization_factor,
                   SEXP s_epsilon,
                   SEXP s_verbose);
-
-    SEXP S_wmabilo(SEXP s_x,
-                   SEXP s_y,
-                   SEXP s_y_true,
-                   SEXP s_w,
-                   SEXP s_k_min,
-                   SEXP s_k_max,
-                   SEXP s_distance_kernel,
-                   SEXP s_dist_normalization_factor,
-                   SEXP s_epsilon,
-                   SEXP s_verbose);
-
-    SEXP S_mabilo_with_smoothed_errors(SEXP s_x,
-                                       SEXP s_y,
-                                       SEXP s_y_true,
-                                       SEXP s_k_min,
-                                       SEXP s_k_max,
-                                       SEXP s_error_window_factor,
-                                       SEXP s_distance_kernel,
-                                       SEXP s_dist_normalization_factor,
-                                       SEXP s_epsilon,
-                                       SEXP s_verbose);
 
     SEXP S_mabilo_plus(SEXP s_x,
                        SEXP s_y,

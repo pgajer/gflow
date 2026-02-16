@@ -11,12 +11,9 @@
 #include "local_complexity_r.h"
 #include "ulogit_r.h"
 #include "maelog_r.h"
-#include "adaptive_maelog_r.h"
 #include "magelog_r.h"
-#include "pgmalog_r.h"
 #include "uniform_grid_graph_r.h"
 #include "centered_paths_r.h"
-#include "uggmalo_r.h"
 #include "iknn_graphs_r.h"
 #include "mknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
@@ -25,11 +22,9 @@
 #include "set_wgraph_r.h"
 #include "parameterize_circular_graph_r.h"
 #include "graph_maximal_packing_r.h"
-#include "ray_agemalo_r.h"
 #include "geodesic_stats_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
-#include "graph_bw_adaptive_spectral_smoother_r.h"
 #include "mst_completion_graphs_r.h"
 #include "amagelo_r.h"
 #include "gflow_basins_r.h"
@@ -350,22 +345,13 @@ static const R_CallMethodDef CallMethods[] = {
 
   // old
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
-  {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
-  {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
-  {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
-  {"S_upgmalog", (DL_FUNC) &S_upgmalog, 17},
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
   {"S_eigen_ulogit", (DL_FUNC) &S_eigen_ulogit, 8},
-  {"S_wmabilog", (DL_FUNC) &S_wmabilog, 13},
   {"S_maelog", (DL_FUNC) &S_maelog, 15},
   {"S_magelog", (DL_FUNC) &S_magelog, 15},
-  {"S_adaptive_maelog", (DL_FUNC) &S_adaptive_maelog, 12},
   {"S_mabilog", (DL_FUNC) &S_mabilog, 14},
-  {"S_mabilog_with_smoothed_errors", (DL_FUNC) &S_mabilog_with_smoothed_errors, 13},
   {"S_mabilo_plus", (DL_FUNC) &S_mabilo_plus, 13},
-  {"S_wmabilo", (DL_FUNC) &S_wmabilo, 10},
   {"S_mabilo", (DL_FUNC) &S_mabilo, 11},
-  {"S_mabilo_with_smoothed_errors", (DL_FUNC) &S_mabilo_with_smoothed_errors, 10},
 
 
   {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},
