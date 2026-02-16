@@ -356,8 +356,6 @@ extern "C" {
                                           SEXP s_hop_list,
                                           SEXP s_core_graph,
                                           SEXP s_Ey);
-
-    SEXP S_loc_const_vertices(SEXP Rgraph, SEXP Ry, SEXP Rprec);
     SEXP S_make_response_locally_non_const(SEXP Rgraph,
                                            SEXP Ry,
                                            SEXP Rweights,
@@ -393,34 +391,6 @@ extern "C" {
 
     SEXP S_graph_spectrum(SEXP Rgraph, SEXP Rnev);
     SEXP S_graph_spectrum_plus(SEXP Rgraph, SEXP Rnev, SEXP Rreturn_dense);
-
-
-    SEXP S_graph_mad(SEXP s_graph, SEXP s_y);
-
-    SEXP S_graph_kmean(SEXP s_graph,
-                       SEXP s_edge_lengths,
-                       SEXP s_y,
-                       SEXP s_ikernel,
-                       SEXP s_dist_normalization_factor);
-
-    SEXP S_graph_kmean_wmad_cv(SEXP s_graph,
-                               SEXP s_edge_lengths,
-                               SEXP s_y,
-                               SEXP s_ikernel,
-                               SEXP s_dist_normalization_factor,
-                               SEXP s_n_CVs,
-                               SEXP s_n_CV_folds,
-                               SEXP s_seed,
-                               SEXP s_use_weighted_MAD_error);
-
-    SEXP S_graph_kmean_cv(SEXP s_graph,
-                          SEXP s_edge_lengths,
-                          SEXP s_y,
-                          SEXP s_ikernel,
-                          SEXP s_dist_normalization_factor,
-                          SEXP s_n_CVs,
-                          SEXP s_n_CV_folds,
-                          SEXP s_seed);
 
     SEXP S_wmabilog(SEXP s_x,
                     SEXP s_y,
@@ -512,35 +482,6 @@ extern "C" {
                        SEXP s_dist_normalization_factor,
                        SEXP s_epsilon,
                        SEXP s_verbose);
-
-    SEXP S_univariate_gkmm(SEXP s_x,
-                           SEXP s_y,
-                           SEXP s_y_true,
-                           SEXP s_use_median,
-                           SEXP s_h_min,
-                           SEXP s_h_max,
-                           SEXP s_n_CVs,
-                           SEXP s_n_CV_folds,
-                           SEXP s_p,
-                           SEXP s_n_bb,
-                           SEXP s_ikernel,
-                           SEXP s_n_cores,
-                           SEXP s_dist_normalization_factor,
-                           SEXP s_epsilon,
-                           SEXP s_seed);
-
-    SEXP S_cv_imputation(SEXP Rtest_set,
-                         SEXP Rgraph,
-                         SEXP Rd,
-                         SEXP Ry,
-                         SEXP Ry_binary,
-                         SEXP Rimputation_method,
-                         SEXP Rmax_iterations,
-                         SEXP Rconvergence_threshold,
-                         SEXP Rapply_binary_threshold,
-                         SEXP Rbinary_threshold,
-                         SEXP Rikernel,
-                         SEXP Rdist_normalization_factor);
 
     SEXP S_prop_nbhrs_with_smaller_y(SEXP Rgraph, SEXP Ry);
 
