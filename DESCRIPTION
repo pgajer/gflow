@@ -46,6 +46,8 @@ Imports:
     transport
 Suggests:
     rgl,
+    htmlwidgets,
+    htmltools,
     randomForest,
     np,
     mgcv,

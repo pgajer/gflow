@@ -276,6 +276,314 @@ plot3D.cont <- function(X,
     ))
 }
 
+#' Create Interactive HTML 3D Plot with Continuous Color Coding
+#'
+#' Creates an interactive WebGL 3D plot for a continuous variable with a stable HTML legend overlay.
+#' This helper avoids `legend3d()` text-distortion issues often seen in browser rendering.
+#'
+#' @param X A matrix or data frame with exactly 3 columns representing 3D coordinates.
+#' @param y A numeric vector of values to color-code.
+#' @param subset Logical vector indicating which points to color by \code{y}. Non-highlighted
+#'   points are drawn using \code{non.highlight.color}.
+#' @param non.highlight.type Display type for non-highlighted points: \code{"sphere"} or \code{"point"}.
+#' @param highlight.type Display type for highlighted points: \code{"sphere"} or \code{"point"}.
+#' @param non.highlight.color Color for non-highlighted points.
+#' @param point.size Point size used when point rendering is selected.
+#' @param radius Sphere radius; if \code{NULL}, a scale-aware default is used.
+#' @param quantize.method Quantization method: \code{"uniform"} or \code{"quantile"}.
+#' @param quantize.wins.p Winsorization parameter for \code{"uniform"} quantization.
+#' @param quantize.round Logical; whether to round quantization endpoints.
+#' @param quantize.dig.lab Number of digits in quantization labels.
+#' @param start,end Hue start/end for default palette generation.
+#' @param n.levels Number of quantization levels.
+#' @param color.palette Palette specification passed to \code{quantize.cont.var()}.
+#' @param palette.type Palette type: \code{"discrete"} or \code{"value"}.
+#' @param na.color Color for \code{NA} values in \code{y}.
+#' @param legend.title Legend title shown in the HTML overlay.
+#' @param legend.show Logical; if \code{TRUE}, include HTML legend overlay.
+#' @param legend.position Position of legend overlay: \code{"left"} or \code{"right"}.
+#' @param legend.font.size Base font size (px) for legend text.
+#' @param legend.width.px Legend overlay width in pixels.
+#' @param legend.max.height.pct Maximum legend height as percentage of widget height.
+#' @param legend.bg Background color for legend overlay.
+#' @param legend.border Border color for legend overlay.
+#' @param widget.width,widget.height Widget dimensions in pixels.
+#' @param background.color Scene background color.
+#' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
+#' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
+#' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#'
+#' @return An \code{htmlwidget} object from \code{rgl::rglwidget()} with attributes:
+#'   \itemize{
+#'     \item \code{y.cols}: per-point colors
+#'     \item \code{y.col.tbl}: color lookup table by quantized label
+#'     \item \code{legend.labs}: legend labels with counts
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' # X3d: n x 3 coordinates, y: numeric vector length n
+#' w <- plot3D.cont.html(
+#'   X = X3d,
+#'   y = y,
+#'   quantize.method = "quantile",
+#'   n.levels = 12,
+#'   highlight.type = "point",
+#'   non.highlight.type = "point",
+#'   widget.width = 1600,
+#'   widget.height = 1000,
+#'   output.file = "~/plot3d_cont.html",
+#'   selfcontained = TRUE,
+#'   open.browser = TRUE
+#' )
+#' w
+#' }
+#'
+#' @export
+plot3D.cont.html <- function(X,
+                             y,
+                             subset = NULL,
+                             non.highlight.type = "point",
+                             highlight.type = c("sphere", "point"),
+                             non.highlight.color = "gray",
+                             point.size = 3,
+                             radius = NULL,
+                             quantize.method = "uniform",
+                             quantize.wins.p = 0.01,
+                             quantize.round = FALSE,
+                             quantize.dig.lab = 2,
+                             start = 1/6, end = 0, n.levels = 10,
+                             color.palette = NULL,
+                             palette.type = c("discrete", "value"),
+                             na.color = "gray80",
+                             legend.title = "",
+                             legend.show = TRUE,
+                             legend.position = c("left", "right"),
+                             legend.font.size = 12,
+                             legend.width.px = 320L,
+                             legend.max.height.pct = 95,
+                             legend.bg = "rgba(255,255,255,0.93)",
+                             legend.border = "#BBBBBB",
+                             widget.width = 1700L,
+                             widget.height = 1000L,
+                             background.color = "white",
+                             output.file = NULL,
+                             selfcontained = TRUE,
+                             open.browser = FALSE) {
+
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl'. ",
+             "Install with install.packages('rgl').", call. = FALSE)
+    }
+    if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+        stop("This function requires the optional package 'htmlwidgets'. ",
+             "Install with install.packages('htmlwidgets').", call. = FALSE)
+    }
+    if (!requireNamespace("htmltools", quietly = TRUE)) {
+        stop("This function requires the optional package 'htmltools'. ",
+             "Install with install.packages('htmltools').", call. = FALSE)
+    }
+
+    highlight.type <- match.arg(highlight.type)
+    legend.position <- match.arg(legend.position)
+    palette.type <- match.arg(palette.type)
+
+    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
+    if (ncol(X) != 3) stop("X must have exactly 3 columns")
+    if (!is.numeric(y)) stop("y must be a numeric vector")
+    if (nrow(X) != length(y)) stop("Number of rows in X must match the length of y")
+    if (!is.null(subset) && length(subset) != length(y)) {
+        stop("Length of subset must match the length of y")
+    }
+    if (!non.highlight.type %in% c("sphere", "point")) {
+        stop("non.highlight.type must be either 'sphere' or 'point'")
+    }
+    if (!is.numeric(point.size) || point.size <= 0) {
+        stop("point.size must be a positive numeric value")
+    }
+
+    widget.width <- as.integer(widget.width)
+    widget.height <- as.integer(widget.height)
+    legend.width.px <- as.integer(legend.width.px)
+    legend.font.size <- as.numeric(legend.font.size)
+    legend.max.height.pct <- as.numeric(legend.max.height.pct)
+    if (!is.finite(widget.width) || widget.width <= 0) {
+        stop("widget.width must be a positive integer")
+    }
+    if (!is.finite(widget.height) || widget.height <= 0) {
+        stop("widget.height must be a positive integer")
+    }
+    if (!is.finite(legend.width.px) || legend.width.px <= 0) {
+        stop("legend.width.px must be a positive integer")
+    }
+    if (!is.finite(legend.font.size) || legend.font.size <= 0) {
+        stop("legend.font.size must be positive")
+    }
+    if (!is.finite(legend.max.height.pct) || legend.max.height.pct <= 0) {
+        stop("legend.max.height.pct must be positive")
+    }
+
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+
+    q <- quantize.cont.var(
+        y,
+        method = quantize.method,
+        wins.p = quantize.wins.p,
+        round = quantize.round,
+        dig.lab = quantize.dig.lab,
+        start = start,
+        end = end,
+        n.levels = n.levels,
+        color.palette = color.palette,
+        palette.type = palette.type,
+        na.color = na.color
+    )
+
+    y.cat <- q$x.cat
+    y.col.tbl <- q$x.col.tbl
+    y.cols <- unname(y.col.tbl[as.character(y.cat)])
+    y.cols[is.na(y.cols)] <- na.color
+
+    if (is.null(subset)) {
+        subset <- rep(TRUE, length(y))
+    } else {
+        subset <- as.logical(subset)
+        subset[is.na(subset)] <- FALSE
+    }
+
+    radius_local <- radius
+    if (is.null(radius_local)) {
+        rng <- apply(X, 2, function(v) diff(range(v, na.rm = TRUE)))
+        radius_local <- max(1e-8, 0.01 * mean(rng))
+    }
+
+    old_opt <- options(rgl.useNULL = TRUE)
+    on.exit(options(old_opt), add = TRUE)
+
+    rgl::open3d(useNULL = TRUE)
+    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    rgl::clear3d()
+    rgl::bg3d(color = background.color)
+
+    if (any(!subset)) {
+        if (identical(non.highlight.type, "sphere")) {
+            rgl::spheres3d(
+                X[!subset, , drop = FALSE],
+                col = non.highlight.color,
+                radius = radius_local
+            )
+        } else {
+            rgl::points3d(
+                X[!subset, , drop = FALSE],
+                col = non.highlight.color,
+                size = point.size
+            )
+        }
+    }
+
+    if (any(subset)) {
+        if (identical(highlight.type, "sphere")) {
+            rgl::spheres3d(
+                X[subset, , drop = FALSE],
+                col = y.cols[subset],
+                radius = radius_local
+            )
+        } else {
+            rgl::points3d(
+                X[subset, , drop = FALSE],
+                col = y.cols[subset],
+                size = point.size
+            )
+        }
+    }
+
+    scene <- rgl::scene3d(minimal = FALSE)
+    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+
+    y.cat.freq <- table(y.cat[subset], useNA = "no")
+    for (nm in names(y.col.tbl)) {
+        if (!nm %in% names(y.cat.freq)) y.cat.freq[nm] <- 0L
+    }
+    y.cat.freq <- y.cat.freq[names(y.col.tbl)]
+    legend.labs <- sprintf("%s (%s)", names(y.col.tbl), as.integer(y.cat.freq))
+
+    if (isTRUE(legend.show)) {
+        legend.side.css <- if (identical(legend.position, "left")) "left:10px;" else "right:10px;"
+        legend.title.use <- if (nzchar(legend.title)) legend.title else "Value"
+
+        legend.items <- lapply(seq_along(legend.labs), function(i) {
+            htmltools::tags$div(
+                style = paste0(
+                    "display:flex;align-items:center;gap:8px;",
+                    "margin:2px 0;",
+                    "font-size:", legend.font.size, "px;",
+                    "line-height:1.15;"
+                ),
+                htmltools::tags$span(
+                    style = sprintf(
+                        paste0(
+                            "display:inline-block;width:12px;height:12px;",
+                            "background:%s;border:1px solid #666;"
+                        ),
+                        unname(y.col.tbl[i])
+                    )
+                ),
+                htmltools::tags$span(legend.labs[i])
+            )
+        })
+
+        legend.box <- htmltools::tags$div(
+            style = paste0(
+                "position:absolute;top:10px;", legend.side.css,
+                "width:", legend.width.px, "px;",
+                "max-height:", legend.max.height.pct, "%;",
+                "overflow:auto;",
+                "background:", legend.bg, ";",
+                "padding:8px 10px;",
+                "border:1px solid ", legend.border, ";",
+                "border-radius:4px;",
+                "z-index:1000;"
+            ),
+            htmltools::tags$div(
+                style = paste0(
+                    "font-weight:600;margin-bottom:6px;",
+                    "font-size:", legend.font.size + 1, "px;"
+                ),
+                legend.title.use
+            ),
+            legend.items
+        )
+
+        w <- htmlwidgets::prependContent(
+            w,
+            htmltools::tags$style(htmltools::HTML(
+                ".rglWebGL { display: block; position: relative; }"
+            )),
+            legend.box
+        )
+    }
+
+    attr(w, "y.cols") <- y.cols
+    attr(w, "y.col.tbl") <- y.col.tbl
+    attr(w, "legend.labs") <- legend.labs
+
+    if (!is.null(output.file)) {
+        output.file <- path.expand(output.file)
+        dir.create(dirname(output.file), recursive = TRUE, showWarnings = FALSE)
+        htmlwidgets::saveWidget(
+            widget = w,
+            file = output.file,
+            selfcontained = selfcontained
+        )
+        if (isTRUE(open.browser)) {
+            utils::browseURL(output.file)
+        }
+    }
+
+    w
+}
+
 #' Plot Output from lcor.1D()
 #'
 #' Creates a visualization of local correlation results from the lcor.1D() function

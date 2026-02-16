@@ -1,0 +1,687 @@
+---
+title: "Noisy Circle: End-to-End gflow Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Noisy Circle: End-to-End gflow Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+library(gflow)
+set.seed(2026)
+```
+
+## Overview
+
+This vignette demonstrates a full `gflow` workflow on a noisy circle:
+
+1. Build and inspect ikNN graphs across a `k` range.
+2. Select a graph scale using graph diagnostics.
+3. Denoise coordinates with `data.smoother()`.
+4. Smooth a noisy response `y` (mixture of two circular Gaussian peaks).
+5. Smooth a feature matrix `Z`.
+6. Find refined basins/extrema from `y.hat`.
+7. Compare Pearson/Spearman and local correlation (`lcor`) analyses.
+8. Add permutation-based inference for `lcor` (implemented here in the vignette).
+9. Build a feature module graph from local-correlation profiles.
+
+## Helper Functions
+
+```{r helpers}
+wrap_angle <- function(theta, mu) {
+  atan2(sin(theta - mu), cos(theta - mu))
+}
+
+`%||%` <- function(x, y) {
+  if (!is.null(x)) x else y
+}
+
+as_lcor_matrix <- function(x) {
+  if (is.list(x) && !is.null(x$column.coefficients)) {
+    return(as.matrix(x$column.coefficients))
+  }
+  as.matrix(x)
+}
+
+assign_from_vertices_list <- function(vertices.list, n) {
+  out <- rep(NA_character_, n)
+  if (is.null(vertices.list) || length(vertices.list) == 0) {
+    return(out)
+  }
+  for (nm in names(vertices.list)) {
+    out[as.integer(vertices.list[[nm]])] <- nm
+  }
+  out
+}
+
+compute_basins_safe <- function(adj.list, edge.length.list, fitted.values, verbose = TRUE) {
+  has_both_extrema <- function(obj) {
+    if (is.null(obj$summary) || nrow(obj$summary) == 0L || is.null(obj$summary$type)) {
+      return(FALSE)
+    }
+    tab <- table(obj$summary$type)
+    ("max" %in% names(tab)) && ("min" %in% names(tab)) &&
+      (tab[["max"]] > 0L) && (tab[["min"]] > 0L)
+  }
+
+  strict <- try(
+    compute.refined.basins(
+      adj.list = adj.list,
+      edge.length.list = edge.length.list,
+      fitted.values = fitted.values,
+      edge.length.quantile.thld = 0.75,
+      min.rel.value.max = 1.1,
+      max.rel.value.min = 0.9,
+      max.overlap.threshold = 0.15,
+      min.overlap.threshold = 0.15,
+      p.mean.nbrs.dist.threshold = 0.9,
+      p.mean.hopk.dist.threshold = 0.9,
+      p.deg.threshold = 0.9,
+      min.basin.size = 10,
+      expand.basins = TRUE,
+      with.trajectories = TRUE,
+      verbose = verbose
+    ),
+    silent = TRUE
+  )
+
+  if (!inherits(strict, "try-error") && has_both_extrema(strict)) {
+    return(strict)
+  }
+
+  message("Strict basin settings failed (or removed all maxima/minima); retrying with relaxed settings.")
+  compute.refined.basins(
+    adj.list = adj.list,
+    edge.length.list = edge.length.list,
+    fitted.values = fitted.values,
+    edge.length.quantile.thld = 0.9,
+    min.rel.value.max = 1.02,
+    max.rel.value.min = 0.98,
+    max.overlap.threshold = 0.25,
+    min.overlap.threshold = 0.25,
+    p.mean.nbrs.dist.threshold = 0.98,
+    p.mean.hopk.dist.threshold = 0.98,
+    p.deg.threshold = 0.98,
+    min.basin.size = 5,
+    apply.geometric.filter = FALSE,
+    expand.basins = TRUE,
+    with.trajectories = TRUE,
+    verbose = verbose
+  )
+}
+
+perm_test_lcor <- function(adj.list,
+                           edge.length.list,
+                           y,
+                           Z,
+                           type = "derivative",
+                           y.diff.type = "difference",
+                           z.diff.type = "difference",
+                           n.perm = 200L,
+                           seed = 1L) {
+  set.seed(seed)
+  Z <- as.matrix(Z)
+  y <- as.numeric(y)
+
+  lcor.obs <- as_lcor_matrix(
+    lcor(
+      adj.list = adj.list,
+      weight.list = edge.length.list,
+      y = y,
+      z = Z,
+      type = type,
+      y.diff.type = y.diff.type,
+      z.diff.type = z.diff.type
+    )
+  )
+  stat.obs <- colMeans(abs(lcor.obs))
+
+  stat.perm <- matrix(NA_real_, nrow = n.perm, ncol = ncol(Z))
+  colnames(stat.perm) <- colnames(Z)
+
+  for (b in seq_len(n.perm)) {
+    Zb <- Z[sample.int(nrow(Z)), , drop = FALSE]
+    lcor.b <- as_lcor_matrix(
+      lcor(
+        adj.list = adj.list,
+        weight.list = edge.length.list,
+        y = y,
+        z = Zb,
+        type = type,
+        y.diff.type = y.diff.type,
+        z.diff.type = z.diff.type
+      )
+    )
+    stat.perm[b, ] <- colMeans(abs(lcor.b))
+  }
+
+  p.value <- (1 + colSums(t(t(stat.perm) >= stat.obs))) / (n.perm + 1)
+  q.value <- stats::p.adjust(p.value, method = "BH")
+
+  list(
+    stat.obs = stat.obs,
+    stat.perm = stat.perm,
+    p.value = p.value,
+    q.value = q.value,
+    table = data.frame(
+      feature = colnames(Z),
+      stat.obs = stat.obs,
+      p.value = p.value,
+      q.value = q.value,
+      row.names = NULL
+    )
+  )
+}
+```
+
+## Simulate Noisy Circle and Response
+
+```{r simulate-data}
+n <- 250L
+radius <- 1
+
+X.df <- generate.circle.data(
+  n = n,
+  radius = radius,
+  noise = 0.15,
+  type = "random",
+  noise.type = "normal",
+  seed = 11
+)
+X <- as.matrix(X.df[, c("x", "y")])
+
+if ("angles" %in% colnames(X.df)) {
+  theta.obs <- as.numeric(X.df$angles)
+} else {
+  theta.obs <- atan2(X[, 2], X[, 1])
+  theta.obs <- ifelse(theta.obs < 0, theta.obs + 2 * pi, theta.obs)
+}
+
+## Two wrapped Gaussian peaks over the circle: one larger, one smaller
+mu1 <- 0.80
+mu2 <- 3.95
+sd1 <- 0.30
+sd2 <- 0.48
+amp1 <- 1.40
+amp2 <- 0.75
+
+comp1 <- amp1 * exp(-0.5 * (wrap_angle(theta.obs, mu1) / sd1)^2)
+comp2 <- amp2 * exp(-0.5 * (wrap_angle(theta.obs, mu2) / sd2)^2)
+y.true <- comp1 + comp2
+y <- y.true + rnorm(n, sd = 0.20)
+
+circle.true.df <- generate.circle.data(
+  n = 300,
+  radius = radius,
+  noise = 0,
+  type = "uniform",
+  noise.type = "normal",
+  seed = 1
+)
+circle.true <- as.matrix(circle.true.df[, c("x", "y")])
+```
+
+```{r noisy-circle-plot}
+op <- par(mar = c(2.5, 2.5, 0.5, 0.5), mgp = c(2.5, 0.5, 0), tcl = -0.3)
+plot(X, asp = 1, las = 1, xlab = "", ylab = "")
+lines(circle.true, lwd = 2)
+legend("topleft",
+       legend = c("Observed samples", "True circle"),
+       pch = c(1, NA),
+       lty = c(NA, 1),
+       col = c("black", "black"),
+       bty = "n", cex = 0.9)
+par(op)
+```
+
+## Build ikNN Graphs Across k
+
+```{r iknn-graphs}
+k.min <- 5L
+k.max <- 12L
+
+X.graphs <- create.iknn.graphs(
+  X,
+  kmin = k.min,
+  kmax = k.max,
+  max.path.edge.ratio.deviation.thld = 0.1,
+  n.cores = 1L,
+  verbose = TRUE
+)
+summary(X.graphs)
+```
+
+## Alternative k Selection Utility
+
+```{r iknn-selectk}
+X.graphs2 <- build.iknn.graphs.and.selectk(
+  X,
+  kmin = k.min,
+  kmax = k.max,
+  method = "edit",
+  n.cores = 1L,
+  verbose = TRUE
+)
+
+X.graphs2$k.opt.edit
+plot(X.graphs2)
+```
+
+## Visualize One Graph Layout
+
+```{r graph-layout-2d}
+k.values <- if (!is.null(colnames(X.graphs$k_statistics)) &&
+                "k" %in% colnames(X.graphs$k_statistics)) {
+  as.integer(X.graphs$k_statistics[, "k"])
+} else {
+  seq_len(length(X.graphs$geom_pruned_graphs))
+}
+
+sel.k <- as.integer(X.graphs2$k.opt.edit %||% k.values[1])
+k.idx <- which(k.values == sel.k)[1]
+if (is.na(k.idx)) k.idx <- 1L
+
+g.sel <- X.graphs$geom_pruned_graphs[[k.idx]]
+layout.2d <- graph.embedding(
+  adj.list = g.sel$adj_list,
+  weights.list = g.sel$weight_list,
+  invert.weights = TRUE,
+  dim = 2,
+  method = "fr"
+)
+
+plot(layout.2d, pch = 19, cex = 0.5, asp = 1,
+     main = sprintf("2D graph embedding for selected k = %d", sel.k),
+     xlab = "", ylab = "")
+```
+
+## Denoise X with `data.smoother()`
+
+```{r data-smoother}
+X.denoise.res <- data.smoother(
+  X,
+  kmin = k.min,
+  kmax = k.max,
+  n.cores = 1L,
+  proxy.response = "pc1",
+  max.iterations = 8L,
+  n.eigenpairs = 100L,
+  filter.type = "heat_kernel",
+  t.scale.factor = 0.5,
+  beta.coef.factor = 0.1,
+  verbose = TRUE
+)
+
+X.smoothed <- X.denoise.res$X.smoothed
+X.denoise.res$k.best
+```
+
+```{r align-trimmed-data}
+if (isTRUE(X.denoise.res$trimmed)) {
+  kept.rows <- X.denoise.res$kept.rows
+  X.use <- X[kept.rows, , drop = FALSE]
+  theta.use <- theta.obs[kept.rows]
+  y.use <- y[kept.rows]
+  y.true.use <- y.true[kept.rows]
+  comp1.use <- comp1[kept.rows]
+  comp2.use <- comp2[kept.rows]
+} else {
+  X.use <- X
+  theta.use <- theta.obs
+  y.use <- y
+  y.true.use <- y.true
+  comp1.use <- comp1
+  comp2.use <- comp2
+}
+```
+
+```{r denoising-panels, fig.width=10, fig.height=4}
+op <- par(mfrow = c(1, 2),
+          mar = c(2.75, 2.75, 0.5, 0.5),
+          mgp = c(2.5, 0.5, 0),
+          tcl = -0.3)
+
+plot(X.use, las = 1, asp = 1, xlab = "", ylab = "")
+lines(circle.true, lwd = 2)
+legend("topleft",
+       legend = c("Observed samples", "True circle"),
+       pch = c(1, NA),
+       lty = c(NA, 1),
+       col = c("black", "black"),
+       bty = "n", cex = 0.9)
+
+plot(X.use, las = 1, asp = 1, col = "gray", xlab = "", ylab = "")
+lines(circle.true, lwd = 2)
+points(X.smoothed, col = "blue", pch = 19, cex = 0.6)
+legend("topleft",
+       legend = c("Observed samples", "Smoothed samples", "True circle"),
+       pch = c(1, 19, NA),
+       lty = c(NA, NA, 1),
+       col = c("black", "blue", "black"),
+       bty = "n", cex = 0.85)
+par(op)
+```
+
+```{r denoising-metric}
+rad.obs <- sqrt(rowSums(X.use^2))
+rad.sm <- sqrt(rowSums(X.smoothed^2))
+
+rmse.obs <- sqrt(mean((rad.obs - radius)^2))
+rmse.sm <- sqrt(mean((rad.sm - radius)^2))
+
+data.frame(
+  metric = c("RMSE radius (observed)", "RMSE radius (smoothed)"),
+  value = c(rmse.obs, rmse.sm)
+)
+```
+
+## Smooth y on the Selected Graph
+
+We reuse the graph/spectral structure selected by `data.smoother()` and apply
+it to `y` via `refit.rdgraph.regression()`.
+
+```{r fit-y}
+fit.seed <- X.denoise.res$fit.best
+
+y.fit <- refit.rdgraph.regression(
+  fitted.model = fit.seed,
+  y.new = as.double(y.use),
+  per.column.gcv = FALSE,
+  n.cores = 1L,
+  verbose = FALSE
+)
+
+y.hat <- as.double(y.fit$fitted.values)
+
+data.frame(
+  metric = c("cor(y.hat, y.true)", "RMSE(y.hat, y.true)"),
+  value = c(cor(y.hat, y.true.use),
+            sqrt(mean((y.hat - y.true.use)^2)))
+)
+```
+
+## Optional 3D Layout and Surface Coloring
+
+```{r layout-3d}
+X.denoise.graph.layout.3d <- graph.embedding(
+  adj.list = fit.seed$graph$adj.list,
+  weights.list = fit.seed$graph$edge.length.list,
+  invert.weights = TRUE,
+  dim = 3,
+  method = "fr"
+)
+```
+
+```{r plot3d-optional, eval=FALSE}
+if (requireNamespace("rgl", quietly = TRUE)) {
+  plot3D.cont(
+    X.denoise.graph.layout.3d,
+    y.hat,
+    radius = 0.03,
+    legend.title = "y.hat"
+  )
+}
+```
+
+```{r plot3d-html-optional, eval=FALSE}
+if (requireNamespace("rgl", quietly = TRUE) &&
+    requireNamespace("htmlwidgets", quietly = TRUE)) {
+  plot3D.cont.html(
+    X.denoise.graph.layout.3d,
+    y.hat,
+    legend.title = "y.hat",
+    output.file = NULL
+  )
+}
+```
+
+## Build Feature Matrix Z and Smooth It
+
+Features are built so some correlate with selected arcs of the response, while
+others are pure noise.
+
+```{r make-features}
+set.seed(1002)
+
+window.1 <- as.numeric(abs(wrap_angle(theta.use, mu1)) <= 1.1)
+window.2 <- as.numeric(abs(wrap_angle(theta.use, mu2)) <= 1.1)
+
+z.global <- y.true.use + rnorm(length(theta.use), sd = 0.08)
+z.peak1.arc <- window.1 * y.true.use + rnorm(length(theta.use), sd = 0.08)
+z.peak2.arc <- window.2 * y.true.use + rnorm(length(theta.use), sd = 0.08)
+z.peak.contrast <- (comp1.use - comp2.use) + rnorm(length(theta.use), sd = 0.08)
+
+z.noise1 <- rnorm(length(theta.use))
+z.noise2 <- rnorm(length(theta.use))
+z.noise3 <- rnorm(length(theta.use))
+
+Z <- cbind(
+  z_global = z.global,
+  z_peak1_arc = z.peak1.arc,
+  z_peak2_arc = z.peak2.arc,
+  z_peak_contrast = z.peak.contrast,
+  z_noise1 = z.noise1,
+  z_noise2 = z.noise2,
+  z_noise3 = z.noise3
+)
+Z <- scale(Z)
+```
+
+```{r smooth-z}
+Z.fit <- refit.rdgraph.regression(
+  fitted.model = fit.seed,
+  y.new = Z,
+  per.column.gcv = FALSE,
+  n.cores = 1L,
+  verbose = FALSE
+)
+Z.sm <- as.matrix(Z.fit$fitted.values)
+summary(Z.fit)
+```
+
+## Compute Refined Basins from y.hat
+
+```{r refined-basins}
+y.basins <- compute_basins_safe(
+  adj.list = fit.seed$graph$adj.list,
+  edge.length.list = fit.seed$graph$edge.length.list,
+  fitted.values = y.hat,
+  verbose = TRUE
+)
+
+y.basins$summary
+```
+
+```{r compare-true-estimated-basins}
+true.max.label <- ifelse(comp1.use >= comp2.use, "M1.true", "M2.true")
+
+est.max.label <- assign_from_vertices_list(
+  y.basins$expanded.max.vertices.list %||% y.basins$max.vertices.list,
+  n = length(y.hat)
+)
+
+idx.ok <- !is.na(est.max.label)
+table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
+```
+
+## Basin-Wise Pearson and Spearman Analyses
+
+```{r basin-wise-classical-correlation}
+max.assign <- assign_from_vertices_list(
+  y.basins$expanded.max.vertices.list %||% y.basins$max.vertices.list,
+  n = length(y.hat)
+)
+min.assign <- assign_from_vertices_list(
+  y.basins$expanded.min.vertices.list %||% y.basins$min.vertices.list,
+  n = length(y.hat)
+)
+cell.assign <- ifelse(is.na(max.assign) | is.na(min.assign),
+                      NA_character_,
+                      paste(max.assign, min.assign, sep = "|"))
+
+cor_by_group <- function(yv, zv, g, feature, min.size = 20L) {
+  ii <- split(seq_along(g), g)
+  ii <- ii[!is.na(names(ii))]
+  ii <- ii[!(names(ii) %in% "NA")]
+  if (length(ii) == 0L) return(data.frame())
+  out <- lapply(names(ii), function(gr) {
+    idx <- ii[[gr]]
+    if (length(idx) < min.size) return(NULL)
+    data.frame(
+      feature = feature,
+      group = gr,
+      n = length(idx),
+      pearson = suppressWarnings(cor(yv[idx], zv[idx], method = "pearson")),
+      spearman = suppressWarnings(cor(yv[idx], zv[idx], method = "spearman"))
+    )
+  })
+  out <- do.call(rbind, out)
+  if (is.null(out)) data.frame() else out
+}
+
+basin.cor <- do.call(
+  rbind,
+  lapply(seq_len(ncol(Z.sm)), function(j) {
+    cor_by_group(y.hat, Z.sm[, j], max.assign, colnames(Z.sm)[j], min.size = 20L)
+  })
+)
+
+if (nrow(basin.cor) > 0) {
+  head(basin.cor[order(-abs(basin.cor$spearman)), ], 12)
+} else {
+  basin.cor
+}
+```
+
+## Local Correlation with `lcor()`
+
+```{r lcor-methods}
+adj.list <- fit.seed$graph$adj.list
+edge.length.list <- fit.seed$graph$edge.length.list
+
+lcor.derivative <- as_lcor_matrix(
+  lcor(adj.list, edge.length.list, y.hat, Z, type = "derivative")
+)
+lcor.unit <- as_lcor_matrix(
+  lcor(adj.list, edge.length.list, y.hat, Z, type = "unit")
+)
+lcor.sign <- as_lcor_matrix(
+  lcor(adj.list, edge.length.list, y.hat, Z, type = "sign")
+)
+
+summarize_lcor <- function(mat, type) {
+  data.frame(
+    feature = colnames(mat),
+    type = type,
+    mean.lcor = colMeans(mat),
+    mean.abs.lcor = colMeans(abs(mat)),
+    row.names = NULL
+  )
+}
+
+lcor.summary <- rbind(
+  summarize_lcor(lcor.derivative, "derivative"),
+  summarize_lcor(lcor.unit, "unit"),
+  summarize_lcor(lcor.sign, "sign")
+)
+
+lcor.summary[order(lcor.summary$type, -lcor.summary$mean.abs.lcor), ]
+```
+
+## Permutation Tests for `lcor`
+
+`lcor()` computes local-correlation coefficients but does not directly return
+permutation p-values. We add a permutation layer by shuffling vertex labels of
+`Z` and recomputing the chosen `lcor` summary statistic.
+
+```{r lcor-permutation}
+perm.lcor <- perm_test_lcor(
+  adj.list = adj.list,
+  edge.length.list = edge.length.list,
+  y = y.hat,
+  Z = Z,
+  type = "derivative",
+  n.perm = 200L,
+  seed = 2026L
+)
+
+perm.lcor$table[order(perm.lcor$table$q.value), ]
+```
+
+## Build an lcor-Based Feature Module Graph
+
+```{r lcor-module-graph}
+sim <- stats::cor(lcor.derivative, use = "pairwise.complete.obs")
+adj.sim <- abs(sim)
+diag(adj.sim) <- 0
+
+threshold <- 0.20
+adj.sim[adj.sim < threshold] <- 0
+
+if (sum(adj.sim > 0) == 0) {
+  message("No edges above threshold. Lower `threshold` to make the module graph denser.")
+} else {
+  g.mod <- igraph::graph_from_adjacency_matrix(
+    adj.sim,
+    mode = "undirected",
+    weighted = TRUE,
+    diag = FALSE
+  )
+
+  modules <- igraph::cluster_louvain(g.mod, weights = igraph::E(g.mod)$weight)
+
+  igraph::plot.igraph(
+    g.mod,
+    vertex.label = igraph::V(g.mod)$name,
+    vertex.size = 26,
+    vertex.color = as.integer(igraph::membership(modules)) + 1,
+    edge.width = 1 + 4 * igraph::E(g.mod)$weight,
+    main = "Feature modules from local-correlation profiles"
+  )
+
+  data.frame(
+    feature = igraph::V(g.mod)$name,
+    module = as.integer(igraph::membership(modules)),
+    row.names = NULL
+  )
+}
+```
+
+## Optional `grip` 3D Layout
+
+```{r optional-grip-layout, eval=FALSE}
+if (requireNamespace("grip", quietly = TRUE) &&
+    requireNamespace("rgl", quietly = TRUE)) {
+  g <- X.graphs$geom_pruned_graphs[[k.idx]]
+
+  X.graphs.3d <- grip::grip.layout(
+    adj_list = g$adj_list,
+    weight_list = g$weight_list,
+    dim = 3,
+    rounds = 50,
+    final_rounds = 50,
+    num_init = 36,
+    num_nbrs = 8,
+    seed = 6
+  )
+
+  plot3D.plain(X.graphs.3d, radius = 0.03)
+}
+```
+
+## Notes
+
+- For publication-quality inference, increase permutation count (`n.perm`),
+  report confidence intervals, and retain `q.value` (FDR-controlled) summaries.
+- For larger datasets, use `n.cores > 1` and consider chunk-level caching.
+- If basin refinement is unstable for a specific dataset, start with relaxed
+  filtering and tighten thresholds gradually.
