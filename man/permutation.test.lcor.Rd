@@ -96,4 +96,5 @@ res <- permutation.test.lcor(
 
 head(res$table[order(res$table$q.value), ])
 }
+
 }

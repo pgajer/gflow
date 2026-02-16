@@ -23,8 +23,16 @@ PKG_CPPFLAGS += -include ../inst/include/gflow/eigen_config.hpp
 
 # ---- C++ standard / OpenMP
 CXX_STD      = CXX17
-PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
-PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+else ifeq ($(GFLOW_BUILD_PROFILE),dev)
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+else
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+endif
 
 # ---- Sources
 SOURCES_CPP  = $(wildcard *.cpp)

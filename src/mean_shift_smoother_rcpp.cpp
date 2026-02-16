@@ -45,7 +45,6 @@ using Rcpp::Named;
 //'
 //' @return list with \code{X_traj} (list of n x d matrices over iterations)
 //'   and \code{median_kdistances} (numeric).
-//' @export
 // [[Rcpp::export]]
 Rcpp::List rcpp_adaptive_mean_shift_gfa(
     const NumericMatrix& X,
@@ -111,7 +110,6 @@ Rcpp::List rcpp_adaptive_mean_shift_gfa(
 //'
 //' @return list with \code{X_traj} (list of n x d matrices over iterations)
 //'   and \code{median_kdistances} (numeric).
-//' @export
 // [[Rcpp::export]]
 Rcpp::List rcpp_knn_adaptive_mean_shift_gfa(
     const NumericMatrix& X,
