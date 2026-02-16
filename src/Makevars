@@ -32,13 +32,13 @@ ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
     PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
     PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS)
 else ifeq ($(GFLOW_BUILD_PROFILE),dev)
-    # Dev profile: use toolchain-provided OpenMP flags and suppress noisy warnings.
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -Wno-class-memaccess -Wno-psabi -Wno-pedantic
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS)
+    # Dev profile: force OpenMP and suppress noisy toolchain warnings.
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp -Wno-class-memaccess -Wno-psabi -Wno-pedantic
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS)
 else
     $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using dev profile)
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -Wno-class-memaccess -Wno-psabi -Wno-pedantic
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS)
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp -Wno-class-memaccess -Wno-psabi -Wno-pedantic
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS)
 endif
 
 # ---- Sources

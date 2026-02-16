@@ -72,7 +72,7 @@ comp2 <- circular.synthetic.mixture.of.gaussians(
   sd.knot = sd2
 )
 y.true <- comp1 + comp2
-y <- y.true + rnorm(n, sd = 0.20)
+y <- y.true + rnorm(n, sd = 0.10)
 
 circle.true.df <- generate.circle.data(
   n = 300,
@@ -254,7 +254,7 @@ fit.seed <- X.denoise.res$fit.best
 y.fit <- refit.rdgraph.regression(
   fitted.model = fit.seed,
   y.new = as.double(y.use),
-  per.column.gcv = FALSE,
+  per.column.gcv = TRUE,
   n.cores = 1L,
   verbose = FALSE
 )
@@ -350,36 +350,39 @@ summary(Z.fit)
 ## 8) Recover Extrema and Basins
 
 ```{r refined-basins}
-y.gfc <- compute.gfc(
+y.basins <- compute.refined.basins(
   adj.list = fit.seed$graph$adj.list,
   edge.length.list = fit.seed$graph$edge.length.list,
   fitted.values = y.hat,
-  edge.length.quantile.thld = 0.9,
+  edge.length.quantile.thld = 0.8,
   min.rel.value.max = 1.05,
   max.rel.value.min = 0.95,
   max.overlap.threshold = 0.20,
   min.overlap.threshold = 0.20,
-  p.mean.nbrs.dist.threshold = 0.95,
-  p.mean.hopk.dist.threshold = 0.95,
-  p.deg.threshold = 0.95,
-  min.basin.size = 5L,
+  p.mean.nbrs.dist.threshold = 0.90,
+  p.mean.hopk.dist.threshold = 0.90,
+  p.deg.threshold = 0.90,
+  min.basin.size = 8L,
   expand.basins = TRUE,
-  apply.geometric.filter = FALSE,
+  apply.geometric.filter = TRUE,
   with.trajectories = TRUE,
   verbose = TRUE
 )
 
-y.gfc$summary
+y.basins$summary
+table(y.basins$summary$type)
 ```
 
 ```{r compare-true-estimated-basins}
 true.max.label <- ifelse(comp1.use >= comp2.use, "M1.true", "M2.true")
 
-est.max.label <- ifelse(
-  is.na(y.gfc$expanded.max.assignment),
-  NA_character_,
-  paste0("M", y.gfc$expanded.max.assignment)
-)
+max.vertices.list <- y.basins$expanded.max.vertices.list
+if (is.null(max.vertices.list)) max.vertices.list <- y.basins$max.vertices.list
+
+est.max.label <- rep(NA_character_, length(y.hat))
+for (lab in names(max.vertices.list)) {
+  est.max.label[as.integer(max.vertices.list[[lab]])] <- lab
+}
 
 idx.ok <- !is.na(est.max.label)
 table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
@@ -388,16 +391,21 @@ table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
 ## 9) Basin-Wise Pearson and Spearman Checks
 
 ```{r basin-wise-classical-correlation}
-max.assign <- ifelse(
-  is.na(y.gfc$expanded.max.assignment),
-  NA_character_,
-  paste0("M", y.gfc$expanded.max.assignment)
-)
-min.assign <- ifelse(
-  is.na(y.gfc$expanded.min.assignment),
-  NA_character_,
-  paste0("m", y.gfc$expanded.min.assignment)
-)
+max.vertices.list <- y.basins$expanded.max.vertices.list
+if (is.null(max.vertices.list)) max.vertices.list <- y.basins$max.vertices.list
+min.vertices.list <- y.basins$expanded.min.vertices.list
+if (is.null(min.vertices.list)) min.vertices.list <- y.basins$min.vertices.list
+
+max.assign <- rep(NA_character_, length(y.hat))
+for (lab in names(max.vertices.list)) {
+  max.assign[as.integer(max.vertices.list[[lab]])] <- lab
+}
+
+min.assign <- rep(NA_character_, length(y.hat))
+for (lab in names(min.vertices.list)) {
+  min.assign[as.integer(min.vertices.list[[lab]])] <- lab
+}
+
 cell.assign <- ifelse(is.na(max.assign) | is.na(min.assign),
                       NA_character_,
                       paste(max.assign, min.assign, sep = "|"))
