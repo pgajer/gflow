@@ -76,5 +76,7 @@ scripts/
 rchk_reports/
 dev/
 man/
-inst/examples/
+inst/*/
+!inst/examples/
+!inst/examples/**
 presentations/

@@ -1,0 +1,198 @@
+---
+title: "Sigmoid Transformations for Bounded Normalization"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sigmoid Transformations for Bounded Normalization}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 7
+)
+library(gflow)
+```
+
+## The Need for Bounded Transformations
+
+When computing local correlation coefficients across a weighted graph, the raw 
+values can exhibit considerable variation in scale depending on the local 
+geometry of the data. In regions of high density, where many neighbors 
+contribute to the calculation, the coefficients tend to be well-behaved and 
+fall within expected ranges. In sparse regions, however, individual observations 
+can exert disproportionate influence, producing coefficients whose magnitudes 
+exceed the conventional bounds of correlation measures. This heterogeneity 
+poses challenges for downstream analyses that aggregate or compare local 
+correlations across different regions of the sample space.
+
+A natural solution is to apply a monotonic transformation that compresses 
+extreme values while preserving the sign and relative ordering of the 
+coefficients. The transformed values should lie in a bounded interval, 
+conventionally $(-1, 1)$, matching the range of classical correlation 
+coefficients. Such transformations must satisfy several desiderata: they should 
+be antisymmetric about the origin to preserve the distinction between positive 
+and negative associations, they should act approximately as the identity near 
+zero where coefficients are already well-scaled, and they should saturate 
+smoothly toward the bounds for extreme inputs.
+
+## Three Sigmoid Functions
+
+The gflow package implements three sigmoid functions that satisfy these 
+requirements. Each takes a scale parameter $\alpha > 0$ that controls the rate 
+of saturation. We denote the input by $x$ and write $\sigma_\alpha(x)$ for the 
+transformed value.
+
+The hyperbolic tangent transformation is the most widely used choice in practice:
+$$
+\sigma_\alpha^{\text{tanh}}(x) = \tanh(\alpha x).
+$$
+This function arises naturally in many contexts, from neural network activations 
+to the Fisher transformation of correlations. Its derivatives of all orders exist 
+and decay rapidly, making it well-suited for analyses that require smooth 
+dependence on the input.
+
+The arctangent transformation provides an alternative with slightly lighter tails:
+$$
+\sigma_\alpha^{\text{arctan}}(x) = \frac{2}{\pi} \arctan(\alpha x).
+$$
+The scaling factor $2/\pi$ ensures that the asymptotic bounds are $\pm 1$ rather 
+than $\pm \pi/2$. Compared to the hyperbolic tangent, the arctangent approaches 
+its bounds more slowly, which can be advantageous when one wishes to retain 
+greater sensitivity to differences among large values.
+
+The algebraic transformation avoids transcendental functions entirely:
+$$
+\sigma_\alpha^{\text{alg}}(x) = \frac{x}{\sqrt{\alpha^{-2} + x^2}}.
+$$
+This form is computationally efficient and produces the sharpest transition 
+near the origin among the three options. For large $|x|$, the denominator is 
+dominated by $|x|$, yielding the asymptotic behavior $\sigma_\alpha^{\text{alg}}(x) 
+\to \text{sign}(x)$.
+
+## Applying the Transformation in R
+
+The function `apply.sigmoid()` provides access to all three transformations. 
+Its interface accepts a numeric vector and returns the elementwise transformed 
+values.
+```{r basic-usage}
+x <- seq(-3, 3, length.out = 7)
+apply.sigmoid(x, alpha = 1, type = "tanh")
+apply.sigmoid(x, alpha = 1, type = "arctan")
+apply.sigmoid(x, alpha = 1, type = "algebraic")
+```
+
+The three functions agree closely for small inputs but diverge as $|x|$ grows. 
+To see this more clearly, we compare their behavior at a fixed value of $\alpha$.
+```{r single-alpha-comparison, fig.cap = "Comparison of the three sigmoid functions at alpha = 2."}
+x <- seq(-3, 3, length.out = 201)
+y.tanh <- apply.sigmoid(x, alpha = 2, type = "tanh")
+y.arctan <- apply.sigmoid(x, alpha = 2, type = "arctan")
+y.algebraic <- apply.sigmoid(x, alpha = 2, type = "algebraic")
+
+plot(x, y.tanh, type = "l", lwd = 2, col = "#2E86AB",
+     xlab = "x", ylab = expression(sigma[alpha](x)),
+     main = expression(paste("Sigmoid functions at ", alpha, " = 2")),
+     ylim = c(-1.1, 1.1))
+lines(x, y.arctan, lwd = 2, col = "#A23B72", lty = 2)
+lines(x, y.algebraic, lwd = 2, col = "#F18F01", lty = 3)
+abline(h = c(-1, 0, 1), col = "gray70", lty = 3)
+abline(v = 0, col = "gray70", lty = 3)
+legend("bottomright", legend = c("tanh", "arctan", "algebraic"),
+       col = c("#2E86AB", "#A23B72", "#F18F01"), lty = 1:3, lwd = 2)
+```
+
+The algebraic form saturates most rapidly, reaching values close to $\pm 1$ by 
+$|x| \approx 1$. The hyperbolic tangent follows a similar but slightly more 
+gradual trajectory. The arctangent transformation retains the most sensitivity 
+in the tails, which may be useful when distinguishing among strongly positive 
+or strongly negative associations remains important.
+
+## The Role of the Scale Parameter
+
+The parameter $\alpha$ governs the effective width of the transition region. 
+Small values of $\alpha$ produce a nearly linear response over a wide range of 
+inputs, while large values compress almost all variation into a narrow band 
+around the origin. The following display illustrates this behavior across a 
+range of $\alpha$ values.
+```{r alpha-grid, fig.height = 9, fig.width = 9, fig.cap = "Effect of the scale parameter on sigmoid transformations. Each panel shows the three sigmoid types at a fixed value of alpha."}
+alpha.values <- c(0.5, 1, 2, 3, 5, 8, 12, 20, 50)
+n.panels <- length(alpha.values)
+x <- seq(-3, 3, length.out = 201)
+
+cols <- c("#2E86AB", "#A23B72", "#F18F01")
+old.par <- par(mfrow = c(3, 3), mar = c(4, 4, 3, 1))
+
+for (alpha in alpha.values) {
+    y.tanh <- apply.sigmoid(x, alpha = alpha, type = "tanh")
+    y.arctan <- apply.sigmoid(x, alpha = alpha, type = "arctan")
+    y.algebraic <- apply.sigmoid(x, alpha = alpha, type = "algebraic")
+    
+    plot(x, y.tanh, type = "l", col = cols[1], lwd = 2,
+         xlim = c(-3, 3), ylim = c(-1.1, 1.1),
+         xlab = "x", ylab = expression(sigma(x)),
+         main = bquote(alpha == .(alpha)))
+    lines(x, y.arctan, col = cols[2], lwd = 2, lty = 2)
+    lines(x, y.algebraic, col = cols[3], lwd = 2, lty = 3)
+    abline(h = c(-1, 0, 1), col = "gray70", lty = 3, lwd = 0.5)
+    abline(v = 0, col = "gray70", lty = 3, lwd = 0.5)
+}
+
+par(old.par)
+```
+
+At $\alpha = 0.5$, all three curves appear nearly linear across the displayed 
+range, indicating that the transformation has little effect on values of 
+moderate magnitude. By $\alpha = 5$, the curves have developed their 
+characteristic sigmoidal shape, with clear saturation visible for $|x| > 1$. 
+At $\alpha = 50$, the transformation acts almost as a sign function, mapping 
+all positive inputs to values very close to $1$ and all negative inputs to 
+values close to $-1$.
+
+## Choosing the Transformation Parameters
+
+The choice of sigmoid type and scale parameter depends on the goals of the 
+analysis. When the primary concern is numerical stability and the transformed 
+values will be averaged or otherwise aggregated, the hyperbolic tangent with a 
+moderate $\alpha$ (typically between 1 and 5) provides a reasonable default. 
+The smooth saturation prevents extreme local correlations from dominating 
+aggregated summaries while preserving the ordering of coefficients.
+
+When the analysis requires distinguishing among strong associations, the 
+arctangent transformation may be preferable due to its slower approach to the 
+bounds. Conversely, when one wishes to emphasize the sign of the association 
+while downweighting magnitude differences, the algebraic form with a large 
+$\alpha$ approximates a soft sign function.
+
+In gflow, the default choice is the hyperbolic tangent with $\alpha = 1$, which 
+provides a balance between compression of extremes and preservation of 
+variation among moderate values. Users working with data exhibiting particularly 
+large or small local correlation magnitudes may wish to adjust $\alpha$ 
+accordingly, using visualizations like those above to guide the selection.
+
+## Mathematical Properties
+
+We conclude with a brief summary of the analytical properties that justify 
+these transformations for use in geometric data analysis.
+
+All three sigmoid functions are odd, satisfying $\sigma_\alpha(-x) = 
+-\sigma_\alpha(x)$. This antisymmetry ensures that the sign of a local 
+correlation is preserved under transformation, maintaining the interpretive 
+distinction between positive and negative associations. The functions are 
+also strictly monotonically increasing, so the ordering of coefficients is 
+preserved: if $\rho_1 < \rho_2$ for two local correlations, then 
+$\sigma_\alpha(\rho_1) < \sigma_\alpha(\rho_2)$ as well.
+
+Near the origin, all three functions behave linearly with slope $\alpha$. 
+Specifically, a Taylor expansion yields $\sigma_\alpha(x) = \alpha x + O(x^3)$ 
+for small $x$. This means that the transformation acts approximately as 
+rescaling when the input magnitudes are small, introducing minimal distortion 
+to well-behaved local correlations.
+
+The boundedness of the transformed values, with $|\sigma_\alpha(x)| < 1$ for 
+all finite $x$, ensures that subsequent analyses operate on a compact range. 
+This property is particularly valuable when aggregating local correlations 
+across regions with heterogeneous densities, as it prevents sparse regions 
+from producing arbitrarily large contributions to summary statistics.
