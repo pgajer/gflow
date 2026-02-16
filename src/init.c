@@ -27,15 +27,9 @@
 #include "graph_maximal_packing_r.h"
 #include "ray_agemalo_r.h"
 #include "geodesic_stats_r.h"
-#include "graph_spectral_ma_lowess_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
-#include "graph_deg0_lowess_r.h"
-#include "graph_deg0_lowess_cv_r.h"
-#include "graph_deg0_lowess_cv_mat_r.h"
-#include "graph_deg0_lowess_buffer_cv_r.h"
 #include "graph_bw_adaptive_spectral_smoother_r.h"
-#include "klaps_low_pass_smoother_r.h"
 #include "mst_completion_graphs_r.h"
 #include "amagelo_r.h"
 #include "gflow_basins_r.h"
@@ -325,12 +319,9 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_convert_adjacency_to_edge_matrix_unordered_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_unordered_set, 1},
   {"S_angular_wasserstein_index", (DL_FUNC) &S_angular_wasserstein_index, 3},
   {"S_compute_mstree_total_length", (DL_FUNC) &S_compute_mstree_total_length, 1},
-  {"S_cv_imputation", (DL_FUNC) &S_cv_imputation, 12},
   {"S_prop_nbhrs_with_smaller_y", (DL_FUNC) &S_prop_nbhrs_with_smaller_y, 2},
   {"S_graph_spectrum", (DL_FUNC) &S_graph_spectrum, 2},
   {"S_graph_spectrum_plus", (DL_FUNC) &S_graph_spectrum_plus, 3},
-
-  {"S_loc_const_vertices", (DL_FUNC) &S_loc_const_vertices, 3},
   {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
   {"S_test_monotonic_reachability_map", (DL_FUNC) &S_test_monotonic_reachability_map, 6},
   {"S_compute_geodesic_stats", (DL_FUNC) &S_compute_geodesic_stats, 9},
@@ -359,21 +350,12 @@ static const R_CallMethodDef CallMethods[] = {
 
   // old
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
-  {"S_klaps_low_pass_smoother", (DL_FUNC) &S_klaps_low_pass_smoother, 14},
   {"S_graph_bw_adaptive_spectral_smoother", (DL_FUNC) &S_graph_bw_adaptive_spectral_smoother, 15},
-  {"S_graph_deg0_lowess_buffer_cv", (DL_FUNC) &S_graph_deg0_lowess_buffer_cv, 16},
-  {"S_graph_deg0_lowess_cv_mat", (DL_FUNC) &S_graph_deg0_lowess_cv_mat, 14},
-  {"S_graph_deg0_lowess_cv", (DL_FUNC) &S_graph_deg0_lowess_cv, 14},
-  {"S_graph_deg0_lowess", (DL_FUNC) &S_graph_deg0_lowess, 7},
-  {"S_graph_spectral_ma_lowess", (DL_FUNC) &S_graph_spectral_ma_lowess, 13},
   {"S_ray_agemalo", (DL_FUNC) &S_ray_agemalo, 19},
   {"S_uggmalo", (DL_FUNC) &S_uggmalo, 20},
-  {"S_univariate_gkmm", (DL_FUNC) &S_univariate_gkmm, 15},
   {"S_upgmalog", (DL_FUNC) &S_upgmalog, 17},
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
   {"S_eigen_ulogit", (DL_FUNC) &S_eigen_ulogit, 8},
-  {"S_graph_kmean_wmad_cv", (DL_FUNC) &S_graph_kmean_wmad_cv, 9},
-  {"S_graph_kmean_cv", (DL_FUNC) &S_graph_kmean_cv, 8},
   {"S_wmabilog", (DL_FUNC) &S_wmabilog, 13},
   {"S_maelog", (DL_FUNC) &S_maelog, 15},
   {"S_magelog", (DL_FUNC) &S_magelog, 15},
@@ -384,8 +366,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_wmabilo", (DL_FUNC) &S_wmabilo, 10},
   {"S_mabilo", (DL_FUNC) &S_mabilo, 11},
   {"S_mabilo_with_smoothed_errors", (DL_FUNC) &S_mabilo_with_smoothed_errors, 10},
-  {"S_graph_mad", (DL_FUNC) &S_graph_mad, 2},
-  {"S_graph_kmean", (DL_FUNC) &S_graph_kmean, 5},
 
 
   {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},
