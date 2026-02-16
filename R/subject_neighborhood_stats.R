@@ -294,7 +294,6 @@ subject.neighborhood.stats <- function(
     out
 }
 
-
 #' Reconstruct Per-Vertex Laplacian Neighbor Weights
 #'
 #' @description
@@ -325,7 +324,6 @@ subject.neighborhood.stats <- function(
 #'   \item \code{weights.df}: optional long-format directed table (if requested)
 #' }
 #'
-#' @export
 rdgraph.neighbor.weights <- function(
     fitted.model,
     weight.type = c("conductance", "mass.sym"),

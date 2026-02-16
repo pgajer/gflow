@@ -41,7 +41,6 @@ extract.gradient.trajectory <- function(basin, vertex.id) {
     return(trajectory)
 }
 
-
 #' Extract All Trajectories Terminating at Specific Extremum
 #'
 #' @description
@@ -53,7 +52,6 @@ extract.gradient.trajectory <- function(basin, vertex.id) {
 #'
 #' @return Integer vector of vertices whose trajectories terminate at terminal.vertex
 #'
-#' @export
 extract.vertices.terminating.at <- function(basin, terminal.vertex) {
     if (!(terminal.vertex %in% basin$terminal_extrema)) {
         return(integer(0))
@@ -74,7 +72,6 @@ extract.vertices.terminating.at <- function(basin, terminal.vertex) {
     
     return(terminating.vertices)
 }
-
 
 #' Identify All Gradient Flow Cells
 #'
@@ -171,7 +168,6 @@ identify.gradient.flow.cells <- function(x, ...) {
     
     do.call(rbind, cells.list)
 }
-
 
 #' Extract Complete Gradient Trajectory Through Cell
 #'
@@ -277,7 +273,6 @@ extract.cell.trajectory <- function(basins.obj, min.vertex, max.vertex,
 #'
 #' @return Integer vector of vertices in cell (m_i, M_j)
 #'
-#' @export
 compute.cell.vertices <- function(basins.obj, min.vertex, max.vertex) {
     min.basin.idx <- which(sapply(basins.obj$basins$lmin_basins,
                                   function(b) b$vertex == min.vertex))
@@ -299,7 +294,6 @@ compute.cell.vertices <- function(basins.obj, min.vertex, max.vertex) {
     intersect(min.vertices, max.vertices)
 }
 
-
 #' Validate Gradient Flow Cell
 #'
 #' @description
@@ -312,7 +306,6 @@ compute.cell.vertices <- function(basins.obj, min.vertex, max.vertex) {
 #'
 #' @return Logical indicating if (m_i, M_j) is a valid cell
 #'
-#' @export
 is.valid.cell <- function(basins.obj, min.vertex, max.vertex) {
     min.basin.idx <- which(sapply(basins.obj$basins$lmin_basins,
                                   function(b) b$vertex == min.vertex))
@@ -363,7 +356,6 @@ is.valid.cell <- function(basins.obj, min.vertex, max.vertex) {
 #' for each terminal extremum, we perform an upstream search to find all vertices
 #' whose path to the maximum passes through that terminal.
 #'
-#' @export
 extract.gradient.flow.cells <- function(basins.obj,
                                         max.basin.label,
                                         verbose = FALSE) {
@@ -770,7 +762,6 @@ filter.cells.by.vertex.count <- function(flow.cells,
 
     return(result)
 }
-
 
 #' Filter Gradient Flow Cells by Multiple Criteria
 #'

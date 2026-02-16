@@ -171,7 +171,6 @@ wgraph.prune.long.edges <- function(graph,
     return(result)
 }
 
-
 #' Compare Two Adjacency Lists
 #'
 #' This function compares two adjacency lists to check if they are equivalent,
@@ -234,7 +233,6 @@ compare.adj.lists <- function(adj.list1, adj.list2) {
 #'
 #' @param M A matrix representing the adjacency matrix of a graph.
 #' @return A list representing the adjacency list of the graph.
-#' @export
 convert.adjacency.matrix.to.adjacency.list <- function(M) {
 
     if (!is.matrix(M)) {
@@ -261,7 +259,6 @@ convert.adjacency.matrix.to.adjacency.list <- function(M) {
 #' @return A list with two elements: `adjacency.list` and `weights.list`.
 #'         `adjacency.list` is a list where each element is a vector of connected node indices.
 #'         `weights.list` is a list where each element is a vector of weights corresponding to the edges in the adjacency list.
-#' @export
 convert.weighted.adjacency.matrix.to.adjacency.list <- function(M) {
 
     if (!is.matrix(M)) {
@@ -279,7 +276,6 @@ convert.weighted.adjacency.matrix.to.adjacency.list <- function(M) {
     list(adjacency.list = adjacency.list, weights.list = weights.list)
 }
 
-
 #' Convert an Adjacency List to an Edgelist
 #'
 #' This function takes an adjacency list representation of a graph and converts it
@@ -289,7 +285,6 @@ convert.weighted.adjacency.matrix.to.adjacency.list <- function(M) {
 #'   representing the neighbors of a node.
 #' @return A list where each element is a vector of length two, representing
 #'   an edge in the graph (source node, target node).
-#' @export
 convert.adjacency.to.edgelist <- function(adj.list) {
     edges <- list()
     ## Initialize empty list to store edges
@@ -369,7 +364,6 @@ convert.edge.label.list.to.edge.label.vector <- function(edge.label.list, rm.dup
 
     edge.label
 }
-
 
 #' Converts a directed graph to an undirected graph
 #'
@@ -480,7 +474,6 @@ rm.self.loops <- function(adj.list) {
 #' @param graph1 A list representing the adjacency list of the first graph.
 #' @param graph2 A list representing the adjacency list of the second graph.
 #' @return The similarity score between the two graphs, ranging from 0 to 1, where 0 indicates perfect similarity.
-#' @export
 hungarian.frobenius.graph.matching <- function(graph1, graph2) {
   g1.m <- convert.adjacency.to.edge.matrix(graph1)$edge.matrix
   g2.m <- convert.adjacency.to.edge.matrix(graph2)$edge.matrix
@@ -569,7 +562,6 @@ hungarian.frobenius.graph.matching <- function(graph1, graph2) {
 
   return(normalized_deviation)
 }
-
 
 #' Weighted Graph Matching between two graphs with identical vertex sets
 #'
@@ -717,7 +709,6 @@ graph.connected.components <- function(adj.list) {
 
     return(result)
 }
-
 
 #' Compute Edge Difference Between Two Graphs
 #'
@@ -868,7 +859,6 @@ create.subgraph <- function(S.graph, id.indices = NULL, ids = NULL, S = NULL, us
     return(S.subgraph)
 }
 
-
 #' Calculate Degree Distribution Properties for Random Points on a Sphere
 #'
 #' @description
@@ -956,7 +946,6 @@ get.sphere.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 2)
          ci.upper = ci.upper,
          degrees = 1:max.degree)  # Added to show which degrees correspond to the proportions
 }
-
 
 #' Generate Degree Distribution Properties in Tubular Neighborhood of Unit Circle
 #'
@@ -1260,7 +1249,6 @@ create.vertex.labels <- function(vertices, state.space, taxonomy = NULL, min.rel
     ))
 }
 
-
 #' Create Label Tables and Indicator Vectors for Vertices
 #'
 #' @description
@@ -1311,7 +1299,6 @@ create.vertex.label.indicators <- function(vertex.labels, state.space) {
         ind = ind
     ))
 }
-
 
 #' Calculate Shortest Path Distance Between Two Vertices in a Graph
 #'
@@ -1398,7 +1385,6 @@ compute.graph.distance <- function(star.obj = NULL,
     ## Step 4: Return final shortest distance to target vertex
     return(distances[j])
 }
-
 
 #' Count Edges in an Undirected Graph
 #'
@@ -1521,8 +1507,6 @@ get.edge.weights <- function(adj.list,
 
     return(results)
 }
-
-
 
 #' Generate a Gaussian Mixture Function on a Graph
 #'
@@ -1892,7 +1876,6 @@ create.random.graph <- function(n_vertices, avg_degree, connected = TRUE) {
   return(list(adj.list = adj.list, weight.list = weight.list))
 }
 
-
 #' Assess Fidelity of Graph-Based Geodesic Distances to Euclidean Geometry
 #'
 #' This function compares local neighborhood structures defined by graph-based distances
@@ -1993,7 +1976,6 @@ compute.local.distance.fidelity <- function(X, adj.list, weight.list, taus, max.
     return(results)
 }
 
-
 compute.kernel.graph.laplacian.eigenfunctions.I.minus.L.powered <- function(x.min,
                                                                             x.max,
                                                                             grid.size,
@@ -2080,7 +2062,6 @@ compute.kernel.graph.laplacian.eigenfunctions.I.minus.L.powered <- function(x.mi
 ##     par(op)
 ## }
 
-
 #' Create Threshold Distance Graph from Distance Matrix
 #'
 #' This function constructs a graph where vertices are connected by an edge
@@ -2158,7 +2139,6 @@ create.threshold.distance.graph <- function(dist.matrix, threshold, include.name
     ))
 }
 
-
 #' Compute local cluster evenness with full cluster support
 #'
 #' Computes the evenness (normalized entropy) of cluster label distribution
@@ -2170,7 +2150,6 @@ create.threshold.distance.graph <- function(dist.matrix, threshold, include.name
 #' @param cltr A vector of cluster labels (factor, character, or numeric), one per vertex.
 #'
 #' @return Numeric vector of evenness values for each vertex.
-#' @export
 graph.cltr.evenness <- function(adj.list, cltr) {
     n.vertices <- length(adj.list)
     uq.clusters <- unique(cltr)
@@ -2186,7 +2165,6 @@ graph.cltr.evenness <- function(adj.list, cltr) {
 
     return(cltr.evenness)
 }
-
 
 #' Compute the Diameter of a Weighted Undirected Graph
 #'
@@ -3097,7 +3075,6 @@ adjlist.to.igraph <- function(adj.list) {
 #' @param include.path Logical; if TRUE, always include the original \code{path}.
 #'
 #' @return Integer vector of selected vertex ids.
-#' @rawNamespace export(select.path.corridor)
 select.path.corridor <- function(graph,
                                  path,
                                  weights = NULL,
@@ -3163,7 +3140,6 @@ select.path.corridor <- function(graph,
 #' @param max.dist Non-negative numeric scalar; tube radius in graph-distance units.
 #'
 #' @return Integer vector of selected vertex ids.
-#' @rawNamespace export(select.path.neighborhood)
 select.path.neighborhood <- function(graph,
                                     path,
                                     weights = NULL,
@@ -3187,7 +3163,6 @@ select.path.neighborhood <- function(graph,
 #' @param poly Numeric matrix m x 3 of polyline vertices (in order).
 #'
 #' @return Numeric vector length n with distances to the polyline.
-#' @export
 dist.to.polyline.3d <- function(x, poly) {
   stopifnot(is.matrix(x), ncol(x) == 3)
   stopifnot(is.matrix(poly), ncol(poly) == 3, nrow(poly) >= 2)

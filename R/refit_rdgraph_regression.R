@@ -736,7 +736,6 @@ refit.rdgraph.regression <- function(fitted.model,
 #'
 #' @return A \code{"knn.riem.refit"} object returned by
 #'   \code{\link{refit.rdgraph.regression}}.
-#' @export
 refit.blocked <- function(fitted.model,
                           y.new,
                           block.size = 250L,
@@ -786,7 +785,6 @@ compute.filter.weights.matrix <- function(eigenvalues, eta.grid, filter.type) {
     return(weights)
 }
 
-
 #' Single-column GCV selection with full fitted values
 #'
 #' @param y.obs Observed response vector
@@ -829,7 +827,6 @@ select.eta.gcv.single <- function(y.obs, y.spectral, V,
         best.idx = best.idx
     ))
 }
-
 
 #' Fast single-column GCV selection (returns only scalars)
 #'
@@ -875,7 +872,6 @@ select.eta.gcv.single.fast <- function(y.obs, y.spectral, V,
         best.idx = best.idx
     ))
 }
-
 
 ## ============================================================
 ## PRINT AND SUMMARY METHODS
@@ -941,7 +937,6 @@ print.knn.riem.refit <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' @export
 summary.knn.riem.refit <- function(object, ...) {
@@ -1024,7 +1019,6 @@ summary.knn.riem.refit <- function(object, ...) {
     class(result) <- "summary.knn.riem.refit"
     return(result)
 }
-
 
 #' @export
 print.summary.knn.riem.refit <- function(x, digits = 4, ...) {

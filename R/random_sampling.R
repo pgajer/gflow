@@ -151,14 +151,11 @@ qlaplace <- function(p, location = 0, scale = 1, lower.tail = TRUE, log.p = FALS
   return(q)
 }
 
-
-
 #' Produces a random sample from the uniform distribution over the (K-1)-dimensional simplex
 #'
 #' @param K The size of vector of non-negative numbers that sum up to 1.
 #'
 #' @return A numeric vector of non-negative numbers that sum to 1.
-#' @export
 runif.simplex <- function(K)
 {
     lambda <- numeric(K)
@@ -215,7 +212,6 @@ runif.sphere <- function(n.samples, dim) {
 
   return(samples)
 }
-
 
 #' Generate Uniform Random Sample from n-dimensional Torus
 #'

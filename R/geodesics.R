@@ -168,7 +168,6 @@ path.length <- function(X)
 #' than min.vs vertices, it first interpolates to create adj.n.vs points before smoothing.
 #' The smoothing is performed separately for each dimension of the state space.
 #'
-#' @export
 smooth.PL.geodesic <- function(S,
                               path.vs,
                               min.vs = 10,
@@ -345,7 +344,6 @@ subdivide.path <- function(path, n.subdivision.pts)
 #'
 #' @seealso \code{\link{subdivide.path}} for the primary implementation
 #'
-#' @export
 subdivide.path.v1 <- function(path, n.subdivision.pts)
 {
     n.pts <- dim(path)[1]
@@ -413,7 +411,6 @@ subdivide.path.v1 <- function(path, n.subdivision.pts)
 #' the geodesic. When d.thld is set to "auto", the threshold is determined based on
 #' the distribution of distances to the geodesic.
 #'
-#' @export
 create.tubular.nbhd.of.a.geodesic <- function(smoothed.geodesic,
                                              S,
                                              d.thld="auto",
@@ -480,7 +477,6 @@ create.tubular.nbhd.of.a.geodesic <- function(smoothed.geodesic,
 #' The saved RDA files contain the E_gamma_F estimates which can be loaded for
 #' further analysis or visualization.
 #'
-#' @export
 E.geodesic.F <- function(subj.factors,
                      subjID,
                      bch.ids,
@@ -566,7 +562,6 @@ E.geodesic.F <- function(subj.factors,
 #'
 #' @seealso \code{\link{E.geodesic.F}} for generating the data files used by this function
 #'
-#' @export
 fig.E.geodesic.F <- function(save.file.prefix, rlabs, pics.file.prefix)
 {
     for ( lab in rlabs )
@@ -623,7 +618,6 @@ fig.E.geodesic.F <- function(save.file.prefix, rlabs, pics.file.prefix)
 #'
 #' @seealso \code{\link{E.geodesic.F}} for generating the data files used by this function
 #'
-#' @export
 subj.factor.signEy.profs <- function(save.file.prefix, rlabs, grid.size=400)
 {
     subj.factor.signEy.profs <- matrix(nrow=length(rlabs), ncol=grid.size-1)
@@ -668,7 +662,6 @@ subj.factor.signEy.profs <- function(save.file.prefix, rlabs, grid.size=400)
 #' \code{\link{subj.factor.signEy.profs}} for generating the input derivative signs
 #' \code{\link{E.geodesic.F}} for generating the data files containing p-values
 #'
-#' @export
 subj.factor.ppmEy.profs.df <- function(subj.factor.signEy.profs, rowInd, rlabs, save.file.prefix, N=10)
 {
     X <- subj.factor.signEy.profs[rev(rowInd),]
@@ -809,7 +802,6 @@ vars.approx.monotonically.assoc.with.geodesic <- function(X, eps = 0.4) {
 #' The function assumes the subject has at least 3 visits and uses geodesic paths
 #' to model the subject's trajectory through the state space between visits.
 #'
-#' @export
 subj.D.risk <- function(sID, S, G.S, ED, subjID, visit)
 {
     ##

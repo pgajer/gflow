@@ -447,7 +447,6 @@ hdbscan.cltr <- function(X,
          connectivity.cltr.ext.freq = connectivity.freq.ext)
 }
 
-
 #' kNN-Based Cluster Imputation
 #'
 #' This function utilizes the k-Nearest Neighbors (k-NN) algorithm with a modified
@@ -847,7 +846,6 @@ graph.cltr.imputation <- function(adj.list, weight.list, y, k = 10) {
 #'
 #' @return Vector of cluster labels after imputation
 #'
-#' @export
 kNN.cltr.imputation.enhanced <- function(X, cltr, ref.cltr = 0, K = 20,
                                        method = "majority",
                                        tie.break = "first",
@@ -954,7 +952,6 @@ kNN.cltr.imputation.enhanced <- function(X, cltr, ref.cltr = 0, K = 20,
     return(cltr2)
 }
 
-
 #' Reorder Cluster IDs by Size
 #'
 #' Reorders cluster IDs based on cluster sizes, with the largest cluster
@@ -1019,7 +1016,6 @@ clusters.reorder <- function(cltr, decreasing = TRUE) {
 
   return(new_cltr)
 }
-
 
 #' Select Number of Clusters for a Hierarchical Clustering
 #'
@@ -1623,7 +1619,6 @@ print.hclust_select_k <- function(x, ..., top.n = 0L, show.call = FALSE) {
     invisible(x)
 }
 
-
 #' Plot Method for hclust_select_k Objects
 #'
 #' Produces base R diagnostic plots of cluster validity indices (scores) versus
@@ -1752,7 +1747,6 @@ plot.hclust_select_k <- function(x,
 #'
 #' @return A class-specific object (often a \code{data.frame}) describing \code{x}.
 #'
-#' @export
 describe <- function(x, ...) {
     UseMethod("describe")
 }
@@ -1886,7 +1880,6 @@ describe.hclust_select_k <- function(x,
             }
         }
     }
-
 
     if (!is.null(x$opt.k) && length(x$opt.k) > 1L && !is.null(x$scores)) {
 
@@ -2126,7 +2119,6 @@ summary.hclust_select_k <- function(object,
         shortlist
     }
 }
-
 
 #' Louvain clustering wrapper with optional seeding, weights, and repeated runs
 #'

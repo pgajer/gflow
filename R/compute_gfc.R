@@ -255,7 +255,6 @@ compute.gfc <- function(adj.list,
     ## Call C++ implementation
     ## ========================================================================
 
-
     result <- .Call(
         S_compute_gfc,
         adj.list.0based,
@@ -387,7 +386,6 @@ compute.gfc <- function(adj.list,
     return(result)
 }
 
-
 #' Print Method for Gradient Flow Complex
 #'
 #' @param x A gfc object from compute.gfc()
@@ -429,7 +427,6 @@ print.gfc <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Compute GFC for Multiple Functions
 #'
@@ -600,7 +597,6 @@ resolve.basin.vertex <- function(object, basin.id) {
     }
 }
 
-
 #' Get Basin Information
 #'
 #' @param object A gfc object.
@@ -678,7 +674,6 @@ get.basin.info <- function(object, basin.id) {
     )
 }
 
-
 # =============================================================================
 # Trajectories Generic and Methods
 # =============================================================================
@@ -700,7 +695,6 @@ get.basin.info <- function(object, basin.id) {
 trajectories <- function(object, ...) {
     UseMethod("trajectories")
 }
-
 
 #' Extract Gradient Trajectories from GFC Result
 #'
@@ -760,7 +754,6 @@ trajectories.gfc <- function(object, basin.id,
         return(trajectories_by_terminal(object, basin.id, include.paths))
     }
 }
-
 
 #' Summarize Trajectories by Raw Terminal
 #' @keywords internal
@@ -846,7 +839,6 @@ trajectories_by_terminal <- function(object, basin.id, include.paths) {
     return(result)
 }
 
-
 #' Summarize Trajectories by Joined Cell
 #' @keywords internal
 trajectories_by_cell <- function(object, basin.id, include.paths) {
@@ -928,7 +920,6 @@ trajectories_by_cell <- function(object, basin.id, include.paths) {
     return(result)
 }
 
-
 #' Print Method for GFC Trajectories
 #'
 #' @param x A gfc_trajectories object from trajectories.gfc()
@@ -1006,7 +997,6 @@ print.gfc_trajectories <- function(x, ...) {
 #'
 #' @seealso \code{\link{cell.trajectories.gfc}}
 #'
-#' @export
 cell.trajectories <- function(x, min.id, max.id, ...) {
     UseMethod("cell.trajectories")
 }
@@ -1281,7 +1271,6 @@ cell.trajectories.gfc <- function(x,
 #'
 #' @return Integer vector of vertex indices
 #'
-#' @export
 trajectory.vertices <- function(cell.traj, unique = TRUE) {
 
     if (!inherits(cell.traj, "gfc_cell_trajectories")) {
@@ -1297,7 +1286,6 @@ trajectory.vertices <- function(cell.traj, unique = TRUE) {
     return(all.vertices)
 }
 
-
 #' Convert Trajectory to Edge List
 #'
 #' @description
@@ -1309,7 +1297,6 @@ trajectory.vertices <- function(cell.traj, unique = TRUE) {
 #'
 #' @return A data frame with columns 'from', 'to', and optionally 'weight'
 #'
-#' @export
 trajectory.edges <- function(cell.traj, weighted = FALSE) {
 
     if (!inherits(cell.traj, "gfc_cell_trajectories")) {
@@ -1605,7 +1592,6 @@ draw.cell.trajectories <- function(cell,
 #'
 #' @return List with diagnostic information.
 #'
-#' @export
 diagnose.trajectory.coverage <- function(gfc, max.id, debug = TRUE) {
 
     ## Resolve max.id
@@ -1791,7 +1777,6 @@ old.diagnose.trajectory.coverage <- function(gfc, max.id) {
 #'
 #' @return List with trajectory and diagnostic info.
 #'
-#' @export
 trace.gradient.flow <- function(adj.list,
                                  weight.list,
                                  y,
@@ -1893,7 +1878,6 @@ trace.gradient.flow <- function(adj.list,
 #'
 #' @return Data frame with flow destinations for missing vertices.
 #'
-#' @export
 diagnose.missing.flows <- function(gfc,
                                     adj.list,
                                     weight.list,

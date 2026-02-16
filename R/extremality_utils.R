@@ -668,7 +668,6 @@ compute.extrema.geodesic.distances <- function(extremality.df,
     return(dist_matrix)
 }
 
-
 #' Cluster extrema using graph-aware hierarchical clustering
 #'
 #' @param geodesic.dist Geodesic distance matrix between extrema
@@ -902,7 +901,6 @@ compute.cluster.summary <- function(extremality.df,
     return(result)
 }
 
-
 #' Extract Representative Extrema for Visualization
 #'
 #' @description
@@ -956,7 +954,6 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
     return(representatives)
 }
 
-
 #' Compare Representative Selection Methods
 #'
 #' @description
@@ -969,7 +966,6 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 #'
 #' @return Data frame comparing representatives from different methods
 #'
-#' @export compare.representative.methods
 compare.representative.methods <- function(extremality.df,
                                           geodesic.dist,
                                           cluster_id) {
@@ -1252,7 +1248,6 @@ compute.dbscan.cluster.summary <- function(extremality.df,
     return(result)
 }
 
-
 #' Helper: Select representative from cluster members
 #' @keywords internal
 select_representative <- function(cluster_members, geodesic.dist, method) {
@@ -1307,7 +1302,6 @@ select_representative <- function(cluster_members, geodesic.dist, method) {
     }
 }
 
-
 #' Helper: Compute cluster statistics
 #' @keywords internal
 compute_cluster_stats <- function(cluster_members) {
@@ -1332,7 +1326,6 @@ compute_cluster_stats <- function(cluster_members) {
         max_value = max(cluster_members$value, na.rm = TRUE)
     )
 }
-
 
 #' Extract DBSCAN Cluster Representatives for Visualization
 #'
@@ -1455,7 +1448,6 @@ extract.dbscan.cluster.representatives <- function(extremality.df,
 
     return(representatives)
 }
-
 
 #' Analyze DBSCAN Noise Points
 #'

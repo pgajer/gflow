@@ -51,7 +51,6 @@
 #'
 #' @seealso \code{\link{compute.gfc.basins}}, \code{\link{compute.smoothed.density}}
 #'
-#' @export
 compute.gfc.modulation <- function(adj.list,
                                    weight.list,
                                    modulation = c("density", "edgelen", "density_edgelen"),
@@ -288,7 +287,6 @@ compute.gfc.modulation <- function(adj.list,
     return(result)
 }
 
-
 #' Print Method for gfc_modulation Objects
 #'
 #' @param x A gfc_modulation object
@@ -325,7 +323,6 @@ print.gfc_modulation <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Plot Diagnostics for Gradient Flow Modulation
 #'
@@ -403,7 +400,6 @@ plot.gfc_modulation <- function(x,
     invisible(x)
 }
 
-
 #' Extract Modulation Factor for a Specific Edge
 #'
 #' @param mod A gfc_modulation object
@@ -412,7 +408,6 @@ plot.gfc_modulation <- function(x,
 #'
 #' @return Named list with density, edgelen, and combined modulation factors
 #'
-#' @export
 edge.modulation <- function(mod, v, u) {
 
     if (!inherits(mod, "gfc_modulation")) {

@@ -57,7 +57,6 @@
 #' @param ... Ignored legacy plotting/style arguments may be supplied without error.
 #'
 #' @return An object of class \code{"assoc0"} (order 0) or \code{"assoc1"} (order 1).
-#' @export
 fassoc.test <- function(x,
                         y,
                         order = 1,
@@ -183,9 +182,7 @@ fassoc.test <- function(x,
 }
 
 #' @rdname fassoc.test
-#' @export
 functional.association.test <- fassoc.test
-
 
 #' Calculate Total Associations from Geodesic Analysis
 #'

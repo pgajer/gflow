@@ -344,7 +344,6 @@ create.iknn.graphs <- function(X,
     result
 }
 
-
 #' Summarize an iknn_graphs Object
 #'
 #' @description
@@ -512,7 +511,6 @@ summary.iknn_graphs <- function(object,
     ## Return the statistics table invisibly
     invisible(stats_table)
 }
-
 
 #' Compute Stability Metrics Across a Sequence of IkNN Graphs
 #'
@@ -720,7 +718,6 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
     return(result)
 }
 
-
 # Updated helper function to compute JS divergence between degree distributions
 compute.degrees.js.divergence <- function(g1, g2) {
     # Handle both old and new graph structures
@@ -745,8 +742,6 @@ compute.degrees.js.divergence <- function(g1, g2) {
 
     jensen.shannon.divergence(g1.rel.degrees, g2.rel.degrees)
 }
-
-
 
 ## ============================================================================
 ## Helper: edit distance between consecutive graphs
@@ -796,7 +791,6 @@ compute.edit.distances <- function(graphs.list) {
     edit.distances
 }
 
-
 # Define set operations if not available
 if (!exists("set")) {
     set <- function(...) {
@@ -820,7 +814,6 @@ if (!exists("set")) {
 #'
 #' @return A list with \code{opt.k} and diagnostic vectors. The exact fields depend on mode.
 #'
-#' @export
 find.optimal.k <- function(x, ...) {
 
     if (inherits(x, "iknn_stability_metrics")) {
@@ -1011,7 +1004,6 @@ find.optimal.k.from.birth.death <- function(birth.death.matrix, kmin, kmax, matr
 plot.iknn_stability_metrics <- function(x, ...) {
     plot.IkNNgraphs(x, ...)
 }
-
 
 #' Plot Diagnostics for Intersection k-NN Graph Analysis
 #'
@@ -1297,7 +1289,6 @@ trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
 #'   If \code{return.details=TRUE}, returns a list with fields:
 #'   \code{k.opt}, \code{idx.opt}, \code{threshold}, \code{idx.candidates}, \code{idx.local}.
 #'
-#' @export
 pick.k.within.eps.global.max <- function(metric,
                                          k.values = NULL,
                                          eps = 0.05,
@@ -1481,7 +1472,6 @@ pick.k.within.eps.global.max <- function(metric,
 #'     \item params (list)
 #'   }
 #'
-#' @export
 build.iknn.graphs.and.selectk <- function(X,
                                          kmin,
                                          kmax,

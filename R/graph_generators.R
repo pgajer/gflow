@@ -181,7 +181,6 @@ create.bipartite.graph <- function(n1, n2) {
   graph
 }
 
-
 #' Creates a bi-k-NN chain graph
 #'
 #' This function constructs a bi-directional k-nearest neighbor chain graph.
@@ -224,7 +223,6 @@ create.bi.kNN.chain.graph <- function(n.vertices = 5, k = 1, x = NULL, y = NULL)
     if (n.vertices < 2) {
         stop("A chain graph must have at least two vertices.")
     }
-
 
     adj.list <- vector("list", n.vertices)
     edge.lengths <- vector("list", n.vertices)
@@ -343,7 +341,6 @@ create.chain.graph <- function(n.vertices = NULL, x = NULL, y = NULL) {
 #' @param offset An offset in indexing the vertices of the graph.
 #'
 #' @return A chain graph.
-#' @export
 create.chain.graph.with.offset <- function(n, offset = 0) {
 
     if(n < 2) {
@@ -359,13 +356,11 @@ create.chain.graph.with.offset <- function(n, offset = 0) {
     convert.to.undirected(graph)
 }
 
-
 #' Creates a circular graph with n vertices
 #'
 #' @param n The number of vertices in the graph
 #'
 #' @return A circular graph.
-#' @export
 create.circular.graph <- function(n) {
 
     graph <- list()
@@ -376,7 +371,6 @@ create.circular.graph <- function(n) {
 
     convert.to.undirected(graph)
 }
-
 
 #' Join two graphs at specified vertices
 #'
@@ -426,7 +420,6 @@ join.graphs <- function(graph1, graph2, i1, i2) {
 
     return(joined.graph)
 }
-
 
 #' Generate a Circle Graph
 #'
@@ -496,9 +489,6 @@ generate.circle.graph <- function(n,
 
     return(list(adj.list = adj.list, weight.list = weight.list))
 }
-
-
-
 
 #' Create a star graph by joining chain graphs
 #'
@@ -833,7 +823,6 @@ generate.star.dataset <- function(n.points,
 
     return(result)
 }
-
 
 #' Visualize 2D Star Graph with Smooth Function Values
 #'
@@ -1270,7 +1259,6 @@ plot.star_object <- function(x,
                     ## Find path to second original vertex
                     result <- find_second_original_vertex(grid.vertex.idx, grid_neighbor,
                                                           n.orig.vertices, ugg.adj.list)
-
 
                     ## cat("orig_vertex: ", orig_vertex - 1, "\n")
                     ## cat("grid_neighbor: ", grid_neighbor - 1, "\n")

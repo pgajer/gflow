@@ -111,7 +111,6 @@ nn.distance.ratio.estimator <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e
     return(relative.entropy)
 }
 
-
 nn.divergence <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e-8) {
 
     n <- nrow(X)
@@ -137,7 +136,6 @@ nn.divergence <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e-8) {
 
     return(relative.entropy)
 }
-
 
 #' Compute Wasserstein Distance Between Two Datasets
 #'
@@ -297,7 +295,6 @@ wasserstein.divergence <- function(X, Y, k) {
 #'
 #' @importFrom FNN get.knn
 #' @importFrom transport wasserstein
-#' @export
 angular.wasserstein.index <- function(X, Y, k) {
 
     if (!is.matrix(X)) {
@@ -456,7 +453,6 @@ angular.wasserstein.index <- function(X, Y, k) {
 
     return(total.dist / nrow(X))
 }
-
 
 cpp.angular.wasserstein.index <- function(X, Y, k) {
 

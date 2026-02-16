@@ -44,7 +44,6 @@
 #'   Sakoe-Chiba window width when \code{window.size} is NULL.
 #' @return Numeric scalar distance.
 #'
-#' @export
 traj.dtw.distance <- function(x.mat,
                               y.mat,
                               window.type = "sakoechiba",
@@ -323,7 +322,6 @@ graph.metric.precompute <- function(g,
   list(vertex.set = v.set, index.map = index.map, D = D)
 }
 
-
 #' Construct a graph-metric local cost matrix for a pair of trajectories
 #'
 #' @description
@@ -411,7 +409,6 @@ frechet.distance.discrete.cost <- function(C) {
   }
   ca[n, m]
 }
-
 
 #' Graph-metric discrete Fr\'echet distance between two trajectories
 #'
@@ -551,8 +548,6 @@ traj.lcss.distance.graph <- function(traj.i, traj.j, pre, eps, delta = Inf,
   }
   1 - s
 }
-
-
 
 #' Choose LCSS match tolerance on a graph metric by distance quantile
 #'

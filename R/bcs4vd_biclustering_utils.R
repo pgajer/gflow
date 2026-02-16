@@ -919,7 +919,6 @@ phylotype.bcs4vd.bicluster.frequency <- function(biclust.result, phylo.names = N
 #'
 #' @return List with coherence diagnostics
 #'
-#' @export
 diagnose.bicluster.coherence <- function(data.matrix, biclust.result, bc.number) {
 
   # Extract bi-cluster
@@ -1019,7 +1018,6 @@ diagnose.bicluster.coherence <- function(data.matrix, biclust.result, bc.number)
 #'
 #' @return List of refined bi-clusters with metadata
 #'
-#' @export
 refine.biclusters <- function(data.matrix,
                               biclust.result,
                               bc.to.refine = NULL,
@@ -1155,7 +1153,6 @@ refine.biclusters <- function(data.matrix,
   return(refined.list)
 }
 
-
 #' Apply Fallback Splitting Method
 #'
 #' Uses k-means or hierarchical clustering when BCs4vd fails
@@ -1237,7 +1234,6 @@ apply.fallback.split <- function(sub.data, rows, cols, method, k, verbose) {
   return(result.list)
 }
 
-
 #' Diagnose Why Refinement Failed
 #'
 #' Analyzes a bi-cluster to understand why BCs4vd refinement didn't converge
@@ -1246,7 +1242,6 @@ apply.fallback.split <- function(sub.data, rows, cols, method, k, verbose) {
 #' @param biclust.result Biclust object
 #' @param bc.number Which bi-cluster to diagnose
 #'
-#' @export
 diagnose.refinement.failure <- function(data.matrix, biclust.result, bc.number) {
 
   rows <- which(biclust.result@RowxNumber[, bc.number])
@@ -1335,7 +1330,6 @@ diagnose.refinement.failure <- function(data.matrix, biclust.result, bc.number) 
 #' @param bc.number Index of the bicluster to refine.
 #' @param k Number of k-means subclusters used for refinement.
 #'
-#' @export
 kmeans.refine.bicluster <- function(data.matrix, biclust.result, bc.number, k = 2) {
 
   rows <- which(biclust.result@RowxNumber[, bc.number])

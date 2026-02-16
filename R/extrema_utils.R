@@ -270,7 +270,6 @@ compute.extrema.hop.nbhds <- function(adj.list,
 #' region. Isolated vertices (no neighbors) are assigned Inf distances and
 #' will have inv measures of 1.0.
 #'
-#' @export
 extrema.summary <- function(res, edgelen.list, y) {
 
     # Input validation

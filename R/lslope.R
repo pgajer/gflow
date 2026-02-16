@@ -131,7 +131,6 @@
 #' @seealso \code{\link{lslope.neighborhood}} for neighborhood-based regression,
 #'   \code{\link{lcor}} for symmetric local correlation
 #'
-#' @export
 lslope <- function(adj.list,
                    weight.list,
                    y,
@@ -257,7 +256,6 @@ lslope <- function(adj.list,
     }
 }
 
-
 ################################################################################
 #
 # Case (a): Vector-Vector Implementation
@@ -345,7 +343,6 @@ lslope.vector.vector <- function(adj.list,
     }
 }
 
-
 ################################################################################
 #
 # Case (b): Vector-Matrix Implementation
@@ -389,7 +386,6 @@ lslope.vector.vector <- function(adj.list,
 #'
 #' @seealso \code{\link{lslope}} for the unified interface
 #'
-#' @export
 lslope.vector.matrix <- function(adj.list,
                                  weight.list,
                                  y,
@@ -521,7 +517,6 @@ lslope.vector.matrix <- function(adj.list,
 #'
 #' @seealso \code{\link{lslope}} for the unified interface
 #'
-#' @export
 lslope.vector.matrix.R <- function(adj.list,
                                         weight.list,
                                         y,
@@ -641,7 +636,6 @@ lslope.vector.matrix.R <- function(adj.list,
     return(coef.mat)
 }
 
-
 ################################################################################
 #
 # Case (c): Matrix-Matrix Implementation
@@ -691,7 +685,6 @@ lslope.vector.matrix.R <- function(adj.list,
 #' @seealso \code{\link{lslope}} for the unified interface,
 #'   \code{\link{lslope.vector.matrix}} for vector-matrix computation
 #'
-#' @export
 lslope.matrix.matrix <- function(adj.list,
                                       weight.list,
                                       Y,
@@ -819,7 +812,6 @@ lslope.matrix.matrix <- function(adj.list,
     return(coef.array)
 }
 
-
 ################################################################################
 #
 # Print and Summary Methods
@@ -860,7 +852,6 @@ print.lslope_gradient_result <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Print Method for Vector-Matrix Local Slope Results
 #'
@@ -906,7 +897,6 @@ print.lslope_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...)
     invisible(x)
 }
 
-
 #' Summary Method for Vector-Matrix Local Slope Results
 #'
 #' @param object An object of class "lslope_vector_matrix_result"
@@ -941,7 +931,6 @@ summary.lslope_vector_matrix_result <- function(object, ...) {
 
     invisible(object)
 }
-
 
 #' Print Method for Matrix-Matrix Local Slope Results
 #'
@@ -979,7 +968,6 @@ print.lslope_matrix_matrix_result <- function(x, digits = 4, ...) {
 
     invisible(x)
 }
-
 
 #' Summary Method for Matrix-Matrix Local Slope Results
 #'
@@ -1019,7 +1007,6 @@ summary.lslope_matrix_matrix_result <- function(object, ...) {
 
     invisible(object)
 }
-
 
 ################################################################################
 #
@@ -1141,7 +1128,6 @@ lslope.neighborhood <- function(adj.list,
 
     return(result)
 }
-
 
 #' Print Method for Neighborhood Local Slope Results
 #'

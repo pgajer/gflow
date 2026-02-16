@@ -25,7 +25,6 @@
 #' super-cell of a partition. The statistics provide insight into the variability
 #' and central tendency of the response across the geometric decomposition.
 #'
-#' @export
 compute.partition.cell.stats <- function(partition, y, compute.mad = TRUE) {
 
   ## Input validation
@@ -117,7 +116,6 @@ compute.partition.cell.stats <- function(partition, y, compute.mad = TRUE) {
 
   return(result)
 }
-
 
 #' Extract Response Values by Super-Cell
 #'

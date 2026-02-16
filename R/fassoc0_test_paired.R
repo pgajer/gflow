@@ -58,7 +58,6 @@
 #'
 #' @return An object of class "assoc0" containing effect sizes, p-values,
 #'   signal/null distributions, and diagnostic information.
-#' @export
 fassoc0.test <- function(x,
                          y,
                          test.type = c("paired.t", "weighted.pvalue", "wilcoxon"),
@@ -673,7 +672,6 @@ fassoc0.test <- function(x,
 }
 
 #' @rdname fassoc0.test
-#' @export
 zofam.test <- fassoc0.test
 
 ## ============================================================================
@@ -697,7 +695,6 @@ coef.assoc0 <- function(object, ...) {
       delta.robust.z = object$delta.robust.z,
       p.value = object$p.value)
 }
-
 
 #' Print Method for assoc0 Objects
 #'
@@ -746,7 +743,6 @@ print.assoc0 <- function(x, digits = 4, ...) {
     invisible(x)
 }
 
-
 #' Summary Method for assoc0 Objects
 #'
 #' @param object An object of class "assoc0".
@@ -785,7 +781,6 @@ summary.assoc0 <- function(object, ...) {
     class(out) <- "summary.assoc0"
     return(out)
 }
-
 
 #' @method print summary.assoc0
 #' @export
@@ -829,7 +824,6 @@ print.summary.assoc0 <- function(x, digits = 4, ...) {
 
     invisible(x)
 }
-
 
 #' Plot Method for assoc0 Objects
 #'

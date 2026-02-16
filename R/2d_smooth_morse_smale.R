@@ -330,7 +330,6 @@ compute.morse.smale.cells <- function(f.grid) {
 #' @param gradient Function returning gradient vector at (x,y)
 #' @param grid Grid object created by create.grid
 #' @return List containing matrices of critical point coordinates
-#' @export
 find.critical.points.continuous <- function(gradient, grid) {
     maxima <- matrix(nrow = 0, ncol = 2)
     minima <- matrix(nrow = 0, ncol = 2)
@@ -702,7 +701,6 @@ create_point <- function(x, y) {
 #' @param Q1 First point of second line segment c(x, y)
 #' @param Q2 Second point of second line segment c(x, y)
 #' @return Coordinates of intersection point or NULL if no intersection
-#' @export
 find.line.intersection <- function(P1, P2, Q1, Q2) {
     # Direction vectors
     d1 <- P2 - P1
@@ -775,7 +773,6 @@ arrow.on.trajectory.plot <- function(trajectory, index, arrow.length = 0.02,
 #' @return Integer index of the destination minimum (row number in minima_coordinates),
 #'   or NA if no minimum is within tolerance
 #'
-#' @export
 destination.minimum.identify <- function(trajectory, minima_coordinates, tolerance = 0.05) {
     # Get the final point of the trajectory
     final_point <- trajectory[nrow(trajectory), ]
@@ -948,7 +945,6 @@ evaluate.along.direction <- function(f, center, direction, range = 0.4, points =
 #' @param angle_threshold Angle change threshold (default -0.5)
 #' @param domain Domain boundaries as list
 #' @return Matrix of (x,y) coordinates along trajectory
-#' @export
 find.ascending.trajectory.from.point <- function(x, y, step, mixture,
                                                 max_steps = 1000, grad_threshold = 1e-5,
                                                 angle_threshold = -0.5,
@@ -1038,7 +1034,6 @@ find.ascending.trajectory.from.point <- function(x, y, step, mixture,
 #' @param angle_threshold Angle change threshold (default -0.5)
 #' @param domain Domain boundaries as list
 #' @return Matrix of (x,y) coordinates along trajectory
-#' @export
 find.descending.trajectory.from.point <- function(x, y, step = 0.01, mixture,
                                                 max_steps = 1000, grad_threshold = 1e-5,
                                                 angle_threshold = -0.5,
@@ -1418,7 +1413,6 @@ critical.points.plot <- function(critical_points,
 #' @param eps Small offset from saddle (default 0.01)
 #' @param step Step size for trajectory (default 0.01)
 #' @return List of separatrix trajectories
-#' @export
 find.separatrices <- function(saddle_point, mixture, eps = 0.01, step = 0.01) {
     # Function to compute trajectory from a starting point
     compute_trajectory <- function(start_point, ascending = TRUE) {
@@ -1462,7 +1456,6 @@ find.separatrices <- function(saddle_point, mixture, eps = 0.01, step = 0.01) {
 #' @param add Logical, whether to add to existing plot
 #' @param ... Additional arguments passed to plot
 #' @return Invisible NULL
-#' @export
 separatrices.plot <- function(separatrices, M1_pos, M2_pos,
                               line.lwd = 2,
                               line.lty = 2,
@@ -1787,7 +1780,6 @@ morse.smale.complex.plot.from.critical <- function(critical_points, mixture, gri
 
     invisible(NULL)
 }
-
 
 #' Plot Morse-Smale Trajectories from Point
 #'

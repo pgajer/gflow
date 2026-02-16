@@ -25,7 +25,6 @@
 #'             from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
-#' @export
 create.2D.grid <- function(n, X, f=0.2, eSDf=1.5, gRf=4) {
 
     if (!is.matrix(X)) {
@@ -143,7 +142,6 @@ create.ENPs.grid.2D <- function(n, x1.range, x2.range, f=0.2)
              as.double(f),
              grid=as.double(X.grid))
 
-
     matrix(out$grid, nrow=n^2, ncol=2, byrow=TRUE)
 }
 
@@ -171,10 +169,8 @@ create.ENPs.grid.3D <- function(n, x1.range, x2.range, x3.range, f=0.2)
              as.double(f),
              grid=as.double(X.grid))
 
-
     matrix(out$grid, nrow=n^3, ncol=3, byrow=TRUE)
 }
-
 
 #' Creates a equi-distant (all edges are of equal length) 2D grid using a C routine
 #'
@@ -332,7 +328,6 @@ create.ED.grid.3D <- function(dx, x1.range, x2.range, x3.range, f=0.1, verbose=F
     matrix(out$grid, nrow=n1*n2*n3, ncol=3, byrow=TRUE)
 }
 
-
 #' Creates a rectangular 2D grid
 #'
 #' @param n          The number of uniformly spaced points, seq(min(xi), max(xi), length=n),
@@ -393,7 +388,6 @@ create.2D.rect.grid <- function(n, x1.range, x2.range, type=c("unif","runif","no
 
     X.grid
 }
-
 
 #' Creates a 3D grid of points around X
 #'
@@ -544,7 +538,6 @@ create.3D.grid <- function(n, X, f=0.2, min.gSf=1.5, eSDf=1.5, gRf=2) {
          gRf=gRf)
 }
 
-
 #' Creates a tubular neighborhood 3D grid of X
 #'
 #' This is a complete rewrite of the predecessor routine create.3D.grid.v2()
@@ -569,7 +562,6 @@ create.3D.grid <- function(n, X, f=0.2, min.gSf=1.5, eSDf=1.5, gRf=2) {
 #'                    from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
-#' @export
 create.3D.TN.grid <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbose=FALSE)
 {
     grid <- create.ED.grid.3D(dx, x1.range=range(X[,1]), x2.range=range(X[,2]), x3.range=range(X[,3]), f)
@@ -606,7 +598,6 @@ create.3D.TN.grid <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbo
 #'                    from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
-#' @export
 create.3D.TN.grid.plus <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbose=FALSE)
 {
     grid <- create.ED.grid.3D(dx, x1.range=range(X[,1]), x2.range=range(X[,2]), x3.range=range(X[,3]), f)
@@ -623,7 +614,6 @@ create.3D.TN.grid.plus <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, 
     list(X.grid=X.grid,
          d.grid=d.grid)
 }
-
 
 #' Creates a grid around a state space
 #'
@@ -760,7 +750,6 @@ create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 
     grid.obj
 }
-
 
 #' Creates a 3D grid of points around X
 #'
@@ -929,7 +918,6 @@ create.3D.grid.v2 <- function(n, X, f=0.2, mst.grid=NULL, mode.edge.len=NULL,
          n=n,
          gRf=gRf)
 }
-
 
 #' Creates a rectangular 3D grid and returns a vector of NN's
 #'
@@ -1248,7 +1236,6 @@ dx.vs.gRf.mod.gSf <- function(X,
         robust.lines[i,] <- l$coefficients
     }
 
-
     ##
     ## creating functions based on r1 and r2 models
     ##
@@ -1282,7 +1269,6 @@ dx.vs.gRf.mod.gSf <- function(X,
          ## log.yint.vs.log.gSf.fn=log.yint.vs.log.gSf.fn,
          ## log.slope.vs.log.gSf.fn=log.slope.vs.log.gSf.fn)
 }
-
 
 #' Create an Equidistant Grid in x-Dimensional Bounding Box (C Interface)
 #'
@@ -1484,7 +1470,6 @@ create.X.grid.xD <- function(X,
 
         if ( verbose )
             elapsed.time(ptm)
-
 
         size.d <- as.integer((R - L) / w) + 2
         n.tmp.grid <- prod(size.d)
@@ -1857,7 +1842,6 @@ plot.gridX <- function(x, with.bounding.box.pts = TRUE, ...)
     }
 }
 
-
 #' Construct a Hierarchical Uniform Grid Around a State Space
 #'
 #' This function constructs a uniform grid G(X, w, epsilon) of width
@@ -2057,7 +2041,6 @@ box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, pl
         points(X, pch=20, cex=0.5)
     }
 
-
     box.tiling.volume <- function(boxes) {
 
         ## this can be simplified as all boxes of the tiling are of the same size
@@ -2156,7 +2139,6 @@ box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, pl
          p.exp = p.exp,
          bbox = bbox)
 }
-
 
 #' Extracts Numerical x and y Values from a Character Vector
 #'
@@ -2524,10 +2506,8 @@ find.points.within.box <- function(X, box, eps) {
         within.box <- apply(box.X, 1, function(row) all(L < row & row <= R))
     }
 
-
     return(names(within.box)[within.box])
 }
-
 
 #' Finds the box within a box list covering some data set that contains a given point
 #'
@@ -2599,7 +2579,6 @@ find.boxes.containing.x <- function(boxes, x, p.exp = 0.1, margin = NULL) {
     return(x.boxes)
 }
 
-
 #' Creates a Final Grid within Selected Boxes
 #'
 #' This function creates a uniform grid within a set of selected sub-boxes, then filters the grid to remove points that are farther than a given distance \code{epsilon} from the original dataset \code{X}, and removes duplicated grid elements.
@@ -2654,8 +2633,6 @@ create.final.grid <- function(boxes, X, w, epsilon)
 
     return(filtered.grid)
 }
-
-
 
 #' Plots boxes of a box tiling of a 2D state space
 #'

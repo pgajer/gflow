@@ -24,7 +24,6 @@
 #'
 #' @return An object of class "kh.matrix" containing the input components
 #'
-#' @export
 kh.matrix <- function(kh.mat, existing.k, h.values, id) {
   structure(
     list(
@@ -50,7 +49,6 @@ kh.matrix <- function(kh.mat, existing.k, h.values, id) {
 #' @return An object of class "prediction.errors" containing the errors with
 #'         xvals stored as an attribute
 #'
-#' @export
 prediction.errors <- function(errors, xvals = NULL) {
   structure(
     errors,
@@ -73,7 +71,6 @@ prediction.errors <- function(errors, xvals = NULL) {
 #' @return An object of class "chain.with.path" containing the graph structure
 #'         and associated data
 #'
-#' @export
 chain.with.path <- function(adj.list, weight.list, gpd.obj) {
   structure(
     list(
@@ -98,7 +95,6 @@ chain.with.path <- function(adj.list, weight.list, gpd.obj) {
 #' @return An object of class "model.errors" containing the error integrals and
 #'         their bootstrap distributions
 #'
-#' @export
 model.errors <- function(integrals, bb.integrals) {
   structure(
     list(
@@ -153,7 +149,6 @@ ggraph <- function(adj.list, weight.list = NULL) {
 #'        the graph and layout elements
 #' @param z A numeric vector containing z values for each vertex in the graph
 #' @return An object of class "graph.3d"
-#' @export
 create.graph.3d.obj <- function(plot.result, z) {
   # Validate inputs
   if (!is.list(plot.result) || is.null(plot.result$graph) || is.null(plot.result$layout)) {
@@ -606,7 +601,6 @@ plot.ggraph <- function(x,
 
     invisible(result)
 }
-
 
 #' Plot Method for graphMScx Objects
 #'
@@ -1148,7 +1142,6 @@ plot.kh.matrix <- function(x, existing.k = NULL, h.values = NULL, id = NULL,
     }
 }
 
-
 #' Create Error Plot for Model Comparisons
 #'
 #' @description
@@ -1503,7 +1496,6 @@ plot.prediction.errors <- function(x,
     # Return invisibly the plotting parameters used
     invisible(list(cols = cols, ltys = ltys))
 }
-
 
 #' Plot a Chain Graph with Optional Highlighted Paths
 #'

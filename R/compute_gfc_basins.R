@@ -147,7 +147,6 @@ compute.gfc.basins <- function(adj.list,
     return(result)
 }
 
-
 #' Print Method for gfc_basins Objects
 #'
 #' @param x A gfc_basins object
@@ -184,7 +183,6 @@ print.gfc_basins <- function(x, ...) {
     invisible(df)
 }
 
-
 #' Extract Basin by Extremum Vertex or Name
 #'
 #' @param basins A gfc_basins object
@@ -192,7 +190,6 @@ print.gfc_basins <- function(x, ...) {
 #'
 #' @return The basin structure, or NULL if not found
 #'
-#' @export
 get.basin.of.gfc.basins <- function(basins, query) {
     if (is.character(query)) {
         return(basins[[query]])

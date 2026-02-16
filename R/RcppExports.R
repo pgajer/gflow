@@ -35,7 +35,6 @@ Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALS
 #'
 #' @return list with \code{X_traj} (list of n x d matrices over iterations)
 #'   and \code{median_kdistances} (numeric).
-#' @export
 rcpp_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, initial_step_size, ikernel = 1L, dist_normalization_factor = 1.01, average_direction_only = FALSE, momentum = 0.9, increase_factor = 1.2, decrease_factor = 0.5) {
     .Call(`_gflow_rcpp_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, initial_step_size, ikernel, dist_normalization_factor, average_direction_only, momentum, increase_factor, decrease_factor)
 }
@@ -67,7 +66,6 @@ rcpp_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, initial_step_
 #'
 #' @return list with \code{X_traj} (list of n x d matrices over iterations)
 #'   and \code{median_kdistances} (numeric).
-#' @export
 rcpp_knn_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, step_size, ikernel = 1L, dist_normalization_factor = 1.01, average_direction_only = FALSE) {
     .Call(`_gflow_rcpp_knn_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, step_size, ikernel, dist_normalization_factor, average_direction_only)
 }

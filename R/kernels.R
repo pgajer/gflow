@@ -4,7 +4,6 @@
 #' @param ikernel integer kernel id (EPANECHNIKOV, TRIANGULAR, NORMAL, LAPLACE, etc.)
 #' @param scale positive numeric; used for Normal and Laplace (default 1)
 #' @return numeric vector of same length as \code{x}
-#' @export
 kernel.eval <- function(x, ikernel, scale = 1) {
 
   if (!is.finite(scale) || scale <= 0)
@@ -30,7 +29,6 @@ kernel.eval <- function(x, ikernel, scale = 1) {
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
-#' @export
 triangular.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -52,14 +50,12 @@ triangular.kernel <- function(x, bw=1)
          max.K=out$max.K + 1)
 }
 
-
 #' Epanechnikov kernel function
 #'
 #' The function equals to 1-t^2 for t in (-1,1) and 0 otherwise; t = abs(x/bw)
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
-#' @export
 epanechnikov.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -81,7 +77,6 @@ epanechnikov.kernel <- function(x, bw=1)
          max.K=out$max.K + 1)
 }
 
-
 #'
 #' Truncated exponential kernel
 #'
@@ -89,7 +84,6 @@ epanechnikov.kernel <- function(x, bw=1)
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
-#' @export
 tr.exponential.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -111,7 +105,6 @@ tr.exponential.kernel <- function(x, bw=1)
          max.K=out$max.K + 1)
 }
 
-
 #' Generates kernel defined weights of the rows of an input numeric matrix
 #'
 #' @param x          A numeric matrix.
@@ -122,7 +115,6 @@ tr.exponential.kernel <- function(x, bw=1)
 #' the first elements is 0. Thus \code{max.K[i] = 0} indicates that there are no
 #' non-zero elements in that row.
 #'
-#' @export
 row.weighting <- function(x, bws, kernel.str="epanechnikov")
 {
     kernels <- c("epanechnikov", "triangular", "tr.exponential","normal")
@@ -158,7 +150,6 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
          max.K=max.K)
 }
 
-
 #' Normalizes a distance matrix
 #'
 #' normalize.dist(d, min.K, bw) divides the rows of the input distance matrix,
@@ -177,7 +168,6 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
 #' the user has to make sure this condition is satisfied before calling
 #' normalize_dist().
 #'
-#' @export
 normalize.dist <- function(d, min.K, bw)
 {
     nr <- nrow(d)
@@ -236,7 +226,6 @@ get.bws <- function(d, min.K, bw)
     out$bws
 }
 
-
 #' Gets bandwidths defined as radia of linear model's disks of support
 #'
 #' The difference between this function and get.bws() is that in the former,
@@ -252,7 +241,6 @@ get.bws <- function(d, min.K, bw)
 #' @param bw     A bandwidth.
 #'
 #' @return A vector of bandwidths.
-#' @export
 get.bws.with.minK <- function(d, minK, bw)
 {
     nr <- nrow(d)
@@ -279,7 +267,6 @@ get.bws.with.minK <- function(d, minK, bw)
 #'
 #' @return A matrix obtained from x by dividing the rows of x by the sum of the
 #'     given row's elements, if the sum is not 0.
-#' @export
 row.TS.norm <- function(x)
 {
     nr <- nrow(x)

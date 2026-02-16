@@ -1310,14 +1310,12 @@ fit.rdgraph.regression <- function(
 #' @param ... Passed to \code{fit.rdgraph.regression()}; must include \code{k} and other tuning parameters.
 #'
 #' @return An object of class \code{c("knn.riem.fit", "riem.dcx")}.
-#' @export
 fit.rdgraph.regression.semiy <- function(X, y, y.vertices, ...) {
     if (missing(y.vertices) || is.null(y.vertices)) {
         stop("y.vertices must be provided (integer 1-based indices of labeled vertices)")
     }
     fit.rdgraph.regression(X = X, y = y, y.vertices = y.vertices, ...)
 }
-
 
 #' Extract Fitted Values from kNN Riemannian Regression Fit
 #'
@@ -1526,7 +1524,6 @@ print.summary.knn.riem.fit <- function(x, digits = 4, ...) {
 #' @param mark.optimal Logical; if TRUE, mark the k selected by GCV in red
 #'
 #' @return Invisibly returns a data frame with all diagnostic metrics
-#' @export
 k.diagnostics.plots <- function(results.list,
                                 k.values,
                                 response,
@@ -1719,7 +1716,6 @@ compute.effective.degrees <- function(adj.list, edge_densities) {
 #' @param diag.df Data frame returned by k.diagnostics.plots
 #'
 #' @return A list with optimal k value and its index
-#' @export
 get.rcx.optimal.k <- function(diag.df) {
   if (!any(diag.df$is.optimal)) {
     stop("No optimal k found in diagnostics data frame")

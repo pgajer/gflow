@@ -17,7 +17,6 @@
 #' 3. The merge height for combining these clusters is much larger than
 #'    the heights within each cluster
 #'
-#' @export
 detect.strong.binary.partition <- function(data.matrix,
                                            linkage.method = "ward.D2",
                                            min.cluster.fraction = 0.1,
@@ -125,7 +124,6 @@ detect.strong.binary.partition <- function(data.matrix,
   ))
 }
 
-
 #' Compute Binary Partition Diagnostics
 #'
 #' @keywords internal
@@ -207,7 +205,6 @@ compute.binary.partition.diagnostics <- function(data.matrix,
     silhouette.full = sil
   ))
 }
-
 
 #' Plot Binary Partition Diagnostics
 #'
