@@ -41,7 +41,6 @@
 #'   \item \code{counts}: list with \code{n.samples}, \code{n.sptb}, \code{n.term}
 #' }
 #'
-#' @rawNamespace export(select.phylotypes.for.assoc)
 select.phylotypes.for.assoc <- function(phi,
                                         outcome,
                                         vertices,
@@ -314,7 +313,6 @@ select.phylotypes.for.assoc <- function(phi,
     class(out) <- c("phylotype_selection", "list")
     out
 }
-
 
 #' Print Method for phylotype_selection Objects
 #'

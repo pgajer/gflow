@@ -496,7 +496,6 @@ plot.quantile.bin.diagnostics <- function(x,
     invisible(TRUE)
 }
 
-
 #' Create a PDF of Distance Diagnostics for Multiple Features
 #'
 #' @description
@@ -535,7 +534,6 @@ plot.quantile.bin.diagnostics <- function(x,
 #'
 #' @return Invisibly returns TRUE.
 #'
-#' @export
 make.disk.diagnostics.pdf <- function(pdf.file,
                                       features,
                                       X,

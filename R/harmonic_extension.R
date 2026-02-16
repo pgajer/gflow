@@ -226,7 +226,6 @@ compute.harmonic.extension <- function(adj.list,
     return(result)
 }
 
-
 #' Print Method for harmonic_extension Objects
 #'
 #' @param x A \code{harmonic_extension} object.
@@ -270,7 +269,6 @@ print.harmonic_extension <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Create Data Frame of Extended Coordinates
 #'
@@ -322,8 +320,6 @@ as.data.frame.harmonic_extension <- function(x, row.names = NULL,
 
     return(df)
 }
-
-
 
 #' Select Trajectory with Maximal Mean Density
 #'
@@ -393,7 +389,6 @@ select.max.density.trajectory <- function(trajectories, density) {
 #' @return The extended coordinate for the vertex, or \code{NA} if the vertex
 #'   is not in the tubular neighborhood.
 #'
-#' @export
 get.extended.coord <- function(hext, vertex) {
 
     if (!inherits(hext, "harmonic_extension")) {

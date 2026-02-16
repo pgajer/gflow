@@ -362,7 +362,6 @@ preprocess.metabolon.twoplane <- function(S,
     ), class = "metabolon_twoplane")
 }
 
-
 #' Plot preprocessing diagnostics for a metabolon_twoplane object
 #'
 #' @param x Object returned by preprocess.metabolon.twoplane().
@@ -499,7 +498,6 @@ plot.metabolon_twoplane <- function(x,
     invisible(x)
 }
 
-
 #' Diagnose geometry of a two-channel (intensity + detection) matrix
 #'
 #' @description
@@ -512,7 +510,6 @@ plot.metabolon_twoplane <- function(x,
 #' @param n.pairs Integer number of random sample pairs for distance decomposition.
 #' @param seed Integer seed for reproducibility.
 #' @return A list with summary stats and per-sample contributions.
-#' @export
 diagnose.twoplane.geometry <- function(X, n.pairs = 5000L, seed = 1L) {
     if (missing(X) || is.null(X)) stop("`X` must be provided.")
     X <- as.matrix(X)
@@ -581,7 +578,6 @@ diagnose.twoplane.geometry <- function(X, n.pairs = 5000L, seed = 1L) {
 #' @param e1 Integer vector of unique edge codes.
 #' @param e2 Integer vector of unique edge codes.
 #' @return Numeric scalar in \eqn{[0,1]}.
-#' @export
 jaccard.edge.distance <- function(e1, e2) {
     e1 <- as.integer(e1); e2 <- as.integer(e2)
     if (length(e1) == 0L && length(e2) == 0L) return(0)
@@ -603,7 +599,6 @@ jaccard.edge.distance <- function(e1, e2) {
 #' @param k Integer <= ncol(nn.index)
 #' @param mode Character: "sym" or "mutual"
 #' @return List(edge.mat = two-col integer matrix with i<j, edge.code = integer codes)
-#' @export
 edges.from.nnindex <- function(nn.index, k, mode = c("sym", "mutual")) {
     mode <- match.arg(mode)
     nn.index <- as.matrix(nn.index)
@@ -645,7 +640,6 @@ edges.from.nnindex <- function(nn.index, k, mode = c("sym", "mutual")) {
 #' @param min.lcc.frac Minimum largest-connected-component fraction defining the "connected tail".
 #' @param eps Relative tolerance for selecting smallest k within (1+eps)*min edit distance.
 #' @return List with a data.frame curve and chosen k.
-#' @export
 knn.edit.distance.curve <- function(X,
                                    k.grid = 5:120,
                                    mode = c("sym", "mutual"),
@@ -721,7 +715,6 @@ knn.edit.distance.curve <- function(X,
          min.lcc.frac = min.lcc.frac, eps = eps)
 }
 
-
 #' Plot kNN edit-distance diagnostics
 #'
 #' @param x Output of knn.edit.distance.curve().
@@ -755,7 +748,6 @@ plot.knn.edit.curve <- function(x, ...) {
     if (is.finite(res$k.selected)) graphics::abline(v = res$k.selected, lty = 3)
     graphics::mtext(paste0("k.cc=", res$k.cc, "   k.selected=", res$k.selected), side = 3, line = 0.2)
 }
-
 
 #' Winsorize a numeric vector
 #'
@@ -794,7 +786,6 @@ robust.zscore.vec <- function(x, eps = 1e-8) {
 #' @param frac Fraction of minimum positive used as replacement (default 2/3).
 #' @param replace.nonpos Logical; if TRUE, values <= 0 are replaced too.
 #' @return List with S.filled and per-feature delta.
-#' @export
 impute.two.thirds.min.pos <- function(S, frac = 2/3, replace.nonpos = TRUE) {
     S <- as.matrix(S)
     storage.mode(S) <- "double"
@@ -842,7 +833,6 @@ impute.two.thirds.min.pos <- function(S, frac = 2/3, replace.nonpos = TRUE) {
 #' @param winsor.probs Optional winsorization probs on log scale (set NULL to disable).
 #' @param zscore Logical; if TRUE, robust z-score each metabolite after CLR.
 #' @return Numeric matrix of CLR log-ratio features.
-#' @export
 logratio.clr.matrix <- function(S,
                                log.base = 10,
                                center = c("mean", "median"),
@@ -879,7 +869,6 @@ logratio.clr.matrix <- function(S,
 #' @param n.refs Number of references to return.
 #' @param log.base Numeric; log base (10 recommended for Reid-style).
 #' @return Character vector of selected reference metabolite names.
-#' @rawNamespace export(select.stable.references)
 select.stable.references <- function(S,
                                     p.miss.max = 0.05,
                                     n.refs = 10L,
@@ -909,7 +898,6 @@ select.stable.references <- function(S,
 #' @param log.base Numeric; log base (10 recommended).
 #' @param zscore Logical; if TRUE, robust z-score each ratio feature.
 #' @return Numeric matrix of log ratios log(x/ref).
-#' @export
 logratio.to.refs.matrix <- function(S, refs, log.base = 10, zscore = TRUE) {
     S <- as.matrix(S)
     storage.mode(S) <- "double"

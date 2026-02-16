@@ -12,7 +12,6 @@
 #' @param ...     passed to rgl::plot3d()
 #'
 #' @return Invisibly returns the rgl object ids from plot3d()
-#' @export
 plot3D.plain <- function(X,
                          radius = NULL,
                          col = "gray",
@@ -111,7 +110,6 @@ plot3D.plain <- function(X,
 #'
 #' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
 #'
-#' @export
 plot3D.cont <- function(X,
                         y,
                         subset = NULL,

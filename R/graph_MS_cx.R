@@ -150,7 +150,6 @@ graph.MS.cx <- function(graph, hop.list = NULL, core.graph, Ey) {
     results
 }
 
-
 ## #' Estimates graph gradient flow trajectories of a response variable for each vertex of a graph.
 ## #'
 ## #' This function computes the gradient flow trajectories of a response variable over a graph,
@@ -208,7 +207,6 @@ graph.MS.cx <- function(graph, hop.list = NULL, core.graph, Ey) {
 
 ##     res
 ## }
-
 
 #' Compute Constrained Gradient Flow Trajectories
 #'
@@ -269,8 +267,6 @@ graph.constrained.gradient.flow.trajectories <- function(graph, core.graph, Ey) 
 
     res
 }
-
-
 
 #' Finds the Longest Stretch of Consecutive TRUE Values in a Logical Vector
 #'
@@ -547,7 +543,6 @@ morse.smale.graph.persistence <- function(X,
     )
 }
 
-
 #' Create Labels for Local Maxima and Minima in Morse-Smale Complex
 #'
 #' @description
@@ -662,7 +657,6 @@ create.lmin.lmax.labels <- function(MS.res, state.space, taxonomy, freq.thld = 1
     ))
 }
 
-
 #' Create Label Tables and Indicator Vectors for Morse-Smale Complex Critical Points
 #'
 #' @description
@@ -756,7 +750,6 @@ create.lmin.lmax.label.indicators <- function(lmin.labels, lmax.labels, state.sp
 #' 2. Maximum and minimum relative conditional expectations within each basin
 #' 3. Range of relative conditional expectations (Delta)
 #' 4. Number of complementary critical points (minima for maxima and vice versa)
-#' @export
 create.lmin.lmax.frequency.tables <- function(MS.res,
                                               lmin.labels,
                                               lmax.labels,
@@ -906,7 +899,6 @@ create.lmin.lmax.contingency.table <- function(MS.res, lmin.labels, lmax.labels)
         caption = caption
     ))
 }
-
 
 #' Process Complete Morse-Smale Complex Analysis Pipeline
 #'

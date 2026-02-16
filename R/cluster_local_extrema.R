@@ -290,7 +290,6 @@ cluster.local.extrema <- function(basins.obj,
 #' @param basin_vertices_list A list of integer vectors.
 #' @return A symmetric matrix where entry \eqn{(i, j) = 1 - (|A \cap B| / \min(|A|, |B|)),}
 #'         measuring the overlap distance between vectors i and j.
-#' @export
 compute.overlap.distance.matrix <- function(basin_vertices_list) {
     n_basins <- length(basin_vertices_list)
     if (n_basins == 0) return(matrix(0, 0, 0))

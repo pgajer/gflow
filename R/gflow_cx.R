@@ -386,7 +386,6 @@ print.gflow_cx <- function(x, ...) {
 #'     \item spurious: logical flag (\code{hop_idx <= threshold})
 #'   }
 #'
-#' @export
 create.hop.nbhd.extrema.df <- function(result,
                                        include_spurious = TRUE,
                                        threshold = NULL,
@@ -571,7 +570,6 @@ create.hop.nbhd.extrema.df <- function(result,
 
     df
 }
-
 
 #' Visualize Smoothing Steps from Gradient Flow Complex
 #'
@@ -947,7 +945,6 @@ classify.spurious.extrema <- function(hop_indices,
   return(spurious)
 }
 
-
 #' Enhanced Version of create.hop.nbhd.extrema.df with Improved Spurious Classification
 #'
 #' @description
@@ -1135,7 +1132,6 @@ create.hop.nbhd.extrema.df2 <- function(result,
 
   return(df)
 }
-
 
 #' Analyze Extrema Distribution and Suggest Spurious Classification Parameters
 #'
@@ -1469,7 +1465,6 @@ suggest.threshold <- function(extrema_df,
   invisible(result)
 }
 
-
 #' Compare Function Values of Retained Extrema at Different Thresholds
 #'
 #' @description
@@ -1535,7 +1530,6 @@ compare.retained.extrema <- function(extrema_df,
   invisible(results)
 }
 
-
 #' Visualize Extrema on hop_idx vs value plot
 #'
 #' @description
@@ -1547,7 +1541,6 @@ compare.retained.extrema <- function(extrema_df,
 #' @param threshold Optional threshold to draw as reference line
 #' @param main Plot title
 #'
-#' @export
 plot_extrema_stability <- function(extrema_df,
                                    threshold = NULL,
                                    main = "Extrema Stability vs Function Value") {

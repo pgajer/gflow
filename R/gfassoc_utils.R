@@ -80,7 +80,6 @@ gfassoc.membership <- function(basins) {
     return(result)
 }
 
-
 #' Compute Polarity Coordinates for a Fitted Surface
 #'
 #' @description
@@ -165,7 +164,6 @@ gfassoc.polarity <- function(y,
     return(result)
 }
 
-
 #' Compute Soft Overlap Matrices Between Basin Structures
 #'
 #' @description
@@ -227,7 +225,6 @@ gfassoc.overlap <- function(y.membership,
     return(result)
 }
 
-
 #' Compute Deviation from Independence for Overlap Matrix
 #'
 #' @description
@@ -272,7 +269,6 @@ gfassoc.deviation <- function(overlap.matrix) {
     return(result)
 }
 
-
 #' Compute Basin Association Character
 #'
 #' @description
@@ -312,7 +308,6 @@ gfassoc.deviation <- function(overlap.matrix) {
 #'   \item{mass_z_max}{Mass of each z-maximum basin.}
 #'   \item{mass_z_min}{Mass of each z-minimum basin.}
 #'
-#' @export
 gfassoc.basin.character <- function(y.membership,
                                     z.membership,
                                     pol.y,

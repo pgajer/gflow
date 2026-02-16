@@ -783,7 +783,6 @@ magelo.plot.diagnostic <- function(x, title, xlab, ylab, ma.col, true.col, legen
           side = 3, line = 0.25, at = log(x$opt.bw), col = ma.col)
 }
 
-
 #' A helper 1D local linear model routine for smoothing predictions.CI's
 #'
 #' @param x           A numeric vector of a predictor variable.
@@ -1419,7 +1418,6 @@ predict.magelo <- function(object, newdata, ...)
 #'
 #' @return list of parameters and residues of all linear models
 #'
-#' @export
 loo.llm.1D <- function(x, y, grid.size = 400, degree = 2, f = 0.2, bw = NULL, min.K = 5, nn.kernel = "epanechnikov")
 {
     stopifnot(is.numeric(x))
@@ -2166,7 +2164,6 @@ lcor.1D <- function(x, y1, y2, grid.size = 400, f = NULL, bw = NULL, smooth = TR
 #'
 #' @return A list of input parameters as well as coefficients and residues of all linear models
 #'
-#' @export
 rllm.2os.1D <- function(x, y1, y2, grid.size = 400, degree = 2, f = NULL, bw = NULL,
                        n.BB = 1000, get.predictions.CrI = TRUE, level = 0.95, n.C.itr = 100,
                        C = 6, stop.C.itr.on.min = TRUE, n.cv.folds = 10, n.cv.reps = 5,
@@ -2639,7 +2636,6 @@ get.gpredictions.CrI <- function(n.BB,
     matrix(out$gpredictions.CrI, nrow = 2, ncol = ncTnn, byrow = FALSE)
 }
 
-
 #' Row-wise evaluates x at nn.i
 #'
 #' @param nn.i      An array of indices of K nearest neighbors of the i-th element of x.
@@ -2727,7 +2723,6 @@ row.eval <- function(nn.i, x) {
 #' @return A list of class "magelo" containing input parameters as well as fitted values,
 #'         credible intervals, bootstrap estimates, and model coefficients
 #'
-#' @export
 fb.magelo <- function(x,
                       y,
                       grid.size = 400,

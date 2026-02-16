@@ -450,7 +450,6 @@ summary.basin_cx <- function(object, ...) {
   return(result)
 }
 
-
 #' Print Method for Basin Complex Summary Objects
 #'
 #' @description
@@ -858,7 +857,6 @@ create.basins.df <- function(basin_cx, y) {
     return(basin_cx)
 }
 
-
 #' Reorder Basin Data Frames for Consistent Presentation
 #'
 #' @description
@@ -1241,8 +1239,6 @@ merge_basin_clusters <- function(basin_cx, cluster_assignments) {
   return(result)
 }
 
-
-
 ## Utility function to get a basin by its label
 get_basin_by_label <- function(basin_cx, label) {
   ## Determine if minimum or maximum basin from the label prefix
@@ -1288,7 +1284,6 @@ intersection_size_matrix <- function(basin_vertices_list) {
 
   return(result)
 }
-
 
 ## Create a graph from a distance matrix with edges connecting vertices under a threshold
 .create.threshold.distance.graph <- function(distance_matrix, threshold, include.names = TRUE) {
@@ -1433,8 +1428,6 @@ relabel_distance_matrices <- function(basin_cx, local_extrema) {
 
   return(basin_cx)
 }
-
-
 
 ## Create basin cell complex
 create_basin_cell_complex <- function(basin_cx,
@@ -1594,7 +1587,6 @@ create_basin_cell_complex <- function(basin_cx,
 #'
 #' @param x A basin complex object returned by create.basin.cx().
 #' @param ... Additional arguments passed to methods.
-#' @export
 show.basin <- function(x, ...) {
   UseMethod("show.basin")
 }
@@ -1716,7 +1708,6 @@ basins.union <- function(object, ids, x = object, ...) {
     return(union_vertices)
 }
 
-
 #' Extract vertices belonging to a specific basin from a basin complex
 #'
 #' @description
@@ -1734,7 +1725,6 @@ basins.union <- function(object, ids, x = object, ...) {
 #' on function value ordering.
 #'
 #' @seealso \code{\link{create.basin.cx}}
-#' @export
 get.basin.vertices <- function(x, id) {
     ## Check if x is a basin_cx object
     if (!inherits(x, "basin_cx")) {
@@ -1770,7 +1760,6 @@ get.basin.vertices <- function(x, id) {
 
     return(vertices)
 }
-
 
 #' Construct Basin Complex Graph
 #'
@@ -1819,7 +1808,6 @@ get.basin.vertices <- function(x, id) {
 #'
 #' @seealso \code{\link{create.basin.cx}}
 #'
-#' @export
 construct.basin.cx.graph <- function(basin_cx,
                                      min_intersection = 1,
                                      ms_edges_only = FALSE,
@@ -2720,7 +2708,6 @@ compute_asc_desc_cell_intersection_matrix <- function(basin_cx) {
   return(mat)
 }
 
-
 extract.basins.vertices <- function(basin_cx, basin_ids) {
     result_list <- list()
 
@@ -2780,7 +2767,6 @@ extract.basins.vertices <- function(basin_cx, basin_ids) {
 #'     name, created by taking the first letter of the first two parts of the
 #'     underscore-separated name.
 #'
-#' @export
 create.taxonomic.labels <- function(vertices,
                                     state.space,
                                     taxonomy = NULL,
@@ -2847,7 +2833,6 @@ create.taxonomic.labels <- function(vertices,
     ))
 }
 
-
 #' Replace a Basin Label in a Basin Complex Object
 #'
 #' @description
@@ -2860,7 +2845,6 @@ create.taxonomic.labels <- function(vertices,
 #'
 #' @return A modified object of class "basin_cx" with updated labels
 #'
-#' @export
 replace.basin.label.basin_cx <- function(bcx, old.label, new.label) {
   if (!inherits(bcx, "basin_cx")) {
     stop("Input must be a 'basin_cx' object.")

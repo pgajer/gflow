@@ -505,7 +505,6 @@ merge.clustered.basins <- function(x,
     return(result)
 }
 
-
 #' Extract Gradient Trajectory from Absorbed Basin Structure
 #'
 #' @description
@@ -539,7 +538,6 @@ extract.gradient.trajectory.from.structure <- function(absorbed.structure,
     return(trajectory)
 }
 
-
 #' Get All Absorbed Extrema for a Merged Basin
 #'
 #' @description
@@ -550,7 +548,6 @@ extract.gradient.trajectory.from.structure <- function(absorbed.structure,
 #' @return Data frame with columns: vertex, value, label, y.barrier,
 #'   geodesic.distance
 #'
-#' @export
 get.absorbed.extrema.info <- function(merged.basin) {
     if (length(merged.basin$absorbed_extrema) == 0) {
         return(data.frame(

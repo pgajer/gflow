@@ -164,7 +164,6 @@ prof.fn <- function(id,
 #'
 #' @return (Invisibly) a list with taxon, cltr.ext, cltr, X, pacmap.file, cltr.ext.file
 #' @importFrom utils read.csv write.csv
-#' @export
 show.tx <- function(taxon,
                     data.dir = NULL,
                     cltr.from.scratch = TRUE,

@@ -70,7 +70,6 @@
 #'     \item{\code{call}}{Matched call.}
 #'   }
 #'
-#' @export
 bayes.bootstrap.rdgraph <- function(fitted.model,
                                    y,
                                    n.draws,

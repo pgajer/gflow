@@ -462,7 +462,6 @@ lmin.basin_summary <- function(object, ...) {
     return(result)
 }
 
-
 #' Extract Local Maxima from Basin Summary
 #'
 #' @description
@@ -497,7 +496,6 @@ lmax.basin_summary <- function(object, ...) {
     return(result)
 }
 
-
 #' Extract Local Minima
 #'
 #' @description
@@ -510,11 +508,9 @@ lmax.basin_summary <- function(object, ...) {
 #'
 #' @seealso \code{\link{lmin.basin_summary}}
 #'
-#' @export
 lmin <- function(object, ...) {
     UseMethod("lmin")
 }
-
 
 #' Extract Local Maxima
 #'
@@ -528,7 +524,6 @@ lmin <- function(object, ...) {
 #'
 #' @seealso \code{\link{lmax.basin_summary}}
 #'
-#' @export
 lmax <- function(object, ...) {
     UseMethod("lmax")
 }
@@ -678,7 +673,6 @@ draw.basin <- function(basins.obj, basin.label, radius = 0.15, col = "cyan") {
     basin.vertices <- basin$basin_df[,1]
     rgl::spheres3d(graph.3d[basin.vertices,], radius = radius, col = col)
 }
-
 
 ## ============================================================================
 ## S3 Generic and Method for Basin Extraction
@@ -855,7 +849,6 @@ basin.basins_of_attraction <- function(object, id,
     }
 }
 
-
 #' Extract Basin of Attraction
 #'
 #' @description
@@ -962,7 +955,6 @@ basins.basins_of_attraction <- function(object, summary.df, ...) {
 
     return(result)
 }
-
 
 #' Extract All Basins of Attraction
 #'

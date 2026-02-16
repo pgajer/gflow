@@ -325,7 +325,6 @@ compute.gfc.flow <- function(
     return(result)
 }
 
-
 #' Build Summary Table for All Extrema
 #'
 #' Combines min and max summaries from C++, adds type column, reorders columns,
@@ -381,7 +380,6 @@ compute.gfc.flow <- function(
     return(summary.table)
 }
 
-
 #' Build Summary Table for Retained Extrema Only
 #'
 #' Filters summary.all to retained extrema and removes spurious-specific columns.
@@ -415,7 +413,6 @@ compute.gfc.flow <- function(
 
     return(summary.retained)
 }
-
 
 #' Sort Summary Data Frame
 #'
@@ -557,7 +554,6 @@ summary.gfc.flow <- function(object, ...) {
 #'
 #' @return Data frame of retained extrema
 #'
-#' @export
 list.retained <- function(gfc.flow, type = c("all", "min", "max")) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -580,7 +576,6 @@ list.retained <- function(gfc.flow, type = c("all", "min", "max")) {
     return(retained)
 }
 
-
 #' List Spurious Extrema
 #'
 #' @param gfc.flow A gfc.flow object
@@ -589,7 +584,6 @@ list.retained <- function(gfc.flow, type = c("all", "min", "max")) {
 #'
 #' @return Data frame of spurious extrema
 #'
-#' @export
 list.spurious <- function(gfc.flow, type = c("all", "min", "max"),
                           filter.stage = NULL) {
 
@@ -617,7 +611,6 @@ list.spurious <- function(gfc.flow, type = c("all", "min", "max"),
     return(spurious)
 }
 
-
 #' Get Vertices for Harmonic Repair
 #'
 #' Returns the vertices of a spurious basin that need harmonic repair,
@@ -634,7 +627,6 @@ list.spurious <- function(gfc.flow, type = c("all", "min", "max"),
 #'   \item{boundary.values}{Current y values at boundary}
 #'   \item{extremum.vertex}{The spurious extremum vertex}
 #'
-#' @export
 get.harmonic.repair.vertices <- function(gfc.flow, label, y, adj.list) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -697,7 +689,6 @@ get.harmonic.repair.vertices <- function(gfc.flow, label, y, adj.list) {
 #'
 #' @return List of matching trajectories
 #'
-#' @export
 get.trajectories.by.status <- function(gfc.flow,
                                        start.retained = NA,
                                        end.retained = NA) {
@@ -732,14 +723,12 @@ get.trajectories.by.status <- function(gfc.flow,
     return(result)
 }
 
-
 #' Count Cell Membership Statistics
 #'
 #' @param gfc.flow A gfc.flow object
 #'
 #' @return List with membership statistics
 #'
-#' @export
 count.cell.memberships <- function(gfc.flow) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -830,7 +819,6 @@ count.cell.memberships <- function(gfc.flow) {
 #'
 #' @seealso \code{\link{compute.gfc.flow}}
 #'
-#' @export
 compute.gfc.flow.matrix <- function(
     adj.list,
     weight.list,
@@ -1528,7 +1516,6 @@ summary.gfc_cell_trajectories <- function(object,
     out
 }
 
-
 #' Summary Method for gfc_basin_trajectories Objects
 #'
 #' @param object A \code{gfc_basin_trajectories} object returned by
@@ -1690,7 +1677,6 @@ print.summary.gfc_cell_trajectories <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Print Method for summary.gfc_basin_trajectories Objects
 #'
@@ -1907,7 +1893,6 @@ print.gfc_cell_trajectories <- function(x, max.print = 5L, ...) {
     invisible(x)
 }
 
-
 #' Get All Trajectory Vertices as a Single Vector
 #'
 #' Extracts all unique vertices from cell trajectories.
@@ -1917,7 +1902,6 @@ print.gfc_cell_trajectories <- function(x, max.print = 5L, ...) {
 #'
 #' @return Integer vector of vertex indices.
 #'
-#' @export
 trajectory.vertices.gfc.flow <- function(cell.traj, unique = TRUE) {
 
     if (!inherits(cell.traj, "gfc_cell_trajectories")) {
@@ -1933,7 +1917,6 @@ trajectory.vertices.gfc.flow <- function(cell.traj, unique = TRUE) {
     return(all.vertices)
 }
 
-
 #' Convert Trajectory to Edge List
 #'
 #' Converts trajectory paths to an edge list suitable for graph operations
@@ -1945,7 +1928,6 @@ trajectory.vertices.gfc.flow <- function(cell.traj, unique = TRUE) {
 #' @return A data frame with columns \code{from}, \code{to}, and optionally
 #'   \code{weight}.
 #'
-#' @export
 trajectory.edges.gfc.flow <- function(cell.traj, weighted = FALSE) {
 
     if (!inherits(cell.traj, "gfc_cell_trajectories")) {
@@ -1996,7 +1978,6 @@ trajectory.edges.gfc.flow <- function(cell.traj, weighted = FALSE) {
 #' @param x An object for which cells can be listed.
 #' @param ... Passed to methods.
 #'
-#' @export
 list.cells <- function(x, ...) {
     UseMethod("list.cells")
 }
@@ -2347,7 +2328,6 @@ list.cells.gfc.flow <- function(x,
 #' @param x An object for which basins can be listed.
 #' @param ... Passed to methods.
 #'
-#' @export
 list.basins <- function(x, ...) {
     UseMethod("list.basins")
 }
@@ -2592,7 +2572,6 @@ list.basins.gfc.flow <- function(x,
 #'
 #' @return A modified \code{gfc.flow} object with relabeled basins/summaries.
 #'
-#' @export
 relabel.basins.gfc.flow <- function(x,
                                     rank.by = c("basin.size"),
                                     tie.break = c("n.trajectories", "value", "vertex"),
@@ -3049,7 +3028,6 @@ relabel.basins.gfc.flow <- function(x,
     x
 }
 
-
 #' Identify Cell Membership for a Single Vertex
 #'
 #' @param gfc.flow A gfc.flow object.
@@ -3057,7 +3035,6 @@ relabel.basins.gfc.flow <- function(x,
 #'
 #' @return A data frame with all cell memberships for this vertex.
 #'
-#' @export
 vertex.cell.gfc.flow <- function(gfc.flow, vertex) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3134,7 +3111,6 @@ vertex.cell.gfc.flow <- function(gfc.flow, vertex) {
 #'
 #' @return A long-format data frame with all cell memberships.
 #'
-#' @export
 vertex.cells.gfc.flow <- function(gfc.flow, vertices) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3150,7 +3126,6 @@ vertex.cells.gfc.flow <- function(gfc.flow, vertices) {
     do.call(rbind, results)
 }
 
-
 #' Get Primary Cell Membership (Single-Valued)
 #'
 #' Returns the first cell membership for a vertex (for backward compatibility).
@@ -3160,7 +3135,6 @@ vertex.cells.gfc.flow <- function(gfc.flow, vertices) {
 #'
 #' @return A single-row data frame with primary cell membership and count.
 #'
-#' @export
 vertex.primary.cell.gfc.flow <- function(gfc.flow, vertex) {
 
     all.cells <- vertex.cell.gfc.flow(gfc.flow, vertex)
@@ -3187,7 +3161,6 @@ vertex.primary.cell.gfc.flow <- function(gfc.flow, vertex) {
 #'
 #' @return List with membership statistics (legacy interface).
 #'
-#' @export
 count.multi.memberships.gfc.flow <- function(gfc.flow) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3262,7 +3235,6 @@ count.multi.memberships.gfc.flow <- function(gfc.flow) {
 #'
 #' @return List of trajectory structures passing through the vertex.
 #'
-#' @export
 vertex.all.trajectories.gfc.flow <- function(gfc.flow, vertex) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3296,7 +3268,6 @@ vertex.all.trajectories.gfc.flow <- function(gfc.flow, vertex) {
 #'
 #' @return Integer vector of vertex indices in the same cell.
 #'
-#' @export
 cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3349,7 +3320,6 @@ cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
     return(sort(all.vertices))
 }
 
-
 #' Get Summary Row by Label
 #'
 #' @param gfc.flow A gfc.flow object.
@@ -3357,7 +3327,6 @@ cell.vertices.gfc.flow <- function(gfc.flow, vertex, include.query = TRUE) {
 #'
 #' @return Data frame row from summary.all, or NULL.
 #'
-#' @export
 get.summary <- function(gfc.flow, label) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -3374,7 +3343,6 @@ get.summary <- function(gfc.flow, label) {
     summary.df[idx, , drop = FALSE]
 }
 
-
 #' Get All Cells for a Vertex (alias for vertex.cell.gfc.flow)
 #'
 #' @param gfc.flow A gfc.flow object.
@@ -3382,7 +3350,6 @@ get.summary <- function(gfc.flow, label) {
 #'
 #' @return Data frame with all cell memberships.
 #'
-#' @export
 vertex.cell.all <- function(gfc.flow, vertex) {
     vertex.cell.gfc.flow(gfc.flow, vertex)
 }
@@ -3909,7 +3876,6 @@ cell.trajectories.monotonicity <- function(x,
     )
 }
 
-
 #' Construct a Connected Graph Path Through Waypoint Vertices
 #'
 #' Given a set of waypoint vertices in a specified order, constructs a connected
@@ -4152,7 +4118,6 @@ trajectory.distances.to.vertex <- function(trajectories,
 #'     \item{tied.idx}{Indices of all tied trajectories.}
 #'   }
 #'
-#' @rawNamespace export(select.closest.longest.trajectory)
 select.closest.longest.trajectory <- function(trajectories,
                                               traj.dists,
                                               distance.tolerance = 1e-9) {
@@ -5265,7 +5230,6 @@ basin.vertices <- function(object,
     basin.vertices
 }
 
-
 #' Get Cell Vertices for a (min, max) Pair
 #'
 #' @description
@@ -5284,7 +5248,6 @@ basin.vertices <- function(object,
 #'
 #' @return An integer vector of unique vertex indices in the requested cell.
 #'
-#' @export
 cell.vertices <- function(gfc.flow, min.id, max.id) {
 
     if (!inherits(gfc.flow, "gfc.flow")) {
@@ -5380,7 +5343,6 @@ cell.vertices <- function(gfc.flow, min.id, max.id) {
 #'   where \code{k.mat[j, t]} is the number of samples on trajectory \code{t}
 #'   with \code{Z[, j] > eps}.
 #'
-#' @export
 compute.carriers.per.trajectory.mat <- function(Z, trajectories, eps = 0) {
 
   stopifnot(is.matrix(Z))
@@ -5545,7 +5507,6 @@ basin.prev.eval <- function(
 #'   - recommend: list with rule.a, rule.b, rule.c recommended prevalence values
 #'   - recommend.idx: corresponding row indices in summary.aug
 #'
-#' @export
 summarize.prev.eval <- function(results,
                                 unstable.delta.nsig = 8L,
                                 unstable.frac.nsig = 0.50,
@@ -5693,7 +5654,6 @@ summarize.prev.eval <- function(results,
 #'
 #' @return List with selected.basins, basin.pvals, within.q, and within.adj.p (list).
 #'
-#' @export
 two.stage.basin.fdr <- function(pval.mat,
                                 q = 0.10,
                                 basin.global.method = c("simes", "fisher")) {
@@ -5755,7 +5715,6 @@ two.stage.basin.fdr <- function(pval.mat,
 #'
 #' @return A named list of data.frames, one per prevalence, with rownames = taxa.
 #'
-#' @export
 extract.da.tables.by.prevalence <- function(results,
                                             prefer.names = c("da.tables",
                                                              "edger.tables",
@@ -5805,7 +5764,6 @@ extract.da.tables.by.prevalence <- function(results,
 #' @return data.frame with per-taxon summaries: n.tested, n.sig, sig.freq,
 #'   longest.sig.run, min.fdr, mean.logfc, sign.pos.freq, sign.flip.count.
 #'
-#' @export
 taxon.sig.frequency <- function(results,
                                 fdr.level = 0.10,
                                 tables.name = NULL,

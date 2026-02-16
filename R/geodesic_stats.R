@@ -27,7 +27,6 @@
 #'   \item{summary}{Data frame. Summary statistics for each radius.}
 #' }
 #'
-#' @export
 compute.geodesic.stats <- function(adj.list,
                                  weight.list,
                                  min.radius = 0.2,
@@ -261,7 +260,6 @@ print.geodesic_stats <- function(x, ...) {
 #'   \item{overlap_max}{Maximum overlap ratio.}
 #' }
 #'
-#' @export
 compute.vertex.geodesic.stats <- function(adj.list,
                                           weight.list,
                                           grid.vertex,
@@ -315,7 +313,6 @@ compute.vertex.geodesic.stats <- function(adj.list,
 
     return(df)
 }
-
 
 #' Plot method for vertex_geodesic_stats objects
 #'
@@ -372,7 +369,6 @@ plot.vertex_geodesic_stats <- function(x, ...) {
 #'
 #' @return Invisibly returns NULL
 #'
-#' @export
 overlap.distribution.plot <- function(x, radius_idx = NULL) {
     # Get the vertex ID
     vertex <- attr(x, "vertex")
@@ -438,7 +434,6 @@ overlap.distribution.plot <- function(x, radius_idx = NULL) {
     
     invisible(NULL)
 }
-
 
 #' Summary method for vertex_geodesic_stats objects
 #'
@@ -666,7 +661,6 @@ plot.geodesic_stats <- function(x,
     
     invisible(NULL)
 }
-
 
 #' Summarize overlap statistics from geodesic_stats object
 #'

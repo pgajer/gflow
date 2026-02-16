@@ -55,7 +55,6 @@
 #'   * `cell.trajectories` The `gfc_cell_trajectories` object used.
 #'   * `sensitivity` Present if `length(k) > 1`: results and stability metrics across k.
 #'
-#' @export
 cluster.cell.trajectories <- function(gfc.flow,
                                       min.id,
                                       max.id,

@@ -1,12 +1,10 @@
 
 
-
 #' Estimates the mode of a numeric vector
 #'
 #' @param x A numeric vector.
 #' @param min.size The minimal number of finite values within x. If length(x) < min.size, then the result is NA.
 #' @param ... Parameters to be passed to density()
-#' @export
 mode.1D <- function(x, min.size=10, ...) {
     res <- NA
     x <- x[is.finite(x)]
@@ -25,7 +23,6 @@ mode.1D <- function(x, min.size=10, ...) {
 #' @param base The base of the logarithm in the entropy formula.
 #'
 #' @return   entropy with log 'base'
-#' @export
 entropy <- function(x, base = 10) {
     x <- x[x>0]
     x <- x / sum(x)
@@ -39,7 +36,6 @@ entropy <- function(x, base = 10) {
 #' @param x Numeric vector of counts or abundances
 #' @param base Logarithm base (default: 2)
 #' @return A number in \eqn{[0,1]} quantifying evenness (1 = perfectly even)
-#' @export
 evenness <- function(x, base = 2) {
   x <- x[x > 0]
   if (length(x) <= 1) return(0)
@@ -51,7 +47,6 @@ evenness <- function(x, base = 2) {
   E <- H / C
   return(E)
 }
-
 
 #' Min-Max Normalization
 #'
@@ -94,7 +89,6 @@ minmax.normalize <- function(x, y.min = 0, y.max = 1) {
 #' @param x  A numerical vector.
 #'
 #' @return Inverse logit transformed data.
-#' @export
 inv.logit <- function(x) {
     1 / (1 + exp(-x))
 }
@@ -239,7 +233,6 @@ n.zeros <- function(x)
 #' \code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}
 #'
 #' @param x A numeric vector.
-#' @export
 persistent.values <- function(x)
 {
     stopifnot(is.numeric(x))
@@ -332,7 +325,6 @@ non.zero.values <- function(x)
 #' Proportion of cases in a binary variable y
 #'
 #' @param y  A binary variable with 0/1 values.
-#' @export
 p.cases <- function(y)
 {
     f <- table(y)
@@ -341,7 +333,6 @@ p.cases <- function(y)
 
     ret[[1]]
 }
-
 
 #' Computes a cross product between two 3D vectors
 #'
@@ -376,12 +367,10 @@ cross.prod <- function(x, y)
 #' The norm of a vector
 #'
 #' @param x A numeric vector.
-#' @export
 vector.norm <- function(x)
 {
     sqrt(sum(x^2))
 }
-
 
 #' Computes the angle between two 3D vectors in radians
 #'
@@ -507,7 +496,6 @@ Rdensity.distance <- function(p, q, p.density, q.density, density.func = NULL) {
     return(euclidean.distance / mean.density)
 }
 
-
 ## ----------------------------------------------------------------------------------------------------
 ##
 ## Numerical differentiation
@@ -576,7 +564,6 @@ derivative.second.order.method <- function(y, dx)
 #' @param ymax The value to which max(x) is sent.
 #' @param xrange The minimum of x and the maximum of x that is to be mapped to ymin and ymax, respectively.
 #' @return A numeric vector of the same length as 'x' with values linearly transformed to the range \code{[ymin, ymax]}.
-#' @export
 scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
 
     if( !is.numeric(x) ) {
@@ -851,7 +838,6 @@ shifted.tan <- function(x, offset=0.1)
     tan(y)
 }
 
-
 #' Applies a Scaled Log Transformation
 #'
 #' This function first applies a scaled log transformation, C*log(x), to the
@@ -888,7 +874,6 @@ scaled.log.tan <- function(x, scale=0.1)
 #' @param xmax  The maximum value of the clamped x.
 #'
 #' @return A vector with all values below xmin set to xmin and all value above xmax set to xmax.
-#' @export
 clamp <- function(x, xmin, xmax) {
 
     clamped.x <- pmax(pmin(x, xmax), xmin)
@@ -1163,7 +1148,6 @@ pca.variance.analysis <- function(X, pc.90 = 0.90, pc.95 = 0.95, pc.97.5 = 0.975
     )
 }
 
-
 #' Calculate the Overlap Coefficient Between Two Numeric Vectors
 #'
 #' @description
@@ -1328,7 +1312,6 @@ boa.overlap <- function(x, y, min.BoA.size, x.labels = NULL, y.labels = NULL) {
 
    return(result)
 }
-
 
 #' Format Numbers in a Matrix with Specified Decimal Places
 #'
@@ -2131,7 +2114,6 @@ jaccard.index <- function(vec.1, vec.2) {
   intersection.size / union.size
 }
 
-
 #' Sigmoidal Function with Lower and Upper Thresholds
 #'
 #' Creates a sigmoidal function that smoothly transitions from approximately 0 to
@@ -2178,7 +2160,6 @@ thresholded.sigmoid <- function(x, lower_threshold, upper_threshold, steepness =
   # Apply logistic function
   1 / (1 + exp(-scale_factor * (x - midpoint)))
 }
-
 
 #' Winsorized Z-score normalization
 #'
@@ -2991,7 +2972,6 @@ apply.floor <- function(y, floor.at, verbose = FALSE) {
   return(y)
 }
 
-
 #' Apply Ceiling to Function Values
 #'
 #' @description
@@ -3026,7 +3006,6 @@ apply.ceiling <- function(y, ceiling.at, verbose = FALSE) {
   return(y)
 }
 
-
 #' Left Winsorize (for completeness, though you may not use it)
 #'
 #' @description
@@ -3038,7 +3017,6 @@ apply.ceiling <- function(y, ceiling.at, verbose = FALSE) {
 #'
 #' @return Numeric vector with left tail winsorized
 #'
-#' @export
 left.winsorize <- function(y, p = 0.01, verbose = FALSE) {
   if (p < 0 || p >= 0.25) {
     stop("p must be between 0 and 0.25")
@@ -3058,7 +3036,6 @@ left.winsorize <- function(y, p = 0.01, verbose = FALSE) {
 
   return(y)
 }
-
 
 #' Right Winsorize
 #'
@@ -3186,7 +3163,6 @@ winsorize <- function(x, p = 0.01, verbose = FALSE) {
 #' For values at global max: perturbs downward only
 #' For interior values: perturbs symmetrically
 #'
-#' @export
 break.ties <- function(y,
                        noise.scale = 1e-10,
                        min.abs.noise = 1e-12,
@@ -3326,7 +3302,6 @@ prepare.binary.cond.exp <- function(y.hat,
 
   return(y.clean)
 }
-
 
 #' Prepare Continuous Outcome for Extrema Detection
 #'
@@ -3871,7 +3846,6 @@ compute.tukey.threshold <- function(x, k = 1.5, type = c("upper", "lower", "both
            both = c(lower = lower.fence, upper = upper.fence))
 }
 
-
 #' Compute MAD-Based Threshold for Outlier Detection
 #'
 #' Computes an outlier threshold using the median absolute deviation (MAD),
@@ -3959,7 +3933,6 @@ compute.mad.threshold <- function(x,
            lower = lower.threshold,
            both = c(lower = lower.threshold, upper = upper.threshold))
 }
-
 
 #' Find Elbow Threshold Using Maximum Curvature
 #'
@@ -4068,7 +4041,6 @@ find.elbow.threshold <- function(x, plot = FALSE) {
 #' @param eps Small positive constant.
 #' @return row-normalized matrix where each row has L2 norm 1 (unless norm < eps).
 #'
-#' @export
 L2.normalize.matrix <- function(U, eps = 1e-12) {
 
   if (!is.matrix(U) || !is.numeric(U)) {

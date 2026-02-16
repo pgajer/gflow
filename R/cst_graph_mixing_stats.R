@@ -24,7 +24,6 @@
 #' @param seed Integer RNG seed.
 #'
 #' @return Object of class "cst_graph_mixing_stats".
-#' @export
 cst.graph.mixing.stats <- function(igraph.obj = NULL,
                                   adj.list = NULL,
                                   weight.list = NULL,

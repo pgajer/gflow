@@ -9,7 +9,6 @@
 #'
 #' @return Integer index of the basin, or NULL if not found
 #'
-#' @export
 find.basin.idx.by.label <- function(label, basins.obj, extrema.type) {
     if (!extrema.type %in% c("max", "min")) {
         stop("extrema.type must be either 'max' or 'min'")
@@ -31,7 +30,6 @@ find.basin.idx.by.label <- function(label, basins.obj, extrema.type) {
     return(NULL)
 }
 
-
 #' Find Basin Index by Vertex
 #'
 #' @description
@@ -43,7 +41,6 @@ find.basin.idx.by.label <- function(label, basins.obj, extrema.type) {
 #'
 #' @return Integer index of the basin, or NULL if not found
 #'
-#' @export
 find.basin.idx.by.vertex <- function(vertex, basins.obj, extrema.type) {
     if (!extrema.type %in% c("max", "min")) {
         stop("extrema.type must be either 'max' or 'min'")
@@ -64,7 +61,6 @@ find.basin.idx.by.vertex <- function(vertex, basins.obj, extrema.type) {
     return(NULL)
 }
 
-
 #' Find Basin by Label
 #'
 #' @description
@@ -76,7 +72,6 @@ find.basin.idx.by.vertex <- function(vertex, basins.obj, extrema.type) {
 #'
 #' @return Basin structure (list), or NULL if not found
 #'
-#' @export
 find.basin.by.label <- function(label, basins.obj, extrema.type) {
     idx <- find.basin.idx.by.label(label, basins.obj, extrema.type)
     
@@ -91,7 +86,6 @@ find.basin.by.label <- function(label, basins.obj, extrema.type) {
     }
 }
 
-
 #' Find Basin by Vertex
 #'
 #' @description
@@ -103,7 +97,6 @@ find.basin.by.label <- function(label, basins.obj, extrema.type) {
 #'
 #' @return Basin structure (list), or NULL if not found
 #'
-#' @export
 find.basin.by.vertex.in.basins.of.attraction <- function(vertex, basins.obj, extrema.type) {
     idx <- find.basin.idx.by.vertex(vertex, basins.obj, extrema.type)
     
@@ -118,7 +111,6 @@ find.basin.by.vertex.in.basins.of.attraction <- function(vertex, basins.obj, ext
     }
 }
 
-
 #' Get Basin Label from Vertex
 #'
 #' @description
@@ -129,7 +121,6 @@ find.basin.by.vertex.in.basins.of.attraction <- function(vertex, basins.obj, ext
 #'
 #' @return Character string label, or NULL if not found
 #'
-#' @export
 get.basin.label.from.vertex <- function(vertex, basin.summary) {
     row <- basin.summary[basin.summary$vertex == vertex, ]
     
@@ -139,7 +130,6 @@ get.basin.label.from.vertex <- function(vertex, basin.summary) {
     
     return(row$label[1])
 }
-
 
 #' Get Basin Vertex from Label
 #'
@@ -151,7 +141,6 @@ get.basin.label.from.vertex <- function(vertex, basin.summary) {
 #'
 #' @return Integer vertex identifier, or NULL if not found
 #'
-#' @export
 get.basin.vertex.from.label <- function(label, basin.summary) {
     row <- basin.summary[basin.summary$label == label, ]
     
@@ -162,7 +151,6 @@ get.basin.vertex.from.label <- function(label, basin.summary) {
     return(row$vertex[1])
 }
 
-
 #' Determine Extrema Type from Label
 #'
 #' @description
@@ -172,7 +160,6 @@ get.basin.vertex.from.label <- function(label, basin.summary) {
 #'
 #' @return Character string "min" or "max", or NULL if cannot be determined
 #'
-#' @export
 get.extrema.type.from.label <- function(label) {
     if (grepl("^m[0-9]+$", label)) {
         return("min")

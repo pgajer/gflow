@@ -11,7 +11,6 @@
 #'
 #' @return A list containing diagnostic information for each cell.
 #'
-#' @export
 analyze.comono.distributions <- function(cm,
                                          partition,
                                          cell.ids = NULL,

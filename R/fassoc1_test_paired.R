@@ -58,7 +58,6 @@
 #' @param verbose If TRUE, prints progress messages. Default TRUE.
 #'
 #' @return An object of class "assoc1" with signal/null summaries and test results.
-#' @export
 fassoc1.test <- function(x,
                          y,
                          test.type = c("paired.t", "weighted.pvalue", "wilcoxon"),
@@ -681,13 +680,8 @@ fassoc1.test <- function(x,
     out
 }
 
-
-
-
 #' @rdname fassoc1.test
-#' @export
 fofam.test <- fassoc1.test
-
 
 ## ============================================================================
 ## S3 Methods
@@ -711,7 +705,6 @@ coef.assoc1 <- function(object, ...) {
       delta1.robust.z = object$delta1.robust.z,
       p.value = object$p.value)
 }
-
 
 #' Print Method for assoc1 Objects
 #'
@@ -762,7 +755,6 @@ print.assoc1 <- function(x, digits = 4, ...) {
     invisible(x)
 }
 
-
 #' Summary Method for assoc1 Objects
 #'
 #' @param object An object of class "assoc1".
@@ -801,7 +793,6 @@ summary.assoc1 <- function(object, ...) {
     class(out) <- "summary.assoc1"
     return(out)
 }
-
 
 #' @method print summary.assoc1
 #' @export
@@ -844,7 +835,6 @@ print.summary.assoc1 <- function(x, digits = 4, ...) {
 
     invisible(x)
 }
-
 
 #' Plot Method for assoc1 Objects
 #'
@@ -949,7 +939,6 @@ plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
     invisible(NULL)
 }
 
-
 #' Extract Derivative Information from Functional Association Objects
 #'
 #' Generic function to extract derivative information from functional
@@ -961,11 +950,9 @@ plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
 #' @return Derivative information (format depends on method).
 #'
 #' @seealso \code{\link{extract.derivatives.assoc1}}
-#' @export
 extract.derivatives <- function(object, ...) {
     UseMethod("extract.derivatives")
 }
-
 
 #' Extract Derivative Information from assoc1 Object
 #'

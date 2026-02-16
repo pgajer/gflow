@@ -17,7 +17,6 @@
 #'   \item{bicluster.sizes}{Data frame with rows (samples) and cols (features) per bicluster}
 #' }
 #'
-#' @export
 extract.isa.biclusters <- function(isa.result,
                                    score.threshold = 0,
                                    min.samples = 5,
@@ -71,7 +70,6 @@ extract.isa.biclusters <- function(isa.result,
     ))
 }
 
-
 #' Filter Redundant ISA Biclusters
 #'
 #' @description
@@ -87,7 +85,6 @@ extract.isa.biclusters <- function(isa.result,
 #'
 #' @return List similar to extract.isa.biclusters() but with redundant biclusters removed
 #'
-#' @export
 filter.redundant.biclusters <- function(isa.result,
                                        biclusters.extracted,
                                        overlap.threshold = 0.8,
@@ -170,7 +167,6 @@ filter.redundant.biclusters <- function(isa.result,
     ))
 }
 
-
 #' Create Hard Sample Assignment from ISA Biclusters
 #'
 #' @description
@@ -185,7 +181,6 @@ filter.redundant.biclusters <- function(isa.result,
 #' @return Integer vector of length n.samples with cluster assignments (1-based).
 #'   Samples not assigned to any bicluster get value 0.
 #'
-#' @export
 isa.to.hard.clusters <- function(biclusters.extracted, n.samples) {
 
     biclusters <- biclusters.extracted$biclusters
@@ -213,7 +208,6 @@ isa.to.hard.clusters <- function(biclusters.extracted, n.samples) {
     return(assignment)
 }
 
-
 #' Summarize ISA Bicluster Quality
 #'
 #' @description
@@ -227,7 +221,6 @@ isa.to.hard.clusters <- function(biclusters.extracted, n.samples) {
 #'
 #' @return Data frame with quality metrics per bicluster
 #'
-#' @export
 summarize.bicluster.quality <- function(isa.result,
                                         biclusters.extracted,
                                         data.matrix,
@@ -301,7 +294,6 @@ summarize.bicluster.quality <- function(isa.result,
 #' @param rob.threshold Robustness threshold (higher = more stringent)
 #' @param plot.distribution If TRUE, plots robustness distribution
 #'
-#' @rawNamespace export(select.biclusters.by.robustness)
 select.biclusters.by.robustness <- function(isa.result,
                                            rob.threshold = NULL,
                                            plot.distribution = TRUE) {
@@ -377,7 +369,6 @@ select.biclusters.by.robustness <- function(isa.result,
 #' @param n.features.per.bc Integer vector with feature counts per bicluster.
 #' @param plot.diagnostics Logical; plot gap diagnostics used to choose thresholds.
 #'
-#' @rawNamespace export(select.thresholds.by.gaps)
 select.thresholds.by.gaps <- function(n.samples.per.bc,
                                       n.features.per.bc,
                                       plot.diagnostics = TRUE) {

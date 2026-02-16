@@ -51,7 +51,6 @@
 #'   \item \code{meta}: list of settings used.
 #' }
 #'
-#' @export
 test.disk.feature.distance.association.spt <- function(X,
                                                        vertices,
                                                        dists = NULL,
@@ -585,7 +584,6 @@ test.disk.feature.distance.association.spt <- function(X,
             bayesglm = fit.bayesglm()
         )
     }
-
 
     ## ----------------------------
     ## Main loop over (feature, sector)

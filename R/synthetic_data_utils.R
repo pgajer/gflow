@@ -1022,8 +1022,6 @@ synthetic.xD.spline <- function(X, y = NULL) {
   return(spline.fns)
 }
 
-
-
 #' Generate a Synthetic Smooth Function in One Dimension
 #'
 #' This function constructs a synthetic smooth function using a series of Gaussian distributions
@@ -1157,8 +1155,6 @@ generate.synthetic.function.higher.dim <- function(X, y = NULL) {
 
   return(synthetic.function)
 }
-
-
 
 #' Removes Close Neighbors
 #'
@@ -1299,7 +1295,6 @@ ggaussian <- function(x, offset = 0, h = 1, p = 2) {
 
     return(ret)
 }
-
 
 #' q-Exponential Gaussian Function
 #'
@@ -1708,7 +1703,6 @@ bi.gaussian <- function(x, mu, sigma.left, sigma.right) {
 #'          x <= mu and a Gaussian with sigma.right for x > mu. The final synthetic function is
 #'          the sum of these bi-Gaussians weighted by the partition of unity.
 #'
-#' @export
 bi.gaussian.mixture <- function(n.lmax,
                                 x.lmax = NULL,
                                 y.lmax = NULL,
@@ -1960,7 +1954,6 @@ partition.of.unity.xD <- function(S,
          nn.d = nn.d)
 }
 
-
 #' Creates a Synthetic Function with Specified Number of Local Maxima over a subset of R^d, d > 1
 #'
 #' Generates a synthetic function with specified number of local maxima using a
@@ -1990,7 +1983,6 @@ partition.of.unity.xD <- function(S,
 #'     \item \code{y}: A vector of values of the created synthetic function.
 #'   }
 #'
-#' @export
 gaussian.mixture.xD <- function(S,
                                 X.lmax = NULL,
                                 n.lmax = 3,
@@ -2096,7 +2088,6 @@ gaussian.mixture.xD <- function(S,
          ##min.dist = min.dist)
 }
 
-
 #' Gaussian function in arbitrary dimension
 #'
 #' @param x Numeric vector of input values
@@ -2104,7 +2095,6 @@ gaussian.mixture.xD <- function(S,
 #' @param sigma Numeric vector of standard deviations (same length as x)
 #' @param C Amplitude/scaling factor
 #' @return Numeric value of the Gaussian function
-#' @export
 gaussian.xD <- function(x, mu, sigma, C) {
     C * exp(-(sum((x - mu)^2 / sigma^2)))
 }
@@ -2116,7 +2106,6 @@ gaussian.xD <- function(x, mu, sigma, C) {
 #' @param sigma Numeric vector of standard deviations (same length as x)
 #' @param C Amplitude/scaling factor
 #' @return Numeric vector of gradient values
-#' @export
 gaussian.xD.grad <- function(x, mu, sigma, C) {
     ## Create symbolic variables for x
     x_sym <- paste0("x", seq(x))
@@ -2285,9 +2274,6 @@ generate.noisy.circle.embedding <- function(n,
     cbind(x, y, eps2)
 }
 
-
-
-
 #' Generate Equally Spaced Points on a Circle without any noise
 #'
 #' This function creates a set of points that are equally spaced along a circle. The first and last point are the same.
@@ -2306,7 +2292,6 @@ generate.circle <- function(n, radius = 1) {
 
     data.frame(x = x, y = y)
 }
-
 
 #' Torus knot
 #'
@@ -2460,7 +2445,6 @@ generate.clustered.data <- function(n.clusters,
 #' @param verbose     Set it to TRUE, to print progress messages.
 #'
 #' @return A list containing the length of the longest stretch of isomorphic MS graphs for each generated dataset
-#' @export
 test.graph.MS.cx.on.synth.cloud.data <- function(n.datasets,
                                                  n.pts,
                                                  n.side = NULL,
@@ -2710,7 +2694,6 @@ circular.synthetic.mixture.of.gaussians <- function(x, x.knot, y.knot, sd.knot) 
     return(sapply(x, synthetic.function))
 }
 
-
 #' Generate Random Partition of an Integer
 #'
 #' This function generates a random partition of an integer n into a fixed number
@@ -2789,9 +2772,6 @@ generate.partition <- function(n, a, m) {
 
     return(result)
 }
-
-
-
 
 #' Transform Continuous Values to Probabilities via Normalization and Logistic Function
 #'
@@ -2960,7 +2940,6 @@ create.gaussian.mixture <- function(x1 = 0.25, y1 = 0.25,  ## location of first 
 
     return(result)
 }
-
 
 #' Generate 2D Gaussian Mixture
 #'
@@ -3474,7 +3453,6 @@ print.summary.gaussian_mixture <- function(x, ...) {
 #'   \item{y.true}{Vector of true function values}
 #'   \item{mixture}{The original gaussian_mixture object}
 #'
-#' @export
 sample.gaussian_mixture <- function(mixture,
                                    n = 500,
                                    sampling.method = c("random", "grid", "stratified"),

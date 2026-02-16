@@ -203,7 +203,6 @@ construct.madag <- function(
     return(result)
 }
 
-
 #' Enumerate Trajectories in a Cell
 #'
 #' @description
@@ -227,7 +226,6 @@ construct.madag <- function(
 #'
 #' @seealso \code{\link{construct.madag}}, \code{\link{sample.cell.trajectories}}
 #'
-#' @export
 enumerate.cell.trajectories <- function(
     madag,
     y,
@@ -263,7 +261,6 @@ enumerate.cell.trajectories <- function(
     return(result)
 }
 
-
 #' Sample Trajectories from a Cell
 #'
 #' @description
@@ -282,7 +279,6 @@ enumerate.cell.trajectories <- function(
 #'
 #' @seealso \code{\link{construct.madag}}, \code{\link{enumerate.cell.trajectories}}
 #'
-#' @export
 sample.cell.trajectories <- function(
     madag,
     y,
@@ -319,7 +315,6 @@ sample.cell.trajectories <- function(
     return(result)
 }
 
-
 #' Compute Trajectory Similarity Matrix
 #'
 #' @description
@@ -335,7 +330,6 @@ sample.cell.trajectories <- function(
 #'
 #' @seealso \code{\link{enumerate.cell.trajectories}}
 #'
-#' @export
 trajectory.similarity.matrix <- function(
     trajectories,
     similarity.type = "jaccard"
@@ -355,7 +349,6 @@ trajectory.similarity.matrix <- function(
 
     return(result)
 }
-
 
 #' Identify Bottleneck Vertices in a Cell
 #'
@@ -401,7 +394,6 @@ identify.bottlenecks <- function(
     return(result)
 }
 
-
 #' Print Method for madag Objects
 #'
 #' @param x A \code{madag} object.
@@ -431,7 +423,6 @@ print.madag <- function(x, ...) {
 
     invisible(x)
 }
-
 
 #' Summary Method for madag Objects
 #'
@@ -473,7 +464,6 @@ summary.madag <- function(object, ...) {
     invisible(object)
 }
 
-
 #' Get Cell from MADAG by Maximum Vertex
 #'
 #' @param madag A \code{madag} object.
@@ -481,7 +471,6 @@ summary.madag <- function(object, ...) {
 #'
 #' @return The cell structure, or NULL if not found.
 #'
-#' @export
 get.cell <- function(madag, max.vertex) {
     if (!inherits(madag, "madag")) {
         stop("madag must be a 'madag' object")
@@ -496,14 +485,12 @@ get.cell <- function(madag, max.vertex) {
     return(NULL)
 }
 
-
 #' Create Cell Summary Data Frame
 #'
 #' @param madag A \code{madag} object.
 #'
 #' @return A data frame with one row per cell.
 #'
-#' @export
 cell.summary.df <- function(madag) {
     if (!inherits(madag, "madag")) {
         stop("madag must be a 'madag' object")
