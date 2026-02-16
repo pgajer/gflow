@@ -22,168 +22,13 @@ set.seed(2026)
 
 ## Overview
 
-This vignette demonstrates a full `gflow` workflow on a noisy circle:
+This vignette follows one complete analysis story.
+We start with noisy samples from a circle and a noisy response field over that
+circle. We then construct graph scales, denoise geometry, smooth responses and
+features, recover local extrema/basins, and finally test local associations
+with permutation-based inference.
 
-1. Build and inspect ikNN graphs across a `k` range.
-2. Select a graph scale using graph diagnostics.
-3. Denoise coordinates with `data.smoother()`.
-4. Smooth a noisy response `y` (mixture of two circular Gaussian peaks).
-5. Smooth a feature matrix `Z`.
-6. Find refined basins/extrema from `y.hat`.
-7. Compare Pearson/Spearman and local correlation (`lcor`) analyses.
-8. Add permutation-based inference for `lcor` (implemented here in the vignette).
-9. Build a feature module graph from local-correlation profiles.
-
-## Helper Functions
-
-```{r helpers}
-wrap_angle <- function(theta, mu) {
-  atan2(sin(theta - mu), cos(theta - mu))
-}
-
-`%||%` <- function(x, y) {
-  if (!is.null(x)) x else y
-}
-
-as_lcor_matrix <- function(x) {
-  if (is.list(x) && !is.null(x$column.coefficients)) {
-    return(as.matrix(x$column.coefficients))
-  }
-  as.matrix(x)
-}
-
-assign_from_vertices_list <- function(vertices.list, n) {
-  out <- rep(NA_character_, n)
-  if (is.null(vertices.list) || length(vertices.list) == 0) {
-    return(out)
-  }
-  for (nm in names(vertices.list)) {
-    out[as.integer(vertices.list[[nm]])] <- nm
-  }
-  out
-}
-
-compute_basins_safe <- function(adj.list, edge.length.list, fitted.values, verbose = TRUE) {
-  has_both_extrema <- function(obj) {
-    if (is.null(obj$summary) || nrow(obj$summary) == 0L || is.null(obj$summary$type)) {
-      return(FALSE)
-    }
-    tab <- table(obj$summary$type)
-    ("max" %in% names(tab)) && ("min" %in% names(tab)) &&
-      (tab[["max"]] > 0L) && (tab[["min"]] > 0L)
-  }
-
-  strict <- try(
-    compute.refined.basins(
-      adj.list = adj.list,
-      edge.length.list = edge.length.list,
-      fitted.values = fitted.values,
-      edge.length.quantile.thld = 0.75,
-      min.rel.value.max = 1.1,
-      max.rel.value.min = 0.9,
-      max.overlap.threshold = 0.15,
-      min.overlap.threshold = 0.15,
-      p.mean.nbrs.dist.threshold = 0.9,
-      p.mean.hopk.dist.threshold = 0.9,
-      p.deg.threshold = 0.9,
-      min.basin.size = 10,
-      expand.basins = TRUE,
-      with.trajectories = TRUE,
-      verbose = verbose
-    ),
-    silent = TRUE
-  )
-
-  if (!inherits(strict, "try-error") && has_both_extrema(strict)) {
-    return(strict)
-  }
-
-  message("Strict basin settings failed (or removed all maxima/minima); retrying with relaxed settings.")
-  compute.refined.basins(
-    adj.list = adj.list,
-    edge.length.list = edge.length.list,
-    fitted.values = fitted.values,
-    edge.length.quantile.thld = 0.9,
-    min.rel.value.max = 1.02,
-    max.rel.value.min = 0.98,
-    max.overlap.threshold = 0.25,
-    min.overlap.threshold = 0.25,
-    p.mean.nbrs.dist.threshold = 0.98,
-    p.mean.hopk.dist.threshold = 0.98,
-    p.deg.threshold = 0.98,
-    min.basin.size = 5,
-    apply.geometric.filter = FALSE,
-    expand.basins = TRUE,
-    with.trajectories = TRUE,
-    verbose = verbose
-  )
-}
-
-perm_test_lcor <- function(adj.list,
-                           edge.length.list,
-                           y,
-                           Z,
-                           type = "derivative",
-                           y.diff.type = "difference",
-                           z.diff.type = "difference",
-                           n.perm = 200L,
-                           seed = 1L) {
-  set.seed(seed)
-  Z <- as.matrix(Z)
-  y <- as.numeric(y)
-
-  lcor.obs <- as_lcor_matrix(
-    lcor(
-      adj.list = adj.list,
-      weight.list = edge.length.list,
-      y = y,
-      z = Z,
-      type = type,
-      y.diff.type = y.diff.type,
-      z.diff.type = z.diff.type
-    )
-  )
-  stat.obs <- colMeans(abs(lcor.obs))
-
-  stat.perm <- matrix(NA_real_, nrow = n.perm, ncol = ncol(Z))
-  colnames(stat.perm) <- colnames(Z)
-
-  for (b in seq_len(n.perm)) {
-    Zb <- Z[sample.int(nrow(Z)), , drop = FALSE]
-    lcor.b <- as_lcor_matrix(
-      lcor(
-        adj.list = adj.list,
-        weight.list = edge.length.list,
-        y = y,
-        z = Zb,
-        type = type,
-        y.diff.type = y.diff.type,
-        z.diff.type = z.diff.type
-      )
-    )
-    stat.perm[b, ] <- colMeans(abs(lcor.b))
-  }
-
-  p.value <- (1 + colSums(t(t(stat.perm) >= stat.obs))) / (n.perm + 1)
-  q.value <- stats::p.adjust(p.value, method = "BH")
-
-  list(
-    stat.obs = stat.obs,
-    stat.perm = stat.perm,
-    p.value = p.value,
-    q.value = q.value,
-    table = data.frame(
-      feature = colnames(Z),
-      stat.obs = stat.obs,
-      p.value = p.value,
-      q.value = q.value,
-      row.names = NULL
-    )
-  )
-}
-```
-
-## Simulate Noisy Circle and Response
+## 1) Simulate Geometry and Response
 
 ```{r simulate-data}
 n <- 250L
@@ -206,7 +51,7 @@ if ("angles" %in% colnames(X.df)) {
   theta.obs <- ifelse(theta.obs < 0, theta.obs + 2 * pi, theta.obs)
 }
 
-## Two wrapped Gaussian peaks over the circle: one larger, one smaller
+# Response: a mixture of two circular Gaussian peaks (one larger, one smaller)
 mu1 <- 0.80
 mu2 <- 3.95
 sd1 <- 0.30
@@ -214,8 +59,18 @@ sd2 <- 0.48
 amp1 <- 1.40
 amp2 <- 0.75
 
-comp1 <- amp1 * exp(-0.5 * (wrap_angle(theta.obs, mu1) / sd1)^2)
-comp2 <- amp2 * exp(-0.5 * (wrap_angle(theta.obs, mu2) / sd2)^2)
+comp1 <- circular.synthetic.mixture.of.gaussians(
+  x = theta.obs,
+  x.knot = mu1,
+  y.knot = amp1,
+  sd.knot = sd1
+)
+comp2 <- circular.synthetic.mixture.of.gaussians(
+  x = theta.obs,
+  x.knot = mu2,
+  y.knot = amp2,
+  sd.knot = sd2
+)
 y.true <- comp1 + comp2
 y <- y.true + rnorm(n, sd = 0.20)
 
@@ -243,7 +98,7 @@ legend("topleft",
 par(op)
 ```
 
-## Build ikNN Graphs Across k
+## 2) Build Graphs Across k
 
 ```{r iknn-graphs}
 k.min <- 5L
@@ -260,7 +115,7 @@ X.graphs <- create.iknn.graphs(
 summary(X.graphs)
 ```
 
-## Alternative k Selection Utility
+## 3) Select Graph Scale
 
 ```{r iknn-selectk}
 X.graphs2 <- build.iknn.graphs.and.selectk(
@@ -276,7 +131,7 @@ X.graphs2$k.opt.edit
 plot(X.graphs2)
 ```
 
-## Visualize One Graph Layout
+## 4) Visualize the Selected Graph
 
 ```{r graph-layout-2d}
 k.values <- if (!is.null(colnames(X.graphs$k_statistics)) &&
@@ -286,7 +141,11 @@ k.values <- if (!is.null(colnames(X.graphs$k_statistics)) &&
   seq_len(length(X.graphs$geom_pruned_graphs))
 }
 
-sel.k <- as.integer(X.graphs2$k.opt.edit %||% k.values[1])
+sel.k <- X.graphs2$k.opt.edit
+if (is.null(sel.k) || is.na(sel.k)) {
+  sel.k <- k.values[1]
+}
+sel.k <- as.integer(sel.k)
 k.idx <- which(k.values == sel.k)[1]
 if (is.na(k.idx)) k.idx <- 1L
 
@@ -304,7 +163,7 @@ plot(layout.2d, pch = 19, cex = 0.5, asp = 1,
      xlab = "", ylab = "")
 ```
 
-## Denoise X with `data.smoother()`
+## 5) Denoise Geometry with `data.smoother()`
 
 ```{r data-smoother}
 X.denoise.res <- data.smoother(
@@ -384,7 +243,7 @@ data.frame(
 )
 ```
 
-## Smooth y on the Selected Graph
+## 6) Smooth the Response on the Selected Graph
 
 We reuse the graph/spectral structure selected by `data.smoother()` and apply
 it to `y` via `refit.rdgraph.regression()`.
@@ -409,7 +268,7 @@ data.frame(
 )
 ```
 
-## Optional 3D Layout and Surface Coloring
+## Optional 3D Surface View
 
 ```{r layout-3d}
 X.denoise.graph.layout.3d <- graph.embedding(
@@ -444,7 +303,7 @@ if (requireNamespace("rgl", quietly = TRUE) &&
 }
 ```
 
-## Build Feature Matrix Z and Smooth It
+## 7) Build and Smooth Feature Functions
 
 Features are built so some correlate with selected arcs of the response, while
 others are pure noise.
@@ -452,8 +311,8 @@ others are pure noise.
 ```{r make-features}
 set.seed(1002)
 
-window.1 <- as.numeric(abs(wrap_angle(theta.use, mu1)) <= 1.1)
-window.2 <- as.numeric(abs(wrap_angle(theta.use, mu2)) <= 1.1)
+window.1 <- as.numeric(comp1.use >= quantile(comp1.use, probs = 0.60))
+window.2 <- as.numeric(comp2.use >= quantile(comp2.use, probs = 0.60))
 
 z.global <- y.true.use + rnorm(length(theta.use), sd = 0.08)
 z.peak1.arc <- window.1 * y.true.use + rnorm(length(theta.use), sd = 0.08)
@@ -488,72 +347,80 @@ Z.sm <- as.matrix(Z.fit$fitted.values)
 summary(Z.fit)
 ```
 
-## Compute Refined Basins from y.hat
+## 8) Recover Extrema and Basins
 
 ```{r refined-basins}
-y.basins <- compute_basins_safe(
+y.gfc <- compute.gfc(
   adj.list = fit.seed$graph$adj.list,
   edge.length.list = fit.seed$graph$edge.length.list,
   fitted.values = y.hat,
+  edge.length.quantile.thld = 0.9,
+  min.rel.value.max = 1.05,
+  max.rel.value.min = 0.95,
+  max.overlap.threshold = 0.20,
+  min.overlap.threshold = 0.20,
+  p.mean.nbrs.dist.threshold = 0.95,
+  p.mean.hopk.dist.threshold = 0.95,
+  p.deg.threshold = 0.95,
+  min.basin.size = 5L,
+  expand.basins = TRUE,
+  apply.geometric.filter = FALSE,
+  with.trajectories = TRUE,
   verbose = TRUE
 )
 
-y.basins$summary
+y.gfc$summary
 ```
 
 ```{r compare-true-estimated-basins}
 true.max.label <- ifelse(comp1.use >= comp2.use, "M1.true", "M2.true")
 
-est.max.label <- assign_from_vertices_list(
-  y.basins$expanded.max.vertices.list %||% y.basins$max.vertices.list,
-  n = length(y.hat)
+est.max.label <- ifelse(
+  is.na(y.gfc$expanded.max.assignment),
+  NA_character_,
+  paste0("M", y.gfc$expanded.max.assignment)
 )
 
 idx.ok <- !is.na(est.max.label)
 table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
 ```
 
-## Basin-Wise Pearson and Spearman Analyses
+## 9) Basin-Wise Pearson and Spearman Checks
 
 ```{r basin-wise-classical-correlation}
-max.assign <- assign_from_vertices_list(
-  y.basins$expanded.max.vertices.list %||% y.basins$max.vertices.list,
-  n = length(y.hat)
+max.assign <- ifelse(
+  is.na(y.gfc$expanded.max.assignment),
+  NA_character_,
+  paste0("M", y.gfc$expanded.max.assignment)
 )
-min.assign <- assign_from_vertices_list(
-  y.basins$expanded.min.vertices.list %||% y.basins$min.vertices.list,
-  n = length(y.hat)
+min.assign <- ifelse(
+  is.na(y.gfc$expanded.min.assignment),
+  NA_character_,
+  paste0("m", y.gfc$expanded.min.assignment)
 )
 cell.assign <- ifelse(is.na(max.assign) | is.na(min.assign),
                       NA_character_,
                       paste(max.assign, min.assign, sep = "|"))
 
-cor_by_group <- function(yv, zv, g, feature, min.size = 20L) {
-  ii <- split(seq_along(g), g)
-  ii <- ii[!is.na(names(ii))]
-  ii <- ii[!(names(ii) %in% "NA")]
-  if (length(ii) == 0L) return(data.frame())
-  out <- lapply(names(ii), function(gr) {
-    idx <- ii[[gr]]
-    if (length(idx) < min.size) return(NULL)
-    data.frame(
-      feature = feature,
-      group = gr,
-      n = length(idx),
-      pearson = suppressWarnings(cor(yv[idx], zv[idx], method = "pearson")),
-      spearman = suppressWarnings(cor(yv[idx], zv[idx], method = "spearman"))
-    )
-  })
-  out <- do.call(rbind, out)
-  if (is.null(out)) data.frame() else out
-}
+group.levels <- setdiff(sort(unique(max.assign)), NA_character_)
+basin.cor <- data.frame()
 
-basin.cor <- do.call(
-  rbind,
-  lapply(seq_len(ncol(Z.sm)), function(j) {
-    cor_by_group(y.hat, Z.sm[, j], max.assign, colnames(Z.sm)[j], min.size = 20L)
-  })
-)
+for (j in seq_len(ncol(Z.sm))) {
+  for (gr in group.levels) {
+    idx <- which(max.assign == gr)
+    if (length(idx) < 20L) next
+    basin.cor <- rbind(
+      basin.cor,
+      data.frame(
+        feature = colnames(Z.sm)[j],
+        group = gr,
+        n = length(idx),
+        pearson = suppressWarnings(cor(y.hat[idx], Z.sm[idx, j], method = "pearson")),
+        spearman = suppressWarnings(cor(y.hat[idx], Z.sm[idx, j], method = "spearman"))
+      )
+    )
+  }
+}
 
 if (nrow(basin.cor) > 0) {
   head(basin.cor[order(-abs(basin.cor$spearman)), ], 12)
@@ -562,54 +429,57 @@ if (nrow(basin.cor) > 0) {
 }
 ```
 
-## Local Correlation with `lcor()`
+## 10) Local Correlation with `lcor()`
 
 ```{r lcor-methods}
 adj.list <- fit.seed$graph$adj.list
 edge.length.list <- fit.seed$graph$edge.length.list
 
-lcor.derivative <- as_lcor_matrix(
-  lcor(adj.list, edge.length.list, y.hat, Z, type = "derivative")
-)
-lcor.unit <- as_lcor_matrix(
-  lcor(adj.list, edge.length.list, y.hat, Z, type = "unit")
-)
-lcor.sign <- as_lcor_matrix(
-  lcor(adj.list, edge.length.list, y.hat, Z, type = "sign")
-)
-
-summarize_lcor <- function(mat, type) {
-  data.frame(
-    feature = colnames(mat),
-    type = type,
-    mean.lcor = colMeans(mat),
-    mean.abs.lcor = colMeans(abs(mat)),
-    row.names = NULL
-  )
-}
+lcor.derivative <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "derivative"))
+lcor.unit <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "unit"))
+lcor.sign <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "sign"))
 
 lcor.summary <- rbind(
-  summarize_lcor(lcor.derivative, "derivative"),
-  summarize_lcor(lcor.unit, "unit"),
-  summarize_lcor(lcor.sign, "sign")
+  data.frame(
+    feature = colnames(lcor.derivative),
+    type = "derivative",
+    mean.lcor = colMeans(lcor.derivative),
+    mean.abs.lcor = colMeans(abs(lcor.derivative)),
+    row.names = NULL
+  ),
+  data.frame(
+    feature = colnames(lcor.unit),
+    type = "unit",
+    mean.lcor = colMeans(lcor.unit),
+    mean.abs.lcor = colMeans(abs(lcor.unit)),
+    row.names = NULL
+  ),
+  data.frame(
+    feature = colnames(lcor.sign),
+    type = "sign",
+    mean.lcor = colMeans(lcor.sign),
+    mean.abs.lcor = colMeans(abs(lcor.sign)),
+    row.names = NULL
+  )
 )
 
 lcor.summary[order(lcor.summary$type, -lcor.summary$mean.abs.lcor), ]
 ```
 
-## Permutation Tests for `lcor`
+## 11) Permutation Inference for `lcor`
 
-`lcor()` computes local-correlation coefficients but does not directly return
-permutation p-values. We add a permutation layer by shuffling vertex labels of
-`Z` and recomputing the chosen `lcor` summary statistic.
+We assess feature significance by permuting feature rows (`permute = "z"`),
+recomputing local correlations, and comparing observed statistics to this null.
 
 ```{r lcor-permutation}
-perm.lcor <- perm_test_lcor(
+perm.lcor <- permutation.test.lcor(
   adj.list = adj.list,
-  edge.length.list = edge.length.list,
+  weight.list = edge.length.list,
   y = y.hat,
-  Z = Z,
+  z = Z,
   type = "derivative",
+  statistic = "mean.abs",
+  permute = "z",
   n.perm = 200L,
   seed = 2026L
 )
@@ -617,7 +487,7 @@ perm.lcor <- perm_test_lcor(
 perm.lcor$table[order(perm.lcor$table$q.value), ]
 ```
 
-## Build an lcor-Based Feature Module Graph
+## 12) Build an lcor-Based Feature Module Graph
 
 ```{r lcor-module-graph}
 sim <- stats::cor(lcor.derivative, use = "pairwise.complete.obs")
