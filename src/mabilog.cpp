@@ -21,21 +21,6 @@
 #include <Rinternals.h>
 
 extern "C" {
-
-    SEXP S_wmabilog(SEXP s_x,
-                    SEXP s_y,
-                    SEXP s_y_true,
-                    SEXP s_w,
-                    SEXP s_max_iterations,
-                    SEXP s_ridge_lambda,
-                    SEXP s_max_beta,
-                    SEXP s_tolerance,
-                    SEXP s_k_min,
-                    SEXP s_k_max,
-                    SEXP s_distance_kernel,
-                    SEXP s_dist_normalization_factor,
-                    SEXP s_verbose);
-
     SEXP S_mabilog(SEXP s_x,
                    SEXP s_y,
                    SEXP s_y_true,
@@ -50,20 +35,6 @@ extern "C" {
                    SEXP s_distance_kernel,
                    SEXP s_dist_normalization_factor,
                    SEXP s_verbose);
-
-    SEXP S_mabilog_with_smoothed_errors(SEXP s_x,
-                                        SEXP s_y,
-                                        SEXP s_y_true,
-                                        SEXP s_max_iterations,
-                                        SEXP s_ridge_lambda,
-                                        SEXP s_max_beta,
-                                        SEXP s_tolerance,
-                                        SEXP s_k_min,
-                                        SEXP s_k_max,
-                                        SEXP s_error_window_factor,
-                                        SEXP s_distance_kernel,
-                                        SEXP s_dist_normalization_factor,
-                                        SEXP s_verbose);
 }
 
 struct mabilog_t {
@@ -395,7 +366,6 @@ mabilog_t wmabilog(const std::vector<double>& x,
         mem_tracker.report();
     }
 
-
     if (verbose) {
         elapsed_time(total_ptm, "\nTotal MABILOG computation time: ");
         Rprintf("Final ");
@@ -404,7 +374,6 @@ mabilog_t wmabilog(const std::vector<double>& x,
 
     return results;
 }
-
 
 /**
  * @brief An un-weighted version of the Model-Averaged bi-kNN Logistic regression (MABILOG) algorithm
@@ -688,7 +657,6 @@ mabilog_t uwmabilog(const std::vector<double>& x,
             results.k_mean_true_errors[k_index] = std::accumulate(k_true_errors.begin(), k_true_errors.end(), 0.0) / n_points;
         }
 
-
         if (verbose) {
             char message[100];  // Buffer large enough for the message
             snprintf(message, sizeof(message), "\nTotal time for k=%d: ", k);
@@ -725,7 +693,6 @@ mabilog_t uwmabilog(const std::vector<double>& x,
         elapsed_time(opt_k_ptm, "Done");
         mem_tracker.report();
     }
-
 
     if (verbose) {
         elapsed_time(total_ptm, "\nTotal MABILOG computation time: ");
@@ -764,148 +731,6 @@ mabilog_t uwmabilog(const std::vector<double>& x,
  *
  * \throws Calls \c Rf_error() on type/length mismatches or invalid parameters.
  */
-SEXP S_wmabilog(SEXP s_x,
-                SEXP s_y,
-                SEXP s_y_true,
-                SEXP s_w,
-                SEXP s_max_iterations,
-                SEXP s_ridge_lambda,
-                SEXP s_max_beta,
-                SEXP s_tolerance,
-                SEXP s_k_min,
-                SEXP s_k_max,
-                SEXP s_distance_kernel,
-                SEXP s_dist_normalization_factor,
-                SEXP s_verbose) {
-
-    // --- Coerce x/y/w (and optional y_true) to REAL and copy (long-vector safe) ---
-    std::vector<double> x, y, y_true, w;
-    {
-        SEXP sx = s_x, sy = s_y, sw = s_w, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
-        PROTECT_INDEX pix, piy, piw, pzt; // pzt for syt
-        PROTECT_WITH_INDEX(sx, &pix);
-        PROTECT_WITH_INDEX(sy, &piy);
-        PROTECT_WITH_INDEX(sw, &piw);
-        PROTECT_WITH_INDEX(syt, &pzt);
-
-        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
-        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
-        if (TYPEOF(sw) != REALSXP) REPROTECT(sw = Rf_coerceVector(sw, REALSXP), piw);
-        if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
-            REPROTECT(syt = Rf_coerceVector(syt, REALSXP), pzt);
-
-        const R_xlen_t nx = XLENGTH(sx), ny = XLENGTH(sy), nw = XLENGTH(sw);
-        if (nx != ny) { UNPROTECT(4); Rf_error("x and y must have the same length."); }
-        if (nx != nw) { UNPROTECT(4); Rf_error("x and w must have the same length."); }
-
-        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
-        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
-        w.assign(REAL(sw), REAL(sw) + static_cast<size_t>(nw));
-        if (syt != R_NilValue) {
-            const R_xlen_t nyt = XLENGTH(syt);
-            if (nyt == nx) {
-                y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-            }
-        }
-        UNPROTECT(4); // sx, sy, sw, syt
-    }
-
-    // --- Scalars / parameters (validated) ---
-    const int    max_iterations = Rf_asInteger(s_max_iterations);
-    const double ridge_lambda   = Rf_asReal   (s_ridge_lambda);
-    const double max_beta       = Rf_asReal   (s_max_beta);
-    const double tolerance      = Rf_asReal   (s_tolerance);
-    const int    k_min          = Rf_asInteger(s_k_min);
-    const int    k_max          = Rf_asInteger(s_k_max);
-    const int    distance_kernel= Rf_asInteger(s_distance_kernel);
-    const double dist_norm_factor = Rf_asReal (s_dist_normalization_factor);
-    const bool   verbose        = (Rf_asLogical(s_verbose) == TRUE);
-
-    // --- Core computation (no R allocations inside) ---
-    mabilog_t wmabilog_results = wmabilog(x, y, y_true, w,
-                                          max_iterations, ridge_lambda,
-                                          max_beta, tolerance,
-                                          k_min, k_max,
-                                          distance_kernel, dist_norm_factor,
-                                          verbose);
-
-    // --- Build result (container-first; per-element PROTECT/UNPROTECT) ---
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 7));
-
-    // r_result names
-    {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
-        SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
-        SET_STRING_ELT(names, 4, Rf_mkChar("k_mean_true_errors"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("predictions"));
-        SET_STRING_ELT(names, 6, Rf_mkChar("k_predictions"));
-        Rf_setAttrib(r_result, R_NamesSymbol, names);
-        UNPROTECT(1);
-    }
-
-    // 0: k_values sequence [k_min .. k_max]
-    {
-        const R_xlen_t K = static_cast<R_xlen_t>(
-            static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
-        std::vector<int> k_values(static_cast<size_t>(K));
-        for (R_xlen_t i = 0; i < K; ++i)
-            k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
-        SET_VECTOR_ELT(r_result, 0, kv);
-        UNPROTECT(1);
-    }
-
-    // 1: opt_k (scalar int)
-    {
-        SEXP s = PROTECT(Rf_ScalarInteger(wmabilog_results.opt_k));
-        SET_VECTOR_ELT(r_result, 1, s);
-        UNPROTECT(1);
-    }
-
-    // 2: opt_k_idx (scalar int; expose as returned by core)
-    {
-        SEXP s = PROTECT(Rf_ScalarInteger(wmabilog_results.opt_k_idx + 1));
-        SET_VECTOR_ELT(r_result, 2, s);
-        UNPROTECT(1);
-    }
-
-    // 3: k_mean_errors (numeric)
-    {
-        SEXP s = PROTECT(convert_vector_double_to_R(wmabilog_results.k_mean_errors));
-        SET_VECTOR_ELT(r_result, 3, s);
-        UNPROTECT(1);
-    }
-
-    // 4: k_mean_true_errors (numeric or NULL)
-    if (!y_true.empty()) {
-        SEXP s = PROTECT(convert_vector_double_to_R(wmabilog_results.k_mean_true_errors));
-        SET_VECTOR_ELT(r_result, 4, s);
-        UNPROTECT(1);
-    } else {
-        SET_VECTOR_ELT(r_result, 4, R_NilValue);
-    }
-
-    // 5: predictions (numeric)
-    {
-        SEXP s = PROTECT(convert_vector_double_to_R(wmabilog_results.predictions));
-        SET_VECTOR_ELT(r_result, 5, s);
-        UNPROTECT(1);
-    }
-
-    // 6: k_predictions (list<numeric>)
-    {
-        SEXP s = PROTECT(convert_vector_vector_double_to_R(wmabilog_results.k_predictions));
-        SET_VECTOR_ELT(r_result, 6, s);
-        UNPROTECT(1);
-    }
-
-    UNPROTECT(1);
-    return r_result;
-}
-
 
 /**
  * @brief Performs parallel Bayesian bootstrap calculations for MABILOG
@@ -1048,7 +873,6 @@ bb_cri_t mabilog_bb_cri(const std::vector<double>& x,
     bool use_median = true;
     return bb_cri(bb_predictionss, use_median, p);
 }
-
 
 /**
  * @brief Main interface for MABILOG (Model-Averaged Locally Weighted Scatterplot Smoothing) with optional Bayesian bootstrap
@@ -1371,7 +1195,6 @@ SEXP S_mabilog(SEXP s_x,
     return r_result;
 }
 
-
 /**
  * @brief Smoothed Rf_error version of Model-Averaged LOWESS (MABILOG) for robust local regression
  *
@@ -1576,7 +1399,6 @@ mabilog_t mabilog_with_smoothed_errors(const std::vector<double>& x,
         }
         auto phase2_ptm = std::chrono::steady_clock::now();
 
-
         for (int i = 0; i < n_points; i++) {
 
             double weighted_sum = 0.0;
@@ -1681,7 +1503,6 @@ mabilog_t mabilog_with_smoothed_errors(const std::vector<double>& x,
         mem_tracker.report();
     }
 
-
     if (verbose) {
         elapsed_time(total_ptm, "\nTotal MABILOG computation time: ");
         Rprintf("Final ");
@@ -1720,162 +1541,3 @@ mabilog_t mabilog_with_smoothed_errors(const std::vector<double>& x,
  *
  * @throws Calls \c Rf_error() on type/length mismatches or invalid parameters.
  */
-SEXP S_mabilog_with_smoothed_errors(SEXP s_x,
-                                    SEXP s_y,
-                                    SEXP s_y_true,
-                                    SEXP s_max_iterations,
-                                    SEXP s_ridge_lambda,
-                                    SEXP s_max_beta,
-                                    SEXP s_tolerance,
-                                    SEXP s_k_min,
-                                    SEXP s_k_max,
-                                    SEXP s_error_window_factor,
-                                    SEXP s_distance_kernel,
-                                    SEXP s_dist_normalization_factor,
-                                    SEXP s_verbose) {
-
-    // ---- Coerce x/y (and optional y_true) to REAL and copy (long-vector safe) ----
-    std::vector<double> x, y, y_true;
-    {
-        // Always hold exactly 3 protected slots: sx, sy, syt (syt may be R_NilValue)
-        SEXP sx = s_x, sy = s_y, syt = (s_y_true == R_NilValue ? R_NilValue : s_y_true);
-        PROTECT_INDEX pix, piy, piyt;
-        PROTECT_WITH_INDEX(sx, &pix);
-        PROTECT_WITH_INDEX(sy, &piy);
-        PROTECT_WITH_INDEX(syt, &piyt);
-
-        if (TYPEOF(sx) != REALSXP) REPROTECT(sx = Rf_coerceVector(sx, REALSXP), pix);
-        if (TYPEOF(sy) != REALSXP) REPROTECT(sy = Rf_coerceVector(sy, REALSXP), piy);
-        if (syt != R_NilValue && TYPEOF(syt) != REALSXP)
-            REPROTECT(syt = Rf_coerceVector(syt, REALSXP), piyt);
-
-        const R_xlen_t nx = XLENGTH(sx);
-        const R_xlen_t ny = XLENGTH(sy);
-        x.assign(REAL(sx), REAL(sx) + static_cast<size_t>(nx));
-        y.assign(REAL(sy), REAL(sy) + static_cast<size_t>(ny));
-
-        if (syt != R_NilValue) {
-            const R_xlen_t nyt = XLENGTH(syt);
-            if (nyt == nx) {
-                y_true.assign(REAL(syt), REAL(syt) + static_cast<size_t>(nyt));
-            }
-        }
-        UNPROTECT(3); // sx, sy, syt
-    }
-
-    const R_xlen_t N = static_cast<R_xlen_t>(x.size());
-
-    // ---- Scalars / parameters (validated) ----
-    const int    max_iterations = Rf_asInteger(s_max_iterations);
-    const double ridge_lambda   = Rf_asReal   (s_ridge_lambda);
-    const double max_beta       = Rf_asReal   (s_max_beta);
-    const double tolerance      = Rf_asReal   (s_tolerance);
-    const int    k_min          = Rf_asInteger(s_k_min);
-    const int    k_max          = Rf_asInteger(s_k_max);
-    const double error_window_factor = Rf_asReal(s_error_window_factor);
-    const int    distance_kernel= Rf_asInteger(s_distance_kernel);
-    const double dist_norm_factor = Rf_asReal (s_dist_normalization_factor);
-    const bool   verbose        = (Rf_asLogical(s_verbose) == TRUE);
-
-    if (max_iterations < 1)      Rf_error("max_iterations must be >= 1.");
-    if (ridge_lambda   < 0.0)    Rf_error("ridge_lambda must be >= 0.");
-    if (!(max_beta     > 0.0))   Rf_error("max_beta must be > 0.");
-    if (!(tolerance    > 0.0))   Rf_error("tolerance must be > 0.");
-    if (k_min < 1)               Rf_error("k_min must be >= 1.");
-    if (k_max < k_min)           Rf_error("k_max must be >= k_min.");
-    if (static_cast<R_xlen_t>(k_max) > N)
-        Rf_error("k_max (%d) cannot exceed length(x) (%lld).",
-                 k_max, static_cast<long long>(N));
-
-    // ---- Core computation (no R allocations inside) ----
-    mabilog_t out = mabilog_with_smoothed_errors(x, y, y_true,
-                                                 max_iterations, ridge_lambda,
-                                                 max_beta, tolerance,
-                                                 k_min, k_max,
-                                                 error_window_factor,
-                                                 distance_kernel, dist_norm_factor,
-                                                 verbose);
-
-    // ---- Build result (container-first; per-element PROTECT/UNPROTECT) ----
-    SEXP r_result = PROTECT(Rf_allocVector(VECSXP, 8));
-    // r_result names
-    {
-        SEXP names = PROTECT(Rf_allocVector(STRSXP, 8));
-        SET_STRING_ELT(names, 0, Rf_mkChar("k_values"));
-        SET_STRING_ELT(names, 1, Rf_mkChar("opt_k"));
-        SET_STRING_ELT(names, 2, Rf_mkChar("opt_k_idx"));
-        SET_STRING_ELT(names, 3, Rf_mkChar("k_mean_errors"));
-        SET_STRING_ELT(names, 4, Rf_mkChar("smoothed_k_mean_errors"));
-        SET_STRING_ELT(names, 5, Rf_mkChar("k_mean_true_errors"));
-        SET_STRING_ELT(names, 6, Rf_mkChar("predictions"));
-        SET_STRING_ELT(names, 7, Rf_mkChar("k_predictions"));
-        Rf_setAttrib(r_result, R_NamesSymbol, names);
-        UNPROTECT(1);
-    }
-
-    // 0: k_values sequence [k_min .. k_max]
-    {
-        const R_xlen_t K = static_cast<R_xlen_t>(
-            static_cast<long long>(k_max) - static_cast<long long>(k_min) + 1LL);
-        std::vector<int> k_values(static_cast<size_t>(K));
-        for (R_xlen_t i = 0; i < K; ++i)
-            k_values[static_cast<size_t>(i)] = k_min + static_cast<int>(i);
-        SEXP kv = PROTECT(convert_vector_int_to_R(k_values));
-        SET_VECTOR_ELT(r_result, 0, kv);
-        UNPROTECT(1);
-    }
-
-    // 1: opt_k (scalar int; expose as core returns)
-    {
-        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_k));
-        SET_VECTOR_ELT(r_result, 1, s);
-        UNPROTECT(1);
-    }
-
-    // 2: opt_k_idx
-    {
-        SEXP s = PROTECT(Rf_ScalarInteger(out.opt_k_idx + 1));
-        SET_VECTOR_ELT(r_result, 2, s);
-        UNPROTECT(1);
-    }
-
-    // 3: k_mean_errors
-    {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_errors));
-        SET_VECTOR_ELT(r_result, 3, s);
-        UNPROTECT(1);
-    }
-
-    // 4: smoothed_k_mean_errors
-    {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.smoothed_k_mean_errors));
-        SET_VECTOR_ELT(r_result, 4, s);
-        UNPROTECT(1);
-    }
-
-    // 5: k_mean_true_errors (or NULL)
-    if (!y_true.empty()) {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.k_mean_true_errors));
-        SET_VECTOR_ELT(r_result, 5, s);
-        UNPROTECT(1);
-    } else {
-        SET_VECTOR_ELT(r_result, 5, R_NilValue);
-    }
-
-    // 6: predictions
-    {
-        SEXP s = PROTECT(convert_vector_double_to_R(out.predictions));
-        SET_VECTOR_ELT(r_result, 6, s);
-        UNPROTECT(1);
-    }
-
-    // 7: k_predictions (list<numeric>)
-    {
-        SEXP s = PROTECT(convert_vector_vector_double_to_R(out.k_predictions));
-        SET_VECTOR_ELT(r_result, 7, s);
-        UNPROTECT(1);
-    }
-
-    UNPROTECT(1); // r_result
-    return r_result;
-}
