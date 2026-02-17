@@ -31,9 +31,48 @@ phate(
 )
 }
 \arguments{
-\item{X, D, K, P}{Inputs passed to \code{\link{phate.core}} (provide exactly one).}
+\item{X}{Optional numeric data matrix passed to \code{\link{phate.core}}.}
 
-\item{k, alpha.decay, knn.use, knn.symmetrize, t, t.max, pca.dim, pca.center, pca.scale, }{kernel.eps,potential.eps,compute.D.pot Passed to \code{\link{phate.core}}.}
+\item{D}{Optional numeric distance matrix (or \code{dist}) passed to
+\code{\link{phate.core}}.}
+
+\item{K}{Optional affinity/kernel matrix passed to \code{\link{phate.core}}.}
+
+\item{P}{Optional Markov diffusion operator passed to \code{\link{phate.core}}.}
+
+\item{k}{Integer k-NN neighborhood size passed to \code{\link{phate.core}}.}
+
+\item{alpha.decay}{Positive kernel decay exponent passed to
+\code{\link{phate.core}}.}
+
+\item{knn.use}{Logical; if \code{TRUE}, build a sparse kNN kernel in
+\code{\link{phate.core}}.}
+
+\item{knn.symmetrize}{Character in \code{c("mean", "max")} passed to
+\code{\link{phate.core}}.}
+
+\item{t}{Either \code{"auto"} or a positive integer diffusion time passed to
+\code{\link{phate.core}}.}
+
+\item{t.max}{Positive integer upper bound for automatic \code{t} selection in
+\code{\link{phate.core}}.}
+
+\item{pca.dim}{Optional integer PCA dimension passed to
+\code{\link{phate.core}}.}
+
+\item{pca.center}{Logical PCA centering flag passed to
+\code{\link{phate.core}}.}
+
+\item{pca.scale}{Logical PCA scaling flag passed to \code{\link{phate.core}}.}
+
+\item{kernel.eps}{Small positive floor used in kernel normalization by
+\code{\link{phate.core}}.}
+
+\item{potential.eps}{Small positive floor used in \code{-log(P^t)} by
+\code{\link{phate.core}}.}
+
+\item{compute.D.pot}{Logical; if \code{TRUE}, compute diffusion-potential
+distances in \code{\link{phate.core}}.}
 
 \item{ndim}{Embedding dimension passed to \code{\link{phate.embed}}.}
 

@@ -350,7 +350,7 @@ summary(Z.fit)
 ## 8) Recover Extrema and Basins
 
 ```{r refined-basins}
-y.basins <- compute.refined.basins(
+y.basins <- compute.gfc(
   adj.list = fit.seed$graph$adj.list,
   edge.length.list = fit.seed$graph$edge.length.list,
   fitted.values = y.hat,

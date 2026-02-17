@@ -1,196 +1,191 @@
-#' Compute Refined Gradient Flow Complex
+#' Compute Gradient Flow Complex
 #'
-#' Computes the gradient flow complex (GFC) for a scalar function defined on
-#' a weighted graph, applying a sequence of refinement operations to produce
-#' a robust basin structure suitable for association analysis. This function
-#' mirrors the behavior of \code{compute.refined.basins()} for compatibility.
+#' This function computes the initial basins of attraction for a gradient flow
+#' and applies a sequence of filtering and merging operations to produce a
+#' refined basin structure. The refinement process includes filtering by
+#' relative values, clustering and merging similar extrema, and removing
+#' extrema based on geometric characteristics.
 #'
-#' @param adj.list A list of integer vectors representing the graph's adjacency
-#'   structure. Element \code{i} contains the 1-based indices of vertices
-#'   adjacent to vertex \code{i}.
-#' @param edge.length.list A list of numeric vectors containing edge lengths.
-#'   Element \code{i} contains lengths corresponding to the edges in
-#'   \code{adj.list[[i]]}. Must have the same structure as \code{adj.list}.
-#' @param fitted.values Numeric vector of function values at each vertex.
-#'   The length must equal the number of vertices.
-#' @param edge.length.quantile.thld Numeric value in (0, 1] specifying the
-#'   quantile of the graph's edge length distribution to use as a threshold
-#'   for basin construction. Default is 0.9.
-#' @param min.rel.value.max Minimum relative value threshold for retaining
-#'   maxima. Maxima with \code{value / median(y)} below this threshold are
-#'   removed. Default is 1.1.
-#' @param max.rel.value.min Maximum relative value threshold for retaining
-#'   minima. Minima with \code{value / median(y)} above this threshold are
-#'   removed. Default is 0.9.
-#' @param max.overlap.threshold Overlap distance threshold for clustering
-#'   maxima. Basins with overlap distance below this threshold are merged.
-#'   Default is 0.15.
-#' @param min.overlap.threshold Overlap distance threshold for clustering
-#'   minima. Default is 0.15.
-#' @param p.mean.nbrs.dist.threshold Percentile threshold for mean neighbor
-#'   distance in geometric filtering. Extrema at vertices exceeding this
-#'   percentile are removed. This filter is applied symmetrically to both
-#'   maxima and minima, consistent with \code{compute.refined.basins()}.
-#'   Default is 0.9.
-#' @param p.mean.hopk.dist.threshold Percentile threshold for mean hop-k
-#'   distance in geometric filtering. Extrema exceeding this percentile are
-#'   removed. Default is 0.9.
-#' @param p.deg.threshold Percentile threshold for vertex degree in geometric
-#'   filtering. Extrema at vertices exceeding this percentile are removed.
-#'   Default is 0.9.
-#' @param min.basin.size Minimum number of vertices required for a basin to
-#'   be retained. Default is 10.
-#' @param expand.basins Logical indicating whether to expand basins to cover
-#'   all graph vertices after filtering. Uncovered vertices are assigned to
-#'   the nearest retained basin. Default is TRUE.
-#' @param apply.relvalue.filter Logical indicating whether to apply relative
-#'   value filtering. Default is TRUE.
-#' @param apply.maxima.clustering Logical indicating whether to cluster and
-#'   merge similar maximum basins. Default is TRUE.
-#' @param apply.minima.clustering Logical indicating whether to cluster and
-#'   merge similar minimum basins. Default is TRUE.
-#' @param apply.geometric.filter Logical indicating whether to apply geometric
-#'   filtering based on hop distance and degree. Default is TRUE.
-#' @param hop.k Parameter for hop-k distance calculation in summary statistics.
-#'   Default is 2.
-#' @param with.trajectories Logical indicating whether to return gradient
-#'   trajectories for each basin. When TRUE, the result includes complete
-#'   trajectory information enabling reconstruction of all gradient flow paths.
-#'   This is computationally more expensive and produces larger output objects.
-#'   Default is FALSE.
-#' @param max.chain.depth Integer specifying the maximum recursion depth when
-#'   extending trajectories through spurious extrema. Higher values allow
-#'   trajectories to be joined across more intermediate spurious extrema.
-#'   Default is 5.
-#' @param verbose Logical indicating whether to print progress messages.
-#'   Default is FALSE.
+#' @param adj.list Adjacency list representation of the graph structure
+#' @param edge.length.list List of edge lengths corresponding to the adjacency list
+#' @param fitted.values Numeric vector of fitted values at each vertex
+#' @param edge.length.quantile.thld Numeric value in (0, 1] specifying the quantile
+#'   of the graph's edge length distribution to use as a threshold for basin
+#'   construction. This parameter prevents "basin jumping" pathology by excluding
+#'   long edges that may cause trajectories to skip over intermediate critical points.
+#' @param min.rel.value.max Minimum relative value threshold for maxima (default: 1.1)
+#' @param max.rel.value.min Maximum relative value threshold for minima (default: 0.9)
+#' @param max.overlap.threshold Overlap threshold for clustering maxima (default: 0.15)
+#' @param min.overlap.threshold Overlap threshold for clustering minima (default: 0.15)
+#' @param p.mean.nbrs.dist.threshold Threshold for mean nearest neighbors distance percentile (default: 0.9)
+#' @param p.mean.hopk.dist.threshold Threshold for mean hop-k distance percentile (default: 0.9)
+#' @param p.deg.threshold Threshold for degree percentile (default: 0.9)
+#' @param min.basin.size Minimum basin size threshold. Extrema with basins
+#'   containing fewer than this many vertices are removed. Default is 10.
+#' @param expand.basins Logical indicating whether to expand basins to cover all
+#'   graph vertices (default: TRUE). When TRUE, vertices not covered by any
+#'   retained basin are assigned to the nearest basin based on shortest path
+#'   distance in the weighted graph. This ensures complete coverage after
+#'   filtering removes spurious extrema.
+#' @param hop.k Parameter for hop-k distance calculation in summary (default: 2)
+#' @param apply.relvalue.filter Logical indicating whether to apply relative value filtering (default: TRUE)
+#' @param apply.maxima.clustering Logical indicating whether to cluster and merge maxima (default: TRUE)
+#' @param apply.minima.clustering Logical indicating whether to cluster and merge minima (default: TRUE)
+#' @param apply.geometric.filter Logical indicating whether to apply geometric filtering (default: TRUE)
+#' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
+#' @param verbose Logical indicating whether to print progress messages (default: FALSE)
 #'
-#' @return A list of class \code{"gfc"} containing:
+#' @return A list of class \code{"basins_of_attraction"} with the following components:
 #'   \describe{
-#'     \item{max.basins}{Named list of maximum basins. Each basin contains
-#'       \code{vertex} (1-based extremum location), \code{value} (function
-#'       value at extremum), \code{vertices} (1-based basin member indices),
-#'       \code{hop.distances} (hop distance from extremum for each vertex),
-#'       and \code{max.hop.distance}.}
-#'     \item{min.basins}{Named list of minimum basins with the same structure.}
-#'     \item{summary}{Data frame with one row per retained extremum containing
-#'       label, vertex, value, rel.value, type, hop.idx, basin.size, and
-#'       geometric measures. Minima are labeled m1, m2, ... in order of
-#'       increasing value; maxima are labeled M1, M2, ... in order of
-#'       decreasing value.}
-#'     \item{max.membership}{List of length n.vertices where element v contains
-#'       the 1-based indices of maximum basins containing vertex v.}
-#'     \item{min.membership}{List of length n.vertices for minimum basins.}
-#'     \item{expanded.max.assignment}{Integer vector of length n.vertices
-#'       giving the 1-based index of the assigned maximum basin for each
-#'       vertex (NA if unassigned). Only populated if expand.basins = TRUE.}
-#'     \item{expanded.min.assignment}{Integer vector for minimum basins.}
-#'     \item{stage.history}{Data frame recording the number of extrema before
-#'       and after each refinement stage.}
-#'     \item{n.vertices}{Total number of vertices in the graph.}
-#'     \item{y.median}{Median of the function values.}
-#'     \item{parameters}{Named list of all parameter values used.}
-#'     \item{joined.trajectories}{(If \code{with.trajectories = TRUE}) List of
-#'       joined trajectories, each containing \code{min.vertex}, \code{max.vertex},
-#'       \code{path}, \code{intermediate.extrema}, \code{total.change}, and
-#'       \code{path.length}. These are complete gradient trajectories from
-#'       non-spurious minima to non-spurious maxima.}
-#'     \item{cell.map}{(If \code{with.trajectories = TRUE}) Named list mapping
-#'       "minVertex-maxVertex" pairs to indices in \code{joined.trajectories}.
-#'       This organizes trajectories by their Morse-Smale cell.}
+#'     \item{basins}{The refined basins object containing:
+#'       \describe{
+#'         \item{lmax_basins}{Named list of maximum basins, where names correspond
+#'           to labels (M1, M2, ...) from the summary. Each basin contains a
+#'           \code{vertex} (the extremum location) and \code{basin_df} (data frame
+#'           of basin vertices with gradient flow information).}
+#'         \item{lmin_basins}{Named list of minimum basins, with analogous structure
+#'           and labels (m1, m2, ...).}
+#'         \item{y}{Numeric vector of function values at each vertex.}
+#'         \item{adj.list}{Adjacency list representation of the graph structure.}
+#'         \item{edge.length.list}{List of edge lengths corresponding to the
+#'           adjacency list.}
+#'         \item{n.vertices}{Integer giving the number of vertices in the graph.}
+#'         \item{hop.k}{The hop distance parameter used for summary statistics.}
+#'       }
+#'     }
+#'     \item{summary}{A data frame with one row per retained extremum, containing:
+#'       label, vertex index, function value, relative value, extremum type,
+#'       hop index, basin size, distance percentiles, degree, and degree percentile.
+#'       Minima are labeled m1, m2, ... in order of increasing value; maxima are
+#'       labeled M1, M2, ... in order of decreasing value.}
+#'     \item{max.overlap.dist}{Symmetric matrix of pairwise overlap distances
+#'       between maximum basins, with row and column names matching the summary
+#'       labels. Returns \code{NULL} if fewer than two maxima remain after
+#'       refinement.}
+#'     \item{min.overlap.dist}{Symmetric matrix of pairwise overlap distances
+#'       between minimum basins, with row and column names matching the summary
+#'       labels. Returns \code{NULL} if fewer than two minima remain after
+#'       refinement.}
+#'     \item{max.vertices.list}{Named list of integer vectors containing vertex
+#'       indices for each maximum basin. Names match basin labels from the summary.}
+#'     \item{min.vertices.list}{Named list of integer vectors containing vertex
+#'       indices for each minimum basin. Names match basin labels from the summary.}
+#'     \item{expanded.max.vertices.list}{If \code{expand.basins = TRUE}, a named
+#'       list of expanded maximum basins covering all graph vertices. Otherwise
+#'       \code{NULL}.}
+#'     \item{expanded.min.vertices.list}{If \code{expand.basins = TRUE}, a named
+#'       list of expanded minimum basins covering all graph vertices. Otherwise
+#'       \code{NULL}.}
+#'     \item{stage.history}{A data frame recording the number of maxima and minima
+#'       before and after each refinement stage, facilitating reproducible reporting.}
+#'     \item{parameters}{A named list of all parameter values used in the refinement
+#'       process, enabling exact replication and automated report generation.}
 #'   }
 #'
 #' @details
-#' The GFC computation proceeds through several stages, each of which can be
-#' enabled or disabled via parameters.
+#' The refinement process consists of several stages. First, the function computes
+#' the initial basins of attraction using the gradient flow structure. These basins
+#' capture the regions of influence for each local extremum in the fitted surface.
 #'
-#' The initial computation uses \code{compute_geodesic_basin()} to perform
-#' monotone BFS with edge length filtering. Starting from each local extremum,
-#' the algorithm expands to neighbors with monotonically changing function
-#' values (descending for maxima, ascending for minima). Crucially, edges
-#' longer than the specified quantile threshold (\code{edge.length.quantile.thld})
-#' are skipped during BFS, preventing "basin jumping" through long edges. This
-#' matches the behavior of R's \code{compute.basins.of.attraction()} function.
+#' The relative value filtering stage removes extrema whose values are too close
+#' to the median of the fitted values. Maxima with relative values below
+#' \code{min.rel.value.max} and minima with relative values above
+#' \code{max.rel.value.min} are eliminated. This step focuses subsequent analysis
+#' on prominent features of the fitted surface.
 #'
-#' The relative value filtering stage removes extrema whose values are too
-#' close to the median. This focuses the analysis on prominent features of
-#' the function landscape rather than minor fluctuations.
+#' The clustering stage identifies groups of similar extrema based on basin
+#' overlap. When basins share a substantial portion of their vertices, their
+#' corresponding extrema likely represent the same underlying feature. The
+#' \code{max.overlap.threshold} and \code{min.overlap.threshold} parameters
+#' control the sensitivity of this clustering for maxima and minima respectively.
 #'
-#' The clustering stage identifies groups of extrema whose basins exhibit
-#' substantial overlap, indicating that they likely represent the same
-#' underlying feature. The overlap coefficient (Szymkiewicz-Simpson index)
-#' measures similarity through the ratio of intersection size to minimum
-#' basin size. Connected components of the threshold graph define clusters,
-#' and basins within each cluster are merged.
+#' After clustering, the merging stage combines basins within each cluster into
+#' a single basin. The merged basin inherits the extremum with the most extreme
+#' value within the cluster. This reduces redundancy in the basin structure while
+#' preserving the essential geometric features.
 #'
 #' The geometric filtering stage removes extrema whose basins exhibit unusual
-#' structural characteristics. All geometric filters (mean neighbor distance,
-#' mean hop-k distance, and degree percentile) are applied symmetrically to
-#' both maxima and minima, consistent with \code{compute.refined.basins()}.
+#' structural characteristics. Basins with high values of mean hop-k distance or
+#' degree percentiles may represent spurious features or boundary artifacts. The
+#' thresholds \code{p.mean.hopk.dist.threshold} and \code{p.deg.threshold}
+#' determine which basins to retain based on these geometric measures. Additionally,
+#' basins with fewer than \code{min.basin.size} vertices are removed as they lack
+#' sufficient statistical support.
 #'
-#' When \code{with.trajectories = TRUE}, the function additionally computes
-#' joined trajectories that connect non-spurious minima to non-spurious maxima.
-#' Trajectories that terminate at spurious extrema are extended by recursively
-#' exploring the basins of those spurious extrema to find paths to non-spurious
-#' targets. The \code{max.chain.depth} parameter limits the recursion depth.
+#' When \code{expand.basins = TRUE}, an additional step assigns uncovered vertices
+#' to their nearest retained basin. After filtering spurious extrema, some vertices
+#' may not belong to any retained basin. These are reassigned based on shortest
+#' path distance in the weighted graph, ensuring complete coverage for downstream
+#' analyses that require every vertex to have a basin assignment.
+#'
+#' Each filtering stage can be disabled by setting the corresponding logical
+#' parameter to FALSE, allowing users to customize the refinement pipeline
+#' for specific applications.
 #'
 #' @examples
 #' \dontrun{
-#' ## Compute GFC with default parameters
-#' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
-#'                    verbose = TRUE)
+#' # Compute refined basins with default parameters
+#' result <- compute.gfc(adj.list,
+#'                                  edge.length.list,
+#'                                  fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  verbose = TRUE)
 #'
-#' ## Examine the result
-#' print(gfc)
-#' print(gfc$summary)
+#' # Access the refined basins and summary
+#' refined.basins <- result$basins
+#' basin.summary <- result$summary
 #'
-#' ## Use parameters matching compute.refined.basins() defaults
-#' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
-#'                    p.mean.nbrs.dist.threshold = 0.9,
-#'                    p.mean.hopk.dist.threshold = 0.9,
-#'                    p.deg.threshold = 0.9,
-#'                    verbose = TRUE)
+#' # View stage history
+#' print(result$stage.history)
 #'
-#' ## With trajectories for downstream analysis
-#' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
-#'                    with.trajectories = TRUE,
-#'                    verbose = TRUE)
+#' # Generate methods paragraph
+#' report <- generate.refinement.report(result)
+#' cat(report)
 #'
-#' ## Access joined trajectories
-#' length(gfc$joined.trajectories)  # Total number of trajectories
-#' names(gfc$cell.map)              # Cell identifiers
+#' # Use custom thresholds for more aggressive filtering
+#' result <- compute.gfc(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  min.rel.value.max = 1.2,
+#'                                  max.rel.value.min = 0.8,
+#'                                  min.basin.size = 10,
+#'                                  expand.basins = TRUE,
+#'                                  p.mean.hopk.dist.threshold = 0.85,
+#'                                  verbose = TRUE)
+#'
+#' # Skip clustering steps
+#' result <- compute.gfc(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  apply.maxima.clustering = FALSE,
+#'                                  apply.minima.clustering = FALSE,
+#'                                  verbose = TRUE)
 #' }
 #'
-#' @seealso \code{\link{compute.gfc.matrix}} for computing GFC for multiple
-#'   functions, \code{\link{compute.refined.basins}} for the R implementation
+#' @seealso \code{\link{generate.refinement.report}} for automated report generation,
+#'   \code{\link{expand.basins.to.cover}} for the basin expansion algorithm
 #'
 #' @export
 compute.gfc <- function(adj.list,
-                        edge.length.list,
-                        fitted.values,
-                        edge.length.quantile.thld = 0.9,
-                        min.rel.value.max = 1.1,
-                        max.rel.value.min = 0.9,
-                        max.overlap.threshold = 0.15,
-                        min.overlap.threshold = 0.15,
-                        p.mean.nbrs.dist.threshold = 0.9,
-                        p.mean.hopk.dist.threshold = 0.9,
-                        p.deg.threshold = 0.9,
-                        min.basin.size = 10L,
-                        expand.basins = TRUE,
-                        apply.relvalue.filter = TRUE,
-                        apply.maxima.clustering = TRUE,
-                        apply.minima.clustering = TRUE,
-                        apply.geometric.filter = TRUE,
-                        hop.k = 2L,
-                        with.trajectories = FALSE,
-                        max.chain.depth = 5L,
-                        verbose = FALSE) {
+                                   edge.length.list,
+                                   fitted.values,
+                                   edge.length.quantile.thld = 0.9,
+                                   min.rel.value.max = 1.1,
+                                   max.rel.value.min = 0.9,
+                                   max.overlap.threshold = 0.15,
+                                   min.overlap.threshold = 0.15,
+                                   p.mean.nbrs.dist.threshold = 0.9,
+                                   p.mean.hopk.dist.threshold = 0.9,
+                                   p.deg.threshold = 0.9,
+                                   min.basin.size = 10,
+                                   expand.basins = TRUE,
+                                   hop.k = 2,
+                                   apply.relvalue.filter = TRUE,
+                                   apply.maxima.clustering = TRUE,
+                                   apply.minima.clustering = TRUE,
+                                   apply.geometric.filter = TRUE,
+                                   with.trajectories = FALSE,
+                                   verbose = FALSE) {
 
-    ## ========================================================================
-    ## Input validation
-    ## ========================================================================
-
+    ## Validate inputs
     if (!is.list(adj.list)) {
         stop("adj.list must be a list")
     }
@@ -207,157 +202,464 @@ compute.gfc <- function(adj.list,
         stop("fitted.values must have the same length as adj.list")
     }
 
-    ## Validate numeric parameters
-    if (!is.numeric(edge.length.quantile.thld) ||
-        edge.length.quantile.thld <= 0 ||
-        edge.length.quantile.thld > 1) {
-        stop("edge.length.quantile.thld must be in (0, 1]")
-    }
-
-    if (!is.numeric(max.overlap.threshold) ||
-        max.overlap.threshold < 0 ||
-        max.overlap.threshold > 1) {
-        stop("max.overlap.threshold must be in [0, 1]")
-    }
-
-    if (!is.numeric(min.overlap.threshold) ||
-        min.overlap.threshold < 0 ||
-        min.overlap.threshold > 1) {
-        stop("min.overlap.threshold must be in [0, 1]")
-    }
-
-    ## Validate trajectory parameters
-    if (!is.logical(with.trajectories) || length(with.trajectories) != 1) {
-        stop("with.trajectories must be a single logical value")
-    }
-
-    if (!is.numeric(max.chain.depth) || max.chain.depth < 0) {
-        stop("max.chain.depth must be a non-negative integer")
-    }
+    ## Initialize stage history tracking
+    stage.history <- data.frame(
+        stage = character(),
+        description = character(),
+        n.max.before = integer(),
+        n.max.after = integer(),
+        n.min.before = integer(),
+        n.min.after = integer(),
+        stringsAsFactors = FALSE
+    )
 
     ## -------------------------------------------------------
-    ## Breaking ties (if any)
+    ## Step 0: Breaking ties (if any)
     ## -------------------------------------------------------
     fitted.values <- break.ties(fitted.values,
-                                noise.scale = 1e-15,
-                                min.abs.noise = 1e-16,
+                                noise.scale = 1e-10,
+                                min.abs.noise = 1e-12,
                                 preserve.bounds = TRUE,
                                 seed = NULL,
                                 verbose = FALSE)
 
-    ## ========================================================================
-    ## Convert to 0-based indexing for C++
-    ## ========================================================================
-
-    adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
-
-    ## ========================================================================
-    ## Call C++ implementation
-    ## ========================================================================
-
-    result <- .Call(
-        S_compute_gfc,
-        adj.list.0based,
-        edge.length.list,
-        as.double(fitted.values),
-        as.double(edge.length.quantile.thld),
-        as.double(min.rel.value.max),
-        as.double(max.rel.value.min),
-        as.double(max.overlap.threshold),
-        as.double(min.overlap.threshold),
-        as.double(p.mean.nbrs.dist.threshold),
-        as.double(p.mean.hopk.dist.threshold),
-        as.double(p.deg.threshold),
-        as.integer(min.basin.size),
-        as.logical(expand.basins),
-        as.logical(apply.relvalue.filter),
-        as.logical(apply.maxima.clustering),
-        as.logical(apply.minima.clustering),
-        as.logical(apply.geometric.filter),
-        as.integer(hop.k),
-        as.logical(with.trajectories),
-        as.integer(max.chain.depth),
-        as.logical(verbose),
-        PACKAGE = "gflow"
-    )
-
-    ## ========================================================================
-    ## Fix assignment index mapping to match summary label order
-    ## ========================================================================
-
-    if (nrow(result$summary) > 0) {
-        ## The expanded assignments use indices based on basin vector position,
-        ## but summary labels (M1, M2, ...) are assigned by sorted value.
-        ## We need to create a mapping from vector position to label index.
-
-        ## Get maxima in summary order (this is how labels were assigned)
-        max.summary <- result$summary[result$summary$type == "max", ]
-        min.summary <- result$summary[result$summary$type == "min", ]
-
-        ## Build mapping: for each basin in max.basins (by position),
-        ## find which label index (1, 2, ...) it should have
-        if (length(result$max.basins) > 0 && length(result$expanded.max.assignment) > 0) {
-            ## Get extremum vertices in basin vector order
-            basin.vertices.order <- sapply(result$max.basins, function(b) b$vertex)
-
-            ## For each basin position, find its row in the sorted summary
-            ## The summary row index IS the label number (M1 = row 1 among maxima)
-            position.to.label.idx <- match(basin.vertices.order, max.summary$vertex)
-
-            ## Now remap the assignment vector
-            ## Old: assignment[v] = position in max.basins (1-based)
-            ## New: assignment[v] = label index (1 = M1, 2 = M2, ...)
-            old.assignment <- result$expanded.max.assignment
-            new.assignment <- rep(NA_integer_, length(old.assignment))
-
-            for (v in seq_along(old.assignment)) {
-                old.idx <- old.assignment[v]
-                if (!is.na(old.idx) && old.idx >= 1 && old.idx <= length(position.to.label.idx)) {
-                    new.assignment[v] <- position.to.label.idx[old.idx]
-                }
-            }
-            result$expanded.max.assignment <- new.assignment
-        }
-
-        ## Same fix for minima
-        if (length(result$min.basins) > 0 && length(result$expanded.min.assignment) > 0) {
-            basin.vertices.order <- sapply(result$min.basins, function(b) b$vertex)
-            position.to.label.idx <- match(basin.vertices.order, min.summary$vertex)
-
-            old.assignment <- result$expanded.min.assignment
-            new.assignment <- rep(NA_integer_, length(old.assignment))
-
-            for (v in seq_along(old.assignment)) {
-                old.idx <- old.assignment[v]
-                if (!is.na(old.idx) && old.idx >= 1 && old.idx <= length(position.to.label.idx)) {
-                    new.assignment[v] <- position.to.label.idx[old.idx]
-                }
-            }
-            result$expanded.min.assignment <- new.assignment
-        }
-
-        ## Build vertex-to-label lookup from summary
-        vertex.to.label <- result$summary$label
-        names(vertex.to.label) <- as.character(result$summary$vertex)
-
-        ## Name max.basins by matching vertices
-        max.basin.names <- sapply(result$max.basins, function(b) {
-            vertex.to.label[as.character(b$vertex)]
-        })
-        names(result$max.basins) <- max.basin.names
-
-        ## Name min.basins by matching vertices
-        min.basin.names <- sapply(result$min.basins, function(b) {
-            vertex.to.label[as.character(b$vertex)]
-        })
-        names(result$min.basins) <- min.basin.names
+    ## -------------------------------------------------------
+    ## Step 1: Compute initial basins of attraction
+    ## -------------------------------------------------------
+    if (verbose) {
+        cat("Step 1: Computing initial basins of attraction...\n")
     }
 
-    ## ========================================================================
-    ## Store parameters for reproducibility
-    ## ========================================================================
+    current.basins <- compute.basins.of.attraction(adj.list,
+                                                   edge.length.list,
+                                                   fitted.values,
+                                                   edge.length.quantile.thld,
+                                                   with.trajectories)
 
-    result$parameters <- list(
+    initial.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+    n.max <- sum(initial.summary$type == "max")
+    n.min <- sum(initial.summary$type == "min")
+
+    stage.history <- rbind(stage.history, data.frame(
+        stage = "initial",
+        description = sprintf("Initial basins (edge quantile = %.2f)",
+                              edge.length.quantile.thld),
+        n.max.before = NA_integer_,
+        n.max.after = n.max,
+        n.min.before = NA_integer_,
+        n.min.after = n.min,
+        stringsAsFactors = FALSE
+    ))
+
+    if (verbose) {
+        cat(sprintf("  Found %d maxima and %d minima\n", n.max, n.min))
+        cat("initial.summary:\n")
+        print(initial.summary)
+    }
+
+    ## -------------------------------------------------------
+    ## Step 2: Filter by relative values
+    ## -------------------------------------------------------
+    if (apply.relvalue.filter) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
+        if (verbose) {
+            cat(sprintf("\nStep 2: Filtering by relative values (max >= %.2f, min <= %.2f)...\n",
+                        min.rel.value.max, max.rel.value.min))
+        }
+
+        current.basins <- filter.basins.by.relvalue(current.basins,
+                                                    min.rel.value.max = min.rel.value.max,
+                                                    max.rel.value.min = max.rel.value.min)
+
+        relvalue.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(relvalue.summary$type == "max")
+        n.min.after <- sum(relvalue.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "relvalue",
+            description = sprintf("Relative value filter (max >= %.2f, min <= %.2f)",
+                                  min.rel.value.max, max.rel.value.min),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
+        if (verbose) {
+            cat(sprintf("  Retained %d maxima and %d minima\n", n.max.after, n.min.after))
+            cat("relvalue.summary:\n")
+            print(relvalue.summary)
+        }
+    } else {
+        if (verbose) {
+            cat("\nStep 2: Skipping relative value filtering\n")
+        }
+    }
+
+    ## -------------------------------------------------------
+    ## Step 3: Cluster and merge maxima
+    ## -------------------------------------------------------
+    if (apply.maxima.clustering) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
+        if (verbose) {
+            cat(sprintf("\nStep 3: Clustering maxima (overlap threshold = %.2f)...\n",
+                        max.overlap.threshold))
+        }
+
+        max.clusters <- cluster.local.extrema(current.basins,
+                                              adj.list,
+                                              edge.length.list,
+                                              extrema.type = "max",
+                                              overlap.threshold = max.overlap.threshold)
+
+        if (verbose) {
+            n.clusters <- length(unique(max.clusters$cluster.assignments))
+            n.singletons <- sum(table(max.clusters$cluster.assignments) == 1)
+            n.merged <- n.clusters - n.singletons
+            cat(sprintf("  Found %d clusters (%d singletons, %d to be merged)\n",
+                        n.clusters, n.singletons, n.merged))
+            cat("  Merging clustered maxima...\n")
+        }
+
+        current.basins <- merge.clustered.basins(current.basins,
+                                                 max.clusters,
+                                                 extrema.type = "max")
+
+        merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(merged.max.summary$type == "max")
+        n.min.after <- sum(merged.max.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "merge.max",
+            description = sprintf("Cluster and merge maxima (overlap threshold = %.2f)",
+                                  max.overlap.threshold),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
+        if (verbose) {
+            cat(sprintf("  Result: %d maxima after merging\n", n.max.after))
+            cat("merged.max.summary:\n")
+            print(merged.max.summary)
+        }
+    } else {
+        if (verbose) {
+            cat("\nStep 3: Skipping maxima clustering\n")
+        }
+    }
+
+    ## -------------------------------------------------------
+    ## Step 4: Cluster and merge minima
+    ## -------------------------------------------------------
+    if (apply.minima.clustering) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
+        if (verbose) {
+            cat(sprintf("\nStep 4: Clustering minima (overlap threshold = %.2f)...\n",
+                        min.overlap.threshold))
+        }
+
+        min.clusters <- cluster.local.extrema(current.basins,
+                                              adj.list,
+                                              edge.length.list,
+                                              extrema.type = "min",
+                                              overlap.threshold = min.overlap.threshold)
+
+        if (verbose) {
+            n.clusters <- length(unique(min.clusters$cluster.assignments))
+            n.singletons <- sum(table(min.clusters$cluster.assignments) == 1)
+            n.merged <- n.clusters - n.singletons
+            cat(sprintf("  Found %d clusters (%d singletons, %d to be merged)\n",
+                        n.clusters, n.singletons, n.merged))
+            cat("  Merging clustered minima...\n")
+        }
+
+        current.basins <- merge.clustered.basins(current.basins,
+                                                 min.clusters,
+                                                 extrema.type = "min")
+
+        merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.after <- sum(merged.min.summary$type == "max")
+        n.min.after <- sum(merged.min.summary$type == "min")
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "merge.min",
+            description = sprintf("Cluster and merge minima (overlap threshold = %.2f)",
+                                  min.overlap.threshold),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
+        if (verbose) {
+            cat(sprintf("  Result: %d minima after merging\n", n.min.after))
+            cat("merged.min.summary:\n")
+            print(merged.min.summary)
+        }
+    } else {
+        if (verbose) {
+            cat("\nStep 4: Skipping minima clustering\n")
+        }
+    }
+
+    ## ------------------------------------------------------------
+    ## Step 5: Filter by geometric characteristics and basin size
+    ## ------------------------------------------------------------
+    if (apply.geometric.filter) {
+        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        n.max.before <- sum(current.summary$type == "max")
+        n.min.before <- sum(current.summary$type == "min")
+
+        if (verbose) {
+            cat(sprintf("\nStep 5: Filtering by geometric characteristics and basin size:\n"))
+            cat(sprintf("  p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, p.deg < %.2f, basin.size >= %d ...\n",
+                        p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold,
+                        p.deg.threshold, min.basin.size))
+        }
+
+        ## Get summary with geometric characteristics
+        geom.summary <- summary(current.basins, adj.list, edge.length.list, hop.k = hop.k)
+
+        ## Filter maxima
+        max.basin.df <- geom.summary[geom.summary$type == "max", ]
+        good.max.vertices <- max.basin.df$vertex[
+                                              max.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
+                                              max.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
+                                              max.basin.df$p.deg < p.deg.threshold &
+                                              max.basin.df$basin.size >= min.basin.size
+                                          ]
+
+        if (verbose) {
+            n.max.after <- length(good.max.vertices)
+            cat(sprintf("  Maxima: %d -> %d (removed %d)\n",
+                        n.max.before, n.max.after, n.max.before - n.max.after))
+            cat("geom.summary:\n")
+            print(geom.summary)
+        }
+
+        ## Filter minima
+        min.basin.df <- geom.summary[geom.summary$type == "min", ]
+        good.min.vertices <- min.basin.df$vertex[
+                                              min.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
+                                              min.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
+                                              min.basin.df$p.deg < p.deg.threshold &
+                                              min.basin.df$basin.size >= min.basin.size
+                                          ]
+
+        if (verbose) {
+            n.min.after <- length(good.min.vertices)
+            cat(sprintf("  Minima: %d -> %d (removed %d)\n",
+                        n.min.before, n.min.after, n.min.before - n.min.after))
+        }
+
+        ## Combine good extrema and filter basins
+        good.extrema <- c(good.min.vertices, good.max.vertices)
+        current.basins <- filter.basins(current.basins, good.extrema)
+
+        n.max.after <- length(good.max.vertices)
+        n.min.after <- length(good.min.vertices)
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "geometric",
+            description = sprintf("Geometric filter (p.dist < %.2f, p.deg < %.2f, size >= %d)",
+                                  p.mean.hopk.dist.threshold, p.deg.threshold, min.basin.size),
+            n.max.before = n.max.before,
+            n.max.after = n.max.after,
+            n.min.before = n.min.before,
+            n.min.after = n.min.after,
+            stringsAsFactors = FALSE
+        ))
+
+    } else {
+        if (verbose) {
+            cat("\nStep 5: Skipping geometric filtering\n")
+        }
+    }
+
+    ## -------------------------------------------------------
+    ## Generate final summary
+    ## -------------------------------------------------------
+    if (verbose) {
+        cat(sprintf("\nGenerating final summary (hop.k = %d)...\n", hop.k))
+    }
+
+    final.summary <- summary(current.basins, adj.list, edge.length.list, hop.k = hop.k)
+
+    ## Populate names in lmin_basins and lmax_basins using extrema labels
+    if (verbose) {
+        cat("Populating extrema labels in basins object...\n")
+        cat("final.summary:\n")
+        print(final.summary)
+    }
+
+    ## Create lookup tables: vertex -> label
+    max.summary <- final.summary[final.summary$type == "max", ]
+    min.summary <- final.summary[final.summary$type == "min", ]
+
+    max.vertex.to.label <- setNames(max.summary$label, max.summary$vertex)
+    min.vertex.to.label <- setNames(min.summary$label, min.summary$vertex)
+
+    ## Name the basin list elements by looking up each basin's vertex
+    if (length(current.basins$lmax_basins) > 0) {
+        basin.vertices <- sapply(current.basins$lmax_basins, function(b) b$vertex)
+        names(current.basins$lmax_basins) <- as.character(max.vertex.to.label[as.character(basin.vertices)])
+    }
+
+    if (length(current.basins$lmin_basins) > 0) {
+        basin.vertices <- sapply(current.basins$lmin_basins, function(b) b$vertex)
+        names(current.basins$lmin_basins) <- as.character(min.vertex.to.label[as.character(basin.vertices)])
+    }
+
+    if (verbose) {
+        cat("  Assigned", length(current.basins$lmax_basins), "maximum labels\n")
+        cat("  Assigned", length(current.basins$lmin_basins), "minimum labels\n")
+    }
+
+    ## Store graph structure in basins object for downstream operations
+    if (verbose) {
+        cat("Storing graph structure in basins object...\n")
+    }
+
+    if (is.null(current.basins$adj.list)) {
+        current.basins$adj.list <- adj.list
+    }
+
+    if (is.null(current.basins$edge.length.list)) {
+        current.basins$edge.length.list <- edge.length.list
+    }
+
+    current.basins$hop.k <- hop.k
+
+    ## Construct vertices lists for maxima and minima
+    if (verbose) {
+        cat("Constructing basin vertices lists...\n")
+    }
+
+    max.vertices.list <- list()
+    if (nrow(max.summary) > 0) {
+        for (i in seq_len(nrow(max.summary))) {
+            label <- max.summary$label[i]
+            vertex <- max.summary$vertex[i]
+            for (basin in current.basins$lmax_basins) {
+                if (basin$vertex == vertex) {
+                    max.vertices.list[[label]] <- basin$basin_df[, 1]
+                    break
+                }
+            }
+        }
+    }
+
+    min.vertices.list <- list()
+    if (nrow(min.summary) > 0) {
+        for (i in seq_len(nrow(min.summary))) {
+            label <- min.summary$label[i]
+            vertex <- min.summary$vertex[i]
+            for (basin in current.basins$lmin_basins) {
+                if (basin$vertex == vertex) {
+                    min.vertices.list[[label]] <- basin$basin_df[, 1]
+                    break
+                }
+            }
+        }
+    }
+
+    ## ----------------------------------------------------------
+    ## Compute final overlap distance matrices for diagnostics
+    ## ----------------------------------------------------------
+    if (verbose) {
+        cat("Computing final overlap distance matrices...\n")
+    }
+
+    max.overlap.dist <- NULL
+    min.overlap.dist <- NULL
+
+    if (length(max.vertices.list) > 1) {
+        max.overlap.dist <- compute.overlap.distance.matrix(max.vertices.list)
+    }
+
+    if (length(min.vertices.list) > 1) {
+        min.overlap.dist <- compute.overlap.distance.matrix(min.vertices.list)
+    }
+
+    ## Step 6 (optional): Expand basins to cover all vertices
+    expanded.max.vertices.list <- NULL
+    expanded.min.vertices.list <- NULL
+
+    if (expand.basins) {
+        if (verbose) {
+            cat("\nStep 6: Expanding basins to cover all vertices...\n")
+        }
+
+        n.vertices <- length(adj.list)
+
+        ## Count coverage before expansion
+        n.covered.max <- length(unique(unlist(max.vertices.list)))
+        n.covered.min <- length(unique(unlist(min.vertices.list)))
+
+        ## Expand maximum basins
+        if (length(max.vertices.list) > 0) {
+            expanded.max.vertices.list <- expand.basins.to.cover(
+                basins.vertices.list = max.vertices.list,
+                adj.list = adj.list,
+                weight.list = edge.length.list,
+                n.vertices = n.vertices
+            )
+            n.expanded.max <- length(unique(unlist(expanded.max.vertices.list)))
+
+            if (verbose) {
+                cat(sprintf("  Maxima basins: %d -> %d vertices covered\n",
+                            n.covered.max, n.expanded.max))
+            }
+        }
+
+        ## Expand minimum basins
+        if (length(min.vertices.list) > 0) {
+            expanded.min.vertices.list <- expand.basins.to.cover(
+                basins.vertices.list = min.vertices.list,
+                adj.list = adj.list,
+                weight.list = edge.length.list,
+                n.vertices = n.vertices
+            )
+            n.expanded.min <- length(unique(unlist(expanded.min.vertices.list)))
+
+            if (verbose) {
+                cat(sprintf("  Minima basins: %d -> %d vertices covered\n",
+                            n.covered.min, n.expanded.min))
+            }
+        }
+
+        stage.history <- rbind(stage.history, data.frame(
+            stage = "expand",
+            description = "Expand basins to cover all vertices",
+            n.max.before = n.covered.max,
+            n.max.after = n.vertices,
+            n.min.before = n.covered.min,
+            n.min.after = n.vertices,
+            stringsAsFactors = FALSE
+        ))
+
+    } else {
+        if (verbose) {
+            cat("\nStep 6: Skipping basin expansion\n")
+        }
+    }
+
+    ## Store parameters for reporting
+    parameters <- list(
         edge.length.quantile.thld = edge.length.quantile.thld,
         min.rel.value.max = min.rel.value.max,
         max.rel.value.min = max.rel.value.min,
@@ -368,1590 +670,352 @@ compute.gfc <- function(adj.list,
         p.deg.threshold = p.deg.threshold,
         min.basin.size = min.basin.size,
         expand.basins = expand.basins,
-        apply.relvalue.filter = apply.relvalue.filter,
-        apply.maxima.clustering = apply.maxima.clustering,
-        apply.minima.clustering = apply.minima.clustering,
-        apply.geometric.filter = apply.geometric.filter,
-        hop.k = hop.k,
-        with.trajectories = with.trajectories,
-        max.chain.depth = max.chain.depth
+        hop.k = hop.k
     )
 
-    ## ========================================================================
-    ## Set class and return
-    ## ========================================================================
+    if (verbose) {
+        n.max.final <- sum(final.summary$type == "max")
+        n.min.final <- sum(final.summary$type == "min")
+        cat("\nRefinement complete!\n")
+        cat(sprintf("Final structure: %d maxima and %d minima\n", n.max.final, n.min.final))
+    }
 
-    class(result) <- c("gfc", "list")
+    ## Return basins, summary, diagnostics, history, and parameters
+    result <- list(
+        basins = current.basins,
+        summary = final.summary,
+        max.overlap.dist = max.overlap.dist,
+        min.overlap.dist = min.overlap.dist,
+        max.vertices.list = max.vertices.list,
+        min.vertices.list = min.vertices.list,
+        expanded.max.vertices.list = expanded.max.vertices.list,
+        expanded.min.vertices.list = expanded.min.vertices.list,
+        stage.history = stage.history,
+        parameters = parameters
+    )
+
+    class(result) <- "basins_of_attraction"
 
     return(result)
 }
 
-#' Print Method for Gradient Flow Complex
+
+#' Expand Basins to Cover All Graph Vertices
 #'
-#' @param x A gfc object from compute.gfc()
-#' @param ... Additional arguments (unused)
+#' Assigns uncovered vertices to their nearest basin based on shortest path
+#' distance in the graph. This is useful after filtering spurious extrema,
+#' when some vertices may no longer belong to any retained basin.
+#'
+#' @param basins.vertices.list A named list of integer vectors, where each
+#'   element contains the vertex indices belonging to a basin. Names should
+#'   correspond to basin labels (e.g., "M1", "M2", ... or "m1", "m2", ...).
+#' @param adj.list Adjacency list representation of the graph. Element \code{i}
+#'   contains the indices of vertices adjacent to vertex \code{i}.
+#' @param weight.list List of edge weights (typically edge lengths) corresponding
+#'   to the adjacency list. Element \code{i} contains the weights of edges
+#'   incident to vertex \code{i}.
+#' @param n.vertices Integer specifying the total number of vertices in the graph.
+#'   If \code{NULL} (default), inferred from the length of \code{adj.list}.
+#'
+#' @return A named list with the same structure as \code{basins.vertices.list},
+#'   where each basin has been expanded to include its nearest uncovered vertices.
+#'   The union of all returned basins covers all graph vertices.
+#'
+#' @details
+#' After filtering spurious local extrema, the union of retained basins may not
+#' cover the entire graph. Vertices that belonged to removed basins are left
+#' unassigned. This function reassigns such vertices to the nearest retained
+#' basin based on shortest path distance in the weighted graph.
+#'
+#' For each uncovered vertex, the function computes the shortest path distance
+#' to all covered vertices, identifies the closest covered vertex, and assigns
+#' the uncovered vertex to the basin containing that closest vertex. Ties are
+#' broken arbitrarily (by the order in which basins appear in the input list).
+#'
+#' The function uses \code{igraph::distances()} for efficient shortest path
+#' computation, restricting the calculation to distances from uncovered vertices
+#' to covered vertices rather than computing the full distance matrix.
+#'
+#' @examples
+#' \dontrun{
+#' # After computing refined basins
+#' result <- compute.gfc(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  min.basin.size = 10)
+#'
+#' # Expand maximum basins to cover all vertices
+#' expanded.max.basins <- expand.basins.to.cover(
+#'     basins.vertices.list = result$max.vertices.list,
+#'     adj.list = adj.list,
+#'     weight.list = edge.length.list,
+#'     n.vertices = length(adj.list)
+#' )
+#'
+#' # Verify full coverage
+#' all.vertices <- unique(unlist(expanded.max.basins))
+#' length(all.vertices) == length(adj.list)  # Should be TRUE
+#' }
+#'
+#' @seealso \code{\link{compute.gfc}} for computing refined basins
+#'
+#' @importFrom igraph graph_from_data_frame distances E
 #'
 #' @export
-print.gfc <- function(x, ...) {
-    cat("Gradient Flow Complex (GFC)\n")
-    cat("===========================\n\n")
+expand.basins.to.cover <- function(basins.vertices.list,
+                                   adj.list,
+                                   weight.list,
+                                   n.vertices = NULL) {
 
-    n.max <- length(x$max.basins)
-    n.min <- length(x$min.basins)
+    ## Validate inputs
+    if (!is.list(basins.vertices.list) || length(basins.vertices.list) == 0) {
+        stop("basins.vertices.list must be a non-empty list")
+    }
 
-    cat(sprintf("Vertices: %d\n", x$n.vertices))
-    cat(sprintf("Maxima: %d\n", n.max))
-    cat(sprintf("Minima: %d\n", n.min))
-    cat(sprintf("Median y: %.4f\n\n", x$y.median))
+    if (!is.list(adj.list) || !is.list(weight.list)) {
+        stop("adj.list and weight.list must be lists")
+    }
+
+    if (length(adj.list) != length(weight.list)) {
+        stop("adj.list and weight.list must have the same length")
+    }
+
+    if (is.null(n.vertices)) {
+        n.vertices <- length(adj.list)
+    }
+
+    ## Compute union of all basin vertices
+    covered.vertices <- unique(unlist(basins.vertices.list))
+
+    ## Find uncovered vertices
+    all.vertices <- seq_len(n.vertices)
+    uncovered.vertices <- setdiff(all.vertices, covered.vertices)
+
+    ## If all vertices are covered, return input unchanged
+    if (length(uncovered.vertices) == 0) {
+        return(basins.vertices.list)
+    }
+
+    ## Create lookup: covered vertex -> basin label
+    vertex.to.basin <- character(n.vertices)
+    for (basin.label in names(basins.vertices.list)) {
+        basin.vertices <- basins.vertices.list[[basin.label]]
+        vertex.to.basin[basin.vertices] <- basin.label
+    }
+
+    ## Build igraph from adjacency list and weight list
+    edge.list <- data.frame(
+        from = integer(0),
+        to = integer(0),
+        weight = numeric(0)
+    )
+
+    for (i in seq_len(n.vertices)) {
+        if (length(adj.list[[i]]) > 0) {
+            neighbors <- adj.list[[i]]
+            ## Only add edges in one direction (i < j) to avoid duplicates
+            mask <- neighbors > i
+            if (any(mask)) {
+                new.edges <- data.frame(
+                    from = i,
+                    to = neighbors[mask],
+                    weight = weight.list[[i]][mask]
+                )
+                edge.list <- rbind(edge.list, new.edges)
+            }
+        }
+    }
+
+    ## Create the graph
+    g <- igraph::graph_from_data_frame(
+        edge.list,
+        directed = FALSE,
+        vertices = data.frame(name = as.character(seq_len(n.vertices)))
+    )
+
+    ## Compute distances from uncovered vertices to covered vertices only
+    dist.matrix <- igraph::distances(
+        g,
+        v = as.character(uncovered.vertices),
+        to = as.character(covered.vertices),
+        weights = igraph::E(g)$weight
+    )
+
+    ## Initialize expanded basins as copies of input
+    expanded.basins <- lapply(basins.vertices.list, function(x) x)
+
+    ## Assign each uncovered vertex to its nearest basin
+    for (i in seq_along(uncovered.vertices)) {
+        v <- uncovered.vertices[i]
+        distances.to.covered <- dist.matrix[i, ]
+
+        ## Find closest covered vertex
+        min.idx <- which.min(distances.to.covered)
+        closest.covered <- covered.vertices[min.idx]
+
+        ## Look up which basin the closest covered vertex belongs to
+        target.basin <- vertex.to.basin[closest.covered]
+
+        ## Add uncovered vertex to that basin
+        expanded.basins[[target.basin]] <- c(expanded.basins[[target.basin]], v)
+    }
+
+    return(expanded.basins)
+}
+
+
+#' Generate Text Report of Basin Refinement Process
+#'
+#' Creates a paragraph suitable for inclusion in a methods section describing
+#' the basin refinement process with specific parameter values and counts.
+#'
+#' @param basins.result Object returned by \code{compute.gfc()}
+#' @param response.name Character string naming the response variable in LaTeX
+#'   format, for example \code{"\\widehat{sPTB}"}.
+#'
+#' @return Character string containing the formatted paragraph ready for
+#'   inclusion in a LaTeX document.
+#'
+#' @examples
+#' \dontrun{
+#' result <- compute.gfc(adj.list, edge.length.list, fitted.values,
+#'                                  edge.length.quantile.thld = 0.9,
+#'                                  min.basin.size = 10,
+#'                                  expand.basins = TRUE,
+#'                                  verbose = TRUE)
+#'
+#' report <- generate.refinement.report(result)
+#' cat(report)
+#'
+#' ## Write to file for inclusion in Rmd/LaTeX document
+#' writeLines(report, "refinement_methods.tex")
+#' }
+#'
+#' @seealso \code{\link{compute.gfc}} for computing refined basins
+#'
+#' @export
+generate.refinement.report <- function(basins.result,
+                                       response.name = "\\widehat{sPTB}") {
+
+    params <- basins.result$parameters
+    history <- basins.result$stage.history
+
+    ## Extract counts from each stage
+    initial <- history[history$stage == "initial", ]
+    relvalue <- history[history$stage == "relvalue", ]
+    merge.max <- history[history$stage == "merge.max", ]
+    merge.min <- history[history$stage == "merge.min", ]
+    geometric <- history[history$stage == "geometric", ]
+    expand <- history[history$stage == "expand", ]
+
+    ## Handle case where some stages may have been skipped
+    if (nrow(relvalue) == 0) {
+        relvalue <- initial
+        relvalue$n.max.before <- initial$n.max.after
+        relvalue$n.min.before <- initial$n.min.after
+    }
+
+    if (nrow(merge.max) == 0) {
+        merge.max <- relvalue
+        merge.max$n.max.before <- relvalue$n.max.after
+        merge.max$n.min.before <- relvalue$n.min.after
+    }
+
+    if (nrow(merge.min) == 0) {
+        merge.min <- merge.max
+        merge.min$n.max.before <- merge.max$n.max.after
+        merge.min$n.min.before <- merge.max$n.min.after
+    }
+
+    if (nrow(geometric) == 0) {
+        geometric <- merge.min
+        geometric$n.max.before <- merge.min$n.max.after
+        geometric$n.min.before <- merge.min$n.min.after
+    }
+
+    ## Build the main paragraph
+    para <- sprintf(
+"The refinement begins by computing basins of attraction for all local extrema of $%s$ on the ikNN graph. To prevent trajectories from jumping across distant regions of the graph, we restricted basin computation to edges below the %.0fth percentile of the edge length distribution. This initial step identified %d local maxima and %d local minima.
+
+The first filtering stage removes extrema whose values lie too close to the median of $%s$. We define the relative value of an extremum as its fitted value divided by the median. Maxima with relative values below %.2f and minima with relative values above %.2f were eliminated, as such extrema represent minor fluctuations rather than prominent features of the response surface. This step retained %d maxima and %d minima.
+
+The second stage addresses geometric redundancy by clustering extrema whose basins exhibit substantial overlap. We applied an overlap threshold of %.0f%% for maxima and %.0f%% for minima. Within each cluster, we merged the constituent basins, retaining the extremum with the most extreme value as the representative. This clustering and merging process reduced the count to %d maxima and %d minima.
+
+The final automated stage filters extrema based on structural characteristics of their basins and basin size. We removed extrema exceeding the %.0fth percentile threshold for mean distance to neighbors or degree, and eliminated extrema whose basins contained fewer than %d samples. This filtering yielded %d maxima and %d minima.",
+        response.name,
+        params$edge.length.quantile.thld * 100,
+        initial$n.max.after, initial$n.min.after,
+        response.name,
+        params$min.rel.value.max, params$max.rel.value.min,
+        relvalue$n.max.after, relvalue$n.min.after,
+        params$max.overlap.threshold * 100, params$min.overlap.threshold * 100,
+        merge.min$n.max.after, merge.min$n.min.after,
+        params$p.mean.hopk.dist.threshold * 100, params$min.basin.size,
+        geometric$n.max.after, geometric$n.min.after
+    )
+
+    ## Add expansion paragraph if applicable
+    if (nrow(expand) > 0 && params$expand.basins) {
+        n.vertices <- expand$n.max.after  # Total vertices after expansion
+        n.uncovered.max <- n.vertices - expand$n.max.before
+        n.uncovered.min <- n.vertices - expand$n.min.before
+
+        expand.para <- sprintf(
+"
+
+After filtering, %d vertices were not covered by any maximum basin and %d vertices were not covered by any minimum basin. These uncovered vertices, which originally belonged to basins of removed spurious extrema, were reassigned to the nearest retained basin based on shortest path distance in the weighted graph. This ensures complete coverage of all %d graph vertices for downstream analyses.",
+            n.uncovered.max, n.uncovered.min, n.vertices
+        )
+
+        para <- paste0(para, expand.para)
+    }
+
+    return(para)
+}
+
+
+#' Print Method for Refined Basins
+#'
+#' @param x A basins_of_attraction object from compute.gfc()
+#' @param ... Additional arguments passed to print methods
+#'
+#' @export
+print.basins_of_attraction <- function(x, ...) {
+    cat("Refined Basins of Attraction\n")
+    cat("============================\n\n")
+
+    n.max <- sum(x$summary$type == "max")
+    n.min <- sum(x$summary$type == "min")
+
+    cat(sprintf("Number of maxima: %d\n", n.max))
+    cat(sprintf("Number of minima: %d\n", n.min))
+    cat(sprintf("Total extrema: %d\n\n", n.max + n.min))
 
     ## Report coverage
-    if (!is.null(x$expanded.max.assignment)) {
-        n.covered <- sum(!is.na(x$expanded.max.assignment))
-        cat(sprintf("Max basin coverage: %d/%d (%.1f%%)\n",
-                    n.covered, x$n.vertices, 100 * n.covered / x$n.vertices))
+    if (!is.null(x$max.vertices.list)) {
+        n.covered.max <- length(unique(unlist(x$max.vertices.list)))
+        cat(sprintf("Vertices covered by maxima basins: %d\n", n.covered.max))
     }
-    if (!is.null(x$expanded.min.assignment)) {
-        n.covered <- sum(!is.na(x$expanded.min.assignment))
-        cat(sprintf("Min basin coverage: %d/%d (%.1f%%)\n",
-                    n.covered, x$n.vertices, 100 * n.covered / x$n.vertices))
+    if (!is.null(x$min.vertices.list)) {
+        n.covered.min <- length(unique(unlist(x$min.vertices.list)))
+        cat(sprintf("Vertices covered by minima basins: %d\n", n.covered.min))
     }
 
-    ## Show summary (first few rows)
-    if (nrow(x$summary) > 0) {
-        cat("\nBasin summary:\n")
-        print(head(x$summary, 10))
-        if (nrow(x$summary) > 10) {
-            cat(sprintf("\n... and %d more rows\n", nrow(x$summary) - 10))
-        }
+    ## Report expansion if applicable
+    if (!is.null(x$expanded.max.vertices.list)) {
+        n.expanded <- length(unique(unlist(x$expanded.max.vertices.list)))
+        cat(sprintf("Vertices after maxima expansion: %d\n", n.expanded))
+    }
+    if (!is.null(x$expanded.min.vertices.list)) {
+        n.expanded <- length(unique(unlist(x$expanded.min.vertices.list)))
+        cat(sprintf("Vertices after minima expansion: %d\n", n.expanded))
     }
 
-    invisible(x)
-}
-
-#' Compute GFC for Multiple Functions
-#'
-#' Efficiently computes the gradient flow complex for each column of a matrix
-#' of function values over the same graph structure. Supports OpenMP
-#' parallelization for improved performance with many functions.
-#'
-#' @param adj.list Adjacency list (1-based R indexing).
-#' @param edge.length.list Edge length list.
-#' @param Y Matrix of function values with n vertices (rows) and p functions
-#'   (columns).
-#' @param ... Additional parameters passed to \code{\link{compute.gfc}}.
-#' @param n.cores Number of OpenMP threads for parallel processing. Default
-#'   is 1 (sequential).
-#' @param verbose Logical indicating whether to print progress. Default is
-#'   FALSE.
-#'
-#' @return A list of length p containing GFC results for each function. If Y
-#'   has column names, they are used to name the result list elements.
-#'
-#' @examples
-#' \dontrun{
-#' ## Compute GFC for 100 features
-#' gfc.list <- compute.gfc.matrix(adj.list, edge.length.list, Z.hat,
-#'                                n.cores = 4, verbose = TRUE)
-#'
-#' ## Access results for specific feature
-#' gfc.feature1 <- gfc.list[[1]]
-#' print(gfc.feature1$summary)
-#' }
-#'
-#' @seealso \code{\link{compute.gfc}} for single function computation
-#'
-#' @export
-compute.gfc.matrix <- function(adj.list,
-                               edge.length.list,
-                               Y,
-                               ...,
-                               n.cores = 1L,
-                               verbose = FALSE) {
-
-    ## Validate matrix input
-    if (!is.matrix(Y)) {
-        if (is.numeric(Y)) {
-            Y <- matrix(Y, ncol = 1)
-        } else {
-            stop("Y must be a numeric matrix")
-        }
-    }
-
-    if (nrow(Y) != length(adj.list)) {
-        stop("nrow(Y) must equal length(adj.list)")
-    }
-
-    ## Extract optional parameters
-    dots <- list(...)
-
-    ## Build parameter set with defaults
-    params <- list(
-        edge.length.quantile.thld = dots$edge.length.quantile.thld %||% 0.9,
-        min.rel.value.max = dots$min.rel.value.max %||% 1.1,
-        max.rel.value.min = dots$max.rel.value.min %||% 0.9,
-        max.overlap.threshold = dots$max.overlap.threshold %||% 0.15,
-        min.overlap.threshold = dots$min.overlap.threshold %||% 0.15,
-        p.mean.nbrs.dist.threshold = dots$p.mean.nbrs.dist.threshold %||% 0.9,
-        p.mean.hopk.dist.threshold = dots$p.mean.hopk.dist.threshold %||% 0.9,
-        p.deg.threshold = dots$p.deg.threshold %||% 0.9,
-        min.basin.size = dots$min.basin.size %||% 10L,
-        expand.basins = dots$expand.basins %||% TRUE,
-        apply.relvalue.filter = dots$apply.relvalue.filter %||% TRUE,
-        apply.maxima.clustering = dots$apply.maxima.clustering %||% TRUE,
-        apply.minima.clustering = dots$apply.minima.clustering %||% TRUE,
-        apply.geometric.filter = dots$apply.geometric.filter %||% TRUE,
-        hop.k = dots$hop.k %||% 2L
-    )
-
-    ## Convert to 0-based indexing
-    adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
-
-    ## Ensure Y has proper storage
-    storage.mode(Y) <- "double"
-
-    ## Call C++ implementation
-    result <- .Call(
-        S_compute_gfc_matrix,
-        adj.list.0based,
-        edge.length.list,
-        Y,
-        as.double(params$edge.length.quantile.thld),
-        as.double(params$min.rel.value.max),
-        as.double(params$max.rel.value.min),
-        as.double(params$max.overlap.threshold),
-        as.double(params$min.overlap.threshold),
-        as.double(params$p.mean.nbrs.dist.threshold),
-        as.double(params$p.mean.hopk.dist.threshold),
-        as.double(params$p.deg.threshold),
-        as.integer(params$min.basin.size),
-        as.logical(params$expand.basins),
-        as.logical(params$apply.relvalue.filter),
-        as.logical(params$apply.maxima.clustering),
-        as.logical(params$apply.minima.clustering),
-        as.logical(params$apply.geometric.filter),
-        as.integer(params$hop.k),
-        as.integer(n.cores),
-        as.logical(verbose),
-        PACKAGE = "gflow"
-    )
-
-    ## Add class to each result
-    for (i in seq_along(result)) {
-        class(result[[i]]) <- c("gfc", "list")
-        result[[i]]$parameters <- params
-    }
-
-    ## Add names from column names if available
-    if (!is.null(colnames(Y))) {
-        names(result) <- colnames(Y)
-    }
-
-    return(result)
-}
-
-# =============================================================================
-# Helper Functions for Basin Lookup
-# =============================================================================
-
-#' Resolve Basin ID to Vertex Index
-#'
-#' @param object A gfc object.
-#' @param basin.id Either a character label (e.g., "M1") or numeric vertex index.
-#' @return Integer vertex index (1-based).
-#' @keywords internal
-resolve.basin.vertex <- function(object, basin.id) {
-
-    if (is.character(basin.id)) {
-        ## Label-based lookup
-        if (grepl("^M[0-9]+$", basin.id)) {
-            idx <- which(names(object$max.basins) == basin.id)
-            if (length(idx) == 1) {
-                return(object$max.basins[[idx]]$vertex)
-            }
-        } else if (grepl("^m[0-9]+$", basin.id)) {
-            idx <- which(names(object$min.basins) == basin.id)
-            if (length(idx) == 1) {
-                return(object$min.basins[[idx]]$vertex)
-            }
-        }
-        stop(sprintf("Basin '%s' not found. Available basins: %s",
-                     basin.id,
-                     paste(c(names(object$max.basins),
-                             names(object$min.basins)),
-                           collapse = ", ")))
-
-    } else if (is.numeric(basin.id)) {
-        vertex.id <- as.integer(basin.id)
-
-        ## Verify it exists
-        for (b in object$max.basins) {
-            if (b$vertex == vertex.id) return(vertex.id)
-        }
-        for (b in object$min.basins) {
-            if (b$vertex == vertex.id) return(vertex.id)
-        }
-        stop(sprintf("Vertex %d is not a basin extremum in this GFC", vertex.id))
-
-    } else {
-        stop("basin.id must be either a character label or numeric vertex index")
-    }
-}
-
-#' Get Basin Information
-#'
-#' @param object A gfc object.
-#' @param basin.id Either a character label or numeric vertex index.
-#' @return List with vertex, value, type, label, and basin object.
-#' @keywords internal
-get.basin.info <- function(object, basin.id) {
-
-    basin <- NULL
-    basin.label <- NULL
-    basin.type <- NULL
-
-    if (is.character(basin.id)) {
-        basin.label <- basin.id
-
-        if (grepl("^M[0-9]+$", basin.id)) {
-            basin.type <- "max"
-            idx <- which(names(object$max.basins) == basin.id)
-            if (length(idx) == 1) {
-                basin <- object$max.basins[[idx]]
-            }
-        } else if (grepl("^m[0-9]+$", basin.id)) {
-            basin.type <- "min"
-            idx <- which(names(object$min.basins) == basin.id)
-            if (length(idx) == 1) {
-                basin <- object$min.basins[[idx]]
-            }
-        }
-
-        if (is.null(basin)) {
-            stop(sprintf("Basin '%s' not found. Available basins: %s",
-                         basin.id,
-                         paste(c(names(object$max.basins),
-                                 names(object$min.basins)),
-                               collapse = ", ")))
-        }
-
-    } else if (is.numeric(basin.id)) {
-        vertex.id <- as.integer(basin.id)
-
-        for (i in seq_along(object$max.basins)) {
-            if (object$max.basins[[i]]$vertex == vertex.id) {
-                basin <- object$max.basins[[i]]
-                basin.label <- names(object$max.basins)[i]
-                basin.type <- "max"
-                break
-            }
-        }
-
-        if (is.null(basin)) {
-            for (i in seq_along(object$min.basins)) {
-                if (object$min.basins[[i]]$vertex == vertex.id) {
-                    basin <- object$min.basins[[i]]
-                    basin.label <- names(object$min.basins)[i]
-                    basin.type <- "min"
-                    break
-                }
-            }
-        }
-
-        if (is.null(basin)) {
-            stop(sprintf("Vertex %d is not a basin extremum in this GFC", vertex.id))
-        }
-
-    } else {
-        stop("basin.id must be either a character label or numeric vertex index")
-    }
-
-    list(
-        vertex = basin$vertex,
-        value = basin$value,
-        type = basin.type,
-        label = basin.label,
-        basin = basin
-    )
-}
-
-# =============================================================================
-# Trajectories Generic and Methods
-# =============================================================================
-
-#' Extract Gradient Trajectories from GFC Result
-#'
-#' @description
-#' Generic function for extracting gradient trajectories from a gradient flow
-#' complex object.
-#'
-#' @param object An object containing gradient flow information.
-#' @param ... Additional arguments passed to methods.
-#'
-#' @return Trajectory information, format depends on the method.
-#'
-#' @seealso \code{\link{trajectories.gfc}}
-#'
-#' @export
-trajectories <- function(object, ...) {
-    UseMethod("trajectories")
-}
-
-#' Extract Gradient Trajectories from GFC Result
-#'
-#' @description
-#' Extracts gradient trajectories for a specified basin from a GFC result object.
-#' Can summarize by raw trajectory terminals or by joined trajectory cells.
-#'
-#' @param object A gfc object from \code{compute.gfc()} computed with
-#'   \code{with.trajectories = TRUE}.
-#' @param basin.id Either a character label (e.g., "M1", "m3") or an integer
-#'   vertex index identifying the basin.
-#' @param summarize.by How to summarize trajectories:
-#'   \itemize{
-#'     \item \code{"terminal"}: Group by raw trajectory terminals (default).
-#'       Shows all terminals including spurious extrema.
-#'     \item \code{"cell"}: Group by joined trajectory cells. Shows only
-#'       connections to non-spurious extrema after extension.
-#'   }
-#' @param include.paths Logical indicating whether to include the full
-#'   trajectory paths in the output. Default is TRUE. Set to FALSE for
-#'   summary information only.
-#' @param ... Additional arguments (currently unused).
-#'
-#' @return A list with class \code{"gfc_trajectories"} containing trajectory
-#'   information. The structure depends on \code{summarize.by}.
-#'
-#' @examples
-#' \dontrun{
-#' gfc <- compute.gfc(adj.list, edge.length.list, fitted.values,
-#'                    with.trajectories = TRUE)
-#'
-#' ## Raw terminal view (shows spurious extrema)
-#' traj.M1 <- trajectories(gfc, "M1", summarize.by = "terminal")
-#' print(traj.M1)
-#'
-#' ## Cell view (shows joined trajectories to non-spurious extrema)
-#' traj.M1.cells <- trajectories(gfc, "M1", summarize.by = "cell")
-#' print(traj.M1.cells)
-#' }
-#'
-#' @seealso \code{\link{compute.gfc}} for computing GFC with trajectories
-#'
-#' @export
-trajectories.gfc <- function(object, basin.id,
-                             summarize.by = c("terminal", "cell"),
-                             include.paths = TRUE, ...) {
-
-    if (!inherits(object, "gfc")) {
-        stop("object must be of class 'gfc'")
-    }
-
-    summarize.by <- match.arg(summarize.by)
-
-    if (summarize.by == "cell") {
-        return(trajectories_by_cell(object, basin.id, include.paths))
-    } else {
-        return(trajectories_by_terminal(object, basin.id, include.paths))
-    }
-}
-
-#' Summarize Trajectories by Raw Terminal
-#' @keywords internal
-trajectories_by_terminal <- function(object, basin.id, include.paths) {
-
-    ## Get basin info
-    info <- get.basin.info(object, basin.id)
-    basin <- info$basin
-
-    ## Check that trajectories were computed
-    if (is.null(basin$trajectory.sets)) {
-        stop("GFC object does not contain trajectory data. ",
-             "Recompute with with.trajectories = TRUE")
-    }
-
-    ## Build set of non-spurious extrema for terminal classification
-    non.spurious.vertices <- object$summary$vertex
-    non.spurious.labels <- object$summary$label
-    names(non.spurious.labels) <- as.character(non.spurious.vertices)
-
-    ## Process trajectory sets
-    terminal.groups <- list()
-    total.trajectories <- 0
-
-    for (traj.set in basin$trajectory.sets) {
-
-        terminal.vertex <- traj.set$terminal.vertex
-        terminal.vertex.char <- as.character(terminal.vertex)
-
-        ## Classify terminal
-        if (terminal.vertex %in% non.spurious.vertices) {
-            terminal.label <- non.spurious.labels[terminal.vertex.char]
-            terminal.type <- "non.spurious"
-            group.name <- terminal.label
-        } else {
-            terminal.label <- NA_character_
-            terminal.type <- "spurious"
-            group.name <- paste0("spurious.", terminal.vertex)
-        }
-
-        ## Compute trajectory statistics
-        n.traj <- length(traj.set$trajectories)
-        total.trajectories <- total.trajectories + n.traj
-
-        traj.lengths <- sapply(traj.set$trajectories, length)
-        mean.length <- if (n.traj > 0) mean(traj.lengths) else NA_real_
-
-        ## Build group entry
-        group <- list(
-            terminal.vertex = terminal.vertex,
-            terminal.label = terminal.label,
-            terminal.type = terminal.type,
-            n.trajectories = n.traj,
-            mean.length = mean.length
-        )
-
-        if (include.paths) {
-            group$trajectories <- traj.set$trajectories
-        }
-
-        terminal.groups[[group.name]] <- group
-    }
-
-    ## Build result
-    n.terminals <- length(terminal.groups)
-    n.spurious <- sum(sapply(terminal.groups, function(g) g$terminal.type == "spurious"))
-
-    result <- list(
-        extremum = list(
-            vertex = info$vertex,
-            value = info$value,
-            type = info$type,
-            label = info$label
-        ),
-        terminal.groups = terminal.groups,
-        n.terminals = n.terminals,
-        n.spurious.terminals = n.spurious,
-        n.trajectories = total.trajectories,
-        summary.type = "terminal"
-    )
-
-    class(result) <- c("gfc_trajectories", "list")
-    return(result)
-}
-
-#' Summarize Trajectories by Joined Cell
-#' @keywords internal
-trajectories_by_cell <- function(object, basin.id, include.paths) {
-
-    ## Get basin info
-    info <- get.basin.info(object, basin.id)
-
-    ## Check that joined trajectories exist
-    if (is.null(object$joined.trajectories) ||
-        length(object$joined.trajectories) == 0) {
-        stop("No joined trajectories available. ",
-             "Recompute with with.trajectories = TRUE")
-    }
-
-    ## Filter joined trajectories for this basin
-    if (info$type == "max") {
-        cell.trajs <- Filter(function(jt) jt$max.vertex == info$vertex,
-                             object$joined.trajectories)
-    } else {
-        cell.trajs <- Filter(function(jt) jt$min.vertex == info$vertex,
-                             object$joined.trajectories)
-    }
-
-    ## Build lookup for opposite endpoint labels
-    non.spurious.vertices <- object$summary$vertex
-    non.spurious.labels <- object$summary$label
-    names(non.spurious.labels) <- as.character(non.spurious.vertices)
-
-    ## Group by opposite endpoint
-    cell.groups <- list()
-
-    for (jt in cell.trajs) {
-        if (info$type == "max") {
-            opposite.vertex <- jt$min.vertex
-        } else {
-            opposite.vertex <- jt$max.vertex
-        }
-
-        opposite.vertex.char <- as.character(opposite.vertex)
-
-        ## Find label for opposite vertex
-        if (opposite.vertex %in% non.spurious.vertices) {
-            opposite.label <- non.spurious.labels[opposite.vertex.char]
-        } else {
-            opposite.label <- paste0("v", opposite.vertex)
-        }
-
-        group <- list(
-            opposite.vertex = opposite.vertex,
-            opposite.label = opposite.label,
-            n.vertices = length(jt$path),
-            path.length = jt$path.length,
-            total.change = jt$total.change,
-            n.intermediates = length(jt$intermediate.extrema),
-            intermediate.extrema = jt$intermediate.extrema
-        )
-
-        if (include.paths) {
-            group$path <- jt$path
-        }
-
-        cell.groups[[opposite.label]] <- group
-    }
-
-    ## Build result
-    result <- list(
-        extremum = list(
-            vertex = info$vertex,
-            value = info$value,
-            type = info$type,
-            label = info$label
-        ),
-        cell.groups = cell.groups,
-        n.cells = length(cell.groups),
-        summary.type = "cell"
-    )
-
-    class(result) <- c("gfc_trajectories", "list")
-    return(result)
-}
-
-#' Print Method for GFC Trajectories
-#'
-#' @param x A gfc_trajectories object from trajectories.gfc()
-#' @param ... Additional arguments (unused)
-#'
-#' @export
-print.gfc_trajectories <- function(x, ...) {
-
-    cat("GFC Trajectories\n")
-    cat("================\n\n")
-
-    cat(sprintf("Basin: %s (vertex %d, %s, value = %.4f)\n",
-                x$extremum$label,
-                x$extremum$vertex,
-                x$extremum$type,
-                x$extremum$value))
-
-    if (x$summary.type == "terminal") {
-        ## Terminal-based summary
-        cat(sprintf("\nTerminal vertices: %d (%d non-spurious, %d spurious)\n",
-                    x$n.terminals,
-                    x$n.terminals - x$n.spurious.terminals,
-                    x$n.spurious.terminals))
-
-        cat(sprintf("Total trajectories: %d\n\n", x$n.trajectories))
-
-        if (length(x$terminal.groups) > 0) {
-            cat("Terminal groups:\n")
-
-            for (name in names(x$terminal.groups)) {
-                g <- x$terminal.groups[[name]]
-                status <- if (g$terminal.type == "spurious") "[spurious]" else ""
-                cat(sprintf("  %s (v%d) %s: %d trajectories, mean length %.1f\n",
-                            name, g$terminal.vertex, status,
-                            g$n.trajectories, g$mean.length))
-            }
-        }
-
-    } else {
-        ## Cell-based summary
-        cat(sprintf("\nCells: %d (connections to non-spurious extrema)\n\n",
-                    x$n.cells))
-
-        if (length(x$cell.groups) > 0) {
-            cat("Cells:\n")
-
-            for (name in names(x$cell.groups)) {
-                g <- x$cell.groups[[name]]
-                intermediates <- if (g$n.intermediates > 0) {
-                    sprintf(" via %d spurious", g$n.intermediates)
-                } else {
-                    " (direct)"
-                }
-                cat(sprintf("  %s -> %s%s: n.vertices = %d, path.length = %.3f, change = %.4f\n",
-                            x$extremum$label, name, intermediates,
-                            g$n.vertices, g$path.length, g$total.change))
-            }
-        }
+    cat("\nBasin summary (first 10 rows):\n")
+    print(head(x$summary, 10))
+
+    if (nrow(x$summary) > 10) {
+        cat(sprintf("\n... and %d more rows\n", nrow(x$summary) - 10))
     }
 
     invisible(x)
-}
-
-#' Extract Cell Trajectories from GFC Objects
-#'
-#' Generic function to extract gradient flow trajectories for a specific
-#' cell (min-max pair) from GFC-related objects.
-#'
-#' @param x A GFC object.
-#' @param min.id Minimum extremum identifier.
-#' @param max.id Maximum extremum identifier.
-#' @param ... Additional arguments passed to methods.
-#'
-#' @return An object containing cell trajectory information.
-#'
-#' @seealso \code{\link{cell.trajectories.gfc}}
-#'
-cell.trajectories <- function(x, min.id, max.id, ...) {
-    UseMethod("cell.trajectories")
-}
-
-#' Extract Cell Trajectories from GFC Result
-#'
-#' @description
-#' Extracts gradient flow trajectories for a specific cell (min-max pair)
-#' from a GFC result object. A cell is defined by a pair of non-spurious
-#' extrema (one minimum, one maximum).
-#'
-#' @param x A gfc object from compute.gfc() with trajectories computed.
-#' @param gfc Backward-compatible alias for \code{x}.
-#' @param min.id Minimum extremum identifier: either a label (e.g., "m4") or a
-#'     vertex index (integer, 1-based).
-#' @param max.id Maximum extremum identifier: either a label (e.g., "M1") or a
-#'     vertex index (integer, 1-based).
-#' @param map Optional integer vector mapping subgraph indices to original graph
-#'     vertices. If provided, trajectory vertices are converted to subgraph
-#'     indices. Specifically, \code{map[i]} gives the original graph vertex
-#'     corresponding to subgraph vertex i. Vertices not found in map are
-#'     returned as NA with a warning.
-#' @param ... Additional arguments (currently ignored).
-#'
-#' @return A list of class "gfc_cell_trajectories" containing:
-#'   \describe{
-#'     \item{min.vertex}{Minimum vertex index (in output coordinate system)}
-#'     \item{max.vertex}{Maximum vertex index (in output coordinate system)}
-#'     \item{min.label}{Minimum label (e.g., "m4")}
-#'     \item{max.label}{Maximum label (e.g., "M1")}
-#'     \item{min.value}{Function value at minimum}
-#'     \item{max.value}{Function value at maximum}
-#'     \item{trajectories}{List of trajectory vertex vectors}
-#'     \item{n.trajectories}{Number of trajectories}
-#'     \item{mapped}{Logical; TRUE if vertices were mapped to subgraph indices}
-#'     \item{original.min.vertex}{Original minimum vertex (before mapping)}
-#'     \item{original.max.vertex}{Original maximum vertex (before mapping)}
-#'   }
-#'
-#' @details
-#' The function first resolves the min.id and max.id to vertex indices and
-#' labels using the gfc summary. It then extracts all trajectories that
-#' connect these two extrema.
-#'
-#' When working with a subgraph (e.g., the extended basin of a maximum),
-#' the map parameter allows converting trajectory vertices to subgraph
-#' indices. If map = M1.vertices where \code{M1.vertices[i]} is the original
-#' graph vertex corresponding to subgraph vertex i, then the returned
-#' trajectories will use subgraph indices 1, 2, ..., length(M1.vertices).
-#'
-#' @examples
-#' \dontrun{
-#' gfc <- compute.gfc(adj.list, weight.list, fitted.values,
-#'                     with.trajectories = TRUE)
-#'
-#' # Extract by labels
-#' cell.traj <- cell.trajectories.gfc(gfc, min.id = "m4", max.id = "M1")
-#'
-#' # Extract by vertex indices
-#' cell.traj <- cell.trajectories.gfc(gfc, min.id = 509, max.id = 1147)
-#'
-#' # Extract and map to subgraph indices
-#' M1.vertices <- gfc$max.basins[["M1"]]$vertices
-#' cell.traj <- cell.trajectories.gfc(gfc, "m4", "M1", map = M1.vertices)
-#' }
-#'
-#' @seealso \code{\link{compute.gfc}}, \code{\link{trajectories.gfc}}
-#'
-#' @export
-cell.trajectories.gfc <- function(x,
-                                  min.id,
-                                  max.id,
-                                  map = NULL,
-                                  gfc = x,
-                                  ...) {
-    x <- gfc
-    gfc <- x
-
-    ## ========================================================================
-    ## Input validation
-    ## ========================================================================
-
-    if (!inherits(gfc, "gfc")) {
-        stop("gfc must be a gfc object from compute.gfc()")
-    }
-
-    if (is.null(gfc$joined.trajectories) && is.null(gfc$max.basins)) {
-        stop("gfc does not contain trajectory information. ",
-             "Use with.trajectories = TRUE in compute.gfc()")
-    }
-
-    summary.df <- gfc$summary
-
-    ## ========================================================================
-    ## Resolve min.id to vertex and label
-    ## ========================================================================
-
-    if (is.character(min.id)) {
-        ## Label provided
-        min.label <- min.id
-        idx <- match(min.label, summary.df$label)
-        if (is.na(idx)) {
-            stop(sprintf("Minimum label '%s' not found in summary", min.label))
-        }
-        min.vertex <- summary.df$vertex[idx]
-        min.value <- summary.df$value[idx]
-        min.type <- summary.df$type[idx]
-    } else if (is.numeric(min.id)) {
-        ## Vertex index provided
-        min.vertex <- as.integer(min.id)
-        idx <- match(min.vertex, summary.df$vertex)
-        if (is.na(idx)) {
-            stop(sprintf("Minimum vertex %d not found in summary", min.vertex))
-        }
-        min.label <- summary.df$label[idx]
-        min.value <- summary.df$value[idx]
-        min.type <- summary.df$type[idx]
-    } else {
-        stop("min.id must be a character label or numeric vertex index")
-    }
-
-    ## Verify it's a minimum
-    if (min.type != "min") {
-        stop(sprintf("'%s' (vertex %d) is not a minimum, it is a %s",
-                     min.label, min.vertex, min.type))
-    }
-
-    ## ========================================================================
-    ## Resolve max.id to vertex and label
-    ## ========================================================================
-
-    if (is.character(max.id)) {
-        ## Label provided
-        max.label <- max.id
-        idx <- match(max.label, summary.df$label)
-        if (is.na(idx)) {
-            stop(sprintf("Maximum label '%s' not found in summary", max.label))
-        }
-        max.vertex <- summary.df$vertex[idx]
-        max.value <- summary.df$value[idx]
-        max.type <- summary.df$type[idx]
-    } else if (is.numeric(max.id)) {
-        ## Vertex index provided
-        max.vertex <- as.integer(max.id)
-        idx <- match(max.vertex, summary.df$vertex)
-        if (is.na(idx)) {
-            stop(sprintf("Maximum vertex %d not found in summary", max.vertex))
-        }
-        max.label <- summary.df$label[idx]
-        max.value <- summary.df$value[idx]
-        max.type <- summary.df$type[idx]
-    } else {
-        stop("max.id must be a character label or numeric vertex index")
-    }
-
-    ## Verify it's a maximum
-    if (max.type != "max") {
-        stop(sprintf("'%s' (vertex %d) is not a maximum, it is a %s",
-                     max.label, max.vertex, max.type))
-    }
-
-    ## ========================================================================
-    ## Extract trajectories for this cell
-    ## ========================================================================
-
-    trajectories <- list()
-
-    ## Check if joined trajectories are available
-    if (!is.null(gfc$joined.trajectories)) {
-        ## Joined trajectories: look for this specific cell
-        for (traj in gfc$joined.trajectories) {
-            if (traj$min.vertex == min.vertex && traj$max.vertex == max.vertex) {
-                trajectories[[length(trajectories) + 1]] <- traj$path
-            }
-        }
-    } else if (!is.null(gfc$max.basins[[max.label]])) {
-        ## Fall back to max.basins trajectory sets
-        max.basin <- gfc$max.basins[[max.label]]
-
-        if (!is.null(max.basin$trajectory.sets)) {
-            for (traj.set in max.basin$trajectory.sets) {
-                ## Check if any trajectory in this set ends at min.vertex
-                terminal <- traj.set$terminal.vertex
-                if (terminal == min.vertex) {
-                    ## Add all paths in this trajectory set
-                    for (path in traj.set$trajectories) {
-                        trajectories[[length(trajectories) + 1]] <- path
-                    }
-                }
-            }
-        }
-    }
-
-    if (length(trajectories) == 0) {
-        warning(sprintf("No trajectories found for cell %s -> %s",
-                        max.label, min.label))
-    }
-
-    ## ========================================================================
-    ## Apply vertex mapping if provided
-    ## ========================================================================
-
-    original.min.vertex <- min.vertex
-    original.max.vertex <- max.vertex
-    mapped <- FALSE
-
-    if (!is.null(map)) {
-        mapped <- TRUE
-        map <- as.integer(map)
-
-        ## Map extrema vertices
-        min.vertex.mapped <- match(min.vertex, map)
-        max.vertex.mapped <- match(max.vertex, map)
-
-        if (is.na(min.vertex.mapped)) {
-            warning(sprintf("Minimum vertex %d not found in map", min.vertex))
-        }
-        if (is.na(max.vertex.mapped)) {
-            warning(sprintf("Maximum vertex %d not found in map", max.vertex))
-        }
-
-        min.vertex <- min.vertex.mapped
-        max.vertex <- max.vertex.mapped
-
-        ## Map trajectory vertices
-        n.unmapped <- 0
-        trajectories <- lapply(trajectories, function(path) {
-            mapped.path <- match(path, map)
-            n.na <- sum(is.na(mapped.path))
-            if (n.na > 0) {
-                n.unmapped <<- n.unmapped + n.na
-            }
-            return(mapped.path)
-        })
-
-        if (n.unmapped > 0) {
-            warning(sprintf("%d trajectory vertices not found in map (returned as NA)",
-                            n.unmapped))
-        }
-    }
-
-    ## ========================================================================
-    ## Build result
-    ## ========================================================================
-
-    result <- list(
-        min.vertex = min.vertex,
-        max.vertex = max.vertex,
-        min.label = min.label,
-        max.label = max.label,
-        min.value = min.value,
-        max.value = max.value,
-        trajectories = trajectories,
-        n.trajectories = length(trajectories),
-        mapped = mapped,
-        original.min.vertex = original.min.vertex,
-        original.max.vertex = original.max.vertex
-    )
-
-    class(result) <- "gfc_cell_trajectories"
-
-    return(result)
-}
-
-#' Get All Trajectory Vertices as a Single Vector
-#'
-#' @description
-#' Extracts all unique vertices from cell trajectories.
-#'
-#' @param cell.traj A gfc_cell_trajectories object
-#' @param unique Logical; if TRUE (default), return unique vertices only
-#'
-#' @return Integer vector of vertex indices
-#'
-trajectory.vertices <- function(cell.traj, unique = TRUE) {
-
-    if (!inherits(cell.traj, "gfc_cell_trajectories")) {
-        stop("cell.traj must be a gfc_cell_trajectories object")
-    }
-
-    all.vertices <- unlist(cell.traj$trajectories)
-
-    if (unique) {
-        all.vertices <- unique(all.vertices)
-    }
-
-    return(all.vertices)
-}
-
-#' Convert Trajectory to Edge List
-#'
-#' @description
-#' Converts trajectory paths to an edge list suitable for graph operations
-#' or visualization.
-#'
-#' @param cell.traj A gfc_cell_trajectories object
-#' @param weighted Logical; if TRUE, include edge counts as weights
-#'
-#' @return A data frame with columns 'from', 'to', and optionally 'weight'
-#'
-trajectory.edges <- function(cell.traj, weighted = FALSE) {
-
-    if (!inherits(cell.traj, "gfc_cell_trajectories")) {
-        stop("cell.traj must be a gfc_cell_trajectories object")
-    }
-
-    if (cell.traj$n.trajectories == 0) {
-        return(data.frame(from = integer(0), to = integer(0)))
-    }
-
-    ## Collect all edges
-    edges <- list()
-    for (path in cell.traj$trajectories) {
-        if (length(path) < 2) next
-        for (i in seq_len(length(path) - 1)) {
-            edges[[length(edges) + 1]] <- c(path[i], path[i + 1])
-        }
-    }
-
-    if (length(edges) == 0) {
-        return(data.frame(from = integer(0), to = integer(0)))
-    }
-
-    edge.df <- data.frame(
-        from = sapply(edges, `[`, 1),
-        to = sapply(edges, `[`, 2)
-    )
-
-    if (weighted) {
-        ## Count edge occurrences
-        edge.key <- paste(edge.df$from, edge.df$to, sep = "-")
-        edge.counts <- table(edge.key)
-
-        ## Get unique edges with counts
-        unique.edges <- unique(edge.df)
-        unique.key <- paste(unique.edges$from, unique.edges$to, sep = "-")
-        unique.edges$weight <- as.integer(edge.counts[unique.key])
-
-        return(unique.edges)
-    }
-
-    return(unique(edge.df))
-}
-
-#' Draw a Trajectory in 3D Space
-#'
-#' Visualizes a trajectory as a sequence of vertices in 3D using rgl graphics.
-#' The function draws spheres at trajectory vertices with highlighted terminal
-#' points, connecting segments between consecutive vertices, and optionally
-#' directional arrows indicating flow direction along the path.
-#'
-#' @param graph.3d A matrix of 3D coordinates for graph vertices where each row
-#'   corresponds to a vertex and columns represent x, y, z coordinates.
-#' @param vertices Integer vector specifying the ordered sequence of vertex
-#'   indices defining the trajectory. The first element is treated as the
-#'   source and the last as the destination.
-#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
-#'   segments to indicate flow direction. Default is FALSE.
-#' @param arrow.size Numeric scaling factor for arrow size when with.arrows is
-#'   TRUE. Default is 1.
-#' @param col Character string specifying color for trajectory spheres.
-#'   Default is "cyan".
-#' @param terminal.col Character string specifying color for terminal vertex
-#'   spheres. If NULL, uses the value of col. Default is NULL.
-#' @param segment.col Character string specifying color for connecting segments.
-#'   Default is "gray".
-#' @param arrow.col Character string specifying color for directional arrows.
-#'   Default is "red".
-#' @param terminal.radius Numeric radius for terminal vertex spheres.
-#'   Default is 0.3.
-#' @param radius Numeric radius for interior trajectory vertex spheres.
-#'   Default is 0.15.
-#' @param segment.lwd Numeric line width for connecting segments. Default is 5.
-#' @param with.labels Logical; if TRUE, draws text labels at terminal vertices
-#'   showing vertex indices. Default is TRUE.
-#' @param terminal.vertex.adj Numeric vector of length 2 for text label
-#'   adjustment relative to terminal vertices. Default is c(0,0).
-#' @param terminal.vertex.cex Numeric character expansion factor for terminal
-#'   vertex labels. Default is 3.
-#'
-#' @details
-#' The trajectory is rendered as a sequence of spheres connected by line
-#' segments. Terminal vertices at the start and end of the trajectory are
-#' drawn with larger spheres to distinguish them from interior vertices.
-#' When with.arrows is TRUE, flat arrows are drawn at the midpoint of each
-#' segment spanning from 40 percent to 60 percent along the edge to indicate
-#' the direction of flow from source to destination.
-#'
-#' @return None. Function is called for its side effect of adding 3D graphics
-#'   to the current rgl device.
-#'
-#' @examples
-#' \dontrun{
-#' ## Draw a simple trajectory through vertices 1, 5, 12, 8
-#' draw.trajectory(graph.3d, vertices = c(1, 5, 12, 8))
-#'
-#' ## Draw with directional arrows and custom colors
-#' draw.trajectory(graph.3d, vertices = c(1, 5, 12, 8),
-#'                 with.arrows = TRUE, col = "blue", arrow.col = "orange")
-#' }
-#'
-#' @export
-draw.trajectory <- function(graph.3d,
-                            vertices,
-                            with.arrows = FALSE,
-                            arrow.size = 1,
-                            col = "cyan",
-                            terminal.col = NULL,
-                            segment.col = "gray",
-                            arrow.col = "red",
-                            terminal.radius = 0.3,
-                            radius = 0.15,
-                            segment.lwd = 5,
-                            with.labels = TRUE,
-                            terminal.vertex.adj = c(0, 0),
-                            terminal.vertex.cex = 3) {
-
-    n <- length(vertices)
-    if (n < 2) {
-        warning("Trajectory must contain at least 2 vertices")
-        return(invisible(NULL))
-    }
-
-    if (is.null(terminal.col)) {
-        terminal.col <- col
-    }
-
-    source.vertex <- vertices[1]
-    dest.vertex <- vertices[n]
-
-    ## Draw terminal vertices with larger spheres
-    rgl::spheres3d(graph.3d[source.vertex, ], radius = terminal.radius,
-                   col = terminal.col)
-    rgl::spheres3d(graph.3d[dest.vertex, ], radius = terminal.radius,
-                   col = terminal.col)
-
-    ## Draw labels at terminal vertices
-    if (with.labels) {
-        rgl::texts3d(graph.3d[source.vertex, ], texts = source.vertex,
-                     adj = terminal.vertex.adj, cex = terminal.vertex.cex)
-        rgl::texts3d(graph.3d[dest.vertex, ], texts = dest.vertex,
-                     adj = terminal.vertex.adj, cex = terminal.vertex.cex)
-    }
-
-    ## Draw interior vertices with smaller spheres
-    if (n > 2) {
-        interior.vertices <- vertices[2:(n - 1)]
-        rgl::spheres3d(graph.3d[interior.vertices, ], radius = radius, col = col)
-    }
-
-    ## Draw connecting segments
-    segment.indices <- c(rbind(vertices[-n], vertices[-1]))
-    M <- graph.3d[segment.indices, ]
-    rgl::segments3d(M, col = segment.col, lwd = segment.lwd)
-
-    ## Draw directional arrows if requested
-    if (with.arrows) {
-        for (j in 1:(n - 1)) {
-            start <- graph.3d[vertices[j], ]
-            end <- graph.3d[vertices[j + 1], ]
-            mid.start <- start * 0.6 + end * 0.4
-            mid.end <- start * 0.4 + end * 0.6
-            rgl::arrow3d(mid.start, mid.end, type = "flat", col = arrow.col,
-                         width = 0.5, s = arrow.size)
-        }
-    }
-
-    invisible(NULL)
-}
-
-#' Draw a Single Cell Trajectory in 3D Space
-#'
-#' Visualizes a single trajectory from a cell object in 3D using rgl graphics.
-#' This is a convenience wrapper around \code{\link{draw.trajectory}} that
-#' extracts the trajectory vertex sequence from a cell's trajectory list.
-#'
-#' @param graph.3d A matrix of 3D coordinates for graph vertices where each row
-#'   corresponds to a vertex and columns represent x, y, z coordinates.
-#' @param i Integer index specifying which trajectory to draw from the cell's
-#'   trajectories list.
-#' @param cell List object containing trajectory data with component
-#'   \code{trajectories}, a list of trajectory vertex sequences.
-#' @inheritDotParams draw.trajectory -vertices
-#'
-#' @return None. Function is called for its side effect of adding 3D graphics
-#'   to the current rgl device.
-#'
-#' @seealso \code{\link{draw.trajectory}} for the underlying drawing function
-#'   and full parameter documentation.
-#'
-#' @examples
-#' \dontrun{
-#' draw.cell.trajectory(graph.3d, 1, my.cell, with.arrows = TRUE)
-#' }
-#'
-#' @export
-draw.cell.trajectory <- function(graph.3d, i, cell, ...) {
-    draw.trajectory(graph.3d, vertices = cell$trajectories[[i]], ...)
-}
-
-#' Draw All Trajectories for a Cell in 3D Space
-#'
-#' Visualizes all trajectories from a cell object in 3D using rgl graphics.
-#' Iterates through all trajectories in the cell, drawing spheres at vertices,
-#' connecting segments, and optionally directional arrows.
-#'
-#' @param cell List object containing trajectory data with components:
-#'   \itemize{
-#'     \item \code{trajectories}: List of trajectory vertex sequences
-#'     \item \code{terminal.vertex}: Terminal vertex identifier
-#'   }
-#' @param with.edges Logical; if TRUE, draws line segments connecting trajectory
-#'   vertices. Default is TRUE
-#' @param with.arrows Logical; if TRUE, draws directional arrows along trajectory
-#'   segments. Default is TRUE
-#' @param arrow.size Numeric scaling factor for arrow size. Default is 1
-#' @param arrow.width Numeric line width for connecting segments. Default is 1
-#' @param col Character string specifying color for trajectory spheres.
-#'   Default is "cyan"
-#' @param terminal.radius Numeric radius for terminal vertex spheres.
-#'   Default is 0.3
-#' @param radius Numeric radius for trajectory vertex spheres. Default is 0.15
-#' @param terminal.vertex.adj Numeric vector of length 2 for text label
-#'   adjustment. Default is c(0,0)
-#' @param terminal.vertex.cex Numeric character expansion factor for terminal
-#'   vertex labels. Default is 2
-#'
-#' @details
-#' The function expects a global \code{graph.3d} object containing 3D coordinates
-#' for graph vertices. For each trajectory in the cell, vertices are drawn as
-#' spheres in the specified color, with optional connecting segments and
-#' directional arrows. Arrows are positioned at 40-60% along each segment.
-#'
-#' @return None. Function is called for its side effect of adding 3D graphics
-#'   to the current rgl device.
-#'
-#' @examples
-#' \dontrun{
-#' # Assumes graph.3d and cell object are defined
-#' draw.cell.trajectories(my.cell, with.arrows = FALSE, with.edges = TRUE)
-#' }
-#'
-#' @export
-draw.cell.trajectories <- function(cell,
-                                   with.edges = TRUE,
-                                   with.arrows = TRUE,
-                                   arrow.size = 1,
-                                   arrow.width = 1,
-                                   col = "cyan",
-                                   terminal.radius = 0.3,
-                                   radius = 0.15,
-                                   terminal.vertex.adj = c(0,0),
-                                   terminal.vertex.cex = 2) {
-    for (i in seq_along(cell$trajectories)) {
-        traj <- cell$trajectories[[i]]
-        n <- length(traj)
-
-        # NOTE: Remove or fix this line - M1.cells appears to be hardcoded
-        # rgl::spheres3d(graph.3d[M1.cells$max.vertex,], radius = terminal.radius, col = col)
-
-        rgl::spheres3d(graph.3d[cell$terminal.vertex,], radius = terminal.radius, col = col)
-        rgl::texts3d(graph.3d[cell$terminal.vertex,], texts = cell$terminal.vertex,
-                adj = terminal.vertex.adj, cex = terminal.vertex.cex)
-        rgl::spheres3d(graph.3d[traj,], radius = radius, col = col)
-
-        ## Create edges
-        if (with.edges) {
-            segment.indices <- c(rbind(traj[-n], traj[-1]))
-            M <- graph.3d[segment.indices, ]
-            rgl::segments3d(M, col = "gray", lwd = arrow.width)
-        }
-
-        if (with.arrows) {
-            for (j in 1:(n - 1)) {
-                start <- graph.3d[traj[j], ]
-                end <- graph.3d[traj[j + 1], ]
-                mid.start <- start * 0.6 + end * 0.4  # start arrow at 40% along edge
-                mid.end <- start * 0.4 + end * 0.6    # end arrow at 60% along edge
-                rgl::arrow3d(mid.start, mid.end, type = "flat", col = "red",
-                            width = 0.5, s = arrow.size)
-            }
-        }
-    }
-}
-
-#' Diagnose Missing Trajectory Vertices
-#'
-#' Identifies vertices in a basin that are not covered by any trajectory.
-#'
-#' @param gfc A gfc object with trajectories.
-#' @param max.id Maximum basin identifier (label or vertex).
-#' @param debug Logical; if TRUE, print detailed intermediate diagnostics.
-#'
-#' @return List with diagnostic information.
-#'
-diagnose.trajectory.coverage <- function(gfc, max.id, debug = TRUE) {
-
-    ## Resolve max.id
-    if (is.character(max.id)) {
-        max.label <- max.id
-        idx <- match(max.label, gfc$summary$label)
-        max.vertex <- gfc$summary$vertex[idx]
-    } else {
-        max.vertex <- as.integer(max.id)
-        idx <- match(max.vertex, gfc$summary$vertex)
-        max.label <- gfc$summary$label[idx]
-    }
-
-    ## Debug: understand the assignment encoding
-    if (debug) {
-        cat("=== Debug Information ===\n")
-        cat(sprintf("max.label: %s, max.vertex: %d\n", max.label, max.vertex))
-
-        ## Check what values are in expanded.max.assignment
-        cat("\nexpanded.max.assignment unique values:\n")
-        print(table(gfc$expanded.max.assignment, useNA = "ifany"))
-
-        ## Check the summary to understand maxima ordering
-        max.summary <- gfc$summary[gfc$summary$type == "max", ]
-        cat("\nMaxima in summary (order matters):\n")
-        print(max.summary[, c("label", "vertex")])
-
-        ## What index is M1 in the maxima list?
-        max.labels <- gfc$summary$label[gfc$summary$type == "max"]
-        max.position <- match(max.label, max.labels)
-        cat(sprintf("\n%s is at position %d in maxima list\n", max.label, max.position))
-    }
-
-    ## Get basin object
-    basin <- gfc$max.basins[[max.label]]
-    traj.vertices <- basin$vertices
-
-    if (debug) {
-        cat(sprintf("\nbasin$vertices: n=%d, range=[%d, %d]\n",
-                    length(traj.vertices), min(traj.vertices), max(traj.vertices)))
-        cat(sprintf("First 10: %s\n", paste(head(traj.vertices, 10), collapse = ", ")))
-
-        ## Check if max.vertex is in basin$vertices
-        cat(sprintf("max.vertex %d in basin$vertices: %s\n",
-                    max.vertex, max.vertex %in% traj.vertices))
-    }
-
-    ## Try different interpretations of the assignment
-    max.index.from.label <- as.integer(sub("M", "", max.label))
-    max.position.in.list <- match(max.label,
-                                   gfc$summary$label[gfc$summary$type == "max"])
-
-    if (debug) {
-        cat(sprintf("\nTrying different assignment interpretations:\n"))
-        cat(sprintf("  Using label number (M1 -> 1): %d vertices\n",
-                    sum(gfc$expanded.max.assignment == max.index.from.label, na.rm = TRUE)))
-        cat(sprintf("  Using position in max list: %d vertices\n",
-                    sum(gfc$expanded.max.assignment == max.position.in.list, na.rm = TRUE)))
-        cat(sprintf("  Using vertex index directly: %d vertices\n",
-                    sum(gfc$expanded.max.assignment == max.vertex, na.rm = TRUE)))
-    }
-
-    ## Determine correct interpretation
-    ## Check which interpretation puts max.vertex in its own basin
-    for (interp in c("label_number", "position", "vertex")) {
-        test.idx <- switch(interp,
-                           label_number = max.index.from.label,
-                           position = max.position.in.list,
-                           vertex = max.vertex)
-        test.basin <- which(gfc$expanded.max.assignment == test.idx)
-        if (max.vertex %in% test.basin) {
-            if (debug) {
-                cat(sprintf("\n>>> Correct interpretation: '%s' (value=%d)\n",
-                            interp, test.idx))
-            }
-            basin.vertices <- test.basin
-            break
-        }
-    }
-
-    if (!exists("basin.vertices")) {
-        warning("Could not determine correct assignment interpretation")
-        basin.vertices <- which(gfc$expanded.max.assignment == max.index.from.label)
-    }
-
-    ## Now compare
-    missing.vertices <- setdiff(basin.vertices, traj.vertices)
-    extra.vertices <- setdiff(traj.vertices, basin.vertices)
-    overlap.vertices <- intersect(basin.vertices, traj.vertices)
-
-    if (debug) {
-        cat(sprintf("\n=== Coverage Analysis ===\n"))
-        cat(sprintf("Expanded basin vertices: %d\n", length(basin.vertices)))
-        cat(sprintf("Trajectory vertices: %d\n", length(traj.vertices)))
-        cat(sprintf("Overlap: %d\n", length(overlap.vertices)))
-        cat(sprintf("Missing (in basin, not in traj): %d\n", length(missing.vertices)))
-        cat(sprintf("Extra (in traj, not in basin): %d\n", length(extra.vertices)))
-    }
-
-    result <- list(
-        max.label = max.label,
-        max.vertex = max.vertex,
-        basin.vertices = basin.vertices,
-        traj.vertices = traj.vertices,
-        n.basin.vertices = length(basin.vertices),
-        n.traj.vertices = length(traj.vertices),
-        n.overlap = length(overlap.vertices),
-        n.missing = length(missing.vertices),
-        n.extra = length(extra.vertices),
-        missing.vertices = sort(missing.vertices),
-        extra.vertices = sort(extra.vertices),
-        overlap.vertices = sort(overlap.vertices)
-    )
-
-    return(invisible(result))
-}
-
-old.diagnose.trajectory.coverage <- function(gfc, max.id) {
-
-    ## Resolve max.id
-    if (is.character(max.id)) {
-        max.label <- max.id
-        idx <- match(max.label, gfc$summary$label)
-        max.vertex <- gfc$summary$vertex[idx]
-    } else {
-        max.vertex <- as.integer(max.id)
-        idx <- match(max.vertex, gfc$summary$vertex)
-        max.label <- gfc$summary$label[idx]
-    }
-
-    max.index <- as.integer(sub("M","",max.label))
-
-    ## Get basin vertices
-    basin <- gfc$max.basins[[max.label]]
-    traj.vertices <- basin$vertices
-    basin.vertices <- which(gfc$expanded.max.assignment == max.index)
-
-    ## Find vertices in basin but not in any trajectory
-    missing.vertices <- setdiff(basin.vertices, traj.vertices)
-
-    ## Find vertices in trajectories but not in basin (shouldn't happen)
-    extra.vertices <- setdiff(traj.vertices, basin.vertices)
-
-    result <- list(
-        max.label = max.label,
-        max.vertex = max.vertex,
-        n.basin.vertices = length(basin.vertices),
-        n.traj.vertices = length(traj.vertices),
-        n.missing = length(missing.vertices),
-        n.extra = length(extra.vertices),
-        missing.vertices = sort(missing.vertices),
-        extra.vertices = sort(extra.vertices),
-        coverage = length(traj.vertices) / length(basin.vertices)
-    )
-
-    cat(sprintf("Trajectory Coverage Diagnosis for %s (vertex %d)\n",
-                max.label, max.vertex))
-    cat(sprintf("  Basin vertices: %d\n", result$n.basin.vertices))
-    cat(sprintf("  Trajectory vertices: %d\n", result$n.traj.vertices))
-    cat(sprintf("  Missing from trajectories: %d (%.1f%%)\n",
-                result$n.missing, 100 * (1 - result$coverage)))
-    cat(sprintf("  Extra (not in basin): %d\n", result$n.extra))
-
-    if (result$n.missing > 0 && result$n.missing <= 20) {
-        cat(sprintf("  Missing vertices: %s\n",
-                    paste(result$missing.vertices, collapse = ", ")))
-    }
-
-    return(invisible(result))
-}
-
-#' Trace Gradient Flow from a Single Vertex
-#'
-#' Manually traces the ascending gradient flow from a vertex to diagnose
-#' why it may not be part of expected trajectories.
-#'
-#' @param adj.list Graph adjacency list.
-#' @param weight.list Edge weight list (can be modulated).
-#' @param y Function values.
-#' @param start.vertex Starting vertex (1-based).
-#' @param max.steps Maximum steps to prevent infinite loops.
-#' @param verbose Print each step.
-#'
-#' @return List with trajectory and diagnostic info.
-#'
-trace.gradient.flow <- function(adj.list,
-                                 weight.list,
-                                 y,
-                                 start.vertex,
-                                 max.steps = 100,
-                                 verbose = TRUE) {
-
-    trajectory <- start.vertex
-    current <- start.vertex
-    step <- 0
-
-    if (verbose) {
-        cat(sprintf("Tracing ascending gradient from vertex %d (y = %.4f)\n",
-                    start.vertex, y[start.vertex]))
-    }
-
-    while (step < max.steps) {
-        nbrs <- adj.list[[current]]
-        weights <- weight.list[[current]]
-
-        if (length(nbrs) == 0) {
-            if (verbose) cat("  No neighbors - isolated vertex\n")
-            break
-        }
-
-        ## Find neighbor with maximum y value (ascending gradient)
-        y.nbrs <- y[nbrs]
-        best.idx <- which.max(y.nbrs)
-        best.nbr <- nbrs[best.idx]
-        best.y <- y.nbrs[best.idx]
-
-        if (verbose) {
-            cat(sprintf("  Step %d: v=%d (y=%.4f) -> ", step + 1, current, y[current]))
-        }
-
-        ## Check if we can ascend
-        if (best.y <= y[current]) {
-            if (verbose) {
-                cat(sprintf("LOCAL MAX (no higher neighbor)\n"))
-                cat(sprintf("    Neighbors: %s\n", paste(nbrs, collapse = ", ")))
-                cat(sprintf("    Neighbor y: %s\n",
-                            paste(round(y.nbrs, 4), collapse = ", ")))
-            }
-            break
-        }
-
-        if (verbose) {
-            cat(sprintf("v=%d (y=%.4f, delta=%.4f)\n",
-                        best.nbr, best.y, best.y - y[current]))
-        }
-
-        ## Check for cycle
-        if (best.nbr %in% trajectory) {
-            if (verbose) cat("  CYCLE DETECTED!\n")
-            break
-        }
-
-        trajectory <- c(trajectory, best.nbr)
-        current <- best.nbr
-        step <- step + 1
-    }
-
-    if (step >= max.steps) {
-        if (verbose) cat("  Max steps reached\n")
-    }
-
-    terminal <- trajectory[length(trajectory)]
-
-    result <- list(
-        start.vertex = start.vertex,
-        terminal.vertex = terminal,
-        trajectory = trajectory,
-        n.steps = length(trajectory) - 1,
-        start.y = y[start.vertex],
-        terminal.y = y[terminal],
-        delta.y = y[terminal] - y[start.vertex]
-    )
-
-    if (verbose) {
-        cat(sprintf("\nSummary: %d -> %d in %d steps, y: %.4f -> %.4f\n",
-                    start.vertex, terminal, result$n.steps,
-                    result$start.y, result$terminal.y))
-    }
-
-    return(invisible(result))
-}
-
-#' Diagnose Gradient Flow for Missing Vertices
-#'
-#' Traces gradient flow for vertices that are missing from trajectories
-#' to understand where they actually flow.
-#'
-#' @param gfc A gfc object.
-#' @param adj.list Graph adjacency list.
-#' @param weight.list Edge weight list used in compute.gfc().
-#' @param y Function values.
-#' @param max.id Maximum basin to diagnose.
-#' @param max.diagnose Maximum number of missing vertices to diagnose.
-#'
-#' @return Data frame with flow destinations for missing vertices.
-#'
-diagnose.missing.flows <- function(gfc,
-                                    adj.list,
-                                    weight.list,
-                                    y,
-                                    max.id,
-                                    max.diagnose = 50) {
-
-    ## Get missing vertices
-    coverage <- diagnose.trajectory.coverage(gfc, max.id)
-    missing <- coverage$missing.vertices
-
-    if (length(missing) == 0) {
-        cat("No missing vertices to diagnose.\n")
-        return(NULL)
-    }
-
-    n.diagnose <- min(length(missing), max.diagnose)
-    cat(sprintf("\nDiagnosing gradient flow for %d missing vertices...\n\n",
-                n.diagnose))
-
-    ## Get expected maximum vertex
-    expected.max <- coverage$max.vertex
-
-    ## Trace each missing vertex
-    results <- data.frame(
-        vertex = integer(n.diagnose),
-        terminal = integer(n.diagnose),
-        reaches.expected = logical(n.diagnose),
-        n.steps = integer(n.diagnose),
-        y.start = numeric(n.diagnose),
-        y.terminal = numeric(n.diagnose)
-    )
-
-    terminal.counts <- list()
-
-    for (i in seq_len(n.diagnose)) {
-        v <- missing[i]
-        flow <- trace.gradient.flow(adj.list, weight.list, y, v, verbose = FALSE)
-
-        results$vertex[i] <- v
-        results$terminal[i] <- flow$terminal.vertex
-        results$reaches.expected[i] <- (flow$terminal.vertex == expected.max)
-        results$n.steps[i] <- flow$n.steps
-        results$y.start[i] <- flow$start.y
-        results$y.terminal[i] <- flow$terminal.y
-
-        ## Count terminals
-        term.key <- as.character(flow$terminal.vertex)
-        if (is.null(terminal.counts[[term.key]])) {
-            terminal.counts[[term.key]] <- 0
-        }
-        terminal.counts[[term.key]] <- terminal.counts[[term.key]] + 1
-    }
-
-    ## Summary
-    cat("Terminal destination summary:\n")
-    for (term in names(terminal.counts)) {
-        term.v <- as.integer(term)
-        ## Find label if it's a known extremum
-        label.idx <- match(term.v, gfc$summary$vertex)
-        if (!is.na(label.idx)) {
-            label <- gfc$summary$label[label.idx]
-        } else {
-            label <- "(not in summary)"
-        }
-        cat(sprintf("  Vertex %s %s: %d vertices\n",
-                    term, label, terminal.counts[[term]]))
-    }
-
-    cat(sprintf("\nReach expected maximum (%d): %d / %d (%.1f%%)\n",
-                expected.max,
-                sum(results$reaches.expected),
-                n.diagnose,
-                100 * mean(results$reaches.expected)))
-
-    return(results)
 }

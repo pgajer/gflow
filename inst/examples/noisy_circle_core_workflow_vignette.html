@@ -735,7 +735,7 @@ response, while others are pure noise.</p>
 </div>
 <div id="recover-extrema-and-basins" class="section level2">
 <h2>8) Recover Extrema and Basins</h2>
-<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a>y.basins <span class="ot">&lt;-</span> <span class="fu">compute.refined.basins</span>(</span>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a>y.basins <span class="ot">&lt;-</span> <span class="fu">compute.gfc</span>(</span>
 <span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>  <span class="at">adj.list =</span> fit.seed<span class="sc">$</span>graph<span class="sc">$</span>adj.list,</span>
 <span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="at">edge.length.list =</span> fit.seed<span class="sc">$</span>graph<span class="sc">$</span>edge.length.list,</span>
 <span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>  <span class="at">fitted.values =</span> y.hat,</span>
