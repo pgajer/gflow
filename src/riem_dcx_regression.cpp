@@ -5721,7 +5721,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     // --------------------------------------------------------------
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("Phases 1-4: Build geometric structure\n");
+        progress_log("Phases 1-4: Build geometric structure");
     }
 
     initialize_from_knn(
@@ -5776,7 +5776,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
     
     // --------------------------------------------------------------
@@ -5884,7 +5884,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     #endif
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("Phase 4.5: Select diffusion parameters ... \n");
+        progress_log("Phase 4.5: Select diffusion parameters ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -5906,7 +5906,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     const double t_mult = std::max(1.0, t_update_max_mult);
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 
     // --------------------------------------------------------------
@@ -5914,7 +5914,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     // --------------------------------------------------------------
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("Phase 5: Initial response smoothing ... ");
+        progress_log_inline("Phase 5: Initial response smoothing ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -5932,7 +5932,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     gcv_history.add(gcv_result);
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 
     // --------------------------------------------------------------
@@ -6506,11 +6506,11 @@ void riem_dcx_t::fit_rdgraph_regression(
             }
         }
 
-        Rprintf("DONE: %s; best GCV at itr %d (%.6e)\n",
-                converged ? "converged/early-stop" : "stopped by max_iterations",
-                best_itr_final, best_gcv_final);
+        progress_log("DONE: %s; best GCV at itr %d (%.6e)",
+                     converged ? "converged/early-stop" : "stopped by max_iterations",
+                     best_itr_final, best_gcv_final);
 
-        elapsed_time(total_time, "Total Time: ", false);
+        elapsed_time(total_time, "Total Time: ", false, true);
     }
 }
 

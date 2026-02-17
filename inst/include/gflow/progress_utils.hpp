@@ -17,6 +17,13 @@ using std::size_t;
 void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
                   const char* message,
                   bool with_brackets = false);
+void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
+                  const char* message,
+                  bool with_brackets,
+                  bool with_timestamp);
+
+void progress_log(const char* fmt, ...);
+void progress_log_inline(const char* fmt, ...);
 
 struct progress_tracker_t {
     std::chrono::steady_clock::time_point start_time;

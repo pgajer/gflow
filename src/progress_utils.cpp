@@ -1,7 +1,65 @@
 #include <R_ext/Print.h>  // For Rprintf
 #include <chrono>         // For std::chrono
 #include <cstdio>         // For snprintf
+#include <cstdarg>        // For va_list, va_start, va_end
 #include <cmath>          // For std::fmod
+#include <ctime>          // For std::tm, std::time_t
+
+namespace {
+
+void format_timestamp(char* timestamp_buf, size_t timestamp_buf_size) {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+
+    std::tm now_tm{};
+#if defined(_WIN32)
+    localtime_s(&now_tm, &now_time_t);
+#else
+    localtime_r(&now_time_t, &now_tm);
+#endif
+    std::strftime(timestamp_buf, timestamp_buf_size, "%Y-%m-%d %H:%M:%S", &now_tm);
+}
+
+void progress_vlog_impl(const bool with_newline, const char* fmt, va_list args) {
+    char message_buf[4096];
+    std::vsnprintf(message_buf, sizeof(message_buf), fmt, args);
+
+    char timestamp_buf[24];
+    format_timestamp(timestamp_buf, sizeof(timestamp_buf));
+
+    if (with_newline) {
+        Rprintf("[%s] %s\n", timestamp_buf, message_buf);
+    } else {
+        Rprintf("[%s] %s", timestamp_buf, message_buf);
+    }
+}
+
+}  // namespace
+
+void progress_log(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    progress_vlog_impl(true, fmt, args);
+    va_end(args);
+}
+
+void progress_log_inline(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    progress_vlog_impl(false, fmt, args);
+    va_end(args);
+}
+
+void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
+                  const char* message,
+                  bool with_brackets,
+                  bool with_timestamp);
+
+void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
+                 const char* message,
+                 bool with_brackets) {
+    elapsed_time(start_time, message, with_brackets, false);
+}
 
 /**
  * @brief Prints elapsed time with optional message and formatting for parallel processing
@@ -33,7 +91,8 @@
  */
 void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
                  const char* message,
-                 bool with_brackets) {
+                 bool with_brackets,
+                 bool with_timestamp) {
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
@@ -49,9 +108,22 @@ void elapsed_time(std::chrono::time_point<std::chrono::steady_clock> start_time,
         snprintf(time_str, sizeof(time_str), "%d.%03d", seconds, ms);
     }
 
+    if (with_timestamp) {
+        char timestamp_buf[24];
+        format_timestamp(timestamp_buf, sizeof(timestamp_buf));
+
+        if (with_brackets) {
+            Rprintf("[%s] %s (%s)\n", timestamp_buf, message, time_str);
+        } else {
+            Rprintf("[%s] %s %s\n", timestamp_buf, message, time_str);
+        }
+        return;
+    }
+
     if (with_brackets) {
         Rprintf("%s (%s)\n", message, time_str);
-    } else {
-        Rprintf("%s %s\n", message, time_str);
+        return;
     }
+
+    Rprintf("%s %s\n", message, time_str);
 }

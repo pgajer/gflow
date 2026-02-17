@@ -414,7 +414,7 @@ void riem_dcx_t::initialize_from_knn(
     // PHASE 1A: K-NN COMPUTATION AND NEIGHBORHOOD CONSTRUCTION
     // ================================================================
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("  Phase 1: kNN neighborhoods ... ");
+        progress_log_inline("  Phase 1: kNN neighborhoods ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -437,15 +437,15 @@ void riem_dcx_t::initialize_from_knn(
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG) && knn_cache_mode != 0) {
         if (knn_cache_hit) {
-            Rprintf("  [kNN cache] hit: %s (cached k=%d)\n",
-                    knn_cache_path.c_str(),
-                    knn_result.k);
+            progress_log("  [kNN cache] hit: %s (cached k=%d)",
+                         knn_cache_path.c_str(),
+                         knn_result.k);
         } else if (knn_cache_written) {
-            Rprintf("  [kNN cache] wrote: %s (k=%d)\n",
-                    knn_cache_path.c_str(),
-                    knn_result.k);
+            progress_log("  [kNN cache] wrote: %s (k=%d)",
+                         knn_cache_path.c_str(),
+                         knn_result.k);
         } else {
-            Rprintf("  [kNN cache] mode=%d, no cache IO performed\n", knn_cache_mode);
+            progress_log("  [kNN cache] mode=%d, no cache IO performed", knn_cache_mode);
         }
     }
 
@@ -483,14 +483,14 @@ void riem_dcx_t::initialize_from_knn(
     #endif
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 
     // ================================================================
     // PHASE 1B: EDGE CONSTRUCTION VIA NEIGHBORHOOD INTERSECTIONS
     // ================================================================
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("  Phase 2: simplicial graph build/pruning ... ");
+        progress_log_inline("  Phase 2: simplicial graph build/pruning ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -616,7 +616,7 @@ void riem_dcx_t::initialize_from_knn(
             path_edge_ratio_percentile
         );
     } else if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("[geometric_prune] skipped (ratio threshold <= 1.0)\n");
+        progress_log("[geometric_prune] skipped (ratio threshold <= 1.0)");
     }
 
     #if DEBUG_INITIALIZE_FROM_KNN
@@ -944,14 +944,14 @@ void riem_dcx_t::initialize_from_knn(
 	}
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 
     // ================================================================
     // PHASE 2: DENSITY INITIALIZATION
     // ================================================================
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("  Phase 3: reference measure + densities ... ");
+        progress_log_inline("  Phase 3: reference measure + densities ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -974,14 +974,14 @@ void riem_dcx_t::initialize_from_knn(
     compute_initial_densities(verbose_level);
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 
     // ================================================================
     // PHASE 3: METRIC CONSTRUCTION
     // ================================================================
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("  Phase 4: metric + operators assembly ... ");
+        progress_log_inline("  Phase 4: metric + operators assembly ... ");
         phase_time = std::chrono::steady_clock::now();
     }
 
@@ -1004,7 +1004,7 @@ void riem_dcx_t::initialize_from_knn(
     assemble_operators();
 
     if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        elapsed_time(phase_time, "DONE", true);
+        elapsed_time(phase_time, "DONE", true, true);
     }
 }
 
