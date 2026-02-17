@@ -482,7 +482,7 @@ namespace gfc_internal {
             // Apply all geometric filters symmetrically to both maxima and minima.
             // All four filters (p_mean_nbrs_dist, p_mean_hopk_dist, p_deg, min_basin_size)
             // are applied consistently to both types of extrema, matching the R
-            // compute.refined.basins() implementation.
+            // compute.gfc() implementation.
             if (summaries[i].p_mean_nbrs_dist >= p_mean_nbrs_dist_threshold) {
                 keep = false;
             }

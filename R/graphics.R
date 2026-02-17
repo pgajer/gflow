@@ -1546,7 +1546,7 @@ plot.prediction.errors <- function(x,
 #'   list(vertices = c(1, 2, 3), ref_vertex = 1)
 #' )
 #'
-#' chain.with.path.obj <- chain.with.path(adj_list, weight_list, path_data)
+#' chain.with.path.obj <- gflow:::chain.with.path(adj_list, weight_list, path_data)
 #' plot(chain.with.path.obj)
 #'
 #' @importFrom graphics plot points segments text

@@ -109,7 +109,7 @@
 #' @examples
 #' \dontrun{
 #' # Compute refined basins with named lists
-#' result <- compute.refined.basins(adj.list, edgelen.list, fitted.values)
+#' result <- compute.gfc(adj.list, edgelen.list, fitted.values)
 #' basins <- result$basins
 #'
 #' # Examine the summary to identify basins to merge

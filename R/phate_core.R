@@ -676,9 +676,33 @@ phate.embed <- function(core = NULL,
 #' One-call wrapper that runs \code{\link{phate.core}} followed by
 #' \code{\link{phate.embed}}.
 #'
-#' @param X,D,K,P Inputs passed to \code{\link{phate.core}} (provide exactly one).
-#' @param k,alpha.decay,knn.use,knn.symmetrize,t,t.max,pca.dim,pca.center,pca.scale,
-#'   kernel.eps,potential.eps,compute.D.pot Passed to \code{\link{phate.core}}.
+#' @param X Optional numeric data matrix passed to \code{\link{phate.core}}.
+#' @param D Optional numeric distance matrix (or \code{dist}) passed to
+#'   \code{\link{phate.core}}.
+#' @param K Optional affinity/kernel matrix passed to \code{\link{phate.core}}.
+#' @param P Optional Markov diffusion operator passed to \code{\link{phate.core}}.
+#' @param k Integer k-NN neighborhood size passed to \code{\link{phate.core}}.
+#' @param alpha.decay Positive kernel decay exponent passed to
+#'   \code{\link{phate.core}}.
+#' @param knn.use Logical; if \code{TRUE}, build a sparse kNN kernel in
+#'   \code{\link{phate.core}}.
+#' @param knn.symmetrize Character in \code{c("mean", "max")} passed to
+#'   \code{\link{phate.core}}.
+#' @param t Either \code{"auto"} or a positive integer diffusion time passed to
+#'   \code{\link{phate.core}}.
+#' @param t.max Positive integer upper bound for automatic \code{t} selection in
+#'   \code{\link{phate.core}}.
+#' @param pca.dim Optional integer PCA dimension passed to
+#'   \code{\link{phate.core}}.
+#' @param pca.center Logical PCA centering flag passed to
+#'   \code{\link{phate.core}}.
+#' @param pca.scale Logical PCA scaling flag passed to \code{\link{phate.core}}.
+#' @param kernel.eps Small positive floor used in kernel normalization by
+#'   \code{\link{phate.core}}.
+#' @param potential.eps Small positive floor used in \code{-log(P^t)} by
+#'   \code{\link{phate.core}}.
+#' @param compute.D.pot Logical; if \code{TRUE}, compute diffusion-potential
+#'   distances in \code{\link{phate.core}}.
 #' @param ndim Embedding dimension passed to \code{\link{phate.embed}}.
 #' @param embed.method Embedding method passed to \code{\link{phate.embed}}.
 #' @param embed.maxit,embed.tol,cmdscale.add,seed Passed to \code{\link{phate.embed}}.

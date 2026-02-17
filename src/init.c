@@ -228,11 +228,8 @@ static const R_CallMethodDef CallMethods[] = {
 
   {"S_compute_gfc_flow",        (DL_FUNC) &S_compute_gfc_flow,        6},
   {"S_compute_gfc_flow_matrix", (DL_FUNC) &S_compute_gfc_flow_matrix, 7},
-  {"S_compute_gfc",             (DL_FUNC) &S_compute_gfc,        21},
   {"S_compute_vertex_density",  (DL_FUNC) &S_compute_vertex_density, 3},
   {"S_compute_gfc_basins",      (DL_FUNC) &S_compute_gfc_basins, 7},
-  {"S_debug_extension_search",  (DL_FUNC) &S_debug_extension_search, 9},
-  {"S_compute_gfc_matrix",      (DL_FUNC) &S_compute_gfc_matrix, 20},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},
   {"S_partition_graph",        (DL_FUNC) &S_partition_graph, 4},
