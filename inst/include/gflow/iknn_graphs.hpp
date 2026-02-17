@@ -4,6 +4,8 @@
 #include "vect_wgraph.hpp"
 #include "iknn_vertex.hpp"
 
+struct knn_result_t;
+
 struct iknn_graph_t {
     std::vector<std::vector<iknn_vertex_t>> graph; // ToDo: change to 'neighbors' or 'adjacency_list'
 
@@ -67,5 +69,20 @@ private:
                                int max_path_length) const;
 
 };
+
+/**
+ * Build an ikNN graph from flat kNN buffers (shared backend entry point).
+ *
+ * @param knn_result Flat kNN result with row-major [n x k_full] buffers.
+ * @param k Number of neighbors from each row to use (k <= knn_result.k).
+ * @param use_bucket_parallel Enable bucket-level OpenMP parallelism when available.
+ * @param num_threads Requested OpenMP thread count.
+ */
+iknn_graph_t create_iknn_graph_from_knn_result(
+    const knn_result_t& knn_result,
+    int k,
+    bool use_bucket_parallel = true,
+    int num_threads = 1
+);
 
 #endif // IKNN_GRAPHS_HPP_

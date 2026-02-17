@@ -1624,8 +1624,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
 
     const double max_ratio_threshold = REAL(s_max_ratio_threshold)[0];
 
-    if (!R_FINITE(max_ratio_threshold) || max_ratio_threshold <= 0.0) {
-        Rf_error("max.ratio.threshold must be a finite positive number (got %.3e)",
+    if (!R_FINITE(max_ratio_threshold) || max_ratio_threshold < 0.0) {
+        Rf_error("max.ratio.threshold must be a finite non-negative number (got %.3e)",
                  max_ratio_threshold);
     }
 

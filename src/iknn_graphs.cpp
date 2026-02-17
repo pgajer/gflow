@@ -2099,6 +2099,49 @@ iknn_graph_t create_iknn_graph_inverted_index(const knn_search_result_t& knn_res
     return res;
 }
 
+iknn_graph_t create_iknn_graph_from_knn_result(const knn_result_t& knn_result,
+                                               int k,
+                                               bool use_bucket_parallel,
+                                               int num_threads) {
+    if (k <= 0) {
+        Rf_error("create_iknn_graph_from_knn_result: k must be > 0.");
+    }
+    if (knn_result.n <= 0 || knn_result.k <= 0) {
+        Rf_error("create_iknn_graph_from_knn_result: invalid knn_result dimensions.");
+    }
+    if (k > knn_result.k) {
+        Rf_error("create_iknn_graph_from_knn_result: requested k=%d exceeds knn_result.k=%d.",
+                 k,
+                 knn_result.k);
+    }
+
+    const size_t n_points = static_cast<size_t>(knn_result.n);
+    const size_t stride = static_cast<size_t>(knn_result.k);
+    const size_t required = n_points * stride;
+    if (knn_result.indices.size() < required || knn_result.distances.size() < required) {
+        Rf_error("create_iknn_graph_from_knn_result: knn_result buffers are smaller than n*k.");
+    }
+
+    knn_search_result_t converted(n_points, static_cast<size_t>(k));
+    const size_t k_used = static_cast<size_t>(k);
+
+    for (size_t i = 0; i < n_points; ++i) {
+        const size_t row_offset = i * stride;
+        for (size_t j = 0; j < k_used; ++j) {
+            const size_t offset = row_offset + j;
+            converted.indices[i][j] = knn_result.indices[offset];
+            converted.distances[i][j] = knn_result.distances[offset];
+        }
+    }
+
+    return create_iknn_graph_inverted_index(
+        converted,
+        k,
+        use_bucket_parallel,
+        num_threads
+    );
+}
+
 void print_stage_running(const char* stage_name, bool verbose) {
     if (!verbose) {
         return;
