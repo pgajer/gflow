@@ -77,6 +77,23 @@ enum class dense_fallback_mode_t : int {
 };
 
 /**
+ * @brief Triangle construction policy for rdgraph initialization
+ */
+enum class triangle_policy_t : int {
+    AUTO = 0,    ///< Build triangles only when needed by downstream operators
+    NEVER = 1,   ///< Never build triangles (edge-only initialization)
+    ALWAYS = 2   ///< Always build triangles (legacy behavior)
+};
+
+/**
+ * @brief Edge-count guard for triangle-dependent off-diagonal edge mass assembly
+ *
+ * When edge count exceeds this threshold, compute_edge_mass_matrix() uses a
+ * diagonal-only approximation regardless of triangle availability.
+ */
+constexpr size_t EDGE_MASS_OFFDIAG_MAX_EDGES = 200000;
+
+/**
  * @brief Result structure for GCV-based spectral filtering
  */
 struct gcv_result_t {
@@ -720,6 +737,7 @@ struct riem_dcx_t {
         const std::string& knn_cache_path,
         int knn_cache_mode,
         int dense_fallback_mode,
+        int triangle_policy_mode,
         verbose_level_t verbose_level
         );
 
@@ -1110,6 +1128,8 @@ private:
         double pathological_ratio_threshold,
         const std::string& knn_cache_path,
         int knn_cache_mode,
+        triangle_policy_t triangle_policy,
+        double gamma_modulation,
         verbose_level_t verbose_level
         );
 

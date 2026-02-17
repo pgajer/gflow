@@ -301,10 +301,12 @@ extern "C" SEXP create_parameters_component(
     double epsilon_rho,
     int max_iterations,
     double density_alpha,
-    double density_epsilon
+    double density_epsilon,
+    int dense_fallback_mode,
+    int triangle_policy_mode
     ) {
 
-    const int n_fields = 15;
+    const int n_fields = 17;
     SEXP params = PROTECT(Rf_allocVector(VECSXP, n_fields));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, n_fields));
     int idx = 0;
@@ -395,6 +397,41 @@ extern "C" SEXP create_parameters_component(
     SET_STRING_ELT(names, idx, Rf_mkChar("density.epsilon"));
     SET_VECTOR_ELT(params, idx++, Rf_ScalarReal(density_epsilon));
 
+    // dense.fallback
+    SET_STRING_ELT(names, idx, Rf_mkChar("dense.fallback"));
+    const char* dense_fallback_str = "unknown";
+    switch (dense_fallback_mode) {
+    case 0:
+        dense_fallback_str = "auto";
+        break;
+    case 1:
+        dense_fallback_str = "never";
+        break;
+    case 2:
+        dense_fallback_str = "always";
+        break;
+    default:
+        break;
+    }
+    SET_VECTOR_ELT(params, idx++, Rf_mkString(dense_fallback_str));
+
+    // triangle.policy
+    SET_STRING_ELT(names, idx, Rf_mkChar("triangle.policy"));
+    const char* triangle_policy_str = "unknown";
+    switch (triangle_policy_mode) {
+    case 0:
+        triangle_policy_str = "auto";
+        break;
+    case 1:
+        triangle_policy_str = "never";
+        break;
+    case 2:
+        triangle_policy_str = "always";
+        break;
+    default:
+        break;
+    }
+    SET_VECTOR_ELT(params, idx++, Rf_mkString(triangle_policy_str));
 
     Rf_setAttrib(params, R_NamesSymbol, names);
     UNPROTECT(2); // names, params
@@ -1088,6 +1125,8 @@ extern "C" SEXP create_reference_measure_component(const riem_dcx_t& dcx) {
  * @param s_max_hop Maximum hop distance for radii computation (INTSXP)
  * @param s_dense_fallback_mode Integer fallback mode for diffusion linear solve:
  *        0=auto, 1=never, 2=always (INTSXP)
+ * @param s_triangle_policy_mode Integer triangle construction policy:
+ *        0=auto, 1=never, 2=always (INTSXP)
  * @param s_verbose_level SEXP object (integer) controlling progress reporting during computation; possible values: 0, 1, 2, 3.
  *
  * @return R list of class c("knn.riem.fit", "list") with components:
@@ -1157,6 +1196,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_knn_cache_path,
     SEXP s_knn_cache_mode,
     SEXP s_dense_fallback_mode,
+    SEXP s_triangle_policy_mode,
     SEXP s_verbose_level
 ) {
     // ================================================================
@@ -1757,6 +1797,17 @@ extern "C" SEXP S_fit_rdgraph_regression(
         Rf_error("dense_fallback_mode must be 0 (auto), 1 (never), or 2 (always)");
     }
 
+    if (TYPEOF(s_triangle_policy_mode) != INTSXP || Rf_length(s_triangle_policy_mode) != 1) {
+        Rf_error("triangle_policy_mode must be a single integer (0=auto, 1=never, 2=always)");
+    }
+
+    const int triangle_policy_mode = INTEGER(s_triangle_policy_mode)[0];
+
+    if (triangle_policy_mode == NA_INTEGER ||
+        (triangle_policy_mode != 0 && triangle_policy_mode != 1 && triangle_policy_mode != 2)) {
+        Rf_error("triangle_policy_mode must be 0 (auto), 1 (never), or 2 (always)");
+    }
+
     // -------------------- density.epsilon --------------------
 
     if (TYPEOF(s_density_epsilon) != REALSXP || Rf_length(s_density_epsilon) != 1) {
@@ -1891,6 +1942,7 @@ extern "C" SEXP S_fit_rdgraph_regression(
         knn_cache_path,
         knn_cache_mode,
         dense_fallback_mode,
+        triangle_policy_mode,
         verbose_level
         );
 
@@ -2098,7 +2150,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
                                 t_diffusion, beta_damping, gamma_modulation,
                                 t_scale_factor, beta_coefficient_factor,
                                 n_eigenpairs, filter_type, epsilon_y, epsilon_rho, max_iterations,
-                                density_alpha, density_epsilon
+                                density_alpha, density_epsilon,
+                                dense_fallback_mode, triangle_policy_mode
                                 ));
     SET_VECTOR_ELT(result, component_idx++, s_params);
     UNPROTECT(1);

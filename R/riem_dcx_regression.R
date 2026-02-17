@@ -317,6 +317,11 @@
 #'   allocation. \code{"always"} forces dense direct solve (debugging mode; can
 #'   require \eqn{O(n^2)} memory).
 #'
+#' @param triangle.policy Character scalar controlling triangle construction in
+#'   simplicial initialization. \code{"auto"} (default) builds triangles only
+#'   when they can affect response-coherence modulation, \code{"never"} disables
+#'   triangle construction, and \code{"always"} forces legacy behavior.
+#'
 #' @param verbose.level Integer in \code{c(0, 1, 2, 3)} controlling reporting.
 #' @param ... Additional advanced options forwarded to lower-level fitting routines.
 #'
@@ -685,6 +690,7 @@ fit.rdgraph.regression <- function(
     ##     max.weight.ratio = 1000             ## currently implicit via median.factor+alpha
     ## )
     dense.fallback = c("auto", "never", "always"),
+    triangle.policy = c("auto", "never", "always"),
     store.projected.X = FALSE,
     verbose.level = 1,
     ...
@@ -1237,6 +1243,15 @@ fit.rdgraph.regression <- function(
         always = 2L
     )
 
+    ## Match triangle.policy
+    triangle.policy <- match.arg(triangle.policy)
+    triangle.policy.mode <- switch(
+        triangle.policy,
+        auto = 0L,
+        never = 1L,
+        always = 2L
+    )
+
     if (!is.numeric(t.update.max.mult) || length(t.update.max.mult) != 1L ||
         !is.finite(t.update.max.mult) || t.update.max.mult < 1.0) {
         stop("t.update.max.mult must be a finite numeric scalar >= 1.0")
@@ -1286,6 +1301,7 @@ fit.rdgraph.regression <- function(
         if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
         as.integer(knn.cache.mode.id),
         as.integer(dense.fallback.mode),
+        as.integer(triangle.policy.mode),
         as.integer(verbose.level),
         PACKAGE = "gflow"
     )

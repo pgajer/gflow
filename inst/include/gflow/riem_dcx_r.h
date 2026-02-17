@@ -53,6 +53,7 @@ extern "C" {
 		SEXP s_knn_cache_path,
 		SEXP s_knn_cache_mode,
 		SEXP s_dense_fallback_mode,
+		SEXP s_triangle_policy_mode,
 		
 		SEXP s_verbose_level
 			);
