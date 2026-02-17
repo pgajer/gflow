@@ -608,7 +608,7 @@ void riem_dcx_t::initialize_from_knn(
 	Rprintf("Edges before: %zu\n", n_edges_before_pruning);
     #endif
 
-    const bool do_geometric_prune = (max_ratio_threshold > 0.0);
+    const bool do_geometric_prune = (max_ratio_threshold > 1.0);
     set_wgraph_t pruned_graph = temp_graph;
     if (do_geometric_prune) {
         pruned_graph = temp_graph.prune_edges_geometrically(
@@ -616,7 +616,7 @@ void riem_dcx_t::initialize_from_knn(
             path_edge_ratio_percentile
         );
     } else if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
-        Rprintf("[geometric_prune] skipped (max_ratio_threshold=0)\n");
+        Rprintf("[geometric_prune] skipped (ratio threshold <= 1.0)\n");
     }
 
     #if DEBUG_INITIALIZE_FROM_KNN

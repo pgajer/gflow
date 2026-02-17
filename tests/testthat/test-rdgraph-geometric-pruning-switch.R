@@ -104,6 +104,42 @@ test_that("geometric pruning switch can only reduce (or preserve) edge count", {
   expect_lte(n.edges.on, n.edges.off)
 })
 
+test_that("deviation threshold zero behaves like geometric pruning off", {
+  set.seed(1104)
+  X <- matrix(rnorm(96 * 5), nrow = 96, ncol = 5)
+  y <- rnorm(96)
+
+  fit.zero <- fit.rdgraph.regression(
+    X = X,
+    y = y,
+    k = 10L,
+    max.iterations = 1L,
+    n.eigenpairs = 20L,
+    pca.dim = NULL,
+    apply.geometric.pruning = TRUE,
+    max.ratio.threshold = 0.00,
+    verbose.level = 0L
+  )
+
+  fit.off <- fit.rdgraph.regression(
+    X = X,
+    y = y,
+    k = 10L,
+    max.iterations = 1L,
+    n.eigenpairs = 20L,
+    pca.dim = NULL,
+    apply.geometric.pruning = FALSE,
+    max.ratio.threshold = 0.10,
+    verbose.level = 0L
+  )
+
+  edges.zero <- as_edge_table(fit.zero$graph$adj.list, fit.zero$graph$edge.length.list)
+  edges.off <- as_edge_table(fit.off$graph$adj.list, fit.off$graph$edge.length.list)
+
+  expect_equal(edges.zero, edges.off, tolerance = 1e-12)
+  expect_equal(fit.zero$fitted.values, fit.off$fitted.values, tolerance = 1e-12)
+})
+
 test_that("apply.geometric.pruning argument is validated", {
   set.seed(1103)
   X <- matrix(rnorm(80 * 5), nrow = 80, ncol = 5)

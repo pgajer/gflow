@@ -145,3 +145,19 @@ test_that("fit path and ikNN API produce identical graph with geometric and quan
     case.label = "geometric+quantile"
   )
 })
+
+test_that("fit-path geometric threshold boundary (deviation=0) matches ikNN no-prune", {
+  set.seed(15)
+  X <- matrix(rnorm(120 * 7), nrow = 120, ncol = 7)
+  y <- rnorm(nrow(X))
+
+  assert_cross_api_graph_invariance(
+    X = X,
+    y = y,
+    k = 9L,
+    apply.geometric.pruning = TRUE,
+    max.ratio.threshold = 0.0,
+    threshold.percentile = 0.0,
+    case.label = "geometric-boundary-zero"
+  )
+})

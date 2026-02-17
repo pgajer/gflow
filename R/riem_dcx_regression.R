@@ -262,7 +262,8 @@
 #'     alternative path between i and j whose path/edge length ratio
 #'     minus 1.0 is less than this threshold. This is a deviation
 #'     threshold in the range 0 to 0.2. Internally we compare the
-#'     path-to-edge ratio R to \eqn{1 + \delta}. Default 0.1.
+#'     path-to-edge ratio R to \eqn{1 + \delta}. A value of 0 means
+#'     no geometric pruning (ratio threshold 1.0). Default 0.1.
 #'
 #' @param apply.geometric.pruning Logical; if \code{TRUE} (default), apply
 #'     geometric pruning using \code{max.ratio.threshold}. If \code{FALSE},
