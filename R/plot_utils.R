@@ -82,6 +82,219 @@ plot3D.plain <- function(X,
   invisible(ids)
 }
 
+## Internal helper for HTML 3D plot overlays.
+## Supports:
+## - function(ctx)
+## - list(function(ctx), ...)
+## - list(fun = <function>, args = <list>, with_ctx = TRUE/FALSE)
+## - list(list(fun=..., args=..., with_ctx=...), ...)
+.run_plot3d_html_layers <- function(post.layers = NULL, context = list()) {
+    if (is.null(post.layers)) return(invisible(NULL))
+    if (!is.list(context)) stop("context must be a list")
+
+    run_layer <- function(fun, args = NULL, with_ctx = TRUE, idx = NULL) {
+        if (!is.function(fun)) {
+            if (is.null(idx)) stop("Layer `fun` must be a function")
+            stop(sprintf("post.layers[[%d]]$fun must be a function", idx))
+        }
+        if (is.null(args)) args <- list()
+        if (!is.list(args)) {
+            if (is.null(idx)) stop("Layer `args` must be a list")
+            stop(sprintf("post.layers[[%d]]$args must be a list", idx))
+        }
+
+        if (isTRUE(with_ctx)) {
+            do.call(fun, c(list(context), args))
+        } else {
+            do.call(fun, args)
+        }
+        invisible(NULL)
+    }
+
+    if (is.function(post.layers)) {
+        run_layer(post.layers, with_ctx = TRUE)
+        return(invisible(NULL))
+    }
+
+    if (!is.list(post.layers)) {
+        stop("post.layers must be NULL, a function, or a list of functions/layer specs")
+    }
+
+    ## Single layer spec form.
+    if (!is.null(post.layers$fun)) {
+        run_layer(
+            fun = post.layers$fun,
+            args = post.layers$args,
+            with_ctx = if (is.null(post.layers$with_ctx)) TRUE else isTRUE(post.layers$with_ctx)
+        )
+        return(invisible(NULL))
+    }
+
+    for (i in seq_along(post.layers)) {
+        layer <- post.layers[[i]]
+        if (is.function(layer)) {
+            run_layer(layer, with_ctx = TRUE, idx = i)
+        } else if (is.list(layer) && !is.null(layer$fun)) {
+            run_layer(
+                fun = layer$fun,
+                args = layer$args,
+                with_ctx = if (is.null(layer$with_ctx)) TRUE else isTRUE(layer$with_ctx),
+                idx = i
+            )
+        } else {
+            stop(sprintf(
+                "post.layers[[%d]] must be a function or a list with element `fun`",
+                i
+            ))
+        }
+    }
+
+    invisible(NULL)
+}
+
+#' Create Interactive HTML 3D Plot (Plain Points/Spheres)
+#'
+#' Creates an interactive WebGL 3D widget from 3D coordinates using either points
+#' or spheres (depending on \code{radius}).
+#'
+#' @param X matrix/data.frame with exactly 3 columns.
+#' @param radius numeric or NULL; if non-NULL, draw spheres with this radius.
+#' @param col color for points/spheres.
+#' @param size point size when \code{radius} is NULL.
+#' @param axes,xlab,ylab,zlab standard \code{rgl::plot3d()} axis/label args.
+#' @param widget.width,widget.height Widget dimensions in pixels.
+#' @param background.color Scene background color.
+#' @param end.labels Optional named vector of endpoint labels. Names should be row indices in \code{X}
+#'   (coercible to integers), values are label text.
+#' @param end.labels.adj Label adjustment passed to \code{label.end.pts()}.
+#' @param end.labels.col Color for endpoint markers/labels passed to \code{label.end.pts()}.
+#' @param end.labels.radius Sphere radius for endpoint markers passed to \code{label.end.pts()}.
+#' @param end.labels.cex Text size for endpoint labels passed to \code{label.end.pts()}.
+#' @param post.layers Optional additional layers to add before HTML scene capture.
+#'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
+#'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
+#'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
+#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
+#' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
+#' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
+#' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#' @param ... passed to \code{rgl::plot3d()}.
+#'
+#' @return An \code{htmlwidget} object from \code{rgl::rglwidget()}.
+#'
+#' @export
+plot3D.plain.html <- function(X,
+                              radius = NULL,
+                              col = "gray",
+                              size = 3,
+                              axes = FALSE,
+                              xlab = "",
+                              ylab = "",
+                              zlab = "",
+                              widget.width = 1700L,
+                              widget.height = 1000L,
+                              background.color = "white",
+                              end.labels = NULL,
+                              end.labels.adj = c(0, 0),
+                              end.labels.col = "cornsilk",
+                              end.labels.radius = 0.2,
+                              end.labels.cex = 2.5,
+                              post.layers = NULL,
+                              output.file = NULL,
+                              selfcontained = TRUE,
+                              open.browser = FALSE,
+                              ...) {
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl'. ",
+             "Install with install.packages('rgl').", call. = FALSE)
+    }
+    if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+        stop("This function requires the optional package 'htmlwidgets'. ",
+             "Install with install.packages('htmlwidgets').", call. = FALSE)
+    }
+
+    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
+    if (ncol(X) != 3) stop("X must have exactly 3 columns")
+    if (!is.numeric(size) || length(size) != 1L || !is.finite(size) || size <= 0) {
+        stop("size must be a positive numeric value")
+    }
+
+    widget.width <- as.integer(widget.width)
+    widget.height <- as.integer(widget.height)
+    if (!is.finite(widget.width) || widget.width <= 0) {
+        stop("widget.width must be a positive integer")
+    }
+    if (!is.finite(widget.height) || widget.height <= 0) {
+        stop("widget.height must be a positive integer")
+    }
+
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+
+    old_opt <- options(rgl.useNULL = TRUE)
+    on.exit(options(old_opt), add = TRUE)
+
+    rgl::open3d(useNULL = TRUE)
+    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    rgl::clear3d()
+    rgl::bg3d(color = background.color)
+
+    ids <- if (!is.null(radius)) {
+        rgl::plot3d(
+            X,
+            axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+            type = "s", radius = radius, col = col, ...
+        )
+    } else {
+        rgl::plot3d(
+            X,
+            axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+            type = "p", size = size, col = col, ...
+        )
+    }
+
+    if (!is.null(end.labels)) {
+        label.end.pts(
+            graph.3d = X,
+            end.labels = end.labels,
+            col = end.labels.col,
+            radius = end.labels.radius,
+            lab.cex = end.labels.cex,
+            lab.adj = end.labels.adj
+        )
+    }
+
+    .run_plot3d_html_layers(
+        post.layers = post.layers,
+        context = list(
+            X = X,
+            ids = ids,
+            radius = radius,
+            col = col,
+            size = size
+        )
+    )
+
+    scene <- rgl::scene3d(minimal = FALSE)
+    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+    attr(w, "ids") <- ids
+
+    if (!is.null(output.file)) {
+        output.file <- path.expand(output.file)
+        dir.create(dirname(output.file), recursive = TRUE, showWarnings = FALSE)
+        htmlwidgets::saveWidget(
+            widget = w,
+            file = output.file,
+            selfcontained = selfcontained
+        )
+        if (isTRUE(open.browser)) {
+            utils::browseURL(output.file)
+        }
+    }
+
+    w
+}
+
 #' Creates 3D Plot with Continuous Color Coding
 #'
 #' Creates a 3D plot of a set of points defined by \code{X} color-coded by the values of \code{y}.
@@ -309,6 +522,17 @@ plot3D.cont <- function(X,
 #' @param legend.border Border color for legend overlay.
 #' @param widget.width,widget.height Widget dimensions in pixels.
 #' @param background.color Scene background color.
+#' @param end.labels Optional named vector of endpoint labels. Names should be row indices in \code{X}
+#'   (coercible to integers), values are label text.
+#' @param end.labels.adj Label adjustment passed to \code{label.end.pts()}.
+#' @param end.labels.col Color for endpoint markers/labels passed to \code{label.end.pts()}.
+#' @param end.labels.radius Sphere radius for endpoint markers passed to \code{label.end.pts()}.
+#' @param end.labels.cex Text size for endpoint labels passed to \code{label.end.pts()}.
+#' @param post.layers Optional additional layers to add before HTML scene capture.
+#'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
+#'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
+#'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
+#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
@@ -367,6 +591,12 @@ plot3D.cont.html <- function(X,
                              widget.width = 1700L,
                              widget.height = 1000L,
                              background.color = "white",
+                             end.labels = NULL,
+                             end.labels.adj = c(0, 0),
+                             end.labels.col = "cornsilk",
+                             end.labels.radius = 0.2,
+                             end.labels.cex = 2.5,
+                             post.layers = NULL,
                              output.file = NULL,
                              selfcontained = TRUE,
                              open.browser = FALSE) {
@@ -497,6 +727,30 @@ plot3D.cont.html <- function(X,
             )
         }
     }
+
+    if (!is.null(end.labels)) {
+        label.end.pts(
+            graph.3d = X,
+            end.labels = end.labels,
+            col = end.labels.col,
+            radius = end.labels.radius,
+            lab.cex = end.labels.cex,
+            lab.adj = end.labels.adj
+        )
+    }
+
+    .run_plot3d_html_layers(
+        post.layers = post.layers,
+        context = list(
+            X = X,
+            y = y,
+            subset = subset,
+            y.cols = y.cols,
+            y.col.tbl = y.col.tbl,
+            radius = radius_local,
+            point.size = point.size
+        )
+    )
 
     scene <- rgl::scene3d(minimal = FALSE)
     w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
@@ -1245,6 +1499,460 @@ plot3D.cltrs <- function(X,
                    cltr.labs = if (!is.null(cltr)) cltr.labs else NULL,
                    legend.cltr.labs = legend.cltr.labs,
                    cltr.centers = cltr.centers))
+}
+
+#' Create Interactive HTML 3D Plot with Cluster Visualization
+#'
+#' Creates an interactive WebGL 3D plot of points with cluster assignments shown
+#' by colors, with an optional HTML legend overlay.
+#'
+#' @param X A 3D matrix or data.frame with exactly 3 columns.
+#' @param cltr A vector of cluster IDs (numeric or character) of length nrow(X).
+#' @param cltr.col.tbl A named vector mapping cluster IDs to colors. If NULL, colors are assigned automatically.
+#' @param ref.cltr A reference cluster ID that can be colored differently.
+#' @param ref.cltr.color The color for the reference cluster.
+#' @param show.ref.cltr Logical. Whether to display the reference cluster.
+#' @param show.cltr.labels Logical. Whether to show cluster labels in the plot.
+#' @param add Logical; kept for compatibility. Ignored in HTML mode (a new off-screen scene is always created).
+#' @param title Title of the plot.
+#' @param cex.labs Size scaling parameter for cluster labels.
+#' @param pal.type Palette type: "numeric", "brewer", or "mclust".
+#' @param brewer.pal.n Number of colors in the RColorBrewer palette.
+#' @param brewer.pal Name of the RColorBrewer palette.
+#' @param show.legend Logical. Whether to show a legend overlay.
+#' @param sort.legend.labs.by.freq Logical. Sort legend labels by frequency.
+#' @param sort.legend.labs.by.name Logical. Sort legend labels alphabetically.
+#' @param filter.out.freq.0.cltrs Logical. Remove clusters with zero frequency from legend.
+#' @param legend.title Title for the legend.
+#' @param radius Numeric. Size of spheres at data points; if \code{NA}, points are drawn.
+#' @param axes Logical. Whether to show axes.
+#' @param xlab,ylab,zlab Axis labels.
+#' @param legend.position Position of legend overlay: \code{"left"} or \code{"right"}.
+#' @param legend.font.size Base font size (px) for legend text.
+#' @param legend.width.px Legend overlay width in pixels.
+#' @param legend.max.height.pct Maximum legend height as percentage of widget height.
+#' @param legend.bg Background color for legend overlay.
+#' @param legend.border Border color for legend overlay.
+#' @param widget.width,widget.height Widget dimensions in pixels.
+#' @param background.color Scene background color.
+#' @param end.labels Optional named vector of endpoint labels. Names should be row indices in \code{X}
+#'   (coercible to integers), values are label text.
+#' @param end.labels.adj Label adjustment passed to \code{label.end.pts()}.
+#' @param end.labels.col Color for endpoint markers/labels passed to \code{label.end.pts()}.
+#' @param end.labels.radius Sphere radius for endpoint markers passed to \code{label.end.pts()}.
+#' @param end.labels.cex Text size for endpoint labels passed to \code{label.end.pts()}.
+#' @param post.layers Optional additional layers to add before HTML scene capture.
+#'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
+#'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
+#'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
+#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
+#' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
+#' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
+#' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#' @param ... Additional arguments passed to \code{\link[rgl]{plot3d}}.
+#'
+#' @return An \code{htmlwidget} object from \code{rgl::rglwidget()} with attributes:
+#' \itemize{
+#'   \item \code{ids}: RGL object IDs
+#'   \item \code{cltr.col.tbl}: color table used for clusters
+#'   \item \code{cltr.labs}: cluster labels
+#'   \item \code{legend.cltr.labs}: legend labels
+#'   \item \code{cltr.centers}: matrix of cluster centers (if labels are shown)
+#' }
+#'
+#' @export
+plot3D.cltrs.html <- function(X,
+                              cltr = NULL,
+                              cltr.col.tbl = NULL,
+                              ref.cltr = NULL,
+                              ref.cltr.color = "gray",
+                              show.ref.cltr = TRUE,
+                              show.cltr.labels = TRUE,
+                              add = FALSE,
+                              title = "",
+                              cex.labs = 2,
+                              pal.type = "numeric",
+                              brewer.pal.n = 3,
+                              brewer.pal = "Set1",
+                              show.legend = TRUE,
+                              sort.legend.labs.by.freq = FALSE,
+                              sort.legend.labs.by.name = FALSE,
+                              filter.out.freq.0.cltrs = TRUE,
+                              legend.title = NULL,
+                              radius = NA,
+                              axes = FALSE,
+                              xlab = "",
+                              ylab = "",
+                              zlab = "",
+                              legend.position = c("left", "right"),
+                              legend.font.size = 12,
+                              legend.width.px = 320L,
+                              legend.max.height.pct = 95,
+                              legend.bg = "rgba(255,255,255,0.93)",
+                              legend.border = "#BBBBBB",
+                              widget.width = 1700L,
+                              widget.height = 1000L,
+                              background.color = "white",
+                              end.labels = NULL,
+                              end.labels.adj = c(0, 0),
+                              end.labels.col = "cornsilk",
+                              end.labels.radius = 0.2,
+                              end.labels.cex = 2.5,
+                              post.layers = NULL,
+                              output.file = NULL,
+                              selfcontained = TRUE,
+                              open.browser = FALSE,
+                              ...) {
+    if (!requireNamespace("rgl", quietly = TRUE)) {
+        stop("This function requires the optional package 'rgl'. ",
+             "Install with install.packages('rgl').", call. = FALSE)
+    }
+    if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+        stop("This function requires the optional package 'htmlwidgets'. ",
+             "Install with install.packages('htmlwidgets').", call. = FALSE)
+    }
+    if (!requireNamespace("htmltools", quietly = TRUE)) {
+        stop("This function requires the optional package 'htmltools'. ",
+             "Install with install.packages('htmltools').", call. = FALSE)
+    }
+
+    to_hex_colors <- function(cols, na.color = "gray80") {
+        nms <- names(cols)
+        cols_local <- cols
+        cols_local[is.na(cols_local)] <- na.color
+        rgb_mat <- grDevices::col2rgb(cols_local, alpha = FALSE)
+        out <- grDevices::rgb(
+            rgb_mat[1, ],
+            rgb_mat[2, ],
+            rgb_mat[3, ],
+            maxColorValue = 255
+        )
+        names(out) <- nms
+        out
+    }
+
+    legend.position <- match.arg(legend.position)
+
+    if (isTRUE(add)) {
+        warning(
+            "`add = TRUE` is ignored in plot3D.cltrs.html(); a new off-screen scene is always created.",
+            call. = FALSE
+        )
+    }
+
+    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
+    if (ncol(X) != 3) stop("X must have exactly 3 columns")
+    if (!is.null(cltr) && length(cltr) != nrow(X)) stop("Length of cltr must match nrow(X)")
+
+    widget.width <- as.integer(widget.width)
+    widget.height <- as.integer(widget.height)
+    legend.width.px <- as.integer(legend.width.px)
+    legend.font.size <- as.numeric(legend.font.size)
+    legend.max.height.pct <- as.numeric(legend.max.height.pct)
+    if (!is.finite(widget.width) || widget.width <= 0) {
+        stop("widget.width must be a positive integer")
+    }
+    if (!is.finite(widget.height) || widget.height <= 0) {
+        stop("widget.height must be a positive integer")
+    }
+    if (!is.finite(legend.width.px) || legend.width.px <= 0) {
+        stop("legend.width.px must be a positive integer")
+    }
+    if (!is.finite(legend.font.size) || legend.font.size <= 0) {
+        stop("legend.font.size must be positive")
+    }
+    if (!is.finite(legend.max.height.pct) || legend.max.height.pct <= 0) {
+        stop("legend.max.height.pct must be positive")
+    }
+
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+
+    old_opt <- options(rgl.useNULL = TRUE)
+    on.exit(options(old_opt), add = TRUE)
+
+    rgl::open3d(useNULL = TRUE)
+    on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
+    rgl::clear3d()
+    rgl::bg3d(color = background.color)
+
+    legend.cltr.labs <- NULL
+    ids <- NULL
+    cltr.centers <- NULL
+    cltr.labs <- NULL
+
+    x <- X[, 1]
+    y <- X[, 2]
+    z <- X[, 3]
+
+    if (!is.null(cltr)) {
+        cltr <- as.character(cltr)
+        cltr.labs <- names(sort(table(cltr)))
+        nCl <- length(cltr.labs)
+
+        if (is.null(cltr.col.tbl)) {
+            if (nCl <= 8) pal.type <- "numeric"
+            if (nCl > 19) {
+                brewer.pal <- "Spectral"
+                brewer.pal.n <- 11
+                cltr.labs <- sample(cltr.labs)
+            }
+
+            if (pal.type == "brewer") {
+                if (requireNamespace("RColorBrewer", quietly = TRUE)) {
+                    col.pal <- grDevices::colorRampPalette(
+                        rev(RColorBrewer::brewer.pal(brewer.pal.n, brewer.pal))
+                    )
+                    cltr.col.tbl <- col.pal(nCl)
+                } else {
+                    warning("RColorBrewer not installed; using hcl.colors('Spectral') fallback.")
+                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
+                }
+            } else if (pal.type == "numeric") {
+                cltr.col.tbl <- if (nCl < 8) 2:(nCl + 1) else seq_len(nCl)
+            } else if (pal.type == "mclust") {
+                if (!requireNamespace("mclust", quietly = TRUE)) {
+                    warning("mclust not installed; using hcl.colors('Spectral') fallback.")
+                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
+                } else {
+                    cltr.col.tbl <- mclust::mclust.options("classPlotColors")[seq_len(nCl)]
+                }
+            } else {
+                stop(sprintf("Unrecognized pal.type='%s'", pal.type))
+            }
+            names(cltr.col.tbl) <- cltr.labs
+        } else if (is.null(names(cltr.col.tbl))) {
+            if (length(cltr.col.tbl) != nCl) {
+                stop("When cltr.col.tbl is unnamed, its length must match the number of clusters")
+            }
+            names(cltr.col.tbl) <- cltr.labs
+        }
+
+        if (!is.null(ref.cltr)) {
+            ref.cltr <- as.character(ref.cltr)
+            if (!(ref.cltr %in% cltr.labs)) warning(ref.cltr, " is not in cltr.labs")
+            cltr.col.tbl[ref.cltr] <- ref.cltr.color
+        }
+
+        cltr.cols <- cltr.col.tbl[cltr]
+        if (nCl == 1) {
+            ids <- rgl::plot3d(
+                x, y, z,
+                axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+                main = title, ...
+            )
+        } else {
+            if (!is.na(radius)) {
+                if (is.null(ref.cltr)) {
+                    ids <- rgl::plot3d(
+                        x, y, z,
+                        col = cltr.cols,
+                        axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+                        main = title, type = "s", radius = radius, ...
+                    )
+                } else {
+                    idx <- cltr != ref.cltr
+                    ids <- rgl::plot3d(
+                        x[idx], y[idx], z[idx],
+                        col = cltr.cols[idx],
+                        axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+                        main = title, type = "s", radius = radius, ...
+                    )
+                    if (show.ref.cltr) {
+                        rgl::spheres3d(
+                            x[!idx], y[!idx], z[!idx],
+                            col = ref.cltr.color,
+                            radius = radius
+                        )
+                    }
+                }
+            } else {
+                ids <- rgl::plot3d(
+                    x, y, z,
+                    col = cltr.cols,
+                    axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+                    main = title, ...
+                )
+            }
+
+            if (show.cltr.labels) {
+                cltr.centers <- matrix(
+                    nrow = length(cltr.labs),
+                    ncol = 3,
+                    dimnames = list(cltr.labs, c("x", "y", "z"))
+                )
+                for (j in seq_along(cltr.labs)) {
+                    idx <- cltr == cltr.labs[j]
+                    idx[is.na(idx)] <- FALSE
+                    s <- sum(idx)
+                    if (s > 1) {
+                        cltr.centers[j, ] <- apply(X[idx, , drop = FALSE], 2, median)
+                    } else if (s == 1) {
+                        cltr.centers[j, ] <- as.numeric(X[idx, ])
+                    }
+                }
+                rgl::text3d(
+                    x = cltr.centers[, 1],
+                    y = cltr.centers[, 2],
+                    z = cltr.centers[, 3],
+                    texts = rownames(cltr.centers),
+                    font = 2,
+                    cex = cex.labs,
+                    adj = c(0.5, 1)
+                )
+            }
+
+            cltr.freq <- table(cltr)
+            if (!is.null(ref.cltr)) {
+                cltr.freq <- cltr.freq[setdiff(names(cltr.freq), ref.cltr)]
+            }
+
+            if (isTRUE(show.legend)) {
+                for (xnm in names(cltr.col.tbl)) {
+                    if (!(xnm %in% names(cltr.freq))) cltr.freq[xnm] <- 0L
+                }
+                if (isTRUE(sort.legend.labs.by.freq)) {
+                    o <- order(cltr.freq[names(cltr.col.tbl)], decreasing = TRUE)
+                    cltr.col.tbl <- cltr.col.tbl[o]
+                } else if (isTRUE(sort.legend.labs.by.name)) {
+                    o <- order(names(cltr.col.tbl))
+                    cltr.col.tbl <- cltr.col.tbl[o]
+                }
+                if (isTRUE(filter.out.freq.0.cltrs)) {
+                    cltr.freq <- cltr.freq[names(cltr.col.tbl)]
+                    keep <- cltr.freq != 0L
+                    cltr.col.tbl <- cltr.col.tbl[keep]
+                    cltr.freq <- cltr.freq[keep]
+                }
+                maxlen <- max(nchar(names(cltr.col.tbl))) + 2
+                legend.cltr.labs <- vapply(names(cltr.col.tbl), function(xnm) {
+                    sprintf(sprintf("%%-%ds%%5s", maxlen), xnm, sprintf("(%s)", cltr.freq[xnm]))
+                }, character(1))
+            } else {
+                legend.cltr.labs <- NULL
+            }
+        }
+    } else {
+        ids <- rgl::plot3d(
+            X,
+            axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
+            main = title, ...
+        )
+        cltr.col.tbl <- NULL
+        cltr.labs <- NULL
+    }
+
+    if (!is.null(end.labels)) {
+        label.end.pts(
+            graph.3d = X,
+            end.labels = end.labels,
+            col = end.labels.col,
+            radius = end.labels.radius,
+            lab.cex = end.labels.cex,
+            lab.adj = end.labels.adj
+        )
+    }
+
+    .run_plot3d_html_layers(
+        post.layers = post.layers,
+        context = list(
+            X = X,
+            cltr = cltr,
+            cltr.col.tbl = cltr.col.tbl,
+            cltr.labs = cltr.labs,
+            cltr.centers = cltr.centers,
+            legend.cltr.labs = legend.cltr.labs,
+            ids = ids,
+            radius = radius
+        )
+    )
+
+    scene <- rgl::scene3d(minimal = FALSE)
+    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+
+    if (isTRUE(show.legend) &&
+        !is.null(cltr.col.tbl) &&
+        length(cltr.col.tbl) > 0 &&
+        !is.null(legend.cltr.labs)) {
+        legend.side.css <- if (identical(legend.position, "left")) "left:10px;" else "right:10px;"
+        legend.title.use <- if (!is.null(legend.title) && nzchar(legend.title)) legend.title else "Cluster"
+        cltr.col.tbl.hex <- to_hex_colors(cltr.col.tbl)
+
+        legend.items <- lapply(seq_along(legend.cltr.labs), function(i) {
+            htmltools::tags$div(
+                style = paste0(
+                    "display:flex;align-items:center;gap:8px;",
+                    "margin:2px 0;",
+                    "font-size:", legend.font.size, "px;",
+                    "line-height:1.15;"
+                ),
+                htmltools::tags$span(
+                    style = sprintf(
+                        paste0(
+                            "display:inline-block;width:12px;height:12px;",
+                            "background:%s;border:1px solid #666;"
+                        ),
+                        unname(cltr.col.tbl.hex[i])
+                    )
+                ),
+                htmltools::tags$span(
+                    style = "white-space:pre;font-family:monospace;",
+                    legend.cltr.labs[i]
+                )
+            )
+        })
+
+        legend.box <- htmltools::tags$div(
+            style = paste0(
+                "position:absolute;top:10px;", legend.side.css,
+                "width:", legend.width.px, "px;",
+                "max-height:", legend.max.height.pct, "%;",
+                "overflow:auto;",
+                "background:", legend.bg, ";",
+                "padding:8px 10px;",
+                "border:1px solid ", legend.border, ";",
+                "border-radius:4px;",
+                "z-index:1000;"
+            ),
+            htmltools::tags$div(
+                style = paste0(
+                    "font-weight:600;margin-bottom:6px;",
+                    "font-size:", legend.font.size + 1, "px;"
+                ),
+                legend.title.use
+            ),
+            legend.items
+        )
+
+        w <- htmlwidgets::prependContent(
+            w,
+            htmltools::tags$style(htmltools::HTML(
+                ".rglWebGL { display: block; position: relative; }"
+            )),
+            legend.box
+        )
+    }
+
+    attr(w, "ids") <- ids
+    attr(w, "cltr.col.tbl") <- cltr.col.tbl
+    attr(w, "cltr.labs") <- cltr.labs
+    attr(w, "legend.cltr.labs") <- legend.cltr.labs
+    attr(w, "cltr.centers") <- cltr.centers
+
+    if (!is.null(output.file)) {
+        output.file <- path.expand(output.file)
+        dir.create(dirname(output.file), recursive = TRUE, showWarnings = FALSE)
+        htmlwidgets::saveWidget(
+            widget = w,
+            file = output.file,
+            selfcontained = selfcontained
+        )
+        if (isTRUE(open.browser)) {
+            utils::browseURL(output.file)
+        }
+    }
+
+    w
 }
 
 #' Highlight a Specific Cluster in 3D Space
