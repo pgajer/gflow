@@ -857,9 +857,11 @@ void riem_dcx_t::compute_edge_mass_matrix() {
     const size_t n_edges = edge_registry.size();
     const size_t n_vertices = vertex_cofaces.size();
     std::vector<Eigen::Triplet<double>> triplets;
-    constexpr size_t OFFDIAG_EDGE_MASS_MAX_EDGES = 200000;
-    const bool use_full_offdiag = (n_edges <= OFFDIAG_EDGE_MASS_MAX_EDGES);
+    const bool use_full_offdiag = (n_edges <= EDGE_MASS_OFFDIAG_MAX_EDGES);
+    const bool edge_cofaces_missing = edge_cofaces.empty();
+    const bool has_triangle_cofaces = (edge_cofaces.size() == n_edges);
     static bool warned_diagonal_only = false;
+    static bool warned_mismatched_triangle_cofaces = false;
 
     // ========================================================================
     // Part 1: Add diagonal entries from edge densities in vertex_cofaces
@@ -881,17 +883,26 @@ void riem_dcx_t::compute_edge_mass_matrix() {
         }
     }
 
-    if (!use_full_offdiag) {
-        if (!warned_diagonal_only) {
+    if (!use_full_offdiag || edge_cofaces_missing || !has_triangle_cofaces) {
+        if (!use_full_offdiag && !warned_diagonal_only) {
             Rf_warning("compute_edge_mass_matrix: n_edges=%ld exceeds %ld; using diagonal-only "
                        "edge mass approximation to control memory use.",
                        static_cast<long>(n_edges),
-                       static_cast<long>(OFFDIAG_EDGE_MASS_MAX_EDGES));
+                       static_cast<long>(EDGE_MASS_OFFDIAG_MAX_EDGES));
             warned_diagonal_only = true;
         }
+        if (use_full_offdiag && !edge_cofaces_missing && !has_triangle_cofaces &&
+            !warned_mismatched_triangle_cofaces) {
+            Rf_warning("compute_edge_mass_matrix: inconsistent triangle coface size; using diagonal-only "
+                       "edge mass approximation.");
+            warned_mismatched_triangle_cofaces = true;
+        }
+
         g.M[1] = spmat_t(n_edges, n_edges);
         g.M[1].setFromTriplets(triplets.begin(), triplets.end());
         g.M[1].makeCompressed();
+
+        // Factorization cache invalidation is required because matrix structure changed.
         g.M_solver[1].reset();
         return;
     }
@@ -5707,6 +5718,7 @@ void riem_dcx_t::fit_rdgraph_regression(
     const std::string& knn_cache_path,
     int knn_cache_mode,
     int dense_fallback_mode,
+    int triangle_policy_mode,
     verbose_level_t verbose_level
     ) {
     // ================================================================
@@ -5724,6 +5736,21 @@ void riem_dcx_t::fit_rdgraph_regression(
         progress_log("Phases 1-4: Build geometric structure");
     }
 
+    triangle_policy_t triangle_policy = triangle_policy_t::AUTO;
+    switch (triangle_policy_mode) {
+    case 0:
+        triangle_policy = triangle_policy_t::AUTO;
+        break;
+    case 1:
+        triangle_policy = triangle_policy_t::NEVER;
+        break;
+    case 2:
+        triangle_policy = triangle_policy_t::ALWAYS;
+        break;
+    default:
+        Rf_error("triangle_policy_mode must be 0 (auto), 1 (never), or 2 (always)");
+    }
+
     initialize_from_knn(
         X, k,
         use_counting_measure,
@@ -5739,6 +5766,8 @@ void riem_dcx_t::fit_rdgraph_regression(
         pathological_ratio_threshold,
         knn_cache_path,
         knn_cache_mode,
+        triangle_policy,
+        gamma_modulation,
         verbose_level
         );
 
