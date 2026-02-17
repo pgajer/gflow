@@ -264,6 +264,11 @@
 #'     threshold in the range 0 to 0.2. Internally we compare the
 #'     path-to-edge ratio R to \eqn{1 + \delta}. Default 0.1.
 #'
+#' @param apply.geometric.pruning Logical; if \code{TRUE} (default), apply
+#'     geometric pruning using \code{max.ratio.threshold}. If \code{FALSE},
+#'     skip geometric pruning entirely in the rdgraph fit path. This provides
+#'     an explicit off-switch and avoids relying on threshold conventions.
+#'
 #' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
 #'     length above this percentile are considered for geometric pruning.
 #'
@@ -661,6 +666,7 @@ fit.rdgraph.regression <- function(
     p.threshold = 0.95,
     max.hop = 30L,
     max.ratio.threshold = 0.1,
+    apply.geometric.pruning = TRUE,
     path.edge.ratio.percentile = 0.5,
     threshold.percentile = 0,
     knn.cache.path = NULL,
@@ -1128,6 +1134,12 @@ fit.rdgraph.regression <- function(
         stop("max.ratio.threshold must be in [0, 0.2).")
     }
 
+    if (!is.logical(apply.geometric.pruning) ||
+        length(apply.geometric.pruning) != 1L ||
+        is.na(apply.geometric.pruning)) {
+        stop("apply.geometric.pruning must be TRUE or FALSE.")
+    }
+
     if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
         path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
         stop("path.edge.ratio.percentile must be in [0, 1].")
@@ -1258,7 +1270,7 @@ fit.rdgraph.regression <- function(
         as.double(epsilon.y),
         as.double(epsilon.rho),
         as.integer(max.iterations),
-        as.double(max.ratio.threshold + 1.0),
+        as.double(if (isTRUE(apply.geometric.pruning)) max.ratio.threshold + 1.0 else 0.0),
         as.double(path.edge.ratio.percentile),
         as.double(threshold.percentile),
         as.double(density.alpha),

@@ -37,6 +37,8 @@
 #include "riem_dcx.hpp"
 #include "set_wgraph.hpp"
 #include "kNN.h"
+#include "iknn_graphs.hpp"
+#include "omp_compat.h"
 #include "progress_utils.hpp" // for elapsed_time
 #include <algorithm>
 #include <limits>
@@ -492,10 +494,19 @@ void riem_dcx_t::initialize_from_knn(
         phase_time = std::chrono::steady_clock::now();
     }
 
-	// Initialize vertex_cofaces with self-loops
+    const int iknn_num_threads = std::max(1, gflow_get_num_procs());
+    iknn_graph_t iknn_graph = create_iknn_graph_from_knn_result(
+        knn_result,
+        static_cast<int>(k),
+        iknn_num_threads > 1,
+        iknn_num_threads
+    );
+
+	// Initialize vertex_cofaces with self-loops and shared-backend ikNN edges
 	vertex_cofaces.resize(n_points);
 	for (index_t i = 0; i < n_points; ++i) {
-		vertex_cofaces[i].reserve(k);
+        const auto& neighbors = iknn_graph.graph[i];
+		vertex_cofaces[i].reserve(neighbors.size() + 1);
 
 		// Add self-loop at position [0]
 		// Convention: vertex_cofaces[i][0] is always the vertex itself
@@ -506,62 +517,16 @@ void riem_dcx_t::initialize_from_knn(
 				0.0,
 				0.0
 			});
-	}
 
-	// Build edge topology by checking ALL pairs for neighborhood overlap
-	std::vector<index_t> intersection;
-	intersection.reserve(k);
-
-	for (size_t i = 0; i < n_points - 1; ++i) {  // ← Check ALL pairs
-		const std::vector<index_t>& neighbors_i = knn_indices[i];
-
-		for (size_t j = i + 1; j < n_points; ++j) {  // ← ALL j > i, not just neighbors
-
-			// Compute neighborhood intersection
-			intersection.clear();
-			for (index_t v : neighbor_sets[i]) {
-				if (neighbor_sets[j].find(v) != neighbor_sets[j].end()) {
-					intersection.push_back(v);
-				}
-			}
-
-			size_t common_count = intersection.size();
-			if (common_count == 0) continue;  // No edge if neighborhoods don't overlap
-
-			// Compute minimum path length through common neighbors
-			double min_dist = std::numeric_limits<double>::max();
-			for (index_t x_k : intersection) {
-				auto it_i = std::find(neighbors_i.begin(), neighbors_i.end(), x_k);
-				if (it_i == neighbors_i.end()) continue;
-				size_t idx_i = it_i - neighbors_i.begin();
-				double dist_i_k = knn_distances[i][idx_i];
-
-				const std::vector<index_t>& neighbors_j = knn_indices[j];
-				auto it_j = std::find(neighbors_j.begin(), neighbors_j.end(), x_k);
-				if (it_j == neighbors_j.end()) continue;
-				size_t idx_j = it_j - neighbors_j.begin();
-				double dist_j_k = knn_distances[j][idx_j];
-
-				min_dist = std::min(min_dist, dist_i_k + dist_j_k);
-			}
-
-			// Add bidirectional edges
-			vertex_cofaces[i].push_back(neighbor_info_t{
-					static_cast<index_t>(j),
-					0,
-					common_count,
-					min_dist,
-					0.0
-				});
-
-			vertex_cofaces[j].push_back(neighbor_info_t{
-					static_cast<index_t>(i),
-					0,
-					common_count,
-					min_dist,
-					0.0
-				});
-		}
+        for (const auto& nbr : neighbors) {
+            vertex_cofaces[i].push_back(neighbor_info_t{
+                    static_cast<index_t>(nbr.index),
+                    0,
+                    nbr.isize,
+                    nbr.dist,
+                    0.0
+                });
+        }
 	}
 
 
@@ -629,16 +594,7 @@ void riem_dcx_t::initialize_from_knn(
     // PHASE 1C: GEOMETRIC EDGE PRUNING
     // ================================================================
 
-    set_wgraph_t temp_graph(n_points);
-    for (size_t i = 0; i < n_points; ++i) {
-        for (size_t k_idx = 1; k_idx < vertex_cofaces[i].size(); ++k_idx) {
-            const auto& edge_info = vertex_cofaces[i][k_idx];
-            index_t j = edge_info.vertex_index;
-            if (j > i) {
-                temp_graph.add_edge(i, j, edge_info.dist);
-            }
-        }
-    }
+    set_wgraph_t temp_graph(iknn_graph);
 
 
     #if DEBUG_INITIALIZE_FROM_KNN
@@ -652,10 +608,16 @@ void riem_dcx_t::initialize_from_knn(
 	Rprintf("Edges before: %zu\n", n_edges_before_pruning);
     #endif
 
-    set_wgraph_t pruned_graph = temp_graph.prune_edges_geometrically(
-        max_ratio_threshold,
-		path_edge_ratio_percentile
-    );
+    const bool do_geometric_prune = (max_ratio_threshold > 0.0);
+    set_wgraph_t pruned_graph = temp_graph;
+    if (do_geometric_prune) {
+        pruned_graph = temp_graph.prune_edges_geometrically(
+            max_ratio_threshold,
+            path_edge_ratio_percentile
+        );
+    } else if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        Rprintf("[geometric_prune] skipped (max_ratio_threshold=0)\n");
+    }
 
     #if DEBUG_INITIALIZE_FROM_KNN
 	size_t n_edges_after_pruning = 0;
