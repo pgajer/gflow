@@ -311,6 +311,8 @@ refit.rdgraph.regression <- function(fitted.model,
 
         use.parallel <- (n.cores > 1L) && (n.responses > 1L)
 
+        parallel.completed <- FALSE
+
         if (use.parallel) {
             ## Check for required packages
             if (!requireNamespace("foreach", quietly = TRUE)) {
@@ -329,9 +331,23 @@ refit.rdgraph.regression <- function(fitted.model,
             ## PARALLEL EXECUTION
             ## --------------------------------------------------------
 
-            ## Determine actual number of cores to use
-            max.cores <- parallel::detectCores(logical = FALSE)
-            n.cores.use <- min(n.cores, max.cores, n.responses)
+            ## Determine actual number of cores to use.
+            ## On some systems detectCores() can return NA; guard and fall back.
+            max.cores <- suppressWarnings(parallel::detectCores(logical = FALSE))
+            if (!is.finite(max.cores) || max.cores < 1L) {
+                max.cores <- suppressWarnings(parallel::detectCores(logical = TRUE))
+            }
+            if (!is.finite(max.cores) || max.cores < 1L) {
+                max.cores <- n.cores
+                if (verbose) {
+                    message(sprintf("parallel::detectCores() unavailable; using requested n.cores=%d", n.cores))
+                }
+            }
+            max.cores <- as.integer(max.cores)
+            n.cores.use <- as.integer(min(n.cores, max.cores, n.responses))
+            if (!is.finite(n.cores.use) || n.cores.use < 1L) {
+                n.cores.use <- 1L
+            }
 
             if (verbose) {
                 message(sprintf("Processing %d columns in parallel using %d cores...",
@@ -339,57 +355,72 @@ refit.rdgraph.regression <- function(fitted.model,
             }
 
             ## Register parallel backend
-            cl <- parallel::makeCluster(n.cores.use)
-            doParallel::registerDoParallel(cl)
-            on.exit(parallel::stopCluster(cl), add = TRUE)
+            cl <- tryCatch(
+                parallel::makeCluster(n.cores.use),
+                error = function(e) {
+                    warning(
+                        sprintf("Could not start parallel PSOCK cluster (%s); falling back to sequential processing.",
+                                conditionMessage(e)),
+                        call. = FALSE
+                    )
+                    NULL
+                }
+            )
 
-            ## Define iterator variable for foreach
-            j <- NULL  # Avoid R CMD check NOTE about undefined global
+            if (!is.null(cl)) {
+                doParallel::registerDoParallel(cl)
+                on.exit(parallel::stopCluster(cl), add = TRUE)
 
-            ## Parallel loop over columns
-            results.list <- foreach::foreach(
-                                         j = seq_len(n.responses),
-                                         .combine = "rbind",
-                                         .packages = character(0),
-                                         .export = c("select.eta.gcv.single.fast")
-                                     ) %dopar% {
+                ## Define iterator variable for foreach
+                j <- NULL  # Avoid R CMD check NOTE about undefined global
 
-                                         y.obs.j <- y.new[, j]
-                                         y.spectral.j <- Vt.Y[, j]
+                ## Parallel loop over columns
+                results.list <- foreach::foreach(
+                                             j = seq_len(n.responses),
+                                             .combine = "rbind",
+                                             .packages = character(0),
+                                             .export = c("select.eta.gcv.single.fast")
+                                         ) %dopar% {
 
-                                         ## Fast GCV selection (no intermediate y.hat storage)
-                                         gcv.result <- select.eta.gcv.single.fast(
-                                             y.obs.j, y.spectral.j, V,
-                                             filter.weights.matrix, eta.grid, trace.S.all
-                                         )
+                                             y.obs.j <- y.new[, j]
+                                             y.spectral.j <- Vt.Y[, j]
 
-                                         ## Return as single-row data frame for rbind combining
-                                         data.frame(
-                                             col.idx = j,
-                                             eta.optimal = gcv.result$eta.optimal,
-                                             gcv.min = gcv.result$gcv.min,
-                                             effective.df = gcv.result$effective.df,
-                                             best.idx = gcv.result$best.idx
-                                         )
-                                     }
+                                             ## Fast GCV selection (no intermediate y.hat storage)
+                                             gcv.result <- select.eta.gcv.single.fast(
+                                                 y.obs.j, y.spectral.j, V,
+                                                 filter.weights.matrix, eta.grid, trace.S.all
+                                             )
 
-            ## Reconstruct Y.hat using optimal indices
-            Y.hat <- matrix(0, nrow = n, ncol = n.responses)
-            for (i in seq_len(nrow(results.list))) {
-                j <- results.list$col.idx[i]
-                best.idx <- results.list$best.idx[i]
-                y.spectral.j <- Vt.Y[, j]
-                filtered.spectral <- y.spectral.j * filter.weights.matrix[, best.idx]
-                Y.hat[, j] <- V %*% filtered.spectral
+                                             ## Return as single-row data frame for rbind combining
+                                             data.frame(
+                                                 col.idx = j,
+                                                 eta.optimal = gcv.result$eta.optimal,
+                                                 gcv.min = gcv.result$gcv.min,
+                                                 effective.df = gcv.result$effective.df,
+                                                 best.idx = gcv.result$best.idx
+                                             )
+                                         }
+
+                ## Reconstruct Y.hat using optimal indices
+                Y.hat <- matrix(0, nrow = n, ncol = n.responses)
+                for (i in seq_len(nrow(results.list))) {
+                    j <- results.list$col.idx[i]
+                    best.idx <- results.list$best.idx[i]
+                    y.spectral.j <- Vt.Y[, j]
+                    filtered.spectral <- y.spectral.j * filter.weights.matrix[, best.idx]
+                    Y.hat[, j] <- V %*% filtered.spectral
+                }
+
+                eta.optimal <- results.list$eta.optimal
+                gcv.scores <- results.list$gcv.min
+                effective.df <- results.list$effective.df
+                best.idx.vec <- results.list$best.idx
+                n.cores.used <- n.cores.use
+                parallel.completed <- TRUE
             }
+        }
 
-            eta.optimal <- results.list$eta.optimal
-            gcv.scores <- results.list$gcv.min
-            effective.df <- results.list$effective.df
-            best.idx.vec <- results.list$best.idx
-            n.cores.used <- n.cores.use
-
-        } else {
+        if (!parallel.completed) {
 
             ## --------------------------------------------------------
             ## SEQUENTIAL EXECUTION

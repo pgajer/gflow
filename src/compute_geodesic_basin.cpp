@@ -652,19 +652,18 @@ gradient_basin_t set_wgraph_t::compute_geodesic_basin(
     // ========================================================================
     // COLLECT BOUNDARY VERTICES
     // ========================================================================
-
-    std::unordered_set<size_t> basin_vertices;
+    const size_t n_vertices = adjacency_list.size();
+    std::vector<unsigned char> is_in_basin(n_vertices, 0);
     for (const auto& [v, dist] : geodesic_basin.reachability_map.distances) {
-        basin_vertices.insert(v);
+        is_in_basin[v] = 1;
     }
 
-    std::unordered_set<size_t> boundary_found;
+    std::vector<unsigned char> boundary_seen(n_vertices, 0);
     for (const auto& [v, dist] : geodesic_basin.reachability_map.distances) {
         for (const auto& edge : adjacency_list[v]) {
             size_t u = edge.vertex;
-            if (basin_vertices.find(u) == basin_vertices.end() &&
-                boundary_found.find(u) == boundary_found.end()) {
-                boundary_found.insert(u);
+            if (!is_in_basin[u] && !boundary_seen[u]) {
+                boundary_seen[u] = 1;
                 result.y_nbhd_bd_map[u] = y[u];
             }
         }

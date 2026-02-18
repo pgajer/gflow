@@ -309,7 +309,8 @@ set_wgraph_t::set_wgraph_t(const std::vector<std::vector<int>>& adj_list,
         }
     }
 
-    ensure_edge_weights_computed();
+    // Lazy-initialize edge-weight map on first get_edge_weight() call.
+    // Eager precompute here is expensive for large graphs and unnecessary for basin builds.
 }
 
 /**
