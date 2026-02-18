@@ -285,7 +285,13 @@ compute.basins.of.attraction <- function(adj.list,
 #' @seealso \code{\link{compute.basins.of.attraction}} for computing the basins
 #'
 #' @export
-summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k = 2, ...) {
+summary.basins_of_attraction <- function(object,
+                                         adj.list,
+                                         edgelen.list,
+                                         hop.k = 2,
+                                         vertex.metrics = NULL,
+                                         use.cpp = TRUE,
+                                         ...) {
 
     if (!inherits(object, "basins_of_attraction")) {
         stop("Input must be of class 'basins_of_attraction'")
@@ -311,6 +317,53 @@ summary.basins_of_attraction <- function(object, adj.list, edgelen.list, hop.k =
         stop("hop.k must be a positive integer")
     }
     hop.k <- as.integer(hop.k)
+
+    if (isTRUE(use.cpp)) {
+        if (is.null(vertex.metrics)) {
+            cpp.try <- tryCatch({
+                adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
+                vertex.metrics <- .Call(
+                    "S_precompute_basin_vertex_metrics",
+                    adj.list.0based,
+                    edgelen.list,
+                    hop.k,
+                    PACKAGE = "gflow"
+                )
+
+                .Call(
+                    "S_summary_basins_of_attraction_cpp",
+                    object,
+                    adj.list.0based,
+                    edgelen.list,
+                    hop.k,
+                    vertex.metrics,
+                    PACKAGE = "gflow"
+                )
+            }, error = function(e) {
+                e
+            })
+
+            if (!inherits(cpp.try, "error")) {
+                return(cpp.try)
+            }
+
+            warning(
+                "C++ summary path failed; falling back to R implementation. ",
+                "Error: ", conditionMessage(cpp.try),
+                call. = FALSE
+            )
+        } else {
+            return(.Call(
+                "S_summary_basins_of_attraction_cpp",
+                object,
+                NULL,
+                NULL,
+                hop.k,
+                vertex.metrics,
+                PACKAGE = "gflow"
+            ))
+        }
+    }
 
     y <- object$y
     n <- object$n_vertices

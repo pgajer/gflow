@@ -236,7 +236,36 @@ compute.gfc <- function(adj.list,
                                                    edge.length.quantile.thld,
                                                    with.trajectories)
 
-    initial.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+    summary.use.cpp <- TRUE
+    vertex.metrics <- NULL
+    vertex.metrics <- tryCatch({
+        if (verbose) {
+            cat("Precomputing vertex metrics for basin summaries (C++)...\n")
+        }
+        adj.list.0based <- lapply(adj.list, function(x) as.integer(x - 1L))
+        .Call(
+            "S_precompute_basin_vertex_metrics",
+            adj.list.0based,
+            edge.length.list,
+            hop.k,
+            PACKAGE = "gflow"
+        )
+    }, error = function(e) {
+        summary.use.cpp <<- FALSE
+        warning(
+            "C++ basin-summary metric precompute failed; using R summary fallback. ",
+            "Error: ", conditionMessage(e),
+            call. = FALSE
+        )
+        NULL
+    })
+
+    initial.summary <- summary(current.basins,
+                               adj.list,
+                               edge.length.list,
+                               hop.k,
+                               vertex.metrics = vertex.metrics,
+                               use.cpp = summary.use.cpp)
     n.max <- sum(initial.summary$type == "max")
     n.min <- sum(initial.summary$type == "min")
 
@@ -261,7 +290,12 @@ compute.gfc <- function(adj.list,
     ## Step 2: Filter by relative values
     ## -------------------------------------------------------
     if (apply.relvalue.filter) {
-        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        current.summary <- summary(current.basins,
+                                   adj.list,
+                                   edge.length.list,
+                                   hop.k,
+                                   vertex.metrics = vertex.metrics,
+                                   use.cpp = summary.use.cpp)
         n.max.before <- sum(current.summary$type == "max")
         n.min.before <- sum(current.summary$type == "min")
 
@@ -274,7 +308,12 @@ compute.gfc <- function(adj.list,
                                                     min.rel.value.max = min.rel.value.max,
                                                     max.rel.value.min = max.rel.value.min)
 
-        relvalue.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        relvalue.summary <- summary(current.basins,
+                                    adj.list,
+                                    edge.length.list,
+                                    hop.k,
+                                    vertex.metrics = vertex.metrics,
+                                    use.cpp = summary.use.cpp)
         n.max.after <- sum(relvalue.summary$type == "max")
         n.min.after <- sum(relvalue.summary$type == "min")
 
@@ -304,7 +343,12 @@ compute.gfc <- function(adj.list,
     ## Step 3: Cluster and merge maxima
     ## -------------------------------------------------------
     if (apply.maxima.clustering) {
-        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        current.summary <- summary(current.basins,
+                                   adj.list,
+                                   edge.length.list,
+                                   hop.k,
+                                   vertex.metrics = vertex.metrics,
+                                   use.cpp = summary.use.cpp)
         n.max.before <- sum(current.summary$type == "max")
         n.min.before <- sum(current.summary$type == "min")
 
@@ -332,7 +376,12 @@ compute.gfc <- function(adj.list,
                                                  max.clusters,
                                                  extrema.type = "max")
 
-        merged.max.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        merged.max.summary <- summary(current.basins,
+                                      adj.list,
+                                      edge.length.list,
+                                      hop.k,
+                                      vertex.metrics = vertex.metrics,
+                                      use.cpp = summary.use.cpp)
         n.max.after <- sum(merged.max.summary$type == "max")
         n.min.after <- sum(merged.max.summary$type == "min")
 
@@ -362,7 +411,12 @@ compute.gfc <- function(adj.list,
     ## Step 4: Cluster and merge minima
     ## -------------------------------------------------------
     if (apply.minima.clustering) {
-        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        current.summary <- summary(current.basins,
+                                   adj.list,
+                                   edge.length.list,
+                                   hop.k,
+                                   vertex.metrics = vertex.metrics,
+                                   use.cpp = summary.use.cpp)
         n.max.before <- sum(current.summary$type == "max")
         n.min.before <- sum(current.summary$type == "min")
 
@@ -390,7 +444,12 @@ compute.gfc <- function(adj.list,
                                                  min.clusters,
                                                  extrema.type = "min")
 
-        merged.min.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        merged.min.summary <- summary(current.basins,
+                                      adj.list,
+                                      edge.length.list,
+                                      hop.k,
+                                      vertex.metrics = vertex.metrics,
+                                      use.cpp = summary.use.cpp)
         n.max.after <- sum(merged.min.summary$type == "max")
         n.min.after <- sum(merged.min.summary$type == "min")
 
@@ -420,26 +479,35 @@ compute.gfc <- function(adj.list,
     ## Step 5: Filter by geometric characteristics and basin size
     ## ------------------------------------------------------------
     if (apply.geometric.filter) {
-        current.summary <- summary(current.basins, adj.list, edge.length.list, hop.k)
+        current.summary <- summary(current.basins,
+                                   adj.list,
+                                   edge.length.list,
+                                   hop.k,
+                                   vertex.metrics = vertex.metrics,
+                                   use.cpp = summary.use.cpp)
         n.max.before <- sum(current.summary$type == "max")
         n.min.before <- sum(current.summary$type == "min")
 
         if (verbose) {
             cat(sprintf("\nStep 5: Filtering by geometric characteristics and basin size:\n"))
-            cat(sprintf("  p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, p.deg < %.2f, basin.size >= %d ...\n",
+            cat(sprintf("  p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, basin.size >= %d ...\n",
                         p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold,
-                        p.deg.threshold, min.basin.size))
+                        min.basin.size))
         }
 
         ## Get summary with geometric characteristics
-        geom.summary <- summary(current.basins, adj.list, edge.length.list, hop.k = hop.k)
+        geom.summary <- summary(current.basins,
+                                adj.list,
+                                edge.length.list,
+                                hop.k = hop.k,
+                                vertex.metrics = vertex.metrics,
+                                use.cpp = summary.use.cpp)
 
         ## Filter maxima
         max.basin.df <- geom.summary[geom.summary$type == "max", ]
         good.max.vertices <- max.basin.df$vertex[
                                               max.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
                                               max.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
-                                              max.basin.df$p.deg < p.deg.threshold &
                                               max.basin.df$basin.size >= min.basin.size
                                           ]
 
@@ -456,7 +524,6 @@ compute.gfc <- function(adj.list,
         good.min.vertices <- min.basin.df$vertex[
                                               min.basin.df$p.mean.nbrs.dist < p.mean.nbrs.dist.threshold &
                                               min.basin.df$p.mean.hopk.dist < p.mean.hopk.dist.threshold &
-                                              min.basin.df$p.deg < p.deg.threshold &
                                               min.basin.df$basin.size >= min.basin.size
                                           ]
 
@@ -468,15 +535,23 @@ compute.gfc <- function(adj.list,
 
         ## Combine good extrema and filter basins
         good.extrema <- c(good.min.vertices, good.max.vertices)
-        current.basins <- filter.basins(current.basins, good.extrema)
+        if (length(good.extrema) > 0) {
+            current.basins <- filter.basins(current.basins, good.extrema)
+        } else {
+            if (verbose) {
+                cat("  No extrema passed geometric filter; retaining empty basin set\n")
+            }
+            current.basins$lmin_basins <- list()
+            current.basins$lmax_basins <- list()
+        }
 
         n.max.after <- length(good.max.vertices)
         n.min.after <- length(good.min.vertices)
 
         stage.history <- rbind(stage.history, data.frame(
             stage = "geometric",
-            description = sprintf("Geometric filter (p.dist < %.2f, p.deg < %.2f, size >= %d)",
-                                  p.mean.hopk.dist.threshold, p.deg.threshold, min.basin.size),
+            description = sprintf("Geometric filter (p.mean.nbrs.dist < %.2f, p.mean.hopk.dist < %.2f, size >= %d)",
+                                  p.mean.nbrs.dist.threshold, p.mean.hopk.dist.threshold, min.basin.size),
             n.max.before = n.max.before,
             n.max.after = n.max.after,
             n.min.before = n.min.before,
@@ -497,7 +572,12 @@ compute.gfc <- function(adj.list,
         cat(sprintf("\nGenerating final summary (hop.k = %d)...\n", hop.k))
     }
 
-    final.summary <- summary(current.basins, adj.list, edge.length.list, hop.k = hop.k)
+    final.summary <- summary(current.basins,
+                             adj.list,
+                             edge.length.list,
+                             hop.k = hop.k,
+                             vertex.metrics = vertex.metrics,
+                             use.cpp = summary.use.cpp)
 
     ## Populate names in lmin_basins and lmax_basins using extrema labels
     if (verbose) {

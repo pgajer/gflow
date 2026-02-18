@@ -1,0 +1,131 @@
+---
+title: "Noisy Circle CV Denoising: Run Results"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+params:
+  run_dir: "/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase1/phase1_full_20260218_1045"
+  snapshot_tag: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(data.table)
+
+run_dir <- normalizePath(params$run_dir, mustWork = TRUE)
+analysis_dir <- file.path(run_dir, "analysis")
+fig_dir <- file.path(analysis_dir, "figures")
+tab_dir <- file.path(analysis_dir, "tables")
+```
+
+## Run Context
+
+- `run_dir`: `r run_dir`
+- `analysis_dir`: `r analysis_dir`
+
+```{r summary}
+summary_path <- file.path(analysis_dir, "analysis_summary.txt")
+if (file.exists(summary_path)) {
+  cat(paste(readLines(summary_path), collapse = "\n"))
+} else {
+  cat("analysis_summary.txt not found. Run analysis script first.")
+}
+```
+
+## Completion and Integrity
+
+```{r completion-table}
+path <- file.path(tab_dir, "completion_summary.csv")
+if (file.exists(path)) {
+  knitr::kable(fread(path))
+}
+```
+
+```{r completion-plot, out.width='100%'}
+path <- file.path(fig_dir, "01_completion_status.png")
+if (file.exists(path)) knitr::include_graphics(path)
+```
+
+## Failure Topology
+
+```{r failure-table}
+path <- file.path(tab_dir, "failure_by_k_sigma_eigenpairs.csv")
+if (file.exists(path)) {
+  dt <- fread(path)
+  knitr::kable(head(dt[order(-fail_rate)], 20))
+}
+```
+
+```{r failure-plot, out.width='100%'}
+path <- file.path(fig_dir, "02_failrate_vs_k_by_sigma.png")
+if (file.exists(path)) knitr::include_graphics(path)
+```
+
+## CV Risk Landscape
+
+```{r cv-surface-plot, out.width='100%'}
+path <- file.path(fig_dir, "03_cv_surface_heatmaps.png")
+if (file.exists(path)) knitr::include_graphics(path)
+```
+
+## Selection Stability
+
+```{r selection-plots, out.width='100%'}
+for (nm in c(
+  "04_selected_k_distribution.png",
+  "05_selected_eigenpairs_distribution.png",
+  "06_selected_eta_distribution.png",
+  "07_one_se_vs_min_tradeoff.png"
+)) {
+  p <- file.path(fig_dir, nm)
+  if (file.exists(p)) {
+    knitr::include_graphics(p)
+    cat("\n\n")
+  }
+}
+```
+
+## Oracle Comparisons and Baseline Deltas
+
+```{r oracle-plots, out.width='100%'}
+for (nm in c(
+  "08_oracle_rmse_xy_by_method_sigma.png",
+  "09_oracle_rmse_rad_by_method_sigma.png",
+  "10_var_ratio_by_method_sigma.png",
+  "11_delta_vs_observed.png"
+)) {
+  p <- file.path(fig_dir, nm)
+  if (file.exists(p)) {
+    knitr::include_graphics(p)
+    cat("\n\n")
+  }
+}
+```
+
+## CV Defensibility and Oversmoothing
+
+```{r defensibility-plots, out.width='100%'}
+for (nm in c(
+  "12_cv_vs_oracle_scatter.png",
+  "13_oversmoothing_frontier.png"
+)) {
+  p <- file.path(fig_dir, nm)
+  if (file.exists(p)) {
+    knitr::include_graphics(p)
+    cat("\n\n")
+  }
+}
+```
+
+## Notes
+
+- This report is modular and run-specific.
+- Re-run analysis with a new snapshot any time:
+
+```bash
+Rscript tests/manual/analyze_noisy_circle_cv_phase1_run.R \
+  --run_dir=/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase1/phase1_full_20260218_1045
+```

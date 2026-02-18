@@ -901,7 +901,7 @@ basin_t set_wgraph_t::find_local_extremum_geodesic_basin(
 			// For maxima: values must decrease (delta_y < 0)
 			// For minima: values must increase (delta_y > 0)
 			bool monotonicity_ok = detect_maxima ? (delta_y < 0.0) : (delta_y > 0.0);
-			double edge_length = get_edge_weight(prev[u], u);
+			double edge_length = std::max(0.0, dist[u] - dist[prev[u]]);  // edge length along chosen predecessor path
 			bool edge_length_ok = (edge_length <= edge_length_thld);
 			bool condition_met = monotonicity_ok && edge_length_ok;
 
