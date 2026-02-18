@@ -46,6 +46,7 @@ vignettes/*.blg
 # Test artefacts
 tests/testthat.Rout*
 .Rout
+tests/manual/results/
 
 # Coverage artefacts
 coverage/
