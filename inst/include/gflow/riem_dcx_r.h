@@ -69,14 +69,23 @@ extern "C" {
 		SEXP s_max_hop
 		);
 
-	SEXP S_compute_basins_of_attraction(
-		SEXP s_adj_list,
-		SEXP s_weight_list,
-		SEXP s_y,
-		SEXP s_edge_length_thld,
-		SEXP s_with_trajectories
-		//SEXP s_k_paths
-		);
+		SEXP S_compute_basins_of_attraction(
+			SEXP s_adj_list,
+			SEXP s_weight_list,
+			SEXP s_y,
+			SEXP s_edge_length_thld,
+			SEXP s_with_trajectories
+			//SEXP s_k_paths
+			);
+
+		SEXP S_compute_basins_of_attraction_rtcb(
+			SEXP s_adj_list,
+			SEXP s_weight_list,
+			SEXP s_y,
+			SEXP s_edge_length_thld,
+			SEXP s_with_trajectories,
+			SEXP s_params
+			);
 
 #ifdef __cplusplus
 }

@@ -232,6 +232,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_compute_vertex_density",  (DL_FUNC) &S_compute_vertex_density, 3},
   {"S_compute_gfc_basins",      (DL_FUNC) &S_compute_gfc_basins, 7},
   {"S_compute_basins_of_attraction", (DL_FUNC) &S_compute_basins_of_attraction, 5},
+  {"S_compute_basins_of_attraction_rtcb", (DL_FUNC) &S_compute_basins_of_attraction_rtcb, 6},
   {"S_precompute_basin_vertex_metrics", (DL_FUNC) &S_precompute_basin_vertex_metrics, 3},
   {"S_summary_basins_of_attraction_cpp", (DL_FUNC) &S_summary_basins_of_attraction_cpp, 5},
   {"S_compute_hop_extremp_radii_batch", (DL_FUNC) &S_compute_hop_extremp_radii_batch, 8},

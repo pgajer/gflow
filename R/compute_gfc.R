@@ -43,6 +43,11 @@
 #'     \item{\code{"GEODESIC"}}{Extrema-first geodesic basin construction via
 #'       \code{compute.basins.of.attraction}. Basins are grown from local extrema
 #'       using monotone reachability with the edge-length quantile constraint.}
+#'     \item{\code{"RTCB"}}{Extrema-first relaxed trajectory-constrained basin
+#'       construction. Uses an \code{n.min}-limited candidate region, constrained
+#'       multi-label path search with Option 1/2 monotonicity controls, and
+#'       boundary-aware tolerance scheduling. Parameters are supplied via
+#'       \code{rtcb.params}.}
 #'     \item{\code{"NONE"}}{Trajectory-first steepest rule. Choose the monotone
 #'       neighbor maximizing \eqn{|y(u)-y(v)|}.}
 #'     \item{\code{"DENSITY"}}{Trajectory-first density-modulated rule. Choose the
@@ -54,10 +59,15 @@
 #'     \item{\code{"DENSITY_EDGELEN"}}{Trajectory-first combined density and
 #'       edge-length modulation. Requires \code{density}.}
 #'   }
-#'   \code{"GEODESIC"} returns a \code{"basins_of_attraction"} object.
+#'   \code{"GEODESIC"} and \code{"RTCB"} return a \code{"basins_of_attraction"} object.
 #'   All other modes dispatch to \code{\link{compute.gfc.trajectory}} and return
 #'   a \code{"gfc.flow"} object.
 #' @param density Optional density vector used by density-modulated trajectory modes.
+#' @param rtcb.params Optional named list of parameters for \code{modulation = "RTCB"}.
+#'   Supported fields are \code{n.min}, \code{m.min}, \code{q.min}, \code{run.max},
+#'   \code{tau0}, \code{kappa}, \code{k.max}, \code{h.max}, \code{d.path.max},
+#'   \code{eta.step}, \code{epsilon.d}, \code{eps.num}, \code{sink.prune},
+#'   \code{sink.prune.max.iter}, and \code{max.paths.per.sink}.
 #' @param min.n.trajectories Minimum trajectory count threshold used in
 #'   trajectory-based mode.
 #' @param store.trajectories Logical; store trajectories in trajectory-based mode.
@@ -218,6 +228,7 @@ compute.gfc <- function(adj.list,
                                    verbose = FALSE,
                                    modulation = "CLOSEST",
                                    density = NULL,
+                                   rtcb.params = NULL,
                                    min.n.trajectories = 0L,
                                    store.trajectories = with.trajectories,
                                    max.trajectory.length = 10000L,
@@ -243,13 +254,17 @@ compute.gfc <- function(adj.list,
         stop("modulation must be a single character string")
     }
 
-    allowed.modulations <- c("GEODESIC", "CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN")
+    if (!is.null(rtcb.params) && !is.list(rtcb.params)) {
+        stop("rtcb.params must be NULL or a named list")
+    }
+
+    allowed.modulations <- c("GEODESIC", "RTCB", "CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN")
     modulation <- toupper(modulation)
     if (!(modulation %in% allowed.modulations)) {
         stop("modulation must be one of: ", paste(allowed.modulations, collapse = ", "))
     }
 
-    if (modulation != "GEODESIC") {
+    if (!(modulation %in% c("GEODESIC", "RTCB"))) {
         return(compute.gfc.trajectory(
             adj.list = adj.list,
             weight.list = edge.length.list,
@@ -306,11 +321,28 @@ compute.gfc <- function(adj.list,
         cat("Step 1: Computing initial basins of attraction...\n")
     }
 
-    current.basins <- compute.basins.of.attraction(adj.list,
-                                                   edge.length.list,
-                                                   fitted.values,
-                                                   edge.length.quantile.thld,
-                                                   with.trajectories)
+    if (modulation == "RTCB") {
+        if (verbose) {
+            cat("  Using RTCB basin constructor\n")
+        }
+        rtcb.call.args <- c(
+            list(
+                adj.list = adj.list,
+                weight.list = edge.length.list,
+                y = fitted.values,
+                edge.length.quantile.thld = edge.length.quantile.thld,
+                with.trajectories = with.trajectories
+            ),
+            rtcb.params
+        )
+        current.basins <- do.call(compute.basins.of.attraction.rtcb, rtcb.call.args)
+    } else {
+        current.basins <- compute.basins.of.attraction(adj.list,
+                                                       edge.length.list,
+                                                       fitted.values,
+                                                       edge.length.quantile.thld,
+                                                       with.trajectories)
+    }
 
     summary.use.cpp <- TRUE
     vertex.metrics <- NULL
@@ -817,6 +849,7 @@ compute.gfc <- function(adj.list,
     ## Store parameters for reporting
     parameters <- list(
         modulation = modulation,
+        rtcb.params = if (modulation == "RTCB") rtcb.params else NULL,
         edge.length.quantile.thld = edge.length.quantile.thld,
         min.rel.value.max = min.rel.value.max,
         max.rel.value.min = max.rel.value.min,
