@@ -987,6 +987,9 @@ gfc_flow_result_t compute_gfc_flow(
         Rprintf("GFC Flow computation: %zu vertices, median = %.4f\n", n, result.y_median);
     }
 
+    const double y_mean = std::accumulate(y.begin(), y.end(), 0.0) /
+        static_cast<double>(n);
+
     // ========================================================================
     // Step 1: Find local extrema and prepare trajectory computation
     // ========================================================================
@@ -1329,9 +1332,9 @@ gfc_flow_result_t compute_gfc_flow(
         result.max_basins_all.begin(), result.max_basins_all.end());
     
     auto min_summaries_base = gfc_internal::compute_basin_summaries(
-        graph, min_basins_compact, y, result.y_median, params.hop_k);
+        graph, min_basins_compact, y, y_mean, params.hop_k);
     auto max_summaries_base = gfc_internal::compute_basin_summaries(
-        graph, max_basins_compact, y, result.y_median, params.hop_k);
+        graph, max_basins_compact, y, y_mean, params.hop_k);
 
     // Convert to extended summaries
     result.min_summaries_all.reserve(min_summaries_base.size());

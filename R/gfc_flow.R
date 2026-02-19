@@ -78,7 +78,7 @@
 #'   this quantile are not traversed. Default is 0.9.
 #' @param apply.relvalue.filter Logical. Whether to filter extrema by relative
 #'   value. Default is \code{TRUE}.
-#' @param min.rel.value.max Numeric. Minimum relative value (value/median) for
+#' @param min.rel.value.max Numeric. Minimum relative value (value/mean(y)) for
 #'   retaining maxima. Default is 1.1.
 #' @param max.rel.value.min Numeric. Maximum relative value for retaining
 #'   minima. Default is 0.9.
@@ -395,6 +395,66 @@ compute.gfc.flow <- function(
     return(result)
 }
 
+.harmonize.gfc.flow.summary <- function(df) {
+
+    if (is.null(df) || nrow(df) == 0) {
+        return(df)
+    }
+
+    original.class <- class(df)
+
+    if (!("hop.index" %in% names(df)) && ("hop.idx" %in% names(df))) {
+        df$hop.index <- df$hop.idx
+    }
+    if (!("hop.idx" %in% names(df)) && ("hop.index" %in% names(df))) {
+        df$hop.idx <- df$hop.index
+    }
+
+    if (!("degree" %in% names(df)) && ("deg" %in% names(df))) {
+        df$degree <- df$deg
+    }
+    if (!("deg" %in% names(df)) && ("degree" %in% names(df))) {
+        df$deg <- df$degree
+    }
+
+    if (!("deg.percentile" %in% names(df)) && ("p.deg" %in% names(df))) {
+        df$deg.percentile <- df$p.deg
+    }
+    if (!("p.deg" %in% names(df)) && ("deg.percentile" %in% names(df))) {
+        df$p.deg <- df$deg.percentile
+    }
+
+    if (!("basin.size.raw" %in% names(df)) && ("basin.size" %in% names(df))) {
+        df$basin.size.raw <- as.integer(df$basin.size)
+    } else if (!("basin.size.raw" %in% names(df))) {
+        df$basin.size.raw <- NA_integer_
+    }
+
+    if (!("basin.size.exp" %in% names(df))) {
+        ## Trajectory-first output currently has no expansion stage; keep explicit
+        ## expanded size column as a stable alias of raw size.
+        df$basin.size.exp <- as.integer(df$basin.size.raw)
+    }
+
+    ## Keep legacy basin.size as raw-size alias
+    df$basin.size <- as.integer(df$basin.size.raw)
+
+    col.order <- c(
+        "label", "vertex", "value", "rel.value", "type",
+        "is.spurious", "filter.stage", "merged.into",
+        "basin.size.raw", "basin.size.exp", "basin.size",
+        "hop.index", "hop.idx",
+        "p.mean.nbrs.dist", "p.mean.hopk.dist",
+        "degree", "deg.percentile", "deg", "p.deg"
+    )
+    col.order <- c(col.order[col.order %in% names(df)],
+                   setdiff(names(df), col.order))
+    df <- df[, col.order, drop = FALSE]
+
+    class(df) <- original.class
+    df
+}
+
 #' Build Summary Table for All Extrema
 #'
 #' Combines min and max summaries from C++, adds type column, reorders columns,
@@ -430,14 +490,20 @@ compute.gfc.flow <- function(
         return(NULL)
     }
 
+    summary.table <- .harmonize.gfc.flow.summary(summary.table)
+
     ## -------------------------------------------------------------------------
     ## Reorder columns for clarity
     ## -------------------------------------------------------------------------
 
-    col.order <- c("label", "vertex", "value", "rel.value", "type",
-                   "is.spurious", "filter.stage", "merged.into",
-                   "basin.size", "hop.index", "p.mean.nbrs.dist",
-                   "p.mean.hopk.dist", "degree", "deg.percentile")
+    col.order <- c(
+        "label", "vertex", "value", "rel.value", "type",
+        "is.spurious", "filter.stage", "merged.into",
+        "basin.size.raw", "basin.size.exp", "basin.size",
+        "hop.index", "hop.idx",
+        "p.mean.nbrs.dist", "p.mean.hopk.dist",
+        "degree", "deg.percentile", "deg", "p.deg"
+    )
     col.order <- col.order[col.order %in% names(summary.table)]
     summary.table <- summary.table[, col.order, drop = FALSE]
 
@@ -478,6 +544,8 @@ compute.gfc.flow <- function(
     summary.retained$is.spurious <- NULL
     summary.retained$filter.stage <- NULL
     summary.retained$merged.into <- NULL
+
+    summary.retained <- .harmonize.gfc.flow.summary(summary.retained)
 
     rownames(summary.retained) <- NULL
 
@@ -2422,7 +2490,7 @@ list.basins.default <- function(x, ...) {
 #' @param include.spurious Logical; if TRUE (default), include basins whose
 #'     defining extremum is spurious.
 #' @param with.rel.value Logical; if TRUE (default), includes relative
-#'     value (value/median) for local extrema.
+#'     value (value/mean(y)) for local extrema.
 #' @param include.spurious.flags Logical; if TRUE, include spurious-related
 #'     columns from \code{summary.all} (e.g., \code{is.spurious},
 #'     \code{filter.stage}, \code{merged.into}). Default FALSE.
