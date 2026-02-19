@@ -235,6 +235,11 @@ compute.basins.of.attraction <- function(adj.list,
 #'   vertices in the graph.
 #' @param hop.k Integer specifying the hop distance for computing extended
 #'   neighborhood isolation. Default is 2. Must be a positive integer.
+#' @param vertex.metrics Optional precomputed vertex-level metrics from
+#'   \code{S_precompute_basin_vertex_metrics}. If \code{NULL} and
+#'   \code{use.cpp = TRUE}, metrics are computed internally.
+#' @param use.cpp Logical; if \code{TRUE} (default), use the C++ summary backend
+#'   with fallback to the R implementation on error.
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return A data frame of class \code{"basin_summary"} with one row per

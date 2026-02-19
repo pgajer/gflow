@@ -1031,6 +1031,14 @@ refine.biclusters <- function(data.matrix,
                               verbose = TRUE) {
 
   fallback.method <- match.arg(fallback.method)
+  pkg.biclust <- "biclust"
+  pkg.s4vd <- "s4vd"
+  if (!requireNamespace(pkg.biclust, quietly = TRUE) ||
+      !requireNamespace(pkg.s4vd, quietly = TRUE)) {
+    stop("refine.biclusters() requires optional packages 'biclust' and 's4vd'")
+  }
+  biclust_fn <- getExportedValue(pkg.biclust, "biclust")
+  bcs4vd_fn <- getExportedValue(pkg.s4vd, "BCs4vd")
 
   # If not specified, identify bi-clusters needing refinement
   if (is.null(bc.to.refine)) {
@@ -1083,8 +1091,8 @@ refine.biclusters <- function(data.matrix,
 
     # Apply bi-clustering to subset with increased steps
     sub.bc <- tryCatch({
-      biclust::biclust(sub.data,
-             method = s4vd::BCs4vd(),
+      biclust_fn(sub.data,
+             method = bcs4vd_fn(),
              steps = max.steps,
              pceru = pceru,
              pcerv = pcerv,

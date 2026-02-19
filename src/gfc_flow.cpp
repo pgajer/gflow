@@ -655,7 +655,7 @@ static int select_next_vertex(
 
     size_t best_next = INVALID_VERTEX;
 
-    // CLOSEST: prefer shortest ascending neighbor with edge <= thld, else any ascending neighbor
+    // CLOSEST: prefer shortest improving neighbor with edge <= thld, else any improving neighbor
     if (modulation == gflow_modulation_t::CLOSEST) {
         double min_short = std::numeric_limits<double>::infinity();
         double min_any   = std::numeric_limits<double>::infinity();
@@ -736,7 +736,7 @@ static int select_next_vertex(
  * - DENSITY: Density-weighted steepest (max ρ(u) · Δy)
  * - EDGELEN: Edge-length-weighted steepest (max w(d) · Δy)
  * - DENSITY_EDGELEN: Combined density and edge-length weighting
- * - CLOSEST: Lexicographic rule - among ascending neighbors, pick closest
+ * - CLOSEST: Lexicographic rule - among improving neighbors, pick closest
  *
  * The CLOSEST modulation implements a lexicographic ordering:
  *   Level 1: Filter to A(v) = {u : y(u) > y(v)} (ascending) or
@@ -1043,6 +1043,7 @@ gfc_flow_result_t compute_gfc_flow(
 
     int trajectory_id = 0;
     result.n_lmin_trajectories = 0;
+    result.n_lmax_trajectories = 0;
 
     // Sort minima by value for deterministic processing
     std::vector<size_t> lmin_sorted = lmin_vertices;
@@ -1088,6 +1089,63 @@ gfc_flow_result_t compute_gfc_flow(
 
         ++trajectory_id;
         ++result.n_lmin_trajectories;
+    }
+
+    // Optional symmetric seeding: trace descending trajectories from maxima.
+    // We canonicalize stored/assigned paths to run from lmin -> lmax.
+    if (params.symmetric_seeding) {
+        if (verbose) {
+            Rprintf("Step 2b: Tracing lmax trajectories (symmetric seeding)...\n");
+        }
+
+        std::vector<size_t> lmax_sorted = lmax_vertices;
+        std::sort(lmax_sorted.begin(), lmax_sorted.end(),
+                  [&y](size_t a, size_t b) { return y[a] > y[b]; });
+
+        for (size_t lmax_seed : lmax_sorted) {
+            std::vector<size_t> desc_traj = graph.follow_gradient_trajectory(
+                lmax_seed, y, false,
+                params.modulation, density, edge_length_weights,
+                edge_length_thld, params.max_trajectory_length
+                );
+
+            if (desc_traj.empty()) continue;
+
+            size_t lmin_end = desc_traj.back();
+            bool ends_at_true_lmin = (lmin_set.count(lmin_end) > 0);
+
+            // Canonical orientation: lmin -> ... -> lmax
+            std::vector<size_t> traj = desc_traj;
+            std::reverse(traj.begin(), traj.end());
+            size_t lmin = traj.front();
+            size_t lmax = traj.back();
+
+            // Only contribute to basin assignments if trajectory reaches true lmin
+            if (ends_at_true_lmin) {
+                for (size_t v : traj) {
+                    vertex_to_lmins[v].insert(lmin);
+                    vertex_to_lmaxs[v].insert(lmax);
+                    vertex_to_trajs[v].push_back(trajectory_id);
+                    covered[v] = true;
+                }
+            }
+
+            // Always store trajectory if requested (diagnostic parity with lmin seeding)
+            if (params.store_trajectories) {
+                gflow_trajectory_t gft;
+                gft.vertices = std::move(traj);
+                gft.start_vertex = lmin;
+                gft.end_vertex = lmax;
+                gft.starts_at_lmin = ends_at_true_lmin;
+                gft.ends_at_lmax = true;
+                gft.total_change = y[lmax] - y[lmin];
+                gft.trajectory_id = trajectory_id;
+                result.trajectories.push_back(std::move(gft));
+            }
+
+            ++trajectory_id;
+            ++result.n_lmax_trajectories;
+        }
     }
 
     // ========================================================================

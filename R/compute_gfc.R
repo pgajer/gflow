@@ -34,6 +34,17 @@
 #' @param apply.geometric.filter Logical indicating whether to apply geometric filtering (default: TRUE)
 #' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #' @param verbose Logical indicating whether to print progress messages (default: FALSE)
+#' @param modulation Basin-construction mode. Use \code{"GEODESIC"} for the
+#'   extrema-grown geodesic basin algorithm (default). Other values
+#'   (\code{"CLOSEST"}, \code{"NONE"}, \code{"DENSITY"}, \code{"EDGELEN"},
+#'   \code{"DENSITY_EDGELEN"}) dispatch to trajectory-based construction.
+#' @param density Optional density vector used by density-modulated trajectory modes.
+#' @param min.n.trajectories Minimum trajectory count threshold used in
+#'   trajectory-based mode.
+#' @param store.trajectories Logical; store trajectories in trajectory-based mode.
+#' @param max.trajectory.length Maximum trajectory length in trajectory-based mode.
+#' @param symmetric.seeding Logical; in trajectory-based mode, additionally seed
+#'   trajectories from local maxima using descending flow.
 #'
 #' @return A list of class \code{"basins_of_attraction"} with the following components:
 #'   \describe{
@@ -81,6 +92,8 @@
 #'     \item{parameters}{A named list of all parameter values used in the refinement
 #'       process, enabling exact replication and automated report generation.}
 #'   }
+#'   If \code{modulation != "GEODESIC"}, the function returns a
+#'   \code{"gfc.flow"} object from \code{\link{compute.gfc.trajectory}}.
 #'
 #' @details
 #' The refinement process consists of several stages. First, the function computes
@@ -183,7 +196,13 @@ compute.gfc <- function(adj.list,
                                    apply.minima.clustering = TRUE,
                                    apply.geometric.filter = TRUE,
                                    with.trajectories = FALSE,
-                                   verbose = FALSE) {
+                                   verbose = FALSE,
+                                   modulation = "GEODESIC",
+                                   density = NULL,
+                                   min.n.trajectories = 0L,
+                                   store.trajectories = with.trajectories,
+                                   max.trajectory.length = 10000L,
+                                   symmetric.seeding = TRUE) {
 
     ## Validate inputs
     if (!is.list(adj.list)) {
@@ -200,6 +219,44 @@ compute.gfc <- function(adj.list,
     }
     if (length(fitted.values) != length(adj.list)) {
         stop("fitted.values must have the same length as adj.list")
+    }
+    if (!is.character(modulation) || length(modulation) != 1L || is.na(modulation)) {
+        stop("modulation must be a single character string")
+    }
+
+    allowed.modulations <- c("GEODESIC", "CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN")
+    modulation <- toupper(modulation)
+    if (!(modulation %in% allowed.modulations)) {
+        stop("modulation must be one of: ", paste(allowed.modulations, collapse = ", "))
+    }
+
+    if (modulation != "GEODESIC") {
+        return(compute.gfc.trajectory(
+            adj.list = adj.list,
+            weight.list = edge.length.list,
+            y = fitted.values,
+            density = density,
+            modulation = modulation,
+            edge.length.quantile.thld = edge.length.quantile.thld,
+            apply.relvalue.filter = apply.relvalue.filter,
+            min.rel.value.max = min.rel.value.max,
+            max.rel.value.min = max.rel.value.min,
+            apply.maxima.clustering = apply.maxima.clustering,
+            apply.minima.clustering = apply.minima.clustering,
+            max.overlap.threshold = max.overlap.threshold,
+            min.overlap.threshold = min.overlap.threshold,
+            apply.geometric.filter = apply.geometric.filter,
+            p.mean.nbrs.dist.threshold = p.mean.nbrs.dist.threshold,
+            p.mean.hopk.dist.threshold = p.mean.hopk.dist.threshold,
+            p.deg.threshold = p.deg.threshold,
+            min.basin.size = min.basin.size,
+            min.n.trajectories = min.n.trajectories,
+            hop.k = hop.k,
+            store.trajectories = store.trajectories,
+            max.trajectory.length = max.trajectory.length,
+            symmetric.seeding = symmetric.seeding,
+            verbose = verbose
+        ))
     }
 
     ## Initialize stage history tracking
@@ -740,6 +797,7 @@ compute.gfc <- function(adj.list,
 
     ## Store parameters for reporting
     parameters <- list(
+        modulation = modulation,
         edge.length.quantile.thld = edge.length.quantile.thld,
         min.rel.value.max = min.rel.value.max,
         max.rel.value.min = max.rel.value.min,
@@ -750,7 +808,11 @@ compute.gfc <- function(adj.list,
         p.deg.threshold = p.deg.threshold,
         min.basin.size = min.basin.size,
         expand.basins = expand.basins,
-        hop.k = hop.k
+        hop.k = hop.k,
+        min.n.trajectories = min.n.trajectories,
+        store.trajectories = store.trajectories,
+        max.trajectory.length = max.trajectory.length,
+        symmetric.seeding = symmetric.seeding
     )
 
     if (verbose) {

@@ -5,6 +5,7 @@
 #' than growing basins outward from extrema. This approach treats gradient flow
 #' lines as the fundamental geometric primitives, with basins emerging as the
 #' collection of vertices along trajectories sharing the same endpoints.
+#' \code{compute.gfc.flow()} is kept as a backward-compatible deprecated alias.
 #'
 #' @details
 #' The algorithm proceeds as follows:
@@ -12,8 +13,9 @@
 #'   \item Identify all local minima using neighborhood comparison
 #'   \item From each local minimum, trace an ascending trajectory following
 #'         the selected modulation strategy until reaching a local maximum
-#'   \item Assign all trajectory vertices to both the starting min-basin
-#'         and ending max-basin
+#'   \item Optionally (default), seed local maxima with descending trajectories
+#'         and map them into canonical min-to-max orientation
+#'   \item Assign trajectory vertices to both endpoint basins
 #'   \item For any unvisited vertices, trace both ascending and descending
 #'         trajectories, joining them at that vertex
 #'   \item Apply the filtering/merging pipeline (relative value filtering,
@@ -105,6 +107,9 @@
 #' @param max.trajectory.length Integer. Maximum trajectory length (vertices)
 #'   before stopping. Prevents infinite loops in degenerate cases.
 #'   Default is 10000.
+#' @param symmetric.seeding Logical. If \code{TRUE}, additionally seed
+#'   trajectories from local maxima (descending) to make the trajectory seeding
+#'   symmetric with respect to minima and maxima.
 #' @param verbose Logical. Whether to print progress messages. Default is
 #'   \code{FALSE}.
 #'
@@ -129,22 +134,22 @@
 #' y <- c(0.5, 1.2, 0.8, 2.0)
 #'
 #' ## Standard steepest ascent (may have basin jumping issues)
-#' result.steep <- compute.gfc.flow(adj.list, weight.list, y,
+#' result.steep <- compute.gfc.trajectory(adj.list, weight.list, y,
 #'                                  modulation = "NONE")
 #'
 #' ## Edge-length modulated (reduces but doesn't eliminate jumping)
-#' result.edgelen <- compute.gfc.flow(adj.list, weight.list, y,
+#' result.edgelen <- compute.gfc.trajectory(adj.list, weight.list, y,
 #'                                    modulation = "EDGELEN")
 #'
 #' ## Closest ascending neighbor (lexicographic, no tuning needed)
-#' result.closest <- compute.gfc.flow(adj.list, weight.list, y,
+#' result.closest <- compute.gfc.trajectory(adj.list, weight.list, y,
 #'                                    modulation = "CLOSEST")
 #' }
 #'
 #' @seealso \code{\link{compute.gfc}} for the extrema-first approach
 #'
 #' @export
-compute.gfc.flow <- function(
+compute.gfc.trajectory <- function(
     adj.list,
     weight.list,
     y,
@@ -167,6 +172,7 @@ compute.gfc.flow <- function(
     hop.k = 2L,
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
+    symmetric.seeding = TRUE,
     verbose = FALSE
 ) {
     ## -------------------------------------------------------------------------
@@ -216,6 +222,9 @@ compute.gfc.flow <- function(
     if (min.n.trajectories < 0) {
         stop("min.n.trajectories must be >= 0")
     }
+    if (!is.logical(symmetric.seeding) || length(symmetric.seeding) != 1L || is.na(symmetric.seeding)) {
+        stop("symmetric.seeding must be TRUE or FALSE")
+    }
 
     ## -------------------------------------------------------
     ## Breaking ties (if any)
@@ -261,7 +270,8 @@ compute.gfc.flow <- function(
         hop_k = as.integer(hop.k),
         modulation = as.character(modulation),
         store_trajectories = as.logical(store.trajectories),
-        max_trajectory_length = as.integer(max.trajectory.length)
+        max_trajectory_length = as.integer(max.trajectory.length),
+        symmetric_seeding = as.logical(symmetric.seeding)
     )
 
     ## -------------------------------------------------------------------------
@@ -291,6 +301,66 @@ compute.gfc.flow <- function(
     class(result) <- c("gfc.flow", "list")
 
     return(result)
+}
+
+#' Deprecated Alias for \code{compute.gfc.trajectory}
+#'
+#' @inheritParams compute.gfc.trajectory
+#' @rdname compute.gfc.trajectory
+#' @export
+compute.gfc.flow <- function(
+    adj.list,
+    weight.list,
+    y,
+    density = NULL,
+    modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
+    edge.length.quantile.thld = 0.9,
+    apply.relvalue.filter = TRUE,
+    min.rel.value.max = 1.1,
+    max.rel.value.min = 0.9,
+    apply.maxima.clustering = TRUE,
+    apply.minima.clustering = TRUE,
+    max.overlap.threshold = 0.15,
+    min.overlap.threshold = 0.15,
+    apply.geometric.filter = TRUE,
+    p.mean.nbrs.dist.threshold = 0.9,
+    p.mean.hopk.dist.threshold = 0.9,
+    p.deg.threshold = 0.9,
+    min.basin.size = 10L,
+    min.n.trajectories = 0L,
+    hop.k = 2L,
+    store.trajectories = TRUE,
+    max.trajectory.length = 10000L,
+    symmetric.seeding = TRUE,
+    verbose = FALSE
+) {
+    .Deprecated("compute.gfc.trajectory")
+    compute.gfc.trajectory(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        y = y,
+        density = density,
+        modulation = modulation,
+        edge.length.quantile.thld = edge.length.quantile.thld,
+        apply.relvalue.filter = apply.relvalue.filter,
+        min.rel.value.max = min.rel.value.max,
+        max.rel.value.min = max.rel.value.min,
+        apply.maxima.clustering = apply.maxima.clustering,
+        apply.minima.clustering = apply.minima.clustering,
+        max.overlap.threshold = max.overlap.threshold,
+        min.overlap.threshold = min.overlap.threshold,
+        apply.geometric.filter = apply.geometric.filter,
+        p.mean.nbrs.dist.threshold = p.mean.nbrs.dist.threshold,
+        p.mean.hopk.dist.threshold = p.mean.hopk.dist.threshold,
+        p.deg.threshold = p.deg.threshold,
+        min.basin.size = min.basin.size,
+        min.n.trajectories = min.n.trajectories,
+        hop.k = hop.k,
+        store.trajectories = store.trajectories,
+        max.trajectory.length = max.trajectory.length,
+        symmetric.seeding = symmetric.seeding,
+        verbose = verbose
+    )
 }
 
 #' Post-process GFC Flow Result
@@ -478,10 +548,11 @@ print.gfc.flow <- function(x, ...) {
     cat("\n")
 
     cat("TRAJECTORIES:\n")
-    cat(sprintf("  Total: %d (%d from minima, %d from joins)\n",
-                length(x$trajectories),
-                x$n.lmin.trajectories,
-                x$n.join.trajectories))
+    n.lmin <- if (is.null(x$n.lmin.trajectories)) 0L else x$n.lmin.trajectories
+    n.lmax <- if (is.null(x$n.lmax.trajectories)) 0L else x$n.lmax.trajectories
+    n.join <- if (is.null(x$n.join.trajectories)) 0L else x$n.join.trajectories
+    cat(sprintf("  Total: %d (%d from minima, %d from maxima, %d from joins)\n",
+                length(x$trajectories), n.lmin, n.lmax, n.join))
 
     ## Count trajectories by endpoint status
     if (length(x$trajectories) > 0) {
@@ -814,17 +885,19 @@ count.cell.memberships <- function(gfc.flow) {
 #' @param hop.k Hop radius used for hop-based geometric diagnostics.
 #' @param store.trajectories Logical; retain trajectory objects in each result.
 #' @param max.trajectory.length Integer maximum allowed trajectory length.
+#' @param symmetric.seeding Logical; if \code{TRUE}, additionally seed
+#'   trajectories from local maxima using descending flow.
 #'
 #' @return List of \code{gfc.flow} results, one per column of \code{Y}.
 #'
-#' @seealso \code{\link{compute.gfc.flow}}
+#' @seealso \code{\link{compute.gfc.trajectory}}
 #'
 compute.gfc.flow.matrix <- function(
     adj.list,
     weight.list,
     Y,
     density = NULL,
-    modulation = c("NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
+    modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     n.cores = 1L,
     verbose = FALSE,
     edge.length.quantile.thld = 0.9,
@@ -842,7 +915,8 @@ compute.gfc.flow.matrix <- function(
     min.basin.size = 10L,
     hop.k = 2L,
     store.trajectories = TRUE,
-    max.trajectory.length = 10000L
+    max.trajectory.length = 10000L,
+    symmetric.seeding = TRUE
 ) {
     ## Input validation
     if (!is.matrix(Y)) {
@@ -855,6 +929,9 @@ compute.gfc.flow.matrix <- function(
     }
 
     modulation <- match.arg(modulation)
+    if (!is.logical(symmetric.seeding) || length(symmetric.seeding) != 1L || is.na(symmetric.seeding)) {
+        stop("symmetric.seeding must be TRUE or FALSE")
+    }
 
     ## Convert adjacency list to 0-based indexing
     adj.list.0based <- lapply(adj.list, function(x) {
@@ -880,7 +957,8 @@ compute.gfc.flow.matrix <- function(
         hop_k = as.integer(hop.k),
         modulation = as.character(modulation),
         store_trajectories = as.logical(store.trajectories),
-        max_trajectory_length = as.integer(max.trajectory.length)
+        max_trajectory_length = as.integer(max.trajectory.length),
+        symmetric_seeding = as.logical(symmetric.seeding)
     )
 
     ## Call C++ implementation

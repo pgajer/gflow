@@ -80,6 +80,7 @@ static gfc_flow_params_t parse_gfc_flow_params(SEXP s_params) {
     params.store_trajectories = get_list_bool(s_params, "store_trajectories", true);
     params.max_trajectory_length = static_cast<size_t>(
         get_list_int(s_params, "max_trajectory_length", 10000));
+    params.symmetric_seeding = get_list_bool(s_params, "symmetric_seeding", true);
 
     return params;
 }
@@ -364,7 +365,7 @@ static SEXP int_vec_to_R(const std::vector<int>& vec, bool one_based = true) {
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
 
-    const int n_elements = 33;
+    const int n_elements = 34;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
@@ -528,28 +529,33 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.lmin.trajectories"));
     ++idx;
 
-    // 16: n.join.trajectories
+    // 16: n.lmax.trajectories
+    SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_lmax_trajectories));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.lmax.trajectories"));
+    ++idx;
+
+    // 17: n.join.trajectories
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_join_trajectories));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.join.trajectories"));
     ++idx;
 
-    // 17: n.vertices
+    // 18: n.vertices
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(static_cast<int>(result.n_vertices)));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.vertices"));
     ++idx;
 
-    // 18: y.median
+    // 19: y.median
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarReal(result.y_median));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("y.median"));
     ++idx;
 
-    // 19: modulation
+    // 20: modulation
     SET_VECTOR_ELT(r_result, idx, 
         Rf_mkString(gflow_modulation_to_string(result.params.modulation).c_str()));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("modulation"));
     ++idx;
 
-    // 20: stage_history
+    // 21: stage_history
     {
         R_xlen_t ns = static_cast<R_xlen_t>(result.stage_history.size());
         SEXP r_stages = PROTECT(Rf_allocVector(VECSXP, 5));
@@ -593,28 +599,28 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         ++idx;
     }
 
-    // 21: n_max_retained
+    // 22: n_max_retained
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_max_retained));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.max.retained"));
     ++idx;
 
-    // 22: n.min.retained
+    // 23: n.min.retained
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_min_retained));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.min.retained"));
     ++idx;
 
-    // 23: n.max.spurious
+    // 24: n.max.spurious
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_max_spurious));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.max.spurious"));
     ++idx;
 
-    // 24: n.min.spurious
+    // 25: n.min.spurious
     SET_VECTOR_ELT(r_result, idx, Rf_ScalarInteger(result.n_min_spurious));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("n.min.spurious"));
     ++idx;
 
     // ========================================================================
-    // 25: n.max.all (total max basins = retained + spurious)
+    // 26: n.max.all (total max basins = retained + spurious)
     // ========================================================================
     SET_VECTOR_ELT(r_result, idx,
                    Rf_ScalarInteger(static_cast<int>(result.max_basins_all.size())));
@@ -622,7 +628,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     ++idx;
 
     // ========================================================================
-    // 26: n.min.all (total min basins = retained + spurious)
+    // 27: n.min.all (total min basins = retained + spurious)
     // ========================================================================
     SET_VECTOR_ELT(r_result, idx,
                    Rf_ScalarInteger(static_cast<int>(result.min_basins_all.size())));
@@ -630,7 +636,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     ++idx;
 
     // ========================================================================
-    // 27: summary.all (combined data frame of ALL extrema: min + max)
+    // 28: summary.all (combined data frame of ALL extrema: min + max)
     // ========================================================================
     {
         R_xlen_t n_min = static_cast<R_xlen_t>(result.min_summaries_all.size());
@@ -752,7 +758,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     }
 
     // ========================================================================
-    // 28: summary (combined data frame of RETAINED extrema only)
+    // 29: summary (combined data frame of RETAINED extrema only)
     // ========================================================================
     {
         R_xlen_t n_min_ret = static_cast<R_xlen_t>(result.retained_min_indices.size());
@@ -871,7 +877,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     }
 
     // ========================================================================
-    // 29: edge.length.thld
+    // 30: edge.length.thld
     // ========================================================================
     {
         SET_VECTOR_ELT(r_result, idx, Rf_ScalarReal(result.edge_length_thld));
@@ -880,7 +886,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     }
 
     // ========================================================================
-    // 30: max.overlap.dist (Eigen matrix -> R matrix)
+    // 31: max.overlap.dist (Eigen matrix -> R matrix)
     // ========================================================================
     {
         R_xlen_t nrow = result.max_overlap_dist.rows();
@@ -923,7 +929,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     }
 
     // ========================================================================
-    // 31: min.overlap.dist (Eigen matrix -> R matrix)
+    // 32: min.overlap.dist (Eigen matrix -> R matrix)
     // ========================================================================
     {
         R_xlen_t nrow = result.min_overlap_dist.rows();
@@ -966,7 +972,7 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
     }
 
     // ========================================================================
-    // 32: next.up (single-step ascent pointer, 1-based with NA)
+    // 33: next.up (single-step ascent pointer, 1-based with NA)
     // ========================================================================
     {
         SEXP r_next = PROTECT(int_vec_to_R(result.next_up, true));

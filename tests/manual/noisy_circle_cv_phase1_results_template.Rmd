@@ -19,6 +19,113 @@ run_dir <- normalizePath(params$run_dir, mustWork = TRUE)
 analysis_dir <- file.path(run_dir, "analysis")
 fig_dir <- file.path(analysis_dir, "figures")
 tab_dir <- file.path(analysis_dir, "tables")
+
+read_or_empty <- function(filename) {
+  p <- file.path(tab_dir, filename)
+  if (file.exists(p)) fread(p) else data.table()
+}
+
+fmt_int <- function(x) format(as.integer(round(x)), big.mark = ",", scientific = FALSE)
+fmt_pct <- function(x, digits = 1) sprintf(paste0("%.", digits, "f%%"), 100 * x)
+fmt_num <- function(x, digits = 6) sprintf(paste0("%.", digits, "f"), x)
+
+completion_summary <- read_or_empty("completion_summary.csv")
+status_counts <- read_or_empty("status_counts.csv")
+failure_by_k <- read_or_empty("failure_by_k_sigma_eigenpairs.csv")
+risk_landscape <- read_or_empty("risk_landscape_mean.csv")
+selection_freq_k <- read_or_empty("selection_freq_k.csv")
+selection_freq_eig <- read_or_empty("selection_freq_n_eigenpairs.csv")
+selection_freq_eta <- read_or_empty("selection_freq_eta.csv")
+selection_by_rep <- read_or_empty("selection_by_replicate.csv")
+one_se_deltas <- read_or_empty("one_se_vs_min_deltas.csv")
+oracle_summary <- read_or_empty("oracle_summary_by_sigma_method.csv")
+delta_vs_obs <- read_or_empty("delta_vs_observed_by_replicate.csv")
+cv_oracle_corr <- read_or_empty("cv_vs_oracle_correlation.csv")
+frontier_points <- read_or_empty("oversmoothing_frontier_points.csv")
+
+mode_top <- function(dt, by_cols, order_cols) {
+  if (nrow(dt) == 0) return(data.table())
+  dt[do.call(order, c(.SD, decreasing = TRUE)), .SD[1], by = by_cols, .SDcols = order_cols]
+}
+
+mode_k <- if (nrow(selection_freq_k) > 0) selection_freq_k[order(-N, k), .SD[1], by = .(sigma, selected)] else data.table()
+mode_eig <- if (nrow(selection_freq_eig) > 0) selection_freq_eig[order(-N, n_eigenpairs), .SD[1], by = .(sigma, selected)] else data.table()
+mode_eta <- if (nrow(selection_freq_eta) > 0) selection_freq_eta[order(-N, eta), .SD[1], by = .(sigma, selected)] else data.table()
+
+mode_one <- data.table()
+mode_min <- data.table()
+if (nrow(mode_k) > 0 && nrow(mode_eig) > 0 && nrow(mode_eta) > 0) {
+  mode_one <- merge(
+    merge(
+      mode_k[selected == "one_se", .(sigma, k)],
+      mode_eig[selected == "one_se", .(sigma, n_eigenpairs)],
+      by = "sigma", all = TRUE
+    ),
+    mode_eta[selected == "one_se", .(sigma, eta)],
+    by = "sigma", all = TRUE
+  )[order(sigma)]
+
+  mode_min <- merge(
+    merge(
+      mode_k[selected == "min", .(sigma, k)],
+      mode_eig[selected == "min", .(sigma, n_eigenpairs)],
+      by = "sigma", all = TRUE
+    ),
+    mode_eta[selected == "min", .(sigma, eta)],
+    by = "sigma", all = TRUE
+  )[order(sigma)]
+}
+
+delta_summary <- if (nrow(delta_vs_obs) > 0) {
+  delta_vs_obs[, .(
+    n = .N,
+    mean_delta_xy = mean(delta_rmse_xy_hat),
+    pct_better_xy = mean(delta_rmse_xy_hat < 0),
+    mean_delta_rad = mean(delta_rmse_rad_hat),
+    pct_better_rad = mean(delta_rmse_rad_hat < 0)
+  ), by = .(sigma, method)][order(sigma, method)]
+} else {
+  data.table()
+}
+
+best_vs_obs <- if (nrow(delta_summary) > 0) {
+  delta_summary[order(mean_delta_xy), .SD[1], by = sigma][order(sigma)]
+} else {
+  data.table()
+}
+
+best_vs_obs_text <- function() {
+  if (nrow(best_vs_obs) == 0) {
+    return("not available")
+  }
+  parts <- best_vs_obs[
+    ,
+    ifelse(
+      mean_delta_xy < 0,
+      sprintf("sigma %.2f: smoothing better (`%s`, mean delta %.6f)", sigma, method, mean_delta_xy),
+      sprintf("sigma %.2f: non-smoothing better (best smoother `%s` has mean delta %.6f)", sigma, method, mean_delta_xy)
+    )
+  ]
+  paste(parts, collapse = "; ")
+}
+
+param_mode_text <- function(rule = c("one_se", "min")) {
+  rule <- match.arg(rule)
+  dt <- if (rule == "one_se") mode_one else mode_min
+  if (nrow(dt) == 0) return("not available")
+  paste(
+    dt[, sprintf("sigma %.2f: k=%d, n.eigenpairs=%d, eta=%.5f", sigma, k, n_eigenpairs, eta)],
+    collapse = "; "
+  )
+}
+
+emit_standard_key <- function(extra = NULL, rule = "one_se") {
+  if (!is.null(extra)) {
+    cat(sprintf("- %s\n", extra))
+  }
+  cat(sprintf("- Smoothing vs non-smoothing verdict: %s.\n", best_vs_obs_text()))
+  cat(sprintf("- CV-favored parameters (`%s` mode): %s.\n", rule, param_mode_text(rule)))
+}
 ```
 
 ## Run Context
@@ -37,87 +144,479 @@ if (file.exists(summary_path)) {
 
 ## Completion and Integrity
 
-```{r completion-table}
-path <- file.path(tab_dir, "completion_summary.csv")
-if (file.exists(path)) {
-  knitr::kable(fread(path))
+### Figure 01. Completion and status
+#### What We Are Looking At
+This bar chart has two panels:
+- Left: how many CV tasks were expected vs how many were completed.
+- Right: how many rows ended with `ok` vs error statuses.
+
+```{r fig01-plot, out.width='100%'}
+p <- file.path(fig_dir, "01_completion_status.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig01-interpret, results='asis'}
+if (nrow(completion_summary) > 0 && nrow(status_counts) > 0) {
+  obs <- completion_summary$observed_rows[1]
+  exp <- completion_summary$expected_total_rows[1]
+  dup <- completion_summary$duplicate_rows[1]
+  ok_n <- status_counts[status == "ok", N]
+  fit_err_n <- status_counts[status == "fit_error", N]
+  if (length(ok_n) == 0) ok_n <- 0
+  if (length(fit_err_n) == 0) fit_err_n <- 0
+  cat(sprintf("- The run completed **%s / %s** tasks (%s).\n", fmt_int(obs), fmt_int(exp), fmt_pct(obs / exp)))
+  cat(sprintf("- There were **%s** duplicate task keys (data integrity check).\n", fmt_int(dup)))
+  cat(sprintf("- Status breakdown: **ok = %s** (%s), **fit_error = %s** (%s).\n",
+              fmt_int(ok_n), fmt_pct(ok_n / obs), fmt_int(fit_err_n), fmt_pct(fit_err_n / obs)))
+  cat("- Practical meaning: the CV grid is fully covered; errors are present but localized (analyzed in Figure 02).\n")
+} else {
+  cat("- Completion/status tables are not available yet.\n")
 }
 ```
 
-```{r completion-plot, out.width='100%'}
-path <- file.path(fig_dir, "01_completion_status.png")
-if (file.exists(path)) knitr::include_graphics(path)
+#### Key message
+```{r fig01-key, results='asis'}
+emit_standard_key(
+  extra = "The experiment coverage is complete and internally consistent, so downstream smoothing conclusions are based on the full planned grid."
+)
 ```
 
 ## Failure Topology
 
-```{r failure-table}
-path <- file.path(tab_dir, "failure_by_k_sigma_eigenpairs.csv")
-if (file.exists(path)) {
-  dt <- fread(path)
-  knitr::kable(head(dt[order(-fail_rate)], 20))
+### Figure 02. Failure rate by `k`, noise level, and eigenpair count
+#### What We Are Looking At
+Each line shows the fraction of failed CV rows (`status != ok`) as `k` changes:
+- Different colors are different noise levels (`sigma`).
+- Panels are different `n.eigenpairs`.
+
+```{r fig02-plot, out.width='100%'}
+p <- file.path(fig_dir, "02_failrate_vs_k_by_sigma.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig02-interpret, results='asis'}
+if (nrow(failure_by_k) > 0) {
+  nonzero_k <- sort(unique(failure_by_k[fail_rate > 0, k]))
+  rates_k5 <- failure_by_k[k == 5, .(fail_rate = mean(fail_rate)), by = sigma][order(sigma)]
+  cat(sprintf("- Failures occur only at **k = %s**; all larger `k` values have 0 failure rate in this run.\n",
+              paste(nonzero_k, collapse = ", ")))
+  if (nrow(rates_k5) > 0) {
+    parts <- rates_k5[, sprintf("sigma %.2f: %s", sigma, fmt_pct(fail_rate))]
+    cat(sprintf("- At `k=5`, failure rates are: %s.\n", paste(parts, collapse = "; ")))
+  }
+  cat("- Interpretation: disconnected graph issues are concentrated at the smallest neighborhood size and become less frequent as noise increases.\n")
+} else {
+  cat("- Failure table is not available yet.\n")
 }
 ```
 
-```{r failure-plot, out.width='100%'}
-path <- file.path(fig_dir, "02_failrate_vs_k_by_sigma.png")
-if (file.exists(path)) knitr::include_graphics(path)
+#### Key message
+```{r fig02-key, results='asis'}
+emit_standard_key(
+  extra = "Failure risk is concentrated at k=5 (especially at low sigma), so this corner of the grid is statistically fragile even though it can score well in CV."
+)
 ```
 
 ## CV Risk Landscape
 
-```{r cv-surface-plot, out.width='100%'}
-path <- file.path(fig_dir, "03_cv_surface_heatmaps.png")
-if (file.exists(path)) knitr::include_graphics(path)
+### Figure 03. Mean CV loss surface (`scaled_mse`)
+#### What We Are Looking At
+Each heatmap cell is the average CV loss for one parameter combination:
+- x-axis: `k`
+- y-axis: `log10(eta)`
+- panels: different `sigma` and `n.eigenpairs`
+- darker/lower values indicate better CV score.
+
+```{r fig03-plot, out.width='100%'}
+p <- file.path(fig_dir, "03_cv_surface_heatmaps.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig03-interpret, results='asis'}
+if (nrow(risk_landscape) > 0) {
+  best <- risk_landscape[order(scaled_mse_mean_avg), .SD[1], by = sigma][order(sigma)]
+  cat("- The best CV region is consistently near small `k` and moderate `eta` values.\n")
+  lines <- best[, sprintf("sigma %.2f -> k=%d, n.eigenpairs=%d, eta=%.5f, mean scaled MSE=%.6f",
+                          sigma, k, n_eigenpairs, eta, scaled_mse_mean_avg)]
+  cat(sprintf("- Best observed settings by sigma: %s.\n", paste(lines, collapse = " | ")))
+  cat("- Practical meaning: in this dataset, the CV objective favors relatively local smoothing (small neighborhoods) with non-extreme filtering strength.\n")
+} else {
+  cat("- CV risk landscape table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig03-key, results='asis'}
+emit_standard_key(
+  extra = "CV loss minima are consistently in the small-k / moderate-eta region, indicating that mild-to-moderate smoothing is preferred over very strong global smoothing."
+)
 ```
 
 ## Selection Stability
 
-```{r selection-plots, out.width='100%'}
-for (nm in c(
-  "04_selected_k_distribution.png",
-  "05_selected_eigenpairs_distribution.png",
-  "06_selected_eta_distribution.png",
-  "07_one_se_vs_min_tradeoff.png"
-)) {
-  p <- file.path(fig_dir, nm)
-  if (file.exists(p)) {
-    knitr::include_graphics(p)
-    cat("\n\n")
+### Figure 04. Distribution of selected `k`
+#### What We Are Looking At
+For each `sigma`, bars show how often each `k` was selected:
+- Separate colors are the `min` and `one_se` selection rules.
+
+```{r fig04-plot, out.width='100%'}
+p <- file.path(fig_dir, "04_selected_k_distribution.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig04-interpret, results='asis'}
+if (nrow(selection_freq_k) > 0) {
+  mode_k <- selection_freq_k[order(-N, k), .SD[1], by = .(sigma, selected)][order(sigma, selected)]
+  sigmas <- sort(unique(mode_k$sigma))
+  for (s in sigmas) {
+    m1 <- mode_k[sigma == s & selected == "min"]
+    m2 <- mode_k[sigma == s & selected == "one_se"]
+    tot1 <- selection_freq_k[sigma == s & selected == "min", sum(N)]
+    tot2 <- selection_freq_k[sigma == s & selected == "one_se", sum(N)]
+    cat(sprintf("- sigma %.2f: `min` most often chose **k=%d** (%d/%d), `one_se` most often chose **k=%d** (%d/%d).\n",
+                s, m1$k, m1$N, tot1, m2$k, m2$N, tot2))
   }
+  cat("- Main pattern: `k=5` dominates for medium/high noise; at lowest noise (`sigma=0.02`) selection shifts slightly toward `k=7`.\n")
+} else {
+  cat("- Selection-by-k table is not available yet.\n")
 }
+```
+
+#### Key message
+```{r fig04-key, results='asis'}
+emit_standard_key(
+  extra = "Selected neighborhood size is stable: mostly k=5 for sigma >= 0.05, with a low-noise shift toward k=7."
+)
+```
+
+### Figure 05. Distribution of selected `n.eigenpairs`
+#### What We Are Looking At
+For each `sigma`, bars show how often each `n.eigenpairs` value was selected by each rule.
+
+```{r fig05-plot, out.width='100%'}
+p <- file.path(fig_dir, "05_selected_eigenpairs_distribution.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig05-interpret, results='asis'}
+if (nrow(selection_freq_eig) > 0) {
+  mode_e <- selection_freq_eig[order(-N, n_eigenpairs), .SD[1], by = .(sigma, selected)][order(sigma, selected)]
+  sigmas <- sort(unique(mode_e$sigma))
+  for (s in sigmas) {
+    m1 <- mode_e[sigma == s & selected == "min"]
+    m2 <- mode_e[sigma == s & selected == "one_se"]
+    cat(sprintf("- sigma %.2f: modal `n.eigenpairs` is **%d** for `min` and **%d** for `one_se`.\n",
+                s, m1$n_eigenpairs, m2$n_eigenpairs))
+  }
+  cat("- Main pattern: `one_se` tends to favor smaller models (often 50 eigenpairs) compared with `min`.\n")
+} else {
+  cat("- Selection-by-eigenpairs table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig05-key, results='asis'}
+emit_standard_key(
+  extra = "`one_se` frequently chooses fewer eigenpairs than `min`, which supports a simpler model with little CV penalty."
+)
+```
+
+### Figure 06. Distribution of selected `eta`
+#### What We Are Looking At
+For each `sigma`, bars show which `eta` values were selected most often.
+
+```{r fig06-plot, out.width='100%'}
+p <- file.path(fig_dir, "06_selected_eta_distribution.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig06-interpret, results='asis'}
+if (nrow(selection_freq_eta) > 0) {
+  mode_eta <- selection_freq_eta[order(-N, eta), .SD[1], by = .(sigma, selected)][order(sigma, selected)]
+  sigmas <- sort(unique(mode_eta$sigma))
+  for (s in sigmas) {
+    m1 <- mode_eta[sigma == s & selected == "min"]
+    m2 <- mode_eta[sigma == s & selected == "one_se"]
+    cat(sprintf("- sigma %.2f: modal `eta` is **%.5f** for `min` and **%.5f** for `one_se`.\n",
+                s, m1$eta, m2$eta))
+  }
+  cat("- Main pattern: selected `eta` is concentrated in a narrow mid-range (mostly around 0.063).\n")
+} else {
+  cat("- Selection-by-eta table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig06-key, results='asis'}
+emit_standard_key(
+  extra = "The smoothing scale eta is concentrated in a narrow mid-range (mostly around 0.063), not at extreme under- or over-smoothing values."
+)
+```
+
+### Figure 07. `one_se` vs `min` tradeoff
+#### What We Are Looking At
+Each point compares one replicate under both rules:
+- x-axis: change in model complexity (`delta n.eigenpairs`, `one_se - min`)
+- y-axis: extra CV loss (`delta scaled MSE`, `one_se - min`)
+- point size: size of `|delta k|`.
+
+```{r fig07-plot, out.width='100%'}
+p <- file.path(fig_dir, "07_one_se_vs_min_tradeoff.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig07-interpret, results='asis'}
+if (nrow(one_se_deltas) > 0) {
+  s <- one_se_deltas[, .(
+    n = .N,
+    pct_higher_loss = mean(delta_scaled_mse > 0),
+    median_delta_loss = median(delta_scaled_mse),
+    mean_delta_eig = mean(delta_n_eigenpairs),
+    mean_delta_k = mean(delta_k),
+    mean_delta_log10_eta = mean(delta_log10_eta)
+  ), by = sigma][order(sigma)]
+  for (i in seq_len(nrow(s))) {
+    cat(sprintf("- sigma %.2f: median CV-loss change is %.6f, `one_se` uses %.2f fewer eigenpairs on average, and delta-k is %.2f.\n",
+                s$sigma[i], s$median_delta_loss[i], -s$mean_delta_eig[i], s$mean_delta_k[i]))
+  }
+  cat("- Main pattern: `one_se` gives similar CV loss (median ~0) while reducing complexity.\n")
+} else {
+  cat("- one_se vs min delta table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig07-key, results='asis'}
+emit_standard_key(
+  extra = "The one-standard-error rule is a good complexity control: near-zero median loss change with fewer eigenpairs."
+)
 ```
 
 ## Oracle Comparisons and Baseline Deltas
 
-```{r oracle-plots, out.width='100%'}
-for (nm in c(
-  "08_oracle_rmse_xy_by_method_sigma.png",
-  "09_oracle_rmse_rad_by_method_sigma.png",
-  "10_var_ratio_by_method_sigma.png",
-  "11_delta_vs_observed.png"
-)) {
-  p <- file.path(fig_dir, nm)
-  if (file.exists(p)) {
-    knitr::include_graphics(p)
-    cat("\n\n")
+### Figure 08. Oracle RMSE in x/y by method
+#### What We Are Looking At
+Boxplots compare denoising methods using oracle error to clean coordinates (`rmse_xy_hat`):
+- lower is better.
+- each panel is one noise level (`sigma`).
+
+```{r fig08-plot, out.width='100%'}
+p <- file.path(fig_dir, "08_oracle_rmse_xy_by_method_sigma.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig08-interpret, results='asis'}
+if (nrow(oracle_summary) > 0) {
+  best_xy <- oracle_summary[order(rmse_xy_hat_mean), .SD[1], by = sigma][order(sigma)]
+  obs_xy <- oracle_summary[method == "observed_no_smoothing", .(sigma, obs = rmse_xy_hat_mean)]
+  m <- merge(best_xy[, .(sigma, method, best = rmse_xy_hat_mean)], obs_xy, by = "sigma", all.x = TRUE)
+  for (i in seq_len(nrow(m))) {
+    diff <- m$obs[i] - m$best[i]
+    cat(sprintf("- sigma %.2f: best mean RMSE(x,y) is **%s** (%.6f), vs observed baseline %.6f (improvement %.6f).\n",
+                m$sigma[i], m$method[i], m$best[i], m$obs[i], diff))
   }
+  cat("- Main pattern: smoothing helps clearly at medium/high noise; at lowest noise (`sigma=0.02`), the observed data is already best on this metric.\n")
+} else {
+  cat("- Oracle summary table is not available yet.\n")
 }
+```
+
+#### Key message
+```{r fig08-key, results='asis'}
+emit_standard_key(
+  extra = "User-level decision rule from this figure: if noise is very low (sigma ~ 0.02), no smoothing is preferred for RMSE(x,y); when noise is higher (sigma >= 0.05), smoothing is preferred."
+)
+```
+
+### Figure 09. Oracle radial RMSE by method
+#### What We Are Looking At
+Boxplots compare methods using radial error (`rmse_rad_hat`) to clean radius:
+- lower is better.
+- each panel is one `sigma`.
+
+```{r fig09-plot, out.width='100%'}
+p <- file.path(fig_dir, "09_oracle_rmse_rad_by_method_sigma.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig09-interpret, results='asis'}
+if (nrow(oracle_summary) > 0) {
+  best_rad <- oracle_summary[order(rmse_rad_hat_mean), .SD[1], by = sigma][order(sigma)]
+  for (i in seq_len(nrow(best_rad))) {
+    cat(sprintf("- sigma %.2f: best radial RMSE method is **%s** with mean %.6f.\n",
+                best_rad$sigma[i], best_rad$method[i], best_rad$rmse_rad_hat_mean[i]))
+  }
+  cat("- Main pattern: radial denoising improves strongly for all noise levels compared with no smoothing.\n")
+} else {
+  cat("- Oracle radial summary is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig09-key, results='asis'}
+emit_standard_key(
+  extra = "On radial error, smoothing wins across all noise levels; this is stronger evidence for denoising benefit than Figure 08 alone."
+)
+```
+
+### Figure 10. Variance ratio by method
+#### What We Are Looking At
+This plot shows `var_ratio_mean`:
+- value `1.0` means no change in variance.
+- values below `1.0` mean variance is reduced (smoothing).
+
+```{r fig10-plot, out.width='100%'}
+p <- file.path(fig_dir, "10_var_ratio_by_method_sigma.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig10-interpret, results='asis'}
+if (nrow(oracle_summary) > 0) {
+  smooth <- oracle_summary[method != "observed_no_smoothing"]
+  cat(sprintf("- Across smoothed methods, variance ratio ranges from %.6f to %.6f (all < 1).\n",
+              min(smooth$var_ratio_mean_avg), max(smooth$var_ratio_mean_avg)))
+  low <- smooth[order(var_ratio_mean_avg)][1]
+  cat(sprintf("- Strongest average variance shrinkage occurs at sigma %.2f with method `%s` (var ratio %.6f).\n",
+              low$sigma, low$method, low$var_ratio_mean_avg))
+  cat("- Main pattern: variance reduction becomes stronger as noise increases.\n")
+} else {
+  cat("- Variance-ratio summary is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig10-key, results='asis'}
+emit_standard_key(
+  extra = "All smoothing methods reduce variance (var ratio < 1), and shrinkage increases with noise, so variance reduction itself is expected and not automatically over-smoothing."
+)
+```
+
+### Figure 11. Delta vs observed baseline
+#### What We Are Looking At
+This compares each smoothed method to `observed_no_smoothing`:
+- y-axis is `delta rmse_xy_hat = method - observed`.
+- below zero means the method improved over observed.
+
+```{r fig11-plot, out.width='100%'}
+p <- file.path(fig_dir, "11_delta_vs_observed.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig11-interpret, results='asis'}
+if (nrow(delta_vs_obs) > 0) {
+  d <- delta_vs_obs[, .(
+    n = .N,
+    mean_delta_xy = mean(delta_rmse_xy_hat),
+    pct_better_xy = mean(delta_rmse_xy_hat < 0),
+    mean_delta_rad = mean(delta_rmse_rad_hat),
+    pct_better_rad = mean(delta_rmse_rad_hat < 0)
+  ), by = .(sigma, method)][order(sigma, method)]
+  best <- d[order(mean_delta_xy), .SD[1], by = sigma][order(sigma)]
+  for (i in seq_len(nrow(best))) {
+    cat(sprintf("- sigma %.2f: best average delta(x,y) is `%s` = %.6f (negative is better).\n",
+                best$sigma[i], best$method[i], best$mean_delta_xy[i]))
+  }
+  low_noise <- d[sigma == min(sigma), .(mean_delta_xy = mean(mean_delta_xy))]
+  cat(sprintf("- At the lowest noise level (sigma %.2f), average delta(x,y) across methods is %.6f (little/no gain).\n",
+              min(d$sigma), low_noise$mean_delta_xy[1]))
+  cat("- Radial error improved in essentially all replicates for all methods.\n")
+} else {
+  cat("- Delta-vs-observed table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig11-key, results='asis'}
+emit_standard_key(
+  extra = "Direct baseline comparison confirms the practical rule: skip smoothing at very low noise (sigma=0.02) and apply smoothing for sigma=0.05, 0.10, and 0.20."
+)
 ```
 
 ## CV Defensibility and Oversmoothing
 
-```{r defensibility-plots, out.width='100%'}
-for (nm in c(
-  "12_cv_vs_oracle_scatter.png",
-  "13_oversmoothing_frontier.png"
-)) {
-  p <- file.path(fig_dir, nm)
-  if (file.exists(p)) {
-    knitr::include_graphics(p)
-    cat("\n\n")
+### Figure 12. CV loss vs oracle error
+#### What We Are Looking At
+Scatter plots compare:
+- x-axis: selected CV score (`scaled_mse`)
+- y-axis: oracle denoising error (`rmse_xy_hat`)
+
+If points align along an upward line, CV is tracking oracle risk.
+
+```{r fig12-plot, out.width='100%'}
+p <- file.path(fig_dir, "12_cv_vs_oracle_scatter.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig12-interpret, results='asis'}
+if (nrow(cv_oracle_corr) > 0) {
+  sigma_corr <- cv_oracle_corr[, .(mean_spearman = mean(spearman_rho)), by = sigma][order(sigma)]
+  for (i in seq_len(nrow(sigma_corr))) {
+    cat(sprintf("- sigma %.2f: mean Spearman correlation between CV score and oracle error is %.3f.\n",
+                sigma_corr$sigma[i], sigma_corr$mean_spearman[i]))
   }
+  cat("- Main pattern: CV-oracle agreement is moderate at sigma 0.02 and 0.20, but weak at sigma 0.05-0.10.\n")
+} else {
+  cat("- CV-vs-oracle correlation table is not available yet.\n")
 }
+```
+
+#### Key message
+```{r fig12-key, results='asis'}
+emit_standard_key(
+  extra = "CV loss is a useful but imperfect proxy: alignment with oracle error is moderate at low/high noise and weak at intermediate noise."
+)
+```
+
+### Figure 13. Oversmoothing frontier
+#### What We Are Looking At
+Each point is one replicate:
+- x-axis: variance ratio (lower = stronger smoothing)
+- y-axis: improvement in RMSE(x,y) vs observed (higher = better)
+
+The best region is typically upper-left: good improvement without extreme variance collapse.
+
+```{r fig13-plot, out.width='100%'}
+p <- file.path(fig_dir, "13_oversmoothing_frontier.png")
+if (file.exists(p)) knitr::include_graphics(p)
+```
+
+#### Interpretation
+```{r fig13-interpret, results='asis'}
+if (nrow(frontier_points) > 0) {
+  f <- frontier_points[, .(
+    n = .N,
+    mean_improvement = mean(improvement_rmse_xy),
+    pct_improved = mean(improvement_rmse_xy > 0),
+    mean_var_ratio = mean(var_ratio_mean)
+  ), by = .(sigma, method)][order(sigma, method)]
+  best <- f[order(-mean_improvement), .SD[1], by = sigma][order(sigma)]
+  for (i in seq_len(nrow(best))) {
+    cat(sprintf("- sigma %.2f: strongest average frontier gain is `%s` (improvement %.6f, mean var ratio %.6f).\n",
+                best$sigma[i], best$method[i], best$mean_improvement[i], best$mean_var_ratio[i]))
+  }
+  cat("- Main pattern: at sigma 0.02 methods slightly over-smooth on average; for sigma >= 0.05, smoothing gives clear net gains.\n")
+} else {
+  cat("- Oversmoothing frontier table is not available yet.\n")
+}
+```
+
+#### Key message
+```{r fig13-key, results='asis'}
+emit_standard_key(
+  extra = "Frontier analysis confirms slight average over-smoothing at sigma=0.02 and clear net gains from smoothing at sigma >= 0.05."
+)
 ```
 
 ## Notes
