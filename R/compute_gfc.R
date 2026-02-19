@@ -34,10 +34,29 @@
 #' @param apply.geometric.filter Logical indicating whether to apply geometric filtering (default: TRUE)
 #' @param with.trajectories Set to TRUE for the function to return gradient trajectories.
 #' @param verbose Logical indicating whether to print progress messages (default: FALSE)
-#' @param modulation Basin-construction mode. Use \code{"GEODESIC"} for the
-#'   extrema-grown geodesic basin algorithm (default). Other values
-#'   (\code{"CLOSEST"}, \code{"NONE"}, \code{"DENSITY"}, \code{"EDGELEN"},
-#'   \code{"DENSITY_EDGELEN"}) dispatch to trajectory-based construction.
+#' @param modulation Character scalar controlling how basins/trajectories are
+#'   constructed. Supported modes are:
+#'   \describe{
+#'     \item{\code{"CLOSEST"}}{Trajectory-first construction (default). At each
+#'       step, follow the shortest adjacent edge that gives strict monotone
+#'       progress (\eqn{y(u) > y(v)} for ascent and \eqn{y(u) < y(v)} for descent).}
+#'     \item{\code{"GEODESIC"}}{Extrema-first geodesic basin construction via
+#'       \code{compute.basins.of.attraction}. Basins are grown from local extrema
+#'       using monotone reachability with the edge-length quantile constraint.}
+#'     \item{\code{"NONE"}}{Trajectory-first steepest rule. Choose the monotone
+#'       neighbor maximizing \eqn{|y(u)-y(v)|}.}
+#'     \item{\code{"DENSITY"}}{Trajectory-first density-modulated rule. Choose the
+#'       monotone neighbor maximizing \eqn{\rho(u)\,|y(u)-y(v)|}. Requires
+#'       \code{density}.}
+#'     \item{\code{"EDGELEN"}}{Trajectory-first edge-length-modulated rule. Choose
+#'       the monotone neighbor maximizing an edge-weighted gradient score that
+#'       down-weights long edges.}
+#'     \item{\code{"DENSITY_EDGELEN"}}{Trajectory-first combined density and
+#'       edge-length modulation. Requires \code{density}.}
+#'   }
+#'   \code{"GEODESIC"} returns a \code{"basins_of_attraction"} object.
+#'   All other modes dispatch to \code{\link{compute.gfc.trajectory}} and return
+#'   a \code{"gfc.flow"} object.
 #' @param density Optional density vector used by density-modulated trajectory modes.
 #' @param min.n.trajectories Minimum trajectory count threshold used in
 #'   trajectory-based mode.
@@ -197,7 +216,7 @@ compute.gfc <- function(adj.list,
                                    apply.geometric.filter = TRUE,
                                    with.trajectories = FALSE,
                                    verbose = FALSE,
-                                   modulation = "GEODESIC",
+                                   modulation = "CLOSEST",
                                    density = NULL,
                                    min.n.trajectories = 0L,
                                    store.trajectories = with.trajectories,
