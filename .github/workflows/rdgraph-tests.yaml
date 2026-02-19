@@ -49,9 +49,11 @@ jobs:
 
       - name: Run fast rdgraph tests
         run: |
-          Rscript -e 'pkgload::load_all(".", quiet = TRUE); \
-            testthat::test_file("tests/testthat/test-rdgraph-iknn-invariance.R"); \
-            testthat::test_file("tests/testthat/test-rdgraph-geometric-pruning-switch.R")'
+          Rscript - <<'RS'
+          pkgload::load_all('.', quiet = TRUE)
+          testthat::test_file('tests/testthat/test-rdgraph-iknn-invariance.R')
+          testthat::test_file('tests/testthat/test-rdgraph-geometric-pruning-switch.R')
+          RS
 
   nightly-runtime-guardrails:
     if: >
@@ -84,5 +86,7 @@ jobs:
 
       - name: Run nightly runtime guardrail tests
         run: |
-          Rscript -e 'pkgload::load_all(".", quiet = TRUE); \
-            testthat::test_file("tests/testthat/test-rdgraph-runtime-sanity.R")'
+          Rscript - <<'RS'
+          pkgload::load_all('.', quiet = TRUE)
+          testthat::test_file('tests/testthat/test-rdgraph-runtime-sanity.R')
+          RS
