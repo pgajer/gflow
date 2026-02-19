@@ -580,7 +580,7 @@ namespace gfc_internal {
      * @param graph The weighted graph
      * @param basins Vector of basins
      * @param y Function values
-     * @param y_median Median of y values
+     * @param y_mean Mean of y values
      * @param hop_k Hop distance for statistics
      * @return Vector of summary statistics
      */
@@ -588,7 +588,7 @@ namespace gfc_internal {
         const set_wgraph_t& graph,
         const std::vector<basin_compact_t>& basins,
         const std::vector<double>& y,
-        double y_median,
+        double y_mean,
         int hop_k
         ) {
         const size_t n_basins = basins.size();
@@ -635,8 +635,8 @@ namespace gfc_internal {
             summary.hop_index = basin.max_hop_distance;
 
             // Relative value
-            summary.rel_value = (std::abs(y_median) > 1e-10)
-                ? basin.extremum_value / y_median
+            summary.rel_value = (std::abs(y_mean) > 1e-10)
+                ? basin.extremum_value / y_mean
                 : 1.0;
 
             // Degree and degree percentile
@@ -723,6 +723,9 @@ gfc_result_t compute_gfc(
     if (verbose) {
         Rprintf("GFC computation: %zu vertices, median = %.4f\n", n, result.y_median);
     }
+
+    const double y_mean = std::accumulate(y.begin(), y.end(), 0.0) /
+        static_cast<double>(n);
 
     // ========================================================================
     // Step 1: Compute initial basins using hop neighborhood method
@@ -855,10 +858,10 @@ gfc_result_t compute_gfc(
 
     // Compute initial summaries
     auto max_summaries = gfc_internal::compute_basin_summaries(
-        graph, max_basins, y, result.y_median, params.hop_k
+        graph, max_basins, y, y_mean, params.hop_k
         );
     auto min_summaries = gfc_internal::compute_basin_summaries(
-        graph, min_basins, y, result.y_median, params.hop_k
+        graph, min_basins, y, y_mean, params.hop_k
         );
 
     // Record initial counts
@@ -985,10 +988,10 @@ gfc_result_t compute_gfc(
 
         // Recompute summaries after merging for accurate percentiles
         max_summaries = gfc_internal::compute_basin_summaries(
-            graph, max_basins, y, result.y_median, params.hop_k
+            graph, max_basins, y, y_mean, params.hop_k
             );
         min_summaries = gfc_internal::compute_basin_summaries(
-            graph, min_basins, y, result.y_median, params.hop_k
+            graph, min_basins, y, y_mean, params.hop_k
             );
 
         // Filter maxima

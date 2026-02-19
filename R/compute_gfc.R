@@ -93,11 +93,15 @@
 #'         \item{hop.k}{The hop distance parameter used for summary statistics.}
 #'       }
 #'     }
-#'     \item{summary}{A data frame with one row per retained extremum, containing:
-#'       label, vertex index, function value, relative value, extremum type,
-#'       hop index, basin size, distance percentiles, degree, and degree percentile.
-#'       Minima are labeled m1, m2, ... in order of increasing value; maxima are
-#'       labeled M1, M2, ... in order of decreasing value.}
+#'     \item{summary}{A standardized data frame with one row per retained
+#'       extremum. Core columns are: \code{label}, \code{vertex}, \code{value},
+#'       \code{rel.value}, \code{type}, \code{basin.size.raw},
+#'       \code{basin.size.exp}, \code{hop.index}, \code{p.mean.nbrs.dist},
+#'       \code{p.mean.hopk.dist}, \code{degree}, and \code{deg.percentile}.
+#'       For compatibility, aliases \code{basin.size}, \code{hop.idx},
+#'       \code{deg}, and \code{p.deg} are also provided. Minima are labeled
+#'       m1, m2, ... in order of increasing value; maxima are labeled M1, M2,
+#'       ... in order of decreasing value.}
 #'     \item{max.overlap.dist}{Symmetric matrix of pairwise overlap distances
 #'       between maximum basins, with row and column names matching the summary
 #'       labels. Returns \code{NULL} if fewer than two maxima remain after
@@ -130,10 +134,11 @@
 #' capture the regions of influence for each local extremum in the fitted surface.
 #'
 #' The relative value filtering stage removes extrema whose values are too close
-#' to the median of the fitted values. Maxima with relative values below
-#' \code{min.rel.value.max} and minima with relative values above
-#' \code{max.rel.value.min} are eliminated. This step focuses subsequent analysis
-#' on prominent features of the fitted surface.
+#' to the center of the fitted-value distribution. The relative-value denominator
+#' is \code{mean(y)} across all modulation values.
+#' Maxima with relative values below \code{min.rel.value.max} and minima with
+#' relative values above \code{max.rel.value.min} are eliminated. This step
+#' focuses subsequent analysis on prominent features of the fitted surface.
 #'
 #' The clustering stage identifies groups of similar extrema based on basin
 #' overlap. When basins share a substantial portion of their vertices, their
@@ -846,6 +851,46 @@ compute.gfc <- function(adj.list,
         }
     }
 
+    ## Harmonize summary schema across modulation paths:
+    ## - standardized names (hop.index/degree/deg.percentile)
+    ## - explicit raw/expanded basin sizes
+    ## - backward-compatible aliases (basin.size/hop.idx/deg/p.deg)
+    raw.size.map <- numeric(0)
+    if (length(max.vertices.list) > 0) {
+        raw.size.map <- c(
+            raw.size.map,
+            setNames(
+                vapply(max.vertices.list, length, integer(1)),
+                names(max.vertices.list)
+            )
+        )
+    }
+    if (length(min.vertices.list) > 0) {
+        raw.size.map <- c(
+            raw.size.map,
+            setNames(
+                vapply(min.vertices.list, length, integer(1)),
+                names(min.vertices.list)
+            )
+        )
+    }
+
+    exp.size.map <- raw.size.map
+    if (!is.null(expanded.max.vertices.list) && length(expanded.max.vertices.list) > 0) {
+        exp.size.map[names(expanded.max.vertices.list)] <-
+            vapply(expanded.max.vertices.list, length, integer(1))
+    }
+    if (!is.null(expanded.min.vertices.list) && length(expanded.min.vertices.list) > 0) {
+        exp.size.map[names(expanded.min.vertices.list)] <-
+            vapply(expanded.min.vertices.list, length, integer(1))
+    }
+
+    final.summary <- .harmonize.compute.gfc.summary(
+        final.summary,
+        raw.size.map = raw.size.map,
+        exp.size.map = exp.size.map
+    )
+
     ## Store parameters for reporting
     parameters <- list(
         modulation = modulation,
@@ -891,6 +936,85 @@ compute.gfc <- function(adj.list,
     class(result) <- "basins_of_attraction"
 
     return(result)
+}
+
+.harmonize.compute.gfc.summary <- function(summary.df,
+                                           raw.size.map = numeric(0),
+                                           exp.size.map = numeric(0)) {
+
+    if (is.null(summary.df)) {
+        return(summary.df)
+    }
+
+    original.class <- class(summary.df)
+    df <- summary.df
+
+    ## Canonical vs compatibility aliases
+    if (!("hop.index" %in% names(df)) && ("hop.idx" %in% names(df))) {
+        df$hop.index <- df$hop.idx
+    }
+    if (!("hop.idx" %in% names(df)) && ("hop.index" %in% names(df))) {
+        df$hop.idx <- df$hop.index
+    }
+
+    if (!("degree" %in% names(df)) && ("deg" %in% names(df))) {
+        df$degree <- df$deg
+    }
+    if (!("deg" %in% names(df)) && ("degree" %in% names(df))) {
+        df$deg <- df$degree
+    }
+
+    if (!("deg.percentile" %in% names(df)) && ("p.deg" %in% names(df))) {
+        df$deg.percentile <- df$p.deg
+    }
+    if (!("p.deg" %in% names(df)) && ("deg.percentile" %in% names(df))) {
+        df$p.deg <- df$deg.percentile
+    }
+
+    if (!("basin.size.raw" %in% names(df))) {
+        if ("basin.size" %in% names(df)) {
+            df$basin.size.raw <- as.integer(df$basin.size)
+        } else {
+            df$basin.size.raw <- NA_integer_
+        }
+    }
+
+    if (length(raw.size.map) > 0 && ("label" %in% names(df))) {
+        mapped.raw <- raw.size.map[as.character(df$label)]
+        idx <- !is.na(mapped.raw)
+        if (any(idx)) {
+            df$basin.size.raw[idx] <- as.integer(mapped.raw[idx])
+        }
+    }
+
+    if (!("basin.size.exp" %in% names(df))) {
+        df$basin.size.exp <- as.integer(df$basin.size.raw)
+    }
+
+    if (length(exp.size.map) > 0 && ("label" %in% names(df))) {
+        mapped.exp <- exp.size.map[as.character(df$label)]
+        idx <- !is.na(mapped.exp)
+        if (any(idx)) {
+            df$basin.size.exp[idx] <- as.integer(mapped.exp[idx])
+        }
+    }
+
+    ## Keep legacy basin.size as raw size alias
+    df$basin.size <- as.integer(df$basin.size.raw)
+
+    col.order <- c(
+        "label", "vertex", "value", "rel.value", "type",
+        "basin.size.raw", "basin.size.exp", "basin.size",
+        "hop.index", "hop.idx",
+        "p.mean.nbrs.dist", "p.mean.hopk.dist",
+        "degree", "deg.percentile", "deg", "p.deg"
+    )
+    col.order <- c(col.order[col.order %in% names(df)],
+                   setdiff(names(df), col.order))
+    df <- df[, col.order, drop = FALSE]
+
+    class(df) <- original.class
+    df
 }
 
 
@@ -1130,7 +1254,7 @@ generate.refinement.report <- function(basins.result,
     para <- sprintf(
 "The refinement begins by computing basins of attraction for all local extrema of $%s$ on the ikNN graph. To prevent trajectories from jumping across distant regions of the graph, we restricted basin computation to edges below the %.0fth percentile of the edge length distribution. This initial step identified %d local maxima and %d local minima.
 
-The first filtering stage removes extrema whose values lie too close to the median of $%s$. We define the relative value of an extremum as its fitted value divided by the median. Maxima with relative values below %.2f and minima with relative values above %.2f were eliminated, as such extrema represent minor fluctuations rather than prominent features of the response surface. This step retained %d maxima and %d minima.
+The first filtering stage removes extrema whose values lie too close to the center of $%s$. In this extrema-first workflow, we define the relative value of an extremum as its fitted value divided by the mean. Maxima with relative values below %.2f and minima with relative values above %.2f were eliminated, as such extrema represent minor fluctuations rather than prominent features of the response surface. This step retained %d maxima and %d minima.
 
 The second stage addresses geometric redundancy by clustering extrema whose basins exhibit substantial overlap. We applied an overlap threshold of %.0f%% for maxima and %.0f%% for minima. Within each cluster, we merged the constituent basins, retaining the extremum with the most extreme value as the representative. This clustering and merging process reduced the count to %d maxima and %d minima.
 
