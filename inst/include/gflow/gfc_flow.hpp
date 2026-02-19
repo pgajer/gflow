@@ -150,6 +150,9 @@ struct gfc_flow_params_t : public gfc_params_t {
     /// Maximum trajectory length (vertices) before giving up
     size_t max_trajectory_length = 10000;
 
+    /// If true, seed trajectories from both minima and maxima (symmetric)
+    bool symmetric_seeding = true;
+
     gfc_flow_params_t() = default;
 
     /// Construct from base parameters
@@ -157,7 +160,8 @@ struct gfc_flow_params_t : public gfc_params_t {
         : gfc_params_t(base),
           modulation(gflow_modulation_t::NONE),
           store_trajectories(true),
-          max_trajectory_length(10000) {}
+          max_trajectory_length(10000),
+          symmetric_seeding(true) {}
 };
 
 // ============================================================================
@@ -257,6 +261,9 @@ struct gfc_flow_result_t {
     /// Number of trajectories started from local minima
     int n_lmin_trajectories;
 
+    /// Number of trajectories started from local maxima (symmetric seeding)
+    int n_lmax_trajectories;
+
     /// Number of trajectories started from non-extremal vertices (joins)
     int n_join_trajectories;
 
@@ -296,7 +303,7 @@ struct gfc_flow_result_t {
     int n_min_spurious;
 
     gfc_flow_result_t()
-        : n_lmin_trajectories(0), n_join_trajectories(0),
+        : n_lmin_trajectories(0), n_lmax_trajectories(0), n_join_trajectories(0),
           n_vertices(0), y_median(0.0),
           n_max_retained(0), n_min_retained(0),
           n_max_spurious(0), n_min_spurious(0) {}

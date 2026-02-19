@@ -1,0 +1,118 @@
+---
+title: "Noisy Circle CV Denoising: Phase 3 (High-Dimensional Stress Test)"
+author: "gflow experiment log"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+## Objective
+
+Test whether graph-based denoising (`cv_min`, `cv_one_se`) remains competitive with classical denoisers as ambient dimensionality increases.
+
+Primary question:
+
+- In high-dimensional settings, do graph CV methods outperform or underperform classical methods (`classical_knn_mean_cv`, `classical_gaussian_kernel_cv`) on oracle denoising error?
+
+## DGP Design
+
+- Base manifold: noisy circle.
+- Ambient dimensions: `p in {100, 500, 1000, 10000}`.
+- Noise levels: `sigma in {0.05, 0.10, 0.20}`.
+- Embeddings:
+  - `sparse`: circle signal in first 2 dimensions, remaining dimensions are noise dimensions.
+  - `mixed`: circle signal randomly mixed into all ambient dimensions via a random 2D orthonormal subspace.
+
+## Methods Compared
+
+- `observed_no_smoothing` (identity baseline).
+- Graph methods:
+  - `cv_min`
+  - `cv_one_se`
+- Classical methods:
+  - `classical_knn_mean_cv`
+  - `classical_gaussian_kernel_cv`
+
+Intentionally excluded from primary comparison:
+
+- `classical_circular_kernel_cv` (uses explicit circle-angle structure; not deployment-realistic for unknown geometry).
+
+## Selection Rules and Grids
+
+Graph CV grid:
+
+- `k in {5, 9, 13, 17, 21}`
+- `n.eigenpairs in {25, 50}`
+- `eta`: log-spaced heat-kernel grid
+
+Classical CV grids:
+
+- `classical_knn_mean_cv`: `k in {5, 9, 15, 25, 35}`
+- `classical_gaussian_kernel_cv`: `bw_mult in {0.40, 0.70, 1.00, 1.50, 2.20}`
+
+## Metrics
+
+Per replicate and method:
+
+- `rmse_all_hat`: oracle RMSE across all dimensions.
+- `rmse_latent_hat`: oracle RMSE in the latent 2D signal subspace.
+- `var_ratio_mean`: variance shrinkage diagnostic.
+
+Comparative summaries:
+
+- Mean/median oracle metrics by `(embedding_type, p, sigma, method)`.
+- Win-rate vs no smoothing.
+- Mean delta vs no smoothing.
+- Runtime by method group.
+
+## Scripts and Outputs
+
+Experiment runner:
+
+- `tests/manual/denoising_noisy_circle_cv_phase3_highdim.R`
+
+Analysis script:
+
+- `tests/manual/analyze_noisy_circle_cv_phase3_run.R`
+
+Results template:
+
+- `tests/manual/noisy_circle_cv_phase3_results_template.Rmd`
+
+Results root:
+
+- `tests/manual/results/noisy_circle_cv_phase3_highdim/<run_id>/`
+
+## Suggested Workflow
+
+Install package first:
+
+```bash
+R CMD INSTALL .
+```
+
+Pilot run:
+
+```bash
+Rscript tests/manual/denoising_noisy_circle_cv_phase3_highdim.R --mode=pilot --run_id=phase3_highdim_pilot
+```
+
+Full run:
+
+```bash
+Rscript tests/manual/denoising_noisy_circle_cv_phase3_highdim.R --mode=full --run_id=phase3_highdim_full
+```
+
+Analyze:
+
+```bash
+Rscript tests/manual/analyze_noisy_circle_cv_phase3_run.R --run_dir=/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase3_highdim/phase3_highdim_pilot --snapshot_tag=final
+```
+
+Render report:
+
+```bash
+Rscript -e "rmarkdown::render('tests/manual/noisy_circle_cv_phase3_results_template.Rmd', output_file='noisy_circle_cv_phase3_results_final.html', output_dir='/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase3_highdim/phase3_highdim_pilot/analysis')"
+```

@@ -3,6 +3,7 @@ VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
 LOGDIR := .claude
+HOMEBREW_BIN := /opt/homebrew/bin
 
 clean:
 	find src -name "*.o" -delete
@@ -42,13 +43,13 @@ build-log: clean document
 	@echo "Build output saved to $(LOGDIR)/$(PKGNAME)_build.log"
 
 check: build
-	cd .. && R CMD check $(TARBALL) --as-cran
+	cd .. && PATH="$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran
 
 check-fast: build
-	cd .. && R CMD check $(TARBALL) --as-cran --no-examples --no-tests --no-manual
+	cd .. && PATH="$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran --no-examples --no-tests --no-manual
 
 check-examples: build
-	cd .. && R CMD check $(TARBALL) --as-cran --examples
+	cd .. && PATH="$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran --examples
 
 install: build
 	cd .. && R CMD INSTALL $(TARBALL)
