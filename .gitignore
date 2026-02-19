@@ -29,6 +29,7 @@ src/ANN/*.o
 src/*.bc
 src/tests/
 *.bc
+src/symbols.rds
 src/Makevars.local
 src/Makevars.win.local
 
