@@ -574,6 +574,276 @@ label.extrema.3d <- function(graph.3d,
     invisible(NULL)
 }
 
+#' Label Local Extrema With Leader Segments in 3D Plot
+#'
+#' Adds one leader segment per extremum from the extremum vertex to an outward
+#' label anchor. This helps keep extrema labels away from nearby endpoint labels.
+#'
+#' @param graph.3d A matrix with 3 columns representing 3D coordinates.
+#' @param extrema.df Data frame with columns \code{vertex}, \code{label}, and
+#'   either \code{is_max} (0/1) or \code{type} ("min"/"max").
+#' @param extrema.type Character string specifying which extrema to plot:
+#'   "both" (default), "maxima", or "minima".
+#' @param offset Numeric vector of length 3 added to each label anchor location.
+#'   Default \code{c(0, 0, 0)}.
+#' @param radial.frac Numeric scalar giving outward leader length as a fraction
+#'   of the mean coordinate extent. Default 0.09.
+#' @param z.frac Numeric scalar giving additional z-shift as a fraction of the
+#'   mean coordinate extent. Default 0.01.
+#' @param avoid.vertices Optional vertex ids used to repel label anchors away
+#'   from nearby vertices (for example, endpoint labels).
+#' @param avoid.weight Repulsion weight for \code{avoid.vertices}. Default 1.1.
+#' @param with.labels Logical. Whether to draw text labels. Default TRUE.
+#' @param lab.cex Character expansion factor for labels. Default 1.5.
+#' @param lab.adj Adjustment parameter for label positioning. Default c(0, 0).
+#' @param separate.colors Logical. If TRUE and extrema.type="both", plot maxima
+#'   and minima with different colors. Default TRUE.
+#' @param col.max Color for maxima. Default "red".
+#' @param col.min Color for minima. Default "blue".
+#' @param col Color for all extrema when separate.colors=FALSE. Default "black".
+#' @param line.lwd Leader segment width. Default 2.
+#' @param line.alpha Leader segment alpha between 0 and 1. Default 1.
+#' @param ... Additional arguments passed to \code{rgl::segments3d()}.
+#'
+#' @return Invisibly returns NULL.
+#'
+#' @examples
+#' \dontrun{
+#' # Leader labels for both maxima and minima
+#' label.extrema.leaders.3d(graph.3d, extrema.df)
+#'
+#' # Push labels farther out and slightly up in z
+#' label.extrema.leaders.3d(
+#'   graph.3d,
+#'   extrema.df,
+#'   radial.frac = 0.12,
+#'   z.frac = 0.02
+#' )
+#'
+#' # Repel labels away from endpoint vertices
+#' label.extrema.leaders.3d(
+#'   graph.3d,
+#'   extrema.df,
+#'   avoid.vertices = as.integer(names(end.labels))
+#' )
+#' }
+#'
+#' @export
+label.extrema.leaders.3d <- function(graph.3d,
+                                     extrema.df,
+                                     extrema.type = c("both", "maxima", "minima"),
+                                     offset = c(0, 0, 0),
+                                     radial.frac = 0.09,
+                                     z.frac = 0.01,
+                                     avoid.vertices = integer(0),
+                                     avoid.weight = 1.1,
+                                     with.labels = TRUE,
+                                     lab.cex = 1.5,
+                                     lab.adj = c(0, 0),
+                                     separate.colors = TRUE,
+                                     col.max = "red",
+                                     col.min = "blue",
+                                     col = "black",
+                                     line.lwd = 2,
+                                     line.alpha = 1,
+                                     ...) {
+
+    extrema.type <- match.arg(extrema.type)
+
+    S <- graph.3d
+    if (!is.matrix(S) && !is.data.frame(S)) {
+        stop("graph.3d must be a matrix or data.frame")
+    }
+    if (ncol(S) != 3) {
+        stop("graph.3d must have 3 columns")
+    }
+    S <- as.matrix(S)
+    if (!is.numeric(S)) {
+        stop("graph.3d must be numeric")
+    }
+
+    if (is.null(rownames(S))) {
+        rownames(S) <- as.character(seq_len(nrow(S)))
+    }
+
+    if (!is.data.frame(extrema.df)) {
+        stop("extrema.df must be a data.frame")
+    }
+    req.cols <- c("vertex", "label")
+    missing.req <- setdiff(req.cols, names(extrema.df))
+    if (length(missing.req) > 0L) {
+        stop("extrema.df is missing required columns: ", paste(missing.req, collapse = ", "))
+    }
+
+    has.is.max <- "is_max" %in% names(extrema.df)
+    has.type <- "type" %in% names(extrema.df)
+    if (!has.is.max && !has.type) {
+        stop("extrema.df must have either 'is_max' column (0/1) or 'type' column ('min'/'max')")
+    }
+
+    if (has.type && !has.is.max) {
+        t0 <- tolower(trimws(as.character(extrema.df$type)))
+        if (!all(t0 %in% c("max", "min"))) {
+            bad <- unique(t0[!(t0 %in% c("max", "min"))])
+            stop("extrema.df$type contains invalid values: ", paste(bad, collapse = ", "))
+        }
+        extrema.df$is_max <- ifelse(t0 == "max", 1L, 0L)
+    } else if (has.type && has.is.max) {
+        t0 <- tolower(trimws(as.character(extrema.df$type)))
+        t0 <- ifelse(t0 == "max", 1L, ifelse(t0 == "min", 0L, NA_integer_))
+        mism <- is.finite(t0) & !is.na(extrema.df$is_max) &
+            as.integer(extrema.df$is_max) != as.integer(t0)
+        if (any(mism)) {
+            warning("Both 'is_max' and 'type' columns present with inconsistent values; using 'is_max'")
+        }
+    }
+
+    resolve.vertex.indices <- function(v) {
+        v.chr <- as.character(v)
+        idx <- suppressWarnings(as.integer(v.chr))
+        bad <- !is.finite(idx) | idx < 1L | idx > nrow(S)
+        if (any(bad)) {
+            idx.match <- match(v.chr[bad], rownames(S))
+            idx[bad] <- idx.match
+        }
+        as.integer(idx)
+    }
+
+    extrema.idx <- resolve.vertex.indices(extrema.df$vertex)
+    keep <- is.finite(extrema.idx) & extrema.idx >= 1L & extrema.idx <= nrow(S)
+    if (any(!keep)) {
+        warning("Ignoring ", sum(!keep), " extrema rows with unresolved vertex ids")
+    }
+    extrema.df <- extrema.df[keep, , drop = FALSE]
+    extrema.df$.vertex.idx <- extrema.idx[keep]
+
+    if (extrema.type == "maxima") {
+        extrema.df <- extrema.df[extrema.df$is_max == 1, , drop = FALSE]
+    } else if (extrema.type == "minima") {
+        extrema.df <- extrema.df[extrema.df$is_max == 0, , drop = FALSE]
+    }
+
+    if (nrow(extrema.df) == 0) {
+        warning("No extrema to plot based on extrema.type='", extrema.type, "'")
+        return(invisible(NULL))
+    }
+
+    if (!is.numeric(offset) || length(offset) < 1L) {
+        stop("offset must be a numeric vector")
+    }
+    offset <- as.double(rep_len(offset, 3L))
+    if (any(!is.finite(offset))) {
+        stop("offset must be finite")
+    }
+
+    if (!is.numeric(radial.frac) || length(radial.frac) != 1L || !is.finite(radial.frac)) {
+        stop("radial.frac must be a finite numeric scalar")
+    }
+    if (radial.frac < 0) {
+        stop("radial.frac must be non-negative")
+    }
+
+    if (!is.numeric(z.frac) || length(z.frac) != 1L || !is.finite(z.frac)) {
+        stop("z.frac must be a finite numeric scalar")
+    }
+
+    if (!is.numeric(avoid.weight) || length(avoid.weight) != 1L || !is.finite(avoid.weight)) {
+        stop("avoid.weight must be a finite numeric scalar")
+    }
+
+    if (!is.numeric(line.lwd) || length(line.lwd) != 1L || !is.finite(line.lwd) || line.lwd <= 0) {
+        stop("line.lwd must be a positive numeric scalar")
+    }
+
+    if (!is.numeric(line.alpha) || length(line.alpha) != 1L || !is.finite(line.alpha) ||
+        line.alpha < 0 || line.alpha > 1) {
+        stop("line.alpha must be in [0, 1]")
+    }
+
+    span <- apply(S, 2, function(v) diff(range(v, na.rm = TRUE)))
+    extent.mean <- mean(span[is.finite(span) & span > 0], na.rm = TRUE)
+    if (!is.finite(extent.mean) || extent.mean <= 0) {
+        extent.mean <- 1
+    }
+
+    radial.dist <- as.double(radial.frac) * extent.mean
+    z.bump <- as.double(z.frac) * extent.mean
+
+    center <- colMeans(S, na.rm = TRUE)
+    if (length(center) != 3L || any(!is.finite(center))) {
+        center <- c(0, 0, 0)
+    }
+
+    avoid.idx <- resolve.vertex.indices(avoid.vertices)
+    avoid.idx <- unique(avoid.idx[is.finite(avoid.idx) & avoid.idx >= 1L & avoid.idx <= nrow(S)])
+    avoid.xyz <- if (length(avoid.idx) > 0L) S[avoid.idx, , drop = FALSE] else NULL
+
+    plot.one <- function(df, seg.col) {
+        for (i in seq_len(nrow(df))) {
+            idx <- df$.vertex.idx[i]
+            anchor <- as.double(S[idx, ])
+            dir <- anchor - center
+
+            if (!is.null(avoid.xyz) && nrow(avoid.xyz) > 0L) {
+                d2 <- rowSums((avoid.xyz - matrix(anchor, nrow = nrow(avoid.xyz), ncol = 3L, byrow = TRUE))^2)
+                j <- which.min(d2)
+                repel <- anchor - as.double(avoid.xyz[j, ])
+                if (all(is.finite(repel)) && sum(repel^2) > 0) {
+                    dir <- dir + avoid.weight * repel
+                }
+            }
+
+            if (!all(is.finite(dir)) || sum(dir^2) <= 1e-12) {
+                dir <- offset
+            }
+            if (!all(is.finite(dir)) || sum(dir^2) <= 1e-12) {
+                dir <- c(1, 0, 0)
+            }
+            dir <- dir / sqrt(sum(dir^2))
+
+            label.pos <- anchor + offset + radial.dist * dir + c(0, 0, z.bump)
+
+            rgl::segments3d(
+                rbind(anchor, label.pos),
+                col = seg.col,
+                lwd = line.lwd,
+                alpha = line.alpha,
+                ...
+            )
+
+            if (isTRUE(with.labels)) {
+                txt <- as.character(df$label[i])
+                if (!is.character(txt) || !nzchar(txt) || is.na(txt)) {
+                    txt <- as.character(df$vertex[i])
+                }
+                rgl::text3d(
+                    x = label.pos[1],
+                    y = label.pos[2],
+                    z = label.pos[3],
+                    texts = txt,
+                    col = seg.col,
+                    cex = lab.cex,
+                    adj = lab.adj
+                )
+            }
+        }
+    }
+
+    if (extrema.type == "both" && isTRUE(separate.colors)) {
+        max.df <- extrema.df[extrema.df$is_max == 1, , drop = FALSE]
+        min.df <- extrema.df[extrema.df$is_max == 0, , drop = FALSE]
+        if (nrow(max.df) > 0L) plot.one(max.df, col.max)
+        if (nrow(min.df) > 0L) plot.one(min.df, col.min)
+    } else {
+        seg.col <- col
+        if (extrema.type == "maxima") seg.col <- col.max
+        if (extrema.type == "minima") seg.col <- col.min
+        plot.one(extrema.df, seg.col)
+    }
+
+    invisible(NULL)
+}
+
 #' Extract Neighborhood Component by Label ID
 #'
 #' Retrieves the neighborhood component from an extrema result object based on

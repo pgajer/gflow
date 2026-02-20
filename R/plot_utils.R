@@ -174,7 +174,8 @@ plot3D.plain <- function(X,
 #'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
 #'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
 #'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
-#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
+#'   \code{label.extrema.3d()}, \code{label.extrema.leaders.3d()},
+#'   \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
@@ -532,7 +533,8 @@ plot3D.cont <- function(X,
 #'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
 #'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
 #'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
-#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
+#'   \code{label.extrema.3d()}, \code{label.extrema.leaders.3d()},
+#'   \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
@@ -1545,7 +1547,8 @@ plot3D.cltrs <- function(X,
 #'   Can be: (i) a function called as \code{function(ctx)}, (ii) a list of such
 #'   functions, or (iii) layer specs \code{list(fun = <function>, args = <list>,
 #'   with_ctx = TRUE/FALSE)}. Use this for overlays such as
-#'   \code{label.extrema.3d()}, \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
+#'   \code{label.extrema.3d()}, \code{label.extrema.leaders.3d()},
+#'   \code{bin.segments3d()}, or \code{rgl::spheres3d()}.
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
