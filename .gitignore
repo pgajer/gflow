@@ -61,6 +61,8 @@ revdep/
 *.tmp
 *.bak
 *~
+~$*
+Rplots.pdf
 .claude/
 
 # Build outputs (keep CRAN tarballs & rchk logs out of git)

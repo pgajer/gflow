@@ -45,6 +45,7 @@ Imports:
     segmented,
     transport
 Suggests:
+    grip,
     rgl,
     htmlwidgets,
     htmltools,
