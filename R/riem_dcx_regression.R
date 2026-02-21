@@ -648,8 +648,8 @@ fit.rdgraph.regression <- function(
     credible.level = 0.95,
     n.posterior.samples = 1000,
     posterior.seed = NULL,
-    pca.dim = 100,
-    variance.explained = 0.99,
+    pca.dim = 50,
+    variance.explained = 0.95,
     max.iterations = 10,
     n.eigenpairs = 10,
     filter.type = "heat_kernel",
@@ -679,16 +679,6 @@ fit.rdgraph.regression <- function(
     knn.cache.mode = c("none", "read", "write", "readwrite"),
     epsilon.y = 1e-4,
     epsilon.rho = 1e-4,
-    ## reference.measure.type = c("dk_powerlaw", "counting", "user"),
-    ## reference.measure = NULL, # numeric vector length n; only used when type="user"
-    ## reference.measure.control = list(
-    ##     dk.bound.method = "median_factor",  ## or "quantile" later
-    ##     dk.median.factor = 10,              ## gives [median/10, median*10]
-    ##     alpha = density.alpha,              ## 1.5
-    ##     epsilon = density.epsilon,          ## 1e-10
-    ##     normalization.target = density.normalization, ## 0 => n
-    ##     max.weight.ratio = 1000             ## currently implicit via median.factor+alpha
-    ## )
     dense.fallback = c("auto", "never", "always"),
     triangle.policy = c("auto", "never", "always"),
     store.projected.X = FALSE,
