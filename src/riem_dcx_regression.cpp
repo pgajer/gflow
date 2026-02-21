@@ -5719,7 +5719,9 @@ void riem_dcx_t::fit_rdgraph_regression(
     int knn_cache_mode,
     int dense_fallback_mode,
     int triangle_policy_mode,
-    verbose_level_t verbose_level
+    verbose_level_t verbose_level,
+    const std::vector<std::vector<index_t>>* precomputed_adj_list,
+    const std::vector<std::vector<double>>* precomputed_weight_list
     ) {
     // ================================================================
     // PART I: INITIALIZATION
@@ -5751,25 +5753,49 @@ void riem_dcx_t::fit_rdgraph_regression(
         Rf_error("triangle_policy_mode must be 0 (auto), 1 (never), or 2 (always)");
     }
 
-    initialize_from_knn(
-        X, k,
-        use_counting_measure,
-        density_normalization,
-        max_ratio_threshold,
-        path_edge_ratio_percentile,
-        threshold_percentile,
-        density_alpha,
-        density_epsilon,
-        clamp_dk,
-        dk_clamp_median_factor,
-        target_weight_ratio,
-        pathological_ratio_threshold,
-        knn_cache_path,
-        knn_cache_mode,
-        triangle_policy,
-        gamma_modulation,
-        verbose_level
-        );
+    const bool has_precomputed_graph =
+        (precomputed_adj_list != nullptr || precomputed_weight_list != nullptr);
+
+    if (has_precomputed_graph) {
+        if (precomputed_adj_list == nullptr || precomputed_weight_list == nullptr) {
+            Rf_error("precomputed_adj_list and precomputed_weight_list must be both non-null or both null");
+        }
+        initialize_from_graph(
+            *precomputed_adj_list,
+            *precomputed_weight_list,
+            use_counting_measure,
+            density_normalization,
+            density_alpha,
+            density_epsilon,
+            clamp_dk,
+            dk_clamp_median_factor,
+            target_weight_ratio,
+            pathological_ratio_threshold,
+            triangle_policy,
+            gamma_modulation,
+            verbose_level
+            );
+    } else {
+        initialize_from_knn(
+            X, k,
+            use_counting_measure,
+            density_normalization,
+            max_ratio_threshold,
+            path_edge_ratio_percentile,
+            threshold_percentile,
+            density_alpha,
+            density_epsilon,
+            clamp_dk,
+            dk_clamp_median_factor,
+            target_weight_ratio,
+            pathological_ratio_threshold,
+            knn_cache_path,
+            knn_cache_mode,
+            triangle_policy,
+            gamma_modulation,
+            verbose_level
+            );
+    }
 
     // Compute effective degrees for all vertices based on edge densities
     // vec_t eff_deg = compute_effective_degrees();

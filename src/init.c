@@ -342,7 +342,7 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // regression over graphs
   // =========================================================================
-  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 40},
+  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
 
   // old
   {"S_amagelo", (DL_FUNC) &S_amagelo, 19},

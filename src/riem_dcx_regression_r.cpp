@@ -3,6 +3,7 @@
 #include <Rinternals.h>
 #include <cstring>
 #include <set>
+#include <vector>
 
 // Forward declare conversion utilities from SEXP_cpp_conversion_utils.cpp
 // These should be available if that file is compiled into the package
@@ -10,6 +11,10 @@ namespace sexp_utils {
     Eigen::SparseMatrix<double> sexp_to_eigen_sparse(SEXP s_X);
     // Add other utility declarations as needed
 }
+
+// Forward declare generic SEXP conversion utilities
+std::vector<std::vector<int>> convert_adj_list_from_R(SEXP s_adj_list);
+std::vector<std::vector<double>> convert_weight_list_from_R(SEXP s_weight_list);
 
 // ================================================================
 // HELPER FUNCTIONS TO BUILD NESTED COMPONENTS
@@ -1162,6 +1167,8 @@ extern "C" SEXP S_fit_rdgraph_regression(
     SEXP s_y,
     SEXP s_y_vertices,
     SEXP s_k,
+    SEXP s_adj_list,
+    SEXP s_weight_list,
     SEXP s_with_posterior,
     SEXP s_return_posterior_samples,
     SEXP s_credible_level,
@@ -1418,6 +1425,61 @@ extern "C" SEXP S_fit_rdgraph_regression(
     }
 
     const index_t k = static_cast<index_t>(k_raw);
+
+    // -------------------- Optional precomputed graph (adj.list / weight.list) --------------------
+
+    const bool has_adj_list = !Rf_isNull(s_adj_list);
+    const bool has_weight_list = !Rf_isNull(s_weight_list);
+
+    if (has_adj_list != has_weight_list) {
+        Rf_error("adj.list and weight.list must be provided together (or both NULL)");
+    }
+
+    std::vector<std::vector<index_t>> precomputed_adj_list;
+    std::vector<std::vector<double>> precomputed_weight_list;
+    const std::vector<std::vector<index_t>>* precomputed_adj_ptr = nullptr;
+    const std::vector<std::vector<double>>* precomputed_weight_ptr = nullptr;
+
+    if (has_adj_list) {
+        std::vector<std::vector<int>> adj_int = convert_adj_list_from_R(s_adj_list);
+        std::vector<std::vector<double>> weight = convert_weight_list_from_R(s_weight_list);
+
+        if (adj_int.size() != static_cast<size_t>(n_points)) {
+            Rf_error("adj.list length (%ld) must match nrow(X) (%ld)",
+                     (long)adj_int.size(), (long)n_points);
+        }
+        if (weight.size() != static_cast<size_t>(n_points)) {
+            Rf_error("weight.list length (%ld) must match nrow(X) (%ld)",
+                     (long)weight.size(), (long)n_points);
+        }
+
+        precomputed_adj_list.resize(adj_int.size());
+        precomputed_weight_list.resize(weight.size());
+
+        for (size_t i = 0; i < adj_int.size(); ++i) {
+            if (adj_int[i].size() != weight[i].size()) {
+                Rf_error("Length mismatch at vertex %ld: |adj.list[[i]]|=%ld, |weight.list[[i]]|=%ld",
+                         (long)(i + 1),
+                         (long)adj_int[i].size(),
+                         (long)weight[i].size());
+            }
+
+            precomputed_adj_list[i].resize(adj_int[i].size());
+            precomputed_weight_list[i] = weight[i];
+
+            for (size_t j = 0; j < adj_int[i].size(); ++j) {
+                const int idx = adj_int[i][j];
+                if (idx < 0 || idx >= n_points) {
+                    Rf_error("adj.list index out of range at vertex %ld (value=%d, expected 0..%ld)",
+                             (long)(i + 1), idx, (long)(n_points - 1));
+                }
+                precomputed_adj_list[i][j] = static_cast<index_t>(idx);
+            }
+        }
+
+        precomputed_adj_ptr = &precomputed_adj_list;
+        precomputed_weight_ptr = &precomputed_weight_list;
+    }
 
     // ==================== Posterior Inference Parameters ====================
 
@@ -1943,7 +2005,9 @@ extern "C" SEXP S_fit_rdgraph_regression(
         knn_cache_mode,
         dense_fallback_mode,
         triangle_policy_mode,
-        verbose_level
+        verbose_level,
+        precomputed_adj_ptr,
+        precomputed_weight_ptr
         );
 
     } catch (const std::exception& e) {

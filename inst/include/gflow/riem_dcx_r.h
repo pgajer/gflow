@@ -13,6 +13,8 @@ extern "C" {
 		SEXP s_y,
 		SEXP s_y_vertices,
 		SEXP s_k,
+		SEXP s_adj_list,
+		SEXP s_weight_list,
 		SEXP s_with_posterior,
 
 		SEXP s_return_posterior_samples,

@@ -738,7 +738,9 @@ struct riem_dcx_t {
         int knn_cache_mode,
         int dense_fallback_mode,
         int triangle_policy_mode,
-        verbose_level_t verbose_level
+        verbose_level_t verbose_level,
+        const std::vector<std::vector<index_t>>* precomputed_adj_list = nullptr,
+        const std::vector<std::vector<double>>* precomputed_weight_list = nullptr
         );
 
     vec_t compute_rho_pre_randomwalk(int m,
@@ -1128,6 +1130,25 @@ private:
         double pathological_ratio_threshold,
         const std::string& knn_cache_path,
         int knn_cache_mode,
+        triangle_policy_t triangle_policy,
+        double gamma_modulation,
+        verbose_level_t verbose_level
+        );
+
+    /**
+     * @brief Initialize Riemannian simplicial complex from a precomputed weighted graph
+     */
+    void initialize_from_graph(
+        const std::vector<std::vector<index_t>>& adj_list,
+        const std::vector<std::vector<double>>& weight_list,
+        bool use_counting_measure,
+        double density_normalization,
+        double density_alpha,
+        double density_epsilon,
+        bool clamp_dk,
+        double dk_clamp_median_factor,
+        double target_weight_ratio,
+        double pathological_ratio_threshold,
         triangle_policy_t triangle_policy,
         double gamma_modulation,
         verbose_level_t verbose_level

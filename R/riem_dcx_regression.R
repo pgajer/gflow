@@ -21,7 +21,16 @@
 #' @param k Integer scalar giving the number of nearest neighbors. Must satisfy
 #'   \eqn{2 \le k < n}. Larger k produces smoother fits but may oversmooth
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
-#'   selects k via cross-validation (NOT YET IMPLEMENTED).
+#'   selects k via cross-validation (NOT YET IMPLEMENTED). When
+#'   \code{adj.list}/\code{weight.list} are supplied, \code{k} is retained for
+#'   interface consistency but graph construction is skipped.
+#'
+#' @param adj.list Optional precomputed graph adjacency list (1-based indexing).
+#'   If provided together with \code{weight.list}, the fit uses this graph
+#'   directly and skips internal iKNN graph construction/pruning.
+#'
+#' @param weight.list Optional precomputed edge-length list parallel to
+#'   \code{adj.list}. Must be provided together with \code{adj.list}.
 #'
 #' @param with.posterior Logical indicating whether to compute Bayesian posterior
 #'   credible intervals for fitted values. When \code{TRUE}, the function generates
@@ -643,6 +652,8 @@ fit.rdgraph.regression <- function(
     y,
     y.vertices = NULL,
     k,
+    adj.list = NULL,
+    weight.list = NULL,
     with.posterior = FALSE,
     return.posterior.samples = FALSE,
     credible.level = 0.95,
@@ -829,6 +840,97 @@ fit.rdgraph.regression <- function(
 
     if (k >= n) {
         stop(sprintf("k must be less than n (got k=%d, n=%d)", k, n))
+    }
+
+    ## ==================== Optional Precomputed Graph Validation ====================
+
+    has.precomputed.graph <- (!is.null(adj.list) || !is.null(weight.list))
+    adj.list.0based <- NULL
+    weight.list.cpp <- NULL
+
+    if (has.precomputed.graph) {
+        if (is.null(adj.list) || is.null(weight.list)) {
+            stop("adj.list and weight.list must be provided together (or both NULL).")
+        }
+        if (!is.list(adj.list)) {
+            stop("adj.list must be a list when provided.")
+        }
+        if (!is.list(weight.list)) {
+            stop("weight.list must be a list when provided.")
+        }
+        if (length(adj.list) != n || length(weight.list) != n) {
+            stop(sprintf("adj.list/weight.list length mismatch: expected %d entries (nrow(X)).", n))
+        }
+
+        adj.list.norm <- vector("list", n)
+        weight.list.norm <- vector("list", n)
+        tol <- 1e-10
+
+        for (i in seq_len(n)) {
+            nbrs <- adj.list[[i]]
+            wts <- weight.list[[i]]
+
+            if (!is.numeric(nbrs) && !is.integer(nbrs)) {
+                stop(sprintf("adj.list[[%d]] must be numeric/integer.", i))
+            }
+            if (!is.numeric(wts)) {
+                stop(sprintf("weight.list[[%d]] must be numeric.", i))
+            }
+
+            nbrs <- as.integer(nbrs)
+            wts <- as.double(wts)
+
+            if (length(nbrs) != length(wts)) {
+                stop(sprintf("Length mismatch at vertex %d: adj.list=%d, weight.list=%d.",
+                             i, length(nbrs), length(wts)))
+            }
+            if (anyNA(nbrs)) {
+                stop(sprintf("adj.list[[%d]] contains NA.", i))
+            }
+            if (any(nbrs < 1L | nbrs > n)) {
+                stop(sprintf("adj.list[[%d]] has indices outside 1..n.", i))
+            }
+            if (any(nbrs == i)) {
+                stop(sprintf("adj.list[[%d]] contains self-loops; self indices are not allowed.", i))
+            }
+            if (anyDuplicated(nbrs)) {
+                stop(sprintf("adj.list[[%d]] contains duplicate neighbors.", i))
+            }
+            if (any(!is.finite(wts))) {
+                stop(sprintf("weight.list[[%d]] contains non-finite values.", i))
+            }
+            if (any(wts <= 0)) {
+                stop(sprintf("weight.list[[%d]] contains non-positive values.", i))
+            }
+
+            adj.list.norm[[i]] <- nbrs
+            weight.list.norm[[i]] <- wts
+        }
+
+        ## Undirected/symmetric graph validation with reciprocal weight agreement
+        for (i in seq_len(n)) {
+            nbrs <- adj.list.norm[[i]]
+            wts <- weight.list.norm[[i]]
+            if (!length(nbrs)) {
+                next
+            }
+            for (j.idx in seq_along(nbrs)) {
+                j <- nbrs[[j.idx]]
+                rev.idx <- match(i, adj.list.norm[[j]])
+                if (is.na(rev.idx)) {
+                    stop(sprintf("Graph must be undirected: edge %d -> %d has no reciprocal entry.", i, j))
+                }
+                w.ij <- wts[[j.idx]]
+                w.ji <- weight.list.norm[[j]][[rev.idx]]
+                if (abs(w.ij - w.ji) > tol * max(1, abs(w.ij), abs(w.ji))) {
+                    stop(sprintf("Reciprocal edge weights mismatch for (%d, %d): %.12g vs %.12g.",
+                                 i, j, w.ij, w.ji))
+                }
+            }
+        }
+
+        adj.list.0based <- lapply(adj.list.norm, function(v) as.integer(v - 1L))
+        weight.list.cpp <- lapply(weight.list.norm, as.double)
     }
 
     ## ==================== Posterior Parameters ====================
@@ -1148,6 +1250,13 @@ fit.rdgraph.regression <- function(
     }
 
     knn.cache.mode <- match.arg(knn.cache.mode)
+    if (has.precomputed.graph) {
+        if (!identical(knn.cache.mode, "none") || !is.null(knn.cache.path)) {
+            warning("adj.list/weight.list provided: knn.cache.path/mode are ignored.")
+        }
+        knn.cache.path <- NULL
+        knn.cache.mode <- "none"
+    }
     knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
     knn.cache.mode.id <- switch(knn.cache.mode,
                                 none = 0L,
@@ -1175,6 +1284,10 @@ fit.rdgraph.regression <- function(
     ## store.projected.X
     if (!is.logical(store.projected.X) || length(store.projected.X) != 1 || is.na(store.projected.X)) {
         stop("store.projected.X must be TRUE or FALSE.")
+    }
+
+    if (has.precomputed.graph && !is.null(pca.dim) && ncol(X) > pca.dim) {
+        pca.dim <- NULL
     }
 
     ## PCA (optional)
@@ -1257,6 +1370,8 @@ fit.rdgraph.regression <- function(
         as.double(y),
         if (is.null(y.vertices)) NULL else as.integer(y.vertices),
         as.integer(k + 1L), # this is to account for the fact that ANN library is set up to return for query point as the first elements of the list of kNN's
+        if (is.null(adj.list.0based)) NULL else adj.list.0based,
+        if (is.null(weight.list.cpp)) NULL else weight.list.cpp,
         as.logical(with.posterior),
         as.logical(return.posterior.samples),
         as.double(credible.level),
@@ -1308,6 +1423,9 @@ fit.rdgraph.regression <- function(
     attr(fit, "n") <- n
     attr(fit, "d") <- d
     attr(fit, "k") <- k
+    if (is.list(fit$parameters)) {
+        fit$parameters$graph.source <- if (has.precomputed.graph) "precomputed" else "knn"
+    }
     if (!is.null(pca_info)) attr(fit, "pca") <- pca_info
     if (isTRUE(store.projected.X)) attr(fit, "X.used") <- X
 
