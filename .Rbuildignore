@@ -23,7 +23,7 @@
 ^cran_docs$
 ^README\.md$      # keep if you don't want it in the tarball; remove this line to include README.md
 ^INSTALL\.md$
-^archive$
+^archive($|/)
 
 # Local build/check scripts and logs
 ^gflow_check_results\.txt$
@@ -58,7 +58,8 @@
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 
-^tests/manual$
+^tests/manual($|/)
+^tests/manual/results($|/)
 ^inst/examples$
 ^src/tests$
 ^presentations$
