@@ -45,6 +45,7 @@
 #include <unordered_set>
 #include <numeric>
 #include <cmath>
+#include <array>
 
 // ================================================================
 // WEIGHT COMPRESSION HELPERS (reference measure stabilization)
@@ -125,6 +126,421 @@ static inline void power_compress_weights_to_ratio_in_place(
     const double q = std::log(target_ratio) / std::log(ratio); // in (0,1)
     for (size_t i = 0; i < w.size(); ++i) {
         w[i] = std::pow(w[i], q);
+    }
+}
+
+static inline size_t intersection_size_of_sets(
+    const std::unordered_set<index_t>& a,
+    const std::unordered_set<index_t>& b
+) {
+    const auto* smaller = &a;
+    const auto* larger = &b;
+    if (a.size() > b.size()) {
+        smaller = &b;
+        larger = &a;
+    }
+
+    size_t count = 0;
+    for (index_t v : *smaller) {
+        if (larger->find(v) != larger->end()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void riem_dcx_t::initialize_from_graph(
+    const std::vector<std::vector<index_t>>& adj_list,
+    const std::vector<std::vector<double>>& weight_list,
+    bool use_counting_measure,
+    double density_normalization,
+    double density_alpha,
+    double density_epsilon,
+    bool clamp_dk,
+    double dk_clamp_median_factor,
+    double target_weight_ratio,
+    double pathological_ratio_threshold,
+    triangle_policy_t triangle_policy,
+    double gamma_modulation,
+    verbose_level_t verbose_level
+) {
+    const size_t n_points = adj_list.size();
+    auto phase_time = std::chrono::steady_clock::now();
+
+    if (n_points == 0) {
+        Rf_error("Precomputed graph is empty.");
+    }
+    if (weight_list.size() != n_points) {
+        Rf_error("Precomputed graph adjacency/weight list size mismatch.");
+    }
+
+    // ================================================================
+    // PHASE 0: INITIALIZE DIMENSION STRUCTURE
+    // ================================================================
+
+    pmax = -1;
+    pmax = 0;
+    g.M.resize(1);
+    g.M_solver.resize(1);
+    L.B.resize(1);
+    L.L.resize(1);
+    g.M[0] = spmat_t();
+    g.M_solver[0].reset();
+    L.B[0] = spmat_t();
+    L.L[0] = spmat_t();
+
+    // ================================================================
+    // PHASE 1: PRECOMPUTED GRAPH INGESTION
+    // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        progress_log_inline("  Phase 1: ingest precomputed graph ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
+
+    neighbor_sets.clear();
+    neighbor_sets.resize(n_points);
+
+    for (size_t i = 0; i < n_points; ++i) {
+        const auto& nbrs = adj_list[i];
+        const auto& wts = weight_list[i];
+
+        if (nbrs.size() != wts.size()) {
+            Rf_error("Precomputed graph row %zu has mismatched adjacency/weight lengths.", i + 1);
+        }
+
+        std::unordered_set<index_t> seen;
+        for (size_t j = 0; j < nbrs.size(); ++j) {
+            const index_t v = nbrs[j];
+            const double w = wts[j];
+
+            if (v >= n_points) {
+                Rf_error("Precomputed graph row %zu has invalid neighbor index %zu (n=%zu).",
+                         i + 1, static_cast<size_t>(v), n_points);
+            }
+            if (v == i) {
+                Rf_error("Precomputed graph row %zu contains self-loop.", i + 1);
+            }
+            if (!std::isfinite(w) || w <= 0.0) {
+                Rf_error("Precomputed graph row %zu contains non-finite or non-positive edge weights.",
+                         i + 1);
+            }
+            if (!seen.insert(v).second) {
+                Rf_error("Precomputed graph row %zu contains duplicate neighbor %zu.",
+                         i + 1, static_cast<size_t>(v));
+            }
+        }
+        neighbor_sets[i] = std::move(seen);
+    }
+
+    // Validate undirected symmetry with reciprocal-weight consistency
+    constexpr double symmetry_tol = 1e-10;
+    for (size_t i = 0; i < n_points; ++i) {
+        for (size_t j_idx = 0; j_idx < adj_list[i].size(); ++j_idx) {
+            const index_t j = adj_list[i][j_idx];
+            const double w_ij = weight_list[i][j_idx];
+
+            const auto& nbrs_j = adj_list[j];
+            const auto it = std::find(nbrs_j.begin(), nbrs_j.end(), static_cast<index_t>(i));
+            if (it == nbrs_j.end()) {
+                Rf_error("Precomputed graph must be undirected: edge %zu -> %zu missing reciprocal edge.",
+                         i + 1, static_cast<size_t>(j) + 1);
+            }
+            const size_t rev_idx = static_cast<size_t>(std::distance(nbrs_j.begin(), it));
+            const double w_ji = weight_list[j][rev_idx];
+            const double scale = std::max({1.0, std::abs(w_ij), std::abs(w_ji)});
+            if (std::abs(w_ij - w_ji) > symmetry_tol * scale) {
+                Rf_error("Precomputed graph reciprocal weight mismatch for edge (%zu,%zu): %.12g vs %.12g.",
+                         i + 1, static_cast<size_t>(j) + 1, w_ij, w_ji);
+            }
+        }
+    }
+
+    vertex_cofaces.clear();
+    vertex_cofaces.resize(n_points);
+    for (index_t i = 0; i < n_points; ++i) {
+        const auto& nbrs = adj_list[i];
+        const auto& wts = weight_list[i];
+
+        vertex_cofaces[i].reserve(nbrs.size() + 1);
+        vertex_cofaces[i].push_back(neighbor_info_t{
+                i,  // self-loop
+                i,
+                neighbor_sets[i].size(),
+                0.0,
+                0.0
+            });
+
+        for (size_t j_idx = 0; j_idx < nbrs.size(); ++j_idx) {
+            const index_t j = nbrs[j_idx];
+            const size_t isize = intersection_size_of_sets(neighbor_sets[i], neighbor_sets[j]);
+            vertex_cofaces[i].push_back(neighbor_info_t{
+                    j,
+                    0,
+                    isize,
+                    wts[j_idx],
+                    0.0
+                });
+        }
+    }
+
+    // Connectivity validation
+    const int n_conn_comps = compute_connected_components();
+    if (n_conn_comps > 1) {
+        Rf_error("The provided precomputed graph has %d connected components. "
+                 "rdgraph regression requires a connected graph.",
+                 n_conn_comps);
+    }
+
+    // Build edge registry from undirected adjacency
+    std::vector<std::pair<index_t, index_t>> edge_list;
+    edge_list.reserve(n_points * 4);
+    for (index_t i = 0; i < n_points; ++i) {
+        for (index_t j : adj_list[i]) {
+            if (j > i) {
+                edge_list.push_back({i, j});
+            }
+        }
+    }
+
+    const index_t n_edges = static_cast<index_t>(edge_list.size());
+    edge_registry.resize(n_edges);
+    for (index_t e = 0; e < n_edges; ++e) {
+        edge_registry[e] = {edge_list[e].first, edge_list[e].second};
+    }
+    extend_by_one_dim(n_edges);
+
+    for (index_t e = 0; e < n_edges; ++e) {
+        const auto [i, j] = edge_registry[e];
+
+        for (size_t k_idx = 1; k_idx < vertex_cofaces[i].size(); ++k_idx) {
+            if (vertex_cofaces[i][k_idx].vertex_index == j) {
+                vertex_cofaces[i][k_idx].simplex_index = e;
+                break;
+            }
+        }
+        for (size_t k_idx = 1; k_idx < vertex_cofaces[j].size(); ++k_idx) {
+            if (vertex_cofaces[j][k_idx].vertex_index == i) {
+                vertex_cofaces[j][k_idx].simplex_index = e;
+                break;
+            }
+        }
+    }
+
+    // Triangle policy decision
+    const bool offdiag_edge_mass_enabled =
+        (static_cast<size_t>(n_edges) <= EDGE_MASS_OFFDIAG_MAX_EDGES);
+    bool build_triangles = false;
+    const char* triangle_policy_label = "auto";
+    const char* triangle_reason = "";
+
+    switch (triangle_policy) {
+    case triangle_policy_t::ALWAYS:
+        triangle_policy_label = "always";
+        build_triangles = true;
+        triangle_reason = "forced by triangle.policy='always'";
+        break;
+    case triangle_policy_t::NEVER:
+        triangle_policy_label = "never";
+        build_triangles = false;
+        triangle_reason = "disabled by triangle.policy='never'";
+        break;
+    case triangle_policy_t::AUTO:
+    default:
+        triangle_policy_label = "auto";
+        build_triangles = (gamma_modulation > 0.0) && offdiag_edge_mass_enabled;
+        if (build_triangles) {
+            triangle_reason = "gamma_modulation > 0 and off-diagonal edge mass is enabled";
+        } else if (gamma_modulation <= 0.0) {
+            triangle_reason = "gamma_modulation <= 0 (response modulation disabled)";
+        } else {
+            triangle_reason = "edge count exceeds off-diagonal edge-mass threshold";
+        }
+        break;
+    }
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        progress_log(
+            "  [triangles] policy=%s -> %s (%s; n_edges=%ld, offdiag_threshold=%ld, gamma=%.3g)",
+            triangle_policy_label,
+            build_triangles ? "build" : "skip",
+            triangle_reason,
+            static_cast<long>(n_edges),
+            static_cast<long>(EDGE_MASS_OFFDIAG_MAX_EDGES),
+            gamma_modulation
+            );
+    }
+
+    // Build triangles and edge cofaces
+    if (build_triangles) {
+        edge_cofaces.resize(n_edges);
+        for (index_t e = 0; e < n_edges; ++e) {
+            const auto [i, j] = edge_registry[e];
+            (void)j;
+            edge_cofaces[e].push_back(neighbor_info_t{
+                    static_cast<index_t>(i),
+                    static_cast<index_t>(e),
+                    0,
+                    0.0,
+                    0.0
+                });
+        }
+
+        std::vector<std::array<index_t, 3>> triangle_list;
+        triangle_list.reserve(n_points * 4);
+
+        for (size_t i = 0; i < n_points; ++i) {
+            for (size_t a = 1; a < vertex_cofaces[i].size(); ++a) {
+                const index_t j = vertex_cofaces[i][a].vertex_index;
+                for (size_t b = a + 1; b < vertex_cofaces[i].size(); ++b) {
+                    const index_t s = vertex_cofaces[i][b].vertex_index;
+
+                    index_t edge_js_idx = NO_EDGE;
+                    for (size_t k_idx = 1; k_idx < vertex_cofaces[j].size(); ++k_idx) {
+                        if (vertex_cofaces[j][k_idx].vertex_index == s) {
+                            edge_js_idx = vertex_cofaces[j][k_idx].simplex_index;
+                            break;
+                        }
+                    }
+                    if (edge_js_idx == NO_EDGE) continue;
+
+                    bool has_intersection = false;
+                    for (index_t v : neighbor_sets[i]) {
+                        if (neighbor_sets[j].find(v) != neighbor_sets[j].end() &&
+                            neighbor_sets[s].find(v) != neighbor_sets[s].end()) {
+                            has_intersection = true;
+                            break;
+                        }
+                    }
+                    if (!has_intersection) continue;
+
+                    std::array<index_t, 3> tri = {
+                        static_cast<index_t>(i), j, s
+                    };
+                    std::sort(tri.begin(), tri.end());
+                    triangle_list.push_back(tri);
+                }
+            }
+        }
+
+        std::sort(triangle_list.begin(), triangle_list.end());
+        triangle_list.erase(std::unique(triangle_list.begin(), triangle_list.end()),
+                            triangle_list.end());
+
+        const index_t n_triangles = static_cast<index_t>(triangle_list.size());
+        for (index_t t = 0; t < n_triangles; ++t) {
+            const auto& tri = triangle_list[t];
+            const index_t v0 = tri[0];
+            const index_t v1 = tri[1];
+            const index_t v2 = tri[2];
+
+            index_t e01 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                if (vertex_cofaces[v0][k].vertex_index == v1) {
+                    e01 = vertex_cofaces[v0][k].simplex_index;
+                    break;
+                }
+            }
+            index_t e02 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v0].size(); ++k) {
+                if (vertex_cofaces[v0][k].vertex_index == v2) {
+                    e02 = vertex_cofaces[v0][k].simplex_index;
+                    break;
+                }
+            }
+            index_t e12 = NO_EDGE;
+            for (size_t k = 1; k < vertex_cofaces[v1].size(); ++k) {
+                if (vertex_cofaces[v1][k].vertex_index == v2) {
+                    e12 = vertex_cofaces[v1][k].simplex_index;
+                    break;
+                }
+            }
+
+            size_t triple_isize = 0;
+            for (index_t v : neighbor_sets[v0]) {
+                if (neighbor_sets[v1].find(v) != neighbor_sets[v1].end() &&
+                    neighbor_sets[v2].find(v) != neighbor_sets[v2].end()) {
+                    triple_isize++;
+                }
+            }
+
+            edge_cofaces[e01].push_back(neighbor_info_t{v2, t, triple_isize, 0.0, 0.0});
+            edge_cofaces[e02].push_back(neighbor_info_t{v1, t, triple_isize, 0.0, 0.0});
+            edge_cofaces[e12].push_back(neighbor_info_t{v0, t, triple_isize, 0.0, 0.0});
+        }
+    } else {
+        edge_cofaces.clear();
+    }
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true, true);
+    }
+
+    // ================================================================
+    // PHASE 2: DENSITY INITIALIZATION
+    // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        progress_log_inline("  Phase 2: reference measure + densities ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
+
+    // Build pseudo-kNN vectors from local weighted neighborhoods.
+    // Distances are sorted increasingly so d_k is the tail element.
+    std::vector<std::vector<index_t>> pseudo_knn_indices(n_points);
+    std::vector<std::vector<double>> pseudo_knn_distances(n_points);
+    for (size_t i = 0; i < n_points; ++i) {
+        std::vector<std::pair<double, index_t>> by_dist;
+        by_dist.reserve(adj_list[i].size());
+        for (size_t j = 0; j < adj_list[i].size(); ++j) {
+            by_dist.emplace_back(weight_list[i][j], adj_list[i][j]);
+        }
+        std::sort(by_dist.begin(), by_dist.end(),
+                  [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+        pseudo_knn_indices[i].reserve(by_dist.size());
+        pseudo_knn_distances[i].reserve(by_dist.size());
+        for (const auto& [dist, nbr] : by_dist) {
+            pseudo_knn_indices[i].push_back(nbr);
+            pseudo_knn_distances[i].push_back(dist);
+        }
+    }
+
+    initialize_reference_measure(
+        pseudo_knn_indices,
+        pseudo_knn_distances,
+        use_counting_measure,
+        density_normalization,
+        density_alpha,
+        density_epsilon,
+        clamp_dk,
+        dk_clamp_median_factor,
+        target_weight_ratio,
+        pathological_ratio_threshold,
+        verbose_level
+    );
+
+    compute_initial_densities(verbose_level);
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true, true);
+    }
+
+    // ================================================================
+    // PHASE 3: METRIC + OPERATORS
+    // ================================================================
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        progress_log_inline("  Phase 3: metric + operators assembly ... ");
+        phase_time = std::chrono::steady_clock::now();
+    }
+
+    initialize_metric_from_density();
+    build_boundary_operator_from_edges();
+    if (!edge_cofaces.empty()) {
+        build_boundary_operator_from_triangles();
+    }
+    assemble_operators();
+
+    if (vl_at_least(verbose_level, verbose_level_t::PROGRESS)) {
+        elapsed_time(phase_time, "DONE", true, true);
     }
 }
 
