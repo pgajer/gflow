@@ -247,13 +247,14 @@ plot.trajectory.hurdle.association <- function(x,
         if (length(x) < 4L) return(NULL)
         if (length(unique(x)) < 3L) return(NULL)
 
-        if (!is.null(df)) {
-            fit <- stats::smooth.spline(x = x, y = y, df = df)
-        } else if (!is.null(spar)) {
-            fit <- stats::smooth.spline(x = x, y = y, spar = spar)
-        } else {
-            fit <- stats::smooth.spline(x = x, y = y)
-        }
+        fit <- gflow.smooth.spline(
+            x = x,
+            y = y,
+            df = df,
+            spar = spar,
+            use.gcv = is.null(df) && is.null(spar)
+        )
+        if (is.null(fit)) return(NULL)
 
         pr <- stats::predict(fit, x = xout)
 

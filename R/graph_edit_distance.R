@@ -480,18 +480,20 @@ create.distance.plot <- function(x, y,
   # Add smoothing line if requested
   if (smooth && length(unique(x)) > 3) {
     tryCatch({
-      if (smooth.method == "loess") {
-        lo <- stats::loess(y ~ x)
-        x.seq <- seq(min(x), max(x), length.out = 100)
-        y.pred <- stats::predict(lo, x.seq)
-        graphics::lines(x.seq, y.pred, col = "red", lwd = 2)
-      } else {
-        # For other methods, use basic smooth.spline as fallback
-        ss <- stats::smooth.spline(x, y)
-        graphics::lines(ss, col = "red", lwd = 2)
-      }
-    }, error = function(e) {
-      warning("Could not add smoothing line: ", e$message)
+	      if (smooth.method == "loess") {
+	        lo <- stats::loess(y ~ x)
+	        x.seq <- seq(min(x), max(x), length.out = 100)
+	        y.pred <- stats::predict(lo, x.seq)
+	        graphics::lines(x.seq, y.pred, col = "red", lwd = 2)
+	      } else {
+	        # For other methods, use robust internal spline wrapper.
+	        ss <- gflow.smooth.spline(x = x, y = y, use.gcv = TRUE)
+	        if (!is.null(ss)) {
+	            graphics::lines(ss, col = "red", lwd = 2)
+	        }
+	      }
+	    }, error = function(e) {
+	      warning("Could not add smoothing line: ", e$message)
     })
   }
 
@@ -510,4 +512,3 @@ create.distance.plot <- function(x, y,
     invisible(NULL)
   }
 }
-

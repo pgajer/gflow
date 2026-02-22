@@ -6912,9 +6912,13 @@ fit.trajectory.smooth.splines <- function(embed.3d,
 
     t <- seq_len(target.length)
 
-    fit.x <- stats::smooth.spline(x = t, y = traj.center[, 1], df = df)
-    fit.y <- stats::smooth.spline(x = t, y = traj.center[, 2], df = df)
-    fit.z <- stats::smooth.spline(x = t, y = traj.center[, 3], df = df)
+    fit.x <- gflow.smooth.spline(x = t, y = traj.center[, 1], df = df, use.gcv = is.null(df))
+    fit.y <- gflow.smooth.spline(x = t, y = traj.center[, 2], df = df, use.gcv = is.null(df))
+    fit.z <- gflow.smooth.spline(x = t, y = traj.center[, 3], df = df, use.gcv = is.null(df))
+
+    if (is.null(fit.x) || is.null(fit.y) || is.null(fit.z)) {
+        stop("Failed to fit spline trajectory model for one or more coordinates.")
+    }
 
     t.grid <- seq(from = 1, to = target.length, length.out = grid.length)
 

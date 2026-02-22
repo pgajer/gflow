@@ -1882,9 +1882,9 @@ bayes.factors.symbols <- function(x,
 #' @param y A numeric vector of values for which to find inflection points.
 #' @param x Optional numeric vector of x-coordinates corresponding to y values.
 #'   If NULL (default), uses indices 1:length(y). Must be the same length as y.
-#' @param method Character string specifying the smoothing method to use. Either "magelo"
-#'   (Gaussian error model) or \code{\link{mabilo}} (Binomial error model). Default is "magelo".
-#'   Only the first element is used if a vector is provided.
+#' @param method Character string specifying the smoothing method. The current
+#'   implementation uses smoothing splines. Legacy values "magelo" and "mabilo"
+#'   are accepted for backward compatibility.
 #' @return A list containing:
 #'   \itemize{
 #'     \item \code{y}: The sorted y values (reordered if x was provided)
@@ -1905,8 +1905,7 @@ bayes.factors.symbols <- function(x,
 #' @note
 #'   \itemize{
 #'     \item Requires the 'rootSolve' package for finding zeros of the second derivative
-#'     \item Also requires either the 'magelo' or \code{\link{mabilo}} function to be available
-#'     \item The inflection point indices are floored to integers, which may introduce slight imprecision
+#'     \item Legacy method labels ("magelo", "mabilo") are mapped to spline smoothing
 #'     \item When x is NULL, the function sorts y values, which changes the interpretation of results
 #'   }
 #' @examples
@@ -1915,7 +1914,7 @@ bayes.factors.symbols <- function(x,
 #' x <- seq(-5, 5, length.out = 100)
 #' y <- 1 / (1 + exp(-x)) + 0.1 * sin(2*x)  # Sigmoid with oscillation
 #'
-#' result <- find.inflection.pts(y, x, method = "magelo")
+#' result <- find.inflection.pts(y, x, method = "spline")
 #'
 #' # Plot the results
 #' plot(x, y, type = "l", main = "Inflection Points")
@@ -1923,14 +1922,16 @@ bayes.factors.symbols <- function(x,
 #'
 #' # Example 2: Using indices as x-coordinates
 #' y <- c(1, 2, 5, 10, 15, 18, 19, 19.5, 19.8, 20)  # Growth curve
-#' result <- find.inflection.pts(y, method = "mabilo")
+#' result <- find.inflection.pts(y, method = "spline")
 #' print(result$infl.pts)
 #' }
 #' @seealso
 #'   \code{\link[rootSolve]{uniroot.all}} for root finding,
 #'   \code{magelo} and \code{mabilo} for the smoothing methods
 #' @export
-find.inflection.pts <- function(y, x = NULL, method = c("magelo","mabilo")) {
+find.inflection.pts <- function(y, x = NULL, method = c("spline", "magelo", "mabilo")) {
+
+    method <- match.arg(method)
 
     if (!is.null(x)) {
         if (length(x) != length(y)) stop("x and y have to be of the same length")
@@ -1942,35 +1943,58 @@ find.inflection.pts <- function(y, x = NULL, method = c("magelo","mabilo")) {
         y <- sort(y)
     }
 
-    r0 <- r1 <- r2 <- NULL
-    if (method == "magelo") {
-        r0 <- magelo(x, y)
-        r1 <- magelo(r0$xgrid[-length(r0$xgrid)], diff(r0$gpredictions))
-        r2 <- magelo(r1$xgrid[-length(r1$xgrid)], diff(r1$gpredictions))
-        r2fn <- approxfun(r2$xg, r2$Eyg)
-    } else if (method == "mabilo") {
-        n <- length(x)
-        r0 <- mabilo(x, y)
-
-        x1 <- x[-n]
-        r1 <- mabilo(x1, diff(r0$predictions))
-
-        x2 <- x1[-length(x1)]
-        r2 <- mabilo(x2, diff(r1$predictions))
-        r2fn <- approxfun(x2, r2$predictions)
+    if (method %in% c("magelo", "mabilo")) {
+        warning("method = '", method, "' is deprecated; using spline smoothing instead.",
+                call. = FALSE)
     }
+
+    smooth.pass <- function(xv, yv, grid.size = NULL) {
+        if (is.null(grid.size)) {
+            grid.size <- max(200L, 5L * length(unique(xv)))
+        }
+        res <- .gflow.fit.curve.with.ci(
+            x = xv,
+            y = yv,
+            grid.size = grid.size,
+            clip = NULL
+        )
+        list(xg = res$xgrid, Eyg = res$gpredictions, fit = res$fit)
+    }
+
+    r0 <- smooth.pass(x, y)
+
+    dx0 <- diff(r0$xg)
+    dx0[dx0 == 0] <- 1
+    d1 <- diff(r0$Eyg) / dx0
+    x1 <- (r0$xg[-1] + r0$xg[-length(r0$xg)]) / 2
+    r1 <- smooth.pass(x1, d1)
+
+    dx1 <- diff(r1$xg)
+    dx1[dx1 == 0] <- 1
+    d2 <- diff(r1$Eyg) / dx1
+    x2 <- (r1$xg[-1] + r1$xg[-length(r1$xg)]) / 2
+    r2 <- smooth.pass(x2, d2)
+
+    r2fn <- approxfun(r2$xg, r2$Eyg, rule = 2)
 
     if (!requireNamespace("rootSolve", quietly = TRUE)) {
       stop("Package 'rootSolve' is required for this function. Please install it with install.packages('rootSolve')")
     }
-    infl.pts <- rootSolve::uniroot.all(r2fn, interval=range(r2$xg))
-    infl.pts <- floor(infl.pts)
-    infl.pts.vals <- y[infl.pts]
+    infl.x <- rootSolve::uniroot.all(r2fn, interval = range(r2$xg))
+
+    if (length(infl.x) == 0L) {
+        infl.pts <- integer(0)
+    } else {
+        infl.pts <- unique(vapply(infl.x, function(v) which.min(abs(x - v)), integer(1)))
+        infl.pts <- infl.pts[is.finite(infl.pts) & infl.pts >= 1L & infl.pts <= length(y)]
+    }
+    infl.pts.vals <- if (length(infl.pts)) y[infl.pts] else numeric(0)
 
     list(y=y,
          r0=r0,
          r1=r1,
          r2=r2,
+         infl.x=infl.x,
          infl.pts=infl.pts,
          infl.pts.vals=infl.pts.vals)
 }

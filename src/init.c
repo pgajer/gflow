@@ -10,8 +10,6 @@
 #include "density_r.h"
 #include "local_complexity_r.h"
 #include "ulogit_r.h"
-#include "maelog_r.h"
-#include "magelog_r.h"
 #include "uniform_grid_graph_r.h"
 #include "centered_paths_r.h"
 #include "iknn_graphs_r.h"
@@ -26,7 +24,6 @@
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
 #include "mst_completion_graphs_r.h"
-#include "amagelo_r.h"
 #include "gflow_basins_r.h"
 #include "harmonic_smoother_r.h"
 #include "gflow_cx_r.h"
@@ -35,14 +32,12 @@
 #include "stats_utils.h"
 #include "kernels.h"
 #include "mean_shift_smoother_r.h"
-#include "cv_deg0.h"
 #include "riem_dcx_r.h"
 #include "lcor_r.h"
 #include "partition_graph_r.h"
 #include "lslope_r.h"
 #include "riem_dcx_posterior_r.h"
 #include "lcor_posterior_r.h"
-#include "magelo_external_bb.h"
 #include "gfc_r.h"
 #include "basin_summary_r.h"
 #include "gfassoc_r.h"
@@ -63,28 +58,7 @@ static R_NativePrimitiveArgType mstree_type[] = {INTSXP, INTSXP, REALSXP, REALSX
 static R_NativePrimitiveArgType wasserstein_distance_1D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType runif_simplex_type[] = {INTSXP, REALSXP};
 
-static R_NativePrimitiveArgType llm_1D_beta_type[] = {REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType llm_1D_beta_perms_type[] = {REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-
-static R_NativePrimitiveArgType predict_1D_type[] = {REALSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType wpredict_1D_type[] = {REALSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType llm_1D_fit_and_predict_type[] = {INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType llm_1D_fit_and_predict_BB_CrI_type[]  = {INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType llm_1D_fit_and_predict_BB_qCrI_type[] = {INTSXP, INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType llm_1D_fit_and_predict_BB_type[]     = {INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType mllm_1D_fit_and_predict_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-
-static R_NativePrimitiveArgType loo_llm_1D_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType deg0_loo_llm_1D_type[] = {INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType cv_mae_1D_type[] = {INTSXP, INTSXP, REALSXP, INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType get_BB_Eyg_type[] = {INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType get_Eyg_CrI_type[] = {INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType get_Eygs_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, REALSXP};
-
-static R_NativePrimitiveArgType get_bws_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType columnwise_weighting_type[]    = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType columnwise_eval_type[]    = {INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType columnwise_TS_norm_type[] = {REALSXP, INTSXP, INTSXP, REALSXP};
 
 static R_NativePrimitiveArgType matrix_wmeans_type[]            = {REALSXP, INTSXP, INTSXP,  INTSXP,  REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType columnwise_wmean_type[]         = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
@@ -112,31 +86,11 @@ static R_NativePrimitiveArgType rmatrix_type[] = {REALSXP, INTSXP, INTSXP, REALS
 static R_NativePrimitiveArgType kernel_eval_type[] = { INTSXP, REALSXP, INTSXP, REALSXP, REALSXP };
 static R_NativePrimitiveArgType kernel_type[] = { REALSXP, INTSXP, REALSXP, INTSXP, REALSXP };
 
-static R_NativePrimitiveArgType cv_type[] = { INTSXP, INTSXP, INTSXP, INTSXP, INTSXP,  REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, INTSXP, INTSXP, REALSXP};
-
 static const R_CMethodDef cMethods[] = {
-  {"C_cv_deg0_binloss", (DL_FUNC) &C_cv_deg0_binloss, 14, cv_type},
-  {"C_cv_deg0_mae", (DL_FUNC) &C_cv_deg0_mae, 14, cv_type},
   {"C_epanechnikov_kernel_with_stop", (DL_FUNC) &C_epanechnikov_kernel_with_stop, 5, kernel_type},
   {"C_triangular_kernel_with_stop", (DL_FUNC) &C_triangular_kernel_with_stop, 5, kernel_type},
   {"C_tr_exponential_kernel_with_stop", (DL_FUNC) &C_tr_exponential_kernel_with_stop, 5, kernel_type},
   {"C_kernel_eval", (DL_FUNC) &C_kernel_eval, 5, kernel_eval_type},
-  {"C_llm_1D_beta", (DL_FUNC) &C_llm_1D_beta, 8, llm_1D_beta_type},
-  {"C_llm_1D_beta_perms", (DL_FUNC) &C_llm_1D_beta_perms, 11, llm_1D_beta_perms_type},
-  {"C_predict_1D", (DL_FUNC) &C_predict_1D, 11, predict_1D_type},
-  {"C_wpredict_1D", (DL_FUNC) &C_wpredict_1D, 11, wpredict_1D_type},
-  {"C_llm_1D_fit_and_predict", (DL_FUNC) &C_llm_1D_fit_and_predict, 12, llm_1D_fit_and_predict_type},
-  {"C_mllm_1D_fit_and_predict", (DL_FUNC) &C_mllm_1D_fit_and_predict, 12, mllm_1D_fit_and_predict_type},
-  {"C_llm_1D_fit_and_predict_BB_CrI", (DL_FUNC) &C_llm_1D_fit_and_predict_BB_CrI, 13, llm_1D_fit_and_predict_BB_CrI_type},
-  {"C_llm_1D_fit_and_predict_global_BB_CrI", (DL_FUNC) &C_llm_1D_fit_and_predict_global_BB_CrI, 13, llm_1D_fit_and_predict_BB_CrI_type},
-  {"C_llm_1D_fit_and_predict_global_BB", (DL_FUNC) &C_llm_1D_fit_and_predict_global_BB, 11, llm_1D_fit_and_predict_BB_type},
-  {"C_llm_1D_fit_and_predict_global_BB_qCrI", (DL_FUNC) &C_llm_1D_fit_and_predict_global_BB_qCrI, 13, llm_1D_fit_and_predict_BB_qCrI_type},
-  {"C_loo_llm_1D", (DL_FUNC) &C_loo_llm_1D, 11, loo_llm_1D_type},
-  {"C_deg0_loo_llm_1D", (DL_FUNC) &C_deg0_loo_llm_1D, 7, deg0_loo_llm_1D_type},
-  {"C_cv_mae_1D", (DL_FUNC) &C_cv_mae_1D, 16, cv_mae_1D_type},
-  {"C_get_BB_Eyg", (DL_FUNC) &C_get_BB_Eyg, 19, get_BB_Eyg_type},
-  {"C_get_Eyg_CrI", (DL_FUNC) &C_get_Eyg_CrI, 19, get_Eyg_CrI_type},
-  {"C_get_Eygs", (DL_FUNC) &C_get_Eygs, 17, get_Eygs_type},
   {"C_runif_simplex", (DL_FUNC) &C_runif_simplex, 2, runif_simplex_type},
   {"C_create_ED_grid_2D", (DL_FUNC) &C_create_ED_grid_2D, 6, create_ED_grid_2D_type},
   {"C_create_ED_grid_3D", (DL_FUNC) &C_create_ED_grid_3D, 8, create_ED_grid_3D_type},
@@ -145,11 +99,7 @@ static const R_CMethodDef cMethods[] = {
   {"C_create_ENPs_grid_3D", (DL_FUNC) &C_create_ENPs_grid_3D, 9, create_ENPs_grid_3D_type},
   {"C_mstree", (DL_FUNC) &C_mstree, 7, mstree_type},
   {"C_wasserstein_distance_1D", (DL_FUNC) &C_wasserstein_distance_1D, 4, wasserstein_distance_1D_type},
-  {"C_get_bws",             (DL_FUNC) &C_get_bws, 6, get_bws_type},
-  {"C_get_bws_with_minK_a", (DL_FUNC) &C_get_bws_with_minK_a, 6, get_bws_type},
-  {"C_columnwise_weighting", (DL_FUNC) &C_columnwise_weighting, 7, columnwise_weighting_type},
   {"C_columnwise_eval", (DL_FUNC) &C_columnwise_eval, 5, columnwise_eval_type},
-  {"C_columnwise_TS_norm", (DL_FUNC) &C_columnwise_TS_norm, 4, columnwise_TS_norm_type},
   {"C_matrix_wmeans", (DL_FUNC) &C_matrix_wmeans, 9, matrix_wmeans_type},
   {"C_columnwise_wmean", (DL_FUNC) &C_columnwise_wmean, 6, columnwise_wmean_type},
   {"C_columnwise_wmean_BB", (DL_FUNC) &C_columnwise_wmean_BB, 7, columnwise_wmean_BB_type},
@@ -333,26 +283,13 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_uniform_grid_graph", (DL_FUNC) &S_create_uniform_grid_graph, 5},
 
   // =========================================================================
-  // univariate regression
-  // =========================================================================
-  {"S_generate_dirichlet_weights", (DL_FUNC) &S_generate_dirichlet_weights, 2},
-  {"S_llm_1D_fit_and_predict_global_BB_external", (DL_FUNC) &S_llm_1D_fit_and_predict_global_BB_external, 12},
-  {"S_get_BB_Eyg_external", (DL_FUNC) &S_get_BB_Eyg_external, 18},
-
-  // =========================================================================
   // regression over graphs
   // =========================================================================
   {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
 
   // old
-  {"S_amagelo", (DL_FUNC) &S_amagelo, 19},
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
   {"S_eigen_ulogit", (DL_FUNC) &S_eigen_ulogit, 8},
-  {"S_maelog", (DL_FUNC) &S_maelog, 15},
-  {"S_magelog", (DL_FUNC) &S_magelog, 15},
-  {"S_mabilog", (DL_FUNC) &S_mabilog, 14},
-  {"S_mabilo_plus", (DL_FUNC) &S_mabilo_plus, 13},
-  {"S_mabilo", (DL_FUNC) &S_mabilo, 11},
 
 
   {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},

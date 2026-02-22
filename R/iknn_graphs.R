@@ -521,7 +521,7 @@ summary.iknn_graphs <- function(object,
 #'   \item Edit distances between consecutive graphs (edge-set symmetric difference)
 #'   \item Jensen-Shannon divergence between degree profiles of consecutive graphs
 #'   \item Edge counts in pruned graphs across k
-#'   \item Piecewise linear fits and breakpoints for each diagnostic curve
+#'   \item Smoothed trend fits and breakpoints for each diagnostic curve
 #'   \item Local minima locations for each diagnostic curve
 #' }
 #'
@@ -542,10 +542,10 @@ summary.iknn_graphs <- function(object,
 #'   \item{n.edges}{Numeric vector of length \code{length(k.values)} (if available).}
 #'   \item{n.edges.in.pruned.graph}{Numeric vector of length \code{length(k.values)}.}
 #'   \item{edge.reduction.ratio}{Numeric vector of length \code{length(k.values)} (if available).}
-#'   \item{pwlm}{Named list of piecewise linear model objects for each diagnostic
-#'     curve (if \code{fit.pwlm} exists).}
-#'   \item{breakpoint}{Named numeric vector of estimated breakpoints for each
-#'     curve (if \code{fit.pwlm} exists).}
+#'   \item{pwlm}{Named list of smoothed trend-fit objects for each diagnostic
+#'     curve (stored under legacy component names ending in \code{.pwlm}).}
+#'   \item{breakpoint}{Named numeric vector of estimated breakpoint locations for each
+#'     curve derived from the trend-fit objects.}
 #'   \item{lmin}{Named list of local-minima k values for each diagnostic curve
 #'     (if \code{internal.find.local.minima} exists).}
 #' }
@@ -664,11 +664,10 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
     edit.distances <- compute.edit.distances(graphs.list)
 
     ## ------------------------------------------------------------------------
-    ## Local minima + piecewise linear models (if helpers exist)
+    ## Local minima + smoothed trend models
     ## ------------------------------------------------------------------------
 
     have.lmin <- exists("internal.find.local.minima", mode = "function")
-    have.pwlm <- exists("fit.pwlm", mode = "function")
 
     edit.distances.lmin <- integer(0)
     edge.lmin <- integer(0)
@@ -686,13 +685,11 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
         edge.lmin <- internal.find.local.minima(n.edges.in.pruned.graph, k.values)
     }
 
-    if (have.pwlm && length(k.values) >= 2L) {
-        edit.distances.model <- fit.pwlm(k.values[-length(k.values)], edit.distances)
-        js.model <- fit.pwlm(k.values[-length(k.values)], js.div)
+    if (length(k.values) >= 2L) {
+        edit.distances.model <- .gflow.fit.iknn.trend(k.values[-length(k.values)], edit.distances)
+        js.model <- .gflow.fit.iknn.trend(k.values[-length(k.values)], js.div)
     }
-    if (have.pwlm) {
-        edge.model <- fit.pwlm(k.values, n.edges.in.pruned.graph)
-    }
+    edge.model <- .gflow.fit.iknn.trend(k.values, n.edges.in.pruned.graph)
 
     result <- list(
         k.values = k.values,
@@ -706,11 +703,11 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
         edit.distances.lmin = edit.distances.lmin,
         n.edges.lmin = edge.lmin,
         js.div.lmin = js.div.lmin,
-        edit.distances.pwlm = if (!is.null(edit.distances.model)) edit.distances.model$model else NULL,
+        edit.distances.pwlm = if (!is.null(edit.distances.model)) edit.distances.model else NULL,
         edit.distances.breakpoint = if (!is.null(edit.distances.model)) edit.distances.model$breakpoint else NA_real_,
-        n.edges.in.pruned.graph.pwlm = if (!is.null(edge.model)) edge.model$model else NULL,
+        n.edges.in.pruned.graph.pwlm = if (!is.null(edge.model)) edge.model else NULL,
         n.edges.in.pruned.graph.breakpoint = if (!is.null(edge.model)) edge.model$breakpoint else NA_real_,
-        js.div.pwlm = if (!is.null(js.model)) js.model$model else NULL,
+        js.div.pwlm = if (!is.null(js.model)) js.model else NULL,
         js.div.breakpoint = if (!is.null(js.model)) js.model$breakpoint else NA_real_
     )
 
@@ -741,6 +738,22 @@ compute.degrees.js.divergence <- function(g1, g2) {
     g2.rel.degrees <- g2.degrees / max(g2.degrees)
 
     jensen.shannon.divergence(g1.rel.degrees, g2.rel.degrees)
+}
+
+##' @keywords internal
+.add.iknn.trend <- function(trend, col = "red") {
+    if (is.null(trend)) return(invisible(NULL))
+
+    if (inherits(trend, "pwlm")) {
+        plot(trend, add = TRUE, col = col)
+        return(invisible(NULL))
+    }
+
+    if (is.list(trend) && all(c("x", "y") %in% names(trend))) {
+        graphics::lines(trend$x, trend$y, col = col, lwd = 2)
+    }
+
+    invisible(NULL)
 }
 
 ## ============================================================================
@@ -1020,8 +1033,8 @@ plot.iknn_stability_metrics <- function(x, ...) {
 #' @param diags Character vector specifying which diagnostics to show. Options include
 #'        "edist" (edit distances), "edge" (edge counts), and "deg" (degree distribution).
 #'        Default is c("edist", "edge", "deg").
-#' @param with.pwlm Logical. If TRUE, overlays piecewise linear model fits on the plots.
-#'        Default is TRUE.
+#' @param with.pwlm Logical. If TRUE, overlays smoothed trend fits on the plots
+#'        (using legacy component names ending in \code{.pwlm}). Default is TRUE.
 #' @param with.lmin Logical. If TRUE, shows vertical lines at local minimum points.
 #'        Default is FALSE.
 #' @param breakpoint.col Color for breakpoint vertical lines. Default is "blue".
@@ -1114,7 +1127,7 @@ plot.IkNNgraphs <- function(x,
         mtext("Edit Distance", side = 2, line = yline, outer = FALSE)
 
         if (with.pwlm && "edit.distances.pwlm" %in% names(x)) {
-            plot(x$edit.distances.pwlm, add = TRUE, col = "red")
+            .add.iknn.trend(x$edit.distances.pwlm, col = "red")
             if ("edit.distances.breakpoint" %in% names(x)) {
                 abline(v = x$edit.distances.breakpoint, lty = 2, col = breakpoint.col)
             }
@@ -1134,7 +1147,7 @@ plot.IkNNgraphs <- function(x,
         mtext("Num. Edges in Pruned Graph", side = 2, line = yline, outer = FALSE)
 
         if (with.pwlm && "n.edges.in.pruned.graph.pwlm" %in% names(x)) {
-            plot(x$n.edges.in.pruned.graph.pwlm, add = TRUE, col = "red")
+            .add.iknn.trend(x$n.edges.in.pruned.graph.pwlm, col = "red")
             if ("n.edges.in.pruned.graph.breakpoint" %in% names(x)) {
                 abline(v = x$n.edges.in.pruned.graph.breakpoint, lty = 2, col = breakpoint.col)
             }
@@ -1154,7 +1167,7 @@ plot.IkNNgraphs <- function(x,
         mtext("JS Divergence (Degrees)", side = 2, line = yline, outer = FALSE)
 
         if (with.pwlm && "js.div.pwlm" %in% names(x)) {
-            plot(x$js.div.pwlm, add = TRUE, col = "red")
+            .add.iknn.trend(x$js.div.pwlm, col = "red")
             if ("js.div.breakpoint" %in% names(x)) {
                 abline(v = x$js.div.breakpoint, lty = 2, col = breakpoint.col)
             }

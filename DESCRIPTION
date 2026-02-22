@@ -42,7 +42,6 @@ Imports:
     foreach,
     parallel,
     igraph,
-    segmented,
     transport
 Suggests:
     grip,
@@ -52,6 +51,7 @@ Suggests:
     randomForest,
     np,
     mgcv,
+    malo,
     kernlab,
     glmnet,
     e1071,

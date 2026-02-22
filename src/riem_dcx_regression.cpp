@@ -5771,6 +5771,7 @@ void riem_dcx_t::fit_rdgraph_regression(
             dk_clamp_median_factor,
             target_weight_ratio,
             pathological_ratio_threshold,
+            k,
             triangle_policy,
             gamma_modulation,
             verbose_level

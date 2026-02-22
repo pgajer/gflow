@@ -160,6 +160,7 @@ void riem_dcx_t::initialize_from_graph(
     double dk_clamp_median_factor,
     double target_weight_ratio,
     double pathological_ratio_threshold,
+    index_t neighborhood_k,
     triangle_policy_t triangle_policy,
     double gamma_modulation,
     verbose_level_t verbose_level
@@ -173,6 +174,11 @@ void riem_dcx_t::initialize_from_graph(
     if (weight_list.size() != n_points) {
         Rf_error("Precomputed graph adjacency/weight list size mismatch.");
     }
+    if (neighborhood_k < 1) {
+        Rf_error("neighborhood_k must be at least 1 in precomputed graph initialization.");
+    }
+
+    const size_t neighborhood_k_sz = static_cast<size_t>(neighborhood_k);
 
     // ================================================================
     // PHASE 0: INITIALIZE DIMENSION STRUCTURE
@@ -209,6 +215,10 @@ void riem_dcx_t::initialize_from_graph(
         }
 
         std::unordered_set<index_t> seen;
+        std::vector<std::pair<double, index_t>> by_dist;
+        by_dist.reserve(nbrs.size() + 1);
+        by_dist.emplace_back(0.0, static_cast<index_t>(i)); // include self to mirror kNN path
+
         for (size_t j = 0; j < nbrs.size(); ++j) {
             const index_t v = nbrs[j];
             const double w = wts[j];
@@ -228,8 +238,27 @@ void riem_dcx_t::initialize_from_graph(
                 Rf_error("Precomputed graph row %zu contains duplicate neighbor %zu.",
                          i + 1, static_cast<size_t>(v));
             }
+
+            by_dist.emplace_back(w, v);
         }
-        neighbor_sets[i] = std::move(seen);
+
+        std::sort(
+            by_dist.begin(),
+            by_dist.end(),
+            [](const std::pair<double, index_t>& lhs, const std::pair<double, index_t>& rhs) {
+                if (lhs.first < rhs.first) return true;
+                if (lhs.first > rhs.first) return false;
+                return lhs.second < rhs.second;
+            }
+        );
+
+        const size_t k_effective = std::min(neighborhood_k_sz, by_dist.size());
+        std::unordered_set<index_t> local_neighbors;
+        local_neighbors.reserve(k_effective);
+        for (size_t t = 0; t < k_effective; ++t) {
+            local_neighbors.insert(by_dist[t].second);
+        }
+        neighbor_sets[i] = std::move(local_neighbors);
     }
 
     // Validate undirected symmetry with reciprocal-weight consistency
@@ -485,20 +514,30 @@ void riem_dcx_t::initialize_from_graph(
 
     // Build pseudo-kNN vectors from local weighted neighborhoods.
     // Distances are sorted increasingly so d_k is the tail element.
+    // Mirror kNN-branch semantics by including self (distance 0)
+    // and retaining only the first neighborhood_k entries.
     std::vector<std::vector<index_t>> pseudo_knn_indices(n_points);
     std::vector<std::vector<double>> pseudo_knn_distances(n_points);
     for (size_t i = 0; i < n_points; ++i) {
         std::vector<std::pair<double, index_t>> by_dist;
-        by_dist.reserve(adj_list[i].size());
+        by_dist.reserve(adj_list[i].size() + 1);
+        by_dist.emplace_back(0.0, static_cast<index_t>(i));
         for (size_t j = 0; j < adj_list[i].size(); ++j) {
             by_dist.emplace_back(weight_list[i][j], adj_list[i][j]);
         }
         std::sort(by_dist.begin(), by_dist.end(),
-                  [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+                  [](const std::pair<double, index_t>& lhs, const std::pair<double, index_t>& rhs) {
+                      if (lhs.first < rhs.first) return true;
+                      if (lhs.first > rhs.first) return false;
+                      return lhs.second < rhs.second;
+                  });
 
-        pseudo_knn_indices[i].reserve(by_dist.size());
-        pseudo_knn_distances[i].reserve(by_dist.size());
-        for (const auto& [dist, nbr] : by_dist) {
+        const size_t k_effective = std::min(neighborhood_k_sz, by_dist.size());
+        pseudo_knn_indices[i].reserve(k_effective);
+        pseudo_knn_distances[i].reserve(k_effective);
+        for (size_t t = 0; t < k_effective; ++t) {
+            const double dist = by_dist[t].first;
+            const index_t nbr = by_dist[t].second;
             pseudo_knn_indices[i].push_back(nbr);
             pseudo_knn_distances[i].push_back(dist);
         }

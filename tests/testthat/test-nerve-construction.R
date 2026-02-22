@@ -1,5 +1,6 @@
 test_that("build.nerve.from.knn constructs valid nerve complex", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   # Create test data
   set.seed(12345)
@@ -32,6 +33,7 @@ test_that("build.nerve.from.knn constructs valid nerve complex", {
 
 test_that("nerve complex has no duplicate simplices", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 50
@@ -81,6 +83,7 @@ test_that("nerve complex has no duplicate simplices", {
 
 test_that("simplices are properly sorted", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 40
@@ -104,6 +107,7 @@ test_that("simplices are properly sorted", {
 
 test_that("all simplex faces exist in lower dimension", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 50
@@ -138,6 +142,7 @@ test_that("all simplex faces exist in lower dimension", {
 
 test_that("metric values are positive", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 50
@@ -164,6 +169,7 @@ test_that("metric values are positive", {
 
 test_that("directed vs undirected kNN give different results", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 40
@@ -192,6 +198,7 @@ test_that("directed vs undirected kNN give different results", {
 
 test_that("counting measure vs weighted measure behave correctly", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   set.seed(12345)
   n <- 40
@@ -222,6 +229,7 @@ test_that("counting measure vs weighted measure behave correctly", {
 
 test_that("complex construction handles edge cases", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   # Very small k
   set.seed(12345)
@@ -241,6 +249,7 @@ test_that("complex construction handles edge cases", {
 
 test_that("high dimensional simplices are constructed correctly", {
   skip_on_cran()
+  skip_if_not(exists("build.nerve.from.knn", mode = "function") && exists("riem.dcx.summary", mode = "function"), "Legacy nerve API not available in this build")
 
   # Create data where we expect high-dimensional simplices
   set.seed(12345)

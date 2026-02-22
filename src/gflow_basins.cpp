@@ -8,7 +8,6 @@
 #include "reachability_map.hpp"
 #include "set_wgraph.hpp"
 #include "basin.hpp"
-#include "amagelo.hpp"
 #include "error_utils.h"   // For REPORT_ERROR()
 
 /**
@@ -93,6 +92,39 @@ struct geodesic_t {
 	std::vector<double> y;         ///< y values at vertices
 };
 
+namespace {
+
+std::vector<double> smooth_path_values(const std::vector<double>& y) {
+    if (y.size() < 3) return y;
+
+    std::vector<double> ys(y.size(), 0.0);
+    ys[0] = 0.5 * (y[0] + y[1]);
+    for (size_t i = 1; i + 1 < y.size(); ++i) {
+        ys[i] = (y[i - 1] + y[i] + y[i + 1]) / 3.0;
+    }
+    ys[y.size() - 1] = 0.5 * (y[y.size() - 2] + y[y.size() - 1]);
+    return ys;
+}
+
+bool is_path_monotonic(const std::vector<double>& y, bool detect_maxima) {
+    if (y.size() < 2) return true;
+    const std::vector<double> ys = smooth_path_values(y);
+    constexpr double eps = 1e-12;
+
+    if (detect_maxima) {
+        for (size_t i = 1; i < ys.size(); ++i) {
+            if (ys[i] > ys[i - 1] + eps) return false;
+        }
+    } else {
+        for (size_t i = 1; i < ys.size(); ++i) {
+            if (ys[i] < ys[i - 1] - eps) return false;
+        }
+    }
+    return true;
+}
+
+} // anonymous namespace
+
 basin_t set_wgraph_t::find_gflow_basin(
     size_t vertex,
     const std::vector<double>& y,
@@ -101,26 +133,6 @@ basin_t set_wgraph_t::find_gflow_basin(
 	double q_edge_thld,
 	bool detect_maxima
     ) const {
-
-	// amagelo() model parameter values
-	// maybe in the future these may be passed via function arguments or a small struct, to avoid hard‐coding them deep inside this search routine.
-	size_t grid_size = 100;
-	double min_bw_factor = 0.05;
-	double max_bw_factor = 0.5;
-	size_t n_bws = 20;
-	bool use_global_bw_grid = true;
-	bool with_bw_predictions = false;
-	bool log_grid = true;
-	size_t domain_min_size = 4;
-	size_t kernel_type = 7;
-	double dist_normalization_factor = 1.1;
-	size_t n_cleveland_iterations = 1;
-	double blending_coef = 0.0;
-	bool use_linear_blending = false;
-	double precision = 1e-4;
-	double small_depth_threshold = 0.05;
-    double depth_similarity_tol  = 0.0001;
-	bool verbose = false;
 
 	// Initializing output basin
 	basin_t basin;
@@ -216,55 +228,9 @@ basin_t set_wgraph_t::find_gflow_basin(
 					}
 				}
 
-				if (geodesic.vertices.size() >= min_path_size) {
-					// Fit a non-linear regression model to (distances, y) components of 'geodesic'
-
-					amagelo_t amagelo_fit = amagelo(
-						geodesic.distances,
-						geodesic.y,
-						grid_size,
-						min_bw_factor,
-						max_bw_factor,
-						n_bws,
-						use_global_bw_grid,
-						with_bw_predictions,
-						log_grid,
-						domain_min_size,
-						kernel_type,
-						dist_normalization_factor,
-						n_cleveland_iterations,
-						blending_coef,
-						use_linear_blending,
-						precision,
-						small_depth_threshold,
-						depth_similarity_tol,
-						verbose
-						);
-
-					// Check monotonicity of amagelo_fit.predictions from that model
-					// Note that amagelo sorts the input data in the increasing order of x-value, so (distances, y) will be sorted so that distances_sorted is in the increasing order
-
-					bool is_monotonic = true;
-					if (detect_maxima) {
-						// the orientation of the (distances_sorted, y_sorted)
-						// data is in the increasing distance from the local
-						// maximum vertex, so we want to test if the differences
-						// of all consecutive predictions of the model are
-						// negative
-						for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
-							if (amagelo_fit.predictions[i] > amagelo_fit.predictions[i-1]) {
-								is_monotonic = false;
-								break;
-							}
-						}
-					} else {
-						for (size_t i = 1; i < amagelo_fit.predictions.size(); ++i) {
-							if (amagelo_fit.predictions[i] < amagelo_fit.predictions[i-1]) {
-								is_monotonic = false;
-								break;
-							}
-						}
-					}
+					if (geodesic.vertices.size() >= min_path_size) {
+						// Check monotonicity on a lightly smoothed geodesic profile.
+						bool is_monotonic = is_path_monotonic(geodesic.y, detect_maxima);
 
 					// If distance_predictions is stricly monotonically decreasing. when detect_maxima = true, we record u and explore its neighbors.
 					// Otherwise, we not add u to the basin and we do not explore its neighbors
@@ -1361,4 +1327,3 @@ basin_cx_t set_wgraph_t::create_basin_cx(
 
     return basin_cx;
 }
-

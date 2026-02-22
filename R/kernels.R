@@ -118,7 +118,7 @@ tr.exponential.kernel <- function(x, bw=1)
 row.weighting <- function(x, bws, kernel.str="epanechnikov")
 {
     kernels <- c("epanechnikov", "triangular", "tr.exponential","normal")
-    ikernel <- pmatch(kernel.str, kernels)
+    kernel.str <- match.arg(kernel.str, kernels)
 
     stopifnot(is.numeric(x))
     stopifnot(is.finite(x))
@@ -129,23 +129,32 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
     stopifnot(is.finite(bws))
     stopifnot(length(bws)==nr)
 
-    w <- numeric(nr * nc)
-    max.K <- numeric(nr)
+    .kernel_weights <- function(v, bw, k) {
+        if (!is.finite(bw) || bw <= 0) {
+            stop("'bws' must contain positive finite values")
+        }
+        u <- abs(v / bw)
+        if (k == "epanechnikov") {
+            return(ifelse(u < 1, 1 - u * u, 0))
+        }
+        if (k == "triangular") {
+            return(ifelse(u < 1, 1 - u, 0))
+        }
+        if (k == "tr.exponential") {
+            return(ifelse(u < 1, (1 - u) * exp(-u), 0))
+        }
+        exp(-0.5 * u * u)
+    }
 
-    out <- .C(C_columnwise_weighting,
-             as.double(t(x)),
-             as.integer(nc),
-             as.integer(nr),
-             as.integer(ikernel),
-             as.double(bws),
-             max.K=as.integer(max.K),
-             w=as.double(w))
+    w <- matrix(0, nrow = nr, ncol = nc)
+    max.K <- integer(nr)
+    for (i in seq_len(nr)) {
+        wi <- .kernel_weights(x[i, ], bws[i], kernel.str)
+        w[i, ] <- wi
+        nz <- which(wi > 0)
+        max.K[i] <- if (length(nz) == 0L) 0L else max(nz)
+    }
 
-    w <- t(matrix(out$w, nrow=nc, ncol=nr, byrow=FALSE))
-
-    max.K <- out$max.K + 1 # max.K is the __index__ of the last non-zero weight in
-                          # each row of x; since it is calculated in C, it is
-                          # 0-based, so we need to add 1 for 1-based indexing of R
     list(nn.w=w,
          max.K=max.K)
 }
@@ -212,18 +221,10 @@ get.bws <- function(d, min.K, bw)
     nc <- ncol(d)
 
     stopifnot( min.K <= nc )
-
-    bws <- numeric(nr)
-
-    out <- .C(C_get_bws,
-             as.double(t(d)),
-             as.integer(nc),    # number of rows of t(d)
-             as.integer(nr),    # number of columns of t(d)
-             as.integer(min.K), # minimal number of elements with weights > 0
-             as.double(bw),
-             bws=as.double(bws))
-
-    out$bws
+    stopifnot(is.numeric(bw), length(bw) == 1L, is.finite(bw), bw > 0)
+    k <- as.integer(min.K)
+    pivot <- d[, k]
+    ifelse(pivot < bw, bw, pivot)
 }
 
 #' Gets bandwidths defined as radia of linear model's disks of support
@@ -247,18 +248,15 @@ get.bws.with.minK <- function(d, minK, bw)
     nc <- ncol(d)
 
     stopifnot(length(minK)==nr)
-
-    bws <- numeric(nr)
-
-    out <- .C(C_get_bws_with_minK_a,
-             as.double(t(d)),
-             as.integer(nc),    # number of rows of t(d)
-             as.integer(nr),    # number of columns of t(d)
-             as.integer(minK),  # minimal number of elements with weights > 0
-             as.double(bw),
-             bws=as.double(bws))
-
-    out$bws
+    stopifnot(is.numeric(bw), length(bw) == 1L, is.finite(bw), bw > 0)
+    minK <- as.integer(minK)
+    stopifnot(all(minK >= 1L), all(minK <= nc))
+    out <- numeric(nr)
+    for (i in seq_len(nr)) {
+        pivot <- d[i, minK[i]]
+        out[i] <- if (pivot < bw) bw else pivot
+    }
+    out
 }
 
 #' Row-wise total sum normalization
@@ -269,18 +267,12 @@ get.bws.with.minK <- function(d, minK, bw)
 #'     given row's elements, if the sum is not 0.
 row.TS.norm <- function(x)
 {
-    nr <- nrow(x)
-    nc <- ncol(x)
-
-    nx <- numeric(nr * nc)
-
-    out <- .C(C_columnwise_TS_norm,
-             as.double(t(x)),
-             as.integer(nc),
-             as.integer(nr),
-             nx=as.double(nx))
-
-    nx <- matrix(out$nx, nrow=nr, ncol=nc, byrow=TRUE)
-
-    return(nx)
+    stopifnot(is.matrix(x), is.numeric(x))
+    rs <- rowSums(x)
+    out <- x
+    nz <- rs != 0
+    if (any(nz)) {
+        out[nz, ] <- x[nz, , drop = FALSE] / rs[nz]
+    }
+    out
 }

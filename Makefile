@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document attrs
+.PHONY: clean build build-verbose check check-fast install document attrs audit-malo-exports
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -56,3 +56,6 @@ install: build
 
 rchk:
 	@tools/check_rchk.sh
+
+audit-malo-exports:
+	@Rscript tools/audit_malo_exports.R

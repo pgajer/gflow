@@ -3,17 +3,17 @@
 #' Given GCV values across a grid of power transformation exponents,
 #' finds the optimal p and extracts the corresponding graph, fitted values,
 #' and diagnostics. The optimal p can be determined in three ways: (1) by
-#' fitting a magelo smoother to the GCV curve and finding its minimum,
-#' (2) by providing a pre-fitted magelo object, or (3) by directly specifying
-#' a target p value.
+#' fitting an internal spline smoother to the GCV curve and finding its minimum,
+#' (2) by providing a pre-fitted smoother object (including legacy "magelo"),
+#' or (3) by directly specifying a target p value.
 #'
-#' When a target p is specified directly, the function bypasses magelo smoothing
+#' When a target p is specified directly, the function bypasses smoother fitting
 #' entirely and extracts results for the grid point closest to the specified
 #' value. This is useful when the user has already identified the optimal p
 #' through other means or wishes to examine results at a specific transformation
 #' exponent.
 #'
-#' When a pre-fitted magelo object is provided, the function uses its smoothed
+#' When a pre-fitted smoother object is provided, the function uses its smoothed
 #' predictions to determine the optimal p, avoiding redundant computation when
 #' the smoother has already been fit for exploratory purposes.
 #'
@@ -22,20 +22,20 @@
 #' @param out.dir Directory containing Lp_experiment_*.rds files.
 #' @param data.tag Tag identifying the dataset (e.g., "5k_Zambia").
 #' @param p Numeric scalar specifying the target power transformation exponent
-#'     directly. If provided, magelo smoothing is bypassed and the function
+#'     directly. If provided, smoothing is bypassed and the function
 #'     extracts results for the grid point closest to this value. Default is
 #'     NULL.
-#' @param magelo.fit An object of class "magelo" from a previous call to
-#'     \code{magelo()}. If provided (and \code{p} is NULL), this pre-fitted
+#' @param magelo.fit A pre-fitted smoother object (e.g., a legacy object of
+#'     class "magelo"). If provided (and \code{p} is NULL), this pre-fitted
 #'     smoother is used instead of fitting a new one. The object must contain
 #'     at minimum the fields \code{xgrid}, \code{gpredictions}, and
 #'     \code{gpredictions.CrI}. Default is NULL.
 #' @param L1.normalize If TRUE, extracts optimal graph using L1 normalized
 #'     (after the power transformation) data.
 #' @param plot.dir Directory for saving plots (NULL to skip plotting).
-#' @param magelo.params List of parameters passed to \code{magelo()} when
-#'     fitting a new smoother. Ignored if \code{p} or \code{magelo.fit} is
-#'     provided.
+#' @param magelo.params List of optional smoothing parameters used when fitting
+#'     a new spline smoother (\code{df}, \code{spar}, \code{grid.size}).
+#'     Ignored if \code{p} or \code{magelo.fit} is provided.
 #' @param save.results Logical; if TRUE, save extracted results to out.dir.
 #' @param verbose Logical; print progress messages.
 #'
@@ -54,22 +54,20 @@
 #'   \item{edgelen.list}{Edge lengths of optimal graph.}
 #'   \item{rcx.fit}{Full regression fit object at optimal.}
 #'   \item{embed.3d}{List of 3D embeddings.}
-#'   \item{magelo.fit}{The magelo smoother object (NULL if p was specified
-#'       directly).}
+#'   \item{magelo.fit}{The smoother object (NULL if p was specified directly).}
 #'   \item{summary.df}{Input summary data frame (for reference).}
 #'
 #' @examples
 #' \dontrun{
-#' ## Example 1: Automatic optimal p selection via magelo
+#' ## Example 1: Automatic optimal p selection via spline smoothing
 #' opt.analysis <- extract.optimal.Lp.graph(
 #'   summary.df = summary.df,
 #'   out.dir = out.dir,
 #'   data.tag = "5k_Zambia"
 #' )
 #'
-#' ## Example 2: Re-use a pre-fitted magelo object
-#' gcv.fit <- magelo(summary.df$p, summary.df$gcv)
-#' plot(gcv.fit, with.pts = TRUE)
+#' ## Example 2: Re-use a pre-fitted smoother object
+#' gcv.fit <- gflow:::.gflow.fit.gcv.smoother(summary.df$p, summary.df$gcv)
 #' opt.analysis <- extract.optimal.Lp.graph(
 #'   summary.df = summary.df,
 #'   out.dir = out.dir,
@@ -117,8 +115,14 @@ extract.optimal.Lp.graph <- function(summary.df,
 
     ## Validate magelo.fit if provided
     if (!is.null(magelo.fit)) {
-        if (!inherits(magelo.fit, "magelo")) {
-            stop("'magelo.fit' must be an object of class 'magelo'")
+        has.required.fields <- is.list(magelo.fit) &&
+            all(c("xgrid", "gpredictions") %in% names(magelo.fit))
+        if (!(inherits(magelo.fit, "magelo") || inherits(magelo.fit, "gflow_spline_fit") || has.required.fields)) {
+            stop("'magelo.fit' must be a smoother object with fields 'xgrid' and 'gpredictions'")
+        }
+        if (inherits(magelo.fit, "magelo")) {
+            warning("Legacy 'magelo' fit detected in 'magelo.fit'; support is maintained for compatibility but will be deprecated.",
+                    call. = FALSE)
         }
         required.magelo.fields <- c("xgrid", "gpredictions")
         missing.fields <- setdiff(required.magelo.fields, names(magelo.fit))
@@ -148,7 +152,7 @@ extract.optimal.Lp.graph <- function(summary.df,
 
     ## Determine mode of operation
     use.direct.p <- !is.null(p)
-    use.prefitted.magelo <- !is.null(magelo.fit) && !use.direct.p
+    use.prefitted.smoother <- !is.null(magelo.fit) && !use.direct.p
 
     ## ================================================================
     ## Determine optimal p based on mode
@@ -158,7 +162,7 @@ extract.optimal.Lp.graph <- function(summary.df,
     p.equivalent.range <- NULL
 
     if (use.direct.p) {
-        ## Mode 1: Direct p specification - bypass magelo entirely
+        ## Mode 1: Direct p specification - bypass smoother fitting entirely
         if (verbose) {
             cat("Using directly specified p =", p, "\n")
         }
@@ -198,9 +202,9 @@ extract.optimal.Lp.graph <- function(summary.df,
             cat("  Distance from target:", round(abs(p.opt - p), 5), "\n")
         }
 
-    } else if (use.prefitted.magelo) {
-        ## Mode 2: Use pre-fitted magelo object
-        if (verbose) cat("Using pre-fitted magelo object...\n")
+    } else if (use.prefitted.smoother) {
+        ## Mode 2: Use pre-fitted smoother object
+        if (verbose) cat("Using pre-fitted smoother object...\n")
 
         gcv.smooth <- magelo.fit
 
@@ -242,11 +246,14 @@ extract.optimal.Lp.graph <- function(summary.df,
         }
 
     } else {
-        ## Mode 3: Fit new magelo smoother
-        if (verbose) cat("Fitting magelo smoother to GCV curve...\n")
+        ## Mode 3: Fit new spline smoother
+        if (verbose) cat("Fitting spline smoother to GCV curve...\n")
 
-        magelo.args <- c(list(x = summary.df$p, y = summary.df$gcv), magelo.params)
-        gcv.smooth <- do.call(magelo, magelo.args)
+        gcv.smooth <- .gflow.fit.gcv.smoother(
+            x = summary.df$p,
+            y = summary.df$gcv,
+            params = magelo.params
+        )
 
         ## Extract smoothed minimum
         min.idx <- which.min(gcv.smooth$gpredictions)
@@ -267,19 +274,22 @@ extract.optimal.Lp.graph <- function(summary.df,
                 round(abs(p.opt - p.smoothed.min), 5), "\n")
         }
 
-        ## Compute equivalent p range using credible intervals
-        gcv.lower <- gcv.smooth$gpredictions.CrI[1, ]
-        gcv.upper <- gcv.smooth$gpredictions.CrI[2, ]
-        gcv.upper.at.min <- gcv.upper[min.idx]
+        ## Compute equivalent p range using interval overlap if available
+        if ("gpredictions.CrI" %in% names(gcv.smooth) &&
+            !is.null(gcv.smooth$gpredictions.CrI)) {
+            gcv.lower <- gcv.smooth$gpredictions.CrI[1, ]
+            gcv.upper <- gcv.smooth$gpredictions.CrI[2, ]
+            gcv.upper.at.min <- gcv.upper[min.idx]
 
-        ## p values whose lower CI is below upper CI at minimum (overlapping CrI)
-        equivalent.to.min <- gcv.lower <= gcv.upper.at.min
-        p.equivalent.range <- range(gcv.smooth$xgrid[equivalent.to.min])
+            ## p values whose lower CI is below upper CI at minimum (overlapping CrI)
+            equivalent.to.min <- gcv.lower <= gcv.upper.at.min
+            p.equivalent.range <- range(gcv.smooth$xgrid[equivalent.to.min])
 
-        if (verbose) {
-            cat("  Equivalent p range (CrI overlap): [",
-                round(p.equivalent.range[1], 3), ",",
-                round(p.equivalent.range[2], 3), "]\n")
+            if (verbose) {
+                cat("  Equivalent p range (CrI overlap): [",
+                    round(p.equivalent.range[1], 3), ",",
+                    round(p.equivalent.range[2], 3), "]\n")
+            }
         }
     }
 
@@ -422,8 +432,8 @@ extract.optimal.Lp.graph <- function(summary.df,
         results.file = opt.results.file,
 
         ## Mode information
-        mode = if (use.direct.p) "direct_p" else if (use.prefitted.magelo)
-                                                "prefitted_magelo" else "fitted_magelo"
+        mode = if (use.direct.p) "direct_p" else if (use.prefitted.smoother)
+                                                "prefitted_smoother" else "fitted_spline"
     )
 
     ## ================================================================
@@ -441,8 +451,15 @@ extract.optimal.Lp.graph <- function(summary.df,
 
         op <- par(mar = c(4, 5.5, 2, 1), mgp = c(2.5, 0.5, 0), tcl = -0.3)
 
-        plot(gcv.smooth, with.pts = TRUE, pts.col = "red",
-             xlab = "p", ylab = "", legend.position = "topleft")
+        if (inherits(gcv.smooth, "magelo")) {
+            plot(gcv.smooth, with.pts = TRUE, pts.col = "red",
+                 xlab = "p", ylab = "", legend.position = "topleft")
+        } else {
+            plot(summary.df$p, summary.df$gcv,
+                 xlab = "p", ylab = "", pch = 16, cex = 0.8,
+                 col = "red")
+            lines(gcv.smooth$xgrid, gcv.smooth$gpredictions, col = "black", lwd = 2)
+        }
         mtext("GCV", 2, line = 4.5)
 
         ## Shade equivalent region if available
@@ -537,7 +554,7 @@ extract.optimal.Lp.graph <- function(summary.df,
         if (verbose) cat("Fitted values plot saved to:", pdf.fitted, "\n")
     } else if (!is.null(plot.dir) && is.null(gcv.smooth)) {
         if (verbose) {
-            cat("\nNote: GCV plot not generated (no magelo fit available).\n")
+            cat("\nNote: GCV plot not generated (no smoother fit available).\n")
         }
     }
 
