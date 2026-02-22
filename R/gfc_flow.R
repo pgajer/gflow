@@ -305,7 +305,6 @@ compute.gfc.trajectory <- function(
 
 #' Deprecated Alias for \code{compute.gfc.trajectory}
 #'
-#' @inheritParams compute.gfc.trajectory
 #' @rdname compute.gfc.trajectory
 #' @export
 compute.gfc.flow <- function(
