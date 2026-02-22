@@ -1,6 +1,8 @@
 # Generated overrides from configure (profile + sanitizer backend, if any)
 -include Makevars.local
-GFLOW_BUILD_PROFILE ?= dev
+GFLOW_BUILD_PROFILE ?= cran-safe
+GFLOW_OPENMP_CXXFLAGS ?= $(SHLIB_OPENMP_CXXFLAGS)
+GFLOW_OPENMP_LIBS ?= $(SHLIB_OPENMP_CXXFLAGS)
 
 # ---- Include paths
 PKG_CPPFLAGS = -I. -IANN
@@ -30,15 +32,15 @@ CXX_STD      = CXX17
 ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
     PKG_CPPFLAGS += -DGFLOW_ALLOW_NO_OPENMP
     PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS)
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 else ifeq ($(GFLOW_BUILD_PROFILE),dev)
-    # Dev profile: force OpenMP and suppress noisy toolchain warnings.
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp -Wno-class-memaccess -Wno-psabi -Wno-pedantic
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS)
+    PKG_CXXFLAGS = $(GFLOW_OPENMP_CXXFLAGS)
+    PKG_LIBS     = $(GFLOW_OPENMP_LIBS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 else
-    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using dev profile)
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp -Wno-class-memaccess -Wno-psabi -Wno-pedantic
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS)
+    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using cran-safe profile)
+    PKG_CPPFLAGS += -DGFLOW_ALLOW_NO_OPENMP
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 endif
 
 # ---- Sources

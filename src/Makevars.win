@@ -1,6 +1,8 @@
 # Generated overrides from configure.win (profile + sanitizer backend, if any)
 -include Makevars.win.local
-GFLOW_BUILD_PROFILE ?= dev
+GFLOW_BUILD_PROFILE ?= cran-safe
+GFLOW_OPENMP_CXXFLAGS ?= $(SHLIB_OPENMP_CXXFLAGS)
+GFLOW_OPENMP_LIBS ?= $(SHLIB_OPENMP_CXXFLAGS)
 
 # ---- Include paths
 PKG_CPPFLAGS = -I. -IANN
@@ -11,8 +13,8 @@ ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
 else ifeq ($(GFLOW_BUILD_PROFILE),dev)
     PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
 else
-    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using dev profile)
-    PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE
+    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using cran-safe profile)
+    PKG_CPPFLAGS += -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE -DGFLOW_ALLOW_NO_OPENMP
 endif
 PKG_CPPFLAGS += -D_Alignof=__alignof__
 PKG_CPPFLAGS += -DDLL_EXPORTS
@@ -27,11 +29,13 @@ ifeq ($(GFLOW_BUILD_PROFILE),cran-safe)
     PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
     PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 else ifeq ($(GFLOW_BUILD_PROFILE),dev)
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+    PKG_CXXFLAGS = $(GFLOW_OPENMP_CXXFLAGS)
+    PKG_LIBS     = $(GFLOW_OPENMP_LIBS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 else
-    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp
-    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) -fopenmp $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+    $(warning Unknown GFLOW_BUILD_PROFILE='$(GFLOW_BUILD_PROFILE)'; using cran-safe profile)
+    PKG_CPPFLAGS += -DGFLOW_ALLOW_NO_OPENMP
+    PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+    PKG_LIBS     = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 endif
 
 # ---- Sources
