@@ -13,7 +13,8 @@
 #' (by \code{selected.k} or internal selection fields), splits it into connected
 #' components, computes 3D layouts for each component, and then:
 #' \itemize{
-#'   \item if the selected graph has multiple components: generates plain 3D HTML views
+#'   \item if the selected graph has multiple components: generates a whole-graph
+#'         3D HTML view colored by connected component (default)
 #'   \item if the selected graph is connected: fits rdgraph regression on the selected
 #'         component and generates continuous 3D HTML for \eqn{\hat y - \bar y}
 #' }
@@ -34,7 +35,12 @@
 #'   connected-graph case. \code{X}, \code{y}, and \code{k} are injected by this
 #'   wrapper and take precedence.
 #' @param plain.plot.args Named list passed to \code{\link{plot3D.plain.html}}.
+#' @param cltr.plot.args Named list passed to \code{\link{plot3D.cltrs.html}}
+#'   for the multi-component whole-graph plot.
 #' @param cont.plot.args Named list passed to \code{\link{plot3D.cont.html}}.
+#' @param multi.comp.plot Plot mode used when selected graph has multiple
+#'   connected components: \code{"cltrs"} (default) for component-colored whole-graph
+#'   plot, \code{"plain"} for whole-graph plain plot, or \code{"both"}.
 #' @param selected.k Optional integer. If supplied, selects that k (or nearest
 #'   available k). If \code{NULL}, chooses in this order:
 #'   \code{k.opt.edit}, \code{k.opt.mixing}, \code{k.cc.edit}, \code{k.cc.mixing},
@@ -98,7 +104,9 @@ iknn.graph.response.pipeline <- function(
         verbose.level = 1L
     ),
     plain.plot.args = list(),
+    cltr.plot.args = list(),
     cont.plot.args = list(),
+    multi.comp.plot = c("cltrs", "plain", "both"),
     selected.k = NULL,
     out.dir = NULL,
     file.prefix = "iknn_graph_response_pipeline",
@@ -126,7 +134,9 @@ iknn.graph.response.pipeline <- function(
     f.cc <- get.fn("graph.connected.components")
     f.fit <- get.fn("fit.rdgraph.regression")
     f.plot.plain <- get.fn("plot3D.plain.html")
+    f.plot.cltrs <- get.fn("plot3D.cltrs.html")
     f.plot.cont <- get.fn("plot3D.cont.html")
+    multi.comp.plot <- match.arg(multi.comp.plot)
 
     if (!is.matrix(X)) {
         X <- tryCatch(as.matrix(X), error = function(e) NULL)
@@ -278,26 +288,45 @@ iknn.graph.response.pipeline <- function(
     if (is.null(selected.graph$adj_list) || !is.list(selected.graph$adj_list)) {
         stop("Selected graph does not contain a valid adj_list.")
     }
-    if (is.null(selected.graph$weight_list)) {
-        selected.graph$weight_list <- lapply(selected.graph$adj_list, function(nb) rep(1, length(nb)))
+    sanitize.weights <- function(w) {
+        w <- as.double(w)
+        bad <- !is.finite(w) | (w <= 0)
+        if (any(bad)) {
+            good <- w[is.finite(w) & (w > 0)]
+            fill <- if (length(good) > 0L) min(good) else 1.0
+            w[bad] <- fill
+        }
+        w
     }
+    sanitize.weight.list <- function(weight.list, adj.list) {
+        n <- length(adj.list)
+        if (is.null(weight.list) || !is.list(weight.list) || length(weight.list) != n) {
+            return(lapply(adj.list, function(nb) rep(1.0, length(nb))))
+        }
+        out <- vector("list", n)
+        for (i in seq_len(n)) {
+            nb <- as.integer(adj.list[[i]])
+            wi <- weight.list[[i]]
+            if (is.null(wi) || length(wi) != length(nb)) {
+                out[[i]] <- rep(1.0, length(nb))
+            } else {
+                out[[i]] <- sanitize.weights(wi)
+            }
+        }
+        out
+    }
+    selected.graph$weight_list <- sanitize.weight.list(
+        weight.list = selected.graph$weight_list,
+        adj.list = selected.graph$adj_list
+    )
 
     cc <- f.cc(selected.graph$adj_list)
     component.ids <- sort(unique(as.integer(cc)))
     n.ccomp <- length(component.ids)
+    component.sizes <- as.integer(vapply(component.ids, function(cid) sum(cc == cid), integer(1L)))
+    names(component.sizes) <- as.character(component.ids)
 
     extract.component.graph <- function(adj.list, weight.list, vertices) {
-        sanitize.weights <- function(w) {
-            w <- as.double(w)
-            bad <- !is.finite(w) | (w <= 0)
-            if (any(bad)) {
-                good <- w[is.finite(w) & (w > 0)]
-                fill <- if (length(good) > 0L) min(good) else 1.0
-                w[bad] <- fill
-            }
-            w
-        }
-
         vertices <- sort(unique(as.integer(vertices)))
         map <- seq_along(vertices)
         names(map) <- as.character(vertices)
@@ -351,12 +380,63 @@ iknn.graph.response.pipeline <- function(
         selected_graph = save.object(selected.graph, sprintf("selected_graph_k%02d", selected.k.value))
     )
     notes <- character(0)
+    layout.multi <- NULL
 
     if (n.ccomp == 1L) {
         notes <- c(
             notes,
             "Connected graph fit used precomputed adj.list/weight.list from selected iKNN graph."
         )
+    } else {
+        notes <- c(
+            notes,
+            sprintf(
+                "Multi-component graph (n.ccomp=%d; sizes=%s) rendered as whole-graph layout with mode='%s'.",
+                n.ccomp,
+                paste(component.sizes, collapse = ","),
+                multi.comp.plot
+            )
+        )
+    }
+
+    layout.args.base <- utils::modifyList(
+        list(
+            dim = 3L,
+            rounds = 200,
+            final_rounds = 200,
+            num_init = 10,
+            num_nbrs = 30,
+            r = 0.1,
+            s = 1.0,
+            tinit_factor = 6,
+            seed = 6L
+        ),
+        grip.args
+    )
+
+    if (n.ccomp > 1L) {
+        layout.args.multi <- layout.args.base
+        layout.args.multi$adj_list <- selected.graph$adj_list
+        layout.args.multi$weight_list <- selected.graph$weight_list
+        if (is.null(layout.args.multi$disconnected)) {
+            layout.args.multi$disconnected <- "components"
+        }
+
+        layout.multi <- do.call(grip::grip.layout, layout.args.multi)
+        layout.multi <- as.matrix(layout.multi)
+        if (ncol(layout.multi) != 3L || nrow(layout.multi) != length(selected.graph$adj_list)) {
+            stop(
+                "Whole-graph grip.layout() output must be n x 3 with n=",
+                length(selected.graph$adj_list),
+                "; got ",
+                nrow(layout.multi),
+                " x ",
+                ncol(layout.multi),
+                "."
+            )
+        }
+        saved.files[paste0("layout_multi_k", sprintf("%02d", selected.k.value))] <-
+            save.object(layout.multi, paste0("layout_multi_k", sprintf("%02d", selected.k.value)))
     }
 
     for (ii in seq_along(component.ids)) {
@@ -369,50 +449,24 @@ iknn.graph.response.pipeline <- function(
             vertices = vertex.idx
         )
 
-        layout.args <- utils::modifyList(
-            list(
-                dim = 3L,
-                rounds = 200,
-                final_rounds = 200,
-                num_init = 10,
-                num_nbrs = 30,
-                r = 0.1,
-                s = 1.0,
-                tinit_factor = 6,
-                seed = 6L
-            ),
-            grip.args
-        )
-        layout.args$adj_list <- g.comp$adj_list
-        layout.args$weight_list <- g.comp$weight_list
-
-        layout.3d <- do.call(grip::grip.layout, layout.args)
-        layout.3d <- as.matrix(layout.3d)
-        if (ncol(layout.3d) != 3L) {
-            stop("grip.layout() must return a 3-column embedding. Got ncol=", ncol(layout.3d))
-        }
-
         comp.tag <- sprintf("k%02d_comp%02d", selected.k.value, cseq)
-        saved.files[paste0("layout_", comp.tag)] <- save.object(layout.3d, paste0("layout_", comp.tag))
-
         fit.obj <- NULL
         html.obj <- NULL
         html.file <- NA_character_
 
         if (n.ccomp > 1L) {
-            plain.args <- utils::modifyList(list(X = layout.3d), plain.plot.args)
-            if (is.null(plain.args$output.file) && !is.null(out.dir)) {
-                html.file <- file.path(
-                    out.dir,
-                    sprintf("%s_%s_%s_plain.html", file.prefix, timestamp, comp.tag)
-                )
-                plain.args$output.file <- html.file
-            } else {
-                html.file <- as.character(plain.args$output.file %or% NA_character_)
+            layout.3d <- layout.multi[g.comp$vertex.idx, , drop = FALSE]
+        } else {
+            layout.args <- layout.args.base
+            layout.args$adj_list <- g.comp$adj_list
+            layout.args$weight_list <- g.comp$weight_list
+
+            layout.3d <- do.call(grip::grip.layout, layout.args)
+            layout.3d <- as.matrix(layout.3d)
+            if (ncol(layout.3d) != 3L) {
+                stop("grip.layout() must return a 3-column embedding. Got ncol=", ncol(layout.3d))
             }
 
-            html.obj <- do.call(f.plot.plain, plain.args)
-        } else {
             x.comp <- X[g.comp$vertex.idx, , drop = FALSE]
             y.comp <- as.double(y[g.comp$vertex.idx])
 
@@ -462,9 +516,12 @@ iknn.graph.response.pipeline <- function(
             html.obj <- do.call(f.plot.cont, cont.args)
         }
 
-        html.objects[[ii]] <- html.obj
-        names(html.objects)[[ii]] <- comp.tag
-        saved.files[paste0("html_widget_", comp.tag)] <- save.object(html.obj, paste0("html_widget_", comp.tag))
+        saved.files[paste0("layout_", comp.tag)] <- save.object(layout.3d, paste0("layout_", comp.tag))
+        if (!is.null(html.obj)) {
+            html.objects[[length(html.objects) + 1L]] <- html.obj
+            names(html.objects)[[length(html.objects)]] <- comp.tag
+            saved.files[paste0("html_widget_", comp.tag)] <- save.object(html.obj, paste0("html_widget_", comp.tag))
+        }
 
         components[[ii]] <- list(
             component.seq = cseq,
@@ -479,6 +536,62 @@ iknn.graph.response.pipeline <- function(
         )
     }
 
+    if (n.ccomp > 1L) {
+        comp.labels <- sprintf(
+            "comp%02d (n=%d)",
+            seq_along(component.ids),
+            component.sizes
+        )
+        cltr.vec <- factor(
+            cc,
+            levels = component.ids,
+            labels = comp.labels
+        )
+
+        if (multi.comp.plot %in% c("cltrs", "both")) {
+            cltr.args <- utils::modifyList(
+                list(
+                    X = layout.multi,
+                    cltr = cltr.vec,
+                    legend.title = "Connected Component"
+                ),
+                cltr.plot.args
+            )
+            cltr.tag <- sprintf("k%02d_components_cltrs", selected.k.value)
+            cltr.file <- as.character(cltr.args$output.file %or% NA_character_)
+            if (is.null(cltr.args$output.file) && !is.null(out.dir)) {
+                cltr.file <- file.path(
+                    out.dir,
+                    sprintf("%s_%s_%s.html", file.prefix, timestamp, cltr.tag)
+                )
+                cltr.args$output.file <- cltr.file
+            }
+            html.cltr <- do.call(f.plot.cltrs, cltr.args)
+            html.objects[[length(html.objects) + 1L]] <- html.cltr
+            names(html.objects)[[length(html.objects)]] <- cltr.tag
+            saved.files[paste0("html_widget_", cltr.tag)] <- save.object(html.cltr, paste0("html_widget_", cltr.tag))
+            saved.files[paste0("html_file_", cltr.tag)] <- cltr.file
+        }
+
+        if (multi.comp.plot %in% c("plain", "both")) {
+            plain.args <- utils::modifyList(list(X = layout.multi), plain.plot.args)
+            plain.tag <- sprintf("k%02d_components_plain", selected.k.value)
+            plain.file <- as.character(plain.args$output.file %or% NA_character_)
+            if (is.null(plain.args$output.file) && !is.null(out.dir)) {
+                plain.file <- file.path(
+                    out.dir,
+                    sprintf("%s_%s_%s.html", file.prefix, timestamp, plain.tag)
+                )
+                plain.args$output.file <- plain.file
+            }
+            html.plain <- do.call(f.plot.plain, plain.args)
+            html.objects[[length(html.objects) + 1L]] <- html.plain
+            names(html.objects)[[length(html.objects)]] <- plain.tag
+            saved.files[paste0("html_widget_", plain.tag)] <- save.object(html.plain, paste0("html_widget_", plain.tag))
+            saved.files[paste0("html_file_", plain.tag)] <- plain.file
+        }
+    }
+
     result <- list(
         graphs = graphs,
         connectivity = conn.df,
@@ -487,6 +600,9 @@ iknn.graph.response.pipeline <- function(
         selected.k.index = as.integer(selected.idx),
         selected.graph = selected.graph,
         n.ccomp = as.integer(n.ccomp),
+        component.sizes = component.sizes,
+        layout.multi = layout.multi,
+        multi.comp.plot = multi.comp.plot,
         components = components,
         html.objects = html.objects,
         saved.files = saved.files,

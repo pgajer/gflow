@@ -81,16 +81,20 @@
 #'   \item \code{\link{refit.rdgraph.regression}} - Efficient refitting/reuse of an existing rdgraph fit
 #' }
 #'
-#' \emph{Model-Averaged Local Regression (1D):}
+#' \emph{Legacy Model-Averaged Local Regression (1D; now in `malo`):}
 #' \itemize{
-#'   \item \code{\link{amagelo}} - Adaptive MAGELO with automatic bandwidth selection, extrema
-#'         detection, and robust fitting for continuous responses
-#'   \item \code{\link{magelo}} - Disk-based neighborhoods with grid-centered models for smooth
-#'         transitions in varying density data
-#'   \item \code{\link{mabilo}} - Symmetric k-hop neighborhoods with model averaging and
-#'         Bayesian bootstrap for uncertainty quantification
-#'   \item \code{\link{maelog}} - Data-centered logistic regression with adaptive disk
-#'         neighborhoods and k-NN fallback
+#'   \item \code{malo::amagelo()} - Adaptive 1D smoother with extrema diagnostics
+#'   \item \code{malo::magelo()} - Disk-neighborhood 1D model averaging smoother
+#'   \item \code{malo::mabilo()} - Symmetric k-hop 1D model averaging smoother
+#'   \item \code{malo::magelog()} - 1D local logistic smoother
+#' }
+#'
+#' These entry points were removed from `gflow` and are available in `malo`.
+#'
+#' \emph{Current recommendation:}
+#' \itemize{
+#'   \item Use \code{\link{fit.rdgraph.regression}} for geometric workflows
+#'   \item Use spline-based utilities for lightweight 1D exploratory smoothing
 #' }
 #'
 #' \emph{Additional smoothing and classification tools:}

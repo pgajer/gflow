@@ -19,7 +19,6 @@
 #include "error_utils.h"               // For REPORT_ERROR
 #include "mlm.hpp"                     // For lm_t structure
 #include "set_wgraph.hpp"              // For set_wgraph_t
-#include "mabilo.hpp"                  // For uwmabilo()
 #include "cpp_stats_utils.hpp"         // For running_window_average()
 
 /**

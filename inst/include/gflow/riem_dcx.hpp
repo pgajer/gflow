@@ -1149,6 +1149,7 @@ private:
         double dk_clamp_median_factor,
         double target_weight_ratio,
         double pathological_ratio_threshold,
+        index_t neighborhood_k,
         triangle_policy_t triangle_policy,
         double gamma_modulation,
         verbose_level_t verbose_level

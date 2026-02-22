@@ -30,7 +30,6 @@
 #include "error_utils.h"                // For REPORT_ERROR
 #include "mlm.hpp"                      // For lm_t structure
 #include "set_wgraph.hpp"               // For set_wgraph_t
-#include "mabilo.hpp"                   // For uwmabilo()
 #include "cpp_stats_utils.hpp"          // For running_window_average()
 
 Eigen::MatrixXd create_spectral_embedding(
@@ -233,5 +232,4 @@ graph_bw_adaptive_spectral_smoother_t set_wgraph_t::graph_bw_adaptive_spectral_s
 
 	return result;
 }
-
 

@@ -22,8 +22,9 @@
 #'   \eqn{2 \le k < n}. Larger k produces smoother fits but may oversmooth
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
 #'   selects k via cross-validation (NOT YET IMPLEMENTED). When
-#'   \code{adj.list}/\code{weight.list} are supplied, \code{k} is retained for
-#'   interface consistency but graph construction is skipped.
+#'   \code{adj.list}/\code{weight.list} are supplied, graph construction is
+#'   skipped but \code{k} is still used to define local neighborhoods for
+#'   density/reference-measure initialization.
 #'
 #' @param adj.list Optional precomputed graph adjacency list (1-based indexing).
 #'   If provided together with \code{weight.list}, the fit uses this graph

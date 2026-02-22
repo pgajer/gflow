@@ -39,6 +39,7 @@ jobs:
           needs: check
           extra-packages: |
             any::pkgload
+            any::remotes
             any::testthat
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
@@ -46,6 +47,10 @@ jobs:
       - name: Verify archived optional dependency installs
         run: |
           Rscript -e 'pkgs <- c("biclust", "s4vd"); for (p in pkgs) { if (!requireNamespace(p, quietly = TRUE)) stop("Missing package: ", p); cat(p, as.character(utils::packageVersion(p)), "\n") }'
+
+      - name: Install malo (legacy 1D forwarder dependency)
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/malo", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("malo", quietly = TRUE)) stop("Missing package: malo")'
 
       - name: Run fast rdgraph tests
         run: |
@@ -76,6 +81,7 @@ jobs:
           needs: check
           extra-packages: |
             any::pkgload
+            any::remotes
             any::testthat
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
@@ -83,6 +89,10 @@ jobs:
       - name: Verify archived optional dependency installs
         run: |
           Rscript -e 'pkgs <- c("biclust", "s4vd"); for (p in pkgs) { if (!requireNamespace(p, quietly = TRUE)) stop("Missing package: ", p); cat(p, as.character(utils::packageVersion(p)), "\n") }'
+
+      - name: Install malo (legacy 1D forwarder dependency)
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/malo", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("malo", quietly = TRUE)) stop("Missing package: malo")'
 
       - name: Run nightly runtime guardrail tests
         run: |

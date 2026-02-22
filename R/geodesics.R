@@ -153,10 +153,10 @@ path.length <- function(X)
 #' @param S          A state space.
 #' @param path.vs    A vector of indices of S constituting an geodesic path.
 #' @param min.vs     The minimum number of vertices in path.vs for which a smoothing can be done. If |path.vs| < min.vs, then approx() is used to generate adj.n.vs vertices.
-#' @param adj.n.vs   The number of vertices that is being created as the input for fb.magelo() in case |path.vs| < min.vs.
-#' @param grid.size  The number of grid points; A parameter passed to magelo().
-#' @param bw         The bandwidth of fb.magelo().
-#' @param fb.C       The number of bw's away from the boundary points of the domain of x that the adjusting of Eyg will take place, so that Eyg satisfies the boundary condition.
+#' @param adj.n.vs   The number of vertices used in an interpolation pre-step when |path.vs| < min.vs.
+#' @param grid.size  The number of grid points for the smoothed path output.
+#' @param bw         Legacy argument retained for backward compatibility (currently unused).
+#' @param fb.C       Legacy argument retained for backward compatibility (currently unused).
 #'
 #' @return A matrix representing the smoothed geodesic path with grid.size rows and
 #'   the same number of columns as the state space S. Each row contains the coordinates
@@ -164,7 +164,7 @@ path.length <- function(X)
 #'
 #' @details
 #' This function takes a piecewise linear geodesic path defined by vertex indices and
-#' produces a smooth version using local linear regression. If the input path has fewer
+#' produces a smooth version using smoothing splines. If the input path has fewer
 #' than min.vs vertices, it first interpolates to create adj.n.vs points before smoothing.
 #' The smoothing is performed separately for each dimension of the state space.
 #'
@@ -176,44 +176,39 @@ smooth.PL.geodesic <- function(S,
                               bw = grid.size * 3/200,
                               fb.C = 3)
 {
-    Epath <- c()
-    X <- S[path.vs,]
+    X <- S[path.vs, , drop = FALSE]
     nrX <- nrow(X)
 
-    if ( nrX < min.vs )
-    {
+    if (nrX < 2L) {
+        stop("'path.vs' must contain at least two vertices")
+    }
+
+    if (nrX < min.vs) {
         t <- seq(0, 1, length.out = nrX)
         x <- seq(0, 1, length.out = adj.n.vs)
         Y <- matrix(nrow = adj.n.vs, ncol = ncol(S))
-        for ( i in seq(ncol(S)) ) {
-            Y[,i] <- approx(t, X[,i], xout = x)$y
+        for (i in seq_len(ncol(S))) {
+            Y[, i] <- stats::approx(t, X[, i], xout = x, rule = 2)$y
         }
-
-        smooth.PL.geodesic(S, as.numeric(rownames(Y)), min.vs = min.vs, adj.n.vs = adj.n.vs, grid.size = grid.size, bw = bw, fb.C = fb.C)
+        X <- Y
+        nrX <- nrow(X)
     }
-    else
-    {
-        t <- seq(0,1,length.out=nrX)
-        xg <- seq(0,1,length.out=grid.size)
-        for ( i in seq(ncol(S)) )
-        {
-            y <- X[,i]
-            res <- fb.magelo(x = t, y = y, bw = bw, C = fb.C)
-            Epath <- cbind(Epath, res$Eyg)
-        }
 
-        ##t <- seq(0,1,length.out=nrX)
-        ##xg <- seq(0,1,length.out=grid.size)
-        ##for ( i in seq(ncol(S)) )
-        ##{
-        ##    y <- X[,i]
-        ##    res <- smooth.spline(x=t, y=y, df=NULL, spar=NULL, cv=NA, all.knots=FALSE, nknots=NULL)
-        ##    fitted.y <- predict(res, xg)$y
-        ##    Epath <- cbind(Epath, fitted.y)
-        ##}
+    t <- seq(0, 1, length.out = nrX)
+    xg <- seq(0, 1, length.out = grid.size)
 
-        Epath
+    Epath <- matrix(NA_real_, nrow = grid.size, ncol = ncol(S))
+    for (i in seq_len(ncol(S))) {
+        y <- X[, i]
+        pred <- .gflow.safe.spline.predict(x = t, y = y, xout = xg)
+        Epath[, i] <- pred$yhat.out
     }
+
+    if (!is.null(colnames(S)) && ncol(S) == length(colnames(S))) {
+        colnames(Epath) <- colnames(S)
+    }
+
+    Epath
 }
 
 #' Function to calculate the Euclidean distance between two points
@@ -528,11 +523,17 @@ E.geodesic.F <- function(subj.factors,
         x <- x[order.xy]
         y <- y[order.xy]
 
-        res <- fb.magelo(x, y, C=3)
-        Ex <- res$xg
-        Ey <- res$Eyg
-        Ey.CI.lwr <- res$llreg$lower
-        Ey.CI.upr <- res$llreg$upper
+        clip <- if (all(y %in% c(0, 1))) c(0, 1) else NULL
+        res <- .gflow.fit.curve.with.ci(
+            x = x,
+            y = y,
+            grid.size = 200L,
+            clip = clip
+        )
+        Ex <- res$xgrid
+        Ey <- res$gpredictions
+        Ey.CI.lwr <- res$gpredictions.CrI[1, ]
+        Ey.CI.upr <- res$gpredictions.CrI[2, ]
 
         save(Fid, Ex, Ey, Ey.CI.lwr, Ey.CI.upr, file=save.file)
     }

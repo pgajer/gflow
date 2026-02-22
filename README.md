@@ -2,7 +2,7 @@
 
 `gflow` is an R package for gradient-flow-based analysis of high-dimensional data.
 
-## Collaborator Installation (`grip` + `gflow`)
+## Collaborator Installation (`grip` + `malo` + `gflow`)
 
 The recommended path is to clone both repositories and install from source.
 
@@ -10,6 +10,7 @@ The recommended path is to clone both repositories and install from source.
 
 ```bash
 git clone https://github.com/pgajer/grip.git
+git clone https://github.com/pgajer/malo.git
 git clone https://github.com/pgajer/gflow.git
 ```
 
@@ -27,11 +28,22 @@ Run from the parent directory that contains both cloned folders:
 R -q -e 'remotes::install_local("grip", dependencies=TRUE, upgrade="never")'
 ```
 
-### 4. Install `gflow` (OpenMP required in `dev` profile)
+### 4. Install `malo`
+
+Run from the parent directory that contains the cloned folders:
 
 ```bash
-R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="dev"); remotes::install_local("gflow", dependencies=TRUE, upgrade="never")'
+R -q -e 'remotes::install_local("malo", dependencies=TRUE, upgrade="never")'
 ```
+
+### 5. Install `gflow` (OpenMP required in `dev` profile)
+
+```bash
+R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="dev"); remotes::install_local("gflow", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
+```
+
+Legacy 1D model-averaging APIs were removed from `gflow`; use `malo` directly
+for `magelo*`, `mabilo*`, `magelog`, and `fit.pwlm*`.
 
 ## OpenMP Requirement
 

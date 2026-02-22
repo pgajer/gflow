@@ -4,6 +4,11 @@ Basic package installation steps are in `README.md`.
 This document focuses on OpenMP toolchain setup so `gflow` can be installed in
 the default `dev` profile (parallel-enabled).
 
+## Migration note (`malo`)
+
+Legacy 1D model-averaging APIs were migrated out of `gflow` and are now
+provided only by `malo` (`magelo*`, `mabilo*`, `magelog`, `fit.pwlm*`).
+
 ## Why this matters
 
 `gflow` default build profile is `dev`, and `dev` requires OpenMP for practical

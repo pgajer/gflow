@@ -212,12 +212,15 @@ plot.abundance.distance.diagnostics <- function(x,
     o <- order(d.use)
     dd <- d.use[o]
     yy <- y.use[o]
-    if (is.null(spline.df)) {
-        sp <- stats::smooth.spline(x = dd, y = yy)
-    } else {
-        sp <- stats::smooth.spline(x = dd, y = yy, df = spline.df)
+    sp <- gflow.smooth.spline(
+        x = dd,
+        y = yy,
+        df = spline.df,
+        use.gcv = is.null(spline.df)
+    )
+    if (!is.null(sp)) {
+        graphics::lines(sp, lwd = 2)
     }
-    graphics::lines(sp, lwd = 2)
 
     ## ---- mark leverage/outliers ----
     graphics::points(d.use[idx.mark], y.use[idx.mark], pch = 1, cex = 1.2, lwd = 2)

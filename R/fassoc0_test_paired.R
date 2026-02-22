@@ -152,17 +152,8 @@ fassoc0.test <- function(x,
     ## ------------------------------------------------------------------------
 
     generate.lambda <- function(nx, n.BB) {
-        if (exists("generate.dirichlet.weights")) {
-            generate.dirichlet.weights(nx, n.BB)
-        } else {
-            ## Fallback: exponential normalization, scaled to sum nx
-            lam <- matrix(0, nrow = nx, ncol = n.BB)
-            for (b in seq_len(n.BB)) {
-                e <- rexp(nx, rate = 1)
-                lam[, b] <- e / sum(e) * nx
-            }
-            lam
-        }
+        .gflow.require.malo("generate.dirichlet.weights()")
+        malo::generate.dirichlet.weights(nx, n.BB)
     }
 
     cluster.agg.fun <- function(z) {
@@ -222,35 +213,15 @@ fassoc0.test <- function(x,
         ptm <- proc.time()
     }
 
-    if (exists("magelo.with.external.BB")) {
-        signal.fit <- magelo.with.external.BB(
-            x = x,
-            y = y,
-            lambda = lambda,
-            bw = bw,
-            grid.size = grid.size,
-            degree = degree,
-            min.K = min.K
-        )
-    } else {
-        if (!exists("magelo")) stop("Neither magelo.with.external.BB nor magelo found")
-        y.binary <- all(y %in% c(0, 1))
-        warning("magelo.with.external.BB not found. Using magelo(); BB pairing is not guaranteed.")
-        signal.fit <- magelo(
-            x = x,
-            y = y,
-            bw = bw,
-            grid.size = grid.size,
-            degree = degree,
-            min.K = min.K,
-            y.binary = y.binary,
-            n.BB = n.BB,
-            get.BB.gpredictions = TRUE,
-            get.gpredictions.CrI = FALSE,
-            get.predictions.CrI = FALSE,
-            get.BB.predictions = FALSE
-        )
-    }
+    signal.fit <- .gflow.with.external.BB.spline(
+        x = x,
+        y = y,
+        lambda = lambda,
+        bw = bw,
+        grid.size = grid.size,
+        degree = degree,
+        min.K = min.K
+    )
 
     xgrid <- signal.fit$xgrid
     signal.Eyg <- signal.fit$BB.gpredictions
@@ -311,35 +282,16 @@ fassoc0.test <- function(x,
         lambda.i <- lambda[, b]
         y.perm <- sample(y)
 
-        if (exists("magelo.with.external.BB")) {
-            null.fit.i <- magelo.with.external.BB(
-                x = x,
-                y = y.perm,
-                lambda = lambda[, b, drop = FALSE],
-                bw = bw.used,
-                grid.size = grid.size,
-                degree = degree,
-                min.K = min.K
-            )
-            null.Eyg.i <- null.fit.i$BB.gpredictions[, 1]
-        } else {
-            y.binary <- all(y %in% c(0, 1))
-            null.fit.i <- magelo(
-                x = x,
-                y = y.perm,
-                bw = bw.used,
-                grid.size = grid.size,
-                degree = degree,
-                min.K = min.K,
-                y.binary = y.binary,
-                n.BB = 1L,
-                get.BB.gpredictions = TRUE,
-                get.gpredictions.CrI = FALSE,
-                get.predictions.CrI = FALSE,
-                get.BB.predictions = FALSE
-            )
-            null.Eyg.i <- null.fit.i$BB.gpredictions[, 1]
-        }
+        null.fit.i <- .gflow.with.external.BB.spline(
+            x = x,
+            y = y.perm,
+            lambda = lambda[, b, drop = FALSE],
+            bw = bw.used,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K
+        )
+        null.Eyg.i <- null.fit.i$BB.gpredictions[, 1]
 
         Ey.null <- sum(lambda.i * y.perm) / nx
         null.delta.i <- mean(abs(null.Eyg.i - Ey.null))

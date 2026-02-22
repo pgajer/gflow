@@ -19,7 +19,6 @@
 #include "error_utils.h"                // For REPORT_ERROR
 #include "mlm.hpp"                      // For lm_t structure
 #include "set_wgraph.hpp"               // For set_wgraph_t
-#include "mabilo.hpp"                   // For uwmabilo()
 #include "cpp_stats_utils.hpp"          // For running_window_average()
 
 Eigen::MatrixXd create_spectral_embedding(
@@ -441,14 +440,23 @@ graph_spectral_lowess_t set_wgraph_t::graph_spectral_lowess(
 
 			if (smooth_bandwidth_errors) {
 				double q_thld = 1.0 / 3.0;
-				int k = std::max(2, static_cast<int>(q_thld * n_bws));
-				double epsilon = 1e-10;
-				std::vector<double> null_vector;
-				auto bandwidth_errors_fit = uwmabilo(
-					candidate_bws, bandwidth_errors, null_vector,
-					k, k, kernel_type, dist_normalization_factor, epsilon, false
-					);
-				bandwidth_errors = std::move(bandwidth_errors_fit.predictions);
+				int k = std::max(2, static_cast<int>(q_thld * candidate_bws.size()));
+
+				std::vector<double> finite_filled_errors = bandwidth_errors;
+				double max_finite_error = -std::numeric_limits<double>::infinity();
+				for (double e : finite_filled_errors) {
+					if (std::isfinite(e) && e > max_finite_error) {
+						max_finite_error = e;
+					}
+				}
+				if (std::isfinite(max_finite_error)) {
+					for (double& e : finite_filled_errors) {
+						if (!std::isfinite(e)) {
+							e = max_finite_error;
+						}
+					}
+					bandwidth_errors = running_window_average(finite_filled_errors, k);
+				}
 			}
 			min_error_it = std::min_element(bandwidth_errors.begin(), bandwidth_errors.end());
 

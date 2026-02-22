@@ -38,7 +38,7 @@
 #' @param test.type One of "paired.t", "weighted.pvalue", or "wilcoxon".
 #' @param boxcox One of "auto", "always", or "never" controlling Box-Cox normalization.
 #' @param boxcox.alpha Alpha for Shapiro-Wilk in boxcox="auto".
-#' @param bw Bandwidth. If NULL, automatically selected by magelo.
+#' @param bw Optional spline smoothing control. If NULL, defaults are used.
 #' @param n.perms Number of permutations for null distribution. Default 1000.
 #' @param n.BB Number of BB samples for signal. Default 1000.
 #' @param max.nBB.expand Threshold for expanding BB to match permutations in diff-based tests.
@@ -151,17 +151,8 @@ fassoc1.test <- function(x,
     ## ------------------------------------------------------------------------
 
     generate.lambda <- function(nx, n.BB) {
-        if (exists("generate.dirichlet.weights")) {
-            generate.dirichlet.weights(nx, n.BB)
-        } else {
-            ## Fallback: exponential normalization, scaled to sum nx
-            lam <- matrix(0, nrow = nx, ncol = n.BB)
-            for (b in seq_len(n.BB)) {
-                e <- rexp(nx, rate = 1)
-                lam[, b] <- e / sum(e) * nx
-            }
-            lam
-        }
+        .gflow.require.malo("generate.dirichlet.weights()")
+        malo::generate.dirichlet.weights(nx, n.BB)
     }
 
     ## ------------------------------------------------------------------------
@@ -215,35 +206,15 @@ fassoc1.test <- function(x,
         ptm <- proc.time()
     }
 
-    if (exists("magelo.with.external.BB")) {
-        signal.fit <- magelo.with.external.BB(
-            x = x,
-            y = y,
-            lambda = lambda,
-            bw = bw,
-            grid.size = grid.size,
-            degree = degree,
-            min.K = min.K
-        )
-    } else {
-        if (!exists("magelo")) stop("Neither magelo.with.external.BB nor magelo found")
-        y.binary <- all(y %in% c(0, 1))
-        warning("magelo.with.external.BB not found. Using magelo(); BB pairing is not guaranteed.")
-        signal.fit <- magelo(
-            x = x,
-            y = y,
-            bw = bw,
-            grid.size = grid.size,
-            degree = degree,
-            min.K = min.K,
-            y.binary = y.binary,
-            n.BB = n.BB,
-            get.BB.gpredictions = TRUE,
-            get.gpredictions.CrI = FALSE,
-            get.predictions.CrI = FALSE,
-            get.BB.predictions = FALSE
-        )
-    }
+    signal.fit <- .gflow.with.external.BB.spline(
+        x = x,
+        y = y,
+        lambda = lambda,
+        bw = bw,
+        grid.size = grid.size,
+        degree = degree,
+        min.K = min.K
+    )
 
     xgrid <- signal.fit$xgrid
     signal.Eyg <- signal.fit$BB.gpredictions
@@ -299,36 +270,16 @@ fassoc1.test <- function(x,
         lambda.i <- lambda[, b, drop = FALSE]
         y.perm <- sample(y)
 
-        if (exists("magelo.with.external.BB")) {
-            null.fit.i <- magelo.with.external.BB(
-                x = x,
-                y = y.perm,
-                lambda = lambda.i,
-                bw = bw.used,
-                grid.size = grid.size,
-                degree = degree,
-                min.K = min.K
-            )
-            eyg.i <- null.fit.i$BB.gpredictions[, 1]
-        } else {
-            ## magelo fallback
-            y.binary <- all(y %in% c(0, 1))
-            null.fit.i <- magelo(
-                x = x,
-                y = y.perm,
-                bw = bw.used,
-                grid.size = grid.size,
-                degree = degree,
-                min.K = min.K,
-                y.binary = y.binary,
-                n.BB = 1L,
-                get.BB.gpredictions = TRUE,
-                get.gpredictions.CrI = FALSE,
-                get.predictions.CrI = FALSE,
-                get.BB.predictions = FALSE
-            )
-            eyg.i <- null.fit.i$BB.gpredictions[, 1]
-        }
+        null.fit.i <- .gflow.with.external.BB.spline(
+            x = x,
+            y = y.perm,
+            lambda = lambda.i,
+            bw = bw.used,
+            grid.size = grid.size,
+            degree = degree,
+            min.K = min.K
+        )
+        eyg.i <- null.fit.i$BB.gpredictions[, 1]
 
         d1 <- sum(abs(diff(eyg.i)))
         list(null.delta1 = d1, null.Eyg = eyg.i, bb.col = b)

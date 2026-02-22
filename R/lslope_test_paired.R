@@ -257,16 +257,8 @@ lslope.test <- function(fitted.model,
         ptm <- proc.time()
     }
 
-    if (exists("generate.dirichlet.weights")) {
-        lambda <- generate.dirichlet.weights(n, n.BB)
-    } else {
-        ## Fallback R implementation
-        lambda <- matrix(0, nrow = n, ncol = n.BB)
-        for (b in seq_len(n.BB)) {
-            e <- rexp(n, rate = 1)
-            lambda[, b] <- e / sum(e) * n
-        }
-    }
+    .gflow.require.malo("generate.dirichlet.weights()")
+    lambda <- malo::generate.dirichlet.weights(n, n.BB)
 
     if (verbose) {
         message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))
