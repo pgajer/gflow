@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-PROFILE="${GFLOW_BUILD_PROFILE:-dev}"
+PROFILE="${GFLOW_BUILD_PROFILE:-cran-safe}"
 
 case "$PROFILE" in
   dev|cran-safe)

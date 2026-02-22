@@ -2,7 +2,7 @@
 
 Basic package installation steps are in `README.md`.
 This document focuses on OpenMP toolchain setup so `gflow` can be installed in
-the default `dev` profile (parallel-enabled).
+the `dev` profile (parallel-enabled and OpenMP-required).
 
 ## Migration note (`malo`)
 
@@ -11,8 +11,8 @@ provided only by `malo` (`magelo*`, `mabilo*`, `magelog`, `fit.pwlm*`).
 
 ## Why this matters
 
-`gflow` default build profile is `dev`, and `dev` requires OpenMP for practical
-performance on key workflows.
+`gflow` default build profile is `cran-safe` (portable build, OpenMP optional).
+`dev` profile requires OpenMP for practical performance on key workflows.
 
 If OpenMP is not configured, installation fails with:
 
@@ -114,7 +114,7 @@ In R:
 .Call("S_gflow_openmp_diag", PACKAGE = "gflow")
 ```
 
-Expected: `openmp_compiled` is `TRUE`.
+Expected on an OpenMP-enabled toolchain: `openmp_compiled` is `TRUE`.
 
 ## Troubleshooting
 
@@ -129,7 +129,7 @@ R CMD config CXX17
 R CMD config CXX17FLAGS
 ```
 
-4. If you need a temporary serial fallback (not recommended for large jobs):
+4. To force the portable profile explicitly:
 
 ```bash
 R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="cran-safe"); remotes::install_local("gflow", dependencies=TRUE, upgrade="never")'
