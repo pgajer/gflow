@@ -92,6 +92,52 @@ test_that("fit accepts precomputed graph and matches standard fit-path result", 
   expect_true(all(is.finite(fit.injected$residuals)))
 })
 
+test_that("fit with same injected graph reproduces internal fitted estimates", {
+  set.seed(2613)
+  X <- matrix(rnorm(140 * 8), nrow = 140, ncol = 8)
+  y <- rnorm(nrow(X))
+  k <- 11L
+
+  fit.internal <- fit.rdgraph.regression(
+    X,
+    y,
+    k = k,
+    max.iterations = 1L,
+    n.eigenpairs = 100L,
+    pca.dim = NULL,
+    apply.geometric.pruning = FALSE,
+    max.ratio.threshold = 0,
+    threshold.percentile = 0,
+    dense.fallback = "never",
+    verbose.level = 0L
+  )
+
+  fit.precomputed <- fit.rdgraph.regression(
+    X,
+    y,
+    k = k,
+    adj.list = fit.internal$graph$adj.list,
+    weight.list = fit.internal$graph$edge.length.list,
+    max.iterations = 1L,
+    n.eigenpairs = 100L,
+    pca.dim = NULL,
+    apply.geometric.pruning = FALSE,
+    max.ratio.threshold = 0,
+    threshold.percentile = 0,
+    dense.fallback = "never",
+    verbose.level = 0L
+  )
+
+  expect_identical(fit.precomputed$parameters$graph.source, "precomputed")
+  expect_equal(fit.internal$fitted.values, fit.precomputed$fitted.values, tolerance = 1e-12)
+  expect_equal(fit.internal$residuals, fit.precomputed$residuals, tolerance = 1e-12)
+  expect_equal(
+    fit.internal$graph$edge.densities,
+    fit.precomputed$graph$edge.densities,
+    tolerance = 1e-12
+  )
+})
+
 test_that("fit rejects malformed precomputed graph inputs", {
   set.seed(2612)
   X <- matrix(rnorm(80 * 6), nrow = 80, ncol = 6)
