@@ -1,4 +1,4 @@
-#include "msr2.h"
+#include "graph_cycles_r.h"
 #include "cpp_utils.hpp"
 
 #include <vector>
@@ -13,10 +13,6 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
-extern "C" {
-    SEXP S_cycle_sizes(SEXP RA);
-}
 
 // ------------------------------------------------------------------------------------------
 //

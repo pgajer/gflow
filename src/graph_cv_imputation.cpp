@@ -1,4 +1,3 @@
-#include "msr2.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "graph_diffusion_smoother.hpp"

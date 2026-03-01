@@ -3,10 +3,11 @@
 */
 
 #include <stdlib.h>
+#include <string.h>
 #include <R.h>
 #include <Rmath.h>
 
-#include "msr2.h"
+#include "gflow_macros.h"
 
 extern int cmp_double(const void *a, const void *b);
 

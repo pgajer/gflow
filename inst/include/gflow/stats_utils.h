@@ -4,6 +4,10 @@
 #include <R.h>
 #include <Rinternals.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* External function declarations from c_random_sampling.c */
 void C_runif_simplex(const int *rK, double *lambda);
 void C_rsimplex(const double *w, const int *rn, double *lambda);
@@ -165,5 +169,9 @@ void C_rmatrix(const double* X,
 SEXP S_pdistr(SEXP sx, SEXP sz);
 SEXP S_lwcor(SEXP Snn_i, SEXP Snn_w, SEXP SY);
 SEXP S_lwcor_yY(SEXP Snn_i, SEXP Snn_w, SEXP SY, SEXP Sy);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // STATS_UTILS_H_

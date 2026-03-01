@@ -3,7 +3,8 @@
 #include <R_ext/Lapack.h>
 #include <stdlib.h>
 
-#include "msr2.h"
+#include "gflow_macros.h"
+#include "stats_utils.h"
 
 /*!
     \fn void C_fsolve(double *a, double *b, int *nr, int *nc, int *status)

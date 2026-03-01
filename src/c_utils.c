@@ -6,8 +6,10 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "msr2.h"
+#include "gflow_macros.h"
 
 /*!
   Converts a double to a string representation with a given number of significant digits.

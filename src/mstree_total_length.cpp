@@ -1,4 +1,5 @@
-#include "msr2.h"
+#include "mstree.h"
+#include "mstree_total_length_r.h"
 #include "kNN.h"
 #include "SEXP_cpp_conversion_utils.hpp"
 
@@ -10,13 +11,6 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
-extern void C_mstree(const int* riinit, const int* nn_i, const double* nn_d,
-                  const double* rldist, const int* rn, int* edges, double* edge_lens);
-
-extern "C" {
-    SEXP S_compute_mstree_total_length(SEXP s_X);
-}
 
 /**
  * @brief Computes the total edge length of the minimal spanning tree

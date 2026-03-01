@@ -7,8 +7,9 @@
 #include <math.h>
 #include <Rinternals.h>
 #include <Rdefines.h>
+#include <stdlib.h>
 
-#include "msr2.h"
+#include "gflow_macros.h"
 
 /*!
   \brief Creates a equidistant 2D grid with each edge of the grid having the same length
@@ -366,5 +367,4 @@ void C_create_ED_grid_xD(const double *rw,
       free(x[i]);
     free(x);
 }
-
 

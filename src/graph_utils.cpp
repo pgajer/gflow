@@ -1,4 +1,4 @@
-#include "msr2.h"
+#include "graph_utils_r.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "stats_utils.h"
@@ -18,13 +18,6 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
-extern "C" {
-    SEXP S_join_graphs(SEXP Rgraph1, SEXP Rgraph2, SEXP Ri1, SEXP Ri2);
-    SEXP S_convert_adjacency_to_edge_matrix(SEXP s_graph, SEXP s_weights);
-    SEXP S_convert_adjacency_to_edge_matrix_set(SEXP s_graph);
-    SEXP S_convert_adjacency_to_edge_matrix_unordered_set(SEXP s_graph);
-} // extern "C"
 
 // ------------------------------------------------------------------------------------------
 //

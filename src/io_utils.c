@@ -2,6 +2,7 @@
 #include <Rinternals.h>
 #include <Rmath.h>
 #include <math.h>
+#include "io_utils.h"
 
 /*!
   Opens a file using the given mode. Exits the program with an appropriate message if the operation fails.

@@ -5,7 +5,25 @@
 #include <Rdefines.h>
 #include <stdlib.h>
 
-#include "msr2.h"
+#include "angular_wasserstein_index_r.h"
+#include "cpp_mstrees_r.h"
+#include "cpp_stats_utils_r.h"
+#include "fns_over_graphs_r.h"
+#include "graph_conn_components_r.h"
+#include "graph_cycles_r.h"
+#include "graph_edit_distance_r.h"
+#include "graph_ms_cx_r.h"
+#include "graph_shortest_path_r.h"
+#include "graph_spectrum_r.h"
+#include "graph_utils_r.h"
+#include "grids.h"
+#include "hHN_graphs_r.h"
+#include "lm.h"
+#include "mstree.h"
+#include "mstree_total_length_r.h"
+#include "path_graphs_r.h"
+#include "pruning_long_edges_r.h"
+#include "random_sampling_r.h"
 #include "sampling.h"  // For C_runif_simplex()
 #include "density_r.h"
 #include "local_complexity_r.h"
@@ -46,6 +64,7 @@
 #include "gfc_flow_r.h"
 #include "madag_r.h"
 #include "traj_clustering_r.h"
+#include "graph_core_endpoints_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -250,6 +269,8 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_graph_connected_components", (DL_FUNC) &S_graph_connected_components, 1},
   {"S_shortest_path", (DL_FUNC) &S_shortest_path, 3},
+  {"S_geodesic_core_endpoints", (DL_FUNC) &S_geodesic_core_endpoints, 9},
+  {"S_detect_major_arms", (DL_FUNC) &S_detect_major_arms, 11},
   {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
   {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
   {"S_estimate_local_complexity", (DL_FUNC) &S_estimate_local_complexity, 5},
