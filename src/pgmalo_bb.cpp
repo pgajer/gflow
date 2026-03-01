@@ -4,7 +4,6 @@
 #include "sampling.h" // for C_runif_simplex()
 #include "error_utils.h"
 #include "pglm.h"
-#include "msr2.h"
 #include "path_graphs.hpp"
 #include "cpp_utils.hpp"                 // for elapsed_time
 #include "SEXP_cpp_conversion_utils.hpp"

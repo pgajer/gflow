@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <numeric>
 #include <unordered_set>
-#include "msr2.h"  // contains mst_completion_graph_t and set_wgraph_t
+#include "mstree.h"
 
 // Forward declaration of brute-force kNN
 void compute_knn_brute_force(
@@ -164,4 +164,3 @@ void compute_knn_brute_force(
 		}
 	}
 }
-

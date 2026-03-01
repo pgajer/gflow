@@ -8,7 +8,6 @@
 #include "error_utils.h"
 #include "sampling.h" // for C_runif_simplex()
 #include "pglm.h"
-#include "msr2.h"
 #include "path_graphs.hpp"
 #include "cpp_utils.hpp"                 // for elapsed_time
 #include "SEXP_cpp_conversion_utils.hpp"
@@ -1450,4 +1449,3 @@ std::pair<std::vector<double>, std::vector<double>> pgmalog(
 
     return std::make_pair(predictions, errors);
 }
-

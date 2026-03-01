@@ -10,7 +10,7 @@
 
  */
 
-#include "msr2.h"
+#include "graph_conn_components_r.h"
 
 #include <vector>
 #include <unordered_set>
@@ -22,11 +22,6 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
-extern "C" {
-    SEXP S_graph_connected_components(SEXP R_graph);
-}
-
 
 /**
  * @brief Computes connected components of a graph using Union-Find (disjoint set) data structure

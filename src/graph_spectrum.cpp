@@ -1,6 +1,6 @@
 #include "omp_compat.h"
 #include "Eigen_utils.h"
-#include "msr2.h"
+#include "graph_spectrum_r.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 
@@ -25,13 +25,6 @@
 
 #include <R.h>
 #include <Rinternals.h>
-
-extern "C" {
-
-    SEXP S_graph_spectrum(SEXP Rgraph, SEXP Rnev);
-    SEXP S_graph_spectrum_plus(SEXP Rgraph, SEXP Rnev, SEXP Rreturn_dense);
-}
-
 
 struct graph_spectrum_t {
     Eigen::VectorXd evalues;

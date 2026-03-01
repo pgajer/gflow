@@ -1,4 +1,4 @@
-#include "msr2.h"
+#include "fns_over_graphs_r.h"
 #include "cpp_utils.hpp"
 #include "SEXP_cpp_conversion_utils.hpp"
 #include "graph_diffusion_smoother.hpp"
@@ -26,14 +26,6 @@ std::unique_ptr<std::unordered_map<int, int>> count_subgraph_components(const st
 
 extern "C" {
     SEXP S_loc_const_vertices(SEXP Rgraph, SEXP Ry, SEXP Rprec);
-    SEXP S_make_response_locally_non_const(SEXP Rgraph,
-                                           SEXP Ry,
-                                           SEXP Rweights,
-                                           SEXP Rstep_factor,
-                                           SEXP Rprec,
-                                           SEXP Rn_itrs,
-                                           SEXP Rmean_adjust);
-    SEXP S_prop_nbhrs_with_smaller_y(SEXP Rgraph, SEXP Ry);
 }
 
 // ------------------------------------------------------------------------------------------

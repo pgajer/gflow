@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "gflow_macros.h"
+#include "io_utils.h"
 #include "stats_utils.h"
 
 /*!
