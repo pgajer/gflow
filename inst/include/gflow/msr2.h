@@ -105,8 +105,6 @@ extern "C" {
 
     SEXP S_mstree(SEXP X);
 
-    SEXP S_mst_kNN_graph(SEXP RX, SEXP Rk);
-
     SEXP S_create_hHN_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_h);
 
     SEXP S_create_path_graph_series(SEXP s_adj_list,
@@ -147,24 +145,6 @@ extern "C" {
                                SEXP s_graph2_weights_list,
                                SEXP s_edge_cost,
                                SEXP s_weight_cost_factor);
-
-    SEXP S_graph_spectral_smoother(SEXP Rgraph,
-                                   SEXP Rd,
-                                   SEXP Rweights,
-                                   SEXP Ry,
-                                   SEXP Rimputation_method,
-                                   SEXP Rmax_iterations,
-                                   SEXP Rconvergence_threshold,
-                                   SEXP Rapply_binary_threshold,
-                                   SEXP Rbinary_threshold,
-                                   SEXP Rikernel,
-                                   SEXP Rdist_normalization_factor,
-                                   SEXP Rn_CVs,
-                                   SEXP Rn_CV_folds,
-                                   SEXP Repsilon,
-                                   SEXP Rmin_plambda,
-                                   SEXP Rmax_plambda,
-                                   SEXP Rseed);
 
     SEXP S_graph_spectrum(SEXP Rgraph, SEXP Rnev);
     SEXP S_graph_spectrum_plus(SEXP Rgraph, SEXP Rnev, SEXP Rreturn_dense);

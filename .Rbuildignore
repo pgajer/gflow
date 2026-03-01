@@ -66,3 +66,4 @@
 ^analysis_output$
 ^data$
 ^figures$
+^figure($|/)
