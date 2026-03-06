@@ -179,6 +179,8 @@ plot3D.plain <- function(X,
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#' @param shiny.brush Optional Shiny input id used for interactive rectangular
+#'   brushing in \code{rglwidget()}. Ignored outside Shiny.
 #' @param ... passed to \code{rgl::plot3d()}.
 #'
 #' @return An \code{htmlwidget} object from \code{rgl::rglwidget()}.
@@ -204,6 +206,7 @@ plot3D.plain.html <- function(X,
                               output.file = NULL,
                               selfcontained = TRUE,
                               open.browser = FALSE,
+                              shiny.brush = NULL,
                               ...) {
     if (!requireNamespace("rgl", quietly = TRUE)) {
         stop("This function requires the optional package 'rgl'. ",
@@ -277,7 +280,12 @@ plot3D.plain.html <- function(X,
     )
 
     scene <- rgl::scene3d(minimal = FALSE)
-    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+    w <- rgl::rglwidget(
+        scene,
+        width = widget.width,
+        height = widget.height,
+        shinyBrush = shiny.brush
+    )
     attr(w, "ids") <- ids
 
     if (!is.null(output.file)) {
@@ -538,6 +546,8 @@ plot3D.cont <- function(X,
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#' @param shiny.brush Optional Shiny input id used for interactive rectangular
+#'   brushing in \code{rglwidget()}. Ignored outside Shiny.
 #'
 #' @return An \code{htmlwidget} object from \code{rgl::rglwidget()} with attributes:
 #'   \itemize{
@@ -601,7 +611,8 @@ plot3D.cont.html <- function(X,
                              post.layers = NULL,
                              output.file = NULL,
                              selfcontained = TRUE,
-                             open.browser = FALSE) {
+                             open.browser = FALSE,
+                             shiny.brush = NULL) {
 
     if (!requireNamespace("rgl", quietly = TRUE)) {
         stop("This function requires the optional package 'rgl'. ",
@@ -755,7 +766,12 @@ plot3D.cont.html <- function(X,
     )
 
     scene <- rgl::scene3d(minimal = FALSE)
-    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+    w <- rgl::rglwidget(
+        scene,
+        width = widget.width,
+        height = widget.height,
+        shinyBrush = shiny.brush
+    )
 
     y.cat.freq <- table(y.cat[subset], useNA = "no")
     for (nm in names(y.col.tbl)) {
@@ -1552,6 +1568,8 @@ plot3D.cltrs <- function(X,
 #' @param output.file Optional path to save an HTML widget file. If \code{NULL}, nothing is saved.
 #' @param selfcontained Logical; passed to \code{htmlwidgets::saveWidget()}.
 #' @param open.browser Logical; if \code{TRUE} and \code{output.file} is provided, opens saved HTML.
+#' @param shiny.brush Optional Shiny input id used for interactive rectangular
+#'   brushing in \code{rglwidget()}. Ignored outside Shiny.
 #' @param ... Additional arguments passed to \code{\link[rgl]{plot3d}}.
 #'
 #' @return An \code{htmlwidget} object from \code{rgl::rglwidget()} with attributes:
@@ -1605,6 +1623,7 @@ plot3D.cltrs.html <- function(X,
                               output.file = NULL,
                               selfcontained = TRUE,
                               open.browser = FALSE,
+                              shiny.brush = NULL,
                               ...) {
     if (!requireNamespace("rgl", quietly = TRUE)) {
         stop("This function requires the optional package 'rgl'. ",
@@ -1871,7 +1890,12 @@ plot3D.cltrs.html <- function(X,
     )
 
     scene <- rgl::scene3d(minimal = FALSE)
-    w <- rgl::rglwidget(scene, width = widget.width, height = widget.height)
+    w <- rgl::rglwidget(
+        scene,
+        width = widget.width,
+        height = widget.height,
+        shinyBrush = shiny.brush
+    )
 
     if (isTRUE(show.legend) &&
         !is.null(cltr.col.tbl) &&
