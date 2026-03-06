@@ -1329,7 +1329,8 @@ basin.trajectories.gfc.flow <- function(object,
 #' Extracts all stored trajectories connecting a specified minimum and maximum
 #' (a gradient-flow cell) from a \code{gfc.flow} object.
 #'
-#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param x A \code{gfc.flow} object from \code{compute.gfc()} trajectory modes
+#'   (or \code{compute.gfc.trajectory()} / deprecated \code{compute.gfc.flow()}).
 #' @param gfc.flow Backward-compatible alias for \code{x}.
 #' @param min.id Minimum identifier: label (character) or vertex index (numeric/integer).
 #' @param max.id Maximum identifier: label (character) or vertex index (numeric/integer).
@@ -2484,7 +2485,8 @@ list.basins.default <- function(x, ...) {
 
 #' List Basins for gfc.flow
 #'
-#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param x A \code{gfc.flow} object from \code{compute.gfc()} trajectory modes
+#'   (or \code{compute.gfc.trajectory()} / deprecated \code{compute.gfc.flow()}).
 #' @param type One of \code{"min"} or \code{"max"}.
 #' @param include.spurious Logical; if TRUE (default), include basins whose
 #'     defining extremum is spurious.
@@ -2524,7 +2526,7 @@ list.basins.gfc.flow <- function(x,
     type <- match.arg(type)
 
     if (!inherits(x, "gfc.flow")) {
-        stop("x must be a gfc.flow object from compute.gfc.flow()")
+        stop("x must be a gfc.flow object from compute.gfc() trajectory modes or compute.gfc.trajectory().")
     }
 
     summary.all.df <- x$summary.all %||% x$summary
@@ -2679,7 +2681,7 @@ list.basins.gfc.flow <- function(x,
 #' Reassigns extremum labels (e.g., \code{M1}, \code{M2}, \code{sM1}, \code{m1}, \code{sm1})
 #' in a \code{gfc.flow} object so that numbering reflects the *current* basin ranking
 #' (by default, descending basin size). This is particularly useful after one or more
-#' rounds of basin merging with \code{merge.basins.gfc.flow()}, where some extrema may
+#' rounds of basin merging with \code{merge.gfc.flow.basins()}, where some extrema may
 #' be absorbed and end up with \code{basin.size == 0} and/or stale labels.
 #'
 #' The function updates labels consistently across:
@@ -2732,7 +2734,7 @@ relabel.basins.gfc.flow <- function(x,
     ## ---------------------------------------------------------------------
 
     if (!inherits(x, "gfc.flow")) {
-        stop("x must be a gfc.flow object from compute.gfc.flow()")
+        stop("x must be a gfc.flow object from compute.gfc() trajectory modes or compute.gfc.trajectory().")
     }
 
     rank.by <- match.arg(rank.by)
@@ -3171,6 +3173,258 @@ relabel.basins.gfc.flow <- function(x,
 
     class(x) <- unique(c("gfc.flow", class(x)))
     x
+}
+
+#' Merge Basins for \code{compute.gfc()} Results
+#'
+#' @description
+#' Front-end basin merge utility for objects returned by \code{compute.gfc()}.
+#' This function supports both output classes:
+#' \itemize{
+#'   \item \code{"gfc.flow"} (trajectory modes): dispatches to
+#'         \code{\link{merge.gfc.flow.basins}}
+#'   \item \code{"basins_of_attraction"} (GEODESIC / RTCB): performs sequential
+#'         pairwise merges via \code{\link{merge.two.extrema}}
+#' }
+#'
+#' @param x Object returned by \code{compute.gfc()}.
+#' @param y Optional alias for \code{adj.list} (kept for compatibility with
+#'   \code{merge.gfc.flow.basins()}).
+#' @param adj.list Optional adjacency list. For \code{gfc.flow}, if omitted it is
+#'   taken from \code{x$adj.list} when available.
+#' @param weight.list Optional edge-weight list. For \code{gfc.flow}, if omitted
+#'   it is taken from \code{x$weight.list} when available.
+#' @param merge.map Named character/integer vector specifying merges. Names are
+#'   losers, values are winners.
+#' @param losers Optional vector of losers (labels or vertex indices), used when
+#'   \code{merge.map} is not supplied.
+#' @param winners Optional vector of winners (labels or vertex indices), used when
+#'   \code{merge.map} is not supplied.
+#' @param type Extremum type to merge: \code{"max"} or \code{"min"}.
+#' @param connector.method Connector policy for \code{gfc.flow} dispatch.
+#' @param mark.loser.spurious Used by \code{gfc.flow} dispatch.
+#' @param merge.filter.stage Used by \code{gfc.flow} dispatch.
+#' @param verbose Logical.
+#' @param ... Additional arguments passed to the underlying merge implementation.
+#'
+#' @return Object of the same class as \code{x}, with requested basin merges applied.
+#'
+#' @export
+merge.gfc.basins <- function(x,
+                             y = NULL,
+                             adj.list = y,
+                             weight.list = NULL,
+                             merge.map = NULL,
+                             losers = NULL,
+                             winners = NULL,
+                             type = c("max", "min"),
+                             connector.method = c("closest",
+                                                  "shortest",
+                                                  "high.saddle",
+                                                  "high.saddle.shortest"),
+                             mark.loser.spurious = TRUE,
+                             merge.filter.stage = "MERGE",
+                             verbose = TRUE,
+                             ...) {
+
+    type <- match.arg(type)
+    connector.method <- match.arg(connector.method)
+
+    ## ------------------------------------------------------------------------
+    ## gfc.flow dispatch (trajectory-first)
+    ## ------------------------------------------------------------------------
+    if (inherits(x, "gfc.flow")) {
+
+        if (is.null(adj.list) && !is.null(x$adj.list)) {
+            adj.list <- x$adj.list
+        }
+        if (is.null(weight.list) && !is.null(x$weight.list)) {
+            weight.list <- x$weight.list
+        }
+
+        return(merge.gfc.flow.basins(
+            x = x,
+            y = y,
+            adj.list = adj.list,
+            weight.list = weight.list,
+            merge.map = merge.map,
+            losers = losers,
+            winners = winners,
+            type = type,
+            connector.method = connector.method,
+            mark.loser.spurious = mark.loser.spurious,
+            merge.filter.stage = merge.filter.stage,
+            verbose = verbose,
+            ...
+        ))
+    }
+
+    ## ------------------------------------------------------------------------
+    ## basins_of_attraction dispatch (GEODESIC / RTCB in compute.gfc)
+    ## ------------------------------------------------------------------------
+    if (inherits(x, "basins_of_attraction")) {
+
+        if (is.null(merge.map)) {
+            if (is.null(losers) || is.null(winners)) {
+                stop("Provide merge.map, or provide both losers and winners.")
+            }
+            if (length(winners) == 1L && length(losers) > 1L) {
+                winners <- rep(winners, length(losers))
+            }
+            if (length(losers) != length(winners)) {
+                stop("losers and winners must have the same length (or winners length 1).")
+            }
+            merge.map <- winners
+            names(merge.map) <- losers
+        }
+
+        if (is.null(names(merge.map)) || any(names(merge.map) == "")) {
+            stop("merge.map must be a named vector: names are losers, values are winners.")
+        }
+
+        summary.df <- x$summary
+
+        ## Fallback for non-compute.gfc-style basins objects
+        if (is.null(summary.df) || nrow(summary.df) == 0L) {
+            basins.obj <- x$basins %||% x
+            adj.use <- adj.list %||% basins.obj$adj.list
+            edgelen.use <- weight.list %||% basins.obj$edge.length.list %||% basins.obj$edgelen.list
+            hop.k.use <- basins.obj$hop.k %||% 2L
+
+            if (is.null(adj.use) || is.null(edgelen.use)) {
+                stop("Could not resolve summary table for basins_of_attraction object. ",
+                     "Provide adj.list and weight.list, or use compute.gfc() output with x$summary.")
+            }
+
+            summary.df <- summary(
+                basins.obj,
+                adj.list = adj.use,
+                edgelen.list = edgelen.use,
+                hop.k = hop.k.use
+            )
+        }
+
+        summary.df.type <- summary.df[summary.df$type == type, , drop = FALSE]
+        if (nrow(summary.df.type) == 0L) {
+            stop("No extrema of requested type='", type, "' found in x$summary.")
+        }
+
+        label.to.vertex <- setNames(as.integer(summary.df.type$vertex), summary.df.type$label)
+        vertex.to.label <- setNames(as.character(summary.df.type$label), as.character(summary.df.type$vertex))
+
+        resolve.to.vertex <- function(loc) {
+            if (is.numeric(loc) && length(loc) == 1L) {
+                v <- as.integer(loc)
+                if (!(v %in% summary.df.type$vertex)) {
+                    stop("Could not resolve extremum vertex '", v, "' for type='", type, "'.")
+                }
+                return(v)
+            }
+            if (is.character(loc) && length(loc) == 1L) {
+                if (grepl("^[0-9]+$", loc)) {
+                    v <- as.integer(loc)
+                    if (!(v %in% summary.df.type$vertex)) {
+                        stop("Could not resolve extremum vertex '", v, "' for type='", type, "'.")
+                    }
+                    return(v)
+                }
+                if (!is.na(label.to.vertex[loc])) {
+                    return(as.integer(label.to.vertex[loc]))
+                }
+                stop("Could not resolve extremum label '", loc, "' for type='", type, "'.")
+            }
+            stop("Each loser/winner must be a single label or a single vertex index.")
+        }
+
+        loser.loc <- names(merge.map)
+        winner.loc <- as.vector(merge.map)
+
+        loser.vertex <- vapply(loser.loc, resolve.to.vertex, integer(1))
+        winner.vertex <- vapply(winner.loc, resolve.to.vertex, integer(1))
+
+        if (any(loser.vertex == winner.vertex)) {
+            stop("Some merges map a loser to itself (loser == winner).")
+        }
+
+        map.vertex <- setNames(as.integer(winner.vertex), as.character(loser.vertex))
+
+        resolve.winner.vertex <- function(v, map) {
+            seen <- integer(0)
+            cur <- as.integer(v)
+            while (!is.na(map[as.character(cur)])) {
+                if (cur %in% seen) {
+                    stop("Cycle detected in merge mapping involving vertex ", cur, ".")
+                }
+                seen <- c(seen, cur)
+                cur <- as.integer(map[as.character(cur)])
+            }
+            cur
+        }
+
+        final.winner.vertex <- vapply(loser.vertex, resolve.winner.vertex, integer(1), map = map.vertex)
+        map.vertex <- setNames(as.integer(final.winner.vertex), as.character(loser.vertex))
+
+        keep.idx <- !duplicated(names(map.vertex))
+        map.vertex <- map.vertex[keep.idx]
+
+        loser.vertex <- as.integer(names(map.vertex))
+        winner.vertex <- as.integer(unname(map.vertex))
+
+        loser.label <- as.character(vertex.to.label[as.character(loser.vertex)])
+        winner.label <- as.character(vertex.to.label[as.character(winner.vertex)])
+
+        if (any(is.na(loser.label)) || any(is.na(winner.label))) {
+            stop("Failed to resolve merge labels from summary for basins_of_attraction object.")
+        }
+
+        if (verbose && connector.method != "closest") {
+            cat("merge.gfc.basins(): connector.method is ignored for basins_of_attraction objects.\n")
+        }
+        if (verbose && !isTRUE(mark.loser.spurious)) {
+            cat("merge.gfc.basins(): mark.loser.spurious is ignored for basins_of_attraction objects.\n")
+        }
+        if (verbose && !identical(merge.filter.stage, "MERGE")) {
+            cat("merge.gfc.basins(): merge.filter.stage is ignored for basins_of_attraction objects.\n")
+        }
+
+        ord <- order(loser.label, winner.label)
+        loser.label <- loser.label[ord]
+        winner.label <- winner.label[ord]
+        loser.vertex <- loser.vertex[ord]
+        winner.vertex <- winner.vertex[ord]
+
+        out <- x
+        for (i in seq_along(loser.label)) {
+            if (verbose) {
+                cat("merge.gfc.basins(): ", loser.label[i], " (v", loser.vertex[i],
+                    ") -> ", winner.label[i], " (v", winner.vertex[i], ")\n", sep = "")
+            }
+            out <- merge.two.extrema(
+                x = out,
+                winner.label = winner.label[i],
+                loser.label = loser.label[i],
+                verbose = verbose,
+                ...
+            )
+        }
+
+        out$merge.report <- data.frame(
+            type = type,
+            loser.label = loser.label,
+            winner.label = winner.label,
+            loser.vertex = loser.vertex,
+            winner.vertex = winner.vertex,
+            connector.length = NA_integer_,
+            stringsAsFactors = FALSE
+        )
+
+        return(out)
+    }
+
+    stop(
+        "x must be an object returned by compute.gfc(): class 'gfc.flow' (trajectory modes) ",
+        "or class 'basins_of_attraction' (GEODESIC/RTCB)."
+    )
 }
 
 #' Identify Cell Membership for a Single Vertex
@@ -4451,7 +4705,8 @@ vertex.distances.to.trajectory <- function(vertices,
 #' Note: fields such as \code{max.overlap.dist} / \code{min.overlap.dist} are not
 #' recomputed here and should be treated as stale after merging.
 #'
-#' @param x A \code{gfc.flow} object from \code{compute.gfc.flow()}.
+#' @param x A \code{gfc.flow} object from \code{compute.gfc()} trajectory modes
+#'   (or \code{compute.gfc.trajectory()} / deprecated \code{compute.gfc.flow()}).
 #' @param y Optional alias for \code{adj.list}. Present for S3 signature compatibility.
 #' @param adj.list Adjacency list of the domain graph (1-based vertex indices).
 #' @param weight.list Parallel list of edge weights; \code{weight.list[[i]]}
@@ -4479,7 +4734,7 @@ vertex.distances.to.trajectory <- function(vertices,
 #'   basin/membership/summary fields.
 #'
 #' @export
-merge.basins.gfc.flow <- function(x,
+merge.gfc.flow.basins <- function(x,
                                   y = NULL,
                                   adj.list = y,
                                   weight.list,
@@ -4504,7 +4759,7 @@ merge.basins.gfc.flow <- function(x,
     connector.method <- match.arg(connector.method)
 
     if (!inherits(x, "gfc.flow")) {
-        stop("x must be a gfc.flow object from compute.gfc.flow()")
+        stop("x must be a gfc.flow object from compute.gfc() trajectory modes or compute.gfc.trajectory().")
     }
 
     if (is.null(adj.list) || is.null(weight.list)) {
@@ -4628,7 +4883,7 @@ merge.basins.gfc.flow <- function(x,
                            paste0("v", winner.vertex))
 
     if (verbose) {
-        cat("merge.basins.gfc.flow(): merging ", length(loser.vertex), " ", type, " basin(s)\n", sep = "")
+        cat("merge.gfc.flow.basins(): merging ", length(loser.vertex), " ", type, " basin(s)\n", sep = "")
         for (i in seq_along(loser.vertex)) {
             cat("  ", loser.label[i], " (v", loser.vertex[i], ") -> ",
                 winner.label[i], " (v", winner.vertex[i], ")\n", sep = "")
@@ -4893,7 +5148,7 @@ merge.basins.gfc.flow <- function(x,
 
         y.hat.global <- x$y
         if (is.null(y.hat.global)) {
-            stop("merge.basins.gfc.flow(): cannot compute traj$y.hat.modified because x$y.hat (or x$y) is missing.")
+            stop("merge.gfc.flow.basins(): cannot compute traj$y.hat.modified because x$y.hat (or x$y) is missing.")
         }
 
         ## Ensure a clean state if this trajectory was previously processed
@@ -4907,13 +5162,13 @@ merge.basins.gfc.flow <- function(x,
             ## Closest basin vertex x for this loser
             x.v <- closest.x.by.loser[[as.character(l.v)]]
             if (is.null(x.v) || length(x.v) != 1L || is.na(x.v)) {
-                stop("merge.basins.gfc.flow(): missing closest basin vertex x for loser vertex ", l.v, ".")
+                stop("merge.gfc.flow.basins(): missing closest basin vertex x for loser vertex ", l.v, ".")
             }
 
             ## Position of x within the connector (connector includes lM as first element)
             pos.x.in.connector <- match(as.integer(x.v), as.integer(connector))
             if (is.na(pos.x.in.connector)) {
-                stop("merge.basins.gfc.flow(): internal error: x not found in connector for loser vertex ", l.v, ".")
+                stop("merge.gfc.flow.basins(): internal error: x not found in connector for loser vertex ", l.v, ".")
             }
 
             ## Position of x in the new trajectory after appending connector[-1]
@@ -4923,7 +5178,7 @@ merge.basins.gfc.flow <- function(x,
 
             new.vertices <- as.integer(traj$vertices)
             if (idx.x < 1L || idx.x > length(new.vertices) || new.vertices[idx.x] != as.integer(x.v)) {
-                stop("merge.basins.gfc.flow(): internal error locating x within the modified trajectory for loser vertex ", l.v, ".")
+                stop("merge.gfc.flow.basins(): internal error locating x within the modified trajectory for loser vertex ", l.v, ".")
             }
 
             y.path <- as.double(y.hat.global[new.vertices])
