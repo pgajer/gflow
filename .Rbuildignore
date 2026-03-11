@@ -50,9 +50,6 @@
 # Object and shared libs
 ^src/.*\.(o|so|dll|a)$
 
-# Vignettes (exclude sources if not shipping)
-^[Vv]ignettes$
-
 ^rchk_reports$
 ^build$
 ^cran-comments\.md$

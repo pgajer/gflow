@@ -309,8 +309,8 @@ select3D.points <- function(objects = NULL,
 #' @param y Optional numeric vector used when \code{plot.type = "cont"}.
 #' @param cltr Optional cluster labels used when \code{plot.type = "cltrs"}.
 #' @param plot.args Named list of additional arguments passed to the selected
-#'   HTML plotting helper (\code{plot3D.plain.html()}, \code{plot3D.cont.html()},
-#'   or \code{plot3D.cltrs.html()}).
+#'   widget plotting helper (\code{plot3D.plain.widget()},
+#'   \code{plot3D.cont.widget()}, or \code{plot3D.cltrs.widget()}).
 #' @param title Title shown in the selection app.
 #' @param widget.width,widget.height Width/height (pixels) of the 3D widget.
 #' @param launch.browser Logical; passed to \code{shiny::runApp()}.
@@ -436,11 +436,11 @@ select3D.points.html <- function(X,
     }
 
     w <- if (identical(plot.type, "plain")) {
-      do.call(plot3D.plain.html, c(list(X = X), args))
+      do.call(plot3D.plain.widget, c(list(X = X), args))
     } else if (identical(plot.type, "cont")) {
-      do.call(plot3D.cont.html, c(list(X = X, y = y), args))
+      do.call(plot3D.cont.widget, c(list(X = X, y = y), args))
     } else {
-      do.call(plot3D.cltrs.html, c(list(X = X, cltr = cltr), args))
+      do.call(plot3D.cltrs.widget, c(list(X = X, cltr = cltr), args))
     }
     # Keep a stable id so Shiny selection plumbing references the right widget.
     w$elementId <- scene.id
