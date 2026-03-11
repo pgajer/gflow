@@ -14,6 +14,16 @@ knitr::opts_chunk$set(
   fig.height = 7
 )
 library(gflow)
+
+apply.sigmoid <- function(x, alpha = 1.0, type = c("tanh", "arctan", "algebraic")) {
+  type <- match.arg(type)
+  stopifnot(is.numeric(x), is.numeric(alpha), length(alpha) == 1, alpha > 0)
+
+  switch(type,
+         tanh = tanh(alpha * x),
+         arctan = (2 / pi) * atan(alpha * x),
+         algebraic = x / sqrt((1 / alpha^2) + x^2))
+}
 ```
 
 ## The Need for Bounded Transformations
@@ -74,7 +84,7 @@ dominated by $|x|$, yielding the asymptotic behavior $\sigma_\alpha^{\text{alg}}
 
 ## Applying the Transformation in R
 
-The function `apply.sigmoid()` provides access to all three transformations. 
+The helper `apply.sigmoid()` used in this vignette provides access to all three transformations. 
 Its interface accepts a numeric vector and returns the elementwise transformed 
 values.
 ```{r basic-usage}
