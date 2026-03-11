@@ -10,6 +10,54 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// rcpp_compute_graph_endpoint_scores
+Rcpp::List rcpp_compute_graph_endpoint_scores(const List& adj_list, const List& weight_list, const NumericMatrix& layout_3d, const NumericVector& scales, const std::string& neighborhood, double q, const std::string& neighbor_weighting, Rcpp::Nullable<double> gaussian_sigma, int min_neighborhood_size);
+RcppExport SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP layout_3dSEXP, SEXP scalesSEXP, SEXP neighborhoodSEXP, SEXP qSEXP, SEXP neighbor_weightingSEXP, SEXP gaussian_sigmaSEXP, SEXP min_neighborhood_sizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
+    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type layout_3d(layout_3dSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type scales(scalesSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type neighborhood(neighborhoodSEXP);
+    Rcpp::traits::input_parameter< double >::type q(qSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type neighbor_weighting(neighbor_weightingSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type gaussian_sigma(gaussian_sigmaSEXP);
+    Rcpp::traits::input_parameter< int >::type min_neighborhood_size(min_neighborhood_sizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_compute_graph_endpoint_scores(adj_list, weight_list, layout_3d, scales, neighborhood, q, neighbor_weighting, gaussian_sigma, min_neighborhood_size));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rcpp_graph_multi_source_support_by_scale
+LogicalMatrix rcpp_graph_multi_source_support_by_scale(const List& adj_list, const List& weight_list, const LogicalMatrix& local_max_by_scale, double radius);
+RcppExport SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP local_max_by_scaleSEXP, SEXP radiusSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
+    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
+    Rcpp::traits::input_parameter< const LogicalMatrix& >::type local_max_by_scale(local_max_by_scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_graph_multi_source_support_by_scale(adj_list, weight_list, local_max_by_scale, radius));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rcpp_graph_greedy_maxima_suppression_by_scale
+LogicalMatrix rcpp_graph_greedy_maxima_suppression_by_scale(const List& adj_list, const List& weight_list, const LogicalMatrix& local_max_by_scale, const NumericMatrix& score_by_scale, double radius);
+RcppExport SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP local_max_by_scaleSEXP, SEXP score_by_scaleSEXP, SEXP radiusSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
+    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
+    Rcpp::traits::input_parameter< const LogicalMatrix& >::type local_max_by_scale(local_max_by_scaleSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type score_by_scale(score_by_scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_graph_greedy_maxima_suppression_by_scale(adj_list, weight_list, local_max_by_scale, score_by_scale, radius));
+    return rcpp_result_gen;
+END_RCPP
+}
 // Rcpp_graph_kernel_smoother
 Rcpp::List Rcpp_graph_kernel_smoother(Rcpp::List adj, Rcpp::List w, Rcpp::NumericVector y, int bandwidth, bool with_details);
 RcppExport SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP adjSEXP, SEXP wSEXP, SEXP ySEXP, SEXP bandwidthSEXP, SEXP with_detailsSEXP) {
