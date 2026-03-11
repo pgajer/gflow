@@ -186,7 +186,7 @@ plot3D.plain <- function(X,
 #' @return An \code{htmlwidget} object from \code{rgl::rglwidget()}.
 #'
 #' @export
-plot3D.plain.html <- function(X,
+plot3D.plain.widget <- function(X,
                               radius = NULL,
                               col = "gray",
                               size = 3,
@@ -302,6 +302,15 @@ plot3D.plain.html <- function(X,
     }
 
     w
+}
+
+#' Backward-compatible alias for \code{plot3D.plain.widget()}.
+#'
+#' @inheritParams plot3D.plain.widget
+#' @inherit plot3D.plain.widget return
+#' @export
+plot3D.plain.html <- function(...) {
+    plot3D.plain.widget(...)
 }
 
 #' Creates 3D Plot with Continuous Color Coding
@@ -559,7 +568,7 @@ plot3D.cont <- function(X,
 #' @examples
 #' \dontrun{
 #' # X3d: n x 3 coordinates, y: numeric vector length n
-#' w <- plot3D.cont.html(
+#' w <- plot3D.cont.widget(
 #'   X = X3d,
 #'   y = y,
 #'   quantize.method = "quantile",
@@ -576,7 +585,7 @@ plot3D.cont <- function(X,
 #' }
 #'
 #' @export
-plot3D.cont.html <- function(X,
+plot3D.cont.widget <- function(X,
                              y,
                              subset = NULL,
                              non.highlight.type = "point",
@@ -854,6 +863,15 @@ plot3D.cont.html <- function(X,
     }
 
     w
+}
+
+#' Backward-compatible alias for \code{plot3D.cont.widget()}.
+#'
+#' @inheritParams plot3D.cont.widget
+#' @inherit plot3D.cont.widget return
+#' @export
+plot3D.cont.html <- function(...) {
+    plot3D.cont.widget(...)
 }
 
 #' Plot Output from lcor.1D()
@@ -1582,7 +1600,7 @@ plot3D.cltrs <- function(X,
 #' }
 #'
 #' @export
-plot3D.cltrs.html <- function(X,
+plot3D.cltrs.widget <- function(X,
                               cltr = NULL,
                               cltr.col.tbl = NULL,
                               ref.cltr = NULL,
@@ -1657,7 +1675,7 @@ plot3D.cltrs.html <- function(X,
 
     if (isTRUE(add)) {
         warning(
-            "`add = TRUE` is ignored in plot3D.cltrs.html(); a new off-screen scene is always created.",
+            "`add = TRUE` is ignored in plot3D.cltrs.widget(); a new off-screen scene is always created.",
             call. = FALSE
         )
     }
@@ -1980,6 +1998,15 @@ plot3D.cltrs.html <- function(X,
     }
 
     w
+}
+
+#' Backward-compatible alias for \code{plot3D.cltrs.widget()}.
+#'
+#' @inheritParams plot3D.cltrs.widget
+#' @inherit plot3D.cltrs.widget return
+#' @export
+plot3D.cltrs.html <- function(...) {
+    plot3D.cltrs.widget(...)
 }
 
 #' Highlight a Specific Cluster in 3D Space

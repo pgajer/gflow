@@ -92,14 +92,26 @@ compute.graph.endpoint.scores <- function(adj.list,
         )
     }
 
-    graph.obj <- .build.graph.endpoint.igraph(adj.list, weight.list)
+    score.matrices <- .compute.graph.endpoint.scores.reference(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        layout.3d = layout.3d,
+        scales = unname(unlist(scales, use.names = FALSE)),
+        neighborhood = neighborhood,
+        q = q,
+        neighbor.weighting = neighbor.weighting,
+        gaussian.sigma = gaussian.sigma,
+        min.neighborhood.size = min.neighborhood.size,
+        verbose = verbose,
+        prefer.cpp = TRUE
+    )
 
-    s.min.by.scale <- matrix(NA_real_, nrow = n.vertices, ncol = length(scales))
-    s.q.by.scale <- matrix(NA_real_, nrow = n.vertices, ncol = length(scales))
-    m.by.scale <- matrix(NA_real_, nrow = n.vertices, ncol = length(scales))
-    score.by.scale <- matrix(NA_real_, nrow = n.vertices, ncol = length(scales))
-    neighborhood.size.by.scale <- matrix(0L, nrow = n.vertices, ncol = length(scales))
-    distance.scale.by.scale <- matrix(NA_real_, nrow = n.vertices, ncol = length(scales))
+    s.min.by.scale <- score.matrices$s.min
+    s.q.by.scale <- score.matrices$s.q
+    m.by.scale <- score.matrices$m
+    score.by.scale <- score.matrices$score
+    neighborhood.size.by.scale <- score.matrices$neighborhood.size
+    distance.scale.by.scale <- score.matrices$distance.scale
 
     colnames(s.min.by.scale) <- scale.labels
     colnames(s.q.by.scale) <- scale.labels
@@ -107,50 +119,6 @@ compute.graph.endpoint.scores <- function(adj.list,
     colnames(score.by.scale) <- scale.labels
     colnames(neighborhood.size.by.scale) <- scale.labels
     colnames(distance.scale.by.scale) <- scale.labels
-
-    for (vertex in seq_len(n.vertices)) {
-        if (verbose && (vertex == 1L || vertex %% 100L == 0L || vertex == n.vertices)) {
-            message(sprintf("  vertex %d / %d", vertex, n.vertices))
-        }
-
-        graph.dist <- as.numeric(
-            igraph::distances(
-                graph.obj,
-                v = vertex,
-                to = seq_len(n.vertices),
-                weights = igraph::E(graph.obj)$weight
-            )
-        )
-
-        for (scale.idx in seq_along(scales)) {
-            selected <- .select.graph.endpoint.neighborhood(
-                graph.dist = graph.dist,
-                neighborhood = neighborhood,
-                scale = scales[[scale.idx]]
-            )
-
-            if (length(selected$vertices) < min.neighborhood.size) next
-
-            metrics <- .compute.graph.endpoint.metrics(
-                center = layout.3d[vertex, ],
-                neighbors = layout.3d[selected$vertices, , drop = FALSE],
-                geodesic.distances = selected$distances,
-                q = q,
-                neighbor.weighting = neighbor.weighting,
-                gaussian.sigma = gaussian.sigma,
-                min.neighborhood.size = min.neighborhood.size
-            )
-
-            if (!metrics$usable) next
-
-            s.min.by.scale[vertex, scale.idx] <- metrics$s.min
-            s.q.by.scale[vertex, scale.idx] <- metrics$s.q
-            m.by.scale[vertex, scale.idx] <- metrics$m
-            score.by.scale[vertex, scale.idx] <- metrics$score
-            neighborhood.size.by.scale[vertex, scale.idx] <- metrics$neighborhood.size
-            distance.scale.by.scale[vertex, scale.idx] <- metrics$distance.scale
-        }
-    }
 
     aggregate.fn <- .make.graph.endpoint.aggregate(scale.aggregate)
 
@@ -202,6 +170,97 @@ compute.graph.endpoint.scores <- function(adj.list,
 
     class(res) <- c("graph_endpoint_scores", class(res))
     res
+}
+
+.compute.graph.endpoint.scores.reference <- function(adj.list,
+                                                     weight.list,
+                                                     layout.3d,
+                                                     scales,
+                                                     neighborhood,
+                                                     q,
+                                                     neighbor.weighting,
+                                                     gaussian.sigma,
+                                                     min.neighborhood.size,
+                                                     verbose = FALSE,
+                                                     prefer.cpp = FALSE)
+{
+    if (isTRUE(prefer.cpp) && exists("rcpp_compute_graph_endpoint_scores", mode = "function")) {
+        return(
+            rcpp_compute_graph_endpoint_scores(
+                adj_list = adj.list,
+                weight_list = weight.list,
+                layout_3d = layout.3d,
+                scales = as.numeric(scales),
+                neighborhood = neighborhood,
+                q = q,
+                neighbor_weighting = neighbor.weighting,
+                gaussian_sigma = gaussian.sigma,
+                min_neighborhood_size = as.integer(min.neighborhood.size)
+            )
+        )
+    }
+
+    graph.obj <- .build.graph.endpoint.igraph(adj.list, weight.list)
+
+    s.min.by.scale <- matrix(NA_real_, nrow = nrow(layout.3d), ncol = length(scales))
+    s.q.by.scale <- matrix(NA_real_, nrow = nrow(layout.3d), ncol = length(scales))
+    m.by.scale <- matrix(NA_real_, nrow = nrow(layout.3d), ncol = length(scales))
+    score.by.scale <- matrix(NA_real_, nrow = nrow(layout.3d), ncol = length(scales))
+    neighborhood.size.by.scale <- matrix(0L, nrow = nrow(layout.3d), ncol = length(scales))
+    distance.scale.by.scale <- matrix(NA_real_, nrow = nrow(layout.3d), ncol = length(scales))
+
+    for (vertex in seq_len(nrow(layout.3d))) {
+        if (verbose && (vertex == 1L || vertex %% 100L == 0L || vertex == nrow(layout.3d))) {
+            message(sprintf("  vertex %d / %d", vertex, nrow(layout.3d)))
+        }
+
+        graph.dist <- as.numeric(
+            igraph::distances(
+                graph.obj,
+                v = vertex,
+                to = seq_len(nrow(layout.3d)),
+                weights = igraph::E(graph.obj)$weight
+            )
+        )
+
+        for (scale.idx in seq_along(scales)) {
+            selected <- .select.graph.endpoint.neighborhood(
+                graph.dist = graph.dist,
+                neighborhood = neighborhood,
+                scale = scales[[scale.idx]]
+            )
+
+            if (length(selected$vertices) < min.neighborhood.size) next
+
+            metrics <- .compute.graph.endpoint.metrics(
+                center = layout.3d[vertex, ],
+                neighbors = layout.3d[selected$vertices, , drop = FALSE],
+                geodesic.distances = selected$distances,
+                q = q,
+                neighbor.weighting = neighbor.weighting,
+                gaussian.sigma = gaussian.sigma,
+                min.neighborhood.size = min.neighborhood.size
+            )
+
+            neighborhood.size.by.scale[vertex, scale.idx] <- metrics$neighborhood.size
+            if (!metrics$usable) next
+
+            s.min.by.scale[vertex, scale.idx] <- metrics$s.min
+            s.q.by.scale[vertex, scale.idx] <- metrics$s.q
+            m.by.scale[vertex, scale.idx] <- metrics$m
+            score.by.scale[vertex, scale.idx] <- metrics$score
+            distance.scale.by.scale[vertex, scale.idx] <- metrics$distance.scale
+        }
+    }
+
+    list(
+        s.min = s.min.by.scale,
+        s.q = s.q.by.scale,
+        m = m.by.scale,
+        score = score.by.scale,
+        neighborhood.size = neighborhood.size.by.scale,
+        distance.scale = distance.scale.by.scale
+    )
 }
 
 #' Detect Graph Endpoints from a 3D Embedding
@@ -369,6 +428,8 @@ detect.graph.endpoints <- function(adj.list,
     smoothing.model <- fitted.model
     smoothing.refit <- NULL
     detection.score <- detection.score.raw
+    stability.score.by.scale <- NULL
+    stability.smoothing.refit <- NULL
 
     if (smooth) {
         if (verbose) {
@@ -429,11 +490,34 @@ detect.graph.endpoints <- function(adj.list,
     }
 
     by.scale.metric <- scores$by.scale[[score.metric]]
+    stability.score.by.scale <- by.scale.metric
+    if (smooth) {
+        refit.args.scale <- refit.args
+        refit.args.scale$fitted.model <- NULL
+        refit.args.scale$y.new <- NULL
+        refit.call.scale <- c(list(
+            fitted.model = smoothing.model,
+            y.new = by.scale.metric
+        ), refit.args.scale)
+        stability.smoothing.refit <- do.call(refit.rdgraph.regression, refit.call.scale)
+        stability.score.by.scale <- stability.smoothing.refit$fitted.values
+        stability.score.by.scale <- as.matrix(stability.score.by.scale)
+        colnames(stability.score.by.scale) <- colnames(by.scale.metric)
+    }
+
     local.max.by.scale <- matrix(FALSE, nrow = nrow(by.scale.metric), ncol = ncol(by.scale.metric))
+    local.max.strong.by.scale <- matrix(FALSE, nrow = nrow(by.scale.metric), ncol = ncol(by.scale.metric))
     colnames(local.max.by.scale) <- colnames(by.scale.metric)
+    colnames(local.max.strong.by.scale) <- colnames(by.scale.metric)
+    scale.max.threshold.prob <- if (is.null(min.score.quantile)) {
+        0.90
+    } else {
+        max(0.90, as.numeric(min.score.quantile))
+    }
+    scale.max.thresholds <- rep(NA_real_, ncol(by.scale.metric))
 
     for (scale.idx in seq_len(ncol(by.scale.metric))) {
-        y.scale <- by.scale.metric[, scale.idx]
+        y.scale <- stability.score.by.scale[, scale.idx]
         if (!any(is.finite(y.scale))) next
 
         y.detect <- .replace.nonfinite.endpoint.values(y.scale)
@@ -448,30 +532,39 @@ detect.graph.endpoints <- function(adj.list,
         )
         if (length(ext.scale$vertices) > 0L) {
             local.max.by.scale[ext.scale$vertices, scale.idx] <- TRUE
+            scale.max.thresholds[scale.idx] <- stats::quantile(
+                y.scale[is.finite(y.scale)],
+                probs = scale.max.threshold.prob,
+                na.rm = TRUE
+            )[[1]]
+            strong.vertices <- ext.scale$vertices[
+                y.scale[ext.scale$vertices] >= scale.max.thresholds[scale.idx]
+            ]
+            if (length(strong.vertices) > 0L) {
+                local.max.strong.by.scale[strong.vertices, scale.idx] <- TRUE
+            }
         }
     }
 
     stability.radius <- if (is.null(scale.stability.radius)) detect.max.radius else scale.stability.radius
-    local.max.support.by.scale <- local.max.by.scale
+    local.max.filtered.by.scale <- .suppress.graph.endpoint.maxima.by.scale(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        local.max.by.scale = local.max.strong.by.scale,
+        score.by.scale = stability.score.by.scale,
+        radius = stability.radius,
+        prefer.cpp = TRUE
+    )
+    local.max.support.by.scale <- local.max.filtered.by.scale
 
     if (stability.radius > 0) {
-        graph.obj <- .build.graph.endpoint.igraph(adj.list, weight.list)
-
-        for (scale.idx in seq_len(ncol(local.max.by.scale))) {
-            maxima.idx <- which(local.max.by.scale[, scale.idx])
-            if (length(maxima.idx) < 1L) next
-
-            d.to.max <- igraph::distances(
-                graph.obj,
-                v = maxima.idx,
-                to = seq_len(nrow(local.max.by.scale)),
-                weights = igraph::E(graph.obj)$weight
-            )
-            if (is.null(dim(d.to.max))) {
-                d.to.max <- matrix(d.to.max, nrow = 1L)
-            }
-            local.max.support.by.scale[, scale.idx] <- apply(d.to.max, 2L, min) <= stability.radius
-        }
+        local.max.support.by.scale <- .compute.graph.endpoint.support.by.scale(
+            adj.list = adj.list,
+            weight.list = weight.list,
+            local.max.by.scale = local.max.filtered.by.scale,
+            radius = stability.radius,
+            prefer.cpp = TRUE
+        )
     }
 
     finite.scale.count <- rowSums(is.finite(by.scale.metric))
@@ -549,10 +642,16 @@ detect.graph.endpoints <- function(adj.list,
         detection.score = as.numeric(detection.score),
         local.maxima = local.maxima,
         local.max.by.scale = local.max.by.scale,
+        local.max.strong.by.scale = local.max.strong.by.scale,
+        local.max.filtered.by.scale = local.max.filtered.by.scale,
         local.max.support.by.scale = local.max.support.by.scale,
+        stability.score.by.scale = stability.score.by.scale,
+        stability.smoothing.refit = stability.smoothing.refit,
         scale.stability = as.numeric(scale.stability),
         finite.scale.count = as.integer(finite.scale.count),
         scale.stability.radius = stability.radius,
+        scale.max.threshold.prob = scale.max.threshold.prob,
+        scale.max.thresholds = as.numeric(scale.max.thresholds),
         min.scale.stability = min.scale.stability,
         score.threshold = final.threshold,
         summary = summary.df
@@ -560,6 +659,125 @@ detect.graph.endpoints <- function(adj.list,
 
     class(res) <- c("graph_endpoints", class(res))
     res
+}
+
+.compute.graph.endpoint.support.by.scale <- function(adj.list,
+                                                     weight.list,
+                                                     local.max.by.scale,
+                                                     radius,
+                                                     prefer.cpp = TRUE)
+{
+    local.max.by.scale <- as.matrix(local.max.by.scale)
+    local.max.by.scale <- matrix(
+        as.logical(local.max.by.scale),
+        nrow = nrow(local.max.by.scale),
+        ncol = ncol(local.max.by.scale),
+        dimnames = dimnames(local.max.by.scale)
+    )
+
+    if (isTRUE(prefer.cpp) && exists("rcpp_graph_multi_source_support_by_scale", mode = "function")) {
+        support <- rcpp_graph_multi_source_support_by_scale(
+            adj_list = adj.list,
+            weight_list = weight.list,
+            local_max_by_scale = local.max.by.scale,
+            radius = as.numeric(radius)
+        )
+        support <- as.matrix(support)
+        dimnames(support) <- dimnames(local.max.by.scale)
+        return(support)
+    }
+
+    graph.obj <- .build.graph.endpoint.igraph(adj.list, weight.list)
+    support <- matrix(
+        FALSE,
+        nrow = nrow(local.max.by.scale),
+        ncol = ncol(local.max.by.scale),
+        dimnames = dimnames(local.max.by.scale)
+    )
+
+    for (scale.idx in seq_len(ncol(local.max.by.scale))) {
+        maxima.idx <- which(local.max.by.scale[, scale.idx])
+        if (length(maxima.idx) < 1L) next
+
+        d.to.max <- igraph::distances(
+            graph.obj,
+            v = maxima.idx,
+            to = seq_len(nrow(local.max.by.scale)),
+            weights = igraph::E(graph.obj)$weight
+        )
+        if (is.null(dim(d.to.max))) {
+            d.to.max <- matrix(d.to.max, nrow = 1L)
+        }
+        support[, scale.idx] <- apply(d.to.max, 2L, min) <= radius
+    }
+
+    support
+}
+
+.suppress.graph.endpoint.maxima.by.scale <- function(adj.list,
+                                                     weight.list,
+                                                     local.max.by.scale,
+                                                     score.by.scale,
+                                                     radius,
+                                                     prefer.cpp = TRUE)
+{
+    local.max.by.scale <- as.matrix(local.max.by.scale)
+    local.max.by.scale <- matrix(
+        as.logical(local.max.by.scale),
+        nrow = nrow(local.max.by.scale),
+        ncol = ncol(local.max.by.scale),
+        dimnames = dimnames(local.max.by.scale)
+    )
+    score.by.scale <- as.matrix(score.by.scale)
+
+    if (!all(dim(local.max.by.scale) == dim(score.by.scale))) {
+        stop("'local.max.by.scale' and 'score.by.scale' must have the same dimensions.")
+    }
+
+    if (isTRUE(prefer.cpp) && exists("rcpp_graph_greedy_maxima_suppression_by_scale", mode = "function")) {
+        keep <- rcpp_graph_greedy_maxima_suppression_by_scale(
+            adj_list = adj.list,
+            weight_list = weight.list,
+            local_max_by_scale = local.max.by.scale,
+            score_by_scale = score.by.scale,
+            radius = as.numeric(radius)
+        )
+        keep <- as.matrix(keep)
+        dimnames(keep) <- dimnames(local.max.by.scale)
+        return(keep)
+    }
+
+    graph.obj <- .build.graph.endpoint.igraph(adj.list, weight.list)
+    keep <- matrix(
+        FALSE,
+        nrow = nrow(local.max.by.scale),
+        ncol = ncol(local.max.by.scale),
+        dimnames = dimnames(local.max.by.scale)
+    )
+
+    for (scale.idx in seq_len(ncol(local.max.by.scale))) {
+        cand <- which(local.max.by.scale[, scale.idx])
+        if (length(cand) < 1L) next
+        ord <- order(score.by.scale[cand, scale.idx], cand, decreasing = TRUE, na.last = NA)
+        cand <- cand[ord]
+        suppressed <- rep(FALSE, nrow(local.max.by.scale))
+        for (vertex in cand) {
+            if (suppressed[vertex]) next
+            keep[vertex, scale.idx] <- TRUE
+            if (radius <= 0) next
+            d <- as.numeric(
+                igraph::distances(
+                    graph.obj,
+                    v = vertex,
+                    to = cand,
+                    weights = igraph::E(graph.obj)$weight
+                )
+            )
+            suppressed[cand[is.finite(d) & d <= radius]] <- TRUE
+        }
+    }
+
+    keep
 }
 
 .validate.graph.endpoint.inputs <- function(adj.list,

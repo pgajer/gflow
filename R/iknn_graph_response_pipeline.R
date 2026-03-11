@@ -34,10 +34,10 @@
 #' @param fit.args Named list passed to \code{fit.rdgraph.regression()} in the
 #'   connected-graph case. \code{X}, \code{y}, and \code{k} are injected by this
 #'   wrapper and take precedence.
-#' @param plain.plot.args Named list passed to \code{\link{plot3D.plain.html}}.
-#' @param cltr.plot.args Named list passed to \code{\link{plot3D.cltrs.html}}
+#' @param plain.plot.args Named list passed to \code{\link{plot3D.plain.widget}}.
+#' @param cltr.plot.args Named list passed to \code{\link{plot3D.cltrs.widget}}
 #'   for the multi-component whole-graph plot.
-#' @param cont.plot.args Named list passed to \code{\link{plot3D.cont.html}}.
+#' @param cont.plot.args Named list passed to \code{\link{plot3D.cont.widget}}.
 #' @param multi.comp.plot Plot mode used when selected graph has multiple
 #'   connected components: \code{"cltrs"} (default) for component-colored whole-graph
 #'   plot, \code{"plain"} for whole-graph plain plot, or \code{"both"}.
@@ -133,9 +133,9 @@ iknn.graph.response.pipeline <- function(
     f.build <- get.fn("build.iknn.graphs.and.selectk")
     f.cc <- get.fn("graph.connected.components")
     f.fit <- get.fn("fit.rdgraph.regression")
-    f.plot.plain <- get.fn("plot3D.plain.html")
-    f.plot.cltrs <- get.fn("plot3D.cltrs.html")
-    f.plot.cont <- get.fn("plot3D.cont.html")
+    f.plot.plain <- get.fn("plot3D.plain.widget")
+    f.plot.cltrs <- get.fn("plot3D.cltrs.widget")
+    f.plot.cont <- get.fn("plot3D.cont.widget")
     multi.comp.plot <- match.arg(multi.comp.plot)
 
     if (!is.matrix(X)) {

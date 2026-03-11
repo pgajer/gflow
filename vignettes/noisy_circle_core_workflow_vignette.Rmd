@@ -17,6 +17,10 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 library(gflow)
+build.iknn.graphs.and.selectk <- get(
+  "build.iknn.graphs.and.selectk",
+  envir = asNamespace("gflow")
+)
 set.seed(2026)
 ```
 

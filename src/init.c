@@ -148,6 +148,9 @@ static const R_CMethodDef cMethods[] = {
 extern "C" {
 #endif
 SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 #ifdef __cplusplus
@@ -318,6 +321,9 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_mean_shift_data_smoother_adaptive", (DL_FUNC) &S_mean_shift_data_smoother_adaptive, 8},
 
   {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
+  {"_gflow_rcpp_compute_graph_endpoint_scores", (DL_FUNC) &_gflow_rcpp_compute_graph_endpoint_scores, 9},
+  {"_gflow_rcpp_graph_multi_source_support_by_scale", (DL_FUNC) &_gflow_rcpp_graph_multi_source_support_by_scale, 4},
+  {"_gflow_rcpp_graph_greedy_maxima_suppression_by_scale", (DL_FUNC) &_gflow_rcpp_graph_greedy_maxima_suppression_by_scale, 5},
   {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
   {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
 

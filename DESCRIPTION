@@ -80,10 +80,13 @@ Suggests:
     proxy,
     scales,
     testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
     rstan,
     HDInterval,
     infotheo,
     rootSolve,
     lme4,
     clue
+VignetteBuilder: knitr
 Config/testthat/edition: 3
