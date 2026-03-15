@@ -79,12 +79,17 @@ struct shortest_paths_t {
 
 struct tube_lens_corridor_result_t {
 	std::vector<size_t> path_vertices;
+	std::vector<double> path_arc_length;
 	double path_length = std::numeric_limits<double>::infinity();
 	double tube_radius = 0.0;
 	double excess_tolerance = std::numeric_limits<double>::quiet_NaN();
 	std::vector<size_t> tube_vertices;
 	std::vector<double> tube_geodesic_distances;
 	std::vector<size_t> corridor_vertices;
+	std::vector<double> t_balance;
+	std::vector<double> harmonic_t;
+	std::vector<double> distance_to_path;
+	std::vector<double> excess;
 	std::vector<size_t> excess_vertices;
 };
 
