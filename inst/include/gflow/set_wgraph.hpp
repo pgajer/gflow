@@ -77,6 +77,17 @@ struct shortest_paths_t {
 	std::unordered_map<size_t, subpath_t> vertex_to_path_map; // Maps vertex to path index
 };
 
+struct tube_lens_corridor_result_t {
+	std::vector<size_t> path_vertices;
+	double path_length = std::numeric_limits<double>::infinity();
+	double tube_radius = 0.0;
+	double excess_tolerance = std::numeric_limits<double>::quiet_NaN();
+	std::vector<size_t> tube_vertices;
+	std::vector<double> tube_geodesic_distances;
+	std::vector<size_t> corridor_vertices;
+	std::vector<size_t> excess_vertices;
+};
+
 struct gray_xyw_t {
 	std::vector<size_t> vertices;  ///< Indices of the original graph vertices forming the path
 	std::vector<double> x_path;///< Cumulative distance along path from initial vertex
@@ -1349,6 +1360,14 @@ struct set_wgraph_t {
 	compute_shortest_path_distances(
 		size_t from,
 		const std::unordered_set<size_t>& to_set
+		) const;
+
+	tube_lens_corridor_result_t compute_tube_lens_corridor(
+		size_t source,
+		size_t target,
+		double path_relative_radius,
+		double excess_tolerance,
+		bool compute_excess
 		) const;
 
 	void trace_exploration_path(
