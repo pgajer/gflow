@@ -25,12 +25,22 @@
 #'
 #' @return A list with components:
 #'   \item{path.vertices}{Weighted shortest path between the endpoints.}
+#'   \item{path.arc.length}{Normalized arc-length coordinate of each path vertex in
+#'     `path.vertices`, ranging from 0 at `start.vertex` to 1 at `end.vertex`.}
 #'   \item{path.length}{Length of that path.}
 #'   \item{tube.radius}{Absolute tube radius used for the path-centered tube.}
 #'   \item{excess.tolerance}{Excess tolerance used when the excess variant is requested.}
 #'   \item{tube.vertices}{Vertices in the path-centered tube.}
 #'   \item{tube.geodesic.distances}{Geodesic distance from each tube vertex to the path.}
 #'   \item{corridor.vertices}{Vertices in the tube-lens corridor.}
+#'   \item{t.balance}{Balanced longitudinal coordinate for each vertex in
+#'     `corridor.vertices`, normalized to `[0,1]`.}
+#'   \item{harmonic.t}{Harmonic longitudinal coordinate for each vertex in
+#'     `corridor.vertices`, normalized to `[0,1]`.}
+#'   \item{distance.to.path}{Geodesic distance from each corridor vertex to the
+#'     shortest path centerline.}
+#'   \item{excess}{Geodesic excess `d(u,w) + d(v,w) - path.length` for each
+#'     vertex in `corridor.vertices`.}
 #'   \item{excess.vertices}{Vertices in the excess-filtered corridor, or `NULL`
 #'     when `mode = "base"`.}
 #'   \item{selected.vertices}{The primary selected set for the requested mode.}
