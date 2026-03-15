@@ -299,6 +299,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
   {"S_create_maximal_packing", (DL_FUNC) &S_create_maximal_packing, 5},
   {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
+  {"S_compute_tube_lens_corridor", (DL_FUNC) &S_compute_tube_lens_corridor, 7},
   {"S_remove_redundant_edges", (DL_FUNC) &S_remove_redundant_edges, 2},
   {"S_compute_edge_weight_rel_deviations", (DL_FUNC) &S_compute_edge_weight_rel_deviations, 2},
   {"S_compute_edge_weight_deviations", (DL_FUNC) &S_compute_edge_weight_deviations, 2},
