@@ -10,12 +10,13 @@
 
 ## Package Hygiene
 - When modifying exported functions or roxygen blocks, regenerate docs:
-  - `Rscript -e 'roxygen2::roxygenise(".")'`
+  - `make document`
 - Validate changes with tests before broader checks:
   - `Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_dir("tests/testthat")'`
-- Run package build/check for release-readiness work:
-  - `R CMD build .`
-  - `R CMD check --as-cran gflow_*.tar.gz`
+- Run package QA via Makefile targets (preferred; ensures roxygen/doc generation runs first):
+  - Fast QA: `make check-fast`
+  - Full CRAN-style QA: `make check`
+- Do not run `R CMD build` / `R CMD check` directly unless explicitly requested.
 
 ## Build Artifacts
 - Do not edit files under `gflow.Rcheck/` as source code.

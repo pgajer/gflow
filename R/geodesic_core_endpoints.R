@@ -8,7 +8,7 @@
 #' @param weight.list Edge-length list aligned with `adj.list`.
 #' @param core.quantile Numeric in (0,1). Vertices with eccentricity in this
 #'   lower quantile define the graph core.
-#' @param endpoint.quantile Numeric in [0,1]. Endpoints are selected among
+#' @param endpoint.quantile Numeric in \eqn{[0,1]}. Endpoints are selected among
 #'   local maxima of distance-to-core that are at or above this quantile.
 #' @param use.approx.eccentricity Logical. If `TRUE`, use landmark-based
 #'   approximation of eccentricity for scalability.
