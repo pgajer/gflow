@@ -9,8 +9,8 @@
 #' @param use.approx.eccentricity Logical; if `TRUE`, uses landmark approximation.
 #' @param n.landmarks Integer >= 1; number of landmarks for approximation.
 #' @param min.arm.size Integer >= 1; minimum number of vertices assigned to a tip.
-#' @param min.persistence.quantile Numeric in [0,1]; quantile threshold over tip persistence.
-#' @param min.length.quantile Numeric in [0,1]; quantile threshold over tip length.
+#' @param min.persistence.quantile Numeric in \eqn{[0,1]}; quantile threshold over tip persistence.
+#' @param min.length.quantile Numeric in \eqn{[0,1]}; quantile threshold over tip length.
 #' @param max.arms Optional positive integer cap on selected arms.
 #' @param seed Integer seed for landmark initialization.
 #' @param verbose Logical; print C++ progress.

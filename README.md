@@ -45,6 +45,24 @@ R -q -e 'remotes::install_local("gflow", dependencies=c("Depends","Imports","Lin
 Legacy 1D model-averaging APIs were removed from `gflow`; use `malo` directly
 for `magelo*`, `mabilo*`, `magelog`, and `fit.pwlm*`.
 
+## Development QA
+
+Use Makefile targets for package QA so documentation is regenerated before checks:
+
+```bash
+# Regenerate Rcpp exports + roxygen docs
+make document
+
+# Fast CRAN-style gate (skips examples/tests/manual)
+make check-fast
+
+# Full CRAN-style check
+make check
+```
+
+Avoid running `R CMD build` / `R CMD check` directly unless you explicitly need
+an ad-hoc invocation.
+
 ## OpenMP Requirement
 
 `gflow` default install profile (`cran-safe`) is portable and does not require
