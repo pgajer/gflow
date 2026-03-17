@@ -15,7 +15,6 @@
 # Local scripts and tools (keep in repo, exclude from tarball)
 ^scripts$
 ^tools$
-^inst/doc$
 ^dev$
 ^dev/rchk$
 
@@ -46,6 +45,7 @@
 # Temporary / local directories
 ^\.claude$
 ^CLAUDE\.md$
+^AGENTS\.md$
 
 # Object and shared libs
 ^src/.*\.(o|so|dll|a)$
