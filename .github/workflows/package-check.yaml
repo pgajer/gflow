@@ -22,7 +22,17 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           needs: check
-          extra-packages: any::devtools
+          extra-packages: |
+            any::devtools
+            any::remotes
+
+      - name: Install grip (non-CRAN suggested dependency)
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/grip", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("grip", quietly = TRUE)) stop("Missing package: grip")'
+
+      - name: Install malo (non-CRAN suggested dependency)
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/malo", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("malo", quietly = TRUE)) stop("Missing package: malo")'
 
       - name: Run full CRAN-style check via Makefile
         run: make check
