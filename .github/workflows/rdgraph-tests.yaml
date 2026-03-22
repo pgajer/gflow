@@ -37,11 +37,11 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           needs: check
+          dependencies: '"hard"'
           extra-packages: |
             any::pkgload
             any::remotes
             any::testthat
-            github::pgajer/malo
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
 
@@ -84,11 +84,11 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           needs: check
+          dependencies: '"hard"'
           extra-packages: |
             any::pkgload
             any::remotes
             any::testthat
-            github::pgajer/malo
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
 
