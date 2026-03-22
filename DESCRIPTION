@@ -44,7 +44,6 @@ Imports:
     igraph,
     transport
 Suggests:
-    grip,
     rgl,
     htmlwidgets,
     htmltools,
@@ -53,7 +52,6 @@ Suggests:
     randomForest,
     np,
     mgcv,
-    malo,
     kernlab,
     glmnet,
     e1071,
