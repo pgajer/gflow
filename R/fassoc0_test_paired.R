@@ -153,7 +153,8 @@ fassoc0.test <- function(x,
 
     generate.lambda <- function(nx, n.BB) {
         .gflow.require.malo("generate.dirichlet.weights()")
-        malo::generate.dirichlet.weights(nx, n.BB)
+        generate.dirichlet.weights <- .gflow.get_namespace_export("malo", "generate.dirichlet.weights")
+        generate.dirichlet.weights(nx, n.BB)
     }
 
     cluster.agg.fun <- function(z) {
