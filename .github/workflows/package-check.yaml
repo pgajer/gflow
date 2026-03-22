@@ -23,17 +23,7 @@ jobs:
         with:
           needs: check
           dependencies: '"hard"'
-          extra-packages: |
-            any::devtools
-            any::remotes
-
-      - name: Install grip (non-CRAN suggested dependency)
-        run: |
-          Rscript -e 'remotes::install_github("pgajer/grip", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("grip", quietly = TRUE)) stop("Missing package: grip")'
-
-      - name: Install malo (non-CRAN suggested dependency)
-        run: |
-          Rscript -e 'remotes::install_github("pgajer/malo", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("malo", quietly = TRUE)) stop("Missing package: malo")'
+          extra-packages: any::devtools
 
       - name: Run full CRAN-style check via Makefile
         run: make check
