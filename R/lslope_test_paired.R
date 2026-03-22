@@ -258,7 +258,8 @@ lslope.test <- function(fitted.model,
     }
 
     .gflow.require.malo("generate.dirichlet.weights()")
-    lambda <- malo::generate.dirichlet.weights(n, n.BB)
+    generate.dirichlet.weights <- .gflow.get_namespace_export("malo", "generate.dirichlet.weights")
+    lambda <- generate.dirichlet.weights(n, n.BB)
 
     if (verbose) {
         message(sprintf("  Done (%.2f sec)", (proc.time() - ptm)[3]))

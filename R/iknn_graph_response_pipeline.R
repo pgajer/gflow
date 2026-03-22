@@ -115,9 +115,12 @@ iknn.graph.response.pipeline <- function(
     verbose = TRUE,
     suppress.rplots = TRUE
 ) {
-    if (!requireNamespace("grip", quietly = TRUE)) {
-        stop("Package 'grip' is required for grip.layout().")
-    }
+    grip.layout <- .gflow.get_namespace_export(
+        pkg = "grip",
+        name = "grip.layout",
+        api = "grip.layout()",
+        install_hint = "Install it first (e.g. remotes::install_github('pgajer/grip'))."
+    )
 
     get.fn <- function(name) {
         if (exists(name, mode = "function", inherits = TRUE)) {
@@ -422,7 +425,7 @@ iknn.graph.response.pipeline <- function(
             layout.args.multi$disconnected <- "components"
         }
 
-        layout.multi <- do.call(grip::grip.layout, layout.args.multi)
+        layout.multi <- do.call(grip.layout, layout.args.multi)
         layout.multi <- as.matrix(layout.multi)
         if (ncol(layout.multi) != 3L || nrow(layout.multi) != length(selected.graph$adj_list)) {
             stop(
@@ -461,7 +464,7 @@ iknn.graph.response.pipeline <- function(
             layout.args$adj_list <- g.comp$adj_list
             layout.args$weight_list <- g.comp$weight_list
 
-            layout.3d <- do.call(grip::grip.layout, layout.args)
+            layout.3d <- do.call(grip.layout, layout.args)
             layout.3d <- as.matrix(layout.3d)
             if (ncol(layout.3d) != 3L) {
                 stop("grip.layout() must return a 3-column embedding. Got ncol=", ncol(layout.3d))
