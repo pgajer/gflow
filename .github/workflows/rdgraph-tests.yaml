@@ -41,10 +41,13 @@ jobs:
             any::pkgload
             any::remotes
             any::testthat
-            github::pgajer/grip
             github::pgajer/malo
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
+
+      - name: Install grip
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/grip", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("grip", quietly = TRUE)) stop("Missing package: grip")'
 
       - name: Verify archived optional dependency installs
         run: |
@@ -85,10 +88,13 @@ jobs:
             any::pkgload
             any::remotes
             any::testthat
-            github::pgajer/grip
             github::pgajer/malo
             biclust=url::https://cran.r-project.org/src/contrib/Archive/biclust/biclust_2.0.3.1.tar.gz
             s4vd=url::https://cran.r-project.org/src/contrib/Archive/s4vd/s4vd_1.1-1.tar.gz
+
+      - name: Install grip
+        run: |
+          Rscript -e 'remotes::install_github("pgajer/grip", dependencies = TRUE, upgrade = "never"); if (!requireNamespace("grip", quietly = TRUE)) stop("Missing package: grip")'
 
       - name: Verify archived optional dependency installs
         run: |
