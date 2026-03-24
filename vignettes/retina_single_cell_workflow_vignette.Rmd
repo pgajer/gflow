@@ -1,0 +1,371 @@
+---
+title: "Retina Development: A Single-Cell gflow Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Retina Development: A Single-Cell gflow Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+library(gflow)
+library(ggplot2)
+
+retina_asset_path <- function(...) {
+  rel <- file.path("retina_vignette", ...)
+  candidates <- c(
+    system.file("extdata", rel, package = "gflow"),
+    file.path("inst", "extdata", rel),
+    file.path("..", "inst", "extdata", rel)
+  )
+  for (path in candidates) {
+    if (nzchar(path) && file.exists(path)) {
+      return(normalizePath(path, winslash = "/", mustWork = TRUE))
+    }
+  }
+  stop("Could not locate retina vignette asset: ", rel)
+}
+
+read_retina_tsv <- function(...) {
+  utils::read.delim(
+    retina_asset_path(...),
+    sep = "\t",
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+manifest <- read_retina_tsv("manifest.tsv")
+preprocessing.views <- read_retina_tsv("tables", "preprocessing_views.tsv")
+pseudotime.full <- read_retina_tsv("tables", "pseudotime_sweep_full.tsv")
+targeted.k.curve <- read_retina_tsv("tables", "targeted_k_curve.tsv")
+targeted.k.selection <- read_retina_tsv("tables", "targeted_k_selection.tsv")
+branch.selected.k <- read_retina_tsv("tables", "branch_selected_k.tsv")
+```
+
+## Overview
+
+This vignette shows how `gflow` can be used on single-cell RNA-seq data rather
+than only on the earlier microbiome-style examples. The target dataset is the
+Clark *et al.* developing mouse retina atlas (`GSE118614`), and the analysis
+unit is one row per retinal progenitor cell (RPC).
+
+The goal is not to reproduce the entire retina project inside a package
+vignette. Instead, the vignette isolates the reusable workflow:
+
+1. freeze the analysis unit and preprocessing views,
+2. build an intersection-kNN graph family with `gflow`,
+3. compare graph scales explicitly,
+4. validate geometry against developmental age and rooted pseudotime,
+5. show that the "best" graph scale can depend on the downstream objective,
+6. carry the selected geometry into one downstream biological summary.
+
+This vignette is based on a curated retina source packet assembled during the
+development of the generalized `gflow` examples. The package vignette extracts
+the reusable single-cell workflow from that larger retina project rather than
+trying to retell every retina-specific result.
+
+## A Note on Scope
+
+This vignette is intentionally narrower than the full retina analysis
+workspace. The upstream retina analysis project already contains a richer
+retina-specific body of work:
+
+- dataset notes and biological context,
+- pseudotime benchmark reports,
+- target-gene `k`-selection reports,
+- Notch/cell-cycle downstream module analyses.
+
+Here we extract the most reusable `gflow` story from that larger project.
+
+This version reads only package-owned assets from:
+
+- `inst/extdata/retina_vignette`
+
+Those assets are produced by:
+
+- `inst/scripts/build_retina_vignette_assets.R`
+- `data-raw/build_retina_vignette_assets.R`
+
+so the vignette renders quickly while still keeping a rebuild path available.
+
+## 1) Dataset Freeze and Analysis Unit
+
+The current retina example is built around the public Clark retina atlas:
+
+- source study: Clark *et al.* (Neuron, 2019)
+- GEO series: `GSE118614`
+- analysis unit: one RPC per row
+- external validation variables:
+  - developmental age
+  - RPC subtype labels
+  - rooted pseudotime
+
+In the current package-adjacent retina workflow, the working analysis focuses on
+QC-filtered RPC cells and compares several preprocessing views rather than
+committing immediately to one representation.
+
+## 2) Preprocessing Views
+
+The current retina benchmark uses three views:
+
+```{r preprocessing-view-table}
+knitr::kable(
+  preprocessing.views[, c("branch_id", "role", "description")],
+  row.names = FALSE
+)
+```
+
+This is already an important generalization step. The retina example is not a
+single preprocessing recipe. It is a small multi-view graph benchmark.
+
+## 3) Build the iKNN Graph Family
+
+The core graph construction step uses the package API directly.
+
+```{r build-iknn-graphs, eval = FALSE}
+# X_view is a cells x features matrix for one chosen preprocessing branch.
+# For example, it could be the PCA representation of log-normalized HVGs.
+
+graphs <- create.iknn.graphs(
+  X = X_view,
+  kmin = 9L,
+  kmax = 35L,
+  compute.full = TRUE,
+  pca.dim = NULL,
+  n.cores = 1L,
+  verbose = TRUE
+)
+```
+
+Once the graph family is available, the first package-level stability summary is
+degree-distribution Jensen-Shannon divergence:
+
+```{r compute-stability, eval = FALSE}
+stability <- compute.stability.metrics(
+  graphs = graphs,
+  graph.type = "geom",
+  summary = "degree_distribution",
+  divergence = "js"
+)
+```
+
+This gives one explicit and reusable notion of graph-family stability. In the
+retina example, it is combined with domain-aware validation rather than used as
+the only criterion.
+
+## 4) Current Package-Backed Retina Summary
+
+The current package-backed retina rerun used `gflow::create.iknn.graphs()` as
+the active graph constructor and produced the following smoke-scale summary for
+the two completed broad geometry branches:
+
+```{r current-retina-summary}
+retina.summary <- branch.selected.k[, c(
+  "branch_id",
+  "selected_k",
+  "age_spearman",
+  "age_order_accuracy",
+  "subtype_coherence"
+)]
+knitr::kable(retina.summary, digits = 4, row.names = FALSE)
+```
+
+The targeted marker-panel branch remains scientifically useful, but in the
+current smoke rerun it behaved more like a performance-heavy validation branch
+than a stable baseline branch. That is exactly why multi-view benchmarking is
+useful: views can play different roles without being forced into one ranking
+story.
+
+## 5) Pseudotime-Oriented Graph Comparison
+
+One strong current result is that the retina graph family can be compared by how
+well rooted pseudotime aligns with developmental age.
+
+```{r fig-pseudotime-spearman, fig.cap = "Full pseudotime sweep across HVG sets and graph sizes: Spearman correlation with developmental age rank."}
+ggplot(
+  pseudotime.full,
+  aes(x = k, y = spearman_rho, color = hvg_label)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.3) +
+  facet_wrap(~method, nrow = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    x = "k",
+    y = "Spearman correlation with age rank",
+    color = "HVG set"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r fig-pseudotime-pearson, fig.cap = "Full pseudotime sweep across HVG sets and graph sizes: Pearson correlation with developmental age rank."}
+ggplot(
+  pseudotime.full,
+  aes(x = k, y = pearson_r, color = hvg_label)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.3) +
+  facet_wrap(~method, nrow = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    x = "k",
+    y = "Pearson correlation with age rank",
+    color = "HVG set"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank())
+```
+
+Two takeaways matter for the package story:
+
+- the `3k` HVG view is a strong primary geometry,
+- potential pseudotime gives stronger linear age alignment than geodesic on the
+  same graph family.
+
+This is a good example of why the vignette should show explicit graph
+comparison, not just one selected graph.
+
+## 6) Why One "Best k" Is the Wrong Question
+
+The retina documents also show something more subtle and more important:
+different scientific objectives can prefer different graph scales.
+
+The pseudotime-oriented benchmark prefers a relatively dense regime, but the
+target-gene conditional-expectation analysis over the union of Notch and
+cell-cycle genes prefers a much smaller graph scale.
+
+```{r fig-gcv-k-selection, fig.cap = "Conditional-expectation-driven k selection for the targeted Notch-plus-cell-cycle gene set."}
+ggplot(targeted.k.curve, aes(x = k, y = median_norm)) +
+  geom_ribbon(aes(ymin = q25, ymax = q75), fill = "#9ecae1", alpha = 0.45) +
+  geom_line(linewidth = 0.9, color = "#08519c") +
+  geom_point(size = 1.6, color = "#08519c") +
+  geom_vline(
+    data = subset(targeted.k.selection, criterion == "min_median_norm"),
+    aes(xintercept = selected_k),
+    color = "#cb181d",
+    linetype = "dashed",
+    linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  labs(
+    x = "k",
+    y = "Median normalized GCV",
+    title = "Target-gene conditional expectation prefers a smaller graph scale"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank())
+```
+
+The current targeted-gene report recommends:
+
+```{r targeted-k-summary}
+targeted.k <- targeted.k.selection
+targeted.k$interpretation <- ifelse(
+  targeted.k$criterion == "min_median_norm",
+  "Primary robust choice for the target gene set.",
+  "Secondary reference influenced more strongly by heavy tails."
+)
+knitr::kable(targeted.k, row.names = FALSE)
+```
+
+This is one of the central lessons of the retina example:
+
+- a graph scale that is good for age-aligned pseudotime is not automatically the
+  graph scale preferred for every downstream outcome,
+- `gflow` should therefore support explicit graph comparison rather than one
+  fixed neighborhood convention.
+
+## 7) Carry the Geometry into a Downstream Biological Summary
+
+For the vignette, one downstream example is enough. The current retina work
+already shows that the graph geometry can support interpretable module-level
+summaries downstream of graph selection.
+
+```{r fig-module-trajectories, out.width = "100%", fig.cap = "One downstream example: module trajectories remain robust across two smoothing scales, with the sharper graph preserving more local developmental detail."}
+knitr::include_graphics(
+  retina_asset_path("figures", "cluster_mean_trajectories_k10_vs_k20.png")
+)
+```
+
+For a package vignette, the point is not to retell the entire Notch biology
+story. The point is to show that once a geometry is selected, `gflow` can carry
+that geometry into downstream conditional-expectation style summaries rather
+than stopping at graph construction.
+
+The larger retina analysis goes much further than this, but this one figure is
+enough to show that the package workflow remains useful after graph selection.
+
+## 8) Minimal Response-Refit Pattern
+
+The response-refit step can reuse the spectral structure of an existing graph
+fit. In a real single-cell analysis this is how we avoid rebuilding geometry for
+every outcome.
+
+```{r refit-pattern, eval = FALSE}
+# Fit one seed response on the selected graph.
+fit.seed <- fit.rdgraph.regression(
+  X = X_view,
+  y = y_seed,
+  k = selected_k,
+  adj.list = selected_graph$adj_list,
+  weight.list = selected_graph$weight_list,
+  pca.dim = NULL,
+  verbose.level = 1L
+)
+
+# Refit many new responses using the cached spectral structure.
+refit.out <- refit.rdgraph.regression(
+  fitted.model = fit.seed,
+  y.new = Y_multiresponse,
+  per.column.gcv = TRUE,
+  n.cores = 1L,
+  verbose = FALSE
+)
+```
+
+That pattern is important in the retina setting because the same selected
+geometry can be reused for:
+
+- pseudotime-style summaries,
+- developmental age,
+- subtype labels,
+- cell-cycle proxies,
+- targeted marker or module summaries.
+
+## 9) What This Example Teaches About `gflow`
+
+The retina example supports a clean package-level message:
+
+1. `gflow` can be applied to single-cell data using the same core graph APIs.
+2. Multi-view graph comparison is more informative than locking in one
+   preprocessing choice.
+3. Stability summaries are useful, but they should be combined with
+   domain-relevant validation targets when those targets exist.
+4. There is no reason to expect one globally optimal `k` across all downstream
+   tasks.
+5. The graph geometry is worth keeping because it can be reused for multiple
+   downstream summaries rather than serving only as a preprocessing step.
+
+## 10) Next Packaging Steps
+
+To turn this draft into a fully portable package vignette, the next steps are:
+
+1. expand the package-owned asset bundle from one vendored downstream figure to
+   fully regenerated downstream figures where practical,
+2. document the rebuild entry points more explicitly for users who want to
+   refresh the vignette bundle from the source retina workspaces,
+3. keep the full richer Notch/cell-cycle story in a paper or external report,
+   while leaving this vignette focused on the reusable workflow.
+
+That split keeps the vignette readable while still letting the retina example
+demonstrate that `gflow` is useful on real single-cell developmental data.

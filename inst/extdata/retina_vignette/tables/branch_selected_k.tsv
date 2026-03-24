@@ -1,0 +1,3 @@
+branch_id	selected_k	primary_criterion	secondary_checks	age_spearman	age_order_accuracy	pseudotime_continuity	subtype_coherence	n_components	lcc_frac	candidate_count
+lognorm_hvg__pca	24	degree_distribution_js_plateau	Connected candidate set filtered by degree JS <= 0.2623 when available; winner maximized age/order validation with continuity and subtype coherence guardrails.	0.896847137368831	0.872690667929891	1	0.982895767870005	1	1	2
+residual_hvg__pca	24	degree_distribution_js_plateau	Connected candidate set filtered by degree JS <= 0.3975 when available; winner maximized age/order validation with continuity and subtype coherence guardrails.	0.863244357575602	0.853446234012316	1	0.956230460026798	1	1	2

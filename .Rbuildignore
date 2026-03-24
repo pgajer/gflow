@@ -58,6 +58,7 @@
 ^tests/manual($|/)
 ^tests/manual/results($|/)
 ^inst/examples$
+^data-raw$
 ^src/tests$
 ^presentations$
 ^analysis_output$

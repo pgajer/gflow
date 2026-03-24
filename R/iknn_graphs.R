@@ -519,7 +519,8 @@ summary.iknn_graphs <- function(object,
 #' \code{\link{create.iknn.graphs}}. Metrics include:
 #' \itemize{
 #'   \item Edit distances between consecutive graphs (edge-set symmetric difference)
-#'   \item Jensen-Shannon divergence between degree profiles of consecutive graphs
+#'   \item Jensen-Shannon divergence between selected graph-summary distributions
+#'     of consecutive graphs
 #'   \item Edge counts in pruned graphs across k
 #'   \item Smoothed trend fits and breakpoints for each diagnostic curve
 #'   \item Local minima locations for each diagnostic curve
@@ -532,16 +533,32 @@ summary.iknn_graphs <- function(object,
 #'   \code{\link{create.iknn.graphs}}.
 #' @param graph.type Character string, either \code{"geom"} or \code{"isize"},
 #'   selecting which pruned graph sequence is analyzed.
+#' @param summary Graph-summary family used for the divergence curve. Defaults
+#'   to \code{"degree_distribution"} for backward compatibility.
+#' @param divergence Divergence used for consecutive-graph comparison.
+#'   Currently only \code{"js"}.
+#' @param labels Optional vertex-label vector used when
+#'   \code{summary = "neighborhood_label_distribution"}.
+#' @param summary.args Optional named list forwarded to
+#'   \code{\link{compute.graph.summary.stability}} and ultimately to
+#'   \code{\link{compute.graph.summary.pmf}}.
 #'
 #' @return An object of class \code{"iknn_stability_metrics"} (a list) with fields:
 #' \describe{
 #'   \item{k.values}{Integer vector of k values analyzed.}
 #'   \item{graph.type}{Which pruned graph sequence was used (\code{"geom"} or \code{"isize"}).}
+#'   \item{summary}{Graph-summary family used for the divergence curve.}
+#'   \item{divergence}{Divergence used for the summary-based stability curve.}
 #'   \item{edit.distances}{Numeric vector of length \code{length(k.values)-1}.}
-#'   \item{js.div}{Numeric vector of length \code{length(k.values)-1}.}
+#'   \item{js.div}{Legacy numeric vector of length \code{length(k.values)-1}.
+#'     When \code{divergence = "js"}, this mirrors the selected
+#'     summary-divergence curve for backward compatibility.}
 #'   \item{n.edges}{Numeric vector of length \code{length(k.values)} (if available).}
 #'   \item{n.edges.in.pruned.graph}{Numeric vector of length \code{length(k.values)}.}
 #'   \item{edge.reduction.ratio}{Numeric vector of length \code{length(k.values)} (if available).}
+#'   \item{summary.stability}{Named list containing the richer stability object
+#'     returned by \code{\link{compute.graph.summary.stability}} under the selected
+#'     summary key.}
 #'   \item{pwlm}{Named list of smoothed trend-fit objects for each diagnostic
 #'     curve (stored under legacy component names ending in \code{.pwlm}).}
 #'   \item{breakpoint}{Named numeric vector of estimated breakpoint locations for each
@@ -557,12 +574,34 @@ summary.iknn_graphs <- function(object,
 #' plot(stab)
 #' ok <- find.optimal.k(stab)
 #' ok$opt.k
+#'
+#' # Alternate summary family when trusted vertex labels exist
+#' stab.labels <- compute.stability.metrics(
+#'   graphs,
+#'   graph.type = "geom",
+#'   summary = "neighborhood_label_distribution",
+#'   labels = some_vertex_labels
+#' )
 #' }
 #'
 #' @export
-compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
+compute.stability.metrics <- function(
+    graphs,
+    graph.type = c("geom", "isize"),
+    summary = c(
+        "degree_distribution",
+        "edge_weight_distribution",
+        "component_size_distribution",
+        "neighborhood_label_distribution"
+    ),
+    divergence = c("js"),
+    labels = NULL,
+    summary.args = list()
+) {
 
     graph.type <- match.arg(graph.type)
+    summary <- match.arg(summary)
+    divergence <- match.arg(divergence)
 
     if (!inherits(graphs, "iknn_graphs")) {
         stop("graphs must be an object of class 'iknn_graphs' returned by create.iknn.graphs().")
@@ -654,12 +693,16 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
     ## Consecutive-graph metrics: JS divergence and edit distance
     ## ------------------------------------------------------------------------
 
-    js.div <- numeric(max(0L, length(k.values) - 1L))
-    if (length(k.values) >= 2L) {
-        for (i in seq_len(length(k.values) - 1L)) {
-            js.div[i] <- compute.degrees.js.divergence(graphs.list[[i]], graphs.list[[i + 1L]])
-        }
-    }
+    js.stability <- compute.graph.summary.stability(
+        graphs = graphs.list,
+        summary = summary,
+        divergence = divergence,
+        labels = labels,
+        summary.args = summary.args,
+        k.values = k.values,
+        return.details = TRUE
+    )
+    js.div <- js.stability$values
 
     edit.distances <- compute.edit.distances(graphs.list)
 
@@ -671,7 +714,7 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
 
     edit.distances.lmin <- integer(0)
     edge.lmin <- integer(0)
-    js.lmin <- integer(0)
+    js.div.lmin <- integer(0)
 
     edit.distances.model <- NULL
     edge.model <- NULL
@@ -695,11 +738,14 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
         k.values = k.values,
         k.tr = k.values[-length(k.values)],
         graph.type = graph.type,
+        summary = summary,
+        divergence = divergence,
         n.edges = n.edges,
         n.edges.in.pruned.graph = n.edges.in.pruned.graph,
         edge.reduction.ratio = edge.reduction.ratio,
         edit.distances = edit.distances,
         js.div = js.div,
+        summary.stability = stats::setNames(list(js.stability), summary),
         edit.distances.lmin = edit.distances.lmin,
         n.edges.lmin = edge.lmin,
         js.div.lmin = js.div.lmin,
@@ -717,27 +763,13 @@ compute.stability.metrics <- function(graphs, graph.type = c("geom", "isize")) {
 
 # Updated helper function to compute JS divergence between degree distributions
 compute.degrees.js.divergence <- function(g1, g2) {
-    # Handle both old and new graph structures
-    if (!is.null(g1$pruned_adj_list)) {
-        g1.degrees <- lengths(g1$pruned_adj_list)
-    } else if (!is.null(g1$adj_list)) {
-        g1.degrees <- lengths(g1$adj_list)
-    } else {
-        stop("No adjacency list found in g1")
-    }
-
-    if (!is.null(g2$pruned_adj_list)) {
-        g2.degrees <- lengths(g2$pruned_adj_list)
-    } else if (!is.null(g2$adj_list)) {
-        g2.degrees <- lengths(g2$adj_list)
-    } else {
-        stop("No adjacency list found in g2")
-    }
-
-    g1.rel.degrees <- g1.degrees / max(g1.degrees)
-    g2.rel.degrees <- g2.degrees / max(g2.degrees)
-
-    jensen.shannon.divergence(g1.rel.degrees, g2.rel.degrees)
+    graph.summary.divergence(
+        g1 = g1,
+        g2 = g2,
+        summary = "degree_distribution",
+        divergence = "js",
+        return.details = FALSE
+    )
 }
 
 ##' @keywords internal
@@ -1023,7 +1055,9 @@ plot.iknn_stability_metrics <- function(x, ...) {
 #' @description
 #' Creates diagnostic plots for analyzing the properties of intersection k-NN graphs
 #' across different k values. Can display edit distances, edge counts, and
-#' Jensen-Shannon divergence metrics.
+#' Jensen-Shannon divergence metrics. The third panel remains the legacy
+#' \code{"deg"} panel name, but the y-axis label adapts to the selected
+#' graph-summary family stored in \code{x$summary} when available.
 #'
 #' @param x A list containing analysis results for intersection k-NN graphs, typically
 #'        with components like 'k.values', 'edit.distances', 'n.edges.in.pruned.graph',
@@ -1031,8 +1065,8 @@ plot.iknn_stability_metrics <- function(x, ...) {
 #' @param type Character string specifying the type of plot. Either "diag" for diagnostic
 #'        plots (default) or "graph" for network visualization.
 #' @param diags Character vector specifying which diagnostics to show. Options include
-#'        "edist" (edit distances), "edge" (edge counts), and "deg" (degree distribution).
-#'        Default is c("edist", "edge", "deg").
+#'        "edist" (edit distances), "edge" (edge counts), and "deg" (the legacy
+#'        summary-divergence panel). Default is c("edist", "edge", "deg").
 #' @param with.pwlm Logical. If TRUE, overlays smoothed trend fits on the plots
 #'        (using legacy component names ending in \code{.pwlm}). Default is TRUE.
 #' @param with.lmin Logical. If TRUE, shows vertical lines at local minimum points.
@@ -1156,15 +1190,25 @@ plot.IkNNgraphs <- function(x,
             abline(v = x$n.edges.in.pruned.graph.lmin, lty = 2, col = lmin.col)
         }
 
-        ## ---- JS divergence of degree profiles (transition metric) ----
+        ## ---- JS divergence of selected summary profiles (transition metric) ----
         if (!"js.div" %in% names(x)) stop("js.div not in x")
         if (length(x$js.div) != length(k.tr)) {
             stop("Length mismatch: js.div must have length length(k.values)-1.")
         }
 
+        summary.key <- if (!is.null(x$summary)) x$summary else "degree_distribution"
+        summary.label.pretty <- switch(
+            summary.key,
+            degree_distribution = "Degrees",
+            edge_weight_distribution = "Edge Weights",
+            component_size_distribution = "Component Sizes",
+            neighborhood_label_distribution = "Neighborhood Labels",
+            summary.key
+        )
+
         plot(k.tr, x$js.div, las = 1, type = "b", xlab = "", ylab = "")
         mtext("Number of Nearest Neighbors (k)", side = 1, line = xline, outer = FALSE)
-        mtext("JS Divergence (Degrees)", side = 2, line = yline, outer = FALSE)
+        mtext(paste0("JS Divergence (", summary.label.pretty, ")"), side = 2, line = yline, outer = FALSE)
 
         if (with.pwlm && "js.div.pwlm" %in% names(x)) {
             .add.iknn.trend(x$js.div.pwlm, col = "red")

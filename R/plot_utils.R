@@ -867,8 +867,8 @@ plot3D.cont.widget <- function(X,
 
 #' Backward-compatible alias for \code{plot3D.cont.widget()}.
 #'
+#' @param ... Additional arguments passed through to `plot3D.cont.widget()`.
 #' @inherit plot3D.cont.widget return
-#' @param ... Additional arguments passed to \code{plot3D.cont.widget()}.
 #' @export
 plot3D.cont.html <- function(...) {
     plot3D.cont.widget(...)
