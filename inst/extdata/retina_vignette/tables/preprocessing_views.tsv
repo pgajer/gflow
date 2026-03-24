@@ -1,0 +1,4 @@
+branch_id	view_index	screen_id	representation_id	description	size_preset	target_n	role	coherence_labels
+lognorm_hvg__pca	1	lognorm_hvg	pca	Primary developmental geometry: log-normalized RPC counts with HVG selection and PCA.	smoke	2000	primary_geometry	age,umap2_CellType
+residual_hvg__pca	2	residual_hvg	pca	Sensitivity geometry: variance-stabilized residuals with HVG selection and PCA.	smoke	2000	sensitivity_geometry	age,umap2_CellType
+cell_cycle_panel__pca	3	cell_cycle_panel	pca	RPC competence and cell-cycle marker panel with PCA, used as a targeted validation geometry.	smoke	2000	targeted_marker_panel	age,umap2_CellType
