@@ -26,4 +26,8 @@ jobs:
           extra-packages: any::devtools
 
       - name: Run full CRAN-style check via Makefile
+        env:
+          # CI does not install the full Suggests set; optional examples/tests are
+          # already guarded where those packages are needed.
+          _R_CHECK_FORCE_SUGGESTS_: "false"
         run: make check
