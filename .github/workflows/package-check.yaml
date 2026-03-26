@@ -25,6 +25,11 @@ jobs:
           dependencies: '"hard"'
           extra-packages: any::devtools
 
+      - uses: r-lib/actions/setup-tinytex@v2
+
+      - name: Install HTML Tidy
+        run: sudo apt-get update && sudo apt-get install -y tidy
+
       - name: Run full CRAN-style check via Makefile
         env:
           # CI does not install the full Suggests set; optional examples/tests are
