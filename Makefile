@@ -5,6 +5,7 @@ TARBALL := $(PKGNAME)_$(VERSION).tar.gz
 LOGDIR := .claude
 HOMEBREW_BIN := /opt/homebrew/bin
 GCC_BIN := /opt/homebrew/opt/gcc/bin
+TIDY_BIN := $(shell if [ -x "$(HOMEBREW_BIN)/tidy" ]; then echo "$(HOMEBREW_BIN)/tidy"; elif command -v tidy >/dev/null 2>&1; then command -v tidy; else echo "$(HOMEBREW_BIN)/tidy"; fi)
 
 clean:
 	find src -name "*.o" -delete
@@ -44,13 +45,13 @@ build-log: clean document
 	@echo "Build output saved to $(LOGDIR)/$(PKGNAME)_build.log"
 
 check: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" R CMD check $(TARBALL) --as-cran
 
 check-fast: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran --no-examples --no-tests --no-manual
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" R CMD check $(TARBALL) --as-cran --no-examples --no-tests --no-manual
 
 check-examples: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(HOMEBREW_BIN)/tidy" R CMD check $(TARBALL) --as-cran --examples
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" R CMD check $(TARBALL) --as-cran --examples
 
 install: build
 	R CMD INSTALL $(TARBALL)
