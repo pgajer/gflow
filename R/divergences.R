@@ -759,7 +759,7 @@ mutual.information <- function(X, Y, num.bins = 10) {
 #'
 #' @return A numeric value representing the estimated divergence.
 #'
-#' @examples
+#' @examplesIf requireNamespace("glmnet", quietly = TRUE)
 #' X <- matrix(rnorm(1000), ncol = 2)
 #' Y <- matrix(rnorm(1000, mean = 1), ncol = 2)
 #' result <- classifier.based.divergence(X, Y)
