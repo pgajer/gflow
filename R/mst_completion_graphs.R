@@ -329,12 +329,17 @@ create.cmst.graph <- function(X,
 #' Invisibly returns the input object \code{x}.
 #'
 #' @examples
-#' \dontrun{
-#' # Create and print a graph
-#' X <- matrix(rnorm(50 * 3), nrow = 50, ncol = 3)
-#' graph <- create.cmst.graph(X, q.thld = 0.8)
+#' graph <- list(
+#'   mst_adj_list = list(c(2L), c(1L, 3L), c(2L)),
+#'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
+#'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
+#'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
+#'   mst_edge_weights = c(1.1, 0.9)
+#' )
+#' attr(graph, "q_thld") <- 0.8
+#' class(graph) <- c("mst_completion_graph", "list")
+#'
 #' print(graph)
-#' }
 #'
 #' @seealso
 #' \code{\link{summary.mst_completion_graph}} for more detailed summaries,
@@ -397,11 +402,17 @@ print.mst_completion_graph <- function(x, ...) {
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' X <- matrix(rnorm(100 * 5), nrow = 100, ncol = 5)
-#' graph <- create.cmst.graph(X, q.thld = 0.85)
+#' graph <- list(
+#'   mst_adj_list = list(c(2L), c(1L, 3L), c(2L)),
+#'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
+#'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
+#'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
+#'   mst_edge_weights = c(1.1, 0.9)
+#' )
+#' attr(graph, "q_thld") <- 0.8
+#' class(graph) <- c("mst_completion_graph", "list")
+#'
 #' summary(graph)
-#' }
 #'
 #' @seealso
 #' \code{\link{print.summary.mst_completion_graph}} for printing summaries,
@@ -460,12 +471,18 @@ summary.mst_completion_graph <- function(object, ...) {
 #' Invisibly returns the input summary object.
 #'
 #' @examples
-#' \dontrun{
-#' X <- matrix(rnorm(75 * 4), nrow = 75, ncol = 4)
-#' graph <- create.cmst.graph(X)
+#' graph <- list(
+#'   mst_adj_list = list(c(2L), c(1L, 3L), c(2L)),
+#'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
+#'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
+#'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
+#'   mst_edge_weights = c(1.1, 0.9)
+#' )
+#' attr(graph, "q_thld") <- 0.8
+#' class(graph) <- c("mst_completion_graph", "list")
+#'
 #' graph_summary <- summary(graph)
 #' print(graph_summary, digits = 4)
-#' }
 #'
 #' @export
 print.summary.mst_completion_graph <- function(x, digits = 3L, ...) {
