@@ -385,12 +385,10 @@ create.circular.graph <- function(n) {
 #' @return A list representing the adjacency list of the joined graph.
 #'
 #' @examples
-#' \dontrun{
 #' graph1 <- list(c(2, 3), c(1), c(1))
 #' graph2 <- list(c(2), c(1, 3), c(2))
 #' joined_graph <- join.graphs(graph1, graph2, 2, 1)
-#' print(joined_graph)
-#' }
+#' str(joined_graph)
 #' @export
 join.graphs <- function(graph1, graph2, i1, i2) {
 
@@ -502,10 +500,8 @@ generate.circle.graph <- function(n,
 #' @return A list representing the adjacency list of the created star graph.
 #'
 #' @examples
-#' \dontrun{
 #' star_graph <- create.star.graph(c(3, 4, 2))
-#' print(star_graph)
-#' }
+#' vapply(star_graph, length, integer(1))
 #' @export
 create.star.graph <- function(sizes) {
 
