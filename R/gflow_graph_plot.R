@@ -58,28 +58,29 @@
 #'   two-column matrix with rownames matching basin labels.
 #'
 #' @examples
-#' \dontrun{
-#' # After constructing a gradient flow graph
-#' gflow.graph <- construct.gflow.graph(merged.basins)
+#' gflow.graph <- list(
+#'   adjacency.list = list(c(3L), integer(0), c(1L)),
+#'   weight.list = list(0.8, numeric(0), 0.8),
+#'   n.ascending = 2L,
+#'   n.descending = 1L,
+#'   basin.metadata = data.frame(
+#'     label = c("m1", "m2", "M1"),
+#'     type = c("ascending", "ascending", "descending"),
+#'     size = c(4, 3, 5),
+#'     extremum.vertex = c(2L, 5L, 3L),
+#'     extremum.value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   intersection.matrix = matrix(
+#'     c(4, 0, 2,
+#'       0, 3, 0,
+#'       2, 0, 5),
+#'     nrow = 3, byrow = TRUE
+#'   )
+#' )
+#' class(gflow.graph) <- "gflow_graph"
 #'
-#' # Default plot
-#' plot(gflow.graph)
-#'
-#' # Customize appearance
-#' plot(gflow.graph,
-#'      layout = "bipartite",
-#'      vertex.size.scale = 1.5,
-#'      vertex.color.ascending = "steelblue",
-#'      vertex.color.descending = "firebrick",
-#'      main = "Basin Connectivity Structure")
-#'
-#' # Force-directed layout
-#' plot(gflow.graph, layout = "force", edge.transparency = 0.3)
-#'
-#' # Focus on Morse-Smale edges only
-#' ms.graph <- construct.gflow.graph(merged.basins, edge.type = "ms_only")
-#' plot(ms.graph, layout = "bipartite")
-#' }
+#' plot(gflow.graph, layout = "extremum", add.legend = FALSE)
+#' plot(gflow.graph, layout = "bipartite", edge.transparency = 0.3)
 #'
 #' @seealso
 #' \code{\link{construct.gflow.graph}} for creating gradient flow graphs
