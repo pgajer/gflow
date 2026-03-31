@@ -426,6 +426,19 @@ validate.maximal.packing <- function(adj.list,
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return Invisible copy of x
+#'
+#' @examples
+#' x <- list(
+#'   valid = TRUE,
+#'   is.maximal = TRUE,
+#'   min.packing.distance = 2,
+#'   max.coverage.distance = 1,
+#'   violations = NULL,
+#'   potential.additions = NULL
+#' )
+#' class(x) <- "packing_validation"
+#'
+#' x
 #' @export
 print.packing_validation <- function(x, ...) {
   cat("Packing Validation Results\n")
@@ -588,6 +601,17 @@ verify.maximal.packing <- function(packing.result, verbose = TRUE) {
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return Invisible copy of x
+#'
+#' @examples
+#' x <- list(
+#'   adj_list = list(c(2L), c(1L, 3L), c(2L, 4L), c(3L)),
+#'   graph_diameter = 3,
+#'   max_packing_radius = 1.5,
+#'   grid_vertices = c(1L, 4L)
+#' )
+#' class(x) <- "maximal_packing"
+#'
+#' x
 #' @export
 print.maximal_packing <- function(x, ...) {
   cat("Maximal Packing Result\n")
