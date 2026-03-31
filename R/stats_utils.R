@@ -2863,18 +2863,16 @@ pearson.wcor.BB.qCrI <- function(nn.y1, nn.y2, nn.i, nn.w, nx, n.BB = 1000, alph
 #' @importFrom stats quantile median
 #'
 #' @examples
-#' \dontrun{
-#' # Create example data
 #' set.seed(123)
-#' S <- matrix(rnorm(200), ncol = 2)
-#' y <- rnorm(100)
+#' S <- rbind(
+#'   matrix(rnorm(40), ncol = 2),
+#'   c(8, 8)
+#' )
+#' y <- rnorm(nrow(S))
 #'
-#' # Remove outliers
-#' result <- rm.SS.outliers(S, y, p = 0.95)
-#'
-#' # Check how many points were removed
+#' result <- rm.SS.outliers(S, y, p = 0.95, K = 5)
 #' sum(!result$idx)
-#' }
+#' dim(result$S.q)
 #'
 #' @seealso \code{\link[FNN]{get.knn}} for K-nearest neighbor computation
 #' @export
@@ -3259,15 +3257,8 @@ break.ties <- function(y,
 #' @return Numeric vector ready for extrema detection
 #'
 #' @examples
-#' \dontrun{
-#' # After fitting
-#' sptb.cond.exp <- sptb.cond.exp.fit$predictions
-#' sptb.cond.exp.clean <- prepare.binary.cond.exp(
-#'   sptb.cond.exp,
-#'   p.right = 0.01,
-#'   verbose = TRUE
-#' )
-#' }
+#' y.hat <- c(-0.1, 0, 0.2, 0.2, 0.9, 1.2)
+#' prepare.binary.cond.exp(y.hat, p.right = 0.2, verbose = FALSE)
 #'
 #' @export
 prepare.binary.cond.exp <- function(y.hat,
@@ -3325,13 +3316,8 @@ prepare.binary.cond.exp <- function(y.hat,
 #' @return Numeric vector ready for extrema detection
 #'
 #' @examples
-#' \dontrun{
-#' y.clean <- prepare.continuous.outcome(
-#'   y.raw,
-#'   p.winsorize = 0.025,
-#'   verbose = TRUE
-#' )
-#' }
+#' y.raw <- c(-10, -1, -1, 0, 1, 2, 20)
+#' prepare.continuous.outcome(y.raw, p.winsorize = 0.1, verbose = FALSE)
 #'
 #' @export
 prepare.continuous.outcome <- function(y,
@@ -3387,30 +3373,14 @@ prepare.continuous.outcome <- function(y,
 #' @return Numeric vector ready for extrema detection
 #'
 #' @examples
-#' \dontrun{
-#' # Your current workflow:
-#' sptb.cond.exp <- sptb.cond.exp.fit$predictions
-#' sptb.cond.exp <- ifelse(sptb.cond.exp < 0, 0, sptb.cond.exp)  # manual floor
-#' sptb.cond.exp <- right.winsorize(sptb.cond.exp)
-#'
-#' # Then just break ties:
-#' sptb.cond.exp.clean <- prepare.for.extrema.detection(
-#'   sptb.cond.exp,
-#'   floor.at = NULL,  # Already done manually
-#'   ceiling.at = NULL,  # Not needed
-#'   break.ties.after = TRUE,
+#' y <- c(-1, -1, 0, 0, 0.5, 2, 5)
+#' prepare.for.extrema.detection(
+#'   y,
+#'   floor.at = 0,
+#'   right.winsorize.p = 0.1,
+#'   ceiling.at = 1,
 #'   verbose = FALSE
 #' )
-#'
-#' # Or let the function do everything:
-#' sptb.cond.exp.clean <- prepare.for.extrema.detection(
-#'   sptb.cond.exp.fit$predictions,
-#'   floor.at = 0,
-#'   right.winsorize.p = 0.01,
-#'   ceiling.at = 1,
-#'   verbose = TRUE
-#' )
-#' }
 #'
 #' @export
 prepare.for.extrema.detection <- function(y,
