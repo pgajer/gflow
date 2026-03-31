@@ -326,6 +326,30 @@ select.phylotypes.for.assoc <- function(phi,
 #'
 #' @return Invisibly returns \code{x}.
 #'
+#' @examples
+#' res <- list(
+#'   selected.phylotypes = c("p__Lactobacillus", "p__Gardnerella"),
+#'   selected.phylotypes.df = data.frame(
+#'     phylotype = c("p__Lactobacillus", "p__Gardnerella"),
+#'     n.prevalence = c(8L, 6L),
+#'     prevalence.prop = c(0.80, 0.60),
+#'     n.sptb = c(4L, 3L),
+#'     n.term = c(4L, 3L)
+#'   ),
+#'   thresholds = list(
+#'     min.prevalence = 0.20,
+#'     min.sptb.detections = 2L,
+#'     min.term.detections = 2L,
+#'     min.bins = NA_integer_,
+#'     n.bins = NA_integer_
+#'   ),
+#'   counts = list(n.samples = 10L, n.sptb = 4L, n.term = 6L),
+#'   call = quote(select.phylotypes.for.assoc(phi, outcome))
+#' )
+#' class(res) <- c("phylotype_selection", "list")
+#'
+#' res
+#'
 #' @export
 print.phylotype_selection <- function(x, ..., top.n = 10L) {
 
