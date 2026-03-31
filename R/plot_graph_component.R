@@ -20,14 +20,17 @@
 #'
 #' @examples
 #' \dontrun{
-#' ## Plot largest component with labels
-#' plot.component(phylo.net, comp.id = 1, show.labels = TRUE, label.cex = 0.6)
+#' g <- igraph::make_graph(
+#'   edges = c(1, 2, 2, 3, 4, 5),
+#'   n = 5,
+#'   directed = FALSE
+#' )
+#' igraph::V(g)$name <- paste0("v", seq_len(igraph::vcount(g)))
 #'
-#' ## Plot without labels
-#' plot.component(phylo.net, comp.id = 1, show.labels = FALSE)
+#' comp.info <- plot.component(g, comp.id = 1, show.labels = TRUE, label.cex = 0.6)
+#' names(comp.info)
 #'
-#' ## Plot with custom layout
-#' plot.component(phylo.net, comp.id = 1, layout.fun = layout_with_kk)
+#' plot.component(g, comp.id = 2, show.labels = FALSE, detect.communities = FALSE)
 #' }
 #'
 #' @export
@@ -44,6 +47,7 @@ plot.component <- function(x,
                            main = NULL,
                            ...) {
     graph <- x
+    communities <- NULL
 
     ## Validate inputs
     if (!inherits(graph, "igraph")) {
@@ -137,11 +141,14 @@ plot.component <- function(x,
 #'
 #' @examples
 #' \dontrun{
-#' ## Plot all components with at least 3 nodes
-#' plot.components.multi(phylo.net, min.size = 3)
-#'
-#' ## Plot with labels and custom layout
-#' plot.components.multi(phylo.net, min.size = 3, show.labels = TRUE, mfrow = c(3, 3))
+#' g <- igraph::make_graph(
+#'   edges = c(1, 2, 2, 3, 4, 5, 5, 6),
+#'   n = 6,
+#'   directed = FALSE
+#' )
+#' igraph::V(g)$name <- paste0("v", seq_len(igraph::vcount(g)))
+#' plotted <- plot.components.multi(g, min.size = 2, max.components = 2, mfrow = c(1, 2))
+#' plotted
 #' }
 #'
 #' @export
