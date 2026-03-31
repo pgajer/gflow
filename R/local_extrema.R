@@ -166,14 +166,19 @@ detect.local.extrema <- function(adj.list,
 #'   }
 #'
 #' @examples
-#' # Create example data
-#' adj.list <- list(c(2), c(1,3), c(2,4), c(3,5), c(4))
-#' weight.list <- list(c(1), c(1,1), c(1,1), c(1,1), c(1))
-#' y <- c(1, 3, 2, 5, 1)
+#' extrema <- list(
+#'   vertices = c(4L, 2L),
+#'   values = c(5, 3),
+#'   radii = c(2, 1),
+#'   neighborhood_sizes = c(4L, 3L),
+#'   is_maxima = c(TRUE, TRUE),
+#'   type = c("Maximum", "Maximum"),
+#'   labels = c("M1", "M2"),
+#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#' )
+#' class(extrema) <- "local_extrema"
 #'
-#' # Detect and summarize maxima
-#' maxima <- detect.local.extrema(adj.list, weight.list, y, 2, 2)
-#' summary(maxima)
+#' summary(extrema)
 #'
 #' @method summary local_extrema
 #' @export
@@ -239,6 +244,22 @@ summary.local_extrema <- function(object, ...) {
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return Invisibly returns \code{x}.
+#'
+#' @examples
+#' extrema <- list(
+#'   vertices = c(4L, 2L),
+#'   values = c(5, 3),
+#'   radii = c(2, 1),
+#'   neighborhood_sizes = c(4L, 3L),
+#'   is_maxima = c(TRUE, TRUE),
+#'   type = c("Maximum", "Maximum"),
+#'   labels = c("M1", "M2"),
+#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#' )
+#' class(extrema) <- "local_extrema"
+#'
+#' extrema.summary <- summary(extrema)
+#' extrema.summary
 #'
 #' @method print summary.local_extrema
 #' @export
@@ -308,18 +329,19 @@ vertices <- function(object, ...) {
 #'   information in the \code{neighborhood_vertices} component of the result.
 #'
 #' @examples
-#' # Create example data
-#' adj.list <- list(c(2), c(1,3), c(2,4), c(3,5), c(4))
-#' weight.list <- list(c(1), c(1,1), c(1,1), c(1,1), c(1))
-#' y <- c(1, 3, 2, 5, 1)
+#' extrema <- list(
+#'   vertices = c(4L, 2L),
+#'   values = c(5, 3),
+#'   radii = c(2, 1),
+#'   neighborhood_sizes = c(4L, 3L),
+#'   is_maxima = c(TRUE, TRUE),
+#'   type = c("Maximum", "Maximum"),
+#'   labels = c("M1", "M2"),
+#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#' )
+#' class(extrema) <- "local_extrema"
 #'
-#' # Detect maxima
-#' maxima <- detect.local.extrema(adj.list, weight.list, y, 2, 2)
-#'
-#' # Extract vertices for the first maximum (if it exists)
-#' if (length(maxima$vertices) > 0) {
-#'   v <- vertices(maxima, maxima$labels[1])
-#' }
+#' vertices(extrema, "M1")
 #'
 #' @method vertices local_extrema
 #' @export
@@ -380,14 +402,19 @@ vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
 #' Point sizes in both panels are proportional to neighborhood sizes.
 #'
 #' @examples
-#' # Create example data
-#' adj.list <- list(c(2), c(1,3), c(2,4), c(3,5), c(4))
-#' weight.list <- list(c(1), c(1,1), c(1,1), c(1,1), c(1))
-#' y <- c(1, 3, 2, 5, 1)
+#' extrema <- list(
+#'   vertices = c(4L, 2L),
+#'   values = c(5, 3),
+#'   radii = c(2, 1),
+#'   neighborhood_sizes = c(4L, 3L),
+#'   is_maxima = c(TRUE, TRUE),
+#'   type = c("Maximum", "Maximum"),
+#'   labels = c("M1", "M2"),
+#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#' )
+#' class(extrema) <- "local_extrema"
 #'
-#' # Detect and plot maxima
-#' maxima <- detect.local.extrema(adj.list, weight.list, y, 2, 2)
-#' plot(maxima)
+#' plot(extrema)
 #'
 #' @method plot local_extrema
 #' @export
