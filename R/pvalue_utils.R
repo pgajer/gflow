@@ -259,6 +259,26 @@ weighted.p.value.summary <- function(u, mu, sigma,
 #' @param ... Additional arguments (ignored)
 #'
 #' @return Invisible copy of x
+#'
+#' @examples
+#' res <- list(
+#'   weighted.p.value = 0.018,
+#'   classical.p.value = 0.041,
+#'   summary.stats = c(
+#'     mean = 0.12,
+#'     sd = 0.05,
+#'     q25 = 0.08,
+#'     median = 0.11,
+#'     q75 = 0.15
+#'   ),
+#'   interpretation = "Weighted evidence suggests significance at alpha = 0.05.",
+#'   alternative = "two.sided",
+#'   null.parameters = c(mu = 0, sigma = 1)
+#' )
+#' class(res) <- "weighted.p.summary"
+#'
+#' res
+#'
 #' @export
 print.weighted.p.summary <- function(x, ...) {
     cat("Weighted P-value Analysis\n")
