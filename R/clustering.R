@@ -483,26 +483,17 @@ hdbscan.cltr <- function(X,
 #' neighbor, which may lead to suboptimal assignments in some cases.
 #'
 #' @examples
-#' \dontrun{
-#' # Generate sample data with 3 clusters and some noise
 #' set.seed(123)
 #' X <- rbind(
-#'   matrix(rnorm(100, mean = 0), ncol = 2),
-#'   matrix(rnorm(100, mean = 5), ncol = 2),
-#'   matrix(rnorm(100, mean = c(5, 0)), ncol = 2),
-#'   matrix(runif(20, -2, 7), ncol = 2)  # noise points
+#'   matrix(rnorm(20, mean = 0), ncol = 2),
+#'   matrix(rnorm(20, mean = 4), ncol = 2)
 #' )
+#' cltr <- c(rep(1, 10), rep(2, 10))
+#' cltr[c(3, 17)] <- 0
+#' names(cltr) <- rownames(X) <- paste0("point_", seq_len(nrow(X)))
 #'
-#' # Initial clustering with some points labeled as 0 (noise)
-#' cltr <- c(rep(1, 50), rep(2, 50), rep(3, 50), rep(0, 20))
-#' names(cltr) <- rownames(X) <- paste0("point_", 1:nrow(X))
-#'
-#' # Apply kNN imputation
-#' new_cltr <- kNN.cltr.imputation(X, cltr, ref.cltr = 0, K = 10)
-#'
-#' # Check results
-#' table(Original = cltr, Imputed = new_cltr)
-#' }
+#' new.cltr <- kNN.cltr.imputation(X, cltr, ref.cltr = 0, K = 3)
+#' table(original = cltr, imputed = new.cltr)
 #'
 #' @importFrom FNN get.knn
 #'
@@ -2146,20 +2137,18 @@ summary.hclust_select_k <- function(object,
 #'   vector.
 #'
 #' @examples
-#' \dontrun{
-#' library(igraph)
-#' g <- sample_gnp(50, 0.08)
-#' E(g)$weight <- runif(ecount(g))
+#' set.seed(1)
+#' g <- igraph::make_ring(8)
+#' igraph::E(g)$weight <- c(1, 1, 2, 2, 1, 1, 2, 2)
 #'
-#' ## Uses E(g)$weight by default
 #' mem <- cluster.graph.louvain(g)
+#' mem
 #'
-#' ## Force unweighted
-#' mem0 <- cluster.graph.louvain(g, weights = FALSE)
+#' mem.unweighted <- cluster.graph.louvain(g, weights = FALSE)
+#' mem.unweighted
 #'
-#' ## Repeat runs, reproducible
-#' mem.mat <- cluster.graph.louvain(g, seed = 1, n.itrs = 5)
-#' }
+#' mem.mat <- cluster.graph.louvain(g, seed = 1, n.itrs = 3)
+#' dim(mem.mat)
 #'
 #' @importFrom igraph cluster_louvain ecount vcount edge_attr_names membership
 #' @export
