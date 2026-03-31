@@ -110,10 +110,8 @@ inv.logit <- function(x) {
 #' and then transformed via the inverse logit function.
 #'
 #' @examples
-#' \dontrun{
-#' x <- rnorm(10)
-#' normalize.and.inv.logit(x)  # Normalizes x and applies inverse logit
-#' }
+#' x <- c(-2, -1, 0, 1, 2)
+#' normalize.and.inv.logit(x)
 #' @export
 normalize.and.inv.logit <- function(x, y.min = -3, y.max = 3) {
     y <- minmax.normalize(x, y.min, y.max)
@@ -344,11 +342,9 @@ p.cases <- function(y)
 #' @return The cross product of x and y.
 #'
 #' @examples
-#' \dontrun{
-#' x <- c(0,1,3)
-#' y <- c(2,3,4)
-#' z <- cross.prod(x, y)
-#' }
+#' x <- c(0, 1, 3)
+#' y <- c(2, 3, 4)
+#' cross.prod(x, y)
 #' @export
 cross.prod <- function(x, y)
 {
@@ -381,11 +377,9 @@ vector.norm <- function(x)
 #' @return The angle between two 3D vectors in radians.
 #'
 #' @examples
-#' \dontrun{
-#' v <- c(0,1,3)
-#' w <- c(2,3,4)
-#' angle <- angle.3D(v, w)
-#' }
+#' v <- c(0, 1, 3)
+#' w <- c(2, 3, 4)
+#' angle.3D(v, w)
 #' @export
 ## Based on the Wikipedia article:  https://en.wikipedia.org/wiki/Great-circle_distance
 angle.3D <- function(v, w, method="arcsine") {
@@ -521,19 +515,11 @@ Rdensity.distance <- function(p, q, p.density, q.density, density.func = NULL) {
 #' @return A numeric vector of the same length as y containing the derivative estimates.
 #'
 #' @examples
-#' \dontrun{
-#' # Example with a quadratic function
-#' x <- seq(0, 2*pi, length.out = 100)
+#' x <- seq(0, 2 * pi, length.out = 10)
 #' y <- sin(x)
 #' dx <- x[2] - x[1]
 #' dy <- derivative.second.order.method(y, dx)
-#'
-#' # Compare with analytical derivative
-#' dy_true <- cos(x)
-#' plot(x, dy, type = "l", col = "blue", main = "Numerical vs Analytical Derivative")
-#' lines(x, dy_true, col = "red", lty = 2)
-#' legend("topright", c("Numerical", "Analytical"), col = c("blue", "red"), lty = c(1, 2))
-#' }
+#' round(dy, 3)
 #' @export
 derivative.second.order.method <- function(y, dx)
 {
@@ -823,10 +809,8 @@ restric.to.Linf.unit.sphere <- function(X) {
 #' @return Returns the tangent of the linearly transformed 'x'.
 #'
 #' @examples
-#' \dontrun{
-#' x <- 0.001
+#' x <- c(0.001, 0.01, 0.1)
 #' shifted.tan(x)
-#' }
 #' @export
 shifted.tan <- function(x, offset=0.1)
 {
@@ -852,10 +836,8 @@ shifted.tan <- function(x, offset=0.1)
 #' @return Returns the tangent of the scaled log of x.
 #'
 #' @examples
-#' \dontrun{
-#' x <- 0.1
+#' x <- c(0.5, 1, 2)
 #' scaled.log.tan(x)
-#' }
 #' @export
 scaled.log.tan <- function(x, scale=0.1)
 {

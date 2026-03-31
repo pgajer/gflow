@@ -43,19 +43,28 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' ## Example for one phylotype using raw relative abundance
-#' x <- phi.zmb[M1.disk.res$vertices, "Prevotella_amnii"]
-#' d <- as.numeric(M1.disk.res$dists[as.character(M1.disk.res$vertices)])
+#' x <- c(0, 0.2, 0.4, 0, 0.5, 0.7, 0, 0.9, 1.0, 0.3, 0.6, 0.8)
+#' d <- seq(0.1, 1.2, by = 0.1)
 #'
-#' res <- distance.quantile.bin.analysis(x, d, eps = 0, n.bins = 10)
+#' res <- distance.quantile.bin.analysis(
+#'   x,
+#'   d,
+#'   eps = 0,
+#'   n.bins = 4,
+#'   min.per.bin = 2
+#' )
 #' res$bins
-#' res$tests
+#' names(res$tests)
 #'
-#' ## For CLR values (already transformed), set carriers.only = FALSE
-#' x.clr <- clr.mat[, "Prevotella_amnii"]
-#' res.clr <- distance.quantile.bin.analysis(x.clr, d, carriers.only = FALSE)
-#' }
+#' res.all <- distance.quantile.bin.analysis(
+#'   x,
+#'   d,
+#'   carriers.only = FALSE,
+#'   abundance.summary = "mean",
+#'   n.bins = 4,
+#'   min.per.bin = 2
+#' )
+#' head(res.all$bin.assignment)
 #'
 #' @export
 distance.quantile.bin.analysis <- function(x,
