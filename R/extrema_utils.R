@@ -21,22 +21,16 @@
 #' within their respective types.
 #'
 #' @examples
-#' \dontrun{
-#' # Filter maxima by hop index
-#' filtered.max <- extr.summary[extr.summary$type == "max" &
-#'                               extr.summary$hop.idx > 2, ]
-#' # Relabel
-#' relabeled.max <- relabel.extrema(filtered.max)
+#' extrema.df <- data.frame(
+#'   label = c("M4", "M7", "m9", "m3"),
+#'   vertex = c(4, 7, 9, 3),
+#'   value = c(1.2, 0.9, -0.8, -0.3),
+#'   type = c("max", "max", "min", "min"),
+#'   hop.idx = c(3, 2, 4, 1)
+#' )
 #'
-#' # Works with minima too
-#' filtered.min <- extr.summary[extr.summary$type == "min" &
-#'                               extr.summary$hop.idx > 2, ]
-#' relabeled.min <- relabel.extrema(filtered.min)
-#'
-#' # Or relabel both at once
-#' filtered.both <- extr.summary[extr.summary$hop.idx > 2, ]
-#' relabeled.both <- relabel.extrema(filtered.both)
-#' }
+#' relabeled <- relabel.extrema(extrema.df)
+#' relabeled[, c("label", "vertex", "type")]
 #'
 #' @export
 relabel.extrema <- function(extrema.df, sort.ascending = NULL) {
@@ -149,59 +143,13 @@ relabel.extrema <- function(extrema.df, sort.ascending = NULL) {
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple graph
-#' adj.list <- list(c(2,3), c(1,3,4), c(1,2,4), c(2,3))
-#' weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1,1))
+#' adj.list <- list(c(2, 3), c(1, 3, 4), c(1, 2, 4), c(2, 3))
+#' weight.list <- list(c(1, 1), c(1, 1, 1), c(1, 1, 1), c(1, 1))
 #' y <- c(0.5, 0.2, 0.8, 0.3)
 #'
-#' # Calculate extrema hop neighborhoods
 #' result <- compute.extrema.hop.nbhds(adj.list, weight.list, y)
-#'
-#' # Examine minima
-#' minima <- result$lmin.hop.nbhds
-#' # Examine maxima
-#' maxima <- result$lmax.hop.nbhds
-#'
-#' # Plot the graph and highlight extrema and their hop neighborhoods
-#' # (requires igraph package)
-#' library(igraph)
-#' g <- graph.from.adj.list(adj.list)
-#' E(g)$weight <- unlist(weight.list)
-#' vertex.colors <- rep("grey", length(y))
-#'
-#' # Highlight minima
-#' for(min.nbhd in minima) {
-#'   min.vertex <- min.nbhd$vertex
-#'   vertex.colors[min.vertex] <- "blue"
-#'   # Highlight vertices in neighborhood with decreasing intensity
-#'   if(nrow(min.nbhd$nbhd.df) > 0) {
-#'     for(i in 1:nrow(min.nbhd$nbhd.df)) {
-#'       v <- min.nbhd$nbhd.df[i,1]
-#'       if(v != min.vertex) {
-#'         vertex.colors[v] <- "lightblue"
-#'       }
-#'     }
-#'   }
-#' }
-#'
-#' # Highlight maxima
-#' for(max.nbhd in maxima) {
-#'   max.vertex <- max.nbhd$vertex
-#'   vertex.colors[max.vertex] <- "red"
-#'   # Highlight vertices in neighborhood with decreasing intensity
-#'   if(nrow(max.nbhd$nbhd.df) > 0) {
-#'     for(i in 1:nrow(max.nbhd$nbhd.df)) {
-#'       v <- max.nbhd$nbhd.df[i,1]
-#'       if(v != max.vertex && vertex.colors[v] == "grey") {
-#'         vertex.colors[v] <- "pink"
-#'       }
-#'     }
-#'   }
-#' }
-#'
-#' plot(g, vertex.color = vertex.colors, vertex.label = y)
-#' }
+#' names(result)
+#' result$extrema_df[, c("label", "vertex", "value")]
 #'
 #' @seealso
 #' \code{compute.graph.basin.complex} for computing the basin complex of extrema,
@@ -885,18 +833,23 @@ label.extrema.leaders.3d <- function(graph.3d,
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Extract neighborhood for maximum M1
-#' M1_nbhd <- get.nbrs(Z.extr.res, "M1")
+#' extr.obj <- list(
+#'   extrema_df = data.frame(
+#'     label = c("M1", "m1"),
+#'     vertex = c(3, 2),
+#'     is_max = c(1, 0)
+#'   ),
+#'   lmax_hop_nbhds = list(
+#'     list(vertex = 3, value = 0.8, hop_idx = 1, nbhd_df = matrix(c(3, 0), ncol = 2))
+#'   ),
+#'   lmin_hop_nbhds = list(
+#'     list(vertex = 2, value = 0.2, hop_idx = 1, nbhd_df = matrix(c(2, 0), ncol = 2))
+#'   )
+#' )
 #'
-#' # Extract neighborhood for minimum m11
-#' m11_nbhd <- get.nbrs(Z.extr.res, "m11")
-#'
-#' # Access components of the result
-#' M1_nbhd$vertex      # Get vertex index
-#' M1_nbhd$value       # Get value at vertex
-#' M1_nbhd$nbhd_df     # Get neighborhood dataframe
-#' }
+#' M1.nbhd <- get.nbrs(extr.obj, "M1")
+#' M1.nbhd$vertex
+#' M1.nbhd$hop_idx
 #'
 #' @seealso
 #' Related extrema analysis functions (if applicable)
