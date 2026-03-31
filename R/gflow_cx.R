@@ -80,7 +80,6 @@
 #' noise or insignificant features.
 #'
 #' @examples
-#' \dontrun{
 #' # Create a simple triangle graph
 #' adj.list <- list(c(2,3), c(1,3), c(1,2))
 #' weight.list <- list(c(1,1), c(1,1), c(1,1))
@@ -99,6 +98,7 @@
 #' # Check smoothed values
 #' print(result$harmonic_predictions)
 #'
+#' \donttest{
 #' # More complex example with detailed recording
 #' # Create a larger graph (grid)
 #' n <- 5
@@ -311,7 +311,6 @@ create.gflow.cx <- function(adj.list,
 #' @return Invisibly returns the input object \code{x}
 #'
 #' @examples
-#' \dontrun{
 #' # Create simple example
 #' adj.list <- list(c(2,3), c(1,3), c(1,2))
 #' weight.list <- list(c(1,1), c(1,1), c(1,1))
@@ -319,7 +318,6 @@ create.gflow.cx <- function(adj.list,
 #'
 #' result <- create.gflow.cx(adj.list, weight.list, y, verbose = FALSE)
 #' print(result)
-#' }
 #' @export
 print.gflow_cx <- function(x, ...) {
     cat("Graph Flow Complex with Harmonic Extension\n")
@@ -831,16 +829,11 @@ visualize.smoothing.steps <- function(gflow_result,
 #' @return Logical vector indicating which extrema are spurious
 #'
 #' @examples
-#' \dontrun{
-#' # Simple threshold (backward compatible)
-#' spurious <- classify.spurious.extrema(hop_indices, method = "threshold", threshold = 2)
-#'
-#' # Quantile-based (adaptive to data)
-#' spurious <- classify.spurious.extrema(hop_indices, method = "quantile", quantile_level = 0.25)
-#'
-#' # Combined approach
-#' spurious <- classify.spurious.extrema(hop_indices, values, method = "combined")
-#' }
+#' hop_indices <- c(1, 2, 4, Inf, 7)
+#' values <- c(-1.2, 0.3, 2.1, 3.4, 2.8)
+#' classify.spurious.extrema(hop_indices, method = "threshold", threshold = 2)
+#' classify.spurious.extrema(hop_indices, method = "quantile", quantile_level = 0.25)
+#' classify.spurious.extrema(hop_indices, values, method = "combined")
 #'
 #' @export
 classify.spurious.extrema <- function(hop_indices,
@@ -971,20 +964,18 @@ classify.spurious.extrema <- function(hop_indices,
 #'   }
 #'
 #' @examples
-#' \dontrun{
-#' # Original behavior (backward compatible)
-#' extrema_df <- create.hop.nbhd.extrema.df2(result)
-#'
-#' # Adaptive quantile-based spurious detection
-#' extrema_df <- create.hop.nbhd.extrema.df2(result,
-#'                                            spurious_method = "quantile",
-#'                                            quantile_level = 0.33)
-#'
-#' # Combined approach with diagnostics
-#' extrema_df <- create.hop.nbhd.extrema.df2(result,
-#'                                            spurious_method = "combined",
-#'                                            verbose = TRUE)
-#' }
+#' result <- list(
+#'   lmin_hop_nbhds = list(
+#'     list(vertex = 1, hop_idx = 1, value = 0.2),
+#'     list(vertex = 3, hop_idx = 4, value = 0.1)
+#'   ),
+#'   lmax_hop_nbhds = list(
+#'     list(vertex = 2, hop_idx = 2, value = 0.9),
+#'     list(vertex = 4, hop_idx = Inf, value = 1.2)
+#'   )
+#' )
+#' create.hop.nbhd.extrema.df2(result)
+#' create.hop.nbhd.extrema.df2(result, spurious_method = "quantile", quantile_level = 0.33)
 #'
 #' @export
 create.hop.nbhd.extrema.df2 <- function(result,
@@ -1150,10 +1141,12 @@ create.hop.nbhd.extrema.df2 <- function(result,
 #'   }
 #'
 #' @examples
-#' \dontrun{
-#' diagnostics <- analyze.extrema.distribution(result)
-#' print(diagnostics$summary)
-#' }
+#' result <- list(
+#'   lmin_hop_nbhds = list(list(hop_idx = 1), list(hop_idx = 2)),
+#'   lmax_hop_nbhds = list(list(hop_idx = 3), list(hop_idx = 5))
+#' )
+#' diagnostics <- analyze.extrema.distribution(result, plot = FALSE)
+#' diagnostics$summary
 #'
 #' @export
 analyze.extrema.distribution <- function(result, plot = TRUE) {
@@ -1256,14 +1249,18 @@ analyze.extrema.distribution <- function(result, plot = TRUE) {
 #' @return List with suggested thresholds and diagnostic information
 #'
 #' @examples
-#' \dontrun{
-#' # You expect 5-7 true extrema total
-#' suggestions <- suggest.threshold(
-#'   lextr.res$extrema_df,
-#'   expected_range = c(5, 7),
-#'   plot = TRUE
+#' extrema_df <- data.frame(
+#'   vertex = 1:6,
+#'   hop_idx = c(1, 2, 3, 4, Inf, 6),
+#'   is_max = c(0, 1, 0, 1, 1, 0),
+#'   label = c("m1", "M1", "m2", "M2", "M3", "m3")
 #' )
-#' }
+#' suggestions <- suggest.threshold(
+#'   extrema_df,
+#'   expected_range = c(2, 3),
+#'   plot = FALSE
+#' )
+#' suggestions$suggestions$recommended_threshold
 #'
 #' @export
 suggest.threshold <- function(extrema_df,
@@ -1479,14 +1476,19 @@ suggest.threshold <- function(extrema_df,
 #' @return List of data frames, one per threshold
 #'
 #' @examples
-#' \dontrun{
-#' # Compare what you'd retain at thresholds 2, 4, 6
+#' extrema_df <- data.frame(
+#'   vertex = 1:5,
+#'   hop_idx = c(1, 3, 5, 7, Inf),
+#'   is_max = c(0, 1, 0, 1, 1),
+#'   label = c("m1", "M1", "m2", "M2", "M3"),
+#'   value = c(0.2, 1.3, 0.4, 1.6, 2.0)
+#' )
 #' retained <- compare.retained.extrema(
-#'   lextr.res$extrema_df,
-#'   thresholds = c(2, 4, 6),
+#'   extrema_df,
+#'   thresholds = c(2, 4),
 #'   sort_by = "value"
 #' )
-#' }
+#' names(retained)
 #'
 #' @export compare.retained.extrema
 compare.retained.extrema <- function(extrema_df,
@@ -1598,4 +1600,3 @@ plot_extrema_stability <- function(extrema_df,
          pos = 2, cex = 0.8, col = "gray40")
   }
 }
-
