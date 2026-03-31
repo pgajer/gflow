@@ -246,18 +246,26 @@ create.basin.cx <- function(adj.list,
 #' For more detailed information about the basin complex, use \code{summary()}.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a basin complex
-#' adj_list <- list(c(2,3), c(1,3,4), c(1,2,5), c(2,5), c(3,4))
-#' weight_list <- list(c(1,2), c(1,1,3), c(2,1,2), c(3,1), c(2,1))
-#' y <- c(2.5, 1.8, 3.2, 0.7, 2.1)
-#' basin_cx <- create.basin.cx(adj_list, weight_list, y)
+#' basin_cx <- list(
+#'   basins = list(
+#'     ascending = list(
+#'       m1 = list(vertex = 2L, value = 0.7, vertices = c(1L, 2L)),
+#'       m2 = list(vertex = 5L, value = 1.1, vertices = c(4L, 5L))
+#'     ),
+#'     descending = list(
+#'       M1 = list(vertex = 3L, value = 3.2, vertices = c(2L, 3L, 4L))
+#'     )
+#'   ),
+#'   original_y = c(2.5, 0.7, 3.2, 1.8, 1.1),
+#'   cells = list(
+#'     asc_desc_cells = list(c1 = list(vertices = c(2L, 3L))),
+#'     asc_asc_cells = list(),
+#'     desc_desc_cells = list()
+#'   )
+#' )
+#' class(basin_cx) <- "basin_cx"
 #'
-#' # Print basic information
-#' print(basin_cx)
-#' # or simply:
 #' basin_cx
-#' }
 #'
 #' @seealso
 #' \code{\link{create.basin.cx}} for creating basin complex objects,
@@ -339,20 +347,34 @@ print.basin_cx <- function(x, ...) {
 #' intersections between basins.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a basin complex
-#' adj_list <- list(c(2,3), c(1,3,4), c(1,2,5), c(2,5), c(3,4))
-#' weight_list <- list(c(1,2), c(1,1,3), c(2,1,2), c(3,1), c(2,1))
-#' y <- c(2.5, 1.8, 3.2, 0.7, 2.1)
-#' basin_cx <- create.basin.cx(adj_list, weight_list, y)
+#' basin_cx <- list(
+#'   basins = list(
+#'     ascending = list(
+#'       m1 = list(vertex = 2L, value = 0.7, vertices = c(1L, 2L)),
+#'       m2 = list(vertex = 5L, value = 1.1, vertices = c(4L, 5L))
+#'     ),
+#'     descending = list(
+#'       M1 = list(vertex = 3L, value = 3.2, vertices = c(2L, 3L, 4L))
+#'     )
+#'   ),
+#'   local_extrema = data.frame(
+#'     vertex_index = c(2L, 5L, 3L),
+#'     label = c("m1", "m2", "M1"),
+#'     is_maximum = c(0, 0, 1),
+#'     fn_value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   original_y = c(2.5, 0.7, 3.2, 1.8, 1.1),
+#'   cells = list(
+#'     asc_desc_cells = list(c1 = list(vertices = c(2L, 3L))),
+#'     asc_asc_cells = list(),
+#'     desc_desc_cells = list()
+#'   )
+#' )
+#' class(basin_cx) <- "basin_cx"
 #'
-#' # Get detailed summary
 #' basin_summary <- summary(basin_cx)
-#'
-#' # Access specific components
 #' basin_summary$minima_info
-#' basin_summary$ascending_basins_jaccard_index
-#' }
+#' basin_summary$cells_summary$total_cells
 #'
 #' @seealso
 #' \code{\link{create.basin.cx}} for creating basin complex objects,
@@ -490,19 +512,33 @@ summary.basin_cx <- function(object, ...) {
 #' creation.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a basin complex
-#' adj_list <- list(c(2,3), c(1,3,4), c(1,2,5), c(2,5), c(3,4))
-#' weight_list <- list(c(1,2), c(1,1,3), c(2,1,2), c(3,1), c(2,1))
-#' y <- c(2.5, 1.8, 3.2, 0.7, 2.1)
-#' basin_cx <- create.basin.cx(adj_list, weight_list, y)
+#' basin_cx <- list(
+#'   basins = list(
+#'     ascending = list(
+#'       m1 = list(vertex = 2L, value = 0.7, vertices = c(1L, 2L)),
+#'       m2 = list(vertex = 5L, value = 1.1, vertices = c(4L, 5L))
+#'     ),
+#'     descending = list(
+#'       M1 = list(vertex = 3L, value = 3.2, vertices = c(2L, 3L, 4L))
+#'     )
+#'   ),
+#'   local_extrema = data.frame(
+#'     vertex_index = c(2L, 5L, 3L),
+#'     label = c("m1", "m2", "M1"),
+#'     is_maximum = c(0, 0, 1),
+#'     fn_value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   original_y = c(2.5, 0.7, 3.2, 1.8, 1.1),
+#'   cells = list(
+#'     asc_desc_cells = list(c1 = list(vertices = c(2L, 3L))),
+#'     asc_asc_cells = list(),
+#'     desc_desc_cells = list()
+#'   )
+#' )
+#' class(basin_cx) <- "basin_cx"
 #'
-#' # Get and print detailed summary
 #' basin_summary <- summary(basin_cx)
-#' print(basin_summary)
-#' # or simply:
 #' basin_summary
-#' }
 #'
 #' @seealso
 #' \code{\link{summary.basin_cx}} for creating summary objects,
