@@ -58,8 +58,8 @@
 #' @examples
 #' # Create a sample dataset with outliers
 #' set.seed(123)
-#' n_normal <- 1000
-#' n_outliers <- 10
+#' n_normal <- 120
+#' n_outliers <- 6
 #'
 #' # Generate normal data
 #' normal_data <- matrix(rnorm(n_normal * 2), ncol = 2)
@@ -84,7 +84,6 @@
 #' result2 <- remove.knn.outliers(S, y, p = 0.95, method = "dist.factor",
 #'                                dist.factor = 5, K = 10)
 #'
-#' \dontrun{
 #' # Plot the original and filtered state space
 #' par(mfrow = c(1, 2))
 #' plot(S, col = "gray", main = "Original State Space",
@@ -96,7 +95,6 @@
 #'      xlab = "Dimension 1", ylab = "Dimension 2")
 #' legend("topright", legend = c("Retained", "Removed"),
 #'        col = c("blue", "red"), pch = 16)
-#' }
 #'
 #' @seealso
 #' \code{\link[FNN]{get.knn}} for the k-nearest neighbor calculation,
