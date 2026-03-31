@@ -122,12 +122,25 @@ compute.geodesic.stats <- function(adj.list,
 #'        Each cell contains a string with "percent (count)" format.
 #'
 #' @examples
-#' \dontrun{
-#' stats <- compute.geodesic.stats(adj.list, weight.list)
-#' summary(stats)  # Default type = "rays"
+#' stats <- list(
+#'   radii = c(0.2, 0.4),
+#'   geodesic_rays = matrix(c(2, 3, 3, 4), nrow = 2, byrow = TRUE),
+#'   composite_geodesics = matrix(c(1, 1, 1, 2), nrow = 2, byrow = TRUE),
+#'   path_overlap = list(
+#'     min = matrix(c(0.1, 0.2, 0.2, 0.3), nrow = 2, byrow = TRUE),
+#'     p05 = matrix(c(0.1, 0.2, 0.2, 0.3), nrow = 2, byrow = TRUE),
+#'     p25 = matrix(c(0.2, 0.3, 0.3, 0.4), nrow = 2, byrow = TRUE),
+#'     median = matrix(c(0.3, 0.4, 0.4, 0.5), nrow = 2, byrow = TRUE),
+#'     p75 = matrix(c(0.4, 0.5, 0.5, 0.6), nrow = 2, byrow = TRUE),
+#'     p95 = matrix(c(0.5, 0.6, 0.6, 0.7), nrow = 2, byrow = TRUE),
+#'     max = matrix(c(0.6, 0.7, 0.7, 0.8), nrow = 2, byrow = TRUE)
+#'   )
+#' )
+#' class(stats) <- c("geodesic_stats", "list")
+#'
+#' summary(stats)
 #' summary(stats, type = "composite")
 #' summary(stats, type = "overlap")
-#' }
 #'
 #' @export
 summary.geodesic_stats <- function(object, type = c("rays", "composite", "overlap"), ...) {
@@ -486,10 +499,23 @@ summary.vertex_geodesic_stats <- function(object, ...) {
 #' @return Invisibly returns NULL.
 #'
 #' @examples
-#' \dontrun{
-#' stats <- compute.geodesic.stats(adj.list, weight.list)
-#' plot.geodesic.stats(stats, "all")
-#' }
+#' stats <- list(
+#'   radii = c(0.2, 0.4),
+#'   geodesic_rays = matrix(c(2, 3, 3, 4), nrow = 2, byrow = TRUE),
+#'   composite_geodesics = matrix(c(1, 1, 1, 2), nrow = 2, byrow = TRUE),
+#'   grid_vertices = c(5L, 9L),
+#'   summary = data.frame(
+#'     radius = c(0.2, 0.4),
+#'     avg_rays = c(2.5, 3.5),
+#'     max_rays = c(3, 4),
+#'     composite_ratio = c(0.4, 0.5),
+#'     avg_overlap_median = c(0.35, 0.45)
+#'   )
+#' )
+#' class(stats) <- c("geodesic_stats", "list")
+#'
+#' plot(stats, plot.type = "summary")
+#' plot(stats, plot.type = "vertex", selected.vertices = 5)
 #'
 #' @importFrom graphics plot lines points legend grid image par layout title
 #' @importFrom grDevices heat.colors rainbow
