@@ -29,21 +29,9 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Compute raw density
-#' raw.rho <- compute.vertex.density(adj.list, weight.list, normalize = FALSE)
-#'
-#' # Smooth using conditional expectation
-#' density.fit <- refit.rdgraph.regression(fit, raw.rho)
-#' smoothed.rho <- density.fit$fitted.values
-#'
-#' # Use in basin computation
-#' basins <- compute.gfc.basins(
-#'     adj.list, weight.list, fitted.values,
-#'     modulation = "density",
-#'     density = smoothed.rho
-#' )
-#' }
+#' adj.list <- list(c(2L, 3L), c(1L, 3L), c(1L, 2L))
+#' weight.list <- list(c(1, 2), c(1, 1.5), c(2, 1.5))
+#' compute.vertex.density(adj.list, weight.list, normalize = FALSE)
 #'
 #' @seealso \code{\link{compute.gfc.basins}}, \code{\link{refit.rdgraph.regression}}
 #'
