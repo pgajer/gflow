@@ -361,19 +361,20 @@ total.associations <- function(obj, ED = NULL, verbose = FALSE) {
 #' FDR correction is applied to p-values.
 #'
 #' @examples
-#' \dontrun{
-#' # Run multiple tests
-#' results <- list()
-#' for (i in 1:10) {
-#'   x <- runif(100)
-#'   y <- sin(2*pi*x) + rnorm(100, sd = 0.3)
-#'   results\code{[[paste0("var", i)]}] <- fassoc.test(x, y, order = 1)
-#' }
-#'
-#' # Create summary
-#' summary_df <- create.delta1.Delta1.df(results)
-#' print(summary_df$sign.d1D1.df)
-#' }
+#' set.seed(1)
+#' results <- lapply(1:3, function(i) {
+#'   curve <- seq_len(5) * (1 + 0.1 * i)
+#'   list(
+#'     Ey.res = list(Eyg = curve, y = curve, ng = length(curve)),
+#'     p.value = 0.01 * i,
+#'     delta1 = 0.2 * i,
+#'     Delta1 = 0.1 * i
+#'   )
+#' })
+#' names(results) <- paste0("var", 1:3)
+#' summary.df <- create.delta1.Delta1.df(results)
+#' names(summary.df)
+#' summary.df$d1D1.df[, c("RDM", "D"), drop = FALSE]
 #'
 #' @importFrom stats p.adjust
 #' @export
@@ -478,21 +479,11 @@ create.delta1.Delta1.df <- function(res.list, q.thld = 0.1) {
 #' Higher orders capture increasingly fine-scale variation in the functional relationship.
 #'
 #' @examples
-#' \dontrun{
-#' # Generate example conditional mean curve
-#' x <- seq(0, 1, length.out = 100)
-#' Eyg <- sin(4*pi*x) + 0.5*x
-#'
-#' # Calculate indices up to order 5
+#' x <- seq(0, 1, length.out = 40)
+#' Eyg <- sin(4 * pi * x) + 0.5 * x
 #' indices <- delta.indices(Eyg, k = 5)
-#' print(indices$Delta)
-#' print(indices$delta)
-#'
-#' # Plot delta values by order
-#' plot(1:5, indices$delta, type = "b",
-#'      xlab = "Order", ylab = "delta",
-#'      main = "Functional Association by Order")
-#' }
+#' indices$Delta
+#' indices$delta
 #'
 #' @export
 delta.indices <- function(Eyg, k = 10) {
@@ -572,21 +563,10 @@ delta.indices <- function(Eyg, k = 10) {
 #' the behavior of a function and its derivatives simultaneously.
 #'
 #' @examples
-#' \dontrun{
-#' # Generate example curve
-#' x <- seq(0, 1, length.out = 50)
-#' Eyg <- sin(2*pi*x)
-#'
-#' # Get profiles up to 3rd order
+#' x <- seq(0, 1, length.out = 20)
+#' Eyg <- sin(2 * pi * x)
 #' profiles <- compute.diff.profiles(Eyg, k = 3)
-#'
-#' # The result contains:
-#' # - Original values (50 elements)
-#' # - First differences (49 elements)
-#' # - Second differences (48 elements)
-#' # - Third differences (47 elements)
-#' # Total: 194 elements
-#' }
+#' length(profiles)
 #'
 #' @export
 compute.diff.profiles <- function(Eyg, k) {
