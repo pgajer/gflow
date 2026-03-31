@@ -334,6 +334,27 @@ compute.vertex.geodesic.stats <- function(adj.list,
 #'
 #' @return Invisibly returns NULL
 #'
+#' @examples
+#' x <- data.frame(
+#'   radius = c(0.2, 0.4, 0.6),
+#'   rays = c(3, 5, 6),
+#'   composite_geodesics = c(1, 2, 3),
+#'   overlap_min = c(0.10, 0.15, 0.20),
+#'   overlap_p05 = c(0.15, 0.20, 0.25),
+#'   overlap_p25 = c(0.20, 0.25, 0.30),
+#'   overlap_median = c(0.30, 0.40, 0.50),
+#'   overlap_p75 = c(0.40, 0.50, 0.60),
+#'   overlap_p95 = c(0.55, 0.65, 0.75),
+#'   overlap_max = c(0.60, 0.70, 0.80),
+#'   potential_pairs = c(3, 10, 15),
+#'   composite_ratio = c(1/3, 0.2, 0.2),
+#'   overlap_ratio = c(0.30, 0.40, 0.50)
+#' )
+#' class(x) <- c("vertex_geodesic_stats", "data.frame")
+#' attr(x, "vertex") <- 7L
+#'
+#' plot(x)
+#'
 #' @export
 plot.vertex_geodesic_stats <- function(x, ...) {
     # Get the vertex ID
@@ -454,6 +475,27 @@ overlap.distribution.plot <- function(x, radius_idx = NULL) {
 #' @param ... Additional arguments passed to summary
 #'
 #' @return A summary of the vertex geodesic statistics
+#'
+#' @examples
+#' x <- data.frame(
+#'   radius = c(0.2, 0.4, 0.6),
+#'   rays = c(3, 5, 6),
+#'   composite_geodesics = c(1, 2, 3),
+#'   overlap_min = c(0.10, 0.15, 0.20),
+#'   overlap_p05 = c(0.15, 0.20, 0.25),
+#'   overlap_p25 = c(0.20, 0.25, 0.30),
+#'   overlap_median = c(0.30, 0.40, 0.50),
+#'   overlap_p75 = c(0.40, 0.50, 0.60),
+#'   overlap_p95 = c(0.55, 0.65, 0.75),
+#'   overlap_max = c(0.60, 0.70, 0.80),
+#'   potential_pairs = c(3, 10, 15),
+#'   composite_ratio = c(1/3, 0.2, 0.2),
+#'   overlap_ratio = c(0.30, 0.40, 0.50)
+#' )
+#' class(x) <- c("vertex_geodesic_stats", "data.frame")
+#' attr(x, "vertex") <- 7L
+#'
+#' summary(x)
 #'
 #' @export
 summary.vertex_geodesic_stats <- function(object, ...) {
