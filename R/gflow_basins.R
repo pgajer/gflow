@@ -264,6 +264,27 @@ process_basin_results <- function(result) {
 #'   \item{descending_basin_sizes}{Summary statistics for descending basin sizes}
 #' }
 #'
+#' @examples
+#' basins <- list(
+#'   basins = list(
+#'     ascending = list(
+#'       list(basin = cbind(vertex = c(1L, 2L, 3L))),
+#'       list(basin = cbind(vertex = c(4L, 5L)))
+#'     ),
+#'     descending = list(
+#'       list(basin = cbind(vertex = c(2L, 3L, 4L, 5L)))
+#'     )
+#'   ),
+#'   local_extrema = data.frame(
+#'     vertex_index = c(2L, 5L, 4L),
+#'     is_maximum = c(0L, 0L, 1L),
+#'     label = c("m1", "m2", "M1")
+#'   )
+#' )
+#' class(basins) <- "gflow_basins"
+#'
+#' summary(basins)
+#'
 #' @export
 #' @method summary gflow_basins
 summary.gflow_basins <- function(object, ...) {
@@ -321,6 +342,28 @@ summary.gflow_basins <- function(object, ...) {
 #' @param x An object of class \code{"summary.gflow_basins"}
 #' @param ... Additional arguments (currently ignored)
 #'
+#' @examples
+#' basins <- list(
+#'   basins = list(
+#'     ascending = list(
+#'       list(basin = cbind(vertex = c(1L, 2L, 3L))),
+#'       list(basin = cbind(vertex = c(4L, 5L)))
+#'     ),
+#'     descending = list(
+#'       list(basin = cbind(vertex = c(2L, 3L, 4L, 5L)))
+#'     )
+#'   ),
+#'   local_extrema = data.frame(
+#'     vertex_index = c(2L, 5L, 4L),
+#'     is_maximum = c(0L, 0L, 1L),
+#'     label = c("m1", "m2", "M1")
+#'   )
+#' )
+#' class(basins) <- "gflow_basins"
+#'
+#' basin.summary <- summary(basins)
+#' basin.summary
+#'
 #' @export
 #' @method print summary.gflow_basins
 print.summary.gflow_basins <- function(x, ...) {
@@ -331,7 +374,7 @@ print.summary.gflow_basins <- function(x, ...) {
     if (x$n_ascending_basins > 0 && !is.null(x$ascending_basin_sizes)) {
         cat("\nAscending basins (", x$n_ascending_basins, "):\n", sep = "")
         cat("  Size summary: ")
-        cat(sprintf("Min=%d, 1st Qu=%d, Median=%d, Mean=%.1f, 3rd Qu=%d, Max=%d\n",
+        cat(sprintf("Min=%.1f, 1st Qu=%.1f, Median=%.1f, Mean=%.1f, 3rd Qu=%.1f, Max=%.1f\n",
                     x$ascending_basin_sizes["Min."],
                     x$ascending_basin_sizes["1st Qu."],
                     x$ascending_basin_sizes["Median"],
@@ -345,7 +388,7 @@ print.summary.gflow_basins <- function(x, ...) {
     if (x$n_descending_basins > 0 && !is.null(x$descending_basin_sizes)) {
         cat("\nDescending basins (", x$n_descending_basins, "):\n", sep = "")
         cat("  Size summary: ")
-        cat(sprintf("Min=%d, 1st Qu=%d, Median=%d, Mean=%.1f, 3rd Qu=%d, Max=%d\n",
+        cat(sprintf("Min=%.1f, 1st Qu=%.1f, Median=%.1f, Mean=%.1f, 3rd Qu=%.1f, Max=%.1f\n",
                     x$descending_basin_sizes["Min."],
                     x$descending_basin_sizes["1st Qu."],
                     x$descending_basin_sizes["Median"],
