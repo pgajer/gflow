@@ -31,14 +31,11 @@
 #'   under normal circumstances), the corresponding intersection size will be set to NA.
 #'
 #' @examples
-#' \dontrun{
-#' # Example usage:
 #' adj.list <- list(c(2,3,4), c(1,3), c(1,2,4), c(1,3))
 #' isize.list <- list(c(2,1,3), c(2,1), c(1,1,2), c(3,2))
 #' pruned.adj.list <- list(c(2,4), c(1), c(4), c(1,3))
 #' pruned.isize.list <- create.pruned.isize.list(adj.list, isize.list, pruned.adj.list)
 #' print(pruned.isize.list)
-#' }
 #'
 #' @export
 create.pruned.isize.list <- function(adj.list, isize.list, pruned.adj.list) {
@@ -119,22 +116,17 @@ create.pruned.isize.list <- function(adj.list, isize.list, pruned.adj.list) {
 #' - The function may modify the order of vertices in the adjacency lists.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple weighted graph
-#' graph <- list(c(2,3), c(1,3), c(1,2))
+#' graph <- list(c(2L,3L), c(1L,3L), c(1L,2L))
 #' edge.lengths <- list(c(1,2), c(1,3), c(2,3))
 #' threshold <- 0.9
 #'
-#' # Prune the graph
 #' result <- wgraph.prune.long.edges(graph, edge.lengths, threshold,
-#'                                   use.total.length.constraint = TRUE,
-#'                                   verbose = TRUE)
-#' # Examine the results
+#'   use.total.length.constraint = TRUE,
+#'   verbose = FALSE)
 #' print(result$adj_list)
 #' print(result$edge_lengths_list)
 #' print(result$path_lengths)
 #' print(result$edge_lengths)
-#' }
 #' @export
 wgraph.prune.long.edges <- function(graph,
                                     edge.lengths,

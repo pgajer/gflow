@@ -35,16 +35,13 @@
 #'   \item{y_path}{Numeric vector of y-values for path vertices}
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple graph with 5 vertices
 #' adj.list <- list(c(2,3), c(1,3,4), c(1,2,5), c(2), c(3))
 #' weight.list <- list(c(1,1), c(1,1,1), c(1,1,1), c(1), c(1))
 #' y <- c(1.5, 2.0, 0.5, 1.0, 1.5)
 #'
-#' # Find paths centered around vertex 2
 #' paths <- get.path.data(adj.list, weight.list, y,
-#'                       ref.vertex = 2, bandwidth = 2)
-#' }
+#'   ref.vertex = 2, bandwidth = 2, min.path.size = 3)
+#' length(paths)
 #' @note
 #' - All vertex indices must be positive integers
 #' - Edge weights must be non-negative

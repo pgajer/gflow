@@ -12,11 +12,8 @@
 #' @return None. This function is called for its side effect of printing.
 #'
 #' @examples
-#' \dontrun{
 #' start <- proc.time()
-#' Sys.sleep(2)  # Do some work
 #' elapsed.time(start, "Processing complete")
-#' }
 #' @export
 elapsed.time <- function(start.time,
                          message = "DONE",
@@ -64,10 +61,14 @@ elapsed.time <- function(start.time,
 #'   transformed.
 #'
 #' @examples
-#' \dontrun{
-#' df.2sig <- signif_df(df, digits = 2)
-#' df.3sig <- signif_df(df, digits = 3, exclude = c("sector"))
-#' }
+#' df <- data.frame(
+#'   id = c("A", "B"),
+#'   score = c(1.2345, 98.7654),
+#'   count = c(10, 20),
+#'   sector = c("x", "y")
+#' )
+#' signif_df(df, digits = 2)
+#' signif_df(df, digits = 3, exclude = "sector")
 #'
 #' @export
 signif_df <- function(x,
