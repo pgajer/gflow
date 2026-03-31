@@ -512,6 +512,38 @@ extract.gradient.flow.cells <- function(basins.obj,
 #' @param x An object of class "gradient_flow_cells"
 #' @param ... Additional arguments (not used)
 #'
+#' @examples
+#' x <- list(
+#'   basin.label = "M1",
+#'   max.vertex = 12L,
+#'   cells = list(
+#'     c1 = list(
+#'       terminal.vertex = 12L,
+#'       cell.size = 4L,
+#'       n.trajectories = 3L,
+#'       trajectories = list(c(2L, 5L, 12L), c(3L, 7L, 12L))
+#'     ),
+#'     c2 = list(
+#'       terminal.vertex = 10L,
+#'       cell.size = 3L,
+#'       n.trajectories = 2L,
+#'       trajectories = list(c(1L, 4L, 10L), c(6L, 10L))
+#'     )
+#'   ),
+#'   diagnostics = list(
+#'     basin.size = 7L,
+#'     n.unassigned = 0L,
+#'     n.overlapping = 0L,
+#'     total.trajectories = 5L,
+#'     size.match = TRUE
+#'   ),
+#'   n.cells = 2L,
+#'   total.assigned.vertices = 7L
+#' )
+#' class(x) <- c("gradient_flow_cells", "list")
+#'
+#' x
+#'
 #' @export
 print.gradient_flow_cells <- function(x, ...) {
     cat("Gradient Flow Cells for Basin:", x$basin.label, "\n")
@@ -554,6 +586,38 @@ print.gradient_flow_cells <- function(x, ...) {
 #'
 #' @param object An object of class "gradient_flow_cells"
 #' @param ... Additional arguments (not used)
+#'
+#' @examples
+#' x <- list(
+#'   basin.label = "M1",
+#'   max.vertex = 12L,
+#'   cells = list(
+#'     c1 = list(
+#'       terminal.vertex = 12L,
+#'       cell.size = 4L,
+#'       n.trajectories = 3L,
+#'       trajectories = list(c(2L, 5L, 12L), c(3L, 7L, 12L))
+#'     ),
+#'     c2 = list(
+#'       terminal.vertex = 10L,
+#'       cell.size = 3L,
+#'       n.trajectories = 2L,
+#'       trajectories = list(c(1L, 4L, 10L), c(6L, 10L))
+#'     )
+#'   ),
+#'   diagnostics = list(
+#'     basin.size = 7L,
+#'     n.unassigned = 0L,
+#'     n.overlapping = 0L,
+#'     total.trajectories = 5L,
+#'     size.match = TRUE
+#'   ),
+#'   n.cells = 2L,
+#'   total.assigned.vertices = 7L
+#' )
+#' class(x) <- c("gradient_flow_cells", "list")
+#'
+#' summary(x)
 #'
 #' @export
 summary.gradient_flow_cells <- function(object, ...) {
