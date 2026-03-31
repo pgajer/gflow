@@ -298,11 +298,16 @@ create.single.iknn.graph <- function(X,
 #' @return Invisibly returns NULL while printing summary information to the console
 #'
 #' @examples
-#' # Generate sample data
-#' set.seed(123)
-#' X <- matrix(rnorm(100 * 5), ncol = 5)
-#' result <- create.single.iknn.graph(X, k = 3)
-#' summary(result)
+#' graph <- list(
+#'   pruned_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
+#'   n_edges = 3L,
+#'   n_pruned_edges = 2L,
+#'   n_removed_edges = 1L,
+#'   edge_reduction_ratio = 1 / 3
+#' )
+#' class(graph) <- c("IkNN", "list")
+#'
+#' summary(graph)
 #'
 #' @method summary IkNN
 #' @export
