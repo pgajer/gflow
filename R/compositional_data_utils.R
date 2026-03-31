@@ -83,13 +83,21 @@ arcsin.sqrt.transform <- function(x, clip = TRUE, eps = 0) {
 #'   filtering) and \code{length(cols)} columns. Row and column names are preserved when present.
 #'
 #' @examples
-#' \dontrun{
-#' ## CLR over all rows/columns
-#' clr.X <- clr.transform(phi.zmb, pseudo.count = 1e-6)
+#' X <- matrix(
+#'   c(2, 3, 5,
+#'     1, 4, 5,
+#'     3, 3, 4),
+#'   nrow = 3,
+#'   byrow = TRUE
+#' )
 #'
-#' ## CLR over a subset of vertices (rows)
-#' clr.disk <- clr.transform(phi.zmb, rows = M1.disk.res$vertices)
-#' }
+#' ## CLR over all rows/columns
+#' clr.X <- clr.transform(X, pseudo.count = 1e-6)
+#' round(clr.X, 3)
+#'
+#' ## CLR over a subset of rows
+#' clr.sub <- clr.transform(X, rows = 1:2)
+#' dim(clr.sub)
 #'
 #' @seealso \code{\link{clr.transform.matrix}}
 #'
@@ -165,10 +173,14 @@ clr.transform <- function(X,
 #' Row and column names are preserved when present.
 #'
 #' @examples
-#' \dontrun{
-#' X.disk <- phi.zmb[M1.disk.res$vertices, , drop = FALSE]
-#' clr.disk <- clr.transform.matrix(X.disk, pseudo.count = 1e-6)
-#' }
+#' X <- matrix(
+#'   c(2, 3, 5,
+#'     1, 4, 5),
+#'   nrow = 2,
+#'   byrow = TRUE
+#' )
+#' clr.X <- clr.transform.matrix(X, pseudo.count = 1e-6)
+#' rowSums(round(clr.X, 8))
 #'
 #' @export
 clr.transform.matrix <- function(X,
