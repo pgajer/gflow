@@ -313,13 +313,21 @@ load.graph.data <- function(k.values,
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Assuming graph.data has been loaded
-#' k.vals <- c(5, 10, 15, 20)
+#' graph.data <- list(
+#'   adj.list = list(
+#'     `5` = list(c(2), c(1, 3), c(2)),
+#'     `10` = list(c(2, 3), c(1, 3), c(1, 2)),
+#'     `15` = list(c(2, 3), c(1), c(1))
+#'   ),
+#'   dist.list = list(
+#'     `5` = list(1, c(1, 2), 2),
+#'     `10` = list(c(1, 2), c(1, 3), c(2, 3)),
+#'     `15` = list(c(1, 1.5), 1, 1.5)
+#'   )
+#' )
+#' k.vals <- c(5, 10, 15)
 #' distances <- calculate.edit.distances(k.vals, graph.data, offset = 1)
-#' plot(distances$k.values, distances$distances, type = "b",
-#'      xlab = "k", ylab = "Edit Distance")
-#' }
+#' distances$distances
 #'
 #' @export
 calculate.edit.distances <- function(k.values,
@@ -388,7 +396,7 @@ calculate.edit.distances <- function(k.values,
 
 #' Create Distance Plot
 #'
-#' Creates and saves a plot of edit distances with optional smoothing or
+#' Creates a plot of edit distances with optional smoothing or
 #' regression results.
 #'
 #' @param x Numeric vector of x-axis values (e.g., k values).
@@ -402,12 +410,11 @@ calculate.edit.distances <- function(k.values,
 #'   (default: "Number of Nearest Neighbors (k)").
 #' @param ylab Character string for y-axis label (default: "Edit Distance").
 #' @param main Character string for plot title (default: NULL, no title).
-#' @param width Numeric value for plot width in inches when saving (default: 6).
-#' @param height Numeric value for plot height in inches when saving (default: 6).
+#' @param width Numeric value for plot width in inches (default: 6).
+#' @param height Numeric value for plot height in inches (default: 6).
 #' @param ... Additional arguments passed to \code{plot()}.
 #'
-#' @return If \code{file} is specified, returns the absolute path to the saved
-#'   file. Otherwise returns NULL invisibly.
+#' @return Returns \code{NULL} invisibly after drawing the plot.
 #'
 #' @details
 #' The function creates a scatter plot with optional smoothing line. If
@@ -417,19 +424,14 @@ calculate.edit.distances <- function(k.values,
 #' @importFrom stats loess predict
 #'
 #' @examples
-#' \dontrun{
-#' # Create sample data
-#' k.vals <- seq(5, 50, by = 5)
-#' distances <- 100 / k.vals + rnorm(length(k.vals), sd = 2)
+#' k.vals <- c(5, 10, 15, 20)
+#' distances <- c(2.2, 1.4, 1.1, 1.3)
+#' create.distance.plot(k.vals, distances, smooth = FALSE)
 #'
-#' # Basic plot
-#' create.distance.plot(k.vals, distances)
-#'
-#' # Plot with marked minimum
 #' min.k <- k.vals[which.min(distances)]
 #' create.distance.plot(k.vals, distances, mark.x = min.k,
-#'                     main = "Edit Distance vs k")
-#' }
+#'                      smooth = FALSE,
+#'                      main = "Edit Distance vs k")
 #' @export
 create.distance.plot <- function(x, y,
                                 smooth = TRUE,
@@ -505,10 +507,5 @@ create.distance.plot <- function(x, y,
   # Add grid
   graphics::grid(col = "gray90")
 
-  # Return file path if saved
-  if (!is.null(file)) {
-    return(tools::file_path_as_absolute(file))
-  } else {
-    invisible(NULL)
-  }
+  invisible(NULL)
 }
