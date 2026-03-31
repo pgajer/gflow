@@ -341,6 +341,30 @@ construct.gflow.graph <- function(merged.basins,
 #' @return Invisibly returns the input object \code{x}. This function is called
 #'   for its side effect of printing a summary to the console.
 #'
+#' @examples
+#' gflow.graph <- list(
+#'   adjacency.list = list(c(3L), integer(0), c(1L)),
+#'   weight.list = list(0.8, numeric(0), 0.8),
+#'   intersection.matrix = matrix(c(4, 0, 2,
+#'                                  0, 3, 0,
+#'                                  2, 0, 5),
+#'                                nrow = 3, byrow = TRUE),
+#'   basin.metadata = data.frame(
+#'     label = c("m1", "m2", "M1"),
+#'     type = c("ascending", "ascending", "descending"),
+#'     size = c(4, 3, 5),
+#'     extremum.vertex = c(2L, 5L, 3L),
+#'     extremum.value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   n.ascending = 2L,
+#'   n.descending = 1L,
+#'   edge.type = "all",
+#'   min.intersection = 1L
+#' )
+#' class(gflow.graph) <- "gflow_graph"
+#'
+#' gflow.graph
+#'
 #' @export
 print.gflow_graph <- function(x, ...) {
   cat("Gradient Flow Graph (1-skeleton of nerve complex)\n")
@@ -398,6 +422,30 @@ print.gflow_graph <- function(x, ...) {
 #'     \item{intersection.stats}{Summary statistics of nonzero intersections.}
 #'   }
 #'
+#' @examples
+#' gflow.graph <- list(
+#'   adjacency.list = list(c(3L), integer(0), c(1L)),
+#'   weight.list = list(0.8, numeric(0), 0.8),
+#'   intersection.matrix = matrix(c(4, 0, 2,
+#'                                  0, 3, 0,
+#'                                  2, 0, 5),
+#'                                nrow = 3, byrow = TRUE),
+#'   basin.metadata = data.frame(
+#'     label = c("m1", "m2", "M1"),
+#'     type = c("ascending", "ascending", "descending"),
+#'     size = c(4, 3, 5),
+#'     extremum.vertex = c(2L, 5L, 3L),
+#'     extremum.value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   n.ascending = 2L,
+#'   n.descending = 1L,
+#'   edge.type = "all",
+#'   min.intersection = 1L
+#' )
+#' class(gflow.graph) <- "gflow_graph"
+#'
+#' summary(gflow.graph)
+#'
 #' @export
 summary.gflow_graph <- function(object, ...) {
   degrees <- sapply(object$adjacency.list, length)
@@ -437,6 +485,31 @@ summary.gflow_graph <- function(object, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return Invisibly returns the input object \code{x}.
+#'
+#' @examples
+#' gflow.graph <- list(
+#'   adjacency.list = list(c(3L), integer(0), c(1L)),
+#'   weight.list = list(0.8, numeric(0), 0.8),
+#'   intersection.matrix = matrix(c(4, 0, 2,
+#'                                  0, 3, 0,
+#'                                  2, 0, 5),
+#'                                nrow = 3, byrow = TRUE),
+#'   basin.metadata = data.frame(
+#'     label = c("m1", "m2", "M1"),
+#'     type = c("ascending", "ascending", "descending"),
+#'     size = c(4, 3, 5),
+#'     extremum.vertex = c(2L, 5L, 3L),
+#'     extremum.value = c(0.7, 1.1, 3.2)
+#'   ),
+#'   n.ascending = 2L,
+#'   n.descending = 1L,
+#'   edge.type = "all",
+#'   min.intersection = 1L
+#' )
+#' class(gflow.graph) <- "gflow_graph"
+#'
+#' graph.summary <- summary(gflow.graph)
+#' graph.summary
 #'
 #' @export
 print.summary.gflow_graph <- function(x, ...) {
