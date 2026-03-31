@@ -614,6 +614,17 @@ summary.mknn_graphs <- function(object, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return Invisibly returns the input object.
+#'
+#' @examples
+#' graph <- list(
+#'   n_vertices = 3L,
+#'   n_edges = 2L,
+#'   k = 2L,
+#'   adj_list = list(c(2L), c(1L, 3L), c(2L))
+#' )
+#' class(graph) <- c("mknn_graph", "list")
+#'
+#' print(graph)
 #' @method print mknn_graph
 #' @export
 print.mknn_graph <- function(x, ...) {
