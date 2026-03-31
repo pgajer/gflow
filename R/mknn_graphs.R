@@ -439,23 +439,28 @@ create.mknn.graphs <- function(X,
 #' has been applied.
 #'
 #' @examples
-#' \dontrun{
-#' # Create sample data
-#' set.seed(123)
-#' X <- matrix(rnorm(200 * 5), ncol = 5)
+#' mknn_result <- list(
+#'   pruned_graphs = list(
+#'     list(adj_list = list(c(2L), c(1L, 3L), c(2L))),
+#'     list(adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)))
+#'   ),
+#'   k_statistics = data.frame(
+#'     k = 2:3,
+#'     n_edges = c(2L, 3L),
+#'     n_edges_pruned = c(2L, 3L),
+#'     n_removed = c(0L, 0L),
+#'     reduction_ratio = c(0, 0)
+#'   )
+#' )
+#' attr(mknn_result, "kmin") <- 2L
+#' attr(mknn_result, "kmax") <- 3L
+#' attr(mknn_result, "n_vertices") <- 3L
+#' attr(mknn_result, "max.path.edge.ratio.thld") <- 1.2
+#' class(mknn_result) <- "mknn_graphs"
 #'
-#' # Generate MkNN graphs
-#' mknn_result <- create.mknn.graphs(X, kmin = 5, kmax = 15, compute.full = TRUE)
-#'
-#' # Display summary
-#' summary(mknn_result)
-#'
-#' # Store summary statistics for plotting
 #' stats <- summary(mknn_result)
 #' plot(stats$k, stats$mean_degree, type = "b",
-#'      xlab = "k", ylab = "Mean Degree",
-#'      main = "Mean Vertex Degree vs k")
-#' }
+#'      xlab = "k", ylab = "Mean Degree")
 #'
 #' @method summary mknn_graphs
 #' @export
@@ -637,12 +642,18 @@ print.mknn_graph <- function(x, ...) {
 #' @return Invisibly returns the input object.
 #'
 #' @examples
-#' \dontrun{
-#' # Create multiple graphs
-#' X <- matrix(rnorm(100 * 3), ncol = 3)
-#' graphs <- create.mknn.graphs(X, kmin = 5, kmax = 10)
+#' graphs <- list(
+#'   k_statistics = data.frame(
+#'     k = 2:4,
+#'     n_edges_pruned = c(2L, 3L, 3L)
+#'   )
+#' )
+#' attr(graphs, "kmin") <- 2L
+#' attr(graphs, "kmax") <- 4L
+#' attr(graphs, "n_vertices") <- 3L
+#' class(graphs) <- "mknn_graphs"
+#'
 #' print(graphs)
-#' }
 #' @method print mknn_graphs
 #' @export
 print.mknn_graphs <- function(x, ...) {
