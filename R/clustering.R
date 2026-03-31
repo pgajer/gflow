@@ -2218,6 +2218,64 @@ cluster.graph.louvain <- function(graph, weights = NULL, seed = NULL, n.itrs = 1
     mem.mat
 }
 
+#' Compute Adjusted Rand Index Between Two Partitions
+#'
+#' @description
+#' Computes the Adjusted Rand Index (ARI) between two cluster label vectors
+#' using the Hubert-Arabie chance correction.
+#'
+#' @param x Atomic vector of cluster labels for the first partition.
+#' @param y Atomic vector of cluster labels for the second partition.
+#'
+#' @return Numeric scalar giving the adjusted Rand index.
+#'
+#' @references
+#' Hubert, L., & Arabie, P. (1985). Comparing partitions. Journal of
+#' Classification, 2(1), 193-218.
+#'
+#' @examples
+#' adjusted.rand.index(c(1, 1, 2, 2), c("a", "a", "b", "b"))
+#'
+#' @export
+adjusted.rand.index <- function(x, y) {
+    if (missing(x) || is.null(x) || !is.atomic(x)) {
+        stop("`x` must be a non-null atomic vector.")
+    }
+    if (missing(y) || is.null(y) || !is.atomic(y)) {
+        stop("`y` must be a non-null atomic vector.")
+    }
+    if (length(x) != length(y)) {
+        stop("`x` and `y` must have the same length.")
+    }
+    if (length(x) < 2L) {
+        stop("`x` and `y` must contain at least 2 observations.")
+    }
+    if (anyNA(x) || anyNA(y)) {
+        stop("`x` and `y` must not contain NA values.")
+    }
+
+    x <- as.integer(as.factor(x))
+    y <- as.integer(as.factor(y))
+
+    contingency <- table(x, y)
+    choose2_sum <- function(v) sum(v * (v - 1) / 2)
+
+    sum.nij <- choose2_sum(contingency)
+    sum.ai <- choose2_sum(rowSums(contingency))
+    sum.bj <- choose2_sum(colSums(contingency))
+    total.pairs <- length(x) * (length(x) - 1) / 2
+
+    expected.index <- (sum.ai * sum.bj) / total.pairs
+    max.index <- 0.5 * (sum.ai + sum.bj)
+    denominator <- max.index - expected.index
+
+    if (denominator == 0) {
+        return(1)
+    }
+
+    (sum.nij - expected.index) / denominator
+}
+
 #' Compute Congruence Between Graph Clusters and Labels
 #'
 #' @description
@@ -2246,14 +2304,14 @@ cluster.graph.louvain <- function(graph, weights = NULL, seed = NULL, n.itrs = 1
 #'   \item{cst.table}{Contingency table of labels by cluster labels (over retained samples).}
 #' }
 #'
-#' @seealso \code{\link[mclust]{adjustedRandIndex}}
+#' @seealso \code{\link{adjusted.rand.index}}
 #'
 #' @examples
 #' ## Two clusters vs two CSTs (toy)
 #' sample.ids <- c("s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10")
 #' cluster.labels <- c(1,1,1,1,1, 2,2,2,2,2)
 #' labels <- c(s1="I", s2="I", s3="I", s4="I", s5="I",
-#'                 s6="III", s7="III", s8="III", s9="III", s10="III")
+#'             s6="III", s7="III", s8="III", s9="III", s10="III")
 #' congruence.with.labels(sample.ids, cluster.labels, labels)
 #'
 #' @export
@@ -2305,8 +2363,7 @@ congruence.with.labels <- function(sample.ids,
     cl.ok <- cluster.labels[ok]
     cst.ok <- cst[ok]
 
-    ari <- mclust::adjustedRandIndex(as.integer(as.factor(cl.ok)),
-                                     as.integer(as.factor(cst.ok)))
+    ari <- adjusted.rand.index(cl.ok, cst.ok)
 
     list(
         n = sum(ok),
