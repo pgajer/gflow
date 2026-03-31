@@ -399,6 +399,37 @@ identify.bottlenecks <- function(
 #' @param x A \code{madag} object.
 #' @param ... Additional arguments (ignored).
 #'
+#' @examples
+#' x <- list(
+#'   source.vertex = 3L,
+#'   source.value = 0.75,
+#'   n.vertices = 6L,
+#'   n.cells = 2L,
+#'   cells = list(
+#'     list(
+#'       min.vertex = 1L,
+#'       max.vertex = 5L,
+#'       min.value = 0.10,
+#'       max.value = 1.30,
+#'       support = c(1L, 2L, 3L),
+#'       n.trajectories = 4L,
+#'       explicitly.enumerated = TRUE
+#'     ),
+#'     list(
+#'       min.vertex = 2L,
+#'       max.vertex = 6L,
+#'       min.value = 0.20,
+#'       max.value = 1.60,
+#'       support = c(3L, 4L, 6L),
+#'       n.trajectories = 3L,
+#'       explicitly.enumerated = FALSE
+#'     )
+#'   )
+#' )
+#' class(x) <- "madag"
+#'
+#' x
+#'
 #' @export
 print.madag <- function(x, ...) {
     cat("Monotonic Ascent DAG (MADAG)\n")
@@ -428,6 +459,37 @@ print.madag <- function(x, ...) {
 #'
 #' @param object A \code{madag} object.
 #' @param ... Additional arguments (ignored).
+#'
+#' @examples
+#' x <- list(
+#'   source.vertex = 3L,
+#'   source.value = 0.75,
+#'   n.vertices = 6L,
+#'   n.cells = 2L,
+#'   cells = list(
+#'     list(
+#'       min.vertex = 1L,
+#'       max.vertex = 5L,
+#'       min.value = 0.10,
+#'       max.value = 1.30,
+#'       support = c(1L, 2L, 3L),
+#'       n.trajectories = 4L,
+#'       explicitly.enumerated = TRUE
+#'     ),
+#'     list(
+#'       min.vertex = 2L,
+#'       max.vertex = 6L,
+#'       min.value = 0.20,
+#'       max.value = 1.60,
+#'       support = c(3L, 4L, 6L),
+#'       n.trajectories = 3L,
+#'       explicitly.enumerated = FALSE
+#'     )
+#'   )
+#' )
+#' class(x) <- "madag"
+#'
+#' summary(x)
 #'
 #' @export
 summary.madag <- function(object, ...) {
