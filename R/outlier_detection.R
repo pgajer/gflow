@@ -282,6 +282,26 @@ remove.knn.outliers <- function(S, y = NULL, p = 0.98, dist.factor = 100,
 #' @param ... Additional arguments passed to \code{print} methods.
 #'
 #' @return Invisibly returns the input object.
+#'
+#' @examples
+#' knn.res <- list(
+#'   S.q = matrix(c(0, 0,
+#'                  1, 1,
+#'                  2, 2), ncol = 2, byrow = TRUE),
+#'   y.q = c(1.0, 1.5, 2.0),
+#'   nn.d = matrix(c(0.2, 0.4,
+#'                   0.3, 0.5,
+#'                   1.4, 1.8,
+#'                   0.25, 0.45),
+#'                 ncol = 2, byrow = TRUE),
+#'   d.thld = 1,
+#'   idx = c(TRUE, TRUE, FALSE, TRUE),
+#'   n.outliers = 1L,
+#'   method = "qf"
+#' )
+#' class(knn.res) <- "knn.outliers"
+#'
+#' knn.res
 #' @export
 print.knn.outliers <- function(x, ...) {
     cat("k-Nearest Neighbor Outlier Detection Results\n")
@@ -307,6 +327,26 @@ print.knn.outliers <- function(x, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return A list of class "summary.knn.outliers" containing summary statistics.
+#'
+#' @examples
+#' knn.res <- list(
+#'   S.q = matrix(c(0, 0,
+#'                  1, 1,
+#'                  2, 2), ncol = 2, byrow = TRUE),
+#'   y.q = c(1.0, 1.5, 2.0),
+#'   nn.d = matrix(c(0.2, 0.4,
+#'                   0.3, 0.5,
+#'                   1.4, 1.8,
+#'                   0.25, 0.45),
+#'                 ncol = 2, byrow = TRUE),
+#'   d.thld = 1,
+#'   idx = c(TRUE, TRUE, FALSE, TRUE),
+#'   n.outliers = 1L,
+#'   method = "qf"
+#' )
+#' class(knn.res) <- "knn.outliers"
+#'
+#' summary(knn.res)
 #' @export
 summary.knn.outliers <- function(object, ...) {
     # Calculate summary statistics for nearest neighbor distances
@@ -352,6 +392,26 @@ summary.knn.outliers <- function(object, ...) {
 #' @param ... Additional arguments passed to \code{print} methods.
 #'
 #' @return Invisibly returns the input object.
+#'
+#' @examples
+#' knn.res <- list(
+#'   S.q = matrix(c(0, 0,
+#'                  1, 1,
+#'                  2, 2), ncol = 2, byrow = TRUE),
+#'   y.q = c(1.0, 1.5, 2.0),
+#'   nn.d = matrix(c(0.2, 0.4,
+#'                   0.3, 0.5,
+#'                   1.4, 1.8,
+#'                   0.25, 0.45),
+#'                 ncol = 2, byrow = TRUE),
+#'   d.thld = 1,
+#'   idx = c(TRUE, TRUE, FALSE, TRUE),
+#'   n.outliers = 1L,
+#'   method = "qf"
+#' )
+#' class(knn.res) <- "knn.outliers"
+#'
+#' summary(knn.res)
 #'
 #' @export
 print.summary.knn.outliers <- function(x, ...) {
