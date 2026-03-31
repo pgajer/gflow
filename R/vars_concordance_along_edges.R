@@ -82,6 +82,25 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
 }
 
 ## Enhanced diagnostic function
+#' @examples
+#' res <- list(
+#'   obs.concordant = 0.72,
+#'   obs.phi = 0.31,
+#'   null.mean = 0.50,
+#'   null.sd = 0.08,
+#'   z.score = 2.75,
+#'   p.value.two.sided = 0.012,
+#'   p.value.greater = 0.006,
+#'   p.value.less = 0.994,
+#'   p.value.phi = 0.021,
+#'   perm.concordant = c(0.41, 0.48, 0.52, 0.55, 0.60),
+#'   perm.phi = c(-0.08, 0.01, 0.04, 0.07, 0.09),
+#'   n.edges = 25L,
+#'   n.perm = 5L
+#' )
+#'
+#' print.concordance.test(res)
+#'
 #' @export
 print.concordance.test <- function(x, ...) {
     result <- x
@@ -130,6 +149,25 @@ print.concordance.test <- function(x, ...) {
 }
 
 ## Visualization function
+#' @examples
+#' res <- list(
+#'   obs.concordant = 0.72,
+#'   obs.phi = 0.31,
+#'   null.mean = 0.50,
+#'   null.sd = 0.08,
+#'   z.score = 2.75,
+#'   p.value.two.sided = 0.012,
+#'   p.value.greater = 0.006,
+#'   p.value.less = 0.994,
+#'   p.value.phi = 0.021,
+#'   perm.concordant = c(0.41, 0.48, 0.52, 0.55, 0.60),
+#'   perm.phi = c(-0.08, 0.01, 0.04, 0.07, 0.09),
+#'   n.edges = 25L,
+#'   n.perm = 5L
+#' )
+#'
+#' plot.concordance.test(res)
+#'
 #' @export
 plot.concordance.test <- function(x, main = "Permutation Test Results", ...) {
     result <- x
