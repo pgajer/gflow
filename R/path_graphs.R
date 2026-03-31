@@ -56,30 +56,11 @@
 #' \code{\link{create.path.graph.series}} for creating multiple path graphs efficiently
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple graph with 3 vertices
-#' graph <- list(
-#'   c(2),    # Vertex 1 connected to 2
-#'   c(1, 3), # Vertex 2 connected to 1 and 3
-#'   c(2)     # Vertex 3 connected to 2
-#' )
-#'
-#' # Define edge lengths
-#' edge.lengths <- list(
-#'   c(1.0),      # Length of edge 1->2
-#'   c(1.0, 2.0), # Lengths of edges 2->1 and 2->3
-#'   c(2.0)       # Length of edge 3->2
-#' )
-#'
-#' # Create path graph with maximum 2 hops
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pg <- create.path.graph(graph, edge.lengths, h = 2)
-#'
-#' # Print the path graph
-#' print(pg)
-#'
-#' # Get shortest path between vertices 1 and 3
-#' path <- get.shortest.path(pg, 1, 3)
-#' }
+#' pg$adj.list[[1]]
+#' get.shortest.path(pg, 1, 3)
 #'
 #' @export
 create.path.graph <- function(graph, edge.lengths, h) {
@@ -212,17 +193,12 @@ new.path.graph <- function(adj.list, edge.length.list, hop.list, shortest.paths)
 #' Returns NULL if no path exists between the vertices.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a path graph
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pg <- create.path.graph(graph, edge.lengths, h = 3)
-#'
-#' # Get shortest path from vertex 1 to vertex 3
-#' path_info <- get.shortest.path(pg, 1, 3)
-#' if (!is.null(path_info)) {
-#'   cat("Path:", path_info$path, "\n")
-#'   cat("Length:", path_info$length, "\n")
-#' }
-#' }
+#' path.info <- get.shortest.path(pg, 1, 4)
+#' path.info$path
+#' path.info$length
 #'
 #' @export
 get.shortest.path <- function(pg, from, to) {
@@ -288,10 +264,10 @@ get.shortest.path <- function(pg, from, to) {
 #' @return Invisible copy of x
 #'
 #' @examples
-#' \dontrun{
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pg <- create.path.graph(graph, edge.lengths, h = 2)
 #' print(pg)
-#' }
 #'
 #' @export
 #' @method print path.graph
@@ -320,10 +296,10 @@ print.path.graph <- function(x, ...) {
 #' @return A list containing summary statistics (invisibly)
 #'
 #' @examples
-#' \dontrun{
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pg <- create.path.graph(graph, edge.lengths, h = 3)
 #' summary(pg)
-#' }
 #'
 #' @export
 #' @method summary path.graph
@@ -401,21 +377,11 @@ summary.path.graph <- function(object, ...) {
 #' for analyzing how network connectivity changes with increasing hop limits.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple graph
-#' graph <- list(
-#'   c(2),    # Vertex 1 connected to 2
-#'   c(1, 3), # Vertex 2 connected to 1 and 3
-#'   c(2)     # Vertex 3 connected to 2
-#' )
-#' edge.lengths <- list(c(1.0), c(1.0, 2.0), c(2.0))
-#'
-#' # Create path graphs for hop limits 1, 2, and 3
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pgs <- create.path.graph.series(graph, edge.lengths, h.values = c(1, 2, 3))
-#'
-#' # Access individual path graphs
-#' pg.h2 <- pgs[[2]]  # Path graph with h=2
-#' }
+#' attr(pgs[[2]], "h")
+#' length(pgs)
 #'
 #' @seealso \code{\link{create.path.graph}}, \code{\link{compare.paths}}
 #'
@@ -558,10 +524,10 @@ print.path.graph.series <- function(x, ...) {
 #' }
 #'
 #' @examples
-#' \dontrun{
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
 #' pgs <- create.path.graph.series(graph, edge.lengths, h.values = c(1, 2, 3))
-#' compare.paths(pgs, from = 1, to = 3)
-#' }
+#' compare.paths(pgs, from = 1, to = 4)
 #'
 #' @export compare.paths
 compare.paths <- function(x, from, to) {
@@ -613,13 +579,10 @@ compare.paths <- function(x, from, to) {
 #'         for any h value in the series.
 #'
 #' @examples
-#' \dontrun{
-#' pgs <- create.path.graph.series(graph, edge.lengths, h.values = 1:5)
-#' min.h <- minh.limit(pgs, from = 1, to = 5)
-#' if (!is.null(min.h)) {
-#'   cat("Minimum hops needed:", min.h, "\n")
-#' }
-#' }
+#' graph <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' edge.lengths <- list(c(1), c(1, 2), c(2, 1), c(1))
+#' pgs <- create.path.graph.series(graph, edge.lengths, h.values = 1:4)
+#' minh.limit(pgs, from = 1, to = 4)
 #'
 #' @export
 minh.limit <- function(x, from, to) {
@@ -723,16 +686,10 @@ summary.path.graph.series <- function(object, ...) {
 #' as it stores all paths up to length \code{h}.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple path graph with 3 vertices: 1 -- 2 -- 3
 #' graph <- list(c(2), c(1, 3), c(2))
 #' edge.lengths <- list(c(1), c(1, 1), c(1))
-#'
-#' # Create PLM graph with paths up to length 3
-#' plm_graph <- create.plm.graph(graph, edge.lengths, h = 3)
-#'
-#' print(plm_graph)
-#' }
+#' plm.graph <- create.plm.graph(graph, edge.lengths, h = 3)
+#' class(plm.graph)
 #'
 #' @seealso \code{\link{create.path.graph}} for standard path graph creation
 #'
