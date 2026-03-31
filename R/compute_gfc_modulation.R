@@ -292,6 +292,26 @@ compute.gfc.modulation <- function(adj.list,
 #' @param x A gfc_modulation object
 #' @param ... Additional arguments (ignored)
 #'
+#' @examples
+#' gfc.mod <- list(
+#'   modulation = "density+edgelen",
+#'   n.vertices = 4L,
+#'   n.edges = 3L,
+#'   density = c(0.4, 0.7, 1.0, 0.6),
+#'   density.raw = FALSE,
+#'   edgelen.weights = list("1-2" = 0.8, "2-1" = 0.8, "2-3" = 1.0, "3-2" = 1.0),
+#'   edgelen.bandwidth = 0.15,
+#'   edgelen.lengths = c(0.3, 0.5, 0.8),
+#'   edgelen.densities = c(0.6, 0.9, 0.4),
+#'   edgelen.kde = list(
+#'     x = c(0.2, 0.5, 0.8),
+#'     y = c(0.4, 1.0, 0.5)
+#'   )
+#' )
+#' class(gfc.mod) <- "gfc_modulation"
+#'
+#' gfc.mod
+#'
 #' @export
 print.gfc_modulation <- function(x, ...) {
 
@@ -329,6 +349,26 @@ print.gfc_modulation <- function(x, ...) {
 #' @param x A gfc_modulation object
 #' @param type Type of plot: "density", "edgelen", or "both"
 #' @param ... Additional arguments passed to plot functions
+#'
+#' @examples
+#' gfc.mod <- list(
+#'   modulation = "density+edgelen",
+#'   n.vertices = 4L,
+#'   n.edges = 3L,
+#'   density = c(0.4, 0.7, 1.0, 0.6),
+#'   density.raw = FALSE,
+#'   edgelen.weights = list("1-2" = 0.8, "2-1" = 0.8, "2-3" = 1.0, "3-2" = 1.0),
+#'   edgelen.bandwidth = 0.15,
+#'   edgelen.lengths = c(0.3, 0.5, 0.8),
+#'   edgelen.densities = c(0.6, 0.9, 0.4),
+#'   edgelen.kde = list(
+#'     x = c(0.2, 0.5, 0.8),
+#'     y = c(0.4, 1.0, 0.5)
+#'   )
+#' )
+#' class(gfc.mod) <- "gfc_modulation"
+#'
+#' plot(gfc.mod, type = "both")
 #'
 #' @export
 plot.gfc_modulation <- function(x,
