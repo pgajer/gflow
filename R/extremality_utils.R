@@ -913,18 +913,21 @@ compute.cluster.summary <- function(extremality.df,
 #' @return Data frame with same structure as extremality.df but only representative vertices
 #'
 #' @examples
-#' \dontrun{
-#' # Get cluster summary with representatives
-#' cluster_summary <- compute.cluster.summary(extremality.df, geodesic.dist)
-#'
-#' # Extract representatives for plotting
+#' extremality.df <- data.frame(
+#'   vertex = c(2, 5, 8),
+#'   label = c("M1", "M2", "M3"),
+#'   type = c("max", "max", "max"),
+#'   extremality = c(0.98, 0.91, 0.87),
+#'   extremality.radius = c(4, 3, 2),
+#'   extremality.nbhd.size = c(11, 9, 6),
+#'   value = c(3.5, 3.1, 2.8)
+#' )
+#' cluster_summary <- data.frame(
+#'   cluster = c(1, 2),
+#'   representative = c(2, 8)
+#' )
 #' representatives <- extract.cluster.representatives(extremality.df, cluster_summary)
-#'
-#' # Plot only representatives for cleaner visualization
-#' label.extremality.3d(graph.3d, representatives,
-#'                      offset = c(0, -2, -2),
-#'                      lab.cex = 2.5)
-#' }
+#' representatives[, c("vertex", "label", "cluster")]
 #'
 #' @export
 extract.cluster.representatives <- function(extremality.df, cluster_summary) {
@@ -1067,41 +1070,30 @@ compare.representative.methods <- function(extremality.df,
 #' geodesic.dist is optional.
 #'
 #' @examples
-#' \dontrun{
-#' library(dbscan)
-#'
-#' # Compute geodesic distances
-#' geodesic.dist <- compute.extrema.geodesic.distances(
-#'     extremality.df,
-#'     rdcx.obj$optimal.fit$graph$adj.list,
-#'     rdcx.obj$optimal.fit$graph$edge.length.list
+#' extremality.df <- data.frame(
+#'   vertex = c(2, 5, 8, 10),
+#'   label = c("M1", "M2", "M3", "M4"),
+#'   type = rep("max", 4),
+#'   extremality = c(0.98, 0.91, 0.87, 0.82),
+#'   extremality.radius = c(4, 3, 2, 1),
+#'   extremality.nbhd.size = c(11, 9, 6, 4),
+#'   value = c(3.5, 3.1, 2.8, 2.4)
 #' )
-#'
-#' # Run DBSCAN
-#' maxima_df <- extremality.df[extremality.df$type == "max", ]
-#' maxima_labels <- maxima_df$label
-#' maxima_dist <- geodesic.dist[maxima_labels, maxima_labels]
-#'
-#' db <- dbscan(maxima_dist, eps = 2.5, minPts = 2)
-#'
-#' # Compute cluster summary
-#' dbscan_summary <- compute.dbscan.cluster.summary(
-#'     extremality.df,
-#'     db$cluster,
-#'     geodesic.dist = geodesic.dist,
-#'     representative.method = "medoid"
+#' dbscan_clusters <- c(1, 1, 2, 0)
+#' geodesic.dist <- matrix(
+#'   c(0, 1, 4, 5,
+#'     1, 0, 3, 4,
+#'     4, 3, 0, 2,
+#'     5, 4, 2, 0),
+#'   nrow = 4, byrow = TRUE,
+#'   dimnames = list(extremality.df$label, extremality.df$label)
 #' )
-#'
-#' print(dbscan_summary)
-#'
-#' # Include noise points
-#' dbscan_summary_with_noise <- compute.dbscan.cluster.summary(
-#'     extremality.df,
-#'     db$cluster,
-#'     geodesic.dist = geodesic.dist,
-#'     include.noise = TRUE
+#' compute.dbscan.cluster.summary(
+#'   extremality.df,
+#'   dbscan_clusters,
+#'   geodesic.dist = geodesic.dist,
+#'   include.noise = TRUE
 #' )
-#' }
 #'
 #' @seealso
 #' \code{\link{compute.cluster.summary}} for hierarchical clustering summary,
@@ -1354,36 +1346,26 @@ compute_cluster_stats <- function(cluster_members) {
 #' - Noise representatives: "N_M36", "N_M38", etc. (if include.noise=TRUE)
 #'
 #' @examples
-#' \dontrun{
-#' # Get DBSCAN cluster summary
-#' dbscan_summary <- compute.dbscan.cluster.summary(
-#'     extremality.df,
-#'     db$cluster,
-#'     geodesic.dist = geodesic.dist
+#' extremality.df <- data.frame(
+#'   vertex = c(2, 5, 8),
+#'   label = c("M1", "M2", "M3"),
+#'   type = rep("max", 3),
+#'   extremality = c(0.98, 0.91, 0.87),
+#'   extremality.radius = c(4, 3, 2),
+#'   extremality.nbhd.size = c(11, 9, 6),
+#'   value = c(3.5, 3.1, 2.8)
 #' )
-#'
-#' # Extract representatives for plotting
+#' dbscan_summary <- data.frame(
+#'   cluster = c(1, 0),
+#'   representative = c(2, 8),
+#'   representative_label = c("M1", "M3"),
+#'   is_noise = c(FALSE, TRUE)
+#' )
 #' representatives <- extract.dbscan.cluster.representatives(
-#'     extremality.df,
-#'     dbscan_summary
+#'   extremality.df,
+#'   dbscan_summary
 #' )
-#'
-#' # Visualize only representatives
-#' plot3D.cont(graph.3d, rel.sptb.cond.exp, radius = 0.15)
-#' label.extremality.3d(graph.3d, representatives,
-#'                      extrema.type = "maxima",
-#'                      offset = c(0, -2, -2),
-#'                      lab.cex = 2.5)
-#'
-#' # Separate visualization for noise vs core clusters
-#' core_reps <- representatives[!representatives$is_noise, ]
-#' noise_reps <- representatives[representatives$is_noise, ]
-#'
-#' label.extremality.3d(graph.3d, core_reps,
-#'                      col.max = "darkred", lwd = 5)
-#' label.extremality.3d(graph.3d, noise_reps,
-#'                      col.max = "orange", lwd = 2)
-#' }
+#' representatives[, c("vertex", "label", "cluster", "is_noise")]
 #'
 #' @seealso
 #' \code{\link{compute.dbscan.cluster.summary}} for computing cluster summaries,
@@ -1468,18 +1450,22 @@ extract.dbscan.cluster.representatives <- function(extremality.df,
 #'   - isolation_score: measure of how isolated the point is
 #'
 #' @examples
-#' \dontrun{
-#' noise_analysis <- analyze.dbscan.noise(
-#'     extremality.df,
-#'     db$cluster,
-#'     extrema.type = "max"
+#' extremality.df <- data.frame(
+#'   vertex = c(2, 5, 8, 10),
+#'   label = c("M1", "M2", "M3", "M4"),
+#'   type = rep("max", 4),
+#'   extremality = c(0.98, 0.91, 0.87, 0.82),
+#'   value = c(3.5, 3.1, 2.8, 2.4),
+#'   extremality.radius = c(4, 3, 2, 1),
+#'   extremality.nbhd.size = c(11, 9, 6, 4)
 #' )
-#'
-#' # Identify noise points that might be genuine extrema
-#' strong_noise <- subset(noise_analysis,
-#'                        abs(extremality) >= 0.90 &
-#'                        extremality.radius >= 3)
-#' }
+#' dbscan_clusters <- c(1, 0, 1, 0)
+#' noise_analysis <- analyze.dbscan.noise(
+#'   extremality.df,
+#'   dbscan_clusters,
+#'   extrema.type = "max"
+#' )
+#' subset(noise_analysis, extremality.radius >= 3)
 #'
 #' @export
 analyze.dbscan.noise <- function(extremality.df,

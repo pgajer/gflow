@@ -68,37 +68,27 @@
 #' typically provide more geometrically meaningful results.
 #'
 #' @examples
-#' \dontrun{
-#' # Extract trajectory for a cell
-#' cell.traj <- cell.trajectories(gfc, "m4", "M1")
+#' adj.list <- list(c(2), c(1, 3), c(2, 4), c(3))
+#' weight.list <- list(1, c(1, 1), c(1, 1), 1)
+#' trajectory <- c(1, 2, 3, 4)
 #'
-#' # Select trajectory with maximal mean density
-#' best.idx <- select.max.density.trajectory(
-#'     cell.traj$trajectories,
-#'     smoothed.rho
-#' )
-#' best.traj <- cell.traj$trajectories[[best.idx]]
-#'
-#' # Compute harmonic extension with geodesic radius
-#' hext <- compute.harmonic.extension(
-#'     adj.list, weight.list,
-#'     trajectory = best.traj,
-#'     tube.radius = 0.5,
-#'     tube.type = "geodesic",
-#'     verbose = TRUE
-#' )
-#'
-#' # Compare hop vs geodesic neighborhood sizes
 #' hext.hop <- compute.harmonic.extension(
-#'     adj.list, weight.list,
-#'     trajectory = best.traj,
-#'     tube.radius = 2,
-#'     tube.type = "hop"
+#'   adj.list, weight.list,
+#'   trajectory = trajectory,
+#'   tube.radius = 1,
+#'   tube.type = "hop",
+#'   verbose = FALSE
 #' )
 #'
-#' cat("Hop neighborhood:", length(hext.hop$tubular.vertices), "vertices\n")
-#' cat("Geodesic neighborhood:", length(hext$tubular.vertices), "vertices\n")
-#' }
+#' hext.geo <- compute.harmonic.extension(
+#'   adj.list, weight.list,
+#'   trajectory = trajectory,
+#'   tube.radius = 0.75,
+#'   tube.type = "geodesic",
+#'   verbose = FALSE
+#' )
+#'
+#' c(length(hext.hop$tubular.vertices), length(hext.geo$tubular.vertices))
 #'
 #' @seealso \code{\link{select.max.density.trajectory}},
 #'   \code{\link{cell.trajectories}}
@@ -334,22 +324,10 @@ as.data.frame.harmonic_extension <- function(x, row.names = NULL,
 #' @return Integer index (1-based) of the trajectory with maximal mean density.
 #'
 #' @examples
-#' \dontrun{
-#' # Get cell trajectories
-#' cell.traj <- cell.trajectories(gfc, "m4", "M1")
-#'
-#' # Compute smoothed density
-#' smoothed.rho <- compute.smoothed.density(fit)
-#'
-#' # Select best trajectory
-#' best.idx <- select.max.density.trajectory(
-#'     cell.traj$trajectories,
-#'     smoothed.rho
-#' )
-#'
-#' # Extract the selected trajectory
-#' best.traj <- cell.traj$trajectories[[best.idx]]
-#' }
+#' trajectories <- list(c(1, 2, 3), c(2, 3, 4), c(1, 4))
+#' density <- c(0.9, 0.7, 0.8, 0.6)
+#' best.idx <- select.max.density.trajectory(trajectories, density)
+#' trajectories[[best.idx]]
 #'
 #' @rawNamespace export(select.max.density.trajectory)
 select.max.density.trajectory <- function(trajectories, density) {
