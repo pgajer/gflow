@@ -424,6 +424,18 @@ eigen.ulogit <- function(x,
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return Invisibly returns the input object
+#'
+#' @examples
+#' fit <- list(
+#'   call = quote(ulogit(x, y)),
+#'   converged = TRUE,
+#'   iterations = 6L,
+#'   errors = c(0.10, 0.08, 0.12),
+#'   beta = c(0.5, 1.2)
+#' )
+#' class(fit) <- "ulogit"
+#'
+#' fit
 #' @export
 #' @method print ulogit
 print.ulogit <- function(x, ...) {
@@ -444,6 +456,22 @@ print.ulogit <- function(x, ...) {
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return Invisibly returns the input object
+#'
+#' @examples
+#' fit <- list(
+#'   call = quote(eigen.ulogit(x, y, fit.quadratic = TRUE)),
+#'   model = "quadratic",
+#'   beta = c(0.5, 1.2, -0.3),
+#'   converged = TRUE,
+#'   iterations = 5L,
+#'   loglik = -12.34,
+#'   aic = 30.68,
+#'   bic = 34.12,
+#'   errors = c(0.09, 0.11, 0.10)
+#' )
+#' class(fit) <- "eigen.ulogit"
+#'
+#' fit
 #' @export
 #' @method print eigen.ulogit
 print.eigen.ulogit <- function(x, ...) {
