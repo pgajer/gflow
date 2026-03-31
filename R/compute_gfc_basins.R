@@ -152,6 +152,29 @@ compute.gfc.basins <- function(adj.list,
 #' @param x A gfc_basins object
 #' @param ... Additional arguments (ignored)
 #'
+#' @examples
+#' basins <- list(
+#'   m1 = list(
+#'     extremum.vertex = 2L,
+#'     is.maximum = FALSE,
+#'     value = 0.25,
+#'     vertices = c(1L, 2L, 3L),
+#'     boundary = c(1L, 3L)
+#'   ),
+#'   M1 = list(
+#'     extremum.vertex = 5L,
+#'     is.maximum = TRUE,
+#'     value = 1.75,
+#'     vertices = c(4L, 5L),
+#'     boundary = 4L
+#'   )
+#' )
+#' class(basins) <- "gfc_basins"
+#' attr(basins, "n.vertices") <- 5L
+#' attr(basins, "modulation") <- "none"
+#'
+#' basins
+#'
 #' @export
 print.gfc_basins <- function(x, ...) {
     cat("Gradient Flow Basins\n")
