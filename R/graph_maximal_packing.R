@@ -52,21 +52,12 @@
 #'     must be undirected (symmetric adjacency) and connected.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple triangle graph
-#' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
-#' weight.list <- list(c(1, 1), c(1, 1), c(1, 1))
+#' adj.list <- list(c(2), c(1, 3), c(2, 4), c(3, 5), c(4))
+#' weight.list <- list(c(1), c(1, 1), c(1, 1), c(1, 1), c(1))
 #'
-#' # Create grid graph with grid size 2
 #' result <- create.maximal.packing(adj.list, weight.list, grid.size = 2)
-#'
-#' # View the vertices in the maximal packing
-#' print(result$grid_vertices)
-#'
-#' # Access the graph diameter and packing radius
-#' cat("Graph diameter:", result$graph_diameter, "\n")
-#' cat("Packing radius:", result$max_packing_radius, "\n")
-#' }
+#' result$grid_vertices
+#' result$max_packing_radius
 #'
 #' @seealso \code{\link{validate.maximal.packing}},
 #'          \code{\link{verify.maximal.packing}}
@@ -250,28 +241,14 @@ create.maximal.packing <- function(adj.list,
 #'   distances between vertices using Dijkstra's algorithm.
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple path graph with 6 vertices
-#' adj.list <- list(
-#'   c(2),           # vertex 1 connects to 2
-#'   c(1, 3),        # vertex 2 connects to 1 and 3
-#'   c(2, 4),        # vertex 3 connects to 2 and 4
-#'   c(3, 5),        # vertex 4 connects to 3 and 5
-#'   c(4, 6),        # vertex 5 connects to 4 and 6
-#'   c(5)            # vertex 6 connects to 5
-#' )
-#' weight.list <- list(
-#'   c(1), c(1, 1), c(1, 1), c(1, 1), c(1, 1), c(1)
-#' )
+#' adj.list <- list(c(2), c(1, 3), c(2, 4), c(3, 5), c(4))
+#' weight.list <- list(c(1), c(1, 1), c(1, 1), c(1, 1), c(1))
+#' packing <- c(1, 3, 5)
+#' radius <- 2
 #'
-#' # Test a packing with vertices 1 and 4
-#' packing <- c(1, 4)
-#' radius <- 3
-#'
-#' # Validate the packing
 #' result <- validate.maximal.packing(adj.list, weight.list, packing, radius)
-#' print(result)
-#' }
+#' result$valid
+#' result$is.maximal
 #'
 #' @importFrom igraph graph_from_data_frame distances E
 #' @export
@@ -516,23 +493,11 @@ print.packing_validation <- function(x, ...) {
 #'     }
 #'
 #' @examples
-#' \dontrun{
-#' # Create a simple cycle graph
-#' n <- 10
-#' adj.list <- lapply(1:n, function(i) {
-#'   c(ifelse(i == 1, n, i - 1), ifelse(i == n, 1, i + 1))
-#' })
-#' weight.list <- lapply(1:n, function(i) c(1, 1))
+#' adj.list <- list(c(2), c(1, 3), c(2, 4), c(3, 5), c(4))
+#' weight.list <- list(c(1), c(1, 1), c(1, 1), c(1, 1), c(1))
+#' result <- create.maximal.packing(adj.list, weight.list, grid.size = 2)
 #'
-#' # Create maximal packing
-#' result <- create.maximal.packing(adj.list, weight.list, grid.size = 3)
-#'
-#' # Verify the packing with detailed output
-#' is_valid <- verify.maximal.packing(result, verbose = TRUE)
-#'
-#' # Verify quietly
-#' is_valid <- verify.maximal.packing(result, verbose = FALSE)
-#' }
+#' verify.maximal.packing(result, verbose = FALSE)
 #'
 #' @seealso \code{\link{create.maximal.packing}},
 #'          \code{\link{validate.maximal.packing}}
