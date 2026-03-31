@@ -1262,12 +1262,11 @@ create.vertex.labels <- function(vertices, state.space, taxonomy = NULL, min.rel
 #' The vector maintains the same length as the number of rows in state.space and uses consistent naming.
 #'
 #' @examples
-#' \dontrun{
-#' # Given vertex.labels and state space matrix state.space
+#' vertex.labels <- c("1" = "A", "3" = "C")
+#' state.space <- matrix(1:12, nrow = 4, dimnames = list(paste0("p", 1:4), NULL))
 #' result <- create.vertex.label.indicators(vertex.labels, state.space)
 #' print(head(result$lab.tbl))
 #' print(sum(result$ind)) # Number of vertices
-#' }
 #' @export
 create.vertex.label.indicators <- function(vertex.labels, state.space) {
     # Convert label names to integers
@@ -1307,17 +1306,11 @@ create.vertex.label.indicators <- function(vertex.labels, state.space) {
 #' @return Numeric value representing shortest path distance between vertices i and j
 #'
 #' @examples
-#' \dontrun{
-#' # Using star_obj
-#' star.obj <- generate.star.dataset(n.points = 10, n.arms = 3)
-#' dist <- compute.graph.distance(star.obj = star.obj, i = 1, j = 5)
-#'
-#' # Using adjacency list and edge lengths directly
-#' # Assuming adj_list and edge_lengths are defined
-#' dist <- compute.graph.distance(i = 1, j = 5,
-#'                               adj.list = adj_list,
-#'                               edge.lengths = edge_lengths)
-#' }
+#' adj_list <- list(c(2L, 3L), c(1L, 4L), c(1L, 4L), c(2L, 3L))
+#' edge_lengths <- list(c(1, 2), c(1, 1), c(2, 1), c(1, 1))
+#' compute.graph.distance(i = 1, j = 4,
+#'                        adj.list = adj_list,
+#'                        edge.lengths = edge_lengths)
 #' @export
 compute.graph.distance <- function(star.obj = NULL,
                                    i,
@@ -1436,14 +1429,13 @@ count.edges <- function(adj.list) {
 #' The function requires the foreach and doParallel packages.
 #'
 #' @examples
-#' \dontrun{
 #' # Create a simple undirected weighted graph
 #' adj.list <- list(c(2, 3), c(1, 3), c(1, 2))
 #' weight.list <- list(c(5, 10), c(5, 7), c(10, 7))
 #'
-#' # Get weights of all edges using 2 cores
-#' edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = safe_cores(1))
-#' }
+#' # Get weights of all edges using one core
+#' edge_weights <- get.edge.weights(adj.list, weight.list, n.cores = 1)
+#' edge_weights
 #'
 #' @import foreach
 #' @import doParallel
@@ -1519,23 +1511,12 @@ get.edge.weights <- function(adj.list,
 #' @return A numeric vector of function values at each vertex of the graph
 #'
 #' @examples
-#' \dontrun{
-#' # Create a grid graph
-#' grid <- create.grid.graph(10, 10)
-#'
-#' # Generate a mixture of two Gaussians
-#' centers <- c(1, 100)  # Corner and center vertices
-#' amplitudes <- c(1.0, 0.7)
-#' sigmas <- c(2.0, 3.0)
-#'
-#' y <- generate.graph.gaussian.mixture(
-#'   grid$adj.list,
-#'   grid$weight.list,
-#'   centers,
-#'   amplitudes,
-#'   sigmas
-#' )
-#' }
+#' adj.list <- list(c(2L), c(1L, 3L), c(2L, 4L), c(3L))
+#' weight.list <- list(1, c(1, 1), c(1, 1), 1)
+#' centers <- c(1, 4)
+#' amplitudes <- c(1.0, 0.5)
+#' sigmas <- c(1.0, 1.5)
+#' generate.graph.gaussian.mixture(adj.list, weight.list, centers, amplitudes, sigmas)
 #'
 #' @export
 generate.graph.gaussian.mixture <- function(
@@ -1899,13 +1880,19 @@ create.random.graph <- function(n_vertices, avg_degree, connected = TRUE) {
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' set.seed(1)
-#' X <- matrix(rnorm(300 * 2), ncol = 2)
-#' g <- build_graph(X)  # your function to generate adj.list and weight.list
-#' taus <- seq(0.05, 0.2, by = 0.01)
-#' fidelity <- compute.local.distance.fidelity(X, g$adj.list, g$weight.list, taus)
-#' }
+#' X <- matrix(
+#'   c(0, 0,
+#'     1, 0,
+#'     0, 1,
+#'     1, 1),
+#'   ncol = 2,
+#'   byrow = TRUE
+#' )
+#' adj.list <- list(c(2L, 3L), c(1L, 4L), c(1L, 4L), c(2L, 3L))
+#' weight.list <- list(c(1, 1), c(1, 1), c(1, 1), c(1, 1))
+#' taus <- c(1.1, 1.5)
+#' fidelity <- compute.local.distance.fidelity(X, adj.list, weight.list, taus, max.k = 2)
+#' names(fidelity)
 #'
 #' @importFrom FNN get.knn
 #' @importFrom igraph graph_from_adj_list as_edgelist graph_from_data_frame E distances
