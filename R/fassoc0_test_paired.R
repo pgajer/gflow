@@ -656,6 +656,27 @@ coef.assoc0 <- function(object, ...) {
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return Invisible x.
+#'
+#' @examples
+#' result <- list(
+#'   call = quote(fassoc0.test(x, y)),
+#'   x = c(0, 0.5, 1),
+#'   test.type = "paired",
+#'   n.BB = 8L,
+#'   degree = 2L,
+#'   boxcox.applied = FALSE,
+#'   shapiro.pvalue.raw = 0.42,
+#'   Ey = 1.2,
+#'   delta = 0.35,
+#'   delta.z = 1.8,
+#'   delta.robust.z = 1.6,
+#'   diff.delta = c(0.2, 0.4, 0.45, 0.35),
+#'   p.value = 0.03,
+#'   log.p.value = log(0.03)
+#' )
+#' class(result) <- "assoc0"
+#'
+#' print(result)
 #' @method print assoc0
 #' @export
 print.assoc0 <- function(x, digits = 4, ...) {
@@ -702,6 +723,34 @@ print.assoc0 <- function(x, digits = 4, ...) {
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A list of class "summary.assoc0" with summary statistics.
+#'
+#' @examples
+#' result <- list(
+#'   call = quote(fassoc0.test(x, y)),
+#'   x = c(0, 0.5, 1),
+#'   test.type = "paired",
+#'   n.BB = 8L,
+#'   degree = 2L,
+#'   Ey = 1.2,
+#'   delta = 0.35,
+#'   delta.z = 1.8,
+#'   delta.robust.z = 1.6,
+#'   p.value = 0.03,
+#'   null.mean = 0.05,
+#'   null.sd = 0.08,
+#'   null.median = 0.04,
+#'   null.mad = 0.03,
+#'   boxcox.applied = FALSE,
+#'   boxcox.lambda = NA_real_,
+#'   shapiro.pvalue.raw = 0.42,
+#'   shapiro.pvalue.bc = NA_real_,
+#'   signal.delta = c(0.30, 0.38, 0.41, 0.35),
+#'   null.delta = c(0.01, 0.06, 0.08, 0.05),
+#'   diff.delta = c(0.29, 0.32, 0.33, 0.30)
+#' )
+#' class(result) <- "assoc0"
+#'
+#' summary(result)
 #' @method summary assoc0
 #' @export
 summary.assoc0 <- function(object, ...) {
@@ -736,6 +785,34 @@ summary.assoc0 <- function(object, ...) {
 }
 
 #' @method print summary.assoc0
+#' @examples
+#' result <- list(
+#'   call = quote(fassoc0.test(x, y)),
+#'   x = c(0, 0.5, 1),
+#'   test.type = "paired",
+#'   n.BB = 8L,
+#'   degree = 2L,
+#'   Ey = 1.2,
+#'   delta = 0.35,
+#'   delta.z = 1.8,
+#'   delta.robust.z = 1.6,
+#'   p.value = 0.03,
+#'   null.mean = 0.05,
+#'   null.sd = 0.08,
+#'   null.median = 0.04,
+#'   null.mad = 0.03,
+#'   boxcox.applied = FALSE,
+#'   boxcox.lambda = NA_real_,
+#'   shapiro.pvalue.raw = 0.42,
+#'   shapiro.pvalue.bc = NA_real_,
+#'   signal.delta = c(0.30, 0.38, 0.41, 0.35),
+#'   null.delta = c(0.01, 0.06, 0.08, 0.05),
+#'   diff.delta = c(0.29, 0.32, 0.33, 0.30)
+#' )
+#' class(result) <- "assoc0"
+#'
+#' result.summary <- summary(result)
+#' result.summary
 #' @export
 print.summary.assoc0 <- function(x, digits = 4, ...) {
     cat("\nZero-Order Functional Association Test Summary\n")
@@ -792,6 +869,13 @@ print.summary.assoc0 <- function(x, digits = 4, ...) {
 #'   }
 #' @param ... Additional arguments passed to plotting functions.
 #'
+#' @examples
+#' result <- list(
+#'   diff.delta = c(0.29, 0.32, 0.33, 0.30)
+#' )
+#' class(result) <- "assoc0"
+#'
+#' plot(result, type = "diff")
 #' @method plot assoc0
 #' @export
 plot.assoc0 <- function(x, type = c("Exy", "diff", "qq", "comparison"),
