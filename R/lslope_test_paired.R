@@ -554,6 +554,23 @@ lslope.test <- function(fitted.model,
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return Invisible x.
+#'
+#' @examples
+#' result <- list(
+#'   call = quote(lslope.test(fit, y, z)),
+#'   n.vertices = 4L,
+#'   n.BB = 8L,
+#'   test.type = "paired",
+#'   lslope.type = "forward",
+#'   fdr.method = "BH",
+#'   p.value = c(0.01, 0.20, 0.03, 0.50),
+#'   p.adjusted = c(0.04, 0.27, 0.06, 0.50),
+#'   lslope.point = c(0.8, -0.1, 0.5, 0.0),
+#'   lslope.z = c(2.5, -0.4, 1.9, 0.0)
+#' )
+#' class(result) <- "lslope.test"
+#'
+#' print(result)
 #' @method print lslope.test
 #' @export
 print.lslope.test <- function(x, digits = 4, ...) {
@@ -603,6 +620,23 @@ print.lslope.test <- function(x, digits = 4, ...) {
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A list of class "summary.lslope.test" with summary statistics.
+#'
+#' @examples
+#' result <- list(
+#'   call = quote(lslope.test(fit, y, z)),
+#'   n.vertices = 4L,
+#'   n.BB = 8L,
+#'   test.type = "paired",
+#'   lslope.type = "forward",
+#'   fdr.method = "BH",
+#'   p.value = c(0.01, 0.20, 0.03, 0.50),
+#'   p.adjusted = c(0.04, 0.27, 0.06, 0.50),
+#'   lslope.point = c(0.8, -0.1, 0.5, 0.0),
+#'   diff.mean = c(0.4, -0.1, 0.3, 0.0)
+#' )
+#' class(result) <- "lslope.test"
+#'
+#' summary(result)
 #' @method summary lslope.test
 #' @export
 summary.lslope.test <- function(object, ...) {
@@ -629,6 +663,23 @@ summary.lslope.test <- function(object, ...) {
 
 
 #' @method print summary.lslope.test
+#' @examples
+#' result <- list(
+#'   call = quote(lslope.test(fit, y, z)),
+#'   n.vertices = 4L,
+#'   n.BB = 8L,
+#'   test.type = "paired",
+#'   lslope.type = "forward",
+#'   fdr.method = "BH",
+#'   p.value = c(0.01, 0.20, 0.03, 0.50),
+#'   p.adjusted = c(0.04, 0.27, 0.06, 0.50),
+#'   lslope.point = c(0.8, -0.1, 0.5, 0.0),
+#'   diff.mean = c(0.4, -0.1, 0.3, 0.0)
+#' )
+#' class(result) <- "lslope.test"
+#'
+#' result.summary <- summary(result)
+#' result.summary
 #' @export
 print.summary.lslope.test <- function(x, digits = 4, ...) {
     cat("\nLocal Slope Association Test Summary\n")
@@ -692,6 +743,17 @@ coef.lslope.test <- function(object, ...) {
 #' @param fdr.threshold Numeric: FDR threshold for highlighting (default 0.05).
 #' @param ... Additional arguments passed to plotting functions.
 #'
+#' @examples
+#' result <- list(
+#'   n.vertices = 4L,
+#'   p.value = c(0.01, 0.20, 0.03, 0.50),
+#'   p.adjusted = c(0.04, 0.27, 0.06, 0.50),
+#'   lslope.point = c(0.8, -0.1, 0.5, 0.0),
+#'   diff.mean = c(0.4, -0.1, 0.3, 0.0)
+#' )
+#' class(result) <- "lslope.test"
+#'
+#' plot(result, type = "volcano")
 #' @method plot lslope.test
 #' @export
 plot.lslope.test <- function(x,
