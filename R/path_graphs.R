@@ -487,6 +487,30 @@ create.path.graph.series <- function(graph, edge.lengths, h.values) {
 #'
 #' @return Invisible copy of x
 #'
+#' @examples
+#' pg1 <- list(
+#'   adj.list = list(c(2L), c(1L, 3L), c(2L)),
+#'   shortest.paths = list(
+#'     i = c(1L, 1L),
+#'     j = c(2L, 3L),
+#'     paths = list(c(1L, 2L), c(1L, 2L, 3L))
+#'   )
+#' )
+#' attr(pg1, "h") <- 1L
+#'
+#' pg2 <- list(
+#'   adj.list = list(c(2L), c(1L, 3L), c(2L)),
+#'   shortest.paths = list(
+#'     i = c(1L, 1L, 2L),
+#'     j = c(2L, 3L, 3L),
+#'     paths = list(c(1L, 2L), c(1L, 2L, 3L), c(2L, 3L))
+#'   )
+#' )
+#' attr(pg2, "h") <- 2L
+#'
+#' pgs <- structure(list(pg1, pg2), class = c("path.graph.series", "list"))
+#' print(pgs)
+#'
 #' @export
 #' @method print path.graph.series
 print.path.graph.series <- function(x, ...) {
@@ -609,6 +633,30 @@ minh.limit <- function(x, from, to) {
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return A data.frame with summary statistics (invisibly)
+#'
+#' @examples
+#' pg1 <- list(
+#'   adj.list = list(c(2L), c(1L, 3L), c(2L)),
+#'   shortest.paths = list(
+#'     i = c(1L, 1L),
+#'     j = c(2L, 3L),
+#'     paths = list(c(1L, 2L), c(1L, 2L, 3L))
+#'   )
+#' )
+#' attr(pg1, "h") <- 1L
+#'
+#' pg2 <- list(
+#'   adj.list = list(c(2L), c(1L, 3L), c(2L)),
+#'   shortest.paths = list(
+#'     i = c(1L, 1L, 2L),
+#'     j = c(2L, 3L, 3L),
+#'     paths = list(c(1L, 2L), c(1L, 2L, 3L), c(2L, 3L))
+#'   )
+#' )
+#' attr(pg2, "h") <- 2L
+#'
+#' pgs <- structure(list(pg1, pg2), class = c("path.graph.series", "list"))
+#' summary(pgs)
 #'
 #' @export
 #' @method summary path.graph.series
@@ -791,6 +839,18 @@ create.plm.graph <- function(graph, edge.lengths, h) {
 #' @param ... Additional arguments (currently ignored)
 #'
 #' @return Invisible copy of x
+#'
+#' @examples
+#' plm <- list(
+#'   adj_list = list(c(2L), c(1L, 3L), c(2L)),
+#'   h = 2L,
+#'   shortest_paths = list(
+#'     paths = list(c(1L, 2L), c(2L, 3L), c(1L, 2L, 3L))
+#'   )
+#' )
+#' class(plm) <- "path.graph.plm"
+#'
+#' print(plm)
 #'
 #' @export
 #' @method print path.graph.plm
