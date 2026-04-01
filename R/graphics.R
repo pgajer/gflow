@@ -11,6 +11,19 @@
     }
 }
 
+.compute.igraph.layout <- function(layout.func, graph, dim) {
+    tryCatch(
+        layout.func(graph, dim = dim),
+        error = function(e) {
+            if (grepl("unused argument \\(dim =", conditionMessage(e))) {
+                layout.func(graph)
+            } else {
+                stop(e)
+            }
+        }
+    )
+}
+
 #' Create a kh.matrix object
 #'
 #' @description
@@ -423,16 +436,19 @@ itriangle.plot <- function(coords, v = NULL, params) {
 #' @return Invisibly returns a list: graph, layout, vertex.color, and y-color info if used
 #'
 #' @examples
-#' \dontrun{
 #' adj_list <- list(c(2, 3), c(1, 3), c(1, 2))
 #' weight_list <- list(c(1, 1), c(1, 1), c(1, 1))
 #' g <- ggraph(adj_list, weight_list)
+#'
 #' plot.res <- plot(g)
 #' plot(g, vertex.size = 5, vertex.label = c("A", "B", "C"))
 #' plot(g, layout = "in_circle")
 #' plot(g, vertex.size = 2, use.saved.layout = plot.res$layout)
+#'
+#' \donttest{
 #' if (requireNamespace("rgl", quietly = TRUE)) {
-#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
+#'   old <- options(rgl.useNULL = TRUE)
+#'   on.exit(options(old), add = TRUE)
 #'   plot(g, dim = 3)
 #' }
 #' }
@@ -505,8 +521,7 @@ plot.ggraph <- function(x,
     if (!is.null(use.saved.layout)) {
         layout_coords <- use.saved.layout
     } else {
-        ## many igraph layouts accept dim=2 or 3; ignored by some
-        layout_coords <- layout_func(g, dim = dim)
+        layout_coords <- .compute.igraph.layout(layout_func, g, dim)
     }
     layout_coords <- as.matrix(layout_coords)
     if (dim == 3 && ncol(layout_coords) < 3) {
@@ -1857,7 +1872,7 @@ plot3D.graph <- function(x,
                                   "mds"       = igraph::layout_with_mds,
                                   stop("Invalid layout specified")
                                   )
-            layout.2d <- layout_func(g, dim = 2)
+            layout.2d <- .compute.igraph.layout(layout_func, g, 2)
         } else if (is.matrix(layout) && ncol(layout) == 2) {
             layout.2d <- layout
         } else {
