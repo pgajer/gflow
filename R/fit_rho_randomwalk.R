@@ -67,13 +67,28 @@
 #' }
 #'
 #' @examples
-#' ## Not run: requires an adjacency/weight list pair
-#' ## res <- fit.rho.randomwalk(rho.vertex, adj.list, weight.list,
-#' ##                           m.grid = 0:300,
-#' ##                           eta.grid = c(0.2, 0.5, 1.0),
-#' ##                           kappa.grid = seq(0.5, 2, by = 0.1),
-#' ##                           objective = "corr")
-#' ## End(Not run)
+#' adj.list <- list(c(2L), c(1L, 3L), c(2L, 4L), c(3L))
+#' weight.list <- list(c(1), c(1, 1), c(1, 1), c(1))
+#'
+#' rho.vertex <- vector("list", 11)
+#' rho.vertex[[1]] <- c(2, 1, 0.5, 0.5)
+#' rho.vertex[[11]] <- c(0.5, 1, 1.5, 1)
+#' for (i in 2:10) {
+#'   rho.vertex[[i]] <- rho.vertex[[1]]
+#' }
+#'
+#' res <- fit.rho.randomwalk(
+#'   rho.vertex, adj.list, weight.list,
+#'   m.grid = 0:3,
+#'   eta.grid = c(0.2, 0.8),
+#'   kappa.grid = c(1, 1.5),
+#'   objective = "corr",
+#'   distance.scale = "none",
+#'   return.best.rho = FALSE,
+#'   verbose = FALSE
+#' )
+#'
+#' head(res$grid)
 #'
 #' @export
 fit.rho.randomwalk <- function(rho.vertex,
