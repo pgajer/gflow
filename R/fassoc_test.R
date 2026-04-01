@@ -622,6 +622,27 @@ compute.diff.profiles <- function(Eyg, k) {
 #' @param ... Additional arguments passed to specific print methods.
 #'
 #' @return Invisible x.
+#'
+#' @examples
+#' assoc0.obj <- list(
+#'   call = quote(fassoc0.test(x, y)),
+#'   x = c(0, 0.5, 1),
+#'   test.type = "paired",
+#'   n.BB = 8L,
+#'   degree = 2L,
+#'   boxcox.applied = FALSE,
+#'   shapiro.pvalue.raw = 0.42,
+#'   Ey = 1.2,
+#'   delta = 0.35,
+#'   delta.z = 1.8,
+#'   delta.robust.z = 1.6,
+#'   diff.delta = c(0.2, 0.4, 0.45, 0.35),
+#'   p.value = 0.03,
+#'   log.p.value = log(0.03)
+#' )
+#' class(assoc0.obj) <- "assoc0"
+#'
+#' print(assoc0.obj)
 #' @method print fassoc
 #' @export
 print.fassoc <- function(x, ...) {
@@ -642,6 +663,34 @@ print.fassoc <- function(x, ...) {
 #' @param ... Additional arguments passed to specific summary methods.
 #'
 #' @return A summary object.
+#'
+#' @examples
+#' assoc1.obj <- list(
+#'   call = quote(fassoc1.test(x, y)),
+#'   x = c(0, 0.5, 1),
+#'   test.type = "paired",
+#'   n.BB = 8L,
+#'   degree = 2L,
+#'   Delta1 = 1.1,
+#'   delta1 = 0.28,
+#'   delta1.z = 1.7,
+#'   delta1.robust.z = 1.5,
+#'   p.value = 0.04,
+#'   null.mean = 0.03,
+#'   null.sd = 0.05,
+#'   null.median = 0.02,
+#'   null.mad = 0.02,
+#'   boxcox.applied = FALSE,
+#'   boxcox.lambda = NA_real_,
+#'   shapiro.pvalue.raw = 0.37,
+#'   shapiro.pvalue.bc = NA_real_,
+#'   signal.delta1 = c(0.24, 0.30, 0.33, 0.31),
+#'   null.delta1 = c(0.01, 0.04, 0.05, 0.03),
+#'   diff.delta1 = c(0.23, 0.26, 0.28, 0.28)
+#' )
+#' class(assoc1.obj) <- "assoc1"
+#'
+#' summary(assoc1.obj)
 #' @method summary fassoc
 #' @export
 summary.fassoc <- function(object, ...) {
