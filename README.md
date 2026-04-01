@@ -63,6 +63,22 @@ make check
 Avoid running `R CMD build` / `R CMD check` directly unless you explicitly need
 an ad-hoc invocation.
 
+For doc/example modernization work that you want to checkpoint in small commits,
+you can use:
+
+```bash
+tools/run_example_batches.sh tools/example_batches.tsv
+```
+
+The manifest uses tab-separated lines of the form:
+
+```text
+Commit message<TAB>space-separated file paths
+```
+
+The script only automates validation plus `git add` / `commit` / `push` for
+already-prepared batches; it does not generate the source edits itself.
+
 ## OpenMP Requirement
 
 `gflow` default install profile (`cran-safe`) is portable and does not require
