@@ -197,6 +197,22 @@ static inline double safe_norm(const Eigen::VectorXd& x) {
     return (n > 0.0) ? n : 1.0;
 }
 
+static inline double adaptive_lambda0_tolerance(
+    const vec_t& vals,
+    double lambda0_abs_tol
+) {
+    double tol = lambda0_abs_tol;
+
+    // A fixed absolute tolerance is brittle for large sparse operators. Use the
+    // first nonzero spectral scale when available, but keep the adjustment small
+    // enough that a spurious zero mode is still caught.
+    if (vals.size() >= 2 && std::isfinite(vals[1]) && vals[1] > 0.0) {
+        tol = std::max(tol, 1e-6 * vals[1]);
+    }
+
+    return tol;
+}
+
 // Enforce invariants for L0_mass_sym = M^{-1/2} L M^{-1/2}:
 // 1) vals sorted nondecreasing
 // 2) vals[0] ~ 0 (null mode exists; nullvector is ~sqrt(mass))
@@ -225,9 +241,10 @@ static inline void enforce_mass_sym_spectral_invariants_or_error(
     // 1) Near-zero first eigenvalue (mass-sym Laplacian should have lambda0 ~ 0)
     // Allow tiny negative due to numerical noise.
     const double lambda0 = vals[0];
-    if (!std::isfinite(lambda0) || std::abs(lambda0) > lambda0_abs_tol) {
+    const double lambda0_tol_eff = adaptive_lambda0_tolerance(vals, lambda0_abs_tol);
+    if (!std::isfinite(lambda0) || std::abs(lambda0) > lambda0_tol_eff) {
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("DEBUG: lambda0=%.6e exceeds tolerance %.1e\n", lambda0, lambda0_abs_tol);
+            Rprintf("DEBUG: lambda0=%.6e exceeds tolerance %.1e\n", lambda0, lambda0_tol_eff);
         }
         Rf_error("spectral invariants: lambda0 not near 0 for mass-sym Laplacian");
     }
@@ -3214,7 +3231,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  * NUMERICAL STABILITY:
  * The function includes safeguards against degenerate cases:
  *   - Zero total edge density: Falls back to uniform density (all edges = 1.0)
- *   - Empty intersections: Natural result is zero density for that edge
+ *   - Empty intersections: Clamps individual edge density to MIN_DENSITY
  *   - Small denominators: Uses threshold 1e-15 to detect near-zero totals
  *
  * The pairwise intersection computation is robust because it only involves
@@ -3228,7 +3245,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *   - Initialization uses reference_measure values for aggregation
  *   - Iteration uses evolved vertex densities for aggregation
  *
- * Both produce edge densities normalized to sum to n_edges.
+ * Both produce positive edge densities normalized to sum to n_edges.
  *
  * RELATION TO MASS MATRIX:
  * The updated edge densities populate the diagonal of the edge mass matrix \eqn{M_1}.
@@ -3249,7 +3266,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
  *
  * @post vertex_cofaces[i][k].density (k>0) contains updated edge densities
  * @post Sum of all edge densities \approx  n_edges (normalized to sum to number of edges)
- * @post All edge densities are non-negative
+ * @post All edge densities are positive after minimum-density regularization
  * @post Each edge density appears twice (once in each endpoint's vertex_cofaces)
  *
  * @note This function only updates edge densities (dimension 1). Vertex densities
@@ -3271,6 +3288,7 @@ vec_t riem_dcx_t::apply_damped_heat_diffusion(
 void riem_dcx_t::update_edge_densities_from_vertices() {
     const size_t n_vertices = vertex_cofaces.size();
     const size_t n_edges = edge_registry.size();
+    const double MIN_DENSITY = 1e-8;  // Match compute_initial_densities()
 
     // ============================================================
     // Compute edge densities from pairwise intersections
@@ -3356,6 +3374,116 @@ void riem_dcx_t::update_edge_densities_from_vertices() {
 
         Rf_warning("update_edge_densities_from_vertices: edge density sum near zero, "
                    "falling back to uniform density");
+    }
+
+    // ============================================================
+    // Enforce minimum edge density and redistribute added mass
+    // ============================================================
+
+    int n_edge_clamped = 0;
+    double edge_mass_added = 0.0;
+
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i >= j) continue;
+
+            double d = vertex_cofaces[i][k].density;
+            if (d < MIN_DENSITY) {
+                edge_mass_added += (MIN_DENSITY - d);
+                vertex_cofaces[i][k].density = MIN_DENSITY;
+
+                for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                    if (vertex_cofaces[j][m].vertex_index == i) {
+                        vertex_cofaces[j][m].density = MIN_DENSITY;
+                        break;
+                    }
+                }
+                n_edge_clamped++;
+            }
+        }
+    }
+
+    if (n_edge_clamped > 0) {
+        Rf_warning("update_edge_densities_from_vertices: clamped %d edges (%.3f%%) "
+                   "to MIN_DENSITY=%.2e after density evolution. This indicates "
+                   "empty or near-empty local neighborhood intersections.",
+                   n_edge_clamped,
+                   100.0 * static_cast<double>(n_edge_clamped) / std::max<size_t>(n_edges, 1),
+                   MIN_DENSITY);
+    }
+
+    if (edge_mass_added > 1e-10 && n_edge_clamped < static_cast<int>(n_edges)) {
+        double mass_available = 0.0;
+
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                index_t j = vertex_cofaces[i][k].vertex_index;
+                if (i < j && vertex_cofaces[i][k].density > MIN_DENSITY) {
+                    mass_available += (vertex_cofaces[i][k].density - MIN_DENSITY);
+                }
+            }
+        }
+
+        if (mass_available > edge_mass_added * 1.01) {
+            double scale = (mass_available - edge_mass_added) / mass_available;
+
+            for (size_t i = 0; i < n_vertices; ++i) {
+                for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                    if (vertex_cofaces[i][k].density > MIN_DENSITY) {
+                        double new_density =
+                            MIN_DENSITY + (vertex_cofaces[i][k].density - MIN_DENSITY) * scale;
+                        vertex_cofaces[i][k].density = new_density;
+
+                        index_t j = vertex_cofaces[i][k].vertex_index;
+                        for (size_t m = 1; m < vertex_cofaces[j].size(); ++m) {
+                            if (vertex_cofaces[j][m].vertex_index == i) {
+                                vertex_cofaces[j][m].density = new_density;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Rf_warning("update_edge_densities_from_vertices: extreme edge-density "
+                       "concentration (%d edges at minimum); blending with uniform density",
+                       n_edge_clamped);
+            for (size_t i = 0; i < n_vertices; ++i) {
+                for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                    vertex_cofaces[i][k].density =
+                        0.7 * vertex_cofaces[i][k].density + 0.3;
+                }
+            }
+        }
+    }
+
+    // Final normalization to preserve total edge mass after clamping.
+    edge_density_sum = 0.0;
+    for (size_t i = 0; i < n_vertices; ++i) {
+        for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+            index_t j = vertex_cofaces[i][k].vertex_index;
+            if (i < j) {
+                edge_density_sum += vertex_cofaces[i][k].density;
+            }
+        }
+    }
+
+    if (edge_density_sum > 1e-15) {
+        double scale = static_cast<double>(n_edges) / edge_density_sum;
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density *= scale;
+            }
+        }
+    } else {
+        Rf_warning("update_edge_densities_from_vertices: edge density sum collapsed "
+                   "after clamping; falling back to uniform density");
+        for (size_t i = 0; i < n_vertices; ++i) {
+            for (size_t k = 1; k < vertex_cofaces[i].size(); ++k) {
+                vertex_cofaces[i][k].density = 1.0;
+            }
+        }
     }
 }
 

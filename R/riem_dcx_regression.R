@@ -23,12 +23,14 @@
 #'   fine-scale features. Typical values are in the range 5 to 30. If NULL,
 #'   selects k via cross-validation (NOT YET IMPLEMENTED). When
 #'   \code{adj.list}/\code{weight.list} are supplied, graph construction is
-#'   skipped but \code{k} is still used to define local neighborhoods for
-#'   density/reference-measure initialization.
+#'   skipped. The current precomputed-graph API supports only
+#'   \code{use.counting.measure = TRUE}; distance-reference initialization needs
+#'   true kNN neighborhoods and distances rather than graph adjacency alone.
 #'
 #' @param adj.list Optional precomputed graph adjacency list (1-based indexing).
 #'   If provided together with \code{weight.list}, the fit uses this graph
-#'   directly and skips internal iKNN graph construction/pruning.
+#'   directly and skips internal iKNN graph construction/pruning. Currently only
+#'   supported with \code{use.counting.measure = TRUE}.
 #'
 #' @param weight.list Optional precomputed edge-length list parallel to
 #'   \code{adj.list}. Must be provided together with \code{adj.list}.
@@ -196,7 +198,8 @@
 #'     weights (counting measure). If FALSE, uses distance-based weights
 #'     inversely proportional to local k-NN density: \eqn{w(x) = (\epsilon +
 #'     d_k(x))^{-\alpha}}. Distance-based weights are useful when sampling
-#'     density varies across the feature space. Default: TRUE.
+#'     density varies across the feature space. Must be TRUE when
+#'     \code{adj.list}/\code{weight.list} are supplied. Default: TRUE.
 #'
 #' @param density.normalization Numeric scalar, non-negative. Specifies target
 #'   sum for normalized vertex densities. If 0 (default), densities are
@@ -848,6 +851,19 @@ fit.rdgraph.regression <- function(
     has.precomputed.graph <- (!is.null(adj.list) || !is.null(weight.list))
     adj.list.0based <- NULL
     weight.list.cpp <- NULL
+
+    if (has.precomputed.graph &&
+        is.logical(use.counting.measure) &&
+        length(use.counting.measure) == 1L &&
+        !is.na(use.counting.measure) &&
+        !use.counting.measure) {
+        stop(
+            "fit.rdgraph.regression(): precomputed adj.list/weight.list graphs ",
+            "currently require use.counting.measure = TRUE. Distance-reference ",
+            "initialization requires true kNN neighborhoods and distances; cached ",
+            "graph adjacency alone is not a valid substitute."
+        )
+    }
 
     if (has.precomputed.graph) {
         if (is.null(adj.list) || is.null(weight.list)) {
