@@ -3,6 +3,9 @@
 ## Scope
 - This repository is the source of truth for the `gflow` R package API and CRAN-facing behavior.
 
+## Preferred Skills
+- Prefer `$r-package-qa` for package QA, CRAN-style checks, documentation drift, and release-readiness work.
+
 ## R Style
 - Prefer dot-delimited function and variable names for new R code (`fit.rdgraph.regression` style).
 - Use leading-dot names only for private helpers.

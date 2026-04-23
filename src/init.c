@@ -158,6 +158,7 @@ SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
 #endif
 
 SEXP S_gflow_openmp_diag();
+SEXP S_create_geodesic_iknn_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_k);
 
 static const R_CallMethodDef CallMethods[] = {
   // diagnostic
@@ -248,6 +249,7 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 11},
   {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 15},
+  {"S_create_geodesic_iknn_graph", (DL_FUNC) &S_create_geodesic_iknn_graph, 3},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
