@@ -38,7 +38,15 @@ test_that("create.geodesic.iknn.graph applies the nerve rule with graph distance
     weight_list = list(1, c(1, 1), 1)
   )
 
-  g1 <- create.geodesic.iknn.graph(path.graph, k = 1L)
+  singleton.graph <- create.geodesic.iknn.graph(path.graph, k = 1L)
+  expect_equal(canonicalize_geodesic_edges(singleton.graph), data.frame(
+    u = integer(0),
+    v = integer(0),
+    w = numeric(0),
+    isize = integer(0)
+  ))
+
+  g1 <- create.geodesic.iknn.graph(path.graph, k = 2L)
   edges <- canonicalize_geodesic_edges(g1)
 
   expect_s3_class(g1, "geodesic_iknn_graph")
