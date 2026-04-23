@@ -2,17 +2,18 @@
 #'
 #' @description
 #' Rebuilds an iKNN graph from an existing weighted graph by using graph
-#' geodesic distances in place of Euclidean distances. For every vertex `i`, the
-#' closed graph-metric neighbor set contains `i` and its `k` nearest finite
-#' graph-geodesic neighbors. Vertices `i` and `j` are connected in the returned
-#' graph when those two closed neighbor sets intersect.
+#' geodesic distances in place of Euclidean distances. For every vertex `i`,
+#' the graph-metric neighbor set contains the first `k` finite graph-geodesic
+#' nearest vertices under the same convention used by [create.iknn.graphs()].
+#' Because self-distance is zero, this includes `i` whenever `i` is finite from
+#' itself. Vertices `i` and `j` are connected in the returned graph when those
+#' two neighbor sets intersect.
 #'
 #' @param graph A weighted graph list with entries `adj_list` and `weight_list`,
 #'   as returned by `create.iknn.graphs(..., compute.full = TRUE)` in
 #'   `geom_pruned_graphs`.
-#' @param k Integer number of non-self nearest neighbors. Internally the C++
-#'   routine uses `k + 1` vertices per closed neighborhood to match
-#'   `create.iknn.graphs()`, whose ANN-backed kNN sets include the query point.
+#' @param k Integer number of graph-metric nearest vertices in each neighbor
+#'   set, matching the `k` convention used by [create.iknn.graphs()].
 #'
 #' @return A list with entries:
 #' \describe{
@@ -44,11 +45,11 @@ create.geodesic.iknn.graph <- function(graph, k) {
         "S_create_geodesic_iknn_graph",
         graph$adj_list,
         graph$weight_list,
-        as.integer(k + 1L),
+        as.integer(k),
         PACKAGE = "gflow"
     )
     attr(result, "k") <- as.integer(k)
-    attr(result, "k_internal") <- as.integer(k + 1L)
+    attr(result, "k_internal") <- as.integer(k)
     class(result) <- c("geodesic_iknn_graph", "list")
     result
 }
