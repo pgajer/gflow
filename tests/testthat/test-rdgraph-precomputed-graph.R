@@ -28,6 +28,71 @@ as_edge_table_undirected <- function(adj.list, weight.list) {
   data.frame(u = u[ord], v = v[ord], w = w[ord])
 }
 
+make_complete_precomputed_graph <- function(n) {
+  adj.list <- vector("list", n)
+  weight.list <- vector("list", n)
+
+  for (i in seq_len(n)) {
+    nbrs <- setdiff(seq_len(n), i)
+    adj.list[[i]] <- as.integer(nbrs)
+    weight.list[[i]] <- as.numeric(abs(nbrs - i) + 1)
+  }
+
+  list(adj.list = adj.list, weight.list = weight.list)
+}
+
+test_that("precomputed graph mode rejects density reference and accepts counting measure", {
+  set.seed(2614)
+  n <- 24L
+  graph <- make_complete_precomputed_graph(n)
+  X <- matrix(rnorm(n * 3), nrow = n, ncol = 3)
+  y <- sin(seq_len(n) / 3)
+
+  expect_error(
+    fit.rdgraph.regression(
+      X,
+      y,
+      k = 5L,
+      adj.list = graph$adj.list,
+      weight.list = graph$weight.list,
+      use.counting.measure = FALSE,
+      max.iterations = 1L,
+      n.eigenpairs = 10L,
+      pca.dim = NULL,
+      apply.geometric.pruning = FALSE,
+      max.ratio.threshold = 0,
+      threshold.percentile = 0,
+      response.penalty.exp = 0,
+      dense.fallback = "auto",
+      verbose.level = 0L
+    ),
+    "precomputed adj.list/weight.list graphs currently require use.counting.measure = TRUE"
+  )
+
+  fit <- suppressWarnings(
+    fit.rdgraph.regression(
+      X,
+      y,
+      k = 5L,
+      adj.list = graph$adj.list,
+      weight.list = graph$weight.list,
+      use.counting.measure = TRUE,
+      max.iterations = 1L,
+      n.eigenpairs = 10L,
+      pca.dim = NULL,
+      apply.geometric.pruning = FALSE,
+      max.ratio.threshold = 0,
+      threshold.percentile = 0,
+      response.penalty.exp = 0,
+      dense.fallback = "auto",
+      verbose.level = 0L
+    )
+  )
+
+  expect_identical(fit$parameters$graph.source, "precomputed")
+  expect_true(all(is.finite(fit$fitted.values)))
+})
+
 test_that("fit accepts precomputed graph and matches standard fit-path result", {
   set.seed(2611)
   X <- matrix(rnorm(120 * 7), nrow = 120, ncol = 7)
