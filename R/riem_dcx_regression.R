@@ -323,12 +323,12 @@
 #'     increasing object size.
 #'
 #' @param dense.fallback Character scalar controlling dense direct-solver fallback
-#'   in the diffusion linear solve. \code{"auto"} (default) preserves current
-#'   behavior (direct solve for small systems and dense fallback after CG failure
-#'   on larger systems). \code{"never"} disables dense fallback and raises a
-#'   detailed iterative-solver error instead of attempting sparse-to-dense
-#'   allocation. \code{"always"} forces dense direct solve (debugging mode; can
-#'   require \eqn{O(n^2)} memory).
+#'   in the diffusion linear solve and spectral decomposition. \code{"auto"}
+#'   (default) preserves current behavior (direct solve for small systems and
+#'   dense fallback after iterative-solver failure on larger systems).
+#'   \code{"never"} disables dense fallback and raises a detailed iterative-solver
+#'   error instead of attempting sparse-to-dense allocation. \code{"always"}
+#'   forces dense direct solve (debugging mode; can require \eqn{O(n^2)} memory).
 #'
 #' @param triangle.policy Character scalar controlling triangle construction in
 #'   simplicial initialization. \code{"auto"} (default) builds triangles only
