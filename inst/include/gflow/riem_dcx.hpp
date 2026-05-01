@@ -666,6 +666,8 @@ struct riem_dcx_t {
         void invalidate() { is_valid = false; }
     } spectral_cache;
 
+    int spectral_dense_fallback_mode = static_cast<int>(dense_fallback_mode_t::AUTO);
+
     // ----------------------------------------------------------------
     // Geometric Data (for regression)
     // ----------------------------------------------------------------

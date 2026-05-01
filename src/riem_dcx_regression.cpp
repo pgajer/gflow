@@ -1660,6 +1660,15 @@ void riem_dcx_t::compute_spectral_decomposition(
     }
 
     const int n_vertices = L0.rows();
+    const dense_fallback_mode_t fallback_mode =
+        static_cast<dense_fallback_mode_t>(spectral_dense_fallback_mode);
+    if (spectral_dense_fallback_mode < static_cast<int>(dense_fallback_mode_t::AUTO) ||
+        spectral_dense_fallback_mode > static_cast<int>(dense_fallback_mode_t::ALWAYS)) {
+        Rf_error("compute_spectral_decomposition: invalid dense_fallback_mode=%d (expected 0, 1, or 2)",
+                 spectral_dense_fallback_mode);
+    }
+    const bool force_dense_solver = (fallback_mode == dense_fallback_mode_t::ALWAYS);
+    const bool allow_dense_solver = (fallback_mode != dense_fallback_mode_t::NEVER);
 
     // Validate and bound parameters
     int max_eigenpairs = std::max(1, n_vertices - 2);
@@ -1676,10 +1685,11 @@ void riem_dcx_t::compute_spectral_decomposition(
     // const bool small_nev = (n_eigenpairs <= 10);
     const bool moderate_n = (n_vertices <= 5000);
 
-    if (moderate_n && (phase45_mode || pre_density_full_basis_mode)) {
+    if (force_dense_solver || (allow_dense_solver && moderate_n && (phase45_mode || pre_density_full_basis_mode))) {
         // Force dense solver path
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("\tUsing dense solver (forced by mode; n=%d, nev=%d) ... ", n_vertices, n_eigenpairs);
+            const char* reason = force_dense_solver ? "dense.fallback='always'" : "mode";
+            Rprintf("\tUsing dense solver (forced by %s; n=%d, nev=%d) ... ", reason, n_vertices, n_eigenpairs);
             phase_time = std::chrono::steady_clock::now();
         }
 
@@ -1922,51 +1932,55 @@ void riem_dcx_t::compute_spectral_decomposition(
                 }
             }
 
-            // Attempt dense solver fallback for ill-conditioned cases
-            // if (extreme_ill_conditioning && n_vertices <= 5000) {
-            Rprintf("\n    Attempting dense solver fallback ...\n");
-            Rprintf("    (This may take longer but should be more robust)\n");
+            if (allow_dense_solver) {
+                // Attempt dense solver fallback for ill-conditioned cases
+                // if (extreme_ill_conditioning && n_vertices <= 5000) {
+                Rprintf("\n    Attempting dense solver fallback ...\n");
+                Rprintf("    (This may take longer but should be more robust)\n");
 
-            Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
+                Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
+                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> dense_solver(L_dense);
 
-            if (dense_solver.info() == Eigen::Success) {
+                if (dense_solver.info() == Eigen::Success) {
 
-                int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
-                spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
-                spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
+                    int n_to_extract = std::min(n_eigenpairs, (int)dense_solver.eigenvalues().size());
+                    spectral_cache.eigenvalues = dense_solver.eigenvalues().head(n_to_extract);
+                    spectral_cache.eigenvectors = dense_solver.eigenvectors().leftCols(n_to_extract);
 
-                // Canonicalize ordering (dense is already ascending, but keep invariant)
-                sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
+                    // Canonicalize ordering (dense is already ascending, but keep invariant)
+                    sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
 
-                enforce_mass_sym_spectral_invariants_or_error(
-                    L0,
-                    spectral_cache.eigenvalues,
-                    spectral_cache.eigenvectors,
-                    verbose_level
-                    );
+                    enforce_mass_sym_spectral_invariants_or_error(
+                        L0,
+                        spectral_cache.eigenvalues,
+                        spectral_cache.eigenvectors,
+                        verbose_level
+                        );
 
-                spectral_cache.is_valid = true;
-                if (spectral_cache.eigenvalues.size() >= 2) {
-                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                    spectral_cache.is_valid = true;
+                    if (spectral_cache.eigenvalues.size() >= 2) {
+                        spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                    }
+
+                    // Confirm ordering AFTER sorting
+                    debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                    Rprintf("    Dense solver succeeded!\n");
+
+                    #if 0
+                    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                        const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
+                        Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
+                        for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
+                        Rprintf("\n");
+                    }
+                    #endif
+                    return;
+                } else {
+                    Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
                 }
-
-                // Confirm ordering AFTER sorting
-                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
-
-                Rprintf("    Dense solver succeeded!\n");
-
-                #if 0
-                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                    const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
-                    Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
-                    for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
-                    Rprintf("\n");
-                }
-                #endif
-                return;
             } else {
-                Rprintf("    Dense solver also failed. Proceeding with standard fallbacks...\n");
+                Rprintf("\n    Dense solver fallback disabled by dense.fallback='never'. Proceeding with sparse fallbacks...\n");
             }
             //}
         }
@@ -2129,7 +2143,7 @@ void riem_dcx_t::compute_spectral_decomposition(
         Rprintf("    Tier 3: Dense fallback for small-medium problems ... \n");
     }
 
-    if (n_vertices <= 5000) {
+    if (allow_dense_solver && n_vertices <= 5000) {
         Rf_warning("Sparse eigendecomposition failed; falling back to dense solver "
                    "for n=%d vertices", n_vertices);
 
@@ -2173,6 +2187,8 @@ void riem_dcx_t::compute_spectral_decomposition(
 
             return;
         }
+    } else if (!allow_dense_solver && vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("    Tier 3 dense fallback skipped because dense.fallback='never'.\n");
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
@@ -2263,23 +2279,16 @@ void riem_dcx_t::select_diffusion_parameters(
         // n_eigenpairs to later (it will be recomputed on demand when needed).
         // ============================================================
 
-        #if 0
         const int nev_lambda2 = 5;
         int n_to_compute = std::min(nev_lambda2, n_eigenpairs_hint);
         n_to_compute = std::max(3, n_to_compute);
-        #endif
 
-        int n_to_compute = n_eigenpairs_hint;
-
-        #if 0
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
             Rprintf("\n\tComputing spectral decomposition for parameter selection...\n");
             Rprintf("\t(computing %d eigenpairs for lambda_2 estimation; full basis deferred)\n", n_to_compute);
         }
-        #endif
         
         compute_spectral_decomposition(n_to_compute, verbose_level, true, false);
-        // compute_spectral_decomposition(n_to_compute, verbose_level, false, false);
     }
 
     const double lambda_2 = spectral_cache.lambda_2;
@@ -5857,6 +5866,7 @@ void riem_dcx_t::fit_rdgraph_regression(
 
     auto total_time = std::chrono::steady_clock::now();
     auto phase_time = std::chrono::steady_clock::now();
+    spectral_dense_fallback_mode = dense_fallback_mode;
 
     // --------------------------------------------------------------
     // Phases 1-4: Build geometric structure

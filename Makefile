@@ -33,15 +33,15 @@ document: attrs
 build: clean document
 	@mkdir -p $(LOGDIR)
 	@echo "Building package..."
-	@R CMD build . --output=. > $(LOGDIR)/$(PKGNAME)_build.log 2>&1
+	@bash -o pipefail -c 'R CMD build . 2>&1 | tee "$(LOGDIR)/$(PKGNAME)_build.log"'
 	@echo "Package built successfully (log: $(LOGDIR)/$(PKGNAME)_build.log)"
 
 build-verbose: clean document
-	R CMD build . --output=.
+	R CMD build .
 
 build-log: clean document
 	@mkdir -p $(LOGDIR)
-	R CMD build . --output=. > $(LOGDIR)/$(PKGNAME)_build.log 2>&1
+	R CMD build . > $(LOGDIR)/$(PKGNAME)_build.log 2>&1
 	@echo "Build output saved to $(LOGDIR)/$(PKGNAME)_build.log"
 
 check: build

@@ -93,6 +93,37 @@ test_that("precomputed graph mode rejects density reference and accepts counting
   expect_true(all(is.finite(fit$fitted.values)))
 })
 
+test_that("dense.fallback='never' disables forced dense spectral path", {
+  set.seed(2615)
+  n <- 80L
+  X <- matrix(rnorm(n * 4), nrow = n, ncol = 4)
+  y <- sin(seq_len(n) / 5)
+
+  out <- capture.output({
+    fit <- suppressWarnings(
+      fit.rdgraph.regression(
+        X,
+        y,
+        k = 9L,
+        max.iterations = 1L,
+        n.eigenpairs = 20L,
+        pca.dim = NULL,
+        apply.geometric.pruning = FALSE,
+        max.ratio.threshold = 0,
+        threshold.percentile = 0,
+        response.penalty.exp = 0,
+        dense.fallback = "never",
+        verbose.level = 2L
+      )
+    )
+  })
+
+  expect_false(any(grepl("Using dense solver", out, fixed = TRUE)))
+  expect_true(any(grepl("Using sparse iterative solver", out, fixed = TRUE)))
+  expect_identical(fit$parameters$dense.fallback, "never")
+  expect_true(all(is.finite(fit$fitted.values)))
+})
+
 test_that("fit accepts precomputed graph and matches standard fit-path result", {
   set.seed(2611)
   X <- matrix(rnorm(120 * 7), nrow = 120, ncol = 7)
