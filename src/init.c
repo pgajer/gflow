@@ -65,6 +65,7 @@
 #include "madag_r.h"
 #include "traj_clustering_r.h"
 #include "graph_core_endpoints_r.h"
+#include "phate_core_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -179,6 +180,11 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_build_sparse_transition", (DL_FUNC) &S_build_sparse_transition, 5},
   {"S_compute_diffusion_pseudotime_sparse", (DL_FUNC) &S_compute_diffusion_pseudotime_sparse, 12},
   {"S_compute_potential_pseudotime_sparse", (DL_FUNC) &S_compute_potential_pseudotime_sparse, 12},
+
+  // =========================================================================
+  //  PHATE core
+  // =========================================================================
+  {"S_phate_build_kernel", (DL_FUNC) &S_phate_build_kernel, 7},
 
   // =========================================================================
   //  Gradient flow association functions

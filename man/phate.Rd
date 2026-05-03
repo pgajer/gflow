@@ -13,6 +13,9 @@ phate(
   alpha.decay = 40,
   knn.use = TRUE,
   knn.symmetrize = c("mean", "max"),
+  kernel.mode = c("gflow", "python"),
+  kernel.threshold = NULL,
+  bandwidth.scale = 1,
   t = "auto",
   t.max = 50L,
   pca.dim = NULL,
@@ -49,6 +52,9 @@ phate(
 \code{\link{phate.core}}.}
 
 \item{knn.symmetrize}{Character in \code{c("mean", "max")} passed to
+\code{\link{phate.core}}.}
+
+\item{kernel.mode, kernel.threshold, bandwidth.scale}{Passed to
 \code{\link{phate.core}}.}
 
 \item{t}{Either \code{"auto"} or a positive integer diffusion time passed to

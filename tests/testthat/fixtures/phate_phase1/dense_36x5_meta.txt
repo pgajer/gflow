@@ -1,0 +1,12 @@
+fixture=dense_36x5
+generated=2026-05-03
+phate_commit=65a1f73f0c53a65bf1f8db3d4ad32dbef73595c3
+graphtools_commit=785c0c10a3cbfb8a845b94bede8cc387a44e96c1
+numpy_random_state=20260503
+phate_knn=5
+phate_decay=40
+phate_t=3
+phate_n_landmark=None
+phate_mds=classic
+phate_n_pca=None
+phate_random_state=17

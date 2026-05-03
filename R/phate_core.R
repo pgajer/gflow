@@ -26,6 +26,15 @@
 #' @param knn.use Logical; if \code{TRUE}, build sparse kNN kernel.
 #' @param knn.symmetrize Character: \code{"mean"} or \code{"max"} for
 #'   symmetrizing directed kNN affinities.
+#' @param kernel.mode Character: \code{"gflow"} preserves the original gflow
+#'   PHATE-style kernel; \code{"python"} uses the C++ clean-room
+#'   Python-compatible Phase 1 kernel path (diagonal-one self affinity,
+#'   thresholded alpha-decay affinities, and additive symmetrization).
+#' @param kernel.threshold Optional non-negative affinity threshold. If
+#'   \code{NULL}, defaults to \code{kernel.eps} in \code{"gflow"} mode and
+#'   \code{1e-4} in \code{"python"} mode.
+#' @param bandwidth.scale Positive multiplier for adaptive kernel bandwidths in
+#'   \code{"python"} mode.
 #' @param t Either \code{"auto"} or a positive integer diffusion time.
 #' @param t.max Positive integer maximum diffusion time when \code{t="auto"}.
 #' @param pca.dim Optional integer. If provided and \code{ncol(X) > pca.dim},
@@ -75,10 +84,13 @@ phate.core <- function(X = NULL,
                        K = NULL,
                        P = NULL,
                        k = 15L,
-                       alpha.decay = 40,
-                       knn.use = TRUE,
-                       knn.symmetrize = c("mean", "max"),
-                       t = "auto",
+	                       alpha.decay = 40,
+	                       knn.use = TRUE,
+	                       knn.symmetrize = c("mean", "max"),
+	                       kernel.mode = c("gflow", "python"),
+	                       kernel.threshold = NULL,
+	                       bandwidth.scale = 1,
+	                       t = "auto",
                        t.max = 50L,
                        pca.dim = NULL,
                        pca.center = TRUE,
@@ -89,6 +101,7 @@ phate.core <- function(X = NULL,
                        verbose = FALSE) {
 
     knn.symmetrize <- match.arg(knn.symmetrize)
+    kernel.mode <- match.arg(kernel.mode)
 
     if (!is.numeric(k) || length(k) != 1L || !is.finite(k) ||
         k < 1 || k != floor(k)) {
@@ -103,6 +116,19 @@ phate.core <- function(X = NULL,
 
     if (!is.logical(knn.use) || length(knn.use) != 1L) {
         stop("knn.use must be TRUE/FALSE.")
+    }
+
+    if (!is.null(kernel.threshold)) {
+        if (!is.numeric(kernel.threshold) || length(kernel.threshold) != 1L ||
+            !is.finite(kernel.threshold) || kernel.threshold < 0 ||
+            kernel.threshold >= 1) {
+            stop("kernel.threshold must be NULL or a single finite number in [0, 1).")
+        }
+    }
+
+    if (!is.numeric(bandwidth.scale) || length(bandwidth.scale) != 1L ||
+        !is.finite(bandwidth.scale) || bandwidth.scale <= 0) {
+        stop("bandwidth.scale must be a single positive finite number.")
     }
 
     if (!is.numeric(t.max) || length(t.max) != 1L || !is.finite(t.max) ||
@@ -122,6 +148,12 @@ phate.core <- function(X = NULL,
     if (!is.numeric(kernel.eps) || length(kernel.eps) != 1L ||
         !is.finite(kernel.eps) || kernel.eps <= 0) {
         stop("kernel.eps must be a single positive finite number.")
+    }
+
+    kernel.threshold.used <- if (is.null(kernel.threshold)) {
+        if (kernel.mode == "python") 1e-4 else kernel.eps
+    } else {
+        as.numeric(kernel.threshold)
     }
 
     if (!is.numeric(potential.eps) || length(potential.eps) != 1L ||
@@ -188,6 +220,7 @@ phate.core <- function(X = NULL,
 
     K.used <- NULL
     P.used <- NULL
+    kernel.info <- NULL
 
     if (!is.null(P)) {
         P.used <- .phc_as_square_numeric_matrix(P, "P")
@@ -204,15 +237,32 @@ phate.core <- function(X = NULL,
         diag(K.used) <- 0
         P.used <- .phc_row_normalize(K.used, eps = kernel.eps)
     } else {
-        K.used <- .phc_build_alpha_kernel(
-            D = D,
-            k = k.use,
-            alpha.decay = alpha.decay,
-            knn.use = knn.use,
-            knn.symmetrize = knn.symmetrize,
-            eps = kernel.eps
-        )
-        P.used <- .phc_row_normalize(K.used, eps = kernel.eps)
+        if (kernel.mode == "python") {
+            if (!isTRUE(knn.use)) {
+                warning("kernel.mode='python' uses thresholded adaptive affinities; knn.use=FALSE is ignored.")
+            }
+            kernel.info <- .phc_build_python_kernel_cpp(
+                D = D,
+                k = k.use,
+                alpha.decay = alpha.decay,
+                knn.symmetrize = knn.symmetrize,
+                threshold = kernel.threshold.used,
+                bandwidth.scale = bandwidth.scale
+            )
+            K.used <- kernel.info$K
+            P.used <- kernel.info$P
+        } else {
+            K.used <- .phc_build_alpha_kernel(
+                D = D,
+                k = k.use,
+                alpha.decay = alpha.decay,
+                knn.use = knn.use,
+                knn.symmetrize = knn.symmetrize,
+                eps = kernel.eps,
+                threshold = kernel.threshold.used
+            )
+            P.used <- .phc_row_normalize(K.used, eps = kernel.eps)
+        }
     }
 
     t.auto <- FALSE
@@ -265,6 +315,11 @@ phate.core <- function(X = NULL,
         t_auto = t.auto,
         t_grid = t.grid,
         vne = vne,
+        kernel_mode = kernel.mode,
+        kernel_threshold = kernel.threshold.used,
+        bandwidth_scale = bandwidth.scale,
+        bandwidth = if (!is.null(kernel.info)) kernel.info$bandwidth else NULL,
+        n_retained_directed = if (!is.null(kernel.info)) kernel.info$n_retained_directed else NULL,
         kernel_sparsity = if (!is.null(K.used)) mean(K.used == 0) else NA_real_,
         operator_sparsity = mean(P.used == 0),
         pca = pca.info
@@ -355,7 +410,8 @@ phate.core <- function(X = NULL,
                                     alpha.decay = 40,
                                     knn.use = TRUE,
                                     knn.symmetrize = c("mean", "max"),
-                                    eps = 1e-12) {
+                                    eps = 1e-12,
+                                    threshold = eps) {
     knn.symmetrize <- match.arg(knn.symmetrize)
     D <- .phc_as_distance_matrix(D, "D")
     n <- nrow(D)
@@ -406,8 +462,42 @@ phate.core <- function(X = NULL,
     }
 
     diag(K) <- 0
-    K[K < eps] <- 0
+    K[K < threshold] <- 0
     return(K)
+}
+
+
+.phc_build_python_kernel_cpp <- function(D,
+                                         k = 15L,
+                                         alpha.decay = 40,
+                                         knn.symmetrize = c("mean", "max"),
+                                         threshold = 1e-4,
+                                         bandwidth.scale = 1) {
+    knn.symmetrize <- match.arg(knn.symmetrize)
+    D <- .phc_as_distance_matrix(D, "D")
+
+    symm.code <- switch(knn.symmetrize,
+                        "mean" = 0L,
+                        "max" = 1L,
+                        stop("Unsupported knn.symmetrize."))
+
+    res <- .Call(
+        "S_phate_build_kernel",
+        D,
+        as.integer(k),
+        as.numeric(alpha.decay),
+        as.numeric(threshold),
+        as.numeric(bandwidth.scale),
+        as.integer(symm.code),
+        TRUE,
+        PACKAGE = "gflow"
+    )
+
+    res$K <- .phc_as_square_numeric_matrix(res$K, "K")
+    res$P <- .phc_as_square_numeric_matrix(res$P, "P")
+    res$bandwidth <- as.numeric(res$bandwidth)
+    res$n_retained_directed <- as.integer(res$n_retained_directed)
+    return(res)
 }
 
 
@@ -688,6 +778,8 @@ phate.embed <- function(core = NULL,
 #'   \code{\link{phate.core}}.
 #' @param knn.symmetrize Character in \code{c("mean", "max")} passed to
 #'   \code{\link{phate.core}}.
+#' @param kernel.mode,kernel.threshold,bandwidth.scale Passed to
+#'   \code{\link{phate.core}}.
 #' @param t Either \code{"auto"} or a positive integer diffusion time passed to
 #'   \code{\link{phate.core}}.
 #' @param t.max Positive integer upper bound for automatic \code{t} selection in
@@ -732,10 +824,13 @@ phate <- function(X = NULL,
                   K = NULL,
                   P = NULL,
                   k = 15L,
-                  alpha.decay = 40,
-                  knn.use = TRUE,
-                  knn.symmetrize = c("mean", "max"),
-                  t = "auto",
+	                  alpha.decay = 40,
+	                  knn.use = TRUE,
+	                  knn.symmetrize = c("mean", "max"),
+	                  kernel.mode = c("gflow", "python"),
+	                  kernel.threshold = NULL,
+	                  bandwidth.scale = 1,
+	                  t = "auto",
                   t.max = 50L,
                   pca.dim = NULL,
                   pca.center = TRUE,
@@ -752,6 +847,7 @@ phate <- function(X = NULL,
                   verbose = FALSE) {
 
     embed.method <- match.arg(embed.method)
+    kernel.mode <- match.arg(kernel.mode)
 
     core <- phate.core(
         X = X,
@@ -762,6 +858,9 @@ phate <- function(X = NULL,
         alpha.decay = alpha.decay,
         knn.use = knn.use,
         knn.symmetrize = knn.symmetrize,
+        kernel.mode = kernel.mode,
+        kernel.threshold = kernel.threshold,
+        bandwidth.scale = bandwidth.scale,
         t = t,
         t.max = t.max,
         pca.dim = pca.dim,

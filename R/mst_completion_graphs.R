@@ -4,14 +4,15 @@
 #' numeric data matrix. The graph is constructed in two steps: first, a MST is
 #' built connecting all data points using minimal total edge length; then,
 #' additional edges are added between any pair of points whose Euclidean
-#' distance lies below a quantile threshold based on the MST edge length
-#' distribution.
+#' distance is less than or equal to a quantile threshold based on the MST edge
+#' length distribution.
 #'
 #' @param X A numeric matrix or data frame of shape \eqn{n \times d}, where
 #'   each row represents a data point in d-dimensional space.
 #' @param q.thld Numeric scalar between 0 and 1 (exclusive). The quantile
 #'   threshold for MST completion. Edges are added between points whose
-#'   distance is below the q.thld-quantile of MST edge weights. Default is 0.1.
+#'   distance is less than or equal to the q.thld-quantile of MST edge weights.
+#'   Default is 0.9.
 #' @param pca.dim Positive integer or NULL. If provided and \code{ncol(X) > pca.dim},
 #'   dimensionality is reduced to this many principal components before graph
 #'   construction. Must be less than min(n-1, p) where n is the number of
@@ -49,6 +50,8 @@
 #'       weights for the completed MST graph.}
 #'     \item{\code{mst_edge_weights}}{Numeric vector containing all unique MST
 #'       edge weights.}
+#'     \item{\code{cmst_distance_threshold}}{Numeric scalar containing the
+#'       actual Euclidean distance threshold used for completion.}
 #'   }
 #'
 #'   The returned object also has the following attributes:
@@ -93,7 +96,7 @@
 #'
 #' @export
 create.cmst.graph <- function(X,
-                              q.thld = 0.1,
+                              q.thld = 0.9,
                               pca.dim = 100,
                               variance.explained = 0.99,
                               verbose = TRUE) {
@@ -287,7 +290,7 @@ create.cmst.graph <- function(X,
     # Validate the result structure
     expected_names <- c("mst_adj_list", "mst_weight_list",
                        "cmst_adj_list", "cmst_weight_list",
-                       "mst_edge_weights")
+                       "mst_edge_weights", "cmst_distance_threshold")
 
     if (!is.list(result) || !all(expected_names %in% names(result))) {
         stop("Internal error: unexpected result structure from compiled code",
@@ -296,6 +299,7 @@ create.cmst.graph <- function(X,
 
     # Add attributes
     attr(result, "q_thld") <- q.thld
+    attr(result, "cmst_distance_threshold") <- result$cmst_distance_threshold
     attr(result, "call") <- cl
 
     if (!is.null(pca_info)) {
@@ -334,9 +338,11 @@ create.cmst.graph <- function(X,
 #'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
 #'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
 #'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
-#'   mst_edge_weights = c(1.1, 0.9)
+#'   mst_edge_weights = c(1.1, 0.9),
+#'   cmst_distance_threshold = 1.08
 #' )
 #' attr(graph, "q_thld") <- 0.8
+#' attr(graph, "cmst_distance_threshold") <- graph$cmst_distance_threshold
 #' class(graph) <- c("mst_completion_graph", "list")
 #'
 #' print(graph)
@@ -354,10 +360,17 @@ print.mst_completion_graph <- function(x, ...) {
     n_vertices <- length(x$mst_adj_list)
     n_mst_edges <- length(x$mst_edge_weights)
     q_thld <- attr(x, "q_thld")
+    completion_threshold <- attr(x, "cmst_distance_threshold")
+    if (is.null(completion_threshold)) {
+        completion_threshold <- x$cmst_distance_threshold
+    }
 
     cat(sprintf("Number of vertices: %d\n", n_vertices))
     cat(sprintf("Number of MST edges: %d\n", n_mst_edges))
     cat(sprintf("Quantile threshold: %.3f\n", q_thld))
+    if (!is.null(completion_threshold)) {
+        cat(sprintf("Distance threshold: %.3f\n", completion_threshold))
+    }
 
     # Count completed graph edges
     n_cmst_edges <- sum(lengths(x$cmst_adj_list)) / 2
@@ -407,9 +420,11 @@ print.mst_completion_graph <- function(x, ...) {
 #'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
 #'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
 #'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
-#'   mst_edge_weights = c(1.1, 0.9)
+#'   mst_edge_weights = c(1.1, 0.9),
+#'   cmst_distance_threshold = 1.08
 #' )
 #' attr(graph, "q_thld") <- 0.8
+#' attr(graph, "cmst_distance_threshold") <- graph$cmst_distance_threshold
 #' class(graph) <- c("mst_completion_graph", "list")
 #'
 #' summary(graph)
@@ -430,9 +445,15 @@ summary.mst_completion_graph <- function(object, ...) {
 
     # Completion threshold (actual distance value)
     q_thld <- attr(object, "q_thld")
-    completion_threshold <- quantile(object$mst_edge_weights,
-                                   probs = q_thld,
-                                   names = FALSE)
+    completion_threshold <- attr(object, "cmst_distance_threshold")
+    if (is.null(completion_threshold)) {
+        completion_threshold <- object$cmst_distance_threshold
+    }
+    if (is.null(completion_threshold)) {
+        completion_threshold <- quantile(object$mst_edge_weights,
+                                         probs = q_thld,
+                                         names = FALSE)
+    }
 
     # Create summary object
     out <- list(
@@ -476,9 +497,11 @@ summary.mst_completion_graph <- function(object, ...) {
 #'   mst_weight_list = list(1.1, c(1.1, 0.9), 0.9),
 #'   cmst_adj_list = list(c(2L, 3L), c(1L, 3L), c(1L, 2L)),
 #'   cmst_weight_list = list(c(1.1, 1.4), c(1.1, 0.9), c(1.4, 0.9)),
-#'   mst_edge_weights = c(1.1, 0.9)
+#'   mst_edge_weights = c(1.1, 0.9),
+#'   cmst_distance_threshold = 1.08
 #' )
 #' attr(graph, "q_thld") <- 0.8
+#' attr(graph, "cmst_distance_threshold") <- graph$cmst_distance_threshold
 #' class(graph) <- c("mst_completion_graph", "list")
 #'
 #' graph_summary <- summary(graph)
