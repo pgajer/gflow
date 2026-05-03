@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document attrs audit-malo-exports
+.PHONY: clean build build-verbose check check-fast check-correctness-report install document attrs audit-malo-exports
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -52,6 +52,9 @@ check-fast: build
 
 check-examples: build
 	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" R CMD check $(TARBALL) --as-cran --examples
+
+check-correctness-report:
+	Rscript tests/correctness/rdgraph_regression_report.R
 
 install: build
 	R CMD INSTALL $(TARBALL)
