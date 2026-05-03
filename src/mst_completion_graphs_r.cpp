@@ -125,7 +125,7 @@ SEXP S_create_r_graph_from_set_wgraph(const set_wgraph_t& G) {
  *
  * This function is a C-level interface callable from R via `.Call()`. It takes a numeric matrix
  * of data points, computes the minimal spanning tree (MST) using Prim's algorithm via `C_mstree`,
- * and adds extra edges between pairs of points whose Euclidean distance is below a specified quantile
+ * and adds extra edges between pairs of points whose Euclidean distance is less than or equal to a specified quantile
  * threshold of MST edge lengths.
  *
  * @param s_X A numeric R matrix (type REALSXP), where each row is a data point (n_points x n_dims).
@@ -177,16 +177,17 @@ extern "C" SEXP S_create_mst_completion_graph(
     mst_completion_graph_t res = create_mst_completion_graph(X, q_thld, verbose);
 
 	// Create R return list (container-first pattern)
-    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 5));
+    SEXP r_list = PROTECT(Rf_allocVector(VECSXP, 6));
 
 	// Set names
     {
-        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 5));
+        SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 6));
         SET_STRING_ELT(r_names, 0, Rf_mkChar("mst_adj_list"));
         SET_STRING_ELT(r_names, 1, Rf_mkChar("mst_weight_list"));
         SET_STRING_ELT(r_names, 2, Rf_mkChar("cmst_adj_list"));
         SET_STRING_ELT(r_names, 3, Rf_mkChar("cmst_weight_list"));
         SET_STRING_ELT(r_names, 4, Rf_mkChar("mst_edge_weights"));
+        SET_STRING_ELT(r_names, 5, Rf_mkChar("cmst_distance_threshold"));
         Rf_setAttrib(r_list, R_NamesSymbol, r_names);
         UNPROTECT(1); // r_names
     }
@@ -218,6 +219,14 @@ extern "C" SEXP S_create_mst_completion_graph(
         std::copy(res.mstree_edge_weights.begin(), res.mstree_edge_weights.end(), REAL(r_mst_weights));
         SET_VECTOR_ELT(r_list, 4, r_mst_weights);
         UNPROTECT(1); // r_mst_weights
+    }
+
+	// Completed MST distance threshold
+    {
+        SEXP r_threshold = PROTECT(Rf_allocVector(REALSXP, 1));
+        REAL(r_threshold)[0] = res.q_thold;
+        SET_VECTOR_ELT(r_list, 5, r_threshold);
+        UNPROTECT(1); // r_threshold
     }
 
     UNPROTECT(1); // r_list

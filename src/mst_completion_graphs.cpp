@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <numeric>
 #include <unordered_set>
+#include <limits>
 #include "mstree.h"
 
 // Forward declaration of brute-force kNN
@@ -31,6 +32,33 @@ inline double euclidean_dist(
 		sum += diff * diff;
 	}
 	return std::sqrt(sum);
+}
+
+// Compute the same linear-interpolation quantile used by R's default type = 7.
+static double quantile_type7(std::vector<double> values, double q) {
+	if (values.empty()) {
+		return std::numeric_limits<double>::quiet_NaN();
+	}
+
+	std::sort(values.begin(), values.end());
+
+	if (q <= 0.0) {
+		return values.front();
+	}
+	if (q >= 1.0) {
+		return values.back();
+	}
+
+	double h = (static_cast<double>(values.size()) - 1.0) * q;
+	size_t lower_idx = static_cast<size_t>(std::floor(h));
+	size_t upper_idx = static_cast<size_t>(std::ceil(h));
+	double fraction = h - std::floor(h);
+
+	if (lower_idx == upper_idx) {
+		return values[lower_idx];
+	}
+
+	return values[lower_idx] + fraction * (values[upper_idx] - values[lower_idx]);
 }
 
 /**
@@ -80,11 +108,8 @@ mst_completion_graph_t create_mst_completion_graph(
 		mstree.add_edge(u, v, w);
 	}
 
-	// Step 4: compute quantile threshold (e.g., 90th percentile)
-	std::vector<double> edge_lens_sorted = edge_lens;
-	std::sort(edge_lens_sorted.begin(), edge_lens_sorted.end());
-	size_t q_idx = static_cast<size_t>(std::floor(q_thold * k));
-	double q_dist = edge_lens_sorted[std::min(q_idx, k - 1)];
+	// Step 4: compute the MST edge-length quantile threshold
+	double q_dist = quantile_type7(edge_lens, q_thold);
 
 	if (verbose) Rprintf("Quantile threshold (q=%g): %g\n", q_thold, q_dist);
 
@@ -104,7 +129,8 @@ mst_completion_graph_t create_mst_completion_graph(
 			if (existing_edges.count(eid)) continue;
 
 			double dist = euclidean_dist(X[i], X[j]);
-			if (dist < q_dist) {
+			double tol = std::max(1.0, std::abs(q_dist)) * 1e-12;
+			if (dist <= q_dist + tol) {
 				completed_mstree.add_edge(i, j, dist);
 			}
 		}

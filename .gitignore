@@ -48,6 +48,7 @@ vignettes/*.blg
 tests/testthat.Rout*
 .Rout
 tests/manual/results/
+tests/manual/reports/
 
 # Coverage artefacts
 coverage/
@@ -78,7 +79,13 @@ docs/
 scripts/
 
 rchk_reports/
-dev/
+# Source-controlled development studies live under explicit allowlists.
+dev/*
+!dev/geodesic-distance-estimation/
+!dev/geodesic-distance-estimation/**
+dev/geodesic-distance-estimation/reports/
+dev/geodesic-distance-estimation/figures/
+dev/geodesic-distance-estimation/cache/
 man/
 inst/*/
 !inst/examples/
