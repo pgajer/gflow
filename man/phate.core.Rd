@@ -13,6 +13,9 @@ phate.core(
   alpha.decay = 40,
   knn.use = TRUE,
   knn.symmetrize = c("mean", "max"),
+  kernel.mode = c("gflow", "python"),
+  kernel.threshold = NULL,
+  bandwidth.scale = 1,
   t = "auto",
   t.max = 50L,
   pca.dim = NULL,
@@ -42,6 +45,18 @@ phate.core(
 
 \item{knn.symmetrize}{Character: \code{"mean"} or \code{"max"} for
 symmetrizing directed kNN affinities.}
+
+\item{kernel.mode}{Character: \code{"gflow"} preserves the original gflow
+PHATE-style kernel; \code{"python"} uses the C++ clean-room
+Python-compatible Phase 1 kernel path (diagonal-one self affinity,
+thresholded alpha-decay affinities, and additive symmetrization).}
+
+\item{kernel.threshold}{Optional non-negative affinity threshold. If
+\code{NULL}, defaults to \code{kernel.eps} in \code{"gflow"} mode and
+\code{1e-4} in \code{"python"} mode.}
+
+\item{bandwidth.scale}{Positive multiplier for adaptive kernel bandwidths in
+\code{"python"} mode.}
 
 \item{t}{Either \code{"auto"} or a positive integer diffusion time.}
 
