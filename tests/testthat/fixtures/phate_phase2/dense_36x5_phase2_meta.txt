@@ -1,0 +1,6 @@
+source_fixture=dense_36x5_P_python.csv
+t_fixed=3
+t_max=30
+t_auto=11
+potential_eps_python=1e-7
+gamma_values=1,0,-1

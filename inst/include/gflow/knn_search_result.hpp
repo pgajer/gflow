@@ -2,6 +2,10 @@
 #define KNN_SEARCH_RESULT_HPP
 
 #include <cstddef>
+#include <vector>
+
+#include <Rinternals.h>
+
 using std::size_t;
 
 // Struct to hold kNN results
