@@ -50,6 +50,16 @@
 #'     choose the smallest number of PCs whose cumulative variance explained
 #'     exceeds this threshold, capped by `pca.dim`.
 #'
+#' @param knn.metric Character scalar specifying the geometry used for kNN search.
+#'     \code{"euclidean"} uses ordinary ambient Euclidean distance.
+#'     \code{"linf.simplex"} uses the unfolded intrinsic metric on the
+#'     \eqn{L^\infty}-simplex and requires rows of \code{X} to be
+#'     \eqn{L^\infty}-normalized.
+#'
+#' @param linf.tol Positive numeric tolerance used only when
+#'     \code{knn.metric = "linf.simplex"} to identify active simplex faces and
+#'     validate that \code{max(row) = 1}.
+#'
 #' @param n.cores Integer or `NULL`. Number of CPU cores. `NULL` uses the
 #'     maximum available (OpenMP build only).
 #'
@@ -136,6 +146,8 @@ create.iknn.graphs <- function(X,
                                with.edge.pruning.stats = FALSE,
                                pca.dim = 100,
                                variance.explained = 0.99,
+                               knn.metric = c("euclidean", "linf.simplex"),
+                               linf.tol = sqrt(.Machine$double.eps),
                                n.cores = NULL,
                                parallel.mode = c("auto", "k", "bucket", "hybrid", "bucket.prune"),
                                hybrid.batch.size = 2L,
@@ -155,6 +167,9 @@ create.iknn.graphs <- function(X,
     if (!is.double(X)) {
         storage.mode(X) <- "double"
     }
+
+    knn.metric <- .normalize.knn.metric(knn.metric)
+    linf.tol <- .normalize.linf.tol(linf.tol)
 
     n <- nrow(X)
     if (n < 2) stop("X must have at least 2 rows (observations).")
@@ -198,6 +213,7 @@ create.iknn.graphs <- function(X,
     }
     knn.cache.mode <- match.arg(knn.cache.mode)
     knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
+    knn.metric.id <- .knn.metric.id(knn.metric)
     knn.cache.mode.id <- switch(knn.cache.mode,
                                 none = 0L,
                                 read = 1L,
@@ -216,6 +232,12 @@ create.iknn.graphs <- function(X,
     if (!is.null(pca.dim)) {
         if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
             stop("pca.dim must be a positive integer or NULL.")
+    }
+    if (identical(knn.metric, "linf.simplex")) {
+        if (!is.null(pca.dim)) {
+            stop("pca.dim must be NULL when knn.metric = 'linf.simplex'.")
+        }
+        .validate.linf.simplex.input(X, linf.tol)
     }
     if (!is.null(variance.explained)) {
         if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
@@ -280,6 +302,8 @@ create.iknn.graphs <- function(X,
                     as.integer(hybrid.batch.size),
                     if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
                     as.integer(knn.cache.mode.id),
+                    as.integer(knn.metric.id),
+                    as.double(linf.tol),
                     as.logical(verbose),
                     PACKAGE = "gflow")
 
@@ -339,6 +363,8 @@ create.iknn.graphs <- function(X,
     attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
     attr(result, "parallel.mode") <- parallel.mode
     attr(result, "hybrid.batch.size") <- as.integer(hybrid.batch.size)
+    attr(result, "knn.metric") <- knn.metric
+    attr(result, "linf.tol") <- linf.tol
     if (!is.null(pca_info)) attr(result, "pca") <- pca_info
     class(result) <- "iknn_graphs"
     result

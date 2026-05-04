@@ -49,6 +49,7 @@ Suggests:
     htmltools,
     plotly,
     shiny,
+    smacof,
     randomForest,
     np,
     mgcv,

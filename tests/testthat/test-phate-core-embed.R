@@ -71,7 +71,7 @@ test_that("phate.core works across input modes and preserves key invariants", {
 })
 
 
-test_that("phate.embed returns expected shape and diagnostics (metric MDS)", {
+test_that("phate.embed returns expected shape and diagnostics (classic MDS)", {
   set.seed(202)
   X <- matrix(rnorm(120), ncol = 4)
   core <- phate.core(
@@ -86,12 +86,12 @@ test_that("phate.embed returns expected shape and diagnostics (metric MDS)", {
   emb <- phate.embed(
     core = core,
     ndim = 2,
-    method = "metric_mds",
+    method = "classic",
     verbose = FALSE
   )
 
   expect_s3_class(emb, "phate_embedding")
-  expect_equal(emb$method, "metric_mds")
+  expect_equal(emb$method, "classic")
   expect_equal(nrow(emb$embedding), nrow(X))
   expect_equal(ncol(emb$embedding), 2)
   expect_true(all(is.finite(emb$embedding)))
@@ -102,8 +102,8 @@ test_that("phate.embed returns expected shape and diagnostics (metric MDS)", {
 })
 
 
-test_that("phate.embed supports non-metric MDS and direct D.pot input", {
-  skip_if_not_installed("MASS")
+test_that("phate.embed supports nonmetric SMACOF MDS and direct D.pot input", {
+  skip_if_not_installed("smacof")
 
   set.seed(303)
   X <- matrix(rnorm(105), ncol = 3)
@@ -118,14 +118,14 @@ test_that("phate.embed supports non-metric MDS and direct D.pot input", {
   emb <- phate.embed(
     D.pot = core$D.pot,
     ndim = 2,
-    method = "nonmetric_mds",
+    method = "nonmetric",
     maxit = 40,
     tol = 1e-3,
     verbose = FALSE
   )
 
   expect_s3_class(emb, "phate_embedding")
-  expect_equal(emb$method, "nonmetric_mds")
+  expect_equal(emb$method, "nonmetric")
   expect_equal(nrow(emb$embedding), nrow(X))
   expect_equal(ncol(emb$embedding), 2)
   expect_true(is.finite(emb$stress))
@@ -144,7 +144,7 @@ test_that("phate one-call wrapper returns coherent core/embed outputs", {
     t = "auto",
     t.max = 12,
     ndim = 2,
-    embed.method = "metric_mds",
+    embed.method = "classic",
     compute.D.pot = FALSE,
     verbose = FALSE
   )
@@ -155,6 +155,6 @@ test_that("phate one-call wrapper returns coherent core/embed outputs", {
   expect_equal(fit$t, fit$core$t)
   expect_equal(nrow(fit$embedding), nrow(X))
   expect_equal(ncol(fit$embedding), 2)
-  expect_equal(fit$embed$method, "metric_mds")
+  expect_equal(fit$embed$method, "classic")
   expect_true(all(is.finite(fit$embedding)))
 })

@@ -47,6 +47,16 @@
 #'        (default: 0.99). If this threshold can be met with fewer components than pca.dim,
 #'        the smaller number will be used. Set to NULL to use exactly pca.dim components.
 #'
+#' @param knn.metric Character scalar specifying the geometry used for kNN search.
+#'        \code{"euclidean"} uses ordinary ambient Euclidean distance.
+#'        \code{"linf.simplex"} uses the unfolded intrinsic metric on the
+#'        \eqn{L^\infty}-simplex and requires rows of \code{X} to be
+#'        \eqn{L^\infty}-normalized.
+#'
+#' @param linf.tol Positive numeric tolerance used only when
+#'        \code{knn.metric = "linf.simplex"} to identify active simplex faces
+#'        and validate that \code{max(row) = 1}.
+#'
 #' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
 #'        Used only when `knn.cache.mode != "none"`.
 #'
@@ -107,6 +117,8 @@ create.single.iknn.graph <- function(X,
                                      with.edge.pruning.stats = FALSE,
                                      pca.dim = 100,
                                      variance.explained = 0.99,
+                                     knn.metric = c("euclidean", "linf.simplex"),
+                                     linf.tol = sqrt(.Machine$double.eps),
                                      verbose = TRUE,
                                      knn.cache.path = NULL,
                                      knn.cache.mode = c("none", "read", "write", "readwrite")) {
@@ -133,6 +145,9 @@ create.single.iknn.graph <- function(X,
     if (!is.double(X)) {
         storage.mode(X) <- "double"
     }
+
+    knn.metric <- .normalize.knn.metric(knn.metric)
+    linf.tol <- .normalize.linf.tol(linf.tol)
 
     if (!is.numeric(k) || length(k) != 1 || k != round(k) || k < 1 || k >= n) {
         stop("k must be a positive integer less than the number of data points")
@@ -173,6 +188,12 @@ create.single.iknn.graph <- function(X,
             stop("pca.dim must be a positive integer or NULL")
         }
     }
+    if (identical(knn.metric, "linf.simplex")) {
+        if (!is.null(pca.dim)) {
+            stop("pca.dim must be NULL when knn.metric = 'linf.simplex'.")
+        }
+        .validate.linf.simplex.input(X, linf.tol)
+    }
 
     ## Check variance.explained
     if (!is.null(variance.explained)) {
@@ -184,6 +205,7 @@ create.single.iknn.graph <- function(X,
 
     knn.cache.mode <- match.arg(knn.cache.mode)
     knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
+    knn.metric.id <- .knn.metric.id(knn.metric)
     knn.cache.mode.id <- switch(knn.cache.mode,
                                 none = 0L,
                                 read = 1L,
@@ -266,6 +288,8 @@ create.single.iknn.graph <- function(X,
                     as.logical(with.edge.pruning.stats),
                     if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
                     as.integer(knn.cache.mode.id),
+                    as.integer(knn.metric.id),
+                    as.double(linf.tol),
                     as.logical(verbose),
                     PACKAGE = "gflow")
 
@@ -274,6 +298,8 @@ create.single.iknn.graph <- function(X,
     attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
     attr(result, "with.isize.pruning") <- with.isize.pruning
     attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
+    attr(result, "knn.metric") <- knn.metric
+    attr(result, "linf.tol") <- linf.tol
     attr(result, "call") <- match.call()
 
     ## Add PCA-related attributes if PCA was performed
