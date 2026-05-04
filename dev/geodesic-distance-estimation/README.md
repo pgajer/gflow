@@ -21,6 +21,8 @@ generated reports, figures, caches, and other run outputs stay untracked.
 - `cases/`: source scripts for synthetic and semi-synthetic benchmark cases.
 - `R/`: reusable benchmark helpers for graph construction, geodesic metrics,
   oracle truth construction, preprocessing, and plotting.
+- `notes/`: research notes and briefs for method development, including the
+  density-aware geodesic distance research brief.
 - `reports/`: generated HTML or Markdown reports; ignored by git.
 - `figures/`: generated plots and rendered image artifacts; ignored by git.
 - `cache/`: temporary simulation and benchmark outputs; ignored by git.

@@ -31,6 +31,8 @@
 #include "omp_compat.h"
 #include "iknn_graphs.hpp"
 #include "set_wgraph.hpp"
+#include "knn_search_result.hpp"
+#include "linf_simplex_knn.hpp"
 #include "kNN_r.h"            // for S_kNN()
 #include "kNN.h"              // for struct iknn_vertex_tt
 #include "cpp_utils.hpp"      // for debugging
@@ -85,6 +87,8 @@ extern "C" {
         SEXP s_with_edge_pruning_stats,
         SEXP s_knn_cache_path,
         SEXP s_knn_cache_mode,
+        SEXP s_knn_metric,
+        SEXP s_linf_tol,
         SEXP s_verbose
         );
 
@@ -105,6 +109,8 @@ extern "C" {
         SEXP s_hybrid_batch_size,
         SEXP s_knn_cache_path,
         SEXP s_knn_cache_mode,
+        SEXP s_knn_metric,
+        SEXP s_linf_tol,
         SEXP s_verbose
         );
 
@@ -115,19 +121,6 @@ extern "C" {
 }
 
 iknn_graph_t create_iknn_graph(SEXP s_X, SEXP s_k);
-
-// Struct to hold kNN results for all points.
-struct knn_search_result_t {
-    std::vector<std::vector<int>> indices;      // [n_points][k]
-    std::vector<std::vector<double>> distances; // [n_points][k]
-    size_t n_points;
-    size_t k;
-
-    knn_search_result_t(size_t n, size_t k_val) : n_points(n), k(k_val) {
-        indices.resize(n_points, std::vector<int>(k));
-        distances.resize(n_points, std::vector<double>(k));
-    }
-};
 
 enum class knn_cache_mode_t : int {
     none = 0,
@@ -150,9 +143,12 @@ struct knn_cache_header_t {
     std::uint64_t n_points;
     std::uint64_t n_features;
     std::uint64_t k;
+    std::uint32_t metric_id;
+    double metric_param;
 };
 
 knn_search_result_t compute_knn(SEXP RX, int k);
+knn_search_result_t compute_knn_by_metric(SEXP RX, int k, int knn_metric_id, double linf_tol);
 iknn_graph_t create_iknn_graph_pairscan_reference(const knn_search_result_t& knn_results, int k);
 iknn_graph_t create_iknn_graph_inverted_index(const knn_search_result_t& knn_results,
                                               int k,
@@ -167,12 +163,16 @@ knn_cache_load_status_t read_knn_cache_file(
     int expected_n_points,
     int expected_n_features,
     int required_k,
+    int expected_metric_id,
+    double expected_metric_param,
     knn_search_result_t& out_knn_results,
     std::string& out_reason);
 void write_knn_cache_file_atomic(
     const std::string& cache_path,
     const knn_search_result_t& knn_results,
-    int n_features);
+    int n_features,
+    int metric_id,
+    double metric_param);
 const char* knn_cache_mode_label(knn_cache_mode_t mode);
 
 std::vector<int> union_find(const std::vector<std::vector<int>>& adj_vect);
@@ -1183,6 +1183,8 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
                                 SEXP s_with_edge_pruning_stats,
                                 SEXP s_knn_cache_path,
                                 SEXP s_knn_cache_mode,
+                                SEXP s_knn_metric,
+                                SEXP s_linf_tol,
                                 SEXP s_verbose) {
 
     const int max_alt_path_length = 2;
@@ -1232,6 +1234,21 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     const bool with_isize_pruning       = (Rf_asLogical(s_with_isize_pruning) == TRUE);
     const bool with_edge_pruning_stats  = (Rf_asLogical(s_with_edge_pruning_stats) == TRUE);
     const bool verbose                  = (Rf_asLogical(s_verbose) == TRUE);
+
+    if (!Rf_isInteger(s_knn_metric) || Rf_length(s_knn_metric) < 1) {
+        Rf_error("knn.metric must be a length-1 integer.");
+    }
+    const int knn_metric_id = INTEGER(s_knn_metric)[0];
+    if (knn_metric_id == NA_INTEGER || knn_metric_id < 0 || knn_metric_id > 1) {
+        Rf_error("knn.metric must be in {0,1}.");
+    }
+    if (!Rf_isReal(s_linf_tol) || Rf_length(s_linf_tol) < 1) {
+        Rf_error("linf.tol must be a length-1 numeric value.");
+    }
+    const double linf_tol = REAL(s_linf_tol)[0];
+    if (!std::isfinite(linf_tol) || linf_tol <= 0.0) {
+        Rf_error("linf.tol must be a positive finite number.");
+    }
 
     if (!Rf_isInteger(s_knn_cache_mode) || Rf_length(s_knn_cache_mode) < 1) {
         Rf_error("knn.cache.mode must be a length-1 integer.");
@@ -1289,6 +1306,8 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
             n_vertices,
             n_features,
             k,
+            knn_metric_id,
+            (knn_metric_id == 1 ? linf_tol : 0.0),
             knn_results,
             cache_reason
         );
@@ -1303,9 +1322,13 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
     }
 
     if (!knn_cache_hit) {
-        knn_results = compute_knn(s_X, k);
+        knn_results = compute_knn_by_metric(s_X, k, knn_metric_id, linf_tol);
         if (knn_cache_mode == knn_cache_mode_t::write || knn_cache_mode == knn_cache_mode_t::readwrite) {
-            write_knn_cache_file_atomic(knn_cache_path, knn_results, n_features);
+            write_knn_cache_file_atomic(knn_cache_path,
+                                        knn_results,
+                                        n_features,
+                                        knn_metric_id,
+                                        (knn_metric_id == 1 ? linf_tol : 0.0));
             knn_cache_written = true;
         }
     }
@@ -1834,6 +1857,16 @@ knn_search_result_t compute_knn(SEXP RX, int k) {
     return result;
 }
 
+knn_search_result_t compute_knn_by_metric(SEXP RX, int k, int knn_metric_id, double linf_tol) {
+    if (knn_metric_id == 0) {
+        return compute_knn(RX, k);
+    }
+    if (knn_metric_id == 1) {
+        return compute_linf_simplex_knn(RX, k, linf_tol);
+    }
+    Rf_error("Unsupported kNN metric id: %d.", knn_metric_id);
+}
+
 struct bucket_member_t {
     int point;
     double dist_to_common_neighbor;
@@ -2166,9 +2199,12 @@ void print_stage_done(const char* stage_name,
 namespace {
 
 constexpr char k_knn_cache_magic[8] = {'G', 'F', 'L', 'K', 'N', 'N', '0', '1'};
-constexpr std::uint32_t k_knn_cache_version = 1U;
+constexpr std::uint32_t k_knn_cache_version = 2U;
 constexpr std::uint32_t k_knn_cache_endian_marker = 0x01020304U;
 std::atomic<std::uint64_t> g_knn_cache_tmp_counter(0U);
+
+constexpr int k_knn_metric_euclidean = 0;
+constexpr int k_knn_metric_linf_simplex = 1;
 
 template <typename T>
 bool write_binary(std::ofstream& out, const T& value) {
@@ -2207,6 +2243,8 @@ knn_cache_load_status_t read_knn_cache_file(
     int expected_n_points,
     int expected_n_features,
     int required_k,
+    int expected_metric_id,
+    double expected_metric_param,
     knn_search_result_t& out_knn_results,
     std::string& out_reason) {
 
@@ -2254,6 +2292,17 @@ knn_cache_load_status_t read_knn_cache_file(
     }
     if (header.k > static_cast<std::uint64_t>(INT_MAX)) {
         out_reason = "cache k exceeds INT_MAX";
+        return knn_cache_load_status_t::invalid;
+    }
+    if (header.metric_id != static_cast<std::uint32_t>(expected_metric_id)) {
+        out_reason = "cache kNN metric mismatch";
+        return knn_cache_load_status_t::invalid;
+    }
+    const double metric_param_tol =
+        std::max(1e-15, std::fabs(expected_metric_param) * 1e-12);
+    if (!std::isfinite(header.metric_param) ||
+        std::fabs(header.metric_param - expected_metric_param) > metric_param_tol) {
+        out_reason = "cache kNN metric parameter mismatch";
         return knn_cache_load_status_t::invalid;
     }
 
@@ -2308,7 +2357,9 @@ knn_cache_load_status_t read_knn_cache_file(
 void write_knn_cache_file_atomic(
     const std::string& cache_path,
     const knn_search_result_t& knn_results,
-    int n_features) {
+    int n_features,
+    int metric_id,
+    double metric_param) {
 
     if (cache_path.empty()) {
         Rf_error("knn.cache.path cannot be empty.");
@@ -2322,6 +2373,8 @@ void write_knn_cache_file_atomic(
     header.n_points = static_cast<std::uint64_t>(knn_results.n_points);
     header.n_features = static_cast<std::uint64_t>(n_features);
     header.k = static_cast<std::uint64_t>(knn_results.k);
+    header.metric_id = static_cast<std::uint32_t>(metric_id);
+    header.metric_param = metric_param;
 
     {
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
@@ -2621,6 +2674,8 @@ SEXP S_create_iknn_graphs(
     SEXP s_hybrid_batch_size,
     SEXP s_knn_cache_path,
     SEXP s_knn_cache_mode,
+    SEXP s_knn_metric,
+    SEXP s_linf_tol,
     SEXP s_verbose) {
 
     const int  max_alt_path_length = 2; // for intersection pruning
@@ -2666,6 +2721,21 @@ SEXP S_create_iknn_graphs(
     const bool with_isize_pruning = (Rf_asLogical(s_with_isize_pruning) == TRUE);
     const bool with_edge_pruning_stats = (Rf_asLogical(s_with_edge_pruning_stats) == TRUE);
     const bool verbose = (Rf_asLogical(s_verbose) == TRUE);
+
+    if (!Rf_isInteger(s_knn_metric) || Rf_length(s_knn_metric) < 1) {
+        Rf_error("knn.metric must be a length-1 integer.");
+    }
+    const int knn_metric_id = INTEGER(s_knn_metric)[0];
+    if (knn_metric_id == NA_INTEGER || knn_metric_id < 0 || knn_metric_id > 1) {
+        Rf_error("knn.metric must be in {0,1}.");
+    }
+    if (!Rf_isReal(s_linf_tol) || Rf_length(s_linf_tol) < 1) {
+        Rf_error("linf.tol must be a length-1 numeric value.");
+    }
+    const double linf_tol = REAL(s_linf_tol)[0];
+    if (!std::isfinite(linf_tol) || linf_tol <= 0.0) {
+        Rf_error("linf.tol must be a positive finite number.");
+    }
 
     if (!Rf_isInteger(s_parallel_mode) || Rf_length(s_parallel_mode) < 1) {
         Rf_error("parallel_mode must be a length-1 integer.");
@@ -2846,6 +2916,8 @@ SEXP S_create_iknn_graphs(
             n_vertices,
             n_features,
             kmax,
+            knn_metric_id,
+            (knn_metric_id == 1 ? linf_tol : 0.0),
             knn_results,
             cache_reason
         );
@@ -2860,9 +2932,13 @@ SEXP S_create_iknn_graphs(
     }
 
     if (!knn_cache_hit) {
-        knn_results = compute_knn(s_X, kmax);
+        knn_results = compute_knn_by_metric(s_X, kmax, knn_metric_id, linf_tol);
         if (knn_cache_mode == knn_cache_mode_t::write || knn_cache_mode == knn_cache_mode_t::readwrite) {
-            write_knn_cache_file_atomic(knn_cache_path, knn_results, n_features);
+            write_knn_cache_file_atomic(knn_cache_path,
+                                        knn_results,
+                                        n_features,
+                                        knn_metric_id,
+                                        (knn_metric_id == 1 ? linf_tol : 0.0));
             knn_cache_written = true;
         }
     }

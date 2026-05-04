@@ -66,6 +66,7 @@
 #include "traj_clustering_r.h"
 #include "graph_core_endpoints_r.h"
 #include "phate_core_r.h"
+#include "linf_simplex_knn_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -253,8 +254,8 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // data graphs
   // =========================================================================
-  {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 11},
-  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 15},
+  {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 13},
+  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 17},
   {"S_create_geodesic_iknn_graph", (DL_FUNC) &S_create_geodesic_iknn_graph, 3},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
@@ -269,6 +270,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_path_graph_plm", (DL_FUNC) &S_create_path_graph_plm, 3},
   {"S_create_path_graph_series", (DL_FUNC) &S_create_path_graph_series, 3},
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
+  {"S_linf_simplex_knn", (DL_FUNC) &S_linf_simplex_knn, 3},
 
   {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
   {"S_compare_iknn_graph_builders", (DL_FUNC) &S_compare_iknn_graph_builders, 4},

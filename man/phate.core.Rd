@@ -13,16 +13,19 @@ phate.core(
   alpha.decay = 40,
   knn.use = TRUE,
   knn.symmetrize = c("mean", "max"),
-  kernel.mode = c("gflow", "python"),
+  kernel.mode = c("gflow", "phate"),
   kernel.threshold = NULL,
   bandwidth.scale = 1,
   t = "auto",
   t.max = 50L,
+  vne.method = c("auto", "gflow", "phate"),
   pca.dim = NULL,
   pca.center = TRUE,
   pca.scale = FALSE,
   kernel.eps = 1e-12,
-  potential.eps = 1e-12,
+  gamma = 1,
+  potential.mode = c("auto", "gflow", "phate"),
+  potential.eps = NULL,
   compute.D.pot = TRUE,
   verbose = FALSE
 )
@@ -47,20 +50,29 @@ phate.core(
 symmetrizing directed kNN affinities.}
 
 \item{kernel.mode}{Character: \code{"gflow"} preserves the original gflow
-PHATE-style kernel; \code{"python"} uses the C++ clean-room
-Python-compatible Phase 1 kernel path (diagonal-one self affinity,
-thresholded alpha-decay affinities, and additive symmetrization).}
+PHATE-style kernel; \code{"phate"} uses the clean-room original
+PHATE-compatible kernel path (diagonal-one self affinity, thresholded
+alpha-decay affinities, and additive symmetrization). The older
+\code{"python"} spelling is accepted as a deprecated alias for
+\code{"phate"}.}
 
 \item{kernel.threshold}{Optional non-negative affinity threshold. If
 \code{NULL}, defaults to \code{kernel.eps} in \code{"gflow"} mode and
-\code{1e-4} in \code{"python"} mode.}
+\code{1e-4} in \code{"phate"} mode.}
 
 \item{bandwidth.scale}{Positive multiplier for adaptive kernel bandwidths in
-\code{"python"} mode.}
+\code{"phate"} mode.}
 
 \item{t}{Either \code{"auto"} or a positive integer diffusion time.}
 
 \item{t.max}{Positive integer maximum diffusion time when \code{t="auto"}.}
+
+\item{vne.method}{Character: \code{"auto"} selects \code{"phate"} when
+\code{kernel.mode="phate"} and \code{"gflow"} otherwise. \code{"phate"}
+uses singular values of the diffusion operator and the PHATE two-line knee
+heuristic. \code{"gflow"} preserves the original symmetrized-eigenvalue
+heuristic. The older \code{"python"} spelling is accepted as a deprecated
+alias for \code{"phate"}.}
 
 \item{pca.dim}{Optional integer. If provided and \code{ncol(X) > pca.dim},
 run PCA before distance computation and keep up to \code{pca.dim} PCs.}
@@ -71,7 +83,21 @@ run PCA before distance computation and keep up to \code{pca.dim} PCs.}
 
 \item{kernel.eps}{Small positive floor for kernel construction.}
 
-\item{potential.eps}{Small positive floor used in \code{-log(P^t)}.}
+\item{gamma}{Numeric scalar in \code{[-1, 1]} controlling the PHATE
+diffusion-potential transform. \code{gamma=1} is the log potential,
+\code{gamma=0} is the square-root potential, and \code{gamma=-1} returns
+raw diffused probabilities.}
+
+\item{potential.mode}{Character: \code{"auto"} selects \code{"phate"} when
+\code{kernel.mode="phate"} and \code{"gflow"} otherwise. \code{"phate"}
+uses PHATE's \code{-log(P^t + potential.eps)} log transform; \code{"gflow"}
+preserves the original floored \code{-log(pmax(P^t, potential.eps))}
+behavior when \code{gamma=1}. The older \code{"python"} spelling is
+accepted as a deprecated alias for \code{"phate"}.}
+
+\item{potential.eps}{Small positive floor/offset used in the log potential.
+If \code{NULL}, defaults to \code{1e-7} in original PHATE-compatible
+potential mode and \code{1e-12} otherwise.}
 
 \item{compute.D.pot}{Logical; if \code{TRUE}, compute \code{D.pot}.}
 
