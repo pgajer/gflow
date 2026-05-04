@@ -27,6 +27,8 @@ extern "C" {
 		SEXP s_with_edge_pruning_stats,
 		SEXP s_knn_cache_path,
 		SEXP s_knn_cache_mode,
+		SEXP s_knn_metric,
+		SEXP s_linf_tol,
 		SEXP s_verbose
 		);
 
@@ -47,6 +49,8 @@ extern "C" {
 		SEXP s_hybrid_batch_size,
 		SEXP s_knn_cache_path,
 		SEXP s_knn_cache_mode,
+		SEXP s_knn_metric,
+		SEXP s_linf_tol,
 		SEXP s_verbose
 		);
 

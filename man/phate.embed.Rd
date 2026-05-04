@@ -9,7 +9,7 @@ phate.embed(
   D.pot = NULL,
   U.pot = NULL,
   ndim = 2L,
-  method = c("metric_mds", "nonmetric_mds"),
+  method = c("classic", "metric", "nonmetric", "metric_mds", "nonmetric_mds"),
   maxit = 200L,
   tol = 0.001,
   cmdscale.add = TRUE,
@@ -27,11 +27,14 @@ phate.embed(
 
 \item{ndim}{Embedding dimension (typically 2 or 3).}
 
-\item{method}{Character: \code{"metric_mds"} or \code{"nonmetric_mds"}.}
+\item{method}{Character: \code{"classic"}, \code{"metric"}, or
+\code{"nonmetric"}. Deprecated aliases \code{"metric_mds"} and
+\code{"nonmetric_mds"} are accepted for compatibility and map to
+\code{"metric"} and \code{"nonmetric"}, respectively.}
 
-\item{maxit}{Positive integer maximum iterations for non-metric MDS.}
+\item{maxit}{Positive integer maximum iterations for SMACOF MDS.}
 
-\item{tol}{Positive convergence tolerance for non-metric MDS.}
+\item{tol}{Positive convergence tolerance for SMACOF MDS.}
 
 \item{cmdscale.add}{Logical; passed to \code{stats::cmdscale(add = ...)}.}
 
@@ -43,25 +46,27 @@ phate.embed(
 A list of class \code{"phate_embedding"} with:
 \describe{
 \item{embedding}{Numeric matrix (\code{n x ndim}) of embedded coordinates.}
-\item{method}{Embedding method used.}
+\item{method}{Canonical embedding method used.}
+\item{method_requested}{Embedding method name requested by the caller.}
 \item{stress}{Normalized distance reconstruction stress.}
-\item{stress_raw}{Raw non-metric stress from \code{isoMDS} (if applicable).}
+\item{stress_raw}{Raw backend stress from SMACOF (if applicable).}
 \item{cor_spearman}{Spearman correlation between input and embedded distances.}
-\item{diagnostics}{List with method-specific diagnostics.}
+\item{diagnostics}{List with embedding-distance source and method-specific diagnostics.}
 \item{call}{Matched call.}
 }
 }
 \description{
 Computes a low-dimensional embedding from PHATE diffusion-potential geometry
-using either metric MDS (\code{cmdscale}) or non-metric MDS
-(\code{MASS::isoMDS}).
+using classical MDS (\code{stats::cmdscale}), metric SMACOF
+(\code{smacof::smacofSym(type = "ratio")}), or nonmetric SMACOF
+(\code{smacof::smacofSym(type = "ordinal")}).
 }
 \examples{
 \dontrun{
 set.seed(1)
 X <- matrix(rnorm(120), ncol = 3)
 core <- phate.core(X = X, t = "auto", t.max = 20)
-emb <- phate.embed(core = core, ndim = 2, method = "metric_mds")
+emb <- phate.embed(core = core, ndim = 2, method = "classic")
 emb$stress
 }
 

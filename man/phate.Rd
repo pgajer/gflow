@@ -13,19 +13,22 @@ phate(
   alpha.decay = 40,
   knn.use = TRUE,
   knn.symmetrize = c("mean", "max"),
-  kernel.mode = c("gflow", "python"),
+  kernel.mode = c("gflow", "phate"),
   kernel.threshold = NULL,
   bandwidth.scale = 1,
   t = "auto",
   t.max = 50L,
+  vne.method = c("auto", "gflow", "phate"),
   pca.dim = NULL,
   pca.center = TRUE,
   pca.scale = FALSE,
   kernel.eps = 1e-12,
-  potential.eps = 1e-12,
+  gamma = 1,
+  potential.mode = c("auto", "gflow", "phate"),
+  potential.eps = NULL,
   compute.D.pot = FALSE,
   ndim = 2L,
-  embed.method = c("metric_mds", "nonmetric_mds"),
+  embed.method = c("classic", "metric", "nonmetric", "metric_mds", "nonmetric_mds"),
   embed.maxit = 200L,
   embed.tol = 0.001,
   cmdscale.add = TRUE,
@@ -63,6 +66,9 @@ phate(
 \item{t.max}{Positive integer upper bound for automatic \code{t} selection in
 \code{\link{phate.core}}.}
 
+\item{vne.method}{Automatic diffusion-time method passed to
+\code{\link{phate.core}}.}
+
 \item{pca.dim}{Optional integer PCA dimension passed to
 \code{\link{phate.core}}.}
 
@@ -74,8 +80,8 @@ phate(
 \item{kernel.eps}{Small positive floor used in kernel normalization by
 \code{\link{phate.core}}.}
 
-\item{potential.eps}{Small positive floor used in \code{-log(P^t)} by
-\code{\link{phate.core}}.}
+\item{gamma, potential.mode, potential.eps}{Diffusion-potential transform
+controls passed to \code{\link{phate.core}}.}
 
 \item{compute.D.pot}{Logical; if \code{TRUE}, compute diffusion-potential
 distances in \code{\link{phate.core}}.}

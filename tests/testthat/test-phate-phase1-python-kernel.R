@@ -1,4 +1,4 @@
-test_that("PHATE Phase 1 python kernel mode matches reference K and P", {
+test_that("PHATE Phase 1 phate kernel mode matches reference K and P", {
   fixture.dir <- testthat::test_path("fixtures", "phate_phase1")
   X <- as.matrix(utils::read.csv(file.path(fixture.dir, "dense_36x5_X.csv"),
                                  header = FALSE))
@@ -12,12 +12,12 @@ test_that("PHATE Phase 1 python kernel mode matches reference K and P", {
     k = 5,
     alpha.decay = 40,
     t = 3,
-    kernel.mode = "python",
+    kernel.mode = "phate",
     compute.D.pot = FALSE,
     verbose = FALSE
   )
 
-  expect_equal(fit$diagnostics$kernel_mode, "python")
+  expect_equal(fit$diagnostics$kernel_mode, "phate")
   expect_equal(fit$diagnostics$kernel_threshold, 1e-4)
   expect_equal(diag(fit$K), rep(1, nrow(X)), tolerance = 1e-12)
   expect_equal(rowSums(fit$P), rep(1, nrow(X)), tolerance = 1e-12)
@@ -25,6 +25,28 @@ test_that("PHATE Phase 1 python kernel mode matches reference K and P", {
 
   expect_equal(fit$K, K.ref, tolerance = 1e-6)
   expect_equal(fit$P, P.ref, tolerance = 1e-6)
+})
+
+
+test_that("PHATE Phase 1 deprecated python kernel alias maps to phate", {
+  fixture.dir <- testthat::test_path("fixtures", "phate_phase1")
+  X <- as.matrix(utils::read.csv(file.path(fixture.dir, "dense_36x5_X.csv"),
+                                 header = FALSE))
+
+  expect_warning(
+    fit <- phate.core(
+      X = X,
+      k = 5,
+      alpha.decay = 40,
+      t = 3,
+      kernel.mode = "python",
+      compute.D.pot = FALSE,
+      verbose = FALSE
+    ),
+    "deprecated"
+  )
+
+  expect_equal(fit$diagnostics$kernel_mode, "phate")
 })
 
 
