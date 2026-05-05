@@ -32,6 +32,7 @@
 #include "centered_paths_r.h"
 #include "iknn_graphs_r.h"
 #include "mknn_graphs_r.h"
+#include "sknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
 #include "kNN_r.h"       // for S_kNN()
 #include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
@@ -259,6 +260,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_geodesic_iknn_graph", (DL_FUNC) &S_create_geodesic_iknn_graph, 3},
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
+  {"S_create_sknn_graph", (DL_FUNC) &S_create_sknn_graph, 4},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
   {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
   {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},

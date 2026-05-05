@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Density-Aware Geodesic Distance Literature Map</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <script
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js"
+  type="text/javascript"></script>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Density-Aware Geodesic Distance Literature Map</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#density-aware-geodesic-distance-literature-map"
+id="toc-density-aware-geodesic-distance-literature-map">Density-Aware
+Geodesic Distance Literature Map</a>
+<ul>
+<li><a href="#executive-map" id="toc-executive-map">Executive
+Map</a></li>
+<li><a href="#historical-spine" id="toc-historical-spine">Historical
+Spine</a></li>
+<li><a href="#construct-1-continuous-density-weighted-path-metrics"
+id="toc-construct-1-continuous-density-weighted-path-metrics">Construct
+1: Continuous Density-Weighted Path Metrics</a></li>
+<li><a href="#construct-2-fermat-distances-and-pwspd"
+id="toc-construct-2-fermat-distances-and-pwspd">Construct 2: Fermat
+Distances and PWSPD</a></li>
+<li><a href="#construct-3-density-based-persistent-homology"
+id="toc-construct-3-density-based-persistent-homology">Construct 3:
+Density-Based Persistent Homology</a></li>
+<li><a
+href="#construct-4-graph-geodesics-neighbor-selection-and-local-scaling"
+id="toc-construct-4-graph-geodesics-neighbor-selection-and-local-scaling">Construct
+4: Graph Geodesics, Neighbor Selection, and Local Scaling</a>
+<ul>
+<li><a href="#isomap-style-graph-geodesics"
+id="toc-isomap-style-graph-geodesics">Isomap-style graph
+geodesics</a></li>
+<li><a href="#knn-mknn-iknn-and-adaptive-k"
+id="toc-knn-mknn-iknn-and-adaptive-k">kNN, mKNN, iKNN, and adaptive
+k</a></li>
+<li><a href="#local-scaling-and-density-aware-kernels"
+id="toc-local-scaling-and-density-aware-kernels">Local scaling and
+density-aware kernels</a></li>
+<li><a href="#mutual-reachability-distances"
+id="toc-mutual-reachability-distances">Mutual reachability
+distances</a></li>
+</ul></li>
+<li><a href="#construct-5-diffusion-maps-and-diffusion-distance"
+id="toc-construct-5-diffusion-maps-and-diffusion-distance">Construct 5:
+Diffusion Maps and Diffusion Distance</a></li>
+<li><a href="#construct-6-phate-potential-distance"
+id="toc-construct-6-phate-potential-distance">Construct 6: PHATE
+Potential Distance</a></li>
+<li><a
+href="#construct-7-random-walk-commute-resistance-heat-kernel-and-ppr-distances"
+id="toc-construct-7-random-walk-commute-resistance-heat-kernel-and-ppr-distances">Construct
+7: Random-Walk, Commute, Resistance, Heat-Kernel, and PPR Distances</a>
+<ul>
+<li><a href="#commute-time-and-resistance-distance"
+id="toc-commute-time-and-resistance-distance">Commute time and
+resistance distance</a></li>
+<li><a href="#heat-kernel-distances"
+id="toc-heat-kernel-distances">Heat-kernel distances</a></li>
+<li><a
+href="#personalized-pagerank-and-random-walk-with-restart-distances"
+id="toc-personalized-pagerank-and-random-walk-with-restart-distances">Personalized
+PageRank and random-walk-with-restart distances</a></li>
+</ul></li>
+<li><a
+href="#construct-8-density-aware-oracle-truth-for-synthetic-benchmarks"
+id="toc-construct-8-density-aware-oracle-truth-for-synthetic-benchmarks">Construct
+8: Density-Aware Oracle Truth for Synthetic Benchmarks</a></li>
+<li><a href="#practical-adoption-review"
+id="toc-practical-adoption-review">Practical Adoption Review</a>
+<ul>
+<li><a href="#microbiome-16s-rrna-metagenomics-and-compositional-counts"
+id="toc-microbiome-16s-rrna-metagenomics-and-compositional-counts">Microbiome,
+16S rRNA, Metagenomics, and Compositional Counts</a></li>
+<li><a href="#single-cell-genomics-and-developmental-trajectories"
+id="toc-single-cell-genomics-and-developmental-trajectories">Single-Cell
+Genomics and Developmental Trajectories</a></li>
+<li><a href="#spatial-transcriptomics"
+id="toc-spatial-transcriptomics">Spatial Transcriptomics</a></li>
+<li><a href="#ecology-and-community-composition"
+id="toc-ecology-and-community-composition">Ecology and Community
+Composition</a></li>
+<li><a href="#medical-imaging-morphology-and-biological-shape"
+id="toc-medical-imaging-morphology-and-biological-shape">Medical
+Imaging, Morphology, and Biological Shape</a></li>
+<li><a href="#non-biological-applied-domains"
+id="toc-non-biological-applied-domains">Non-Biological Applied
+Domains</a></li>
+</ul></li>
+<li><a href="#relevance-to-gflow-design"
+id="toc-relevance-to-gflow-design">Relevance to gflow Design</a></li>
+<li><a href="#synthesis-table" id="toc-synthesis-table">Synthesis
+Table</a></li>
+<li><a href="#source-index" id="toc-source-index">Source Index</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="density-aware-geodesic-distance-literature-map">Density-Aware
+Geodesic Distance Literature Map</h1>
+<p>Date: 2026-05-04</p>
+<p>This memo is Deliverable 1 for the density-aware geodesic-distance
+research track. It maps density-aware and density-adjacent distance
+constructions, then reviews practical adoption in biology-facing data
+analysis. The main conclusion is conservative: density-aware geodesic
+distances are not new, but explicit Fermat/PWSPD-style geodesic
+distances appear underused in microbiome and metagenomic workflows
+compared with diffusion, PHATE, UMAP, Aitchison/UniFrac, and other
+standard beta-diversity approaches.</p>
+<h2 id="executive-map">Executive Map</h2>
+<p>The closest mathematical match to the current <code>gflow</code>
+proposal</p>
+<p><span class="math display">\[
+w_{ij} = \frac{\ell_{ij}}{\rho_{ij}^{\alpha}}.
+\]</span></p>
+<p>is the continuum Fermat / power-weighted shortest-path metric</p>
+<p><span class="math display">\[
+d_{\rho,\alpha}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-\alpha}\,ds.
+\]</span></p>
+<p>If the data are sampled from an intrinsic <code>d</code>-dimensional
+manifold with density <code>rho</code>, and one uses the unrooted Fermat
+convention</p>
+<p><span class="math display">\[
+d_{F,p}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-(p-1)/d}\,ds,
+\]</span></p>
+<p>then</p>
+<p><span class="math display">\[
+\alpha = \frac{p-1}{d},
+\qquad
+p = 1 + \alpha d.
+\]</span></p>
+<p>Equivalently, this is the geodesic distance of the conformally
+changed Riemannian metric tensor</p>
+<p><span class="math display">\[
+g_p = \rho^{-2(p-1)/d} g.
+\]</span></p>
+<p>Some papers write the tensor exponent as <code>2(p - 1) / d</code>;
+the path-length integrand exponent, which corresponds to
+<code>ell / rho^alpha</code>, is half of that.</p>
+<p>There is a convention trap. Some Fermat/PWSPD papers define the
+discrete distance as</p>
+<p><span class="math display">\[
+\ell_p(x,y)
+= \min_{\text{path}}
+\left(\sum_i \|x_i - x_{i+1}\|^p\right)^{1/p},
+\]</span></p>
+<p>while persistent-homology papers often use the unrooted version</p>
+<p><span class="math display">\[
+d_{X,p}(x,y)
+= \min_{\text{path}} \sum_i \|x_i - x_{i+1}\|^p.
+\]</span></p>
+<p>The continuum density-weighted geodesic that matches
+<code>gflow</code> edge weighting is the unrooted path metric, or
+<code>ell_p^p</code> under the rooted convention. This should be stated
+explicitly in any future design memo.</p>
+<h2 id="historical-spine">Historical Spine</h2>
+<ol type="1">
+<li><p>Classical geodesic manifold learning starts from local Euclidean
+graphs: Isomap estimates manifold geodesic distances by shortest paths
+on a kNN or epsilon graph before MDS (<a
+href="https://doi.org/10.1126/science.290.5500.2319">Tenenbaum et
+al. 2000</a>).</p></li>
+<li><p>Density-based distances entered semi-supervised learning as a way
+to make points close when they are connected through high-density
+unlabeled data. Sajama and Orlitsky’s ICML 2005 work is an early
+explicit source for density-based Riemannian path metrics (<a
+href="https://dblp.org/rec/conf/icml/SajamaO05">DBLP record</a>).
+Bijral, Ratliff, and Srebro later proposed graph-based density-based
+distances for semi-supervised learning (<a
+href="https://arxiv.org/abs/1202.3702">arXiv:1202.3702</a>).</p></li>
+<li><p>Fermat distances / power-weighted shortest paths gave a
+density-sensitive graph-distance estimator that avoids explicit density
+estimation by raising edge lengths to a power. The theory connects to
+nonhomogeneous Euclidean first-passage percolation and Fermat’s
+principle in optics (<a href="https://arxiv.org/abs/1810.09398">Groisman
+et al.</a>).</p></li>
+<li><p>Hwang, Damelin, and Hero analyzed shortest paths through random
+points and proved convergence of power-weighted sample paths to a
+density-weighted continuum distance (<a
+href="https://arxiv.org/abs/1202.0045">arXiv:1202.0045</a>). This is a
+key bridge from density-based distances to the modern Fermat
+literature.</p></li>
+<li><p>Recent theory made the continuum limit and spectral behavior
+precise: Garcia Trillos, Little, McKenzie, and Murphy prove convergence
+and spectral results for Fermat distances (<a
+href="https://jmlr.org/papers/v25/23-0939.html">JMLR 2024</a>).
+Fernandez, Borghini, Mindlin, and Groisman use Fermat distance for
+intrinsic persistent homology (<a
+href="https://jmlr.org/papers/v24/21-1044.html">JMLR 2023</a>). Little,
+McKenzie, and Murphy analyze PWSPDs and kNN graph spanners (<a
+href="https://epubs.siam.org/doi/10.1137/20M1386657">SIAM MDS 2022</a>,
+<a href="https://arxiv.org/abs/2012.09385">arXiv</a>).</p></li>
+<li><p>Diffusion geometry follows a parallel lineage. Diffusion maps
+define a Markov operator on a kernel graph and compare random-walk
+transition distributions; the alpha normalization controls whether
+sampling density is exploited or removed (<a
+href="https://doi.org/10.1016/j.acha.2006.04.006">Coifman and Lafon
+2006</a>).</p></li>
+<li><p>PHATE uses diffusion probabilities and then transforms them into
+potentials before embedding. It is support-aware and density-adjacent,
+but it is not a shortest-path geodesic metric (<a
+href="https://www.nature.com/articles/s41587-019-0336-3">Moon et
+al. 2019</a>, <a href="https://phate.readthedocs.io/en/stable/">PHATE
+docs</a>).</p></li>
+</ol>
+<h2 id="construct-1-continuous-density-weighted-path-metrics">Construct
+1: Continuous Density-Weighted Path Metrics</h2>
+<p>Objects:</p>
+<p><span class="math display">\[
+\begin{aligned}
+(M,g) &amp;: \text{smooth connected Riemannian manifold},\\
+\rho &amp;: M \to \mathbb{R}_{+} \quad \text{sampling/support
+density},\\
+\alpha &amp;\ge 0 \quad \text{density penalty exponent},\\
+\gamma &amp;: \text{piecewise } C^1 \text{ curve from } x \text{ to }
+y,\\
+ds_g &amp;: \text{Riemannian arclength}.
+\end{aligned}
+\]</span></p>
+<p>Definition:</p>
+<p><span class="math display">\[
+L_{\rho,\alpha}(\gamma)
+= \int_0^1
+\rho(\gamma(t))^{-\alpha}
+\sqrt{g_{\gamma(t)}(\gamma&#39;(t),\gamma&#39;(t))}\,dt,
+\]</span></p>
+<p><span class="math display">\[
+d_{\rho,\alpha}(x,y)
+= \inf_{\gamma:x\to y} L_{\rho,\alpha}(\gamma).
+\]</span></p>
+<p>If <code>rho</code> is positive and finite on each connected
+component, this is a true path metric on that component. It is the
+Riemannian geodesic distance for the conformal tensor</p>
+<p><span class="math display">\[
+g_{\alpha} = \rho^{-2\alpha} g.
+\]</span></p>
+<p>If <code>rho</code> reaches zero and no floor is imposed, distances
+crossing zero-density regions can become infinite. If <code>rho</code>
+is estimated and clipped by a floor, the result is a metric for the
+clipped density but may encode the floor more than the biology in
+tails.</p>
+<p>Density role: high-density regions reduce path cost. Low-density
+regions act as barriers. This is an exploitation of density as support
+or plausibility, not a normalization that removes density.</p>
+<p>Parameter correspondence:</p>
+<p><span class="math display">\[
+\begin{aligned}
+\text{Fermat/PWSPD path integrand} &amp;: \rho^{-(p-1)/d}\,ds,\\
+\text{\texttt{gflow} }\alpha &amp;: \alpha = \frac{p-1}{d},\\
+\text{Riemannian tensor exponent} &amp;: 2\alpha = \frac{2(p-1)}{d}.
+\end{aligned}
+\]</span></p>
+<p>Finite-data construction:</p>
+<ol type="1">
+<li><p>Estimate <code>rho_i</code> or <code>rho_ij</code> in an
+appropriate space.</p></li>
+<li><p>Build a graph, usually kNN, mutual kNN, iKNN/mKNN, radius,
+MST/CMST, or a repaired local graph.</p></li>
+<li><p>Define edge weights such as</p>
+<p><span class="math display">\[
+w_{ij}
+= \frac{\ell_{ij}}{\phi(\rho_i,\rho_j,\rho_{ij})^{\alpha}}.
+\]</span></p></li>
+<li><p>Compute Dijkstra or all-pairs shortest paths.</p></li>
+</ol>
+<p>Strengths: clear mathematical object; direct control of density
+sensitivity; compatible with edge/path attribution; naturally matches
+noisy-tube oracle truths where support is part of the geometry.</p>
+<p>Failure modes: density-estimation instability; dimensional scaling
+errors; tail domination for <code>alpha</code> near 1 in low-density
+regions; conflating true biological rarity with sampling failure;
+bridges can be made too long or too short depending on density
+summary.</p>
+<p>Diagnostic requirements: density distribution, floor/cap fraction,
+edge <code>ell_ij</code> versus <code>w_ij</code>, path examples, alpha
+sensitivity, estimator sensitivity, tail/outlier influence, and
+comparison to Euclidean, latent, Fermat, and diffusion distances when
+available.</p>
+<h2 id="construct-2-fermat-distances-and-pwspd">Construct 2: Fermat
+Distances and PWSPD</h2>
+<p>Discrete rooted PWSPD:</p>
+<p><span class="math display">\[
+\ell_p(x,y;X)
+= \min_{x=x_0,\ldots,x_m=y}
+\left(\sum_{r=0}^{m-1}\|x_{r+1}-x_r\|^p\right)^{1/p},
+\qquad p \ge 1.
+\]</span></p>
+<p>Unrooted Fermat distance:</p>
+<p><span class="math display">\[
+d_{X,p}(x,y)
+= \min_{\text{path}}
+\sum_{r=0}^{m-1}\|x_{r+1}-x_r\|^p.
+\]</span></p>
+<p>For <code>p = 1</code>, the complete-graph rooted distance collapses
+to Euclidean distance; on a restricted local graph, it is the usual
+Isomap-style graph geodesic. For <code>p &gt; 1</code>, many short hops
+are favored, so paths tend to stay in dense regions. As
+<code>p -&gt; infinity</code>, the optimization approaches a bottleneck
+/ longest-edge path distance.</p>
+<p>Continuum limit:</p>
+<p><span class="math display">\[
+d_{F,p}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-(p-1)/d}\,ds.
+\]</span></p>
+<p>With appropriate normalization, sample Fermat distances converge to
+the population density-weighted geodesic on an intrinsic
+<code>d</code>-dimensional manifold. The normalization often involves
+<code>n^((p - 1) / d)</code> for the unrooted convention or
+<code>n^((p - 1) / (p d))</code> for the rooted convention, up to a
+percolation constant depending on <code>p</code> and <code>d</code>.</p>
+<p>Hwang, Damelin, and Hero’s earlier notation makes the same
+correspondence explicit:</p>
+<p><span class="math display">\[
+n^{(p-1)/d} d_{X_n,p}(x,y)
+\to C(d,p)d_{F,p}(x,y),
+\]</span></p>
+<p><span class="math display">\[
+g_p = \rho^{2(1-p)/d} g.
+\]</span></p>
+<p>The sign in the tensor exponent is the same as
+<code>rho^(-2(p - 1) / d)</code>.</p>
+<p>Asymptotic and finite-sample behavior:</p>
+<ul>
+<li>JMLR 2024 establishes local convergence of discrete Fermat distances
+to continuum Fermat distances and spectral convergence of Fermat graph
+Laplacians (<a href="https://jmlr.org/papers/v25/23-0939.html">Garcia
+Trillos et al.</a>).</li>
+<li>SIAM MDS 2022 proves that PWSPD on a kNN graph can match the
+complete-graph PWSPD with high probability under k of order
+<code>log n</code>, with constants depending on intrinsic dimension,
+density bounds, <code>p</code>, and manifold geometry (<a
+href="https://arxiv.org/abs/2012.09385">Little et al.</a>).</li>
+<li>Parameter choice is not benign: Chazal et al. emphasize a tradeoff
+between large enough <code>alpha</code>/<code>p</code> to follow
+geometry and small enough values to avoid noise-amplified distance
+estimation (<a
+href="https://arxiv.org/abs/2311.18663">arXiv:2311.18663</a>).</li>
+</ul>
+<p>Practical strengths:</p>
+<ul>
+<li>No explicit density estimate is required.</li>
+<li>kNN graph computation is feasible for large <code>n</code>.</li>
+<li>Directly implements the geometry-density interpolation wanted by
+<code>gflow</code>.</li>
+</ul>
+<p>Practical failures:</p>
+<ul>
+<li>Scaling across <code>n</code>, <code>p</code>, and <code>d</code> is
+easy to mishandle.</li>
+<li>Large <code>p</code> can become bottleneck-like and unstable.</li>
+<li>Complete-graph intuition and kNN-graph behavior differ if k is too
+small or if local neighborhoods are distorted by high-dimensional
+noise.</li>
+</ul>
+<p>Relevance to <code>gflow</code>: this family should be a named
+comparator and possibly a special case of density-aware graph distance.
+The noisy-tube oracle can be parameterized to reproduce its continuum
+limit by setting <code>alpha = (p - 1) / d</code>.</p>
+<h2 id="construct-3-density-based-persistent-homology">Construct 3:
+Density-Based Persistent Homology</h2>
+<p>Motivation: persistent homology of a point cloud in ambient Euclidean
+distance is sensitive to embedding distortion and outliers. Fermat
+distances provide an intrinsic metric that accounts for both manifold
+geometry and sampling density.</p>
+<p>Definition: compute Vietoris-Rips persistence on
+<code>(X_n, d_{X_n,p})</code>, where <code>d_{X_n,p}</code> is the
+sample Fermat distance. In the continuum limit, this approximates
+persistent homology of <code>(M, d_{F,p})</code>.</p>
+<p>Metric type: metric-space input for persistent homology; the Fermat
+component is a density-weighted geodesic sampling-limit object.</p>
+<p>Key source: Fernandez et al. prove convergence of persistence
+diagrams and robustness advantages for positive-degree homology, then
+apply the method to time-series pattern recognition and anomaly
+detection, including ECG signals and canary song (<a
+href="https://jmlr.org/papers/v24/21-1044.html">JMLR 2023</a>).</p>
+<p>Adoption status: strong as a theory-plus-application paper for time
+series; not yet a common microbiome or metagenomics tool.</p>
+<p>Relevance to <code>gflow</code>: provides a topology-facing benchmark
+for density-aware distances. For noisy circles, annuli, figure-eights,
+and gaps, persistence under Euclidean, latent, Fermat, and tube-oracle
+distances could diagnose whether density weighting preserves or destroys
+intended topology.</p>
+<h2
+id="construct-4-graph-geodesics-neighbor-selection-and-local-scaling">Construct
+4: Graph Geodesics, Neighbor Selection, and Local Scaling</h2>
+<h3 id="isomap-style-graph-geodesics">Isomap-style graph geodesics</h3>
+<p>Definition:</p>
+<p><span class="math display">\[
+d_G(i,j)
+= \min_{\text{paths } i\to j}
+\sum_{(u,v)\in\text{path}} \|x_u-x_v\|.
+\]</span></p>
+<p>This is a graph metric on each connected component. Density enters
+implicitly through graph topology: dense regions have many short edges,
+sparse regions have fewer or longer edges. It is not explicitly density
+weighted.</p>
+<p>Important caution: unweighted shortest path distances on random kNN
+graphs can prefer low-density regions because a fixed number of hops
+travels farther where points are sparse. This is a useful warning for
+any <code>gflow</code> graph that replaces length weights with hop
+counts or over-normalizes edge lengths (<a
+href="https://icml.cc/2012/papers/545.pdf">Alamgir and von Luxburg
+2012</a>).</p>
+<h3 id="knn-mknn-iknn-and-adaptive-k">kNN, mKNN, iKNN, and adaptive
+k</h3>
+<p>kNN graphs are computationally attractive but may over-connect dense
+regions and under-connect sparse ones. Mutual kNN is more conservative
+and can fragment. iKNN can repair connectivity but can become too dense.
+Adaptive k and local repair should be evaluated as graph-topology
+choices before applying density-weighted edge lengths.</p>
+<p>Metric type: graph distance after a neighbor-selection rule.</p>
+<p>Density role: implicit through neighbor radii and degree; explicit
+only if k or edge admission depends on density estimates.</p>
+<p>Relevance to <code>gflow</code>: density-aware weighting should not
+be the only lever. Graph topology decides whether unsupported shortcuts
+exist at all. Weighting a bad shortcut can help only if the density
+summary recognizes the unsupported gap.</p>
+<h3 id="local-scaling-and-density-aware-kernels">Local scaling and
+density-aware kernels</h3>
+<p>Self-tuning spectral clustering uses a local scale, often the
+distance to the <code>k</code>th neighbor:</p>
+<p><span class="math display">\[
+A_{ij}
+= \exp\left(
+-\frac{\|x_i-x_j\|^2}{\sigma_i\sigma_j}
+\right).
+\]</span></p>
+<p>This adapts to multi-scale data without explicit density estimation
+(<a
+href="https://papers.nips.cc/paper/2619-self-tuning-spectral-clustering">Zelnik-Manor
+and Perona 2004</a>). In biology, Spectrum develops an adaptive
+density-aware kernel for clustering single and multi-omic data, using
+common-neighbor information to strengthen within-density connections and
+providing R software (<a
+href="https://academic.oup.com/bioinformatics/article/36/4/1159/5566508">Spectrum,
+Bioinformatics</a>).</p>
+<p>Metric type: kernel/spectral geometry, not a shortest-path geodesic
+unless converted into graph distances.</p>
+<p>Relevance to <code>gflow</code>: local scales are natural density
+surrogates for edge admission and for robust floors/caps.</p>
+<h3 id="mutual-reachability-distances">Mutual reachability
+distances</h3>
+<p>HDBSCAN transforms pairwise distances by local core distances:</p>
+<p><span class="math display">\[
+d_{\mathrm{mreach}}(i,j)
+= \max\{\mathrm{core}_k(i),\mathrm{core}_k(j),d(i,j)\}.
+\]</span></p>
+<p>This spreads sparse points apart and stabilizes density-based
+clustering (<a
+href="https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html">HDBSCAN
+docs</a>).</p>
+<p>Metric type: graph/clustering dissimilarity; commonly used through an
+MST and cluster hierarchy.</p>
+<p>Relevance to <code>gflow</code>: mutual reachability is a robust
+alternative to <code>ell / rho^alpha</code> for penalizing low local
+support. It is especially relevant to bridge admission and outlier
+handling.</p>
+<h2 id="construct-5-diffusion-maps-and-diffusion-distance">Construct 5:
+Diffusion Maps and Diffusion Distance</h2>
+<p>Objects:</p>
+<p><span class="math display">\[
+\begin{aligned}
+K_{\varepsilon}(i,j)
+&amp;= \exp\left(-\frac{\|x_i-x_j\|^2}{\varepsilon}\right),\\
+q_i &amp;= \sum_j K_{\varepsilon}(i,j),\\
+K_a(i,j) &amp;= \frac{K_{\varepsilon}(i,j)}{q_i^a q_j^a},\\
+d_i &amp;= \sum_j K_a(i,j),\\
+P_a(i,j) &amp;= \frac{K_a(i,j)}{d_i}.
+\end{aligned}
+\]</span></p>
+<p>Here <code>a</code> is the diffusion-map alpha normalization, not the
+<code>gflow</code> density exponent. The diffusion distance at time
+<code>t</code> can be written as a weighted distance between transition
+distributions:</p>
+<p><span class="math display">\[
+D_t^2(i,j)
+= \sum_k
+\frac{\left(P_a^t(i,k)-P_a^t(j,k)\right)^2}{\pi_k}.
+\]</span></p>
+<p>where <code>pi</code> is the stationary distribution or an associated
+reference measure. Spectrally, this is represented by diffusion
+coordinates with eigenvalues raised to time <code>t</code>.</p>
+<p>Density role:</p>
+<ul>
+<li><code>a = 0</code>: no kernel density renormalization; the limiting
+operator includes a density drift and random walks are strongly density
+influenced.</li>
+<li><code>a = 1</code>: approximates the Laplace-Beltrami operator and
+removes sampling density from the continuum geometry.</li>
+<li>intermediate values interpolate between density-sensitive and
+density-corrected diffusion. Many implementations default near
+<code>a = 0.5</code>.</li>
+</ul>
+<p>pydiffmap describes <code>alpha</code> as the exponent used in left
+normalization and supports density functions and variable bandwidths (<a
+href="https://pydiffmap.readthedocs.io/en/master/reference/diffusion_map.html">pydiffmap
+docs</a>). datafold explicitly describes <code>alpha = 1</code> as
+correcting sampling density (<a
+href="https://datafold-dev.gitlab.io/datafold/api/datafold.dynfold.DiffusionMaps.html">datafold
+docs</a>).</p>
+<p>Metric type: random-walk / embedding distance, not a shortest-path
+geodesic. It is a metric or pseudometric depending on retained
+eigenvectors, time, graph connectivity, and whether identical transition
+profiles occur.</p>
+<p>Practical strengths:</p>
+<ul>
+<li>Integrates many paths rather than choosing one.</li>
+<li>Robust to small local graph noise.</li>
+<li>Very mature in single-cell trajectory work.</li>
+</ul>
+<p>Failure modes:</p>
+<ul>
+<li>Diffusion time changes scale and topology perception.</li>
+<li>Density normalization may remove biologically meaningful population
+mass.</li>
+<li>A random-walk distance can make two points close because they
+diffuse to the same basin, even if the shortest supported path between
+them is long.</li>
+</ul>
+<p>Relevance to <code>gflow</code>: diffusion distances are essential
+comparators and possibly useful diagnostics, but should not be labeled
+geodesic distances unless a heat-kernel small-time/geodesic
+approximation is explicitly intended.</p>
+<h2 id="construct-6-phate-potential-distance">Construct 6: PHATE
+Potential Distance</h2>
+<p>PHATE builds an adaptive affinity graph, constructs a Markov
+diffusion operator, chooses a diffusion time <code>t</code>, transforms
+transition probabilities into potentials, and embeds by MDS.</p>
+<p>Current software defaults include:</p>
+<pre class="text"><code>knn = 5
+decay = 40
+n_landmark = 2000
+t = &quot;auto&quot;
+gamma = 1
+n_pca = 100
+knn_dist = &quot;euclidean&quot;</code></pre>
+<p><code>t</code> is the power of the diffusion operator and controls
+diffusion scale. <code>gamma = 1</code> gives log potential;
+<code>gamma = 0</code> gives square-root potential (<a
+href="https://phate.readthedocs.io/en/stable/">PHATE docs</a>).</p>
+<p>Formal sketch:</p>
+<p><span class="math display">\[
+P_t = P^t.
+\]</span></p>
+<p><span class="math display">\[
+U_{\gamma}(P_t(i,\cdot)) =
+\begin{cases}
+\log P_t(i,\cdot), &amp; \gamma = 1,\\
+\text{power or square-root-like potential}, &amp; \gamma \approx 0,
+\end{cases}
+\]</span></p>
+<p><span class="math display">\[
+D_{\mathrm{PHATE}}(i,j) =
+\left\|U_{\gamma}(P_t(i,\cdot)) -
+U_{\gamma}(P_t(j,\cdot))\right\|_2.
+\]</span></p>
+<p>Metric type: potential/embedding distance derived from diffusion
+probabilities. It is support-aware and density-adjacent, but not a
+shortest-path geodesic.</p>
+<p>Density role: mediated by kNN graph construction, kernel tails,
+Markov normalization, diffusion time, and potential transform.
+High-density paths increase transition probabilities, but row
+normalization and diffusion can also smooth or erase density
+contrast.</p>
+<p>Practical adoption: strong in single-cell, mass cytometry, Hi-C, and
+some microbiome work. The PHATE paper reports gut microbiome data among
+applications (<a
+href="https://www.nature.com/articles/s41587-019-0336-3">Moon et
+al. 2019</a>).</p>
+<p>Relevance to <code>gflow</code>: PHATE should be exposed as a
+diffusion/potential comparator, not as a density-weighted geodesic. A
+future <code>gflow</code> PHATE-like option should name the output as
+potential or diffusion distance.</p>
+<h2
+id="construct-7-random-walk-commute-resistance-heat-kernel-and-ppr-distances">Construct
+7: Random-Walk, Commute, Resistance, Heat-Kernel, and PPR Distances</h2>
+<h3 id="commute-time-and-resistance-distance">Commute time and
+resistance distance</h3>
+<p>For a connected weighted graph with Laplacian <code>L</code>,
+effective resistance is</p>
+<p><span class="math display">\[
+R_{ij}
+= (e_i-e_j)^{T}L^{+}(e_i-e_j).
+\]</span></p>
+<p>where <code>L^+</code> is the Moore-Penrose pseudoinverse. Commute
+time is proportional to resistance:</p>
+<p><span class="math display">\[
+C_{ij} = \operatorname{vol}(G) R_{ij}.
+\]</span></p>
+<p>Metric type: graph metric for resistance; random-walk expected-time
+distance for commute.</p>
+<p>Density role: high-conductance, many-path regions have low
+resistance. This is not a shortest path; parallel paths matter.</p>
+<p>Failure mode: in large random neighborhood graphs, commute and
+hitting times can become dominated by vertex degrees rather than
+meaningful global geometry (<a
+href="https://jmlr.csail.mit.edu/beta/papers/v15/vonluxburg14a.html">von
+Luxburg et al. 2014</a>).</p>
+<p>Biology adoption: landscape ecology uses resistance and circuit
+theory to model movement and gene flow through environmental resistance
+surfaces; this is explicit environmental resistance, not sample-density
+weighting. R packages such as <code>gdistance</code> implement
+commute/resistance distances (<a
+href="https://search.r-project.org/CRAN/refmans/gdistance/html/commuteDistance-methods.html">gdistance
+docs</a>).</p>
+<h3 id="heat-kernel-distances">Heat-kernel distances</h3>
+<p>On a manifold, the heat kernel <code>H_t(x, y)</code> is linked to
+geodesic distance by Varadhan’s small-time formula:</p>
+<p><span class="math display">\[
+d_g(x,y)^2
+= -\lim_{t\to 0} 4t \log H_t(x,y).
+\]</span></p>
+<p>On graphs, one often uses</p>
+<p><span class="math display">\[
+H_t = \exp(-tL).
+\]</span></p>
+<p>Distances can be formed from rows of <code>H_t</code>, from
+heat-kernel signatures <code>H_t(x, x)</code>, or from small-time
+geodesic approximations.</p>
+<p>Metric type: diffusion/heat distance or shape descriptor; only in a
+small-time limit does it recover geodesic distance.</p>
+<p>Adoption: heat-kernel signatures are well established for shape
+analysis and medical/biological morphology, but usually as descriptors
+for matching, retrieval, segmentation, or classification rather than
+density-aware sample geodesics (<a
+href="https://geometry.stanford.edu/paper.php?id=sog-hks-09">Sun et
+al. HKS page</a>).</p>
+<h3
+id="personalized-pagerank-and-random-walk-with-restart-distances">Personalized
+PageRank and random-walk-with-restart distances</h3>
+<p>PPR solves</p>
+<p><span class="math display">\[
+r_i = \beta e_i + (1-\beta)r_iP.
+\]</span></p>
+<p>Distances or similarities are built from personalized stationary
+vectors. They emphasize local graph basins and are useful for ranking,
+clustering, and semi-supervised propagation.</p>
+<p>Heat-kernel PageRank replaces the geometric mixture of walk lengths
+with a Poisson mixture:</p>
+<p><span class="math display">\[
+h_{t,i} = e_i\exp(-t(I-P)).
+\]</span></p>
+<p>Metric type: usually asymmetric proximity; symmetric variants may be
+pseudometrics after transformation.</p>
+<p>Biology adoption: random-walk-with-restart and local random walks are
+common in network biology and single-cell fate tools, but their density
+role is generally implicit through graph construction.</p>
+<p>Relevance to <code>gflow</code>: random-walk clouds from a vertex can
+be used as local volume/density probes, but that should be treated as a
+diagnostic or density estimator unless a distance is explicitly defined
+and tested.</p>
+<h2
+id="construct-8-density-aware-oracle-truth-for-synthetic-benchmarks">Construct
+8: Density-Aware Oracle Truth for Synthetic Benchmarks</h2>
+<p>For a known generative density on a manifold, tube, grid, or graph,
+define</p>
+<p><span class="math display">\[
+d_{\mathrm{oracle}}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-\alpha}\,ds,
+\]</span></p>
+<p>or build a dense oracle graph with edge weights</p>
+<p><span class="math display">\[
+w_{ab}
+= \frac{\|z_a-z_b\|}
+{\rho(\operatorname{midpoint}(a,b))^{\alpha}}.
+\]</span></p>
+<p>Metric type: synthetic truth metric, not a data estimator.</p>
+<p>Conditions:</p>
+<ul>
+<li>positive density floor or explicit support boundary;</li>
+<li>convergence checks over oracle grid resolution;</li>
+<li>transparent sample-to-oracle attachment;</li>
+<li>sensitivity over <code>alpha</code>, density floor, cap, and
+attachment rule.</li>
+</ul>
+<p>Relevance to <code>gflow</code>: the noisy-tube oracle is a correct
+and useful internal object if presented as an oracle benchmark for a
+chosen density-weighted truth, not as a new distance theory.</p>
+<h2 id="practical-adoption-review">Practical Adoption Review</h2>
+<h3
+id="microbiome-16s-rrna-metagenomics-and-compositional-counts">Microbiome,
+16S rRNA, Metagenomics, and Compositional Counts</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Standard microbiome workflows overwhelmingly use beta-diversity
+distances: Bray-Curtis, Jaccard, Jensen-Shannon, weighted/unweighted
+UniFrac, generalized UniFrac, Aitchison/robust Aitchison, and related
+ordinations. These are not sample-density geodesics.</li>
+<li>PHATE has concrete microbiome use. A large gut microbiome analysis
+used PHATE to map local ecological states into global branches and then
+performed pseudotime analysis along those branches (<a
+href="https://www.nature.com/articles/s41467-023-38558-7">Nature
+Communications 2023</a>). The PHATE effect is implicit
+diffusion/potential geometry, not an explicit <code>rho^-alpha</code>
+geodesic.</li>
+<li>tmap uses topological data analysis and network representation for
+population-scale microbiome stratification (<a
+href="https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1871-4">Genome
+Biology 2019</a>). It is important adoption context for graph/TDA
+microbiome workflows, but not a Fermat geodesic method.</li>
+<li>Diffusion maps appear in ecological/microbiome-adjacent trait-space
+work, including bacterial metabolic niche maps based on genome-scale
+metabolic traits combined with Earth Microbiome Project 16S community
+data (<a
+href="https://www.nature.com/articles/s41467-020-18695-z">Fahimipour and
+Gross 2020</a>).</li>
+<li>Compositional methods such as DEICODE / robust Aitchison PCA address
+sparse microbiome counts directly, but are not graph geodesic density
+metrics (<a
+href="https://pmc.ncbi.nlm.nih.gov/articles/PMC6372836/">Martino et
+al. 2019</a>).</li>
+</ul>
+<p>Evidence gap:</p>
+<ul>
+<li>I found little evidence that Fermat distance, PWSPD, or explicit
+<code>ell / rho^alpha</code> graph geodesics are standard in microbiome,
+16S, metagenomic, or metatranscriptomic analysis.</li>
+<li>This gap is a plausible <code>gflow</code> opportunity, but only if
+density estimation is compositional-data-aware and benchmarked against
+Aitchison/UniFrac/PHATE.</li>
+</ul>
+<p>Scientific questions motivating use:</p>
+<ul>
+<li>gradients and branches of community states;</li>
+<li>stratification of host/environment associations;</li>
+<li>visualization and ordination;</li>
+<li>pseudotime-like ecological transitions.</li>
+</ul>
+<p>Software/defaults/diagnostics:</p>
+<ul>
+<li>PHATE and phateR provide defaults and usable software.</li>
+<li>Microbiome-specific density-aware geodesic diagnostics appear
+largely absent.</li>
+</ul>
+<h3 id="single-cell-genomics-and-developmental-trajectories">Single-Cell
+Genomics and Developmental Trajectories</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Diffusion maps and diffusion pseudotime are deeply adopted.
+<code>destiny</code> computes cell-to-cell transition probabilities,
+applies density normalization, and uses eigendecomposition for diffusion
+components (<a
+href="https://academic.oup.com/bioinformatics/article/32/8/1241/1744143">destiny
+paper</a>, <a
+href="https://www.bioconductor.org/packages/release/bioc/vignettes/destiny/inst/doc/Diffusion-Maps.html">vignette</a>).</li>
+<li>DPT reconstructs lineage branching from diffusion geometry (<a
+href="https://www.nature.com/articles/nmeth.3971">Haghverdi et
+al. 2016</a>).</li>
+<li>PHATE is heavily adopted for visualizing high-dimensional biological
+transitions, including scRNA-seq and mass cytometry (<a
+href="https://www.nature.com/articles/s41587-019-0336-3">Moon et
+al. 2019</a>).</li>
+<li>MAGIC uses graph diffusion for denoising/imputation rather than
+reporting a distance matrix (<a
+href="https://pubmed.ncbi.nlm.nih.gov/29961576/">MAGIC paper</a>).</li>
+<li>Palantir, Wishbone, MARGARET, and related tools use diffusion maps,
+Markov chains, waypoints, random walks, and fate probabilities rather
+than explicit density-weighted shortest paths.</li>
+<li>scPMP is the clearest biology adoption of PWSPD. It uses
+power-weighted path metrics for scRNA-seq clustering and visualization,
+computes shortest paths on kNN graphs with edge weights
+<code>||x_i - x_j||^p</code>, and provides software and defaults (<a
+href="https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1012014">PLOS
+Computational Biology 2024</a>).</li>
+<li>DensityPath builds a density landscape after dimensional reduction,
+extracts high-density representative cell states, and connects them by
+geodesic MST on the density surface (<a
+href="https://academic.oup.com/bioinformatics/article/35/15/2593/5233001">Bioinformatics
+2019</a>).</li>
+</ul>
+<p>Density interpretation:</p>
+<ul>
+<li>Single-cell diffusion methods often correct away sampling density
+because rare and abundant populations should both be represented.</li>
+<li>scPMP and DensityPath are the strongest precedents for exploiting
+density as biological support.</li>
+</ul>
+<p>Relevance to <code>gflow</code>:</p>
+<ul>
+<li>Single-cell gives both caution and precedent. It shows adoption is
+possible, but also that the field distinguishes density correction from
+density exploitation depending on biological question.</li>
+</ul>
+<h3 id="spatial-transcriptomics">Spatial Transcriptomics</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Spatial methods commonly use spatial neighbor graphs, graph
+convolution, diffusion propagation, or physical-distance kernels.</li>
+<li>I found less evidence for Fermat/PWSPD-style density-weighted
+geodesic distances over spatial transcriptomic cell-state
+manifolds.</li>
+</ul>
+<p>Likely transferable lesson:</p>
+<ul>
+<li>Separate density in measurement space, spatial density of
+spots/cells, and biological density of states. A single <code>rho</code>
+may conflate them.</li>
+</ul>
+<h3 id="ecology-and-community-composition">Ecology and Community
+Composition</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Ecology uses ordination, beta-diversity, distance decay,
+environmental gradients, and resistance surfaces extensively.</li>
+<li>Diffusion-map dissimilarity has been proposed for ecological
+community composition when communities have high species turnover and
+few shared species (<a href="https://epic.awi.de/id/eprint/58032/">Gault
+et al. 2023</a>).</li>
+<li>Circuit/resistance distances are common for movement, dispersal, and
+gene flow through landscapes, but their “density” is environmental
+conductance or resistance, not sample density.</li>
+</ul>
+<p>Relevance to <code>gflow</code>:</p>
+<ul>
+<li>Ecology is conceptually close to microbiome state-space work. It
+reinforces that support-aware paths are meaningful, but also that the
+resistance surface must be scientifically interpretable.</li>
+</ul>
+<h3 id="medical-imaging-morphology-and-biological-shape">Medical
+Imaging, Morphology, and Biological Shape</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Heat-kernel and diffusion descriptors are used for shape matching,
+segmentation, and morphology because they are intrinsic and
+multiscale.</li>
+<li>These methods generally use geometry of an observed surface or mesh
+rather than sampling-density-weighted data geodesics.</li>
+</ul>
+<p>Relevance to <code>gflow</code>:</p>
+<ul>
+<li>Heat-kernel diagnostics may be useful for graph stability and
+multiscale structure, but should be kept separate from shortest-path
+density-weighted distances.</li>
+</ul>
+<h3 id="non-biological-applied-domains">Non-Biological Applied
+Domains</h3>
+<p>Observed adoption:</p>
+<ul>
+<li>Fermat/PWSPD has applications in clustering, semi-supervised
+learning, image segmentation, and time-series pattern recognition.</li>
+<li>Density-based graph distances are also central to DBSCAN, OPTICS,
+HDBSCAN, and density-based cluster validation.</li>
+</ul>
+<p>Transferable lessons:</p>
+<ul>
+<li>Explicit density-aware path metrics work best when the density is
+meaningful and stable.</li>
+<li>Large density exponents are powerful but fragile.</li>
+<li>kNN graph spanner results justify computational shortcuts, but
+constants and preprocessing matter in finite biological data.</li>
+</ul>
+<h2 id="relevance-to-gflow-design">Relevance to gflow Design</h2>
+<p>Known/borrowed:</p>
+<ul>
+<li><code>ell / rho^alpha</code> is a standard conformal path
+metric.</li>
+<li>Fermat/PWSPD supplies a density-free estimator of a related
+continuum metric.</li>
+<li>Diffusion/PHATE supplies support-aware random-walk comparators.</li>
+</ul>
+<p>Potentially distinctive:</p>
+<ul>
+<li>compositional and microbiome-aware density estimation;</li>
+<li>diagnostics for floors, caps, tails, and bridge attribution;</li>
+<li>integration with CMST/iKNN/mKNN graph construction and repair;</li>
+<li>noisy-tube oracle benchmarks;</li>
+<li>downstream gradient-flow and conditional expectation analysis.</li>
+</ul>
+<p>Immediate recommendations for later deliverables:</p>
+<ol type="1">
+<li>Parameterize any explicit density-weighted graph metric by
+<code>alpha</code>, and report the implied Fermat
+<code>p = 1 + alpha d_hat</code> when an intrinsic dimension estimate is
+available.</li>
+<li>Implement Fermat/PWSPD as a comparator, not only explicit density
+weighting.</li>
+<li>Keep diffusion/PHATE distances in a separate family named
+“diffusion” or “potential”, not “geodesic”.</li>
+<li>Require density floors/caps and tail diagnostics before any
+density-aware distance is used downstream.</li>
+<li>Benchmark against microbiome-native comparators: Aitchison/robust
+Aitchison, Bray-Curtis, UniFrac, PHATE, UMAP/densMAP, and graph-geodesic
+baselines.</li>
+</ol>
+<h2 id="synthesis-table">Synthesis Table</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th>Family</th>
+<th>Density role</th>
+<th>Metric type</th>
+<th>Should gflow call it geodesic?</th>
+<th>Adoption signal</th>
+<th>Main caution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Continuous <code>integral rho^-alpha ds</code></td>
+<td>Explicitly exploits density as support</td>
+<td>Path/geodesic metric if <code>rho &gt; 0</code></td>
+<td>Yes</td>
+<td>Theory, semi-supervised learning</td>
+<td>Density estimation and tails</td>
+</tr>
+<tr>
+<td>Explicit edge reweighting <code>ell / phi(rho)^alpha</code></td>
+<td>Explicitly exploits estimated density</td>
+<td>Graph shortest-path metric</td>
+<td>Yes, graph geodesic</td>
+<td>Limited biology evidence</td>
+<td>Bad graph topology can still shortcut</td>
+</tr>
+<tr>
+<td>Fermat/PWSPD</td>
+<td>Implicitly exploits density through edge powers</td>
+<td>Sample graph metric with continuum geodesic limit</td>
+<td>Yes, with convention stated</td>
+<td>Strong theory; scPMP in scRNA-seq</td>
+<td>Scaling with <code>n,p,d</code>; large <code>p</code> noise</td>
+</tr>
+<tr>
+<td>Density-based persistent homology</td>
+<td>Uses Fermat metric for topology</td>
+<td>Metric-space/TDA object</td>
+<td>The distance yes; PH output no</td>
+<td>Time series applications</td>
+<td>Less used in microbiome</td>
+</tr>
+<tr>
+<td>Isomap/kNN geodesic</td>
+<td>Density affects topology implicitly</td>
+<td>Graph shortest-path metric</td>
+<td>Yes, graph geodesic</td>
+<td>Broad</td>
+<td>kNN shortcuts/fragments; hop-count pathology</td>
+</tr>
+<tr>
+<td>mKNN/iKNN/adaptive k</td>
+<td>Density affects topology/degree</td>
+<td>Graph construction</td>
+<td>Only after weights define paths</td>
+<td>Local graph practice</td>
+<td>Can fragment or overconnect</td>
+</tr>
+<tr>
+<td>Local scaling/self-tuning kernels</td>
+<td>Usually corrects/adapts to local scale</td>
+<td>Kernel/spectral geometry</td>
+<td>No, unless converted to paths</td>
+<td>Spectrum in omics</td>
+<td>Kernel effects can oppose density weighting</td>
+</tr>
+<tr>
+<td>HDBSCAN mutual reachability</td>
+<td>Penalizes low local density/core support</td>
+<td>Clustering dissimilarity/MST</td>
+<td>Not usually</td>
+<td>Broad clustering</td>
+<td>Clustering, not distance-estimation goal</td>
+</tr>
+<tr>
+<td>Diffusion maps</td>
+<td>Can exploit or correct density via alpha</td>
+<td>Random-walk/embedding distance</td>
+<td>No</td>
+<td>Very strong single-cell</td>
+<td>Alpha meaning differs from gflow alpha</td>
+</tr>
+<tr>
+<td>PHATE potential distance</td>
+<td>Implicit support through diffusion probabilities</td>
+<td>Potential/embedding distance</td>
+<td>No</td>
+<td>Strong single-cell; some microbiome</td>
+<td>Not shortest-path; depends on <code>t</code>,
+<code>gamma</code></td>
+</tr>
+<tr>
+<td>Commute/resistance</td>
+<td>Many high-conductance paths reduce distance</td>
+<td>Random-walk/electrical graph metric</td>
+<td>No</td>
+<td>Ecology/network biology</td>
+<td>Degree domination in large graphs</td>
+</tr>
+<tr>
+<td>Heat-kernel distance/signature</td>
+<td>Diffusion over geometry</td>
+<td>Heat/diffusion descriptor</td>
+<td>Only in small-time limit</td>
+<td>Shape/morphology</td>
+<td>Time scale changes interpretation</td>
+</tr>
+<tr>
+<td>Personalized PageRank/RWR</td>
+<td>Local basin probability</td>
+<td>Proximity, often asymmetric</td>
+<td>No</td>
+<td>Network biology</td>
+<td>Not automatically metric</td>
+</tr>
+<tr>
+<td>Density-aware oracle</td>
+<td>Known generative density defines truth</td>
+<td>Synthetic benchmark metric</td>
+<td>Yes, if path metric</td>
+<td>Internal benchmark</td>
+<td>Oracle floor/attachment artifacts</td>
+</tr>
+</tbody>
+</table>
+<h2 id="source-index">Source Index</h2>
+<ul>
+<li>Fermat/PWSPD theory: <a href="https://arxiv.org/abs/1202.0045">Hwang
+et al. arXiv:1202.0045</a>, <a
+href="https://jmlr.org/papers/v25/23-0939.html">JMLR 2024</a>, <a
+href="https://epubs.siam.org/doi/10.1137/20M1386657">SIAM MDS 2022</a>,
+<a href="https://arxiv.org/abs/2012.09385">arXiv:2012.09385</a>, <a
+href="https://arxiv.org/abs/1810.09398">arXiv:1810.09398</a>.</li>
+<li>Fermat persistent homology: <a
+href="https://jmlr.org/papers/v24/21-1044.html">JMLR 2023</a>.</li>
+<li>Fermat parameter selection: <a
+href="https://arxiv.org/abs/2311.18663">arXiv:2311.18663</a>.</li>
+<li>Semi-supervised density-based distances: <a
+href="https://arxiv.org/abs/1202.3702">arXiv:1202.3702</a>, <a
+href="https://dblp.org/rec/conf/icml/SajamaO05">ICML 2005 DBLP</a>.</li>
+<li>Diffusion maps: <a
+href="https://doi.org/10.1016/j.acha.2006.04.006">Coifman and Lafon
+DOI</a>, <a
+href="https://pydiffmap.readthedocs.io/en/master/reference/diffusion_map.html">pydiffmap
+docs</a>, <a
+href="https://datafold-dev.gitlab.io/datafold/api/datafold.dynfold.DiffusionMaps.html">datafold
+docs</a>.</li>
+<li>PHATE: <a
+href="https://www.nature.com/articles/s41587-019-0336-3">Nature
+Biotechnology 2019</a>, <a
+href="https://phate.readthedocs.io/en/stable/">PHATE docs</a>.</li>
+<li>Single-cell diffusion adoption: <a
+href="https://academic.oup.com/bioinformatics/article/32/8/1241/1744143">destiny
+Bioinformatics</a>, <a
+href="https://www.nature.com/articles/nmeth.3971">DPT Nature
+Methods</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/29961576/">MAGIC
+Cell</a>.</li>
+<li>Single-cell density/path adoption: <a
+href="https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1012014">scPMP
+PLOS Computational Biology 2024</a>, <a
+href="https://academic.oup.com/bioinformatics/article/35/15/2593/5233001">DensityPath
+Bioinformatics 2019</a>.</li>
+<li>Microbiome adoption: <a
+href="https://www.nature.com/articles/s41467-023-38558-7">Gut microbiome
+branches with PHATE</a>, <a
+href="https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1871-4">tmap
+Genome Biology 2019</a>, <a
+href="https://pmc.ncbi.nlm.nih.gov/articles/PMC6372836/">DEICODE/robust
+Aitchison</a>.</li>
+<li>Local scaling and density-aware kernels: <a
+href="https://papers.nips.cc/paper/2619-self-tuning-spectral-clustering">Self-tuning
+spectral clustering</a>, <a
+href="https://academic.oup.com/bioinformatics/article/36/4/1159/5566508">Spectrum
+Bioinformatics</a>.</li>
+<li>Random-walk and resistance cautions: <a
+href="https://jmlr.csail.mit.edu/beta/papers/v15/vonluxburg14a.html">von
+Luxburg et al. JMLR</a>, <a
+href="https://search.r-project.org/CRAN/refmans/gdistance/html/commuteDistance-methods.html">gdistance
+commuteDistance</a>.</li>
+</ul>
+</body>
+</html>

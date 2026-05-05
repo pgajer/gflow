@@ -117,3 +117,36 @@ test_that("kNN cache distinguishes euclidean and linf.simplex metrics", {
         "metric mismatch"
     )
 })
+
+test_that("linf.simplex ANN backend matches brute-force oracle on random unique-face data", {
+    cases <- list(
+        list(X = .random.linf.simplex.matrix(24, 3, seed = 1001), k = 6),
+        list(X = .random.linf.simplex.matrix(32, 5, seed = 1002), k = 8),
+        list(X = .random.linf.simplex.matrix(45, 8, seed = 1003), k = 10)
+    )
+
+    for (case in cases) {
+        cmp <- .compare.linf.simplex.backend.to.oracle(
+            case$X,
+            case$k,
+            allow.tie.index.drift = FALSE
+        )
+        expect_true(cmp$distance.ok)
+        expect_true(cmp$index.identical)
+        expect_lt(cmp$max.distance.diff, 1e-12)
+    }
+})
+
+test_that("linf.simplex ANN backend matches brute-force oracle on ridge and corner stress cases", {
+    cases <- list(
+        list(X = .random.linf.simplex.matrix(30, 4, ridge.every = 4, seed = 2001), k = 7),
+        list(X = .random.linf.simplex.matrix(42, 6, ridge.every = 5, corner.every = 7, seed = 2002), k = 9)
+    )
+
+    for (case in cases) {
+        cmp <- .compare.linf.simplex.backend.to.oracle(case$X, case$k)
+        expect_true(cmp$distance.ok)
+        expect_true(cmp$membership.ok)
+        expect_lt(cmp$max.distance.diff, 1e-10)
+    }
+})
