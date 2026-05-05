@@ -32,8 +32,29 @@
 #' pairwise bridge distances; `component.mst.ann` uses ANN bridge candidates
 #' before guaranteed exact fallback.
 #'
+#' If `prune.edges = TRUE`, an experimental local-geodesic pruning stage is
+#' applied after the sKNN support is built and before optional MST connectivity
+#' repair. Candidate edges are processed longest-first. For an edge `(i, j)`,
+#' the edge is removed only when the currently retained graph contains an
+#' alternative path from `i` to `j`, restricted to the union of their local
+#' neighborhoods, whose length is at most `prune.tau` times the direct edge
+#' length. This preserves the connected components present at the start of the
+#' pruning pass while removing locally redundant long edges.
+#'
 #' @param X Numeric matrix or data frame with observations in rows.
 #' @param k Integer scalar. Number of non-self nearest neighbors.
+#' @param prune.edges Logical scalar. If `TRUE`, apply experimental local
+#'   geometric edge pruning before optional MST connectivity repair.
+#' @param prune.method Character scalar. Currently only `"local.geodesic"` is
+#'   supported.
+#' @param prune.tau Numeric scalar greater than 1. An edge may be pruned when
+#'   the shortest retained local alternative path is at most this multiplicative
+#'   factor times the direct edge length.
+#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
+#'   used to form local neighborhoods for pruning. Defaults to `k`.
+#' @param with.pruned.edge.stats Logical scalar. If `TRUE`, return a data frame
+#'   with one row per pruned edge and columns for direct length, replacement
+#'   path length, and their ratio.
 #' @param connect.components Logical scalar. If `TRUE`, add MST bridge edges
 #'   so that the final graph is connected whenever possible.
 #' @param connect.method Character scalar. `"component.mst"` adds the minimum
@@ -70,6 +91,11 @@
 #' @export
 create.sknn.graph <- function(X,
                               k,
+                              prune.edges = FALSE,
+                              prune.method = c("local.geodesic"),
+                              prune.tau = 1.05,
+                              prune.local.k = NULL,
+                              with.pruned.edge.stats = FALSE,
                               connect.components = FALSE,
                               connect.method = c("component.mst", "component.mst.ann", "global.mst"),
                               edge.weight = c("distance"),
@@ -100,6 +126,27 @@ create.sknn.graph <- function(X,
     if (!is.logical(connect.components) || length(connect.components) != 1L ||
         is.na(connect.components)) {
         stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(prune.edges) || length(prune.edges) != 1L || is.na(prune.edges)) {
+        stop("'prune.edges' must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(with.pruned.edge.stats) || length(with.pruned.edge.stats) != 1L ||
+        is.na(with.pruned.edge.stats)) {
+        stop("'with.pruned.edge.stats' must be TRUE or FALSE.", call. = FALSE)
+    }
+    prune.method <- match.arg(prune.method)
+    if (!is.numeric(prune.tau) || length(prune.tau) != 1L || !is.finite(prune.tau) ||
+        prune.tau <= 1) {
+        stop("'prune.tau' must be a finite numeric scalar greater than 1.", call. = FALSE)
+    }
+    if (is.null(prune.local.k)) {
+        prune.local.k <- k
+    }
+    if (!is.numeric(prune.local.k) || length(prune.local.k) != 1L ||
+        !is.finite(prune.local.k) || prune.local.k != floor(prune.local.k) ||
+        prune.local.k < 1L || prune.local.k >= n) {
+        stop("'prune.local.k' must be a positive integer smaller than nrow(X).",
+             call. = FALSE)
     }
     connect.method <- match.arg(connect.method)
     edge.weight <- match.arg(edge.weight)
@@ -138,6 +185,8 @@ create.sknn.graph <- function(X,
                                 component.mst = 0L,
                                 component.mst.ann = 2L,
                                 global.mst = 1L)
+    prune.method.id <- switch(prune.method,
+                              local.geodesic = 0L)
     neighbor.method.id <- switch(neighbor.method,
                                  exact = 0L,
                                  ann = 1L)
@@ -193,6 +242,11 @@ create.sknn.graph <- function(X,
         as.integer(bridge.k),
         as.integer(bridge.k.max),
         as.numeric(bridge.growth),
+        as.logical(prune.edges),
+        as.integer(prune.method.id),
+        as.numeric(prune.tau),
+        as.integer(prune.local.k),
+        as.logical(with.pruned.edge.stats),
         PACKAGE = "gflow"
     )
     result$edge.weight <- edge.weight
@@ -206,6 +260,12 @@ print.sknn_graph <- function(x, ...) {
     cat("Number of vertices:", x$n_vertices, "\n")
     cat("Number of edges:", x$n_edges, "\n")
     cat("k:", x$k, "\n")
+    if (isTRUE(x$prune_edges)) {
+        cat("Geometric pruning:", x$prune_method, "\n")
+        cat("Edges before pruning:", x$n_edges_before_pruning, "\n")
+        cat("Edges after pruning:", x$n_edges_after_pruning, "\n")
+        cat("Pruned edges:", x$n_pruned_edges, "\n")
+    }
     cat("Connected components before MST augmentation:", x$n_components_before, "\n")
     cat("Connected components after MST augmentation:", x$n_components_after, "\n")
     if (isTRUE(x$connect_components)) {

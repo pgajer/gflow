@@ -17,7 +17,12 @@ SEXP S_create_sknn_graph(SEXP s_X,
                          SEXP s_bridge_knn_index,
                          SEXP s_bridge_k,
                          SEXP s_bridge_k_max,
-                         SEXP s_bridge_growth);
+                         SEXP s_bridge_growth,
+                         SEXP s_prune_edges,
+                         SEXP s_prune_method,
+                         SEXP s_prune_tau,
+                         SEXP s_prune_local_k,
+                         SEXP s_with_pruned_edge_stats);
 
 #ifdef __cplusplus
 }

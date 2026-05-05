@@ -7,6 +7,11 @@
 create.sknn.graph(
   X,
   k,
+  prune.edges = FALSE,
+  prune.method = c("local.geodesic"),
+  prune.tau = 1.05,
+  prune.local.k = NULL,
+  with.pruned.edge.stats = FALSE,
   connect.components = FALSE,
   connect.method = c("component.mst", "component.mst.ann", "global.mst"),
   edge.weight = c("distance"),
@@ -21,6 +26,23 @@ create.sknn.graph(
 \item{X}{Numeric matrix or data frame with observations in rows.}
 
 \item{k}{Integer scalar. Number of non-self nearest neighbors.}
+
+\item{prune.edges}{Logical scalar. If \code{TRUE}, apply experimental local
+geometric edge pruning before optional MST connectivity repair.}
+
+\item{prune.method}{Character scalar. Currently only \code{"local.geodesic"} is
+supported.}
+
+\item{prune.tau}{Numeric scalar greater than 1. An edge may be pruned when
+the shortest retained local alternative path is at most this multiplicative
+factor times the direct edge length.}
+
+\item{prune.local.k}{Integer scalar or \code{NULL}. Number of nearest neighbors
+used to form local neighborhoods for pruning. Defaults to \code{k}.}
+
+\item{with.pruned.edge.stats}{Logical scalar. If \code{TRUE}, return a data frame
+with one row per pruned edge and columns for direct length, replacement
+path length, and their ratio.}
 
 \item{connect.components}{Logical scalar. If \code{TRUE}, add MST bridge edges
 so that the final graph is connected whenever possible.}
@@ -87,6 +109,15 @@ differ only in nearest-neighbor tie cases. Edge weights are always returned
 as ordinary Euclidean distances. Exact \code{component.mst} repair uses exact
 pairwise bridge distances; \code{component.mst.ann} uses ANN bridge candidates
 before guaranteed exact fallback.
+
+If \code{prune.edges = TRUE}, an experimental local-geodesic pruning stage is
+applied after the sKNN support is built and before optional MST connectivity
+repair. Candidate edges are processed longest-first. For an edge \verb{(i, j)},
+the edge is removed only when the currently retained graph contains an
+alternative path from \code{i} to \code{j}, restricted to the union of their local
+neighborhoods, whose length is at most \code{prune.tau} times the direct edge
+length. This preserves the connected components present at the start of the
+pruning pass while removing locally redundant long edges.
 }
 \examples{
 X <- rbind(c(0, 0), c(1, 0), c(10, 0), c(11, 0))
