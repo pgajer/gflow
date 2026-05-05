@@ -213,6 +213,87 @@ static inline double adaptive_lambda0_tolerance(
     return tol;
 }
 
+static inline const char* mass_sym_spectral_invariant_failure(
+    const spmat_t& L0,
+    const vec_t& vals,
+    const Eigen::MatrixXd& vecs,
+    double lambda0_abs_tol,
+    double monotone_tol,
+    double eigpair_resid_tol,
+    double* lambda0_out = nullptr,
+    double* lambda0_tol_out = nullptr,
+    double* resid_out = nullptr
+) {
+    if (lambda0_out) *lambda0_out = std::numeric_limits<double>::quiet_NaN();
+    if (lambda0_tol_out) *lambda0_tol_out = std::numeric_limits<double>::quiet_NaN();
+    if (resid_out) *resid_out = std::numeric_limits<double>::quiet_NaN();
+
+    if (vals.size() == 0 || vecs.cols() == 0) {
+        return "spectral invariants: empty eigenvalues/eigenvectors";
+    }
+    if (vecs.cols() != vals.size()) {
+        return "spectral invariants: vecs.cols() != vals.size()";
+    }
+
+    // 2) Nondecreasing eigenvalues (post-sort requirement)
+    if (!eigenvalues_nondecreasing(vals, monotone_tol)) {
+        return "spectral invariants: eigenvalues not nondecreasing after sorting";
+    }
+
+    // 1) Near-zero first eigenvalue (mass-sym Laplacian should have lambda0 ~ 0)
+    // Allow tiny negative due to numerical noise.
+    const double lambda0 = vals[0];
+    const double lambda0_tol_eff = adaptive_lambda0_tolerance(vals, lambda0_abs_tol);
+    if (lambda0_out) *lambda0_out = lambda0;
+    if (lambda0_tol_out) *lambda0_tol_out = lambda0_tol_eff;
+    if (!std::isfinite(lambda0) || std::abs(lambda0) > lambda0_tol_eff) {
+        return "spectral invariants: lambda0 not near 0 for mass-sym Laplacian";
+    }
+
+    // 3) Quick eigenpair residual for first eigenpair
+    Eigen::VectorXd u0 = vecs.col(0);
+    Eigen::VectorXd r = (L0 * u0) - lambda0 * u0;
+    const double resid = r.norm() / safe_norm(u0);
+    if (resid_out) *resid_out = resid;
+
+    if (!std::isfinite(resid) || resid > eigpair_resid_tol) {
+        return "spectral invariants: first eigenpair residual too large";
+    }
+
+    return nullptr;
+}
+
+static inline bool accept_mass_sym_spectral_candidate_or_report(
+    const spmat_t& L0,
+    const vec_t& vals,
+    const Eigen::MatrixXd& vecs,
+    verbose_level_t verbose_level,
+    const char* context,
+    double lambda0_abs_tol = 1e-8,
+    double monotone_tol = 1e-12,
+    double eigpair_resid_tol = 1e-6
+) {
+    double lambda0 = std::numeric_limits<double>::quiet_NaN();
+    double lambda0_tol = std::numeric_limits<double>::quiet_NaN();
+    double resid = std::numeric_limits<double>::quiet_NaN();
+    const char* failure = mass_sym_spectral_invariant_failure(
+        L0, vals, vecs,
+        lambda0_abs_tol, monotone_tol, eigpair_resid_tol,
+        &lambda0, &lambda0_tol, &resid
+    );
+
+    if (failure == nullptr) {
+        return true;
+    }
+
+    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+        Rprintf("\t%s rejected: %s (lambda0=%.6e, lambda0_tol=%.1e, first_resid=%.6e)\n",
+                context, failure, lambda0, lambda0_tol, resid);
+    }
+
+    return false;
+}
+
 // Enforce invariants for L0_mass_sym = M^{-1/2} L M^{-1/2}:
 // 1) vals sorted nondecreasing
 // 2) vals[0] ~ 0 (null mode exists; nullvector is ~sqrt(mass))
@@ -226,40 +307,22 @@ static inline void enforce_mass_sym_spectral_invariants_or_error(
     double monotone_tol = 1e-12,
     double eigpair_resid_tol = 1e-6
 ) {
-    if (vals.size() == 0 || vecs.cols() == 0) {
-        Rf_error("spectral invariants: empty eigenvalues/eigenvectors");
-    }
-    if (vecs.cols() != vals.size()) {
-        Rf_error("spectral invariants: vecs.cols() != vals.size()");
-    }
+    double lambda0 = std::numeric_limits<double>::quiet_NaN();
+    double lambda0_tol = std::numeric_limits<double>::quiet_NaN();
+    double resid = std::numeric_limits<double>::quiet_NaN();
+    const char* failure = mass_sym_spectral_invariant_failure(
+        L0, vals, vecs,
+        lambda0_abs_tol, monotone_tol, eigpair_resid_tol,
+        &lambda0, &lambda0_tol, &resid
+    );
 
-    // 2) Nondecreasing eigenvalues (post-sort requirement)
-    if (!eigenvalues_nondecreasing(vals, monotone_tol)) {
-        Rf_error("spectral invariants: eigenvalues not nondecreasing after sorting");
-    }
-
-    // 1) Near-zero first eigenvalue (mass-sym Laplacian should have lambda0 ~ 0)
-    // Allow tiny negative due to numerical noise.
-    const double lambda0 = vals[0];
-    const double lambda0_tol_eff = adaptive_lambda0_tolerance(vals, lambda0_abs_tol);
-    if (!std::isfinite(lambda0) || std::abs(lambda0) > lambda0_tol_eff) {
+    if (failure != nullptr) {
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("DEBUG: lambda0=%.6e exceeds tolerance %.1e\n", lambda0, lambda0_tol_eff);
+            Rprintf("DEBUG: spectral invariant failure: %s "
+                    "(lambda0=%.6e, lambda0_tol=%.1e, first_resid=%.6e)\n",
+                    failure, lambda0, lambda0_tol, resid);
         }
-        Rf_error("spectral invariants: lambda0 not near 0 for mass-sym Laplacian");
-    }
-
-    // 3) Quick eigenpair residual for first eigenpair
-    Eigen::VectorXd u0 = vecs.col(0);
-    Eigen::VectorXd r = (L0 * u0) - lambda0 * u0;
-    const double resid = r.norm() / safe_norm(u0);
-
-    if (!std::isfinite(resid) || resid > eigpair_resid_tol) {
-        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            Rprintf("DEBUG: first-eigenpair residual=%.6e exceeds tolerance %.1e\n",
-                    resid, eigpair_resid_tol);
-        }
-        Rf_error("spectral invariants: first eigenpair residual too large");
+        Rf_error("%s", failure);
     }
 }
 
@@ -1779,22 +1842,25 @@ void riem_dcx_t::compute_spectral_decomposition(
         // Canonicalize
         sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
 
-        enforce_mass_sym_spectral_invariants_or_error(
+        if (accept_mass_sym_spectral_candidate_or_report(
             L0,
             spectral_cache.eigenvalues,
             spectral_cache.eigenvectors,
-            verbose_level
-            );
+            verbose_level,
+            "Sparse eigendecomposition"
+        )) {
+            spectral_cache.is_valid = true;
+            if (spectral_cache.eigenvalues.size() >= 2) {
+                spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+            }
 
-        spectral_cache.is_valid = true;
-        if (spectral_cache.eigenvalues.size() >= 2) {
-            spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+            // Confirm ordering AFTER sorting
+            debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+            return;
         }
 
-        // Confirm ordering AFTER sorting
-        debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
-
-        return;
+        spectral_cache.invalidate();
     }
 
     if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
@@ -2014,11 +2080,6 @@ void riem_dcx_t::compute_spectral_decomposition(
         eigs.compute(Spectra::SortRule::SmallestAlge, adjusted_maxit, adjusted_tol);
 
         if (eigs.info() == Spectra::CompInfo::Successful) {
-
-            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                Rprintf("Success\n");
-            }
-
             spectral_cache.eigenvalues = eigs.eigenvalues();
             spectral_cache.eigenvectors = eigs.eigenvectors();
 
@@ -2028,25 +2089,32 @@ void riem_dcx_t::compute_spectral_decomposition(
             // Canonicalize
             sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
 
-            enforce_mass_sym_spectral_invariants_or_error(
+            if (accept_mass_sym_spectral_candidate_or_report(
                 L0,
                 spectral_cache.eigenvalues,
                 spectral_cache.eigenvectors,
-                verbose_level
-                );
+                verbose_level,
+                "Tier 1 sparse eigendecomposition"
+            )) {
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                    Rprintf("Success\n");
+                }
 
-            spectral_cache.is_valid = true;
-            if (spectral_cache.eigenvalues.size() >= 2) {
-                spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                spectral_cache.is_valid = true;
+                if (spectral_cache.eigenvalues.size() >= 2) {
+                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                }
+
+                // Confirm ordering AFTER sorting
+                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                    elapsed_time(decomp_start, "\tTotal decomposition time", true);
+                }
+                return;
             }
 
-            // Confirm ordering AFTER sorting
-            debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
-
-            if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                elapsed_time(decomp_start, "\tTotal decomposition time", true);
-            }
-            return;
+            spectral_cache.invalidate();
         }
 
         if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
@@ -2089,10 +2157,6 @@ void riem_dcx_t::compute_spectral_decomposition(
                                  adjusted_maxit, adjusted_tol);
 
             if (enlarged_eigs.info() == Spectra::CompInfo::Successful) {
-                Rprintf("Spectral decomposition converged with enlarged Krylov subspace: "
-                        "ncv=%d, maxit=%d, tol=%.2e\n",
-                        adjusted_ncv, adjusted_maxit, adjusted_tol);
-
                 spectral_cache.eigenvalues = enlarged_eigs.eigenvalues();
                 spectral_cache.eigenvectors = enlarged_eigs.eigenvectors();
 
@@ -2102,31 +2166,38 @@ void riem_dcx_t::compute_spectral_decomposition(
                 // Canonicalize
                 sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
 
-                enforce_mass_sym_spectral_invariants_or_error(
+                if (accept_mass_sym_spectral_candidate_or_report(
                     L0,
                     spectral_cache.eigenvalues,
                     spectral_cache.eigenvectors,
-                    verbose_level
-                    );
+                    verbose_level,
+                    "Tier 2 sparse eigendecomposition"
+                )) {
+                    Rprintf("Spectral decomposition converged with enlarged Krylov subspace: "
+                            "ncv=%d, maxit=%d, tol=%.2e\n",
+                            adjusted_ncv, adjusted_maxit, adjusted_tol);
 
-                spectral_cache.is_valid = true;
-                if (spectral_cache.eigenvalues.size() >= 2) {
-                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                    spectral_cache.is_valid = true;
+                    if (spectral_cache.eigenvalues.size() >= 2) {
+                        spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                    }
+
+                    // Confirm ordering AFTER sorting
+                    debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                    #if 0
+                    if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                        const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
+                        Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
+                        for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
+                        Rprintf("\n");
+                    }
+                    #endif
+
+                    return;
                 }
 
-                // Confirm ordering AFTER sorting
-                debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
-
-                #if 0
-                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-                    const int k = std::min<int>(6, spectral_cache.eigenvalues.size());
-                    Rprintf("\t[DEBUG eigs] first %d eigenvalues:", k);
-                    for (int i = 0; i < k; ++i) Rprintf(" %.6e", spectral_cache.eigenvalues[i]);
-                    Rprintf("\n");
-                }
-                #endif
-
-                return;
+                spectral_cache.invalidate();
             }
         }
 
