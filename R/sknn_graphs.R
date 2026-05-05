@@ -32,21 +32,22 @@
 #' pairwise bridge distances; `component.mst.ann` uses ANN bridge candidates
 #' before guaranteed exact fallback.
 #'
-#' If `prune.edges = TRUE`, an experimental local-geodesic pruning stage is
-#' applied after the sKNN support is built and before optional MST connectivity
-#' repair. Candidate edges are processed longest-first. For an edge `(i, j)`,
-#' the edge is removed only when the currently retained graph contains an
-#' alternative path from `i` to `j`, restricted to the union of their local
-#' neighborhoods, whose length is at most `prune.tau` times the direct edge
-#' length. This preserves the connected components present at the start of the
-#' pruning pass while removing locally redundant long edges.
+#' If `prune.method = "local.geodesic"` or `prune.edges = TRUE`, an
+#' experimental local-geodesic pruning stage is applied after the sKNN support
+#' is built and before optional MST connectivity repair. Candidate edges are
+#' processed longest-first. For an edge `(i, j)`, the edge is removed only when
+#' the currently retained graph contains an alternative path from `i` to `j`,
+#' restricted to the union of their local neighborhoods, whose length is at most
+#' `prune.tau` times the direct edge length. This preserves the connected
+#' components present at the start of the pruning pass while removing locally
+#' redundant long edges.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
 #' @param k Integer scalar. Number of non-self nearest neighbors.
 #' @param prune.edges Logical scalar. If `TRUE`, apply experimental local
 #'   geometric edge pruning before optional MST connectivity repair.
-#' @param prune.method Character scalar. Currently only `"local.geodesic"` is
-#'   supported.
+#' @param prune.method Character scalar. `"none"` disables pruning.
+#'   `"local.geodesic"` applies experimental local geometric edge pruning.
 #' @param prune.tau Numeric scalar greater than 1. An edge may be pruned when
 #'   the shortest retained local alternative path is at most this multiplicative
 #'   factor times the direct edge length.
@@ -92,7 +93,7 @@
 create.sknn.graph <- function(X,
                               k,
                               prune.edges = FALSE,
-                              prune.method = c("local.geodesic"),
+                              prune.method = c("none", "local.geodesic"),
                               prune.tau = 1.05,
                               prune.local.k = NULL,
                               with.pruned.edge.stats = FALSE,
@@ -134,7 +135,11 @@ create.sknn.graph <- function(X,
         is.na(with.pruned.edge.stats)) {
         stop("'with.pruned.edge.stats' must be TRUE or FALSE.", call. = FALSE)
     }
-    prune.method <- match.arg(prune.method)
+    prune.method <- .normalize.local.prune.method(prune.method)
+    if (isTRUE(prune.edges) && identical(prune.method, "none")) {
+        prune.method <- "local.geodesic"
+    }
+    prune.edges <- identical(prune.method, "local.geodesic")
     if (!is.numeric(prune.tau) || length(prune.tau) != 1L || !is.finite(prune.tau) ||
         prune.tau <= 1) {
         stop("'prune.tau' must be a finite numeric scalar greater than 1.", call. = FALSE)
@@ -186,6 +191,7 @@ create.sknn.graph <- function(X,
                                 component.mst.ann = 2L,
                                 global.mst = 1L)
     prune.method.id <- switch(prune.method,
+                              none = 0L,
                               local.geodesic = 0L)
     neighbor.method.id <- switch(neighbor.method,
                                  exact = 0L,
@@ -250,6 +256,7 @@ create.sknn.graph <- function(X,
         PACKAGE = "gflow"
     )
     result$edge.weight <- edge.weight
+    result$prune_method <- prune.method
     class(result) <- c("sknn_graph", "list")
     result
 }

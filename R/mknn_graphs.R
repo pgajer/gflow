@@ -9,6 +9,16 @@
 #'   and each column represents a feature/dimension.
 #' @param k A positive integer specifying the number of nearest neighbors to
 #'   consider. Must be at least 2.
+#' @param prune.method Character scalar. `"none"` disables geometric pruning.
+#'   `"local.geodesic"` applies the experimental local geometric pruning stage
+#'   before optional MST connectivity repair.
+#' @param prune.tau Numeric scalar greater than 1. For local geometric pruning,
+#'   an edge may be removed when a retained local alternative path is at most
+#'   this multiplicative factor times the direct edge length.
+#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
+#'   used to form local neighborhoods for pruning. Defaults to `k`.
+#' @param with.pruned.edge.stats Logical scalar. If `TRUE`, return a data frame
+#'   with one row per locally pruned edge.
 #' @param connect.components Logical scalar. If `TRUE`, add MST bridge edges
 #'   so the final graph is connected whenever possible.
 #' @param connect.method Character scalar. `"component.mst"` adds exact shortest
@@ -69,6 +79,10 @@
 #' @export
 create.mknn.graph <- function(X,
                               k,
+                              prune.method = c("none", "local.geodesic"),
+                              prune.tau = 1.05,
+                              prune.local.k = NULL,
+                              with.pruned.edge.stats = FALSE,
                               connect.components = FALSE,
                               connect.method = c("component.mst", "component.mst.ann", "global.mst"),
                               bridge.k = NULL,
@@ -118,6 +132,10 @@ create.mknn.graph <- function(X,
       is.na(connect.components)) {
     stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
   }
+  prune.method <- .normalize.local.prune.method(prune.method)
+  prune.controls <- .normalize.local.prune.controls(
+    n, k, prune.tau, prune.local.k, with.pruned.edge.stats
+  )
   connect.method <- match.arg(connect.method)
   bridge.controls <- .normalize.bridge.controls(n, k, bridge.k, bridge.k.max, bridge.growth)
 
@@ -126,6 +144,32 @@ create.mknn.graph <- function(X,
     result <- .Call("S_create_mknn_graph",
                     X,
                     as.integer(k + 1))
+
+  if (identical(prune.method, "local.geodesic")) {
+    pruning <- .prune.graph.local.geodesic(
+      X = X,
+      adj.list = result$adj_list,
+      weight.list = result$weight_list,
+      k = k,
+      prune.tau = prune.controls$prune.tau,
+      prune.local.k = prune.controls$prune.local.k,
+      with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
+    )
+    result$adj_list <- pruning$adj_list
+    result$weight_list <- pruning$weight_list
+  } else {
+    n.edges.raw <- nrow(.graph.edge.table(result$adj_list, result$weight_list))
+    pruning <- list(
+      n_edges_before_pruning = n.edges.raw,
+      n_edges_after_pruning = n.edges.raw,
+      n_pruned_edges = 0L,
+      pruned_edge_stats = .empty.pruned.edge.stats(),
+      prune_tau = prune.controls$prune.tau,
+      prune_local_k = prune.controls$prune.local.k,
+      with_pruned_edge_stats = prune.controls$with.pruned.edge.stats
+    )
+  }
+  n.edges.before.mst <- pruning$n_edges_after_pruning
 
   bridge <- .augment.graph.with.component.mst(
     X = X,
@@ -144,6 +188,16 @@ create.mknn.graph <- function(X,
   # Add metadata to result
   result$n_vertices <- n
   result$n_edges <- sum(sapply(result$adj_list, length)) / 2  # Divide by 2 for undirected graph
+  result$n_edges_before_pruning <- pruning$n_edges_before_pruning
+  result$n_edges_after_pruning <- pruning$n_edges_after_pruning
+  result$n_pruned_edges <- pruning$n_pruned_edges
+  result$pruned_edge_stats <- pruning$pruned_edge_stats
+  result$prune_method <- prune.method
+  result$prune_tau <- pruning$prune_tau
+  result$prune_local_k <- pruning$prune_local_k
+  result$with_pruned_edge_stats <- pruning$with_pruned_edge_stats
+  result$n_edges_before_mst <- n.edges.before.mst
+  result$n_edges_after_mst <- result$n_edges
   result$k <- k
   result$n_components_before <- bridge$n_components_before
   result$n_components_after <- bridge$n_components_after

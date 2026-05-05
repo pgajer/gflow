@@ -91,6 +91,48 @@ test_that("create.single.iknn.graph supports ANN component MST repair with exact
 })
 
 
+test_that("create.single.iknn.graph supports local geometric pruning", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0),
+    c(3, 0)
+  )
+
+  raw <- create.single.iknn.graph(
+    X,
+    k = 3,
+    prune.method = "none",
+    threshold.percentile = 0,
+    pca.dim = NULL,
+    verbose = FALSE
+  )
+  pruned <- create.single.iknn.graph(
+    X,
+    k = 3,
+    prune.method = "local.geodesic",
+    prune.tau = 1.01,
+    threshold.percentile = 0,
+    with.edge.pruning.stats = TRUE,
+    pca.dim = NULL,
+    verbose = FALSE
+  )
+
+  expect_equal(.edge_keys(.graph.edge.table(raw$pruned_adj_list, raw$pruned_weight_list)),
+               c("1-2", "1-3", "1-4", "2-3", "2-4", "3-4"))
+  expect_equal(.edge_keys(.graph.edge.table(pruned$pruned_adj_list, pruned$pruned_weight_list)),
+               c("1-2", "2-3", "3-4"))
+  expect_equal(pruned$prune_method, "local.geodesic")
+  expect_equal(pruned$n_edges_before_pruning, 6L)
+  expect_equal(pruned$n_edges_after_pruning, 3L)
+  expect_equal(pruned$n_pruned_edges, 3L)
+  expect_equal(pruned$n_edges_before_mst, 3L)
+  expect_equal(pruned$n_edges_after_mst, 3L)
+  expect_equal(.edge_keys(as.matrix(pruned$pruned_edge_stats[, c("u", "v")])),
+               c("1-3", "1-4", "2-4"))
+})
+
+
 test_that("component MST repair validates bridge controls", {
   X <- cbind(c(0, 1, 10, 11), 0)
 
