@@ -14,6 +14,7 @@
 #include <ANN/ANN.h>  // ANN library header
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <memory>
 #include <chrono>
@@ -496,7 +497,7 @@ SEXP S_create_mknn_graphs(
 SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
 
     SEXP s_dim = PROTECT(Rf_getAttrib(RX, R_DimSymbol));
-    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 1) {
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
         UNPROTECT(1);
         Rf_error("X must be a matrix with a valid integer 'dim' attribute.");
     }
@@ -505,35 +506,40 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
     UNPROTECT(1); // s_dim
 
     int k = Rf_asInteger(Rk);
-
-    // Convert RX matrix to ANNpointArray
-    double *X = REAL(RX);
-    ANNpointArray dataPts = annAllocPts(nrX, ncX);
-    for (int i = 0; i < nrX; i++) {
-        for (int j = 0; j < ncX; j++) {
-            dataPts[i][j] = X[i + nrX * j]; // Column-major to row-major
-        }
+    if (nrX <= 0 || ncX <= 0) {
+        Rf_error("X must have positive dimensions.");
+    }
+    if (k <= 0 || k > nrX) {
+        Rf_error("k must be positive and no greater than the number of rows in X.");
     }
 
     // Finding kNN's for all points of X
     SEXP knn_res = PROTECT(S_kNN(RX, Rk));
     int *indices = INTEGER(VECTOR_ELT(knn_res, 0));
     double *distances = REAL(VECTOR_ELT(knn_res, 1));
-    UNPROTECT(1); // knn_res
 
     if (indices == NULL) {
+        UNPROTECT(1); // knn_res
         Rf_error("MW_kNN_graph: Error in S_kNN: kNN index extraction failed.");
     }
 
     if (distances == NULL) {
+        UNPROTECT(1); // knn_res
         Rf_error("MW_kNN_graph: Error in S_kNN: kNN distances extraction failed.");
     }
 
     std::vector<std::unordered_set<int>> nn_sets(nrX);
+    std::vector<std::unordered_map<int, double>> nn_distances(nrX);
     // Populate nn_sets with the k-nearest neighbors of each point
     for (int pt_i = 0; pt_i < nrX; ++pt_i) {
         for (int j = 0; j < k; ++j) {
-            nn_sets[pt_i].insert(indices[pt_i + nrX * j]);
+            const int neighbor = indices[pt_i + nrX * j];
+            if (neighbor < 0 || neighbor >= nrX) {
+                UNPROTECT(1); // knn_res
+                Rf_error("MW_kNN_graph: S_kNN returned an out-of-range neighbor index.");
+            }
+            nn_sets[pt_i].insert(neighbor);
+            nn_distances[pt_i][neighbor] = distances[pt_i + nrX * j];
         }
     }
 
@@ -547,16 +553,14 @@ SEXP S_create_mknn_graph(SEXP RX, SEXP Rk) {
             if (pt_i < pt_j && nn_sets[pt_j].count(pt_i) > 0) {
                 (*adj_vect)[pt_i].push_back(pt_j);
                 (*adj_vect)[pt_j].push_back(pt_i);
-                d = distances[pt_i + nrX * pt_j];
+                d = nn_distances[pt_i][pt_j];
                 (*dists_vect)[pt_i].push_back(d);
                 (*dists_vect)[pt_j].push_back(d);
             }
         }
     }
 
-    // Clean up
-    annDeallocPts(dataPts);
-    annClose(); // Close ANN
+    UNPROTECT(1); // knn_res
 
     // Prepare return list
     SEXP res = PROTECT(Rf_allocVector(VECSXP, 2)); // List with 2 elements
