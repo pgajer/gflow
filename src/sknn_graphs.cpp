@@ -119,6 +119,42 @@ std::vector<std::vector<int>> knn_sets_from_dist(const std::vector<double>& D, i
     return nn;
 }
 
+std::vector<std::vector<int>> knn_sets_from_precomputed(SEXP s_knn_index, int n, int k) {
+    if (!Rf_isMatrix(s_knn_index) || TYPEOF(s_knn_index) != INTSXP) {
+        Rf_error("knn_index must be an integer matrix.");
+    }
+    SEXP s_dim = PROTECT(Rf_getAttrib(s_knn_index, R_DimSymbol));
+    if (s_dim == R_NilValue || TYPEOF(s_dim) != INTSXP || Rf_length(s_dim) < 2) {
+        UNPROTECT(1);
+        Rf_error("knn_index must have a valid dim attribute.");
+    }
+    const int nr = INTEGER(s_dim)[0];
+    const int nc = INTEGER(s_dim)[1];
+    UNPROTECT(1);
+    if (nr != n || nc != k) {
+        Rf_error("knn_index must have nrow(X) rows and k columns.");
+    }
+
+    const int* idx = INTEGER(s_knn_index);
+    std::vector<std::vector<int>> nn(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        nn[static_cast<size_t>(i)].reserve(static_cast<size_t>(k));
+        for (int col = 0; col < k; ++col) {
+            const int j = idx[i + n * col] - 1;
+            if (j < 0 || j >= n || j == i) {
+                Rf_error("knn_index contains an invalid neighbor index.");
+            }
+            if (std::find(nn[static_cast<size_t>(i)].begin(),
+                          nn[static_cast<size_t>(i)].end(),
+                          j) != nn[static_cast<size_t>(i)].end()) {
+                Rf_error("knn_index contains duplicate neighbors within a row.");
+            }
+            nn[static_cast<size_t>(i)].push_back(j);
+        }
+    }
+    return nn;
+}
+
 void add_edge(std::map<std::uint64_t, edge_value_t>& edges, int u, int v, double weight) {
     if (u == v) {
         return;
@@ -238,6 +274,89 @@ void add_component_mst_edges(std::map<std::uint64_t, edge_value_t>& edges,
     }
 }
 
+bool try_component_mst_from_bridge_knn(std::map<std::uint64_t, edge_value_t>& edges,
+                                       const double* X,
+                                       int n,
+                                       int p,
+                                       const std::vector<std::vector<int>>& bridge_nn,
+                                       int bridge_k,
+                                       const std::vector<int>& comp,
+                                       int n_components,
+                                       std::vector<mst_edge_t>& added_edges) {
+    if (n_components <= 1) {
+        return true;
+    }
+
+    const double inf = std::numeric_limits<double>::infinity();
+    std::vector<double> best(static_cast<size_t>(n_components) * n_components, inf);
+    std::vector<int> best_u(static_cast<size_t>(n_components) * n_components, -1);
+    std::vector<int> best_v(static_cast<size_t>(n_components) * n_components, -1);
+
+    for (int i = 0; i < n; ++i) {
+        const int ci = comp[static_cast<size_t>(i)];
+        const int row_k = std::min(bridge_k, static_cast<int>(bridge_nn[static_cast<size_t>(i)].size()));
+        for (int pos = 0; pos < row_k; ++pos) {
+            const int j = bridge_nn[static_cast<size_t>(i)][static_cast<size_t>(pos)];
+            const int cj = comp[static_cast<size_t>(j)];
+            if (ci == cj) {
+                continue;
+            }
+            const int a = std::min(ci, cj);
+            const int b = std::max(ci, cj);
+            const size_t idx = static_cast<size_t>(a) * n_components + b;
+            const double d = euclidean_distance(X, n, p, i, j);
+            const int u = std::min(i, j);
+            const int v = std::max(i, j);
+            if (d < best[idx] || (d == best[idx] &&
+                                  (u < best_u[idx] || (u == best_u[idx] && v < best_v[idx])))) {
+                best[idx] = d;
+                best_u[idx] = u;
+                best_v[idx] = v;
+            }
+        }
+    }
+
+    std::vector<mst_edge_t> candidates;
+    for (int a = 0; a < n_components - 1; ++a) {
+        for (int b = a + 1; b < n_components; ++b) {
+            const size_t idx = static_cast<size_t>(a) * n_components + b;
+            if (std::isfinite(best[idx])) {
+                candidates.push_back(mst_edge_t{best_u[idx], best_v[idx], best[idx]});
+            }
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const mst_edge_t& x, const mst_edge_t& y) {
+        if (x.weight < y.weight) return true;
+        if (x.weight > y.weight) return false;
+        if (x.u < y.u) return true;
+        if (x.u > y.u) return false;
+        return x.v < y.v;
+    });
+
+    dsu_t dsu(n_components);
+    std::vector<mst_edge_t> proposed;
+    proposed.reserve(static_cast<size_t>(n_components - 1));
+    for (const auto& e : candidates) {
+        const int cu = comp[static_cast<size_t>(e.u)];
+        const int cv = comp[static_cast<size_t>(e.v)];
+        if (dsu.unite(cu, cv)) {
+            proposed.push_back(e);
+            if (static_cast<int>(proposed.size()) == n_components - 1) {
+                break;
+            }
+        }
+    }
+    if (static_cast<int>(proposed.size()) != n_components - 1) {
+        return false;
+    }
+
+    for (const auto& e : proposed) {
+        add_edge(edges, e.u, e.v, e.weight);
+        added_edges.push_back(e);
+    }
+    return true;
+}
+
 void add_global_mst_edges(std::map<std::uint64_t, edge_value_t>& edges,
                           const std::vector<double>& D,
                           int n,
@@ -299,7 +418,14 @@ SEXP make_edge_matrix(const std::vector<mst_edge_t>& edges) {
 extern "C" SEXP S_create_sknn_graph(SEXP s_X,
                                     SEXP s_k,
                                     SEXP s_connect_components,
-                                    SEXP s_connect_method) {
+                                    SEXP s_connect_method,
+                                    SEXP s_neighbor_method,
+                                    SEXP s_ann_eps,
+                                    SEXP s_knn_index,
+                                    SEXP s_bridge_knn_index,
+                                    SEXP s_bridge_k,
+                                    SEXP s_bridge_k_max,
+                                    SEXP s_bridge_growth) {
     if (!Rf_isMatrix(s_X) || TYPEOF(s_X) != REALSXP) {
         Rf_error("X must be a numeric matrix.");
     }
@@ -321,18 +447,51 @@ extern "C" SEXP S_create_sknn_graph(SEXP s_X,
     }
     const bool connect_components = (Rf_asLogical(s_connect_components) == TRUE);
     const int connect_method = Rf_asInteger(s_connect_method);
-    if (connect_method < 0 || connect_method > 1) {
-        Rf_error("connect_method must be 0 (component.mst) or 1 (global.mst).");
+    if (connect_method < 0 || connect_method > 2) {
+        Rf_error("connect_method must be 0 (component.mst), 1 (global.mst), or 2 (component.mst.ann).");
+    }
+    const int neighbor_method = Rf_asInteger(s_neighbor_method);
+    if (neighbor_method < 0 || neighbor_method > 1) {
+        Rf_error("neighbor_method must be 0 (exact) or 1 (ann).");
+    }
+    const double ann_eps = Rf_asReal(s_ann_eps);
+    if (!std::isfinite(ann_eps) || ann_eps < 0.0) {
+        Rf_error("ann_eps must be a finite non-negative number.");
+    }
+    const int bridge_k = Rf_asInteger(s_bridge_k);
+    const int bridge_k_max = Rf_asInteger(s_bridge_k_max);
+    const double bridge_growth = Rf_asReal(s_bridge_growth);
+    if (bridge_k < 1 || bridge_k >= n) {
+        Rf_error("bridge_k must be a positive integer smaller than nrow(X).");
+    }
+    if (bridge_k_max < bridge_k || bridge_k_max >= n) {
+        Rf_error("bridge_k_max must be an integer between bridge_k and nrow(X) - 1.");
+    }
+    if (!std::isfinite(bridge_growth) || bridge_growth <= 1.0) {
+        Rf_error("bridge_growth must be a finite number greater than 1.");
     }
 
     const double* X = REAL(s_X);
-    std::vector<double> D = pairwise_distances(X, n, p);
-    std::vector<std::vector<int>> nn = knn_sets_from_dist(D, n, k);
+    std::vector<double> D;
+    std::vector<std::vector<int>> nn;
+    if (neighbor_method == 0) {
+        D = pairwise_distances(X, n, p);
+        nn = knn_sets_from_dist(D, n, k);
+    } else {
+        nn = knn_sets_from_precomputed(s_knn_index, n, k);
+    }
+
+    auto get_distance = [&](int i, int j) {
+        if (!D.empty()) {
+            return D[static_cast<size_t>(i) * n + j];
+        }
+        return euclidean_distance(X, n, p, i, j);
+    };
 
     std::map<std::uint64_t, edge_value_t> edges;
     for (int i = 0; i < n; ++i) {
         for (int j : nn[static_cast<size_t>(i)]) {
-            add_edge(edges, i, j, D[static_cast<size_t>(i) * n + j]);
+            add_edge(edges, i, j, get_distance(i, j));
         }
     }
 
@@ -340,11 +499,54 @@ extern "C" SEXP S_create_sknn_graph(SEXP s_X,
     std::vector<int> component_before = components_from_edges(edges, n, n_components_before);
 
     std::vector<mst_edge_t> added_edges;
+    bool bridge_exact_fallback_used = false;
+    std::string bridge_method = "none";
+    int bridge_k_used = NA_INTEGER;
     if (connect_components && n_components_before > 1) {
         if (connect_method == 0) {
+            if (D.empty()) {
+                D = pairwise_distances(X, n, p);
+            }
             add_component_mst_edges(edges, D, n, component_before, n_components_before, added_edges);
-        } else {
+            bridge_method = "exact";
+        } else if (connect_method == 1) {
+            if (D.empty()) {
+                D = pairwise_distances(X, n, p);
+            }
             add_global_mst_edges(edges, D, n, added_edges);
+            bridge_method = "global.mst";
+        } else {
+            std::vector<std::vector<int>> bridge_nn =
+                knn_sets_from_precomputed(s_bridge_knn_index, n, bridge_k_max);
+            int current_k = bridge_k;
+            while (true) {
+                std::map<std::uint64_t, edge_value_t> candidate_edges = edges;
+                std::vector<mst_edge_t> candidate_added;
+                if (try_component_mst_from_bridge_knn(candidate_edges, X, n, p,
+                                                      bridge_nn, current_k,
+                                                      component_before,
+                                                      n_components_before,
+                                                      candidate_added)) {
+                    edges.swap(candidate_edges);
+                    added_edges.swap(candidate_added);
+                    bridge_method = "ann";
+                    bridge_k_used = current_k;
+                    break;
+                }
+                if (current_k >= bridge_k_max) {
+                    if (D.empty()) {
+                        D = pairwise_distances(X, n, p);
+                    }
+                    add_component_mst_edges(edges, D, n, component_before,
+                                            n_components_before, added_edges);
+                    bridge_method = "ann_then_exact";
+                    bridge_exact_fallback_used = true;
+                    bridge_k_used = current_k;
+                    break;
+                }
+                const int grown = static_cast<int>(std::ceil(static_cast<double>(current_k) * bridge_growth));
+                current_k = std::min(bridge_k_max, std::max(current_k + 1, grown));
+            }
         }
     }
 
@@ -366,17 +568,20 @@ extern "C" SEXP S_create_sknn_graph(SEXP s_X,
         });
     }
 
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 18));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 18));
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 26));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 26));
     const char* name_values[] = {
         "adj_list", "weight_list", "edge_matrix", "edge_weight",
         "knn_index", "n_vertices", "n_edges", "k",
         "connect_components", "connect_method", "edge_weight_type",
         "n_components_before", "n_components_after",
         "component_id_before", "component_id_after",
-        "mst_edge_matrix", "mst_edge_weight", "n_mst_edges_added"
+        "mst_edge_matrix", "mst_edge_weight", "n_mst_edges_added",
+        "neighbor_method", "ann_eps",
+        "bridge_method", "bridge_k", "bridge_k_max", "bridge_growth",
+        "bridge_k_used", "bridge_exact_fallback_used"
     };
-    for (int i = 0; i < 18; ++i) {
+    for (int i = 0; i < 26; ++i) {
         SET_STRING_ELT(names, i, Rf_mkChar(name_values[i]));
     }
     Rf_setAttrib(result, R_NamesSymbol, names);
@@ -424,7 +629,8 @@ extern "C" SEXP S_create_sknn_graph(SEXP s_X,
     SET_VECTOR_ELT(result, 6, Rf_ScalarInteger(static_cast<int>(edges.size())));
     SET_VECTOR_ELT(result, 7, Rf_ScalarInteger(k));
     SET_VECTOR_ELT(result, 8, Rf_ScalarLogical(connect_components ? TRUE : FALSE));
-    SET_VECTOR_ELT(result, 9, Rf_mkString(connect_method == 0 ? "component.mst" : "global.mst"));
+    SET_VECTOR_ELT(result, 9, Rf_mkString(connect_method == 0 ? "component.mst" :
+                                          (connect_method == 1 ? "global.mst" : "component.mst.ann")));
     SET_VECTOR_ELT(result, 10, Rf_mkString("distance"));
     SET_VECTOR_ELT(result, 11, Rf_ScalarInteger(n_components_before));
     SET_VECTOR_ELT(result, 12, Rf_ScalarInteger(n_components_after));
@@ -447,6 +653,14 @@ extern "C" SEXP S_create_sknn_graph(SEXP s_X,
     UNPROTECT(1);
 
     SET_VECTOR_ELT(result, 17, Rf_ScalarInteger(static_cast<int>(added_edges.size())));
+    SET_VECTOR_ELT(result, 18, Rf_mkString(neighbor_method == 0 ? "exact" : "ann"));
+    SET_VECTOR_ELT(result, 19, Rf_ScalarReal(ann_eps));
+    SET_VECTOR_ELT(result, 20, Rf_mkString(bridge_method.c_str()));
+    SET_VECTOR_ELT(result, 21, Rf_ScalarInteger(bridge_k));
+    SET_VECTOR_ELT(result, 22, Rf_ScalarInteger(bridge_k_max));
+    SET_VECTOR_ELT(result, 23, Rf_ScalarReal(bridge_growth));
+    SET_VECTOR_ELT(result, 24, Rf_ScalarInteger(bridge_k_used));
+    SET_VECTOR_ELT(result, 25, Rf_ScalarLogical(bridge_exact_fallback_used ? TRUE : FALSE));
 
     UNPROTECT(1);
     return result;

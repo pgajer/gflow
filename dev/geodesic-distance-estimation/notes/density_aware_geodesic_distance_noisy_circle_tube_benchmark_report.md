@@ -7,7 +7,7 @@ img { max-width: 100%; }
 code { white-space: pre-wrap; }
 </style>
 
-Date: 2026-05-04
+Date: 2026-05-05
 
 This report is Deliverable 4 for the density-aware geodesic-distance research track. It turns the noisy-circle latent-tube oracle from a sanity check into a benchmark with density sensitivity, floor/cap/attachment sweeps, distance-family comparisons, and edge/path attribution.
 
@@ -90,19 +90,19 @@ The comparison includes Euclidean distance, latent arc distance, MST, CMST, iKNN
 
 distance | finite | rho.primary | med.err | q90.err | rho.arc | rho.euc
 --- | --- | --- | --- | --- | --- | ---
-iKNN density alpha=0.5 | 1.000 | 0.9805 | 0.02985 | 0.1673 | 0.9772 | 0.9576
-iKNN density alpha=1 capped | 1.000 | 0.9861 | 0.04925 | 0.1723 | 0.9398 | 0.9227
-mKNN base | 1.000 | 0.9507 | 0.07934 | 0.2312 | 0.9977 | 0.9795
-iKNN base | 1.000 | 0.9480 | 0.08202 | 0.2340 | 0.9985 | 0.9822
+iKNN density alpha=0.5 | 1.000 | 0.9766 | 0.02969 | 0.1757 | 0.9794 | 0.9601
+iKNN density alpha=1 capped | 1.000 | 0.9823 | 0.06447 | 0.1896 | 0.9299 | 0.9136
+mKNN base | 1.000 | 0.9508 | 0.07157 | 0.2339 | 0.9971 | 0.9780
+iKNN base | 1.000 | 0.9475 | 0.08272 | 0.2299 | 0.9985 | 0.9817
 latent arc | 1.000 | 0.9407 | 0.09113 | 0.3274 | 1.000 | 0.9783
 Euclidean | 1.000 | 0.9209 | 0.1755 | 0.3525 | 0.9783 | 1.000
 PHATE-like log potential | 1.000 | 0.9082 | 0.1864 | 0.6331 | 0.9742 | 0.9575
-Fermat rooted p=2 on iKNN | 1.000 | 0.9362 | 0.2020 | 1.111 | 0.9613 | 0.9462
+Fermat rooted p=2 on iKNN | 1.000 | 0.9365 | 0.2025 | 1.115 | 0.9617 | 0.9467
 MST | 1.000 | 0.8350 | 0.2562 | 0.5588 | 0.8430 | 0.8347
 CMST | 1.000 | 0.8356 | 0.2563 | 0.5565 | 0.8433 | 0.8348
 diffusion row distance | 1.000 | 0.7474 | 0.3225 | 1.277 | 0.7759 | 0.7833
 
-Best median relative error against the primary tube oracle is achieved by `iKNN density alpha=0.5` with median error 0.02985 and Spearman correlation 0.9805. This table should not be read as a final method ranking. It is a calibration check: the primary tube oracle is still close enough to latent circle geometry that ordinary graph geodesics remain competitive, while density-weighting changes the geometry in the intended direction but needs better graph-topology and tail diagnostics.
+Best median relative error against the primary tube oracle is achieved by `iKNN density alpha=0.5` with median error 0.02969 and Spearman correlation 0.9766. This table should not be read as a final method ranking. It is a calibration check: the primary tube oracle is still close enough to latent circle geometry that ordinary graph geodesics remain competitive, while density-weighting changes the geometry in the intended direction but needs better graph-topology and tail diagnostics.
 
 ## 4. Edge Attribution
 
@@ -116,7 +116,8 @@ from | to | ell | rho | penalty | w | arc | truth | truth/ell
 --- | --- | --- | --- | --- | --- | --- | --- | ---
 19.00 | 20.00 | 0.1081 | 0.002393 | 20.44 | 2.210 | 0.02981 | 3.536 | 32.71
 29.00 | 30.00 | 0.03798 | 0.001361 | 27.11 | 1.030 | 0.0008299 | 1.096 | 28.87
-14.00 | 19.00 | 0.3402 | 0.06948 | 3.794 | 1.291 | 0.2841 | 3.959 | 11.64
+16.00 | 19.00 | 0.2822 | 0.1115 | 2.994 | 0.8449 | 0.1215 | 3.809 | 13.50
+19.00 | 26.00 | 0.3179 | 0.02460 | 6.375 | 2.027 | 0.3039 | 4.002 | 12.59
 27.00 | 28.00 | 0.1492 | 0.03171 | 5.616 | 0.8378 | 0.02845 | 1.544 | 10.35
 104.0 | 111.0 | 0.1029 | 0.007490 | 11.55 | 1.189 | 0.1161 | 1.007 | 9.791
 30.00 | 31.00 | 0.2115 | 0.1064 | 3.065 | 0.6482 | 0.02579 | 1.747 | 8.261
@@ -125,7 +126,6 @@ from | to | ell | rho | penalty | w | arc | truth | truth/ell
 70.00 | 73.00 | 0.1278 | 0.01337 | 8.649 | 1.105 | 0.1397 | 0.9549 | 7.471
 42.00 | 43.00 | 0.06510 | 0.01984 | 7.099 | 0.4622 | 0.04603 | 0.4508 | 6.924
 105.0 | 111.0 | 0.1255 | 0.03000 | 5.774 | 0.7248 | 0.09987 | 0.8464 | 6.743
-107.0 | 111.0 | 0.1145 | 0.03906 | 5.060 | 0.5792 | 0.05573 | 0.7658 | 6.690
 
 These edges are the first audit targets for false-shortcut and tail-dominance analysis. Large truth/Euclidean ratios mean the observed endpoints are geometrically close but the oracle regards travel between them as expensive, usually because the edge crosses radial low-density support.
 
@@ -135,9 +135,9 @@ Four diagnostic pairs were selected: an opposite-angle pair, a Euclidean-close p
 
 label | from | to | arc | euc | truth | base.graph | truth/euc | truth/base | u.from | u.to
 --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
-opposite-angle | 10.00 | 88.00 | 3.142 | 2.046 | 3.158 | 3.074 | 1.544 | 1.027 | 0.03403 | 0.01156
+opposite-angle | 10.00 | 88.00 | 3.142 | 2.046 | 3.158 | 3.047 | 1.544 | 1.037 | 0.03403 | 0.01156
 euclidean-close/high-truth-ratio | 19.00 | 20.00 | 0.02981 | 0.1081 | 3.536 | 0.1081 | 32.71 | 32.71 | -0.2493 | -0.1438
-near-angle/radial-separation | 28.00 | 30.00 | 0.06382 | 0.4511 | 3.398 | 0.4617 | 7.533 | 7.359 | -0.2222 | 0.2245
+near-angle/radial-separation | 28.00 | 30.00 | 0.06382 | 0.4511 | 3.398 | 0.4657 | 7.533 | 7.296 | -0.2222 | 0.2245
 largest-graph-underestimate | 19.00 | 20.00 | 0.02981 | 0.1081 | 3.536 | 0.1081 | 32.71 | 32.71 | -0.2493 | -0.1438
 
 ![Path attribution](../figures/noisy-circle-tube-benchmark/05_path_attribution.png)
@@ -146,14 +146,14 @@ Path summaries:
 
 label | from | to | truth | graph | edges | base.len | weighted.len | min.rho | max.penalty
 --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
-opposite-angle | 10.00 | 88.00 | 3.158 | iKNN base | 19.00 | 3.074 | 3.074 | NA | NA
-opposite-angle | 10.00 | 88.00 | 3.158 | iKNN density alpha=0.5 | 18.00 | 3.154 | 3.210 | 0.8153 | 1.107
+opposite-angle | 10.00 | 88.00 | 3.158 | iKNN base | 16.00 | 3.047 | 3.047 | NA | NA
+opposite-angle | 10.00 | 88.00 | 3.158 | iKNN density alpha=0.5 | 19.00 | 3.173 | 3.220 | 0.8151 | 1.108
 euclidean-close/high-truth-ratio | 19.00 | 20.00 | 3.536 | iKNN base | 1.000 | 0.1081 | 0.1081 | NA | NA
-euclidean-close/high-truth-ratio | 19.00 | 20.00 | 3.536 | iKNN density alpha=0.5 | 3.000 | 0.7145 | 1.749 | 0.06948 | 3.794
-near-angle/radial-separation | 28.00 | 30.00 | 3.398 | iKNN base | 2.000 | 0.4617 | 0.4617 | NA | NA
-near-angle/radial-separation | 28.00 | 30.00 | 3.398 | iKNN density alpha=0.5 | 2.000 | 0.4617 | 1.227 | 0.1064 | 3.065
+euclidean-close/high-truth-ratio | 19.00 | 20.00 | 3.536 | iKNN density alpha=0.5 | 2.000 | 0.4924 | 1.140 | 0.1115 | 2.994
+near-angle/radial-separation | 28.00 | 30.00 | 3.398 | iKNN base | 3.000 | 0.4657 | 0.4657 | NA | NA
+near-angle/radial-separation | 28.00 | 30.00 | 3.398 | iKNN density alpha=0.5 | 3.000 | 0.4771 | 1.457 | 0.07948 | 3.547
 largest-graph-underestimate | 19.00 | 20.00 | 3.536 | iKNN base | 1.000 | 0.1081 | 0.1081 | NA | NA
-largest-graph-underestimate | 19.00 | 20.00 | 3.536 | iKNN density alpha=0.5 | 3.000 | 0.7145 | 1.749 | 0.06948 | 3.794
+largest-graph-underestimate | 19.00 | 20.00 | 3.536 | iKNN density alpha=0.5 | 2.000 | 0.4924 | 1.140 | 0.1115 | 2.994
 
 The path panels show where density-aware edge weights alter the cheapest route through the sample graph. In the present graph, topology still matters more than edge weighting: if an unsupported local edge is admitted, density weighting can penalize it only when the midpoint density summary sees the low-density crossing.
 
@@ -178,3 +178,4 @@ The path panels show where density-aware edge weights alter the cheapest route t
 3. Run a larger size/seed sweep with \(\alpha\in\{0,0.25,0.5,0.75,1\}\), but treat \(\alpha=1\) as a stress setting unless robust caps are enabled.
 
 4. Add nonuniform angular density, gaps, nearby non-touching arcs, and outliers before moving to compositional microbiome-like data.
+
