@@ -1,0 +1,387 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  citecolor=blue!55!black,
+  urlcolor=blue!55!black
+}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\E}{\mathcal{E}}
+\newcommand{\one}{\mathbf{1}}
+
+\title{PHATE, Mutual kNN, and Intersection kNN Graph Constructions}
+\author{gflow development note}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note gives a self-contained description of three graph constructions on a finite data set:
+the PHATE adaptive affinity graph, the mutual k-nearest-neighbor graph, and the intersection
+k-nearest-neighbor graph.  The main point is that the PHATE graph with additive symmetrization
+has an adaptive-radius edge condition
+\[
+  d_{ij} \le r_\tau \max(\sigma_i,\sigma_j),
+\]
+where \(r_\tau=(-\log \tau)^{1/a}\).  In contrast, the mutual kNN graph has the smaller
+radius condition
+\[
+  d_{ij}\le \min(\sigma_i,\sigma_j)
+\]
+when there are no nearest-neighbor ties.  The intersection kNN graph is not a radius graph:
+it connects points whose k-neighbor sets have nonempty intersection.  Thus mutual kNN is
+naturally contained in the PHATE support under matching conventions, but PHATE and intersection
+kNN are not generally nested.  Figures illustrate these distinctions on roots of unity, a
+larger uniform circle, and noisy circles constructed with a sample Fermat distance.
+\end{abstract}
+
+\section{Setup and conventions}
+
+Let
+\[
+  X=\{x_1,\ldots,x_n\}\subset \R^p
+\]
+be a finite data set, and let \(D=(d_{ij})\) be a symmetric nonnegative distance matrix on
+\(X\), with \(d_{ii}=0\).  In Euclidean examples,
+\[
+  d_{ij}=\lVert x_i-x_j\rVert_2.
+\]
+In the noisy-circle examples below, \(D\) is instead a sample Fermat distance computed from
+the observed points.
+
+For a fixed integer \(k\in\{1,\ldots,n-1\}\), define \(N_k(i)\) to be the set of the \(k\)
+nearest neighbors of \(x_i\), excluding \(x_i\) itself.  Unless otherwise noted, ties are
+resolved by vertex index.  This tie convention is only needed for finite examples with exact
+symmetry; the formulae below are cleanest when there are no ties.
+
+Define the local k-neighbor radius
+\[
+  \sigma_i=d_{i,(k)},
+\]
+where \(d_{i,(k)}\) is the distance from \(x_i\) to its \(k\)-th non-self nearest neighbor.
+Equivalently, in the no-tie case,
+\[
+  j\in N_k(i)
+  \quad\Longleftrightarrow\quad
+  d_{ij}\le \sigma_i.
+\]
+
+\section{Mutual kNN graph}
+
+The mutual k-nearest-neighbor graph, denoted \(G_{\mathrm{mKNN}}=(V,E_{\mathrm{mKNN}})\),
+has vertex set \(V=\{1,\ldots,n\}\).  An undirected edge \(\{i,j\}\), \(i\ne j\), is present
+if and only if
+\[
+  j\in N_k(i)
+  \quad\text{and}\quad
+  i\in N_k(j).
+\]
+When there are no ties, this is equivalent to
+\[
+  d_{ij}\le \sigma_i
+  \quad\text{and}\quad
+  d_{ij}\le \sigma_j,
+\]
+or
+\[
+  d_{ij}\le \min(\sigma_i,\sigma_j).
+\]
+Thus mKNN is a conservative reciprocal-neighborhood graph.  It keeps edges only when both
+endpoints regard each other as locally close.
+
+\section{Intersection kNN graph}
+
+The intersection k-nearest-neighbor graph, denoted \(G_{\mathrm{ikNN}}=(V,E_{\mathrm{ikNN}})\),
+has an edge \(\{i,j\}\) if the two k-neighborhoods share at least one point:
+\[
+  \{i,j\}\in E_{\mathrm{ikNN}}
+  \quad\Longleftrightarrow\quad
+  N_k(i)\cap N_k(j)\ne \varnothing.
+\]
+This is not a direct radius condition on \(d_{ij}\).  Two points can be connected because
+they both regard a third point as nearby, even if \(i\) and \(j\) are not mutually close.
+Consequently, \(G_{\mathrm{ikNN}}\) can be much denser than mKNN or PHATE, but it need not
+contain PHATE in every finite configuration.
+
+In gflow's native ikNN implementation, the graph also carries an edge weight.  For an ikNN
+edge \(\{i,j\}\), the stored native length is an intersection-mediated detour length of the
+form
+\[
+  \ell_{ij}^{\mathrm{ikNN}}
+  =
+  \min_{c\in N_k(i)\cap N_k(j)}
+  \{d_{ic}+d_{jc}\}.
+\]
+This is a length, not a similarity, but it is not usually the direct chord length \(d_{ij}\).
+
+\section{PHATE adaptive affinity graph}
+
+PHATE constructs a directed adaptive affinity before symmetrization.  For each point \(i\),
+let
+\[
+  \sigma_i=b\,d_{i,(k)}
+\]
+where \(b>0\) is a bandwidth scale.  In the examples below \(b=1\).  For decay parameter
+\(a>0\), define
+\[
+  A_{ij}
+  =
+  \exp\left[-\left(\frac{d_{ij}}{\sigma_i}\right)^a\right],
+  \qquad
+  A_{ii}=1.
+\]
+PHATE then thresholds small directed affinities:
+\[
+  A_{ij}=0
+  \quad\text{if}\quad
+  A_{ij}<\tau,
+\]
+where \(\tau=10^{-4}\) is the default threshold used in these examples.
+
+The directed threshold condition is
+\[
+  \exp\left[-\left(\frac{d_{ij}}{\sigma_i}\right)^a\right]\ge \tau.
+\]
+Taking logarithms gives
+\[
+  d_{ij}\le r_\tau \sigma_i,
+  \qquad
+  r_\tau=(-\log\tau)^{1/a}.
+\]
+For \(a=40\) and \(\tau=10^{-4}\),
+\[
+  r_\tau=(-\log 10^{-4})^{1/40}\approx 1.057.
+\]
+So in one directed row, PHATE keeps nearly the same radius as the k-nearest-neighbor
+radius when \(a=40\).  Smaller \(a\) produces a larger effective threshold radius.
+
+PHATE then symmetrizes the directed kernel.  With additive symmetrization,
+\[
+  K_{ij}=\frac{A_{ij}+A_{ji}}{2}.
+\]
+The undirected PHATE support is
+\[
+  E_{\mathrm{PHATE}}
+  =
+  \{\{i,j\}: i<j,\ K_{ij}>0\}.
+\]
+Because \(K_{ij}>0\) if and only if at least one directed affinity survives thresholding,
+\[
+  \{i,j\}\in E_{\mathrm{PHATE}}
+  \quad\Longleftrightarrow\quad
+  d_{ij}\le r_\tau\sigma_i
+  \quad\text{or}\quad
+  d_{ij}\le r_\tau\sigma_j.
+\]
+Equivalently,
+\[
+  \{i,j\}\in E_{\mathrm{PHATE}}
+  \quad\Longleftrightarrow\quad
+  d_{ij}\le r_\tau\max(\sigma_i,\sigma_j).
+\]
+If both directed affinities survive, \(K_{ij}\) is their average.  If only one direction
+survives, \(K_{ij}\) is half of the surviving directed affinity.
+
+Finally, PHATE row-normalizes \(K\) to obtain a Markov diffusion operator
+\[
+  P_{ij}=\frac{K_{ij}}{\sum_{\ell=1}^n K_{i\ell}}.
+\]
+The graph support discussed in this note is the nonzero off-diagonal support of \(K\), not
+the row-normalized matrix \(P\).
+
+\section{Relations among the graph supports}
+
+Assume that all three constructions use the same distance matrix \(D\), the same \(k\),
+bandwidth scale \(b=1\), additive PHATE symmetrization, and no nearest-neighbor ties.
+Then
+\[
+  \{i,j\}\in E_{\mathrm{mKNN}}
+  \quad\Longleftrightarrow\quad
+  d_{ij}\le \min(\sigma_i,\sigma_j).
+\]
+Since
+\[
+  \min(\sigma_i,\sigma_j)
+  \le
+  r_\tau \max(\sigma_i,\sigma_j)
+\]
+for \(r_\tau\ge 1\), we have
+\[
+  E_{\mathrm{mKNN}}\subseteq E_{\mathrm{PHATE}}.
+\]
+This inclusion is the precise sense in which PHATE is less restrictive than mKNN.
+
+However, \(E_{\mathrm{ikNN}}\) is not governed by a direct radius threshold.  It is governed
+by the set condition
+\[
+  N_k(i)\cap N_k(j)\ne\varnothing.
+\]
+Therefore one should not write a general nesting relation such as
+\[
+  E_{\mathrm{PHATE}}\subseteq E_{\mathrm{ikNN}}
+  \quad\text{or}\quad
+  E_{\mathrm{ikNN}}\subseteq E_{\mathrm{PHATE}}.
+\]
+In many sampled manifolds, ikNN has more edges than PHATE because many point pairs share
+neighbors.  But this is an empirical edge-count tendency, not a theorem of set inclusion.
+
+\section{Root-of-unity examples}
+
+This section shows deterministic finite examples on the unit circle.  The points are
+\[
+  x_m=(\cos(2\pi m/n),\sin(2\pi m/n)),
+  \qquad
+  m=0,\ldots,n-1.
+\]
+For \(n=3,4,5\), we use \(k=2\), \(a=40\), and \(\tau=10^{-4}\).  For \(n=100\), we use
+\(k=10\).  All graph constructions use Euclidean distances.
+
+\subsection{Three roots of unity}
+
+For \(n=3\) and \(k=2\), every point has the other two points as its two nearest neighbors.
+Therefore
+\[
+  N_2(i)=\{1,2,3\}\setminus\{i\}.
+\]
+Every pair is mutually 2-nearest, so mKNN is the complete graph \(K_3\).  Since every
+distance equals \(\sigma_i\), every pair also satisfies
+\[
+  d_{ij}\le r_\tau \sigma_i
+\]
+in both directions, so PHATE is also \(K_3\).  Finally, any two distinct vertices have
+neighbor sets with nonempty intersection, so ikNN is \(K_3\) as well.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/roots_n3_k2.pdf}
+  \caption{Three roots of unity with \(k=2\).  All three constructions produce the complete graph.}
+\end{figure}
+
+\subsection{Four and five roots of unity}
+
+For \(n=4\) and \(k=2\), mKNN and PHATE both recover the cycle edges.  The ikNN graph,
+however, connects points with common nearest neighbors; in the square this produces the
+two diagonals.  This example is useful because it shows that ikNN is not simply a superset
+of PHATE.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/roots_n4_k2.pdf}
+  \caption{Four roots of unity with \(k=2\).  PHATE and mKNN produce the cycle, while ikNN connects opposite vertices through shared nearest neighbors.}
+\end{figure}
+
+For \(n=5\) and \(k=2\), PHATE and mKNN again recover the adjacent cycle.  The ikNN graph
+connects points at graph distance two around the circle, forming a pentagram-like support.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/roots_n5_k2.pdf}
+  \caption{Five roots of unity with \(k=2\).  PHATE and mKNN keep adjacent circle edges; ikNN connects pairs that share a nearest neighbor.}
+\end{figure}
+
+\subsection{One hundred roots of unity}
+
+For \(n=100\) and \(k=10\), PHATE remains close to a local circular band because
+\(r_\tau\approx1.057\).  mKNN is the reciprocal-neighborhood graph.  ikNN is visibly
+denser because many pairs share at least one of their ten nearest neighbors.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/roots_n100_k10.pdf}
+  \caption{One hundred roots of unity with \(k=10\).  ikNN is denser because it is based on shared neighborhoods rather than reciprocal or adaptive-radius proximity.}
+\end{figure}
+
+\section{Noisy circle with sample Fermat distance}
+
+The term \emph{Fermat distance} is standard in the density-aware metric learning literature.
+For a sample \(X\), a common discrete version is a shortest-path metric whose edge costs are
+powers of Euclidean lengths.  In the examples here, we first build a base kNN graph on the
+observed noisy circle and assign each base edge \(\{i,j\}\) the cost
+\[
+  c_{ij}=\lVert x_i-x_j\rVert_2^\alpha,
+\]
+with \(\alpha=2\).  The sample Fermat distance is then
+\[
+  d_F(i,j)=\min_{\gamma:i\leadsto j}\sum_{\{u,v\}\in\gamma} c_{uv}.
+\]
+This is a graph-based sample version of Fermat-type distances: when \(\alpha>1\), long
+single jumps are penalized more heavily, and shortest paths tend to follow chains of nearby
+sample points.  We then construct PHATE, mKNN, and ikNN graphs using \(d_F\) as the input
+distance matrix.  The figures are drawn in the original noisy Euclidean coordinates so that
+the supports can be inspected visually.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/noisy_circle_fermat_n50_k8.pdf}
+  \caption{Noisy circle, \(n=50\), graph \(k=8\), sample Fermat distance with \(\alpha=2\).}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/noisy_circle_fermat_n100_k8.pdf}
+  \caption{Noisy circle, \(n=100\), graph \(k=8\), sample Fermat distance with \(\alpha=2\).}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/noisy_circle_fermat_n150_k8.pdf}
+  \caption{Noisy circle, \(n=150\), graph \(k=8\), sample Fermat distance with \(\alpha=2\).}
+\end{figure}
+
+\section{Summary}
+
+The three graph constructions answer different local questions:
+\begin{itemize}[leftmargin=2em]
+  \item mKNN asks whether two points are reciprocal nearest neighbors:
+  \[
+    d_{ij}\le\min(\sigma_i,\sigma_j).
+  \]
+  \item PHATE asks whether at least one endpoint sees the other within its adaptive
+  threshold radius:
+  \[
+    d_{ij}\le r_\tau\max(\sigma_i,\sigma_j).
+  \]
+  \item ikNN asks whether two points share at least one neighbor:
+  \[
+    N_k(i)\cap N_k(j)\ne\varnothing.
+  \]
+\end{itemize}
+Thus mKNN is contained in PHATE under the stated assumptions, while ikNN is not generally
+nested with PHATE.  In many data examples ikNN is denser, but the roots-of-unity examples
+show that the relationship is not merely an edge-count hierarchy.  This distinction matters
+when the goal is geodesic reconstruction: PHATE support may improve local geometric
+connectivity even when its support is sparser than ikNN, while ikNN may introduce
+shared-neighborhood edges that are not direct adaptive-radius edges.
+
+\section*{References}
+
+\begin{enumerate}[leftmargin=2em]
+  \item K. R. Moon, D. van Dijk, Z. Wang, S. Gigante, D. B. Burkhardt, W. S. Chen,
+  K. Yim, A. van den Elzen, M. J. Hirn, R. R. Coifman, N. B. Ivanova, G. Wolf,
+  and S. Krishnaswamy. ``Visualizing structure and transitions in high-dimensional
+  biological data.'' \emph{Nature Biotechnology}, 2019.  PHATE introduced the
+  adaptive affinity and diffusion-potential embedding pipeline.
+  \item D. Groisman, M. Jonckheere, and F. Sapienza. ``Nonhomogeneous Euclidean
+  first-passage percolation and distance learning.'' arXiv:1810.09398.  This work
+  uses the name Fermat distance for the continuum limit of sample shortest-path
+  distances with powered edge costs.
+  \item N. García Trillos, M. Gerlach, M. Hein, and D. Slepčev. ``Fermat Distances:
+  Metric Approximation, Spectral Convergence, and Clustering Algorithms.''
+  \emph{Journal of Machine Learning Research}, 2024.  This paper studies discrete
+  sample Fermat distances and related graph Laplacians.
+\end{enumerate}
+
+\end{document}
