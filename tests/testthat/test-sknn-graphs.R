@@ -181,6 +181,119 @@ test_that("global.mst unions sKNN with the full Euclidean MST", {
 })
 
 
+test_that("local geometric pruning removes redundant long sKNN edges", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0),
+    c(3, 0)
+  )
+
+  raw <- create.sknn.graph(X, k = 2)
+  pruned <- create.sknn.graph(
+    X,
+    k = 2,
+    prune.edges = TRUE,
+    prune.tau = 1.01,
+    with.pruned.edge.stats = TRUE
+  )
+
+  expect_equal(.sknn_edge_keys(raw$edge_matrix), c("1-2", "1-3", "2-3", "2-4", "3-4"))
+  expect_equal(.sknn_edge_keys(pruned$edge_matrix), c("1-2", "2-3", "3-4"))
+  expect_equal(pruned$n_edges_before_pruning, 5L)
+  expect_equal(pruned$n_edges_after_pruning, 3L)
+  expect_equal(pruned$n_pruned_edges, 2L)
+  expect_equal(.sknn_edge_keys(as.matrix(pruned$pruned_edge_stats[, c("u", "v")])),
+               c("1-3", "2-4"))
+  expect_equal(pruned$pruned_edge_stats$edge_length, c(2, 2), tolerance = 1e-12)
+  expect_equal(pruned$pruned_edge_stats$alt_path_length, c(2, 2), tolerance = 1e-12)
+  expect_equal(pruned$pruned_edge_stats$path_edge_ratio, c(1, 1), tolerance = 1e-12)
+  expect_equal(pruned$n_components_before, raw$n_components_before)
+  expect_equal(pruned$n_components_after, raw$n_components_after)
+})
+
+
+test_that("local geometric pruning is opt-in and can omit edge stats", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0)
+  )
+
+  raw <- create.sknn.graph(X, k = 2)
+  pruned <- create.sknn.graph(X, k = 2, prune.edges = TRUE, prune.tau = 1.01)
+
+  expect_equal(raw$n_pruned_edges, 0L)
+  expect_false(raw$prune_edges)
+  expect_equal(raw$n_edges_before_pruning, raw$n_edges)
+  expect_equal(raw$n_edges_after_pruning, raw$n_edges)
+  expect_true(is.data.frame(raw$pruned_edge_stats))
+  expect_equal(nrow(raw$pruned_edge_stats), 0L)
+
+  expect_true(pruned$prune_edges)
+  expect_equal(pruned$n_pruned_edges, 1L)
+  expect_equal(nrow(pruned$pruned_edge_stats), 0L)
+  expect_equal(.sknn_edge_keys(pruned$edge_matrix), c("1-2", "2-3"))
+})
+
+
+test_that("local geometric pruning preserves components before MST repair", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0),
+    c(10, 0),
+    c(11, 0),
+    c(12, 0)
+  )
+
+  pruned <- create.sknn.graph(X, k = 2, prune.edges = TRUE, prune.tau = 1.01)
+  connected <- create.sknn.graph(
+    X,
+    k = 2,
+    prune.edges = TRUE,
+    prune.tau = 1.01,
+    connect.components = TRUE
+  )
+
+  expect_equal(pruned$n_components_before, 2L)
+  expect_equal(pruned$n_components_after, 2L)
+  expect_equal(pruned$n_pruned_edges, 2L)
+  expect_equal(.sknn_edge_keys(pruned$edge_matrix), c("1-2", "2-3", "4-5", "5-6"))
+
+  expect_equal(connected$n_components_before, 2L)
+  expect_equal(connected$n_components_after, 1L)
+  expect_equal(connected$n_mst_edges_added, 1L)
+  expect_equal(.sknn_edge_keys(connected$mst_edge_matrix), "3-4")
+  expect_equal(.sknn_edge_keys(connected$edge_matrix),
+               c("1-2", "2-3", "3-4", "4-5", "5-6"))
+})
+
+
+test_that("local geometric pruning works with ANN neighbor backend", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0),
+    c(3, 0),
+    c(4, 0)
+  )
+
+  exact <- create.sknn.graph(X, k = 2, prune.edges = TRUE, prune.tau = 1.01)
+  ann <- create.sknn.graph(
+    X,
+    k = 2,
+    prune.edges = TRUE,
+    prune.tau = 1.01,
+    neighbor.method = "ann"
+  )
+
+  expect_equal(ann$neighbor_method, "ann")
+  expect_equal(.sknn_edge_keys(ann$edge_matrix), .sknn_edge_keys(exact$edge_matrix))
+  expect_equal(ann$n_pruned_edges, exact$n_pruned_edges)
+})
+
+
 test_that("create.sknn.graph validates inputs", {
   X <- matrix(1:6, ncol = 2)
 
@@ -200,5 +313,13 @@ test_that("create.sknn.graph validates inputs", {
                "bridge.k.max")
   expect_error(create.sknn.graph(X, k = 1, bridge.growth = 1),
                "bridge.growth")
+  expect_error(create.sknn.graph(X, k = 1, prune.edges = NA),
+               "prune.edges")
+  expect_error(create.sknn.graph(X, k = 1, with.pruned.edge.stats = NA),
+               "with.pruned.edge.stats")
+  expect_error(create.sknn.graph(X, k = 1, prune.tau = 1),
+               "prune.tau")
+  expect_error(create.sknn.graph(X, k = 1, prune.local.k = 0),
+               "prune.local.k")
   expect_error(create.sknn.graph(c("a", "b"), k = 1), "matrix or data frame")
 })
