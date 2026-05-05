@@ -9,6 +9,18 @@
 #'   and each column represents a feature/dimension.
 #' @param k A positive integer specifying the number of nearest neighbors to
 #'   consider. Must be at least 2.
+#' @param connect.components Logical scalar. If `TRUE`, add MST bridge edges
+#'   so the final graph is connected whenever possible.
+#' @param connect.method Character scalar. `"component.mst"` adds exact shortest
+#'   inter-component bridges. `"component.mst.ann"` tries sparse ANN bridge
+#'   candidates before automatic exact fallback. `"global.mst"` unions the graph
+#'   with the full Euclidean MST.
+#' @param bridge.k Integer scalar or `NULL`. Initial ANN bridge neighborhood
+#'   size for `connect.method = "component.mst.ann"`.
+#' @param bridge.k.max Integer scalar or `NULL`. Maximum ANN bridge neighborhood
+#'   size before exact fallback.
+#' @param bridge.growth Numeric scalar greater than 1. Multiplicative growth
+#'   factor for ANN bridge neighborhoods.
 #'
 #' @return A list with class "mknn_graph" containing:
 #'   \describe{
@@ -55,7 +67,13 @@
 #' \code{\link{summary.mknn_graphs}} for summarizing graph properties
 #'
 #' @export
-create.mknn.graph <- function(X, k) {
+create.mknn.graph <- function(X,
+                              k,
+                              connect.components = FALSE,
+                              connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                              bridge.k = NULL,
+                              bridge.k.max = NULL,
+                              bridge.growth = 2) {
   # Input validation
   if (!is.numeric(k) || length(k) != 1) {
     stop("'k' must be a single numeric value.", call. = FALSE)
@@ -96,6 +114,12 @@ create.mknn.graph <- function(X, k) {
     stop(sprintf("Number of data points (%d) must be greater than k (%d).",
                  n, k), call. = FALSE)
   }
+  if (!is.logical(connect.components) || length(connect.components) != 1L ||
+      is.na(connect.components)) {
+    stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
+  }
+  connect.method <- match.arg(connect.method)
+  bridge.controls <- .normalize.bridge.controls(n, k, bridge.k, bridge.k.max, bridge.growth)
 
   # Call C++ implementation
   # Note: k+1 because the C++ code includes the point itself in the kNN search
@@ -103,10 +127,39 @@ create.mknn.graph <- function(X, k) {
                     X,
                     as.integer(k + 1))
 
+  bridge <- .augment.graph.with.component.mst(
+    X = X,
+    adj.list = result$adj_list,
+    weight.list = result$weight_list,
+    k = k,
+    connect.components = connect.components,
+    connect.method = connect.method,
+    bridge.k = bridge.controls$bridge.k,
+    bridge.k.max = bridge.controls$bridge.k.max,
+    bridge.growth = bridge.controls$bridge.growth
+  )
+  result$adj_list <- bridge$adj_list
+  result$weight_list <- bridge$weight_list
+
   # Add metadata to result
   result$n_vertices <- n
   result$n_edges <- sum(sapply(result$adj_list, length)) / 2  # Divide by 2 for undirected graph
   result$k <- k
+  result$n_components_before <- bridge$n_components_before
+  result$n_components_after <- bridge$n_components_after
+  result$component_id_before <- bridge$component_id_before
+  result$component_id_after <- bridge$component_id_after
+  result$mst_edge_matrix <- bridge$mst_edge_matrix
+  result$mst_edge_weight <- bridge$mst_edge_weight
+  result$n_mst_edges_added <- bridge$n_mst_edges_added
+  result$connect_components <- bridge$connect_components
+  result$connect_method <- bridge$connect_method
+  result$bridge_method <- bridge$bridge_method
+  result$bridge_k <- bridge$bridge_k
+  result$bridge_k_max <- bridge$bridge_k_max
+  result$bridge_growth <- bridge$bridge_growth
+  result$bridge_k_used <- bridge$bridge_k_used
+  result$bridge_exact_fallback_used <- bridge$bridge_exact_fallback_used
 
   # Set class
   class(result) <- c("mknn_graph", "list")
