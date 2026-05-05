@@ -45,6 +45,11 @@
     })
 }
 
+.dgh_closed_knn_sets_from_dist <- function(D, k) {
+    nn <- .dgh_knn_sets_from_dist(D, k)
+    Map(c, seq_along(nn), nn)
+}
+
 .dgh_edge_matrix_to_lists <- function(edge.matrix, weights, n.vertices) {
     adj.list <- vector("list", n.vertices)
     weight.list <- vector("list", n.vertices)
@@ -106,7 +111,7 @@
     D <- .dgh_as_distance_matrix(D)
     n <- nrow(D)
     k <- .dgh_validate_k(k, n)
-    nn <- .dgh_knn_sets_from_dist(D, k)
+    nn <- .dgh_closed_knn_sets_from_dist(D, k)
 
     edges <- list()
     m <- 0L
@@ -129,7 +134,7 @@
     D <- .dgh_as_distance_matrix(D)
     n <- nrow(D)
     k <- .dgh_validate_k(k, n)
-    nn <- .dgh_knn_sets_from_dist(D, k)
+    nn <- .dgh_closed_knn_sets_from_dist(D, k)
 
     edges <- list()
     direct.distance <- numeric()
@@ -158,7 +163,7 @@
         k,
         extra = list(
             knn.sets = nn,
-            weight.type = "shared_neighbor_detour",
+            weight.type = "closed_shared_neighbor_detour",
             direct.distance = direct.distance,
             intersection.size = intersection.size
         )
