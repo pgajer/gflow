@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Density-Aware Geodesic Distance Noisy-Circle / Tube Benchmark Report</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <script
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js"
+  type="text/javascript"></script>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Density-Aware Geodesic Distance Noisy-Circle / Tube
+Benchmark Report</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a
+href="#density-aware-geodesic-distance-noisy-circle-tube-benchmark-report"
+id="toc-density-aware-geodesic-distance-noisy-circle-tube-benchmark-report">Density-Aware
+Geodesic Distance Noisy-Circle / Tube Benchmark Report</a>
+<ul>
+<li><a href="#benchmark-setup" id="toc-benchmark-setup">1. Benchmark
+Setup</a></li>
+<li><a href="#oracle-sensitivity" id="toc-oracle-sensitivity">2. Oracle
+Sensitivity</a>
+<ul>
+<li><a href="#floor-and-cap-sweep" id="toc-floor-and-cap-sweep">Floor
+And Cap Sweep</a></li>
+<li><a href="#attachment-sweep" id="toc-attachment-sweep">Attachment
+Sweep</a></li>
+</ul></li>
+<li><a href="#distance-family-comparison"
+id="toc-distance-family-comparison">3. Distance-Family
+Comparison</a></li>
+<li><a href="#edge-attribution" id="toc-edge-attribution">4. Edge
+Attribution</a></li>
+<li><a href="#path-attribution" id="toc-path-attribution">5. Path
+Attribution</a></li>
+<li><a href="#interpretation" id="toc-interpretation">6.
+Interpretation</a></li>
+<li><a href="#next-implementation-steps"
+id="toc-next-implementation-steps">7. Next Implementation Steps</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1
+id="density-aware-geodesic-distance-noisy-circle-tube-benchmark-report">Density-Aware
+Geodesic Distance Noisy-Circle / Tube Benchmark Report</h1>
+<style>
+table { font-size: 10px; width: 100%; }
+th, td { padding: 2px 4px; }
+img { max-width: 100%; }
+code { white-space: pre-wrap; }
+</style>
+<p>Date: 2026-05-04</p>
+<p>This report is Deliverable 4 for the density-aware geodesic-distance
+research track. It turns the noisy-circle latent-tube oracle from a
+sanity check into a benchmark with density sensitivity,
+floor/cap/attachment sweeps, distance-family comparisons, and edge/path
+attribution.</p>
+<h2 id="benchmark-setup">1. Benchmark Setup</h2>
+<p>The observed data are generated as a noisy circle with radius 1,
+radial noise scale <span class="math inline">\(\sigma=0.08\)</span>,
+sample size <span class="math inline">\(n=160\)</span>, and seed
+<code>4101</code>. Each sample has latent tube coordinates <span
+class="math inline">\((\theta_i,u_i)\)</span>, where</p>
+<p><span class="math display">\[
+u_i = \|x_i\| - r.
+\]</span></p>
+<p>The density-aware oracle lives on a structured periodic grid in <span
+class="math inline">\((\theta,u)\)</span>. For an oracle edge <span
+class="math inline">\((a,b)\)</span>, the baseline weight is</p>
+<p><span class="math display">\[
+w_{ab}=\|z_a-z_b\|\,\min\{\rho(m_{ab})^{-\alpha}, c_{\max}\},
+\]</span></p>
+<p>where <span class="math inline">\(m_{ab}\)</span> is the edge
+midpoint in radial coordinate, <span
+class="math inline">\(\rho(u)=\max\{\exp[-(u/\sigma)^2],\rho_{\min}\}\)</span>,
+and <span class="math inline">\(c_{\max}=\infty\)</span> unless a
+penalty cap is specified.</p>
+<p>Primary truth for method comparison is the tube oracle with <span
+class="math inline">\(\alpha=0.5\)</span>, <span
+class="math inline">\(\rho_{\min}=1e-04\)</span>, no penalty cap, and
+<code>attach_extra = 1</code>.</p>
+<figure>
+<img
+src="../figures/noisy-circle-tube-benchmark/01_geometry_density.png"
+alt="Observed geometry and latent tube coordinates" />
+<figcaption aria-hidden="true">Observed geometry and latent tube
+coordinates</figcaption>
+</figure>
+<h2 id="oracle-sensitivity">2. Oracle Sensitivity</h2>
+<p>The first question is whether the oracle itself is stable enough to
+serve as truth. The table below varies <span
+class="math inline">\(\alpha\)</span> while holding the density floor
+and attachment rule fixed.</p>
+<table>
+<thead>
+<tr>
+<th>alpha</th>
+<th>median</th>
+<th>q90</th>
+<th>max</th>
+<th>rho.arc</th>
+<th>rho.euc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1.430</td>
+<td>2.315</td>
+<td>2.749</td>
+<td>0.9943</td>
+<td>0.9927</td>
+</tr>
+<tr>
+<td>0.2500</td>
+<td>1.633</td>
+<td>2.903</td>
+<td>3.784</td>
+<td>0.9916</td>
+<td>0.9712</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>1.737</td>
+<td>3.032</td>
+<td>7.335</td>
+<td>0.9407</td>
+<td>0.9209</td>
+</tr>
+<tr>
+<td>0.7500</td>
+<td>1.858</td>
+<td>3.230</td>
+<td>33.62</td>
+<td>0.8562</td>
+<td>0.8400</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>1.959</td>
+<td>4.721</td>
+<td>236.4</td>
+<td>0.7589</td>
+<td>0.7467</td>
+</tr>
+</tbody>
+</table>
+<p>At <span class="math inline">\(\alpha=0.5\)</span>, median oracle
+distance is 1.737 and Spearman correlation with latent arc distance is
+0.9407. At <span class="math inline">\(\alpha=1\)</span>, maximum oracle
+distance rises to 236.4 and rank agreement with latent arc drops to
+0.7589. This repeats the earlier warning: <span
+class="math inline">\(\alpha=1\)</span> is tail dominated unless floors,
+caps, or attachment rules are handled carefully.</p>
+<figure>
+<img
+src="../figures/noisy-circle-tube-benchmark/02_oracle_sensitivity.png"
+alt="Oracle sensitivity to alpha, floors/caps, and attachment" />
+<figcaption aria-hidden="true">Oracle sensitivity to alpha, floors/caps,
+and attachment</figcaption>
+</figure>
+<h3 id="floor-and-cap-sweep">Floor And Cap Sweep</h3>
+<p>The floor/cap sweep below focuses on <span
+class="math inline">\(\alpha=0.5\)</span> and <span
+class="math inline">\(\alpha=1\)</span>. Rows are scored against the
+primary <span class="math inline">\(\alpha=0.5\)</span> oracle, not
+against their own variant, so high relative error for <span
+class="math inline">\(\alpha=1\)</span> means that the strong-density
+truth is a different object.</p>
+<table>
+<thead>
+<tr>
+<th>alpha</th>
+<th>floor</th>
+<th>cap</th>
+<th>median</th>
+<th>q90</th>
+<th>max</th>
+<th>rho.primary</th>
+<th>med.err</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.5000</td>
+<td>0.0001000</td>
+<td>Inf</td>
+<td>1.737</td>
+<td>3.032</td>
+<td>7.335</td>
+<td>1.000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.0001000</td>
+<td>Inf</td>
+<td>1.959</td>
+<td>4.721</td>
+<td>236.4</td>
+<td>0.9029</td>
+<td>0.9587</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.001000</td>
+<td>Inf</td>
+<td>1.736</td>
+<td>3.027</td>
+<td>6.017</td>
+<td>0.9995</td>
+<td>0.01859</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.001000</td>
+<td>Inf</td>
+<td>1.959</td>
+<td>4.721</td>
+<td>86.32</td>
+<td>0.9029</td>
+<td>0.8422</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.01000</td>
+<td>Inf</td>
+<td>1.717</td>
+<td>2.993</td>
+<td>4.752</td>
+<td>0.9919</td>
+<td>0.03823</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.01000</td>
+<td>Inf</td>
+<td>1.959</td>
+<td>4.433</td>
+<td>17.99</td>
+<td>0.9051</td>
+<td>0.3868</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.0001000</td>
+<td>20.00</td>
+<td>1.734</td>
+<td>3.015</td>
+<td>5.492</td>
+<td>0.9979</td>
+<td>0.02719</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.0001000</td>
+<td>20.00</td>
+<td>1.919</td>
+<td>3.290</td>
+<td>7.358</td>
+<td>0.9662</td>
+<td>0.09119</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.001000</td>
+<td>20.00</td>
+<td>1.734</td>
+<td>3.015</td>
+<td>5.492</td>
+<td>0.9979</td>
+<td>0.02719</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.001000</td>
+<td>20.00</td>
+<td>1.919</td>
+<td>3.290</td>
+<td>7.358</td>
+<td>0.9662</td>
+<td>0.09119</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.01000</td>
+<td>20.00</td>
+<td>1.717</td>
+<td>2.993</td>
+<td>4.752</td>
+<td>0.9919</td>
+<td>0.03823</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.01000</td>
+<td>20.00</td>
+<td>1.919</td>
+<td>3.290</td>
+<td>7.358</td>
+<td>0.9662</td>
+<td>0.09119</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.0001000</td>
+<td>10.00</td>
+<td>1.717</td>
+<td>2.993</td>
+<td>4.752</td>
+<td>0.9919</td>
+<td>0.03823</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.0001000</td>
+<td>10.00</td>
+<td>1.850</td>
+<td>3.132</td>
+<td>5.524</td>
+<td>0.9864</td>
+<td>0.03024</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.001000</td>
+<td>10.00</td>
+<td>1.717</td>
+<td>2.993</td>
+<td>4.752</td>
+<td>0.9919</td>
+<td>0.03823</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.001000</td>
+<td>10.00</td>
+<td>1.850</td>
+<td>3.132</td>
+<td>5.524</td>
+<td>0.9864</td>
+<td>0.03024</td>
+</tr>
+<tr>
+<td>0.5000</td>
+<td>0.01000</td>
+<td>10.00</td>
+<td>1.717</td>
+<td>2.993</td>
+<td>4.752</td>
+<td>0.9919</td>
+<td>0.03823</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>0.01000</td>
+<td>10.00</td>
+<td>1.850</td>
+<td>3.132</td>
+<td>5.524</td>
+<td>0.9864</td>
+<td>0.03024</td>
+</tr>
+</tbody>
+</table>
+<h3 id="attachment-sweep">Attachment Sweep</h3>
+<table>
+<thead>
+<tr>
+<th>attach</th>
+<th>median</th>
+<th>q90</th>
+<th>max</th>
+<th>rho.primary</th>
+<th>med.err</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1.745</td>
+<td>3.042</td>
+<td>7.373</td>
+<td>0.9999</td>
+<td>0.002894</td>
+</tr>
+<tr>
+<td>1.000</td>
+<td>1.737</td>
+<td>3.032</td>
+<td>7.335</td>
+<td>1.000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>2.000</td>
+<td>1.730</td>
+<td>3.025</td>
+<td>7.137</td>
+<td>1.000</td>
+<td>0.004558</td>
+</tr>
+</tbody>
+</table>
+<p>Attachment changes are modest for <span
+class="math inline">\(\alpha=0.5\)</span> in this case, but attachment
+remains a required diagnostic because tail samples can otherwise inherit
+an artificial radial cost.</p>
+<h2 id="distance-family-comparison">3. Distance-Family Comparison</h2>
+<p>The comparison includes Euclidean distance, latent arc distance, MST,
+CMST, iKNN, mKNN, density-weighted iKNN, Fermat/PWSPD on iKNN, diffusion
+row distance, and a PHATE-like log-potential distance. Diffusion and
+PHATE-like distances are included as support-aware comparators, not as
+geodesic distances.</p>
+<figure>
+<img
+src="../figures/noisy-circle-tube-benchmark/03_method_comparison.png"
+alt="Distance-family comparison" />
+<figcaption aria-hidden="true">Distance-family comparison</figcaption>
+</figure>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr>
+<th>distance</th>
+<th>finite</th>
+<th>rho.primary</th>
+<th>med.err</th>
+<th>q90.err</th>
+<th>rho.arc</th>
+<th>rho.euc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>iKNN density alpha=0.5</td>
+<td>1.000</td>
+<td>0.9805</td>
+<td>0.02985</td>
+<td>0.1673</td>
+<td>0.9772</td>
+<td>0.9576</td>
+</tr>
+<tr>
+<td>iKNN density alpha=1 capped</td>
+<td>1.000</td>
+<td>0.9861</td>
+<td>0.04925</td>
+<td>0.1723</td>
+<td>0.9398</td>
+<td>0.9227</td>
+</tr>
+<tr>
+<td>mKNN base</td>
+<td>1.000</td>
+<td>0.9507</td>
+<td>0.07934</td>
+<td>0.2312</td>
+<td>0.9977</td>
+<td>0.9795</td>
+</tr>
+<tr>
+<td>iKNN base</td>
+<td>1.000</td>
+<td>0.9480</td>
+<td>0.08202</td>
+<td>0.2340</td>
+<td>0.9985</td>
+<td>0.9822</td>
+</tr>
+<tr>
+<td>latent arc</td>
+<td>1.000</td>
+<td>0.9407</td>
+<td>0.09113</td>
+<td>0.3274</td>
+<td>1.000</td>
+<td>0.9783</td>
+</tr>
+<tr>
+<td>Euclidean</td>
+<td>1.000</td>
+<td>0.9209</td>
+<td>0.1755</td>
+<td>0.3525</td>
+<td>0.9783</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>PHATE-like log potential</td>
+<td>1.000</td>
+<td>0.9082</td>
+<td>0.1864</td>
+<td>0.6331</td>
+<td>0.9742</td>
+<td>0.9575</td>
+</tr>
+<tr>
+<td>Fermat rooted p=2 on iKNN</td>
+<td>1.000</td>
+<td>0.9362</td>
+<td>0.2020</td>
+<td>1.111</td>
+<td>0.9613</td>
+<td>0.9462</td>
+</tr>
+<tr>
+<td>MST</td>
+<td>1.000</td>
+<td>0.8350</td>
+<td>0.2562</td>
+<td>0.5588</td>
+<td>0.8430</td>
+<td>0.8347</td>
+</tr>
+<tr>
+<td>CMST</td>
+<td>1.000</td>
+<td>0.8356</td>
+<td>0.2563</td>
+<td>0.5565</td>
+<td>0.8433</td>
+<td>0.8348</td>
+</tr>
+<tr>
+<td>diffusion row distance</td>
+<td>1.000</td>
+<td>0.7474</td>
+<td>0.3225</td>
+<td>1.277</td>
+<td>0.7759</td>
+<td>0.7833</td>
+</tr>
+</tbody>
+</table>
+<p>Best median relative error against the primary tube oracle is
+achieved by <code>iKNN density alpha=0.5</code> with median error
+0.02985 and Spearman correlation 0.9805. This table should not be read
+as a final method ranking. It is a calibration check: the primary tube
+oracle is still close enough to latent circle geometry that ordinary
+graph geodesics remain competitive, while density-weighting changes the
+geometry in the intended direction but needs better graph-topology and
+tail diagnostics.</p>
+<h2 id="edge-attribution">4. Edge Attribution</h2>
+<p>For the primary density-weighted iKNN graph, each edge is attributed
+by Euclidean length, mid-edge tube density, density penalty,
+density-weighted length, arc distance, primary tube truth, and
+truth/Euclidean ratio.</p>
+<figure>
+<img
+src="../figures/noisy-circle-tube-benchmark/04_edge_attribution.png"
+alt="Edge attribution" />
+<figcaption aria-hidden="true">Edge attribution</figcaption>
+</figure>
+<p>Top edges by tube-truth/Euclidean ratio:</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+<col style="width: 11%" />
+</colgroup>
+<thead>
+<tr>
+<th>from</th>
+<th>to</th>
+<th>ell</th>
+<th>rho</th>
+<th>penalty</th>
+<th>w</th>
+<th>arc</th>
+<th>truth</th>
+<th>truth/ell</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>19.00</td>
+<td>20.00</td>
+<td>0.1081</td>
+<td>0.002393</td>
+<td>20.44</td>
+<td>2.210</td>
+<td>0.02981</td>
+<td>3.536</td>
+<td>32.71</td>
+</tr>
+<tr>
+<td>29.00</td>
+<td>30.00</td>
+<td>0.03798</td>
+<td>0.001361</td>
+<td>27.11</td>
+<td>1.030</td>
+<td>0.0008299</td>
+<td>1.096</td>
+<td>28.87</td>
+</tr>
+<tr>
+<td>14.00</td>
+<td>19.00</td>
+<td>0.3402</td>
+<td>0.06948</td>
+<td>3.794</td>
+<td>1.291</td>
+<td>0.2841</td>
+<td>3.959</td>
+<td>11.64</td>
+</tr>
+<tr>
+<td>27.00</td>
+<td>28.00</td>
+<td>0.1492</td>
+<td>0.03171</td>
+<td>5.616</td>
+<td>0.8378</td>
+<td>0.02845</td>
+<td>1.544</td>
+<td>10.35</td>
+</tr>
+<tr>
+<td>104.0</td>
+<td>111.0</td>
+<td>0.1029</td>
+<td>0.007490</td>
+<td>11.55</td>
+<td>1.189</td>
+<td>0.1161</td>
+<td>1.007</td>
+<td>9.791</td>
+</tr>
+<tr>
+<td>30.00</td>
+<td>31.00</td>
+<td>0.2115</td>
+<td>0.1064</td>
+<td>3.065</td>
+<td>0.6482</td>
+<td>0.02579</td>
+<td>1.747</td>
+<td>8.261</td>
+</tr>
+<tr>
+<td>67.00</td>
+<td>70.00</td>
+<td>0.07868</td>
+<td>0.02063</td>
+<td>6.963</td>
+<td>0.5479</td>
+<td>0.04255</td>
+<td>0.6321</td>
+<td>8.034</td>
+</tr>
+<tr>
+<td>28.00</td>
+<td>32.00</td>
+<td>0.2133</td>
+<td>0.07948</td>
+<td>3.547</td>
+<td>0.7565</td>
+<td>0.1121</td>
+<td>1.665</td>
+<td>7.807</td>
+</tr>
+<tr>
+<td>70.00</td>
+<td>73.00</td>
+<td>0.1278</td>
+<td>0.01337</td>
+<td>8.649</td>
+<td>1.105</td>
+<td>0.1397</td>
+<td>0.9549</td>
+<td>7.471</td>
+</tr>
+<tr>
+<td>42.00</td>
+<td>43.00</td>
+<td>0.06510</td>
+<td>0.01984</td>
+<td>7.099</td>
+<td>0.4622</td>
+<td>0.04603</td>
+<td>0.4508</td>
+<td>6.924</td>
+</tr>
+<tr>
+<td>105.0</td>
+<td>111.0</td>
+<td>0.1255</td>
+<td>0.03000</td>
+<td>5.774</td>
+<td>0.7248</td>
+<td>0.09987</td>
+<td>0.8464</td>
+<td>6.743</td>
+</tr>
+<tr>
+<td>107.0</td>
+<td>111.0</td>
+<td>0.1145</td>
+<td>0.03906</td>
+<td>5.060</td>
+<td>0.5792</td>
+<td>0.05573</td>
+<td>0.7658</td>
+<td>6.690</td>
+</tr>
+</tbody>
+</table>
+<p>These edges are the first audit targets for false-shortcut and
+tail-dominance analysis. Large truth/Euclidean ratios mean the observed
+endpoints are geometrically close but the oracle regards travel between
+them as expensive, usually because the edge crosses radial low-density
+support.</p>
+<h2 id="path-attribution">5. Path Attribution</h2>
+<p>Four diagnostic pairs were selected: an opposite-angle pair, a
+Euclidean-close pair with high truth/Euclidean ratio, a near-angle pair
+with large radial separation, and the largest base-graph underestimate
+relative to primary tube truth.</p>
+<table>
+<colgroup>
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+<col style="width: 9%" />
+</colgroup>
+<thead>
+<tr>
+<th>label</th>
+<th>from</th>
+<th>to</th>
+<th>arc</th>
+<th>euc</th>
+<th>truth</th>
+<th>base.graph</th>
+<th>truth/euc</th>
+<th>truth/base</th>
+<th>u.from</th>
+<th>u.to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>opposite-angle</td>
+<td>10.00</td>
+<td>88.00</td>
+<td>3.142</td>
+<td>2.046</td>
+<td>3.158</td>
+<td>3.074</td>
+<td>1.544</td>
+<td>1.027</td>
+<td>0.03403</td>
+<td>0.01156</td>
+</tr>
+<tr>
+<td>euclidean-close/high-truth-ratio</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>0.02981</td>
+<td>0.1081</td>
+<td>3.536</td>
+<td>0.1081</td>
+<td>32.71</td>
+<td>32.71</td>
+<td>-0.2493</td>
+<td>-0.1438</td>
+</tr>
+<tr>
+<td>near-angle/radial-separation</td>
+<td>28.00</td>
+<td>30.00</td>
+<td>0.06382</td>
+<td>0.4511</td>
+<td>3.398</td>
+<td>0.4617</td>
+<td>7.533</td>
+<td>7.359</td>
+<td>-0.2222</td>
+<td>0.2245</td>
+</tr>
+<tr>
+<td>largest-graph-underestimate</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>0.02981</td>
+<td>0.1081</td>
+<td>3.536</td>
+<td>0.1081</td>
+<td>32.71</td>
+<td>32.71</td>
+<td>-0.2493</td>
+<td>-0.1438</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img
+src="../figures/noisy-circle-tube-benchmark/05_path_attribution.png"
+alt="Path attribution" />
+<figcaption aria-hidden="true">Path attribution</figcaption>
+</figure>
+<p>Path summaries:</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+</colgroup>
+<thead>
+<tr>
+<th>label</th>
+<th>from</th>
+<th>to</th>
+<th>truth</th>
+<th>graph</th>
+<th>edges</th>
+<th>base.len</th>
+<th>weighted.len</th>
+<th>min.rho</th>
+<th>max.penalty</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>opposite-angle</td>
+<td>10.00</td>
+<td>88.00</td>
+<td>3.158</td>
+<td>iKNN base</td>
+<td>19.00</td>
+<td>3.074</td>
+<td>3.074</td>
+<td>NA</td>
+<td>NA</td>
+</tr>
+<tr>
+<td>opposite-angle</td>
+<td>10.00</td>
+<td>88.00</td>
+<td>3.158</td>
+<td>iKNN density alpha=0.5</td>
+<td>18.00</td>
+<td>3.154</td>
+<td>3.210</td>
+<td>0.8153</td>
+<td>1.107</td>
+</tr>
+<tr>
+<td>euclidean-close/high-truth-ratio</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>3.536</td>
+<td>iKNN base</td>
+<td>1.000</td>
+<td>0.1081</td>
+<td>0.1081</td>
+<td>NA</td>
+<td>NA</td>
+</tr>
+<tr>
+<td>euclidean-close/high-truth-ratio</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>3.536</td>
+<td>iKNN density alpha=0.5</td>
+<td>3.000</td>
+<td>0.7145</td>
+<td>1.749</td>
+<td>0.06948</td>
+<td>3.794</td>
+</tr>
+<tr>
+<td>near-angle/radial-separation</td>
+<td>28.00</td>
+<td>30.00</td>
+<td>3.398</td>
+<td>iKNN base</td>
+<td>2.000</td>
+<td>0.4617</td>
+<td>0.4617</td>
+<td>NA</td>
+<td>NA</td>
+</tr>
+<tr>
+<td>near-angle/radial-separation</td>
+<td>28.00</td>
+<td>30.00</td>
+<td>3.398</td>
+<td>iKNN density alpha=0.5</td>
+<td>2.000</td>
+<td>0.4617</td>
+<td>1.227</td>
+<td>0.1064</td>
+<td>3.065</td>
+</tr>
+<tr>
+<td>largest-graph-underestimate</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>3.536</td>
+<td>iKNN base</td>
+<td>1.000</td>
+<td>0.1081</td>
+<td>0.1081</td>
+<td>NA</td>
+<td>NA</td>
+</tr>
+<tr>
+<td>largest-graph-underestimate</td>
+<td>19.00</td>
+<td>20.00</td>
+<td>3.536</td>
+<td>iKNN density alpha=0.5</td>
+<td>3.000</td>
+<td>0.7145</td>
+<td>1.749</td>
+<td>0.06948</td>
+<td>3.794</td>
+</tr>
+</tbody>
+</table>
+<p>The path panels show where density-aware edge weights alter the
+cheapest route through the sample graph. In the present graph, topology
+still matters more than edge weighting: if an unsupported local edge is
+admitted, density weighting can penalize it only when the midpoint
+density summary sees the low-density crossing.</p>
+<h2 id="interpretation">6. Interpretation</h2>
+<ol type="1">
+<li><p><span class="math inline">\(\alpha=0.5\)</span> is a usable first
+tube-oracle truth. It remains strongly related to latent arc geometry
+while adding a real radial-support penalty.</p></li>
+<li><p><span class="math inline">\(\alpha=1\)</span> should be treated
+as a stress test. Without robust caps or stronger attachment
+diagnostics, it is dominated by tail samples and produces extremely
+large maximum distances.</p></li>
+<li><p>Density floors and penalty caps are not cosmetic. They define the
+tail behavior of the metric. Any future report using density-aware
+distance must show floor/cap hit rates and edge inflation
+distributions.</p></li>
+<li><p>Fermat/PWSPD is a necessary comparator. In this benchmark, rooted
+<span class="math inline">\(p=2\)</span> Fermat on the iKNN topology is
+a direct implicit-density alternative to explicit <span
+class="math inline">\(\rho^{-\alpha}\)</span> edge weighting.</p></li>
+<li><p>Diffusion and PHATE-like distances behave as support-aware
+comparators but should remain separate from graph geodesic distances.
+Their low or high agreement with tube truth answers a different
+question: whether points diffuse to similar neighborhoods, not whether
+the cheapest supported path is short.</p></li>
+</ol>
+<h2 id="next-implementation-steps">7. Next Implementation Steps</h2>
+<ol type="1">
+<li><p>Add reusable density-transform and edge-attribution helpers so
+this report does not carry one-off implementations.</p></li>
+<li><p>Extend <code>latent.tube.oracle()</code> to return edge density,
+base length, penalty, floor/cap hits, and attachment diagnostics
+directly.</p></li>
+<li><p>Run a larger size/seed sweep with <span
+class="math inline">\(\alpha\in\{0,0.25,0.5,0.75,1\}\)</span>, but treat
+<span class="math inline">\(\alpha=1\)</span> as a stress setting unless
+robust caps are enabled.</p></li>
+<li><p>Add nonuniform angular density, gaps, nearby non-touching arcs,
+and outliers before moving to compositional microbiome-like
+data.</p></li>
+</ol>
+</body>
+</html>

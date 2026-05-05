@@ -278,7 +278,10 @@ knn_search_result_t compute_linf_simplex_knn(SEXP RX, int k, double tol) {
 
         for (const int source_face : active_faces[static_cast<size_t>(i)]) {
             for (const auto& face_tree : face_trees) {
-                const int query_k = std::min(k, static_cast<int>(face_tree->members.size()));
+                const int query_k = std::min(
+                    static_cast<int>(face_tree->members.size()),
+                    std::max(k, 4 * k + 8)
+                );
                 std::vector<ANNidx> nn_idx(static_cast<size_t>(query_k));
                 std::vector<ANNdist> nn_dist(static_cast<size_t>(query_k));
 
