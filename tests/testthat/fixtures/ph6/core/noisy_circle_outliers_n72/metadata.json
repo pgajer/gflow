@@ -1,0 +1,31 @@
+{
+  "case_id": "noisy_circle_outliers_n72",
+  "example": {
+    "family": "noisy_circle",
+    "n": 72,
+    "sampling": "outlier_contaminated"
+  },
+  "params": {
+    "decay": 40,
+    "gamma": 1,
+    "knn": 5,
+    "mds_solver": "smacof",
+    "n_components": 2,
+    "n_jobs": 1,
+    "n_pca": null,
+    "random_state": 6105,
+    "t": "auto",
+    "t_max": 30
+  },
+  "seed": 6105,
+  "shape": {
+    "n": 72,
+    "p": 2
+  },
+  "t_auto": 4,
+  "versions": {
+    "numpy": "1.24.4",
+    "phate": "1.0.8",
+    "scipy": "1.9.1"
+  }
+}
