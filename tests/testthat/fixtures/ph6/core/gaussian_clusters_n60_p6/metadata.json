@@ -1,0 +1,31 @@
+{
+  "case_id": "gaussian_clusters_n60_p6",
+  "example": {
+    "family": "gaussian_clusters",
+    "n": 60,
+    "p": 6
+  },
+  "params": {
+    "decay": 40,
+    "gamma": 1,
+    "knn": 5,
+    "mds_solver": "smacof",
+    "n_components": 2,
+    "n_jobs": 1,
+    "n_pca": null,
+    "random_state": 6102,
+    "t": "auto",
+    "t_max": 30
+  },
+  "seed": 6102,
+  "shape": {
+    "n": 60,
+    "p": 6
+  },
+  "t_auto": 8,
+  "versions": {
+    "numpy": "1.24.4",
+    "phate": "1.0.8",
+    "scipy": "1.9.1"
+  }
+}

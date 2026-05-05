@@ -1,0 +1,31 @@
+{
+  "case_id": "noisy_circle_nonuniform_n72",
+  "example": {
+    "family": "noisy_circle",
+    "n": 72,
+    "sampling": "nonuniform"
+  },
+  "params": {
+    "decay": 40,
+    "gamma": 1,
+    "knn": 5,
+    "mds_solver": "smacof",
+    "n_components": 2,
+    "n_jobs": 1,
+    "n_pca": null,
+    "random_state": 6104,
+    "t": "auto",
+    "t_max": 30
+  },
+  "seed": 6104,
+  "shape": {
+    "n": 72,
+    "p": 2
+  },
+  "t_auto": 8,
+  "versions": {
+    "numpy": "1.24.4",
+    "phate": "1.0.8",
+    "scipy": "1.9.1"
+  }
+}
