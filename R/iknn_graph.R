@@ -17,6 +17,23 @@
 #'     minus 1.0 is \emph{less than} this threshold. This is a deviation
 #'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
 #'     path-to-edge ratio R to \eqn{1 + \delta}.
+#'     Used when `prune.method = "global.geodesic"`.
+#'
+#' @param prune.method Character scalar. `"global.geodesic"` preserves the
+#'     historical whole-graph geometric pruning behavior controlled by
+#'     `max.path.edge.ratio.deviation.thld` and
+#'     `path.edge.ratio.percentile`. `"local.geodesic"` applies the same
+#'     experimental local geometric pruning stage used by sKNN/mKNN.
+#'     `"none"` disables geometric pruning; quantile pruning controlled by
+#'     `threshold.percentile` is still honored.
+#'
+#' @param prune.tau Numeric scalar greater than 1, or `NULL`. Multiplicative
+#'     threshold for local geometric pruning. If `NULL`, defaults to
+#'     `max(1 + max.path.edge.ratio.deviation.thld, 1.05)`.
+#'
+#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
+#'     used to form local neighborhoods for local geometric pruning. Defaults
+#'     to `k`.
 #'
 #' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
 #'     length above this percentile are considered for geometric pruning.
@@ -128,6 +145,9 @@
 create.single.iknn.graph <- function(X,
                                      k,
                                      max.path.edge.ratio.deviation.thld = 0.1,
+                                     prune.method = c("global.geodesic", "none", "local.geodesic"),
+                                     prune.tau = NULL,
+                                     prune.local.k = NULL,
                                      path.edge.ratio.percentile = 0.5,
                                      threshold.percentile = 0,
                                      compute.full = FALSE,
@@ -185,6 +205,7 @@ create.single.iknn.graph <- function(X,
         stop("max.path.edge.ratio.deviation.thld must be numeric.")
     if (max.path.edge.ratio.deviation.thld < 0 || max.path.edge.ratio.deviation.thld >= 0.2)
         stop("max.path.edge.ratio.deviation.thld must be in [0, 0.2).")
+    prune.method <- match.arg(prune.method)
 
     if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
         path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
@@ -199,6 +220,18 @@ create.single.iknn.graph <- function(X,
     if (!is.logical(with.edge.pruning.stats) || length(with.edge.pruning.stats) != 1) {
         stop("with.edge.pruning.stats must be a single logical value")
     }
+    local.prune.tau <- if (is.null(prune.tau)) {
+        max(1 + max.path.edge.ratio.deviation.thld, 1.05)
+    } else {
+        prune.tau
+    }
+    local.prune.controls <- .normalize.local.prune.controls(
+        nrow(X),
+        k,
+        local.prune.tau,
+        prune.local.k,
+        with.edge.pruning.stats
+    )
 
     ## Validate threshold.percentile parameter
     if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1)
@@ -305,15 +338,20 @@ create.single.iknn.graph <- function(X,
     if (verbose && !compute.full) {
         message("compute.full=FALSE: adj_list/isize_list/weight_list/conn_comps will be NULL; pruned_adj_list/pruned_weight_list still return the final graph.")
     }
-    if (verbose && max.path.edge.ratio.deviation.thld == 0 && threshold.percentile == 0) {
+    if (verbose && identical(prune.method, "none") && threshold.percentile == 0) {
         message("No geometric/quantile pruning requested: pruned_adj_list/pruned_weight_list will match the unpruned graph.")
     }
     bridge.controls <- .normalize.bridge.controls(nrow(X), k, bridge.k, bridge.k.max, bridge.growth)
+    cxx.edge.ratio.threshold <- if (identical(prune.method, "global.geodesic")) {
+        max.path.edge.ratio.deviation.thld + 1.0
+    } else {
+        1.0
+    }
 
     result <- .Call("S_create_single_iknn_graph",
                     X,
                     as.integer(k + 1L),
-                    as.double(max.path.edge.ratio.deviation.thld + 1.0),
+                    as.double(cxx.edge.ratio.threshold),
                     as.double(path.edge.ratio.percentile),
                     as.double(threshold.percentile),
                     as.logical(compute.full),
@@ -325,6 +363,45 @@ create.single.iknn.graph <- function(X,
                     as.double(linf.tol),
                     as.logical(verbose),
                     PACKAGE = "gflow")
+
+    if (identical(prune.method, "local.geodesic")) {
+        pruning <- .prune.graph.local.geodesic(
+            X = X,
+            adj.list = result$pruned_adj_list,
+            weight.list = result$pruned_weight_list,
+            k = k,
+            prune.tau = local.prune.controls$prune.tau,
+            prune.local.k = local.prune.controls$prune.local.k,
+            with.pruned.edge.stats = local.prune.controls$with.pruned.edge.stats
+        )
+        result$pruned_adj_list <- pruning$adj_list
+        result$pruned_weight_list <- pruning$weight_list
+        result$n_edges_in_pruned_graph <- pruning$n_edges_after_pruning
+        result$n_removed_edges <- result$n_edges - result$n_edges_in_pruned_graph
+        result$edge_reduction_ratio <- if (result$n_edges > 0) {
+            result$n_removed_edges / result$n_edges
+        } else {
+            0
+        }
+    } else {
+        pruning <- list(
+            n_edges_before_pruning = result$n_edges,
+            n_edges_after_pruning = result$n_edges_in_pruned_graph,
+            n_pruned_edges = result$n_edges - result$n_edges_in_pruned_graph,
+            pruned_edge_stats = .empty.pruned.edge.stats(),
+            prune_tau = local.prune.controls$prune.tau,
+            prune_local_k = local.prune.controls$prune.local.k,
+            with_pruned_edge_stats = local.prune.controls$with.pruned.edge.stats
+        )
+    }
+    result$prune_method <- prune.method
+    result$prune_tau <- pruning$prune_tau
+    result$prune_local_k <- pruning$prune_local_k
+    result$with_pruned_edge_stats <- pruning$with_pruned_edge_stats
+    result$n_edges_before_pruning <- pruning$n_edges_before_pruning
+    result$n_edges_after_pruning <- pruning$n_edges_after_pruning
+    result$n_pruned_edges <- pruning$n_pruned_edges
+    result$pruned_edge_stats <- pruning$pruned_edge_stats
 
     n.edges.before.mst <- result$n_edges_in_pruned_graph
     n.removed.by.pruning <- result$n_removed_edges
