@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "gaussian_isotropic_n40_p5",
+    "seed": 6101
+  },
+  {
+    "case_id": "gaussian_clusters_n60_p6",
+    "seed": 6102
+  },
+  {
+    "case_id": "noisy_circle_uniform_n64",
+    "seed": 6103
+  },
+  {
+    "case_id": "noisy_circle_nonuniform_n72",
+    "seed": 6104
+  },
+  {
+    "case_id": "noisy_circle_outliers_n72",
+    "seed": 6105
+  },
+  {
+    "case_id": "quadform_graph_n2_k0",
+    "seed": 6110
+  },
+  {
+    "case_id": "quadform_graph_n2_k1",
+    "seed": 6111
+  },
+  {
+    "case_id": "quadform_graph_n2_k2",
+    "seed": 6112
+  },
+  {
+    "case_id": "quadform_graph_n3_k0",
+    "seed": 6120
+  },
+  {
+    "case_id": "quadform_graph_n3_k1",
+    "seed": 6121
+  },
+  {
+    "case_id": "quadform_graph_n3_k2",
+    "seed": 6122
+  },
+  {
+    "case_id": "quadform_graph_n3_k3",
+    "seed": 6123
+  },
+  {
+    "case_id": "crescent_open_arc_n70",
+    "seed": 6130
+  },
+  {
+    "case_id": "asymmetric_y_tree_n75",
+    "seed": 6140
+  },
+  {
+    "case_id": "phate_dla_tree_n80",
+    "seed": 6150
+  }
+]

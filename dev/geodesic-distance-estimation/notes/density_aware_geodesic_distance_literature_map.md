@@ -14,38 +14,41 @@ and other standard beta-diversity approaches.
 
 The closest mathematical match to the current `gflow` proposal
 
-```text
-w_ij = ell_ij / rho_ij^alpha
-```
+$$
+w_{ij} = \frac{\ell_{ij}}{\rho_{ij}^{\alpha}}.
+$$
 
 is the continuum Fermat / power-weighted shortest-path metric
 
-```text
-d_{rho,alpha}(x, y) =
-    inf_gamma integral_gamma rho(gamma(s))^(-alpha) ds.
-```
+$$
+d_{\rho,\alpha}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-\alpha}\,ds.
+$$
 
 If the data are sampled from an intrinsic `d`-dimensional manifold with density
 `rho`, and one uses the unrooted Fermat convention
 
-```text
-d_{F,p}(x, y) =
-    inf_gamma integral_gamma rho(gamma(s))^(-(p - 1) / d) ds,
-```
+$$
+d_{F,p}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-(p-1)/d}\,ds,
+$$
 
 then
 
-```text
-alpha = (p - 1) / d
-p = 1 + alpha d.
-```
+$$
+\alpha = \frac{p-1}{d},
+\qquad
+p = 1 + \alpha d.
+$$
 
 Equivalently, this is the geodesic distance of the conformally changed
 Riemannian metric tensor
 
-```text
-g_p = rho^(-2(p - 1) / d) g.
-```
+$$
+g_p = \rho^{-2(p-1)/d} g.
+$$
 
 Some papers write the tensor exponent as `2(p - 1) / d`; the path-length
 integrand exponent, which corresponds to `ell / rho^alpha`, is half of that.
@@ -53,15 +56,18 @@ integrand exponent, which corresponds to `ell / rho^alpha`, is half of that.
 There is a convention trap. Some Fermat/PWSPD papers define the discrete
 distance as
 
-```text
-ell_p(x, y) = min_path (sum ||x_i - x_{i+1}||^p)^(1/p),
-```
+$$
+\ell_p(x,y)
+= \min_{\text{path}}
+\left(\sum_i \|x_i - x_{i+1}\|^p\right)^{1/p},
+$$
 
 while persistent-homology papers often use the unrooted version
 
-```text
-d_{X,p}(x, y) = min_path sum ||x_i - x_{i+1}||^p.
-```
+$$
+d_{X,p}(x,y)
+= \min_{\text{path}} \sum_i \|x_i - x_{i+1}\|^p.
+$$
 
 The continuum density-weighted geodesic that matches `gflow` edge weighting is
 the unrooted path metric, or `ell_p^p` under the rooted convention. This should
@@ -115,30 +121,37 @@ be stated explicitly in any future design memo.
 
 Objects:
 
-```text
-(M, g)        smooth connected Riemannian manifold
-rho: M -> R+  sampling/support density
-alpha >= 0    density penalty exponent
-gamma         piecewise C1 curve from x to y
-ds_g          Riemannian arclength
-```
+$$
+\begin{aligned}
+(M,g) &: \text{smooth connected Riemannian manifold},\\
+\rho &: M \to \mathbb{R}_{+} \quad \text{sampling/support density},\\
+\alpha &\ge 0 \quad \text{density penalty exponent},\\
+\gamma &: \text{piecewise } C^1 \text{ curve from } x \text{ to } y,\\
+ds_g &: \text{Riemannian arclength}.
+\end{aligned}
+$$
 
 Definition:
 
-```text
-L_{rho,alpha}(gamma) = integral_0^1 rho(gamma(t))^(-alpha)
-                       sqrt(g_gamma(t)(gamma'(t), gamma'(t))) dt
+$$
+L_{\rho,\alpha}(\gamma)
+= \int_0^1
+\rho(\gamma(t))^{-\alpha}
+\sqrt{g_{\gamma(t)}(\gamma'(t),\gamma'(t))}\,dt,
+$$
 
-d_{rho,alpha}(x, y) = inf_{gamma: x -> y} L_{rho,alpha}(gamma).
-```
+$$
+d_{\rho,\alpha}(x,y)
+= \inf_{\gamma:x\to y} L_{\rho,\alpha}(\gamma).
+$$
 
 If `rho` is positive and finite on each connected component, this is a true
 path metric on that component. It is the Riemannian geodesic distance for the
 conformal tensor
 
-```text
-g_alpha = rho^(-2 alpha) g.
-```
+$$
+g_{\alpha} = \rho^{-2\alpha} g.
+$$
 
 If `rho` reaches zero and no floor is imposed, distances crossing zero-density
 regions can become infinite. If `rho` is estimated and clipped by a floor, the
@@ -151,11 +164,13 @@ normalization that removes density.
 
 Parameter correspondence:
 
-```text
-Fermat/PWSPD path integrand: rho^(-(p - 1) / d) ds
-gflow alpha:                 alpha = (p - 1) / d
-Riemannian tensor exponent:  2 alpha = 2(p - 1) / d
-```
+$$
+\begin{aligned}
+\text{Fermat/PWSPD path integrand} &: \rho^{-(p-1)/d}\,ds,\\
+\text{\texttt{gflow} }\alpha &: \alpha = \frac{p-1}{d},\\
+\text{Riemannian tensor exponent} &: 2\alpha = \frac{2(p-1)}{d}.
+\end{aligned}
+$$
 
 Finite-data construction:
 
@@ -164,9 +179,10 @@ Finite-data construction:
    repaired local graph.
 3. Define edge weights such as
 
-   ```text
-   w_ij = ell_ij / phi(rho_i, rho_j, rho_ij)^alpha.
-   ```
+   $$
+   w_{ij}
+   = \frac{\ell_{ij}}{\phi(\rho_i,\rho_j,\rho_{ij})^{\alpha}}.
+   $$
 
 4. Compute Dijkstra or all-pairs shortest paths.
 
@@ -188,19 +204,20 @@ diffusion distances when available.
 
 Discrete rooted PWSPD:
 
-```text
-ell_p(x, y; X) =
-    min_{path x = x_0, ..., x_m = y}
-    (sum_{r=0}^{m-1} ||x_{r+1} - x_r||^p)^(1/p),
-    p >= 1.
-```
+$$
+\ell_p(x,y;X)
+= \min_{x=x_0,\ldots,x_m=y}
+\left(\sum_{r=0}^{m-1}\|x_{r+1}-x_r\|^p\right)^{1/p},
+\qquad p \ge 1.
+$$
 
 Unrooted Fermat distance:
 
-```text
-d_{X,p}(x, y) =
-    min_path sum_{r=0}^{m-1} ||x_{r+1} - x_r||^p.
-```
+$$
+d_{X,p}(x,y)
+= \min_{\text{path}}
+\sum_{r=0}^{m-1}\|x_{r+1}-x_r\|^p.
+$$
 
 For `p = 1`, the complete-graph rooted distance collapses to Euclidean
 distance; on a restricted local graph, it is the usual Isomap-style graph
@@ -210,10 +227,11 @@ longest-edge path distance.
 
 Continuum limit:
 
-```text
-d_{F,p}(x, y) =
-    inf_gamma integral_gamma rho(gamma(s))^(-(p - 1) / d) ds.
-```
+$$
+d_{F,p}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-(p-1)/d}\,ds.
+$$
 
 With appropriate normalization, sample Fermat distances converge to the
 population density-weighted geodesic on an intrinsic `d`-dimensional manifold.
@@ -224,11 +242,14 @@ constant depending on `p` and `d`.
 Hwang, Damelin, and Hero's earlier notation makes the same correspondence
 explicit:
 
-```text
-n^((p - 1) / d) d_{X_n,p}(x, y) -> C(d, p) d_{F,p}(x, y),
+$$
+n^{(p-1)/d} d_{X_n,p}(x,y)
+\to C(d,p)d_{F,p}(x,y),
+$$
 
-g_p = rho^(2(1 - p) / d) g.
-```
+$$
+g_p = \rho^{2(1-p)/d} g.
+$$
 
 The sign in the tensor exponent is the same as `rho^(-2(p - 1) / d)`.
 
@@ -295,9 +316,11 @@ density weighting preserves or destroys intended topology.
 
 Definition:
 
-```text
-d_G(i, j) = min_{paths i -> j} sum_{(u,v) in path} ||x_u - x_v||.
-```
+$$
+d_G(i,j)
+= \min_{\text{paths } i\to j}
+\sum_{(u,v)\in\text{path}} \|x_u-x_v\|.
+$$
 
 This is a graph metric on each connected component. Density enters implicitly
 through graph topology: dense regions have many short edges, sparse regions
@@ -332,9 +355,12 @@ gap.
 Self-tuning spectral clustering uses a local scale, often the distance to the
 `k`th neighbor:
 
-```text
-A_ij = exp(-||x_i - x_j||^2 / (sigma_i sigma_j)).
-```
+$$
+A_{ij}
+= \exp\left(
+-\frac{\|x_i-x_j\|^2}{\sigma_i\sigma_j}
+\right).
+$$
 
 This adapts to multi-scale data without explicit density estimation
 ([Zelnik-Manor and Perona 2004](https://papers.nips.cc/paper/2619-self-tuning-spectral-clustering)).
@@ -353,9 +379,10 @@ admission and for robust floors/caps.
 
 HDBSCAN transforms pairwise distances by local core distances:
 
-```text
-d_mreach(i, j) = max(core_k(i), core_k(j), d(i, j)).
-```
+$$
+d_{\mathrm{mreach}}(i,j)
+= \max\{\mathrm{core}_k(i),\mathrm{core}_k(j),d(i,j)\}.
+$$
 
 This spreads sparse points apart and stabilizes density-based clustering
 ([HDBSCAN docs](https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html)).
@@ -371,21 +398,26 @@ to bridge admission and outlier handling.
 
 Objects:
 
-```text
-K_epsilon(i, j) = exp(-||x_i - x_j||^2 / epsilon)
-q_i              = sum_j K_epsilon(i, j)
-K_alpha(i, j)   = K_epsilon(i, j) / (q_i^a q_j^a)
-d_i             = sum_j K_alpha(i, j)
-P_alpha(i, j)   = K_alpha(i, j) / d_i
-```
+$$
+\begin{aligned}
+K_{\varepsilon}(i,j)
+&= \exp\left(-\frac{\|x_i-x_j\|^2}{\varepsilon}\right),\\
+q_i &= \sum_j K_{\varepsilon}(i,j),\\
+K_a(i,j) &= \frac{K_{\varepsilon}(i,j)}{q_i^a q_j^a},\\
+d_i &= \sum_j K_a(i,j),\\
+P_a(i,j) &= \frac{K_a(i,j)}{d_i}.
+\end{aligned}
+$$
 
 Here `a` is the diffusion-map alpha normalization, not the `gflow` density
 exponent. The diffusion distance at time `t` can be written as a weighted
 distance between transition distributions:
 
-```text
-D_t^2(i, j) = sum_k (P_alpha^t(i, k) - P_alpha^t(j, k))^2 / pi_k,
-```
+$$
+D_t^2(i,j)
+= \sum_k
+\frac{\left(P_a^t(i,k)-P_a^t(j,k)\right)^2}{\pi_k}.
+$$
 
 where `pi` is the stationary distribution or an associated reference measure.
 Spectrally, this is represented by diffusion coordinates with eigenvalues
@@ -451,14 +483,23 @@ knn_dist = "euclidean"
 
 Formal sketch:
 
-```text
-P_t = P^t
-U_gamma(P_t(i, .)) =
-    log(P_t(i, .))                  if gamma = 1
-    power/sqrt-like potential       if gamma near 0
+$$
+P_t = P^t.
+$$
 
-D_PHATE(i, j) = ||U_gamma(P_t(i, .)) - U_gamma(P_t(j, .))||.
-```
+$$
+U_{\gamma}(P_t(i,\cdot)) =
+\begin{cases}
+\log P_t(i,\cdot), & \gamma = 1,\\
+\text{power or square-root-like potential}, & \gamma \approx 0,
+\end{cases}
+$$
+
+$$
+D_{\mathrm{PHATE}}(i,j) =
+\left\|U_{\gamma}(P_t(i,\cdot)) -
+U_{\gamma}(P_t(j,\cdot))\right\|_2.
+$$
 
 Metric type: potential/embedding distance derived from diffusion probabilities.
 It is support-aware and density-adjacent, but not a shortest-path geodesic.
@@ -482,16 +523,17 @@ option should name the output as potential or diffusion distance.
 
 For a connected weighted graph with Laplacian `L`, effective resistance is
 
-```text
-R_ij = (e_i - e_j)^T L^+ (e_i - e_j),
-```
+$$
+R_{ij}
+= (e_i-e_j)^{T}L^{+}(e_i-e_j).
+$$
 
 where `L^+` is the Moore-Penrose pseudoinverse. Commute time is proportional
 to resistance:
 
-```text
-C_ij = vol(G) R_ij.
-```
+$$
+C_{ij} = \operatorname{vol}(G) R_{ij}.
+$$
 
 Metric type: graph metric for resistance; random-walk expected-time distance
 for commute.
@@ -514,15 +556,16 @@ such as `gdistance` implement commute/resistance distances
 On a manifold, the heat kernel `H_t(x, y)` is linked to geodesic distance by
 Varadhan's small-time formula:
 
-```text
-d_g(x, y)^2 = -lim_{t -> 0} 4t log H_t(x, y).
-```
+$$
+d_g(x,y)^2
+= -\lim_{t\to 0} 4t \log H_t(x,y).
+$$
 
 On graphs, one often uses
 
-```text
-H_t = exp(-t L).
-```
+$$
+H_t = \exp(-tL).
+$$
 
 Distances can be formed from rows of `H_t`, from heat-kernel signatures
 `H_t(x, x)`, or from small-time geodesic approximations.
@@ -539,9 +582,9 @@ geodesics ([Sun et al. HKS page](https://geometry.stanford.edu/paper.php?id=sog-
 
 PPR solves
 
-```text
-r_i = beta e_i + (1 - beta) r_i P.
-```
+$$
+r_i = \beta e_i + (1-\beta)r_iP.
+$$
 
 Distances or similarities are built from personalized stationary vectors.
 They emphasize local graph basins and are useful for ranking, clustering, and
@@ -550,9 +593,9 @@ semi-supervised propagation.
 Heat-kernel PageRank replaces the geometric mixture of walk lengths with a
 Poisson mixture:
 
-```text
-h_{t,i} = e_i exp(-t(I - P)).
-```
+$$
+h_{t,i} = e_i\exp(-t(I-P)).
+$$
 
 Metric type: usually asymmetric proximity; symmetric variants may be
 pseudometrics after transformation.
@@ -569,16 +612,19 @@ estimator unless a distance is explicitly defined and tested.
 
 For a known generative density on a manifold, tube, grid, or graph, define
 
-```text
-d_oracle(x, y) =
-    inf_gamma integral_gamma rho(gamma(s))^(-alpha) ds,
-```
+$$
+d_{\mathrm{oracle}}(x,y)
+= \inf_{\gamma:x\to y}
+\int_{\gamma} \rho(\gamma(s))^{-\alpha}\,ds,
+$$
 
 or build a dense oracle graph with edge weights
 
-```text
-w_ab = ||z_a - z_b|| / rho(midpoint(a, b))^alpha.
-```
+$$
+w_{ab}
+= \frac{\|z_a-z_b\|}
+{\rho(\operatorname{midpoint}(a,b))^{\alpha}}.
+$$
 
 Metric type: synthetic truth metric, not a data estimator.
 
