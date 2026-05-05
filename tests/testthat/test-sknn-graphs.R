@@ -26,6 +26,41 @@ test_that("create.sknn.graph constructs union kNN support", {
 })
 
 
+test_that("ANN neighbor backend matches exact sKNN on general-position data", {
+  X <- rbind(
+    c(0.0, 0.0),
+    c(1.1, 0.2),
+    c(2.4, 0.1),
+    c(4.0, 1.5),
+    c(6.2, 0.3),
+    c(7.7, 1.9)
+  )
+
+  exact <- create.sknn.graph(X, k = 2, neighbor.method = "exact")
+  ann <- create.sknn.graph(X, k = 2, neighbor.method = "ann", ann.eps = 0)
+
+  expect_equal(ann$neighbor_method, "ann")
+  expect_equal(ann$ann_eps, 0)
+  expect_equal(.sknn_edge_keys(ann$edge_matrix), .sknn_edge_keys(exact$edge_matrix))
+  expect_equal(ann$edge_weight, exact$edge_weight, tolerance = 1e-12)
+  expect_equal(ann$knn_index, exact$knn_index)
+})
+
+
+test_that("ANN backend returns Euclidean edge lengths rather than squared ANN distances", {
+  X <- rbind(
+    c(0, 0),
+    c(3, 4),
+    c(10, 0)
+  )
+
+  g <- create.sknn.graph(X, k = 1, neighbor.method = "ann")
+
+  expect_equal(.sknn_edge_keys(g$edge_matrix), c("1-2", "2-3"))
+  expect_equal(g$edge_weight, c(5, sqrt(65)), tolerance = 1e-12)
+})
+
+
 test_that("component.mst adds the minimum number of inter-component bridges", {
   X <- rbind(
     c(0, 0),
@@ -44,6 +79,84 @@ test_that("component.mst adds the minimum number of inter-component bridges", {
   expect_equal(.sknn_edge_keys(g$mst_edge_matrix), c("2-3", "4-5"))
   expect_equal(g$mst_edge_weight, c(9, 19))
   expect_equal(.sknn_edge_keys(g$edge_matrix), c("1-2", "2-3", "3-4", "4-5", "5-6"))
+})
+
+
+test_that("ANN backend keeps component.mst bridge search exact", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(10, 0),
+    c(11, 0),
+    c(30, 0),
+    c(31, 0)
+  )
+
+  exact <- create.sknn.graph(X, k = 1, connect.components = TRUE)
+  ann <- create.sknn.graph(X, k = 1, connect.components = TRUE,
+                           neighbor.method = "ann")
+
+  expect_equal(ann$n_components_before, exact$n_components_before)
+  expect_equal(ann$n_components_after, 1L)
+  expect_equal(.sknn_edge_keys(ann$mst_edge_matrix), c("2-3", "4-5"))
+  expect_equal(ann$mst_edge_weight, c(9, 19), tolerance = 1e-12)
+  expect_equal(.sknn_edge_keys(ann$edge_matrix), .sknn_edge_keys(exact$edge_matrix))
+})
+
+
+test_that("component.mst.ann uses sparse ANN bridges when they connect components", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(10, 0),
+    c(11, 0),
+    c(30, 0),
+    c(31, 0)
+  )
+
+  exact <- create.sknn.graph(X, k = 1, connect.components = TRUE,
+                             connect.method = "component.mst")
+  ann.bridge <- create.sknn.graph(
+    X, k = 1, connect.components = TRUE,
+    connect.method = "component.mst.ann",
+    bridge.k = 2,
+    bridge.k.max = 2
+  )
+
+  expect_equal(ann.bridge$connect_method, "component.mst.ann")
+  expect_equal(ann.bridge$bridge_method, "ann")
+  expect_equal(ann.bridge$bridge_k_used, 2L)
+  expect_false(ann.bridge$bridge_exact_fallback_used)
+  expect_equal(ann.bridge$n_components_after, 1L)
+  expect_equal(.sknn_edge_keys(ann.bridge$mst_edge_matrix), .sknn_edge_keys(exact$mst_edge_matrix))
+  expect_equal(ann.bridge$mst_edge_weight, exact$mst_edge_weight, tolerance = 1e-12)
+})
+
+
+test_that("component.mst.ann falls back to exact bridges when sparse candidates do not connect", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(10, 0),
+    c(11, 0),
+    c(30, 0),
+    c(31, 0)
+  )
+
+  exact <- create.sknn.graph(X, k = 1, connect.components = TRUE,
+                             connect.method = "component.mst")
+  fallback <- create.sknn.graph(
+    X, k = 1, connect.components = TRUE,
+    connect.method = "component.mst.ann",
+    bridge.k = 1,
+    bridge.k.max = 1
+  )
+
+  expect_equal(fallback$bridge_method, "ann_then_exact")
+  expect_true(fallback$bridge_exact_fallback_used)
+  expect_equal(fallback$n_components_after, 1L)
+  expect_equal(.sknn_edge_keys(fallback$mst_edge_matrix), .sknn_edge_keys(exact$mst_edge_matrix))
+  expect_equal(fallback$mst_edge_weight, exact$mst_edge_weight, tolerance = 1e-12)
 })
 
 
@@ -75,5 +188,17 @@ test_that("create.sknn.graph validates inputs", {
   expect_error(create.sknn.graph(X, k = 3), "smaller than nrow")
   expect_error(create.sknn.graph(X, k = 1, connect.components = NA),
                "connect.components")
+  expect_error(create.sknn.graph(X, k = 1, neighbor.method = "bogus"),
+               "'arg' should be one of")
+  expect_error(create.sknn.graph(X, k = 1, neighbor.method = "ann", ann.eps = -1),
+               "ann.eps")
+  expect_error(create.sknn.graph(X, k = 1, neighbor.method = "ann", ann.eps = 0.1),
+               "not yet supported")
+  expect_error(create.sknn.graph(X, k = 1, bridge.k = 0),
+               "bridge.k")
+  expect_error(create.sknn.graph(X, k = 1, bridge.k = 1, bridge.k.max = 0),
+               "bridge.k.max")
+  expect_error(create.sknn.graph(X, k = 1, bridge.growth = 1),
+               "bridge.growth")
   expect_error(create.sknn.graph(c("a", "b"), k = 1), "matrix or data frame")
 })

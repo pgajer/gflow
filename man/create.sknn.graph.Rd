@@ -8,8 +8,13 @@ create.sknn.graph(
   X,
   k,
   connect.components = FALSE,
-  connect.method = c("component.mst", "global.mst"),
-  edge.weight = c("distance")
+  connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+  edge.weight = c("distance"),
+  neighbor.method = c("exact", "ann"),
+  ann.eps = 0,
+  bridge.k = NULL,
+  bridge.k.max = NULL,
+  bridge.growth = 2
 )
 }
 \arguments{
@@ -21,11 +26,31 @@ create.sknn.graph(
 so that the final graph is connected whenever possible.}
 
 \item{connect.method}{Character scalar. \code{"component.mst"} adds the minimum
-number of shortest inter-component bridges. \code{"global.mst"} unions the
-sKNN graph with the Euclidean MST on all vertices.}
+number of shortest inter-component bridges. \code{"component.mst.ann"} tries
+sparse ANN bridge candidates before automatic exact fallback. \code{"global.mst"}
+unions the sKNN graph with the Euclidean MST on all vertices.}
 
 \item{edge.weight}{Character scalar. Currently only \code{"distance"} is
 supported.}
+
+\item{neighbor.method}{Character scalar. \code{"exact"} uses all pairwise
+distances for kNN construction. \code{"ann"} uses the bundled ANN kd-tree
+backend for the kNN construction itself.}
+
+\item{ann.eps}{Non-negative numeric scalar reserved for approximate ANN
+search. Currently only \code{0} is supported.}
+
+\item{bridge.k}{Integer scalar or \code{NULL}. Initial number of ANN neighbors
+to use for sparse inter-component bridge search when
+\code{connect.method = "component.mst.ann"}. Defaults to \code{max(k, 10)}, capped
+at \code{nrow(X) - 1}.}
+
+\item{bridge.k.max}{Integer scalar or \code{NULL}. Maximum number of ANN
+neighbors to use before exact fallback. Defaults to
+\code{min(nrow(X) - 1, max(50, 8 * k, bridge.k))}.}
+
+\item{bridge.growth}{Numeric scalar greater than 1. Multiplicative growth
+factor for bridge candidate neighborhoods.}
 }
 \value{
 A list of class \code{"sknn_graph"} with adjacency lists, weights, edge
@@ -48,9 +73,20 @@ default \code{connect.method = "component.mst"} first collapses each connected
 component of the sKNN graph to one component vertex, weights each component
 pair by the shortest data-space edge between them, and adds the minimum
 spanning tree of this component graph. This adds exactly \code{m - 1} bridge
-edges when the original sKNN graph has \code{m} connected components. The
-alternative \code{connect.method = "global.mst"} unions the sKNN graph with the
-full Euclidean MST on the data points.
+edges when the original sKNN graph has \code{m} connected components.
+\code{connect.method = "component.mst.ann"} uses ANN nearest-neighbor bridge
+candidates first and automatically falls back to exact component MST when
+the sparse candidate graph does not connect all components. The alternative
+\code{connect.method = "global.mst"} unions the sKNN graph with the full
+Euclidean MST on the data points.
+
+\code{neighbor.method = "exact"} computes all pairwise distances and is the
+deterministic reference implementation. \code{neighbor.method = "ann"} uses
+the bundled ANN kd-tree for the Euclidean kNN search step; exact parity can
+differ only in nearest-neighbor tie cases. Edge weights are always returned
+as ordinary Euclidean distances. Exact \code{component.mst} repair uses exact
+pairwise bridge distances; \code{component.mst.ann} uses ANN bridge candidates
+before guaranteed exact fallback.
 }
 \examples{
 X <- rbind(c(0, 0), c(1, 0), c(10, 0), c(11, 0))
