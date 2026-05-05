@@ -57,6 +57,24 @@
 #'        \code{knn.metric = "linf.simplex"} to identify active simplex faces
 #'        and validate that \code{max(row) = 1}.
 #'
+#' @param connect.components Logical scalar. If TRUE, add MST bridge edges to
+#'        the final pruned graph so it is connected whenever possible. Currently
+#'        supported only with \code{knn.metric = "euclidean"}.
+#'
+#' @param connect.method Character scalar. \code{"component.mst"} adds exact
+#'        shortest inter-component bridges. \code{"component.mst.ann"} tries
+#'        sparse ANN bridge candidates before automatic exact fallback.
+#'        \code{"global.mst"} unions the graph with the full Euclidean MST.
+#'
+#' @param bridge.k Integer scalar or NULL. Initial ANN bridge neighborhood size
+#'        for \code{connect.method = "component.mst.ann"}.
+#'
+#' @param bridge.k.max Integer scalar or NULL. Maximum ANN bridge neighborhood
+#'        size before exact fallback.
+#'
+#' @param bridge.growth Numeric scalar greater than 1. Multiplicative growth
+#'        factor for ANN bridge neighborhoods.
+#'
 #' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
 #'        Used only when `knn.cache.mode != "none"`.
 #'
@@ -119,6 +137,11 @@ create.single.iknn.graph <- function(X,
                                      variance.explained = 0.99,
                                      knn.metric = c("euclidean", "linf.simplex"),
                                      linf.tol = sqrt(.Machine$double.eps),
+                                     connect.components = FALSE,
+                                     connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                                     bridge.k = NULL,
+                                     bridge.k.max = NULL,
+                                     bridge.growth = 2,
                                      verbose = TRUE,
                                      knn.cache.path = NULL,
                                      knn.cache.mode = c("none", "read", "write", "readwrite")) {
@@ -148,6 +171,11 @@ create.single.iknn.graph <- function(X,
 
     knn.metric <- .normalize.knn.metric(knn.metric)
     linf.tol <- .normalize.linf.tol(linf.tol)
+    if (!is.logical(connect.components) || length(connect.components) != 1L ||
+        is.na(connect.components)) {
+        stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
+    }
+    connect.method <- match.arg(connect.method)
 
     if (!is.numeric(k) || length(k) != 1 || k != round(k) || k < 1 || k >= n) {
         stop("k must be a positive integer less than the number of data points")
@@ -189,6 +217,10 @@ create.single.iknn.graph <- function(X,
         }
     }
     if (identical(knn.metric, "linf.simplex")) {
+        if (isTRUE(connect.components)) {
+            stop("connect.components is currently supported only when knn.metric = 'euclidean'.",
+                 call. = FALSE)
+        }
         if (!is.null(pca.dim)) {
             stop("pca.dim must be NULL when knn.metric = 'linf.simplex'.")
         }
@@ -276,6 +308,7 @@ create.single.iknn.graph <- function(X,
     if (verbose && max.path.edge.ratio.deviation.thld == 0 && threshold.percentile == 0) {
         message("No geometric/quantile pruning requested: pruned_adj_list/pruned_weight_list will match the unpruned graph.")
     }
+    bridge.controls <- .normalize.bridge.controls(nrow(X), k, bridge.k, bridge.k.max, bridge.growth)
 
     result <- .Call("S_create_single_iknn_graph",
                     X,
@@ -292,6 +325,43 @@ create.single.iknn.graph <- function(X,
                     as.double(linf.tol),
                     as.logical(verbose),
                     PACKAGE = "gflow")
+
+    n.edges.before.mst <- result$n_edges_in_pruned_graph
+    n.removed.by.pruning <- result$n_removed_edges
+    pruning.reduction.ratio <- result$edge_reduction_ratio
+    bridge <- .augment.graph.with.component.mst(
+        X = X,
+        adj.list = result$pruned_adj_list,
+        weight.list = result$pruned_weight_list,
+        k = k,
+        connect.components = connect.components,
+        connect.method = connect.method,
+        bridge.k = bridge.controls$bridge.k,
+        bridge.k.max = bridge.controls$bridge.k.max,
+        bridge.growth = bridge.controls$bridge.growth
+    )
+    result$pruned_adj_list <- bridge$adj_list
+    result$pruned_weight_list <- bridge$weight_list
+    result$n_edges_in_pruned_graph <- sum(lengths(result$pruned_adj_list)) / 2
+    result$n_removed_edges <- n.removed.by.pruning
+    result$edge_reduction_ratio <- pruning.reduction.ratio
+    result$n_edges_before_mst <- n.edges.before.mst
+    result$n_edges_after_mst <- result$n_edges_in_pruned_graph
+    result$n_components_before_mst <- bridge$n_components_before
+    result$n_components_after_mst <- bridge$n_components_after
+    result$component_id_before_mst <- bridge$component_id_before
+    result$component_id_after_mst <- bridge$component_id_after
+    result$mst_edge_matrix <- bridge$mst_edge_matrix
+    result$mst_edge_weight <- bridge$mst_edge_weight
+    result$n_mst_edges_added <- bridge$n_mst_edges_added
+    result$connect_components <- bridge$connect_components
+    result$connect_method <- bridge$connect_method
+    result$bridge_method <- bridge$bridge_method
+    result$bridge_k <- bridge$bridge_k
+    result$bridge_k_max <- bridge$bridge_k_max
+    result$bridge_growth <- bridge$bridge_growth
+    result$bridge_k_used <- bridge$bridge_k_used
+    result$bridge_exact_fallback_used <- bridge$bridge_exact_fallback_used
 
     attr(result, "k") <- k
     attr(result, "max.path.edge.ratio.deviation.thld") <- max.path.edge.ratio.deviation.thld
