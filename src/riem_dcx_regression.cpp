@@ -1759,28 +1759,54 @@ void riem_dcx_t::compute_spectral_decomposition(
         Eigen::MatrixXd L_dense = Eigen::MatrixXd(L0);
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(L_dense);
 
-        if (eigensolver.info() != Eigen::Success) {
+        if (eigensolver.info() != Eigen::Success && force_dense_solver) {
             Rf_error("Dense eigendecomposition failed");
         }
 
-        int n_to_extract = std::min(n_eigenpairs, (int)eigensolver.eigenvalues().size());
-        spectral_cache.eigenvalues = eigensolver.eigenvalues().head(n_to_extract);
-        spectral_cache.eigenvectors = eigensolver.eigenvectors().leftCols(n_to_extract);
+        if (eigensolver.info() == Eigen::Success) {
+            int n_to_extract = std::min(n_eigenpairs, (int)eigensolver.eigenvalues().size());
+            spectral_cache.eigenvalues = eigensolver.eigenvalues().head(n_to_extract);
+            spectral_cache.eigenvectors = eigensolver.eigenvectors().leftCols(n_to_extract);
 
-        sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
-        enforce_mass_sym_spectral_invariants_or_error(L0, spectral_cache.eigenvalues, spectral_cache.eigenvectors, verbose_level);
+            sort_eigenpairs_ascending_in_place(spectral_cache.eigenvalues, spectral_cache.eigenvectors);
 
-        spectral_cache.is_valid = true;
-        if (spectral_cache.eigenvalues.size() >= 2) {
-            spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+            bool accepted_dense_candidate = force_dense_solver;
+            if (force_dense_solver) {
+                enforce_mass_sym_spectral_invariants_or_error(
+                    L0,
+                    spectral_cache.eigenvalues,
+                    spectral_cache.eigenvectors,
+                    verbose_level
+                );
+            } else {
+                accepted_dense_candidate = accept_mass_sym_spectral_candidate_or_report(
+                    L0,
+                    spectral_cache.eigenvalues,
+                    spectral_cache.eigenvectors,
+                    verbose_level,
+                    "Dense eigendecomposition"
+                );
+                if (!accepted_dense_candidate) {
+                    spectral_cache.invalidate();
+                }
+            }
+
+            if (accepted_dense_candidate) {
+                spectral_cache.is_valid = true;
+                if (spectral_cache.eigenvalues.size() >= 2) {
+                    spectral_cache.lambda_2 = spectral_cache.eigenvalues[1];
+                }
+
+                // debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
+
+                if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+                    elapsed_time(phase_time, "DONE", true);
+                }
+                return;
+            }
+        } else if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
+            Rprintf("dense solver failed; falling back to sparse solver\n");
         }
-
-        // debug_print_eigs_order(spectral_cache.eigenvalues, verbose_level);
-
-        if (vl_at_least(verbose_level, verbose_level_t::DEBUG)) {
-            elapsed_time(phase_time, "DONE", true);
-        }
-        return;
     }
 
     // ============================================================
