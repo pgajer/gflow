@@ -17,15 +17,17 @@
 #'     minus 1.0 is \emph{less than} this threshold. This is a deviation
 #'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
 #'     path-to-edge ratio R to \eqn{1 + \delta}.
-#'     Used when `prune.method = "global.geodesic"`.
+#'     Used when `prune.method` is `"global.geodesic"` or
+#'     `"global.geodesic.ratio"`.
 #'
 #' @param prune.method Character scalar. `"global.geodesic"` preserves the
 #'     historical whole-graph geometric pruning behavior controlled by
 #'     `max.path.edge.ratio.deviation.thld` and
-#'     `path.edge.ratio.percentile`. `"local.geodesic"` applies the same
-#'     experimental local geometric pruning stage used by sKNN/mKNN.
-#'     `"none"` disables geometric pruning; quantile pruning controlled by
-#'     `threshold.percentile` is still honored.
+#'     `path.edge.ratio.percentile`. `"global.geodesic.ratio"` is a separately
+#'     named alias for that whole-graph geodesic-ratio behavior.
+#'     `"local.geodesic"` applies the same experimental local geometric pruning
+#'     stage used by sKNN/mKNN. `"none"` disables geometric pruning; quantile
+#'     pruning controlled by `threshold.percentile` is still honored.
 #'
 #' @param prune.tau Numeric scalar greater than 1, or `NULL`. Multiplicative
 #'     threshold for local geometric pruning. If `NULL`, defaults to
@@ -164,7 +166,8 @@
 create.single.iknn.graph <- function(X,
                                      k,
                                      max.path.edge.ratio.deviation.thld = 0.1,
-                                     prune.method = c("global.geodesic", "none", "local.geodesic"),
+                                     prune.method = c("global.geodesic", "none", "local.geodesic",
+                                                      "global.geodesic.ratio"),
                                      prune.tau = NULL,
                                      prune.local.k = NULL,
                                      path.edge.ratio.percentile = 0.5,
@@ -366,7 +369,8 @@ create.single.iknn.graph <- function(X,
         message("No geometric/quantile pruning requested: pruned_adj_list/pruned_weight_list will match the unpruned graph.")
     }
     bridge.controls <- .normalize.bridge.controls(nrow(X), k, bridge.k, bridge.k.max, bridge.growth)
-    cxx.edge.ratio.threshold <- if (identical(prune.method, "global.geodesic")) {
+    cxx.edge.ratio.threshold <- if (prune.method %in% c("global.geodesic",
+                                                        "global.geodesic.ratio")) {
         max.path.edge.ratio.deviation.thld + 1.0
     } else {
         1.0

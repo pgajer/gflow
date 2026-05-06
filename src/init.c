@@ -266,6 +266,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_sknn_graph", (DL_FUNC) &S_create_sknn_graph, 16},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
   {"S_prune_graph_local_geodesic", (DL_FUNC) &S_prune_graph_local_geodesic, 6},
+  {"S_prune_graph_global_geodesic_ratio", (DL_FUNC) &S_prune_graph_global_geodesic_ratio, 5},
   {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
   {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
   {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
