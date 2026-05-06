@@ -34,6 +34,35 @@ test_that("create.radius.graph can repair components by component MST", {
 })
 
 
+test_that("create.radius.graph supports local geometric pruning", {
+  X <- matrix(0:3, ncol = 1)
+
+  g <- create.radius.graph(
+    X,
+    radius = 2.1,
+    prune.method = "local.geodesic",
+    prune.tau = 1.01,
+    with.pruned.edge.stats = TRUE
+  )
+
+  expect_equal(.radius_edge_keys(.graph.edge.table(g$raw_adj_list,
+                                                   g$raw_weight_list)),
+               c("1-2", "1-3", "2-3", "2-4", "3-4"))
+  expect_equal(.radius_edge_keys(.graph.edge.table(g$pruned_adj_list,
+                                                   g$pruned_weight_list)),
+               c("1-2", "2-3", "3-4"))
+  expect_equal(.radius_edge_keys(g$edge_matrix), c("1-2", "2-3", "3-4"))
+  expect_equal(g$n_edges_before_pruning, 5L)
+  expect_equal(g$n_edges_after_pruning, 3L)
+  expect_equal(g$n_pruned_edges, 2L)
+  expect_equal(g$prune_method, "local.geodesic")
+  expect_equal(g$prune_tau, 1.01)
+  expect_equal(g$prune_local_k, 2L)
+  expect_equal(nrow(g$pruned_edge_stats), 2L)
+  expect_equal(g$pruned_edge_stats$path_edge_ratio, c(1, 1), tolerance = 1e-12)
+})
+
+
 test_that("create.adaptive.radius.graph distinguishes max and min rules", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
@@ -50,16 +79,55 @@ test_that("create.adaptive.radius.graph distinguishes max and min rules", {
 })
 
 
+test_that("create.adaptive.radius.graph supports local geometric pruning", {
+  X <- matrix(0:3, ncol = 1)
+
+  g <- create.adaptive.radius.graph(
+    X,
+    k.scale = 2,
+    radius.rule = "max",
+    prune.method = "local.geodesic",
+    prune.tau = 1.01,
+    with.pruned.edge.stats = TRUE
+  )
+
+  expect_equal(.radius_edge_keys(.graph.edge.table(g$raw_adj_list,
+                                                   g$raw_weight_list)),
+               c("1-2", "1-3", "2-3", "2-4", "3-4"))
+  expect_equal(.radius_edge_keys(.graph.edge.table(g$pruned_adj_list,
+                                                   g$pruned_weight_list)),
+               c("1-2", "2-3", "3-4"))
+  expect_equal(.radius_edge_keys(g$edge_matrix), c("1-2", "2-3", "3-4"))
+  expect_equal(g$n_edges_before_pruning, 5L)
+  expect_equal(g$n_edges_after_pruning, 3L)
+  expect_equal(g$n_pruned_edges, 2L)
+  expect_equal(g$prune_method, "local.geodesic")
+  expect_equal(g$prune_local_k, 2L)
+  expect_equal(nrow(g$pruned_edge_stats), 2L)
+})
+
+
 test_that("radius graph constructors validate inputs", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
   expect_error(create.radius.graph(X, radius = 0), "radius")
   expect_error(create.radius.graph(X, radius = Inf), "radius")
   expect_error(create.radius.graph(c("a", "b"), radius = 1), "matrix or data frame")
+  expect_error(create.radius.graph(X, radius = 1, prune.method = "global"),
+               "'arg' should be one of")
+  expect_error(create.radius.graph(X, radius = 1, prune.tau = 1),
+               "prune.tau")
+  expect_error(create.radius.graph(X, radius = 1, prune.local.k = 3),
+               "prune.local.k")
   expect_error(create.adaptive.radius.graph(X, k.scale = 0), "k.scale")
   expect_error(create.adaptive.radius.graph(X, k.scale = 3), "k.scale")
   expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.factor = 0),
                "radius.factor")
   expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "mean"),
                "'arg' should be one of")
+  expect_error(create.adaptive.radius.graph(X, k.scale = 1, prune.tau = 1),
+               "prune.tau")
+  expect_error(create.adaptive.radius.graph(X, k.scale = 1,
+                                            with.pruned.edge.stats = NA),
+               "with.pruned.edge.stats")
 })

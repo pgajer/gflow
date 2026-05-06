@@ -41,7 +41,14 @@ test_that("graph.geodesic.distances uses adj_list final payload after local prun
     sknn = create.sknn.graph(X, k = 2, prune.method = "local.geodesic",
                              prune.tau = 1.01),
     mknn = create.mknn.graph(X, k = 3, prune.method = "local.geodesic",
-                             prune.tau = 1.01)
+                             prune.tau = 1.01),
+    radius = create.radius.graph(X, radius = 2.1,
+                                 prune.method = "local.geodesic",
+                                 prune.tau = 1.01),
+    adaptive = create.adaptive.radius.graph(X, k.scale = 2,
+                                            radius.rule = "max",
+                                            prune.method = "local.geodesic",
+                                            prune.tau = 1.01)
   )
 
   for (g in graphs) {

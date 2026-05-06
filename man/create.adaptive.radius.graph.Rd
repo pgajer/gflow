@@ -9,6 +9,10 @@ create.adaptive.radius.graph(
   k.scale,
   radius.factor = 1,
   radius.rule = c("max", "min"),
+  prune.method = c("none", "local.geodesic"),
+  prune.tau = 1.05,
+  prune.local.k = NULL,
+  with.pruned.edge.stats = FALSE,
   connect.components = FALSE,
   connect.method = c("component.mst", "component.mst.ann", "global.mst"),
   bridge.k = NULL,
@@ -27,6 +31,21 @@ distances \eqn{\sigma_i}.}
 \item{radius.rule}{Character scalar. \code{"max"} uses
 \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; \code{"min"} uses
 \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}.}
+
+\item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
+\code{"local.geodesic"} applies the experimental local geometric pruning stage
+before optional MST connectivity repair.}
+
+\item{prune.tau}{Numeric scalar greater than 1. For local geometric pruning,
+an edge may be removed when a retained local alternative path is at most
+this multiplicative factor times the direct edge length.}
+
+\item{prune.local.k}{Integer scalar or \code{NULL}. Number of nearest neighbors
+used to form local neighborhoods for pruning. For adaptive-radius graphs,
+\code{NULL} defaults to \code{k.scale}.}
+
+\item{with.pruned.edge.stats}{Logical scalar. If \code{TRUE}, return a data frame
+with one row per locally pruned edge.}
 
 \item{connect.components}{Logical scalar. If \code{TRUE}, add MST bridge edges so
 the final graph is connected whenever possible.}
@@ -50,11 +69,12 @@ A list of class \code{"adaptive_radius_graph"} containing adjacency
 lists, edge weights, edge matrix, local scale values, and component
 diagnostics. The final graph is stored in \code{adj_list}/\code{weight_list};
 \code{raw_adj_list}/\code{raw_weight_list} store the adaptive-radius graph before
-optional MST component repair; and \code{pruned_adj_list}/\code{pruned_weight_list}
-are identical to \verb{raw_*} because adaptive-radius graphs do not currently
-have a pruning stage. The repaired lifecycle branches
-\verb{raw_repaired_*}, \verb{pruned_repaired_*}, and \verb{repaired_pruned_*} are
-identical for adaptive-radius graphs.
+pruning and optional MST component repair; and
+\code{pruned_adj_list}/\code{pruned_weight_list} store the graph after optional local
+geometric pruning and before MST component repair. The repaired lifecycle
+branches \verb{raw_repaired_*}, \verb{pruned_repaired_*}, and
+\verb{repaired_pruned_*} allow direct comparison of native, prune-first, and
+repair-first graph geodesic geometries.
 }
 \description{
 Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}

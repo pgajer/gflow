@@ -7,6 +7,10 @@
 create.radius.graph(
   X,
   radius,
+  prune.method = c("none", "local.geodesic"),
+  prune.tau = 1.05,
+  prune.local.k = NULL,
+  with.pruned.edge.stats = FALSE,
   connect.components = FALSE,
   connect.method = c("component.mst", "component.mst.ann", "global.mst"),
   bridge.k = NULL,
@@ -19,6 +23,21 @@ create.radius.graph(
 
 \item{radius}{Positive numeric scalar. Edges are included when
 \eqn{\|x_i - x_j\|_2 \le radius}.}
+
+\item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
+\code{"local.geodesic"} applies the experimental local geometric pruning stage
+before optional MST connectivity repair.}
+
+\item{prune.tau}{Numeric scalar greater than 1. For local geometric pruning,
+an edge may be removed when a retained local alternative path is at most
+this multiplicative factor times the direct edge length.}
+
+\item{prune.local.k}{Integer scalar or \code{NULL}. Number of nearest neighbors
+used to form local neighborhoods for pruning. For fixed-radius graphs,
+\code{NULL} uses the median positive raw graph degree, clipped to \verb{[1, n - 1]}.}
+
+\item{with.pruned.edge.stats}{Logical scalar. If \code{TRUE}, return a data frame
+with one row per locally pruned edge.}
 
 \item{connect.components}{Logical scalar. If \code{TRUE}, add MST bridge edges so
 the final graph is connected whenever possible.}
@@ -41,11 +60,12 @@ factor for ANN bridge neighborhoods.}
 A list of class \code{"radius_graph"} containing adjacency lists, edge
 weights, edge matrix, and component diagnostics. The final graph is stored
 in \code{adj_list}/\code{weight_list}; \code{raw_adj_list}/\code{raw_weight_list} store the
-fixed-radius graph before optional MST component repair; and
-\code{pruned_adj_list}/\code{pruned_weight_list} are identical to \verb{raw_*} because
-radius graphs do not currently have a pruning stage. The repaired lifecycle
-branches \verb{raw_repaired_*}, \verb{pruned_repaired_*}, and \verb{repaired_pruned_*}
-are identical for radius graphs.
+fixed-radius graph before pruning and optional MST component repair;
+\code{pruned_adj_list}/\code{pruned_weight_list} store the graph after optional local
+geometric pruning and before MST component repair. The repaired lifecycle
+branches \verb{raw_repaired_*}, \verb{pruned_repaired_*}, and
+\verb{repaired_pruned_*} allow direct comparison of native, prune-first, and
+repair-first graph geodesic geometries.
 }
 \description{
 Creates an undirected Euclidean radius graph from a numeric data matrix.

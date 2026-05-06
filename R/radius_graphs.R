@@ -37,6 +37,16 @@
     do.call(rbind, rows[seq_len(cursor)])
 }
 
+.default.radius.prune.k <- function(adj.list) {
+    n <- length(adj.list)
+    degree <- lengths(adj.list)
+    positive.degree <- degree[degree > 0L]
+    if (!length(positive.degree)) {
+        return(1L)
+    }
+    as.integer(min(n - 1L, max(1L, round(stats::median(positive.degree)))))
+}
+
 .finalize.radius.graph <- function(X,
                                    edges,
                                    connect.components,
@@ -44,17 +54,38 @@
                                    bridge.k,
                                    bridge.k.max,
                                    bridge.growth,
-                                   class) {
+                                   class,
+                                   prune.method = "none",
+                                   prune.tau = 1.05,
+                                   prune.local.k = NULL,
+                                   prune.k = 1L,
+                                   with.pruned.edge.stats = FALSE) {
     n <- nrow(X)
     graph <- .graph.from.edge.table(n, edges)
-    n.edges.before.mst <- nrow(edges)
     raw.adj.list <- graph$adj_list
     raw.weight.list <- graph$weight_list
+    prune.method <- .normalize.local.prune.method(prune.method)
+    prune.controls <- .normalize.local.prune.controls(
+        n, prune.k, prune.tau, prune.local.k, with.pruned.edge.stats
+    )
+    pruning <- .prune.graph.by.method(
+        X = X,
+        adj.list = raw.adj.list,
+        weight.list = raw.weight.list,
+        k = prune.k,
+        prune.method = prune.method,
+        prune.tau = prune.controls$prune.tau,
+        prune.local.k = prune.controls$prune.local.k,
+        with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
+    )
+    pruned.adj.list <- pruning$adj_list
+    pruned.weight.list <- pruning$weight_list
+    n.edges.before.mst <- pruning$n_edges_after_pruning
     bridge <- .augment.graph.with.component.mst(
         X = X,
-        adj.list = graph$adj_list,
-        weight.list = graph$weight_list,
-        k = 1L,
+        adj.list = pruned.adj.list,
+        weight.list = pruned.weight.list,
+        k = prune.k,
         connect.components = connect.components,
         connect.method = connect.method,
         bridge.k = bridge.k,
@@ -71,23 +102,8 @@
         n_edges = nrow(edge.table),
         raw_adj_list = raw.adj.list,
         raw_weight_list = raw.weight.list,
-        pruned_adj_list = raw.adj.list,
-        pruned_weight_list = raw.weight.list,
-        raw_repaired_adj_list = bridge$adj_list,
-        raw_repaired_weight_list = bridge$weight_list,
-        pruned_repaired_adj_list = bridge$adj_list,
-        pruned_repaired_weight_list = bridge$weight_list,
-        repaired_pruned_adj_list = bridge$adj_list,
-        repaired_pruned_weight_list = bridge$weight_list,
-        n_edges_in_raw_graph = .edge.count.from.adj.list(raw.adj.list),
-        n_edges_in_raw_repaired_graph = .edge.count.from.adj.list(bridge$adj_list),
-        n_edges_in_pruned_repaired_graph = .edge.count.from.adj.list(bridge$adj_list),
-        n_edges_in_repaired_pruned_graph = .edge.count.from.adj.list(bridge$adj_list),
-        n_components_raw = bridge$n_components_before,
-        n_components_raw_repaired = bridge$n_components_after,
-        n_components_pruned = bridge$n_components_before,
-        n_components_pruned_repaired = bridge$n_components_after,
-        n_components_repaired_pruned = bridge$n_components_after,
+        pruned_adj_list = pruned.adj.list,
+        pruned_weight_list = pruned.weight.list,
         n_edges_before_mst = n.edges.before.mst,
         n_edges_after_mst = nrow(edge.table),
         n_components_before = bridge$n_components_before,
@@ -104,7 +120,32 @@
         bridge_k_max = bridge$bridge_k_max,
         bridge_growth = bridge$bridge_growth,
         bridge_k_used = bridge$bridge_k_used,
-        bridge_exact_fallback_used = bridge$bridge_exact_fallback_used
+        bridge_exact_fallback_used = bridge$bridge_exact_fallback_used,
+        n_edges_before_pruning = pruning$n_edges_before_pruning,
+        n_edges_after_pruning = pruning$n_edges_after_pruning,
+        n_pruned_edges = pruning$n_pruned_edges,
+        pruned_edge_stats = pruning$pruned_edge_stats,
+        prune_method = prune.method,
+        prune_tau = pruning$prune_tau,
+        prune_local_k = pruning$prune_local_k,
+        with_pruned_edge_stats = pruning$with_pruned_edge_stats
+    )
+    out <- .add.graph.lifecycle.branches(
+        result = out,
+        X = X,
+        k = prune.k,
+        raw.adj.list = out$raw_adj_list,
+        raw.weight.list = out$raw_weight_list,
+        pruned.adj.list = out$pruned_adj_list,
+        pruned.weight.list = out$pruned_weight_list,
+        connect.method = connect.method,
+        bridge.k = bridge$bridge_k,
+        bridge.k.max = bridge$bridge_k_max,
+        bridge.growth = bridge$bridge_growth,
+        prune.method = prune.method,
+        prune.tau = prune.controls$prune.tau,
+        prune.local.k = prune.controls$prune.local.k,
+        with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
     )
     class(out) <- c(class, "list")
     out
@@ -132,15 +173,27 @@
 #'   size before exact fallback.
 #' @param bridge.growth Numeric scalar greater than 1. Multiplicative growth
 #'   factor for ANN bridge neighborhoods.
+#' @param prune.method Character scalar. `"none"` disables geometric pruning.
+#'   `"local.geodesic"` applies the experimental local geometric pruning stage
+#'   before optional MST connectivity repair.
+#' @param prune.tau Numeric scalar greater than 1. For local geometric pruning,
+#'   an edge may be removed when a retained local alternative path is at most
+#'   this multiplicative factor times the direct edge length.
+#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
+#'   used to form local neighborhoods for pruning. For fixed-radius graphs,
+#'   `NULL` uses the median positive raw graph degree, clipped to `[1, n - 1]`.
+#' @param with.pruned.edge.stats Logical scalar. If `TRUE`, return a data frame
+#'   with one row per locally pruned edge.
 #'
 #' @return A list of class `"radius_graph"` containing adjacency lists, edge
 #'   weights, edge matrix, and component diagnostics. The final graph is stored
 #'   in `adj_list`/`weight_list`; `raw_adj_list`/`raw_weight_list` store the
-#'   fixed-radius graph before optional MST component repair; and
-#'   `pruned_adj_list`/`pruned_weight_list` are identical to `raw_*` because
-#'   radius graphs do not currently have a pruning stage. The repaired lifecycle
-#'   branches `raw_repaired_*`, `pruned_repaired_*`, and `repaired_pruned_*`
-#'   are identical for radius graphs.
+#'   fixed-radius graph before pruning and optional MST component repair;
+#'   `pruned_adj_list`/`pruned_weight_list` store the graph after optional local
+#'   geometric pruning and before MST component repair. The repaired lifecycle
+#'   branches `raw_repaired_*`, `pruned_repaired_*`, and
+#'   `repaired_pruned_*` allow direct comparison of native, prune-first, and
+#'   repair-first graph geodesic geometries.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
@@ -149,6 +202,10 @@
 #' @export
 create.radius.graph <- function(X,
                                 radius,
+                                prune.method = c("none", "local.geodesic"),
+                                prune.tau = 1.05,
+                                prune.local.k = NULL,
+                                with.pruned.edge.stats = FALSE,
                                 connect.components = FALSE,
                                 connect.method = c("component.mst", "component.mst.ann", "global.mst"),
                                 bridge.k = NULL,
@@ -168,9 +225,16 @@ create.radius.graph <- function(X,
         X,
         keep.edge = function(i, j, d) d <= radius
     )
+    graph <- .graph.from.edge.table(nrow(X), edges)
+    prune.k <- .default.radius.prune.k(graph$adj_list)
     out <- .finalize.radius.graph(
         X, edges, connect.components, connect.method,
-        bridge.k, bridge.k.max, bridge.growth, "radius_graph"
+        bridge.k, bridge.k.max, bridge.growth, "radius_graph",
+        prune.method = prune.method,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        prune.k = prune.k,
+        with.pruned.edge.stats = with.pruned.edge.stats
     )
     out$radius <- as.numeric(radius)
     out$graph_rule <- "fixed.radius"
@@ -193,17 +257,21 @@ create.radius.graph <- function(X,
 #' @param radius.rule Character scalar. `"max"` uses
 #'   \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; `"min"` uses
 #'   \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}.
+#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
+#'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
+#'   `NULL` defaults to `k.scale`.
 #' @inheritParams create.radius.graph
 #'
 #' @return A list of class `"adaptive_radius_graph"` containing adjacency
 #'   lists, edge weights, edge matrix, local scale values, and component
 #'   diagnostics. The final graph is stored in `adj_list`/`weight_list`;
 #'   `raw_adj_list`/`raw_weight_list` store the adaptive-radius graph before
-#'   optional MST component repair; and `pruned_adj_list`/`pruned_weight_list`
-#'   are identical to `raw_*` because adaptive-radius graphs do not currently
-#'   have a pruning stage. The repaired lifecycle branches
-#'   `raw_repaired_*`, `pruned_repaired_*`, and `repaired_pruned_*` are
-#'   identical for adaptive-radius graphs.
+#'   pruning and optional MST component repair; and
+#'   `pruned_adj_list`/`pruned_weight_list` store the graph after optional local
+#'   geometric pruning and before MST component repair. The repaired lifecycle
+#'   branches `raw_repaired_*`, `pruned_repaired_*`, and
+#'   `repaired_pruned_*` allow direct comparison of native, prune-first, and
+#'   repair-first graph geodesic geometries.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
@@ -214,6 +282,10 @@ create.adaptive.radius.graph <- function(X,
                                          k.scale,
                                          radius.factor = 1,
                                          radius.rule = c("max", "min"),
+                                         prune.method = c("none", "local.geodesic"),
+                                         prune.tau = 1.05,
+                                         prune.local.k = NULL,
+                                         with.pruned.edge.stats = FALSE,
                                          connect.components = FALSE,
                                          connect.method = c("component.mst", "component.mst.ann", "global.mst"),
                                          bridge.k = NULL,
@@ -255,7 +327,12 @@ create.adaptive.radius.graph <- function(X,
     )
     out <- .finalize.radius.graph(
         X, edges, connect.components, connect.method,
-        bridge.k, bridge.k.max, bridge.growth, "adaptive_radius_graph"
+        bridge.k, bridge.k.max, bridge.growth, "adaptive_radius_graph",
+        prune.method = prune.method,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        prune.k = as.integer(k.scale),
+        with.pruned.edge.stats = with.pruned.edge.stats
     )
     out$k_scale <- as.integer(k.scale)
     out$radius_factor <- as.numeric(radius.factor)
