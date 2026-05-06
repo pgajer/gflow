@@ -8,7 +8,9 @@ create.sknn.graph(
   X,
   k,
   prune.edges = FALSE,
-  prune.method = c("none", "local.geodesic"),
+  prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+  max.path.edge.ratio.deviation.thld = 0.1,
+  path.edge.ratio.percentile = 0.5,
   prune.tau = 1.05,
   prune.local.k = NULL,
   with.pruned.edge.stats = FALSE,
@@ -31,7 +33,17 @@ create.sknn.graph(
 geometric edge pruning before optional MST connectivity repair.}
 
 \item{prune.method}{Character scalar. \code{"none"} disables pruning.
-\code{"local.geodesic"} applies experimental local geometric edge pruning.}
+\code{"local.geodesic"} applies experimental local geometric edge pruning.
+\code{"global.geodesic.ratio"} applies whole-graph geodesic-ratio pruning.}
+
+\item{max.path.edge.ratio.deviation.thld}{Numeric scalar in \verb{[0, 0.2)}.
+For \code{prune.method = "global.geodesic.ratio"}, an edge may be removed when
+the shortest alternative path is at most
+\code{1 + max.path.edge.ratio.deviation.thld} times the direct edge length.}
+
+\item{path.edge.ratio.percentile}{Numeric scalar in \verb{[0, 1]}. For
+\code{prune.method = "global.geodesic.ratio"}, only edges at or above this edge
+length percentile are considered.}
 
 \item{prune.tau}{Numeric scalar greater than 1. An edge may be pruned when
 the shortest retained local alternative path is at most this multiplicative
@@ -134,9 +146,9 @@ is built and before optional MST connectivity repair. Candidate edges are
 processed longest-first. For an edge \verb{(i, j)}, the edge is removed only when
 the currently retained graph contains an alternative path from \code{i} to \code{j},
 restricted to the union of their local neighborhoods, whose length is at most
-\code{prune.tau} times the direct edge length. This preserves the connected
-components present at the start of the pruning pass while removing locally
-redundant long edges.
+\code{prune.tau} times the direct edge length. \code{prune.method = "global.geodesic.ratio"} instead uses the whole graph as the alternative-path
+search domain and removes long edges whose shortest alternative path is
+within the configured geodesic-ratio threshold.
 }
 \examples{
 X <- rbind(c(0, 0), c(1, 0), c(10, 0), c(11, 0))

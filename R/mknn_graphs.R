@@ -11,7 +11,15 @@
 #'   consider. Must be at least 2.
 #' @param prune.method Character scalar. `"none"` disables geometric pruning.
 #'   `"local.geodesic"` applies the experimental local geometric pruning stage
-#'   before optional MST connectivity repair.
+#'   before optional MST connectivity repair. `"global.geodesic.ratio"` applies
+#'   whole-graph geodesic-ratio pruning before optional MST connectivity repair.
+#' @param max.path.edge.ratio.deviation.thld Numeric scalar in `[0, 0.2)`.
+#'   For `prune.method = "global.geodesic.ratio"`, an edge may be removed when
+#'   the shortest alternative path is at most
+#'   `1 + max.path.edge.ratio.deviation.thld` times the direct edge length.
+#' @param path.edge.ratio.percentile Numeric scalar in `[0, 1]`. For
+#'   `prune.method = "global.geodesic.ratio"`, only edges at or above this edge
+#'   length percentile are considered.
 #' @param prune.tau Numeric scalar greater than 1. For local geometric pruning,
 #'   an edge may be removed when a retained local alternative path is at most
 #'   this multiplicative factor times the direct edge length.
@@ -101,7 +109,9 @@
 #' @export
 create.mknn.graph <- function(X,
                               k,
-                              prune.method = c("none", "local.geodesic"),
+                              prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                              max.path.edge.ratio.deviation.thld = 0.1,
+                              path.edge.ratio.percentile = 0.5,
                               prune.tau = 1.05,
                               prune.local.k = NULL,
                               with.pruned.edge.stats = FALSE,
@@ -158,6 +168,10 @@ create.mknn.graph <- function(X,
   prune.controls <- .normalize.local.prune.controls(
     n, k, prune.tau, prune.local.k, with.pruned.edge.stats
   )
+  global.ratio.controls <- .normalize.global.ratio.prune.controls(
+    max.path.edge.ratio.deviation.thld,
+    path.edge.ratio.percentile
+  )
   connect.method <- match.arg(connect.method)
   bridge.controls <- .normalize.bridge.controls(n, k, bridge.k, bridge.k.max, bridge.growth)
 
@@ -169,12 +183,16 @@ create.mknn.graph <- function(X,
   raw.adj.list <- result$adj_list
   raw.weight.list <- result$weight_list
 
-  if (identical(prune.method, "local.geodesic")) {
-    pruning <- .prune.graph.local.geodesic(
+  if (!identical(prune.method, "none")) {
+    pruning <- .prune.graph.by.method(
       X = X,
       adj.list = result$adj_list,
       weight.list = result$weight_list,
       k = k,
+      prune.method = prune.method,
+      max.path.edge.ratio.deviation.thld =
+        global.ratio.controls$max.path.edge.ratio.deviation.thld,
+      path.edge.ratio.percentile = global.ratio.controls$path.edge.ratio.percentile,
       prune.tau = prune.controls$prune.tau,
       prune.local.k = prune.controls$prune.local.k,
       with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
@@ -231,6 +249,9 @@ create.mknn.graph <- function(X,
     bridge.k.max = bridge.controls$bridge.k.max,
     bridge.growth = bridge.controls$bridge.growth,
     prune.method = prune.method,
+    max.path.edge.ratio.deviation.thld =
+      global.ratio.controls$max.path.edge.ratio.deviation.thld,
+    path.edge.ratio.percentile = global.ratio.controls$path.edge.ratio.percentile,
     prune.tau = prune.controls$prune.tau,
     prune.local.k = prune.controls$prune.local.k,
     with.pruned.edge.stats = prune.controls$with.pruned.edge.stats

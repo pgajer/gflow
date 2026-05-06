@@ -1,5 +1,16 @@
-.normalize.local.prune.method <- function(prune.method, supported = c("none", "local.geodesic")) {
-    prune.method <- match.arg(prune.method, supported)
+.normalize.local.prune.method <- function(prune.method,
+                                          supported = c("none", "local.geodesic",
+                                                        "global.geodesic.ratio")) {
+    if (length(prune.method) > 1L) {
+        prune.method <- prune.method[[1L]]
+    }
+    if (!is.character(prune.method) || length(prune.method) != 1L ||
+        is.na(prune.method) || !(prune.method %in% supported)) {
+        stop(sprintf(
+            "'arg' should be one of %s.",
+            paste(sprintf("\"%s\"", supported), collapse = ", ")
+        ), call. = FALSE)
+    }
     prune.method
 }
 
@@ -42,6 +53,38 @@
         edge_length = numeric(),
         alt_path_length = numeric(),
         path_edge_ratio = numeric()
+    )
+}
+
+.normalize.global.ratio.prune.controls <- function(max.path.edge.ratio.deviation.thld,
+                                                   path.edge.ratio.percentile,
+                                                   threshold.percentile = 0) {
+    if (!is.numeric(max.path.edge.ratio.deviation.thld) ||
+        length(max.path.edge.ratio.deviation.thld) != 1L ||
+        !is.finite(max.path.edge.ratio.deviation.thld) ||
+        max.path.edge.ratio.deviation.thld < 0 ||
+        max.path.edge.ratio.deviation.thld >= 0.2) {
+        stop("'max.path.edge.ratio.deviation.thld' must be in [0, 0.2).",
+             call. = FALSE)
+    }
+    if (!is.numeric(path.edge.ratio.percentile) ||
+        length(path.edge.ratio.percentile) != 1L ||
+        !is.finite(path.edge.ratio.percentile) ||
+        path.edge.ratio.percentile < 0 ||
+        path.edge.ratio.percentile > 1) {
+        stop("'path.edge.ratio.percentile' must be in [0, 1].", call. = FALSE)
+    }
+    if (!is.numeric(threshold.percentile) ||
+        length(threshold.percentile) != 1L ||
+        !is.finite(threshold.percentile) ||
+        threshold.percentile < 0 ||
+        threshold.percentile > 0.5) {
+        stop("'threshold.percentile' must be in [0, 0.5].", call. = FALSE)
+    }
+    list(
+        max.path.edge.ratio.deviation.thld = as.numeric(max.path.edge.ratio.deviation.thld),
+        path.edge.ratio.percentile = as.numeric(path.edge.ratio.percentile),
+        threshold.percentile = as.numeric(threshold.percentile)
     )
 }
 
@@ -293,6 +336,26 @@
     )
 }
 
+.prune.graph.global.geodesic.ratio <- function(adj.list,
+                                               weight.list,
+                                               max.ratio.threshold,
+                                               path.edge.ratio.percentile,
+                                               with.pruned.edge.stats = FALSE) {
+    out <- .Call(
+        "S_prune_graph_global_geodesic_ratio",
+        adj.list,
+        weight.list,
+        as.numeric(max.ratio.threshold),
+        as.numeric(path.edge.ratio.percentile),
+        as.logical(with.pruned.edge.stats),
+        PACKAGE = "gflow"
+    )
+    out$max_path_edge_ratio_threshold <- as.numeric(max.ratio.threshold)
+    out$path_edge_ratio_percentile <- as.numeric(path.edge.ratio.percentile)
+    out$with_pruned_edge_stats <- isTRUE(with.pruned.edge.stats)
+    out
+}
+
 .prune.graph.long.edges <- function(adj.list, weight.list, threshold.percentile) {
     edges <- .graph.edge.table(adj.list, weight.list)
     if (!nrow(edges) || threshold.percentile <= 0) {
@@ -363,6 +426,16 @@
             prune.local.k = prune.local.k,
             with.pruned.edge.stats = with.pruned.edge.stats
         )
+    } else if (identical(prune.method, "global.geodesic.ratio")) {
+        out <- .prune.graph.global.geodesic.ratio(
+            adj.list = adj.list,
+            weight.list = weight.list,
+            max.ratio.threshold = 1 + max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile = path.edge.ratio.percentile,
+            with.pruned.edge.stats = with.pruned.edge.stats
+        )
+        out$prune_tau <- prune.tau
+        out$prune_local_k <- if (is.null(prune.local.k)) k else as.integer(prune.local.k)
     } else if (identical(prune.method, "global.geodesic")) {
         out <- .prune.graph.global.geodesic(
             adj.list = adj.list,

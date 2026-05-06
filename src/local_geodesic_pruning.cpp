@@ -257,6 +257,58 @@ double local_dijkstra_distance(const std::vector<std::vector<adj_ref_t>>& adj,
     return std::numeric_limits<double>::infinity();
 }
 
+double global_dijkstra_distance(const std::vector<std::vector<adj_ref_t>>& adj,
+                                const std::vector<edge_t>& edges,
+                                int source,
+                                int target,
+                                int excluded_edge_id,
+                                double cutoff,
+                                dijkstra_workspace_t& workspace) {
+    using queue_item_t = std::pair<double, int>;
+    auto heap_greater = std::greater<queue_item_t>();
+    workspace.heap.clear();
+    workspace.set_dist(source, 0.0);
+    workspace.heap.push_back({0.0, source});
+
+    while (!workspace.heap.empty()) {
+        std::pop_heap(workspace.heap.begin(), workspace.heap.end(), heap_greater);
+        const queue_item_t item = workspace.heap.back();
+        workspace.heap.pop_back();
+
+        const double du = item.first;
+        const int u = item.second;
+        if (du != workspace.dist[static_cast<size_t>(u)]) {
+            continue;
+        }
+        if (du > cutoff) {
+            workspace.clear_distances();
+            workspace.heap.clear();
+            return std::numeric_limits<double>::infinity();
+        }
+        if (u == target) {
+            workspace.clear_distances();
+            workspace.heap.clear();
+            return du;
+        }
+        for (const auto& adj_edge : adj[static_cast<size_t>(u)]) {
+            if (adj_edge.edge_id == excluded_edge_id ||
+                !edges[static_cast<size_t>(adj_edge.edge_id)].alive) {
+                continue;
+            }
+            const int v = adj_edge.vertex;
+            const double nd = du + edges[static_cast<size_t>(adj_edge.edge_id)].weight;
+            if (nd < workspace.dist[static_cast<size_t>(v)] && nd <= cutoff) {
+                workspace.set_dist(v, nd);
+                workspace.heap.push_back({nd, v});
+                std::push_heap(workspace.heap.begin(), workspace.heap.end(), heap_greater);
+            }
+        }
+    }
+    workspace.clear_distances();
+    workspace.heap.clear();
+    return std::numeric_limits<double>::infinity();
+}
+
 std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
                                                SEXP s_weight_list,
                                                int n,
@@ -536,5 +588,139 @@ extern "C" SEXP S_prune_graph_local_geodesic(SEXP s_X,
     }
 
     return make_result(adj, candidates, pruned_edges, prune_tau, prune_local_k,
+                       with_pruned_edge_stats);
+}
+
+extern "C" SEXP S_prune_graph_global_geodesic_ratio(SEXP s_adj_list,
+                                                    SEXP s_weight_list,
+                                                    SEXP s_max_ratio_threshold,
+                                                    SEXP s_path_edge_ratio_percentile,
+                                                    SEXP s_with_pruned_edge_stats) {
+    if (!Rf_isVectorList(s_adj_list) || !Rf_isVectorList(s_weight_list)) {
+        Rf_error("adj.list and weight.list must be lists.");
+    }
+    if (Rf_length(s_adj_list) != Rf_length(s_weight_list)) {
+        Rf_error("adj.list and weight.list must have matching lengths.");
+    }
+    const int n = Rf_length(s_adj_list);
+    if (n < 1) {
+        Rf_error("adj.list and weight.list must contain at least one vertex.");
+    }
+
+    const double max_ratio_threshold = Rf_asReal(s_max_ratio_threshold);
+    if (!std::isfinite(max_ratio_threshold)) {
+        Rf_error("max.ratio.threshold must be finite.");
+    }
+    const double path_edge_ratio_percentile = Rf_asReal(s_path_edge_ratio_percentile);
+    if (!std::isfinite(path_edge_ratio_percentile) ||
+        path_edge_ratio_percentile < 0.0 ||
+        path_edge_ratio_percentile > 1.0) {
+        Rf_error("path.edge.ratio.percentile must be in [0, 1].");
+    }
+    const int stats_flag = Rf_asLogical(s_with_pruned_edge_stats);
+    if (stats_flag == NA_LOGICAL) {
+        Rf_error("with.pruned.edge.stats must be TRUE or FALSE.");
+    }
+    const bool with_pruned_edge_stats = (stats_flag == TRUE);
+
+    std::vector<std::vector<adj_ref_t>> adj;
+    std::vector<edge_t> edges = validate_and_convert_graph(s_adj_list, s_weight_list, n, adj);
+    const int n_edges_before = static_cast<int>(edges.size());
+    std::vector<pruned_edge_t> pruned_edges;
+    if (n_edges_before == 0 || max_ratio_threshold <= 1.0) {
+        return make_result(adj, edges, pruned_edges, NA_REAL, NA_INTEGER,
+                           with_pruned_edge_stats);
+    }
+
+    std::vector<int> edge_ids(static_cast<size_t>(n_edges_before));
+    for (int edge_id = 0; edge_id < n_edges_before; ++edge_id) {
+        edge_ids[static_cast<size_t>(edge_id)] = edge_id;
+    }
+    std::sort(edge_ids.begin(), edge_ids.end(), [&](int a_id, int b_id) {
+        const edge_t& a = edges[static_cast<size_t>(a_id)];
+        const edge_t& b = edges[static_cast<size_t>(b_id)];
+        if (a.weight < b.weight) return true;
+        if (a.weight > b.weight) return false;
+        if (a.u < b.u) return true;
+        if (a.u > b.u) return false;
+        return a.v < b.v;
+    });
+
+    double threshold_weight = 0.0;
+    if (path_edge_ratio_percentile <= 0.0) {
+        threshold_weight = edges[static_cast<size_t>(edge_ids.front())].weight - 1.0;
+    } else if (path_edge_ratio_percentile >= 1.0) {
+        threshold_weight = edges[static_cast<size_t>(edge_ids.back())].weight + 1.0;
+    } else {
+        const int threshold_index = std::min(
+            n_edges_before - 1,
+            static_cast<int>(std::floor(n_edges_before * path_edge_ratio_percentile))
+        );
+        threshold_weight = edges[static_cast<size_t>(
+            edge_ids[static_cast<size_t>(threshold_index)]
+        )].weight;
+    }
+
+    std::vector<int> candidate_ids;
+    candidate_ids.reserve(edge_ids.size());
+    const double tol = 1e-12;
+    dijkstra_workspace_t dijkstra_workspace(n);
+    for (int edge_id : edge_ids) {
+        const edge_t& edge = edges[static_cast<size_t>(edge_id)];
+        if (edge.weight < threshold_weight) {
+            continue;
+        }
+        const double cutoff = max_ratio_threshold * edge.weight;
+        const double alt = global_dijkstra_distance(adj, edges, edge.u, edge.v,
+                                                    edge_id, cutoff + tol,
+                                                    dijkstra_workspace);
+        if (std::isfinite(alt) && alt / edge.weight <= max_ratio_threshold + tol) {
+            candidate_ids.push_back(edge_id);
+        }
+    }
+
+    if (candidate_ids.empty()) {
+        return make_result(adj, edges, pruned_edges, NA_REAL, NA_INTEGER,
+                           with_pruned_edge_stats);
+    }
+
+    std::sort(candidate_ids.begin(), candidate_ids.end(), [&](int a_id, int b_id) {
+        const edge_t& a = edges[static_cast<size_t>(a_id)];
+        const edge_t& b = edges[static_cast<size_t>(b_id)];
+        if (a.weight > b.weight) return true;
+        if (a.weight < b.weight) return false;
+        if (a.u < b.u) return true;
+        if (a.u > b.u) return false;
+        return a.v < b.v;
+    });
+
+    if (with_pruned_edge_stats) {
+        pruned_edges.reserve(candidate_ids.size());
+    }
+    for (int edge_id : candidate_ids) {
+        edge_t& edge = edges[static_cast<size_t>(edge_id)];
+        if (!edge.alive) {
+            continue;
+        }
+        const double edge_length = edge.weight;
+        const double cutoff = max_ratio_threshold * edge_length;
+        const double alt = global_dijkstra_distance(adj, edges, edge.u, edge.v,
+                                                    edge_id, cutoff + tol,
+                                                    dijkstra_workspace);
+        if (std::isfinite(alt) && alt / edge_length <= max_ratio_threshold + tol) {
+            edge.alive = false;
+            if (with_pruned_edge_stats) {
+                pruned_edges.push_back(pruned_edge_t{
+                    edge.u,
+                    edge.v,
+                    edge_length,
+                    alt,
+                    alt / edge_length
+                });
+            }
+        }
+    }
+
+    return make_result(adj, edges, pruned_edges, NA_REAL, NA_INTEGER,
                        with_pruned_edge_stats);
 }

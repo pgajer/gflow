@@ -7,7 +7,9 @@
 create.radius.graph(
   X,
   radius,
-  prune.method = c("none", "local.geodesic"),
+  prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+  max.path.edge.ratio.deviation.thld = 0.1,
+  path.edge.ratio.percentile = 0.5,
   prune.tau = 1.05,
   prune.local.k = NULL,
   with.pruned.edge.stats = FALSE,
@@ -26,7 +28,17 @@ create.radius.graph(
 
 \item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
 \code{"local.geodesic"} applies the experimental local geometric pruning stage
-before optional MST connectivity repair.}
+before optional MST connectivity repair. \code{"global.geodesic.ratio"} applies
+whole-graph geodesic-ratio pruning before optional MST connectivity repair.}
+
+\item{max.path.edge.ratio.deviation.thld}{Numeric scalar in \verb{[0, 0.2)}.
+For \code{prune.method = "global.geodesic.ratio"}, an edge may be removed when
+the shortest alternative path is at most
+\code{1 + max.path.edge.ratio.deviation.thld} times the direct edge length.}
+
+\item{path.edge.ratio.percentile}{Numeric scalar in \verb{[0, 1]}. For
+\code{prune.method = "global.geodesic.ratio"}, only edges at or above this edge
+length percentile are considered.}
 
 \item{prune.tau}{Numeric scalar greater than 1. For local geometric pruning,
 an edge may be removed when a retained local alternative path is at most

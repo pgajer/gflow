@@ -38,9 +38,10 @@
 #' processed longest-first. For an edge `(i, j)`, the edge is removed only when
 #' the currently retained graph contains an alternative path from `i` to `j`,
 #' restricted to the union of their local neighborhoods, whose length is at most
-#' `prune.tau` times the direct edge length. This preserves the connected
-#' components present at the start of the pruning pass while removing locally
-#' redundant long edges.
+#' `prune.tau` times the direct edge length. `prune.method =
+#' "global.geodesic.ratio"` instead uses the whole graph as the alternative-path
+#' search domain and removes long edges whose shortest alternative path is
+#' within the configured geodesic-ratio threshold.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
 #' @param k Integer scalar. Number of non-self nearest neighbors.
@@ -48,6 +49,14 @@
 #'   geometric edge pruning before optional MST connectivity repair.
 #' @param prune.method Character scalar. `"none"` disables pruning.
 #'   `"local.geodesic"` applies experimental local geometric edge pruning.
+#'   `"global.geodesic.ratio"` applies whole-graph geodesic-ratio pruning.
+#' @param max.path.edge.ratio.deviation.thld Numeric scalar in `[0, 0.2)`.
+#'   For `prune.method = "global.geodesic.ratio"`, an edge may be removed when
+#'   the shortest alternative path is at most
+#'   `1 + max.path.edge.ratio.deviation.thld` times the direct edge length.
+#' @param path.edge.ratio.percentile Numeric scalar in `[0, 1]`. For
+#'   `prune.method = "global.geodesic.ratio"`, only edges at or above this edge
+#'   length percentile are considered.
 #' @param prune.tau Numeric scalar greater than 1. An edge may be pruned when
 #'   the shortest retained local alternative path is at most this multiplicative
 #'   factor times the direct edge length.
@@ -111,7 +120,9 @@
 create.sknn.graph <- function(X,
                               k,
                               prune.edges = FALSE,
-                              prune.method = c("none", "local.geodesic"),
+                              prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                              max.path.edge.ratio.deviation.thld = 0.1,
+                              path.edge.ratio.percentile = 0.5,
                               prune.tau = 1.05,
                               prune.local.k = NULL,
                               with.pruned.edge.stats = FALSE,
@@ -157,7 +168,9 @@ create.sknn.graph <- function(X,
     if (isTRUE(prune.edges) && identical(prune.method, "none")) {
         prune.method <- "local.geodesic"
     }
-    prune.edges <- identical(prune.method, "local.geodesic")
+    local.prune.edges <- identical(prune.method, "local.geodesic")
+    global.ratio.prune.edges <- identical(prune.method, "global.geodesic.ratio")
+    prune.edges <- local.prune.edges
     if (!is.numeric(prune.tau) || length(prune.tau) != 1L || !is.finite(prune.tau) ||
         prune.tau <= 1) {
         stop("'prune.tau' must be a finite numeric scalar greater than 1.", call. = FALSE)
@@ -171,6 +184,10 @@ create.sknn.graph <- function(X,
         stop("'prune.local.k' must be a positive integer smaller than nrow(X).",
              call. = FALSE)
     }
+    global.ratio.controls <- .normalize.global.ratio.prune.controls(
+        max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile
+    )
     connect.method <- match.arg(connect.method)
     edge.weight <- match.arg(edge.weight)
     neighbor.method <- match.arg(neighbor.method)
@@ -210,7 +227,8 @@ create.sknn.graph <- function(X,
                                 global.mst = 1L)
     prune.method.id <- switch(prune.method,
                               none = 0L,
-                              local.geodesic = 0L)
+                              local.geodesic = 0L,
+                              global.geodesic.ratio = 0L)
     neighbor.method.id <- switch(neighbor.method,
                                  exact = 0L,
                                  ann = 1L)
@@ -266,7 +284,7 @@ create.sknn.graph <- function(X,
         as.integer(bridge.k),
         as.integer(bridge.k.max),
         as.numeric(bridge.growth),
-        as.logical(prune.edges),
+        as.logical(local.prune.edges),
         as.integer(prune.method.id),
         as.numeric(prune.tau),
         as.integer(prune.local.k),
@@ -293,7 +311,8 @@ create.sknn.graph <- function(X,
         FALSE,
         PACKAGE = "gflow"
     )
-    pruned.result <- if (isTRUE(prune.edges)) {
+    global.pruning <- NULL
+    pruned.result <- if (isTRUE(local.prune.edges)) {
         .Call(
             "S_create_sknn_graph",
             X,
@@ -314,6 +333,38 @@ create.sknn.graph <- function(X,
             as.logical(with.pruned.edge.stats),
             PACKAGE = "gflow"
         )
+    } else if (isTRUE(global.ratio.prune.edges)) {
+        global.pruning <- .prune.graph.by.method(
+            X = X,
+            adj.list = raw.result$adj_list,
+            weight.list = raw.result$weight_list,
+            k = as.integer(k),
+            prune.method = prune.method,
+            max.path.edge.ratio.deviation.thld =
+                global.ratio.controls$max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile =
+                global.ratio.controls$path.edge.ratio.percentile,
+            prune.tau = prune.tau,
+            prune.local.k = prune.local.k,
+            with.pruned.edge.stats = with.pruned.edge.stats
+        )
+        tmp <- raw.result
+        tmp$adj_list <- global.pruning$adj_list
+        tmp$weight_list <- global.pruning$weight_list
+        tmp.edge.table <- .graph.edge.table(tmp$adj_list, tmp$weight_list)
+        tmp$edge_matrix <- as.matrix(tmp.edge.table[, c("from", "to"), drop = FALSE])
+        tmp$edge_weight <- as.numeric(tmp.edge.table$weight)
+        tmp$n_edges <- nrow(tmp.edge.table)
+        tmp$prune_edges <- TRUE
+        tmp$prune_method <- prune.method
+        tmp$prune_tau <- global.pruning$prune_tau
+        tmp$prune_local_k <- global.pruning$prune_local_k
+        tmp$with_pruned_edge_stats <- global.pruning$with_pruned_edge_stats
+        tmp$n_edges_before_pruning <- global.pruning$n_edges_before_pruning
+        tmp$n_edges_after_pruning <- global.pruning$n_edges_after_pruning
+        tmp$n_pruned_edges <- global.pruning$n_pruned_edges
+        tmp$pruned_edge_stats <- global.pruning$pruned_edge_stats
+        tmp
     } else {
         raw.result
     }
@@ -321,6 +372,49 @@ create.sknn.graph <- function(X,
     result$raw_weight_list <- raw.result$weight_list
     result$pruned_adj_list <- pruned.result$adj_list
     result$pruned_weight_list <- pruned.result$weight_list
+    if (isTRUE(global.ratio.prune.edges)) {
+        bridge <- .augment.graph.with.component.mst(
+            X = X,
+            adj.list = result$pruned_adj_list,
+            weight.list = result$pruned_weight_list,
+            k = as.integer(k),
+            connect.components = connect.components,
+            connect.method = connect.method,
+            bridge.k = bridge.k,
+            bridge.k.max = bridge.k.max,
+            bridge.growth = bridge.growth
+        )
+        result$adj_list <- bridge$adj_list
+        result$weight_list <- bridge$weight_list
+        edge.table <- .graph.edge.table(result$adj_list, result$weight_list)
+        result$edge_matrix <- as.matrix(edge.table[, c("from", "to"), drop = FALSE])
+        result$edge_weight <- as.numeric(edge.table$weight)
+        result$n_edges <- nrow(edge.table)
+        result$n_components_before <- bridge$n_components_before
+        result$n_components_after <- bridge$n_components_after
+        result$component_id_before <- bridge$component_id_before
+        result$component_id_after <- bridge$component_id_after
+        result$mst_edge_matrix <- bridge$mst_edge_matrix
+        result$mst_edge_weight <- bridge$mst_edge_weight
+        result$n_mst_edges_added <- bridge$n_mst_edges_added
+        result$connect_components <- bridge$connect_components
+        result$connect_method <- bridge$connect_method
+        result$bridge_method <- bridge$bridge_method
+        result$bridge_k <- bridge$bridge_k
+        result$bridge_k_max <- bridge$bridge_k_max
+        result$bridge_growth <- bridge$bridge_growth
+        result$bridge_k_used <- bridge$bridge_k_used
+        result$bridge_exact_fallback_used <- bridge$bridge_exact_fallback_used
+        result$prune_edges <- TRUE
+        result$prune_method <- prune.method
+        result$prune_tau <- global.pruning$prune_tau
+        result$prune_local_k <- global.pruning$prune_local_k
+        result$with_pruned_edge_stats <- global.pruning$with_pruned_edge_stats
+        result$n_edges_before_pruning <- global.pruning$n_edges_before_pruning
+        result$n_edges_after_pruning <- global.pruning$n_edges_after_pruning
+        result$n_pruned_edges <- global.pruning$n_pruned_edges
+        result$pruned_edge_stats <- global.pruning$pruned_edge_stats
+    }
     result <- .add.graph.lifecycle.branches(
         result = result,
         X = X,
@@ -334,6 +428,10 @@ create.sknn.graph <- function(X,
         bridge.k.max = bridge.k.max,
         bridge.growth = bridge.growth,
         prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld =
+            global.ratio.controls$max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile =
+            global.ratio.controls$path.edge.ratio.percentile,
         prune.tau = prune.tau,
         prune.local.k = prune.local.k,
         with.pruned.edge.stats = with.pruned.edge.stats

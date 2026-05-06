@@ -56,6 +56,8 @@
                                    bridge.growth,
                                    class,
                                    prune.method = "none",
+                                   max.path.edge.ratio.deviation.thld = 0.1,
+                                   path.edge.ratio.percentile = 0.5,
                                    prune.tau = 1.05,
                                    prune.local.k = NULL,
                                    prune.k = 1L,
@@ -68,12 +70,19 @@
     prune.controls <- .normalize.local.prune.controls(
         n, prune.k, prune.tau, prune.local.k, with.pruned.edge.stats
     )
+    global.ratio.controls <- .normalize.global.ratio.prune.controls(
+        max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile
+    )
     pruning <- .prune.graph.by.method(
         X = X,
         adj.list = raw.adj.list,
         weight.list = raw.weight.list,
         k = prune.k,
         prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld =
+            global.ratio.controls$max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = global.ratio.controls$path.edge.ratio.percentile,
         prune.tau = prune.controls$prune.tau,
         prune.local.k = prune.controls$prune.local.k,
         with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
@@ -143,6 +152,9 @@
         bridge.k.max = bridge$bridge_k_max,
         bridge.growth = bridge$bridge_growth,
         prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld =
+            global.ratio.controls$max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = global.ratio.controls$path.edge.ratio.percentile,
         prune.tau = prune.controls$prune.tau,
         prune.local.k = prune.controls$prune.local.k,
         with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
@@ -175,7 +187,15 @@
 #'   factor for ANN bridge neighborhoods.
 #' @param prune.method Character scalar. `"none"` disables geometric pruning.
 #'   `"local.geodesic"` applies the experimental local geometric pruning stage
-#'   before optional MST connectivity repair.
+#'   before optional MST connectivity repair. `"global.geodesic.ratio"` applies
+#'   whole-graph geodesic-ratio pruning before optional MST connectivity repair.
+#' @param max.path.edge.ratio.deviation.thld Numeric scalar in `[0, 0.2)`.
+#'   For `prune.method = "global.geodesic.ratio"`, an edge may be removed when
+#'   the shortest alternative path is at most
+#'   `1 + max.path.edge.ratio.deviation.thld` times the direct edge length.
+#' @param path.edge.ratio.percentile Numeric scalar in `[0, 1]`. For
+#'   `prune.method = "global.geodesic.ratio"`, only edges at or above this edge
+#'   length percentile are considered.
 #' @param prune.tau Numeric scalar greater than 1. For local geometric pruning,
 #'   an edge may be removed when a retained local alternative path is at most
 #'   this multiplicative factor times the direct edge length.
@@ -202,7 +222,9 @@
 #' @export
 create.radius.graph <- function(X,
                                 radius,
-                                prune.method = c("none", "local.geodesic"),
+                                prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                                max.path.edge.ratio.deviation.thld = 0.1,
+                                path.edge.ratio.percentile = 0.5,
                                 prune.tau = 1.05,
                                 prune.local.k = NULL,
                                 with.pruned.edge.stats = FALSE,
@@ -231,6 +253,8 @@ create.radius.graph <- function(X,
         X, edges, connect.components, connect.method,
         bridge.k, bridge.k.max, bridge.growth, "radius_graph",
         prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
         prune.tau = prune.tau,
         prune.local.k = prune.local.k,
         prune.k = prune.k,
@@ -282,7 +306,9 @@ create.adaptive.radius.graph <- function(X,
                                          k.scale,
                                          radius.factor = 1,
                                          radius.rule = c("max", "min"),
-                                         prune.method = c("none", "local.geodesic"),
+                                         prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                                         max.path.edge.ratio.deviation.thld = 0.1,
+                                         path.edge.ratio.percentile = 0.5,
                                          prune.tau = 1.05,
                                          prune.local.k = NULL,
                                          with.pruned.edge.stats = FALSE,
@@ -329,6 +355,8 @@ create.adaptive.radius.graph <- function(X,
         X, edges, connect.components, connect.method,
         bridge.k, bridge.k.max, bridge.growth, "adaptive_radius_graph",
         prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
         prune.tau = prune.tau,
         prune.local.k = prune.local.k,
         prune.k = as.integer(k.scale),
