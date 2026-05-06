@@ -110,7 +110,12 @@ test_that("PHATE Phase 6 core embeddings match frozen fixtures geometrically", {
       verbose = FALSE
     )
 
-    for (method in c("classic", "metric", "nonmetric")) {
+    methods <- "classic"
+    if (requireNamespace("smacof", quietly = TRUE)) {
+      methods <- c(methods, "metric", "nonmetric")
+    }
+
+    for (method in methods) {
       emb <- phate.embed(
         core = core,
         ndim = 2,
