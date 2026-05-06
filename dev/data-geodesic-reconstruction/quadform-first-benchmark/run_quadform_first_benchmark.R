@@ -167,8 +167,23 @@ config$save_layout_assets <- args$save.layout.assets
 config$asset_stages <- args$asset.stages
 config$setting_timeout_sec <- args$setting.timeout.sec
 config$workers <- args$workers
-jsonlite::write_json(config, file.path(run.dir, "run_config.json"), pretty = TRUE,
-                     auto_unbox = TRUE)
+run.config.path <- file.path(run.dir, "run_config.json")
+if (isTRUE(args$report.only) && file.exists(run.config.path)) {
+  existing.config <- tryCatch(
+    jsonlite::fromJSON(run.config.path, simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  if (is.list(existing.config)) {
+    config <- existing.config
+    config$layouts <- args$layouts
+    config$save_graph_assets <- args$save.graph.assets
+    config$save_layout_assets <- args$save.layout.assets
+    config$asset_stages <- args$asset.stages
+  }
+} else {
+  jsonlite::write_json(config, run.config.path, pretty = TRUE,
+                       auto_unbox = TRUE)
+}
 
 escape_html <- function(x) {
   htmltools::htmlEscape(as.character(x))
@@ -647,15 +662,20 @@ save_csv <- function(df, path) {
   utils::write.csv(df, path, row.names = FALSE, na = "")
 }
 
-dataset_manifest <- do.call(rbind, lapply(seq_len(nrow(config$surfaces)), function(i) {
-  surface <- config$surfaces$surface[[i]]
-  index.k <- config$surfaces$index.k[[i]]
-  expand.grid(surface = surface, index.k = index.k, n = config$n.values,
-              seed = config$seeds, stringsAsFactors = FALSE)
-}))
-dataset_manifest$dataset_id <- mapply(make_dataset_id, dataset_manifest$surface,
-                                      dataset_manifest$n, dataset_manifest$seed)
-save_csv(dataset_manifest, file.path(run.dir, "dataset_manifest.csv"))
+dataset.manifest.path <- file.path(run.dir, "dataset_manifest.csv")
+if (isTRUE(args$report.only) && file.exists(dataset.manifest.path)) {
+  dataset_manifest <- utils::read.csv(dataset.manifest.path, stringsAsFactors = FALSE)
+} else {
+  dataset_manifest <- do.call(rbind, lapply(seq_len(nrow(config$surfaces)), function(i) {
+    surface <- config$surfaces$surface[[i]]
+    index.k <- config$surfaces$index.k[[i]]
+    expand.grid(surface = surface, index.k = index.k, n = config$n.values,
+                seed = config$seeds, stringsAsFactors = FALSE)
+  }))
+  dataset_manifest$dataset_id <- mapply(make_dataset_id, dataset_manifest$surface,
+                                        dataset_manifest$n, dataset_manifest$seed)
+  save_csv(dataset_manifest, dataset.manifest.path)
+}
 
 run_one_dataset <- function(row) {
   dataset.id <- row$dataset_id
@@ -1265,6 +1285,57 @@ requested_render_stage <- function(graph.key, default.stage, requested.key) {
   default.stage
 }
 
+asset_row_for_stage <- function(tbl, dataset.id, setting.id, stage) {
+  if (!is.data.frame(tbl) || !nrow(tbl)) {
+    return(NULL)
+  }
+  keep <- tbl$dataset_id == dataset.id &
+    tbl$setting_id == setting.id &
+    tbl$stage == stage
+  idx <- which(keep)
+  if (length(idx) < 1L) {
+    return(NULL)
+  }
+  tbl[idx[[1L]], , drop = FALSE]
+}
+
+load_graph_stage_asset <- function(dataset.id, setting.id, stage) {
+  row <- asset_row_for_stage(graph.assets, dataset.id, setting.id, stage)
+  if (is.null(row) || !("graph_asset_file" %in% names(row))) {
+    return(NULL)
+  }
+  path <- as.character(row$graph_asset_file[[1L]])
+  if (!nzchar(path) || is.na(path) || !file.exists(path)) {
+    return(NULL)
+  }
+  g <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (!is.list(g) || is.null(g$adj_list) || is.null(g$weight_list)) {
+    return(NULL)
+  }
+  list(adj = g$adj_list, weight = g$weight_list, file = path)
+}
+
+load_layout_stage_asset <- function(dataset.id, setting.id, stage) {
+  row <- asset_row_for_stage(layout.assets, dataset.id, setting.id, stage)
+  if (is.null(row) || !("layout_asset_file" %in% names(row))) {
+    return(NULL)
+  }
+  path <- as.character(row$layout_asset_file[[1L]])
+  if (!nzchar(path) || is.na(path) || !file.exists(path)) {
+    return(NULL)
+  }
+  x <- tryCatch(readRDS(path), error = function(e) NULL)
+  coords <- if (is.list(x) && !is.null(x$coords)) x$coords else x
+  if (is.null(coords)) {
+    return(NULL)
+  }
+  coords <- as.matrix(coords)
+  if (nrow(coords) < 1L || ncol(coords) < 2L) {
+    return(NULL)
+  }
+  list(coords = coords, file = path)
+}
+
 setting_from_index_row <- function(row) {
   data.frame(
     graph_family = row$graph_family,
@@ -1329,17 +1400,20 @@ precompute_widgets <- function(widget.index, max.rows, requested.key) {
   for (ii in seq_along(rows.to.render)) {
     i <- rows.to.render[[ii]]
     row <- widget.index[i, , drop = FALSE]
-    ds.path <- dataset_cache_path(row$dataset_id)
-    if (!file.exists(ds.path)) next
-    ds <- readRDS(ds.path)
-    setting <- setting_from_index_row(row)
-    radius.lookup <- make_radius_lookup(ds, row$n)
-    g <- tryCatch(build_graph(ds$X_embed, setting, radius.lookup),
-                  error = function(e) NULL)
-    if (is.null(g)) next
     stage.to.render <- requested_render_stage(row$graph_key, row$default_stage,
                                               requested.key)
-    payload <- tryCatch(stage_payload(g, stage.to.render), error = function(e) NULL)
+    payload <- load_graph_stage_asset(row$dataset_id, row$setting_id, stage.to.render)
+    if (is.null(payload)) {
+      ds.path <- dataset_cache_path(row$dataset_id)
+      if (!file.exists(ds.path)) next
+      ds <- readRDS(ds.path)
+      setting <- setting_from_index_row(row)
+      radius.lookup <- make_radius_lookup(ds, row$n)
+      g <- tryCatch(build_graph(ds$X_embed, setting, radius.lookup),
+                    error = function(e) NULL)
+      if (is.null(g)) next
+      payload <- tryCatch(stage_payload(g, stage.to.render), error = function(e) NULL)
+    }
     if (is.null(payload) || is.null(payload$adj) || is.null(payload$weight)) next
     edges <- edge_table_from_adj(payload$adj, payload$weight, max.edges = 900L)
     key <- layout_stage_key(row$graph_key, stage.to.render)
@@ -1348,7 +1422,13 @@ precompute_widgets <- function(widget.index, max.rows, requested.key) {
     layout <- if (file.exists(cache.file)) {
       readRDS(cache.file)
     } else {
-      compute_grip_layout(payload$adj, payload$weight, seed = 2000L + ii)
+      asset.layout <- load_layout_stage_asset(row$dataset_id, row$setting_id,
+                                              stage.to.render)
+      if (!is.null(asset.layout)) {
+        asset.layout$coords
+      } else {
+        compute_grip_layout(payload$adj, payload$weight, seed = 2000L + ii)
+      }
     }
     if (!is.null(layout)) {
       saveRDS(layout, cache.file)
@@ -1621,12 +1701,45 @@ run.command <- paste(
   paste0("--asset.stages=", args$asset.stages)
 )
 
-html <- paste0("<!doctype html><html><head><meta charset=\"utf-8\"><title>Quadratic-Surface Pruning-Method Comparison Benchmark</title>",
+prune.methods.in.results <- sort(unique(as.character(ok.metrics$prune_method)))
+prune.methods.in.results <- prune.methods.in.results[nzchar(prune.methods.in.results)]
+prune.method.html <- paste(sprintf("<code>%s</code>", escape_html(prune.methods.in.results)),
+                           collapse = ", ")
+is.pruning.comparison.report <- "global.geodesic.ratio" %in% prune.methods.in.results ||
+  grepl("pruning-method-comparison", normalizePath(base.dir, mustWork = FALSE))
+report.title <- if (isTRUE(is.pruning.comparison.report)) {
+  "Quadratic-Surface Pruning-Method Comparison Benchmark"
+} else {
+  "Quadratic-Surface Data-to-Graph Geodesic Reconstruction Benchmark"
+}
+context.paragraph <- if (isTRUE(is.pruning.comparison.report)) {
+  paste0(
+    "<p>This pruning-method comparison reuses the quadratic-surface data-to-graph benchmark from ",
+    "<code>dev/geodesic-distance-estimation/notes/first_quadform_graph_benchmark_setup.md</code>. ",
+    "It asks how ", prune.method.html,
+    " pruning choices affect graph shortest-path fidelity to the intrinsic geodesic metric of the sampled surface. ",
+    "Runtime, connectivity, and edge sparsity are reported as supporting diagnostics, while relative graph-geodesic error is the primary comparison.</p>"
+  )
+} else {
+  paste0(
+    "<p>This report follows <code>dev/geodesic-distance-estimation/notes/first_quadform_graph_benchmark_setup.md</code>. ",
+    "The data geodesic geometric reconstruction problem asks how to turn a finite sample <code>X</code> into a weighted graph whose shortest-path metric is close to the intrinsic geodesic metric of the sampled space. ",
+    "This matters when the ambient Euclidean geometry is misleading, for example on curved, folded, branched, or nearly self-intersecting data. ",
+    "The pruning choices represented in this completed run are ", prune.method.html, ".</p>"
+  )
+}
+diagnostic.paragraph <- paste0(
+  "<p>The benchmark uses MST component repair before evaluation. ",
+  "The pruning choices represented in this run are ", prune.method.html,
+  ". The diagnostic figure shows how many MST bridge edges and pruned edges are typical for each family.</p>"
+)
+
+html <- paste0("<!doctype html><html><head><meta charset=\"utf-8\"><title>", escape_html(report.title), "</title>",
 "<script>window.MathJax={tex:{inlineMath:[[\"\\\\(\",\"\\\\)\"],[\"$\",\"$\"]],displayMath:[[\"\\\\[\",\"\\\\]\"],[\"$$\",\"$$\"]]}};</script><script defer src=\"https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js\"></script>",
 "<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:34px;line-height:1.52;color:#20242a;background:#fff}h1,h2{color:#16324f}h3{color:#243b53;margin-top:24px}table{border-collapse:collapse;width:100%;margin:14px 0 30px;font-size:13px}th,td{border:1px solid #d8dde6;padding:6px 8px;text-align:left;vertical-align:top}th{background:#eef2f6}code{background:#f2f4f7;padding:1px 4px;border-radius:3px}.math-block{overflow-x:auto;background:#fbfcfe;border:1px solid #e5e9f0;padding:10px 14px;margin:12px 0}.note{background:#f7f9fc;border-left:4px solid #4f77aa;padding:12px 14px;margin:18px 0}.warn{background:#fff7ed;border-left:4px solid #d97706;padding:12px 14px;margin:18px 0}.warn-inline{color:#a55307;font-weight:600}img{max-width:100%;border:1px solid #d8dde6;margin:8px 0 6px}.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;margin:16px 0;padding:12px;background:#f6f8fa;border:1px solid #d9e2ec}.controls label{display:block;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#52616f}.controls select{box-sizing:border-box;width:100%;padding:7px;border:1px solid #bcccdc;background:white}.widget-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.widget-grid.three{grid-template-columns:1fr 1fr 1fr}.widget-grid figure{margin:0}.widget{width:100%;height:520px;border:1px solid #d8dde6}.metric{font-weight:600}.small{color:#5b6470;font-size:13px}figure{margin:14px 0 26px}figcaption{font-size:13px;color:#4b5563}@media(max-width:1300px){.widget-grid.three{grid-template-columns:1fr}.widget{height:520px}}</style></head><body>",
-"<h1>Quadratic-Surface Pruning-Method Comparison Benchmark</h1>",
+"<h1>", escape_html(report.title), "</h1>",
 "<p><strong>Generated:</strong> ", escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), "<br><strong>Mode:</strong> ", escape_html(args$mode), "<br><strong>Grid size:</strong> ", config$grid.size, "<br><strong>Workers:</strong> ", args$workers, "<br><strong>Run directory:</strong> <code>", escape_html(run.dir), "</code></p>",
-"<h2>Context and Question</h2><p>This pruning-method comparison reuses the quadratic-surface data-to-graph benchmark from <code>dev/geodesic-distance-estimation/notes/first_quadform_graph_benchmark_setup.md</code>. It asks how <code>none</code>, <code>local.geodesic</code>, and <code>global.geodesic.ratio</code> pruning affect graph shortest-path fidelity to the intrinsic geodesic metric of the sampled surface. Runtime, connectivity, and edge sparsity are reported as supporting diagnostics, while relative graph-geodesic error is the primary comparison.</p>",
+"<h2>Context and Question</h2>", context.paragraph,
 "<div class=\"math-block\">\\[G(X)=(V,E,\\ell),\\qquad V=X,\\qquad d_G(x_i,x_j)=\\min_{\\gamma:i\\leadsto j}\\sum_{[u,v]\\in\\gamma}\\ell_{uv}.\\]</div>",
 "<p>The benchmark asks which graph construction gives <code>d_G</code> closest to the reference geodesic geometry for two quadratic graph surfaces:</p><div class=\"math-block\">\\[q(u,v)=u^2+v^2\\qquad\\text{and}\\qquad q(u,v)=u^2-v^2.\\]</div>",
 "<p>All graph edges in this benchmark use ambient Euclidean lengths in the embedded sample, <span class=\"math-inline\">\\(\\ell_{ij}=\\|x_i-x_j\\|_2\\)</span>. The graph family and parameter controls therefore change the edge support, not the edge-length convention.</p>",
@@ -1643,7 +1756,7 @@ img_tag(figs$sample_perf, "Median method performance against the sample-oracle t
 img_tag(figs$surface_perf, "Median method performance against the surface target"), img_tag(figs$surface_dist, "Distribution of surface-target relative RMS errors"),
 "<h3>Best Settings: Surface Target</h3>", table_html(best_surface, digits = 5, max.rows = 80),
 "<h3>Family-Level Median Performance: Surface Target</h3>", table_html(fam_surface, digits = 5, max.rows = 120),
-"<h2>Pruning and Connectivity Diagnostics</h2><p>The benchmark uses MST component repair before evaluation. The pruning comparison tests no geometric pruning, local geometric pruning, and global geodesic-ratio pruning as separate graph-construction choices. The diagnostic figure shows how many MST bridge edges and pruned edges are typical for each family.</p>",
+"<h2>Pruning and Connectivity Diagnostics</h2>", diagnostic.paragraph,
 img_tag(figs$sample_prune, "Pruning effect on the sample-oracle target"), img_tag(figs$surface_prune, "Pruning effect on the surface target"), img_tag(figs$diagnostics, "Connectivity repair and pruning diagnostics"), table_html(diag.summary, digits = 3, max.rows = 100),
 "<h2>Interactive 3D Graph Diagnostics</h2><p>The controls below expose the graph-construction layer directly. The <strong>preset</strong> control jumps to useful settings, but <strong>manual</strong> mode can select every graph setting represented in the benchmark results. The <strong>target</strong> is deliberately absent from these controls because evaluation targets rank graph settings; they are not graph-construction parameters.</p><p>The single 3D row has two panels: original data and a weighted-GRIP layout of the selected graph stage. Points are rendered as spheres. Edges are sampled when necessary to keep widgets responsive. If a selected weighted-GRIP layout is missing, the report shows the graph key needed to cache it.</p>", widget_controls,
 "<div class=\"note\"><p>On-demand layout refresh command:</p><pre><code>", escape_html(paste0("Rscript dev/data-geodesic-reconstruction/quadform-first-benchmark/run_quadform_first_benchmark.R --mode=", args$mode, " --output.dir=", base.dir, " --report.only=true --layouts=true --layout.graph.key=<graph_key>")), "</code></pre></div>",
@@ -1653,7 +1766,7 @@ img_tag(figs$sample_prune, "Pruning effect on the sample-oracle target"), img_ta
 report.path <- file.path(report.dir, "quadform_first_benchmark_report.html")
 writeLines(html, report.path)
 index.path <- file.path(base.dir, paste0("quadform_first_benchmark_", args$mode, "_report.html"))
-index.html <- paste0("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"0; url=", file.path("runs", args$mode, "report", "quadform_first_benchmark_report.html"), "\"><title>Quadratic-Surface Pruning-Method Comparison Report</title></head><body><p>Open <a href=\"", file.path("runs", args$mode, "report", "quadform_first_benchmark_report.html"), "\">the pruning-method comparison report</a>.</p></body></html>")
+index.html <- paste0("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"0; url=", file.path("runs", args$mode, "report", "quadform_first_benchmark_report.html"), "\"><title>", escape_html(report.title), "</title></head><body><p>Open <a href=\"", file.path("runs", args$mode, "report", "quadform_first_benchmark_report.html"), "\">the benchmark report</a>.</p></body></html>")
 writeLines(index.html, index.path)
 log_msg("Report written to ", report.path)
 log_msg("Index written to ", index.path)
