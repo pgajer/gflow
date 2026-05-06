@@ -1,0 +1,8 @@
+2026-05-06 15:06:35 | Dataset  paraboloid_n50_seed001 
+2026-05-06 15:06:36 |   graph settings:  48  (workers= 1 , timeout= 120  sec) 
+2026-05-06 15:06:41 |   graph settings complete:  48  ok,  0  with errors/timeouts 
+2026-05-06 15:06:41 | Dataset  saddle_n50_seed001 
+2026-05-06 15:06:42 |   graph settings:  48  (workers= 1 , timeout= 120  sec) 
+2026-05-06 15:06:47 |   graph settings complete:  48  ok,  0  with errors/timeouts 
+2026-05-06 15:06:50 | Report written to  dev/data-geodesic-reconstruction/quadform-pruning-method-comparison/runs/smoke/report/quadform_first_benchmark_report.html 
+2026-05-06 15:06:50 | Index written to  dev/data-geodesic-reconstruction/quadform-pruning-method-comparison/quadform_first_benchmark_smoke_report.html 

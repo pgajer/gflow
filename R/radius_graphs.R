@@ -66,7 +66,7 @@
     graph <- .graph.from.edge.table(n, edges)
     raw.adj.list <- graph$adj_list
     raw.weight.list <- graph$weight_list
-    prune.method <- .normalize.local.prune.method(prune.method)
+    prune.method <- .normalize.prune.method(prune.method)
     prune.controls <- .normalize.local.prune.controls(
         n, prune.k, prune.tau, prune.local.k, with.pruned.edge.stats
     )

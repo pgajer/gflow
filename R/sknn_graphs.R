@@ -164,7 +164,7 @@ create.sknn.graph <- function(X,
         is.na(with.pruned.edge.stats)) {
         stop("'with.pruned.edge.stats' must be TRUE or FALSE.", call. = FALSE)
     }
-    prune.method <- .normalize.local.prune.method(prune.method)
+    prune.method <- .normalize.prune.method(prune.method)
     if (isTRUE(prune.edges) && identical(prune.method, "none")) {
         prune.method <- "local.geodesic"
     }

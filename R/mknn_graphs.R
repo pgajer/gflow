@@ -164,7 +164,7 @@ create.mknn.graph <- function(X,
       is.na(connect.components)) {
     stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
   }
-  prune.method <- .normalize.local.prune.method(prune.method)
+  prune.method <- .normalize.prune.method(prune.method)
   prune.controls <- .normalize.local.prune.controls(
     n, k, prune.tau, prune.local.k, with.pruned.edge.stats
   )

@@ -1,0 +1,38 @@
+{
+  "surfaces": [
+    {
+      "surface": "paraboloid",
+      "index.k": 2,
+      "formula": "q(u,v) = u^2 + v^2"
+    },
+    {
+      "surface": "saddle",
+      "index.k": 1,
+      "formula": "q(u,v) = u^2 - v^2"
+    }
+  ],
+  "n.values": 50,
+  "seeds": 1,
+  "k.values": [3, 4],
+  "radius.rank": [3, 4],
+  "k.scale": [3, 4],
+  "radius.rule": ["min", "max"],
+  "radius.factor": [1, 1.25],
+  "prune.method": ["none", "local.geodesic", "global.geodesic.ratio"],
+  "local.prune.tau": 1.05,
+  "global.max.path.edge.ratio.deviation.thld": 0.1,
+  "global.path.edge.ratio.percentile": 0.5,
+  "grid.size": 101,
+  "sample.connection.k": 8,
+  "oracle.tube.k": 8,
+  "domain.radius": 1,
+  "mode": "smoke",
+  "created_at": "2026-05-06 15:06:35 EDT",
+  "output_dir": "dev/data-geodesic-reconstruction/quadform-pruning-method-comparison/runs/smoke",
+  "layouts": true,
+  "save_graph_assets": true,
+  "save_layout_assets": true,
+  "asset_stages": "benchmark",
+  "setting_timeout_sec": 120,
+  "workers": 1
+}

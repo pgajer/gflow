@@ -1,6 +1,6 @@
-.normalize.local.prune.method <- function(prune.method,
-                                          supported = c("none", "local.geodesic",
-                                                        "global.geodesic.ratio")) {
+.normalize.prune.method <- function(prune.method,
+                                    supported = c("none", "local.geodesic",
+                                                  "global.geodesic.ratio")) {
     if (length(prune.method) > 1L) {
         prune.method <- prune.method[[1L]]
     }
