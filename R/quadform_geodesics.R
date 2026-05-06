@@ -218,6 +218,42 @@ quadform.edge.length <- function(u, v, index.k, tol = sqrt(.Machine$double.eps))
     do.call(rbind, rows[seq_len(cursor)])
 }
 
+.with.quadform.seed <- function(seed, expr) {
+    if (is.null(seed)) {
+        return(force(expr))
+    }
+    if (!is.numeric(seed) || length(seed) != 1L || !is.finite(seed) ||
+        seed != floor(seed)) {
+        stop("'seed' must be NULL or a finite integer scalar.", call. = FALSE)
+    }
+    had.seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    old.seed <- if (had.seed) {
+        get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    } else {
+        NULL
+    }
+    on.exit({
+        if (had.seed) {
+            assign(".Random.seed", old.seed, envir = .GlobalEnv)
+        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+            rm(".Random.seed", envir = .GlobalEnv)
+        }
+    }, add = TRUE)
+    set.seed(as.integer(seed))
+    force(expr)
+}
+
+.quadform.sample.uniform.parameter.disk <- function(n, domain.radius) {
+    theta <- stats::runif(n, min = 0, max = 2 * pi)
+    radius <- domain.radius * sqrt(stats::runif(n))
+    X <- cbind(
+        x1 = radius * cos(theta),
+        x2 = radius * sin(theta)
+    )
+    storage.mode(X) <- "double"
+    X
+}
+
 #' Estimate Reference Geodesic Distances on a 2D Quadratic Surface
 #'
 #' @description
@@ -306,4 +342,125 @@ quadform.reference.geodesics <- function(X,
         sample_connection_k = sample.connection.k,
         index_k = as.integer(index.k)
     )
+}
+
+#' Sample a 2D Quadratic Surface Dataset with Reference Geodesics
+#'
+#' @description
+#' Samples parameter points from the disk
+#' \eqn{\{x \in \mathbb{R}^2 : \|x\|_2 \le r\}} and embeds them into the
+#' quadratic graph surface
+#' \deqn{q(x)=\sum_{i=1}^k x_i^2-\sum_{i=k+1}^2 x_i^2.}
+#' The currently supported sampling method is explicitly named
+#' `"uniform.parameter.disk"`: points are uniform in the parameter disk, not
+#' with respect to the induced surface-area measure. The function also builds
+#' the regular parameter-disk reference grid used by
+#' [quadform.reference.geodesics()] and returns sample-by-sample reference
+#' geodesic distances.
+#'
+#' @param n Positive integer. Number of sample points.
+#' @param index.k Integer between 0 and 2. Number of positive-square terms in
+#'   the quadratic form.
+#' @param domain.radius Positive numeric scalar. Radius of the parameter disk.
+#' @param sample.method Character scalar. Currently only
+#'   `"uniform.parameter.disk"` is supported.
+#' @param grid.size Integer at least 5. Number of reference-grid coordinates
+#'   along each axis before clipping to the parameter disk.
+#' @param sample.connection.k Positive integer. Number of nearest reference-grid
+#'   vertices connected to each sample point when computing reference geodesics.
+#' @param seed `NULL` or finite integer scalar. If supplied, sampling is
+#'   reproducible and the caller's random-number state is restored.
+#'
+#' @return A list of class `"quadform_sample_dataset"` with entries:
+#' \describe{
+#'   \item{X_param}{Sample points in two-dimensional parameter coordinates.}
+#'   \item{X_embed}{Sample points embedded as \code{(x1, x2, q)} in
+#'     \eqn{\mathbb{R}^3}.}
+#'   \item{q}{Quadratic-form values at the sample points.}
+#'   \item{D_geodesic}{Sample-by-sample reference geodesic distance matrix.}
+#'   \item{distances}{Alias of \code{D_geodesic}.}
+#'   \item{reference}{Reference grid and graph payload used to compute
+#'     \code{D_geodesic}.}
+#'   \item{metadata}{Dataset parameters, including the explicit sampling
+#'     method.}
+#' }
+#'
+#' @examples
+#' ds <- quadform.sample.dataset(
+#'   n = 10,
+#'   index.k = 1,
+#'   grid.size = 9,
+#'   seed = 1
+#' )
+#' dim(ds$X_embed)
+#' dim(ds$D_geodesic)
+#'
+#' @export
+quadform.sample.dataset <- function(n,
+                                    index.k,
+                                    domain.radius = 1,
+                                    sample.method = c("uniform.parameter.disk"),
+                                    grid.size = 51,
+                                    sample.connection.k = 8,
+                                    seed = NULL) {
+    if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+        n != floor(n) || n < 1L) {
+        stop("'n' must be a positive integer.", call. = FALSE)
+    }
+    n <- as.integer(n)
+    .validate.quadform.index(2L, index.k)
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
+    }
+    sample.method <- match.arg(sample.method)
+
+    X.param <- .with.quadform.seed(
+        seed,
+        .quadform.sample.uniform.parameter.disk(n, domain.radius)
+    )
+    X.embed <- quadform.embed(X.param, index.k = index.k)
+    ref <- quadform.reference.geodesics(
+        X.param,
+        index.k = index.k,
+        domain.radius = domain.radius,
+        grid.size = grid.size,
+        sample.connection.k = sample.connection.k
+    )
+    grid.idx <- seq.int(n + 1L, nrow(ref$vertices))
+    grid.param <- ref$vertices[grid.idx, , drop = FALSE]
+    vertices.embed <- quadform.embed(ref$vertices, index.k = index.k)
+
+    out <- list(
+        X_param = X.param,
+        X_embed = X.embed,
+        q = as.numeric(X.embed[, "q"]),
+        D_geodesic = ref$distances,
+        distances = ref$distances,
+        reference = list(
+            grid_param = grid.param,
+            grid_embed = quadform.embed(grid.param, index.k = index.k),
+            vertices_param = ref$vertices,
+            vertices_embed = vertices.embed,
+            sample_vertex = seq_len(n),
+            grid_vertex = grid.idx,
+            edge_matrix = ref$edge_matrix,
+            edge_weight = ref$edge_weight,
+            n_reference_vertices = ref$n_reference_vertices,
+            n_edges = ref$n_edges,
+            grid_size = ref$grid_size,
+            sample_connection_k = ref$sample_connection_k
+        ),
+        metadata = list(
+            dim = 2L,
+            index_k = as.integer(index.k),
+            domain_radius = as.numeric(domain.radius),
+            sample_method = sample.method,
+            grid_size = as.integer(ref$grid_size),
+            sample_connection_k = as.integer(ref$sample_connection_k),
+            seed = seed
+        )
+    )
+    class(out) <- c("quadform_sample_dataset", "list")
+    out
 }
