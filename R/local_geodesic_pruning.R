@@ -130,77 +130,32 @@
                                         prune.tau = 1.05,
                                         prune.local.k = NULL,
                                         with.pruned.edge.stats = FALSE) {
+    if (!(is.matrix(X) || is.data.frame(X))) {
+        stop("'X' must be a matrix or data frame.", call. = FALSE)
+    }
+    X <- as.matrix(X)
+    if (!is.numeric(X)) {
+        stop("'X' must contain numeric data.", call. = FALSE)
+    }
+    if (any(!is.finite(X))) {
+        stop("'X' cannot contain NA, NaN, or Inf values.", call. = FALSE)
+    }
+    if (!is.double(X)) {
+        storage.mode(X) <- "double"
+    }
     n <- nrow(X)
     controls <- .normalize.local.prune.controls(
         n, k, prune.tau, prune.local.k, with.pruned.edge.stats
     )
-    edges <- .graph.edge.table(adj.list, weight.list)
-    n.edges.before <- nrow(edges)
-    if (!n.edges.before) {
-        return(list(
-            adj_list = adj.list,
-            weight_list = weight.list,
-            n_edges_before_pruning = 0L,
-            n_edges_after_pruning = 0L,
-            n_pruned_edges = 0L,
-            pruned_edge_stats = .empty.pruned.edge.stats(),
-            prune_tau = controls$prune.tau,
-            prune_local_k = controls$prune.local.k,
-            with_pruned_edge_stats = controls$with.pruned.edge.stats
-        ))
-    }
-
-    local.index <- .exact.knn.index(X, controls$prune.local.k)
-    edges <- edges[order(-edges$weight, edges$from, edges$to), , drop = FALSE]
-    stats <- vector("list", n.edges.before)
-    stats.cursor <- 0L
-    tol <- 1e-12
-    for (r in seq_len(nrow(edges))) {
-        u <- edges$from[[r]]
-        v <- edges$to[[r]]
-        current <- .graph.edge.table(adj.list, weight.list)
-        key <- current$from == u & current$to == v
-        if (!any(key)) {
-            next
-        }
-        edge.length <- current$weight[which(key)[[1]]]
-        local.vertices <- sort(unique(c(u, v, local.index[u, ], local.index[v, ])))
-        cutoff <- controls$prune.tau * edge.length
-        alt <- .local.dijkstra.distance(
-            adj.list, weight.list, local.vertices, u, v, u, v, cutoff + tol
-        )
-        if (is.finite(alt) && alt <= cutoff + tol) {
-            removed <- .remove.undirected.edge(adj.list, weight.list, u, v)
-            adj.list <- removed$adj_list
-            weight.list <- removed$weight_list
-            if (controls$with.pruned.edge.stats) {
-                stats.cursor <- stats.cursor + 1L
-                stats[[stats.cursor]] <- data.frame(
-                    u = u,
-                    v = v,
-                    edge_length = edge.length,
-                    alt_path_length = alt,
-                    path_edge_ratio = alt / edge.length
-                )
-            }
-        }
-    }
-    stats.df <- if (controls$with.pruned.edge.stats && stats.cursor > 0L) {
-        do.call(rbind, stats[seq_len(stats.cursor)])
-    } else {
-        .empty.pruned.edge.stats()
-    }
-    n.edges.after <- nrow(.graph.edge.table(adj.list, weight.list))
-    list(
-        adj_list = adj.list,
-        weight_list = weight.list,
-        n_edges_before_pruning = n.edges.before,
-        n_edges_after_pruning = n.edges.after,
-        n_pruned_edges = n.edges.before - n.edges.after,
-        pruned_edge_stats = stats.df,
-        prune_tau = controls$prune.tau,
-        prune_local_k = controls$prune.local.k,
-        with_pruned_edge_stats = controls$with.pruned.edge.stats
+    .Call(
+        "S_prune_graph_local_geodesic",
+        X,
+        adj.list,
+        weight.list,
+        as.numeric(controls$prune.tau),
+        as.integer(controls$prune.local.k),
+        as.logical(controls$with.pruned.edge.stats),
+        PACKAGE = "gflow"
     )
 }
 

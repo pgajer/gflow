@@ -68,6 +68,7 @@
 #include "graph_core_endpoints_r.h"
 #include "phate_core_r.h"
 #include "linf_simplex_knn_r.h"
+#include "local_geodesic_pruning_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -264,6 +265,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_create_sknn_graph", (DL_FUNC) &S_create_sknn_graph, 16},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
+  {"S_prune_graph_local_geodesic", (DL_FUNC) &S_prune_graph_local_geodesic, 6},
   {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
   {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
   {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
