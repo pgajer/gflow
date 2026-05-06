@@ -52,7 +52,9 @@ diagnostics. The final graph is stored in \code{adj_list}/\code{weight_list};
 \code{raw_adj_list}/\code{raw_weight_list} store the adaptive-radius graph before
 optional MST component repair; and \code{pruned_adj_list}/\code{pruned_weight_list}
 are identical to \verb{raw_*} because adaptive-radius graphs do not currently
-have a pruning stage.
+have a pruning stage. The repaired lifecycle branches
+\verb{raw_repaired_*}, \verb{pruned_repaired_*}, and \verb{repaired_pruned_*} are
+identical for adaptive-radius graphs.
 }
 \description{
 Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}

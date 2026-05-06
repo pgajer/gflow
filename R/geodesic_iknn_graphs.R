@@ -22,6 +22,11 @@
 #'   \item{raw_adj_list, raw_weight_list}{The native geodesic iKNN graph.}
 #'   \item{pruned_adj_list, pruned_weight_list}{Identical to \code{raw_*}
 #'     because geodesic iKNN graphs do not currently have a pruning stage.}
+#'   \item{raw_repaired_adj_list, raw_repaired_weight_list,
+#'     pruned_repaired_adj_list, pruned_repaired_weight_list,
+#'     repaired_pruned_adj_list, repaired_pruned_weight_list}{Lifecycle aliases
+#'     identical to the final graph because this constructor has no MST repair
+#'     or pruning stage.}
 #'   \item{isize_list}{Intersection sizes for each edge.}
 #'   \item{n_edges}{Number of undirected edges.}
 #' }
@@ -55,6 +60,22 @@ create.geodesic.iknn.graph <- function(graph, k) {
     result$raw_weight_list <- result$weight_list
     result$pruned_adj_list <- result$adj_list
     result$pruned_weight_list <- result$weight_list
+    result$raw_repaired_adj_list <- result$adj_list
+    result$raw_repaired_weight_list <- result$weight_list
+    result$pruned_repaired_adj_list <- result$adj_list
+    result$pruned_repaired_weight_list <- result$weight_list
+    result$repaired_pruned_adj_list <- result$adj_list
+    result$repaired_pruned_weight_list <- result$weight_list
+    result$n_edges_in_raw_graph <- .edge.count.from.adj.list(result$raw_adj_list)
+    result$n_edges_in_raw_repaired_graph <- .edge.count.from.adj.list(result$adj_list)
+    result$n_edges_in_pruned_repaired_graph <- .edge.count.from.adj.list(result$adj_list)
+    result$n_edges_in_repaired_pruned_graph <- .edge.count.from.adj.list(result$adj_list)
+    comps <- .graph.components(result$adj_list)
+    result$n_components_raw <- comps$n_components
+    result$n_components_raw_repaired <- comps$n_components
+    result$n_components_pruned <- comps$n_components
+    result$n_components_pruned_repaired <- comps$n_components
+    result$n_components_repaired_pruned <- comps$n_components
     attr(result, "k") <- as.integer(k)
     attr(result, "k_internal") <- as.integer(k)
     class(result) <- c("geodesic_iknn_graph", "list")
