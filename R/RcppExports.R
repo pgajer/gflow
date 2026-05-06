@@ -82,3 +82,11 @@ rcpp_knn_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, step_size
     .Call(`_gflow_rcpp_knn_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, step_size, ikernel, dist_normalization_factor, average_direction_only)
 }
 
+rcpp_quadform_grid_pair_distances <- function(index_k, domain_radius, grid_size, pair_points) {
+    .Call(`_gflow_rcpp_quadform_grid_pair_distances`, index_k, domain_radius, grid_size, pair_points)
+}
+
+rcpp_quadform_grid_geodesic_distances <- function(X, index_k, domain_radius, grid_size, sample_connection_k, with_oracle, oracle_tube_radius, oracle_tube_k, return_oracle_paths) {
+    .Call(`_gflow_rcpp_quadform_grid_geodesic_distances`, X, index_k, domain_radius, grid_size, sample_connection_k, with_oracle, oracle_tube_radius, oracle_tube_k, return_oracle_paths)
+}
+

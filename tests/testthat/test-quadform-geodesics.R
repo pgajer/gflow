@@ -59,6 +59,102 @@ test_that("quadform.reference.geodesics returns finite symmetric sample distance
 })
 
 
+test_that("quadform.grid.geodesic.distances matches R reference on small grids", {
+  X <- rbind(
+    c(0, 0),
+    c(0.5, 0),
+    c(0, 0.5)
+  )
+
+  r.ref <- quadform.reference.geodesics(
+    X,
+    index.k = 2,
+    domain.radius = 1,
+    grid.size = 11,
+    sample.connection.k = 4
+  )
+  cpp.ref <- quadform.grid.geodesic.distances(
+    X,
+    index.k = 2,
+    domain.radius = 1,
+    grid.size = 11,
+    sample.connection.k = 4
+  )
+
+  expect_equal(cpp.ref$distances, r.ref$distances, tolerance = 1e-12)
+  expect_equal(cpp.ref$n_sample_vertices, 3L)
+  expect_equal(cpp.ref$grid_size, 11L)
+  expect_equal(cpp.ref$sample_connection_k, 4L)
+  expect_equal(cpp.ref$index_k, 2L)
+})
+
+
+test_that("quadform.grid.geodesic.distances can return sample-path oracle distances", {
+  X <- cbind(x1 = c(0, 0.5, 1), x2 = c(0, 0, 0))
+
+  ref <- quadform.grid.geodesic.distances(
+    X,
+    index.k = 2,
+    domain.radius = 1,
+    grid.size = 21,
+    sample.connection.k = 4,
+    oracle = "sample.path",
+    oracle.tube.radius = 1e-6,
+    return.oracle.paths = TRUE
+  )
+
+  X.embed <- quadform.embed(X, index.k = 2)
+  chord.length <- function(i, j) {
+    sqrt(sum((X.embed[i, ] - X.embed[j, ])^2))
+  }
+  expected.13 <- chord.length(1, 2) + chord.length(2, 3)
+
+  expect_equal(ref$oracle_distances[1, 3], expected.13, tolerance = 1e-12)
+  expect_equal(ref$oracle_distances, t(ref$oracle_distances), tolerance = 1e-12)
+  expect_equal(diag(ref$oracle_distances), rep(0, 3), tolerance = 1e-12)
+  expect_equal(ref$oracle_n_points[1, 3], 3L)
+  expect_equal(ref$oracle_status[1, 3], "ok")
+  expect_equal(ref$oracle_paths[[3]], 1:3)
+  expect_equal(ref$oracle_method, "sample.path")
+  expect_equal(ref$oracle_tube_radius, 1e-6)
+})
+
+
+test_that("quadform.grid.geodesic.calibration summarizes grid convergence", {
+  cal <- quadform.grid.geodesic.calibration(
+    index.k = 1,
+    grid.sizes = c(11, 21),
+    reference.grid.size = 31,
+    n.sources = 4,
+    targets.per.source = 3,
+    seed = 11
+  )
+
+  expect_s3_class(cal, "quadform_grid_geodesic_calibration")
+  expect_equal(cal$metadata$n_pairs, 12L)
+  expect_equal(sort(cal$summary$grid_size), c(11L, 21L, 31L))
+  expect_true(all(c("frob_rel_error", "q95_rel_error", "runtime_sec") %in%
+                    names(cal$summary)))
+  ref.row <- cal$summary[cal$summary$grid_size == 31L, ]
+  expect_equal(ref.row$frob_rel_error, 0, tolerance = 1e-12)
+  expect_equal(ref.row$max_rel_error, 0, tolerance = 1e-12)
+  expect_equal(nrow(cal$pair_points), 12L)
+  expect_equal(ncol(cal$pair_points), 4L)
+
+  cal2 <- quadform.grid.geodesic.calibration(
+    index.k = 1,
+    grid.sizes = c(11, 21),
+    reference.grid.size = 31,
+    n.sources = 4,
+    targets.per.source = 3,
+    seed = 11
+  )
+  expect_equal(cal$pair_points, cal2$pair_points)
+  expect_equal(cal$summary$grid_size, cal2$summary$grid_size)
+  expect_equal(cal$summary$frob_rel_error, cal2$summary$frob_rel_error)
+})
+
+
 test_that("quadform.sample.dataset samples parameter disk data with reference distances", {
   ds <- quadform.sample.dataset(
     n = 12,
@@ -119,6 +215,23 @@ test_that("quadform utilities validate inputs", {
                                  index.k = 1, domain.radius = 1),
     "inside"
   )
+  expect_error(quadform.grid.geodesic.distances(matrix(1:9, ncol = 3), index.k = 1),
+               "2D")
+  expect_error(
+    quadform.grid.geodesic.distances(matrix(c(2, 0, 0, 0), ncol = 2),
+                                     index.k = 1, domain.radius = 1),
+    "inside"
+  )
+  expect_error(quadform.grid.geodesic.calibration(index.k = 3), "index.k")
+  expect_error(quadform.grid.geodesic.calibration(index.k = 1, n.sources = 0),
+               "n.sources")
+  expect_error(quadform.grid.geodesic.distances(matrix(c(0, 0, 1, 0), ncol = 2),
+                                                index.k = 1, oracle = "sample.path",
+                                                oracle.tube.radius = -1),
+               "oracle.tube.radius")
+  expect_error(quadform.grid.geodesic.distances(matrix(c(0, 0, 1, 0), ncol = 2),
+                                                index.k = 1, oracle.tube.k = 0),
+               "oracle.tube.k")
   expect_error(quadform.sample.dataset(n = 0, index.k = 1), "positive integer")
   expect_error(quadform.sample.dataset(n = 3, index.k = 3), "index.k")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, domain.radius = 0),
