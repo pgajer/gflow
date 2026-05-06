@@ -48,6 +48,8 @@
     n <- nrow(X)
     graph <- .graph.from.edge.table(n, edges)
     n.edges.before.mst <- nrow(edges)
+    raw.adj.list <- graph$adj_list
+    raw.weight.list <- graph$weight_list
     bridge <- .augment.graph.with.component.mst(
         X = X,
         adj.list = graph$adj_list,
@@ -67,6 +69,10 @@
         edge_weight = as.numeric(edge.table$weight),
         n_vertices = n,
         n_edges = nrow(edge.table),
+        raw_adj_list = raw.adj.list,
+        raw_weight_list = raw.weight.list,
+        pruned_adj_list = raw.adj.list,
+        pruned_weight_list = raw.weight.list,
         n_edges_before_mst = n.edges.before.mst,
         n_edges_after_mst = nrow(edge.table),
         n_components_before = bridge$n_components_before,
@@ -113,7 +119,11 @@
 #'   factor for ANN bridge neighborhoods.
 #'
 #' @return A list of class `"radius_graph"` containing adjacency lists, edge
-#'   weights, edge matrix, and component diagnostics.
+#'   weights, edge matrix, and component diagnostics. The final graph is stored
+#'   in `adj_list`/`weight_list`; `raw_adj_list`/`raw_weight_list` store the
+#'   fixed-radius graph before optional MST component repair; and
+#'   `pruned_adj_list`/`pruned_weight_list` are identical to `raw_*` because
+#'   radius graphs do not currently have a pruning stage.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
@@ -170,7 +180,11 @@ create.radius.graph <- function(X,
 #'
 #' @return A list of class `"adaptive_radius_graph"` containing adjacency
 #'   lists, edge weights, edge matrix, local scale values, and component
-#'   diagnostics.
+#'   diagnostics. The final graph is stored in `adj_list`/`weight_list`;
+#'   `raw_adj_list`/`raw_weight_list` store the adaptive-radius graph before
+#'   optional MST component repair; and `pruned_adj_list`/`pruned_weight_list`
+#'   are identical to `raw_*` because adaptive-radius graphs do not currently
+#'   have a pruning stage.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)

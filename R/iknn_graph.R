@@ -47,9 +47,10 @@
 #'     based on absolute edge lengths rather than path-to-edge ratios.
 #'
 #' @param compute.full Logical scalar controlling additional full-payload outputs.
-#'        If TRUE, includes `adj_list`, `isize_list`, `weight_list`, and `conn_comps`.
-#'        If FALSE, those components are returned as `NULL`.
-#'        The final graph payload (`pruned_adj_list`, `pruned_weight_list`) is returned in both cases.
+#'        If TRUE, keeps legacy original-graph components `isize_list` and
+#'        `conn_comps`. Lifecycle graph payloads are always returned:
+#'        `raw_adj_list`/`raw_weight_list`, `pruned_adj_list`/`pruned_weight_list`,
+#'        and final `adj_list`/`weight_list`.
 #'
 #' @param with.isize.pruning Logical scalar. If TRUE, compute intersection-size pruning
 #'        outputs and related statistics. Default is FALSE.
@@ -108,8 +109,12 @@
 #'
 #' @return An object of class "IkNN" (inheriting from "list") containing:
 #' \describe{
-#'   \item{pruned_adj_list}{Adjacency lists for the final graph (1-based indices)}
-#'   \item{pruned_weight_list}{Edge weights for the final graph}
+#'   \item{adj_list}{Adjacency lists for the final graph after optional MST repair}
+#'   \item{weight_list}{Edge weights for the final graph}
+#'   \item{raw_adj_list}{Adjacency lists for the native graph before pruning}
+#'   \item{raw_weight_list}{Edge weights for the native graph before pruning}
+#'   \item{pruned_adj_list}{Adjacency lists after pruning and before MST repair}
+#'   \item{pruned_weight_list}{Edge weights after pruning and before MST repair}
 #'   \item{n_edges}{Total number of edges in original graph}
 #'   \item{n_edges_in_pruned_graph}{Number of edges after pruning}
 #'   \item{n_removed_edges}{Number of edges removed by pruning}
@@ -122,18 +127,16 @@
 #'
 #' If compute.full = TRUE, additional components include:
 #' \describe{
-#'   \item{adj_list}{Original adjacency lists (1-based indices)}
 #'   \item{isize_list}{Intersection sizes for original edges}
-#'   \item{weight_list}{Distances for original edges}
 #'   \item{conn_comps}{Connected components identification}
 #'   \item{connected_components}{Alternative format of connected components}
 #' }
 #'
 #' @details
-#' `pruned_adj_list` and `pruned_weight_list` always contain the final graph after
-#' enabled pruning stages. If `max.path.edge.ratio.deviation.thld = 0` and
-#' `threshold.percentile = 0`, no geometric/quantile pruning is applied and these
-#' components are identical to the unpruned graph.
+#' `adj_list` and `weight_list` always contain the final graph used by downstream
+#' algorithms. `raw_*` fields contain the native graph before pruning, and
+#' `pruned_*` fields contain the graph after pruning but before optional MST
+#' component repair. If pruning is disabled, `pruned_*` is identical to `raw_*`.
 #'
 #' @examples
 #' # Create sample data
@@ -336,7 +339,7 @@ create.single.iknn.graph <- function(X,
     }
 
     if (verbose && !compute.full) {
-        message("compute.full=FALSE: adj_list/isize_list/weight_list/conn_comps will be NULL; pruned_adj_list/pruned_weight_list still return the final graph.")
+        message("compute.full=FALSE: legacy isize_list/conn_comps may be omitted; lifecycle graph payloads are still returned.")
     }
     if (verbose && identical(prune.method, "none") && threshold.percentile == 0) {
         message("No geometric/quantile pruning requested: pruned_adj_list/pruned_weight_list will match the unpruned graph.")
@@ -354,7 +357,7 @@ create.single.iknn.graph <- function(X,
                     as.double(cxx.edge.ratio.threshold),
                     as.double(path.edge.ratio.percentile),
                     as.double(threshold.percentile),
-                    as.logical(compute.full),
+                    TRUE,
                     as.logical(with.isize.pruning),
                     as.logical(with.edge.pruning.stats),
                     if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
@@ -363,6 +366,14 @@ create.single.iknn.graph <- function(X,
                     as.double(linf.tol),
                     as.logical(verbose),
                     PACKAGE = "gflow")
+    raw.adj.list <- result$adj_list
+    raw.weight.list <- result$weight_list
+    raw.isize.list <- result$isize_list
+    raw.conn.comps <- result$conn_comps
+    if (!isTRUE(compute.full)) {
+        result$isize_list <- NULL
+        result$conn_comps <- NULL
+    }
 
     if (identical(prune.method, "local.geodesic")) {
         pruning <- .prune.graph.local.geodesic(
@@ -406,6 +417,8 @@ create.single.iknn.graph <- function(X,
     n.edges.before.mst <- result$n_edges_in_pruned_graph
     n.removed.by.pruning <- result$n_removed_edges
     pruning.reduction.ratio <- result$edge_reduction_ratio
+    pruned.adj.list <- result$pruned_adj_list
+    pruned.weight.list <- result$pruned_weight_list
     bridge <- .augment.graph.with.component.mst(
         X = X,
         adj.list = result$pruned_adj_list,
@@ -417,13 +430,19 @@ create.single.iknn.graph <- function(X,
         bridge.k.max = bridge.controls$bridge.k.max,
         bridge.growth = bridge.controls$bridge.growth
     )
-    result$pruned_adj_list <- bridge$adj_list
-    result$pruned_weight_list <- bridge$weight_list
+    result$raw_adj_list <- raw.adj.list
+    result$raw_weight_list <- raw.weight.list
+    result$raw_isize_list <- raw.isize.list
+    result$raw_conn_comps <- raw.conn.comps
+    result$pruned_adj_list <- pruned.adj.list
+    result$pruned_weight_list <- pruned.weight.list
+    result$adj_list <- bridge$adj_list
+    result$weight_list <- bridge$weight_list
     result$n_edges_in_pruned_graph <- sum(lengths(result$pruned_adj_list)) / 2
     result$n_removed_edges <- n.removed.by.pruning
     result$edge_reduction_ratio <- pruning.reduction.ratio
     result$n_edges_before_mst <- n.edges.before.mst
-    result$n_edges_after_mst <- result$n_edges_in_pruned_graph
+    result$n_edges_after_mst <- sum(lengths(result$adj_list)) / 2
     result$n_components_before_mst <- bridge$n_components_before
     result$n_components_after_mst <- bridge$n_components_after
     result$component_id_before_mst <- bridge$component_id_before
@@ -485,10 +504,16 @@ create.single.iknn.graph <- function(X,
 #' @method summary IkNN
 #' @export
 summary.IkNN <- function(object, ...) {
+    adj.list <- object$adj_list
+    if (is.null(adj.list)) {
+        adj.list <- object$pruned_adj_list
+    }
+    final.edges <- if (is.null(adj.list)) NA_real_ else sum(lengths(adj.list)) / 2
     cat("Graph Summary:\n")
-    cat("Number of vertices:", length(object$pruned_adj_list), "\n")
+    cat("Number of vertices:", length(adj.list), "\n")
     cat("Number of edges:", object$n_edges, "\n")                  # Total number of edges in the original graph
     cat("Number of edges after pruning:", object$n_pruned_edges, "\n")    # Number of edges after pruning
+    cat("Number of edges in final graph:", final.edges, "\n")      # Number of edges after optional MST repair
     cat("Number of removed edges:", object$n_removed_edges, "\n")  # Number of edges removed during pruning
     cat("Proportion of edges removed:", object$edge_reduction_ratio,"\n") # Proportion of edges removed (n_removed_edges / n_edges)
 }

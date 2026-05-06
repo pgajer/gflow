@@ -48,7 +48,11 @@ factor for ANN bridge neighborhoods.}
 \value{
 A list of class \code{"adaptive_radius_graph"} containing adjacency
 lists, edge weights, edge matrix, local scale values, and component
-diagnostics.
+diagnostics. The final graph is stored in \code{adj_list}/\code{weight_list};
+\code{raw_adj_list}/\code{raw_weight_list} store the adaptive-radius graph before
+optional MST component repair; and \code{pruned_adj_list}/\code{pruned_weight_list}
+are identical to \verb{raw_*} because adaptive-radius graphs do not currently
+have a pruning stage.
 }
 \description{
 Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}

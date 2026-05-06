@@ -35,9 +35,16 @@
 #' @return A list with class "mknn_graph" containing:
 #'   \describe{
 #'     \item{adj_list}{A list where element i contains the indices of vertices
-#'       connected to vertex i by an edge.}
+#'       connected to vertex i by an edge in the final graph after optional MST
+#'       component repair.}
 #'     \item{weight_list}{A list where element i contains the distances between
-#'       vertex i and its connected neighbors (in the same order as \code{adj_list[[i]]}).}
+#'       vertex i and its connected neighbors in the final graph (in the same
+#'       order as \code{adj_list[[i]]}).}
+#'     \item{raw_adj_list, raw_weight_list}{The native mutual-kNN graph before
+#'       pruning and before optional MST component repair.}
+#'     \item{pruned_adj_list, pruned_weight_list}{The graph after optional local
+#'       geometric pruning and before optional MST component repair. If pruning
+#'       is disabled, these fields are identical to the raw graph.}
 #'     \item{n_vertices}{The number of vertices in the graph.}
 #'     \item{n_edges}{The total number of edges in the graph.}
 #'     \item{k}{The k value used to construct the graph.}
@@ -53,6 +60,11 @@
 #'
 #' This mutual relationship ensures that the resulting graph is undirected and
 #' typically sparser than a standard k-nearest neighbor graph.
+#'
+#' The final graph is always stored in \code{adj_list}/\code{weight_list}.
+#' Lifecycle diagnostic fields follow the same convention as the other gflow
+#' graph constructors: \code{raw_*} is before pruning and MST repair, and
+#' \code{pruned_*} is after pruning but before MST repair.
 #'
 #' @examples
 #' \dontrun{
@@ -144,6 +156,8 @@ create.mknn.graph <- function(X,
     result <- .Call("S_create_mknn_graph",
                     X,
                     as.integer(k + 1))
+  raw.adj.list <- result$adj_list
+  raw.weight.list <- result$weight_list
 
   if (identical(prune.method, "local.geodesic")) {
     pruning <- .prune.graph.local.geodesic(
@@ -169,6 +183,8 @@ create.mknn.graph <- function(X,
       with_pruned_edge_stats = prune.controls$with.pruned.edge.stats
     )
   }
+  pruned.adj.list <- result$adj_list
+  pruned.weight.list <- result$weight_list
   n.edges.before.mst <- pruning$n_edges_after_pruning
 
   bridge <- .augment.graph.with.component.mst(
@@ -188,6 +204,10 @@ create.mknn.graph <- function(X,
   # Add metadata to result
   result$n_vertices <- n
   result$n_edges <- sum(sapply(result$adj_list, length)) / 2  # Divide by 2 for undirected graph
+  result$raw_adj_list <- raw.adj.list
+  result$raw_weight_list <- raw.weight.list
+  result$pruned_adj_list <- pruned.adj.list
+  result$pruned_weight_list <- pruned.weight.list
   result$n_edges_before_pruning <- pruning$n_edges_before_pruning
   result$n_edges_after_pruning <- pruning$n_edges_after_pruning
   result$n_pruned_edges <- pruning$n_pruned_edges

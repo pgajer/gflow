@@ -77,6 +77,17 @@ factor for bridge candidate neighborhoods.}
 \value{
 A list of class \code{"sknn_graph"} with adjacency lists, weights, edge
 matrix, kNN index matrix, component diagnostics, and any MST edges added.
+The graph lifecycle fields are:
+\describe{
+\item{raw_adj_list, raw_weight_list}{The native sKNN graph before pruning
+and before optional MST component repair.}
+\item{pruned_adj_list, pruned_weight_list}{The graph after optional local
+geometric pruning and before optional MST component repair. If pruning
+is disabled, these fields are identical to the raw graph.}
+\item{adj_list, weight_list}{The final graph after optional MST component
+repair. Downstream algorithms should use these fields unless they
+explicitly need a lifecycle diagnostic stage.}
+}
 }
 \description{
 Creates an undirected symmetric k-nearest neighbor (sKNN) graph from a numeric
