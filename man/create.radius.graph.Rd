@@ -43,7 +43,9 @@ weights, edge matrix, and component diagnostics. The final graph is stored
 in \code{adj_list}/\code{weight_list}; \code{raw_adj_list}/\code{raw_weight_list} store the
 fixed-radius graph before optional MST component repair; and
 \code{pruned_adj_list}/\code{pruned_weight_list} are identical to \verb{raw_*} because
-radius graphs do not currently have a pruning stage.
+radius graphs do not currently have a pruning stage. The repaired lifecycle
+branches \verb{raw_repaired_*}, \verb{pruned_repaired_*}, and \verb{repaired_pruned_*}
+are identical for radius graphs.
 }
 \description{
 Creates an undirected Euclidean radius graph from a numeric data matrix.

@@ -73,6 +73,21 @@
         raw_weight_list = raw.weight.list,
         pruned_adj_list = raw.adj.list,
         pruned_weight_list = raw.weight.list,
+        raw_repaired_adj_list = bridge$adj_list,
+        raw_repaired_weight_list = bridge$weight_list,
+        pruned_repaired_adj_list = bridge$adj_list,
+        pruned_repaired_weight_list = bridge$weight_list,
+        repaired_pruned_adj_list = bridge$adj_list,
+        repaired_pruned_weight_list = bridge$weight_list,
+        n_edges_in_raw_graph = .edge.count.from.adj.list(raw.adj.list),
+        n_edges_in_raw_repaired_graph = .edge.count.from.adj.list(bridge$adj_list),
+        n_edges_in_pruned_repaired_graph = .edge.count.from.adj.list(bridge$adj_list),
+        n_edges_in_repaired_pruned_graph = .edge.count.from.adj.list(bridge$adj_list),
+        n_components_raw = bridge$n_components_before,
+        n_components_raw_repaired = bridge$n_components_after,
+        n_components_pruned = bridge$n_components_before,
+        n_components_pruned_repaired = bridge$n_components_after,
+        n_components_repaired_pruned = bridge$n_components_after,
         n_edges_before_mst = n.edges.before.mst,
         n_edges_after_mst = nrow(edge.table),
         n_components_before = bridge$n_components_before,
@@ -123,7 +138,9 @@
 #'   in `adj_list`/`weight_list`; `raw_adj_list`/`raw_weight_list` store the
 #'   fixed-radius graph before optional MST component repair; and
 #'   `pruned_adj_list`/`pruned_weight_list` are identical to `raw_*` because
-#'   radius graphs do not currently have a pruning stage.
+#'   radius graphs do not currently have a pruning stage. The repaired lifecycle
+#'   branches `raw_repaired_*`, `pruned_repaired_*`, and `repaired_pruned_*`
+#'   are identical for radius graphs.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
@@ -184,7 +201,9 @@ create.radius.graph <- function(X,
 #'   `raw_adj_list`/`raw_weight_list` store the adaptive-radius graph before
 #'   optional MST component repair; and `pruned_adj_list`/`pruned_weight_list`
 #'   are identical to `raw_*` because adaptive-radius graphs do not currently
-#'   have a pruning stage.
+#'   have a pruning stage. The repaired lifecycle branches
+#'   `raw_repaired_*`, `pruned_repaired_*`, and `repaired_pruned_*` are
+#'   identical for adaptive-radius graphs.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)

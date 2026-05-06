@@ -88,6 +88,13 @@
 #'     \item{pruned_adj_list, pruned_weight_list}{The graph after optional local
 #'       geometric pruning and before optional MST component repair. If pruning
 #'       is disabled, these fields are identical to the raw graph.}
+#'     \item{raw_repaired_adj_list, raw_repaired_weight_list}{The native sKNN
+#'       graph after MST component repair.}
+#'     \item{pruned_repaired_adj_list, pruned_repaired_weight_list}{The
+#'       prune-first branch after MST component repair.}
+#'     \item{repaired_pruned_adj_list, repaired_pruned_weight_list}{The
+#'       repair-first branch after applying local geometric pruning to the
+#'       repaired raw graph.}
 #'     \item{adj_list, weight_list}{The final graph after optional MST component
 #'       repair. Downstream algorithms should use these fields unless they
 #'       explicitly need a lifecycle diagnostic stage.}
@@ -314,6 +321,23 @@ create.sknn.graph <- function(X,
     result$raw_weight_list <- raw.result$weight_list
     result$pruned_adj_list <- pruned.result$adj_list
     result$pruned_weight_list <- pruned.result$weight_list
+    result <- .add.graph.lifecycle.branches(
+        result = result,
+        X = X,
+        k = as.integer(k),
+        raw.adj.list = result$raw_adj_list,
+        raw.weight.list = result$raw_weight_list,
+        pruned.adj.list = result$pruned_adj_list,
+        pruned.weight.list = result$pruned_weight_list,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth,
+        prune.method = prune.method,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats
+    )
     result$edge.weight <- edge.weight
     result$prune_method <- prune.method
     class(result) <- c("sknn_graph", "list")

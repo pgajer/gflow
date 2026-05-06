@@ -345,3 +345,88 @@
         bridge_exact_fallback_used = exact.fallback
     )
 }
+
+.repair.graph.lifecycle.stage <- function(X,
+                                          adj.list,
+                                          weight.list,
+                                          k,
+                                          connect.method,
+                                          bridge.k,
+                                          bridge.k.max,
+                                          bridge.growth) {
+    .augment.graph.with.component.mst(
+        X = X,
+        adj.list = adj.list,
+        weight.list = weight.list,
+        k = k,
+        connect.components = TRUE,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth
+    )
+}
+
+.add.graph.lifecycle.branches <- function(result,
+                                          X,
+                                          k,
+                                          raw.adj.list,
+                                          raw.weight.list,
+                                          pruned.adj.list,
+                                          pruned.weight.list,
+                                          connect.method,
+                                          bridge.k,
+                                          bridge.k.max,
+                                          bridge.growth,
+                                          prune.method = "none",
+                                          max.path.edge.ratio.deviation.thld = 0,
+                                          path.edge.ratio.percentile = 0.5,
+                                          threshold.percentile = 0,
+                                          prune.tau = 1.05,
+                                          prune.local.k = NULL,
+                                          with.pruned.edge.stats = FALSE) {
+    raw.repaired <- .repair.graph.lifecycle.stage(
+        X, raw.adj.list, raw.weight.list, k, connect.method,
+        bridge.k, bridge.k.max, bridge.growth
+    )
+    pruned.repaired <- .repair.graph.lifecycle.stage(
+        X, pruned.adj.list, pruned.weight.list, k, connect.method,
+        bridge.k, bridge.k.max, bridge.growth
+    )
+    repaired.pruning <- .prune.graph.by.method(
+        X = X,
+        adj.list = raw.repaired$adj_list,
+        weight.list = raw.repaired$weight_list,
+        k = k,
+        prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
+        threshold.percentile = threshold.percentile,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats
+    )
+
+    result$raw_repaired_adj_list <- raw.repaired$adj_list
+    result$raw_repaired_weight_list <- raw.repaired$weight_list
+    result$pruned_repaired_adj_list <- pruned.repaired$adj_list
+    result$pruned_repaired_weight_list <- pruned.repaired$weight_list
+    result$repaired_pruned_adj_list <- repaired.pruning$adj_list
+    result$repaired_pruned_weight_list <- repaired.pruning$weight_list
+
+    result$n_edges_in_raw_graph <- .edge.count.from.adj.list(raw.adj.list)
+    result$n_edges_in_raw_repaired_graph <- .edge.count.from.adj.list(raw.repaired$adj_list)
+    result$n_edges_in_pruned_repaired_graph <- .edge.count.from.adj.list(pruned.repaired$adj_list)
+    result$n_edges_in_repaired_pruned_graph <- .edge.count.from.adj.list(repaired.pruning$adj_list)
+    result$n_components_raw <- raw.repaired$n_components_before
+    result$n_components_raw_repaired <- raw.repaired$n_components_after
+    result$n_components_pruned <- pruned.repaired$n_components_before
+    result$n_components_pruned_repaired <- pruned.repaired$n_components_after
+    result$n_components_repaired_pruned <- .graph.components(repaired.pruning$adj_list)$n_components
+    result$raw_repaired_mst_edge_matrix <- raw.repaired$mst_edge_matrix
+    result$raw_repaired_mst_edge_weight <- raw.repaired$mst_edge_weight
+    result$pruned_repaired_mst_edge_matrix <- pruned.repaired$mst_edge_matrix
+    result$pruned_repaired_mst_edge_weight <- pruned.repaired$mst_edge_weight
+    result$repaired_pruned_pruning <- repaired.pruning
+    result
+}

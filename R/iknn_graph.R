@@ -93,6 +93,13 @@
 #' @param bridge.growth Numeric scalar greater than 1. Multiplicative growth
 #'        factor for ANN bridge neighborhoods.
 #'
+#' @param with.lifecycle.branches Logical scalar. If TRUE, compute the
+#'        additional repaired lifecycle branches
+#'        \code{raw_repaired_*}, \code{pruned_repaired_*}, and
+#'        \code{repaired_pruned_*}. This is useful for graph-geodesic
+#'        reconstruction experiments but can be expensive for the historical
+#'        global iKNN pruning path, so the default is FALSE.
+#'
 #' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
 #'        Used only when `knn.cache.mode != "none"`.
 #'
@@ -115,6 +122,13 @@
 #'   \item{raw_weight_list}{Edge weights for the native graph before pruning}
 #'   \item{pruned_adj_list}{Adjacency lists after pruning and before MST repair}
 #'   \item{pruned_weight_list}{Edge weights after pruning and before MST repair}
+#'   \item{raw_repaired_adj_list, raw_repaired_weight_list}{The native graph
+#'     after MST component repair.}
+#'   \item{pruned_repaired_adj_list, pruned_repaired_weight_list}{The
+#'     prune-first branch after MST component repair.}
+#'   \item{repaired_pruned_adj_list, repaired_pruned_weight_list}{The
+#'     repair-first branch after applying the selected pruning method to the
+#'     repaired raw graph.}
 #'   \item{n_edges}{Total number of edges in original graph}
 #'   \item{n_edges_in_pruned_graph}{Number of edges after pruning}
 #'   \item{n_removed_edges}{Number of edges removed by pruning}
@@ -137,6 +151,8 @@
 #' algorithms. `raw_*` fields contain the native graph before pruning, and
 #' `pruned_*` fields contain the graph after pruning but before optional MST
 #' component repair. If pruning is disabled, `pruned_*` is identical to `raw_*`.
+#' The repaired lifecycle branches allow direct comparison of raw, prune-first,
+#' and repair-first graph geodesic distances from a single constructor call.
 #'
 #' @examples
 #' # Create sample data
@@ -165,6 +181,7 @@ create.single.iknn.graph <- function(X,
                                      bridge.k = NULL,
                                      bridge.k.max = NULL,
                                      bridge.growth = 2,
+                                     with.lifecycle.branches = FALSE,
                                      verbose = TRUE,
                                      knn.cache.path = NULL,
                                      knn.cache.mode = c("none", "read", "write", "readwrite")) {
@@ -222,6 +239,10 @@ create.single.iknn.graph <- function(X,
     }
     if (!is.logical(with.edge.pruning.stats) || length(with.edge.pruning.stats) != 1) {
         stop("with.edge.pruning.stats must be a single logical value")
+    }
+    if (!is.logical(with.lifecycle.branches) || length(with.lifecycle.branches) != 1 ||
+        is.na(with.lifecycle.branches)) {
+        stop("with.lifecycle.branches must be a single logical value")
     }
     local.prune.tau <- if (is.null(prune.tau)) {
         max(1 + max.path.edge.ratio.deviation.thld, 1.05)
@@ -438,6 +459,35 @@ create.single.iknn.graph <- function(X,
     result$pruned_weight_list <- pruned.weight.list
     result$adj_list <- bridge$adj_list
     result$weight_list <- bridge$weight_list
+    if (isTRUE(with.lifecycle.branches)) {
+        result <- .add.graph.lifecycle.branches(
+            result = result,
+            X = X,
+            k = k,
+            raw.adj.list = result$raw_adj_list,
+            raw.weight.list = result$raw_weight_list,
+            pruned.adj.list = result$pruned_adj_list,
+            pruned.weight.list = result$pruned_weight_list,
+            connect.method = connect.method,
+            bridge.k = bridge.controls$bridge.k,
+            bridge.k.max = bridge.controls$bridge.k.max,
+            bridge.growth = bridge.controls$bridge.growth,
+            prune.method = prune.method,
+            max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile = path.edge.ratio.percentile,
+            threshold.percentile = threshold.percentile,
+            prune.tau = local.prune.controls$prune.tau,
+            prune.local.k = local.prune.controls$prune.local.k,
+            with.pruned.edge.stats = local.prune.controls$with.pruned.edge.stats
+        )
+    } else {
+        result["raw_repaired_adj_list"] <- list(NULL)
+        result["raw_repaired_weight_list"] <- list(NULL)
+        result["pruned_repaired_adj_list"] <- list(NULL)
+        result["pruned_repaired_weight_list"] <- list(NULL)
+        result["repaired_pruned_adj_list"] <- list(NULL)
+        result["repaired_pruned_weight_list"] <- list(NULL)
+    }
     result$n_edges_in_pruned_graph <- sum(lengths(result$pruned_adj_list)) / 2
     result$n_removed_edges <- n.removed.by.pruning
     result$edge_reduction_ratio <- pruning.reduction.ratio
@@ -464,6 +514,7 @@ create.single.iknn.graph <- function(X,
     attr(result, "path.edge.ratio.percentile") <- path.edge.ratio.percentile
     attr(result, "with.isize.pruning") <- with.isize.pruning
     attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
+    attr(result, "with.lifecycle.branches") <- with.lifecycle.branches
     attr(result, "knn.metric") <- knn.metric
     attr(result, "linf.tol") <- linf.tol
     attr(result, "call") <- match.call()

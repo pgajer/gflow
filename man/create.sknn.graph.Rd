@@ -84,6 +84,13 @@ and before optional MST component repair.}
 \item{pruned_adj_list, pruned_weight_list}{The graph after optional local
 geometric pruning and before optional MST component repair. If pruning
 is disabled, these fields are identical to the raw graph.}
+\item{raw_repaired_adj_list, raw_repaired_weight_list}{The native sKNN
+graph after MST component repair.}
+\item{pruned_repaired_adj_list, pruned_repaired_weight_list}{The
+prune-first branch after MST component repair.}
+\item{repaired_pruned_adj_list, repaired_pruned_weight_list}{The
+repair-first branch after applying local geometric pruning to the
+repaired raw graph.}
 \item{adj_list, weight_list}{The final graph after optional MST component
 repair. Downstream algorithms should use these fields unless they
 explicitly need a lifecycle diagnostic stage.}

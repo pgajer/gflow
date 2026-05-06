@@ -77,6 +77,7 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
       connect.components = TRUE,
       prune.method = "none",
       threshold.percentile = 0,
+      with.lifecycle.branches = TRUE,
       pca.dim = NULL,
       verbose = FALSE
     )
@@ -86,13 +87,91 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
     expect_true(all(c(
       "raw_adj_list", "raw_weight_list",
       "pruned_adj_list", "pruned_weight_list",
+      "raw_repaired_adj_list", "raw_repaired_weight_list",
+      "pruned_repaired_adj_list", "pruned_repaired_weight_list",
+      "repaired_pruned_adj_list", "repaired_pruned_weight_list",
       "adj_list", "weight_list"
     ) %in% names(g)))
     expect_equal(length(g$raw_adj_list), length(g$raw_weight_list))
     expect_equal(length(g$pruned_adj_list), length(g$pruned_weight_list))
+    expect_equal(length(g$raw_repaired_adj_list), length(g$raw_repaired_weight_list))
+    expect_equal(length(g$pruned_repaired_adj_list), length(g$pruned_repaired_weight_list))
+    expect_equal(length(g$repaired_pruned_adj_list), length(g$repaired_pruned_weight_list))
     expect_equal(length(g$adj_list), length(g$weight_list))
     expect_equal(length(g$adj_list), nrow(X))
   }
+})
+
+
+test_that("graph.geodesic.distances can select lifecycle stages", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(10, 0),
+    c(11, 0)
+  )
+
+  g <- create.sknn.graph(
+    X,
+    k = 1,
+    prune.method = "local.geodesic",
+    connect.components = FALSE
+  )
+
+  stages <- c(
+    "raw", "raw.repaired", "pruned", "pruned.repaired",
+    "repaired.pruned", "final"
+  )
+  fields <- list(
+    raw = c("raw_adj_list", "raw_weight_list"),
+    raw.repaired = c("raw_repaired_adj_list", "raw_repaired_weight_list"),
+    pruned = c("pruned_adj_list", "pruned_weight_list"),
+    pruned.repaired = c("pruned_repaired_adj_list", "pruned_repaired_weight_list"),
+    repaired.pruned = c("repaired_pruned_adj_list", "repaired_pruned_weight_list"),
+    final = c("adj_list", "weight_list")
+  )
+
+  for (stage in stages) {
+    payload <- fields[[stage]]
+    expected <- shortest.path(g[[payload[[1L]]]], g[[payload[[2L]]]],
+                              seq_along(g$adj_list))
+    observed <- graph.geodesic.distances(g, stage = stage)
+    expect_equal(observed, expected, tolerance = 1e-12)
+  }
+
+  expect_true(any(!is.finite(graph.geodesic.distances(g, stage = "raw"))))
+  expect_true(all(is.finite(graph.geodesic.distances(g, stage = "raw.repaired"))))
+  expect_true(any(!is.finite(graph.geodesic.distances(g, stage = "final"))))
+  expect_error(graph.geodesic.distances(g, stage = "unknown"), "arg")
+})
+
+
+test_that("repaired.pruned represents pruning after MST repair", {
+  X <- rbind(
+    c(0, 0),
+    c(1, 0),
+    c(2, 0),
+    c(3, 0)
+  )
+
+  g <- create.mknn.graph(
+    X,
+    k = 3,
+    prune.method = "local.geodesic",
+    prune.tau = 1.01,
+    connect.components = TRUE
+  )
+
+  expect_equal(
+    graph_geodesic_edge_keys(.graph.edge.table(g$raw_adj_list, g$raw_weight_list)),
+    c("1-2", "1-3", "1-4", "2-3", "2-4", "3-4")
+  )
+  expect_equal(
+    graph_geodesic_edge_keys(.graph.edge.table(g$repaired_pruned_adj_list,
+                                               g$repaired_pruned_weight_list)),
+    c("1-2", "2-3", "3-4")
+  )
+  expect_true(all(is.finite(graph.geodesic.distances(g, stage = "repaired.pruned"))))
 })
 
 

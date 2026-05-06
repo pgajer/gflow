@@ -45,6 +45,13 @@
 #'     \item{pruned_adj_list, pruned_weight_list}{The graph after optional local
 #'       geometric pruning and before optional MST component repair. If pruning
 #'       is disabled, these fields are identical to the raw graph.}
+#'     \item{raw_repaired_adj_list, raw_repaired_weight_list}{The native mutual
+#'       kNN graph after MST component repair.}
+#'     \item{pruned_repaired_adj_list, pruned_repaired_weight_list}{The
+#'       prune-first branch after MST component repair.}
+#'     \item{repaired_pruned_adj_list, repaired_pruned_weight_list}{The
+#'       repair-first branch after applying local geometric pruning to the
+#'       repaired raw graph.}
 #'     \item{n_vertices}{The number of vertices in the graph.}
 #'     \item{n_edges}{The total number of edges in the graph.}
 #'     \item{k}{The k value used to construct the graph.}
@@ -65,6 +72,9 @@
 #' Lifecycle diagnostic fields follow the same convention as the other gflow
 #' graph constructors: \code{raw_*} is before pruning and MST repair, and
 #' \code{pruned_*} is after pruning but before MST repair.
+#' The \code{raw_repaired_*}, \code{pruned_repaired_*}, and
+#' \code{repaired_pruned_*} branches allow one constructor call to compare
+#' native, prune-first, and repair-first graph geodesic geometries.
 #'
 #' @examples
 #' \dontrun{
@@ -208,6 +218,23 @@ create.mknn.graph <- function(X,
   result$raw_weight_list <- raw.weight.list
   result$pruned_adj_list <- pruned.adj.list
   result$pruned_weight_list <- pruned.weight.list
+  result <- .add.graph.lifecycle.branches(
+    result = result,
+    X = X,
+    k = k,
+    raw.adj.list = result$raw_adj_list,
+    raw.weight.list = result$raw_weight_list,
+    pruned.adj.list = result$pruned_adj_list,
+    pruned.weight.list = result$pruned_weight_list,
+    connect.method = connect.method,
+    bridge.k = bridge.controls$bridge.k,
+    bridge.k.max = bridge.controls$bridge.k.max,
+    bridge.growth = bridge.controls$bridge.growth,
+    prune.method = prune.method,
+    prune.tau = prune.controls$prune.tau,
+    prune.local.k = prune.controls$prune.local.k,
+    with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
+  )
   result$n_edges_before_pruning <- pruning$n_edges_before_pruning
   result$n_edges_after_pruning <- pruning$n_edges_after_pruning
   result$n_pruned_edges <- pruning$n_pruned_edges
