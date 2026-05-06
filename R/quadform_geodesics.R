@@ -344,6 +344,351 @@ quadform.reference.geodesics <- function(X,
     )
 }
 
+#' Estimate 2D Quadratic-Surface Geodesics with the C++ Grid Engine
+#'
+#' @description
+#' Computes numerical reference geodesic distances for points on a
+#' two-dimensional quadratic graph surface using the package's C++ grid
+#' shortest-path engine. A disk-clipped regular parameter grid is built once,
+#' grid edges are weighted by exact quadratic-surface segment length, and each
+#' sample point is connected to nearby grid vertices before running Dijkstra
+#' shortest paths.
+#'
+#' @inheritParams quadform.reference.geodesics
+#' @param oracle Character scalar. `"none"` returns only the continuum grid
+#'   estimate. `"sample.path"` also returns a finite-sample oracle distance
+#'   matrix guided by the grid geodesic path.
+#' @param oracle.tube.radius Positive numeric scalar or `NULL`. Ambient
+#'   embedded-space tube radius used to select sample points close to each
+#'   grid-geodesic path. If `NULL`, uses the median `oracle.tube.k`-nearest
+#'   neighbor distance among embedded sample points.
+#' @param oracle.tube.k Positive integer. Local scale used when
+#'   `oracle.tube.radius = NULL`.
+#' @param return.oracle.paths Logical scalar. If `TRUE`, return the selected
+#'   sample-index sequence for each ordered source-target pair.
+#'
+#' @return A list with `distances`, the sample-by-sample continuum grid
+#'   geodesic distance matrix, plus grid diagnostics. If
+#'   `oracle = "sample.path"`, the list also contains `oracle_distances`,
+#'   `oracle_n_points`, `oracle_status`, `oracle_tube_radius`, and
+#'   `oracle_method`.
+#'
+#' @examples
+#' X <- rbind(c(0, 0), c(0.5, 0), c(0, 0.5))
+#' ref <- quadform.grid.geodesic.distances(X, index.k = 2, grid.size = 21)
+#' ref$distances
+#'
+#' @export
+quadform.grid.geodesic.distances <- function(X,
+                                             index.k,
+                                             domain.radius = NULL,
+                                             grid.size = 51,
+                                             sample.connection.k = 8,
+                                             oracle = c("none", "sample.path"),
+                                             oracle.tube.radius = NULL,
+                                             oracle.tube.k = 8,
+                                             return.oracle.paths = FALSE) {
+    X <- .validate.numeric.data.matrix(X)
+    if (ncol(X) != 2L) {
+        stop("'quadform.grid.geodesic.distances' currently supports only 2D parameter coordinates.",
+             call. = FALSE)
+    }
+    .validate.quadform.index(2L, index.k)
+    if (is.null(domain.radius)) {
+        domain.radius <- max(sqrt(rowSums(X^2)))
+        if (domain.radius == 0) {
+            domain.radius <- 1
+        }
+    }
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
+    }
+    if (any(sqrt(rowSums(X^2)) > domain.radius * (1 + 1e-10))) {
+        stop("All rows of 'X' must lie inside the parameter disk.", call. = FALSE)
+    }
+    if (!is.numeric(grid.size) || length(grid.size) != 1L ||
+        !is.finite(grid.size) || grid.size != floor(grid.size) || grid.size < 5L) {
+        stop("'grid.size' must be an integer at least 5.", call. = FALSE)
+    }
+    if (!is.numeric(sample.connection.k) || length(sample.connection.k) != 1L ||
+        !is.finite(sample.connection.k) || sample.connection.k != floor(sample.connection.k) ||
+        sample.connection.k < 1L) {
+        stop("'sample.connection.k' must be a positive integer.", call. = FALSE)
+    }
+    oracle <- match.arg(oracle)
+    if (!is.numeric(oracle.tube.k) || length(oracle.tube.k) != 1L ||
+        !is.finite(oracle.tube.k) || oracle.tube.k != floor(oracle.tube.k) ||
+        oracle.tube.k < 1L) {
+        stop("'oracle.tube.k' must be a positive integer.", call. = FALSE)
+    }
+    if (!is.logical(return.oracle.paths) || length(return.oracle.paths) != 1L ||
+        is.na(return.oracle.paths)) {
+        stop("'return.oracle.paths' must be TRUE or FALSE.", call. = FALSE)
+    }
+    with.oracle <- identical(oracle, "sample.path")
+    if (with.oracle && is.null(oracle.tube.radius)) {
+        oracle.tube.radius <- .quadform.default.oracle.tube.radius(
+            X, index.k, as.integer(oracle.tube.k)
+        )
+    }
+    if (is.null(oracle.tube.radius)) {
+        oracle.tube.radius <- NA_real_
+    } else if (!is.numeric(oracle.tube.radius) || length(oracle.tube.radius) != 1L ||
+        !is.finite(oracle.tube.radius) || oracle.tube.radius <= 0) {
+        stop("'oracle.tube.radius' must be NULL or a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    out <- rcpp_quadform_grid_geodesic_distances(
+        X,
+        as.integer(index.k),
+        as.numeric(domain.radius),
+        as.integer(grid.size),
+        as.integer(sample.connection.k),
+        with.oracle,
+        as.numeric(oracle.tube.radius),
+        as.integer(oracle.tube.k),
+        isTRUE(return.oracle.paths)
+    )
+    out$distances <- as.matrix(out$distances)
+    if (with.oracle) {
+        out$oracle_distances <- as.matrix(out$oracle_distances)
+        out$oracle_n_points <- as.matrix(out$oracle_n_points)
+        status.labels <- c("same", "ok", "direct", "no_path")
+        status <- matrix(
+            status.labels[pmax(0L, out$oracle_status_code) + 1L],
+            nrow = nrow(out$oracle_status_code),
+            ncol = ncol(out$oracle_status_code)
+        )
+        out$oracle_status <- status
+    }
+    out
+}
+
+.quadform.default.oracle.tube.radius <- function(X, index.k, oracle.tube.k) {
+    n <- nrow(X)
+    if (n < 2L) {
+        stop("At least two sample points are required for sample-path oracle distances.",
+             call. = FALSE)
+    }
+    k <- min(as.integer(oracle.tube.k), n - 1L)
+    X.embed <- quadform.embed(X, index.k = index.k)
+    kth <- numeric(n)
+    for (i in seq_len(n)) {
+        d <- sqrt(rowSums((t(t(X.embed) - X.embed[i, ]))^2))
+        d[[i]] <- Inf
+        kth[[i]] <- sort(d, partial = k)[[k]]
+    }
+    as.numeric(stats::median(kth))
+}
+
+.quadform.reference.grid.2d <- function(domain.radius, grid.size) {
+    coords <- seq(-domain.radius, domain.radius, length.out = grid.size)
+    grid <- expand.grid(x1 = coords, x2 = coords)
+    X <- as.matrix(grid)
+    inside <- rowSums(X^2) <= domain.radius^2 * (1 + 1e-12)
+    X <- X[inside, , drop = FALSE]
+    storage.mode(X) <- "double"
+    X
+}
+
+.sample.quadform.reference.pairs <- function(domain.radius,
+                                             reference.grid.size,
+                                             n.sources,
+                                             targets.per.source,
+                                             seed) {
+    grid <- .quadform.reference.grid.2d(domain.radius, reference.grid.size)
+    n.grid <- nrow(grid)
+    pair.index <- .with.quadform.seed(seed, {
+        sources <- sample.int(n.grid, n.sources, replace = n.sources > n.grid)
+        targets <- matrix(sample.int(n.grid, n.sources * targets.per.source,
+                                     replace = TRUE),
+                          nrow = n.sources, ncol = targets.per.source)
+        for (i in seq_len(n.sources)) {
+            same <- targets[i, ] == sources[[i]]
+            while (any(same)) {
+                targets[i, same] <- sample.int(n.grid, sum(same), replace = TRUE)
+                same <- targets[i, ] == sources[[i]]
+            }
+        }
+        cbind(
+            source = rep(sources, each = targets.per.source),
+            target = as.vector(t(targets))
+        )
+    })
+    pair.points <- cbind(
+        grid[pair.index[, "source"], , drop = FALSE],
+        grid[pair.index[, "target"], , drop = FALSE]
+    )
+    colnames(pair.points) <- c("x1_source", "x2_source", "x1_target", "x2_target")
+    list(grid = grid, pair_index = pair.index, pair_points = pair.points)
+}
+
+.summarize.quadform.grid.error <- function(grid.size, result, reference.distances,
+                                           runtime.sec) {
+    d <- as.numeric(result$distances)
+    ref <- as.numeric(reference.distances)
+    keep <- is.finite(d) & is.finite(ref) & ref > 0
+    rel <- abs(d[keep] - ref[keep]) / ref[keep]
+    abs.err <- abs(d[keep] - ref[keep])
+    data.frame(
+        grid_size = as.integer(grid.size),
+        n_vertices = as.integer(result$n_vertices),
+        n_edges = as.integer(result$n_edges),
+        n_pairs = length(rel),
+        frob_rel_error = sqrt(sum((d[keep] - ref[keep])^2) / sum(ref[keep]^2)),
+        rms_rel_error = sqrt(mean(rel^2)),
+        mean_rel_error = mean(rel),
+        median_rel_error = unname(stats::median(rel)),
+        q90_rel_error = unname(stats::quantile(rel, 0.90)),
+        q95_rel_error = unname(stats::quantile(rel, 0.95)),
+        q99_rel_error = unname(stats::quantile(rel, 0.99)),
+        max_rel_error = max(rel),
+        median_abs_error = unname(stats::median(abs.err)),
+        q95_abs_error = unname(stats::quantile(abs.err, 0.95)),
+        max_abs_error = max(abs.err),
+        mean_endpoint_snap = mean(c(result$source_snap_distance,
+                                    result$target_snap_distance)),
+        q95_endpoint_snap = unname(stats::quantile(c(result$source_snap_distance,
+                                                     result$target_snap_distance), 0.95)),
+        runtime_sec = as.numeric(runtime.sec),
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Calibrate Grid Error for 2D Quadratic-Surface Geodesics
+#'
+#' @description
+#' Estimates discretization error for the C++ grid geodesic engine on a
+#' two-dimensional quadratic graph surface. The function samples many
+#' source-target point pairs from a high-resolution reference grid, computes
+#' their graph-geodesic distances on a set of candidate grids, and compares
+#' them to distances on a much finer reference grid.
+#'
+#' @param index.k Integer between 0 and 2. Number of positive-square terms in
+#'   the quadratic form.
+#' @param domain.radius Positive numeric scalar. Radius of the parameter disk.
+#' @param grid.sizes Integer vector of candidate grid sizes.
+#' @param reference.grid.size Integer scalar. High-resolution grid size used as
+#'   the numerical reference.
+#' @param n.sources Positive integer. Number of source points sampled from the
+#'   reference grid.
+#' @param targets.per.source Positive integer. Number of target points sampled
+#'   per source. The total number of pairwise distances is
+#'   `n.sources * targets.per.source`.
+#' @param seed `NULL` or finite integer scalar. If supplied, pair sampling is
+#'   reproducible and the caller's random-number state is restored.
+#'
+#' @return A list of class `"quadform_grid_geodesic_calibration"` with
+#'   `summary`, `pair_results`, sampled `pair_points`, and `metadata`.
+#'
+#' @examples
+#' cal <- quadform.grid.geodesic.calibration(
+#'   index.k = 2,
+#'   grid.sizes = c(11, 21),
+#'   reference.grid.size = 31,
+#'   n.sources = 3,
+#'   targets.per.source = 2,
+#'   seed = 1
+#' )
+#' cal$summary
+#'
+#' @export
+quadform.grid.geodesic.calibration <- function(index.k,
+                                               domain.radius = 1,
+                                               grid.sizes = c(101, 201, 251, 501),
+                                               reference.grid.size = 1001,
+                                               n.sources = 50,
+                                               targets.per.source = 20,
+                                               seed = NULL) {
+    .validate.quadform.index(2L, index.k)
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
+    }
+    validate.grid.size <- function(x, name) {
+        if (!is.numeric(x) || any(!is.finite(x)) || any(x != floor(x)) ||
+            any(x < 5L)) {
+            stop("'", name, "' must contain integer values at least 5.", call. = FALSE)
+        }
+        as.integer(x)
+    }
+    grid.sizes <- unique(validate.grid.size(grid.sizes, "grid.sizes"))
+    reference.grid.size <- validate.grid.size(reference.grid.size, "reference.grid.size")
+    if (length(reference.grid.size) != 1L) {
+        stop("'reference.grid.size' must be a single integer at least 5.",
+             call. = FALSE)
+    }
+    if (!reference.grid.size %in% grid.sizes) {
+        grid.sizes <- sort(c(grid.sizes, reference.grid.size))
+    } else {
+        grid.sizes <- sort(grid.sizes)
+    }
+    if (!is.numeric(n.sources) || length(n.sources) != 1L ||
+        !is.finite(n.sources) || n.sources != floor(n.sources) || n.sources < 1L) {
+        stop("'n.sources' must be a positive integer.", call. = FALSE)
+    }
+    if (!is.numeric(targets.per.source) || length(targets.per.source) != 1L ||
+        !is.finite(targets.per.source) ||
+        targets.per.source != floor(targets.per.source) ||
+        targets.per.source < 1L) {
+        stop("'targets.per.source' must be a positive integer.", call. = FALSE)
+    }
+    pairs <- .sample.quadform.reference.pairs(
+        domain.radius = domain.radius,
+        reference.grid.size = reference.grid.size,
+        n.sources = as.integer(n.sources),
+        targets.per.source = as.integer(targets.per.source),
+        seed = seed
+    )
+
+    pair.results <- list()
+    runtimes <- numeric(length(grid.sizes))
+    names(runtimes) <- as.character(grid.sizes)
+    for (grid.size in grid.sizes) {
+        elapsed <- system.time({
+            pair.results[[as.character(grid.size)]] <-
+                rcpp_quadform_grid_pair_distances(
+                    as.integer(index.k),
+                    as.numeric(domain.radius),
+                    as.integer(grid.size),
+                    pairs$pair_points
+                )
+        })
+        runtimes[[as.character(grid.size)]] <- unname(elapsed[["elapsed"]])
+    }
+    reference.result <- pair.results[[as.character(reference.grid.size)]]
+    reference.distances <- reference.result$distances
+    summary <- do.call(rbind, lapply(grid.sizes, function(grid.size) {
+        .summarize.quadform.grid.error(
+            grid.size = grid.size,
+            result = pair.results[[as.character(grid.size)]],
+            reference.distances = reference.distances,
+            runtime.sec = runtimes[[as.character(grid.size)]]
+        )
+    }))
+    rownames(summary) <- NULL
+
+    out <- list(
+        summary = summary,
+        pair_results = pair.results,
+        pair_points = pairs$pair_points,
+        pair_index = pairs$pair_index,
+        metadata = list(
+            index_k = as.integer(index.k),
+            domain_radius = as.numeric(domain.radius),
+            grid_sizes = as.integer(grid.sizes),
+            reference_grid_size = as.integer(reference.grid.size),
+            n_sources = as.integer(n.sources),
+            targets_per_source = as.integer(targets.per.source),
+            n_pairs = nrow(pairs$pair_points),
+            seed = seed
+        )
+    )
+    class(out) <- c("quadform_grid_geodesic_calibration", "list")
+    out
+}
+
 #' Sample a 2D Quadratic Surface Dataset with Reference Geodesics
 #'
 #' @description

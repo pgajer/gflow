@@ -156,6 +156,8 @@ SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 #ifdef __cplusplus
 }
 #endif
@@ -339,6 +341,8 @@ static const R_CallMethodDef CallMethods[] = {
   {"_gflow_rcpp_graph_greedy_maxima_suppression_by_scale", (DL_FUNC) &_gflow_rcpp_graph_greedy_maxima_suppression_by_scale, 5},
   {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
   {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
+  {"_gflow_rcpp_quadform_grid_pair_distances", (DL_FUNC) &_gflow_rcpp_quadform_grid_pair_distances, 4},
+  {"_gflow_rcpp_quadform_grid_geodesic_distances", (DL_FUNC) &_gflow_rcpp_quadform_grid_geodesic_distances, 9},
 
   // =========================================================================
   // stat utilities
