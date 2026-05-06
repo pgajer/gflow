@@ -17,8 +17,11 @@
 #'
 #' @return A list with entries:
 #' \describe{
-#'   \item{adj_list}{1-based adjacency list.}
-#'   \item{weight_list}{Graph-geodesic edge lengths from the input graph.}
+#'   \item{adj_list}{1-based adjacency list for the final graph.}
+#'   \item{weight_list}{Final graph-geodesic edge lengths from the input graph.}
+#'   \item{raw_adj_list, raw_weight_list}{The native geodesic iKNN graph.}
+#'   \item{pruned_adj_list, pruned_weight_list}{Identical to \code{raw_*}
+#'     because geodesic iKNN graphs do not currently have a pruning stage.}
 #'   \item{isize_list}{Intersection sizes for each edge.}
 #'   \item{n_edges}{Number of undirected edges.}
 #' }
@@ -48,6 +51,10 @@ create.geodesic.iknn.graph <- function(graph, k) {
         as.integer(k),
         PACKAGE = "gflow"
     )
+    result$raw_adj_list <- result$adj_list
+    result$raw_weight_list <- result$weight_list
+    result$pruned_adj_list <- result$adj_list
+    result$pruned_weight_list <- result$weight_list
     attr(result, "k") <- as.integer(k)
     attr(result, "k_internal") <- as.integer(k)
     class(result) <- c("geodesic_iknn_graph", "list")

@@ -39,7 +39,11 @@ factor for ANN bridge neighborhoods.}
 }
 \value{
 A list of class \code{"radius_graph"} containing adjacency lists, edge
-weights, edge matrix, and component diagnostics.
+weights, edge matrix, and component diagnostics. The final graph is stored
+in \code{adj_list}/\code{weight_list}; \code{raw_adj_list}/\code{raw_weight_list} store the
+fixed-radius graph before optional MST component repair; and
+\code{pruned_adj_list}/\code{pruned_weight_list} are identical to \verb{raw_*} because
+radius graphs do not currently have a pruning stage.
 }
 \description{
 Creates an undirected Euclidean radius graph from a numeric data matrix.

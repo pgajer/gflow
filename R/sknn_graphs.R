@@ -81,6 +81,17 @@
 #'
 #' @return A list of class `"sknn_graph"` with adjacency lists, weights, edge
 #'   matrix, kNN index matrix, component diagnostics, and any MST edges added.
+#'   The graph lifecycle fields are:
+#'   \describe{
+#'     \item{raw_adj_list, raw_weight_list}{The native sKNN graph before pruning
+#'       and before optional MST component repair.}
+#'     \item{pruned_adj_list, pruned_weight_list}{The graph after optional local
+#'       geometric pruning and before optional MST component repair. If pruning
+#'       is disabled, these fields are identical to the raw graph.}
+#'     \item{adj_list, weight_list}{The final graph after optional MST component
+#'       repair. Downstream algorithms should use these fields unless they
+#'       explicitly need a lifecycle diagnostic stage.}
+#'   }
 #'
 #' @examples
 #' X <- rbind(c(0, 0), c(1, 0), c(10, 0), c(11, 0))
@@ -255,6 +266,54 @@ create.sknn.graph <- function(X,
         as.logical(with.pruned.edge.stats),
         PACKAGE = "gflow"
     )
+    raw.result <- .Call(
+        "S_create_sknn_graph",
+        X,
+        as.integer(k),
+        FALSE,
+        as.integer(connect.method.id),
+        as.integer(neighbor.method.id),
+        as.numeric(ann.eps),
+        knn.index,
+        bridge.knn.index,
+        as.integer(bridge.k),
+        as.integer(bridge.k.max),
+        as.numeric(bridge.growth),
+        FALSE,
+        as.integer(prune.method.id),
+        as.numeric(prune.tau),
+        as.integer(prune.local.k),
+        FALSE,
+        PACKAGE = "gflow"
+    )
+    pruned.result <- if (isTRUE(prune.edges)) {
+        .Call(
+            "S_create_sknn_graph",
+            X,
+            as.integer(k),
+            FALSE,
+            as.integer(connect.method.id),
+            as.integer(neighbor.method.id),
+            as.numeric(ann.eps),
+            knn.index,
+            bridge.knn.index,
+            as.integer(bridge.k),
+            as.integer(bridge.k.max),
+            as.numeric(bridge.growth),
+            TRUE,
+            as.integer(prune.method.id),
+            as.numeric(prune.tau),
+            as.integer(prune.local.k),
+            as.logical(with.pruned.edge.stats),
+            PACKAGE = "gflow"
+        )
+    } else {
+        raw.result
+    }
+    result$raw_adj_list <- raw.result$adj_list
+    result$raw_weight_list <- raw.result$weight_list
+    result$pruned_adj_list <- pruned.result$adj_list
+    result$pruned_weight_list <- pruned.result$weight_list
     result$edge.weight <- edge.weight
     result$prune_method <- prune.method
     class(result) <- c("sknn_graph", "list")
