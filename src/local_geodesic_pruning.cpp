@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <queue>
+#include <map>
 #include <set>
 #include <utility>
 #include <vector>
@@ -19,6 +19,12 @@ struct edge_t {
     int u;
     int v;
     double weight;
+    bool alive;
+};
+
+struct adj_ref_t {
+    int vertex;
+    int edge_id;
 };
 
 struct pruned_edge_t {
@@ -27,6 +33,32 @@ struct pruned_edge_t {
     double edge_weight;
     double alt_path_length;
     double path_edge_ratio;
+};
+
+struct dijkstra_workspace_t {
+    std::vector<char> in_local;
+    std::vector<double> dist;
+    std::vector<std::pair<double, int>> heap;
+    std::vector<int> touched;
+
+    explicit dijkstra_workspace_t(int n)
+        : in_local(static_cast<size_t>(n), 0),
+          dist(static_cast<size_t>(n), std::numeric_limits<double>::infinity()) {}
+
+    void set_dist(int vertex, double value) {
+        if (!std::isfinite(dist[static_cast<size_t>(vertex)])) {
+            touched.push_back(vertex);
+        }
+        dist[static_cast<size_t>(vertex)] = value;
+    }
+
+    void clear_distances() {
+        const double inf = std::numeric_limits<double>::infinity();
+        for (int vertex : touched) {
+            dist[static_cast<size_t>(vertex)] = inf;
+        }
+        touched.clear();
+    }
 };
 
 std::uint64_t edge_key(int u, int v) {
@@ -140,11 +172,18 @@ std::vector<std::vector<int>> exact_knn_index(const double* X, int n, int p, int
             }
             distances.push_back({d2, j});
         }
-        std::sort(distances.begin(), distances.end(), [](const auto& a, const auto& b) {
+        auto distance_index_less = [](const auto& a, const auto& b) {
             if (a.first < b.first) return true;
             if (a.first > b.first) return false;
             return a.second < b.second;
-        });
+        };
+        if (k < n - 1) {
+            auto kth = distances.begin() + k;
+            std::nth_element(distances.begin(), kth, distances.end(), distance_index_less);
+            std::sort(distances.begin(), kth, distance_index_less);
+        } else {
+            std::sort(distances.begin(), distances.end(), distance_index_less);
+        }
         out[static_cast<size_t>(i)].reserve(static_cast<size_t>(k));
         for (int r = 0; r < k; ++r) {
             out[static_cast<size_t>(i)].push_back(distances[static_cast<size_t>(r)].second);
@@ -153,78 +192,75 @@ std::vector<std::vector<int>> exact_knn_index(const double* X, int n, int p, int
     return out;
 }
 
-double local_dijkstra_distance(const std::vector<std::vector<std::pair<int, double>>>& adj,
+double local_dijkstra_distance(const std::vector<std::vector<adj_ref_t>>& adj,
+                               const std::vector<edge_t>& edges,
                                const std::vector<int>& local_vertices,
                                int source,
                                int target,
-                               std::uint64_t excluded_key,
-                               double cutoff) {
-    const int n = static_cast<int>(adj.size());
-    std::vector<char> in_local(static_cast<size_t>(n), 0);
+                               int excluded_edge_id,
+                               double cutoff,
+                               dijkstra_workspace_t& workspace) {
     for (int v : local_vertices) {
-        in_local[static_cast<size_t>(v)] = 1;
+        workspace.in_local[static_cast<size_t>(v)] = 1;
     }
-    in_local[static_cast<size_t>(source)] = 1;
-    in_local[static_cast<size_t>(target)] = 1;
 
-    const double inf = std::numeric_limits<double>::infinity();
-    std::vector<double> dist(static_cast<size_t>(n), inf);
+    auto cleanup = [&]() {
+        for (int v : local_vertices) {
+            workspace.in_local[static_cast<size_t>(v)] = 0;
+        }
+        workspace.clear_distances();
+        workspace.heap.clear();
+    };
+
     using queue_item_t = std::pair<double, int>;
-    std::priority_queue<queue_item_t, std::vector<queue_item_t>, std::greater<queue_item_t>> pq;
+    auto heap_greater = std::greater<queue_item_t>();
+    workspace.heap.clear();
+    workspace.set_dist(source, 0.0);
+    workspace.heap.push_back({0.0, source});
 
-    dist[static_cast<size_t>(source)] = 0.0;
-    pq.push({0.0, source});
+    while (!workspace.heap.empty()) {
+        std::pop_heap(workspace.heap.begin(), workspace.heap.end(), heap_greater);
+        const queue_item_t item = workspace.heap.back();
+        workspace.heap.pop_back();
 
-    while (!pq.empty()) {
-        const double du = pq.top().first;
-        const int u = pq.top().second;
-        pq.pop();
-        if (du != dist[static_cast<size_t>(u)]) {
+        const double du = item.first;
+        const int u = item.second;
+        if (du != workspace.dist[static_cast<size_t>(u)]) {
             continue;
         }
         if (du > cutoff) {
-            break;
+            cleanup();
+            return std::numeric_limits<double>::infinity();
         }
         if (u == target) {
+            cleanup();
             return du;
         }
-        for (const auto& edge : adj[static_cast<size_t>(u)]) {
-            const int v = edge.first;
-            if (!in_local[static_cast<size_t>(v)]) {
+        for (const auto& adj_edge : adj[static_cast<size_t>(u)]) {
+            if (adj_edge.edge_id == excluded_edge_id ||
+                !edges[static_cast<size_t>(adj_edge.edge_id)].alive) {
                 continue;
             }
-            if (edge_key(u, v) == excluded_key) {
+            const int v = adj_edge.vertex;
+            if (!workspace.in_local[static_cast<size_t>(v)]) {
                 continue;
             }
-            const double nd = du + edge.second;
-            if (nd < dist[static_cast<size_t>(v)] && nd <= cutoff) {
-                dist[static_cast<size_t>(v)] = nd;
-                pq.push({nd, v});
+            const double nd = du + edges[static_cast<size_t>(adj_edge.edge_id)].weight;
+            if (nd < workspace.dist[static_cast<size_t>(v)] && nd <= cutoff) {
+                workspace.set_dist(v, nd);
+                workspace.heap.push_back({nd, v});
+                std::push_heap(workspace.heap.begin(), workspace.heap.end(), heap_greater);
             }
         }
     }
-    return inf;
-}
-
-void remove_undirected_edge(std::vector<std::vector<std::pair<int, double>>>& adj,
-                            int u,
-                            int v) {
-    auto remove_one = [](std::vector<std::pair<int, double>>& row, int target) {
-        const auto it = std::find_if(row.begin(), row.end(), [&](const auto& edge) {
-            return edge.first == target;
-        });
-        if (it != row.end()) {
-            row.erase(it);
-        }
-    };
-    remove_one(adj[static_cast<size_t>(u)], v);
-    remove_one(adj[static_cast<size_t>(v)], u);
+    cleanup();
+    return std::numeric_limits<double>::infinity();
 }
 
 std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
                                                SEXP s_weight_list,
                                                int n,
-                                               std::vector<std::vector<std::pair<int, double>>>& adj) {
+                                               std::vector<std::vector<adj_ref_t>>& adj) {
     if (!Rf_isVectorList(s_adj_list) || !Rf_isVectorList(s_weight_list)) {
         Rf_error("adj.list and weight.list must be lists.");
     }
@@ -232,7 +268,7 @@ std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
         Rf_error("adj.list and weight.list must have length nrow(X).");
     }
 
-    adj.assign(static_cast<size_t>(n), {});
+    std::vector<std::vector<std::pair<int, double>>> directed_adj(static_cast<size_t>(n));
     std::vector<edge_t> edges;
 
     for (int i = 0; i < n; ++i) {
@@ -247,7 +283,7 @@ std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
             Rf_error("adj.list and weight.list entries must have matching lengths.");
         }
         std::set<int> seen_neighbors;
-        adj[static_cast<size_t>(i)].reserve(static_cast<size_t>(row_len));
+        directed_adj[static_cast<size_t>(i)].reserve(static_cast<size_t>(row_len));
         for (R_xlen_t pos = 0; pos < row_len; ++pos) {
             const int j1 = read_vertex_index(nbrs, pos, "adj.list");
             if (j1 < 1 || j1 > n) {
@@ -264,19 +300,19 @@ std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
             if (!std::isfinite(w) || w <= 0.0) {
                 Rf_error("weight.list must contain finite positive edge weights.");
             }
-            adj[static_cast<size_t>(i)].push_back({j, w});
+            directed_adj[static_cast<size_t>(i)].push_back({j, w});
             if (i < j) {
-                edges.push_back(edge_t{i, j, w});
+                edges.push_back(edge_t{i, j, w, true});
             }
         }
     }
 
     const double weight_tol = 1e-12;
     for (int i = 0; i < n; ++i) {
-        for (const auto& edge : adj[static_cast<size_t>(i)]) {
+        for (const auto& edge : directed_adj[static_cast<size_t>(i)]) {
             const int j = edge.first;
             const double w = edge.second;
-            const auto& reciprocal_row = adj[static_cast<size_t>(j)];
+            const auto& reciprocal_row = directed_adj[static_cast<size_t>(j)];
             const auto it = std::find_if(reciprocal_row.begin(), reciprocal_row.end(),
                                          [&](const auto& reciprocal) {
                                              return reciprocal.first == i;
@@ -291,21 +327,42 @@ std::vector<edge_t> validate_and_convert_graph(SEXP s_adj_list,
         }
     }
 
+    std::map<std::uint64_t, int> edge_id_by_key;
+    for (int edge_id = 0; edge_id < static_cast<int>(edges.size()); ++edge_id) {
+        edge_id_by_key.emplace(edge_key(edges[static_cast<size_t>(edge_id)].u,
+                                        edges[static_cast<size_t>(edge_id)].v),
+                               edge_id);
+    }
+
+    adj.assign(static_cast<size_t>(n), {});
+    for (int i = 0; i < n; ++i) {
+        adj[static_cast<size_t>(i)].reserve(directed_adj[static_cast<size_t>(i)].size());
+        for (const auto& edge : directed_adj[static_cast<size_t>(i)]) {
+            const auto id_it = edge_id_by_key.find(edge_key(i, edge.first));
+            if (id_it == edge_id_by_key.end()) {
+                Rf_error("internal error while indexing graph edges.");
+            }
+            adj[static_cast<size_t>(i)].push_back(adj_ref_t{edge.first, id_it->second});
+        }
+    }
+
     return edges;
 }
 
-SEXP make_result(const std::vector<std::vector<std::pair<int, double>>>& adj,
-                 int n_edges_before,
+SEXP make_result(const std::vector<std::vector<adj_ref_t>>& adj,
+                 const std::vector<edge_t>& edges,
                  const std::vector<pruned_edge_t>& pruned_edges,
                  double prune_tau,
                  int prune_local_k,
                  bool with_pruned_edge_stats) {
     const int n = static_cast<int>(adj.size());
-    int directed_edges_after = 0;
-    for (const auto& row : adj) {
-        directed_edges_after += static_cast<int>(row.size());
+    int n_edges_after = 0;
+    for (const auto& edge : edges) {
+        if (edge.alive) {
+            n_edges_after += 1;
+        }
     }
-    const int n_edges_after = directed_edges_after / 2;
+    const int n_edges_before = static_cast<int>(edges.size());
 
     SEXP result = PROTECT(Rf_allocVector(VECSXP, 9));
     SEXP names = PROTECT(Rf_allocVector(STRSXP, 9));
@@ -325,11 +382,23 @@ SEXP make_result(const std::vector<std::vector<std::pair<int, double>>>& adj,
     SEXP out_weight = PROTECT(Rf_allocVector(VECSXP, n));
     for (int i = 0; i < n; ++i) {
         const auto& row = adj[static_cast<size_t>(i)];
-        SEXP a = PROTECT(Rf_allocVector(INTSXP, static_cast<R_xlen_t>(row.size())));
-        SEXP w = PROTECT(Rf_allocVector(REALSXP, static_cast<R_xlen_t>(row.size())));
-        for (R_xlen_t pos = 0; pos < static_cast<R_xlen_t>(row.size()); ++pos) {
-            INTEGER(a)[pos] = row[static_cast<size_t>(pos)].first + 1;
-            REAL(w)[pos] = row[static_cast<size_t>(pos)].second;
+        R_xlen_t alive_degree = 0;
+        for (const auto& adj_edge : row) {
+            if (edges[static_cast<size_t>(adj_edge.edge_id)].alive) {
+                alive_degree += 1;
+            }
+        }
+        SEXP a = PROTECT(Rf_allocVector(INTSXP, alive_degree));
+        SEXP w = PROTECT(Rf_allocVector(REALSXP, alive_degree));
+        R_xlen_t out_pos = 0;
+        for (const auto& adj_edge : row) {
+            const edge_t& edge = edges[static_cast<size_t>(adj_edge.edge_id)];
+            if (!edge.alive) {
+                continue;
+            }
+            INTEGER(a)[out_pos] = adj_edge.vertex + 1;
+            REAL(w)[out_pos] = edge.weight;
+            out_pos += 1;
         }
         SET_VECTOR_ELT(out_adj, i, a);
         SET_VECTOR_ELT(out_weight, i, w);
@@ -392,16 +461,22 @@ extern "C" SEXP S_prune_graph_local_geodesic(SEXP s_X,
     }
     const bool with_pruned_edge_stats = (stats_flag == TRUE);
 
-    std::vector<std::vector<std::pair<int, double>>> adj;
+    std::vector<std::vector<adj_ref_t>> adj;
     std::vector<edge_t> candidates = validate_and_convert_graph(s_adj_list, s_weight_list, n, adj);
     const int n_edges_before = static_cast<int>(candidates.size());
     if (n_edges_before == 0) {
         std::vector<pruned_edge_t> empty_stats;
-        return make_result(adj, n_edges_before, empty_stats, prune_tau, prune_local_k,
+        return make_result(adj, candidates, empty_stats, prune_tau, prune_local_k,
                            with_pruned_edge_stats);
     }
 
-    std::sort(candidates.begin(), candidates.end(), [](const edge_t& a, const edge_t& b) {
+    std::vector<int> candidate_ids(static_cast<size_t>(n_edges_before));
+    for (int edge_id = 0; edge_id < n_edges_before; ++edge_id) {
+        candidate_ids[static_cast<size_t>(edge_id)] = edge_id;
+    }
+    std::sort(candidate_ids.begin(), candidate_ids.end(), [&](int a_id, int b_id) {
+        const edge_t& a = candidates[static_cast<size_t>(a_id)];
+        const edge_t& b = candidates[static_cast<size_t>(b_id)];
         if (a.weight > b.weight) return true;
         if (a.weight < b.weight) return false;
         if (a.u < b.u) return true;
@@ -412,33 +487,20 @@ extern "C" SEXP S_prune_graph_local_geodesic(SEXP s_X,
     const std::vector<std::vector<int>> local_nn =
         exact_knn_index(REAL(s_X), n, p, prune_local_k);
 
-    std::set<std::uint64_t> alive_edges;
-    for (const auto& edge : candidates) {
-        alive_edges.insert(edge_key(edge.u, edge.v));
-    }
-
     std::vector<pruned_edge_t> pruned_edges;
     if (with_pruned_edge_stats) {
         pruned_edges.reserve(candidates.size());
     }
 
     const double tol = 1e-12;
-    for (const auto& candidate : candidates) {
-        const std::uint64_t key = edge_key(candidate.u, candidate.v);
-        if (alive_edges.find(key) == alive_edges.end()) {
+    dijkstra_workspace_t dijkstra_workspace(n);
+    for (int edge_id : candidate_ids) {
+        edge_t& candidate = candidates[static_cast<size_t>(edge_id)];
+        if (!candidate.alive) {
             continue;
         }
 
-        double edge_length = std::numeric_limits<double>::quiet_NaN();
-        for (const auto& edge : adj[static_cast<size_t>(candidate.u)]) {
-            if (edge.first == candidate.v) {
-                edge_length = edge.second;
-                break;
-            }
-        }
-        if (!std::isfinite(edge_length)) {
-            continue;
-        }
+        const double edge_length = candidate.weight;
 
         std::vector<int> local_vertices;
         local_vertices.reserve(static_cast<size_t>(2 + 2 * prune_local_k));
@@ -455,12 +517,12 @@ extern "C" SEXP S_prune_graph_local_geodesic(SEXP s_X,
                              local_vertices.end());
 
         const double cutoff = prune_tau * edge_length;
-        const double alt = local_dijkstra_distance(adj, local_vertices,
+        const double alt = local_dijkstra_distance(adj, candidates, local_vertices,
                                                    candidate.u, candidate.v,
-                                                   key, cutoff + tol);
+                                                   edge_id, cutoff + tol,
+                                                   dijkstra_workspace);
         if (std::isfinite(alt) && alt <= cutoff + tol) {
-            alive_edges.erase(key);
-            remove_undirected_edge(adj, candidate.u, candidate.v);
+            candidate.alive = false;
             if (with_pruned_edge_stats) {
                 pruned_edges.push_back(pruned_edge_t{
                     candidate.u,
@@ -473,6 +535,6 @@ extern "C" SEXP S_prune_graph_local_geodesic(SEXP s_X,
         }
     }
 
-    return make_result(adj, n_edges_before, pruned_edges, prune_tau, prune_local_k,
+    return make_result(adj, candidates, pruned_edges, prune_tau, prune_local_k,
                        with_pruned_edge_stats);
 }
