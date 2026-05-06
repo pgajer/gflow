@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Global Geodesic Ratio Pruning Benchmark and Parity Report</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.45;margin:32px;color:#1f2933;max-width:1180px}
+h1,h2{color:#16202a}
+.note{background:#f3f6f8;border-left:4px solid #2f6f8f;padding:12px 16px;margin:16px 0}
+img{max-width:100%;border:1px solid #d7dee5;margin:8px 0 24px 0}
+table{border-collapse:collapse;font-size:13px;margin:12px 0 24px 0}
+th,td{border:1px solid #d7dee5;padding:6px 8px;text-align:right}
+th:first-child,td:first-child,td:nth-child(2),td:nth-child(5),td:nth-child(6){text-align:left}
+th{background:#eef3f7}
+code{background:#f2f4f6;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Global Geodesic Ratio Pruning Benchmark and Parity Report</h1>
+<p>Generated on 2026-05-06 12:12:10.694713 from the local <code>gflow</code> repository.</p>
+<div class="note">
+<strong>Scope.</strong> This report checks the separately named <code>global.geodesic.ratio</code> pruning method added after the local C++ pruning work. It does two things: an R-vs-C++ parity audit against the previous R whole-graph implementation, and a medium synthetic benchmark comparing <code>none</code>, <code>local.geodesic</code>, and <code>global.geodesic.ratio</code> on the same raw graph inputs.
+</div>
+<h2>What Was Tested</h2>
+<p>The parity audit generated small deterministic sKNN graphs and compared the old R helper <code>.prune.graph.global.geodesic()</code> to the new C++ helper behind <code>.prune.graph.global.geodesic.ratio()</code>. The audit varied random seed, ratio threshold, candidate edge percentile, and stats collection. For each scenario it compared final edge tables, pruning counts, and optional per-edge pruning statistics.</p>
+<p><strong>Parity outcome:</strong> 120 of 120 scenarios passed all checks.</p>
+<img src="figures/parity_audit.png" alt="Parity audit results">
+<h2>Benchmark Design</h2>
+<p>The benchmark built raw graphs once per data case and graph family, then timed only the pruning dispatcher on those fixed adjacency and weight lists. This separates pruning cost from graph construction cost. Each pruning method was run twice per raw graph and summarized by the median elapsed time. The global-ratio settings were <code>max.path.edge.ratio.deviation.thld = 0.1</code> and <code>path.edge.ratio.percentile = 0.5</code>; local pruning used <code>prune.tau = 1.05</code>.</p>
+<p>The synthetic data cases were noisy circles, a simple Swiss roll projection, and a three-branch structure:</p>
+<img src="figures/synthetic_data.png" alt="Synthetic benchmark data sets">
+<h2>Raw Graph Density</h2>
+<p>Raw edge count is the main context for interpreting pruning runtime. Denser graphs give the whole-graph ratio method more candidate alternatives to inspect and can also give local pruning more local paths to certify.</p>
+<img src="figures/raw_edge_counts.png" alt="Raw graph edge counts">
+<h2>Runtime Results</h2>
+<p>Across paired local/global cases, the median global-to-local runtime ratio was 1.08. Values vary by graph family and density, so the plot below is more informative than a single average.</p>
+<img src="figures/elapsed_by_method.png" alt="Elapsed time by method">
+<h2>Pruning Strength</h2>
+<p>The median global-minus-local edge reduction difference was -0.098. Positive values mean global-ratio removed a larger fraction of raw edges than local pruning on the same graph.</p>
+<img src="figures/edge_reduction_by_method.png" alt="Edge reduction by method">
+<h2>Throughput View</h2>
+<p>This figure combines elapsed time and pruning yield. Points farther upward remove more edges per second; points farther left finish faster. It is useful for seeing whether a method is merely more aggressive or actually efficient for a graph family.</p>
+<img src="figures/pruning_rate.png" alt="Pruning throughput">
+<h2>Benchmark Summary Table</h2>
+<table><tr><th>case</th><th>kind</th><th>n</th><th>k</th><th>family</th><th>method</th><th>median_elapsed_sec</th><th>min_elapsed_sec</th><th>max_elapsed_sec</th><th>edges_before</th><th>median_edges_after</th><th>median_pruned_edges</th><th>median_pruned_fraction</th><th>median_edges_per_sec</th><th>median_pruned_edges_per_sec</th></tr><tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>adaptive.radius</td><td>none</td><td>2.2175</td><td>2.2170</td><td>2.2180</td><td> 7001</td><td> 7001</td><td>    0</td><td>0.000</td><td>3157</td><td>0</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>adaptive.radius</td><td>local.geodesic</td><td>1.3345</td><td>1.3260</td><td>1.3430</td><td> 7001</td><td> 3030</td><td> 3971</td><td>0.567</td><td>5246</td><td>2976</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>adaptive.radius</td><td>global.geodesic.ratio</td><td>1.5545</td><td>1.5190</td><td>1.5900</td><td> 7001</td><td> 3947</td><td> 3054</td><td>0.436</td><td>4506</td><td>1966</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>iknn</td><td>none</td><td>4.0740</td><td>4.0040</td><td>4.1440</td><td>12352</td><td>12352</td><td>    0</td><td>0.000</td><td>3033</td><td>0</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>iknn</td><td>local.geodesic</td><td>1.9210</td><td>1.8920</td><td>1.9500</td><td>12352</td><td> 2834</td><td> 9518</td><td>0.771</td><td>6431</td><td>4956</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>iknn</td><td>global.geodesic.ratio</td><td>2.8225</td><td>2.7700</td><td>2.8750</td><td>12352</td><td> 6240</td><td> 6112</td><td>0.495</td><td>4378</td><td>2166</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>mknn</td><td>none</td><td>1.2890</td><td>1.2800</td><td>1.2980</td><td> 4054</td><td> 4054</td><td>    0</td><td>0.000</td><td>3145</td><td>0</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>mknn</td><td>local.geodesic</td><td>0.9200</td><td>0.9180</td><td>0.9220</td><td> 4054</td><td> 2447</td><td> 1607</td><td>0.396</td><td>4407</td><td>1747</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>mknn</td><td>global.geodesic.ratio</td><td>0.9465</td><td>0.9440</td><td>0.9490</td><td> 4054</td><td> 2646</td><td> 1408</td><td>0.347</td><td>4283</td><td>1488</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>radius</td><td>none</td><td>1.8105</td><td>1.7810</td><td>1.8400</td><td> 5672</td><td> 5672</td><td>    0</td><td>0.000</td><td>3134</td><td>0</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>radius</td><td>local.geodesic</td><td>1.1175</td><td>1.1090</td><td>1.1260</td><td> 5672</td><td> 2757</td><td> 2915</td><td>0.514</td><td>5076</td><td>2609</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>radius</td><td>global.geodesic.ratio</td><td>1.2550</td><td>1.2450</td><td>1.2650</td><td> 5672</td><td> 3313</td><td> 2359</td><td>0.416</td><td>4520</td><td>1880</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>sknn</td><td>none</td><td>1.8570</td><td>1.8390</td><td>1.8750</td><td> 5746</td><td> 5746</td><td>    0</td><td>0.000</td><td>3095</td><td>0</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>sknn</td><td>local.geodesic</td><td>1.1385</td><td>1.1320</td><td>1.1450</td><td> 5746</td><td> 2834</td><td> 2912</td><td>0.507</td><td>5047</td><td>2558</td></tr>
+<tr><td>branches.n700</td><td>three branches</td><td>700</td><td>14</td><td>sknn</td><td>global.geodesic.ratio</td><td>1.3010</td><td>1.3010</td><td>1.3010</td><td> 5746</td><td> 3404</td><td> 2342</td><td>0.408</td><td>4417</td><td>1800</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>adaptive.radius</td><td>none</td><td>1.1350</td><td>1.1240</td><td>1.1460</td><td> 3857</td><td> 3857</td><td>    0</td><td>0.000</td><td>3399</td><td>0</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>adaptive.radius</td><td>local.geodesic</td><td>0.7225</td><td>0.6940</td><td>0.7510</td><td> 3857</td><td> 1837</td><td> 2020</td><td>0.524</td><td>5347</td><td>2800</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>adaptive.radius</td><td>global.geodesic.ratio</td><td>0.7740</td><td>0.7740</td><td>0.7740</td><td> 3857</td><td> 2215</td><td> 1642</td><td>0.426</td><td>4983</td><td>2121</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>iknn</td><td>none</td><td>1.9220</td><td>1.9170</td><td>1.9270</td><td> 6318</td><td> 6318</td><td>    0</td><td>0.000</td><td>3287</td><td>0</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>iknn</td><td>local.geodesic</td><td>0.9225</td><td>0.9160</td><td>0.9290</td><td> 6318</td><td> 1783</td><td> 4535</td><td>0.718</td><td>6849</td><td>4916</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>iknn</td><td>global.geodesic.ratio</td><td>1.3200</td><td>1.3160</td><td>1.3240</td><td> 6318</td><td> 3198</td><td> 3120</td><td>0.494</td><td>4786</td><td>2364</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>mknn</td><td>none</td><td>0.7560</td><td>0.7510</td><td>0.7610</td><td> 2660</td><td> 2660</td><td>    0</td><td>0.000</td><td>3519</td><td>0</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>mknn</td><td>local.geodesic</td><td>0.5415</td><td>0.5340</td><td>0.5490</td><td> 2660</td><td> 1617</td><td> 1043</td><td>0.392</td><td>4913</td><td>1927</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>mknn</td><td>global.geodesic.ratio</td><td>0.5695</td><td>0.5630</td><td>0.5760</td><td> 2660</td><td> 1738</td><td>  922</td><td>0.347</td><td>4671</td><td>1619</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>radius</td><td>none</td><td>0.9540</td><td>0.9540</td><td>0.9540</td><td> 3274</td><td> 3274</td><td>    0</td><td>0.000</td><td>3432</td><td>0</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>radius</td><td>local.geodesic</td><td>0.6555</td><td>0.6360</td><td>0.6750</td><td> 3274</td><td> 1746</td><td> 1528</td><td>0.467</td><td>4999</td><td>2333</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>radius</td><td>global.geodesic.ratio</td><td>0.6715</td><td>0.6710</td><td>0.6720</td><td> 3274</td><td> 1973</td><td> 1301</td><td>0.397</td><td>4876</td><td>1937</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>sknn</td><td>none</td><td>0.9890</td><td>0.9670</td><td>1.0110</td><td> 3340</td><td> 3340</td><td>    0</td><td>0.000</td><td>3379</td><td>0</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>sknn</td><td>local.geodesic</td><td>0.6460</td><td>0.6430</td><td>0.6490</td><td> 3340</td><td> 1783</td><td> 1557</td><td>0.466</td><td>5170</td><td>2410</td></tr>
+<tr><td>circle.n500</td><td>noisy circle</td><td>500</td><td>12</td><td>sknn</td><td>global.geodesic.ratio</td><td>0.6745</td><td>0.6730</td><td>0.6760</td><td> 3340</td><td> 2019</td><td> 1321</td><td>0.396</td><td>4952</td><td>1958</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>adaptive.radius</td><td>none</td><td>2.9205</td><td>2.8890</td><td>2.9520</td><td> 9702</td><td> 9702</td><td>    0</td><td>0.000</td><td>3322</td><td>0</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>adaptive.radius</td><td>local.geodesic</td><td>1.6790</td><td>1.6650</td><td>1.6930</td><td> 9702</td><td> 3887</td><td> 5815</td><td>0.599</td><td>5779</td><td>3464</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>adaptive.radius</td><td>global.geodesic.ratio</td><td>1.9690</td><td>1.9510</td><td>1.9870</td><td> 9702</td><td> 5298</td><td> 4404</td><td>0.454</td><td>4928</td><td>2237</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>iknn</td><td>none</td><td>5.1705</td><td>5.1310</td><td>5.2100</td><td>16828</td><td>16828</td><td>    0</td><td>0.000</td><td>3255</td><td>0</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>iknn</td><td>local.geodesic</td><td>2.3175</td><td>2.3030</td><td>2.3320</td><td>16828</td><td> 3755</td><td>13073</td><td>0.777</td><td>7262</td><td>5641</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>iknn</td><td>global.geodesic.ratio</td><td>3.5475</td><td>3.5430</td><td>3.5520</td><td>16828</td><td> 8453</td><td> 8375</td><td>0.498</td><td>4744</td><td>2361</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>mknn</td><td>none</td><td>1.9450</td><td>1.9330</td><td>1.9570</td><td> 6232</td><td> 6232</td><td>    0</td><td>0.000</td><td>3204</td><td>0</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>mknn</td><td>local.geodesic</td><td>1.3015</td><td>1.2630</td><td>1.3400</td><td> 6232</td><td> 3398</td><td> 2834</td><td>0.455</td><td>4793</td><td>2179</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>mknn</td><td>global.geodesic.ratio</td><td>1.3820</td><td>1.3630</td><td>1.4010</td><td> 6232</td><td> 3807</td><td> 2425</td><td>0.389</td><td>4510</td><td>1755</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>radius</td><td>none</td><td>2.5735</td><td>2.5590</td><td>2.5880</td><td> 8016</td><td> 8016</td><td>    0</td><td>0.000</td><td>3115</td><td>0</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>radius</td><td>local.geodesic</td><td>1.5635</td><td>1.5510</td><td>1.5760</td><td> 8016</td><td> 3671</td><td> 4345</td><td>0.542</td><td>5127</td><td>2779</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>radius</td><td>global.geodesic.ratio</td><td>1.7080</td><td>1.6900</td><td>1.7260</td><td> 8016</td><td> 4545</td><td> 3471</td><td>0.433</td><td>4694</td><td>2032</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>sknn</td><td>none</td><td>2.5640</td><td>2.5260</td><td>2.6020</td><td> 8168</td><td> 8168</td><td>    0</td><td>0.000</td><td>3186</td><td>0</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>sknn</td><td>local.geodesic</td><td>1.5845</td><td>1.5290</td><td>1.6400</td><td> 8168</td><td> 3755</td><td> 4413</td><td>0.540</td><td>5161</td><td>2789</td></tr>
+<tr><td>circle.n900</td><td>noisy circle</td><td>900</td><td>16</td><td>sknn</td><td>global.geodesic.ratio</td><td>1.7455</td><td>1.7250</td><td>1.7660</td><td> 8168</td><td> 4648</td><td> 3520</td><td>0.431</td><td>4680</td><td>2017</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>adaptive.radius</td><td>none</td><td>2.0865</td><td>2.0840</td><td>2.0890</td><td> 6917</td><td> 6917</td><td>    0</td><td>0.000</td><td>3315</td><td>0</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>adaptive.radius</td><td>local.geodesic</td><td>1.5935</td><td>1.5400</td><td>1.6470</td><td> 6917</td><td> 4189</td><td> 2728</td><td>0.394</td><td>4346</td><td>1714</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>adaptive.radius</td><td>global.geodesic.ratio</td><td>1.5275</td><td>1.5110</td><td>1.5440</td><td> 6917</td><td> 4121</td><td> 2796</td><td>0.404</td><td>4529</td><td>1831</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>iknn</td><td>none</td><td>4.4755</td><td>4.3670</td><td>4.5840</td><td>13729</td><td>13729</td><td>    0</td><td>0.000</td><td>3069</td><td>0</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>iknn</td><td>local.geodesic</td><td>2.3335</td><td>2.2930</td><td>2.3740</td><td>13729</td><td> 3812</td><td> 9917</td><td>0.722</td><td>5885</td><td>4251</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>iknn</td><td>global.geodesic.ratio</td><td>3.1880</td><td>3.1610</td><td>3.2150</td><td>13729</td><td> 6917</td><td> 6812</td><td>0.496</td><td>4307</td><td>2137</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>mknn</td><td>none</td><td>1.2035</td><td>1.1870</td><td>1.2200</td><td> 3990</td><td> 3990</td><td>    0</td><td>0.000</td><td>3316</td><td>0</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>mknn</td><td>local.geodesic</td><td>1.0145</td><td>1.0060</td><td>1.0230</td><td> 3990</td><td> 3146</td><td>  844</td><td>0.212</td><td>3933</td><td>832</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>mknn</td><td>global.geodesic.ratio</td><td>0.9855</td><td>0.9850</td><td>0.9860</td><td> 3990</td><td> 2954</td><td> 1036</td><td>0.260</td><td>4049</td><td>1051</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>radius</td><td>none</td><td>1.8405</td><td>1.8230</td><td>1.8580</td><td> 5954</td><td> 5954</td><td>    0</td><td>0.000</td><td>3235</td><td>0</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>radius</td><td>local.geodesic</td><td>1.3830</td><td>1.3740</td><td>1.3920</td><td> 5954</td><td> 3901</td><td> 2053</td><td>0.345</td><td>4305</td><td>1485</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>radius</td><td>global.geodesic.ratio</td><td>1.3655</td><td>1.3540</td><td>1.3770</td><td> 5954</td><td> 3757</td><td> 2197</td><td>0.369</td><td>4361</td><td>1609</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>sknn</td><td>none</td><td>1.7095</td><td>1.6930</td><td>1.7260</td><td> 5610</td><td> 5610</td><td>    0</td><td>0.000</td><td>3282</td><td>0</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>sknn</td><td>local.geodesic</td><td>1.3095</td><td>1.2940</td><td>1.3250</td><td> 5610</td><td> 3812</td><td> 1798</td><td>0.320</td><td>4285</td><td>1373</td></tr>
+<tr><td>swiss.n600</td><td>swiss roll</td><td>600</td><td>16</td><td>sknn</td><td>global.geodesic.ratio</td><td>1.2975</td><td>1.2790</td><td>1.3160</td><td> 5610</td><td> 3643</td><td> 1967</td><td>0.351</td><td>4325</td><td>1516</td></tr></table>
+<h2>Generated Artifacts</h2>
+<ul>
+<li><code>raw_graphs.csv</code>: raw graph sizes and build timings.</li>
+<li><code>benchmark_replicates.csv</code>: all timing replicates.</li>
+<li><code>benchmark_summary.csv</code>: median benchmark summaries used in this report.</li>
+<li><code>parity_audit.csv</code>: R-vs-C++ parity scenarios and outcomes.</li>
+</ul>
+<h2>Interpretation Notes</h2>
+<p>This is a medium synthetic benchmark, not a claim about all production data. The useful outcome is comparative: the C++ global-ratio path has parity with the old R reference on the tested cases, and the report shows where it buys stronger pruning versus where it costs more runtime. If this method becomes a serious default candidate, the next benchmark should add downstream graph-geodesic fidelity metrics, not just pruning runtime and edge counts.</p>
+</body>
+</html>

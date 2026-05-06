@@ -17,6 +17,40 @@ global_ratio_edge_keys <- function(edges) {
   sprintf("%d-%d", edges$from, edges$to)
 }
 
+global_ratio_compare_results <- function(r.result, cpp.result,
+                                         with.pruned.edge.stats) {
+  expect_equal(
+    global_ratio_edges(cpp.result$adj_list, cpp.result$weight_list),
+    global_ratio_edges(r.result$adj_list, r.result$weight_list),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    cpp.result$n_edges_before_pruning,
+    r.result$n_edges_before_pruning
+  )
+  expect_equal(
+    cpp.result$n_edges_after_pruning,
+    r.result$n_edges_after_pruning
+  )
+  expect_equal(cpp.result$n_pruned_edges, r.result$n_pruned_edges)
+  expect_s3_class(cpp.result$pruned_edge_stats, "data.frame")
+  expect_s3_class(r.result$pruned_edge_stats, "data.frame")
+  if (isTRUE(with.pruned.edge.stats)) {
+    expect_equal(cpp.result$pruned_edge_stats, r.result$pruned_edge_stats,
+                 tolerance = 1e-12)
+  } else {
+    expect_equal(nrow(cpp.result$pruned_edge_stats), 0L)
+    expect_equal(nrow(r.result$pruned_edge_stats), 0L)
+  }
+}
+
+global_ratio_random_graph <- function(seed, n = 10, k = 4) {
+  set.seed(seed)
+  X <- matrix(stats::rnorm(n * 2), ncol = 2)
+  graph <- create.sknn.graph(X, k = k, prune.method = "none")
+  list(X = X, adj_list = graph$raw_adj_list, weight_list = graph$raw_weight_list)
+}
+
 test_that("global.geodesic.ratio prunes a redundant whole-graph shortcut", {
   graph <- global_ratio_graph(
     4,
@@ -173,6 +207,36 @@ test_that("global.geodesic.ratio validates malformed graph inputs", {
     ),
     "undirected graph"
   )
+})
+
+test_that("global.geodesic.ratio C++ helper matches R global implementation", {
+  scenarios <- expand.grid(
+    seed = c(11L, 17L, 23L),
+    percentile = c(0, 0.4, 0.75, 1),
+    ratio = c(1.05, 1.12),
+    with.stats = c(FALSE, TRUE),
+    KEEP.OUT.ATTRS = FALSE
+  )
+
+  for (i in seq_len(nrow(scenarios))) {
+    row <- scenarios[i, ]
+    graph <- global_ratio_random_graph(row$seed)
+    r.result <- .prune.graph.global.geodesic(
+      graph$adj_list,
+      graph$weight_list,
+      max.ratio.threshold = row$ratio,
+      path.edge.ratio.percentile = row$percentile,
+      with.pruned.edge.stats = row$with.stats
+    )
+    cpp.result <- .prune.graph.global.geodesic.ratio(
+      graph$adj_list,
+      graph$weight_list,
+      max.ratio.threshold = row$ratio,
+      path.edge.ratio.percentile = row$percentile,
+      with.pruned.edge.stats = row$with.stats
+    )
+    global_ratio_compare_results(r.result, cpp.result, row$with.stats)
+  }
 })
 
 test_that("global.geodesic.ratio is routed through graph-family constructors", {
