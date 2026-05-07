@@ -271,8 +271,9 @@ create.radius.graph <- function(X,
 #' Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}
 #' be the distance from observation \eqn{i} to its `k.scale`-th non-self nearest
 #' neighbor. Vertices are adjacent when their Euclidean distance is at most
-#' `radius.factor` times either `max(sigma_i, sigma_j)` or
-#' `min(sigma_i, sigma_j)`.
+#' `radius.factor` times a symmetric combination of the two endpoint scales:
+#' `max(sigma_i, sigma_j)`, `min(sigma_i, sigma_j)`, or
+#' `sqrt(sigma_i * sigma_j)`.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
 #' @param k.scale Positive integer smaller than `nrow(X)`. Defines local scale
@@ -280,7 +281,10 @@ create.radius.graph <- function(X,
 #' @param radius.factor Positive numeric scalar multiplying the adaptive radius.
 #' @param radius.rule Character scalar. `"max"` uses
 #'   \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; `"min"` uses
-#'   \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}.
+#'   \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}; and
+#'   `"geomean"` uses
+#'   \eqn{d_{ij} \le radius.factor \sqrt{\sigma_i\sigma_j}}. The
+#'   `"geomean"` rule is the continuous-kNN support rule.
 #' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
 #'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
 #'   `NULL` defaults to `k.scale`.
@@ -305,7 +309,7 @@ create.radius.graph <- function(X,
 create.adaptive.radius.graph <- function(X,
                                          k.scale,
                                          radius.factor = 1,
-                                         radius.rule = c("max", "min"),
+                                         radius.rule = c("max", "min", "geomean"),
                                          prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
                                          max.path.edge.ratio.deviation.thld = 0.1,
                                          path.edge.ratio.percentile = 0.5,
@@ -344,7 +348,8 @@ create.adaptive.radius.graph <- function(X,
     }
     radius.fun <- switch(radius.rule,
                          max = function(a, b) max(a, b),
-                         min = function(a, b) min(a, b))
+                         min = function(a, b) min(a, b),
+                         geomean = function(a, b) sqrt(a * b))
     edges <- .pairwise.radius.edges(
         X,
         keep.edge = function(i, j, d) {
@@ -370,12 +375,95 @@ create.adaptive.radius.graph <- function(X,
     out
 }
 
+#' Compute a Continuous-kNN Graph
+#'
+#' @description
+#' Creates an undirected continuous-kNN graph using local scale distances.
+#' Let \eqn{\sigma_i} be the distance from observation \eqn{i} to its
+#' `k.scale`-th non-self nearest neighbor. Vertices are adjacent when
+#' \deqn{\|x_i - x_j\|_2 \le \delta \sqrt{\sigma_i\sigma_j}.}
+#'
+#' This is a convenience wrapper around [create.adaptive.radius.graph()] with
+#' `radius.rule = "geomean"`. It is useful as a named data-derived graph
+#' construction in geodesic reconstruction benchmarks.
+#'
+#' @param X Numeric matrix or data frame with observations in rows.
+#' @param k.scale Positive integer smaller than `nrow(X)`. Defines local scale
+#'   distances \eqn{\sigma_i}.
+#' @param delta Positive numeric scalar multiplying the geometric-mean adaptive
+#'   radius.
+#' @inheritParams create.radius.graph
+#'
+#' @return A list inheriting from `"cknn_graph"` and `"adaptive_radius_graph"`.
+#'   It contains the same lifecycle fields as [create.adaptive.radius.graph()],
+#'   with `radius_rule = "geomean"`, `radius_factor = delta`, and
+#'   `graph_rule = "continuous.knn"`.
+#'
+#' @examples
+#' X <- matrix(c(0, 1, 3), ncol = 1)
+#' create.cknn.graph(X, k.scale = 1, delta = 1)$edge_matrix
+#'
+#' @export
+create.cknn.graph <- function(X,
+                              k.scale,
+                              delta = 1,
+                              prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                              max.path.edge.ratio.deviation.thld = 0.1,
+                              path.edge.ratio.percentile = 0.5,
+                              prune.tau = 1.05,
+                              prune.local.k = NULL,
+                              with.pruned.edge.stats = FALSE,
+                              connect.components = FALSE,
+                              connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                              bridge.k = NULL,
+                              bridge.k.max = NULL,
+                              bridge.growth = 2) {
+    if (!is.numeric(delta) || length(delta) != 1L ||
+        !is.finite(delta) || delta <= 0) {
+        stop("'delta' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    g <- create.adaptive.radius.graph(
+        X = X,
+        k.scale = k.scale,
+        radius.factor = delta,
+        radius.rule = "geomean",
+        prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        connect.components = connect.components,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth
+    )
+    g$delta <- as.numeric(g$radius_factor)
+    g$graph_rule <- "continuous.knn"
+    class(g) <- c("cknn_graph", class(g))
+    g
+}
+
 #' @export
 print.radius_graph <- function(x, ...) {
     cat("Fixed-radius graph\n")
     cat("Number of vertices:", x$n_vertices, "\n")
     cat("Number of edges:", x$n_edges, "\n")
     cat("Radius:", x$radius, "\n")
+    cat("Connected components before MST augmentation:", x$n_components_before, "\n")
+    cat("Connected components after MST augmentation:", x$n_components_after, "\n")
+    invisible(x)
+}
+
+#' @export
+print.cknn_graph <- function(x, ...) {
+    cat("Continuous-kNN graph\n")
+    cat("Number of vertices:", x$n_vertices, "\n")
+    cat("Number of edges:", x$n_edges, "\n")
+    cat("k.scale:", x$k_scale, "\n")
+    cat("Delta:", x$delta, "\n")
     cat("Connected components before MST augmentation:", x$n_components_before, "\n")
     cat("Connected components after MST augmentation:", x$n_components_after, "\n")
     invisible(x)

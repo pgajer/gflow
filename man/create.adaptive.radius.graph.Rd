@@ -8,7 +8,7 @@ create.adaptive.radius.graph(
   X,
   k.scale,
   radius.factor = 1,
-  radius.rule = c("max", "min"),
+  radius.rule = c("max", "min", "geomean"),
   prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
   max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
@@ -32,7 +32,10 @@ distances \eqn{\sigma_i}.}
 
 \item{radius.rule}{Character scalar. \code{"max"} uses
 \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; \code{"min"} uses
-\eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}.}
+\eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}; and
+\code{"geomean"} uses
+\eqn{d_{ij} \le radius.factor \sqrt{\sigma_i\sigma_j}}. The
+\code{"geomean"} rule is the continuous-kNN support rule.}
 
 \item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
 \code{"local.geodesic"} applies the experimental local geometric pruning stage
@@ -92,8 +95,9 @@ repair-first graph geodesic geometries.
 Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}
 be the distance from observation \eqn{i} to its \code{k.scale}-th non-self nearest
 neighbor. Vertices are adjacent when their Euclidean distance is at most
-\code{radius.factor} times either \code{max(sigma_i, sigma_j)} or
-\code{min(sigma_i, sigma_j)}.
+\code{radius.factor} times a symmetric combination of the two endpoint scales:
+\code{max(sigma_i, sigma_j)}, \code{min(sigma_i, sigma_j)}, or
+\code{sqrt(sigma_i * sigma_j)}.
 }
 \examples{
 X <- matrix(c(0, 1, 3), ncol = 1)
