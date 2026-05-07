@@ -113,27 +113,31 @@ BEGIN_RCPP
 END_RCPP
 }
 // rcpp_quadform_grid_pair_distances
-Rcpp::List rcpp_quadform_grid_pair_distances(int index_k, double domain_radius, int grid_size, const Rcpp::NumericMatrix& pair_points);
-RcppExport SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP index_kSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP pair_pointsSEXP) {
+Rcpp::List rcpp_quadform_grid_pair_distances(int index_k, const Rcpp::NumericVector& coefficients, const std::string& domain_shape, double domain_radius, int grid_size, const Rcpp::NumericMatrix& pair_points);
+RcppExport SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP index_kSEXP, SEXP coefficientsSEXP, SEXP domain_shapeSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP pair_pointsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type domain_shape(domain_shapeSEXP);
     Rcpp::traits::input_parameter< double >::type domain_radius(domain_radiusSEXP);
     Rcpp::traits::input_parameter< int >::type grid_size(grid_sizeSEXP);
     Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type pair_points(pair_pointsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_pair_distances(index_k, domain_radius, grid_size, pair_points));
+    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_pair_distances(index_k, coefficients, domain_shape, domain_radius, grid_size, pair_points));
     return rcpp_result_gen;
 END_RCPP
 }
 // rcpp_quadform_grid_geodesic_distances
-Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X, int index_k, double domain_radius, int grid_size, int sample_connection_k, bool with_oracle, double oracle_tube_radius, int oracle_tube_k, bool return_oracle_paths);
-RcppExport SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP XSEXP, SEXP index_kSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP sample_connection_kSEXP, SEXP with_oracleSEXP, SEXP oracle_tube_radiusSEXP, SEXP oracle_tube_kSEXP, SEXP return_oracle_pathsSEXP) {
+Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X, int index_k, const Rcpp::NumericVector& coefficients, const std::string& domain_shape, double domain_radius, int grid_size, int sample_connection_k, bool with_oracle, double oracle_tube_radius, int oracle_tube_k, bool return_oracle_paths);
+RcppExport SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP XSEXP, SEXP index_kSEXP, SEXP coefficientsSEXP, SEXP domain_shapeSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP sample_connection_kSEXP, SEXP with_oracleSEXP, SEXP oracle_tube_radiusSEXP, SEXP oracle_tube_kSEXP, SEXP return_oracle_pathsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
     Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type domain_shape(domain_shapeSEXP);
     Rcpp::traits::input_parameter< double >::type domain_radius(domain_radiusSEXP);
     Rcpp::traits::input_parameter< int >::type grid_size(grid_sizeSEXP);
     Rcpp::traits::input_parameter< int >::type sample_connection_k(sample_connection_kSEXP);
@@ -141,7 +145,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type oracle_tube_radius(oracle_tube_radiusSEXP);
     Rcpp::traits::input_parameter< int >::type oracle_tube_k(oracle_tube_kSEXP);
     Rcpp::traits::input_parameter< bool >::type return_oracle_paths(return_oracle_pathsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_geodesic_distances(X, index_k, domain_radius, grid_size, sample_connection_k, with_oracle, oracle_tube_radius, oracle_tube_k, return_oracle_paths));
+    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_geodesic_distances(X, index_k, coefficients, domain_shape, domain_radius, grid_size, sample_connection_k, with_oracle, oracle_tube_radius, oracle_tube_k, return_oracle_paths));
     return rcpp_result_gen;
 END_RCPP
 }

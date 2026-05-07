@@ -3,12 +3,20 @@ test_that("quadform embedding, gradient, and metric match definitions", {
 
   expect_equal(quadform.embed(X, index.k = 1)[, "q"], c(-3, 3))
   expect_equal(quadform.embed(X, index.k = 2)[, "q"], c(5, 5))
+  expect_equal(quadform.embed(X, index.k = 2, coefficients = c(2, 4))[, "q"],
+               c(18, 12))
 
   grad <- quadform.gradient(matrix(c(1, 2), nrow = 1), index.k = 1)
   expect_equal(grad, matrix(c(2, -4), nrow = 1))
+  grad.coeff <- quadform.gradient(matrix(c(1, 2), nrow = 1), index.k = 2,
+                                  coefficients = c(2, 4))
+  expect_equal(grad.coeff, matrix(c(4, 16), nrow = 1))
 
   metric <- quadform.metric(matrix(c(1, 2), nrow = 1), index.k = 1)
   expect_equal(metric, diag(2) + tcrossprod(c(2, -4)))
+  metric.coeff <- quadform.metric(matrix(c(1, 2), nrow = 1), index.k = 2,
+                                  coefficients = c(2, 4))
+  expect_equal(metric.coeff, diag(2) + tcrossprod(c(4, 16)))
 })
 
 
@@ -31,6 +39,20 @@ test_that("quadform.edge.length matches numerical quadrature", {
   expect_equal(quadform.edge.length(u, v, index.k = 1), numeric.length,
                tolerance = 1e-10)
   expect_equal(quadform.edge.length(u, u, index.k = 1), 0)
+
+  coefficients <- c(2, 4)
+  coeff.integrand <- function(t) {
+    vapply(t, function(tt) {
+      x <- u + tt * h
+      dq <- 2 * sum(x * signs * coefficients * h)
+      sqrt(sum(h^2) + dq^2)
+    }, numeric(1))
+  }
+  coeff.numeric.length <- stats::integrate(coeff.integrand, lower = 0,
+                                           upper = 1, rel.tol = 1e-12)$value
+  expect_equal(quadform.edge.length(u, v, index.k = 1,
+                                    coefficients = coefficients),
+               coeff.numeric.length, tolerance = 1e-10)
 })
 
 
@@ -86,6 +108,63 @@ test_that("quadform.grid.geodesic.distances matches R reference on small grids",
   expect_equal(cpp.ref$grid_size, 11L)
   expect_equal(cpp.ref$sample_connection_k, 4L)
   expect_equal(cpp.ref$index_k, 2L)
+
+  r.coeff <- quadform.reference.geodesics(
+    X,
+    index.k = 2,
+    coefficients = c(2, 4),
+    domain.radius = 1,
+    grid.size = 11,
+    sample.connection.k = 4
+  )
+  cpp.coeff <- quadform.grid.geodesic.distances(
+    X,
+    index.k = 2,
+    coefficients = c(2, 4),
+    domain.radius = 1,
+    grid.size = 11,
+    sample.connection.k = 4,
+    oracle = "none"
+  )
+
+  expect_equal(cpp.coeff$distances, r.coeff$distances, tolerance = 1e-12)
+  expect_equal(cpp.coeff$coefficients, c(2, 4))
+})
+
+
+test_that("quadform grid geodesics support square domains", {
+  X <- rbind(
+    c(-1, -1),
+    c(1, 1),
+    c(0, 0),
+    c(0.5, -0.75)
+  )
+
+  r.ref <- quadform.reference.geodesics(
+    X,
+    index.k = 2,
+    coefficients = c(2, 4),
+    domain.radius = 1,
+    domain.shape = "square",
+    grid.size = 11,
+    sample.connection.k = 4
+  )
+  cpp.ref <- quadform.grid.geodesic.distances(
+    X,
+    index.k = 2,
+    coefficients = c(2, 4),
+    domain.radius = 1,
+    domain.shape = "square",
+    grid.size = 11,
+    sample.connection.k = 4,
+    oracle = "none"
+  )
+
+  expect_equal(cpp.ref$distances, r.ref$distances, tolerance = 1e-12)
+  expect_equal(cpp.ref$domain_shape, "square")
+  expect_equal(cpp.ref$n_reference_vertices, 11L * 11L)
+  expect_true(all(is.finite(cpp.ref$distances)))
+  expect_equal(cpp.ref$distances, t(cpp.ref$distances), tolerance = 1e-12)
 })
 
 
@@ -186,6 +265,61 @@ test_that("quadform.sample.dataset samples parameter disk data with reference di
                quadform.embed(ds$reference$vertices_param, index.k = 1))
   expect_equal(ds$reference$sample_vertex, seq_len(12L))
   expect_true(nrow(ds$reference$edge_matrix) > 0)
+
+  ds.coeff <- quadform.sample.dataset(
+    n = 6,
+    index.k = 2,
+    coefficients = c(2, 4),
+    grid.size = 9,
+    seed = 2
+  )
+  expect_equal(ds.coeff$X_embed,
+               quadform.embed(ds.coeff$X_param, index.k = 2,
+                              coefficients = c(2, 4)))
+  expect_equal(ds.coeff$metadata$coefficients, c(2, 4))
+
+  ds.square <- quadform.sample.dataset(
+    n = 10,
+    index.k = 2,
+    coefficients = c(2, 4),
+    domain.radius = 1.5,
+    sample.method = "uniform.parameter.square",
+    grid.size = 9,
+    seed = 3
+  )
+  expect_true(all(abs(ds.square$X_param) <= 1.5))
+  expect_equal(ds.square$metadata$domain_shape, "square")
+  expect_equal(ds.square$reference$domain_shape, "square")
+  expect_equal(ds.square$X_embed,
+               quadform.embed(ds.square$X_param, index.k = 2,
+                              coefficients = c(2, 4)))
+})
+
+
+test_that("quadform.sample.dataset supports radial density variants", {
+  methods <- c(
+    "radial.center.parameter.disk",
+    "radial.boundary.parameter.disk",
+    "radial.center.parameter.square",
+    "radial.boundary.parameter.square"
+  )
+  for (method in methods) {
+    ds <- quadform.sample.dataset(
+      n = 12,
+      index.k = 1,
+      sample.method = method,
+      grid.size = 7,
+      seed = 4
+    )
+    if (grepl("square$", method)) {
+      expect_true(all(abs(ds$X_param) <= 1 + 1e-12))
+      expect_equal(ds$metadata$domain_shape, "square")
+    } else {
+      expect_true(all(sqrt(rowSums(ds$X_param^2)) <= 1 + 1e-12))
+      expect_equal(ds$metadata$domain_shape, "disk")
+    }
+    expect_true(all(is.finite(ds$D_geodesic)))
+  }
 })
 
 
@@ -222,6 +356,17 @@ test_that("quadform utilities validate inputs", {
                                      index.k = 1, domain.radius = 1),
     "inside"
   )
+  expect_silent(
+    quadform.grid.geodesic.distances(matrix(c(1, 1, 0, 0), ncol = 2),
+                                     index.k = 1, domain.radius = 1,
+                                     domain.shape = "square")
+  )
+  expect_error(
+    quadform.grid.geodesic.distances(matrix(c(1.1, 0, 0, 0), ncol = 2),
+                                     index.k = 1, domain.radius = 1,
+                                     domain.shape = "square"),
+    "inside"
+  )
   expect_error(quadform.grid.geodesic.calibration(index.k = 3), "index.k")
   expect_error(quadform.grid.geodesic.calibration(index.k = 1, n.sources = 0),
                "n.sources")
@@ -236,5 +381,11 @@ test_that("quadform utilities validate inputs", {
   expect_error(quadform.sample.dataset(n = 3, index.k = 3), "index.k")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, domain.radius = 0),
                "domain.radius")
+  expect_error(quadform.embed(matrix(1:4, ncol = 2), index.k = 1,
+                              coefficients = c(1, 0)), "coefficients")
+  expect_error(quadform.grid.geodesic.distances(matrix(c(0, 0, 1, 0), ncol = 2),
+                                                index.k = 1,
+                                                coefficients = c(1, 2, 3)),
+               "coefficients")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, seed = Inf), "seed")
 })
