@@ -63,19 +63,52 @@ test_that("create.radius.graph supports local geometric pruning", {
 })
 
 
-test_that("create.adaptive.radius.graph distinguishes max and min rules", {
+test_that("create.adaptive.radius.graph distinguishes max, min, and geomean rules", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  max.g <- create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "max")
-  min.g <- create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "min")
+  max.g <- create.adaptive.radius.graph(
+    X, k.scale = 1, radius.rule = "max", radius.factor = 1.5
+  )
+  min.g <- create.adaptive.radius.graph(
+    X, k.scale = 1, radius.rule = "min", radius.factor = 1.5
+  )
+  geomean.g <- create.adaptive.radius.graph(
+    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+  )
 
   expect_s3_class(max.g, "adaptive_radius_graph")
   expect_equal(max.g$sigma, c(1, 1, 2), tolerance = 1e-12)
   expect_equal(min.g$sigma, c(1, 1, 2), tolerance = 1e-12)
-  expect_equal(.radius_edge_keys(max.g$edge_matrix), c("1-2", "2-3"))
+  expect_equal(geomean.g$sigma, c(1, 1, 2), tolerance = 1e-12)
+  expect_equal(.radius_edge_keys(max.g$edge_matrix), c("1-2", "1-3", "2-3"))
   expect_equal(.radius_edge_keys(min.g$edge_matrix), "1-2")
+  expect_equal(.radius_edge_keys(geomean.g$edge_matrix), c("1-2", "2-3"))
   expect_equal(max.g$radius_rule, "max")
   expect_equal(min.g$radius_rule, "min")
+  expect_equal(geomean.g$radius_rule, "geomean")
+})
+
+
+test_that("create.cknn.graph is the continuous-kNN geomean adaptive-radius wrapper", {
+  X <- matrix(c(0, 1, 3), ncol = 1)
+
+  cknn.g <- create.cknn.graph(X, k.scale = 1, delta = 1.5)
+  adaptive.g <- create.adaptive.radius.graph(
+    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+  )
+
+  expect_s3_class(cknn.g, "cknn_graph")
+  expect_s3_class(cknn.g, "adaptive_radius_graph")
+  expect_equal(cknn.g$graph_rule, "continuous.knn")
+  expect_equal(cknn.g$radius_rule, "geomean")
+  expect_equal(cknn.g$radius_factor, 1.5)
+  expect_equal(cknn.g$delta, 1.5)
+  expect_equal(.radius_edge_keys(cknn.g$edge_matrix),
+               .radius_edge_keys(adaptive.g$edge_matrix))
+  expect_equal(cknn.g$edge_weight, adaptive.g$edge_weight, tolerance = 1e-12)
+  expect_equal(graph.geodesic.distances(cknn.g),
+               graph.geodesic.distances(adaptive.g),
+               tolerance = 1e-12)
 })
 
 
@@ -123,11 +156,12 @@ test_that("radius graph constructors validate inputs", {
   expect_error(create.adaptive.radius.graph(X, k.scale = 3), "k.scale")
   expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.factor = 0),
                "radius.factor")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "mean"),
+  expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "median"),
                "'arg' should be one of")
   expect_error(create.adaptive.radius.graph(X, k.scale = 1, prune.tau = 1),
                "prune.tau")
   expect_error(create.adaptive.radius.graph(X, k.scale = 1,
                                             with.pruned.edge.stats = NA),
                "with.pruned.edge.stats")
+  expect_error(create.cknn.graph(X, k.scale = 1, delta = 0), "delta")
 })

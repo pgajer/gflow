@@ -12,6 +12,7 @@
         inherits(graph, "mknn_graph") ||
         inherits(graph, "radius_graph") ||
         inherits(graph, "adaptive_radius_graph") ||
+        inherits(graph, "cknn_graph") ||
         inherits(graph, "geodesic_iknn_graph")) {
         stage <- .normalize.graph.geodesic.stage(stage)
         fields <- switch(
@@ -36,7 +37,8 @@
     }
     stop(
         "'graph' must inherit from one of: IkNN, sknn_graph, mknn_graph, ",
-        "radius_graph, adaptive_radius_graph, or geodesic_iknn_graph.",
+        "radius_graph, adaptive_radius_graph, cknn_graph, or ",
+        "geodesic_iknn_graph.",
         call. = FALSE
     )
 }
@@ -93,7 +95,8 @@
 #'
 #' @param graph A supported gflow graph object. Currently supported classes are
 #'   `"IkNN"`, `"sknn_graph"`, `"mknn_graph"`, `"radius_graph"`,
-#'   `"adaptive_radius_graph"`, and `"geodesic_iknn_graph"`.
+#'   `"adaptive_radius_graph"`, `"cknn_graph"`, and
+#'   `"geodesic_iknn_graph"`.
 #' @param vertices Integer vector of 1-based vertex indices. If `NULL`, compute
 #'   distances among all vertices in the selected graph stage.
 #' @param stage Character scalar selecting the graph lifecycle stage. Supported
