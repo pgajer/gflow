@@ -31,9 +31,51 @@
     c(rep.int(1, index.k), rep.int(-1, p - index.k))
 }
 
-.quadform.value <- function(X, index.k) {
+.validate.quadform.coefficients <- function(coefficients, p) {
+    if (is.null(coefficients)) {
+        return(rep.int(1, p))
+    }
+    if (!is.numeric(coefficients) || length(coefficients) != p ||
+        any(!is.finite(coefficients)) || any(coefficients <= 0)) {
+        stop("'coefficients' must be NULL or a positive finite numeric vector with length ncol(X).",
+             call. = FALSE)
+    }
+    as.numeric(coefficients)
+}
+
+.validate.quadform.domain.shape <- function(domain.shape) {
+    match.arg(domain.shape, c("disk", "square"))
+}
+
+.quadform.default.domain.radius <- function(X, domain.shape) {
+    if (identical(domain.shape, "disk")) {
+        radius <- max(sqrt(rowSums(X^2)))
+    } else {
+        radius <- max(abs(X))
+    }
+    if (radius == 0) {
+        radius <- 1
+    }
+    radius
+}
+
+.quadform.points.inside.domain <- function(X, domain.radius, domain.shape,
+                                           tol = 1e-10) {
+    if (identical(domain.shape, "disk")) {
+        sqrt(rowSums(X^2)) <= domain.radius * (1 + tol)
+    } else {
+        apply(abs(X), 1L, max) <= domain.radius * (1 + tol)
+    }
+}
+
+.quadform.domain.label <- function(domain.shape) {
+    if (identical(domain.shape, "disk")) "parameter disk" else "parameter square"
+}
+
+.quadform.value <- function(X, index.k, coefficients = NULL) {
     signs <- .quadform.signs(ncol(X), index.k)
-    as.numeric((X^2) %*% signs)
+    coefficients <- .validate.quadform.coefficients(coefficients, ncol(X))
+    as.numeric((X^2) %*% (signs * coefficients))
 }
 
 #' Embed a Quadratic Hypersurface
@@ -45,6 +87,10 @@
 #' @param X Numeric matrix or data frame with parameter points in rows.
 #' @param index.k Integer between 0 and `ncol(X)`. Number of positive-square
 #'   terms in the quadratic form.
+#' @param coefficients `NULL` or positive numeric vector with length
+#'   `ncol(X)`. If supplied, the quadratic graph is
+#'   \eqn{q(x)=\sum_i s_i c_i x_i^2}, where `s_i` is determined by
+#'   `index.k`.
 #'
 #' @return A numeric matrix with `ncol(X) + 1` columns. The first `ncol(X)`
 #'   columns are `X`; the last column is `q(X)`.
@@ -54,9 +100,9 @@
 #' quadform.embed(X, index.k = 1)
 #'
 #' @export
-quadform.embed <- function(X, index.k) {
+quadform.embed <- function(X, index.k, coefficients = NULL) {
     X <- .validate.quadform.data.matrix(X)
-    q <- .quadform.value(X, index.k)
+    q <- .quadform.value(X, index.k, coefficients = coefficients)
     cbind(X, q = q)
 }
 
@@ -75,10 +121,11 @@ quadform.embed <- function(X, index.k) {
 #' quadform.gradient(matrix(c(1, 2), nrow = 1), index.k = 1)
 #'
 #' @export
-quadform.gradient <- function(X, index.k) {
+quadform.gradient <- function(X, index.k, coefficients = NULL) {
     X <- .validate.quadform.data.matrix(X)
     signs <- .quadform.signs(ncol(X), index.k)
-    t(t(2 * X) * signs)
+    coefficients <- .validate.quadform.coefficients(coefficients, ncol(X))
+    t(t(2 * X) * signs * coefficients)
 }
 
 #' Compute the Induced Metric of a Quadratic Hypersurface
@@ -96,9 +143,9 @@ quadform.gradient <- function(X, index.k) {
 #' quadform.metric(matrix(c(1, 2), nrow = 1), index.k = 1)
 #'
 #' @export
-quadform.metric <- function(X, index.k) {
+quadform.metric <- function(X, index.k, coefficients = NULL) {
     X <- .validate.quadform.data.matrix(X)
-    grad <- quadform.gradient(X, index.k)
+    grad <- quadform.gradient(X, index.k, coefficients = coefficients)
     p <- ncol(X)
     out <- array(0, dim = c(nrow(X), p, p))
     eye <- diag(p)
@@ -134,20 +181,22 @@ quadform.metric <- function(X, index.k) {
 #' quadform.edge.length(c(0, 0), c(1, 0), index.k = 2)
 #'
 #' @export
-quadform.edge.length <- function(u, v, index.k, tol = sqrt(.Machine$double.eps)) {
+quadform.edge.length <- function(u, v, index.k, coefficients = NULL,
+                                 tol = sqrt(.Machine$double.eps)) {
     if (!is.numeric(u) || !is.numeric(v) || length(u) != length(v) ||
         any(!is.finite(u)) || any(!is.finite(v))) {
         stop("'u' and 'v' must be finite numeric vectors of equal length.", call. = FALSE)
     }
     p <- length(u)
     signs <- .quadform.signs(p, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, p)
     h <- v - u
     A <- sum(h^2)
     if (A == 0) {
         return(0)
     }
-    a <- 2 * sum(u * signs * h)
-    b <- 2 * sum(h * signs * h)
+    a <- 2 * sum(u * signs * coefficients * h)
+    b <- 2 * sum(h * signs * coefficients * h)
     if (!is.numeric(tol) || length(tol) != 1L || !is.finite(tol) || tol <= 0) {
         stop("'tol' must be a positive finite numeric scalar.", call. = FALSE)
     }
@@ -161,10 +210,16 @@ quadform.edge.length <- function(u, v, index.k, tol = sqrt(.Machine$double.eps))
     as.numeric((antiderivative(a + b) - antiderivative(a)) / b)
 }
 
-.quadform.reference.vertices.2d <- function(X, domain.radius, grid.size) {
+.quadform.reference.vertices.2d <- function(X, domain.radius, grid.size,
+                                            domain.shape = c("disk", "square")) {
+    domain.shape <- .validate.quadform.domain.shape(domain.shape)
     coords <- seq(-domain.radius, domain.radius, length.out = grid.size)
     grid <- expand.grid(x = coords, y = coords)
-    inside <- rowSums(as.matrix(grid)^2) <= domain.radius^2 * (1 + 1e-12)
+    if (identical(domain.shape, "disk")) {
+        inside <- rowSums(as.matrix(grid)^2) <= domain.radius^2 * (1 + 1e-12)
+    } else {
+        inside <- rep(TRUE, nrow(grid))
+    }
     grid <- as.matrix(grid[inside, , drop = FALSE])
     storage.mode(grid) <- "double"
     list(vertices = rbind(X, grid), grid = grid, coords = coords, inside = inside)
@@ -254,22 +309,84 @@ quadform.edge.length <- function(u, v, index.k, tol = sqrt(.Machine$double.eps))
     X
 }
 
+.quadform.sample.radial.parameter.disk <- function(n, domain.radius, bias) {
+    theta <- stats::runif(n, min = 0, max = 2 * pi)
+    u <- stats::runif(n)
+    if (identical(bias, "center")) {
+        radius <- domain.radius * u
+    } else if (identical(bias, "boundary")) {
+        radius <- domain.radius * sqrt(sqrt(u))
+    } else {
+        stop("Unknown disk radial bias.", call. = FALSE)
+    }
+    X <- cbind(
+        x1 = radius * cos(theta),
+        x2 = radius * sin(theta)
+    )
+    storage.mode(X) <- "double"
+    X
+}
+
+.quadform.sample.uniform.parameter.square <- function(n, domain.radius) {
+    X <- cbind(
+        x1 = stats::runif(n, min = -domain.radius, max = domain.radius),
+        x2 = stats::runif(n, min = -domain.radius, max = domain.radius)
+    )
+    storage.mode(X) <- "double"
+    X
+}
+
+.quadform.sample.radial.parameter.square <- function(n, domain.radius, bias) {
+    theta <- stats::runif(n, min = 0, max = 2 * pi)
+    u <- stats::runif(n)
+    r.max <- 1 / pmax(abs(cos(theta)), abs(sin(theta)))
+    if (identical(bias, "center")) {
+        radius <- domain.radius * r.max * u
+    } else if (identical(bias, "boundary")) {
+        radius <- domain.radius * r.max * sqrt(sqrt(u))
+    } else {
+        stop("Unknown square radial bias.", call. = FALSE)
+    }
+    X <- cbind(
+        x1 = radius * cos(theta),
+        x2 = radius * sin(theta)
+    )
+    storage.mode(X) <- "double"
+    X
+}
+
+.quadform.sample.parameter <- function(n, domain.radius, sample.method) {
+    switch(
+        sample.method,
+        uniform.parameter.disk = .quadform.sample.uniform.parameter.disk(n, domain.radius),
+        radial.center.parameter.disk = .quadform.sample.radial.parameter.disk(n, domain.radius, "center"),
+        radial.boundary.parameter.disk = .quadform.sample.radial.parameter.disk(n, domain.radius, "boundary"),
+        uniform.parameter.square = .quadform.sample.uniform.parameter.square(n, domain.radius),
+        radial.center.parameter.square = .quadform.sample.radial.parameter.square(n, domain.radius, "center"),
+        radial.boundary.parameter.square = .quadform.sample.radial.parameter.square(n, domain.radius, "boundary"),
+        stop("Unsupported sample method: ", sample.method, call. = FALSE)
+    )
+}
+
 #' Estimate Reference Geodesic Distances on a 2D Quadratic Surface
 #'
 #' @description
 #' Computes a numerical reference geodesic distance matrix for points sampled
 #' from a two-dimensional quadratic graph surface. The method builds a dense
-#' reference graph on a regular parameter-disk grid, includes the sample points
-#' as vertices, weights all reference edges by exact quadratic-surface segment
-#' length, and returns shortest-path distances between the sample vertices.
+#' reference graph on a regular parameter-domain grid, includes the sample
+#' points as vertices, weights all reference edges by exact quadratic-surface
+#' segment length, and returns shortest-path distances between the sample
+#' vertices.
 #'
 #' @param X Numeric matrix or data frame with two parameter-coordinate columns.
 #' @param index.k Integer between 0 and 2. Number of positive-square terms.
 #' @param domain.radius Positive numeric scalar or `NULL`. Radius of the
-#'   parameter disk covered by the reference grid. If `NULL`, uses the maximum
-#'   sample radius.
+#'   parameter disk or half-side length of the parameter square covered by the
+#'   reference grid. If `NULL`, uses the smallest radius/half-side covering the
+#'   sample.
+#' @param domain.shape Character scalar, either `"disk"` or `"square"`.
 #' @param grid.size Odd or even integer at least 5. Number of grid coordinates
-#'   along each axis before clipping to the disk.
+#'   along each axis before optional clipping to the disk.
 #' @param sample.connection.k Positive integer. Number of nearest reference-grid
 #'   vertices connected to each sample point.
 #'
@@ -284,7 +401,9 @@ quadform.edge.length <- function(u, v, index.k, tol = sqrt(.Machine$double.eps))
 #' @export
 quadform.reference.geodesics <- function(X,
                                          index.k,
+                                         coefficients = NULL,
                                          domain.radius = NULL,
+                                         domain.shape = c("disk", "square"),
                                          grid.size = 51,
                                          sample.connection.k = 8) {
     X <- .validate.numeric.data.matrix(X)
@@ -293,25 +412,26 @@ quadform.reference.geodesics <- function(X,
              call. = FALSE)
     }
     .validate.quadform.index(2L, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, 2L)
+    domain.shape <- .validate.quadform.domain.shape(domain.shape)
     if (is.null(domain.radius)) {
-        domain.radius <- max(sqrt(rowSums(X^2)))
-        if (domain.radius == 0) {
-            domain.radius <- 1
-        }
+        domain.radius <- .quadform.default.domain.radius(X, domain.shape)
     }
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
     }
-    if (any(sqrt(rowSums(X^2)) > domain.radius * (1 + 1e-10))) {
-        stop("All rows of 'X' must lie inside the parameter disk.", call. = FALSE)
+    if (any(!.quadform.points.inside.domain(X, domain.radius, domain.shape))) {
+        stop("All rows of 'X' must lie inside the ",
+             .quadform.domain.label(domain.shape), ".", call. = FALSE)
     }
     if (!is.numeric(grid.size) || length(grid.size) != 1L ||
         !is.finite(grid.size) || grid.size != floor(grid.size) || grid.size < 5L) {
         stop("'grid.size' must be an integer at least 5.", call. = FALSE)
     }
     grid.size <- as.integer(grid.size)
-    ref <- .quadform.reference.vertices.2d(X, domain.radius, grid.size)
+    ref <- .quadform.reference.vertices.2d(X, domain.radius, grid.size,
+                                           domain.shape = domain.shape)
     if (!is.numeric(sample.connection.k) || length(sample.connection.k) != 1L ||
         !is.finite(sample.connection.k) || sample.connection.k != floor(sample.connection.k) ||
         sample.connection.k < 1L) {
@@ -324,7 +444,8 @@ quadform.reference.geodesics <- function(X,
     sample.edges <- .quadform.reference.sample.edges(X, ref$grid, sample.connection.k)
     edge.matrix <- unique(rbind(grid.edges, sample.edges))
     edge.weight <- apply(edge.matrix, 1L, function(e) {
-        quadform.edge.length(ref$vertices[e[[1L]], ], ref$vertices[e[[2L]], ], index.k)
+        quadform.edge.length(ref$vertices[e[[1L]], ], ref$vertices[e[[2L]], ],
+                             index.k, coefficients = coefficients)
     })
     graph <- igraph::graph_from_edgelist(edge.matrix, directed = FALSE)
     distances <- igraph::distances(graph, v = seq_len(n), to = seq_len(n),
@@ -338,9 +459,11 @@ quadform.reference.geodesics <- function(X,
         n_reference_vertices = nrow(ref$vertices),
         n_edges = nrow(edge.matrix),
         domain_radius = domain.radius,
+        domain_shape = domain.shape,
         grid_size = grid.size,
         sample_connection_k = sample.connection.k,
-        index_k = as.integer(index.k)
+        index_k = as.integer(index.k),
+        coefficients = coefficients
     )
 }
 
@@ -349,10 +472,10 @@ quadform.reference.geodesics <- function(X,
 #' @description
 #' Computes numerical reference geodesic distances for points on a
 #' two-dimensional quadratic graph surface using the package's C++ grid
-#' shortest-path engine. A disk-clipped regular parameter grid is built once,
-#' grid edges are weighted by exact quadratic-surface segment length, and each
-#' sample point is connected to nearby grid vertices before running Dijkstra
-#' shortest paths.
+#' shortest-path engine. A regular parameter grid is built once, optionally
+#' clipped to the disk domain, grid edges are weighted by exact
+#' quadratic-surface segment length, and each sample point is connected to
+#' nearby grid vertices before running Dijkstra shortest paths.
 #'
 #' @inheritParams quadform.reference.geodesics
 #' @param oracle Character scalar. `"none"` returns only the continuum grid
@@ -381,7 +504,9 @@ quadform.reference.geodesics <- function(X,
 #' @export
 quadform.grid.geodesic.distances <- function(X,
                                              index.k,
+                                             coefficients = NULL,
                                              domain.radius = NULL,
+                                             domain.shape = c("disk", "square"),
                                              grid.size = 51,
                                              sample.connection.k = 8,
                                              oracle = c("none", "sample.path"),
@@ -394,18 +519,18 @@ quadform.grid.geodesic.distances <- function(X,
              call. = FALSE)
     }
     .validate.quadform.index(2L, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, 2L)
+    domain.shape <- .validate.quadform.domain.shape(domain.shape)
     if (is.null(domain.radius)) {
-        domain.radius <- max(sqrt(rowSums(X^2)))
-        if (domain.radius == 0) {
-            domain.radius <- 1
-        }
+        domain.radius <- .quadform.default.domain.radius(X, domain.shape)
     }
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
     }
-    if (any(sqrt(rowSums(X^2)) > domain.radius * (1 + 1e-10))) {
-        stop("All rows of 'X' must lie inside the parameter disk.", call. = FALSE)
+    if (any(!.quadform.points.inside.domain(X, domain.radius, domain.shape))) {
+        stop("All rows of 'X' must lie inside the ",
+             .quadform.domain.label(domain.shape), ".", call. = FALSE)
     }
     if (!is.numeric(grid.size) || length(grid.size) != 1L ||
         !is.finite(grid.size) || grid.size != floor(grid.size) || grid.size < 5L) {
@@ -429,7 +554,8 @@ quadform.grid.geodesic.distances <- function(X,
     with.oracle <- identical(oracle, "sample.path")
     if (with.oracle && is.null(oracle.tube.radius)) {
         oracle.tube.radius <- .quadform.default.oracle.tube.radius(
-            X, index.k, as.integer(oracle.tube.k)
+            X, index.k, as.integer(oracle.tube.k),
+            coefficients = coefficients
         )
     }
     if (is.null(oracle.tube.radius)) {
@@ -442,6 +568,8 @@ quadform.grid.geodesic.distances <- function(X,
     out <- rcpp_quadform_grid_geodesic_distances(
         X,
         as.integer(index.k),
+        as.numeric(coefficients),
+        domain.shape,
         as.numeric(domain.radius),
         as.integer(grid.size),
         as.integer(sample.connection.k),
@@ -465,14 +593,15 @@ quadform.grid.geodesic.distances <- function(X,
     out
 }
 
-.quadform.default.oracle.tube.radius <- function(X, index.k, oracle.tube.k) {
+.quadform.default.oracle.tube.radius <- function(X, index.k, oracle.tube.k,
+                                                coefficients = NULL) {
     n <- nrow(X)
     if (n < 2L) {
         stop("At least two sample points are required for sample-path oracle distances.",
              call. = FALSE)
     }
     k <- min(as.integer(oracle.tube.k), n - 1L)
-    X.embed <- quadform.embed(X, index.k = index.k)
+    X.embed <- quadform.embed(X, index.k = index.k, coefficients = coefficients)
     kth <- numeric(n)
     for (i in seq_len(n)) {
         d <- sqrt(rowSums((t(t(X.embed) - X.embed[i, ]))^2))
@@ -482,22 +611,30 @@ quadform.grid.geodesic.distances <- function(X,
     as.numeric(stats::median(kth))
 }
 
-.quadform.reference.grid.2d <- function(domain.radius, grid.size) {
+.quadform.reference.grid.2d <- function(domain.radius, grid.size,
+                                        domain.shape = c("disk", "square")) {
+    domain.shape <- .validate.quadform.domain.shape(domain.shape)
     coords <- seq(-domain.radius, domain.radius, length.out = grid.size)
     grid <- expand.grid(x1 = coords, x2 = coords)
     X <- as.matrix(grid)
-    inside <- rowSums(X^2) <= domain.radius^2 * (1 + 1e-12)
+    if (identical(domain.shape, "disk")) {
+        inside <- rowSums(X^2) <= domain.radius^2 * (1 + 1e-12)
+    } else {
+        inside <- rep(TRUE, nrow(X))
+    }
     X <- X[inside, , drop = FALSE]
     storage.mode(X) <- "double"
     X
 }
 
 .sample.quadform.reference.pairs <- function(domain.radius,
+                                             domain.shape,
                                              reference.grid.size,
                                              n.sources,
                                              targets.per.source,
                                              seed) {
-    grid <- .quadform.reference.grid.2d(domain.radius, reference.grid.size)
+    grid <- .quadform.reference.grid.2d(domain.radius, reference.grid.size,
+                                        domain.shape = domain.shape)
     n.grid <- nrow(grid)
     pair.index <- .with.quadform.seed(seed, {
         sources <- sample.int(n.grid, n.sources, replace = n.sources > n.grid)
@@ -568,6 +705,7 @@ quadform.grid.geodesic.distances <- function(X,
 #' @param index.k Integer between 0 and 2. Number of positive-square terms in
 #'   the quadratic form.
 #' @param domain.radius Positive numeric scalar. Radius of the parameter disk.
+#' @param domain.shape Character scalar, either `"disk"` or `"square"`.
 #' @param grid.sizes Integer vector of candidate grid sizes.
 #' @param reference.grid.size Integer scalar. High-resolution grid size used as
 #'   the numerical reference.
@@ -595,13 +733,17 @@ quadform.grid.geodesic.distances <- function(X,
 #'
 #' @export
 quadform.grid.geodesic.calibration <- function(index.k,
+                                               coefficients = NULL,
                                                domain.radius = 1,
+                                               domain.shape = c("disk", "square"),
                                                grid.sizes = c(101, 201, 251, 501),
                                                reference.grid.size = 1001,
                                                n.sources = 50,
                                                targets.per.source = 20,
                                                seed = NULL) {
     .validate.quadform.index(2L, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, 2L)
+    domain.shape <- .validate.quadform.domain.shape(domain.shape)
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
@@ -636,6 +778,7 @@ quadform.grid.geodesic.calibration <- function(index.k,
     }
     pairs <- .sample.quadform.reference.pairs(
         domain.radius = domain.radius,
+        domain.shape = domain.shape,
         reference.grid.size = reference.grid.size,
         n.sources = as.integer(n.sources),
         targets.per.source = as.integer(targets.per.source),
@@ -650,6 +793,8 @@ quadform.grid.geodesic.calibration <- function(index.k,
             pair.results[[as.character(grid.size)]] <-
                 rcpp_quadform_grid_pair_distances(
                     as.integer(index.k),
+                    as.numeric(coefficients),
+                    domain.shape,
                     as.numeric(domain.radius),
                     as.integer(grid.size),
                     pairs$pair_points
@@ -676,7 +821,9 @@ quadform.grid.geodesic.calibration <- function(index.k,
         pair_index = pairs$pair_index,
         metadata = list(
             index_k = as.integer(index.k),
+            coefficients = coefficients,
             domain_radius = as.numeric(domain.radius),
+            domain_shape = domain.shape,
             grid_sizes = as.integer(grid.sizes),
             reference_grid_size = as.integer(reference.grid.size),
             n_sources = as.integer(n.sources),
@@ -692,23 +839,27 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #' Sample a 2D Quadratic Surface Dataset with Reference Geodesics
 #'
 #' @description
-#' Samples parameter points from the disk
-#' \eqn{\{x \in \mathbb{R}^2 : \|x\|_2 \le r\}} and embeds them into the
-#' quadratic graph surface
+#' Samples parameter points from either the disk
+#' \eqn{\{x \in \mathbb{R}^2 : \|x\|_2 \le r\}} or the square
+#' \eqn{[-r,r]^2} and embeds them into the quadratic graph surface
 #' \deqn{q(x)=\sum_{i=1}^k x_i^2-\sum_{i=k+1}^2 x_i^2.}
-#' The currently supported sampling method is explicitly named
-#' `"uniform.parameter.disk"`: points are uniform in the parameter disk, not
-#' with respect to the induced surface-area measure. The function also builds
-#' the regular parameter-disk reference grid used by
+#' The sampling methods are explicitly named by domain and density pattern:
+#' `"uniform.parameter.disk"`, `"radial.center.parameter.disk"`,
+#' `"radial.boundary.parameter.disk"`, `"uniform.parameter.square"`,
+#' `"radial.center.parameter.square"`, and
+#' `"radial.boundary.parameter.square"`. Points are sampled in parameter
+#' coordinates, not with respect to the induced surface-area measure. The
+#' function also builds the regular parameter-domain reference grid used by
 #' [quadform.reference.geodesics()] and returns sample-by-sample reference
 #' geodesic distances.
 #'
 #' @param n Positive integer. Number of sample points.
 #' @param index.k Integer between 0 and 2. Number of positive-square terms in
 #'   the quadratic form.
-#' @param domain.radius Positive numeric scalar. Radius of the parameter disk.
-#' @param sample.method Character scalar. Currently only
-#'   `"uniform.parameter.disk"` is supported.
+#' @param domain.radius Positive numeric scalar. Radius of the parameter disk
+#'   or half-side length of the parameter square.
+#' @param sample.method Character scalar naming the parameter-domain sampling
+#'   method.
 #' @param grid.size Integer at least 5. Number of reference-grid coordinates
 #'   along each axis before clipping to the parameter disk.
 #' @param sample.connection.k Positive integer. Number of nearest reference-grid
@@ -743,8 +894,16 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #' @export
 quadform.sample.dataset <- function(n,
                                     index.k,
+                                    coefficients = NULL,
                                     domain.radius = 1,
-                                    sample.method = c("uniform.parameter.disk"),
+                                    sample.method = c(
+                                        "uniform.parameter.disk",
+                                        "radial.center.parameter.disk",
+                                        "radial.boundary.parameter.disk",
+                                        "uniform.parameter.square",
+                                        "radial.center.parameter.square",
+                                        "radial.boundary.parameter.square"
+                                    ),
                                     grid.size = 51,
                                     sample.connection.k = 8,
                                     seed = NULL) {
@@ -754,27 +913,33 @@ quadform.sample.dataset <- function(n,
     }
     n <- as.integer(n)
     .validate.quadform.index(2L, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, 2L)
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
     }
     sample.method <- match.arg(sample.method)
+    domain.shape <- if (grepl("\\.square$", sample.method)) "square" else "disk"
 
     X.param <- .with.quadform.seed(
         seed,
-        .quadform.sample.uniform.parameter.disk(n, domain.radius)
+        .quadform.sample.parameter(n, domain.radius, sample.method)
     )
-    X.embed <- quadform.embed(X.param, index.k = index.k)
+    X.embed <- quadform.embed(X.param, index.k = index.k,
+                              coefficients = coefficients)
     ref <- quadform.reference.geodesics(
         X.param,
         index.k = index.k,
+        coefficients = coefficients,
         domain.radius = domain.radius,
+        domain.shape = domain.shape,
         grid.size = grid.size,
         sample.connection.k = sample.connection.k
     )
     grid.idx <- seq.int(n + 1L, nrow(ref$vertices))
     grid.param <- ref$vertices[grid.idx, , drop = FALSE]
-    vertices.embed <- quadform.embed(ref$vertices, index.k = index.k)
+    vertices.embed <- quadform.embed(ref$vertices, index.k = index.k,
+                                     coefficients = coefficients)
 
     out <- list(
         X_param = X.param,
@@ -784,7 +949,8 @@ quadform.sample.dataset <- function(n,
         distances = ref$distances,
         reference = list(
             grid_param = grid.param,
-            grid_embed = quadform.embed(grid.param, index.k = index.k),
+            grid_embed = quadform.embed(grid.param, index.k = index.k,
+                                        coefficients = coefficients),
             vertices_param = ref$vertices,
             vertices_embed = vertices.embed,
             sample_vertex = seq_len(n),
@@ -793,13 +959,16 @@ quadform.sample.dataset <- function(n,
             edge_weight = ref$edge_weight,
             n_reference_vertices = ref$n_reference_vertices,
             n_edges = ref$n_edges,
+            domain_shape = ref$domain_shape,
             grid_size = ref$grid_size,
             sample_connection_k = ref$sample_connection_k
         ),
         metadata = list(
             dim = 2L,
             index_k = as.integer(index.k),
+            coefficients = coefficients,
             domain_radius = as.numeric(domain.radius),
+            domain_shape = domain.shape,
             sample_method = sample.method,
             grid_size = as.integer(ref$grid_size),
             sample_connection_k = as.integer(ref$sample_connection_k),

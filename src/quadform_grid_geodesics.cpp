@@ -6,6 +6,7 @@
 #include <limits>
 #include <queue>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -15,6 +16,9 @@ namespace {
 struct GridGraph {
     int grid_size;
     int index_k;
+    double c1;
+    double c2;
+    std::string domain_shape;
     double domain_radius;
     double step;
     int n_vertices;
@@ -28,7 +32,9 @@ struct GridGraph {
 
 double quadform_edge_length_2d(double ux, double uy,
                                double vx, double vy,
-                               int index_k) {
+                               int index_k,
+                               double c1,
+                               double c2) {
     const double dx = vx - ux;
     const double dy = vy - uy;
     const double A = dx * dx + dy * dy;
@@ -37,8 +43,8 @@ double quadform_edge_length_2d(double ux, double uy,
     }
     const double s1 = index_k >= 1 ? 1.0 : -1.0;
     const double s2 = index_k >= 2 ? 1.0 : -1.0;
-    const double a = 2.0 * (ux * s1 * dx + uy * s2 * dy);
-    const double b = 2.0 * (dx * s1 * dx + dy * s2 * dy);
+    const double a = 2.0 * (ux * s1 * c1 * dx + uy * s2 * c2 * dy);
+    const double b = 2.0 * (dx * s1 * c1 * dx + dy * s2 * c2 * dy);
     if (std::abs(b) <= std::sqrt(std::numeric_limits<double>::epsilon())) {
         return std::sqrt(A + a * a);
     }
@@ -54,6 +60,8 @@ int cell_index(int row, int col, int grid_size) {
 }
 
 GridGraph build_quadform_grid_graph(int index_k,
+                                    const Rcpp::NumericVector& coefficients,
+                                    const std::string& domain_shape,
                                     double domain_radius,
                                     int grid_size) {
     if (index_k < 0 || index_k > 2) {
@@ -65,10 +73,21 @@ GridGraph build_quadform_grid_graph(int index_k,
     if (grid_size < 5) {
         throw std::runtime_error("'grid.size' must be an integer at least 5.");
     }
+    if (coefficients.size() != 2 ||
+        !std::isfinite(coefficients[0]) || !std::isfinite(coefficients[1]) ||
+        coefficients[0] <= 0.0 || coefficients[1] <= 0.0) {
+        throw std::runtime_error("'coefficients' must be a positive finite numeric vector of length 2.");
+    }
+    if (domain_shape != "disk" && domain_shape != "square") {
+        throw std::runtime_error("'domain.shape' must be either 'disk' or 'square'.");
+    }
 
     GridGraph g;
     g.grid_size = grid_size;
     g.index_k = index_k;
+    g.c1 = coefficients[0];
+    g.c2 = coefficients[1];
+    g.domain_shape = domain_shape;
     g.domain_radius = domain_radius;
     g.step = 2.0 * domain_radius / static_cast<double>(grid_size - 1);
     g.cell_id.assign(static_cast<std::size_t>(grid_size) * grid_size, -1);
@@ -78,7 +97,7 @@ GridGraph build_quadform_grid_graph(int index_k,
         const double x = -domain_radius + g.step * static_cast<double>(row);
         for (int col = 0; col < grid_size; ++col) {
             const double y = -domain_radius + g.step * static_cast<double>(col);
-            if (x * x + y * y <= tol_radius2) {
+            if (domain_shape == "square" || x * x + y * y <= tol_radius2) {
                 const int id = static_cast<int>(g.x.size());
                 g.cell_id[static_cast<std::size_t>(cell_index(row, col, grid_size))] = id;
                 g.x.push_back(x);
@@ -111,7 +130,9 @@ GridGraph build_quadform_grid_graph(int index_k,
                 const double w = quadform_edge_length_2d(
                     g.x[static_cast<std::size_t>(from)], g.y[static_cast<std::size_t>(from)],
                     g.x[static_cast<std::size_t>(to)], g.y[static_cast<std::size_t>(to)],
-                    index_k
+                    index_k,
+                    g.c1,
+                    g.c2
                 );
                 g.adj[static_cast<std::size_t>(from)].push_back(to);
                 g.weight[static_cast<std::size_t>(from)].push_back(w);
@@ -125,9 +146,16 @@ GridGraph build_quadform_grid_graph(int index_k,
     return g;
 }
 
+bool point_inside_domain(double x, double y, const GridGraph& g, double tol = 1e-8) {
+    if (g.domain_shape == "disk") {
+        return x * x + y * y <= g.domain_radius * g.domain_radius * (1.0 + tol);
+    }
+    return std::max(std::abs(x), std::abs(y)) <= g.domain_radius * (1.0 + tol);
+}
+
 int nearest_grid_vertex(const GridGraph& g, double qx, double qy, double* snap_distance) {
-    if (qx * qx + qy * qy > g.domain_radius * g.domain_radius * (1.0 + 1e-8)) {
-        throw std::runtime_error("All query points must lie inside the parameter disk.");
+    if (!point_inside_domain(qx, qy, g)) {
+        throw std::runtime_error("All query points must lie inside the parameter domain.");
     }
     int row0 = static_cast<int>(std::llround((qx + g.domain_radius) / g.step));
     int col0 = static_cast<int>(std::llround((qy + g.domain_radius) / g.step));
@@ -342,10 +370,10 @@ std::vector<int> nearest_grid_vertices_bruteforce(const GridGraph& g,
     return out;
 }
 
-double quadform_value_2d(double x, double y, int index_k) {
+double quadform_value_2d(double x, double y, int index_k, double c1, double c2) {
     const double s1 = index_k >= 1 ? 1.0 : -1.0;
     const double s2 = index_k >= 2 ? 1.0 : -1.0;
-    return s1 * x * x + s2 * y * y;
+    return s1 * c1 * x * x + s2 * c2 * y * y;
 }
 
 void embedded_vertex_coords(int vertex,
@@ -363,7 +391,7 @@ void embedded_vertex_coords(int vertex,
         x = X(sample, 0);
         y = X(sample, 1);
     }
-    z = quadform_value_2d(x, y, index_k);
+    z = quadform_value_2d(x, y, index_k, g.c1, g.c2);
 }
 
 double embedded_distance(double ax, double ay, double az,
@@ -387,7 +415,7 @@ Projection project_sample_to_embedded_path(int sample,
                                            int index_k) {
     double px = X(sample, 0);
     double py = X(sample, 1);
-    double pz = quadform_value_2d(px, py, index_k);
+    double pz = quadform_value_2d(px, py, index_k, g.c1, g.c2);
     Projection best;
     best.distance = std::numeric_limits<double>::infinity();
     best.arclength = 0.0;
@@ -499,10 +527,10 @@ OraclePathResult sample_path_oracle_distance(int source_sample,
         const int b = ordered[r + 1];
         const double ax = X(a, 0);
         const double ay = X(a, 1);
-        const double az = quadform_value_2d(ax, ay, index_k);
+        const double az = quadform_value_2d(ax, ay, index_k, g.c1, g.c2);
         const double bx = X(b, 0);
         const double by = X(b, 1);
-        const double bz = quadform_value_2d(bx, by, index_k);
+        const double bz = quadform_value_2d(bx, by, index_k, g.c1, g.c2);
         out.distance += embedded_distance(ax, ay, az, bx, by, bz);
     }
     out.status_code = out.n_points == 2 ? 2 : 1; // direct or ok
@@ -513,13 +541,16 @@ OraclePathResult sample_path_oracle_distance(int source_sample,
 
 // [[Rcpp::export]]
 Rcpp::List rcpp_quadform_grid_pair_distances(int index_k,
+                                             const Rcpp::NumericVector& coefficients,
+                                             const std::string& domain_shape,
                                              double domain_radius,
                                              int grid_size,
                                              const Rcpp::NumericMatrix& pair_points) {
     if (pair_points.ncol() != 4) {
         Rcpp::stop("'pair.points' must have four columns: x1, y1, x2, y2.");
     }
-    GridGraph g = build_quadform_grid_graph(index_k, domain_radius, grid_size);
+    GridGraph g = build_quadform_grid_graph(index_k, coefficients, domain_shape,
+                                            domain_radius, grid_size);
     const int n_pairs = pair_points.nrow();
     std::vector<int> source(n_pairs);
     std::vector<int> target(n_pairs);
@@ -563,6 +594,8 @@ Rcpp::List rcpp_quadform_grid_pair_distances(int index_k,
         Rcpp::Named("n_edges") = g.n_edges,
         Rcpp::Named("grid_size") = grid_size,
         Rcpp::Named("index_k") = index_k,
+        Rcpp::Named("coefficients") = coefficients,
+        Rcpp::Named("domain_shape") = domain_shape,
         Rcpp::Named("domain_radius") = domain_radius
     );
 }
@@ -570,6 +603,8 @@ Rcpp::List rcpp_quadform_grid_pair_distances(int index_k,
 // [[Rcpp::export]]
 Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X,
                                                  int index_k,
+                                                 const Rcpp::NumericVector& coefficients,
+                                                 const std::string& domain_shape,
                                                  double domain_radius,
                                                  int grid_size,
                                                  int sample_connection_k,
@@ -589,7 +624,8 @@ Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X,
     if (with_oracle && oracle_tube_k < 1) {
         Rcpp::stop("'oracle.tube.k' must be a positive integer.");
     }
-    GridGraph g = build_quadform_grid_graph(index_k, domain_radius, grid_size);
+    GridGraph g = build_quadform_grid_graph(index_k, coefficients, domain_shape,
+                                            domain_radius, grid_size);
     const int n_query = X.nrow();
     const int k = std::min(sample_connection_k, g.n_vertices);
     std::vector<std::vector<int> > adj = g.adj;
@@ -600,8 +636,8 @@ Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X,
     for (int i = 0; i < n_query; ++i) {
         const double qx = X(i, 0);
         const double qy = X(i, 1);
-        if (qx * qx + qy * qy > domain_radius * domain_radius * (1.0 + 1e-8)) {
-            Rcpp::stop("All rows of 'X' must lie inside the parameter disk.");
+        if (!point_inside_domain(qx, qy, g)) {
+            Rcpp::stop("All rows of 'X' must lie inside the parameter domain.");
         }
         const int qid = g.n_vertices + i;
         std::vector<int> nbrs = nearest_grid_vertices_bruteforce(g, qx, qy, k);
@@ -609,7 +645,9 @@ Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X,
             const double w = quadform_edge_length_2d(
                 qx, qy,
                 g.x[static_cast<std::size_t>(v)], g.y[static_cast<std::size_t>(v)],
-                index_k
+                index_k,
+                g.c1,
+                g.c2
             );
             adj[static_cast<std::size_t>(qid)].push_back(v);
             weight[static_cast<std::size_t>(qid)].push_back(w);
@@ -683,6 +721,8 @@ Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X,
         Rcpp::Named("grid_size") = grid_size,
         Rcpp::Named("sample_connection_k") = k,
         Rcpp::Named("index_k") = index_k,
+        Rcpp::Named("coefficients") = coefficients,
+        Rcpp::Named("domain_shape") = domain_shape,
         Rcpp::Named("domain_radius") = domain_radius
     );
     if (with_oracle) {
