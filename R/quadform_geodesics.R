@@ -59,9 +59,29 @@
     radius
 }
 
+.validate.quadform.reference.domain.shape <- function(domain.shape, p) {
+    if (p == 2L) {
+        return(.validate.quadform.domain.shape(domain.shape))
+    }
+    if (p == 3L) {
+        return(match.arg(domain.shape, c("ball", "cube")))
+    }
+    stop("Reference-domain helpers currently support only p = 2 or p = 3.",
+         call. = FALSE)
+}
+
 .quadform.points.inside.domain <- function(X, domain.radius, domain.shape,
                                            tol = 1e-10) {
     if (identical(domain.shape, "disk")) {
+        sqrt(rowSums(X^2)) <= domain.radius * (1 + tol)
+    } else {
+        apply(abs(X), 1L, max) <= domain.radius * (1 + tol)
+    }
+}
+
+.quadform.points.inside.domain.nd <- function(X, domain.radius, domain.shape,
+                                              tol = 1e-10) {
+    if (domain.shape %in% c("disk", "ball")) {
         sqrt(rowSums(X^2)) <= domain.radius * (1 + tol)
     } else {
         apply(abs(X), 1L, max) <= domain.radius * (1 + tol)
@@ -208,6 +228,38 @@ quadform.edge.length <- function(u, v, index.k, coefficients = NULL,
         0.5 * (y * sqrt(A + y^2) + A * asinh(y / sqrt.A))
     }
     as.numeric((antiderivative(a + b) - antiderivative(a)) / b)
+}
+
+#' Compute Vectorized Exact Segment Lengths on a Quadratic Hypersurface
+#'
+#' @description
+#' Vectorized C++ implementation of `quadform.edge.length()` for matching rows
+#' of endpoint matrices. This is mainly intended for building reference graphs
+#' whose edge weights are exact lengths of embedded straight parameter
+#' segments.
+#'
+#' @param U,V Numeric matrices or data frames with matching dimensions. Row
+#'   `i` of `U` and row `i` of `V` define the two endpoints of segment `i`.
+#' @inheritParams quadform.embed
+#'
+#' @return Numeric vector of segment lengths.
+#'
+#' @examples
+#' U <- rbind(c(0, 0), c(0, 0))
+#' V <- rbind(c(1, 0), c(0, 1))
+#' quadform.edge.lengths(U, V, index.k = 2)
+#'
+#' @export
+quadform.edge.lengths <- function(U, V, index.k, coefficients = NULL) {
+    U <- .validate.quadform.data.matrix(U)
+    V <- .validate.quadform.data.matrix(V)
+    if (!identical(dim(U), dim(V))) {
+        stop("'U' and 'V' must have the same dimensions.", call. = FALSE)
+    }
+    p <- ncol(U)
+    index.k <- .validate.quadform.index(p, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, p)
+    rcpp_quadform_edge_lengths(U, V, index.k, coefficients)
 }
 
 .quadform.reference.vertices.2d <- function(X, domain.radius, grid.size,
@@ -836,6 +888,444 @@ quadform.grid.geodesic.calibration <- function(index.k,
     out
 }
 
+.quadform.sample.parameter.3d <- function(n, domain.radius, domain.shape) {
+    if (identical(domain.shape, "ball")) {
+        dirs <- matrix(stats::rnorm(n * 3L), ncol = 3L)
+        norms <- sqrt(rowSums(dirs^2))
+        while (any(norms == 0)) {
+            zero <- which(norms == 0)
+            dirs[zero, ] <- matrix(stats::rnorm(length(zero) * 3L), ncol = 3L)
+            norms <- sqrt(rowSums(dirs^2))
+        }
+        dirs <- dirs / norms
+        radii <- domain.radius * stats::runif(n)^(1 / 3)
+        return(dirs * radii)
+    }
+    matrix(stats::runif(n * 3L, -domain.radius, domain.radius), ncol = 3L)
+}
+
+.quadform.sample.boundary.3d <- function(n, domain.radius, domain.shape) {
+    if (n <= 0L) {
+        return(matrix(numeric(), ncol = 3L))
+    }
+    if (identical(domain.shape, "ball")) {
+        dirs <- matrix(stats::rnorm(n * 3L), ncol = 3L)
+        norms <- sqrt(rowSums(dirs^2))
+        while (any(norms == 0)) {
+            zero <- which(norms == 0)
+            dirs[zero, ] <- matrix(stats::rnorm(length(zero) * 3L), ncol = 3L)
+            norms <- sqrt(rowSums(dirs^2))
+        }
+        return((dirs / norms) * domain.radius)
+    }
+
+    out <- matrix(stats::runif(n * 3L, -domain.radius, domain.radius), ncol = 3L)
+    face <- sample.int(6L, n, replace = TRUE)
+    axis <- ((face - 1L) %% 3L) + 1L
+    sign <- ifelse(face <= 3L, -1, 1)
+    out[cbind(seq_len(n), axis)] <- sign * domain.radius
+    if (n >= 8L) {
+        corners <- as.matrix(expand.grid(
+            x1 = c(-domain.radius, domain.radius),
+            x2 = c(-domain.radius, domain.radius),
+            x3 = c(-domain.radius, domain.radius)
+        ))
+        out[seq_len(8L), ] <- corners
+    }
+    out
+}
+
+.quadform.domain.volume.3d <- function(domain.radius, domain.shape) {
+    if (identical(domain.shape, "ball")) {
+        4 * pi * domain.radius^3 / 3
+    } else {
+        (2 * domain.radius)^3
+    }
+}
+
+.quadform.cell.key <- function(x, epsilon) {
+    paste(floor(x / epsilon), collapse = ",")
+}
+
+.quadform.greedy.epsilon.net <- function(candidates, epsilon, forced.n = 0L) {
+    if (!is.numeric(epsilon) || length(epsilon) != 1L ||
+        !is.finite(epsilon) || epsilon <= 0) {
+        stop("'epsilon' must be a positive finite numeric scalar.", call. = FALSE)
+    }
+    candidates <- .validate.quadform.data.matrix(candidates)
+    p <- ncol(candidates)
+    forced.n <- as.integer(forced.n)
+    if (forced.n < 0L || forced.n > nrow(candidates)) {
+        stop("'forced.n' must be between 0 and nrow(candidates).", call. = FALSE)
+    }
+    neighbor.offsets <- as.matrix(expand.grid(rep(list(-1L:1L), p)))
+    selected <- integer()
+    grid <- new.env(parent = emptyenv(), hash = TRUE)
+    eps2 <- epsilon^2
+
+    insert <- function(i) {
+        key <- .quadform.cell.key(candidates[i, ], epsilon)
+        old <- grid[[key]]
+        grid[[key]] <- c(old, i)
+        selected <<- c(selected, i)
+    }
+    has.close <- function(i) {
+        cell <- floor(candidates[i, ] / epsilon)
+        for (r in seq_len(nrow(neighbor.offsets))) {
+            key <- paste(cell + neighbor.offsets[r, ], collapse = ",")
+            idx <- grid[[key]]
+            if (length(idx)) {
+                d2 <- rowSums((candidates[idx, , drop = FALSE] -
+                               matrix(candidates[i, ], nrow = length(idx),
+                                      ncol = p, byrow = TRUE))^2)
+                if (any(d2 < eps2 * (1 - 1e-12))) {
+                    return(TRUE)
+                }
+            }
+        }
+        FALSE
+    }
+
+    if (forced.n > 0L) {
+        for (i in seq_len(forced.n)) {
+            insert(i)
+        }
+    }
+    if (forced.n < nrow(candidates)) {
+        for (i in seq.int(forced.n + 1L, nrow(candidates))) {
+            if (!has.close(i)) {
+                insert(i)
+            }
+        }
+    }
+    candidates[selected, , drop = FALSE]
+}
+
+.quadform.epsilon.net.3d <- function(X,
+                                     domain.radius,
+                                     domain.shape,
+                                     n.ref,
+                                     seed = NULL,
+                                     candidate.multiplier = 6,
+                                     boundary.fraction = 0.2,
+                                     epsilon = NULL) {
+    X <- .validate.quadform.data.matrix(X)
+    if (ncol(X) != 3L) {
+        stop("'X' must have three parameter-coordinate columns.", call. = FALSE)
+    }
+    if (!is.numeric(n.ref) || length(n.ref) != 1L || !is.finite(n.ref) ||
+        n.ref != floor(n.ref) || n.ref < nrow(X)) {
+        stop("'n.ref' must be an integer at least nrow(X).", call. = FALSE)
+    }
+    if (!is.numeric(candidate.multiplier) || length(candidate.multiplier) != 1L ||
+        !is.finite(candidate.multiplier) || candidate.multiplier < 1) {
+        stop("'candidate.multiplier' must be a finite scalar at least 1.",
+             call. = FALSE)
+    }
+    if (!is.numeric(boundary.fraction) || length(boundary.fraction) != 1L ||
+        !is.finite(boundary.fraction) || boundary.fraction < 0 ||
+        boundary.fraction > 0.9) {
+        stop("'boundary.fraction' must be a finite scalar in [0, 0.9].",
+             call. = FALSE)
+    }
+    if (!all(.quadform.points.inside.domain.nd(X, domain.radius, domain.shape))) {
+        stop("All rows of 'X' must lie inside the parameter domain.",
+             call. = FALSE)
+    }
+    if (is.null(epsilon)) {
+        volume <- .quadform.domain.volume.3d(domain.radius, domain.shape)
+        epsilon <- 0.62 * (volume / n.ref)^(1 / 3)
+    } else if (!is.numeric(epsilon) || length(epsilon) != 1L ||
+               !is.finite(epsilon) || epsilon <= 0) {
+        stop("'epsilon' must be NULL or a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    n.boundary <- as.integer(ceiling(n.ref * boundary.fraction))
+    n.interior <- as.integer(ceiling(n.ref * candidate.multiplier))
+    candidates <- .with.quadform.seed(seed, {
+        rbind(
+            X,
+            .quadform.sample.boundary.3d(n.boundary, domain.radius, domain.shape),
+            .quadform.sample.parameter.3d(n.interior, domain.radius, domain.shape)
+        )
+    })
+    vertices <- .quadform.greedy.epsilon.net(candidates, epsilon,
+                                             forced.n = nrow(X))
+    rownames(vertices) <- NULL
+    list(
+        vertices = vertices,
+        sample_vertex = seq_len(nrow(X)),
+        epsilon = epsilon,
+        n_target = as.integer(n.ref),
+        n_candidates = nrow(candidates),
+        n_boundary_candidates = n.boundary,
+        n_vertices = nrow(vertices),
+        domain_shape = domain.shape,
+        domain_radius = domain.radius,
+        seed = seed
+    )
+}
+
+.quadform.delaunay.edges.3d <- function(vertices) {
+    if (!requireNamespace("geometry", quietly = TRUE)) {
+        stop("The optional 'geometry' package is required for 3D Delaunay reference geodesics.",
+             call. = FALSE)
+    }
+    tess <- geometry::delaunayn(vertices, options = "Qt Qbb Qc")
+    if (is.null(dim(tess))) {
+        tess <- matrix(tess, nrow = 1L)
+    }
+    if (ncol(tess) != 4L) {
+        stop("Delaunay tessellation did not return tetrahedra.", call. = FALSE)
+    }
+    edges <- rbind(
+        tess[, c(1L, 2L), drop = FALSE],
+        tess[, c(1L, 3L), drop = FALSE],
+        tess[, c(1L, 4L), drop = FALSE],
+        tess[, c(2L, 3L), drop = FALSE],
+        tess[, c(2L, 4L), drop = FALSE],
+        tess[, c(3L, 4L), drop = FALSE]
+    )
+    edges <- t(apply(edges, 1L, sort))
+    edges <- unique(edges)
+    storage.mode(edges) <- "integer"
+    edges
+}
+
+.quadform.edge.list.to.adj <- function(n.vertices, edge.matrix, edge.weight) {
+    adj <- vector("list", n.vertices)
+    weight <- vector("list", n.vertices)
+    for (i in seq_len(n.vertices)) {
+        adj[[i]] <- integer()
+        weight[[i]] <- numeric()
+    }
+    if (nrow(edge.matrix)) {
+        for (r in seq_len(nrow(edge.matrix))) {
+            a <- edge.matrix[r, 1L]
+            b <- edge.matrix[r, 2L]
+            w <- edge.weight[r]
+            adj[[a]] <- c(adj[[a]], b)
+            weight[[a]] <- c(weight[[a]], w)
+            adj[[b]] <- c(adj[[b]], a)
+            weight[[b]] <- c(weight[[b]], w)
+        }
+    }
+    list(adj_list = adj, weight_list = weight)
+}
+
+.quadform.adj.components <- function(adj.list) {
+    n <- length(adj.list)
+    comp <- rep.int(0L, n)
+    current <- 0L
+    for (i in seq_len(n)) {
+        if (comp[i] != 0L) {
+            next
+        }
+        current <- current + 1L
+        queue <- i
+        comp[i] <- current
+        head <- 1L
+        while (head <= length(queue)) {
+            v <- queue[head]
+            head <- head + 1L
+            nbr <- adj.list[[v]]
+            unseen <- nbr[comp[nbr] == 0L]
+            if (length(unseen)) {
+                comp[unseen] <- current
+                queue <- c(queue, unseen)
+            }
+        }
+    }
+    comp
+}
+
+.quadform.filter.delaunay.edges <- function(vertices,
+                                            edge.matrix,
+                                            edge.length.factor,
+                                            epsilon) {
+    if (!nrow(edge.matrix)) {
+        return(list(edge_matrix = edge.matrix,
+                    filter_factor_used = edge.length.factor,
+                    n_components = length(vertices)))
+    }
+    parameter.length <- sqrt(rowSums(
+        (vertices[edge.matrix[, 1L], , drop = FALSE] -
+         vertices[edge.matrix[, 2L], , drop = FALSE])^2
+    ))
+    factors <- unique(c(edge.length.factor,
+                        edge.length.factor * 1.5,
+                        edge.length.factor * 2,
+                        Inf))
+    best <- NULL
+    for (factor in factors) {
+        keep <- if (is.infinite(factor)) {
+            rep(TRUE, nrow(edge.matrix))
+        } else {
+            parameter.length <= factor * epsilon
+        }
+        candidate.edges <- edge.matrix[keep, , drop = FALSE]
+        graph <- .quadform.edge.list.to.adj(
+            nrow(vertices), candidate.edges, rep(1, nrow(candidate.edges))
+        )
+        comp <- .quadform.adj.components(graph$adj_list)
+        best <- list(edge_matrix = candidate.edges,
+                     filter_factor_used = factor,
+                     n_components = max(comp))
+        if (best$n_components == 1L) {
+            return(best)
+        }
+    }
+    best
+}
+
+#' Compute 3D Quadratic-Hypersurface Reference Geodesics by Delaunay Graphs
+#'
+#' @description
+#' Builds an experimental three-dimensional parameter-domain reference graph for
+#' a quadratic graph hypersurface. The reference vertices are an approximate
+#' epsilon-net that forcibly includes the supplied sample points. The one-
+#' skeleton of the 3D Delaunay tessellation is weighted by exact quadratic-
+#' hypersurface segment lengths, and shortest-path distances between sample
+#' vertices are returned.
+#'
+#' @details
+#' This function is intended as the first high-dimensional reference-geodesic
+#' oracle for the data-geodesic reconstruction experiments. It currently uses
+#' `geometry::delaunayn()` as a Qhull-backed Delaunay prototype. The exact edge
+#' lengths are computed by a C++ vectorization of `quadform.edge.length()`. Long
+#' Delaunay edges can be removed with `edge.length.factor`; if that disconnects
+#' the reference graph, the factor is progressively relaxed, falling back to the
+#' unfiltered Delaunay one-skeleton.
+#'
+#' @param X Numeric matrix or data frame with three-dimensional parameter
+#'   points in rows.
+#' @inheritParams quadform.embed
+#' @param domain.radius Positive numeric scalar. Radius of the parameter ball or
+#'   half-side length of the parameter cube. If `NULL`, it is inferred from `X`.
+#' @param domain.shape Parameter-domain shape, either `"ball"` or `"cube"`.
+#' @param n.ref Target number of reference vertices, including sample vertices.
+#'   The epsilon-net is approximate, so the actual number is reported.
+#' @param seed `NULL` or finite integer scalar for reproducible candidate
+#'   sampling.
+#' @param candidate.multiplier Number of interior candidate points per target
+#'   reference vertex before greedy epsilon-net filtering.
+#' @param boundary.fraction Approximate fraction of target reference vertices
+#'   used as boundary candidates before filtering.
+#' @param epsilon `NULL` or positive scalar. If supplied, this separation radius
+#'   is used directly instead of estimating one from `n.ref`.
+#' @param edge.length.factor Positive scalar used to remove Delaunay edges whose
+#'   parameter-space length exceeds `edge.length.factor * epsilon`. The filter is
+#'   relaxed automatically if needed for connectivity.
+#'
+#' @return A list of class `"quadform_delaunay_geodesics"` containing the sample
+#'   distance matrix, reference vertices, Delaunay edge set, edge weights, and
+#'   diagnostics.
+#'
+#' @examples
+#' if (requireNamespace("geometry", quietly = TRUE)) {
+#'   X <- matrix(c(0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5), ncol = 3,
+#'               byrow = TRUE)
+#'   ref <- quadform.delaunay.geodesic.distances(X, index.k = 3, n.ref = 80,
+#'                                               domain.shape = "cube", seed = 1)
+#'   dim(ref$distances)
+#' }
+#'
+#' @export
+quadform.delaunay.geodesic.distances <- function(X,
+                                                 index.k,
+                                                 coefficients = NULL,
+                                                 domain.radius = NULL,
+                                                 domain.shape = c("ball", "cube"),
+                                                 n.ref = 5000,
+                                                 seed = NULL,
+                                                 candidate.multiplier = 6,
+                                                 boundary.fraction = 0.2,
+                                                 epsilon = NULL,
+                                                 edge.length.factor = 3) {
+    X <- .validate.quadform.data.matrix(X)
+    if (ncol(X) != 3L) {
+        stop("'X' must have three parameter-coordinate columns.", call. = FALSE)
+    }
+    index.k <- .validate.quadform.index(3L, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, 3L)
+    domain.shape <- match.arg(domain.shape)
+    if (is.null(domain.radius)) {
+        domain.radius <- if (identical(domain.shape, "ball")) {
+            max(sqrt(rowSums(X^2)))
+        } else {
+            max(abs(X))
+        }
+        if (domain.radius == 0) {
+            domain.radius <- 1
+        }
+    }
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.numeric(edge.length.factor) || length(edge.length.factor) != 1L ||
+        !is.finite(edge.length.factor) || edge.length.factor <= 0) {
+        stop("'edge.length.factor' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+
+    net <- .quadform.epsilon.net.3d(
+        X = X,
+        domain.radius = domain.radius,
+        domain.shape = domain.shape,
+        n.ref = n.ref,
+        seed = seed,
+        candidate.multiplier = candidate.multiplier,
+        boundary.fraction = boundary.fraction,
+        epsilon = epsilon
+    )
+    all.edges <- .quadform.delaunay.edges.3d(net$vertices)
+    filtered <- .quadform.filter.delaunay.edges(
+        net$vertices, all.edges, edge.length.factor, net$epsilon
+    )
+    edge.matrix <- filtered$edge_matrix
+    edge.weight <- quadform.edge.lengths(
+        net$vertices[edge.matrix[, 1L], , drop = FALSE],
+        net$vertices[edge.matrix[, 2L], , drop = FALSE],
+        index.k = index.k,
+        coefficients = coefficients
+    )
+    graph <- .quadform.edge.list.to.adj(nrow(net$vertices), edge.matrix,
+                                        edge.weight)
+    D <- shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
+
+    out <- list(
+        distances = D,
+        vertices_param = net$vertices,
+        vertices_embed = quadform.embed(net$vertices, index.k = index.k,
+                                        coefficients = coefficients),
+        sample_vertex = net$sample_vertex,
+        edge_matrix = edge.matrix,
+        edge_weight = edge.weight,
+        adj_list = graph$adj_list,
+        weight_list = graph$weight_list,
+        n_sample_vertices = nrow(X),
+        n_reference_vertices = nrow(net$vertices),
+        n_edges = nrow(edge.matrix),
+        n_delaunay_edges = nrow(all.edges),
+        epsilon = net$epsilon,
+        n_target = net$n_target,
+        n_candidates = net$n_candidates,
+        n_boundary_candidates = net$n_boundary_candidates,
+        filter_factor_requested = edge.length.factor,
+        filter_factor_used = filtered$filter_factor_used,
+        n_components = filtered$n_components,
+        index_k = as.integer(index.k),
+        coefficients = coefficients,
+        domain_shape = domain.shape,
+        domain_radius = as.numeric(domain.radius),
+        seed = seed
+    )
+    class(out) <- c("quadform_delaunay_geodesics", "list")
+    out
+}
+
 #' Sample a 2D Quadratic Surface Dataset with Reference Geodesics
 #'
 #' @description
@@ -850,7 +1340,7 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #' `"radial.boundary.parameter.square"`. Points are sampled in parameter
 #' coordinates, not with respect to the induced surface-area measure. The
 #' function also builds the regular parameter-domain reference grid used by
-#' [quadform.reference.geodesics()] and returns sample-by-sample reference
+#' `quadform.reference.geodesics()` and returns sample-by-sample reference
 #' geodesic distances.
 #'
 #' @param n Positive integer. Number of sample points.

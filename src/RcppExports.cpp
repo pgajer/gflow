@@ -112,6 +112,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rcpp_quadform_edge_lengths
+Rcpp::NumericVector rcpp_quadform_edge_lengths(const Rcpp::NumericMatrix& U, const Rcpp::NumericMatrix& V, int index_k, const Rcpp::NumericVector& coefficients);
+RcppExport SEXP _gflow_rcpp_quadform_edge_lengths(SEXP USEXP, SEXP VSEXP, SEXP index_kSEXP, SEXP coefficientsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type U(USEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type V(VSEXP);
+    Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_edge_lengths(U, V, index_k, coefficients));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rcpp_quadform_grid_pair_distances
 Rcpp::List rcpp_quadform_grid_pair_distances(int index_k, const Rcpp::NumericVector& coefficients, const std::string& domain_shape, double domain_radius, int grid_size, const Rcpp::NumericMatrix& pair_points);
 RcppExport SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP index_kSEXP, SEXP coefficientsSEXP, SEXP domain_shapeSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP pair_pointsSEXP) {

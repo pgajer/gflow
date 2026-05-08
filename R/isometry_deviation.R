@@ -200,6 +200,102 @@ isometry.distance.correlations <- function(D.estimated,
     )
 }
 
+.isometry.residual.diagnostics <- function(D.estimated,
+                                           D.true,
+                                           scale = TRUE,
+                                           true.tol = sqrt(.Machine$double.eps),
+                                           band.probs = c(1 / 3, 2 / 3)) {
+    pairs <- .isometry.pair.values(D.estimated, D.true, true.tol)
+    alpha <- if (isTRUE(scale)) {
+        isometry.scale(D.estimated, D.true, true.tol)
+    } else {
+        1
+    }
+    residual <- alpha * pairs$estimated - pairs$true
+    rel.residual <- residual / pairs$true
+    rel.abs.residual <- abs(rel.residual)
+    true.mean <- mean(pairs$true)
+    signed.bias <- if (true.mean > true.tol) {
+        mean(residual) / true.mean
+    } else {
+        NA_real_
+    }
+    bands <- rep(NA_character_, length(pairs$true))
+    if (length(unique(pairs$true)) >= 3L) {
+        cuts <- stats::quantile(pairs$true, probs = band.probs,
+                                names = FALSE, type = 7)
+        bands[pairs$true <= cuts[[1L]]] <- "short"
+        bands[pairs$true > cuts[[1L]] & pairs$true <= cuts[[2L]]] <- "mid"
+        bands[pairs$true > cuts[[2L]]] <- "long"
+    } else {
+        ranks <- rank(pairs$true, ties.method = "first")
+        third <- length(ranks) / 3
+        bands[ranks <= third] <- "short"
+        bands[ranks > third & ranks <= 2 * third] <- "mid"
+        bands[ranks > 2 * third] <- "long"
+    }
+    band.bias <- vapply(c(short = "short", mid = "mid", long = "long"),
+                        function(band) {
+                            vals <- rel.residual[bands == band]
+                            if (length(vals)) stats::median(vals, na.rm = TRUE) else NA_real_
+                        },
+                        numeric(1L))
+    q <- stats::quantile(rel.abs.residual, probs = c(0.5, 0.9, 0.95),
+                         names = FALSE, type = 7)
+    c(
+        rel_geodesic_stress = sqrt(sum(residual^2) / sum(pairs$true^2)),
+        signed_bias = signed.bias,
+        shortcut_fraction = mean(residual < 0),
+        q50_rel_abs_residual = unname(q[[1L]]),
+        q90_rel_abs_residual = unname(q[[2L]]),
+        q95_rel_abs_residual = unname(q[[3L]]),
+        short_band_bias = unname(band.bias[["short"]]),
+        mid_band_bias = unname(band.bias[["mid"]]),
+        long_band_bias = unname(band.bias[["long"]])
+    )
+}
+
+#' Compute Geodesic-Isometry Diagnostics
+#'
+#' @description
+#' Computes signed and scale-regime diagnostics for comparing estimated graph
+#' geodesic distances with reference geodesic distances. Distances are first
+#' optionally calibrated by the least-squares scale from `isometry.scale()`.
+#'
+#' @inheritParams isometry.rel.rms.error
+#' @param band.probs Numeric vector of two probabilities used to split
+#'   reference distances into short, middle, and long distance bands.
+#'
+#' @return Named numeric vector with relative geodesic stress, signed residual
+#'   bias, shortcut fraction, relative absolute residual quantiles, and
+#'   median signed relative residuals in short/mid/long reference-distance
+#'   bands.
+#'
+#' @examples
+#' D <- as.matrix(dist(1:4))
+#' isometry.geodesic.diagnostics(1.1 * D, D)
+#'
+#' @export
+isometry.geodesic.diagnostics <- function(D.estimated,
+                                          D.true,
+                                          scale = TRUE,
+                                          true.tol = sqrt(.Machine$double.eps),
+                                          band.probs = c(1 / 3, 2 / 3)) {
+    if (!is.numeric(band.probs) || length(band.probs) != 2L ||
+        any(!is.finite(band.probs)) || any(band.probs <= 0) ||
+        any(band.probs >= 1) || band.probs[[1L]] >= band.probs[[2L]]) {
+        stop("'band.probs' must be two increasing probabilities in (0, 1).",
+             call. = FALSE)
+    }
+    .isometry.residual.diagnostics(
+        D.estimated = D.estimated,
+        D.true = D.true,
+        scale = scale,
+        true.tol = true.tol,
+        band.probs = band.probs
+    )
+}
+
 #' Summarize Deviation from Isometry
 #'
 #' @description
@@ -235,6 +331,7 @@ summarize.isometry.deviation <- function(D.estimated,
         scale = scale, true.tol = true.tol
     )
     cors <- isometry.distance.correlations(D.estimated, D.true, true.tol)
+    geodesic <- isometry.geodesic.diagnostics(D.estimated, D.true, scale, true.tol)
     data.frame(
         scale = alpha,
         rel_rms_error = isometry.rel.rms.error(D.estimated, D.true, scale, true.tol),
@@ -244,6 +341,15 @@ summarize.isometry.deviation <- function(D.estimated,
         distortion_median = unname(distortion[[2L]]),
         distortion_q95 = unname(distortion[[3L]]),
         pearson_cor = unname(cors[["pearson_cor"]]),
-        spearman_cor = unname(cors[["spearman_cor"]])
+        spearman_cor = unname(cors[["spearman_cor"]]),
+        rel_geodesic_stress = unname(geodesic[["rel_geodesic_stress"]]),
+        signed_bias = unname(geodesic[["signed_bias"]]),
+        shortcut_fraction = unname(geodesic[["shortcut_fraction"]]),
+        q50_rel_abs_residual = unname(geodesic[["q50_rel_abs_residual"]]),
+        q90_rel_abs_residual = unname(geodesic[["q90_rel_abs_residual"]]),
+        q95_rel_abs_residual = unname(geodesic[["q95_rel_abs_residual"]]),
+        short_band_bias = unname(geodesic[["short_band_bias"]]),
+        mid_band_bias = unname(geodesic[["mid_band_bias"]]),
+        long_band_bias = unname(geodesic[["long_band_bias"]])
     )
 }

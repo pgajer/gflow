@@ -55,6 +55,39 @@ double quadform_edge_length_2d(double ux, double uy,
     return (antiderivative(a + b) - antiderivative(a)) / b;
 }
 
+double quadform_edge_length_generic(const Rcpp::NumericMatrix& U,
+                                    const Rcpp::NumericMatrix& V,
+                                    int row,
+                                    int index_k,
+                                    const Rcpp::NumericVector& coefficients) {
+    const int p = U.ncol();
+    double A = 0.0;
+    double a = 0.0;
+    double b = 0.0;
+    for (int col = 0; col < p; ++col) {
+        const double u = U(row, col);
+        const double h = V(row, col) - u;
+        const double sign = col < index_k ? 1.0 : -1.0;
+        const double coeff = coefficients[col];
+        A += h * h;
+        a += u * sign * coeff * h;
+        b += h * sign * coeff * h;
+    }
+    if (A == 0.0) {
+        return 0.0;
+    }
+    a *= 2.0;
+    b *= 2.0;
+    if (std::abs(b) <= std::sqrt(std::numeric_limits<double>::epsilon())) {
+        return std::sqrt(A + a * a);
+    }
+    const double sqrt_A = std::sqrt(A);
+    auto antiderivative = [A, sqrt_A](double z) {
+        return 0.5 * (z * std::sqrt(A + z * z) + A * std::asinh(z / sqrt_A));
+    };
+    return (antiderivative(a + b) - antiderivative(a)) / b;
+}
+
 int cell_index(int row, int col, int grid_size) {
     return row * grid_size + col;
 }
@@ -538,6 +571,46 @@ OraclePathResult sample_path_oracle_distance(int source_sample,
 }
 
 } // namespace
+
+// [[Rcpp::export]]
+Rcpp::NumericVector rcpp_quadform_edge_lengths(const Rcpp::NumericMatrix& U,
+                                               const Rcpp::NumericMatrix& V,
+                                               int index_k,
+                                               const Rcpp::NumericVector& coefficients) {
+    if (U.nrow() != V.nrow() || U.ncol() != V.ncol()) {
+        Rcpp::stop("'U' and 'V' must have the same dimensions.");
+    }
+    const int p = U.ncol();
+    if (p < 1) {
+        Rcpp::stop("'U' and 'V' must have at least one column.");
+    }
+    if (index_k < 0 || index_k > p) {
+        Rcpp::stop("'index.k' must be an integer between 0 and ncol(U).");
+    }
+    if (coefficients.size() != p) {
+        Rcpp::stop("'coefficients' must have length ncol(U).");
+    }
+    for (int col = 0; col < p; ++col) {
+        if (!std::isfinite(coefficients[col]) || coefficients[col] <= 0.0) {
+            Rcpp::stop("'coefficients' must be positive and finite.");
+        }
+    }
+    for (int row = 0; row < U.nrow(); ++row) {
+        for (int col = 0; col < p; ++col) {
+            if (!std::isfinite(U(row, col)) || !std::isfinite(V(row, col))) {
+                Rcpp::stop("'U' and 'V' cannot contain NA, NaN, or Inf values.");
+            }
+        }
+    }
+
+    Rcpp::NumericVector out(U.nrow());
+    for (int row = 0; row < U.nrow(); ++row) {
+        out[row] = quadform_edge_length_generic(
+            U, V, row, index_k, coefficients
+        );
+    }
+    return out;
+}
 
 // [[Rcpp::export]]
 Rcpp::List rcpp_quadform_grid_pair_distances(int index_k,

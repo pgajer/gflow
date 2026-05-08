@@ -73,6 +73,7 @@ Suggests:
     ComplexHeatmap,
     dtw,
     fpc,
+    geometry,
     ggplot2,
     hexbin,
     logistf,

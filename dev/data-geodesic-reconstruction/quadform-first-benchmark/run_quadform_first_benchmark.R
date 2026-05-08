@@ -126,6 +126,7 @@ mode_config <- function(mode, grid.size) {
       k.scale = 3:4,
       radius.rule = c("min", "max"),
       radius.factor = c(1, 1.25),
+      cknn.delta = c(1, 1.25),
       prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
       local.prune.tau = 1.05,
       global.max.path.edge.ratio.deviation.thld = 0.1,
@@ -145,6 +146,7 @@ mode_config <- function(mode, grid.size) {
       k.scale = 3:10,
       radius.rule = c("min", "max"),
       radius.factor = c(1, 1.25, 1.5),
+      cknn.delta = c(1, 1.25, 1.5),
       prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
       local.prune.tau = 1.05,
       global.max.path.edge.ratio.deviation.thld = 0.1,
@@ -270,6 +272,13 @@ build_settings <- function(cfg, n) {
     radius_rule = cfg$radius.rule, radius_factor = cfg$radius.factor,
     prune_method = prune, stringsAsFactors = FALSE
   ))
+  cknn.settings <- expand.grid(
+    graph_family = "cknn", k_scale = cfg$k.scale, delta = cfg$cknn.delta,
+    prune_method = prune, stringsAsFactors = FALSE
+  )
+  cknn.settings$radius_rule <- "geomean"
+  cknn.settings$radius_factor <- cknn.settings$delta
+  add(cknn.settings)
   out <- rbind.fill.simple(settings)
   out$stage <- ifelse(out$prune_method == "none", "raw.repaired", "repaired.pruned")
   out$setting_id <- sprintf("g%04d", seq_len(nrow(out)))
@@ -653,6 +662,15 @@ build_graph <- function(X, setting, radius.lookup) {
       prune.tau = config$local.prune.tau, prune.local.k = setting$k_scale,
       connect.components = TRUE, connect.method = "component.mst"
     )
+  } else if (identical(family, "cknn")) {
+    create.cknn.graph(
+      X, k.scale = setting$k_scale, delta = setting$delta,
+      prune.method = prune.method,
+      max.path.edge.ratio.deviation.thld = config$global.max.path.edge.ratio.deviation.thld,
+      path.edge.ratio.percentile = config$global.path.edge.ratio.percentile,
+      prune.tau = config$local.prune.tau, prune.local.k = setting$k_scale,
+      connect.components = TRUE, connect.method = "component.mst"
+    )
   } else {
     stop("Unknown graph family: ", family, call. = FALSE)
   }
@@ -790,7 +808,16 @@ run_one_dataset <- function(row) {
         distortion_median = NA_real_,
         distortion_q95 = NA_real_,
         pearson_cor = NA_real_,
-        spearman_cor = NA_real_
+        spearman_cor = NA_real_,
+        rel_geodesic_stress = NA_real_,
+        signed_bias = NA_real_,
+        shortcut_fraction = NA_real_,
+        q50_rel_abs_residual = NA_real_,
+        q90_rel_abs_residual = NA_real_,
+        q95_rel_abs_residual = NA_real_,
+        short_band_bias = NA_real_,
+        mid_band_bias = NA_real_,
+        long_band_bias = NA_real_
       )
       diag <- cbind(meta, status = "error", error = conditionMessage(e))
       list(
@@ -880,6 +907,29 @@ dataset.assets <- results$dataset_assets %||% data.frame()
 graph.assets <- results$graph_assets %||% data.frame()
 layout.assets <- results$layout_assets %||% data.frame()
 
+geodesic.metric.cols <- c(
+  "rel_geodesic_stress",
+  "signed_bias",
+  "shortcut_fraction",
+  "q50_rel_abs_residual",
+  "q90_rel_abs_residual",
+  "q95_rel_abs_residual",
+  "short_band_bias",
+  "mid_band_bias",
+  "long_band_bias"
+)
+for (col in geodesic.metric.cols) {
+  if (!col %in% names(metrics)) {
+    metrics[[col]] <- NA_real_
+  }
+}
+if ("rel_geodesic_stress" %in% names(metrics) &&
+    all(is.na(metrics$rel_geodesic_stress)) &&
+    "rel_rms_error" %in% names(metrics)) {
+  metrics$rel_geodesic_stress <- metrics$rel_rms_error
+}
+save_csv(metrics, file.path(run.dir, "metrics.csv"))
+
 write_asset_manifests <- function() {
   if (nrow(dataset.assets)) {
     save_csv(dataset.assets, file.path(run.dir, "dataset_assets.csv"))
@@ -894,7 +944,7 @@ write_asset_manifests <- function() {
   setting.cols <- intersect(
     c("dataset_id", "setting_id", "surface", "index_k", "n", "seed",
       "graph_family", "k", "radius_rank", "k_scale", "radius_rule",
-      "radius_factor", "prune_method", "stage"),
+      "radius_factor", "delta", "prune_method", "stage"),
     names(metrics)
   )
   settings <- unique(metrics[, setting.cols, drop = FALSE])
@@ -1109,6 +1159,7 @@ graph_setting_key <- function(row) {
     if (!is.na(row$k_scale)) paste0("ks", row$k_scale),
     if (!is.na(row$radius_rule)) paste0("rule", row$radius_rule),
     if (!is.na(row$radius_factor)) paste0("rf", row$radius_factor),
+    if ("delta" %in% names(row) && !is.na(row$delta)) paste0("delta", row$delta),
     paste0("prune", row$prune_method)
   )
   safe_stem(parts)
@@ -1162,12 +1213,11 @@ metric_for_target <- function(metrics, target) {
   keep <- metrics$status == "ok" & metrics$target == target
   cols <- c("dataset_id", "setting_id", "rel_rms_error", "rel_abs_error_median",
             "rel_abs_error_q95", "distortion_q05", "distortion_median",
-            "distortion_q95", "pearson_cor", "spearman_cor")
+            "distortion_q95", "pearson_cor", "spearman_cor",
+            geodesic.metric.cols)
   out <- metrics[keep, intersect(cols, names(metrics)), drop = FALSE]
-  names(out) <- sub("^rel_", paste0(target, "_rel_"), names(out))
-  names(out) <- sub("^distortion_", paste0(target, "_distortion_"), names(out))
-  names(out) <- sub("^pearson_cor$", paste0(target, "_pearson_cor"), names(out))
-  names(out) <- sub("^spearman_cor$", paste0(target, "_spearman_cor"), names(out))
+  metric.names <- setdiff(names(out), c("dataset_id", "setting_id"))
+  names(out)[match(metric.names, names(out))] <- paste0(target, "_", metric.names)
   out
 }
 
@@ -1175,7 +1225,7 @@ build_widget_index <- function(metrics, diagnostics) {
   if (!nrow(diagnostics)) return(data.frame())
   key.cols <- c("dataset_id", "surface", "index_k", "n", "seed", "setting_id",
                 "graph_family", "k", "radius_rank", "k_scale", "radius_rule",
-                "radius_factor", "prune_method", "stage")
+                "radius_factor", "delta", "prune_method", "stage")
   stage.cols <- grep("^n_(edges|components)_", names(diagnostics), value = TRUE)
   diag.cols <- c("n_vertices", stage.cols, "n_mst_edges_added", "n_pruned_edges",
                  "n_edges_before_pruning", "n_edges_after_pruning",
@@ -1344,6 +1394,7 @@ setting_from_index_row <- function(row) {
     k_scale = suppressWarnings(as.integer(row$k_scale)),
     radius_rule = as.character(row$radius_rule),
     radius_factor = suppressWarnings(as.numeric(row$radius_factor)),
+    delta = suppressWarnings(as.numeric(scalar_or_na(row$delta))),
     prune_method = row$prune_method,
     stage = row$default_stage,
     setting_id = row$setting_id,
@@ -1462,8 +1513,13 @@ best.by.group <- if (nrow(ok.metrics)) {
 
 family.summary <- if (nrow(ok.metrics)) {
   stats::aggregate(
-    cbind(rel_rms_error, rel_abs_error_q95, pearson_cor) ~ target + surface + graph_family + prune_method,
-    data = ok.metrics, FUN = median
+    cbind(rel_rms_error, rel_abs_error_q95, pearson_cor,
+          rel_geodesic_stress, signed_bias, shortcut_fraction,
+          q50_rel_abs_residual, q90_rel_abs_residual, q95_rel_abs_residual,
+          short_band_bias, mid_band_bias, long_band_bias) ~ target + surface + graph_family + prune_method,
+    data = ok.metrics,
+    FUN = function(x) stats::median(as.numeric(x), na.rm = TRUE),
+    na.action = stats::na.pass
   )
 } else data.frame()
 
@@ -1508,10 +1564,12 @@ img_tag <- function(path, alt) {
 
 cols.best <- intersect(c("surface", "n", "graph_family", "k", "radius_rank", "k_scale",
                          "radius_rule", "radius_factor", "prune_method", "stage",
-                         "rel_rms_error", "rel_abs_error_q95", "pearson_cor"),
+                         "rel_rms_error", "rel_abs_error_q95", "pearson_cor",
+                         geodesic.metric.cols),
                        names(best.by.group))
 cols.family <- intersect(c("surface", "graph_family", "prune_method", "rel_rms_error",
-                           "rel_abs_error_q95", "pearson_cor"), names(family.summary))
+                           "rel_abs_error_q95", "pearson_cor", geodesic.metric.cols),
+                         names(family.summary))
 
 best_sample <- best.by.group[best.by.group$target == "sample_oracle", cols.best, drop = FALSE]
 best_surface <- best.by.group[best.by.group$target == "surface", cols.best, drop = FALSE]
@@ -1537,14 +1595,16 @@ widget_controls <- if (nrow(widget.index)) {
     "<div class=\"param-group\" data-family=\"adaptive_radius\"><label for=\"kScaleSel\">k scale</label><select id=\"kScaleSel\"></select></div>",
     "<div class=\"param-group\" data-family=\"adaptive_radius\"><label for=\"radiusRuleSel\">radius rule</label><select id=\"radiusRuleSel\"></select></div>",
     "<div class=\"param-group\" data-family=\"adaptive_radius\"><label for=\"radiusFactorSel\">radius factor</label><select id=\"radiusFactorSel\"></select></div>",
+    "<div class=\"param-group\" data-family=\"cknn\"><label for=\"cknnKScaleSel\">k scale</label><select id=\"cknnKScaleSel\"></select></div>",
+    "<div class=\"param-group\" data-family=\"cknn\"><label for=\"deltaSel\">delta</label><select id=\"deltaSel\"></select></div>",
     "</div>",
     "<div id=\"widgetMeta\" class=\"note\"></div>",
     "<div class=\"widget-grid\"><figure><figcaption>Original data</figcaption><iframe id=\"origFrame\" class=\"widget\"></iframe></figure><figure><figcaption>Weighted GRIP layout</figcaption><iframe id=\"gripFrame\" class=\"widget\"></iframe></figure></div>",
     "<script>const GRAPH_INDEX=", data.js, ";
 const PRESETS=['manual','best_by_surface','best_by_sample_oracle','median_by_surface','median_by_sample_oracle','worst_by_surface','worst_by_sample_oracle'];
 const STAGES=['raw','raw.repaired','pruned','pruned.repaired','repaired.pruned','final'];
-const LABELS={manual:'manual',best_by_surface:'best by surface',best_by_sample_oracle:'best by sample oracle',median_by_surface:'median by surface',median_by_sample_oracle:'median by sample oracle',worst_by_surface:'worst by surface',worst_by_sample_oracle:'worst by sample oracle',adaptive_radius:'adaptive radius',fixed_radius:'fixed radius',sknn:'sKNN',mknn:'mKNN',iknn:'iKNN','global.geodesic.ratio':'global geodesic ratio','local.geodesic':'local geodesic','none':'none'};
-const ids=['surfaceSel','nSel','seedSel','familySel','pruneSel','stageSel','kSel','radiusRankSel','kScaleSel','radiusRuleSel','radiusFactorSel'];
+const LABELS={manual:'manual',best_by_surface:'best by surface',best_by_sample_oracle:'best by sample oracle',median_by_surface:'median by surface',median_by_sample_oracle:'median by sample oracle',worst_by_surface:'worst by surface',worst_by_sample_oracle:'worst by sample oracle',adaptive_radius:'adaptive radius',cknn:'continuous kNN',fixed_radius:'fixed radius',sknn:'sKNN',mknn:'mKNN',iknn:'iKNN','global.geodesic.ratio':'global geodesic ratio','local.geodesic':'local geodesic','none':'none'};
+const ids=['surfaceSel','nSel','seedSel','familySel','pruneSel','stageSel','kSel','radiusRankSel','kScaleSel','radiusRuleSel','radiusFactorSel','cknnKScaleSel','deltaSel'];
 function el(id){return document.getElementById(id);}
 function present(x){return x!==null && x!==undefined && x!=='' && String(x)!=='NA';}
 function num(x){return present(x) && isFinite(Number(x)) ? Number(x).toFixed(5) : 'NA';}
@@ -1559,10 +1619,12 @@ function familyParams(row){
   if(row.graph_family==='sknn'||row.graph_family==='mknn'||row.graph_family==='iknn') return ['k'];
   if(row.graph_family==='fixed_radius') return ['radius_rank'];
   if(row.graph_family==='adaptive_radius') return ['k_scale','radius_rule','radius_factor'];
+  if(row.graph_family==='cknn') return ['k_scale','delta'];
   return [];
 }
 function wanted(){
-  return {surface:el('surfaceSel').value,n:el('nSel').value,seed:el('seedSel').value,graph_family:el('familySel').value,prune_method:el('pruneSel').value,k:el('kSel').value,radius_rank:el('radiusRankSel').value,k_scale:el('kScaleSel').value,radius_rule:el('radiusRuleSel').value,radius_factor:el('radiusFactorSel').value};
+  const fam=el('familySel').value;
+  return {surface:el('surfaceSel').value,n:el('nSel').value,seed:el('seedSel').value,graph_family:fam,prune_method:el('pruneSel').value,k:el('kSel').value,radius_rank:el('radiusRankSel').value,k_scale:fam==='cknn'?el('cknnKScaleSel').value:el('kScaleSel').value,radius_rule:el('radiusRuleSel').value,radius_factor:el('radiusFactorSel').value,delta:el('deltaSel').value};
 }
 function rowMatches(row, ignore){
   const w=wanted();
@@ -1589,6 +1651,8 @@ function refreshOptions(){
   setOptions(el('kScaleSel'), uniq(candidates('k_scale').map(r=>r.k_scale)));
   setOptions(el('radiusRuleSel'), uniq(candidates('radius_rule').map(r=>r.radius_rule)));
   setOptions(el('radiusFactorSel'), uniq(candidates('radius_factor').map(r=>r.radius_factor)));
+  setOptions(el('cknnKScaleSel'), uniq(candidates('k_scale').map(r=>r.k_scale)));
+  setOptions(el('deltaSel'), uniq(candidates('delta').map(r=>r.delta)));
   updateParamVisibility();
 }
 function updateParamVisibility(){
@@ -1608,8 +1672,10 @@ function setControlsFromRow(row){
   if(present(row.k)) el('kSel').value=String(row.k);
   if(present(row.radius_rank)) el('radiusRankSel').value=String(row.radius_rank);
   if(present(row.k_scale)) el('kScaleSel').value=String(row.k_scale);
+  if(present(row.k_scale)) el('cknnKScaleSel').value=String(row.k_scale);
   if(present(row.radius_rule)) el('radiusRuleSel').value=String(row.radius_rule);
   if(present(row.radius_factor)) el('radiusFactorSel').value=String(row.radius_factor);
+  if(present(row.delta)) el('deltaSel').value=String(row.delta);
   el('stageSel').value=String(row.default_stage);
 }
 function applyPreset(){
@@ -1648,9 +1714,10 @@ function renderWidget(){
   const comps=stageValue(row,'n_components',stage);
   const layoutKey=row.graph_key+'__stage_'+stage.replace(/[^A-Za-z0-9]+/g,'_');
   let note = '<strong>'+LABELS[row.graph_family]+'</strong> on '+row.surface+', n='+row.n+', seed='+row.seed+
-    '<br><strong>selected parameters:</strong> k='+fmt(row.k)+', radius_rank='+fmt(row.radius_rank)+', k_scale='+fmt(row.k_scale)+', radius_rule='+fmt(row.radius_rule)+', radius_factor='+fmt(row.radius_factor)+
+    '<br><strong>selected parameters:</strong> k='+fmt(row.k)+', radius_rank='+fmt(row.radius_rank)+', k_scale='+fmt(row.k_scale)+', radius_rule='+fmt(row.radius_rule)+', radius_factor='+fmt(row.radius_factor)+', delta='+fmt(row.delta)+
     '<br><strong>pruning:</strong> '+LABELS[row.prune_method]+'; <strong>stage:</strong> '+stage+
     '<br><strong>surface rel_rms_error:</strong> '+num(row.surface_rel_rms_error)+'; <strong>sample-oracle rel_rms_error:</strong> '+num(row.sample_oracle_rel_rms_error)+
+    '<br><strong>surface signed bias:</strong> '+num(row.surface_signed_bias)+'; <strong>surface shortcut fraction:</strong> '+num(row.surface_shortcut_fraction)+
     '<br><strong>n_edges:</strong> '+fmt(edges)+'; <strong>n_components:</strong> '+fmt(comps)+'; <strong>n_mst_edges_added:</strong> '+fmt(row.n_mst_edges_added)+'; <strong>n_pruned_edges:</strong> '+fmt(row.n_pruned_edges)+
     '<br><strong>graph_key:</strong> <code>'+row.graph_key+'</code>; <strong>layout key:</strong> <code>'+layoutKey+'</code>';
   if(!stageOK) note += '<br><span class=\"warn-inline\">The selected lifecycle stage is unavailable for this graph object.</span>';
@@ -1756,6 +1823,19 @@ img_tag(figs$sample_perf, "Median method performance against the sample-oracle t
 img_tag(figs$surface_perf, "Median method performance against the surface target"), img_tag(figs$surface_dist, "Distribution of surface-target relative RMS errors"),
 "<h3>Best Settings: Surface Target</h3>", table_html(best_surface, digits = 5, max.rows = 80),
 "<h3>Family-Level Median Performance: Surface Target</h3>", table_html(fam_surface, digits = 5, max.rows = 120),
+"<h2>Geodesic-Isometry Diagnostics</h2>",
+"<p>These diagnostics summarize calibrated pairwise graph-distance residuals. Signed bias is the mean signed residual divided by the mean reference distance; negative values indicate systematic shortcuts, positive values indicate systematic detours. Shortcut fraction is the fraction of calibrated graph distances below the reference. The short, mid, and long band biases are median signed relative residuals over reference-distance tertiles.</p>",
+"<p>For rows inherited from older cached runs, <code>rel_geodesic_stress</code> is backfilled from <code>rel_rms_error</code>. Directional residual diagnostics require pairwise residuals and appear only for settings recomputed with the current package helper.</p>",
+"<h3>Sample-Oracle Diagnostics</h3>",
+table_html(fam_sample[, intersect(c("surface", "graph_family", "prune_method",
+                                    geodesic.metric.cols),
+                                  names(fam_sample)), drop = FALSE],
+           digits = 5, max.rows = 120),
+"<h3>Surface Diagnostics</h3>",
+table_html(fam_surface[, intersect(c("surface", "graph_family", "prune_method",
+                                     geodesic.metric.cols),
+                                   names(fam_surface)), drop = FALSE],
+           digits = 5, max.rows = 120),
 "<h2>Pruning and Connectivity Diagnostics</h2>", diagnostic.paragraph,
 img_tag(figs$sample_prune, "Pruning effect on the sample-oracle target"), img_tag(figs$surface_prune, "Pruning effect on the surface target"), img_tag(figs$diagnostics, "Connectivity repair and pruning diagnostics"), table_html(diag.summary, digits = 3, max.rows = 100),
 "<h2>Interactive 3D Graph Diagnostics</h2><p>The controls below expose the graph-construction layer directly. The <strong>preset</strong> control jumps to useful settings, but <strong>manual</strong> mode can select every graph setting represented in the benchmark results. The <strong>target</strong> is deliberately absent from these controls because evaluation targets rank graph settings; they are not graph-construction parameters.</p><p>The single 3D row has two panels: original data and a weighted-GRIP layout of the selected graph stage. Points are rendered as spheres. Edges are sampled when necessary to keep widgets responsive. If a selected weighted-GRIP layout is missing, the report shows the graph key needed to cache it.</p>", widget_controls,
