@@ -338,8 +338,10 @@ the undirected nonzero support is
   \quad\Longleftrightarrow\quad
   d_{ij}\le r_\tau\max(\sigma_i,\sigma_j).
 \]
-Thus PHATE's support is close to sKNN when \(r_\tau\) is close to one.  PHATE then
-row-normalizes \(K\) to obtain a Markov transition matrix
+This is exactly a max-rule adaptive-radius graph support with local scales
+\(\sigma_i\) and radius factor \(r_\tau\).  Thus PHATE's support is close to
+sKNN when \(r_\tau\) is close to one.  PHATE then row-normalizes \(K\) to obtain
+a Markov transition matrix
 \[
   P_{ij}=\frac{K_{ij}}{\sum_{\ell=1}^n K_{i\ell}}.
 \]

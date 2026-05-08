@@ -13,3 +13,9 @@ License: LGPL-2.1-or-later  (see inst/licenses/LGPL-2.1.txt)
 Upstream copyright notice: see inst/licenses/ANN-Copyright-Notice.txt
 Copyright (C) 1997–2010 University of Maryland,
 and Sunil Arya and David M. Mount
+
+Qhull - reentrant computational geometry library (http://www.qhull.org/)
+License: Qhull license (see inst/licenses/Qhull-COPYING.txt)
+Copyright (c) 1993–2020 The Geometry Center
+Vendored for the experimental 3D quadratic-hypersurface Delaunay reference
+oracle C++ backend.

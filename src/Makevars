@@ -47,9 +47,10 @@ endif
 SOURCES_CPP  = $(wildcard *.cpp)
 SOURCES_C    = $(wildcard *.c)
 ANN_SOURCES  = $(wildcard ANN/*.cpp)
+QHULL_SOURCES = $(wildcard qhull/*.c)
 
 # ---- Objects
-OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o)
+OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o) $(ANN_SOURCES:.cpp=.o) $(QHULL_SOURCES:.c=.o)
 
 # ---- Build target
 $(SHLIB): $(OBJECTS)
