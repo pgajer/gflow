@@ -19,19 +19,39 @@ as.logical.arg <- function(x, default = FALSE) {
 }
 
 repo.dir <- normalizePath(getwd(), mustWork = TRUE)
+mode <- arg.value("mode", "smoke")
+if (!mode %in% c("smoke", "full")) {
+  stop("--mode must be smoke or full.")
+}
 output.dir <- arg.value(
   "output.dir",
-  file.path(repo.dir, "dev", "data-geodesic-reconstruction", "quadform-3d-smoke-benchmark")
+  file.path(repo.dir, "dev", "data-geodesic-reconstruction", "quadform-3d-tier2-benchmark", "runs", mode)
 )
 n.ref <- as.integer(arg.value("n.ref", "5000"))
+k.min <- as.integer(arg.value("k.min", "3"))
+k.max <- as.integer(arg.value("k.max", "25"))
+max.widgets <- as.integer(arg.value("max.widgets", if (identical(mode, "smoke")) "4" else "8"))
+batch.index <- as.integer(arg.value("batch.index", "1"))
+batch.count <- as.integer(arg.value("batch.count", "1"))
+dataset.ids.arg <- arg.value("dataset.ids", NULL)
 report.only <- as.logical.arg(arg.value("report.only"), FALSE)
+
+if (!is.finite(k.min) || !is.finite(k.max) || k.min < 1L || k.max < k.min) {
+  stop("Invalid k range: expected 1 <= k.min <= k.max.")
+}
+if (!is.finite(batch.index) || !is.finite(batch.count) || batch.count < 1L || batch.index < 1L || batch.index > batch.count) {
+  stop("Invalid batch arguments: expected 1 <= batch.index <= batch.count.")
+}
 
 if (!requireNamespace("pkgload", quietly = TRUE)) {
   stop("The pkgload package is required.")
 }
 pkgload::load_all(repo.dir, quiet = TRUE)
 
-required.packages <- c("ggplot2", "plotly", "htmlwidgets", "grip")
+required.packages <- "ggplot2"
+if (is.finite(max.widgets) && max.widgets > 0L) {
+  required.packages <- c(required.packages, "plotly", "htmlwidgets", "grip")
+}
 missing.packages <- required.packages[!vapply(required.packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing.packages)) {
   stop("Missing required packages: ", paste(missing.packages, collapse = ", "))
@@ -71,6 +91,23 @@ sample.ball <- function(n, dim, radius = 1, seed = NULL) {
   Z * radii
 }
 
+sample.cube <- function(n, dim, radius = 1, seed = NULL) {
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
+  matrix(stats::runif(n * dim, min = -radius, max = radius), nrow = n, ncol = dim)
+}
+
+sample.domain <- function(n, dim, shape, radius = 1, seed = NULL) {
+  if (identical(shape, "ball")) {
+    return(sample.ball(n, dim, radius = radius, seed = seed))
+  }
+  if (identical(shape, "cube")) {
+    return(sample.cube(n, dim, radius = radius, seed = seed))
+  }
+  stop("Unsupported domain shape: ", shape)
+}
+
 surface.label <- function(index.k, coefficients) {
   paste0(
     "index k = ", index.k,
@@ -78,17 +115,75 @@ surface.label <- function(index.k, coefficients) {
   )
 }
 
-datasets <- data.frame(
-  dataset_id = c("ball_k3_c111_n80", "ball_k3_c111_n120", "ball_k1_c124_n80", "ball_k1_c124_n120"),
-  surface = c("positive_curvature", "positive_curvature", "mixed_anisotropic", "mixed_anisotropic"),
-  n = c(80L, 120L, 80L, 120L),
-  index.k = c(3L, 3L, 1L, 1L),
-  coefficients = I(list(c(1, 1, 1), c(1, 1, 1), c(1, 2, 4), c(1, 2, 4))),
-  seed = c(3101L, 3102L, 4101L, 4102L),
-  domain.shape = "ball",
-  domain.radius = 1,
-  stringsAsFactors = FALSE
-)
+make.datasets <- function(mode) {
+  if (identical(mode, "smoke")) {
+    datasets <- data.frame(
+      dataset_id = c("ball_k3_c111_n80", "ball_k3_c111_n120", "ball_k1_c124_n80", "ball_k1_c124_n120"),
+      surface = c("positive_curvature", "positive_curvature", "mixed_anisotropic", "mixed_anisotropic"),
+      n = c(80L, 120L, 80L, 120L),
+      index.k = c(3L, 3L, 1L, 1L),
+      coeff_label = c("c111", "c111", "c124", "c124"),
+      coefficients = I(list(c(1, 1, 1), c(1, 1, 1), c(1, 2, 4), c(1, 2, 4))),
+      seed = c(3101L, 3102L, 4101L, 4102L),
+      domain.shape = "ball",
+      domain.radius = 1,
+      stringsAsFactors = FALSE
+    )
+    return(datasets)
+  }
+
+  surface.spec <- data.frame(
+    surface = c(
+      "positive_c111", "positive_c124", "positive_c144",
+      "mixed_c111", "mixed_c124", "mixed_c144"
+    ),
+    index.k = c(3L, 3L, 3L, 1L, 1L, 1L),
+    coeff_label = c("c111", "c124", "c144", "c111", "c124", "c144"),
+    stringsAsFactors = FALSE
+  )
+  coeff.map <- list(c111 = c(1, 1, 1), c124 = c(1, 2, 4), c144 = c(1, 4, 4))
+  sizes <- c(80L, 120L, 200L)
+  rows <- list()
+  seed.base <- 7000L
+  idx <- 0L
+  for (si in seq_len(nrow(surface.spec))) {
+    for (n in sizes) {
+      idx <- idx + 1L
+      spec <- surface.spec[si, ]
+      rows[[idx]] <- data.frame(
+        dataset_id = paste("ball", paste0("k", spec$index.k), spec$coeff_label, paste0("n", n), sep = "_"),
+        surface = spec$surface,
+        n = n,
+        index.k = spec$index.k,
+        coeff_label = spec$coeff_label,
+        coefficients = I(list(coeff.map[[spec$coeff_label]])),
+        seed = seed.base + idx,
+        domain.shape = "ball",
+        domain.radius = 1,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  do.call(rbind, rows)
+}
+
+datasets <- make.datasets(mode)
+if (!is.null(dataset.ids.arg) && nzchar(dataset.ids.arg)) {
+  requested.ids <- strsplit(dataset.ids.arg, ",", fixed = TRUE)[[1]]
+  requested.ids <- trimws(requested.ids[nzchar(requested.ids)])
+  missing.ids <- setdiff(requested.ids, datasets$dataset_id)
+  if (length(missing.ids)) {
+    stop("Unknown dataset ids: ", paste(missing.ids, collapse = ", "))
+  }
+  datasets <- datasets[datasets$dataset_id %in% requested.ids, , drop = FALSE]
+}
+if (batch.count > 1L) {
+  batch.slot <- ((seq_len(nrow(datasets)) - 1L) %% batch.count) + 1L
+  datasets <- datasets[batch.slot == batch.index, , drop = FALSE]
+}
+if (!nrow(datasets)) {
+  stop("No datasets selected for this run.")
+}
 datasets$description <- vapply(
   seq_len(nrow(datasets)),
   function(i) surface.label(datasets$index.k[i], datasets$coefficients[[i]]),
@@ -98,11 +193,11 @@ datasets$description <- vapply(
 make.settings <- function() {
   rows <- list()
   add <- function(row) rows[[length(rows) + 1L]] <<- row
-  for (k in 3:10) {
+  for (k in k.min:k.max) {
     add(data.frame(family = "sknn", k = k, k_scale = NA_integer_, radius.rule = NA_character_, radius.factor = NA_real_, delta = NA_real_))
     add(data.frame(family = "iknn", k = k, k_scale = NA_integer_, radius.rule = NA_character_, radius.factor = NA_real_, delta = NA_real_))
   }
-  for (k.scale in 3:10) {
+  for (k.scale in k.min:k.max) {
     for (radius.rule in c("max", "geomean")) {
       for (radius.factor in c(1, 1.25, 1.5)) {
         add(data.frame(family = "adaptive_radius", k = NA_integer_, k_scale = k.scale, radius.rule = radius.rule, radius.factor = radius.factor, delta = NA_real_))
@@ -350,7 +445,7 @@ if (!report.only) {
   for (di in seq_len(nrow(datasets))) {
     drow <- datasets[di, ]
     message("[dataset] ", drow$dataset_id, " (n = ", drow$n, ", ", drow$description, ")")
-    X.param <- sample.ball(drow$n, 3, radius = drow$domain.radius, seed = drow$seed)
+    X.param <- sample.domain(drow$n, 3, drow$domain.shape, radius = drow$domain.radius, seed = drow$seed)
     X.surface <- quadform.embed(X.param, index.k = drow$index.k, coefficients = drow$coefficients[[1]])
     ref <- quadform.delaunay.geodesic.distances(
       X.param,
@@ -479,6 +574,9 @@ if (!report.only) {
   utils::write.csv(best, best.file, row.names = FALSE)
 
   best.overall <- do.call(rbind, lapply(split(ok, ok$dataset_id), function(df) df[which.min(df$rel_rms_error), ]))
+  if (is.finite(max.widgets) && nrow(best.overall) > max.widgets) {
+    best.overall <- best.overall[seq_len(max.widgets), ]
+  }
   for (i in seq_len(nrow(best.overall))) {
     row <- best.overall[i, ]
     key <- paste(row$dataset_id, row$setting_id, sep = "__")
@@ -571,9 +669,9 @@ if (nrow(best.widgets)) {
   }, character(1)), collapse = "\n")
 }
 
-report.path <- file.path(report.dir, "quadform_3d_smoke_benchmark_report.html")
+report.path <- file.path(report.dir, "quadform_3d_tier2_benchmark_report.html")
 html <- paste0(
-  "<!doctype html><html><head><meta charset=\"utf-8\"><title>3D Quadratic Hypersurface Smoke Benchmark</title>",
+  "<!doctype html><html><head><meta charset=\"utf-8\"><title>3D Quadratic Hypersurface Tier 2 Benchmark</title>",
   "<style>",
   "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.45;margin:28px;color:#222;}",
   "h1,h2{line-height:1.15;} img{max-width:100%;border:1px solid #ddd;} table{border-collapse:collapse;font-size:13px;margin:16px 0;width:100%;}",
@@ -581,9 +679,11 @@ html <- paste0(
   ".widget-card{margin:24px 0;} iframe{width:100%;height:640px;border:1px solid #ccc;border-radius:4px;}",
   "code{background:#f7f7f7;padding:1px 4px;border-radius:3px;}",
   "</style></head><body>",
-  "<h1>3D Quadratic Hypersurface Smoke Benchmark</h1>",
+  "<h1>3D Quadratic Hypersurface Tier 2 Benchmark</h1>",
   "<p class=\"note\">Build timestamp: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "</p>",
-  "<p>This smoke benchmark is the first package-level check of data-to-graph reconstruction on three-dimensional quadratic hypersurface domains. ",
+  "<p>Run mode: <code>", html.escape(mode), "</code>. Parameter range: <code>k, k.scale = ", k.min, ":", k.max, "</code>. Reference target size: <code>", n.ref, "</code>. ",
+  "Batch: <code>", batch.index, "/", batch.count, "</code>.</p>",
+  "<p>This benchmark checks data-to-graph reconstruction on three-dimensional quadratic hypersurface domains. ",
   "It uses the C++ Delaunay reference oracle in <code>quadform.delaunay.geodesic.distances()</code> with <code>edge.length.factor = 4</code>. ",
   "Only the surface geodesic target is evaluated; sample-oracle targets and pruning are intentionally excluded.</p>",
   "<p>The graph families are <code>sKNN</code>, <code>iKNN</code>, adaptive-radius graphs, and continuous-kNN/geometric-mean adaptive-radius graphs. ",
