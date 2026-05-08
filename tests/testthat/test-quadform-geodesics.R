@@ -288,7 +288,7 @@ test_that("C++ Delaunay edge extractor matches R/Qhull edge sets", {
   X <- matrix(rnorm(75), ncol = 3)
   X[, 3] <- X[, 3] + seq_len(nrow(X)) * 1e-4
 
-  r.edges <- gflow:::.quadform.delaunay.edges.3d(X)
+  r.edges <- gflow:::.quadform.delaunay.edges.3d(X, backend = "geometry")
   cpp <- gflow:::rcpp_quadform_delaunay_edges_3d(X, "Qt Qbb Qc")
 
   edge.keys <- function(edge.matrix) {
@@ -304,6 +304,56 @@ test_that("C++ Delaunay edge extractor matches R/Qhull edge sets", {
   expect_equal(cpp$exit_code, 0L)
   expect_equal(sort(edge.keys(cpp$edge_matrix)),
                sort(edge.keys(r.edges)))
+})
+
+
+test_that("quadform.delaunay.geodesic.distances C++ backend matches geometry backend", {
+  skip_if_not_installed("geometry")
+
+  X <- rbind(
+    c(0, 0, 0),
+    c(0.5, 0, 0),
+    c(0, 0.5, 0),
+    c(0, 0, 0.5),
+    c(-0.35, -0.2, 0.25)
+  )
+  args <- list(
+    X = X,
+    index.k = 2,
+    coefficients = c(1, 2, 3),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 90,
+    seed = 13,
+    candidate.multiplier = 3,
+    boundary.fraction = 0.25,
+    edge.length.factor = 4
+  )
+
+  cpp <- do.call(quadform.delaunay.geodesic.distances,
+                 c(args, list(delaunay.backend = "cpp")))
+  geom <- do.call(quadform.delaunay.geodesic.distances,
+                  c(args, list(delaunay.backend = "geometry")))
+
+  edge.keys <- function(edge.matrix) {
+    apply(edge.matrix, 1L, function(edge) paste(sort(edge), collapse = "-"))
+  }
+
+  expect_equal(cpp$delaunay_backend, "cpp")
+  expect_equal(geom$delaunay_backend, "geometry")
+  expect_equal(cpp$vertices_param, geom$vertices_param, tolerance = 1e-14)
+  expect_equal(cpp$epsilon, geom$epsilon, tolerance = 1e-14)
+  expect_equal(cpp$n_delaunay_edges, geom$n_delaunay_edges)
+  expect_equal(cpp$n_edges, geom$n_edges)
+  expect_equal(sort(edge.keys(cpp$edge_matrix)),
+               sort(edge.keys(geom$edge_matrix)))
+  expect_equal(cpp$filter_attempts$n_edges, geom$filter_attempts$n_edges)
+  expect_equal(cpp$filter_attempts$n_components,
+               geom$filter_attempts$n_components)
+  expect_equal(cpp$filter_attempts$connected, geom$filter_attempts$connected)
+  expect_equal(cpp$filter_factor_used, geom$filter_factor_used)
+  expect_equal(cpp$n_components, geom$n_components)
+  expect_equal(cpp$distances, geom$distances, tolerance = 1e-10)
 })
 
 
