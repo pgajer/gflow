@@ -56,6 +56,43 @@ test_that("quadform.edge.length matches numerical quadrature", {
 })
 
 
+test_that("quadform.edge.lengths matches scalar edge lengths in 2D and 3D", {
+  U <- rbind(
+    c(0.2, -0.4),
+    c(-0.5, 0.3),
+    c(0, 0)
+  )
+  V <- rbind(
+    c(0.9, 0.3),
+    c(0.1, -0.2),
+    c(0, 0)
+  )
+  expected <- vapply(seq_len(nrow(U)), function(i) {
+    quadform.edge.length(U[i, ], V[i, ], index.k = 1,
+                         coefficients = c(2, 4))
+  }, numeric(1))
+  expect_equal(quadform.edge.lengths(U, V, index.k = 1,
+                                     coefficients = c(2, 4)),
+               expected, tolerance = 1e-12)
+
+  U3 <- rbind(
+    c(0.1, -0.2, 0.3),
+    c(-0.4, 0.2, -0.1)
+  )
+  V3 <- rbind(
+    c(0.6, 0.1, -0.2),
+    c(0.2, -0.3, 0.4)
+  )
+  expected3 <- vapply(seq_len(nrow(U3)), function(i) {
+    quadform.edge.length(U3[i, ], V3[i, ], index.k = 2,
+                         coefficients = c(1, 2, 3))
+  }, numeric(1))
+  expect_equal(quadform.edge.lengths(U3, V3, index.k = 2,
+                                     coefficients = c(1, 2, 3)),
+               expected3, tolerance = 1e-12)
+})
+
+
 test_that("quadform.reference.geodesics returns finite symmetric sample distances", {
   X <- rbind(
     c(0, 0),
@@ -196,6 +233,44 @@ test_that("quadform.grid.geodesic.distances can return sample-path oracle distan
   expect_equal(ref$oracle_paths[[3]], 1:3)
   expect_equal(ref$oracle_method, "sample.path")
   expect_equal(ref$oracle_tube_radius, 1e-6)
+})
+
+
+test_that("quadform.delaunay.geodesic.distances returns finite 3D sample distances", {
+  skip_if_not_installed("geometry")
+
+  X <- rbind(
+    c(0, 0, 0),
+    c(0.5, 0, 0),
+    c(0, 0.5, 0),
+    c(0, 0, 0.5),
+    c(-0.35, -0.2, 0.25)
+  )
+
+  ref <- quadform.delaunay.geodesic.distances(
+    X,
+    index.k = 2,
+    coefficients = c(1, 2, 3),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 80,
+    seed = 13,
+    candidate.multiplier = 3,
+    boundary.fraction = 0.25,
+    edge.length.factor = 3
+  )
+
+  expect_s3_class(ref, "quadform_delaunay_geodesics")
+  expect_equal(dim(ref$distances), c(nrow(X), nrow(X)))
+  expect_true(all(is.finite(ref$distances)))
+  expect_equal(ref$distances, t(ref$distances), tolerance = 1e-12)
+  expect_equal(diag(ref$distances), rep(0, nrow(X)), tolerance = 1e-12)
+  expect_equal(ref$sample_vertex, seq_len(nrow(X)))
+  expect_true(ref$n_reference_vertices >= nrow(X))
+  expect_true(ref$n_edges > 0)
+  expect_equal(ref$n_components, 1L)
+  expect_equal(ncol(ref$vertices_param), 3L)
+  expect_equal(ncol(ref$vertices_embed), 4L)
 })
 
 

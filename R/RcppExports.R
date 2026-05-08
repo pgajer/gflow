@@ -82,6 +82,10 @@ rcpp_knn_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, step_size
     .Call(`_gflow_rcpp_knn_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, step_size, ikernel, dist_normalization_factor, average_direction_only)
 }
 
+rcpp_quadform_edge_lengths <- function(U, V, index_k, coefficients) {
+    .Call(`_gflow_rcpp_quadform_edge_lengths`, U, V, index_k, coefficients)
+}
+
 rcpp_quadform_grid_pair_distances <- function(index_k, coefficients, domain_shape, domain_radius, grid_size, pair_points) {
     .Call(`_gflow_rcpp_quadform_grid_pair_distances`, index_k, coefficients, domain_shape, domain_radius, grid_size, pair_points)
 }
