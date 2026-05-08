@@ -1066,12 +1066,13 @@ quadform.grid.geodesic.calibration <- function(index.k,
     )
 }
 
-.quadform.delaunay.edges.3d <- function(vertices) {
+.quadform.delaunay.edges.3d.geometry <- function(vertices,
+                                                 qhull.options = "Qt Qbb Qc") {
     if (!requireNamespace("geometry", quietly = TRUE)) {
         stop("The optional 'geometry' package is required for 3D Delaunay reference geodesics.",
              call. = FALSE)
     }
-    tess <- geometry::delaunayn(vertices, options = "Qt Qbb Qc")
+    tess <- geometry::delaunayn(vertices, options = qhull.options)
     if (is.null(dim(tess))) {
         tess <- matrix(tess, nrow = 1L)
     }
@@ -1102,6 +1103,17 @@ quadform.grid.geodesic.calibration <- function(index.k,
     edge.matrix <- out$edge_matrix
     storage.mode(edge.matrix) <- "integer"
     edge.matrix
+}
+
+.quadform.delaunay.edges.3d <- function(vertices,
+                                        backend = c("cpp", "geometry"),
+                                        qhull.options = "Qt Qbb Qc") {
+    backend <- match.arg(backend)
+    switch(
+        backend,
+        cpp = .quadform.delaunay.edges.3d.cpp(vertices, qhull.options),
+        geometry = .quadform.delaunay.edges.3d.geometry(vertices, qhull.options)
+    )
 }
 
 .quadform.edge.list.to.adj <- function(n.vertices, edge.matrix, edge.weight) {
@@ -1237,12 +1249,13 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #'
 #' @details
 #' This function is intended as the first high-dimensional reference-geodesic
-#' oracle for the data-geodesic reconstruction experiments. It currently uses
-#' `geometry::delaunayn()` as a Qhull-backed Delaunay prototype. The exact edge
-#' lengths are computed by a C++ vectorization of `quadform.edge.length()`. Long
-#' Delaunay edges can be removed with `edge.length.factor`; if that disconnects
-#' the reference graph, the factor is progressively relaxed, falling back to the
-#' unfiltered Delaunay one-skeleton.
+#' oracle for the data-geodesic reconstruction experiments. It uses a vendored
+#' reentrant Qhull backend by default (`delaunay.backend = "cpp"`), with
+#' `geometry::delaunayn()` retained as an optional behavioral-comparison backend.
+#' The exact edge lengths are computed by a C++ vectorization of
+#' `quadform.edge.length()`. Long Delaunay edges can be removed with
+#' `edge.length.factor`; if that disconnects the reference graph, the factor is
+#' progressively relaxed, falling back to the unfiltered Delaunay one-skeleton.
 #'
 #' @param X Numeric matrix or data frame with three-dimensional parameter
 #'   points in rows.
@@ -1265,19 +1278,22 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #'   The default, `4`, is the current provisional reference-oracle setting from
 #'   the 3D Delaunay stress tests. Use `Inf` to disable long-edge filtering.
 #'   The filter is relaxed automatically if needed for connectivity.
+#' @param delaunay.backend Delaunay edge-extraction backend. `"cpp"` uses the
+#'   bundled reentrant Qhull implementation and is the default. `"geometry"`
+#'   uses `geometry::delaunayn()` and is retained for backend-parity tests.
+#' @param qhull.options Character scalar of Qhull options passed to the selected
+#'   Delaunay backend. The default matches the validated R/Qhull prototype.
 #'
 #' @return A list of class `"quadform_delaunay_geodesics"` containing the sample
 #'   distance matrix, reference vertices, Delaunay edge set, edge weights, and
 #'   diagnostics.
 #'
 #' @examples
-#' if (requireNamespace("geometry", quietly = TRUE)) {
-#'   X <- matrix(c(0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5), ncol = 3,
-#'               byrow = TRUE)
-#'   ref <- quadform.delaunay.geodesic.distances(X, index.k = 3, n.ref = 80,
-#'                                               domain.shape = "cube", seed = 1)
-#'   dim(ref$distances)
-#' }
+#' X <- matrix(c(0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5), ncol = 3,
+#'             byrow = TRUE)
+#' ref <- quadform.delaunay.geodesic.distances(X, index.k = 3, n.ref = 80,
+#'                                             domain.shape = "cube", seed = 1)
+#' dim(ref$distances)
 #'
 #' @export
 quadform.delaunay.geodesic.distances <- function(X,
@@ -1290,7 +1306,9 @@ quadform.delaunay.geodesic.distances <- function(X,
                                                  candidate.multiplier = 6,
                                                  boundary.fraction = 0.2,
                                                  epsilon = NULL,
-                                                 edge.length.factor = 4) {
+                                                 edge.length.factor = 4,
+                                                 delaunay.backend = c("cpp", "geometry"),
+                                                 qhull.options = "Qt Qbb Qc") {
     X <- .validate.quadform.data.matrix(X)
     if (ncol(X) != 3L) {
         stop("'X' must have three parameter-coordinate columns.", call. = FALSE)
@@ -1298,6 +1316,12 @@ quadform.delaunay.geodesic.distances <- function(X,
     index.k <- .validate.quadform.index(3L, index.k)
     coefficients <- .validate.quadform.coefficients(coefficients, 3L)
     domain.shape <- match.arg(domain.shape)
+    delaunay.backend <- match.arg(delaunay.backend)
+    if (!is.character(qhull.options) || length(qhull.options) != 1L ||
+        is.na(qhull.options)) {
+        stop("'qhull.options' must be a non-missing character scalar.",
+             call. = FALSE)
+    }
     if (is.null(domain.radius)) {
         domain.radius <- if (identical(domain.shape, "ball")) {
             max(sqrt(rowSums(X^2)))
@@ -1329,7 +1353,11 @@ quadform.delaunay.geodesic.distances <- function(X,
         boundary.fraction = boundary.fraction,
         epsilon = epsilon
     )
-    all.edges <- .quadform.delaunay.edges.3d(net$vertices)
+    all.edges <- .quadform.delaunay.edges.3d(
+        net$vertices,
+        backend = delaunay.backend,
+        qhull.options = qhull.options
+    )
     filtered <- .quadform.filter.delaunay.edges(
         net$vertices, all.edges, edge.length.factor, net$epsilon
     )
@@ -1374,7 +1402,9 @@ quadform.delaunay.geodesic.distances <- function(X,
         coefficients = coefficients,
         domain_shape = domain.shape,
         domain_radius = as.numeric(domain.radius),
-        seed = seed
+        seed = seed,
+        delaunay_backend = delaunay.backend,
+        qhull_options = qhull.options
     )
     class(out) <- c("quadform_delaunay_geodesics", "list")
     out
