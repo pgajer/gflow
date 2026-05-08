@@ -271,6 +271,108 @@ test_that("quadform.delaunay.geodesic.distances returns finite 3D sample distanc
   expect_equal(ref$n_components, 1L)
   expect_equal(ncol(ref$vertices_param), 3L)
   expect_equal(ncol(ref$vertices_embed), 4L)
+  expect_equal(ref$n_edges_unfiltered, ref$n_delaunay_edges)
+  expect_true(is.numeric(ref$retained_edge_fraction))
+  expect_true(ref$retained_edge_fraction > 0 && ref$retained_edge_fraction <= 1)
+  expect_true(is.data.frame(ref$filter_attempts))
+  expect_true(all(c("filter_factor", "n_edges", "n_components", "connected") %in%
+                    names(ref$filter_attempts)))
+  expect_equal(tail(ref$filter_attempts$n_components, 1L), ref$n_components)
+})
+
+
+test_that("C++ Delaunay edge extractor matches R/Qhull edge sets", {
+  skip_if_not_installed("geometry")
+
+  set.seed(42)
+  X <- matrix(rnorm(75), ncol = 3)
+  X[, 3] <- X[, 3] + seq_len(nrow(X)) * 1e-4
+
+  r.edges <- gflow:::.quadform.delaunay.edges.3d(X)
+  cpp <- gflow:::rcpp_quadform_delaunay_edges_3d(X, "Qt Qbb Qc")
+
+  edge.keys <- function(edge.matrix) {
+    apply(edge.matrix, 1L, function(edge) paste(sort(edge), collapse = "-"))
+  }
+
+  expect_true(is.matrix(cpp$edge_matrix))
+  expect_true(is.matrix(cpp$tetrahedra))
+  expect_equal(ncol(cpp$edge_matrix), 2L)
+  expect_equal(ncol(cpp$tetrahedra), 4L)
+  expect_equal(cpp$n_edges, nrow(cpp$edge_matrix))
+  expect_equal(cpp$n_tetrahedra, nrow(cpp$tetrahedra))
+  expect_equal(cpp$exit_code, 0L)
+  expect_equal(sort(edge.keys(cpp$edge_matrix)),
+               sort(edge.keys(r.edges)))
+})
+
+
+test_that("quadform.delaunay.geodesic.distances supports disabling edge filtering", {
+  skip_if_not_installed("geometry")
+
+  X <- rbind(
+    c(0, 0, 0),
+    c(0.5, 0, 0),
+    c(0, 0.5, 0),
+    c(0, 0, 0.5),
+    c(-0.35, -0.2, 0.25)
+  )
+
+  ref <- quadform.delaunay.geodesic.distances(
+    X,
+    index.k = 2,
+    coefficients = c(1, 2, 3),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 80,
+    seed = 13,
+    candidate.multiplier = 3,
+    boundary.fraction = 0.25,
+    edge.length.factor = Inf
+  )
+
+  expect_s3_class(ref, "quadform_delaunay_geodesics")
+  expect_true(all(is.finite(ref$distances)))
+  expect_true(is.infinite(ref$filter_factor_requested))
+  expect_true(is.infinite(ref$filter_factor_used))
+  expect_equal(ref$n_edges, ref$n_delaunay_edges)
+  expect_equal(ref$n_edges_unfiltered, ref$n_delaunay_edges)
+  expect_equal(ref$retained_edge_fraction, 1)
+  expect_false(ref$filter_relaxation_happened)
+  expect_false(ref$relaxed_to_inf)
+  expect_equal(nrow(ref$filter_attempts), 1L)
+  expect_true(is.infinite(ref$filter_attempts$filter_factor))
+  expect_equal(ref$filter_attempts$retained_edge_fraction, 1)
+})
+
+
+test_that("quadform.delaunay.geodesic.distances defaults to factor 4 diagnostics", {
+  skip_if_not_installed("geometry")
+
+  X <- rbind(
+    c(0, 0, 0),
+    c(0.5, 0, 0),
+    c(0, 0.5, 0),
+    c(0, 0, 0.5),
+    c(-0.35, -0.2, 0.25)
+  )
+
+  ref <- quadform.delaunay.geodesic.distances(
+    X,
+    index.k = 2,
+    coefficients = c(1, 2, 3),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 80,
+    seed = 13,
+    candidate.multiplier = 3,
+    boundary.fraction = 0.25
+  )
+
+  expect_equal(ref$filter_factor_requested, 4)
+  expect_true(ref$filter_factor_used >= 4 || is.infinite(ref$filter_factor_used))
+  expect_true(all(ref$filter_attempts$n_edges <= ref$n_delaunay_edges))
+  expect_equal(tail(ref$filter_attempts$n_edges, 1L), ref$n_edges)
 })
 
 

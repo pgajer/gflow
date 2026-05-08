@@ -1092,6 +1092,18 @@ quadform.grid.geodesic.calibration <- function(index.k,
     edges
 }
 
+.quadform.delaunay.edges.3d.cpp <- function(vertices,
+                                            qhull.options = "Qt Qbb Qc") {
+    vertices <- .validate.quadform.data.matrix(vertices)
+    if (ncol(vertices) != 3L) {
+        stop("'vertices' must have three columns.", call. = FALSE)
+    }
+    out <- rcpp_quadform_delaunay_edges_3d(vertices, qhull.options)
+    edge.matrix <- out$edge_matrix
+    storage.mode(edge.matrix) <- "integer"
+    edge.matrix
+}
+
 .quadform.edge.list.to.adj <- function(n.vertices, edge.matrix, edge.weight) {
     adj <- vector("list", n.vertices)
     weight <- vector("list", n.vertices)
@@ -1144,9 +1156,23 @@ quadform.grid.geodesic.calibration <- function(index.k,
                                             edge.length.factor,
                                             epsilon) {
     if (!nrow(edge.matrix)) {
+        attempts <- data.frame(
+            filter_factor = edge.length.factor,
+            filter_factor_label = ifelse(is.infinite(edge.length.factor), "Inf",
+                                         as.character(edge.length.factor)),
+            n_edges = 0L,
+            retained_edge_fraction = NA_real_,
+            n_components = nrow(vertices),
+            connected = nrow(vertices) <= 1L,
+            stringsAsFactors = FALSE
+        )
         return(list(edge_matrix = edge.matrix,
                     filter_factor_used = edge.length.factor,
-                    n_components = length(vertices)))
+                    n_components = nrow(vertices),
+                    filter_attempts = attempts,
+                    filter_relaxation_happened = FALSE,
+                    relaxed_to_inf = FALSE,
+                    retained_edge_fraction = NA_real_))
     }
     parameter.length <- sqrt(rowSums(
         (vertices[edge.matrix[, 1L], , drop = FALSE] -
@@ -1157,6 +1183,7 @@ quadform.grid.geodesic.calibration <- function(index.k,
                         edge.length.factor * 2,
                         Inf))
     best <- NULL
+    attempts <- vector("list", length(factors))
     for (factor in factors) {
         keep <- if (is.infinite(factor)) {
             rep(TRUE, nrow(edge.matrix))
@@ -1168,13 +1195,33 @@ quadform.grid.geodesic.calibration <- function(index.k,
             nrow(vertices), candidate.edges, rep(1, nrow(candidate.edges))
         )
         comp <- .quadform.adj.components(graph$adj_list)
+        attempts[[which(factors == factor)[1L]]] <- data.frame(
+            filter_factor = factor,
+            filter_factor_label = ifelse(is.infinite(factor), "Inf",
+                                         as.character(factor)),
+            n_edges = nrow(candidate.edges),
+            retained_edge_fraction = nrow(candidate.edges) / nrow(edge.matrix),
+            n_components = max(comp),
+            connected = max(comp) == 1L,
+            stringsAsFactors = FALSE
+        )
         best <- list(edge_matrix = candidate.edges,
                      filter_factor_used = factor,
                      n_components = max(comp))
         if (best$n_components == 1L) {
-            return(best)
+            break
         }
     }
+    attempts <- do.call(rbind, Filter(Negate(is.null), attempts))
+    relaxed <- !(identical(is.infinite(edge.length.factor),
+                           is.infinite(best$filter_factor_used)) &&
+                 (is.infinite(edge.length.factor) ||
+                  isTRUE(all.equal(edge.length.factor, best$filter_factor_used))))
+    best$filter_attempts <- attempts
+    best$filter_relaxation_happened <- relaxed
+    best$relaxed_to_inf <- isTRUE(is.finite(edge.length.factor) &&
+                                  is.infinite(best$filter_factor_used))
+    best$retained_edge_fraction <- nrow(best$edge_matrix) / nrow(edge.matrix)
     best
 }
 
@@ -1213,9 +1260,11 @@ quadform.grid.geodesic.calibration <- function(index.k,
 #'   used as boundary candidates before filtering.
 #' @param epsilon `NULL` or positive scalar. If supplied, this separation radius
 #'   is used directly instead of estimating one from `n.ref`.
-#' @param edge.length.factor Positive scalar used to remove Delaunay edges whose
-#'   parameter-space length exceeds `edge.length.factor * epsilon`. The filter is
-#'   relaxed automatically if needed for connectivity.
+#' @param edge.length.factor Positive scalar or `Inf` used to remove Delaunay
+#'   edges whose parameter-space length exceeds `edge.length.factor * epsilon`.
+#'   The default, `4`, is the current provisional reference-oracle setting from
+#'   the 3D Delaunay stress tests. Use `Inf` to disable long-edge filtering.
+#'   The filter is relaxed automatically if needed for connectivity.
 #'
 #' @return A list of class `"quadform_delaunay_geodesics"` containing the sample
 #'   distance matrix, reference vertices, Delaunay edge set, edge weights, and
@@ -1241,7 +1290,7 @@ quadform.delaunay.geodesic.distances <- function(X,
                                                  candidate.multiplier = 6,
                                                  boundary.fraction = 0.2,
                                                  epsilon = NULL,
-                                                 edge.length.factor = 3) {
+                                                 edge.length.factor = 4) {
     X <- .validate.quadform.data.matrix(X)
     if (ncol(X) != 3L) {
         stop("'X' must have three parameter-coordinate columns.", call. = FALSE)
@@ -1265,8 +1314,8 @@ quadform.delaunay.geodesic.distances <- function(X,
              call. = FALSE)
     }
     if (!is.numeric(edge.length.factor) || length(edge.length.factor) != 1L ||
-        !is.finite(edge.length.factor) || edge.length.factor <= 0) {
-        stop("'edge.length.factor' must be a positive finite numeric scalar.",
+        is.na(edge.length.factor) || edge.length.factor <= 0) {
+        stop("'edge.length.factor' must be a positive numeric scalar or Inf.",
              call. = FALSE)
     }
 
@@ -1309,12 +1358,17 @@ quadform.delaunay.geodesic.distances <- function(X,
         n_reference_vertices = nrow(net$vertices),
         n_edges = nrow(edge.matrix),
         n_delaunay_edges = nrow(all.edges),
+        n_edges_unfiltered = nrow(all.edges),
+        retained_edge_fraction = filtered$retained_edge_fraction,
         epsilon = net$epsilon,
         n_target = net$n_target,
         n_candidates = net$n_candidates,
         n_boundary_candidates = net$n_boundary_candidates,
         filter_factor_requested = edge.length.factor,
         filter_factor_used = filtered$filter_factor_used,
+        filter_attempts = filtered$filter_attempts,
+        filter_relaxation_happened = filtered$filter_relaxation_happened,
+        relaxed_to_inf = filtered$relaxed_to_inf,
         n_components = filtered$n_components,
         index_k = as.integer(index.k),
         coefficients = coefficients,

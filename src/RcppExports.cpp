@@ -112,6 +112,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rcpp_quadform_delaunay_edges_3d
+Rcpp::List rcpp_quadform_delaunay_edges_3d(const Rcpp::NumericMatrix& X, std::string qhull_options);
+RcppExport SEXP _gflow_rcpp_quadform_delaunay_edges_3d(SEXP XSEXP, SEXP qhull_optionsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< std::string >::type qhull_options(qhull_optionsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_delaunay_edges_3d(X, qhull_options));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rcpp_quadform_edge_lengths
 Rcpp::NumericVector rcpp_quadform_edge_lengths(const Rcpp::NumericMatrix& U, const Rcpp::NumericMatrix& V, int index_k, const Rcpp::NumericVector& coefficients);
 RcppExport SEXP _gflow_rcpp_quadform_edge_lengths(SEXP USEXP, SEXP VSEXP, SEXP index_kSEXP, SEXP coefficientsSEXP) {
