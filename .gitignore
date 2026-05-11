@@ -81,11 +81,18 @@ scripts/
 rchk_reports/
 # Source-controlled development studies live under explicit allowlists.
 dev/*
-!dev/geodesic-distance-estimation/
-!dev/geodesic-distance-estimation/**
-dev/geodesic-distance-estimation/reports/
-dev/geodesic-distance-estimation/figures/
+!dev/*_MOVED.md
+dev/data-geodesic-reconstruction/**/runs/
+dev/data-geodesic-reconstruction/**/assets/
+dev/data-geodesic-reconstruction/**/*.rds
+dev/data-geodesic-reconstruction/**/*.RDS
+dev/data-geodesic-reconstruction/**/*.log
 dev/geodesic-distance-estimation/cache/
+dev/geodesic-distance-estimation/**/*.rds
+dev/geodesic-distance-estimation/**/*.RDS
+dev/phate-graph-comparison/report/lib/
+dev/**/*.log
+dev/**/.DS_Store
 man/
 inst/*/
 !inst/examples/
