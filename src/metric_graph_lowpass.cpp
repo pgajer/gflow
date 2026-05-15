@@ -8,8 +8,10 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <Spectra/SymEigsShiftSolver.h>
 #include <Spectra/SymEigsSolver.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
+#include <Spectra/MatOp/SparseSymShiftSolve.h>
 
 #include <algorithm>
 #include <cmath>
@@ -161,6 +163,18 @@ void sort_eigenpairs(Eigen::VectorXd& values, Eigen::MatrixXd& vectors) {
     }
     values = v2;
     vectors = U2;
+}
+
+double sparse_laplacian_shift(const spmat_t& L) {
+    double max_diag = 0.0;
+    for (int k = 0; k < L.outerSize(); ++k) {
+        for (spmat_t::InnerIterator it(L, k); it; ++it) {
+            if (it.row() == it.col()) {
+                max_diag = std::max(max_diag, std::abs(it.value()));
+            }
+        }
+    }
+    return -std::max(max_diag, 1.0) * 1e-8;
 }
 
 metric_operator_t build_metric_operator(
@@ -511,16 +525,35 @@ void compute_spectrum(const spmat_t& L,
     const int ncv = std::min(std::max(2 * nev + 10, 20), n);
     bool sparse_ok = false;
     if (nev < ncv) {
-        Spectra::SparseSymMatProd<double> op(L);
-        Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
-        eigs.init();
-        eigs.compute(Spectra::SortRule::SmallestAlge, 1000, 1e-8);
-        if (eigs.info() == Spectra::CompInfo::Successful) {
-            eigenvalues = eigs.eigenvalues();
-            eigenvectors = eigs.eigenvectors();
-            sort_eigenpairs(eigenvalues, eigenvectors);
-            backend = "sparse";
-            sparse_ok = true;
+        try {
+            Spectra::SparseSymShiftSolve<double> op(L);
+            const double sigma = sparse_laplacian_shift(L);
+            Spectra::SymEigsShiftSolver<Spectra::SparseSymShiftSolve<double>> eigs(op, nev, ncv, sigma);
+            eigs.init();
+            eigs.compute(Spectra::SortRule::LargestMagn, 1000, 1e-10);
+            if (eigs.info() == Spectra::CompInfo::Successful) {
+                eigenvalues = eigs.eigenvalues();
+                eigenvectors = eigs.eigenvectors();
+                sort_eigenpairs(eigenvalues, eigenvectors);
+                backend = "sparse.shift";
+                sparse_ok = true;
+            }
+        } catch (...) {
+            sparse_ok = false;
+        }
+
+        if (!sparse_ok) {
+            Spectra::SparseSymMatProd<double> op(L);
+            Spectra::SymEigsSolver<Spectra::SparseSymMatProd<double>> eigs(op, nev, ncv);
+            eigs.init();
+            eigs.compute(Spectra::SortRule::SmallestAlge, 1000, 1e-8);
+            if (eigs.info() == Spectra::CompInfo::Successful) {
+                eigenvalues = eigs.eigenvalues();
+                eigenvectors = eigs.eigenvectors();
+                sort_eigenpairs(eigenvalues, eigenvectors);
+                backend = "sparse";
+                sparse_ok = true;
+            }
         }
     }
 

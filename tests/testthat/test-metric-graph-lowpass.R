@@ -117,6 +117,35 @@ test_that("C++ dense spectral path matches R dense eigen reference", {
   expect_true(all(cors > 1 - 1e-7))
 })
 
+test_that("sparse spectral path handles inverse-square metric conductances", {
+  lengths <- exp(seq(log(1e-4), log(2e-2), length.out = 79))
+  graph <- make_path_graph_lengths(lengths)
+  y <- sin(seq_len(80) / 7)
+  eta.grid <- c(1e-8, 1e-6, 1e-4)
+
+  fit.sparse <- fit.metric.graph.lowpass(
+    graph$adj.list, graph$weight.list, y,
+    conductance.rule = "inverse.length.power",
+    conductance.alpha = 2,
+    n.eigenpairs = 20L,
+    eigen.solver = "sparse",
+    dense.fallback = "never",
+    eta.grid = eta.grid
+  )
+  fit.dense <- fit.metric.graph.lowpass(
+    graph$adj.list, graph$weight.list, y,
+    conductance.rule = "inverse.length.power",
+    conductance.alpha = 2,
+    n.eigenpairs = 20L,
+    eigen.solver = "dense",
+    eta.grid = eta.grid
+  )
+
+  expect_equal(fit.sparse$spectral$backend, "sparse.shift")
+  expect_equal(fit.sparse$spectral$eigenvalues, fit.dense$spectral$eigenvalues, tolerance = 1e-6)
+  expect_equal(fit.sparse$fitted.values, fit.dense$fitted.values, tolerance = 1e-8)
+})
+
 test_that("metric low-pass preserves constant responses and refit fixed eta", {
   graph <- make_path_graph_lengths(rep(1, 4))
   y <- rep(3, 5)
