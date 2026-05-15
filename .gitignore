@@ -97,4 +97,6 @@ man/
 inst/*/
 !inst/examples/
 !inst/examples/**
+!inst/shiny/
+!inst/shiny/**
 presentations/
