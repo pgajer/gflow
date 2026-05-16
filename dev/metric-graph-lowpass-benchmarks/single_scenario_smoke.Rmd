@@ -1,0 +1,684 @@
+---
+title: "Metric Graph Low-Pass: Single 1D Two-Gaussian Smoke Benchmark"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 9,
+  fig.height = 5.5,
+  dpi = 120
+)
+
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+if (requireNamespace("pkgload", quietly = TRUE)) {
+  pkgload::load_all(repo.dir, quiet = TRUE)
+} else {
+  library(gflow)
+}
+
+library(gflow)
+library(ggplot2)
+```
+
+## Purpose
+
+This development smoke benchmark compares a small parameter sweep of
+`fit.metric.graph.lowpass()` against a default-style `fit.rdgraph.regression()`
+baseline on one fixed 1D regression problem.
+
+The target signal is a scaled two-Gaussian mixture on `[0, 1]`; the observations
+are `n = 250` uniformly sampled points with additive Gaussian noise. The metric
+low-pass fits use a symmetric 1D kNN graph with metric edge lengths
+`abs(x_i - x_j)`.
+
+The rdgraph baseline is fit on the same `X`, `y`, and required `k`, but first
+uses `create.sknn.graph(..., connect.components = TRUE)` to add component-MST
+bridge edges when the native symmetric kNN graph is disconnected. The repaired
+graph is then passed to `fit.rdgraph.regression()` as a precomputed graph. This
+keeps the baseline fit available while making the repair explicit in the
+report.
+
+The metric low-pass sweep interprets `weight.list` as metric edge lengths
+\(\ell_{ij}\), not conductances. Each metric fit transforms lengths into
+conductances \(c_{ij}\) before constructing the graph Laplacian. The conductance
+rules used here are:
+
+\[
+c_{ij} = (\ell_{ij} + \epsilon)^{-\alpha}
+\]
+
+for `inverse.length.power`,
+
+\[
+c_{ij} = \exp(-\ell_{ij}/\sigma)
+\]
+
+for `exp.length`,
+
+\[
+c_{ij} = \exp(-\ell_{ij}^{2}/\sigma^{2})
+\]
+
+for `exp.length.squared`, and
+
+\[
+c_{ij} = \exp\{-\ell_{ij}^{2}/(\sigma_i\sigma_j)\}
+\]
+
+for `self.tuned.gaussian`.
+
+## Helpers
+
+```{r helpers}
+scaled_two_gaussian <- function(x,
+                                means = c(0.30, 0.68),
+                                sds = c(0.055, 0.085),
+                                weights = c(1.0, 0.78)) {
+  y <- weights[1] * dnorm(x, means[1], sds[1]) +
+    weights[2] * dnorm(x, means[2], sds[2])
+  y / max(y)
+}
+
+build_knn_graph_1d <- function(x, k, edge.length.floor = 1e-8) {
+  n <- length(x)
+  k <- min(max(as.integer(k), 1L), n - 1L)
+  ord <- order(x)
+  rank.of <- integer(n)
+  rank.of[ord] <- seq_len(n)
+  edges <- matrix(integer(0), ncol = 2)
+
+  for (i in seq_len(n)) {
+    rank.i <- rank.of[i]
+    candidate.ranks <- seq.int(max(1L, rank.i - k), min(n, rank.i + k))
+    candidates <- ord[candidate.ranks]
+    candidates <- candidates[candidates != i]
+    if (length(candidates) > k) {
+      candidates <- candidates[order(abs(x[candidates] - x[i]))[seq_len(k)]]
+    }
+    if (length(candidates) > 0) {
+      edges <- rbind(edges, cbind(rep(i, length(candidates)), candidates))
+    }
+  }
+
+  edges <- unique(t(apply(edges, 1L, sort)))
+  adj <- vector("list", n)
+  weights <- vector("list", n)
+  for (i in seq_len(n)) {
+    adj[[i]] <- integer(0)
+    weights[[i]] <- numeric(0)
+  }
+  for (e in seq_len(nrow(edges))) {
+    i <- edges[e, 1L]
+    j <- edges[e, 2L]
+    len <- max(abs(x[i] - x[j]), edge.length.floor)
+    adj[[i]] <- c(adj[[i]], j)
+    weights[[i]] <- c(weights[[i]], len)
+    adj[[j]] <- c(adj[[j]], i)
+    weights[[j]] <- c(weights[[j]], len)
+  }
+  for (i in seq_len(n)) {
+    o <- order(adj[[i]])
+    adj[[i]] <- as.integer(adj[[i]][o])
+    weights[[i]] <- as.double(weights[[i]][o])
+  }
+  list(adj.list = adj, weight.list = weights, edge.count = nrow(edges))
+}
+
+fit_metric_one <- function(spec, graph, y, n) {
+  args <- list(
+    adj.list = graph$adj.list,
+    weight.list = graph$weight.list,
+    y = y,
+    conductance.rule = spec$conductance.rule,
+    laplacian.type = spec$laplacian.type,
+    filter.type = spec$filter.type,
+    n.eigenpairs = min(spec$n.eigenpairs, n - 1L),
+    n.candidates = spec$n.candidates,
+    eigen.solver = "auto",
+    dense.eigen.threshold = 200L,
+    dense.fallback = "auto",
+    dense.fallback.threshold = 5000L,
+    verbose = FALSE
+  )
+  if (identical(spec$conductance.rule, "inverse.length.power")) {
+    args$conductance.alpha <- spec$alpha
+  }
+  if (identical(spec$conductance.rule, "exp.length") ||
+      identical(spec$conductance.rule, "exp.length.squared")) {
+    args$conductance.sigma.rule <- spec$sigma.rule
+    args$conductance.sigma.quantile <- spec$sigma.quantile
+  }
+  if (identical(spec$conductance.rule, "self.tuned.gaussian")) {
+    args$conductance.local.k <- spec$local.k
+  }
+
+  start <- proc.time()
+  out <- tryCatch(
+    do.call(fit.metric.graph.lowpass, args),
+    error = function(e) e
+  )
+  elapsed <- unname((proc.time() - start)[["elapsed"]])
+  list(result = out, elapsed = elapsed)
+}
+
+score_fit <- function(method, fit, elapsed, x, y, truth, spec = NULL) {
+  if (inherits(fit, "error")) {
+    return(data.frame(
+      method = method,
+      status = "error",
+      rmse.truth = NA_real_,
+      rmse.observed = NA_real_,
+      mae.truth = NA_real_,
+      runtime.sec = elapsed,
+      eta = NA_real_,
+      gcv = NA_real_,
+      effective.df = NA_real_,
+      eigen.backend = NA_character_,
+      fitted.min = NA_real_,
+      fitted.max = NA_real_,
+      conductance.min = NA_real_,
+      conductance.median = NA_real_,
+      conductance.max = NA_real_,
+      message = conditionMessage(fit),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  yhat <- as.numeric(fit$fitted.values)
+  if (inherits(fit, "metric.graph.lowpass.fit")) {
+    conductance <- fit$operator$edge.table$conductance
+    eta <- fit$gcv$eta.optimal
+    gcv <- fit$gcv$gcv.optimal
+    edf <- fit$gcv$effective.df
+    backend <- fit$spectral$backend
+  } else {
+    conductance <- NA_real_
+    eta <- tail(fit$gcv$eta.optimal, 1)
+    gcv <- tail(fit$gcv$gcv.optimal, 1)
+    edf <- NA_real_
+    backend <- if (!is.null(fit$spectral$backend)) fit$spectral$backend else NA_character_
+  }
+
+  data.frame(
+    method = method,
+    status = "ok",
+    rmse.truth = sqrt(mean((yhat - truth)^2)),
+    rmse.observed = sqrt(mean((yhat - y)^2)),
+    mae.truth = mean(abs(yhat - truth)),
+    runtime.sec = elapsed,
+    eta = eta,
+    gcv = gcv,
+    effective.df = edf,
+    eigen.backend = backend,
+    fitted.min = min(yhat),
+    fitted.max = max(yhat),
+    conductance.min = suppressWarnings(min(conductance, na.rm = TRUE)),
+    conductance.median = suppressWarnings(stats::median(conductance, na.rm = TRUE)),
+    conductance.max = suppressWarnings(max(conductance, na.rm = TRUE)),
+    message = "",
+    stringsAsFactors = FALSE
+  )
+}
+
+conductance_label <- function(rule, alpha, sigma.rule, sigma.quantile, local.k) {
+  if (identical(rule, "inverse.length.power")) {
+    return(sprintf("%s alpha=%s", rule, signif(alpha, 3)))
+  }
+  if (identical(rule, "exp.length") || identical(rule, "exp.length.squared")) {
+    if (identical(sigma.rule, "edge.quantile")) {
+      return(sprintf("%s sigma=edge.q%s", rule, signif(sigma.quantile, 3)))
+    }
+    return(sprintf("%s sigma=%s", rule, sigma.rule))
+  }
+  if (identical(rule, "self.tuned.gaussian")) {
+    return(sprintf("%s local.k=%d", rule, as.integer(local.k)))
+  }
+  rule
+}
+
+fit_rdgraph_sknn_mst_repaired <- function(X, y, k) {
+  graph.start <- proc.time()
+  graph <- tryCatch(
+    create.sknn.graph(
+      X,
+      k = k,
+      connect.components = TRUE,
+      connect.method = "component.mst"
+    ),
+    error = function(e) e
+  )
+  graph.elapsed <- unname((proc.time() - graph.start)[["elapsed"]])
+  if (inherits(graph, "error")) {
+    return(list(result = graph, graph = NULL, graph.elapsed = graph.elapsed,
+                fit.elapsed = NA_real_))
+  }
+
+  fit.start <- proc.time()
+  fit <- tryCatch(
+    fit.rdgraph.regression(
+      X = X,
+      y = y,
+      k = k,
+      adj.list = graph$adj_list,
+      weight.list = graph$weight_list,
+      verbose.level = 0L
+    ),
+    error = function(e) e
+  )
+  fit.elapsed <- unname((proc.time() - fit.start)[["elapsed"]])
+  list(result = fit, graph = graph, graph.elapsed = graph.elapsed,
+       fit.elapsed = fit.elapsed)
+}
+```
+
+## Synthetic Data
+
+```{r data}
+seed <- 20260515L
+n <- 250L
+graph.k <- 5L
+noise.sd <- 0.08
+
+set.seed(seed)
+x <- sort(runif(n))
+X <- matrix(x, ncol = 1)
+truth <- scaled_two_gaussian(x)
+y <- truth + rnorm(n, sd = noise.sd)
+x.grid <- seq(0, 1, length.out = 600)
+truth.grid <- scaled_two_gaussian(x.grid)
+graph <- build_knn_graph_1d(x, k = graph.k)
+
+data.frame(
+  n = n,
+  seed = seed,
+  graph.k = graph.k,
+  graph.edges = graph$edge.count,
+  noise.sd = noise.sd,
+  truth.range = paste(signif(range(truth), 4), collapse = " to "),
+  observed.range = paste(signif(range(y), 4), collapse = " to ")
+)
+```
+
+```{r raw-plot}
+raw.df <- data.frame(x = x, y = y, truth = truth)
+truth.df <- data.frame(x = x.grid, truth = truth.grid)
+
+ggplot(raw.df, aes(x, y)) +
+  geom_line(data = truth.df, aes(y = truth), color = "red", linewidth = 1.1) +
+  geom_point(color = "black", alpha = 0.75, size = 1.4) +
+  labs(
+    title = "Synthetic 1D two-Gaussian mixture data",
+    x = "x",
+    y = "response"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## Parameter Sweep
+
+```{r sweep-grid}
+inverse.grid <- expand.grid(
+  conductance.rule = "inverse.length.power",
+  alpha = c(0.5, 1, 2, 3),
+  laplacian.type = c("unnormalized", "symmetric.normalized"),
+  filter.type = c("heat_kernel", "tikhonov"),
+  n.eigenpairs = c(30L, 60L),
+  stringsAsFactors = FALSE
+)
+inverse.grid$sigma.rule <- NA_character_
+inverse.grid$sigma.quantile <- NA_real_
+inverse.grid$local.k <- NA_integer_
+
+exp.grid <- expand.grid(
+  conductance.rule = c("exp.length", "exp.length.squared"),
+  sigma.rule = c("edge.quantile", "median"),
+  sigma.quantile = c(0.5, 0.75),
+  laplacian.type = c("unnormalized", "symmetric.normalized"),
+  filter.type = c("heat_kernel", "tikhonov"),
+  n.eigenpairs = c(30L, 60L),
+  stringsAsFactors = FALSE
+)
+exp.grid$alpha <- NA_real_
+exp.grid$local.k <- NA_integer_
+
+self.grid <- expand.grid(
+  conductance.rule = "self.tuned.gaussian",
+  local.k = c(3L, 5L, 10L),
+  laplacian.type = c("unnormalized", "symmetric.normalized"),
+  filter.type = c("heat_kernel", "tikhonov"),
+  n.eigenpairs = c(30L, 60L),
+  stringsAsFactors = FALSE
+)
+self.grid$alpha <- NA_real_
+self.grid$sigma.rule <- NA_character_
+self.grid$sigma.quantile <- NA_real_
+
+sweep.grid <- rbind(
+  inverse.grid[, c("conductance.rule", "alpha", "sigma.rule", "sigma.quantile", "local.k",
+                  "laplacian.type", "filter.type", "n.eigenpairs")],
+  exp.grid[, c("conductance.rule", "alpha", "sigma.rule", "sigma.quantile", "local.k",
+               "laplacian.type", "filter.type", "n.eigenpairs")],
+  self.grid[, c("conductance.rule", "alpha", "sigma.rule", "sigma.quantile", "local.k",
+                "laplacian.type", "filter.type", "n.eigenpairs")]
+)
+sweep.grid$n.candidates <- 30L
+sweep.grid$conductance.label <- mapply(
+  conductance_label,
+  sweep.grid$conductance.rule,
+  sweep.grid$alpha,
+  sweep.grid$sigma.rule,
+  sweep.grid$sigma.quantile,
+  sweep.grid$local.k,
+  USE.NAMES = FALSE
+)
+sweep.grid$label <- sprintf(
+  "%03d %s %s %s eigenpairs=%d",
+  seq_len(nrow(sweep.grid)),
+  sweep.grid$conductance.label,
+  sweep.grid$laplacian.type,
+  sweep.grid$filter.type,
+  sweep.grid$n.eigenpairs
+)
+
+data.frame(n.metric.fits = nrow(sweep.grid))
+```
+
+```{r run-sweep, cache=FALSE}
+metric.results <- vector("list", nrow(sweep.grid))
+metric.fits <- vector("list", nrow(sweep.grid))
+
+for (i in seq_len(nrow(sweep.grid))) {
+  spec <- as.list(sweep.grid[i, ])
+  fit.out <- fit_metric_one(spec, graph = graph, y = y, n = n)
+  metric.fits[[i]] <- fit.out$result
+  metric.results[[i]] <- cbind(
+    sweep.grid[i, ],
+    score_fit(
+      method = "fit.metric.graph.lowpass",
+      fit = fit.out$result,
+      elapsed = fit.out$elapsed,
+      x = x,
+      y = y,
+      truth = truth
+    )
+  )
+}
+
+metric.results <- do.call(rbind, metric.results)
+metric.results$rank.rmse.truth <- rank(metric.results$rmse.truth, ties.method = "first", na.last = "keep")
+metric.results <- metric.results[order(metric.results$rmse.truth), ]
+rownames(metric.results) <- NULL
+
+head(metric.results[, c(
+  "rank.rmse.truth", "conductance.rule", "alpha", "sigma.rule",
+  "sigma.quantile", "local.k", "laplacian.type", "filter.type",
+  "n.eigenpairs", "rmse.truth", "gcv", "effective.df", "runtime.sec",
+  "eigen.backend", "status"
+)], 12)
+```
+
+## rdgraph Baseline with MST Repair
+
+```{r rdgraph-fit}
+rd.out <- fit_rdgraph_sknn_mst_repaired(X = X, y = y, k = graph.k)
+rd.fit <- rd.out$result
+rd.elapsed <- rd.out$fit.elapsed
+
+rd.result <- score_fit(
+  method = "fit.rdgraph.regression",
+  fit = rd.fit,
+  elapsed = rd.elapsed,
+  x = x,
+  y = y,
+  truth = truth
+)
+rd.result[, c("method", "status", "rmse.truth", "rmse.observed", "mae.truth",
+              "runtime.sec", "eta", "gcv", "message")]
+```
+
+```{r rdgraph-graph-diagnostics}
+if (!is.null(rd.out$graph)) {
+  data.frame(
+    k = graph.k,
+    graph.constructor = "create.sknn.graph",
+    n.components.before.mst = rd.out$graph$n_components_before,
+    n.components.after.mst = rd.out$graph$n_components_after,
+    n.mst.edges.added = rd.out$graph$n_mst_edges_added,
+    n.edges.before.mst = sum(lengths(rd.out$graph$raw_adj_list)) / 2,
+    n.edges.after.mst = sum(lengths(rd.out$graph$adj_list)) / 2,
+    graph.construction.sec = rd.out$graph.elapsed,
+    rdgraph.fit.sec = rd.out$fit.elapsed
+  )
+} else {
+  data.frame(message = "MST-repaired rdgraph construction failed")
+}
+```
+
+## Summary
+
+```{r summary-table}
+best.metric <- metric.results[which.min(metric.results$rmse.truth), ]
+comparison <- rbind(
+  data.frame(
+    family = "Best metric graph low-pass",
+    method = paste(
+      best.metric$conductance.rule,
+      best.metric$laplacian.type,
+      best.metric$filter.type,
+      paste0("eigenpairs=", best.metric$n.eigenpairs)
+    ),
+    rmse.truth = best.metric$rmse.truth,
+    rmse.observed = best.metric$rmse.observed,
+    mae.truth = best.metric$mae.truth,
+    runtime.sec = best.metric$runtime.sec,
+    eta = best.metric$eta,
+    gcv = best.metric$gcv,
+    status = best.metric$status
+  ),
+  data.frame(
+    family = "rdgraph baseline",
+    method = "fit.rdgraph.regression default-style",
+    rmse.truth = rd.result$rmse.truth,
+    rmse.observed = rd.result$rmse.observed,
+    mae.truth = rd.result$mae.truth,
+    runtime.sec = rd.result$runtime.sec,
+    eta = rd.result$eta,
+    gcv = rd.result$gcv,
+    status = rd.result$status
+  )
+)
+comparison
+```
+
+```{r sweep-distribution}
+ok.metric <- subset(metric.results, status == "ok")
+group.min.metric <- aggregate(
+  rmse.truth ~ laplacian.type + conductance.rule,
+  data = ok.metric,
+  FUN = min
+)
+
+ggplot(ok.metric, aes(x = laplacian.type, y = rmse.truth, fill = conductance.rule)) +
+  geom_boxplot(outlier.alpha = 0.25, alpha = 0.55) +
+  geom_point(
+    aes(color = conductance.rule),
+    position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.75),
+    size = 1.25,
+    alpha = 0.5,
+    show.legend = FALSE
+  ) +
+  geom_point(
+    data = group.min.metric,
+    aes(x = laplacian.type, y = rmse.truth, group = conductance.rule),
+    position = position_dodge(width = 0.75),
+    shape = 23,
+    size = 3,
+    fill = "white",
+    color = "black",
+    inherit.aes = FALSE
+  ) +
+  geom_hline(yintercept = rd.result$rmse.truth, color = "blue", linewidth = 0.9, linetype = 2) +
+  scale_y_log10() +
+  labs(
+    title = "Metric low-pass RMSE to truth across parameter sweep",
+    subtitle = "Log scale. Points are individual fits; white diamonds are group minima; dashed blue line is rdgraph baseline.",
+    x = "Laplacian type",
+    y = "RMSE to truth, log10 scale",
+    fill = "Conductance rule"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1))
+```
+
+```{r top-metric-rmse}
+top.metric.plot <- head(ok.metric[order(ok.metric$rmse.truth), ], 20)
+top.metric.plot$fit.id <- factor(
+  paste0(seq_len(nrow(top.metric.plot)), ". ",
+         top.metric.plot$conductance.label, " | ",
+         top.metric.plot$laplacian.type, " | ",
+         top.metric.plot$filter.type, " | eigenpairs=",
+         top.metric.plot$n.eigenpairs),
+  levels = rev(paste0(seq_len(nrow(top.metric.plot)), ". ",
+                      top.metric.plot$conductance.label, " | ",
+                      top.metric.plot$laplacian.type, " | ",
+                      top.metric.plot$filter.type, " | eigenpairs=",
+                      top.metric.plot$n.eigenpairs))
+)
+
+ggplot(top.metric.plot, aes(x = rmse.truth, y = fit.id, color = conductance.rule)) +
+  geom_point(size = 2.4) +
+  scale_x_log10() +
+  labs(
+    title = "Top metric low-pass fits ranked by RMSE to truth",
+    x = "RMSE to truth, log10 scale",
+    y = NULL,
+    color = "Conductance rule"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+```{r runtime-distribution}
+ggplot(ok.metric, aes(x = conductance.rule, y = runtime.sec, fill = laplacian.type)) +
+  geom_boxplot(outlier.alpha = 0.35) +
+  geom_hline(yintercept = rd.result$runtime.sec, color = "blue", linewidth = 0.9, linetype = 2) +
+  scale_y_log10() +
+  labs(
+    title = "Runtime distribution across metric low-pass sweep",
+    subtitle = "Dashed blue line: fit.rdgraph.regression baseline runtime",
+    x = "Conductance rule",
+    y = "Runtime seconds, log10 scale",
+    fill = "Laplacian type"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+## Fit Curves
+
+```{r selected-fits}
+top.k <- min(8L, nrow(ok.metric))
+top.rows <- ok.metric[seq_len(top.k), ]
+top.indices <- as.integer(sub(" .*", "", top.rows$label))
+
+fit.curves <- do.call(rbind, lapply(seq_along(top.indices), function(j) {
+  idx <- top.indices[j]
+  fit <- metric.fits[[idx]]
+  data.frame(
+    x = x,
+    fitted = fit$fitted.values,
+    label = paste0("#", j, ": ", sweep.grid$conductance.rule[idx], ", ",
+                   sweep.grid$laplacian.type[idx], ", ",
+                   sweep.grid$filter.type[idx], ", eigenpairs=", sweep.grid$n.eigenpairs[idx])
+  )
+}))
+
+rd.curve <- if (!inherits(rd.fit, "error")) {
+  data.frame(x = x, fitted = rd.fit$fitted.values, label = "fit.rdgraph.regression")
+} else {
+  NULL
+}
+
+ggplot(raw.df, aes(x, y)) +
+  geom_line(data = truth.df, aes(y = truth), color = "red", linewidth = 1.15) +
+  geom_point(color = "black", alpha = 0.45, size = 1.1) +
+  geom_line(data = fit.curves, aes(y = fitted, color = label), linewidth = 0.7, alpha = 0.9) +
+  labs(
+    title = "Top metric low-pass fits from the sweep",
+    x = "x",
+    y = "response",
+    color = "fit"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+```{r best-vs-rdgraph}
+best.idx <- as.integer(sub(" .*", "", best.metric$label))
+best.fit <- metric.fits[[best.idx]]
+
+plot.df <- rbind(
+  data.frame(x = x, fitted = best.fit$fitted.values, method = "Best metric graph low-pass"),
+  if (!is.null(rd.curve)) data.frame(x = rd.curve$x, fitted = rd.curve$fitted, method = "fit.rdgraph.regression") else NULL
+)
+
+ggplot(raw.df, aes(x, y)) +
+  geom_line(data = truth.df, aes(y = truth), color = "red", linewidth = 1.2) +
+  geom_point(color = "black", alpha = 0.6, size = 1.25) +
+  geom_line(data = plot.df, aes(y = fitted, color = method), linewidth = 1.05) +
+  scale_color_manual(values = c("Best metric graph low-pass" = "#1565c0",
+                                "fit.rdgraph.regression" = "#2e7d32")) +
+  labs(
+    title = "Best metric low-pass fit versus rdgraph baseline",
+    subtitle = sprintf(
+      "Best metric RMSE %.4f; rdgraph RMSE %.4f",
+      best.metric$rmse.truth,
+      rd.result$rmse.truth
+    ),
+    x = "x",
+    y = "response",
+    color = "method"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## Conductance and Solver Diagnostics
+
+```{r diagnostics-plots}
+ggplot(ok.metric, aes(x = conductance.median, y = rmse.truth, color = conductance.rule)) +
+  geom_point(aes(shape = laplacian.type), alpha = 0.75, size = 2) +
+  scale_x_log10() +
+  labs(
+    title = "RMSE versus median conductance",
+    x = "Median conductance, log10 scale",
+    y = "RMSE to truth",
+    color = "Conductance rule",
+    shape = "Laplacian type"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+```{r backend-table}
+as.data.frame(table(ok.metric$eigen.backend, ok.metric$laplacian.type))
+```
+
+## Full Result Table
+
+```{r full-results}
+metric.results[, c(
+  "rank.rmse.truth", "conductance.rule", "alpha", "sigma.rule",
+  "sigma.quantile", "local.k", "laplacian.type", "filter.type",
+  "n.eigenpairs", "rmse.truth", "rmse.observed", "mae.truth",
+  "runtime.sec", "eta", "gcv", "effective.df", "eigen.backend",
+  "fitted.min", "fitted.max", "conductance.min", "conductance.median",
+  "conductance.max", "status", "message"
+)]
+```

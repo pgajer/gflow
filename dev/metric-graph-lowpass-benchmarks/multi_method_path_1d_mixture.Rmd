@@ -1,0 +1,481 @@
+---
+title: "Metric Graph Low-Pass: Path-Graph Multi-Method 1D Benchmark"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6,
+  dpi = 120
+)
+
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+if (requireNamespace("pkgload", quietly = TRUE)) {
+  pkgload::load_all(repo.dir, quiet = TRUE)
+} else {
+  library(gflow)
+}
+
+library(gflow)
+library(ggplot2)
+source(file.path(repo.dir, "dev/metric-graph-lowpass-benchmarks/multi_scenario_1d_mixture_helpers.R"))
+```
+
+## Purpose
+
+This report compares `fit.metric.graph.lowpass()` against established 1D
+nonlinear regression methods, graph-signal denoising methods, and
+`fit.rdgraph.regression()` on the curated 240-dataset Gaussian-mixture benchmark.
+
+The graph-based methods use the sorted 1D path graph. Vertices are ordered by
+sample coordinate \(x_i\), adjacent ordered samples are connected, and edge
+lengths are adjacent spacings:
+
+\[
+\ell_i = x_{(i+1)} - x_{(i)}.
+\]
+
+The metric low-pass sweep transforms these lengths into conductances:
+
+\[
+c_{ij} = (\ell_{ij} + \epsilon)^{-\alpha},
+\qquad
+c_{ij} = \exp(-\ell_{ij}/\sigma),
+\]
+
+\[
+c_{ij} = \exp(-\ell_{ij}^{2}/\sigma^{2}),
+\qquad
+c_{ij} = \exp\{-\ell_{ij}^{2}/(\sigma_i\sigma_j)\}.
+\]
+
+`GSD::gsmoothing()` and `gasper` SGWT/SURE denoising receive a path-graph
+conductance adjacency built with the same metric-length interpretation,
+using `exp.length` with `sigma=edge.q0.75`.
+
+## Load Results
+
+```{r load-results}
+results.file <- file.path(
+  repo.dir,
+  "dev/metric-graph-lowpass-benchmarks/reports/multi_method_path_1d_mixture_results.csv"
+)
+if (!file.exists(results.file)) {
+  stop("Missing precomputed results file. Run compute_multi_method_path_1d_mixture_results.R first.")
+}
+results <- read.csv(results.file, stringsAsFactors = FALSE)
+
+data.frame(
+  n.rows = nrow(results),
+  n.datasets = length(unique(results$dataset.id)),
+  n.estimators = length(unique(results$config.label)),
+  n.errors = sum(results$status != "ok"),
+  results.file = results.file
+)
+```
+
+```{r prepare}
+ok <- subset(results, status == "ok")
+ok$estimator <- ok$config.label
+ok$log.rmse.truth <- log(ok$rmse.truth)
+ok$display.family <- factor(
+  ok$method.family,
+  levels = c("metric low-pass", "classical 1D", "graph denoising", "rdgraph")
+)
+
+estimator.summary <- aggregate(
+  rmse.truth ~ estimator + method + method.family,
+  data = ok,
+  FUN = function(z) c(median = median(z), mean = mean(z),
+                      q90 = unname(quantile(z, 0.90)))
+)
+estimator.summary <- do.call(data.frame, estimator.summary)
+names(estimator.summary) <- sub("rmse.truth.", "", names(estimator.summary), fixed = TRUE)
+estimator.summary <- estimator.summary[order(estimator.summary$median), ]
+best.estimator <- estimator.summary$estimator[1]
+rdgraph.estimator <- "fit.rdgraph.regression.path"
+
+head(estimator.summary, 20)
+```
+
+## Overall Performance
+
+```{r violin}
+top.estimators <- head(estimator.summary$estimator, 14)
+plot.df <- subset(ok, estimator %in% unique(c(top.estimators, rdgraph.estimator)))
+plot.df$estimator <- factor(
+  plot.df$estimator,
+  levels = estimator.summary$estimator[estimator.summary$estimator %in% unique(plot.df$estimator)]
+)
+
+ggplot(plot.df, aes(x = estimator, y = rmse.truth, fill = display.family)) +
+  geom_violin(scale = "width", trim = FALSE, alpha = 0.65, color = "gray35") +
+  stat_summary(fun = median, geom = "point", shape = 23, size = 2.2,
+               fill = "white", color = "black") +
+  scale_y_log10() +
+  coord_flip() +
+  labs(
+    title = "RMSE to truth across 240 path-graph benchmark datasets",
+    subtitle = "Top estimators by median RMSE plus rdgraph path baseline; white diamonds mark medians",
+    x = NULL,
+    y = "RMSE to truth, log scale",
+    fill = "Method family"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+```{r family-summary}
+family.summary <- aggregate(
+  rmse.truth ~ method.family,
+  data = ok,
+  FUN = function(z) c(median = median(z), q25 = unname(quantile(z, 0.25)),
+                      q75 = unname(quantile(z, 0.75)), mean = mean(z))
+)
+do.call(data.frame, family.summary)
+```
+
+```{r by-family}
+ggplot(ok, aes(x = method.family, y = rmse.truth, fill = method.family)) +
+  geom_violin(scale = "width", trim = FALSE, alpha = 0.65, color = "gray35") +
+  stat_summary(fun = median, geom = "point", shape = 23, size = 2.2,
+               fill = "white", color = "black") +
+  scale_y_log10() +
+  labs(
+    title = "RMSE distribution by method family",
+    x = NULL,
+    y = "RMSE to truth, log scale"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+## Per-Dataset Winners
+
+```{r winners}
+best.by.dataset <- ok[order(ok$dataset.id, ok$rmse.truth), ]
+best.by.dataset <- best.by.dataset[!duplicated(best.by.dataset$dataset.id), ]
+
+winner.table <- sort(table(best.by.dataset$estimator), decreasing = TRUE)
+head(data.frame(estimator = names(winner.table), wins = as.integer(winner.table)), 20)
+```
+
+```{r winners-plot}
+winner.df <- head(data.frame(estimator = names(winner.table),
+                             wins = as.integer(winner.table)), 15)
+ggplot(winner.df, aes(x = reorder(estimator, wins), y = wins)) +
+  geom_col(fill = "#4575b4") +
+  coord_flip() +
+  labs(
+    title = "Per-dataset winners by RMSE to truth",
+    x = NULL,
+    y = "Number of datasets"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+## Frequentist Paired Comparisons
+
+```{r frequentist-functions}
+paired_comparisons <- function(dat, reference.estimator) {
+  estimators <- sort(unique(dat$estimator))
+  ref <- dat[dat$estimator == reference.estimator, c("dataset.id", "log.rmse.truth")]
+  names(ref)[2] <- "ref.log.rmse"
+  out <- lapply(estimators[estimators != reference.estimator], function(est) {
+    cur <- dat[dat$estimator == est, c("dataset.id", "log.rmse.truth")]
+    names(cur)[2] <- "cur.log.rmse"
+    m <- merge(ref, cur, by = "dataset.id")
+    d <- m$cur.log.rmse - m$ref.log.rmse
+    tt <- stats::t.test(d, mu = 0)
+    wt <- stats::wilcox.test(d, mu = 0, exact = FALSE)
+    data.frame(
+      estimator = est,
+      reference = reference.estimator,
+      n = length(d),
+      mean.log.rmse.diff = mean(d),
+      conf.low = unname(tt$conf.int[1]),
+      conf.high = unname(tt$conf.int[2]),
+      median.log.rmse.diff = median(d),
+      ratio.from.mean = exp(mean(d)),
+      ratio.conf.low = exp(unname(tt$conf.int[1])),
+      ratio.conf.high = exp(unname(tt$conf.int[2])),
+      t.p.value = tt$p.value,
+      wilcox.p.value = wt$p.value,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, out)
+  out$t.p.adj.bh <- p.adjust(out$t.p.value, method = "BH")
+  out$wilcox.p.adj.bh <- p.adjust(out$wilcox.p.value, method = "BH")
+  out[order(out$mean.log.rmse.diff), ]
+}
+
+freq.vs.rdgraph <- paired_comparisons(ok, rdgraph.estimator)
+freq.vs.best <- paired_comparisons(ok, best.estimator)
+```
+
+Negative log-RMSE differences mean the estimator has lower RMSE than the
+reference.
+
+```{r freq-rdgraph}
+head(freq.vs.rdgraph, 20)
+```
+
+```{r freq-best}
+head(freq.vs.best, 20)
+```
+
+```{r freq-best-forest}
+freq.best.plot <- head(freq.vs.best[order(freq.vs.best$ratio.from.mean), ], 18)
+freq.best.plot$evidence <- ifelse(
+  freq.best.plot$t.p.adj.bh < 0.05 & freq.best.plot$ratio.conf.high < 1,
+  "lower RMSE than leader",
+  ifelse(freq.best.plot$t.p.adj.bh < 0.05 & freq.best.plot$ratio.conf.low > 1,
+         "higher RMSE than leader", "not separated")
+)
+
+ggplot(freq.best.plot,
+       aes(x = ratio.from.mean, y = reorder(estimator, ratio.from.mean),
+           color = evidence)) +
+  geom_vline(xintercept = 1, linetype = 2, color = "gray40") +
+  geom_errorbarh(aes(xmin = ratio.conf.low, xmax = ratio.conf.high),
+                 height = 0.2, linewidth = 0.7) +
+  geom_point(size = 2.2) +
+  scale_x_log10() +
+  labs(
+    title = "Frequentist paired forest plot versus best observed estimator",
+    subtitle = paste("Reference:", best.estimator,
+                     "| Points are mean paired RMSE ratios; bars are 95% paired t confidence intervals"),
+    x = "RMSE ratio versus reference, log scale",
+    y = NULL,
+    color = "Paired evidence"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+## Bayesian Paired Comparisons
+
+For a paired comparison, let
+\[
+d_i = \log(\mathrm{RMSE}_{m,i}) - \log(\mathrm{RMSE}_{r,i}).
+\]
+
+The report uses the standard conjugate/large-sample Bayesian paired-normal
+summary: the posterior for the mean log-RMSE difference is approximated by a
+Student \(t\) distribution centered at \(\bar d\), with scale
+\(s_d/\sqrt{n}\). Lower values are better, so
+\(\Pr(\mu_d < 0)\) is the posterior probability that method \(m\) beats the
+reference on mean log-RMSE.
+
+```{r bayes-functions}
+bayes_paired_comparisons <- function(dat, reference.estimator) {
+  estimators <- sort(unique(dat$estimator))
+  ref <- dat[dat$estimator == reference.estimator, c("dataset.id", "log.rmse.truth")]
+  names(ref)[2] <- "ref.log.rmse"
+  out <- lapply(estimators[estimators != reference.estimator], function(est) {
+    cur <- dat[dat$estimator == est, c("dataset.id", "log.rmse.truth")]
+    names(cur)[2] <- "cur.log.rmse"
+    m <- merge(ref, cur, by = "dataset.id")
+    d <- m$cur.log.rmse - m$ref.log.rmse
+    n <- length(d)
+    mu <- mean(d)
+    se <- stats::sd(d) / sqrt(n)
+    df <- n - 1L
+    qs <- mu + se * stats::qt(c(0.025, 0.50, 0.975), df = df)
+    data.frame(
+      estimator = est,
+      reference = reference.estimator,
+      n = n,
+      posterior.mean.log.diff = mu,
+      posterior.median.log.diff = qs[2],
+      cred.low = qs[1],
+      cred.high = qs[3],
+      posterior.prob.beats.reference = stats::pt((0 - mu) / se, df = df),
+      posterior.mean.rmse.ratio = exp(mu),
+      ratio.cred.low = exp(qs[1]),
+      ratio.cred.high = exp(qs[3]),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, out)
+  out[order(-out$posterior.prob.beats.reference, out$posterior.mean.log.diff), ]
+}
+
+bayes.vs.rdgraph <- bayes_paired_comparisons(ok, rdgraph.estimator)
+bayes.vs.best <- bayes_paired_comparisons(ok, best.estimator)
+```
+
+```{r bayes-rdgraph}
+head(bayes.vs.rdgraph, 20)
+```
+
+```{r bayes-best}
+head(bayes.vs.best, 20)
+```
+
+```{r bayes-best-forest}
+bayes.best.plot <- head(
+  bayes.vs.best[order(bayes.vs.best$posterior.mean.rmse.ratio), ],
+  18
+)
+bayes.best.plot$prob.label <- cut(
+  bayes.best.plot$posterior.prob.beats.reference,
+  breaks = c(-Inf, 0.05, 0.50, 0.95, Inf),
+  labels = c("< 0.05", "0.05-0.50", "0.50-0.95", "> 0.95")
+)
+
+ggplot(bayes.best.plot,
+       aes(x = posterior.mean.rmse.ratio,
+           y = reorder(estimator, posterior.mean.rmse.ratio),
+           color = posterior.prob.beats.reference)) +
+  geom_vline(xintercept = 1, linetype = 2, color = "gray40") +
+  geom_errorbarh(aes(xmin = ratio.cred.low, xmax = ratio.cred.high),
+                 height = 0.2, linewidth = 0.7) +
+  geom_point(size = 2.2) +
+  scale_x_log10() +
+  scale_color_viridis_c(
+    option = "C",
+    limits = c(0, 1),
+    breaks = c(0.05, 0.50, 0.95),
+    labels = c("0.05", "0.50", "0.95")
+  ) +
+  labs(
+    title = "Bayesian paired forest plot versus best observed estimator",
+    subtitle = paste("Reference:", best.estimator,
+                     "| Points are posterior mean RMSE ratios; bars are 95% credible intervals"),
+    x = "Posterior RMSE ratio versus reference, log scale",
+    y = NULL,
+    color = "Pr(beats reference)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+## Bayesian Bootstrap Ranking
+
+```{r bayesian-bootstrap}
+bayesian_bootstrap_ranks <- function(dat, B = 4000L, seed = 53191L) {
+  common.datasets <- Reduce(intersect, split(dat$dataset.id, dat$estimator))
+  dat <- dat[dat$dataset.id %in% common.datasets, ]
+  estimators <- sort(unique(dat$estimator))
+  y <- matrix(NA_real_, nrow = length(common.datasets), ncol = length(estimators),
+              dimnames = list(common.datasets, estimators))
+  for (j in seq_along(estimators)) {
+    cur <- dat[dat$estimator == estimators[j], c("dataset.id", "log.rmse.truth")]
+    y[cur$dataset.id, j] <- cur$log.rmse.truth
+  }
+  keep <- stats::complete.cases(y)
+  y <- y[keep, , drop = FALSE]
+  set.seed(seed)
+  ranks <- matrix(NA_integer_, nrow = B, ncol = ncol(y),
+                  dimnames = list(NULL, colnames(y)))
+  for (b in seq_len(B)) {
+    w <- stats::rexp(nrow(y))
+    w <- w / sum(w)
+    means <- as.numeric(crossprod(w, y))
+    ranks[b, ] <- rank(means, ties.method = "average")
+  }
+  data.frame(
+    estimator = colnames(y),
+    posterior.prob.best = colMeans(ranks == 1),
+    posterior.mean.rank = colMeans(ranks),
+    posterior.median.rank = apply(ranks, 2, median),
+    rank.q95 = apply(ranks, 2, quantile, 0.95),
+    stringsAsFactors = FALSE
+  )
+}
+
+rank.posterior <- bayesian_bootstrap_ranks(ok)
+rank.posterior <- merge(rank.posterior,
+                        estimator.summary[, c("estimator", "method.family", "median")],
+                        by = "estimator", all.x = TRUE)
+rank.posterior <- rank.posterior[order(-rank.posterior$posterior.prob.best,
+                                       rank.posterior$posterior.mean.rank), ]
+head(rank.posterior, 20)
+```
+
+```{r bayesian-bootstrap-plot}
+rank.plot <- head(rank.posterior, 15)
+ggplot(rank.plot, aes(x = reorder(estimator, posterior.prob.best),
+                      y = posterior.prob.best, fill = method.family)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Bayesian bootstrap probability of best mean log-RMSE",
+    x = NULL,
+    y = "Posterior probability of rank 1",
+    fill = "Method family"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+## Shape and Noise Effects
+
+```{r shape-variant}
+shape.variant <- aggregate(
+  rmse.truth ~ shape.id + shape.name + variant.id + variant.name + estimator + method.family,
+  data = ok,
+  FUN = median
+)
+shape.variant.best <- shape.variant[order(shape.variant$shape.id, shape.variant$variant.id,
+                                          shape.variant$rmse.truth), ]
+shape.variant.best <- shape.variant.best[!duplicated(paste(shape.variant.best$shape.id,
+                                                           shape.variant.best$variant.id)), ]
+shape.variant.best[, c("shape.id", "variant.id", "estimator", "method.family", "rmse.truth")]
+```
+
+```{r heatmap}
+top.for.heatmap <- head(estimator.summary$estimator, 10)
+heat.df <- subset(shape.variant, estimator %in% top.for.heatmap)
+ggplot(heat.df, aes(x = variant.id, y = estimator, fill = rmse.truth)) +
+  geom_tile(color = "white") +
+  facet_wrap(~ shape.id, ncol = 4) +
+  scale_fill_viridis_c(trans = "log10") +
+  labs(
+    title = "Median RMSE by shape, variant, and top estimator",
+    x = "Variant",
+    y = NULL,
+    fill = "Median RMSE"
+  ) +
+  theme_minimal(base_size = 9)
+```
+
+## Runtime and Failures
+
+```{r runtime}
+ggplot(ok, aes(x = method.family, y = runtime.sec, fill = method.family)) +
+  geom_violin(scale = "width", trim = FALSE, alpha = 0.65, color = "gray35") +
+  scale_y_log10() +
+  labs(
+    title = "Runtime per fit",
+    x = NULL,
+    y = "Runtime seconds, log scale"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+```{r failures}
+failure.table <- subset(results, status != "ok")
+if (nrow(failure.table) == 0) {
+  data.frame(message = "No fit failures")
+} else {
+  aggregate(dataset.id ~ method + config.label + message,
+            data = failure.table, FUN = length)
+}
+```
+
+## Result Location
+
+```{r result-file}
+results.file
+```
