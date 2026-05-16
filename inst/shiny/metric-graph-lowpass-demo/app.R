@@ -171,6 +171,7 @@ fit.metric.lowpass.demo <- function(data, input) {
         conductance.sigma.rule = input$sigma_rule,
         conductance.sigma.quantile = input$sigma_quantile,
         conductance.local.k = input$local_k,
+        laplacian.type = input$laplacian_type,
         n.eigenpairs = min(as.integer(input$n_eigenpairs), length(data$x) - 1L),
         filter.type = input$filter_type,
         eta.grid = eta.grid.from.input(input),
@@ -224,6 +225,7 @@ model.signature <- function(input) {
         input$sigma_rule,
         input$sigma_quantile,
         input$local_k,
+        input$laplacian_type,
         input$n_eigenpairs,
         input$filter_type,
         input$eta_mode,
@@ -367,6 +369,12 @@ ui <- shiny::fluidPage(
                     shiny::sliderInput("local_k", "Self-tuned local k", 1, 30, 5, step = 1)
                 ),
                 shiny::selectInput(
+                    "laplacian_type",
+                    "Laplacian type",
+                    choices = c("unnormalized", "symmetric.normalized"),
+                    selected = "unnormalized"
+                ),
+                shiny::selectInput(
                     "filter_type",
                     "Filter type",
                     choices = c("heat_kernel", "tikhonov", "cubic_spline",
@@ -385,7 +393,7 @@ ui <- shiny::fluidPage(
                     "input.eta_mode == 'auto'",
                     shiny::sliderInput("n_candidates", "Auto eta candidates", 5, 120, 40, step = 5)
                 ),
-                shiny::helpText("Phase 1 uses the unnormalized weighted Laplacian L = D - C."),
+                shiny::helpText("Unnormalized uses L = D - C. Symmetric normalized uses L_sym = I - D^{-1/2} C D^{-1/2}."),
                 shiny::actionButton("fit", "Fit metric low-pass", class = "btn-primary")
             )
         ),
@@ -571,6 +579,7 @@ server <- function(input, output, session) {
         cat("  GCV:", signif(fit$gcv$gcv.optimal, 6), "\n")
         cat("  effective df:", signif(fit$gcv$effective.df, 6), "\n")
         cat("  eigen backend:", fit$spectral$backend, "\n")
+        cat("  laplacian type:", fit$laplacian.type, "\n")
         cat("  conductance rule:", fit$conductance$rule, "\n")
         cat("  fitted range:", paste(signif(range(fit$fitted.values), 4), collapse = " to "), "\n")
         cat("  operator edge length summary:\n")

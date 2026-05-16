@@ -82,6 +82,10 @@ rchk_reports/
 # Source-controlled development studies live under explicit allowlists.
 dev/*
 !dev/*_MOVED.md
+!dev/metric-graph-lowpass-benchmarks/
+!dev/metric-graph-lowpass-benchmarks/**
+!dev/graph-trend-filtering/
+!dev/graph-trend-filtering/**
 dev/data-geodesic-reconstruction/**/runs/
 dev/data-geodesic-reconstruction/**/assets/
 dev/data-geodesic-reconstruction/**/*.rds

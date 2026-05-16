@@ -98,6 +98,29 @@ test_that("unnormalized weighted Laplacian assembly matches R reference", {
   expect_true(min(eigen(L, symmetric = TRUE, only.values = TRUE)$values) > -1e-10)
 })
 
+test_that("symmetric normalized Laplacian assembly matches R reference", {
+  graph <- make_path_graph_lengths(c(2, 4))
+  op <- metric.graph.lowpass.operator(
+    graph$adj.list, graph$weight.list,
+    conductance.rule = "inverse.length.power",
+    conductance.epsilon = 1e-8,
+    laplacian.type = "symmetric.normalized"
+  )
+  c12 <- 1 / (2 + 1e-8)
+  c23 <- 1 / (4 + 1e-8)
+  degree <- c(c12, c12 + c23, c23)
+  L.ref <- diag(1, 3)
+  L.ref[1, 2] <- L.ref[2, 1] <- -c12 / sqrt(degree[1] * degree[2])
+  L.ref[2, 3] <- L.ref[3, 2] <- -c23 / sqrt(degree[2] * degree[3])
+
+  L <- laplacian_dense(op)
+  expect_equal(L, L.ref, tolerance = 1e-12)
+  expect_equal(as.vector(L %*% sqrt(degree)), rep(0, 3), tolerance = 1e-10)
+  ev <- eigen(L, symmetric = TRUE, only.values = TRUE)$values
+  expect_true(min(ev) > -1e-10)
+  expect_true(max(ev) < 2 + 1e-10)
+})
+
 test_that("C++ dense spectral path matches R dense eigen reference", {
   graph <- make_path_graph_lengths(c(1, 2, 3, 4))
   fit <- fit.metric.graph.lowpass(
@@ -144,6 +167,33 @@ test_that("sparse spectral path handles inverse-square metric conductances", {
   expect_equal(fit.sparse$spectral$backend, "sparse.shift")
   expect_equal(fit.sparse$spectral$eigenvalues, fit.dense$spectral$eigenvalues, tolerance = 1e-6)
   expect_equal(fit.sparse$fitted.values, fit.dense$fitted.values, tolerance = 1e-8)
+})
+
+test_that("symmetric normalized smoothing preserves sqrt-degree null vector", {
+  graph <- make_path_graph_lengths(c(1, 2, 4))
+  op <- metric.graph.lowpass.operator(
+    graph$adj.list, graph$weight.list,
+    laplacian.type = "symmetric.normalized"
+  )
+  y.null <- sqrt(op$degree)
+
+  fit.null <- fit.metric.graph.lowpass(
+    graph$adj.list, graph$weight.list, y.null,
+    laplacian.type = "symmetric.normalized",
+    n.eigenpairs = 4L,
+    eigen.solver = "dense",
+    eta.grid = 1e6
+  )
+  expect_equal(fit.null$fitted.values, y.null, tolerance = 1e-8)
+
+  fit.constant <- fit.metric.graph.lowpass(
+    graph$adj.list, graph$weight.list, rep(1, 4),
+    laplacian.type = "symmetric.normalized",
+    n.eigenpairs = 4L,
+    eigen.solver = "dense",
+    eta.grid = 1e6
+  )
+  expect_gt(max(abs(fit.constant$fitted.values - 1)), 1e-3)
 })
 
 test_that("metric low-pass preserves constant responses and refit fixed eta", {

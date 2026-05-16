@@ -189,8 +189,8 @@ metric_operator_t build_metric_operator(
     int local_k,
     const std::string& laplacian_type
 ) {
-    if (laplacian_type != "unnormalized") {
-        Rf_error("Only laplacian.type = 'unnormalized' is implemented in Phase 1");
+    if (laplacian_type != "unnormalized" && laplacian_type != "symmetric.normalized") {
+        Rf_error("laplacian.type must be 'unnormalized' or 'symmetric.normalized'");
     }
     if (!std::isfinite(epsilon) || epsilon <= 0.0) {
         Rf_error("conductance.epsilon must be finite and positive");
@@ -299,13 +299,28 @@ metric_operator_t build_metric_operator(
 
     std::vector<Eigen::Triplet<double>> triplets;
     triplets.reserve(4 * op.edges.size() + n);
-    for (const auto& e : op.edges) {
-        const double c = e.conductance;
-        triplets.emplace_back(e.u, e.v, -c);
-        triplets.emplace_back(e.v, e.u, -c);
-    }
-    for (int i = 0; i < n; ++i) {
-        triplets.emplace_back(i, i, op.degree[i]);
+    if (laplacian_type == "unnormalized") {
+        for (const auto& e : op.edges) {
+            const double c = e.conductance;
+            triplets.emplace_back(e.u, e.v, -c);
+            triplets.emplace_back(e.v, e.u, -c);
+        }
+        for (int i = 0; i < n; ++i) {
+            triplets.emplace_back(i, i, op.degree[i]);
+        }
+    } else {
+        for (const auto& e : op.edges) {
+            if (op.degree[e.u] > 0.0 && op.degree[e.v] > 0.0) {
+                const double c_norm = e.conductance / std::sqrt(op.degree[e.u] * op.degree[e.v]);
+                triplets.emplace_back(e.u, e.v, -c_norm);
+                triplets.emplace_back(e.v, e.u, -c_norm);
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            if (op.degree[i] > 0.0) {
+                triplets.emplace_back(i, i, 1.0);
+            }
+        }
     }
 
     op.laplacian.resize(n, n);

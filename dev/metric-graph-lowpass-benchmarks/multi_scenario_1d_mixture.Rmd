@@ -1,0 +1,819 @@
+---
+title: "Metric Graph Low-Pass: Curated 1D Gaussian-Mixture Benchmark"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6,
+  dpi = 120
+)
+
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+if (requireNamespace("pkgload", quietly = TRUE)) {
+  pkgload::load_all(repo.dir, quiet = TRUE)
+} else {
+  library(gflow)
+}
+
+library(gflow)
+library(ggplot2)
+source(file.path(repo.dir, "dev/metric-graph-lowpass-benchmarks/multi_scenario_1d_mixture_helpers.R"))
+```
+
+## Purpose
+
+This benchmark expands the single-scenario smoke test to a curated set of
+1D Gaussian-mixture regression problems over \([0,1]\). The goal is to compare
+direct metric-conductance low-pass smoothing against the existing
+`fit.rdgraph.regression()` baseline over many visibly distinct mixture shapes
+and controlled sampling/noise patterns.
+
+The benchmark uses:
+
+- 16 curated mixture shapes: 10 two-Gaussian and 6 three-Gaussian signals.
+- 3 sampling/noise variants per shape.
+- 5 random replicates per shape/variant pair.
+- \(16 \times 3 \times 5 = 240\) datasets, each with \(n = 250\).
+- `laplacian.type = "unnormalized"` only for `fit.metric.graph.lowpass()`.
+
+For fairness, both the metric smoother and rdgraph baseline use the same
+MST-repaired symmetric kNN graph for each dataset:
+
+```r
+g <- create.sknn.graph(X, k = graph.k, connect.components = TRUE)
+```
+
+The metric smoother receives `g$adj_list` and `g$weight_list` as metric edge
+lengths. The rdgraph baseline receives the same graph as a precomputed graph.
+
+## Conductance Rules
+
+For metric-lowpass fits, `weight.list` values are metric lengths
+\(\ell_{ij}\). The benchmark uses these conductance transforms:
+
+\[
+c_{ij} = (\ell_{ij} + \epsilon)^{-\alpha}
+\]
+
+\[
+c_{ij} = \exp(-\ell_{ij}/\sigma)
+\]
+
+\[
+c_{ij} = \exp(-\ell_{ij}^{2}/\sigma^{2})
+\]
+
+\[
+c_{ij} = \exp\{-\ell_{ij}^{2}/(\sigma_i\sigma_j)\}.
+\]
+
+## Helpers
+
+```{r helpers, eval=FALSE, include=FALSE}
+normalize_to_unit_max <- function(y) {
+  if (max(y) <= 0) y else y / max(y)
+}
+
+mixture_signal <- function(x, means, sds, weights) {
+  y <- numeric(length(x))
+  for (j in seq_along(means)) {
+    y <- y + weights[j] * dnorm(x, mean = means[j], sd = sds[j])
+  }
+  normalize_to_unit_max(y)
+}
+
+shape_catalog <- function() {
+  data.frame(
+    shape.id = sprintf("S%02d", 1:16),
+    shape.name = c(
+      "two separated narrow equal",
+      "two separated unequal",
+      "two close overlapping equal",
+      "two close overlapping unequal",
+      "narrow left plus broad right",
+      "broad left plus narrow right",
+      "left boundary plus interior",
+      "interior plus right boundary",
+      "deep valley separated",
+      "nearly unimodal overlap",
+      "three separated peaks",
+      "dominant center side bumps",
+      "two close plus distant",
+      "narrow center spike",
+      "left-heavy triple",
+      "boundary interior boundary"
+    ),
+    means = I(list(
+      c(0.28, 0.72),
+      c(0.25, 0.74),
+      c(0.43, 0.56),
+      c(0.40, 0.54),
+      c(0.30, 0.69),
+      c(0.31, 0.70),
+      c(0.08, 0.48),
+      c(0.52, 0.93),
+      c(0.22, 0.78),
+      c(0.45, 0.56),
+      c(0.20, 0.50, 0.80),
+      c(0.23, 0.52, 0.79),
+      c(0.35, 0.46, 0.82),
+      c(0.24, 0.50, 0.76),
+      c(0.16, 0.38, 0.70),
+      c(0.08, 0.50, 0.92)
+    )),
+    sds = I(list(
+      c(0.045, 0.045),
+      c(0.050, 0.070),
+      c(0.080, 0.080),
+      c(0.060, 0.095),
+      c(0.035, 0.140),
+      c(0.140, 0.035),
+      c(0.035, 0.090),
+      c(0.090, 0.035),
+      c(0.040, 0.040),
+      c(0.115, 0.115),
+      c(0.040, 0.050, 0.040),
+      c(0.060, 0.045, 0.060),
+      c(0.045, 0.045, 0.060),
+      c(0.090, 0.025, 0.090),
+      c(0.040, 0.060, 0.080),
+      c(0.035, 0.075, 0.035)
+    )),
+    weights = I(list(
+      c(1.00, 1.00),
+      c(1.00, 0.55),
+      c(1.00, 1.00),
+      c(1.00, 0.45),
+      c(1.00, 0.85),
+      c(0.85, 1.00),
+      c(0.85, 1.00),
+      c(1.00, 0.85),
+      c(1.00, 1.00),
+      c(1.00, 0.90),
+      c(0.85, 1.00, 0.75),
+      c(0.45, 1.00, 0.45),
+      c(0.90, 0.75, 1.00),
+      c(0.55, 1.00, 0.55),
+      c(1.00, 0.75, 0.45),
+      c(0.70, 1.00, 0.70)
+    )),
+    stringsAsFactors = FALSE
+  )
+}
+
+variant_catalog <- function() {
+  data.frame(
+    variant.id = c("V1", "V2", "V3"),
+    variant.name = c(
+      "uniform gaussian",
+      "center-biased heteroskedastic",
+      "gap-biased laplace outliers"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+sample_x <- function(n, variant.id) {
+  if (identical(variant.id, "V1")) {
+    return(sort(runif(n)))
+  }
+  if (identical(variant.id, "V2")) {
+    p0 <- pnorm(0, mean = 0.50, sd = 0.20)
+    p1 <- pnorm(1, mean = 0.50, sd = 0.20)
+    return(sort(qnorm(runif(n, p0, p1), mean = 0.50, sd = 0.20)))
+  }
+
+  n.left <- floor(0.42 * n)
+  n.right <- n - n.left
+  x <- c(runif(n.left, 0.02, 0.42), runif(n.right, 0.58, 0.98))
+  sort(x)
+}
+
+rlaplace <- function(n, scale) {
+  u <- runif(n) - 0.5
+  -scale * sign(u) * log1p(-2 * abs(u))
+}
+
+add_noise <- function(x, truth, variant.id) {
+  n <- length(x)
+  if (identical(variant.id, "V1")) {
+    return(truth + rnorm(n, sd = 0.08))
+  }
+  if (identical(variant.id, "V2")) {
+    sd.x <- 0.045 + 0.14 * truth
+    return(truth + rnorm(n, sd = sd.x))
+  }
+
+  y <- truth + rlaplace(n, scale = 0.055)
+  n.out <- max(1L, round(0.04 * n))
+  idx <- sample.int(n, n.out)
+  y[idx] <- y[idx] + rnorm(n.out, mean = 0, sd = 0.45)
+  y
+}
+
+make_dataset <- function(shape, variant, replicate, n = 250L, base.seed = 73001L) {
+  seed <- base.seed + as.integer(sub("^S", "", shape$shape.id)) * 1000L +
+    as.integer(sub("^V", "", variant$variant.id)) * 100L + replicate
+  set.seed(seed)
+  x <- sample_x(n, variant$variant.id)
+  truth <- mixture_signal(x, shape$means[[1]], shape$sds[[1]], shape$weights[[1]])
+  y <- add_noise(x, truth, variant$variant.id)
+  list(
+    seed = seed,
+    x = x,
+    X = matrix(x, ncol = 1),
+    truth = truth,
+    y = y
+  )
+}
+
+safe_min <- function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+safe_median <- function(x) if (all(is.na(x))) NA_real_ else median(x, na.rm = TRUE)
+safe_max <- function(x) if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+
+conductance_label <- function(rule, alpha, sigma.rule, sigma.quantile, local.k) {
+  if (identical(rule, "inverse.length.power")) {
+    return(sprintf("%s alpha=%s", rule, signif(alpha, 3)))
+  }
+  if (identical(rule, "exp.length") || identical(rule, "exp.length.squared")) {
+    if (identical(sigma.rule, "edge.quantile")) {
+      return(sprintf("%s sigma=edge.q%s", rule, signif(sigma.quantile, 3)))
+    }
+    return(sprintf("%s sigma=%s", rule, sigma.rule))
+  }
+  if (identical(rule, "self.tuned.gaussian")) {
+    return(sprintf("%s local.k=%d", rule, as.integer(local.k)))
+  }
+  rule
+}
+
+metric_grid <- function() {
+  out <- rbind(
+    data.frame(conductance.rule = "inverse.length.power",
+               alpha = c(0.5, 1, 1.5, 2, 3),
+               sigma.rule = NA_character_,
+               sigma.quantile = NA_real_,
+               local.k = NA_integer_),
+    data.frame(conductance.rule = c("exp.length", "exp.length",
+                                    "exp.length.squared", "exp.length.squared"),
+               alpha = NA_real_,
+               sigma.rule = c("median", "edge.quantile", "median", "edge.quantile"),
+               sigma.quantile = c(NA_real_, 0.75, NA_real_, 0.75),
+               local.k = NA_integer_),
+    data.frame(conductance.rule = "self.tuned.gaussian",
+               alpha = NA_real_,
+               sigma.rule = NA_character_,
+               sigma.quantile = NA_real_,
+               local.k = c(3L, 5L, 10L))
+  )
+  out$laplacian.type <- "unnormalized"
+  out$filter.type <- "heat_kernel"
+  out$n.eigenpairs <- 60L
+  out$n.candidates <- 30L
+  out$config.id <- sprintf("M%02d", seq_len(nrow(out)))
+  out$config.label <- mapply(
+    conductance_label,
+    out$conductance.rule,
+    out$alpha,
+    out$sigma.rule,
+    out$sigma.quantile,
+    out$local.k,
+    USE.NAMES = FALSE
+  )
+  out
+}
+
+fit_metric_one <- function(spec, graph, y, n) {
+  args <- list(
+    adj.list = graph$adj_list,
+    weight.list = graph$weight_list,
+    y = y,
+    conductance.rule = spec$conductance.rule,
+    laplacian.type = "unnormalized",
+    filter.type = spec$filter.type,
+    n.eigenpairs = min(spec$n.eigenpairs, n - 1L),
+    n.candidates = spec$n.candidates,
+    eigen.solver = "auto",
+    dense.eigen.threshold = 200L,
+    dense.fallback = "auto",
+    dense.fallback.threshold = 5000L,
+    verbose = FALSE
+  )
+  if (identical(spec$conductance.rule, "inverse.length.power")) {
+    args$conductance.alpha <- spec$alpha
+  }
+  if (identical(spec$conductance.rule, "exp.length") ||
+      identical(spec$conductance.rule, "exp.length.squared")) {
+    args$conductance.sigma.rule <- spec$sigma.rule
+    if (!is.na(spec$sigma.quantile)) {
+      args$conductance.sigma.quantile <- spec$sigma.quantile
+    }
+  }
+  if (identical(spec$conductance.rule, "self.tuned.gaussian")) {
+    args$conductance.local.k <- spec$local.k
+  }
+  start <- proc.time()
+  out <- tryCatch(do.call(fit.metric.graph.lowpass, args), error = function(e) e)
+  elapsed <- unname((proc.time() - start)[["elapsed"]])
+  list(result = out, elapsed = elapsed)
+}
+
+score_fit <- function(method, fit, elapsed, y, truth) {
+  if (inherits(fit, "error")) {
+    return(data.frame(
+      method = method,
+      status = "error",
+      rmse.truth = NA_real_,
+      rmse.observed = NA_real_,
+      mae.truth = NA_real_,
+      runtime.sec = elapsed,
+      eta = NA_real_,
+      gcv = NA_real_,
+      effective.df = NA_real_,
+      eigen.backend = NA_character_,
+      conductance.median = NA_real_,
+      message = conditionMessage(fit),
+      stringsAsFactors = FALSE
+    ))
+  }
+  yhat <- as.numeric(fit$fitted.values)
+  if (inherits(fit, "metric.graph.lowpass.fit")) {
+    conductance <- fit$operator$edge.table$conductance
+    eta <- fit$gcv$eta.optimal
+    gcv <- fit$gcv$gcv.optimal
+    edf <- fit$gcv$effective.df
+    backend <- fit$spectral$backend
+  } else {
+    conductance <- NA_real_
+    eta <- tail(fit$gcv$eta.optimal, 1)
+    gcv <- tail(fit$gcv$gcv.optimal, 1)
+    edf <- NA_real_
+    backend <- if (!is.null(fit$spectral$backend)) fit$spectral$backend else NA_character_
+  }
+  data.frame(
+    method = method,
+    status = "ok",
+    rmse.truth = sqrt(mean((yhat - truth)^2)),
+    rmse.observed = sqrt(mean((yhat - y)^2)),
+    mae.truth = mean(abs(yhat - truth)),
+    runtime.sec = elapsed,
+    eta = eta,
+    gcv = gcv,
+    effective.df = edf,
+    eigen.backend = backend,
+    conductance.median = safe_median(conductance),
+    message = "",
+    stringsAsFactors = FALSE
+  )
+}
+```
+
+## Scenario Catalog
+
+```{r scenario-catalog}
+shapes <- shape_catalog()
+variants <- variant_catalog()
+replicates <- 1:5
+graph.k <- 5L
+n <- 250L
+
+scenario.grid <- merge(
+  merge(shapes[, c("shape.id", "shape.name")], variants, by = NULL),
+  data.frame(replicate = replicates),
+  by = NULL
+)
+scenario.grid$dataset.id <- sprintf(
+  "%s_%s_R%02d",
+  scenario.grid$shape.id,
+  scenario.grid$variant.id,
+  scenario.grid$replicate
+)
+
+data.frame(
+  n.shapes = nrow(shapes),
+  n.variants = nrow(variants),
+  n.replicates = length(replicates),
+  n.datasets = nrow(scenario.grid),
+  graph.k = graph.k,
+  n.per.dataset = n
+)
+```
+
+```{r shape-catalog-table}
+shapes[, c("shape.id", "shape.name", "means", "sds", "weights")]
+```
+
+```{r shape-catalog-plot}
+x.grid <- seq(0, 1, length.out = 500)
+shape.curves <- do.call(rbind, lapply(seq_len(nrow(shapes)), function(i) {
+  data.frame(
+    shape.id = shapes$shape.id[i],
+    shape.name = shapes$shape.name[i],
+    x = x.grid,
+    truth = mixture_signal(x.grid, shapes$means[[i]], shapes$sds[[i]], shapes$weights[[i]])
+  )
+}))
+
+ggplot(shape.curves, aes(x, truth)) +
+  geom_line(color = "red", linewidth = 0.8) +
+  facet_wrap(~ shape.id + shape.name, ncol = 4) +
+  labs(title = "Curated Gaussian-mixture shape catalog", x = "x", y = "scaled truth") +
+  theme_minimal(base_size = 10)
+```
+
+## Model Grid
+
+```{r model-grid}
+metric.configs <- metric_grid()
+metric.configs[, c("config.id", "config.label", "filter.type", "n.eigenpairs")]
+```
+
+## Run Benchmark
+
+The full fit table is generated outside this report by:
+
+```r
+Rscript dev/metric-graph-lowpass-benchmarks/compute_multi_scenario_1d_mixture_results.R
+```
+
+The report reads the precomputed table below.
+
+```{r load-results}
+results.file <- file.path(
+  repo.dir,
+  "dev/metric-graph-lowpass-benchmarks/reports/multi_scenario_1d_mixture_results.csv"
+)
+if (!file.exists(results.file)) {
+  stop("Missing precomputed results file. Run compute_multi_scenario_1d_mixture_results.R first.")
+}
+results <- read.csv(results.file, stringsAsFactors = FALSE)
+
+data.frame(
+  n.rows = nrow(results),
+  n.datasets = length(unique(results$dataset.id)),
+  n.metric.rows = sum(results$method == "fit.metric.graph.lowpass"),
+  n.rdgraph.rows = sum(results$method == "fit.rdgraph.regression"),
+  n.errors = sum(results$status != "ok"),
+  results.file = results.file
+)
+```
+
+```{r run-benchmark-disabled, eval=FALSE, include=FALSE}
+results <- vector("list", nrow(scenario.grid) * (nrow(metric.configs) + 1L))
+example.fits <- list()
+idx <- 0L
+
+for (s in seq_len(nrow(scenario.grid))) {
+  shape <- shapes[match(scenario.grid$shape.id[s], shapes$shape.id), ]
+  variant <- variants[match(scenario.grid$variant.id[s], variants$variant.id), ]
+  dat <- make_dataset(shape, variant, scenario.grid$replicate[s], n = n)
+
+  graph.start <- proc.time()
+  graph <- tryCatch(
+    create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
+                      connect.method = "component.mst"),
+    error = function(e) e
+  )
+  graph.elapsed <- unname((proc.time() - graph.start)[["elapsed"]])
+
+  if (inherits(graph, "error")) {
+    idx <- idx + 1L
+    results[[idx]] <- cbind(
+      scenario.grid[s, ],
+      data.frame(
+        graph.k = graph.k,
+        n.components.before = NA_integer_,
+        n.components.after = NA_integer_,
+        n.mst.edges.added = NA_integer_,
+        graph.runtime.sec = graph.elapsed,
+        config.id = "rdgraph",
+        config.label = "fit.rdgraph.regression",
+        score_fit("fit.rdgraph.regression", graph, NA_real_, dat$y, dat$truth),
+        stringsAsFactors = FALSE
+      )
+    )
+    next
+  }
+
+  rd.start <- proc.time()
+  rd.fit <- tryCatch(
+    fit.rdgraph.regression(
+      X = dat$X,
+      y = dat$y,
+      k = graph.k,
+      adj.list = graph$adj_list,
+      weight.list = graph$weight_list,
+      verbose.level = 0L
+    ),
+    error = function(e) e
+  )
+  rd.elapsed <- unname((proc.time() - rd.start)[["elapsed"]])
+  idx <- idx + 1L
+  results[[idx]] <- cbind(
+    scenario.grid[s, ],
+    data.frame(
+      graph.k = graph.k,
+      n.components.before = graph$n_components_before,
+      n.components.after = graph$n_components_after,
+      n.mst.edges.added = graph$n_mst_edges_added,
+      graph.runtime.sec = graph.elapsed,
+      config.id = "rdgraph",
+      config.label = "fit.rdgraph.regression",
+      score_fit("fit.rdgraph.regression", rd.fit, rd.elapsed, dat$y, dat$truth),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  for (m in seq_len(nrow(metric.configs))) {
+    spec <- metric.configs[m, ]
+    metric.out <- fit_metric_one(spec, graph, dat$y, n = n)
+    idx <- idx + 1L
+    results[[idx]] <- cbind(
+      scenario.grid[s, ],
+      data.frame(
+        graph.k = graph.k,
+        n.components.before = graph$n_components_before,
+        n.components.after = graph$n_components_after,
+        n.mst.edges.added = graph$n_mst_edges_added,
+        graph.runtime.sec = graph.elapsed,
+        config.id = spec$config.id,
+        config.label = spec$config.label,
+        score_fit("fit.metric.graph.lowpass", metric.out$result,
+                  metric.out$elapsed, dat$y, dat$truth),
+        stringsAsFactors = FALSE
+      )
+    )
+
+    if (scenario.grid$replicate[s] == 1L &&
+        scenario.grid$shape.id[s] %in% c("S01", "S05", "S10", "S14") &&
+        scenario.grid$variant.id[s] == "V1" &&
+        spec$config.id %in% c("M01", "M02", "M06", "M10")) {
+      example.fits[[length(example.fits) + 1L]] <- list(
+        dataset = scenario.grid[s, ],
+        spec = spec,
+        x = dat$x,
+        y = dat$y,
+        truth = dat$truth,
+        fit = metric.out$result
+      )
+    }
+  }
+}
+
+results <- do.call(rbind, results[seq_len(idx)])
+rownames(results) <- NULL
+
+write.csv(
+  results,
+  file = file.path(repo.dir, "dev/metric-graph-lowpass-benchmarks/reports/multi_scenario_1d_mixture_results.csv"),
+  row.names = FALSE
+)
+
+data.frame(
+  n.rows = nrow(results),
+  n.datasets = length(unique(results$dataset.id)),
+  n.metric.rows = sum(results$method == "fit.metric.graph.lowpass"),
+  n.rdgraph.rows = sum(results$method == "fit.rdgraph.regression"),
+  n.errors = sum(results$status != "ok")
+)
+```
+
+## Overall Performance
+
+```{r overall-summary}
+ok <- subset(results, status == "ok")
+metric.ok <- subset(ok, method == "fit.metric.graph.lowpass")
+rd.ok <- subset(ok, method == "fit.rdgraph.regression")
+
+overall <- aggregate(
+  rmse.truth ~ method,
+  data = ok,
+  FUN = function(z) c(median = median(z), q25 = quantile(z, 0.25),
+                      q75 = quantile(z, 0.75), mean = mean(z))
+)
+do.call(data.frame, overall)
+```
+
+```{r config-ranking}
+config.ranking <- aggregate(
+  rmse.truth ~ config.id + config.label + method,
+  data = metric.ok,
+  FUN = function(z) c(median = median(z), mean = mean(z), q90 = quantile(z, 0.90))
+)
+config.ranking <- do.call(data.frame, config.ranking)
+names(config.ranking) <- sub("rmse.truth.", "", names(config.ranking), fixed = TRUE)
+config.ranking <- config.ranking[order(config.ranking$median), ]
+head(config.ranking, 12)
+```
+
+```{r overall-boxplot}
+plot.df <- ok
+plot.df$display.method <- ifelse(
+  plot.df$method == "fit.rdgraph.regression",
+  "rdgraph baseline",
+  plot.df$config.label
+)
+top.configs <- head(config.ranking$config.label, 8)
+plot.df <- subset(plot.df, method == "fit.rdgraph.regression" | config.label %in% top.configs)
+
+ggplot(plot.df, aes(x = reorder(display.method, rmse.truth, median), y = rmse.truth,
+                    fill = method)) +
+  geom_violin(scale = "width", trim = FALSE, alpha = 0.65, color = "gray35") +
+  stat_summary(fun = median, geom = "point", shape = 23, size = 2.2,
+               fill = "white", color = "black") +
+  scale_y_log10() +
+  coord_flip() +
+  labs(
+    title = "RMSE to truth across 240 curated datasets",
+    subtitle = "Violin distributions for top 8 metric configurations by median RMSE plus rdgraph baseline; white diamonds mark medians",
+    x = NULL,
+    y = "RMSE to truth, log10 scale",
+    fill = "Method family"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+## Per-Scenario Winners
+
+```{r per-dataset-best}
+best.metric.by.dataset <- metric.ok[order(metric.ok$dataset.id, metric.ok$rmse.truth), ]
+best.metric.by.dataset <- best.metric.by.dataset[!duplicated(best.metric.by.dataset$dataset.id), ]
+rd.by.dataset <- rd.ok[, c("dataset.id", "rmse.truth")]
+names(rd.by.dataset)[2] <- "rdgraph.rmse.truth"
+best.compare <- merge(best.metric.by.dataset, rd.by.dataset, by = "dataset.id", all.x = TRUE)
+best.compare$metric.beats.rdgraph <- best.compare$rmse.truth < best.compare$rdgraph.rmse.truth
+
+data.frame(
+  datasets = nrow(best.compare),
+  metric.beats.rdgraph = sum(best.compare$metric.beats.rdgraph, na.rm = TRUE),
+  metric.beats.rdgraph.frac = mean(best.compare$metric.beats.rdgraph, na.rm = TRUE),
+  median.best.metric.rmse = median(best.compare$rmse.truth, na.rm = TRUE),
+  median.rdgraph.rmse = median(best.compare$rdgraph.rmse.truth, na.rm = TRUE)
+)
+```
+
+```{r winners-by-variant}
+winner.summary <- aggregate(
+  metric.beats.rdgraph ~ variant.id + variant.name,
+  data = best.compare,
+  FUN = mean
+)
+winner.summary
+```
+
+```{r best-metric-vs-rdgraph}
+ggplot(best.compare, aes(x = rdgraph.rmse.truth, y = rmse.truth, color = variant.name)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  geom_point(alpha = 0.75, size = 1.8) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(
+    title = "Best metric low-pass fit versus rdgraph baseline by dataset",
+    x = "rdgraph RMSE to truth, log10 scale",
+    y = "Best metric RMSE to truth, log10 scale",
+    color = "Variant"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## Scenario and Noise Pattern Effects
+
+```{r scenario-heatmap}
+shape.variant.summary <- aggregate(
+  rmse.truth ~ shape.id + shape.name + variant.id + variant.name + method,
+  data = ok,
+  FUN = median
+)
+shape.variant.best.metric <- aggregate(
+  rmse.truth ~ shape.id + shape.name + variant.id + variant.name,
+  data = metric.ok,
+  FUN = min
+)
+shape.variant.rd <- subset(shape.variant.summary, method == "fit.rdgraph.regression")
+names(shape.variant.rd)[names(shape.variant.rd) == "rmse.truth"] <- "rdgraph.median.rmse"
+shape.variant.compare <- merge(shape.variant.best.metric, shape.variant.rd,
+                               by = c("shape.id", "shape.name", "variant.id", "variant.name"),
+                               all.x = TRUE)
+shape.variant.compare$log10.metric.over.rdgraph <- log10(shape.variant.compare$rmse.truth /
+                                                           shape.variant.compare$rdgraph.median.rmse)
+
+ggplot(shape.variant.compare,
+       aes(x = variant.id, y = shape.id, fill = log10.metric.over.rdgraph)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) +
+  labs(
+    title = "Best metric RMSE relative to rdgraph by shape and variant",
+    subtitle = "Blue means best metric low-pass has lower RMSE than rdgraph",
+    x = "Variant",
+    y = "Shape",
+    fill = "log10(metric / rdgraph)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+```{r conductance-by-variant}
+metric.ok$conductance.family <- sub(" .*", "", metric.ok$config.label)
+ggplot(metric.ok, aes(x = conductance.family, y = rmse.truth, fill = variant.name)) +
+  geom_boxplot(outlier.alpha = 0.15) +
+  scale_y_log10() +
+  labs(
+    title = "Metric low-pass RMSE by conductance family and noise/sampling variant",
+    x = "Conductance family",
+    y = "RMSE to truth, log10 scale",
+    fill = "Variant"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+## Example Fits
+
+```{r example-fits}
+example.scenarios <- subset(
+  scenario.grid,
+  replicate == 1L & variant.id == "V1" & shape.id %in% c("S01", "S05", "S10", "S14")
+)
+example.config.labels <- head(config.ranking$config.label, 3)
+example.configs <- metric.configs[match(example.config.labels, metric.configs$config.label), ]
+
+example.df <- do.call(rbind, lapply(seq_len(nrow(example.scenarios)), function(i) {
+  shape <- shapes[match(example.scenarios$shape.id[i], shapes$shape.id), ]
+  variant <- variants[match(example.scenarios$variant.id[i], variants$variant.id), ]
+  dat <- make_dataset(shape, variant, example.scenarios$replicate[i], n = n)
+  graph <- create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
+                             connect.method = "component.mst")
+  do.call(rbind, lapply(seq_len(nrow(example.configs)), function(j) {
+    spec <- example.configs[j, ]
+    fit <- fit_metric_one(spec, graph, dat$y, n = n)$result
+    if (inherits(fit, "error")) return(NULL)
+    data.frame(
+      dataset.id = example.scenarios$dataset.id[i],
+      shape.id = example.scenarios$shape.id[i],
+      shape.name = example.scenarios$shape.name[i],
+      config.label = spec$config.label,
+      x = dat$x,
+      y = dat$y,
+      truth = dat$truth,
+      fitted = fit$fitted.values
+    )
+  }))
+}))
+
+if (!is.null(example.df) && nrow(example.df) > 0) {
+  ggplot(example.df, aes(x, y)) +
+    geom_point(color = "black", alpha = 0.35, size = 0.8) +
+    geom_line(aes(y = truth), color = "red", linewidth = 0.7) +
+    geom_line(aes(y = fitted, color = config.label), linewidth = 0.7) +
+    facet_wrap(~ shape.id + shape.name, scales = "free_y", ncol = 2) +
+    labs(
+      title = "Representative metric low-pass fits",
+      x = "x",
+      y = "response",
+      color = "Metric configuration"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(legend.position = "bottom")
+}
+```
+
+## Runtime and Failures
+
+```{r runtime}
+ggplot(ok, aes(x = method, y = runtime.sec, fill = method)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  scale_y_log10() +
+  labs(
+    title = "Runtime per fit",
+    x = NULL,
+    y = "Runtime seconds, log10 scale"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+```{r failure-table}
+failure.table <- subset(results, status != "ok")
+if (nrow(failure.table) == 0) {
+  data.frame(message = "No fit failures")
+} else {
+  aggregate(dataset.id ~ method + config.label + message, data = failure.table, FUN = length)
+}
+```
+
+## Full Result Location
+
+The full result table was written to:
+
+```{r result-file}
+file.path(repo.dir, "dev/metric-graph-lowpass-benchmarks/reports/multi_scenario_1d_mixture_results.csv")
+```

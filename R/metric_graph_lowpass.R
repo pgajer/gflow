@@ -22,8 +22,9 @@
 #'   \code{conductance.sigma.rule = "edge.quantile"}.
 #' @param conductance.local.k Positive integer local incident-edge order
 #'   statistic for \code{"self.tuned.gaussian"}.
-#' @param laplacian.type Phase-1 supports only \code{"unnormalized"}, the
-#'   weighted graph Laplacian \eqn{L = D - C}.
+#' @param laplacian.type Laplacian operator. \code{"unnormalized"} uses the
+#'   weighted graph Laplacian \eqn{L = D - C}. \code{"symmetric.normalized"}
+#'   uses \eqn{L_{\mathrm{sym}} = I - D^{-1/2} C D^{-1/2}}.
 #' @param return.sparse Logical. If \code{TRUE}, attach a \pkg{Matrix} sparse
 #'   Laplacian when \pkg{Matrix} is available.
 #' @param verbose Logical. Reserved for future diagnostic messages.
@@ -44,6 +45,12 @@
 #' and
 #' \deqn{c_{ij}=\exp(-\ell_{ij}^{2}/(\sigma_i\sigma_j)).}
 #'
+#' For \code{laplacian.type = "symmetric.normalized"}, smoothing is performed
+#' in the Euclidean eigenbasis of \eqn{L_{\mathrm{sym}}}. The null vector is
+#' proportional to \eqn{\sqrt{d}}, not the constant vector, so this mode does
+#' not preserve constant responses in the same way as the unnormalized
+#' Laplacian.
+#'
 #' @return A list of class \code{"metric.graph.lowpass.operator"} containing
 #'   the edge table, conductances, degree vector, Laplacian triplets, summaries,
 #'   and optionally a sparse Laplacian matrix.
@@ -59,7 +66,7 @@ metric.graph.lowpass.operator <- function(
     conductance.sigma.rule = c("edge.quantile", "median", "local.k"),
     conductance.sigma.quantile = 0.75,
     conductance.local.k = 5L,
-    laplacian.type = c("unnormalized"),
+    laplacian.type = c("unnormalized", "symmetric.normalized"),
     return.sparse = TRUE,
     verbose = FALSE) {
 
@@ -134,7 +141,7 @@ fit.metric.graph.lowpass <- function(
     conductance.sigma.rule = c("edge.quantile", "median", "local.k"),
     conductance.sigma.quantile = 0.75,
     conductance.local.k = 5L,
-    laplacian.type = c("unnormalized"),
+    laplacian.type = c("unnormalized", "symmetric.normalized"),
     n.eigenpairs = 50L,
     filter.type = c("heat_kernel", "tikhonov", "cubic_spline",
                     "gaussian", "exponential", "butterworth"),
@@ -456,7 +463,7 @@ refit.metric.graph.lowpass <- function(fitted.model,
         conductance.sigma.rule,
         choices = c("edge.quantile", "median", "local.k")
     )
-    laplacian.type <- match.arg(laplacian.type, choices = "unnormalized")
+    laplacian.type <- match.arg(laplacian.type, choices = c("unnormalized", "symmetric.normalized"))
     if (!is.numeric(conductance.epsilon) || length(conductance.epsilon) != 1L ||
         !is.finite(conductance.epsilon) || conductance.epsilon <= 0) {
         stop("conductance.epsilon must be a finite positive numeric scalar.")
