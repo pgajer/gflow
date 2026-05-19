@@ -88,6 +88,7 @@ dev/*
 !dev/graph-trend-filtering/**
 !dev/quadforms/
 !dev/quadforms/**
+dev/quadforms/quadform_gflow_graph_constructor_notes.md
 dev/data-geodesic-reconstruction/**/runs/
 dev/data-geodesic-reconstruction/**/assets/
 dev/data-geodesic-reconstruction/**/*.rds
