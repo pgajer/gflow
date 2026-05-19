@@ -86,6 +86,8 @@ dev/*
 !dev/metric-graph-lowpass-benchmarks/**
 !dev/graph-trend-filtering/
 !dev/graph-trend-filtering/**
+!dev/quadforms/
+!dev/quadforms/**
 dev/data-geodesic-reconstruction/**/runs/
 dev/data-geodesic-reconstruction/**/assets/
 dev/data-geodesic-reconstruction/**/*.rds
