@@ -34,6 +34,7 @@ Depends:
     R (>= 3.5.0)
 Imports:
     Rcpp,
+    methods,
     stats,
     graphics,
     grDevices,
@@ -51,6 +52,8 @@ Suggests:
     shiny,
     smacof,
     randomForest,
+    genlasso,
+    grip,
     np,
     mgcv,
     kernlab,

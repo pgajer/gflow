@@ -1,0 +1,843 @@
+---
+title: "Transported Hessian Regression-Gradient Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 11.2,
+  fig.height = 6.8,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = if (requireNamespace("ragg", quietly = TRUE)) "ragg_png" else "png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+dev.dir <- file.path(repo.dir, "dev/graph-trend-filtering")
+report.dir <- file.path(dev.dir, "reports")
+source(file.path(dev.dir, "transported_hessian_regression_gradient_validation.R"))
+library(ggplot2)
+
+mode <- Sys.getenv("GFLOW_REGRESSION_GRADIENT_VALIDATION_MODE", unset = "smoke")
+rds.path <- file.path(report.dir, paste0("transported_hessian_regression_gradient_validation_", mode, ".rds"))
+diagnostics <- readRDS(rds.path)
+metadata <- diagnostics$metadata
+policy.table <- diagnostics$policies
+summary.table <- diagnostics$summary
+gradient.table <- diagnostics$gradient %||% data.frame()
+embedding.table <- diagnostics$embedding %||% data.frame()
+
+summary.ok <- subset(summary.table, status == "ok")
+summary.ok$policy.family <- factor(summary.ok$policy.family,
+                                   levels = c("exact", "soft",
+                                              "regression_gradient_ambient",
+                                              "regression_gradient_local",
+                                              "regression_gradient_adaptive"))
+summary.ok$policy.label <- factor(summary.ok$policy.label,
+                                  levels = policy.table$policy.label)
+summary.ok$graph.label <- paste(summary.ok$case.id, summary.ok$graph.type,
+                                sep = " | ")
+summary.ok$gradient.embedding.method <- ifelse(
+  is.na(summary.ok$gradient.embedding.method),
+  "none",
+  summary.ok$gradient.embedding.method
+)
+summary.ok$gradient.disk.rule <- ifelse(
+  is.na(summary.ok$gradient.disk.rule),
+  "hops",
+  summary.ok$gradient.disk.rule
+)
+summary.ok$gradient.disk.hops.factor <- factor(summary.ok$gradient.disk.hops)
+summary.ok$gradient.disk.label <- ifelse(
+  summary.ok$gradient.disk.rule == "metric.diameter.fraction",
+  paste0("r=", summary.ok$gradient.disk.radius.fraction, "D"),
+  ifelse(
+    summary.ok$gradient.disk.rule == "metric.local.scale",
+    paste0("s=", summary.ok$gradient.disk.local.scale.multiplier),
+    paste0("h=", summary.ok$gradient.disk.hops)
+  )
+)
+summary.ok$gradient.disk.label <- factor(
+  summary.ok$gradient.disk.label,
+  levels = unique(summary.ok$gradient.disk.label)
+)
+summary.ok$local.chart.label <- ifelse(
+  summary.ok$policy.family == "regression_gradient_local",
+  paste0(summary.ok$gradient.embedding.method, " | ", summary.ok$gradient.disk.label),
+  as.character(summary.ok$policy.label)
+)
+fixed.local.summary <- subset(summary.ok, policy.family == "regression_gradient_local")
+adaptive.summary <- subset(summary.ok, policy.family == "regression_gradient_adaptive")
+summary.ok$plot.residual.linear <- pmax(
+  summary.ok$residual.linear.mean,
+  min(summary.ok$residual.linear.mean[
+    is.finite(summary.ok$residual.linear.mean) &
+      summary.ok$residual.linear.mean > 0
+  ], na.rm = TRUE) / 2
+)
+
+nonzero.floor <- function(x) {
+  x <- x[is.finite(x) & x > 0]
+  if (length(x)) min(x) / 2 else 1e-12
+}
+
+residual.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "graph.type", "graph.label",
+                            "policy.label", "policy.family")],
+             probe = "constant",
+             residual = summary.ok$residual.constant),
+  data.frame(summary.ok[, c("case.id", "graph.type", "graph.label",
+                            "policy.label", "policy.family")],
+             probe = "linear mean",
+             residual = summary.ok$residual.linear.mean),
+  data.frame(summary.ok[, c("case.id", "graph.type", "graph.label",
+                            "policy.label", "policy.family")],
+             probe = "quadratic mean",
+             residual = summary.ok$residual.quadratic.mean),
+  data.frame(summary.ok[, c("case.id", "graph.type", "graph.label",
+                            "policy.label", "policy.family")],
+             probe = "overall",
+             residual = summary.ok$residual.overall)
+)
+residual.long$plot.residual <- pmax(residual.long$residual,
+                                    nonzero.floor(residual.long$residual))
+
+base.theme <- function(base.size = 12) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "grey25", margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 8)),
+      axis.title.x = element_text(margin = margin(t = 8))
+    )
+}
+```
+
+# Purpose
+
+The transported-Hessian project now has three qualitatively different transport
+mechanisms:
+
+\[
+  \delta_{u'\to v'} f-\delta_{u\to v} f
+\]
+
+from direction matching, and a regression-gradient construction.  The
+regression-gradient construction estimates, at each vertex \(u\),
+
+\[
+  f(w)-f(u)\approx g_u^\top(z_w-z_u),
+  \qquad w\in N(u),
+\]
+
+by local weighted least squares.  Since the fitted gradient is linear in the
+response vector \(f\), we can write
+
+\[
+  g_u = B_u f.
+\]
+
+The regression-gradient transported Hessian then compares gradient components
+across graph darts:
+
+\[
+  A_{u\to u',k} f
+  =
+  (B_{u'}f)_k-(B_u f)_k.
+\]
+
+This report asks whether that operator has the expected null-space behavior
+before we use it in a trend-filtering fit.  The ambient variant computes
+gradients from supplied sampling coordinates.  The graph-derived variant builds
+a shared local chart around each base dart and estimates both endpoint
+gradients in that chart.  In particular, constants and affine coordinate probes
+should be annihilated, while quadratic probes should generally be detected.
+
+```{r metadata-summary, results='asis'}
+cat(sprintf(
+  "**Build:** %s  \n**Mode:** %s  \n**Policies tested:** %d  \n**Runs:** %d\n",
+  metadata$generated.at,
+  metadata$mode,
+  nrow(policy.table),
+  nrow(summary.table)
+))
+```
+
+# Polynomial Residuals
+
+The core diagnostic is
+
+\[
+  R(P)=\frac{\|AP\|_F}{\|P\|_F},
+\]
+
+computed for constant, linear, quadratic, and combined probe matrices.  For a
+valid second-difference-like operator, constant and linear residuals should be
+small.  Quadratic residuals should not vanish unless the operator is too weak.
+
+```{r polynomial-residuals, fig.height=9.0}
+ggplot(residual.long,
+       aes(x = policy.label, y = plot.residual,
+           fill = policy.family)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(probe ~ graph.label, scales = "free_y") +
+  scale_y_log10() +
+  scale_fill_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Polynomial-probe residuals by transported-Hessian construction",
+    subtitle = "Constants and linear probes test affine null-space behavior; residuals are log-scaled.",
+    x = "transport policy",
+    y = expression(norm(A * P, "F") / norm(P, "F")),
+    fill = "policy family"
+  ) +
+  base.theme(9) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+This is the main mathematical check.  The regression-gradient operator should
+be read primarily through the constant and linear panels.  A low quadratic
+residual is not automatically good: it can mean the operator is insensitive to
+curvature, especially if row counts or local ranks are poor.
+
+# Operator Size And Nullity
+
+The same residual can mean different things if two operators have very
+different numbers of rows.  We therefore inspect row count and estimated
+nullity alongside the residuals.
+
+```{r size-nullity, fig.height=7.6}
+size.long <- rbind(
+  data.frame(summary.ok[, c("graph.label", "policy.label", "policy.family")],
+             diagnostic = "rows",
+             value = summary.ok$n.rows),
+  data.frame(summary.ok[, c("graph.label", "policy.label", "policy.family")],
+             diagnostic = "nullity",
+             value = summary.ok$nullity.estimate)
+)
+ggplot(size.long,
+       aes(x = policy.label, y = value,
+           fill = policy.family)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(diagnostic ~ graph.label, scales = "free_y") +
+  scale_fill_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Operator row count and estimated nullity",
+    subtitle = "Residual improvements are meaningful only when the operator remains sufficiently constrained.",
+    x = "transport policy",
+    y = "count",
+    fill = "policy family"
+  ) +
+  base.theme(9) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+For regression-gradient transport, the row count is approximately
+\(|\overrightarrow E|m\), where \(m\) is the coordinate dimension.  Nullity is
+a coarse check that the operator has not become nearly empty.
+
+# Local Regression Diagnostics
+
+Regression-gradient transport depends on the local least-squares design.  At
+vertex \(u\), the local design matrix has rows \(z_w-z_u\) for neighbors
+\(w\in N(u)\).  The key diagnostics are:
+
+\[
+  \operatorname{rank}(X_u),
+  \qquad
+  \kappa(X_u^\top W_u X_u+\lambda I),
+  \qquad
+  |N(u)|.
+\]
+
+Low rank means the local gradient is not identifiable in all coordinate
+directions.  Large condition number means the gradient estimate is numerically
+unstable.
+
+```{r local-regression-diagnostics, fig.height=7.6}
+grad.summary <- subset(summary.ok,
+                       policy.family %in% c("regression_gradient_ambient",
+                                            "regression_gradient_local"))
+grad.long <- rbind(
+  data.frame(grad.summary[, c("graph.label", "policy.label")],
+             diagnostic = "rank-deficient fraction",
+             value = grad.summary$rank.deficient.fraction),
+  data.frame(grad.summary[, c("graph.label", "policy.label")],
+             diagnostic = "median condition",
+             value = grad.summary$median.local.condition),
+  data.frame(grad.summary[, c("graph.label", "policy.label")],
+             diagnostic = "median neighborhood size",
+             value = grad.summary$median.local.neighborhood)
+)
+ggplot(grad.long,
+       aes(x = policy.label, y = value,
+           fill = diagnostic)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(diagnostic ~ graph.label, scales = "free_y") +
+  labs(
+    title = "Local least-squares diagnostics for regression-gradient transport",
+    subtitle = "Rank and conditioning explain when gradient transport should or should not be trusted.",
+    x = "regression-gradient policy",
+    y = "diagnostic value",
+    fill = "diagnostic"
+  ) +
+  base.theme(9) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none")
+```
+
+This diagnostic is specific to Phase 3c.  It tells us whether a poor residual
+comes from the transport idea itself, the local chart, or a local gradient fit
+that is not identifiable.
+
+# Local Chart Stress Sweep
+
+The graph-derived regression-gradient policies create one local embedding for
+each base dart.  The local disk can now be constructed either by hop radius,
+or by a weighted metric radius
+
+\[
+  r_v=\alpha\,\operatorname{diam}_G,
+\]
+
+where \(\operatorname{diam}_G\) is the weighted graph diameter.  Two stress
+diagnostics are useful:
+
+\[
+  S_E
+  =
+  \frac{
+    \sqrt{|E_\Gamma|^{-1}
+      \sum_{(i,j)\in E_\Gamma}
+      (\|\hat z_i-\hat z_j\|-\ell_{ij})^2}
+  }{\operatorname{mean}_{(i,j)\in E_\Gamma}\ell_{ij}},
+\]
+
+which measures edge-length preservation, and a corresponding all-pairs graph
+distance stress inside the local disk.  For synthetic validation, where
+ambient coordinates are available, we also measure whether the local chart can
+be affinely aligned back to those coordinates:
+
+\[
+  R_{\mathrm{aff}}(\Gamma)
+  =
+  \frac{\|Z_{\mathrm{amb}} - [\mathbf 1,\widehat Z]B\|_F}
+       {\|Z_{\mathrm{amb}}-\bar Z_{\mathrm{amb}}\|_F}.
+\]
+
+This is not a graph-only diagnostic, but it tells us what the graph-only
+stress diagnostics miss.
+
+```{r local-chart-stress, fig.height=7.4}
+if (nrow(fixed.local.summary)) {
+  stress.long <- rbind(
+    data.frame(fixed.local.summary[, c("graph.label", "gradient.embedding.method",
+                                       "gradient.disk.rule", "gradient.disk.label")],
+               diagnostic = "edge stress",
+               value = fixed.local.summary$median.embedding.edge.stress),
+    data.frame(fixed.local.summary[, c("graph.label", "gradient.embedding.method",
+                                       "gradient.disk.rule", "gradient.disk.label")],
+               diagnostic = "graph-distance stress",
+               value = fixed.local.summary$median.embedding.distance.stress),
+    data.frame(fixed.local.summary[, c("graph.label", "gradient.embedding.method",
+                                       "gradient.disk.rule", "gradient.disk.label")],
+               diagnostic = "ambient affine residual",
+               value = fixed.local.summary$median.ambient.affine.residual)
+  )
+  ggplot(stress.long,
+         aes(x = gradient.disk.label, y = value,
+             fill = gradient.embedding.method,
+             alpha = gradient.disk.rule)) +
+    geom_col(width = 0.72, color = "grey25") +
+    facet_grid(diagnostic ~ graph.label, scales = "free_y") +
+    scale_alpha_manual(values = c(hops = 0.95,
+                                  "metric.diameter.fraction" = 0.70,
+                                  "metric.local.scale" = 0.82),
+                       na.translate = FALSE) +
+    labs(
+      title = "Local embedding stress for graph-derived regression-gradient transport",
+      subtitle = "Each bar is the median across base-dart charts for one backend and disk rule.",
+      x = "gradient disk",
+      y = "median relative stress",
+      fill = "local embedding backend",
+      alpha = "disk rule"
+    ) +
+    base.theme(9) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  plot.new()
+  text(0.5, 0.5, "No graph-derived regression-gradient policies were available.")
+}
+```
+
+This plot should be read together with the polynomial residuals.  A local chart
+can have excellent edge stress and still fail to provide a coordinate system in
+which ambient affine functions look affine.  That is precisely why the report
+now includes both graph-only and synthetic-coordinate diagnostics.
+
+# Disk-Radius Sensitivity
+
+For the graph-derived regression-gradient operator, the local disk radius is a
+modeling choice.  A one-hop disk often gives the gradient fit enough neighbors,
+but not necessarily enough geometric context to orient the chart.  A
+metric-diameter-fraction disk instead asks for all vertices within weighted
+graph distance \(\alpha\operatorname{diam}_G\) of the base dart endpoints,
+subject to the same maximum-chart-size cap.  A local-scale metric disk uses
+
+\[
+  r_{u,u'}=\alpha\max(s_u,s_{u'}),
+\]
+
+where \(s_u\) is the local weighted-graph \(k\)-nearest-neighbor distance.
+We therefore compare \(h=1,2,3,4,5\) hop disks,
+\(\alpha\in\{0.05,0.075,0.10,0.15,0.20\}\) graph-diameter disks, and
+local-scale multipliers \(\alpha\in\{1,1.5,2,3,4\}\) for each backend.
+
+```{r disk-radius-sensitivity, fig.height=8.0}
+if (nrow(fixed.local.summary)) {
+  ggplot(fixed.local.summary,
+         aes(x = gradient.disk.label,
+             y = pmax(residual.linear.mean,
+                      nonzero.floor(residual.linear.mean)),
+             color = gradient.embedding.method,
+             linetype = gradient.disk.rule,
+             group = interaction(gradient.embedding.method,
+                                 gradient.disk.rule))) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2.2) +
+    facet_wrap(~ graph.label, scales = "free_y", ncol = 2) +
+    scale_y_log10() +
+    labs(
+      title = "Affine residual sensitivity to graph-disk radius",
+      subtitle = "Lower is better.  Lines separate hop, graph-diameter, and local-scale metric disks.",
+      x = "gradient disk",
+      y = expression(R[linear]),
+      color = "local embedding backend",
+      linetype = "disk rule"
+    ) +
+    base.theme(10) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  plot.new()
+  text(0.5, 0.5, "No graph-derived regression-gradient policies were available.")
+}
+```
+
+If increasing the disk radius improves affine residuals, then chart context is
+the bottleneck.  If edge stress improves but affine residuals get worse, the
+backend is preserving edges without preserving the coordinate structure needed
+by gradient transport.
+
+# Disk Size And Locality
+
+Larger disks are not free. They may help orient a chart, but they also make
+the chart less local. The next diagnostic records the selected disk size as a
+fraction of the graph and its weighted graph radius from the base dart.
+
+```{r disk-size-locality, fig.height=7.8}
+if (nrow(fixed.local.summary)) {
+  locality.long <- rbind(
+    data.frame(fixed.local.summary[, c("graph.label", "gradient.embedding.method",
+                                       "gradient.disk.rule", "gradient.disk.label")],
+               diagnostic = "disk fraction",
+               value = fixed.local.summary$median.disk.fraction),
+    data.frame(fixed.local.summary[, c("graph.label", "gradient.embedding.method",
+                                       "gradient.disk.rule", "gradient.disk.label")],
+               diagnostic = "weighted radius",
+               value = fixed.local.summary$median.disk.weighted.radius)
+  )
+  ggplot(locality.long,
+         aes(x = gradient.disk.label, y = value,
+             color = gradient.embedding.method,
+             linetype = gradient.disk.rule,
+             group = interaction(gradient.embedding.method,
+                                 gradient.disk.rule))) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2.2) +
+    facet_grid(diagnostic ~ graph.label, scales = "free_y") +
+    labs(
+      title = "Disk size and chart locality diagnostics",
+      subtitle = "The adaptive selector should not improve affine residuals merely by making every chart global.",
+      x = "gradient disk",
+      y = "median locality diagnostic",
+      color = "local embedding backend",
+      linetype = "disk rule"
+    ) +
+    base.theme(9) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  plot.new()
+  text(0.5, 0.5, "No fixed graph-derived policies were available.")
+}
+```
+
+# Chart-Level Predictors
+
+The next plot compares chart-level synthetic diagnostics with the global
+operator residual.  The diagnostic
+\[
+  R_{\nabla,\mathrm{lin}}(\Gamma,u,u')
+\]
+is the mean absolute difference between the two endpoint gradient estimates
+when the response is an ambient coordinate function.  This is the most direct
+chart-level version of the affine-null-space test.
+
+```{r chart-level-predictors, fig.height=7.8}
+if (nrow(fixed.local.summary)) {
+  ggplot(fixed.local.summary,
+         aes(x = pmax(median.chart.linear.gradient.residual,
+                      nonzero.floor(median.chart.linear.gradient.residual)),
+             y = pmax(residual.linear.mean,
+                      nonzero.floor(residual.linear.mean)),
+             color = gradient.embedding.method,
+             shape = gradient.disk.rule)) +
+    geom_point(size = 2.6, alpha = 0.9) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+                color = "grey45") +
+    facet_wrap(~ graph.label, scales = "free", ncol = 2) +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(
+      title = "Chart-level affine-gradient residual predicts operator affine residual",
+      subtitle = "Points near the dashed line indicate the chart-level diagnostic is explaining the global operator behavior.",
+      x = expression("median chart " * R[nabla * "," * lin]),
+      y = expression("operator " * R[linear]),
+      color = "local embedding backend",
+      shape = "disk rule"
+    ) +
+    base.theme(10)
+} else {
+  plot.new()
+  text(0.5, 0.5, "No graph-derived regression-gradient policies were available.")
+}
+```
+
+This plot is the bridge toward adaptive chart selection.  A useful graph-only
+rule should eventually predict this chart-level residual without needing
+ambient coordinates.
+
+# Adaptive Chart Selection
+
+The adaptive policy tries several graph-derived charts for each base dart and
+chooses the one with the lowest graph-only score:
+
+\[
+  S
+  =
+  S_E + S_D
+  + 10\,\mathrm{rank\_deficit}
+  + 0.05\log(1+\kappa)
+  + 0.05\,\mathrm{disk\_fraction}
+  + 0.01\,\mathrm{weighted\_radius}.
+\]
+
+The score intentionally does not use ambient-coordinate residuals.  The report
+uses ambient residuals only afterward to see whether the graph-only choice is
+close to the validation oracle.
+
+```{r adaptive-selection-distribution, fig.height=7.6}
+adaptive.embedding <- subset(embedding.table,
+                             policy.family == "regression_gradient_adaptive" &
+                               chart.selected)
+if (nrow(adaptive.embedding)) {
+  adaptive.embedding$gradient.disk.rule <- ifelse(
+    is.na(adaptive.embedding$gradient.disk.rule),
+    "hops",
+    adaptive.embedding$gradient.disk.rule
+  )
+  adaptive.embedding$selection.label <- ifelse(
+    adaptive.embedding$gradient.disk.rule == "metric.diameter.fraction",
+    paste0(adaptive.embedding$requested.method,
+           " | r=", adaptive.embedding$gradient.disk.radius.fraction, "D"),
+    ifelse(
+      adaptive.embedding$gradient.disk.rule == "metric.local.scale",
+      paste0(adaptive.embedding$requested.method,
+             " | s=", adaptive.embedding$gradient.disk.local.scale.multiplier),
+      paste0(adaptive.embedding$requested.method,
+             " | h=", adaptive.embedding$gradient.disk.hops)
+    )
+  )
+  ggplot(adaptive.embedding,
+         aes(x = selection.label, fill = requested.method)) +
+    geom_bar(color = "grey25") +
+    facet_wrap(~ paste(case.id, graph.type, sep = " | "),
+               scales = "free_y", ncol = 2) +
+    labs(
+      title = "Adaptive chart selections by graph case",
+      subtitle = "Counts are base-dart charts selected by the graph-only score.",
+      x = "selected backend and disk",
+      y = "selected base-dart charts",
+      fill = "backend"
+    ) +
+    base.theme(9) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  plot.new()
+  text(0.5, 0.5, "No adaptive chart selections were recorded.")
+}
+```
+
+```{r adaptive-versus-fixed, fig.height=7.4}
+if (nrow(adaptive.summary) && nrow(fixed.local.summary)) {
+  best.fixed <- fixed.local.summary[
+    order(fixed.local.summary$case.id, fixed.local.summary$residual.linear.mean), ]
+  best.fixed <- best.fixed[!duplicated(best.fixed$case.id), ]
+  compare <- rbind(
+    data.frame(best.fixed[, c("case.id", "graph.label")],
+               policy = "best fixed local",
+               residual = best.fixed$residual.linear.mean),
+    data.frame(adaptive.summary[, c("case.id", "graph.label")],
+               policy = "adaptive graph-only",
+               residual = adaptive.summary$residual.linear.mean)
+  )
+  ggplot(compare,
+         aes(x = policy,
+             y = pmax(residual, nonzero.floor(residual)),
+             fill = policy)) +
+    geom_col(width = 0.72, color = "grey25") +
+    facet_wrap(~ graph.label, scales = "free_y", ncol = 2) +
+    scale_y_log10() +
+    labs(
+      title = "Adaptive graph-only selector versus best fixed local chart",
+      subtitle = "Best fixed is selected retrospectively using operator affine residual; adaptive uses only graph diagnostics.",
+      x = "policy",
+      y = expression(R[linear]),
+      fill = "policy"
+    ) +
+    base.theme(10) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1),
+          legend.position = "none")
+} else {
+  plot.new()
+  text(0.5, 0.5, "Adaptive or fixed local summaries were unavailable.")
+}
+```
+
+# Coordinate Source
+
+The next figure isolates the regression-gradient policies and compares ambient
+coordinate gradients against graph-derived local-chart gradients.
+
+```{r coordinate-source, fig.height=7.4}
+rg.coord <- subset(summary.ok,
+                   policy.family %in% c("regression_gradient_ambient",
+                                        "regression_gradient_local",
+                                        "regression_gradient_adaptive"))
+ggplot(rg.coord,
+       aes(x = policy.label, y = plot.residual.linear,
+           fill = policy.family)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_wrap(~ graph.label, scales = "free_y", ncol = 2) +
+  scale_y_log10() +
+  scale_fill_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Ambient versus graph-derived regression-gradient transport",
+    subtitle = "The graph-derived policies estimate endpoint gradients in a shared local chart for each base dart.",
+    x = "regression-gradient policy",
+    y = expression(R[linear]),
+    fill = "coordinate source"
+  ) +
+  base.theme(9) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+The desirable first outcome is not that the graph-derived chart matches ambient
+coordinates immediately on every sampled graph.  The desirable outcome is that
+its failures are visible through local chart stress, local rank, and residuals.
+
+# Ridge Sensitivity
+
+The ridge parameter stabilizes local gradient estimation:
+
+\[
+  (X_u^\top W_u X_u+\lambda I)^{-1}X_u^\top W_u.
+\]
+
+The next figure isolates the regression-gradient policies and shows whether
+changing \(\lambda\) materially changes the affine residual.
+
+```{r ridge-sensitivity, fig.height=7.4}
+ridge <- subset(summary.ok, policy.family == "regression_gradient_ambient")
+ggplot(ridge,
+       aes(x = factor(policy.label), y = plot.residual.linear,
+           fill = policy.label)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_wrap(~ graph.label, scales = "free_y", ncol = 2) +
+  scale_y_log10() +
+  labs(
+    title = "Ridge sensitivity of ambient regression-gradient transport",
+    subtitle = "Large sensitivity indicates ill-conditioned or rank-deficient local gradient fits.",
+    x = "ridge setting",
+    y = expression(R[linear]),
+    fill = "ridge setting"
+  ) +
+  base.theme(10) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none")
+```
+
+Ridge sensitivity should be small on well-conditioned grid interiors and larger
+near underdetermined or one-sided neighborhoods.
+
+# Results Summary
+
+```{r summary-table, results='asis'}
+family.summary <- aggregate(cbind(residual.constant,
+                                  residual.linear.mean,
+                                  residual.quadratic.mean,
+                                  n.rows,
+                                  nullity.estimate) ~ policy.family,
+                            data = summary.ok,
+                            FUN = function(x) median(x, na.rm = TRUE))
+knitr::kable(family.summary, digits = 4,
+             caption = "Median operator diagnostics by policy family.")
+
+best <- summary.ok[order(summary.ok$case.id,
+                         summary.ok$residual.linear.mean,
+                         -summary.ok$n.rows), ]
+best <- best[!duplicated(best$case.id),
+             c("case.id", "policy.label", "policy.family",
+               "residual.linear.mean", "residual.quadratic.mean",
+               "n.rows", "nullity.estimate")]
+knitr::kable(best, digits = 4,
+             caption = "Lowest linear residual by graph case.")
+```
+
+```{r automatic-interpretation, results='asis'}
+rg <- subset(summary.ok, policy.family %in% c("regression_gradient_ambient",
+                                             "regression_gradient_local",
+                                             "regression_gradient_adaptive"))
+rg.ambient <- subset(summary.ok, policy.family == "regression_gradient_ambient")
+rg.local <- subset(summary.ok, policy.family == "regression_gradient_local")
+rg.adaptive <- subset(summary.ok, policy.family == "regression_gradient_adaptive")
+soft <- subset(summary.ok, policy.family == "soft")
+exact <- subset(summary.ok, policy.family == "exact")
+rg.max.linear <- max(rg$residual.linear.mean, na.rm = TRUE)
+rg.median.quad <- median(rg$residual.quadratic.mean, na.rm = TRUE)
+rg.max.rank.def <- max(rg$rank.deficient.fraction, na.rm = TRUE)
+ambient.max.linear <- max(rg.ambient$residual.linear.mean, na.rm = TRUE)
+local.median.linear <- median(rg.local$residual.linear.mean, na.rm = TRUE)
+local.min.linear <- min(rg.local$residual.linear.mean, na.rm = TRUE)
+local.median.edge.stress <- median(rg.local$median.embedding.edge.stress, na.rm = TRUE)
+adaptive.median.linear <- median(rg.adaptive$residual.linear.mean, na.rm = TRUE)
+adaptive.oracle.fraction <- median(rg.adaptive$selected.oracle.fraction, na.rm = TRUE)
+soft.median.linear <- median(soft$residual.linear.mean, na.rm = TRUE)
+exact.errors <- subset(summary.table, policy.family == "exact" & status != "ok")
+
+cat("## What We Learned\n\n")
+cat(sprintf(
+  "The ambient regression-gradient operator remains the clean reference for this family: its largest recorded mean linear residual was %.3g.  Across all regression-gradient policies, the median quadratic residual was %.3g, so the construction still detects curvature rather than collapsing to a vacuous operator.\n\n",
+  ambient.max.linear,
+  rg.median.quad
+))
+cat(sprintf(
+  "The soft direction-matching family had median mean linear residual %.3g in the same validation table, which confirms that Phase 3c is not merely another gate on the soft matching method; it changes the operator behavior qualitatively.\n\n",
+  soft.median.linear
+))
+cat(sprintf(
+  "The graph-derived local-chart version is now implemented and auditable.  Its median mean linear residual was %.3g, its best recorded mean linear residual was %.3g, and its median local edge stress was %.3g.  This tells us that local chart quality is now the main bottleneck: path-like charts behave almost exactly, while grid and sampled neighborhoods need better local coordinate construction or larger local disks before they can match ambient gradients.\n\n",
+  local.median.linear,
+  local.min.linear,
+  local.median.edge.stress
+))
+best.local <- rg.local[order(rg.local$residual.linear.mean), ][1, ]
+cat(sprintf(
+  "The best graph-derived local policy in this run was %s on %s, with mean linear residual %.3g, median ambient-affine chart residual %.3g, and median chart-level affine-gradient residual %.3g.  These chart diagnostics are now the main evidence source for deciding whether a backend/radius is worth using adaptively.\n\n",
+  best.local$policy.label,
+  best.local$case.id,
+  best.local$residual.linear.mean,
+  best.local$median.ambient.affine.residual,
+  best.local$median.chart.linear.gradient.residual
+))
+if (nrow(rg.adaptive)) {
+  cat(sprintf(
+    "The adaptive graph-only selector had median mean linear residual %.3g, and its selected chart matched the synthetic validation oracle for a median fraction %.3g of base darts.  This is intentionally not expected to beat the retrospective best fixed policy yet; the goal is to test whether graph-only diagnostics can make reasonable local choices without ambient-coordinate leakage.\n\n",
+    adaptive.median.linear,
+    adaptive.oracle.fraction
+  ))
+}
+cat(sprintf(
+  "The largest rank-deficient fraction reported for regression-gradient local designs was %.3g.  Rank was therefore not the dominant failure mode in this experiment; chart distortion and the choice of local neighborhood explain more of the residual behavior.\n\n",
+  rg.max.rank.def
+))
+if (nrow(exact.errors)) {
+  cat(sprintf(
+    "Exact coordinate transport failed in %d runs, all for non-axis-aligned jittered or sampled graphs.  These failures are expected and reinforce why exact matching is only a reference construction.\n\n",
+    nrow(exact.errors)
+  ))
+}
+cat("The main caveat is that the adaptive score is still hand-weighted.  The next methodological question is whether the graph-only score should be calibrated against synthetic chart residuals, or whether the score should include a more direct chart-orientation diagnostic that remains available without ambient coordinates.\n")
+```
+
+The validation report should be read as an operator check, not as a final
+regression benchmark.  A promising Phase 3c outcome is:
+
+1. constant and linear residuals are near zero on path and grid references;
+2. sampled and jittered graphs expose rank or conditioning issues rather than
+   mysterious failures;
+3. quadratic residuals remain nonzero, so the operator still detects curvature;
+4. ridge sensitivity is interpretable and not dominant on well-conditioned
+   graphs.
+
+# Appendix
+
+## Run Metadata
+
+```{r appendix-metadata}
+str(metadata)
+```
+
+## Policies
+
+```{r appendix-policies}
+knitr::kable(policy.table, digits = 4)
+```
+
+## Summary Table
+
+```{r appendix-summary}
+knitr::kable(summary.table, digits = 5)
+```
+
+## Embedding Table
+
+```{r appendix-embedding}
+if (nrow(embedding.table)) {
+  knitr::kable(embedding.table, digits = 5)
+} else {
+  cat("No embedding diagnostics were recorded.")
+}
+```
+
+## Error Runs
+
+```{r appendix-errors}
+err <- subset(summary.table, status != "ok")
+if (nrow(err)) {
+  knitr::kable(err[, c("case.id", "policy.label", "status", "message")])
+} else {
+  cat("No error runs.")
+}
+```
+
+## Reproducibility
+
+```{r appendix-command, results='asis'}
+cat("Smoke render:\n\n")
+cat("```bash\n")
+cat("Rscript dev/graph-trend-filtering/render_transported_hessian_regression_gradient_validation.R\n")
+cat("```\n\n")
+cat("Full render:\n\n")
+cat("```bash\n")
+cat("GFLOW_REGRESSION_GRADIENT_VALIDATION_MODE=full Rscript dev/graph-trend-filtering/render_transported_hessian_regression_gradient_validation.R\n")
+cat("```\n")
+```

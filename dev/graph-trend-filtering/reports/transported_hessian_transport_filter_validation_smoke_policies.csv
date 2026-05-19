@@ -1,0 +1,6 @@
+"transport.filter","filter.label","description","max.match.angle","max.length.relative.error","min.match.margin","max.effective.matches","match.threshold.rule","match.score.quantile","match.margin.quantile","min.best.score.z","min.margin.z","max.effective.match.fraction"
+"none","No filter","All candidate soft-transport rows are retained.",NA,NA,NA,NA,"fixed",NA,NA,NA,NA,NA
+"fixed_geometric","Fixed angle/length","Retain rows only when the best match has angle at most pi/3 and relative length error at most 0.50.",1.0471975511966,0.5,NA,NA,"fixed",NA,NA,NA,NA,NA
+"local_quantile","Local quantile","Retain rows only when the best score is in the local lower quartile and the best-vs-second margin is at least the local median margin.",NA,NA,NA,NA,"local.quantile",0.25,0.5,NA,NA,NA
+"local_robust_z","Local robust-z","Retain rows only when the best match is at least one robust scale better than the local median score and its margin is not below the local median gap.",NA,NA,NA,NA,"local.robust.z",NA,NA,1,0,NA
+"local_robust_z_entropy","Robust-z + entropy","Apply the local robust-z rule and additionally reject diffuse softmax matches by effective-match fraction.",NA,NA,NA,NA,"local.robust.z",NA,NA,1,0,0.35

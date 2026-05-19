@@ -1,0 +1,670 @@
+---
+title: "Geodesic Skeleton Rank-Aware Cross-Enrichment Calibration"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10.8,
+  fig.height = 6.4,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = "ragg_png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+dev.dir <- file.path(repo.dir, "dev/graph-trend-filtering")
+report.dir <- file.path(dev.dir, "reports")
+source(file.path(dev.dir, "geodesic_skeleton_rank_calibration.R"))
+library(ggplot2)
+
+mode <- Sys.getenv("GFLOW_GEO_SKELETON_RANK_MODE", unset = "smoke")
+rds.path <- file.path(report.dir, paste0("geodesic_skeleton_rank_calibration_", mode, ".rds"))
+diagnostics <- readRDS(rds.path)
+summary.table <- diagnostics$summary
+direction.table <- diagnostics$direction %||% data.frame()
+candidate.table <- diagnostics$connector.candidates %||% data.frame()
+skeleton.table <- diagnostics$skeleton %||% data.frame()
+coverage.table <- diagnostics$coverage %||% data.frame()
+global.candidate.table <- diagnostics$global.candidates %||% data.frame()
+global.selection.table <- diagnostics$global.selection %||% data.frame()
+
+ok.summary <- subset(summary.table, status == "ok")
+rank.summary <- subset(ok.summary, row.family == "rank.cross")
+global.summary <- subset(ok.summary, row.family %in% c("global.rank.cross",
+                                                       "global.rank.rich"))
+if (nrow(ok.summary) > 0L) {
+  ok.summary$nullity.gap <- abs(ok.summary$nullity.1e.6 - ok.summary$expected.nullity)
+}
+if (nrow(rank.summary) > 0L) {
+  rank.summary$nullity.gap <- abs(rank.summary$nullity.1e.6 - rank.summary$expected.nullity)
+}
+if (nrow(global.summary) > 0L) {
+  global.summary$nullity.gap <- abs(global.summary$nullity.1e.6 - global.summary$expected.nullity)
+}
+path.ok <- subset(ok.summary, case.id == "path")
+path.exact <- nrow(path.ok) > 0L &&
+  all(path.ok$nullity.1e.6 == path.ok$expected.nullity, na.rm = TRUE)
+rank.best <- if (nrow(rank.summary) > 0L) {
+  aggregate(
+    cbind(nullity.gap, intrinsic.residual, n.rank.connectors.added,
+          mean.deficit.before, mean.deficit.after) ~ case.id + degree,
+    data = rank.summary,
+    FUN = function(z) {
+      z <- z[is.finite(z)]
+      if (length(z) < 1L) NA_real_ else min(z, na.rm = TRUE)
+    }
+  )
+} else {
+  data.frame()
+}
+
+base.theme <- function(base.size = 12) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "grey25", margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 8)),
+      axis.title.x = element_text(margin = margin(t = 8))
+    )
+}
+
+label.family <- function(x) {
+  x <- gsub("global.rank.rich", "global-rank\nrich", x)
+  x <- gsub("global.rank.cross", "global-rank\ncross", x)
+  x <- gsub("rank.cross", "rank-aware\ncross", x)
+  x <- gsub("coverage.cross", "coverage\ncross", x)
+  gsub("skeleton.only", "skeleton\nonly", x)
+}
+
+row.family.levels <- c("skeleton.only", "coverage.cross", "rank.cross",
+                       "global.rank.cross", "global.rank.rich")
+
+best.rows.by.family <- function(tab) {
+  if (!is.data.frame(tab) || nrow(tab) < 1L) return(data.frame())
+  split.key <- interaction(tab$case.id, tab$degree, tab$row.family, drop = TRUE)
+  out <- lapply(split(tab, split.key), function(x) {
+    x <- x[order(x$nullity.gap, x$intrinsic.residual,
+                 -x$n.rank.connectors.added), , drop = FALSE]
+    x[1L, , drop = FALSE]
+  })
+  do.call(rbind, out)
+}
+```
+
+# Purpose
+
+This calibration report tests the rank-aware skeleton cross-enrichment rule on
+controlled graphs where the expected local dimension is known. For each local
+disk, the rule estimates an intrinsic dimension \(m_v\), measures the rank
+\(r_v\) of the skeleton directions already present in that disk, and adds
+connector geodesics when
+
+\[
+\mathrm{deficit}(v)=(m_v-r_v)_+>0.
+\]
+
+The goal is not to pick final defaults yet. The goal is to learn which control
+settings produce connector additions, which settings overconstrain the graph,
+and which settings preserve exact one-dimensional path behavior.
+
+# Calibration Cases
+
+The smoke calibration uses a path graph, a grid graph, a sampled paraboloid
+graph, and a cube lattice. These cover expected local dimensions \(1,2,2,3\).
+The full calibration adds cycle, nonuniform grid, and sampled square cases.
+
+```{r case-overview, fig.height=5.2}
+case.plot <- unique(summary.table[, c("case.id", "family", "graph.type",
+                                      "n", "true.dimension")])
+ggplot(case.plot,
+       aes(x = reorder(case.id, true.dimension), y = n,
+           fill = factor(true.dimension))) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  labs(
+    title = "Controlled graph cases for rank calibration",
+    subtitle = "Fill color is the expected intrinsic dimension used as a calibration target.",
+    x = NULL,
+    y = "vertices",
+    fill = "true dimension"
+  ) +
+  base.theme()
+```
+
+These cases intentionally mix idealized graphs and sampled geometric graphs.
+The idealized path and grid expose exact structural behavior; the sampled
+paraboloid and cube lattice test whether the rank rule remains meaningful when
+graph geometry is less perfectly regular.
+
+# Direction Deficit
+
+The first diagnostic asks whether the rank-aware rule sees missing directions
+and whether accepted connectors reduce the deficit
+
+\[
+(m_v-r_v)_+.
+\]
+
+```{r direction-deficit, fig.height=7.2}
+if (nrow(direction.table) > 0L) {
+  deficit.long <- rbind(
+    transform(direction.table,
+              stage = "before",
+              direction.deficit = direction.deficit.before),
+    transform(direction.table,
+              stage = "after",
+              direction.deficit = direction.deficit.after)
+  )
+  deficit.long$stage <- factor(deficit.long$stage, levels = c("before", "after"))
+  ggplot(deficit.long,
+         aes(x = direction.deficit, fill = stage)) +
+    geom_histogram(binwidth = 1, boundary = -0.5,
+                   color = "white", alpha = 0.78, position = "dodge") +
+    facet_grid(true.dimension ~ case.id, scales = "free_y") +
+    labs(
+      title = "Local direction deficit before and after rank-aware enrichment",
+      subtitle = "A left shift from before to after means connectors supplied missing local directions.",
+      x = "direction deficit",
+      y = "local disks",
+      fill = "stage"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No direction diagnostics were recorded.")
+}
+```
+
+This figure is the most direct calibration check. A path graph should usually
+have zero deficit. Two- and three-dimensional graphs should show deficits when
+the base skeleton is too sparse, and those deficits should decrease after
+rank-aware connectors are added.
+
+# Connector Additions
+
+The connector rule is deterministic. Candidate connectors are scored using rank
+gain, coverage gain, metric length, and a canonical path key. The next plot
+shows how often connectors are accepted across the parameter sweep.
+
+```{r connector-additions, fig.height=7.0}
+if (nrow(rank.summary) > 0L) {
+  ggplot(rank.summary,
+         aes(x = factor(skeleton.max.cross.paths),
+             y = n.rank.connectors.added,
+             color = factor(disk.k),
+             group = interaction(disk.k, skeleton.max.paths,
+                                 skeleton.cross.iterations,
+                                 skeleton.cross.rank.tol,
+                                 skeleton.cross.length.penalty))) +
+    geom_point(alpha = 0.75, size = 2) +
+    geom_line(alpha = 0.35) +
+    facet_grid(true.dimension + case.id ~ degree + skeleton.cross.iterations,
+               scales = "free_y") +
+    labs(
+      title = "Accepted rank-aware connectors across control settings",
+      subtitle = "Columns compare polynomial degree and the number of rank-repair passes.",
+      x = "connector budget",
+      y = "accepted connectors",
+      color = "disk k"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No rank-aware rows were recorded.")
+}
+```
+
+If this plot is zero everywhere, the rank test is too permissive, the base
+skeleton is already direction-saturated, or the candidate connector pool is too
+restricted. If connector counts are large everywhere, the rule may be too eager
+and should be checked against nullity.
+
+```{r deficit-by-iteration, fig.height=7.0}
+if (nrow(direction.table) > 0L &&
+    "skeleton.cross.iteration" %in% names(direction.table)) {
+  iter.summary <- aggregate(
+    cbind(direction.deficit.before, direction.deficit.after, connector.added) ~
+      case.id + true.dimension + degree + skeleton.max.cross.paths +
+      skeleton.cross.iterations + skeleton.cross.iteration,
+    data = direction.table,
+    FUN = function(z) mean(z, na.rm = TRUE)
+  )
+  ggplot(iter.summary,
+         aes(x = skeleton.cross.iteration,
+             y = direction.deficit.after,
+             color = factor(skeleton.max.cross.paths),
+             group = interaction(skeleton.max.cross.paths,
+                                 skeleton.cross.iterations))) +
+    geom_point(alpha = 0.75, size = 1.8) +
+    geom_line(alpha = 0.45) +
+    facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+    labs(
+      title = "Mean direction deficit by rank-repair iteration",
+      subtitle = "Successful iterative repair should lower the after-deficit as passes accumulate.",
+      x = "rank-repair iteration",
+      y = "mean after-deficit",
+      color = "connector budget"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No iteration-level direction diagnostics were recorded.")
+}
+```
+
+This figure separates connector budget from repeated local repair. If later
+iterations do not lower the deficit, then additional passes are revisiting disks
+that are already direction-saturated or unable to generate useful connectors.
+
+# Nullity Calibration
+
+For an intrinsic \(m\)-dimensional polynomial model of degree \(d\), the target
+dimension is
+
+\[
+\dim \mathcal P_{\le d}(\mathbb R^m)=\binom{m+d}{m}.
+\]
+
+This is not a proof target for every graph, but it is the calibration reference
+for detecting severe under- or over-constraint.
+
+```{r nullity-calibration, fig.height=7.2}
+nullity.plot <- transform(
+  ok.summary,
+  row.family.label = factor(label.family(row.family),
+                            levels = label.family(row.family.levels))
+)
+ggplot(nullity.plot,
+       aes(x = row.family.label, y = nullity.1e.6, fill = row.family.label)) +
+  geom_boxplot(outlier.alpha = 0.35) +
+  geom_hline(aes(yintercept = expected.nullity),
+             linetype = "dashed", color = "grey25") +
+  facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+  labs(
+    title = "Estimated nullity versus polynomial dimension reference",
+    subtitle = "Dashed line is choose(true dimension + degree, true dimension).",
+    x = "row family",
+    y = "estimated nullity at relative tolerance 1e-6",
+    fill = "row family"
+  ) +
+  base.theme() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+High nullity means the skeleton remains underconstrained. Nullity far below the
+reference suggests the operator may be destroying the intended polynomial-like
+null space. The best calibration region should reduce the skeleton-only nullity
+without collapsing to a trivial null space.
+
+# Polynomial Residuals
+
+The next diagnostic evaluates whether the operator approximately annihilates
+known intrinsic coordinate polynomials:
+
+\[
+\frac{\|AP_d\|_F}{\|P_d\|_F}.
+\]
+
+The control residual uses exact degree \(d+1\) monomials, which should generally
+be larger.
+
+```{r polynomial-residuals, fig.height=7.2}
+residual.plot <- rbind(
+  transform(ok.summary, target = "degree <= d",
+            residual = intrinsic.residual),
+  transform(ok.summary, target = "exact degree d+1",
+            residual = control.residual)
+)
+residual.plot$row.family.label <- factor(
+  label.family(residual.plot$row.family),
+  levels = label.family(row.family.levels)
+)
+residual.plot$target <- factor(residual.plot$target,
+                               levels = c("degree <= d", "exact degree d+1"))
+ggplot(residual.plot,
+       aes(x = row.family.label, y = residual, fill = target)) +
+  geom_boxplot(outlier.alpha = 0.35, position = position_dodge(width = 0.75)) +
+  scale_y_log10() +
+  facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+  labs(
+    title = "Polynomial residuals by row family",
+    subtitle = "Useful settings keep degree <= d residuals small while retaining discrimination against degree d+1 controls.",
+    x = "row family",
+    y = "residual ratio, log10 scale",
+    fill = "polynomial target"
+  ) +
+  base.theme() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+The residual plot guards against a deceptive nullity result. A small nullity is
+not useful if the operator no longer annihilates the intended polynomial probes.
+
+# Global Rank Selection
+
+The local rank-aware rule asks whether a connector improves the rank inside one
+disk. The global-rank selector asks the complementary question: does the same
+candidate add a linearly independent constraint to the assembled operator?
+At each step it evaluates
+
+\[
+\Delta_{\mathrm{rank}}(\pi)
+=
+\mathrm{rank}\{[A;A_\pi]\}-\mathrm{rank}(A),
+\]
+
+and accepts only candidates with positive global rank gain and acceptable
+polynomial residual. This is a deliberately expensive calibration tool, not a
+proposed production solver.
+
+The `global-rank cross` row family uses only the original skeleton-membership
+connector pool. The `global-rank rich` row family uses the same selector but
+adds radial, boundary-to-boundary, and annulus-to-boundary local geodesics to
+the candidate pool.
+
+```{r global-rank-trajectory, fig.height=7.0}
+if (nrow(global.selection.table) > 0L) {
+  global.selection.table$expected.nullity <- choose(
+    global.selection.table$degree + global.selection.table$true.dimension,
+    global.selection.table$true.dimension
+  )
+  global.selection.table$nullity.after <- global.selection.table$n -
+    global.selection.table$rank.after
+  ggplot(global.selection.table,
+         aes(x = step, y = nullity.after,
+             color = row.family,
+             group = interaction(case.id, degree, skeleton.max.paths,
+                                 disk.k, skeleton.max.cross.paths,
+                                 row.family))) +
+    geom_hline(aes(yintercept = expected.nullity),
+               color = "grey35", linetype = "dashed") +
+    geom_point(alpha = 0.82, size = 1.8) +
+    geom_line(alpha = 0.42) +
+    facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+    labs(
+      title = "Global-rank selector trajectory",
+      subtitle = "Dashed lines are polynomial-dimension references; each point is one accepted connector.",
+      x = "accepted connector step",
+      y = "global nullity after accepted connector",
+      color = "row family"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No global-rank connector selections were recorded.")
+}
+```
+
+This figure tests whether the global selector can make monotone progress toward
+the target nullity. A flat trajectory means that the local candidate pool lacks
+globally independent rows or that the residual guardrail rejects the useful
+candidates.
+
+```{r global-rank-candidates, fig.height=6.8}
+if (nrow(global.candidate.table) > 0L) {
+  global.candidate.table$selected.label <- ifelse(
+    global.candidate.table$selected, "selected", "not selected"
+  )
+  ggplot(global.candidate.table,
+         aes(x = global.rank.gain, y = polynomial.residual,
+             color = selected.label,
+             shape = candidate.type)) +
+    geom_jitter(width = 0.08, height = 0, alpha = 0.55, size = 1.4) +
+    scale_y_log10() +
+    facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+    labs(
+      title = "Global-rank candidate pool",
+      subtitle = "Useful candidates have positive global rank gain while preserving polynomial annihilation.",
+      x = "global rank gain",
+      y = "candidate polynomial residual, log10 scale",
+      color = "selection",
+      shape = "candidate type"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No global-rank candidates were scored.")
+}
+```
+
+The candidate-pool view is a debugging plot. If most candidates have zero global
+rank gain, the path generator is producing redundant rows. If many positive-gain
+candidates have large residuals, the generator is finding constraints that
+increase rank by damaging the polynomial null space.
+
+# Parameter Sensitivity
+
+The rank-aware rule has several tuning controls. The next figure summarizes how
+nullity and intrinsic residual vary with the most important ones: connector
+budget, repair iterations, base skeleton size, disk radius, and length penalty.
+
+```{r parameter-sensitivity, fig.height=7.0}
+if (nrow(rank.summary) > 0L) {
+  sens <- transform(
+    rank.summary,
+    length.penalty.label = paste0("len=", skeleton.cross.length.penalty),
+    iteration.label = paste0("iter=", skeleton.cross.iterations)
+  )
+  ggplot(sens,
+         aes(x = n.rank.connectors.added, y = nullity.gap,
+             color = factor(skeleton.max.cross.paths),
+             shape = factor(skeleton.max.paths))) +
+    geom_point(alpha = 0.82, size = 2.1) +
+    facet_grid(length.penalty.label ~ iteration.label) +
+    labs(
+      title = "Rank-aware connector count versus nullity gap",
+      subtitle = "Good settings move toward lower nullity gap without requiring pathological row counts.",
+      x = "accepted rank-aware connectors",
+      y = "absolute nullity gap",
+      color = "connector budget",
+      shape = "base skeleton paths"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No rank-aware rows were recorded.")
+}
+```
+
+Good settings should move left-to-right enough to reduce nullity, but not so far
+that nullity collapses below the polynomial reference or residuals deteriorate.
+
+```{r residual-versus-budget, fig.height=7.0}
+if (nrow(rank.summary) > 0L) {
+  ggplot(rank.summary,
+         aes(x = factor(skeleton.max.cross.paths),
+             y = intrinsic.residual,
+             color = factor(skeleton.cross.iterations),
+             group = interaction(skeleton.cross.iterations,
+                                 skeleton.max.paths,
+                                 disk.k,
+                                 skeleton.cross.length.penalty))) +
+    geom_point(alpha = 0.75, size = 1.9) +
+    geom_line(alpha = 0.28) +
+    scale_y_log10() +
+    facet_grid(true.dimension + case.id ~ degree, scales = "free_y") +
+    labs(
+      title = "Intrinsic polynomial residual versus connector budget",
+      subtitle = "Connector budgets are useful only if polynomial annihilation remains stable.",
+      x = "connector budget",
+      y = "intrinsic residual, log10 scale",
+      color = "iterations"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No rank-aware rows were recorded.")
+}
+```
+
+This plot checks the main failure mode of aggressive repair: nullity may improve
+because the operator is adding many constraints, while the intended polynomial
+annihilation property quietly worsens.
+
+# What We Learned
+
+```{r learned-table, echo=FALSE, results='asis'}
+cat("The path graph remains the safety check. In this smoke calibration, path exactness was ",
+    if (path.exact) "**preserved**" else "**not preserved**",
+    ": the estimated nullity matched the 1D polynomial reference for every tested path setting.\\n\\n",
+    sep = "")
+if (nrow(rank.summary) > 0L) {
+  med <- aggregate(
+    cbind(n.rank.connectors.added, mean.deficit.before, mean.deficit.after,
+          nullity.gap, intrinsic.residual) ~ case.id + true.dimension + degree,
+    data = rank.summary,
+    FUN = function(z) round(stats::median(z, na.rm = TRUE), 5)
+  )
+  cat("Median rank-aware behavior by case is summarized below. Connector additions and ",
+      "deficit reduction show whether the local rank-repair mechanism is active; ",
+      "nullity gap shows whether that local repair is enough globally.\\n\\n",
+      sep = "")
+  print(knitr::kable(med))
+}
+best.family <- best.rows.by.family(ok.summary)
+if (nrow(best.family) > 0L) {
+  report.best <- best.family[, c(
+    "case.id", "true.dimension", "degree", "row.family", "nullity.gap",
+    "nullity.1e.6", "expected.nullity", "intrinsic.residual",
+    "n.rank.connectors.added"
+  )]
+  report.best$row.family <- label.family(report.best$row.family)
+  report.best$intrinsic.residual <- signif(report.best$intrinsic.residual, 4)
+  cat("\\n\\nBest observed setting within each row family is below. This table is ",
+      "the compact check of whether global-rank selection improves the best ",
+      "achievable nullity gap without increasing polynomial residuals.\\n\\n",
+      sep = "")
+  print(knitr::kable(report.best))
+}
+if (nrow(global.summary) > 0L) {
+  global.med <- aggregate(
+    cbind(global.rank.gain, global.nullity.initial, global.nullity.final,
+          nullity.gap, intrinsic.residual, n.global.candidates.scored) ~
+      case.id + true.dimension + degree,
+    data = global.summary,
+    FUN = function(z) round(stats::median(z, na.rm = TRUE), 5)
+  )
+  cat("\\n\\nMedian global-rank behavior is below. The important columns are ",
+      "`global.rank.gain`, which measures independent rows actually added, ",
+      "and the movement from initial to final global nullity.\\n\\n",
+      sep = "")
+  print(knitr::kable(global.med))
+}
+if (all(c("global.rank.cross", "global.rank.rich") %in% ok.summary$row.family)) {
+  global.best <- best.rows.by.family(subset(
+    ok.summary,
+    row.family %in% c("global.rank.cross", "global.rank.rich")
+  ))
+  wide <- reshape(
+    global.best[, c("case.id", "degree", "row.family", "nullity.gap",
+                    "intrinsic.residual", "global.rank.gain")],
+    idvar = c("case.id", "degree"),
+    timevar = "row.family",
+    direction = "wide"
+  )
+  if (nrow(wide) > 0L &&
+      all(c("nullity.gap.global.rank.cross",
+            "nullity.gap.global.rank.rich") %in% names(wide))) {
+    wide$gap.improvement <- wide$nullity.gap.global.rank.cross -
+      wide$nullity.gap.global.rank.rich
+    cat("\\n\\nLanding 1 comparison: positive `gap.improvement` means the richer ",
+        "candidate pool improved the best observed global-rank nullity gap ",
+        "relative to the original skeleton-membership pool, using the same ",
+        "selector.\\n\\n",
+        sep = "")
+    print(knitr::kable(wide[, c("case.id", "degree",
+                                "nullity.gap.global.rank.cross",
+                                "nullity.gap.global.rank.rich",
+                                "gap.improvement")]))
+  }
+}
+```
+
+The main Landing 1 lesson is that candidate diversity was a real bottleneck.
+With the selector held fixed, adding radial, boundary-to-boundary, and
+annulus-to-boundary candidates gives the global-rank selector many more
+independent rows to choose from. This is exactly the behavior we wanted to test:
+the improvement comes from a richer pool, not from changing the selection rule.
+
+The second lesson is that polynomial residuals are the guardrail. In the smoke
+calibration, aggressive connector settings often kept intrinsic residuals small,
+which means the new rows are not obviously destroying the polynomial probes.
+This supports continuing with rank-aware enrichment, but only in tandem with
+nullity-gap and residual diagnostics.
+
+The third lesson is that 3D remains the hard case. The cube lattice accepts many
+rank-aware connectors, but its nullity stays well above the polynomial reference
+for the tested budgets. The global-rank selector directly tests whether the
+available connector pool contains independent constraints; when it stalls above
+the reference, the bottleneck is no longer just ranking accepted paths but the
+geometric diversity of candidate paths.
+
+# Results Summary And Discussion
+
+This calibration separates three questions that were mixed together in the
+first smoke report. First, does the local dimension/rank diagnostic actually
+produce deficits? Second, do accepted connectors reduce those deficits? Third,
+does the resulting operator have plausible nullity and polynomial residuals?
+
+The settings recommended by this report should satisfy all three conditions:
+visible but not excessive connector additions, lower direction deficits after
+enrichment, and nullity closer to the polynomial-dimension reference without
+large increases in \(\|AP_d\|_F/\|P_d\|_F\). Settings that only improve one of
+these diagnostics are not yet good defaults.
+
+# Appendix
+
+## Input Artifact
+
+```{r appendix-input, echo=TRUE}
+rds.path
+diagnostics$created
+```
+
+## Summary Table
+
+```{r appendix-summary, echo=TRUE}
+head(summary.table, 80)
+```
+
+## Direction Diagnostics
+
+```{r appendix-direction, echo=TRUE}
+head(direction.table, 80)
+```
+
+## Connector Candidates
+
+```{r appendix-candidates, echo=TRUE}
+head(candidate.table, 80)
+```
+
+## Global Rank Candidates
+
+```{r appendix-global-candidates, echo=TRUE}
+head(global.candidate.table, 80)
+```
+
+## Global Rank Selections
+
+```{r appendix-global-selection, echo=TRUE}
+head(global.selection.table, 80)
+```
+
+## Reproducibility
+
+```{bash, eval=FALSE}
+GFLOW_GEO_SKELETON_RANK_MODE=smoke \
+  Rscript dev/graph-trend-filtering/render_geodesic_skeleton_rank_calibration.R
+```

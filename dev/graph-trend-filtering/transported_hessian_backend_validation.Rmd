@@ -1,0 +1,399 @@
+---
+title: "Transported Hessian Backend Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10.8,
+  fig.height = 6.4,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = if (requireNamespace("ragg", quietly = TRUE)) "ragg_png" else "png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+dev.dir <- file.path(repo.dir, "dev/graph-trend-filtering")
+report.dir <- file.path(dev.dir, "reports")
+source(file.path(dev.dir, "transported_hessian_backend_validation.R"))
+library(ggplot2)
+
+mode <- Sys.getenv("GFLOW_TRANSPORTED_HESSIAN_BACKEND_MODE", unset = "smoke")
+rds.path <- file.path(report.dir, paste0("transported_hessian_backend_validation_", mode, ".rds"))
+diagnostics <- readRDS(rds.path)
+summary.table <- diagnostics$summary
+embedding.table <- diagnostics$embedding %||% data.frame()
+row.table <- diagnostics$rows %||% data.frame()
+metadata <- diagnostics$metadata
+
+summary.ok <- subset(summary.table, status == "ok")
+method.levels <- c("cmdscale", "mds.edge.kk", "grip.edge.kk")
+summary.ok$local.embedding.method <- factor(summary.ok$local.embedding.method,
+                                            levels = method.levels)
+if (nrow(embedding.table)) {
+  embedding.table$local.embedding.method <- factor(embedding.table$local.embedding.method,
+                                                   levels = method.levels)
+}
+if (nrow(row.table)) {
+  row.table$local.embedding.method <- factor(row.table$local.embedding.method,
+                                             levels = method.levels)
+}
+
+base.theme <- function(base.size = 12) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "grey25", margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 8)),
+      axis.title.x = element_text(margin = margin(t = 8))
+    )
+}
+
+nonzero.floor <- function(x) {
+  x <- x[is.finite(x) & x > 0]
+  if (length(x)) min(x) / 2 else 1e-12
+}
+
+metric.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             metric = "edge stress",
+             value = summary.ok$median.edge.stress),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             metric = "graph-distance stress",
+             value = summary.ok$median.graph.distance.stress)
+)
+transport.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             metric = "transport entropy",
+             value = summary.ok$mean.transport.entropy),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             metric = "effective matches",
+             value = summary.ok$mean.effective.matches),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             metric = "match score",
+             value = summary.ok$mean.match.score)
+)
+residual.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             probe = "constant",
+             residual = summary.ok$residual.constant),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             probe = "linear mean",
+             residual = summary.ok$residual.linear.mean),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             probe = "quadratic mean",
+             residual = summary.ok$residual.quadratic.mean),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method")],
+             probe = "overall",
+             residual = summary.ok$residual.overall)
+)
+residual.long$plot.residual <- pmax(residual.long$residual,
+                                    nonzero.floor(residual.long$residual))
+
+backend.status <- unique(summary.table[, c("local.embedding.method", "backend.used",
+                                           "fallback.reason")])
+backend.status$local.embedding.method <- factor(backend.status$local.embedding.method,
+                                                levels = method.levels)
+backend.status$uses.true.edge.kk <- grepl("edge\\.kk|edge\\.isometric",
+                                          backend.status$backend.used %||% "")
+```
+
+# Purpose
+
+The transported graph Hessian operator needs local directions before it can
+compare directional derivatives across an edge.  In this Phase 3 validation we
+ask whether the local embedding backend used to create those directions is
+doing the intended job.  The three backends are:
+
+\[
+\texttt{cmdscale},\qquad
+\texttt{mds.edge.kk},\qquad
+\texttt{grip.edge.kk}.
+\]
+
+The crucial implementation question is whether the edge-KK variants use the
+true edge-restricted optimizer,
+
+\[
+\frac{1}{2}\sum_{(i,j)\in E}
+k_{ij}\left(\|z_i-z_j\|_2-s\ell_{ij}\right)^2,
+\]
+
+rather than full all-pairs geodesic KK.  Full geodesic KK is a different
+objective.  This report therefore records the backend actually used for each
+local disk and compares edge stress, graph-distance stress, transport entropy,
+and polynomial-probe residuals.
+
+```{r metadata-summary, results='asis'}
+cat(sprintf(
+  "**Build:** %s  \n**Mode:** %s  \n**Local grip requested:** %s  \n**True edge-KK available:** %s  \n**Edge-KK function:** `%s`\n",
+  metadata$generated.at,
+  metadata$mode,
+  metadata$use.local.grip,
+  metadata$edge.kk.available,
+  metadata$edge.kk.function %||% NA_character_
+))
+```
+
+# Backend Resolution
+
+This diagnostic checks the first necessary condition: the requested backend
+name must resolve to the intended implementation.  In particular,
+`grip.edge.kk` and `mds.edge.kk` should report a backend containing
+`grip.optimize.edge.kk.layout` or `grip.optimize.edge.isometric.layout` when
+true edge-KK is available.  If the installed `grip` is older, the report should
+show a transparent fallback to `cmdscale`.
+
+```{r backend-resolution, fig.height=4.8}
+ggplot(backend.status,
+       aes(x = local.embedding.method, y = backend.used,
+           color = uses.true.edge.kk)) +
+  geom_point(size = 3.2) +
+  facet_wrap(~ local.embedding.method, scales = "free_y", nrow = 1) +
+  labs(
+    title = "Resolved backend for each requested local embedding method",
+    subtitle = "The edge-KK methods should resolve to true edge-KK when the local grip checkout is loaded.",
+    x = "requested local embedding method",
+    y = "backend used",
+    color = "true edge-KK"
+  ) +
+  base.theme() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+The status plot is the guardrail for this report.  If the edge-KK methods fall
+back to `cmdscale`, then the stress and transport comparisons below are still
+valid software diagnostics, but they are not evidence about the edge-KK
+optimizer itself.
+
+# Local Embedding Stress
+
+The primary geometric diagnostic is edge stress:
+
+\[
+E_{\mathrm{edge}}
+=
+\frac{
+\sqrt{|E_{\Gamma}|^{-1}\sum_{(i,j)\in E_{\Gamma}}
+(\|z_i-z_j\|_2-\ell_{ij})^2}
+}{
+|E_{\Gamma}|^{-1}\sum_{(i,j)\in E_{\Gamma}}\ell_{ij}
+}.
+\]
+
+We also record graph-distance stress over local disk pairs.  Edge-KK is
+expected to improve edge stress most directly; it need not minimize all-pairs
+graph-distance stress.
+
+```{r stress-comparison, fig.height=7.0}
+metric.long$plot.value <- pmax(metric.long$value, nonzero.floor(metric.long$value))
+ggplot(metric.long,
+       aes(x = local.embedding.method, y = plot.value,
+           fill = local.embedding.method)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(metric ~ case.id, scales = "free_y") +
+  scale_y_log10() +
+  labs(
+    title = "Local embedding stress by backend",
+    subtitle = "Bars are median local-disk stress over transported-Hessian base darts; lower is better.",
+    x = "local embedding backend",
+    y = "median stress (log scale)",
+    fill = "backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+The intended positive pattern is a reduction in edge stress for
+`mds.edge.kk` or `grip.edge.kk` relative to `cmdscale`.  If graph-distance
+stress increases while edge stress falls, that is not necessarily a failure:
+it means the local embedding is prioritizing the edge-length constraints used
+by the transported directions.
+
+# Transport Match Sharpness
+
+After embedding a local disk, a direction at one endpoint is matched to outgoing
+directions at the neighboring endpoint by softmax weights.  For a row with
+weights \(w_j\), the entropy
+
+\[
+H=-\sum_j w_j\log w_j
+\]
+
+and effective match count \(\exp(H)\) measure whether the transport is sharp or
+diffuse.  Smaller entropy indicates a more decisive direction match.
+
+```{r transport-sharpness, fig.height=6.8}
+ggplot(transport.long,
+       aes(x = local.embedding.method, y = value,
+           fill = local.embedding.method)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(metric ~ case.id, scales = "free_y") +
+  labs(
+    title = "Soft transport sharpness by backend",
+    subtitle = "Sharper transport has lower entropy and fewer effective matches, but too-sharp matching can be unstable on irregular disks.",
+    x = "local embedding backend",
+    y = "mean diagnostic value",
+    fill = "backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+This plot tells us whether edge-KK changes the matching problem, not just the
+embedding stress.  A useful backend should make directions geometrically more
+coherent without collapsing all matches to arbitrary nearest neighbors.
+
+# Polynomial-Probe Residuals
+
+The transported Hessian matrix \(A\) is evaluated on simple coordinate
+polynomial probes \(P\).  The reported residual is
+
+\[
+\frac{\|AP\|_F}{\|P\|_F}.
+\]
+
+For an ideal second-difference transport on a clean path or grid, constants and
+linear probes should have very small residuals.  Quadratic probes are included
+as a sensitivity diagnostic rather than a required null-space target for this
+second-difference operator.
+
+```{r polynomial-residuals, fig.height=7.2}
+ggplot(residual.long,
+       aes(x = local.embedding.method, y = plot.residual,
+           fill = local.embedding.method)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_grid(probe ~ case.id, scales = "free_y") +
+  scale_y_log10() +
+  labs(
+    title = "Polynomial-probe residuals by backend",
+    subtitle = "Residuals are ||AP||F / ||P||F; zero residuals are floored only for log-scale display.",
+    x = "local embedding backend",
+    y = "residual (log scale)",
+    fill = "backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+This diagnostic is the mathematical sanity check.  A backend that reduces edge
+stress but inflates constant or linear residuals would be suspicious for the
+transported-Hessian project.
+
+# Nullity
+
+The estimated nullity of \(A\) provides a coarse global view of how many
+functions are left nearly unpenalized.  It is not a proof of the correct
+polynomial null space, but it is useful for detecting dramatic overconstraint
+or underconstraint after a backend change.
+
+```{r nullity-comparison, fig.height=5.6}
+ggplot(summary.ok,
+       aes(x = local.embedding.method, y = nullity.estimate,
+           fill = local.embedding.method)) +
+  geom_col(width = 0.72, color = "grey25") +
+  facet_wrap(~ case.id, scales = "free_y", nrow = 2) +
+  labs(
+    title = "Estimated nullity by backend",
+    subtitle = "Large backend-induced nullity shifts indicate that the transport geometry is changing the operator, not only the diagnostics.",
+    x = "local embedding backend",
+    y = "estimated nullity",
+    fill = "backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+The nullity plot should be read together with the residual plot.  A larger
+nullity is not automatically better; the unpenalized functions need to align
+with the intended low-order polynomial probes.
+
+# Results Summary And Discussion
+
+```{r learned-table, results='asis'}
+best.edge <- summary.ok[order(summary.ok$case.id,
+                              summary.ok$median.edge.stress,
+                              summary.ok$median.graph.distance.stress), ]
+best.edge <- best.edge[!duplicated(best.edge$case.id),
+                       c("case.id", "local.embedding.method",
+                         "median.edge.stress", "median.graph.distance.stress",
+                         "residual.linear.mean", "nullity.estimate",
+                         "backend.used", "fallback.reason")]
+knitr::kable(best.edge, digits = 4,
+             caption = "Best edge-stress backend for each validation case.")
+```
+
+The backend-resolution diagnostic is the most important software result.  It
+confirms whether the requested edge-KK methods are actually using a true
+edge-restricted optimizer.  When they do, the stress plots answer the geometric
+question: edge-KK should preferentially reduce local edge stress, while
+all-pairs graph-distance stress may remain similar or sometimes worsen.
+
+The transport-sharpness plot answers a different question.  It shows whether
+the improved local edge geometry changes the soft transport weights used in the
+Hessian rows.  A useful backend should make these weights more coherent without
+making them arbitrary.  The polynomial residuals then check whether those
+transport changes are compatible with the intended low-order null behavior.
+
+At this stage, the experiment supports using true edge-KK as the preferred
+Phase 3 local coordinate repair only when the current `grip` checkout is loaded
+or installed.  Without that API, the code now falls back transparently rather
+than substituting full geodesic-KK, which would have changed the mathematical
+meaning of the backend.
+
+# What We Learned
+
+1. The edge-KK backend distinction is observable and auditable.  The report
+records the actual function used for every local disk.
+2. Edge stress and graph-distance stress must be interpreted separately.
+Edge-KK targets edge lengths, not all-pairs graph geodesic distances.
+3. Transport entropy and polynomial residuals are necessary companion
+diagnostics.  Lower edge stress alone is not enough to validate the transported
+Hessian operator.
+4. The next implementation step should not introduce new Hessian algebra yet.
+It should first decide whether the edge-KK local-coordinate backend improves
+the residual/nullity behavior enough to become the default backend for Phase 3
+experiments.
+
+# Appendix
+
+## Run Metadata
+
+```{r appendix-metadata}
+str(metadata)
+```
+
+## Summary Table
+
+```{r appendix-summary}
+knitr::kable(summary.table, digits = 5)
+```
+
+## Backend Status Table
+
+```{r appendix-backend-status}
+knitr::kable(backend.status)
+```
+
+## Reproducibility
+
+```{r appendix-command, results='asis'}
+cat("Render command:\n\n")
+cat("```bash\n")
+cat("Rscript dev/graph-trend-filtering/render_transported_hessian_backend_validation.R\n")
+cat("```\n\n")
+cat("Optional full mode:\n\n")
+cat("```bash\n")
+cat("GFLOW_TRANSPORTED_HESSIAN_BACKEND_MODE=full Rscript dev/graph-trend-filtering/render_transported_hessian_backend_validation.R\n")
+cat("```\n")
+```

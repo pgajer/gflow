@@ -1,0 +1,449 @@
+---
+title: "Transported Hessian Transport-Confidence Filter Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 11.2,
+  fig.height = 6.8,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = if (requireNamespace("ragg", quietly = TRUE)) "ragg_png" else "png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+dev.dir <- file.path(repo.dir, "dev/graph-trend-filtering")
+report.dir <- file.path(dev.dir, "reports")
+source(file.path(dev.dir, "transported_hessian_transport_filter_validation.R"))
+library(ggplot2)
+
+mode <- Sys.getenv("GFLOW_TRANSPORTED_HESSIAN_FILTER_MODE", unset = "smoke")
+rds.path <- file.path(report.dir, paste0("transported_hessian_transport_filter_validation_", mode, ".rds"))
+diagnostics <- readRDS(rds.path)
+metadata <- diagnostics$metadata
+policy.table <- diagnostics$policies
+summary.table <- diagnostics$summary
+embedding.table <- diagnostics$embedding %||% data.frame()
+row.table <- diagnostics$rows %||% data.frame()
+dropped.table <- diagnostics$dropped %||% data.frame()
+
+method.levels <- c("cmdscale", "mds.edge.kk", "grip.edge.kk")
+filter.levels <- policy.table$transport.filter
+filter.labels <- setNames(policy.table$filter.label, policy.table$transport.filter)
+
+summary.ok <- subset(summary.table, status == "ok")
+summary.ok$local.embedding.method <- factor(summary.ok$local.embedding.method,
+                                            levels = method.levels)
+summary.ok$transport.filter <- factor(summary.ok$transport.filter,
+                                      levels = filter.levels,
+                                      labels = filter.labels[filter.levels])
+if (nrow(row.table)) {
+  row.table$local.embedding.method <- factor(row.table$local.embedding.method,
+                                             levels = method.levels)
+  row.table$transport.filter <- factor(row.table$transport.filter,
+                                       levels = filter.levels,
+                                       labels = filter.labels[filter.levels])
+}
+if (nrow(dropped.table)) {
+  dropped.table$local.embedding.method <- factor(dropped.table$local.embedding.method,
+                                                 levels = method.levels)
+  dropped.table$transport.filter <- factor(dropped.table$transport.filter,
+                                           levels = filter.levels,
+                                           labels = filter.labels[filter.levels])
+}
+
+base.theme <- function(base.size = 12) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "grey25", margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 8)),
+      axis.title.x = element_text(margin = margin(t = 8))
+    )
+}
+
+nonzero.floor <- function(x) {
+  x <- x[is.finite(x) & x > 0]
+  if (length(x)) min(x) / 2 else 1e-12
+}
+
+residual.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method",
+                            "transport.filter", "row.retention")],
+             probe = "constant",
+             residual = summary.ok$residual.constant),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method",
+                            "transport.filter", "row.retention")],
+             probe = "linear mean",
+             residual = summary.ok$residual.linear.mean),
+  data.frame(summary.ok[, c("case.id", "graph.type", "local.embedding.method",
+                            "transport.filter", "row.retention")],
+             probe = "overall",
+             residual = summary.ok$residual.overall)
+)
+residual.long$plot.residual <- pmax(residual.long$residual,
+                                    nonzero.floor(residual.long$residual))
+
+confidence.long <- rbind(
+  data.frame(summary.ok[, c("case.id", "local.embedding.method", "transport.filter")],
+             diagnostic = "best-score robust z",
+             value = summary.ok$mean.best.score.robust.z),
+  data.frame(summary.ok[, c("case.id", "local.embedding.method", "transport.filter")],
+             diagnostic = "margin robust z",
+             value = summary.ok$mean.margin.robust.z),
+  data.frame(summary.ok[, c("case.id", "local.embedding.method", "transport.filter")],
+             diagnostic = "effective-match fraction",
+             value = summary.ok$mean.effective.match.fraction),
+  data.frame(summary.ok[, c("case.id", "local.embedding.method", "transport.filter")],
+             diagnostic = "margin quantile",
+             value = summary.ok$mean.margin.local.quantile)
+)
+```
+
+# Purpose
+
+The transported graph Hessian compares directional derivatives across a graph
+edge.  For a base dart \(u\to u'\), a direction \(u\to v\), and a matched
+direction \(u'\to v'\), the row is
+
+\[
+  \delta_{u'\to v'} f - \delta_{u\to v} f,
+  \qquad
+  \delta_{a\to b} f = \frac{f(b)-f(a)}{\ell_{ab}}.
+\]
+
+The previous backend validation showed that true edge-KK local coordinate
+repair can be used and audited.  It also showed that better edge stress alone
+does not guarantee a better transported Hessian.  The next question is whether
+we should reject low-confidence direction transports before they become rows of
+the operator.
+
+This report evaluates five transport policies:
+
+\[
+\text{no filter},\quad
+\theta_1\le \pi/3\ \text{and}\ r_\ell\le 0.50,\quad
+\text{local quantile},\quad
+\text{local robust-}z,\quad
+\text{local robust-}z+\text{entropy fraction},
+\]
+
+where \(s_1\) and \(s_2\) are the best and second-best match scores, \(H\) is
+softmax entropy, \(\theta_1\) is the best-match angle, and
+
+\[
+r_\ell =
+\frac{|\ell_{\mathrm{matched}}-\ell_{\mathrm{direction}}|}
+     {\ell_{\mathrm{direction}}}.
+\]
+
+The local rules compare each candidate direction match against the alternatives
+available at the same transported vertex.  For sorted candidate scores \(s\),
+score gaps \(\Delta s\), and robust scale
+\(\operatorname{scale}(x)=1.4826\,\operatorname{MAD}(x)\) with fallbacks, the
+adaptive diagnostics are
+
+\[
+  q_s = \widehat F_s(s_1), \qquad
+  q_m = \widehat F_{\Delta s}(s_2-s_1),
+\]
+
+and
+
+\[
+  z_s = \frac{\operatorname{median}(s)-s_1}{\operatorname{scale}(s)}, \qquad
+  z_m = \frac{(s_2-s_1)-\operatorname{median}(\Delta s)}
+              {\operatorname{scale}(\Delta s)}.
+\]
+
+The entropy-fraction gate uses
+
+\[
+  \rho_H = \frac{\exp(H)}{n_{\mathrm{candidate}}},
+\]
+
+so that the same effective-match count is judged relative to local degree.
+
+```{r metadata-summary, results='asis'}
+cat(sprintf(
+  "**Build:** %s  \n**Mode:** %s  \n**Local grip requested:** %s  \n**True edge-KK available:** %s  \n**Edge-KK function:** `%s`\n",
+  metadata$generated.at,
+  metadata$mode,
+  metadata$use.local.grip,
+  metadata$edge.kk.available,
+  metadata$edge.kk.function %||% NA_character_
+))
+```
+
+# Row Retention
+
+Filtering can only help if it removes questionable rows without destroying the
+operator.  The retention fraction is
+
+\[
+\rho =
+\frac{\#\{\text{accepted Hessian rows}\}}
+     {\#\{\text{candidate direction transports}\}}.
+\]
+
+High retention means the filter is conservative.  Very low retention is a
+warning: polynomial residuals may look artificially good if the operator has
+become too small to test anything.
+
+```{r row-retention, fig.height=7.2}
+ggplot(summary.ok,
+       aes(x = transport.filter, y = row.retention,
+           fill = local.embedding.method)) +
+  geom_col(position = position_dodge(width = 0.78), width = 0.72,
+           color = "grey25") +
+  facet_wrap(~ case.id, nrow = 2) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "Accepted Hessian-row fraction under each transport filter",
+    subtitle = "A useful filter removes ambiguous transports without collapsing the operator.",
+    x = "transport filter",
+    y = "row retention fraction",
+    fill = "embedding backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+The retention plot is the first safety check.  A filter that drops nearly all
+rows may reduce residuals for the wrong reason.  A filter that drops nothing
+cannot teach us much about transport confidence.
+
+# Why Rows Were Dropped
+
+The confidence gates are intentionally interpretable.  A candidate can be
+dropped because the best angle is too large, the best length mismatch is too
+large, the local score quantile is not selective enough, the local robust
+z-score is too weak, or the softmax distribution is too diffuse relative to the
+local candidate count.
+
+```{r drop-reasons, fig.height=7.0}
+if (nrow(dropped.table)) {
+  drop.count <- as.data.frame(
+    xtabs(~ case.id + local.embedding.method + transport.filter + drop.reason,
+          data = dropped.table)
+  )
+  names(drop.count)[names(drop.count) == "Freq"] <- "n"
+  drop.count <- subset(drop.count, n > 0)
+  ggplot(drop.count,
+         aes(x = transport.filter, y = n, fill = drop.reason)) +
+    geom_col(width = 0.72, color = "grey25") +
+    facet_grid(local.embedding.method ~ case.id, scales = "free_y") +
+    labs(
+      title = "Drop reasons by case, backend, and filter",
+      subtitle = "The dominant reason identifies which part of the transport confidence score is binding.",
+      x = "transport filter",
+      y = "dropped candidate rows",
+      fill = "drop reason"
+    ) +
+    base.theme(10) +
+    theme(axis.text.x = element_text(angle = 25, hjust = 1))
+} else {
+  ggplot() +
+    annotate("text", x = 0, y = 0, label = "No dropped rows were observed.") +
+    theme_void()
+}
+```
+
+This figure explains the mechanism behind row loss.  If all drops come from
+local robust-z or quantile thresholds, the local geometry produces tied or
+nearly tied directions.  If drops come from angle or length, the candidate has
+a clear best match but the match is geometrically implausible.  If drops come
+from effective-match fraction, the soft transport remains too spread out after
+local calibration.
+
+# Confidence Diagnostics
+
+The row filters should improve the confidence diagnostics of the rows that
+remain.  We summarize the accepted rows by the adaptive quantities used by the
+new gates: best-score robust \(z\), margin robust \(z\), effective-match
+fraction, and margin quantile.
+
+```{r confidence-diagnostics, fig.height=8.0}
+ggplot(confidence.long,
+       aes(x = transport.filter, y = value,
+           fill = local.embedding.method)) +
+  geom_col(position = position_dodge(width = 0.78), width = 0.72,
+           color = "grey25") +
+  facet_grid(diagnostic ~ case.id, scales = "free_y") +
+  labs(
+    title = "Confidence diagnostics among accepted transport rows",
+    subtitle = "Filters should increase margin or sharpness without forcing implausible angle or length matches.",
+    x = "transport filter",
+    y = "mean accepted-row diagnostic",
+    fill = "embedding backend"
+  ) +
+  base.theme(10) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+These diagnostics are descriptive rather than final objectives.  For example,
+a low effective-match fraction is good only if the selected direction is a
+geometrically meaningful match and the retained rows still test the polynomial
+probes.
+
+# Polynomial Residuals
+
+The core mathematical check is how the filtered operator acts on simple
+polynomial probes.  For a probe matrix \(P\), we report
+
+\[
+  R(P) = \frac{\|AP\|_F}{\|P\|_F}.
+\]
+
+For a transported second-difference operator, constants and linear coordinate
+probes are the most important sanity checks.  Lower residuals are better only
+when row retention remains high enough for the operator to be meaningful.
+
+```{r polynomial-residuals, fig.height=8.0}
+ggplot(residual.long,
+       aes(x = transport.filter, y = plot.residual,
+           fill = local.embedding.method)) +
+  geom_col(position = position_dodge(width = 0.78), width = 0.72,
+           color = "grey25") +
+  facet_grid(probe ~ case.id, scales = "free_y") +
+  scale_y_log10() +
+  labs(
+    title = "Polynomial-probe residuals after transport filtering",
+    subtitle = "Residuals are shown on a log scale; exact zeros are floored only for display.",
+    x = "transport filter",
+    y = "residual ||AP||F / ||P||F",
+    fill = "embedding backend"
+  ) +
+  base.theme(10) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+This plot is the main evidence about whether confidence filtering helps the
+operator mathematically.  The desired pattern is lower constant/linear
+residuals with only moderate row loss.
+
+# Nullity And Operator Size
+
+Nullity is a coarse global check.  If a filter drops many rows, the nullity can
+increase simply because the operator has fewer constraints.  We therefore read
+nullity together with row retention and residuals.
+
+```{r nullity, fig.height=7.2}
+ggplot(summary.ok,
+       aes(x = transport.filter, y = nullity.estimate,
+           fill = local.embedding.method)) +
+  geom_col(position = position_dodge(width = 0.78), width = 0.72,
+           color = "grey25") +
+  facet_wrap(~ case.id, scales = "free_y", nrow = 2) +
+  labs(
+    title = "Estimated nullity after transport filtering",
+    subtitle = "Nullity increases are useful only if the remaining operator still has enough retained rows.",
+    x = "transport filter",
+    y = "estimated nullity",
+    fill = "embedding backend"
+  ) +
+  base.theme(11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+The nullity plot distinguishes true improvement from degeneracy.  A filter that
+raises nullity while retaining few rows is not a solved transport rule; it is a
+diagnostic that we are rejecting too many constraints.
+
+# Results Summary And Discussion
+
+```{r compact-best-table, results='asis'}
+score.table <- summary.ok
+score.table$linear.with.retention <- score.table$residual.linear.mean /
+  pmax(score.table$row.retention, 1e-6)
+score.table <- subset(score.table, row.retention >= 0.25)
+best <- score.table[order(score.table$case.id,
+                          score.table$linear.with.retention,
+                          score.table$residual.linear.mean), ]
+best <- best[!duplicated(best$case.id),
+             c("case.id", "local.embedding.method", "transport.filter",
+               "row.retention", "residual.linear.mean", "nullity.estimate",
+               "mean.best.score.robust.z", "mean.margin.robust.z",
+               "mean.effective.match.fraction")]
+knitr::kable(best, digits = 4,
+             caption = "Best linear-residual-with-retention compromise by case.")
+```
+
+The experiment asks whether local confidence filtering improves the
+transported Hessian in a way that survives basic mathematical checks.  The
+adaptive policies are designed to avoid one global threshold pretending that a
+path endpoint, a grid interior vertex, and a sampled kNN neighborhood have the
+same candidate geometry.  Confidence filtering now removes low-quality rows for
+auditable reasons: weak local score separation, weak local margin separation,
+diffuse softmax mass, and geometrically implausible angle/length matches.
+
+The residual plots show that filtering can change the polynomial behavior, but
+row retention is the controlling caveat.  A filter that makes residuals smaller
+by dropping too many rows is not a valid default.  The most promising filters
+are therefore the ones that reduce linear residuals while keeping row retention
+close to the unfiltered operator.
+
+The backend interaction also matters.  Edge-KK improves local edge geometry,
+but confidence filtering is still needed because edge stress and transport
+confidence are different quantities.  A local embedding can preserve edge
+lengths and still produce ambiguous or geometrically mismatched direction
+transport.  The entropy-fraction policy is deliberately stricter on high-degree
+neighborhoods, where a large absolute effective-match count can be acceptable
+or unacceptable depending on how many candidate directions were available.
+
+# What We Learned
+
+1. Transport confidence must be treated as a first-class diagnostic.  Backend
+quality alone is not enough.
+2. The most interpretable quantities are best-match margin, effective match
+count, best-match angle, and relative length error.
+3. Filtering should be judged jointly by row retention and polynomial
+residuals.  Residuals alone can be misleading when the operator is heavily
+thinned.
+4. Adaptive thresholds are now implemented as first-class policy choices.  The
+next refinement should calibrate their defaults against separate graph families
+rather than tuning them on a single report.
+
+# Appendix
+
+## Run Metadata
+
+```{r appendix-metadata}
+str(metadata)
+```
+
+## Filter Policies
+
+```{r appendix-policies}
+knitr::kable(policy.table, digits = 4)
+```
+
+## Summary Table
+
+```{r appendix-summary}
+knitr::kable(summary.table, digits = 5)
+```
+
+## Reproducibility
+
+```{r appendix-command, results='asis'}
+cat("Smoke render:\n\n")
+cat("```bash\n")
+cat("Rscript dev/graph-trend-filtering/render_transported_hessian_transport_filter_validation.R\n")
+cat("```\n\n")
+cat("Full render:\n\n")
+cat("```bash\n")
+cat("GFLOW_TRANSPORTED_HESSIAN_FILTER_MODE=full Rscript dev/graph-trend-filtering/render_transported_hessian_transport_filter_validation.R\n")
+cat("```\n")
+```

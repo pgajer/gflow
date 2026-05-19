@@ -1,0 +1,371 @@
+---
+title: "Transported Hessian Transport Rules On Quadric Graphs"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 11.5,
+  fig.height = 7.0,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = if (requireNamespace("ragg", quietly = TRUE)) "ragg_png" else "png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+dev.dir <- file.path(repo.dir, "dev/graph-trend-filtering")
+report.dir <- file.path(dev.dir, "reports")
+source(file.path(dev.dir, "transported_hessian_quadric_multimethod_validation.R"))
+library(ggplot2)
+
+mode <- Sys.getenv("GFLOW_QUADRIC_MULTIMETHOD_VALIDATION_MODE", unset = "smoke")
+rds.path <- file.path(report.dir,
+                      paste0("transported_hessian_quadric_multimethod_validation_",
+                             mode, ".rds"))
+diagnostics <- readRDS(rds.path)
+metadata <- diagnostics$metadata
+summary.table <- diagnostics$summary
+probe.table <- diagnostics$probes
+summary.ok <- subset(summary.table, status == "ok")
+summary.ok$dim.label <- paste0("intrinsic dim ", summary.ok$intrinsic.dim)
+summary.ok$surface.label <- paste(summary.ok$dim.label, summary.ok$surface, sep = " | ")
+summary.ok$method.label <- factor(summary.ok$method.label,
+                                  levels = unique(summary.ok$method.label))
+
+nonzero.floor <- function(x) {
+  x <- x[is.finite(x) & x > 0]
+  if (length(x)) min(x) / 2 else 1e-12
+}
+for (nm in c("residual.affine.mean", "residual.quadratic.mean",
+             "residual.cubic.mean", "residual.fractional.min")) {
+  summary.ok[[paste0("plot.", nm)]] <- pmax(summary.ok[[nm]],
+                                            nonzero.floor(summary.ok[[nm]]))
+}
+
+base.theme <- function(base.size = 11) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "grey25", margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      axis.title.x = element_text(margin = margin(t = 8))
+    )
+}
+```
+
+# Purpose
+
+This report compares the currently implemented transported-Hessian transport
+families on data-derived graphs sampled from quadratic hypersurfaces.  A
+sample starts from intrinsic coordinates
+
+\[
+u=(u_1,\ldots,u_m)
+\]
+
+and embeds them as a quadric graph
+
+\[
+\Phi(u)=\bigl(u,\ q(u)\bigr), \qquad
+q(u)=\sum_{i\le k} c_i u_i^2-\sum_{i>k} c_i u_i^2.
+\]
+
+The graph is a connected symmetric kNN graph in the ambient data coordinates
+\(\Phi(u)\).  Every method builds an order-2 transported-Hessian-like operator
+\(A\).  The probes are intrinsic chart functions, so the test asks whether a
+transport rule behaves like an intrinsic graph second-difference operator.
+
+The method families are:
+
+- regression-gradient transport, including intrinsic oracle, ambient data
+  coordinates, and PCA;
+- soft coordinate direction matching;
+- the new edge-angle hard and soft rules, which compare directions by their
+  angle relative to the oriented base dart.
+
+The exact-coordinate rule is intentionally excluded: it is a useful grid/path
+reference, but generic quadric kNN graphs do not have axis-aligned direction
+labels.  The graph-derived local-chart backend for regression-gradient
+transport is also excluded from this particular grid because it rebuilds a local
+embedding per dart; that backend is tested in the separate regression-gradient
+validation report.
+
+```{r metadata, results='asis'}
+cat(sprintf(
+  "**Build:** %s  \n**Mode:** %s  \n**Runs:** %d  \n**Cases:** %d  \n**Graph weights:** %s\n",
+  metadata$generated.at,
+  metadata$mode,
+  nrow(summary.table),
+  metadata$n.cases,
+  paste(metadata$graph.weights, collapse = ", ")
+))
+```
+
+# Affine Probe Residuals
+
+For intrinsic affine probes \(u_i\), the target diagnostic is
+
+\[
+R_{\mathrm{aff}}
+=
+\frac{1}{m}\sum_{i=1}^{m}
+\frac{\|A u_i\|_2}{\|u_i\|_2}.
+\]
+
+A plausible second-difference operator should make this small.  This is the
+main correctness screen for whether a transport rule respects the intrinsic
+local linear structure of the sampled surface.
+
+```{r affine-residuals, fig.height=8.2}
+ggplot(summary.ok,
+       aes(x = curvature,
+           y = plot.residual.affine.mean,
+           color = method.label,
+           group = method.label)) +
+  geom_line(linewidth = 0.75, alpha = 0.82) +
+  geom_point(size = 2.0) +
+  facet_grid(intrinsic.dim ~ surface, scales = "free_y") +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Intrinsic affine residuals by transport rule",
+    subtitle = "Lower is better. These probes are intrinsic chart coordinates, not ambient coordinates.",
+    x = "quadric curvature coefficient",
+    y = expression(R[aff]),
+    color = "method"
+  ) +
+  base.theme(9)
+```
+
+Interpretation: regression-gradient with intrinsic or ambient coordinates is
+the affine benchmark.  Methods that stay close to it are successfully preserving
+the null space expected of a second-difference-like construction.  Methods that
+sit orders of magnitude higher are not reliable affine annihilators on these
+data-derived graphs.
+
+# Quadratic And Cubic Probes
+
+The operator should not annihilate all higher-order structure.  For quadratic
+and cubic intrinsic probes we report
+
+\[
+R_{\mathcal F}
+=
+\frac{1}{|\mathcal F|}
+\sum_{p\in\mathcal F}
+\frac{\|A p\|_2}{\|p\|_2},
+\]
+
+where \(\mathcal F\) is either the set of intrinsic monomials \(u_i u_j\) or
+\(u_i u_j u_k\).  Cubic probes are diagnostics only; this report is still
+testing order-2 operators.
+
+```{r quadratic-cubic, fig.height=7.4}
+qc <- rbind(
+  data.frame(summary.ok,
+             probe.family = "quadratic",
+             plot.residual = summary.ok$plot.residual.quadratic.mean),
+  data.frame(summary.ok,
+             probe.family = "cubic",
+             plot.residual = summary.ok$plot.residual.cubic.mean)
+)
+ggplot(qc,
+       aes(x = method.label, y = plot.residual, fill = method.family)) +
+  geom_boxplot(outlier.alpha = 0.45, width = 0.72) +
+  facet_grid(probe.family ~ intrinsic.dim, scales = "free_y") +
+  scale_y_log10() +
+  coord_flip() +
+  labs(
+    title = "Higher-order intrinsic probe residuals",
+    subtitle = "Quadratic and cubic probes should generally be detected by an order-2 transported Hessian.",
+    x = NULL,
+    y = expression(R[probe]),
+    fill = "family"
+  ) +
+  base.theme(9)
+```
+
+Interpretation: very small affine residual together with nonzero quadratic and
+cubic residual is the desired qualitative pattern.  If a method also drives
+quadratic residuals to nearly zero, it is too weak for a Hessian-like role.
+
+# Affine Versus Quadratic Separation
+
+A useful operator should occupy the lower-right portion of this plot: low
+affine residual, but appreciable quadratic residual.  This plot therefore
+checks both null-space behavior and signal detection in one view.
+
+```{r affine-quadratic-separation, fig.height=7.4}
+ggplot(summary.ok,
+       aes(x = plot.residual.affine.mean,
+           y = plot.residual.quadratic.mean,
+           color = method.label,
+           shape = factor(intrinsic.dim))) +
+  geom_point(alpha = 0.78, size = 2.4) +
+  scale_x_log10() +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Affine null-space behavior versus quadratic detection",
+    subtitle = "The preferred pattern is low x-value and non-negligible y-value.",
+    x = expression(R[aff]),
+    y = expression(R[quad]),
+    color = "method",
+    shape = "intrinsic dim"
+  ) +
+  base.theme(9)
+```
+
+Interpretation: this plot makes clear when a method is failing because it does
+not annihilate affine functions, versus when it is failing because it has become
+too weak overall.
+
+# Fractional-Power Probe Panel
+
+Fractional probes use the intrinsic radius
+
+\[
+\rho(u)=
+\frac{\|u-\bar u\|_2}{\max_w\|w-\bar u\|_2}
+\]
+
+and evaluate \(\rho^\alpha\) for non-integer \(\alpha\).  These are not meant to
+define a polynomial null space.  They are a stress test for whether the operator
+has a gradual, non-integer response profile rather than an all-or-nothing
+integer-degree behavior.
+
+```{r fractional-curves, fig.height=7.6}
+fractional <- subset(probe.table, grepl("^fractional_radial_", probe))
+fractional$alpha <- as.numeric(sub("^fractional_radial_", "", fractional$probe))
+frac.summary <- aggregate(
+  residual ~ method.label + method.family + intrinsic.dim + alpha,
+  data = fractional,
+  FUN = median,
+  na.rm = TRUE
+)
+frac.summary$plot.residual <- pmax(frac.summary$residual,
+                                   nonzero.floor(frac.summary$residual))
+ggplot(frac.summary,
+       aes(x = alpha,
+           y = plot.residual,
+           color = method.label,
+           group = method.label)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.0) +
+  facet_wrap(~ intrinsic.dim, labeller = label_both) +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Dark2", na.translate = FALSE) +
+  labs(
+    title = "Fractional radial probe response",
+    subtitle = "Median residual over cases; this is a diagnostic response curve, not a null-space claim.",
+    x = expression(alpha),
+    y = expression(median~R[rho^alpha]),
+    color = "method"
+  ) +
+  base.theme(9)
+```
+
+Interpretation: a smooth monotone response is reassuring.  A method whose
+fractional response is erratic is likely being dominated by matching ambiguity
+or row loss rather than by a clean differential analogy.
+
+# Row Retention And Matching Diagnostics
+
+For match-based methods, low residuals can be misleading if most candidate rows
+were dropped.  We therefore inspect row retention,
+
+\[
+\mathrm{retention}
+=
+\frac{\#\{\hbox{accepted rows}\}}
+       {\#\{\hbox{candidate rows}\}}.
+\]
+
+```{r row-retention, fig.height=7.0}
+ggplot(summary.ok,
+       aes(x = method.label,
+           y = row.retention,
+           fill = method.family)) +
+  geom_boxplot(outlier.alpha = 0.45, width = 0.72) +
+  coord_flip() +
+  labs(
+    title = "Accepted-row retention",
+    subtitle = "Residuals are easier to interpret when the operator retains a substantial fraction of rows.",
+    x = NULL,
+    y = "row retention",
+    fill = "family"
+  ) +
+  base.theme(9)
+```
+
+Interpretation: a method that looks good only after aggressive dropping should
+be treated as a diagnostic filter, not as a stable operator.
+
+# Results Summary
+
+```{r results-summary, results='asis'}
+ranked <- aggregate(
+  cbind(residual.affine.mean, residual.quadratic.mean,
+        residual.cubic.mean, row.retention) ~ method.label + method.family,
+  data = summary.ok,
+  FUN = median,
+  na.rm = TRUE
+)
+ranked <- ranked[order(ranked$residual.affine.mean), ]
+print(knitr::kable(
+  ranked,
+  digits = 4,
+  caption = "Median diagnostics by method, ranked by affine residual."
+))
+
+best <- ranked[1, ]
+cat(sprintf(
+  "\nThe lowest median affine residual in this run is produced by **%s**. ",
+  as.character(best$method.label)
+))
+cat("The preferred transported-Hessian behavior is not only low affine residual, ")
+cat("but also nonzero quadratic/cubic residual and healthy row retention. ")
+cat("The edge-angle methods are intentionally included here as a new baseline: ")
+cat("they test how far one can get from local angle matching alone, before moving ")
+cat("to richer direction-transport rules.\n")
+```
+
+# Appendix: Run Status
+
+```{r run-status, results='asis'}
+status.table <- as.data.frame.matrix(table(summary.table$method.label,
+                                           summary.table$status))
+status.table$method.label <- rownames(status.table)
+status.table <- status.table[, c("method.label",
+                                 setdiff(names(status.table), "method.label")),
+                             drop = FALSE]
+print(knitr::kable(status.table, caption = "Run status by method."))
+errors <- subset(summary.table, status != "ok")
+if (nrow(errors)) {
+  print(knitr::kable(
+    errors[, c("case.id", "method.label", "message")],
+    caption = "Errors."
+  ))
+}
+```
+
+# Appendix: Reproduction
+
+```{r reproduction, echo=TRUE, eval=FALSE}
+# Smoke render
+Rscript dev/graph-trend-filtering/render_transported_hessian_quadric_multimethod_validation.R
+
+# Full render
+GFLOW_QUADRIC_MULTIMETHOD_VALIDATION_MODE=full \
+  Rscript dev/graph-trend-filtering/render_transported_hessian_quadric_multimethod_validation.R
+```

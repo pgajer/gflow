@@ -55,3 +55,22 @@ source("/Users/pgajer/current_projects/gflow/dev/metric-graph-lowpass-benchmarks
 This benchmark uses the sorted 1D path graph as the primary graph and compares
 `fit.metric.graph.lowpass()`, `fit.rdgraph.regression()`, classical 1D
 smoothers, `GSD::gsmoothing()`, and `gasper` SGWT/SURE denoising.
+
+Compute the graph trend-filtering curated subset benchmark with:
+
+```r
+source("/Users/pgajer/current_projects/gflow/dev/metric-graph-lowpass-benchmarks/compute_graph_trend_filtering_subset.R")
+```
+
+Then render its report with:
+
+```r
+source("/Users/pgajer/current_projects/gflow/dev/metric-graph-lowpass-benchmarks/render_graph_trend_filtering_subset.R")
+```
+
+This subset report compares phase-2 `fit.graph.trend.filtering()` on the sorted
+path graph against the earlier benchmark winner
+`genlasso::trendfilter(..., ord = 2)`. It includes \(k=0,1,2\) graph
+trend-filtering fits with unweighted path-graph penalties plus selected
+metric-conductance-weighted variants using `weight.rule = "conductance"` and
+`"sqrt.conductance"`.

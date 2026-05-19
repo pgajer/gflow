@@ -64,3 +64,9 @@ The API should be a comparator to `fit.metric.graph.lowpass()` and
 
 See `papers/README.md` for links to the relevant graph trend filtering papers
 and `literature_notes.md` for implementation-facing notes.
+
+## Report Build Metadata
+
+LaTeX reports in this project should use generated build metadata rather than
+hard-coded timestamp commands. The shared Codex convention is documented in
+`/Users/pgajer/.codex/notes/report_build_conventions.md`.

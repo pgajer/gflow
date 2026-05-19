@@ -550,6 +550,71 @@ test_that("quadform.sample.dataset supports radial density variants", {
 })
 
 
+test_that("quadform.sample.dataset supports 3D Delaunay-reference datasets", {
+  ds <- quadform.sample.dataset(
+    n = 8,
+    index.k = 1,
+    dim = 3,
+    coefficients = c(1, 2, 4),
+    domain.radius = 1.2,
+    domain.shape = "ball",
+    sample.method = "uniform.parameter.ball",
+    n.ref = 40,
+    seed = 12,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    edge.length.factor = 4,
+    delaunay.backend = "cpp"
+  )
+
+  expect_s3_class(ds, "quadform_sample_dataset")
+  expect_equal(dim(ds$X_param), c(8L, 3L))
+  expect_equal(dim(ds$X_embed), c(8L, 4L))
+  expect_equal(ds$X_embed,
+               quadform.embed(ds$X_param, index.k = 1,
+                              coefficients = c(1, 2, 4)))
+  expect_equal(ds$q, as.numeric(ds$X_embed[, "q"]))
+  expect_true(all(sqrt(rowSums(ds$X_param^2)) <= 1.2 * (1 + 1e-12)))
+  expect_equal(dim(ds$D_geodesic), c(8L, 8L))
+  expect_equal(ds$distances, ds$D_geodesic)
+  expect_true(all(is.finite(ds$D_geodesic)))
+  expect_equal(ds$D_geodesic, t(ds$D_geodesic), tolerance = 1e-12)
+  expect_equal(diag(ds$D_geodesic), rep(0, 8), tolerance = 1e-12)
+
+  expect_equal(ds$metadata$dim, 3L)
+  expect_equal(ds$metadata$sample_method, "uniform.parameter.ball")
+  expect_equal(ds$metadata$domain_shape, "ball")
+  expect_equal(ds$metadata$coefficients, c(1, 2, 4))
+  expect_equal(ds$metadata$delaunay_backend, "cpp")
+  expect_equal(ncol(ds$reference$vertices_param), 3L)
+  expect_equal(ncol(ds$reference$vertices_embed), 4L)
+  expect_equal(ds$reference$vertices_embed,
+               quadform.embed(ds$reference$vertices_param, index.k = 1,
+                              coefficients = c(1, 2, 4)))
+  expect_equal(ds$reference$sample_vertex, seq_len(8L))
+  expect_equal(ds$reference$n_components, 1L)
+  expect_true(nrow(ds$reference$edge_matrix) > 0)
+  expect_true(all(c("filter_factor", "n_edges", "connected") %in%
+                    names(ds$reference$filter_attempts)))
+
+  ds.cube <- quadform.sample.dataset(
+    n = 6,
+    index.k = 2,
+    dim = 3,
+    domain.shape = "cube",
+    sample.method = "mixed.parameter.cube",
+    n.ref = 30,
+    seed = 14,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    delaunay.backend = "cpp"
+  )
+  expect_true(all(abs(ds.cube$X_param) <= 1 + 1e-12))
+  expect_equal(ds.cube$metadata$domain_shape, "cube")
+  expect_equal(ds.cube$metadata$sample_method, "mixed.parameter.cube")
+})
+
+
 test_that("quadform.sample.dataset seed is reproducible and local", {
   set.seed(99)
   before <- runif(3)
@@ -605,7 +670,19 @@ test_that("quadform utilities validate inputs", {
                                                 index.k = 1, oracle.tube.k = 0),
                "oracle.tube.k")
   expect_error(quadform.sample.dataset(n = 0, index.k = 1), "positive integer")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 4), "dim")
   expect_error(quadform.sample.dataset(n = 3, index.k = 3), "index.k")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 3,
+                                       coefficients = c(1, 2)),
+               "coefficients")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 2,
+                                       domain.shape = "disk",
+                                       sample.method = "uniform.parameter.square"),
+               "different 2D domains")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 3,
+                                       domain.shape = "ball",
+                                       sample.method = "uniform.parameter.cube"),
+               "different 3D domains")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, domain.radius = 0),
                "domain.radius")
   expect_error(quadform.embed(matrix(1:4, ncol = 2), index.k = 1,
