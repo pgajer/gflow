@@ -1,0 +1,405 @@
+---
+title: "Local Dimension Diagnostic Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10.5,
+  fig.height = 6.2,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 140,
+  dev = "ragg_png"
+)
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+validation.dir <- file.path(repo.dir, "dev/graph-trend-filtering/local-dimension-validation")
+report.dir <- file.path(validation.dir, "reports")
+source(file.path(validation.dir, "compute_local_dimension_validation.R"))
+library(ggplot2)
+
+full.path <- file.path(report.dir, "local_dimension_validation_full.rds")
+smoke.path <- file.path(report.dir, "local_dimension_validation_smoke.rds")
+result.path <- if (file.exists(full.path)) full.path else smoke.path
+diagnostics <- readRDS(result.path)
+local.table <- diagnostics$local.dimension
+center.table <- diagnostics$center.selection
+summary.table <- diagnostics$summary
+
+base.theme <- function(base.size = 12) {
+  theme_bw(base_size = base.size) +
+    theme(
+      plot.title = element_text(face = "bold", margin = margin(b = 8)),
+      plot.subtitle = element_text(margin = margin(b = 8)),
+      axis.title.x = element_text(margin = margin(t = 8)),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      strip.text = element_text(face = "bold", size = rel(0.86)),
+      legend.position = "bottom",
+      plot.margin = margin(10, 28, 10, 28)
+    )
+}
+
+local.table$family.label <- gsub(" ", "\n", local.table$family)
+center.table$family.label <- gsub(" ", "\n", center.table$family)
+strict.centers <- subset(center.table, !transition)
+ok.local <- subset(local.table, status == "ok")
+ok.centers <- subset(center.table, !is.na(selected.local.dim))
+```
+
+## Purpose
+
+This report validates the local dimension diagnostic used by the geodesic
+pathwise annihilator experiments.  For each local graph disk
+\(B_G(v,\varepsilon_v)\), the diagnostic embeds the induced weighted graph in
+dimensions \(q=1,\ldots,q_{\max}\) and measures the relative edge-length stress
+
+\[
+E_q(v)
+=
+\left(
+\frac{\sum_{(i,j)\in E_v}(\|z_i-z_j\|-\ell_{ij})^2}
+     {\sum_{(i,j)\in E_v}\ell_{ij}^2}
+\right)^{1/2}.
+\]
+
+The selected dimension is obtained from an edge-stress elbow rule.  This is not
+a theorem about intrinsic dimension; it is an engineering diagnostic that should
+behave correctly on controlled examples before it is used to guide row thinning
+or local polynomial-basis construction.
+
+The report also compares two additional estimators.  The metric-MDS spectrum
+elbow estimates dimension from the positive eigenvalue spectrum of the local
+graph-geodesic distance matrix.  The graph-Laplacian Weyl estimator fits a local
+log-count/log-eigenvalue slope,
+
+\[
+N(\lambda)\approx C\lambda^{m/2},
+\]
+
+and reports \(m\approx 2\,d\log N/d\log\lambda\).  These estimators are not
+expected to agree on every finite graph disk, but systematic disagreement is a
+useful diagnostic of estimator calibration.
+
+The validation ladder includes 1D path/cycle graphs, noisy circle graphs,
+regular and warped grids, sampled planar graphs, quadric surface graphs, and
+3D cube graphs.  The default validation uses `cmdscale`, while the optional
+`hybrid.edge.kk` method uses weighted GRIP where appropriate and metric MDS
+followed by edge-KK for dimensions above three when the installed `grip`
+namespace provides those functions.  Noisy circles are treated as transition
+cases: as radial noise increases, a growing fraction of dimension-2 selections
+is reasonable.
+
+## Stress Curves
+
+The first check looks at the full stress profile
+
+\[
+E_1(v),\quad E_2(v),\quad E_3(v)
+\]
+
+for sampled local disks.  A 1D graph should be well represented in dimension
+one.  A 2D graph should usually show a sharp drop from dimension one to two and
+little additional gain afterward.  A 3D graph should often continue improving
+through dimension three and then stabilize.
+
+```{r stress-curves, fig.height=7.4}
+ggplot(ok.local,
+       aes(x = factor(embedding.dim), y = edge.rrmse,
+           group = interaction(case.id, center), color = factor(true.dimension))) +
+  geom_line(alpha = 0.28) +
+  geom_point(alpha = 0.55, size = 1.3) +
+  facet_wrap(~ family.label, scales = "free_y") +
+  labs(
+    title = "Local edge-length stress by embedding dimension",
+    subtitle = "Each line is one sampled graph disk. The intended elbow is near the known intrinsic dimension.",
+    x = "embedding dimension",
+    y = "relative edge-length error",
+    color = "known dimension"
+  ) +
+  base.theme()
+```
+
+The most important visual cue is the shape of the curve, not only the selected
+dimension.  Strong 1-to-2 improvement in surface-like examples supports a local
+2D interpretation.  Continued improvement into dimension three is expected for
+volumetric examples and should be treated as a cap warning if the final stress
+remains high.
+
+## Selected Dimension
+
+The next figure summarizes the selected local dimension directly.  Strict
+accuracy is meaningful for the non-transition cases.  For noisy circles, the
+selected dimension is interpreted as a noise-response curve rather than a hard
+classification target.
+
+```{r selected-dimension, fig.height=6.8}
+ggplot(ok.centers,
+       aes(x = factor(selected.local.dim), fill = factor(true.dimension))) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ family.label, scales = "free_y") +
+  labs(
+    title = "Selected local dimension by validation family",
+    subtitle = "Noisy circles are transition cases; exact labels are mainly meaningful for path, grid, quadric, and cube families.",
+    x = "selected local dimension",
+    y = "number of sampled graph disks",
+    fill = "known dimension"
+  ) +
+  base.theme()
+```
+
+For clean path and cycle graphs, dimension one should dominate.  For grids,
+sampled planar graphs, and quadric surfaces, dimension two should dominate,
+especially away from boundaries.  Cube examples should produce many
+dimension-three selections.
+
+## Estimator Votes
+
+The following plot compares the edge-stress elbow, metric-MDS spectrum elbow,
+graph-Laplacian Weyl estimator, and simple consensus vote.  The aim is not to
+declare one estimator universally correct; it is to see which controlled graph
+families produce stable agreement and which ones expose calibration problems.
+
+```{r estimator-votes, fig.height=7.0}
+vote.long <- reshape(
+  center.table[, c("case.id", "family", "true.dimension", "transition", "center",
+                   "selected.local.dim", "mds.spectrum.local.dim",
+                   "graph.spectrum.local.dim", "consensus.local.dim")],
+  varying = c("selected.local.dim", "mds.spectrum.local.dim",
+              "graph.spectrum.local.dim", "consensus.local.dim"),
+  v.names = "estimated.dimension",
+  timevar = "estimator",
+  times = c("edge stress", "MDS spectrum", "Laplacian Weyl", "consensus"),
+  direction = "long"
+)
+vote.long$family.label <- gsub(" ", "\n", vote.long$family)
+ggplot(subset(vote.long, !is.na(estimated.dimension)),
+       aes(x = factor(estimated.dimension), fill = estimator)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ family.label, scales = "free_y") +
+  labs(
+    title = "Dimension estimates from multiple local estimators",
+    subtitle = "Agreement across estimators is stronger evidence than any single elbow rule.",
+    x = "estimated dimension",
+    y = "number of sampled graph disks",
+    fill = "estimator"
+  ) +
+  base.theme()
+```
+
+The MDS spectrum estimator asks how many positive metric directions are needed
+to explain the local graph-geodesic distance geometry.  The Laplacian estimator
+asks how local diffusion eigenvalues scale.  The edge-stress estimator asks how
+well embedded Euclidean edge lengths are realized.  These are related but not
+identical notions of dimension, so disagreement should be inspected rather than
+automatically averaged away.
+
+## Confusion Matrix
+
+For non-transition examples, the selected dimension can be compared directly
+with the known dimension.
+
+```{r confusion, fig.height=5.8}
+confusion <- as.data.frame(with(
+  subset(center.table, !transition & !is.na(selected.local.dim)),
+  table(known = true.dimension, selected = selected.local.dim)
+))
+ggplot(confusion, aes(x = selected, y = known, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), fontface = "bold") +
+  scale_fill_gradient(low = "#f7fbff", high = "#2166ac") +
+  labs(
+    title = "Selected dimension versus known dimension",
+    subtitle = "Transition cases such as noisy circles are omitted from this strict classification view.",
+    x = "selected dimension",
+    y = "known dimension",
+    fill = "count"
+  ) +
+  base.theme()
+```
+
+This plot is the strictest validation summary.  Off-diagonal mass identifies
+where the stress-elbow rule is miscalibrated, where graph construction obscures
+local geometry, or where the disk radius mixes boundary and interior behavior.
+
+## Boundary Versus Interior
+
+Boundary neighborhoods are typically less balanced than interior neighborhoods.
+This figure separates the selected-dimension distribution by center region.
+
+```{r boundary-interior, fig.height=6.6}
+ggplot(subset(ok.centers, !transition),
+       aes(x = factor(selected.local.dim), fill = center.region)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ family.label, scales = "free_y") +
+  labs(
+    title = "Selected dimension at boundary and interior centers",
+    subtitle = "Boundary disks are expected to be less stable because local neighborhoods are one-sided.",
+    x = "selected local dimension",
+    y = "number of sampled graph disks",
+    fill = "center region"
+  ) +
+  base.theme()
+```
+
+This check is important for deciding when mirror extensions or adaptive radius
+rules should be used.  A method that works only on interiors but fails near
+boundaries can still be useful, but the boundary behavior needs to be explicit.
+
+## Noisy Circle Transition
+
+The noisy circle benchmark is intentionally not a strict 1D/2D classification
+problem.  Samples are generated near a circle, and a symmetric kNN graph is
+constructed from the noisy coordinates.  As the radial noise level \(\sigma\)
+increases, local disks can become less curve-like and more locally two
+dimensional.
+
+```{r noisy-circle-transition, fig.height=5.8}
+noisy <- subset(center.table, transition & !is.na(selected.local.dim))
+if (nrow(noisy) > 0L) {
+  noisy.summary <- aggregate(
+    selected.local.dim ~ noise.sigma,
+    data = noisy,
+    FUN = function(z) mean(z == 2L, na.rm = TRUE)
+  )
+  names(noisy.summary)[2L] <- "fraction.dim2"
+  ggplot(noisy.summary, aes(x = noise.sigma, y = fraction.dim2)) +
+    geom_line(linewidth = 0.9, color = "#2166ac") +
+    geom_point(size = 2.3, color = "#2166ac") +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(
+      title = "Noisy circle transition toward dimension two",
+      subtitle = "A monotone or near-monotone increase is more meaningful than exact dimension-1 accuracy.",
+      x = "radial noise scale",
+      y = "fraction selected as dimension 2"
+    ) +
+    base.theme()
+} else {
+  plot.new()
+  text(0.5, 0.5, "No noisy-circle transition cases were recorded.")
+}
+```
+
+This transition plot tests calibration.  The diagnostic should not be forced to
+call every noisy circle disk one-dimensional if the graph geometry itself has
+become locally thickened.
+
+## Stress Improvement Ratios
+
+A compact way to inspect the elbow rule is to compare relative stress
+improvements
+
+\[
+\Delta_q(v)=\frac{E_{q-1}(v)-E_q(v)}{E_{q-1}(v)}.
+\]
+
+Large \(\Delta_2\) and small \(\Delta_3\) is the expected surface signature.
+Large \(\Delta_3\) is the expected volumetric signature.
+
+```{r stress-improvements, fig.height=6.4}
+wide <- reshape(
+  ok.local[, c("case.id", "family", "true.dimension", "transition", "center",
+               "embedding.dim", "edge.rrmse")],
+  idvar = c("case.id", "family", "true.dimension", "transition", "center"),
+  timevar = "embedding.dim",
+  direction = "wide"
+)
+dim.cols <- sort(as.integer(sub("edge.rrmse.", "", grep("^edge\\.rrmse\\.", names(wide), value = TRUE))))
+improve.parts <- lapply(dim.cols[-1L], function(q) {
+  prev <- wide[[paste0("edge.rrmse.", q - 1L)]]
+  curr <- wide[[paste0("edge.rrmse.", q)]]
+  data.frame(
+    wide[, c("case.id", "family", "true.dimension", "transition", "center")],
+    transition.to = sprintf("%d -> %d", q - 1L, q),
+    improvement = (prev - curr) / prev
+  )
+})
+improve <- do.call(rbind, improve.parts)
+improve$family.label <- gsub(" ", "\n", improve$family)
+ggplot(improve, aes(x = transition.to, y = improvement,
+                    fill = factor(true.dimension))) +
+  geom_boxplot(outlier.alpha = 0.25) +
+  facet_wrap(~ family.label, scales = "free_y") +
+  labs(
+    title = "Relative stress improvement by added embedding dimension",
+    subtitle = "Surface-like disks should improve strongly from 1 to 2 and less from 2 to 3.",
+    x = "dimension transition",
+    y = "relative stress improvement",
+    fill = "known dimension"
+  ) +
+  base.theme()
+```
+
+## Results Summary
+
+```{r summary-text, results='asis'}
+if (nrow(summary.table) > 0L) {
+  strict <- subset(summary.table, !transition)
+  if (nrow(strict) > 0L) {
+    cat(sprintf(
+      "Across non-transition validation families, the median strict accuracy is %.3f. ",
+      stats::median(strict$strict.accuracy, na.rm = TRUE)
+    ))
+    cat(sprintf(
+      "The median cap-hit rate is %.3f. ",
+      stats::median(strict$cap.hit.rate, na.rm = TRUE)
+    ))
+  }
+  if (nrow(noisy) > 0L) {
+    cat("The noisy-circle cases should be read as a calibration curve: dimension-2 selections are allowed to increase with noise. ")
+  }
+}
+```
+
+The diagnostic is considered useful if it satisfies three conditions.  First,
+the clean 1D, 2D, and 3D examples should produce the corresponding selected
+dimension for most sampled disks.  Second, boundary errors should be visible
+rather than hidden in a single global score.  Third, noisy-circle selections
+should vary smoothly with noise instead of behaving erratically.
+
+# Appendix
+
+## Run Metadata
+
+```{r appendix-metadata, echo=TRUE}
+result.path
+diagnostics$mode
+diagnostics$created
+diagnostics$control
+```
+
+## Summary Table
+
+```{r appendix-summary, echo=TRUE}
+summary.table
+```
+
+## Center Selection Table
+
+```{r appendix-centers, echo=TRUE}
+head(center.table, 80)
+```
+
+## Local Dimension Table
+
+```{r appendix-local, echo=TRUE}
+head(local.table, 120)
+```
+
+## Reproducibility Commands
+
+```{r appendix-commands, echo=TRUE, eval=FALSE}
+# Smoke run
+GFLOW_LOCAL_DIM_VALIDATION_MODE=smoke \
+  Rscript dev/graph-trend-filtering/local-dimension-validation/render_local_dimension_validation.R
+
+# Full run
+GFLOW_LOCAL_DIM_VALIDATION_MODE=full \
+  Rscript dev/graph-trend-filtering/local-dimension-validation/render_local_dimension_validation.R
+```

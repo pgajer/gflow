@@ -1,0 +1,222 @@
+---
+title: "Phase 4 Path-Selection Diagnostics for Path-Divided-Difference Graph Trend Filtering"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 11,
+  fig.height = 6.5,
+  dpi = 120
+)
+
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+report.dir <- file.path(repo.dir, "dev/graph-trend-filtering/reports")
+diagnostics.file <- file.path(report.dir, "path_selection_diagnostics.rds")
+if (!file.exists(diagnostics.file)) {
+  source(file.path(repo.dir, "dev/graph-trend-filtering/path_selection_diagnostics.R"))
+  dir.create(report.dir, recursive = TRUE, showWarnings = FALSE)
+  diagnostics <- build_phase4_path_selection_diagnostics()
+  saveRDS(diagnostics, diagnostics.file)
+} else {
+  diagnostics <- readRDS(diagnostics.file)
+}
+
+library(ggplot2)
+```
+
+## Purpose
+
+This report is the Phase 4 diagnostic layer for the experimental
+path-divided-difference graph trend-filtering operator.
+
+The operator begins with canonical path rows
+
+\[
+\mathcal P_r(G)=\overrightarrow{\mathcal P}_r(G)/{\sim},
+\]
+
+where \(\sim\) identifies a path with its reverse.  The open modeling question
+is whether every non-duplicate simple path should become a penalty row, or
+whether a smaller row set should be selected to avoid over-constraining branch
+points and dense data-derived graphs.
+
+The report compares four row-selection rules for \(r=2\), corresponding to
+order \(k=1\) trend filtering:
+
+- `all`: all canonical simple length-2 paths;
+- `branch.continuation`: paths whose internal vertices are not graph-theoretic branch points;
+- `overlap.thinned`: a greedy low-redundancy subset based on the path-overlap graph;
+- `coverage.greedy`: a greedy subset that prioritizes vertex and edge coverage.
+
+This is deliberately a development report, not a public API proposal.
+
+## Diagnostic Inputs
+
+```{r input-summary}
+summaries <- diagnostics$summaries
+vertex.coverage <- diagnostics$vertex.coverage
+path.tables <- diagnostics$path.tables
+
+data.frame(
+  generated_at = diagnostics$generated_at,
+  n_graphs = length(unique(summaries$graph)),
+  n_selection_rules = length(unique(summaries$selection)),
+  n_diagnostic_rows = nrow(summaries),
+  n_error_rows = sum(summaries$status != "ok")
+)
+```
+
+The toy graphs are intentionally small:
+
+- `path7`: ordinary seven-vertex path graph;
+- `star3_arm2`: three-arm star with two vertices per arm;
+- `star3_arm4`: longer three-arm star;
+- `cycle8`: small cycle;
+- `grid3x3`: small two-dimensional grid;
+- `sknn1d12`: symmetric 3-nearest-neighbor graph from 12 one-dimensional samples.
+
+## Summary Table
+
+```{r summary-table}
+summaries[order(summaries$graph, summaries$selection), ]
+```
+
+## Row Counts
+
+```{r row-counts}
+ggplot(summaries, aes(x = selection, y = selected.rows, fill = selection)) +
+  geom_col(color = "gray35", linewidth = 0.2) +
+  facet_wrap(~ graph, scales = "free_y") +
+  labs(
+    title = "Selected path rows by graph and selector",
+    subtitle = "All rows are canonical modulo path reversal; r = 2",
+    x = NULL,
+    y = "Selected path rows"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+`branch.continuation` is intentionally restrictive.  On tree-like stars this
+captures arm-continuation semantics.  On the kNN graph it can produce no rows,
+because high graph degree is not the same as a geometric branch point.
+
+## Nullity
+
+```{r nullity}
+ok.summary <- subset(summaries, status == "ok")
+
+ggplot(ok.summary, aes(x = selection, y = nullity, fill = selection)) +
+  geom_col(color = "gray35", linewidth = 0.2) +
+  facet_wrap(~ graph, scales = "free_y") +
+  labs(
+    title = "Estimated nullity of the selected penalty matrix",
+    subtitle = "For r = 2, path graphs should have nullity 2; the two-step three-arm star branch model has nullity 4",
+    x = NULL,
+    y = "Estimated nullity"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+The star examples are the key sanity check.  `all` includes cross-arm paths and
+pushes the null space toward constants.  `branch.continuation` preserves
+independent arm slopes.  The two experimental selectors recover similar
+behavior on `star3_arm2` because their coverage objectives naturally choose the
+three arm-continuation rows.
+
+## Coverage
+
+```{r vertex-coverage}
+ggplot(vertex.coverage, aes(x = factor(vertex), y = coverage, fill = selection)) +
+  geom_col(position = "dodge", color = "gray35", linewidth = 0.15) +
+  facet_wrap(~ graph, scales = "free_x") +
+  labs(
+    title = "Vertex coverage by selected path rows",
+    x = "Vertex",
+    y = "Number of selected paths containing vertex",
+    fill = "Selector"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(size = 7))
+```
+
+Coverage is not itself the goal, but it is a useful guardrail.  A selector that
+gets the desired nullity by dropping entire regions of the graph is not a good
+operator design.
+
+## Path-Overlap Graph Diagnostics
+
+```{r overlap-diagnostics}
+ggplot(ok.summary,
+       aes(x = selected.rows, y = mean.path.overlap.degree, color = selection)) +
+  geom_point(size = 2.7) +
+  geom_text(aes(label = graph), nudge_y = 0.25, size = 3, show.legend = FALSE) +
+  labs(
+    title = "Path-row count versus mean path-overlap degree",
+    subtitle = "Lower overlap generally means less redundant local curvature constraints",
+    x = "Selected path rows",
+    y = "Mean overlap degree in selected path-overlap graph",
+    color = "Selector"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+The overlap-thinning rule is a first attempt to select a sparse epsilon-net-like
+subset of path rows.  The current implementation is intentionally simple: it
+prefers low-overlap paths and then repairs uncovered vertices.  Its value here
+is diagnostic, not final.
+
+## Representative Path Rows
+
+```{r sample-path-rows}
+sample.paths <- do.call(rbind, lapply(split(path.tables, paste(path.tables$graph, path.tables$selection)), function(tab) {
+  utils::head(tab[, c("graph", "selection", "row", "vertices", "metric.length", "row.weight")], 8)
+}))
+rownames(sample.paths) <- NULL
+sample.paths
+```
+
+## Failed or Empty Selections
+
+```{r errors}
+errors <- subset(summaries, status != "ok")
+if (nrow(errors) == 0L) {
+  data.frame(message = "No failed selections")
+} else {
+  errors[, c("graph", "selection", "message")]
+}
+```
+
+The `sknn1d12` failure for `branch.continuation`, if present, is expected and
+important.  It demonstrates why graph degree is not a reliable branch detector
+in data-derived kNN graphs.
+
+## Preliminary Conclusions
+
+1. Reversal canonicalization and row selection are separate operations.
+   Reversal canonicalization removes duplicate absolute-value rows; row
+   selection decides which non-duplicate paths define smoothness.
+
+2. `branch.continuation` is a useful tree/star semantics test, but it is not
+   suitable as a default for kNN graphs.
+
+3. `all.simple` is the cleanest mathematical baseline, but on branched graphs it
+   adds cross-arm paths and can shrink the null space aggressively.
+
+4. `overlap.thinned` and `coverage.greedy` are promising as diagnostic
+   selectors because they keep graph coverage while reducing redundant path
+   constraints.
+
+5. The next implementation decision should not be made from nullity alone.
+   We should evaluate selected-row operators in regression benchmarks and
+   inspect whether the chosen rows preserve known branchwise polynomial signals.

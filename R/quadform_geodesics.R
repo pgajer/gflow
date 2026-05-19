@@ -935,6 +935,39 @@ quadform.grid.geodesic.calibration <- function(index.k,
     out
 }
 
+.quadform.sample.parameter.3d.method <- function(n, domain.radius,
+                                                sample.method) {
+    domain.shape <- if (grepl("\\.cube$", sample.method)) "cube" else "ball"
+    placement <- sub("\\.parameter\\.(ball|cube)$", "", sample.method)
+    interior <- function(m) {
+        if (identical(domain.shape, "ball")) {
+            .quadform.sample.parameter.3d(m, 0.62 * domain.radius, domain.shape)
+        } else {
+            matrix(stats::runif(m * 3L, -0.62 * domain.radius,
+                                0.62 * domain.radius), ncol = 3L)
+        }
+    }
+    X <- switch(
+        placement,
+        uniform = .quadform.sample.parameter.3d(n, domain.radius, domain.shape),
+        interior = interior(n),
+        boundary = .quadform.sample.boundary.3d(n, domain.radius, domain.shape),
+        mixed = {
+            n.interior <- floor(n / 2)
+            X.mixed <- rbind(
+                interior(n.interior),
+                .quadform.sample.boundary.3d(n - n.interior, domain.radius,
+                                             domain.shape)
+            )
+            X.mixed[sample.int(n), , drop = FALSE]
+        },
+        stop("Unsupported 3D sample method: ", sample.method, call. = FALSE)
+    )
+    colnames(X) <- c("x1", "x2", "x3")
+    storage.mode(X) <- "double"
+    X
+}
+
 .quadform.domain.volume.3d <- function(domain.radius, domain.shape) {
     if (identical(domain.shape, "ball")) {
         4 * pi * domain.radius^3 / 3
@@ -1410,46 +1443,54 @@ quadform.delaunay.geodesic.distances <- function(X,
     out
 }
 
-#' Sample a 2D Quadratic Surface Dataset with Reference Geodesics
+#' Sample a Quadratic Hypersurface Dataset with Reference Geodesics
 #'
 #' @description
-#' Samples parameter points from either the disk
-#' \eqn{\{x \in \mathbb{R}^2 : \|x\|_2 \le r\}} or the square
-#' \eqn{[-r,r]^2} and embeds them into the quadratic graph surface
-#' \deqn{q(x)=\sum_{i=1}^k x_i^2-\sum_{i=k+1}^2 x_i^2.}
-#' The sampling methods are explicitly named by domain and density pattern:
+#' Samples parameter points from either a two-dimensional disk/square or a
+#' three-dimensional ball/cube and embeds them into the quadratic graph
+#' hypersurface
+#' \deqn{q(x)=\sum_{i=1}^k x_i^2-\sum_{i=k+1}^p x_i^2.}
+#' For `dim = 2`, the sampling methods are explicitly named by domain and
+#' density pattern:
 #' `"uniform.parameter.disk"`, `"radial.center.parameter.disk"`,
 #' `"radial.boundary.parameter.disk"`, `"uniform.parameter.square"`,
-#' `"radial.center.parameter.square"`, and
-#' `"radial.boundary.parameter.square"`. Points are sampled in parameter
-#' coordinates, not with respect to the induced surface-area measure. The
-#' function also builds the regular parameter-domain reference grid used by
-#' `quadform.reference.geodesics()` and returns sample-by-sample reference
-#' geodesic distances.
+#' `"radial.center.parameter.square"`, and `"radial.boundary.parameter.square"`.
+#' For `dim = 3`, supported methods are `"uniform.parameter.ball"`,
+#' `"interior.parameter.ball"`, `"boundary.parameter.ball"`,
+#' `"mixed.parameter.ball"`, and the corresponding `.cube` methods. Points are
+#' sampled in parameter coordinates, not with respect to the induced
+#' surface-area measure. The function builds a regular grid reference for
+#' `dim = 2` and a Delaunay epsilon-net reference for `dim = 3`.
 #'
 #' @param n Positive integer. Number of sample points.
-#' @param index.k Integer between 0 and 2. Number of positive-square terms in
-#'   the quadratic form.
+#' @param index.k Integer between 0 and `dim`. Number of positive-square terms
+#'   in the quadratic form.
 #' @param domain.radius Positive numeric scalar. Radius of the parameter disk
-#'   or half-side length of the parameter square.
-#' @param sample.method Character scalar naming the parameter-domain sampling
-#'   method.
-#' @param grid.size Integer at least 5. Number of reference-grid coordinates
-#'   along each axis before clipping to the parameter disk.
+#'   or ball, or half-side length of the parameter square or cube.
+#' @param sample.method `NULL` or a character scalar naming the parameter-domain
+#'   sampling method. If `NULL`, a uniform method is chosen from `dim` and
+#'   `domain.shape`.
+#' @param grid.size Integer at least 5. For `dim = 2`, number of reference-grid
+#'   coordinates along each axis before clipping to the parameter disk.
 #' @param sample.connection.k Positive integer. Number of nearest reference-grid
-#'   vertices connected to each sample point when computing reference geodesics.
+#'   vertices connected to each sample point when computing 2D reference
+#'   geodesics.
 #' @param seed `NULL` or finite integer scalar. If supplied, sampling is
 #'   reproducible and the caller's random-number state is restored.
+#' @param dim Integer `2` or `3`. Parameter-domain dimension.
+#' @param domain.shape `NULL` or a domain-shape string. For `dim = 2`, use
+#'   `"disk"` or `"square"`. For `dim = 3`, use `"ball"` or `"cube"`.
+#' @param n.ref,candidate.multiplier,boundary.fraction,epsilon,edge.length.factor,delaunay.backend,qhull.options
+#'   Passed to `quadform.delaunay.geodesic.distances()` for `dim = 3`.
 #'
 #' @return A list of class `"quadform_sample_dataset"` with entries:
 #' \describe{
-#'   \item{X_param}{Sample points in two-dimensional parameter coordinates.}
-#'   \item{X_embed}{Sample points embedded as \code{(x1, x2, q)} in
-#'     \eqn{\mathbb{R}^3}.}
+#'   \item{X_param}{Sample points in parameter coordinates.}
+#'   \item{X_embed}{Sample points embedded as \code{(x1, ..., xp, q)}.}
 #'   \item{q}{Quadratic-form values at the sample points.}
 #'   \item{D_geodesic}{Sample-by-sample reference geodesic distance matrix.}
 #'   \item{distances}{Alias of \code{D_geodesic}.}
-#'   \item{reference}{Reference grid and graph payload used to compute
+#'   \item{reference}{Reference graph payload used to compute
 #'     \code{D_geodesic}.}
 #'   \item{metadata}{Dataset parameters, including the explicit sampling
 #'     method.}
@@ -1470,31 +1511,165 @@ quadform.sample.dataset <- function(n,
                                     index.k,
                                     coefficients = NULL,
                                     domain.radius = 1,
-                                    sample.method = c(
-                                        "uniform.parameter.disk",
-                                        "radial.center.parameter.disk",
-                                        "radial.boundary.parameter.disk",
-                                        "uniform.parameter.square",
-                                        "radial.center.parameter.square",
-                                        "radial.boundary.parameter.square"
-                                    ),
+                                    sample.method = NULL,
                                     grid.size = 51,
                                     sample.connection.k = 8,
-                                    seed = NULL) {
+                                    seed = NULL,
+                                    dim = 2,
+                                    domain.shape = NULL,
+                                    n.ref = 5000,
+                                    candidate.multiplier = 6,
+                                    boundary.fraction = 0.2,
+                                    epsilon = NULL,
+                                    edge.length.factor = 4,
+                                    delaunay.backend = c("cpp", "geometry"),
+                                    qhull.options = "Qt Qbb Qc") {
     if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
         n != floor(n) || n < 1L) {
         stop("'n' must be a positive integer.", call. = FALSE)
     }
     n <- as.integer(n)
-    .validate.quadform.index(2L, index.k)
-    coefficients <- .validate.quadform.coefficients(coefficients, 2L)
+    if (!is.numeric(dim) || length(dim) != 1L || !is.finite(dim) ||
+        dim != floor(dim) || !(dim %in% c(2L, 3L))) {
+        stop("'dim' must be 2 or 3.", call. = FALSE)
+    }
+    dim <- as.integer(dim)
+    .validate.quadform.index(dim, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, dim)
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
     }
-    sample.method <- match.arg(sample.method)
-    domain.shape <- if (grepl("\\.square$", sample.method)) "square" else "disk"
 
+    if (dim == 3L) {
+        delaunay.backend <- match.arg(delaunay.backend)
+        if (is.null(domain.shape)) {
+            domain.shape <- if (is.null(sample.method) ||
+                                grepl("\\.ball$", sample.method)) {
+                "ball"
+            } else {
+                "cube"
+            }
+        }
+        domain.shape <- .validate.quadform.reference.domain.shape(domain.shape, dim)
+        sample.methods.3d <- paste0(
+            rep(c("uniform", "interior", "boundary", "mixed"), each = 2L),
+            ".parameter.",
+            rep(c("ball", "cube"), times = 4L)
+        )
+        if (is.null(sample.method)) {
+            sample.method <- paste0("uniform.parameter.", domain.shape)
+        } else {
+            sample.method <- match.arg(sample.method, sample.methods.3d)
+        }
+        sample.domain <- if (grepl("\\.cube$", sample.method)) "cube" else "ball"
+        if (!identical(sample.domain, domain.shape)) {
+            stop("'sample.method' and 'domain.shape' describe different 3D domains.",
+                 call. = FALSE)
+        }
+        X.param <- .with.quadform.seed(
+            seed,
+            .quadform.sample.parameter.3d.method(n, domain.radius, sample.method)
+        )
+        X.embed <- quadform.embed(X.param, index.k = index.k,
+                                  coefficients = coefficients)
+        ref <- quadform.delaunay.geodesic.distances(
+            X.param,
+            index.k = index.k,
+            coefficients = coefficients,
+            domain.radius = domain.radius,
+            domain.shape = domain.shape,
+            n.ref = n.ref,
+            seed = seed,
+            candidate.multiplier = candidate.multiplier,
+            boundary.fraction = boundary.fraction,
+            epsilon = epsilon,
+            edge.length.factor = edge.length.factor,
+            delaunay.backend = delaunay.backend,
+            qhull.options = qhull.options
+        )
+        out <- list(
+            X_param = X.param,
+            X_embed = X.embed,
+            q = as.numeric(X.embed[, "q"]),
+            D_geodesic = ref$distances,
+            distances = ref$distances,
+            reference = list(
+                vertices_param = ref$vertices_param,
+                vertices_embed = ref$vertices_embed,
+                sample_vertex = ref$sample_vertex,
+                edge_matrix = ref$edge_matrix,
+                edge_weight = ref$edge_weight,
+                adj_list = ref$adj_list,
+                weight_list = ref$weight_list,
+                n_reference_vertices = ref$n_reference_vertices,
+                n_edges = ref$n_edges,
+                n_delaunay_edges = ref$n_delaunay_edges,
+                n_edges_unfiltered = ref$n_edges_unfiltered,
+                retained_edge_fraction = ref$retained_edge_fraction,
+                epsilon = ref$epsilon,
+                n_target = ref$n_target,
+                n_candidates = ref$n_candidates,
+                n_boundary_candidates = ref$n_boundary_candidates,
+                filter_factor_requested = ref$filter_factor_requested,
+                filter_factor_used = ref$filter_factor_used,
+                filter_attempts = ref$filter_attempts,
+                filter_relaxation_happened = ref$filter_relaxation_happened,
+                relaxed_to_inf = ref$relaxed_to_inf,
+                n_components = ref$n_components,
+                domain_shape = ref$domain_shape,
+                domain_radius = ref$domain_radius,
+                delaunay_backend = ref$delaunay_backend,
+                qhull_options = ref$qhull_options
+            ),
+            metadata = list(
+                dim = dim,
+                index_k = as.integer(index.k),
+                coefficients = coefficients,
+                domain_radius = as.numeric(domain.radius),
+                domain_shape = domain.shape,
+                sample_method = sample.method,
+                n_ref = as.integer(n.ref),
+                candidate_multiplier = as.numeric(candidate.multiplier),
+                boundary_fraction = as.numeric(boundary.fraction),
+                epsilon = ref$epsilon,
+                edge_length_factor = ref$filter_factor_requested,
+                delaunay_backend = ref$delaunay_backend,
+                qhull_options = ref$qhull_options,
+                seed = seed
+            )
+        )
+        class(out) <- c("quadform_sample_dataset", "list")
+        return(out)
+    }
+
+    if (is.null(domain.shape)) {
+        domain.shape <- if (is.null(sample.method) ||
+                            grepl("\\.disk$", sample.method)) {
+            "disk"
+        } else {
+            "square"
+        }
+    }
+    domain.shape <- .validate.quadform.reference.domain.shape(domain.shape, dim)
+    sample.methods.2d <- c(
+        "uniform.parameter.disk",
+        "radial.center.parameter.disk",
+        "radial.boundary.parameter.disk",
+        "uniform.parameter.square",
+        "radial.center.parameter.square",
+        "radial.boundary.parameter.square"
+    )
+    if (is.null(sample.method)) {
+        sample.method <- paste0("uniform.parameter.", domain.shape)
+    } else {
+        sample.method <- match.arg(sample.method, sample.methods.2d)
+    }
+    sample.domain <- if (grepl("\\.square$", sample.method)) "square" else "disk"
+    if (!identical(sample.domain, domain.shape)) {
+        stop("'sample.method' and 'domain.shape' describe different 2D domains.",
+             call. = FALSE)
+    }
     X.param <- .with.quadform.seed(
         seed,
         .quadform.sample.parameter(n, domain.radius, sample.method)

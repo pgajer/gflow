@@ -1,0 +1,314 @@
+---
+title: "Graph Trend Filtering on Curated Gaussian-Mixture Subset"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 11,
+  fig.height = 7,
+  dpi = 120
+)
+
+repo.dir <- "/Users/pgajer/current_projects/gflow"
+if (requireNamespace("pkgload", quietly = TRUE)) {
+  pkgload::load_all(repo.dir, quiet = TRUE)
+} else {
+  library(gflow)
+}
+
+library(gflow)
+library(ggplot2)
+source(file.path(repo.dir, "dev/metric-graph-lowpass-benchmarks/multi_scenario_1d_mixture_helpers.R"))
+```
+
+## Purpose
+
+This report applies the phase-2 `fit.graph.trend.filtering()` implementation to
+a curated subset of the 240-dataset one-dimensional Gaussian-mixture benchmark.
+The goal is visual and diagnostic: do the new graph trend-filtering comparators
+capture the true Gaussian-mixture signal, and how do they compare with the best
+method from the earlier path-graph benchmark, `genlasso::trendfilter(..., ord = 2)`?
+
+The comparison is intentionally not a final verdict on graph trend filtering.
+The current `gflow` function implements
+
+\[
+\widehat\beta_\lambda =
+\arg\min_{\beta}
+\left\{
+\frac{1}{2}\|y-\beta\|_2^2
++ \lambda\|\Delta_w^{(k+1)}\beta\|_1
+\right\},
+\]
+
+with
+
+\[
+k=0:\Delta_w^{(1)}=D_w,\qquad
+k=1:\Delta_w^{(2)}=L_w,\qquad
+k=2:\Delta_w^{(3)}=D_wL_w.
+\]
+
+For \(k=0\), this is graph fused lasso. For \(k=1,2\), this follows the graph
+trend-filtering operator construction from Wang, Sharpnack, Smola, and
+Tibshirani. The benchmark winner, `genlasso::trendfilter(..., ord = 2)`, is a
+specialized one-dimensional divided-difference trend filter, so the comparison
+is still a diagnostic rather than exact path-graph parity.
+
+## Benchmark Design
+
+```{r load}
+results.file <- file.path(
+  repo.dir,
+  "dev/metric-graph-lowpass-benchmarks/reports/graph_trend_filtering_subset_results.rds"
+)
+if (!file.exists(results.file)) {
+  stop("Missing precomputed results file. Run compute_graph_trend_filtering_subset.R first.")
+}
+
+bench <- readRDS(results.file)
+results <- bench$results
+predictions <- bench$predictions
+
+data.frame(
+  n.datasets = length(unique(results$dataset.id)),
+  n.methods = length(unique(results$method)),
+  n.result.rows = nrow(results),
+  n.prediction.rows = nrow(predictions),
+  n.errors = sum(results$status != "ok"),
+  results.file = results.file
+)
+```
+
+The subset uses eight shape families, all three sampling/noise variants, and
+one replicate per shape/variant pair. Every fit uses the sorted one-dimensional
+path graph. Adjacent samples in sorted \(x\) are connected.
+
+The graph trend-filtering variants are:
+
+- `fit.graph.trend.filtering.order0.unit`: \(k=0\), unweighted path graph.
+- `fit.graph.trend.filtering.order0.conductance`: \(k=0\), metric edge lengths are first
+  transformed into conductances with `exp.length, sigma=edge.q0.75`, then
+  floored at \(10^{-4}\), median-normalized, and used as \(\omega_e=c_e\).
+- `fit.graph.trend.filtering.order0.sqrt.conductance`: \(k=0\), the same
+  conductances are used, but \(\omega_e=\sqrt{c_e}\).
+- `fit.graph.trend.filtering.order1.unit`: \(k=1\), unweighted \(L_w\) penalty.
+- `fit.graph.trend.filtering.order2.unit`: \(k=2\), unweighted \(D_wL_w\) penalty.
+- `fit.graph.trend.filtering.order2.sqrt.conductance`: \(k=2\), square-root
+  metric-conductance weights.
+
+The higher-order graph fits use `approx = TRUE` in the `genlasso` backend for
+this report. This is a pragmatic smoke-benchmark choice: exact dense/SVD
+`order = 1` paths are much slower at \(n=250\).
+
+## Overall Scores
+
+```{r summaries}
+ok <- subset(results, status == "ok")
+ok$method <- factor(ok$method, levels = c(
+  "genlasso.trendfilter.ord2.cv",
+  "fit.graph.trend.filtering.order0.unit",
+  "fit.graph.trend.filtering.order0.conductance",
+  "fit.graph.trend.filtering.order0.sqrt.conductance",
+  "fit.graph.trend.filtering.order1.unit",
+  "fit.graph.trend.filtering.order2.unit",
+  "fit.graph.trend.filtering.order2.sqrt.conductance"
+))
+
+summary.table <- aggregate(
+  rmse.truth ~ method,
+  data = ok,
+  FUN = function(z) c(
+    median = median(z),
+    mean = mean(z),
+    q25 = unname(quantile(z, 0.25)),
+    q75 = unname(quantile(z, 0.75)),
+    q90 = unname(quantile(z, 0.90))
+  )
+)
+summary.table <- do.call(data.frame, summary.table)
+names(summary.table) <- sub("rmse.truth.", "", names(summary.table), fixed = TRUE)
+summary.table[order(summary.table$median), ]
+```
+
+```{r rmse-violin}
+ggplot(ok, aes(x = method, y = rmse.truth, fill = method)) +
+  geom_violin(scale = "width", trim = FALSE, alpha = 0.65, color = "gray35") +
+  stat_summary(fun = median, geom = "point", shape = 23, size = 2.3,
+               fill = "white", color = "black") +
+  scale_y_log10() +
+  coord_flip() +
+  labs(
+    title = "RMSE to truth on curated Gaussian-mixture subset",
+    subtitle = "White diamonds mark medians; y-axis is log scaled",
+    x = NULL,
+    y = "RMSE to truth, log scale"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+```{r paired-ratios}
+paired_ratio <- function(dat, reference) {
+  ref <- dat[dat$method == reference, c("dataset.id", "rmse.truth")]
+  names(ref)[2] <- "ref.rmse"
+  out <- lapply(setdiff(unique(as.character(dat$method)), reference), function(method) {
+    cur <- dat[dat$method == method, c("dataset.id", "rmse.truth")]
+    names(cur)[2] <- "cur.rmse"
+    m <- merge(ref, cur, by = "dataset.id")
+    d <- log(m$cur.rmse) - log(m$ref.rmse)
+    tt <- stats::t.test(d)
+    data.frame(
+      method = method,
+      reference = reference,
+      n = length(d),
+      mean.rmse.ratio = exp(mean(d)),
+      ratio.conf.low = exp(unname(tt$conf.int[1])),
+      ratio.conf.high = exp(unname(tt$conf.int[2])),
+      median.rmse.ratio = median(m$cur.rmse / m$ref.rmse),
+      p.value = tt$p.value,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, out)
+}
+
+ratio.table <- paired_ratio(ok, "genlasso.trendfilter.ord2.cv")
+ratio.table[order(ratio.table$mean.rmse.ratio), ]
+```
+
+```{r ratio-forest}
+ratio.plot <- ratio.table
+ggplot(ratio.plot, aes(x = mean.rmse.ratio, y = reorder(method, mean.rmse.ratio))) +
+  geom_vline(xintercept = 1, linetype = 2, color = "gray45") +
+  geom_errorbarh(aes(xmin = ratio.conf.low, xmax = ratio.conf.high),
+                 height = 0.18, linewidth = 0.7, color = "#2c7fb8") +
+  geom_point(size = 2.5, color = "#2c7fb8") +
+  scale_x_log10() +
+  labs(
+    title = "Paired RMSE ratios versus quadratic trend filtering",
+    subtitle = "Values above 1 mean higher RMSE than the ord=2 trend filter",
+    x = "RMSE ratio versus genlasso ord=2, log scale",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+## Example Fits
+
+```{r prepare-predictions}
+predictions$method <- factor(as.character(predictions$method), levels = levels(ok$method))
+
+dataset.order <- unique(results$dataset.id)
+predictions$dataset.label <- paste0(
+  predictions$dataset.id, "\n",
+  predictions$shape.name, "\n",
+  predictions$variant.name
+)
+label.levels <- unique(predictions$dataset.label[match(dataset.order, predictions$dataset.id)])
+predictions$dataset.label <- factor(predictions$dataset.label, levels = label.levels)
+
+data.points <- unique(predictions[, c("dataset.id", "dataset.label", "x", "y", "truth")])
+truth.lines <- data.points[order(data.points$dataset.id, data.points$x), ]
+
+method.colors <- c(
+  "genlasso.trendfilter.ord2.cv" = "#1b9e77",
+  "fit.graph.trend.filtering.order0.unit" = "#2b6cb0",
+  "fit.graph.trend.filtering.order0.conductance" = "#d95f02",
+  "fit.graph.trend.filtering.order0.sqrt.conductance" = "#7570b3",
+  "fit.graph.trend.filtering.order1.unit" = "#66a61e",
+  "fit.graph.trend.filtering.order2.unit" = "#a6761d",
+  "fit.graph.trend.filtering.order2.sqrt.conductance" = "#1f78b4"
+)
+```
+
+```{r all-panels, fig.height=13}
+ggplot() +
+  geom_point(data = data.points, aes(x = x, y = y),
+             color = "black", alpha = 0.38, size = 0.45) +
+  geom_line(data = truth.lines, aes(x = x, y = truth),
+            color = "#d73027", linewidth = 0.75) +
+  geom_line(data = predictions[order(predictions$dataset.id, predictions$method, predictions$x), ],
+            aes(x = x, y = fitted, color = method),
+            linewidth = 0.55, alpha = 0.90) +
+  facet_wrap(~ dataset.label, ncol = 3) +
+  scale_color_manual(values = method.colors) +
+  labs(
+    title = "Graph trend filtering versus quadratic 1D trend filtering",
+    subtitle = "Red: true mixture; black: noisy observations; colored lines: fitted methods",
+    x = "x",
+    y = "response",
+    color = "Fit"
+  ) +
+  theme_minimal(base_size = 9) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 7.5)
+  )
+```
+
+## Where Does Graph Trend Filtering Look Best?
+
+```{r best-graph}
+graph.methods <- grep("^fit\\.graph\\.trend\\.filtering", as.character(ok$method), value = TRUE)
+best.graph <- ok[ok$method %in% graph.methods, ]
+best.graph <- best.graph[order(best.graph$dataset.id, best.graph$rmse.truth), ]
+best.graph <- best.graph[!duplicated(best.graph$dataset.id), ]
+
+ord2 <- ok[ok$method == "genlasso.trendfilter.ord2.cv", c("dataset.id", "rmse.truth")]
+names(ord2)[2] <- "ord2.rmse"
+best.graph <- merge(best.graph, ord2, by = "dataset.id")
+best.graph$ratio.to.ord2 <- best.graph$rmse.truth / best.graph$ord2.rmse
+best.graph[order(best.graph$ratio.to.ord2),
+           c("dataset.id", "shape.name", "variant.name", "method",
+             "rmse.truth", "ord2.rmse", "ratio.to.ord2", "lambda")]
+```
+
+```{r best-graph-panels, fig.height=9}
+top.graph.datasets <- head(best.graph$dataset.id[order(best.graph$ratio.to.ord2)], 9)
+top.pred <- subset(predictions, dataset.id %in% top.graph.datasets)
+top.points <- subset(data.points, dataset.id %in% top.graph.datasets)
+top.truth <- subset(truth.lines, dataset.id %in% top.graph.datasets)
+
+ggplot() +
+  geom_point(data = top.points, aes(x = x, y = y),
+             color = "black", alpha = 0.42, size = 0.55) +
+  geom_line(data = top.truth, aes(x = x, y = truth),
+            color = "#d73027", linewidth = 0.8) +
+  geom_line(data = top.pred[order(top.pred$dataset.id, top.pred$method, top.pred$x), ],
+            aes(x = x, y = fitted, color = method),
+            linewidth = 0.65, alpha = 0.92) +
+  facet_wrap(~ dataset.label, ncol = 3) +
+  scale_color_manual(values = method.colors) +
+  labs(
+    title = "Datasets where the best graph trend-filtering variant is closest to ord=2 trend filtering",
+    x = "x",
+    y = "response",
+    color = "Fit"
+  ) +
+  theme_minimal(base_size = 9) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 7.5)
+  )
+```
+
+## Interpretation
+
+The \(k=0\) graph trend-filtering fits should be read as graph fused-lasso
+baselines: they can create useful plateaus, but smooth Gaussian mixtures often
+need higher-order behavior. The \(k=1\) and \(k=2\) fits are the first direct
+graph higher-order comparators in `gflow`. If they close the gap with
+`genlasso::trendfilter(..., ord = 2)`, that supports continuing with solver and
+weighting refinements. If they remain worse but visually sensible, the likely
+next issue is not the operator definition alone but the solver, path-graph
+boundary behavior, and metric weighting convention.

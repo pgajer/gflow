@@ -1,0 +1,13 @@
+"case.id","local.embedding.method","family","dataset","graph.type","true.dimension","expected.class","transition","noise.sigma","strict.accuracy","cap.hit.rate","n.centers"
+"cycle_72","cmdscale","cycle","cycle","cycle",1,"1",FALSE,NA,1,0,24
+"path_60","cmdscale","path","path","path",1,"1",FALSE,NA,1,0,24
+"paraboloid_delaunay_seed_1","cmdscale","paraboloid","paraboloid","delaunay.1skeleton",2,"2",FALSE,NA,0.958333333333333,0,24
+"sampled_square_delaunay_seed_1","cmdscale","sampled square","sampled square","delaunay.1skeleton",2,"2",FALSE,NA,0.875,0,24
+"grid_8x8","cmdscale","grid","grid","grid",2,"2",FALSE,NA,0.375,0.0416666666666667,24
+"warped_grid_8x8","cmdscale","warped grid","warped grid","grid",2,"2",FALSE,NA,0.458333333333333,0,24
+"quadform3d_ball_k1_c124_seed_1","cmdscale","3D quadform mixed","3D quadform mixed","delaunay.1skeleton",3,"3",FALSE,NA,0.666666666666667,0,24
+"quadform3d_ball_k3_c111_seed_1","cmdscale","3D quadform positive","3D quadform positive","delaunay.1skeleton",3,"3",FALSE,NA,1,0,24
+"cube_lattice_5x5x5","cmdscale","cube lattice","cube lattice","grid",3,"3",FALSE,NA,0.458333333333333,0.625,24
+"noisy_circle_sknn_sigma_0.000","cmdscale","noisy circle","noisy circle","symmetric.knn",1,"1-to-2 transition",TRUE,0,0,0,24
+"noisy_circle_sknn_sigma_0.040","cmdscale","noisy circle","noisy circle","symmetric.knn",1,"1-to-2 transition",TRUE,0.04,0,0,24
+"noisy_circle_sknn_sigma_0.100","cmdscale","noisy circle","noisy circle","symmetric.knn",1,"1-to-2 transition",TRUE,0.1,0,0,24
