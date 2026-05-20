@@ -38,6 +38,7 @@ jobs:
         with:
           needs: check
           dependencies: '"hard"'
+          install-pandoc: false
           extra-packages: |
             any::pkgload
             any::testthat
@@ -76,6 +77,7 @@ jobs:
         with:
           needs: check
           dependencies: '"hard"'
+          install-pandoc: false
           extra-packages: |
             any::pkgload
             any::testthat

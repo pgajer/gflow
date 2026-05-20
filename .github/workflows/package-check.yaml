@@ -23,6 +23,7 @@ jobs:
         with:
           needs: check
           dependencies: '"hard"'
+          install-pandoc: true
           extra-packages: any::devtools
 
       - uses: r-lib/actions/setup-tinytex@v2
