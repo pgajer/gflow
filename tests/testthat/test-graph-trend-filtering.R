@@ -737,6 +737,100 @@ test_that("regression-gradient transported Hessian annihilates affine grid probe
   expect_gt(nrow(op$transport$gradient.diagnostics), 0L)
 })
 
+test_that("regression-quadratic transported operator annihilates path quadratics", {
+  graph <- make_path_graph_weights(rep(1, 7))
+  x <- matrix(0:7, ncol = 1)
+  op <- transported.graph.hessian.operator(
+    graph$adj.list,
+    graph$weight.list,
+    transport.order = 3L,
+    transport.rule = "regression.gradient",
+    coordinates = x,
+    polynomial.probes = cbind(constant = rep(1, nrow(x)),
+                              affine = x[, 1],
+                              quadratic = x[, 1]^2,
+                              cubic = x[, 1]^3),
+    gradient.ridge = 0,
+    gradient.quadratic.disk.hops = 2L
+  )
+
+  expect_s3_class(op, "transported.graph.hessian.operator")
+  expect_equal(op$transport.order, 3L)
+  expect_equal(op$transport$scales$representation,
+               "local_weighted_quadratic_least_squares")
+  expect_equal(op$penalty$order, 2L)
+  expect_equal(op$penalty$derivative.order, 3L)
+  expect_equal(op$diagnostics$nullity.estimate, 3L)
+  expect_true(all(c("hessian.component", "component.a", "component.b",
+                    "gradient.quadratic.disk.hops") %in% names(op$row.table)))
+  residuals <- op$diagnostics$polynomial.residuals$per.column
+  expect_equal(residuals$residual[residuals$probe == "constant"], 0,
+               tolerance = 1e-10)
+  expect_equal(residuals$residual[residuals$probe == "affine"], 0,
+               tolerance = 1e-10)
+  expect_equal(residuals$residual[residuals$probe == "quadratic"], 0,
+               tolerance = 1e-10)
+  expect_gt(residuals$residual[residuals$probe == "cubic"], 1e-3)
+})
+
+test_that("regression-quadratic transported operator annihilates grid quadratics", {
+  graph <- make_grid_graph_weights(5, 5)
+  coords <- graph$coordinates
+  op <- transported.graph.hessian.operator(
+    graph$adj.list,
+    graph$weight.list,
+    transport.order = 3L,
+    transport.rule = "regression.gradient",
+    coordinates = coords,
+    polynomial.probes = cbind(constant = rep(1, nrow(coords)),
+                              x = coords[, 1],
+                              y = coords[, 2],
+                              x2 = coords[, 1]^2,
+                              xy = coords[, 1] * coords[, 2],
+                              y2 = coords[, 2]^2,
+                              x3 = coords[, 1]^3),
+    gradient.ridge = 0,
+    gradient.quadratic.disk.hops = 2L,
+    gradient.quadratic.max.vertices = 25L
+  )
+
+  residuals <- op$diagnostics$polynomial.residuals$per.column
+  for (probe in c("constant", "x", "y", "x2", "xy", "y2")) {
+    expect_equal(residuals$residual[residuals$probe == probe], 0,
+                 tolerance = 1e-9)
+  }
+  expect_gt(residuals$residual[residuals$probe == "x3"], 1e-3)
+  expect_true(all(op$transport$gradient.diagnostics$rank == 5L))
+  expect_equal(unique(op$row.table$hessian.component),
+               c("H11", "H12", "H22"))
+})
+
+test_that("regression-quadratic transported operator is scoped to supplied coordinates", {
+  graph <- make_path_graph_weights(rep(1, 5))
+  x <- matrix(0:5, ncol = 1)
+  expect_error(
+    transported.graph.hessian.operator(
+      graph$adj.list,
+      graph$weight.list,
+      transport.order = 3L,
+      transport.rule = "regression.gradient",
+      coordinates = x,
+      gradient.coordinate.method = "local.embedding"
+    ),
+    "supports only"
+  )
+  expect_error(
+    transported.graph.hessian.operator(
+      graph$adj.list,
+      graph$weight.list,
+      transport.order = 3L,
+      transport.rule = "local.embedding.soft",
+      coordinates = x
+    ),
+    "supports only"
+  )
+})
+
 test_that("regression-gradient transported Hessian supports graph-derived local embeddings", {
   graph <- make_path_graph_weights(rep(1, 5))
   x <- matrix(0:5, ncol = 1)
