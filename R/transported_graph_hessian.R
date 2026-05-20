@@ -3,9 +3,9 @@
 #' Builds an experimental transported-Hessian graph operator without fitting a
 #' response. This is the phase-0 through phase-2 diagnostic layer for the
 #' transported graph Hessian trend-filtering project: it constructs directed
-#' edge differences, matches directions across a base dart, assembles the
-#' second-difference operator, and returns diagnostics that make the transport
-#' rule auditable.
+#' edge differences, matches directions across a base dart, assembles a
+#' second- or third-difference diagnostic operator, and returns diagnostics that
+#' make the transport rule auditable.
 #'
 #' For a dart \eqn{u\to v}, the first difference is
 #' \deqn{
@@ -34,6 +34,12 @@
 #'   indices. The graph must be undirected.
 #' @param weight.list Optional list of positive edge lengths parallel to
 #'   \code{adj.list}. If \code{NULL}, all edge lengths are one.
+#' @param transport.order Integer scalar, either \code{2L} or \code{3L}.
+#'   \code{2L} constructs the transported Hessian-like second-difference
+#'   operator. \code{3L} currently constructs a supplied-coordinate
+#'   regression-quadratic third-difference operator and is supported only for
+#'   \code{transport.rule = "regression.gradient"} with
+#'   \code{gradient.coordinate.method = "coordinates"}.
 #' @param transport.rule Character scalar. \code{"exact.coordinate"} uses exact
 #'   direction labels. \code{"local.embedding.soft"} uses coordinate direction
 #'   vectors and softmax transport weights. \code{"edge.angle.hard"} and
@@ -182,6 +188,11 @@
 #' @param gradient.ridge Non-negative ridge parameter used by
 #'   \code{transport.rule = "regression.gradient"} when inverting local
 #'   weighted least-squares normal equations.
+#' @param gradient.quadratic.disk.hops Non-negative integer hop radius for the
+#'   supplied-coordinate local quadratic regressions used by
+#'   \code{transport.order = 3L}.
+#' @param gradient.quadratic.max.vertices Positive integer cap on local
+#'   quadratic-regression disk size for \code{transport.order = 3L}.
 #'
 #' @return A list of class \code{"transported.graph.hessian.operator"} with the
 #'   canonical graph, directed-edge table, first-difference matrix, transported
@@ -193,6 +204,7 @@
 #' @export
 transported.graph.hessian.operator <- function(adj.list,
                                                weight.list = NULL,
+                                               transport.order = 2L,
                                                transport.rule = c("exact.coordinate",
                                                                   "local.embedding.soft",
                                                                   "edge.angle.hard",
@@ -269,11 +281,16 @@ transported.graph.hessian.operator <- function(adj.list,
                                                                                                    2,
                                                                                                    3,
                                                                                                    4),
-                                               gradient.ridge = 1e-8) {
+                                               gradient.ridge = 1e-8,
+                                               gradient.quadratic.disk.hops = 2L,
+                                               gradient.quadratic.max.vertices = gradient.max.vertices) {
     if (!requireNamespace("Matrix", quietly = TRUE)) {
         stop("Package 'Matrix' is required for transported.graph.hessian.operator().",
              call. = FALSE)
     }
+    transport.order <- .transported.graph.hessian.validate.transport.order(
+        transport.order
+    )
     transport.rule <- match.arg(transport.rule)
     local.embedding.method <- match.arg(local.embedding.method)
     gradient.coordinate.method <- match.arg(gradient.coordinate.method)
@@ -340,6 +357,20 @@ transported.graph.hessian.operator <- function(adj.list,
         gradient.disk.min.vertices,
         "gradient.disk.min.vertices"
     )
+    gradient.quadratic.disk.hops <- .transported.graph.hessian.validate.nonnegative.integer(
+        gradient.quadratic.disk.hops,
+        "gradient.quadratic.disk.hops"
+    )
+    gradient.quadratic.max.vertices <- .validate.positive.integer.scalar(
+        gradient.quadratic.max.vertices,
+        "gradient.quadratic.max.vertices"
+    )
+    if (identical(transport.order, 3L) &&
+        (!identical(transport.rule, "regression.gradient") ||
+         !identical(gradient.coordinate.method, "coordinates"))) {
+        stop("transport.order = 3L currently supports only transport.rule = \"regression.gradient\" with gradient.coordinate.method = \"coordinates\".",
+             call. = FALSE)
+    }
     match.threshold.rule <- match.arg(match.threshold.rule)
     soft.args <- .transported.graph.hessian.validate.soft.args(
         soft.angle.scale = soft.angle.scale,
@@ -430,6 +461,7 @@ transported.graph.hessian.operator <- function(adj.list,
             graph = graph,
             coordinates = coordinates,
             ridge = gradient.ridge,
+            transport.order = transport.order,
             gradient.args = list(
                 coordinate.method = gradient.coordinate.method,
                 embedding.method = gradient.embedding.method,
@@ -457,6 +489,10 @@ transported.graph.hessian.operator <- function(adj.list,
                     prob = gradient.disk.local.scale.quantile
                 ),
                 graph.diameter = .transported.graph.hessian.graph.diameter(graph)
+            ),
+            quadratic.args = list(
+                disk.hops = gradient.quadratic.disk.hops,
+                max.vertices = gradient.quadratic.max.vertices
             )
         )
     )
@@ -479,6 +515,7 @@ transported.graph.hessian.operator <- function(adj.list,
             adj.list = graph$adj.list,
             weight.list = graph$weight.list
         ),
+        transport.order = transport.order,
         transport.rule = transport.rule,
         coordinates = coordinates,
         direction.labels = labels,
@@ -488,6 +525,7 @@ transported.graph.hessian.operator <- function(adj.list,
         penalty = .graph.trend.filtering.matrix.payload(hessian, return.sparse),
         transport = list(
             rule = transport.rule,
+            order = transport.order,
             row.table = transport$row.table,
             dropped.table = transport$dropped.table,
             summary = diagnostics$summary,
@@ -500,7 +538,8 @@ transported.graph.hessian.operator <- function(adj.list,
         diagnostics = diagnostics
     )
     out$penalty$kind <- "transported_hessian"
-    out$penalty$order <- 1L
+    out$penalty$order <- transport.order - 1L
+    out$penalty$derivative.order <- transport.order
     class(out) <- c("transported.graph.hessian.operator", "list")
     out
 }
@@ -594,6 +633,16 @@ transported.graph.hessian.operator <- function(adj.list,
         min.margin.z = as.double(min.margin.z),
         max.effective.match.fraction = max.effective.match.fraction
     )
+}
+
+.transported.graph.hessian.validate.transport.order <- function(transport.order) {
+    if (!is.numeric(transport.order) || length(transport.order) != 1L ||
+        is.na(transport.order) || !is.finite(transport.order) ||
+        transport.order != floor(transport.order) ||
+        !transport.order %in% c(2, 3)) {
+        stop("transport.order must be either 2L or 3L.", call. = FALSE)
+    }
+    as.integer(transport.order)
 }
 
 .transported.graph.hessian.validate.optional.nonnegative <- function(x, name) {
@@ -1242,7 +1291,18 @@ transported.graph.hessian.operator <- function(adj.list,
                                                                      graph,
                                                                      coordinates,
                                                                      ridge,
-                                                                     gradient.args) {
+                                                                     transport.order,
+                                                                     gradient.args,
+                                                                     quadratic.args) {
+    if (identical(transport.order, 3L)) {
+        return(.transported.graph.hessian.regression.quadratic.transport(
+            darts = darts,
+            graph = graph,
+            coordinates = coordinates,
+            ridge = ridge,
+            quadratic.args = quadratic.args
+        ))
+    }
     if (identical(gradient.args$coordinate.method, "local.embedding")) {
         return(.transported.graph.hessian.regression.gradient.transport.local(
             darts = darts,
@@ -1497,6 +1557,91 @@ transported.graph.hessian.operator <- function(adj.list,
         ),
         embedding.table = embedding.table,
         gradient.diagnostics = gradient.diagnostics
+    )
+}
+
+.transported.graph.hessian.regression.quadratic.transport <- function(darts,
+                                                                      graph,
+                                                                      coordinates,
+                                                                      ridge,
+                                                                      quadratic.args) {
+    quadratic <- .transported.graph.hessian.quadratic.coefficients(
+        graph = graph,
+        coordinates = coordinates,
+        ridge = ridge,
+        disk.hops = quadratic.args$disk.hops,
+        max.vertices = quadratic.args$max.vertices
+    )
+    row.records <- list()
+    row <- 0L
+    component.table <- quadratic$component.table
+
+    for (base.idx in seq_len(nrow(darts))) {
+        base <- darts[base.idx, , drop = FALSE]
+        for (component in seq_len(nrow(component.table))) {
+            row <- row + 1L
+            from.coef <- quadratic$coefficients[[base$from]][[component]]
+            to.coef <- quadratic$coefficients[[base$to]][[component]]
+            combined.vertices <- c(to.coef$vertex, from.coef$vertex)
+            combined.values <- c(to.coef$value, -from.coef$value) /
+                max(base$length, sqrt(.Machine$double.eps))
+            collapsed <- rowsum(combined.values, combined.vertices, reorder = FALSE)
+            vertices <- as.integer(rownames(collapsed))
+            values <- as.double(collapsed[, 1L])
+            keep <- is.finite(values) & abs(values) > sqrt(.Machine$double.eps)
+            if (!any(keep)) {
+                next
+            }
+            row.records[[length(row.records) + 1L]] <- data.frame(
+                row = row,
+                candidate = row,
+                base.dart = base$dart,
+                base.from = base$from,
+                base.to = base$to,
+                base.length = base$length,
+                component = component,
+                component.a = component.table$a[component],
+                component.b = component.table$b[component],
+                hessian.component = component.table$label[component],
+                coefficient.vertex = vertices[keep],
+                coefficient.value = values[keep],
+                transport.weight = 1,
+                transport.entropy = NA_real_,
+                match.status = "regression_quadratic",
+                gradient.coordinate.method = "coordinates",
+                gradient.embedding.method = NA_character_,
+                embedding.backend = NA_character_,
+                disk.size.from = quadratic$diagnostics$disk.size[base$from],
+                disk.size.to = quadratic$diagnostics$disk.size[base$to],
+                local.design.rank.from = quadratic$diagnostics$rank[base$from],
+                local.design.rank.to = quadratic$diagnostics$rank[base$to],
+                local.condition.from = quadratic$diagnostics$condition[base$from],
+                local.condition.to = quadratic$diagnostics$condition[base$to],
+                n.local.from = quadratic$diagnostics$n.local[base$from],
+                n.local.to = quadratic$diagnostics$n.local[base$to],
+                gradient.ridge = ridge,
+                gradient.quadratic.disk.hops = quadratic.args$disk.hops,
+                gradient.quadratic.max.vertices = quadratic.args$max.vertices,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+
+    row.table <- if (length(row.records)) do.call(rbind, row.records) else data.frame()
+    list(
+        row.table = row.table,
+        dropped.table = data.frame(),
+        n.candidates = nrow(darts) * nrow(component.table),
+        scales = list(
+            gradient.ridge = ridge,
+            gradient.coordinate.method = "coordinates",
+            gradient.quadratic.disk.hops = quadratic.args$disk.hops,
+            gradient.quadratic.max.vertices = quadratic.args$max.vertices,
+            derivative.order = 3L,
+            representation = "local_weighted_quadratic_least_squares"
+        ),
+        embedding.table = data.frame(),
+        gradient.diagnostics = quadratic$diagnostics
     )
 }
 
@@ -1854,6 +1999,183 @@ transported.graph.hessian.operator <- function(adj.list,
         stringsAsFactors = FALSE
     )
     list(coefficients = coefficients, diagnostics = diagnostics)
+}
+
+.transported.graph.hessian.quadratic.coefficients <- function(graph,
+                                                              coordinates,
+                                                              ridge,
+                                                              disk.hops,
+                                                              max.vertices) {
+    coordinates <- as.matrix(coordinates)
+    n.vertices <- graph$n.vertices
+    n.dim <- ncol(coordinates)
+    component.table <- .transported.graph.hessian.quadratic.component.table(n.dim)
+    coefficients <- vector("list", n.vertices)
+    diagnostics <- vector("list", n.vertices)
+    for (vertex in seq_len(n.vertices)) {
+        one <- .transported.graph.hessian.quadratic.coefficients.one(
+            graph = graph,
+            coordinates = coordinates,
+            ridge = ridge,
+            vertex = vertex,
+            disk.hops = disk.hops,
+            max.vertices = max.vertices,
+            component.table = component.table
+        )
+        coefficients[[vertex]] <- one$coefficients
+        diagnostics[[vertex]] <- one$diagnostics
+    }
+    list(
+        coefficients = coefficients,
+        diagnostics = do.call(rbind, diagnostics),
+        component.table = component.table
+    )
+}
+
+.transported.graph.hessian.quadratic.component.table <- function(n.dim) {
+    out <- list()
+    for (a in seq_len(n.dim)) {
+        for (b in a:n.dim) {
+            out[[length(out) + 1L]] <- data.frame(
+                a = a,
+                b = b,
+                label = sprintf("H%d%d", a, b),
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    do.call(rbind, out)
+}
+
+.transported.graph.hessian.quadratic.coefficients.one <- function(graph,
+                                                                  coordinates,
+                                                                  ridge,
+                                                                  vertex,
+                                                                  disk.hops,
+                                                                  max.vertices,
+                                                                  component.table) {
+    coordinates <- as.matrix(coordinates)
+    n.dim <- ncol(coordinates)
+    n.components <- nrow(component.table)
+    vertex.coord <- coordinates[vertex, , drop = TRUE]
+    empty.coefficients <- lapply(seq_len(n.components), function(component) {
+        data.frame(vertex = vertex, value = 0, stringsAsFactors = FALSE)
+    })
+    if (!all(is.finite(vertex.coord))) {
+        diagnostics <- .transported.graph.hessian.quadratic.diagnostics(
+            vertex = vertex,
+            n.local = 0L,
+            disk.size = 0L,
+            rank = 0L,
+            condition = Inf
+        )
+        return(list(coefficients = empty.coefficients, diagnostics = diagnostics))
+    }
+
+    disk <- .transported.graph.hessian.local.disk(
+        graph = graph,
+        seeds = vertex,
+        required = vertex,
+        hops = disk.hops,
+        max.vertices = max.vertices
+    )
+    local.vertices <- setdiff(disk$vertices, vertex)
+    if (length(local.vertices)) {
+        local.coords <- coordinates[local.vertices, , drop = FALSE]
+        finite <- apply(local.coords, 1L, function(z) all(is.finite(z)))
+        local.vertices <- local.vertices[finite]
+    }
+    if (!length(local.vertices)) {
+        diagnostics <- .transported.graph.hessian.quadratic.diagnostics(
+            vertex = vertex,
+            n.local = 0L,
+            disk.size = length(disk$vertices),
+            rank = 0L,
+            condition = Inf
+        )
+        return(list(coefficients = empty.coefficients, diagnostics = diagnostics))
+    }
+
+    local.coords <- coordinates[local.vertices, , drop = FALSE]
+    centered <- local.coords -
+        matrix(vertex.coord, nrow = length(local.vertices),
+               ncol = n.dim, byrow = TRUE)
+    design <- .transported.graph.hessian.quadratic.design(centered)
+    metric.distance <- .transported.graph.hessian.multi.source.distances(
+        graph,
+        vertex
+    )[local.vertices]
+    fallback.distance <- sqrt(rowSums(centered^2))
+    metric.distance[!is.finite(metric.distance) | metric.distance <= 0] <-
+        fallback.distance[!is.finite(metric.distance) | metric.distance <= 0]
+    metric.distance[!is.finite(metric.distance) | metric.distance <= 0] <-
+        1
+    weights <- 1 / pmax(metric.distance, sqrt(.Machine$double.eps))^2
+    weighted.design <- design * sqrt(weights)
+    normal <- crossprod(weighted.design) + diag(ridge, ncol(design))
+    rhs <- t(design) %*% diag(weights, nrow = length(weights))
+    inv.normal <- try(solve(normal), silent = TRUE)
+    if (inherits(inv.normal, "try-error")) {
+        inv.normal <- MASS::ginv(normal)
+    }
+    mapping <- inv.normal %*% rhs
+    sv <- svd(normal, nu = 0, nv = 0)$d
+    hessian.rows <- seq.int(n.dim + 1L, n.dim + n.components)
+    coefficients <- lapply(seq_along(hessian.rows), function(idx) {
+        vals <- as.double(mapping[hessian.rows[idx], ])
+        data.frame(
+            vertex = c(vertex, local.vertices),
+            value = c(-sum(vals), vals),
+            stringsAsFactors = FALSE
+        )
+    })
+    diagnostics <- .transported.graph.hessian.quadratic.diagnostics(
+        vertex = vertex,
+        n.local = length(local.vertices),
+        disk.size = length(disk$vertices),
+        rank = qr(weighted.design)$rank,
+        condition = if (length(sv) && min(sv) > 0) max(sv) / min(sv) else Inf
+    )
+    list(coefficients = coefficients, diagnostics = diagnostics)
+}
+
+.transported.graph.hessian.quadratic.design <- function(centered) {
+    centered <- as.matrix(centered)
+    n.dim <- ncol(centered)
+    cols <- list()
+    col.names <- character()
+    for (a in seq_len(n.dim)) {
+        cols[[length(cols) + 1L]] <- centered[, a]
+        col.names <- c(col.names, sprintf("g%d", a))
+    }
+    for (a in seq_len(n.dim)) {
+        for (b in a:n.dim) {
+            if (a == b) {
+                cols[[length(cols) + 1L]] <- 0.5 * centered[, a]^2
+            } else {
+                cols[[length(cols) + 1L]] <- centered[, a] * centered[, b]
+            }
+            col.names <- c(col.names, sprintf("H%d%d", a, b))
+        }
+    }
+    design <- do.call(cbind, cols)
+    colnames(design) <- col.names
+    design
+}
+
+.transported.graph.hessian.quadratic.diagnostics <- function(vertex,
+                                                             n.local,
+                                                             disk.size,
+                                                             rank,
+                                                             condition) {
+    data.frame(
+        vertex = vertex,
+        n.local = n.local,
+        disk.size = disk.size,
+        rank = rank,
+        condition = condition,
+        stringsAsFactors = FALSE
+    )
 }
 
 .transported.graph.hessian.local.chart.diagnostics <- function(embedded.coordinates,
@@ -3303,6 +3625,7 @@ print.transported.graph.hessian.operator <- function(x, ...) {
     cat("==================================\n\n")
     cat(sprintf("Vertices: %d; darts: %d\n", x$graph$n.vertices, x$graph$n.darts))
     cat(sprintf("Transport rule: %s\n", x$transport.rule))
+    cat(sprintf("Derivative order: %d\n", x$transport.order %||% 2L))
     summary <- x$diagnostics$summary
     cat(sprintf("Rows: %d; dropped candidates: %d\n",
                 summary$n.rows, summary$n.dropped))
