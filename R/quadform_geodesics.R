@@ -63,10 +63,10 @@
     if (p == 2L) {
         return(.validate.quadform.domain.shape(domain.shape))
     }
-    if (p == 3L) {
+    if (p >= 3L) {
         return(match.arg(domain.shape, c("ball", "cube")))
     }
-    stop("Reference-domain helpers currently support only p = 2 or p = 3.",
+    stop("Reference-domain helpers currently support only p >= 2.",
          call. = FALSE)
 }
 
@@ -432,6 +432,10 @@ quadform.edge.lengths <- function(U, V, index.k, coefficients = NULL) {
 #'
 #' @param X Numeric matrix or data frame with two parameter-coordinate columns.
 #' @param index.k Integer between 0 and 2. Number of positive-square terms.
+#' @param coefficients `NULL` or positive numeric vector with length 2. If
+#'   supplied, the quadratic graph is
+#'   \eqn{q(x)=\sum_i s_i c_i x_i^2}, where `s_i` is determined by
+#'   `index.k`.
 #' @param domain.radius Positive numeric scalar or `NULL`. Radius of the
 #'   parameter disk or half-side length of the parameter square covered by the
 #'   reference grid. If `NULL`, uses the smallest radius/half-side covering the
@@ -756,6 +760,10 @@ quadform.grid.geodesic.distances <- function(X,
 #'
 #' @param index.k Integer between 0 and 2. Number of positive-square terms in
 #'   the quadratic form.
+#' @param coefficients `NULL` or positive numeric vector with length 2. If
+#'   supplied, the quadratic graph is
+#'   \eqn{q(x)=\sum_i s_i c_i x_i^2}, where `s_i` is determined by
+#'   `index.k`.
 #' @param domain.radius Positive numeric scalar. Radius of the parameter disk.
 #' @param domain.shape Character scalar, either `"disk"` or `"square"`.
 #' @param grid.sizes Integer vector of candidate grid sizes.
@@ -976,6 +984,230 @@ quadform.grid.geodesic.calibration <- function(index.k,
     }
 }
 
+.quadform.domain.volume.nd <- function(p, domain.radius, domain.shape) {
+    if (!is.numeric(p) || length(p) != 1L || !is.finite(p) ||
+        p != floor(p) || p < 1L) {
+        stop("'p' must be a positive integer.", call. = FALSE)
+    }
+    p <- as.integer(p)
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (domain.shape %in% c("disk", "ball")) {
+        pi^(p / 2) * domain.radius^p / gamma(p / 2 + 1)
+    } else if (domain.shape %in% c("square", "cube")) {
+        (2 * domain.radius)^p
+    } else {
+        stop("'domain.shape' must be a supported quadform domain shape.",
+             call. = FALSE)
+    }
+}
+
+.quadform.empty.parameter.matrix <- function(p) {
+    out <- matrix(numeric(), nrow = 0L, ncol = p)
+    colnames(out) <- paste0("x", seq_len(p))
+    storage.mode(out) <- "double"
+    out
+}
+
+.quadform.sample.parameter.nd <- function(n, p, domain.radius, domain.shape) {
+    if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+        n != floor(n) || n < 0L) {
+        stop("'n' must be a non-negative integer.", call. = FALSE)
+    }
+    if (!is.numeric(p) || length(p) != 1L || !is.finite(p) ||
+        p != floor(p) || p < 1L) {
+        stop("'p' must be a positive integer.", call. = FALSE)
+    }
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    n <- as.integer(n)
+    p <- as.integer(p)
+    if (n == 0L) {
+        return(.quadform.empty.parameter.matrix(p))
+    }
+    if (identical(domain.shape, "ball")) {
+        dirs <- matrix(stats::rnorm(n * p), ncol = p)
+        norms <- sqrt(rowSums(dirs^2))
+        while (any(norms == 0)) {
+            zero <- which(norms == 0)
+            dirs[zero, ] <- matrix(stats::rnorm(length(zero) * p),
+                                   ncol = p)
+            norms <- sqrt(rowSums(dirs^2))
+        }
+        dirs <- dirs / norms
+        radii <- domain.radius * stats::runif(n)^(1 / p)
+        out <- dirs * radii
+    } else if (identical(domain.shape, "cube")) {
+        out <- matrix(stats::runif(n * p, -domain.radius, domain.radius),
+                      ncol = p)
+    } else {
+        stop("'domain.shape' must be either 'ball' or 'cube'.", call. = FALSE)
+    }
+    colnames(out) <- paste0("x", seq_len(p))
+    storage.mode(out) <- "double"
+    out
+}
+
+.quadform.cube.corners.nd <- function(p, domain.radius) {
+    corners <- as.matrix(expand.grid(rep(list(c(-domain.radius,
+                                                domain.radius)), p)))
+    colnames(corners) <- paste0("x", seq_len(p))
+    storage.mode(corners) <- "double"
+    corners
+}
+
+.quadform.cube.facet.centers.nd <- function(p, domain.radius) {
+    out <- matrix(0, nrow = 2L * p, ncol = p)
+    for (axis in seq_len(p)) {
+        out[axis, axis] <- -domain.radius
+        out[p + axis, axis] <- domain.radius
+    }
+    colnames(out) <- paste0("x", seq_len(p))
+    storage.mode(out) <- "double"
+    out
+}
+
+.quadform.sample.boundary.nd <- function(n,
+                                         p,
+                                         domain.radius,
+                                         domain.shape,
+                                         include.sentinels = TRUE) {
+    if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+        n != floor(n) || n < 0L) {
+        stop("'n' must be a non-negative integer.", call. = FALSE)
+    }
+    if (!is.numeric(p) || length(p) != 1L || !is.finite(p) ||
+        p != floor(p) || p < 1L) {
+        stop("'p' must be a positive integer.", call. = FALSE)
+    }
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.logical(include.sentinels) || length(include.sentinels) != 1L ||
+        is.na(include.sentinels)) {
+        stop("'include.sentinels' must be TRUE or FALSE.", call. = FALSE)
+    }
+    n <- as.integer(n)
+    p <- as.integer(p)
+    if (n == 0L) {
+        return(.quadform.empty.parameter.matrix(p))
+    }
+    if (identical(domain.shape, "ball")) {
+        dirs <- matrix(stats::rnorm(n * p), ncol = p)
+        norms <- sqrt(rowSums(dirs^2))
+        while (any(norms == 0)) {
+            zero <- which(norms == 0)
+            dirs[zero, ] <- matrix(stats::rnorm(length(zero) * p),
+                                   ncol = p)
+            norms <- sqrt(rowSums(dirs^2))
+        }
+        out <- (dirs / norms) * domain.radius
+        colnames(out) <- paste0("x", seq_len(p))
+        storage.mode(out) <- "double"
+        return(out)
+    }
+    if (!identical(domain.shape, "cube")) {
+        stop("'domain.shape' must be either 'ball' or 'cube'.", call. = FALSE)
+    }
+
+    sentinel <- .quadform.empty.parameter.matrix(p)
+    if (isTRUE(include.sentinels)) {
+        corners <- .quadform.cube.corners.nd(p, domain.radius)
+        if (n >= nrow(corners)) {
+            sentinel <- corners
+            centers <- .quadform.cube.facet.centers.nd(p, domain.radius)
+            remaining.after.corners <- n - nrow(sentinel)
+            if (remaining.after.corners >= nrow(centers)) {
+                sentinel <- rbind(sentinel, centers)
+            }
+        }
+    }
+    n.random <- n - nrow(sentinel)
+    if (n.random > 0L) {
+        random <- matrix(stats::runif(n.random * p, -domain.radius,
+                                      domain.radius), ncol = p)
+        face <- rep(seq_len(2L * p), length.out = n.random)
+        face <- sample(face, n.random, replace = FALSE)
+        axis <- ((face - 1L) %% p) + 1L
+        sign <- ifelse(face <= p, -1, 1)
+        random[cbind(seq_len(n.random), axis)] <- sign * domain.radius
+        out <- rbind(sentinel, random)
+    } else {
+        out <- sentinel[seq_len(n), , drop = FALSE]
+    }
+    colnames(out) <- paste0("x", seq_len(p))
+    storage.mode(out) <- "double"
+    out
+}
+
+.quadform.sample.parameter.nd.method <- function(n,
+                                                 p,
+                                                 domain.radius,
+                                                 sample.method) {
+    if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+        n != floor(n) || n < 0L) {
+        stop("'n' must be a non-negative integer.", call. = FALSE)
+    }
+    if (!is.numeric(p) || length(p) != 1L || !is.finite(p) ||
+        p != floor(p) || p < 1L) {
+        stop("'p' must be a positive integer.", call. = FALSE)
+    }
+    n <- as.integer(n)
+    p <- as.integer(p)
+    if (n == 0L) {
+        return(.quadform.empty.parameter.matrix(p))
+    }
+    if (!is.character(sample.method) || length(sample.method) != 1L ||
+        is.na(sample.method)) {
+        stop("'sample.method' must be a non-missing character scalar.",
+             call. = FALSE)
+    }
+    domain.shape <- if (grepl("\\.cube$", sample.method)) "cube" else "ball"
+    placement <- sub("\\.parameter\\.(ball|cube)$", "", sample.method)
+    interior <- function(m) {
+        if (identical(domain.shape, "ball")) {
+            .quadform.sample.parameter.nd(m, p, 0.62 * domain.radius,
+                                          domain.shape)
+        } else {
+            out <- matrix(stats::runif(m * p, -0.62 * domain.radius,
+                                       0.62 * domain.radius), ncol = p)
+            colnames(out) <- paste0("x", seq_len(p))
+            storage.mode(out) <- "double"
+            out
+        }
+    }
+    X <- switch(
+        placement,
+        uniform = .quadform.sample.parameter.nd(n, p, domain.radius,
+                                                domain.shape),
+        interior = interior(n),
+        boundary = .quadform.sample.boundary.nd(n, p, domain.radius,
+                                                domain.shape),
+        mixed = {
+            n.interior <- floor(n / 2)
+            X.mixed <- rbind(
+                interior(n.interior),
+                .quadform.sample.boundary.nd(n - n.interior, p,
+                                             domain.radius, domain.shape)
+            )
+            X.mixed[sample.int(n), , drop = FALSE]
+        },
+        stop("Unsupported high-dimensional sample method: ", sample.method,
+             call. = FALSE)
+    )
+    colnames(X) <- paste0("x", seq_len(p))
+    storage.mode(X) <- "double"
+    X
+}
+
 .quadform.cell.key <- function(x, epsilon) {
     paste(floor(x / epsilon), collapse = ",")
 }
@@ -1032,6 +1264,669 @@ quadform.grid.geodesic.calibration <- function(index.k,
         }
     }
     candidates[selected, , drop = FALSE]
+}
+
+.quadform.nearest.parameter.distance <- function(query,
+                                                 reference,
+                                                 chunk.size = 1000L) {
+    query <- .validate.quadform.data.matrix(query)
+    reference <- .validate.quadform.data.matrix(reference)
+    if (ncol(query) != ncol(reference)) {
+        stop("'query' and 'reference' must have the same number of columns.",
+             call. = FALSE)
+    }
+    if (!is.numeric(chunk.size) || length(chunk.size) != 1L ||
+        !is.finite(chunk.size) || chunk.size != floor(chunk.size) ||
+        chunk.size < 1L) {
+        stop("'chunk.size' must be a positive integer.", call. = FALSE)
+    }
+    chunk.size <- as.integer(chunk.size)
+    out <- numeric(nrow(query))
+    starts <- seq.int(1L, nrow(query), by = chunk.size)
+    for (start in starts) {
+        stop <- min(nrow(query), start + chunk.size - 1L)
+        idx <- start:stop
+        dist2 <- matrix(0, nrow = length(idx), ncol = nrow(reference))
+        for (col in seq_len(ncol(query))) {
+            delta <- outer(query[idx, col], reference[, col], "-")
+            dist2 <- dist2 + delta^2
+        }
+        out[idx] <- sqrt(apply(dist2, 1L, min))
+    }
+    out
+}
+
+.quadform.nearest.self.parameter.distance <- function(X,
+                                                      chunk.size = 1000L) {
+    X <- .validate.quadform.data.matrix(X)
+    if (nrow(X) < 2L) {
+        return(numeric())
+    }
+    if (!is.numeric(chunk.size) || length(chunk.size) != 1L ||
+        !is.finite(chunk.size) || chunk.size != floor(chunk.size) ||
+        chunk.size < 1L) {
+        stop("'chunk.size' must be a positive integer.", call. = FALSE)
+    }
+    chunk.size <- as.integer(chunk.size)
+    out <- numeric(nrow(X))
+    starts <- seq.int(1L, nrow(X), by = chunk.size)
+    for (start in starts) {
+        stop <- min(nrow(X), start + chunk.size - 1L)
+        idx <- start:stop
+        dist2 <- matrix(0, nrow = length(idx), ncol = nrow(X))
+        for (col in seq_len(ncol(X))) {
+            delta <- outer(X[idx, col], X[, col], "-")
+            dist2 <- dist2 + delta^2
+        }
+        dist2[cbind(seq_along(idx), idx)] <- Inf
+        out[idx] <- sqrt(apply(dist2, 1L, min))
+    }
+    out
+}
+
+.quadform.reference.vertex.coverage.nd <- function(vertices,
+                                                   domain.radius,
+                                                   domain.shape,
+                                                   probe.n = 1000L,
+                                                   seed = NULL) {
+    vertices <- .validate.quadform.data.matrix(vertices)
+    p <- ncol(vertices)
+    if (!is.numeric(probe.n) || length(probe.n) != 1L ||
+        !is.finite(probe.n) || probe.n != floor(probe.n) || probe.n < 0L) {
+        stop("'probe.n' must be a non-negative integer.", call. = FALSE)
+    }
+    probe.n <- as.integer(probe.n)
+
+    vertex.nn <- .quadform.nearest.self.parameter.distance(vertices)
+    vertex.quantiles <- if (length(vertex.nn)) {
+        stats::quantile(vertex.nn, c(0.5, 0.9, 0.95), names = FALSE)
+    } else {
+        rep(NA_real_, 3L)
+    }
+
+    if (probe.n > 0L) {
+        probes <- .with.quadform.seed(
+            seed,
+            .quadform.sample.parameter.nd(probe.n, p, domain.radius,
+                                          domain.shape)
+        )
+        probe.nn <- .quadform.nearest.parameter.distance(probes, vertices)
+        probe.quantiles <- stats::quantile(probe.nn, c(0.5, 0.9, 0.95),
+                                           names = FALSE)
+        fill.max <- max(probe.nn)
+    } else {
+        probe.nn <- numeric()
+        probe.quantiles <- rep(NA_real_, 3L)
+        fill.max <- NA_real_
+    }
+
+    list(
+        probe_n = probe.n,
+        fill_distance_max = fill.max,
+        fill_distance_q50 = probe.quantiles[1L],
+        fill_distance_q90 = probe.quantiles[2L],
+        fill_distance_q95 = probe.quantiles[3L],
+        vertex_nn_min = if (length(vertex.nn)) min(vertex.nn) else NA_real_,
+        vertex_nn_q50 = vertex.quantiles[1L],
+        vertex_nn_q90 = vertex.quantiles[2L],
+        vertex_nn_q95 = vertex.quantiles[3L],
+        vertex_nn = vertex.nn,
+        probe_nn = probe.nn
+    )
+}
+
+.quadform.epsilon.net.nd <- function(X,
+                                     domain.radius,
+                                     domain.shape,
+                                     n.ref,
+                                     seed = NULL,
+                                     candidate.multiplier = 6,
+                                     boundary.fraction = 0.2,
+                                     epsilon = NULL,
+                                     epsilon.constant = 0.62,
+                                     probe.n = 1000L) {
+    X <- .validate.quadform.data.matrix(X)
+    p <- ncol(X)
+    domain.shape <- .validate.quadform.reference.domain.shape(domain.shape, p)
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.numeric(n.ref) || length(n.ref) != 1L || !is.finite(n.ref) ||
+        n.ref != floor(n.ref) || n.ref < nrow(X)) {
+        stop("'n.ref' must be an integer at least nrow(X).", call. = FALSE)
+    }
+    if (!is.numeric(candidate.multiplier) || length(candidate.multiplier) != 1L ||
+        !is.finite(candidate.multiplier) || candidate.multiplier < 1) {
+        stop("'candidate.multiplier' must be a finite scalar at least 1.",
+             call. = FALSE)
+    }
+    if (!is.numeric(boundary.fraction) || length(boundary.fraction) != 1L ||
+        !is.finite(boundary.fraction) || boundary.fraction < 0 ||
+        boundary.fraction > 0.9) {
+        stop("'boundary.fraction' must be a finite scalar in [0, 0.9].",
+             call. = FALSE)
+    }
+    if (!is.numeric(epsilon.constant) || length(epsilon.constant) != 1L ||
+        !is.finite(epsilon.constant) || epsilon.constant <= 0) {
+        stop("'epsilon.constant' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!all(.quadform.points.inside.domain.nd(X, domain.radius, domain.shape))) {
+        stop("All rows of 'X' must lie inside the parameter domain.",
+             call. = FALSE)
+    }
+    if (is.null(epsilon)) {
+        volume <- .quadform.domain.volume.nd(p, domain.radius, domain.shape)
+        epsilon <- epsilon.constant * (volume / n.ref)^(1 / p)
+    } else if (!is.numeric(epsilon) || length(epsilon) != 1L ||
+               !is.finite(epsilon) || epsilon <= 0) {
+        stop("'epsilon' must be NULL or a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    n.boundary <- as.integer(ceiling(n.ref * boundary.fraction))
+    n.interior <- as.integer(ceiling(n.ref * candidate.multiplier))
+    candidates <- .with.quadform.seed(seed, {
+        rbind(
+            X,
+            .quadform.sample.boundary.nd(n.boundary, p, domain.radius,
+                                         domain.shape),
+            .quadform.sample.parameter.nd(n.interior, p, domain.radius,
+                                          domain.shape)
+        )
+    })
+    vertices <- .quadform.greedy.epsilon.net(candidates, epsilon,
+                                             forced.n = nrow(X))
+    rownames(vertices) <- NULL
+    coverage <- .quadform.reference.vertex.coverage.nd(
+        vertices,
+        domain.radius = domain.radius,
+        domain.shape = domain.shape,
+        probe.n = probe.n,
+        seed = if (is.null(seed)) NULL else as.integer(seed) + 1L
+    )
+    list(
+        vertices = vertices,
+        sample_vertex = seq_len(nrow(X)),
+        epsilon = epsilon,
+        epsilon_constant = epsilon.constant,
+        n_target = as.integer(n.ref),
+        n_candidates = nrow(candidates),
+        n_interior_candidates = n.interior,
+        n_boundary_candidates = n.boundary,
+        n_vertices = nrow(vertices),
+        domain_shape = domain.shape,
+        domain_radius = domain.radius,
+        coverage = coverage,
+        seed = seed
+    )
+}
+
+.quadform.local.radius.edges <- function(vertices,
+                                         radius,
+                                         epsilon = NULL,
+                                         tol = 1e-12) {
+    vertices <- .validate.quadform.data.matrix(vertices)
+    if (!is.numeric(radius) || length(radius) != 1L ||
+        !is.finite(radius) || radius <= 0) {
+        stop("'radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.null(epsilon) &&
+        (!is.numeric(epsilon) || length(epsilon) != 1L ||
+         !is.finite(epsilon) || epsilon <= 0)) {
+        stop("'epsilon' must be NULL or a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.numeric(tol) || length(tol) != 1L || !is.finite(tol) ||
+        tol < 0) {
+        stop("'tol' must be a non-negative finite numeric scalar.",
+             call. = FALSE)
+    }
+    n <- nrow(vertices)
+    p <- ncol(vertices)
+    empty.edges <- matrix(integer(), nrow = 0L, ncol = 2L)
+    colnames(empty.edges) <- c("from", "to")
+    if (n < 2L) {
+        return(list(
+            edge_matrix = empty.edges,
+            parameter_length = numeric(),
+            radius = as.numeric(radius),
+            epsilon = epsilon,
+            radius_factor = if (is.null(epsilon)) NA_real_ else radius / epsilon,
+            n_edges = 0L,
+            n_candidate_pairs = 0L,
+            degree = integer(n),
+            degree_summary = c(min = 0, median = 0, mean = 0, max = 0)
+        ))
+    }
+
+    cells <- floor(vertices / radius)
+    keys <- apply(cells, 1L, paste, collapse = ",")
+    grid <- new.env(parent = emptyenv(), hash = TRUE)
+    for (i in seq_len(n)) {
+        old <- grid[[keys[i]]]
+        grid[[keys[i]]] <- c(old, i)
+    }
+
+    neighbor.offsets <- as.matrix(expand.grid(rep(list(-1L:1L), p)))
+    radius2 <- radius^2 * (1 + tol)
+    rows <- vector("list", n)
+    lengths <- vector("list", n)
+    cursor <- 0L
+    n.candidate <- 0L
+    for (i in seq_len(n - 1L)) {
+        cell <- cells[i, ]
+        for (r in seq_len(nrow(neighbor.offsets))) {
+            key <- paste(cell + neighbor.offsets[r, ], collapse = ",")
+            idx <- grid[[key]]
+            idx <- idx[idx > i]
+            if (!length(idx)) {
+                next
+            }
+            n.candidate <- n.candidate + length(idx)
+            delta <- vertices[idx, , drop = FALSE] -
+                matrix(vertices[i, ], nrow = length(idx), ncol = p,
+                       byrow = TRUE)
+            d2 <- rowSums(delta^2)
+            keep <- which(d2 <= radius2)
+            if (length(keep)) {
+                cursor <- cursor + 1L
+                rows[[cursor]] <- cbind(i, idx[keep])
+                lengths[[cursor]] <- sqrt(d2[keep])
+            }
+        }
+    }
+
+    if (!cursor) {
+        edge.matrix <- empty.edges
+        parameter.length <- numeric()
+    } else {
+        edge.matrix <- do.call(rbind, rows[seq_len(cursor)])
+        storage.mode(edge.matrix) <- "integer"
+        colnames(edge.matrix) <- c("from", "to")
+        parameter.length <- unlist(lengths[seq_len(cursor)], use.names = FALSE)
+    }
+    degree <- tabulate(c(edge.matrix[, 1L], edge.matrix[, 2L]), nbins = n)
+    list(
+        edge_matrix = edge.matrix,
+        parameter_length = parameter.length,
+        radius = as.numeric(radius),
+        epsilon = epsilon,
+        radius_factor = if (is.null(epsilon)) NA_real_ else radius / epsilon,
+        n_edges = nrow(edge.matrix),
+        n_candidate_pairs = n.candidate,
+        degree = degree,
+        degree_summary = c(
+            min = min(degree),
+            median = unname(stats::median(degree)),
+            mean = mean(degree),
+            max = max(degree)
+        )
+    )
+}
+
+.quadform.highdim.reference.geodesics <- function(X,
+                                                  index.k,
+                                                  coefficients = NULL,
+                                                  domain.radius = NULL,
+                                                  domain.shape = c("ball", "cube"),
+                                                  n.ref = 5000,
+                                                  seed = NULL,
+                                                  candidate.multiplier = 6,
+                                                  boundary.fraction = 0.2,
+                                                  epsilon = NULL,
+                                                  epsilon.constant = 0.62,
+                                                  probe.n = 1000L,
+                                                  radius.factor = 3,
+                                                  radius = NULL) {
+    X <- .validate.quadform.data.matrix(X)
+    p <- ncol(X)
+    if (p < 3L) {
+        stop("'X' must have at least three parameter-coordinate columns.",
+             call. = FALSE)
+    }
+    index.k <- .validate.quadform.index(p, index.k)
+    coefficients <- .validate.quadform.coefficients(coefficients, p)
+    domain.shape <- .validate.quadform.reference.domain.shape(domain.shape, p)
+    if (is.null(domain.radius)) {
+        domain.radius <- if (identical(domain.shape, "ball")) {
+            max(sqrt(rowSums(X^2)))
+        } else {
+            max(abs(X))
+        }
+        if (domain.radius == 0) {
+            domain.radius <- 1
+        }
+    }
+    if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
+        !is.finite(domain.radius) || domain.radius <= 0) {
+        stop("'domain.radius' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.numeric(radius.factor) || length(radius.factor) != 1L ||
+        !is.finite(radius.factor) || radius.factor <= 0) {
+        stop("'radius.factor' must be a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+    if (!is.null(radius) &&
+        (!is.numeric(radius) || length(radius) != 1L ||
+         !is.finite(radius) || radius <= 0)) {
+        stop("'radius' must be NULL or a positive finite numeric scalar.",
+             call. = FALSE)
+    }
+
+    net <- .quadform.epsilon.net.nd(
+        X = X,
+        domain.radius = domain.radius,
+        domain.shape = domain.shape,
+        n.ref = n.ref,
+        seed = seed,
+        candidate.multiplier = candidate.multiplier,
+        boundary.fraction = boundary.fraction,
+        epsilon = epsilon,
+        epsilon.constant = epsilon.constant,
+        probe.n = probe.n
+    )
+    edge.radius <- if (is.null(radius)) {
+        radius.factor * net$epsilon
+    } else {
+        as.numeric(radius)
+    }
+    edge.info <- .quadform.local.radius.edges(
+        net$vertices,
+        radius = edge.radius,
+        epsilon = net$epsilon
+    )
+    edge.matrix <- edge.info$edge_matrix
+    edge.weight <- if (nrow(edge.matrix)) {
+        quadform.edge.lengths(
+            net$vertices[edge.matrix[, 1L], , drop = FALSE],
+            net$vertices[edge.matrix[, 2L], , drop = FALSE],
+            index.k = index.k,
+            coefficients = coefficients
+        )
+    } else {
+        numeric()
+    }
+    graph <- .quadform.edge.list.to.adj(nrow(net$vertices), edge.matrix,
+                                        edge.weight)
+    comp <- .quadform.adj.components(graph$adj_list)
+    D <- shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
+
+    out <- list(
+        method = "local_radius",
+        distances = D,
+        vertices_param = net$vertices,
+        vertices_embed = quadform.embed(net$vertices, index.k = index.k,
+                                        coefficients = coefficients),
+        sample_vertex = net$sample_vertex,
+        edge_matrix = edge.matrix,
+        edge_weight = edge.weight,
+        parameter_edge_length = edge.info$parameter_length,
+        adj_list = graph$adj_list,
+        weight_list = graph$weight_list,
+        n_sample_vertices = nrow(X),
+        n_reference_vertices = nrow(net$vertices),
+        n_edges = nrow(edge.matrix),
+        n_components = max(comp),
+        connected = max(comp) == 1L,
+        component_id = comp,
+        degree = edge.info$degree,
+        degree_summary = edge.info$degree_summary,
+        n_candidate_edge_pairs = edge.info$n_candidate_pairs,
+        radius = edge.radius,
+        radius_factor = edge.radius / net$epsilon,
+        radius_factor_requested = radius.factor,
+        epsilon = net$epsilon,
+        epsilon_constant = net$epsilon_constant,
+        n_target = net$n_target,
+        n_candidates = net$n_candidates,
+        n_interior_candidates = net$n_interior_candidates,
+        n_boundary_candidates = net$n_boundary_candidates,
+        coverage = net$coverage,
+        index_k = as.integer(index.k),
+        coefficients = coefficients,
+        domain_shape = domain.shape,
+        domain_radius = as.numeric(domain.radius),
+        seed = seed
+    )
+    class(out) <- c("quadform_highdim_reference_geodesics", "list")
+    out
+}
+
+.quadform.repair.highdim.reference.mst <- function(ref) {
+    if (!inherits(ref, "quadform_highdim_reference_geodesics")) {
+        stop("'ref' must be a quadform high-dimensional reference object.",
+             call. = FALSE)
+    }
+    comp.before <- ref$component_id
+    n.components.before <- max(comp.before)
+    added <- data.frame(from = integer(), to = integer(),
+                        parameter_weight = numeric(),
+                        quadform_weight = numeric())
+    if (n.components.before > 1L) {
+        candidates <- .best.component.bridges(ref$vertices_param, comp.before)
+        mst <- .component.kruskal(candidates, n.components.before)
+        if (is.null(mst)) {
+            stop("Component MST repair failed to connect all components.",
+                 call. = FALSE)
+        }
+        if (nrow(mst)) {
+            quadform.weight <- quadform.edge.lengths(
+                ref$vertices_param[mst$from, , drop = FALSE],
+                ref$vertices_param[mst$to, , drop = FALSE],
+                index.k = ref$index_k,
+                coefficients = ref$coefficients
+            )
+            added <- data.frame(
+                from = as.integer(mst$from),
+                to = as.integer(mst$to),
+                parameter_weight = as.numeric(mst$weight),
+                quadform_weight = as.numeric(quadform.weight),
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+
+    edge.matrix <- ref$edge_matrix
+    edge.weight <- ref$edge_weight
+    parameter.length <- ref$parameter_edge_length
+    if (nrow(added)) {
+        edge.matrix <- rbind(edge.matrix,
+                             as.matrix(added[, c("from", "to"),
+                                             drop = FALSE]))
+        edge.weight <- c(edge.weight, added$quadform_weight)
+        parameter.length <- c(parameter.length, added$parameter_weight)
+    }
+    graph <- .quadform.edge.list.to.adj(
+        nrow(ref$vertices_param), edge.matrix, edge.weight)
+    comp.after <- .quadform.adj.components(graph$adj_list)
+    D <- shortest.path(graph$adj_list, graph$weight_list, ref$sample_vertex)
+    degree <- tabulate(c(edge.matrix[, 1L], edge.matrix[, 2L]),
+                       nbins = nrow(ref$vertices_param))
+
+    out <- ref
+    out$method <- "local_radius_mst_repair"
+    out$distances <- D
+    out$edge_matrix <- edge.matrix
+    out$edge_weight <- edge.weight
+    out$parameter_edge_length <- parameter.length
+    out$adj_list <- graph$adj_list
+    out$weight_list <- graph$weight_list
+    out$n_edges_before_repair <- ref$n_edges
+    out$n_edges <- nrow(edge.matrix)
+    out$n_components_before_repair <- n.components.before
+    out$n_components <- max(comp.after)
+    out$connected <- max(comp.after) == 1L
+    out$component_id_before_repair <- comp.before
+    out$component_id <- comp.after
+    out$degree <- degree
+    out$degree_summary <- c(
+        min = min(degree),
+        median = unname(stats::median(degree)),
+        mean = mean(degree),
+        max = max(degree)
+    )
+    out$mst_edge_matrix <- as.matrix(added[, c("from", "to"),
+                                           drop = FALSE])
+    out$mst_edge_parameter_weight <- added$parameter_weight
+    out$mst_edge_quadform_weight <- added$quadform_weight
+    out$n_mst_edges_added <- nrow(added)
+    out$mst_bridge_parameter_max <- if (nrow(added)) {
+        max(added$parameter_weight)
+    } else {
+        0
+    }
+    out$mst_bridge_parameter_median <- if (nrow(added)) {
+        stats::median(added$parameter_weight)
+    } else {
+        0
+    }
+    out$mst_bridge_epsilon_ratio_max <- if (nrow(added)) {
+        max(added$parameter_weight / ref$epsilon)
+    } else {
+        0
+    }
+    out$mst_bridge_epsilon_ratio_median <- if (nrow(added)) {
+        stats::median(added$parameter_weight / ref$epsilon)
+    } else {
+        0
+    }
+    out$mst_bridge_quadform_max <- if (nrow(added)) {
+        max(added$quadform_weight)
+    } else {
+        0
+    }
+    out$mst_bridge_quadform_median <- if (nrow(added)) {
+        stats::median(added$quadform_weight)
+    } else {
+        0
+    }
+    class(out) <- c("quadform_highdim_reference_geodesics_mst_repair",
+                    "quadform_highdim_reference_geodesics", "list")
+    out
+}
+
+#' Experimental Local Reference Geodesics for High-Dimensional Quadforms
+#'
+#' @description
+#' Builds an experimental local-radius reference graph for quadratic graph
+#' hypersurfaces with at least three parameter dimensions. This entry point was
+#' added for 4D reference-oracle validation. `quadform.sample.dataset()` uses
+#' this helper internally for `dim = 4` and marks those returned distances as an
+#' experimental local-radius reference.
+#'
+#' The reference graph is built on a dense epsilon-net in parameter space. Edges
+#' join reference points within `radius.factor * epsilon`, and each edge is
+#' weighted by the exact quadratic segment-length kernel. Optional MST repair
+#' can add the shortest component-bridging edges when the local graph is split;
+#' those bridge edges are also reweighted with the exact segment-length kernel.
+#' MST repair is enabled by default for test-oriented reference generation, and
+#' the returned diagnostics report whether any repair edges were actually added.
+#'
+#' @inheritParams quadform.embed
+#' @param domain.radius `NULL` or positive numeric scalar. If `NULL`, the
+#'   radius is inferred from `X`.
+#' @param domain.shape Parameter-domain shape. For high-dimensional reference
+#'   graphs, use `"ball"` or `"cube"`.
+#' @param n.ref Integer at least `nrow(X)`. Target reference size used to set
+#'   the epsilon-net scale.
+#' @param seed `NULL` or finite integer scalar. If supplied, reference-vertex
+#'   sampling is reproducible and the caller's random-number state is restored.
+#' @param candidate.multiplier Positive numeric scalar controlling the number
+#'   of interior candidates proposed before greedy epsilon-net selection.
+#' @param boundary.fraction Numeric scalar in `[0, 0.9]`, the fraction of
+#'   `n.ref` used for boundary candidates before epsilon-net selection.
+#' @param epsilon `NULL` or positive numeric scalar. If `NULL`, epsilon is
+#'   estimated from domain volume and `n.ref`.
+#' @param epsilon.constant Positive numeric scalar used when `epsilon = NULL`.
+#' @param probe.n Non-negative integer number of probe points used for coverage
+#'   diagnostics.
+#' @param radius.factor Positive numeric scalar. Local edges use radius
+#'   `radius.factor * epsilon` unless `radius` is supplied. The validated 4D
+#'   stress runs support `3` as the first experimental candidate and `4` as a
+#'   conservative comparator.
+#' @param radius `NULL` or positive numeric scalar overriding
+#'   `radius.factor * epsilon`.
+#' @param mst.repair Logical scalar. If `TRUE`, add exact-length component-MST
+#'   bridge edges after building the local-radius graph. The default is `TRUE`
+#'   for test-oriented reference generation, with repair diagnostics returned
+#'   explicitly.
+#'
+#' @return A list of class `"quadform_experimental_local_reference_geodesics"`
+#'   and `"quadform_highdim_reference_geodesics"` containing the sample distance
+#'   matrix, reference vertices, exact edge weights, graph diagnostics,
+#'   epsilon-net coverage diagnostics, and optional MST-repair diagnostics.
+#'
+#' @examples
+#' X <- matrix(runif(16, -0.5, 0.5), ncol = 4)
+#' ref <- quadform.experimental.local.reference.geodesics(
+#'   X, index.k = 2, domain.shape = "cube", n.ref = 80, probe.n = 10
+#' )
+#' dim(ref$distances)
+#'
+#' @export
+quadform.experimental.local.reference.geodesics <- function(
+        X,
+        index.k,
+        coefficients = NULL,
+        domain.radius = NULL,
+        domain.shape = c("ball", "cube"),
+        n.ref = 5000,
+        seed = NULL,
+        candidate.multiplier = 6,
+        boundary.fraction = 0.2,
+        epsilon = NULL,
+        epsilon.constant = 0.62,
+        probe.n = 1000L,
+        radius.factor = 3,
+        radius = NULL,
+        mst.repair = TRUE) {
+    if (!is.logical(mst.repair) || length(mst.repair) != 1L ||
+        is.na(mst.repair)) {
+        stop("'mst.repair' must be TRUE or FALSE.", call. = FALSE)
+    }
+    ref <- .quadform.highdim.reference.geodesics(
+        X = X,
+        index.k = index.k,
+        coefficients = coefficients,
+        domain.radius = domain.radius,
+        domain.shape = domain.shape,
+        n.ref = n.ref,
+        seed = seed,
+        candidate.multiplier = candidate.multiplier,
+        boundary.fraction = boundary.fraction,
+        epsilon = epsilon,
+        epsilon.constant = epsilon.constant,
+        probe.n = probe.n,
+        radius.factor = radius.factor,
+        radius = radius
+    )
+    ref$n_edges_before_repair <- ref$n_edges
+    ref$n_components_before_repair <- ref$n_components
+    ref$n_mst_edges_added <- 0L
+    ref$mst_edge_matrix <- matrix(integer(), nrow = 0L, ncol = 2L,
+                                  dimnames = list(NULL, c("from", "to")))
+    ref$mst_edge_parameter_weight <- numeric()
+    ref$mst_edge_quadform_weight <- numeric()
+    ref$mst_bridge_parameter_max <- 0
+    ref$mst_bridge_parameter_median <- 0
+    ref$mst_bridge_epsilon_ratio_max <- 0
+    ref$mst_bridge_epsilon_ratio_median <- 0
+    ref$mst_bridge_quadform_max <- 0
+    ref$mst_bridge_quadform_median <- 0
+    ref$mst_repair <- FALSE
+    if (isTRUE(mst.repair)) {
+        ref <- .quadform.repair.highdim.reference.mst(ref)
+        ref$mst_repair <- TRUE
+    }
+    ref$experimental <- TRUE
+    ref$recommended_radius_factor <- 3
+    class(ref) <- unique(c("quadform_experimental_local_reference_geodesics",
+                           class(ref)))
+    ref
 }
 
 .quadform.epsilon.net.3d <- function(X,
@@ -1446,8 +2341,8 @@ quadform.delaunay.geodesic.distances <- function(X,
 #' Sample a Quadratic Hypersurface Dataset with Reference Geodesics
 #'
 #' @description
-#' Samples parameter points from either a two-dimensional disk/square or a
-#' three-dimensional ball/cube and embeds them into the quadratic graph
+#' Samples parameter points from a two-dimensional disk/square, or from a
+#' three- or four-dimensional ball/cube, and embeds them into the quadratic graph
 #' hypersurface
 #' \deqn{q(x)=\sum_{i=1}^k x_i^2-\sum_{i=k+1}^p x_i^2.}
 #' For `dim = 2`, the sampling methods are explicitly named by domain and
@@ -1457,14 +2352,20 @@ quadform.delaunay.geodesic.distances <- function(X,
 #' `"radial.center.parameter.square"`, and `"radial.boundary.parameter.square"`.
 #' For `dim = 3`, supported methods are `"uniform.parameter.ball"`,
 #' `"interior.parameter.ball"`, `"boundary.parameter.ball"`,
-#' `"mixed.parameter.ball"`, and the corresponding `.cube` methods. Points are
-#' sampled in parameter coordinates, not with respect to the induced
-#' surface-area measure. The function builds a regular grid reference for
-#' `dim = 2` and a Delaunay epsilon-net reference for `dim = 3`.
+#' `"mixed.parameter.ball"`, and the corresponding `.cube` methods. These same
+#' high-dimensional method names are used for `dim = 4`. Points are sampled in
+#' parameter coordinates, not with respect to the induced surface-area measure.
+#' The function builds a regular grid reference for `dim = 2`, a Delaunay
+#' epsilon-net reference for `dim = 3`, and an experimental local-radius
+#' epsilon-net reference for `dim = 4`.
 #'
 #' @param n Positive integer. Number of sample points.
 #' @param index.k Integer between 0 and `dim`. Number of positive-square terms
 #'   in the quadratic form.
+#' @param coefficients `NULL` or positive numeric vector with length `dim`. If
+#'   supplied, the quadratic graph is
+#'   \eqn{q(x)=\sum_i s_i c_i x_i^2}, where `s_i` is determined by
+#'   `index.k`.
 #' @param domain.radius Positive numeric scalar. Radius of the parameter disk
 #'   or ball, or half-side length of the parameter square or cube.
 #' @param sample.method `NULL` or a character scalar naming the parameter-domain
@@ -1477,11 +2378,14 @@ quadform.delaunay.geodesic.distances <- function(X,
 #'   geodesics.
 #' @param seed `NULL` or finite integer scalar. If supplied, sampling is
 #'   reproducible and the caller's random-number state is restored.
-#' @param dim Integer `2` or `3`. Parameter-domain dimension.
+#' @param dim Integer `2`, `3`, or `4`. Parameter-domain dimension.
 #' @param domain.shape `NULL` or a domain-shape string. For `dim = 2`, use
-#'   `"disk"` or `"square"`. For `dim = 3`, use `"ball"` or `"cube"`.
+#'   `"disk"` or `"square"`. For `dim = 3` and `dim = 4`, use `"ball"` or
+#'   `"cube"`.
 #' @param n.ref,candidate.multiplier,boundary.fraction,epsilon,edge.length.factor,delaunay.backend,qhull.options
 #'   Passed to `quadform.delaunay.geodesic.distances()` for `dim = 3`.
+#' @param epsilon.constant,probe.n,radius.factor,mst.repair Passed to
+#'   `quadform.experimental.local.reference.geodesics()` for `dim = 4`.
 #'
 #' @return A list of class `"quadform_sample_dataset"` with entries:
 #' \describe{
@@ -1521,6 +2425,10 @@ quadform.sample.dataset <- function(n,
                                     candidate.multiplier = 6,
                                     boundary.fraction = 0.2,
                                     epsilon = NULL,
+                                    epsilon.constant = 0.62,
+                                    probe.n = 1000L,
+                                    radius.factor = 3,
+                                    mst.repair = TRUE,
                                     edge.length.factor = 4,
                                     delaunay.backend = c("cpp", "geometry"),
                                     qhull.options = "Qt Qbb Qc") {
@@ -1530,8 +2438,8 @@ quadform.sample.dataset <- function(n,
     }
     n <- as.integer(n)
     if (!is.numeric(dim) || length(dim) != 1L || !is.finite(dim) ||
-        dim != floor(dim) || !(dim %in% c(2L, 3L))) {
-        stop("'dim' must be 2 or 3.", call. = FALSE)
+        dim != floor(dim) || !(dim %in% c(2L, 3L, 4L))) {
+        stop("'dim' must be 2, 3, or 4.", call. = FALSE)
     }
     dim <- as.integer(dim)
     .validate.quadform.index(dim, index.k)
@@ -1539,6 +2447,132 @@ quadform.sample.dataset <- function(n,
     if (!is.numeric(domain.radius) || length(domain.radius) != 1L ||
         !is.finite(domain.radius) || domain.radius <= 0) {
         stop("'domain.radius' must be a positive finite numeric scalar.", call. = FALSE)
+    }
+
+    if (dim == 4L) {
+        if (is.null(domain.shape)) {
+            domain.shape <- if (is.null(sample.method) ||
+                                grepl("\\.ball$", sample.method)) {
+                "ball"
+            } else {
+                "cube"
+            }
+        }
+        domain.shape <- .validate.quadform.reference.domain.shape(domain.shape, dim)
+        sample.methods.4d <- paste0(
+            rep(c("uniform", "interior", "boundary", "mixed"), each = 2L),
+            ".parameter.",
+            rep(c("ball", "cube"), times = 4L)
+        )
+        if (is.null(sample.method)) {
+            sample.method <- paste0("uniform.parameter.", domain.shape)
+        } else {
+            sample.method <- match.arg(sample.method, sample.methods.4d)
+        }
+        sample.domain <- if (grepl("\\.cube$", sample.method)) "cube" else "ball"
+        if (!identical(sample.domain, domain.shape)) {
+            stop("'sample.method' and 'domain.shape' describe different 4D domains.",
+                 call. = FALSE)
+        }
+        X.param <- .with.quadform.seed(
+            seed,
+            .quadform.sample.parameter.nd.method(
+                n, p = 4L, domain.radius = domain.radius,
+                sample.method = sample.method
+            )
+        )
+        X.embed <- quadform.embed(X.param, index.k = index.k,
+                                  coefficients = coefficients)
+        ref <- quadform.experimental.local.reference.geodesics(
+            X.param,
+            index.k = index.k,
+            coefficients = coefficients,
+            domain.radius = domain.radius,
+            domain.shape = domain.shape,
+            n.ref = n.ref,
+            seed = seed,
+            candidate.multiplier = candidate.multiplier,
+            boundary.fraction = boundary.fraction,
+            epsilon = epsilon,
+            epsilon.constant = epsilon.constant,
+            probe.n = probe.n,
+            radius.factor = radius.factor,
+            mst.repair = mst.repair
+        )
+        out <- list(
+            X_param = X.param,
+            X_embed = X.embed,
+            q = as.numeric(X.embed[, "q"]),
+            D_geodesic = ref$distances,
+            distances = ref$distances,
+            reference = list(
+                vertices_param = ref$vertices_param,
+                vertices_embed = ref$vertices_embed,
+                sample_vertex = ref$sample_vertex,
+                edge_matrix = ref$edge_matrix,
+                edge_weight = ref$edge_weight,
+                parameter_edge_length = ref$parameter_edge_length,
+                adj_list = ref$adj_list,
+                weight_list = ref$weight_list,
+                n_reference_vertices = ref$n_reference_vertices,
+                n_edges = ref$n_edges,
+                n_edges_before_repair = ref$n_edges_before_repair,
+                n_components = ref$n_components,
+                n_components_before_repair = ref$n_components_before_repair,
+                connected = ref$connected,
+                epsilon = ref$epsilon,
+                radius = ref$radius,
+                radius_factor = ref$radius_factor,
+                radius_factor_requested = ref$radius_factor_requested,
+                n_target = ref$n_target,
+                n_candidates = ref$n_candidates,
+                n_interior_candidates = ref$n_interior_candidates,
+                n_boundary_candidates = ref$n_boundary_candidates,
+                coverage = ref$coverage,
+                degree_summary = ref$degree_summary,
+                n_candidate_edge_pairs = ref$n_candidate_edge_pairs,
+                mst_repair = ref$mst_repair,
+                mst_edge_matrix = ref$mst_edge_matrix,
+                mst_edge_parameter_weight = ref$mst_edge_parameter_weight,
+                mst_edge_quadform_weight = ref$mst_edge_quadform_weight,
+                n_mst_edges_added = ref$n_mst_edges_added,
+                mst_bridge_parameter_max = ref$mst_bridge_parameter_max,
+                mst_bridge_parameter_median = ref$mst_bridge_parameter_median,
+                mst_bridge_epsilon_ratio_max =
+                    ref$mst_bridge_epsilon_ratio_max,
+                mst_bridge_epsilon_ratio_median =
+                    ref$mst_bridge_epsilon_ratio_median,
+                mst_bridge_quadform_max = ref$mst_bridge_quadform_max,
+                mst_bridge_quadform_median = ref$mst_bridge_quadform_median,
+                domain_shape = ref$domain_shape,
+                domain_radius = ref$domain_radius,
+                reference_method = "local.radius",
+                experimental_reference = TRUE
+            ),
+            metadata = list(
+                dim = dim,
+                index_k = as.integer(index.k),
+                coefficients = coefficients,
+                domain_radius = as.numeric(domain.radius),
+                domain_shape = domain.shape,
+                sample_method = sample.method,
+                n_ref = as.integer(n.ref),
+                candidate_multiplier = as.numeric(candidate.multiplier),
+                boundary_fraction = as.numeric(boundary.fraction),
+                epsilon = ref$epsilon,
+                epsilon_constant = ref$epsilon_constant,
+                probe_n = ref$coverage$probe_n,
+                radius_factor = ref$radius_factor_requested,
+                mst_repair = ref$mst_repair,
+                n_components_before_repair = ref$n_components_before_repair,
+                n_mst_edges_added = ref$n_mst_edges_added,
+                reference_method = "local.radius",
+                experimental_reference = TRUE,
+                seed = seed
+            )
+        )
+        class(out) <- c("quadform_sample_dataset", "list")
+        return(out)
     }
 
     if (dim == 3L) {

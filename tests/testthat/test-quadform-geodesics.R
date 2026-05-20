@@ -56,7 +56,7 @@ test_that("quadform.edge.length matches numerical quadrature", {
 })
 
 
-test_that("quadform.edge.lengths matches scalar edge lengths in 2D and 3D", {
+test_that("quadform.edge.lengths matches scalar edge lengths in 2D, 3D, and 4D", {
   U <- rbind(
     c(0.2, -0.4),
     c(-0.5, 0.3),
@@ -90,6 +90,260 @@ test_that("quadform.edge.lengths matches scalar edge lengths in 2D and 3D", {
   expect_equal(quadform.edge.lengths(U3, V3, index.k = 2,
                                      coefficients = c(1, 2, 3)),
                expected3, tolerance = 1e-12)
+
+  U4 <- matrix(c(
+    0.1, -0.2, 0.3, -0.4,
+    -0.4, 0.2, -0.1, 0.5
+  ), ncol = 4, byrow = TRUE)
+  V4 <- matrix(c(
+    0.6, 0.1, -0.2, 0.3,
+    0.2, -0.3, 0.4, -0.2
+  ), ncol = 4, byrow = TRUE)
+  expected4 <- vapply(seq_len(nrow(U4)), function(i) {
+    quadform.edge.length(U4[i, ], V4[i, ], index.k = 2,
+                         coefficients = c(1, 1, 2, 4))
+  }, numeric(1))
+  expect_equal(quadform.edge.lengths(U4, V4, index.k = 2,
+                                     coefficients = c(1, 1, 2, 4)),
+               expected4, tolerance = 1e-12)
+})
+
+
+test_that("quadform high-dimensional sampling helpers support 4D ball and cube domains", {
+  ball <- gflow:::.with.quadform.seed(
+    101,
+    gflow:::.quadform.sample.parameter.nd(200, p = 4, domain.radius = 1.5,
+                                          domain.shape = "ball")
+  )
+  expect_equal(dim(ball), c(200L, 4L))
+  expect_true(all(sqrt(rowSums(ball^2)) <= 1.5 * (1 + 1e-12)))
+
+  cube <- gflow:::.with.quadform.seed(
+    102,
+    gflow:::.quadform.sample.parameter.nd(200, p = 4, domain.radius = 2,
+                                          domain.shape = "cube")
+  )
+  expect_equal(dim(cube), c(200L, 4L))
+  expect_true(all(abs(cube) <= 2))
+
+  ball.boundary <- gflow:::.with.quadform.seed(
+    103,
+    gflow:::.quadform.sample.boundary.nd(50, p = 4, domain.radius = 1.25,
+                                         domain.shape = "ball")
+  )
+  expect_equal(dim(ball.boundary), c(50L, 4L))
+  expect_equal(sqrt(rowSums(ball.boundary^2)), rep(1.25, 50),
+               tolerance = 1e-12)
+
+  cube.boundary <- gflow:::.with.quadform.seed(
+    104,
+    gflow:::.quadform.sample.boundary.nd(32, p = 4, domain.radius = 2,
+                                         domain.shape = "cube")
+  )
+  expect_equal(dim(cube.boundary), c(32L, 4L))
+  expect_true(all(apply(abs(cube.boundary), 1L, max) == 2))
+  corners <- gflow:::.quadform.cube.corners.nd(4, 2)
+  corner.keys <- apply(corners, 1L, paste, collapse = ",")
+  boundary.keys <- apply(cube.boundary, 1L, paste, collapse = ",")
+  expect_true(all(corner.keys %in% boundary.keys))
+
+  mixed <- gflow:::.with.quadform.seed(
+    105,
+    gflow:::.quadform.sample.parameter.nd.method(
+      21, p = 4, domain.radius = 1, sample.method = "mixed.parameter.cube"
+    )
+  )
+  expect_equal(dim(mixed), c(21L, 4L))
+  expect_true(all(abs(mixed) <= 1))
+
+  expect_equal(gflow:::.quadform.domain.volume.nd(4, 1, "ball"),
+               pi^2 / 2, tolerance = 1e-12)
+  expect_equal(gflow:::.quadform.domain.volume.nd(4, 1, "cube"), 16)
+})
+
+
+test_that("quadform high-dimensional epsilon-net helper preserves 4D samples and reports coverage", {
+  X <- gflow:::.with.quadform.seed(
+    106,
+    gflow:::.quadform.sample.parameter.nd(8, p = 4, domain.radius = 1,
+                                          domain.shape = "ball")
+  )
+  net <- gflow:::.quadform.epsilon.net.nd(
+    X,
+    domain.radius = 1,
+    domain.shape = "ball",
+    n.ref = 40,
+    seed = 107,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.25,
+    probe.n = 25
+  )
+
+  expect_equal(ncol(net$vertices), 4L)
+  expect_equal(net$sample_vertex, seq_len(nrow(X)))
+  expect_equal(net$vertices[net$sample_vertex, , drop = FALSE], X,
+               tolerance = 1e-14)
+  expect_true(all(sqrt(rowSums(net$vertices^2)) <= 1 * (1 + 1e-12)))
+  expect_true(net$n_vertices >= nrow(X))
+  expect_true(net$n_candidates > net$n_vertices)
+  expect_equal(net$n_interior_candidates, 80L)
+  expect_equal(net$n_boundary_candidates, 10L)
+  expect_true(is.finite(net$epsilon))
+  expect_equal(net$coverage$probe_n, 25L)
+  expect_true(is.finite(net$coverage$fill_distance_q95))
+  expect_true(is.finite(net$coverage$vertex_nn_min))
+})
+
+
+test_that("quadform local-radius reference helpers build finite 4D graph distances", {
+  vertices <- gflow:::.with.quadform.seed(
+    201,
+    gflow:::.quadform.sample.parameter.nd(30, p = 4, domain.radius = 1,
+                                          domain.shape = "cube")
+  )
+  edges <- gflow:::.quadform.local.radius.edges(vertices, radius = 0.9,
+                                                epsilon = 0.3)
+  expect_equal(ncol(edges$edge_matrix), 2L)
+  expect_equal(edges$n_edges, nrow(edges$edge_matrix))
+  expect_true(edges$n_edges > 0)
+  expect_true(all(edges$edge_matrix[, 1L] < edges$edge_matrix[, 2L]))
+  expect_true(all(edges$parameter_length <= 0.9 * (1 + 1e-12)))
+  expect_equal(edges$radius_factor, 3)
+  expect_equal(length(edges$degree), nrow(vertices))
+  expect_true(all(c("min", "median", "mean", "max") %in%
+                    names(edges$degree_summary)))
+
+  X <- gflow:::.with.quadform.seed(
+    202,
+    gflow:::.quadform.sample.parameter.nd(8, p = 4, domain.radius = 1,
+                                          domain.shape = "cube")
+  )
+  ref <- gflow:::.quadform.highdim.reference.geodesics(
+    X,
+    index.k = 2,
+    coefficients = c(1, 1, 2, 4),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 50,
+    seed = 203,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    probe.n = 10,
+    radius.factor = 2
+  )
+
+  expect_s3_class(ref, "quadform_highdim_reference_geodesics")
+  expect_equal(ref$method, "local_radius")
+  expect_equal(dim(ref$distances), c(nrow(X), nrow(X)))
+  expect_true(all(is.finite(ref$distances)))
+  expect_equal(ref$distances, t(ref$distances), tolerance = 1e-12)
+  expect_equal(diag(ref$distances), rep(0, nrow(X)), tolerance = 1e-12)
+  expect_equal(ref$sample_vertex, seq_len(nrow(X)))
+  expect_equal(ref$vertices_param[ref$sample_vertex, , drop = FALSE], X,
+               tolerance = 1e-14)
+  expect_equal(ncol(ref$vertices_param), 4L)
+  expect_equal(ncol(ref$vertices_embed), 5L)
+  expect_equal(ref$vertices_embed,
+               quadform.embed(ref$vertices_param, index.k = 2,
+                              coefficients = c(1, 1, 2, 4)))
+  expect_true(ref$connected)
+  expect_equal(ref$n_components, 1L)
+  expect_true(ref$n_edges > 0)
+  expect_true(all(ref$parameter_edge_length <= ref$radius * (1 + 1e-12)))
+  expect_equal(ref$radius_factor_requested, 2)
+  expect_equal(ref$radius_factor, ref$radius / ref$epsilon)
+  expect_equal(ref$coverage$probe_n, 10L)
+})
+
+
+test_that("quadform experimental local reference exposes 4D range-3 diagnostics", {
+  X <- gflow:::.with.quadform.seed(
+    202,
+    gflow:::.quadform.sample.parameter.nd(8, p = 4, domain.radius = 1,
+                                          domain.shape = "cube")
+  )
+  ref <- quadform.experimental.local.reference.geodesics(
+    X,
+    index.k = 2,
+    coefficients = c(1, 1, 2, 4),
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 80,
+    seed = 203,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    probe.n = 10,
+    radius.factor = 3
+  )
+
+  expect_s3_class(ref, "quadform_experimental_local_reference_geodesics")
+  expect_s3_class(ref, "quadform_highdim_reference_geodesics")
+  expect_equal(ref$method, "local_radius_mst_repair")
+  expect_true(ref$mst_repair)
+  expect_equal(ref$recommended_radius_factor, 3)
+  expect_equal(ref$radius_factor_requested, 3)
+  expect_true(ref$connected)
+  expect_equal(ref$n_components_before_repair, 1L)
+  expect_equal(ref$n_mst_edges_added, 0L)
+  expect_equal(dim(ref$distances), c(nrow(X), nrow(X)))
+  expect_true(all(is.finite(ref$distances)))
+  expect_equal(ref$distances, t(ref$distances), tolerance = 1e-12)
+  expect_equal(ref$vertices_param[ref$sample_vertex, , drop = FALSE], X,
+               tolerance = 1e-14)
+  expect_true(ref$coverage$fill_distance_q95 > 0)
+})
+
+
+test_that("quadform experimental MST repair uses exact quadform bridge lengths", {
+  X <- rbind(
+    c(-0.8, -0.8, -0.8, -0.8),
+    c(-0.75, -0.75, -0.75, -0.75),
+    c(0.75, 0.75, 0.75, 0.75),
+    c(0.8, 0.8, 0.8, 0.8)
+  )
+
+  ref <- quadform.experimental.local.reference.geodesics(
+    X,
+    index.k = 2,
+    domain.radius = 1,
+    domain.shape = "cube",
+    n.ref = 4,
+    seed = 301,
+    candidate.multiplier = 1,
+    boundary.fraction = 0,
+    epsilon = 1e-4,
+    radius = 1e-5,
+    probe.n = 0,
+    mst.repair = TRUE
+  )
+
+  expect_s3_class(ref, "quadform_highdim_reference_geodesics_mst_repair")
+  expect_true(ref$mst_repair)
+  expect_gt(ref$n_components_before_repair, 1L)
+  expect_equal(ref$n_mst_edges_added, ref$n_components_before_repair - 1L)
+  expect_true(ref$connected)
+  expect_true(all(is.finite(ref$distances)))
+  expect_equal(ref$n_edges, ref$n_edges_before_repair + ref$n_mst_edges_added)
+  expect_equal(nrow(ref$mst_edge_matrix), ref$n_mst_edges_added)
+
+  expected.bridge.length <- quadform.edge.lengths(
+    ref$vertices_param[ref$mst_edge_matrix[, 1L], , drop = FALSE],
+    ref$vertices_param[ref$mst_edge_matrix[, 2L], , drop = FALSE],
+    index.k = ref$index_k,
+    coefficients = ref$coefficients
+  )
+  expected.parameter.length <- sqrt(rowSums(
+    (ref$vertices_param[ref$mst_edge_matrix[, 1L], , drop = FALSE] -
+       ref$vertices_param[ref$mst_edge_matrix[, 2L], , drop = FALSE])^2
+  ))
+
+  expect_equal(ref$mst_edge_quadform_weight, expected.bridge.length,
+               tolerance = 1e-12)
+  expect_equal(ref$mst_edge_parameter_weight, expected.parameter.length,
+               tolerance = 1e-12)
+  expect_equal(ref$mst_bridge_epsilon_ratio_max,
+               max(expected.parameter.length / ref$epsilon),
+               tolerance = 1e-12)
 })
 
 
@@ -615,6 +869,82 @@ test_that("quadform.sample.dataset supports 3D Delaunay-reference datasets", {
 })
 
 
+test_that("quadform.sample.dataset supports 4D local-radius reference datasets", {
+  ds <- quadform.sample.dataset(
+    n = 8,
+    index.k = 2,
+    dim = 4,
+    coefficients = c(1, 1, 2, 4),
+    domain.radius = 1,
+    domain.shape = "cube",
+    sample.method = "mixed.parameter.cube",
+    n.ref = 80,
+    seed = 21,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    probe.n = 10,
+    radius.factor = 3
+  )
+
+  expect_s3_class(ds, "quadform_sample_dataset")
+  expect_equal(dim(ds$X_param), c(8L, 4L))
+  expect_equal(dim(ds$X_embed), c(8L, 5L))
+  expect_equal(ds$X_embed,
+               quadform.embed(ds$X_param, index.k = 2,
+                              coefficients = c(1, 1, 2, 4)))
+  expect_equal(ds$q, as.numeric(ds$X_embed[, "q"]))
+  expect_true(all(abs(ds$X_param) <= 1 + 1e-12))
+  expect_equal(dim(ds$D_geodesic), c(8L, 8L))
+  expect_equal(ds$distances, ds$D_geodesic)
+  expect_true(all(is.finite(ds$D_geodesic)))
+  expect_equal(ds$D_geodesic, t(ds$D_geodesic), tolerance = 1e-12)
+  expect_equal(diag(ds$D_geodesic), rep(0, 8), tolerance = 1e-12)
+
+  expect_equal(ds$metadata$dim, 4L)
+  expect_equal(ds$metadata$sample_method, "mixed.parameter.cube")
+  expect_equal(ds$metadata$domain_shape, "cube")
+  expect_equal(ds$metadata$coefficients, c(1, 1, 2, 4))
+  expect_equal(ds$metadata$reference_method, "local.radius")
+  expect_true(ds$metadata$experimental_reference)
+  expect_true(ds$metadata$mst_repair)
+  expect_equal(ds$metadata$radius_factor, 3)
+  expect_equal(ds$metadata$probe_n, 10L)
+
+  expect_equal(ncol(ds$reference$vertices_param), 4L)
+  expect_equal(ncol(ds$reference$vertices_embed), 5L)
+  expect_equal(ds$reference$vertices_embed,
+               quadform.embed(ds$reference$vertices_param, index.k = 2,
+                              coefficients = c(1, 1, 2, 4)))
+  expect_equal(ds$reference$sample_vertex, seq_len(8L))
+  expect_true(ds$reference$connected)
+  expect_gte(ds$reference$n_components_before_repair, 1L)
+  expect_gte(ds$reference$n_mst_edges_added, 0L)
+  expect_equal(ds$reference$coverage$probe_n, 10L)
+  expect_true(ds$reference$mst_repair)
+  expect_equal(ds$reference$reference_method, "local.radius")
+  expect_true(ds$reference$experimental_reference)
+
+  ds.ball <- quadform.sample.dataset(
+    n = 6,
+    index.k = 4,
+    dim = 4,
+    domain.shape = "ball",
+    sample.method = "boundary.parameter.ball",
+    n.ref = 60,
+    seed = 22,
+    candidate.multiplier = 2,
+    boundary.fraction = 0.2,
+    probe.n = 5,
+    radius.factor = 3
+  )
+  expect_true(all(sqrt(rowSums(ds.ball$X_param^2)) <= 1 + 1e-12))
+  expect_equal(ds.ball$metadata$domain_shape, "ball")
+  expect_equal(ds.ball$metadata$sample_method, "boundary.parameter.ball")
+  expect_equal(ds.ball$metadata$reference_method, "local.radius")
+  expect_true(ds.ball$metadata$experimental_reference)
+})
+
+
 test_that("quadform.sample.dataset seed is reproducible and local", {
   set.seed(99)
   before <- runif(3)
@@ -670,7 +1000,7 @@ test_that("quadform utilities validate inputs", {
                                                 index.k = 1, oracle.tube.k = 0),
                "oracle.tube.k")
   expect_error(quadform.sample.dataset(n = 0, index.k = 1), "positive integer")
-  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 4), "dim")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 5), "dim")
   expect_error(quadform.sample.dataset(n = 3, index.k = 3), "index.k")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 3,
                                        coefficients = c(1, 2)),
@@ -683,6 +1013,10 @@ test_that("quadform utilities validate inputs", {
                                        domain.shape = "ball",
                                        sample.method = "uniform.parameter.cube"),
                "different 3D domains")
+  expect_error(quadform.sample.dataset(n = 3, index.k = 1, dim = 4,
+                                       domain.shape = "ball",
+                                       sample.method = "uniform.parameter.cube"),
+               "different 4D domains")
   expect_error(quadform.sample.dataset(n = 3, index.k = 1, domain.radius = 0),
                "domain.radius")
   expect_error(quadform.embed(matrix(1:4, ncol = 2), index.k = 1,
