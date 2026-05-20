@@ -249,6 +249,61 @@ test_that("fit.ssrhe.hessian.regression matches SSRHE semi-supervised label conv
     expect_true(all(is.na(fit$residuals[!labeled])))
 })
 
+test_that("fit.ssrhe.hessian.regression.cv reuses the operator and selects a grid point", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    labeled <- rep(FALSE, nrow(X))
+    labeled[seq(1, nrow(X), by = 2)] <- TRUE
+    y[!labeled] <- NA_real_
+    fold.id <- integer(nrow(X))
+    fold.id[labeled] <- rep(1:3, length.out = sum(labeled))
+
+    fit <- fit.ssrhe.hessian.regression.cv(
+        X = X,
+        y = y,
+        k = 12L,
+        tangent.dim = 2L,
+        lambda1.grid = c(0.05, 0.2),
+        lambda2.grid = c(0, 0.03),
+        fold.id = fold.id,
+        stabilizer = TRUE,
+        loss = "mse",
+        ridge = 1e-8
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.cv.fit")
+    expect_s3_class(fit, "ssrhe.hessian.fit")
+    expect_equal(nrow(fit$cv.table), 4L)
+    expect_true(fit$selection$lambda1 %in% c(0.05, 0.2))
+    expect_true(fit$selection$lambda2 %in% c(0, 0.03))
+    expect_true(all(is.finite(fit$cv.table$cv.mean)))
+    expect_equal(fit$lambda$lambda1, fit$selection$lambda1)
+    expect_equal(fit$lambda$lambda2, fit$selection$lambda2)
+    expect_equal(fit$fold.id, fold.id)
+})
+
+test_that("fit.ssrhe.hessian.regression.cv rejects matrix responses for now", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- cbind(a = X[, 1], b = X[, 2])
+
+    expect_error(
+        fit.ssrhe.hessian.regression.cv(
+            X = X,
+            y = y,
+            k = 10L,
+            tangent.dim = 2L,
+            lambda1.grid = c(0.1, 1)
+        ),
+        "one response vector"
+    )
+})
+
 test_that("fit.ssrhe.hessian.regression requires BS when lambda2 is positive", {
     skip_if_not_installed("Matrix")
 
