@@ -70,6 +70,7 @@
 #include "linf_simplex_knn_r.h"
 #include "local_geodesic_pruning_r.h"
 #include "metric_graph_lowpass_r.h"
+#include "ssrhe_hessian_energy_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -333,6 +334,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
   {"S_metric_graph_lowpass_operator", (DL_FUNC) &S_metric_graph_lowpass_operator, 10},
   {"S_metric_graph_lowpass_spectrum", (DL_FUNC) &S_metric_graph_lowpass_spectrum, 16},
+  {"S_ssrhe_hessian_operator", (DL_FUNC) &S_ssrhe_hessian_operator, 9},
 
   // old
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
