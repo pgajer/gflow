@@ -259,3 +259,378 @@ print.ssrhe.hessian.operator <- function(x, ...) {
     cat("  stabilizer:", isTRUE(x$parameters$stabilizer), "\n")
     invisible(x)
 }
+
+#' Fit SSRHE-Style Hessian-Energy Regression
+#'
+#' Fits the \eqn{\ell_2} Hessian-energy regularized estimator associated with
+#' \code{\link{ssrhe.hessian.operator}}. This is a direct SSRHE-style
+#' comparator for Hessian smoothing on point clouds; it is not a replacement
+#' for \code{\link{fit.rdgraph.regression}} and is distinct from
+#' \eqn{\ell_1}-adaptive graph trend filtering.
+#'
+#' @inheritParams ssrhe.hessian.operator
+#' @param y Numeric response vector of length \code{nrow(X)} or numeric matrix
+#'   with \code{nrow(X)} rows. Matrix columns are fit as separate responses.
+#'   \code{NA} values are allowed and are treated as unobserved by setting the
+#'   corresponding observation weight to zero.
+#' @param lambda1 Nonnegative Hessian-energy penalty multiplier for
+#'   \eqn{f^\top B f = \|Af\|_2^2}.
+#' @param lambda2 Nonnegative supplemental-stabilizer multiplier for
+#'   \eqn{f^\top B_S f}. If positive, \code{stabilizer} must be \code{TRUE}.
+#' @param weights Optional nonnegative observation weights. May be \code{NULL},
+#'   a vector of length \code{nrow(X)}, or a matrix with the same dimensions as
+#'   \code{y}.
+#' @param ridge Nonnegative diagonal ridge added to the linear system for
+#'   numerical stabilization.
+#'
+#' @details
+#' For each response column, this function solves
+#' \deqn{
+#'   (W + \lambda_1 B + \lambda_2 B_S + \epsilon I)\hat f = Wy,
+#' }
+#' where \eqn{W} is the diagonal matrix of observation weights and
+#' \eqn{\epsilon} is \code{ridge}. Fully observed data with
+#' \code{lambda1 = lambda2 = ridge = 0} therefore reproduce the observed
+#' response exactly. Missing responses are excluded from the data-fit term by
+#' setting their weights to zero. The Matlab SSRHE semi-supervised convention is
+#' represented by a \code{0}/\code{1} labeled-indicator \code{weights} vector, or
+#' equivalently by setting unlabeled responses to \code{NA}: labeled vertices
+#' contribute unit diagonal data-fit terms and unlabeled vertices contribute no
+#' data-fit term.
+#'
+#' The lower-level operator is matched to the Kim--Steinke--Hein SSRHE Matlab
+#' construction: self-including kNN neighborhoods, local PCA charts, a
+#' fixed-intercept local quadratic fit, doubled diagonal Hessian components,
+#' and optional supplemental stabilizer. The package exposes both \eqn{A} and
+#' \eqn{B=A^\top A}; the fitted \eqn{\ell_2} estimator uses \eqn{B}.
+#'
+#' @return A list of class \code{"ssrhe.hessian.fit"} containing fitted values,
+#'   residuals, input response, weights, lambda parameters, objective/energy
+#'   diagnostics, the reused \code{operator}, solver metadata, and the call.
+#'
+#' @references
+#' Kim, K. I., Steinke, F., and Hein, M. (2009). Semi-supervised regression
+#' using Hessian energy with an application to semi-supervised dimensionality
+#' reduction. \emph{Neural Computation}.
+#'
+#' @export
+fit.ssrhe.hessian.regression <- function(
+    X,
+    y,
+    k,
+    tangent.dim,
+    lambda1,
+    lambda2 = 0,
+    weights = NULL,
+    nn.index = NULL,
+    tangent.dim.rule = c("fixed", "eigen.cumulative"),
+    eigen.tolerance = 0.95,
+    stabilizer = lambda2 > 0,
+    pinv.tol = sqrt(.Machine$double.eps),
+    ridge = 0,
+    return.A = TRUE,
+    verbose = FALSE) {
+
+    X <- .validate.ssrhe.X(X)
+    lambda1 <- .validate.ssrhe.nonnegative.scalar(lambda1, "lambda1")
+    lambda2 <- .validate.ssrhe.nonnegative.scalar(lambda2, "lambda2")
+    ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
+    stabilizer <- isTRUE(stabilizer)
+    if (lambda2 > 0 && !stabilizer) {
+        stop("lambda2 > 0 requires stabilizer = TRUE.", call. = FALSE)
+    }
+
+    operator <- ssrhe.hessian.operator(
+        X = X,
+        k = k,
+        tangent.dim = tangent.dim,
+        nn.index = nn.index,
+        tangent.dim.rule = tangent.dim.rule,
+        eigen.tolerance = eigen.tolerance,
+        stabilizer = stabilizer,
+        pinv.tol = pinv.tol,
+        return.A = return.A,
+        return.B = TRUE,
+        return.BS = stabilizer,
+        return.sparse = TRUE,
+        verbose = verbose
+    )
+
+    out <- .fit.ssrhe.hessian.from.operator(
+        operator = operator,
+        y = y,
+        lambda1 = lambda1,
+        lambda2 = lambda2,
+        weights = weights,
+        ridge = ridge,
+        verbose = verbose
+    )
+    out$X <- X
+    attr(out, "call") <- match.call()
+    class(out) <- c("ssrhe.hessian.fit", "list")
+    out
+}
+
+#' Refit SSRHE-Style Hessian-Energy Regression
+#'
+#' Reuses the operator from \code{\link{fit.ssrhe.hessian.regression}} to fit
+#' new responses or new fixed penalty weights without rebuilding local PCA
+#' neighborhoods or Hessian-energy matrices.
+#'
+#' @param fitted.model A \code{"ssrhe.hessian.fit"} object.
+#' @param y.new New numeric response vector or matrix with one row per vertex.
+#'   If \code{NULL}, the original response is reused.
+#' @inheritParams fit.ssrhe.hessian.regression
+#'
+#' @return A list of class \code{"ssrhe.hessian.refit"}.
+#' @export
+refit.ssrhe.hessian.regression <- function(fitted.model,
+                                           y.new = NULL,
+                                           lambda1 = fitted.model$lambda$lambda1,
+                                           lambda2 = fitted.model$lambda$lambda2,
+                                           weights = NULL,
+                                           ridge = fitted.model$lambda$ridge,
+                                           verbose = FALSE) {
+    if (!inherits(fitted.model, "ssrhe.hessian.fit")) {
+        stop("fitted.model must be a 'ssrhe.hessian.fit' object.", call. = FALSE)
+    }
+    if (is.null(fitted.model$operator) ||
+        !inherits(fitted.model$operator, "ssrhe.hessian.operator")) {
+        stop("fitted.model does not contain a reusable SSRHE operator.",
+             call. = FALSE)
+    }
+    if (is.null(y.new)) {
+        y.new <- fitted.model$y
+    }
+    if (is.null(weights)) {
+        weights <- fitted.model$weights
+    }
+    out <- .fit.ssrhe.hessian.from.operator(
+        operator = fitted.model$operator,
+        y = y.new,
+        lambda1 = lambda1,
+        lambda2 = lambda2,
+        weights = weights,
+        ridge = ridge,
+        verbose = verbose
+    )
+    attr(out, "call") <- match.call()
+    class(out) <- c("ssrhe.hessian.refit", "list")
+    out
+}
+
+.fit.ssrhe.hessian.from.operator <- function(operator,
+                                             y,
+                                             lambda1,
+                                             lambda2,
+                                             weights,
+                                             ridge,
+                                             verbose = FALSE) {
+    if (!requireNamespace("Matrix", quietly = TRUE)) {
+        stop("Package 'Matrix' is required for SSRHE regression solves.",
+             call. = FALSE)
+    }
+    if (is.null(operator$B)) {
+        stop("operator must contain B. Rebuild with return.B = TRUE.",
+             call. = FALSE)
+    }
+    n <- ncol(operator$B)
+    y.info <- .prepare.ssrhe.response.matrix(y, n, "y")
+    Y.raw <- y.info$Y
+    W <- .prepare.ssrhe.weight.matrix(weights, y.info, n)
+    Y.clean <- Y.raw
+    Y.clean[!is.finite(Y.clean)] <- 0
+    lambda1 <- .validate.ssrhe.nonnegative.scalar(lambda1, "lambda1")
+    lambda2 <- .validate.ssrhe.nonnegative.scalar(lambda2, "lambda2")
+    ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
+    if (lambda2 > 0 && is.null(operator$BS)) {
+        stop("lambda2 > 0 requires an operator with BS. Rebuild with stabilizer = TRUE.",
+             call. = FALSE)
+    }
+
+    n.responses <- ncol(Y.clean)
+    Y.hat <- matrix(NA_real_, nrow = n, ncol = n.responses)
+    residuals <- matrix(NA_real_, nrow = n, ncol = n.responses)
+    data.loss <- hessian.energy <- stabilizer.energy <- objective <- numeric(n.responses)
+    solve.method <- character(n.responses)
+
+    common.weights <- n.responses == 1L || all(vapply(seq_len(n.responses), function(j) {
+        identical(W[, j], W[, 1L])
+    }, logical(1)))
+
+    if (common.weights) {
+        solved <- .solve.ssrhe.hessian.system(
+            B = operator$B,
+            BS = operator$BS,
+            weights = W[, 1L],
+            Y = Y.clean,
+            lambda1 = lambda1,
+            lambda2 = lambda2,
+            ridge = ridge,
+            verbose = verbose
+        )
+        Y.hat[,] <- solved$fitted
+        solve.method[] <- solved$method
+    } else {
+        for (j in seq_len(n.responses)) {
+            solved <- .solve.ssrhe.hessian.system(
+                B = operator$B,
+                BS = operator$BS,
+                weights = W[, j],
+                Y = Y.clean[, j, drop = FALSE],
+                lambda1 = lambda1,
+                lambda2 = lambda2,
+                ridge = ridge,
+                verbose = verbose
+            )
+            Y.hat[, j] <- solved$fitted[, 1L]
+            solve.method[j] <- solved$method
+        }
+    }
+
+    for (j in seq_len(n.responses)) {
+        observed <- y.info$observed[, j] & W[, j] > 0
+        residuals[observed, j] <- Y.raw[observed, j] - Y.hat[observed, j]
+        residuals[!observed, j] <- NA_real_
+        data.loss[j] <- 0.5 * sum(W[, j] * (Y.clean[, j] - Y.hat[, j])^2)
+        hessian.energy[j] <- as.numeric(Matrix::crossprod(Y.hat[, j], operator$B %*% Y.hat[, j]))
+        if (!is.null(operator$BS)) {
+            stabilizer.energy[j] <- as.numeric(Matrix::crossprod(Y.hat[, j], operator$BS %*% Y.hat[, j]))
+        } else {
+            stabilizer.energy[j] <- 0
+        }
+        objective[j] <- data.loss[j] +
+            0.5 * lambda1 * hessian.energy[j] +
+            0.5 * lambda2 * stabilizer.energy[j]
+    }
+
+    if (!is.null(y.info$col.names)) {
+        colnames(Y.hat) <- y.info$col.names
+        colnames(residuals) <- y.info$col.names
+        names(data.loss) <- y.info$col.names
+        names(hessian.energy) <- y.info$col.names
+        names(stabilizer.energy) <- y.info$col.names
+        names(objective) <- y.info$col.names
+    }
+
+    single <- n.responses == 1L
+    list(
+        fitted.values = if (single) as.vector(Y.hat) else Y.hat,
+        residuals = if (single) as.vector(residuals) else residuals,
+        y = if (single) as.vector(Y.raw) else Y.raw,
+        weights = if (single) as.vector(W) else W,
+        lambda = list(lambda1 = lambda1, lambda2 = lambda2, ridge = ridge),
+        objective = if (single) objective[1L] else objective,
+        energies = list(
+            data.loss = if (single) data.loss[1L] else data.loss,
+            hessian = if (single) hessian.energy[1L] else hessian.energy,
+            stabilizer = if (single) stabilizer.energy[1L] else stabilizer.energy
+        ),
+        operator = operator,
+        n.responses = n.responses,
+        solver = list(method = if (length(unique(solve.method)) == 1L) solve.method[1L] else solve.method),
+        observed = if (single) as.vector(y.info$observed & W > 0) else y.info$observed & W > 0
+    )
+}
+
+.solve.ssrhe.hessian.system <- function(B, BS, weights, Y,
+                                        lambda1, lambda2, ridge,
+                                        verbose = FALSE) {
+    n <- nrow(B)
+    if (length(weights) != n) stop("Internal error: weights length mismatch.", call. = FALSE)
+    system <- lambda1 * B
+    if (lambda2 > 0) {
+        system <- system + lambda2 * BS
+    }
+    if (ridge > 0) {
+        system <- system + Matrix::Diagonal(n, ridge)
+    }
+    if (any(weights > 0)) {
+        system <- system + Matrix::Diagonal(n, weights)
+    }
+    rhs <- weights * Y
+
+    fit <- tryCatch({
+        as.matrix(Matrix::solve(system, rhs))
+    }, error = function(e) {
+        if (isTRUE(verbose)) {
+            message("Sparse solve failed; retrying with dense solve().")
+        }
+        tryCatch(
+            solve(as.matrix(system), as.matrix(rhs)),
+            error = function(e2) {
+                stop("SSRHE linear solve failed: ", conditionMessage(e2),
+                     call. = FALSE)
+            }
+        )
+    })
+    list(fitted = fit, method = "linear.solve")
+}
+
+.prepare.ssrhe.response.matrix <- function(y, n, name) {
+    is.matrix.input <- is.matrix(y) || inherits(y, "Matrix") ||
+        (is.data.frame(y) && ncol(y) > 1L)
+    if (is.matrix.input) {
+        Y <- if (inherits(y, "Matrix")) as.matrix(y) else as.matrix(y)
+        if (nrow(Y) != n) stop(sprintf("nrow(%s) must be %d.", name, n), call. = FALSE)
+        col.names <- colnames(Y)
+    } else {
+        if (length(y) != n) stop(sprintf("%s must have length %d.", name, n), call. = FALSE)
+        Y <- matrix(y, ncol = 1L)
+        col.names <- NULL
+    }
+    storage.mode(Y) <- "double"
+    if (any(is.infinite(Y))) {
+        stop(sprintf("%s cannot contain infinite values.", name), call. = FALSE)
+    }
+    observed <- is.finite(Y)
+    list(Y = Y, observed = observed, col.names = col.names)
+}
+
+.prepare.ssrhe.weight.matrix <- function(weights, y.info, n) {
+    p <- ncol(y.info$Y)
+    if (is.null(weights)) {
+        W <- matrix(1, nrow = n, ncol = p)
+    } else if (is.matrix(weights) || inherits(weights, "Matrix") || is.data.frame(weights)) {
+        W <- if (inherits(weights, "Matrix")) as.matrix(weights) else as.matrix(weights)
+        if (!identical(dim(W), dim(y.info$Y))) {
+            stop("weights matrix must have the same dimensions as y.", call. = FALSE)
+        }
+    } else {
+        if (length(weights) != n) stop("weights vector must have length nrow(X).", call. = FALSE)
+        W <- matrix(as.double(weights), nrow = n, ncol = p)
+    }
+    storage.mode(W) <- "double"
+    if (any(!is.finite(W)) || any(W < 0)) {
+        stop("weights must be finite and nonnegative.", call. = FALSE)
+    }
+    W[!y.info$observed] <- 0
+    W
+}
+
+.validate.ssrhe.nonnegative.scalar <- function(x, name) {
+    if (length(x) != 1L || is.na(x) || !is.finite(x) || x < 0) {
+        stop(sprintf("%s must be a finite nonnegative numeric scalar.", name),
+             call. = FALSE)
+    }
+    as.double(x)
+}
+
+#' @export
+print.ssrhe.hessian.fit <- function(x, ...) {
+    cat("SSRHE Hessian regression fit\n")
+    cat("  responses:", x$n.responses, "\n")
+    cat("  lambda1:", format(x$lambda$lambda1, digits = 4), "\n")
+    cat("  lambda2:", format(x$lambda$lambda2, digits = 4), "\n")
+    cat("  objective:", paste(format(x$objective, digits = 4), collapse = ", "), "\n")
+    invisible(x)
+}
+
+#' @export
+print.ssrhe.hessian.refit <- function(x, ...) {
+    cat("SSRHE Hessian regression refit\n")
+    cat("  responses:", x$n.responses, "\n")
+    cat("  lambda1:", format(x$lambda$lambda1, digits = 4), "\n")
+    cat("  lambda2:", format(x$lambda$lambda2, digits = 4), "\n")
+    invisible(x)
+}
