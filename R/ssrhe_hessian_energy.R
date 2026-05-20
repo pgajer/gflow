@@ -419,6 +419,199 @@ refit.ssrhe.hessian.regression <- function(fitted.model,
     out
 }
 
+#' Select SSRHE Hessian Regression Penalties by Label Cross-Validation
+#'
+#' Fits \code{\link{fit.ssrhe.hessian.regression}} over a grid of fixed
+#' \code{lambda1}/\code{lambda2} values using cross-validation on observed
+#' labels. This is intended for semi-supervised SSRHE use: validation folds are
+#' formed only from entries that are observed and have positive data-fit weight.
+#'
+#' @inheritParams fit.ssrhe.hessian.regression
+#' @param lambda1.grid Nonnegative numeric vector of Hessian-energy penalty
+#'   candidates.
+#' @param lambda2.grid Nonnegative numeric vector of supplemental-stabilizer
+#'   penalty candidates. Use \code{0} to omit the supplemental stabilizer from
+#'   selection.
+#' @param nfolds Number of validation folds over observed positive-weight
+#'   labels. Ignored when \code{fold.id} is supplied.
+#' @param fold.id Optional integer vector of length \code{nrow(X)} assigning
+#'   observed positive-weight labels to validation folds. Nonpositive or
+#'   \code{NA} entries are ignored.
+#' @param loss Validation loss, currently \code{"mse"} or \code{"mae"}.
+#' @param selection Selection rule. \code{"min"} chooses the smallest mean
+#'   validation loss. \code{"one.se"} chooses the largest total penalty among
+#'   candidates within one standard error of the minimum.
+#'
+#' @details
+#' For each validation fold, the held-out labels are removed from the data-fit
+#' term by setting their weights to zero. The fitted values are then scored only
+#' on those held-out labels. The final returned fit is refit with the selected
+#' penalties using all observed positive-weight labels.
+#'
+#' The current implementation supports a single response vector. Matrix-response
+#' penalty selection should be performed column-by-column.
+#'
+#' @return A list of class \code{"ssrhe.hessian.cv.fit"} and
+#'   \code{"ssrhe.hessian.fit"} containing the final fit plus
+#'   \code{cv.table}, \code{fold.id}, and \code{selection} diagnostics.
+#' @export
+fit.ssrhe.hessian.regression.cv <- function(
+    X,
+    y,
+    k,
+    tangent.dim,
+    lambda1.grid,
+    lambda2.grid = 0,
+    weights = NULL,
+    nfolds = 5L,
+    fold.id = NULL,
+    loss = c("mse", "mae"),
+    selection = c("min", "one.se"),
+    nn.index = NULL,
+    tangent.dim.rule = c("fixed", "eigen.cumulative"),
+    eigen.tolerance = 0.95,
+    stabilizer = any(lambda2.grid > 0),
+    pinv.tol = sqrt(.Machine$double.eps),
+    ridge = 0,
+    return.A = TRUE,
+    verbose = FALSE) {
+
+    if (!requireNamespace("Matrix", quietly = TRUE)) {
+        stop("Package 'Matrix' is required for SSRHE CV regression.",
+             call. = FALSE)
+    }
+    X <- .validate.ssrhe.X(X)
+    n <- nrow(X)
+    y.info <- .prepare.ssrhe.response.matrix(y, n, "y")
+    if (ncol(y.info$Y) != 1L) {
+        stop("fit.ssrhe.hessian.regression.cv currently supports one response vector.",
+             call. = FALSE)
+    }
+    W <- .prepare.ssrhe.weight.matrix(weights, y.info, n)
+    lambda1.grid <- .validate.ssrhe.lambda.grid(lambda1.grid, "lambda1.grid")
+    lambda2.grid <- .validate.ssrhe.lambda.grid(lambda2.grid, "lambda2.grid")
+    ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
+    loss <- match.arg(loss)
+    selection <- match.arg(selection)
+    stabilizer <- isTRUE(stabilizer)
+    if (any(lambda2.grid > 0) && !stabilizer) {
+        stop("positive lambda2.grid values require stabilizer = TRUE.",
+             call. = FALSE)
+    }
+
+    operator <- ssrhe.hessian.operator(
+        X = X,
+        k = k,
+        tangent.dim = tangent.dim,
+        nn.index = nn.index,
+        tangent.dim.rule = tangent.dim.rule,
+        eigen.tolerance = eigen.tolerance,
+        stabilizer = stabilizer,
+        pinv.tol = pinv.tol,
+        return.A = return.A,
+        return.B = TRUE,
+        return.BS = stabilizer,
+        return.sparse = TRUE,
+        verbose = verbose
+    )
+
+    fold.id <- .prepare.ssrhe.cv.folds(
+        observed = as.vector(y.info$observed & W > 0),
+        nfolds = nfolds,
+        fold.id = fold.id
+    )
+    folds <- sort(unique(fold.id[fold.id > 0]))
+    grid <- expand.grid(lambda1 = lambda1.grid,
+                        lambda2 = lambda2.grid,
+                        KEEP.OUT.ATTRS = FALSE)
+    fold.loss <- matrix(NA_real_, nrow = nrow(grid), ncol = length(folds))
+    colnames(fold.loss) <- paste0("fold", folds)
+
+    Y <- as.vector(y.info$Y)
+    for (g in seq_len(nrow(grid))) {
+        for (ff in seq_along(folds)) {
+            validation <- fold.id == folds[ff]
+            train.weights <- as.vector(W)
+            train.weights[validation] <- 0
+            fold.fit <- tryCatch(
+                .fit.ssrhe.hessian.from.operator(
+                    operator = operator,
+                    y = Y,
+                    lambda1 = grid$lambda1[g],
+                    lambda2 = grid$lambda2[g],
+                    weights = train.weights,
+                    ridge = ridge,
+                    verbose = verbose
+                ),
+                error = function(e) NULL
+            )
+            if (!is.null(fold.fit)) {
+                err <- fold.fit$fitted.values[validation] - Y[validation]
+                wv <- as.vector(W)[validation]
+                if (identical(loss, "mse")) {
+                    fold.loss[g, ff] <- sum(wv * err^2) / sum(wv)
+                } else {
+                    fold.loss[g, ff] <- sum(wv * abs(err)) / sum(wv)
+                }
+            }
+        }
+    }
+
+    cv.mean <- rowMeans(fold.loss, na.rm = TRUE)
+    cv.se <- apply(fold.loss, 1L, stats::sd, na.rm = TRUE) /
+        sqrt(rowSums(is.finite(fold.loss)))
+    cv.mean[!is.finite(cv.mean)] <- Inf
+    cv.se[!is.finite(cv.se)] <- Inf
+    cv.table <- data.frame(
+        lambda1 = grid$lambda1,
+        lambda2 = grid$lambda2,
+        cv.mean = cv.mean,
+        cv.se = cv.se,
+        n.successful.folds = rowSums(is.finite(fold.loss)),
+        total.penalty = grid$lambda1 + grid$lambda2,
+        stringsAsFactors = FALSE
+    )
+    cv.table <- cbind(cv.table, as.data.frame(fold.loss, check.names = FALSE))
+    if (!any(is.finite(cv.table$cv.mean))) {
+        stop("All SSRHE cross-validation fits failed.", call. = FALSE)
+    }
+    min.idx <- which.min(cv.table$cv.mean)
+    if (identical(selection, "one.se")) {
+        threshold <- cv.table$cv.mean[min.idx] + cv.table$cv.se[min.idx]
+        eligible <- which(cv.table$cv.mean <= threshold)
+        selected.idx <- eligible[which.max(cv.table$total.penalty[eligible])]
+    } else {
+        selected.idx <- min.idx
+    }
+
+    final <- .fit.ssrhe.hessian.from.operator(
+        operator = operator,
+        y = Y,
+        lambda1 = cv.table$lambda1[selected.idx],
+        lambda2 = cv.table$lambda2[selected.idx],
+        weights = as.vector(W),
+        ridge = ridge,
+        verbose = verbose
+    )
+    final$X <- X
+    final$cv.table <- cv.table
+    final$fold.id <- fold.id
+    final$selection <- list(
+        rule = selection,
+        loss = loss,
+        selected.index = selected.idx,
+        min.index = min.idx,
+        lambda1 = cv.table$lambda1[selected.idx],
+        lambda2 = cv.table$lambda2[selected.idx],
+        cv.mean = cv.table$cv.mean[selected.idx],
+        cv.se = cv.table$cv.se[selected.idx],
+        nfolds = length(folds)
+    )
+    attr(final, "call") <- match.call()
+    class(final) <- c("ssrhe.hessian.cv.fit", "ssrhe.hessian.fit", "list")
+    final
+}
+
 .fit.ssrhe.hessian.from.operator <- function(operator,
                                              y,
                                              lambda1,
@@ -616,6 +809,49 @@ refit.ssrhe.hessian.regression <- function(fitted.model,
     as.double(x)
 }
 
+.validate.ssrhe.lambda.grid <- function(x, name) {
+    if (!is.numeric(x) || !length(x) ||
+        any(is.na(x)) || any(!is.finite(x)) || any(x < 0)) {
+        stop(sprintf("%s must be a nonempty finite nonnegative numeric vector.",
+                     name), call. = FALSE)
+    }
+    sort(unique(as.double(x)))
+}
+
+.prepare.ssrhe.cv.folds <- function(observed, nfolds, fold.id) {
+    n <- length(observed)
+    if (is.null(fold.id)) {
+        nfolds <- .validate.ssrhe.positive.integer(nfolds, "nfolds")
+        observed.idx <- which(observed)
+        if (length(observed.idx) < 2L) {
+            stop("At least two observed positive-weight labels are required for CV.",
+                 call. = FALSE)
+        }
+        nfolds <- min(nfolds, length(observed.idx))
+        out <- integer(n)
+        out[observed.idx] <- rep(seq_len(nfolds), length.out = length(observed.idx))
+    } else {
+        if (length(fold.id) != n) {
+            stop("fold.id must have length nrow(X).", call. = FALSE)
+        }
+        out <- as.integer(fold.id)
+        out[is.na(out) | out < 1L | !observed] <- 0L
+    }
+    folds <- sort(unique(out[out > 0L]))
+    if (length(folds) < 2L) {
+        stop("At least two nonempty validation folds are required.", call. = FALSE)
+    }
+    for (ff in folds) {
+        n.validation <- sum(out == ff)
+        n.training <- sum(observed & out != ff)
+        if (n.validation < 1L || n.training < 1L) {
+            stop("Each validation fold must leave at least one training label.",
+                 call. = FALSE)
+        }
+    }
+    out
+}
+
 #' @export
 print.ssrhe.hessian.fit <- function(x, ...) {
     cat("SSRHE Hessian regression fit\n")
@@ -632,5 +868,16 @@ print.ssrhe.hessian.refit <- function(x, ...) {
     cat("  responses:", x$n.responses, "\n")
     cat("  lambda1:", format(x$lambda$lambda1, digits = 4), "\n")
     cat("  lambda2:", format(x$lambda$lambda2, digits = 4), "\n")
+    invisible(x)
+}
+
+#' @export
+print.ssrhe.hessian.cv.fit <- function(x, ...) {
+    cat("SSRHE Hessian regression CV fit\n")
+    cat("  responses:", x$n.responses, "\n")
+    cat("  selected lambda1:", format(x$selection$lambda1, digits = 4), "\n")
+    cat("  selected lambda2:", format(x$selection$lambda2, digits = 4), "\n")
+    cat("  CV", x$selection$loss, ":",
+        format(x$selection$cv.mean, digits = 4), "\n")
     invisible(x)
 }
