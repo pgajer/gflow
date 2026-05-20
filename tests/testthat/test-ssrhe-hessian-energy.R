@@ -96,3 +96,176 @@ test_that("ssrhe.hessian.operator can choose local dimension by cumulative PCA v
     expect_true(all(op$diagnostics$tangent.dim <= 2L))
     expect_equal(ncol(op$B), nrow(X))
 })
+
+test_that("fit.ssrhe.hessian.regression matches dense fixed-lambda reference", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    lambda1 <- 0.3
+    lambda2 <- 0.05
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda1 = lambda1,
+        lambda2 = lambda2,
+        stabilizer = TRUE
+    )
+
+    W <- diag(1, nrow(X))
+    M <- W + lambda1 * as.matrix(fit$operator$B) +
+        lambda2 * as.matrix(fit$operator$BS)
+    ref <- as.vector(solve(M, y))
+
+    expect_s3_class(fit, "ssrhe.hessian.fit")
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-9)
+    expect_equal(fit$residuals, y - ref, tolerance = 1e-9)
+    expect_equal(fit$energies$hessian,
+                 as.numeric(crossprod(ref, as.matrix(fit$operator$B) %*% ref)),
+                 tolerance = 1e-9)
+})
+
+test_that("fit.ssrhe.hessian.regression reproduces fully observed y when penalties are zero", {
+    skip_if_not_installed("Matrix")
+
+    X <- cbind(seq(0, 1, length.out = 8), 0)
+    y <- cos(seq_along(X[, 1]))
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 4L,
+        tangent.dim = 1L,
+        lambda1 = 0,
+        lambda2 = 0
+    )
+
+    expect_equal(fit$fitted.values, y, tolerance = 1e-12)
+    expect_equal(fit$residuals, rep(0, length(y)), tolerance = 1e-12)
+    expect_equal(fit$objective, 0, tolerance = 1e-12)
+})
+
+test_that("refit.ssrhe.hessian.regression reuses the operator for new responses and lambdas", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y1 <- X[, 1] + X[, 2]
+    y2 <- cbind(a = sin(X[, 1]), b = cos(X[, 2]))
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y1,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda1 = 0.2,
+        lambda2 = 0
+    )
+    refit <- refit.ssrhe.hessian.regression(
+        fit,
+        y.new = y2,
+        lambda1 = 0.4
+    )
+
+    M <- diag(1, nrow(X)) + 0.4 * as.matrix(fit$operator$B)
+    dense <- solve(M, y2)
+
+    expect_s3_class(refit, "ssrhe.hessian.refit")
+    expect_equal(refit$fitted.values, dense, tolerance = 1e-9)
+    expect_equal(colnames(refit$fitted.values), colnames(y2))
+    expect_identical(refit$operator, fit$operator)
+})
+
+test_that("fit.ssrhe.hessian.regression handles missing responses and observation weights", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- X[, 1]^2 - X[, 2]
+    y[c(2, 7)] <- NA_real_
+    weights <- rep(1, nrow(X))
+    weights[c(5, 9)] <- 0.25
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda1 = 0.15,
+        weights = weights,
+        ridge = 1e-8
+    )
+
+    y.clean <- y
+    y.clean[is.na(y.clean)] <- 0
+    w.clean <- weights
+    w.clean[is.na(y)] <- 0
+    M <- diag(w.clean + 1e-8) + 0.15 * as.matrix(fit$operator$B)
+    ref <- as.vector(solve(M, w.clean * y.clean))
+
+    expect_equal(fit$weights, w.clean)
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-8)
+    expect_true(all(is.na(fit$residuals[c(2, 7)])))
+    expect_false(any(is.na(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.regression matches SSRHE semi-supervised label convention", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 4)))
+    y.full <- sin(2 * pi * X[, 1]) + 0.4 * X[, 2]^2
+    labeled <- rep(FALSE, nrow(X))
+    labeled[c(1, 3, 6, 9, 12, 15, 18, 20)] <- TRUE
+    y.semisupervised <- y.full
+    y.semisupervised[!labeled] <- NA_real_
+    lambda1 <- 0.2
+    lambda2 <- 0.03
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y.semisupervised,
+        k = 12L,
+        tangent.dim = 2L,
+        lambda1 = lambda1,
+        lambda2 = lambda2,
+        stabilizer = TRUE
+    )
+
+    lflag <- as.numeric(labeled)
+    M <- diag(lflag) + lambda1 * as.matrix(fit$operator$B) +
+        lambda2 * as.matrix(fit$operator$BS)
+    ref <- as.vector(solve(M, lflag * y.full))
+
+    expect_equal(fit$weights, lflag)
+    expect_equal(fit$observed, labeled)
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-9)
+    expect_equal(fit$residuals[labeled], y.full[labeled] - ref[labeled],
+                 tolerance = 1e-9)
+    expect_true(all(is.na(fit$residuals[!labeled])))
+})
+
+test_that("fit.ssrhe.hessian.regression requires BS when lambda2 is positive", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- X[, 1]
+
+    expect_error(
+        fit.ssrhe.hessian.regression(
+            X = X,
+            y = y,
+            k = 10L,
+            tangent.dim = 2L,
+            lambda1 = 0.1,
+            lambda2 = 0.1,
+            stabilizer = FALSE
+        ),
+        "lambda2 > 0 requires stabilizer = TRUE"
+    )
+})
