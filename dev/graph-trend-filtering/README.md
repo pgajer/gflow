@@ -69,4 +69,4 @@ and `literature_notes.md` for implementation-facing notes.
 
 LaTeX reports in this project should use generated build metadata rather than
 hard-coded timestamp commands. The shared Codex convention is documented in
-`/Users/pgajer/.codex/notes/latex_report_style_guide.md`.
+`/Users/pgajer/.codex/notes/agent_instructions/reports/latex_report_style_guide.md`.
