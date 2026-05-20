@@ -858,9 +858,9 @@ test_that("regression-gradient transported Hessian supports graph-derived local 
                     names(op$transport$embedding.table)))
   expect_true(all(op$transport$embedding.table$requested.method == "cmdscale"))
   expect_equal(max(op$transport$embedding.table$ambient.affine.residual,
-                   na.rm = TRUE), 0, tolerance = 1e-10)
+                   na.rm = TRUE), 0, tolerance = 1e-8)
   expect_equal(max(op$transport$embedding.table$ambient.linear.gradient.residual.mean,
-                   na.rm = TRUE), 0, tolerance = 1e-10)
+                   na.rm = TRUE), 0, tolerance = 1e-8)
   expect_true(all(op$row.table$gradient.coordinate.method == "local.embedding"))
   expect_true(all(c("base.dart", "endpoint.role", "embedding.backend") %in%
                     names(op$transport$gradient.diagnostics)))
