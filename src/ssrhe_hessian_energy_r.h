@@ -12,6 +12,7 @@ SEXP S_ssrhe_hessian_operator(
     SEXP s_k,
     SEXP s_tangent_dim,
     SEXP s_nn_index,
+    SEXP s_support_index,
     SEXP s_tangent_dim_rule,
     SEXP s_eigen_tolerance,
     SEXP s_stabilizer,
