@@ -289,9 +289,21 @@ fit.graph.trend.filtering <- function(adj.list,
              call. = FALSE)
     }
 
-    coef.full <- stats::coef(path, lambda = lambda.grid)
-    beta.grid <- as.matrix(coef.full$beta)
+    coef.full <- tryCatch(
+        stats::coef(path, lambda = lambda.grid),
+        error = function(e) NULL
+    )
+    beta.grid <- if (is.null(coef.full)) NULL else as.matrix(coef.full$beta)
+    if (is.null(beta.grid) || ncol(beta.grid) != length(lambda.grid)) {
+        beta.grid <- vapply(lambda.grid, function(lambda) {
+            tryCatch(
+                as.vector(stats::coef(path, lambda = lambda)$beta),
+                error = function(e) rep(NA_real_, length(y))
+            )
+        }, numeric(length(y)))
+    }
     colnames(beta.grid) <- format(signif(lambda.grid, 6), scientific = TRUE)
+    finite.beta <- colSums(is.finite(beta.grid)) == nrow(beta.grid)
 
     cv <- NULL
     if (lambda.selection == "cv") {
@@ -304,12 +316,31 @@ fit.graph.trend.filtering <- function(adj.list,
             solver.args = solver.args,
             use.svd = penalty.solver$svd
         )
+        cv$mean.error[!finite.beta] <- Inf
         best.idx <- cv$best.idx
+        if (!is.finite(cv$mean.error[best.idx])) {
+            best.idx <- which.min(cv$mean.error)
+        }
+        if (!is.finite(cv$mean.error[best.idx])) {
+            stop("No graph trend-filtering lambda produced finite CV and fitted values.",
+                 call. = FALSE)
+        }
+        cv$best.idx <- best.idx
+        cv$lambda.min <- lambda.grid[best.idx]
+        cv$error.min <- cv$mean.error[best.idx]
     } else {
         best.idx <- 1L
+        if (!finite.beta[best.idx]) {
+            stop("The requested graph trend-filtering lambda produced non-finite fitted values.",
+                 call. = FALSE)
+        }
     }
 
     fitted.values <- as.vector(beta.grid[, best.idx])
+    if (any(!is.finite(fitted.values))) {
+        stop("Graph trend filtering produced non-finite fitted values.",
+             call. = FALSE)
+    }
     residuals <- y - fitted.values
     result <- list(
         fitted.values = fitted.values,
@@ -733,7 +764,8 @@ fit.graph.trend.filtering <- function(adj.list,
 
 .graph.trend.filtering.solver.penalty <- function(operator) {
     if (identical(operator$operator.family, "graph.laplacian.recursive") &&
-        identical(operator$order, 1L)) {
+        (identical(operator$order, 1L) ||
+         nrow(operator$penalty$matrix) > ncol(operator$penalty$matrix))) {
         return(list(
             D = as.matrix(operator$penalty$matrix),
             svd = TRUE,
@@ -755,8 +787,16 @@ fit.graph.trend.filtering <- function(adj.list,
         lambda.max <- 1
     }
     n.lambda <- max(2L, as.integer(n.lambda))
-    lambda.min <- lambda.max * 1e-4
-    unique(c(exp(seq(log(lambda.max), log(lambda.min), length.out = n.lambda - 1L)), 0))
+    lambda.positive <- lambda.path[lambda.path > 0]
+    complete.path <- isTRUE(path$completepath)
+    lambda.min <- if (complete.path || !length(lambda.positive)) {
+        lambda.max * 1e-4
+    } else {
+        max(min(lambda.positive) * (1 + 1e-8), lambda.max * 1e-4)
+    }
+    grid <- exp(seq(log(lambda.max), log(lambda.min), length.out = n.lambda - 1L))
+    if (complete.path) grid <- c(grid, 0)
+    unique(grid)
 }
 
 .graph.trend.filtering.cv <- function(y, D, lambda.grid, foldid, solver.args,
@@ -791,14 +831,37 @@ fit.graph.trend.filtering <- function(adj.list,
             verbose = solver.args$verbose,
             svd = use.svd
         ))
-        beta <- as.matrix(stats::coef(path, lambda = lambda.grid)$beta)
-        cv.errors[ii, ] <- colMeans((matrix(y[test], nrow = length(test), ncol = length(lambda.grid)) -
-                                     beta[test, , drop = FALSE])^2)
+        beta <- tryCatch(
+            as.matrix(stats::coef(path, lambda = lambda.grid)$beta),
+            error = function(e) NULL
+        )
+        if (is.null(beta) || ncol(beta) != length(lambda.grid)) {
+            beta <- vapply(lambda.grid, function(lambda) {
+                tryCatch(
+                    as.vector(stats::coef(path, lambda = lambda)$beta),
+                    error = function(e) rep(NA_real_, n)
+                )
+            }, numeric(n))
+        }
+        beta.test <- beta[test, , drop = FALSE]
+        finite.pred <- colSums(is.finite(beta.test)) == nrow(beta.test)
+        fold.error <- colMeans((matrix(y[test], nrow = length(test), ncol = length(lambda.grid)) -
+                                beta.test)^2)
+        fold.error[!finite.pred] <- NA_real_
+        cv.errors[ii, ] <- fold.error
     }
 
     mean.error <- colMeans(cv.errors)
-    se <- apply(cv.errors, 2, stats::sd) / sqrt(nrow(cv.errors))
+    mean.error[!is.finite(mean.error)] <- Inf
+    se <- apply(cv.errors, 2, function(x) {
+        if (any(!is.finite(x)) || length(x) < 2L) return(Inf)
+        stats::sd(x) / sqrt(length(x))
+    })
     best.idx <- which.min(mean.error)
+    if (!is.finite(mean.error[best.idx])) {
+        stop("All graph trend-filtering CV fits failed for the supplied lambda grid.",
+             call. = FALSE)
+    }
     list(
         foldid = foldid,
         lambda.grid = lambda.grid,

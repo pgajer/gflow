@@ -56,6 +56,48 @@ make_grid_graph_weights <- function(nx, ny) {
   )
 }
 
+load_ssrhe_all_labeled_validation_definitions <- function() {
+  runner <- "/Users/pgajer/current_projects/trend_filtering/development/ssrhe_hessian_energy/ssrhe_all_labeled_comparator_validation.R"
+  skip_if_not(file.exists(runner),
+              "SSRHE all-labeled validation runner is not available.")
+  if (!requireNamespace("pkgload", quietly = TRUE)) {
+    skip("Package 'pkgload' is required for SSRHE validation regression cases.")
+  }
+  env <- new.env(parent = globalenv())
+  exprs <- parse(runner, keep.source = FALSE)
+  for (expr in exprs) {
+    txt <- paste(deparse(expr), collapse = "\n")
+    if (grepl("^manifest <- build\\.dataset\\.manifest", txt)) break
+    eval(expr, envir = env)
+  }
+  env
+}
+
+fit_ssrhe_graph_trend_filtering_case <- function(dataset.id, order, variant) {
+  env <- load_ssrhe_all_labeled_validation_definitions()
+  manifest <- env$build.dataset.manifest()
+  row <- manifest[manifest$dataset.id == dataset.id, , drop = FALSE]
+  expect_equal(nrow(row), 1L)
+  ds <- env$materialize.dataset(row)
+  graph.info <- env$make.graph.payload(ds)
+  weights <- if (identical(variant, "unit")) {
+    graph.info$metric.weight.list
+  } else {
+    graph.info$conductance.weight.list
+  }
+  fit.graph.trend.filtering(
+    adj.list = graph.info$metric.adj.list,
+    weight.list = weights,
+    y = ds$y,
+    order = order,
+    lambda.selection = "cv",
+    weight.rule = variant,
+    n.lambda = 20L,
+    nfolds = 4L,
+    maxsteps = 500L
+  )
+}
+
 test_that("graph trend-filtering operator validates and orients weighted graphs", {
   graph <- make_path_graph_weights(c(4, 9))
   op <- graph.trend.filtering.operator(
@@ -297,6 +339,36 @@ test_that("fixed lambda fit agrees with direct genlasso reference", {
   beta.ref <- as.vector(stats::coef(ref, lambda = lambda)$beta)
   expect_equal(fit$fitted.values, beta.ref, tolerance = 1e-9)
   expect_equal(fit$lambda, lambda, tolerance = 1e-12)
+})
+
+test_that("SSRHE affected graph trend-filtering cases return finite fitted values", {
+  skip_if_not_installed("genlasso")
+  skip_if_not_installed("Matrix")
+
+  cases <- list(
+    list(
+      dataset.id = "flat_d2_rep1",
+      order = 0L,
+      variant = "sqrt.conductance"
+    ),
+    list(
+      dataset.id = "quadform_d2_idx1_curv035_rep1",
+      order = 2L,
+      variant = "conductance"
+    )
+  )
+
+  for (case in cases) {
+    fit <- fit_ssrhe_graph_trend_filtering_case(
+      dataset.id = case$dataset.id,
+      order = case$order,
+      variant = case$variant
+    )
+    expect_s3_class(fit, "graph.trend.filtering.fit")
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_true(is.finite(fit$lambda))
+    expect_equal(length(fit$fitted.values), fit$graph$n.vertices)
+  }
 })
 
 test_that("path divided-difference fit matches genlasso trendfilter on a path graph", {

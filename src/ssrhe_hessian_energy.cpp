@@ -104,6 +104,18 @@ Rcpp::IntegerMatrix compute_knn_including_self(const Eigen::MatrixXd& X, int k) 
     return nn;
 }
 
+Rcpp::List supports_to_list(const std::vector<std::vector<int> >& supports) {
+    Rcpp::List out(supports.size());
+    for (std::size_t i = 0; i < supports.size(); ++i) {
+        Rcpp::IntegerVector ids(supports[i].size());
+        for (std::size_t h = 0; h < supports[i].size(); ++h) {
+            ids[h] = supports[i][h] + 1;
+        }
+        out[i] = ids;
+    }
+    return out;
+}
+
 std::vector<std::pair<int, int> > hessian_components(int m) {
     std::vector<std::pair<int, int> > comps;
     comps.reserve(m * (m + 1) / 2);
@@ -189,6 +201,7 @@ extern "C" SEXP S_ssrhe_hessian_operator(
     SEXP s_k,
     SEXP s_tangent_dim,
     SEXP s_nn_index,
+    SEXP s_support_index,
     SEXP s_tangent_dim_rule,
     SEXP s_eigen_tolerance,
     SEXP s_stabilizer,
@@ -211,20 +224,63 @@ BEGIN_RCPP
     const double pinv_tol = Rcpp::as<double>(s_pinv_tol);
     const bool verbose = Rcpp::as<bool>(s_verbose);
 
-    if (k < 2 || k > n) {
-        Rcpp::stop("k must be between 2 and nrow(X).");
-    }
     if (!(pinv_tol >= 0.0) || !std::isfinite(pinv_tol)) {
         Rcpp::stop("pinv.tol must be a finite nonnegative scalar.");
     }
 
     Rcpp::IntegerMatrix nn;
-    if (Rf_isNull(s_nn_index)) {
-        nn = compute_knn_including_self(X, k);
+    std::vector<std::vector<int> > supports;
+    supports.resize(n);
+    const bool has_support_index = !Rf_isNull(s_support_index);
+
+    if (has_support_index) {
+        Rcpp::List support_list(s_support_index);
+        if (support_list.size() != n) {
+            Rcpp::stop("support.index must have length nrow(X).");
+        }
+        for (int center = 0; center < n; ++center) {
+            Rcpp::IntegerVector ids_r = support_list[center];
+            if (ids_r.size() < 2) {
+                Rcpp::stop("Each support.index element must contain at least two vertices.");
+            }
+            bool has_center = false;
+            supports[center].reserve(ids_r.size());
+            std::vector<int> seen(n, 0);
+            for (int h = 0; h < ids_r.size(); ++h) {
+                const int idx = ids_r[h] - 1;
+                if (idx < 0 || idx >= n) {
+                    Rcpp::stop("support.index contains a vertex outside 1:nrow(X).");
+                }
+                if (seen[idx]) {
+                    Rcpp::stop("support.index elements must not contain duplicate vertices.");
+                }
+                seen[idx] = 1;
+                supports[center].push_back(idx);
+                if (idx == center) {
+                    has_center = true;
+                }
+            }
+            if (!has_center) {
+                Rcpp::stop("Each support.index element must contain its center vertex.");
+            }
+        }
     } else {
-        nn = Rcpp::IntegerMatrix(s_nn_index);
-        if (nn.nrow() != n || nn.ncol() != k) {
-            Rcpp::stop("nn.index must be an nrow(X) by k integer matrix.");
+        if (k < 2 || k > n) {
+            Rcpp::stop("k must be between 2 and nrow(X).");
+        }
+        if (Rf_isNull(s_nn_index)) {
+            nn = compute_knn_including_self(X, k);
+        } else {
+            nn = Rcpp::IntegerMatrix(s_nn_index);
+            if (nn.nrow() != n || nn.ncol() != k) {
+                Rcpp::stop("nn.index must be an nrow(X) by k integer matrix.");
+            }
+        }
+        for (int center = 0; center < n; ++center) {
+            supports[center].reserve(k);
+            for (int h = 0; h < k; ++h) {
+                supports[center].push_back(nn(center, h) - 1);
+            }
         }
     }
 
@@ -250,24 +306,24 @@ BEGIN_RCPP
     int global_row = 0;
 
     for (int center = 0; center < n; ++center) {
-        std::vector<int> ids(k);
+        std::vector<int> ids = supports[center];
+        const int ki = static_cast<int>(ids.size());
         int base_local = -1;
-        for (int h = 0; h < k; ++h) {
-            const int idx = nn(center, h) - 1;
+        for (int h = 0; h < ki; ++h) {
+            const int idx = ids[h];
             if (idx < 0 || idx >= n) {
-                Rcpp::stop("nn.index contains a vertex outside 1:nrow(X).");
+                Rcpp::stop("Local support contains a vertex outside 1:nrow(X).");
             }
-            ids[h] = idx;
             if (idx == center && base_local < 0) {
                 base_local = h;
             }
         }
         if (base_local < 0) {
-            Rcpp::stop("Each row of nn.index must contain the center vertex.");
+            Rcpp::stop("Each local support must contain the center vertex.");
         }
 
-        Eigen::MatrixXd local(k, ambient_dim);
-        for (int h = 0; h < k; ++h) {
+        Eigen::MatrixXd local(ki, ambient_dim);
+        for (int h = 0; h < ki; ++h) {
             local.row(h) = X.row(ids[h]);
         }
         Eigen::RowVectorXd local_mean = local.colwise().mean();
@@ -310,8 +366,8 @@ BEGIN_RCPP
         Eigen::MatrixXd design = build_reduced_design(coords);
         const int q = m * (m + 1) / 2;
         const int p = design.cols();
-        if (k < p) {
-            Rcpp::stop("k is too small for the selected tangent dimension: need at least m(m+1)/2 + m neighbors.");
+        if (ki < p) {
+            Rcpp::stop("Local support is too small for the selected tangent dimension: need at least m(m+1)/2 + m vertices.");
         }
 
         int rank = 0;
@@ -327,7 +383,7 @@ BEGIN_RCPP
             const bool diagonal = (a == b);
             const double scale = diagonal ? std::sqrt(2.0) : 1.0;
 
-            for (int h = 0; h < k; ++h) {
+            for (int h = 0; h < ki; ++h) {
                 Atrip.add(global_row, ids[h], scale * reg(comp, h));
             }
 
@@ -346,24 +402,24 @@ BEGIN_RCPP
             T.col(base_local) -= T.rowwise().sum();
 
             double radius_sq = 0.0;
-            for (int h = 0; h < k; ++h) {
+            for (int h = 0; h < ki; ++h) {
                 radius_sq = std::max(radius_sq, coords.row(h).squaredNorm());
             }
             radius_sq += 0.1e-9;
 
-            std::vector<double> weights(k, 0.0);
-            for (int h = 0; h < k; ++h) {
+            std::vector<double> weights(ki, 0.0);
+            for (int h = 0; h < ki; ++h) {
                 weights[h] = compact_kernel_weight(radius_sq, coords.row(h).squaredNorm());
             }
 
-            Eigen::MatrixXd local_bs = Eigen::MatrixXd::Zero(k, k);
-            for (int h = 0; h < k; ++h) {
+            Eigen::MatrixXd local_bs = Eigen::MatrixXd::Zero(ki, ki);
+            for (int h = 0; h < ki; ++h) {
                 if (weights[h] != 0.0) {
                     local_bs.noalias() += weights[h] * T.row(h).transpose() * T.row(h);
                 }
             }
-            for (int a = 0; a < k; ++a) {
-                for (int b = 0; b < k; ++b) {
+            for (int a = 0; a < ki; ++a) {
+                for (int b = 0; b < ki; ++b) {
                     const double val = local_bs(a, b);
                     if (std::isfinite(val) && std::abs(val) > 0.0) {
                         BStrip[std::make_pair(ids[a], ids[b])] += val;
@@ -377,7 +433,7 @@ BEGIN_RCPP
             selected_var += sing(a) * sing(a);
         }
         diag_center.push_back(center + 1);
-        diag_k.push_back(k);
+        diag_k.push_back(ki);
         diag_tangent_dim.push_back(m);
         diag_design_ncol.push_back(p);
         diag_design_rank.push_back(rank);
@@ -429,12 +485,15 @@ BEGIN_RCPP
     return Rcpp::List::create(
         Rcpp::Named("A.triplet") = triplets_to_list(Atrip, global_row, n),
         Rcpp::Named("BS.triplet") = bs_triplet,
-        Rcpp::Named("nn.index") = nn,
+        Rcpp::Named("nn.index") = has_support_index ?
+            Rcpp::RObject(R_NilValue) : Rcpp::RObject(nn),
+        Rcpp::Named("support.index") = supports_to_list(supports),
         Rcpp::Named("row.table") = row_table,
         Rcpp::Named("diagnostics") = diagnostics,
         Rcpp::Named("parity") = parity,
         Rcpp::Named("parameters") = Rcpp::List::create(
             Rcpp::Named("k") = k,
+            Rcpp::Named("support.variable") = has_support_index,
             Rcpp::Named("tangent.dim") = requested_tangent_dim,
             Rcpp::Named("tangent.dim.rule") = tangent_dim_rule,
             Rcpp::Named("eigen.tolerance") = eigen_tolerance,

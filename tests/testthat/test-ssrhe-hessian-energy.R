@@ -78,6 +78,60 @@ test_that("ssrhe.hessian.operator supports supplied neighbor indices", {
     expect_null(op$BS)
 })
 
+test_that("ssrhe.hessian.operator supports supplied variable-size supports", {
+    skip_if_not_installed("Matrix")
+
+    X <- cbind(seq(0, 1, length.out = 9), 0)
+    support <- lapply(seq_len(nrow(X)), function(i) {
+        ord <- order(abs(X[, 1] - X[i, 1]), seq_len(nrow(X)))
+        ord[seq_len(min(nrow(X), 3L + (i %% 3L)))]
+    })
+    support <- Map(function(ids, i) unique(c(i, ids)), support, seq_along(support))
+
+    op <- ssrhe.hessian.operator(
+        X = X,
+        tangent.dim = 1L,
+        neighborhood.type = "supplied",
+        support.index = support,
+        return.BS = FALSE
+    )
+
+    expect_null(op$nn.index)
+    expect_equal(op$neighborhoods$type, "supplied")
+    expect_equal(op$diagnostics$k, lengths(support))
+    expect_equal(length(op$support.index), nrow(X))
+    expect_equal(dim(op$A), c(nrow(X), nrow(X)))
+})
+
+test_that("ssrhe.hessian.operator builds adaptive-radius local supports", {
+    skip_if_not_installed("Matrix")
+
+    set.seed(42)
+    X <- cbind(seq(0, 1, length.out = 25),
+               0.1 * sin(seq(0, 2 * pi, length.out = 25)))
+
+    op <- ssrhe.hessian.operator(
+        X = X,
+        tangent.dim = 1L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 2L,
+        radius.rule = "geomean",
+        radius.factor = 1.05,
+        min.support = 5L,
+        max.support = 7L,
+        support.topup = "nearest",
+        return.BS = FALSE
+    )
+
+    expect_equal(op$parameters$neighborhood.type, "adaptive.radius")
+    expect_equal(op$neighborhoods$adaptive.k.scale, 2L)
+    expect_true(all(op$neighborhoods$support.size >= 5L))
+    expect_true(all(op$neighborhoods$support.size <= 7L))
+    expect_true(any(op$neighborhoods$n.topup > 0L))
+    expect_equal(op$diagnostics$k, op$neighborhoods$support.size)
+    expect_equal(dim(op$A), c(nrow(X), nrow(X)))
+})
+
 test_that("ssrhe.hessian.operator can choose local dimension by cumulative PCA variance", {
     skip_if_not_installed("Matrix")
 
@@ -283,6 +337,38 @@ test_that("fit.ssrhe.hessian.regression.cv reuses the operator and selects a gri
     expect_equal(fit$lambda$lambda1, fit$selection$lambda1)
     expect_equal(fit$lambda$lambda2, fit$selection$lambda2)
     expect_equal(fit$fold.id, fold.id)
+})
+
+test_that("fit.ssrhe.hessian.regression.cv supports adaptive-radius neighborhoods", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+
+    fit <- fit.ssrhe.hessian.regression.cv(
+        X = X,
+        y = y,
+        tangent.dim = 2L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 3L,
+        radius.rule = "geomean",
+        radius.factor = 1.25,
+        min.support = 8L,
+        lambda1.grid = c(0.05, 0.2),
+        lambda2.grid = c(0, 0.03),
+        nfolds = 3L,
+        stabilizer = TRUE,
+        loss = "mse",
+        ridge = 1e-8
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.cv.fit")
+    expect_equal(fit$operator$parameters$neighborhood.type, "adaptive.radius")
+    expect_true(all(fit$operator$neighborhoods$support.size >= 8L))
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_true(fit$selection$lambda1 %in% c(0.05, 0.2))
+    expect_true(fit$selection$lambda2 %in% c(0, 0.03))
 })
 
 test_that("fit.ssrhe.hessian.regression.cv rejects matrix responses for now", {

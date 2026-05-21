@@ -334,7 +334,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
   {"S_metric_graph_lowpass_operator", (DL_FUNC) &S_metric_graph_lowpass_operator, 10},
   {"S_metric_graph_lowpass_spectrum", (DL_FUNC) &S_metric_graph_lowpass_spectrum, 16},
-  {"S_ssrhe_hessian_operator", (DL_FUNC) &S_ssrhe_hessian_operator, 9},
+  {"S_ssrhe_hessian_operator", (DL_FUNC) &S_ssrhe_hessian_operator, 10},
 
   // old
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},

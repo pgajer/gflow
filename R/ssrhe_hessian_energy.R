@@ -10,7 +10,9 @@
 #' @param X Numeric matrix with one observation per row. Distances for the
 #'   default neighborhood search are Euclidean distances in these coordinates.
 #' @param k Integer number of nearest neighbors per point, including the point
-#'   itself. This follows the SSRHE Matlab convention.
+#'   itself, used when \code{neighborhood.type = "knn"}. This follows the
+#'   SSRHE Matlab convention. For adaptive-radius neighborhoods, \code{k} may be
+#'   omitted when \code{adaptive.k.scale} is supplied.
 #' @param tangent.dim Integer tangent dimension used for the local PCA chart.
 #'   Required when \code{tangent.dim.rule = "fixed"}. If \code{NULL} and
 #'   \code{tangent.dim.rule = "eigen.cumulative"}, the dimension is selected
@@ -18,6 +20,29 @@
 #' @param nn.index Optional integer matrix of neighbor indices, with
 #'   \code{nrow(X)} rows and \code{k} columns. Each row must contain its center
 #'   vertex. If \code{NULL}, Euclidean k-NN including self is computed in C++.
+#' @param neighborhood.type Local support rule. \code{"knn"} uses the original
+#'   rectangular self-including kNN neighborhoods. \code{"adaptive.radius"}
+#'   builds variable-size supports from \code{\link{create.adaptive.radius.graph}}.
+#'   \code{"supplied"} uses \code{support.index} directly.
+#' @param support.index Optional list of integer vectors, one per row of
+#'   \code{X}. Each element gives a variable-size local support and must contain
+#'   its center vertex.
+#' @param adaptive.k.scale Integer local-scale k used by
+#'   \code{\link{create.adaptive.radius.graph}} when
+#'   \code{neighborhood.type = "adaptive.radius"}.
+#' @param radius.rule,radius.factor Adaptive-radius graph parameters passed to
+#'   \code{\link{create.adaptive.radius.graph}}.
+#' @param min.support Optional minimum local support size for adaptive-radius
+#'   supports. Defaults to the local quadratic design size plus
+#'   \code{support.buffer}, clamped to \code{nrow(X)}.
+#' @param max.support Optional maximum local support size. Oversized adaptive
+#'   supports are trimmed to the closest \code{max.support} vertices while
+#'   keeping the center vertex.
+#' @param support.buffer Nonnegative integer added to the local quadratic design
+#'   size when choosing the default \code{min.support}.
+#' @param support.topup How undersized adaptive-radius supports are enlarged.
+#'   \code{"nearest"} appends ambient nearest neighbors. \code{"none"} leaves
+#'   supports unchanged and lets the C++ operator reject undersized supports.
 #' @param tangent.dim.rule Either \code{"fixed"} or \code{"eigen.cumulative"}.
 #' @param eigen.tolerance Cumulative local PCA variance threshold used when
 #'   \code{tangent.dim.rule = "eigen.cumulative"} and \code{tangent.dim = NULL}.
@@ -34,8 +59,8 @@
 #'   message.
 #'
 #' @details
-#' For each point \eqn{x_i}, the operator constructs a local PCA chart from the
-#' \code{k} nearest neighbors, projects the neighborhood into
+#' For each point \eqn{x_i}, the operator constructs a local PCA chart from a
+#' self-including local support, projects the support into
 #' \eqn{\mathbb R^m}, and centers the local coordinates at \eqn{x_i}. A local
 #' quadratic model is then fitted with the intercept fixed at \eqn{f_i}:
 #' \deqn{
@@ -69,7 +94,11 @@
 #'     \item \code{B}: sparse quadratic energy matrix \eqn{A^\top A}, if requested;
 #'     \item \code{BS}: optional supplemental stabilizer matrix;
 #'     \item \code{A.triplet}, \code{BS.triplet}: raw sparse triplets;
-#'     \item \code{nn.index}: neighbor index matrix;
+#'     \item \code{nn.index}: neighbor index matrix for rectangular kNN
+#'       neighborhoods, if used;
+#'     \item \code{support.index}: list of actual local supports used by the
+#'       backend;
+#'     \item \code{neighborhoods}: support-construction diagnostics;
 #'     \item \code{row.table}: one row per Hessian component row of \eqn{A};
 #'     \item \code{diagnostics}: local design rank, condition, and PCA summaries;
 #'     \item \code{parity}: notes documenting reference-behavior conventions.
@@ -83,9 +112,18 @@
 #' @export
 ssrhe.hessian.operator <- function(
     X,
-    k,
+    k = NULL,
     tangent.dim,
     nn.index = NULL,
+    neighborhood.type = c("knn", "adaptive.radius", "supplied"),
+    support.index = NULL,
+    adaptive.k.scale = NULL,
+    radius.rule = c("geomean", "max", "min"),
+    radius.factor = 1.25,
+    min.support = NULL,
+    max.support = NULL,
+    support.buffer = 2L,
+    support.topup = c("nearest", "none"),
     tangent.dim.rule = c("fixed", "eigen.cumulative"),
     eigen.tolerance = 0.95,
     stabilizer = FALSE,
@@ -98,10 +136,9 @@ ssrhe.hessian.operator <- function(
 
     X <- .validate.ssrhe.X(X)
     n <- nrow(X)
-    k <- .validate.ssrhe.positive.integer(k, "k")
-    if (k < 2L || k > n) {
-        stop("k must be between 2 and nrow(X).", call. = FALSE)
-    }
+    neighborhood.type <- match.arg(neighborhood.type)
+    radius.rule <- match.arg(radius.rule)
+    support.topup <- match.arg(support.topup)
 
     tangent.dim.rule <- match.arg(tangent.dim.rule)
     if (missing(tangent.dim) || is.null(tangent.dim)) {
@@ -112,8 +149,8 @@ ssrhe.hessian.operator <- function(
         tangent.dim.cpp <- 0L
     } else {
         tangent.dim.cpp <- .validate.ssrhe.positive.integer(tangent.dim, "tangent.dim")
-        if (tangent.dim.cpp > min(k, ncol(X))) {
-            stop("tangent.dim must be no larger than min(k, ncol(X)).",
+        if (tangent.dim.cpp > ncol(X)) {
+            stop("tangent.dim must be no larger than ncol(X).",
                  call. = FALSE)
         }
     }
@@ -143,14 +180,36 @@ ssrhe.hessian.operator <- function(
              call. = FALSE)
     }
 
-    nn.index.cpp <- .validate.ssrhe.nn.index(nn.index, n, k)
+    neighborhood <- .prepare.ssrhe.neighborhood(
+        X = X,
+        k = k,
+        nn.index = nn.index,
+        neighborhood.type = neighborhood.type,
+        support.index = support.index,
+        adaptive.k.scale = adaptive.k.scale,
+        radius.rule = radius.rule,
+        radius.factor = radius.factor,
+        min.support = min.support,
+        max.support = max.support,
+        support.buffer = support.buffer,
+        support.topup = support.topup,
+        tangent.dim = if (missing(tangent.dim)) NULL else tangent.dim,
+        tangent.dim.rule = tangent.dim.rule
+    )
+
+    if (!missing(tangent.dim) && !is.null(tangent.dim) &&
+        tangent.dim.cpp > min(min(neighborhood$support.size), ncol(X))) {
+        stop("tangent.dim must be no larger than the smallest local support size and ncol(X).",
+             call. = FALSE)
+    }
 
     raw <- .Call(
         "S_ssrhe_hessian_operator",
         X,
-        as.integer(k),
+        as.integer(neighborhood$k),
         as.integer(tangent.dim.cpp),
-        nn.index.cpp,
+        neighborhood$nn.index,
+        neighborhood$support.index,
         tangent.dim.rule,
         as.double(eigen.tolerance),
         as.logical(stabilizer),
@@ -177,11 +236,18 @@ ssrhe.hessian.operator <- function(
         A.triplet = raw$A.triplet,
         BS.triplet = raw$BS.triplet,
         nn.index = raw$nn.index,
+        support.index = raw$support.index,
+        neighborhoods = neighborhood$metadata,
         row.table = raw$row.table,
         diagnostics = raw$diagnostics,
         parity = raw$parity,
         parameters = raw$parameters
     )
+    out$parameters$neighborhood.type <- neighborhood$type
+    out$parameters$k <- neighborhood$k
+    out$parameters$adaptive.k.scale <- neighborhood$adaptive.k.scale
+    out$parameters$radius.rule <- neighborhood$radius.rule
+    out$parameters$radius.factor <- neighborhood$radius.factor
 
     class(out) <- c("ssrhe.hessian.operator", "list")
     out
@@ -238,6 +304,246 @@ ssrhe.hessian.operator <- function(
     nn.index
 }
 
+.validate.ssrhe.support.index <- function(support.index, n) {
+    if (is.null(support.index)) {
+        return(NULL)
+    }
+    if (is.matrix(support.index)) {
+        support.index <- lapply(seq_len(nrow(support.index)), function(i) {
+            support.index[i, !is.na(support.index[i, ])]
+        })
+    }
+    if (!is.list(support.index) || length(support.index) != n) {
+        stop("support.index must be a list with length nrow(X).", call. = FALSE)
+    }
+    out <- vector("list", n)
+    for (i in seq_len(n)) {
+        ids <- as.integer(support.index[[i]])
+        if (length(ids) < 2L || any(is.na(ids)) || any(ids < 1L) || any(ids > n)) {
+            stop("Each support.index element must contain at least two valid vertex indices.",
+                 call. = FALSE)
+        }
+        ids <- unique(ids)
+        if (!i %in% ids) {
+            stop("Each support.index element must contain its center vertex.",
+                 call. = FALSE)
+        }
+        out[[i]] <- ids
+    }
+    out
+}
+
+.ssrhe.design.ncol <- function(m) {
+    m * (m + 1L) / 2L + m
+}
+
+.ssrhe.default.min.support <- function(tangent.dim,
+                                       tangent.dim.rule,
+                                       ambient.dim,
+                                       support.buffer,
+                                       n) {
+    support.buffer <- .validate.ssrhe.nonnegative.integer(support.buffer,
+                                                         "support.buffer")
+    if (!is.null(tangent.dim)) {
+        m <- .validate.ssrhe.positive.integer(tangent.dim, "tangent.dim")
+    } else if (identical(tangent.dim.rule, "eigen.cumulative")) {
+        m <- ambient.dim
+    } else {
+        stop("tangent.dim is required to choose the default min.support.",
+             call. = FALSE)
+    }
+    min(n, .ssrhe.design.ncol(m) + support.buffer)
+}
+
+.validate.ssrhe.nonnegative.integer <- function(x, name) {
+    if (length(x) != 1L || is.na(x) || !is.finite(x) || x < 0 ||
+        abs(x - round(x)) > .Machine$double.eps^0.5) {
+        stop(sprintf("%s must be a nonnegative integer scalar.", name),
+             call. = FALSE)
+    }
+    as.integer(round(x))
+}
+
+.prepare.ssrhe.neighborhood <- function(X,
+                                        k,
+                                        nn.index,
+                                        neighborhood.type,
+                                        support.index,
+                                        adaptive.k.scale,
+                                        radius.rule,
+                                        radius.factor,
+                                        min.support,
+                                        max.support,
+                                        support.buffer,
+                                        support.topup,
+                                        tangent.dim,
+                                        tangent.dim.rule) {
+    n <- nrow(X)
+    if (!is.null(support.index) &&
+        identical(neighborhood.type, "knn") &&
+        is.null(nn.index) && is.null(k)) {
+        neighborhood.type <- "supplied"
+    }
+
+    if (identical(neighborhood.type, "knn")) {
+        if (is.null(k)) {
+            if (!is.null(nn.index)) {
+                k <- ncol(as.matrix(nn.index))
+            } else {
+                stop("k is required when neighborhood.type = 'knn'.",
+                     call. = FALSE)
+            }
+        }
+        k <- .validate.ssrhe.positive.integer(k, "k")
+        if (k < 2L || k > n) {
+            stop("k must be between 2 and nrow(X).", call. = FALSE)
+        }
+        nn.index <- .validate.ssrhe.nn.index(nn.index, n, k)
+        support.size <- rep(k, n)
+        return(list(
+            type = "knn",
+            k = k,
+            nn.index = nn.index,
+            support.index = NULL,
+            support.size = support.size,
+            adaptive.k.scale = NA_integer_,
+            radius.rule = NA_character_,
+            radius.factor = NA_real_,
+            metadata = list(
+                type = "knn",
+                support.size = support.size,
+                n.topup = rep(0L, n),
+                n.truncated = rep(0L, n)
+            )
+        ))
+    }
+
+    if (identical(neighborhood.type, "supplied")) {
+        support.index <- .validate.ssrhe.support.index(support.index, n)
+        support.size <- lengths(support.index)
+        return(list(
+            type = "supplied",
+            k = 0L,
+            nn.index = NULL,
+            support.index = support.index,
+            support.size = support.size,
+            adaptive.k.scale = NA_integer_,
+            radius.rule = NA_character_,
+            radius.factor = NA_real_,
+            metadata = list(
+                type = "supplied",
+                support.size = support.size,
+                n.topup = rep(0L, n),
+                n.truncated = rep(0L, n)
+            )
+        ))
+    }
+
+    if (!identical(neighborhood.type, "adaptive.radius")) {
+        stop("Unknown SSRHE neighborhood type.", call. = FALSE)
+    }
+    if (is.null(adaptive.k.scale)) {
+        if (is.null(k)) {
+            stop("adaptive.k.scale is required when neighborhood.type = 'adaptive.radius'.",
+                 call. = FALSE)
+        }
+        adaptive.k.scale <- k
+    }
+    adaptive.k.scale <- .validate.ssrhe.positive.integer(adaptive.k.scale,
+                                                        "adaptive.k.scale")
+    if (adaptive.k.scale >= n) {
+        stop("adaptive.k.scale must be smaller than nrow(X).", call. = FALSE)
+    }
+    radius.factor <- .validate.ssrhe.numeric.scalar(radius.factor, "radius.factor")
+    if (radius.factor <= 0) {
+        stop("radius.factor must be positive.", call. = FALSE)
+    }
+    if (is.null(min.support)) {
+        min.support <- .ssrhe.default.min.support(
+            tangent.dim = tangent.dim,
+            tangent.dim.rule = tangent.dim.rule,
+            ambient.dim = ncol(X),
+            support.buffer = support.buffer,
+            n = n
+        )
+    } else {
+        min.support <- .validate.ssrhe.positive.integer(min.support,
+                                                       "min.support")
+    }
+    if (min.support < 2L || min.support > n) {
+        stop("min.support must be between 2 and nrow(X).", call. = FALSE)
+    }
+    if (!is.null(max.support)) {
+        max.support <- .validate.ssrhe.positive.integer(max.support,
+                                                       "max.support")
+        if (max.support < min.support || max.support > n) {
+            stop("max.support must be between min.support and nrow(X).",
+                 call. = FALSE)
+        }
+    }
+
+    graph <- create.adaptive.radius.graph(
+        X = X,
+        k.scale = adaptive.k.scale,
+        radius.factor = radius.factor,
+        radius.rule = radius.rule,
+        prune.method = "none",
+        connect.components = FALSE
+    )
+    nearest <- NULL
+    if (identical(support.topup, "nearest") || !is.null(max.support)) {
+        nearest <- .exact.knn.index(X, n - 1L)
+    }
+    support.index <- vector("list", n)
+    n.topup <- integer(n)
+    n.truncated <- integer(n)
+    for (i in seq_len(n)) {
+        ids <- unique(c(i, graph$adj_list[[i]]))
+        if (length(ids) < min.support && identical(support.topup, "nearest")) {
+            add <- nearest[i, !nearest[i, ] %in% ids]
+            need <- min.support - length(ids)
+            ids <- unique(c(ids, add[seq_len(min(need, length(add)))]))
+            n.topup[[i]] <- max(0L, length(ids) - length(unique(c(i, graph$adj_list[[i]]))))
+        }
+        if (!is.null(max.support) && length(ids) > max.support) {
+            non.center <- setdiff(ids, i)
+            d <- rowSums((t(t(X[non.center, , drop = FALSE]) - X[i, ]))^2)
+            keep <- non.center[order(d, non.center)][seq_len(max.support - 1L)]
+            n.truncated[[i]] <- length(ids) - max.support
+            ids <- c(i, keep)
+        } else if (ids[[1L]] != i) {
+            ids <- c(i, setdiff(ids, i))
+        }
+        support.index[[i]] <- as.integer(ids)
+    }
+    support.index <- .validate.ssrhe.support.index(support.index, n)
+    support.size <- lengths(support.index)
+    list(
+        type = "adaptive.radius",
+        k = 0L,
+        nn.index = NULL,
+        support.index = support.index,
+        support.size = support.size,
+        adaptive.k.scale = adaptive.k.scale,
+        radius.rule = radius.rule,
+        radius.factor = radius.factor,
+        metadata = list(
+            type = "adaptive.radius",
+            graph = graph,
+            adaptive.k.scale = adaptive.k.scale,
+            radius.rule = radius.rule,
+            radius.factor = radius.factor,
+            min.support = min.support,
+            max.support = max.support,
+            support.topup = support.topup,
+            support.size = support.size,
+            n.topup = n.topup,
+            n.truncated = n.truncated,
+            sigma = graph$sigma
+        )
+    )
+}
+
 .ssrhe.triplet.to.sparse <- function(triplet) {
     Matrix::sparseMatrix(
         i = triplet$i,
@@ -254,7 +560,14 @@ print.ssrhe.hessian.operator <- function(x, ...) {
     cat("SSRHE Hessian operator\n")
     cat("  vertices:", n, "\n")
     cat("  operator rows:", nrow.A, "\n")
-    cat("  k:", x$parameters$k, "\n")
+    cat("  neighborhood.type:", x$parameters$neighborhood.type %||% "knn", "\n")
+    if (identical(x$parameters$neighborhood.type, "knn")) {
+        cat("  k:", x$parameters$k, "\n")
+    } else if (!is.null(x$neighborhoods$support.size)) {
+        cat("  support size:",
+            paste(range(x$neighborhoods$support.size), collapse = "-"),
+            "\n")
+    }
     cat("  tangent.dim.rule:", x$parameters$tangent.dim.rule, "\n")
     cat("  stabilizer:", isTRUE(x$parameters$stabilizer), "\n")
     invisible(x)
@@ -317,12 +630,21 @@ print.ssrhe.hessian.operator <- function(x, ...) {
 fit.ssrhe.hessian.regression <- function(
     X,
     y,
-    k,
+    k = NULL,
     tangent.dim,
     lambda1,
     lambda2 = 0,
     weights = NULL,
     nn.index = NULL,
+    neighborhood.type = c("knn", "adaptive.radius", "supplied"),
+    support.index = NULL,
+    adaptive.k.scale = NULL,
+    radius.rule = c("geomean", "max", "min"),
+    radius.factor = 1.25,
+    min.support = NULL,
+    max.support = NULL,
+    support.buffer = 2L,
+    support.topup = c("nearest", "none"),
     tangent.dim.rule = c("fixed", "eigen.cumulative"),
     eigen.tolerance = 0.95,
     stabilizer = lambda2 > 0,
@@ -345,6 +667,15 @@ fit.ssrhe.hessian.regression <- function(
         k = k,
         tangent.dim = tangent.dim,
         nn.index = nn.index,
+        neighborhood.type = neighborhood.type,
+        support.index = support.index,
+        adaptive.k.scale = adaptive.k.scale,
+        radius.rule = radius.rule,
+        radius.factor = radius.factor,
+        min.support = min.support,
+        max.support = max.support,
+        support.buffer = support.buffer,
+        support.topup = support.topup,
         tangent.dim.rule = tangent.dim.rule,
         eigen.tolerance = eigen.tolerance,
         stabilizer = stabilizer,
@@ -458,7 +789,7 @@ refit.ssrhe.hessian.regression <- function(fitted.model,
 fit.ssrhe.hessian.regression.cv <- function(
     X,
     y,
-    k,
+    k = NULL,
     tangent.dim,
     lambda1.grid,
     lambda2.grid = 0,
@@ -468,6 +799,15 @@ fit.ssrhe.hessian.regression.cv <- function(
     loss = c("mse", "mae"),
     selection = c("min", "one.se"),
     nn.index = NULL,
+    neighborhood.type = c("knn", "adaptive.radius", "supplied"),
+    support.index = NULL,
+    adaptive.k.scale = NULL,
+    radius.rule = c("geomean", "max", "min"),
+    radius.factor = 1.25,
+    min.support = NULL,
+    max.support = NULL,
+    support.buffer = 2L,
+    support.topup = c("nearest", "none"),
     tangent.dim.rule = c("fixed", "eigen.cumulative"),
     eigen.tolerance = 0.95,
     stabilizer = any(lambda2.grid > 0),
@@ -504,6 +844,15 @@ fit.ssrhe.hessian.regression.cv <- function(
         k = k,
         tangent.dim = tangent.dim,
         nn.index = nn.index,
+        neighborhood.type = neighborhood.type,
+        support.index = support.index,
+        adaptive.k.scale = adaptive.k.scale,
+        radius.rule = radius.rule,
+        radius.factor = radius.factor,
+        min.support = min.support,
+        max.support = max.support,
+        support.buffer = support.buffer,
+        support.topup = support.topup,
         tangent.dim.rule = tangent.dim.rule,
         eigen.tolerance = eigen.tolerance,
         stabilizer = stabilizer,
