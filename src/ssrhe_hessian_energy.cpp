@@ -28,6 +28,12 @@ struct triplet_accumulator_t {
     }
 };
 
+struct cubic_component_t {
+    int a;
+    int b;
+    int c;
+};
+
 Eigen::MatrixXd r_matrix_to_eigen(const Rcpp::NumericMatrix& X) {
     Eigen::MatrixXd out(X.nrow(), X.ncol());
     for (int j = 0; j < X.ncol(); ++j) {
@@ -127,13 +133,66 @@ std::vector<std::pair<int, int> > hessian_components(int m) {
     return comps;
 }
 
-Eigen::MatrixXd build_reduced_design(const Eigen::MatrixXd& Z) {
+std::vector<cubic_component_t> third_derivative_components(int m) {
+    std::vector<cubic_component_t> comps;
+    comps.reserve(m * (m + 1) * (m + 2) / 6);
+    for (int a = 0; a < m; ++a) {
+        for (int b = a; b < m; ++b) {
+            for (int c = b; c < m; ++c) {
+                comps.push_back({a, b, c});
+            }
+        }
+    }
+    return comps;
+}
+
+int third_derivative_component_count(int m) {
+    return m * (m + 1) * (m + 2) / 6;
+}
+
+int quadratic_component_count(int m) {
+    return m * (m + 1) / 2;
+}
+
+double third_derivative_scale(const cubic_component_t& comp) {
+    if (comp.a == comp.b && comp.b == comp.c) {
+        return 6.0;
+    }
+    if (comp.a == comp.b || comp.a == comp.c || comp.b == comp.c) {
+        return 2.0;
+    }
+    return 1.0;
+}
+
+int third_derivative_tensor_multiplicity(const cubic_component_t& comp) {
+    if (comp.a == comp.b && comp.b == comp.c) {
+        return 1;
+    }
+    if (comp.a == comp.b || comp.a == comp.c || comp.b == comp.c) {
+        return 3;
+    }
+    return 6;
+}
+
+Eigen::MatrixXd build_reduced_design(const Eigen::MatrixXd& Z, int derivative_order) {
     const int k = Z.rows();
     const int m = Z.cols();
-    const int q = m * (m + 1) / 2;
-    Eigen::MatrixXd design(k, q + m);
+    const int q2 = quadratic_component_count(m);
+    const int q3 = derivative_order == 3 ? third_derivative_component_count(m) : 0;
+    Eigen::MatrixXd design(k, q3 + q2 + m);
 
     int col = 0;
+    if (derivative_order == 3) {
+        for (int a = 0; a < m; ++a) {
+            for (int b = a; b < m; ++b) {
+                for (int c = b; c < m; ++c) {
+                    design.col(col) =
+                        Z.col(a).array() * Z.col(b).array() * Z.col(c).array();
+                    ++col;
+                }
+            }
+        }
+    }
     for (int a = 0; a < m; ++a) {
         for (int b = a; b < m; ++b) {
             design.col(col) = Z.col(a).array() * Z.col(b).array();
@@ -204,6 +263,7 @@ extern "C" SEXP S_ssrhe_hessian_operator(
     SEXP s_support_index,
     SEXP s_tangent_dim_rule,
     SEXP s_eigen_tolerance,
+    SEXP s_derivative_order,
     SEXP s_stabilizer,
     SEXP s_pinv_tol,
     SEXP s_verbose
@@ -220,10 +280,17 @@ BEGIN_RCPP
     const int requested_tangent_dim = Rcpp::as<int>(s_tangent_dim);
     const std::string tangent_dim_rule = Rcpp::as<std::string>(s_tangent_dim_rule);
     const double eigen_tolerance = Rcpp::as<double>(s_eigen_tolerance);
+    const int derivative_order = Rcpp::as<int>(s_derivative_order);
     const bool stabilizer = Rcpp::as<bool>(s_stabilizer);
     const double pinv_tol = Rcpp::as<double>(s_pinv_tol);
     const bool verbose = Rcpp::as<bool>(s_verbose);
 
+    if (derivative_order != 2 && derivative_order != 3) {
+        Rcpp::stop("derivative.order must be 2 or 3.");
+    }
+    if (derivative_order == 3 && stabilizer) {
+        Rcpp::stop("stabilizer is currently only supported for derivative.order = 2.");
+    }
     if (!(pinv_tol >= 0.0) || !std::isfinite(pinv_tol)) {
         Rcpp::stop("pinv.tol must be a finite nonnegative scalar.");
     }
@@ -291,7 +358,11 @@ BEGIN_RCPP
     std::vector<int> row_component;
     std::vector<int> row_a;
     std::vector<int> row_b;
+    std::vector<int> row_c;
     std::vector<int> row_diagonal;
+    std::vector<int> row_derivative_order;
+    std::vector<int> row_tensor_multiplicity;
+    std::vector<double> row_derivative_scale;
     std::vector<double> row_scale;
 
     std::vector<int> diag_center;
@@ -363,11 +434,12 @@ BEGIN_RCPP
         Eigen::MatrixXd coords = centered * pca.matrixV().leftCols(m);
         const Eigen::RowVectorXd base_coord = coords.row(base_local);
         coords.rowwise() -= base_coord;
-        Eigen::MatrixXd design = build_reduced_design(coords);
-        const int q = m * (m + 1) / 2;
+        Eigen::MatrixXd design = build_reduced_design(coords, derivative_order);
+        const int q = derivative_order == 3 ?
+            third_derivative_component_count(m) : quadratic_component_count(m);
         const int p = design.cols();
         if (ki < p) {
-            Rcpp::stop("Local support is too small for the selected tangent dimension: need at least m(m+1)/2 + m vertices.");
+            Rcpp::stop("Local support is too small for the selected tangent dimension and derivative order.");
         }
 
         int rank = 0;
@@ -376,24 +448,56 @@ BEGIN_RCPP
         Eigen::MatrixXd reg = pinv;
         reg.col(base_local) -= pinv.rowwise().sum();
 
-        std::vector<std::pair<int, int> > comps = hessian_components(m);
-        for (int comp = 0; comp < q; ++comp) {
-            const int a = comps[comp].first;
-            const int b = comps[comp].second;
-            const bool diagonal = (a == b);
-            const double scale = diagonal ? std::sqrt(2.0) : 1.0;
+        if (derivative_order == 2) {
+            std::vector<std::pair<int, int> > comps = hessian_components(m);
+            for (int comp = 0; comp < q; ++comp) {
+                const int a = comps[comp].first;
+                const int b = comps[comp].second;
+                const bool diagonal = (a == b);
+                const double scale = diagonal ? std::sqrt(2.0) : 1.0;
 
-            for (int h = 0; h < ki; ++h) {
-                Atrip.add(global_row, ids[h], scale * reg(comp, h));
+                for (int h = 0; h < ki; ++h) {
+                    Atrip.add(global_row, ids[h], scale * reg(comp, h));
+                }
+
+                row_center.push_back(center + 1);
+                row_component.push_back(comp + 1);
+                row_a.push_back(a + 1);
+                row_b.push_back(b + 1);
+                row_c.push_back(NA_INTEGER);
+                row_diagonal.push_back(diagonal ? 1 : 0);
+                row_derivative_order.push_back(2);
+                row_tensor_multiplicity.push_back(diagonal ? 1 : 2);
+                row_derivative_scale.push_back(NA_REAL);
+                row_scale.push_back(scale);
+                ++global_row;
             }
+        } else {
+            std::vector<cubic_component_t> comps = third_derivative_components(m);
+            for (int comp = 0; comp < q; ++comp) {
+                const cubic_component_t cc = comps[comp];
+                const bool diagonal = (cc.a == cc.b && cc.b == cc.c);
+                const double derivative_scale = third_derivative_scale(cc);
+                const int tensor_multiplicity = third_derivative_tensor_multiplicity(cc);
+                const double scale = derivative_scale *
+                    std::sqrt(static_cast<double>(tensor_multiplicity));
 
-            row_center.push_back(center + 1);
-            row_component.push_back(comp + 1);
-            row_a.push_back(a + 1);
-            row_b.push_back(b + 1);
-            row_diagonal.push_back(diagonal ? 1 : 0);
-            row_scale.push_back(scale);
-            ++global_row;
+                for (int h = 0; h < ki; ++h) {
+                    Atrip.add(global_row, ids[h], scale * reg(comp, h));
+                }
+
+                row_center.push_back(center + 1);
+                row_component.push_back(comp + 1);
+                row_a.push_back(cc.a + 1);
+                row_b.push_back(cc.b + 1);
+                row_c.push_back(cc.c + 1);
+                row_diagonal.push_back(diagonal ? 1 : 0);
+                row_derivative_order.push_back(3);
+                row_tensor_multiplicity.push_back(tensor_multiplicity);
+                row_derivative_scale.push_back(derivative_scale);
+                row_scale.push_back(scale);
+                ++global_row;
+            }
         }
 
         if (stabilizer) {
@@ -453,7 +557,11 @@ BEGIN_RCPP
         Rcpp::Named("component") = row_component,
         Rcpp::Named("a") = row_a,
         Rcpp::Named("b") = row_b,
+        Rcpp::Named("c") = row_c,
         Rcpp::Named("diagonal") = row_diagonal,
+        Rcpp::Named("derivative.order") = row_derivative_order,
+        Rcpp::Named("derivative.scale") = row_derivative_scale,
+        Rcpp::Named("tensor.multiplicity") = row_tensor_multiplicity,
         Rcpp::Named("scale") = row_scale
     );
 
@@ -472,10 +580,15 @@ BEGIN_RCPP
         Rcpp::Named("knn.includes.self") = true,
         Rcpp::Named("local.pca.on.neighborhood") = true,
         Rcpp::Named("coordinates.centered.at.base.point") = true,
-        Rcpp::Named("design.columns") = "quadratic-first-then-linear-constant-dropped",
+        Rcpp::Named("design.columns") = derivative_order == 3 ?
+            "cubic-first-then-quadratic-then-linear-constant-dropped" :
+            "quadratic-first-then-linear-constant-dropped",
         Rcpp::Named("fixed.intercept") = "RegMat = XInv - XInv * IndMat",
+        Rcpp::Named("derivative.order") = derivative_order,
         Rcpp::Named("diagonal.hessian.scale") = std::sqrt(2.0),
-        Rcpp::Named("offdiagonal.hessian.scale") = 1.0
+        Rcpp::Named("offdiagonal.hessian.scale") = 1.0,
+        Rcpp::Named("third.derivative.scale") =
+            "factorial monomial derivative scale times sqrt(symmetric tensor multiplicity)"
     );
 
     Rcpp::RObject bs_triplet = stabilizer ?
@@ -497,6 +610,7 @@ BEGIN_RCPP
             Rcpp::Named("tangent.dim") = requested_tangent_dim,
             Rcpp::Named("tangent.dim.rule") = tangent_dim_rule,
             Rcpp::Named("eigen.tolerance") = eigen_tolerance,
+            Rcpp::Named("derivative.order") = derivative_order,
             Rcpp::Named("stabilizer") = stabilizer,
             Rcpp::Named("pinv.tol") = pinv_tol
         )

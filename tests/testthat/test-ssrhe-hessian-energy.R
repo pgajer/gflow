@@ -54,6 +54,70 @@ test_that("ssrhe.hessian.operator annihilates affine functions but not quadratic
     expect_lt(sqrt(sum((op$BS %*% quadratic)^2)), 1e-6)
 })
 
+test_that("ssrhe.hessian.operator constructs order-3 symmetric tensor rows", {
+    skip_if_not_installed("Matrix")
+
+    grid <- expand.grid(x = seq(0, 1, length.out = 5),
+                        y = seq(0, 1, length.out = 5))
+    X <- as.matrix(grid)
+    op <- ssrhe.hessian.operator(
+        X = X,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        return.BS = FALSE
+    )
+
+    expect_s3_class(op, "ssrhe.hessian.operator")
+    expect_equal(op$parameters$derivative.order, 3L)
+    expect_equal(op$parity$derivative.order, 3L)
+    expect_equal(dim(op$A), c(nrow(X) * 4L, nrow(X)))
+    expect_equal(dim(op$B), c(nrow(X), nrow(X)))
+    expect_null(op$BS)
+    expect_true(all(op$row.table$derivative.order == 3L))
+    expect_equal(sort(unique(op$row.table$component)), 1:4)
+    expect_equal(sort(unique(op$row.table$c)), 1:2)
+
+    one_center <- op$row.table[op$row.table$center == 1L, ]
+    expect_equal(
+        one_center[, c("a", "b", "c")],
+        data.frame(a = c(1L, 1L, 1L, 2L),
+                   b = c(1L, 1L, 2L, 2L),
+                   c = c(1L, 2L, 2L, 2L))
+    )
+    expect_equal(one_center$derivative.scale, c(6, 2, 2, 6),
+                 tolerance = 1e-12)
+    expect_equal(one_center$tensor.multiplicity, c(1L, 3L, 3L, 1L))
+    expect_equal(one_center$scale, c(6, 2 * sqrt(3), 2 * sqrt(3), 6),
+                 tolerance = 1e-12)
+})
+
+test_that("order-3 SSRHE operator annihilates one-dimensional quadratics", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(-1, 1, length.out = 30)
+    X <- matrix(x, ncol = 1)
+    op <- ssrhe.hessian.operator(
+        X = X,
+        k = 10L,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        return.BS = FALSE
+    )
+
+    one <- rep(1, length(x))
+    linear <- 2 - 0.5 * x
+    quadratic <- 0.25 + 2 * x - 3 * x^2
+    cubic <- x^3
+
+    expect_equal(dim(op$A), c(length(x), length(x)))
+    expect_equal(unique(op$row.table$scale), 6, tolerance = 1e-12)
+    expect_lt(sqrt(sum((op$A %*% one)^2)), 1e-8)
+    expect_lt(sqrt(sum((op$A %*% linear)^2)), 1e-8)
+    expect_lt(sqrt(sum((op$A %*% quadratic)^2)), 1e-7)
+    expect_gt(sqrt(sum((op$A %*% cubic)^2)), 1e-3)
+})
+
 test_that("ssrhe.hessian.operator supports supplied neighbor indices", {
     skip_if_not_installed("Matrix")
 
@@ -178,6 +242,35 @@ test_that("fit.ssrhe.hessian.regression matches dense fixed-lambda reference", {
     expect_s3_class(fit, "ssrhe.hessian.fit")
     expect_equal(fit$fitted.values, ref, tolerance = 1e-9)
     expect_equal(fit$residuals, y - ref, tolerance = 1e-9)
+    expect_equal(fit$energies$hessian,
+                 as.numeric(crossprod(ref, as.matrix(fit$operator$B) %*% ref)),
+                 tolerance = 1e-9)
+})
+
+test_that("fit.ssrhe.hessian.regression matches order-3 dense fixed-lambda reference", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + X[, 1] * X[, 2] + 0.1 * X[, 2]^3
+    lambda1 <- 0.2
+
+    fit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 12L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda1 = lambda1,
+        lambda2 = 0
+    )
+
+    M <- diag(1, nrow(X)) + lambda1 * as.matrix(fit$operator$B)
+    ref <- as.vector(solve(M, y))
+
+    expect_s3_class(fit, "ssrhe.hessian.fit")
+    expect_equal(fit$operator$parameters$derivative.order, 3L)
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-9)
     expect_equal(fit$energies$hessian,
                  as.numeric(crossprod(ref, as.matrix(fit$operator$B) %*% ref)),
                  tolerance = 1e-9)
@@ -371,6 +464,447 @@ test_that("fit.ssrhe.hessian.regression.cv supports adaptive-radius neighborhood
     expect_true(fit$selection$lambda2 %in% c(0, 0.03))
 })
 
+test_that("ssrhe.support.grid builds compact adaptive-radius profiles", {
+    grid <- ssrhe.support.grid(
+        n = 30L,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        max.candidates = 4L
+    )
+
+    expect_s3_class(grid, "data.frame")
+    expect_named(grid, c("adaptive.k.scale", "min.support", "max.support"))
+    expect_lte(nrow(grid), 4L)
+    expect_true(all(grid$adaptive.k.scale >= 1L))
+    expect_true(all(grid$adaptive.k.scale < 30L))
+    expect_true(all(grid$min.support >= 2L))
+    expect_true(all(grid$min.support <= 30L))
+})
+
+test_that("fit.ssrhe.hessian.regression.cv supports outer support CV", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(0, 1, length.out = 24)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+    fold.id <- rep(1:3, length.out = length(y))
+    support.grid <- data.frame(
+        adaptive.k.scale = c(2L, 4L),
+        min.support = c(5L, 8L)
+    )
+
+    fit <- fit.ssrhe.hessian.regression.cv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        support.selection = "cv",
+        support.grid = support.grid,
+        lambda1.grid = c(1e-4, 1e-2),
+        lambda2.grid = 0,
+        fold.id = fold.id,
+        ridge = 1e-8
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.cv.fit")
+    expect_equal(fit$support.selection, "cv")
+    expect_equal(nrow(fit$support.cv.table), 2L)
+    expect_true(all(fit$support.cv.table$status == "ok"))
+    expect_true(fit$selected.support$min.support %in% support.grid$min.support)
+    expect_equal(fit$operator$neighborhoods$min.support,
+                 fit$selected.support$min.support)
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression matches direct genlasso reference", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    lambda <- 0.08
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda.grid = lambda,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+
+    ref.path <- genlasso::genlasso(
+        y = y,
+        D = as.matrix(fit$operator$A),
+        svd = TRUE,
+        maxsteps = 1000L
+    )
+    ref <- as.vector(stats::coef(ref.path, lambda = lambda)$beta)
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-8)
+    expect_equal(fit$residuals, y - ref, tolerance = 1e-8)
+    expect_equal(fit$energies$hessian.l1,
+                 sum(abs(as.vector(fit$operator$A %*% ref))),
+                 tolerance = 1e-8)
+    expect_equal(fit$solver$backend, "genlasso")
+})
+
+test_that("fit.ssrhe.hessian.l1.regression matches direct genlasso reference for order 3", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2 +
+        0.1 * X[, 1] * X[, 2]
+    lambda <- 0.015
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda.grid = lambda,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+
+    ref.path <- genlasso::genlasso(
+        y = y,
+        D = as.matrix(fit$operator$A),
+        svd = TRUE,
+        maxsteps = 1000L
+    )
+    ref <- as.vector(stats::coef(ref.path, lambda = lambda)$beta)
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$operator$parameters$derivative.order, 3L)
+    expect_true(all(fit$operator$row.table$derivative.order == 3L))
+    expect_equal(fit$fitted.values, ref, tolerance = 1e-8)
+    expect_equal(fit$energies$hessian.l1,
+                 sum(abs(as.vector(fit$operator$A %*% ref))),
+                 tolerance = 1e-8)
+    expect_equal(fit$solver$backend, "genlasso")
+})
+
+test_that("fit.ssrhe.hessian.l1.regression supports ADMM and row scaling diagnostics", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda.grid = 0.01,
+        lambda.selection = "fixed",
+        solver = "admm",
+        row.scaling = "l2",
+        admm.maxiter = 2000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$solver$backend, "admm")
+    expect_equal(fit$solver$row.scaling, "l2")
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_equal(fit$diagnostics$scaled.row.norm$min, 1, tolerance = 1e-8)
+    expect_equal(fit$diagnostics$scaled.row.norm$median, 1, tolerance = 1e-8)
+    expect_equal(fit$diagnostics$scaled.row.norm$max, 1, tolerance = 1e-8)
+    expect_true(is.list(fit$solver$admm[[1L]]))
+})
+
+test_that("ADMM fixed-lambda fit is close to genlasso on a small order-3 operator", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    lambda <- 0.01
+
+    fit.gen <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda.grid = lambda,
+        lambda.selection = "fixed",
+        solver = "genlasso",
+        maxsteps = 1000L
+    )
+    fit.admm <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda.grid = lambda,
+        lambda.selection = "fixed",
+        solver = "admm",
+        row.scaling = "none",
+        admm.maxiter = 5000L,
+        admm.abstol = 1e-5,
+        admm.reltol = 1e-4
+    )
+
+    expect_equal(fit.admm$fitted.values, fit.gen$fitted.values,
+                 tolerance = 2e-3)
+})
+
+test_that("fit.ssrhe.hessian.l1.regression selects a CV lambda", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    fold.id <- rep(1:4, length.out = nrow(X))
+    lambda.grid <- c(0.02, 0.08, 0.2)
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda.grid = lambda.grid,
+        lambda.selection = "cv",
+        fold.id = fold.id,
+        loss = "mse",
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_true(fit$lambda %in% lambda.grid)
+    expect_equal(fit$cv$lambda, fit$lambda)
+    expect_equal(fit$fold.id, fold.id)
+    expect_true(all(is.finite(fit$cv$mean.error)))
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_equal(dim(fit$beta.grid), c(nrow(X), length(lambda.grid)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression handles missing responses and weights", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- X[, 1]^2 - X[, 2]
+    y[c(3, 9)] <- NA_real_
+    weights <- rep(1, nrow(X))
+    weights[c(5, 11)] <- 0.25
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda.grid = 0.05,
+        lambda.selection = "fixed",
+        weights = weights,
+        maxsteps = 1000L
+    )
+
+    expect_equal(fit$weights[c(3, 9)], c(0, 0))
+    expect_equal(fit$weights[c(5, 11)], c(0.25, 0.25))
+    expect_true(all(is.na(fit$residuals[c(3, 9)])))
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression selects a CV lambda for order 3", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+    fold.id <- rep(1:5, length.out = nrow(X))
+    lambda.grid <- c(0.001, 0.01, 0.05)
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 14L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        lambda.grid = lambda.grid,
+        lambda.selection = "cv",
+        fold.id = fold.id,
+        loss = "mse",
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$operator$parameters$derivative.order, 3L)
+    expect_true(fit$lambda %in% lambda.grid)
+    expect_equal(fit$cv$lambda, fit$lambda)
+    expect_true(all(is.finite(fit$cv$mean.error)))
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("refit.ssrhe.hessian.l1.regression reuses the operator", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y1 <- X[, 1] + X[, 2]
+    y2 <- sin(X[, 1]) - cos(X[, 2])
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y1,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda.grid = 0.04,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+    refit <- refit.ssrhe.hessian.l1.regression(
+        fit,
+        y.new = y2,
+        lambda.grid = 0.12,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(refit, "ssrhe.hessian.l1.refit")
+    expect_equal(refit$lambda, 0.12)
+    expect_identical(refit$operator, fit$operator)
+    expect_true(all(is.finite(refit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression supports adaptive-radius neighborhoods", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        tangent.dim = 2L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 3L,
+        radius.rule = "geomean",
+        radius.factor = 1.25,
+        min.support = 8L,
+        lambda.grid = 0.05,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$operator$parameters$neighborhood.type, "adaptive.radius")
+    expect_true(all(fit$operator$neighborhoods$support.size >= 8L))
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression supports adaptive-radius order-3 neighborhoods", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 6),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        radius.rule = "geomean",
+        radius.factor = 1.25,
+        min.support = 14L,
+        lambda.grid = 0.01,
+        lambda.selection = "fixed",
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$operator$parameters$neighborhood.type, "adaptive.radius")
+    expect_equal(fit$operator$parameters$derivative.order, 3L)
+    expect_true(all(fit$operator$neighborhoods$support.size >= 14L))
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression handles one-dimensional SSRHE operators", {
+    skip_if_not_installed("Matrix")
+    skip_if_not_installed("genlasso")
+
+    x <- seq(0, 1, length.out = 24)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        k = 8L,
+        tangent.dim = 1L,
+        lambda.grid = c(0.001, 0.01),
+        lambda.selection = "cv",
+        nfolds = 3L,
+        maxsteps = 1000L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_true(fit$solver$svd)
+    expect_equal(fit$solver$representation, "dense")
+    expect_true(fit$lambda %in% c(0.001, 0.01))
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.l1.regression supports outer support CV", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(0, 1, length.out = 24)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+    fold.id <- rep(1:3, length.out = length(y))
+    support.grid <- data.frame(
+        adaptive.k.scale = c(2L, 4L),
+        min.support = c(5L, 8L)
+    )
+
+    fit <- fit.ssrhe.hessian.l1.regression(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        support.selection = "cv",
+        support.grid = support.grid,
+        lambda.grid = c(0.001, 0.01),
+        lambda.selection = "cv",
+        fold.id = fold.id,
+        solver = "admm",
+        row.scaling = "l2",
+        admm.maxiter = 500L
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.l1.fit")
+    expect_equal(fit$support.selection, "cv")
+    expect_equal(nrow(fit$support.cv.table), 2L)
+    expect_true(all(fit$support.cv.table$status == "ok"))
+    expect_true(fit$selected.support$min.support %in% support.grid$min.support)
+    expect_equal(fit$operator$neighborhoods$min.support,
+                 fit$selected.support$min.support)
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
 test_that("fit.ssrhe.hessian.regression.cv rejects matrix responses for now", {
     skip_if_not_installed("Matrix")
 
@@ -408,5 +942,48 @@ test_that("fit.ssrhe.hessian.regression requires BS when lambda2 is positive", {
             stabilizer = FALSE
         ),
         "lambda2 > 0 requires stabilizer = TRUE"
+    )
+})
+
+test_that("order-3 SSRHE L2 rejects supplemental stabilizer paths", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- X[, 1]
+
+    expect_error(
+        ssrhe.hessian.operator(
+            X = X,
+            k = 12L,
+            tangent.dim = 2L,
+            derivative.order = 3L,
+            stabilizer = TRUE
+        ),
+        "stabilizer"
+    )
+    expect_error(
+        fit.ssrhe.hessian.regression(
+            X = X,
+            y = y,
+            k = 12L,
+            tangent.dim = 2L,
+            derivative.order = 3L,
+            lambda1 = 0.1,
+            lambda2 = 0.1
+        ),
+        "lambda2/stabilizer"
+    )
+    expect_error(
+        fit.ssrhe.hessian.regression.cv(
+            X = X,
+            y = y,
+            k = 12L,
+            tangent.dim = 2L,
+            derivative.order = 3L,
+            lambda1.grid = c(0.1, 0.2),
+            lambda2.grid = c(0, 0.1)
+        ),
+        "lambda2.grid/stabilizer"
     )
 })

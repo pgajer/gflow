@@ -2,6 +2,16 @@
 
 Development benchmarks and smoke reports for `fit.metric.graph.lowpass()`.
 
+Benchmark result tables use a shared failure-status convention:
+
+- `status = "ok"`: the fit returned and fitted/predicted values were finite.
+- `status = "score_error"`: the fit returned, but fitted/predicted values were
+  missing or non-finite, so accuracy metrics are not computed.
+- `status = "fit_error"`: the fit call threw an error.
+
+Runtime and accuracy summaries should be computed on scored `ok` rows only,
+with fit and score-error counts reported beside the summaries.
+
 Render the single-scenario report from any working directory with:
 
 ```r

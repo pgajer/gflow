@@ -209,6 +209,8 @@ fit.metric.graph.lowpass <- function(
     spectral <- raw$spectral
     eigenvalues <- as.double(spectral$eigenvalues)
     V <- as.matrix(spectral$eigenvectors)
+    .require.metric.graph.lowpass.finite(eigenvalues, "spectral$eigenvalues")
+    .require.metric.graph.lowpass.finite(V, "spectral$eigenvectors")
 
     eta.grid <- .prepare.metric.graph.lowpass.eta.grid(
         eta.grid = eta.grid,
@@ -217,21 +219,35 @@ fit.metric.graph.lowpass <- function(
         n.candidates = n.candidates
     )
     filter.weights.matrix <- compute.filter.weights.matrix(eigenvalues, eta.grid, filter.type)
+    .require.metric.graph.lowpass.finite(filter.weights.matrix, "filter weights")
     y.spectral <- as.vector(crossprod(V, y))
+    .require.metric.graph.lowpass.finite(y.spectral, "spectral response coefficients")
     gcv.result <- select.eta.gcv.single(y, y.spectral, V, filter.weights.matrix, eta.grid)
+    .validate.metric.graph.lowpass.gcv.result(
+        gcv.result = gcv.result,
+        n = length(y),
+        n.eta = length(eta.grid),
+        context = "fit.metric.graph.lowpass()"
+    )
     best.idx <- gcv.result$best.idx
 
     spectral$filtered.eigenvalues <- filter.weights.matrix[, best.idx]
+    .require.metric.graph.lowpass.finite(spectral$filtered.eigenvalues,
+                                         "spectral$filtered.eigenvalues")
     spectral$eta.optimal <- gcv.result$eta.optimal
     spectral$filter.type <- filter.type
     spectral$n.eigenpairs <- length(eigenvalues)
 
     fitted.grid <- V %*% (y.spectral * filter.weights.matrix)
+    .require.metric.graph.lowpass.finite(fitted.grid, "candidate fitted values")
     rss.grid <- colSums((y - fitted.grid)^2)
     df.grid <- colSums(filter.weights.matrix)
     gcv.scores <- rss.grid / pmax(length(y) - df.grid, 1e-10)^2
+    .require.metric.graph.lowpass.finite(gcv.scores, "GCV scores")
 
     residuals <- y - gcv.result$y.hat
+    .require.metric.graph.lowpass.finite(gcv.result$y.hat, "fitted values")
+    .require.metric.graph.lowpass.finite(residuals, "residuals")
     result <- list(
         fitted.values = as.vector(gcv.result$y.hat),
         residuals = as.vector(residuals),
@@ -293,6 +309,8 @@ refit.metric.graph.lowpass <- function(fitted.model,
     if (is.null(eigenvalues) || !is.numeric(eigenvalues)) {
         stop("fitted.model$spectral$eigenvalues must be numeric.")
     }
+    .require.metric.graph.lowpass.finite(V, "fitted.model$spectral$eigenvectors")
+    .require.metric.graph.lowpass.finite(eigenvalues, "fitted.model$spectral$eigenvalues")
 
     n <- nrow(V)
     y.info <- .prepare.metric.graph.lowpass.response.matrix(y.new, n)
@@ -314,8 +332,11 @@ refit.metric.graph.lowpass <- function(fitted.model,
             n.candidates = n.candidates
         )
         filter.weights.matrix <- compute.filter.weights.matrix(eigenvalues, eta.grid, filter.type)
+        .require.metric.graph.lowpass.finite(filter.weights.matrix, "refit filter weights")
         trace.S.all <- colSums(filter.weights.matrix)
+        .require.metric.graph.lowpass.finite(trace.S.all, "refit effective degrees of freedom grid")
         Vt.Y <- crossprod(V, Y)
+        .require.metric.graph.lowpass.finite(Vt.Y, "refit spectral response coefficients")
 
         Y.hat <- matrix(0, nrow = n, ncol = n.responses)
         eta.optimal <- numeric(n.responses)
@@ -330,12 +351,22 @@ refit.metric.graph.lowpass <- function(fitted.model,
             gcv.result <- select.eta.gcv.single(
                 Y[, j], Vt.Y[, j], V, filter.weights.matrix, eta.grid
             )
+            .validate.metric.graph.lowpass.gcv.result(
+                gcv.result = gcv.result,
+                n = n,
+                n.eta = length(eta.grid),
+                context = "refit.metric.graph.lowpass(per.column.gcv = TRUE)"
+            )
             Y.hat[, j] <- gcv.result$y.hat
             eta.optimal[j] <- gcv.result$eta.optimal
             gcv.scores[j] <- gcv.result$gcv.min
             effective.df[j] <- gcv.result$effective.df
             best.idx[j] <- gcv.result$best.idx
         }
+        .require.metric.graph.lowpass.finite(Y.hat, "refit fitted values")
+        .require.metric.graph.lowpass.finite(eta.optimal, "refit eta.optimal")
+        .require.metric.graph.lowpass.finite(gcv.scores, "refit GCV scores")
+        .require.metric.graph.lowpass.finite(effective.df, "refit effective degrees of freedom")
         if (!is.null(col.names)) {
             colnames(Y.hat) <- col.names
             names(eta.optimal) <- col.names
@@ -343,6 +374,7 @@ refit.metric.graph.lowpass <- function(fitted.model,
             names(effective.df) <- col.names
         }
         residuals <- Y - Y.hat
+        .require.metric.graph.lowpass.finite(residuals, "refit residuals")
         out <- list(
             fitted.values = if (n.responses == 1L) as.vector(Y.hat) else Y.hat,
             residuals = if (n.responses == 1L) as.vector(residuals) else residuals,
@@ -365,6 +397,9 @@ refit.metric.graph.lowpass <- function(fitted.model,
     if (is.null(f.lambda) || length(f.lambda) != ncol(V)) {
         stop("fitted.model$spectral$filtered.eigenvalues is missing or has the wrong length.")
     }
+    .require.metric.graph.lowpass.finite(f.lambda,
+                                         "fitted.model$spectral$filtered.eigenvalues")
+    .require.metric.graph.lowpass.finite(eta.used, "fitted.model$spectral$eta.optimal")
     block.index <- .make.metric.graph.lowpass.block.index(n.responses, block.size)
     Y.hat <- matrix(0, nrow = n, ncol = n.responses)
     residuals <- matrix(0, nrow = n, ncol = n.responses)
@@ -376,6 +411,8 @@ refit.metric.graph.lowpass <- function(fitted.model,
         Y.hat[, cols] <- Y.hat.block
         residuals[, cols] <- y.block - Y.hat.block
     }
+    .require.metric.graph.lowpass.finite(Y.hat, "refit fitted values")
+    .require.metric.graph.lowpass.finite(residuals, "refit residuals")
     if (!is.null(col.names)) {
         colnames(Y.hat) <- col.names
         colnames(residuals) <- col.names
@@ -565,7 +602,39 @@ refit.metric.graph.lowpass <- function(fitted.model,
         }
         eta.grid <- as.double(eta.grid)
     }
+    .require.metric.graph.lowpass.finite(eta.grid, "eta.grid")
     eta.grid
+}
+
+.require.metric.graph.lowpass.finite <- function(x, name) {
+    if (is.null(x) || length(x) < 1L || any(!is.finite(as.numeric(x)))) {
+        stop(sprintf("%s contains non-finite values.", name), call. = FALSE)
+    }
+    invisible(TRUE)
+}
+
+.validate.metric.graph.lowpass.gcv.result <- function(gcv.result, n, n.eta, context) {
+    if (!is.list(gcv.result)) {
+        stop(sprintf("%s returned an invalid GCV result.", context), call. = FALSE)
+    }
+    if (is.null(gcv.result$y.hat) || length(gcv.result$y.hat) != n) {
+        stop(sprintf("%s returned fitted values with the wrong length.", context),
+             call. = FALSE)
+    }
+    .require.metric.graph.lowpass.finite(gcv.result$y.hat,
+                                         sprintf("%s fitted values", context))
+    .require.metric.graph.lowpass.finite(gcv.result$eta.optimal,
+                                         sprintf("%s selected eta", context))
+    .require.metric.graph.lowpass.finite(gcv.result$gcv.min,
+                                         sprintf("%s selected GCV score", context))
+    .require.metric.graph.lowpass.finite(gcv.result$effective.df,
+                                         sprintf("%s effective degrees of freedom", context))
+    best.idx <- gcv.result$best.idx
+    if (length(best.idx) != 1L || is.na(best.idx) || !is.finite(best.idx) ||
+        best.idx != floor(best.idx) || best.idx < 1L || best.idx > n.eta) {
+        stop(sprintf("%s selected an invalid eta index.", context), call. = FALSE)
+    }
+    invisible(TRUE)
 }
 
 .attach.metric.graph.lowpass.laplacian <- function(out, return.sparse) {

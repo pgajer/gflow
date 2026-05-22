@@ -332,7 +332,7 @@ score_fit <- function(method, fit, elapsed, y, truth) {
   if (inherits(fit, "error")) {
     return(data.frame(
       method = method,
-      status = "error",
+      status = "fit_error",
       rmse.truth = NA_real_,
       rmse.observed = NA_real_,
       mae.truth = NA_real_,
@@ -347,6 +347,23 @@ score_fit <- function(method, fit, elapsed, y, truth) {
     ))
   }
   yhat <- as.numeric(fit$fitted.values)
+  if (length(yhat) != length(y) || any(!is.finite(yhat))) {
+    return(data.frame(
+      method = method,
+      status = "score_error",
+      rmse.truth = NA_real_,
+      rmse.observed = NA_real_,
+      mae.truth = NA_real_,
+      runtime.sec = elapsed,
+      eta = NA_real_,
+      gcv = NA_real_,
+      effective.df = NA_real_,
+      eigen.backend = NA_character_,
+      conductance.median = NA_real_,
+      message = "Fit returned, but fitted values were missing or non-finite.",
+      stringsAsFactors = FALSE
+    ))
+  }
   if (inherits(fit, "metric.graph.lowpass.fit")) {
     conductance <- fit$operator$edge.table$conductance
     eta <- fit$gcv$eta.optimal

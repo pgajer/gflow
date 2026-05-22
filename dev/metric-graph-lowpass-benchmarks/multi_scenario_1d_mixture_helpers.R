@@ -222,6 +222,9 @@ score_prediction <- function(method, yhat, elapsed, y, truth,
                              conductance.median = NA_real_,
                              message = "") {
   yhat <- unname(as.numeric(yhat))
+  if (length(yhat) != length(y) || any(!is.finite(yhat))) {
+    return(score_nonfinite(method, elapsed))
+  }
   data.frame(
     method = method,
     status = "ok",
@@ -239,10 +242,28 @@ score_prediction <- function(method, yhat, elapsed, y, truth,
   )
 }
 
+score_nonfinite <- function(method, elapsed = NA_real_) {
+  data.frame(
+    method = method,
+    status = "score_error",
+    rmse.truth = NA_real_,
+    rmse.observed = NA_real_,
+    mae.truth = NA_real_,
+    runtime.sec = elapsed,
+    eta = NA_real_,
+    gcv = NA_real_,
+    effective.df = NA_real_,
+    eigen.backend = NA_character_,
+    conductance.median = NA_real_,
+    message = "Fit returned, but fitted values were missing or non-finite.",
+    stringsAsFactors = FALSE
+  )
+}
+
 score_failure <- function(method, err, elapsed = NA_real_) {
   data.frame(
     method = method,
-    status = "error",
+    status = "fit_error",
     rmse.truth = NA_real_,
     rmse.observed = NA_real_,
     mae.truth = NA_real_,
@@ -558,7 +579,7 @@ fit_metric_one <- function(spec, graph, y, n) {
 
 score_fit <- function(method, fit, elapsed, y, truth) {
   if (inherits(fit, "error")) {
-    return(data.frame(method = method, status = "error", rmse.truth = NA_real_,
+    return(data.frame(method = method, status = "fit_error", rmse.truth = NA_real_,
                       rmse.observed = NA_real_, mae.truth = NA_real_,
                       runtime.sec = elapsed, eta = NA_real_, gcv = NA_real_,
                       effective.df = NA_real_, eigen.backend = NA_character_,
@@ -566,6 +587,9 @@ score_fit <- function(method, fit, elapsed, y, truth) {
                       stringsAsFactors = FALSE))
   }
   yhat <- as.numeric(fit$fitted.values)
+  if (length(yhat) != length(y) || any(!is.finite(yhat))) {
+    return(score_nonfinite(method, elapsed))
+  }
   if (inherits(fit, "metric.graph.lowpass.fit")) {
     conductance <- fit$operator$edge.table$conductance
     eta <- fit$gcv$eta.optimal
