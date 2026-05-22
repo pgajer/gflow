@@ -37,6 +37,46 @@ test_that("ssrhe.hessian.operator constructs an auditable sparse Hessian operato
                  sqrt(2), tolerance = 1e-12)
 })
 
+test_that("SSRHE fit paths can skip local geometry diagnostics", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]
+
+    op <- ssrhe.hessian.operator(
+        X = X,
+        k = 10L,
+        tangent.dim = 2L,
+        return.local.diagnostics = FALSE
+    )
+    expect_null(op$local.diagnostics)
+    expect_s3_class(op$diagnostics, "data.frame")
+    expect_true(inherits(op$B, "sparseMatrix"))
+
+    fit.fast <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda1 = 0.2,
+        lambda2 = 0
+    )
+    expect_null(fit.fast$operator$local.diagnostics)
+
+    fit.audit <- fit.ssrhe.hessian.regression(
+        X = X,
+        y = y,
+        k = 10L,
+        tangent.dim = 2L,
+        lambda1 = 0.2,
+        lambda2 = 0,
+        return.local.diagnostics = TRUE
+    )
+    expect_s3_class(fit.audit$operator$local.diagnostics, "data.frame")
+    expect_equal(nrow(fit.audit$operator$local.diagnostics), nrow(X))
+})
+
 test_that("ssrhe.hessian.operator local diagnostics flag chart geometry", {
     skip_if_not_installed("Matrix")
 

@@ -61,6 +61,10 @@
 #'   the supplemental stabilizer \eqn{B_S}.
 #' @param return.sparse Logical. If \code{TRUE}, attach \pkg{Matrix} sparse
 #'   matrices in addition to raw triplets.
+#' @param return.local.diagnostics Logical. If \code{TRUE}, compute additional
+#'   R-side local chart diagnostics such as chart distortion and boundary
+#'   asymmetry. These diagnostics are useful for operator audits, but can be
+#'   skipped in fitting and cross-validation paths for speed.
 #' @param verbose Logical. If \code{TRUE}, print a short native construction
 #'   message.
 #'
@@ -119,7 +123,7 @@
 #'     \item \code{neighborhoods}: support-construction diagnostics;
 #'     \item \code{row.table}: one row per Hessian component row of \eqn{A};
 #'     \item \code{diagnostics}: local design rank, condition, and PCA summaries;
-#'     \item \code{local.diagnostics}: one row per center vertex with support
+#'     \item \code{local.diagnostics}: if requested, one row per center vertex with support
 #'       size, design rank/condition, PCA variance, chart-distortion,
 #'       boundary-asymmetry, and curvature-bias proxy diagnostics;
 #'     \item \code{parity}: notes documenting reference-behavior conventions.
@@ -154,6 +158,7 @@ ssrhe.hessian.operator <- function(
     return.B = TRUE,
     return.BS = stabilizer,
     return.sparse = TRUE,
+    return.local.diagnostics = TRUE,
     verbose = FALSE) {
 
     X <- .validate.ssrhe.X(X)
@@ -195,6 +200,7 @@ ssrhe.hessian.operator <- function(
     return.B <- isTRUE(return.B)
     return.BS <- isTRUE(return.BS)
     return.sparse <- isTRUE(return.sparse)
+    return.local.diagnostics <- isTRUE(return.local.diagnostics)
     verbose <- isTRUE(verbose)
 
     if ((return.A || return.B || return.BS || return.sparse) &&
@@ -249,11 +255,15 @@ ssrhe.hessian.operator <- function(
 
     raw$row.table <- as.data.frame(raw$row.table, stringsAsFactors = FALSE)
     raw$diagnostics <- as.data.frame(raw$diagnostics, stringsAsFactors = FALSE)
-    raw$local.diagnostics <- .ssrhe.local.geometry.diagnostics(
-        X = X,
-        support.index = raw$support.index,
-        diagnostics = raw$diagnostics
-    )
+    raw$local.diagnostics <- if (return.local.diagnostics) {
+        .ssrhe.local.geometry.diagnostics(
+            X = X,
+            support.index = raw$support.index,
+            diagnostics = raw$diagnostics
+        )
+    } else {
+        NULL
+    }
 
     A <- .ssrhe.triplet.to.sparse(raw$A.triplet)
     B <- Matrix::crossprod(A)
@@ -902,6 +912,7 @@ fit.ssrhe.hessian.regression <- function(
     pinv.tol = sqrt(.Machine$double.eps),
     ridge = 0,
     return.A = TRUE,
+    return.local.diagnostics = FALSE,
     verbose = FALSE) {
 
     X <- .validate.ssrhe.X(X)
@@ -941,6 +952,7 @@ fit.ssrhe.hessian.regression <- function(
         return.B = TRUE,
         return.BS = stabilizer,
         return.sparse = TRUE,
+        return.local.diagnostics = return.local.diagnostics,
         verbose = verbose
     )
 
@@ -1091,6 +1103,7 @@ fit.ssrhe.hessian.regression.cv <- function(
     pinv.tol = sqrt(.Machine$double.eps),
     ridge = 0,
     return.A = TRUE,
+    return.local.diagnostics = FALSE,
     support.selection = c("rule", "cv"),
     support.grid = NULL,
     support.cv.max.candidates = 8L,
@@ -1187,6 +1200,7 @@ fit.ssrhe.hessian.regression.cv <- function(
                         pinv.tol = pinv.tol,
                         ridge = ridge,
                         return.A = return.A,
+                        return.local.diagnostics = return.local.diagnostics,
                         verbose = verbose
                     ),
                     error = function(e) e
@@ -1267,6 +1281,7 @@ fit.ssrhe.hessian.regression.cv <- function(
         return.B = TRUE,
         return.BS = stabilizer,
         return.sparse = TRUE,
+        return.local.diagnostics = return.local.diagnostics,
         verbose = verbose
     )
 
@@ -1465,6 +1480,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
     pinv.tol = sqrt(.Machine$double.eps),
     ridge = 0,
     return.A = TRUE,
+    return.local.diagnostics = FALSE,
     support.selection = c("rule", "gcv"),
     support.grid = NULL,
     support.gcv.max.candidates = 8L,
@@ -1567,6 +1583,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         pinv.tol = pinv.tol,
                         ridge = ridge,
                         return.A = return.A,
+                        return.local.diagnostics = return.local.diagnostics,
                         gcv.trace.method = gcv.trace.method,
                         gcv.trace.n.probes = gcv.trace.n.probes,
                         gcv.trace.seed = gcv.trace.seed,
@@ -1663,6 +1680,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
         return.B = TRUE,
         return.BS = stabilizer,
         return.sparse = TRUE,
+        return.local.diagnostics = return.local.diagnostics,
         verbose = verbose
     )
 
@@ -2363,6 +2381,7 @@ fit.ssrhe.hessian.l1.regression <- function(
     support.selection = c("rule", "cv"),
     support.grid = NULL,
     support.cv.max.candidates = 8L,
+    return.local.diagnostics = FALSE,
     verbose = FALSE) {
 
     solver <- match.arg(solver)
@@ -2488,6 +2507,7 @@ fit.ssrhe.hessian.l1.regression <- function(
                         rtol = rtol,
                         btol = btol,
                         eps = eps,
+                        return.local.diagnostics = return.local.diagnostics,
                         verbose = verbose
                     ),
                     error = function(e) e
@@ -2567,6 +2587,7 @@ fit.ssrhe.hessian.l1.regression <- function(
         return.B = FALSE,
         return.BS = FALSE,
         return.sparse = TRUE,
+        return.local.diagnostics = return.local.diagnostics,
         verbose = verbose
     )
 
