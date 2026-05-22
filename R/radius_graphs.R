@@ -89,11 +89,28 @@
                                    prune.tau = 1.05,
                                    prune.local.k = NULL,
                                    prune.k = 1L,
-                                   with.pruned.edge.stats = FALSE) {
+                                   with.pruned.edge.stats = FALSE,
+                                   return.timing = FALSE) {
+    return.timing <- isTRUE(return.timing)
+    timing.rows <- list()
+    timing.phase.start <- proc.time()[["elapsed"]]
+    add.timing <- function(phase) {
+        if (!return.timing) {
+            return(invisible(NULL))
+        }
+        timing.rows[[phase]] <<- .radius.graph.timing.frame(c(
+            setNames(proc.time()[["elapsed"]] - timing.phase.start, phase)
+        ))
+        timing.phase.start <<- proc.time()[["elapsed"]]
+        invisible(NULL)
+    }
+
     n <- nrow(X)
     graph <- .graph.from.edge.table(n, edges)
     raw.adj.list <- graph$adj_list
     raw.weight.list <- graph$weight_list
+    add.timing("finalization.edge.table.to.adjacency")
+
     prune.method <- .normalize.prune.method(prune.method)
     prune.controls <- .normalize.local.prune.controls(
         n, prune.k, prune.tau, prune.local.k, with.pruned.edge.stats
@@ -102,6 +119,8 @@
         max.path.edge.ratio.deviation.thld,
         path.edge.ratio.percentile
     )
+    add.timing("finalization.normalize.controls")
+
     pruning <- .prune.graph.by.method(
         X = X,
         adj.list = raw.adj.list,
@@ -118,6 +137,8 @@
     pruned.adj.list <- pruning$adj_list
     pruned.weight.list <- pruning$weight_list
     n.edges.before.mst <- pruning$n_edges_after_pruning
+    add.timing("finalization.prune")
+
     bridge <- .augment.graph.with.component.mst(
         X = X,
         adj.list = pruned.adj.list,
@@ -129,7 +150,11 @@
         bridge.k.max = bridge.k.max,
         bridge.growth = bridge.growth
     )
+    add.timing("finalization.component.mst")
+
     edge.table <- .graph.edge.table(bridge$adj_list, bridge$weight_list)
+    add.timing("finalization.final.edge.table")
+
     out <- list(
         adj_list = bridge$adj_list,
         weight_list = bridge$weight_list,
@@ -167,6 +192,8 @@
         prune_local_k = pruning$prune_local_k,
         with_pruned_edge_stats = pruning$with_pruned_edge_stats
     )
+    add.timing("finalization.object.assembly")
+
     out <- .add.graph.lifecycle.branches(
         result = out,
         X = X,
@@ -187,7 +214,15 @@
         prune.local.k = prune.controls$prune.local.k,
         with.pruned.edge.stats = prune.controls$with.pruned.edge.stats
     )
+    add.timing("finalization.lifecycle.branches")
+
     class(out) <- c(class, "list")
+    add.timing("finalization.class.assignment")
+    if (return.timing) {
+        timing <- do.call(rbind, timing.rows)
+        rownames(timing) <- NULL
+        out$finalization_timing <- timing
+    }
     out
 }
 
@@ -286,7 +321,8 @@ create.radius.graph <- function(X,
         prune.tau = prune.tau,
         prune.local.k = prune.local.k,
         prune.k = prune.k,
-        with.pruned.edge.stats = with.pruned.edge.stats
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        return.timing = FALSE
     )
     out$radius <- as.numeric(radius)
     out$graph_rule <- "fixed.radius"
@@ -433,7 +469,8 @@ create.adaptive.radius.graph <- function(X,
         prune.tau = prune.tau,
         prune.local.k = prune.local.k,
         prune.k = as.integer(k.scale),
-        with.pruned.edge.stats = with.pruned.edge.stats
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        return.timing = return.timing
     )
     out$k_scale <- as.integer(k.scale)
     out$radius_factor <- as.numeric(radius.factor)
@@ -442,9 +479,15 @@ create.adaptive.radius.graph <- function(X,
     out$sigma <- sigma
     out$graph_rule <- "adaptive.radius"
     if (return.timing) {
-        timing.rows[["graph.finalization"]] <- .radius.graph.timing.frame(c(
-            "graph.finalization" = proc.time()[["elapsed"]] - finalization.start
-        ))
+        finalization.elapsed <- proc.time()[["elapsed"]] - finalization.start
+        if (!is.null(out$finalization_timing)) {
+            timing.rows[["graph.finalization"]] <- out$finalization_timing
+            out$finalization_timing <- NULL
+        } else {
+            timing.rows[["graph.finalization"]] <- .radius.graph.timing.frame(c(
+                "graph.finalization" = finalization.elapsed
+            ))
+        }
         timing <- do.call(rbind, timing.rows)
         rownames(timing) <- NULL
         out$timing <- timing
