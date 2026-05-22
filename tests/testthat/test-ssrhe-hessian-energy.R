@@ -23,9 +23,45 @@ test_that("ssrhe.hessian.operator constructs an auditable sparse Hessian operato
     expect_true(max(abs(as.matrix(op$B - Matrix::t(op$B)))) < 1e-10)
 
     expect_true(all(op$diagnostics$design.rank == op$diagnostics$design.ncol))
+    expect_s3_class(op$local.diagnostics, "data.frame")
+    expect_equal(nrow(op$local.diagnostics), nrow(X))
+    expect_true(all(c("support.size", "design.rank.deficiency",
+                      "pca.variance.explained", "chart.distortion",
+                      "boundary.asymmetry", "curvature.bias.proxy") %in%
+                        names(op$local.diagnostics)))
+    expect_true(all(is.finite(op$local.diagnostics$chart.distortion)))
+    expect_true(all(is.finite(op$local.diagnostics$boundary.asymmetry)))
+    expect_true(all(op$local.diagnostics$design.rank.deficiency == 0L))
     expect_true(all(op$row.table$diagonal %in% c(0L, 1L)))
     expect_equal(unique(op$row.table$scale[op$row.table$diagonal == 1L]),
                  sqrt(2), tolerance = 1e-12)
+})
+
+test_that("ssrhe.hessian.operator local diagnostics flag chart geometry", {
+    skip_if_not_installed("Matrix")
+
+    set.seed(24)
+    x <- seq(-1, 1, length.out = 28)
+    X.line <- cbind(x, 0)
+    op.line <- ssrhe.hessian.operator(
+        X = X.line,
+        k = 8L,
+        tangent.dim = 1L,
+        return.BS = FALSE
+    )
+
+    X.curve <- cbind(x, x^2)
+    op.curve <- ssrhe.hessian.operator(
+        X = X.curve,
+        k = 8L,
+        tangent.dim = 1L,
+        return.BS = FALSE
+    )
+
+    expect_lt(max(op.line$local.diagnostics$chart.distortion), 1e-10)
+    expect_lt(max(op.line$local.diagnostics$curvature.bias.proxy), 1e-10)
+    expect_gt(stats::median(op.curve$local.diagnostics$curvature.bias.proxy), 0)
+    expect_gt(stats::median(op.curve$local.diagnostics$chart.distortion), 0)
 })
 
 test_that("ssrhe.hessian.operator annihilates affine functions but not quadratics", {
