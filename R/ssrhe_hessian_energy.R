@@ -119,6 +119,9 @@
 #'     \item \code{neighborhoods}: support-construction diagnostics;
 #'     \item \code{row.table}: one row per Hessian component row of \eqn{A};
 #'     \item \code{diagnostics}: local design rank, condition, and PCA summaries;
+#'     \item \code{local.diagnostics}: one row per center vertex with support
+#'       size, design rank/condition, PCA variance, chart-distortion,
+#'       boundary-asymmetry, and curvature-bias proxy diagnostics;
 #'     \item \code{parity}: notes documenting reference-behavior conventions.
 #'   }
 #'
@@ -246,6 +249,11 @@ ssrhe.hessian.operator <- function(
 
     raw$row.table <- as.data.frame(raw$row.table, stringsAsFactors = FALSE)
     raw$diagnostics <- as.data.frame(raw$diagnostics, stringsAsFactors = FALSE)
+    raw$local.diagnostics <- .ssrhe.local.geometry.diagnostics(
+        X = X,
+        support.index = raw$support.index,
+        diagnostics = raw$diagnostics
+    )
 
     A <- .ssrhe.triplet.to.sparse(raw$A.triplet)
     B <- Matrix::crossprod(A)
@@ -266,6 +274,7 @@ ssrhe.hessian.operator <- function(
         neighborhoods = neighborhood$metadata,
         row.table = raw$row.table,
         diagnostics = raw$diagnostics,
+        local.diagnostics = raw$local.diagnostics,
         parity = raw$parity,
         parameters = raw$parameters
     )
@@ -527,6 +536,69 @@ ssrhe.support.grid <- function(n,
         operator.cols = operator$A.triplet$dim[[2L]],
         stringsAsFactors = FALSE
     )
+}
+
+.ssrhe.local.geometry.diagnostics <- function(X, support.index, diagnostics) {
+    n <- nrow(X)
+    if (!is.list(support.index) || length(support.index) != n) {
+        stop("Internal error: invalid SSRHE support.index.", call. = FALSE)
+    }
+    out <- diagnostics
+    support.size <- out$k
+    if (is.null(support.size)) {
+        support.size <- lengths(support.index)
+    }
+    out$support.size <- support.size
+    out$design.rank.deficiency <- pmax(0L, out$design.ncol - out$design.rank)
+    out$pca.variance.explained <- out$local.variance.ratio
+    out$pca.discarded.variance.ratio <- pmax(0, 1 - out$local.variance.ratio)
+
+    chart.distortion <- rep(NA_real_, n)
+    boundary.asymmetry <- rep(NA_real_, n)
+    curvature.bias.proxy <- out$pca.discarded.variance.ratio
+
+    for (center in seq_len(n)) {
+        ids <- as.integer(support.index[[center]])
+        if (!length(ids) || !center %in% ids) next
+        local <- X[ids, , drop = FALSE]
+        centered <- sweep(local, 2L, colMeans(local), "-")
+        svd.local <- tryCatch(svd(centered), error = function(e) NULL)
+        if (is.null(svd.local) || !length(svd.local$d)) next
+        m <- as.integer(out$tangent.dim[center])
+        m <- max(1L, min(m, ncol(svd.local$v), length(svd.local$d)))
+        coords <- centered %*% svd.local$v[, seq_len(m), drop = FALSE]
+        base.local <- match(center, ids)
+        coords <- sweep(coords, 2L, coords[base.local, ], "-")
+
+        radius <- sqrt(max(rowSums(coords^2), na.rm = TRUE))
+        centroid.norm <- sqrt(sum(colMeans(coords)^2))
+        boundary.asymmetry[center] <- if (is.finite(radius) && radius > 0) {
+            centroid.norm / radius
+        } else {
+            0
+        }
+
+        if (length(ids) >= 3L) {
+            d.ambient <- stats::dist(local)
+            d.chart <- stats::dist(coords)
+            d.ambient <- as.numeric(d.ambient)
+            d.chart <- as.numeric(d.chart)
+            ok <- is.finite(d.ambient) & is.finite(d.chart) & d.ambient > 0
+            denom <- mean(d.ambient[ok])
+            chart.distortion[center] <- if (any(ok) && is.finite(denom) && denom > 0) {
+                sqrt(mean((d.chart[ok] - d.ambient[ok])^2)) / denom
+            } else {
+                0
+            }
+        } else {
+            chart.distortion[center] <- 0
+        }
+    }
+
+    out$chart.distortion <- chart.distortion
+    out$boundary.asymmetry <- boundary.asymmetry
+    out$curvature.bias.proxy <- curvature.bias.proxy
+    out
 }
 
 .validate.ssrhe.nonnegative.integer <- function(x, name) {
