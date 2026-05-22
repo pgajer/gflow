@@ -1373,6 +1373,389 @@ fit.ssrhe.hessian.regression.cv <- function(
     final
 }
 
+#' Select SSRHE Hessian Regression Penalties by Exact GCV
+#'
+#' Fits \code{\link{fit.ssrhe.hessian.regression}} over a grid of
+#' \code{lambda1}/\code{lambda2} values and selects penalties by generalized
+#' cross-validation (GCV). This is a faster, deterministic alternative to
+#' label-fold CV for fully observed SSRHE \eqn{\ell_2} smoothing problems.
+#'
+#' @inheritParams fit.ssrhe.hessian.regression.cv
+#' @param support.selection Support-profile selection rule.
+#'   \code{"rule"} uses the supplied \code{adaptive.k.scale},
+#'   \code{min.support}, and \code{max.support}. \code{"gcv"} is currently
+#'   supported for \code{neighborhood.type = "adaptive.radius"} and chooses
+#'   among rows of \code{support.grid} by outer GCV.
+#' @param support.gcv.max.candidates Maximum number of support profiles to try
+#'   when \code{support.selection = "gcv"}.
+#'
+#' @details
+#' For a fixed SSRHE operator, the \eqn{\ell_2} fit is a linear smoother
+#' \deqn{
+#'   \hat f_\lambda = S_\lambda y,\qquad
+#'   S_\lambda =
+#'   (W + \lambda_1 B + \lambda_2 B_S + \epsilon I)^{-1} W,
+#' }
+#' where \eqn{W} is the diagonal observation-weight matrix and
+#' \eqn{\epsilon} is \code{ridge}. This function computes the exact smoother
+#' trace \eqn{\mathrm{tr}(S_\lambda)} and scores each grid point by
+#' \deqn{
+#'   \mathrm{GCV}(\lambda)
+#'   =
+#'   \frac{n^{-1}\sum_i w_i(y_i-\hat f_i)^2}
+#'        {(1-\mathrm{tr}(S_\lambda)/n)^2}.
+#' }
+#' The current implementation requires a single fully observed response vector
+#' and strictly positive observation weights. Semi-supervised or missing-label
+#' SSRHE tuning should continue to use
+#' \code{\link{fit.ssrhe.hessian.regression.cv}}.
+#'
+#' With \code{support.selection = "gcv"}, this function performs an outer
+#' adaptive-radius support-profile loop. Each support candidate constructs a
+#' fresh SSRHE operator, runs the same exact GCV grid search, and the candidate
+#' with the smallest selected GCV is refit and returned.
+#'
+#' @return A list of class \code{"ssrhe.hessian.gcv.fit"} and
+#'   \code{"ssrhe.hessian.fit"} containing the final fit plus
+#'   \code{gcv.table}, \code{selection}, and optional
+#'   \code{support.gcv.table} diagnostics.
+#' @export
+fit.ssrhe.hessian.regression.gcv <- function(
+    X,
+    y,
+    k = NULL,
+    tangent.dim,
+    lambda1.grid,
+    lambda2.grid = 0,
+    weights = NULL,
+    nn.index = NULL,
+    neighborhood.type = c("knn", "adaptive.radius", "supplied"),
+    support.index = NULL,
+    adaptive.k.scale = NULL,
+    radius.rule = c("geomean", "max", "min"),
+    radius.factor = 1.25,
+    min.support = NULL,
+    max.support = NULL,
+    support.buffer = 2L,
+    support.topup = c("nearest", "none"),
+    tangent.dim.rule = c("fixed", "eigen.cumulative"),
+    eigen.tolerance = 0.95,
+    derivative.order = 2L,
+    stabilizer = any(lambda2.grid > 0),
+    pinv.tol = sqrt(.Machine$double.eps),
+    ridge = 0,
+    return.A = TRUE,
+    support.selection = c("rule", "gcv"),
+    support.grid = NULL,
+    support.gcv.max.candidates = 8L,
+    verbose = FALSE) {
+
+    if (!requireNamespace("Matrix", quietly = TRUE)) {
+        stop("Package 'Matrix' is required for SSRHE GCV regression.",
+             call. = FALSE)
+    }
+    X <- .validate.ssrhe.X(X)
+    n <- nrow(X)
+    y.info <- .prepare.ssrhe.response.matrix(y, n, "y")
+    if (ncol(y.info$Y) != 1L) {
+        stop("fit.ssrhe.hessian.regression.gcv currently supports one response vector.",
+             call. = FALSE)
+    }
+    W <- .prepare.ssrhe.weight.matrix(weights, y.info, n)
+    if (!all(y.info$observed)) {
+        stop("fit.ssrhe.hessian.regression.gcv currently requires a fully observed response.",
+             call. = FALSE)
+    }
+    if (any(W <= 0)) {
+        stop("fit.ssrhe.hessian.regression.gcv currently requires strictly positive weights.",
+             call. = FALSE)
+    }
+    lambda1.grid <- .validate.ssrhe.lambda.grid(lambda1.grid, "lambda1.grid")
+    lambda2.grid <- .validate.ssrhe.lambda.grid(lambda2.grid, "lambda2.grid")
+    ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
+    derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
+    support.selection <- match.arg(support.selection)
+    neighborhood.type <- match.arg(neighborhood.type)
+    support.gcv.max.candidates <- .validate.ssrhe.positive.integer(
+        support.gcv.max.candidates, "support.gcv.max.candidates")
+    stabilizer <- isTRUE(stabilizer)
+    if (any(lambda2.grid > 0) && !stabilizer) {
+        stop("positive lambda2.grid values require stabilizer = TRUE.",
+             call. = FALSE)
+    }
+    if (derivative.order == 3L && (any(lambda2.grid > 0) || stabilizer)) {
+        stop("lambda2.grid/stabilizer is currently only supported for derivative.order = 2.",
+             call. = FALSE)
+    }
+
+    if (identical(support.selection, "gcv")) {
+        if (!identical(neighborhood.type, "adaptive.radius")) {
+            stop("support.selection = 'gcv' is currently supported only for neighborhood.type = 'adaptive.radius'.",
+                 call. = FALSE)
+        }
+        tangent.dim.grid <- if (missing(tangent.dim) || is.null(tangent.dim)) {
+            ncol(X)
+        } else {
+            .validate.ssrhe.positive.integer(tangent.dim, "tangent.dim")
+        }
+        support.grid <- .validate.ssrhe.support.grid(
+            support.grid = support.grid,
+            n = n,
+            tangent.dim = tangent.dim.grid,
+            derivative.order = derivative.order,
+            support.buffer = support.buffer,
+            max.candidates = support.gcv.max.candidates
+        )
+        candidate.fits <- vector("list", nrow(support.grid))
+        candidate.rows <- vector("list", nrow(support.grid))
+        for (ii in seq_len(nrow(support.grid))) {
+            max.support.ii <- support.grid$max.support[ii]
+            if (is.na(max.support.ii)) max.support.ii <- NULL
+            elapsed <- system.time({
+                cand <- tryCatch(
+                    fit.ssrhe.hessian.regression.gcv(
+                        X = X,
+                        y = y,
+                        k = k,
+                        tangent.dim = if (missing(tangent.dim)) NULL else tangent.dim,
+                        lambda1.grid = lambda1.grid,
+                        lambda2.grid = lambda2.grid,
+                        weights = weights,
+                        support.selection = "rule",
+                        nn.index = nn.index,
+                        neighborhood.type = "adaptive.radius",
+                        support.index = support.index,
+                        adaptive.k.scale = support.grid$adaptive.k.scale[ii],
+                        radius.rule = radius.rule,
+                        radius.factor = radius.factor,
+                        min.support = support.grid$min.support[ii],
+                        max.support = max.support.ii,
+                        support.buffer = support.buffer,
+                        support.topup = support.topup,
+                        tangent.dim.rule = tangent.dim.rule,
+                        eigen.tolerance = eigen.tolerance,
+                        derivative.order = derivative.order,
+                        stabilizer = stabilizer,
+                        pinv.tol = pinv.tol,
+                        ridge = ridge,
+                        return.A = return.A,
+                        verbose = verbose
+                    ),
+                    error = function(e) e
+                )
+            })[["elapsed"]]
+            if (inherits(cand, "error")) {
+                candidate.rows[[ii]] <- data.frame(
+                    candidate = ii,
+                    status = "error",
+                    adaptive.k.scale = support.grid$adaptive.k.scale[ii],
+                    min.support = support.grid$min.support[ii],
+                    max.support = support.grid$max.support[ii],
+                    gcv = Inf,
+                    lambda1 = NA_real_,
+                    lambda2 = NA_real_,
+                    runtime.sec = unname(elapsed),
+                    message = conditionMessage(cand),
+                    stringsAsFactors = FALSE
+                )
+            } else {
+                candidate.fits[[ii]] <- cand
+                diag <- .ssrhe.support.diagnostics(cand$operator)
+                candidate.rows[[ii]] <- cbind(
+                    data.frame(
+                        candidate = ii,
+                        status = "ok",
+                        adaptive.k.scale = support.grid$adaptive.k.scale[ii],
+                        min.support = support.grid$min.support[ii],
+                        max.support = support.grid$max.support[ii],
+                        gcv = cand$selection$gcv,
+                        rss = cand$selection$rss,
+                        trace.S = cand$selection$trace.S,
+                        lambda1 = cand$selection$lambda1,
+                        lambda2 = cand$selection$lambda2,
+                        runtime.sec = unname(elapsed),
+                        message = "",
+                        stringsAsFactors = FALSE
+                    ),
+                    diag
+                )
+            }
+        }
+        support.gcv.table <- do.call(rbind, candidate.rows)
+        if (!any(is.finite(support.gcv.table$gcv))) {
+            stop("All SSRHE support-GCV candidates failed.", call. = FALSE)
+        }
+        selected.support.idx <- which.min(support.gcv.table$gcv)
+        final <- candidate.fits[[selected.support.idx]]
+        final$support.selection <- "gcv"
+        final$support.gcv.table <- support.gcv.table
+        final$selected.support <- support.grid[selected.support.idx, , drop = FALSE]
+        final$selection$support.index <- selected.support.idx
+        final$selection$support.gcv <- support.gcv.table$gcv[selected.support.idx]
+        attr(final, "call") <- match.call()
+        class(final) <- c("ssrhe.hessian.gcv.fit", "ssrhe.hessian.fit", "list")
+        return(final)
+    }
+
+    operator <- ssrhe.hessian.operator(
+        X = X,
+        k = k,
+        tangent.dim = tangent.dim,
+        nn.index = nn.index,
+        neighborhood.type = neighborhood.type,
+        support.index = support.index,
+        adaptive.k.scale = adaptive.k.scale,
+        radius.rule = radius.rule,
+        radius.factor = radius.factor,
+        min.support = min.support,
+        max.support = max.support,
+        support.buffer = support.buffer,
+        support.topup = support.topup,
+        tangent.dim.rule = tangent.dim.rule,
+        eigen.tolerance = eigen.tolerance,
+        derivative.order = derivative.order,
+        stabilizer = stabilizer,
+        pinv.tol = pinv.tol,
+        return.A = return.A,
+        return.B = TRUE,
+        return.BS = stabilizer,
+        return.sparse = TRUE,
+        verbose = verbose
+    )
+
+    final <- .fit.ssrhe.hessian.gcv.from.operator(
+        operator = operator,
+        y = as.vector(y.info$Y),
+        lambda1.grid = lambda1.grid,
+        lambda2.grid = lambda2.grid,
+        weights = as.vector(W),
+        ridge = ridge,
+        verbose = verbose
+    )
+    final$X <- X
+    final$support.selection <- "rule"
+    final$selected.support <- data.frame(
+        adaptive.k.scale = operator$parameters$adaptive.k.scale,
+        min.support = operator$neighborhoods$min.support %||% NA_integer_,
+        max.support = operator$neighborhoods$max.support %||% NA_integer_
+    )
+    attr(final, "call") <- match.call()
+    class(final) <- c("ssrhe.hessian.gcv.fit", "ssrhe.hessian.fit", "list")
+    final
+}
+
+.fit.ssrhe.hessian.gcv.from.operator <- function(operator,
+                                                 y,
+                                                 lambda1.grid,
+                                                 lambda2.grid,
+                                                 weights,
+                                                 ridge,
+                                                 verbose = FALSE) {
+    n <- ncol(operator$B)
+    if (length(y) != n) stop("Internal error: y length mismatch.", call. = FALSE)
+    if (length(weights) != n) {
+        stop("Internal error: weights length mismatch.", call. = FALSE)
+    }
+    if (any(!is.finite(y))) {
+        stop("GCV requires a finite response vector.", call. = FALSE)
+    }
+    if (any(!is.finite(weights)) || any(weights <= 0)) {
+        stop("GCV requires finite strictly positive weights.", call. = FALSE)
+    }
+    grid <- expand.grid(lambda1 = lambda1.grid,
+                        lambda2 = lambda2.grid,
+                        KEEP.OUT.ATTRS = FALSE)
+    rows <- vector("list", nrow(grid))
+    fits <- vector("list", nrow(grid))
+    for (g in seq_len(nrow(grid))) {
+        fit <- tryCatch(
+            .fit.ssrhe.hessian.from.operator(
+                operator = operator,
+                y = y,
+                lambda1 = grid$lambda1[g],
+                lambda2 = grid$lambda2[g],
+                weights = weights,
+                ridge = ridge,
+                verbose = verbose
+            ),
+            error = function(e) e
+        )
+        if (inherits(fit, "error")) {
+            rows[[g]] <- data.frame(
+                lambda1 = grid$lambda1[g],
+                lambda2 = grid$lambda2[g],
+                rss = NA_real_,
+                trace.S = NA_real_,
+                edf = NA_real_,
+                gcv = Inf,
+                status = "error",
+                message = conditionMessage(fit),
+                stringsAsFactors = FALSE
+            )
+            next
+        }
+        system <- .ssrhe.hessian.system.matrix(
+            B = operator$B,
+            BS = operator$BS,
+            weights = weights,
+            lambda1 = grid$lambda1[g],
+            lambda2 = grid$lambda2[g],
+            ridge = ridge
+        )
+        trace.S <- tryCatch(
+            .ssrhe.hessian.smoother.trace(system, weights, verbose = verbose),
+            error = function(e) e
+        )
+        if (inherits(trace.S, "error")) {
+            rows[[g]] <- data.frame(
+                lambda1 = grid$lambda1[g],
+                lambda2 = grid$lambda2[g],
+                rss = NA_real_,
+                trace.S = NA_real_,
+                edf = NA_real_,
+                gcv = Inf,
+                status = "error",
+                message = conditionMessage(trace.S),
+                stringsAsFactors = FALSE
+            )
+            next
+        }
+        rss <- sum(weights * (y - fit$fitted.values)^2)
+        denom <- (1 - trace.S / n)^2
+        gcv <- if (denom > 0) (rss / n) / denom else Inf
+        rows[[g]] <- data.frame(
+            lambda1 = grid$lambda1[g],
+            lambda2 = grid$lambda2[g],
+            rss = rss,
+            trace.S = trace.S,
+            edf = trace.S,
+            gcv = gcv,
+            status = "ok",
+            message = "",
+            stringsAsFactors = FALSE
+        )
+        fits[[g]] <- fit
+    }
+    gcv.table <- do.call(rbind, rows)
+    if (!any(is.finite(gcv.table$gcv))) {
+        stop("All SSRHE GCV fits failed.", call. = FALSE)
+    }
+    selected.idx <- which.min(gcv.table$gcv)
+    final <- fits[[selected.idx]]
+    final$gcv.table <- gcv.table
+    final$selection <- list(
+        rule = "gcv",
+        selected.index = selected.idx,
+        lambda1 = gcv.table$lambda1[selected.idx],
+        lambda2 = gcv.table$lambda2[selected.idx],
+        gcv = gcv.table$gcv[selected.idx],
+        rss = gcv.table$rss[selected.idx],
+        trace.S = gcv.table$trace.S[selected.idx],
+        n = n
+    )
+    final
+}
+
 .fit.ssrhe.hessian.from.operator <- function(operator,
                                              y,
                                              lambda1,
@@ -1492,16 +1875,14 @@ fit.ssrhe.hessian.regression.cv <- function(
                                         verbose = FALSE) {
     n <- nrow(B)
     if (length(weights) != n) stop("Internal error: weights length mismatch.", call. = FALSE)
-    system <- lambda1 * B
-    if (lambda2 > 0) {
-        system <- system + lambda2 * BS
-    }
-    if (ridge > 0) {
-        system <- system + Matrix::Diagonal(n, ridge)
-    }
-    if (any(weights > 0)) {
-        system <- system + Matrix::Diagonal(n, weights)
-    }
+    system <- .ssrhe.hessian.system.matrix(
+        B = B,
+        BS = BS,
+        weights = weights,
+        lambda1 = lambda1,
+        lambda2 = lambda2,
+        ridge = ridge
+    )
     rhs <- weights * Y
 
     fit <- tryCatch({
@@ -1519,6 +1900,48 @@ fit.ssrhe.hessian.regression.cv <- function(
         )
     })
     list(fitted = fit, method = "linear.solve")
+}
+
+.ssrhe.hessian.system.matrix <- function(B, BS, weights,
+                                         lambda1, lambda2, ridge) {
+    n <- nrow(B)
+    system <- lambda1 * B
+    if (lambda2 > 0) {
+        if (is.null(BS)) {
+            stop("lambda2 > 0 requires BS.", call. = FALSE)
+        }
+        system <- system + lambda2 * BS
+    }
+    if (ridge > 0) {
+        system <- system + Matrix::Diagonal(n, ridge)
+    }
+    if (any(weights > 0)) {
+        system <- system + Matrix::Diagonal(n, weights)
+    }
+    system
+}
+
+.ssrhe.hessian.smoother.trace <- function(system, weights, verbose = FALSE) {
+    rhs <- Matrix::Diagonal(length(weights), x = weights)
+    S <- tryCatch({
+        Matrix::solve(system, rhs)
+    }, error = function(e) {
+        if (isTRUE(verbose)) {
+            message("Sparse smoother-trace solve failed; retrying with dense solve().")
+        }
+        tryCatch(
+            solve(as.matrix(system), as.matrix(rhs)),
+            error = function(e2) {
+                stop("SSRHE smoother-trace solve failed: ", conditionMessage(e2),
+                     call. = FALSE)
+            }
+        )
+    })
+    if (inherits(S, "Matrix")) {
+        sum(as.numeric(Matrix::diag(S)))
+    } else {
+        sum(diag(S))
+    }
 }
 
 .prepare.ssrhe.response.matrix <- function(y, n, name) {
@@ -2690,5 +3113,16 @@ print.ssrhe.hessian.cv.fit <- function(x, ...) {
     cat("  selected lambda2:", format(x$selection$lambda2, digits = 4), "\n")
     cat("  CV", x$selection$loss, ":",
         format(x$selection$cv.mean, digits = 4), "\n")
+    invisible(x)
+}
+
+#' @export
+print.ssrhe.hessian.gcv.fit <- function(x, ...) {
+    cat("SSRHE Hessian regression GCV fit\n")
+    cat("  responses:", x$n.responses, "\n")
+    cat("  selected lambda1:", format(x$selection$lambda1, digits = 4), "\n")
+    cat("  selected lambda2:", format(x$selection$lambda2, digits = 4), "\n")
+    cat("  GCV:", format(x$selection$gcv, digits = 4), "\n")
+    cat("  trace(S):", format(x$selection$trace.S, digits = 4), "\n")
     invisible(x)
 }
