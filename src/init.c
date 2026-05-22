@@ -169,6 +169,8 @@ SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP, SEXP, SEXP, SEXP, SEXP, 
 
 SEXP S_gflow_openmp_diag();
 SEXP S_create_geodesic_iknn_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_k);
+SEXP S_adaptive_radius_edges_ann(SEXP s_X, SEXP s_k_scale, SEXP s_radius_factor,
+                                 SEXP s_radius_rule_id);
 
 static const R_CallMethodDef CallMethods[] = {
   // diagnostic
@@ -268,6 +270,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
   {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
   {"S_create_sknn_graph", (DL_FUNC) &S_create_sknn_graph, 16},
+  {"S_adaptive_radius_edges_ann", (DL_FUNC) &S_adaptive_radius_edges_ann, 4},
   {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
   {"S_prune_graph_local_geodesic", (DL_FUNC) &S_prune_graph_local_geodesic, 6},
   {"S_prune_graph_global_geodesic_ratio", (DL_FUNC) &S_prune_graph_global_geodesic_ratio, 5},

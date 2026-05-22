@@ -37,6 +37,26 @@
     do.call(rbind, rows[seq_len(cursor)])
 }
 
+.adaptive.radius.edges.ann <- function(X, k.scale, radius.factor, radius.rule) {
+    radius.rule.id <- switch(radius.rule,
+                             max = 0L,
+                             min = 1L,
+                             geomean = 2L)
+    out <- .Call(
+        "S_adaptive_radius_edges_ann",
+        X,
+        as.integer(k.scale),
+        as.double(radius.factor),
+        as.integer(radius.rule.id),
+        PACKAGE = "gflow"
+    )
+    edges <- out$edges
+    if (!nrow(edges)) {
+        edges <- data.frame(from = integer(), to = integer(), weight = numeric())
+    }
+    list(edges = edges, sigma = as.numeric(out$sigma))
+}
+
 .default.radius.prune.k <- function(adj.list) {
     n <- length(adj.list)
     degree <- lengths(adj.list)
@@ -285,6 +305,11 @@ create.radius.graph <- function(X,
 #'   `"geomean"` uses
 #'   \eqn{d_{ij} \le radius.factor \sqrt{\sigma_i\sigma_j}}. The
 #'   `"geomean"` rule is the continuous-kNN support rule.
+#' @param radius.search Character scalar. `"ann"` uses the bundled ANN kd-tree
+#'   to perform exact fixed-radius candidate searches before applying the
+#'   pair-specific adaptive-radius rule. `"all.pairs"` uses the direct
+#'   \eqn{O(n^2)} pair scan and is retained as a reference path. ANN searches
+#'   are exact up to nearest-neighbor tie conventions.
 #' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
 #'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
 #'   `NULL` defaults to `k.scale`.
@@ -310,6 +335,7 @@ create.adaptive.radius.graph <- function(X,
                                          k.scale,
                                          radius.factor = 1,
                                          radius.rule = c("max", "min", "geomean"),
+                                         radius.search = c("ann", "all.pairs"),
                                          prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
                                          max.path.edge.ratio.deviation.thld = 0.1,
                                          path.edge.ratio.percentile = 0.5,
@@ -338,24 +364,36 @@ create.adaptive.radius.graph <- function(X,
         stop("'connect.components' must be TRUE or FALSE.", call. = FALSE)
     }
     radius.rule <- match.arg(radius.rule)
+    radius.search <- match.arg(radius.search)
     connect.method <- match.arg(connect.method)
 
-    knn.index <- .exact.knn.index(X, as.integer(k.scale))
-    sigma <- numeric(n)
-    for (i in seq_len(n)) {
-        j <- knn.index[i, as.integer(k.scale)]
-        sigma[[i]] <- .euclidean.distance(X, i, j)
-    }
-    radius.fun <- switch(radius.rule,
-                         max = function(a, b) max(a, b),
-                         min = function(a, b) min(a, b),
-                         geomean = function(a, b) sqrt(a * b))
-    edges <- .pairwise.radius.edges(
-        X,
-        keep.edge = function(i, j, d) {
-            d <= radius.factor * radius.fun(sigma[[i]], sigma[[j]])
+    if (identical(radius.search, "ann")) {
+        ann <- .adaptive.radius.edges.ann(
+            X = X,
+            k.scale = as.integer(k.scale),
+            radius.factor = radius.factor,
+            radius.rule = radius.rule
+        )
+        edges <- ann$edges
+        sigma <- ann$sigma
+    } else {
+        knn.index <- .exact.knn.index(X, as.integer(k.scale))
+        sigma <- numeric(n)
+        for (i in seq_len(n)) {
+            j <- knn.index[i, as.integer(k.scale)]
+            sigma[[i]] <- .euclidean.distance(X, i, j)
         }
-    )
+        radius.fun <- switch(radius.rule,
+                             max = function(a, b) max(a, b),
+                             min = function(a, b) min(a, b),
+                             geomean = function(a, b) sqrt(a * b))
+        edges <- .pairwise.radius.edges(
+            X,
+            keep.edge = function(i, j, d) {
+                d <= radius.factor * radius.fun(sigma[[i]], sigma[[j]])
+            }
+        )
+    }
     out <- .finalize.radius.graph(
         X, edges, connect.components, connect.method,
         bridge.k, bridge.k.max, bridge.growth, "adaptive_radius_graph",
@@ -370,6 +408,7 @@ create.adaptive.radius.graph <- function(X,
     out$k_scale <- as.integer(k.scale)
     out$radius_factor <- as.numeric(radius.factor)
     out$radius_rule <- radius.rule
+    out$radius_search <- radius.search
     out$sigma <- sigma
     out$graph_rule <- "adaptive.radius"
     out
@@ -477,6 +516,7 @@ print.adaptive_radius_graph <- function(x, ...) {
     cat("k.scale:", x$k_scale, "\n")
     cat("Radius factor:", x$radius_factor, "\n")
     cat("Radius rule:", x$radius_rule, "\n")
+    cat("Radius search:", x$radius_search %||% "all.pairs", "\n")
     cat("Connected components before MST augmentation:", x$n_components_before, "\n")
     cat("Connected components after MST augmentation:", x$n_components_after, "\n")
     invisible(x)
