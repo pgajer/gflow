@@ -11,6 +11,7 @@ create.adaptive.radius.graph(
   radius.rule = c("max", "min", "geomean"),
   radius.search = c("ann", "all.pairs"),
   return.timing = FALSE,
+  graph.detail = c("full", "minimal"),
   prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
   max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
@@ -49,6 +50,12 @@ are exact up to nearest-neighbor tie conventions.}
 table. For \code{radius.search = "ann"}, this separates ANN setup, ANN local
 scale search, ANN fixed-radius candidate search, edge materialization, and
 graph finalization.}
+
+\item{graph.detail}{Character scalar. \code{"full"} returns the complete graph
+lifecycle object, including repaired/pruned lifecycle branches. \code{"minimal"}
+returns only the graph fields needed by fitting code and is currently
+allowed only with \code{prune.method = "none"} and
+\code{connect.components = FALSE}.}
 
 \item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
 \code{"local.geodesic"} applies the experimental local geometric pruning stage
