@@ -99,7 +99,8 @@ test_that("ANN adaptive-radius search matches all-pairs reference", {
       k.scale = 4L,
       radius.factor = 1.35,
       radius.rule = rule,
-      radius.search = "ann"
+      radius.search = "ann",
+      return.timing = TRUE
     )
     ref.g <- create.adaptive.radius.graph(
       X,
@@ -116,6 +117,13 @@ test_that("ANN adaptive-radius search matches all-pairs reference", {
     expect_equal(ann.g$raw_adj_list, ref.g$raw_adj_list)
     expect_equal(ann.g$radius_search, "ann")
     expect_equal(ref.g$radius_search, "all.pairs")
+    expect_equal(
+      ann.g$timing$phase,
+      c("ann.setup", "ann.scale.search", "ann.fixed.radius.search",
+        "ann.edge.materialization", "graph.finalization")
+    )
+    expect_true(all(is.finite(ann.g$timing$elapsed.sec)))
+    expect_true(all(ann.g$timing$elapsed.sec >= 0))
   }
 })
 

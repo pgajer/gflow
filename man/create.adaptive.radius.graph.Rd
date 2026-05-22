@@ -10,6 +10,7 @@ create.adaptive.radius.graph(
   radius.factor = 1,
   radius.rule = c("max", "min", "geomean"),
   radius.search = c("ann", "all.pairs"),
+  return.timing = FALSE,
   prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
   max.path.edge.ratio.deviation.thld = 0.1,
   path.edge.ratio.percentile = 0.5,
@@ -43,6 +44,11 @@ to perform exact fixed-radius candidate searches before applying the
 pair-specific adaptive-radius rule. \code{"all.pairs"} uses the direct
 \eqn{O(n^2)} pair scan and is retained as a reference path. ANN searches
 are exact up to nearest-neighbor tie conventions.}
+
+\item{return.timing}{Logical scalar. If \code{TRUE}, attach a construction timing
+table. For \code{radius.search = "ann"}, this separates ANN setup, ANN local
+scale search, ANN fixed-radius candidate search, edge materialization, and
+graph finalization.}
 
 \item{prune.method}{Character scalar. \code{"none"} disables geometric pruning.
 \code{"local.geodesic"} applies the experimental local geometric pruning stage
