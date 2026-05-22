@@ -607,6 +607,69 @@ test_that("fit.ssrhe.hessian.regression.gcv traces shrink with stronger penalty"
     expect_true(all(is.finite(fit$fitted.values)))
 })
 
+test_that("fit.ssrhe.hessian.regression.gcv supports Hutchinson trace estimates", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(0, 1, length.out = 18)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+
+    exact <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        min.support = 8L,
+        lambda1.grid = c(1e-4, 1e-2),
+        lambda2.grid = 0,
+        ridge = 1e-8,
+        gcv.trace.method = "exact"
+    )
+    hutch <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        min.support = 8L,
+        lambda1.grid = c(1e-4, 1e-2),
+        lambda2.grid = 0,
+        ridge = 1e-8,
+        gcv.trace.method = "hutchinson",
+        gcv.trace.n.probes = 600L,
+        gcv.trace.seed = 19L
+    )
+    hutch.again <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        min.support = 8L,
+        lambda1.grid = c(1e-4, 1e-2),
+        lambda2.grid = 0,
+        ridge = 1e-8,
+        gcv.trace.method = "hutchinson",
+        gcv.trace.n.probes = 600L,
+        gcv.trace.seed = 19L
+    )
+
+    expect_equal(hutch$gcv.table$trace.S,
+                 hutch.again$gcv.table$trace.S,
+                 tolerance = 0)
+    expect_equal(unique(hutch$gcv.table$trace.method), "hutchinson")
+    expect_equal(unique(hutch$gcv.table$trace.n.probes), 600L)
+    expect_true(all(is.finite(hutch$gcv.table$trace.se)))
+    expect_equal(hutch$gcv.trace$seed, 19L)
+    expect_equal(hutch$gcv.trace$method, "hutchinson")
+    expect_lt(max(abs(hutch$gcv.table$trace.S - exact$gcv.table$trace.S)),
+              1.25)
+})
+
 test_that("fit.ssrhe.hessian.regression.gcv supports outer support GCV", {
     skip_if_not_installed("Matrix")
 

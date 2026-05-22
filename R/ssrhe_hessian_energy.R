@@ -1373,12 +1373,14 @@ fit.ssrhe.hessian.regression.cv <- function(
     final
 }
 
-#' Select SSRHE Hessian Regression Penalties by Exact GCV
+#' Select SSRHE Hessian Regression Penalties by GCV
 #'
 #' Fits \code{\link{fit.ssrhe.hessian.regression}} over a grid of
 #' \code{lambda1}/\code{lambda2} values and selects penalties by generalized
 #' cross-validation (GCV). This is a faster, deterministic alternative to
 #' label-fold CV for fully observed SSRHE \eqn{\ell_2} smoothing problems.
+#' The smoother trace can be computed exactly, or estimated by a Hutchinson
+#' randomized trace estimator for larger grids.
 #'
 #' @inheritParams fit.ssrhe.hessian.regression.cv
 #' @param support.selection Support-profile selection rule.
@@ -1388,6 +1390,13 @@ fit.ssrhe.hessian.regression.cv <- function(
 #'   among rows of \code{support.grid} by outer GCV.
 #' @param support.gcv.max.candidates Maximum number of support profiles to try
 #'   when \code{support.selection = "gcv"}.
+#' @param gcv.trace.method Method used to compute the smoother trace in the GCV
+#'   score. \code{"exact"} solves against the full diagonal weight matrix.
+#'   \code{"hutchinson"} estimates the trace with Rademacher probe vectors.
+#' @param gcv.trace.n.probes Number of Hutchinson probe vectors to use when
+#'   \code{gcv.trace.method = "hutchinson"}.
+#' @param gcv.trace.seed Optional integer seed for reproducible Hutchinson
+#'   trace estimates.
 #'
 #' @details
 #' For a fixed SSRHE operator, the \eqn{\ell_2} fit is a linear smoother
@@ -1397,14 +1406,25 @@ fit.ssrhe.hessian.regression.cv <- function(
 #'   (W + \lambda_1 B + \lambda_2 B_S + \epsilon I)^{-1} W,
 #' }
 #' where \eqn{W} is the diagonal observation-weight matrix and
-#' \eqn{\epsilon} is \code{ridge}. This function computes the exact smoother
-#' trace \eqn{\mathrm{tr}(S_\lambda)} and scores each grid point by
+#' \eqn{\epsilon} is \code{ridge}. By default this function computes the exact
+#' smoother trace \eqn{\mathrm{tr}(S_\lambda)} and scores each grid point by
 #' \deqn{
 #'   \mathrm{GCV}(\lambda)
 #'   =
 #'   \frac{n^{-1}\sum_i w_i(y_i-\hat f_i)^2}
 #'        {(1-\mathrm{tr}(S_\lambda)/n)^2}.
 #' }
+#' With \code{gcv.trace.method = "hutchinson"}, the trace is estimated by
+#' \deqn{
+#'   \mathrm{tr}(S_\lambda)
+#'   =
+#'   \mathbb E\{z^\top S_\lambda z\},
+#' }
+#' using independent Rademacher vectors \eqn{z}. Each probe requires one solve
+#' with right-hand side \eqn{Wz}. The estimate is stochastic but can be made
+#' reproducible with \code{gcv.trace.seed}; the returned GCV table reports the
+#' trace standard error.
+#'
 #' The current implementation requires a single fully observed response vector
 #' and strictly positive observation weights. Semi-supervised or missing-label
 #' SSRHE tuning should continue to use
@@ -1448,6 +1468,9 @@ fit.ssrhe.hessian.regression.gcv <- function(
     support.selection = c("rule", "gcv"),
     support.grid = NULL,
     support.gcv.max.candidates = 8L,
+    gcv.trace.method = c("exact", "hutchinson"),
+    gcv.trace.n.probes = 50L,
+    gcv.trace.seed = NULL,
     verbose = FALSE) {
 
     if (!requireNamespace("Matrix", quietly = TRUE)) {
@@ -1476,6 +1499,11 @@ fit.ssrhe.hessian.regression.gcv <- function(
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
+    gcv.trace.method <- match.arg(gcv.trace.method)
+    gcv.trace.n.probes <- .validate.ssrhe.positive.integer(
+        gcv.trace.n.probes, "gcv.trace.n.probes")
+    gcv.trace.seed <- .validate.ssrhe.optional.seed(
+        gcv.trace.seed, "gcv.trace.seed")
     support.gcv.max.candidates <- .validate.ssrhe.positive.integer(
         support.gcv.max.candidates, "support.gcv.max.candidates")
     stabilizer <- isTRUE(stabilizer)
@@ -1539,6 +1567,9 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         pinv.tol = pinv.tol,
                         ridge = ridge,
                         return.A = return.A,
+                        gcv.trace.method = gcv.trace.method,
+                        gcv.trace.n.probes = gcv.trace.n.probes,
+                        gcv.trace.seed = gcv.trace.seed,
                         verbose = verbose
                     ),
                     error = function(e) e
@@ -1552,6 +1583,15 @@ fit.ssrhe.hessian.regression.gcv <- function(
                     min.support = support.grid$min.support[ii],
                     max.support = support.grid$max.support[ii],
                     gcv = Inf,
+                    rss = NA_real_,
+                    trace.S = NA_real_,
+                    trace.se = NA_real_,
+                    trace.method = gcv.trace.method,
+                    trace.n.probes = if (identical(gcv.trace.method, "hutchinson")) {
+                        gcv.trace.n.probes
+                    } else {
+                        NA_integer_
+                    },
                     lambda1 = NA_real_,
                     lambda2 = NA_real_,
                     runtime.sec = unname(elapsed),
@@ -1571,6 +1611,9 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         gcv = cand$selection$gcv,
                         rss = cand$selection$rss,
                         trace.S = cand$selection$trace.S,
+                        trace.se = cand$selection$trace.se,
+                        trace.method = cand$selection$trace.method,
+                        trace.n.probes = cand$selection$trace.n.probes,
                         lambda1 = cand$selection$lambda1,
                         lambda2 = cand$selection$lambda2,
                         runtime.sec = unname(elapsed),
@@ -1630,7 +1673,19 @@ fit.ssrhe.hessian.regression.gcv <- function(
         lambda2.grid = lambda2.grid,
         weights = as.vector(W),
         ridge = ridge,
+        trace.method = gcv.trace.method,
+        trace.n.probes = gcv.trace.n.probes,
+        trace.seed = gcv.trace.seed,
         verbose = verbose
+    )
+    final$gcv.trace <- list(
+        method = gcv.trace.method,
+        n.probes = if (identical(gcv.trace.method, "hutchinson")) {
+            gcv.trace.n.probes
+        } else {
+            NA_integer_
+        },
+        seed = gcv.trace.seed
     )
     final$X <- X
     final$support.selection <- "rule"
@@ -1650,8 +1705,15 @@ fit.ssrhe.hessian.regression.gcv <- function(
                                                  lambda2.grid,
                                                  weights,
                                                  ridge,
+                                                 trace.method = c("exact", "hutchinson"),
+                                                 trace.n.probes = 50L,
+                                                 trace.seed = NULL,
                                                  verbose = FALSE) {
     n <- ncol(operator$B)
+    trace.method <- match.arg(trace.method)
+    trace.n.probes <- .validate.ssrhe.positive.integer(
+        trace.n.probes, "trace.n.probes")
+    trace.seed <- .validate.ssrhe.optional.seed(trace.seed, "trace.seed")
     if (length(y) != n) stop("Internal error: y length mismatch.", call. = FALSE)
     if (length(weights) != n) {
         stop("Internal error: weights length mismatch.", call. = FALSE)
@@ -1686,6 +1748,13 @@ fit.ssrhe.hessian.regression.gcv <- function(
                 lambda2 = grid$lambda2[g],
                 rss = NA_real_,
                 trace.S = NA_real_,
+                trace.se = NA_real_,
+                trace.method = trace.method,
+                trace.n.probes = if (identical(trace.method, "hutchinson")) {
+                    trace.n.probes
+                } else {
+                    NA_integer_
+                },
                 edf = NA_real_,
                 gcv = Inf,
                 status = "error",
@@ -1702,24 +1771,40 @@ fit.ssrhe.hessian.regression.gcv <- function(
             lambda2 = grid$lambda2[g],
             ridge = ridge
         )
-        trace.S <- tryCatch(
-            .ssrhe.hessian.smoother.trace(system, weights, verbose = verbose),
+        grid.seed <- .ssrhe.trace.grid.seed(trace.seed, g)
+        trace.info <- tryCatch(
+            .ssrhe.hessian.smoother.trace(
+                system = system,
+                weights = weights,
+                method = trace.method,
+                n.probes = trace.n.probes,
+                seed = grid.seed,
+                verbose = verbose
+            ),
             error = function(e) e
         )
-        if (inherits(trace.S, "error")) {
+        if (inherits(trace.info, "error")) {
             rows[[g]] <- data.frame(
                 lambda1 = grid$lambda1[g],
                 lambda2 = grid$lambda2[g],
                 rss = NA_real_,
                 trace.S = NA_real_,
+                trace.se = NA_real_,
+                trace.method = trace.method,
+                trace.n.probes = if (identical(trace.method, "hutchinson")) {
+                    trace.n.probes
+                } else {
+                    NA_integer_
+                },
                 edf = NA_real_,
                 gcv = Inf,
                 status = "error",
-                message = conditionMessage(trace.S),
+                message = conditionMessage(trace.info),
                 stringsAsFactors = FALSE
             )
             next
         }
+        trace.S <- trace.info$trace
         rss <- sum(weights * (y - fit$fitted.values)^2)
         denom <- (1 - trace.S / n)^2
         gcv <- if (denom > 0) (rss / n) / denom else Inf
@@ -1728,6 +1813,9 @@ fit.ssrhe.hessian.regression.gcv <- function(
             lambda2 = grid$lambda2[g],
             rss = rss,
             trace.S = trace.S,
+            trace.se = trace.info$trace.se,
+            trace.method = trace.info$method,
+            trace.n.probes = trace.info$n.probes,
             edf = trace.S,
             gcv = gcv,
             status = "ok",
@@ -1751,6 +1839,9 @@ fit.ssrhe.hessian.regression.gcv <- function(
         gcv = gcv.table$gcv[selected.idx],
         rss = gcv.table$rss[selected.idx],
         trace.S = gcv.table$trace.S[selected.idx],
+        trace.se = gcv.table$trace.se[selected.idx],
+        trace.method = gcv.table$trace.method[selected.idx],
+        trace.n.probes = gcv.table$trace.n.probes[selected.idx],
         n = n
     )
     final
@@ -1921,7 +2012,35 @@ fit.ssrhe.hessian.regression.gcv <- function(
     system
 }
 
-.ssrhe.hessian.smoother.trace <- function(system, weights, verbose = FALSE) {
+.ssrhe.hessian.smoother.trace <- function(system,
+                                          weights,
+                                          method = c("exact", "hutchinson"),
+                                          n.probes = 50L,
+                                          seed = NULL,
+                                          verbose = FALSE) {
+    method <- match.arg(method)
+    if (identical(method, "exact")) {
+        trace <- .ssrhe.hessian.smoother.trace.exact(system, weights,
+                                                     verbose = verbose)
+        return(list(
+            trace = trace,
+            trace.se = NA_real_,
+            method = "exact",
+            n.probes = NA_integer_
+        ))
+    }
+    .ssrhe.hessian.smoother.trace.hutchinson(
+        system = system,
+        weights = weights,
+        n.probes = n.probes,
+        seed = seed,
+        verbose = verbose
+    )
+}
+
+.ssrhe.hessian.smoother.trace.exact <- function(system,
+                                                weights,
+                                                verbose = FALSE) {
     rhs <- Matrix::Diagonal(length(weights), x = weights)
     S <- tryCatch({
         Matrix::solve(system, rhs)
@@ -1942,6 +2061,73 @@ fit.ssrhe.hessian.regression.gcv <- function(
     } else {
         sum(diag(S))
     }
+}
+
+.ssrhe.hessian.smoother.trace.hutchinson <- function(system,
+                                                     weights,
+                                                     n.probes,
+                                                     seed = NULL,
+                                                     verbose = FALSE) {
+    n.probes <- .validate.ssrhe.positive.integer(n.probes, "n.probes")
+    seed <- .validate.ssrhe.optional.seed(seed, "seed")
+    n <- length(weights)
+    probes <- .ssrhe.with.optional.seed(seed, {
+        matrix(
+            sample(c(-1, 1), n * n.probes, replace = TRUE),
+            nrow = n,
+            ncol = n.probes
+        )
+    })
+    rhs <- weights * probes
+    solved <- tryCatch({
+        as.matrix(Matrix::solve(system, rhs))
+    }, error = function(e) {
+        if (isTRUE(verbose)) {
+            message("Sparse Hutchinson trace solve failed; retrying with dense solve().")
+        }
+        tryCatch(
+            solve(as.matrix(system), as.matrix(rhs)),
+            error = function(e2) {
+                stop("SSRHE Hutchinson trace solve failed: ",
+                     conditionMessage(e2), call. = FALSE)
+            }
+        )
+    })
+    trace.samples <- colSums(probes * solved)
+    list(
+        trace = mean(trace.samples),
+        trace.se = if (n.probes > 1L) {
+            stats::sd(trace.samples) / sqrt(n.probes)
+        } else {
+            NA_real_
+        },
+        method = "hutchinson",
+        n.probes = n.probes
+    )
+}
+
+.ssrhe.with.optional.seed <- function(seed, expr) {
+    if (is.null(seed)) {
+        return(force(expr))
+    }
+    had.seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    if (had.seed) {
+        old.seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    }
+    on.exit({
+        if (had.seed) {
+            assign(".Random.seed", old.seed, envir = .GlobalEnv)
+        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+            rm(".Random.seed", envir = .GlobalEnv)
+        }
+    }, add = TRUE)
+    set.seed(seed)
+    force(expr)
+}
+
+.ssrhe.trace.grid.seed <- function(seed, grid.index) {
+    if (is.null(seed)) return(NULL)
+    as.integer(((seed + grid.index - 1L) %% 2147483646L) + 1L)
 }
 
 .prepare.ssrhe.response.matrix <- function(y, n, name) {
@@ -1991,6 +2177,16 @@ fit.ssrhe.hessian.regression.gcv <- function(
              call. = FALSE)
     }
     as.double(x)
+}
+
+.validate.ssrhe.optional.seed <- function(x, name) {
+    if (is.null(x)) return(NULL)
+    if (length(x) != 1L || is.na(x) || !is.finite(x) || x < 0 ||
+        abs(x - round(x)) > .Machine$double.eps^0.5) {
+        stop(sprintf("%s must be NULL or a finite nonnegative integer scalar.", name),
+             call. = FALSE)
+    }
+    as.integer(round(x))
 }
 
 .validate.ssrhe.lambda.grid <- function(x, name) {
