@@ -65,6 +65,11 @@
 #'   R-side local chart diagnostics such as chart distortion and boundary
 #'   asymmetry. These diagnostics are useful for operator audits, but can be
 #'   skipped in fitting and cross-validation paths for speed.
+#' @param return.timing Logical. If \code{TRUE}, attach a phase-level elapsed
+#'   time table to the returned operator. The timings separate R-side
+#'   validation, neighborhood/support construction, native local operator
+#'   construction, optional local diagnostics, sparse matrix assembly, and
+#'   output finalization.
 #' @param verbose Logical. If \code{TRUE}, print a short native construction
 #'   message.
 #'
@@ -126,6 +131,7 @@
 #'     \item \code{local.diagnostics}: if requested, one row per center vertex with support
 #'       size, design rank/condition, PCA variance, chart-distortion,
 #'       boundary-asymmetry, and curvature-bias proxy diagnostics;
+#'     \item \code{timing}: if requested, a phase-level elapsed-time table;
 #'     \item \code{parity}: notes documenting reference-behavior conventions.
 #'   }
 #'
@@ -159,13 +165,18 @@ ssrhe.hessian.operator <- function(
     return.BS = stabilizer,
     return.sparse = TRUE,
     return.local.diagnostics = TRUE,
+    return.timing = FALSE,
     verbose = FALSE) {
 
+    timing.total.start <- proc.time()[["elapsed"]]
+    timing.phase.start <- timing.total.start
+    timing.rows <- list()
     X <- .validate.ssrhe.X(X)
     n <- nrow(X)
     neighborhood.type <- match.arg(neighborhood.type)
     radius.rule <- match.arg(radius.rule)
     support.topup <- match.arg(support.topup)
+    return.timing <- isTRUE(return.timing)
 
     tangent.dim.rule <- match.arg(tangent.dim.rule)
     if (missing(tangent.dim) || is.null(tangent.dim)) {
@@ -213,6 +224,14 @@ ssrhe.hessian.operator <- function(
              call. = FALSE)
     }
 
+    if (return.timing) {
+        timing.rows[["validation"]] <- .ssrhe.operator.timing.row(
+            phase = "validation",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing.phase.start <- proc.time()[["elapsed"]]
+    }
+
     neighborhood <- .prepare.ssrhe.neighborhood(
         X = X,
         k = k,
@@ -230,6 +249,14 @@ ssrhe.hessian.operator <- function(
         tangent.dim.rule = tangent.dim.rule,
         derivative.order = derivative.order
     )
+
+    if (return.timing) {
+        timing.rows[["neighborhood"]] <- .ssrhe.operator.timing.row(
+            phase = "neighborhood",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing.phase.start <- proc.time()[["elapsed"]]
+    }
 
     if (!missing(tangent.dim) && !is.null(tangent.dim) &&
         tangent.dim.cpp > min(min(neighborhood$support.size), ncol(X))) {
@@ -253,6 +280,14 @@ ssrhe.hessian.operator <- function(
         PACKAGE = "gflow"
     )
 
+    if (return.timing) {
+        timing.rows[["native.operator"]] <- .ssrhe.operator.timing.row(
+            phase = "native.operator",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing.phase.start <- proc.time()[["elapsed"]]
+    }
+
     raw$row.table <- as.data.frame(raw$row.table, stringsAsFactors = FALSE)
     raw$diagnostics <- as.data.frame(raw$diagnostics, stringsAsFactors = FALSE)
     raw$local.diagnostics <- if (return.local.diagnostics) {
@@ -265,12 +300,28 @@ ssrhe.hessian.operator <- function(
         NULL
     }
 
+    if (return.timing) {
+        timing.rows[["local.diagnostics"]] <- .ssrhe.operator.timing.row(
+            phase = "local.diagnostics",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing.phase.start <- proc.time()[["elapsed"]]
+    }
+
     A <- .ssrhe.triplet.to.sparse(raw$A.triplet)
     B <- Matrix::crossprod(A)
     BS <- NULL
     if (stabilizer && !is.null(raw$BS.triplet)) {
         BS <- .ssrhe.triplet.to.sparse(raw$BS.triplet)
         BS <- (BS + Matrix::t(BS)) / 2
+    }
+
+    if (return.timing) {
+        timing.rows[["sparse.assembly"]] <- .ssrhe.operator.timing.row(
+            phase = "sparse.assembly",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing.phase.start <- proc.time()[["elapsed"]]
     }
 
     out <- list(
@@ -285,6 +336,7 @@ ssrhe.hessian.operator <- function(
         row.table = raw$row.table,
         diagnostics = raw$diagnostics,
         local.diagnostics = raw$local.diagnostics,
+        timing = NULL,
         parity = raw$parity,
         parameters = raw$parameters
     )
@@ -295,8 +347,28 @@ ssrhe.hessian.operator <- function(
     out$parameters$radius.factor <- neighborhood$radius.factor
     out$parameters$derivative.order <- derivative.order
 
+    if (return.timing) {
+        timing.rows[["output.finalization"]] <- .ssrhe.operator.timing.row(
+            phase = "output.finalization",
+            elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+        )
+        timing <- do.call(rbind, timing.rows)
+        timing$total.elapsed.sec <- proc.time()[["elapsed"]] - timing.total.start
+        timing$fraction.of.total <- timing$elapsed.sec / timing$total.elapsed.sec
+        rownames(timing) <- NULL
+        out$timing <- timing
+    }
+
     class(out) <- c("ssrhe.hessian.operator", "list")
     out
+}
+
+.ssrhe.operator.timing.row <- function(phase, elapsed.sec) {
+    data.frame(
+        phase = phase,
+        elapsed.sec = as.numeric(elapsed.sec),
+        stringsAsFactors = FALSE
+    )
 }
 
 .validate.ssrhe.X <- function(X) {
@@ -913,6 +985,7 @@ fit.ssrhe.hessian.regression <- function(
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
+    return.timing = FALSE,
     verbose = FALSE) {
 
     X <- .validate.ssrhe.X(X)
@@ -953,6 +1026,7 @@ fit.ssrhe.hessian.regression <- function(
         return.BS = stabilizer,
         return.sparse = TRUE,
         return.local.diagnostics = return.local.diagnostics,
+        return.timing = return.timing,
         verbose = verbose
     )
 
@@ -1104,6 +1178,7 @@ fit.ssrhe.hessian.regression.cv <- function(
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
+    return.timing = FALSE,
     support.selection = c("rule", "cv"),
     support.grid = NULL,
     support.cv.max.candidates = 8L,
@@ -1201,6 +1276,7 @@ fit.ssrhe.hessian.regression.cv <- function(
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
+                        return.timing = return.timing,
                         verbose = verbose
                     ),
                     error = function(e) e
@@ -1282,6 +1358,7 @@ fit.ssrhe.hessian.regression.cv <- function(
         return.BS = stabilizer,
         return.sparse = TRUE,
         return.local.diagnostics = return.local.diagnostics,
+        return.timing = return.timing,
         verbose = verbose
     )
 
@@ -1481,6 +1558,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
+    return.timing = FALSE,
     support.selection = c("rule", "gcv"),
     support.grid = NULL,
     support.gcv.max.candidates = 8L,
@@ -1584,6 +1662,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
+                        return.timing = return.timing,
                         gcv.trace.method = gcv.trace.method,
                         gcv.trace.n.probes = gcv.trace.n.probes,
                         gcv.trace.seed = gcv.trace.seed,
@@ -1681,6 +1760,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
         return.BS = stabilizer,
         return.sparse = TRUE,
         return.local.diagnostics = return.local.diagnostics,
+        return.timing = return.timing,
         verbose = verbose
     )
 
@@ -2382,6 +2462,7 @@ fit.ssrhe.hessian.l1.regression <- function(
     support.grid = NULL,
     support.cv.max.candidates = 8L,
     return.local.diagnostics = FALSE,
+    return.timing = FALSE,
     verbose = FALSE) {
 
     solver <- match.arg(solver)
@@ -2508,6 +2589,7 @@ fit.ssrhe.hessian.l1.regression <- function(
                         btol = btol,
                         eps = eps,
                         return.local.diagnostics = return.local.diagnostics,
+                        return.timing = return.timing,
                         verbose = verbose
                     ),
                     error = function(e) e
@@ -2588,6 +2670,7 @@ fit.ssrhe.hessian.l1.regression <- function(
         return.BS = FALSE,
         return.sparse = TRUE,
         return.local.diagnostics = return.local.diagnostics,
+        return.timing = return.timing,
         verbose = verbose
     )
 
