@@ -77,6 +77,7 @@ test_that("create.adaptive.radius.graph distinguishes max, min, and geomean rule
   )
 
   expect_s3_class(max.g, "adaptive_radius_graph")
+  expect_equal(max.g$radius_search, "ann")
   expect_equal(max.g$sigma, c(1, 1, 2), tolerance = 1e-12)
   expect_equal(min.g$sigma, c(1, 1, 2), tolerance = 1e-12)
   expect_equal(geomean.g$sigma, c(1, 1, 2), tolerance = 1e-12)
@@ -86,6 +87,36 @@ test_that("create.adaptive.radius.graph distinguishes max, min, and geomean rule
   expect_equal(max.g$radius_rule, "max")
   expect_equal(min.g$radius_rule, "min")
   expect_equal(geomean.g$radius_rule, "geomean")
+})
+
+test_that("ANN adaptive-radius search matches all-pairs reference", {
+  set.seed(919)
+  X <- cbind(runif(35), runif(35), 0.2 * runif(35)^2)
+
+  for (rule in c("max", "min", "geomean")) {
+    ann.g <- create.adaptive.radius.graph(
+      X,
+      k.scale = 4L,
+      radius.factor = 1.35,
+      radius.rule = rule,
+      radius.search = "ann"
+    )
+    ref.g <- create.adaptive.radius.graph(
+      X,
+      k.scale = 4L,
+      radius.factor = 1.35,
+      radius.rule = rule,
+      radius.search = "all.pairs"
+    )
+
+    expect_equal(ann.g$sigma, ref.g$sigma, tolerance = 1e-10)
+    expect_equal(.radius_edge_keys(ann.g$edge_matrix),
+                 .radius_edge_keys(ref.g$edge_matrix))
+    expect_equal(ann.g$edge_weight, ref.g$edge_weight, tolerance = 1e-10)
+    expect_equal(ann.g$raw_adj_list, ref.g$raw_adj_list)
+    expect_equal(ann.g$radius_search, "ann")
+    expect_equal(ref.g$radius_search, "all.pairs")
+  }
 })
 
 
