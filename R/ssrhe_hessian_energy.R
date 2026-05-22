@@ -863,7 +863,8 @@ ssrhe.support.grid <- function(n,
         radius.rule = radius.rule,
         prune.method = "none",
         connect.components = FALSE,
-        return.timing = return.timing
+        return.timing = return.timing,
+        graph.detail = "minimal"
     )
     add.timing("create.graph")
 

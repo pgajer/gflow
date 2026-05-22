@@ -135,6 +135,48 @@ test_that("ANN adaptive-radius search matches all-pairs reference", {
   }
 })
 
+test_that("minimal adaptive-radius graph detail preserves core graph fields", {
+  set.seed(923)
+  X <- cbind(runif(40), runif(40))
+
+  full.g <- create.adaptive.radius.graph(
+    X,
+    k.scale = 5L,
+    radius.factor = 1.25,
+    radius.rule = "geomean",
+    graph.detail = "full"
+  )
+  min.g <- create.adaptive.radius.graph(
+    X,
+    k.scale = 5L,
+    radius.factor = 1.25,
+    radius.rule = "geomean",
+    graph.detail = "minimal",
+    return.timing = TRUE
+  )
+
+  expect_equal(.radius_edge_keys(min.g$edge_matrix),
+               .radius_edge_keys(full.g$edge_matrix))
+  expect_equal(min.g$edge_weight, full.g$edge_weight, tolerance = 1e-10)
+  expect_equal(min.g$adj_list, full.g$adj_list)
+  expect_equal(min.g$weight_list, full.g$weight_list)
+  expect_equal(min.g$sigma, full.g$sigma, tolerance = 1e-10)
+  expect_equal(min.g$graph_detail, "minimal")
+  expect_false(min.g$lifecycle_branches)
+  expect_false("raw_repaired_adj_list" %in% names(min.g))
+  expect_true("finalization.minimal.components" %in% min.g$timing$phase)
+  expect_false("finalization.lifecycle.branches" %in% min.g$timing$phase)
+  expect_error(
+    create.adaptive.radius.graph(
+      X,
+      k.scale = 5L,
+      graph.detail = "minimal",
+      prune.method = "local.geodesic"
+    ),
+    "graph.detail = 'minimal'"
+  )
+})
+
 
 test_that("create.cknn.graph is the continuous-kNN geomean adaptive-radius wrapper", {
   X <- matrix(c(0, 1, 3), ncol = 1)

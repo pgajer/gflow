@@ -90,8 +90,10 @@
                                    prune.local.k = NULL,
                                    prune.k = 1L,
                                    with.pruned.edge.stats = FALSE,
-                                   return.timing = FALSE) {
+                                   return.timing = FALSE,
+                                   graph.detail = "full") {
     return.timing <- isTRUE(return.timing)
+    graph.detail <- match.arg(graph.detail, c("full", "minimal"))
     timing.rows <- list()
     timing.phase.start <- proc.time()[["elapsed"]]
     add.timing <- function(phase) {
@@ -120,6 +122,69 @@
         path.edge.ratio.percentile
     )
     add.timing("finalization.normalize.controls")
+
+    if (identical(graph.detail, "minimal")) {
+        if (!identical(prune.method, "none") || isTRUE(connect.components)) {
+            stop("graph.detail = 'minimal' requires prune.method = 'none' and connect.components = FALSE.",
+                 call. = FALSE)
+        }
+        components <- .graph.components(raw.adj.list)
+        edge.table <- edges
+        if (!nrow(edge.table)) {
+            edge.table <- data.frame(from = integer(), to = integer(),
+                                     weight = numeric())
+        }
+        add.timing("finalization.minimal.components")
+        out <- list(
+            adj_list = raw.adj.list,
+            weight_list = raw.weight.list,
+            edge_matrix = as.matrix(edge.table[, c("from", "to"), drop = FALSE]),
+            edge_weight = as.numeric(edge.table$weight),
+            n_vertices = n,
+            n_edges = nrow(edge.table),
+            raw_adj_list = raw.adj.list,
+            raw_weight_list = raw.weight.list,
+            pruned_adj_list = raw.adj.list,
+            pruned_weight_list = raw.weight.list,
+            n_edges_before_mst = nrow(edge.table),
+            n_edges_after_mst = nrow(edge.table),
+            n_components_before = components$n_components,
+            n_components_after = components$n_components,
+            component_id_before = components$component_id,
+            component_id_after = components$component_id,
+            mst_edge_matrix = matrix(integer(), ncol = 2L),
+            mst_edge_weight = numeric(),
+            n_mst_edges_added = 0L,
+            connect_components = FALSE,
+            connect_method = connect.method,
+            bridge_method = "none",
+            bridge_k = NA_integer_,
+            bridge_k_max = NA_integer_,
+            bridge_growth = if (is.null(bridge.growth)) NA_real_
+                            else as.numeric(bridge.growth),
+            bridge_k_used = NA_integer_,
+            bridge_exact_fallback_used = FALSE,
+            n_edges_before_pruning = nrow(edge.table),
+            n_edges_after_pruning = nrow(edge.table),
+            n_pruned_edges = 0L,
+            n_quantile_pruned_edges = 0L,
+            pruned_edge_stats = .empty.pruned.edge.stats(),
+            prune_method = prune.method,
+            prune_tau = prune.controls$prune_tau,
+            prune_local_k = prune.controls$prune_local_k,
+            with_pruned_edge_stats = prune.controls$with_pruned_edge_stats,
+            graph_detail = graph.detail,
+            lifecycle_branches = FALSE
+        )
+        class(out) <- c(class, "list")
+        add.timing("finalization.class.assignment")
+        if (return.timing) {
+            timing <- do.call(rbind, timing.rows)
+            rownames(timing) <- NULL
+            out$finalization_timing <- timing
+        }
+        return(out)
+    }
 
     pruning <- .prune.graph.by.method(
         X = X,
@@ -190,7 +255,9 @@
         prune_method = prune.method,
         prune_tau = pruning$prune_tau,
         prune_local_k = pruning$prune_local_k,
-        with_pruned_edge_stats = pruning$with_pruned_edge_stats
+        with_pruned_edge_stats = pruning$with_pruned_edge_stats,
+        graph_detail = graph.detail,
+        lifecycle_branches = TRUE
     )
     add.timing("finalization.object.assembly")
 
@@ -358,6 +425,11 @@ create.radius.graph <- function(X,
 #'   table. For `radius.search = "ann"`, this separates ANN setup, ANN local
 #'   scale search, ANN fixed-radius candidate search, edge materialization, and
 #'   graph finalization.
+#' @param graph.detail Character scalar. `"full"` returns the complete graph
+#'   lifecycle object, including repaired/pruned lifecycle branches. `"minimal"`
+#'   returns only the graph fields needed by fitting code and is currently
+#'   allowed only with `prune.method = "none"` and
+#'   `connect.components = FALSE`.
 #' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
 #'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
 #'   `NULL` defaults to `k.scale`.
@@ -385,6 +457,7 @@ create.adaptive.radius.graph <- function(X,
                                          radius.rule = c("max", "min", "geomean"),
                                          radius.search = c("ann", "all.pairs"),
                                          return.timing = FALSE,
+                                         graph.detail = c("full", "minimal"),
                                          prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
                                          max.path.edge.ratio.deviation.thld = 0.1,
                                          path.edge.ratio.percentile = 0.5,
@@ -415,6 +488,7 @@ create.adaptive.radius.graph <- function(X,
     radius.rule <- match.arg(radius.rule)
     radius.search <- match.arg(radius.search)
     return.timing <- isTRUE(return.timing)
+    graph.detail <- match.arg(graph.detail)
     connect.method <- match.arg(connect.method)
     timing.rows <- list()
 
@@ -470,7 +544,8 @@ create.adaptive.radius.graph <- function(X,
         prune.local.k = prune.local.k,
         prune.k = as.integer(k.scale),
         with.pruned.edge.stats = with.pruned.edge.stats,
-        return.timing = return.timing
+        return.timing = return.timing,
+        graph.detail = graph.detail
     )
     out$k_scale <- as.integer(k.scale)
     out$radius_factor <- as.numeric(radius.factor)
@@ -478,6 +553,7 @@ create.adaptive.radius.graph <- function(X,
     out$radius_search <- radius.search
     out$sigma <- sigma
     out$graph_rule <- "adaptive.radius"
+    out$graph_detail <- graph.detail
     if (return.timing) {
         finalization.elapsed <- proc.time()[["elapsed"]] - finalization.start
         if (!is.null(out$finalization_timing)) {
