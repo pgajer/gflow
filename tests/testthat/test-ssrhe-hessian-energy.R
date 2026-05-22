@@ -48,11 +48,20 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
         X = X,
         k = 10L,
         tangent.dim = 2L,
-        return.local.diagnostics = FALSE
+        return.local.diagnostics = FALSE,
+        return.timing = TRUE
     )
     expect_null(op$local.diagnostics)
     expect_s3_class(op$diagnostics, "data.frame")
     expect_true(inherits(op$B, "sparseMatrix"))
+    expect_s3_class(op$timing, "data.frame")
+    expect_true(all(c("phase", "elapsed.sec", "total.elapsed.sec",
+                      "fraction.of.total") %in% names(op$timing)))
+    expect_true(all(c("validation", "neighborhood", "native.operator",
+                      "local.diagnostics", "sparse.assembly",
+                      "output.finalization") %in% op$timing$phase))
+    expect_true(all(op$timing$elapsed.sec >= 0))
+    expect_true(all(op$timing$total.elapsed.sec > 0))
 
     fit.fast <- fit.ssrhe.hessian.regression(
         X = X,
@@ -60,9 +69,11 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
         k = 10L,
         tangent.dim = 2L,
         lambda1 = 0.2,
-        lambda2 = 0
+        lambda2 = 0,
+        return.timing = TRUE
     )
     expect_null(fit.fast$operator$local.diagnostics)
+    expect_s3_class(fit.fast$operator$timing, "data.frame")
 
     fit.audit <- fit.ssrhe.hessian.regression(
         X = X,
