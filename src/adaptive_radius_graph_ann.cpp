@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -24,6 +25,11 @@ std::pair<int, int> unpack_edge_key(std::uint64_t key) {
     const int u = static_cast<int>(key >> 32U);
     const int v = static_cast<int>(key & 0xffffffffU);
     return {u, v};
+}
+
+double seconds_since(std::chrono::steady_clock::time_point start,
+                     std::chrono::steady_clock::time_point end) {
+    return std::chrono::duration<double>(end - start).count();
 }
 
 double adaptive_threshold(double sigma_i,
@@ -125,6 +131,7 @@ extern "C" SEXP S_adaptive_radius_edges_ann(SEXP s_X,
         Rf_error("Invalid radius.rule id.");
     }
 
+    const auto setup_start = std::chrono::steady_clock::now();
     const double* X = REAL(s_X);
     ANNpointArray data = ann_points_from_R_matrix(X, n, p);
     ANNkd_tree* tree = nullptr;
@@ -136,13 +143,21 @@ extern "C" SEXP S_adaptive_radius_edges_ann(SEXP s_X,
         annClose();
         Rf_error("ANN kd-tree construction failed.");
     }
+    const auto setup_end = std::chrono::steady_clock::now();
 
     std::vector<double> sigma;
     std::map<std::uint64_t, double> edges;
+    std::chrono::steady_clock::time_point scale_start;
+    std::chrono::steady_clock::time_point scale_end;
+    std::chrono::steady_clock::time_point radius_start;
+    std::chrono::steady_clock::time_point radius_end;
 
     try {
+        scale_start = std::chrono::steady_clock::now();
         sigma = local_scales(tree, data, n, k_scale);
+        scale_end = std::chrono::steady_clock::now();
 
+        radius_start = std::chrono::steady_clock::now();
         const double tol = 64.0 * std::numeric_limits<double>::epsilon();
         for (int i = 0; i < n; ++i) {
             const double search_radius = radius_factor * sigma[static_cast<size_t>(i)];
@@ -172,6 +187,7 @@ extern "C" SEXP S_adaptive_radius_edges_ann(SEXP s_X,
                 }
             }
         }
+        radius_end = std::chrono::steady_clock::now();
     } catch (...) {
         delete tree;
         annDeallocPts(data);
@@ -183,10 +199,12 @@ extern "C" SEXP S_adaptive_radius_edges_ann(SEXP s_X,
     annDeallocPts(data);
     annClose();
 
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+    const auto materialization_start = std::chrono::steady_clock::now();
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 3));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
     SET_STRING_ELT(names, 0, Rf_mkChar("edges"));
     SET_STRING_ELT(names, 1, Rf_mkChar("sigma"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("timing"));
     Rf_setAttrib(out, R_NamesSymbol, names);
     UNPROTECT(1);
 
@@ -233,6 +251,22 @@ extern "C" SEXP S_adaptive_radius_edges_ann(SEXP s_X,
     SET_VECTOR_ELT(out, 0, edge_df);
     SET_VECTOR_ELT(out, 1, sigma_vec);
 
-    UNPROTECT(8);
+    const auto materialization_end = std::chrono::steady_clock::now();
+
+    SEXP timing_vec = PROTECT(Rf_allocVector(REALSXP, 4));
+    REAL(timing_vec)[0] = seconds_since(setup_start, setup_end);
+    REAL(timing_vec)[1] = seconds_since(scale_start, scale_end);
+    REAL(timing_vec)[2] = seconds_since(radius_start, radius_end);
+    REAL(timing_vec)[3] = seconds_since(materialization_start, materialization_end);
+    SEXP timing_names = PROTECT(Rf_allocVector(STRSXP, 4));
+    SET_STRING_ELT(timing_names, 0, Rf_mkChar("ann.setup"));
+    SET_STRING_ELT(timing_names, 1, Rf_mkChar("ann.scale.search"));
+    SET_STRING_ELT(timing_names, 2, Rf_mkChar("ann.fixed.radius.search"));
+    SET_STRING_ELT(timing_names, 3, Rf_mkChar("ann.edge.materialization"));
+    Rf_setAttrib(timing_vec, R_NamesSymbol, timing_names);
+    UNPROTECT(1);
+    SET_VECTOR_ELT(out, 2, timing_vec);
+
+    UNPROTECT(9);
     return out;
 }

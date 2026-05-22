@@ -54,7 +54,15 @@
     if (!nrow(edges)) {
         edges <- data.frame(from = integer(), to = integer(), weight = numeric())
     }
-    list(edges = edges, sigma = as.numeric(out$sigma))
+    list(edges = edges, sigma = as.numeric(out$sigma), timing = out$timing)
+}
+
+.radius.graph.timing.frame <- function(named.seconds) {
+    data.frame(
+        phase = names(named.seconds),
+        elapsed.sec = as.numeric(named.seconds),
+        stringsAsFactors = FALSE
+    )
 }
 
 .default.radius.prune.k <- function(adj.list) {
@@ -310,6 +318,10 @@ create.radius.graph <- function(X,
 #'   pair-specific adaptive-radius rule. `"all.pairs"` uses the direct
 #'   \eqn{O(n^2)} pair scan and is retained as a reference path. ANN searches
 #'   are exact up to nearest-neighbor tie conventions.
+#' @param return.timing Logical scalar. If `TRUE`, attach a construction timing
+#'   table. For `radius.search = "ann"`, this separates ANN setup, ANN local
+#'   scale search, ANN fixed-radius candidate search, edge materialization, and
+#'   graph finalization.
 #' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
 #'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
 #'   `NULL` defaults to `k.scale`.
@@ -336,6 +348,7 @@ create.adaptive.radius.graph <- function(X,
                                          radius.factor = 1,
                                          radius.rule = c("max", "min", "geomean"),
                                          radius.search = c("ann", "all.pairs"),
+                                         return.timing = FALSE,
                                          prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
                                          max.path.edge.ratio.deviation.thld = 0.1,
                                          path.edge.ratio.percentile = 0.5,
@@ -365,7 +378,9 @@ create.adaptive.radius.graph <- function(X,
     }
     radius.rule <- match.arg(radius.rule)
     radius.search <- match.arg(radius.search)
+    return.timing <- isTRUE(return.timing)
     connect.method <- match.arg(connect.method)
+    timing.rows <- list()
 
     if (identical(radius.search, "ann")) {
         ann <- .adaptive.radius.edges.ann(
@@ -376,24 +391,39 @@ create.adaptive.radius.graph <- function(X,
         )
         edges <- ann$edges
         sigma <- ann$sigma
+        if (return.timing) {
+            timing.rows[["ann"]] <- .radius.graph.timing.frame(ann$timing)
+        }
     } else {
+        scale.start <- proc.time()[["elapsed"]]
         knn.index <- .exact.knn.index(X, as.integer(k.scale))
         sigma <- numeric(n)
         for (i in seq_len(n)) {
             j <- knn.index[i, as.integer(k.scale)]
             sigma[[i]] <- .euclidean.distance(X, i, j)
         }
+        scale.elapsed <- proc.time()[["elapsed"]] - scale.start
         radius.fun <- switch(radius.rule,
                              max = function(a, b) max(a, b),
                              min = function(a, b) min(a, b),
                              geomean = function(a, b) sqrt(a * b))
+        radius.start <- proc.time()[["elapsed"]]
         edges <- .pairwise.radius.edges(
             X,
             keep.edge = function(i, j, d) {
                 d <= radius.factor * radius.fun(sigma[[i]], sigma[[j]])
             }
         )
+        radius.elapsed <- proc.time()[["elapsed"]] - radius.start
+        if (return.timing) {
+            timing.rows[["all.pairs"]] <- .radius.graph.timing.frame(c(
+                "all.pairs.scale.search" = scale.elapsed,
+                "all.pairs.fixed.radius.search" = radius.elapsed,
+                "all.pairs.edge.materialization" = 0
+            ))
+        }
     }
+    finalization.start <- proc.time()[["elapsed"]]
     out <- .finalize.radius.graph(
         X, edges, connect.components, connect.method,
         bridge.k, bridge.k.max, bridge.growth, "adaptive_radius_graph",
@@ -411,6 +441,14 @@ create.adaptive.radius.graph <- function(X,
     out$radius_search <- radius.search
     out$sigma <- sigma
     out$graph_rule <- "adaptive.radius"
+    if (return.timing) {
+        timing.rows[["graph.finalization"]] <- .radius.graph.timing.frame(c(
+            "graph.finalization" = proc.time()[["elapsed"]] - finalization.start
+        ))
+        timing <- do.call(rbind, timing.rows)
+        rownames(timing) <- NULL
+        out$timing <- timing
+    }
     out
 }
 

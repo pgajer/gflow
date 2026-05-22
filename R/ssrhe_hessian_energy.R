@@ -862,7 +862,8 @@ ssrhe.support.grid <- function(n,
         radius.factor = radius.factor,
         radius.rule = radius.rule,
         prune.method = "none",
-        connect.components = FALSE
+        connect.components = FALSE,
+        return.timing = return.timing
     )
     add.timing("create.graph")
 
@@ -931,6 +932,7 @@ ssrhe.support.grid <- function(n,
             n.topup = n.topup,
             n.truncated = n.truncated,
             sigma = graph$sigma,
+            graph.timing = graph$timing,
             timing = finalize.timing()
         )
     )
