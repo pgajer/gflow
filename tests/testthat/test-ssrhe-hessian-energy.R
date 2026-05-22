@@ -553,6 +553,114 @@ test_that("fit.ssrhe.hessian.regression.cv supports outer support CV", {
     expect_true(all(is.finite(fit$fitted.values)))
 })
 
+test_that("fit.ssrhe.hessian.regression.gcv selects a finite grid point", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    y <- sin(2 * pi * X[, 1]) + 0.25 * X[, 2]^2
+
+    fit <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        k = 12L,
+        tangent.dim = 2L,
+        lambda1.grid = c(0.05, 0.2),
+        lambda2.grid = c(0, 0.03),
+        stabilizer = TRUE,
+        ridge = 1e-8
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.gcv.fit")
+    expect_s3_class(fit, "ssrhe.hessian.fit")
+    expect_equal(nrow(fit$gcv.table), 4L)
+    expect_true(fit$selection$lambda1 %in% c(0.05, 0.2))
+    expect_true(fit$selection$lambda2 %in% c(0, 0.03))
+    expect_true(all(is.finite(fit$gcv.table$gcv)))
+    expect_true(all(is.finite(fit$gcv.table$trace.S)))
+    expect_equal(fit$lambda$lambda1, fit$selection$lambda1)
+    expect_equal(fit$lambda$lambda2, fit$selection$lambda2)
+})
+
+test_that("fit.ssrhe.hessian.regression.gcv traces shrink with stronger penalty", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(0, 1, length.out = 24)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+
+    fit <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        min.support = 8L,
+        lambda1.grid = c(1e-4, 1e-1),
+        lambda2.grid = 0,
+        ridge = 1e-8
+    )
+
+    ordered <- fit$gcv.table[order(fit$gcv.table$lambda1), ]
+    expect_lte(ordered$trace.S[2L], ordered$trace.S[1L] + 1e-7)
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.regression.gcv supports outer support GCV", {
+    skip_if_not_installed("Matrix")
+
+    x <- seq(0, 1, length.out = 24)
+    X <- matrix(x, ncol = 1)
+    y <- sin(2 * pi * x)
+    support.grid <- data.frame(
+        adaptive.k.scale = c(2L, 4L),
+        min.support = c(5L, 8L)
+    )
+
+    fit <- fit.ssrhe.hessian.regression.gcv(
+        X = X,
+        y = y,
+        tangent.dim = 1L,
+        derivative.order = 3L,
+        neighborhood.type = "adaptive.radius",
+        support.selection = "gcv",
+        support.grid = support.grid,
+        lambda1.grid = c(1e-4, 1e-2),
+        lambda2.grid = 0,
+        ridge = 1e-8
+    )
+
+    expect_s3_class(fit, "ssrhe.hessian.gcv.fit")
+    expect_equal(fit$support.selection, "gcv")
+    expect_equal(nrow(fit$support.gcv.table), 2L)
+    expect_true(all(fit$support.gcv.table$status == "ok"))
+    expect_true(fit$selected.support$min.support %in% support.grid$min.support)
+    expect_equal(fit$operator$neighborhoods$min.support,
+                 fit$selected.support$min.support)
+    expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.ssrhe.hessian.regression.gcv rejects missing responses", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 4),
+                               y = seq(0, 1, length.out = 4)))
+    y <- X[, 1]
+    y[2L] <- NA_real_
+
+    expect_error(
+        fit.ssrhe.hessian.regression.gcv(
+            X = X,
+            y = y,
+            k = 10L,
+            tangent.dim = 2L,
+            lambda1.grid = c(0.1, 1)
+        ),
+        "fully observed"
+    )
+})
+
 test_that("fit.ssrhe.hessian.l1.regression matches direct genlasso reference", {
     skip_if_not_installed("Matrix")
     skip_if_not_installed("genlasso")
