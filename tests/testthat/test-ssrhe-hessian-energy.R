@@ -62,6 +62,19 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
                       "output.finalization") %in% op$timing$phase))
     expect_true(all(op$timing$elapsed.sec >= 0))
     expect_true(all(op$timing$total.elapsed.sec > 0))
+    expect_s3_class(op$native.timing, "data.frame")
+    expect_true(all(c("phase", "elapsed.sec") %in% names(op$native.timing)))
+    expect_true(all(c("native.input.conversion",
+                      "native.support.preparation",
+                      "native.local.matrix.setup",
+                      "native.local.pca",
+                      "native.design.construction",
+                      "native.pseudoinverse",
+                      "native.triplet.insertion",
+                      "native.output.materialization") %in%
+                        op$native.timing$phase))
+    expect_true(all(is.finite(op$native.timing$elapsed.sec)))
+    expect_true(all(op$native.timing$elapsed.sec >= 0))
 
     op.adaptive <- ssrhe.hessian.operator(
         X = X,
@@ -73,6 +86,7 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
         return.local.diagnostics = FALSE,
         return.timing = TRUE
     )
+    expect_s3_class(op.adaptive$native.timing, "data.frame")
     expect_s3_class(op.adaptive$neighborhoods$timing, "data.frame")
     expect_true(all(c("neighborhood.validation", "neighborhood.create.graph",
                       "neighborhood.initial.supports", "neighborhood.topup",

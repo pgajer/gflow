@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -13,6 +14,8 @@
 #include <vector>
 
 namespace {
+
+using steady_clock = std::chrono::steady_clock;
 
 struct triplet_accumulator_t {
     std::vector<int> i;
@@ -33,6 +36,53 @@ struct cubic_component_t {
     int b;
     int c;
 };
+
+struct native_timing_t {
+    double input_conversion = 0.0;
+    double support_preparation = 0.0;
+    double local_matrix_setup = 0.0;
+    double local_pca = 0.0;
+    double design_construction = 0.0;
+    double pseudoinverse = 0.0;
+    double triplet_insertion = 0.0;
+    double stabilizer = 0.0;
+    double diagnostics_accumulation = 0.0;
+    double output_materialization = 0.0;
+};
+
+double elapsed_seconds(steady_clock::time_point start,
+                       steady_clock::time_point end) {
+    return std::chrono::duration<double>(end - start).count();
+}
+
+Rcpp::DataFrame native_timing_to_frame(const native_timing_t& timing) {
+    return Rcpp::DataFrame::create(
+        Rcpp::Named("phase") = Rcpp::CharacterVector::create(
+            "native.input.conversion",
+            "native.support.preparation",
+            "native.local.matrix.setup",
+            "native.local.pca",
+            "native.design.construction",
+            "native.pseudoinverse",
+            "native.triplet.insertion",
+            "native.stabilizer",
+            "native.diagnostics.accumulation",
+            "native.output.materialization"
+        ),
+        Rcpp::Named("elapsed.sec") = Rcpp::NumericVector::create(
+            timing.input_conversion,
+            timing.support_preparation,
+            timing.local_matrix_setup,
+            timing.local_pca,
+            timing.design_construction,
+            timing.pseudoinverse,
+            timing.triplet_insertion,
+            timing.stabilizer,
+            timing.diagnostics_accumulation,
+            timing.output_materialization
+        )
+    );
+}
 
 Eigen::MatrixXd r_matrix_to_eigen(const Rcpp::NumericMatrix& X) {
     Eigen::MatrixXd out(X.nrow(), X.ncol());
@@ -269,6 +319,8 @@ extern "C" SEXP S_ssrhe_hessian_operator(
     SEXP s_verbose
 ) {
 BEGIN_RCPP
+    native_timing_t native_timing;
+    steady_clock::time_point phase_start = steady_clock::now();
     Rcpp::NumericMatrix Xr(s_X);
     if (Xr.nrow() < 2 || Xr.ncol() < 1) {
         Rcpp::stop("X must be a numeric matrix with at least two rows and one column.");
@@ -284,6 +336,7 @@ BEGIN_RCPP
     const bool stabilizer = Rcpp::as<bool>(s_stabilizer);
     const double pinv_tol = Rcpp::as<double>(s_pinv_tol);
     const bool verbose = Rcpp::as<bool>(s_verbose);
+    native_timing.input_conversion += elapsed_seconds(phase_start, steady_clock::now());
 
     if (derivative_order != 2 && derivative_order != 3) {
         Rcpp::stop("derivative.order must be 2 or 3.");
@@ -300,6 +353,7 @@ BEGIN_RCPP
     supports.resize(n);
     const bool has_support_index = !Rf_isNull(s_support_index);
 
+    phase_start = steady_clock::now();
     if (has_support_index) {
         Rcpp::List support_list(s_support_index);
         if (support_list.size() != n) {
@@ -350,6 +404,7 @@ BEGIN_RCPP
             }
         }
     }
+    native_timing.support_preparation += elapsed_seconds(phase_start, steady_clock::now());
 
     triplet_accumulator_t Atrip;
     std::map<std::pair<int, int>, double> BStrip;
@@ -377,6 +432,7 @@ BEGIN_RCPP
     int global_row = 0;
 
     for (int center = 0; center < n; ++center) {
+        phase_start = steady_clock::now();
         std::vector<int> ids = supports[center];
         const int ki = static_cast<int>(ids.size());
         int base_local = -1;
@@ -399,7 +455,9 @@ BEGIN_RCPP
         }
         Eigen::RowVectorXd local_mean = local.colwise().mean();
         Eigen::MatrixXd centered = local.rowwise() - local_mean;
+        native_timing.local_matrix_setup += elapsed_seconds(phase_start, steady_clock::now());
 
+        phase_start = steady_clock::now();
         Eigen::JacobiSVD<Eigen::MatrixXd> pca(
             centered, Eigen::ComputeThinU | Eigen::ComputeThinV
         );
@@ -434,6 +492,9 @@ BEGIN_RCPP
         Eigen::MatrixXd coords = centered * pca.matrixV().leftCols(m);
         const Eigen::RowVectorXd base_coord = coords.row(base_local);
         coords.rowwise() -= base_coord;
+        native_timing.local_pca += elapsed_seconds(phase_start, steady_clock::now());
+
+        phase_start = steady_clock::now();
         Eigen::MatrixXd design = build_reduced_design(coords, derivative_order);
         const int q = derivative_order == 3 ?
             third_derivative_component_count(m) : quadratic_component_count(m);
@@ -441,13 +502,17 @@ BEGIN_RCPP
         if (ki < p) {
             Rcpp::stop("Local support is too small for the selected tangent dimension and derivative order.");
         }
+        native_timing.design_construction += elapsed_seconds(phase_start, steady_clock::now());
 
+        phase_start = steady_clock::now();
         int rank = 0;
         double condition = 0.0;
         Eigen::MatrixXd pinv = pseudo_inverse(design, pinv_tol, &rank, &condition);
         Eigen::MatrixXd reg = pinv;
         reg.col(base_local) -= pinv.rowwise().sum();
+        native_timing.pseudoinverse += elapsed_seconds(phase_start, steady_clock::now());
 
+        phase_start = steady_clock::now();
         if (derivative_order == 2) {
             std::vector<std::pair<int, int> > comps = hessian_components(m);
             for (int comp = 0; comp < q; ++comp) {
@@ -499,8 +564,10 @@ BEGIN_RCPP
                 ++global_row;
             }
         }
+        native_timing.triplet_insertion += elapsed_seconds(phase_start, steady_clock::now());
 
         if (stabilizer) {
+            phase_start = steady_clock::now();
             Eigen::MatrixXd T = design * pinv;
             T.diagonal().array() -= 1.0;
             T.col(base_local) -= T.rowwise().sum();
@@ -530,8 +597,10 @@ BEGIN_RCPP
                     }
                 }
             }
+            native_timing.stabilizer += elapsed_seconds(phase_start, steady_clock::now());
         }
 
+        phase_start = steady_clock::now();
         double selected_var = 0.0;
         for (int a = 0; a < m && a < sing.size(); ++a) {
             selected_var += sing(a) * sing(a);
@@ -544,6 +613,7 @@ BEGIN_RCPP
         diag_condition.push_back(condition);
         diag_local_variance_sum.push_back(total_var);
         diag_local_variance_ratio.push_back(total_var > 0.0 ? selected_var / total_var : 1.0);
+        native_timing.diagnostics_accumulation += elapsed_seconds(phase_start, steady_clock::now());
     }
 
     if (verbose) {
@@ -551,6 +621,7 @@ BEGIN_RCPP
                     << global_row << " rows and " << n << " columns." << std::endl;
     }
 
+    phase_start = steady_clock::now();
     Rcpp::List row_table = Rcpp::List::create(
         Rcpp::Named("row") = Rcpp::seq(1, global_row),
         Rcpp::Named("center") = row_center,
@@ -595,7 +666,7 @@ BEGIN_RCPP
         Rcpp::RObject(bs_map_to_triplets(BStrip, n)) :
         Rcpp::RObject(R_NilValue);
 
-    return Rcpp::List::create(
+    Rcpp::List out = Rcpp::List::create(
         Rcpp::Named("A.triplet") = triplets_to_list(Atrip, global_row, n),
         Rcpp::Named("BS.triplet") = bs_triplet,
         Rcpp::Named("nn.index") = has_support_index ?
@@ -615,5 +686,8 @@ BEGIN_RCPP
             Rcpp::Named("pinv.tol") = pinv_tol
         )
     );
+    native_timing.output_materialization += elapsed_seconds(phase_start, steady_clock::now());
+    out["native.timing"] = native_timing_to_frame(native_timing);
+    return out;
 END_RCPP
 }

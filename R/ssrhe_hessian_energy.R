@@ -133,6 +133,8 @@
 #'       size, design rank/condition, PCA variance, chart-distortion,
 #'       boundary-asymmetry, and curvature-bias proxy diagnostics;
 #'     \item \code{timing}: if requested, a phase-level elapsed-time table;
+#'     \item \code{native.timing}: if requested, a C++ backend subphase timing
+#'       table for native operator construction;
 #'     \item \code{parity}: notes documenting reference-behavior conventions.
 #'   }
 #'
@@ -292,6 +294,7 @@ ssrhe.hessian.operator <- function(
 
     raw$row.table <- as.data.frame(raw$row.table, stringsAsFactors = FALSE)
     raw$diagnostics <- as.data.frame(raw$diagnostics, stringsAsFactors = FALSE)
+    raw$native.timing <- as.data.frame(raw$native.timing, stringsAsFactors = FALSE)
     raw$local.diagnostics <- if (return.local.diagnostics) {
         .ssrhe.local.geometry.diagnostics(
             X = X,
@@ -338,6 +341,7 @@ ssrhe.hessian.operator <- function(
         row.table = raw$row.table,
         diagnostics = raw$diagnostics,
         local.diagnostics = raw$local.diagnostics,
+        native.timing = if (return.timing) raw$native.timing else NULL,
         timing = NULL,
         parity = raw$parity,
         parameters = raw$parameters
