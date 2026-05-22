@@ -82,6 +82,7 @@ Suggests:
     logistf,
     proxy,
     scales,
+    pkgload,
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,

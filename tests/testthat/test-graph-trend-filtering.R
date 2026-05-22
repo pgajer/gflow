@@ -68,6 +68,7 @@ load_ssrhe_all_labeled_validation_definitions <- function() {
   for (expr in exprs) {
     txt <- paste(deparse(expr), collapse = "\n")
     if (grepl("^manifest <- build\\.dataset\\.manifest", txt)) break
+    if (grepl("pkgload::load_all\\(gflow.dir", txt, fixed = FALSE)) next
     eval(expr, envir = env)
   }
   env
@@ -95,6 +96,99 @@ fit_ssrhe_graph_trend_filtering_case <- function(dataset.id, order, variant) {
     n.lambda = 20L,
     nfolds = 4L,
     maxsteps = 500L
+  )
+}
+
+ssrhe_like_truth_function <- function(U) {
+  y <- sin(pi * U[, 1])
+  if (ncol(U) >= 2L) {
+    y <- y + 0.7 * cos(pi * U[, 2]) +
+      0.45 * U[, 1]^2 - 0.25 * U[, 1] * U[, 2]
+  }
+  as.numeric(scale(y, center = TRUE, scale = FALSE))
+}
+
+adj_weight_from_edge_matrix <- function(n, edge.matrix, edge.weight) {
+  adj <- vector("list", n)
+  weights <- vector("list", n)
+  for (i in seq_len(n)) {
+    adj[[i]] <- integer()
+    weights[[i]] <- numeric()
+  }
+  for (r in seq_len(nrow(edge.matrix))) {
+    i <- as.integer(edge.matrix[r, 1L])
+    j <- as.integer(edge.matrix[r, 2L])
+    w <- as.numeric(edge.weight[r])
+    adj[[i]] <- c(adj[[i]], j)
+    weights[[i]] <- c(weights[[i]], w)
+    adj[[j]] <- c(adj[[j]], i)
+    weights[[j]] <- c(weights[[j]], w)
+  }
+  list(adj.list = adj, weight.list = weights)
+}
+
+make_ssrhe_like_graph_trend_case <- function(kind = c("flat", "quadform")) {
+  kind <- match.arg(kind)
+  n <- 60L
+  dim <- 2L
+  if (identical(kind, "flat")) {
+    seed <- 13200L
+    set.seed(seed)
+    U <- matrix(stats::runif(n * dim, -1, 1), ncol = dim)
+    X <- U
+    index.k <- NA_integer_
+    coefficients <- rep(NA_real_, dim)
+    order <- 0L
+    variant <- "sqrt.conductance"
+  } else {
+    seed <- 16104L
+    set.seed(seed)
+    U <- matrix(stats::runif(n * dim, -1, 1), ncol = dim)
+    index.k <- 1L
+    coefficients <- 0.35 * c(1, 1)
+    X <- quadform.embed(U, index.k = index.k, coefficients = coefficients)
+    order <- 2L
+    variant <- "conductance"
+  }
+  truth <- ssrhe_like_truth_function(U)
+  set.seed(seed + 900000L)
+  y <- truth + stats::rnorm(length(truth), sd = 0.08)
+  graph <- create.adaptive.radius.graph(
+    X,
+    k.scale = 12L,
+    radius.factor = 1.25,
+    radius.rule = "geomean",
+    prune.method = "none",
+    connect.components = TRUE,
+    connect.method = "component.mst"
+  )
+  edges <- graph$edge_matrix
+  metric.length <- if (identical(kind, "flat")) {
+    sqrt(rowSums((U[edges[, 1L], , drop = FALSE] -
+                    U[edges[, 2L], , drop = FALSE])^2))
+  } else {
+    quadform.edge.lengths(
+      U[edges[, 1L], , drop = FALSE],
+      U[edges[, 2L], , drop = FALSE],
+      index.k = index.k,
+      coefficients = coefficients
+    )
+  }
+  metric.graph <- adj_weight_from_edge_matrix(nrow(X), edges, metric.length)
+  conductance.graph <- adj_weight_from_edge_matrix(
+    nrow(X), edges, 1 / pmax(metric.length, 1e-8)
+  )
+  list(
+    adj.list = metric.graph$adj.list,
+    weight.list = if (identical(variant, "unit")) {
+      metric.graph$weight.list
+    } else {
+      conductance.graph$weight.list
+    },
+    y = y,
+    order = order,
+    variant = variant,
+    graph = graph
   )
 }
 
@@ -339,6 +433,33 @@ test_that("fixed lambda fit agrees with direct genlasso reference", {
   beta.ref <- as.vector(stats::coef(ref, lambda = lambda)$beta)
   expect_equal(fit$fitted.values, beta.ref, tolerance = 1e-9)
   expect_equal(fit$lambda, lambda, tolerance = 1e-12)
+})
+
+test_that("package-local SSRHE-like graph trend-filtering cases return finite fits", {
+  skip_if_not_installed("genlasso")
+  skip_if_not_installed("Matrix")
+
+  for (kind in c("flat", "quadform")) {
+    case <- make_ssrhe_like_graph_trend_case(kind)
+    set.seed(910000L + match(kind, c("flat", "quadform")))
+    fit <- fit.graph.trend.filtering(
+      adj.list = case$adj.list,
+      weight.list = case$weight.list,
+      y = case$y,
+      order = case$order,
+      lambda.selection = "cv",
+      weight.rule = case$variant,
+      n.lambda = 20L,
+      nfolds = 4L,
+      maxsteps = 500L
+    )
+
+    expect_s3_class(fit, "graph.trend.filtering.fit")
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_true(is.finite(fit$lambda))
+    expect_true(fit$path$svd)
+    expect_equal(length(fit$fitted.values), length(case$y))
+  }
 })
 
 test_that("SSRHE affected graph trend-filtering cases return finite fitted values", {

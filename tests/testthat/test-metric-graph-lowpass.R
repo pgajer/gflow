@@ -16,6 +16,30 @@ laplacian_dense <- function(op) {
   as.matrix(op$laplacian$matrix)
 }
 
+expect_metric_fit_finite <- function(fit) {
+  expect_true(all(is.finite(fit$fitted.values)))
+  expect_true(all(is.finite(fit$residuals)))
+  expect_true(all(is.finite(fit$gcv$eta.optimal)))
+  expect_true(all(is.finite(fit$gcv$gcv.scores)))
+  expect_true(all(is.finite(fit$gcv$gcv.optimal)))
+  expect_true(all(is.finite(fit$gcv$effective.df)))
+  expect_true(all(is.finite(fit$spectral$eigenvalues)))
+  expect_true(all(is.finite(fit$spectral$eigenvectors)))
+  expect_true(all(is.finite(fit$spectral$filtered.eigenvalues)))
+}
+
+expect_metric_refit_finite <- function(refit) {
+  expect_true(all(is.finite(refit$fitted.values)))
+  expect_true(all(is.finite(refit$residuals)))
+  if (isTRUE(refit$per.column.gcv)) {
+    expect_true(all(is.finite(refit$eta.optimal)))
+    expect_true(all(is.finite(refit$gcv.scores)))
+    expect_true(all(is.finite(refit$effective.df)))
+  } else {
+    expect_true(all(is.finite(refit$eta.used)))
+  }
+}
+
 test_that("metric operator validates undirected positive length graphs", {
   graph <- make_path_graph_lengths(c(1, 2))
   graph.bad <- graph
@@ -140,6 +164,34 @@ test_that("C++ dense spectral path matches R dense eigen reference", {
   expect_true(all(cors > 1 - 1e-7))
 })
 
+test_that("metric low-pass returns finite fit diagnostics across conductance rules", {
+  graph <- make_path_graph_lengths(c(0.2, 0.5, 0.9, 1.7, 2.8, 4.6))
+  y <- sin(seq_len(7) / 2) + cos(seq_len(7) / 5)
+  eta.grid <- c(0.001, 0.01, 0.1, 1, 10)
+  specs <- list(
+    list(conductance.rule = "inverse.length.power", conductance.alpha = 1.5),
+    list(conductance.rule = "exp.length", conductance.sigma.rule = "median"),
+    list(conductance.rule = "exp.length.squared", conductance.sigma.rule = "edge.quantile"),
+    list(conductance.rule = "self.tuned.gaussian", conductance.local.k = 2L)
+  )
+
+  for (spec in specs) {
+    args <- c(
+      list(
+        adj.list = graph$adj.list,
+        weight.list = graph$weight.list,
+        y = y,
+        n.eigenpairs = 7L,
+        eigen.solver = "dense",
+        eta.grid = eta.grid
+      ),
+      spec
+    )
+    fit <- do.call(fit.metric.graph.lowpass, args)
+    expect_metric_fit_finite(fit)
+  }
+})
+
 test_that("sparse spectral path handles inverse-square metric conductances", {
   lengths <- exp(seq(log(1e-4), log(2e-2), length.out = 79))
   graph <- make_path_graph_lengths(lengths)
@@ -167,6 +219,36 @@ test_that("sparse spectral path handles inverse-square metric conductances", {
   expect_equal(fit.sparse$spectral$backend, "sparse.shift")
   expect_equal(fit.sparse$spectral$eigenvalues, fit.dense$spectral$eigenvalues, tolerance = 1e-6)
   expect_equal(fit.sparse$fitted.values, fit.dense$fitted.values, tolerance = 1e-8)
+  expect_metric_fit_finite(fit.sparse)
+  expect_metric_fit_finite(fit.dense)
+})
+
+test_that("metric low-pass finite guards hold under aggressive conductance scaling", {
+  lengths <- exp(seq(log(1e-7), log(1e1), length.out = 99))
+  graph <- make_path_graph_lengths(lengths)
+  y <- sin(seq_len(100) / 4) + 0.25 * cos(seq_len(100) / 9)
+  fit <- fit.metric.graph.lowpass(
+    graph$adj.list, graph$weight.list, y,
+    conductance.rule = "inverse.length.power",
+    conductance.alpha = 3,
+    conductance.epsilon = 1e-12,
+    n.eigenpairs = 25L,
+    eigen.solver = "sparse",
+    dense.fallback = "never",
+    eta.grid = c(1e-10, 1e-8, 1e-6, 1e-4, 1e-2)
+  )
+  expect_metric_fit_finite(fit)
+
+  fixed.refit <- refit.metric.graph.lowpass(fit, rev(y))
+  expect_metric_refit_finite(fixed.refit)
+
+  Y <- cbind(reversed = rev(y), shifted = y + seq_along(y) / 100)
+  gcv.refit <- refit.metric.graph.lowpass(
+    fit, Y,
+    per.column.gcv = TRUE,
+    eta.grid = c(1e-10, 1e-8, 1e-6, 1e-4, 1e-2)
+  )
+  expect_metric_refit_finite(gcv.refit)
 })
 
 test_that("symmetric normalized smoothing preserves sqrt-degree null vector", {
@@ -213,6 +295,8 @@ test_that("metric low-pass preserves constant responses and refit fixed eta", {
   f <- fit$spectral$filtered.eigenvalues
   y2.hat <- as.vector(V %*% (f * as.vector(crossprod(V, y2))))
   expect_equal(refit$fitted.values, y2.hat, tolerance = 1e-10)
+  expect_metric_fit_finite(fit)
+  expect_metric_refit_finite(refit)
 })
 
 test_that("effective degrees of freedom decrease with eta for heat kernel", {
@@ -251,6 +335,7 @@ test_that("per-column GCV refit matches independent fits", {
     per.column.gcv = TRUE,
     eta.grid = eta.grid
   )
+  fixed.refit <- refit.metric.graph.lowpass(fit, Y)
 
   fit1 <- fit.metric.graph.lowpass(
     graph$adj.list, graph$weight.list, Y[, 1],
@@ -268,4 +353,7 @@ test_that("per-column GCV refit matches independent fits", {
   expect_equal(refit$eta.optimal, c(fit1$gcv$eta.optimal, fit2$gcv$eta.optimal), tolerance = 1e-12)
   expect_equal(refit$fitted.values[, 1], fit1$fitted.values, tolerance = 1e-10)
   expect_equal(refit$fitted.values[, 2], fit2$fitted.values, tolerance = 1e-10)
+  expect_metric_fit_finite(fit)
+  expect_metric_refit_finite(refit)
+  expect_metric_refit_finite(fixed.refit)
 })

@@ -54,7 +54,7 @@ score_subset_prediction <- function(dataset.row, method, fit.out, x, y, truth,
     return(data.frame(
       dataset.row,
       method = method,
-      status = "error",
+      status = "fit_error",
       trend.order = trend.order,
       rmse.truth = NA_real_,
       rmse.observed = NA_real_,
@@ -69,6 +69,23 @@ score_subset_prediction <- function(dataset.row, method, fit.out, x, y, truth,
   }
 
   yhat <- as.numeric(fit.out$result$fitted.values)
+  if (length(yhat) != length(y) || any(!is.finite(yhat))) {
+    return(data.frame(
+      dataset.row,
+      method = method,
+      status = "score_error",
+      trend.order = trend.order,
+      rmse.truth = NA_real_,
+      rmse.observed = NA_real_,
+      mae.truth = NA_real_,
+      runtime.sec = fit.out$elapsed,
+      lambda = lambda,
+      weight.rule = weight.rule,
+      conductance.source = conductance.source,
+      message = "Fit returned, but fitted values were missing or non-finite.",
+      stringsAsFactors = FALSE
+    ))
+  }
   if (is.na(lambda) && !is.null(fit.out$result$lambda)) {
     lambda <- fit.out$result$lambda
   }
