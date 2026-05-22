@@ -69,7 +69,8 @@
 #'   time table to the returned operator. The timings separate R-side
 #'   validation, neighborhood/support construction, native local operator
 #'   construction, optional local diagnostics, sparse matrix assembly, and
-#'   output finalization.
+#'   output finalization. For adaptive-radius neighborhoods, subphase timings
+#'   are also attached in \code{neighborhoods$timing}.
 #' @param verbose Logical. If \code{TRUE}, print a short native construction
 #'   message.
 #'
@@ -247,7 +248,8 @@ ssrhe.hessian.operator <- function(
         support.topup = support.topup,
         tangent.dim = if (missing(tangent.dim)) NULL else tangent.dim,
         tangent.dim.rule = tangent.dim.rule,
-        derivative.order = derivative.order
+        derivative.order = derivative.order,
+        return.timing = return.timing
     )
 
     if (return.timing) {
@@ -706,7 +708,44 @@ ssrhe.support.grid <- function(n,
                                         support.topup,
                                         tangent.dim,
                                         tangent.dim.rule,
-                                        derivative.order = 2L) {
+                                        derivative.order = 2L,
+                                        return.timing = FALSE) {
+    return.timing <- isTRUE(return.timing)
+    timing.start <- proc.time()[["elapsed"]]
+    timing.phase.start <- timing.start
+    timing.rows <- list()
+    add.timing <- function(subphase) {
+        if (return.timing) {
+            timing.rows[[length(timing.rows) + 1L]] <<-
+                .ssrhe.operator.timing.row(
+                    phase = paste0("neighborhood.", subphase),
+                    elapsed.sec = proc.time()[["elapsed"]] - timing.phase.start
+                )
+            timing.phase.start <<- proc.time()[["elapsed"]]
+        }
+        invisible(NULL)
+    }
+    finalize.timing <- function() {
+        if (!return.timing) {
+            return(NULL)
+        }
+        timing <- do.call(rbind, timing.rows)
+        if (is.null(timing)) {
+            timing <- data.frame(phase = character(),
+                                 elapsed.sec = numeric(),
+                                 stringsAsFactors = FALSE)
+        }
+        total.elapsed <- proc.time()[["elapsed"]] - timing.start
+        timing$total.elapsed.sec <- total.elapsed
+        timing$fraction.of.total <- if (total.elapsed > 0) {
+            timing$elapsed.sec / total.elapsed
+        } else {
+            0
+        }
+        rownames(timing) <- NULL
+        timing
+    }
+
     n <- nrow(X)
     if (!is.null(support.index) &&
         identical(neighborhood.type, "knn") &&
@@ -729,6 +768,7 @@ ssrhe.support.grid <- function(n,
         }
         nn.index <- .validate.ssrhe.nn.index(nn.index, n, k)
         support.size <- rep(k, n)
+        add.timing("validation")
         return(list(
             type = "knn",
             k = k,
@@ -742,7 +782,8 @@ ssrhe.support.grid <- function(n,
                 type = "knn",
                 support.size = support.size,
                 n.topup = rep(0L, n),
-                n.truncated = rep(0L, n)
+                n.truncated = rep(0L, n),
+                timing = finalize.timing()
             )
         ))
     }
@@ -750,6 +791,7 @@ ssrhe.support.grid <- function(n,
     if (identical(neighborhood.type, "supplied")) {
         support.index <- .validate.ssrhe.support.index(support.index, n)
         support.size <- lengths(support.index)
+        add.timing("validation")
         return(list(
             type = "supplied",
             k = 0L,
@@ -763,7 +805,8 @@ ssrhe.support.grid <- function(n,
                 type = "supplied",
                 support.size = support.size,
                 n.topup = rep(0L, n),
-                n.truncated = rep(0L, n)
+                n.truncated = rep(0L, n),
+                timing = finalize.timing()
             )
         ))
     }
@@ -811,6 +854,7 @@ ssrhe.support.grid <- function(n,
                  call. = FALSE)
         }
     }
+    add.timing("validation")
 
     graph <- create.adaptive.radius.graph(
         X = X,
@@ -820,21 +864,35 @@ ssrhe.support.grid <- function(n,
         prune.method = "none",
         connect.components = FALSE
     )
-    nearest <- NULL
-    if (identical(support.topup, "nearest") || !is.null(max.support)) {
-        nearest <- .exact.knn.index(X, n - 1L)
-    }
-    support.index <- vector("list", n)
+    add.timing("create.graph")
+
+    support.index <- lapply(seq_len(n), function(i) {
+        unique(c(i, graph$adj_list[[i]]))
+    })
+    add.timing("initial.supports")
+
     n.topup <- integer(n)
+    if (identical(support.topup, "nearest")) {
+        undersized <- which(lengths(support.index) < min.support)
+        for (i in undersized) {
+            ids <- support.index[[i]]
+            need <- min.support - length(ids)
+            add <- .ssrhe.nearest.outside.support(
+                X = X,
+                center = i,
+                exclude = ids,
+                n.add = need
+            )
+            ids <- unique(c(ids, add))
+            n.topup[[i]] <- max(0L, length(ids) - length(support.index[[i]]))
+            support.index[[i]] <- ids
+        }
+    }
+    add.timing("topup")
+
     n.truncated <- integer(n)
     for (i in seq_len(n)) {
-        ids <- unique(c(i, graph$adj_list[[i]]))
-        if (length(ids) < min.support && identical(support.topup, "nearest")) {
-            add <- nearest[i, !nearest[i, ] %in% ids]
-            need <- min.support - length(ids)
-            ids <- unique(c(ids, add[seq_len(min(need, length(add)))]))
-            n.topup[[i]] <- max(0L, length(ids) - length(unique(c(i, graph$adj_list[[i]]))))
-        }
+        ids <- support.index[[i]]
         if (!is.null(max.support) && length(ids) > max.support) {
             non.center <- setdiff(ids, i)
             d <- rowSums((t(t(X[non.center, , drop = FALSE]) - X[i, ]))^2)
@@ -846,8 +904,11 @@ ssrhe.support.grid <- function(n,
         }
         support.index[[i]] <- as.integer(ids)
     }
+    add.timing("truncate.reorder")
+
     support.index <- .validate.ssrhe.support.index(support.index, n)
     support.size <- lengths(support.index)
+    add.timing("final.validation")
     list(
         type = "adaptive.radius",
         k = 0L,
@@ -869,9 +930,22 @@ ssrhe.support.grid <- function(n,
             support.size = support.size,
             n.topup = n.topup,
             n.truncated = n.truncated,
-            sigma = graph$sigma
+            sigma = graph$sigma,
+            timing = finalize.timing()
         )
     )
+}
+
+.ssrhe.nearest.outside.support <- function(X, center, exclude, n.add) {
+    if (n.add <= 0L) {
+        return(integer())
+    }
+    n <- nrow(X)
+    d <- rowSums((t(t(X) - X[center, ]))^2)
+    d[unique(c(center, exclude))] <- Inf
+    candidates <- order(d, seq_len(n))
+    candidates <- candidates[is.finite(d[candidates])]
+    as.integer(candidates[seq_len(min(n.add, length(candidates)))])
 }
 
 .ssrhe.triplet.to.sparse <- function(triplet) {

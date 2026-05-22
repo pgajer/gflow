@@ -63,6 +63,46 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
     expect_true(all(op$timing$elapsed.sec >= 0))
     expect_true(all(op$timing$total.elapsed.sec > 0))
 
+    op.adaptive <- ssrhe.hessian.operator(
+        X = X,
+        tangent.dim = 2L,
+        neighborhood.type = "adaptive.radius",
+        adaptive.k.scale = 4L,
+        min.support = 10L,
+        derivative.order = 2L,
+        return.local.diagnostics = FALSE,
+        return.timing = TRUE
+    )
+    expect_s3_class(op.adaptive$neighborhoods$timing, "data.frame")
+    expect_true(all(c("neighborhood.validation", "neighborhood.create.graph",
+                      "neighborhood.initial.supports", "neighborhood.topup",
+                      "neighborhood.truncate.reorder",
+                      "neighborhood.final.validation") %in%
+                        op.adaptive$neighborhoods$timing$phase))
+    graph <- create.adaptive.radius.graph(
+        X = X,
+        k.scale = 4L,
+        radius.factor = 1.25,
+        radius.rule = "geomean",
+        prune.method = "none",
+        connect.components = FALSE
+    )
+    nearest <- .exact.knn.index(X, nrow(X) - 1L)
+    legacy.support <- vector("list", nrow(X))
+    for (i in seq_len(nrow(X))) {
+        ids <- unique(c(i, graph$adj_list[[i]]))
+        if (length(ids) < 10L) {
+            add <- nearest[i, !nearest[i, ] %in% ids]
+            need <- 10L - length(ids)
+            ids <- unique(c(ids, add[seq_len(min(need, length(add)))]))
+        }
+        if (ids[[1L]] != i) {
+            ids <- c(i, setdiff(ids, i))
+        }
+        legacy.support[[i]] <- as.integer(ids)
+    }
+    expect_equal(op.adaptive$support.index, legacy.support)
+
     fit.fast <- fit.ssrhe.hessian.regression(
         X = X,
         y = y,
