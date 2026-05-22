@@ -120,7 +120,15 @@ test_that("ANN adaptive-radius search matches all-pairs reference", {
     expect_equal(
       ann.g$timing$phase,
       c("ann.setup", "ann.scale.search", "ann.fixed.radius.search",
-        "ann.edge.materialization", "graph.finalization")
+        "ann.edge.materialization",
+        "finalization.edge.table.to.adjacency",
+        "finalization.normalize.controls",
+        "finalization.prune",
+        "finalization.component.mst",
+        "finalization.final.edge.table",
+        "finalization.object.assembly",
+        "finalization.lifecycle.branches",
+        "finalization.class.assignment")
     )
     expect_true(all(is.finite(ann.g$timing$elapsed.sec)))
     expect_true(all(ann.g$timing$elapsed.sec >= 0))
