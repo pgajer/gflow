@@ -55,6 +55,12 @@
 #'   stabilizer matrix described in the SSRHE supplement. Currently supported
 #'   only for \code{derivative.order = 2L}.
 #' @param pinv.tol Nonnegative tolerance multiplier for local pseudoinverses.
+#' @param local.solver Local least-squares backend used to map local function
+#'   values to derivative coefficients. \code{"svd"} is the most stable
+#'   reference path and is the default. \code{"qr"} uses pivoted QR and falls
+#'   back to SVD for rank-deficient local designs. \code{"normal.equations"}
+#'   uses the normal-equation solve for full-rank local designs and falls back
+#'   to SVD when the solve is rank-deficient or numerically unsafe.
 #' @param return.A Logical. If \code{TRUE}, return \eqn{A} as a sparse matrix.
 #' @param return.B Logical. If \code{TRUE}, return \eqn{B=A^\top A}.
 #' @param return.BS Logical. If \code{TRUE} and \code{stabilizer = TRUE}, return
@@ -163,6 +169,7 @@ ssrhe.hessian.operator <- function(
     derivative.order = 2L,
     stabilizer = FALSE,
     pinv.tol = sqrt(.Machine$double.eps),
+    local.solver = c("svd", "qr", "normal.equations"),
     return.A = TRUE,
     return.B = TRUE,
     return.BS = stabilizer,
@@ -179,6 +186,7 @@ ssrhe.hessian.operator <- function(
     neighborhood.type <- match.arg(neighborhood.type)
     radius.rule <- match.arg(radius.rule)
     support.topup <- match.arg(support.topup)
+    local.solver <- match.arg(local.solver)
     return.timing <- isTRUE(return.timing)
 
     tangent.dim.rule <- match.arg(tangent.dim.rule)
@@ -280,6 +288,7 @@ ssrhe.hessian.operator <- function(
         as.integer(derivative.order),
         as.logical(stabilizer),
         as.double(pinv.tol),
+        local.solver,
         as.logical(verbose),
         PACKAGE = "gflow"
     )
@@ -352,6 +361,7 @@ ssrhe.hessian.operator <- function(
     out$parameters$radius.rule <- neighborhood$radius.rule
     out$parameters$radius.factor <- neighborhood$radius.factor
     out$parameters$derivative.order <- derivative.order
+    out$parameters$local.solver <- local.solver
 
     if (return.timing) {
         timing.rows[["output.finalization"]] <- .ssrhe.operator.timing.row(
@@ -1063,6 +1073,7 @@ fit.ssrhe.hessian.regression <- function(
     derivative.order = 2L,
     stabilizer = lambda2 > 0,
     pinv.tol = sqrt(.Machine$double.eps),
+    local.solver = c("svd", "qr", "normal.equations"),
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1074,6 +1085,7 @@ fit.ssrhe.hessian.regression <- function(
     lambda2 <- .validate.ssrhe.nonnegative.scalar(lambda2, "lambda2")
     ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
+    local.solver <- match.arg(local.solver)
     stabilizer <- isTRUE(stabilizer)
     if (lambda2 > 0 && !stabilizer) {
         stop("lambda2 > 0 requires stabilizer = TRUE.", call. = FALSE)
@@ -1102,6 +1114,7 @@ fit.ssrhe.hessian.regression <- function(
         derivative.order = derivative.order,
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
+        local.solver = local.solver,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -1256,6 +1269,7 @@ fit.ssrhe.hessian.regression.cv <- function(
     derivative.order = 2L,
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
+    local.solver = c("svd", "qr", "normal.equations"),
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1285,6 +1299,7 @@ fit.ssrhe.hessian.regression.cv <- function(
     selection <- match.arg(selection)
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
+    local.solver <- match.arg(local.solver)
     support.cv.max.candidates <- .validate.ssrhe.positive.integer(
         support.cv.max.candidates, "support.cv.max.candidates")
     stabilizer <- isTRUE(stabilizer)
@@ -1354,6 +1369,7 @@ fit.ssrhe.hessian.regression.cv <- function(
                         derivative.order = derivative.order,
                         stabilizer = stabilizer,
                         pinv.tol = pinv.tol,
+                        local.solver = local.solver,
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
@@ -1434,6 +1450,7 @@ fit.ssrhe.hessian.regression.cv <- function(
         derivative.order = derivative.order,
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
+        local.solver = local.solver,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -1636,6 +1653,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
     derivative.order = 2L,
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
+    local.solver = c("svd", "qr", "normal.equations"),
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1674,6 +1692,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
+    local.solver <- match.arg(local.solver)
     gcv.trace.method <- match.arg(gcv.trace.method)
     gcv.trace.n.probes <- .validate.ssrhe.positive.integer(
         gcv.trace.n.probes, "gcv.trace.n.probes")
@@ -1740,6 +1759,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         derivative.order = derivative.order,
                         stabilizer = stabilizer,
                         pinv.tol = pinv.tol,
+                        local.solver = local.solver,
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
@@ -1836,6 +1856,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
         derivative.order = derivative.order,
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
+        local.solver = local.solver,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -2527,6 +2548,7 @@ fit.ssrhe.hessian.l1.regression <- function(
     eigen.tolerance = 0.95,
     derivative.order = 2L,
     pinv.tol = sqrt(.Machine$double.eps),
+    local.solver = c("svd", "qr", "normal.equations"),
     solver = c("genlasso", "admm", "auto"),
     row.scaling = c("none", "l2"),
     admm.rho = 1,
@@ -2569,6 +2591,7 @@ fit.ssrhe.hessian.l1.regression <- function(
     selection <- match.arg(selection)
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
+    local.solver <- match.arg(local.solver)
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     support.cv.max.candidates <- .validate.ssrhe.positive.integer(
         support.cv.max.candidates, "support.cv.max.candidates")
@@ -2657,6 +2680,7 @@ fit.ssrhe.hessian.l1.regression <- function(
                         eigen.tolerance = eigen.tolerance,
                         derivative.order = derivative.order,
                         pinv.tol = pinv.tol,
+                        local.solver = local.solver,
                         solver = solver,
                         row.scaling = row.scaling,
                         admm.rho = admm.rho,
@@ -2746,6 +2770,7 @@ fit.ssrhe.hessian.l1.regression <- function(
         derivative.order = derivative.order,
         stabilizer = FALSE,
         pinv.tol = pinv.tol,
+        local.solver = local.solver,
         return.A = TRUE,
         return.B = FALSE,
         return.BS = FALSE,

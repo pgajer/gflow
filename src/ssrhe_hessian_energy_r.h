@@ -18,6 +18,7 @@ SEXP S_ssrhe_hessian_operator(
     SEXP s_derivative_order,
     SEXP s_stabilizer,
     SEXP s_pinv_tol,
+    SEXP s_local_solver,
     SEXP s_verbose
 );
 
