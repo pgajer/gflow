@@ -142,6 +142,46 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
     expect_equal(nrow(fit.audit$operator$local.diagnostics), nrow(X))
 })
 
+test_that("ssrhe.hessian.operator local solver backends match SVD on full-rank supports", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 6),
+                               y = seq(0, 1, length.out = 6)))
+    op.svd <- ssrhe.hessian.operator(
+        X = X,
+        k = 16L,
+        tangent.dim = 2L,
+        local.solver = "svd",
+        return.local.diagnostics = FALSE,
+        return.timing = TRUE
+    )
+    op.qr <- ssrhe.hessian.operator(
+        X = X,
+        k = 16L,
+        tangent.dim = 2L,
+        local.solver = "qr",
+        return.local.diagnostics = FALSE,
+        return.timing = TRUE
+    )
+    op.ne <- ssrhe.hessian.operator(
+        X = X,
+        k = 16L,
+        tangent.dim = 2L,
+        local.solver = "normal.equations",
+        return.local.diagnostics = FALSE,
+        return.timing = TRUE
+    )
+
+    expect_equal(as.matrix(op.qr$A), as.matrix(op.svd$A), tolerance = 1e-9)
+    expect_equal(as.matrix(op.ne$A), as.matrix(op.svd$A), tolerance = 1e-8)
+    expect_true(all(op.qr$diagnostics$local.solver == "qr"))
+    expect_true(all(op.ne$diagnostics$local.solver == "normal.equations"))
+    expect_true(all(op.qr$diagnostics$solver.fallback == 0L))
+    expect_true(all(op.ne$diagnostics$solver.fallback == 0L))
+    expect_equal(op.qr$parameters$local.solver, "qr")
+    expect_equal(op.ne$parameters$local.solver, "normal.equations")
+})
+
 test_that("ssrhe.hessian.operator local diagnostics flag chart geometry", {
     skip_if_not_installed("Matrix")
 
