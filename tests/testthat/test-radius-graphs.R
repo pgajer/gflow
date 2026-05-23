@@ -181,23 +181,80 @@ test_that("minimal adaptive-radius graph detail preserves core graph fields", {
 test_that("create.cknn.graph is the continuous-kNN geomean adaptive-radius wrapper", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  cknn.g <- create.cknn.graph(X, k.scale = 1, delta = 1.5)
+  cknn.g <- create.cknn.graph(X, k.scale = 1, delta = 1.5,
+                              radius.search = "ann",
+                              return.timing = TRUE)
   adaptive.g <- create.adaptive.radius.graph(
-    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5,
+    radius.search = "ann",
+    return.timing = TRUE
   )
 
   expect_s3_class(cknn.g, "cknn_graph")
   expect_s3_class(cknn.g, "adaptive_radius_graph")
   expect_equal(cknn.g$graph_rule, "continuous.knn")
   expect_equal(cknn.g$radius_rule, "geomean")
+  expect_equal(cknn.g$radius_search, "ann")
   expect_equal(cknn.g$radius_factor, 1.5)
   expect_equal(cknn.g$delta, 1.5)
   expect_equal(.radius_edge_keys(cknn.g$edge_matrix),
                .radius_edge_keys(adaptive.g$edge_matrix))
   expect_equal(cknn.g$edge_weight, adaptive.g$edge_weight, tolerance = 1e-12)
+  expect_equal(cknn.g$sigma, adaptive.g$sigma, tolerance = 1e-12)
+  expect_equal(cknn.g$timing$phase, adaptive.g$timing$phase)
+  expect_true("ann.fixed.radius.search" %in% cknn.g$timing$phase)
   expect_equal(graph.geodesic.distances(cknn.g),
                graph.geodesic.distances(adaptive.g),
                tolerance = 1e-12)
+})
+
+test_that("create.cknn.graph exposes all-pairs and minimal adaptive-radius controls", {
+  set.seed(929)
+  X <- cbind(runif(45), runif(45), 0.15 * runif(45))
+
+  ann.g <- create.cknn.graph(
+    X,
+    k.scale = 5L,
+    delta = 1.35,
+    radius.search = "ann",
+    graph.detail = "minimal",
+    return.timing = TRUE
+  )
+  ref.g <- create.cknn.graph(
+    X,
+    k.scale = 5L,
+    delta = 1.35,
+    radius.search = "all.pairs",
+    graph.detail = "minimal",
+    return.timing = TRUE
+  )
+  adaptive.g <- create.adaptive.radius.graph(
+    X,
+    k.scale = 5L,
+    radius.factor = 1.35,
+    radius.rule = "geomean",
+    radius.search = "ann",
+    graph.detail = "minimal",
+    return.timing = TRUE
+  )
+
+  expect_equal(ann.g$radius_search, "ann")
+  expect_equal(ref.g$radius_search, "all.pairs")
+  expect_equal(ann.g$graph_detail, "minimal")
+  expect_equal(ann.g$graph_rule, "continuous.knn")
+  expect_false(ann.g$lifecycle_branches)
+  expect_false("raw_repaired_adj_list" %in% names(ann.g))
+  expect_true("ann.fixed.radius.search" %in% ann.g$timing$phase)
+  expect_true("all.pairs.fixed.radius.search" %in% ref.g$timing$phase)
+  expect_true("finalization.minimal.components" %in% ann.g$timing$phase)
+
+  expect_equal(ann.g$sigma, ref.g$sigma, tolerance = 1e-10)
+  expect_equal(.radius_edge_keys(ann.g$edge_matrix),
+               .radius_edge_keys(ref.g$edge_matrix))
+  expect_equal(ann.g$edge_weight, ref.g$edge_weight, tolerance = 1e-10)
+  expect_equal(.radius_edge_keys(ann.g$edge_matrix),
+               .radius_edge_keys(adaptive.g$edge_matrix))
+  expect_equal(ann.g$edge_weight, adaptive.g$edge_weight, tolerance = 1e-10)
 })
 
 
