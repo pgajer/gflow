@@ -43,6 +43,7 @@ struct pseudo_inverse_result_t {
     double condition = std::numeric_limits<double>::infinity();
     std::string solver_used = "svd";
     bool fallback = false;
+    std::string fallback_reason = "none";
 };
 
 struct native_timing_t {
@@ -151,6 +152,7 @@ pseudo_inverse_result_t pseudo_inverse_svd(
         smax / smin_kept : std::numeric_limits<double>::infinity();
     out.solver_used = "svd";
     out.fallback = false;
+    out.fallback_reason = "none";
     out.pinv = svd.matrixV() * inv.asDiagonal() * svd.matrixU().transpose();
     return out;
 }
@@ -168,6 +170,7 @@ pseudo_inverse_result_t pseudo_inverse_qr(
         pseudo_inverse_result_t out = pseudo_inverse_svd(M, tol);
         out.solver_used = "svd";
         out.fallback = true;
+        out.fallback_reason = "rank.deficient";
         return out;
     }
 
@@ -178,22 +181,35 @@ pseudo_inverse_result_t pseudo_inverse_qr(
     out.condition = qr_condition_estimate(qr, p, rank);
     out.solver_used = "qr";
     out.fallback = false;
+    out.fallback_reason = "none";
     return out;
 }
 
 pseudo_inverse_result_t pseudo_inverse_normal_equations(
     const Eigen::MatrixXd& M,
-    double tol
+    double tol,
+    bool guard_condition,
+    double max_condition
 ) {
     Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(M);
     qr.setThreshold(std::max(tol, 0.0) *
                     static_cast<double>(std::max(M.rows(), M.cols())));
     const int rank = qr.rank();
     const int p = M.cols();
+    const double condition = qr_condition_estimate(qr, p, rank);
     if (rank < p) {
         pseudo_inverse_result_t out = pseudo_inverse_svd(M, tol);
         out.solver_used = "svd";
         out.fallback = true;
+        out.fallback_reason = "rank.deficient";
+        return out;
+    }
+    if (guard_condition &&
+        (!std::isfinite(condition) || condition > max_condition)) {
+        pseudo_inverse_result_t out = pseudo_inverse_svd(M, tol);
+        out.solver_used = "svd";
+        out.fallback = true;
+        out.fallback_reason = "ill.conditioned";
         return out;
     }
 
@@ -203,6 +219,7 @@ pseudo_inverse_result_t pseudo_inverse_normal_equations(
         pseudo_inverse_result_t out = pseudo_inverse_svd(M, tol);
         out.solver_used = "svd";
         out.fallback = true;
+        out.fallback_reason = "ldlt.failure";
         return out;
     }
 
@@ -213,19 +230,22 @@ pseudo_inverse_result_t pseudo_inverse_normal_equations(
         out = pseudo_inverse_svd(M, tol);
         out.solver_used = "svd";
         out.fallback = true;
+        out.fallback_reason = "nonfinite";
         return out;
     }
     out.rank = rank;
-    out.condition = qr_condition_estimate(qr, p, rank);
+    out.condition = condition;
     out.solver_used = "normal.equations";
     out.fallback = false;
+    out.fallback_reason = "none";
     return out;
 }
 
 pseudo_inverse_result_t pseudo_inverse(
     const Eigen::MatrixXd& M,
     double tol,
-    const std::string& solver
+    const std::string& solver,
+    double normal_equations_max_condition
 ) {
     if (solver == "svd") {
         return pseudo_inverse_svd(M, tol);
@@ -233,10 +253,15 @@ pseudo_inverse_result_t pseudo_inverse(
     if (solver == "qr") {
         return pseudo_inverse_qr(M, tol);
     }
-    if (solver == "normal.equations") {
-        return pseudo_inverse_normal_equations(M, tol);
+    if (solver == "auto") {
+        return pseudo_inverse_normal_equations(
+            M, tol, true, normal_equations_max_condition);
     }
-    Rcpp::stop("local.solver must be one of 'svd', 'qr', or 'normal.equations'.");
+    if (solver == "normal.equations") {
+        return pseudo_inverse_normal_equations(
+            M, tol, false, normal_equations_max_condition);
+    }
+    Rcpp::stop("local.solver must be one of 'auto', 'normal.equations', 'svd', or 'qr'.");
 }
 
 Rcpp::IntegerMatrix compute_knn_including_self(const Eigen::MatrixXd& X, int k) {
@@ -426,6 +451,7 @@ extern "C" SEXP S_ssrhe_hessian_operator(
     SEXP s_stabilizer,
     SEXP s_pinv_tol,
     SEXP s_local_solver,
+    SEXP s_normal_equations_max_condition,
     SEXP s_verbose
 ) {
 BEGIN_RCPP
@@ -446,6 +472,8 @@ BEGIN_RCPP
     const bool stabilizer = Rcpp::as<bool>(s_stabilizer);
     const double pinv_tol = Rcpp::as<double>(s_pinv_tol);
     const std::string local_solver = Rcpp::as<std::string>(s_local_solver);
+    const double normal_equations_max_condition =
+        Rcpp::as<double>(s_normal_equations_max_condition);
     const bool verbose = Rcpp::as<bool>(s_verbose);
     native_timing.input_conversion += elapsed_seconds(phase_start, steady_clock::now());
 
@@ -458,9 +486,14 @@ BEGIN_RCPP
     if (!(pinv_tol >= 0.0) || !std::isfinite(pinv_tol)) {
         Rcpp::stop("pinv.tol must be a finite nonnegative scalar.");
     }
-    if (local_solver != "svd" && local_solver != "qr" &&
+    if (local_solver != "auto" &&
+        local_solver != "svd" && local_solver != "qr" &&
         local_solver != "normal.equations") {
-        Rcpp::stop("local.solver must be one of 'svd', 'qr', or 'normal.equations'.");
+        Rcpp::stop("local.solver must be one of 'auto', 'normal.equations', 'svd', or 'qr'.");
+    }
+    if (!(normal_equations_max_condition > 0.0) ||
+        !std::isfinite(normal_equations_max_condition)) {
+        Rcpp::stop("normal.equations.max.condition must be a finite positive scalar.");
     }
 
     Rcpp::IntegerMatrix nn;
@@ -545,6 +578,7 @@ BEGIN_RCPP
     std::vector<double> diag_local_variance_ratio;
     std::vector<std::string> diag_local_solver;
     std::vector<int> diag_solver_fallback;
+    std::vector<std::string> diag_fallback_reason;
 
     int global_row = 0;
 
@@ -623,7 +657,9 @@ BEGIN_RCPP
 
         phase_start = steady_clock::now();
         pseudo_inverse_result_t pinv_result =
-            pseudo_inverse(design, pinv_tol, local_solver);
+            pseudo_inverse(
+                design, pinv_tol, local_solver,
+                normal_equations_max_condition);
         Eigen::MatrixXd pinv = pinv_result.pinv;
         Eigen::MatrixXd reg = pinv;
         reg.col(base_local) -= pinv.rowwise().sum();
@@ -732,6 +768,7 @@ BEGIN_RCPP
         diag_local_variance_ratio.push_back(total_var > 0.0 ? selected_var / total_var : 1.0);
         diag_local_solver.push_back(pinv_result.solver_used);
         diag_solver_fallback.push_back(pinv_result.fallback ? 1 : 0);
+        diag_fallback_reason.push_back(pinv_result.fallback_reason);
         native_timing.diagnostics_accumulation += elapsed_seconds(phase_start, steady_clock::now());
     }
 
@@ -765,7 +802,8 @@ BEGIN_RCPP
         Rcpp::Named("local.variance.sum") = diag_local_variance_sum,
         Rcpp::Named("local.variance.ratio") = diag_local_variance_ratio,
         Rcpp::Named("local.solver") = diag_local_solver,
-        Rcpp::Named("solver.fallback") = diag_solver_fallback
+        Rcpp::Named("solver.fallback") = diag_solver_fallback,
+        Rcpp::Named("solver.fallback.reason") = diag_fallback_reason
     );
 
     Rcpp::List parity = Rcpp::List::create(
@@ -777,6 +815,8 @@ BEGIN_RCPP
             "quadratic-first-then-linear-constant-dropped",
         Rcpp::Named("fixed.intercept") = "RegMat = XInv - XInv * IndMat",
         Rcpp::Named("local.solver") = local_solver,
+        Rcpp::Named("normal.equations.max.condition") =
+            normal_equations_max_condition,
         Rcpp::Named("derivative.order") = derivative_order,
         Rcpp::Named("diagonal.hessian.scale") = std::sqrt(2.0),
         Rcpp::Named("offdiagonal.hessian.scale") = 1.0,
@@ -806,7 +846,9 @@ BEGIN_RCPP
             Rcpp::Named("derivative.order") = derivative_order,
             Rcpp::Named("stabilizer") = stabilizer,
             Rcpp::Named("pinv.tol") = pinv_tol,
-            Rcpp::Named("local.solver") = local_solver
+            Rcpp::Named("local.solver") = local_solver,
+            Rcpp::Named("normal.equations.max.condition") =
+                normal_equations_max_condition
         )
     );
     native_timing.output_materialization += elapsed_seconds(phase_start, steady_clock::now());

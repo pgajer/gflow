@@ -56,11 +56,16 @@
 #'   only for \code{derivative.order = 2L}.
 #' @param pinv.tol Nonnegative tolerance multiplier for local pseudoinverses.
 #' @param local.solver Local least-squares backend used to map local function
-#'   values to derivative coefficients. \code{"svd"} is the most stable
-#'   reference path and is the default. \code{"qr"} uses pivoted QR and falls
-#'   back to SVD for rank-deficient local designs. \code{"normal.equations"}
-#'   uses the normal-equation solve for full-rank local designs and falls back
-#'   to SVD when the solve is rank-deficient or numerically unsafe.
+#'   values to derivative coefficients. \code{"auto"} is the default: it uses
+#'   normal equations when the local design is full rank and has condition
+#'   number no larger than \code{normal.equations.max.condition}, and otherwise
+#'   falls back to SVD. \code{"normal.equations"} requests the normal-equation
+#'   solve for full-rank local designs and falls back only on hard numerical
+#'   failures. \code{"svd"} is the most stable reference path. \code{"qr"} uses
+#'   pivoted QR and falls back to SVD for rank-deficient local designs.
+#' @param normal.equations.max.condition Positive condition-number guard used
+#'   by \code{local.solver = "auto"} before accepting the normal-equation
+#'   backend.
 #' @param return.A Logical. If \code{TRUE}, return \eqn{A} as a sparse matrix.
 #' @param return.B Logical. If \code{TRUE}, return \eqn{B=A^\top A}.
 #' @param return.BS Logical. If \code{TRUE} and \code{stabilizer = TRUE}, return
@@ -169,7 +174,8 @@ ssrhe.hessian.operator <- function(
     derivative.order = 2L,
     stabilizer = FALSE,
     pinv.tol = sqrt(.Machine$double.eps),
-    local.solver = c("svd", "qr", "normal.equations"),
+    local.solver = c("auto", "normal.equations", "svd", "qr"),
+    normal.equations.max.condition = 1e8,
     return.A = TRUE,
     return.B = TRUE,
     return.BS = stabilizer,
@@ -211,6 +217,12 @@ ssrhe.hessian.operator <- function(
     pinv.tol <- .validate.ssrhe.numeric.scalar(pinv.tol, "pinv.tol")
     if (pinv.tol < 0) {
         stop("pinv.tol must be nonnegative.", call. = FALSE)
+    }
+    normal.equations.max.condition <- .validate.ssrhe.numeric.scalar(
+        normal.equations.max.condition, "normal.equations.max.condition")
+    if (normal.equations.max.condition <= 0) {
+        stop("normal.equations.max.condition must be positive.",
+             call. = FALSE)
     }
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     stabilizer <- isTRUE(stabilizer)
@@ -289,6 +301,7 @@ ssrhe.hessian.operator <- function(
         as.logical(stabilizer),
         as.double(pinv.tol),
         local.solver,
+        as.double(normal.equations.max.condition),
         as.logical(verbose),
         PACKAGE = "gflow"
     )
@@ -362,6 +375,7 @@ ssrhe.hessian.operator <- function(
     out$parameters$radius.factor <- neighborhood$radius.factor
     out$parameters$derivative.order <- derivative.order
     out$parameters$local.solver <- local.solver
+    out$parameters$normal.equations.max.condition <- normal.equations.max.condition
 
     if (return.timing) {
         timing.rows[["output.finalization"]] <- .ssrhe.operator.timing.row(
@@ -1073,7 +1087,8 @@ fit.ssrhe.hessian.regression <- function(
     derivative.order = 2L,
     stabilizer = lambda2 > 0,
     pinv.tol = sqrt(.Machine$double.eps),
-    local.solver = c("svd", "qr", "normal.equations"),
+    local.solver = c("auto", "normal.equations", "svd", "qr"),
+    normal.equations.max.condition = 1e8,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1086,6 +1101,12 @@ fit.ssrhe.hessian.regression <- function(
     ridge <- .validate.ssrhe.nonnegative.scalar(ridge, "ridge")
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     local.solver <- match.arg(local.solver)
+    normal.equations.max.condition <- .validate.ssrhe.numeric.scalar(
+        normal.equations.max.condition, "normal.equations.max.condition")
+    if (normal.equations.max.condition <= 0) {
+        stop("normal.equations.max.condition must be positive.",
+             call. = FALSE)
+    }
     stabilizer <- isTRUE(stabilizer)
     if (lambda2 > 0 && !stabilizer) {
         stop("lambda2 > 0 requires stabilizer = TRUE.", call. = FALSE)
@@ -1115,6 +1136,7 @@ fit.ssrhe.hessian.regression <- function(
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
         local.solver = local.solver,
+        normal.equations.max.condition = normal.equations.max.condition,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -1269,7 +1291,8 @@ fit.ssrhe.hessian.regression.cv <- function(
     derivative.order = 2L,
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
-    local.solver = c("svd", "qr", "normal.equations"),
+    local.solver = c("auto", "normal.equations", "svd", "qr"),
+    normal.equations.max.condition = 1e8,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1300,6 +1323,12 @@ fit.ssrhe.hessian.regression.cv <- function(
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
     local.solver <- match.arg(local.solver)
+    normal.equations.max.condition <- .validate.ssrhe.numeric.scalar(
+        normal.equations.max.condition, "normal.equations.max.condition")
+    if (normal.equations.max.condition <= 0) {
+        stop("normal.equations.max.condition must be positive.",
+             call. = FALSE)
+    }
     support.cv.max.candidates <- .validate.ssrhe.positive.integer(
         support.cv.max.candidates, "support.cv.max.candidates")
     stabilizer <- isTRUE(stabilizer)
@@ -1370,6 +1399,7 @@ fit.ssrhe.hessian.regression.cv <- function(
                         stabilizer = stabilizer,
                         pinv.tol = pinv.tol,
                         local.solver = local.solver,
+                        normal.equations.max.condition = normal.equations.max.condition,
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
@@ -1451,6 +1481,7 @@ fit.ssrhe.hessian.regression.cv <- function(
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
         local.solver = local.solver,
+        normal.equations.max.condition = normal.equations.max.condition,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -1653,7 +1684,8 @@ fit.ssrhe.hessian.regression.gcv <- function(
     derivative.order = 2L,
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
-    local.solver = c("svd", "qr", "normal.equations"),
+    local.solver = c("auto", "normal.equations", "svd", "qr"),
+    normal.equations.max.condition = 1e8,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1693,6 +1725,12 @@ fit.ssrhe.hessian.regression.gcv <- function(
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
     local.solver <- match.arg(local.solver)
+    normal.equations.max.condition <- .validate.ssrhe.numeric.scalar(
+        normal.equations.max.condition, "normal.equations.max.condition")
+    if (normal.equations.max.condition <= 0) {
+        stop("normal.equations.max.condition must be positive.",
+             call. = FALSE)
+    }
     gcv.trace.method <- match.arg(gcv.trace.method)
     gcv.trace.n.probes <- .validate.ssrhe.positive.integer(
         gcv.trace.n.probes, "gcv.trace.n.probes")
@@ -1760,6 +1798,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
                         stabilizer = stabilizer,
                         pinv.tol = pinv.tol,
                         local.solver = local.solver,
+                        normal.equations.max.condition = normal.equations.max.condition,
                         ridge = ridge,
                         return.A = return.A,
                         return.local.diagnostics = return.local.diagnostics,
@@ -1857,6 +1896,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
         stabilizer = stabilizer,
         pinv.tol = pinv.tol,
         local.solver = local.solver,
+        normal.equations.max.condition = normal.equations.max.condition,
         return.A = return.A,
         return.B = TRUE,
         return.BS = stabilizer,
@@ -2548,7 +2588,8 @@ fit.ssrhe.hessian.l1.regression <- function(
     eigen.tolerance = 0.95,
     derivative.order = 2L,
     pinv.tol = sqrt(.Machine$double.eps),
-    local.solver = c("svd", "qr", "normal.equations"),
+    local.solver = c("auto", "normal.equations", "svd", "qr"),
+    normal.equations.max.condition = 1e8,
     solver = c("genlasso", "admm", "auto"),
     row.scaling = c("none", "l2"),
     admm.rho = 1,
@@ -2592,6 +2633,12 @@ fit.ssrhe.hessian.l1.regression <- function(
     support.selection <- match.arg(support.selection)
     neighborhood.type <- match.arg(neighborhood.type)
     local.solver <- match.arg(local.solver)
+    normal.equations.max.condition <- .validate.ssrhe.numeric.scalar(
+        normal.equations.max.condition, "normal.equations.max.condition")
+    if (normal.equations.max.condition <= 0) {
+        stop("normal.equations.max.condition must be positive.",
+             call. = FALSE)
+    }
     derivative.order <- .validate.ssrhe.derivative.order(derivative.order)
     support.cv.max.candidates <- .validate.ssrhe.positive.integer(
         support.cv.max.candidates, "support.cv.max.candidates")
@@ -2681,6 +2728,7 @@ fit.ssrhe.hessian.l1.regression <- function(
                         derivative.order = derivative.order,
                         pinv.tol = pinv.tol,
                         local.solver = local.solver,
+                        normal.equations.max.condition = normal.equations.max.condition,
                         solver = solver,
                         row.scaling = row.scaling,
                         admm.rho = admm.rho,
@@ -2771,6 +2819,7 @@ fit.ssrhe.hessian.l1.regression <- function(
         stabilizer = FALSE,
         pinv.tol = pinv.tol,
         local.solver = local.solver,
+        normal.equations.max.condition = normal.equations.max.condition,
         return.A = TRUE,
         return.B = FALSE,
         return.BS = FALSE,

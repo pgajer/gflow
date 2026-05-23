@@ -182,6 +182,38 @@ test_that("ssrhe.hessian.operator local solver backends match SVD on full-rank s
     expect_equal(op.ne$parameters$local.solver, "normal.equations")
 })
 
+test_that("ssrhe.hessian.operator auto local solver guards ill-conditioned normal equations", {
+    skip_if_not_installed("Matrix")
+
+    X <- as.matrix(expand.grid(x = seq(0, 1, length.out = 5),
+                               y = seq(0, 1, length.out = 5)))
+    op.auto <- ssrhe.hessian.operator(
+        X = X,
+        k = 12L,
+        tangent.dim = 2L,
+        local.solver = "auto",
+        return.local.diagnostics = FALSE
+    )
+    expect_equal(op.auto$parameters$local.solver, "auto")
+    expect_equal(op.auto$parameters$normal.equations.max.condition, 1e8)
+    expect_true(all(op.auto$diagnostics$local.solver == "normal.equations"))
+    expect_true(all(op.auto$diagnostics$solver.fallback == 0L))
+    expect_true(all(op.auto$diagnostics$solver.fallback.reason == "none"))
+
+    op.guarded <- ssrhe.hessian.operator(
+        X = X,
+        k = 12L,
+        tangent.dim = 2L,
+        local.solver = "auto",
+        normal.equations.max.condition = 1,
+        return.local.diagnostics = FALSE
+    )
+    expect_true(all(op.guarded$diagnostics$local.solver == "svd"))
+    expect_true(all(op.guarded$diagnostics$solver.fallback == 1L))
+    expect_true(all(op.guarded$diagnostics$solver.fallback.reason ==
+                      "ill.conditioned"))
+})
+
 test_that("ssrhe.hessian.operator local diagnostics flag chart geometry", {
     skip_if_not_installed("Matrix")
 
