@@ -195,7 +195,7 @@ test_that("ssrhe.hessian.operator auto local solver guards ill-conditioned norma
         return.local.diagnostics = FALSE
     )
     expect_equal(op.auto$parameters$local.solver, "auto")
-    expect_equal(op.auto$parameters$normal.equations.max.condition, 1e8)
+    expect_equal(op.auto$parameters$normal.equations.max.condition, 1e4)
     expect_true(all(op.auto$diagnostics$local.solver == "normal.equations"))
     expect_true(all(op.auto$diagnostics$solver.fallback == 0L))
     expect_true(all(op.auto$diagnostics$solver.fallback.reason == "none"))
@@ -211,6 +211,44 @@ test_that("ssrhe.hessian.operator auto local solver guards ill-conditioned norma
     expect_true(all(op.guarded$diagnostics$local.solver == "svd"))
     expect_true(all(op.guarded$diagnostics$solver.fallback == 1L))
     expect_true(all(op.guarded$diagnostics$solver.fallback.reason ==
+                      "ill.conditioned"))
+})
+
+test_that("ssrhe.hessian.operator default auto guard matches SVD on stressed order-3 supports", {
+    skip_if_not_installed("Matrix")
+
+    set.seed(20260523)
+    n <- 80L
+    centers <- rbind(c(0.12, 0.12), c(0.88, 0.15),
+                     c(0.25, 0.86), c(0.82, 0.82))
+    cl <- sample.int(nrow(centers), n, replace = TRUE,
+                     prob = c(0.42, 0.22, 0.22, 0.14))
+    X <- centers[cl, , drop = FALSE] +
+        matrix(stats::rnorm(n * 2L, sd = 0.045), ncol = 2L)
+    X <- matrix(pmin(1, pmax(0, X)), ncol = 2L)
+
+    op.svd <- ssrhe.hessian.operator(
+        X = X,
+        k = 11L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        local.solver = "svd",
+        return.local.diagnostics = FALSE
+    )
+    op.auto <- ssrhe.hessian.operator(
+        X = X,
+        k = 11L,
+        tangent.dim = 2L,
+        derivative.order = 3L,
+        local.solver = "auto",
+        return.local.diagnostics = FALSE
+    )
+
+    rel.B <- as.numeric(Matrix::norm(op.auto$B - op.svd$B, "F")) /
+        as.numeric(Matrix::norm(op.svd$B, "F"))
+    expect_lt(rel.B, 1e-10)
+    expect_gt(mean(op.auto$diagnostics$solver.fallback), 0.5)
+    expect_true(any(op.auto$diagnostics$solver.fallback.reason ==
                       "ill.conditioned"))
 })
 

@@ -65,7 +65,9 @@
 #'   pivoted QR and falls back to SVD for rank-deficient local designs.
 #' @param normal.equations.max.condition Positive condition-number guard used
 #'   by \code{local.solver = "auto"} before accepting the normal-equation
-#'   backend.
+#'   backend. The default is deliberately conservative because normal-equation
+#'   solves square the effective condition number and order-3 near-minimum
+#'   local supports can be numerically fragile.
 #' @param return.A Logical. If \code{TRUE}, return \eqn{A} as a sparse matrix.
 #' @param return.B Logical. If \code{TRUE}, return \eqn{B=A^\top A}.
 #' @param return.BS Logical. If \code{TRUE} and \code{stabilizer = TRUE}, return
@@ -175,7 +177,7 @@ ssrhe.hessian.operator <- function(
     stabilizer = FALSE,
     pinv.tol = sqrt(.Machine$double.eps),
     local.solver = c("auto", "normal.equations", "svd", "qr"),
-    normal.equations.max.condition = 1e8,
+    normal.equations.max.condition = 1e4,
     return.A = TRUE,
     return.B = TRUE,
     return.BS = stabilizer,
@@ -1088,7 +1090,7 @@ fit.ssrhe.hessian.regression <- function(
     stabilizer = lambda2 > 0,
     pinv.tol = sqrt(.Machine$double.eps),
     local.solver = c("auto", "normal.equations", "svd", "qr"),
-    normal.equations.max.condition = 1e8,
+    normal.equations.max.condition = 1e4,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1292,7 +1294,7 @@ fit.ssrhe.hessian.regression.cv <- function(
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
     local.solver = c("auto", "normal.equations", "svd", "qr"),
-    normal.equations.max.condition = 1e8,
+    normal.equations.max.condition = 1e4,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -1685,7 +1687,7 @@ fit.ssrhe.hessian.regression.gcv <- function(
     stabilizer = any(lambda2.grid > 0),
     pinv.tol = sqrt(.Machine$double.eps),
     local.solver = c("auto", "normal.equations", "svd", "qr"),
-    normal.equations.max.condition = 1e8,
+    normal.equations.max.condition = 1e4,
     ridge = 0,
     return.A = TRUE,
     return.local.diagnostics = FALSE,
@@ -2589,7 +2591,7 @@ fit.ssrhe.hessian.l1.regression <- function(
     derivative.order = 2L,
     pinv.tol = sqrt(.Machine$double.eps),
     local.solver = c("auto", "normal.equations", "svd", "qr"),
-    normal.equations.max.condition = 1e8,
+    normal.equations.max.condition = 1e4,
     solver = c("genlasso", "admm", "auto"),
     row.scaling = c("none", "l2"),
     admm.rho = 1,
