@@ -588,6 +588,16 @@ create.adaptive.radius.graph <- function(X,
 #'   distances \eqn{\sigma_i}.
 #' @param delta Positive numeric scalar multiplying the geometric-mean adaptive
 #'   radius.
+#' @param radius.search Character scalar. `"ann"` uses the bundled ANN kd-tree
+#'   exact radius-search backend inherited from [create.adaptive.radius.graph()].
+#'   `"all.pairs"` uses the direct \eqn{O(n^2)} reference path.
+#' @param return.timing Logical scalar. If `TRUE`, attach the same construction
+#'   timing table returned by [create.adaptive.radius.graph()], including ANN
+#'   setup, local-scale search, fixed-radius candidate search, edge
+#'   materialization, and graph finalization when `radius.search = "ann"`.
+#' @param graph.detail Character scalar. `"full"` returns the complete graph
+#'   lifecycle object. `"minimal"` returns only core graph fields and is allowed
+#'   only with `prune.method = "none"` and `connect.components = FALSE`.
 #' @inheritParams create.radius.graph
 #'
 #' @return A list inheriting from `"cknn_graph"` and `"adaptive_radius_graph"`.
@@ -603,6 +613,9 @@ create.adaptive.radius.graph <- function(X,
 create.cknn.graph <- function(X,
                               k.scale,
                               delta = 1,
+                              radius.search = c("ann", "all.pairs"),
+                              return.timing = FALSE,
+                              graph.detail = c("full", "minimal"),
                               prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
                               max.path.edge.ratio.deviation.thld = 0.1,
                               path.edge.ratio.percentile = 0.5,
@@ -619,11 +632,16 @@ create.cknn.graph <- function(X,
         stop("'delta' must be a positive finite numeric scalar.",
              call. = FALSE)
     }
+    radius.search <- match.arg(radius.search)
+    graph.detail <- match.arg(graph.detail)
     g <- create.adaptive.radius.graph(
         X = X,
         k.scale = k.scale,
         radius.factor = delta,
         radius.rule = "geomean",
+        radius.search = radius.search,
+        return.timing = return.timing,
+        graph.detail = graph.detail,
         prune.method = prune.method,
         max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
         path.edge.ratio.percentile = path.edge.ratio.percentile,
