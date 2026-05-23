@@ -22,16 +22,16 @@
 #'   vertex. If \code{NULL}, Euclidean k-NN including self is computed in C++.
 #' @param neighborhood.type Local support rule. \code{"knn"} uses the original
 #'   rectangular self-including kNN neighborhoods. \code{"adaptive.radius"}
-#'   builds variable-size supports from \code{\link{create.adaptive.radius.graph}}.
+#'   builds variable-size supports from \code{\link{create.rknn.graph}}.
 #'   \code{"supplied"} uses \code{support.index} directly.
 #' @param support.index Optional list of integer vectors, one per row of
 #'   \code{X}. Each element gives a variable-size local support and must contain
 #'   its center vertex.
 #' @param adaptive.k.scale Integer local-scale k used by
-#'   \code{\link{create.adaptive.radius.graph}} when
+#'   \code{\link{create.rknn.graph}} when
 #'   \code{neighborhood.type = "adaptive.radius"}.
 #' @param radius.rule,radius.factor Adaptive-radius graph parameters passed to
-#'   \code{\link{create.adaptive.radius.graph}}.
+#'   \code{\link{create.rknn.graph}}.
 #' @param min.support Optional minimum local support size for adaptive-radius
 #'   supports. Defaults to the local quadratic design size plus
 #'   \code{support.buffer}, clamped to \code{nrow(X)}.
@@ -886,8 +886,9 @@ ssrhe.support.grid <- function(n,
     }
     add.timing("validation")
 
-    graph <- create.adaptive.radius.graph(
+    graph <- create.rknn.graph(
         X = X,
+        type = "adaptive.radius",
         k.scale = adaptive.k.scale,
         radius.factor = radius.factor,
         radius.rule = radius.rule,

@@ -93,8 +93,9 @@ test_that("SSRHE fit paths can skip local geometry diagnostics", {
                       "neighborhood.truncate.reorder",
                       "neighborhood.final.validation") %in%
                         op.adaptive$neighborhoods$timing$phase))
-    graph <- create.adaptive.radius.graph(
+    graph <- create.rknn.graph(
         X = X,
+        type = "adaptive.radius",
         k.scale = 4L,
         radius.factor = 1.25,
         radius.rule = "geomean",
