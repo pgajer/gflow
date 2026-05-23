@@ -256,13 +256,13 @@ test_that("global.geodesic.ratio is routed through graph-family constructors", {
       path.edge.ratio.percentile = 0, with.pruned.edge.stats = TRUE,
       connect.components = TRUE
     ),
-    radius = create.radius.graph(
-      X, radius = 1.5, prune.method = "global.geodesic.ratio",
+    radius = create.rknn.graph(
+      X, type = "fixed", radius = 1.5, prune.method = "global.geodesic.ratio",
       path.edge.ratio.percentile = 0, with.pruned.edge.stats = TRUE,
       connect.components = TRUE
     ),
-    adaptive.radius = create.adaptive.radius.graph(
-      X, k.scale = 3, prune.method = "global.geodesic.ratio",
+    adaptive.radius = create.rknn.graph(
+      X, type = "adaptive.radius", k.scale = 3, prune.method = "global.geodesic.ratio",
       path.edge.ratio.percentile = 0, with.pruned.edge.stats = TRUE,
       connect.components = TRUE
     ),

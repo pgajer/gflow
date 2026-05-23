@@ -6,10 +6,10 @@
 }
 
 
-test_that("create.radius.graph matches the fixed-radius definition", {
+test_that("create.rknn.graph matches the fixed-radius definition", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  g <- create.radius.graph(X, radius = 1.1)
+  g <- create.rknn.graph(X, type = "fixed", radius = 1.1)
 
   expect_s3_class(g, "radius_graph")
   expect_equal(g$graph_rule, "fixed.radius")
@@ -21,10 +21,12 @@ test_that("create.radius.graph matches the fixed-radius definition", {
 })
 
 
-test_that("create.radius.graph can repair components by component MST", {
+test_that("create.rknn.graph can repair fixed-radius components by component MST", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  g <- create.radius.graph(X, radius = 1.1, connect.components = TRUE)
+  g <- create.rknn.graph(
+    X, type = "fixed", radius = 1.1, connect.components = TRUE
+  )
 
   expect_equal(g$n_components_before, 2L)
   expect_equal(g$n_components_after, 1L)
@@ -34,11 +36,11 @@ test_that("create.radius.graph can repair components by component MST", {
 })
 
 
-test_that("create.radius.graph supports local geometric pruning", {
+test_that("create.rknn.graph supports fixed-radius local geometric pruning", {
   X <- matrix(0:3, ncol = 1)
 
-  g <- create.radius.graph(
-    X,
+  g <- create.rknn.graph(
+    X, type = "fixed",
     radius = 2.1,
     prune.method = "local.geodesic",
     prune.tau = 1.01,
@@ -63,17 +65,20 @@ test_that("create.radius.graph supports local geometric pruning", {
 })
 
 
-test_that("create.adaptive.radius.graph distinguishes max, min, and geomean rules", {
+test_that("create.rknn.graph distinguishes max, min, and geomean adaptive rules", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  max.g <- create.adaptive.radius.graph(
-    X, k.scale = 1, radius.rule = "max", radius.factor = 1.5
+  max.g <- create.rknn.graph(
+    X, type = "adaptive.radius", k.scale = 1, radius.rule = "max",
+    radius.factor = 1.5
   )
-  min.g <- create.adaptive.radius.graph(
-    X, k.scale = 1, radius.rule = "min", radius.factor = 1.5
+  min.g <- create.rknn.graph(
+    X, type = "adaptive.radius", k.scale = 1, radius.rule = "min",
+    radius.factor = 1.5
   )
-  geomean.g <- create.adaptive.radius.graph(
-    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+  geomean.g <- create.rknn.graph(
+    X, type = "adaptive.radius", k.scale = 1, radius.rule = "geomean",
+    radius.factor = 1.5
   )
 
   expect_s3_class(max.g, "adaptive_radius_graph")
@@ -94,16 +99,16 @@ test_that("ANN adaptive-radius search matches all-pairs reference", {
   X <- cbind(runif(35), runif(35), 0.2 * runif(35)^2)
 
   for (rule in c("max", "min", "geomean")) {
-    ann.g <- create.adaptive.radius.graph(
-      X,
+    ann.g <- create.rknn.graph(
+      X, type = "adaptive.radius",
       k.scale = 4L,
       radius.factor = 1.35,
       radius.rule = rule,
       radius.search = "ann",
       return.timing = TRUE
     )
-    ref.g <- create.adaptive.radius.graph(
-      X,
+    ref.g <- create.rknn.graph(
+      X, type = "adaptive.radius",
       k.scale = 4L,
       radius.factor = 1.35,
       radius.rule = rule,
@@ -139,15 +144,15 @@ test_that("minimal adaptive-radius graph detail preserves core graph fields", {
   set.seed(923)
   X <- cbind(runif(40), runif(40))
 
-  full.g <- create.adaptive.radius.graph(
-    X,
+  full.g <- create.rknn.graph(
+    X, type = "adaptive.radius",
     k.scale = 5L,
     radius.factor = 1.25,
     radius.rule = "geomean",
     graph.detail = "full"
   )
-  min.g <- create.adaptive.radius.graph(
-    X,
+  min.g <- create.rknn.graph(
+    X, type = "adaptive.radius",
     k.scale = 5L,
     radius.factor = 1.25,
     radius.rule = "geomean",
@@ -167,8 +172,8 @@ test_that("minimal adaptive-radius graph detail preserves core graph fields", {
   expect_true("finalization.minimal.components" %in% min.g$timing$phase)
   expect_false("finalization.lifecycle.branches" %in% min.g$timing$phase)
   expect_error(
-    create.adaptive.radius.graph(
-      X,
+    create.rknn.graph(
+      X, type = "adaptive.radius",
       k.scale = 5L,
       graph.detail = "minimal",
       prune.method = "local.geodesic"
@@ -184,8 +189,9 @@ test_that("create.cknn.graph is the continuous-kNN geomean adaptive-radius wrapp
   cknn.g <- create.cknn.graph(X, k.scale = 1, delta = 1.5,
                               radius.search = "ann",
                               return.timing = TRUE)
-  adaptive.g <- create.adaptive.radius.graph(
-    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5,
+  adaptive.g <- create.rknn.graph(
+    X, type = "adaptive.radius", k.scale = 1, radius.rule = "geomean",
+    radius.factor = 1.5,
     radius.search = "ann",
     return.timing = TRUE
   )
@@ -228,8 +234,8 @@ test_that("create.cknn.graph exposes all-pairs and minimal adaptive-radius contr
     graph.detail = "minimal",
     return.timing = TRUE
   )
-  adaptive.g <- create.adaptive.radius.graph(
-    X,
+  adaptive.g <- create.rknn.graph(
+    X, type = "adaptive.radius",
     k.scale = 5L,
     radius.factor = 1.35,
     radius.rule = "geomean",
@@ -258,11 +264,11 @@ test_that("create.cknn.graph exposes all-pairs and minimal adaptive-radius contr
 })
 
 
-test_that("create.adaptive.radius.graph supports local geometric pruning", {
+test_that("create.rknn.graph supports adaptive-radius local geometric pruning", {
   X <- matrix(0:3, ncol = 1)
 
-  g <- create.adaptive.radius.graph(
-    X,
+  g <- create.rknn.graph(
+    X, type = "adaptive.radius",
     k.scale = 2,
     radius.rule = "max",
     prune.method = "local.geodesic",
@@ -289,25 +295,55 @@ test_that("create.adaptive.radius.graph supports local geometric pruning", {
 test_that("radius graph constructors validate inputs", {
   X <- matrix(c(0, 1, 3), ncol = 1)
 
-  expect_error(create.radius.graph(X, radius = 0), "radius")
-  expect_error(create.radius.graph(X, radius = Inf), "radius")
-  expect_error(create.radius.graph(c("a", "b"), radius = 1), "matrix or data frame")
-  expect_error(create.radius.graph(X, radius = 1, prune.method = "global"),
+  expect_error(create.rknn.graph(X, type = "fixed", radius = 0), "radius")
+  expect_error(create.rknn.graph(X, type = "fixed", radius = Inf), "radius")
+  expect_error(create.rknn.graph(c("a", "b"), type = "fixed", radius = 1),
+               "matrix or data frame")
+  expect_error(create.rknn.graph(X, type = "fixed", radius = 1, prune.method = "global"),
                "'arg' should be one of")
-  expect_error(create.radius.graph(X, radius = 1, prune.tau = 1),
+  expect_error(create.rknn.graph(X, type = "fixed", radius = 1, prune.tau = 1),
                "prune.tau")
-  expect_error(create.radius.graph(X, radius = 1, prune.local.k = 3),
+  expect_error(create.rknn.graph(X, type = "fixed", radius = 1, prune.local.k = 3),
                "prune.local.k")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 0), "k.scale")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 3), "k.scale")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.factor = 0),
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 0), "k.scale")
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 3), "k.scale")
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, radius.factor = 0),
                "radius.factor")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "median"),
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, radius.rule = "median"),
                "'arg' should be one of")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 1, prune.tau = 1),
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, prune.tau = 1),
                "prune.tau")
-  expect_error(create.adaptive.radius.graph(X, k.scale = 1,
+  expect_error(create.rknn.graph(X, type = "adaptive.radius", k.scale = 1,
                                             with.pruned.edge.stats = NA),
                "with.pruned.edge.stats")
   expect_error(create.cknn.graph(X, k.scale = 1, delta = 0), "delta")
+})
+
+test_that("legacy radius graph constructors are deprecated compatibility wrappers", {
+  X <- matrix(c(0, 1, 3), ncol = 1)
+
+  expect_warning(create.radius.graph(X, radius = 1.1), "deprecated")
+  fixed.legacy <- suppressWarnings(create.radius.graph(X, radius = 1.1))
+  fixed.new <- create.rknn.graph(X, type = "fixed", radius = 1.1)
+
+  expect_warning(
+    create.adaptive.radius.graph(
+      X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+    ),
+    "deprecated"
+  )
+  adaptive.legacy <- suppressWarnings(create.adaptive.radius.graph(
+    X, k.scale = 1, radius.rule = "geomean", radius.factor = 1.5
+  ))
+  adaptive.new <- create.rknn.graph(
+    X, type = "adaptive.radius", k.scale = 1, radius.rule = "geomean",
+    radius.factor = 1.5
+  )
+
+  expect_equal(.radius_edge_keys(fixed.legacy$edge_matrix),
+               .radius_edge_keys(fixed.new$edge_matrix))
+  expect_equal(fixed.legacy$edge_weight, fixed.new$edge_weight)
+  expect_equal(.radius_edge_keys(adaptive.legacy$edge_matrix),
+               .radius_edge_keys(adaptive.new$edge_matrix))
+  expect_equal(adaptive.legacy$edge_weight, adaptive.new$edge_weight)
 })

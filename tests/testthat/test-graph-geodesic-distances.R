@@ -17,8 +17,8 @@ test_that("graph.geodesic.distances dispatches on standard final graph payloads"
   graphs <- list(
     sknn = create.sknn.graph(X, k = 1),
     mknn = create.mknn.graph(X, k = 2, connect.components = TRUE),
-    radius = create.radius.graph(X, radius = 1.1, connect.components = TRUE),
-    adaptive = create.adaptive.radius.graph(X, k.scale = 1, connect.components = TRUE)
+    radius = create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
+    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE)
   )
 
   for (g in graphs) {
@@ -42,10 +42,10 @@ test_that("graph.geodesic.distances uses adj_list final payload after local prun
                              prune.tau = 1.01),
     mknn = create.mknn.graph(X, k = 3, prune.method = "local.geodesic",
                              prune.tau = 1.01),
-    radius = create.radius.graph(X, radius = 2.1,
+    radius = create.rknn.graph(X, type = "fixed", radius = 2.1,
                                  prune.method = "local.geodesic",
                                  prune.tau = 1.01),
-    adaptive = create.adaptive.radius.graph(X, k.scale = 2,
+    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 2,
                                             radius.rule = "max",
                                             prune.method = "local.geodesic",
                                             prune.tau = 1.01)
@@ -72,8 +72,8 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
   graphs <- list(
     sknn = create.sknn.graph(X, k = 1, connect.components = TRUE),
     mknn = create.mknn.graph(X, k = 2, connect.components = TRUE),
-    radius = create.radius.graph(X, radius = 1.1, connect.components = TRUE),
-    adaptive = create.adaptive.radius.graph(X, k.scale = 1, connect.components = TRUE),
+    radius = create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
+    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE),
     geodesic_iknn = create.geodesic.iknn.graph(
       create.sknn.graph(X, k = 1, connect.components = TRUE),
       k = 1

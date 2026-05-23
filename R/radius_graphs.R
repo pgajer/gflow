@@ -293,16 +293,42 @@
     out
 }
 
-#' Compute a Fixed-Radius Graph
+#' Compute a Radius-kNN Graph
 #'
 #' @description
 #' Creates an undirected Euclidean radius graph from a numeric data matrix.
-#' Vertices `i` and `j` are adjacent exactly when their Euclidean distance is
-#' at most `radius`.
+#' Use `type = "fixed"` for a fixed-radius graph, where vertices `i` and `j`
+#' are adjacent exactly when their Euclidean distance is at most `radius`. Use
+#' `type = "adaptive.radius"` for an adaptive-radius graph based on
+#' observation-specific local scale distances.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
+#' @param type Character scalar. `"fixed"` builds a fixed-radius graph using
+#'   `radius`. `"adaptive.radius"` builds an adaptive-radius graph using
+#'   `k.scale`, `radius.factor`, and `radius.rule`.
 #' @param radius Positive numeric scalar. Edges are included when
-#'   \eqn{\|x_i - x_j\|_2 \le radius}.
+#'   \eqn{\|x_i - x_j\|_2 \le radius}. Required for `type = "fixed"`.
+#' @param k.scale Positive integer smaller than `nrow(X)`. Defines local scale
+#'   distances \eqn{\sigma_i}. Required for `type = "adaptive.radius"`.
+#' @param radius.factor Positive numeric scalar multiplying the adaptive radius.
+#' @param radius.rule Character scalar. `"max"` uses
+#'   \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; `"min"` uses
+#'   \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}; and
+#'   `"geomean"` uses
+#'   \eqn{d_{ij} \le radius.factor \sqrt{\sigma_i\sigma_j}}. The
+#'   `"geomean"` rule is the continuous-kNN support rule.
+#' @param radius.search Character scalar. `"ann"` uses the bundled ANN kd-tree
+#'   to perform exact fixed-radius candidate searches before applying the
+#'   pair-specific adaptive-radius rule. `"all.pairs"` uses the direct
+#'   \eqn{O(n^2)} pair scan and is retained as a reference path. Used only for
+#'   `type = "adaptive.radius"`.
+#' @param return.timing Logical scalar. If `TRUE`, attach a construction timing
+#'   table for adaptive-radius graphs.
+#' @param graph.detail Character scalar. `"full"` returns the complete graph
+#'   lifecycle object for adaptive-radius graphs. `"minimal"` returns only the
+#'   graph fields needed by fitting code and is currently allowed only for
+#'   adaptive-radius graphs with `prune.method = "none"` and
+#'   `connect.components = FALSE`.
 #' @param connect.components Logical scalar. If `TRUE`, add MST bridge edges so
 #'   the final graph is connected whenever possible.
 #' @param connect.method Character scalar. `"component.mst"` adds exact shortest
@@ -332,37 +358,104 @@
 #' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
 #'   used to form local neighborhoods for pruning. For fixed-radius graphs,
 #'   `NULL` uses the median positive raw graph degree, clipped to `[1, n - 1]`.
+#'   For adaptive-radius graphs, `NULL` defaults to `k.scale`.
 #' @param with.pruned.edge.stats Logical scalar. If `TRUE`, return a data frame
 #'   with one row per locally pruned edge.
 #'
-#' @return A list of class `"radius_graph"` containing adjacency lists, edge
-#'   weights, edge matrix, and component diagnostics. The final graph is stored
-#'   in `adj_list`/`weight_list`; `raw_adj_list`/`raw_weight_list` store the
-#'   fixed-radius graph before pruning and optional MST component repair;
-#'   `pruned_adj_list`/`pruned_weight_list` store the graph after optional local
-#'   geometric pruning and before MST component repair. The repaired lifecycle
-#'   branches `raw_repaired_*`, `pruned_repaired_*`, and
-#'   `repaired_pruned_*` allow direct comparison of native, prune-first, and
-#'   repair-first graph geodesic geometries.
+#' @return For `type = "fixed"`, a list of class `"radius_graph"`. For
+#'   `type = "adaptive.radius"`, a list of class `"adaptive_radius_graph"`.
+#'   Both contain adjacency lists, edge weights, edge matrix, and component
+#'   diagnostics. The final graph is stored in `adj_list`/`weight_list`; raw
+#'   and pruned lifecycle graph stages are stored in corresponding
+#'   `raw_*`/`pruned_*` fields when `graph.detail = "full"`.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
-#' create.radius.graph(X, radius = 1.1)$edge_matrix
+#' create.rknn.graph(X, type = "fixed", radius = 1.1)$edge_matrix
+#' create.rknn.graph(X, type = "adaptive.radius", k.scale = 1)$edge_matrix
 #'
 #' @export
-create.radius.graph <- function(X,
-                                radius,
-                                prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
-                                max.path.edge.ratio.deviation.thld = 0.1,
-                                path.edge.ratio.percentile = 0.5,
-                                prune.tau = 1.05,
-                                prune.local.k = NULL,
-                                with.pruned.edge.stats = FALSE,
-                                connect.components = FALSE,
-                                connect.method = c("component.mst", "component.mst.ann", "global.mst"),
-                                bridge.k = NULL,
-                                bridge.k.max = NULL,
-                                bridge.growth = 2) {
+create.rknn.graph <- function(X,
+                              type = c("fixed", "adaptive.radius"),
+                              radius = NULL,
+                              k.scale = NULL,
+                              radius.factor = 1,
+                              radius.rule = c("max", "min", "geomean"),
+                              radius.search = c("ann", "all.pairs"),
+                              return.timing = FALSE,
+                              graph.detail = c("full", "minimal"),
+                              prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                              max.path.edge.ratio.deviation.thld = 0.1,
+                              path.edge.ratio.percentile = 0.5,
+                              prune.tau = 1.05,
+                              prune.local.k = NULL,
+                              with.pruned.edge.stats = FALSE,
+                              connect.components = FALSE,
+                              connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                              bridge.k = NULL,
+                              bridge.k.max = NULL,
+                              bridge.growth = 2) {
+    type <- match.arg(type)
+    if (identical(type, "fixed")) {
+        if (is.null(radius)) {
+            stop("'radius' is required when type = 'fixed'.", call. = FALSE)
+        }
+        return(.create.radius.graph(
+            X = X,
+            radius = radius,
+            prune.method = prune.method,
+            max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+            path.edge.ratio.percentile = path.edge.ratio.percentile,
+            prune.tau = prune.tau,
+            prune.local.k = prune.local.k,
+            with.pruned.edge.stats = with.pruned.edge.stats,
+            connect.components = connect.components,
+            connect.method = connect.method,
+            bridge.k = bridge.k,
+            bridge.k.max = bridge.k.max,
+            bridge.growth = bridge.growth
+        ))
+    }
+
+    if (is.null(k.scale)) {
+        stop("'k.scale' is required when type = 'adaptive.radius'.",
+             call. = FALSE)
+    }
+    .create.adaptive.radius.graph(
+        X = X,
+        k.scale = k.scale,
+        radius.factor = radius.factor,
+        radius.rule = radius.rule,
+        radius.search = radius.search,
+        return.timing = return.timing,
+        graph.detail = graph.detail,
+        prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        connect.components = connect.components,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth
+    )
+}
+
+.create.radius.graph <- function(X,
+                                 radius,
+                                 prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                                 max.path.edge.ratio.deviation.thld = 0.1,
+                                 path.edge.ratio.percentile = 0.5,
+                                 prune.tau = 1.05,
+                                 prune.local.k = NULL,
+                                 with.pruned.edge.stats = FALSE,
+                                 connect.components = FALSE,
+                                 connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                                 bridge.k = NULL,
+                                 bridge.k.max = NULL,
+                                 bridge.growth = 2) {
     X <- .validate.numeric.data.matrix(X)
     if (!is.numeric(radius) || length(radius) != 1L || !is.finite(radius) ||
         radius <= 0) {
@@ -396,60 +489,67 @@ create.radius.graph <- function(X,
     out
 }
 
-#' Compute an Adaptive-Radius Graph
+#' Deprecated Radius Graph Constructors
 #'
 #' @description
-#' Creates an undirected adaptive Euclidean radius graph. Let \eqn{\sigma_i}
-#' be the distance from observation \eqn{i} to its `k.scale`-th non-self nearest
-#' neighbor. Vertices are adjacent when their Euclidean distance is at most
-#' `radius.factor` times a symmetric combination of the two endpoint scales:
-#' `max(sigma_i, sigma_j)`, `min(sigma_i, sigma_j)`, or
-#' `sqrt(sigma_i * sigma_j)`.
+#' `create.radius.graph()` and `create.adaptive.radius.graph()` are deprecated
+#' compatibility wrappers. Use [create.rknn.graph()] with `type = "fixed"` or
+#' `type = "adaptive.radius"` instead.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
-#' @param k.scale Positive integer smaller than `nrow(X)`. Defines local scale
-#'   distances \eqn{\sigma_i}.
-#' @param radius.factor Positive numeric scalar multiplying the adaptive radius.
-#' @param radius.rule Character scalar. `"max"` uses
-#'   \eqn{d_{ij} \le radius.factor \max(\sigma_i,\sigma_j)}; `"min"` uses
-#'   \eqn{d_{ij} \le radius.factor \min(\sigma_i,\sigma_j)}; and
-#'   `"geomean"` uses
-#'   \eqn{d_{ij} \le radius.factor \sqrt{\sigma_i\sigma_j}}. The
-#'   `"geomean"` rule is the continuous-kNN support rule.
-#' @param radius.search Character scalar. `"ann"` uses the bundled ANN kd-tree
-#'   to perform exact fixed-radius candidate searches before applying the
-#'   pair-specific adaptive-radius rule. `"all.pairs"` uses the direct
-#'   \eqn{O(n^2)} pair scan and is retained as a reference path. ANN searches
-#'   are exact up to nearest-neighbor tie conventions.
-#' @param return.timing Logical scalar. If `TRUE`, attach a construction timing
-#'   table. For `radius.search = "ann"`, this separates ANN setup, ANN local
-#'   scale search, ANN fixed-radius candidate search, edge materialization, and
-#'   graph finalization.
-#' @param graph.detail Character scalar. `"full"` returns the complete graph
-#'   lifecycle object, including repaired/pruned lifecycle branches. `"minimal"`
-#'   returns only the graph fields needed by fitting code and is currently
-#'   allowed only with `prune.method = "none"` and
-#'   `connect.components = FALSE`.
-#' @param prune.local.k Integer scalar or `NULL`. Number of nearest neighbors
-#'   used to form local neighborhoods for pruning. For adaptive-radius graphs,
-#'   `NULL` defaults to `k.scale`.
-#' @inheritParams create.radius.graph
-#'
-#' @return A list of class `"adaptive_radius_graph"` containing adjacency
-#'   lists, edge weights, edge matrix, local scale values, and component
-#'   diagnostics. The final graph is stored in `adj_list`/`weight_list`;
-#'   `raw_adj_list`/`raw_weight_list` store the adaptive-radius graph before
-#'   pruning and optional MST component repair; and
-#'   `pruned_adj_list`/`pruned_weight_list` store the graph after optional local
-#'   geometric pruning and before MST component repair. The repaired lifecycle
-#'   branches `raw_repaired_*`, `pruned_repaired_*`, and
-#'   `repaired_pruned_*` allow direct comparison of native, prune-first, and
-#'   repair-first graph geodesic geometries.
+#' @param radius Fixed radius passed to `create.rknn.graph(type = "fixed")`.
+#' @param k.scale,radius.factor,radius.rule,radius.search Adaptive-radius
+#'   parameters passed to `create.rknn.graph(type = "adaptive.radius")`.
+#' @param return.timing,graph.detail Adaptive-radius output controls passed to
+#'   `create.rknn.graph()`.
+#' @param prune.method,max.path.edge.ratio.deviation.thld,path.edge.ratio.percentile,prune.tau,prune.local.k,with.pruned.edge.stats Geometric
+#'   pruning controls passed to `create.rknn.graph()`.
+#' @param connect.components,connect.method,bridge.k,bridge.k.max,bridge.growth Component
+#'   repair controls passed to `create.rknn.graph()`.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
-#' create.adaptive.radius.graph(X, k.scale = 1, radius.rule = "max")$edge_matrix
+#' create.rknn.graph(X, type = "fixed", radius = 1.1)$edge_matrix
+#' create.rknn.graph(X, type = "adaptive.radius", k.scale = 1)$edge_matrix
 #'
+#' @name deprecated-radius-graph-constructors
+NULL
+
+#' @rdname deprecated-radius-graph-constructors
+#' @export
+create.radius.graph <- function(X,
+                                radius,
+                                prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                                max.path.edge.ratio.deviation.thld = 0.1,
+                                path.edge.ratio.percentile = 0.5,
+                                prune.tau = 1.05,
+                                prune.local.k = NULL,
+                                with.pruned.edge.stats = FALSE,
+                                connect.components = FALSE,
+                                connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                                bridge.k = NULL,
+                                bridge.k.max = NULL,
+                                bridge.growth = 2) {
+    .Deprecated("create.rknn.graph")
+    create.rknn.graph(
+        X = X,
+        type = "fixed",
+        radius = radius,
+        prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        connect.components = connect.components,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth
+    )
+}
+
+#' @rdname deprecated-radius-graph-constructors
 #' @export
 create.adaptive.radius.graph <- function(X,
                                          k.scale,
@@ -469,6 +569,48 @@ create.adaptive.radius.graph <- function(X,
                                          bridge.k = NULL,
                                          bridge.k.max = NULL,
                                          bridge.growth = 2) {
+    .Deprecated("create.rknn.graph")
+    create.rknn.graph(
+        X = X,
+        type = "adaptive.radius",
+        k.scale = k.scale,
+        radius.factor = radius.factor,
+        radius.rule = radius.rule,
+        radius.search = radius.search,
+        return.timing = return.timing,
+        graph.detail = graph.detail,
+        prune.method = prune.method,
+        max.path.edge.ratio.deviation.thld = max.path.edge.ratio.deviation.thld,
+        path.edge.ratio.percentile = path.edge.ratio.percentile,
+        prune.tau = prune.tau,
+        prune.local.k = prune.local.k,
+        with.pruned.edge.stats = with.pruned.edge.stats,
+        connect.components = connect.components,
+        connect.method = connect.method,
+        bridge.k = bridge.k,
+        bridge.k.max = bridge.k.max,
+        bridge.growth = bridge.growth
+    )
+}
+
+.create.adaptive.radius.graph <- function(X,
+                                          k.scale,
+                                          radius.factor = 1,
+                                          radius.rule = c("max", "min", "geomean"),
+                                          radius.search = c("ann", "all.pairs"),
+                                          return.timing = FALSE,
+                                          graph.detail = c("full", "minimal"),
+                                          prune.method = c("none", "local.geodesic", "global.geodesic.ratio"),
+                                          max.path.edge.ratio.deviation.thld = 0.1,
+                                          path.edge.ratio.percentile = 0.5,
+                                          prune.tau = 1.05,
+                                          prune.local.k = NULL,
+                                          with.pruned.edge.stats = FALSE,
+                                          connect.components = FALSE,
+                                          connect.method = c("component.mst", "component.mst.ann", "global.mst"),
+                                          bridge.k = NULL,
+                                          bridge.k.max = NULL,
+                                          bridge.growth = 2) {
     X <- .validate.numeric.data.matrix(X)
     n <- nrow(X)
     if (!is.numeric(k.scale) || length(k.scale) != 1L || !is.finite(k.scale) ||
@@ -579,9 +721,10 @@ create.adaptive.radius.graph <- function(X,
 #' `k.scale`-th non-self nearest neighbor. Vertices are adjacent when
 #' \deqn{\|x_i - x_j\|_2 \le \delta \sqrt{\sigma_i\sigma_j}.}
 #'
-#' This is a convenience wrapper around [create.adaptive.radius.graph()] with
-#' `radius.rule = "geomean"`. It is useful as a named data-derived graph
-#' construction in geodesic reconstruction benchmarks.
+#' This is a convenience wrapper around [create.rknn.graph()] with
+#' `type = "adaptive.radius"` and `radius.rule = "geomean"`. It is useful as
+#' a named data-derived graph construction in geodesic reconstruction
+#' benchmarks.
 #'
 #' @param X Numeric matrix or data frame with observations in rows.
 #' @param k.scale Positive integer smaller than `nrow(X)`. Defines local scale
@@ -589,21 +732,21 @@ create.adaptive.radius.graph <- function(X,
 #' @param delta Positive numeric scalar multiplying the geometric-mean adaptive
 #'   radius.
 #' @param radius.search Character scalar. `"ann"` uses the bundled ANN kd-tree
-#'   exact radius-search backend inherited from [create.adaptive.radius.graph()].
+#'   exact radius-search backend inherited from [create.rknn.graph()].
 #'   `"all.pairs"` uses the direct \eqn{O(n^2)} reference path.
 #' @param return.timing Logical scalar. If `TRUE`, attach the same construction
-#'   timing table returned by [create.adaptive.radius.graph()], including ANN
+#'   timing table returned by [create.rknn.graph()], including ANN
 #'   setup, local-scale search, fixed-radius candidate search, edge
 #'   materialization, and graph finalization when `radius.search = "ann"`.
 #' @param graph.detail Character scalar. `"full"` returns the complete graph
 #'   lifecycle object. `"minimal"` returns only core graph fields and is allowed
 #'   only with `prune.method = "none"` and `connect.components = FALSE`.
-#' @inheritParams create.radius.graph
+#' @inheritParams create.rknn.graph
 #'
 #' @return A list inheriting from `"cknn_graph"` and `"adaptive_radius_graph"`.
-#'   It contains the same lifecycle fields as [create.adaptive.radius.graph()],
-#'   with `radius_rule = "geomean"`, `radius_factor = delta`, and
-#'   `graph_rule = "continuous.knn"`.
+#'   It contains the same lifecycle fields as [create.rknn.graph()] with
+#'   `type = "adaptive.radius"`, `radius_rule = "geomean"`,
+#'   `radius_factor = delta`, and `graph_rule = "continuous.knn"`.
 #'
 #' @examples
 #' X <- matrix(c(0, 1, 3), ncol = 1)
@@ -634,7 +777,7 @@ create.cknn.graph <- function(X,
     }
     radius.search <- match.arg(radius.search)
     graph.detail <- match.arg(graph.detail)
-    g <- create.adaptive.radius.graph(
+    g <- .create.adaptive.radius.graph(
         X = X,
         k.scale = k.scale,
         radius.factor = delta,

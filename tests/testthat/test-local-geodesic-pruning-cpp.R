@@ -241,12 +241,12 @@ test_that("graph-family local pruning paths use the shared C++ helper", {
       prune.tau = 1.01, with.lifecycle.branches = TRUE,
       verbose = FALSE
     ),
-    radius = create.radius.graph(
-      X, radius = 2.1, prune.method = "local.geodesic",
+    radius = create.rknn.graph(
+      X, type = "fixed", radius = 2.1, prune.method = "local.geodesic",
       prune.tau = 1.01, with.pruned.edge.stats = TRUE
     ),
-    adaptive = create.adaptive.radius.graph(
-      X, k.scale = 2, radius.rule = "max",
+    adaptive = create.rknn.graph(
+      X, type = "adaptive.radius", k.scale = 2, radius.rule = "max",
       prune.method = "local.geodesic", prune.tau = 1.01,
       with.pruned.edge.stats = TRUE
     )

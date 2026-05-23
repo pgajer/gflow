@@ -153,8 +153,8 @@ make_ssrhe_like_graph_trend_case <- function(kind = c("flat", "quadform")) {
   truth <- ssrhe_like_truth_function(U)
   set.seed(seed + 900000L)
   y <- truth + stats::rnorm(length(truth), sd = 0.08)
-  graph <- create.adaptive.radius.graph(
-    X,
+  graph <- create.rknn.graph(
+    X, type = "adaptive.radius",
     k.scale = 12L,
     radius.factor = 1.25,
     radius.rule = "geomean",
