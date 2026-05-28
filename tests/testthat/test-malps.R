@@ -95,12 +95,54 @@ test_that("fit.malps supports model-quality averaging weights", {
   expect_equal(weighted$diagnostics$model.weight.rule, "support")
   expect_gt(weighted$model.weights[1L], weighted$model.weights[2L])
   expect_equal(weighted$diagnostics$model.weight, weighted$model.weights)
+  expect_true(all(c("model.weight.raw", "model.weight.condition",
+                    "model.weight.support", "model.weight.boundary") %in%
+                    names(weighted$diagnostics)))
   expect_equal(rowSums(weighted$averaging.weights), rep(1, nrow(X)),
                tolerance = 1e-12)
 
   refit <- refit.malps(weighted, y = y + 1)
   expect_equal(refit$model.weights, weighted$model.weights, tolerance = 1e-12)
   expect_equal(refit$averaging.weights, weighted$averaging.weights,
+               tolerance = 1e-12)
+})
+
+test_that("fit.malps quality weighting records component multipliers", {
+  X <- matrix(c(0, 0.05, 0.1, 0.15, 0.6, 0.9, 0.95, 1), ncol = 1L)
+  y <- as.numeric(X[, 1L]^2)
+
+  fit <- fit.malps(
+    X, y,
+    anchor.index = c(1L, 4L, 5L, 7L),
+    degree = 1L,
+    support.type = "fixed.radius",
+    radius = 0.35,
+    min.support = 2L,
+    kernel = "triangular",
+    model.weight.rule = "quality"
+  )
+
+  condition.weight <- 1 / pmax(fit$diagnostics$model.condition.number, 1)
+  condition.weight[!is.finite(condition.weight) | condition.weight < 0] <- 0
+  support.weight <- fit$diagnostics$positive.weight.support.size /
+      max(fit$diagnostics$positive.weight.support.size)
+  boundary.weight <- 1 / (1 + pmax(fit$diagnostics$boundary.score, 0))
+  raw.weight <- condition.weight * support.weight * boundary.weight
+  expected.weight <- raw.weight / stats::median(raw.weight[raw.weight > 0])
+
+  expect_equal(fit$model.weight.rule, "quality")
+  expect_equal(fit$diagnostics$model.weight.condition, condition.weight,
+               tolerance = 1e-12)
+  expect_equal(fit$diagnostics$model.weight.support, support.weight,
+               tolerance = 1e-12)
+  expect_equal(fit$diagnostics$model.weight.boundary, boundary.weight,
+               tolerance = 1e-12)
+  expect_equal(fit$diagnostics$model.weight.raw, raw.weight,
+               tolerance = 1e-12)
+  expect_equal(fit$model.weights, expected.weight, tolerance = 1e-12)
+  expect_equal(fit$diagnostics$model.weight, fit$model.weights,
+               tolerance = 1e-12)
+  expect_equal(rowSums(fit$averaging.weights), rep(1, nrow(X)),
                tolerance = 1e-12)
 })
 
@@ -1186,34 +1228,39 @@ test_that("robust fitting does not change model-quality averaging weights", {
   y <- truth
   y[11L] <- y[11L] + 20
 
-  plain <- fit.malps(
-    X, y,
-    degree = 1L,
-    support.type = "knn",
-    support.size = 15L,
-    min.support = 2L,
-    kernel = "gaussian",
-    model.weight.rule = "condition",
-    robust.iterations = 0L
-  )
-  robust <- fit.malps(
-    X, y,
-    degree = 1L,
-    support.type = "knn",
-    support.size = 15L,
-    min.support = 2L,
-    kernel = "gaussian",
-    model.weight.rule = "condition",
-    robust.iterations = 4L
-  )
+  for (rule in c("condition", "quality")) {
+    plain <- fit.malps(
+      X, y,
+      degree = 1L,
+      support.type = "knn",
+      support.size = 15L,
+      min.support = 2L,
+      kernel = "gaussian",
+      model.weight.rule = rule,
+      robust.iterations = 0L
+    )
+    robust <- fit.malps(
+      X, y,
+      degree = 1L,
+      support.type = "knn",
+      support.size = 15L,
+      min.support = 2L,
+      kernel = "gaussian",
+      model.weight.rule = rule,
+      robust.iterations = 4L
+    )
 
-  expect_equal(robust$model.weights, plain$model.weights, tolerance = 1e-12)
-  expect_equal(robust$averaging.weights, plain$averaging.weights,
-               tolerance = 1e-12)
-  expect_true(any(unlist(robust$robust.weights) < 0.5))
-  expect_equal(robust$diagnostics$model.condition.number,
-               plain$diagnostics$model.condition.number,
-               tolerance = 1e-12)
+    expect_equal(robust$model.weights, plain$model.weights, tolerance = 1e-12)
+    expect_equal(robust$averaging.weights, plain$averaging.weights,
+                 tolerance = 1e-12)
+    expect_true(any(unlist(robust$robust.weights) < 0.5))
+    expect_equal(robust$diagnostics$model.condition.number,
+                 plain$diagnostics$model.condition.number,
+                 tolerance = 1e-12)
+    expect_equal(robust$diagnostics$model.weight.raw,
+                 plain$diagnostics$model.weight.raw,
+                 tolerance = 1e-12)
+  }
 })
 
 test_that("refit.malps preserves robust controls and recomputes robust weights", {
