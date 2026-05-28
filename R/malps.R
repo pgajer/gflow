@@ -12,6 +12,19 @@
 #' uncertainty summaries.  Graph-geodesic supports are available for training
 #' and refit; graph-geodesic new-point prediction is deferred.
 #'
+#' Current development benchmarks suggest using the plain MALPS defaults for
+#' production-style fits unless a specific diagnostic motivates a non-default
+#' option: \code{support.selection = "cv"}, \code{robust.iterations = 0L},
+#' \code{model.weight.rule = "none"}, and observed anchors
+#' (\code{anchor.coordinates = NULL}).  Exact GCV selection
+#' (\code{support.selection = "gcv"}) is a useful faster option for
+#' fixed-weight, non-robust MALPS fits, especially exploratory continuous
+#' smoothing runs, but it is not yet the universal default.  Binary responses
+#' are treated as numeric conditional-expectation targets; fitted values are not
+#' clipped inside the smoother.  Grid anchors, empirical-Bayes shrinkage, robust
+#' local residual reweighting, and conservative/smoothed GCV selection remain
+#' experimental controls rather than default recommendations.
+#'
 #' @param X Numeric coordinate matrix with one row per observation.
 #' @param y Numeric response vector with length \code{nrow(X)}.
 #' @param graph Optional supported gflow graph object.  When
@@ -64,9 +77,15 @@
 #' @param model.weight.rule Optional per-anchor model-quality multiplier applied
 #'   to the ordinary kernel averaging weights.  \code{"none"} preserves the
 #'   kernel-only averaging from earlier phases.  \code{"condition"} downweights
-#'   poorly conditioned local designs.  \code{"support"} upweights anchors with
-#'   larger positive fitting supports.  \code{"boundary"} downweights asymmetric
-#'   boundary-like supports.  \code{"quality"} combines all three diagnostics.
+#'   poorly conditioned local designs with
+#'   \eqn{q_u^{\mathrm{cond}}=1/\max(\kappa_u,1)}.  \code{"support"} upweights
+#'   anchors with larger positive fitting supports using support size divided by
+#'   the maximum support size.  \code{"boundary"} downweights asymmetric
+#'   boundary-like supports with \eqn{q_u^{\mathrm{bdry}}=1/(1+b_u)}.
+#'   \code{"quality"} multiplies these three component weights and rescales the
+#'   positive multipliers to have median one.  These weights affect prediction
+#'   averaging only; they do not change local supports or local coefficient
+#'   estimation.
 #' @param duplicate.action How duplicate coordinate rows should be handled.
 #'   \code{"keep"} allows duplicates, records duplicate diagnostics, and
 #'   preserves observed-anchor self-inclusion.  \code{"error"} rejects duplicate
@@ -1023,7 +1042,7 @@ print.malps_bootstrap <- function(x, ...) {
         anchors = anchors,
         supports = supports
     )
-    model.weights <- .malps.model.quality.weights(
+    model.weight.info <- .malps.model.quality.diagnostics(
         rule = model.weight.rule,
         condition.number = fits$model.condition.number,
         positive.support.size = vapply(
@@ -1033,6 +1052,7 @@ print.malps_bootstrap <- function(x, ...) {
         ),
         boundary.score = boundary.score
     )
+    model.weights <- model.weight.info$weight
     prediction.supports <- .malps.build.prediction.supports(
         distance.matrix = distance.matrix,
         anchor.index = anchor.index,
@@ -1072,6 +1092,10 @@ print.malps_bootstrap <- function(x, ...) {
         support.metric = support.metric,
         model.weight.rule = model.weight.rule,
         model.weight = model.weights,
+        model.weight.raw = model.weight.info$raw.weight,
+        model.weight.condition = model.weight.info$condition.weight,
+        model.weight.support = model.weight.info$support.weight,
+        model.weight.boundary = model.weight.info$boundary.weight,
         graph.source = if (is.null(graph.info)) NA_character_ else graph.info$source,
         min.support = params$min.support,
         support.size = vapply(supports, function(s) length(s$index),
@@ -2810,17 +2834,14 @@ print.malps_bootstrap <- function(x, ...) {
     score
 }
 
-.malps.model.quality.weights <- function(rule, condition.number,
-                                         positive.support.size,
-                                         boundary.score) {
+.malps.model.quality.diagnostics <- function(rule, condition.number,
+                                             positive.support.size,
+                                             boundary.score) {
     n <- length(condition.number)
     if (!identical(length(positive.support.size), n) ||
         !identical(length(boundary.score), n)) {
         stop("MALPS model-quality diagnostics must have one value per anchor.",
              call. = FALSE)
-    }
-    if (identical(rule, "none")) {
-        return(rep(1, n))
     }
 
     condition.weight <- 1 / pmax(condition.number, 1)
@@ -2838,6 +2859,7 @@ print.malps_bootstrap <- function(x, ...) {
 
     weights <- switch(
         rule,
+        none = rep(1, n),
         condition = condition.weight,
         support = support.weight,
         boundary = boundary.weight,
@@ -2853,5 +2875,30 @@ print.malps_bootstrap <- function(x, ...) {
     if (is.finite(scale) && scale > 0) {
         weights <- weights / scale
     }
-    as.numeric(weights)
+    list(
+        weight = as.numeric(weights),
+        raw.weight = as.numeric(switch(
+            rule,
+            none = rep(1, n),
+            condition = condition.weight,
+            support = support.weight,
+            boundary = boundary.weight,
+            quality = condition.weight * support.weight * boundary.weight,
+            stop("Unknown model.weight.rule.", call. = FALSE)
+        )),
+        condition.weight = as.numeric(condition.weight),
+        support.weight = as.numeric(support.weight),
+        boundary.weight = as.numeric(boundary.weight)
+    )
+}
+
+.malps.model.quality.weights <- function(rule, condition.number,
+                                         positive.support.size,
+                                         boundary.score) {
+    .malps.model.quality.diagnostics(
+        rule = rule,
+        condition.number = condition.number,
+        positive.support.size = positive.support.size,
+        boundary.score = boundary.score
+    )$weight
 }
