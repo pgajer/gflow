@@ -82,10 +82,16 @@
 #'   anchors with larger positive fitting supports using support size divided by
 #'   the maximum support size.  \code{"boundary"} downweights asymmetric
 #'   boundary-like supports with \eqn{q_u^{\mathrm{bdry}}=1/(1+b_u)}.
-#'   \code{"quality"} multiplies these three component weights and rescales the
-#'   positive multipliers to have median one.  These weights affect prediction
-#'   averaging only; they do not change local supports or local coefficient
-#'   estimation.
+#'   \code{"quality"} multiplies these three component weights.  For every
+#'   non-\code{"none"} rule, \code{diagnostics$model.weight.raw} stores the
+#'   selected unnormalized rule multiplier, while \code{model.weights} and
+#'   \code{diagnostics$model.weight} store the final multipliers after
+#'   median-one normalization over positive raw values.  Raw zero or non-finite
+#'   multipliers are retained diagnostically but are replaced by a tiny positive
+#'   final floor before prediction averaging, so model-quality rules reweight
+#'   existing prediction support rather than removing anchors from support
+#'   membership.  These weights affect prediction averaging only; they do not
+#'   change local supports or local coefficient estimation.
 #' @param duplicate.action How duplicate coordinate rows should be handled.
 #'   \code{"keep"} allows duplicates, records duplicate diagnostics, and
 #'   preserves observed-anchor self-inclusion.  \code{"error"} rejects duplicate
@@ -1093,9 +1099,12 @@ print.malps_bootstrap <- function(x, ...) {
         model.weight.rule = model.weight.rule,
         model.weight = model.weights,
         model.weight.raw = model.weight.info$raw.weight,
+        model.weight.floor = model.weight.info$floor,
         model.weight.condition = model.weight.info$condition.weight,
         model.weight.support = model.weight.info$support.weight,
         model.weight.boundary = model.weight.info$boundary.weight,
+        model.weight.source.condition.number = fits$model.condition.number,
+        model.weight.fixed.from.original = FALSE,
         graph.source = if (is.null(graph.info)) NA_character_ else graph.info$source,
         min.support = params$min.support,
         support.size = vapply(supports, function(s) length(s$index),
@@ -2246,6 +2255,7 @@ print.malps_bootstrap <- function(x, ...) {
     diagnostics$robust.weight.min <- fits$robust.weight.min
     diagnostics$robust.weight.max <- fits$robust.weight.max
     diagnostics$finite.predictions <- all(is.finite(averaged$fitted.values))
+    diagnostics$model.weight.fixed.from.original <- TRUE
 
     out <- object
     out$fitted.values <- averaged$fitted.values
@@ -2875,8 +2885,17 @@ print.malps_bootstrap <- function(x, ...) {
     if (is.finite(scale) && scale > 0) {
         weights <- weights / scale
     }
+    floor <- if (identical(rule, "none")) {
+        0
+    } else {
+        .Machine$double.eps
+    }
+    if (floor > 0) {
+        weights[!is.finite(weights) | weights <= 0] <- floor
+    }
     list(
         weight = as.numeric(weights),
+        floor = floor,
         raw.weight = as.numeric(switch(
             rule,
             none = rep(1, n),
