@@ -95,15 +95,23 @@ test_that("fit.malps supports model-quality averaging weights", {
   expect_equal(weighted$diagnostics$model.weight.rule, "support")
   expect_gt(weighted$model.weights[1L], weighted$model.weights[2L])
   expect_equal(weighted$diagnostics$model.weight, weighted$model.weights)
-  expect_true(all(c("model.weight.raw", "model.weight.condition",
-                    "model.weight.support", "model.weight.boundary") %in%
+  expect_true(all(c("model.weight.raw", "model.weight.floor",
+                    "model.weight.condition", "model.weight.support",
+                    "model.weight.boundary",
+                    "model.weight.source.condition.number",
+                    "model.weight.fixed.from.original") %in%
                     names(weighted$diagnostics)))
+  expect_false(weighted$diagnostics$model.weight.fixed.from.original)
   expect_equal(rowSums(weighted$averaging.weights), rep(1, nrow(X)),
                tolerance = 1e-12)
 
   refit <- refit.malps(weighted, y = y + 1)
   expect_equal(refit$model.weights, weighted$model.weights, tolerance = 1e-12)
   expect_equal(refit$averaging.weights, weighted$averaging.weights,
+               tolerance = 1e-12)
+  expect_true(refit$diagnostics$model.weight.fixed.from.original)
+  expect_equal(refit$diagnostics$model.weight.source.condition.number,
+               weighted$diagnostics$model.weight.source.condition.number,
                tolerance = 1e-12)
 })
 
@@ -129,6 +137,8 @@ test_that("fit.malps quality weighting records component multipliers", {
   boundary.weight <- 1 / (1 + pmax(fit$diagnostics$boundary.score, 0))
   raw.weight <- condition.weight * support.weight * boundary.weight
   expected.weight <- raw.weight / stats::median(raw.weight[raw.weight > 0])
+  expected.weight[expected.weight <= 0 | !is.finite(expected.weight)] <-
+      .Machine$double.eps
 
   expect_equal(fit$model.weight.rule, "quality")
   expect_equal(fit$diagnostics$model.weight.condition, condition.weight,
@@ -144,6 +154,42 @@ test_that("fit.malps quality weighting records component multipliers", {
                tolerance = 1e-12)
   expect_equal(rowSums(fit$averaging.weights), rep(1, nrow(X)),
                tolerance = 1e-12)
+})
+
+test_that("model-quality zero raw weights preserve prediction support membership", {
+  X <- matrix(c(0, 0.1, 0.2, 0.8, 0.9, 1), ncol = 1L)
+  y <- as.numeric(X[, 1L]^2)
+
+  base <- fit.malps(
+    X, y,
+    degree = 2L,
+    support.type = "fixed.radius",
+    radius = 0.16,
+    min.support = 2L,
+    kernel = "triangular",
+    model.weight.rule = "none"
+  )
+  quality <- fit.malps(
+    X, y,
+    degree = 2L,
+    support.type = "fixed.radius",
+    radius = 0.16,
+    min.support = 2L,
+    kernel = "triangular",
+    model.weight.rule = "quality"
+  )
+
+  expect_true(any(!is.finite(quality$diagnostics$model.condition.number)))
+  expect_true(any(quality$diagnostics$model.weight.raw == 0))
+  expect_true(all(quality$model.weights > 0))
+  expect_equal(
+    lapply(quality$prediction.supports, `[[`, "index"),
+    lapply(base$prediction.supports, `[[`, "index")
+  )
+  expect_equal(quality$diagnostics$coverage.count,
+               base$diagnostics$coverage.count)
+  expect_equal(quality$diagnostics$model.weight.floor,
+               .Machine$double.eps)
 })
 
 test_that("fit.malps kNN self-inclusion survives duplicate coordinates", {
