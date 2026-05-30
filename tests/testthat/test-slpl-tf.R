@@ -28,6 +28,34 @@ test_that("slpl.tf.operator builds inclusive synchronization rows", {
     expect_true(op$settings$support.metric %in% c("coordinates", "graph.geodesic"))
 })
 
+test_that("slpl.tf.operator reuses LPL inclusive supports for adaptive radius", {
+    x <- seq(-1, 1, length.out = 9)
+    X <- matrix(x, ncol = 1)
+    op <- slpl.tf.operator(
+        X,
+        degree = 1L,
+        support.type = "adaptive.radius",
+        min.support = 3L,
+        support.buffer = 0L,
+        kernel = "gaussian",
+        row.normalize = "l2",
+        local.solver = "svd"
+    )
+    expect_s3_class(op, "slpl_tf_operator")
+
+    for (ii in seq_along(op$lpl.operator$supports)) {
+        lpl.candidate <- op$lpl.operator$supports[[ii]]$candidate
+        map.rows <- op$sync.map.table[
+            op$sync.map.table$anchor.index == op$lpl.operator$supports[[ii]]$target,
+        ]
+        expect_gt(nrow(map.rows), 0L)
+        expect_equal(unique(map.rows$prediction.coverage.set),
+                     paste(lpl.candidate, collapse = ","))
+        expect_equal(unique(map.rows$support.size), length(lpl.candidate))
+        expect_equal(length(lpl.candidate), 4L)
+    }
+})
+
 test_that("fit.slpl.tf with lambda2 zero nests fit.lpl.tf", {
     skip_if_not_installed("genlasso")
     x <- seq(0, 1, length.out = 12)

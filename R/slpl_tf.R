@@ -538,13 +538,9 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
     map.id <- 0L
     for (aa in seq_along(args$anchor.index)) {
         anchor <- args$anchor.index[[aa]]
-        support <- .slpl.tf.inclusive.support(
-            target = anchor,
-            distances = support.dist.matrix[anchor, ],
-            support.type = args$support.type,
-            support.size = args$support.size,
-            radius = args$radius,
-            min.support = args$min.support
+        support <- .slpl.tf.inclusive.support.from.lpl(
+            lpl.support = lpl.operator$supports[[aa]],
+            distances = support.dist.matrix[anchor, ]
         )
         chart <- .lpl.tf.local.chart(
             X = X,
@@ -656,20 +652,10 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
     )
 }
 
-.slpl.tf.inclusive.support <- function(target, distances, support.type,
-                                       support.size, radius, min.support) {
-    n <- length(distances)
-    ord <- order(distances, seq_len(n), na.last = NA)
-    if (identical(support.type, "knn")) {
-        candidate <- head(ord, support.size)
-    } else if (identical(support.type, "fixed.radius")) {
-        candidate <- which(distances <= radius)
-        candidate <- candidate[order(distances[candidate], candidate)]
-    } else {
-        candidate <- head(ord, min.support)
-    }
+.slpl.tf.inclusive.support.from.lpl <- function(lpl.support, distances) {
+    candidate <- lpl.support$candidate
     list(
-        target = target,
+        target = lpl.support$target,
         candidate = as.integer(candidate),
         distances = as.double(distances[candidate]),
         radius = if (length(candidate)) max(distances[candidate]) else NA_real_
