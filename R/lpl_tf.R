@@ -694,6 +694,7 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
             y = y.clean,
             weights = weights,
             D = D.info$D,
+            D.fallback = D.info$D.sparse,
             lambda.grid = lambda.grid,
             fold.id = fold.id,
             loss = loss,
@@ -710,6 +711,7 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         y = y.clean,
         weights = weights,
         D = D.info$D,
+        D.fallback = D.info$D.sparse,
         solver.args = solver.args,
         use.svd = D.info$svd
     )
@@ -752,7 +754,10 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
             backend = "genlasso_design_matrix",
             requested = solver.args$solver,
             representation = D.info$representation,
-            svd = D.info$svd,
+            svd = path.info$genlasso.svd.used,
+            svd.requested = path.info$genlasso.svd.requested,
+            svd.fallback.used = path.info$genlasso.svd.fallback.used,
+            svd.fallback.message = path.info$genlasso.svd.fallback.message,
             row.scaling = D.info$row.scaling,
             n.observed = path.info$n.observed,
             admm = NULL
@@ -767,7 +772,7 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
 }
 
 .lpl.tf.genlasso.path <- function(y, weights, D, solver.args,
-                                  use.svd = FALSE) {
+                                  use.svd = FALSE, D.fallback = NULL) {
     observed <- is.finite(y) & is.finite(weights) & weights > 0
     if (!any(observed)) {
         stop("At least one observed positive-weight response is required.",
@@ -782,24 +787,51 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         dims = c(length(obs), length(y)),
         giveCsparse = TRUE
     ))
-    path <- suppressWarnings(genlasso::genlasso(
-        y = sw * y[obs],
-        X = X.design,
-        D = D,
-        approx = solver.args$approx,
-        maxsteps = solver.args$maxsteps,
-        minlam = solver.args$minlam,
-        rtol = solver.args$rtol,
-        btol = solver.args$btol,
-        eps = solver.args$eps,
-        verbose = solver.args$verbose,
-        svd = use.svd
-    ))
-    list(path = path, n.observed = sum(observed))
+    run.genlasso <- function(D, svd) {
+        suppressWarnings(genlasso::genlasso(
+            y = sw * y[obs],
+            X = X.design,
+            D = D,
+            approx = solver.args$approx,
+            maxsteps = solver.args$maxsteps,
+            minlam = solver.args$minlam,
+            rtol = solver.args$rtol,
+            btol = solver.args$btol,
+            eps = solver.args$eps,
+            verbose = solver.args$verbose,
+            svd = svd
+        ))
+    }
+    primary <- tryCatch(
+        list(path = run.genlasso(D, use.svd), error = NULL),
+        error = function(e) list(path = NULL, error = e)
+    )
+    fallback.used <- FALSE
+    fallback.message <- NA_character_
+    svd.used <- use.svd
+    if (!is.null(primary$error) && isTRUE(use.svd) &&
+        .lpl.tf.is.svd.backend.error(primary$error)) {
+        fallback.message <- conditionMessage(primary$error)
+        path <- run.genlasso(D.fallback %||% D, FALSE)
+        fallback.used <- TRUE
+        svd.used <- FALSE
+    } else if (!is.null(primary$error)) {
+        stop(conditionMessage(primary$error), call. = FALSE)
+    } else {
+        path <- primary$path
+    }
+    list(
+        path = path,
+        n.observed = sum(observed),
+        genlasso.svd.requested = use.svd,
+        genlasso.svd.used = svd.used,
+        genlasso.svd.fallback.used = fallback.used,
+        genlasso.svd.fallback.message = fallback.message
+    )
 }
 
-.lpl.tf.cv <- function(y, weights, D, lambda.grid, fold.id, loss,
-                       selection, solver.args, use.svd = FALSE) {
+.lpl.tf.cv <- function(y, weights, D, D.fallback = NULL, lambda.grid, fold.id,
+                       loss, selection, solver.args, use.svd = FALSE) {
     n <- length(y)
     folds <- sort(unique(fold.id[fold.id > 0L]))
     cv.errors <- matrix(NA_real_, nrow = length(folds), ncol = length(lambda.grid))
@@ -817,7 +849,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
                 weights = train.weights,
                 D = D,
                 solver.args = solver.args,
-                use.svd = use.svd
+                use.svd = use.svd,
+                D.fallback = D.fallback
             ),
             error = function(e) NULL
         )

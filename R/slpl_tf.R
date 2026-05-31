@@ -831,7 +831,10 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
             backend = "genlasso_augmented_design",
             requested = solver.args$solver,
             representation = path.info$D.info$representation,
-            svd = path.info$D.info$svd,
+            svd = path.info$genlasso.svd.used,
+            svd.requested = path.info$genlasso.svd.requested,
+            svd.fallback.used = path.info$genlasso.svd.fallback.used,
+            svd.fallback.message = path.info$genlasso.svd.fallback.message,
             row.scaling = path.info$D.info$row.scaling,
             augmented.design.dim = paste(path.info$design.dim, collapse = " x "),
             augmented.response.length = path.info$response.length,
@@ -893,19 +896,39 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
         y.design <- sw * y[obs]
         design.representation <- "observed_identity_rows"
     }
-    path <- suppressWarnings(genlasso::genlasso(
-        y = y.design,
-        X = X.design,
-        D = D.info$D,
-        approx = solver.args$approx,
-        maxsteps = solver.args$maxsteps,
-        minlam = solver.args$minlam,
-        rtol = solver.args$rtol,
-        btol = solver.args$btol,
-        eps = solver.args$eps,
-        verbose = solver.args$verbose,
-        svd = D.info$svd
-    ))
+    run.genlasso <- function(D, use.svd) {
+        suppressWarnings(genlasso::genlasso(
+            y = y.design,
+            X = X.design,
+            D = D,
+            approx = solver.args$approx,
+            maxsteps = solver.args$maxsteps,
+            minlam = solver.args$minlam,
+            rtol = solver.args$rtol,
+            btol = solver.args$btol,
+            eps = solver.args$eps,
+            verbose = solver.args$verbose,
+            svd = use.svd
+        ))
+    }
+    primary <- tryCatch(
+        list(path = run.genlasso(D.info$D, D.info$svd), error = NULL),
+        error = function(e) list(path = NULL, error = e)
+    )
+    fallback.used <- FALSE
+    fallback.message <- NA_character_
+    svd.used <- D.info$svd
+    if (!is.null(primary$error) && isTRUE(D.info$svd) &&
+        .slpl.tf.is.svd.backend.error(primary$error)) {
+        fallback.message <- conditionMessage(primary$error)
+        path <- run.genlasso(D.info$D.sparse, FALSE)
+        fallback.used <- TRUE
+        svd.used <- FALSE
+    } else if (!is.null(primary$error)) {
+        stop(conditionMessage(primary$error), call. = FALSE)
+    } else {
+        path <- primary$path
+    }
     list(
         path = path,
         D.info = D.info,
@@ -913,8 +936,17 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
         design.dim = dim(X.design),
         response.length = length(y.design),
         n.observed = sum(observed),
-        design.representation = design.representation
+        design.representation = design.representation,
+        genlasso.svd.requested = D.info$svd,
+        genlasso.svd.used = svd.used,
+        genlasso.svd.fallback.used = fallback.used,
+        genlasso.svd.fallback.message = fallback.message
     )
+}
+
+.slpl.tf.is.svd.backend.error <- function(e) {
+    msg <- conditionMessage(e)
+    grepl("dgesdd|svd|SVD|Lapack|LAPACK", msg)
 }
 
 .slpl.tf.cv <- function(y, weights, operator, solver.lpl.operator,
