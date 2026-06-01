@@ -18,6 +18,11 @@ test_that("slpl.tf.operator builds inclusive synchronization rows", {
     expect_true(all(op$sync.map.table$sync_map_self_inclusion == "inclusive"))
     expect_true(all(op$sync.map.table$lpl_residual_self_inclusion ==
                         "self_excluded"))
+    expect_true(all(is.finite(op$sync.map.table$rank.tolerance[
+        op$sync.map.table$status == "ok"
+    ])))
+    expect_match(op$sync.map.table$rank.tolerance.rule[[1L]],
+                 "Machine\\$double\\.eps")
     expect_equal(op$sync.row.table$row.norm.final[
         op$sync.row.table$status == "ok"
     ], rep(1, nrow(op$C_sync)), tolerance = 1e-12)

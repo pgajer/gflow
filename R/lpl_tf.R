@@ -1588,6 +1588,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         degree = degree,
         design.columns = design.columns,
         rank = NA_integer_,
+        rank.tolerance = NA_real_,
+        rank.tolerance.rule = NA_character_,
         condition.number = NA_real_,
         solver.used = NA_character_,
         fallback.used = NA,
@@ -1620,6 +1622,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         normal.equations.max.condition = normal.equations.max.condition
     )
     row.base$rank <- fit$rank
+    row.base$rank.tolerance <- fit$rank.tolerance
+    row.base$rank.tolerance.rule <- fit$rank.tolerance.rule
     row.base$condition.number <- fit$condition.number
     row.base$solver.used <- fit$solver.used
     row.base$fallback.used <- fit$fallback.used
@@ -1655,6 +1659,7 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
     Xw <- D * sqrt.w
     sv <- svd(Xw, nu = 0L, nv = 0L)$d
     tol <- max(dim(Xw)) * max(sv, 1) * .Machine$double.eps
+    tol.rule <- "max(dim(W_half_D)) * max(singular_value_1, 1) * .Machine$double.eps"
     positive <- sv[sv > tol]
     rank <- length(positive)
     p <- ncol(D)
@@ -1676,6 +1681,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
     }
     if (rank < p) {
         return(list(ok = FALSE, h = numeric(0), rank = rank,
+                    rank.tolerance = tol,
+                    rank.tolerance.rule = tol.rule,
                     condition.number = condition.number,
                     solver.used = solver.used,
                     fallback.used = fallback.used,
@@ -1698,12 +1705,16 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
     }, error = function(e) NULL)
     if (is.null(h) || length(h) != nrow(D) || any(!is.finite(h))) {
         return(list(ok = FALSE, h = numeric(0), rank = rank,
+                    rank.tolerance = tol,
+                    rank.tolerance.rule = tol.rule,
                     condition.number = condition.number,
                     solver.used = solver.used,
                     fallback.used = fallback.used,
                     drop.reason = "linear_solve_failed"))
     }
     list(ok = TRUE, h = h, rank = rank,
+         rank.tolerance = tol,
+         rank.tolerance.rule = tol.rule,
          condition.number = condition.number,
          solver.used = solver.used, fallback.used = fallback.used,
          drop.reason = NA_character_)

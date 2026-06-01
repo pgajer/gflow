@@ -15,6 +15,9 @@ test_that("lpl.tf.operator reproduces the tiny 1D divided-difference row", {
     expect_equal(as.numeric(op$A[1, ]), c(1, -3, 3, -1), tolerance = 1e-10)
     probes <- cbind(1, X[, 1], X[, 1]^2)
     expect_lt(max(abs(as.matrix(op$A %*% probes))), 1e-10)
+    expect_true(all(is.finite(op$row.table$rank.tolerance)))
+    expect_match(op$row.table$rank.tolerance.rule,
+                 "Machine\\$double\\.eps")
     expect_equal(op$diagnostics$operator.rank, 1L)
     expect_equal(op$diagnostics$operator.nullity, 3L)
 })
@@ -112,6 +115,9 @@ test_that("lpl.tf.operator drops rank-deficient requested-degree rows", {
     expect_equal(nrow(op$A), 0L)
     expect_true(all(op$row.table$status == "dropped"))
     expect_true(all(op$row.table$drop.reason == "rank_deficient_requested_degree"))
+    expect_true(all(is.finite(op$row.table$rank.tolerance)))
+    expect_match(op$row.table$rank.tolerance.rule[[1L]],
+                 "Machine\\$double\\.eps")
 })
 
 test_that("lpl.tf.operator enforces phase-1 input restrictions", {
