@@ -41,11 +41,20 @@
 #'   support.
 #' @param chart.dim Chart dimension. For \code{"coordinates"}, this must be
 #'   \code{NULL} or \code{ncol(X)}. For \code{"local.pca"}, \code{NULL}
-#'   defaults to \code{ncol(X)}.
+#'   defaults to \code{ncol(X)}.  The special value \code{"auto"} estimates a
+#'   single chart dimension from observed-coordinate local PCA spectra only,
+#'   without using responses, truth values, latent coordinates, or labels.
 #' @param support.metric Support-distance rule. \code{"coordinates"} uses
 #'   Euclidean coordinate distances; \code{"graph.geodesic"} uses shortest-path
 #'   distances in the supplied graph. \code{"auto"} uses graph geodesics when a
 #'   graph is supplied and coordinate distances otherwise.
+#' @param auto.chart.support.metric Support system used when
+#'   \code{chart.dim = "auto"}. \code{"coordinates"} uses Euclidean coordinate
+#'   neighborhoods, \code{"operator"} uses the resolved operator support metric,
+#'   and \code{"both"} computes both diagnostics side by side.
+#' @param auto.chart.selection.metric Which auto chart-dimension diagnostic to
+#'   use for the fitted operator when \code{auto.chart.support.metric = "both"}.
+#'   The default \code{"coordinates"} preserves historical behavior.
 #' @param exclude.self Logical. LPL-TF residual rows require \code{TRUE}.
 #' @param row.normalize Complete-row normalization rule applied after setting
 #'   target coefficient \code{+1} and predictor coefficients \code{-h_ij}.
@@ -92,6 +101,8 @@ lpl.tf.operator <- function(
     coordinate.method = c("coordinates", "local.pca"),
     chart.dim = NULL,
     support.metric = c("auto", "coordinates", "graph.geodesic"),
+    auto.chart.support.metric = c("coordinates", "operator", "both"),
+    auto.chart.selection.metric = c("coordinates", "operator"),
     exclude.self = TRUE,
     row.normalize = c("l2", "none", "l1"),
     local.solver = c("auto", "normal.equations", "qr", "svd"),
@@ -114,6 +125,8 @@ lpl.tf.operator <- function(
     kernel <- match.arg(kernel, c("epanechnikov", "triangular", "gaussian", "tricube"))
     coordinate.method <- match.arg(coordinate.method, c("coordinates", "local.pca"))
     support.metric <- match.arg(support.metric, c("auto", "coordinates", "graph.geodesic"))
+    auto.chart.support.metric <- match.arg(auto.chart.support.metric)
+    auto.chart.selection.metric <- match.arg(auto.chart.selection.metric)
     row.normalize <- match.arg(row.normalize, c("l2", "none", "l1"))
     local.solver <- match.arg(local.solver, c("auto", "normal.equations", "qr", "svd"))
     duplicate.action <- match.arg(duplicate.action, c("keep", "error"))
@@ -135,6 +148,8 @@ lpl.tf.operator <- function(
         coordinate.method = coordinate.method,
         chart.dim = chart.dim,
         support.metric = support.metric,
+        auto.chart.support.metric = auto.chart.support.metric,
+        auto.chart.selection.metric = auto.chart.selection.metric,
         exclude.self = exclude.self,
         row.normalize = row.normalize,
         local.solver = local.solver,
@@ -232,6 +247,11 @@ lpl.tf.operator <- function(
             kernel = args$kernel,
             coordinate.method = args$coordinate.method,
             chart.dim = args$chart.dim,
+            requested.chart.dim = args$requested.chart.dim,
+            auto.chart.dim = args$auto.chart.dim,
+            auto.chart.dim.diagnostics = args$auto.chart.dim.diagnostics,
+            auto.chart.support.metric = args$auto.chart.support.metric,
+            auto.chart.selection.metric = args$auto.chart.selection.metric,
             support.metric = args$support.metric,
             graph.stage = args$graph.stage,
             graph.summary = args$graph.summary,
@@ -1093,6 +1113,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         coordinate.method = get.setting("coordinate.method"),
         chart.dim = get.setting("chart.dim"),
         support.metric = get.setting("support.metric"),
+        auto.chart.support.metric = get.setting("auto.chart.support.metric"),
+        auto.chart.selection.metric = get.setting("auto.chart.selection.metric"),
         graph.stage = get.setting("graph.stage"),
         row.normalize = get.arg("row.normalize"),
         local.solver = get.arg("local.solver"),
@@ -1232,7 +1254,8 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
     X, adj.list, weight.list, graph, graph.stage, anchor.index,
     anchor.coordinates, degree, support.type, support.size, radius,
     min.support, support.buffer, kernel, coordinate.method, chart.dim,
-    support.metric, exclude.self, row.normalize, local.solver,
+    support.metric, auto.chart.support.metric, auto.chart.selection.metric,
+    exclude.self, row.normalize, local.solver,
     normal.equations.max.condition, duplicate.action, drop.rank.deficient,
     verbose) {
 
@@ -1280,7 +1303,62 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         support.buffer, "support.buffer", min = 0L
     )
     coordinate.method <- match.arg(coordinate.method, c("coordinates", "local.pca"))
-    if (is.null(chart.dim)) {
+    support.metric <- match.arg(support.metric, c("auto", "coordinates", "graph.geodesic"))
+    auto.chart.support.metric <- match.arg(
+        auto.chart.support.metric,
+        c("coordinates", "operator", "both")
+    )
+    auto.chart.selection.metric <- match.arg(
+        auto.chart.selection.metric,
+        c("coordinates", "operator")
+    )
+    if (identical(support.metric, "auto")) {
+        support.metric <- if (is.null(graph.info)) "coordinates" else "graph.geodesic"
+    }
+    graph.distance.matrix <- NULL
+    graph.summary <- list(constructor = "none", n.vertices = n,
+                          n.edges = NA_integer_)
+    if (identical(support.metric, "graph.geodesic")) {
+        if (is.null(graph.info)) {
+            stop("support.metric = 'graph.geodesic' requires 'graph' or both ",
+                 "'adj.list' and 'weight.list'.", call. = FALSE)
+        }
+        graph.distance.matrix <- .pttf.geometry.all.source.distances(
+            graph.info$adj.list,
+            graph.info$weight.list
+        )
+        if (any(!is.finite(graph.distance.matrix))) {
+            stop("Graph geodesic support requires a connected graph.",
+                 call. = FALSE)
+        }
+        graph.summary <- graph.info$summary
+    }
+    requested.chart.dim <- chart.dim
+    auto.chart.dim <- FALSE
+    auto.chart.dim.diagnostics <- NULL
+    if (identical(chart.dim, "auto")) {
+        if (!identical(coordinate.method, "local.pca")) {
+            stop("'chart.dim = \"auto\"' is only supported when ",
+                 "coordinate.method = 'local.pca'.", call. = FALSE)
+        }
+        auto.chart.dim <- TRUE
+        auto.chart <- .local.pca.auto.chart.dim.with.metric(
+            X = X,
+            support.size = support.size,
+            min.support = min.support,
+            degree = degree,
+            operator.distance.matrix = if (identical(support.metric, "graph.geodesic")) {
+                graph.distance.matrix
+            } else {
+                NULL
+            },
+            operator.support.metric = support.metric,
+            auto.chart.support.metric = auto.chart.support.metric,
+            auto.chart.selection.metric = auto.chart.selection.metric
+        )
+        chart.dim <- auto.chart$chart.dim
+        auto.chart.dim.diagnostics <- auto.chart
+    } else if (is.null(chart.dim)) {
         chart.dim <- ncol(X)
     } else {
         chart.dim <- .lpl.tf.scalar.integer(chart.dim, "chart.dim", min = 1L,
@@ -1322,28 +1400,6 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         radius <- as.double(radius)
     }
     kernel <- match.arg(kernel, c("epanechnikov", "triangular", "gaussian", "tricube"))
-    support.metric <- match.arg(support.metric, c("auto", "coordinates", "graph.geodesic"))
-    if (identical(support.metric, "auto")) {
-        support.metric <- if (is.null(graph.info)) "coordinates" else "graph.geodesic"
-    }
-    graph.distance.matrix <- NULL
-    graph.summary <- list(constructor = "none", n.vertices = n,
-                          n.edges = NA_integer_)
-    if (identical(support.metric, "graph.geodesic")) {
-        if (is.null(graph.info)) {
-            stop("support.metric = 'graph.geodesic' requires 'graph' or both ",
-                 "'adj.list' and 'weight.list'.", call. = FALSE)
-        }
-        graph.distance.matrix <- .pttf.geometry.all.source.distances(
-            graph.info$adj.list,
-            graph.info$weight.list
-        )
-        if (any(!is.finite(graph.distance.matrix))) {
-            stop("Graph geodesic support requires a connected graph.",
-                 call. = FALSE)
-        }
-        graph.summary <- graph.info$summary
-    }
     if (!isTRUE(exclude.self)) {
         stop("lpl.tf.operator() requires exclude.self = TRUE.",
              call. = FALSE)
@@ -1374,6 +1430,11 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
         kernel = kernel,
         coordinate.method = coordinate.method,
         chart.dim = chart.dim,
+        requested.chart.dim = requested.chart.dim,
+        auto.chart.dim = auto.chart.dim,
+        auto.chart.dim.diagnostics = auto.chart.dim.diagnostics,
+        auto.chart.support.metric = auto.chart.support.metric,
+        auto.chart.selection.metric = auto.chart.selection.metric,
         support.metric = support.metric,
         graph.stage = graph.stage,
         graph.distance.matrix = graph.distance.matrix,

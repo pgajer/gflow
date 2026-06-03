@@ -356,6 +356,61 @@ test_that("fit.malps supports local PCA chart coordinates", {
   expect_equal(fit$coordinate.method, "local.pca")
 })
 
+test_that("fit.malps auto-selects local PCA chart dimension from X only", {
+  t <- seq(-1, 1, length.out = 14L)
+  X <- cbind(t, t^2, 0.001 * sin(seq_along(t)))
+  y <- 1 + 2 * t
+
+  fit <- fit.malps(
+    X, y,
+    degree = 1L,
+    coordinate.method = "local.pca",
+    chart.dim = "auto",
+    support.type = "knn",
+    support.size = 8L,
+    support.buffer = 0L,
+    kernel = "gaussian"
+  )
+
+  expect_equal(fit$coordinate.method, "local.pca")
+  expect_true(fit$chart.dim >= 1L)
+  expect_true(fit$chart.dim < ncol(X))
+  expect_true(all(is.finite(fit$fitted.values)))
+})
+
+test_that("fit.malps can select auto chart dimension from operator supports", {
+  t <- seq(-1, 1, length.out = 14L)
+  X <- cbind(t, t^2)
+  y <- 1 + 2 * t
+  adj <- lapply(seq_along(t), function(i) {
+    as.integer(c(if (i > 1L) i - 1L else integer(),
+                 if (i < length(t)) i + 1L else integer()))
+  })
+  wt <- lapply(adj, function(x) rep(1, length(x)))
+
+  fit <- fit.malps(
+    X, y,
+    adj.list = adj,
+    weight.list = wt,
+    support.metric = "graph.geodesic",
+    degree = 1L,
+    coordinate.method = "local.pca",
+    chart.dim = "auto",
+    auto.chart.support.metric = "both",
+    auto.chart.selection.metric = "operator",
+    support.type = "knn",
+    support.size = 8L,
+    support.buffer = 0L,
+    kernel = "gaussian"
+  )
+
+  expect_equal(fit$auto.chart.support.metric, "both")
+  expect_equal(fit$auto.chart.selection.metric, "operator")
+  expect_equal(fit$auto.chart.dim.diagnostics$summary$support.metric,
+               "graph.geodesic")
+  expect_true(all(is.finite(fit$fitted.values)))
+})
+
 test_that("fit.malps auto solver handles rank-deficient local PCA charts", {
   t <- seq(-1, 1, length.out = 11L)
   X <- cbind(t, 2 * t, 0.25 * t)

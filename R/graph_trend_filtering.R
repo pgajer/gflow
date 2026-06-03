@@ -764,11 +764,18 @@ fit.graph.trend.filtering <- function(adj.list,
 
 .graph.trend.filtering.solver.penalty <- function(operator) {
     if (identical(operator$operator.family, "graph.laplacian.recursive") &&
-        (identical(operator$order, 1L) ||
-         nrow(operator$penalty$matrix) > ncol(operator$penalty$matrix))) {
+        identical(operator$order, 1L)) {
         return(list(
             D = as.matrix(operator$penalty$matrix),
             svd = TRUE,
+            representation = "dense"
+        ))
+    }
+    if (identical(operator$operator.family, "graph.laplacian.recursive") &&
+        nrow(operator$penalty$matrix) > ncol(operator$penalty$matrix)) {
+        return(list(
+            D = as.matrix(operator$penalty$matrix),
+            svd = FALSE,
             representation = "dense"
         ))
     }
