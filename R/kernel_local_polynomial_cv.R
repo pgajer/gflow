@@ -238,14 +238,16 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
                     function(kernel) .klp.kernel.weights(local$distances, kernel)
                 )
                 names(kernel.weights) <- unique(cand$kernel[support.rows])
+                design.cache <- .klp.local.design.cache(local$z, cand,
+                                                        support.rows)
                 for (rr in support.rows) {
-                    z <- local$z[, seq_len(cand$chart.dim[[rr]]), drop = FALSE]
+                    design.key <- .klp.design.cache.key(cand$degree[[rr]],
+                                                        cand$chart.dim[[rr]])
                     w <- kernel.weights[[cand$kernel[[rr]]]]
-                    pred[target, rr] <- .klp.fit.intercept(
-                        z = z,
+                    pred[target, rr] <- .klp.fit.intercept.design(
+                        design = design.cache[[design.key]],
                         y = local$y,
-                        weights = w,
-                        degree = cand$degree[[rr]]
+                        weights = w
                     )
                 }
             }
@@ -434,12 +436,16 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
 }
 
 .klp.fit.intercept <- function(z, y, weights, degree) {
+    design <- .malps.design.matrix(z, degree)
+    .klp.fit.intercept.design(design, y, weights)
+}
+
+.klp.fit.intercept.design <- function(design, y, weights) {
     ok <- is.finite(y) & is.finite(weights) & weights > 0
     if (!any(weights > 0)) {
         weights[] <- 1
         ok <- is.finite(y) & is.finite(weights) & weights > 0
     }
-    design <- .malps.design.matrix(z, degree)
     if (sum(ok) < ncol(design)) {
         return(stats::weighted.mean(y, weights, na.rm = TRUE))
     }
@@ -453,6 +459,25 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
     } else {
         fit$coefficients[[1L]]
     }
+}
+
+.klp.design.cache.key <- function(degree, chart.dim) {
+    paste(as.integer(degree), as.integer(chart.dim), sep = "_")
+}
+
+.klp.local.design.cache <- function(z, cand, rows) {
+    combos <- unique(cand[rows, c("degree", "chart.dim"), drop = FALSE])
+    out <- vector("list", nrow(combos))
+    for (ii in seq_len(nrow(combos))) {
+        dim <- combos$chart.dim[[ii]]
+        degree <- combos$degree[[ii]]
+        key <- .klp.design.cache.key(degree, dim)
+        out[[key]] <- .malps.design.matrix(
+            z[, seq_len(dim), drop = FALSE],
+            degree
+        )
+    }
+    out
 }
 
 .klp.local.coordinates <- function(X.support, center, coordinate.method,
