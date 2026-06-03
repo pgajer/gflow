@@ -112,3 +112,29 @@ test_that("cached kernel neighborhoods match direct neighborhoods", {
     expect_equal(cached$y, direct$y)
     expect_equal(cached$z, direct$z)
 })
+
+test_that("cached kernel designs match direct local polynomial designs", {
+    set.seed(88)
+    z <- matrix(stats::rnorm(10 * 4), nrow = 10)
+    y <- stats::rnorm(10)
+    weights <- stats::runif(10, min = 0.2, max = 1)
+    cand <- expand.grid(
+        support.size = 10L,
+        degree = 1:2,
+        kernel = c("gaussian", "tricube"),
+        KEEP.OUT.ATTRS = FALSE,
+        stringsAsFactors = FALSE
+    )
+    cand$chart.dim <- c(3L, 3L, 3L, 3L)
+
+    cache <- .klp.local.design.cache(z, cand, seq_len(nrow(cand)))
+    key <- .klp.design.cache.key(2L, 3L)
+    direct.design <- .malps.design.matrix(z[, seq_len(3L), drop = FALSE], 2L)
+
+    expect_equal(cache[[key]], direct.design)
+    expect_equal(
+        .klp.fit.intercept.design(cache[[key]], y, weights),
+        .klp.fit.intercept(z[, seq_len(3L), drop = FALSE], y, weights, 2L),
+        tolerance = 1e-12
+    )
+})
