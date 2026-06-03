@@ -238,16 +238,16 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
                     function(kernel) .klp.kernel.weights(local$distances, kernel)
                 )
                 names(kernel.weights) <- unique(cand$kernel[support.rows])
-                design.cache <- .klp.local.design.cache(local$z, cand,
-                                                        support.rows)
+                design.cache <- new.env(parent = emptyenv())
                 for (rr in support.rows) {
-                    design.key <- .klp.design.cache.key(cand$degree[[rr]],
-                                                        cand$chart.dim[[rr]])
                     w <- kernel.weights[[cand$kernel[[rr]]]]
-                    pred[target, rr] <- .klp.fit.intercept.design(
-                        design = design.cache[[design.key]],
+                    pred[target, rr] <- .klp.fit.intercept.lazy(
+                        z = local$z,
                         y = local$y,
-                        weights = w
+                        weights = w,
+                        degree = cand$degree[[rr]],
+                        chart.dim = cand$chart.dim[[rr]],
+                        design.cache = design.cache
                     )
                 }
             }
@@ -436,7 +436,28 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
 }
 
 .klp.fit.intercept <- function(z, y, weights, degree) {
-    design <- .malps.design.matrix(z, degree)
+    .klp.fit.intercept.lazy(
+        z = z,
+        y = y,
+        weights = weights,
+        degree = degree,
+        chart.dim = ncol(z),
+        design.cache = new.env(parent = emptyenv())
+    )
+}
+
+.klp.fit.intercept.lazy <- function(z, y, weights, degree, chart.dim,
+                                    design.cache) {
+    ok <- is.finite(y) & is.finite(weights) & weights > 0
+    if (!any(weights > 0)) {
+        weights[] <- 1
+        ok <- is.finite(y) & is.finite(weights) & weights > 0
+    }
+    n.design <- .klp.design.ncol(degree, chart.dim)
+    if (sum(ok) < n.design) {
+        return(stats::weighted.mean(y, weights, na.rm = TRUE))
+    }
+    design <- .klp.get.local.design(z, degree, chart.dim, design.cache)
     .klp.fit.intercept.design(design, y, weights)
 }
 
@@ -461,21 +482,38 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
     }
 }
 
+.klp.design.ncol <- function(degree, chart.dim) {
+    degree <- as.integer(degree)
+    chart.dim <- as.integer(chart.dim)
+    if (degree == 0L) return(1L)
+    if (degree == 1L) return(1L + chart.dim)
+    if (degree == 2L) return(1L + chart.dim + chart.dim * (chart.dim + 1L) / 2L)
+    stop("Unsupported local polynomial degree: ", degree, call. = FALSE)
+}
+
 .klp.design.cache.key <- function(degree, chart.dim) {
     paste(as.integer(degree), as.integer(chart.dim), sep = "_")
 }
 
+.klp.get.local.design <- function(z, degree, chart.dim, design.cache) {
+    key <- .klp.design.cache.key(degree, chart.dim)
+    if (!exists(key, envir = design.cache, inherits = FALSE)) {
+        design <- .malps.design.matrix(
+            z[, seq_len(chart.dim), drop = FALSE],
+            degree
+        )
+        assign(key, design, envir = design.cache)
+    }
+    get(key, envir = design.cache, inherits = FALSE)
+}
+
 .klp.local.design.cache <- function(z, cand, rows) {
     combos <- unique(cand[rows, c("degree", "chart.dim"), drop = FALSE])
-    out <- vector("list", nrow(combos))
+    out <- new.env(parent = emptyenv())
     for (ii in seq_len(nrow(combos))) {
         dim <- combos$chart.dim[[ii]]
         degree <- combos$degree[[ii]]
-        key <- .klp.design.cache.key(degree, dim)
-        out[[key]] <- .malps.design.matrix(
-            z[, seq_len(dim), drop = FALSE],
-            degree
-        )
+        .klp.get.local.design(z, degree, dim, out)
     }
     out
 }

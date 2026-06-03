@@ -138,3 +138,25 @@ test_that("cached kernel designs match direct local polynomial designs", {
         tolerance = 1e-12
     )
 })
+
+test_that("kernel design feasibility precheck skips impossible designs", {
+    set.seed(89)
+    z <- matrix(stats::rnorm(8 * 40), nrow = 8)
+    y <- stats::rnorm(8)
+    weights <- stats::runif(8, min = 0.2, max = 1)
+    cache <- new.env(parent = emptyenv())
+    key <- .klp.design.cache.key(2L, 40L)
+
+    fit <- .klp.fit.intercept.lazy(
+        z = z,
+        y = y,
+        weights = weights,
+        degree = 2L,
+        chart.dim = 40L,
+        design.cache = cache
+    )
+
+    expect_equal(.klp.design.ncol(2L, 40L), 861L)
+    expect_false(exists(key, envir = cache, inherits = FALSE))
+    expect_equal(fit, stats::weighted.mean(y, weights), tolerance = 1e-12)
+})
