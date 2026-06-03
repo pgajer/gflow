@@ -73,6 +73,57 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rcpp_kernel_local_polynomial_cv_coordinates
+NumericVector rcpp_kernel_local_polynomial_cv_coordinates(const NumericMatrix& X, const NumericVector& y, const IntegerVector& foldid, const IntegerVector& support_size, const IntegerVector& degree, const CharacterVector& kernel);
+RcppExport SEXP _gflow_rcpp_kernel_local_polynomial_cv_coordinates(SEXP XSEXP, SEXP ySEXP, SEXP foldidSEXP, SEXP support_sizeSEXP, SEXP degreeSEXP, SEXP kernelSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type y(ySEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type foldid(foldidSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type support_size(support_sizeSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type degree(degreeSEXP);
+    Rcpp::traits::input_parameter< const CharacterVector& >::type kernel(kernelSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_kernel_local_polynomial_cv_coordinates(X, y, foldid, support_size, degree, kernel));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rcpp_kernel_local_polynomial_predict_coordinates
+NumericVector rcpp_kernel_local_polynomial_predict_coordinates(const NumericMatrix& X_train, const NumericVector& y_train, const NumericMatrix& X_eval, const int support_size, const int degree, const std::string& kernel);
+RcppExport SEXP _gflow_rcpp_kernel_local_polynomial_predict_coordinates(SEXP X_trainSEXP, SEXP y_trainSEXP, SEXP X_evalSEXP, SEXP support_sizeSEXP, SEXP degreeSEXP, SEXP kernelSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type X_train(X_trainSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type y_train(y_trainSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type X_eval(X_evalSEXP);
+    Rcpp::traits::input_parameter< const int >::type support_size(support_sizeSEXP);
+    Rcpp::traits::input_parameter< const int >::type degree(degreeSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type kernel(kernelSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_kernel_local_polynomial_predict_coordinates(X_train, y_train, X_eval, support_size, degree, kernel));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rcpp_local_pca_chart
+List rcpp_local_pca_chart(const NumericMatrix& X_support, const NumericVector& center, const int chart_dim, const std::string& center_mode, const std::string& dim_rule, const double eigen_tolerance, Nullable<NumericVector> weights, const bool rebase_to_anchor, const bool orient_basis);
+RcppExport SEXP _gflow_rcpp_local_pca_chart(SEXP X_supportSEXP, SEXP centerSEXP, SEXP chart_dimSEXP, SEXP center_modeSEXP, SEXP dim_ruleSEXP, SEXP eigen_toleranceSEXP, SEXP weightsSEXP, SEXP rebase_to_anchorSEXP, SEXP orient_basisSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type X_support(X_supportSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type center(centerSEXP);
+    Rcpp::traits::input_parameter< const int >::type chart_dim(chart_dimSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type center_mode(center_modeSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type dim_rule(dim_ruleSEXP);
+    Rcpp::traits::input_parameter< const double >::type eigen_tolerance(eigen_toleranceSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const bool >::type rebase_to_anchor(rebase_to_anchorSEXP);
+    Rcpp::traits::input_parameter< const bool >::type orient_basis(orient_basisSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_local_pca_chart(X_support, center, chart_dim, center_mode, dim_rule, eigen_tolerance, weights, rebase_to_anchor, orient_basis));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rcpp_adaptive_mean_shift_gfa
 Rcpp::List rcpp_adaptive_mean_shift_gfa(const NumericMatrix& X, int k, int density_k, int n_steps, double initial_step_size, int ikernel, double dist_normalization_factor, bool average_direction_only, double momentum, double increase_factor, double decrease_factor);
 RcppExport SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP XSEXP, SEXP kSEXP, SEXP density_kSEXP, SEXP n_stepsSEXP, SEXP initial_step_sizeSEXP, SEXP ikernelSEXP, SEXP dist_normalization_factorSEXP, SEXP average_direction_onlySEXP, SEXP momentumSEXP, SEXP increase_factorSEXP, SEXP decrease_factorSEXP) {

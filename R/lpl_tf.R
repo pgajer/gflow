@@ -850,6 +850,11 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
     )
 }
 
+.lpl.tf.is.svd.backend.error <- function(e) {
+    msg <- conditionMessage(e)
+    grepl("dgesdd|svd|SVD|Lapack|LAPACK", msg)
+}
+
 .lpl.tf.cv <- function(y, weights, D, D.fallback = NULL, lambda.grid, fold.id,
                        loss, selection, solver.args, use.svd = FALSE) {
     n <- length(y)
@@ -1597,12 +1602,14 @@ predict.lpl_tf <- function(object, newdata = NULL, type = c("response"),
             singular.values = NA_real_
         ))
     }
-    sv <- svd(centered, nu = 0L, nv = chart.dim)
-    basis <- sv$v[, seq_len(chart.dim), drop = FALSE]
-    list(
-        coordinates = centered %*% basis,
-        basis = basis,
-        singular.values = sv$d
+    rcpp_local_pca_chart(
+        X_support = X[candidate, , drop = FALSE],
+        center = X[target, , drop = TRUE],
+        chart_dim = as.integer(chart.dim),
+        center_mode = "anchor",
+        dim_rule = "fixed",
+        rebase_to_anchor = TRUE,
+        orient_basis = FALSE
     )
 }
 

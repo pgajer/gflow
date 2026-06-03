@@ -37,6 +37,10 @@
 #'   \code{"operator"} is equivalent to \code{"coordinates"}.
 #' @param auto.chart.selection.metric Which auto chart-dimension diagnostic to
 #'   select when both diagnostics are requested.
+#' @param backend Computation backend. \code{"auto"} uses the C++ backend for
+#'   \code{coordinate.method = "coordinates"} and the R reference backend for
+#'   \code{coordinate.method = "local.pca"}. \code{"R"} always uses the
+#'   reference implementation. \code{"cpp"} requires ambient coordinates.
 #'
 #' @return A list of class \code{"kernel.local.polynomial.cv"} with fitted
 #'   values, selected parameters, and a candidate CV table.
@@ -52,7 +56,8 @@ kernel.local.polynomial.cv <- function(
     coordinate.method = c("coordinates", "local.pca"),
     chart.dim = NULL,
     auto.chart.support.metric = c("coordinates", "operator", "both"),
-    auto.chart.selection.metric = c("coordinates", "operator")) {
+    auto.chart.selection.metric = c("coordinates", "operator"),
+    backend = c("auto", "R", "cpp")) {
 
     X <- as.matrix(X)
     y <- as.numeric(y)
@@ -69,8 +74,10 @@ kernel.local.polynomial.cv <- function(
              call. = FALSE)
     }
     coordinate.method <- match.arg(coordinate.method)
+    backend <- match.arg(backend)
     auto.chart.support.metric <- match.arg(auto.chart.support.metric)
     auto.chart.selection.metric <- match.arg(auto.chart.selection.metric)
+    backend.used <- .klp.resolve.backend(coordinate.method, backend)
     support.grid <- .klp.clean.support.grid(support.grid, nrow(X))
     degree.grid <- .klp.clean.degree.grid(degree.grid)
     kernel.grid <- .klp.clean.kernel.grid(kernel.grid)
@@ -91,7 +98,8 @@ kernel.local.polynomial.cv <- function(
         coordinate.method = coordinate.method,
         chart.dim = chart.dim,
         auto.chart.support.metric = auto.chart.support.metric,
-        auto.chart.selection.metric = auto.chart.selection.metric
+        auto.chart.selection.metric = auto.chart.selection.metric,
+        backend = backend.used
     )
     cv.table <- cv.result$cv.table
     best.idx <- order(
@@ -118,7 +126,8 @@ kernel.local.polynomial.cv <- function(
         degree = selected$degree[[1L]],
         kernel = selected$kernel[[1L]],
         coordinate.method = coordinate.method,
-        chart.dim = selected.dim$chart.dim
+        chart.dim = selected.dim$chart.dim,
+        backend = backend.used
     )
     out <- list(
         method.id = "kernel_local_polynomial_cv",
@@ -137,6 +146,8 @@ kernel.local.polynomial.cv <- function(
         auto.chart.dim.diagnostics = selected.dim$diagnostics,
         auto.chart.support.metric = auto.chart.support.metric,
         auto.chart.selection.metric = auto.chart.selection.metric,
+        backend = backend,
+        backend.used = backend.used,
         call = match.call()
     )
     class(out) <- c("kernel.local.polynomial.cv", "list")
@@ -159,7 +170,8 @@ predict.kernel.local.polynomial.cv <- function(object, newdata = NULL, ...) {
         degree = object$selected$degree[[1L]],
         kernel = object$selected$kernel[[1L]],
         coordinate.method = object$coordinate.method,
-        chart.dim = object$chart.dim
+        chart.dim = object$chart.dim,
+        backend = if (is.null(object$backend.used)) "R" else object$backend.used
     )
 }
 
@@ -168,6 +180,7 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
     cat("Kernel local polynomial CV fit\n")
     cat("  observations:", nrow(x$X), "\n")
     cat("  coordinate method:", x$coordinate.method, "\n")
+    cat("  backend:", if (is.null(x$backend.used)) "R" else x$backend.used, "\n")
     cat("  selected support.size:", x$selected$support.size[[1L]], "\n")
     cat("  selected degree:", x$selected$degree[[1L]], "\n")
     cat("  selected kernel:", x$selected$kernel[[1L]], "\n")
@@ -182,8 +195,22 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
 
 .klp.cv.table <- function(X, y, foldid, cand, coordinate.method, chart.dim,
                           auto.chart.support.metric,
-                          auto.chart.selection.metric) {
+                          auto.chart.selection.metric,
+                          backend = "R") {
     cand$chart.dim <- NA_integer_
+    if (identical(coordinate.method, "coordinates") &&
+        identical(backend, "cpp")) {
+        cand$chart.dim <- ncol(X)
+        cand$cv.rmse.observed <- rcpp_kernel_local_polynomial_cv_coordinates(
+            X = X,
+            y = y,
+            foldid = foldid,
+            support_size = cand$support.size,
+            degree = cand$degree,
+            kernel = cand$kernel
+        )
+        return(list(cv.table = cand, predictions = NULL))
+    }
     dim.lookup <- list()
     combos <- unique(cand[, c("support.size", "degree"), drop = FALSE])
     for (ii in seq_len(nrow(combos))) {
@@ -310,6 +337,18 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
     sample(rep(seq_len(cv.folds), length.out = n))
 }
 
+.klp.resolve.backend <- function(coordinate.method, backend) {
+    if (identical(backend, "auto")) {
+        return(if (identical(coordinate.method, "coordinates")) "cpp" else "R")
+    }
+    if (identical(backend, "cpp") &&
+        !identical(coordinate.method, "coordinates")) {
+        stop("'backend = \"cpp\"' currently supports only ",
+             "coordinate.method = 'coordinates'.", call. = FALSE)
+    }
+    backend
+}
+
 .klp.resolve.chart.dim <- function(X, support.size, degree, coordinate.method,
                                    chart.dim, auto.chart.support.metric,
                                    auto.chart.selection.metric) {
@@ -347,11 +386,23 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
 
 .klp.predict.local.polynomial <- function(X.train, y.train, X.eval,
                                           support.size, degree, kernel,
-                                          coordinate.method, chart.dim) {
+                                          coordinate.method, chart.dim,
+                                          backend = "R") {
     X.train <- as.matrix(X.train)
     X.eval <- as.matrix(X.eval)
     y.train <- as.numeric(y.train)
     support.size <- min(as.integer(support.size), nrow(X.train))
+    if (identical(coordinate.method, "coordinates") &&
+        identical(backend, "cpp")) {
+        return(rcpp_kernel_local_polynomial_predict_coordinates(
+            X_train = X.train,
+            y_train = y.train,
+            X_eval = X.eval,
+            support_size = support.size,
+            degree = as.integer(degree),
+            kernel = kernel
+        ))
+    }
     out <- rep(NA_real_, nrow(X.eval))
     for (i in seq_len(nrow(X.eval))) {
         center <- X.eval[i, , drop = TRUE]
@@ -522,9 +573,16 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
                                    chart.dim) {
     centered <- sweep(X.support, 2L, center, "-")
     if (identical(coordinate.method, "coordinates")) return(centered)
-    sv <- svd(centered, nu = 0L, nv = chart.dim)
-    basis <- sv$v[, seq_len(chart.dim), drop = FALSE]
-    centered %*% basis
+    chart <- rcpp_local_pca_chart(
+        X_support = X.support,
+        center = center,
+        chart_dim = as.integer(chart.dim),
+        center_mode = "anchor",
+        dim_rule = "fixed",
+        rebase_to_anchor = TRUE,
+        orient_basis = FALSE
+    )
+    chart$coordinates
 }
 
 .klp.kernel.weights <- function(distances, kernel) {
