@@ -1,4 +1,5 @@
 #include "ssrhe_hessian_energy_r.h"
+#include "local_pca_charts.hpp"
 
 #include <Rcpp.h>
 #include <Eigen/Dense>
@@ -604,45 +605,24 @@ BEGIN_RCPP
         for (int h = 0; h < ki; ++h) {
             local.row(h) = X.row(ids[h]);
         }
-        Eigen::RowVectorXd local_mean = local.colwise().mean();
-        Eigen::MatrixXd centered = local.rowwise() - local_mean;
         native_timing.local_matrix_setup += elapsed_seconds(phase_start, steady_clock::now());
 
         phase_start = steady_clock::now();
-        Eigen::JacobiSVD<Eigen::MatrixXd> pca(
-            centered, Eigen::ComputeThinU | Eigen::ComputeThinV
+        gflow::local_pca_chart_result_t chart = gflow::compute_local_pca_chart(
+            local,
+            X.row(center),
+            requested_tangent_dim,
+            tangent_dim_rule,
+            eigen_tolerance,
+            "mean",
+            nullptr,
+            true,
+            false
         );
-        const Eigen::VectorXd sing = pca.singularValues();
-        const int max_dim = std::min(static_cast<int>(sing.size()), ambient_dim);
-
-        double total_var = 0.0;
-        for (int a = 0; a < sing.size(); ++a) {
-            total_var += sing(a) * sing(a);
-        }
-
-        int m = requested_tangent_dim;
-        if (tangent_dim_rule == "eigen.cumulative") {
-            if (requested_tangent_dim > 0) {
-                m = std::min(requested_tangent_dim, max_dim);
-            } else {
-                m = 1;
-                double cum = 0.0;
-                for (int a = 0; a < max_dim; ++a) {
-                    cum += sing(a) * sing(a);
-                    if (total_var <= 0.0 || cum / total_var >= eigen_tolerance) {
-                        m = a + 1;
-                        break;
-                    }
-                }
-            }
-        }
-        if (m < 1 || m > max_dim) {
-            Rcpp::stop("The selected tangent dimension must be between 1 and min(k, ncol(X)).");
-        }
-
-        Eigen::MatrixXd coords = centered * pca.matrixV().leftCols(m);
-        const Eigen::RowVectorXd base_coord = coords.row(base_local);
-        coords.rowwise() -= base_coord;
+        const Eigen::VectorXd sing = chart.singular_values;
+        const double total_var = chart.total_variance;
+        const int m = chart.selected_dim;
+        Eigen::MatrixXd coords = chart.coordinates;
         native_timing.local_pca += elapsed_seconds(phase_start, steady_clock::now());
 
         phase_start = steady_clock::now();
@@ -754,10 +734,6 @@ BEGIN_RCPP
         }
 
         phase_start = steady_clock::now();
-        double selected_var = 0.0;
-        for (int a = 0; a < m && a < sing.size(); ++a) {
-            selected_var += sing(a) * sing(a);
-        }
         diag_center.push_back(center + 1);
         diag_k.push_back(ki);
         diag_tangent_dim.push_back(m);
@@ -765,7 +741,7 @@ BEGIN_RCPP
         diag_design_rank.push_back(pinv_result.rank);
         diag_condition.push_back(pinv_result.condition);
         diag_local_variance_sum.push_back(total_var);
-        diag_local_variance_ratio.push_back(total_var > 0.0 ? selected_var / total_var : 1.0);
+        diag_local_variance_ratio.push_back(chart.selected_variance_ratio);
         diag_local_solver.push_back(pinv_result.solver_used);
         diag_solver_fallback.push_back(pinv_result.fallback ? 1 : 0);
         diag_fallback_reason.push_back(pinv_result.fallback_reason);

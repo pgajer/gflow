@@ -160,3 +160,97 @@ test_that("kernel design feasibility precheck skips impossible designs", {
     expect_false(exists(key, envir = cache, inherits = FALSE))
     expect_equal(fit, stats::weighted.mean(y, weights), tolerance = 1e-12)
 })
+
+test_that("kernel local polynomial C++ backend matches R reference backend", {
+    set.seed(90)
+    X <- matrix(stats::runif(30 * 3), nrow = 30)
+    y <- 1 + X[, 1] - 0.5 * X[, 2]^2 + 0.25 * X[, 1] * X[, 3]
+    foldid <- rep(1:5, length.out = length(y))
+
+    fit.r <- kernel.local.polynomial.cv(
+        X, y,
+        foldid = foldid,
+        support.grid = c(9L, 12L),
+        degree.grid = 0:2,
+        kernel.grid = c("gaussian", "tricube", "epanechnikov"),
+        coordinate.method = "coordinates",
+        backend = "R"
+    )
+    fit.cpp <- kernel.local.polynomial.cv(
+        X, y,
+        foldid = foldid,
+        support.grid = c(9L, 12L),
+        degree.grid = 0:2,
+        kernel.grid = c("gaussian", "tricube", "epanechnikov"),
+        coordinate.method = "coordinates",
+        backend = "cpp"
+    )
+
+    expect_equal(fit.cpp$backend.used, "cpp")
+    expect_equal(fit.cpp$cv.table$cv.rmse.observed,
+                 fit.r$cv.table$cv.rmse.observed,
+                 tolerance = 1e-8)
+    expect_equal(fit.cpp$selected[, c("support.size", "degree", "kernel")],
+                 fit.r$selected[, c("support.size", "degree", "kernel")])
+    expect_equal(as.numeric(fit.cpp$fitted.values),
+                 as.numeric(fit.r$fitted.values),
+                 tolerance = 1e-8)
+    expect_equal(as.numeric(predict(fit.cpp)),
+                 as.numeric(fit.cpp$fitted.values),
+                 tolerance = 1e-12)
+})
+
+test_that("kernel local polynomial auto backend uses C++ for ambient coordinates", {
+    set.seed(91)
+    X <- matrix(stats::rnorm(28 * 50), nrow = 28)
+    y <- sin(X[, 1]) + stats::rnorm(28, sd = 0.01)
+    foldid <- rep(1:4, length.out = length(y))
+
+    fit <- kernel.local.polynomial.cv(
+        X, y,
+        foldid = foldid,
+        support.grid = 10L,
+        degree.grid = 2L,
+        kernel.grid = "gaussian",
+        coordinate.method = "coordinates"
+    )
+
+    expect_equal(fit$backend, "auto")
+    expect_equal(fit$backend.used, "cpp")
+    expect_true(all(is.finite(fit$fitted.values)))
+    expect_true(all(is.finite(fit$cv.table$cv.rmse.observed)))
+})
+
+test_that("kernel local polynomial auto backend keeps local PCA on R backend", {
+    set.seed(92)
+    t <- seq(-1, 1, length.out = 24)
+    X <- cbind(t, t^2, 0.01 * stats::rnorm(length(t)))
+    y <- cos(t)
+    foldid <- rep(1:4, length.out = length(y))
+
+    fit <- kernel.local.polynomial.cv(
+        X, y,
+        foldid = foldid,
+        support.grid = 8L,
+        degree.grid = 1L,
+        kernel.grid = "tricube",
+        coordinate.method = "local.pca",
+        chart.dim = "auto"
+    )
+
+    expect_equal(fit$backend, "auto")
+    expect_equal(fit$backend.used, "R")
+    expect_error(
+        kernel.local.polynomial.cv(
+            X, y,
+            foldid = foldid,
+            support.grid = 8L,
+            degree.grid = 1L,
+            kernel.grid = "tricube",
+            coordinate.method = "local.pca",
+            chart.dim = "auto",
+            backend = "cpp"
+        ),
+        "currently supports only"
+    )
+})

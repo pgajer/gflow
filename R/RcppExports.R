@@ -17,6 +17,33 @@ Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALS
     .Call(`_gflow_Rcpp_graph_kernel_smoother`, adj, w, y, bandwidth, with_details)
 }
 
+#' Kernel local polynomial CV RMSE for ambient coordinates
+#'
+#' Internal C++ backend for `kernel.local.polynomial.cv()`.
+#'
+#' @keywords internal
+rcpp_kernel_local_polynomial_cv_coordinates <- function(X, y, foldid, support_size, degree, kernel) {
+    .Call(`_gflow_rcpp_kernel_local_polynomial_cv_coordinates`, X, y, foldid, support_size, degree, kernel)
+}
+
+#' Kernel local polynomial predictions for ambient coordinates
+#'
+#' Internal C++ backend for `kernel.local.polynomial.cv()`.
+#'
+#' @keywords internal
+rcpp_kernel_local_polynomial_predict_coordinates <- function(X_train, y_train, X_eval, support_size, degree, kernel) {
+    .Call(`_gflow_rcpp_kernel_local_polynomial_predict_coordinates`, X_train, y_train, X_eval, support_size, degree, kernel)
+}
+
+#' Local PCA chart
+#'
+#' Internal C++ backend for shared local-PCA chart construction.
+#'
+#' @keywords internal
+rcpp_local_pca_chart <- function(X_support, center, chart_dim, center_mode = "anchor", dim_rule = "fixed", eigen_tolerance = 0.9, weights = NULL, rebase_to_anchor = TRUE, orient_basis = FALSE) {
+    .Call(`_gflow_rcpp_local_pca_chart`, X_support, center, chart_dim, center_mode, dim_rule, eigen_tolerance, weights, rebase_to_anchor, orient_basis)
+}
+
 #' Fully Adaptive Mean Shift with Gradient Field Averaging (C++ engine)
 #'
 #' Low-level Rcpp wrapper. Prefer calling the R wrapper
