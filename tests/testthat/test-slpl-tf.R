@@ -33,6 +33,64 @@ test_that("slpl.tf.operator builds inclusive synchronization rows", {
     expect_true(op$settings$support.metric %in% c("coordinates", "graph.geodesic"))
 })
 
+test_that("slpl.tf.operator carries observed-data auto local PCA chart dimension", {
+    t <- seq(-1, 1, length.out = 16)
+    X <- cbind(t, t^2, 0.001 * cos(seq_along(t)))
+    op <- slpl.tf.operator(
+        X,
+        degree = 1L,
+        support.type = "knn",
+        support.size = 8L,
+        support.buffer = 0L,
+        coordinate.method = "local.pca",
+        chart.dim = "auto",
+        kernel = "gaussian",
+        row.normalize = "l2",
+        local.solver = "svd"
+    )
+    expect_s3_class(op, "slpl_tf_operator")
+    expect_true(isTRUE(op$settings$auto.chart.dim))
+    expect_identical(op$settings$requested.chart.dim, "auto")
+    expect_equal(op$settings$chart.dim, op$lpl.operator$settings$chart.dim)
+    expect_true(op$settings$chart.dim >= 1L)
+    expect_true(op$settings$chart.dim < ncol(X))
+    expect_gt(nrow(op$C_sync), 0L)
+})
+
+test_that("slpl.tf.operator can select auto chart dimension from operator supports", {
+    t <- seq(-1, 1, length.out = 16)
+    X <- cbind(t, t^2)
+    adj <- lapply(seq_along(t), function(i) {
+        as.integer(c(if (i > 1L) i - 1L else integer(),
+                     if (i < length(t)) i + 1L else integer()))
+    })
+    wt <- lapply(adj, function(x) rep(1, length(x)))
+
+    op <- slpl.tf.operator(
+        X,
+        adj.list = adj,
+        weight.list = wt,
+        support.metric = "graph.geodesic",
+        degree = 1L,
+        support.type = "knn",
+        support.size = 8L,
+        support.buffer = 0L,
+        coordinate.method = "local.pca",
+        chart.dim = "auto",
+        auto.chart.support.metric = "both",
+        auto.chart.selection.metric = "operator",
+        kernel = "gaussian"
+    )
+
+    expect_equal(op$settings$auto.chart.support.metric, "both")
+    expect_equal(op$settings$auto.chart.selection.metric, "operator")
+    expect_equal(
+        op$settings$auto.chart.dim.diagnostics$summary$support.metric,
+        "graph.geodesic"
+    )
+    expect_equal(op$settings$chart.dim, op$lpl.operator$settings$chart.dim)
+})
+
 test_that("slpl.tf.operator reuses LPL inclusive supports for adaptive radius", {
     x <- seq(-1, 1, length.out = 9)
     X <- matrix(x, ncol = 1)

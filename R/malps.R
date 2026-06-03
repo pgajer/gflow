@@ -101,7 +101,9 @@
 #'   anchor.  \code{"local.pca"} uses a deterministic local PCA chart estimated
 #'   from the anchor support.
 #' @param chart.dim Local chart dimension for \code{coordinate.method =
-#'   "local.pca"}.  If \code{NULL}, defaults to \code{ncol(X)}.  For
+#'   "local.pca"}.  If \code{NULL}, defaults to \code{ncol(X)}.  The special
+#'   value \code{"auto"} estimates a single observed-data local PCA dimension
+#'   without using responses, truth values, latent coordinates, or labels.  For
 #'   \code{coordinate.method = "coordinates"}, \code{chart.dim} must be
 #'   \code{NULL}.
 #' @param support.metric Distance system used for support construction.
@@ -110,6 +112,13 @@
 #'   \code{graph} or \code{adj.list}/\code{weight.list}.  \code{"auto"} uses
 #'   graph geodesic distances when graph input is supplied and coordinate
 #'   distances otherwise.
+#' @param auto.chart.support.metric Support system used when
+#'   \code{chart.dim = "auto"}. \code{"coordinates"} uses Euclidean coordinate
+#'   neighborhoods, \code{"operator"} uses the resolved MALPS support metric,
+#'   and \code{"both"} computes both diagnostics side by side.
+#' @param auto.chart.selection.metric Which auto chart-dimension diagnostic to
+#'   use for the fitted MALPS model when both diagnostics are available. The
+#'   default \code{"coordinates"} preserves historical behavior.
 #' @param support.selection \code{"fixed"} for a single support profile,
 #'   \code{"cv"} to tune support parameters by cross-validation, or
 #'   \code{"gcv"} to tune support parameters by exact dense generalized
@@ -175,6 +184,8 @@ fit.malps <- function(
     coordinate.method = c("coordinates", "local.pca"),
     chart.dim = NULL,
     support.metric = c("auto", "coordinates", "graph.geodesic"),
+    auto.chart.support.metric = c("coordinates", "operator", "both"),
+    auto.chart.selection.metric = c("coordinates", "operator"),
     support.selection = c("fixed", "cv", "gcv"),
     foldid = NULL,
     cv.folds = 5L,
@@ -206,6 +217,8 @@ fit.malps <- function(
     cv.loss <- match.arg(cv.loss)
     duplicate.action <- match.arg(duplicate.action)
     support.metric <- match.arg(support.metric)
+    auto.chart.support.metric <- match.arg(auto.chart.support.metric)
+    auto.chart.selection.metric <- match.arg(auto.chart.selection.metric)
     graph.input.supplied <- !is.null(graph) || !is.null(adj.list) ||
         !is.null(weight.list)
     support.metric <- .malps.resolve.support.metric(
@@ -234,6 +247,48 @@ fit.malps <- function(
         ), call. = FALSE)
     }
     coordinate.method <- match.arg(coordinate.method)
+    auto.chart.dim.diagnostics <- NULL
+    if (identical(chart.dim, "auto")) {
+        if (!identical(coordinate.method, "local.pca")) {
+            stop("'chart.dim = \"auto\"' is only supported when ",
+                 "coordinate.method = 'local.pca'.", call. = FALSE)
+        }
+        auto.support.size <- support.size
+        if (is.null(auto.support.size) && !is.null(support.grid)) {
+            auto.support.size <- min(as.integer(support.grid), na.rm = TRUE)
+        }
+        auto.min.support <- min.support
+        if (is.null(auto.min.support) && !is.null(min.support.grid)) {
+            auto.min.support <- min(as.integer(min.support.grid), na.rm = TRUE)
+        }
+        auto.degree <- max(c(degree, degree.grid %||% degree), na.rm = TRUE)
+        auto.distance.matrix <- NULL
+        if (identical(support.metric, "graph.geodesic")) {
+            auto.distance.matrix <- shortest.path(
+                graph.info$adj.list,
+                graph.info$weight.list,
+                seq_along(graph.info$adj.list)
+            )
+            if (!is.matrix(auto.distance.matrix) ||
+                any(dim(auto.distance.matrix) != c(n, n)) ||
+                any(!is.finite(auto.distance.matrix))) {
+                stop("Graph-geodesic auto chart dimension requires a connected graph.",
+                     call. = FALSE)
+            }
+        }
+        auto.chart <- .local.pca.auto.chart.dim.with.metric(
+            X = X,
+            support.size = auto.support.size,
+            min.support = auto.min.support,
+            degree = auto.degree,
+            operator.distance.matrix = auto.distance.matrix,
+            operator.support.metric = support.metric,
+            auto.chart.support.metric = auto.chart.support.metric,
+            auto.chart.selection.metric = auto.chart.selection.metric
+        )
+        chart.dim <- auto.chart$chart.dim
+        auto.chart.dim.diagnostics <- auto.chart
+    }
     chart.dim <- .malps.validate.chart.dim(chart.dim, m, coordinate.method)
     support.selection <- match.arg(support.selection)
     local.solver <- match.arg(local.solver)
@@ -412,6 +467,9 @@ fit.malps <- function(
         selection = selection,
         call = match.call()
     )
+    out$auto.chart.dim.diagnostics <- auto.chart.dim.diagnostics
+    out$auto.chart.support.metric <- auto.chart.support.metric
+    out$auto.chart.selection.metric <- auto.chart.selection.metric
     out
 }
 

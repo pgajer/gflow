@@ -457,7 +457,10 @@ test_that("package-local SSRHE-like graph trend-filtering cases return finite fi
     expect_s3_class(fit, "graph.trend.filtering.fit")
     expect_true(all(is.finite(fit$fitted.values)))
     expect_true(is.finite(fit$lambda))
-    expect_true(fit$path$svd)
+    expect_identical(
+      fit$path$svd,
+      identical(case$order, 1L)
+    )
     expect_equal(length(fit$fitted.values), length(case$y))
   }
 })

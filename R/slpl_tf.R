@@ -34,6 +34,8 @@ slpl.tf.operator <- function(
     coordinate.method = c("coordinates", "local.pca"),
     chart.dim = NULL,
     support.metric = c("auto", "coordinates", "graph.geodesic"),
+    auto.chart.support.metric = c("coordinates", "operator", "both"),
+    auto.chart.selection.metric = c("coordinates", "operator"),
     row.normalize = c("l2", "none", "l1"),
     local.solver = c("auto", "normal.equations", "qr", "svd"),
     normal.equations.max.condition = 1e8,
@@ -48,6 +50,8 @@ slpl.tf.operator <- function(
     kernel <- match.arg(kernel, c("epanechnikov", "triangular", "gaussian", "tricube"))
     coordinate.method <- match.arg(coordinate.method, c("coordinates", "local.pca"))
     support.metric <- match.arg(support.metric, c("auto", "coordinates", "graph.geodesic"))
+    auto.chart.support.metric <- match.arg(auto.chart.support.metric)
+    auto.chart.selection.metric <- match.arg(auto.chart.selection.metric)
     row.normalize <- match.arg(row.normalize, c("l2", "none", "l1"))
     local.solver <- match.arg(local.solver, c("auto", "normal.equations", "qr", "svd"))
     duplicate.action <- match.arg(duplicate.action, c("keep", "error"))
@@ -79,6 +83,8 @@ slpl.tf.operator <- function(
         coordinate.method = coordinate.method,
         chart.dim = chart.dim,
         support.metric = support.metric,
+        auto.chart.support.metric = auto.chart.support.metric,
+        auto.chart.selection.metric = auto.chart.selection.metric,
         exclude.self = TRUE,
         row.normalize = row.normalize,
         local.solver = local.solver,
@@ -106,6 +112,8 @@ slpl.tf.operator <- function(
         coordinate.method = coordinate.method,
         chart.dim = chart.dim,
         support.metric = support.metric,
+        auto.chart.support.metric = auto.chart.support.metric,
+        auto.chart.selection.metric = auto.chart.selection.metric,
         exclude.self = TRUE,
         row.normalize = row.normalize,
         local.solver = local.solver,
@@ -1339,6 +1347,8 @@ predict.slpl_tf <- function(object, newdata = NULL, type = c("response"),
         coordinate.method = get.setting("coordinate.method"),
         chart.dim = get.setting("chart.dim"),
         support.metric = get.setting("support.metric"),
+        auto.chart.support.metric = get.setting("auto.chart.support.metric"),
+        auto.chart.selection.metric = get.setting("auto.chart.selection.metric"),
         n.lpl.rows = if (is.null(operator)) NA_integer_ else nrow(operator$A_LPL),
         n.sync.rows = if (is.null(operator)) NA_integer_ else nrow(operator$C_sync),
         stringsAsFactors = FALSE

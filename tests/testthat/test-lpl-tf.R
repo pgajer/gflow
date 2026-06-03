@@ -258,6 +258,79 @@ test_that("lpl.tf.operator supports deterministic local PCA charts", {
     expect_true(all(op1$row.table$status == "ok"))
 })
 
+test_that("lpl.tf.operator auto-selects local PCA chart dimension from X only", {
+    t <- seq(-1, 1, length.out = 18)
+    X <- cbind(t, t^2, 0.001 * sin(seq_along(t)))
+    op <- lpl.tf.operator(
+        X,
+        degree = 1L,
+        support.type = "knn",
+        support.size = 8L,
+        support.buffer = 0L,
+        coordinate.method = "local.pca",
+        chart.dim = "auto",
+        kernel = "gaussian"
+    )
+    expect_equal(op$settings$coordinate.method, "local.pca")
+    expect_true(isTRUE(op$settings$auto.chart.dim))
+    expect_identical(op$settings$requested.chart.dim, "auto")
+    expect_true(op$settings$chart.dim >= 1L)
+    expect_true(op$settings$chart.dim < ncol(X))
+    expect_equal(as.integer(unique(op$row.table$design.columns)),
+                 choose(op$settings$chart.dim + 1L, 1L))
+})
+
+test_that("lpl.tf.operator can select auto chart dimension from operator supports", {
+    t <- seq(-1, 1, length.out = 18)
+    X <- cbind(t, t^2)
+    adj <- lapply(seq_along(t), function(i) {
+        as.integer(c(if (i > 1L) i - 1L else integer(),
+                     if (i < length(t)) i + 1L else integer()))
+    })
+    wt <- lapply(adj, function(x) rep(1, length(x)))
+
+    op <- lpl.tf.operator(
+        X,
+        adj.list = adj,
+        weight.list = wt,
+        support.metric = "graph.geodesic",
+        degree = 1L,
+        support.type = "knn",
+        support.size = 8L,
+        support.buffer = 0L,
+        coordinate.method = "local.pca",
+        chart.dim = "auto",
+        auto.chart.support.metric = "both",
+        auto.chart.selection.metric = "operator",
+        kernel = "gaussian"
+    )
+
+    expect_equal(op$settings$auto.chart.support.metric, "both")
+    expect_equal(op$settings$auto.chart.selection.metric, "operator")
+    expect_equal(
+        op$settings$auto.chart.dim.diagnostics$summary$support.metric,
+        "graph.geodesic"
+    )
+    expect_false(is.null(
+        op$settings$auto.chart.dim.diagnostics$all.diagnostics$coordinates
+    ))
+})
+
+test_that("lpl.tf.operator rejects auto chart dimension outside local PCA", {
+    X <- matrix(seq_len(12), ncol = 2)
+    expect_error(
+        lpl.tf.operator(
+            X,
+            degree = 1L,
+            support.type = "knn",
+            support.size = 5L,
+            coordinate.method = "coordinates",
+            chart.dim = "auto"
+        ),
+        "coordinate.method = 'local.pca'"
+    )
+})
+
 test_that("lpl.tf.operator knn keeps target in duplicate-coordinate support", {
     X <- matrix(c(0, 0, 0, 0, 0, 1, 2, 3), ncol = 1)
     op <- lpl.tf.operator(
