@@ -77,3 +77,38 @@ test_that("kernel.local.polynomial.cv handles underdetermined ambient designs", 
     expect_true(all(is.finite(fit$fitted.values)))
     expect_true(all(is.finite(fit$cv.table$cv.rmse.observed)))
 })
+
+test_that("cached kernel neighborhoods match direct neighborhoods", {
+    set.seed(87)
+    X <- matrix(stats::rnorm(16 * 4), nrow = 16)
+    y <- stats::rnorm(16)
+    center <- X[3, ] + 0.1
+
+    direct <- .klp.local.neighborhood(
+        X.train = X,
+        y.train = y,
+        center = center,
+        support.size = 9L,
+        coordinate.method = "coordinates",
+        chart.dim = ncol(X)
+    )
+    ordered <- .klp.local.order(
+        X.train = X,
+        center = center,
+        support.size = 12L
+    )
+    cached <- .klp.local.neighborhood.from.order(
+        X.train = X,
+        y.train = y,
+        center = center,
+        ordered = ordered,
+        support.size = 9L,
+        coordinate.method = "coordinates",
+        chart.dim = ncol(X)
+    )
+
+    expect_equal(cached$index, direct$index)
+    expect_equal(cached$distances, direct$distances)
+    expect_equal(cached$y, direct$y)
+    expect_equal(cached$z, direct$z)
+})

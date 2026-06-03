@@ -204,20 +204,31 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
         cand$chart.dim[[rr]] <- dim.lookup[[key]]
     }
     pred <- matrix(NA_real_, nrow = length(y), ncol = nrow(cand))
-    for (support.size in sort(unique(cand$support.size))) {
-        support.rows <- which(cand$support.size == support.size)
-        max.chart.dim <- max(cand$chart.dim[support.rows], na.rm = TRUE)
-        for (fold in sort(unique(foldid))) {
-            test <- which(foldid == fold)
-            train <- which(foldid != fold)
-            X.train <- X[train, , drop = FALSE]
-            y.train <- y[train]
-            for (ii in seq_along(test)) {
-                target <- test[[ii]]
-                local <- .klp.local.neighborhood(
+    support.sizes <- sort(unique(cand$support.size))
+    max.support.size <- max(support.sizes)
+    for (fold in sort(unique(foldid))) {
+        test <- which(foldid == fold)
+        train <- which(foldid != fold)
+        X.train <- X[train, , drop = FALSE]
+        y.train <- y[train]
+        fold.max.support <- min(max.support.size, length(train))
+        for (ii in seq_along(test)) {
+            target <- test[[ii]]
+            center <- X[target, , drop = TRUE]
+            ordered <- .klp.local.order(
+                X.train = X.train,
+                center = center,
+                support.size = fold.max.support
+            )
+            for (support.size in support.sizes) {
+                support.rows <- which(cand$support.size == support.size)
+                max.chart.dim <- max(cand$chart.dim[support.rows],
+                                     na.rm = TRUE)
+                local <- .klp.local.neighborhood.from.order(
                     X.train = X.train,
                     y.train = y.train,
-                    center = X[target, , drop = TRUE],
+                    center = center,
+                    ordered = ordered,
                     support.size = support.size,
                     coordinate.method = coordinate.method,
                     chart.dim = max.chart.dim
@@ -378,10 +389,36 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
 
 .klp.local.neighborhood <- function(X.train, y.train, center, support.size,
                                     coordinate.method, chart.dim) {
+    ordered <- .klp.local.order(
+        X.train = X.train,
+        center = center,
+        support.size = support.size
+    )
+    .klp.local.neighborhood.from.order(
+        X.train = X.train,
+        y.train = y.train,
+        center = center,
+        ordered = ordered,
+        support.size = support.size,
+        coordinate.method = coordinate.method,
+        chart.dim = chart.dim
+    )
+}
+
+.klp.local.order <- function(X.train, center, support.size) {
     d <- sqrt(rowSums((X.train -
         matrix(center, nrow(X.train), ncol(X.train), byrow = TRUE))^2))
     idx <- order(d, seq_along(d))[seq_len(min(as.integer(support.size),
                                              nrow(X.train)))]
+    list(index = idx, distances = d[idx])
+}
+
+.klp.local.neighborhood.from.order <- function(X.train, y.train, center,
+                                               ordered, support.size,
+                                               coordinate.method, chart.dim) {
+    support.size <- min(as.integer(support.size), length(ordered$index))
+    idx <- ordered$index[seq_len(support.size)]
+    distances <- ordered$distances[seq_len(support.size)]
     z <- .klp.local.coordinates(
         X.support = X.train[idx, , drop = FALSE],
         center = center,
@@ -390,7 +427,7 @@ print.kernel.local.polynomial.cv <- function(x, ...) {
     )
     list(
         index = idx,
-        distances = d[idx],
+        distances = distances,
         y = y.train[idx],
         z = z
     )
