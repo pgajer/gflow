@@ -1,0 +1,5 @@
+"native_symbol","registration_file","generated_or_manual","arity","future_registration_action"
+"_gflow_rcpp_kernel_local_polynomial_cv_coordinates","src/init.c","Rcpp generated plus manual init registration",6,"Register in geosmooth if kernel C++ backend moves."
+"_gflow_rcpp_kernel_local_polynomial_predict_coordinates","src/init.c","Rcpp generated plus manual init registration",6,"Register in geosmooth if kernel C++ backend moves."
+"_gflow_rcpp_local_pca_chart","src/init.c","Rcpp generated plus manual init registration",9,"Do not move initially if local PCA remains in gflow; provide an exported/importable wrapper."
+"S_ssrhe_hessian_operator","src/init.c","manual CallMethods registration",13,"Register in geosmooth if SSRHE moves."
