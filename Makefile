@@ -2,7 +2,6 @@
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
-LOGDIR := .claude
 HOMEBREW_BIN := /opt/homebrew/bin
 GCC_BIN := /opt/homebrew/opt/gcc/bin
 TIDY_BIN := $(shell if [ -x "$(HOMEBREW_BIN)/tidy" ]; then echo "$(HOMEBREW_BIN)/tidy"; elif command -v tidy >/dev/null 2>&1; then command -v tidy; else echo "$(HOMEBREW_BIN)/tidy"; fi)
@@ -14,35 +13,24 @@ clean:
 	rm -f src/RcppExports.cpp
 	rm -rf $(PKGNAME).Rcheck
 	rm -f $(TARBALL)
-	rm -f $(LOGDIR)/*.log
+	rm -rf .claude
 
 # 1) Always (re)generate Rcpp glue first
 attrs:
-	@mkdir -p $(LOGDIR)
-	@echo "Running Rcpp::compileAttributes()..."
-	@R -q -e "Rcpp::compileAttributes()" > $(LOGDIR)/$(PKGNAME)_rcppattrs.log 2>&1
-	@echo "RcppExports regenerated (log: $(LOGDIR)/$(PKGNAME)_rcppattrs.log)"
+	R -q -e "Rcpp::compileAttributes()"
 
 # 2) Then regenerate NAMESPACE + Rd via roxygen (through devtools::document)
 document: attrs
-	@mkdir -p $(LOGDIR)
-	@echo "Running devtools::document()..."
-	@PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R -q -e "roxygen2::roxygenise(load = 'source')" > $(LOGDIR)/$(PKGNAME)_document.log 2>&1
-	@echo "Documentation generated (log: $(LOGDIR)/$(PKGNAME)_document.log)"
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R -q -e "roxygen2::roxygenise(load = 'source')"
 
 build: clean document
-	@mkdir -p $(LOGDIR)
-	@echo "Building package..."
-	@bash -o pipefail -c 'R CMD build . 2>&1 | tee "$(LOGDIR)/$(PKGNAME)_build.log"'
-	@echo "Package built successfully (log: $(LOGDIR)/$(PKGNAME)_build.log)"
+	R CMD build .
 
 build-verbose: clean document
 	R CMD build .
 
 build-log: clean document
-	@mkdir -p $(LOGDIR)
-	R CMD build . > $(LOGDIR)/$(PKGNAME)_build.log 2>&1
-	@echo "Build output saved to $(LOGDIR)/$(PKGNAME)_build.log"
+	R CMD build .
 
 check: build
 	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" R CMD check $(TARBALL) --as-cran
