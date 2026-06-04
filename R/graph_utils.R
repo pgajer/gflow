@@ -157,9 +157,6 @@ wgraph.prune.long.edges <- function(graph,
                     as.logical(use.total.length.constraint),
                     as.logical(verbose))
 
-    ## Converting the pruned graph back to 1-based indexing
-    result$adj_list <- lapply(result$adj_list, function(x) x + 1)
-
     return(result)
 }
 
