@@ -160,8 +160,8 @@ graph.trend.filtering.operator <- function(adj.list,
 #'
 #' @details
 #' Graph trend filtering is intended as an \eqn{\ell_1}-adaptive comparator to
-#' the \eqn{\ell_2} graph smoothers in \code{\link{fit.metric.graph.lowpass}}
-#' and \code{\link{fit.rdgraph.regression}}. The low-pass smoother penalizes
+#' the \eqn{\ell_2} graph smoothers now housed in \pkg{geosmooth} and the
+#' legacy \code{\link{fit.rdgraph.regression}} comparator. The low-pass smoother penalizes
 #' broad quadratic graph roughness through a term like
 #' \deqn{\eta f^\top L f,}
 #' which shrinks high-frequency variation everywhere. Graph trend filtering
