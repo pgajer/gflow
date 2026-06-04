@@ -17,24 +17,6 @@ Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALS
     .Call(`_gflow_Rcpp_graph_kernel_smoother`, adj, w, y, bandwidth, with_details)
 }
 
-#' Kernel local polynomial CV RMSE for ambient coordinates
-#'
-#' Internal C++ backend for `kernel.local.polynomial.cv()`.
-#'
-#' @keywords internal
-rcpp_kernel_local_polynomial_cv_coordinates <- function(X, y, foldid, support_size, degree, kernel) {
-    .Call(`_gflow_rcpp_kernel_local_polynomial_cv_coordinates`, X, y, foldid, support_size, degree, kernel)
-}
-
-#' Kernel local polynomial predictions for ambient coordinates
-#'
-#' Internal C++ backend for `kernel.local.polynomial.cv()`.
-#'
-#' @keywords internal
-rcpp_kernel_local_polynomial_predict_coordinates <- function(X_train, y_train, X_eval, support_size, degree, kernel) {
-    .Call(`_gflow_rcpp_kernel_local_polynomial_predict_coordinates`, X_train, y_train, X_eval, support_size, degree, kernel)
-}
-
 #' Local PCA chart
 #'
 #' Internal C++ backend for shared local-PCA chart construction.

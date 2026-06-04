@@ -70,7 +70,6 @@
 #include "linf_simplex_knn_r.h"
 #include "local_geodesic_pruning_r.h"
 #include "metric_graph_lowpass_r.h"
-#include "ssrhe_hessian_energy_r.h"
 
 static R_NativePrimitiveArgType create_ED_grid_2D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType create_ED_grid_3D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
@@ -154,8 +153,6 @@ static const R_CMethodDef cMethods[] = {
 extern "C" {
 #endif
 SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_kernel_local_polynomial_cv_coordinates(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_kernel_local_polynomial_predict_coordinates(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_local_pca_chart(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP, SEXP, SEXP, SEXP);
@@ -340,7 +337,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
   {"S_metric_graph_lowpass_operator", (DL_FUNC) &S_metric_graph_lowpass_operator, 10},
   {"S_metric_graph_lowpass_spectrum", (DL_FUNC) &S_metric_graph_lowpass_spectrum, 16},
-  {"S_ssrhe_hessian_operator", (DL_FUNC) &S_ssrhe_hessian_operator, 13},
 
   // old
   {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
@@ -352,8 +348,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_mean_shift_data_smoother_adaptive", (DL_FUNC) &S_mean_shift_data_smoother_adaptive, 8},
 
   {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
-  {"_gflow_rcpp_kernel_local_polynomial_cv_coordinates", (DL_FUNC) &_gflow_rcpp_kernel_local_polynomial_cv_coordinates, 6},
-  {"_gflow_rcpp_kernel_local_polynomial_predict_coordinates", (DL_FUNC) &_gflow_rcpp_kernel_local_polynomial_predict_coordinates, 6},
   {"_gflow_rcpp_local_pca_chart", (DL_FUNC) &_gflow_rcpp_local_pca_chart, 9},
   {"_gflow_rcpp_compute_graph_endpoint_scores", (DL_FUNC) &_gflow_rcpp_compute_graph_endpoint_scores, 9},
   {"_gflow_rcpp_graph_multi_source_support_by_scale", (DL_FUNC) &_gflow_rcpp_graph_multi_source_support_by_scale, 4},
