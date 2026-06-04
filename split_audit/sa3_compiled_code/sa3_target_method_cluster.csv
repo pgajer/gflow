@@ -1,0 +1,6 @@
+"method_cluster","r_files","public_entrypoints"
+"kernel_local_polynomial","R/kernel_local_polynomial_cv.R","kernel.local.polynomial.cv;predict.kernel.local.polynomial.cv;print.kernel.local.polynomial.cv"
+"malps","R/malps.R","fit.malps;refit.malps;predict.malps;bootstrap.malps;malps.gcv;malps.smoother.matrix"
+"lpl_tf","R/lpl_tf.R","lpl.tf.operator;fit.lpl.tf;refit.lpl.tf;predict.lpl_tf;print.lpl_tf_operator"
+"slpl_tf","R/slpl_tf.R","slpl.tf.operator;fit.slpl.tf;refit.slpl.tf;predict.slpl_tf;print.slpl_tf_operator"
+"ssrhe","R/ssrhe_hessian_energy.R","ssrhe.hessian.operator;fit.ssrhe.hessian.regression;fit.ssrhe.hessian.regression.cv;fit.ssrhe.hessian.regression.gcv;fit.ssrhe.hessian.l1.regression"

@@ -1,0 +1,6 @@
+"method_cluster","r_file","r_symbol","native_symbol","call_type"
+"kernel_local_polynomial","R/kernel_local_polynomial_cv.R","rcpp_kernel_local_polynomial_cv_coordinates","_gflow_rcpp_kernel_local_polynomial_cv_coordinates","Rcpp wrapper"
+"kernel_local_polynomial","R/kernel_local_polynomial_cv.R","rcpp_kernel_local_polynomial_predict_coordinates","_gflow_rcpp_kernel_local_polynomial_predict_coordinates","Rcpp wrapper"
+"kernel_local_polynomial","R/kernel_local_polynomial_cv.R","rcpp_local_pca_chart","_gflow_rcpp_local_pca_chart","Rcpp wrapper"
+"lpl_tf","R/lpl_tf.R","rcpp_local_pca_chart","_gflow_rcpp_local_pca_chart","Rcpp wrapper"
+"ssrhe","R/ssrhe_hessian_energy.R","S_ssrhe_hessian_operator","S_ssrhe_hessian_operator","direct .Call"
