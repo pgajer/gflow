@@ -650,7 +650,6 @@
 #' \code{\link{residuals}} for extracting residuals,
 #' \code{\link{summary}} for model summaries
 #'
-#' @export
 fit.rdgraph.regression <- function(
     X,
     y,

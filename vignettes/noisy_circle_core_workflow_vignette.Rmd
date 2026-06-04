@@ -26,11 +26,11 @@ set.seed(2026)
 
 ## Overview
 
-This vignette follows one complete analysis story.
+This vignette follows one graph-centered analysis story.
 We start with noisy samples from a circle and a noisy response field over that
-circle. We then construct graph scales, denoise geometry, smooth responses and
-features, recover local extrema/basins, and finally test local associations
-with permutation-based inference.
+circle. We then construct graph scales, visualize a selected graph, recover
+local extrema/basins from the response, and test local associations with
+permutation-based inference.
 
 ## 1) Simulate Geometry and Response
 
@@ -167,106 +167,25 @@ plot(layout.2d, pch = 19, cex = 0.5, asp = 1,
      xlab = "", ylab = "")
 ```
 
-## 5) Denoise Geometry with `data.smoother()`
+## 5) Prepare the Selected Graph and Response
 
-```{r data-smoother}
-X.denoise.res <- data.smoother(
-  X,
-  kmin = k.min,
-  kmax = k.max,
-  n.cores = 1L,
-  proxy.response = "pc1",
-  max.iterations = 8L,
-  n.eigenpairs = 100L,
-  filter.type = "heat_kernel",
-  t.scale.factor = 0.5,
-  beta.coef.factor = 0.1,
-  verbose = TRUE
-)
+The rest of the vignette works directly with the selected graph and the
+observed response.
 
-X.smoothed <- X.denoise.res$X.smoothed
-X.denoise.res$k.best
-```
+```{r selected-graph-response}
+X.use <- X
+theta.use <- theta.obs
+y.use <- y
+y.true.use <- y.true
+comp1.use <- comp1
+comp2.use <- comp2
 
-```{r align-trimmed-data}
-if (isTRUE(X.denoise.res$trimmed)) {
-  kept.rows <- X.denoise.res$kept.rows
-  X.use <- X[kept.rows, , drop = FALSE]
-  theta.use <- theta.obs[kept.rows]
-  y.use <- y[kept.rows]
-  y.true.use <- y.true[kept.rows]
-  comp1.use <- comp1[kept.rows]
-  comp2.use <- comp2[kept.rows]
-} else {
-  X.use <- X
-  theta.use <- theta.obs
-  y.use <- y
-  y.true.use <- y.true
-  comp1.use <- comp1
-  comp2.use <- comp2
-}
-```
-
-```{r denoising-panels, fig.width=10, fig.height=4}
-op <- par(mfrow = c(1, 2),
-          mar = c(2.75, 2.75, 0.5, 0.5),
-          mgp = c(2.5, 0.5, 0),
-          tcl = -0.3)
-
-plot(X.use, las = 1, asp = 1, xlab = "", ylab = "")
-lines(circle.true, lwd = 2)
-legend("topleft",
-       legend = c("Observed samples", "True circle"),
-       pch = c(1, NA),
-       lty = c(NA, 1),
-       col = c("black", "black"),
-       bty = "n", cex = 0.9)
-
-plot(X.use, las = 1, asp = 1, col = "gray", xlab = "", ylab = "")
-lines(circle.true, lwd = 2)
-points(X.smoothed, col = "blue", pch = 19, cex = 0.6)
-legend("topleft",
-       legend = c("Observed samples", "Smoothed samples", "True circle"),
-       pch = c(1, 19, NA),
-       lty = c(NA, NA, 1),
-       col = c("black", "blue", "black"),
-       bty = "n", cex = 0.85)
-par(op)
-```
-
-```{r denoising-metric}
-rad.obs <- sqrt(rowSums(X.use^2))
-rad.sm <- sqrt(rowSums(X.smoothed^2))
-
-rmse.obs <- sqrt(mean((rad.obs - radius)^2))
-rmse.sm <- sqrt(mean((rad.sm - radius)^2))
+adj.list <- g.sel$adj_list
+edge.length.list <- g.sel$weight_list
+y.hat <- as.double(y.use)
 
 data.frame(
-  metric = c("RMSE radius (observed)", "RMSE radius (smoothed)"),
-  value = c(rmse.obs, rmse.sm)
-)
-```
-
-## 6) Smooth the Response on the Selected Graph
-
-We reuse the graph/spectral structure selected by `data.smoother()` and apply
-it to `y` via `refit.rdgraph.regression()`.
-
-```{r fit-y}
-fit.seed <- X.denoise.res$fit.best
-
-y.fit <- refit.rdgraph.regression(
-  fitted.model = fit.seed,
-  y.new = as.double(y.use),
-  per.column.gcv = TRUE,
-  n.cores = 1L,
-  verbose = FALSE
-)
-
-y.hat <- as.double(y.fit$fitted.values)
-
-data.frame(
-  metric = c("cor(y.hat, y.true)", "RMSE(y.hat, y.true)"),
+  metric = c("cor(y, y.true)", "RMSE(y, y.true)"),
   value = c(cor(y.hat, y.true.use),
             sqrt(mean((y.hat - y.true.use)^2)))
 )
@@ -276,8 +195,8 @@ data.frame(
 
 ```{r layout-3d}
 X.denoise.graph.layout.3d <- graph.embedding(
-  adj.list = fit.seed$graph$adj.list,
-  weights.list = fit.seed$graph$edge.length.list,
+  adj.list = adj.list,
+  weights.list = edge.length.list,
   invert.weights = TRUE,
   dim = 3,
   method = "fr"
@@ -307,7 +226,7 @@ if (requireNamespace("rgl", quietly = TRUE) &&
 }
 ```
 
-## 7) Build and Smooth Feature Functions
+## 6) Build Feature Functions
 
 Features are built so some correlate with selected arcs of the response, while
 others are pure noise.
@@ -337,26 +256,15 @@ Z <- cbind(
   z_noise3 = z.noise3
 )
 Z <- scale(Z)
+Z.sm <- as.matrix(Z)
 ```
 
-```{r smooth-z}
-Z.fit <- refit.rdgraph.regression(
-  fitted.model = fit.seed,
-  y.new = Z,
-  per.column.gcv = FALSE,
-  n.cores = 1L,
-  verbose = FALSE
-)
-Z.sm <- as.matrix(Z.fit$fitted.values)
-summary(Z.fit)
-```
-
-## 8) Recover Extrema and Basins
+## 7) Recover Extrema and Basins
 
 ```{r refined-basins}
 y.basins <- compute.gfc(
-  adj.list = fit.seed$graph$adj.list,
-  edge.length.list = fit.seed$graph$edge.length.list,
+  adj.list = adj.list,
+  edge.length.list = edge.length.list,
   fitted.values = y.hat,
   edge.length.quantile.thld = 0.8,
   min.rel.value.max = 1.05,
@@ -392,7 +300,7 @@ idx.ok <- !is.na(est.max.label)
 table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
 ```
 
-## 9) Basin-Wise Pearson and Spearman Checks
+## 8) Basin-Wise Pearson and Spearman Checks
 
 ```{r basin-wise-classical-correlation}
 max.vertices.list <- y.basins$expanded.max.vertices.list
@@ -441,12 +349,9 @@ if (nrow(basin.cor) > 0) {
 }
 ```
 
-## 10) Local Correlation with `lcor()`
+## 9) Local Correlation with `lcor()`
 
 ```{r lcor-methods}
-adj.list <- fit.seed$graph$adj.list
-edge.length.list <- fit.seed$graph$edge.length.list
-
 lcor.derivative <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "derivative"))
 lcor.unit <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "unit"))
 lcor.sign <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "sign"))
@@ -478,7 +383,7 @@ lcor.summary <- rbind(
 lcor.summary[order(lcor.summary$type, -lcor.summary$mean.abs.lcor), ]
 ```
 
-## 11) Permutation Inference for `lcor`
+## 10) Permutation Inference for `lcor`
 
 We assess feature significance by permuting feature rows (`permute = "z"`),
 recomputing local correlations, and comparing observed statistics to this null.
@@ -499,7 +404,7 @@ perm.lcor <- permutation.test.lcor(
 perm.lcor$table[order(perm.lcor$table$q.value), ]
 ```
 
-## 12) Build an lcor-Based Feature Module Graph
+## 11) Build an lcor-Based Feature Module Graph
 
 ```{r lcor-module-graph}
 sim <- stats::cor(lcor.derivative, use = "pairwise.complete.obs")

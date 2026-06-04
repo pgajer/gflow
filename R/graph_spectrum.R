@@ -52,7 +52,7 @@
 #' # Get spectrum with Laplacian matrix
 #' spec_lap <- graph.spectrum(graph, return.Laplacian = TRUE)
 #'
-#' @seealso \code{\link{graph.spectral.embedding}}, \code{\link{graph.low.pass.filter}}
+#' @seealso \code{\link{graph.spectral.embedding}}
 #' @export
 graph.spectrum <- function(graph,
                            nev = NULL,
@@ -129,98 +129,6 @@ graph.spectrum <- function(graph,
                    as.integer(nev))
     return(list(evalues = ans$evalues, evectors = ans$evectors))
   }
-}
-
-#' Compute Low-Pass Filter of a Function Over a Graph
-#'
-#' Computes the low-pass filter of a function over a graph using
-#' the Graph Fourier Transform (GFT). The filter is applied by summing
-#' the contributions of the eigenvectors starting from a specified index,
-#' effectively filtering out high-frequency components.
-#'
-#' @param init.ev An integer specifying the index (1-based) of the first
-#'   eigenvalue to include in the low-pass filter. Must be between 1 and
-#'   the number of eigenvectors.
-#' @param evectors A numeric matrix of eigenvectors of the graph Laplacian.
-#'   Each column corresponds to an eigenvector, ordered by their associated
-#'   eigenvalues.
-#' @param y.gft A numeric matrix representing the Graph Fourier Transform (GFT)
-#'   of the function over the graph. The first column should contain
-#'   the GFT coefficients corresponding to each eigenvector.
-#'
-#' @return A numeric vector of length equal to the number of vertices,
-#'   representing the filtered function values over the graph.
-#'
-#' @details
-#' The Graph Fourier Transform decomposes a signal defined on the vertices
-#' of a graph into its frequency components using the eigenvectors of the
-#' graph Laplacian. Low-pass filtering retains only the low-frequency
-#' components (associated with smaller eigenvalues), which typically
-#' represent smooth variations over the graph structure.
-#'
-#' @examples
-#' # Create example eigenvectors (2 vertices, 2 eigenvectors)
-#' evectors <- matrix(c(1/sqrt(2), 1/sqrt(2), 1/sqrt(2), -1/sqrt(2)),
-#'                   nrow = 2, ncol = 2)
-#'
-#' # Example GFT coefficients
-#' y.gft <- matrix(c(3, 1), nrow = 2, ncol = 1)
-#'
-#' # Apply low-pass filter starting from the first eigenvector
-#' filtered <- graph.low.pass.filter(1, evectors, y.gft)
-#'
-#' # Apply low-pass filter using only the second eigenvector
-#' filtered_high <- graph.low.pass.filter(2, evectors, y.gft)
-#'
-#' @seealso \code{\link{graph.spectrum}}
-#' @export
-graph.low.pass.filter <- function(init.ev, evectors, y.gft) {
-
-    # Input validation
-    if (!is.numeric(init.ev) || length(init.ev) != 1 || init.ev < 1) {
-        stop("'init.ev' must be a positive integer")
-    }
-    init.ev <- as.integer(init.ev)
-
-    if (!is.matrix(evectors) && !is.numeric(evectors)) {
-        stop("'evectors' must be a numeric matrix")
-    }
-
-    if (!is.matrix(y.gft) && !is.numeric(y.gft)) {
-        stop("'y.gft' must be a numeric matrix")
-    }
-
-    # Ensure matrices
-    if (!is.matrix(evectors)) {
-        evectors <- as.matrix(evectors)
-    }
-
-    if (!is.matrix(y.gft)) {
-        y.gft <- as.matrix(y.gft)
-    }
-
-    nev <- ncol(evectors)
-
-    if (init.ev > nev) {
-        stop("'init.ev' cannot exceed the number of eigenvectors")
-    }
-
-    if (nrow(y.gft) < nev) {
-        stop("'y.gft' must have at least as many rows as there are eigenvectors")
-    }
-
-    if (ncol(y.gft) < 1) {
-        stop("'y.gft' must have at least one column")
-    }
-
-    # Apply low-pass filter
-    low.pass.y <- numeric(nrow(evectors))
-
-    for (k in init.ev:nev) {
-        low.pass.y <- low.pass.y + y.gft[k, 1] * as.numeric(evectors[, k])
-    }
-
-    return(low.pass.y)
 }
 
 #' Generate Spectral Embedding of a Graph
@@ -340,4 +248,3 @@ graph.spectral.embedding <- function(evectors, dim, evalues = NULL) {
 
     return(embedding)
 }
-
