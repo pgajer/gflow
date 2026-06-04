@@ -81,7 +81,6 @@
 #' where \eqn{A = V_L^T V_L}, \eqn{b = V_L^T y_L}, and \eqn{\Lambda = \mathrm{diag}(\lambda_1,\dots,\lambda_m)}.
 #' The fitted field is \eqn{\hat y = V a} over all vertices.
 #'
-#' @export
 refit.rdgraph.regression <- function(fitted.model,
                                      y.new,
                                      y.vertices = NULL,

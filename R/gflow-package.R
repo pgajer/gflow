@@ -75,11 +75,10 @@
 #'
 #' \strong{Conditional Expectation Estimation Methods:}
 #'
-#' \emph{Riemannian graph regression (current):}
-#' \itemize{
-#'   \item \code{\link{fit.rdgraph.regression}} - Main graph regression interface used in the current workflow
-#'   \item \code{\link{refit.rdgraph.regression}} - Efficient refitting/reuse of an existing rdgraph fit
-#' }
+#' \emph{Riemannian graph regression:}
+#' These legacy public entry points have moved to `gflowx`. The backend remains
+#' in `gflow` during the package split so existing internal workflows can be
+#' migrated in audited slices.
 #'
 #' \emph{Legacy Model-Averaged Local Regression (1D; now in `malo`):}
 #' \itemize{
@@ -93,16 +92,15 @@
 #'
 #' \emph{Current recommendation:}
 #' \itemize{
-#'   \item Use \code{\link{fit.rdgraph.regression}} for geometric workflows
+#'   \item Use `gflowx::fit.rdgraph.regression()` for legacy rdgraph workflows
+#'   \item Use `geosmooth` for local-polynomial, trend-filtering, harmonic, and
+#'         graph-spectral smoothing workflows
 #'   \item Use spline-based utilities for lightweight 1D exploratory smoothing
 #' }
 #'
 #' \emph{Additional smoothing and classification tools:}
 #' \itemize{
-#'   \item \code{\link{harmonic.smoother}} - Solves discrete Laplace equation for smooth
-#'         interpolation with fixed boundary values
 #'   \item \code{\link{ulogit}} - Uniform grid logistic regression for binary outcomes on graphs
-#'   \item \code{\link{meanshift.data.smoother}} - Data denoising using mean-shift algorithm with adaptive step sizes
 #' }
 #'
 #' \strong{Morse-Smale Complex Analysis:}

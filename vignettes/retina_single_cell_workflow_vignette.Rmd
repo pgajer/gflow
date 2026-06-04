@@ -305,36 +305,10 @@ than stopping at graph construction.
 The larger retina analysis goes much further than this, but this one figure is
 enough to show that the package workflow remains useful after graph selection.
 
-## 8) Minimal Response-Refit Pattern
-
-The response-refit step can reuse the spectral structure of an existing graph
-fit. In a real single-cell analysis this is how we avoid rebuilding geometry for
-every outcome.
-
-```{r refit-pattern, eval = FALSE}
-# Fit one seed response on the selected graph.
-fit.seed <- fit.rdgraph.regression(
-  X = X_view,
-  y = y_seed,
-  k = selected_k,
-  adj.list = selected_graph$adj_list,
-  weight.list = selected_graph$weight_list,
-  pca.dim = NULL,
-  verbose.level = 1L
-)
-
-# Refit many new responses using the cached spectral structure.
-refit.out <- refit.rdgraph.regression(
-  fitted.model = fit.seed,
-  y.new = Y_multiresponse,
-  per.column.gcv = TRUE,
-  n.cores = 1L,
-  verbose = FALSE
-)
-```
+## 8) Reusing the Selected Geometry
 
 That pattern is important in the retina setting because the same selected
-geometry can be reused for:
+geometry can be reused conceptually for:
 
 - pseudotime-style summaries,
 - developmental age,
