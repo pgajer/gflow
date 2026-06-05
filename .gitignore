@@ -49,6 +49,8 @@ tests/testthat.Rout*
 .Rout
 tests/manual/results/
 tests/manual/reports/
+*.rds
+*.RDS
 
 # Coverage artefacts
 coverage/
