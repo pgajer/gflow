@@ -376,14 +376,14 @@ lcor <- function(adj.list,
     }
 
     if (type == "derivative") {
-        pg <- create.path.graph(adj.list, weight.list, h = hop.radius)
+        pg <- dgraphs::create.path.graph(adj.list, weight.list, h = hop.radius)
         adj.list <- pg$adj.list
         weight.list <- pg$edge.length.list
     } else {
         unit.weights <- lapply(adj.list, function(neighbors) {
             if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)
         })
-        pg <- create.path.graph(adj.list, unit.weights, h = hop.radius)
+        pg <- dgraphs::create.path.graph(adj.list, unit.weights, h = hop.radius)
         adj.list <- pg$adj.list
         weight.list <- lapply(adj.list, function(neighbors) {
             if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)

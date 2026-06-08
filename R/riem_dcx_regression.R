@@ -533,9 +533,9 @@
 #'   connected component). If the graph is disconnected, the function will
 #'   terminate with an error. To explore connectivity structure before fitting:
 #'   \itemize{
-#'     \item Use \code{create.iknn.graphs()} to examine connectivity across
+#'     \item Use \code{dgraphs::create.iknn.graphs()} to examine connectivity across
 #'           multiple k values
-#'     \item Use \code{create.single.iknn.graph()} to inspect the graph
+#'     \item Use \code{dgraphs::create.single.iknn.graph()} to inspect the graph
 #'           structure for a specific k
 #'     \item Examine connected components in the returned graph objects
 #'   }

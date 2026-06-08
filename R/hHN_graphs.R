@@ -49,11 +49,8 @@
 #' khn.graph$adj_list   # Adjacency list of the hHN graph
 #' khn.graph$dist_list  # Shortest path distances in the hHN graph
 #'
-#' @seealso
-#' \code{\link{bbmwd.over.hHN.graphs}} for computing BBMWD over hHN graphs
-#'
-#' @export
-create.hHN.graph <- function(graph, edge.lengths, h) {
+#' @noRd
+.create.hHN.graph <- function(graph, edge.lengths, h) {
     # Input validation
     if (!is.list(graph)) {
         stop("'graph' must be a list", call. = FALSE)
@@ -101,7 +98,8 @@ create.hHN.graph <- function(graph, edge.lengths, h) {
     # Convert graph to 0-based indexing for C++ compatibility
     graph_0based <- lapply(graph, function(x) as.integer(x - 1))
 
-    # Call the C++ implementation
+    # Temporary split dependency: keep the gflow native hHN helper private
+    # until this workflow is migrated to dgraphs.
     result <- .Call("S_create_hHN_graph",
                     graph_0based,
                     edge.lengths,
@@ -171,9 +169,6 @@ create.hHN.graph <- function(graph, edge.lengths, h) {
 #' bbmwd_k10_h3 <- results[[10]][[3]]$bbmwd
 #' }
 #'
-#' @seealso
-#' \code{\link{create.hHN.graph}},
-#'
 #' @export
 bbmwd.over.hHN.graphs <- function(y,
                                   IkNN.graphs,
@@ -241,7 +236,7 @@ bbmwd.over.hHN.graphs <- function(y,
             }
 
             # Create k-hop neighborhood graph
-            khn.graph <- create.hHN.graph(
+            khn.graph <- .create.hHN.graph(
                 graph = IkNN.graph$pruned_adj_list,
                 edge.lengths = IkNN.graph$pruned_dist_list,
                 h = h
@@ -272,4 +267,3 @@ bbmwd.over.hHN.graphs <- function(y,
 
     return(results)
 }
-

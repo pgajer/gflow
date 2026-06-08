@@ -130,7 +130,7 @@ test_that("fit accepts precomputed graph and matches standard fit-path result", 
   y <- rnorm(nrow(X))
   k <- 9L
 
-  iknn <- create.single.iknn.graph(
+  iknn <- dgraphs::create.single.iknn.graph(
     X,
     k = k,
     max.path.edge.ratio.deviation.thld = 0,
@@ -240,7 +240,7 @@ test_that("fit rejects malformed precomputed graph inputs", {
   y <- rnorm(nrow(X))
   k <- 8L
 
-  iknn <- create.single.iknn.graph(
+  iknn <- dgraphs::create.single.iknn.graph(
     X,
     k = k,
     max.path.edge.ratio.deviation.thld = 0,

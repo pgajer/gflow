@@ -56,7 +56,7 @@ assert_cross_api_graph_invariance <- function(X,
   )
 
   iknn_geom_threshold <- if (isTRUE(apply.geometric.pruning)) max.ratio.threshold else 0
-  iknn <- create.single.iknn.graph(
+  iknn <- dgraphs::create.single.iknn.graph(
     X,
     k = as.integer(k),
     max.path.edge.ratio.deviation.thld = iknn_geom_threshold,

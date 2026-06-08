@@ -823,6 +823,8 @@ std::vector<size_t> set_wgraph_t::create_maximal_packing(
  * @see uniform_grid_graph_t
  * @see set_wgraph_t::create_maximal_packing
  */
+// Temporary split dependency: internal geodesic/statistics workflows still use
+// maximal-packing grid construction; the R-callable constructor is retired.
 uniform_grid_graph_t create_maximal_packing(
 	const std::vector<std::vector<int>>& adj_list,
 	const std::vector<std::vector<double>>& weight_list,
@@ -841,4 +843,3 @@ uniform_grid_graph_t create_maximal_packing(
 
 	return grid_graph;
 }
-

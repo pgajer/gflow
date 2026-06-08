@@ -15,10 +15,10 @@ test_that("graph.geodesic.distances dispatches on standard final graph payloads"
   )
 
   graphs <- list(
-    sknn = create.sknn.graph(X, k = 1),
-    mknn = create.mknn.graph(X, k = 2, connect.components = TRUE),
-    radius = create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
-    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE)
+    sknn = dgraphs::create.sknn.graph(X, k = 1),
+    mknn = dgraphs::create.mknn.graph(X, k = 2, connect.components = TRUE),
+    radius = dgraphs::create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
+    adaptive = dgraphs::create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE)
   )
 
   for (g in graphs) {
@@ -38,14 +38,14 @@ test_that("graph.geodesic.distances uses adj_list final payload after local prun
   )
 
   graphs <- list(
-    sknn = create.sknn.graph(X, k = 2, prune.method = "local.geodesic",
+    sknn = dgraphs::create.sknn.graph(X, k = 2, prune.method = "local.geodesic",
                              prune.tau = 1.01),
-    mknn = create.mknn.graph(X, k = 3, prune.method = "local.geodesic",
+    mknn = dgraphs::create.mknn.graph(X, k = 3, prune.method = "local.geodesic",
                              prune.tau = 1.01),
-    radius = create.rknn.graph(X, type = "fixed", radius = 2.1,
+    radius = dgraphs::create.rknn.graph(X, type = "fixed", radius = 2.1,
                                  prune.method = "local.geodesic",
                                  prune.tau = 1.01),
-    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 2,
+    adaptive = dgraphs::create.rknn.graph(X, type = "adaptive.radius", k.scale = 2,
                                             radius.rule = "max",
                                             prune.method = "local.geodesic",
                                             prune.tau = 1.01)
@@ -70,15 +70,15 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
   )
 
   graphs <- list(
-    sknn = create.sknn.graph(X, k = 1, connect.components = TRUE),
-    mknn = create.mknn.graph(X, k = 2, connect.components = TRUE),
-    radius = create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
-    adaptive = create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE),
-    geodesic_iknn = create.geodesic.iknn.graph(
-      create.sknn.graph(X, k = 1, connect.components = TRUE),
+    sknn = dgraphs::create.sknn.graph(X, k = 1, connect.components = TRUE),
+    mknn = dgraphs::create.mknn.graph(X, k = 2, connect.components = TRUE),
+    radius = dgraphs::create.rknn.graph(X, type = "fixed", radius = 1.1, connect.components = TRUE),
+    adaptive = dgraphs::create.rknn.graph(X, type = "adaptive.radius", k.scale = 1, connect.components = TRUE),
+    geodesic_iknn = dgraphs::create.geodesic.iknn.graph(
+      dgraphs::create.sknn.graph(X, k = 1, connect.components = TRUE),
       k = 1
     ),
-    iknn = create.single.iknn.graph(
+    iknn = dgraphs::create.single.iknn.graph(
       X,
       k = 1,
       connect.components = TRUE,
@@ -118,7 +118,7 @@ test_that("graph.geodesic.distances can select lifecycle stages", {
     c(11, 0)
   )
 
-  g <- create.sknn.graph(
+  g <- dgraphs::create.sknn.graph(
     X,
     k = 1,
     prune.method = "local.geodesic",
@@ -161,7 +161,7 @@ test_that("repaired.pruned represents pruning after MST repair", {
     c(3, 0)
   )
 
-  g <- create.mknn.graph(
+  g <- dgraphs::create.mknn.graph(
     X,
     k = 3,
     prune.method = "local.geodesic",
@@ -190,7 +190,7 @@ test_that("graph.geodesic.distances uses final adj_list payload for IkNN objects
     c(3, 0)
   )
 
-  g <- create.single.iknn.graph(
+  g <- dgraphs::create.single.iknn.graph(
     X,
     k = 2,
     prune.method = "none",
@@ -214,7 +214,7 @@ test_that("graph.geodesic.distances ignores raw and pruned lifecycle fields", {
     c(3, 0)
   )
 
-  g <- create.single.iknn.graph(
+  g <- dgraphs::create.single.iknn.graph(
     X,
     k = 3,
     prune.method = "local.geodesic",
@@ -244,7 +244,7 @@ test_that("graph.geodesic.distances supports selected vertices", {
     c(2, 0),
     c(3, 0)
   )
-  g <- create.sknn.graph(X, k = 1)
+  g <- dgraphs::create.sknn.graph(X, k = 1)
 
   observed <- graph.geodesic.distances(g, vertices = c(1, 4))
 
@@ -255,7 +255,7 @@ test_that("graph.geodesic.distances supports selected vertices", {
 
 test_that("graph.geodesic.distances validates class and payload", {
   X <- rbind(c(0, 0), c(1, 0), c(2, 0))
-  g <- create.sknn.graph(X, k = 1)
+  g <- dgraphs::create.sknn.graph(X, k = 1)
 
   expect_error(graph.geodesic.distances(list(adj_list = g$adj_list,
                                              weight_list = g$weight_list)),
@@ -265,7 +265,7 @@ test_that("graph.geodesic.distances validates class and payload", {
   bad$adj_list <- NULL
   expect_error(graph.geodesic.distances(bad), "cannot be NULL")
 
-  iknn <- create.single.iknn.graph(
+  iknn <- dgraphs::create.single.iknn.graph(
     X,
     k = 1,
     prune.method = "none",

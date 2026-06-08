@@ -22,7 +22,7 @@
 #' @param n.cores Integer; number of cores for parallel computation.
 #'   If 1, computation is sequential.
 #' @param iknn.params Named list of additional parameters passed to
-#'   \code{\link{create.iknn.graphs}}.
+#'   \code{dgraphs::create.iknn.graphs()}.
 #' @param regression.params Named list of additional parameters passed to
 #'   \code{\link{fit.rdgraph.regression}}.
 #' @param n.embeddings Integer; number of 3D graph embeddings to compute.
@@ -62,7 +62,7 @@
 #'   packages. If these are not installed and \code{n.cores > 1}, an error
 #'   is raised.
 #'
-#' @seealso \code{\link{create.iknn.graphs}} for graph construction,
+#' @seealso \code{dgraphs::create.iknn.graphs()} for graph construction,
 #'   \code{\link{fit.rdgraph.regression}} for the regression method,
 #'   \code{\link{k.diagnostics.plots}} for bandwidth selection diagnostics.
 #'
@@ -266,7 +266,7 @@ compute.Lp.graphs <- function(X,
             ),
             iknn.params
         )
-        graphs <- do.call(create.iknn.graphs, iknn.args)
+        graphs <- do.call(dgraphs::create.iknn.graphs, iknn.args)
 
         graphs.stats <- summary(graphs)
 

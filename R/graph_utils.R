@@ -743,111 +743,6 @@ edge.diff <- function(graph1, graph2) {
     return(result)
 }
 
-#' Create a subgraph from a given graph
-#'
-#' This function creates a subgraph from a given graph based on specified indices or IDs.
-#'
-#' @param S.graph A list containing the original graph structure with adjacency and distance lists.
-#' @param id.indices A vector of indices to include in the subgraph. Default is NULL.
-#' @param ids A vector of IDs to include in the subgraph. Default is NULL.
-#' @param S A data frame or matrix where rownames correspond to node IDs. Required if `ids` is provided. Default is NULL.
-#' @param use.sequential.indices Logical. If TRUE, renumber the indices in the subgraph to be 1:length(id.indices). Default is FALSE.
-#'
-#' @return A list containing the subgraph structure with adjacency and distance lists.
-#'
-#' @details
-#' The function can create a subgraph based on either `id.indices` or `ids`. If `ids` is provided,
-#' `S` must also be provided to map the IDs to indices. The `use.sequential.indices` parameter
-#' allows for renumbering the indices in the subgraph to be sequential, which can be useful for
-#' certain applications.
-#'
-#' @examples
-#' X <- runif.sphere(20, 2)
-#' graph <- create.single.iknn.graph(X, k = 3, compute.full = TRUE, verbose = FALSE)
-#' graph$dist_list <- graph$weight_list
-#' graph$weight_list <- NULL
-#' subgraph <- create.subgraph(graph, id.indices = c(1:10))
-#' subgraph_sequential <- create.subgraph(graph, id.indices = c(1:10, 15:16),
-#'                                        use.sequential.indices = TRUE)
-#' @export
-create.subgraph <- function(S.graph, id.indices = NULL, ids = NULL, S = NULL, use.sequential.indices = FALSE) {
-    ## Parameter checks
-    if (!is.list(S.graph) || !all(c("adj_list", "dist_list") %in% names(S.graph))) {
-        stop("S.graph must be a list containing 'adj_list' and 'dist_list'")
-    }
-    if (is.null(id.indices) && is.null(ids)) {
-        stop("Either id.indices or ids must be provided")
-    }
-    if (!is.null(ids) && is.null(S)) {
-        stop("If ids are provided, S must also be provided")
-    }
-    if (!is.null(S) && !is.null(ids)) {
-        if (!all(ids %in% rownames(S))) {
-            stop("All ids must be present in rownames(S)")
-        }
-    }
-    if (!is.null(id.indices) && !all(id.indices %in% seq_along(S.graph$adj_list))) {
-        stop("All id.indices must be valid indices in S.graph")
-    }
-    if (!is.logical(use.sequential.indices)) {
-        stop("use.sequential.indices must be a logical value (TRUE or FALSE)")
-    }
-
-    if (!is.null(ids) && !is.null(S)) {
-        ## Get the indices of the ids in S
-        id.indices <- match(ids, rownames(S))
-    }
-
-    ## Initialize the subgraph object
-    S.subgraph <- list(adj_list = list(), dist_list = list())
-
-    ## Create a mapping from original indices to sequential indices if needed
-    if (use.sequential.indices) {
-        index.map <- setNames(seq_along(id.indices), id.indices)
-    }
-
-    ## For each id in the subgraph
-    for (i in seq_along(id.indices)) {
-        ## Get the original index
-        orig.index <- id.indices[i]
-
-        ## Get the adjacent nodes and distances
-        adj.nodes <- S.graph$adj_list[[orig.index]]
-        dist.nodes <- S.graph$dist_list[[orig.index]]
-
-        ## Handle NULL or empty adjacency lists
-        if (is.null(adj.nodes) || length(adj.nodes) == 0) {
-            S.subgraph$adj_list[[i]] <- integer(0)
-            S.subgraph$dist_list[[i]] <- numeric(0)
-            next
-        }
-
-        ## Find which of these nodes are in the subgraph
-        in.subgraph <- adj.nodes %in% id.indices
-
-        ## Add to the subgraph
-        if (use.sequential.indices) {
-            # Map the adjacent nodes to their new sequential indices
-            mapped_indices <- index.map[as.character(adj.nodes[in.subgraph])]
-            S.subgraph$adj_list[[i]] <- as.integer(mapped_indices)
-        } else {
-            S.subgraph$adj_list[[i]] <- adj.nodes[in.subgraph]
-        }
-        S.subgraph$dist_list[[i]] <- dist.nodes[in.subgraph]
-    }
-
-    ## Set appropriate names for the lists
-    if (use.sequential.indices) {
-        names(S.subgraph$adj_list) <- seq_along(id.indices)
-        names(S.subgraph$dist_list) <- seq_along(id.indices)
-    } else {
-        names(S.subgraph$adj_list) <- id.indices
-        names(S.subgraph$dist_list) <- id.indices
-    }
-
-    return(S.subgraph)
-}
-
 #' Calculate Degree Distribution Properties for Random Points on a Sphere
 #'
 #' @description
@@ -872,7 +767,7 @@ create.subgraph <- function(S.graph, id.indices = NULL, ids = NULL, S = NULL, us
 #'
 #' @details
 #' The function generates uniform random points on a sphere using \code{runif.sphere}
-#' and constructs k-nearest neighbor graphs using \code{create.single.iknn.graph}. For each
+#' and constructs k-nearest neighbor graphs using \code{dgraphs::create.single.iknn.graph()}. For each
 #' simulation, it computes the proportion of vertices with each degree. The final
 #' results include means and 95% confidence intervals for these proportions across
 #' all simulations.
@@ -907,7 +802,7 @@ get.sphere.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 2)
     max.degree <- 0
     for(i in 1:n.sims) {
         X <- runif.sphere(n.pts, dim = dim)
-        graph <- create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
+        graph <- dgraphs::create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
         degrees <- sapply(graph$pruned_adj_list, FUN = length)
         freq.table <- table(degrees)
         props[[i]] <- freq.table / sum(freq.table)
@@ -959,7 +854,7 @@ get.sphere.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 2)
 #' }
 #'
 #' @details
-#' The function uses `generate.circle.data()` to create points and `create.single.iknn.graph()`
+#' The function uses `generate.circle.data()` to create points and `dgraphs::create.single.iknn.graph()`
 #' to construct the k-nearest neighbor graph. It computes degree distributions for each
 #' simulation and aggregates the results to estimate population parameters.
 #'
@@ -999,7 +894,7 @@ get.TN.S1.degree.props <- function(n.pts = 100,
     for(i in 1:n.sims) {
         cX <- generate.circle.data(n.pts, radius = 1, noise = noise, type = "random", noise.type = noise.type)
         X <- cX[,1:2]
-        graph <- create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
+        graph <- dgraphs::create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
         degrees <- sapply(graph$pruned_adj_list, FUN = length)
         freq.table <- table(degrees)
         props[[i]] <- freq.table / sum(freq.table)
@@ -1052,7 +947,7 @@ get.TN.S1.degree.props <- function(n.pts = 100,
 #'
 #' @details
 #' The function generates uniform random points on a torus using \code{\link{runif.torus}}
-#' and constructs k-nearest neighbor graphs using \code{create.single.iknn.graph}. For each
+#' and constructs k-nearest neighbor graphs using \code{dgraphs::create.single.iknn.graph()}. For each
 #' simulation, it computes the proportion of vertices with each degree. The final
 #' results include means and 95% confidence intervals for these proportions across
 #' all simulations.
@@ -1088,7 +983,7 @@ get.torus.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 1) 
     max.degree <- 0
     for(i in 1:n.sims) {
         X <- runif.torus(n.pts, dim = dim)
-        graph <- create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
+        graph <- dgraphs::create.single.iknn.graph(X, k = k, compute.full = FALSE, verbose = FALSE)
         degrees <- sapply(graph$pruned_adj_list, FUN = length)
         freq.table <- table(degrees)
         props[[i]] <- freq.table / sum(freq.table)
@@ -1752,100 +1647,6 @@ visualize.grid.function <- function(grid.size, z, centers = NULL, title = "Funct
     invisible(z)
 }
 
-#' Create a Random Graph
-#'
-#' @description
-#' Creates a random graph with the specified number of vertices and
-#' average degree (neighbors per vertex).
-#'
-#' @param n_vertices Number of vertices in the graph
-#' @param avg_degree Average number of neighbors per vertex
-#' @param connected Logical; if TRUE, ensure the graph is connected
-#'
-#' @return A list with adjacency and weight lists
-#'
-#' @examples
-#' graph <- create.random.graph(100, 4)
-#'
-#' @export
-create.random.graph <- function(n_vertices, avg_degree, connected = TRUE) {
-  # Initialize empty adjacency and weight lists
-  adj.list <- vector("list", n_vertices)
-  weight.list <- vector("list", n_vertices)
-
-  # Total number of edges to create
-  n_edges <- floor(n_vertices * avg_degree / 2)
-
-  # Initialize all vertices with empty adjacency lists
-  for (i in 1:n_vertices) {
-    adj.list[[i]] <- integer(0)
-    weight.list[[i]] <- numeric(0)
-  }
-
-  # First, ensure the graph is connected by creating a spanning tree
-  if (connected) {
-    # Start with vertex 1
-    connected_vertices <- c(1)
-    unconnected_vertices <- setdiff(1:n_vertices, connected_vertices)
-
-    # Connect each vertex to one already in the connected set
-    while (length(unconnected_vertices) > 0) {
-      # Choose a random unconnected vertex
-      v2 <- sample(unconnected_vertices, 1)
-
-      # Choose a random connected vertex to link to
-      v1 <- sample(connected_vertices, 1)
-
-      # Add edge in both directions
-      adj.list[[v1]] <- c(adj.list[[v1]], v2)
-      weight.list[[v1]] <- c(weight.list[[v1]], 1.0)
-
-      adj.list[[v2]] <- c(adj.list[[v2]], v1)
-      weight.list[[v2]] <- c(weight.list[[v2]], 1.0)
-
-      # Update sets
-      connected_vertices <- c(connected_vertices, v2)
-      unconnected_vertices <- setdiff(unconnected_vertices, v2)
-    }
-
-    # Adjust the remaining edges to add
-    n_edges <- n_edges - (n_vertices - 1)
-  }
-
-  # Add random edges until we reach the desired average degree
-  edges_added <- 0
-  while (edges_added < n_edges) {
-    # Choose two different random vertices
-    vertices <- sample(n_vertices, 2)
-    v1 <- vertices[1]
-    v2 <- vertices[2]
-
-    # Check if edge already exists
-    if (!(v2 %in% adj.list[[v1]])) {
-      # Add edge in both directions (undirected graph)
-      adj.list[[v1]] <- c(adj.list[[v1]], v2)
-      weight.list[[v1]] <- c(weight.list[[v1]], 1.0)
-
-      adj.list[[v2]] <- c(adj.list[[v2]], v1)
-      weight.list[[v2]] <- c(weight.list[[v2]], 1.0)
-
-      edges_added <- edges_added + 1
-    }
-  }
-
-  # Calculate a more meaningful weight for edges (random, but consistent)
-  # Here we use a simple approach: random weights between 0.5 and 1.5
-  set.seed(42)  # For reproducibility
-  for (i in 1:n_vertices) {
-    n_neighbors <- length(adj.list[[i]])
-    if (n_neighbors > 0) {
-      weight.list[[i]] <- runif(n_neighbors, 0.5, 1.5)
-    }
-  }
-
-  return(list(adj.list = adj.list, weight.list = weight.list))
-}
-
 #' Assess Fidelity of Graph-Based Geodesic Distances to Euclidean Geometry
 #'
 #' This function compares local neighborhood structures defined by graph-based distances
@@ -2054,67 +1855,6 @@ compute.kernel.graph.laplacian.eigenfunctions.I.minus.L.powered <- function(x.mi
 #'   \item{weight_list}{A list of numeric vectors. Each vector contains weights of edges
 #'         corresponding to adjacencies in adj_list.}
 #'
-#' @examples
-#' # Example distance matrix
-#' dist <- matrix(c(
-#'   0.0000000, 0.02834008, 0.05050505, 0.12500000, 0.1086957,
-#'   0.02834008, 0.00000000, 0.88888889, 0.54166667, 1.0000000,
-#'   0.05050505, 0.88888889, 0.00000000, 0.04166667, 0.1086957,
-#'   0.12500000, 0.54166667, 0.04166667, 0.00000000, 1.0000000,
-#'   0.10869565, 1.00000000, 0.10869565, 1.00000000, 0.0000000
-#' ), nrow=5, byrow=TRUE)
-#' rownames(dist) <- colnames(dist) <- c("M1", "M2", "M3", "M4", "M5")
-#'
-#' # Force symmetry by averaging with transpose
-#' dist <- (dist + t(dist)) / 2
-#'
-#' # Create graph with threshold 0.15
-#' graph <- create.threshold.distance.graph(dist, 0.15)
-#'
-#' @export
-create.threshold.distance.graph <- function(dist.matrix, threshold, include.names = TRUE) {
-    ## Check if the matrix is symmetric
-    if (!isSymmetric(unname(dist.matrix))) {
-        stop("The distance matrix must be symmetric")
-    }
-
-    ## Get the number of vertices
-    n.vertices <- nrow(dist.matrix)
-
-    ## Get vertex names if available
-    vertex.names <- rownames(dist.matrix)
-    if (is.null(vertex.names)) {
-        vertex.names <- 1:n.vertices
-    }
-
-    ## Initialize adjacency and weight lists
-    adj.list <- vector("list", n.vertices)
-    weight.list <- vector("list", n.vertices)
-
-    ## Populate the adjacency and weight lists
-    for (i in 1:n.vertices) {
-        ## Find all vertices j where dist(i,j) < threshold and i != j
-        neighbors <- which(dist.matrix[i, ] < threshold & (1:n.vertices != i))
-
-        ## Add to adjacency list
-        adj.list[[i]] <- neighbors
-
-        ## Add corresponding weights
-        weight.list[[i]] <- dist.matrix[i, neighbors]
-    }
-
-    ## Add names if requested
-    if (include.names && !is.null(vertex.names)) {
-        names(adj.list) <- vertex.names
-        names(weight.list) <- vertex.names
-    }
-
-    return(list(
-        adj_list = adj.list,
-        weight_list = weight.list
-    ))
-}
-
 #' Compute local cluster evenness with full cluster support
 #'
 #' Computes the evenness (normalized entropy) of cluster label distribution

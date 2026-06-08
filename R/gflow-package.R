@@ -67,9 +67,9 @@
 #'
 #' \strong{Graph and Simplicial Complex Construction:}
 #' \itemize{
-#'   \item \code{\link{create.iknn.graphs}} - Builds intersection k-nearest neighbor graphs
-#'   \item \code{\link{create.single.iknn.graph}} - Creates mutual k-nearest neighbor graphs
-#'   \item \code{\link{create.cmst.graph}} - Constructs a minimal spanning tree completion graph
+#'   \item \code{dgraphs::create.iknn.graphs()} - Builds intersection k-nearest neighbor graphs
+#'   \item \code{dgraphs::create.single.iknn.graph()} - Creates mutual k-nearest neighbor graphs
+#'   \item \code{dgraphs::create.cmst.graph()} - Constructs a minimal spanning tree completion graph
 #'   \item \code{\link{create.nerve.complex}} - Creates a nerve complex for k-nearest neighbor covering
 #' }
 #'

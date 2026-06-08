@@ -73,6 +73,9 @@ private:
 /**
  * Build an ikNN graph from flat kNN buffers (shared backend entry point).
  *
+ * Temporary split dependency: retained for gflow rdgraph initialization until
+ * the corresponding native backend is fully owned by dgraphs.
+ *
  * @param knn_result Flat kNN result with row-major [n x k_full] buffers.
  * @param k Number of neighbors from each row to use (k <= knn_result.k).
  * @param use_bucket_parallel Enable bucket-level OpenMP parallelism when available.

@@ -501,6 +501,8 @@ double compute_grid_spacing(
  * - Original vertices may become grid points if they are close to grid positions
  * - Edge weights represent geometric distances
  */
+// Temporary split dependency: internal grid/path smoothers still use this
+// builder; the R-callable uniform-grid graph constructor is retired from gflow.
 uniform_grid_graph_t create_uniform_grid_graph(
     const std::vector<std::vector<int>>& input_adj_list,
     const std::vector<std::vector<double>>& input_weight_list,

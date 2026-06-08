@@ -122,7 +122,7 @@
 #'
 #' @examples
 #' X <- rbind(c(0, 0), c(1, 0), c(2, 0))
-#' g <- create.sknn.graph(X, k = 1)
+#' g <- dgraphs::create.sknn.graph(X, k = 1)
 #' graph.geodesic.distances(g)
 #' graph.geodesic.distances(g, stage = "raw")
 #'

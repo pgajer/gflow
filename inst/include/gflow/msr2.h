@@ -36,7 +36,6 @@ void print_double_array_with_precision(const double *x, int n, int precision);
 #include "cpp_mstrees_r.h"
 #include "mstree_total_length_r.h"
 #include "hHN_graphs_r.h"
-#include "path_graphs_r.h"
 #include "graph_shortest_path_r.h"
 #include "graph_core_endpoints_r.h"
 #include "graph_utils_r.h"
