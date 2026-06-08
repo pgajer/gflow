@@ -606,6 +606,8 @@ std::vector<std::vector<std::pair<int, int>>> convert_to_int_weighted_adj_list(
  *         First element: adjacency list where each vertex is connected to its neighbors
  *         Second element: corresponding edge lengths based on absolute differences between points
  */
+// Temporary split dependency: internal smoothers still construct chain graphs
+// here; the R-level chain graph constructor has moved to dgraphs.
 std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>>
 create_chain_graph(const std::vector<double>& x) {
     int n_vertices = static_cast<int>(x.size());

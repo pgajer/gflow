@@ -16,7 +16,7 @@ compute.stability.metrics(
 }
 \arguments{
 \item{graphs}{An object of class \code{"iknn_graphs"} returned by
-\code{\link{create.iknn.graphs}}.}
+\code{dgraphs::create.iknn.graphs()}.}
 
 \item{graph.type}{Character string, either \code{"geom"} or \code{"isize"},
 selecting which pruned graph sequence is analyzed.}
@@ -61,7 +61,7 @@ curve derived from the trend-fit objects.}
 }
 \description{
 Computes stability diagnostics across the pruned IkNN graphs produced by
-\code{\link{create.iknn.graphs}}. Metrics include:
+\code{dgraphs::create.iknn.graphs()}. Metrics include:
 \itemize{
 \item Edit distances between consecutive graphs (edge-set symmetric difference)
 \item Jensen-Shannon divergence between selected graph-summary distributions
@@ -76,7 +76,7 @@ attributes attached to the input \code{iknn_graphs} object.
 }
 \examples{
 \dontrun{
-graphs <- create.iknn.graphs(X, kmin = 6, kmax = 15, n.cores = 4)
+graphs <- dgraphs::create.iknn.graphs(X, kmin = 6, kmax = 15, n.cores = 4)
 stab <- compute.stability.metrics(graphs, graph.type = "geom")
 plot(stab)
 ok <- find.optimal.k(stab)

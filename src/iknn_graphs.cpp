@@ -2132,6 +2132,8 @@ iknn_graph_t create_iknn_graph_inverted_index(const knn_search_result_t& knn_res
     return res;
 }
 
+// Temporary split dependency: this internal builder remains for rdgraph
+// initialization; R-callable ikNN graph constructors are retired from gflow.
 iknn_graph_t create_iknn_graph_from_knn_result(const knn_result_t& knn_result,
                                                int k,
                                                bool use_bucket_parallel,

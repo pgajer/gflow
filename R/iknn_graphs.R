@@ -1,383 +1,11 @@
-#' Create intersection k-nearest neighbor graphs with dual pruning
-#'
-#' @description
-#' For each \eqn{k \in [k_{\mathrm{min}},\,k_{\mathrm{max}}]}, builds an
-#' intersection-weighted k-NN graph and applies two pruning schemes:
-#' (1) geometric (path-to-edge ratio) and (2) intersection-size.
-#' Optionally performs PCA before graph construction.
-#'
-#' @param X A numeric matrix (or object coercible to a numeric matrix) with rows
-#'     = observations and columns = features.
-#'
-#' @param kmin Integer \eqn{\ge 1}, the minimum k.
-#'
-#' @param kmax Integer \eqn{> k_{\mathrm{min}}}, the maximum k.
-#'
-#' @param max.path.edge.ratio.deviation.thld Numeric in \eqn{[0, 0.2)}.
-#'     Geometric pruning removes an edge \eqn{(i,j)} when there exists an
-#'     alternative path between \eqn{i} and \eqn{j} whose path/edge length ratio
-#'     minus 1.0 is \emph{less than} this threshold. This is a deviation
-#'     threshold \eqn{\delta} in \eqn{[0, 0.2)}. Internally we compare the
-#'     path-to-edge ratio R to \eqn{1 + \delta}.
-#'
-#' @param path.edge.ratio.percentile Numeric in \eqn{[0,1]}. Only edges with
-#'     length above this percentile are considered for geometric pruning.
-#'
-#' @param threshold.percentile Numeric in \eqn{[0, 0.5]}. Percentile threshold for
-#'     quantile-based edge length pruning. Default is 0 (no quantile pruning).
-#'     When greater than 0, edges in the top (1 - threshold.percentile) quantile
-#'     by length are removed if their removal preserves graph connectivity.
-#'     For example, threshold.percentile = 0.9 removes edges in the top 10\% by length.
-#'     This pruning is applied after geometric pruning and targets unusually long edges
-#'     based on absolute edge lengths rather than path-to-edge ratios.
-#'
-#' @param compute.full Logical controlling graph-list outputs.
-#'     If `TRUE`, return `geom_pruned_graphs` (and `isize_pruned_graphs` when
-#'     `with.isize.pruning = TRUE`).
-#'     If `FALSE`, both graph lists are `NULL` and only summary outputs are returned
-#'     (`k_statistics`, plus `edge_pruning_stats` when requested).
-#'
-#' @param with.isize.pruning Logical. If `TRUE`, compute and return
-#'     intersection-size pruned graphs/statistics. Default is `FALSE`.
-#'
-#' @param with.edge.pruning.stats Logical. If `TRUE`, compute and return
-#'     edge-level pruning statistics. Default is `FALSE`.
-#'
-#' @param pca.dim Positive integer or `NULL`. If not `NULL` and `ncol(X) >
-#'     pca.dim`, PCA is used to reduce to at most `pca.dim` components.
-#'
-#' @param variance.explained Numeric in \eqn{(0,1]} or `NULL`. If not `NULL`,
-#'     choose the smallest number of PCs whose cumulative variance explained
-#'     exceeds this threshold, capped by `pca.dim`.
-#'
-#' @param knn.metric Character scalar specifying the geometry used for kNN search.
-#'     \code{"euclidean"} uses ordinary ambient Euclidean distance.
-#'     \code{"linf.simplex"} uses the unfolded intrinsic metric on the
-#'     \eqn{L^\infty}-simplex and requires rows of \code{X} to be
-#'     \eqn{L^\infty}-normalized.
-#'
-#' @param linf.tol Positive numeric tolerance used only when
-#'     \code{knn.metric = "linf.simplex"} to identify active simplex faces and
-#'     validate that \code{max(row) = 1}.
-#'
-#' @param n.cores Integer or `NULL`. Number of CPU cores. `NULL` uses the
-#'     maximum available (OpenMP build only).
-#'
-#' @param parallel.mode Character execution mode for graph construction:
-#'     `"auto"`, `"k"`, `"bucket"`, `"hybrid"` (or alias `"bucket.prune"`).
-#'     `"hybrid"` performs
-#'     bucket-parallel graph build and then k-parallel pruning in batches.
-#'
-#' @param hybrid.batch.size Positive integer batch size used when
-#'     `parallel.mode = "hybrid"`.
-#'
-#' @param knn.cache.path Optional character scalar path to a binary kNN cache file.
-#'     Used only when `knn.cache.mode != "none"`.
-#'
-#' @param knn.cache.mode Character cache mode:
-#'   \itemize{
-#'     \item \code{"none"}: always compute kNN; do not read/write cache.
-#'     \item \code{"read"}: read kNN from cache only; if cache is missing/invalid, error.
-#'     \item \code{"write"}: always compute kNN and atomically write/overwrite cache.
-#'     \item \code{"readwrite"}: read valid cache when available; if cache file is missing,
-#'       compute and write cache; if cache exists but is invalid, error.
-#'   }
-#'
-#' @param verbose Logical; print progress and timing.
-#'
-#' @return A list of class `"iknn_graphs"` with entries:
-#' \describe{
-#'   \item{k_statistics}{Matrix of per-\eqn{k} edge counts and reductions.
-#'     (If the C++ side supplies column names, they’re preserved.
-#'     Otherwise we add names consistent with what the C++ returns.)}
-#'   \item{geom_pruned_graphs}{If `compute.full=TRUE`, list of geometrically
-#'     pruned graphs (adjacency + weights); otherwise `NULL`.}
-#'   \item{isize_pruned_graphs}{If `compute.full=TRUE` and
-#'     `with.isize.pruning=TRUE`, list of intersection-size pruned graphs;
-#'     otherwise `NULL`.}
-#'   \item{edge_pruning_stats}{If `with.edge.pruning.stats=TRUE`, list (per
-#'     \eqn{k}) of edge-level statistics; otherwise `NULL`.}
-#' }
-#'
-#' @details
-#' Geometric pruning uses the deviation threshold
-#' `max.path.edge.ratio.deviation.thld` and the filtering percentile
-#' `path.edge.ratio.percentile`. Intersection-size pruning currently uses
-#' a maximum alternative path length of 2.
-#'
-#' Output behavior by flags:
-#' - `compute.full = FALSE`: both `geom_pruned_graphs` and `isize_pruned_graphs`
-#'   are `NULL`.
-#' - `compute.full = TRUE` and `with.isize.pruning = FALSE`:
-#'   `geom_pruned_graphs` is returned and `isize_pruned_graphs` is `NULL`.
-#'
-#' @examples
-#' # Generate sample data
-#' X <- matrix(rnorm(100 * 5), 100, 5)
-#'
-#' # Basic usage
-#' res1 <- create.iknn.graphs(
-#'   X, kmin = 3, kmax = 10, n.cores = 1,
-#'   compute.full = FALSE
-#' )
-#'
-#' # With custom pruning parameters
-#' res2 <- create.iknn.graphs(
-#'   X, kmin = 3, kmax = 10,
-#'   max.path.edge.ratio.deviation.thld = 0.1,
-#'   path.edge.ratio.percentile = 0.5,
-#'   compute.full = TRUE,
-#'   n.cores = 1,
-#'   verbose = TRUE
-#' )
-#'
-#' # View statistics for each k
-#' print(res2$k_statistics)
-#'
-#' @export
-create.iknn.graphs <- function(X,
-                               kmin,
-                               kmax,
-                               max.path.edge.ratio.deviation.thld = 0.1,
-                               path.edge.ratio.percentile = 0.5,
-                               threshold.percentile = 0,
-                               compute.full = TRUE,
-                               with.isize.pruning = FALSE,
-                               with.edge.pruning.stats = FALSE,
-                               pca.dim = 100,
-                               variance.explained = 0.99,
-                               knn.metric = c("euclidean", "linf.simplex"),
-                               linf.tol = sqrt(.Machine$double.eps),
-                               n.cores = NULL,
-                               parallel.mode = c("auto", "k", "bucket", "hybrid", "bucket.prune"),
-                               hybrid.batch.size = 2L,
-                               verbose = TRUE,
-                               knn.cache.path = NULL,
-                               knn.cache.mode = c("none", "read", "write", "readwrite")) {
-
-    ## Coerce & basic checks
-    if (!is.matrix(X)) {
-        X <- try(as.matrix(X), silent = TRUE)
-        if (inherits(X, "try-error"))
-            stop("X must be a matrix or coercible to a numeric matrix.")
-    }
-    if (!is.numeric(X)) stop("X must be numeric.")
-    if (any(!is.finite(X))) stop("X cannot contain NA/NaN/Inf.")
-
-    if (!is.double(X)) {
-        storage.mode(X) <- "double"
-    }
-
-    knn.metric <- .normalize.knn.metric(knn.metric)
-    linf.tol <- .normalize.linf.tol(linf.tol)
-
-    n <- nrow(X)
-    if (n < 2) stop("X must have at least 2 rows (observations).")
-
-    if (!is.numeric(kmin) || length(kmin) != 1 || kmin < 1 || kmin != floor(kmin))
-        stop("kmin must be a positive integer.")
-    if (!is.numeric(kmax) || length(kmax) != 1 || kmax < kmin || kmax != floor(kmax))
-        stop("kmax must be an integer not smaller than kmin.")
-    if (n <= kmax)
-        stop("Number of observations (nrow(X)) must be greater than kmax.")
-
-    if (!is.numeric(max.path.edge.ratio.deviation.thld) || length(max.path.edge.ratio.deviation.thld) != 1)
-        stop("max.path.edge.ratio.deviation.thld must be numeric.")
-    if (max.path.edge.ratio.deviation.thld < 0 || max.path.edge.ratio.deviation.thld >= 0.2)
-        stop("max.path.edge.ratio.deviation.thld must be in [0, 0.2).")
-
-    if (!is.numeric(path.edge.ratio.percentile) || length(path.edge.ratio.percentile) != 1 ||
-        path.edge.ratio.percentile < 0 || path.edge.ratio.percentile > 1)
-        stop("path.edge.ratio.percentile must be in [0, 1].")
-
-    if (!is.logical(compute.full) || length(compute.full) != 1)
-        stop("compute.full must be TRUE/FALSE.")
-    if (!is.logical(with.isize.pruning) || length(with.isize.pruning) != 1)
-        stop("with.isize.pruning must be TRUE/FALSE.")
-    if (!is.logical(with.edge.pruning.stats) || length(with.edge.pruning.stats) != 1)
-        stop("with.edge.pruning.stats must be TRUE/FALSE.")
-    if (!is.logical(verbose) || length(verbose) != 1)
-        stop("verbose must be TRUE/FALSE.")
-    parallel.mode <- match.arg(parallel.mode)
-    if (identical(parallel.mode, "bucket.prune")) {
-        parallel.mode <- "hybrid"
-    }
-    parallel.mode.id <- switch(parallel.mode,
-                               auto = 0L,
-                               k = 1L,
-                               bucket = 2L,
-                               hybrid = 3L)
-    if (!is.numeric(hybrid.batch.size) || length(hybrid.batch.size) != 1 ||
-        hybrid.batch.size < 1 || hybrid.batch.size != floor(hybrid.batch.size)) {
-        stop("hybrid.batch.size must be a positive integer.")
-    }
-    knn.cache.mode <- match.arg(knn.cache.mode)
-    knn.cache.path <- .normalize.knn.cache.path(knn.cache.path, knn.cache.mode)
-    knn.metric.id <- .knn.metric.id(knn.metric)
-    knn.cache.mode.id <- switch(knn.cache.mode,
-                                none = 0L,
-                                read = 1L,
-                                write = 2L,
-                                readwrite = 3L)
-
-    if (!is.numeric(threshold.percentile) || length(threshold.percentile) != 1)
-        stop("threshold.percentile must be numeric.")
-    if (threshold.percentile < 0 || threshold.percentile > 0.5)
-        stop("threshold.percentile must be in [0, 0.5].")
-
-    if (!is.logical(compute.full) || length(compute.full) != 1) {
-        stop("compute.full must be a single logical value")
-    }
-
-    if (!is.null(pca.dim)) {
-        if (!is.numeric(pca.dim) || length(pca.dim) != 1 || pca.dim < 1 || pca.dim != floor(pca.dim))
-            stop("pca.dim must be a positive integer or NULL.")
-    }
-    if (identical(knn.metric, "linf.simplex")) {
-        if (!is.null(pca.dim)) {
-            stop("pca.dim must be NULL when knn.metric = 'linf.simplex'.")
-        }
-        .validate.linf.simplex.input(X, linf.tol)
-    }
-    if (!is.null(variance.explained)) {
-        if (!is.numeric(variance.explained) || length(variance.explained) != 1 ||
-            variance.explained <= 0 || variance.explained > 1)
-            stop("variance.explained must be in (0, 1], or NULL.")
-    }
-
-    ## PCA (optional)
-    pca_info <- NULL
-    if (!is.null(pca.dim) && ncol(X) > pca.dim) {
-        if (verbose) message("High-dimensional data detected. Performing PCA.")
-        original_dim <- ncol(X)
-        if (!is.null(variance.explained)) {
-            pca_analysis <- pca.optimal.components(
-                X, variance.threshold = variance.explained, max.components = pca.dim
-            )
-            n_components <- pca_analysis$n.components
-            if (verbose) {
-                message(sprintf("Using %d PCs (explains %.2f%% variance)",
-                                n_components, 100 * pca_analysis$variance.explained))
-            }
-            X <- pca.project(X, pca_analysis$pca.result, n_components)
-            pca_info <- list(
-                original_dim = original_dim,
-                n_components = n_components,
-                variance_explained = pca_analysis$variance.explained,
-                cumulative_variance = pca_analysis$cumulative.variance
-            )
-        } else {
-            if (verbose) message(sprintf("Projecting to first %d PCs", pca.dim))
-            pca_result <- prcomp(X)
-            X <- pca.project(X, pca_result, pca.dim)
-            variance_explained <- sum(pca_result$sdev[1:pca.dim]^2) / sum(pca_result$sdev^2)
-            pca_info <- list(
-                original_dim = original_dim,
-                n_components = pca.dim,
-                variance_explained = variance_explained
-            )
-        }
-    }
-
-    if (verbose && !compute.full) {
-        message("compute.full=FALSE: geom_pruned_graphs and isize_pruned_graphs will be NULL; returning k_statistics (and edge_pruning_stats if requested).")
-    } else if (verbose && !with.isize.pruning) {
-        message("with.isize.pruning=FALSE: isize_pruned_graphs will be NULL.")
-    }
-
-    ## Note on k: ANN returns self in its kNN sets, this is why k+1 is passed here (for kmin and kmax).
-    ## We need to ensure the C++ labels/columns reflect the *original* k.
-    result <- .Call("S_create_iknn_graphs",
-                    X,
-                    as.integer(kmin + 1L),
-                    as.integer(kmax + 1L),
-                    as.double(max.path.edge.ratio.deviation.thld + 1.0),
-                    as.double(path.edge.ratio.percentile),
-                    as.double(threshold.percentile),
-                    as.logical(compute.full),
-                    as.logical(with.isize.pruning),
-                    as.logical(with.edge.pruning.stats),
-                    if (is.null(n.cores)) NULL else as.integer(n.cores),
-                    as.integer(parallel.mode.id),
-                    as.integer(hybrid.batch.size),
-                    if (is.null(knn.cache.path)) NULL else as.character(knn.cache.path),
-                    as.integer(knn.cache.mode.id),
-                    as.integer(knn.metric.id),
-                    as.double(linf.tol),
-                    as.logical(verbose),
-                    PACKAGE = "gflow")
-
-    ## Normalize optional matrices (placeholders may be empty)
-    if (!is.null(result$birth_death_matrix)) {
-        if (!is.matrix(result$birth_death_matrix) || nrow(result$birth_death_matrix) == 0) {
-            result$birth_death_matrix <- matrix(
-                numeric(0), nrow = 0, ncol = 4,
-                dimnames = list(NULL, c("start","end","birth_time","death_time"))
-            )
-        } else if (is.null(colnames(result$birth_death_matrix))) {
-            colnames(result$birth_death_matrix) <- c("start","end","birth_time","death_time")
-        }
-    }
-    if (!is.null(result$double_birth_death_matrix)) {
-        if (!is.matrix(result$double_birth_death_matrix) || nrow(result$double_birth_death_matrix) == 0) {
-            result$double_birth_death_matrix <- matrix(
-                numeric(0), nrow = 0, ncol = 4,
-                dimnames = list(NULL, c("start","end","birth_time","death_time"))
-            )
-        }
-    }
-
-    ## Add column names to k_statistics only if missing, and match column count
-    if (!is.null(result$k_statistics) && is.matrix(result$k_statistics) &&
-        is.null(colnames(result$k_statistics))) {
-        nc <- ncol(result$k_statistics)
-        ## Common layouts: with k (8 cols) or without k (7 cols)
-        if (nc == 8L) {
-            colnames(result$k_statistics) <- c("k",
-                                               "n_edges",
-                                               "n_edges_in_geom_pruned_graph",
-                                               "n_geom_removed_edges",
-                                               "geom_edge_reduction_ratio",
-                                               "n_edges_in_isize_pruned_graph",
-                                               "n_isize_removed_edges",
-                                               "isize_edge_reduction_ratio"
-                                               )
-        } else if (nc == 7L) {
-            colnames(result$k_statistics) <- c(
-                "n_edges",
-                "n_edges_in_geom_pruned_graph",
-                "n_geom_removed_edges",
-                "geom_edge_reduction_ratio",
-                "n_edges_in_isize_pruned_graph",
-                "n_isize_removed_edges",
-                "isize_edge_reduction_ratio"
-            )
-        }
-    }
-
-    attr(result, "kmin") <- kmin
-    attr(result, "kmax") <- kmax
-    attr(result, "max_path_edge_ratio_deviation_thld") <- max.path.edge.ratio.deviation.thld
-    attr(result, "path_edge_ratio_percentile") <- path.edge.ratio.percentile
-    attr(result, "with.isize.pruning") <- with.isize.pruning
-    attr(result, "with.edge.pruning.stats") <- with.edge.pruning.stats
-    attr(result, "parallel.mode") <- parallel.mode
-    attr(result, "hybrid.batch.size") <- as.integer(hybrid.batch.size)
-    attr(result, "knn.metric") <- knn.metric
-    attr(result, "linf.tol") <- linf.tol
-    if (!is.null(pca_info)) attr(result, "pca") <- pca_info
-    class(result) <- "iknn_graphs"
-    result
-}
-
 #' Summarize an iknn_graphs Object
 #'
 #' @description
-#' Provides a detailed summary of an iknn_graphs object created by the create.iknn.graphs() function.
+#' Provides a detailed summary of an iknn_graphs object created by the dgraphs::create.iknn.graphs() function.
 #' The summary includes statistics for each intersection kNN graph in the sequence, displaying information
 #' about the connectivity and structure of the graphs for different k values.
 #'
-#' @param object An object of class 'iknn_graphs', typically the output of create.iknn.graphs().
+#' @param object An object of class 'iknn_graphs', typically the output of dgraphs::create.iknn.graphs().
 #' @param use.isize.pruned Logical. If TRUE, computes and displays statistics for the intersection-size
 #'        pruned graphs (isize_pruned_graphs). If FALSE (default), computes statistics for the
 #'        geometrically pruned graphs (geom_pruned_graphs).
@@ -416,7 +44,7 @@ create.iknn.graphs <- function(X,
 #' x <- matrix(rnorm(1000), ncol = 5)
 #'
 #' # Generate intersection kNN graphs
-#' iknn.res <- create.iknn.graphs(
+#' iknn.res <- dgraphs::create.iknn.graphs(
 #'   x,
 #'   kmin = 3,
 #'   kmax = 10,
@@ -430,7 +58,7 @@ create.iknn.graphs <- function(X,
 #' # Summarize the intersection-size pruned graphs
 #' summary(iknn.res, use.isize.pruned = TRUE)
 #'
-#' @seealso \code{\link{create.iknn.graphs}} for creating intersection kNN graphs.
+#' @seealso \code{dgraphs::create.iknn.graphs()} for creating intersection kNN graphs.
 #'
 #' @export
 summary.iknn_graphs <- function(object,
@@ -542,7 +170,7 @@ summary.iknn_graphs <- function(object,
 #'
 #' @description
 #' Computes stability diagnostics across the pruned IkNN graphs produced by
-#' \code{\link{create.iknn.graphs}}. Metrics include:
+#' \code{dgraphs::create.iknn.graphs()}. Metrics include:
 #' \itemize{
 #'   \item Edit distances between consecutive graphs (edge-set symmetric difference)
 #'   \item Jensen-Shannon divergence between selected graph-summary distributions
@@ -556,7 +184,7 @@ summary.iknn_graphs <- function(object,
 #' attributes attached to the input \code{iknn_graphs} object.
 #'
 #' @param graphs An object of class \code{"iknn_graphs"} returned by
-#'   \code{\link{create.iknn.graphs}}.
+#'   \code{dgraphs::create.iknn.graphs()}.
 #' @param graph.type Character string, either \code{"geom"} or \code{"isize"},
 #'   selecting which pruned graph sequence is analyzed.
 #' @param summary Graph-summary family used for the divergence curve. Defaults
@@ -595,7 +223,7 @@ summary.iknn_graphs <- function(object,
 #'
 #' @examples
 #' \dontrun{
-#' graphs <- create.iknn.graphs(X, kmin = 6, kmax = 15, n.cores = 4)
+#' graphs <- dgraphs::create.iknn.graphs(X, kmin = 6, kmax = 15, n.cores = 4)
 #' stab <- compute.stability.metrics(graphs, graph.type = "geom")
 #' plot(stab)
 #' ok <- find.optimal.k(stab)
@@ -630,7 +258,7 @@ compute.stability.metrics <- function(
     divergence <- match.arg(divergence)
 
     if (!inherits(graphs, "iknn_graphs")) {
-        stop("graphs must be an object of class 'iknn_graphs' returned by create.iknn.graphs().")
+        stop("graphs must be an object of class 'iknn_graphs' returned by dgraphs::create.iknn.graphs().")
     }
 
     kmin <- attr(graphs, "kmin")
@@ -646,9 +274,9 @@ compute.stability.metrics <- function(
 
     if (is.null(graphs.list)) {
         if (graph.type == "isize") {
-            stop("Requested intersection-size pruned graphs are not available. Recompute with create.iknn.graphs(..., compute.full = TRUE, with.isize.pruning = TRUE).")
+            stop("Requested intersection-size pruned graphs are not available. Recompute with dgraphs::create.iknn.graphs(..., compute.full = TRUE, with.isize.pruning = TRUE).")
         }
-        stop("Requested pruned graphs are not available. Recompute create.iknn.graphs(..., compute.full = TRUE).")
+        stop("Requested pruned graphs are not available. Recompute dgraphs::create.iknn.graphs(..., compute.full = TRUE).")
     }
 
     if (length(graphs.list) != length(k.values)) {
@@ -1008,8 +636,8 @@ find.optimal.k.from.stability <- function(x,
 #'
 #' @examples
 #' \dontrun{
-#' # Assuming we have birth-death data from create.iknn.graphs()
-#' result <- create.iknn.graphs(X, kmin = 3, kmax = 10)
+#' # Assuming we have birth-death data from dgraphs::create.iknn.graphs()
+#' result <- dgraphs::create.iknn.graphs(X, kmin = 3, kmax = 10)
 #'
 #' # Find optimal k
 #' stability <- find.optimal.k(result$birth_death_matrix, kmin = 3, kmax = 10)
@@ -1021,7 +649,7 @@ find.optimal.k.from.stability <- function(x,
 #' }
 #'
 #' @seealso
-#' \code{\link{create.iknn.graphs}} for generating the birth-death matrix
+#' \code{dgraphs::create.iknn.graphs()} for generating the birth-death matrix
 #'
 #' @keywords internal
 find.optimal.k.from.birth.death <- function(birth.death.matrix, kmin, kmax, matrix_type = "geom") {
@@ -1486,7 +1114,7 @@ pick.k.within.eps.global.max <- function(metric,
 #' Build ikNN graphs over a k range and select k by edit-distance and/or CST mixing
 #'
 #' @description
-#' Builds a sequence of ikNN-derived graphs over \code{kmin:kmax} using \code{create.iknn.graphs()},
+#' Builds a sequence of ikNN-derived graphs over \code{kmin:kmax} using \code{dgraphs::create.iknn.graphs()},
 #' optionally trims to the largest connected component if the sequence is disconnected, and selects
 #' an "optimal" k using:
 #' \itemize{
@@ -1507,8 +1135,8 @@ pick.k.within.eps.global.max <- function(metric,
 #' @param kmin Integer scalar, minimum k.
 #' @param kmax Integer scalar, maximum k.
 #' @param method Character: "edit", "mixing", "both", or "none".
-#' @param pca.dim Optional integer for PCA dimension inside \code{create.iknn.graphs()}.
-#' @param variance.explained Optional numeric in (0,1] for PCA variance inside \code{create.iknn.graphs()}.
+#' @param pca.dim Optional integer for PCA dimension inside \code{dgraphs::create.iknn.graphs()}.
+#' @param variance.explained Optional numeric in (0,1] for PCA variance inside \code{dgraphs::create.iknn.graphs()}.
 #' @param trim.disconnected Logical; if TRUE and the sequence fails connectivity requirements,
 #'   trims to largest connected component of the best (largest-LCC) graph and rebuilds graphs.
 #'
@@ -1538,9 +1166,9 @@ pick.k.within.eps.global.max <- function(metric,
 #' @param affinity.eps Small positive scalar for inverse affinity.
 #' @param simplify.multiple Logical; if TRUE, simplifies multi-edges/loops and merges weights.
 #' @param seed Numeric; seed of a random number generator.
-#' @param n.cores Integer number of cores passed to \code{create.iknn.graphs()}.
+#' @param n.cores Integer number of cores passed to \code{dgraphs::create.iknn.graphs()}.
 #' @param verbose Logical.
-#' @param ... Additional arguments forwarded to \code{create.iknn.graphs()} ONLY.
+#' @param ... Additional arguments forwarded to \code{dgraphs::create.iknn.graphs()} ONLY.
 #'
 #' @return Object of class "build_iknn_graphs_and_selectk" with fields:
 #'   \itemize{
@@ -1928,11 +1556,7 @@ build.iknn.graphs.and.selectk <- function(X,
     }
 
     ## ---- build graphs (initial) ----
-    if (!exists("create.iknn.graphs", mode = "function")) {
-        stop("create.iknn.graphs() not found in the environment/namespace.")
-    }
-
-    X.graphs <- create.iknn.graphs(
+    X.graphs <- dgraphs::create.iknn.graphs(
         X,
         kmin = kmin,
         kmax = kmax,
@@ -2043,7 +1667,7 @@ build.iknn.graphs.and.selectk <- function(X,
 
         ## rebuild graphs with same PCA settings
         if (kmax >= nrow(X)) kmax <- nrow(X) - 1L
-        X.graphs <- create.iknn.graphs(
+        X.graphs <- dgraphs::create.iknn.graphs(
             X,
             kmin = kmin,
             kmax = kmax,

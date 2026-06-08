@@ -700,6 +700,8 @@ SEXP S_create_path_graph_plus(SEXP s_adj_list,
  * @see path_graph_plm_t
  * @see vertex_path_info_t
  */
+// Temporary split dependency: internal path smoothers still build PLM path
+// graphs here; the R-callable path graph constructors are retired from gflow.
 path_graph_plm_t create_path_graph_plm(
     const std::vector<std::vector<int>>& adj_list,
     const std::vector<std::vector<double>>& weight_list,

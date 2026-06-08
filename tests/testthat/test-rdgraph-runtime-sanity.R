@@ -19,7 +19,7 @@ run_rdgraph_runtime_probe <- function(n,
   y <- rnorm(n)
 
   iknn.elapsed <- as.numeric(system.time({
-    iknn <- create.single.iknn.graph(
+    iknn <- dgraphs::create.single.iknn.graph(
       X,
       k = as.integer(k),
       max.path.edge.ratio.deviation.thld = max.ratio.threshold,

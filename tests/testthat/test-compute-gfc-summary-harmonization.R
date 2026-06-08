@@ -1,6 +1,6 @@
 test_that("compute.gfc GEODESIC summary uses harmonized schema", {
     n <- 64L
-    graph <- generate.circle.graph(n, type = "uniform")
+    graph <- dgraphs::generate.circle.graph(n, type = "uniform")
     y <- 2 + sin(seq(0, 2 * pi, length.out = n)) + 0.05 * cos(seq(0, 6 * pi, length.out = n))
 
     res <- compute.gfc(
@@ -65,7 +65,7 @@ test_that("compute.gfc GEODESIC summary uses harmonized schema", {
 
 test_that("compute.gfc trajectory modulation summary uses harmonized schema", {
     n <- 64L
-    graph <- generate.circle.graph(n, type = "uniform")
+    graph <- dgraphs::generate.circle.graph(n, type = "uniform")
     y <- 2 + sin(seq(0, 2 * pi, length.out = n)) + 0.07 * sin(seq(0, 8 * pi, length.out = n))
 
     res <- compute.gfc(

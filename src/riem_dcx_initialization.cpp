@@ -810,8 +810,8 @@ void riem_dcx_t::initialize_from_graph(
  *       with iterative refinement
  *
  * @note To explore graph connectivity before calling this function, use
- *       create.iknn.graphs() or create.single.iknn.graph() from R to examine
- *       connectivity structure across different k values.
+ *       dgraphs::create.iknn.graphs() or dgraphs::create.single.iknn.graph()
+ *       from R to examine connectivity structure across different k values.
  *
  * @note Edge pruning (controlled by max_ratio_threshold) is optional but
  *       recommended for data with highly variable local density, where k-NN
@@ -952,6 +952,8 @@ void riem_dcx_t::initialize_from_knn(
     }
 
     const int iknn_num_threads = std::max(1, gflow_get_num_procs());
+    // Temporary split dependency: rdgraph initialization still reuses gflow's
+    // internal ikNN builder until the native backend is fully owned by dgraphs.
     iknn_graph_t iknn_graph = create_iknn_graph_from_knn_result(
         knn_result,
         static_cast<int>(k),
@@ -1043,7 +1045,7 @@ void riem_dcx_t::initialize_from_knn(
 				 "Solutions:\n"
 				 "  1. Increase k to create more edges\n"
 				 "  2. Remove outlier samples that are isolated\n"
-				 "  3. Use create.iknn.graphs() to explore connectivity across k values",
+				 "  3. Use dgraphs::create.iknn.graphs() to explore connectivity across k values",
 				 (int)k, n_conn_comps);
 	}
 

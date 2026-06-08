@@ -312,6 +312,8 @@ std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>> creat
  * hhn_adj_list <- result$adj_list
  * hhn_dist_list <- result$dist_list
  */
+// Temporary split dependency: registered only for the private R helper
+// .create.hHN.graph(), not as a user-facing graph constructor.
 SEXP S_create_hHN_graph(SEXP s_adj_list,
                         SEXP s_weight_list,
                         SEXP s_h) {

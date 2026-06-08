@@ -399,6 +399,7 @@ private:
 
 };
 
+// Temporary split dependency for internal grid/path smoothers; not public API.
 uniform_grid_graph_t create_uniform_grid_graph(
     const std::vector<std::vector<int>>& input_adj_list,
     const std::vector<std::vector<double>>& input_weight_list,
@@ -406,6 +407,7 @@ uniform_grid_graph_t create_uniform_grid_graph(
     size_t start_vertex,
     double snap_tolerance);
 
+// Temporary split dependency for internal geodesic/statistics workflows.
 uniform_grid_graph_t create_maximal_packing(
     const std::vector<std::vector<int>>& adj_list,
     const std::vector<std::vector<double>>& weight_list,

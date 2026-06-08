@@ -21,28 +21,22 @@
 #include "lm.h"
 #include "mstree.h"
 #include "mstree_total_length_r.h"
-#include "path_graphs_r.h"
 #include "pruning_long_edges_r.h"
 #include "random_sampling_r.h"
 #include "sampling.h"  // For C_runif_simplex()
 #include "density_r.h"
 #include "local_complexity_r.h"
 #include "ulogit_r.h"
-#include "uniform_grid_graph_r.h"
 #include "centered_paths_r.h"
 #include "iknn_graphs_r.h"
-#include "mknn_graphs_r.h"
-#include "sknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
 #include "kNN_r.h"       // for S_kNN()
 #include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
 #include "set_wgraph_r.h"
 #include "parameterize_circular_graph_r.h"
-#include "graph_maximal_packing_r.h"
 #include "geodesic_stats_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
-#include "mst_completion_graphs_r.h"
 #include "gflow_basins_r.h"
 #include "harmonic_smoother_r.h"
 #include "gflow_cx_r.h"
@@ -167,9 +161,6 @@ SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP, SEXP, SEXP, SEXP, SEXP, 
 #endif
 
 SEXP S_gflow_openmp_diag();
-SEXP S_create_geodesic_iknn_graph(SEXP s_adj_list, SEXP s_weight_list, SEXP s_k);
-SEXP S_adaptive_radius_edges_ann(SEXP s_X, SEXP s_k_scale, SEXP s_radius_factor,
-                                 SEXP s_radius_rule_id);
 
 static const R_CallMethodDef CallMethods[] = {
   // diagnostic
@@ -263,14 +254,6 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   // data graphs
   // =========================================================================
-  {"S_create_single_iknn_graph", (DL_FUNC) &S_create_single_iknn_graph, 13},
-  {"S_create_iknn_graphs", (DL_FUNC) &S_create_iknn_graphs, 17},
-  {"S_create_geodesic_iknn_graph", (DL_FUNC) &S_create_geodesic_iknn_graph, 3},
-  {"S_create_mknn_graph", (DL_FUNC) &S_create_mknn_graph, 2},
-  {"S_create_mknn_graphs", (DL_FUNC) &S_create_mknn_graphs, 7},
-  {"S_create_sknn_graph", (DL_FUNC) &S_create_sknn_graph, 16},
-  {"S_adaptive_radius_edges_ann", (DL_FUNC) &S_adaptive_radius_edges_ann, 4},
-  {"S_create_mst_completion_graph", (DL_FUNC) &S_create_mst_completion_graph, 3},
   {"S_prune_graph_local_geodesic", (DL_FUNC) &S_prune_graph_local_geodesic, 6},
   {"S_prune_graph_global_geodesic_ratio", (DL_FUNC) &S_prune_graph_global_geodesic_ratio, 5},
   {"S_construct_function_aware_graph", (DL_FUNC) &S_construct_function_aware_graph, 14},
@@ -278,15 +261,13 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
 
   {"S_mstree", (DL_FUNC) &S_mstree, 1},
+  // Temporary internal graph-construction dependency: private
+  // .create.hHN.graph() still calls this while hHN graph creation is migrated.
   {"S_create_hHN_graph", (DL_FUNC) &S_create_hHN_graph, 3},
-  {"S_create_path_graph_plus", (DL_FUNC) &S_create_path_graph_plus, 3},
-  {"S_create_path_graph_plm", (DL_FUNC) &S_create_path_graph_plm, 3},
-  {"S_create_path_graph_series", (DL_FUNC) &S_create_path_graph_series, 3},
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
   {"S_linf_simplex_knn", (DL_FUNC) &S_linf_simplex_knn, 3},
 
   {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
-  {"S_compare_iknn_graph_builders", (DL_FUNC) &S_compare_iknn_graph_builders, 4},
 
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
 
@@ -306,7 +287,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_shortest_alt_path_length", (DL_FUNC) &S_shortest_alt_path_length, 5},
   {"S_wgraph_prune_long_edges", (DL_FUNC) &S_wgraph_prune_long_edges, 5},
   {"S_graph_edit_distance", (DL_FUNC) &S_graph_edit_distance, 6},
-  {"S_join_graphs", (DL_FUNC) &S_join_graphs, 4},
   {"S_convert_adjacency_to_edge_matrix", (DL_FUNC) &S_convert_adjacency_to_edge_matrix, 2},
   {"S_convert_adjacency_to_edge_matrix_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_set, 1},
   {"S_convert_adjacency_to_edge_matrix_unordered_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_unordered_set, 1},
@@ -320,7 +300,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_compute_geodesic_stats", (DL_FUNC) &S_compute_geodesic_stats, 9},
   {"S_compute_vertex_geodesic_stats", (DL_FUNC) &S_compute_vertex_geodesic_stats, 8},
   {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
-  {"S_create_maximal_packing", (DL_FUNC) &S_create_maximal_packing, 5},
   {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
   {"S_compute_tube_lens_corridor", (DL_FUNC) &S_compute_tube_lens_corridor, 7},
   {"S_remove_redundant_edges", (DL_FUNC) &S_remove_redundant_edges, 2},
@@ -328,7 +307,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_compute_edge_weight_deviations", (DL_FUNC) &S_compute_edge_weight_deviations, 2},
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
-  {"S_create_uniform_grid_graph", (DL_FUNC) &S_create_uniform_grid_graph, 5},
 
   // =========================================================================
   // regression over graphs

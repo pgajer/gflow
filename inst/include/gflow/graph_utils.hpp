@@ -18,6 +18,7 @@ double get_vertex_eccentricity(
 	const std::vector<std::vector<double>>& weight_list,
 	std::vector<int>& start_vertices);
 
+// Temporary split dependency for internal smoothers; not public API.
 std::pair<std::vector<std::vector<int>>, std::vector<std::vector<double>>>
 create_chain_graph(
 	const std::vector<double>& x

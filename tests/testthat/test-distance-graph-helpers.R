@@ -170,7 +170,7 @@ test_that("distance-matrix ikNN helper matches native gflow ikNN on root example
   for (n in c(4L, 5L)) {
     X <- roots(n)
     helper <- gflow:::.dgh_iknn_graph_from_dist(as.matrix(stats::dist(X)), k = 2)
-    native <- create.single.iknn.graph(
+    native <- dgraphs::create.single.iknn.graph(
       X,
       k = 2,
       max.path.edge.ratio.deviation.thld = 0,

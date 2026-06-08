@@ -6,6 +6,7 @@
 #include <cstddef>
 using std::size_t;
 
+// Temporary split dependency for internal geodesic/statistics workflows.
 uniform_grid_graph_t create_maximal_packing(
 	const std::vector<std::vector<int>>& adj_list,
 	const std::vector<std::vector<double>>& weight_list,
