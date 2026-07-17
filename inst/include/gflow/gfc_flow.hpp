@@ -59,6 +59,29 @@ enum class filter_stage_t {
 };
 
 /**
+ * @brief Policy used by CLOSEST flow when every improving edge is long
+ *
+ * A long edge is one whose length exceeds the configured quantile threshold.
+ * ALLOW_AND_FLAG preserves the historical fallback and marks it for attention;
+ * ALLOW preserves the fallback without raising the attention flag; FORBID
+ * treats the current vertex as terminal.
+ */
+enum class long_edge_fallback_t {
+    ALLOW_AND_FLAG = 0,
+    ALLOW = 1,
+    FORBID = 2
+};
+
+inline std::string long_edge_fallback_to_string(long_edge_fallback_t policy) {
+    switch (policy) {
+        case long_edge_fallback_t::ALLOW_AND_FLAG: return "allow_and_flag";
+        case long_edge_fallback_t::ALLOW: return "allow";
+        case long_edge_fallback_t::FORBID: return "forbid";
+        default: return "unknown";
+    }
+}
+
+/**
  * @brief Convert filter_stage_t to string
  */
 inline std::string filter_stage_to_string(filter_stage_t stage) {
@@ -118,6 +141,7 @@ struct gflow_trajectory_t {
     bool ends_at_lmax;             ///< True if trajectory ends at local maximum
     double total_change;           ///< Total function change: y[end] - y[start]
     int trajectory_id;             ///< Unique identifier for this trajectory
+    int n_long_edge_fallback_steps; ///< CLOSEST steps beyond the edge threshold
     
     // Endpoint classification (set after filtering)
     bool start_is_spurious = false;  ///< True if start extremum is spurious
@@ -128,7 +152,7 @@ struct gflow_trajectory_t {
     gflow_trajectory_t()
         : start_vertex(0), end_vertex(0),
           starts_at_lmin(false), ends_at_lmax(false),
-          total_change(0.0), trajectory_id(-1),
+          total_change(0.0), trajectory_id(-1), n_long_edge_fallback_steps(0),
           start_is_spurious(false), end_is_spurious(false),
           start_basin_idx(-1), end_basin_idx(-1) {}
 };
@@ -153,6 +177,9 @@ struct gfc_flow_params_t : public gfc_params_t {
     /// If true, seed trajectories from both minima and maxima (symmetric)
     bool symmetric_seeding = true;
 
+    /// CLOSEST policy when no improving edge is at or below the threshold
+    long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG;
+
     gfc_flow_params_t() = default;
 
     /// Construct from base parameters
@@ -161,7 +188,8 @@ struct gfc_flow_params_t : public gfc_params_t {
           modulation(gflow_modulation_t::NONE),
           store_trajectories(true),
           max_trajectory_length(10000),
-          symmetric_seeding(true) {}
+          symmetric_seeding(true),
+          long_edge_fallback(long_edge_fallback_t::ALLOW_AND_FLAG) {}
 };
 
 // ============================================================================
@@ -250,6 +278,33 @@ struct gfc_flow_result_t {
 
     /// next_up[v] = next vertex on ascending trajectory from v (0-based), or -1 if none
     std::vector<int> next_up;
+
+    /// Flags vertices whose ascending CLOSEST pointer used a long-edge fallback
+    std::vector<bool> next_up_used_long_edge_fallback;
+
+    /// Flags vertices whose descending CLOSEST pointer used a long-edge fallback
+    std::vector<bool> next_down_used_long_edge_fallback;
+
+    /// Flags vertices whose ascending CLOSEST pointer was blocked by FORBID
+    std::vector<bool> next_up_blocked_by_long_edge;
+
+    /// Flags vertices whose descending CLOSEST pointer was blocked by FORBID
+    std::vector<bool> next_down_blocked_by_long_edge;
+
+    /// Fallback-source counts aligned with max_basins_all
+    std::vector<int> max_basin_long_edge_fallback_vertices;
+
+    /// Fallback-source counts aligned with min_basins_all
+    std::vector<int> min_basin_long_edge_fallback_vertices;
+
+    /// Total number of flagged ascending and descending source vertices
+    int n_next_up_long_edge_fallback = 0;
+    int n_next_down_long_edge_fallback = 0;
+    int n_next_up_blocked_by_long_edge = 0;
+    int n_next_down_blocked_by_long_edge = 0;
+
+    /// TRUE when ALLOW_AND_FLAG observed at least one fallback event
+    bool long_edge_fallback_attention_required = false;
 
     // ========================================================================
     // TRAJECTORIES (ALL, with endpoint classification)

@@ -77,6 +77,17 @@ static gfc_flow_params_t parse_gfc_flow_params(SEXP s_params) {
 
     std::string mod_str = get_list_string(s_params, "modulation", "NONE");
     params.modulation = string_to_gflow_modulation(mod_str);
+    std::string fallback_str = get_list_string(
+        s_params, "long_edge_fallback", "allow_and_flag");
+    if (fallback_str == "allow_and_flag") {
+        params.long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG;
+    } else if (fallback_str == "allow") {
+        params.long_edge_fallback = long_edge_fallback_t::ALLOW;
+    } else if (fallback_str == "forbid") {
+        params.long_edge_fallback = long_edge_fallback_t::FORBID;
+    } else {
+        Rf_error("Unknown long_edge_fallback policy: %s", fallback_str.c_str());
+    }
     params.store_trajectories = get_list_bool(s_params, "store_trajectories", true);
     params.max_trajectory_length = static_cast<size_t>(
         get_list_int(s_params, "max_trajectory_length", 10000));
@@ -170,9 +181,9 @@ static SEXP basin_extended_to_R(const basin_extended_t& basin) {
 
 // Convert trajectory with endpoint classification to R
 static SEXP trajectory_to_R(const gflow_trajectory_t& traj) {
-    // 11 elements: base 7 + endpoint classification
-    SEXP r_traj = PROTECT(Rf_allocVector(VECSXP, 11));
-    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 11));
+    // 12 elements: base 8 + endpoint classification
+    SEXP r_traj = PROTECT(Rf_allocVector(VECSXP, 12));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, 12));
 
     int idx = 0;
 
@@ -215,6 +226,10 @@ static SEXP trajectory_to_R(const gflow_trajectory_t& traj) {
     // trajectory_id (1-based)
     SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(traj.trajectory_id + 1));
     SET_STRING_ELT(r_names, idx, Rf_mkChar("trajectory.id"));
+    ++idx;
+
+    SET_VECTOR_ELT(r_traj, idx, Rf_ScalarInteger(traj.n_long_edge_fallback_steps));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("n.long.edge.fallback.steps"));
     ++idx;
 
     // start_is_spurious
@@ -362,10 +377,105 @@ static SEXP int_vec_to_R(const std::vector<int>& vec, bool one_based = true) {
     return r_vec;
 }
 
+static SEXP bool_vec_to_R(const std::vector<bool>& vec) {
+    R_xlen_t n = static_cast<R_xlen_t>(vec.size());
+    SEXP r_vec = PROTECT(Rf_allocVector(LGLSXP, n));
+    for (R_xlen_t i = 0; i < n; ++i) {
+        LOGICAL(r_vec)[i] = vec[i] ? TRUE : FALSE;
+    }
+    UNPROTECT(1);
+    return r_vec;
+}
+
+static SEXP long_edge_fallback_to_R(const gfc_flow_result_t& result) {
+    const int n_elements = 13;
+    SEXP r_out = PROTECT(Rf_allocVector(VECSXP, n_elements));
+    SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
+    int idx = 0;
+
+    SET_VECTOR_ELT(r_out, idx, Rf_mkString(
+        long_edge_fallback_to_string(result.params.long_edge_fallback).c_str()));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("policy"));
+
+    SET_VECTOR_ELT(r_out, idx, Rf_ScalarLogical(
+        result.long_edge_fallback_attention_required ? TRUE : FALSE));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("attention.required"));
+
+    SEXP r_up = PROTECT(bool_vec_to_R(result.next_up_used_long_edge_fallback));
+    SET_VECTOR_ELT(r_out, idx, r_up);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("next.up.used"));
+    UNPROTECT(1);
+
+    SEXP r_down = PROTECT(bool_vec_to_R(result.next_down_used_long_edge_fallback));
+    SET_VECTOR_ELT(r_out, idx, r_down);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("next.down.used"));
+    UNPROTECT(1);
+
+    SEXP r_up_blocked = PROTECT(bool_vec_to_R(result.next_up_blocked_by_long_edge));
+    SET_VECTOR_ELT(r_out, idx, r_up_blocked);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("next.up.blocked"));
+    UNPROTECT(1);
+
+    SEXP r_down_blocked = PROTECT(bool_vec_to_R(result.next_down_blocked_by_long_edge));
+    SET_VECTOR_ELT(r_out, idx, r_down_blocked);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("next.down.blocked"));
+    UNPROTECT(1);
+
+    SET_VECTOR_ELT(r_out, idx, Rf_ScalarInteger(result.n_next_up_long_edge_fallback));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("n.next.up"));
+
+    SET_VECTOR_ELT(r_out, idx, Rf_ScalarInteger(result.n_next_down_long_edge_fallback));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("n.next.down"));
+
+    SET_VECTOR_ELT(r_out, idx, Rf_ScalarInteger(result.n_next_up_blocked_by_long_edge));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("n.next.up.blocked"));
+
+    SET_VECTOR_ELT(r_out, idx, Rf_ScalarInteger(result.n_next_down_blocked_by_long_edge));
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("n.next.down.blocked"));
+
+    std::vector<int> trajectory_counts;
+    trajectory_counts.reserve(result.trajectories.size());
+    for (const auto& trajectory : result.trajectories) {
+        trajectory_counts.push_back(trajectory.n_long_edge_fallback_steps);
+    }
+    SEXP r_trajectory = PROTECT(int_vec_to_R(trajectory_counts, false));
+    SET_VECTOR_ELT(r_out, idx, r_trajectory);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("trajectory.step.counts"));
+    UNPROTECT(1);
+
+    SEXP r_max_basin = PROTECT(int_vec_to_R(
+        result.max_basin_long_edge_fallback_vertices, false));
+    SEXP r_max_names = PROTECT(Rf_allocVector(
+        STRSXP, static_cast<R_xlen_t>(result.max_basins_all.size())));
+    for (R_xlen_t i = 0; i < static_cast<R_xlen_t>(result.max_basins_all.size()); ++i) {
+        SET_STRING_ELT(r_max_names, i, Rf_mkChar(result.max_basins_all[i].label.c_str()));
+    }
+    Rf_setAttrib(r_max_basin, R_NamesSymbol, r_max_names);
+    SET_VECTOR_ELT(r_out, idx, r_max_basin);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("max.basin.vertex.counts"));
+    UNPROTECT(2);
+
+    SEXP r_min_basin = PROTECT(int_vec_to_R(
+        result.min_basin_long_edge_fallback_vertices, false));
+    SEXP r_min_names = PROTECT(Rf_allocVector(
+        STRSXP, static_cast<R_xlen_t>(result.min_basins_all.size())));
+    for (R_xlen_t i = 0; i < static_cast<R_xlen_t>(result.min_basins_all.size()); ++i) {
+        SET_STRING_ELT(r_min_names, i, Rf_mkChar(result.min_basins_all[i].label.c_str()));
+    }
+    Rf_setAttrib(r_min_basin, R_NamesSymbol, r_min_names);
+    SET_VECTOR_ELT(r_out, idx, r_min_basin);
+    SET_STRING_ELT(r_names, idx++, Rf_mkChar("min.basin.vertex.counts"));
+    UNPROTECT(2);
+
+    Rf_setAttrib(r_out, R_NamesSymbol, r_names);
+    UNPROTECT(2);
+    return r_out;
+}
+
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
 
-    const int n_elements = 34;
+    const int n_elements = 35;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
@@ -978,6 +1088,17 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         SEXP r_next = PROTECT(int_vec_to_R(result.next_up, true));
         SET_VECTOR_ELT(r_result, idx, r_next);
         SET_STRING_ELT(r_names, idx, Rf_mkChar("next.up"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    // ========================================================================
+    // 34: long.edge.fallback telemetry
+    // ========================================================================
+    {
+        SEXP r_fallback = PROTECT(long_edge_fallback_to_R(result));
+        SET_VECTOR_ELT(r_result, idx, r_fallback);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("long.edge.fallback"));
         UNPROTECT(1);
         ++idx;
     }
