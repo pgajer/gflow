@@ -621,7 +621,24 @@ int set_wgraph_t::check_nbr_extremum_type(
     return 0;
 }
 
-static int select_next_vertex(
+struct next_vertex_selection_t {
+    int vertex = -1;
+    bool used_long_edge_fallback = false;
+    bool blocked_by_long_edge = false;
+};
+
+static bool is_better_edge_candidate(
+    double edge_length,
+    size_t vertex,
+    double best_edge_length,
+    size_t best_vertex
+) {
+    return edge_length < best_edge_length ||
+        (edge_length == best_edge_length &&
+         (best_vertex == INVALID_VERTEX || vertex < best_vertex));
+}
+
+static next_vertex_selection_t select_next_vertex(
     const set_wgraph_t& graph,
     size_t current,
     const std::vector<double>& y,
@@ -629,10 +646,11 @@ static int select_next_vertex(
     gflow_modulation_t modulation,
     const std::vector<double>& density,
     const edge_weight_map_t& edge_length_weights,
-    double edge_length_thld
+    double edge_length_thld,
+    long_edge_fallback_t long_edge_fallback
 ) {
     const size_t n = graph.adjacency_list.size();
-    if (current >= n || y.size() != n) return -1;
+    if (current >= n || y.size() != n) return {};
 
     bool needs_density = (modulation == gflow_modulation_t::DENSITY ||
                           modulation == gflow_modulation_t::DENSITY_EDGELEN);
@@ -670,18 +688,28 @@ static int select_next_vertex(
             if (ascending && delta_y <= 0) continue;
             if (!ascending && delta_y >= 0) continue;
 
-            if (edge_len < min_any) {
+            if (is_better_edge_candidate(edge_len, u, min_any, best_any)) {
                 min_any = edge_len;
                 best_any = u;
             }
-            if (edge_len <= edge_length_thld && edge_len < min_short) {
+            if (edge_len <= edge_length_thld &&
+                is_better_edge_candidate(edge_len, u, min_short, best_short)) {
                 min_short = edge_len;
                 best_short = u;
             }
         }
 
-        best_next = (best_short != INVALID_VERTEX) ? best_short : best_any;
-        return (best_next == INVALID_VERTEX) ? -1 : static_cast<int>(best_next);
+        if (best_short != INVALID_VERTEX) {
+            return {static_cast<int>(best_short), false, false};
+        }
+        if (best_any != INVALID_VERTEX &&
+            long_edge_fallback != long_edge_fallback_t::FORBID) {
+            return {static_cast<int>(best_any), true, false};
+        }
+        if (best_any != INVALID_VERTEX) {
+            return {-1, false, true};
+        }
+        return {};
     }
 
     // Score-based modulations
@@ -721,7 +749,31 @@ static int select_next_vertex(
         }
     }
 
-    return (best_next == INVALID_VERTEX) ? -1 : static_cast<int>(best_next);
+    return {(best_next == INVALID_VERTEX) ? -1 : static_cast<int>(best_next), false, false};
+}
+
+static int count_long_edges_on_trajectory(
+    const set_wgraph_t& graph,
+    const std::vector<size_t>& trajectory,
+    double edge_length_thld,
+    gflow_modulation_t modulation
+) {
+    if (modulation != gflow_modulation_t::CLOSEST || trajectory.size() < 2) {
+        return 0;
+    }
+
+    int count = 0;
+    for (size_t i = 1; i < trajectory.size(); ++i) {
+        const size_t from = trajectory[i - 1];
+        const size_t to = trajectory[i];
+        for (const auto& edge : graph.adjacency_list[from]) {
+            if (edge.vertex == to) {
+                if (edge.weight > edge_length_thld) ++count;
+                break;
+            }
+        }
+    }
+    return count;
 }
 
 /**
@@ -753,7 +805,8 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
     const std::vector<double>& density,
     const edge_weight_map_t& edge_length_weights,
     double edge_length_thld,
-    size_t max_length
+    size_t max_length,
+    long_edge_fallback_t long_edge_fallback
 ) const {
     std::vector<size_t> trajectory;
     const size_t n = adjacency_list.size();
@@ -763,145 +816,16 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
         return trajectory;
     }
 
-    // Check if density is required but not provided
-    bool needs_density = (modulation == gflow_modulation_t::DENSITY ||
-                          modulation == gflow_modulation_t::DENSITY_EDGELEN);
-    if (needs_density && density.size() != n) {
-        // Fall back to NONE or EDGELEN
-        if (modulation == gflow_modulation_t::DENSITY) {
-            modulation = gflow_modulation_t::NONE;
-        } else {
-            modulation = gflow_modulation_t::EDGELEN;
-        }
-    }
-
-    // Check if edge length weights are required but not provided
-    // Note: CLOSEST does NOT need precomputed edge_length_weights - it uses raw edge.weight
-    bool needs_edge_weights = (modulation == gflow_modulation_t::EDGELEN ||
-                               modulation == gflow_modulation_t::DENSITY_EDGELEN);
-    if (needs_edge_weights && edge_length_weights.empty()) {
-        // Fall back to NONE or DENSITY
-        if (modulation == gflow_modulation_t::EDGELEN) {
-            modulation = gflow_modulation_t::NONE;
-        } else {
-            modulation = gflow_modulation_t::DENSITY;
-        }
-    }
-
-    // Track vertices in this trajectory to avoid self-loops
-    std::unordered_set<size_t> trajectory_set;
-
     trajectory.push_back(start_vertex);
-    trajectory_set.insert(start_vertex);
 
     size_t current = start_vertex;
 
     while (trajectory.size() < max_length) {
-        size_t best_next = INVALID_VERTEX;
-
-        // ====================================================================
-        // CLOSEST modulation: Lexicographic selection
-        // ====================================================================
-        if (modulation == gflow_modulation_t::CLOSEST) {
-            double min_distance_short = std::numeric_limits<double>::infinity();
-            double min_distance_any = std::numeric_limits<double>::infinity();
-            size_t best_short = INVALID_VERTEX;
-            size_t best_any = INVALID_VERTEX;
-
-            for (const auto& edge : adjacency_list[current]) {
-                size_t u = edge.vertex;
-                double edge_len = edge.weight;
-
-                // Skip if already in this trajectory (avoid loops)
-                if (trajectory_set.count(u) > 0) {
-                    continue;
-                }
-
-                double delta_y = y[u] - y[current];
-
-                // Filter to strictly ascending/descending neighbors
-                if (ascending && delta_y <= 0) {
-                    continue;
-                }
-                if (!ascending && delta_y >= 0) {
-                    continue;
-                }
-
-                // Track best among ALL valid neighbors (fallback)
-                if (edge_len < min_distance_any) {
-                    min_distance_any = edge_len;
-                    best_any = u;
-                }
-
-                // Track best among SHORT valid neighbors (preferred)
-                if (edge_len <= edge_length_thld && edge_len < min_distance_short) {
-                    min_distance_short = edge_len;
-                    best_short = u;
-                }
-            }
-
-            // Prefer short edge, but use any valid edge if no short ones exist
-            best_next = (best_short != INVALID_VERTEX) ? best_short : best_any;
-        }
-
-        // ====================================================================
-        // Other modulations: Score-based selection
-        // ====================================================================
-        else {
-            double best_score = ascending ? -std::numeric_limits<double>::infinity()
-                                          : std::numeric_limits<double>::infinity();
-
-            for (const auto& edge : adjacency_list[current]) {
-                size_t u = edge.vertex;
-                double edge_len = edge.weight;
-
-                // Skip if edge is too long
-                if (edge_len > edge_length_thld) {
-                    continue;
-                }
-
-                // Skip if already in this trajectory (avoid loops within the trajectory)
-                if (trajectory_set.count(u) > 0) {
-                    continue;
-                }
-
-                double delta_y = y[u] - y[current];
-
-                // Skip if not moving in desired direction
-                if (ascending && delta_y <= 0) {
-                    continue;
-                }
-                if (!ascending && delta_y >= 0) {
-                    continue;
-                }
-
-                // Get density for modulation (default 1.0 if not used)
-                double target_dens = needs_density ? density[u] : 1.0;
-
-                // Get edge length weight for modulation (default 1.0 if not used)
-                double edge_weight = 1.0;
-                if (needs_edge_weights) {
-                    // Look up the precomputed edge length weight
-                    auto it_v = edge_length_weights.find(current);
-                    if (it_v != edge_length_weights.end()) {
-                        auto it_u = it_v->second.find(u);
-                        if (it_u != it_v->second.end()) {
-                            edge_weight = it_u->second;
-                        }
-                    }
-                }
-
-                // Compute modulated score
-                double score = compute_modulated_score(delta_y, edge_weight, target_dens, modulation);
-
-                // Check if this is better
-                bool is_better = ascending ? (score > best_score) : (score < best_score);
-                if (is_better) {
-                    best_score = score;
-                    best_next = u;
-                }
-            }
-        }
+        const next_vertex_selection_t selection = select_next_vertex(
+            *this, current, y, ascending, modulation, density,
+            edge_length_weights, edge_length_thld, long_edge_fallback);
+        const size_t best_next = selection.vertex < 0 ?
+            INVALID_VERTEX : static_cast<size_t>(selection.vertex);
 
         // If no valid neighbor found, we've reached a local extremum
         if (best_next == INVALID_VERTEX) {
@@ -910,7 +834,6 @@ std::vector<size_t> set_wgraph_t::follow_gradient_trajectory(
 
         // Move to best neighbor
         trajectory.push_back(best_next);
-        trajectory_set.insert(best_next);
         current = best_next;
     }
 
@@ -924,7 +847,8 @@ gflow_trajectory_t set_wgraph_t::join_trajectories_at_vertex(
     const std::vector<double>& density,
     const edge_weight_map_t& edge_length_weights,
     double edge_length_thld,
-    size_t max_length
+    size_t max_length,
+    long_edge_fallback_t long_edge_fallback
 ) const {
     gflow_trajectory_t result;
     const size_t n = adjacency_list.size();
@@ -932,11 +856,13 @@ gflow_trajectory_t set_wgraph_t::join_trajectories_at_vertex(
     if (vertex >= n) return result;
 
     std::vector<size_t> desc_traj = follow_gradient_trajectory(
-        vertex, y, false, modulation, density, edge_length_weights, edge_length_thld, max_length
+        vertex, y, false, modulation, density, edge_length_weights,
+        edge_length_thld, max_length, long_edge_fallback
     );
 
     std::vector<size_t> asc_traj = follow_gradient_trajectory(
-        vertex, y, true, modulation, density, edge_length_weights, edge_length_thld, max_length
+        vertex, y, true, modulation, density, edge_length_weights,
+        edge_length_thld, max_length, long_edge_fallback
     );
 
     std::reverse(desc_traj.begin(), desc_traj.end());
@@ -1022,13 +948,43 @@ gfc_flow_result_t compute_gfc_flow(
     // Precompute ascent map next_up (single-step pointers)
     // ========================================================================
     result.next_up.assign(n, -1);
+    result.next_up_used_long_edge_fallback.assign(n, false);
+    result.next_down_used_long_edge_fallback.assign(n, false);
+    result.next_up_blocked_by_long_edge.assign(n, false);
+    result.next_down_blocked_by_long_edge.assign(n, false);
     for (size_t v = 0; v < n; ++v) {
-        result.next_up[v] = select_next_vertex(
+        const next_vertex_selection_t up = select_next_vertex(
             graph, v, y, true,
             params.modulation, density,
-            edge_length_weights, edge_length_thld
-            );
+            edge_length_weights, edge_length_thld,
+            params.long_edge_fallback);
+        const next_vertex_selection_t down = select_next_vertex(
+            graph, v, y, false,
+            params.modulation, density,
+            edge_length_weights, edge_length_thld,
+            params.long_edge_fallback);
+        result.next_up[v] = up.vertex;
+        result.next_up_used_long_edge_fallback[v] = up.used_long_edge_fallback;
+        result.next_down_used_long_edge_fallback[v] = down.used_long_edge_fallback;
+        result.next_up_blocked_by_long_edge[v] = up.blocked_by_long_edge;
+        result.next_down_blocked_by_long_edge[v] = down.blocked_by_long_edge;
     }
+    result.n_next_up_long_edge_fallback = static_cast<int>(std::count(
+        result.next_up_used_long_edge_fallback.begin(),
+        result.next_up_used_long_edge_fallback.end(), true));
+    result.n_next_down_long_edge_fallback = static_cast<int>(std::count(
+        result.next_down_used_long_edge_fallback.begin(),
+        result.next_down_used_long_edge_fallback.end(), true));
+    result.n_next_up_blocked_by_long_edge = static_cast<int>(std::count(
+        result.next_up_blocked_by_long_edge.begin(),
+        result.next_up_blocked_by_long_edge.end(), true));
+    result.n_next_down_blocked_by_long_edge = static_cast<int>(std::count(
+        result.next_down_blocked_by_long_edge.begin(),
+        result.next_down_blocked_by_long_edge.end(), true));
+    result.long_edge_fallback_attention_required =
+        params.long_edge_fallback == long_edge_fallback_t::ALLOW_AND_FLAG &&
+        (result.n_next_up_long_edge_fallback > 0 ||
+         result.n_next_down_long_edge_fallback > 0);
 
     // ========================================================================
     // Step 2: Trace trajectories and build basin assignments
@@ -1057,7 +1013,8 @@ gfc_flow_result_t compute_gfc_flow(
         std::vector<size_t> traj = graph.follow_gradient_trajectory(
             lmin, y, true,
             params.modulation, density, edge_length_weights,
-            edge_length_thld, params.max_trajectory_length
+            edge_length_thld, params.max_trajectory_length,
+            params.long_edge_fallback
             );
 
         if (traj.empty()) continue;
@@ -1087,6 +1044,8 @@ gfc_flow_result_t compute_gfc_flow(
             gft.ends_at_lmax = ends_at_true_lmax;
             gft.total_change = y[lmax] - y[lmin];
             gft.trajectory_id = trajectory_id;
+            gft.n_long_edge_fallback_steps = count_long_edges_on_trajectory(
+                graph, gft.vertices, edge_length_thld, params.modulation);
             result.trajectories.push_back(std::move(gft));
         }
 
@@ -1109,7 +1068,8 @@ gfc_flow_result_t compute_gfc_flow(
             std::vector<size_t> desc_traj = graph.follow_gradient_trajectory(
                 lmax_seed, y, false,
                 params.modulation, density, edge_length_weights,
-                edge_length_thld, params.max_trajectory_length
+                edge_length_thld, params.max_trajectory_length,
+                params.long_edge_fallback
                 );
 
             if (desc_traj.empty()) continue;
@@ -1143,6 +1103,8 @@ gfc_flow_result_t compute_gfc_flow(
                 gft.ends_at_lmax = true;
                 gft.total_change = y[lmax] - y[lmin];
                 gft.trajectory_id = trajectory_id;
+                gft.n_long_edge_fallback_steps = count_long_edges_on_trajectory(
+                    graph, gft.vertices, edge_length_thld, params.modulation);
                 result.trajectories.push_back(std::move(gft));
             }
 
@@ -1174,7 +1136,8 @@ gfc_flow_result_t compute_gfc_flow(
 
         gflow_trajectory_t joined = graph.join_trajectories_at_vertex(
             v, y, params.modulation, density, edge_length_weights,
-            edge_length_thld, params.max_trajectory_length
+            edge_length_thld, params.max_trajectory_length,
+            params.long_edge_fallback
             );
 
         if (joined.vertices.empty()) {
@@ -1203,6 +1166,8 @@ gfc_flow_result_t compute_gfc_flow(
         if (params.store_trajectories) {
             joined.trajectory_id = trajectory_id;
             joined.starts_at_lmin = starts_at_true_lmin;
+            joined.n_long_edge_fallback_steps = count_long_edges_on_trajectory(
+                graph, joined.vertices, edge_length_thld, params.modulation);
             // ends_at_lmax already set in join_trajectories_at_vertex
             result.trajectories.push_back(std::move(joined));
         }
@@ -1629,6 +1594,29 @@ gfc_flow_result_t compute_gfc_flow(
         result.max_basins_all, result.retained_max_indices, n);
     result.min_membership_retained = gfc_flow_internal::build_membership_retained(
         result.min_basins_all, result.retained_min_indices, n);
+
+    result.max_basin_long_edge_fallback_vertices.reserve(result.max_basins_all.size());
+    for (const auto& basin : result.max_basins_all) {
+        int count = 0;
+        for (size_t v : basin.vertices) {
+            if (v < result.next_up_used_long_edge_fallback.size() &&
+                result.next_up_used_long_edge_fallback[v]) {
+                ++count;
+            }
+        }
+        result.max_basin_long_edge_fallback_vertices.push_back(count);
+    }
+    result.min_basin_long_edge_fallback_vertices.reserve(result.min_basins_all.size());
+    for (const auto& basin : result.min_basins_all) {
+        int count = 0;
+        for (size_t v : basin.vertices) {
+            if (v < result.next_down_used_long_edge_fallback.size() &&
+                result.next_down_used_long_edge_fallback[v]) {
+                ++count;
+            }
+        }
+        result.min_basin_long_edge_fallback_vertices.push_back(count);
+    }
 
     // Single-valued assignments (first retained basin)
     result.max_assignment.resize(n, -1);

@@ -53,10 +53,12 @@
 #'       \item Among those ascending neighbors, select the one with minimum
 #'         edge distance \eqn{d(v,u)}.
 #'     }
+#'     Equal edge lengths are resolved by the smaller target-vertex identifier.
 #'     This approach minimizes basin-jumping errors by taking the smallest step
 #'     that makes progress. Unlike multiplicative scores, the lexicographic rule
 #'     cannot be overridden by extreme gradient contrasts between adjacent basins.
-#'     Requires no tuning parameters beyond the standard edge length threshold.
+#'     When every improving edge exceeds the standard edge-length threshold,
+#'     \code{long.edge.fallback} determines whether the shortest such edge is used.
 #' }
 #' }
 #'
@@ -74,8 +76,18 @@
 #'   \code{"DENSITY_EDGELEN"}, or \code{"CLOSEST"}. Default is \code{"CLOSEST"}.
 #'   See Details for descriptions of each option.
 #' @param edge.length.quantile.thld Numeric in (0,1]. Quantile threshold for
-#'   edge length filtering during trajectory computation. Edges longer than
-#'   this quantile are not traversed. Default is 0.9.
+#'   edge length filtering during trajectory computation. For non-\code{"CLOSEST"}
+#'   modulations, edges longer than this quantile are not traversed. For
+#'   \code{"CLOSEST"}, \code{long.edge.fallback} controls what happens when all
+#'   improving neighbors exceed the threshold. Default is 0.9.
+#' @param long.edge.fallback Character policy used by \code{"CLOSEST"} when no
+#'   improving edge is at or below the edge-length threshold.
+#'   \code{"allow_and_flag"} preserves the historical shortest-improving-edge
+#'   fallback and marks the returned telemetry for attention; \code{"allow"}
+#'   preserves the same path without the attention flag; and \code{"forbid"}
+#'   makes the threshold hard and terminates the trajectory at that vertex.
+#'   All policies report observed fallback counts. Default is
+#'   \code{"allow_and_flag"}.
 #' @param apply.relvalue.filter Logical. Whether to filter extrema by relative
 #'   value. Default is \code{TRUE}.
 #' @param min.rel.value.max Numeric. Minimum relative value (value/mean(y)) for
@@ -110,11 +122,18 @@
 #' @param symmetric.seeding Logical. If \code{TRUE}, additionally seed
 #'   trajectories from local maxima (descending) to make the trajectory seeding
 #'   symmetric with respect to minima and maxima.
+#' @param tie.breaking Logical. If \code{TRUE}, preserve the historical behavior
+#'   of adding tiny random noise to globally tied response values before flow
+#'   construction. Set to \code{FALSE} when connected plateaus have already
+#'   been contracted and only nonadjacent equal values remain.
 #' @param verbose Logical. Whether to print progress messages. Default is
 #'   \code{FALSE}.
 #'
 #' @return A list of class \code{"gfc.flow"} containing basin and trajectory
-#'   information. See the original function documentation for full details.
+#'   information. The \code{long.edge.fallback} component records the selected
+#'   policy, per-vertex ascent/descent fallback and blocked-step flags,
+#'   trajectory step counts, and basin source-vertex counts. See the original
+#'   function documentation for full details.
 #'
 #' @examples
 #' \dontrun{
@@ -156,6 +175,7 @@ compute.gfc.trajectory <- function(
     density = NULL,
     modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     edge.length.quantile.thld = 0.9,
+    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -173,6 +193,7 @@ compute.gfc.trajectory <- function(
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
     symmetric.seeding = TRUE,
+    tie.breaking = TRUE,
     verbose = FALSE
 ) {
     ## -------------------------------------------------------------------------
@@ -210,6 +231,7 @@ compute.gfc.trajectory <- function(
 
     ## Match modulation argument
     modulation <- match.arg(modulation)
+    long.edge.fallback <- match.arg(long.edge.fallback)
 
     ## Validate numeric parameters
     if (edge.length.quantile.thld <= 0 || edge.length.quantile.thld > 1) {
@@ -225,17 +247,22 @@ compute.gfc.trajectory <- function(
     if (!is.logical(symmetric.seeding) || length(symmetric.seeding) != 1L || is.na(symmetric.seeding)) {
         stop("symmetric.seeding must be TRUE or FALSE")
     }
+    if (!is.logical(tie.breaking) || length(tie.breaking) != 1L || is.na(tie.breaking)) {
+        stop("tie.breaking must be TRUE or FALSE")
+    }
 
     ## -------------------------------------------------------
     ## Breaking ties (if any)
     ## -------------------------------------------------------
 
-    y <- break.ties(y,
-                    noise.scale = 1e-15,
-                    min.abs.noise = 1e-16,
-                    preserve.bounds = TRUE,
-                    seed = NULL,
-                    verbose = FALSE)
+    if (isTRUE(tie.breaking)) {
+        y <- break.ties(y,
+                        noise.scale = 1e-15,
+                        min.abs.noise = 1e-16,
+                        preserve.bounds = TRUE,
+                        seed = NULL,
+                        verbose = FALSE)
+    }
 
     ## -------------------------------------------------------------------------
     ## Convert adjacency list to 0-based indexing for C++
@@ -254,6 +281,7 @@ compute.gfc.trajectory <- function(
 
     params <- list(
         edge_length_quantile_thld = as.double(edge.length.quantile.thld),
+        long_edge_fallback = as.character(long.edge.fallback),
         apply_relvalue_filter = as.logical(apply.relvalue.filter),
         min_rel_value_max = as.double(min.rel.value.max),
         max_rel_value_min = as.double(max.rel.value.min),
@@ -314,6 +342,7 @@ compute.gfc.flow <- function(
     density = NULL,
     modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     edge.length.quantile.thld = 0.9,
+    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -331,6 +360,7 @@ compute.gfc.flow <- function(
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
     symmetric.seeding = TRUE,
+    tie.breaking = TRUE,
     verbose = FALSE
 ) {
     .Deprecated("compute.gfc.trajectory")
@@ -341,6 +371,7 @@ compute.gfc.flow <- function(
         density = density,
         modulation = modulation,
         edge.length.quantile.thld = edge.length.quantile.thld,
+        long.edge.fallback = long.edge.fallback,
         apply.relvalue.filter = apply.relvalue.filter,
         min.rel.value.max = min.rel.value.max,
         max.rel.value.min = max.rel.value.min,
@@ -358,6 +389,7 @@ compute.gfc.flow <- function(
         store.trajectories = store.trajectories,
         max.trajectory.length = max.trajectory.length,
         symmetric.seeding = symmetric.seeding,
+        tie.breaking = tie.breaking,
         verbose = verbose
     )
 }
@@ -926,6 +958,8 @@ count.cell.memberships <- function(gfc.flow) {
 #' @param verbose Logical. Print progress messages.
 #' @param edge.length.quantile.thld Numeric quantile threshold used by optional
 #'   edge-length filtering.
+#' @param long.edge.fallback Character CLOSEST fallback policy; see
+#'   \code{\link{compute.gfc.trajectory}}.
 #' @param apply.relvalue.filter Logical; apply relative-value-based basin
 #'   filtering.
 #' @param min.rel.value.max Numeric lower bound for local-maximum relative value
@@ -968,6 +1002,7 @@ compute.gfc.flow.matrix <- function(
     n.cores = 1L,
     verbose = FALSE,
     edge.length.quantile.thld = 0.9,
+    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -996,6 +1031,7 @@ compute.gfc.flow.matrix <- function(
     }
 
     modulation <- match.arg(modulation)
+    long.edge.fallback <- match.arg(long.edge.fallback)
     if (!is.logical(symmetric.seeding) || length(symmetric.seeding) != 1L || is.na(symmetric.seeding)) {
         stop("symmetric.seeding must be TRUE or FALSE")
     }
@@ -1009,6 +1045,7 @@ compute.gfc.flow.matrix <- function(
     ## Build parameters
     params <- list(
         edge_length_quantile_thld = as.double(edge.length.quantile.thld),
+        long_edge_fallback = as.character(long.edge.fallback),
         apply_relvalue_filter = as.logical(apply.relvalue.filter),
         min_rel_value_max = as.double(min.rel.value.max),
         max_rel_value_min = as.double(max.rel.value.min),
