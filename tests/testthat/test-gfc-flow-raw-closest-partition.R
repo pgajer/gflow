@@ -161,6 +161,15 @@ test_that("CLOSEST rejects invalid graphs and scalar fields explicitly", {
         raw_closest_args(graph$adj, graph$weight, c(0, 1, 2), tie.breaking = TRUE),
         "^unsupported_configuration:"
     )
+    for (threshold in list(NA_real_, Inf, 0, 1.01, c(0.5, 0.9), "0.9")) {
+        expect_error(
+            raw_closest_args(
+                graph$adj, graph$weight, c(0, 1, 2),
+                edge.length.quantile.thld = threshold
+            ),
+            "^invalid_graph: edge.length.quantile.thld"
+        )
+    }
 })
 
 test_that("the direct gfc.flow API exposes both raw and legacy assignments", {
