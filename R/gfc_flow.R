@@ -297,8 +297,14 @@ compute.gfc.trajectory <- function(
     long.edge.fallback <- .normalize.long.edge.fallback(long.edge.fallback)
 
     ## Validate numeric parameters
-    if (edge.length.quantile.thld <= 0 || edge.length.quantile.thld > 1) {
-        stop("edge.length.quantile.thld must be in (0, 1]")
+    if (!is.numeric(edge.length.quantile.thld) ||
+        length(edge.length.quantile.thld) != 1L ||
+        !is.finite(edge.length.quantile.thld) ||
+        edge.length.quantile.thld <= 0 || edge.length.quantile.thld > 1) {
+        stop(
+            "invalid_graph: edge.length.quantile.thld must be one finite numeric value in (0, 1]",
+            call. = FALSE
+        )
     }
     if (!is.numeric(plateau.tolerance) || length(plateau.tolerance) != 1L ||
         !is.finite(plateau.tolerance) || plateau.tolerance < 0) {
