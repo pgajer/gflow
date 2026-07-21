@@ -108,7 +108,7 @@ par(op)
 k.min <- 5L
 k.max <- 12L
 
-X.graphs <- create.iknn.graphs(
+X.graphs <- dgraphs::create.iknn.graphs(
   X,
   kmin = k.min,
   kmax = k.max,
