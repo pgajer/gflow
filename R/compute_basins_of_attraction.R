@@ -1,8 +1,8 @@
-#' Compute Basins of Attraction for Local Extrema
+#' Compute Constrained-Geodesic Reachability Basins For Local Extrema
 #'
 #' @description
 #' This function identifies all local extrema in a weighted graph and computes
-#' their basins of attraction. A basin of attraction for a local extremum
+#' constrained-geodesic reachability supports. A support for a local extremum
 #' consists of all vertices reachable via monotone paths: ascending paths for
 #' minima and descending paths for maxima.
 #'
@@ -28,6 +28,12 @@
 #'
 #' The function uses 0-based indexing internally for C++ compatibility but
 #' returns results with 1-based indexing following R conventions.
+#'
+#' This is not the global single-next-edge CLOSEST representation. Reachability
+#' supports from different extrema may overlap. Use
+#' \code{\link{compute.gfc.trajectory}} with \code{modulation = "CLOSEST"} and
+#' \code{\link{closest.basin.partition}} for the deterministic additive CIN
+#' forest.
 #'
 #' @param adj.list A list of integer vectors representing the graph's adjacency
 #'   structure. Element \code{i} contains the indices of vertices adjacent to
@@ -120,8 +126,9 @@
 #' }
 #' }
 #'
-#' @seealso \code{\link{summary.basins_of_attraction}} for generating
-#'   summary statistics
+#' @seealso \code{\link{summary.basins_of_attraction}} for generating summary
+#'   statistics; \code{\link{closest.basin.partition}} for the distinct additive
+#'   CLOSEST/CIN forest.
 #'
 #' @export
 compute.basins.of.attraction <- function(adj.list,

@@ -76,7 +76,7 @@ test_that("CLOSEST long-edge fallback is selectable and auditable", {
 
     flagged <- do.call(
         compute.gfc.trajectory,
-        c(common, list(long.edge.fallback = "allow_and_flag"))
+        c(common, list(long.edge.fallback = "flag"))
     )
     allowed <- do.call(
         compute.gfc.trajectory,

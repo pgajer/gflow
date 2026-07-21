@@ -350,7 +350,7 @@ struct set_wgraph_t {
 		const edge_weight_map_t& edge_length_weights,
 		double edge_length_thld,
 		size_t max_length,
-		long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG
+		long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::FLAG
 		) const;
 
 	gflow_trajectory_t join_trajectories_at_vertex(
@@ -361,7 +361,7 @@ struct set_wgraph_t {
 		const edge_weight_map_t& edge_length_weights,
 		double edge_length_thld,
 		size_t max_length,
-		long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG
+		long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::FLAG
 		) const;
 
     int check_nbr_extremum_type(

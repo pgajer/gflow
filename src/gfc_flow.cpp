@@ -627,6 +627,262 @@ struct next_vertex_selection_t {
     bool blocked_by_long_edge = false;
 };
 
+struct closest_forest_result_t {
+    std::vector<int> next_up;
+    std::vector<int> next_down;
+    std::vector<int> plateau_component;
+    std::vector<int> plateau_representative;
+    std::vector<double> plateau_value;
+    std::vector<int> raw_max_root_vertex;
+    std::vector<int> raw_min_root_vertex;
+    std::vector<int> raw_max_assignment;
+    std::vector<int> raw_min_assignment;
+    std::vector<bool> up_fallback;
+    std::vector<bool> down_fallback;
+    std::vector<bool> up_blocked;
+    std::vector<bool> down_blocked;
+};
+
+class plateau_disjoint_set_t {
+public:
+    explicit plateau_disjoint_set_t(size_t n) : parent_(n), rank_(n, 0) {
+        std::iota(parent_.begin(), parent_.end(), 0);
+    }
+
+    size_t find(size_t x) {
+        if (parent_[x] != x) parent_[x] = find(parent_[x]);
+        return parent_[x];
+    }
+
+    void unite(size_t a, size_t b) {
+        a = find(a);
+        b = find(b);
+        if (a == b) return;
+        if (rank_[a] < rank_[b]) std::swap(a, b);
+        parent_[b] = a;
+        if (rank_[a] == rank_[b]) ++rank_[a];
+    }
+
+private:
+    std::vector<size_t> parent_;
+    std::vector<int> rank_;
+};
+
+struct quotient_edge_candidate_t {
+    bool valid = false;
+    double length = std::numeric_limits<double>::infinity();
+    size_t target_representative = INVALID_VERTEX;
+    size_t source = INVALID_VERTEX;
+    size_t target = INVALID_VERTEX;
+};
+
+static bool is_better_quotient_candidate(
+    const quotient_edge_candidate_t& candidate,
+    const quotient_edge_candidate_t& best
+) {
+    if (!candidate.valid) return false;
+    if (!best.valid) return true;
+    if (candidate.length != best.length) return candidate.length < best.length;
+    if (candidate.target_representative != best.target_representative) {
+        return candidate.target_representative < best.target_representative;
+    }
+    if (candidate.source != best.source) return candidate.source < best.source;
+    return candidate.target < best.target;
+}
+
+static void orient_plateau_to_sink(
+    const set_wgraph_t& graph,
+    const std::vector<int>& component,
+    const std::vector<size_t>& members,
+    size_t sink,
+    int outgoing_target,
+    std::vector<int>& next
+) {
+    std::queue<size_t> queue;
+    std::vector<bool> visited(graph.num_vertices(), false);
+    visited[sink] = true;
+    queue.push(sink);
+
+    while (!queue.empty()) {
+        const size_t current = queue.front();
+        queue.pop();
+        std::vector<size_t> neighbors;
+        for (const auto& edge : graph.adjacency_list[current]) {
+            if (component[edge.vertex] == component[sink] && !visited[edge.vertex]) {
+                neighbors.push_back(edge.vertex);
+            }
+        }
+        std::sort(neighbors.begin(), neighbors.end());
+        for (size_t neighbor : neighbors) {
+            visited[neighbor] = true;
+            next[neighbor] = static_cast<int>(current);
+            queue.push(neighbor);
+        }
+    }
+
+    for (size_t vertex : members) {
+        if (!visited[vertex]) {
+            Rf_error("internal_contract_failure: disconnected plateau component");
+        }
+    }
+    next[sink] = outgoing_target;
+}
+
+static void follow_roots_and_assign(
+    const std::vector<int>& next,
+    std::vector<int>& roots,
+    std::vector<int>& assignment
+) {
+    const size_t n = next.size();
+    roots.assign(n, -1);
+    for (size_t start = 0; start < n; ++start) {
+        size_t current = start;
+        size_t steps = 0;
+        while (next[current] >= 0) {
+            current = static_cast<size_t>(next[current]);
+            if (++steps > n) {
+                Rf_error("internal_contract_failure: CLOSEST next-edge cycle");
+            }
+        }
+        roots[start] = static_cast<int>(current);
+    }
+
+    std::vector<int> unique_roots = roots;
+    std::sort(unique_roots.begin(), unique_roots.end());
+    unique_roots.erase(std::unique(unique_roots.begin(), unique_roots.end()),
+                       unique_roots.end());
+    std::unordered_map<int, int> root_to_id;
+    for (size_t i = 0; i < unique_roots.size(); ++i) {
+        root_to_id[unique_roots[i]] = static_cast<int>(i);
+    }
+    assignment.resize(n);
+    for (size_t i = 0; i < n; ++i) assignment[i] = root_to_id[roots[i]];
+}
+
+static closest_forest_result_t build_closest_forest(
+    const set_wgraph_t& graph,
+    const std::vector<double>& y,
+    double plateau_tolerance,
+    double edge_length_thld,
+    long_edge_fallback_t long_edge_fallback
+) {
+    const size_t n = graph.num_vertices();
+    closest_forest_result_t out;
+    out.next_up.assign(n, -1);
+    out.next_down.assign(n, -1);
+    out.up_fallback.assign(n, false);
+    out.down_fallback.assign(n, false);
+    out.up_blocked.assign(n, false);
+    out.down_blocked.assign(n, false);
+
+    plateau_disjoint_set_t dsu(n);
+    for (size_t v = 0; v < n; ++v) {
+        for (const auto& edge : graph.adjacency_list[v]) {
+            if (edge.vertex > v && std::abs(y[v] - y[edge.vertex]) <= plateau_tolerance) {
+                dsu.unite(v, edge.vertex);
+            }
+        }
+    }
+
+    std::map<size_t, std::vector<size_t>> root_members;
+    for (size_t v = 0; v < n; ++v) root_members[dsu.find(v)].push_back(v);
+    std::vector<std::vector<size_t>> members;
+    for (auto& entry : root_members) {
+        std::sort(entry.second.begin(), entry.second.end());
+        members.push_back(entry.second);
+    }
+    std::sort(members.begin(), members.end(), [](const auto& a, const auto& b) {
+        return a.front() < b.front();
+    });
+
+    out.plateau_component.assign(n, -1);
+    out.plateau_representative.reserve(members.size());
+    out.plateau_value.reserve(members.size());
+    for (size_t component_id = 0; component_id < members.size(); ++component_id) {
+        const auto& component_members = members[component_id];
+        out.plateau_representative.push_back(static_cast<int>(component_members.front()));
+        double minimum = y[component_members.front()];
+        double maximum = minimum;
+        double total = 0.0;
+        for (size_t vertex : component_members) {
+            out.plateau_component[vertex] = static_cast<int>(component_id);
+            minimum = std::min(minimum, y[vertex]);
+            maximum = std::max(maximum, y[vertex]);
+            total += y[vertex];
+        }
+        if (maximum - minimum > plateau_tolerance) {
+            Rf_error("invalid_scalar_field: plateau tolerance chaining exceeds plateau.tolerance");
+        }
+        out.plateau_value.push_back(total / static_cast<double>(component_members.size()));
+    }
+
+    auto build_direction = [&](bool ascending,
+                               std::vector<int>& next,
+                               std::vector<bool>& fallback,
+                               std::vector<bool>& blocked) {
+        for (size_t component_id = 0; component_id < members.size(); ++component_id) {
+            quotient_edge_candidate_t best_short;
+            quotient_edge_candidate_t best_any;
+            const double source_value = out.plateau_value[component_id];
+            for (size_t source : members[component_id]) {
+                for (const auto& edge : graph.adjacency_list[source]) {
+                    const size_t target = edge.vertex;
+                    const int target_component = out.plateau_component[target];
+                    if (target_component == static_cast<int>(component_id)) continue;
+                    const double target_value = out.plateau_value[target_component];
+                    const bool improving = ascending
+                        ? target_value > source_value + plateau_tolerance
+                        : target_value < source_value - plateau_tolerance;
+                    if (!improving) continue;
+                    quotient_edge_candidate_t candidate;
+                    candidate.valid = true;
+                    candidate.length = edge.weight;
+                    candidate.target_representative = static_cast<size_t>(
+                        out.plateau_representative[target_component]);
+                    candidate.source = source;
+                    candidate.target = target;
+                    if (is_better_quotient_candidate(candidate, best_any)) best_any = candidate;
+                    if (edge.weight <= edge_length_thld &&
+                        is_better_quotient_candidate(candidate, best_short)) {
+                        best_short = candidate;
+                    }
+                }
+            }
+
+            quotient_edge_candidate_t chosen;
+            bool used_fallback = false;
+            if (best_short.valid) {
+                chosen = best_short;
+            } else if (best_any.valid && long_edge_fallback != long_edge_fallback_t::FORBID) {
+                chosen = best_any;
+                used_fallback = true;
+            }
+
+            if (chosen.valid) {
+                orient_plateau_to_sink(
+                    graph, out.plateau_component, members[component_id], chosen.source,
+                    static_cast<int>(chosen.target), next);
+                fallback[chosen.source] = used_fallback;
+            } else {
+                const size_t representative = static_cast<size_t>(
+                    out.plateau_representative[component_id]);
+                orient_plateau_to_sink(
+                    graph, out.plateau_component, members[component_id], representative,
+                    -1, next);
+                if (best_any.valid) blocked[representative] = true;
+            }
+        }
+    };
+
+    build_direction(true, out.next_up, out.up_fallback, out.up_blocked);
+    build_direction(false, out.next_down, out.down_fallback, out.down_blocked);
+    follow_roots_and_assign(
+        out.next_up, out.raw_max_root_vertex, out.raw_max_assignment);
+    follow_roots_and_assign(
+        out.next_down, out.raw_min_root_vertex, out.raw_min_assignment);
+    return out;
+}
+
 static bool is_better_edge_candidate(
     double edge_length,
     size_t vertex,
@@ -930,6 +1186,17 @@ gfc_flow_result_t compute_gfc_flow(
     std::unordered_set<size_t> lmax_set(lmax_vertices.begin(), lmax_vertices.end());
 
     double edge_length_thld = graph.compute_quantile_edge_length(params.edge_length_quantile_thld);
+    if (params.modulation == gflow_modulation_t::CLOSEST &&
+        params.edge_length_quantile_thld >= 1.0) {
+        edge_length_thld = 0.0;
+        for (size_t vertex = 0; vertex < n; ++vertex) {
+            for (const auto& edge : graph.adjacency_list[vertex]) {
+                if (edge.vertex > vertex) {
+                    edge_length_thld = std::max(edge_length_thld, edge.weight);
+                }
+            }
+        }
+    }
     result.edge_length_thld = edge_length_thld;
 
     edge_weight_map_t edge_length_weights;
@@ -945,29 +1212,50 @@ gfc_flow_result_t compute_gfc_flow(
     }
 
     // ========================================================================
-    // Precompute ascent map next_up (single-step pointers)
+    // Precompute deterministic single-step maps and the raw CLOSEST partition.
     // ========================================================================
     result.next_up.assign(n, -1);
+    result.next_down.assign(n, -1);
     result.next_up_used_long_edge_fallback.assign(n, false);
     result.next_down_used_long_edge_fallback.assign(n, false);
     result.next_up_blocked_by_long_edge.assign(n, false);
     result.next_down_blocked_by_long_edge.assign(n, false);
-    for (size_t v = 0; v < n; ++v) {
-        const next_vertex_selection_t up = select_next_vertex(
-            graph, v, y, true,
-            params.modulation, density,
-            edge_length_weights, edge_length_thld,
+    if (params.modulation == gflow_modulation_t::CLOSEST) {
+        closest_forest_result_t forest = build_closest_forest(
+            graph, y, params.plateau_tolerance, edge_length_thld,
             params.long_edge_fallback);
-        const next_vertex_selection_t down = select_next_vertex(
-            graph, v, y, false,
-            params.modulation, density,
-            edge_length_weights, edge_length_thld,
-            params.long_edge_fallback);
-        result.next_up[v] = up.vertex;
-        result.next_up_used_long_edge_fallback[v] = up.used_long_edge_fallback;
-        result.next_down_used_long_edge_fallback[v] = down.used_long_edge_fallback;
-        result.next_up_blocked_by_long_edge[v] = up.blocked_by_long_edge;
-        result.next_down_blocked_by_long_edge[v] = down.blocked_by_long_edge;
+        result.next_up = std::move(forest.next_up);
+        result.next_down = std::move(forest.next_down);
+        result.plateau_component = std::move(forest.plateau_component);
+        result.plateau_representative = std::move(forest.plateau_representative);
+        result.plateau_value = std::move(forest.plateau_value);
+        result.raw_max_root_vertex = std::move(forest.raw_max_root_vertex);
+        result.raw_min_root_vertex = std::move(forest.raw_min_root_vertex);
+        result.raw_max_assignment = std::move(forest.raw_max_assignment);
+        result.raw_min_assignment = std::move(forest.raw_min_assignment);
+        result.next_up_used_long_edge_fallback = std::move(forest.up_fallback);
+        result.next_down_used_long_edge_fallback = std::move(forest.down_fallback);
+        result.next_up_blocked_by_long_edge = std::move(forest.up_blocked);
+        result.next_down_blocked_by_long_edge = std::move(forest.down_blocked);
+    } else {
+        for (size_t v = 0; v < n; ++v) {
+            const next_vertex_selection_t up = select_next_vertex(
+                graph, v, y, true,
+                params.modulation, density,
+                edge_length_weights, edge_length_thld,
+                params.long_edge_fallback);
+            const next_vertex_selection_t down = select_next_vertex(
+                graph, v, y, false,
+                params.modulation, density,
+                edge_length_weights, edge_length_thld,
+                params.long_edge_fallback);
+            result.next_up[v] = up.vertex;
+            result.next_down[v] = down.vertex;
+            result.next_up_used_long_edge_fallback[v] = up.used_long_edge_fallback;
+            result.next_down_used_long_edge_fallback[v] = down.used_long_edge_fallback;
+            result.next_up_blocked_by_long_edge[v] = up.blocked_by_long_edge;
+            result.next_down_blocked_by_long_edge[v] = down.blocked_by_long_edge;
+        }
     }
     result.n_next_up_long_edge_fallback = static_cast<int>(std::count(
         result.next_up_used_long_edge_fallback.begin(),
@@ -982,7 +1270,7 @@ gfc_flow_result_t compute_gfc_flow(
         result.next_down_blocked_by_long_edge.begin(),
         result.next_down_blocked_by_long_edge.end(), true));
     result.long_edge_fallback_attention_required =
-        params.long_edge_fallback == long_edge_fallback_t::ALLOW_AND_FLAG &&
+        params.long_edge_fallback == long_edge_fallback_t::FLAG &&
         (result.n_next_up_long_edge_fallback > 0 ||
          result.n_next_down_long_edge_fallback > 0);
 

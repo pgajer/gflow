@@ -62,19 +62,19 @@ enum class filter_stage_t {
  * @brief Policy used by CLOSEST flow when every improving edge is long
  *
  * A long edge is one whose length exceeds the configured quantile threshold.
- * ALLOW_AND_FLAG preserves the historical fallback and marks it for attention;
+ * FLAG preserves the historical fallback and marks it for attention;
  * ALLOW preserves the fallback without raising the attention flag; FORBID
  * treats the current vertex as terminal.
  */
 enum class long_edge_fallback_t {
-    ALLOW_AND_FLAG = 0,
+    FLAG = 0,
     ALLOW = 1,
     FORBID = 2
 };
 
 inline std::string long_edge_fallback_to_string(long_edge_fallback_t policy) {
     switch (policy) {
-        case long_edge_fallback_t::ALLOW_AND_FLAG: return "allow_and_flag";
+        case long_edge_fallback_t::FLAG: return "flag";
         case long_edge_fallback_t::ALLOW: return "allow";
         case long_edge_fallback_t::FORBID: return "forbid";
         default: return "unknown";
@@ -178,7 +178,10 @@ struct gfc_flow_params_t : public gfc_params_t {
     bool symmetric_seeding = true;
 
     /// CLOSEST policy when no improving edge is at or below the threshold
-    long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG;
+    long_edge_fallback_t long_edge_fallback = long_edge_fallback_t::FLAG;
+
+    /// Equality tolerance used to form connected CLOSEST plateau components
+    double plateau_tolerance = 0.0;
 
     gfc_flow_params_t() = default;
 
@@ -189,7 +192,8 @@ struct gfc_flow_params_t : public gfc_params_t {
           store_trajectories(true),
           max_trajectory_length(10000),
           symmetric_seeding(true),
-          long_edge_fallback(long_edge_fallback_t::ALLOW_AND_FLAG) {}
+          long_edge_fallback(long_edge_fallback_t::FLAG),
+          plateau_tolerance(0.0) {}
 };
 
 // ============================================================================
@@ -279,6 +283,30 @@ struct gfc_flow_result_t {
     /// next_up[v] = next vertex on ascending trajectory from v (0-based), or -1 if none
     std::vector<int> next_up;
 
+    /// next_down[v] = next vertex on descending trajectory from v (0-based), or -1 if none
+    std::vector<int> next_down;
+
+    /// Plateau component index for each vertex (0-based)
+    std::vector<int> plateau_component;
+
+    /// Stable representative vertex for each plateau component (0-based)
+    std::vector<int> plateau_representative;
+
+    /// Mean scalar value for each plateau component
+    std::vector<double> plateau_value;
+
+    /// Raw terminal maximum representative reached from each vertex (0-based)
+    std::vector<int> raw_max_root_vertex;
+
+    /// Raw terminal minimum representative reached from each vertex (0-based)
+    std::vector<int> raw_min_root_vertex;
+
+    /// Raw additive maximum basin ID for each vertex (0-based)
+    std::vector<int> raw_max_assignment;
+
+    /// Raw additive minimum basin ID for each vertex (0-based)
+    std::vector<int> raw_min_assignment;
+
     /// Flags vertices whose ascending CLOSEST pointer used a long-edge fallback
     std::vector<bool> next_up_used_long_edge_fallback;
 
@@ -303,7 +331,7 @@ struct gfc_flow_result_t {
     int n_next_up_blocked_by_long_edge = 0;
     int n_next_down_blocked_by_long_edge = 0;
 
-    /// TRUE when ALLOW_AND_FLAG observed at least one fallback event
+    /// TRUE when FLAG observed at least one fallback event
     bool long_edge_fallback_attention_required = false;
 
     // ========================================================================

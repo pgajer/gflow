@@ -1,3 +1,72 @@
+.validate.gfc.flow.graph <- function(adj.list, weight.list, n.vertices) {
+    fail <- function(message) stop("invalid_graph: ", message, call. = FALSE)
+    if (!is.list(adj.list) || !is.list(weight.list)) {
+        fail("adj.list and weight.list must be lists")
+    }
+    if (n.vertices < 1L || length(adj.list) != n.vertices ||
+        length(weight.list) != n.vertices) {
+        fail("graph lists must have one entry per scalar-field vertex")
+    }
+
+    canonical.adj <- vector("list", n.vertices)
+    canonical.weight <- vector("list", n.vertices)
+    for (vertex in seq_len(n.vertices)) {
+        neighbors <- adj.list[[vertex]]
+        weights <- weight.list[[vertex]]
+        if (!is.numeric(neighbors) || any(!is.finite(neighbors)) ||
+            any(neighbors != as.integer(neighbors))) {
+            fail(paste0("neighbors at vertex ", vertex, " must be finite integers"))
+        }
+        neighbors <- as.integer(neighbors)
+        weights <- as.numeric(weights)
+        if (length(neighbors) != length(weights)) {
+            fail(paste0("adjacency and weight lengths differ at vertex ", vertex))
+        }
+        if (any(neighbors < 1L | neighbors > n.vertices)) {
+            fail(paste0("neighbor ID is out of range at vertex ", vertex))
+        }
+        if (any(neighbors == vertex)) {
+            fail(paste0("self-loop at vertex ", vertex))
+        }
+        if (anyDuplicated(neighbors)) {
+            fail(paste0("duplicate neighbor at vertex ", vertex))
+        }
+        if (any(!is.finite(weights) | weights <= 0)) {
+            fail(paste0("edge lengths must be finite and positive at vertex ", vertex))
+        }
+        order.index <- order(neighbors)
+        canonical.adj[[vertex]] <- neighbors[order.index]
+        canonical.weight[[vertex]] <- weights[order.index]
+    }
+
+    for (vertex in seq_len(n.vertices)) {
+        for (edge.index in seq_along(canonical.adj[[vertex]])) {
+            neighbor <- canonical.adj[[vertex]][[edge.index]]
+            reverse.index <- match(vertex, canonical.adj[[neighbor]])
+            if (is.na(reverse.index)) {
+                fail(paste0("edge ", vertex, "-", neighbor, " is missing its reciprocal"))
+            }
+            forward.weight <- canonical.weight[[vertex]][[edge.index]]
+            reverse.weight <- canonical.weight[[neighbor]][[reverse.index]]
+            scale <- max(1, abs(forward.weight), abs(reverse.weight))
+            if (abs(forward.weight - reverse.weight) > 1e-12 * scale) {
+                fail(paste0("reciprocal edge lengths differ for edge ", vertex, "-", neighbor))
+            }
+        }
+    }
+    list(adj.list = canonical.adj, weight.list = canonical.weight)
+}
+
+.normalize.long.edge.fallback <- function(x) {
+    policy <- match.arg(x, c("flag", "allow", "forbid", "allow_and_flag"))
+    if (identical(policy, "allow_and_flag")) {
+        warning("long.edge.fallback = 'allow_and_flag' is deprecated; use 'flag'.",
+                call. = FALSE)
+        policy <- "flag"
+    }
+    policy
+}
+
 #' Compute Gradient Flow Complex Using Trajectory-First Approach
 #'
 #' @description
@@ -82,12 +151,15 @@
 #'   improving neighbors exceed the threshold. Default is 0.9.
 #' @param long.edge.fallback Character policy used by \code{"CLOSEST"} when no
 #'   improving edge is at or below the edge-length threshold.
-#'   \code{"allow_and_flag"} preserves the historical shortest-improving-edge
-#'   fallback and marks the returned telemetry for attention; \code{"allow"}
+#'   \code{"flag"} uses the shortest improving edge and marks the returned
+#'   telemetry for attention; \code{"allow"}
 #'   preserves the same path without the attention flag; and \code{"forbid"}
-#'   makes the threshold hard and terminates the trajectory at that vertex.
-#'   All policies report observed fallback counts. Default is
-#'   \code{"allow_and_flag"}.
+#'   makes the threshold hard. All policies report observed fallback counts.
+#'   Default is \code{"flag"}. The deprecated \code{"allow_and_flag"} spelling
+#'   is accepted as an alias for \code{"flag"}.
+#' @param plateau.tolerance Nonnegative numerical equality tolerance used to
+#'   form connected plateau components before CLOSEST ascent and descent.
+#'   Default is zero.
 #' @param apply.relvalue.filter Logical. Whether to filter extrema by relative
 #'   value. Default is \code{TRUE}.
 #' @param min.rel.value.max Numeric. Minimum relative value (value/mean(y)) for
@@ -124,8 +196,8 @@
 #'   symmetric with respect to minima and maxima.
 #' @param tie.breaking Logical. If \code{TRUE}, preserve the historical behavior
 #'   of adding tiny random noise to globally tied response values before flow
-#'   construction. Set to \code{FALSE} when connected plateaus have already
-#'   been contracted and only nonadjacent equal values remain.
+#'   construction. CLOSEST requires \code{FALSE}; its connected plateaus are
+#'   handled deterministically by \code{plateau.tolerance}.
 #' @param verbose Logical. Whether to print progress messages. Default is
 #'   \code{FALSE}.
 #'
@@ -175,7 +247,8 @@ compute.gfc.trajectory <- function(
     density = NULL,
     modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     edge.length.quantile.thld = 0.9,
-    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
+    long.edge.fallback = c("flag", "allow", "forbid", "allow_and_flag"),
+    plateau.tolerance = 0,
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -193,49 +266,44 @@ compute.gfc.trajectory <- function(
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
     symmetric.seeding = TRUE,
-    tie.breaking = TRUE,
+    tie.breaking = FALSE,
     verbose = FALSE
 ) {
     ## -------------------------------------------------------------------------
     ## Input validation
     ## -------------------------------------------------------------------------
 
-    if (!is.list(adj.list)) {
-        stop("adj.list must be a list")
-    }
-    if (!is.list(weight.list)) {
-        stop("weight.list must be a list")
-    }
-
     n.vertices <- length(adj.list)
-    if (length(weight.list) != n.vertices) {
-        stop("adj.list and weight.list must have the same length")
+    if (!is.numeric(y) || length(y) < 1L || length(y) != n.vertices ||
+        any(!is.finite(y))) {
+        stop("invalid_scalar_field: y must be a nonempty finite numeric vector with one value per vertex",
+             call. = FALSE)
     }
-    if (length(y) != n.vertices) {
-        stop("y must have the same length as adj.list")
-    }
-
-    if (!is.numeric(y)) {
-        stop("y must be a numeric vector")
-    }
+    graph <- .validate.gfc.flow.graph(adj.list, weight.list, n.vertices)
+    adj.list <- graph$adj.list
+    weight.list <- graph$weight.list
 
     ## Validate density if provided
     if (!is.null(density)) {
-        if (!is.numeric(density)) {
-            stop("density must be a numeric vector")
-        }
-        if (length(density) != n.vertices) {
-            stop("density must have the same length as adj.list")
+        if (!is.numeric(density) || length(density) != n.vertices ||
+            any(!is.finite(density))) {
+            stop("invalid_scalar_field: density must be finite with one value per vertex",
+                 call. = FALSE)
         }
     }
 
     ## Match modulation argument
     modulation <- match.arg(modulation)
-    long.edge.fallback <- match.arg(long.edge.fallback)
+    long.edge.fallback <- .normalize.long.edge.fallback(long.edge.fallback)
 
     ## Validate numeric parameters
     if (edge.length.quantile.thld <= 0 || edge.length.quantile.thld > 1) {
         stop("edge.length.quantile.thld must be in (0, 1]")
+    }
+    if (!is.numeric(plateau.tolerance) || length(plateau.tolerance) != 1L ||
+        !is.finite(plateau.tolerance) || plateau.tolerance < 0) {
+        stop("invalid_scalar_field: plateau.tolerance must be finite and nonnegative",
+             call. = FALSE)
     }
 
     if (!is.numeric(min.n.trajectories) || length(min.n.trajectories) != 1L) {
@@ -249,6 +317,10 @@ compute.gfc.trajectory <- function(
     }
     if (!is.logical(tie.breaking) || length(tie.breaking) != 1L || is.na(tie.breaking)) {
         stop("tie.breaking must be TRUE or FALSE")
+    }
+    if (identical(modulation, "CLOSEST") && isTRUE(tie.breaking)) {
+        stop("unsupported_configuration: CLOSEST requires tie.breaking = FALSE",
+             call. = FALSE)
     }
 
     ## -------------------------------------------------------
@@ -282,6 +354,7 @@ compute.gfc.trajectory <- function(
     params <- list(
         edge_length_quantile_thld = as.double(edge.length.quantile.thld),
         long_edge_fallback = as.character(long.edge.fallback),
+        plateau_tolerance = as.double(plateau.tolerance),
         apply_relvalue_filter = as.logical(apply.relvalue.filter),
         min_rel_value_max = as.double(min.rel.value.max),
         max_rel_value_min = as.double(max.rel.value.min),
@@ -342,7 +415,8 @@ compute.gfc.flow <- function(
     density = NULL,
     modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
     edge.length.quantile.thld = 0.9,
-    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
+    long.edge.fallback = c("flag", "allow", "forbid", "allow_and_flag"),
+    plateau.tolerance = 0,
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -360,7 +434,7 @@ compute.gfc.flow <- function(
     store.trajectories = TRUE,
     max.trajectory.length = 10000L,
     symmetric.seeding = TRUE,
-    tie.breaking = TRUE,
+    tie.breaking = FALSE,
     verbose = FALSE
 ) {
     .Deprecated("compute.gfc.trajectory")
@@ -372,6 +446,7 @@ compute.gfc.flow <- function(
         modulation = modulation,
         edge.length.quantile.thld = edge.length.quantile.thld,
         long.edge.fallback = long.edge.fallback,
+        plateau.tolerance = plateau.tolerance,
         apply.relvalue.filter = apply.relvalue.filter,
         min.rel.value.max = min.rel.value.max,
         max.rel.value.min = max.rel.value.min,
@@ -417,6 +492,25 @@ compute.gfc.flow <- function(
 
     result$summary <- .build.summary.retained(result)
 
+    if (length(result$raw.max.assignment) > 0L) {
+        result$raw.closest.forest <- list(
+            method.id = "closest_improving_neighbor_forest",
+            plateau.component = as.integer(result$plateau.component),
+            plateau.representative = as.integer(result$plateau.representative),
+            plateau.value = as.numeric(result$plateau.value),
+            next.up = as.integer(result$next.up),
+            next.down = as.integer(result$next.down),
+            max.root.vertex = as.integer(result$raw.max.root.vertex),
+            min.root.vertex = as.integer(result$raw.min.root.vertex),
+            max.assignment = as.integer(result$raw.max.assignment),
+            min.assignment = as.integer(result$raw.min.assignment),
+            edge.length.quantile.thld = result$edge.length.quantile.thld,
+            edge.length.thld = result$edge.length.thld,
+            plateau.tolerance = result$plateau.tolerance,
+            long.edge.fallback = result$long.edge.fallback
+        )
+    }
+
     ## -------------------------------------------------------------------------
     ## Set class
     ## -------------------------------------------------------------------------
@@ -424,6 +518,58 @@ compute.gfc.flow <- function(
     class(result) <- c("gfc.flow", "list")
 
     return(result)
+}
+
+#' Extract The Raw CLOSEST Basin Partition
+#'
+#' Returns the additive rooted-forest partition computed by
+#' \code{compute.gfc.trajectory(..., modulation = "CLOSEST")} before optional
+#' trajectory seeding, filtering, or clustering. This accessor does not rerun
+#' CLOSEST and does not use retained trajectory memberships.
+#'
+#' @param x A \code{gfc.flow} object returned by
+#'   \code{compute.gfc.trajectory()} with \code{modulation = "CLOSEST"}.
+#' @param direction Character scalar, \code{"max"} for ascent-to-maximum basins
+#'   or \code{"min"} for descent-to-minimum basins.
+#'
+#' @return A list containing the complete assignment, terminal root vertex for
+#'   every input vertex, sorted root representatives, the relevant next-edge
+#'   map, plateau metadata, threshold metadata, and long-edge telemetry.
+#'
+#' @export
+closest.basin.partition <- function(x, direction = c("max", "min")) {
+    if (!inherits(x, "gfc.flow")) {
+        stop("x must be a gfc.flow object", call. = FALSE)
+    }
+    direction <- match.arg(direction)
+    forest <- x$raw.closest.forest
+    if (is.null(forest)) {
+        stop("x does not contain a raw CLOSEST forest", call. = FALSE)
+    }
+    assignment <- forest[[paste0(direction, ".assignment")]]
+    root.vertex <- forest[[paste0(direction, ".root.vertex")]]
+    next.edge <- forest[[paste0("next.", if (direction == "max") "up" else "down")]]
+    roots <- sort(unique(root.vertex))
+    if (length(assignment) != x$n.vertices || anyNA(assignment) ||
+        length(root.vertex) != x$n.vertices || anyNA(root.vertex)) {
+        stop("internal_contract_failure: incomplete raw CLOSEST partition",
+             call. = FALSE)
+    }
+    list(
+        method.id = forest$method.id,
+        direction = direction,
+        assignment = as.integer(assignment),
+        root.vertex = as.integer(root.vertex),
+        roots = as.integer(roots),
+        next.edge = as.integer(next.edge),
+        plateau.component = forest$plateau.component,
+        plateau.representative = forest$plateau.representative,
+        plateau.value = forest$plateau.value,
+        edge.length.quantile.thld = forest$edge.length.quantile.thld,
+        edge.length.thld = forest$edge.length.thld,
+        plateau.tolerance = forest$plateau.tolerance,
+        long.edge.fallback = forest$long.edge.fallback
+    )
 }
 
 .harmonize.gfc.flow.summary <- function(df) {
@@ -960,6 +1106,8 @@ count.cell.memberships <- function(gfc.flow) {
 #'   edge-length filtering.
 #' @param long.edge.fallback Character CLOSEST fallback policy; see
 #'   \code{\link{compute.gfc.trajectory}}.
+#' @param plateau.tolerance Nonnegative connected-plateau equality tolerance;
+#'   see \code{\link{compute.gfc.trajectory}}.
 #' @param apply.relvalue.filter Logical; apply relative-value-based basin
 #'   filtering.
 #' @param min.rel.value.max Numeric lower bound for local-maximum relative value
@@ -1002,7 +1150,8 @@ compute.gfc.flow.matrix <- function(
     n.cores = 1L,
     verbose = FALSE,
     edge.length.quantile.thld = 0.9,
-    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
+    long.edge.fallback = c("flag", "allow", "forbid", "allow_and_flag"),
+    plateau.tolerance = 0,
     apply.relvalue.filter = TRUE,
     min.rel.value.max = 1.1,
     max.rel.value.min = 0.9,
@@ -1021,8 +1170,8 @@ compute.gfc.flow.matrix <- function(
     symmetric.seeding = TRUE
 ) {
     ## Input validation
-    if (!is.matrix(Y)) {
-        stop("Y must be a matrix")
+    if (!is.matrix(Y) || !is.numeric(Y) || any(!is.finite(Y))) {
+        stop("invalid_scalar_field: Y must be a finite numeric matrix", call. = FALSE)
     }
 
     n.vertices <- length(adj.list)
@@ -1031,7 +1180,15 @@ compute.gfc.flow.matrix <- function(
     }
 
     modulation <- match.arg(modulation)
-    long.edge.fallback <- match.arg(long.edge.fallback)
+    long.edge.fallback <- .normalize.long.edge.fallback(long.edge.fallback)
+    if (!is.numeric(plateau.tolerance) || length(plateau.tolerance) != 1L ||
+        !is.finite(plateau.tolerance) || plateau.tolerance < 0) {
+        stop("invalid_scalar_field: plateau.tolerance must be finite and nonnegative",
+             call. = FALSE)
+    }
+    graph <- .validate.gfc.flow.graph(adj.list, weight.list, n.vertices)
+    adj.list <- graph$adj.list
+    weight.list <- graph$weight.list
     if (!is.logical(symmetric.seeding) || length(symmetric.seeding) != 1L || is.na(symmetric.seeding)) {
         stop("symmetric.seeding must be TRUE or FALSE")
     }
@@ -1046,6 +1203,7 @@ compute.gfc.flow.matrix <- function(
     params <- list(
         edge_length_quantile_thld = as.double(edge.length.quantile.thld),
         long_edge_fallback = as.character(long.edge.fallback),
+        plateau_tolerance = as.double(plateau.tolerance),
         apply_relvalue_filter = as.logical(apply.relvalue.filter),
         min_rel_value_max = as.double(min.rel.value.max),
         max_rel_value_min = as.double(max.rel.value.min),

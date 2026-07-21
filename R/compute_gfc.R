@@ -74,6 +74,12 @@
 #' @param max.trajectory.length Maximum trajectory length in trajectory-based mode.
 #' @param symmetric.seeding Logical; in trajectory-based mode, additionally seed
 #'   trajectories from local maxima using descending flow.
+#' @param long.edge.fallback Character long-improving-edge policy for
+#'   \code{modulation = "CLOSEST"}; see \code{\link{compute.gfc.trajectory}}.
+#' @param plateau.tolerance Nonnegative equality tolerance for connected CLOSEST
+#'   plateaus; see \code{\link{compute.gfc.trajectory}}.
+#' @param tie.breaking Logical legacy perturbation switch for trajectory modes.
+#'   It must be \code{FALSE} for \code{modulation = "CLOSEST"}.
 #'
 #' @return A list of class \code{"basins_of_attraction"} with the following components:
 #'   \describe{
@@ -237,7 +243,10 @@ compute.gfc <- function(adj.list,
                                    min.n.trajectories = 0L,
                                    store.trajectories = with.trajectories,
                                    max.trajectory.length = 10000L,
-                                   symmetric.seeding = TRUE) {
+                                   symmetric.seeding = TRUE,
+                                   long.edge.fallback = c("flag", "allow", "forbid", "allow_and_flag"),
+                                   plateau.tolerance = 0,
+                                   tie.breaking = FALSE) {
 
     ## Validate inputs
     if (!is.list(adj.list)) {
@@ -277,6 +286,8 @@ compute.gfc <- function(adj.list,
             density = density,
             modulation = modulation,
             edge.length.quantile.thld = edge.length.quantile.thld,
+            long.edge.fallback = long.edge.fallback,
+            plateau.tolerance = plateau.tolerance,
             apply.relvalue.filter = apply.relvalue.filter,
             min.rel.value.max = min.rel.value.max,
             max.rel.value.min = max.rel.value.min,
@@ -294,6 +305,7 @@ compute.gfc <- function(adj.list,
             store.trajectories = store.trajectories,
             max.trajectory.length = max.trajectory.length,
             symmetric.seeding = symmetric.seeding,
+            tie.breaking = tie.breaking,
             verbose = verbose
         ))
     }

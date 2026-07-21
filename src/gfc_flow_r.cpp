@@ -78,9 +78,9 @@ static gfc_flow_params_t parse_gfc_flow_params(SEXP s_params) {
     std::string mod_str = get_list_string(s_params, "modulation", "NONE");
     params.modulation = string_to_gflow_modulation(mod_str);
     std::string fallback_str = get_list_string(
-        s_params, "long_edge_fallback", "allow_and_flag");
-    if (fallback_str == "allow_and_flag") {
-        params.long_edge_fallback = long_edge_fallback_t::ALLOW_AND_FLAG;
+        s_params, "long_edge_fallback", "flag");
+    if (fallback_str == "flag" || fallback_str == "allow_and_flag") {
+        params.long_edge_fallback = long_edge_fallback_t::FLAG;
     } else if (fallback_str == "allow") {
         params.long_edge_fallback = long_edge_fallback_t::ALLOW;
     } else if (fallback_str == "forbid") {
@@ -92,6 +92,7 @@ static gfc_flow_params_t parse_gfc_flow_params(SEXP s_params) {
     params.max_trajectory_length = static_cast<size_t>(
         get_list_int(s_params, "max_trajectory_length", 10000));
     params.symmetric_seeding = get_list_bool(s_params, "symmetric_seeding", true);
+    params.plateau_tolerance = get_list_double(s_params, "plateau_tolerance", 0.0);
 
     return params;
 }
@@ -475,7 +476,7 @@ static SEXP long_edge_fallback_to_R(const gfc_flow_result_t& result) {
 // Main result conversion
 static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
 
-    const int n_elements = 35;
+    const int n_elements = 45;
     SEXP r_result = PROTECT(Rf_allocVector(VECSXP, n_elements));
     SEXP r_names = PROTECT(Rf_allocVector(STRSXP, n_elements));
 
@@ -1102,6 +1103,84 @@ static SEXP gfc_flow_result_to_R(const gfc_flow_result_t& result) {
         UNPROTECT(1);
         ++idx;
     }
+
+    // 35: next.down (single-step descent pointer, 1-based with NA)
+    {
+        SEXP r_next = PROTECT(int_vec_to_R(result.next_down, true));
+        SET_VECTOR_ELT(r_result, idx, r_next);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("next.down"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    // 36: plateau.component (1-based component ID)
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.plateau_component, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("plateau.component"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    // 37: plateau.representative (1-based vertex ID)
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.plateau_representative, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("plateau.representative"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    // 38: plateau.value
+    {
+        SEXP r_value = PROTECT(Rf_allocVector(REALSXP, result.plateau_value.size()));
+        for (R_xlen_t i = 0; i < static_cast<R_xlen_t>(result.plateau_value.size()); ++i) {
+            REAL(r_value)[i] = result.plateau_value[i];
+        }
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("plateau.value"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    // 39-42: raw CLOSEST roots and additive assignments
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.raw_max_root_vertex, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("raw.max.root.vertex"));
+        UNPROTECT(1);
+        ++idx;
+    }
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.raw_min_root_vertex, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("raw.min.root.vertex"));
+        UNPROTECT(1);
+        ++idx;
+    }
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.raw_max_assignment, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("raw.max.assignment"));
+        UNPROTECT(1);
+        ++idx;
+    }
+    {
+        SEXP r_value = PROTECT(int_vec_to_R(result.raw_min_assignment, true));
+        SET_VECTOR_ELT(r_result, idx, r_value);
+        SET_STRING_ELT(r_names, idx, Rf_mkChar("raw.min.assignment"));
+        UNPROTECT(1);
+        ++idx;
+    }
+
+    SET_VECTOR_ELT(r_result, idx, Rf_ScalarReal(result.params.plateau_tolerance));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("plateau.tolerance"));
+    ++idx;
+
+    SET_VECTOR_ELT(r_result, idx,
+                   Rf_ScalarReal(result.params.edge_length_quantile_thld));
+    SET_STRING_ELT(r_names, idx, Rf_mkChar("edge.length.quantile.thld"));
+    ++idx;
 
     Rf_setAttrib(r_result, R_NamesSymbol, r_names);
     UNPROTECT(2);
