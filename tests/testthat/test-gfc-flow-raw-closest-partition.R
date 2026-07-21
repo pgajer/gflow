@@ -73,6 +73,22 @@ test_that("connected maxima and interior shelves are contracted deterministicall
     expect_equal(shelf$raw.max.root.vertex, rep(4L, 4L))
 })
 
+test_that("positive plateau tolerance contracts a valid near-equal component", {
+    graph <- raw_path_graph(3)
+    fit <- raw_closest_args(
+        graph$adj, graph$weight, c(0, 0.04, 1),
+        plateau.tolerance = 0.05
+    )
+    part <- closest.basin.partition(fit, "max")
+
+    expect_equal(fit$plateau.component, c(1L, 1L, 2L))
+    expect_equal(fit$plateau.representative, c(1L, 3L))
+    expect_equal(fit$plateau.value, c(0.02, 1))
+    expect_equal(part$next.edge, c(2L, 3L, NA_integer_))
+    expect_equal(part$root.vertex, rep(3L, 3L))
+    expect_equal(part$assignment, rep(1L, 3L))
+})
+
 test_that("CLOSEST uses length before steepness and stable IDs for ties", {
     adj <- list(c(3L, 2L), 1L, 1L)
     short <- raw_closest_args(adj, list(c(2, 1), 1, 2), c(0, 1, 10))
