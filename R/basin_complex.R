@@ -1398,6 +1398,45 @@
 #' schema while retaining method-specific merge-tree, trajectory, RTCB, or
 #' overlap-cell structures.
 #'
+#' The five construction families are:
+#'
+#' * `"trajectory_flow"`: directed flow trajectories terminating at field
+#'   extrema;
+#' * `"superlevel_merge_tree"`: exact plateau-aware merge trees of graph level
+#'   sets;
+#' * `"geodesic_reachability"`: basins defined by monotone geodesic
+#'   reachability;
+#' * `"rtcb"`: robust trajectory-consensus basins; and
+#' * `"overlap_cell_complex"`: joint ascending/descending overlap cells.
+#'
+#' `direction = "max"` follows the field toward maxima, `"min"` follows it
+#' toward minima, and `"both"` computes both orientations. The overlap-cell
+#' method requires `"both"`.
+#'
+#' `vertex.mass` and `vertex.density` have different meanings. Mass supplies
+#' empirical or quadrature support weights used in basin summaries and
+#' mass-based refinement. Density modifies trajectory edge scores only when
+#' `method.params$modulation` is `"DENSITY"` or `"DENSITY_EDGELEN"`. Neither is
+#' inferred from the other.
+#'
+#' Basin membership can overlap. `membership.table` is therefore the
+#' authoritative many-to-many vertex-to-basin relation. `primary.assignment`
+#' is an optional, method-dependent single label for convenience; it must not
+#' be interpreted as replacing membership.
+#'
+#' Refinement is requested with `simplify.params` and is applied in the fixed
+#' order recorded in `provenance$refinement.stages`: relative-value filtering,
+#' extrema clustering, geometric filtering, support filtering, and expansion.
+#' Unsupported refinement stages fail validation rather than being silently
+#' ignored.
+#'
+#' Retired constructors such as `compute.gfc()`,
+#' `compute.basins.of.attraction()`, `compute.gfc.trajectory()`,
+#' `compute.gfc.flow()`, and `create.basin.cx()` raise a lifecycle error.
+#' Construct new objects here. Use `as.basin.complex()` only to convert a
+#' compatible archived result while its original graph (and field when not
+#' retained by the archive) is available.
+#'
 #' @param adj.list Undirected graph adjacency list using 1-based vertex ids.
 #' @param edge.length.list Numeric edge-length vectors parallel to
 #'   `adj.list`.
@@ -1416,6 +1455,65 @@
 #' @return A `basin_complex`. Successful construction returns `status = "ok"`.
 #'   A recoverable backend failure returns `status = "failed"` with a
 #'   structured diagnostic.
+#'
+#' @examples
+#' # A 3-by-3 graph with two local maxima.
+#' edges <- matrix(
+#'     c(
+#'         1, 2, 1, 1, 4, 1, 2, 3, 1, 2, 5, 1,
+#'         3, 6, 1, 4, 5, 1, 4, 7, 1, 5, 6, 1,
+#'         5, 8, 1, 6, 9, 1, 7, 8, 1, 8, 9, 1
+#'     ),
+#'     ncol = 3,
+#'     byrow = TRUE
+#' )
+#' adjacency <- edge.lengths <- vector("list", 9)
+#' for (i in seq_len(nrow(edges))) {
+#'     from <- edges[i, 1]
+#'     to <- edges[i, 2]
+#'     adjacency[[from]] <- c(adjacency[[from]], to)
+#'     adjacency[[to]] <- c(adjacency[[to]], from)
+#'     edge.lengths[[from]] <- c(edge.lengths[[from]], edges[i, 3])
+#'     edge.lengths[[to]] <- c(edge.lengths[[to]], edges[i, 3])
+#' }
+#' field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+#'
+#' flow <- create.basin.complex(
+#'     adjacency, edge.lengths, field,
+#'     method = "trajectory_flow", direction = "max",
+#'     method.params = list(edge.length.quantile.thld = 1)
+#' )
+#' tree <- create.basin.complex(
+#'     adjacency, edge.lengths, field,
+#'     method = "superlevel_merge_tree", direction = "max"
+#' )
+#' reachability <- create.basin.complex(
+#'     adjacency, edge.lengths, field,
+#'     method = "geodesic_reachability", direction = "max",
+#'     method.params = list(edge.length.quantile.thld = 1)
+#' )
+#' consensus <- create.basin.complex(
+#'     adjacency, edge.lengths, field,
+#'     method = "rtcb", direction = "max",
+#'     method.params = list(
+#'         edge.length.quantile.thld = 1,
+#'         n.min = 1L,
+#'         m.min = 0
+#'     )
+#' )
+#' cells <- create.basin.complex(
+#'     adjacency, edge.lengths, field,
+#'     method = "overlap_cell_complex", direction = "both"
+#' )
+#'
+#' stopifnot(all(vapply(
+#'     list(flow, tree, reachability, consensus, cells),
+#'     function(x) identical(x$status, "ok"),
+#'     logical(1)
+#' )))
+#' tree$merge.table
+#' flow$membership.table
+#' flow$primary.assignment
 #'
 #' @export
 create.basin.complex <- function(
