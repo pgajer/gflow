@@ -158,6 +158,34 @@ test_that("archived geodesic and cell objects reconstruct canonically", {
     expect_identical(converted.cells$raw$archived.object, cells)
 })
 
+test_that("shared basins_of_attraction class accepts explicit RTCB target", {
+    fixture <- phase.h.fixture()
+    archived <- gflow:::compute.basins.of.attraction.rtcb(
+        fixture$adj.list,
+        fixture$edge.length.list,
+        fixture$field,
+        edge.length.quantile.thld = 1,
+        n.min = 1L,
+        m.min = 0.5,
+        q.min = 0.01
+    )
+    converted <- as.basin.complex(
+        archived,
+        adj.list = fixture$adj.list,
+        edge.length.list = fixture$edge.length.list,
+        method = "rtcb",
+        method.params = list(
+            edge.length.quantile.thld = 1,
+            n.min = 1L,
+            m.min = 0.5,
+            q.min = 0.01
+        )
+    )
+
+    expect_identical(converted$method, "rtcb")
+    expect_identical(converted$raw$archived.object, archived)
+})
+
 test_that("archived conversion reports missing graph or field", {
     fixture <- phase.h.fixture()
     geodesic <- gflow:::.compute.basins.of.attraction.backend(
