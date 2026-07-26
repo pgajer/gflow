@@ -296,6 +296,7 @@ compute.gfc.modulation <- function(adj.list,
 #'
 #' @examples
 #' gfc.mod <- list(
+#'   modulated.weight.list = list(c(0.8), c(0.8, 1.0), c(1.0), numeric()),
 #'   modulation = "density+edgelen",
 #'   n.vertices = 4L,
 #'   n.edges = 3L,
@@ -355,6 +356,7 @@ print.gfc_modulation <- function(x, ...) {
 #'
 #' @examples
 #' gfc.mod <- list(
+#'   modulated.weight.list = list(c(0.8), c(0.8, 1.0), c(1.0), numeric()),
 #'   modulation = "density+edgelen",
 #'   n.vertices = 4L,
 #'   n.edges = 3L,
