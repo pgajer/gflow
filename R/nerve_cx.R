@@ -185,26 +185,6 @@ extract.skeleton.graph <- function(complex) {
     return(result)
 }
 
-#' Print Method for Nerve Complex Objects
-#'
-#' @param x A nerve complex object
-#' @param ... Additional arguments (not used)
-#'
-#' @return Invisibly returns the object
-#' @export
-print.nerve_complex <- function(x, ...) {
-  cat("Nerve Complex:\n")
-  cat("  Number of vertices:", x$n_vertices, "\n")
-  cat("  Maximum dimension:", x$max_dimension, "\n")
-  cat("  Simplex counts by dimension:\n")
-
-  for (d in 0:x$max_dimension) {
-    cat(sprintf("    %d-simplices: %d\n", d, x$simplex_counts[d+1]))
-  }
-
-  return(invisible(x))
-}
-
 #' Compare Graph vs Simplicial Complex Regression
 #'
 #' Compares regression performance using graph Laplacian vs full simplicial complex Laplacian.

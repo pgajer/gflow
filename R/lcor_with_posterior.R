@@ -210,8 +210,16 @@ lcor.with.posterior.R <- function(adj.list,
 }
 
 
+#' Print a Local-Correlation Posterior Result
+#'
+#' @param x An object returned by \code{\link{lcor.with.posterior}}.
+#' @param ... Additional arguments, currently ignored.
+#'
+#' @return \code{x}, invisibly.
+#'
 #' @export
 print.lcor.posterior <- function(x, ...) {
+    .validate.lcor.posterior(x)
     cat("\nLocal Correlation with Posterior Uncertainty Propagation\n")
     cat("========================================================\n\n")
 
@@ -248,8 +256,18 @@ print.lcor.posterior <- function(x, ...) {
 }
 
 
+#' Summarize a Local-Correlation Posterior Result
+#'
+#' @param object An object returned by \code{\link{lcor.with.posterior}}.
+#' @param threshold Reserved for compatibility with earlier summary calls.
+#' @param ... Additional arguments, currently ignored.
+#'
+#' @return A \code{summary.lcor.posterior} object containing per-feature and
+#'   overall credible-interval summaries.
+#'
 #' @export
 summary.lcor.posterior <- function(object, threshold = 0.5, ...) {
+    .validate.lcor.posterior(object)
 
     ## Identify feature-vertex pairs where CI excludes zero
     ci.excludes.zero <- (object$lower > 0) | (object$upper < 0)
@@ -292,8 +310,17 @@ summary.lcor.posterior <- function(object, threshold = 0.5, ...) {
 }
 
 
+#' Print a Local-Correlation Posterior Summary
+#'
+#' @param x An object returned by \code{summary.lcor.posterior()}.
+#' @param n.top Maximum number of features to print.
+#' @param ... Additional arguments, currently ignored.
+#'
+#' @return \code{x}, invisibly.
+#'
 #' @export
 print.summary.lcor.posterior <- function(x, n.top = 20, ...) {
+    .validate.summary.lcor.posterior(x)
     cat("\nSummary: Local Correlation with Posterior Uncertainty\n")
     cat("=====================================================\n\n")
 

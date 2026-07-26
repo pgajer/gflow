@@ -375,10 +375,8 @@ madag.bottlenecks <- function(
     min.fraction = 0.5,
     ...
 ) {
+    .validate.madag(x)
     madag <- x
-    if (!inherits(madag, "madag")) {
-        stop("madag must be a 'madag' object")
-    }
 
     max.vertex <- as.integer(max.vertex)
     min.fraction <- as.double(min.fraction)
@@ -432,6 +430,7 @@ madag.bottlenecks <- function(
 #'
 #' @export
 print.madag <- function(x, ...) {
+    .validate.madag(x)
     cat("Monotonic Ascent DAG (MADAG)\n")
     cat("============================\n")
     cat(sprintf("Source vertex: %d (y = %.4f)\n",
@@ -493,6 +492,7 @@ print.madag <- function(x, ...) {
 #'
 #' @export
 summary.madag <- function(object, ...) {
+    .validate.madag(object)
     cat("MADAG Summary\n")
     cat("=============\n\n")
 

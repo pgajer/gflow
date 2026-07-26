@@ -223,6 +223,7 @@ compute.harmonic.extension <- function(adj.list,
 #'
 #' @export
 print.harmonic_extension <- function(x, ...) {
+    .validate.harmonic.extension(x)
 
     cat("Harmonic Extension of Trajectory Coordinates\n")
     cat("=============================================\n")
@@ -286,6 +287,7 @@ print.harmonic_extension <- function(x, ...) {
 as.data.frame.harmonic_extension <- function(x, row.names = NULL,
                                               optional = FALSE,
                                               y = NULL, density = NULL, ...) {
+    .validate.harmonic.extension(x)
 
     df <- data.frame(
         vertex = x$tubular.vertices,
