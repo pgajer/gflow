@@ -101,14 +101,16 @@ smooth.PL.geodesic <- function(S,
 #'   evenly spaced according to the path's arc length.
 #'
 #' @details
-#' This is version 1 of the path subdivision algorithm. Like subdivide.path, it creates
+#' This is version 1 of the path subdivision algorithm. Like
+#' [dgraphs::subdivide.path()], it creates
 #' a set of points uniformly distributed along the path's arc length. The implementation
 #' differs slightly in the algorithm used but produces similar results.
 #'
-#' @note This appears to be an alternative implementation of subdivide.path. Consider
-#'   using subdivide.path unless there's a specific reason to use this version.
+#' @note This appears to be an alternative implementation of
+#'   [dgraphs::subdivide.path()]. Prefer the `dgraphs` implementation unless
+#'   there is a specific reason to use this version.
 #'
-#' @seealso \code{\link{subdivide.path}} for the primary implementation
+#' @seealso [dgraphs::subdivide.path()] for the primary implementation.
 #'
 subdivide.path.v1 <- function(path, n.subdivision.pts)
 {
