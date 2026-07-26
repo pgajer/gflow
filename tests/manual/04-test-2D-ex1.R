@@ -35,7 +35,7 @@ y <- y.smooth + eps
 ## ---- Create iKNN Graphs ----
 k.range <- c(min = 2, max = 10)
 
-ex1.graphs <- create.iknn.graphs(
+ex1.graphs <- dgraphs::create.iknn.graphs(
   X,
   kmin = k.range["min"],
   kmax = k.range["max"],

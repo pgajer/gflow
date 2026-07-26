@@ -142,7 +142,7 @@ system(paste0("open ",file))
 
 # Compare with standalone ikNN construction
 cat("\n--- Comparing with standalone ikNN graph ---\n")
-iknn.res <- create.single.iknn.graph(test.data$X, k = 3)
+iknn.res <- dgraphs::create.single.iknn.graph(test.data$X, k = 3)
 cat("\nikNN summary:\n")
 summary(iknn.res)
 

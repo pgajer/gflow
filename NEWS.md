@@ -4,6 +4,10 @@
   filtering, extrema clustering, geometric filtering, support filtering, and
   basin expansion, with explicit per-stage provenance and preserved raw
   membership.
+* Removed the temporary generic graph compatibility exports. Use the
+  corresponding `dgraphs::` functions directly for graph construction,
+  conversion, connected components, paths, distances, endpoint diagnostics,
+  graph selection, and stability summaries.
 * Added canonical RTCB and overlap-cell-complex adapters, including complete
   RTCB parameter provenance and preservation of merged/unmerged basin, cell,
   overlap, cluster-mapping, graph, and simplified-field structures.

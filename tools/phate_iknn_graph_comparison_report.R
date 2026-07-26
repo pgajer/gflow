@@ -414,7 +414,7 @@ for (dataset in datasets) {
     iknn.by.k <- list()
     max.candidate <- min(max(iknn.candidate.k), n - 1L)
     for (ik in seq_len(max.candidate)) {
-      g <- create.single.iknn.graph(
+      g <- dgraphs::create.single.iknn.graph(
         X = X,
         k = ik,
         max.path.edge.ratio.deviation.thld = 0,

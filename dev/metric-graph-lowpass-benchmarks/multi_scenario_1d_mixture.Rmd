@@ -50,7 +50,7 @@ For fairness, both the metric smoother and rdgraph baseline use the same
 MST-repaired symmetric kNN graph for each dataset:
 
 ```r
-g <- create.sknn.graph(X, k = graph.k, connect.components = TRUE)
+g <- dgraphs::create.sknn.graph(X, k = graph.k, connect.components = TRUE)
 ```
 
 The metric smoother receives `g$adj_list` and `g$weight_list` as metric edge
@@ -497,7 +497,7 @@ for (s in seq_len(nrow(scenario.grid))) {
 
   graph.start <- proc.time()
   graph <- tryCatch(
-    create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
+    dgraphs::create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
                       connect.method = "component.mst"),
     error = function(e) e
   )
@@ -767,7 +767,7 @@ example.df <- do.call(rbind, lapply(seq_len(nrow(example.scenarios)), function(i
   shape <- shapes[match(example.scenarios$shape.id[i], shapes$shape.id), ]
   variant <- variants[match(example.scenarios$variant.id[i], variants$variant.id), ]
   dat <- make_dataset(shape, variant, example.scenarios$replicate[i], n = n)
-  graph <- create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
+  graph <- dgraphs::create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
                              connect.method = "component.mst")
   do.call(rbind, lapply(seq_len(nrow(example.configs)), function(j) {
     spec <- example.configs[j, ]

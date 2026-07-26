@@ -41,7 +41,7 @@ low-pass fits use a symmetric 1D kNN graph with metric edge lengths
 `abs(x_i - x_j)`.
 
 The rdgraph baseline is fit on the same `X`, `y`, and required `k`, but first
-uses `create.sknn.graph(..., connect.components = TRUE)` to add component-MST
+uses `dgraphs::create.sknn.graph(..., connect.components = TRUE)` to add component-MST
 bridge edges when the native symmetric kNN graph is disconnected. The repaired
 graph is then passed to `fit.rdgraph.regression()` as a precomputed graph. This
 keeps the baseline fit available while making the repair explicit in the
@@ -269,7 +269,7 @@ conductance_label <- function(rule, alpha, sigma.rule, sigma.quantile, local.k) 
 fit_rdgraph_sknn_mst_repaired <- function(X, y, k) {
   graph.start <- proc.time()
   graph <- tryCatch(
-    create.sknn.graph(
+    dgraphs::create.sknn.graph(
       X,
       k = k,
       connect.components = TRUE,
@@ -470,7 +470,7 @@ rd.result[, c("method", "status", "rmse.truth", "rmse.observed", "mae.truth",
 if (!is.null(rd.out$graph)) {
   data.frame(
     k = graph.k,
-    graph.constructor = "create.sknn.graph",
+    graph.constructor = "dgraphs::create.sknn.graph",
     n.components.before.mst = rd.out$graph$n_components_before,
     n.components.after.mst = rd.out$graph$n_components_after,
     n.mst.edges.added = rd.out$graph$n_mst_edges_added,

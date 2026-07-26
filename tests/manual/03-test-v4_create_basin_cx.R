@@ -49,12 +49,12 @@ y2 <- y.smooth + eps
 pruning.thld <- 0.01
 k.min <- 2
 k.max <- 20
-## graphs.res <- create.iknn.graphs(X,
+## graphs.res <- dgraphs::create.iknn.graphs(X,
 ##                                  kmin = k.min,
 ##                                  kmax = k.max,
 ##                                  pruning.thld = pruning.thld,
 ##                                  verbose = TRUE)
-graphs.res <- create.iknn.graphs(X,
+graphs.res <- dgraphs::create.iknn.graphs(X,
                                  kmin = k.min,
                                  kmax = k.max,
                                  max.path.edge.ratio.deviation.thld = 0.1,
@@ -95,7 +95,7 @@ plot.res <- plot(g, vertex.size = 5, vertex.radius = 0.1, y = y.smooth, dim = 2)
 ##
 ## mst completion graph
 ##
-cmst.graph <- create.cmst.graph(X,
+cmst.graph <- dgraphs::create.cmst.graph(X,
                                 q.thld = 0.999,
                                 verbose = TRUE)
 cmst.ggraph <- ggraph(cmst.graph$cmst_adj_list, cmst.graph$cmst_weight_list)
