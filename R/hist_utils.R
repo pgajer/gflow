@@ -10,7 +10,7 @@
 #'
 #' @return Invisibly returns a list of class "histogram" as returned by \code{\link[graphics]{hist}}.
 #'
-#' @export
+#' @noRd
 #' @importFrom graphics hist
 #'
 #' @examples
@@ -65,7 +65,7 @@ hist1 <- function(x, main = "", n.breaks = 100, col = "red", ...) {
 #'   \item{xlim}{The x-axis limits used in the plot}
 #'   \item{ylim}{The y-axis limits used in the plot}
 #'
-#' @export
+#' @noRd
 #' @importFrom graphics hist legend
 #' @importFrom grDevices rgb
 #'
@@ -184,7 +184,7 @@ hist2 <- function(x1,
 #'   \item{xlim}{The x-axis limits used in the plot}
 #'   \item{ylim}{The y-axis limits used in the plot}
 #'
-#' @export
+#' @noRd
 #' @importFrom graphics hist legend
 #' @importFrom grDevices rgb
 #'

@@ -65,7 +65,7 @@ evenness <- function(x, base = 2) {
 #' x <- c(1, 2, 3, 4, 5)
 #' minmax.normalize(x, 0, 1)  # Normalizes x to the range \eqn{[0, 1]}
 #'
-#' @export
+#' @noRd
 minmax.normalize <- function(x, y.min = 0, y.max = 1) {
     if (!is.numeric(x)) {
         stop("Input must be a numeric vector.")
@@ -112,7 +112,7 @@ inv.logit <- function(x) {
 #' @examples
 #' x <- c(-2, -1, 0, 1, 2)
 #' normalize.and.inv.logit(x)
-#' @export
+#' @noRd
 normalize.and.inv.logit <- function(x, y.min = -3, y.max = 3) {
     y <- minmax.normalize(x, y.min, y.max)
     y <- inv.logit(y)
@@ -141,7 +141,7 @@ normalize.and.inv.logit <- function(x, y.min = -3, y.max = 3) {
 #' result <- ecdf.cpp(x)
 #' print(result)
 #'
-#' @export
+#' @noRd
 ecdf.cpp <- function(x) {
   if (!is.numeric(x)) {
     stop("Argument 'x' must be a numeric vector.")
@@ -185,7 +185,7 @@ ecdf.cpp <- function(x) {
 #'
 #' @importFrom FNN get.knn
 #'
-#' @export
+#' @noRd
 knn.weighted.mean <- function(X, y, k, kernel = "epanechnikov", nn.factor = 1.01) {
 
     nn <- get.knn(X, k = k)
@@ -345,7 +345,7 @@ p.cases <- function(y)
 #' x <- c(0, 1, 3)
 #' y <- c(2, 3, 4)
 #' cross.prod(x, y)
-#' @export
+#' @noRd
 cross.prod <- function(x, y)
 {
     create3D <- function(x) utils::head(c(x, rep(0, 3)), 3)
@@ -380,7 +380,7 @@ vector.norm <- function(x)
 #' v <- c(0, 1, 3)
 #' w <- c(2, 3, 4)
 #' angle.3D(v, w)
-#' @export
+#' @noRd
 ## Based on the Wikipedia article:  https://en.wikipedia.org/wiki/Great-circle_distance
 angle.3D <- function(v, w, method="arcsine") {
     stopifnot(length(v)==length(w))
@@ -428,7 +428,7 @@ angle.3D <- function(v, w, method="arcsine") {
 #' x <- c(2, 3, 4)
 #' project.onto.subspace(x, U)
 #'
-#' @export
+#' @noRd
 project.onto.subspace <- function(x, U) {
 
     ## Compute the projection matrix P
@@ -473,7 +473,7 @@ project.onto.subspace <- function(x, U) {
 #' q.density <- density.func(q)
 #' Rdensity.distance(p, q, p.density, q.density, density.func)
 #'
-#' @export
+#' @noRd
 Rdensity.distance <- function(p, q, p.density, q.density, density.func = NULL) {
 
     ## Calculate Euclidean distance between p and q
@@ -520,7 +520,7 @@ Rdensity.distance <- function(p, q, p.density, q.density, density.func = NULL) {
 #' dx <- x[2] - x[1]
 #' dy <- derivative.second.order.method(y, dx)
 #' round(dy, 3)
-#' @export
+#' @noRd
 derivative.second.order.method <- function(y, dx)
 {
     n <- length(y)
@@ -607,7 +607,7 @@ scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
 #' X <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 3, ncol = 2)
 #' custom_centroid <- c(2, 5)
 #' centroid.shift(X, centroid = custom_centroid)
-#' @export
+#' @noRd
 centroid.shift <- function(X, centroid = NULL) {
 
     if (!is.matrix(X)) {
@@ -670,7 +670,7 @@ centroid.shift <- function(X, centroid = NULL) {
 #' # Example 2: Center point maps to north pole
 #' origin <- matrix(c(0, 0), nrow = 1)
 #' disk.to.sphere(origin)  # Returns (0, 0, 1)
-#' @export
+#' @noRd
 disk.to.sphere <- function(X) {
     if (!is.matrix(X)) {
         X <- try(as.matrix(X), silent = TRUE)
@@ -721,7 +721,7 @@ disk.to.sphere <- function(X) {
 #' X <- matrix(runif(20), ncol = 2)
 #' transformed_X <- radial.Lp.transform(X, p = 0.5)
 #'
-#' @export
+#' @noRd
 radial.Lp.transform <- function(X, p = 0.5) {
 
     if (!is.matrix(X)) {
@@ -767,7 +767,7 @@ radial.Lp.transform <- function(X, p = 0.5) {
 #' X <- matrix(runif(20, -2, 2), ncol = 2)
 #' restricted_X <- restric.to.Linf.unit.sphere(X)
 #'
-#' @export
+#' @noRd
 restric.to.Linf.unit.sphere <- function(X) {
 
     if (!is.matrix(X)) {
@@ -811,7 +811,7 @@ restric.to.Linf.unit.sphere <- function(X) {
 #' @examples
 #' x <- c(0.001, 0.01, 0.1)
 #' shifted.tan(x)
-#' @export
+#' @noRd
 shifted.tan <- function(x, offset=0.1)
 {
     x0 <- min(x)
@@ -838,7 +838,7 @@ shifted.tan <- function(x, offset=0.1)
 #' @examples
 #' x <- c(0.5, 1, 2)
 #' scaled.log.tan(x)
-#' @export
+#' @noRd
 scaled.log.tan <- function(x, scale=0.1)
 {
     x <- scale * log(x)
@@ -892,7 +892,7 @@ clamp <- function(x, xmin, xmax) {
 #' # The relative differences are preserved
 #' robust.log.transform(x1)
 #' robust.log.transform(x2)
-#' @export
+#' @noRd
 robust.log.transform <- function(x) {
     idx <- x > 0
     x[idx] <- log(x[idx])
@@ -934,7 +934,7 @@ robust.log.transform <- function(x) {
 #' x_arith <- x
 #' x_arith[x > 0] <- x[x > 0] / mean(x[x > 0])
 #' x_arith  # More affected by the outlier
-#' @export
+#' @noRd
 robust.transform <- function(x) {
     idx <- x > 0
     D <- exp(mean(log(x[idx])))
@@ -961,7 +961,7 @@ robust.transform <- function(x) {
 #'   \item{pca.result}{The full PCA result object}
 #'
 #' @importFrom stats prcomp
-#' @keywords internal
+#' @noRd
 pca.optimal.components <- function(X, variance.threshold = 0.99, max.components = NULL,
                                   center = TRUE, scale = FALSE) {
     # Set maximum components to consider
@@ -1006,7 +1006,7 @@ pca.optimal.components <- function(X, variance.threshold = 0.99, max.components 
 #'         representing the projection of X onto its first n.components principal components.
 #'         Row names from the original matrix are preserved.
 #'
-#' @keywords internal
+#' @noRd
 pca.project <- function(X, pca.result, n.components) {
     # Store row names before projection
     row_names <- rownames(X)
@@ -1053,7 +1053,7 @@ pca.project <- function(X, pca.result, n.components) {
 #' result <- pca.variance.analysis(data)
 #' print(result$pc.95)
 #'
-#' @export
+#' @noRd
 pca.variance.analysis <- function(X, pc.90 = 0.90, pc.95 = 0.95, pc.97.5 = 0.975, pc.99 = 0.99, max.components = 300) {
 
     if (!is.matrix(X)) {
@@ -1155,7 +1155,7 @@ pca.variance.analysis <- function(X, pc.90 = 0.90, pc.95 = 0.95, pc.97.5 = 0.975
 #' overlap.coefficient(c(1, 2), c(3, 4))           # Returns 0
 #' overlap.coefficient(numeric(0), c(1, 2))        # Returns 0
 #'
-#' @export
+#' @noRd
 #'
 #' @seealso
 #' Other set similarity metrics:
@@ -1213,7 +1213,7 @@ overlap.coefficient <- function(x, y) {
 #' y.labels <- c("1" = "Max 1", "2" = "Max 2")
 #' boa.overlap(x, y, min.BoA.size = 100, x.labels = x.labels, y.labels = y.labels)
 #'
-#' @export
+#' @noRd
 boa.overlap <- function(x, y, min.BoA.size, x.labels = NULL, y.labels = NULL) {
    # Input validation
    if (!identical(names(x), names(y))) {
@@ -1314,7 +1314,7 @@ boa.overlap <- function(x, y, min.BoA.size, x.labels = NULL, y.labels = NULL) {
 #' matrix.format(m, digits = 3)   # 3 digits
 #' matrix.format(m, nsmall = 3)   # at least 3 decimal places
 #'
-#' @export
+#' @noRd
 matrix.format <- function(x, digits = 2, nsmall = 2, ...) {
    # Input validation
    if (!is.matrix(x)) {
@@ -1372,7 +1372,7 @@ matrix.format <- function(x, digits = 2, nsmall = 2, ...) {
 #' data.with.na <- c(1, NA, 3, 100, 4, NA, 6)
 #' robust.z.normalize(data.with.na)
 #'
-#' @export
+#' @noRd
 robust.z.normalize <- function(x) {
   # Check if input is numeric
   if (!is.numeric(x)) {
@@ -1455,7 +1455,7 @@ robust.z.normalize <- function(x) {
 #' # Compare probabilities
 #' results[, c("prob_smaller", "prob_larger", "prob_practical_equiv")]
 #'
-#' @export
+#' @noRd
 compute.bayesian.effects <- function(bb.integrals, reference_idx = 1) {
    ref_samples <- unlist(bb.integrals[[reference_idx]])
    ref_sd <- sd(ref_samples)
@@ -1551,7 +1551,7 @@ compute.bayesian.effects <- function(bb.integrals, reference_idx = 1) {
 #' Wagenmakers, E. J., Lodewyckx, T., Kuriyal, H., & Grasman, R. (2010).
 #' Bayesian hypothesis testing for psychologists: A tutorial on the Savage-Dickey method.
 #' Cognitive Psychology, 60(3), 158-189.
-#' @export
+#' @noRd
 compute.pairwise.bayes.factors <- function(bb.integrals) {
     n_methods <- length(bb.integrals)
     bf_matrix <- matrix(NA, n_methods, n_methods)
@@ -1668,7 +1668,7 @@ compute.pairwise.bayes.factors <- function(bb.integrals) {
 #' @references
 #' Gelman, A., & Hill, J. (2007). Data analysis using regression and
 #' multilevel/hierarchical models. Cambridge University Press.
-#' @export
+#' @noRd
 analyze.hierarchical.differences <- function(bb.integrals) {
     # Prepare data for Stan
     n_methods <- length(bb.integrals)
@@ -1788,7 +1788,7 @@ analyze.hierarchical.differences <- function(bb.integrals) {
 #' # knitr::kable(bayes.factors.symbols(bf.matrix), escape = FALSE)
 #' @seealso
 #'   \code{\link{compute.pairwise.bayes.factors}} for generating Bayes factor matrices
-#' @export
+#' @noRd
 bayes.factors.symbols <- function(x,
                                   thresholds = c(strong = 1000, moderate = 10, weak = 3),
                                   digits = 2, ...) {
@@ -1910,7 +1910,7 @@ bayes.factors.symbols <- function(x,
 #' @seealso
 #'   \code{\link[rootSolve]{uniroot.all}} for root finding,
 #'   \code{magelo} and \code{mabilo} for the smoothing methods
-#' @export
+#' @noRd
 find.inflection.pts <- function(y, x = NULL, method = c("spline", "magelo", "mabilo")) {
 
     method <- match.arg(method)
@@ -2033,7 +2033,7 @@ find.inflection.pts <- function(y, x = NULL, method = c("spline", "magelo", "mab
 #' @seealso
 #'   \code{\link{dnorm}} for the normalized Gaussian density function,
 #'   \code{\link{find.inflection.pts}} for finding inflection points in general curves
-#' @export
+#' @noRd
 gaussian.second.derivative <- function(x, mu, sd) {
     # Standardized difference
     z <- (x - mu)/sd
@@ -2106,7 +2106,7 @@ gaussian.second.derivative <- function(x, mu, sd) {
 #'   \code{\link{intersect}} for set intersection,
 #'   \code{\link{union}} for set union,
 #'   \code{\link{setdiff}} for set difference
-#' @export
+#' @noRd
 jaccard.index <- function(vec.1, vec.2) {
   ## Convert input vectors to sets by removing duplicates
   set.1 <- unique(vec.1)
@@ -2154,7 +2154,7 @@ jaccard.index <- function(vec.1, vec.2) {
 #'      main = "Thresholded Sigmoid Function")
 #' abline(v = c(q90, q95), lty = 2, col = c("blue", "red"))
 #'
-#' @export
+#' @noRd
 thresholded.sigmoid <- function(x, lower_threshold, upper_threshold, steepness = 10) {
   # Calculate midpoint between thresholds
   midpoint <- (lower_threshold + upper_threshold) / 2
@@ -2181,7 +2181,7 @@ thresholded.sigmoid <- function(x, lower_threshold, upper_threshold, steepness =
 #' example.data[1,1] <- 25
 #' example.data[2,3] <- -15
 #' normalized.data <- winsorize.zscore(example.data)
-#' @export
+#' @noRd
 winsorize.zscore <- function(data, limits = c(0.01, 0.01)) {
     ## Convert data to matrix if it's a data frame
     if(is.data.frame(data)) {
@@ -2231,7 +2231,7 @@ winsorize.zscore <- function(data, limits = c(0.01, 0.01)) {
 #' example.data[1,1] <- 25
 #' example.data[2,3] <- -15
 #' normalized.data <- robust.zscore(example.data)
-#' @export
+#' @noRd
 robust.zscore <- function(data, scale.factor = 1.4826) {
     ## Convert data to matrix if it's a data frame
     if(is.data.frame(data)) {
@@ -2292,7 +2292,7 @@ robust.zscore <- function(data, scale.factor = 1.4826) {
 #'     \item \code{bin.values}: representative numeric value per bin (midpoint), useful for value palettes
 #'   }
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 quantize.cont.var <- function(x,
                              method = c("uniform", "quantile"),
@@ -2474,7 +2474,7 @@ quantize.cont.var <- function(x,
 #' dist_na[c(5, 15)] <- NA
 #' minima_na <- find.local.minima(dist_na, k, na.rm = TRUE)
 #'
-#' @export
+#' @noRd
 find.local.minima <- function(distances,
                               k.values = NULL,
                               threshold = 0,
@@ -2596,7 +2596,7 @@ find.local.minima <- function(distances,
 #' @return The barrier height (maximum value before reaching a higher value
 #'   than the minimum, or the maximum in that direction if no higher value exists)
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 find.barrier <- function(distances, idx, direction = c("left", "right")) {
   direction <- match.arg(direction)
@@ -2661,7 +2661,7 @@ find.barrier <- function(distances, idx, direction = c("left", "right")) {
 #' If \code{include.boundary} allows endpoints, then boundary minima are defined
 #' one-sided as \eqn{x[1] < x[2]} (left) and/or \eqn{x[n] < x[n-1]} (right).
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 internal.find.local.minima <- function(x, k.values,
                                       include.boundary = c("both", "none", "left", "right")) {
@@ -2727,7 +2727,7 @@ internal.find.local.minima <- function(x, k.values,
 #' w <- runif(100)
 #' pearson.wcor(x, y, w)
 #'
-#' @export
+#' @noRd
 pearson.wcor <- function(x, y, w) {
     # Input validation
     if (!is.numeric(x) || !is.numeric(y) || !is.numeric(w)) {
@@ -2781,7 +2781,7 @@ pearson.wcor <- function(x, y, w) {
 #' calls C code for computational efficiency. Note that the C function expects
 #' 0-based indexing, so the R indices are adjusted by subtracting 1.
 #'
-#' @keywords internal
+#' @noRd
 pearson.wcor.BB.qCrI <- function(nn.y1, nn.y2, nn.i, nn.w, nx, n.BB = 1000, alpha = 0.05) {
     # Input validation
     if (!is.matrix(nn.y1) || !is.matrix(nn.y2) || !is.matrix(nn.i) || !is.matrix(nn.w)) {
@@ -2875,7 +2875,7 @@ pearson.wcor.BB.qCrI <- function(nn.y1, nn.y2, nn.i, nn.w, nx, n.BB = 1000, alph
 #' dim(result$S.q)
 #'
 #' @seealso \code{\link[FNN]{get.knn}} for K-nearest neighbor computation
-#' @export
+#' @noRd
 rm.SS.outliers <- function(S, y = NULL, p = 0.98, dist.factor = 100, K = 30,
                           method = "diff.dist.factor") {
     # Validate inputs
@@ -2958,7 +2958,7 @@ rm.SS.outliers <- function(S, y = NULL, p = 0.98, dist.factor = 100, K = 30,
 #' y <- c(-0.1, 0.2, 0.5)
 #' apply.floor(y, floor.at = 0)
 #'
-#' @export
+#' @noRd
 apply.floor <- function(y, floor.at, verbose = FALSE) {
   n.floored <- sum(y < floor.at, na.rm = TRUE)
 
@@ -2992,7 +2992,7 @@ apply.floor <- function(y, floor.at, verbose = FALSE) {
 #' y <- c(0.2, 0.5, 1.2)
 #' apply.ceiling(y, ceiling.at = 1.0)
 #'
-#' @export
+#' @noRd
 apply.ceiling <- function(y, ceiling.at, verbose = FALSE) {
   n.ceilinged <- sum(y > ceiling.at, na.rm = TRUE)
 
@@ -3056,7 +3056,7 @@ left.winsorize <- function(y, p = 0.01, verbose = FALSE) {
 #' y <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 #' right.winsorize(y, p = 0.1)
 #'
-#' @export
+#' @noRd
 right.winsorize <- function(y, p = 0.01, verbose = FALSE) {
   if (p < 0 || p >= 0.25) {
     stop("p must be between 0 and 0.25")
@@ -3109,7 +3109,7 @@ right.winsorize <- function(y, p = 0.01, verbose = FALSE) {
 #' range(y.wins)
 #'
 #' @importFrom stats quantile
-#' @export
+#' @noRd
 winsorize <- function(x, p = 0.01, verbose = FALSE) {
   # Input validation
   if (!is.numeric(x)) {
@@ -3260,7 +3260,7 @@ break.ties <- function(y,
 #' y.hat <- c(-0.1, 0, 0.2, 0.2, 0.9, 1.2)
 #' prepare.binary.cond.exp(y.hat, p.right = 0.2, verbose = FALSE)
 #'
-#' @export
+#' @noRd
 prepare.binary.cond.exp <- function(y.hat,
                                    p.right = 0.01,
                                    apply.right.winsorization = TRUE,
@@ -3319,7 +3319,7 @@ prepare.binary.cond.exp <- function(y.hat,
 #' y.raw <- c(-10, -1, -1, 0, 1, 2, 20)
 #' prepare.continuous.outcome(y.raw, p.winsorize = 0.1, verbose = FALSE)
 #'
-#' @export
+#' @noRd
 prepare.continuous.outcome <- function(y,
                                       p.winsorize = 0.01,
                                       apply.winsorization = TRUE,
@@ -3382,7 +3382,7 @@ prepare.continuous.outcome <- function(y,
 #'   verbose = FALSE
 #' )
 #'
-#' @export
+#' @noRd
 prepare.for.extrema.detection <- function(y,
                                          floor.at = NULL,
                                          ceiling.at = NULL,
@@ -3585,7 +3585,7 @@ prepare.for.extrema.detection <- function(y,
 #' \code{\link{duplicated}} for identifying duplicate rows,
 #' \code{\link{prcomp}} for PCA-based alternative approaches
 #'
-#' @export
+#' @noRd
 break.composition.ties <- function(
   rel.abund.mat,
   neighborhood.method = c("knn", "radius"),
@@ -3791,7 +3791,7 @@ break.composition.ties <- function(
 #' fences <- compute.tukey.threshold(x, type = "both")
 #' inliers <- x[x >= fences["lower"] & x <= fences["upper"]]
 #'
-#' @export
+#' @noRd
 compute.tukey.threshold <- function(x, k = 1.5, type = c("upper", "lower", "both")) {
 
     type <- match.arg(type)
@@ -3876,7 +3876,7 @@ compute.tukey.threshold <- function(x, k = 1.5, type = c("upper", "lower", "both
 #' ## More conservative threshold
 #' threshold.conservative <- compute.mad.threshold(x, k = 3)
 #'
-#' @export
+#' @noRd
 compute.mad.threshold <- function(x,
                                   k = 2.5,
                                   type = c("upper", "lower", "both"),
@@ -3960,7 +3960,7 @@ compute.mad.threshold <- function(x,
 #' threshold <- find.elbow.threshold(x, plot = TRUE)
 #' abline(v = threshold, col = "red", lty = 2)
 #'
-#' @export
+#' @noRd
 find.elbow.threshold <- function(x, plot = FALSE) {
 
     if (!is.numeric(x)) {
@@ -4080,7 +4080,7 @@ L2.normalize.matrix <- function(U, eps = 1e-12) {
 #'                          m = 10, weight.type = "sqrt.filtered",
 #'                          row.normalize = TRUE)
 #'
-#' @export
+#' @noRd
 spectral.features <- function(eigenvectors,
                               filtered.eigenvalues = NULL,
                               m = 20L,

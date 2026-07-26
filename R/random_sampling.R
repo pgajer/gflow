@@ -32,7 +32,7 @@
 #' # Generate 500 random variates with location 2 and scale 3, using a specific seed
 #' y <- rlaplace(500, location = 2, scale = 3, seed = 12345)
 #'
-#' @export
+#' @noRd
 rlaplace <- function(n,
                      location = 0,
                      scale = 1,
@@ -81,7 +81,7 @@ rlaplace <- function(n,
 #' y <- dlaplace(x, location = 0, scale = 1)
 #' plot(x, y, type = "l", main = "Laplace Density")
 #'
-#' @export
+#' @noRd
 dlaplace <- function(x, location = 0, scale = 1, log = FALSE) {
   if (scale <= 0) stop("scale must be positive")
 
@@ -109,7 +109,7 @@ dlaplace <- function(x, location = 0, scale = 1, log = FALSE) {
 #' y <- plaplace(x, location = 0, scale = 1)
 #' plot(x, y, type = "l", main = "Laplace CDF")
 #'
-#' @export
+#' @noRd
 plaplace <- function(q, location = 0, scale = 1, lower.tail = TRUE, log.p = FALSE) {
   if (scale <= 0) stop("scale must be positive")
 
@@ -139,7 +139,7 @@ plaplace <- function(q, location = 0, scale = 1, lower.tail = TRUE, log.p = FALS
 #' q <- qlaplace(p, location = 0, scale = 1)
 #' plot(p, q, type = "l", main = "Laplace Quantile Function")
 #'
-#' @export
+#' @noRd
 qlaplace <- function(p, location = 0, scale = 1, lower.tail = TRUE, log.p = FALSE) {
   if (scale <= 0) stop("scale must be positive")
 
@@ -197,7 +197,7 @@ runif.simplex <- function(K)
 #' # Generate 100 points on a 3D sphere surface (2-sphere)
 #' points_sphere <- runif.sphere(100, 2)
 #'
-#' @export
+#' @noRd
 runif.sphere <- function(n.samples, dim) {
   ## Initialize the samples matrix
   samples <- matrix(0, nrow = n.samples, ncol = dim + 1)
@@ -241,7 +241,7 @@ runif.sphere <- function(n.samples, dim) {
 #' # Generate 100 points on a 2-dimensional torus
 #' torus_points <- runif.torus(100, dim = 2)
 #'
-#' @export
+#' @noRd
 runif.torus <- function(n.pts, dim = 1) {
     # Input validation
     if(!is.numeric(n.pts) || !is.numeric(dim)) {
@@ -331,7 +331,7 @@ runif.torus <- function(n.pts, dim = 1) {
 #' hist(samples2, main="Linear Interpolation Sampling")
 #'
 #' @importFrom graphics hist
-#' @export
+#' @noRd
 sample.from.empirical.distribution <- function(n,
                                                y,
                                                nbins = 100,

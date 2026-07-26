@@ -34,22 +34,12 @@ permutation-based inference.
 n <- 250L
 radius <- 1
 
-X.df <- generate.circle.data(
-  n = n,
-  radius = radius,
-  noise = 0.15,
-  type = "random",
-  noise.type = "normal",
-  seed = 11
+set.seed(11)
+theta.obs <- runif(n, 0, 2 * pi)
+X <- cbind(
+  x = radius * cos(theta.obs) + rnorm(n, sd = 0.15),
+  y = radius * sin(theta.obs) + rnorm(n, sd = 0.15)
 )
-X <- as.matrix(X.df[, c("x", "y")])
-
-if ("angles" %in% colnames(X.df)) {
-  theta.obs <- as.numeric(X.df$angles)
-} else {
-  theta.obs <- atan2(X[, 2], X[, 1])
-  theta.obs <- ifelse(theta.obs < 0, theta.obs + 2 * pi, theta.obs)
-}
 
 # Response: a mixture of two circular Gaussian peaks (one larger, one smaller)
 mu1 <- 0.80
@@ -59,30 +49,23 @@ sd2 <- 0.48
 amp1 <- 1.40
 amp2 <- 0.75
 
-comp1 <- circular.synthetic.mixture.of.gaussians(
-  x = theta.obs,
-  x.knot = mu1,
-  y.knot = amp1,
-  sd.knot = sd1
-)
-comp2 <- circular.synthetic.mixture.of.gaussians(
-  x = theta.obs,
-  x.knot = mu2,
-  y.knot = amp2,
-  sd.knot = sd2
-)
+periodic.gaussian <- function(x, center, scale) {
+  distance <- pmin(
+    (x - center) %% (2 * pi),
+    (center - x) %% (2 * pi)
+  )
+  exp(-(distance^2) / (2 * scale^2))
+}
+comp1 <- amp1 * periodic.gaussian(theta.obs, mu1, sd1)
+comp2 <- amp2 * periodic.gaussian(theta.obs, mu2, sd2)
 y.true <- comp1 + comp2
 y <- y.true + rnorm(n, sd = 0.10)
 
-circle.true.df <- generate.circle.data(
-  n = 300,
-  radius = radius,
-  noise = 0,
-  type = "uniform",
-  noise.type = "normal",
-  seed = 1
+theta.true <- seq(0, 2 * pi, length.out = 300)
+circle.true <- cbind(
+  x = radius * cos(theta.true),
+  y = radius * sin(theta.true)
 )
-circle.true <- as.matrix(circle.true.df[, c("x", "y")])
 ```
 
 ```{r noisy-circle-plot}
@@ -213,7 +196,7 @@ if (requireNamespace("rgl", quietly = TRUE)) {
 ```{r plot3d-html-optional, eval=FALSE}
 if (requireNamespace("rgl", quietly = TRUE) &&
     requireNamespace("htmlwidgets", quietly = TRUE)) {
-  plot3D.cont.html(
+  plot3D.cont.widget(
     X.denoise.graph.layout.3d,
     y.hat,
     legend.title = "y.hat",

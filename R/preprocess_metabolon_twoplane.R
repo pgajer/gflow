@@ -72,21 +72,6 @@ preprocess.metabolon.twoplane <- function(S,
                                          meta = NULL,
                                          verbose = TRUE) {
 
-    ## ---- helpers (self-contained, CRAN-safe) ----
-    winsorize.vec <- function(x, probs = c(0.01, 0.99)) {
-        q <- stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 7)
-        x[x < q[1]] <- q[1]
-        x[x > q[2]] <- q[2]
-        x
-    }
-
-    robust.zscore.vec <- function(x, eps = 1e-8) {
-        m <- stats::median(x, na.rm = TRUE)
-        s <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
-        if (!is.finite(s) || s < eps) s <- 1.0
-        (x - m) / s
-    }
-
     sanitize.feature.names <- function(nm) {
         ## make syntactically valid + unique, while keeping a mapping to raw names
         if (is.null(nm)) nm <- paste0("V", seq_len(ncol(S)))
@@ -747,32 +732,6 @@ plot.knn.edit.curve <- function(x, ...) {
     if (is.finite(res$k.cc)) graphics::abline(v = res$k.cc, lty = 2)
     if (is.finite(res$k.selected)) graphics::abline(v = res$k.selected, lty = 3)
     graphics::mtext(paste0("k.cc=", res$k.cc, "   k.selected=", res$k.selected), side = 3, line = 0.2)
-}
-
-#' Winsorize a numeric vector
-#'
-#' @param x Numeric vector.
-#' @param probs Numeric length-2 with lower/upper probabilities.
-#' @return Winsorized numeric vector.
-#' @export
-winsorize.vec <- function(x, probs = c(0.01, 0.99)) {
-    q <- stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 7)
-    x[x < q[1]] <- q[1]
-    x[x > q[2]] <- q[2]
-    x
-}
-
-#' Robust z-score a numeric vector using median and MAD
-#'
-#' @param x Numeric vector.
-#' @param eps Small positive scalar for numerical stability.
-#' @return Robustly standardized numeric vector.
-#' @export
-robust.zscore.vec <- function(x, eps = 1e-8) {
-    m <- stats::median(x, na.rm = TRUE)
-    s <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
-    if (!is.finite(s) || s < eps) s <- 1.0
-    (x - m) / s
 }
 
 #' Replace missing (and non-positive) entries by 2/3 of min positive per metabolite

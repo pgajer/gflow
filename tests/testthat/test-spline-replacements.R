@@ -47,7 +47,7 @@ test_that("spline wrapper supports robust repeated-CV selection with 1SE rule", 
   x <- sort(runif(80, -1, 1))
   y <- sin(3 * x) + rnorm(length(x), sd = 0.12)
 
-  fit <- gflow::gflow.smooth.spline(
+  fit <- gflow:::gflow.smooth.spline(
     x = x,
     y = y,
     use.gcv = FALSE,
@@ -69,7 +69,7 @@ test_that("spline wrapper enforces df.max cap", {
   x <- sort(runif(100))
   y <- sin(8 * x) + rnorm(length(x), sd = 0.08)
 
-  fit <- gflow::gflow.smooth.spline(
+  fit <- gflow:::gflow.smooth.spline(
     x = x,
     y = y,
     use.gcv = FALSE,

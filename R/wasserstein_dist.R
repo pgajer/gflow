@@ -29,7 +29,7 @@
 #' @seealso
 #' \url{https://en.wikipedia.org/wiki/Wasserstein_metric} for more information on the Wasserstein distance.
 #'
-#' @export
+#' @noRd
 wasserstein.distance.1D <- function(x, y)
 {
     # Check if x and y are numeric
@@ -97,7 +97,7 @@ wasserstein.distance.1D <- function(x, y)
 #' ## Perform the permutation test with 1000 permutations, using 2 cores
 #' res <- wasserstein1d.test(x, y, n.perms = 1000, n.cores = 2)
 #' str(res)
-#' @export
+#' @noRd
 wasserstein1d.test <- function(x, y, n.perms = 10000, n.cores = 7)
 {
   ## --- helpers -------------------------------------------------------------

@@ -894,8 +894,9 @@ estimate_density <- function(point, X) {
 #' filenames based on column indices. Each file contains \code{Ey} (expected
 #' values) and \code{pval} (p-value) from \code{fassoc1.test()}.
 #'
-#' @seealso \code{\link{fassoc1.test}}, \code{\link{right.winsorize}},
-#'   \code{\link{minmax.normalize}}
+#' @seealso Internal helpers \code{fassoc1.test()},
+#'   \code{right.winsorize()}, and \code{minmax.normalize()} support this
+#'   workflow but are not public APIs.
 #'
 #' @examples
 #' \dontrun{

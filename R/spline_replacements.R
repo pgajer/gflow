@@ -220,7 +220,7 @@
 #' @return A `smooth.spline` fit object or `NULL` if fitting is not possible.
 #'   Selection metadata is attached as `fit$gflow.selection`.
 #'
-#' @export
+#' @noRd
 gflow.smooth.spline <- function(x,
                                 y,
                                 w = NULL,

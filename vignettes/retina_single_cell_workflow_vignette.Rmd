@@ -241,7 +241,7 @@ The retina documents also show something more subtle and more important:
 different scientific objectives can prefer different graph scales.
 
 The pseudotime-oriented benchmark prefers a relatively dense regime, but the
-target-gene conditional-expectation analysis over the union of Notch and
+target-gene local-response analysis over the union of Notch and
 cell-cycle genes prefers a much smaller graph scale.
 
 ```{r fig-gcv-k-selection, fig.cap = "Conditional-expectation-driven k selection for the targeted Notch-plus-cell-cycle gene set."}
@@ -260,7 +260,7 @@ ggplot(targeted.k.curve, aes(x = k, y = median_norm)) +
   labs(
     x = "k",
     y = "Median normalized GCV",
-    title = "Target-gene conditional expectation prefers a smaller graph scale"
+    title = "Target-gene local response prefers a smaller graph scale"
   ) +
   theme_bw(base_size = 10) +
   theme(panel.grid.minor = element_blank())
@@ -299,7 +299,7 @@ knitr::include_graphics(
 
 For a package vignette, the point is not to retell the entire Notch biology
 story. The point is to show that once a geometry is selected, `gflow` can carry
-that geometry into downstream conditional-expectation style summaries rather
+that geometry into downstream local-response summaries rather
 than stopping at graph construction.
 
 The larger retina analysis goes much further than this, but this one figure is

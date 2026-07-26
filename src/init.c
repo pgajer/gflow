@@ -46,7 +46,6 @@
 #include "lcor_r.h"
 #include "partition_graph_r.h"
 #include "lslope_r.h"
-#include "lcor_posterior_r.h"
 #include "gfc_r.h"
 #include "basin_summary_r.h"
 #include "gfassoc_r.h"
@@ -240,7 +239,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_lcor", (DL_FUNC) &S_lcor, 9},
   {"S_lcor_instrumented", (DL_FUNC) &S_lcor_instrumented, 9},
   {"S_lcor_vector_matrix", (DL_FUNC) &S_lcor_vector_matrix, 10},
-  {"S_lcor_with_posterior_internal", (DL_FUNC) &S_lcor_with_posterior_internal, 16},
 
   // =========================================================================
   // data graphs

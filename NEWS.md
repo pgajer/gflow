@@ -1,5 +1,16 @@
 # gflow development
 
+* Moved fitted-model local-slope testing and subject-neighborhood diagnostics
+  to `gflowx`; restricted posterior local correlation to supplied field draws;
+  and made the package spline wrapper internal.
+* Consolidated association entry points around `lcor()`, newly exported
+  `lslope()`, `gfcor()`, and their explicit inference layers. Shape-specific
+  `lcor` helpers and generic conditional-mean `fassoc*` support are now private.
+* De-exported generic statistics, preprocessing, grid, sampling, histogram,
+  divergence, Wasserstein, synthetic-data, and miscellaneous plotting helpers.
+  The three tested interactive 3D widget APIs remain public, and duplicate
+  matrix preprocessing helpers were removed.
+
 * Retired `compute.gfc()`, `compute.basins.of.attraction()`,
   `compute.gfc.trajectory()`, `compute.gfc.flow()`, and `create.basin.cx()`
   with classed migration errors. Added archived `gfc.flow`,

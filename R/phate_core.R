@@ -14,7 +14,7 @@
 #' }
 #'
 #' This function focuses on robust, reproducible core quantities that can feed
-#' downstream graph and conditional-expectation workflows in gflow.
+#' downstream graph and flow-analysis workflows in gflow.
 #'
 #' @param X Optional numeric data matrix (rows are observations).
 #' @param D Optional numeric distance matrix (or \code{dist} object).

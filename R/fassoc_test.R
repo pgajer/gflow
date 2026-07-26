@@ -225,7 +225,7 @@ functional.association.test <- fassoc.test
 #' }
 #'
 #' @importFrom utils file_test
-#' @export
+#' @noRd
 total.associations <- function(obj, ED = NULL, verbose = FALSE) {
 
     # Input validation
@@ -377,7 +377,7 @@ total.associations <- function(obj, ED = NULL, verbose = FALSE) {
 #' summary.df$d1D1.df[, c("RDM", "D"), drop = FALSE]
 #'
 #' @importFrom stats p.adjust
-#' @export
+#' @noRd
 create.delta1.Delta1.df <- function(res.list, q.thld = 0.1) {
 
     # Input validation
@@ -485,7 +485,7 @@ create.delta1.Delta1.df <- function(res.list, q.thld = 0.1) {
 #' indices$Delta
 #' indices$delta
 #'
-#' @export
+#' @noRd
 delta.indices <- function(Eyg, k = 10) {
 
     # Input validation
@@ -568,7 +568,7 @@ delta.indices <- function(Eyg, k = 10) {
 #' profiles <- compute.diff.profiles(Eyg, k = 3)
 #' length(profiles)
 #'
-#' @export
+#' @noRd
 compute.diff.profiles <- function(Eyg, k) {
 
     # Input validation
@@ -644,7 +644,7 @@ compute.diff.profiles <- function(Eyg, k) {
 #'
 #' print(assoc0.obj)
 #' @method print fassoc
-#' @export
+#' @noRd
 print.fassoc <- function(x, ...) {
     if (inherits(x, "assoc0")) {
         print.assoc0(x, ...)
@@ -692,7 +692,7 @@ print.fassoc <- function(x, ...) {
 #'
 #' summary(assoc1.obj)
 #' @method summary fassoc
-#' @export
+#' @noRd
 summary.fassoc <- function(object, ...) {
     if (inherits(object, "assoc0")) {
         summary.assoc0(object, ...)
