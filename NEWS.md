@@ -1,5 +1,9 @@
 # gflow development
 
+* Added deterministic exact-plateau superlevel and sublevel merge trees to
+  `create.basin.complex()`, including component-wise roots, elder ties,
+  hierarchical support, branch assignment, merge events, and nonnegative
+  persistence.
 * Added canonical `trajectory_flow` and `geodesic_reachability` adapters to
   `create.basin.complex()`. The adapters preserve raw overlap separately from
   primary assignment, retain legacy backend objects for provenance, normalize
