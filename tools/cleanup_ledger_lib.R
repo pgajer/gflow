@@ -188,7 +188,8 @@ cleanup.protected.symbols <- function(definitions, graph) {
 }
 
 cleanup.classification <- function(name, source.file, protected) {
-    if (name %in% protected) {
+    protected.class.methods <- c("plot.graphMScx", "merge.two.basins")
+    if (name %in% protected || name %in% protected.class.methods) {
         return(c(
             ownership = "PROTECTED",
             intended_package = "gflow",

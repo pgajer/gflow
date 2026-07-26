@@ -74,7 +74,7 @@
 #'
 #' @seealso \code{\link{enumerate.cell.trajectories}},
 #'   \code{\link{sample.cell.trajectories}},
-#'   \code{\link{identify.bottlenecks}}
+#'   \code{\link{madag.bottlenecks}}
 #'
 #' @examples
 #' \dontrun{
@@ -369,7 +369,7 @@ trajectory.similarity.matrix <- function(
 #' @seealso \code{\link{construct.madag}}
 #'
 #' @export
-identify.bottlenecks <- function(
+madag.bottlenecks <- function(
     x,
     max.vertex,
     min.fraction = 0.5,

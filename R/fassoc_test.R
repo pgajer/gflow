@@ -643,13 +643,13 @@ compute.diff.profiles <- function(Eyg, k) {
 #' class(assoc0.obj) <- "assoc0"
 #'
 #' print(assoc0.obj)
-#' @method print fassoc
+#' @keywords internal
 #' @noRd
-print.fassoc <- function(x, ...) {
+.print.fassoc <- function(x, ...) {
     if (inherits(x, "assoc0")) {
-        print.assoc0(x, ...)
+        .print.assoc0(x, ...)
     } else if (inherits(x, "assoc1")) {
-        print.assoc1(x, ...)
+        .print.assoc1(x, ...)
     } else {
         cat("Functional Association Test Result\n")
         print.default(x, ...)
@@ -691,13 +691,13 @@ print.fassoc <- function(x, ...) {
 #' class(assoc1.obj) <- "assoc1"
 #'
 #' summary(assoc1.obj)
-#' @method summary fassoc
+#' @keywords internal
 #' @noRd
-summary.fassoc <- function(object, ...) {
+.summary.fassoc <- function(object, ...) {
     if (inherits(object, "assoc0")) {
-        summary.assoc0(object, ...)
+        .summary.assoc0(object, ...)
     } else if (inherits(object, "assoc1")) {
-        summary.assoc1(object, ...)
+        .summary.assoc1(object, ...)
     } else {
         summary.default(object, ...)
     }

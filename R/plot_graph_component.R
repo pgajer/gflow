@@ -33,8 +33,8 @@
 #' plot.component(g, comp.id = 2, show.labels = FALSE, detect.communities = FALSE)
 #' }
 #'
-#' @export
-plot.component <- function(x,
+#' @keywords internal
+.plot.graph.component <- function(x,
                            comp.id = 1,
                            show.labels = TRUE,
                            label.cex = 0.7,
@@ -151,8 +151,8 @@ plot.component <- function(x,
 #' plotted
 #' }
 #'
-#' @export
-plot.components.multi <- function(x,
+#' @keywords internal
+.plot.graph.components <- function(x,
                                   min.size = 3,
                                   max.components = 12,
                                   show.labels = FALSE,
@@ -195,7 +195,7 @@ plot.components.multi <- function(x,
 
   ## Plot each component
   for (comp.id in comp.ids) {
-    plot.component(graph,
+    .plot.graph.component(graph,
                   comp.id = comp.id,
                   show.labels = show.labels,
                   label.cex = label.cex,

@@ -3219,7 +3219,7 @@ generate_covariances_2d <- function(strategy, n.components, sd.value, sd.range,
 #' @importFrom graphics axis contour image par persp points filled.contour
 #' @importFrom grDevices heat.colors terrain.colors
 #' @noRd
-plot.gaussian_mixture <- function(x, n.grid = 50, main = "2D Gaussian Mixture", ...) {
+.plot.gaussian.mixture <- function(x, n.grid = 50, main = "2D Gaussian Mixture", ...) {
     # Generate evaluation grid
     x.seq <- seq(x$x.range[1], x$x.range[2], length.out = n.grid)
     y.seq <- seq(x$y.range[1], x$y.range[2], length.out = n.grid)
@@ -3374,7 +3374,7 @@ plot3D.gaussian_mixture <- function(x,
 #'
 #' @return Invisible x
 #' @noRd
-print.gaussian_mixture <- function(x, ...) {
+.print.gaussian.mixture <- function(x, ...) {
     cat("2D Gaussian Mixture\n")
     cat("===================\n")
     cat("Number of components:", x$n.components, "\n")
@@ -3399,7 +3399,7 @@ print.gaussian_mixture <- function(x, ...) {
 #'
 #' @return A summary list
 #' @noRd
-summary.gaussian_mixture <- function(object, ...) {
+.summary.gaussian.mixture <- function(object, ...) {
     structure(
         list(
             n.components = object$n.components,
@@ -3421,7 +3421,7 @@ summary.gaussian_mixture <- function(object, ...) {
 #'
 #' @return Invisible x
 #' @noRd
-print.summary.gaussian_mixture <- function(x, ...) {
+.print.summary.gaussian.mixture <- function(x, ...) {
     cat("Summary of 2D Gaussian Mixture\n")
     cat("==============================\n")
     cat("Components:", x$n.components, "\n")
@@ -3638,7 +3638,7 @@ generate_sampling_points <- function(n, x.range, y.range, method = c("random", "
 #' \code{\link{get.gaussian.mixture.2d}} for creating 2D mixtures
 #'
 #' @noRd
-plot.gaussian_mixture_data <- function(x,
+.plot.gaussian.mixture.data <- function(x,
                                       type = c("scatter2d", "scatter3d", "surface",
                                                "surface3d", "contour", "heatmap",
                                                "components", "nerve", "compare"),

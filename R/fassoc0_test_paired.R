@@ -640,9 +640,9 @@ zofam.test <- fassoc0.test
 #'
 #' @return A named numeric vector containing delta, normalized effect sizes,
 #'   and p-value.
-#' @method coef assoc0
+#' @keywords internal
 #' @noRd
-coef.assoc0 <- function(object, ...) {
+.coef.assoc0 <- function(object, ...) {
     c(delta = object$delta,
       delta.z = object$delta.z,
       delta.robust.z = object$delta.robust.z,
@@ -677,9 +677,9 @@ coef.assoc0 <- function(object, ...) {
 #' class(result) <- "assoc0"
 #'
 #' print(result)
-#' @method print assoc0
+#' @keywords internal
 #' @noRd
-print.assoc0 <- function(x, digits = 4, ...) {
+.print.assoc0 <- function(x, digits = 4, ...) {
     cat("\nZero-Order Functional Association Test (Paired BB)\n")
     cat("==================================================\n\n")
 
@@ -751,9 +751,9 @@ print.assoc0 <- function(x, digits = 4, ...) {
 #' class(result) <- "assoc0"
 #'
 #' summary(result)
-#' @method summary assoc0
+#' @keywords internal
 #' @noRd
-summary.assoc0 <- function(object, ...) {
+.summary.assoc0 <- function(object, ...) {
     out <- list(
         call = object$call,
         n = length(object$x),
@@ -784,7 +784,7 @@ summary.assoc0 <- function(object, ...) {
     return(out)
 }
 
-#' @method print summary.assoc0
+#' @keywords internal
 #' @examples
 #' result <- list(
 #'   call = quote(fassoc0.test(x, y)),
@@ -814,7 +814,7 @@ summary.assoc0 <- function(object, ...) {
 #' result.summary <- summary(result)
 #' result.summary
 #' @noRd
-print.summary.assoc0 <- function(x, digits = 4, ...) {
+.print.summary.assoc0 <- function(x, digits = 4, ...) {
     cat("\nZero-Order Functional Association Test Summary\n")
     cat("==============================================\n\n")
 
@@ -876,9 +876,9 @@ print.summary.assoc0 <- function(x, digits = 4, ...) {
 #' class(result) <- "assoc0"
 #'
 #' plot(result, type = "diff")
-#' @method plot assoc0
+#' @keywords internal
 #' @noRd
-plot.assoc0 <- function(x, type = c("Exy", "diff", "qq", "comparison"),
+.plot.assoc0 <- function(x, type = c("Exy", "diff", "qq", "comparison"),
                          ...) {
     type <- match.arg(type)
 

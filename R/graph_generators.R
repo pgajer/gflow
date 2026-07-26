@@ -79,7 +79,7 @@
 #' )
 #' }
 #' @importFrom stats runif rnorm rexp rt dunif
-#' @export
+#' @keywords internal
 generate.star.dataset <- function(n.points,
                                   n.arms = 3,
                                   min.n.pts.within.arm = 3,
@@ -377,8 +377,8 @@ generate.star.dataset <- function(n.points,
 #'
 #' @importFrom graphics box text points lines
 #' @importFrom grDevices colorRampPalette
-#' @export
-plot.star_object <- function(x,
+#' @keywords internal
+.plot.star.object <- function(x,
                              y = NULL,
                              point.size = 1.5,
                              edge.col = "gray70",

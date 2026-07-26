@@ -1808,7 +1808,7 @@ create.adaptive.tiled.X.grid.xD <- function(X,
 #' @param with.bounding.box.pts Set to TRUE to show the bounding box.
 #' @param ... Additional arguments passed to the plotting functions.
 #'
-plot.gridX <- function(x, with.bounding.box.pts = TRUE, ...)
+.plot.grid.x <- function(x, with.bounding.box.pts = TRUE, ...)
 {
     grid.obj <- x  # for backward compatibility
     L <- grid.obj$L
@@ -2037,7 +2037,7 @@ box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, pl
 
     if ( plot.it ) {
         ##plot.box.tiling(X.boxes, L, R, with.box.ids = TRUE)
-        plot.box.tiling(X.boxes, with.box.ids = TRUE)
+        .plot.box.tiling(X.boxes, with.box.ids = TRUE)
         points(X, pch=20, cex=0.5)
     }
 
@@ -2662,7 +2662,7 @@ create.final.grid <- function(boxes, X, w, epsilon)
 #'
 #' @noRd
 ## was plot.boxes
-plot.box.tiling <- function(x,
+.plot.box.tiling <- function(x,
                            L = NULL,
                            R = NULL,
                            with.box.ids = TRUE,

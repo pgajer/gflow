@@ -125,8 +125,8 @@ analyze.comono.distributions <- function(cm,
 #' @param cell.id Specific cell ID to plot.
 #' @param ... Additional arguments (currently ignored).
 #'
-#' @export
-plot.comono.diagnostics <- function(x, cell.id, ...) {
+#' @keywords internal
+.plot.comono.diagnostics <- function(x, cell.id, ...) {
   analysis.results <- x
 
   if (!inherits(analysis.results, "comono_analysis")) {
