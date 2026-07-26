@@ -463,7 +463,7 @@ hdbscan.cltr <- function(X,
 #' @param K Number of nearest neighbors used for cluster reassignment (default is 20).
 #'        Will be automatically adjusted to min(K, nrow(X)-1) if K exceeds available points.
 #' @param use.geodesic.dist Logical flag indicating whether to use geodesic distance
-#'        instead of Euclidean distance (default is FALSE). Requires geodesic.knn() function
+#'        instead of Euclidean distance (default is FALSE). Requires dgraphs::geodesic.knn() function
 #'        if set to TRUE.
 #'
 #' @return A vector containing the new clustering labels after iterative imputation.
@@ -501,7 +501,7 @@ hdbscan.cltr <- function(X,
 #' \itemize{
 #'   \item If rownames are provided for X and names for cltr, they must match exactly
 #'   \item The function requires the FNN package for Euclidean k-NN search
-#'   \item If use.geodesic.dist = TRUE, the geodesic.knn() function must be available
+#'   \item If use.geodesic.dist = TRUE, the dgraphs::geodesic.knn() function must be available
 #'   \item The algorithm may not converge if the reference cluster contains isolated points
 #'         with no non-reference neighbors within K nearest neighbors
 #' }
@@ -566,7 +566,7 @@ kNN.cltr.imputation <- function(X, cltr, ref.cltr = 0, K = 20, use.geodesic.dist
         }
 
         # Note: geodesic.knn is assumed to return k+1 neighbors including the point itself
-        r <- geodesic.knn(X, k = K + 1)
+        r <- dgraphs::geodesic.knn(X, k = K + 1)
         nn.i <- r$nn.index
         nn.i <- nn.i[, -1, drop = FALSE]  # Remove the first column (self-reference)
     } else {
@@ -851,7 +851,7 @@ kNN.cltr.imputation.enhanced <- function(X, cltr, ref.cltr = 0, K = 20,
         if (!exists("geodesic.knn")) {
             stop("geodesic.knn function not found")
         }
-        r <- geodesic.knn(X, k = K + 1)
+        r <- dgraphs::geodesic.knn(X, k = K + 1)
         nn.i <- r$nn.index[, -1, drop = FALSE]
         nn.d <- r$nn.dist[, -1, drop = FALSE]
     } else {

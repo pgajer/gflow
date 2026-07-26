@@ -1653,7 +1653,7 @@ quadform.grid.geodesic.calibration <- function(index.k,
     graph <- .quadform.edge.list.to.adj(nrow(net$vertices), edge.matrix,
                                         edge.weight)
     comp <- .quadform.adj.components(graph$adj_list)
-    D <- shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
+    D <- dgraphs::shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
 
     out <- list(
         method = "local_radius",
@@ -1743,7 +1743,7 @@ quadform.grid.geodesic.calibration <- function(index.k,
     graph <- .quadform.edge.list.to.adj(
         nrow(ref$vertices_param), edge.matrix, edge.weight)
     comp.after <- .quadform.adj.components(graph$adj_list)
-    D <- shortest.path(graph$adj_list, graph$weight_list, ref$sample_vertex)
+    D <- dgraphs::shortest.path(graph$adj_list, graph$weight_list, ref$sample_vertex)
     degree <- tabulate(c(edge.matrix[, 1L], edge.matrix[, 2L]),
                        nbins = nrow(ref$vertices_param))
 
@@ -2298,7 +2298,7 @@ quadform.delaunay.geodesic.distances <- function(X,
     )
     graph <- .quadform.edge.list.to.adj(nrow(net$vertices), edge.matrix,
                                         edge.weight)
-    D <- shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
+    D <- dgraphs::shortest.path(graph$adj_list, graph$weight_list, net$sample_vertex)
 
     out <- list(
         distances = D,

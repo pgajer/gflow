@@ -52,3 +52,59 @@ graph.connected.components <- function(adj.list) {
         list(adj.list = adj.list)
     )
 }
+
+#' @rdname gflow-dgraphs-compat
+#' @param weight.list A list of edge lengths aligned with `adj.list`.
+#' @param core.quantile,endpoint.quantile Numeric endpoint-selection quantiles.
+#' @param use.approx.eccentricity Logical; use landmark-based eccentricity.
+#' @param n.landmarks Number of approximation landmarks.
+#' @param max.endpoints Optional maximum number of endpoints.
+#' @param seed Random seed used for landmark initialization.
+#' @param verbose Logical; report backend progress.
+#' @export
+geodesic.core.endpoints <- function(adj.list,
+                                    weight.list,
+                                    core.quantile = 0.10,
+                                    endpoint.quantile = 0.90,
+                                    use.approx.eccentricity = TRUE,
+                                    n.landmarks = 64L,
+                                    max.endpoints = NULL,
+                                    seed = 1L,
+                                    verbose = FALSE) {
+    .gflow.dgraphs.compat(
+        "geodesic.core.endpoints",
+        list(
+            adj.list = adj.list,
+            weight.list = weight.list,
+            core.quantile = core.quantile,
+            endpoint.quantile = endpoint.quantile,
+            use.approx.eccentricity = use.approx.eccentricity,
+            n.landmarks = n.landmarks,
+            max.endpoints = max.endpoints,
+            seed = seed,
+            verbose = verbose
+        )
+    )
+}
+
+#' @rdname gflow-dgraphs-compat
+#' @param graph A graph object or adjacency list, depending on the wrapper.
+#' @param vertices Optional vertex indices.
+#' @param stage Graph lifecycle stage.
+#' @export
+graph.geodesic.distances <- function(graph, vertices = NULL, stage = "final") {
+    .gflow.dgraphs.compat(
+        "graph.geodesic.distances",
+        list(graph = graph, vertices = vertices, stage = stage)
+    )
+}
+
+#' @rdname gflow-dgraphs-compat
+#' @param edge.lengths Edge lengths aligned with `graph`.
+#' @export
+shortest.path <- function(graph, edge.lengths, vertices) {
+    .gflow.dgraphs.compat(
+        "shortest.path",
+        list(graph = graph, edge.lengths = edge.lengths, vertices = vertices)
+    )
+}
