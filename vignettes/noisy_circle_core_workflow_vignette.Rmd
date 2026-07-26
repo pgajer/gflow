@@ -170,41 +170,6 @@ data.frame(
 )
 ```
 
-## Optional 3D Surface View
-
-```{r layout-3d}
-X.denoise.graph.layout.3d <- dgraphs::graph.embedding(
-  adj.list = adj.list,
-  weights.list = edge.length.list,
-  invert.weights = TRUE,
-  dim = 3,
-  method = "fr"
-)
-```
-
-```{r plot3d-optional, eval=FALSE}
-if (requireNamespace("rgl", quietly = TRUE)) {
-  plot3D.cont(
-    X.denoise.graph.layout.3d,
-    y.hat,
-    radius = 0.03,
-    legend.title = "y.hat"
-  )
-}
-```
-
-```{r plot3d-html-optional, eval=FALSE}
-if (requireNamespace("rgl", quietly = TRUE) &&
-    requireNamespace("htmlwidgets", quietly = TRUE)) {
-  plot3D.cont.widget(
-    X.denoise.graph.layout.3d,
-    y.hat,
-    legend.title = "y.hat",
-    output.file = NULL
-  )
-}
-```
-
 ## 6) Build Feature Functions
 
 Features are built so some correlate with selected arcs of the response, while

@@ -35,7 +35,6 @@ test_that("protected basin and extrema hooks remain explicitly out of scope", {
   protected.files <- testthat::test_path(
     "..", "..", "R",
     c(
-      "graph_endpoint_geometry.R",
       "extremality_utils.R",
       "compute_pextrema_nbhds.R",
       "compute_gfc_modulation.R",
@@ -43,6 +42,9 @@ test_that("protected basin and extrema hooks remain explicitly out of scope", {
     )
   )
   expect_true(all(file.exists(protected.files)))
+  expect_false(file.exists(testthat::test_path(
+    "..", "..", "R", "graph_endpoint_geometry.R"
+  )))
   suggests <- utils::packageDescription("gflow", fields = "Suggests")
-  expect_match(suggests, "(^|,\\s*)gflowx(\\s|,|$)")
+  expect_false(grepl("(^|,\\s*)gflowx(\\s|,|$)", suggests))
 })

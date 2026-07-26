@@ -131,6 +131,5 @@ test_that("retired graph constructor native routines are not registered", {
 
   expect_false(any(retired %in% call.names))
 
-  temporary.internal <- c("S_create_hHN_graph")
-  expect_true(all(temporary.internal %in% call.names))
+  expect_false("S_create_hHN_graph" %in% call.names)
 })

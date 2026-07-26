@@ -29,19 +29,6 @@ test_that("retired example constructors are private and MADAG API is explicit", 
     expect_false("identify.bottlenecks" %in% exports)
 })
 
-test_that("distance quantile analysis constructs its registered S3 class", {
-    result <- distance.quantile.bin.analysis(
-        x = seq_len(12),
-        d = seq_len(12),
-        n.bins = 3L,
-        min.per.bin = 2L
-    )
-
-    expect_s3_class(result, "distance.quantile.bins")
-    expect_s3_class(result$bins, "data.frame")
-    expect_true("plot:distance.quantile.bins" %in% phase6.registered.s3())
-})
-
 test_that("retired private helpers are not mistaken for S3 methods", {
     namespace <- asNamespace("gflow")
     old.names <- c(

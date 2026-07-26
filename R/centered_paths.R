@@ -51,7 +51,7 @@
 #' @seealso
 #' The C++ implementation details can be found in the source code of S_get_path_data
 #'
-#' @export
+#' @noRd
 get.path.data <- function(adj.list,
                          weight.list,
                          y,

@@ -31,7 +31,7 @@
 #'
 #' @seealso \code{\link{compute.gfc.basins}}
 #'
-#' @export
+#' @noRd
 compute.vertex.density <- function(adj.list,
                                     weight.list,
                                     normalize = TRUE) {

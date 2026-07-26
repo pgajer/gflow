@@ -1,4 +1,28 @@
-# gflow development
+# gflow 0.2.0 — 2026-07-26
+
+## Migrate graph work to dgraphs
+
+* Removed the remaining generic graph construction, conversion, clustering,
+  endpoint, path, diagnostic, and plotting exports. Use `dgraphs` where the
+  migration guide identifies a verified successor.
+
+## Move retired estimators out of the core package
+
+* Removed PHATE, sparse diffusion/potential pseudotime, random-walk smoothing,
+  distance-quantile analysis, quadratic-form geodesics, and their native
+  support from `gflow`.
+* The archived graph-regression and conditional-expectation estimators remain
+  available from `gflowx`; `gflowx` is no longer a `gflow` dependency.
+
+## Use the consolidated analysis surface
+
+* Centered the public package story on canonical basin/flow objects,
+  post-construction exploration, local association, and flow-aware
+  association.
+* De-exported generic weighted-p-value helpers, clustering summaries,
+  interactive selection/widgets, and remaining support utilities.
+* Added a complete breaking-release migration table at
+  `split_audit/cleanup/breaking-release-migration.md`.
 
 * Moved fitted-model local-slope testing and subject-neighborhood diagnostics
   to `gflowx`; restricted posterior local correlation to supplied field draws;

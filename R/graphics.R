@@ -259,7 +259,7 @@ create.graph.3d.obj <- function(plot.result, z) {
 #' }
 #'
 #' @importFrom graphics polygon
-#' @export
+#' @noRd
 triangle.plot <- function(coords, v = NULL, params) {
 
     .ensure_custom_shapes_registered()
@@ -372,7 +372,7 @@ triangle.plot <- function(coords, v = NULL, params) {
 #' }
 #'
 #' @importFrom graphics polygon
-#' @export
+#' @noRd
 itriangle.plot <- function(coords, v = NULL, params) {
 
     .ensure_custom_shapes_registered()
@@ -1711,7 +1711,7 @@ plot.graphMScx <- function(x,
 #'   plot3D.graph(my.graph2, z.values)
 #' }
 #' }
-#' @export
+#' @noRd
 plot3D.graph <- function(x,
                          z = NULL,
                          layout = "kk",

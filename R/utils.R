@@ -70,7 +70,7 @@ elapsed.time <- function(start.time,
 #' signif_df(df, digits = 2)
 #' signif_df(df, digits = 3, exclude = "sector")
 #'
-#' @export
+#' @noRd
 signif_df <- function(x,
                       digits = 2L,
                       keep.integers = TRUE,
@@ -145,7 +145,7 @@ signif_df <- function(x,
 #' pal <- c("#2166AC", "#F7F7F7", "#B2182B")
 #' cols <- map.values.to.palette(x, pal)
 #' head(cols)
-#' @export
+#' @noRd
 map.values.to.palette <- function(x,
                                   color.palette,
                                   limits = NULL,
