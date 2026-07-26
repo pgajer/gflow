@@ -3,55 +3,28 @@
 ## ============================================================================
 ##
 ## This function computes lcor() statistics with full posterior uncertainty
-## quantification arising from spectral smoothing. Two modes are supported:
-##
-## Mode 1 (Original): Pass pre-computed posterior samples in Z.hat.samples
-##   - Useful when you already have samples from gflowx::refit.rdgraph.regression()
-##   - Memory cost: O(n × B × p) for storing all samples
-##
-## Mode 2 (Memory-efficient): Pass fitted.model and Z.abundances with Z.hat.samples = NULL
-##   - Computes posterior samples and lslope on-the-fly in C++
-##   - Memory cost: O(n × B) per feature, O(n × p) total output
-##   - Supports OpenMP parallelization over features
+## quantification represented by supplied samples of vertex fields. Sampling
+## and smoothing belong to the model that produced those fields; this file
+## contains only the model-independent local-association summary.
 ##
 ## ============================================================================
 
 #' Compute Local Correlation with Posterior Uncertainty Propagation
 #'
-#' Propagates posterior uncertainty from spectral smoothing into local
-#' correlation (lcor) estimates, providing posterior mean, standard deviation,
-#' and credible intervals for lcor at each vertex for each feature.
+#' Summarizes local-correlation estimates over supplied draws of vertex fields,
+#' providing a mean, standard deviation, and interval at each vertex for each
+#' feature. The function does not fit or refit a smoother.
 #'
 #' @param adj.list Adjacency list (1-based R indexing)
 #' @param weight.list Edge weight list
 #' @param y.hat Smoothed response values (length n)
-#' @param Z.hat.samples Either:
-#'   \itemize{
-#'     \item A list of length p, where each element is an n x B matrix of
-#'       posterior samples for one feature (from \code{gflowx::refit.rdgraph.regression()}
-#'       with \code{return.posterior.samples = TRUE}), OR
-#'     \item \code{NULL} to use memory-efficient C++ computation (requires
-#'       \code{fitted.model} and \code{Z.abundances})
-#'   }
-#' @param fitted.model Fitted model from \code{gflowx::fit.rdgraph.regression()}.
-#'   Required when \code{Z.hat.samples = NULL}. Must contain spectral
-#'   decomposition (\code{spectral$vectors}, \code{spectral$values}).
-#' @param Z.abundances Original (unsmoothed) feature matrix (n x p).
-#'   Required when \code{Z.hat.samples = NULL}.
+#' @param Z.hat.samples A list of length p whose elements are n by B matrices
+#'   of sampled vertex fields, or one n by B matrix for a single feature.
 #' @param lcor.type Type of local correlation weighting: "derivative" (default),
 #'   "unit", or "sign". See \code{\link{lcor}} for details.
-#' @param per.column.gcv Logical. When using C++ mode, select optimal eta
-#'   for each feature via GCV (default TRUE). Ignored when Z.hat.samples
-#'   is provided.
-#' @param n.posterior.samples Number of posterior samples when using C++ mode
-#'   (default 500). Ignored when Z.hat.samples is provided.
 #' @param credible.level Credible interval level (default 0.95)
-#' @param seed Random seed for posterior sampling (default 12345)
-#' @param n.cores Number of cores for parallel processing (default 1).
-#'   Only used in C++ mode. Requires OpenMP support.
 #' @param return.samples Logical. Return individual lcor samples (default FALSE).
-#'   Only available in R mode (when Z.hat.samples is provided). Setting TRUE
-#'   with many features will use substantial memory.
+#'   Setting TRUE with many features will use substantial memory.
 #' @param verbose Logical. Print progress (default TRUE)
 #'
 #' @return A list of class "lcor.posterior" containing:
@@ -60,76 +33,24 @@
 #'     \item{sd}{Matrix (p x n) of posterior standard deviations}
 #'     \item{lower}{Matrix (p x n) of lower credible bounds}
 #'     \item{upper}{Matrix (p x n) of upper credible bounds}
-#'     \item{eta.used}{Vector (length p) of eta values used (C++ mode only)}
-#'     \item{effective.df}{Vector (length p) of effective df (C++ mode only)}
 #'     \item{samples}{List of sample matrices (only if return.samples = TRUE)}
 #'     \item{n.samples}{Number of posterior samples used}
 #'     \item{n.features}{Number of features}
 #'     \item{n.vertices}{Number of vertices}
 #'     \item{lcor.type}{Type of lcor weighting used}
-#'     \item{mode}{Either "R" or "C++" indicating computation mode}
 #'   }
 #'
 #' @details
-#' This function supports two computational modes:
-#'
-#' \strong{R Mode} (Z.hat.samples provided): Uses pre-computed posterior samples
-#' from \code{gflowx::refit.rdgraph.regression()}. For each posterior sample of the
-#' smoothed features, lcor is computed against the fixed smoothed response.
-#' This mode is useful when you want fine control over the smoothing parameters
-#' or need to reuse the posterior samples for other analyses.
-#'
-#' \strong{C++ Mode} (Z.hat.samples = NULL): Computes everything internally in
-#' C++ without materializing all posterior samples in memory. For each feature:
-#' \enumerate{
-#'   \item Select optimal eta via GCV (if per.column.gcv = TRUE)
-#'   \item Generate B posterior samples of smoothed feature values
-#'   \item Compute lcor for each sample
-#'   \item Compute summary statistics (mean, sd, quantiles)
-#'   \item Discard samples before processing next feature
-#' }
-#' This mode is recommended when memory is limited or when processing many
-#' features. OpenMP parallelization over features is supported.
-#'
-#' The posterior sampling model assumes:
-#' \deqn{\hat{z} = V F_\eta(\Lambda) V^T z + \epsilon}
-#' where the spectral coefficients have posterior distribution:
-#' \deqn{\alpha_j | z \sim N(f(\lambda_j) (V^T z)_j, \sigma^2 / (1 + \eta \lambda_j))}
+#' Each supplied draw is passed to \code{\link{lcor}} against the fixed
+#' response field. This makes the estimand independent of how the draws were
+#' generated. Archived graph-regression objects can be adapted in \code{gflowx}.
 #'
 #' @examples
-#' \dontrun{
-#' ## Fit model
-#' fit <- gflowx::fit.rdgraph.regression(X, y, k = 15)
-#'
-#' ## ----- Mode 1: Using pre-computed samples -----
-#' Z.refit <- gflowx::refit.rdgraph.regression(
-#'     fit, Z[, 1:10],
-#'     per.column.gcv = TRUE,
-#'     with.posterior = TRUE,
-#'     return.posterior.samples = TRUE,
-#'     n.posterior.samples = 500
-#' )
-#'
-#' lcor.post <- lcor.with.posterior(
-#'     fit$graph$adj.list,
-#'     fit$graph$edge.length.list,
-#'     fit$fitted.values,
-#'     Z.refit$posterior$samples
-#' )
-#'
-#' ## ----- Mode 2: Memory-efficient C++ computation -----
-#' lcor.post <- lcor.with.posterior(
-#'     fit$graph$adj.list,
-#'     fit$graph$edge.length.list,
-#'     fit$fitted.values,
-#'     Z.hat.samples = NULL,       # Triggers C++ mode
-#'     fitted.model = fit,
-#'     Z.abundances = Z,
-#'     per.column.gcv = TRUE,
-#'     n.posterior.samples = 500,
-#'     n.cores = 4
-#' )
-#' }
+#' adj <- list(c(2L), c(1L, 3L), c(2L))
+#' weights <- lapply(adj, function(x) rep(1, length(x)))
+#' draws <- cbind(c(0, 1, 2), c(0.1, 0.9, 2.1), c(-0.1, 1.1, 1.9))
+#' post <- lcor.with.posterior(adj, weights, c(0, 1, 2), draws,
+#'                             verbose = FALSE)
 #'
 #' @seealso \code{\link{lcor}} for single-sample local correlation computation
 #'
@@ -137,79 +58,25 @@
 lcor.with.posterior <- function(adj.list,
                                  weight.list,
                                  y.hat,
-                                 Z.hat.samples = NULL,
-                                 fitted.model = NULL,
-                                 Z.abundances = NULL,
+                                 Z.hat.samples,
                                  lcor.type = c("derivative", "unit", "sign"),
-                                 per.column.gcv = TRUE,
-                                 n.posterior.samples = 500L,
                                  credible.level = 0.95,
-                                 seed = 12345L,
-                                 n.cores = 1L,
                                  return.samples = FALSE,
                                  verbose = TRUE) {
 
     lcor.type <- match.arg(lcor.type)
     n <- length(y.hat)
 
-    ## ========================================================================
-    ## Determine computation mode
-    ## ========================================================================
-
-    use.cpp.mode <- is.null(Z.hat.samples)
-
-    if (use.cpp.mode) {
-        ## Validate required arguments for C++ mode
-        if (is.null(fitted.model)) {
-            stop("fitted.model is required when Z.hat.samples = NULL")
-        }
-        if (is.null(Z.abundances)) {
-            stop("Z.abundances is required when Z.hat.samples = NULL")
-        }
-        if (!inherits(fitted.model, "knn.riem.fit")) {
-            stop("fitted.model must be a 'knn.riem.fit' object")
-        }
-        if (is.null(fitted.model$spectral)) {
-            stop("fitted.model must contain spectral decomposition")
-        }
-
-        if (is.vector(Z.abundances)) {
-            Z.abundances <- matrix(Z.abundances, ncol = 1)
-        }
-        if (nrow(Z.abundances) != n) {
-            stop("nrow(Z.abundances) must equal length(y.hat)")
-        }
-
-        result <- lcor.with.posterior.cpp(
-            adj.list = adj.list,
-            weight.list = weight.list,
-            y.hat = y.hat,
-            Z.abundances = Z.abundances,
-            fitted.model = fitted.model,
-            lcor.type = lcor.type,
-            per.column.gcv = per.column.gcv,
-            n.posterior.samples = n.posterior.samples,
-            credible.level = credible.level,
-            seed = seed,
-            n.cores = n.cores,
-            verbose = verbose
-        )
-
-    } else {
-        ## R mode: use pre-computed samples
-        result <- lcor.with.posterior.R(
-            adj.list = adj.list,
-            weight.list = weight.list,
-            y.hat = y.hat,
-            Z.hat.samples = Z.hat.samples,
-            lcor.type = lcor.type,
-            credible.level = credible.level,
-            return.samples = return.samples,
-            verbose = verbose
-        )
-    }
-
-    return(result)
+    lcor.with.posterior.R(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        y.hat = y.hat,
+        Z.hat.samples = Z.hat.samples,
+        lcor.type = lcor.type,
+        credible.level = credible.level,
+        return.samples = return.samples,
+        verbose = verbose
+    )
 }
 
 
@@ -337,108 +204,6 @@ lcor.with.posterior.R <- function(adj.list,
     if (return.samples) {
         result$samples <- all.samples
     }
-
-    class(result) <- c("lcor.posterior", "list")
-    return(result)
-}
-
-
-## ============================================================================
-## C++ Mode Implementation (Memory-Efficient)
-## ============================================================================
-
-#' @keywords internal
-lcor.with.posterior.cpp <- function(adj.list,
-                                     weight.list,
-                                     y.hat,
-                                     Z.abundances,
-                                     fitted.model,
-                                     lcor.type,
-                                     per.column.gcv,
-                                     n.posterior.samples,
-                                     credible.level,
-                                     seed,
-                                     n.cores,
-                                     verbose) {
-
-    n <- length(y.hat)
-    p <- ncol(Z.abundances)
-
-    if (verbose) {
-        message(sprintf("lcor with posterior (C++ mode): %d features, %d samples",
-                        p, n.posterior.samples))
-        message(sprintf("  Memory-efficient: processing features sequentially"))
-        if (n.cores > 1) {
-            message(sprintf("  Parallel: %d cores", n.cores))
-        }
-    }
-
-    ## Extract spectral components
-    V <- fitted.model$spectral$vectors
-    eigenvalues <- fitted.model$spectral$values
-    filter.type <- fitted.model$spectral$filter.type
-    if (is.null(filter.type)) filter.type <- "heat_kernel"
-
-    ## Get eta (for fixed eta mode)
-    eta.fixed <- fitted.model$spectral$eta
-    if (is.null(eta.fixed)) eta.fixed <- 1.0
-
-    n.gcv.candidates <- 50L
-
-    ## Convert adjacency list to 0-based indexing for C++
-    adj.list.0 <- lapply(adj.list, function(x) as.integer(x - 1L))
-
-    ## Ensure Z is a matrix with proper storage
-    Z.mat <- as.matrix(Z.abundances)
-    storage.mode(Z.mat) <- "double"
-
-    ## Call C++ implementation
-    cpp.result <- .Call(
-        S_lcor_with_posterior_internal,
-        adj.list.0,
-        weight.list,
-        as.double(y.hat),
-        Z.mat,
-        as.matrix(V),
-        as.double(eigenvalues),
-        as.double(eta.fixed),
-        as.character(lcor.type),
-        as.character(filter.type),
-        as.logical(per.column.gcv),
-        as.integer(n.gcv.candidates),
-        as.integer(n.posterior.samples),
-        as.double(credible.level),
-        as.integer(seed),
-        as.integer(n.cores),
-        as.logical(verbose),
-        PACKAGE = "gflow"
-    )
-
-    ## Add row names if available
-    if (!is.null(colnames(Z.abundances))) {
-        rownames(cpp.result$mean) <- colnames(Z.abundances)
-        rownames(cpp.result$sd) <- colnames(Z.abundances)
-        rownames(cpp.result$lower) <- colnames(Z.abundances)
-        rownames(cpp.result$upper) <- colnames(Z.abundances)
-        names(cpp.result$eta.used) <- colnames(Z.abundances)
-        names(cpp.result$effective.df) <- colnames(Z.abundances)
-    }
-
-    ## Build result object matching R mode output
-    result <- list(
-        mean = cpp.result$mean,
-        sd = cpp.result$sd,
-        lower = cpp.result$lower,
-        upper = cpp.result$upper,
-        eta.used = cpp.result$eta.used,
-        effective.df = cpp.result$effective.df,
-        n.samples = cpp.result$n.samples,
-        n.features = p,
-        n.vertices = n,
-        lcor.type = lcor.type,
-        credible.level = cpp.result$credible.level,
-        mode = "C++"
-    )
 
     class(result) <- c("lcor.posterior", "list")
     return(result)

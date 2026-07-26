@@ -132,7 +132,7 @@ Given one of \code{X}, \code{D}, \code{K}, or \code{P}, the function:
 }
 
 This function focuses on robust, reproducible core quantities that can feed
-downstream graph and conditional-expectation workflows in gflow.
+downstream graph and flow-analysis workflows in gflow.
 }
 \examples{
 \dontrun{

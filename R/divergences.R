@@ -75,7 +75,7 @@ init.version.nn.distance.ratio.estimator <- function(X, Y, k = 1) {
 #' @references
 #' Wang, Q., Kulkarni, S. R., & Verdu, S. (2009). Divergence estimation for multidimensional densities
 #' via k-nearest-neighbor distances. IEEE Transactions on Information Theory, 55(5), 2392-2405.
-#' @export
+#' @noRd
 nn.distance.ratio.estimator <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e-8) {
 
     n <- nrow(X)
@@ -167,7 +167,7 @@ nn.divergence <- function(X, Y, k = 1, eps = NULL, eps.factor = 1e-8) {
 #'
 #' @references
 #' Villani, C. (2008). Optimal transport: old and new (Vol. 338). Springer Science & Business Media.
-#' @export
+#' @noRd
 wasserstein.distance <- function(X, Y) {
   # Ensure X and Y are matrices
   X <- as.matrix(X)
@@ -216,7 +216,7 @@ wasserstein.distance <- function(X, Y) {
 #' @importFrom FNN get.knn
 #' @importFrom transport wasserstein
 #'
-#' @export
+#' @noRd
 wasserstein.divergence <- function(X, Y, k) {
 
     if (!is.matrix(X)) {
@@ -547,7 +547,7 @@ cpp.angular.wasserstein.index <- function(X, Y, k) {
 #' @references
 #' Szekely, G. J., & Rizzo, M. L. (2013). Energy statistics: A class of statistics based on distances.
 #' Journal of statistical planning and inference, 143(8), 1249-1272.
-#' @export
+#' @noRd
 energy.distance <- function(X, Y) {
   n <- nrow(X)
   m <- ncol(X)
@@ -605,7 +605,7 @@ energy.distance <- function(X, Y) {
 #'   \code{\link[infotheo]{discretize}} for the discretization method,
 #' @references
 #' Cover, T. M., & Thomas, J. A. (2006). Elements of information theory. John Wiley & Sons.
-#' @export
+#' @noRd
 entropy.difference <- function(X, Y, num.bins = 10) {
     ## Check if package is available
     if (!requireNamespace("infotheo", quietly = TRUE)) {
@@ -710,7 +710,7 @@ entropy.difference <- function(X, Y, num.bins = 10) {
 #'   \code{\link[infotheo]{mutinformation}} for the underlying MI computation,
 #'   \code{\link[infotheo]{discretize}} for the discretization method,
 #'   \code{total.variation.distance} for an alternative dataset comparison metric
-#' @export
+#' @noRd
 mutual.information <- function(X, Y, num.bins = 10) {
   # Check if package is available
   if (!requireNamespace("infotheo", quietly = TRUE)) {
@@ -769,7 +769,7 @@ mutual.information <- function(X, Y, num.bins = 10) {
 #' Friedman, J., Hastie, T., & Tibshirani, R. (2010). Regularization paths for generalized linear
 #' models via coordinate descent. Journal of statistical software, 33(1), 1.
 #'
-#' @export
+#' @noRd
 classifier.based.divergence <- function(X, Y, alpha = 0.5) {
   n <- nrow(X)
   m <- ncol(X)
@@ -858,7 +858,7 @@ classifier.based.divergence <- function(X, Y, alpha = 0.5) {
 #' Kullback, S., & Leibler, R. A. (1951). On information and sufficiency.
 #' The Annals of Mathematical Statistics, 22(1), 79-86.
 #'
-#' @export
+#' @noRd
 kullback.leibler.divergence <- function(p, q, zero.handling = "pseudo", epsilon = 1e-10) {
     # Validate inputs
     if (!is.numeric(p) || !is.numeric(q)) {

@@ -641,7 +641,7 @@ zofam.test <- fassoc0.test
 #' @return A named numeric vector containing delta, normalized effect sizes,
 #'   and p-value.
 #' @method coef assoc0
-#' @export
+#' @noRd
 coef.assoc0 <- function(object, ...) {
     c(delta = object$delta,
       delta.z = object$delta.z,
@@ -678,7 +678,7 @@ coef.assoc0 <- function(object, ...) {
 #'
 #' print(result)
 #' @method print assoc0
-#' @export
+#' @noRd
 print.assoc0 <- function(x, digits = 4, ...) {
     cat("\nZero-Order Functional Association Test (Paired BB)\n")
     cat("==================================================\n\n")
@@ -752,7 +752,7 @@ print.assoc0 <- function(x, digits = 4, ...) {
 #'
 #' summary(result)
 #' @method summary assoc0
-#' @export
+#' @noRd
 summary.assoc0 <- function(object, ...) {
     out <- list(
         call = object$call,
@@ -813,7 +813,7 @@ summary.assoc0 <- function(object, ...) {
 #'
 #' result.summary <- summary(result)
 #' result.summary
-#' @export
+#' @noRd
 print.summary.assoc0 <- function(x, digits = 4, ...) {
     cat("\nZero-Order Functional Association Test Summary\n")
     cat("==============================================\n\n")
@@ -877,7 +877,7 @@ print.summary.assoc0 <- function(x, digits = 4, ...) {
 #'
 #' plot(result, type = "diff")
 #' @method plot assoc0
-#' @export
+#' @noRd
 plot.assoc0 <- function(x, type = c("Exy", "diff", "qq", "comparison"),
                          ...) {
     type <- match.arg(type)

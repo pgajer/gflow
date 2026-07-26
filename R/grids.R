@@ -1598,7 +1598,7 @@ create.X.grid.xD <- function(X,
 #'
 #' @seealso \code{\link{create.X.grid.xD}} for the original, non-tiled version
 #'
-#' @export
+#' @noRd
 create.adaptive.tiled.X.grid.xD <- function(X,
                                             gSf,
                                             gRf,
@@ -1888,7 +1888,7 @@ plot.gridX <- function(x, with.bounding.box.pts = TRUE, ...)
 #' plot(X, col = "red")
 #' points(grid, col = "blue", pch = 3)
 #' }
-#' @export
+#' @noRd
 hgrid <- function(X,
                  w,
                  epsilon,
@@ -1972,7 +1972,7 @@ expand.box <- function(L, R, p.exp, margin = NULL) {
 #'   boxes <- box.tiling(X, n = 50, eps = 0.05, p.exp = 0.05)
 #' }
 #' @importFrom graphics points rect
-#' @export
+#' @noRd
 box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, plot.it = FALSE, verbose = FALSE) {
 
     ## Finding the bounding box of X
@@ -2162,7 +2162,7 @@ box.tiling <- function(X, n.segments.per.axis, eps, n.itrs = 1, p.exp = 0.05, pl
 #' x <- result$x
 #' y <- result$y
 #' }
-#' @export
+#' @noRd
 extract.xy <- function(s) {
     ## Split each string in the vector by the comma
     split.values <- strsplit(s, split = ",")
@@ -2202,7 +2202,7 @@ extract.xy <- function(s) {
 #' }
 #'
 #' @seealso \code{\link{extract.xy}} for extracting x and y values from a character vector.
-#' @export
+#' @noRd
 ## @param edge.length The length of the edge of a hypercube that will be use for the tiling of the box. The tiling will be most likely going ouside of the right faces of the box.
 ## create.ED.grid.boxes <- function(w, L, R)
 box.tiling.of.box <- function(n, box) { #, edge.length = NULL) {
@@ -2282,7 +2282,7 @@ box.tiling.of.box <- function(n, box) { #, edge.length = NULL) {
 #' }
 #'
 #' @seealso \code{\link{extract.xy}} for extracting x and y values from a character vector.
-#' @export
+#' @noRd
 ## create.ED.grid.boxes <- function(w, L, R) {
 bbox.hcube.tiling <- function(w, L, R) {
 
@@ -2414,7 +2414,7 @@ bbox.hcube.tiling <- function(w, L, R) {
 #' points_within_box <- identify_points_within_box(X, L, R)
 #' }
 #'
-#' @export
+#' @noRd
 identify_points_within_box <- function(X, L, R) {
 
     if (!is.matrix(X)) {
@@ -2460,7 +2460,7 @@ identify_points_within_box <- function(X, L, R) {
 #' points_within_box <- find.points.within.box(X, box, eps = 0)
 #' }
 #'
-#' @export
+#' @noRd
 find.points.within.box <- function(X, box, eps) {
 
     if (!is.matrix(X)) {
@@ -2523,7 +2523,7 @@ find.points.within.box <- function(X, box, eps) {
 #' x <- c(0.2, 0.3)
 #' containing_box <- find.box.containing.x(boxes, x)
 #' }
-#' @export
+#' @noRd
 find.box.containing.x <- function(boxes, x) {
 
     for ( i in seq(length(boxes)) ) {
@@ -2553,7 +2553,7 @@ find.box.containing.x <- function(boxes, x) {
 #' x <- c(0.2, 0.3)
 #' containing_box <- find.box.containing.x(boxes, x)
 #' }
-#' @export
+#' @noRd
 find.boxes.containing.x <- function(boxes, x, p.exp = 0.1, margin = NULL) {
 
     if ( !is.null(margin) && length(margin) != length(x) ) {
@@ -2597,7 +2597,7 @@ find.boxes.containing.x <- function(boxes, x, p.exp = 0.1, margin = NULL) {
 #' epsilon <- 0.5
 #' final_grid <- create.final.grid(boxes, X, w, epsilon)
 #' }
-#' @export
+#' @noRd
 create.final.grid <- function(boxes, X, w, epsilon)
 {
     stopifnot(is.list(boxes))
@@ -2660,7 +2660,7 @@ create.final.grid <- function(boxes, X, w, epsilon)
 #' plot.boxes(grid_boxes, L, R)
 #' }
 #'
-#' @export
+#' @noRd
 ## was plot.boxes
 plot.box.tiling <- function(x,
                            L = NULL,

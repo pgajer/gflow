@@ -27,7 +27,7 @@
 #' boxcox.transform(y, lambda = 0.5)
 #'
 #' @seealso \code{\link{boxcox.mle}}
-#' @rawNamespace export(boxcox.transform)
+#' @noRd
 boxcox.transform <- function(y, lambda) {
   if (any(y <= 0 | !is.finite(y))) {
     stop("Box-Cox requires y > 0 and finite.")
@@ -58,7 +58,7 @@ boxcox.transform <- function(y, lambda) {
 #'
 #' @return A numeric scalar giving \eqn{\ell(\lambda)} (up to a constant).
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 .boxcox.loglik <- function(lambda, y, Xmat) {
   yt <- boxcox.transform(y, lambda)
@@ -126,7 +126,7 @@ boxcox.transform <- function(y, lambda) {
 #' Box, G. E. P. and Cox, D. R. (1964).
 #' An analysis of transformations. \emph{Journal of the Royal Statistical Society. Series B}, \strong{26}(2), 211-252.
 #'
-#' @rawNamespace export(boxcox.mle)
+#' @noRd
 boxcox.mle <- function(formula,
                        data,
                        lambdas = seq(-2, 2, by = 0.1),

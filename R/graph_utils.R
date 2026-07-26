@@ -392,7 +392,8 @@ get.sphere.degree.props <- function(n.pts = 1000, n.sims = 100, k = 10, dim = 2)
 #' }
 #'
 #' @details
-#' The function uses `generate.circle.data()` to create points and `dgraphs::create.single.iknn.graph()`
+#' The function uses the private circle generator and
+#' `dgraphs::create.single.iknn.graph()`
 #' to construct the k-nearest neighbor graph. It computes degree distributions for each
 #' simulation and aggregates the results to estimate population parameters.
 #'
@@ -484,7 +485,8 @@ get.TN.S1.degree.props <- function(n.pts = 100,
 #' }
 #'
 #' @details
-#' The function generates uniform random points on a torus using \code{\link{runif.torus}}
+#' The function generates uniform random points on a torus using the private
+#' \code{runif.torus()} helper.
 #' and constructs k-nearest neighbor graphs using \code{dgraphs::create.single.iknn.graph()}. For each
 #' simulation, it computes the proportion of vertices with each degree. The final
 #' results include means and 95% confidence intervals for these proportions across

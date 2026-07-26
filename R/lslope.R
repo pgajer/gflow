@@ -131,6 +131,7 @@
 #' @seealso \code{\link{lslope.neighborhood}} for neighborhood-based regression,
 #'   \code{\link{lcor}} for symmetric local correlation
 #'
+#' @export
 lslope <- function(adj.list,
                    weight.list,
                    y,

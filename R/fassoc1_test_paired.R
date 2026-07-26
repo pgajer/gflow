@@ -649,7 +649,7 @@ fofam.test <- fassoc1.test
 #' @return A named numeric vector containing delta1, normalized effect sizes,
 #'   and p-value.
 #' @method coef assoc1
-#' @export
+#' @noRd
 coef.assoc1 <- function(object, ...) {
     c(delta1 = object$delta1,
       Delta1 = object$Delta1,
@@ -687,7 +687,7 @@ coef.assoc1 <- function(object, ...) {
 #'
 #' print(result)
 #' @method print assoc1
-#' @export
+#' @noRd
 print.assoc1 <- function(x, digits = 4, ...) {
     cat("\nFirst-Order Functional Association Test (Paired BB)\n")
     cat("===================================================\n\n")
@@ -763,7 +763,7 @@ print.assoc1 <- function(x, digits = 4, ...) {
 #'
 #' summary(result)
 #' @method summary assoc1
-#' @export
+#' @noRd
 summary.assoc1 <- function(object, ...) {
     out <- list(
         call = object$call,
@@ -824,7 +824,7 @@ summary.assoc1 <- function(object, ...) {
 #'
 #' result.summary <- summary(result)
 #' result.summary
-#' @export
+#' @noRd
 print.summary.assoc1 <- function(x, digits = 4, ...) {
     cat("\nFirst-Order Functional Association Test Summary\n")
     cat("===============================================\n\n")
@@ -888,7 +888,7 @@ print.summary.assoc1 <- function(x, digits = 4, ...) {
 #'
 #' plot(result, type = "diff")
 #' @method plot assoc1
-#' @export
+#' @noRd
 plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
                          ...) {
     type <- match.arg(type)
@@ -985,7 +985,7 @@ plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
 #'
 #' @return Derivative information (format depends on method).
 #'
-#' @seealso \code{\link{extract.derivatives.assoc1}}
+#' @seealso The internal \code{extract.derivatives.assoc1()} method.
 extract.derivatives <- function(object, ...) {
     UseMethod("extract.derivatives")
 }
@@ -1036,7 +1036,7 @@ extract.derivatives <- function(object, ...) {
 #' }
 #'
 #' @method extract.derivatives assoc1
-#' @export
+#' @noRd
 extract.derivatives.assoc1 <- function(object,
                                        type = c("estimate", "credible.interval", "both"),
                                        probs = c(0.025, 0.975),

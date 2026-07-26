@@ -308,7 +308,7 @@ plot3D.plain.widget <- function(X,
 #'
 #' @inheritParams plot3D.plain.widget
 #' @inherit plot3D.plain.widget return
-#' @export
+#' @noRd
 plot3D.plain.html <- function(...) {
     plot3D.plain.widget(...)
 }
@@ -869,7 +869,7 @@ plot3D.cont.widget <- function(X,
 #'
 #' @param ... Additional arguments passed through to `plot3D.cont.widget()`.
 #' @inherit plot3D.cont.widget return
-#' @export
+#' @noRd
 plot3D.cont.html <- function(...) {
     plot3D.cont.widget(...)
 }
@@ -912,7 +912,7 @@ plot3D.cont.html <- function(...) {
 #' plotlcor.1D(result, with.CrI = TRUE, CrI.as.polygon = FALSE)
 #' }
 #'
-#' @export
+#' @noRd
 plotlcor.1D <- function(r, with.CrI = TRUE, use.smoothed.lcors = TRUE,
                        title = "", xlab = "", ylab = "Local Pearson correlation",
                        lcor.col = "blue", CrI.as.polygon = TRUE,
@@ -996,7 +996,7 @@ plotlcor.1D <- function(r, with.CrI = TRUE, use.smoothed.lcors = TRUE,
 #' legend("topright", legend = q$legend.labs, fill = q$y.col.tbl)
 #' }
 #'
-#' @export
+#' @noRd
 quantize.for.legend <- function(y,
                                quantize.method = "uniform",
                                quantize.wins.p = 0.02,
@@ -1076,7 +1076,7 @@ quantize.for.legend <- function(y,
 #' }
 #'
 #' @importFrom graphics plot.new grconvertX plot legend par layout
-#' @export
+#' @noRd
 plot2D.cont <- function(X,
                         y,
                         legend.title = "",
@@ -1207,7 +1207,7 @@ plot2D.cont <- function(X,
 #' }
 #' }
 #'
-#' @export
+#' @noRd
 show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
                        show.plot = TRUE, open_new = FALSE) {
     ## --- Input checks & coercions (CRAN-safe) ---
@@ -1339,8 +1339,8 @@ show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
 #' }
 #' }
 #' @importFrom grDevices hcl.colors rainbow
-#' @export
-#' @export
+#' @noRd
+#' @noRd
 plot3D.cltrs <- function(X,
                          cltr = NULL,
                          cltr.col.tbl = NULL,
@@ -2004,7 +2004,7 @@ plot3D.cltrs.widget <- function(X,
 #'
 #' @inheritParams plot3D.cltrs.widget
 #' @inherit plot3D.cltrs.widget return
-#' @export
+#' @noRd
 plot3D.cltrs.html <- function(...) {
     plot3D.cltrs.widget(...)
 }
@@ -2042,7 +2042,7 @@ plot3D.cltrs.html <- function(...) {
 #' show.3d.cl(3, cltr, X, show.labels = TRUE)
 #' }
 #'
-#' @export
+#' @noRd
 show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
                        show.labels = FALSE, adj = c(1.3, 0), ...) {
 
@@ -2098,7 +2098,7 @@ show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
 #' plot3D.cl(c(2, 4), cltr, X)
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.cl <- function(cl, cltr, X, ...) {
 
     cl <- as.character(cl)
@@ -2155,7 +2155,7 @@ plot3D.cl <- function(cl, cltr, X, ...) {
 #' bin.segments3d(X, y, offset = c(0, 0, 0.1))
 #' }
 #'
-#' @export
+#' @noRd
 bin.segments3d <- function(X, y, offset, with.labels = TRUE, lab.tbl = NULL,
                           lab.adj = c(0, 0), lab.cex = 1, C = 1, ...) {
 
@@ -2218,7 +2218,7 @@ bin.segments3d <- function(X, y, offset, with.labels = TRUE, lab.tbl = NULL,
 #' }
 #'
 #' @importFrom grDevices rainbow
-#' @export
+#' @noRd
 cont.segments3d <- function(X, y, offset, ...) {
 
     if (!all(rownames(X) == names(y))) {
@@ -2266,7 +2266,7 @@ cont.segments3d <- function(X, y, offset, ...) {
 #' }
 #'
 #' @seealso \code{\link{vert.error.bar}}
-#' @export
+#' @noRd
 mae.plot <- function(mae.mean, mae.mad,
                     ylab = "Median Absolute Error",
                     xlab = "Number of Nearest Neighbors") {
@@ -2324,7 +2324,7 @@ mae.plot <- function(mae.mean, mae.mad,
 #' map.S.to.X(S, X, radius = 0.075, col = 'red')
 #' }
 #'
-#' @export
+#' @noRd
 map.S.to.X <- function(S, X, radius = 0.075, col = 'red', legend.title = NULL) {
 
     if (!is.matrix(X) && !is.data.frame(X)) {
@@ -2380,7 +2380,7 @@ map.S.to.X <- function(S, X, radius = 0.075, col = 'red', legend.title = NULL) {
 #' plot3D.tree(X, T.edges)
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.tree <- function(X, T.edges, col = "gray", lwd = 1) {
 
     if (!is.matrix(X) || ncol(X) != 3) {
@@ -2427,7 +2427,7 @@ plot3D.tree <- function(X, T.edges, col = "gray", lwd = 1) {
 #' plot2D.tree(X, T.edges)
 #' }
 #'
-#' @export
+#' @noRd
 plot2D.tree <- function(X, T.edges, col = "gray") {
 
     if (!is.matrix(X) || ncol(X) < 2) {
@@ -2475,7 +2475,7 @@ plot2D.tree <- function(X, T.edges, col = "gray") {
 #' plot3D.path(s, V, edge.col = "red")
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.path <- function(s, V, edge.col = "gray") {
 
     if (!is.numeric(s) || length(s) < 2) {
@@ -2527,7 +2527,7 @@ plot3D.path <- function(s, V, edge.col = "gray") {
 #' }
 #'
 #' @importFrom igraph shortest_paths
-#' @export
+#' @noRd
 plot3D.geodesic <- function(S.3d, i1, i2, G, X, edge.col = "gray") {
 
     if (!requireNamespace("igraph", quietly = TRUE)) {
@@ -2579,7 +2579,7 @@ plot3D.geodesic <- function(S.3d, i1, i2, G, X, edge.col = "gray") {
 #' }
 #' }
 #'
-#' @export
+#' @noRd
 path.fn <- function(i, Epath, radius = 0.0008, sphere.col = "red",
                     path.col = "blue", path.lwd = 5) {
 
@@ -2634,7 +2634,7 @@ path.fn <- function(i, Epath, radius = 0.0008, sphere.col = "red",
 #' add.grad.ED.arrows(c("Point1", "Point5"), S, grad.ED, C = 2.5)
 #' }
 #'
-#' @export
+#' @noRd
 add.grad.ED.arrows <- function(ids, S, grad.ED, C = 2.5) {
 
     if (nrow(S) != nrow(grad.ED)) {
@@ -2682,7 +2682,7 @@ add.grad.ED.arrows <- function(ids, S, grad.ED, C = 2.5) {
 #' # Custom range
 #' scale01(x, low = 0, high = 25)  # Different scaling
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 scale01 <- function(x, low = min(x), high = max(x)) {
 
@@ -2722,7 +2722,7 @@ scale01 <- function(x, low = min(x), high = max(x)) {
 #' plot2D.cltr.profiles(X, cltr, id = 2, xlab = "Variables", ylab = "Values")
 #' }
 #'
-#' @export
+#' @noRd
 plot2D.cltr.profiles <- function(X,
                                cltr,
                                id,
@@ -2811,7 +2811,7 @@ plot2D.cltr.profiles <- function(X,
 #' @importFrom igraph layout_with_lgl layout_with_mds layout_with_sugiyama
 #' @importFrom igraph layout_as_star layout_as_tree layout_on_grid layout_randomly
 #' @importFrom igraph plot.igraph
-#' @export
+#' @noRd
 plot2D.node.level.props <- function(adj.mat,
                                  props,
                                  color.tbl = NULL,
@@ -2951,7 +2951,7 @@ plot2D.node.level.props <- function(adj.mat,
 #' draw.dashed.line3d(0, 0, 0, 1, 1, 1, col = "red", lwd = 3)
 #' }
 #'
-#' @export
+#' @noRd
 draw.dashed.line3d <- function(x1, y1, z1, x2, y2, z2,
                                n = 10,
                                dashLength = 0.1,
@@ -3026,7 +3026,7 @@ draw.dashed.line3d <- function(x1, y1, z1, x2, y2, z2,
 #' circle.plot(X)
 #' }
 #'
-#' @export
+#' @noRd
 circle.plot <- function(X,
                         n.circle.pts = 100,
                         delta = 0.11,
@@ -3124,7 +3124,7 @@ circle.plot <- function(X,
 #' draw.axes(delta = 0.5, axes.color = "black", half.axes = TRUE)
 #' }
 #'
-#' @export
+#' @noRd
 draw.axes <- function(delta = 0.5,
                       axes.color = "black",
                       axes.lab.cex = 2,
@@ -3208,7 +3208,7 @@ draw.axes <- function(delta = 0.5,
 #' draw.3d.line(c(1, 0, 0), length = 1.5, col = "blue")
 #' }
 #'
-#' @export
+#' @noRd
 draw.3d.line <- function(x, length = 2, col = "gray") {
 
     if (!is.numeric(x) || length(x) != 3) {
@@ -3261,7 +3261,7 @@ draw.3d.line <- function(x, length = 2, col = "gray") {
 #' plot3D.diskEmbdg(ebdg.obj, col = "blue", vertex.col = "red")
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.diskEmbdg <- function(ebdg.obj,
                            col = "blue",
                            radius = 0.005,
@@ -3321,7 +3321,7 @@ plot3D.diskEmbdg <- function(ebdg.obj,
 #' plot(1:10, rnorm(10), ylim = c(-3, 3))
 #' vert.error.bar(5, -1, 1, col = "red")
 #'
-#' @export
+#' @noRd
 vert.error.bar <- function(x, ymin, ymax, dx = 0.025, lwd = 1, col = "red") {
     segments(x, ymin, x, ymax, col = col, lwd = lwd)
     segments(x - dx, ymin, x + dx, ymin, col = col, lwd = lwd)
@@ -3346,7 +3346,7 @@ vert.error.bar <- function(x, ymin, ymax, dx = 0.025, lwd = 1, col = "red") {
 #' plot(rnorm(10), 1:10, xlim = c(-3, 3))
 #' hor.error.bar(-1, 1, 5, col = "blue")
 #'
-#' @export
+#' @noRd
 hor.error.bar <- function(xmin, xmax, y, dyy = 0.025, lwd = 1, col = "black") {
     segments(xmin, y, xmax, y, col = col, lwd = lwd)
     segments(xmin, y - dyy, xmin, y + dyy, col = col, lwd = lwd)
@@ -3375,7 +3375,7 @@ hor.error.bar <- function(xmin, xmax, y, dyy = 0.025, lwd = 1, col = "black") {
 #' @examples
 #' pairs(iris[1:4], upper.panel = panel.acor)
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 panel.acor <- function(x, y, digits = 2, prefix = "", cex.cor = 1, ...) {
 
@@ -3427,7 +3427,7 @@ panel.acor <- function(x, y, digits = 2, prefix = "", cex.cor = 1, ...) {
 #' @examples
 #' pairs(iris[1:4], lower.panel = panel.rlm)
 #'
-#' @keywords internal
+#' @noRd
 #' @noRd
 panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
                      cex = 1, col.rlm = 2, ...) {
@@ -3508,7 +3508,7 @@ panel.rlm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"),
 #'
 #' @seealso \code{\link[rgl]{spheres3d}}, \code{\link[rgl]{texts3d}}
 #'
-#' @export
+#' @noRd
 label.end.pts <- function(graph.3d,
                           end.labels,
                           col = "blue",

@@ -46,7 +46,7 @@
 #' X <- preprocess.matrix.logshift(S)
 #' dim(X)
 #'
-#' @export
+#' @noRd
 preprocess.matrix.logshift <- function(S,
                                        winsor.probs = c(0.01, 0.99),
                                        pseudocount = "half.min.pos") {
@@ -159,7 +159,7 @@ preprocess.matrix.logshift <- function(S,
 #' X <- preprocess.matrix.asinh(S)
 #' dim(X)
 #'
-#' @export
+#' @noRd
 preprocess.matrix.asinh <- function(S,
                                     a = "median.pos",
                                     winsor.probs = c(0.01, 0.99)) {
@@ -269,7 +269,7 @@ preprocess.matrix.asinh <- function(S,
 #' X <- preprocess.matrix.normscores(S)
 #' dim(X)
 #'
-#' @export
+#' @noRd
 preprocess.matrix.normscores <- function(S,
                                         winsor.probs = c(0.01, 0.99),
                                         clamp.neg.to.zero = TRUE) {
@@ -331,7 +331,7 @@ preprocess.matrix.normscores <- function(S,
 #' y <- winsorize.vec(x, probs = c(0.01, 0.99))
 #' range(x); range(y)
 #'
-#' @export
+#' @noRd
 winsorize.vec <- function(x, probs = c(0.01, 0.99)) {
     ## ---- validate inputs ----
     if (!is.numeric(x)) {
@@ -377,7 +377,7 @@ winsorize.vec <- function(x, probs = c(0.01, 0.99)) {
 #' z <- robust.zscore.vec(x)
 #' median(z); stats::mad(z)
 #'
-#' @export
+#' @noRd
 robust.zscore.vec <- function(x, eps = 1e-12) {
     ## ---- validate inputs ----
     if (!is.numeric(x)) {
@@ -432,7 +432,7 @@ robust.zscore.vec <- function(x, eps = 1e-12) {
 #' colnames(X) <- c("floor.heavy", "constant")
 #' select.features.by.floor.mass(X, floor.mass.max = 0.6)
 #'
-#' @rawNamespace export(select.features.by.floor.mass)
+#' @noRd
 select.features.by.floor.mass <- function(X,
                                          floor.mass.max = 0.60,
                                          tol = 1e-12) {
@@ -493,7 +493,7 @@ select.features.by.floor.mass <- function(X,
 #' floor_mass(c(0, 0, 0, 1, 2))
 #' floor_mass(c(NA, NaN, Inf, -Inf))
 #'
-#' @export
+#' @noRd
 floor_mass <- function(x, tol = 1e-12) {
     ## ---- validate inputs ----
     if (!is.numeric(x)) {
@@ -532,7 +532,7 @@ floor_mass <- function(x, tol = 1e-12) {
 #' @examples
 #' normal.scores.vec(c(1, 2, 2, 10, NA, Inf))
 #'
-#' @export
+#' @noRd
 normal.scores.vec <- function(x) {
     ## ---- validate inputs ----
     if (!is.numeric(x)) {

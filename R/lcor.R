@@ -252,8 +252,8 @@
 #' }
 #'
 #' @seealso
-#' \code{\link{lcor.vector.matrix}} for direct vector-matrix computation,
-#' \code{\link{lcor.matrix.matrix}} for direct matrix-matrix computation,
+#' Matrix inputs are handled directly by \code{lcor()}; its shape-specific
+#' dispatch helpers are private implementation details.
 #' \code{comono} for co-monotonicity coefficients with ratio normalization
 #'
 #' @references
@@ -554,7 +554,7 @@ lcor.vector.vector <- function(adj.list, weight.list, y, z,
 #' @seealso
 #' \code{\link{lcor}} for the unified interface supporting all input combinations
 #'
-#' @export
+#' @noRd
 lcor.vector.matrix <- function(adj.list,
                                 weight.list,
                                 y,
@@ -923,7 +923,7 @@ summary.lcor_vector_matrix_result <- function(object, ...) {
 #' \code{\link{lcor.vector.matrix}} for vector-matrix computation
 #'
 #' @importFrom utils combn
-#' @export
+#' @noRd
 lcor.matrix.matrix <- function(adj.list,
                                 weight.list,
                                 y,

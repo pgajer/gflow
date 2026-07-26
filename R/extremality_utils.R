@@ -456,7 +456,7 @@ extremality.summary <- function(dcx,
 #' @seealso
 #' \code{\link{extremality.summary}} for generating extremality-based extrema summaries,
 #' \code{\link{label.extrema.3d}} for labeling classical extrema,
-#' \code{\link{bin.segments3d}} for the underlying segment plotting function
+#' The private \code{bin.segments3d()} helper provides segment rendering.
 #'
 #' @export
 label.extremality.3d <- function(graph.3d,

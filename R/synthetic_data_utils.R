@@ -21,7 +21,7 @@
 #' @param jitter.fraction Numeric between 0 and 1 specifying maximum jitter as fraction of local spacing
 #'
 #' @return Numeric vector of length n.components containing x-coordinates for Gaussian components
-#' @keywords internal
+#' @noRd
 generate_x_knots <- function(strategy, n.components, x.range, edge.buffer, jitter.fraction) {
     x.width <- diff(x.range)
     edge.width <- edge.buffer * x.width
@@ -111,7 +111,7 @@ generate_x_knots <- function(strategy, n.components, x.range, edge.buffer, jitte
 #' @param custom.sd.knots Optional numeric vector of custom SD values
 #'
 #' @return Numeric vector of length length(x.knots) containing SD values for each component
-#' @keywords internal
+#' @noRd
 generate_sd_knots <- function(strategy, x.knots, sd.knot, sd.factor,
                             sd.random.range = c(0.5, 2), custom.sd.knots = NULL) {
     n.knots <- length(x.knots)
@@ -161,7 +161,7 @@ generate_sd_knots <- function(strategy, x.knots, sd.knot, sd.factor,
 #' @param custom.y.knots Optional numeric vector of custom amplitude values
 #'
 #' @return Numeric vector of length n.components containing amplitude values for each component
-#' @keywords internal
+#' @noRd
 generate_y_knots <- function(strategy, n.components, y.range, y.min.fraction,
                            custom.y.knots = NULL) {
     y.width <- diff(y.range)
@@ -328,7 +328,7 @@ generate_y_knots <- function(strategy, n.components, y.range, y.min.fraction,
 #'   custom.y.knots = c(1, -0.5)
 #' )
 #'
-#' @export
+#' @noRd
 get.gaussian.mixture <- function(
     # Core parameters
     n.points = 100,
@@ -606,7 +606,7 @@ get.gaussian.mixture <- function(
 #'   noise.fraction = 0.15
 #' )
 #'
-#' @export
+#' @noRd
 generate.1d.gaussian.mixture <- function(n.points = 100,
                                          x.knots = c(-5, 0, 10),
                                          y.knots = c(5, 8, 2.5),
@@ -788,7 +788,7 @@ generate.1d.gaussian.mixture <- function(n.points = 100,
 #' )
 #'
 #' @importFrom stats approx rbinom runif
-#' @export
+#' @noRd
 generate.binary.sample.from.gaussian.mixture <- function(gaussian.mixture.result,
                                                         n.sample.points = 50,
                                                         sample.method = c("uniform", "regular", "custom"),
@@ -947,7 +947,7 @@ generate.binary.sample.from.gaussian.mixture <- function(gaussian.mixture.result
 #' @examples
 #' skewed.gaussian(0, mu = 0, sigma = 1, alpha = 2)
 #'
-#' @export
+#' @noRd
 skewed.gaussian <- function(x, mu, sigma, alpha) {
     ## Compute the standard normal density (phi)
     phi_val <- dnorm(x, mean = mu, sd = sigma)
@@ -986,7 +986,7 @@ skewed.gaussian <- function(x, mu, sigma, alpha) {
 #' point <- 5  # An x-coordinate
 #' value <- spline.fn(point)  # Evaluate the spline function at this point
 #' }
-#' @export
+#' @noRd
 synthetic.xD.spline <- function(X, y = NULL) {
   n <- nrow(X)
   p <- ncol(X)
@@ -1053,7 +1053,7 @@ synthetic.xD.spline <- function(X, y = NULL) {
 #' point <- 0.5 # A point in 1D space
 #' value <- synthetic.fn(point) # Evaluate the function at the given point
 #' }
-#' @export
+#' @noRd
 synthetic.mixture.of.gaussians <- function(x, x.knot, y.knot = NULL, sd.knot = NULL) {
 
     n.knots <- length(x.knot)
@@ -1123,7 +1123,7 @@ synthetic.mixture.of.gaussians <- function(x, x.knot, y.knot = NULL, sd.knot = N
 #' point <- c(0.5, 0.5) # A point in 2D space
 #' value <- synthetic_fn(point) # Evaluate the function at the given point
 #' }
-#' @export
+#' @noRd
 generate.synthetic.function.higher.dim <- function(X, y = NULL) {
   n <- nrow(X)
 
@@ -1180,7 +1180,7 @@ generate.synthetic.function.higher.dim <- function(X, y = NULL) {
 #' min.dist <- 0.25
 #' remove.close.neighbors(x, min.dist)
 #' }
-#' @export
+#' @noRd
 remove.close.neighbors <- function(x, min.dist) {
   if (min.dist <= 0) {
     stop("min.dist must be positive")
@@ -1228,7 +1228,7 @@ remove.close.neighbors <- function(x, min.dist) {
 #' x <- seq(-2, 2, length.out = 100)
 #' plot(x, bump.fn(x), type = "l")
 #' }
-#' @export
+#' @noRd
 bump.fn <- function(x, offset = 0, h = 1, q = 4) {
     n <- length(x)
     h2 <- h^2
@@ -1278,7 +1278,7 @@ bump.fn <- function(x, offset = 0, h = 1, q = 4) {
 #' plot(x, ggaussian(x, p = 1), type = "l")  # Laplace distribution (heavier tails)
 #' plot(x, ggaussian(x, p = 3), type = "l")  # Lighter tails than Gaussian
 #' }
-#' @export
+#' @noRd
 ggaussian <- function(x, offset = 0, h = 1, p = 2) {
     n <- length(x)
     h2 <- h^p
@@ -1321,7 +1321,7 @@ ggaussian <- function(x, offset = 0, h = 1, p = 2) {
 #' x <- seq(-5, 5, length.out = 100)
 #' plot(x, qgaussian(x, q = 4), type = "l")
 #' }
-#' @export
+#' @noRd
 qexp.gaussian <- function(x, offset = 0, h = 1, q = 4) {
     n <- length(x)
     h2 <- h^2
@@ -1366,7 +1366,7 @@ qexp.gaussian <- function(x, offset = 0, h = 1, q = 4) {
 #' x <- seq(-2, 2, length.out = 100)
 #' plot(x, AsymmetricBumpFunction(x), type = "l")
 #' }
-#' @export
+#' @noRd
 left.asymmetric.bump.fn <- function(x, offset = 0, h = 1, q = 1) {
 
     n <- length(x)
@@ -1422,7 +1422,7 @@ left.asymmetric.bump.fn <- function(x, offset = 0, h = 1, q = 1) {
 #' x <- seq(-2, 2, length.out = 100)
 #' plot(x, AsymmetricBumpFunction(x), type = "l")
 #' }
-#' @export
+#' @noRd
 right.asymmetric.bump.fn <- function(x, offset = 0, h = 1, q = 1) {
 
     n <- length(x)
@@ -1482,7 +1482,7 @@ right.asymmetric.bump.fn <- function(x, offset = 0, h = 1, q = 1) {
 #' plot(synth$x, synth$y, type = "l")
 #' points(synth$x.lmax, synth$y.lmax, col = "red")
 #' }
-#' @export
+#' @noRd
 synthetic.1D.spline <- function(n.lmax,
                                 x.min = 0,
                                 x.max = 10,
@@ -1571,7 +1571,7 @@ synthetic.1D.spline <- function(n.lmax,
 #' partition <- partition.of.unity.1D(x.center)
 #' plot(seq(0, 10, length.out = 400), partition[,1], type = "l")
 #' }
-#' @export
+#' @noRd
 partition.of.unity.1D <- function(x.center, x.min = 0, x.max = 10, n.grid = 400, C = 2, q = 3, compact.supp = FALSE) {
 
     n <- length(x.center)
@@ -2149,7 +2149,7 @@ gaussian.xD.grad <- function(x, mu, sigma, C) {
 #' # Generate 50 random points with Laplace noise
 #' df.noisy <- generate.circle.data(50, noise = 0.1, type = "random", noise.type = "laplace")
 #'
-#' @export
+#' @noRd
 generate.circle.data <- function(n,
                                  radius = 1,
                                  noise = 0.1,
@@ -2216,7 +2216,7 @@ generate.circle.data <- function(n,
 #' # Generate 100 points on a noisy circle in 3D space
 #' data <- generate.noisy.circle.embedding(100, dim = 3, radius = 1, noise = 0.1)
 #'
-#' @export
+#' @noRd
 generate.noisy.circle.embedding <- function(n,
                                             dim = 3,
                                             radius = 1,
@@ -2568,7 +2568,7 @@ test.graph.MS.cx.on.synth.cloud.data <- function(n.datasets,
 #' # Plot the result
 #' plot(result$x, result$y, type = "l", xlab = "Angle (radians)", ylab = "Value")
 #'
-#' @export
+#' @noRd
 generate.1d.circular.gaussian.mixture <- function(n.points = 100,
                                                   x.knots = c(0, pi, 1.5*pi),
                                                   y.knots = c(5, 8, 2.5),
@@ -2670,7 +2670,7 @@ generate.1d.circular.gaussian.mixture <- function(n.points = 100,
 #' # Plot the result
 #' plot(x, y, type = "l", xlab = "Angle (radians)", ylab = "Value")
 #'
-#' @export
+#' @noRd
 circular.synthetic.mixture.of.gaussians <- function(x, x.knot, y.knot, sd.knot) {
     n.knots <- length(x.knot)
 
@@ -2717,7 +2717,7 @@ circular.synthetic.mixture.of.gaussians <- function(x, x.knot, y.knot, sd.knot) 
 #' generate.partition(20, 4, 3)  # Generates a partition of 20 into 4 parts, each >= 3
 #' generate.partition(10, 3, 2)  # Generates a partition of 10 into 3 parts, each >= 2
 #'
-#' @export
+#' @noRd
 generate.partition <- function(n, a, m) {
   # Input validation
     if (!is.numeric(n) || !is.numeric(a) || !is.numeric(m)) {
@@ -2820,7 +2820,7 @@ generate.partition <- function(n, a, m) {
 #' @seealso
 #' \code{\link{rbinom}} for generating binary samples from the resulting probabilities
 #'
-#' @export
+#' @noRd
 normalize.and.inv.logit.fn <- function(y, y.min = -3, y.max = 3) {
     # Input validation
     if (!all(is.finite(y))) {
@@ -2898,7 +2898,7 @@ normalize.and.inv.logit.fn <- function(y, y.min = -3, y.max = 3) {
 #' y <- seq(0, 1, length.out = 50)
 #' z <- outer(x, y, Vectorize(mixture$f))
 #'
-#' @export
+#' @noRd
 create.gaussian.mixture <- function(x1 = 0.25, y1 = 0.25,  ## location of first Gaussian
                                     x2 = 0.75, y2 = 0.75,    ## location of second Gaussian
                                     A1 = 1.0,                ## amplitude of first Gaussian
@@ -3010,7 +3010,7 @@ create.gaussian.mixture <- function(x1 = 0.25, y1 = 0.25,  ## location of first 
 #'   correlation = 0.5
 #' )
 #' }
-#' @export
+#' @noRd
 get.gaussian.mixture.2d <- function(
     n.components = 3,
     x.range = c(0, 1),
@@ -3109,7 +3109,7 @@ get.gaussian.mixture.2d <- function(
 }
 
 #' Generate 2D component centers
-#' @keywords internal
+#' @noRd
 generate_2d_centers <- function(strategy, n.components, x.range, y.range,
                                 edge.buffer, custom.centers) {
     x.width <- diff(x.range)
@@ -3147,7 +3147,7 @@ generate_2d_centers <- function(strategy, n.components, x.range, y.range,
 }
 
 #' Generate amplitudes for 2D mixture
-#' @keywords internal
+#' @noRd
 generate_amplitudes_2d <- function(strategy, n.components, amplitude.range,
                                    custom.amplitudes) {
     if (strategy == "custom") {
@@ -3166,7 +3166,7 @@ generate_amplitudes_2d <- function(strategy, n.components, amplitude.range,
 }
 
 #' Generate covariance matrices for 2D mixture
-#' @keywords internal
+#' @noRd
 generate_covariances_2d <- function(strategy, n.components, sd.value, sd.range,
                                     custom.sds, correlation) {
     covariances <- vector("list", n.components)
@@ -3218,7 +3218,7 @@ generate_covariances_2d <- function(strategy, n.components, sd.value, sd.range,
 #' @return Invisible NULL
 #' @importFrom graphics axis contour image par persp points filled.contour
 #' @importFrom grDevices heat.colors terrain.colors
-#' @exportS3Method
+#' @noRd
 plot.gaussian_mixture <- function(x, n.grid = 50, main = "2D Gaussian Mixture", ...) {
     # Generate evaluation grid
     x.seq <- seq(x$x.range[1], x$x.range[2], length.out = n.grid)
@@ -3284,7 +3284,7 @@ plot.gaussian_mixture <- function(x, n.grid = 50, main = "2D Gaussian Mixture", 
 #'   plot3D(gm)
 #' }
 #' }
-#' @export
+#' @noRd
 plot3D.gaussian_mixture <- function(x,
                                     n.grid = 50,
                                     col = "skyblue",
@@ -3373,7 +3373,7 @@ plot3D.gaussian_mixture <- function(x,
 #' @param ... Additional arguments (unused)
 #'
 #' @return Invisible x
-#' @exportS3Method
+#' @noRd
 print.gaussian_mixture <- function(x, ...) {
     cat("2D Gaussian Mixture\n")
     cat("===================\n")
@@ -3398,7 +3398,7 @@ print.gaussian_mixture <- function(x, ...) {
 #' @param ... Additional arguments (unused)
 #'
 #' @return A summary list
-#' @exportS3Method
+#' @noRd
 summary.gaussian_mixture <- function(object, ...) {
     structure(
         list(
@@ -3420,7 +3420,7 @@ summary.gaussian_mixture <- function(object, ...) {
 #' @param ... Additional arguments (unused)
 #'
 #' @return Invisible x
-#' @exportS3Method
+#' @noRd
 print.summary.gaussian_mixture <- function(x, ...) {
     cat("Summary of 2D Gaussian Mixture\n")
     cat("==============================\n")
@@ -3499,7 +3499,7 @@ sample.gaussian_mixture <- function(mixture,
 #' @param y.range Numeric vector of length 2 giving y-axis bounds
 #' @param method Sampling method: "random", "grid", or "stratified"
 #' @return Matrix of coordinates (n x 2)
-#' @keywords internal
+#' @noRd
 generate_sampling_points <- function(n, x.range, y.range, method = c("random", "grid", "stratified")) {
     method <- match.arg(method)
 
@@ -3637,7 +3637,7 @@ generate_sampling_points <- function(n, x.range, y.range, method = c("random", "
 #' \code{\link{sample.gaussian_mixture}} for creating data objects,
 #' \code{\link{get.gaussian.mixture.2d}} for creating 2D mixtures
 #'
-#' @exportS3Method
+#' @noRd
 plot.gaussian_mixture_data <- function(x,
                                       type = c("scatter2d", "scatter3d", "surface",
                                                "surface3d", "contour", "heatmap",

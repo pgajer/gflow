@@ -58,9 +58,9 @@
 #'
 #' \strong{Statistical Inference:}
 #' \itemize{
-#'   \item \code{\link{fassoc.test}} - Tests for non-linear functional associations
-#'   \item \code{\link{compute.bayesian.effects}} - Bayesian effect size estimation
-#'   \item \code{\link{wasserstein.distance}} - Computes optimal transport distances
+#'   \item \code{\link{lcor}} - Symmetric graph-local association
+#'   \item \code{\link{lslope}} - Directed graph-local response
+#'   \item \code{\link{gfcor}} - Gradient-flow-aware association
 #' }
 #'
 #' @author Pawel Gajer \email{pgajer@@gmail.com}
