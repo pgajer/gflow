@@ -978,6 +978,121 @@
     invisible(TRUE)
 }
 
+.validate.successful.basin.tables <- function(object) {
+    requested <- .basin.requested.directions(object$direction)
+    expected <- expand.grid(
+        vertex = seq_len(object$n.vertices),
+        direction = requested,
+        KEEP.OUT.ATTRS = FALSE,
+        stringsAsFactors = FALSE
+    )
+    expected.key <- paste(expected$vertex, expected$direction, sep = "\r")
+    assignment.key <- paste(
+        object$assignment$vertex,
+        object$assignment$direction,
+        sep = "\r"
+    )
+    if (anyDuplicated(assignment.key) ||
+        !setequal(assignment.key, expected.key)) {
+        .stop.basin.complex(
+            "Successful assignment rows must uniquely cover every requested vertex and direction.",
+            "object$assignment",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    if (any(!object$membership$direction %in% requested) ||
+        any(object$membership$vertex < 1L |
+            object$membership$vertex > object$n.vertices) ||
+        any(!is.finite(object$membership$membership.weight)) ||
+        any(object$membership$membership.weight < 0)) {
+        .stop.basin.complex(
+            "Membership rows contain an invalid direction, vertex, or weight.",
+            "object$membership",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    basin.key <- paste(
+        object$basin.table$basin.id,
+        object$basin.table$type,
+        sep = "\r"
+    )
+    membership.basin.key <- paste(
+        object$membership$basin.id,
+        object$membership$direction,
+        sep = "\r"
+    )
+    if (any(!membership.basin.key %in% basin.key)) {
+        .stop.basin.complex(
+            "Membership rows reference an unknown basin or direction.",
+            "object$membership$basin.id",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    if (nrow(object$membership) > 0L) {
+        membership.group <- paste(
+            object$membership$vertex,
+            object$membership$direction,
+            sep = "\r"
+        )
+        weight.sums <- tapply(
+            object$membership$membership.weight,
+            membership.group,
+            sum
+        )
+        if (any(abs(weight.sums - 1) > 1e-12)) {
+            .stop.basin.complex(
+                "Membership weights must sum to one for every covered vertex and direction.",
+                "object$membership$membership.weight",
+                class = "gflow_basin_schema_error"
+            )
+        }
+    }
+
+    valid.status <- c(
+        assigned = 1,
+        unassigned = 0,
+        filtered = 0,
+        not_applicable = NA_real_,
+        failed = NA_real_
+    )
+    if (any(!object$assignment$assignment.status %in% names(valid.status))) {
+        .stop.basin.complex(
+            "Assignment rows contain an unknown status.",
+            "object$assignment$assignment.status",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    expected.weight <- unname(
+        valid.status[object$assignment$assignment.status]
+    )
+    weight.matches <- (is.na(expected.weight) &
+        is.na(object$assignment$assignment.weight)) |
+        (!is.na(expected.weight) &
+            object$assignment$assignment.weight == expected.weight)
+    if (any(!weight.matches)) {
+        .stop.basin.complex(
+            "Assignment weights do not match assignment statuses.",
+            "object$assignment$assignment.weight",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    assigned <- object$assignment$assignment.status == "assigned"
+    assigned.key <- paste(
+        object$assignment$basin.id[assigned],
+        object$assignment$direction[assigned],
+        sep = "\r"
+    )
+    if (any(is.na(object$assignment$basin.id[assigned])) ||
+        any(!assigned.key %in% basin.key)) {
+        .stop.basin.complex(
+            "Assigned rows must reference a basin in the same direction.",
+            "object$assignment$basin.id",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    invisible(TRUE)
+}
+
 .basin.package.version <- function() {
     tryCatch(
         as.character(utils::packageVersion("gflow")),
@@ -1160,6 +1275,7 @@
                 class = "gflow_basin_schema_error"
             )
         }
+        .validate.successful.basin.tables(object)
     }
     invisible(TRUE)
 }
@@ -1239,8 +1355,9 @@
 #' Create a Canonical Basin Complex
 #'
 #' Creates the canonical schema used by all basin-construction methods in
-#' \pkg{gflow}. Phase B establishes input validation and the stable result
-#' object; method backends are added in subsequent implementation phases.
+#' \pkg{gflow}. Trajectory-flow and geodesic-reachability methods adapt the
+#' corresponding legacy backends; methods whose adapters are not yet available
+#' return a structured recoverable-failure object.
 #'
 #' @param adj.list Undirected graph adjacency list using 1-based vertex ids.
 #' @param edge.length.list Numeric edge-length vectors parallel to
@@ -1257,9 +1374,10 @@
 #' @param simplify.params Named post-construction refinement parameters.
 #' @param verbose Logical scalar controlling backend progress output.
 #'
-#' @return A `basin_complex`. Until a selected method adapter is implemented,
-#'   valid input returns a schema-valid object with `status = "failed"` and a
-#'   structured `gflow_basin_backend_not_implemented` diagnostic.
+#' @return A `basin_complex`. Implemented adapters return `status = "ok"`.
+#'   A valid input for a method whose adapter is unavailable returns
+#'   `status = "failed"` with a structured
+#'   `gflow_basin_backend_not_implemented` diagnostic.
 #'
 #' @export
 create.basin.complex <- function(
@@ -1368,6 +1486,23 @@ create.basin.complex <- function(
         simplify.params = resolved.simplify.params,
         verbose = verbose
     )
+    if (method == "geodesic_reachability") {
+        return(.create.geodesic.reachability.complex(
+            direction = direction,
+            graph.input = graph.input,
+            field = field.record,
+            parameters = parameters
+        ))
+    }
+    if (method == "trajectory_flow") {
+        return(.create.trajectory.flow.complex(
+            direction = direction,
+            graph.input = graph.input,
+            field = field.record,
+            parameters = parameters,
+            verbose = verbose
+        ))
+    }
     .new.failed.basin.complex(
         method = method,
         direction = direction,
