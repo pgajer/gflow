@@ -1,4 +1,4 @@
-test_that("graph constructors are not exposed by gflow", {
+test_that("gflow retains only approved constructor compatibility wrappers", {
   migrated <- c(
     "create.adaptive.radius.graph",
     "create.bi.kNN.chain.graph",
@@ -35,17 +35,41 @@ test_that("graph constructors are not exposed by gflow", {
     "verify.maximal.packing"
   )
 
+  compatibility.wrappers <- c(
+    "create.adaptive.radius.graph",
+    "create.cknn.graph",
+    "create.cmst.graph",
+    "create.geodesic.iknn.graph",
+    "create.iknn.graphs",
+    "create.iterated.iknn.graphs",
+    "create.mknn.graph",
+    "create.mknn.graphs",
+    "create.radius.graph",
+    "create.single.iknn.graph",
+    "create.sknn.graph"
+  )
+  removed <- setdiff(migrated, compatibility.wrappers)
   gflow.exports <- getNamespaceExports("gflow")
-  expect_false(any(migrated %in% gflow.exports))
 
-  still.defined <- vapply(
-    migrated,
+  expect_true(all(compatibility.wrappers %in% gflow.exports))
+  expect_false(any(removed %in% gflow.exports))
+
+  removed.still.defined <- vapply(
+    removed,
     exists,
     logical(1),
     envir = asNamespace("gflow"),
     inherits = FALSE
   )
-  expect_false(any(still.defined))
+  expect_false(any(removed.still.defined))
+
+  for (name in compatibility.wrappers) {
+    expect_identical(
+      formals(get(name, envir = asNamespace("gflow"))),
+      formals(getExportedValue("dgraphs", name)),
+      info = name
+    )
+  }
 })
 
 test_that("migrated graph constructors are supplied by dgraphs", {
