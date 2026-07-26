@@ -315,7 +315,7 @@ cluster.cell.trajectories <- function(gfc.flow,
 #' str(cl.vtx)
 #' }
 #'
-#' @export
+#' @keywords internal
 trajectory.cluster.vertices <- function(cell.trajs,
                                         cltrs,
                                         sort = TRUE,

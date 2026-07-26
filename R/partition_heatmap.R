@@ -46,7 +46,7 @@
 #' dev.off()
 #' }
 #'
-#' @export
+#' @keywords internal
 partition.heatmap <- function(cm,
                               partition,
                               color.palette = NULL,
@@ -243,7 +243,7 @@ partition.heatmap <- function(cm,
 #' }
 #' }
 #'
-#' @export
+#' @keywords internal
 partition.cell.heatmaps <- function(cm,
                                     partition,
                                     color.palette = NULL,

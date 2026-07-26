@@ -30,3 +30,11 @@ create.latex.table
 analyze.categorical.proportions
 summarize.and.test.cst
 analyze.weighted.cst
+visualize.mgcp.cluster
+compare.mgcp.clusters
+export.mgcp.cluster
+visualize.mgcp.clusters
+partition.heatmap
+partition.cell.heatmaps
+make.spt.diagnostics.pdf
+trajectory.cluster.vertices
