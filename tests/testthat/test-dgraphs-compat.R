@@ -35,3 +35,49 @@ test_that("as_igraph compatibility wrapper delegates to dgraphs", {
     expect_identical(igraph::vertex_attr(observed), igraph::vertex_attr(expected))
     expect_identical(igraph::edge_attr(observed), igraph::edge_attr(expected))
 })
+
+test_that("shortest-path compatibility wrappers delegate to dgraphs", {
+    graph <- list(2L, c(1L, 3L), 2L)
+    edge.lengths <- list(1, c(1, 2), 2)
+
+    expect_warning(
+        observed <- shortest.path(graph, edge.lengths, c(1L, 3L)),
+        "dgraphs::shortest.path"
+    )
+    expect_identical(
+        observed,
+        dgraphs::shortest.path(graph, edge.lengths, c(1L, 3L))
+    )
+
+    graph.object <- structure(
+        list(adj_list = graph, weight_list = edge.lengths),
+        class = "sknn_graph"
+    )
+    expect_warning(
+        observed <- graph.geodesic.distances(graph.object),
+        "dgraphs::graph.geodesic.distances"
+    )
+    expect_identical(
+        observed,
+        dgraphs::graph.geodesic.distances(graph.object)
+    )
+})
+
+test_that("endpoint compatibility wrapper delegates to dgraphs", {
+    graph <- list(2L, c(1L, 3L), 2L)
+    edge.lengths <- list(1, c(1, 1), 1)
+    arguments <- list(
+        adj.list = graph,
+        weight.list = edge.lengths,
+        use.approx.eccentricity = FALSE
+    )
+
+    expect_warning(
+        observed <- do.call(geodesic.core.endpoints, arguments),
+        "dgraphs::geodesic.core.endpoints"
+    )
+    expect_identical(
+        observed,
+        do.call(dgraphs::geodesic.core.endpoints, arguments)
+    )
+})

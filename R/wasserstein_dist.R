@@ -231,7 +231,7 @@ greedy.NN.transport.distance.1D <- function(x, y)
 #' @param use.transport     Set to TRUE, to use wasserstein1d() from transport package.
 #' @param n.breaks          The number of bin for the estimate of distribution of cosine of the angle values.
 #' @param ref.i             The index of the reference point whose cosine angles will be used as the reference for the Wd1 estimates.
-#' @param use.geodesic.knn  Set to TRUE, if geodesic.knn() is to be used instead of get.knn().
+#' @param use.geodesic.knn  Set to TRUE, if dgraphs::geodesic.knn() is to be used instead of get.knn().
 #' @param nn.i              A matrix of indices of the nearest neighbors.
 #' @param nn.d              A matrix of distances to the nearest neighbors.
 #' @param verbose           Set to TRUE for messages indicating which part of the routine is currently run.
@@ -259,7 +259,7 @@ wasserstein.ipNNuv <- function(S,
             }
 
             stop("geodesic.knn function is not available in this version. Please set use.geodesic.knn = FALSE")
-            # nn <- geodesic.knn(S, k=K)
+            # nn <- dgraphs::geodesic.knn(S, k=K)
             nn.i <- nn$nn.index[,-1]
             nn.d <- nn$nn.dist[,-1]
 
