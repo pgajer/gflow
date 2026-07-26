@@ -1,5 +1,14 @@
 # gflow development
 
+* Added the Phase B canonical basin-complex API:
+  - `create.basin.complex()` now validates graph geometry, fields, mass,
+    density, method parameters, and refinement parameters into a stable
+    `basin_complex` schema.
+  - Added non-colliding `get.basin.*()` table, membership, assignment,
+    merge-tree, trajectory, and cell accessors plus print, summary, plot,
+    conversion, and data-frame methods.
+  - Method adapters and legacy retirement remain deferred; valid Phase B calls
+    return a structured failed object until the selected backend is implemented.
 * Phase 1 legacy-1D decoupling pass completed:
   - Internal consumers that previously depended on legacy `magelo`/`mabilo`-style
     1D smoothers now use spline-based replacements.
