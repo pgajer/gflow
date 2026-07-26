@@ -3,7 +3,7 @@ test_that("compute.graph.summary.pmf returns expected degree PMF", {
     adj_list = list(c(2L), c(1L, 3L), c(2L))
   )
 
-  pmf <- compute.graph.summary.pmf(g, summary = "degree_distribution", return.details = FALSE)
+  pmf <- dgraphs::compute.graph.summary.pmf(g, summary = "degree_distribution", return.details = FALSE)
 
   expect_equal(unname(pmf[c("1", "2")]), c(2/3, 1/3), tolerance = 1e-8)
 })
@@ -13,7 +13,7 @@ test_that("component_size_distribution is vertex-weighted", {
     adj_list = list(c(2L), c(1L), integer(0))
   )
 
-  pmf <- compute.graph.summary.pmf(g, summary = "component_size_distribution", return.details = FALSE)
+  pmf <- dgraphs::compute.graph.summary.pmf(g, summary = "component_size_distribution", return.details = FALSE)
 
   expect_equal(unname(pmf[c("1", "2")]), c(1/3, 2/3), tolerance = 1e-8)
 })
@@ -24,7 +24,7 @@ test_that("neighborhood_label_distribution summarizes undirected label pairs", {
   )
   labels <- c("A", "A", "B")
 
-  pmf <- compute.graph.summary.pmf(
+  pmf <- dgraphs::compute.graph.summary.pmf(
     g,
     summary = "neighborhood_label_distribution",
     labels = labels,
@@ -40,7 +40,7 @@ test_that("edge_weight_distribution uses shared bins and returns zero divergence
     weight_list = list(c(0.2), c(0.2, 0.8), c(0.8))
   )
 
-  div <- graph.summary.divergence(
+  div <- dgraphs::graph.summary.divergence(
     g,
     g,
     summary = "edge_weight_distribution",
@@ -58,7 +58,7 @@ test_that("compute.graph.summary.stability preserves k values", {
   g2 <- list(adj_list = list(c(2L, 3L), c(1L), c(1L)))
   g3 <- list(adj_list = list(c(2L), c(1L), integer(0)))
 
-  stab <- compute.graph.summary.stability(
+  stab <- dgraphs::compute.graph.summary.stability(
     graphs = list(g1, g2, g3),
     summary = "degree_distribution",
     k.values = 3:5,
@@ -86,7 +86,7 @@ test_that("compute.stability.metrics keeps legacy js.div field while using summa
   )
 
   stab <- compute.stability.metrics(graphs, graph.type = "geom")
-  deg.stab <- compute.graph.summary.stability(
+  deg.stab <- dgraphs::compute.graph.summary.stability(
     graphs = list(g1, g2, g3),
     summary = "degree_distribution",
     k.values = 3:5,
@@ -122,7 +122,7 @@ test_that("compute.stability.metrics supports alternate summary families through
     labels = labels
   )
 
-  label.stab <- compute.graph.summary.stability(
+  label.stab <- dgraphs::compute.graph.summary.stability(
     graphs = list(g1, g2, g3),
     summary = "neighborhood_label_distribution",
     labels = labels,

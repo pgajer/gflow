@@ -108,3 +108,23 @@ shortest.path <- function(graph, edge.lengths, vertices) {
         list(graph = graph, edge.lengths = edge.lengths, vertices = vertices)
     )
 }
+
+#' @rdname gflow-dgraphs-compat
+#' @param D.estimated,D.true Estimated and reference distance matrices.
+#' @param scale Logical; calibrate estimated distances.
+#' @param true.tol Tolerance defining nonzero reference distances.
+#' @export
+summarize.isometry.deviation <- function(D.estimated,
+                                         D.true,
+                                         scale = TRUE,
+                                         true.tol = sqrt(.Machine$double.eps)) {
+    .gflow.dgraphs.compat(
+        "summarize.isometry.deviation",
+        list(
+            D.estimated = D.estimated,
+            D.true = D.true,
+            scale = scale,
+            true.tol = true.tol
+        )
+    )
+}
