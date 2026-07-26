@@ -1418,6 +1418,7 @@ summary.lcor_matrix_matrix_result <- function(object, ...) {
 #' @param ... Passed to ComplexHeatmap::Heatmap().
 #'
 #' @return List with `mat`, `map`, and `heatmap`.
+#' @noRd
 lcor.vertex.heatmap <- function(lcor.out,
                                 vertex,
                                 x.names = NULL,

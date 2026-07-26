@@ -107,6 +107,7 @@
 #' attribute \code{"summary.fit"} containing fit details.
 #'
 #' @keywords internal
+#' @noRd
 .plot.trajectory.hurdle.association <- function(x,
                                                y.hat,
                                                trajectories,
@@ -645,6 +646,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 prep.trajectory.hurdle.association.data.v1 <- function(z,
                                                     y.hat,
                                                     trajectories,
@@ -813,6 +815,7 @@ prep.trajectory.hurdle.association.data.v1 <- function(z,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 prep.trajectory.hurdle.association.data <- function(z,
                                                     y.hat,
                                                     trajectories,

@@ -58,6 +58,7 @@
 #' @param verbose If TRUE, prints progress messages. Default TRUE.
 #'
 #' @return An object of class "assoc1" with signal/null summaries and test results.
+#' @noRd
 fassoc1.test <- function(x,
                          y,
                          test.type = c("paired.t", "weighted.pvalue", "wilcoxon"),

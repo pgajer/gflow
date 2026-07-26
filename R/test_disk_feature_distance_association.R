@@ -42,6 +42,7 @@
 #'   \item \code{meta}: list with settings used (distance.transform, n.bins, etc.).
 #' }
 #'
+#' @noRd
 test.disk.feature.distance.association <- function(X,
                                                   vertices,
                                                   dists,

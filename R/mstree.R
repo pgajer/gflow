@@ -6,6 +6,7 @@
 #'   \item{edges}{A matrix of edge indices, where each row represents an edge in the MST.}
 #'   \item{edge.lens}{A vector of edge lengths corresponding to the edges in the MST.}
 #' @importFrom FNN get.knn
+#' @noRd
 mstree <- function(X, i = 1) {
 
     if (!is.matrix(X)) {

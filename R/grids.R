@@ -25,6 +25,7 @@
 #'             from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
+#' @noRd
 create.2D.grid <- function(n, X, f=0.2, eSDf=1.5, gRf=4) {
 
     if (!is.matrix(X)) {
@@ -129,6 +130,7 @@ create.2D.grid <- function(n, X, f=0.2, eSDf=1.5, gRf=4) {
 #' @param x2.range   A range of x2 values - the second coordinate.
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #'
+#' @noRd
 create.ENPs.grid.2D <- function(n, x1.range, x2.range, f=0.2)
 {
     X.grid <- numeric(2*n*n)
@@ -154,6 +156,7 @@ create.ENPs.grid.2D <- function(n, x1.range, x2.range, f=0.2)
 #' @param x3.range   A range of x3 values - the third coordinate.
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #'
+#' @noRd
 create.ENPs.grid.3D <- function(n, x1.range, x2.range, x3.range, f=0.2)
 {
     X.grid <- numeric(3*n^3)
@@ -179,6 +182,7 @@ create.ENPs.grid.3D <- function(n, x1.range, x2.range, x3.range, f=0.2)
 #' @param x2.range   A range of x2 values - the second coordinate.
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #' @param verbose    If TRUE, some debugging messages will be printed.
+#' @noRd
 create.ED.grid.2D <- function(dx, x1.range, x2.range, f=0.2, verbose=FALSE)
 {
     Dx1 <- diff(x1.range)
@@ -251,6 +255,7 @@ create.ED.grid.2D <- function(dx, x1.range, x2.range, f=0.2, verbose=FALSE)
 #' @param x3.range   A range of x3 values - the third coordinate.
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #' @param verbose    If TRUE, some debugging messages will be printed.
+#' @noRd
 create.ED.grid.3D <- function(dx, x1.range, x2.range, x3.range, f=0.1, verbose=FALSE)
 {
     Dx1 <- diff(x1.range)
@@ -337,6 +342,7 @@ create.ED.grid.3D <- function(dx, x1.range, x2.range, x3.range, f=0.1, verbose=F
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #' @param type       A type of distribution the points are sampled from.
 #'
+#' @noRd
 create.2D.rect.grid <- function(n, x1.range, x2.range, type=c("unif","runif","norm"), f=0.2)
 {
     types <- c("unif","runif","norm")
@@ -417,6 +423,7 @@ create.2D.rect.grid <- function(n, x1.range, x2.range, type=c("unif","runif","no
 #'                    3D. If X is not NULL, grid contains only points nor more than eps away
 #'                    from the mstree(X).
 #'
+#' @noRd
 create.3D.grid <- function(n, X, f=0.2, min.gSf=1.5, eSDf=1.5, gRf=2) {
 
     if (!is.matrix(X)) {
@@ -562,6 +569,7 @@ create.3D.grid <- function(n, X, f=0.2, min.gSf=1.5, eSDf=1.5, gRf=2) {
 #'                    from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
+#' @noRd
 create.3D.TN.grid <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbose=FALSE)
 {
     grid <- create.ED.grid.3D(dx, x1.range=range(X[,1]), x2.range=range(X[,2]), x3.range=range(X[,3]), f)
@@ -598,6 +606,7 @@ create.3D.TN.grid <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbo
 #'                    from the mstree(X).
 #'
 #' @importFrom FNN get.knnx
+#' @noRd
 create.3D.TN.grid.plus <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, verbose=FALSE)
 {
     grid <- create.ED.grid.3D(dx, x1.range=range(X[,1]), x2.range=range(X[,2]), x3.range=range(X[,3]), f)
@@ -645,6 +654,7 @@ create.3D.TN.grid.plus <- function(X, mst.grid, dx, mode.edge.len, gRf, f=0.05, 
 #' res <- create.X.grid(X, gSf=5, gRf=5, min.K=10, med.dK.divf=5, max.dx.C=1)
 #' str(res)
 #' }
+#' @noRd
 create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 {
     nrX <- nrow(X)
@@ -793,6 +803,7 @@ create.X.grid <- function(X, gSf, gRf, min.K=10, med.dK.divf=5, max.dx.C=1)
 #'                    3D. If X is not NULL, grid contains only points nor more than eps away
 #'                    from the mstree(X).
 #'
+#' @noRd
 create.3D.grid.v2 <- function(n, X, f=0.2, mst.grid=NULL, mode.edge.len=NULL,
                              min.gSf=1.5,
                              min.min.gSf=1,
@@ -931,6 +942,7 @@ create.3D.grid.v2 <- function(n, X, f=0.2, mst.grid=NULL, mode.edge.len=NULL,
 #' @param mst.grid      A matrix of 3D points that are subdivisions of edges of the mstree(X).
 #' @param mode.edge.len The mode of the edge lengths.
 #'
+#' @noRd
 get.3D.rect.grid.NN <- function(n, X, f=0.2, eSDf=1.5, mst.grid=NULL, mode.edge.len=NULL)
 {
     stopifnot(is.finite(n))
@@ -997,6 +1009,7 @@ get.3D.rect.grid.NN <- function(n, X, f=0.2, eSDf=1.5, mst.grid=NULL, mode.edge.
 #' @param eSDf An edge subdivision factor, such that a uniform grid is created over the
 #'     given edge of mstree(X) if its length is greater than eSDf *
 #'     mode(edge.len).
+#' @noRd
 mstree.grid <- function(X, eSDf = 1.5) {
 
     if (!is.matrix(X)) {
@@ -1080,6 +1093,7 @@ mstree.grid <- function(X, eSDf = 1.5) {
 #' @param f          A fraction of x1 and x2 range that the grid is extended to.
 #' @param type       A type of distribution the points are sampled from.
 #'
+#' @noRd
 create.3D.rect.grid <- function(n, x1.range, x2.range, x3.range, type=c("unif","runif","norm"), f=0.2)
 {
     types <- c("unif","runif","norm")
@@ -1158,6 +1172,7 @@ create.3D.rect.grid <- function(n, x1.range, x2.range, x3.range, type=c("unif","
 ##                         \code{ceiling((upper_bounds - lower_bounds) / edge_length)}. If FALSE,
 ##                         \code{floor((upper_bounds - lower_bounds) / edge_length)} will be used.
 ##                         This determines whether the number of grid elements is rounded up or down.
+#' @noRd
 create.ED.grid.xD <- function(edge.length, lower.bounds, upper.bounds ) { # , round.up = TRUE
 
     if (length(lower.bounds) != length(upper.bounds)) {
@@ -1236,6 +1251,7 @@ create.ED.grid.xD <- function(edge.length, lower.bounds, upper.bounds ) { # , ro
 #' res <- create.X.grid.xD(X, gSf=5, gRf=5, p.exp=0.05, wC=0.1)
 #' str(res)
 #' }
+#' @noRd
 create.X.grid.xD <- function(X,
                             gSf,
                             gRf,
@@ -1671,6 +1687,7 @@ create.adaptive.tiled.X.grid.xD <- function(X,
 #' @param with.bounding.box.pts Set to TRUE to show the bounding box.
 #' @param ... Additional arguments passed to the plotting functions.
 #'
+#' @noRd
 .plot.grid.x <- function(x, with.bounding.box.pts = TRUE, ...)
 {
     grid.obj <- x  # for backward compatibility
@@ -1785,6 +1802,7 @@ hgrid <- function(X,
 #' @param p.exp An expansion factor for the bounding box. Each edge of the box is scaled by the factor (1 + p.exp).
 #' @param margin A numeric value specifying a fixed margin to add to the box. If NULL (default), margin is calculated based on p.exp.
 #'
+#' @noRd
 expand.box <- function(L, R, p.exp, margin = NULL) {
 
     if ( is.null(margin) ) {

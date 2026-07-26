@@ -38,6 +38,7 @@
 #' This iterative approach finds stable clusters at different heights in the
 #' dendrogram, unlike methods that cut at a single level.
 #'
+#' @noRd
 extract.stable.clusters <- function(data.matrix,
                                     linkage.method = "ward.D2",
                                     distance.metric = "euclidean",
@@ -215,6 +216,7 @@ extract.stable.clusters <- function(data.matrix,
 #' Internal function to compute gap sizes for all clusters in dendrogram
 #'
 #' @keywords internal
+#' @noRd
 compute.cluster.gaps <- function(hclust.obj, min.size = 2) {
   
   merge.matrix <- hclust.obj$merge
@@ -285,6 +287,7 @@ compute.cluster.gaps <- function(hclust.obj, min.size = 2) {
 #' Internal function to get all leaf members of a cluster
 #'
 #' @keywords internal
+#' @noRd
 extract.cluster.members <- function(hclust.obj, cluster.id) {
   
   merge.matrix <- hclust.obj$merge
@@ -312,6 +315,7 @@ extract.cluster.members <- function(hclust.obj, cluster.id) {
 #' Creates diagnostic visualizations for iterative cluster extraction
 #'
 #' @keywords internal
+#' @noRd
 plot_cluster_extraction_diagnostics <- function(data.matrix,
                                                 cluster.assignments,
                                                 extracted.clusters,
@@ -426,6 +430,7 @@ plot_cluster_extraction_diagnostics <- function(data.matrix,
 #'
 #' @return Data frame with cluster characteristics
 #'
+#' @noRd
 analyze.extracted.clusters <- function(data.matrix, extraction.result) {
   clusters <- extraction.result$clusters
   n.clusters <- extraction.result$n.clusters

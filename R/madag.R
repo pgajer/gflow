@@ -226,6 +226,7 @@ construct.madag <- function(
 #'
 #' @seealso \code{\link{construct.madag}}, \code{\link{sample.cell.trajectories}}
 #'
+#' @noRd
 enumerate.cell.trajectories <- function(
     madag,
     y,
@@ -279,6 +280,7 @@ enumerate.cell.trajectories <- function(
 #'
 #' @seealso \code{\link{construct.madag}}, \code{\link{enumerate.cell.trajectories}}
 #'
+#' @noRd
 sample.cell.trajectories <- function(
     madag,
     y,
@@ -330,6 +332,7 @@ sample.cell.trajectories <- function(
 #'
 #' @seealso \code{\link{enumerate.cell.trajectories}}
 #'
+#' @noRd
 trajectory.similarity.matrix <- function(
     trajectories,
     similarity.type = "jaccard"
@@ -533,6 +536,7 @@ summary.madag <- function(object, ...) {
 #'
 #' @return The cell structure, or NULL if not found.
 #'
+#' @noRd
 get.cell <- function(madag, max.vertex) {
     if (!inherits(madag, "madag")) {
         stop("madag must be a 'madag' object")
@@ -553,6 +557,7 @@ get.cell <- function(madag, max.vertex) {
 #'
 #' @return A data frame with one row per cell.
 #'
+#' @noRd
 cell.summary.df <- function(madag) {
     if (!inherits(madag, "madag")) {
         stop("madag must be a 'madag' object")

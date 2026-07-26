@@ -221,6 +221,7 @@
 #'      main = "Resolution-based")
 #'
 #' @keywords internal
+#' @noRd
 scan.stability <- function(adj.list,
                           weight.list = NULL,
                           time.seq,
@@ -362,6 +363,7 @@ scan.stability <- function(adj.list,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 build_transition_matrix <- function(adj.list, weight.list = NULL) {
 
     n <- length(adj.list)
@@ -439,6 +441,7 @@ build_transition_matrix <- function(adj.list, weight.list = NULL) {
 #' @return Matrix M^t of the same dimension and type as M.
 #'
 #' @keywords internal
+#' @noRd
 matrix_power <- function(M, t) {
 
     if (t < 1) {
@@ -496,6 +499,7 @@ matrix_power <- function(M, t) {
 #' @return Numeric scalar giving the stability score.
 #'
 #' @keywords internal
+#' @noRd
 compute_stability_score <- function(Pt, pi, membership) {
 
     n <- length(membership)
@@ -564,6 +568,7 @@ compute_stability_score <- function(Pt, pi, membership) {
 #' }
 #'
 #' @keywords internal
+#' @noRd
 optimize_stability_greedy <- function(Pt, pi, max.iter, tol, verbose = FALSE) {
 
     n <- nrow(Pt)

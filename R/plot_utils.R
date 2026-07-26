@@ -12,6 +12,7 @@
 #' @param ...     passed to rgl::plot3d()
 #'
 #' @return Invisibly returns the rgl object ids from plot3d()
+#' @noRd
 plot3D.plain <- function(X,
                          radius = NULL,
                          col = "gray",
@@ -341,6 +342,7 @@ plot3D.plain.html <- function(...) {
 #'
 #' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
 #'
+#' @noRd
 plot3D.cont <- function(X,
                         y,
                         subset = NULL,

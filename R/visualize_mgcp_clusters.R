@@ -92,6 +92,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 visualize.mgcp.clusters <- function(data.matrix,
                                     mgcp.result,
                                     cluster.rows = FALSE,

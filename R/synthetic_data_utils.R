@@ -1645,6 +1645,7 @@ partition.of.unity.1D <- function(x.center, x.min = 0, x.max = 10, n.grid = 400,
 #' @param mu          The location of the global maximum of the bi-gaussian function.
 #' @param sigma.left  The standard deviation of the left part of the bi-gaussian function.
 #' @param sigma.right The standard deviation of the right part of the bi-gaussian function.
+#' @noRd
 bi.gaussian <- function(x, mu, sigma.left, sigma.right) {
 
     names(x) <- seq(length(x))
@@ -1703,6 +1704,7 @@ bi.gaussian <- function(x, mu, sigma.left, sigma.right) {
 #'          x <= mu and a Gaussian with sigma.right for x > mu. The final synthetic function is
 #'          the sum of these bi-Gaussians weighted by the partition of unity.
 #'
+#' @noRd
 bi.gaussian.mixture <- function(n.lmax,
                                 x.lmax = NULL,
                                 y.lmax = NULL,
@@ -1834,6 +1836,7 @@ bi.gaussian.mixture <- function(n.lmax,
 #' @param q      The power to which the radial q-exponential Gaussian is raised.
 #'
 #' @return Returns a vector of values of the radia q-exponential Gaussian at the points of X.
+#' @noRd
 radial.qexp.gaussian <- function(X, center, sigma = 1, q = 1) {
 
     # Validate sigma
@@ -1871,6 +1874,7 @@ radial.qexp.gaussian <- function(X, center, sigma = 1, q = 1) {
 #'   \item \code{nn.d}: A vector of distances to the nearest neighbor center.
 #'   \item \code{nn.i}: A vector of indices of the nearest neighbor.
 #' }
+#' @noRd
 partition.of.unity.xD <- function(S,
                                   X.centers = NULL,
                                   n.comp = 3,
@@ -1983,6 +1987,7 @@ partition.of.unity.xD <- function(S,
 #'     \item \code{y}: A vector of values of the created synthetic function.
 #'   }
 #'
+#' @noRd
 gaussian.mixture.xD <- function(S,
                                 X.lmax = NULL,
                                 n.lmax = 3,
@@ -2095,6 +2100,7 @@ gaussian.mixture.xD <- function(S,
 #' @param sigma Numeric vector of standard deviations (same length as x)
 #' @param C Amplitude/scaling factor
 #' @return Numeric value of the Gaussian function
+#' @noRd
 gaussian.xD <- function(x, mu, sigma, C) {
     C * exp(-(sum((x - mu)^2 / sigma^2)))
 }
@@ -2106,6 +2112,7 @@ gaussian.xD <- function(x, mu, sigma, C) {
 #' @param sigma Numeric vector of standard deviations (same length as x)
 #' @param C Amplitude/scaling factor
 #' @return Numeric vector of gradient values
+#' @noRd
 gaussian.xD.grad <- function(x, mu, sigma, C) {
     ## Create symbolic variables for x
     x_sym <- paste0("x", seq(x))
@@ -2282,6 +2289,7 @@ generate.noisy.circle.embedding <- function(n,
 #' @param radius The radius of the circle (default is 1).
 #'
 #' @return A data frame with two columns, `x` and `y`, containing the coordinates of the generated points.
+#' @noRd
 generate.circle <- function(n, radius = 1) {
 
     angles <- seq(0, 2 * pi, length.out = n + 1)
@@ -2299,6 +2307,7 @@ generate.circle <- function(n, radius = 1) {
 #' @param k Torus knot first parameter.
 #' @param m Torus knot second parameter.
 #'
+#' @noRd
 v1.torus.knot <- function(n, k, m) {
 
     angles <- seq(0, 2 * pi, length.out = n)
@@ -2327,6 +2336,7 @@ torus.knot <- function(n, k, m) {
 #' @param scale The scale of the knot.
 #' @param type  A character vector: "uniform" or "random".
 #'
+#' @noRd
 generate.trefoil.knot <- function(n = 100, scale = 1, type = "uniform") {
 
     if ( type == "uniform" ) {
@@ -2354,6 +2364,7 @@ generate.trefoil.knot <- function(n = 100, scale = 1, type = "uniform") {
 #'                      If NULL, uses 0.5 * I.
 #' @param separation    Numeric, separation scale used when `means` is NULL.
 #' @return Numeric matrix with `sum(cluster.sizes)` rows and `dimensions` columns.
+#' @noRd
 generate.clustered.data <- function(n.clusters,
                                     cluster.sizes,
                                     dimensions = 2,
@@ -2445,6 +2456,7 @@ generate.clustered.data <- function(n.clusters,
 #' @param verbose     Set it to TRUE, to print progress messages.
 #'
 #' @return A list containing the length of the longest stretch of isomorphic MS graphs for each generated dataset
+#' @noRd
 test.graph.MS.cx.on.synth.cloud.data <- function(n.datasets,
                                                  n.pts,
                                                  n.side = NULL,
@@ -3453,6 +3465,7 @@ plot3D.gaussian_mixture <- function(x,
 #'   \item{y.true}{Vector of true function values}
 #'   \item{mixture}{The original gaussian_mixture object}
 #'
+#' @noRd
 sample.gaussian_mixture <- function(mixture,
                                    n = 500,
                                    sampling.method = c("random", "grid", "stratified"),

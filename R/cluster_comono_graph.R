@@ -105,6 +105,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 cluster.comono.graph <- function(adj.list,
                                  weight.list = NULL,
                                  resolution = 1.0) {

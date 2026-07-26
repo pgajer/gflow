@@ -1,5 +1,9 @@
 test_that("every in-scope S3 method has an enforced class contract", {
     root <- normalizePath(file.path(testthat::test_path(), "../.."))
+    skip_if_not(
+        file.exists(file.path(root, "tools/cleanup_ledger_lib.R")),
+        "source-only S3 audit is not shipped in the package tarball"
+    )
     source(file.path(root, "tools/cleanup_ledger_lib.R"), local = TRUE)
     source(file.path(root, "tools/s3_namespace_lib.R"), local = TRUE)
 
@@ -8,6 +12,12 @@ test_that("every in-scope S3 method has an enforced class contract", {
 
 test_that("all retained validators reject structurally empty objects", {
     root <- normalizePath(file.path(testthat::test_path(), "../.."))
+    skip_if_not(
+        file.exists(file.path(
+            root, "split_audit/cleanup/s3-class-ownership.csv"
+        )),
+        "source-only S3 audit is not shipped in the package tarball"
+    )
     ownership <- read.csv(
         file.path(root, "split_audit/cleanup/s3-class-ownership.csv"),
         stringsAsFactors = FALSE

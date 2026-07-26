@@ -5,6 +5,7 @@
 #' @param x A numeric vector.
 #' @param min.size The minimal number of finite values within x. If length(x) < min.size, then the result is NA.
 #' @param ... Parameters to be passed to density()
+#' @noRd
 mode.1D <- function(x, min.size=10, ...) {
     res <- NA
     x <- x[is.finite(x)]
@@ -23,6 +24,7 @@ mode.1D <- function(x, min.size=10, ...) {
 #' @param base The base of the logarithm in the entropy formula.
 #'
 #' @return   entropy with log 'base'
+#' @noRd
 entropy <- function(x, base = 10) {
     x <- x[x>0]
     x <- x / sum(x)
@@ -36,6 +38,7 @@ entropy <- function(x, base = 10) {
 #' @param x Numeric vector of counts or abundances
 #' @param base Logarithm base (default: 2)
 #' @return A number in \eqn{[0,1]} quantifying evenness (1 = perfectly even)
+#' @noRd
 evenness <- function(x, base = 2) {
   x <- x[x > 0]
   if (length(x) <= 1) return(0)
@@ -89,6 +92,7 @@ minmax.normalize <- function(x, y.min = 0, y.max = 1) {
 #' @param x  A numerical vector.
 #'
 #' @return Inverse logit transformed data.
+#' @noRd
 inv.logit <- function(x) {
     1 / (1 + exp(-x))
 }
@@ -208,6 +212,7 @@ knn.weighted.mean <- function(X, y, k, kernel = "epanechnikov", nn.factor = 1.01
 #' consecutive points
 #'
 #' @param x A numeric vector
+#' @noRd
 n.zeros <- function(x)
 {
     n <- length(x)
@@ -231,6 +236,7 @@ n.zeros <- function(x)
 #' \code{x[i] = x[i+1]} and the second column is the largest k such that \code{x[i] = x[i + k]}
 #'
 #' @param x A numeric vector.
+#' @noRd
 persistent.values <- function(x)
 {
     stopifnot(is.numeric(x))
@@ -263,6 +269,7 @@ persistent.values <- function(x)
 #'
 #' @param x A numeric vector.
 #'
+#' @noRd
 non.NA.values <- function(x)
 {
     n <- length(x)
@@ -293,6 +300,7 @@ non.NA.values <- function(x)
 #'
 #' @param x A numeric vector.
 #'
+#' @noRd
 non.zero.values <- function(x)
 {
     stopifnot(is.finite(x))
@@ -323,6 +331,7 @@ non.zero.values <- function(x)
 #' Proportion of cases in a binary variable y
 #'
 #' @param y  A binary variable with 0/1 values.
+#' @noRd
 p.cases <- function(y)
 {
     f <- table(y)
@@ -363,6 +372,7 @@ cross.prod <- function(x, y)
 #' The norm of a vector
 #'
 #' @param x A numeric vector.
+#' @noRd
 vector.norm <- function(x)
 {
     sqrt(sum(x^2))
@@ -550,6 +560,7 @@ derivative.second.order.method <- function(y, dx)
 #' @param ymax The value to which max(x) is sent.
 #' @param xrange The minimum of x and the maximum of x that is to be mapped to ymin and ymax, respectively.
 #' @return A numeric vector of the same length as 'x' with values linearly transformed to the range \code{[ymin, ymax]}.
+#' @noRd
 scale_to_range <- function(x, ymin, ymax, xrange = NULL) {
 
     if( !is.numeric(x) ) {
@@ -856,6 +867,7 @@ scaled.log.tan <- function(x, scale=0.1)
 #' @param xmax  The maximum value of the clamped x.
 #'
 #' @return A vector with all values below xmin set to xmin and all value above xmax set to xmax.
+#' @noRd
 clamp <- function(x, xmin, xmax) {
 
     clamped.x <- pmax(pmin(x, xmax), xmin)
@@ -3021,6 +3033,7 @@ apply.ceiling <- function(y, ceiling.at, verbose = FALSE) {
 #'
 #' @return Numeric vector with left tail winsorized
 #'
+#' @noRd
 left.winsorize <- function(y, p = 0.01, verbose = FALSE) {
   if (p < 0 || p >= 0.25) {
     stop("p must be between 0 and 0.25")
@@ -4017,6 +4030,7 @@ find.elbow.threshold <- function(x, plot = FALSE) {
 #' @param eps Small positive constant.
 #' @return row-normalized matrix where each row has L2 norm 1 (unless norm < eps).
 #'
+#' @noRd
 L2.normalize.matrix <- function(U, eps = 1e-12) {
 
   if (!is.matrix(U) || !is.numeric(U)) {

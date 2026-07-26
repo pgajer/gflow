@@ -24,6 +24,7 @@
 #'   \item{stability.score}{Average ARI between consensus and all runs}
 #' }
 #'
+#' @noRd
 consensus.clustering <- function(adj.list,
                                  weight.list = NULL,
                                  resolution = 1.0,

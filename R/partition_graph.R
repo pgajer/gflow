@@ -83,6 +83,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 partition.graph <- function(adj.list, weight.list, partition,
                            weight.type = c("count", "normalized", "jaccard")) {
 

@@ -369,6 +369,7 @@ select.max.density.trajectory <- function(trajectories, density) {
 #' @return The extended coordinate for the vertex, or \code{NA} if the vertex
 #'   is not in the tubular neighborhood.
 #'
+#' @noRd
 get.extended.coord <- function(hext, vertex) {
 
     if (!inherits(hext, "harmonic_extension")) {

@@ -452,6 +452,7 @@ plot.gfc_modulation <- function(x,
 #'
 #' @return Named list with density, edgelen, and combined modulation factors
 #'
+#' @noRd
 edge.modulation <- function(mod, v, u) {
 
     if (!inherits(mod, "gfc_modulation")) {

@@ -11,6 +11,7 @@
 #'
 #' @return A list containing diagnostic information for each cell.
 #'
+#' @noRd
 analyze.comono.distributions <- function(cm,
                                          partition,
                                          cell.ids = NULL,
@@ -126,6 +127,7 @@ analyze.comono.distributions <- function(cm,
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @keywords internal
+#' @noRd
 .plot.comono.diagnostics <- function(x, cell.id, ...) {
   analysis.results <- x
 

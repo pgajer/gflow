@@ -316,6 +316,7 @@ extract.extrema.subgraphs <- function(adj.list,
 #' @return Integer vector of vertex indices that are within max.hops of start.vertex
 #'
 #' @keywords internal
+#' @noRd
 find.vertices.within.hops <- function(adj.list, start.vertex, max.hops) {
   n.vertices <- length(adj.list)
 
@@ -376,6 +377,7 @@ find.vertices.within.hops <- function(adj.list, start.vertex, max.hops) {
 #' @return Numeric vector of hop distances, with Inf for unreachable vertices
 #'
 #' @keywords internal
+#' @noRd
 find.hop.distances <- function(adj.list, start.vertex, max.hops = Inf) {
   n.vertices <- length(adj.list)
 

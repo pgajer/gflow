@@ -37,6 +37,7 @@
 #'
 #' @return An object of class "kh.matrix" containing the input components
 #'
+#' @noRd
 kh.matrix <- function(kh.mat, existing.k, h.values, id) {
   structure(
     list(
@@ -62,6 +63,7 @@ kh.matrix <- function(kh.mat, existing.k, h.values, id) {
 #' @return An object of class "prediction.errors" containing the errors with
 #'         xvals stored as an attribute
 #'
+#' @noRd
 prediction.errors <- function(errors, xvals = NULL) {
   structure(
     errors,
@@ -84,6 +86,7 @@ prediction.errors <- function(errors, xvals = NULL) {
 #' @return An object of class "chain.with.path" containing the graph structure
 #'         and associated data
 #'
+#' @noRd
 chain.with.path <- function(adj.list, weight.list, gpd.obj) {
   structure(
     list(
@@ -108,6 +111,7 @@ chain.with.path <- function(adj.list, weight.list, gpd.obj) {
 #' @return An object of class "model.errors" containing the error integrals and
 #'         their bootstrap distributions
 #'
+#' @noRd
 model.errors <- function(integrals, bb.integrals) {
   structure(
     list(
@@ -124,6 +128,7 @@ model.errors <- function(integrals, bb.integrals) {
 #' @param weight.list List where element i contains weights of edges from vertex i
 #' @return An object of class "ggraph"
 #' @keywords internal
+#' @noRd
 ggraph <- function(adj.list, weight.list = NULL) {
   # Validate inputs
   if (!is.list(adj.list)) {
@@ -162,6 +167,7 @@ ggraph <- function(adj.list, weight.list = NULL) {
 #'        the graph and layout elements
 #' @param z A numeric vector containing z values for each vertex in the graph
 #' @return An object of class "graph.3d"
+#' @noRd
 create.graph.3d.obj <- function(plot.result, z) {
   # Validate inputs
   if (!is.list(plot.result) || is.null(plot.result$graph) || is.null(plot.result$layout)) {
@@ -453,6 +459,7 @@ itriangle.plot <- function(coords, v = NULL, params) {
 #' }
 #' }
 #' @keywords internal
+#' @noRd
 .plot.ggraph <- function(x,
                         y = NULL,
                         dim = 2,
@@ -1110,6 +1117,7 @@ plot.graphMScx <- function(x,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.kh.matrix <- function(x, existing.k = NULL, h.values = NULL, id = NULL,
                            color.palette = c("white", "black"),
                            xlab = "k (number of nearest neighbors)",
@@ -1189,6 +1197,7 @@ plot.graphMScx <- function(x,
 #' @param ... Additional graphical parameters passed to plotting functions
 #'
 #' @keywords internal
+#' @noRd
 .plot.model.errors <- function(x,
                               method = c("bars", "points"),
                               title = NULL,
@@ -1376,6 +1385,7 @@ plot.graphMScx <- function(x,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.prediction.errors <- function(x,
                                    xvals = NULL,
                                    cols = NULL,
@@ -1565,6 +1575,7 @@ plot.graphMScx <- function(x,
 #'
 #' @importFrom graphics plot points segments text
 #' @keywords internal
+#' @noRd
 .plot.chain.with.path <- function(x,
                                  vertex.size = 0.5,
                                  margin = 0.5,

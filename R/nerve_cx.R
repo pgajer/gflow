@@ -8,6 +8,7 @@
 #' @param max.dim Maximum dimension of simplices to compute
 #'
 #' @return A nerve complex object
+#' @noRd
 create.nerve.complex <- function(X, k, max.dim = 2) {
 
     if (!is.matrix(X)) {
@@ -48,6 +49,7 @@ create.nerve.complex <- function(X, k, max.dim = 2) {
 #' @param values Vector of function values (one per vertex)
 #'
 #' @return The updated nerve complex object (invisibly)
+#' @noRd
 set.complex.function.values <- function(complex, values) {
   # Check inputs
   if (!inherits(complex, "nerve_complex")) {
@@ -84,6 +86,7 @@ set.complex.function.values <- function(complex, values) {
 #' }
 #'
 #' @return The updated nerve complex object (invisibly)
+#' @noRd
 set.complex.weight.scheme <- function(complex, weight.type, params = numeric(0)) {
   # Check inputs
   if (!inherits(complex, "nerve_complex")) {
@@ -127,6 +130,7 @@ set.complex.weight.scheme <- function(complex, weight.type, params = numeric(0))
 #' @param dim.weights Weights for each dimension's contribution
 #'
 #' @return Vector of extended function values
+#' @noRd
 complex.laplacian.solve <- function(complex, lambda = 1.0,
                                    dim.weights = rep(1, complex$max_dimension + 1)) {
   # Check inputs
@@ -154,6 +158,7 @@ complex.laplacian.solve <- function(complex, lambda = 1.0,
 #' @param complex A nerve complex object
 #'
 #' @return Vector of simplex counts
+#' @noRd
 get.simplex.counts <- function(complex) {
                                         # Check inputs
     if (!inherits(complex, "nerve_complex")) {
@@ -172,6 +177,7 @@ get.simplex.counts <- function(complex) {
 #' @param complex A nerve complex object
 #'
 #' @return A graph representation of the 1-skeleton
+#' @noRd
 extract.skeleton.graph <- function(complex) {
 
     if (!inherits(complex, "nerve_complex")) {
@@ -199,6 +205,7 @@ extract.skeleton.graph <- function(complex) {
 #' @param dim.weights Weights for each dimension's contribution
 #'
 #' @return A list containing comparison results
+#' @noRd
 graph.vs.complex.regression.compare <- function(n.points = 200,
                                                 k = 5,
                                                 max.dim = 2,

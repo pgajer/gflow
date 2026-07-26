@@ -80,6 +80,7 @@
 #' }
 #' @importFrom stats runif rnorm rexp rt dunif
 #' @keywords internal
+#' @noRd
 generate.star.dataset <- function(n.points,
                                   n.arms = 3,
                                   min.n.pts.within.arm = 3,
@@ -378,6 +379,7 @@ generate.star.dataset <- function(n.points,
 #' @importFrom graphics box text points lines
 #' @importFrom grDevices colorRampPalette
 #' @keywords internal
+#' @noRd
 .plot.star.object <- function(x,
                              y = NULL,
                              point.size = 1.5,
