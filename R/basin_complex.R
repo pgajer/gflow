@@ -400,6 +400,7 @@
         method,
         trajectory_flow = list(
             modulation = "CLOSEST",
+            plateau.policy = NULL,
             edge.length.quantile.thld = 0.9,
             long.edge.fallback = "allow_and_flag",
             store.trajectories = TRUE,
@@ -468,6 +469,35 @@
             c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
             "method.params$modulation"
         )
+        if (is.null(params$plateau.policy)) {
+            params$plateau.policy <- if (params$modulation == "CLOSEST") {
+                "connected_exact"
+            } else {
+                "none"
+            }
+        }
+        params$plateau.policy <- .basin.assert.choice(
+            params$plateau.policy,
+            c("connected_exact", "none"),
+            "method.params$plateau.policy"
+        )
+        if (params$modulation == "CLOSEST" &&
+            params$plateau.policy != "connected_exact") {
+            .stop.basin.complex(
+                "CLOSEST trajectory flow requires exact connected-plateau contraction.",
+                "method.params$plateau.policy"
+            )
+        }
+        if (params$modulation != "CLOSEST" &&
+            params$plateau.policy != "none") {
+            .stop.basin.complex(
+                paste(
+                    "Exact connected-plateau contraction is currently",
+                    "supported only for CLOSEST trajectory flow."
+                ),
+                "method.params$plateau.policy"
+            )
+        }
         params$edge.length.quantile.thld <- .basin.assert.number(
             params$edge.length.quantile.thld,
             "method.params$edge.length.quantile.thld",
@@ -1429,6 +1459,15 @@
 #' extrema clustering, geometric filtering, support filtering, and expansion.
 #' Unsupported refinement stages fail validation rather than being silently
 #' ignored.
+#'
+#' CLOSEST trajectory flow contracts each connected component of exactly equal
+#' field values before selecting an improving edge. A plateau is terminal when
+#' its quotient vertex has no strictly improving neighbor; original graph
+#' degree is irrelevant. The smallest original vertex is the representative.
+#' Nonterminal plateaus select a boundary edge by length, target vertex, then
+#' source vertex. The resolved trajectory parameter
+#' `plateau.policy = "connected_exact"` is mandatory for CLOSEST and recorded
+#' in the returned provenance.
 #'
 #' Retired constructors such as `compute.gfc()`,
 #' `compute.basins.of.attraction()`, `compute.gfc.trajectory()`,
