@@ -73,7 +73,7 @@
 #' @importFrom foreach foreach %dopar%
 #' @importFrom doParallel registerDoParallel stopImplicitCluster
 #'
-#' @export
+#' @keywords internal
 hdbscan.cltr <- function(X,
                          method = "dunn",
                          min.pts = 5:50,
@@ -508,7 +508,7 @@ hdbscan.cltr <- function(X,
 #'
 #' @seealso \code{\link[FNN]{get.knn}} for the k-NN implementation used
 #'
-#' @export
+#' @keywords internal
 kNN.cltr.imputation <- function(X, cltr, ref.cltr = 0, K = 20, use.geodesic.dist = FALSE) {
 
     # Input validation
@@ -681,7 +681,7 @@ kNN.cltr.imputation <- function(X, cltr, ref.cltr = 0, K = 20, use.geodesic.dist
 #'
 #' @importFrom igraph graph_from_edgelist distances E make_empty_graph
 #'
-#' @export
+#' @keywords internal
 graph.cltr.imputation <- function(adj.list, weight.list, y, k = 10) {
 
     # Input validation
@@ -971,7 +971,7 @@ kNN.cltr.imputation.enhanced <- function(X, cltr, ref.cltr = 0, K = 20,
 #' named_cltr <- c(a = 1, b = 2, c = 2, d = 3, e = 3, f = 3)
 #' clusters.reorder(named_cltr)
 #'
-#' @export
+#' @keywords internal
 clusters.reorder <- function(cltr, decreasing = TRUE) {
   # Input validation
   if (length(cltr) == 0) {
@@ -1088,7 +1088,7 @@ clusters.reorder <- function(cltr, decreasing = TRUE) {
 #' table(res$best$silhouette)
 #' }
 #'
-#' @export
+#' @keywords internal
 hclust.select.k <- function(hc,
                             X = NULL,
                             d = NULL,
@@ -1498,8 +1498,8 @@ hclust.select.k <- function(hc,
 #'
 #' @return Invisibly returns \code{x}.
 #'
-#' @export
-print.hclust_select_k <- function(x, ..., top.n = 0L, show.call = FALSE) {
+#' @keywords internal
+.print.hclust.select.k <- function(x, ..., top.n = 0L, show.call = FALSE) {
 
     if (is.null(x$scores) || !is.data.frame(x$scores)) {
         stop("Invalid object: missing scores.")
@@ -1631,8 +1631,8 @@ print.hclust_select_k <- function(x, ..., top.n = 0L, show.call = FALSE) {
 #'
 #' @return Invisibly returns \code{x}.
 #'
-#' @export
-plot.hclust_select_k <- function(x,
+#' @keywords internal
+.plot.hclust.select.k <- function(x,
                                  ...,
                                  metric = c("dunn", "silhouette", "ch", "wb.ratio", "connectivity", "all"),
                                  show.opt = TRUE,
@@ -1764,8 +1764,8 @@ describe <- function(x, ...) {
 #'   \code{what.it.measures}, \code{pros}, \code{cons}. If \code{format="cards"},
 #'   the table is returned invisibly.
 #'
-#' @export
-describe.hclust_select_k <- function(x,
+#' @keywords internal
+.describe.hclust.select.k <- function(x,
                                      ...,
                                      include.unavailable = FALSE,
                                      metric = NULL,
@@ -1976,8 +1976,8 @@ describe.hclust_select_k <- function(x,
 #'   \code{return="all"}, a data.frame with one row per candidate \code{k}. If
 #'   \code{return="both"}, a list with components \code{shortlist} and \code{all}.
 #'
-#' @export
-summary.hclust_select_k <- function(object,
+#' @keywords internal
+.summary.hclust.select.k <- function(object,
                                     ...,
                                     metrics = NULL,
                                     top.n = 10L,
@@ -2225,7 +2225,7 @@ cluster.graph.louvain <- function(graph, weights = NULL, seed = NULL, n.itrs = 1
 #' @examples
 #' adjusted.rand.index(c(1, 1, 2, 2), c("a", "a", "b", "b"))
 #'
-#' @export
+#' @keywords internal
 adjusted.rand.index <- function(x, y) {
     if (missing(x) || is.null(x) || !is.atomic(x)) {
         stop("`x` must be a non-null atomic vector.")

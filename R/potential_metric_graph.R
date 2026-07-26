@@ -94,7 +94,7 @@
 #' fit$diagnostics$stress_weighted
 #' }
 #'
-#' @export
+#' @keywords internal
 construct.potential.metric.graph <- function(adj.list,
                                              weight.list = NULL,
                                              D.pot = NULL,
@@ -446,7 +446,7 @@ construct.potential.metric.graph <- function(adj.list,
 #' fit$diagnostics$stress_weighted
 #' }
 #'
-#' @export
+#' @keywords internal
 construct.potential.metric.graph.from.phate <- function(K = NULL,
                                                         P = NULL,
                                                         U.pot = NULL,

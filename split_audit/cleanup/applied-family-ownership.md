@@ -18,11 +18,26 @@ exported or registered as an S3 method.
 | Concordance reports | Remove public plotting/printing registrations | external analysis repository | Underlying analysis remains private pending source-analysis identification |
 | Dataset-specific trajectory reports | Remove public hurdle-association plotting registration | external analysis repository | Data preparation and plotting remain private pending source-analysis identification |
 | ISA and consensus clustering | Keep private; no public API | external analysis repository | Delete after final unqualified downstream search |
-| Application clustering | De-export trajectory and application-specific clustering entry points | external analysis repository | No stable core-object contract |
-| PHATE | De-export from `gflow` | `dgraphs` | Destination worktree has unrelated changes; relocate as a parity-tested closure |
-| Diffusion and potential pseudotime | De-export from `gflow` | `dgraphs` | Destination worktree has unrelated changes; relocate as a parity-tested closure |
+| Application clustering | De-export application-specific clustering entry points | external analysis repository | `cluster.graph.louvain()` and `congruence.with.labels()` remain temporary public migration exceptions because `CT_clearance` has qualified calls |
+| PHATE | Keep `phate()`, `phate.core()`, and `phate.embed()` temporarily public; admit no new callers | `dgraphs` | Qualified calls remain in `ZB` and `graph_modularity`; destination worktree has unrelated changes, so relocate as a parity-tested closure |
+| Diffusion and potential pseudotime | Keep the two pseudotime entry points temporarily public; de-export the generic transition builder | `dgraphs` | Qualified calls remain in `ZB` and `cell_cycle`; destination worktree has unrelated changes |
 | Potential-metric graph adapters | Retain only adapters whose input or output is a protected `gflow` object; de-export generic constructors | `dgraphs` | Destination worktree has unrelated changes |
 | Generic trajectory distances | De-export generic metrics; retain no report-specific API | `dgraphs` | Destination worktree has unrelated changes; relocate after graph-metric parity tests |
+
+## Temporary public migration exceptions
+
+The following names remain public solely to avoid breaking known qualified
+downstream calls while the `dgraphs` destination worktree is unavailable:
+
+- `phate()`, `phate.core()`, and `phate.embed()`;
+- `compute.diffusion.pseudotime.sparse()` and
+  `compute.potential.pseudotime.sparse()`; and
+- `cluster.graph.louvain()` and `congruence.with.labels()`.
+
+These are not approved additions to the long-term `gflow` surface. New internal
+or downstream callers are prohibited by the ownership-ledger guard. They move
+as parity-tested closures in a clean `dgraphs` migration, after which their
+`gflow` exports are retired.
 
 ## Enforcement
 

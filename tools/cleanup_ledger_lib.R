@@ -253,11 +253,31 @@ cleanup.classification <- function(name, source.file, protected) {
         "R/graph_endpoint_geometry.R", "R/graphics.R",
         "R/partition_graph.R"
     )) {
+        temporary.public <- name %in% c(
+            "phate", "phate.core", "phate.embed",
+            "compute.diffusion.pseudotime.sparse",
+            "compute.potential.pseudotime.sparse"
+        )
         return(c(
             ownership = "DGRAPHS",
             intended_package = "dgraphs",
-            lifecycle_action = "REVIEW-DEEXPORT-OR-ADAPTER",
-            target_release = "phase-5-or-6"
+            lifecycle_action = if (temporary.public)
+                "TEMPORARY-PUBLIC-MIGRATE" else
+                "REVIEW-DEEXPORT-OR-ADAPTER",
+            target_release = if (temporary.public)
+                "after-dgraphs-parity" else
+                "phase-5-or-6"
+        ))
+    }
+
+    if (source.file == "R/clustering.R" && name %in% c(
+        "cluster.graph.louvain", "congruence.with.labels"
+    )) {
+        return(c(
+            ownership = "DGRAPHS",
+            intended_package = "dgraphs",
+            lifecycle_action = "TEMPORARY-PUBLIC-MIGRATE",
+            target_release = "after-dgraphs-parity"
         ))
     }
 

@@ -23,7 +23,7 @@
 #'   \item{indexing}{Detected indexing convention in input adjacency (\code{"zero_based"} or \code{"one_based"}).}
 #' }
 #'
-#' @export
+#' @keywords internal
 build.sparse.transition <- function(adj.list,
                                     weight.list = NULL,
                                     weight.mode = c("inverse", "identity", "exp_neg"),

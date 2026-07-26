@@ -127,7 +127,7 @@ traj.dtw.distance <- function(x.mat,
 #' plot(hc)
 #' }
 #'
-#' @export
+#' @keywords internal
 trajectory.dist <- function(traj.list,
                             method = c("lcss", "frechet", "hausdorff"),
                             pre = NULL,
@@ -292,7 +292,7 @@ trajectory.dist <- function(traj.list,
 #' str(pre)
 #' }
 #'
-#' @export
+#' @keywords internal
 graph.metric.precompute <- function(g,
                                     traj.list,
                                     weights = NULL,
@@ -348,7 +348,7 @@ graph.metric.precompute <- function(g,
 #' dim(C)
 #' }
 #'
-#' @export
+#' @keywords internal
 traj.local.cost.graph <- function(traj.i, traj.j, pre) {
   ## pre: output of graph.metric.precompute()
   vi <- as.integer(traj.i)
@@ -386,7 +386,7 @@ traj.local.cost.graph <- function(traj.i, traj.j, pre) {
 #'               1, 0, 1), nrow = 2, byrow = TRUE)
 #' frechet.distance.discrete.cost(C)
 #'
-#' @export
+#' @keywords internal
 frechet.distance.discrete.cost <- function(C) {
 
   n <- nrow(C)
@@ -441,7 +441,7 @@ frechet.distance.discrete.cost <- function(C) {
 #' d
 #' }
 #'
-#' @export
+#' @keywords internal
 traj.frechet.distance.graph <- function(traj.i, traj.j, pre) {
   C <- traj.local.cost.graph(traj.i, traj.j, pre)
   frechet.distance.discrete.cost(C)
@@ -473,7 +473,7 @@ traj.frechet.distance.graph <- function(traj.i, traj.j, pre) {
 #'               0.2, 0.1, 0.4), nrow = 2, byrow = TRUE)
 #' lcss.length.cost(C, eps = 0.25, delta = Inf)
 #'
-#' @export
+#' @keywords internal
 lcss.length.cost <- function(C, eps, delta = Inf) {
   ## C: n x m local cost matrix
   ## eps: match threshold, match if C[i,j] <= eps
@@ -534,7 +534,7 @@ lcss.length.cost <- function(C, eps, delta = Inf) {
 #' d
 #' }
 #'
-#' @export
+#' @keywords internal
 traj.lcss.distance.graph <- function(traj.i, traj.j, pre, eps, delta = Inf,
                                      normalize = c("min", "mean")) {
   normalize <- match.arg(normalize)
@@ -587,7 +587,7 @@ traj.lcss.distance.graph <- function(traj.i, traj.j, pre, eps, delta = Inf,
 #' eps
 #' }
 #'
-#' @export
+#' @keywords internal
 lcss.eps.auto.graph <- function(pre,
                                 q = 0.10,
                                 sample.pairs = 200000L,
@@ -682,7 +682,7 @@ lcss.eps.auto.graph <- function(pre,
 #' eps
 #' }
 #'
-#' @export
+#' @keywords internal
 lcss.eps.auto.matchrate.graph <- function(pre,
                                           match.rate = 0.10,
                                           sample.pairs = 200000L,
@@ -723,7 +723,7 @@ lcss.eps.auto.matchrate.graph <- function(pre,
 #'               1, 0, 1), nrow = 2, byrow = TRUE)
 #' hausdorff.distance.cost(C)
 #'
-#' @export
+#' @keywords internal
 hausdorff.distance.cost <- function(C) {
     ## C: n x m local cost matrix
     hxy <- max(apply(C, 1L, min))
@@ -750,7 +750,7 @@ hausdorff.distance.cost <- function(C) {
 #' X <- traj.points(traj, E)
 #' dim(X)
 #'
-#' @export
+#' @keywords internal
 traj.points <- function(traj, E) {
   if (!is.matrix(E) || !is.numeric(E)) {
     stop("E must be a numeric matrix.")
@@ -788,7 +788,7 @@ traj.points <- function(traj, E) {
 #' C <- point.dist.matrix(X, Y)
 #' dim(C)
 #'
-#' @export
+#' @keywords internal
 point.dist.matrix <- function(X, Y) {
   X <- as.matrix(X)
   Y <- as.matrix(Y)
