@@ -64,3 +64,15 @@ graph.cltr.imputation
 clusters.reorder
 hclust.select.k
 adjusted.rand.index
+generate.star.dataset
+ggraph
+identify.bottlenecks
+plot.star_object
+plot.ggraph
+plot.kh.matrix
+plot.model.errors
+plot.prediction.errors
+plot.chain.with.path
+plot.component
+plot.components.multi
+plot.comono.diagnostics

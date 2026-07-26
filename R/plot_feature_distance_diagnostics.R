@@ -16,12 +16,12 @@
 #'
 #' @examples
 #' \dontrun{
-#' y <- transform.logit(c(0, 0.1, 0.5, 0.9, 1), pseudo.count = 1e-6)
+#' y <- .logit.transform(c(0, 0.1, 0.5, 0.9, 1), pseudo.count = 1e-6)
 #' }
 #'
 #' @keywords internal
 #' @noRd
-transform.logit <- function(x, pseudo.count = 1e-6) {
+.logit.transform <- function(x, pseudo.count = 1e-6) {
     ## Clamp away from 0/1 with a pseudocount
     x2 <- (x + pseudo.count) / (1 + 2 * pseudo.count)
     stats::qlogis(x2)

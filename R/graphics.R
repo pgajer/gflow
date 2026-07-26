@@ -123,7 +123,7 @@ model.errors <- function(integrals, bb.integrals) {
 #' @param adj.list List where element i contains indices of vertices adjacent to vertex i
 #' @param weight.list List where element i contains weights of edges from vertex i
 #' @return An object of class "ggraph"
-#' @export
+#' @keywords internal
 ggraph <- function(adj.list, weight.list = NULL) {
   # Validate inputs
   if (!is.list(adj.list)) {
@@ -452,9 +452,8 @@ itriangle.plot <- function(coords, v = NULL, params) {
 #'   plot(g, dim = 3)
 #' }
 #' }
-#' @method plot ggraph
-#' @export
-plot.ggraph <- function(x,
+#' @keywords internal
+.plot.ggraph <- function(x,
                         y = NULL,
                         dim = 2,
                         vertex.size = 1,
@@ -779,7 +778,7 @@ plot.graphMScx <- function(x,
 
         vertex.color <- ifelse(res$MS_graph_types == 1, lmin.color, lmax.color)
 
-        plot(g,
+        .plot.ggraph(g,
              layout = layout,
              vertex.label.degree = label_degree,
              vertex.label.dist = label_dist_vec,
@@ -842,7 +841,7 @@ plot.graphMScx <- function(x,
 
         # Create and plot ggraph
         g <- ggraph(res$graph$adj.list, res$graph$weight.list)
-        plot(g,
+        .plot.ggraph(g,
              vertex.color = vertex.color,
              vertex.size = vertex.size.vec,
              vertex.label = vertex.label,
@@ -888,7 +887,7 @@ plot.graphMScx <- function(x,
 
         # Create and plot ggraph
         g <- ggraph(res$graph$adj.list, res$graph$weight.list)
-        plot(g,
+        .plot.ggraph(g,
              vertex.color = vertex.color,
              vertex.size = vertex.size.vec,
              vertex.label = vertex.label,
@@ -1002,7 +1001,7 @@ plot.graphMScx <- function(x,
 
         # Create and plot ggraph
         g <- ggraph(res$graph$adj.list, res$graph$weight.list)
-        plot(g,
+        .plot.ggraph(g,
              vertex.color = all.vertex.color,
              vertex.size = all.vertex.size,
              vertex.label = vertex.label,
@@ -1110,8 +1109,8 @@ plot.graphMScx <- function(x,
 #' plot(khm, main = "Custom Title", xlab = "k values")
 #' }
 #'
-#' @export
-plot.kh.matrix <- function(x, existing.k = NULL, h.values = NULL, id = NULL,
+#' @keywords internal
+.plot.kh.matrix <- function(x, existing.k = NULL, h.values = NULL, id = NULL,
                            color.palette = c("white", "black"),
                            xlab = "k (number of nearest neighbors)",
                            ylab = "h (hop size)",
@@ -1189,8 +1188,8 @@ plot.kh.matrix <- function(x, existing.k = NULL, h.values = NULL, id = NULL,
 #' @param margin.bottom Extra space for x-axis labels (default: 8)
 #' @param ... Additional graphical parameters passed to plotting functions
 #'
-#' @export
-plot.model.errors <- function(x,
+#' @keywords internal
+.plot.model.errors <- function(x,
                               method = c("bars", "points"),
                               title = NULL,
                               y.lab = "Total Absolute True Error",
@@ -1376,8 +1375,8 @@ plot.model.errors <- function(x,
 #'      legend.pos = "topright")
 #' }
 #'
-#' @export
-plot.prediction.errors <- function(x,
+#' @keywords internal
+.plot.prediction.errors <- function(x,
                                    xvals = NULL,
                                    cols = NULL,
                                    ltys = NULL,
@@ -1565,8 +1564,8 @@ plot.prediction.errors <- function(x,
 #' plot(chain.with.path.obj)
 #'
 #' @importFrom graphics plot points segments text
-#' @export
-plot.chain.with.path <- function(x,
+#' @keywords internal
+.plot.chain.with.path <- function(x,
                                  vertex.size = 0.5,
                                  margin = 0.5,
                                  title = "Chain Graph with Highlighted Path",

@@ -648,9 +648,9 @@ fofam.test <- fassoc1.test
 #'
 #' @return A named numeric vector containing delta1, normalized effect sizes,
 #'   and p-value.
-#' @method coef assoc1
+#' @keywords internal
 #' @noRd
-coef.assoc1 <- function(object, ...) {
+.coef.assoc1 <- function(object, ...) {
     c(delta1 = object$delta1,
       Delta1 = object$Delta1,
       delta1.z = object$delta1.z,
@@ -686,9 +686,9 @@ coef.assoc1 <- function(object, ...) {
 #' class(result) <- "assoc1"
 #'
 #' print(result)
-#' @method print assoc1
+#' @keywords internal
 #' @noRd
-print.assoc1 <- function(x, digits = 4, ...) {
+.print.assoc1 <- function(x, digits = 4, ...) {
     cat("\nFirst-Order Functional Association Test (Paired BB)\n")
     cat("===================================================\n\n")
 
@@ -762,9 +762,9 @@ print.assoc1 <- function(x, digits = 4, ...) {
 #' class(result) <- "assoc1"
 #'
 #' summary(result)
-#' @method summary assoc1
+#' @keywords internal
 #' @noRd
-summary.assoc1 <- function(object, ...) {
+.summary.assoc1 <- function(object, ...) {
     out <- list(
         call = object$call,
         n = length(object$x),
@@ -795,7 +795,7 @@ summary.assoc1 <- function(object, ...) {
     return(out)
 }
 
-#' @method print summary.assoc1
+#' @keywords internal
 #' @examples
 #' result <- list(
 #'   call = quote(fassoc1.test(x, y)),
@@ -825,7 +825,7 @@ summary.assoc1 <- function(object, ...) {
 #' result.summary <- summary(result)
 #' result.summary
 #' @noRd
-print.summary.assoc1 <- function(x, digits = 4, ...) {
+.print.summary.assoc1 <- function(x, digits = 4, ...) {
     cat("\nFirst-Order Functional Association Test Summary\n")
     cat("===============================================\n\n")
 
@@ -887,9 +887,9 @@ print.summary.assoc1 <- function(x, digits = 4, ...) {
 #' class(result) <- "assoc1"
 #'
 #' plot(result, type = "diff")
-#' @method plot assoc1
+#' @keywords internal
 #' @noRd
-plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
+.plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
                          ...) {
     type <- match.arg(type)
 
@@ -986,8 +986,10 @@ plot.assoc1 <- function(x, type = c("Exy", "dExy", "diff", "qq", "comparison"),
 #' @return Derivative information (format depends on method).
 #'
 #' @seealso The internal \code{extract.derivatives.assoc1()} method.
-extract.derivatives <- function(object, ...) {
-    UseMethod("extract.derivatives")
+#' @keywords internal
+#' @noRd
+.extract.derivatives <- function(object, ...) {
+    .extract.assoc1.derivatives(object, ...)
 }
 
 #' Extract Derivative Information from assoc1 Object
@@ -1035,9 +1037,9 @@ extract.derivatives <- function(object, ...) {
 #'         col = "gray90", border = NA)
 #' }
 #'
-#' @method extract.derivatives assoc1
+#' @keywords internal
 #' @noRd
-extract.derivatives.assoc1 <- function(object,
+.extract.assoc1.derivatives <- function(object,
                                        type = c("estimate", "credible.interval", "both"),
                                        probs = c(0.025, 0.975),
                                        ...) {

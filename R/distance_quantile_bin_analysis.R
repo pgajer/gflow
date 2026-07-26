@@ -257,6 +257,7 @@ distance.quantile.bin.analysis <- function(x,
         keep = keep
     )
 
+    class(out) <- c("distance.quantile.bins", "list")
     out
 }
 
@@ -265,6 +266,11 @@ plot.distance.quantile.bins <- function(x,
                                        what = c("abundance", "presence"),
                                        main = NULL,
                                        ...) {
+    if (!inherits(x, "distance.quantile.bins") ||
+        !is.list(x) ||
+        !is.data.frame(x$bins)) {
+        stop("x must be a distance.quantile.bins object.")
+    }
     res <- x
 
     what <- match.arg(what)
