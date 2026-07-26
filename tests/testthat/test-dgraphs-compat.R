@@ -81,3 +81,17 @@ test_that("endpoint compatibility wrapper delegates to dgraphs", {
         do.call(dgraphs::geodesic.core.endpoints, arguments)
     )
 })
+
+test_that("isometry compatibility wrapper delegates to dgraphs", {
+    reference <- as.matrix(stats::dist(matrix(seq_len(4L), ncol = 1L)))
+    estimated <- 1.1 * reference
+
+    expect_warning(
+        observed <- summarize.isometry.deviation(estimated, reference),
+        "dgraphs::summarize.isometry.deviation"
+    )
+    expect_identical(
+        observed,
+        dgraphs::summarize.isometry.deviation(estimated, reference)
+    )
+})

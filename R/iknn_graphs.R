@@ -347,7 +347,7 @@ compute.stability.metrics <- function(
     ## Consecutive-graph metrics: JS divergence and edit distance
     ## ------------------------------------------------------------------------
 
-    js.stability <- compute.graph.summary.stability(
+    js.stability <- dgraphs::compute.graph.summary.stability(
         graphs = graphs.list,
         summary = summary,
         divergence = divergence,
@@ -417,7 +417,7 @@ compute.stability.metrics <- function(
 
 # Updated helper function to compute JS divergence between degree distributions
 compute.degrees.js.divergence <- function(g1, g2) {
-    graph.summary.divergence(
+    dgraphs::graph.summary.divergence(
         g1 = g1,
         g2 = g2,
         summary = "degree_distribution",

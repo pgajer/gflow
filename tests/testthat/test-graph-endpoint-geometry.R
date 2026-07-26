@@ -9,7 +9,7 @@ test_that("compute.graph.endpoint.scores assigns highest score to chain tips", {
   weight.list <- lapply(adj.list, function(nbrs) rep(1, length(nbrs)))
   layout.3d <- cbind(seq_len(n), 0, 0)
 
-  res <- compute.graph.endpoint.scores(
+  res <- dgraphs::compute.graph.endpoint.scores(
     adj.list = adj.list,
     weight.list = weight.list,
     layout.3d = layout.3d,
@@ -34,7 +34,7 @@ test_that("C++ endpoint scorer matches the reference R implementation", {
   weight.list <- lapply(adj.list, function(nbrs) rep(1, length(nbrs)))
   layout.3d <- cbind(seq_len(n), sin(seq_len(n) / 2), cos(seq_len(n) / 3))
 
-  ref <- gflow:::.compute.graph.endpoint.scores.reference(
+  ref <- dgraphs:::.compute.graph.endpoint.scores.reference(
     adj.list = adj.list,
     weight.list = weight.list,
     layout.3d = layout.3d,
@@ -47,7 +47,7 @@ test_that("C++ endpoint scorer matches the reference R implementation", {
     prefer.cpp = FALSE
   )
 
-  cpp <- gflow:::.compute.graph.endpoint.scores.reference(
+  cpp <- dgraphs:::.compute.graph.endpoint.scores.reference(
     adj.list = adj.list,
     weight.list = weight.list,
     layout.3d = layout.3d,
@@ -162,7 +162,7 @@ test_that("compute.graph.endpoint.scores supports robust quantile scoring", {
   layout.3d[1:30, ] <- cbind(seq(0, 29), 0, 0)
   layout.3d[31, ] <- c(1, 8, 0)
 
-  res <- compute.graph.endpoint.scores(
+  res <- dgraphs::compute.graph.endpoint.scores(
     adj.list = adj.list,
     weight.list = weight.list,
     layout.3d = layout.3d,
