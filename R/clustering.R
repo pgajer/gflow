@@ -750,7 +750,7 @@ graph.cltr.imputation <- function(adj.list, weight.list, y, k = 10) {
     }
 
     # Build igraph object
-    graph.obj <- convert.adjacency.to.edge.matrix(adj.list, weight.list)
+    graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(adj.list, weight.list)
     if (nrow(graph.obj$edge.matrix) == 0) {
         g <- igraph::make_empty_graph(n = n.vertices, directed = FALSE)
     } else {

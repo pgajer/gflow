@@ -485,7 +485,7 @@ morse.smale.graph.persistence <- function(X,
         MS.graph[[k]] <- graph.MS.cx(nerve.graph[[k]], y)$MS_graph
 
         ## Creating an igraph from the adjacency list MS.graph[[k]]
-        g.m <- convert.adjacency.to.edge.matrix(MS.graph[[k]])
+        g.m <- dgraphs::convert.adjacency.to.edge.matrix(MS.graph[[k]])
         MS.igraph[[k]] <- igraph::graph_from_edgelist(g.m, directed = FALSE)
 
         ## Check if MS.igraph[[k]] is an igraph object
@@ -509,7 +509,7 @@ morse.smale.graph.persistence <- function(X,
             cat("\rTesting isomorphism with the reference graph ... ")
         }
 
-        g.m <- convert.adjacency.to.edge.matrix(ref.MS.graph)
+        g.m <- dgraphs::convert.adjacency.to.edge.matrix(ref.MS.graph)
         ref.MS.igraph <- igraph::graph_from_edgelist(g.m, directed = FALSE)
 
         for (k in k0:max(Ks)) {

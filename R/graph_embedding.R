@@ -120,7 +120,7 @@ graph.embedding <- function(adj.list,
   }
 
   ## Convert adjacency list to edge matrix
-  res <- convert.adjacency.to.edge.matrix(adj.list, weights.list)
+  res <- dgraphs::convert.adjacency.to.edge.matrix(adj.list, weights.list)
 
   if (verbose) {
     elapsed.time(ptm)

@@ -4257,7 +4257,7 @@ cell.trajectories.monotonicity <- function(x,
     }
 
     ## Build igraph object
-    graph.obj <- convert.adjacency.to.edge.matrix(adj.list, weight.list)
+    graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(adj.list, weight.list)
     g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
     igraph::E(g)$weight <- graph.obj$weights
 
@@ -4488,7 +4488,7 @@ trajectory.distances.to.vertex <- function(trajectories,
     }
 
     ## Build adjacency matrix and igraph object
-    adj.mat <- convert.adjacency.list.to.adjacency.matrix(
+    adj.mat <- dgraphs::convert.adjacency.list.to.adjacency.matrix(
         adj.list,
         weight.list
     )
@@ -4673,7 +4673,7 @@ vertex.distances.to.trajectory <- function(vertices,
     }
 
     ## Build adjacency matrix and igraph object
-    adj.mat <- convert.adjacency.list.to.adjacency.matrix(adj.list, weight.list)
+    adj.mat <- dgraphs::convert.adjacency.list.to.adjacency.matrix(adj.list, weight.list)
 
     gr <- igraph::graph_from_adjacency_matrix(
         adj.mat,

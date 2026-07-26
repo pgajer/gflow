@@ -672,7 +672,7 @@ compute.graph.summary.stability <- function(
 
 .gflow.connected.components <- function(adj.list) {
     if (exists("graph.connected.components", mode = "function")) {
-        return(graph.connected.components(adj.list))
+        return(dgraphs::graph.connected.components(adj.list))
     }
 
     n <- length(adj.list)

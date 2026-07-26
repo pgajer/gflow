@@ -1410,7 +1410,7 @@ geodesic.knnx <- function(X, X.grid, k, method="knn.graph", K=5) {
     }
     V <- rbind(X.grid, X)
     E <- rbind(E.grid, E)
-    A <- graph.adj.mat(V, E)
+    A <- dgraphs::graph.adj.mat(V, E)
     G <- igraph::graph_from_adjacency_matrix(A, mode="undirected", weighted=TRUE)
     d <- igraph::distances(G)
     ## rownames(d) <- rownames(X)
@@ -1478,7 +1478,7 @@ geodesic.knnx <- function(X, X.grid, k, method="knn.graph", K=5) {
 #' # Create a simple triangle graph
 #' X <- matrix(c(0,0, 1,0, 0,1), ncol=2, byrow=TRUE)
 #' E <- matrix(c(1,2, 2,3, 3,1), ncol=2, byrow=TRUE)
-#' A <- graph.adj.mat(X, E)
+#' A <- dgraphs::graph.adj.mat(X, E)
 #' print(A)
 #' # Should show distances: A[1,2]=A[2,1]=1, A[2,3]=A[3,2]=sqrt(2), A[3,1]=A[1,3]=1
 #'

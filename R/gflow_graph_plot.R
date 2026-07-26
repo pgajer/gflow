@@ -181,8 +181,6 @@ plot.gflow_graph <- function(x,
   
   invisible(coords)
 }
-
-
 #' Compute Layout Coordinates for Gradient Flow Graph
 #'
 #' @description
@@ -272,105 +270,4 @@ compute.layout <- function(gflow.graph, layout) {
   }
   
   return(coords)
-}
-
-
-#' Export Gradient Flow Graph to igraph Format
-#'
-#' @description
-#' Converts a gradient flow graph object to an igraph graph object for
-#' compatibility with igraph's extensive graph analysis and visualization tools.
-#'
-#' @param gflow.graph An object of class \code{"gflow_graph"} as created by
-#'   \code{\link{construct.gflow.graph}}.
-#' @param include.vertex.attrs Logical indicating whether to include vertex
-#'   attributes (basin type, size, extremum info) in the igraph object
-#'   (default: TRUE).
-#' @param include.edge.attrs Logical indicating whether to include edge weights
-#'   as attributes (default: TRUE).
-#'
-#' @return An igraph graph object with vertices corresponding to basins and
-#'   edges corresponding to basin intersections. If requested, vertex attributes
-#'   include: label, type, size, extremum.vertex, extremum.value. Edge attributes
-#'   include: weight, intersection.size.
-#'
-#' @examples
-#' \dontrun{
-#' library(igraph)
-#'
-#' gflow.graph <- construct.gflow.graph(merged.basins)
-#' g <- as_igraph(gflow.graph)
-#'
-#' # Use igraph functions
-#' plot(g, vertex.size = V(g)$size / 10,
-#'      vertex.color = ifelse(V(g)$type == "ascending", "blue", "red"))
-#'
-#' # Compute graph properties
-#' betweenness(g)
-#' clustering_coefficient(g)
-#' }
-#'
-#' @seealso
-#' \code{\link{construct.gflow.graph}}
-#'
-#' @export
-as_igraph <- function(gflow.graph,
-                      include.vertex.attrs = TRUE,
-                      include.edge.attrs = TRUE) {
-  
-  if (!requireNamespace("igraph", quietly = TRUE)) {
-    stop("Package 'igraph' is required for this function.")
-  }
-  
-  n.total <- length(gflow.graph$adjacency.list)
-  
-  ## Build edge list
-  edge.list <- NULL
-  edge.weights <- NULL
-  edge.intersections <- NULL
-  
-  for (i in seq_len(n.total)) {
-    if (length(gflow.graph$adjacency.list[[i]]) == 0) next
-    
-    for (k in seq_along(gflow.graph$adjacency.list[[i]])) {
-      j <- gflow.graph$adjacency.list[[i]][k]
-      
-      ## Only add each edge once
-      if (i < j) {
-        edge.list <- rbind(edge.list, c(i, j))
-        if (include.edge.attrs) {
-          edge.weights <- c(edge.weights, gflow.graph$weight.list[[i]][k])
-          edge.intersections <- c(edge.intersections,
-                                 gflow.graph$intersection.matrix[i, j])
-        }
-      }
-    }
-  }
-  
-  ## Create igraph object
-  if (is.null(edge.list)) {
-    ## Graph with no edges
-    g <- igraph::make_empty_graph(n = n.total, directed = FALSE)
-  } else {
-    g <- igraph::graph_from_edgelist(edge.list, directed = FALSE)
-  }
-  
-  ## Add vertex attributes
-  if (include.vertex.attrs) {
-    igraph::V(g)$name <- gflow.graph$basin.metadata$label
-    igraph::V(g)$type <- gflow.graph$basin.metadata$type
-    igraph::V(g)$size <- gflow.graph$basin.metadata$size
-    igraph::V(g)$extremum.vertex <- gflow.graph$basin.metadata$extremum.vertex
-    igraph::V(g)$extremum.value <- gflow.graph$basin.metadata$extremum.value
-  } else {
-    igraph::V(g)$name <- gflow.graph$basin.metadata$label
-  }
-  
-  ## Add edge attributes
-  if (include.edge.attrs && !is.null(edge.weights)) {
-    igraph::E(g)$weight <- edge.weights
-    igraph::E(g)$intersection.size <- edge.intersections
-  }
-  
-  return(g)
 }
