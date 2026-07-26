@@ -1,5 +1,9 @@
 # gflow development
 
+* Added canonical post-construction basin refinement for relative-value
+  filtering, extrema clustering, geometric filtering, support filtering, and
+  basin expansion, with explicit per-stage provenance and preserved raw
+  membership.
 * Added canonical RTCB and overlap-cell-complex adapters, including complete
   RTCB parameter provenance and preservation of merged/unmerged basin, cell,
   overlap, cluster-mapping, graph, and simplified-field structures.
