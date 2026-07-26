@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-cleanup-boundary
+.PHONY: clean build build-verbose check check-fast install document attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -30,6 +30,9 @@ document: attrs
 	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" $(R_RUN) -q -e "roxygen2::roxygenise(load = 'source')"
 
 build: clean document
+	find src -name "*.o" -delete
+	find src -name "*.so" -delete
+	rm -f src/*.dll
 	$(R_RUN) CMD build .
 
 build-verbose: clean document
@@ -59,5 +62,8 @@ audit-malo-exports:
 audit-s3-namespace:
 	@$(RSCRIPT_RUN) tools/check_s3_namespace.R
 
-audit-cleanup-boundary: audit-s3-namespace
+audit-phase7-ownership:
+	@$(RSCRIPT_RUN) tools/check_phase7_ownership.R
+
+audit-cleanup-boundary: audit-s3-namespace audit-phase7-ownership
 	@$(RSCRIPT_RUN) tools/check_cleanup_guardrails.R

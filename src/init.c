@@ -5,7 +5,6 @@
 #include <Rdefines.h>
 #include <stdlib.h>
 
-#include "angular_wasserstein_index_r.h"
 #include "cpp_mstrees_r.h"
 #include "cpp_stats_utils_r.h"
 #include "fns_over_graphs_r.h"
@@ -29,7 +28,6 @@
 #include "iknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
 #include "kNN_r.h"       // for S_kNN()
-#include "wasserstein_dist.h" // for C_wasserstein_distance_1D()
 #include "set_wgraph_r.h"
 #include "parameterize_circular_graph_r.h"
 #include "geodesic_stats_r.h"
@@ -67,10 +65,7 @@ static R_NativePrimitiveArgType create_ENPs_grid_2D_type[] = {INTSXP, REALSXP, R
 static R_NativePrimitiveArgType create_ENPs_grid_3D_type[] = {INTSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP};
 
 static R_NativePrimitiveArgType mstree_type[] = {INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType wasserstein_distance_1D_type[] = {REALSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType runif_simplex_type[] = {INTSXP, REALSXP};
-
-static R_NativePrimitiveArgType columnwise_eval_type[]    = {INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
 
 static R_NativePrimitiveArgType matrix_wmeans_type[]            = {REALSXP, INTSXP, INTSXP,  INTSXP,  REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType columnwise_wmean_type[]         = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, REALSXP};
@@ -78,22 +73,9 @@ static R_NativePrimitiveArgType columnwise_wmean_BB_type[]      = {REALSXP, REAL
 static R_NativePrimitiveArgType columnwise_wmean_BB_qCrI_type[] = {INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
 static R_NativePrimitiveArgType columnwise_wmean_BB_CrI_type[]  = {REALSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
 
-static R_NativePrimitiveArgType quantiles_type[] = {REALSXP, INTSXP, REALSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType modified_columnwise_wmean_BB_type[] = {REALSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType mat_columnwise_divide_type[] = {REALSXP, INTSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType normalize_dist_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType normalize_dist_with_minK_a_type[] = {REALSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType samplewr_type[] = {INTSXP, INTSXP};
-static R_NativePrimitiveArgType vpermute_type[] = {INTSXP, INTSXP, INTSXP};
-static R_NativePrimitiveArgType v_get_folds_type[] = {INTSXP, INTSXP, INTSXP};
-static R_NativePrimitiveArgType winsorize_type[] = {REALSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType pdistr_type[] = {REALSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType pearson_cor_type[] = {REALSXP, REALSXP, INTSXP, REALSXP};
-static R_NativePrimitiveArgType wcov_type[] = {REALSXP, REALSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType pearson_wcor_type[] = {REALSXP, REALSXP, REALSXP, INTSXP, REALSXP};
 static R_NativePrimitiveArgType pearson_wcor_BB_qCrI_type[] = {REALSXP, REALSXP, INTSXP, REALSXP, INTSXP, INTSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType density_distance_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, REALSXP};
-static R_NativePrimitiveArgType rmatrix_type[] = {REALSXP, INTSXP, INTSXP, REALSXP, INTSXP};
 
 static R_NativePrimitiveArgType kernel_eval_type[] = { INTSXP, REALSXP, INTSXP, REALSXP, REALSXP };
 static R_NativePrimitiveArgType kernel_type[] = { REALSXP, INTSXP, REALSXP, INTSXP, REALSXP };
@@ -110,30 +92,15 @@ static const R_CMethodDef cMethods[] = {
   {"C_create_ENPs_grid_2D", (DL_FUNC) &C_create_ENPs_grid_2D, 7, create_ENPs_grid_2D_type},
   {"C_create_ENPs_grid_3D", (DL_FUNC) &C_create_ENPs_grid_3D, 9, create_ENPs_grid_3D_type},
   {"C_mstree", (DL_FUNC) &C_mstree, 7, mstree_type},
-  {"C_wasserstein_distance_1D", (DL_FUNC) &C_wasserstein_distance_1D, 4, wasserstein_distance_1D_type},
-  {"C_columnwise_eval", (DL_FUNC) &C_columnwise_eval, 5, columnwise_eval_type},
   {"C_matrix_wmeans", (DL_FUNC) &C_matrix_wmeans, 9, matrix_wmeans_type},
   {"C_columnwise_wmean", (DL_FUNC) &C_columnwise_wmean, 6, columnwise_wmean_type},
   {"C_columnwise_wmean_BB", (DL_FUNC) &C_columnwise_wmean_BB, 7, columnwise_wmean_BB_type},
   {"C_columnwise_wmean_BB_qCrI", (DL_FUNC) &C_columnwise_wmean_BB_qCrI, 9, columnwise_wmean_BB_qCrI_type},
   {"C_columnwise_wmean_BB_CrI_1", (DL_FUNC) &C_columnwise_wmean_BB_CrI_1, 8, columnwise_wmean_BB_CrI_type},
   {"C_columnwise_wmean_BB_CrI_2", (DL_FUNC) &C_columnwise_wmean_BB_CrI_2, 8, columnwise_wmean_BB_CrI_type},
-  {"C_quantiles", (DL_FUNC) &C_quantiles, 5, quantiles_type},
-  {"C_modified_columnwise_wmean_BB", (DL_FUNC) &C_modified_columnwise_wmean_BB, 7, modified_columnwise_wmean_BB_type},
-  {"C_mat_columnwise_divide", (DL_FUNC) &C_mat_columnwise_divide, 4, mat_columnwise_divide_type},
   {"C_normalize_dist", (DL_FUNC) &C_normalize_dist, 7, normalize_dist_type},
-  {"C_normalize_dist_with_minK_a", (DL_FUNC) &C_normalize_dist_with_minK_a, 6, normalize_dist_with_minK_a_type},
-  {"C_samplewr", (DL_FUNC) &C_samplewr, 2, samplewr_type},
-  {"C_vpermute", (DL_FUNC) &C_vpermute, 3, vpermute_type},
-  {"C_v_get_folds", (DL_FUNC) &C_v_get_folds, 3, v_get_folds_type},
-  {"C_winsorize", (DL_FUNC) &C_winsorize, 4, winsorize_type},
-  {"C_pdistr", (DL_FUNC) &C_pdistr, 4, pdistr_type},
-  {"C_pearson_cor", (DL_FUNC) &C_pearson_cor, 4, pearson_cor_type},
-  {"C_wcov", (DL_FUNC) &C_wcov, 5, wcov_type},
   {"C_pearson_wcor", (DL_FUNC) &C_pearson_wcor, 5, pearson_wcor_type},
   {"C_pearson_wcor_BB_qCrI", (DL_FUNC) &C_pearson_wcor_BB_qCrI, 10, pearson_wcor_BB_qCrI_type},
-  {"C_density_distance", (DL_FUNC) &C_density_distance, 5, density_distance_type},
-  {"C_rmatrix", (DL_FUNC) &C_rmatrix, 5, rmatrix_type},
   {NULL, NULL, 0, NULL}
 };
 
@@ -184,7 +151,6 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_gfassoc_membership",      (DL_FUNC) &S_gfassoc_membership,      3},
   {"S_gfassoc_polarity",        (DL_FUNC) &S_gfassoc_polarity,        4},
-  {"S_gfassoc_association",     (DL_FUNC) &S_gfassoc_association,     3},
   {"S_gfassoc_basin_character", (DL_FUNC) &S_gfassoc_basin_character, 5},
   {"S_gfassoc_overlap",         (DL_FUNC) &S_gfassoc_overlap,         3},
   {"S_gfassoc_deviation",       (DL_FUNC) &S_gfassoc_deviation,       1},
@@ -215,7 +181,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_construct_graph_gradient_flow", (DL_FUNC) &S_construct_graph_gradient_flow, 6},
 
   {"S_analyze_function_aware_weights", (DL_FUNC) &S_analyze_function_aware_weights, 12},
-  {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
   {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
   {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
   {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
@@ -223,7 +188,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
   {"S_graph_MS_cx_using_short_h_hops", (DL_FUNC) &S_graph_MS_cx_using_short_h_hops, 4},
   {"S_graph_constrained_gradient_flow_trajectories", (DL_FUNC) &S_graph_constrained_gradient_flow_trajectories, 3},
-  {"S_make_response_locally_non_const", (DL_FUNC) &S_make_response_locally_non_const, 7},
 
   // =========================================================================
   // lslope
@@ -249,48 +213,22 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
   {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
 
-  {"S_mstree", (DL_FUNC) &S_mstree, 1},
   // Temporary internal graph-construction dependency: private
   // .create.hHN.graph() still calls this while hHN graph creation is migrated.
   {"S_create_hHN_graph", (DL_FUNC) &S_create_hHN_graph, 3},
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
-  {"S_linf_simplex_knn", (DL_FUNC) &S_linf_simplex_knn, 3},
-
-  {"S_verify_pruning", (DL_FUNC) &S_verify_pruning, 3},
 
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
 
   // =========================================================================
   // graph utilities
   // =========================================================================
-  {"S_graph_connected_components", (DL_FUNC) &S_graph_connected_components, 1},
-  {"S_shortest_path", (DL_FUNC) &S_shortest_path, 3},
-  {"S_geodesic_core_endpoints", (DL_FUNC) &S_geodesic_core_endpoints, 9},
   {"S_detect_major_arms", (DL_FUNC) &S_detect_major_arms, 11},
-  {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
   {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
-  {"S_find_shortest_alt_path", (DL_FUNC) &S_find_shortest_alt_path, 5},
-  {"S_shortest_alt_path_length", (DL_FUNC) &S_shortest_alt_path_length, 5},
-  {"S_wgraph_prune_long_edges", (DL_FUNC) &S_wgraph_prune_long_edges, 5},
-  {"S_graph_edit_distance", (DL_FUNC) &S_graph_edit_distance, 6},
-  {"S_convert_adjacency_to_edge_matrix", (DL_FUNC) &S_convert_adjacency_to_edge_matrix, 2},
-  {"S_convert_adjacency_to_edge_matrix_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_set, 1},
-  {"S_convert_adjacency_to_edge_matrix_unordered_set", (DL_FUNC) &S_convert_adjacency_to_edge_matrix_unordered_set, 1},
-  {"S_angular_wasserstein_index", (DL_FUNC) &S_angular_wasserstein_index, 3},
-  {"S_compute_mstree_total_length", (DL_FUNC) &S_compute_mstree_total_length, 1},
-  {"S_prop_nbhrs_with_smaller_y", (DL_FUNC) &S_prop_nbhrs_with_smaller_y, 2},
-  {"S_graph_spectrum", (DL_FUNC) &S_graph_spectrum, 2},
-  {"S_graph_spectrum_plus", (DL_FUNC) &S_graph_spectrum_plus, 3},
   {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
-  {"S_test_monotonic_reachability_map", (DL_FUNC) &S_test_monotonic_reachability_map, 6},
-  {"S_compute_geodesic_stats", (DL_FUNC) &S_compute_geodesic_stats, 9},
-  {"S_compute_vertex_geodesic_stats", (DL_FUNC) &S_compute_vertex_geodesic_stats, 8},
   {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
   {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
   {"S_compute_tube_lens_corridor", (DL_FUNC) &S_compute_tube_lens_corridor, 7},
-  {"S_remove_redundant_edges", (DL_FUNC) &S_remove_redundant_edges, 2},
-  {"S_compute_edge_weight_rel_deviations", (DL_FUNC) &S_compute_edge_weight_rel_deviations, 2},
-  {"S_compute_edge_weight_deviations", (DL_FUNC) &S_compute_edge_weight_deviations, 2},
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
 
@@ -308,9 +246,6 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_ecdf", (DL_FUNC) &S_ecdf, 1},
   {"S_rlaplace", (DL_FUNC) &S_rlaplace, 4},
-  {"S_pdistr", (DL_FUNC) &S_pdistr, 2},
-  {"S_lwcor", (DL_FUNC) &S_lwcor, 3},
-  {"S_lwcor_yY", (DL_FUNC) &S_lwcor_yY, 4},
 
   // =========================================================================
   // other

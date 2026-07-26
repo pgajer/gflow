@@ -7,9 +7,7 @@ test_that("catch-all support files expose only owned widget workflows", {
     "random_sampling.R",
     "preprocess_matrix.R",
     "hist_utils.R",
-    "boxcox_utils.R",
-    "divergences.R",
-    "wasserstein_dist.R"
+    "boxcox_utils.R"
   )
   source.files <- testthat::test_path("..", "..", "R", source.files)
 

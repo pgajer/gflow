@@ -2223,7 +2223,7 @@ cluster.graph.louvain <- function(graph, weights = NULL, seed = NULL, n.itrs = 1
 #' Classification, 2(1), 193-218.
 #'
 #' @examples
-#' adjusted.rand.index(c(1, 1, 2, 2), c("a", "a", "b", "b"))
+#' gflow:::adjusted.rand.index(c(1, 1, 2, 2), c("a", "a", "b", "b"))
 #'
 #' @keywords internal
 adjusted.rand.index <- function(x, y) {

@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# R CMD build installs the package while building vignettes. The custom
+# Makevars compiles vendored sources in nested directories, which R's default
+# cleanup does not remove before the source tarball is assembled.
+find src -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -delete
