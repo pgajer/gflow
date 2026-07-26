@@ -130,12 +130,13 @@ compute.basins.of.attraction <- function(adj.list,
                                          edge.length.quantile.thld = 0.9,
                                          with.trajectories = FALSE
                                          ) {
-    .compute.basins.of.attraction.backend(
-        adj.list = adj.list,
-        weight.list = weight.list,
-        y = y,
-        edge.length.quantile.thld = edge.length.quantile.thld,
-        with.trajectories = with.trajectories
+    .stop.retired.basin.function(
+        "compute.basins.of.attraction",
+        "geodesic_reachability",
+        paste(
+            "Translate 'weight.list' to 'edge.length.list', 'y' to 'field',",
+            "and pass the threshold and trajectory flag in 'method.params'."
+        )
     )
 }
 

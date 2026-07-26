@@ -1,5 +1,5 @@
 closest_test_args <- function(adj.list, weight.list, y, ...) {
-    compute.gfc.trajectory(
+    .compute.gfc.trajectory.backend(
         adj.list = adj.list,
         weight.list = weight.list,
         y = y,
@@ -75,15 +75,15 @@ test_that("CLOSEST long-edge fallback is selectable and auditable", {
     )
 
     flagged <- do.call(
-        compute.gfc.trajectory,
+        gflow:::.compute.gfc.trajectory.backend,
         c(common, list(long.edge.fallback = "allow_and_flag"))
     )
     allowed <- do.call(
-        compute.gfc.trajectory,
+        gflow:::.compute.gfc.trajectory.backend,
         c(common, list(long.edge.fallback = "allow"))
     )
     forbidden <- do.call(
-        compute.gfc.trajectory,
+        gflow:::.compute.gfc.trajectory.backend,
         c(common, list(long.edge.fallback = "forbid"))
     )
 

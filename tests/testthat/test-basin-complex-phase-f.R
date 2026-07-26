@@ -39,7 +39,10 @@ phase.f.legacy.geodesic <- function(fixture, ...) {
         with.trajectories = FALSE,
         verbose = FALSE
     )
-    do.call(compute.gfc, utils::modifyList(args, list(...)))
+    do.call(
+        gflow:::.compute.gfc.legacy.backend,
+        utils::modifyList(args, list(...))
+    )
 }
 
 phase.f.canonical.geodesic <- function(fixture, simplify.params) {

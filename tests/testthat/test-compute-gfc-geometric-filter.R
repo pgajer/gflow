@@ -18,7 +18,7 @@ test_that("compute.gfc handles empty geometric retention without error", {
 
     y <- rnorm(n)
 
-    res <- compute.gfc(
+    res <- .compute.gfc.legacy.backend(
         adj.list = adj.list,
         edge.length.list = weight.list,
         fitted.values = y,
@@ -62,7 +62,7 @@ test_that("compute.gfc geometric filtering ignores p.deg.threshold", {
     y <- rnorm(n)
 
     set.seed(101)
-    res.low <- compute.gfc(
+    res.low <- .compute.gfc.legacy.backend(
         adj.list = adj.list,
         edge.length.list = weight.list,
         fitted.values = y,
@@ -81,7 +81,7 @@ test_that("compute.gfc geometric filtering ignores p.deg.threshold", {
     )
 
     set.seed(101)
-    res.high <- compute.gfc(
+    res.high <- .compute.gfc.legacy.backend(
         adj.list = adj.list,
         edge.length.list = weight.list,
         fitted.values = y,
