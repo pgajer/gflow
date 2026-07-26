@@ -1465,6 +1465,14 @@ create.basin.complex <- function(
         method,
         simplify.params
     )
+    if (resolved.simplify.params$support.filter$enabled &&
+        resolved.simplify.params$support.filter$min.basin.mass > 0 &&
+        is.null(vertex.mass)) {
+        .stop.basin.complex(
+            "A positive support mass threshold requires 'vertex.mass'.",
+            "vertex.mass"
+        )
+    }
     tie.breaking <- identical(resolved.method.params$tie.breaking, TRUE)
     tie.seed <- .basin.or(resolved.method.params$tie.seed, NULL)
     field.record <- list(
@@ -1493,43 +1501,53 @@ create.basin.complex <- function(
         verbose = verbose
     )
     if (method == "geodesic_reachability") {
-        return(.create.geodesic.reachability.complex(
+        return(.apply.basin.refinements(
+            .create.geodesic.reachability.complex(
             direction = direction,
             graph.input = graph.input,
             field = field.record,
             parameters = parameters
+            )
         ))
     }
     if (method == "trajectory_flow") {
-        return(.create.trajectory.flow.complex(
+        return(.apply.basin.refinements(
+            .create.trajectory.flow.complex(
             direction = direction,
             graph.input = graph.input,
             field = field.record,
             parameters = parameters,
             verbose = verbose
+            )
         ))
     }
     if (method == "superlevel_merge_tree") {
-        return(.create.superlevel.merge.tree.complex(
+        return(.apply.basin.refinements(
+            .create.superlevel.merge.tree.complex(
             direction = direction,
             graph.input = graph.input,
             field = field.record,
             parameters = parameters
+            )
         ))
     }
     if (method == "rtcb") {
-        return(.create.rtcb.complex(
+        return(.apply.basin.refinements(
+            .create.rtcb.complex(
             direction = direction,
             graph.input = graph.input,
             field = field.record,
             parameters = parameters
+            )
         ))
     }
     if (method == "overlap_cell_complex") {
-        return(.create.overlap.cell.complex(
+        return(.apply.basin.refinements(
+            .create.overlap.cell.complex(
             graph.input = graph.input,
             field = field.record,
             parameters = parameters
+            )
         ))
     }
     .new.failed.basin.complex(
