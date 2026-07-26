@@ -75,7 +75,9 @@
 #'       0, 3, 0,
 #'       2, 0, 5),
 #'     nrow = 3, byrow = TRUE
-#'   )
+#'   ),
+#'   edge.type = "all",
+#'   min.intersection = 1L
 #' )
 #' class(gflow.graph) <- "gflow_graph"
 #'
