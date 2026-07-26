@@ -1,5 +1,8 @@
 # gflow development
 
+* Added canonical RTCB and overlap-cell-complex adapters, including complete
+  RTCB parameter provenance and preservation of merged/unmerged basin, cell,
+  overlap, cluster-mapping, graph, and simplified-field structures.
 * Added deterministic exact-plateau superlevel and sublevel merge trees to
   `create.basin.complex()`, including component-wise roots, elder ties,
   hierarchical support, branch assignment, merge events, and nonnegative
