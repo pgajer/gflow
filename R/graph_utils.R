@@ -1181,22 +1181,6 @@ compute.kernel.graph.laplacian.eigenfunctions.I.minus.L.powered <- function(x.mi
 ##     par(op)
 ## }
 
-#' Create Threshold Distance Graph from Distance Matrix
-#'
-#' This function constructs a graph where vertices are connected by an edge
-#' if and only if their distance is less than a specified threshold.
-#' The weight of each edge is the corresponding distance.
-#'
-#' @param dist.matrix A symmetric distance matrix where rows and columns correspond to vertices
-#' @param threshold A numeric threshold value; vertices i and j are connected if dist(i,j) < threshold
-#' @param include.names Logical; whether to include vertex names in the output (default: TRUE)
-#'
-#' @return A list with two components:
-#'   \item{adj_list}{A list of integer vectors. Each vector contains the indices of vertices
-#'         adjacent to the corresponding vertex.}
-#'   \item{weight_list}{A list of numeric vectors. Each vector contains weights of edges
-#'         corresponding to adjacencies in adj_list.}
-#'
 #' Compute local cluster evenness with full cluster support
 #'
 #' Computes the evenness (normalized entropy) of cluster label distribution

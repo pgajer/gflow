@@ -1,0 +1,28 @@
+# Absolute path<TAB>scope<TAB>reason
+# Search these roots before any gflow API is de-exported or removed.
+/Users/pgajer/current_projects/AGP	analysis	qualified gflow calls in non-package analysis scripts
+/Users/pgajer/current_projects/CT_clearance	package-and-analysis	known tracked downstream migrated during the dgraphs split
+/Users/pgajer/current_projects/ZB	analysis	known tracked and unresolved downstream scripts
+/Users/pgajer/current_projects/cell_cycle	analysis	qualified gflow calls in active analysis code
+/Users/pgajer/current_projects/dgraphs	package	API owner and migration-ledger consumer
+/Users/pgajer/current_projects/gcstflow	package	intended owner for CST-specific workflows
+/Users/pgajer/current_projects/geodesicMDS	analysis	known tracked downstream migrated during the dgraphs split
+/Users/pgajer/current_projects/geodesic_data_geometry	analysis	known tracked downstream migrated during the dgraphs split
+/Users/pgajer/current_projects/geosmooth	package-and-tests	smoothing successor with gflow compatibility references
+/Users/pgajer/current_projects/gflow-w2	active-worktree	active secondary gflow worktree; do not edit from this checkout
+/Users/pgajer/current_projects/gflow_examples	examples	non-package example workflows and coordination notes
+/Users/pgajer/current_projects/gflowui	package	interactive downstream and intended owner for UI-only workflows
+/Users/pgajer/current_projects/gflowx	package	archive package and compatibility consumer
+/Users/pgajer/current_projects/graph_modularity	analysis	known tracked downstream migrated during the dgraphs split
+/Users/pgajer/current_projects/grip	package-and-analysis	qualified gflow calls in tests and development analyses
+/Users/pgajer/current_projects/gut_microbiome	analysis	qualified gflow calls in active microbiome workflows
+/Users/pgajer/current_projects/microbiome.utils	package	intended owner for generic microbiome preprocessing
+/Users/pgajer/current_projects/symptoms	analysis	qualified gflow calls in active analysis code
+/Users/pgajer/current_projects/trend_filtering	analysis	qualified gflow calls in development analyses
+/Users/pgajer/current_projects/vaginal_community_trajectory_types	analysis	qualified gflow calls in coordinated trajectory analyses
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-coordination	analysis	qualified gflow calls in coordination worktree
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-w1	analysis	qualified gflow calls in active worktree
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-w1-audit	analysis	qualified gflow calls in audit worktree
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-w2	analysis	qualified gflow calls in active worktree
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-w3	analysis	qualified gflow calls in active worktree
+/Users/pgajer/current_projects/vaginal_community_trajectory_types-w3-audit	analysis	qualified gflow calls in audit worktree

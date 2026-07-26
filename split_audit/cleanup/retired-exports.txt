@@ -1,0 +1,23 @@
+# Exports removed during the dgraphs and gflowx boundary cleanup.
+# Documentation regeneration must not restore any of these names.
+as_igraph
+graph.connected.components
+geodesic.core.endpoints
+graph.geodesic.distances
+shortest.path
+summarize.isometry.deviation
+build.iknn.graphs.and.selectk
+create.adaptive.radius.graph
+create.cknn.graph
+create.cmst.graph
+create.geodesic.iknn.graph
+create.iknn.graphs
+create.iterated.iknn.graphs
+create.mknn.graph
+create.mknn.graphs
+create.radius.graph
+create.single.iknn.graph
+create.sknn.graph
+compute.stability.metrics
+fit.rdgraph.regression
+refit.rdgraph.regression
