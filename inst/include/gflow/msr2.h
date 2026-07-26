@@ -32,7 +32,6 @@ void print_double_array_with_precision(const double *x, int n, int precision);
 #include "lm.h"
 #include "stats_utils.h"
 
-#include "angular_wasserstein_index_r.h"
 #include "cpp_mstrees_r.h"
 #include "mstree_total_length_r.h"
 #include "hHN_graphs_r.h"
