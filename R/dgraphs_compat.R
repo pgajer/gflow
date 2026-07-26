@@ -11,6 +11,25 @@
     )
 }
 
+.gflow.dgraphs.compat.function <- function(name) {
+    target <- getExportedValue("dgraphs", name)
+    wrapper <- function() NULL
+    formals(wrapper) <- formals(target)
+    body(wrapper) <- substitute(
+        {
+            .Deprecated(
+                new = paste0("dgraphs::", name),
+                package = "gflow"
+            )
+            call <- match.call()
+            call[[1L]] <- getExportedValue("dgraphs", name)
+            eval(call, envir = parent.frame())
+        }
+    )
+    environment(wrapper) <- environment()
+    wrapper
+}
+
 #' Deprecated graph-infrastructure compatibility wrappers
 #'
 #' These functions contain no graph implementation. They temporarily preserve
@@ -128,3 +147,74 @@ summarize.isometry.deviation <- function(D.estimated,
         )
     )
 }
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::build.iknn.graphs.and.selectk
+#' @export
+build.iknn.graphs.and.selectk <-
+    .gflow.dgraphs.compat.function("build.iknn.graphs.and.selectk")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.adaptive.radius.graph
+#' @export
+create.adaptive.radius.graph <-
+    .gflow.dgraphs.compat.function("create.adaptive.radius.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.cknn.graph
+#' @export
+create.cknn.graph <- .gflow.dgraphs.compat.function("create.cknn.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.cmst.graph
+#' @export
+create.cmst.graph <- .gflow.dgraphs.compat.function("create.cmst.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.geodesic.iknn.graph
+#' @export
+create.geodesic.iknn.graph <-
+    .gflow.dgraphs.compat.function("create.geodesic.iknn.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.iknn.graphs
+#' @export
+create.iknn.graphs <- .gflow.dgraphs.compat.function("create.iknn.graphs")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.iterated.iknn.graphs
+#' @export
+create.iterated.iknn.graphs <-
+    .gflow.dgraphs.compat.function("create.iterated.iknn.graphs")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.mknn.graph
+#' @export
+create.mknn.graph <- .gflow.dgraphs.compat.function("create.mknn.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.mknn.graphs
+#' @export
+create.mknn.graphs <- .gflow.dgraphs.compat.function("create.mknn.graphs")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.radius.graph
+#' @export
+create.radius.graph <- .gflow.dgraphs.compat.function("create.radius.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.single.iknn.graph
+#' @export
+create.single.iknn.graph <-
+    .gflow.dgraphs.compat.function("create.single.iknn.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::create.sknn.graph
+#' @export
+create.sknn.graph <- .gflow.dgraphs.compat.function("create.sknn.graph")
+
+#' @rdname gflow-dgraphs-compat
+#' @inheritParams dgraphs::compute.stability.metrics
+#' @export
+compute.stability.metrics <-
+    .gflow.dgraphs.compat.function("compute.stability.metrics")
