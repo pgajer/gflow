@@ -1,5 +1,9 @@
 # gflow development
 
+* Added canonical `trajectory_flow` and `geodesic_reachability` adapters to
+  `create.basin.complex()`. The adapters preserve raw overlap separately from
+  primary assignment, retain legacy backend objects for provenance, normalize
+  set memberships, and isolate seeded tie breaking from the global RNG state.
 * Added the Phase B canonical basin-complex API:
   - `create.basin.complex()` now validates graph geometry, fields, mass,
     density, method parameters, and refinement parameters into a stable

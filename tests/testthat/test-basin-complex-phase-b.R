@@ -17,7 +17,7 @@ phase.b.create <- function(method = "trajectory_flow", ...) {
     )
 }
 
-test_that("Phase B constructor returns canonical failed objects for every method", {
+test_that("constructor preserves canonical classes across implementation phases", {
     methods <- c(
         "trajectory_flow",
         "superlevel_merge_tree",
@@ -40,12 +40,17 @@ test_that("Phase B constructor returns canonical failed objects for every method
         )
         expect_identical(object$method, method)
         expect_identical(object$direction, "both")
-        expect_identical(object$status, "failed")
-        expect_identical(nrow(object$diagnostics), 1L)
-        expect_identical(
-            object$diagnostics$condition.class,
-            "gflow_basin_backend_not_implemented"
-        )
+        if (method %in% c("trajectory_flow", "geodesic_reachability")) {
+            expect_identical(object$status, "ok")
+            expect_identical(nrow(object$diagnostics), 0L)
+        } else {
+            expect_identical(object$status, "failed")
+            expect_identical(nrow(object$diagnostics), 1L)
+            expect_identical(
+                object$diagnostics$condition.class,
+                "gflow_basin_backend_not_implemented"
+            )
+        }
         expect_true(gflow:::.validate.basin.complex(object))
         expect_false(any(class(object) %in% c(
             "basin_cx",
@@ -287,6 +292,7 @@ test_that("refinement configuration is strict even while disabled", {
 
 test_that("canonical tables have stable columns and accessors", {
     object <- phase.b.create()
+    pending <- phase.b.create("superlevel_merge_tree")
 
     expect_identical(
         names(get.basin.table(object)),
@@ -302,7 +308,8 @@ test_that("canonical tables have stable columns and accessors", {
     )
     expect_identical(as.data.frame(object), get.basin.table(object))
     expect_identical(as.basin.complex(object), object)
-    expect_identical(basins(object), list())
+    expect_true(length(basins(object)) > 0L)
+    expect_identical(basins(pending), list())
 
     expect_true(is.list(get.basin.trajectory.forest(object)))
     expect_null(get.basin.merge.tree(object))
@@ -357,7 +364,7 @@ test_that("print, summary, plot, and conversion methods are stable", {
 })
 
 test_that("schema validation rejects corrupted canonical objects", {
-    object <- phase.b.create()
+    object <- phase.b.create("superlevel_merge_tree")
 
     bad.class <- object
     class(bad.class) <- rev(class(bad.class))
