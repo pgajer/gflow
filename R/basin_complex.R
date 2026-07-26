@@ -1461,11 +1461,12 @@
 #' ignored.
 #'
 #' CLOSEST trajectory flow contracts each connected component of exactly equal
-#' field values before selecting an improving edge. A plateau is terminal when
-#' its quotient vertex has no strictly improving neighbor; original graph
-#' degree is irrelevant. The smallest original vertex is the representative.
-#' Nonterminal plateaus select a boundary edge by length, target vertex, then
-#' source vertex. The resolved trajectory parameter
+#' field values before selecting an improving edge. A flow-terminal plateau has
+#' no adjacent plateau with a strictly higher field value for maximum flow or
+#' a strictly lower field value for minimum flow; original graph degree is
+#' irrelevant. The smallest original vertex is the representative.
+#' Non-flow-terminal plateaus select a boundary edge by length, target vertex,
+#' then source vertex. The resolved trajectory parameter
 #' `plateau.policy = "connected_exact"` is mandatory for CLOSEST and recorded
 #' in the returned provenance.
 #'
