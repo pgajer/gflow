@@ -130,6 +130,22 @@ compute.basins.of.attraction <- function(adj.list,
                                          edge.length.quantile.thld = 0.9,
                                          with.trajectories = FALSE
                                          ) {
+    .compute.basins.of.attraction.backend(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        y = y,
+        edge.length.quantile.thld = edge.length.quantile.thld,
+        with.trajectories = with.trajectories
+    )
+}
+
+.compute.basins.of.attraction.backend <- function(
+    adj.list,
+    weight.list,
+    y,
+    edge.length.quantile.thld = 0.9,
+    with.trajectories = FALSE
+) {
     # Input validation
     if (!is.list(adj.list) || !is.list(weight.list)) {
         stop("adj.list and weight.list must be lists")
