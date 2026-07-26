@@ -40,7 +40,11 @@ test_that("constructor preserves canonical classes across implementation phases"
         )
         expect_identical(object$method, method)
         expect_identical(object$direction, "both")
-        if (method %in% c("trajectory_flow", "geodesic_reachability")) {
+        if (method %in% c(
+            "trajectory_flow",
+            "geodesic_reachability",
+            "superlevel_merge_tree"
+        )) {
             expect_identical(object$status, "ok")
             expect_identical(nrow(object$diagnostics), 0L)
         } else {
@@ -292,7 +296,7 @@ test_that("refinement configuration is strict even while disabled", {
 
 test_that("canonical tables have stable columns and accessors", {
     object <- phase.b.create()
-    pending <- phase.b.create("superlevel_merge_tree")
+    pending <- phase.b.create("rtcb")
 
     expect_identical(
         names(get.basin.table(object)),
@@ -364,7 +368,7 @@ test_that("print, summary, plot, and conversion methods are stable", {
 })
 
 test_that("schema validation rejects corrupted canonical objects", {
-    object <- phase.b.create("superlevel_merge_tree")
+    object <- phase.b.create("rtcb")
 
     bad.class <- object
     class(bad.class) <- rev(class(bad.class))

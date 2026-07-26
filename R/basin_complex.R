@@ -1276,6 +1276,9 @@
             )
         }
         .validate.successful.basin.tables(object)
+        if (object$method == "superlevel_merge_tree") {
+            .validate.merge.tree.complex(object)
+        }
     }
     invisible(TRUE)
 }
@@ -1501,6 +1504,14 @@ create.basin.complex <- function(
             field = field.record,
             parameters = parameters,
             verbose = verbose
+        ))
+    }
+    if (method == "superlevel_merge_tree") {
+        return(.create.superlevel.merge.tree.complex(
+            direction = direction,
+            graph.input = graph.input,
+            field = field.record,
+            parameters = parameters
         ))
     }
     .new.failed.basin.complex(
