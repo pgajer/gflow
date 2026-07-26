@@ -1,5 +1,9 @@
 # gflow development
 
+* Retired `compute.gfc()`, `compute.basins.of.attraction()`,
+  `compute.gfc.trajectory()`, `compute.gfc.flow()`, and `create.basin.cx()`
+  with classed migration errors. Added archived `gfc.flow`,
+  `basins_of_attraction`, and `basin_cx` conversion methods.
 * Migrated canonical basin construction to private geodesic, trajectory, and
   overlap-cell backends so active package and downstream code no longer
   depends on legacy exported constructors.

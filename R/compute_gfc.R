@@ -938,6 +938,52 @@ compute.gfc <- function(adj.list,
     return(result)
 }
 
+.compute.gfc.legacy.backend <- compute.gfc
+
+compute.gfc <- function(adj.list,
+                        edge.length.list,
+                        fitted.values,
+                        edge.length.quantile.thld = 0.9,
+                        min.rel.value.max = 1.1,
+                        max.rel.value.min = 0.9,
+                        max.overlap.threshold = 0.15,
+                        min.overlap.threshold = 0.15,
+                        p.mean.nbrs.dist.threshold = 0.9,
+                        p.mean.hopk.dist.threshold = 0.9,
+                        p.deg.threshold = 0.9,
+                        min.basin.size = 10,
+                        expand.basins = TRUE,
+                        hop.k = 2,
+                        apply.relvalue.filter = TRUE,
+                        apply.maxima.clustering = TRUE,
+                        apply.minima.clustering = TRUE,
+                        apply.geometric.filter = TRUE,
+                        with.trajectories = FALSE,
+                        verbose = FALSE,
+                        modulation = "CLOSEST",
+                        density = NULL,
+                        rtcb.params = NULL,
+                        min.n.trajectories = 0L,
+                        store.trajectories = with.trajectories,
+                        max.trajectory.length = 10000L,
+                        symmetric.seeding = TRUE) {
+    canonical.method <- switch(
+        toupper(as.character(modulation)[[1L]]),
+        GEODESIC = "geodesic_reachability",
+        RTCB = "rtcb",
+        "trajectory_flow"
+    )
+    .stop.retired.basin.function(
+        "compute.gfc",
+        canonical.method,
+        paste(
+            "Translate 'fitted.values' to 'field'; put construction controls",
+            "in 'method.params' and filtering, clustering, support, and",
+            "expansion controls in 'simplify.params'."
+        )
+    )
+}
+
 .harmonize.compute.gfc.summary <- function(summary.df,
                                            raw.size.map = numeric(0),
                                            exp.size.map = numeric(0)) {

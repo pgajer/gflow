@@ -57,7 +57,7 @@ test_that("compute.gfc supports modulation = RTCB and records parameters", {
     x <- seq_len(n)
     y <- sin(2 * pi * x / n) + 0.25 * cos(6 * pi * x / n)
 
-    fit <- compute.gfc(
+    fit <- .compute.gfc.legacy.backend(
         adj.list = g$adj,
         edge.length.list = g$w,
         fitted.values = y,
@@ -92,7 +92,7 @@ test_that("compute.gfc keeps trajectory-first behavior for non-RTCB modulations"
     g <- make_ring_graph(n)
     y <- sin(seq_len(n) / 5)
 
-    fit <- compute.gfc(
+    fit <- .compute.gfc.legacy.backend(
         adj.list = g$adj,
         edge.length.list = g$w,
         fitted.values = y,

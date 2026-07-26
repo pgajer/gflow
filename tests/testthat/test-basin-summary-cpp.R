@@ -20,7 +20,7 @@ test_that("summary.basins_of_attraction C++ path matches R fallback", {
     }
 
     y <- rnorm(n)
-    basins <- compute.basins.of.attraction(
+    basins <- .compute.basins.of.attraction.backend(
         adj.list = adj.list,
         weight.list = weight.list,
         y = y,
@@ -77,7 +77,7 @@ test_that("summary.basins_of_attraction supports cached vertex metrics", {
     }
 
     y <- rnorm(n)
-    basins <- compute.basins.of.attraction(
+    basins <- .compute.basins.of.attraction.backend(
         adj.list = adj.list,
         weight.list = weight.list,
         y = y,

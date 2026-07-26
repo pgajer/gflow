@@ -26,6 +26,38 @@
     stop(condition)
 }
 
+.stop.retired.basin.function <- function(function.name,
+                                         method,
+                                         argument.translation,
+                                         equivalent = TRUE) {
+    replacement <- sprintf(
+        "gflow::create.basin.complex(..., method = \"%s\")",
+        method
+    )
+    equivalence.note <- if (equivalent) {
+        "The reviewed functionality is available through the canonical method."
+    } else {
+        "No exact canonical equivalent is claimed for every legacy argument combination."
+    }
+    .stop.basin.complex(
+        paste(
+            sprintf("'%s()' is retired and no longer runs.", function.name),
+            equivalence.note,
+            sprintf("Use %s.", replacement),
+            argument.translation
+        ),
+        "function",
+        class = "gflow_basin_lifecycle_error",
+        details = list(
+            retired.function = function.name,
+            canonical.function = "create.basin.complex",
+            canonical.method = method,
+            argument.translation = argument.translation,
+            equivalent = equivalent
+        )
+    )
+}
+
 .basin.assert.named.list <- function(x, argument) {
     if (!is.list(x) || is.object(x)) {
         .stop.basin.complex(

@@ -196,6 +196,15 @@ compute.gfc.trajectory <- function(
     tie.breaking = TRUE,
     verbose = FALSE
 ) {
+    .stop.retired.basin.function(
+        "compute.gfc.trajectory",
+        "trajectory_flow",
+        paste(
+            "Translate 'weight.list' to 'edge.length.list', 'y' to 'field',",
+            "put modulation and trajectory controls in 'method.params', and",
+            "put filters and clustering thresholds in 'simplify.params'."
+        )
+    )
     .compute.gfc.trajectory.backend(
         adj.list = adj.list,
         weight.list = weight.list,
@@ -421,8 +430,16 @@ compute.gfc.flow <- function(
     tie.breaking = TRUE,
     verbose = FALSE
 ) {
-    .Deprecated("compute.gfc.trajectory")
-    compute.gfc.trajectory(
+    .stop.retired.basin.function(
+        "compute.gfc.flow",
+        "trajectory_flow",
+        paste(
+            "Translate 'weight.list' to 'edge.length.list', 'y' to 'field',",
+            "put modulation and trajectory controls in 'method.params', and",
+            "put filters and clustering thresholds in 'simplify.params'."
+        )
+    )
+    .compute.gfc.trajectory.backend(
         adj.list = adj.list,
         weight.list = weight.list,
         y = y,

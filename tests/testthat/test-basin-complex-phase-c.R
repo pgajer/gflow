@@ -88,7 +88,7 @@ phase.c.membership.signature <- function(membership) {
 
 test_that("geodesic adapter preserves legacy overlapping support", {
     fixture <- phase.c.path.fixture()
-    legacy <- compute.basins.of.attraction(
+    legacy <- .compute.basins.of.attraction.backend(
         fixture$adj.list,
         fixture$edge.length.list,
         fixture$field,
@@ -192,7 +192,7 @@ test_that("geodesic deterministic assignment is explicit", {
 
 test_that("trajectory adapter preserves legacy membership and assignment", {
     fixture <- phase.c.path.fixture()
-    legacy <- compute.gfc.trajectory(
+    legacy <- .compute.gfc.trajectory.backend(
         fixture$adj.list,
         fixture$edge.length.list,
         fixture$field,

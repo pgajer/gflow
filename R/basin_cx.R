@@ -101,15 +101,13 @@ create.basin.cx <- function(adj.list,
                            min.desc.desc.cell.size.thld = 1,
                            graph.params = list()
                            ) {
-    .create.basin.cx.backend(
-        adj.list = adj.list,
-        weight.list = weight.list,
-        y = y,
-        basin.merge.overlap.thld = basin.merge.overlap.thld,
-        min.asc.desc.cell.size.thld = min.asc.desc.cell.size.thld,
-        min.asc.asc.cell.size.thld = min.asc.asc.cell.size.thld,
-        min.desc.desc.cell.size.thld = min.desc.desc.cell.size.thld,
-        graph.params = graph.params
+    .stop.retired.basin.function(
+        "create.basin.cx",
+        "overlap_cell_complex",
+        paste(
+            "Translate 'weight.list' to 'edge.length.list', 'y' to 'field',",
+            "and put merge, cell-size, and graph controls in 'method.params'."
+        )
     )
 }
 
