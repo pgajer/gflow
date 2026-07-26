@@ -661,6 +661,24 @@
     } else {
         max(abs(perturbation))
     }
+    if (params$modulation == "CLOSEST" &&
+        params$plateau.policy == "connected_exact") {
+        plateau.graph <- .build.plateau.graph(
+            graph.input$adj.list,
+            field$input.values,
+            graph.input$validation$component
+        )
+        if (any(lengths(plateau.graph$vertices) > 1L)) {
+            return(.create.connected.plateau.trajectory.complex(
+                direction = direction,
+                graph.input = graph.input,
+                field = field,
+                parameters = parameters,
+                backend.result = result,
+                warnings = capture$warnings
+            ))
+        }
+    }
 
     requested <- .basin.requested.directions(direction)
     basins.by.direction <- lapply(
@@ -694,7 +712,7 @@
         next.vertex <- if (current == "max") {
             result$next.up
         } else {
-            rep(NA_integer_, length(graph.input$adj.list))
+            result$next.down
         }
         .basin.assignment.from.membership(
             membership,
@@ -711,6 +729,7 @@
 
     forest <- list(
         modulation = params$modulation,
+        plateau.policy = params$plateau.policy,
         long.edge.fallback = result$long.edge.fallback,
         next.vertex = lapply(requested, function(current) {
             assignment$next.vertex[assignment$direction == current]

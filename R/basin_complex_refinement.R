@@ -373,6 +373,26 @@
         return(counts)
     }
     legacy <- object$raw$legacy.object
+    if (!is.null(object$trajectory.forest$plateau)) {
+        for (trajectory in legacy$trajectories) {
+            endpoints <- c(
+                max = trajectory$end.vertex,
+                min = trajectory$start.vertex
+            )
+            for (direction in names(endpoints)) {
+                row <- which(
+                    object$assignment$direction == direction &
+                        object$assignment$vertex == endpoints[[direction]] &
+                        object$assignment$assignment.weight > 0
+                )
+                if (length(row) == 1L) {
+                    basin.id <- object$assignment$basin.id[[row]]
+                    counts[[basin.id]] <- counts[[basin.id]] + 1L
+                }
+            }
+        }
+        return(counts)
+    }
     max.ids <- object$basin.table$basin.id[
         object$basin.table$type == "max"
     ]
