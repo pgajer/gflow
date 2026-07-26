@@ -22,7 +22,7 @@
 #' X <- matrix(runif(12), nrow = 3)
 #' arcsin.sqrt.transform(X)
 #'
-#' @export
+#' @keywords internal
 arcsin.sqrt.transform <- function(x, clip = TRUE, eps = 0) {
     ## Input validation
     if (!is.numeric(x)) {
@@ -101,7 +101,7 @@ arcsin.sqrt.transform <- function(x, clip = TRUE, eps = 0) {
 #'
 #' @seealso \code{\link{clr.transform.matrix}}
 #'
-#' @export
+#' @keywords internal
 clr.transform <- function(X,
                           rows = NULL,
                           cols = NULL,
@@ -182,7 +182,7 @@ clr.transform <- function(X,
 #' clr.X <- clr.transform.matrix(X, pseudo.count = 1e-6)
 #' rowSums(round(clr.X, 8))
 #'
-#' @export
+#' @keywords internal
 clr.transform.matrix <- function(X,
                                  pseudo.count = 1e-6,
                                  check = TRUE) {

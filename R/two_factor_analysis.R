@@ -67,7 +67,7 @@
 #' )
 #' }
 #'
-#' @export
+#' @keywords internal
 #' @importFrom stats prop.test
 #' @importFrom utils write.csv
 two.factor.analysis <- function(y,
@@ -287,7 +287,7 @@ save_results <- function(all.f, f, p, pval, out.dir, label, latex_file) {
 #' )
 #' }
 #'
-#' @export
+#' @keywords internal
 create.latex.table <- function(data, file, label = NA, caption = "") {
     if (!is.matrix(data) && !is.data.frame(data)) {
         stop("'data' must be a matrix or data frame")
@@ -459,7 +459,7 @@ create.latex.table <- function(data, file, label = NA, caption = "") {
 #'
 #' @seealso \code{\link[lme4]{glmer}} for mixed effects model details
 #'
-#' @export
+#' @keywords internal
 #' @importFrom stats prop.test plogis pnorm
 analyze.categorical.proportions <- function(x, y,
                                             subj.ids = NULL,
@@ -832,7 +832,7 @@ analyze.categorical.proportions <- function(x, y,
 #' @seealso
 #' \code{\link{analyze.weighted.cst}} for time-weighted CST analysis
 #'
-#' @export
+#' @keywords internal
 #' @importFrom stats wilcox.test median
 summarize.and.test.cst <- function(x, y, subj.ids,
                                    pos.label = "sPTB",
@@ -1098,7 +1098,7 @@ summarize.and.test.cst <- function(x, y, subj.ids,
 #' @seealso
 #' \code{\link{summarize.and.test.cst}} for unweighted analysis approaches
 #'
-#' @export
+#' @keywords internal
 #' @importFrom stats wilcox.test median
 analyze.weighted.cst <- function(x,
                                  y,

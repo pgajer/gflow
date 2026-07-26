@@ -350,8 +350,8 @@ select.phylotypes.for.assoc <- function(phi,
 #'
 #' res
 #'
-#' @export
-print.phylotype_selection <- function(x, ..., top.n = 10L) {
+#' @keywords internal
+.print.phylotype.selection <- function(x, ..., top.n = 10L) {
 
     cat("Phylotype selection result\n")
     cat("==========================\n")
