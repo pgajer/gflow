@@ -1278,6 +1278,10 @@
         .validate.successful.basin.tables(object)
         if (object$method == "superlevel_merge_tree") {
             .validate.merge.tree.complex(object)
+        } else if (object$method == "rtcb") {
+            .validate.rtcb.complex(object)
+        } else if (object$method == "overlap_cell_complex") {
+            .validate.overlap.cell.complex(object)
         }
     }
     invisible(TRUE)
@@ -1358,9 +1362,9 @@
 #' Create a Canonical Basin Complex
 #'
 #' Creates the canonical schema used by all basin-construction methods in
-#' \pkg{gflow}. Trajectory-flow and geodesic-reachability methods adapt the
-#' corresponding legacy backends; methods whose adapters are not yet available
-#' return a structured recoverable-failure object.
+#' \pkg{gflow}. Each advertised construction method returns the same canonical
+#' schema while retaining method-specific merge-tree, trajectory, RTCB, or
+#' overlap-cell structures.
 #'
 #' @param adj.list Undirected graph adjacency list using 1-based vertex ids.
 #' @param edge.length.list Numeric edge-length vectors parallel to
@@ -1377,10 +1381,9 @@
 #' @param simplify.params Named post-construction refinement parameters.
 #' @param verbose Logical scalar controlling backend progress output.
 #'
-#' @return A `basin_complex`. Implemented adapters return `status = "ok"`.
-#'   A valid input for a method whose adapter is unavailable returns
-#'   `status = "failed"` with a structured
-#'   `gflow_basin_backend_not_implemented` diagnostic.
+#' @return A `basin_complex`. Successful construction returns `status = "ok"`.
+#'   A recoverable backend failure returns `status = "failed"` with a
+#'   structured diagnostic.
 #'
 #' @export
 create.basin.complex <- function(
@@ -1509,6 +1512,21 @@ create.basin.complex <- function(
     if (method == "superlevel_merge_tree") {
         return(.create.superlevel.merge.tree.complex(
             direction = direction,
+            graph.input = graph.input,
+            field = field.record,
+            parameters = parameters
+        ))
+    }
+    if (method == "rtcb") {
+        return(.create.rtcb.complex(
+            direction = direction,
+            graph.input = graph.input,
+            field = field.record,
+            parameters = parameters
+        ))
+    }
+    if (method == "overlap_cell_complex") {
+        return(.create.overlap.cell.complex(
             graph.input = graph.input,
             field = field.record,
             parameters = parameters

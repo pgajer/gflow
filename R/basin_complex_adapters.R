@@ -744,3 +744,420 @@
         trajectory.forest = forest
     )
 }
+
+.create.rtcb.complex <- function(direction,
+                                 graph.input,
+                                 field,
+                                 parameters) {
+    params <- parameters$method.params
+    capture <- .basin.capture.backend(
+        compute.basins.of.attraction.rtcb(
+            adj.list = graph.input$adj.list,
+            weight.list = graph.input$edge.length.list,
+            y = field$construction.values,
+            edge.length.quantile.thld =
+                params$edge.length.quantile.thld,
+            with.trajectories = params$store.trajectories,
+            n.min = params$n.min,
+            m.min = params$m.min,
+            q.min = params$q.min,
+            run.max = params$run.max,
+            tau0 = params$tau0,
+            kappa = params$kappa,
+            k.max = params$k.max,
+            h.max = params$h.max,
+            d.path.max = params$d.path.max,
+            eta.step = params$eta.step,
+            epsilon.d = params$epsilon.d,
+            eps.num = params$eps.num,
+            sink.prune = params$sink.prune,
+            sink.prune.max.iter = params$sink.prune.max.iter,
+            max.paths.per.sink = params$max.paths.per.sink
+        )
+    )
+    if (!is.null(capture$error)) {
+        return(.new.failed.basin.complex(
+            method = "rtcb",
+            direction = direction,
+            graph.input = graph.input,
+            field = field,
+            parameters = parameters,
+            condition.class = "gflow_basin_backend_error",
+            message = conditionMessage(capture$error)
+        ))
+    }
+
+    requested <- .basin.requested.directions(direction)
+    basins.by.direction <- lapply(requested, function(current) {
+        .basin.legacy.geodesic.basins(capture$value, current)
+    })
+    names(basins.by.direction) <- requested
+    basins <- unlist(basins.by.direction, recursive = FALSE)
+    names(basins) <- NULL
+    membership <- do.call(rbind, lapply(requested, function(current) {
+        .basin.membership.from.supports(
+            basins.by.direction[[current]],
+            length(graph.input$adj.list),
+            current
+        )
+    }))
+    row.names(membership) <- seq_len(nrow(membership))
+    assignment <- do.call(rbind, lapply(requested, function(current) {
+        .basin.assignment.from.membership(
+            membership,
+            basins.by.direction[[current]],
+            length(graph.input$adj.list),
+            current,
+            "none"
+        )
+    }))
+    row.names(assignment) <- seq_len(nrow(assignment))
+
+    .new.basin.complex(
+        method = "rtcb",
+        direction = direction,
+        graph.input = graph.input,
+        field = field,
+        parameters = parameters,
+        provenance = list(
+            package.version = .basin.package.version(),
+            method.backend = "compute.basins.of.attraction.rtcb",
+            construction = list(
+                status = "complete",
+                completed = TRUE,
+                membership.weight.policy = "equal_share_set_membership",
+                assignment.policy = "none",
+                requested.assignment.policy =
+                    params$primary.assignment.policy,
+                assignment.backend.available = FALSE,
+                backend.parameters = capture$value$rtcb.params
+            ),
+            refinement.stages = .empty.refinement.stages(),
+            random.seed = NULL
+        ),
+        status = "ok",
+        extrema = .basin.bind.extrema(basins),
+        basin.table = .basin.bind.basin.table(
+            basins,
+            membership,
+            assignment,
+            "rtcb",
+            field$vertex.mass.normalized
+        ),
+        membership = membership,
+        assignment = assignment,
+        diagnostics = .empty.diagnostics.table(),
+        warnings = capture$warnings,
+        raw = list(legacy.object = capture$value)
+    )
+}
+
+.basin.legacy.cell.basins <- function(object, direction) {
+    source <- if (direction == "min") {
+        object$basins$ascending
+    } else {
+        object$basins$descending
+    }
+    lapply(seq_along(source), function(index) {
+        basin <- source[[index]]
+        vertex <- as.integer(basin$vertex)
+        list(
+            basin.id = .basin.direction.id(direction, vertex),
+            extremum.id = .basin.extremum.id(direction, vertex),
+            direction = direction,
+            extremum.vertex = vertex,
+            extremum.value = as.numeric(basin$value),
+            raw.vertices = sort(unique(as.integer(basin$vertices))),
+            legacy.label = names(source)[[index]]
+        )
+    })
+}
+
+.basin.cell.summary <- function(cells) {
+    rows <- list()
+    for (family in names(cells)) {
+        for (cell.id in names(cells[[family]])) {
+            cell <- cells[[family]][[cell.id]]
+            rows[[length(rows) + 1L]] <- list(
+                family = family,
+                cell.id = cell.id,
+                n.vertices = length(cell$vertices),
+                vertices = sort(unique(as.integer(cell$vertices)))
+            )
+        }
+    }
+    if (length(rows) == 0L) {
+        return(structure(
+            list(
+                family = character(),
+                cell.id = character(),
+                n.vertices = integer(),
+                vertices = I(list())
+            ),
+            class = "data.frame",
+            row.names = integer()
+        ))
+    }
+    structure(
+        list(
+            family = vapply(rows, `[[`, character(1), "family"),
+            cell.id = vapply(rows, `[[`, character(1), "cell.id"),
+            n.vertices = as.integer(vapply(
+                rows, `[[`, integer(1), "n.vertices"
+            )),
+            vertices = I(lapply(rows, `[[`, "vertices"))
+        ),
+        class = "data.frame",
+        row.names = seq_along(rows)
+    )
+}
+
+.bind.cell.extrema <- function(object, basins) {
+    extrema <- object$local_extrema
+    if (nrow(extrema) == 0L) {
+        return(.empty.extrema.table())
+    }
+    direction <- ifelse(extrema$is_maximum == 1, "max", "min")
+    retained.vertices <- vapply(
+        basins,
+        `[[`,
+        integer(1),
+        "extremum.vertex"
+    )
+    retained <- extrema$vertex_index %in% retained.vertices
+    mapping <- object$cluster_mappings
+    merged.label <- mapping$merged_label[
+        match(extrema$label, mapping$original_label)
+    ]
+    structure(
+        list(
+            extremum.id = mapply(
+                .basin.extremum.id,
+                direction,
+                extrema$vertex_index,
+                USE.NAMES = FALSE
+            ),
+            type = direction,
+            representative.vertex = as.integer(extrema$vertex_index),
+            extremum.value = as.numeric(extrema$fn_value),
+            plateau.id = rep(NA_character_, nrow(extrema)),
+            plateau.vertices = I(lapply(
+                extrema$vertex_index,
+                as.integer
+            )),
+            n.plateau.vertices = rep.int(1L, nrow(extrema)),
+            is.retained = retained,
+            retention.status = ifelse(
+                retained,
+                "retained",
+                paste0("merged_into_", merged.label)
+            )
+        ),
+        class = "data.frame",
+        row.names = seq_len(nrow(extrema))
+    )
+}
+
+.create.overlap.cell.complex <- function(graph.input,
+                                         field,
+                                         parameters) {
+    params <- parameters$method.params
+    capture <- .basin.capture.backend(
+        create.basin.cx(
+            adj.list = graph.input$adj.list,
+            weight.list = graph.input$edge.length.list,
+            y = field$construction.values,
+            basin.merge.overlap.thld =
+                params$basin.merge.overlap.thld,
+            min.asc.desc.cell.size.thld =
+                params$min.asc.desc.cell.size.thld,
+            min.asc.asc.cell.size.thld =
+                params$min.asc.asc.cell.size.thld,
+            min.desc.desc.cell.size.thld =
+                params$min.desc.desc.cell.size.thld,
+            graph.params = params$cell.graph.params
+        )
+    )
+    if (!is.null(capture$error)) {
+        return(.new.failed.basin.complex(
+            method = "overlap_cell_complex",
+            direction = "both",
+            graph.input = graph.input,
+            field = field,
+            parameters = parameters,
+            condition.class = "gflow_basin_backend_error",
+            message = conditionMessage(capture$error)
+        ))
+    }
+
+    legacy <- capture$value
+    basins.by.direction <- list(
+        max = .basin.legacy.cell.basins(legacy, "max"),
+        min = .basin.legacy.cell.basins(legacy, "min")
+    )
+    basins <- c(basins.by.direction$max, basins.by.direction$min)
+    membership <- do.call(rbind, lapply(c("max", "min"), function(current) {
+        .basin.membership.from.supports(
+            basins.by.direction[[current]],
+            length(graph.input$adj.list),
+            current
+        )
+    }))
+    row.names(membership) <- seq_len(nrow(membership))
+    assignment <- do.call(rbind, lapply(c("max", "min"), function(current) {
+        .basin.assignment.from.membership(
+            membership,
+            basins.by.direction[[current]],
+            length(graph.input$adj.list),
+            current,
+            "none"
+        )
+    }))
+    row.names(assignment) <- seq_len(nrow(assignment))
+
+    initial <- legacy$initial_basin_cx
+    cell.complex <- list(
+        cells = legacy$cells,
+        basin.intersections = list(
+            initial.min.intersection =
+                initial$lmin_intersection_dists,
+            initial.max.intersection =
+                initial$lmax_intersection_dists,
+            initial.min.overlap = initial$lmin_overlap_dists,
+            initial.max.overlap = initial$lmax_overlap_dists,
+            merged = legacy$graph$intersection_matrix
+        ),
+        complex.graph = legacy$graph,
+        cell.summary = .basin.cell.summary(legacy$cells),
+        cluster.assignments = legacy$cluster_assignments,
+        cluster.mappings = legacy$cluster_mappings,
+        simplified.field = as.numeric(legacy$harmonic_predictions)
+    )
+
+    .new.basin.complex(
+        method = "overlap_cell_complex",
+        direction = "both",
+        graph.input = graph.input,
+        field = field,
+        parameters = parameters,
+        provenance = list(
+            package.version = .basin.package.version(),
+            method.backend = "create.basin.cx",
+            construction = list(
+                status = "complete",
+                completed = TRUE,
+                membership.weight.policy = "equal_share_set_membership",
+                assignment.policy = "none",
+                legacy.class = class(legacy)
+            ),
+            refinement.stages = .empty.refinement.stages(),
+            random.seed = NULL
+        ),
+        status = "ok",
+        extrema = .bind.cell.extrema(legacy, basins),
+        basin.table = .basin.bind.basin.table(
+            basins,
+            membership,
+            assignment,
+            "overlap_cell_complex",
+            field$vertex.mass.normalized
+        ),
+        membership = membership,
+        assignment = assignment,
+        cell.complex = cell.complex,
+        diagnostics = .empty.diagnostics.table(),
+        warnings = capture$warnings,
+        raw = list(
+            legacy.object = legacy,
+            initial.basin.complex = initial,
+            merged.basins = legacy$basins
+        )
+    )
+}
+
+.validate.rtcb.complex <- function(object) {
+    params <- object$parameters$method.params
+    observed <- object$provenance$construction$backend.parameters
+    expected <- list(
+        n_min = params$n.min,
+        m_min = params$m.min,
+        q_min = if (is.null(params$q.min)) -1 else params$q.min,
+        run_max = params$run.max,
+        tau0 = params$tau0,
+        kappa = params$kappa,
+        k_max = params$k.max,
+        h_max = params$h.max,
+        d_path_max = params$d.path.max,
+        eta_step = params$eta.step,
+        epsilon_d = params$epsilon.d,
+        eps_num = params$eps.num,
+        sink_prune = params$sink.prune,
+        sink_prune_max_iter = params$sink.prune.max.iter,
+        max_paths_per_sink = params$max.paths.per.sink
+    )
+    if (!isTRUE(all.equal(observed, expected, check.attributes = TRUE))) {
+        .stop.basin.complex(
+            "Stored RTCB backend parameters do not match resolved canonical parameters.",
+            "object$provenance$construction$backend.parameters",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    if (any(object$assignment$assignment.status != "not_applicable") ||
+        any(!is.na(object$assignment$assignment.weight))) {
+        .stop.basin.complex(
+            "RTCB assignments must be not-applicable while the backend supplies no primary assignment.",
+            "object$assignment",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    invisible(TRUE)
+}
+
+.validate.overlap.cell.complex <- function(object) {
+    required <- c(
+        "cells",
+        "basin.intersections",
+        "complex.graph",
+        "cell.summary",
+        "cluster.assignments",
+        "cluster.mappings",
+        "simplified.field"
+    )
+    cell <- object$cell.complex
+    if (!is.list(cell) || !identical(names(cell), required)) {
+        .stop.basin.complex(
+            "The overlap cell complex is missing required canonical fields.",
+            "object$cell.complex",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    families <- c(
+        "asc_desc_cells",
+        "asc_asc_cells",
+        "desc_desc_cells"
+    )
+    if (!is.list(cell$cells) ||
+        !all(families %in% names(cell$cells)) ||
+        !is.data.frame(cell$cell.summary) ||
+        !is.data.frame(cell$cluster.mappings) ||
+        length(cell$simplified.field) != object$n.vertices ||
+        any(!is.finite(cell$simplified.field)) ||
+        is.null(cell$complex.graph)) {
+        .stop.basin.complex(
+            "The overlap cell-complex payload is inconsistent.",
+            "object$cell.complex",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    if (!inherits(object$raw$legacy.object, "basin_cx") ||
+        inherits(object, "basin_cx") ||
+        is.null(object$raw$initial.basin.complex) ||
+        is.null(object$raw$merged.basins)) {
+        .stop.basin.complex(
+            "Legacy cell-complex provenance is missing or canonical classes were contaminated.",
+            "object$raw",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    invisible(TRUE)
+}
