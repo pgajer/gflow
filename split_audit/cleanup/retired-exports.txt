@@ -21,3 +21,12 @@ create.sknn.graph
 compute.stability.metrics
 fit.rdgraph.regression
 refit.rdgraph.regression
+arcsin.sqrt.transform
+clr.transform
+clr.transform.matrix
+preprocess.metabolon.twoplane
+two.factor.analysis
+create.latex.table
+analyze.categorical.proportions
+summarize.and.test.cst
+analyze.weighted.cst

@@ -56,7 +56,7 @@
 #' ## plot(res)
 #' ## X <- res$X
 #'
-#' @export
+#' @keywords internal
 preprocess.metabolon.twoplane <- function(S,
                                          p.miss.A = 0.20,
                                          p.miss.B = 0.80,
@@ -356,8 +356,8 @@ preprocess.metabolon.twoplane <- function(S,
 #' @param plot.file Optional file path to write a multi-page PDF of diagnostic plots.
 #' @param ... Unused; included for generic compatibility.
 #' @return Invisibly returns \code{x}.
-#' @export
-plot.metabolon_twoplane <- function(x,
+#' @keywords internal
+.plot.metabolon.twoplane <- function(x,
                                     meta = x$meta,
                                     meta.color = NULL,
                                     plot.file = NULL,
@@ -704,8 +704,8 @@ knn.edit.distance.curve <- function(X,
 #'
 #' @param x Output of knn.edit.distance.curve().
 #' @param ... Additional arguments (currently ignored).
-#' @export
-plot.knn.edit.curve <- function(x, ...) {
+#' @keywords internal
+.plot.knn.edit.curve <- function(x, ...) {
     res <- x
     curve <- res$curve
     op <- graphics::par(no.readonly = TRUE)
