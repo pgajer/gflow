@@ -129,13 +129,13 @@ single preprocessing recipe. It is a small multi-view graph benchmark.
 
 ## 3) Build the iKNN Graph Family
 
-The core graph construction step uses the package API directly.
+The core graph construction step uses `dgraphs` directly.
 
 ```{r build-iknn-graphs, eval = FALSE}
 # X_view is a cells x features matrix for one chosen preprocessing branch.
 # For example, it could be the PCA representation of log-normalized HVGs.
 
-graphs <- create.iknn.graphs(
+graphs <- dgraphs::create.iknn.graphs(
   X = X_view,
   kmin = 9L,
   kmax = 35L,
@@ -150,7 +150,7 @@ Once the graph family is available, the first package-level stability summary is
 degree-distribution Jensen-Shannon divergence:
 
 ```{r compute-stability, eval = FALSE}
-stability <- compute.stability.metrics(
+stability <- dgraphs::compute.stability.metrics(
   graphs = graphs,
   graph.type = "geom",
   summary = "degree_distribution",
@@ -164,7 +164,7 @@ the only criterion.
 
 ## 4) Current Package-Backed Retina Summary
 
-The current package-backed retina rerun used `gflow::create.iknn.graphs()` as
+The current package-backed retina rerun used `dgraphs::create.iknn.graphs()` as
 the active graph constructor and produced the following smoke-scale summary for
 the two completed broad geometry branches:
 

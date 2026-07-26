@@ -17,10 +17,6 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 library(gflow)
-build.iknn.graphs.and.selectk <- get(
-  "build.iknn.graphs.and.selectk",
-  envir = asNamespace("gflow")
-)
 set.seed(2026)
 ```
 
@@ -122,7 +118,7 @@ summary(X.graphs)
 ## 3) Select Graph Scale
 
 ```{r iknn-selectk}
-X.graphs2 <- build.iknn.graphs.and.selectk(
+X.graphs2 <- dgraphs::build.iknn.graphs.and.selectk(
   X,
   kmin = k.min,
   kmax = k.max,
@@ -262,34 +258,47 @@ Z.sm <- as.matrix(Z)
 ## 7) Recover Extrema and Basins
 
 ```{r refined-basins}
-y.basins <- compute.gfc(
+y.basins <- create.basin.complex(
   adj.list = adj.list,
   edge.length.list = edge.length.list,
-  fitted.values = y.hat,
-  edge.length.quantile.thld = 0.8,
-  min.rel.value.max = 1.05,
-  max.rel.value.min = 0.95,
-  max.overlap.threshold = 0.20,
-  min.overlap.threshold = 0.20,
-  p.mean.nbrs.dist.threshold = 0.90,
-  p.mean.hopk.dist.threshold = 0.90,
-  p.deg.threshold = 0.90,
-  min.basin.size = 8L,
-  expand.basins = TRUE,
-  apply.geometric.filter = TRUE,
-  with.trajectories = TRUE,
+  field = y.hat,
+  method = "geodesic_reachability",
+  method.params = list(
+    edge.length.quantile.thld = 0.8,
+    store.trajectories = TRUE,
+    primary.assignment.policy = "largest_membership_then_extremum"
+  ),
+  simplify.params = list(
+    relative.value = list(
+      enabled = TRUE,
+      min.relative.value.max = 1.05,
+      max.relative.value.min = 0.95
+    ),
+    maxima.clustering = list(enabled = TRUE, overlap.threshold = 0.20),
+    minima.clustering = list(enabled = TRUE, overlap.threshold = 0.20),
+    geometric.filter = list(
+      enabled = TRUE,
+      mean.neighbor.distance.percentile.max = 0.90,
+      mean.hop.distance.percentile.max = 0.90,
+      degree.percentile.max = 0.90
+    ),
+    support.filter = list(enabled = TRUE, min.basin.size = 8L),
+    expansion = list(enabled = TRUE)
+  ),
   verbose = TRUE
 )
 
-y.basins$summary
-table(y.basins$summary$type)
+y.basins$basin.table
+table(y.basins$basin.table$type, y.basins$basin.table$retained)
 ```
 
 ```{r compare-true-estimated-basins}
 true.max.label <- ifelse(comp1.use >= comp2.use, "M1.true", "M2.true")
 
-max.vertices.list <- y.basins$expanded.max.vertices.list
-if (is.null(max.vertices.list)) max.vertices.list <- y.basins$max.vertices.list
+max.rows <- y.basins$basin.table$type == "max" &
+  y.basins$basin.table$retained
+max.vertices.list <- y.basins$basin.table$retained.support.vertices[max.rows]
+names(max.vertices.list) <- y.basins$basin.table$basin.id[max.rows]
 
 est.max.label <- rep(NA_character_, length(y.hat))
 for (lab in names(max.vertices.list)) {
@@ -303,10 +312,14 @@ table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
 ## 8) Basin-Wise Pearson and Spearman Checks
 
 ```{r basin-wise-classical-correlation}
-max.vertices.list <- y.basins$expanded.max.vertices.list
-if (is.null(max.vertices.list)) max.vertices.list <- y.basins$max.vertices.list
-min.vertices.list <- y.basins$expanded.min.vertices.list
-if (is.null(min.vertices.list)) min.vertices.list <- y.basins$min.vertices.list
+max.rows <- y.basins$basin.table$type == "max" &
+  y.basins$basin.table$retained
+min.rows <- y.basins$basin.table$type == "min" &
+  y.basins$basin.table$retained
+max.vertices.list <- y.basins$basin.table$retained.support.vertices[max.rows]
+min.vertices.list <- y.basins$basin.table$retained.support.vertices[min.rows]
+names(max.vertices.list) <- y.basins$basin.table$basin.id[max.rows]
+names(min.vertices.list) <- y.basins$basin.table$basin.id[min.rows]
 
 max.assign <- rep(NA_character_, length(y.hat))
 for (lab in names(max.vertices.list)) {

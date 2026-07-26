@@ -323,7 +323,7 @@ for (dataset in datasets) {
       ph.models$phate_ambient <- ph.ambient
 
       if (is.null(iknn.cache[[as.character(k)]])) {
-        g <- create.single.iknn.graph(
+        g <- dgraphs::create.single.iknn.graph(
           X = X,
           k = k,
           max.path.edge.ratio.deviation.thld = 0,

@@ -185,7 +185,7 @@ make_benchmark_graph <- function(X, x, graph.type = c("path", "sknn.mst"),
   if (identical(graph.type, "path")) {
     return(make_path_graph(x))
   }
-  create.sknn.graph(X, k = graph.k, connect.components = TRUE,
+  dgraphs::create.sknn.graph(X, k = graph.k, connect.components = TRUE,
                     connect.method = "component.mst")
 }
 
@@ -634,7 +634,7 @@ run_multi_scenario_benchmark <- function(repo.dir = "/Users/pgajer/current_proje
 
     graph.start <- proc.time()
     graph <- tryCatch(
-      create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
+      dgraphs::create.sknn.graph(dat$X, k = graph.k, connect.components = TRUE,
                         connect.method = "component.mst"),
       error = function(e) e
     )
