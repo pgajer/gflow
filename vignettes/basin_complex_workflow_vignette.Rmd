@@ -1,0 +1,277 @@
+---
+title: "Canonical Basin Complex Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Canonical Basin Complex Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+library(gflow)
+```
+
+## One constructor, five basin families
+
+`create.basin.complex()` is the only constructor for new basin objects in
+`gflow`. It validates the graph and field once, dispatches to one of five basin
+construction families, and returns the same `basin_complex` schema from every
+family.
+
+| `method` | Structure computed | Typical use |
+|---|---|---|
+| `"trajectory_flow"` | Flow trajectories and terminal basins | Deterministic field-following basins |
+| `"superlevel_merge_tree"` | Plateau-aware graph level-set merge tree | Basin births, mergers, and persistence |
+| `"geodesic_reachability"` | Monotone reachability supports | Overlapping attraction supports |
+| `"rtcb"` | Robust trajectory-consensus basins | Stability under local trajectory variation |
+| `"overlap_cell_complex"` | Ascending-by-descending overlap cells | Joint maxima/minima decomposition |
+
+The remainder of this vignette uses one small two-dimensional grid only to make
+the interface executable and inspectable. Scientific basin validation should
+use the higher-dimensional, scale-path inputs appropriate to the analysis.
+
+## Graph and field
+
+The graph is undirected. Each adjacency entry has a parallel edge-length entry,
+and vertex identifiers are one-based.
+
+```{r graph}
+edges <- matrix(
+  c(
+    1, 2, 1, 1, 4, 1, 2, 3, 1, 2, 5, 1,
+    3, 6, 1, 4, 5, 1, 4, 7, 1, 5, 6, 1,
+    5, 8, 1, 6, 9, 1, 7, 8, 1, 8, 9, 1
+  ),
+  ncol = 3,
+  byrow = TRUE
+)
+
+adjacency <- edge_lengths <- vector("list", 9)
+for (i in seq_len(nrow(edges))) {
+  from <- edges[i, 1]
+  to <- edges[i, 2]
+  adjacency[[from]] <- c(adjacency[[from]], to)
+  adjacency[[to]] <- c(adjacency[[to]], from)
+  edge_lengths[[from]] <- c(edge_lengths[[from]], edges[i, 3])
+  edge_lengths[[to]] <- c(edge_lengths[[to]], edges[i, 3])
+}
+
+field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+vertex_mass <- rep(1 / length(field), length(field))
+```
+
+## Direction, mass, and density
+
+`direction = "max"` constructs ascending basins, `"min"` constructs descending
+basins, and `"both"` requests both orientations. The overlap-cell method
+requires `"both"`.
+
+`vertex.mass` represents empirical or quadrature support. It is used for basin
+mass summaries and mass-threshold refinement. `vertex.density` instead
+modulates trajectory edge scores when `method.params$modulation` is
+`"DENSITY"` or `"DENSITY_EDGELEN"`. The constructor never substitutes one for
+the other.
+
+```{r trajectory-flow}
+flow <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "trajectory_flow",
+  direction = "max",
+  vertex.mass = vertex_mass,
+  method.params = list(
+    modulation = "CLOSEST",
+    edge.length.quantile.thld = 1
+  )
+)
+
+flow$status
+flow$basin.table[
+  ,
+  c("basin.id", "type", "retained.support.mass")
+]
+```
+
+For density-modulated flow, provide density explicitly:
+
+```{r density-flow}
+density_flow <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "trajectory_flow",
+  direction = "max",
+  vertex.density = exp(field),
+  method.params = list(
+    modulation = "DENSITY",
+    edge.length.quantile.thld = 1
+  )
+)
+density_flow$status
+```
+
+## Level-set merge tree
+
+The level-set method contracts exact field plateaus and records component
+births, elder-rule mergers, and component-root deaths. It is the canonical
+method for following basin topology across a one-parameter conditional-
+expectation scale path.
+
+```{r merge-tree}
+tree <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "superlevel_merge_tree",
+  direction = "max"
+)
+
+tree$status
+tree$merge.table
+```
+
+Construct one object at every retained scale value, then compare merge tables
+and memberships between adjacent scale values. The scale parameter belongs to
+the conditional-expectation estimator, not to `create.basin.complex()` itself;
+record it alongside each returned object.
+
+## Reachability, RTCB, and overlap cells
+
+```{r remaining-methods}
+reachability <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "geodesic_reachability",
+  direction = "max",
+  method.params = list(edge.length.quantile.thld = 1)
+)
+
+consensus <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "rtcb",
+  direction = "max",
+  method.params = list(
+    edge.length.quantile.thld = 1,
+    n.min = 1L,
+    m.min = 0
+  )
+)
+
+cells <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "overlap_cell_complex",
+  direction = "both"
+)
+
+vapply(
+  list(
+    geodesic_reachability = reachability,
+    rtcb = consensus,
+    overlap_cell_complex = cells
+  ),
+  function(x) x$status,
+  character(1)
+)
+```
+
+## Membership is not assignment
+
+`membership.table` is the authoritative many-to-many relation between vertices
+and basins. Overlap is allowed. `primary.assignment` is an optional convenience
+label selected by the method's `primary.assignment.policy`; it does not replace
+membership and may be absent.
+
+```{r membership}
+head(reachability$membership.table)
+reachability$primary.assignment
+```
+
+Downstream code that needs complete basin supports should use
+`membership.table`. Code that requires exactly one basin per vertex must choose
+and record an assignment policy.
+
+## Refinement
+
+Refinement stages are controlled with `simplify.params`. They execute in a
+fixed order and are recorded in `provenance$refinement.stages`:
+
+1. relative-value filtering;
+2. extrema clustering;
+3. geometric filtering;
+4. support filtering; and
+5. expansion.
+
+Stage applicability depends on the construction family. Unsupported
+combinations fail validation rather than silently doing nothing.
+
+```{r refinement}
+refined <- create.basin.complex(
+  adjacency,
+  edge_lengths,
+  field,
+  method = "trajectory_flow",
+  direction = "max",
+  method.params = list(edge.length.quantile.thld = 1),
+  simplify.params = list(
+    relative.value = list(enabled = TRUE)
+  )
+)
+
+refined$provenance$refinement.stages
+```
+
+## Archived objects and retired constructors
+
+The following public constructors are retired and deliberately raise a
+`gflow_basin_lifecycle_error`:
+
+* `compute.gfc()`;
+* `compute.basins.of.attraction()`;
+* `compute.gfc.trajectory()`;
+* `compute.gfc.flow()`; and
+* `create.basin.cx()`.
+
+Use `create.basin.complex()` for all new work. `as.basin.complex()` exists only
+for compatible archived results. Conversion requires the archived object and
+its original graph; a field must also be supplied if the archive did not retain
+one. Conversion provenance records the source class and retained archive so
+that migration remains auditable.
+
+```{r conversion-interface, eval=FALSE}
+canonical <- as.basin.complex(
+  archived_object,
+  adj.list = original_adjacency,
+  edge.length.list = original_edge_lengths,
+  field = original_field
+)
+```
+
+## Result checks
+
+Every result carries construction status, resolved parameters, provenance,
+diagnostics, basin summaries, membership, and optional method-specific
+structures.
+
+```{r result-checks}
+objects <- list(flow, tree, reachability, consensus, cells)
+stopifnot(all(vapply(
+  objects,
+  function(x) inherits(x, "basin_complex") && identical(x$status, "ok"),
+  logical(1)
+)))
+
+names(flow)
+flow$provenance$construction
+```
