@@ -7,6 +7,7 @@
 #' @param n.perm Number of permutations (default 10000)
 #' @param n.cores Number of cores for parallel processing (default: all available)
 #' @return List with test statistic, p-value, and permutation distribution
+#' @noRd
 test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
                                  n.cores = parallel::detectCores() - 1) {
 
@@ -212,6 +213,7 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
 #'
 #' @param delta.y Numeric vector of edge-wise response differences.
 #' @param delta.z Numeric vector of edge-wise feature differences.
+#' @noRd
 test.concordance.chisq <- function(delta.y, delta.z) {
     tbl <- table(delta.y > 0, delta.z > 0)
     chi.result <- chisq.test(tbl)
@@ -242,6 +244,7 @@ test.concordance.chisq <- function(delta.y, delta.z) {
 #' @param prior.a Shape-1 parameter of the Beta prior on concordance probability.
 #' @param prior.b Shape-2 parameter of the Beta prior on concordance probability.
 #' @param n.samples Number of posterior samples used for Monte Carlo summaries.
+#' @noRd
 test.concordance.bayes <- function(delta.y, delta.z,
                                    prior.a = 1, prior.b = 1,
                                    n.samples = 10000) {
@@ -290,6 +293,7 @@ test.concordance.bayes <- function(delta.y, delta.z,
 #' @param vertex.delta.z List of z-differences for each vertex
 #' @param min.component.size Minimum size for "signal" components (default 5)
 #' @return List containing concordance and discordance subgraphs with components
+#' @noRd
 extract.concordance.subgraphs <- function(adj.list, weight.list,
                                          vertex.delta.y, vertex.delta.z,
                                          min.component.size = 5) {
@@ -391,6 +395,7 @@ extract.concordance.subgraphs <- function(adj.list, weight.list,
 #'
 #' @param adj.list Graph adjacency list
 #' @return List with component assignments and sizes
+#' @noRd
 find.connected.components <- function(adj.list) {
 
     n.vertices <- length(adj.list)
@@ -443,6 +448,7 @@ find.connected.components <- function(adj.list) {
 #' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
 #' @param observed.subgraphs Observed concordance subgraph decomposition to evaluate.
 #' @param n.perm Number of permutations used for null distribution estimation.
+#' @noRd
 test.concordance.components <- function(vertex.delta.y, vertex.delta.z,
                                        adj.list, weight.list,
                                        observed.subgraphs,
@@ -515,6 +521,7 @@ test.concordance.components <- function(vertex.delta.y, vertex.delta.z,
 #' @param start.vertices Vertex indices used as path starts.
 #' @param end.vertices Vertex indices used as path ends.
 #' @param max.path.length Maximum allowed path length (in hops).
+#' @noRd
 find.concordant.paths <- function(concordant.subgraph,
                                  start.vertices, end.vertices,
                                  max.path.length = 10) {
@@ -547,6 +554,7 @@ find.concordant.paths <- function(concordant.subgraph,
 #' @param X Feature matrix over vertices.
 #' @param y Numeric response vector.
 #' @param clinical.data Data frame of clinical covariates aligned to vertices.
+#' @noRd
 characterize.components <- function(subgraphs,
                                    X,  # Feature matrix
                                    y,  # Outcome
@@ -594,6 +602,7 @@ characterize.components <- function(subgraphs,
 #' @param subgraphs Concordance subgraph object with component memberships.
 #' @param basin.assignments Vector or list assigning vertices to basin labels.
 #' @param basin.extrema Data frame or list describing basin extremal vertices.
+#' @noRd
 relate.concordance.to.basins <- function(subgraphs, basin.assignments,
                                         basin.extrema) {
 
@@ -638,6 +647,7 @@ relate.concordance.to.basins <- function(subgraphs, basin.assignments,
 #' @param vertex.delta.y Per-vertex edge-difference structure for \code{y}.
 #' @param vertex.delta.Z List of per-vertex edge-difference structures for
 #'   columns of \code{Z}.
+#' @noRd
 build.concordance.network <- function(adj.list, weight.list,
                                      y, Z,  # Multiple features
                                      vertex.delta.y, vertex.delta.Z) {
@@ -694,6 +704,7 @@ build.concordance.network <- function(adj.list, weight.list,
 #' @param graph.layout Optional graph layout coordinates or layout specifier.
 #' @param y.values Optional numeric vertex values used for coloring.
 #' @param highlight.large Logical; emphasize larger connected components.
+#' @noRd
 plot_concordance_subgraph <- function(subgraphs,
                                       graph.layout,  # 2D or 3D coordinates
                                       y.values,
@@ -750,6 +761,7 @@ plot_concordance_subgraph <- function(subgraphs,
 #' @param min.module.size Minimum module size to consider
 #' @param resolution Resolution parameter used by methods that support multiscale partitioning.
 #' @return List with module assignments and quality metrics
+#' @noRd
 find.concordance.modules <- function(concordant.subgraph,
                                     method = "louvain",
                                     min.module.size = 10,
@@ -822,6 +834,7 @@ find.concordance.modules <- function(concordant.subgraph,
 #' @param vertices Integer vector of vertex indices defining the module.
 #' @param adj.list Graph adjacency list.
 #' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
+#' @noRd
 compute.module.metrics <- function(vertices, adj.list, weight.list) {
 
     ## Internal edges: both endpoints in module
@@ -887,6 +900,7 @@ compute.module.metrics <- function(vertices, adj.list, weight.list) {
 #'
 #' @param concordant.subgraph Concordance subgraph object returned by extraction utilities.
 #' @param min.k Minimum core number retained in the decomposition output.
+#' @noRd
 find.concordance.kcores <- function(concordant.subgraph,
                                    min.k = 5) {
 
@@ -936,6 +950,7 @@ find.concordance.kcores <- function(concordant.subgraph,
 #' @param concordant.subgraph Concordance subgraph object used for local density scoring.
 #' @param min.module.size Minimum number of vertices required for a reported module.
 #' @param density.threshold.quantile Quantile threshold that defines dense candidate vertices.
+#' @noRd
 find.density.based.modules <- function(concordant.subgraph,
                                       min.module.size = 10,
                                       density.threshold.quantile = 0.9) {
@@ -1040,6 +1055,7 @@ assign.to.nearest.peak <- function(adj.list, peaks, density.score) {
 #' @param adj.list Graph adjacency list.
 #' @param weight.list Graph edge-weight list aligned with \code{adj.list}.
 #' @param n.perm Number of permutations used to assess module significance.
+#' @noRd
 test.module.significance <- function(modules,
                                     vertex.delta.y, vertex.delta.z,
                                     adj.list, weight.list,

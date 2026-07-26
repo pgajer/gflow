@@ -58,6 +58,7 @@
 #'
 #' @return An object of class "assoc0" containing effect sizes, p-values,
 #'   signal/null distributions, and diagnostic information.
+#' @noRd
 fassoc0.test <- function(x,
                          y,
                          test.type = c("paired.t", "weighted.pvalue", "wilcoxon"),

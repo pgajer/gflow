@@ -32,6 +32,11 @@ test_that("posterior local correlation consumes supplied field draws", {
 })
 
 test_that("protected basin and extrema hooks remain explicitly out of scope", {
+  root <- testthat::test_path("..", "..")
+  skip_if_not(
+    dir.exists(file.path(root, "R")),
+    "source-only boundary audit is not shipped in the package tarball"
+  )
   protected.files <- testthat::test_path(
     "..", "..", "R",
     c(

@@ -213,6 +213,7 @@ get.path.data <- function(adj.list,
 #'   \item{w_path}{Numeric vector of kernel weights for each vertex}
 #'   \item{y_path}{Numeric vector of y-values for path vertices}
 #'
+#' @noRd
 ugg.get.path.data <- function(adj.list,
                               weight.list,
                               grid.size,

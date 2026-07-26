@@ -17,6 +17,7 @@
 #'   \item{bicluster.sizes}{Data frame with rows (samples) and cols (features) per bicluster}
 #' }
 #'
+#' @noRd
 extract.isa.biclusters <- function(isa.result,
                                    score.threshold = 0,
                                    min.samples = 5,
@@ -85,6 +86,7 @@ extract.isa.biclusters <- function(isa.result,
 #'
 #' @return List similar to extract.isa.biclusters() but with redundant biclusters removed
 #'
+#' @noRd
 filter.redundant.biclusters <- function(isa.result,
                                        biclusters.extracted,
                                        overlap.threshold = 0.8,
@@ -181,6 +183,7 @@ filter.redundant.biclusters <- function(isa.result,
 #' @return Integer vector of length n.samples with cluster assignments (1-based).
 #'   Samples not assigned to any bicluster get value 0.
 #'
+#' @noRd
 isa.to.hard.clusters <- function(biclusters.extracted, n.samples) {
 
     biclusters <- biclusters.extracted$biclusters
@@ -221,6 +224,7 @@ isa.to.hard.clusters <- function(biclusters.extracted, n.samples) {
 #'
 #' @return Data frame with quality metrics per bicluster
 #'
+#' @noRd
 summarize.bicluster.quality <- function(isa.result,
                                         biclusters.extracted,
                                         data.matrix,
@@ -294,6 +298,7 @@ summarize.bicluster.quality <- function(isa.result,
 #' @param rob.threshold Robustness threshold (higher = more stringent)
 #' @param plot.distribution If TRUE, plots robustness distribution
 #'
+#' @noRd
 select.biclusters.by.robustness <- function(isa.result,
                                            rob.threshold = NULL,
                                            plot.distribution = TRUE) {
@@ -369,6 +374,7 @@ select.biclusters.by.robustness <- function(isa.result,
 #' @param n.features.per.bc Integer vector with feature counts per bicluster.
 #' @param plot.diagnostics Logical; plot gap diagnostics used to choose thresholds.
 #'
+#' @noRd
 select.thresholds.by.gaps <- function(n.samples.per.bc,
                                       n.features.per.bc,
                                       plot.diagnostics = TRUE) {

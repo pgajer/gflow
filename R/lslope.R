@@ -387,6 +387,7 @@ lslope.vector.vector <- function(adj.list,
 #'
 #' @seealso \code{\link{lslope}} for the unified interface
 #'
+#' @noRd
 lslope.vector.matrix <- function(adj.list,
                                  weight.list,
                                  y,
@@ -518,6 +519,7 @@ lslope.vector.matrix <- function(adj.list,
 #'
 #' @seealso \code{\link{lslope}} for the unified interface
 #'
+#' @noRd
 lslope.vector.matrix.R <- function(adj.list,
                                         weight.list,
                                         y,
@@ -686,6 +688,7 @@ lslope.vector.matrix.R <- function(adj.list,
 #' @seealso \code{\link{lslope}} for the unified interface,
 #'   \code{\link{lslope.vector.matrix}} for vector-matrix computation
 #'
+#' @noRd
 lslope.matrix.matrix <- function(adj.list,
                                       weight.list,
                                       Y,

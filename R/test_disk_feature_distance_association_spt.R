@@ -51,6 +51,7 @@
 #'   \item \code{meta}: list of settings used.
 #' }
 #'
+#' @noRd
 test.disk.feature.distance.association.spt <- function(X,
                                                        vertices,
                                                        dists = NULL,

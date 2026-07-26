@@ -1,4 +1,8 @@
 test_that("catch-all support files expose no application UI workflows", {
+  skip_if_not(
+    dir.exists(testthat::test_path("..", "..", "R")),
+    "source-only support audit is not shipped in the package tarball"
+  )
   source.files <- c(
     "stats_utils.R",
     "plot_utils.R",
@@ -34,6 +38,10 @@ test_that("catch-all support files expose no application UI workflows", {
 })
 
 test_that("matrix preprocessing helpers have one top-level definition", {
+  skip_if_not(
+    dir.exists(testthat::test_path("..", "..", "R")),
+    "source-only support audit is not shipped in the package tarball"
+  )
   source.files <- list.files(
     testthat::test_path("..", "..", "R"),
     pattern = "\\.R$",

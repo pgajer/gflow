@@ -156,6 +156,7 @@ qlaplace <- function(p, location = 0, scale = 1, lower.tail = TRUE, log.p = FALS
 #' @param K The size of vector of non-negative numbers that sum up to 1.
 #'
 #' @return A numeric vector of non-negative numbers that sum to 1.
+#' @noRd
 runif.simplex <- function(K)
 {
     lambda <- numeric(K)
@@ -403,6 +404,7 @@ sample.from.empirical.distribution <- function(n,
 #' 3. Computes CDF through cumulative trapezoidal integration
 #' 4. Generates n uniform random numbers
 #' 5. Uses binary search to find inverse CDF values
+#' @noRd
 sample.from.1d.density <- function(n, y, x = NULL) {
     if (!is.numeric(n) || n <= 0 || n != round(n)) {
         stop("n must be a positive integer")

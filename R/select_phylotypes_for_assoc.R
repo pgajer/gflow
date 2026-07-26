@@ -41,6 +41,7 @@
 #'   \item \code{counts}: list with \code{n.samples}, \code{n.sptb}, \code{n.term}
 #' }
 #'
+#' @noRd
 select.phylotypes.for.assoc <- function(phi,
                                         outcome,
                                         vertices,
@@ -351,6 +352,7 @@ select.phylotypes.for.assoc <- function(phi,
 #' res
 #'
 #' @keywords internal
+#' @noRd
 .print.phylotype.selection <- function(x, ..., top.n = 10L) {
 
     cat("Phylotype selection result\n")

@@ -11,6 +11,7 @@
 #' @param debug.file Path to save debug pairs CSV. Default uses fixed debug directory.
 #'
 #' @return Data frame with high-discrepancy pairs
+#' @noRd
 find.discrepant.pairs <- function(cm.standard,
                                    cm.sign,
                                    partition = NULL,

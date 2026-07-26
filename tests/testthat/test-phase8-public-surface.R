@@ -1,5 +1,11 @@
 test_that("breaking release exposes only the maintained non-protected API", {
     root <- normalizePath(file.path(testthat::test_path(), "../.."))
+    skip_if_not(
+        file.exists(file.path(
+            root, "split_audit/cleanup/api-ownership.csv"
+        )),
+        "source-only release ledger is not shipped in the package tarball"
+    )
     ledger <- read.csv(
         file.path(root, "split_audit/cleanup/api-ownership.csv"),
         stringsAsFactors = FALSE
@@ -66,6 +72,12 @@ test_that("retired Phase 8 families are absent from the namespace", {
 
 test_that("retained in-scope S3 methods have explicit release ownership", {
     root <- normalizePath(file.path(testthat::test_path(), "../.."))
+    skip_if_not(
+        file.exists(file.path(
+            root, "split_audit/cleanup/s3-class-ownership.csv"
+        )),
+        "source-only release ledger is not shipped in the package tarball"
+    )
     ownership <- read.csv(
         file.path(root, "split_audit/cleanup/s3-class-ownership.csv"),
         stringsAsFactors = FALSE
@@ -109,6 +121,10 @@ test_that("retained in-scope S3 methods have explicit release ownership", {
 
 test_that("public package story and migration guide are present", {
     root <- normalizePath(file.path(testthat::test_path(), "../.."))
+    skip_if_not(
+        file.exists(file.path(root, "README.md")),
+        "source-only package story is not shipped in the package tarball"
+    )
     expect_true(all(file.exists(file.path(
         root,
         c(

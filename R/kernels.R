@@ -4,6 +4,7 @@
 #' @param ikernel integer kernel id (EPANECHNIKOV, TRIANGULAR, NORMAL, LAPLACE, etc.)
 #' @param scale positive numeric; used for Normal and Laplace (default 1)
 #' @return numeric vector of same length as \code{x}
+#' @noRd
 kernel.eval <- function(x, ikernel, scale = 1) {
 
   if (!is.finite(scale) || scale <= 0)
@@ -29,6 +30,7 @@ kernel.eval <- function(x, ikernel, scale = 1) {
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
+#' @noRd
 triangular.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -56,6 +58,7 @@ triangular.kernel <- function(x, bw=1)
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
+#' @noRd
 epanechnikov.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -84,6 +87,7 @@ epanechnikov.kernel <- function(x, bw=1)
 #'
 #' @param x  A numeric vector.
 #' @param bw A bandwidth numeric parameter.
+#' @noRd
 tr.exponential.kernel <- function(x, bw=1)
 {
     stopifnot(is.numeric(x))
@@ -115,6 +119,7 @@ tr.exponential.kernel <- function(x, bw=1)
 #' the first elements is 0. Thus \code{max.K[i] = 0} indicates that there are no
 #' non-zero elements in that row.
 #'
+#' @noRd
 row.weighting <- function(x, bws, kernel.str="epanechnikov")
 {
     kernels <- c("epanechnikov", "triangular", "tr.exponential","normal")
@@ -177,6 +182,7 @@ row.weighting <- function(x, bws, kernel.str="epanechnikov")
 #' the user has to make sure this condition is satisfied before calling
 #' normalize_dist().
 #'
+#' @noRd
 normalize.dist <- function(d, min.K, bw)
 {
     nr <- nrow(d)
@@ -215,6 +221,7 @@ normalize.dist <- function(d, min.K, bw)
 #' @param bw     A bandwidth.
 #'
 #' @return A vector of bandwidths.
+#' @noRd
 get.bws <- function(d, min.K, bw)
 {
     nr <- nrow(d)
@@ -242,6 +249,7 @@ get.bws <- function(d, min.K, bw)
 #' @param bw     A bandwidth.
 #'
 #' @return A vector of bandwidths.
+#' @noRd
 get.bws.with.minK <- function(d, minK, bw)
 {
     nr <- nrow(d)
@@ -265,6 +273,7 @@ get.bws.with.minK <- function(d, minK, bw)
 #'
 #' @return A matrix obtained from x by dividing the rows of x by the sum of the
 #'     given row's elements, if the sum is not 0.
+#' @noRd
 row.TS.norm <- function(x)
 {
     stopifnot(is.matrix(x), is.numeric(x))

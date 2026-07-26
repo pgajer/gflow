@@ -34,6 +34,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.graph.component <- function(x,
                            comp.id = 1,
                            show.labels = TRUE,
@@ -152,6 +153,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.graph.components <- function(x,
                                   min.size = 3,
                                   max.components = 12,

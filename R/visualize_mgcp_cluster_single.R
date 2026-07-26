@@ -78,6 +78,7 @@
 #' }
 #'
 #' @keywords internal
+#' @noRd
 visualize.mgcp.cluster <- function(data.matrix,
                                    mgcp.result,
                                    cluster.id,
@@ -416,6 +417,7 @@ visualize.mgcp.cluster <- function(data.matrix,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .compare.mgcp.clusters <- function(data.matrix,
                                   mgcp.result,
                                   cluster.ids,
@@ -542,6 +544,7 @@ visualize.mgcp.cluster <- function(data.matrix,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 export.mgcp.cluster <- function(data.matrix,
                                 mgcp.result,
                                 cluster.id,

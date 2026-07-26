@@ -308,6 +308,7 @@ gfassoc.deviation <- function(overlap.matrix) {
 #'   \item{mass_z_max}{Mass of each z-maximum basin.}
 #'   \item{mass_z_min}{Mass of each z-minimum basin.}
 #'
+#' @noRd
 gfassoc.basin.character <- function(y.membership,
                                     z.membership,
                                     pol.y,

@@ -115,6 +115,7 @@
 #' # For cell cycle: 0 = G1/S, pi/2 = S, pi = G2, 3*pi/2 = M phase
 #'
 #' @keywords internal
+#' @noRd
 parameterize.circular.graph <- function(adj.list,
                                         weight.list,
                                         use.edge.lengths = TRUE) {
@@ -244,6 +245,7 @@ parameterize.circular.graph <- function(adj.list,
 #' print(result)
 #'
 #' @keywords internal
+#' @noRd
 .print.circular.parameterization <- function(x, digits = 4, ...) {
   cat("Circular Graph Parameterization\n")
   cat("-------------------------------\n")
@@ -293,6 +295,7 @@ parameterize.circular.graph <- function(adj.list,
 #'      main = "Circular Graph Visualization")
 #'
 #' @keywords internal
+#' @noRd
 .plot.circular.parameterization <- function(x, adj.list = NULL,
                                            vertex.labels = seq_len(length(x$angles)),
                                            vertex.cex = 1.5,

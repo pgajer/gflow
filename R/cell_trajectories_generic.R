@@ -9,6 +9,7 @@
 #' @param ... Additional arguments passed to methods.
 #'
 #' @keywords internal
+#' @noRd
 cell.trajectories <- function(x, min.id, max.id, ...) {
     UseMethod("cell.trajectories")
 }

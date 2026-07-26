@@ -27,6 +27,7 @@
 #'                   Set to a negative value to disable pruning.
 #'
 #' @return A new graph object with modified weights
+#' @noRd
 construct.function.aware.graph <- function(adj.list,
                                            weight.list,
                                            function.values,
@@ -90,6 +91,7 @@ construct.function.aware.graph <- function(adj.list,
 #'
 #' @return A list where each element corresponds to a weight.type and contains a vector of
 #'         modified weights for all edges in the graph
+#' @noRd
 analyze.function.aware.weights <- function(adj.list,
                                           weight.list,
                                           function.values,
@@ -147,6 +149,7 @@ analyze.function.aware.weights <- function(adj.list,
 #' @param log.scale Whether to use log scale for the y-axis
 #'
 #' @return Invisibly returns the data frame used for plotting
+#' @noRd
 function.aware.weights.plot <- function(adj.list,
                                         weight.list,
                                         function.values,

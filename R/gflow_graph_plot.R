@@ -193,6 +193,7 @@ plot.gflow_graph <- function(x,
 #' @return A two-column matrix of coordinates with rownames matching basin labels.
 #'
 #' @keywords internal
+#' @noRd
 compute.layout <- function(gflow.graph, layout) {
   
   n.total <- length(gflow.graph$adjacency.list)

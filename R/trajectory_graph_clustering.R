@@ -55,6 +55,7 @@
 #'   * `cell.trajectories` The `gfc_cell_trajectories` object used.
 #'   * `sensitivity` Present if `length(k) > 1`: results and stability metrics across k.
 #'
+#' @noRd
 cluster.cell.trajectories <- function(gfc.flow,
                                       min.id,
                                       max.id,
@@ -316,6 +317,7 @@ cluster.cell.trajectories <- function(gfc.flow,
 #' }
 #'
 #' @keywords internal
+#' @noRd
 trajectory.cluster.vertices <- function(cell.trajs,
                                         cltrs,
                                         sort = TRUE,

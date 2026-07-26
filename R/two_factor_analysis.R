@@ -70,6 +70,7 @@
 #' @keywords internal
 #' @importFrom stats prop.test
 #' @importFrom utils write.csv
+#' @noRd
 two.factor.analysis <- function(y,
                                 x,
                                 out.dir,
@@ -219,6 +220,7 @@ two.factor.analysis <- function(y,
 #' @param latex_file LaTeX output file path
 #'
 #' @keywords internal
+#' @noRd
 save_results <- function(all.f, f, p, pval, out.dir, label, latex_file) {
     base_name <- if (!is.na(label)) label else "fp"
 
@@ -288,6 +290,7 @@ save_results <- function(all.f, f, p, pval, out.dir, label, latex_file) {
 #' }
 #'
 #' @keywords internal
+#' @noRd
 create.latex.table <- function(data, file, label = NA, caption = "") {
     if (!is.matrix(data) && !is.data.frame(data)) {
         stop("'data' must be a matrix or data frame")
@@ -461,6 +464,7 @@ create.latex.table <- function(data, file, label = NA, caption = "") {
 #'
 #' @keywords internal
 #' @importFrom stats prop.test plogis pnorm
+#' @noRd
 analyze.categorical.proportions <- function(x, y,
                                             subj.ids = NULL,
                                             pos.label = "sPTB",
@@ -834,6 +838,7 @@ analyze.categorical.proportions <- function(x, y,
 #'
 #' @keywords internal
 #' @importFrom stats wilcox.test median
+#' @noRd
 summarize.and.test.cst <- function(x, y, subj.ids,
                                    pos.label = "sPTB",
                                    neg.label = "TB",
@@ -1100,6 +1105,7 @@ summarize.and.test.cst <- function(x, y, subj.ids,
 #'
 #' @keywords internal
 #' @importFrom stats wilcox.test median
+#' @noRd
 analyze.weighted.cst <- function(x,
                                  y,
                                  subj.ids,

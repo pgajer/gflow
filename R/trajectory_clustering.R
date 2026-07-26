@@ -20,6 +20,7 @@
 #'   \item{hdbscan}{The dbscan::hdbscan() result.}
 #'   \item{cluster}{Integer vector of cluster labels (0 = noise).}
 #'
+#' @noRd
 cluster.cell.trajectories.dtw <- function(traj.list,
                                           Z,
                                           feature.cols = NULL,

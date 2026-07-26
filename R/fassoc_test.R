@@ -57,6 +57,7 @@
 #' @param ... Ignored legacy plotting/style arguments may be supplied without error.
 #'
 #' @return An object of class \code{"assoc0"} (order 0) or \code{"assoc1"} (order 1).
+#' @noRd
 fassoc.test <- function(x,
                         y,
                         order = 1,

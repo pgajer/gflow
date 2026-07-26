@@ -629,6 +629,7 @@ label.extremality.3d <- function(graph.3d,
 #' @param adj.list Graph adjacency list
 #' @param edgelen.list Edge length list
 #' @return Distance matrix between extrema (geodesic distances)
+#' @noRd
 compute.extrema.geodesic.distances <- function(extremality.df,
                                                adj.list,
                                                edgelen.list) {
@@ -676,6 +677,7 @@ compute.extrema.geodesic.distances <- function(extremality.df,
 #' @param method Linkage method for hclust
 #' @param density.weight Weight for density-based similarity (0-1)
 #' @return hclust object with clustering results
+#' @noRd
 cluster.extrema.graph.aware <- function(geodesic.dist,
                                         extremality.df,
                                         extrema.type = "max",
@@ -969,6 +971,7 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 #'
 #' @return Data frame comparing representatives from different methods
 #'
+#' @noRd
 .compare.representative.methods <- function(extremality.df,
                                           geodesic.dist,
                                           cluster_id) {
@@ -1242,6 +1245,7 @@ compute.dbscan.cluster.summary <- function(extremality.df,
 
 #' Helper: Select representative from cluster members
 #' @keywords internal
+#' @noRd
 select_representative <- function(cluster_members, geodesic.dist, method) {
 
     if (method == "medoid") {
@@ -1296,6 +1300,7 @@ select_representative <- function(cluster_members, geodesic.dist, method) {
 
 #' Helper: Compute cluster statistics
 #' @keywords internal
+#' @noRd
 compute_cluster_stats <- function(cluster_members) {
 
     # Handle Inf values in radii and sizes

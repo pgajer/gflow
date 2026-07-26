@@ -117,6 +117,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.abundance.distance.diagnostics <- function(x,
                                                X,
                                                vertices,
@@ -276,6 +277,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.presence.distance.diagnostics <- function(x,
                                               X,
                                               vertices,
@@ -388,6 +390,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' }
 #'
 #' @keywords internal
+#' @noRd
 .plot.quantile.bin.diagnostics <- function(x,
                                          what = c("abundance", "presence"),
                                          main = NULL,
@@ -537,6 +540,7 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #'
 #' @return Invisibly returns TRUE.
 #'
+#' @noRd
 make.disk.diagnostics.pdf <- function(pdf.file,
                                       features,
                                       X,
@@ -784,6 +788,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 #' \code{\link{.plot.quantile.bin.diagnostics}}
 #'
 #' @keywords internal
+#' @noRd
 make.spt.diagnostics.pdf <- function(pdf.file,
                                      spt.res,
                                      X,
