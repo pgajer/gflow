@@ -70,6 +70,7 @@ as.basin.complex.basins_of_attraction <- function(
     adj.list = NULL,
     edge.length.list = NULL,
     field = NULL,
+    method = c("geodesic_reachability", "rtcb"),
     vertex.mass = NULL,
     direction = "both",
     method.params = list(),
@@ -78,6 +79,7 @@ as.basin.complex.basins_of_attraction <- function(
     ...
 ) {
     graph <- .basin.conversion.graph(adj.list, edge.length.list)
+    method <- match.arg(method)
     field <- .basin.or(object$y, field)
     if (is.null(field)) {
         .stop.basin.complex(
@@ -93,7 +95,7 @@ as.basin.complex.basins_of_attraction <- function(
         adj.list = graph$adj.list,
         edge.length.list = graph$edge.length.list,
         field = field,
-        method = "geodesic_reachability",
+        method = method,
         direction = direction,
         vertex.mass = vertex.mass,
         method.params = method.params,
