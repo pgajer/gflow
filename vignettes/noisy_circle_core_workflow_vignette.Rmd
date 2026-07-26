@@ -154,7 +154,7 @@ k.idx <- which(k.values == sel.k)[1]
 if (is.na(k.idx)) k.idx <- 1L
 
 g.sel <- X.graphs$geom_pruned_graphs[[k.idx]]
-layout.2d <- graph.embedding(
+layout.2d <- dgraphs::graph.embedding(
   adj.list = g.sel$adj_list,
   weights.list = g.sel$weight_list,
   invert.weights = TRUE,
@@ -194,7 +194,7 @@ data.frame(
 ## Optional 3D Surface View
 
 ```{r layout-3d}
-X.denoise.graph.layout.3d <- graph.embedding(
+X.denoise.graph.layout.3d <- dgraphs::graph.embedding(
   adj.list = adj.list,
   weights.list = edge.length.list,
   invert.weights = TRUE,
