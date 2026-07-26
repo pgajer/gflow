@@ -95,3 +95,43 @@ test_that("isometry compatibility wrapper delegates to dgraphs", {
         dgraphs::summarize.isometry.deviation(estimated, reference)
     )
 })
+
+test_that("constructor and selection wrappers preserve dgraphs formals", {
+    wrappers <- c(
+        "build.iknn.graphs.and.selectk",
+        "create.adaptive.radius.graph",
+        "create.cknn.graph",
+        "create.cmst.graph",
+        "create.geodesic.iknn.graph",
+        "create.iknn.graphs",
+        "create.iterated.iknn.graphs",
+        "create.mknn.graph",
+        "create.mknn.graphs",
+        "create.radius.graph",
+        "create.single.iknn.graph",
+        "create.sknn.graph",
+        "compute.stability.metrics"
+    )
+
+    for (name in wrappers) {
+        expect_identical(
+            formals(get(name, envir = asNamespace("gflow"))),
+            formals(getExportedValue("dgraphs", name)),
+            info = name
+        )
+    }
+})
+
+test_that("constructor compatibility wrapper delegates to dgraphs", {
+    points <- cbind(seq_len(6L), rep(0, 6L))
+
+    expect_warning(
+        observed <- create.sknn.graph(points, k = 1L),
+        "dgraphs::create.sknn.graph"
+    )
+    expected <- dgraphs::create.sknn.graph(points, k = 1L)
+
+    expect_identical(observed$adj_list, expected$adj_list)
+    expect_equal(observed$weight_list, expected$weight_list)
+    expect_identical(class(observed), class(expected))
+})

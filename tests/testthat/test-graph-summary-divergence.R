@@ -85,7 +85,7 @@ test_that("compute.stability.metrics keeps legacy js.div field while using summa
     kmax = 5L
   )
 
-  stab <- compute.stability.metrics(graphs, graph.type = "geom")
+  stab <- dgraphs::compute.stability.metrics(graphs, graph.type = "geom")
   deg.stab <- dgraphs::compute.graph.summary.stability(
     graphs = list(g1, g2, g3),
     summary = "degree_distribution",
@@ -115,7 +115,7 @@ test_that("compute.stability.metrics supports alternate summary families through
     kmax = 5L
   )
 
-  stab <- compute.stability.metrics(
+  stab <- dgraphs::compute.stability.metrics(
     graphs,
     graph.type = "geom",
     summary = "neighborhood_label_distribution",

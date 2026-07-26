@@ -922,6 +922,7 @@ summary.lcor_vector_matrix_result <- function(object, ...) {
 #' \code{\link{lcor}} for the unified interface,
 #' \code{\link{lcor.vector.matrix}} for vector-matrix computation
 #'
+#' @importFrom utils combn
 #' @export
 lcor.matrix.matrix <- function(adj.list,
                                 weight.list,
