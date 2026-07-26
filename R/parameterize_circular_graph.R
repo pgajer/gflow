@@ -114,7 +114,7 @@
 #' # The angles can be interpreted as positions in the biological cycle
 #' # For cell cycle: 0 = G1/S, pi/2 = S, pi = G2, 3*pi/2 = M phase
 #'
-#' @export
+#' @keywords internal
 parameterize.circular.graph <- function(adj.list,
                                         weight.list,
                                         use.edge.lengths = TRUE) {
@@ -243,8 +243,8 @@ parameterize.circular.graph <- function(adj.list,
 #' result <- parameterize.circular.graph(adj.list, weight.list)
 #' print(result)
 #'
-#' @export
-print.circular_parameterization <- function(x, digits = 4, ...) {
+#' @keywords internal
+.print.circular.parameterization <- function(x, digits = 4, ...) {
   cat("Circular Graph Parameterization\n")
   cat("-------------------------------\n")
   cat("Number of vertices:", length(x$angles), "\n")
@@ -292,8 +292,8 @@ print.circular_parameterization <- function(x, digits = 4, ...) {
 #' plot(result, adj.list = adj.list,
 #'      main = "Circular Graph Visualization")
 #'
-#' @export
-plot.circular_parameterization <- function(x, adj.list = NULL,
+#' @keywords internal
+.plot.circular.parameterization <- function(x, adj.list = NULL,
                                            vertex.labels = seq_len(length(x$angles)),
                                            vertex.cex = 1.5,
                                            label.cex = 0.8,

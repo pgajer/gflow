@@ -220,7 +220,7 @@
 #'      xlab = "Resolution", ylab = "Number of Communities",
 #'      main = "Resolution-based")
 #'
-#' @export
+#' @keywords internal
 scan.stability <- function(adj.list,
                           weight.list = NULL,
                           time.seq,

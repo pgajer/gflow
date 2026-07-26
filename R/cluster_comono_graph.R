@@ -104,7 +104,7 @@
 #'               gamma, res$n.clusters, res$modularity))
 #' }
 #'
-#' @export
+#' @keywords internal
 cluster.comono.graph <- function(adj.list,
                                  weight.list = NULL,
                                  resolution = 1.0) {

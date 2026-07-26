@@ -229,7 +229,7 @@
 #'               result.ari$modularity[optimal.idx]))
 #' }
 #'
-#' @export
+#' @keywords internal
 scan.resolution <- function(adj.list,
                            weight.list = NULL,
                            resolution.seq = seq(0.1, 2.5, by = 0.1),
