@@ -6,7 +6,7 @@
 ## quantification arising from spectral smoothing. Two modes are supported:
 ##
 ## Mode 1 (Original): Pass pre-computed posterior samples in Z.hat.samples
-##   - Useful when you already have samples from refit.rdgraph.regression()
+##   - Useful when you already have samples from gflowx::refit.rdgraph.regression()
 ##   - Memory cost: O(n × B × p) for storing all samples
 ##
 ## Mode 2 (Memory-efficient): Pass fitted.model and Z.abundances with Z.hat.samples = NULL
@@ -28,12 +28,12 @@
 #' @param Z.hat.samples Either:
 #'   \itemize{
 #'     \item A list of length p, where each element is an n x B matrix of
-#'       posterior samples for one feature (from \code{refit.rdgraph.regression()}
+#'       posterior samples for one feature (from \code{gflowx::refit.rdgraph.regression()}
 #'       with \code{return.posterior.samples = TRUE}), OR
 #'     \item \code{NULL} to use memory-efficient C++ computation (requires
 #'       \code{fitted.model} and \code{Z.abundances})
 #'   }
-#' @param fitted.model Fitted model from \code{fit.rdgraph.regression()}.
+#' @param fitted.model Fitted model from \code{gflowx::fit.rdgraph.regression()}.
 #'   Required when \code{Z.hat.samples = NULL}. Must contain spectral
 #'   decomposition (\code{spectral$vectors}, \code{spectral$values}).
 #' @param Z.abundances Original (unsmoothed) feature matrix (n x p).
@@ -74,7 +74,7 @@
 #' This function supports two computational modes:
 #'
 #' \strong{R Mode} (Z.hat.samples provided): Uses pre-computed posterior samples
-#' from \code{refit.rdgraph.regression()}. For each posterior sample of the
+#' from \code{gflowx::refit.rdgraph.regression()}. For each posterior sample of the
 #' smoothed features, lcor is computed against the fixed smoothed response.
 #' This mode is useful when you want fine control over the smoothing parameters
 #' or need to reuse the posterior samples for other analyses.
@@ -99,10 +99,10 @@
 #' @examples
 #' \dontrun{
 #' ## Fit model
-#' fit <- fit.rdgraph.regression(X, y, k = 15)
+#' fit <- gflowx::fit.rdgraph.regression(X, y, k = 15)
 #'
 #' ## ----- Mode 1: Using pre-computed samples -----
-#' Z.refit <- refit.rdgraph.regression(
+#' Z.refit <- gflowx::refit.rdgraph.regression(
 #'     fit, Z[, 1:10],
 #'     per.column.gcv = TRUE,
 #'     with.posterior = TRUE,

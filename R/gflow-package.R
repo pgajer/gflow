@@ -1,38 +1,9 @@
 #' gflow: Geometric Data Analysis Through Gradient Flow
 #'
 #' @details
-#' Modern datasets, particularly in biological sciences, often contain
-#' thousands of features with complex non-linear relationships and
-#' multi-way interactions that cannot be captured by examining only
-#' pairwise associations. Traditional regression models struggle with
-#' this complexity, while machine learning approaches, though powerful
-#' for prediction, sacrifice interpretability.
-#'
-#' The gflow package addresses this challenge by exploiting a fundamental
-#' observation: despite existing in high-dimensional spaces, real-world
-#' data typically lives on much lower-dimensional geometric structures.
-#' Like a twisted ribbon in 3D space that is fundamentally 2-dimensional,
-#' most real-world systems generate highly constrained data that traces
-#' out specific geometric shapes within the ambient space. The geometry
-#' of these shapes implicitly encodes complex associations between features.
-#'
-#' Rather than working in a fixed coordinate system, gflow adopts a
-#' coordinate-free framework that models data as a weighted graph (or more
-#' generally, a Riemannian simplicial complex) capturing the underlying
-#' geometric structure. This transforms the inference problem from \eqn{E[Y|X]}
-#' to \eqn{E[Y|G(X)]}, where \eqn{G(X)} represents the geometric object
-#' constructed from your data matrix \eqn{X}. This reformulation provides a more
-#' flexible representation that adapts to the inherent complexity of the data
-#' without imposing predetermined functional forms.
-#'
-#' A key strength of gflow is its ability to provide interpretable results from
-#' complex data. The gradient-flow decomposition identifies natural regions
-#' where relationships between predictors and outcomes are locally simple and
-#' monotonic. This allows one to "peer inside" black-box models and understand
-#' how predictions change across different parts of the data space. By
-#' respecting the intrinsic geometry of the data, gflow bridges the gap between
-#' the flexibility of modern machine learning and the interpretability of
-#' classical statistical methods.
+#' `gflow` constructs basin and gradient-flow complexes and provides methods for
+#' exploring their cells, extrema, trajectories, and flow-aware associations.
+#' Generic graph construction is delegated to `dgraphs`.
 #'
 #' @section Key Features:
 #'
@@ -42,25 +13,18 @@
 #'   \item Simplicial complex construction for modeling higher-order relationships
 #' }
 #'
-#' \strong{2. Robust Signal Recovery and Smoothing}
-#' \itemize{
-#'   \item Kernel graph Laplacian smoothing for noise reduction
-#'   \item Spectral filtering and diffusion-based approaches
-#' }
-#'
-#' \strong{3. Gradient Flow Domain Decomposition}
+#' \strong{2. Gradient Flow Domain Decomposition}
 #' \itemize{
 #'   \item Automatic identification of critical points (local minima, maxima, and saddles)
 #'   \item Morse-Smale complex construction for function analysis
 #'   \item Natural partitioning into regions of monotonic behavior
 #' }
 #'
-#' \strong{4. Interpretable Statistical Inference}
+#' \strong{3. Local and Flow-Aware Analysis}
 #' \itemize{
-#'   \item Within-region regression and classification
-#'   \item Bootstrap-Wasserstein testing for non-linear associations
-#'   \item Feature importance assessment across different data regions
-#'   \item Visualization tools for understanding model behavior
+#'   \item Basin-, cell-, and trajectory-level summaries
+#'   \item Local and flow-aware association analysis
+#'   \item Visualization and diagnostics for complex structure
 #' }
 #'
 #' @section Main Function Categories:
@@ -73,34 +37,16 @@
 #'   \item \code{\link{create.nerve.complex}} - Creates a nerve complex for k-nearest neighbor covering
 #' }
 #'
-#' \strong{Conditional Expectation Estimation Methods:}
-#'
-#' \emph{Riemannian graph regression:}
-#' These legacy public entry points have moved to `gflowx`. The backend remains
-#' in `gflow` during the package split so existing internal workflows can be
-#' migrated in audited slices.
-#'
-#' \emph{Legacy Model-Averaged Local Regression (1D; now in `malo`):}
+#' \strong{Methods maintained outside gflow:}
 #' \itemize{
+#'   \item `gflowx::fit.rdgraph.regression()` and related retired graph-response
+#'         smoothers
 #'   \item \code{malo::amagelo()} - Adaptive 1D smoother with extrema diagnostics
 #'   \item \code{malo::magelo()} - Disk-neighborhood 1D model averaging smoother
 #'   \item \code{malo::mabilo()} - Symmetric k-hop 1D model averaging smoother
 #'   \item \code{malo::magelog()} - 1D local logistic smoother
-#' }
-#'
-#' These entry points were removed from `gflow` and are available in `malo`.
-#'
-#' \emph{Current recommendation:}
-#' \itemize{
-#'   \item Use `gflowx::fit.rdgraph.regression()` for legacy rdgraph workflows
-#'   \item Use `geosmooth` for local-polynomial, trend-filtering, harmonic, and
+#'   \item `geosmooth` for local-polynomial, trend-filtering, harmonic, and
 #'         graph-spectral smoothing workflows
-#'   \item Use spline-based utilities for lightweight 1D exploratory smoothing
-#' }
-#'
-#' \emph{Additional smoothing and classification tools:}
-#' \itemize{
-#'   \item \code{\link{ulogit}} - Uniform grid logistic regression for binary outcomes on graphs
 #' }
 #'
 #' \strong{Morse-Smale Complex Analysis:}

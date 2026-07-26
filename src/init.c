@@ -25,8 +25,6 @@
 #include "random_sampling_r.h"
 #include "sampling.h"  // For C_runif_simplex()
 #include "density_r.h"
-#include "local_complexity_r.h"
-#include "ulogit_r.h"
 #include "centered_paths_r.h"
 #include "iknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
@@ -37,19 +35,17 @@
 #include "geodesic_stats_r.h"
 #include "monotonic_reachability_r.h"
 #include "local_extrema_r.h"
+#include "hop_extremp_radii_r.h"
 #include "gflow_basins_r.h"
-#include "harmonic_smoother_r.h"
 #include "gflow_cx_r.h"
 #include "fn_graphs_r.h"
 #include "nerve_cx_r.h"
 #include "stats_utils.h"
 #include "kernels.h"
-#include "mean_shift_smoother_r.h"
 #include "riem_dcx_r.h"
 #include "lcor_r.h"
 #include "partition_graph_r.h"
 #include "lslope_r.h"
-#include "riem_dcx_posterior_r.h"
 #include "lcor_posterior_r.h"
 #include "gfc_r.h"
 #include "basin_summary_r.h"
@@ -145,13 +141,10 @@ static const R_CMethodDef cMethods[] = {
 #ifdef __cplusplus
 extern "C" {
 #endif
-SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_local_pca_chart(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_quadform_delaunay_edges_3d(SEXP, SEXP);
 SEXP _gflow_rcpp_quadform_edge_lengths(SEXP, SEXP, SEXP, SEXP);
 SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -226,8 +219,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_apply_harmonic_extension", (DL_FUNC) &S_apply_harmonic_extension, 11},
   {"S_create_gflow_cx", (DL_FUNC) &S_create_gflow_cx, 12},
   {"S_compute_extrema_hop_nbhds", (DL_FUNC) &S_compute_extrema_hop_nbhds, 3},
-  {"S_harmonic_smoother", (DL_FUNC) &S_harmonic_smoother, 9},
-  {"S_perform_harmonic_smoothing", (DL_FUNC) &S_perform_harmonic_smoothing, 6},
   {"S_find_local_extrema", (DL_FUNC) &S_find_local_extrema, 4},
   {"S_detect_local_extrema", (DL_FUNC) &S_detect_local_extrema, 6},
   {"S_graph_MS_cx_with_path_search", (DL_FUNC) &S_graph_MS_cx_with_path_search, 3},
@@ -280,9 +271,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_detect_major_arms", (DL_FUNC) &S_detect_major_arms, 11},
   {"S_cycle_sizes", (DL_FUNC) &S_cycle_sizes, 1},
   {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
-  {"S_estimate_local_complexity", (DL_FUNC) &S_estimate_local_complexity, 5},
-  {"S_estimate_binary_local_complexity", (DL_FUNC) &S_estimate_binary_local_complexity, 6},
-  {"S_estimate_ma_binary_local_complexity_quadratic", (DL_FUNC) &S_estimate_ma_binary_local_complexity_quadratic, 4},
   {"S_find_shortest_alt_path", (DL_FUNC) &S_find_shortest_alt_path, 5},
   {"S_shortest_alt_path_length", (DL_FUNC) &S_shortest_alt_path_length, 5},
   {"S_wgraph_prune_long_edges", (DL_FUNC) &S_wgraph_prune_long_edges, 5},
@@ -308,27 +296,10 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
 
-  // =========================================================================
-  // regression over graphs
-  // =========================================================================
-  {"S_fit_rdgraph_regression", (DL_FUNC) &S_fit_rdgraph_regression, 42},
-
-  // old
-  {"S_ulogit", (DL_FUNC) &S_ulogit, 8},
-  {"S_eigen_ulogit", (DL_FUNC) &S_eigen_ulogit, 8},
-
-
-  {"S_mean_shift_data_smoother", (DL_FUNC) &S_mean_shift_data_smoother, 11},
-  {"S_mean_shift_data_smoother_with_grad_field_averaging", (DL_FUNC) &S_mean_shift_data_smoother_with_grad_field_averaging, 8},
-  {"S_mean_shift_data_smoother_adaptive", (DL_FUNC) &S_mean_shift_data_smoother_adaptive, 8},
-
-  {"_gflow_Rcpp_graph_kernel_smoother", (DL_FUNC) &_gflow_Rcpp_graph_kernel_smoother, 5},
   {"_gflow_rcpp_local_pca_chart", (DL_FUNC) &_gflow_rcpp_local_pca_chart, 9},
   {"_gflow_rcpp_compute_graph_endpoint_scores", (DL_FUNC) &_gflow_rcpp_compute_graph_endpoint_scores, 9},
   {"_gflow_rcpp_graph_multi_source_support_by_scale", (DL_FUNC) &_gflow_rcpp_graph_multi_source_support_by_scale, 4},
   {"_gflow_rcpp_graph_greedy_maxima_suppression_by_scale", (DL_FUNC) &_gflow_rcpp_graph_greedy_maxima_suppression_by_scale, 5},
-  {"_gflow_rcpp_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_adaptive_mean_shift_gfa, 11},
-  {"_gflow_rcpp_knn_adaptive_mean_shift_gfa", (DL_FUNC) &_gflow_rcpp_knn_adaptive_mean_shift_gfa, 8},
   {"_gflow_rcpp_quadform_delaunay_edges_3d", (DL_FUNC) &_gflow_rcpp_quadform_delaunay_edges_3d, 2},
   {"_gflow_rcpp_quadform_edge_lengths", (DL_FUNC) &_gflow_rcpp_quadform_edge_lengths, 4},
   {"_gflow_rcpp_quadform_grid_pair_distances", (DL_FUNC) &_gflow_rcpp_quadform_grid_pair_distances, 6},

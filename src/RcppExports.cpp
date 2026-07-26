@@ -58,21 +58,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// Rcpp_graph_kernel_smoother
-Rcpp::List Rcpp_graph_kernel_smoother(Rcpp::List adj, Rcpp::List w, Rcpp::NumericVector y, int bandwidth, bool with_details);
-RcppExport SEXP _gflow_Rcpp_graph_kernel_smoother(SEXP adjSEXP, SEXP wSEXP, SEXP ySEXP, SEXP bandwidthSEXP, SEXP with_detailsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::List >::type adj(adjSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type w(wSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type y(ySEXP);
-    Rcpp::traits::input_parameter< int >::type bandwidth(bandwidthSEXP);
-    Rcpp::traits::input_parameter< bool >::type with_details(with_detailsSEXP);
-    rcpp_result_gen = Rcpp::wrap(Rcpp_graph_kernel_smoother(adj, w, y, bandwidth, with_details));
-    return rcpp_result_gen;
-END_RCPP
-}
 // rcpp_local_pca_chart
 List rcpp_local_pca_chart(const NumericMatrix& X_support, const NumericVector& center, const int chart_dim, const std::string& center_mode, const std::string& dim_rule, const double eigen_tolerance, Nullable<NumericVector> weights, const bool rebase_to_anchor, const bool orient_basis);
 RcppExport SEXP _gflow_rcpp_local_pca_chart(SEXP X_supportSEXP, SEXP centerSEXP, SEXP chart_dimSEXP, SEXP center_modeSEXP, SEXP dim_ruleSEXP, SEXP eigen_toleranceSEXP, SEXP weightsSEXP, SEXP rebase_to_anchorSEXP, SEXP orient_basisSEXP) {
@@ -89,45 +74,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const bool >::type rebase_to_anchor(rebase_to_anchorSEXP);
     Rcpp::traits::input_parameter< const bool >::type orient_basis(orient_basisSEXP);
     rcpp_result_gen = Rcpp::wrap(rcpp_local_pca_chart(X_support, center, chart_dim, center_mode, dim_rule, eigen_tolerance, weights, rebase_to_anchor, orient_basis));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_adaptive_mean_shift_gfa
-Rcpp::List rcpp_adaptive_mean_shift_gfa(const NumericMatrix& X, int k, int density_k, int n_steps, double initial_step_size, int ikernel, double dist_normalization_factor, bool average_direction_only, double momentum, double increase_factor, double decrease_factor);
-RcppExport SEXP _gflow_rcpp_adaptive_mean_shift_gfa(SEXP XSEXP, SEXP kSEXP, SEXP density_kSEXP, SEXP n_stepsSEXP, SEXP initial_step_sizeSEXP, SEXP ikernelSEXP, SEXP dist_normalization_factorSEXP, SEXP average_direction_onlySEXP, SEXP momentumSEXP, SEXP increase_factorSEXP, SEXP decrease_factorSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const NumericMatrix& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< int >::type k(kSEXP);
-    Rcpp::traits::input_parameter< int >::type density_k(density_kSEXP);
-    Rcpp::traits::input_parameter< int >::type n_steps(n_stepsSEXP);
-    Rcpp::traits::input_parameter< double >::type initial_step_size(initial_step_sizeSEXP);
-    Rcpp::traits::input_parameter< int >::type ikernel(ikernelSEXP);
-    Rcpp::traits::input_parameter< double >::type dist_normalization_factor(dist_normalization_factorSEXP);
-    Rcpp::traits::input_parameter< bool >::type average_direction_only(average_direction_onlySEXP);
-    Rcpp::traits::input_parameter< double >::type momentum(momentumSEXP);
-    Rcpp::traits::input_parameter< double >::type increase_factor(increase_factorSEXP);
-    Rcpp::traits::input_parameter< double >::type decrease_factor(decrease_factorSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_adaptive_mean_shift_gfa(X, k, density_k, n_steps, initial_step_size, ikernel, dist_normalization_factor, average_direction_only, momentum, increase_factor, decrease_factor));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_knn_adaptive_mean_shift_gfa
-Rcpp::List rcpp_knn_adaptive_mean_shift_gfa(const NumericMatrix& X, int k, int density_k, int n_steps, double step_size, int ikernel, double dist_normalization_factor, bool average_direction_only);
-RcppExport SEXP _gflow_rcpp_knn_adaptive_mean_shift_gfa(SEXP XSEXP, SEXP kSEXP, SEXP density_kSEXP, SEXP n_stepsSEXP, SEXP step_sizeSEXP, SEXP ikernelSEXP, SEXP dist_normalization_factorSEXP, SEXP average_direction_onlySEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const NumericMatrix& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< int >::type k(kSEXP);
-    Rcpp::traits::input_parameter< int >::type density_k(density_kSEXP);
-    Rcpp::traits::input_parameter< int >::type n_steps(n_stepsSEXP);
-    Rcpp::traits::input_parameter< double >::type step_size(step_sizeSEXP);
-    Rcpp::traits::input_parameter< int >::type ikernel(ikernelSEXP);
-    Rcpp::traits::input_parameter< double >::type dist_normalization_factor(dist_normalization_factorSEXP);
-    Rcpp::traits::input_parameter< bool >::type average_direction_only(average_direction_onlySEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_knn_adaptive_mean_shift_gfa(X, k, density_k, n_steps, step_size, ikernel, dist_normalization_factor, average_direction_only));
     return rcpp_result_gen;
 END_RCPP
 }

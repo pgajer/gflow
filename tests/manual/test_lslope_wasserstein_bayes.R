@@ -327,7 +327,7 @@ test_that("R wrapper function works with fitted model", {
     ##skip_if_not_installed("gflow")
     skip("Requires full fitted model - manual testing recommended")
 
-    ## This test requires a full fitted model from fit.rdgraph.regression()
+    ## This test requires a full fitted model from gflowx::fit.rdgraph.regression()
     ## Uncomment and modify for manual testing
 
     ## Create test data
@@ -340,7 +340,7 @@ test_that("R wrapper function works with fitted model", {
     z <- X[,1] + rnorm(n, sd = 0.3)
 
     ## Fit model
-    fit <- fit.rdgraph.regression(X, y, k = 10)
+    fit <- gflowx::fit.rdgraph.regression(X, y, k = 10)
 
     ## Run test
     result <- lslope.wasserstein.bayes.test(

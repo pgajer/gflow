@@ -62,6 +62,7 @@
 ^src/tests$
 ^presentations$
 ^analysis_output$
+^split_audit$
 ^data$
 ^figures$
 ^figure($|/)
