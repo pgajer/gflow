@@ -33,8 +33,10 @@
   - Added non-colliding `get.basin.*()` table, membership, assignment,
     merge-tree, trajectory, and cell accessors plus print, summary, plot,
     conversion, and data-frame methods.
-  - Method adapters and legacy retirement remain deferred; valid Phase B calls
-    return a structured failed object until the selected backend is implemented.
+  - All five method adapters, canonical refinement, downstream migration,
+    archived-object conversion, and strict legacy-constructor retirement are
+    now implemented. See the canonical basin-complex workflow vignette for
+    runnable examples and lifecycle guidance.
 * Phase 1 legacy-1D decoupling pass completed:
   - Internal consumers that previously depended on legacy `magelo`/`mabilo`-style
     1D smoothers now use spline-based replacements.
