@@ -51,7 +51,7 @@ if (inherits(x, "graph.3d")) {
     graph.adj.list     <- x$adj.list
     graph.edge.lengths <- x$weight.list
 
-    graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+    graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
     g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
     if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 

@@ -119,8 +119,8 @@ graph.edit.distance <- function(graph1.adj.list,
   }
 
   # Convert to igraph objects
-  graph1.obj <- convert.adjacency.to.edge.matrix(graph1.adj.list, graph1.weights)
-  graph2.obj <- convert.adjacency.to.edge.matrix(graph2.adj.list, graph2.weights)
+  graph1.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph1.adj.list, graph1.weights)
+  graph2.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph2.adj.list, graph2.weights)
 
   # Create empty graphs if no edges
   if (nrow(graph1.obj$edge.matrix) == 0) {

@@ -1007,10 +1007,10 @@ cluster_basins_by_overlap <- function(basin_cx, lmin_basin_ids, lmax_basin_ids, 
   )
 
   ## Find connected components
-  lmin_overlap_dists_graph_cc <- graph.connected.components(lmin_overlap_dists_graph$adj_list)
+  lmin_overlap_dists_graph_cc <- dgraphs::graph.connected.components(lmin_overlap_dists_graph$adj_list)
   names(lmin_overlap_dists_graph_cc) <- lmin_basin_ids
 
-  lmax_overlap_dists_graph_cc <- graph.connected.components(lmax_overlap_dists_graph$adj_list)
+  lmax_overlap_dists_graph_cc <- dgraphs::graph.connected.components(lmax_overlap_dists_graph$adj_list)
   names(lmax_overlap_dists_graph_cc) <- lmax_basin_ids
 
   ## Combine minima and maxima clusters

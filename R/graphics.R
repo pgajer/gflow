@@ -483,7 +483,7 @@ plot.ggraph <- function(x,
     graph.adj.list    <- x$adj.list
     graph.edge.lengths <- x$weight.list
 
-    graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+    graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
     g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
     if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 
@@ -746,7 +746,7 @@ plot.graphMScx <- function(x,
 
     if (type == "MS_cx_graph") {
 
-        graph.m <- convert.adjacency.to.edge.matrix(res$MS_graph, res$MS_graph_weights)
+        graph.m <- dgraphs::convert.adjacency.to.edge.matrix(res$MS_graph, res$MS_graph_weights)
         g <- igraph::graph_from_edgelist(graph.m$edge.matrix, directed = TRUE)
 
         if (!is.null(res$MS_graph_weights)) {
@@ -796,7 +796,7 @@ plot.graphMScx <- function(x,
         nerve.res <- dgraphs::nerve.graph(res$MS_cell_cc_vertices)
 
         # Extracting the corresponding weights matrix
-        nerve.weights <- convert.adjacency.list.to.adjacency.matrix(
+        nerve.weights <- dgraphs::convert.adjacency.list.to.adjacency.matrix(
             nerve.res$adjacency.list,
             nerve.res$weights.list
         )
@@ -1802,7 +1802,7 @@ plot3D.graph <- function(x,
         graph.adj.list     <- x$adj.list
         graph.edge.lengths <- x$weight.list
 
-        graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+        graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
         g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
         if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 
@@ -1841,7 +1841,7 @@ plot3D.graph <- function(x,
         graph.edge.lengths <- x[[weight_idx]]
 
         ## Convert to igraph object
-        graph.obj <- convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
+        graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(graph.adj.list, graph.edge.lengths)
         g <- igraph::graph_from_edgelist(graph.obj$edge.matrix, directed = FALSE)
         if (!is.null(graph.edge.lengths)) igraph::E(g)$weight <- graph.obj$weights
 

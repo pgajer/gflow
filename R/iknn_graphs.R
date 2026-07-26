@@ -135,7 +135,7 @@ summary.iknn_graphs <- function(object,
         sparsity <- 1 - density
 
         ## Number of connected components
-        n.ccomp <- length(table(graph.connected.components(adj_list)))
+        n.ccomp <- length(table(dgraphs::graph.connected.components(adj_list)))
 
         ## Store statistics
         stats_table$edges[i] <- edge_count
@@ -936,7 +936,7 @@ internal.compute.edit.distances <- function(graphs) {
 #' trims \code{X} to the largest connected component of the graph defined by an
 #' adjacency list.
 #'
-#' Connected components are computed by \code{graph.connected.components()}, which
+#' Connected components are computed by \code{dgraphs::graph.connected.components()}, which
 #' must return an integer component label for each vertex. Component labels need
 #' not be contiguous.
 #'
@@ -956,7 +956,7 @@ internal.compute.edit.distances <- function(graphs) {
 #' @keywords internal
 #' @noRd
 trim.X.to.main.cc <- function(X, adj.list, verbose = FALSE) {
-    cc <- graph.connected.components(adj.list)
+    cc <- dgraphs::graph.connected.components(adj.list)
     cc.tbl <- table(cc)
     main.cc <- as.integer(names(sort(cc.tbl, decreasing = TRUE)[1]))
     in.main <- (cc == main.cc)

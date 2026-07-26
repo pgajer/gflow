@@ -883,7 +883,7 @@ detect.graph.endpoints <- function(adj.list,
 }
 
 .build.graph.endpoint.igraph <- function(adj.list, weight.list) {
-    graph.obj <- convert.adjacency.to.edge.matrix(adj.list, weight.list)
+    graph.obj <- dgraphs::convert.adjacency.to.edge.matrix(adj.list, weight.list)
     edge.matrix <- graph.obj$edge.matrix
     weights <- graph.obj$weights
 

@@ -262,7 +262,7 @@ cluster.local.extrema <- function(basins.obj,
     )
 
     ## Find connected components (clusters)
-    cluster.assignments <- graph.connected.components(overlap.graph$adj_list)
+    cluster.assignments <- dgraphs::graph.connected.components(overlap.graph$adj_list)
     names(cluster.assignments) <- rownames(overlap.dists)
 
     ## Create inverse mapping: clusters -> basin labels

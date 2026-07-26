@@ -81,7 +81,7 @@ graph.spectrum <- function(graph,
     if (!requireNamespace("igraph", quietly = TRUE)) {
       stop("Package 'igraph' is required when use.R = TRUE. Install it with install.packages('igraph').", call. = FALSE)
     }
-    g.m <- convert.adjacency.list.to.adjacency.matrix(graph)
+    g.m <- dgraphs::convert.adjacency.list.to.adjacency.matrix(graph)
     g <- igraph::graph_from_adjacency_matrix(g.m, mode = "undirected")
     L  <- igraph::laplacian_matrix(g, normalized = FALSE)
     ed <- eigen(L)
