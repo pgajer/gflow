@@ -113,7 +113,8 @@ required.story <- c(
     "REFERENCE.md",
     "NEWS.md",
     "man/gflow-package.Rd",
-    "split_audit/cleanup/breaking-release-migration.md"
+    "split_audit/cleanup/breaking-release-migration.md",
+    "split_audit/cleanup/downstream-breaking-release-audit.md"
 )
 missing.story <- required.story[!file.exists(file.path(root, required.story))]
 if (length(missing.story)) {
@@ -143,7 +144,7 @@ if (length(errors)) {
 }
 
 cat(
-    "Final acceptance passes for ",
+    "Package-local final acceptance passes for ",
     nrow(exports), " exports (",
     sum(exports$ownership == "PROTECTED"), " protected), ",
     sum(ledger$item_type == "s3"), " S3 methods, ",
