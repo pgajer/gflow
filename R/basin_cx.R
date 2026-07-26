@@ -101,6 +101,28 @@ create.basin.cx <- function(adj.list,
                            min.desc.desc.cell.size.thld = 1,
                            graph.params = list()
                            ) {
+    .create.basin.cx.backend(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        y = y,
+        basin.merge.overlap.thld = basin.merge.overlap.thld,
+        min.asc.desc.cell.size.thld = min.asc.desc.cell.size.thld,
+        min.asc.asc.cell.size.thld = min.asc.asc.cell.size.thld,
+        min.desc.desc.cell.size.thld = min.desc.desc.cell.size.thld,
+        graph.params = graph.params
+    )
+}
+
+.create.basin.cx.backend <- function(
+    adj.list,
+    weight.list,
+    y,
+    basin.merge.overlap.thld = 0.1,
+    min.asc.desc.cell.size.thld = 1,
+    min.asc.asc.cell.size.thld = 1,
+    min.desc.desc.cell.size.thld = 1,
+    graph.params = list()
+) {
     ## Input validation
     if (!is.list(adj.list) || !is.list(weight.list))
         stop("adj.list and weight.list must be lists")

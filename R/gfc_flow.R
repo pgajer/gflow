@@ -196,6 +196,64 @@ compute.gfc.trajectory <- function(
     tie.breaking = TRUE,
     verbose = FALSE
 ) {
+    .compute.gfc.trajectory.backend(
+        adj.list = adj.list,
+        weight.list = weight.list,
+        y = y,
+        density = density,
+        modulation = modulation,
+        edge.length.quantile.thld = edge.length.quantile.thld,
+        long.edge.fallback = long.edge.fallback,
+        apply.relvalue.filter = apply.relvalue.filter,
+        min.rel.value.max = min.rel.value.max,
+        max.rel.value.min = max.rel.value.min,
+        apply.maxima.clustering = apply.maxima.clustering,
+        apply.minima.clustering = apply.minima.clustering,
+        max.overlap.threshold = max.overlap.threshold,
+        min.overlap.threshold = min.overlap.threshold,
+        apply.geometric.filter = apply.geometric.filter,
+        p.mean.nbrs.dist.threshold = p.mean.nbrs.dist.threshold,
+        p.mean.hopk.dist.threshold = p.mean.hopk.dist.threshold,
+        p.deg.threshold = p.deg.threshold,
+        min.basin.size = min.basin.size,
+        min.n.trajectories = min.n.trajectories,
+        hop.k = hop.k,
+        store.trajectories = store.trajectories,
+        max.trajectory.length = max.trajectory.length,
+        symmetric.seeding = symmetric.seeding,
+        tie.breaking = tie.breaking,
+        verbose = verbose
+    )
+}
+
+.compute.gfc.trajectory.backend <- function(
+    adj.list,
+    weight.list,
+    y,
+    density = NULL,
+    modulation = c("CLOSEST", "NONE", "DENSITY", "EDGELEN", "DENSITY_EDGELEN"),
+    edge.length.quantile.thld = 0.9,
+    long.edge.fallback = c("allow_and_flag", "allow", "forbid"),
+    apply.relvalue.filter = TRUE,
+    min.rel.value.max = 1.1,
+    max.rel.value.min = 0.9,
+    apply.maxima.clustering = TRUE,
+    apply.minima.clustering = TRUE,
+    max.overlap.threshold = 0.15,
+    min.overlap.threshold = 0.15,
+    apply.geometric.filter = TRUE,
+    p.mean.nbrs.dist.threshold = 0.9,
+    p.mean.hopk.dist.threshold = 0.9,
+    p.deg.threshold = 0.9,
+    min.basin.size = 10L,
+    min.n.trajectories = 0L,
+    hop.k = 2L,
+    store.trajectories = TRUE,
+    max.trajectory.length = 10000L,
+    symmetric.seeding = TRUE,
+    tie.breaking = TRUE,
+    verbose = FALSE
+) {
     ## -------------------------------------------------------------------------
     ## Input validation
     ## -------------------------------------------------------------------------

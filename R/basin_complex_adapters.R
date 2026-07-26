@@ -536,7 +536,7 @@
                                                   parameters) {
     params <- parameters$method.params
     capture <- .basin.capture.backend(
-        compute.basins.of.attraction(
+        .compute.basins.of.attraction.backend(
             graph.input$adj.list,
             graph.input$edge.length.list,
             field$construction.values,
@@ -611,7 +611,7 @@
                                             verbose) {
     params <- parameters$method.params
     backend.call <- function() {
-        compute.gfc.trajectory(
+        .compute.gfc.trajectory.backend(
             adj.list = graph.input$adj.list,
             weight.list = graph.input$edge.length.list,
             y = field$input.values,
@@ -963,7 +963,7 @@
                                          parameters) {
     params <- parameters$method.params
     capture <- .basin.capture.backend(
-        create.basin.cx(
+        .create.basin.cx.backend(
             adj.list = graph.input$adj.list,
             weight.list = graph.input$edge.length.list,
             y = field$construction.values,

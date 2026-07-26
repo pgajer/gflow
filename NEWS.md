@@ -1,5 +1,8 @@
 # gflow development
 
+* Migrated canonical basin construction to private geodesic, trajectory, and
+  overlap-cell backends so active package and downstream code no longer
+  depends on legacy exported constructors.
 * Added canonical post-construction basin refinement for relative-value
   filtering, extrema clustering, geometric filtering, support filtering, and
   basin expansion, with explicit per-stage provenance and preserved raw

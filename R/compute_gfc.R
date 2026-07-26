@@ -270,7 +270,7 @@ compute.gfc <- function(adj.list,
     }
 
     if (!(modulation %in% c("GEODESIC", "RTCB"))) {
-        return(compute.gfc.trajectory(
+        return(.compute.gfc.trajectory.backend(
             adj.list = adj.list,
             weight.list = edge.length.list,
             y = fitted.values,
@@ -342,7 +342,7 @@ compute.gfc <- function(adj.list,
         )
         current.basins <- do.call(compute.basins.of.attraction.rtcb, rtcb.call.args)
     } else {
-        current.basins <- compute.basins.of.attraction(adj.list,
+        current.basins <- .compute.basins.of.attraction.backend(adj.list,
                                                        edge.length.list,
                                                        fitted.values,
                                                        edge.length.quantile.thld,
