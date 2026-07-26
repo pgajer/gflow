@@ -10,54 +10,6 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// rcpp_compute_graph_endpoint_scores
-Rcpp::List rcpp_compute_graph_endpoint_scores(const List& adj_list, const List& weight_list, const NumericMatrix& layout_3d, const NumericVector& scales, const std::string& neighborhood, double q, const std::string& neighbor_weighting, Rcpp::Nullable<double> gaussian_sigma, int min_neighborhood_size);
-RcppExport SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP layout_3dSEXP, SEXP scalesSEXP, SEXP neighborhoodSEXP, SEXP qSEXP, SEXP neighbor_weightingSEXP, SEXP gaussian_sigmaSEXP, SEXP min_neighborhood_sizeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
-    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix& >::type layout_3d(layout_3dSEXP);
-    Rcpp::traits::input_parameter< const NumericVector& >::type scales(scalesSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type neighborhood(neighborhoodSEXP);
-    Rcpp::traits::input_parameter< double >::type q(qSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type neighbor_weighting(neighbor_weightingSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type gaussian_sigma(gaussian_sigmaSEXP);
-    Rcpp::traits::input_parameter< int >::type min_neighborhood_size(min_neighborhood_sizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_compute_graph_endpoint_scores(adj_list, weight_list, layout_3d, scales, neighborhood, q, neighbor_weighting, gaussian_sigma, min_neighborhood_size));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_graph_multi_source_support_by_scale
-LogicalMatrix rcpp_graph_multi_source_support_by_scale(const List& adj_list, const List& weight_list, const LogicalMatrix& local_max_by_scale, double radius);
-RcppExport SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP local_max_by_scaleSEXP, SEXP radiusSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
-    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
-    Rcpp::traits::input_parameter< const LogicalMatrix& >::type local_max_by_scale(local_max_by_scaleSEXP);
-    Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_graph_multi_source_support_by_scale(adj_list, weight_list, local_max_by_scale, radius));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_graph_greedy_maxima_suppression_by_scale
-LogicalMatrix rcpp_graph_greedy_maxima_suppression_by_scale(const List& adj_list, const List& weight_list, const LogicalMatrix& local_max_by_scale, const NumericMatrix& score_by_scale, double radius);
-RcppExport SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP adj_listSEXP, SEXP weight_listSEXP, SEXP local_max_by_scaleSEXP, SEXP score_by_scaleSEXP, SEXP radiusSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const List& >::type adj_list(adj_listSEXP);
-    Rcpp::traits::input_parameter< const List& >::type weight_list(weight_listSEXP);
-    Rcpp::traits::input_parameter< const LogicalMatrix& >::type local_max_by_scale(local_max_by_scaleSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix& >::type score_by_scale(score_by_scaleSEXP);
-    Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_graph_greedy_maxima_suppression_by_scale(adj_list, weight_list, local_max_by_scale, score_by_scale, radius));
-    return rcpp_result_gen;
-END_RCPP
-}
 // rcpp_local_pca_chart
 List rcpp_local_pca_chart(const NumericMatrix& X_support, const NumericVector& center, const int chart_dim, const std::string& center_mode, const std::string& dim_rule, const double eigen_tolerance, Nullable<NumericVector> weights, const bool rebase_to_anchor, const bool orient_basis);
 RcppExport SEXP _gflow_rcpp_local_pca_chart(SEXP X_supportSEXP, SEXP centerSEXP, SEXP chart_dimSEXP, SEXP center_modeSEXP, SEXP dim_ruleSEXP, SEXP eigen_toleranceSEXP, SEXP weightsSEXP, SEXP rebase_to_anchorSEXP, SEXP orient_basisSEXP) {
@@ -74,69 +26,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const bool >::type rebase_to_anchor(rebase_to_anchorSEXP);
     Rcpp::traits::input_parameter< const bool >::type orient_basis(orient_basisSEXP);
     rcpp_result_gen = Rcpp::wrap(rcpp_local_pca_chart(X_support, center, chart_dim, center_mode, dim_rule, eigen_tolerance, weights, rebase_to_anchor, orient_basis));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_quadform_delaunay_edges_3d
-Rcpp::List rcpp_quadform_delaunay_edges_3d(const Rcpp::NumericMatrix& X, std::string qhull_options);
-RcppExport SEXP _gflow_rcpp_quadform_delaunay_edges_3d(SEXP XSEXP, SEXP qhull_optionsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< std::string >::type qhull_options(qhull_optionsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_delaunay_edges_3d(X, qhull_options));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_quadform_edge_lengths
-Rcpp::NumericVector rcpp_quadform_edge_lengths(const Rcpp::NumericMatrix& U, const Rcpp::NumericMatrix& V, int index_k, const Rcpp::NumericVector& coefficients);
-RcppExport SEXP _gflow_rcpp_quadform_edge_lengths(SEXP USEXP, SEXP VSEXP, SEXP index_kSEXP, SEXP coefficientsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type U(USEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type V(VSEXP);
-    Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_edge_lengths(U, V, index_k, coefficients));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_quadform_grid_pair_distances
-Rcpp::List rcpp_quadform_grid_pair_distances(int index_k, const Rcpp::NumericVector& coefficients, const std::string& domain_shape, double domain_radius, int grid_size, const Rcpp::NumericMatrix& pair_points);
-RcppExport SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP index_kSEXP, SEXP coefficientsSEXP, SEXP domain_shapeSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP pair_pointsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type domain_shape(domain_shapeSEXP);
-    Rcpp::traits::input_parameter< double >::type domain_radius(domain_radiusSEXP);
-    Rcpp::traits::input_parameter< int >::type grid_size(grid_sizeSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type pair_points(pair_pointsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_pair_distances(index_k, coefficients, domain_shape, domain_radius, grid_size, pair_points));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rcpp_quadform_grid_geodesic_distances
-Rcpp::List rcpp_quadform_grid_geodesic_distances(const Rcpp::NumericMatrix& X, int index_k, const Rcpp::NumericVector& coefficients, const std::string& domain_shape, double domain_radius, int grid_size, int sample_connection_k, bool with_oracle, double oracle_tube_radius, int oracle_tube_k, bool return_oracle_paths);
-RcppExport SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP XSEXP, SEXP index_kSEXP, SEXP coefficientsSEXP, SEXP domain_shapeSEXP, SEXP domain_radiusSEXP, SEXP grid_sizeSEXP, SEXP sample_connection_kSEXP, SEXP with_oracleSEXP, SEXP oracle_tube_radiusSEXP, SEXP oracle_tube_kSEXP, SEXP return_oracle_pathsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< int >::type index_k(index_kSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type coefficients(coefficientsSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type domain_shape(domain_shapeSEXP);
-    Rcpp::traits::input_parameter< double >::type domain_radius(domain_radiusSEXP);
-    Rcpp::traits::input_parameter< int >::type grid_size(grid_sizeSEXP);
-    Rcpp::traits::input_parameter< int >::type sample_connection_k(sample_connection_kSEXP);
-    Rcpp::traits::input_parameter< bool >::type with_oracle(with_oracleSEXP);
-    Rcpp::traits::input_parameter< double >::type oracle_tube_radius(oracle_tube_radiusSEXP);
-    Rcpp::traits::input_parameter< int >::type oracle_tube_k(oracle_tube_kSEXP);
-    Rcpp::traits::input_parameter< bool >::type return_oracle_paths(return_oracle_pathsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rcpp_quadform_grid_geodesic_distances(X, index_k, coefficients, domain_shape, domain_radius, grid_size, sample_connection_k, with_oracle, oracle_tube_radius, oracle_tube_k, return_oracle_paths));
     return rcpp_result_gen;
 END_RCPP
 }

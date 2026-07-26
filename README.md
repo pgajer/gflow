@@ -1,114 +1,78 @@
 # gflow
 
-`gflow` is an R package for gradient-flow-based analysis of high-dimensional data.
+`gflow` constructs, explores, and analyzes basin and gradient-flow complexes
+on structured high-dimensional data. Its supported public API is deliberately
+narrow: basin/flow objects, their summaries and trajectories, graph-local
+association, and flow-aware association.
 
-## Collaborator Installation (`grip` + `malo` + `gflow`)
+Generic graph construction and graph algorithms belong to
+[`dgraphs`](https://github.com/pgajer/dgraphs). Retired response-smoothing and
+conditional-expectation estimators are archived in
+[`gflowx`](https://github.com/pgajer/gflowx); they are not dependencies of
+`gflow`.
 
-The recommended path is to clone both repositories and install from source.
+## Core workflow
 
-### 1. Clone repositories
+```r
+library(dgraphs)
+library(gflow)
 
-```bash
-git clone https://github.com/pgajer/grip.git
-git clone https://github.com/pgajer/malo.git
-git clone https://github.com/pgajer/gflow.git
+# Build the graph with dgraphs, then construct a basin complex in gflow.
+# graph <- dgraphs::<graph-constructor>(...)
+bc <- create.basin.complex(
+  adj.list = graph$adj.list,
+  weight.list = graph$weight.list,
+  f = field,
+  method = "merge_tree"
+)
+
+summary(bc)
+get.basin.table(bc)
+get.basin.membership(bc)
+plot(bc)
 ```
 
-### 2. Install base R helpers
+The graph construction line is intentionally schematic because the appropriate
+`dgraphs` constructor depends on the data and graph model. `gflow` consumes
+adjacency and weight lists; it does not duplicate generic graph infrastructure.
+
+## Supported API map
+
+| Purpose | Canonical entry points |
+|---|---|
+| Construct/convert basin complexes | `create.basin.complex()`, `as.basin.complex()` |
+| Inspect basin objects | `summary()`, `plot()`, `get.basin.table()`, `get.basin.membership()`, `get.basin.assignment()` |
+| Explore trajectories and cells | `get.basin.trajectory.forest()`, `get.basin.cells()`, `compute.harmonic.extension()`, `construct.madag()` |
+| Local association | `lcor()`, `lslope()`, `lslope.neighborhood()`, `permutation.test.lcor()` |
+| Flow-aware association | `gfcor()`, `gfassoc.membership()`, `gfassoc.polarity()`, `gfassoc.overlap()`, `gfassoc.deviation()` |
+
+See [REFERENCE.md](REFERENCE.md) for the maintained public families and
+[the 0.2.0 migration guide](split_audit/cleanup/breaking-release-migration.md)
+for removed names and successor packages.
+
+## Installation
+
+Install `dgraphs` first, then install `gflow` with its required dependencies:
 
 ```bash
-R -q -e 'install.packages(c("remotes","Rcpp"))'
+R -q -e 'remotes::install_local("../dgraphs", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
+R -q -e 'remotes::install_local(".", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
 ```
 
-### 3. Install `grip`
-
-Run from the parent directory that contains both cloned folders:
+The default `cran-safe` build is portable and uses OpenMP when the active R
+toolchain supplies it. A performance-oriented build can require OpenMP:
 
 ```bash
-R -q -e 'remotes::install_local("grip", dependencies=TRUE, upgrade="never")'
+R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="dev"); remotes::install_local(".", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
 ```
 
-### 4. Install `malo`
-
-Run from the parent directory that contains the cloned folders:
-
-```bash
-R -q -e 'remotes::install_local("malo", dependencies=TRUE, upgrade="never")'
-```
-
-### 5. Install `gflow`
-
-```bash
-R -q -e 'remotes::install_local("gflow", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
-```
-
-Legacy 1D model-averaging APIs were removed from `gflow`; use `malo` directly
-for `magelo*`, `mabilo*`, `magelog`, and `fit.pwlm*`.
+Detailed toolchain instructions are in [INSTALL.md](INSTALL.md).
 
 ## Development QA
 
-Use Makefile targets for package QA so documentation is regenerated before checks:
-
 ```bash
-# Regenerate Rcpp exports + roxygen docs
 make document
-
-# Fast CRAN-style gate (skips examples/tests/manual)
 make check-fast
-
-# Full CRAN-style check
 make check
+make audit-final-acceptance
 ```
-
-Avoid running `R CMD build` / `R CMD check` directly unless you explicitly need
-an ad-hoc invocation.
-
-For doc/example modernization work that you want to checkpoint in small commits,
-you can use:
-
-```bash
-tools/run_example_batches.sh tools/example_batches.tsv
-```
-
-The manifest uses tab-separated lines of the form:
-
-```text
-Commit message<TAB>space-separated file paths
-```
-
-The script only automates validation plus `git add` / `commit` / `push` for
-already-prepared batches; it does not generate the source edits itself.
-
-## OpenMP Requirement
-
-`gflow` default install profile (`cran-safe`) is portable and does not require
-OpenMP. If OpenMP is available in the active R toolchain, it will still be used.
-
-For performance-critical workflows that must fail fast when OpenMP is missing,
-install with `dev` profile:
-
-```bash
-R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="dev"); remotes::install_local("gflow", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
-```
-
-Detailed OS-specific setup instructions are in `INSTALL.md`.
-
-- Linux: GCC-based toolchains usually work out of the box.
-- macOS: users must configure an OpenMP-capable toolchain (for example Homebrew GCC
-  or LLVM + `libomp`).
-- Windows: users need OpenMP-enabled Rtools toolchain setup.
-
-If OpenMP is not configured, installation in `dev` profile will fail with a clear
-error message.
-
-## Verify OpenMP After Install
-
-Run:
-
-```r
-.Call("S_gflow_openmp_diag", PACKAGE = "gflow")
-```
-
-Expected: `openmp_compiled` is `TRUE`.
-On toolchains without OpenMP support, this will be `FALSE` and execution is
-single-threaded.

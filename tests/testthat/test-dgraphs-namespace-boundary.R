@@ -1,6 +1,5 @@
 test_that("gflow and dgraphs overlap only on protected APIs", {
   protected.overlap <- c(
-    "detect.graph.endpoints",
     "detect.local.extrema",
     "vertices"
   )

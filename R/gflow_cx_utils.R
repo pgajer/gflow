@@ -79,7 +79,7 @@
 #'   adj_list, weight_list, y, predictions, extrema_df, hop.offset = 1
 #' )
 #' }
-#' @export
+#' @noRd
 extract.extrema.subgraphs <- function(adj.list,
                                      weight.list,
                                      y,

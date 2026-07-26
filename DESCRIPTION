@@ -1,6 +1,6 @@
 Package: gflow
 Title: Gradient Flow Data Analysis Framework
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     person(given = "Pawel",
            family = "Gajer",
@@ -31,8 +31,6 @@ Imports:
     graphics,
     grDevices,
     FNN,
-    doParallel,
-    foreach,
     parallel,
     dgraphs,
     igraph,
@@ -41,12 +39,8 @@ Suggests:
     rgl,
     htmlwidgets,
     htmltools,
-    plotly,
-    shiny,
-    smacof,
     grip,
     dbscan,
-    clValid,
     mclust,
     MASS,
     RColorBrewer,
@@ -58,8 +52,6 @@ Suggests:
     cluster,
     ComplexHeatmap,
     dtw,
-    fpc,
-    geometry,
     ggplot2,
     hexbin,
     logistf,
@@ -72,8 +64,7 @@ Suggests:
     HDInterval,
     rootSolve,
     lme4,
-    clue,
-    gflowx
+    clue
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0

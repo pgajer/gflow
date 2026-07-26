@@ -1,4 +1,4 @@
-test_that("catch-all support files expose only owned widget workflows", {
+test_that("catch-all support files expose no application UI workflows", {
   source.files <- c(
     "stats_utils.R",
     "plot_utils.R",
@@ -30,14 +30,7 @@ test_that("catch-all support files expose only owned widget workflows", {
 
   defined <- unique(unlist(lapply(source.files, top.level.functions)))
   public <- intersect(defined, getNamespaceExports("gflow"))
-  expect_setequal(
-    public,
-    c(
-      "plot3D.plain.widget",
-      "plot3D.cont.widget",
-      "plot3D.cltrs.widget"
-    )
-  )
+  expect_length(public, 0L)
 })
 
 test_that("matrix preprocessing helpers have one top-level definition", {

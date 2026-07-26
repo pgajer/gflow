@@ -769,7 +769,7 @@ cluster.extrema.graph.aware <- function(geodesic.dist,
 #' )
 #' }
 #'
-#' @export
+#' @noRd
 compute.cluster.summary <- function(extremality.df,
                                     geodesic.dist,
                                     representative.method = c("medoid", "centroid",
@@ -929,7 +929,7 @@ compute.cluster.summary <- function(extremality.df,
 #' representatives <- extract.cluster.representatives(extremality.df, cluster_summary)
 #' representatives[, c("vertex", "label", "cluster")]
 #'
-#' @export
+#' @noRd
 extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 
     # Get representative vertices
@@ -1099,7 +1099,7 @@ extract.cluster.representatives <- function(extremality.df, cluster_summary) {
 #' \code{\link{compute.cluster.summary}} for hierarchical clustering summary,
 #' \code{\link{extract.dbscan.cluster.representatives}} for extracting representatives
 #'
-#' @export
+#' @noRd
 compute.dbscan.cluster.summary <- function(extremality.df,
                                           dbscan_clusters,
                                           geodesic.dist = NULL,
@@ -1371,7 +1371,7 @@ compute_cluster_stats <- function(cluster_members) {
 #' \code{\link{compute.dbscan.cluster.summary}} for computing cluster summaries,
 #' \code{\link{extract.cluster.representatives}} for hierarchical clustering version
 #'
-#' @export
+#' @noRd
 extract.dbscan.cluster.representatives <- function(extremality.df,
                                                    dbscan_cluster_summary) {
 
@@ -1467,7 +1467,7 @@ extract.dbscan.cluster.representatives <- function(extremality.df,
 #' )
 #' subset(noise_analysis, extremality.radius >= 3)
 #'
-#' @export
+#' @noRd
 analyze.dbscan.noise <- function(extremality.df,
                                  dbscan_clusters,
                                  extrema.type = c("max", "min")) {

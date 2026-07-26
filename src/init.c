@@ -16,14 +16,12 @@
 #include "graph_spectrum_r.h"
 #include "graph_utils_r.h"
 #include "grids.h"
-#include "hHN_graphs_r.h"
 #include "lm.h"
 #include "mstree.h"
 #include "mstree_total_length_r.h"
 #include "pruning_long_edges_r.h"
 #include "random_sampling_r.h"
 #include "sampling.h"  // For C_runif_simplex()
-#include "density_r.h"
 #include "centered_paths_r.h"
 #include "iknn_graphs_r.h"
 #include "graph_gradient_flow_r.h"
@@ -48,12 +46,10 @@
 #include "basin_summary_r.h"
 #include "gfassoc_r.h"
 #include "harmonic_extension_r.h"
-#include "diffusion_pseudotime_sparse_r.h"
 #include "gfc_flow_r.h"
 #include "madag_r.h"
 #include "traj_clustering_r.h"
 #include "graph_core_endpoints_r.h"
-#include "phate_core_r.h"
 #include "linf_simplex_knn_r.h"
 #include "local_geodesic_pruning_r.h"
 
@@ -108,13 +104,6 @@ static const R_CMethodDef cMethods[] = {
 extern "C" {
 #endif
 SEXP _gflow_rcpp_local_pca_chart(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_compute_graph_endpoint_scores(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_graph_multi_source_support_by_scale(SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_graph_greedy_maxima_suppression_by_scale(SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_quadform_delaunay_edges_3d(SEXP, SEXP);
-SEXP _gflow_rcpp_quadform_edge_lengths(SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_quadform_grid_pair_distances(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _gflow_rcpp_quadform_grid_geodesic_distances(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 #ifdef __cplusplus
 }
 #endif
@@ -133,18 +122,6 @@ static const R_CallMethodDef CallMethods[] = {
   // =========================================================================
   {"S_compute_harmonic_extension", (DL_FUNC) &S_compute_harmonic_extension, 10},
   {"S_select_max_density_trajectory", (DL_FUNC) &S_select_max_density_trajectory, 2},
-
-  // =========================================================================
-  //  Sparse diffusion/potential pseudotime
-  // =========================================================================
-  {"S_build_sparse_transition", (DL_FUNC) &S_build_sparse_transition, 5},
-  {"S_compute_diffusion_pseudotime_sparse", (DL_FUNC) &S_compute_diffusion_pseudotime_sparse, 12},
-  {"S_compute_potential_pseudotime_sparse", (DL_FUNC) &S_compute_potential_pseudotime_sparse, 12},
-
-  // =========================================================================
-  //  PHATE core
-  // =========================================================================
-  {"S_phate_build_kernel", (DL_FUNC) &S_phate_build_kernel, 7},
 
   // =========================================================================
   //  Gradient flow association functions
@@ -213,9 +190,6 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_extract_skeleton_graph", (DL_FUNC) &S_extract_skeleton_graph, 1},
   {"S_get_simplex_counts", (DL_FUNC) &S_get_simplex_counts, 1},
 
-  // Temporary internal graph-construction dependency: private
-  // .create.hHN.graph() still calls this while hHN graph creation is migrated.
-  {"S_create_hHN_graph", (DL_FUNC) &S_create_hHN_graph, 3},
   {"S_kNN", (DL_FUNC) &S_kNN, 2},
 
   {"S_create_nerve_complex", (DL_FUNC) &S_create_nerve_complex, 3},
@@ -224,22 +198,13 @@ static const R_CallMethodDef CallMethods[] = {
   // graph utilities
   // =========================================================================
   {"S_detect_major_arms", (DL_FUNC) &S_detect_major_arms, 11},
-  {"S_estimate_local_density_over_grid", (DL_FUNC) &S_estimate_local_density_over_grid, 6},
   {"S_solve_full_laplacian", (DL_FUNC) &S_solve_full_laplacian, 3},
   {"S_parameterize_circular_graph", (DL_FUNC) &S_parameterize_circular_graph, 3},
-  {"S_find_graph_paths_within_radius", (DL_FUNC) &S_find_graph_paths_within_radius, 4},
   {"S_compute_tube_lens_corridor", (DL_FUNC) &S_compute_tube_lens_corridor, 7},
   {"S_get_path_data", (DL_FUNC) &S_get_path_data, 10},
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
 
   {"_gflow_rcpp_local_pca_chart", (DL_FUNC) &_gflow_rcpp_local_pca_chart, 9},
-  {"_gflow_rcpp_compute_graph_endpoint_scores", (DL_FUNC) &_gflow_rcpp_compute_graph_endpoint_scores, 9},
-  {"_gflow_rcpp_graph_multi_source_support_by_scale", (DL_FUNC) &_gflow_rcpp_graph_multi_source_support_by_scale, 4},
-  {"_gflow_rcpp_graph_greedy_maxima_suppression_by_scale", (DL_FUNC) &_gflow_rcpp_graph_greedy_maxima_suppression_by_scale, 5},
-  {"_gflow_rcpp_quadform_delaunay_edges_3d", (DL_FUNC) &_gflow_rcpp_quadform_delaunay_edges_3d, 2},
-  {"_gflow_rcpp_quadform_edge_lengths", (DL_FUNC) &_gflow_rcpp_quadform_edge_lengths, 4},
-  {"_gflow_rcpp_quadform_grid_pair_distances", (DL_FUNC) &_gflow_rcpp_quadform_grid_pair_distances, 6},
-  {"_gflow_rcpp_quadform_grid_geodesic_distances", (DL_FUNC) &_gflow_rcpp_quadform_grid_geodesic_distances, 11},
 
   // =========================================================================
   // stat utilities

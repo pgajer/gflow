@@ -25,7 +25,7 @@
 #'   \item{arm.table}{Per-tip diagnostics table and selection flags.}
 #' }
 #'
-#' @export
+#' @noRd
 detect.major.arms <- function(adj.list,
                               weight.list,
                               core.quantile = 0.10,

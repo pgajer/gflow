@@ -24,21 +24,6 @@ test_that("all retained validators reject structurally empty objects", {
     }
 })
 
-test_that("distance quantile class validator accepts constructor output", {
-    result <- distance.quantile.bin.analysis(
-        x = seq_len(12),
-        d = seq_len(12),
-        n.bins = 3L,
-        min.per.bin = 2L
-    )
-    validator <- get(
-        ".validate.distance.quantile.bins",
-        envir = asNamespace("gflow")
-    )
-
-    expect_identical(validator(result), result)
-})
-
 test_that("association constructors satisfy their retained S3 contracts", {
     adj.list <- list(c(2L, 3L), c(1L, 3L), c(1L, 2L))
     weight.list <- lapply(adj.list, function(neighbors) rep(1, length(neighbors)))
@@ -94,13 +79,6 @@ test_that("analysis constructors satisfy their retained S3 contracts", {
         density = c(1, 2, 3),
         verbose = FALSE
     )
-    p.summary <- weighted.p.value.summary(
-        c(-1, 0, 1),
-        mu = 0,
-        sigma = 1
-    )
-
     expect_silent(capture.output(print(modulation)))
     expect_silent(capture.output(plot(modulation)))
-    expect_silent(capture.output(print(p.summary)))
 })

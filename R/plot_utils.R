@@ -185,7 +185,7 @@ plot3D.plain <- function(X,
 #'
 #' @return An \code{htmlwidget} object from \code{rgl::rglwidget()}.
 #'
-#' @export
+#' @noRd
 plot3D.plain.widget <- function(X,
                               radius = NULL,
                               col = "gray",
@@ -584,7 +584,7 @@ plot3D.cont <- function(X,
 #' w
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.cont.widget <- function(X,
                              y,
                              subset = NULL,
@@ -1599,7 +1599,7 @@ plot3D.cltrs <- function(X,
 #'   \item \code{cltr.centers}: matrix of cluster centers (if labels are shown)
 #' }
 #'
-#' @export
+#' @noRd
 plot3D.cltrs.widget <- function(X,
                               cltr = NULL,
                               cltr.col.tbl = NULL,
