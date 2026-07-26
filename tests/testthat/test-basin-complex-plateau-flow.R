@@ -52,7 +52,7 @@ plateau.flow.create <- function(graph,
     )
 }
 
-test_that("a terminal plateau is defined by flow, not vertex degree", {
+test_that("a flow-terminal plateau is defined by adjacent field values", {
     graph <- plateau.flow.graph(
         5L,
         matrix(
@@ -91,7 +91,7 @@ test_that("a terminal plateau is defined by flow, not vertex degree", {
     expect_true(all(lengths(graph$adj.list)[c(2L, 3L, 4L)] > 1L))
 })
 
-test_that("a nonterminal plateau selects the shortest improving boundary edge", {
+test_that("a non-flow-terminal plateau selects the shortest improving edge", {
     graph <- plateau.flow.graph(
         5L,
         matrix(
@@ -209,7 +209,7 @@ test_that("disconnected equal-valued vertices remain distinct extrema", {
     )
 })
 
-test_that("minimum flow contracts terminal and nonterminal plateaus", {
+test_that("minimum flow contracts flow-terminal and other plateaus", {
     graph <- plateau.flow.graph(
         5L,
         matrix(

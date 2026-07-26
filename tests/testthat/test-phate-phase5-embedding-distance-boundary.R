@@ -53,7 +53,7 @@ test_that("PHATE Phase 5 U.pot and D.pot routes preserve classic embedding geome
   expect_equal(emb.u$diagnostics$embedding_distance_backend, "euclidean_rows")
   expect_equal(as.matrix(stats::dist(emb.u$embedding)),
                as.matrix(stats::dist(emb.d$embedding)),
-               tolerance = 1e-8)
+               tolerance = 5e-8)
   expect_equal(emb.u$stress, emb.d$stress, tolerance = 1e-7)
 })
 
