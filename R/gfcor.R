@@ -224,6 +224,7 @@ gfcor <- function(y.hat,
 #'
 #' @export
 print.gfcor <- function(x, ...) {
+    .validate.gfcor(x)
     cat("Gradient Flow Correlation Analysis\n")
     cat("===================================\n\n")
 
@@ -268,6 +269,7 @@ print.gfcor <- function(x, ...) {
 #'
 #' @export
 summary.gfcor <- function(object, ...) {
+    .validate.gfcor(object)
     result <- list()
 
     ## Global summary
@@ -320,6 +322,7 @@ summary.gfcor <- function(object, ...) {
 #'
 #' @export
 print.summary.gfcor <- function(x, ...) {
+    .validate.summary.gfcor(x)
     cat("Summary: Gradient Flow Correlation Analysis\n")
     cat("============================================\n\n")
 

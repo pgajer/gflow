@@ -129,6 +129,7 @@ build.se.tree <- function(adj.list,
 #'
 #' @export
 print.se_tree <- function(x, ...) {
+    .validate.se.tree(x)
     cat("Spurious Extrema Tree\n")
     cat("=====================\n")
     cat(sprintf("Root: %s at vertex %d\n",

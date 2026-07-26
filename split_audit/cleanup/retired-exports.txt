@@ -76,3 +76,4 @@ plot.chain.with.path
 plot.component
 plot.components.multi
 plot.comono.diagnostics
+print.nerve_complex

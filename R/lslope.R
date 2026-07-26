@@ -825,6 +825,7 @@ lslope.matrix.matrix <- function(adj.list,
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lslope_gradient_result <- function(x, ...) {
+    .validate.lslope.gradient.result(x)
     cat("Gradient-Restricted Local Slope Result\n")
     cat("=======================================\n\n")
 
@@ -862,6 +863,7 @@ print.lslope_gradient_result <- function(x, ...) {
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lslope_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...) {
+    .validate.lslope.vector.matrix.result(x)
     cat("Local Slope Vector-Matrix Result\n")
     cat("=================================\n\n")
 
@@ -904,6 +906,7 @@ print.lslope_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...)
 #' @param ... Additional arguments (ignored)
 #' @export
 summary.lslope_vector_matrix_result <- function(object, ...) {
+    .validate.lslope.vector.matrix.result(object)
     cat("Local Slope Vector-Matrix Summary\n")
     cat("==================================\n\n")
 
@@ -940,6 +943,7 @@ summary.lslope_vector_matrix_result <- function(object, ...) {
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lslope_matrix_matrix_result <- function(x, digits = 4, ...) {
+    .validate.lslope.matrix.matrix.result(x)
     cat("Local Slope Matrix-Matrix Result\n")
     cat("=================================\n\n")
 
@@ -976,6 +980,7 @@ print.lslope_matrix_matrix_result <- function(x, digits = 4, ...) {
 #' @param ... Additional arguments (ignored)
 #' @export
 summary.lslope_matrix_matrix_result <- function(object, ...) {
+    .validate.lslope.matrix.matrix.result(object)
     cat("Local Slope Matrix-Matrix Summary\n")
     cat("==================================\n\n")
 
@@ -1136,6 +1141,7 @@ lslope.neighborhood <- function(adj.list,
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lslope_neighborhood_result <- function(x, ...) {
+    .validate.lslope.neighborhood.result(x)
     cat("Neighborhood Local Regression Coefficient Result\n")
     cat("=================================================\n\n")
 

@@ -261,16 +261,22 @@ distance.quantile.bin.analysis <- function(x,
     out
 }
 
+#' Plot Distance-Quantile Bin Summaries
+#'
+#' @param x A \code{distance.quantile.bins} object returned by
+#'   \code{\link{distance.quantile.bin.analysis}}.
+#' @param what Which summary to plot: abundance or presence.
+#' @param main Optional plot title.
+#' @param ... Additional graphical parameters, currently ignored.
+#'
+#' @return \code{TRUE}, invisibly.
+#'
 #' @export
 plot.distance.quantile.bins <- function(x,
                                        what = c("abundance", "presence"),
                                        main = NULL,
                                        ...) {
-    if (!inherits(x, "distance.quantile.bins") ||
-        !is.list(x) ||
-        !is.data.frame(x$bins)) {
-        stop("x must be a distance.quantile.bins object.")
-    }
+    .validate.distance.quantile.bins(x)
     res <- x
 
     what <- match.arg(what)

@@ -367,6 +367,7 @@ construct.gflow.graph <- function(merged.basins,
 #'
 #' @export
 print.gflow_graph <- function(x, ...) {
+  .validate.gflow.graph(x)
   cat("Gradient Flow Graph (1-skeleton of nerve complex)\n")
   cat("=================================================\n\n")
   
@@ -448,6 +449,7 @@ print.gflow_graph <- function(x, ...) {
 #'
 #' @export
 summary.gflow_graph <- function(object, ...) {
+  .validate.gflow.graph(object)
   degrees <- sapply(object$adjacency.list, length)
   n.edges <- sum(degrees) / 2
   
@@ -513,6 +515,7 @@ summary.gflow_graph <- function(object, ...) {
 #'
 #' @export
 print.summary.gflow_graph <- function(x, ...) {
+  .validate.summary.gflow.graph(x)
   cat("Gradient Flow Graph Summary\n")
   cat("===========================\n\n")
   

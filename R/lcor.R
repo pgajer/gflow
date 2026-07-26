@@ -663,6 +663,7 @@ lcor.vector.matrix <- function(adj.list,
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lcor_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...) {
+    .validate.lcor.vector.matrix.result(x)
     cat("Local Correlation Vector-Matrix Result\n")
     cat("=======================================\n\n")
 
@@ -716,6 +717,7 @@ print.lcor_vector_matrix_result <- function(x, digits = 4, max.show = 10, ...) {
 #' @param ... Additional arguments (ignored)
 #' @export
 summary.lcor_vector_matrix_result <- function(object, ...) {
+    .validate.lcor.vector.matrix.result(object)
     cat("Local Correlation Vector-Matrix Summary\n")
     cat("========================================\n\n")
 
@@ -1228,6 +1230,7 @@ lcor.matrix.matrix <- function(adj.list,
 #' @param ... Additional arguments (ignored)
 #' @export
 print.lcor_matrix_matrix_result <- function(x, digits = 4, ...) {
+    .validate.lcor.matrix.matrix.result(x)
     cat("Local Correlation Matrix-Matrix Result\n")
     cat("=======================================\n\n")
 
@@ -1299,6 +1302,7 @@ print.lcor_matrix_matrix_result <- function(x, digits = 4, ...) {
 #' @param ... Additional arguments (ignored)
 #' @export
 summary.lcor_matrix_matrix_result <- function(object, ...) {
+    .validate.lcor.matrix.matrix.result(object)
     cat("Local Correlation Matrix-Matrix Summary\n")
     cat("========================================\n\n")
 

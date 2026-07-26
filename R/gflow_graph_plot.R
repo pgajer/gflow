@@ -99,6 +99,7 @@ plot.gflow_graph <- function(x,
                              add.legend = TRUE,
                              main = "Gradient Flow Graph",
                              ...) {
+  .validate.gflow.graph(x)
   
   layout <- match.arg(layout)
   

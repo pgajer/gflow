@@ -281,6 +281,7 @@ weighted.p.value.summary <- function(u, mu, sigma,
 #'
 #' @export
 print.weighted.p.summary <- function(x, ...) {
+    .validate.weighted.p.summary(x)
     cat("Weighted P-value Analysis\n")
     cat("========================\n\n")
     cat("Null hypothesis: X ~ N(", x$null.parameters["mu"], ", ",

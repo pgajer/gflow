@@ -52,6 +52,7 @@
 #'
 #' @seealso \code{\link{compute.gfc.basins}}
 #'
+#' @export
 compute.gfc.modulation <- function(adj.list,
                                    weight.list,
                                    modulation = c("density", "edgelen", "density_edgelen"),
@@ -315,6 +316,7 @@ compute.gfc.modulation <- function(adj.list,
 #'
 #' @export
 print.gfc_modulation <- function(x, ...) {
+    .validate.gfc.modulation(x)
 
     cat("Gradient Flow Modulation\n")
     cat("========================\n")
@@ -375,6 +377,7 @@ print.gfc_modulation <- function(x, ...) {
 plot.gfc_modulation <- function(x,
                                    type = c("both", "density", "edgelen"),
                                    ...) {
+    .validate.gfc.modulation(x)
 
     type <- match.arg(type)
 
