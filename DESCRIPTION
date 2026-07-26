@@ -8,18 +8,12 @@ Authors@R:
            role = c("aut", "cre"))
 Author: Pawel Gajer [aut, cre]
 Maintainer: Pawel Gajer <pgajer@gmail.com>
-Description: The gflow package implements geometric methods for analyzing
-    high-dimensional data by exploiting the fact that most real-world
-    high-dimensional datasets are highly structured and sparse, displaying an
-    intrinsic dimension often orders of magnitude smaller than the number of
-    features (the dimension of the ambient space in which the data is embedded). The
-    package provides tools for modeling the intrinsic geometric structures of data
-    and estimating conditional expectations of response variables over these
-    geometric objects. Inferential analysis is performed using the Morse-Smale
-    regression approach, which decomposes the domain (the geometric object
-    associated with the data) into gradient flow cells. Within each cell, the
-    regression model exhibits an essentially monotonic structure that can be
-    analyzed using classical statistical methods.
+Description: Constructs and explores basin and gradient-flow complexes on
+    structured high-dimensional data. The package provides basin, cell,
+    trajectory, and flow-aware analysis methods, including local association
+    summaries defined by those geometric objects. Generic graph construction is
+    supplied by 'dgraphs'. Retired response-smoothing and conditional
+    expectation estimators are preserved separately in 'gflowx'.
 Copyright: file inst/COPYRIGHTS
 License: GPL (>= 3)
 URL: https://github.com/pgajer/gflow
@@ -34,7 +28,6 @@ Depends:
     R (>= 3.5.0)
 Imports:
     Rcpp,
-    methods,
     stats,
     graphics,
     grDevices,
@@ -92,6 +85,7 @@ Suggests:
     infotheo,
     rootSolve,
     lme4,
-    clue
+    clue,
+    gflowx
 VignetteBuilder: knitr
 Config/testthat/edition: 3

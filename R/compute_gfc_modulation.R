@@ -13,7 +13,8 @@
 #'   \code{"density_edgelen"} for combined modulation (product of both).
 #' @param density Optional numeric vector of pre-computed density values.
 #'   If \code{NULL}, computed from nearest neighbor distances (raw d1 inverse).
-#'   For smoothed density, pass result from \code{compute.smoothed.density()}.
+#'   Smoothed density must be estimated externally; the archived rdgraph-based
+#'   helper is `gflowx::compute.smoothed.density()`.
 #' @param edgelen.bandwidth Bandwidth for edge length KDE. If \code{"auto"}
 #'   (default), uses Sheather-Jones method via \code{bw.SJ()}. Can also be
 #'   a positive numeric value for manual bandwidth, or a character string
@@ -49,7 +50,7 @@
 #' w'(v,u) = w(v,u) * rho(u) * dl(v,u). Here rho(u) is the density at
 #' vertex u and dl(v,u) is the edge length density weight.
 #'
-#' @seealso \code{\link{compute.gfc.basins}}, \code{\link{compute.smoothed.density}}
+#' @seealso \code{\link{compute.gfc.basins}}
 #'
 compute.gfc.modulation <- function(adj.list,
                                    weight.list,

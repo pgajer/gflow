@@ -79,7 +79,7 @@ associations between a fixed response field and candidate features.
 }
 \examples{
 \dontrun{
-fit <- fit.rdgraph.regression(X, y, k = 10)
+fit <- gflowx::fit.rdgraph.regression(X, y, k = 10)
 y.hat <- fit$fitted.values
 
 res <- permutation.test.lcor(

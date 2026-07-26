@@ -13,10 +13,6 @@ rcpp_graph_greedy_maxima_suppression_by_scale <- function(adj_list, weight_list,
     .Call(`_gflow_rcpp_graph_greedy_maxima_suppression_by_scale`, adj_list, weight_list, local_max_by_scale, score_by_scale, radius)
 }
 
-Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALSE) {
-    .Call(`_gflow_Rcpp_graph_kernel_smoother`, adj, w, y, bandwidth, with_details)
-}
-
 #' Local PCA chart
 #'
 #' Internal C++ backend for shared local-PCA chart construction.
@@ -24,71 +20,6 @@ Rcpp_graph_kernel_smoother <- function(adj, w, y, bandwidth, with_details = FALS
 #' @keywords internal
 rcpp_local_pca_chart <- function(X_support, center, chart_dim, center_mode = "anchor", dim_rule = "fixed", eigen_tolerance = 0.9, weights = NULL, rebase_to_anchor = TRUE, orient_basis = FALSE) {
     .Call(`_gflow_rcpp_local_pca_chart`, X_support, center, chart_dim, center_mode, dim_rule, eigen_tolerance, weights, rebase_to_anchor, orient_basis)
-}
-
-#' Fully Adaptive Mean Shift with Gradient Field Averaging (C++ engine)
-#'
-#' Low-level Rcpp wrapper. Prefer calling the R wrapper
-#' \code{adaptive_mean_shift_gfa()} for a friendlier interface.
-#'
-#' @param X numeric matrix (n x d).
-#' @param k integer, k-NN for gradient estimation (excl. self).
-#' @param density_k integer, k-NN for density estimation (excl. self).
-#' @param n_steps integer, number of iterations.
-#' @param initial_step_size positive numeric, initial per-point step size.
-#' @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
-#'               Available kernels:
-#'               - 0-Constant,
-#'               - 1-Epanechnikov,
-#'               - 2-Triangular,
-#'               - 3-TrExponential,
-#'               - 4-Laplace,
-#'               - 5-Normal,
-#'               - 6-Biweight,
-#'               - 7-Tricube,
-#'               - 8-Cosine
-#'               - 9-Hyperbolic
-#' @param dist_normalization_factor numeric > 0.
-#' @param average_direction_only logical; if TRUE, average directions only.
-#' @param momentum numeric, gradient momentum (default 0.9).
-#' @param increase_factor numeric, step up factor (default 1.2).
-#' @param decrease_factor numeric, step down factor (default 0.5).
-#'
-#' @return list with \code{X_traj} (list of n x d matrices over iterations)
-#'   and \code{median_kdistances} (numeric).
-rcpp_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, initial_step_size, ikernel = 1L, dist_normalization_factor = 1.01, average_direction_only = FALSE, momentum = 0.9, increase_factor = 1.2, decrease_factor = 0.5) {
-    .Call(`_gflow_rcpp_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, initial_step_size, ikernel, dist_normalization_factor, average_direction_only, momentum, increase_factor, decrease_factor)
-}
-
-#' kNN-Adaptive Mean Shift with Gradient Field Averaging (C++ engine)
-#'
-#' Low-level Rcpp wrapper. Prefer calling the R wrapper
-#' \code{knn_adaptive_mean_shift_gfa()} for a friendlier interface.
-#'
-#' @param X numeric matrix (n x d).
-#' @param k integer, k-NN for gradient estimation (excl. self).
-#' @param density_k integer, k-NN for density estimation (excl. self).
-#' @param n_steps integer, number of iterations.
-#' @param step_size positive numeric step size (constant over iterations).
-#' @param ikernel Type of kernel function to use (default: 1 - Epanechnikov).
-#'               Available kernels:
-#'               - 0-Constant,
-#'               - 1-Epanechnikov,
-#'               - 2-Triangular,
-#'               - 3-TrExponential,
-#'               - 4-Laplace,
-#'               - 5-Normal,
-#'               - 6-Biweight,
-#'               - 7-Tricube,
-#'               - 8-Cosine
-#'               - 9-Hyperbolic
-#' @param dist_normalization_factor numeric > 0.
-#' @param average_direction_only logical; if TRUE, average directions only.
-#'
-#' @return list with \code{X_traj} (list of n x d matrices over iterations)
-#'   and \code{median_kdistances} (numeric).
-rcpp_knn_adaptive_mean_shift_gfa <- function(X, k, density_k, n_steps, step_size, ikernel = 1L, dist_normalization_factor = 1.01, average_direction_only = FALSE) {
-    .Call(`_gflow_rcpp_knn_adaptive_mean_shift_gfa`, X, k, density_k, n_steps, step_size, ikernel, dist_normalization_factor, average_direction_only)
 }
 
 rcpp_quadform_delaunay_edges_3d <- function(X, qhull_options = "Qt Qbb Qc") {

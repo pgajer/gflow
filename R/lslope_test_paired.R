@@ -24,7 +24,7 @@
 #' distribution of lslope values under signal (original y) versus null
 #' (permuted y), using the same BB weights for both to ensure proper pairing.
 #'
-#' @param fitted.model A fitted model object from \code{fit.rdgraph.regression()}
+#' @param fitted.model A fitted model object from \code{gflowx::fit.rdgraph.regression()}
 #'   containing the spectral decomposition and graph structure.
 #' @param y Numeric vector: original (unsmoothed) response variable.
 #' @param z Numeric vector: feature to test for association. Can be raw
@@ -113,7 +113,7 @@
 #' @examples
 #' \dontrun{
 #' ## Fit a model
-#' fit <- fit.rdgraph.regression(X, y, k = 15)
+#' fit <- gflowx::fit.rdgraph.regression(X, y, k = 15)
 #'
 #' ## Test association with a single phylotype
 #' result <- lslope.test(
@@ -161,7 +161,7 @@ lslope.test <- function(fitted.model,
     lslope.type <- match.arg(lslope.type)
 
     if (!inherits(fitted.model, "knn.riem.fit")) {
-        stop("fitted.model must be of class 'knn.riem.fit' from fit.rdgraph.regression()")
+        stop("fitted.model must be of class 'knn.riem.fit' from gflowx::fit.rdgraph.regression()")
     }
 
     if (!is.numeric(y) || !is.numeric(z)) {

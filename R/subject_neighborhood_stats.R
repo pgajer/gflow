@@ -2,7 +2,7 @@
 #'
 #' @description
 #' Computes per-vertex diagnostics for repeated-measures concentration in
-#' neighborhoods of a graph returned by \code{fit.rdgraph.regression()}.
+#' neighborhoods of a graph returned by \code{gflowx::fit.rdgraph.regression()}.
 #'
 #' \itemize{
 #'   \item \eqn{R(v) = |\hat N(v)| / \#\{\text{subjects in }\hat N(v)\}}
@@ -21,7 +21,7 @@
 #' For backward compatibility, the legacy columns \code{p.max} and \code{s.eff}
 #' are set according to \code{weight.type} (either conductance or operator).
 #'
-#' @param fitted.model Fitted object from \code{fit.rdgraph.regression()} (class
+#' @param fitted.model Fitted object from \code{gflowx::fit.rdgraph.regression()} (class
 #'   \code{"knn.riem.fit"}) or a list containing \code{$optimal.fit}.
 #' @param subject.id Vector of subject IDs of length \eqn{n} (one ID per vertex).
 #' @param weight.type Character scalar controlling the legacy columns
@@ -299,11 +299,11 @@ subject.neighborhood.stats <- function(
 #' @description
 #' Returns explicit per-vertex neighbor weights \eqn{w_{vj}} parallel to
 #' \code{fitted.model$graph$adj.list}, reconstructed from the same graph quantities
-#' used by \code{fit.rdgraph.regression()}.
+#' used by \code{gflowx::fit.rdgraph.regression()}.
 #'
 #' This helper is intended for direct inspection/debugging of local mixing weights.
 #'
-#' @param fitted.model Fitted object from \code{fit.rdgraph.regression()} (class
+#' @param fitted.model Fitted object from \code{gflowx::fit.rdgraph.regression()} (class
 #'   \code{"knn.riem.fit"}) or a list containing \code{$optimal.fit}.
 #' @param weight.type Character scalar: \code{"conductance"} (default) or
 #'   \code{"mass.sym"}.
@@ -393,7 +393,7 @@ rdgraph.neighbor.weights <- function(
     out
 }
 
-# fit.rdgraph.regression() results can appear directly or nested in $optimal.fit
+# gflowx::fit.rdgraph.regression() results can appear directly or nested in $optimal.fit
 # in downstream wrappers.
 .resolve.rdgraph_fit_for_subject_stats <- function(x) {
     if (is.list(x) && !is.null(x$graph)) {
@@ -405,7 +405,7 @@ rdgraph.neighbor.weights <- function(
         }
     }
     stop(
-        "fitted.model must be a fit.rdgraph.regression() result ",
+        "fitted.model must be a gflowx::fit.rdgraph.regression() result ",
         "or a list containing $optimal.fit with a $graph component."
     )
 }

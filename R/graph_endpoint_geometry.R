@@ -269,8 +269,8 @@ compute.graph.endpoint.scores <- function(adj.list,
 #' Detects terminal arm tips in a graph by:
 #' \enumerate{
 #'   \item computing graph endpoint scores from the 3D embedding,
-#'   \item optionally smoothing those scores on the graph using
-#'     [fit.rdgraph.regression()] and [refit.rdgraph.regression()],
+#'   \item optionally smoothing those scores with the archived `gflowx`
+#'     rdgraph estimator,
 #'   \item finding graph-local maxima with [detect.local.extrema()],
 #'   \item retaining only maxima that persist across neighborhood scales.
 #' }
@@ -303,14 +303,14 @@ compute.graph.endpoint.scores <- function(adj.list,
 #' @param smooth Logical; if `TRUE`, smooths aggregated scores on the graph
 #'   before detecting extrema.
 #' @param fitted.model Optional fitted graph smoother from
-#'   [fit.rdgraph.regression()]. If supplied, smoothing reuses its spectral
-#'   decomposition via [refit.rdgraph.regression()].
+#'   `gflowx::fit.rdgraph.regression()`. If supplied, smoothing reuses its
+#'   spectral decomposition through `gflowx`.
 #' @param smooth.fit.args Optional named list of arguments passed to
-#'   [fit.rdgraph.regression()] when `smooth = TRUE` and `fitted.model` is
+#'   `gflowx::fit.rdgraph.regression()` when `smooth = TRUE` and `fitted.model` is
 #'   `NULL`. `X`, `y`, `adj.list`, `weight.list`, and `verbose.level` are filled
 #'   automatically when not supplied.
 #' @param smooth.refit.args Optional named list of arguments passed to
-#'   [refit.rdgraph.regression()] when smoothing aggregated score fields.
+#'   `gflowx::refit.rdgraph.regression()` when smoothing aggregated score fields.
 #' @param detect.max.radius Maximum radius passed to [detect.local.extrema()]
 #'   when calling endpoint candidates from the final detection score.
 #' @param detect.min.neighborhood.size Minimum neighborhood size passed to
@@ -432,6 +432,16 @@ detect.graph.endpoints <- function(adj.list,
     stability.smoothing.refit <- NULL
 
     if (smooth) {
+        if (!requireNamespace("gflowx", quietly = TRUE)) {
+            stop(
+                "smooth = TRUE requires the optional archive package 'gflowx'. ",
+                "Install gflowx or provide externally smoothed endpoint scores.",
+                call. = FALSE
+            )
+        }
+        fit.rdgraph <- getExportedValue("gflowx", "fit.rdgraph.regression")
+        refit.rdgraph <- getExportedValue("gflowx", "refit.rdgraph.regression")
+
         if (verbose) {
             message("Smoothing aggregated endpoint scores on the graph")
         }
@@ -467,7 +477,7 @@ detect.graph.endpoints <- function(adj.list,
                 X = as.matrix(layout.3d),
                 y = detection.score.raw
             ), fit.args)
-            smoothing.model <- do.call(fit.rdgraph.regression, fit.call)
+            smoothing.model <- do.call(fit.rdgraph, fit.call)
         }
 
         refit.args <- smooth.refit.args
@@ -481,7 +491,7 @@ detect.graph.endpoints <- function(adj.list,
             fitted.model = smoothing.model,
             y.new = score.matrix
         ), refit.args)
-        smoothing.refit <- do.call(refit.rdgraph.regression, refit.call)
+        smoothing.refit <- do.call(refit.rdgraph, refit.call)
 
         smoothed.scores <- smoothing.refit$fitted.values
         smoothed.scores <- as.matrix(smoothed.scores)
@@ -499,7 +509,7 @@ detect.graph.endpoints <- function(adj.list,
             fitted.model = smoothing.model,
             y.new = by.scale.metric
         ), refit.args.scale)
-        stability.smoothing.refit <- do.call(refit.rdgraph.regression, refit.call.scale)
+        stability.smoothing.refit <- do.call(refit.rdgraph, refit.call.scale)
         stability.score.by.scale <- stability.smoothing.refit$fitted.values
         stability.score.by.scale <- as.matrix(stability.score.by.scale)
         colnames(stability.score.by.scale) <- colnames(by.scale.metric)

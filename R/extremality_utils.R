@@ -49,7 +49,7 @@
 #' - Provides hop-extremp radii (probabilistic variant)
 #' - Fast and approximate, suitable for exploration
 #'
-#' @param dcx A fitted riem.dcx object from fit.rdgraph.regression() with
+#' @param dcx A fitted riem.dcx object from gflowx::fit.rdgraph.regression() with
 #'   compute.extremality = TRUE. Must contain the extremality component
 #'   with scores, hop_extremality_radii, and hop_neighborhood_sizes.
 #' @param extremality.quantile Numeric in (0,1). Quantile threshold for
@@ -82,7 +82,7 @@
 #' @examples
 #' \dontrun{
 #' # Fit model with extremality analysis
-#' fit <- fit.rdgraph.regression(X, y, k = 50,
+#' fit <- gflowx::fit.rdgraph.regression(X, y, k = 50,
 #'                               compute.extremality = TRUE,
 #'                               p.threshold = 0.90,
 #'                               max.hop = 20)
@@ -109,7 +109,7 @@
 #' }
 #'
 #' @seealso
-#' \code{\link{fit.rdgraph.regression}} for model fitting with extremality analysis,
+#' \code{gflowx::fit.rdgraph.regression()} for model fitting with extremality analysis,
 #' \code{\link{compute.pextrema.nbhds}} for probabilistic extrema detection
 #'
 #' @export
@@ -133,7 +133,7 @@ extremality.summary <- function(dcx,
         stop(sprintf("dcx$optimal.fit is missing required fields: %s\n",
                      paste(missing_fields, collapse = ", ")),
              "The extremality field requires compute.extremality = TRUE ",
-             "when calling fit.rdgraph.regression()")
+             "when calling gflowx::fit.rdgraph.regression()")
     }
 
     ## Check for extremality subfields
@@ -412,7 +412,7 @@ extremality.summary <- function(dcx,
 #' @examples
 #' \dontrun{
 #' # Fit model with extremality analysis
-#' fit <- fit.rdgraph.regression(X, y, k = 50,
+#' fit <- gflowx::fit.rdgraph.regression(X, y, k = 50,
 #'                               compute.extremality = TRUE,
 #'                               p.threshold = 0.90)
 #'
