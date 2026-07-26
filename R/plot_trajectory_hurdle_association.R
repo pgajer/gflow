@@ -106,8 +106,8 @@
 #' computes a median curve and/or summary fit, the returned object has an
 #' attribute \code{"summary.fit"} containing fit details.
 #'
-#' @export
-plot.trajectory.hurdle.association <- function(x,
+#' @keywords internal
+.plot.trajectory.hurdle.association <- function(x,
                                                y.hat,
                                                trajectories,
                                                trj.id,

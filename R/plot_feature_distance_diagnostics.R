@@ -105,19 +105,19 @@ compute.clr.disk <- function(X.disk, pseudo.count = 1e-6) {
 #' @examples
 #' \dontrun{
 #' ## Raw distance
-#' plot.abundance.distance.diagnostics("Prevotella_amnii", phi.zmb,
+#' .plot.abundance.distance.diagnostics("Prevotella_amnii", phi.zmb,
 #'                                    vertices = M1.disk.res$vertices,
 #'                                    dists = M1.disk.res$dists)
 #'
 #' ## Rank distance
-#' plot.abundance.distance.diagnostics("Prevotella_amnii", phi.zmb,
+#' .plot.abundance.distance.diagnostics("Prevotella_amnii", phi.zmb,
 #'                                    vertices = M1.disk.res$vertices,
 #'                                    dists = M1.disk.res$dists,
 #'                                    distance.transform = "rank")
 #' }
 #'
-#' @export
-plot.abundance.distance.diagnostics <- function(x,
+#' @keywords internal
+.plot.abundance.distance.diagnostics <- function(x,
                                                X,
                                                vertices,
                                                dists,
@@ -269,14 +269,14 @@ plot.abundance.distance.diagnostics <- function(x,
 #'
 #' @examples
 #' \dontrun{
-#' plot.presence.distance.diagnostics("Dialister_sp001553355", phi.zmb,
+#' .plot.presence.distance.diagnostics("Dialister_sp001553355", phi.zmb,
 #'                                   vertices = M1.disk.res$vertices,
 #'                                   dists = M1.disk.res$dists,
 #'                                   n.bins = 12)
 #' }
 #'
-#' @export
-plot.presence.distance.diagnostics <- function(x,
+#' @keywords internal
+.plot.presence.distance.diagnostics <- function(x,
                                               X,
                                               vertices,
                                               dists,
@@ -381,14 +381,14 @@ plot.presence.distance.diagnostics <- function(x,
 #' @examples
 #' \dontrun{
 #' ## Suppose br is an entry from spt.qbin.res$bin.results[["Prevotella_amnii||1376"]]
-#' plot.quantile.bin.diagnostics(br$clr, what = "abundance",
+#' .plot.quantile.bin.diagnostics(br$clr, what = "abundance",
 #'                              main = "Prevotella_amnii (CLR) binned trend")
-#' plot.quantile.bin.diagnostics(br$clr, what = "presence",
+#' .plot.quantile.bin.diagnostics(br$clr, what = "presence",
 #'                              main = "Prevotella_amnii prevalence vs distance bins")
 #' }
 #'
-#' @export
-plot.quantile.bin.diagnostics <- function(x,
+#' @keywords internal
+.plot.quantile.bin.diagnostics <- function(x,
                                          what = c("abundance", "presence"),
                                          main = NULL,
                                          xlab = "distance (bin midpoint)",
@@ -506,7 +506,7 @@ plot.quantile.bin.diagnostics <- function(x,
 #' (i) abundance vs distance (logit transform) among carriers, (ii) optional CLR
 #' abundance vs distance among carriers, and (iii) presence/absence vs distance
 #' with a binned prevalence curve. Optionally, if quantile-bin results are supplied,
-#' adds bin-summary diagnostics via \code{\link{plot.quantile.bin.diagnostics}}.
+#' adds bin-summary diagnostics via \code{\link{.plot.quantile.bin.diagnostics}}.
 #'
 #' @param pdf.file Character scalar. Path to the output PDF file.
 #' @param features Character vector of feature names (columns of \code{X}).
@@ -519,11 +519,11 @@ plot.quantile.bin.diagnostics <- function(x,
 #' @param spline.df Optional numeric. Degrees of freedom for \code{\link[stats]{smooth.spline}}.
 #'   If NULL (default), smoothing is chosen internally.
 #' @param distance.transform Character string. One of \code{"raw"} or \code{"rank"}.
-#'   Passed to \code{plot.abundance.distance.diagnostics} and \code{plot.presence.distance.diagnostics}.
+#'   Passed to \code{.plot.abundance.distance.diagnostics} and \code{.plot.presence.distance.diagnostics}.
 #' @param xlab Optional character scalar. If provided, used as x-axis label for all plots; if NULL,
 #'   plot functions choose a default based on \code{distance.transform}.
 #' @param bin.results Optional named list of quantile-bin results. If provided, the function will attempt
-#'   to add bin diagnostics for each feature using \code{plot.quantile.bin.diagnostics}. This can be either:
+#'   to add bin diagnostics for each feature using \code{.plot.quantile.bin.diagnostics}. This can be either:
 #'   \itemize{
 #'     \item a list keyed by feature name with entries that contain \code{$clr} and/or \code{$logit}, or
 #'     \item a list keyed by \code{"feature||sector"} as in the SPT quantile-bin output (in which case,
@@ -600,7 +600,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
         }
 
         ## 1) logit-abundance diagnostics among carriers
-        plot.abundance.distance.diagnostics(
+        .plot.abundance.distance.diagnostics(
             feature = f,
             X = X,
             vertices = vertices,
@@ -616,7 +616,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 
         ## 2) CLR-abundance diagnostics among carriers (sensitivity)
         if (isTRUE(do.clr)) {
-            plot.abundance.distance.diagnostics(
+            .plot.abundance.distance.diagnostics(
                 feature = f,
                 X = X,
                 vertices = vertices,
@@ -633,7 +633,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
         }
 
         ## 3) presence/absence diagnostic
-        plot.presence.distance.diagnostics(
+        .plot.presence.distance.diagnostics(
             feature = f,
             X = X,
             vertices = vertices,
@@ -655,7 +655,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 
                 ## CLR bin plots if present
                 if (is.list(br) && !is.null(br$clr)) {
-                    plot.quantile.bin.diagnostics(
+                    .plot.quantile.bin.diagnostics(
                         bin.res = br$clr,
                         what = "abundance",
                         main = paste0("qbin CLR abundance: ", f),
@@ -665,7 +665,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
                     ## presence bins (if available)
                     if (!is.null(br$clr$bins) &&
                         all(c("d.mid.all", "presence.p") %in% names(br$clr$bins))) {
-                        plot.quantile.bin.diagnostics(
+                        .plot.quantile.bin.diagnostics(
                             bin.res = br$clr,
                             what = "presence",
                             main = paste0("qbin presence: ", f),
@@ -677,7 +677,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 
                 ## logit bin plots if present
                 if (is.list(br) && !is.null(br$logit)) {
-                    plot.quantile.bin.diagnostics(
+                    .plot.quantile.bin.diagnostics(
                         bin.res = br$logit,
                         what = "abundance",
                         main = paste0("qbin logit abundance: ", f),
@@ -688,7 +688,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 
                 ## If br itself is a bin-res (rare), plot abundance as default
                 if (!is.list(br$clr) && !is.list(br$logit) && !is.null(br$bins)) {
-                    plot.quantile.bin.diagnostics(
+                    .plot.quantile.bin.diagnostics(
                         bin.res = br,
                         what = "abundance",
                         main = paste0("qbin abundance: ", f)
@@ -733,7 +733,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 #' @param spline.df Optional numeric. Degrees of freedom passed to \code{\link[stats]{smooth.spline}}.
 #'   If NULL (default), \code{smooth.spline} selects smoothing internally.
 #' @param distance.transform Character string. One of \code{"raw"} or \code{"rank"}.
-#'   Passed to \code{plot.abundance.distance.diagnostics()} and \code{plot.presence.distance.diagnostics()}.
+#'   Passed to \code{.plot.abundance.distance.diagnostics()} and \code{.plot.presence.distance.diagnostics()}.
 #' @param xlab Optional character scalar. X-axis label used for raw/rank diagnostic plots. If NULL
 #'   (default), a label is chosen based on \code{distance.transform} and the sector id.
 #'
@@ -751,7 +751,7 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 #'   Default is \code{Inf}.
 #'
 #' @param include.bin.plots Logical. If TRUE (default) and \code{spt.res$bin.results} is present,
-#'   include quantile-bin diagnostic plots via \code{plot.quantile.bin.diagnostics()}.
+#'   include quantile-bin diagnostic plots via \code{.plot.quantile.bin.diagnostics()}.
 #' @param include.bin.logit Logical. If TRUE (default), include logit-bin abundance plots when available.
 #' @param include.bin.clr Logical. If TRUE (default), include CLR-bin abundance and presence plots when available.
 #'
@@ -779,11 +779,11 @@ make.disk.diagnostics.pdf <- function(pdf.file,
 #'
 #' @seealso
 #' \code{\link{test.disk.feature.distance.association.spt}},
-#' \code{\link{plot.abundance.distance.diagnostics}},
-#' \code{\link{plot.presence.distance.diagnostics}},
-#' \code{\link{plot.quantile.bin.diagnostics}}
+#' \code{\link{.plot.abundance.distance.diagnostics}},
+#' \code{\link{.plot.presence.distance.diagnostics}},
+#' \code{\link{.plot.quantile.bin.diagnostics}}
 #'
-#' @export
+#' @keywords internal
 make.spt.diagnostics.pdf <- function(pdf.file,
                                      spt.res,
                                      X,
@@ -975,7 +975,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
 
         ## --- (1) logit abundance scatter/hex diagnostics ---
         if (isTRUE(include.logit)) {
-            plot.abundance.distance.diagnostics(
+            .plot.abundance.distance.diagnostics(
                 feature = f,
                 X = X,
                 vertices = v.s,
@@ -992,7 +992,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
 
         ## --- (2) CLR abundance diagnostics ---
         if (isTRUE(do.clr) && !is.null(clr.s)) {
-            plot.abundance.distance.diagnostics(
+            .plot.abundance.distance.diagnostics(
                 feature = f,
                 X = X,
                 vertices = v.s,
@@ -1010,7 +1010,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
 
         ## --- (3) presence diagnostics ---
         if (isTRUE(include.presence)) {
-            plot.presence.distance.diagnostics(
+            .plot.presence.distance.diagnostics(
                 feature = f,
                 X = X,
                 vertices = v.s,
@@ -1032,7 +1032,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
 
                 if (isTRUE(include.bin.clr) && !is.null(br$clr)) {
 
-                    plot.quantile.bin.diagnostics(
+                    .plot.quantile.bin.diagnostics(
                         bin.res = br$clr,
                         what = "abundance",
                         main = paste0("SPT sector ", s, " | qbin CLR abundance: ", f),
@@ -1044,7 +1044,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
                         is.data.frame(br$clr$bins) &&
                         all(c("d.mid.all", "presence.p") %in% names(br$clr$bins))) {
 
-                        plot.quantile.bin.diagnostics(
+                        .plot.quantile.bin.diagnostics(
                             bin.res = br$clr,
                             what = "presence",
                             main = paste0("SPT sector ", s, " | qbin presence: ", f),
@@ -1055,7 +1055,7 @@ make.spt.diagnostics.pdf <- function(pdf.file,
                 }
 
                 if (isTRUE(include.bin.logit) && !is.null(br$logit)) {
-                    plot.quantile.bin.diagnostics(
+                    .plot.quantile.bin.diagnostics(
                         bin.res = br$logit,
                         what = "abundance",
                         main = paste0("SPT sector ", s, " | qbin logit abundance: ", f),

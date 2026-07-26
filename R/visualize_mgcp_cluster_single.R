@@ -77,7 +77,7 @@
 #' )
 #' }
 #'
-#' @export
+#' @keywords internal
 visualize.mgcp.cluster <- function(data.matrix,
                                    mgcp.result,
                                    cluster.id,
@@ -415,8 +415,8 @@ visualize.mgcp.cluster <- function(data.matrix,
 #' compare.mgcp.clusters(comono.smooth, mgcp.result, cluster.ids = c(1, 4, 12))
 #' }
 #'
-#' @export compare.mgcp.clusters
-compare.mgcp.clusters <- function(data.matrix,
+#' @keywords internal
+.compare.mgcp.clusters <- function(data.matrix,
                                   mgcp.result,
                                   cluster.ids,
                                   cluster.rows = TRUE,
@@ -541,7 +541,7 @@ compare.mgcp.clusters <- function(data.matrix,
 #' # Creates: cluster1_data.csv, cluster1_stats.csv, cluster1_phylotypes.csv
 #' }
 #'
-#' @export
+#' @keywords internal
 export.mgcp.cluster <- function(data.matrix,
                                 mgcp.result,
                                 cluster.id,

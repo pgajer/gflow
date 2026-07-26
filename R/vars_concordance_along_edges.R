@@ -99,10 +99,10 @@ test.edge.concordance <- function(delta.y, delta.z, n.perm = 10000,
 #'   n.perm = 5L
 #' )
 #'
-#' print.concordance.test(res)
+#' .print.concordance.test(res)
 #'
-#' @export
-print.concordance.test <- function(x, ...) {
+#' @keywords internal
+.print.concordance.test <- function(x, ...) {
     result <- x
     cat("\n")
     cat("=" , rep("=", 70), "\n", sep = "")
@@ -166,10 +166,10 @@ print.concordance.test <- function(x, ...) {
 #'   n.perm = 5L
 #' )
 #'
-#' plot.concordance.test(res)
+#' .plot.concordance.test(res)
 #'
-#' @export
-plot.concordance.test <- function(x, main = "Permutation Test Results", ...) {
+#' @keywords internal
+.plot.concordance.test <- function(x, main = "Permutation Test Results", ...) {
     result <- x
 
     par(mfrow = c(1, 2))
