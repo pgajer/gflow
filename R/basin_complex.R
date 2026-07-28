@@ -866,7 +866,9 @@
             plateau.vertices = I(list()),
             n.plateau.vertices = integer(),
             is.retained = logical(),
-            retention.status = character()
+            retention.status = character(),
+            representative.vertex.id = character(),
+            plateau.vertex.ids = I(list())
         ),
         class = "data.frame",
         row.names = integer()
@@ -898,7 +900,11 @@
             primary.support.mass = numeric(),
             raw.allocated.mass = numeric(),
             assignment.status = character(),
-            retention.status = character()
+            retention.status = character(),
+            extremum.vertex.id = character(),
+            raw.support.vertex.ids = I(list()),
+            retained.support.vertex.ids = I(list()),
+            primary.support.vertex.ids = I(list())
         ),
         class = "data.frame",
         row.names = integer()
@@ -914,7 +920,8 @@
             membership.weight = numeric(),
             membership.status = character(),
             source.stage = character(),
-            is.primary = logical()
+            is.primary = logical(),
+            vertex.id = character()
         ),
         class = "data.frame",
         row.names = integer()
@@ -931,7 +938,10 @@
             assignment.status = character(),
             assignment.policy = character(),
             root.vertex = integer(),
-            next.vertex = integer()
+            next.vertex = integer(),
+            vertex.id = character(),
+            root.vertex.id = character(),
+            next.vertex.id = character()
         ),
         class = "data.frame",
         row.names = integer()
@@ -951,7 +961,8 @@
             birth.level = numeric(),
             death.level = numeric(),
             persistence = numeric(),
-            event.status = character()
+            event.status = character(),
+            merge.vertex.ids = I(list())
         ),
         class = "data.frame",
         row.names = integer()
@@ -1188,6 +1199,21 @@
         c("ok", "partial", "failed"),
         "status"
     )
+    external <- .basin.attach.external.vertex.ids(
+        extrema = extrema,
+        basin.table = basin.table,
+        membership = membership,
+        assignment = assignment,
+        merge.table = merge.table,
+        vertex.id = graph.input$vertex.id
+    )
+    provenance$build.identity <- get.gflow.build.identity()
+    provenance$vertex.identity <- graph.input$vertex.identity
+    provenance$mass <- field$vertex.mass.provenance
+    provenance$allocation <- provenance$allocation %||% list(
+        raw.current = TRUE,
+        reason = "raw_membership_allocation_current"
+    )
     object <- list(
         method = method,
         direction = direction,
@@ -1196,11 +1222,11 @@
         field = field,
         parameters = parameters,
         provenance = provenance,
-        extrema = extrema,
-        basin.table = basin.table,
-        membership = membership,
-        assignment = assignment,
-        merge.table = merge.table,
+        extrema = external$extrema,
+        basin.table = external$basin.table,
+        membership = external$membership,
+        assignment = external$assignment,
+        merge.table = external$merge.table,
         trajectory.forest = trajectory.forest,
         cell.complex = cell.complex,
         diagnostics = diagnostics,
@@ -1282,6 +1308,15 @@
         .stop.basin.complex(
             "Stored field vectors are inconsistent with 'n.vertices'.",
             "object$field",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    if (length(object$graph.input$vertex.id) != object$n.vertices ||
+        anyNA(object$graph.input$vertex.id) ||
+        anyDuplicated(object$graph.input$vertex.id)) {
+        .stop.basin.complex(
+            "Stored external vertex identity is invalid.",
+            "object$graph.input$vertex.id",
             class = "gflow_basin_schema_error"
         )
     }
@@ -1491,6 +1526,14 @@
 #' @param method.params Named parameters for the selected construction method.
 #' @param simplify.params Named post-construction refinement parameters.
 #' @param verbose Logical scalar controlling backend progress output.
+#' @param vertex.id Optional integer or character external vertex IDs in graph
+#'   order. Factors, missing values, duplicates, empty strings, and invalid
+#'   encodings are rejected. Existing canonical tables retain internal integer
+#'   indices and add external-ID companion columns.
+#' @param vertex.mass.provenance Optional typed provenance declarations and
+#'   upstream attestations for `vertex.mass`. The constructor recomputes only
+#'   facts supported by its inputs and preserves external claims with their
+#'   stated validation authority.
 #'
 #' @return A `basin_complex`. Successful construction returns `status = "ok"`.
 #'   A recoverable backend failure returns `status = "failed"` with a
@@ -1575,7 +1618,9 @@ create.basin.complex <- function(
     ),
     method.params = list(),
     simplify.params = list(),
-    verbose = FALSE
+    verbose = FALSE,
+    vertex.id = seq_along(field),
+    vertex.mass.provenance = NULL
 ) {
     method <- .basin.assert.choice(
         method,
@@ -1601,6 +1646,11 @@ create.basin.complex <- function(
         graph.params
     )
     n <- length(graph$adj.list)
+    vertex.identity <- .basin.canonical.vertex.id(vertex.id, n)
+    internal.graph.fingerprint <- .basin.internal.graph.fingerprint(
+        graph,
+        vertex.identity$values
+    )
     field <- .basin.assert.vector(field, "field", n)
     if (!is.null(vertex.mass)) {
         vertex.mass <- .basin.assert.vector(
@@ -1624,6 +1674,14 @@ create.basin.complex <- function(
             nonnegative = TRUE
         )
     }
+    mass.provenance <- .basin.validate.mass.provenance(
+        provenance = vertex.mass.provenance,
+        vertex.mass = vertex.mass,
+        mass.total = mass.total,
+        normalized.mass = normalized.mass,
+        vertex.identity = vertex.identity,
+        internal.graph.fingerprint = internal.graph.fingerprint
+    )
 
     resolved.method.params <- .basin.resolve.method.params(
         method,
@@ -1651,6 +1709,7 @@ create.basin.complex <- function(
         vertex.mass.input = vertex.mass,
         vertex.mass.normalized = normalized.mass,
         vertex.mass.input.total = mass.total,
+        vertex.mass.provenance = mass.provenance,
         vertex.density = vertex.density,
         tie.policy = list(
             enabled = tie.breaking,
@@ -1662,6 +1721,9 @@ create.basin.complex <- function(
     graph.input <- list(
         adj.list = graph$adj.list,
         edge.length.list = graph$edge.length.list,
+        vertex.id = vertex.identity$values,
+        vertex.identity = vertex.identity,
+        internal.graph.fingerprint = internal.graph.fingerprint,
         graph.params = graph$graph.params,
         validation = graph$validation
     )
@@ -1885,22 +1947,46 @@ print.basin_complex <- function(x, ...) {
     invisible(x)
 }
 
+#' Summarize a Canonical Basin Complex
+#'
+#' @param object A canonical `basin_complex`.
+#' @param rank.by Ranking measure. `"auto"` resolves independently for maximum
+#'   and minimum directions from usable canonical mass and support measures.
+#' @param top.k.max Maximum number of ranked maximum basins to return.
+#' @param top.k.min Maximum number of ranked minimum basins to return.
+#' @param include.unretained Include basins removed by canonical refinement.
+#' @param include.vertex.lists Include list columns containing vertex supports.
+#' @param ... Reserved for S3 compatibility.
+#'
+#' @return A `summary.basin_complex` containing aggregate counts, ranked
+#'   direction-specific tables, ranking availability, column definitions,
+#'   mass provenance, and build identity.
 #' @export
-summary.basin_complex <- function(object, ...) {
-    structure(
-        list(
-            method = object$method,
-            direction = object$direction,
-            status = object$status,
-            n.vertices = object$n.vertices,
-            n.components = object$graph.input$validation$n.components,
-            n.basins = nrow(object$basin.table),
-            n.memberships = nrow(object$membership),
-            n.assignments = nrow(object$assignment),
-            n.diagnostics = nrow(object$diagnostics),
-            has.vertex.mass = !is.null(object$field$vertex.mass.normalized)
-        ),
-        class = c("summary.basin_complex", "list")
+summary.basin_complex <- function(
+    object,
+    rank.by = c(
+        "auto",
+        "primary.support.mass",
+        "raw.allocated.mass",
+        "retained.support.mass",
+        "raw.support.mass",
+        "primary.support.size",
+        "retained.support.size",
+        "raw.support.size"
+    ),
+    top.k.max = Inf,
+    top.k.min = Inf,
+    include.unretained = FALSE,
+    include.vertex.lists = FALSE,
+    ...
+) {
+    .basin.summary.ranked(
+        object = object,
+        rank.by = rank.by,
+        top.k.max = top.k.max,
+        top.k.min = top.k.min,
+        include.unretained = include.unretained,
+        include.vertex.lists = include.vertex.lists
     )
 }
 
@@ -1928,6 +2014,17 @@ print.summary.basin_complex <- function(x, ...) {
         "\n",
         sep = ""
     )
+    if (!is.null(x$rank.resolved)) {
+        cat(
+            "  Ranking (max/min): ",
+            paste(
+                ifelse(is.na(x$rank.resolved), "\u2014", x$rank.resolved),
+                collapse = " / "
+            ),
+            "\n",
+            sep = ""
+        )
+    }
     invisible(x)
 }
 

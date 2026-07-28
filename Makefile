@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance
+.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -29,7 +29,10 @@ attrs: check-r-toolchain
 document: attrs
 	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" $(R_RUN) -q -e "roxygen2::roxygenise(load = 'source')"
 
-build: clean document
+manifest:
+	$(RSCRIPT_RUN) tools/update_gflow_build_manifest.R
+
+build: clean document manifest
 	find src -name "*.o" -delete
 	find src -name "*.so" -delete
 	rm -f src/*.dll
