@@ -107,6 +107,9 @@ man/
 inst/*/
 !inst/examples/
 !inst/examples/**
+!inst/extdata/
+inst/extdata/*
+!inst/extdata/gflow-code-manifest.tsv
 !inst/shiny/
 !inst/shiny/**
 presentations/

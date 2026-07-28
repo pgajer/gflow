@@ -519,6 +519,32 @@
     object$provenance$refinement.stages <- do.call(rbind, records)
     row.names(object$provenance$refinement.stages) <-
         seq_len(nrow(object$provenance$refinement.stages))
+    completed <- vapply(
+        records,
+        function(record) identical(record$status[[1L]], "completed"),
+        logical(1)
+    )
+    object$provenance$allocation <- list(
+        raw.current = !any(completed),
+        reason = if (any(completed)) {
+            "refinement_completed_without_raw_allocation_recompute"
+        } else {
+            "raw_membership_allocation_current"
+        }
+    )
+    external <- .basin.attach.external.vertex.ids(
+        extrema = object$extrema,
+        basin.table = object$basin.table,
+        membership = object$membership,
+        assignment = object$assignment,
+        merge.table = object$merge.table,
+        vertex.id = object$graph.input$vertex.id
+    )
+    object$extrema <- external$extrema
+    object$basin.table <- external$basin.table
+    object$membership <- external$membership
+    object$assignment <- external$assignment
+    object["merge.table"] <- list(external$merge.table)
     .validate.basin.complex(object)
     object
 }
