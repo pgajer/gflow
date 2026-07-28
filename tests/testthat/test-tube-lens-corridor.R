@@ -1,4 +1,8 @@
 test_that("compute.tube.lens.corridor builds base and excess variants from shared searches", {
+  expect_true(
+    "compute.tube.lens.corridor" %in% getNamespaceExports("gflow")
+  )
+
   adj.list <- list(
     c(2, 7),    # 1
     c(1, 3, 5, 6), # 2

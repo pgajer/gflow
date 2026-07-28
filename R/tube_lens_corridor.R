@@ -46,7 +46,7 @@
 #'   \item{selected.vertices}{The primary selected set for the requested mode.}
 #'   \item{mode}{The requested mode.}
 #'
-#' @noRd
+#' @export
 compute.tube.lens.corridor <- function(adj.list,
                                        weight.list,
                                        start.vertex,
