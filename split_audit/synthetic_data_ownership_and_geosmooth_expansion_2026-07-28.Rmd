@@ -376,6 +376,37 @@ expansion is not yet finished. The current package state is:
 - `inst/synthetic_registry/legacy_family_disposition.csv` records one explicit
   implementation or follow-up decision for each remaining legacy family.
 
+The implementation audit dated 2026-07-28 initially returned **Revise** because
+the first implementation did not fully enforce the accepted identity, replay,
+registry, and consumer contracts. Those implementation defects have now been
+corrected in `geosmooth` commit `819996d` and `trend_filtering` commit
+`2062282`. In particular:
+
+- ordinary dataset IDs are reconstructed exactly from recipe identity,
+  specification digest, sample size, seed, and RNG policy, while frozen IDs
+  must resolve to exactly one complete registry instance;
+- validation now checks policy-specific RNG metadata, dimensions and regional
+  dimensions, aliases and masks, realized support, stored-frame dimensions and
+  orthonormality, and predictor reconstruction;
+- the scientific comparator validates both inputs before comparison, compares
+  the contractual identity and metadata fields exactly, and permits
+  orientation-invariant predictor comparison only for valid random frames and
+  a compatible truth scope;
+- the registry reconstructs specifications from normalized component foreign
+  keys and committed serialized component payloads, uses real instance-to-
+  checksum foreign keys, ships nonempty frozen fixtures, and scopes exact
+  checksum enforcement to a complete environment fingerprint with scientific
+  fixture comparison outside that scope;
+- named atomic vectors are canonically ordered except for the two explicitly
+  position-contractual regional dimension fields; and
+- the SSRHE adapters preserve the canonical `dataset.id` and keep the
+  historical display label separately as `legacy.dataset.id`.
+
+The finding-by-finding evidence is recorded in
+`synthetic_data_api_plan_implementation_audit_response_2026-07-28.md`. These
+corrections do not broaden the ownership plan or declare the later migration
+phases complete.
+
 This is deliberately not a completion claim for Phases 6--9. Predictor-noise
 models for legacy noisy circles, the mixed Gaussian/line sampler, star-response
 assembly, spline and bump truths, the two competing torus-knot formulas, and
@@ -383,11 +414,17 @@ secondary consumers with distinct seed policies remain gated by frozen
 contracts or scientific choices. The disposition ledger marks them as partial,
 pending, or undecided rather than treating de-exported code as safe to delete.
 
-At this build, all synthetic-focused tests pass. A package check with forced
-Suggests disabled passes installation, namespace, S3, code, compiled-code, and
-vignette checks, but the package retains pre-existing documentation warnings
-and repository notes. The unavailable optional `genlasso` package prevents an
-ordinary forced-Suggests `make check-fast` from proceeding.
+At this build, all synthetic-focused tests pass, including the new adversarial
+contract and normalized-registry suites and the SSRHE adapter identity
+integration test. Registry regeneration is byte-identical on consecutive
+runs. A package check with forced Suggests disabled passes installation,
+namespace, S3, code, compiled-code, and vignette checks, but the package retains
+pre-existing documentation warnings and repository notes. The unavailable
+optional `genlasso` package prevents an ordinary forced-Suggests
+`make check-fast` from proceeding. The broader `make test` smoke lane also
+continues to expose an unrelated existing expectation in
+`test-coupled-kd-selection-csd4.R`; that broader baseline issue is not counted
+as resolved by this tranche.
 
 # Purpose and scope
 
