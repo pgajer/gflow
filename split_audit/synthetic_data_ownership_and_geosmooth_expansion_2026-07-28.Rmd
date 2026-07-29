@@ -1,0 +1,2376 @@
+---
+title: "Synthetic Data Ownership and the Expansion of geosmooth"
+subtitle: "A component API that absorbs quadforms and the current regression suite"
+author: "Package architecture note"
+output:
+  html_document:
+    self_contained: true
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    theme: flatly
+    highlight: textmate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+build.time <- format(
+  as.POSIXct(Sys.time(), tz = "America/New_York"),
+  "%Y-%m-%d %H:%M:%S %Z",
+  tz = "America/New_York"
+)
+
+git.revision <- function(path) {
+  out <- tryCatch(
+    system2(
+      "git",
+      c("-C", path, "rev-parse", "--short", "HEAD"),
+      stdout = TRUE,
+      stderr = FALSE
+    ),
+    error = function(e) NA_character_
+  )
+  if (!length(out)) NA_character_ else out[[1L]]
+}
+
+revisions <- c(
+  gflow = git.revision("/Users/pgajer/current_projects/gflow"),
+  geosmooth = git.revision("/Users/pgajer/current_projects/geosmooth"),
+  dgraphs = git.revision("/Users/pgajer/current_projects/dgraphs"),
+  trend_filtering =
+    git.revision("/Users/pgajer/current_projects/trend_filtering"),
+  grip = git.revision("/Users/pgajer/current_projects/grip"),
+  vaginal_community_trajectory_types = git.revision(
+    "/Users/pgajer/current_projects/vaginal_community_trajectory_types"
+  )
+)
+```
+
+<style>
+:root {
+  --ink: #172133;
+  --muted: #526174;
+  --blue: #1e5c8a;
+  --blue-soft: #eaf3f8;
+  --teal: #237b75;
+  --teal-soft: #e9f5f2;
+  --gold: #9a6b16;
+  --gold-soft: #fff6df;
+  --red: #9a3d3d;
+  --red-soft: #fff0f0;
+  --line: #d9e1e8;
+  --paper: #ffffff;
+  --page: #f5f7fa;
+}
+
+body {
+  color: var(--ink);
+  background: var(--page);
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+.main-container {
+  max-width: 1180px;
+  background: var(--paper);
+  padding: 36px 52px 64px 52px;
+  margin-top: 24px;
+  margin-bottom: 36px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(28, 43, 58, 0.08);
+}
+
+h1, h2, h3, h4 {
+  color: #153f5d;
+  line-height: 1.23;
+}
+
+h1 {
+  font-size: 2.45rem;
+  letter-spacing: -0.025em;
+}
+
+h2 {
+  margin-top: 2.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid #dce8ef;
+}
+
+h3 {
+  margin-top: 1.8em;
+}
+
+p, li {
+  max-width: 85ch;
+}
+
+code {
+  color: #174d70;
+  background: #f1f5f8;
+}
+
+p code, li code, td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+pre {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  contain: inline-size paint;
+}
+
+pre code {
+  white-space: pre;
+  word-break: normal;
+}
+
+.MathJax_Display {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  contain: inline-size paint;
+  -webkit-overflow-scrolling: touch;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+  border-left: 4px solid #78a9c6;
+  padding: 0.5rem 0 0.5rem 1rem;
+  margin: 1.2rem 0 2rem 0;
+}
+
+.callout {
+  border-radius: 9px;
+  padding: 1.05rem 1.25rem;
+  margin: 1.4rem 0;
+  border: 1px solid var(--line);
+}
+
+.callout strong:first-child {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.callout-blue {
+  background: var(--blue-soft);
+  border-left: 5px solid var(--blue);
+}
+
+.callout-teal {
+  background: var(--teal-soft);
+  border-left: 5px solid var(--teal);
+}
+
+.callout-gold {
+  background: var(--gold-soft);
+  border-left: 5px solid var(--gold);
+}
+
+.callout-red {
+  background: var(--red-soft);
+  border-left: 5px solid var(--red);
+}
+
+.decision {
+  font-size: 1.08rem;
+  background: linear-gradient(135deg, #eaf3f8, #f5fbfa);
+  border: 1px solid #bfd5e2;
+  border-radius: 10px;
+  padding: 1.2rem 1.4rem;
+  margin: 1.4rem 0 2rem 0;
+}
+
+.inventory-table, .name-table {
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  margin: 1.25rem 0 0.65rem 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.inventory-table th, .name-table th {
+  background: #1f587c;
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 0.8rem;
+  vertical-align: top;
+}
+
+.inventory-table td, .name-table td {
+  padding: 0.72rem 0.8rem;
+  vertical-align: top;
+  border-top: 1px solid var(--line);
+}
+
+.inventory-table tr:nth-child(even) td,
+.name-table tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.inventory-table code, .name-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.table-note {
+  color: var(--muted);
+  font-size: 0.91rem;
+  margin-top: 0.3rem;
+}
+
+.ownership-rule {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.4rem 0;
+}
+
+.ownership-rule > div {
+  border: 1px solid var(--line);
+  border-top: 5px solid #4f88aa;
+  border-radius: 8px;
+  padding: 0.9rem;
+  background: #fbfcfd;
+}
+
+.ownership-rule h4 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.ownership-rule p {
+  font-size: 0.92rem;
+  margin-bottom: 0;
+}
+
+.phase {
+  border-left: 5px solid #4f88aa;
+  padding: 0.15rem 0 0.25rem 1rem;
+  margin: 1.25rem 0 1.6rem 0;
+}
+
+.phase h3 {
+  margin-top: 0;
+}
+
+.path {
+  word-break: break-word;
+  color: #334e63;
+}
+
+.small {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+  .main-container {
+    padding: 24px;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .ownership-rule {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .ownership-rule {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-table, .name-table {
+    font-size: 0.88rem;
+  }
+}
+</style>
+
+<div class="meta">
+<strong>Build:</strong> `r build.time`  
+<strong>Source audit date:</strong> 2026-07-28  
+<strong>Scope:</strong> synthetic statistical datasets and their reusable support;
+basin and extrema implementation cleanup is outside scope.
+</div>
+
+# Executive conclusion
+
+<div class="decision">
+<strong>Recommended ownership rule.</strong> <code>geosmooth</code> should be the
+canonical home for reusable synthetic statistical datasets used to develop,
+test, and compare smoothing and conditional-expectation estimators. It should
+not become the home of every generic graph generator, elementary random
+sampler, layout fixture, frozen experiment result, or reference-geodesic
+benchmark.
+</div>
+
+The quadform conclusion follows directly from that rule. The part of the
+quadform family that creates a known curved predictor geometry, attaches a known
+regression truth, adds a controlled response model, and returns a reproducible
+test dataset belongs in `geosmooth`. Generic graph construction still belongs
+in `dgraphs`. Expensive reference-geodesic oracles should be a narrow validation
+layer rather than a large public simulation API.
+
+This changes the emphasis of the earlier package recommendation. A complete
+quadform benchmark suite looked at first like reference-geometry infrastructure
+for `geodesicMDS`. Once the other synthetic regression families are considered,
+the stronger design is to put the reusable *statistical dataset* in
+`geosmooth`, while separating its optional geodesic oracle from the dataset
+generator.
+
+<div class="callout callout-blue">
+<strong>What does DGP mean?</strong>
+<strong>DGP</strong> stands for <strong>data-generating process</strong>: a
+fully specified mechanism that generates predictors, a truth estimand, and
+observed responses. The term is standard in statistical methodology, but it is
+not especially discoverable in a software API. Forgetting the acronym is useful
+design evidence: names such as <code>dgp.g3a()</code> and the class
+<code>dgp_dataset</code> should not be the primary user-facing vocabulary.
+</div>
+
+The G1--G7 labels remain valuable as stable identifiers in experimental plans,
+registries, manifests, and papers. They are much less useful as function names.
+The public interface should say what a function simulates.
+
+# Implementation state at this build
+
+The accepted architecture has progressed into implementation, but the complete
+expansion is not yet finished. The current package state is:
+
+- `geosmooth` implements the canonical specification, dataset, checksum,
+  comparator, versioned RNG, geometry, sampling, truth, response, materializer,
+  and normalized registry layers;
+- G1--G7 are represented as registry recipes and frozen instances, with thin
+  deprecated translators and a 16-case legacy parity fixture;
+- the registry contains 106 recipes in total; the shared SSRHE suite accounts
+  for 96 of them: 48 S/V recipes, 3 flat recipes, and 45 quadform recipes,
+  backed by an 846-case frozen parity fixture;
+- the primary SSRHE helper in `trend_filtering` now resolves datasets through
+  the `geosmooth` registry rather than loading `gflow` or copying generators;
+- analytic quadforms, sphere caps, helices, torus patches, simplexes,
+  stratified geometries, clustered sampling, occupation mixtures, circles, and
+  trefoils have canonical components and focused tests;
+- `plot.synthetic_dataset()` supplies common one- and multi-dimensional
+  diagnostics; and
+- `inst/synthetic_registry/legacy_family_disposition.csv` records one explicit
+  implementation or follow-up decision for each remaining legacy family.
+
+This is deliberately not a completion claim for Phases 6--9. Predictor-noise
+models for legacy noisy circles, the mixed Gaussian/line sampler, star-response
+assembly, spline and bump truths, the two competing torus-knot formulas, and
+secondary consumers with distinct seed policies remain gated by frozen
+contracts or scientific choices. The disposition ledger marks them as partial,
+pending, or undecided rather than treating de-exported code as safe to delete.
+
+At this build, all synthetic-focused tests pass. A package check with forced
+Suggests disabled passes installation, namespace, S3, code, compiled-code, and
+vignette checks, but the package retains pre-existing documentation warnings
+and repository notes. The unavailable optional `genlasso` package prevents an
+ordinary forced-Suggests `make check-fast` from proceeding.
+
+# Purpose and scope
+
+The target methods estimate a conditional expectation such as
+\[
+m(x) = \mathrm{E}[Y \mid X=x],
+\]
+where \(X\) is the observed predictor geometry and \(Y\) is a continuous,
+binary, compositional, clustered, or otherwise structured response. A useful
+synthetic dataset makes the truth \(m(x)\) known, so an estimated
+\(\widehat{m}(x)\) can be compared with it.
+
+The API must distinguish two truth scopes. A **population truth** is a fixed
+function of one predictor value and recipe parameters,
+\(m(x)=\mathrm{E}[Y\mid X=x]\). A **finite-design truth** may depend on the
+entire realized predictor design,
+\[
+m_i(X_{1:n})=\mathrm{E}[Y_i\mid X_1,\ldots,X_n].
+\]
+Design-maximum normalizations used by the legacy occupation and
+Gaussian-mixture recipes belong to the second scope. They must not be described
+as population conditional expectations.
+
+For geometric methods, the dataset may also expose latent coordinates \(U\),
+an embedding \(X=F(U)\), a known metric, or a known graph-distance oracle.
+Those objects should not be conflated:
+
+- the **statistical dataset** specifies predictors, truth, response, noise, and
+  reproducibility;
+- the **geometry truth** specifies the embedding and any analytic metric;
+- the **graph approximation** is constructed from the observed data;
+- the **reference oracle** is an optional high-budget audit target.
+
+The report covers the synthetic-data families identified in the Codex notes,
+the remaining de-exported synthetic support in `gflow`, and the existing
+`geosmooth` simulation library. It does not propose changes to basin or extrema
+computation.
+
+# Ownership model
+
+<div class="ownership-rule">
+<div>
+<h4>geosmooth</h4>
+<p>Predictor geometry, truth estimands, response generation, noise, and
+reusable method-evaluation datasets.</p>
+</div>
+<div>
+<h4>dgraphs</h4>
+<p>Graph construction, conversions, components, paths, distances, and
+generic graph fixtures.</p>
+</div>
+<div>
+<h4>gflow</h4>
+<p>Basin/complex-specific fixtures needed to test protected construction
+behavior.</p>
+</div>
+<div>
+<h4>grip</h4>
+<p>Synthetic graph and surface families whose purpose is graph drawing,
+embedding, or interactive visualization.</p>
+</div>
+</div>
+
+A consuming experiment keeps its orchestration, method roster, frozen outputs,
+figures, and reports. The reusable generator moves to its owning package.
+Moving a generator does not require moving every materialized dataset it ever
+produced.
+
+# What exists now
+
+<table class="inventory-table">
+<thead>
+<tr>
+  <th>Family</th>
+  <th>Current location</th>
+  <th>Recommended ownership</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>G1--G7 smoothing datasets</td>
+  <td><code>geosmooth/R/dgp_library.R</code></td>
+  <td>Keep and turn into the canonical simulation framework.</td>
+</tr>
+<tr>
+  <td>Legacy mixtures, splines, curves, knots, clustered data</td>
+  <td><code>gflow/R/synthetic_data_utils.R</code></td>
+  <td>Move reusable statistical families to <code>geosmooth</code>; retain only basin-specific fixtures in <code>gflow</code>.</td>
+</tr>
+<tr>
+  <td>Laplace, simplex, sphere, torus, and empirical samplers</td>
+  <td><code>gflow/R/random_sampling.R</code></td>
+  <td>Keep needed primitives private to generators; do not expose a generic sampler toolbox from <code>geosmooth</code>.</td>
+</tr>
+<tr>
+  <td>Mixed Gaussian/line nonmanifold example</td>
+  <td><code>gflow/R/generate_knn_example_data.R</code></td>
+  <td>Move the reusable dataset to <code>geosmooth</code>.</td>
+</tr>
+<tr>
+  <td>Star topology with a synthetic response</td>
+  <td><code>gflow/R/graph_generators.R</code></td>
+  <td>Split topology into <code>dgraphs</code> and response assembly into <code>geosmooth</code>.</td>
+</tr>
+<tr>
+  <td>1D mixture, flat, and quadform regression suites</td>
+  <td><code>trend_filtering/development/ssrhe_hessian_energy/</code></td>
+  <td>Move canonical generators to <code>geosmooth</code>; keep experiment orchestration in <code>trend_filtering</code>.</td>
+</tr>
+<tr>
+  <td>P7 controlled geometries and truth functions</td>
+  <td><code>trend_filtering/development/slpl_tf/experiments/</code></td>
+  <td>Move reusable generators and registry contracts to <code>geosmooth</code>.</td>
+</tr>
+<tr>
+  <td>Occupation-density Gaussian mixtures</td>
+  <td><code>vaginal_community_trajectory_types/analysis/</code></td>
+  <td>Move the reusable probability/response generator to <code>geosmooth</code>; keep application and basin analysis local.</td>
+</tr>
+<tr>
+  <td>Quadform geometry and reference geodesics</td>
+  <td>Deleted from current <code>gflow</code>; embedding math is partly duplicated in <code>geosmooth</code></td>
+  <td>Move dataset and analytic geometry to <code>geosmooth</code>; isolate the reference oracle.</td>
+</tr>
+<tr>
+  <td>Synthetic graph/layout families and frozen assets</td>
+  <td><code>dgraphs</code>, <code>grip</code>, and experiment repositories</td>
+  <td>Keep with their graph/layout owner or consuming experiment.</td>
+</tr>
+</tbody>
+</table>
+
+<p class="table-note">
+The “family” column names the reusable conceptual unit; “current location”
+identifies the principal implementation or asset location; “recommended
+ownership” identifies the package that should maintain the reusable contract.
+</p>
+
+# Existing G1--G7 library in geosmooth
+
+The existing
+<span class="path">/Users/pgajer/current_projects/geosmooth/R/dgp_library.R</span>
+is the strongest implementation foundation for consolidation. It already
+provides deterministic seeds, separate latent and observed coordinates,
+truth specifications, realized response, provenance, content checksums, and a
+frozen registry.
+
+Its weakness is not only that names such as `dgp.g3a()` are cryptic. Replacing
+them one-for-one with `simulate.paraboloid()` would preserve a deeper problem:
+it would make every named surface, response, and sampling variant a separate
+top-level simulator. “Flat” and “paraboloid” are not peer simulation families.
+Both are parameterizations of one quadform geometry model. Sampling domain,
+geometry, regression truth, and response distribution must be independently
+composable.
+
+<div class="callout callout-red">
+<strong>Correction to the earlier naming proposal.</strong>
+<code>simulate.paraboloid()</code>, <code>simulate.flat.subspace()</code>, and
+<code>simulate.quadform()</code> should not coexist as public dataset builders.
+They overlap by construction and would immediately recreate the fragmented API
+that consolidation is meant to remove.
+</div>
+
+## The abstraction boundary
+
+The proposed public workflow has five parts:
+
+1. a geometry specification;
+2. a latent-coordinate sampling specification;
+3. a truth-estimand specification;
+4. a response specification;
+5. one materializer, `materialize.synthetic()`.
+
+The descriptive vocabulary is carried by component constructors with a common
+prefix:
+
+```r
+spec <- synthetic.spec(
+  geometry = synthetic.quadform(...),
+  sampling = synthetic.sampling.uniform.box(...),
+  truth = synthetic.truth.polynomial(...),
+  response = synthetic.response.gaussian(sd = 0.08),
+  id = "flat-d3-in-R8"
+)
+
+ds <- materialize.synthetic(spec, n = 180L, seed = 283981L)
+```
+
+This is intentionally different from a large list of `simulate.<surface>()`
+functions. The one simulation verb means one thing: materialize a complete
+statistical dataset. The component names state which part of the process they
+define.
+
+## Quadform geometry must express both dimensions
+
+Use `intrinsic.dim` for the dimension \(d\) of latent coordinates and
+`ambient.dim` for the dimension \(D\) of the observed embedding space. The word
+“extrinsic dimension” is avoided as an argument name because it is sometimes
+used informally for ambient dimension and sometimes confused with codimension.
+The object reports all three values:
+
+\[
+\text{intrinsic dimension}=d,\qquad
+\text{ambient dimension}=D,\qquad
+\text{codimension}=D-d.
+\]
+
+A robust quadform geometry permits \(r\) independent quadratic normal
+coordinates. For symmetric \(d\times d\) matrices
+\(A_1,\ldots,A_r\), define
+
+\[
+z(u)=
+\left(u_1,\ldots,u_d,\ u^\mathsf{T}A_1u,\ldots,u^\mathsf{T}A_ru\right)
+\in\mathbb{R}^{d+r},
+\]
+
+then embed it using an orthonormal frame
+\(Q\in\mathbb{R}^{D\times(d+r)}\) and offset \(b\in\mathbb{R}^D\):
+
+\[
+F(u)=Qz(u)+b,\qquad D\ge d+r.
+\]
+
+The exact public constructor is:
+
+```r
+synthetic.quadform(
+  intrinsic.dim,
+  ambient.dim,
+  forms = list(),
+  frame = c("canonical", "random.orthonormal", "supplied"),
+  frame.algorithm = NULL,
+  frame.matrix = NULL,
+  offset = NULL
+)
+```
+
+The contract is:
+
+- `intrinsic.dim` is a positive integer \(d\);
+- `forms` is a list of \(r\ge0\) finite, symmetric \(d\times d\) matrices;
+- `ambient.dim` is an integer \(D\ge d+r\);
+- `frame = "canonical"` requires `ambient.dim == d + r` and
+  both `frame.algorithm = NULL` and `frame.matrix = NULL`;
+- `frame = "random.orthonormal"` stores that policy and a frame-algorithm ID.
+  The constructor draws nothing; `frame.algorithm = NULL` resolves to the current default algorithm,
+  while frozen recipes store an explicit versioned algorithm ID. The
+  materializer draws and records a \(D\times(d+r)\) frame from the
+  `geometry.frame` RNG stream;
+- `frame = "supplied"` requires `frame.matrix` to be a finite numeric
+  \(D\times(d+r)\) matrix with orthonormal columns. The matrix is stored
+  unchanged, `frame.algorithm` must be `NULL`, and no geometry-frame draw
+  occurs;
+- `offset` defaults to a zero vector of length \(D\);
+- invalid dimensions, nonsymmetric forms, nonorthonormal frames, and
+  non-finite values are errors, not silently repaired.
+
+This definition absorbs the named cases without adding named simulator
+functions:
+
+- **flat:** `forms = list()`; \(F(u)=Qu+b\);
+- **elliptic paraboloid:** `forms = list(diag(a, d))`, \(a>0\);
+- **hyperbolic paraboloid/saddle:** one indefinite form, for example
+  `forms = list(diag(c(a, -a)))` when \(d=2\);
+- **historical index-\(k\) quadform:** one diagonal form with the first `index.k`
+  diagonal entries positive and the remainder negative;
+- **multiple normal curvatures:** more than one matrix in `forms`.
+
+For the historical scalar-graph embedding \(F(u)=(u,q(u))\), \(r=1\).
+Choosing a larger `ambient.dim` no longer changes the intrinsic geometry; it
+places the same \(d+1\)-dimensional graph in a larger observed space through
+`Q`. This is the missing ambient-dimension control in the current
+`make.quadform.dataset()` and `dgp.g3a()` interfaces.
+
+Legacy G2 uses `frame = "random.orthonormal"`, `rng.policy = "legacy"`, and
+`frame.algorithm = "legacy.base.qr.gaussian.v1"`, with
+`compatibility$seed.policy = "geosmooth.g1.g7.v1"`. The materializer—not the
+geometry constructor—resolves `frame.seed` from an explicit compatibility
+value or defaults it to `seed + 500000L`, reproducing the current separation
+between frame and latent-coordinate randomness.
+
+The `legacy.base.qr.gaussian.v1` algorithm is exact:
+
+1. call `set.seed(as.integer(resolved.frame.seed))`;
+2. draw `D * (d + r)` standard normals and place them column-major into
+   `M <- matrix(rnorm(D * (d + r)), nrow = D, ncol = d + r)`;
+3. compute `qr.out <- qr(M, LAPACK = FALSE)`;
+4. compute `Q.full <- qr.Q(qr.out, complete = FALSE)`;
+5. select `Q <- Q.full[, seq_len(d + r), drop = FALSE]`; and
+6. apply no sign canonicalization, pivot reordering, or other post-processing.
+
+The realized matrix and algorithm ID are recorded. A change to QR backend,
+sign convention, pivot handling, or post-processing requires a new algorithm
+ID. Cross-environment scientific comparison may use the orthogonal invariant
+defined below, but same-environment legacy parity uses the exact matrix.
+The resolved frame seed is also recorded and parity tests cover both its
+default and explicit-override paths.
+
+Named words such as “flat,” “paraboloid,” and “saddle” remain useful in registry
+labels and documentation. They are preset rows that materialize an explicit
+`synthetic.quadform()` specification; they are not separately
+exported simulation functions.
+
+## G1--G7 absorption map
+
+<table class="name-table">
+<thead>
+<tr>
+  <th>Current entry point</th>
+  <th>Canonical specification</th>
+  <th>Compatibility disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><code>dgp.g1()</code></td><td>Empty-form quadform geometry with <code>intrinsic.dim == ambient.dim</code>; uniform-box sampling; polynomial truth; Gaussian response.</td><td>Registry recipe <code>G1</code>; deprecated wrapper for one compatibility release.</td></tr>
+<tr><td><code>dgp.g2()</code></td><td>Empty-form quadform geometry with <code>ambient.dim &gt; intrinsic.dim</code> and a materializer-owned random orthonormal frame; polynomial truth; Gaussian response.</td><td>Registry recipe <code>G2</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g3a()</code></td><td>One positive-definite form <code>A = diag(1 / (2R), d)</code>; uniform-disk sampling; intrinsic smooth or linear truth; Gaussian response.</td><td>Registry recipe <code>G3a</code> labelled “paraboloid”; deprecated wrapper. No <code>simulate.paraboloid()</code>.</td></tr>
+<tr><td><code>dgp.g3b()</code></td><td><code>synthetic.sphere.cap()</code>; uniform-disk sampling; intrinsic truth; Gaussian response.</td><td>Registry recipe <code>G3b</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g3c()</code></td><td><code>synthetic.helix()</code>; uniform-interval sampling; registered named truth; Gaussian response.</td><td>Registry recipe <code>G3c</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g3d()</code></td><td><code>synthetic.torus.patch()</code>; uniform-rectangle sampling; intrinsic truth; Gaussian response.</td><td>Registry recipe <code>G3d</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g4()</code></td><td><code>synthetic.stratified()</code>; stratum-aware sampling; registered named truth; Gaussian response.</td><td>Registry recipe <code>G4</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g5()</code></td><td>Empty-form quadform geometry plus <code>synthetic.sampling.clustered()</code>, registered named truth, and <code>synthetic.response.clustered.gaussian()</code>.</td><td>Registry recipe <code>G5</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g6()</code></td><td>Empty-form quadform geometry; uniform-box sampling; logit truth; Bernoulli response.</td><td>Registry recipe <code>G6</code>; deprecated wrapper.</td></tr>
+<tr><td><code>dgp.g7()</code></td><td><code>synthetic.simplex()</code>; Dirichlet-with-structural-zeros sampling; registered named truth; Gaussian response.</td><td>Registry recipe <code>G7</code>; deprecated wrapper.</td></tr>
+</tbody>
+</table>
+
+G-tags remain stable identifiers in manifests, papers, and the registry. They
+do not remain the primary vocabulary of the API.
+
+## Dataset object contract
+
+The returned class is `synthetic_dataset`. Its required fields are:
+
+```text
+dataset.id, specification.sha256, recipe.id, registry.tag, n,
+intrinsic.dim, intrinsic.dim.by.region,
+ambient.dim, codimension, codimension.by.region,
+latent, latent.mask, predictors, truth, truth.scope, truth.estimand,
+response, region, declared.regions, observed.regions,
+geometry.spec, sampling.spec, truth.spec, response.spec,
+seed, rng.policy, rng.streams, parameters, provenance
+```
+
+`predictors` is always the finite \(n\times D\) observed matrix, and
+`ambient.dim` is always \(D\). The latent fields use a deliberately nullable
+contract:
+
+- for a homogeneous parameterized geometry, `intrinsic.dim = d`,
+  `codimension = D - d`, `intrinsic.dim.by.region = NULL`,
+  `codimension.by.region = NULL`, `latent` is a finite \(n\times d\) matrix,
+  and `latent.mask` is either `NULL` or an all-`TRUE` matrix of the same size;
+- for heterogeneous geometry, `intrinsic.dim = NA_integer_` and
+  `codimension = NA_integer_`; the two `*.by.region` fields are named integer
+  vectors keyed exactly by `declared.regions`; every observed `region` label
+  must be declared, and `observed.regions` is the ordered subset that actually
+  occurs; `latent` has
+  \(d_{\max}\) columns; and `latent.mask` is a logical matrix marking coordinates
+  that exist for each row. A latent entry must be finite where the mask is
+  `TRUE` and `NA_real_` where it is `FALSE`;
+- when observed coordinates are the primary representation and no separate
+  chart is claimed, `latent = NULL` and `latent.mask = NULL`. Intrinsic and
+  codimension fields may be `NA`, but the geometry specification must provide
+  any known region/face dimensions.
+
+G4 uses the heterogeneous representation with
+`declared.regions = observed.regions = c("A", "B")`:
+`intrinsic.dim.by.region = c(A = 1L, B = 2L)`,
+`codimension.by.region = c(A = 2L, B = 1L)`, and a two-column latent matrix
+whose second coordinate is `NA` exactly for stratum A. G7 uses
+`declared.regions = c("interior", "zero")`; `observed.regions` may omit either
+label at an allowed endpoint value of `zero.fraction`. It has `latent = NULL`,
+`intrinsic.dim = NA`, and a simplex geometry specification
+containing `parts = D`,
+`intrinsic.dim.by.region = c(interior = D - 1L,
+zero = D - length(zero.parts) - 1L)`, plus the active part indices for each
+region. This preserves the current G4/G7 `U` and `d` fields while adding
+explicit geometry metadata.
+
+`truth` is the conditional mean, probability, or other documented estimand.
+`truth.scope` is exactly `"population"` or `"finite.design"`, and
+`truth.estimand` gives a human-readable mathematical definition. A
+finite-design truth records its realized normalizer or other design statistic
+in `parameters`. `response` is the realized outcome. Transitional read-only aliases
+`U`, `X`, `y`, and `d` reproduce the legacy fields for one compatibility
+release.
+
+`rng.policy` is a required top-level scalar string. It must name the policy
+that actually materialized the dataset, agree with the policy encoded in
+`dataset.id` or the frozen instance row, and have the policy-specific
+`rng.streams` structure. The validator rejects a missing, unknown, or
+inconsistent policy; storing it only in `parameters` or `provenance` is not
+sufficient.
+
+`specification.sha256` is the full lowercase digest used in every ordinary
+`dataset.id`. Validation recomputes it from the canonical specification payload
+and requires an exact match. For frozen instances, it must also equal the
+specification digest bound by the instance registry.
+
+`validate.synthetic.dataset()` applies finite-value checks only to fields and
+latent entries declared present, checks response/truth/region lengths, enforces
+the mask and region-dimension rules, and dispatches to geometry-specific
+invariants. `synthetic.dataset.checksum()` uses the versioned payload defined
+below and excludes environment-derived package-version fields.
+
+# Legacy synthetic support still inside gflow
+
+The current `gflow` source still contains a substantial de-exported layer:
+
+- 50 top-level definitions in `R/synthetic_data_utils.R`;
+- 9 top-level definitions in `R/random_sampling.R`;
+- 2 definitions for the mixed-point example;
+- 2 definitions in the remaining star-dataset file.
+
+De-exporting was the correct first cleanup step, but it did not resolve
+ownership. The large synthetic file combines at least four responsibilities.
+
+## Reusable regression and classification families
+
+The following concepts are natural `geosmooth` material:
+
+- one- and multi-dimensional Gaussian-mixture truths;
+- continuous and binary response generation;
+- circular Gaussian-mixture truths;
+- compact bump, generalized-Gaussian, asymmetric-bump, and spline truths;
+- circle, noisy-circle, torus-knot, trefoil, and clustered predictor geometry;
+- two-dimensional Gaussian-mixture objects and sampling.
+
+They should be ported family by family into the standard synthetic dataset
+contract. The old S3 plotting helpers should not be carried over automatically.
+A generator is not required to define a bespoke object class merely to plot its
+truth.
+
+## Basin-specific fixtures
+
+`test.graph.MS.cx.on.synth.cloud.data()` and any narrowly tailored
+Morse--Smale or basin-construction fixture should stay with `gflow`, preferably
+under `tests/testthat/helper-*` rather than in the installed package namespace.
+
+One protected private comparison in `nerve_cx.R` currently uses a Gaussian
+mixture. That does not justify retaining the entire generator library in
+`gflow`, nor does it justify making `gflow` depend on `geosmooth`. The
+comparison should use a small local deterministic fixture when basin/complex
+code is next touched.
+
+## Deletion rather than migration
+
+An old helper should not be moved merely because it exists. Helpers with no live
+consumer, no distinct scientific role, no deterministic contract, and no
+focused tests should be deleted after provenance is recorded. Migration should
+be a quality filter, not a file transfer.
+
+# Elementary random samplers
+
+`gflow/R/random_sampling.R` contains Laplace distribution functions, uniform
+sampling on simplices, spheres, and tori, and empirical-density sampling.
+These are implementation primitives rather than the main scientific API.
+
+The recommended rule is:
+
+- if a sampler is needed to implement a maintained synthetic family, make it a
+  private helper in `geosmooth`;
+- if several packages genuinely need a general distribution API, consider a
+  separate statistical-utilities package later;
+- do not export `geosmooth` as a substitute for a generic probability library.
+
+For example, a user should combine
+`synthetic.circle()` with
+`synthetic.response.laplace.outlier()`, not call an undocumented `rlaplace()`
+helper or require a separate top-level simulator for every noise/geometry pair.
+
+# Mixed Gaussian/line nonmanifold example
+
+The mixed-point generator combines a central Gaussian cloud with points near a
+line or ray. Its scientific role is to test nonmanifold or heterogeneous local
+dimension behavior. That role aligns with local geometric smoothing.
+
+The current names `generate.mixed.points()` and `mixed.points.plot()` are vague.
+The geometry should be represented by:
+
+```text
+synthetic.point.line.junction()
+```
+
+When included in a `synthetic.spec`, the returned `synthetic_dataset` should
+include region labels such as
+`"point_cloud"` and `"line_branch"`, the latent construction parameters, and an
+optional truth/response model. Plotting should use a common
+`plot.synthetic_dataset()` method rather than a family-specific plotting
+function unless the family needs a genuinely distinct diagnostic.
+
+# Star topology with a synthetic response
+
+`generate.star.dataset()` currently combines:
+
+1. construction of a star graph and its geometric realization;
+2. selection of a smooth signal on the graph;
+3. addition of response noise.
+
+Those responsibilities belong to different packages. `dgraphs` already owns
+generic star-graph construction. `geosmooth` should own the statistical
+assembly that attaches a truth and response.
+
+A descriptive statistical assembly is:
+
+```r
+synthetic.spec(
+  geometry = synthetic.graph.geometry(dgraphs::create.star.graph(...)),
+  sampling = synthetic.sampling.graph.vertices(),
+  truth = synthetic.truth.graph.signal(...),
+  response = synthetic.response.gaussian(...)
+)
+```
+
+Internally it should call a canonical `dgraphs` constructor. It should not
+reimplement adjacency lists, edge lengths, or generic graph validation. This
+keeps the dependency direction clean: `geosmooth` may import `dgraphs`, while
+`dgraphs` does not depend on `geosmooth`.
+
+# Trend-filtering regression suites
+
+The shared trend-filtering validation helper defines:
+
+- `make.1d.dataset()`;
+- `make.flat.dataset()`;
+- `make.quadform.dataset()`;
+- associated Gaussian-mixture catalogs, truth functions, and noise variants.
+
+These functions are reusable beyond trend filtering and therefore belong in
+`geosmooth`. The current quadform path is already stale: it loads `gflow` and
+calls the deleted `quadform.embed()`.
+
+The current synthetic regression note identifies more than the three
+`make.*` functions. The consolidation must absorb the entire generation path,
+not leave a second semi-public collection of catalogs, samplers, truth
+evaluators, and row materializers.
+
+## Exact absorption ledger for the shared suite
+
+<table class="name-table">
+<thead>
+<tr>
+  <th>Current helper or object</th>
+  <th>Absorbed by</th>
+  <th>Result after migration</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><code>shape.catalog()</code></td><td>Versioned registry table <code>inst/synthetic_registry/gaussian_mixture_1d_shapes.csv</code> plus <code>synthetic.truth.gaussian.mixture()</code>.</td><td>The 16 S01--S16 rows remain stable data, not an exported function that rebuilds them.</td></tr>
+<tr><td><code>variant.catalog()</code></td><td>Versioned registry table <code>inst/synthetic_registry/gaussian_mixture_1d_variants.csv</code> plus sampling and response specifications.</td><td>V1--V3 remain stable recipe IDs; their mechanisms are explicit components.</td></tr>
+<tr><td><code>sample.x()</code></td><td><code>synthetic.sampling.uniform.interval()</code>, <code>synthetic.sampling.truncated.normal()</code>, or <code>synthetic.sampling.gapped.uniform()</code>, each with explicit ordering and allocation policy.</td><td>V1/V2 sort ascending; V3 fixes <code>floor(0.42*n)</code> left rows, assigns the remainder right, then sorts. No exported switch on opaque V-codes.</td></tr>
+<tr><td><code>mixture.signal()</code></td><td><code>synthetic.truth.gaussian.mixture(means, sds, weights, normalize = "sample.max")</code>.</td><td>Truth specification is public; its evaluator is private.</td></tr>
+<tr><td><code>add.noise()</code></td><td><code>synthetic.response.gaussian()</code>, <code>synthetic.response.heteroskedastic.gaussian()</code>, or <code>synthetic.response.laplace.outlier()</code>.</td><td>V3 records <code>minimum.outliers = 1L</code> and <code>count.rounding = "round"</code>; noise is no longer selected by an opaque variant ID.</td></tr>
+<tr><td><code>rlaplace()</code></td><td>Private draw helper used by <code>synthetic.response.laplace.outlier()</code>.</td><td>Not exported as a generic distribution API.</td></tr>
+<tr><td><code>truth.function()</code></td><td><code>synthetic.truth.named(id, parameters)</code>, resolved through the versioned evaluator registry.</td><td>Maintained formulas receive stable evaluator IDs. Arbitrary closures are not materializable specifications.</td></tr>
+<tr><td><code>coeff.base()</code></td><td>Quadform recipe field <code>forms</code>; historical vectors become diagonal matrices after applying the index sign pattern.</td><td>No dimension-limited switch function.</td></tr>
+<tr><td><code>make.random()</code></td><td><code>synthetic.sampling.uniform.box(lower = -1, upper = 1)</code>.</td><td>Sampling seed is owned by the materializer.</td></tr>
+<tr><td><code>make.1d.dataset()</code></td><td><code>synthetic.spec(...)</code> assembled from S-row, V-row, one-dimensional empty-form geometry, mixture truth, and response; materialized by <code>materialize.synthetic()</code>.</td><td>Legacy wrapper may remain only until consumers migrate.</td></tr>
+<tr><td><code>make.flat.dataset()</code></td><td><code>synthetic.quadform(forms = list(), intrinsic.dim = d, ambient.dim = d)</code> plus the frozen shared truth and Gaussian response.</td><td>“Flat” is a registry label, not a separate constructor.</td></tr>
+<tr><td><code>make.quadform.dataset()</code></td><td><code>synthetic.quadform(forms = list(A), intrinsic.dim = d, ambient.dim = d + 1L)</code>, where <code>A = diag(signs * curvature * coeff.base(d))</code>.</td><td>Historical output is reproducible; new callers may choose any valid ambient dimension.</td></tr>
+<tr><td><code>quadform.embed()</code></td><td><code>embed.synthetic.geometry()</code> dispatching on a quadform geometry specification.</td><td>Deterministic geometry operator, separately testable.</td></tr>
+<tr><td><code>quadform.edge.lengths()</code></td><td><code>edge.lengths.synthetic.geometry()</code> dispatching on a quadform geometry specification and latent endpoints.</td><td>Analytic metric support stays with geometry, not the dataset builder.</td></tr>
+<tr><td><code>dataset.row()</code></td><td><code>as.data.frame.synthetic_dataset()</code>.</td><td>One-row metadata summary with documented columns.</td></tr>
+<tr><td><code>materialize.dataset()</code></td><td><code>materialize.synthetic(synthetic.registry.spec(recipe.id), n, seed)</code>.</td><td>One recipe-materialization path for ad hoc instances; frozen instances use <code>materialize.synthetic.instance(instance.id)</code>.</td></tr>
+<tr><td><code>make.path.graph()</code>, <code>make.data.graph()</code>, adjacency helpers</td><td><code>dgraphs</code>.</td><td>Not absorbed into the synthetic-data API.</td></tr>
+<tr><td><code>rmse()</code>, <code>mae()</code>, fitting and scoring helpers</td><td>Experiment evaluation code or a separate metrics utility.</td><td>Not absorbed into generators.</td></tr>
+</tbody>
+</table>
+
+The `shape.catalog()` and `variant.catalog()` contents are scientific assets.
+They must be migrated row-for-row with IDs, means, standard deviations,
+weights, sampling mechanism, noise mechanism, and legacy seed formula. Turning
+their names into new exported functions without migrating the rows would not
+constitute absorption.
+
+## Recipe expansion of the historical calls
+
+The historical flat call
+
+```r
+make.flat.dataset(dim = 3L, replicate = 1L, n = 180L)
+```
+
+becomes the registry-equivalent specification:
+
+```r
+flat.spec <- synthetic.spec(
+  geometry = synthetic.quadform(
+    intrinsic.dim = 3L,
+    ambient.dim = 3L,
+    forms = list(),
+    frame = "canonical"
+  ),
+  sampling = synthetic.sampling.uniform.box(lower = -1, upper = 1),
+  truth = synthetic.truth.named("ssrhe.shared.smooth"),
+  response = synthetic.response.gaussian(sd = 0.08),
+  recipe.id = "ssrhe.flat.d3.v1",
+  compatibility = list(
+    recipe = "ssrhe.flat.v1",
+    replicate = 1L,
+    seed.policy = "ssrhe.flat.v1"
+  )
+)
+
+flat.dataset <- materialize.synthetic(
+  flat.spec,
+  n = 180L,
+  seed = 287801L,
+  rng.policy = "legacy"
+)
+```
+
+The historical quadform call
+
+```r
+make.quadform.dataset(
+  dim = 3L, index.k = 2L, curvature = 1.25,
+  replicate = 1L, n = 180L
+)
+```
+
+becomes:
+
+```r
+base <- c(1, 1, 1.5)
+signs <- c(1, 1, -1)
+
+quadform.spec <- synthetic.spec(
+  geometry = synthetic.quadform(
+    intrinsic.dim = 3L,
+    ambient.dim = 4L,
+    forms = list(diag(signs * 1.25 * base)),
+    frame = "canonical"
+  ),
+  sampling = synthetic.sampling.uniform.box(lower = -1, upper = 1),
+  truth = synthetic.truth.named("ssrhe.shared.smooth"),
+  response = synthetic.response.gaussian(sd = 0.08),
+  recipe.id = "ssrhe.quadform.d3.idx2.curv125.v1",
+  compatibility = list(
+    recipe = "ssrhe.quadform.v1",
+    index.k = 2L,
+    curvature = 1.25,
+    coefficients = 1.25 * base,
+    replicate = 1L,
+    seed.policy = "ssrhe.quadform.v1"
+  )
+)
+
+quadform.dataset <- materialize.synthetic(
+  quadform.spec,
+  n = 180L,
+  seed = 296126L,
+  rng.policy = "legacy"
+)
+```
+
+To embed that same intrinsic quadform in \(\mathbb{R}^{10}\), only
+`ambient.dim = 10L` and the frame specification change. The form, latent
+dimension, truth, response, and sampling remain identical.
+
+The trend-filtering repository should retain scenario registries,
+method-specific tuning grids, run orchestration, results, and reports. Its
+scripts should import the canonical generators instead of sourcing a shared
+helper file.
+
+# P7 prospective geometries and truth functions
+
+The P7 suite contains a particularly useful declarative design:
+
+- geometry registries;
+- truth-family registries;
+- fixed seeds;
+- controlled latent and observed dimensions;
+- flat, paraboloid, saddle, high-dimensional, and graph-Gaussian cases.
+
+That design should influence the expanded `geosmooth` registry. The reusable
+geometry and truth materializers should move; the P7 method comparison itself
+should not.
+
+One stale dependency illustrates why consolidation matters. The P7 helper still
+tries to resolve `gflow::create.rknn.graph`, even though graph construction now
+belongs to `dgraphs`. A canonical `geosmooth` materializer should call `dgraphs`
+directly and record the graph-construction specification in provenance.
+
+The recipe registry should describe reusable combinations by explicit
+component IDs:
+
+```text
+recipe.id        = "p7.quadform.elliptic.d2.D8"
+geometry.id      = "quadform.elliptic.d2.D8"
+sampling.id      = "uniform.box.d2"
+truth.id         = "anisotropic.gaussian.mixture"
+response.id      = "gaussian.sd0.08"
+```
+
+The frozen instance registry separately records:
+
+```text
+instance.id      = "P7_QF_ELLIPTIC_D8_N400_S202"
+recipe.id        = "p7.quadform.elliptic.d2.D8"
+n                = 400
+seed             = 202
+rng.policy       = "named.stream.v1"
+```
+
+The geometry row stores `intrinsic.dim = 2`, `ambient.dim = 8`, its explicit
+form matrix, and its frame policy. `synthetic.registry.spec()` resolves the
+recipe components; `materialize.synthetic.instance()` consumes the frozen row
+without allowing `n` or `seed` overrides.
+
+# Occupation-density Gaussian mixtures
+
+The current occupation-density calibration creates:
+
+\[
+X \longrightarrow p(X) \longrightarrow
+\rho_{\mathrm{truth}}(X),\ \pi_{\mathrm{truth}}(X)
+\longrightarrow Y \sim \mathrm{Bernoulli}\{\pi_{\mathrm{truth}}(X)\}.
+\]
+
+This is a conditional-expectation benchmark. Under the currently reproduced
+design-maximum normalization, its truth is the finite-design conditional
+occupation probability
+\(\mathrm{E}[Y_i\mid X_1,\ldots,X_n]\). A later fixed-normalizer recipe may
+define the population conditional probability
+\(\mathrm{E}[Y\mid X=x]\). Either statistical generator belongs in
+`geosmooth`, but the two estimands must have distinct truth specifications.
+
+A suitable specification is:
+
+```r
+synthetic.spec(
+  geometry = synthetic.quadform(
+    intrinsic.dim = 2L, ambient.dim = 2L, forms = list()
+  ),
+  sampling = synthetic.sampling.uniform.box(...),
+  truth = synthetic.truth.occupation.mixture(...),
+  response = synthetic.response.bernoulli()
+)
+```
+
+It should return sampled predictors, analytic density, normalized density,
+occupation probability, Bernoulli response, mixture components, seed, and
+acceptance diagnostics. Dense-grid truth should be an optional diagnostic
+payload, not the substrate used to fit a method.
+
+The application project should retain elementary-occupation interpretation,
+basin-selection analysis, project-specific acceptance thresholds, reports, and
+frozen examples. The generator should not import basin construction back into
+`geosmooth`.
+
+# Quadforms: dataset, geometry, graph, and oracle
+
+Quadforms are the clearest case for separating responsibilities.
+
+The historical API represents one diagonal form:
+
+\[
+q(U)=\sum_{j=1}^d s_j c_j u_j^2,\qquad F(U)=(U,q(U)).
+\]
+
+The new API represents this as
+`forms = list(diag(signs * coefficients))`, `intrinsic.dim = d`, and
+`ambient.dim = d + 1L`. It also permits nondiagonal symmetric forms, multiple
+normal forms, and a larger ambient space. This is a strict generalization of
+the old model, not a second implementation beside it.
+
+## What belongs in geosmooth
+
+The following are direct components of the known simulation geometry:
+
+- `synthetic.quadform()`;
+- `embed.synthetic.geometry()`;
+- `quadform.gradient()`;
+- `quadform.metric()`;
+- `edge.lengths.synthetic.geometry()`;
+- parameter-domain sampling;
+- `materialize.synthetic()` returning a `synthetic_dataset`.
+
+`quadform.gradient()` and `quadform.metric()` may remain family-specific
+analytic operators because they compute quadform geometry rather than construct
+a complete dataset. They take a `synthetic_geometry_quadform` object as their
+first argument so that dimensions, forms, frame, and offset cannot drift
+between calls.
+
+## What should remain narrow
+
+The deleted `quadform.sample.dataset()` also constructed expensive grid,
+Delaunay, epsilon-net, local-radius, and minimum-spanning-tree reference
+geodesics. That machinery is an optional audit oracle. It should not be required
+to generate a routine smoothing dataset.
+
+The clean interface is:
+
+```r
+geometry <- synthetic.quadform(...)
+ds <- materialize.synthetic(
+  synthetic.spec(geometry, sampling, truth, response),
+  n = 400L,
+  seed = 202L
+)
+oracle <- reference.quadform.geodesics(ds, ...)
+```
+
+`reference.quadform.geodesics()` may initially be experimental or internal to
+`geosmooth` validation. Generic graph construction, component repair, and
+shortest paths must call `dgraphs`. If the oracle grows into a broadly used
+reference-geometry product, it can later move to a dedicated geometry package
+without changing `materialize.synthetic()` or the geometry specification.
+
+This split avoids loading Qhull/Delaunay and high-dimensional reference-graph
+complexity into every use of a simple curved regression dataset.
+
+# Synthetic graph and layout families
+
+Not every synthetic object involving coordinates is a smoothing DGP.
+
+`dgraphs` should continue to own generic complete, empty, chain, circle, star,
+random, radius, k-nearest-neighbor, and related graph constructors.
+
+`grip` should continue to own its mesh, cylinder, sphere, torus, recursive
+fractal, pair-of-pants, irregular-surface, and graph-family examples when their
+purpose is layout or visualization.
+
+`geosmooth` may consume these constructors and attach a statistical truth. It
+should not duplicate the topology generators. The distinction is the purpose
+of the public object:
+
+- “construct this graph” belongs to `dgraphs` or `grip`;
+- “simulate \(X\), truth, and \(Y\) on this geometry” belongs to `geosmooth`.
+
+# Frozen assets and consuming experiments
+
+Frozen CSV, RDS, manifest, prediction, and report bundles should normally remain
+where the experiment was conducted. Centralizing generators does not require a
+monolithic data warehouse inside an R package.
+
+`geosmooth` should keep only:
+
+- small canonical fixtures needed for tests and examples;
+- registry rows and checksums needed to reproduce them;
+- links or manifests pointing to larger external assets;
+- versioned definitions of the generators that created them.
+
+Large historical assets from `trend_filtering`, VALENCIA/`linf`, or application
+projects should remain with their scientific context. Their manifests should
+record the `geosmooth` version, recipe ID, materializer version, arguments,
+seed, RNG policy, and content checksum.
+
+# A harmonized simulation API
+
+The current ecosystem mixes `dgp.*`, `make.*`, `generate.*`, `get.*`,
+`sample.*`, and family-specific names. A small verb vocabulary would make the
+API much easier to learn.
+
+## Naming rules
+
+- `synthetic.spec()` composes geometry, sampling, truth, and response.
+- `materialize.synthetic()` is the only general exported operation that creates a
+  complete statistical dataset.
+- `synthetic.<geometry-family>()` defines observed geometry without response.
+- `synthetic.sampling.<family>()` defines latent or predictor sampling.
+- `synthetic.truth.<family>()` defines the population estimand.
+- `synthetic.response.<family>()` defines how the realized response is drawn.
+- `embed.synthetic.geometry()` performs deterministic embedding.
+- `<family>.metric()` or `<family>.distance()` evaluates an analytic geometry.
+- `reference.<family>.*()` computes an expensive non-deployable oracle.
+- `plot.synthetic_dataset()` provides common visualization.
+- `validate.synthetic.dataset()` checks the common contract.
+- Registry tags such as G3a remain metadata, not the only public name.
+
+Avoid `get.*` for computation, `make.*` for exported constructors, separate
+`simulate.*` functions for special cases, and names such as `g3a` that require
+a separate document to decode. Do not define `simulate.synthetic()` as an
+ordinary exported function: `stats::simulate()` is an existing S3 generic with
+formals `object, nsim, seed, ...`, and the proposed one-specification-to-one-
+dataset operation does not conform to that protocol. `materialize.synthetic()`
+is an ordinary exported function, not an S3 method.
+
+The geometry names deliberately omit the intermediate word `geometry`.
+`synthetic.quadform()` is shorter and remains unambiguous because it constructs
+a geometry specification, while only `materialize.synthetic()` constructs a
+complete dataset. “Materialize” states that a reusable specification is being
+turned into one realized dataset and avoids the existing `simulate()` generic.
+Sampling, truth, and response keep their category in the name because, for
+example, `synthetic.gaussian()` would not reveal whether Gaussian refers to
+coordinate sampling, a regression truth, or response noise.
+
+<div class="callout callout-gold">
+<strong>R naming caveat.</strong>
+The only caveat is R's S3 naming convention:
+<code>synthetic.quadform</code> visually resembles a method for a hypothetical
+<code>synthetic()</code> generic. This is acceptable only while
+<code>synthetic</code> is not an S3 generic. The package documentation must
+identify <code>synthetic.quadform()</code> as an ordinary constructor, and the
+package should not later introduce a <code>synthetic()</code> generic without
+first resolving the collision.
+</div>
+
+## Proposed core public surface
+
+A focused initial surface is:
+
+```text
+synthetic.spec()
+materialize.synthetic()
+materialize.synthetic.instance()
+synthetic.registry.spec()
+
+synthetic.quadform()
+synthetic.sphere.cap()
+synthetic.helix()
+synthetic.torus.patch()
+synthetic.stratum.point()
+synthetic.stratum.segment()
+synthetic.stratum.rectangle()
+synthetic.stratified()
+synthetic.point.line.junction()
+synthetic.simplex()
+synthetic.graph.geometry()
+
+synthetic.sampling.uniform.box()
+synthetic.sampling.uniform.disk()
+synthetic.sampling.uniform.interval()
+synthetic.sampling.uniform.rectangle()
+synthetic.sampling.truncated.normal()
+synthetic.sampling.gapped.uniform()
+synthetic.sampling.clustered()
+synthetic.stratum.sampling()
+synthetic.sampling.stratified()
+synthetic.sampling.dirichlet.zeros()
+synthetic.sampling.graph.vertices()
+
+synthetic.truth.named()
+synthetic.truth.polynomial()
+synthetic.truth.gaussian.mixture()
+synthetic.truth.logit()
+synthetic.truth.occupation.mixture()
+synthetic.truth.graph.signal()
+
+synthetic.response.gaussian()
+synthetic.response.heteroskedastic.gaussian()
+synthetic.response.laplace.outlier()
+synthetic.response.clustered.gaussian()
+synthetic.response.bernoulli()
+
+embed.synthetic.geometry()
+edge.lengths.synthetic.geometry()
+validate.synthetic.dataset()
+synthetic.dataset.checksum()
+```
+
+This list is an upper bound for the first stable release. A component
+constructor is exported only if at least two maintained recipes use it or
+external composition is an intended use. Otherwise it remains private and the
+registry recipe remains public.
+
+Knot placement, individual random draws, matrix validation, covariance
+sampling, response acceptance calculations, and component evaluators remain
+private.
+
+## Exact constructor contracts
+
+All component constructors return immutable-by-convention lists with a
+`type`, `version`, validated parameters, and a class identifying the component.
+They perform no random draws. Randomness occurs only in
+`materialize.synthetic()`.
+
+```r
+synthetic.spec <- function(
+  geometry,
+  sampling,
+  truth,
+  response,
+  recipe.id = NULL,
+  registry.tag = NULL,
+  compatibility = NULL,
+  metadata = list()
+)
+
+materialize.synthetic <- function(
+  spec,
+  n = NULL,
+  seed,
+  rng.policy = c("named.stream.v1", "legacy"),
+  validate = TRUE
+)
+
+materialize.synthetic.instance <- function(
+  instance.id,
+  validate = TRUE
+)
+```
+
+`synthetic.spec()` rejects missing or incorrectly classed components.
+`materialize.synthetic()` resolves sample size as specified below, requires a
+scalar integer `seed`, returns exactly one `synthetic_dataset`, and does not
+accept family-specific arguments through `...`. It is an ordinary function,
+not an S3 method.
+
+If `sampling` has no fixed size, `n` is required and must be a positive integer.
+If sampling fixes its size, `n = NULL` uses that value and a supplied `n` must
+equal it. In particular, clustered sampling fixes
+`n = cluster.count * observations.per.cluster`; graph-vertex sampling without
+replacement fixes `n` to the graph vertex count; graph-vertex sampling with
+replacement requires `n`.
+
+For ordinary materialization, `dataset.id` is derived and cannot be overridden:
+
+```text
+<recipe-label-or-adhoc>__spec<full-specification-SHA256>__n<n>__seed<seed>__rng<rng-policy>
+```
+
+`recipe-label-or-adhoc` is the sanitized `recipe.id` when present and `"adhoc"`
+otherwise. Characters outside `[A-Za-z0-9_.-]` are replaced by `-`. The full
+64-hex-digit specification SHA-256 is always present, including for
+registry-derived and caller-labelled specifications. Thus `recipe.id` is a
+readable label, not a substitute for content identity: two specifications with
+the same label but different components receive different `dataset.id` values.
+Only `materialize.synthetic.instance()` may return a shorter registry-controlled
+instance ID, and it verifies the instance's bound specification and content
+checksums.
+
+The canonical specification hash uses payload contract
+`synthetic-specification-v1`: a fixed-order list of the canonical
+`geometry.spec`, `sampling.spec`, `truth.spec`, `response.spec`,
+`compatibility`, and scientific `metadata`. It uses the same scalar, matrix,
+name, encoding, prohibited-object, XDR serialization, and SHA-256 rules as the
+dataset checksum below. A truth contributes its evaluator ID, evaluator
+version, coordinate mode, truth scope, and serializable parameters. Runtime
+environments and provenance timestamps are excluded.
+
+`synthetic.registry.spec(recipe.id)` records that the readable recipe label was
+registry-resolved and verifies its full canonical specification hash against
+the registry manifest. Direct `synthetic.spec(recipe.id = ...)` calls may use
+the same text as a label, but they cannot impersonate the registry identity
+because their ordinary dataset ID remains bound to their own full
+specification hash.
+
+`materialize.synthetic.instance(instance.id)` is the only frozen-instance
+entry point. It reads recipe ID, `n`, `seed`, RNG policy, expected checksum, and
+dataset ID from the instance registry; it accepts no overrides. It errors if a
+fixed-size sampling component disagrees with the registered `n`.
+
+The constructors needed to absorb the currently documented suites have these
+signatures. Arguments shown without defaults are required.
+
+```r
+synthetic.sphere.cap <- function(
+  radius = 2,
+  footprint.radius = 1,
+  ambient.dim = 3L,
+  frame = c("canonical", "random.orthonormal", "supplied"),
+  frame.algorithm = NULL,
+  frame.matrix = NULL,
+  offset = NULL
+)
+synthetic.helix <- function(
+  pitch = 0.2,
+  t.range = c(0, 2 * pi),
+  ambient.dim = 3L,
+  frame = c("canonical", "random.orthonormal", "supplied"),
+  frame.algorithm = NULL,
+  frame.matrix = NULL,
+  offset = NULL
+)
+synthetic.torus.patch <- function(
+  major.radius = 1,
+  minor.radius = 0.35,
+  u.range = c(-pi / 2, pi / 2),
+  v.range = c(-pi / 2, pi / 2),
+  ambient.dim = 3L,
+  frame = c("canonical", "random.orthonormal", "supplied"),
+  frame.algorithm = NULL,
+  frame.matrix = NULL,
+  offset = NULL
+)
+synthetic.stratum.point <- function(id, location)
+synthetic.stratum.segment <- function(
+  id, coordinate.range, origin, direction
+)
+synthetic.stratum.rectangle <- function(
+  id, coordinate.ranges, origin, basis
+)
+synthetic.stratified <- function(strata, junctions = NULL)
+synthetic.point.line.junction <- function(
+  point.location,
+  line.origin,
+  line.direction,
+  line.range
+)
+synthetic.simplex <- function(parts)
+synthetic.graph.geometry <- function(
+  graph,
+  coordinates = NULL,
+  edge.lengths = NULL
+)
+
+synthetic.sampling.uniform.box <- function(
+  lower, upper,
+  order = c("draw", "ascending.first.coordinate"),
+  algorithm = "column.major.runif.v1"
+)
+synthetic.sampling.uniform.disk <- function(
+  radius = 1, algorithm = "radial.sqrt.v1"
+)
+synthetic.sampling.uniform.interval <- function(
+  lower, upper, order = c("draw", "ascending"),
+  algorithm = "runif.v1"
+)
+synthetic.sampling.uniform.rectangle <- function(
+  lower, upper, algorithm = "coordinate.sequential.runif.v1"
+)
+synthetic.sampling.truncated.normal <- function(
+  mean, sd, lower, upper,
+  order = c("draw", "ascending"),
+  algorithm = "inverse.cdf.v1"
+)
+synthetic.sampling.gapped.uniform <- function(
+  intervals,
+  allocation = c("multinomial", "fixed.proportion", "fixed.count"),
+  probabilities = NULL,
+  counts = NULL,
+  rounding = c("largest.remainder", "floor.first.remainder.last"),
+  order = c("draw", "ascending"),
+  algorithm = "sequential.interval.runif.v1"
+)
+synthetic.sampling.clustered <- function(
+  cluster.count, observations.per.cluster, center.sampling, within.sd,
+  algorithm = "centers.then.gaussian.offsets.v1"
+)
+synthetic.stratum.sampling <- function(
+  latent.sampling = NULL,
+  ambient.noise.covariance = NULL
+)
+synthetic.sampling.stratified <- function(
+  within,
+  allocation = c("multinomial", "fixed.proportion", "fixed.count"),
+  probabilities = NULL,
+  counts = NULL,
+  rounding = c(
+    "largest.remainder",
+    "floor.first.remainder.last",
+    "round.first.remainder.last"
+  ),
+  minimum.counts = 0L,
+  algorithm = c(
+    "stratum.sequential.v1",
+    "legacy.g4.stratum.sequential.v1"
+  )
+)
+synthetic.sampling.dirichlet.zeros <- function(
+  concentration,
+  zero.fraction,
+  zero.parts,
+  zero.row.policy = c("first", "random"),
+  count.rounding = "round",
+  algorithm = "normalized.gamma.v1"
+)
+synthetic.sampling.graph.vertices <- function(replace = FALSE)
+
+synthetic.truth.named <- function(id, parameters = list())
+synthetic.truth.polynomial <- function(
+  coefficients, evaluation.coordinates = "latent"
+)
+synthetic.truth.gaussian.mixture <- function(
+  centers, scales, weights,
+  normalize = c("none", "sample.max"),
+  evaluation.coordinates = "latent"
+)
+synthetic.truth.logit <- function(
+  linear.predictor, target.prevalence = NULL, clip = NULL,
+  evaluation.coordinates = "predictors"
+)
+synthetic.truth.occupation.mixture <- function(
+  centers,
+  covariances,
+  weights,
+  gamma = 1,
+  probability.maximum = 0.65,
+  normalization = "design.maximum"
+)
+synthetic.truth.graph.signal <- function(
+  amplitudes,
+  bandwidths,
+  centers = NULL,
+  center.count = NULL,
+  center.selection = c("farthest.point", "explicit"),
+  normalize = c("none", "sample.max")
+)
+
+synthetic.response.gaussian <- function(sd)
+synthetic.response.heteroskedastic.gaussian <- function(
+  base.sd, truth.multiplier
+)
+synthetic.response.laplace.outlier <- function(
+  laplace.scale,
+  outlier.fraction,
+  outlier.sd,
+  minimum.outliers = 0L,
+  count.rounding = "round",
+  laplace.algorithm = "uniform.inverse.v1"
+)
+synthetic.response.clustered.gaussian <- function(
+  residual.sd, intraclass.correlation
+)
+synthetic.response.bernoulli <- function(
+  minimum.positive = 0L,
+  maximum.attempts = 1L
+)
+```
+
+The non-quadform geometry rules are:
+
+- sphere cap: intrinsic dimension 2, canonical dimension 3,
+  `radius > footprint.radius > 0`, and `ambient.dim >= 3`;
+- helix: intrinsic dimension 1, canonical dimension 3, finite `pitch`, a
+  strictly increasing finite `t.range`, and `ambient.dim >= 3`;
+- torus patch: intrinsic dimension 2, canonical dimension 3,
+  `major.radius > minor.radius > 0`, strictly increasing finite angle ranges,
+  and `ambient.dim >= 3`;
+- each of these uses the same draw-free canonical/random/supplied frame
+  contract as `synthetic.quadform()`;
+- a point stratum has intrinsic dimension 0; a segment has dimension 1 and a
+  unit direction; a rectangle has dimension 2 and an orthonormal two-column
+  basis. Origins, locations, directions, and bases must share one ambient
+  dimension;
+- `synthetic.stratified()` requires unique stratum IDs and a junction data
+  frame with columns `left.id`, `right.id`, `left.boundary`, and
+  `right.boundary`; every referenced ID must exist. It stores no row counts;
+- `synthetic.point.line.junction()` is a convenience geometry constructor that
+  returns a two-stratum `synthetic_stratified_geometry` consisting of a
+  zero-dimensional point and a one-dimensional segment. It performs no draws;
+- `synthetic.simplex(parts)` requires integer `parts >= 2`, uses observed
+  dimension `parts`, and declares interior intrinsic dimension `parts - 1`;
+- `synthetic.graph.geometry()` requires a validated `dgraphs` graph. Optional
+  coordinates have one row per vertex; optional positive edge lengths align
+  exactly with the graph's canonical edge order. With no coordinates, ambient
+  and intrinsic dimensions are `NA` and `latent` is `NULL`.
+
+Geometry and sampling components have separate, noncompeting ownership of
+support. A geometry owns its hard admissible latent domain; a sampler owns the
+distribution and the support it actually uses. `synthetic.spec()` enforces
+these cross-component invariants before materialization:
+
+- a sphere-cap disk sampler has radius no greater than
+  `geometry$footprint.radius`; frozen G3b requires equality;
+- a helix interval is contained in `geometry$t.range`; frozen G3c requires
+  equality;
+- both torus-rectangle ranges are contained in the corresponding
+  `geometry$u.range` and `geometry$v.range`; frozen G3d requires equality;
+- a quadform has latent domain \(\mathbb{R}^d\), so its sampler supplies the
+  finite experiment support and must have dimension `intrinsic.dim`;
+- simplex draws have `parts` columns, are nonnegative, and sum to one; and
+- graph-vertex sampling references the same canonical graph ID and vertex
+  count as the graph geometry.
+
+The materializer rechecks every realized latent row against the geometry domain.
+This containment rule permits deliberately narrower new samplers without
+allowing geometry and sampling ranges to drift independently. Registry recipes
+state whether containment or exact support equality is required.
+
+`synthetic.stratum.sampling()` pairs a latent sampler with an optional finite,
+positive-semidefinite ambient-noise covariance. The list passed as `within` to
+`synthetic.sampling.stratified()` must be named exactly by stratum ID. Row
+allocation follows the same multinomial/fixed-proportion/fixed-count rules as
+the gapped sampler; `minimum.counts` is recycled or named by stratum.
+
+G4 is represented by a segment A and rectangle B in \(\mathbb{R}^3\). Its
+within-A specification uses a uniform interval and ambient covariance
+`diag(c(0, eta^2, eta^2))`; B uses uniform rectangle sampling and no ambient
+noise. Its frozen allocation sets `probabilities = c(A = fracA, B = 1-fracA)`,
+`rounding = "round.first.remainder.last"`, and
+`minimum.counts = c(A = 1L, B = 1L)`. Before any random draw, validation
+computes the legacy counts `nA = max(1L, round(fracA * n))` and
+`nB = n - nA` and rejects the specification unless both are positive. This
+turns the current accidental zero-row-B failure into a deliberate, RNG-free
+validation error. Maintained G4 datasets therefore contain both declared
+strata.
+
+The frozen G4 sampling component sets
+`algorithm = "legacy.g4.stratum.sequential.v1"`. After count validation, the
+legacy materializer performs this exact sequence under the geometry seed:
+
+1. draw `tA <- runif(nA, -1, 0)`;
+2. draw A's second ambient column with `rnorm(nA, sd = eta)`;
+3. draw A's third ambient column with `rnorm(nA, sd = eta)`;
+4. draw `s1 <- runif(nB, 0, 1)`;
+5. draw `s2 <- runif(nB, -0.5, 0.5)`;
+6. assemble A rows before B rows, with `region = c(rep("A", nA),
+   rep("B", nB))` and the matching masked latent matrix;
+7. evaluate the registered truth without a random draw; and
+8. when response `sd > 0`, reset to `seed + 900000L` and draw the
+   length-\(n\) Gaussian response noise; when `sd = 0`, return truth unchanged
+   without resetting or drawing.
+
+It does not draw all latent coordinates before ambient noise, interleave A and
+B rows, or traverse strata alphabetically independently of their stored order.
+Any traversal, noise-column, assembly, or response-reset change requires a new
+algorithm or compatibility-policy version.
+
+For Dirichlet-with-zeros sampling, concentration is scalar or length `parts`,
+all entries are positive, and `zero.parts` is a nonempty proper subset.
+`zero.row.policy = "first"` and `count.rounding = "round"` reproduce G7:
+the first `round(zero.fraction * n)` rows have those parts set to zero and are
+renormalized. The materializer records active parts and dimensions for the
+declared `"interior"` and `"zero"` regions. Endpoint values
+`zero.fraction = 0` and `zero.fraction = 1` are valid: the absent region remains
+declared but does not appear in `observed.regions`.
+
+The empty call `zero.parts = integer(0)` is an explicit breaking exclusion.
+Although the current `dgp.g7()` accepts it through vacuous `all()` checks, it
+labels selected rows `"zero"` without placing them on a structural-zero face.
+The new constructor and the breaking-release wrapper reject it with a dedicated
+condition class and a message requiring at least one, but fewer than `parts`,
+indices. It is not part of the maintained G1--G7 parity surface. Before release,
+a repository-wide consumer audit must record every such call and either replace
+it with ordinary Dirichlet sampling (`zero.fraction = 0`) or name actual
+structural-zero parts. No temporary canonical recipe preserves the misleading
+labels.
+
+For `uniform.box`, scalar bounds are recycled to `intrinsic.dim`; vector bounds
+must have that exact length. The ordering policy is part of the specification:
+`"draw"` preserves RNG draw order. `"ascending"` is available only for
+one-dimensional interval and truncated-normal samplers.
+`"ascending.first.coordinate"` is the uniform-box row-ordering policy and uses
+original row number as the stable tie-breaker.
+
+`gapped.uniform` requires a two-column numeric matrix of disjoint increasing
+intervals. Under `"multinomial"`, `probabilities` are nonnegative and sum to
+one and interval memberships are random. Under `"fixed.proportion"`, those
+probabilities are converted to deterministic counts; the
+`"floor.first.remainder.last"` rule applies `floor(n * probabilities[j])` to
+all but the last interval and assigns the remainder to the last. Under
+`"fixed.count"`, integer `counts` must sum to `n`.
+
+The frozen V1 and V2 recipes set `order = "ascending"`. The frozen V3 recipe
+uses two intervals, `probabilities = c(0.42, 0.58)`,
+`allocation = "fixed.proportion"`,
+`rounding = "floor.first.remainder.last"`, and `order = "ascending"`. It
+therefore assigns exactly `floor(0.42 * n)` rows to the left interval and all
+remaining rows to the right, matching the current source.
+
+Exact parity fixes the random algorithms, not merely their distributions:
+
+- V1 calls `runif(n, lower, upper)` once and then sorts.
+- V2 computes `p0 = pnorm(lower, mean, sd)` and
+  `p1 = pnorm(upper, mean, sd)`, draws
+  `p = runif(n, p0, p1)`, transforms with
+  `qnorm(p, mean, sd)`, and then sorts.
+- V3 computes the fixed counts, calls `runif()` for all left rows first and all
+  right rows second, concatenates those draws, and then sorts.
+- The legacy Laplace algorithm draws `u = runif(n) - 0.5` and returns
+  `-laplace.scale * sign(u) * log1p(-2 * abs(u))`.
+
+The algorithm names in the component specifications are versioned. Replacing
+inverse-CDF truncated-normal sampling with rejection sampling, or changing
+interval draw order, requires a new algorithm version and cannot claim exact
+V1--V3 parity.
+
+The same rule applies to the G recipes. The frozen disk sampler draws
+`radial.u = runif(n)` followed by `angle.u = runif(n)` and constructs radius
+`radius * sqrt(radial.u)` and angle `2*pi*angle.u`. Frozen clustered sampling
+draws `cluster.count * 2` uniform center values into a two-column,
+column-major matrix before drawing `n * 2` Gaussian offsets into the same
+layout, with rows emitted in cluster order. The frozen torus sampler draws all
+\(u\) coordinates before all \(v\) coordinates. Frozen
+Dirichlet sampling draws a column-major \(n\times D\) gamma matrix with shape
+parameters recycled by column, normalizes rows, applies the structural zeros,
+and normalizes rows again. These sequences are fixture-tested; new algorithms
+receive new version IDs.
+
+The frozen G5 response resets to the legacy response seed, draws all
+`cluster.count` Gaussian cluster effects first, then draws all \(n\) Gaussian
+residuals, and adds both vectors in emitted cluster-row order. Its response
+algorithm ID is versioned separately from the clustered predictor algorithm.
+
+Gaussian-mixture `centers` is \(K\times d\); `weights` has length \(K\);
+`scales` is either a positive length-\(K\) vector for isotropic components or a
+list of \(K\) positive-definite \(d\times d\) covariance matrices.
+`normalize = "none"` defines a population truth because its scale is fixed by
+recipe parameters. `normalize = "sample.max"` defines a finite-design truth:
+the mixture value at row \(i\) is divided by the maximum over the realized
+predictor rows, and that maximum is recorded in
+`parameters$truth.normalizer`.
+`heteroskedastic.gaussian` uses
+`sd_i = base.sd + truth.multiplier * truth_i`, exactly absorbing V2.
+`laplace.outlier` adds a centered Gaussian perturbation of `outlier.sd` to
+`max(minimum.outliers, round(outlier.fraction * n))` sampled rows after the
+Laplace draw when `count.rounding = "round"`. V3 sets
+`minimum.outliers = 1L`, so `n = 10` still contaminates one row. All length,
+ordering, allocation, positivity, probability, count, and definiteness
+constraints are validated in constructors.
+
+Under the legacy V3 response policy, draw order is contractual: draw all
+\(n\) Laplace errors, call `sample.int()` for the contamination rows, then draw
+the Gaussian contaminations in selected-row order. V1 performs one length-\(n\)
+Gaussian draw; V2 performs one vectorized Gaussian draw using
+`base.sd + truth.multiplier * truth`. Parity tests compare the resulting row
+order, not only sorted values or distributional summaries.
+
+For occupation mixtures, `centers` is \(K\times d\), `covariances` contains
+\(K\) positive-definite \(d\times d\) matrices, weights are positive and sum to
+one, `gamma > 0`, and `0 < probability.maximum <= 1`. The current application
+recipe uses `normalization = "design.maximum"` and defines
+
+\[
+p_i = \text{probability.maximum}\,
+\frac{\operatorname{density}(x_i)^\gamma}
+     {\max_j \operatorname{density}(x_j)^\gamma}.
+\]
+
+This is explicitly a finite-design conditional probability
+\(\mathrm{E}[Y_i\mid X_1,\ldots,X_n]\), not a population function of \(x_i\)
+alone. The realized denominator is stored in
+`parameters$truth.normalizer`. A future population version must instead use a
+fixed, recipe-level normalizer that does not depend on the sampled design and
+must receive a distinct truth-component version.
+
+If `normalization = "analytic.maximum"` is retained in a later release, it
+requires a separately versioned and tested optimizer; it is not part of the
+first implementation.
+
+Graph signals require positive bandwidths, matching amplitude/bandwidth
+lengths, and graph distances supplied by `synthetic.graph.geometry()`.
+`center.selection = "explicit"` requires unique valid vertex IDs.
+`"farthest.point"` uses the truth RNG stream for its first center, then
+iteratively selects the vertex maximizing distance to the selected set with the
+smallest canonical vertex ID as tie-breaker; `center.count` must match the
+amplitude count. The selected centers are stored in the materialized dataset.
+
+For Bernoulli responses, `minimum.positive` is a nonnegative integer and
+`maximum.attempts` is positive. When the minimum is not met, the materializer
+redraws the complete sampling/truth/response attempt from the next states of
+the named streams, records the attempt count, and errors after
+`maximum.attempts`. G6 uses `(0L, 1L)`; the current occupation recipe uses
+`minimum.positive = 20L` and a registry-pinned attempt limit.
+
+Every materializable named truth resolves to a registry record containing
+`evaluator.id`, `evaluator.version`, coordinate mode, and JSON-serializable
+parameters. `synthetic.truth.named()` accepts only that ID and serializable
+parameter values. Functions, closures, environments, external pointers, and
+unevaluated language objects are rejected by `synthetic.spec()`; they are not
+an interactive exception because they cannot satisfy the replay and checksum
+contract.
+
+Compatibility wrappers translate the maintained built-in defaults of G3c, G4,
+G5, and G7 to frozen evaluator IDs. An old caller that supplies an arbitrary
+`truth.fn` falls outside the exact-parity surface and receives a lifecycle
+warning followed by an error explaining how to add a versioned evaluator.
+External evaluator registration may be designed later, but it is not part of
+the first stable API and must not bypass registry versioning or code
+fingerprinting.
+
+Truth components declare `evaluation.coordinates` as one of `"latent"`,
+`"predictors"`, `"graph.distance"`, or `"custom"`. Response components declare
+the target represented by `truth`, such as `"conditional.mean"` or
+`"conditional.probability"`. A Bernoulli response therefore cannot be attached
+to an unconstrained real-valued truth without an explicit link component.
+
+## Random-number contract
+
+New specifications use `rng.policy = "named.stream.v1"`. The materializer:
+
+1. saves the caller's RNG kind and `.Random.seed`, if present;
+2. uses `RNGkind("L'Ecuyer-CMRG")` and initializes a master state from `seed`;
+3. assigns streams in the fixed order `sampling`, `geometry.frame`, `truth`,
+   `response`, `response.auxiliary` using `parallel::nextRNGStream()`;
+4. records the five initial stream states in `rng.streams`;
+5. restores the caller's RNG state on exit.
+
+Component order and optional zero-draw components do not shift another
+component's stream. This policy is versioned; changing it requires a new policy
+name and registry re-freeze.
+
+Before any random draw, the materializer resolves every seed the selected path
+can use and validates it as a finite, nonmissing, whole-number value accepted
+by `set.seed()`. Legacy offsets are computed in double precision first, never
+with overflowing integer addition, and must remain in the representable R
+integer range. The validation set is path-specific: it includes frame seeds
+only when a random frame is drawn and response seeds only when the response
+branch consumes randomness. If any derived seed is invalid, materialization
+fails before changing RNG kind or state. Tests cover `.Machine$integer.max`,
+both legacy offsets, explicit frame-seed overrides, and zero-noise branches
+that consume no response seed.
+
+Legacy recipes set `rng.policy = "legacy"` and carry a named
+`compatibility$seed.policy`. Implemented policies are:
+
+- `geosmooth.g1.g7.v1`: preserve the current geometry seed, frame offset
+  `500000L`, and response offset `900000L`;
+- `ssrhe.1d.v1`: preserve
+  `base.seed + shape.number * 1000L + variant.number * 100L + replicate`, call
+  `set.seed()` once, and consume sampling then response draws sequentially;
+- `ssrhe.flat.v1`: preserve
+  `283000L + 1000L * d + 10L * n + replicate`, then reset to
+  `seed + 900000L` before the Gaussian response draw;
+- `ssrhe.quadform.v1`: preserve
+  `291000L + 1000L * d + 100L * index.k +
+  round(100 * curvature) + 10L * n + replicate`, then reset to
+  `seed + 900000L` before the Gaussian response draw.
+
+Legacy policies exist only to reproduce frozen assets and parity tests. New
+registries use `named.stream.v1`.
+
+## Registry schemas
+
+The registry is normalized into explicit CSV tables:
+
+```text
+inst/synthetic_registry/
+  recipes.csv
+  instances.csv
+  geometries.csv
+  samplings.csv
+  truths.csv
+  responses.csv
+  gaussian_mixture_1d_shapes.csv
+  gaussian_mixture_1d_variants.csv
+  checksums.csv
+  registry_manifest.md
+```
+
+`recipes.csv` defines reusable component combinations and has required columns:
+
+```text
+recipe.id, registry.tag, geometry.id, sampling.id, truth.id, response.id,
+compatibility.recipe, specification.sha256, status, version
+```
+
+It does not contain `n`, `seed`, a frozen checksum, or a dataset instance ID.
+
+`instances.csv` defines frozen realizations:
+
+```text
+instance.id, recipe.id, n, seed, rng.policy, checksum.id,
+fixture.path, status, version
+```
+
+For a frozen realization, output `dataset.id` equals `instance.id`.
+`materialize.synthetic.instance()` consumes these values without caller
+overrides and verifies the recorded checksum. Ordinary calls to
+`materialize.synthetic(synthetic.registry.spec(recipe.id), n, seed)` create
+derived, non-frozen IDs and have no association with a registered fixture
+checksum.
+
+Component tables have `*.id`, `family`, `version`, and a JSON `parameters`
+column. Matrix-valued quadform parameters use row-major nested arrays with
+declared `nrow` and `ncol`; they are never encoded as R expressions.
+`checksums.csv` records `checksum.id`, payload-contract version,
+serialization version, environment-fingerprint ID, content SHA-256, and
+scientific-parity tolerances. `instances.csv` carries the fixture path.
+
+`synthetic.registry.spec(recipe.id)` resolves foreign keys, constructs a validated
+`synthetic.spec`, and errors on duplicate IDs, missing IDs, unknown versions, or
+incompatible component dimensions. It never dispatches on string fragments in
+an ID.
+
+## Checksum and cross-platform parity contract
+
+`synthetic.dataset.checksum()` uses payload contract
+`synthetic-content-v1`. The payload is a named list in this fixed order:
+
+```text
+contract.version, dataset.id, specification.sha256, recipe.id, registry.tag, n,
+intrinsic.dim, intrinsic.dim.by.region,
+ambient.dim, codimension, codimension.by.region,
+latent, latent.mask, predictors, truth, truth.scope, truth.estimand,
+response, region, declared.regions, observed.regions,
+seed, rng.policy, rng.streams,
+geometry.spec, sampling.spec, truth.spec, response.spec, parameters
+```
+
+Before serialization:
+
+- factors become character vectors; names and character values are UTF-8;
+- IDs and field names are restricted to ASCII;
+- counts and dimensions are integers, flags are logical, and numeric arrays
+  are double matrices with explicit dimensions;
+- nonsemantic row/column names are removed; semantic labels such as region and
+  component IDs remain explicit list fields;
+- named vectors are sorted by name using locale-independent radix ordering
+  unless their order is itself contractual;
+- the canonical payload is normalized through a serialization round trip
+  before contractual XDR serialization so incidental in-memory reference
+  sharing cannot change the hash;
+- component specifications are reduced to their versioned, serializable
+  registry representation; closures and external pointers are prohibited;
+- graph specifications become canonical vertex IDs plus lexicographically
+  ordered endpoint/edge-length rows;
+- `NA_real_` is permitted only where `latent.mask` is `FALSE`; NaN and infinite
+  values are prohibited.
+
+The bitwise payload is
+`serialize(payload, NULL, ascii = FALSE, xdr = TRUE, version = 3)`, and
+`content.sha256` is the SHA-256 of those raw bytes. The checksum row records
+`payload.contract = "synthetic-content-v1"` and
+`serialization = "R-xdr-v3"`.
+
+The hash is a **same-environment-scope reproducibility check**, not an
+unconditional cross-platform scientific claim. Each checksum row references an
+environment fingerprint containing:
+
+- full R version/build string, platform, architecture, compiler, and
+  endianness;
+- operating-system name, release, version, and machine;
+- RNG kind, normal kind, sample kind, and effective `RNGversion()`;
+- absolute BLAS and LAPACK library paths plus file SHA-256 fingerprints;
+- the available `libm` or equivalent math-runtime identity; and
+- `geosmooth`, registry-schema, evaluator-registry, and dependency versions.
+
+An exact hash is enforced only when every declared fingerprint field matches.
+A bitwise mismatch outside that scope is reported but does not alone fail
+scientific parity.
+
+Cross-platform parity uses `compare.synthetic.dataset()` with exact comparison
+for IDs, integer/logical fields, masks, regions, component versions, and seed
+policies. Finite numeric values use
+
+\[
+|x-x_0| \le 10^{-12} + 10^{-10}|x_0|.
+\]
+
+For a supplied or canonical frame, the frame matrix and observed predictors
+use the elementwise rule. For a random orthonormal frame, cross-environment
+scientific comparison does **not** compare frame entries: ambient orientation
+is a nuisance draw. Each realized frame \(Q\) is separately required to have
+the declared dimensions, satisfy \(Q^\mathsf{T}Q=I\), and reconstruct its own
+predictors from the stored latent coordinates, geometry map, and offset.
+Latent coordinates, truth, response, offsets, and design statistics use the
+elementwise rule, while predictor pairwise squared-distance matrices must
+satisfy that tolerance. The exact same-environment checksum still contains the
+realized frame matrix in `parameters$frame.matrix`.
+
+This orthogonal-equivalence rule is available only when the truth is evaluated
+in latent coordinates or its evaluator explicitly declares ambient-orthogonal
+invariance. A predictor-coordinate truth without that declaration makes the
+frame scientifically meaningful; such a frozen recipe must supply or
+elementwise reproduce its frame.
+
+CRAN-facing tests do not compare platform-sensitive hashes generated through
+QR/BLAS. They test the serializer against a literal platform-independent
+fixture, exercise exact hashes only for arithmetic/RNG paths declared
+same-scope, and use tolerance/invariant checks for random-frame datasets.
+Development and release audits may additionally enforce the frozen same-scope
+hashes.
+
+## Absorption and compatibility policy
+
+Absorption has four required pieces for each maintained legacy generator:
+
+1. a canonical component specification or registry row;
+2. a parity fixture or recorded checksum generated by the old code;
+3. a test showing that the legacy policy reproduces all scientific fields;
+4. removal of the old implementation after consumers migrate.
+
+A thin deprecated wrapper may translate old arguments into a registry or
+component specification for one compatibility release. It may not retain a
+second implementation. The parity comparison covers latent coordinates,
+predictors, truth, response, region labels, IDs where contractual, and
+scientific parameters. Environment-derived provenance text is excluded.
+
+# Repository expansion and organization plan
+
+## Phased implementation
+
+<div class="phase">
+### Phase 1 — Freeze legacy behavior and establish the common contract
+
+Create parity fixtures for every maintained G1--G7 default and nondefault branch and for
+all S01--S16 by V1--V3 combinations. The one-dimensional parity grid must
+include `n = c(1L, 2L, 10L, 11L, 160L)`, at least replicates
+`c(1L, 2L, 7L)`, and all three sampling/noise variants; this exercises sorting,
+fixed interval allocation, rounding, the minimum-one-outlier rule, and the
+exact inverse-CDF and inverse-Laplace algorithms. G-family fixtures must record
+the disk, coordinate-sequential, clustered, Dirichlet-gamma,
+`legacy.base.qr.gaussian.v1` frame, `legacy.g4.stratum.sequential.v1`, and
+response draw order. The maintained nondefault grid explicitly excludes
+G7 `zero.parts = integer(0)` as the breaking case documented above. Flat and
+quadform parity must cover dimensions 2--4, at least two sample sizes, and at
+least three replicates. Record old-call arguments, seed, dimensions, row order,
+field names, and checksums before changing implementations. Implement `synthetic.spec`,
+`synthetic_dataset`, printing, validation, checksum behavior, and the versioned
+RNG policies. Do not rename wrappers yet.
+
+Deliverables: `R/synthetic_spec.R`, `R/synthetic_dataset.R`,
+`R/synthetic_rng.R`, contract tests, and frozen legacy checksums.
+</div>
+
+<div class="phase">
+### Phase 2 — Implement the geometry layer, beginning with quadforms
+
+Implement the exact `synthetic.quadform()` contract, including
+arbitrary intrinsic and ambient dimensions, zero or multiple normal forms,
+canonical/random/user frames, offsets, validation, embedding, gradient, metric,
+and edge lengths. Recover analytic code from `gflow` history at `b8df4053` only
+after matching it to this contract. Add property tests for dimensions,
+orthonormal invariance, flat distances, historical index-\(k\) embeddings, and
+invalid inputs. Exact G2 tests must compare the realized base-QR frame and
+predictors to the legacy fixture before also checking orthogonal invariants.
+
+Implement sphere-cap, helix, torus-patch, stratified, simplex, and graph
+geometry specifications using the same component protocol. Give every
+parameterized geometry a hard latent-domain contract. Add property tests for
+sampler-support containment and frozen-recipe support equality. Place expensive
+reference-geodesic construction behind `reference.quadform.geodesics()` and
+delegate graph algorithms to `dgraphs`.
+
+Deliverables: `R/synthetic_geometry*.R`, analytic geometry tests, and no
+complete dataset materializer in the geometry files.
+</div>
+
+<div class="phase">
+### Phase 3 — Implement sampling, truth, and response components
+
+Implement the constructors listed in the core surface and their private
+evaluators/drawers. Migrate the exact S01--S16 shape rows and V1--V3 mechanisms.
+Implement the frozen shared SSRHE truth formula through dimension four, the
+G1--G7 truth functions, occupation-density truth, and response models. Add
+the versioned named-evaluator registry; reject function-valued component
+parameters. Label every truth as population or finite-design and test
+design-normalizer recording. Add component validation and deterministic unit
+tests. Do not couple sampling or response constructors to registry IDs.
+
+Deliverables: `R/synthetic_sampling.R`, `R/synthetic_truth.R`,
+`R/synthetic_response.R`, registry catalog CSVs, and component tests.
+</div>
+
+<div class="phase">
+### Phase 4 — Implement the materializer and absorb G1--G7
+
+Implement `materialize.synthetic()`, `materialize.synthetic.instance()`, and
+assemble G1--G7 as recipes plus frozen instances. Run legacy parity tests before
+changing exports. Replace each `dgp.g*` implementation with a lifecycle-marked
+argument translator that calls the canonical materializer under
+`geosmooth.g1.g7.v1`. Verify current same-scope checksums and cross-platform
+scientific parity. G4 tests must exercise masked heterogeneous latent
+coordinates and region dimensions, require both strata, and assert an early
+error for zero-row-B allocations. They must also compare every G4 sampling
+column, row order, masked latent coordinate, region label, and response to the
+legacy sequential fixture. G7 tests must exercise nullable latent
+coordinates, simplex/face dimensions, structural-zero rows, and exact legacy
+aliases at `zero.fraction = 0`, an interior value, and `1`, including declared
+versus observed regions. A separate breaking-contract test requires
+`zero.parts = integer(0)` to fail with the documented condition class.
+
+Deliverables: materializer, G registry rows, thin wrappers, regenerated
+documentation, and exact G1--G7 parity evidence.
+</div>
+
+<div class="phase">
+### Phase 5 — Absorb the shared synthetic regression suite
+
+Assemble registry recipes for all 48 S/V combinations and the maintained
+2D/3D/4D flat and quadform lanes. Use the exact legacy seed, row-order,
+fixed-allocation, inverse-CDF truncated-normal, sequential-interval,
+inverse-transform Laplace, and outlier-count policies and compare every dataset
+field against the frozen outputs across the Phase 1 size/replicate grid. Replace
+`make.1d.dataset()`, `make.flat.dataset()`, and
+`make.quadform.dataset()` in consuming scripts with
+`synthetic.registry.spec()` plus `materialize.synthetic()`. Replace
+`materialize.dataset()` with registry lookup and `dataset.row()` with
+`as.data.frame()`. Move graph and scoring helpers to their separate owners.
+
+Deliverables: registry rows, parity table with zero unexplained mismatches, and
+consumer patches in `trend_filtering`.
+</div>
+
+<div class="phase">
+### Phase 6 — Absorb the remaining maintained statistical families
+
+Port reusable Gaussian mixtures, spline/bump truths, curves, knots,
+point-line/stratified geometries, clustered data, binary occupation mixtures,
+compositional data, and star-response assembly. Each candidate must have a live
+consumer or distinct scientific role, a deterministic specification, and
+focused tests. Helpers failing that gate are provenance-recorded and deleted,
+not migrated. Reuse `dgraphs` and `grip` rather than copying topology or layout
+code.
+
+Deliverables: one ownership decision and one parity/retirement record per
+legacy family.
+</div>
+
+<div class="phase">
+### Phase 7 — Finalize the registry and repository layout
+
+Organize `geosmooth` by component responsibility:
+
+```text
+R/
+  synthetic_spec.R
+  synthetic_dataset.R
+  synthetic_rng.R
+  synthetic_registry.R
+  synthetic_materialize.R
+  synthetic_geometry.R
+  synthetic_geometry_quadform.R
+  synthetic_geometry_parametric.R
+  synthetic_sampling.R
+  synthetic_truth.R
+  synthetic_response.R
+  reference_quadform_geodesics.R
+
+inst/
+  synthetic_registry/
+    recipes.csv
+    instances.csv
+    geometries.csv
+    samplings.csv
+    truths.csv
+    responses.csv
+    gaussian_mixture_1d_shapes.csv
+    gaussian_mixture_1d_variants.csv
+    checksums.csv
+    registry_manifest.md
+  extdata/
+    small_canonical_fixtures/
+
+tests/testthat/
+  test-synthetic-contract.R
+  test-synthetic-determinism.R
+  test-synthetic-registry.R
+  test-synthetic-truth-estimands.R
+  test-synthetic-support-compatibility.R
+  test-synthetic-checksum-contract.R
+  test-synthetic-cross-environment-parity.R
+  test-synthetic-geometry-quadform.R
+  test-synthetic-components.R
+  test-synthetic-materialize.R
+  test-synthetic-legacy-g1-g7.R
+  test-synthetic-legacy-ssrhe.R
+
+vignettes/
+  synthetic-datasets.Rmd
+```
+
+Validate registry foreign keys during package tests. Enforce checksums only
+within their recorded environment scope; use the documented tolerance/invariant
+comparison elsewhere. Keep large frozen experiment outputs outside the package
+and record their manifests.
+</div>
+
+<div class="phase">
+### Phase 8 — Migrate all consumers and retire duplicate implementations
+
+Update `trend_filtering`, application projects, and benchmark scripts to call
+the canonical component/registry API. Replace cross-repository `source()` calls.
+Update stale graph calls to `dgraphs`. Preserve frozen historical assets with
+legacy generator provenance. Delete migrated private support from `gflow`,
+leaving only local basin/complex test fixtures. Remove deprecated wrappers only
+after repository-wide search finds no maintained consumer.
+</div>
+
+<div class="phase">
+### Phase 9 — Rebuild documentation and enforce guardrails
+
+Rewrite the synthetic regression note and method-evaluation asset index so they
+distinguish canonical generators, consuming experiments, frozen assets, and
+reference oracles. Rebuild the Codex notes HTML dashboard. Add tests or CI
+checks that prohibit cross-repository `source()` calls, detect duplicated
+generator definitions, validate recipe/instance foreign keys, reproduce
+same-scope checksums, and run cross-platform scientific-parity comparisons.
+</div>
+
+## Acceptance criteria
+
+The expansion is complete when:
+
+1. every maintained statistical synthetic family has one canonical
+   `geosmooth` implementation;
+2. every complete dataset is produced through `materialize.synthetic()`;
+3. every materializer returns the same documented `synthetic_dataset` contract;
+4. the quadform geometry accepts and validates independent
+   `intrinsic.dim` and `ambient.dim`;
+5. flat, elliptic-paraboloid, saddle, and historical index-\(k\) cases are
+   specifications of the quadform family, not separate simulators;
+6. all S01--S16 and V1--V3 definitions have canonical registry records;
+7. V1--V3 parity covers the exact versioned draw algorithms, sorted row order,
+   V3 fixed interval counts, the minimum-one-outlier rule, small sample sizes,
+   and multiple replicates;
+8. G4 and G7 distinguish declared from observed regions, satisfy the
+   nullable/heterogeneous latent contract, and preserve their legacy `U` and
+   `d` fields;
+9. random frames are drawn only by the materializer or supplied explicitly,
+   and G2 exact parity uses the versioned legacy base-QR algorithm;
+10. every ordinary dataset ID contains the full canonical specification hash,
+    recipe labels cannot collide across distinct specifications, and frozen
+    instance materialization accepts no `n` or `seed` override;
+11. fixed-size clustered and graph sampling rejects inconsistent `n`;
+12. the maintained legacy G1--G7 and SSRHE parity surface reproduces with zero
+    unexplained scientific-field mismatches under its frozen algorithms and
+    seed policies; its documented breaking exclusions are arbitrary truth
+    closures and G7 `zero.parts = integer(0)`;
+13. identical specifications, sample sizes, seeds, and RNG policy versions
+   reproduce identical canonical content;
+14. checksum rows state payload, serialization, and complete environment scope,
+    and cross-platform comparisons apply the documented random-frame and
+numeric invariants;
+15. truth specifications distinguish population from finite-design estimands,
+    and analytic truth and realized response are never conflated;
+16. generic graph algorithms are called from `dgraphs`, not duplicated;
+17. basin-specific fixtures remain local to `gflow`;
+18. reference oracles are optional and visibly labeled non-deployable;
+19. consuming projects no longer source shared generator scripts;
+20. deprecated wrappers contain no generator logic;
+21. materializable truth specifications use versioned named evaluators and
+    contain no arbitrary closures;
+22. geometry/sampling support compatibility is validated before and after
+    materialization;
+23. registry foreign keys and scoped fixture checks pass package tests;
+24. the notes and asset index identify current code, owners, manifests, and
+    provenance;
+25. `rng.policy` is present and validated as a required top-level field on
+    every materialized dataset;
+26. every policy-derived seed is validated before the first draw, and invalid
+    legacy offset arithmetic cannot partially materialize a dataset.
+
+# Final recommendation
+
+The right consolidation target is not “all synthetic code.” It is all reusable
+**statistical data-generating processes for geometric smoothing and
+conditional-expectation evaluation**.
+
+In public documentation, define “data-generating process” once and then prefer
+plain names such as “synthetic dataset,” `synthetic.quadform()`, and
+`materialize.synthetic()`. Preserve G1--G7, S01--S16, and V1--V3 as stable
+scientific identifiers, but do not make users memorize those identifiers to
+understand the mechanism.
+
+The immediate first implementation tranche is Phase 1 followed by the
+quadform portion of Phase 2. Freeze legacy behavior before changing names, then
+establish the component contract and the dimensionally complete quadform
+geometry. Only after those contracts pass should G1--G7 or the shared
+trend-filtering suite be translated onto them.
+
+# Provenance and reproducibility
+
+This is an architecture report based on source and note inspection; it does not
+consume benchmark result files or make method-performance claims.
+
+Principal source locations inspected:
+
+- <span class="path">/Users/pgajer/current_projects/geosmooth/R/dgp_library.R</span>
+- <span class="path">/Users/pgajer/current_projects/gflow/R/synthetic_data_utils.R</span>
+- <span class="path">/Users/pgajer/current_projects/gflow/R/random_sampling.R</span>
+- <span class="path">/Users/pgajer/current_projects/gflow/R/generate_knn_example_data.R</span>
+- <span class="path">/Users/pgajer/current_projects/gflow/R/graph_generators.R</span>
+- <span class="path">/Users/pgajer/current_projects/trend_filtering/development/ssrhe_hessian_energy/ssrhe_order3_l1_validation_helpers.R</span>
+- <span class="path">/Users/pgajer/current_projects/trend_filtering/development/slpl_tf/experiments/p7_prospective_synthetic_suite/</span>
+- <span class="path">/Users/pgajer/current_projects/grip/R/gripui-family-catalog.R</span>
+- <span class="path">/Users/pgajer/current_projects/grip/R/graph_helpers.R</span>
+- <span class="path">/Users/pgajer/current_projects/vaginal_community_trajectory_types/analysis/118_eod_flat2d_gaussian_mixture_examples.py</span>
+- <span class="path">/Users/pgajer/.codex/notes/references/synthetic_datasets/</span>
+- <span class="path">/Users/pgajer/.codex/notes/references/evaluation_datasets/</span>
+- <span class="path">/Users/pgajer/.codex/notes/references/quadforms/</span>
+
+Repository revisions at render time:
+
+```text
+gflow:          `r revisions[["gflow"]]`
+geosmooth:      `r revisions[["geosmooth"]]`
+dgraphs:        `r revisions[["dgraphs"]]`
+trend_filtering:`r revisions[["trend_filtering"]]`
+grip:           `r revisions[["grip"]]`
+vaginal_community_trajectory_types:
+                `r revisions[["vaginal_community_trajectory_types"]]`
+```
+
+Render command:
+
+```text
+Rscript -e 'rmarkdown::render(
+  "split_audit/synthetic_data_ownership_and_geosmooth_expansion_2026-07-28.Rmd",
+  output_file = "synthetic_data_ownership_and_geosmooth_expansion_2026-07-28.html",
+  quiet = TRUE
+)'
+```
+
+Working directory:
+
+```text
+/Users/pgajer/current_projects/gflow
+```
+
+Report build: `r build.time`
