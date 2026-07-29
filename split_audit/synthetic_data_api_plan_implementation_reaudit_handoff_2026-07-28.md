@@ -1,7 +1,7 @@
 # Synthetic Data API Implementation Correction Handoff
 
-Status: ready for independent implementation re-audit  
-Role: implementation worker responding to an independent audit  
+Status: ready for independent implementation re-audit
+Role: implementation worker responding to an independent audit
 Date: 2026-07-28
 
 Repositories and revisions:
