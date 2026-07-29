@@ -156,6 +156,38 @@
 
 .basin.attestation.statuses <- c("validated", "not_checked")
 
+.basin.validate.attestation.evidence <- function(x, argument) {
+    if (is.null(x)) {
+        return(NULL)
+    }
+    x <- .basin.assert.named.list(x, argument)
+    if (anyDuplicated(names(x)) || any(!nzchar(names(x)))) {
+        .stop.basin.complex(
+            sprintf("'%s' must have unique, nonempty field names.", argument),
+            argument
+        )
+    }
+    supported <- vapply(x, function(value) {
+        (is.character(value) || is.integer(value) ||
+            is.numeric(value) || is.logical(value)) &&
+            length(value) == 1L && !is.na(value) &&
+            if (is.character(value)) nzchar(trimws(value)) else is.finite(value)
+    }, logical(1))
+    if (any(!supported)) {
+        .stop.basin.complex(
+            sprintf(
+                "'%s' values must be finite, nonmissing atomic scalars.",
+                argument
+            ),
+            argument
+        )
+    }
+    x[] <- lapply(x, function(value) {
+        if (is.character(value)) enc2utf8(value) else value
+    })
+    x
+}
+
 .basin.validate.attestation <- function(x, index) {
     argument <- sprintf("vertex.mass.provenance$attestations[[%d]]", index)
     x <- .basin.assert.named.list(x, argument)
@@ -190,6 +222,27 @@
         out$status,
         .basin.attestation.statuses,
         paste0(argument, "$status")
+    )
+    optional.strings <- c(
+        "contract.version", "source.id", "source.fingerprint"
+    )
+    for (name in optional.strings) {
+        value <- x[[name]]
+        if (is.null(value)) {
+            next
+        }
+        if (!is.character(value) || length(value) != 1L || is.na(value) ||
+            !nzchar(trimws(value))) {
+            .stop.basin.complex(
+                sprintf("'%s$%s' must be one nonempty string.", argument, name),
+                paste0(argument, "$", name)
+            )
+        }
+        out[[name]] <- enc2utf8(value)
+    }
+    out$evidence <- .basin.validate.attestation.evidence(
+        x$evidence,
+        paste0(argument, "$evidence")
     )
     out
 }
@@ -322,12 +375,15 @@
         ),
         validated.declarations = list(
             mass.kind = mass.kind,
-            source.id = scalar.string("source.id"),
-            source.fingerprint = scalar.string("source.fingerprint"),
             declared.mass.fingerprint = declared.mass,
             declared.vertex.id.fingerprint = declared.vertex,
             declared.internal.graph.fingerprint = declared.graph,
             schema = "gflow_basin_mass_provenance/1"
+        ),
+        upstream.declarations = list(
+            source.id = scalar.string("source.id"),
+            source.fingerprint = scalar.string("source.fingerprint"),
+            status = "not_checked"
         ),
         upstream.attestations = attestations,
         supplied = supplied

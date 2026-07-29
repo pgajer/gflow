@@ -145,7 +145,16 @@ test_that("mass provenance preserves verification boundaries", {
         validator.version = "1",
         algorithm = "exact ordered ID and content digest comparison",
         evidence.fingerprint = "fixture-evidence-1",
-        status = "validated"
+        status = "validated",
+        contract.version = "fixture-contract/1",
+        source.id = "fixture-density",
+        source.fingerprint = "fixture-source-1",
+        evidence = list(
+            source.graph.id = "fixture-graph",
+            selected.graph.id = "fixture-graph",
+            source.graph.k = 3L,
+            selected.graph.k = 3L
+        )
     )
     provenance <- list(
         mass.kind = "occupation_probability",
@@ -164,6 +173,19 @@ test_that("mass provenance preserves verification boundaries", {
         stored$upstream.attestations[[1L]]$authority,
         "fixture manifest"
     )
+    expect_identical(
+        stored$upstream.attestations[[1L]]$evidence$selected.graph.k,
+        3L
+    )
+    expect_identical(
+        stored$upstream.declarations$source.id,
+        "fixture-density"
+    )
+    expect_identical(
+        stored$upstream.declarations$status,
+        "not_checked"
+    )
+    expect_false("source.id" %in% names(stored$validated.declarations))
     expect_true(isTRUE(stored$computed$normalized))
     expect_false("validation.status" %in% names(stored))
 
