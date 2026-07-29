@@ -1725,7 +1725,7 @@ font-size: 0.88rem;
 }
 </style>
 <div class="meta">
-<p><strong>Build:</strong> 2026-07-29 00:11:11 EDT<br />
+<p><strong>Build:</strong> 2026-07-29 12:00:22 EDT<br />
 <strong>Source audit date:</strong> 2026-07-28<br />
 <strong>Scope:</strong> synthetic statistical datasets and their
 reusable support; basin and extrema implementation cleanup is outside
@@ -1801,10 +1801,16 @@ remaining legacy family.</li>
 <p>The implementation audit dated 2026-07-28 initially returned
 <strong>Revise</strong> because the first implementation did not fully
 enforce the accepted identity, replay, registry, and consumer contracts.
-Those implementation defects have now been corrected in
 <code>geosmooth</code> commit <code>819996d</code> and
-<code>trend_filtering</code> commit <code>2062282</code>. In
-particular:</p>
+<code>trend_filtering</code> commit <code>2062282</code> corrected the
+dataset, comparator, foreign-key, consumer-identity, and named-vector
+defects. The implementation re-audit dated 2026-07-29 confirmed those
+corrections but identified one remaining blocker: the registry still
+used R-XDR component records and an incomplete inline environment scope
+rather than the accepted JSON and environment-fingerprint schemas.
+<code>geosmooth</code> commit <code>a950b27</code> implements the
+accepted schema rather than changing this architecture to accommodate
+the shortcut. The resulting implementation now provides:</p>
 <ul>
 <li>ordinary dataset IDs are reconstructed exactly from recipe identity,
 specification digest, sample size, seed, and RNG policy, while frozen
@@ -1816,10 +1822,16 @@ dimensions and orthonormality, and predictor reconstruction;</li>
 compares the contractual identity and metadata fields exactly, and
 permits orientation-invariant predictor comparison only for valid random
 frames and a compatible truth scope;</li>
-<li>the registry reconstructs specifications from normalized component
-foreign keys and committed serialized component payloads, uses real
-instance-to- checksum foreign keys, ships nonempty frozen fixtures, and
-scopes exact checksum enforcement to a complete environment fingerprint
+<li>registry reconstruction from normalized component foreign keys and
+typed, inspectable JSON parameters, including declared matrix dimensions
+and row-major nested matrix values;</li>
+<li>exact instance-to-checksum and checksum-to-environment-fingerprint
+foreign keys, committed frozen fixtures, and a normative
+environment-field schema;</li>
+<li>exact-scope matching over full R/build, compiler, OS machine,
+explicitly established RNG version and kinds, absolute BLAS/LAPACK paths
+and file SHA-256 values, linked math-runtime identity,
+<code>geosmooth</code>, registry, evaluator, and dependency versions,
 with scientific fixture comparison outside that scope;</li>
 <li>named atomic vectors are canonically ordered except for the two
 explicitly position-contractual regional dimension fields; and</li>
@@ -1828,7 +1840,9 @@ and keep the historical display label separately as
 <code>legacy.dataset.id</code>.</li>
 </ul>
 <p>The finding-by-finding evidence is recorded in
-<code>synthetic_data_api_plan_implementation_audit_response_2026-07-28.md</code>.
+<code>synthetic_data_api_plan_implementation_audit_response_2026-07-28.md</code>
+and
+<code>synthetic_data_api_plan_implementation_reaudit_response_2026-07-29.md</code>.
 These corrections do not broaden the ownership plan or declare the later
 migration phases complete.</p>
 <p>This is deliberately not a completion claim for Phases 6–9.
@@ -1849,8 +1863,9 @@ warnings and repository notes. The unavailable optional
 <code>make check-fast</code> from proceeding. The broader
 <code>make test</code> smoke lane also continues to expose an unrelated
 existing expectation in <code>test-coupled-kd-selection-csd4.R</code>;
-that broader baseline issue is not counted as resolved by this
-tranche.</p>
+the grouped test runner now stops and returns nonzero for that failure
+instead of allowing a false-success exit. The scientific expectation
+itself is not counted as resolved by this tranche.</p>
 </div>
 <div id="purpose-and-scope" class="section level1" number="3">
 <h1><span class="header-section-number">3</span> Purpose and scope</h1>
@@ -3862,6 +3877,8 @@ schemas</h2>
   gaussian_mixture_1d_shapes.csv
   gaussian_mixture_1d_variants.csv
   checksums.csv
+  environment_fingerprints.csv
+  environment_fingerprint_schema.csv
   registry_manifest.md</code></pre>
 <p><code>recipes.csv</code> defines reusable component combinations and
 has required columns:</p>
@@ -3886,8 +3903,11 @@ declared <code>nrow</code> and <code>ncol</code>; they are never encoded
 as R expressions. <code>checksums.csv</code> records
 <code>checksum.id</code>, payload-contract version, serialization
 version, environment-fingerprint ID, content SHA-256, and
-scientific-parity tolerances. <code>instances.csv</code> carries the
-fixture path.</p>
+scientific-parity tolerances. <code>environment_fingerprints.csv</code>
+contains the identified scope records, while
+<code>environment_fingerprint_schema.csv</code> is the normative
+required-field contract used by both runtime matching and tests.
+<code>instances.csv</code> carries the fixture path.</p>
 <p><code>synthetic.registry.spec(recipe.id)</code> resolves foreign
 keys, constructs a validated <code>synthetic.spec</code>, and errors on
 duplicate IDs, missing IDs, unknown versions, or incompatible component
@@ -4317,8 +4337,8 @@ claims.</p>
 <li><span class="path">/Users/pgajer/.codex/notes/references/quadforms/</span></li>
 </ul>
 <p>Repository revisions at render time:</p>
-<pre class="text"><code>gflow:          38a4f59c
-geosmooth:      819996d
+<pre class="text"><code>gflow:          d561ab1e
+geosmooth:      a950b27
 dgraphs:        fcd3d23
 trend_filtering:2062282
 grip:           c5c8542
@@ -4332,7 +4352,7 @@ vaginal_community_trajectory_types:
 )&#39;</code></pre>
 <p>Working directory:</p>
 <pre class="text"><code>/Users/pgajer/current_projects/gflow</code></pre>
-<p>Report build: 2026-07-29 00:11:11 EDT</p>
+<p>Report build: 2026-07-29 12:00:22 EDT</p>
 </div>
 
 
