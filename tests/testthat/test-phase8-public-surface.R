@@ -17,6 +17,7 @@ test_that("breaking release exposes only the maintained non-protected API", {
         "compare.harmonic.methods",
         "compute.gfc.modulation",
         "compute.harmonic.extension",
+        "compute.tube.lens.corridor",
         "construct.gflow.graph",
         "construct.madag",
         "extremality.summary",
