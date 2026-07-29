@@ -378,9 +378,15 @@ expansion is not yet finished. The current package state is:
 
 The implementation audit dated 2026-07-28 initially returned **Revise** because
 the first implementation did not fully enforce the accepted identity, replay,
-registry, and consumer contracts. Those implementation defects have now been
-corrected in `geosmooth` commit `819996d` and `trend_filtering` commit
-`2062282`. In particular:
+registry, and consumer contracts. `geosmooth` commit `819996d` and
+`trend_filtering` commit `2062282` corrected the dataset, comparator,
+foreign-key, consumer-identity, and named-vector defects. The implementation
+re-audit dated 2026-07-29 confirmed those corrections but identified one
+remaining blocker: the registry still used R-XDR component records and an
+incomplete inline environment scope rather than the accepted JSON and
+environment-fingerprint schemas. `geosmooth` commit `a950b27` implements the
+accepted schema rather than changing this architecture to accommodate the
+shortcut. The resulting implementation now provides:
 
 - ordinary dataset IDs are reconstructed exactly from recipe identity,
   specification digest, sample size, seed, and RNG policy, while frozen IDs
@@ -392,20 +398,26 @@ corrected in `geosmooth` commit `819996d` and `trend_filtering` commit
   the contractual identity and metadata fields exactly, and permits
   orientation-invariant predictor comparison only for valid random frames and
   a compatible truth scope;
-- the registry reconstructs specifications from normalized component foreign
-  keys and committed serialized component payloads, uses real instance-to-
-  checksum foreign keys, ships nonempty frozen fixtures, and scopes exact
-  checksum enforcement to a complete environment fingerprint with scientific
-  fixture comparison outside that scope;
+- registry reconstruction from normalized component foreign keys and typed,
+  inspectable JSON parameters, including declared matrix dimensions and
+  row-major nested matrix values;
+- exact instance-to-checksum and checksum-to-environment-fingerprint foreign
+  keys, committed frozen fixtures, and a normative environment-field schema;
+- exact-scope matching over full R/build, compiler, OS machine, explicitly
+  established RNG version and kinds, absolute BLAS/LAPACK paths and file
+  SHA-256 values, linked math-runtime identity, `geosmooth`, registry,
+  evaluator, and dependency versions, with scientific fixture comparison
+  outside that scope;
 - named atomic vectors are canonically ordered except for the two explicitly
   position-contractual regional dimension fields; and
 - the SSRHE adapters preserve the canonical `dataset.id` and keep the
   historical display label separately as `legacy.dataset.id`.
 
 The finding-by-finding evidence is recorded in
-`synthetic_data_api_plan_implementation_audit_response_2026-07-28.md`. These
-corrections do not broaden the ownership plan or declare the later migration
-phases complete.
+`synthetic_data_api_plan_implementation_audit_response_2026-07-28.md` and
+`synthetic_data_api_plan_implementation_reaudit_response_2026-07-29.md`.
+These corrections do not broaden the ownership plan or declare the later
+migration phases complete.
 
 This is deliberately not a completion claim for Phases 6--9. Predictor-noise
 models for legacy noisy circles, the mixed Gaussian/line sampler, star-response
@@ -423,8 +435,9 @@ pre-existing documentation warnings and repository notes. The unavailable
 optional `genlasso` package prevents an ordinary forced-Suggests
 `make check-fast` from proceeding. The broader `make test` smoke lane also
 continues to expose an unrelated existing expectation in
-`test-coupled-kd-selection-csd4.R`; that broader baseline issue is not counted
-as resolved by this tranche.
+`test-coupled-kd-selection-csd4.R`; the grouped test runner now stops and
+returns nonzero for that failure instead of allowing a false-success exit.
+The scientific expectation itself is not counted as resolved by this tranche.
 
 # Purpose and scope
 
@@ -1946,6 +1959,8 @@ inst/synthetic_registry/
   gaussian_mixture_1d_shapes.csv
   gaussian_mixture_1d_variants.csv
   checksums.csv
+  environment_fingerprints.csv
+  environment_fingerprint_schema.csv
   registry_manifest.md
 ```
 
@@ -1977,7 +1992,10 @@ column. Matrix-valued quadform parameters use row-major nested arrays with
 declared `nrow` and `ncol`; they are never encoded as R expressions.
 `checksums.csv` records `checksum.id`, payload-contract version,
 serialization version, environment-fingerprint ID, content SHA-256, and
-scientific-parity tolerances. `instances.csv` carries the fixture path.
+scientific-parity tolerances. `environment_fingerprints.csv` contains the
+identified scope records, while `environment_fingerprint_schema.csv` is the
+normative required-field contract used by both runtime matching and tests.
+`instances.csv` carries the fixture path.
 
 `synthetic.registry.spec(recipe.id)` resolves foreign keys, constructs a validated
 `synthetic.spec`, and errors on duplicate IDs, missing IDs, unknown versions, or
