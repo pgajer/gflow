@@ -1725,7 +1725,7 @@ font-size: 0.88rem;
 }
 </style>
 <div class="meta">
-<p><strong>Build:</strong> 2026-07-28 22:28:29 EDT<br />
+<p><strong>Build:</strong> 2026-07-29 00:11:11 EDT<br />
 <strong>Source audit date:</strong> 2026-07-28<br />
 <strong>Scope:</strong> synthetic statistical datasets and their
 reusable support; basin and extrema implementation cleanup is outside
@@ -1798,6 +1798,39 @@ multi-dimensional diagnostics; and</li>
 records one explicit implementation or follow-up decision for each
 remaining legacy family.</li>
 </ul>
+<p>The implementation audit dated 2026-07-28 initially returned
+<strong>Revise</strong> because the first implementation did not fully
+enforce the accepted identity, replay, registry, and consumer contracts.
+Those implementation defects have now been corrected in
+<code>geosmooth</code> commit <code>819996d</code> and
+<code>trend_filtering</code> commit <code>2062282</code>. In
+particular:</p>
+<ul>
+<li>ordinary dataset IDs are reconstructed exactly from recipe identity,
+specification digest, sample size, seed, and RNG policy, while frozen
+IDs must resolve to exactly one complete registry instance;</li>
+<li>validation now checks policy-specific RNG metadata, dimensions and
+regional dimensions, aliases and masks, realized support, stored-frame
+dimensions and orthonormality, and predictor reconstruction;</li>
+<li>the scientific comparator validates both inputs before comparison,
+compares the contractual identity and metadata fields exactly, and
+permits orientation-invariant predictor comparison only for valid random
+frames and a compatible truth scope;</li>
+<li>the registry reconstructs specifications from normalized component
+foreign keys and committed serialized component payloads, uses real
+instance-to- checksum foreign keys, ships nonempty frozen fixtures, and
+scopes exact checksum enforcement to a complete environment fingerprint
+with scientific fixture comparison outside that scope;</li>
+<li>named atomic vectors are canonically ordered except for the two
+explicitly position-contractual regional dimension fields; and</li>
+<li>the SSRHE adapters preserve the canonical <code>dataset.id</code>
+and keep the historical display label separately as
+<code>legacy.dataset.id</code>.</li>
+</ul>
+<p>The finding-by-finding evidence is recorded in
+<code>synthetic_data_api_plan_implementation_audit_response_2026-07-28.md</code>.
+These corrections do not broaden the ownership plan or declare the later
+migration phases complete.</p>
 <p>This is deliberately not a completion claim for Phases 6–9.
 Predictor-noise models for legacy noisy circles, the mixed Gaussian/line
 sampler, star-response assembly, spline and bump truths, the two
@@ -1805,12 +1838,19 @@ competing torus-knot formulas, and secondary consumers with distinct
 seed policies remain gated by frozen contracts or scientific choices.
 The disposition ledger marks them as partial, pending, or undecided
 rather than treating de-exported code as safe to delete.</p>
-<p>At this build, all synthetic-focused tests pass. A package check with
-forced Suggests disabled passes installation, namespace, S3, code,
-compiled-code, and vignette checks, but the package retains pre-existing
-documentation warnings and repository notes. The unavailable optional
+<p>At this build, all synthetic-focused tests pass, including the new
+adversarial contract and normalized-registry suites and the SSRHE
+adapter identity integration test. Registry regeneration is
+byte-identical on consecutive runs. A package check with forced Suggests
+disabled passes installation, namespace, S3, code, compiled-code, and
+vignette checks, but the package retains pre-existing documentation
+warnings and repository notes. The unavailable optional
 <code>genlasso</code> package prevents an ordinary forced-Suggests
-<code>make check-fast</code> from proceeding.</p>
+<code>make check-fast</code> from proceeding. The broader
+<code>make test</code> smoke lane also continues to expose an unrelated
+existing expectation in <code>test-coupled-kd-selection-csd4.R</code>;
+that broader baseline issue is not counted as resolved by this
+tranche.</p>
 </div>
 <div id="purpose-and-scope" class="section level1" number="3">
 <h1><span class="header-section-number">3</span> Purpose and scope</h1>
@@ -4277,10 +4317,10 @@ claims.</p>
 <li><span class="path">/Users/pgajer/.codex/notes/references/quadforms/</span></li>
 </ul>
 <p>Repository revisions at render time:</p>
-<pre class="text"><code>gflow:          478946d7
-geosmooth:      6396af1
+<pre class="text"><code>gflow:          38a4f59c
+geosmooth:      819996d
 dgraphs:        fcd3d23
-trend_filtering:987822c
+trend_filtering:2062282
 grip:           c5c8542
 vaginal_community_trajectory_types:
                 b6eb27d</code></pre>
@@ -4292,7 +4332,7 @@ vaginal_community_trajectory_types:
 )&#39;</code></pre>
 <p>Working directory:</p>
 <pre class="text"><code>/Users/pgajer/current_projects/gflow</code></pre>
-<p>Report build: 2026-07-28 22:28:29 EDT</p>
+<p>Report build: 2026-07-29 00:11:11 EDT</p>
 </div>
 
 
