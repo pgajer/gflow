@@ -149,6 +149,7 @@ cleanup.primary.protected.files <- function() {
         "R/2d_smooth_morse_smale.R",
         "R/basin_complex.R",
         "R/basin_complex_converters.R",
+        "R/basin_merge_tree_public.R",
         "R/basin_cx.R",
         "R/cluster_local_extrema.R",
         "R/compute_basins_of_attraction.R",
