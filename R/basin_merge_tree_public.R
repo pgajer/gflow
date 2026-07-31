@@ -779,7 +779,11 @@ cut.basin.merge.tree <- function(
             reference.leaves(layout$merge[index, 1L]),
             reference.leaves(layout$merge[index, 2L])
         )
-        node.x[[index]] <- mean(range(leaf.x[node.leaves[[index]]]))
+        parent.index <- match(
+            layout$events$surviving.basin.id[[index]],
+            layout$branches$basin.id
+        )
+        node.x[[index]] <- leaf.x[[parent.index]]
     }
     list(
         leaf.x = leaf.x,
@@ -824,64 +828,33 @@ cut.basin.merge.tree <- function(
         nx = NA, ny = NULL, col = "#DCE2E3", lty = 3
     )
 
-    reference.x <- function(reference) {
-        if (reference < 0L) {
-            leaf.x[[-reference]]
-        } else {
-            node.x[[reference]]
-        }
-    }
-    reference.y <- function(reference) {
-        if (reference < 0L) {
-            branches$birth.level[[-reference]]
-        } else {
-            merge.level[[reference]]
-        }
-    }
     if (nrow(merge) > 0L) {
+        graphics::segments(
+            leaf.x, branches$birth.level,
+            leaf.x, branches$death.level,
+            col = colors, lwd = 2.4
+        )
+        child.index <- match(
+            layout$events$losing.basin.id, branches$basin.id
+        )
+        parent.index <- match(
+            layout$events$surviving.basin.id, branches$basin.id
+        )
         for (index in seq_len(nrow(merge))) {
-            left <- merge[index, 1L]
-            right <- merge[index, 2L]
             graphics::segments(
-                reference.x(left), reference.y(left),
-                reference.x(left), merge.level[[index]],
-                col = "#7F8F95", lwd = 1.25
-            )
-            graphics::segments(
-                reference.x(right), reference.y(right),
-                reference.x(right), merge.level[[index]],
-                col = "#7F8F95", lwd = 1.25
-            )
-            graphics::segments(
-                reference.x(left), merge.level[[index]],
-                reference.x(right), merge.level[[index]],
-                col = "#7F8F95", lwd = 1.25
+                leaf.x[[child.index[[index]]]], merge.level[[index]],
+                leaf.x[[parent.index[[index]]]], merge.level[[index]],
+                col = colors[[child.index[[index]]]], lwd = 1.4
             )
             graphics::points(
-                node.x[[index]], merge.level[[index]],
+                leaf.x[[parent.index[[index]]]], merge.level[[index]],
                 pch = 21, bg = "white", col = "#25343B",
                 cex = 0.72, lwd = 1
             )
         }
-        for (leaf in seq_len(n.leaf)) {
-            parent.event <- which(
-                merge[, 1L] == -leaf | merge[, 2L] == -leaf
-            )[[1L]]
-            graphics::segments(
-                leaf.x[[leaf]], branches$birth.level[[leaf]],
-                leaf.x[[leaf]], merge.level[[parent.event]],
-                col = colors[[leaf]], lwd = 2.4
-            )
-        }
-        root.node <- nrow(merge)
         root.leaf <- layout$root.leaf
-        graphics::segments(
-            node.x[[root.node]], merge.level[[root.node]],
-            node.x[[root.node]], branches$death.level[[root.leaf]],
-            col = "#25343B", lwd = 1.4
-        )
         graphics::points(
-            node.x[[root.node]], branches$death.level[[root.leaf]],
+            leaf.x[[root.leaf]], branches$death.level[[root.leaf]],
             pch = 22, bg = "white", col = "#25343B", cex = 0.72
         )
     } else {
@@ -1051,7 +1024,9 @@ cut.basin.merge.tree <- function(
 #' Draws an exact graph level-set merge tree, its extremum-to-saddle persistence
 #' barcode, or both. Tree topology and scalar-field heights come from the
 #' canonical merge tree. An `hclust`-compatible representation determines only
-#' a deterministic crossing-free leaf order.
+#' a deterministic crossing-free leaf order. The rendered tree is directed:
+#' every elder basin remains a continuous vertical trunk, and each dying
+#' branch terminates horizontally on the trunk that survives its saddle.
 #'
 #' The optional top-margin rows report one mass and support quantity for each
 #' branch. Defaults use the non-overlapping primary assignment. Raw support
@@ -1108,7 +1083,7 @@ plot.basin.merge.tree <- function(
     show.barcode.parent.labels = FALSE,
     height = NULL,
     branch.col = NULL,
-    main.tree = "Crossing-free graph level-set merge tree",
+    main.tree = "Crossing-free elder-rule merge tree",
     main.barcode = "Extremum-to-saddle persistence barcode",
     field.label = "Scalar-field value",
     annotation.cex = 0.6,
