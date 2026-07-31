@@ -248,6 +248,58 @@ test_that("ranked summary resolves independently and supports zero Top-K", {
     ))
 })
 
+test_that("extremum-value ranking is direction-aware and supports signed fields", {
+    object <- summary.identity.object(mass = TRUE)
+    maximum <- which(object$basin.table$type == "max")
+    minimum <- which(object$basin.table$type == "min")
+    expect_gt(length(maximum), 1L)
+    expect_gt(length(minimum), 1L)
+
+    object$basin.table$extremum.value[maximum] <-
+        -rev(seq_along(maximum))
+    object$basin.table$extremum.value[minimum] <-
+        rev(seq_along(minimum)) - length(minimum) - 1
+    ranked <- summary(
+        object,
+        rank.by = "extremum.value",
+        top.k.max = Inf,
+        top.k.min = Inf
+    )
+
+    expect_identical(
+        unname(ranked$rank.resolved),
+        rep("extremum.value", 2L)
+    )
+    expect_equal(
+        ranked$maxima$extremum.value,
+        sort(object$basin.table$extremum.value[maximum], decreasing = TRUE)
+    )
+    expect_equal(
+        ranked$minima$extremum.value,
+        sort(object$basin.table$extremum.value[minimum])
+    )
+    expect_identical(
+        unique(ranked$basin.table$rank.measure),
+        "extremum.value"
+    )
+})
+
+test_that("extremum-value ranking remains an explicit scientific choice", {
+    object <- summary.identity.object(mass = TRUE)
+    for (measure in .basin.summary.auto.rank.measures) {
+        zero <- if (is.integer(object$basin.table[[measure]])) 0L else 0
+        object$basin.table[[measure]][] <- zero
+    }
+
+    expect_error(
+        summary(object, rank.by = "auto"),
+        "No usable ranking measure"
+    )
+    expect_no_error(
+        summary(object, rank.by = "extremum.value")
+    )
+})
+
 test_that("auto distinguishes allocated and overlapping coverage mass", {
     object <- summary.identity.object(mass = TRUE)
     object$basin.table$primary.support.mass[] <- NA_real_

@@ -7,7 +7,13 @@
     "raw.support.mass",
     "primary.support.size",
     "retained.support.size",
-    "raw.support.size"
+    "raw.support.size",
+    "extremum.value"
+)
+
+.basin.summary.auto.rank.measures <- setdiff(
+    .basin.summary.rank.measures,
+    "extremum.value"
 )
 
 .basin.summary.rank.definitions <- c(
@@ -24,7 +30,9 @@
     retained.support.size =
         "Number of vertices in retained support after refinement.",
     raw.support.size =
-        "Number of vertices in raw support before refinement."
+        "Number of vertices in raw support before refinement.",
+    extremum.value =
+        "Raw scalar-field value at the representative extremum."
 )
 
 .basin.summary.top.k <- function(x, argument) {
@@ -57,6 +65,9 @@
     value <- suppressWarnings(as.numeric(rows[[measure]]))
     if (length(value) != nrow(rows) || any(!is.finite(value))) {
         return(list(available = FALSE, reason = "nonfinite_or_partial"))
+    }
+    if (identical(measure, "extremum.value")) {
+        return(list(available = TRUE, reason = "usable"))
     }
     if (any(value < 0)) {
         return(list(available = FALSE, reason = "negative_value"))
@@ -168,7 +179,11 @@
         ))
     }
     resolved <- if (identical(rank.by, "auto")) {
-        usable <- availability.table$measure[availability.table$available]
+        usable <- availability.table$measure[
+            availability.table$available &
+                availability.table$measure %in%
+                    .basin.summary.auto.rank.measures
+        ]
         if (length(usable) == 0L) {
             .stop.basin.complex(
                 sprintf(
@@ -206,8 +221,14 @@
         rank.by
     }
     value <- as.numeric(rows[[resolved]])
+    order.value <- if (identical(resolved, "extremum.value") &&
+        identical(direction, "min")) {
+        value
+    } else {
+        -value
+    }
     order.index <- order(
-        -value,
+        order.value,
         as.character(rows$basin.id),
         method = "radix"
     )
