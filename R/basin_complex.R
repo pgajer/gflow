@@ -1952,6 +1952,8 @@ print.basin_complex <- function(x, ...) {
 #' @param object A canonical `basin_complex`.
 #' @param rank.by Ranking measure. `"auto"` resolves independently for maximum
 #'   and minimum directions from usable canonical mass and support measures.
+#'   Explicit `"extremum.value"` ranks maxima from high to low and minima from
+#'   low to high; it is not an automatic fallback.
 #' @param top.k.max Maximum number of ranked maximum basins to return.
 #' @param top.k.min Maximum number of ranked minimum basins to return.
 #' @param include.unretained Include basins removed by canonical refinement.
@@ -1972,7 +1974,8 @@ summary.basin_complex <- function(
         "raw.support.mass",
         "primary.support.size",
         "retained.support.size",
-        "raw.support.size"
+        "raw.support.size",
+        "extremum.value"
     ),
     top.k.max = Inf,
     top.k.min = Inf,
