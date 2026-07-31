@@ -309,8 +309,10 @@ test_that("canonical tables have stable columns and accessors", {
     )
 
     tree <- phase.b.create("superlevel_merge_tree")
-    expect_s3_class(get.basin.merge.tree(tree), "data.frame")
-    expect_identical(nrow(get.basin.merge.tree(tree)), 0L)
+    merge.tree <- get.basin.merge.tree(tree)
+    expect_s3_class(merge.tree, "basin.merge.tree")
+    expect_s3_class(merge.tree$merge.table, "data.frame")
+    expect_identical(nrow(merge.tree$merge.table), 0L)
 
     cells <- phase.b.create("overlap_cell_complex")
     expect_true(is.list(get.basin.cells(cells)))

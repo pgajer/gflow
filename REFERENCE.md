@@ -10,9 +10,13 @@ this index; the canonical basin-complex API remains the starting point.
 - `as.basin.complex()` converts supported archived construction results.
 - `get.basin.table()`, `get.basin.membership()`, and
   `get.basin.assignment()` expose stable basin tables.
-- `get.basin.merge.tree()`, `get.basin.trajectory.forest()`, and
-  `get.basin.cells()` expose method-specific structures without requiring
-  users to inspect internal lists.
+- `get.basin.merge.tree()` returns a complete canonical merge-tree object;
+  `plot.basin.merge.tree()`, `cut.basin.merge.tree()`, and
+  `as.dendrogram.basin.merge.tree()` visualize, query, and coerce its exact
+  graph level-set hierarchy.
+- `get.basin.trajectory.forest()` and `get.basin.cells()` expose other
+  method-specific structures without requiring users to inspect internal
+  lists.
 - Standard `print()`, `summary()`, `plot()`, and `as.data.frame()` methods
   describe canonical objects.
 

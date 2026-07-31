@@ -1854,7 +1854,12 @@ get.basin.assignment <- function(object) {
 #'
 #' @inheritParams get.basin.table
 #' @param required If `TRUE`, error when the selected method has no merge tree.
-#' @return A canonical merge table or `NULL`.
+#' @return A complete `basin.merge.tree` object or `NULL`. The returned object
+#'   contains the canonical basin and merge tables together with the graph,
+#'   scalar field, memberships, assignments, plateau graph, parameters, and
+#'   provenance required for plotting and cutting the tree. Use
+#'   `object$merge.table` when only the merge-event table is needed.
+#' @seealso [plot()], [cut()], [stats::as.dendrogram()]
 #' @export
 get.basin.merge.tree <- function(object, required = FALSE) {
     object <- .basin.accessor.object(object)
@@ -1865,7 +1870,7 @@ get.basin.merge.tree <- function(object, required = FALSE) {
             required
         ))
     }
-    object$merge.table
+    .new.basin.merge.tree(object)
 }
 
 #' Extract a Canonical Basin Trajectory Forest
