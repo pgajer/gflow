@@ -168,6 +168,14 @@ test_that("merge-tree plot renders all optional annotations", {
     expect_identical(nrow(result$branches), 3L)
     expect_identical(sort(result$layout$order), 1:3)
     expect_identical(length(result$coordinates$leaf.x), 3L)
+    parent.index <- match(
+        result$layout$events$surviving.basin.id,
+        result$branches$basin.id
+    )
+    expect_equal(
+        result$coordinates$node.x,
+        result$coordinates$leaf.x[parent.index]
+    )
     unlink(plot.file)
 })
 
