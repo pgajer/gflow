@@ -1018,8 +1018,9 @@ cut.basin.merge.tree <- function(
     }
     if (show.parent.labels) {
         parent.labels <- rep("root", nrow(barcode))
-        parent.labels[!root] <- unname(
-            label.by.id[barcode$parent.basin.id[!root]]
+        parent.labels[!root] <- paste(
+            "dies into",
+            unname(label.by.id[barcode$parent.basin.id[!root]])
         )
         graphics::text(
             barcode$death.level, y, parent.labels,
@@ -1056,8 +1057,8 @@ cut.basin.merge.tree <- function(
 #' branch. Defaults use the non-overlapping primary assignment. Raw support
 #' measures are hierarchical and can overlap across ancestor and descendant
 #' branches. In the barcode, dotted guides, labels beside extremum births, and
-#' labels identifying the basin that survives each saddle can be controlled
-#' independently.
+#' labels identifying the elder basin into which each branch dies can be
+#' controlled independently.
 #'
 #' @param x A `basin.merge.tree`, or a compatible `basin_complex`.
 #' @param direction Tree orientation, `"max"` or `"min"`.
@@ -1074,8 +1075,9 @@ cut.basin.merge.tree <- function(
 #' @param show.barcode.guides Draw a gray dotted guide for every barcode row.
 #' @param show.barcode.birth.labels Add basin labels beside filled birth
 #'   endpoints.
-#' @param show.barcode.parent.labels Add the surviving parent-basin label
-#'   beside each open death endpoint. Root endpoints are labeled `"root"`.
+#' @param show.barcode.parent.labels Add `"dies into <parent>"` beside each
+#'   open death endpoint, where `<parent>` is the elder basin that survives the
+#'   merge. Root endpoints are labeled `"root"`.
 #' @param height Optional exact scalar-field cut shown in both panels.
 #' @param branch.col Optional branch colors. A named vector is matched by basin
 #'   id; an unnamed vector must have one color per displayed basin.
