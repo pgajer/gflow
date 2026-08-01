@@ -279,23 +279,105 @@
     }, integer(1))
 }
 
-.basin.merge.tree.layout <- function(object,
-                                     direction,
-                                     component,
-                                     label,
-                                     labels = NULL) {
-    tree <- .as.basin.merge.tree(object)
-    .basin.merge.tree.assert.ready(tree)
-    direction <- .basin.merge.tree.direction(tree, direction)
-    branches <- .basin.merge.tree.branch.table(tree, direction)
-    component <- .basin.merge.tree.component(branches, component)
-    branches <- branches[
-        branches$graph.component == component, , drop = FALSE
+.basin.merge.tree.assert.layout.values <- function(tree,
+                                                   branches,
+                                                   direction) {
+    branch.columns <- c("birth.level", "death.level", "persistence")
+    if (!all(branch.columns %in% names(branches)) ||
+        any(!is.finite(as.matrix(branches[, branch.columns, drop = FALSE]))) ||
+        any(branches$persistence < 0)) {
+        .stop.basin.complex(
+            paste(
+                "Merge-tree branch birth, death, and persistence values",
+                "must be finite with nonnegative persistence."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    events <- tree$merge.table[
+        tree$merge.table$direction == direction &
+            tree$merge.table$losing.basin.id %in% branches$basin.id,
+        ,
+        drop = FALSE
     ]
-    branches <- branches[
-        order(branches$extremum.vertex, branches$basin.id), , drop = FALSE
-    ]
-    row.names(branches) <- seq_len(nrow(branches))
+    event.columns <- c(
+        "merge.level", "birth.level", "death.level", "persistence"
+    )
+    if (!all(event.columns %in% names(events)) ||
+        (nrow(events) > 0L &&
+            (any(!is.finite(as.matrix(
+                events[, event.columns, drop = FALSE]
+            ))) ||
+                any(events$persistence < 0)))) {
+        .stop.basin.complex(
+            paste(
+                "Merge-tree event levels and persistence values must be",
+                "finite with nonnegative persistence."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    invisible(TRUE)
+}
+
+.basin.merge.tree.requested.ids <- function(basin.ids) {
+    if (!is.character(basin.ids) ||
+        length(basin.ids) < 1L ||
+        anyNA(basin.ids) ||
+        any(!nzchar(basin.ids)) ||
+        anyDuplicated(basin.ids)) {
+        .stop.basin.complex(
+            paste(
+                "'basin.ids' must be a nonempty character vector of unique,",
+                "nonmissing canonical basin ids."
+            ),
+            "basin.ids"
+        )
+    }
+    basin.ids
+}
+
+.basin.merge.tree.ancestor.closure <- function(branches, basin.ids) {
+    parent <- setNames(branches$parent.basin.id, branches$basin.id)
+    closure <- basin.ids
+    for (basin.id in basin.ids) {
+        current <- basin.id
+        visited <- character()
+        repeat {
+            parent.id <- parent[[current]]
+            if (is.null(parent.id)) {
+                .stop.basin.complex(
+                    "The merge-tree hierarchy contains a missing parent.",
+                    "object",
+                    class = "gflow_basin_schema_error"
+                )
+            }
+            if (is.na(parent.id)) {
+                break
+            }
+            if (parent.id %in% visited) {
+                .stop.basin.complex(
+                    "The merge-tree hierarchy contains a cycle.",
+                    "object",
+                    class = "gflow_basin_schema_error"
+                )
+            }
+            visited <- c(visited, current)
+            closure <- c(closure, parent.id)
+            current <- parent.id
+        }
+    }
+    branches$basin.id[branches$basin.id %in% unique(closure)]
+}
+
+.basin.merge.tree.layout.selected <- function(tree,
+                                              direction,
+                                              component,
+                                              branches,
+                                              label,
+                                              labels = NULL) {
     resolved.labels <- .basin.merge.tree.labels(
         branches, label, labels
     )
@@ -417,6 +499,268 @@
         order = as.integer(leaf.order),
         hclust = hclust,
         root.leaf = roots[[1L]]
+    )
+}
+
+.basin.merge.tree.layout.coordinates <- function(layout) {
+    coordinates <- .basin.merge.tree.plot.coordinates(layout)
+    branch.coordinates <- data.frame(
+        basin.id = layout$branches$basin.id,
+        x = as.numeric(coordinates$leaf.x),
+        birth.level = as.numeric(layout$branches$birth.level),
+        death.level = as.numeric(layout$branches$death.level),
+        stringsAsFactors = FALSE
+    )
+    if (nrow(layout$events) == 0L) {
+        event.coordinates <- data.frame(
+            event.id = character(),
+            losing.basin.id = character(),
+            surviving.basin.id = character(),
+            losing.x = numeric(),
+            surviving.x = numeric(),
+            merge.level = numeric(),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        child.index <- match(
+            layout$events$losing.basin.id,
+            layout$branches$basin.id
+        )
+        parent.index <- match(
+            layout$events$surviving.basin.id,
+            layout$branches$basin.id
+        )
+        event.coordinates <- data.frame(
+            event.id = layout$events$event.id,
+            losing.basin.id = layout$events$losing.basin.id,
+            surviving.basin.id = layout$events$surviving.basin.id,
+            losing.x = as.numeric(coordinates$leaf.x[child.index]),
+            surviving.x = as.numeric(coordinates$leaf.x[parent.index]),
+            merge.level = as.numeric(layout$events$merge.level),
+            stringsAsFactors = FALSE
+        )
+    }
+    coordinates$branches <- branch.coordinates
+    coordinates$events <- event.coordinates
+    coordinates
+}
+
+#' Extract a Validated Basin Merge-Tree Layout
+#'
+#' Returns the canonical branches, merge events, crossing-free leaf order, and
+#' plotting coordinates for one direction and graph component without
+#' drawing. A restricted set of canonical basin ids must contain its component
+#' root and every ancestor unless `close.ancestors = TRUE`, in which case the
+#' missing ancestors are added and reported. Scalar-field birth, death, merge,
+#' and persistence values are preserved exactly from the canonical merge tree.
+#'
+#' This accessor is the common computational boundary for static and
+#' interactive merge-tree consumers. Restricting the display never constructs
+#' an induced graph or recomputes the canonical basin complex.
+#'
+#' @param x A `basin.merge.tree`, or a compatible `basin_complex`.
+#' @param direction Tree orientation, `"max"` or `"min"`.
+#' @param component Graph-component number. It may be omitted when the selected
+#'   direction has one component, or when `basin.ids` identify exactly one
+#'   component.
+#' @param basin.ids Optional nonempty character vector of canonical basin ids.
+#'   `NULL` selects the complete component.
+#' @param close.ancestors Add missing canonical ancestors of `basin.ids`.
+#' @param label Canonical basin-table field used for branch labels.
+#' @param labels Optional custom labels. A named vector is matched by basin id;
+#'   an unnamed vector follows deterministic selected-branch order.
+#'
+#' @return A `basin.merge.tree.layout` list containing the requested and
+#'   closure-added ids, selected canonical branch and event tables, component
+#'   root, restricted crossing-free leaf order, dendrogram representation,
+#'   branch and event coordinates, and validation status.
+#' @export
+get.basin.merge.tree.layout <- function(
+    x,
+    direction = "max",
+    component = NULL,
+    basin.ids = NULL,
+    close.ancestors = FALSE,
+    label = c("basin.id", "extremum.id", "extremum.vertex"),
+    labels = NULL
+) {
+    tree <- .as.basin.merge.tree(x)
+    .basin.merge.tree.assert.ready(tree)
+    direction <- .basin.merge.tree.direction(tree, direction)
+    .basin.assert.logical(close.ancestors, "close.ancestors")
+    label <- match.arg(label)
+
+    direction.branches <- .basin.merge.tree.branch.table(tree, direction)
+    .basin.merge.tree.assert.layout.values(
+        tree, direction.branches, direction
+    )
+    if (is.null(basin.ids)) {
+        component <- .basin.merge.tree.component(
+            direction.branches, component
+        )
+    } else {
+        basin.ids <- .basin.merge.tree.requested.ids(basin.ids)
+        all.ids <- tree$basin.table$basin.id
+        unknown <- setdiff(basin.ids, all.ids)
+        if (length(unknown) > 0L) {
+            .stop.basin.complex(
+                sprintf(
+                    "Unknown canonical basin id%s: %s.",
+                    if (length(unknown) == 1L) "" else "s",
+                    paste(unknown, collapse = ", ")
+                ),
+                "basin.ids",
+                details = list(unknown.ids = unknown)
+            )
+        }
+        wrong.direction <- setdiff(
+            basin.ids, direction.branches$basin.id
+        )
+        if (length(wrong.direction) > 0L) {
+            .stop.basin.complex(
+                "The requested basin ids contain a different direction.",
+                "basin.ids",
+                details = list(direction.mismatch.ids = wrong.direction)
+            )
+        }
+        requested.index <- match(
+            basin.ids, direction.branches$basin.id
+        )
+        requested.components <- unique(
+            direction.branches$graph.component[requested.index]
+        )
+        if (length(requested.components) != 1L) {
+            .stop.basin.complex(
+                "The requested basin ids span multiple graph components.",
+                "basin.ids",
+                details = list(
+                    requested.components = sort(requested.components)
+                )
+            )
+        }
+        if (is.null(component)) {
+            component <- requested.components[[1L]]
+        } else {
+            component <- .basin.merge.tree.component(
+                direction.branches, component
+            )
+            if (!identical(component, requested.components[[1L]])) {
+                .stop.basin.complex(
+                    paste(
+                        "The requested basin ids do not belong to the",
+                        "selected graph component."
+                    ),
+                    "basin.ids",
+                    details = list(
+                        component = component,
+                        requested.components = requested.components
+                    )
+                )
+            }
+        }
+    }
+
+    component.branches <- direction.branches[
+        direction.branches$graph.component == component,
+        ,
+        drop = FALSE
+    ]
+    component.branches <- component.branches[
+        order(
+            component.branches$extremum.vertex,
+            component.branches$basin.id
+        ),
+        ,
+        drop = FALSE
+    ]
+    row.names(component.branches) <- seq_len(nrow(component.branches))
+
+    requested.ids <- if (is.null(basin.ids)) {
+        component.branches$basin.id
+    } else {
+        basin.ids
+    }
+    closed.ids <- .basin.merge.tree.ancestor.closure(
+        component.branches, requested.ids
+    )
+    closure.added.ids <- setdiff(closed.ids, requested.ids)
+    if (!close.ancestors && length(closure.added.ids) > 0L) {
+        .stop.basin.complex(
+            paste(
+                "The requested basin ids are not ancestor-closed and do not",
+                "contain the component root."
+            ),
+            "basin.ids",
+            details = list(missing.ancestor.ids = closure.added.ids)
+        )
+    }
+    selected.ids <- if (close.ancestors) closed.ids else {
+        component.branches$basin.id[
+            component.branches$basin.id %in% requested.ids
+        ]
+    }
+    branches <- component.branches[
+        component.branches$basin.id %in% selected.ids,
+        ,
+        drop = FALSE
+    ]
+    row.names(branches) <- seq_len(nrow(branches))
+    layout <- .basin.merge.tree.layout.selected(
+        tree, direction, component, branches, label, labels
+    )
+
+    if (length(selected.ids) < nrow(component.branches)) {
+        complete.layout <- .basin.merge.tree.layout.selected(
+            tree,
+            direction,
+            component,
+            component.branches,
+            "basin.id"
+        )
+        complete.order <- component.branches$basin.id[
+            complete.layout$order
+        ]
+        expected.order <- complete.order[
+            complete.order %in% layout$branches$basin.id
+        ]
+        actual.order <- layout$branches$basin.id[layout$order]
+        if (!identical(actual.order, expected.order)) {
+            .stop.basin.complex(
+                paste(
+                    "The restricted merge-tree leaf order does not preserve",
+                    "the canonical complete-tree order."
+                ),
+                "object",
+                class = "gflow_basin_schema_error"
+            )
+        }
+    }
+
+    layout$requested.basin.ids <- requested.ids
+    layout$closure.added.ids <- component.branches$basin.id[
+        component.branches$basin.id %in% closure.added.ids
+    ]
+    layout$basin.ids <- layout$branches$basin.id
+    layout$component.root.basin.id <-
+        layout$branches$basin.id[[layout$root.leaf]]
+    layout$leaf.order <- layout$branches$basin.id[layout$order]
+    layout$coordinates <- .basin.merge.tree.layout.coordinates(layout)
+    layout$validation.status <- "ok"
+    class(layout) <- c("basin.merge.tree.layout", "list")
+    layout
+}
+
+.basin.merge.tree.layout <- function(object,
+                                     direction,
+                                     component,
+                                     label,
+                                     labels = NULL) {
+    get.basin.merge.tree.layout(
+        object,
+        direction = direction,
+        component = component,
+        label = label,
+        labels = labels
     )
 }
 
@@ -1059,6 +1403,10 @@ cut.basin.merge.tree <- function(
 #' @param main.tree,main.barcode Panel titles.
 #' @param field.label Scalar-field axis label.
 #' @param annotation.cex Character expansion for mass and support annotations.
+#' @param basin.ids Optional canonical basin ids to display. The selection must
+#'   be ancestor-closed unless `close.ancestors = TRUE`.
+#' @param close.ancestors Add and report missing canonical ancestors of
+#'   `basin.ids`.
 #' @param ... Reserved for S3 compatibility.
 #'
 #' @return Invisibly, a list containing the tree, selected branch table,
@@ -1087,6 +1435,8 @@ plot.basin.merge.tree <- function(
     main.barcode = "Extremum-to-saddle persistence barcode",
     field.label = "Scalar-field value",
     annotation.cex = 0.6,
+    basin.ids = NULL,
+    close.ancestors = FALSE,
     ...
 ) {
     type <- match.arg(type)
@@ -1104,8 +1454,14 @@ plot.basin.merge.tree <- function(
     annotation.cex <- .basin.assert.number(
         annotation.cex, "annotation.cex", lower = 0, lower.open = TRUE
     )
-    layout <- .basin.merge.tree.layout(
-        x, direction, component, label, labels
+    layout <- get.basin.merge.tree.layout(
+        x,
+        direction = direction,
+        component = component,
+        basin.ids = basin.ids,
+        close.ancestors = close.ancestors,
+        label = label,
+        labels = labels
     )
     branches <- layout$branches
     if (!mass.measure %in% names(branches) ||
@@ -1123,7 +1479,7 @@ plot.basin.merge.tree <- function(
         )
     }
     colors <- .basin.merge.tree.colors(branches, branch.col)
-    coordinates <- .basin.merge.tree.plot.coordinates(layout)
+    coordinates <- layout$coordinates
     old.par <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(old.par), add = TRUE)
 

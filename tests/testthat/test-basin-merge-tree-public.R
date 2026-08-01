@@ -222,3 +222,310 @@ test_that("dendrogram and plot require a selected component for forests", {
     cut <- cut.basin.merge.tree(tree, height = 0)
     expect_identical(cut$n.components, 2L)
 })
+
+test_that("public layout accessor returns complete canonical plot inputs", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+    layout <- get.basin.merge.tree.layout(tree)
+
+    expect_s3_class(layout, "basin.merge.tree.layout")
+    expect_identical(layout$validation.status, "ok")
+    expect_identical(layout$direction, "max")
+    expect_identical(layout$component, 1L)
+    expect_identical(layout$requested.basin.ids, layout$basin.ids)
+    expect_length(layout$closure.added.ids, 0L)
+    expect_identical(
+        layout$component.root.basin.id,
+        "basin_max_v00000001"
+    )
+    expect_identical(layout$leaf.order, layout$basin.ids[layout$order])
+    expect_setequal(
+        layout$events$losing.basin.id,
+        setdiff(
+            layout$basin.ids,
+            layout$component.root.basin.id
+        )
+    )
+    expect_equal(
+        layout$branches$birth.level,
+        tree$basin.table$birth.level
+    )
+    expect_equal(
+        layout$branches$death.level,
+        tree$basin.table$death.level
+    )
+    expect_equal(
+        layout$branches$persistence,
+        tree$basin.table$persistence
+    )
+    expect_identical(
+        layout$branches$parent.basin.id,
+        tree$basin.table$parent.basin.id
+    )
+    canonical.events <- tree$merge.table[
+        match(layout$events$event.id, tree$merge.table$event.id),
+        ,
+        drop = FALSE
+    ]
+    row.names(canonical.events) <- seq_len(nrow(canonical.events))
+    expect_identical(layout$events, canonical.events)
+    expect_identical(
+        layout$coordinates$branches$basin.id,
+        layout$branches$basin.id
+    )
+    expect_identical(
+        layout$coordinates$events$event.id,
+        layout$events$event.id
+    )
+    expect_equal(
+        layout$coordinates$events$merge.level,
+        layout$events$merge.level
+    )
+    expect_true(
+        "get.basin.merge.tree.layout" %in% getNamespaceExports("gflow")
+    )
+})
+
+test_that("restricted layouts require or construct canonical closure", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+    root.id <- "basin_max_v00000001"
+    child.id <- "basin_max_v00000003"
+
+    expect_error(
+        get.basin.merge.tree.layout(tree, basin.ids = child.id),
+        "not ancestor-closed"
+    )
+    closed <- get.basin.merge.tree.layout(
+        tree,
+        basin.ids = child.id,
+        close.ancestors = TRUE
+    )
+    expect_identical(closed$requested.basin.ids, child.id)
+    expect_identical(closed$closure.added.ids, root.id)
+    expect_identical(closed$basin.ids, c(root.id, child.id))
+    expect_identical(closed$component.root.basin.id, root.id)
+    expect_identical(nrow(closed$events), 1L)
+    expect_identical(
+        closed$events$losing.basin.id,
+        child.id
+    )
+    expect_identical(
+        closed$events$surviving.basin.id,
+        root.id
+    )
+
+    root.only <- get.basin.merge.tree.layout(
+        tree,
+        basin.ids = root.id
+    )
+    expect_identical(root.only$basin.ids, root.id)
+    expect_identical(nrow(root.only$events), 0L)
+    expect_identical(dim(root.only$merge), c(0L, 2L))
+    expect_identical(root.only$order, 1L)
+    expect_equal(root.only$coordinates$branches$x, 1)
+    expect_identical(nrow(root.only$coordinates$events), 0L)
+})
+
+test_that("restricted layout preserves complete canonical leaf order", {
+    graph <- merge.tree.test.graph(
+        6L,
+        matrix(
+            c(
+                1, 4, 1,
+                2, 4, 1,
+                3, 5, 1,
+                4, 5, 1,
+                5, 6, 1
+            ),
+            ncol = 3L,
+            byrow = TRUE
+        )
+    )
+    tree <- get.basin.merge.tree(create.basin.complex(
+        graph$adj.list,
+        graph$edge.length.list,
+        c(8, 7, 6, 2, 1, 0),
+        method = "superlevel_merge_tree",
+        direction = "max"
+    ))
+    complete <- get.basin.merge.tree.layout(tree)
+    child.ids <- tree$basin.table$basin.id[
+        !is.na(tree$basin.table$parent.basin.id)
+    ]
+    restricted <- get.basin.merge.tree.layout(
+        tree,
+        basin.ids = child.ids[[length(child.ids)]],
+        close.ancestors = TRUE
+    )
+
+    expect_identical(
+        restricted$leaf.order,
+        complete$leaf.order[
+            complete$leaf.order %in% restricted$basin.ids
+        ]
+    )
+    expect_equal(
+        restricted$branches$birth.level,
+        tree$basin.table$birth.level[
+            match(restricted$basin.ids, tree$basin.table$basin.id)
+        ]
+    )
+    expect_equal(
+        restricted$branches$death.level,
+        tree$basin.table$death.level[
+            match(restricted$basin.ids, tree$basin.table$basin.id)
+        ]
+    )
+    expect_equal(
+        restricted$events$merge.level,
+        tree$merge.table$merge.level[
+            match(
+                restricted$events$event.id,
+                tree$merge.table$event.id
+            )
+        ]
+    )
+})
+
+test_that("layout accessor rejects invalid canonical selections", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+
+    expect_error(
+        get.basin.merge.tree.layout(tree, basin.ids = character()),
+        "nonempty character vector"
+    )
+    expect_error(
+        get.basin.merge.tree.layout(
+            tree,
+            basin.ids = rep(tree$basin.table$basin.id[[1L]], 2L)
+        ),
+        "unique"
+    )
+    expect_error(
+        get.basin.merge.tree.layout(tree, basin.ids = "not_a_basin"),
+        "Unknown canonical basin id"
+    )
+
+    both <- get.basin.merge.tree(create.basin.complex(
+        tree$graph.input$adj.list,
+        tree$graph.input$edge.length.list,
+        tree$field$construction.values,
+        method = "superlevel_merge_tree",
+        direction = "both"
+    ))
+    minimum.id <- both$basin.table$basin.id[
+        both$basin.table$type == "min"
+    ][[1L]]
+    expect_error(
+        get.basin.merge.tree.layout(
+            both,
+            direction = "max",
+            basin.ids = minimum.id
+        ),
+        "different direction"
+    )
+
+    graph <- merge.tree.test.graph(
+        4L,
+        matrix(c(1, 2, 1, 3, 4, 1), ncol = 3L, byrow = TRUE)
+    )
+    forest <- get.basin.merge.tree(create.basin.complex(
+        graph$adj.list,
+        graph$edge.length.list,
+        c(3, 0, 2, 0),
+        method = "superlevel_merge_tree",
+        direction = "max"
+    ))
+    forest.branches <- gflow:::.basin.merge.tree.branch.table(
+        forest, "max"
+    )
+    cross.component.ids <- vapply(
+        split(
+            forest.branches$basin.id,
+            forest.branches$graph.component
+        ),
+        `[[`,
+        character(1),
+        1L
+    )
+    expect_error(
+        get.basin.merge.tree.layout(
+            forest,
+            basin.ids = unname(cross.component.ids)
+        ),
+        "multiple graph components"
+    )
+    expect_error(
+        get.basin.merge.tree.layout(
+            forest,
+            component = 1L,
+            basin.ids = unname(cross.component.ids[[2L]])
+        ),
+        "do not belong"
+    )
+})
+
+test_that("layout accessor rejects invalid canonical vertical values", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+
+    invalid.birth <- tree
+    invalid.birth$basin.table$birth.level[[1L]] <- NA_real_
+    expect_error(
+        get.basin.merge.tree.layout(invalid.birth),
+        "branch birth, death, and persistence"
+    )
+
+    invalid.persistence <- tree
+    invalid.persistence$basin.table$persistence[[1L]] <- -1
+    expect_error(
+        get.basin.merge.tree.layout(invalid.persistence),
+        "nonnegative persistence"
+    )
+
+    invalid.event <- tree
+    invalid.event$merge.table$merge.level[[1L]] <- Inf
+    expect_error(
+        get.basin.merge.tree.layout(invalid.event),
+        "event levels and persistence"
+    )
+})
+
+test_that("plot consumes the public complete and restricted layout inputs", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+    child.id <- "basin_max_v00000002"
+    expect_identical(
+        names(formals(plot.basin.merge.tree))[seq_len(6L)],
+        c("x", "direction", "component", "type", "label", "labels")
+    )
+    expected <- get.basin.merge.tree.layout(
+        tree,
+        basin.ids = child.id,
+        close.ancestors = TRUE,
+        label = "extremum.vertex"
+    )
+
+    plot.file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(plot.file, width = 8, height = 6)
+    plotted <- plot.basin.merge.tree(
+        tree,
+        basin.ids = child.id,
+        close.ancestors = TRUE,
+        type = "tree",
+        label = "extremum.vertex"
+    )
+    grDevices::dev.off()
+
+    expect_gt(file.info(plot.file)$size, 0)
+    expect_identical(plotted$branches, expected$branches)
+    expect_identical(plotted$layout$events, expected$events)
+    expect_identical(
+        plotted$layout$closure.added.ids,
+        expected$closure.added.ids
+    )
+    expect_identical(plotted$layout$leaf.order, expected$leaf.order)
+    expect_identical(plotted$coordinates, expected$coordinates)
+    expect_identical(
+        expected$closure.added.ids,
+        "basin_max_v00000001"
+    )
+    unlink(plot.file)
+})
