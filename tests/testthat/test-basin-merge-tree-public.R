@@ -36,6 +36,107 @@ merge.tree.test.fixture <- function(direction = "max") {
     )
 }
 
+merge.tree.test.relational.corruptions <- function(tree, direction) {
+    branch.rows <- which(tree$basin.table$type == direction)
+    child.row <- branch.rows[
+        !is.na(tree$basin.table$parent.basin.id[branch.rows])
+    ][[1L]]
+    root.row <- branch.rows[
+        is.na(tree$basin.table$parent.basin.id[branch.rows])
+    ][[1L]]
+    child.id <- tree$basin.table$basin.id[[child.row]]
+    parent.id <- tree$basin.table$parent.basin.id[[child.row]]
+    event.row <- which(
+        tree$merge.table$direction == direction &
+            tree$merge.table$losing.basin.id == child.id
+    )[[1L]]
+    alternate.parent <- setdiff(
+        tree$basin.table$basin.id[branch.rows],
+        c(child.id, parent.id)
+    )[[1L]]
+
+    mutate.tree <- function(branch = NULL, event = NULL) {
+        corrupted <- tree
+        if (!is.null(branch)) {
+            corrupted$basin.table[child.row, names(branch)] <-
+                unname(branch)
+        }
+        if (!is.null(event)) {
+            corrupted$merge.table[event.row, names(event)] <-
+                unname(event)
+        }
+        corrupted
+    }
+
+    parent.disagreement <- mutate.tree(
+        branch = c(parent.basin.id = alternate.parent)
+    )
+    survivor.disagreement <- mutate.tree(
+        event = c(surviving.basin.id = alternate.parent)
+    )
+    event.merge.disagreement <- mutate.tree(
+        event = c(
+            merge.level =
+                tree$merge.table$merge.level[[event.row]] + 0.25
+        )
+    )
+    event.birth.disagreement <- mutate.tree(
+        event = c(
+            birth.level =
+                tree$merge.table$birth.level[[event.row]] + 0.25
+        )
+    )
+    event.death.disagreement <- mutate.tree(
+        event = c(
+            death.level =
+                tree$merge.table$death.level[[event.row]] + 0.25
+        )
+    )
+    event.persistence.disagreement <- mutate.tree(
+        event = c(
+            persistence =
+                tree$merge.table$persistence[[event.row]] + 0.25
+        )
+    )
+
+    coherent.death <- tree$basin.table$death.level[[child.row]] + 0.25
+    branch.death.relation <- mutate.tree(
+        branch = c(death.level = coherent.death),
+        event = c(
+            death.level = coherent.death,
+            merge.level = coherent.death
+        )
+    )
+    coherent.persistence <-
+        tree$basin.table$persistence[[child.row]] + 0.25
+    branch.persistence.relation <- mutate.tree(
+        branch = c(persistence = coherent.persistence),
+        event = c(persistence = coherent.persistence)
+    )
+
+    root.convention <- tree
+    root.death <- tree$basin.table$death.level[[root.row]] + 0.25
+    root.convention$basin.table$death.level[[root.row]] <- root.death
+    root.convention$basin.table$persistence[[root.row]] <-
+        if (direction == "max") {
+            tree$basin.table$birth.level[[root.row]] - root.death
+        } else {
+            root.death - tree$basin.table$birth.level[[root.row]]
+        }
+
+    list(
+        branch_parent = parent.disagreement,
+        event_survivor = survivor.disagreement,
+        event_merge = event.merge.disagreement,
+        event_birth = event.birth.disagreement,
+        event_death = event.death.disagreement,
+        event_persistence = event.persistence.disagreement,
+        branch_death_relation = branch.death.relation,
+        branch_persistence_relation = branch.persistence.relation,
+        component_root_convention = root.convention
+    )
+}
+
 test_that("merge-tree getter returns a complete canonical object", {
     complex <- merge.tree.test.fixture()
     tree <- get.basin.merge.tree(complex)
@@ -487,6 +588,121 @@ test_that("layout accessor rejects invalid canonical vertical values", {
         get.basin.merge.tree.layout(invalid.event),
         "event levels and persistence"
     )
+})
+
+test_that("validated layouts reject contradictory branch and event relations", {
+    for (direction in c("max", "min")) {
+        tree <- get.basin.merge.tree(
+            merge.tree.test.fixture(direction)
+        )
+        branches <- tree$basin.table[
+            tree$basin.table$type == direction,
+            ,
+            drop = FALSE
+        ]
+        child.id <- branches$basin.id[
+            !is.na(branches$parent.basin.id)
+        ][[1L]]
+        corruptions <- merge.tree.test.relational.corruptions(
+            tree, direction
+        )
+
+        for (corruption.name in names(corruptions)) {
+            corrupted <- corruptions[[corruption.name]]
+            expect_error(
+                gflow:::.validate.basin.merge.tree(corrupted),
+                class = "gflow_basin_schema_error",
+                info = paste(direction, corruption.name, "validator")
+            )
+            expect_error(
+                get.basin.merge.tree.layout(
+                    corrupted,
+                    direction = direction
+                ),
+                class = "gflow_basin_schema_error",
+                info = paste(direction, corruption.name, "complete")
+            )
+            expect_error(
+                get.basin.merge.tree.layout(
+                    corrupted,
+                    direction = direction,
+                    basin.ids = child.id,
+                    close.ancestors = TRUE
+                ),
+                class = "gflow_basin_schema_error",
+                info = paste(direction, corruption.name, "restricted")
+            )
+            expect_error(
+                plot.basin.merge.tree(
+                    corrupted,
+                    direction = direction,
+                    basin.ids = child.id,
+                    close.ancestors = TRUE,
+                    type = "tree"
+                ),
+                class = "gflow_basin_schema_error",
+                info = paste(direction, corruption.name, "plot")
+            )
+        }
+    }
+})
+
+test_that("relational validation preserves valid maximum and minimum layouts", {
+    for (direction in c("max", "min")) {
+        tree <- get.basin.merge.tree(
+            merge.tree.test.fixture(direction)
+        )
+        complete <- get.basin.merge.tree.layout(
+            tree, direction = direction
+        )
+        child.id <- complete$branches$basin.id[
+            !is.na(complete$branches$parent.basin.id)
+        ][[1L]]
+        restricted <- get.basin.merge.tree.layout(
+            tree,
+            direction = direction,
+            basin.ids = child.id,
+            close.ancestors = TRUE
+        )
+
+        expect_identical(
+            complete$branches,
+            gflow:::.basin.merge.tree.branch.table(tree, direction)
+        )
+        expected.events <- tree$merge.table[
+            match(
+                complete$events$event.id,
+                tree$merge.table$event.id
+            ),
+            ,
+            drop = FALSE
+        ]
+        row.names(expected.events) <- seq_len(nrow(expected.events))
+        expect_identical(complete$events, expected.events)
+        expect_identical(
+            restricted$branches$parent.basin.id,
+            tree$basin.table$parent.basin.id[
+                match(
+                    restricted$branches$basin.id,
+                    tree$basin.table$basin.id
+                )
+            ]
+        )
+
+        plot.file <- tempfile(fileext = ".pdf")
+        grDevices::pdf(plot.file, width = 8, height = 6)
+        plotted <- plot.basin.merge.tree(
+            tree,
+            direction = direction,
+            basin.ids = child.id,
+            close.ancestors = TRUE,
+            type = "tree"
+        )
+        grDevices::dev.off()
+        expect_identical(plotted$layout, restricted)
+        expect_gt(file.info(plot.file)$size, 0)
+        unlink(plot.file)
+    }
 })
 
 test_that("plot consumes the public complete and restricted layout inputs", {
