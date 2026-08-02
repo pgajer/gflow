@@ -32,6 +32,205 @@
     tree
 }
 
+.validate.basin.merge.tree.relations <- function(object,
+                                                 direction,
+                                                 branches,
+                                                 events) {
+    branch.columns <- c(
+        "basin.id", "type", "extremum.vertex", "birth.level",
+        "death.level", "persistence", "parent.basin.id"
+    )
+    event.columns <- c(
+        "event.id", "direction", "losing.basin.id",
+        "surviving.basin.id", "merge.level", "birth.level",
+        "death.level", "persistence"
+    )
+    if (!all(branch.columns %in% names(branches)) ||
+        !all(event.columns %in% names(events))) {
+        .stop.basin.complex(
+            "The merge-tree relational fields are incomplete.",
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+
+    branch.values <- branches[
+        ,
+        c("birth.level", "death.level", "persistence"),
+        drop = FALSE
+    ]
+    if (any(!is.finite(as.matrix(branch.values))) ||
+        any(branches$persistence < 0)) {
+        .stop.basin.complex(
+            paste(
+                "Merge-tree branch birth, death, and persistence values",
+                "must be finite with nonnegative persistence."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    event.values <- events[
+        ,
+        c("merge.level", "birth.level", "death.level", "persistence"),
+        drop = FALSE
+    ]
+    if (nrow(events) > 0L &&
+        (any(!is.finite(as.matrix(event.values))) ||
+            any(events$persistence < 0))) {
+        .stop.basin.complex(
+            paste(
+                "Merge-tree event levels and persistence values must be",
+                "finite with nonnegative persistence."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+
+    expected.persistence <- if (direction == "max") {
+        branches$birth.level - branches$death.level
+    } else {
+        branches$death.level - branches$birth.level
+    }
+    if (any(branches$persistence != expected.persistence)) {
+        .stop.basin.complex(
+            paste(
+                "Merge-tree branch persistence does not equal the exact",
+                "direction-specific birth-to-death difference."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+
+    graph.component <- object$graph.input$validation$component
+    field <- object$field$construction.values
+    extremum.vertex <- branches$extremum.vertex
+    if (length(graph.component) != object$n.vertices ||
+        length(field) != object$n.vertices ||
+        any(!is.finite(field)) ||
+        !is.numeric(extremum.vertex) ||
+        anyNA(extremum.vertex) ||
+        any(!is.finite(extremum.vertex)) ||
+        any(extremum.vertex != floor(extremum.vertex)) ||
+        any(extremum.vertex < 1L | extremum.vertex > object$n.vertices)) {
+        .stop.basin.complex(
+            paste(
+                "The merge-tree field, graph components, and extremum",
+                "vertices are inconsistent."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    branch.component <- as.integer(graph.component[extremum.vertex])
+    if (anyNA(branch.component)) {
+        .stop.basin.complex(
+            "The merge-tree branch component mapping is incomplete.",
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+
+    roots <- is.na(branches$parent.basin.id)
+    for (component in sort(unique(branch.component))) {
+        component.rows <- which(branch.component == component)
+        component.roots <- component.rows[roots[component.rows]]
+        if (length(component.roots) != 1L) {
+            .stop.basin.complex(
+                paste(
+                    "Each merge-tree graph component must contain exactly",
+                    "one canonical root."
+                ),
+                "object",
+                class = "gflow_basin_schema_error"
+            )
+        }
+        component.vertices <- which(graph.component == component)
+        expected.root.death <- if (direction == "max") {
+            min(field[component.vertices])
+        } else {
+            max(field[component.vertices])
+        }
+        if (branches$death.level[[component.roots]] != expected.root.death) {
+            .stop.basin.complex(
+                paste(
+                    "The merge-tree component-root death level does not",
+                    "equal the finite component field boundary."
+                ),
+                "object",
+                class = "gflow_basin_schema_error"
+            )
+        }
+    }
+
+    nonroot.rows <- which(!roots)
+    if (length(nonroot.rows) == 0L) {
+        return(invisible(TRUE))
+    }
+    event.index <- match(
+        branches$basin.id[nonroot.rows],
+        events$losing.basin.id
+    )
+    if (anyNA(event.index) ||
+        anyDuplicated(events$losing.basin.id) ||
+        nrow(events) != length(nonroot.rows)) {
+        .stop.basin.complex(
+            "Each nonroot merge-tree branch must match exactly one event.",
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    parent.index <- match(
+        branches$parent.basin.id[nonroot.rows],
+        branches$basin.id
+    )
+    if (anyNA(parent.index) ||
+        any(branch.component[parent.index] !=
+            branch.component[nonroot.rows])) {
+        .stop.basin.complex(
+            paste(
+                "Each nonroot merge-tree parent must be a branch in the",
+                "same direction and graph component."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+
+    matched.events <- events[event.index, , drop = FALSE]
+    matched.branches <- branches[nonroot.rows, , drop = FALSE]
+    if (any(matched.events$direction != direction) ||
+        any(matched.events$surviving.basin.id !=
+            matched.branches$parent.basin.id)) {
+        .stop.basin.complex(
+            paste(
+                "A merge-tree event survivor disagrees with its losing",
+                "branch parent."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    relation.mismatch <-
+        matched.events$birth.level != matched.branches$birth.level |
+        matched.events$death.level != matched.branches$death.level |
+        matched.events$merge.level != matched.branches$death.level |
+        matched.events$persistence != matched.branches$persistence
+    if (any(relation.mismatch)) {
+        .stop.basin.complex(
+            paste(
+                "A merge-tree event's birth, death, merge, or persistence",
+                "value disagrees with its losing branch."
+            ),
+            "object",
+            class = "gflow_basin_schema_error"
+        )
+    }
+    invisible(TRUE)
+}
+
 .validate.basin.merge.tree <- function(object) {
     required <- c(
         "schema.version", "method", "direction", "status", "n.vertices",
@@ -108,6 +307,9 @@
                     class = "gflow_basin_schema_error"
                 )
             }
+            .validate.basin.merge.tree.relations(
+                object, direction, branches, events
+            )
         }
     }
     invisible(TRUE)
@@ -277,49 +479,6 @@
         }
         depth
     }, integer(1))
-}
-
-.basin.merge.tree.assert.layout.values <- function(tree,
-                                                   branches,
-                                                   direction) {
-    branch.columns <- c("birth.level", "death.level", "persistence")
-    if (!all(branch.columns %in% names(branches)) ||
-        any(!is.finite(as.matrix(branches[, branch.columns, drop = FALSE]))) ||
-        any(branches$persistence < 0)) {
-        .stop.basin.complex(
-            paste(
-                "Merge-tree branch birth, death, and persistence values",
-                "must be finite with nonnegative persistence."
-            ),
-            "object",
-            class = "gflow_basin_schema_error"
-        )
-    }
-    events <- tree$merge.table[
-        tree$merge.table$direction == direction &
-            tree$merge.table$losing.basin.id %in% branches$basin.id,
-        ,
-        drop = FALSE
-    ]
-    event.columns <- c(
-        "merge.level", "birth.level", "death.level", "persistence"
-    )
-    if (!all(event.columns %in% names(events)) ||
-        (nrow(events) > 0L &&
-            (any(!is.finite(as.matrix(
-                events[, event.columns, drop = FALSE]
-            ))) ||
-                any(events$persistence < 0)))) {
-        .stop.basin.complex(
-            paste(
-                "Merge-tree event levels and persistence values must be",
-                "finite with nonnegative persistence."
-            ),
-            "object",
-            class = "gflow_basin_schema_error"
-        )
-    }
-    invisible(TRUE)
 }
 
 .basin.merge.tree.requested.ids <- function(basin.ids) {
@@ -591,9 +750,6 @@ get.basin.merge.tree.layout <- function(
     label <- match.arg(label)
 
     direction.branches <- .basin.merge.tree.branch.table(tree, direction)
-    .basin.merge.tree.assert.layout.values(
-        tree, direction.branches, direction
-    )
     if (is.null(basin.ids)) {
         component <- .basin.merge.tree.component(
             direction.branches, component
