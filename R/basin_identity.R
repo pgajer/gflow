@@ -408,18 +408,35 @@
 
 .gflow.code.input.files <- function(root) {
     roots <- c("R", "src", file.path("inst", "include"))
-    files <- unlist(lapply(roots, function(relative) {
-        path <- file.path(root, relative)
-        if (!dir.exists(path)) {
-            return(character())
-        }
-        list.files(path, recursive = TRUE, full.names = TRUE, all.files = TRUE)
-    }), use.names = FALSE)
     top <- c(
         "DESCRIPTION", "NAMESPACE", "configure", "configure.ac",
         "cleanup", "cleanup.win"
     )
-    files <- c(files, file.path(root, top[file.exists(file.path(root, top))]))
+    git.files <- .gflow.git.value(root, c(
+        "ls-files", "--cached", "--others", "--exclude-standard", "--",
+        roots, top
+    ))
+    if (length(git.files) > 0L) {
+        files <- file.path(root, git.files)
+    } else {
+        files <- unlist(lapply(roots, function(relative) {
+            path <- file.path(root, relative)
+            if (!dir.exists(path)) {
+                return(character())
+            }
+            list.files(
+                path,
+                recursive = TRUE,
+                full.names = TRUE,
+                all.files = TRUE
+            )
+        }), use.names = FALSE)
+        files <- c(
+            files,
+            file.path(root, top[file.exists(file.path(root, top))])
+        )
+    }
+    files <- files[file.exists(files)]
     files <- files[file.info(files)$isdir %in% FALSE]
     files <- files[!grepl(
         "(^|/)(gflow-code-manifest\\.tsv|\\.DS_Store)$|\\.(o|so|dll|dylib)$",

@@ -255,6 +255,156 @@ test_that("external-priority ties fall back to canonical elder order", {
     )
 })
 
+test_that("minimum trees propagate external continuation through public views", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture("min"))
+    basin.by.vertex <- stats::setNames(
+        tree$basin.table$basin.id,
+        tree$basin.table$extremum.vertex
+    )
+    priority <- stats::setNames(
+        c(1, 5, 10),
+        unname(basin.by.vertex[as.character(1:3)])
+    )
+    measure <- "Minimum-basin support"
+    canonical <- get.basin.merge.tree.layout(tree, direction = "min")
+    prioritized <- get.basin.merge.tree.layout(
+        tree,
+        direction = "min",
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+
+    expect_identical(
+        prioritized$component.root.basin.id,
+        unname(basin.by.vertex[["3"]])
+    )
+    expect_identical(prioritized$continuation$rule, "external_priority")
+    expect_identical(prioritized$continuation$measure, measure)
+    expect_equal(
+        stats::setNames(
+            prioritized$branches$persistence,
+            prioritized$branches$basin.id
+        )[canonical$branches$basin.id],
+        stats::setNames(
+            canonical$branches$persistence,
+            canonical$branches$basin.id
+        )
+    )
+
+    cut <- cut.basin.merge.tree(
+        tree,
+        height = -1,
+        direction = "min",
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+    expect_identical(
+        cut$components$basin.id,
+        unname(basin.by.vertex[["3"]])
+    )
+    expect_identical(cut$continuation, prioritized$continuation)
+
+    dendrogram <- as.dendrogram.basin.merge.tree(
+        tree,
+        direction = "min",
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+    expect_s3_class(dendrogram, "dendrogram")
+    expect_identical(
+        attr(dendrogram, "continuation"),
+        prioritized$continuation
+    )
+    dendrogram.events <- attr(dendrogram, "basin.merge.tree.events")
+    expect_identical(
+        dendrogram.events[names(prioritized$events)],
+        prioritized$events
+    )
+    expect_true(all(is.finite(dendrogram.events$transformed.height)))
+
+    plot.file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(plot.file, width = 9, height = 8)
+    plotted <- plot.basin.merge.tree(
+        tree,
+        direction = "min",
+        type = "tree_and_barcode",
+        continuation.priority = priority,
+        continuation.measure = measure,
+        show.barcode.parent.labels = TRUE
+    )
+    grDevices::dev.off()
+    expect_gt(file.info(plot.file)$size, 0)
+    expect_identical(plotted$layout$continuation, prioritized$continuation)
+    expect_identical(plotted$layout$events, prioritized$events)
+    unlink(plot.file)
+})
+
+test_that("external continuation is component-local across equal-height forest merges", {
+    graph <- merge.tree.test.graph(
+        6L,
+        matrix(
+            c(1, 3, 1, 2, 3, 1, 4, 6, 1, 5, 6, 1),
+            ncol = 3L,
+            byrow = TRUE
+        )
+    )
+    tree <- get.basin.merge.tree(create.basin.complex(
+        graph$adj.list,
+        graph$edge.length.list,
+        c(5, 4, 1, 6, 3, 1),
+        method = "superlevel_merge_tree",
+        direction = "max"
+    ))
+    basin.by.vertex <- stats::setNames(
+        tree$basin.table$basin.id,
+        tree$basin.table$extremum.vertex
+    )
+    priority <- stats::setNames(
+        c(1, 10, 2, 20),
+        unname(basin.by.vertex[as.character(c(1, 2, 4, 5))])
+    )
+    measure <- "Forest priority"
+    first <- get.basin.merge.tree.layout(
+        tree,
+        component = 1L,
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+    second <- get.basin.merge.tree.layout(
+        tree,
+        component = 2L,
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+
+    expect_identical(
+        first$component.root.basin.id,
+        unname(basin.by.vertex[["2"]])
+    )
+    expect_identical(
+        second$component.root.basin.id,
+        unname(basin.by.vertex[["5"]])
+    )
+    expect_equal(first$events$merge.level, 1)
+    expect_equal(second$events$merge.level, 1)
+    expect_identical(first$continuation$rule, "external_priority")
+    expect_identical(second$continuation$rule, "external_priority")
+
+    cut <- cut.basin.merge.tree(
+        tree,
+        height = 1,
+        continuation.priority = priority,
+        continuation.measure = measure
+    )
+    expect_identical(cut$n.active.vertices, 6L)
+    expect_identical(cut$n.components, 2L)
+    expect_setequal(
+        cut$components$basin.id,
+        unname(basin.by.vertex[c("2", "5")])
+    )
+    expect_true(all(cut$components$support.size == 3L))
+})
+
 test_that("merge-tree plot renders all optional annotations", {
     tree <- get.basin.merge.tree(merge.tree.test.fixture())
     plot.file <- tempfile(fileext = ".pdf")
