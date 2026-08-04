@@ -165,6 +165,166 @@
     branches
 }
 
+.basin.merge.tree.continuation.priority <- function(branches,
+                                                    priority,
+                                                    measure) {
+    if (is.null(priority)) {
+        return(list(
+            priority = NULL,
+            metadata = list(
+                rule = "field_value_elder",
+                measure = "field.extremum.value",
+                label = "Field-value elder rule",
+                tie.break = "extremum_vertex"
+            )
+        ))
+    }
+    if (!is.numeric(priority) || is.object(priority) ||
+        is.null(names(priority)) || anyNA(priority) ||
+        any(!is.finite(priority)) || any(priority < 0) ||
+        anyNA(names(priority)) || any(!nzchar(names(priority))) ||
+        anyDuplicated(names(priority))) {
+        .stop.basin.complex(
+            paste(
+                "'continuation.priority' must be a named vector of unique,",
+                "finite, nonnegative numeric priorities."
+            ),
+            "continuation.priority"
+        )
+    }
+    missing.ids <- setdiff(branches$basin.id, names(priority))
+    unknown.ids <- setdiff(names(priority), branches$basin.id)
+    if (length(missing.ids) > 0L || length(unknown.ids) > 0L) {
+        .stop.basin.complex(
+            paste(
+                "'continuation.priority' names must exactly match every basin",
+                "id in the selected direction."
+            ),
+            "continuation.priority",
+            details = list(
+                missing.ids = missing.ids,
+                unknown.ids = unknown.ids
+            )
+        )
+    }
+    if (!is.character(measure) || length(measure) != 1L ||
+        is.na(measure) || !nzchar(measure)) {
+        .stop.basin.complex(
+            paste(
+                "'continuation.measure' must be one nonempty string when",
+                "external priorities are supplied."
+            ),
+            "continuation.measure"
+        )
+    }
+    priority <- as.numeric(priority[branches$basin.id])
+    names(priority) <- branches$basin.id
+    list(
+        priority = priority,
+        metadata = list(
+            rule = "external_priority",
+            measure = measure,
+            label = measure,
+            tie.break = paste(
+                "field_value_elder",
+                "then_extremum_vertex",
+                sep = "_"
+            )
+        )
+    )
+}
+
+.basin.merge.tree.continuation.view <- function(tree,
+                                                direction,
+                                                priority = NULL,
+                                                measure = NULL) {
+    canonical.branches <- .basin.merge.tree.branch.table(tree, direction)
+    resolved <- .basin.merge.tree.continuation.priority(
+        canonical.branches,
+        priority,
+        measure
+    )
+    view <- tree
+    view$basin.table$canonical.parent.basin.id <-
+        view$basin.table$parent.basin.id
+    view$basin.table$canonical.death.level <-
+        view$basin.table$death.level
+    view$basin.table$canonical.persistence <-
+        view$basin.table$persistence
+    view$basin.table$continuation.lifetime <-
+        view$basin.table$persistence
+    view$basin.table$continuation.priority <- NA_real_
+    view$basin.table$continuation.rule <-
+        "field_value_elder"
+    view$basin.table$continuation.measure <-
+        "field.extremum.value"
+
+    if (!is.null(resolved$priority)) {
+        rebuilt <- .build.level.set.tree(
+            tree$plateau.graph,
+            tree$field$construction.values,
+            direction,
+            tree$field$vertex.mass.normalized,
+            continuation.priority = resolved$priority
+        )
+        policy.table <- .bind.merge.tree.basins(
+            rebuilt$basins,
+            rebuilt$membership,
+            rebuilt$assignment,
+            tree$field$vertex.mass.normalized
+        )
+        canonical.index <- which(view$basin.table$type == direction)
+        policy.index <- match(
+            view$basin.table$basin.id[canonical.index],
+            policy.table$basin.id
+        )
+        if (anyNA(policy.index)) {
+            .stop.basin.complex(
+                "Continuation reconstruction lost a canonical basin id.",
+                "object",
+                class = "gflow_basin_schema_error"
+            )
+        }
+        view$basin.table$parent.basin.id[canonical.index] <-
+            policy.table$parent.basin.id[policy.index]
+        view$basin.table$death.level[canonical.index] <-
+            policy.table$death.level[policy.index]
+        view$basin.table$continuation.lifetime[canonical.index] <-
+            policy.table$persistence[policy.index]
+        view$basin.table$continuation.priority[canonical.index] <-
+            unname(resolved$priority[
+                view$basin.table$basin.id[canonical.index]
+            ])
+        view$basin.table$continuation.rule[canonical.index] <-
+            resolved$metadata$rule
+        view$basin.table$continuation.measure[canonical.index] <-
+            resolved$metadata$measure
+
+        policy.events <- .bind.merge.events(rebuilt$events)
+        if ("merge.vertex.ids" %in% names(view$merge.table)) {
+            policy.events$merge.vertex.ids <- I(
+                .basin.external.id.lists(
+                    policy.events$merge.vertices,
+                    tree$graph.input$vertex.id
+                )
+            )
+        }
+        other.events <- view$merge.table[
+            view$merge.table$direction != direction,
+            ,
+            drop = FALSE
+        ]
+        view$merge.table <- rbind(
+            other.events,
+            policy.events[, names(other.events), drop = FALSE]
+        )
+        row.names(view$merge.table) <-
+            seq_len(nrow(view$merge.table))
+    }
+    view$continuation <- resolved$metadata
+    list(tree = view, metadata = resolved$metadata)
+}
+
 .basin.merge.tree.component <- function(branches, component) {
     available <- sort(unique(branches$graph.component))
     if (is.null(component)) {
@@ -550,9 +710,13 @@
 #' Returns the canonical branches, merge events, crossing-free leaf order, and
 #' plotting coordinates for one direction and graph component without
 #' drawing. A restricted set of canonical basin ids must contain its component
-#' root and every ancestor unless `close.ancestors = TRUE`, in which case the
-#' missing ancestors are added and reported. Scalar-field birth, death, merge,
-#' and persistence values are preserved exactly from the canonical merge tree.
+#' root and every ancestor under the selected continuation policy unless
+#' `close.ancestors = TRUE`, in which case the missing ancestors are added and
+#' reported. Birth and merge heights always come from the canonical level-set
+#' filtration. With external continuation
+#' priorities, policy-dependent parents, death levels, and
+#' `continuation.lifetime` are returned while canonical parents, death levels,
+#' and prominence remain available in the `canonical.*` columns.
 #'
 #' This accessor is the common computational boundary for static and
 #' interactive merge-tree consumers. Restricting the display never constructs
@@ -565,15 +729,23 @@
 #'   component.
 #' @param basin.ids Optional nonempty character vector of canonical basin ids.
 #'   `NULL` selects the complete component.
-#' @param close.ancestors Add missing canonical ancestors of `basin.ids`.
+#' @param close.ancestors Add missing ancestors of `basin.ids` under the
+#'   selected continuation policy.
 #' @param label Canonical basin-table field used for branch labels.
 #' @param labels Optional custom labels. A named vector is matched by basin id;
 #'   an unnamed vector follows deterministic selected-branch order.
+#' @param continuation.priority Optional named numeric vector with one finite,
+#'   nonnegative priority per basin in the selected direction. Larger values
+#'   survive merges. Exact priority ties use the canonical field-value elder
+#'   rule and then the extremum-vertex index. `NULL` preserves canonical elder
+#'   continuation.
+#' @param continuation.measure Nonempty measure label required when
+#'   `continuation.priority` is supplied.
 #'
 #' @return A `basin.merge.tree.layout` list containing the requested and
-#'   closure-added ids, selected canonical branch and event tables, component
-#'   root, restricted crossing-free leaf order, dendrogram representation,
-#'   branch and event coordinates, and validation status.
+#'   closure-added ids, selected policy branch and event tables, continuation
+#'   metadata, component root, restricted crossing-free leaf order, dendrogram
+#'   representation, branch and event coordinates, and validation status.
 #' @export
 get.basin.merge.tree.layout <- function(
     x,
@@ -582,7 +754,9 @@ get.basin.merge.tree.layout <- function(
     basin.ids = NULL,
     close.ancestors = FALSE,
     label = c("basin.id", "extremum.id", "extremum.vertex"),
-    labels = NULL
+    labels = NULL,
+    continuation.priority = NULL,
+    continuation.measure = NULL
 ) {
     tree <- .as.basin.merge.tree(x)
     .basin.merge.tree.assert.ready(tree)
@@ -590,6 +764,13 @@ get.basin.merge.tree.layout <- function(
     .basin.assert.logical(close.ancestors, "close.ancestors")
     label <- match.arg(label)
 
+    continuation <- .basin.merge.tree.continuation.view(
+        tree,
+        direction,
+        continuation.priority,
+        continuation.measure
+    )
+    tree <- continuation$tree
     direction.branches <- .basin.merge.tree.branch.table(tree, direction)
     .basin.merge.tree.assert.layout.values(
         tree, direction.branches, direction
@@ -728,7 +909,7 @@ get.basin.merge.tree.layout <- function(
             .stop.basin.complex(
                 paste(
                     "The restricted merge-tree leaf order does not preserve",
-                    "the canonical complete-tree order."
+                    "the complete continuation-policy tree order."
                 ),
                 "object",
                 class = "gflow_basin_schema_error"
@@ -745,6 +926,7 @@ get.basin.merge.tree.layout <- function(
         layout$branches$basin.id[[layout$root.leaf]]
     layout$leaf.order <- layout$branches$basin.id[layout$order]
     layout$coordinates <- .basin.merge.tree.layout.coordinates(layout)
+    layout$continuation <- continuation$metadata
     layout$validation.status <- "ok"
     class(layout) <- c("basin.merge.tree.layout", "list")
     layout
@@ -754,13 +936,17 @@ get.basin.merge.tree.layout <- function(
                                      direction,
                                      component,
                                      label,
-                                     labels = NULL) {
+                                     labels = NULL,
+                                     continuation.priority = NULL,
+                                     continuation.measure = NULL) {
     get.basin.merge.tree.layout(
         object,
         direction = direction,
         component = component,
         label = label,
-        labels = labels
+        labels = labels,
+        continuation.priority = continuation.priority,
+        continuation.measure = continuation.measure
     )
 }
 
@@ -792,6 +978,7 @@ get.basin.merge.tree.layout <- function(
 #' @param label Canonical basin-table field used for leaf labels.
 #' @param labels Optional custom labels. A named vector is matched by basin id;
 #'   an unnamed vector follows deterministic basin-table order.
+#' @inheritParams get.basin.merge.tree.layout
 #' @param ... Reserved for S3 compatibility.
 #'
 #' @return A `dendrogram`. Exact branch metadata are available in the
@@ -806,11 +993,19 @@ as.dendrogram.basin.merge.tree <- function(
     component = NULL,
     label = c("basin.id", "extremum.id", "extremum.vertex"),
     labels = NULL,
+    continuation.priority = NULL,
+    continuation.measure = NULL,
     ...
 ) {
     label <- match.arg(label)
     layout <- .basin.merge.tree.layout(
-        object, direction, component, label, labels
+        object,
+        direction,
+        component,
+        label,
+        labels,
+        continuation.priority,
+        continuation.measure
     )
     dendrogram <- if (nrow(layout$merge) == 0L) {
         .basin.merge.tree.single.dendrogram(layout$labels[[1L]])
@@ -823,6 +1018,7 @@ as.dendrogram.basin.merge.tree <- function(
     attr(dendrogram, "basin.merge.tree.events") <- events
     attr(dendrogram, "direction") <- layout$direction
     attr(dendrogram, "graph.component") <- layout$component
+    attr(dendrogram, "continuation") <- layout$continuation
     dendrogram
 }
 
@@ -870,13 +1066,15 @@ as.dendrogram.basin.merge.tree <- function(
 #' `field >= height` for maximum trees, or sublevel set `field <= height` for
 #' minimum trees. Equality is included, so a saddle plateau has already joined
 #' its incident components at its exact scalar-field level. Every returned
-#' component is labeled by the elder basin that survives at the cut.
+#' component is labeled by the basin that survives under the selected
+#' continuation policy.
 #'
 #' @param x A `basin.merge.tree`, or a compatible `basin_complex`.
 #' @param height Finite scalar-field cut height.
 #' @param direction Tree orientation, `"max"` or `"min"`.
 #' @param component Optional graph-component number. When omitted, all graph
 #'   components are cut.
+#' @inheritParams get.basin.merge.tree.layout
 #' @param ... Reserved for S3 compatibility.
 #'
 #' @return A `basin.merge.tree.cut` list with component and vertex-membership
@@ -889,6 +1087,8 @@ cut.basin.merge.tree <- function(
     height,
     direction = "max",
     component = NULL,
+    continuation.priority = NULL,
+    continuation.measure = NULL,
     ...
 ) {
     tree <- .as.basin.merge.tree(x)
@@ -927,6 +1127,11 @@ cut.basin.merge.tree <- function(
     )
     active.components <- sort(unique(component.index[component.index > 0L]))
     branches <- .basin.merge.tree.branch.table(tree, direction)
+    continuation <- .basin.merge.tree.continuation.priority(
+        branches,
+        continuation.priority,
+        continuation.measure
+    )
     mass <- tree$field$vertex.mass.normalized
     vertex.id <- tree$graph.input$vertex.id
 
@@ -942,10 +1147,23 @@ cut.basin.merge.tree <- function(
                 class = "gflow_basin_schema_error"
             )
         }
-        elder.order <- if (direction == "max") {
+        canonical.order <- if (direction == "max") {
             order(-candidates$birth.level, candidates$extremum.vertex)
         } else {
             order(candidates$birth.level, candidates$extremum.vertex)
+        }
+        elder.order <- canonical.order
+        if (!is.null(continuation$priority)) {
+            canonical.rank <- integer(nrow(candidates))
+            canonical.rank[canonical.order] <-
+                seq_along(canonical.order)
+            candidate.priority <- unname(
+                continuation$priority[candidates$basin.id]
+            )
+            elder.order <- order(
+                -candidate.priority,
+                canonical.rank
+            )
         }
         elder <- candidates[elder.order[[1L]], , drop = FALSE]
         list(
@@ -1048,7 +1266,8 @@ cut.basin.merge.tree <- function(
         n.active.vertices = sum(active),
         n.components = nrow(components),
         components = components,
-        membership = membership
+        membership = membership,
+        continuation = continuation$metadata
     )
     class(result) <- c("basin.merge.tree.cut", "list")
     result
@@ -1366,18 +1585,20 @@ cut.basin.merge.tree <- function(
 #' Plot a Crossing-Free Basin Merge Tree and Persistence Barcode
 #'
 #' Draws an exact graph level-set merge tree, its extremum-to-saddle persistence
-#' barcode, or both. Tree topology and scalar-field heights come from the
-#' canonical merge tree. An `hclust`-compatible representation determines only
-#' a deterministic crossing-free leaf order. The rendered tree is directed:
-#' every elder basin remains a continuous vertical trunk, and each dying
-#' branch terminates horizontally on the trunk that survives its saddle.
+#' barcode, or both. Superlevel/sublevel components and merge heights come from
+#' the canonical merge tree; an optional continuation priority changes branch
+#' identity and parentage without changing those components or heights. An
+#' `hclust`-compatible representation determines only a deterministic
+#' crossing-free leaf order. The rendered tree is directed:
+#' the basin selected by the continuation policy remains a continuous vertical
+#' trunk, and each terminating branch joins that trunk at its saddle.
 #'
 #' The optional top-margin rows report one mass and support quantity for each
 #' branch. Defaults use the non-overlapping primary assignment. Raw support
 #' measures are hierarchical and can overlap across ancestor and descendant
 #' branches. In the barcode, dotted guides, labels beside extremum births, and
-#' labels identifying the elder basin into which each branch dies can be
-#' controlled independently.
+#' labels identifying the continuing basin into which each branch terminates
+#' can be controlled independently.
 #'
 #' @param x A `basin.merge.tree`, or a compatible `basin_complex`.
 #' @param direction Tree orientation, `"max"` or `"min"`.
@@ -1395,8 +1616,8 @@ cut.basin.merge.tree <- function(
 #' @param show.barcode.birth.labels Add basin labels beside filled birth
 #'   endpoints.
 #' @param show.barcode.parent.labels Add `"dies into <parent>"` beside each
-#'   open death endpoint, where `<parent>` is the elder basin that survives the
-#'   merge. Root endpoints are labeled `"root"`.
+#'   open death endpoint, where `<parent>` is the basin that continues through
+#'   the merge. Root endpoints are labeled `"root"`.
 #' @param height Optional exact scalar-field cut shown in both panels.
 #' @param branch.col Optional branch colors. A named vector is matched by basin
 #'   id; an unnamed vector must have one color per displayed basin.
@@ -1405,8 +1626,9 @@ cut.basin.merge.tree <- function(
 #' @param annotation.cex Character expansion for mass and support annotations.
 #' @param basin.ids Optional canonical basin ids to display. The selection must
 #'   be ancestor-closed unless `close.ancestors = TRUE`.
-#' @param close.ancestors Add and report missing canonical ancestors of
-#'   `basin.ids`.
+#' @param close.ancestors Add and report missing ancestors of `basin.ids`
+#'   under the selected continuation policy.
+#' @inheritParams get.basin.merge.tree.layout
 #' @param ... Reserved for S3 compatibility.
 #'
 #' @return Invisibly, a list containing the tree, selected branch table,
@@ -1431,12 +1653,14 @@ plot.basin.merge.tree <- function(
     show.barcode.parent.labels = FALSE,
     height = NULL,
     branch.col = NULL,
-    main.tree = "Crossing-free elder-rule merge tree",
-    main.barcode = "Extremum-to-saddle persistence barcode",
+    main.tree = NULL,
+    main.barcode = NULL,
     field.label = "Scalar-field value",
     annotation.cex = 0.6,
     basin.ids = NULL,
     close.ancestors = FALSE,
+    continuation.priority = NULL,
+    continuation.measure = NULL,
     ...
 ) {
     type <- match.arg(type)
@@ -1461,8 +1685,34 @@ plot.basin.merge.tree <- function(
         basin.ids = basin.ids,
         close.ancestors = close.ancestors,
         label = label,
-        labels = labels
+        labels = labels,
+        continuation.priority = continuation.priority,
+        continuation.measure = continuation.measure
     )
+    if (is.null(main.tree)) {
+        main.tree <- if (
+            identical(layout$continuation$rule, "field_value_elder")
+        ) {
+            "Crossing-free field-value elder-rule merge tree"
+        } else {
+            sprintf(
+                "Crossing-free %s-priority continuation tree",
+                layout$continuation$label
+            )
+        }
+    }
+    if (is.null(main.barcode)) {
+        main.barcode <- if (
+            identical(layout$continuation$rule, "field_value_elder")
+        ) {
+            "Extremum-to-saddle persistence barcode"
+        } else {
+            sprintf(
+                "%s continuation-lifetime barcode",
+                layout$continuation$label
+            )
+        }
+    }
     branches <- layout$branches
     if (!mass.measure %in% names(branches) ||
         !is.numeric(branches[[mass.measure]])) {

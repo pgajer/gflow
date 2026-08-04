@@ -59,7 +59,10 @@
     )
 }
 
-.merge.tree.elder.order <- function(indices, basins, direction) {
+.merge.tree.elder.order <- function(indices,
+                                    basins,
+                                    direction,
+                                    continuation.priority = NULL) {
     births <- vapply(
         indices,
         function(index) basins[[index]]$birth.level,
@@ -70,17 +73,30 @@
         function(index) basins[[index]]$extremum.vertex,
         integer(1)
     )
-    if (direction == "max") {
+    canonical.order <- if (direction == "max") {
         order(-births, representatives)
     } else {
         order(births, representatives)
     }
+    if (is.null(continuation.priority)) {
+        return(canonical.order)
+    }
+    basin.ids <- vapply(
+        indices,
+        function(index) basins[[index]]$basin.id,
+        character(1)
+    )
+    priority <- unname(continuation.priority[basin.ids])
+    canonical.rank <- integer(length(indices))
+    canonical.rank[canonical.order] <- seq_along(canonical.order)
+    order(-priority, canonical.rank)
 }
 
 .build.level.set.tree <- function(plateaus,
                                   field,
                                   direction,
-                                  normalized.mass) {
+                                  normalized.mass,
+                                  continuation.priority = NULL) {
     n.plateaus <- length(plateaus$id)
     process.order <- if (direction == "max") {
         order(-plateaus$level, plateaus$representative)
@@ -142,7 +158,8 @@
             elder.order <- .merge.tree.elder.order(
                 candidates,
                 basins,
-                direction
+                direction,
+                continuation.priority
             )
             survivor <- candidates[[elder.order[[1L]]]]
             losers <- candidates[elder.order[-1L]]
