@@ -148,6 +148,113 @@ test_that("minimum-tree cuts use sublevel sets", {
     expect_identical(cut$n.components, 3L)
 })
 
+test_that("external priorities control continuation without replacing prominence", {
+    graph <- merge.tree.test.graph(
+        5L,
+        matrix(
+            c(1, 4, 1, 4, 2, 1, 2, 5, 1, 5, 3, 1),
+            ncol = 3L,
+            byrow = TRUE
+        )
+    )
+    tree <- get.basin.merge.tree(create.basin.complex(
+        graph$adj.list,
+        graph$edge.length.list,
+        c(5, 4, 2, 3, 1),
+        method = "superlevel_merge_tree",
+        direction = "max"
+    ))
+    priority <- c(
+        basin_max_v00000001 = 1,
+        basin_max_v00000002 = 5,
+        basin_max_v00000003 = 10
+    )
+
+    canonical <- get.basin.merge.tree.layout(tree)
+    prioritized <- get.basin.merge.tree.layout(
+        tree,
+        continuation.priority = priority,
+        continuation.measure = "Trajectory-flow basin mass"
+    )
+
+    expect_identical(
+        canonical$component.root.basin.id,
+        "basin_max_v00000001"
+    )
+    expect_identical(
+        prioritized$component.root.basin.id,
+        "basin_max_v00000003"
+    )
+    expect_identical(
+        prioritized$continuation$rule,
+        "external_priority"
+    )
+    expect_identical(
+        prioritized$continuation$measure,
+        "Trajectory-flow basin mass"
+    )
+    canonical.persistence <- setNames(
+        canonical$branches$persistence,
+        canonical$branches$basin.id
+    )
+    expect_equal(
+        prioritized$branches$persistence,
+        unname(canonical.persistence[prioritized$branches$basin.id])
+    )
+    continuation.lifetime <- setNames(
+        prioritized$branches$continuation.lifetime,
+        prioritized$branches$basin.id
+    )
+    expect_equal(
+        unname(continuation.lifetime[c(
+            "basin_max_v00000001",
+            "basin_max_v00000002",
+            "basin_max_v00000003"
+        )]),
+        c(2, 3, 1)
+    )
+    expect_identical(
+        prioritized$events$surviving.basin.id,
+        c("basin_max_v00000002", "basin_max_v00000003")
+    )
+
+    cut <- cut.basin.merge.tree(
+        tree,
+        height = 1,
+        continuation.priority = priority,
+        continuation.measure = "Trajectory-flow basin mass"
+    )
+    expect_identical(
+        cut$components$basin.id,
+        "basin_max_v00000003"
+    )
+    expect_identical(cut$continuation, prioritized$continuation)
+})
+
+test_that("external-priority ties fall back to canonical elder order", {
+    tree <- get.basin.merge.tree(merge.tree.test.fixture())
+    basin.ids <- tree$basin.table$basin.id
+    priority <- stats::setNames(rep(1, length(basin.ids)), basin.ids)
+    layout <- get.basin.merge.tree.layout(
+        tree,
+        continuation.priority = priority,
+        continuation.measure = "Tied measure"
+    )
+
+    expect_identical(
+        layout$component.root.basin.id,
+        "basin_max_v00000001"
+    )
+    expect_error(
+        get.basin.merge.tree.layout(
+            tree,
+            continuation.priority = priority[-1L],
+            continuation.measure = "Incomplete"
+        ),
+        "exactly match"
+    )
+})
+
 test_that("merge-tree plot renders all optional annotations", {
     tree <- get.basin.merge.tree(merge.tree.test.fixture())
     plot.file <- tempfile(fileext = ".pdf")
