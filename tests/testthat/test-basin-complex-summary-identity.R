@@ -428,3 +428,39 @@ test_that("complete code manifests detect code changes and additions", {
     ))
     unlink(root, recursive = TRUE)
 })
+
+test_that("git-backed code manifests exclude ignored developer files", {
+    skip_if(Sys.which("git") == "", "git is required for this regression")
+    root <- tempfile("gflow-git-manifest-fixture-")
+    dir.create(file.path(root, "R"), recursive = TRUE)
+    dir.create(file.path(root, "src", "tests"), recursive = TRUE)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    writeLines("Package: gflow", file.path(root, "DESCRIPTION"))
+    writeLines("exportPattern('^[^.]')", file.path(root, "NAMESPACE"))
+    writeLines("f <- function() 1", file.path(root, "R", "f.R"))
+    writeLines("g <- function() 2", file.path(root, "R", "g.R"))
+    writeLines("src/tests/", file.path(root, ".gitignore"))
+    writeLines(
+        "int main() { return 0; }",
+        file.path(root, "src", "tests", "main.cpp")
+    )
+    expect_identical(
+        system2("git", c("-C", root, "init", "--quiet")),
+        0L
+    )
+    expect_identical(
+        system2(
+            "git",
+            c(
+                "-C", root, "add", "--", ".gitignore", "DESCRIPTION",
+                "NAMESPACE", "R/f.R"
+            )
+        ),
+        0L
+    )
+
+    manifest <- gflow:::.gflow.compute.code.manifest(root)
+    expect_true(all(c("DESCRIPTION", "NAMESPACE", "R/f.R", "R/g.R") %in%
+        manifest$path))
+    expect_false("src/tests/main.cpp" %in% manifest$path)
+})

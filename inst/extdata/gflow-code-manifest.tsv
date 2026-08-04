@@ -543,7 +543,7 @@ R/basin_complex_plateau_flow.R	2aa117a8a2627e67de86fe729b26f97e
 R/basin_complex_refinement.R	090a8af31e5876f1be09b259ecc0a86d
 R/basin_complex.R	11baaca30ad612d797209b98a2d975f6
 R/basin_cx.R	6698396b46419a40a806e756259e64d4
-R/basin_identity.R	0ab0af0abb84b2aed34649733a65f8a2
+R/basin_identity.R	80635c28fd4a8b3b9fd02b6b53cfffa7
 R/basin_lookup_functions.R	7c5a2d660bac9a5ecfb8540c214ad890
 R/basin_merge_tree_public.R	4ec8e270aea3c88f467863ab663f83bf
 R/basin_summary.R	3e5d53374253cafd689d598926568db9
@@ -760,9 +760,7 @@ src/lslope.cpp	e2586de36c0558d953186e321185f6cb
 src/madag_r.cpp	3c0199f8b6056b53c3e2178aacb150dc
 src/madag.cpp	11bac1fd101f937f176f12225eaae79c
 src/Makevars	3d043ac5e74f47344e15701c6be59dcd
-src/Makevars.local	c74e0b908d0e863b149f35c587d241b0
 src/Makevars.win	b852afcbc2534f65a5f9753fc1990cda
-src/Makevars.win.local	2e79f96da434db12d75090bbcc963a45
 src/memory_utils.cpp	ee89768bb142a59d573f836b986c476b
 src/mlm.cpp	485e628d55bd1fcd3ea39124bbe4fb4f
 src/monotonic_reachability_r.cpp	329d368f80aa28e7cca99235a2583469
@@ -795,9 +793,6 @@ src/SEXP_cpp_conversion_utils.cpp	247ce9f9274ca475ce49eb3f8642393d
 src/shortest_path_utils.cpp	28b20d6031641b5fea9ef00ca65d5ebc
 src/sort_utils.cpp	4c045927992b7b02bd20cafd864b623e
 src/stats_utils.c	8215c6a60adcf4f88ccefdc73c9ae94b
-src/tests/main.cpp	e575e77a3d26d4d572cbbc43f317c252
-src/tests/Makefile	f145156f70528574fd2bd9c9b65f2c71
-src/tests/test_helpers.hpp	1acea71b1e84ce661f3b9353078400ec
 src/traj_clustering_r.cpp	59fa888fc503f0e08e5c9c56f4cd0465
 src/traj_clustering.cpp	d28befd0d2a10047568390d7508543ad
 src/tube_lens_corridor.cpp	13a8a7041a9ea7824998f717033f5a53
