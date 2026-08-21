@@ -53,7 +53,6 @@ test_that("migrated graph constructors are supplied by dgraphs", {
   expect_true(requireNamespace("dgraphs", quietly = TRUE))
 
   migrated <- c(
-    "create.adaptive.radius.graph",
     "create.bi.kNN.chain.graph",
     "create.bipartite.graph",
     "create.chain.graph",
@@ -73,7 +72,6 @@ test_that("migrated graph constructors are supplied by dgraphs", {
     "create.path.graph",
     "create.path.graph.series",
     "create.plm.graph",
-    "create.radius.graph",
     "create.random.graph",
     "create.rknn.graph",
     "create.single.iknn.graph",
