@@ -6763,6 +6763,7 @@ basin.feature.carriers <- function(object,
 #' res2 <- vertices.feature.carriers(v.ids, X.rel, match.by = "rownames")
 #' }
 #'
+#' @method vertices feature.carriers
 #' @export
 vertices.feature.carriers <- function(object,
                                       X,

@@ -15,14 +15,14 @@ FILE	R/compute_pextrema_nbhds.R	-	e1d623b74c441e083ca9f2e5d3cc7531
 FILE	R/extrema_utils.R	-	822766d3f933d635f93d307df27c0260
 FILE	R/filter_basins.R	-	35993742124588e0464898fb164980a1
 FILE	R/filter_basins_by_relvalue.R	-	03e9329057c0af622e8b942077975ac7
-FILE	R/gfc_flow.R	-	b89287c87d649fa5708fd2d6f0f7a502
+FILE	R/gfc_flow.R	-	691cf013f0a398d60f0cbb18a69f5e46
 FILE	R/gflow_basins.R	-	2330a637f2e476b3a652cbafaa1d924b
 FILE	R/gflow_cx.R	-	499b1eb00094323a4cc1f2f675bc23ad
 FILE	R/gradient_basin_utilities.R	-	a5d304a39d0c254343adebf7d3c63864
 FILE	R/graph_gradient_flow.R	-	32e421f458c9b96b3e0825bcbad40174
 FILE	R/graph_gradient_flow_basins.R	-	c5cbfb0f9b0aac74f780c9e455b99dc2
 FILE	R/graph_MS_cx.R	-	9b0f5e1af69910f567f3e59203eab638
-FILE	R/local_extrema.R	-	598fda56aeab2adac00be1c88d686619
+FILE	R/local_extrema.R	-	0faaeebb7ef9d4dd1453d6f7b97b23d2
 FILE	R/merge_clustered_basins.R	-	205f312b93cd2f73b3584c01cdb7b078
 FILE	R/pextrema.R	-	d29e14020613ebf03818a5cdd1b61631
 SYMBOL	.apply.basin.refinements	R/basin_complex_refinement.R	a188bbb01efc903b93477dcecf252580
@@ -153,7 +153,7 @@ EXPORT	create.lmin.lmax.labels
 EXPORT	create.morse.smale.complex
 EXPORT	critical.points.plot
 EXPORT	cut.basin.merge.tree
-EXPORT	detect.local.extrema
+EXPORT	detect.adaptive.extrema
 EXPORT	draw.basin
 EXPORT	elapsed.time
 EXPORT	evaluate.function.on.grid
@@ -206,7 +206,6 @@ EXPORT	trajectory.distances.to.vertex
 EXPORT	uncovered.vertices.gfc.flow
 EXPORT	vertex.cell.trajectory.gfc.flow
 EXPORT	vertex.distances.to.trajectory
-EXPORT	vertices
 EXPORT	visualize.smoothing.steps
 S3	as.basin.complex	basin_complex
 S3	as.basin.complex	basin_cx
@@ -248,7 +247,7 @@ S3	plot	basin.merge.tree
 S3	plot	basin_complex
 S3	plot	basin_cx
 S3	plot	feature.prevalence
-S3	plot	local_extrema
+S3	plot	gflow_local_extrema
 S3	plot	morse.smale.trajectories.from.point
 S3	print	basin_complex
 S3	print	basin_cx
@@ -263,8 +262,8 @@ S3	print	summary.basin_cx
 S3	print	summary.gfc_basin_trajectories
 S3	print	summary.gfc_cell_trajectories
 S3	print	summary.gflow_basins
+S3	print	summary.gflow_local_extrema
 S3	print	summary.ggflow
-S3	print	summary.local_extrema
 S3	show.basin	basin_cx
 S3	summary	basin_complex
 S3	summary	basin_cx
@@ -273,10 +272,10 @@ S3	summary	gfc.flow
 S3	summary	gfc_basin_trajectories
 S3	summary	gfc_cell_trajectories
 S3	summary	gflow_basins
+S3	summary	gflow_local_extrema
 S3	summary	ggflow
 S3	summary	gradient_flow_cells
-S3	summary	local_extrema
 S3	vertices	feature.carriers
-S3	vertices	local_extrema
+S3	vertices	gflow_local_extrema
 NATIVE	_gflow_basins	R/RcppExports.R
 NATIVE	_gflow_cx	R/RcppExports.R

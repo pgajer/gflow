@@ -1,15 +1,31 @@
-test_that("gflow and dgraphs overlap only on protected APIs", {
-  protected.overlap <- c(
-    "detect.local.extrema",
-    "vertices"
-  )
-
+test_that("gflow and dgraphs share only the vertices generic", {
   overlap <- intersect(
     getNamespaceExports("gflow"),
     getNamespaceExports("dgraphs")
   )
 
-  expect_setequal(overlap, protected.overlap)
+  expect_setequal(overlap, "vertices")
+  expect_identical(gflow::vertices, dgraphs::vertices)
+  expect_identical(
+    getS3method("vertices", "feature.carriers", envir = asNamespace("dgraphs")),
+    getFromNamespace("vertices.feature.carriers", "gflow")
+  )
+  expect_false(exists("detect.local.extrema", asNamespace("gflow"),
+                      inherits = FALSE))
+})
+
+test_that("gflow does not register methods for dgraphs extrema classes", {
+  registered <- getNamespaceInfo("gflow", "S3methods")
+  expect_false(any(registered[, 2L] %in%
+                     c("local_extrema", "summary.local_extrema")))
+  expect_identical(
+    getS3method("summary", "local_extrema"),
+    getFromNamespace("summary.local_extrema", "dgraphs")
+  )
+  expect_identical(
+    getS3method("print", "summary.local_extrema"),
+    getFromNamespace("print.summary.local_extrema", "dgraphs")
+  )
 })
 
 test_that("removed graph compatibility wrappers are absent", {

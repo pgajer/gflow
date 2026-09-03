@@ -1,5 +1,15 @@
 # gflow 0.2.0 — 2026-07-26
 
+## Separate adaptive extrema from dgraphs
+
+* Renamed `detect.local.extrema()` to `detect.adaptive.extrema()`, returning
+  class `gflow_local_extrema` with separate summary, print, plot, and vertex
+  methods. The old function name is no longer exported by `gflow`.
+* Re-exported `dgraphs::vertices()` as the shared generic so vertex extraction
+  works for both packages' objects regardless of attachment order.
+* Fixed center inclusion in `vertices(..., include.center = TRUE)` and retained
+  the requested maxima/minima setting for summaries of empty results.
+
 ## Migrate graph work to dgraphs
 
 * Removed the remaining generic graph construction, conversion, clustering,

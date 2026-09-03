@@ -1,10 +1,11 @@
-#' Detect Local Extrema in a Graph
+#' Detect Adaptive Local Extrema in a Graph
 #'
 #' @description
 #' Identifies local maxima or minima in a graph based on vertex function values.
-#' A vertex is considered a local extremum if it has the highest (for maxima) or
-#' lowest (for minima) function value within a neighborhood of specified radius,
-#' and the neighborhood contains at least a minimum number of vertices.
+#' For each vertex, examines neighbors in increasing graph distance up to a
+#' maximum radius. Accepts an extremum when sufficiently many neighbors have
+#' strictly lower (for maxima) or higher (for minima) values before the first
+#' neighbor that violates this condition.
 #'
 #' @param adj.list A list where each element contains integer indices of vertices
 #'   adjacent to the corresponding vertex. Must have length equal to the number
@@ -17,28 +18,40 @@
 #' @param max.radius Positive numeric value specifying the maximum radius for
 #'   neighborhood search.
 #' @param min.neighborhood.size Positive integer specifying the minimum number
-#'   of vertices required in a neighborhood for a vertex to be considered an extremum.
+#'   of neighbors, excluding the center, required for a vertex to be considered
+#'   an extremum.
 #' @param detect.maxima Logical; if \code{TRUE} (default), detect local maxima;
 #'   if \code{FALSE}, detect local minima.
 #' @param custom.prefix Character string to use as prefix for extrema labels.
 #'   If \code{NULL} (default), uses "M" for maxima and "m" for minima.
 #'
-#' @return An object of class \code{"local_extrema"}, which is a list containing:
+#' @return An object of class \code{"gflow_local_extrema"}, which is a list containing:
 #'   \describe{
 #'     \item{vertices}{Integer vector of vertex indices identified as extrema}
 #'     \item{values}{Numeric vector of function values at the extrema}
 #'     \item{radii}{Numeric vector of neighborhood radii where extremum property holds}
-#'     \item{neighborhood_sizes}{Integer vector of the number of vertices in each extremum's neighborhood}
+#'     \item{neighborhood_sizes}{Integer vector of neighborhood sizes, excluding the center}
+#'     \item{neighborhood_vertices}{List of integer vectors of accepted neighbors, excluding the center}
+#'     \item{graph_diameter}{Graph diameter estimate returned by the backend}
 #'     \item{is_maxima}{Logical vector indicating whether each extremum is a maximum (\code{TRUE}) or minimum (\code{FALSE})}
 #'     \item{type}{Character vector with values "Maximum" or "Minimum" for each extremum}
 #'     \item{labels}{Character vector of labels for each extremum (e.g., "M1", "M2" for maxima)}
+#'     \item{detect.maxima}{Scalar logical recording the requested detection type,
+#'       including when no extrema are found}
 #'   }
 #'
 #' @details
-#' The algorithm uses a graph-based approach to identify local extrema by examining
-#' neighborhoods defined by graph distance. For each vertex, it searches within
-#' increasing radii up to \code{max.radius} to find a neighborhood where the vertex
-#' has the extreme value among all vertices in that neighborhood.
+#' The radius reported for an extremum is the distance to its last accepted
+#' neighbor. A vertex can qualify at a smaller radius even if a more distant
+#' vertex within \code{max.radius} has a more extreme value. Equal function
+#' values violate the strict comparison. Neighbors at equal graph distance are
+#' processed individually by the current backend, so the accepted neighborhood
+#' can contain only part of a distance shell.
+#'
+#' This function replaces \code{gflow::detect.local.extrema()}. It differs from
+#' \code{\link[dgraphs:detect.local.extrema]{dgraphs::detect.local.extrema()}},
+#' which tests the full radius, allows equal function values, and includes the
+#' center in neighborhood counts. The result classes and S3 methods are separate.
 #'
 #' The implementation uses a C++ backend for computational efficiency, particularly
 #' beneficial for large graphs.
@@ -50,24 +63,24 @@
 #' y <- c(1, 3, 2, 5, 1)  # Function values with peaks at vertices 2 and 4
 #'
 #' # Detect maxima
-#' maxima <- detect.local.extrema(adj.list, weight.list, y,
+#' maxima <- detect.adaptive.extrema(adj.list, weight.list, y,
 #'                                max.radius = 2,
 #'                                min.neighborhood.size = 2)
 #' print(maxima$vertices)  # Should identify vertices 2 and 4
 #'
 #' # Detect minima
-#' minima <- detect.local.extrema(adj.list, weight.list, y,
+#' minima <- detect.adaptive.extrema(adj.list, weight.list, y,
 #'                                max.radius = 2,
 #'                                min.neighborhood.size = 2,
 #'                                detect.maxima = FALSE)
 #' print(minima$vertices)  # Should identify vertices 1, 3, and 5
 #'
 #' @seealso
-#' \code{\link{summary.local_extrema}} for summarizing results,
-#' \code{\link{plot.local_extrema}} for visualization
+#' \code{\link{summary.gflow_local_extrema}} for summarizing results,
+#' \code{\link{plot.gflow_local_extrema}} for visualization
 #'
 #' @export
-detect.local.extrema <- function(adj.list,
+detect.adaptive.extrema <- function(adj.list,
                                  weight.list,
                                  y,
                                  max.radius,
@@ -95,7 +108,8 @@ detect.local.extrema <- function(adj.list,
         min.neighborhood.size < 1 || min.neighborhood.size != floor(min.neighborhood.size)) {
         stop("'min.neighborhood.size' must be a positive integer")
     }
-    if (!is.logical(detect.maxima) || length(detect.maxima) != 1) {
+    if (!is.logical(detect.maxima) || length(detect.maxima) != 1 ||
+        is.na(detect.maxima)) {
         stop("'detect.maxima' must be a single logical value")
     }
     if (!is.null(custom.prefix) && (!is.character(custom.prefix) || length(custom.prefix) != 1)) {
@@ -114,8 +128,10 @@ detect.local.extrema <- function(adj.list,
                     as.integer(min.neighborhood.size),
                     as.logical(detect.maxima))
     
-    # Add extrema type label
-    result$type <- ifelse(result$is_maxima, "Maximum", "Minimum")
+    # Keep the requested type even when all per-extremum vectors are empty.
+    result$detect.maxima <- detect.maxima
+    result$type <- rep(if (detect.maxima) "Maximum" else "Minimum",
+                       length(result$vertices))
 
     # Add labels based on function values
     if (length(result$vertices) > 0) {
@@ -140,7 +156,7 @@ detect.local.extrema <- function(adj.list,
         result$labels <- character(0)
     }
 
-    class(result) <- "local_extrema"
+    class(result) <- "gflow_local_extrema"
     return(result)
 }
 
@@ -151,11 +167,11 @@ detect.local.extrema <- function(adj.list,
 #' statistics on the number of extrema found, their function values, neighborhood
 #' sizes, and radii.
 #'
-#' @param object An object of class \code{"local_extrema"}, as returned by
-#'   \code{\link{detect.local.extrema}}.
+#' @param object An object of class \code{"gflow_local_extrema"}, as returned by
+#'   \code{\link{detect.adaptive.extrema}}.
 #' @param ... Additional arguments (currently ignored).
 #'
-#' @return An object of class \code{"summary.local_extrema"}, which is a list containing:
+#' @return An object of class \code{"summary.gflow_local_extrema"}, which is a list containing:
 #'   \describe{
 #'     \item{n_extrema}{Integer; total number of extrema found}
 #'     \item{extrema_type}{Character; type of extrema ("Maximum" or "Minimum")}
@@ -170,21 +186,22 @@ detect.local.extrema <- function(adj.list,
 #'   vertices = c(4L, 2L),
 #'   values = c(5, 3),
 #'   radii = c(2, 1),
-#'   neighborhood_sizes = c(4L, 3L),
+#'   neighborhood_sizes = c(3L, 2L),
 #'   is_maxima = c(TRUE, TRUE),
 #'   type = c("Maximum", "Maximum"),
 #'   labels = c("M1", "M2"),
-#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#'   neighborhood_vertices = list(c(3L, 5L, 2L), c(1L, 3L)),
+#'   detect.maxima = TRUE
 #' )
-#' class(extrema) <- "local_extrema"
+#' class(extrema) <- "gflow_local_extrema"
 #'
 #' summary(extrema)
 #'
-#' @method summary local_extrema
+#' @method summary gflow_local_extrema
 #' @export
-summary.local_extrema <- function(object, ...) {
-    if (!inherits(object, "local_extrema")) {
-        stop("Object must be of class 'local_extrema'")
+summary.gflow_local_extrema <- function(object, ...) {
+    if (!inherits(object, "gflow_local_extrema")) {
+        stop("Object must be of class 'gflow_local_extrema'")
     }
 
     result <- list()
@@ -195,7 +212,13 @@ summary.local_extrema <- function(object, ...) {
     if (n_extrema > 0) {
         result$extrema_type <- unique(object$type)[1]
     } else {
-        result$extrema_type <- ifelse(all(object$is_maxima), "Maximum", "Minimum")
+        result$extrema_type <- if (isTRUE(object$detect.maxima)) {
+            "Maximum"
+        } else if (isFALSE(object$detect.maxima)) {
+            "Minimum"
+        } else {
+            NA_character_
+        }
     }
 
     # Handle case with no extrema
@@ -204,7 +227,7 @@ summary.local_extrema <- function(object, ...) {
         result$neighborhood_sizes_summary <- NA
         result$radius_summary <- NA
         result$extrema_details <- data.frame()
-        class(result) <- "summary.local_extrema"
+        class(result) <- "summary.gflow_local_extrema"
         return(result)
     }
 
@@ -231,7 +254,7 @@ summary.local_extrema <- function(object, ...) {
     }
 
     result$extrema_details <- extrema_df
-    class(result) <- "summary.local_extrema"
+    class(result) <- "summary.gflow_local_extrema"
     return(result)
 }
 
@@ -240,7 +263,7 @@ summary.local_extrema <- function(object, ...) {
 #' @description
 #' Prints a formatted summary of local extrema detection results.
 #'
-#' @param x An object of class \code{"summary.local_extrema"}.
+#' @param x An object of class \code{"summary.gflow_local_extrema"}.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return Invisibly returns \code{x}.
@@ -250,20 +273,21 @@ summary.local_extrema <- function(object, ...) {
 #'   vertices = c(4L, 2L),
 #'   values = c(5, 3),
 #'   radii = c(2, 1),
-#'   neighborhood_sizes = c(4L, 3L),
+#'   neighborhood_sizes = c(3L, 2L),
 #'   is_maxima = c(TRUE, TRUE),
 #'   type = c("Maximum", "Maximum"),
 #'   labels = c("M1", "M2"),
-#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#'   neighborhood_vertices = list(c(3L, 5L, 2L), c(1L, 3L)),
+#'   detect.maxima = TRUE
 #' )
-#' class(extrema) <- "local_extrema"
+#' class(extrema) <- "gflow_local_extrema"
 #'
 #' extrema.summary <- summary(extrema)
 #' extrema.summary
 #'
-#' @method print summary.local_extrema
+#' @method print summary.gflow_local_extrema
 #' @export
-print.summary.local_extrema <- function(x, ...) {
+print.summary.gflow_local_extrema <- function(x, ...) {
     cat("Local Extrema Detection Summary\n")
     cat("==============================\n\n")
 
@@ -297,20 +321,9 @@ print.summary.local_extrema <- function(x, ...) {
     invisible(x)
 }
 
-#' Extract Vertices from a Local Extrema Object
-#'
-#' @description
-#' Generic function to extract vertices from various objects.
-#'
-#' @param object An object from which to extract vertices.
-#' @param ... Additional arguments passed to methods.
-#'
-#' @return The extracted vertices (format depends on the method).
-#'
+#' @importFrom dgraphs vertices
 #' @export
-vertices <- function(object, ...) {
-    UseMethod("vertices")
-}
+dgraphs::vertices
 
 #' Extract Vertices of a Specific Local Extremum
 #'
@@ -318,9 +331,10 @@ vertices <- function(object, ...) {
 #' Extracts the vertices belonging to a specific local extremum identified by its label.
 #' Returns all vertices in the neighborhood of the specified extremum.
 #'
-#' @param object An object of class \code{"local_extrema"}.
+#' @param object An object of class \code{"gflow_local_extrema"}.
 #' @param label Character string specifying the label of the extremum (e.g., "M1", "m2").
-#' @param include.center Logical; if \code{TRUE} (default), include the center vertex.
+#' @param include.center Logical; if \code{TRUE} (default), include the center
+#'   vertex exactly once, adding it if absent. If \code{FALSE}, exclude it.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A numeric vector of vertex indices in the extremum's neighborhood.
@@ -333,21 +347,22 @@ vertices <- function(object, ...) {
 #'   vertices = c(4L, 2L),
 #'   values = c(5, 3),
 #'   radii = c(2, 1),
-#'   neighborhood_sizes = c(4L, 3L),
+#'   neighborhood_sizes = c(3L, 2L),
 #'   is_maxima = c(TRUE, TRUE),
 #'   type = c("Maximum", "Maximum"),
 #'   labels = c("M1", "M2"),
-#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#'   neighborhood_vertices = list(c(3L, 5L, 2L), c(1L, 3L)),
+#'   detect.maxima = TRUE
 #' )
-#' class(extrema) <- "local_extrema"
+#' class(extrema) <- "gflow_local_extrema"
 #'
 #' vertices(extrema, "M1")
 #'
-#' @method vertices local_extrema
+#' @method vertices gflow_local_extrema
 #' @export
-vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
-    if (!inherits(object, "local_extrema")) {
-        stop("Object must be of class 'local_extrema'")
+vertices.gflow_local_extrema <- function(object, label, include.center = TRUE, ...) {
+    if (!inherits(object, "gflow_local_extrema")) {
+        stop("Object must be of class 'gflow_local_extrema'")
     }
 
     if (missing(label)) {
@@ -356,6 +371,11 @@ vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
 
     if (!is.character(label) || length(label) != 1) {
         stop("'label' must be a single character string")
+    }
+
+    if (!is.logical(include.center) || length(include.center) != 1L ||
+        is.na(include.center)) {
+        stop("'include.center' must be a single logical value")
     }
 
     # Find the index of the extremum with the specified label
@@ -373,10 +393,11 @@ vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
     # Extract vertices for the specified extremum
     vertices <- object$neighborhood_vertices[[label_index]]
 
-    # Remove center vertex if requested
-    if (!include.center) {
-        center_vertex <- object$vertices[label_index]
-        vertices <- vertices[vertices != center_vertex]
+    center.vertex <- object$vertices[label_index]
+    if (include.center) {
+        vertices <- unique(c(vertices, center.vertex))
+    } else {
+        vertices <- vertices[vertices != center.vertex]
     }
 
     return(vertices)
@@ -388,7 +409,7 @@ vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
 #' Creates visualizations showing the distribution of function values and
 #' neighborhood characteristics of detected extrema.
 #'
-#' @param x An object of class \code{"local_extrema"}.
+#' @param x An object of class \code{"gflow_local_extrema"}.
 #' @param ... Additional graphical parameters passed to plotting functions.
 #'
 #' @return Invisibly returns \code{x}.
@@ -406,21 +427,22 @@ vertices.local_extrema <- function(object, label, include.center = TRUE, ...) {
 #'   vertices = c(4L, 2L),
 #'   values = c(5, 3),
 #'   radii = c(2, 1),
-#'   neighborhood_sizes = c(4L, 3L),
+#'   neighborhood_sizes = c(3L, 2L),
 #'   is_maxima = c(TRUE, TRUE),
 #'   type = c("Maximum", "Maximum"),
 #'   labels = c("M1", "M2"),
-#'   neighborhood_vertices = list(c(3L, 4L, 5L), c(1L, 2L, 3L))
+#'   neighborhood_vertices = list(c(3L, 5L, 2L), c(1L, 3L)),
+#'   detect.maxima = TRUE
 #' )
-#' class(extrema) <- "local_extrema"
+#' class(extrema) <- "gflow_local_extrema"
 #'
 #' plot(extrema)
 #'
-#' @method plot local_extrema
+#' @method plot gflow_local_extrema
 #' @export
-plot.local_extrema <- function(x, ...) {
-    if (!inherits(x, "local_extrema")) {
-        stop("Object must be of class 'local_extrema'")
+plot.gflow_local_extrema <- function(x, ...) {
+    if (!inherits(x, "gflow_local_extrema")) {
+        stop("Object must be of class 'gflow_local_extrema'")
     }
 
     if (length(x$vertices) == 0) {

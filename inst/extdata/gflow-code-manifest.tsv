@@ -532,7 +532,7 @@ inst/include/Spectra/Util/SelectionRule.h	8842650ab86bb23416ce95ad43322b59
 inst/include/Spectra/Util/SimpleRandom.h	840f08da0e08a41893441c061b4eb18b
 inst/include/Spectra/Util/TypeTraits.h	2a9d6706d590e419e91e6507893feec5
 inst/include/Spectra/Util/Version.h	f722f8efd1eb0704f952716e74d2016c
-NAMESPACE	e1e72c122558ee85600a52feeaa5c949
+NAMESPACE	c9f7d27336d4b4576eec00c713751b6d
 R/2d_smooth_morse_smale.R	8e5bc6d728111df84121e928b40f2e3f
 R/analyze_comono_distributions.R	cd4931162f49a86903be176dc85ee80e
 R/annotation.R	ed8df33997b96a85a8d5f472187331d2
@@ -578,7 +578,7 @@ R/find_discrepant_pairs.R	61d3d0fc3d2b5dda9fc280528189d5cb
 R/fn_graphs.R	b6f3d35f3a746144ad53592d5e658e5f
 R/generate_knn_example_data.R	7bab0654c9314d5ec4dbdcae0ec2081f
 R/gfassoc_utils.R	e444e7d29e259190dcf1913581629b0a
-R/gfc_flow.R	b89287c87d649fa5708fd2d6f0f7a502
+R/gfc_flow.R	691cf013f0a398d60f0cbb18a69f5e46
 R/gfcor.R	9b771419213a1aab733ac547c1c0b78a
 R/gflow_basins.R	2330a637f2e476b3a652cbafaa1d924b
 R/gflow_cx_utils.R	ff78b99f0e1b1744e604a21bd73311a4
@@ -605,7 +605,7 @@ R/knn_cache_helpers.R	e4abe9bdbc46934249ec7e5b1f39424f
 R/knn_metric_helpers.R	5b0381aa92c434b3b4e749972640b550
 R/lcor_with_posterior.R	3c7821bbfb08037cc4a26501ebebf0d3
 R/lcor.R	bf38d662200c5f995749c608cec363c2
-R/local_extrema.R	598fda56aeab2adac00be1c88d686619
+R/local_extrema.R	0faaeebb7ef9d4dd1453d6f7b97b23d2
 R/local_geodesic_pruning.R	cf0e2dfed2b696d02d89f987afc49311
 R/lslope.R	95520a964af4e6f5da6b59202e054acd
 R/madag.R	e0b1c613c15bb7d1c4ce75c9aa5b33c5

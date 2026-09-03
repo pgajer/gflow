@@ -6,6 +6,9 @@ this index; the canonical basin-complex API remains the starting point.
 
 ## Basin and flow objects
 
+- `detect.adaptive.extrema()` detects graph extrema in adaptive neighborhoods;
+  `summary()`, `plot()`, and `vertices()` operate on its `gflow_local_extrema`
+  results. `dgraphs::detect.local.extrema()` has different, fixed-radius semantics.
 - `create.basin.complex()` constructs the canonical `basin_complex` object.
 - `as.basin.complex()` converts supported archived construction results.
 - `get.basin.table()`, `get.basin.membership()`, and

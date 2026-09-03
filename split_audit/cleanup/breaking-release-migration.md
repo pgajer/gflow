@@ -4,6 +4,22 @@ Version 0.2.0 is a coordinated pre-1.0 breaking release. The package no longer
 keeps compatibility wrappers for APIs owned by another package or for
 experimental families that lack a maintained owner.
 
+## Adaptive extrema
+
+Use `gflow::detect.adaptive.extrema()` in place of the former
+`gflow::detect.local.extrema()`. Arguments and the adaptive detection algorithm
+are retained; returned objects now have class `gflow_local_extrema`, and
+summaries have class `summary.gflow_local_extrema`. The old function and S3
+method names are removed from `gflow`. Recompute saved extrema objects with the
+new constructor so their class and detection metadata are unambiguous.
+
+`dgraphs::detect.local.extrema()` retains its distinct fixed-radius behavior
+and `local_extrema` class. It is not a replacement for the adaptive detector.
+Both packages now use the same `vertices()` generic. The `gflow` method adds
+the center exactly once when `include.center = TRUE`, while stored neighborhood
+members and counts continue to exclude it. Empty extrema results retain the
+requested maxima/minima setting in `detect.maxima` for correct summaries.
+
 ## Generic graph APIs
 
 | Removed from `gflow` | Migration |
