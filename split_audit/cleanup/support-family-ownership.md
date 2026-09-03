@@ -7,7 +7,7 @@ a stable contract, and focused tests.
 | Source family | Phase 4 disposition | Named owner / destination |
 |---|---|---|
 | `stats_utils.R` | de-export; retain only private callers while deletion is staged | graph/flow-specific pieces remain private in `gflow`; generic transforms and Bayesian summaries are candidates for a future `gstats` package |
-| `plot_utils.R` | keep only `plot3D.plain.widget()`, `plot3D.cont.widget()`, and `plot3D.cltrs.widget()` public; de-export aliases and miscellaneous plot helpers | `gflow` point-selection and exploration workflow |
+| `plot_utils.R` | generic browser widgets and their aliases removed after migration to `ivue`; native/domain helpers remain private | `ivue` owns generic browser visualization; `gflow` retains domain interpretation |
 | `synthetic_data_utils.R` | de-export all generators and S3 helpers | test-only cases move to `tests/testthat/helper-*`; reusable distribution generators are candidates for `gstats`; graph fixtures belong in `dgraphs` |
 | `grids.R` | de-export | generic spatial/grid construction belongs in `dgraphs` when used for graph construction; otherwise delete or move to `gstats` |
 | `random_sampling.R` | de-export | generic samplers are candidates for `gstats`; core callers use them privately meanwhile |

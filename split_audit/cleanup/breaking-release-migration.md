@@ -45,7 +45,8 @@ requested maxima/minima setting in `detect.maxima` for correct summaries.
 
 | Removed/de-exported from `gflow` | Owner or next action |
 |---|---|
-| Interactive `select3D.*` and `plot3D.*.widget` workflows | Relocate to `gflowui`; no public `gflow` adapter |
+| Generic `plot3D.*.widget` workflows | Use `ivue::plot3D.plain`, `ivue::plot3D.cont`, or `ivue::plot3D.cltrs`; no `.widget`/`.html` aliases or public `gflow` adapter |
+| Interactive `select3D.*` application workflows | Remain an application concern in `gflowui`, using `ivue` scenes where appropriate |
 | Compositional/microbiome helpers | Relocate to `microbiome.utils` |
 | Two-factor/CST analyses | Relocate to `gcstflow` or the owning analysis repository |
 | Metabolon preprocessing and diagnostics | Relocate to the owning analysis repository |

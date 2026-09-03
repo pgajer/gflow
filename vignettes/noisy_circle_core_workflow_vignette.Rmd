@@ -408,7 +408,7 @@ if (sum(adj.sim > 0) == 0) {
 
 ```{r optional-grip-layout, eval=FALSE}
 if (requireNamespace("grip", quietly = TRUE) &&
-    requireNamespace("rgl", quietly = TRUE)) {
+    requireNamespace("ivue", quietly = TRUE)) {
   g <- X.graphs$geom_pruned_graphs[[k.idx]]
 
   X.graphs.3d <- grip::grip.layout(
@@ -422,7 +422,7 @@ if (requireNamespace("grip", quietly = TRUE) &&
     seed = 6
   )
 
-  plot3D.plain(X.graphs.3d, radius = 0.03)
+  ivue::plot3D.plain(X.graphs.3d, point.type = "sphere", sphere.radius = 0.03)
 }
 ```
 

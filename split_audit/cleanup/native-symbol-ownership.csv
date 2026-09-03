@@ -72,7 +72,7 @@
 "S_detect_major_arms","Call","CORE-PRIVATE","R/major_arms.R","src/graph_core_endpoints.cpp","retained"
 "S_solve_full_laplacian","Call","CORE-PRIVATE","R/nerve_cx.R","src/nerve_cx_r.cpp","retained"
 "S_parameterize_circular_graph","Call","CORE-PRIVATE","R/parameterize_circular_graph.R","src/parameterize_circular_graph_r.cpp","retained"
-"S_compute_tube_lens_corridor","Call","CORE-PRIVATE","R/tube_lens_corridor.R","src/tube_lens_corridor.cpp","retained"
+"S_compute_tube_lens_corridor","Call","CORE-ANALYSIS","R/tube_lens_corridor.R","src/tube_lens_corridor.cpp","retained"
 "S_get_path_data","Call","CORE-PRIVATE","R/centered_paths.R","src/centered_paths.cpp","retained"
 "S_ugg_get_path_data","Call","CORE-PRIVATE","R/centered_paths.R","src/centered_paths.cpp","retained"
 "_gflow_rcpp_local_pca_chart","Call","CORE-PRIVATE","R/RcppExports.R","src/RcppExports.cpp","retained"

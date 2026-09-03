@@ -36,6 +36,7 @@ Imports:
     igraph,
     utils
 Suggests:
+    ivue (>= 0.0.0.9001),
     rgl,
     htmlwidgets,
     htmltools,

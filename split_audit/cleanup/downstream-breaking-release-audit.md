@@ -23,7 +23,7 @@ exists. The latter must not be changed by mechanical namespace substitution.
 | `geosmooth` | 2 | quadratic-form migration fixtures | Fixtures explicitly compare against the removed implementation; no replacement fixture owner has been published |
 | `graph_modularity` | 4 | `phate.core()` | No verified maintained successor; worktree is dirty |
 | `gflow-w2` | 2 | interactive `select3D` manual drivers | Active secondary `gflow` worktree explicitly excluded from edits by the downstream registry |
-| `gflowx` | 3 documentation references plus private runtime lookup | retired `plot3D.*.widget` UI | `gflowui` does not yet provide the named successor API; changing the lookup would invent a nonexistent contract |
+| `gflowx` | canonical `ivue` calls and separate HTML export | generic visualization | migrated to `ivue >= 0.0.0.9001`; private `gflow` widget lookup removed |
 
 ## Acceptance consequence
 

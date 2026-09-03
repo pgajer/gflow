@@ -55,6 +55,7 @@ dependency.metadata <- list(
     "Imports:igraph" = c("PROTECTED", "protected and core graph visualization", "required"),
     "Imports:utils" = c("PROTECTED", "package utilities used by protected and core code", "required"),
     "Suggests:rgl" = c("PROTECTED", "optional protected 3D visualization", "optional"),
+    "Suggests:ivue" = c("EXAMPLE", "generic browser visualization in the core vignette", "optional"),
     "Suggests:htmlwidgets" = c("CORE-ANALYSIS", "optional interactive core vignette output", "optional"),
     "Suggests:htmltools" = c("CORE-PRIVATE", "optional widget rendering support", "optional"),
     "Suggests:plotly" = c("CORE-PRIVATE", "legacy interactive selection", "remove-phase-8"),
