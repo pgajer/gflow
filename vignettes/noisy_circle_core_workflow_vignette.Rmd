@@ -411,7 +411,7 @@ if (requireNamespace("grip", quietly = TRUE) &&
     requireNamespace("ivue", quietly = TRUE)) {
   g <- X.graphs$geom_pruned_graphs[[k.idx]]
 
-  X.graphs.3d <- grip::grip.layout(
+  X.graphs.3d <- grip::grip(
     adj_list = g$adj_list,
     weight_list = g$weight_list,
     dim = 3,
