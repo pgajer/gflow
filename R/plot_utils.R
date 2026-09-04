@@ -1,283 +1,3 @@
-#' Plots 3D Points or Spheres Without Axes
-#'
-#' This function creates a 3D plot of points or spheres without axes labels
-#' using the rgl package. It automatically switches between spheres and points
-#' based on whether a radius is specified.
-#'
-#' @param X       matrix/data.frame with exactly 3 columns
-#' @param radius  numeric or NULL; if non-NULL, draw spheres with this radius
-#' @param col     color for points/spheres
-#' @param size    point size when radius is NULL
-#' @param axes,xlab,ylab,zlab standard rgl axis/label args
-#' @param ...     passed to rgl::plot3d()
-#'
-#' @return Invisibly returns the rgl object ids from plot3d()
-#' @noRd
-plot3D.plain <- function(X,
-                         radius = NULL,
-                         col = "gray",
-                         size = 3,
-                         axes = FALSE, xlab = "", ylab = "", zlab = "",
-                         ...) {
-  if (!requireNamespace("rgl", quietly = TRUE)) {
-    stop("This function requires the optional package 'rgl' for 3D visualization. ",
-         "Install with install.packages('rgl').", call. = FALSE)
-  }
-
-  ## Headless/CI-safe; harmless on desktops
-  use_null <- (!interactive()) ||
-      identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
-      (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
-  old_opt <- options(rgl.useNULL = use_null)
-  on.exit(options(old_opt), add = TRUE)
-
-  ## ---- open/clear device ----
-  ## Check if an rgl device is already open
-  if (rgl::cur3d() == 0) {
-      ## No device open, create a new one
-      if (use_null) {
-          ## Null device for headless environments
-          rgl::open3d()
-          on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-      } else {
-          ## Interactive: create a large square window
-          ## Get screen dimensions
-          screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
-
-          ## Calculate square window size (use ~80% of screen height for safety)
-          if (inherits(screen_info, "try-error")) {
-              ## Fallback if we can't get screen info
-              window_size <- 800
-          } else {
-              ## Estimate available screen space
-              ## par3d("windowRect") returns current window, not screen size
-              ## Use a reasonable maximum
-              window_size <- min(1200, 800)  ## Conservative default
-          }
-
-          rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
-      }
-  } else {
-      ## Device already open, use it (but don't close it on exit)
-      rgl::set3d(rgl::cur3d())
-  }
-
-  rgl::clear3d()
-
-  if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
-  if (ncol(X) != 3) stop("X must have exactly 3 columns")
-
-  X <- as.matrix(X)
-  storage.mode(X) <- "double"
-
-  ids <- if (!is.null(radius)) {
-    rgl::plot3d(X,
-                axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
-                type = "s", radius = radius, col = col, ...)
-  } else {
-    rgl::plot3d(X,
-                axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
-                type = "p", size = size, col = col, ...)
-  }
-
-  invisible(ids)
-}
-
-#' Creates 3D Plot with Continuous Color Coding
-#'
-#' Creates a 3D plot of a set of points defined by \code{X} color-coded by the values of \code{y}.
-#'
-#' @param X A matrix or data frame with 3 columns representing 3D coordinates.
-#' @param y A numeric vector of values to be used for color coding.
-#' @param subset Logical vector indicating which points to color-code by \code{y} values.
-#' @param non.highlight.type Display style for non-highlighted points.
-#' @param highlight.type Display style for highlighted points (those in \code{subset}).
-#' @param non.highlight.color Color for non-highlighted points.
-#' @param point.size Point size when point rendering is used.
-#' @param legend.title Legend title.
-#' @param legend.cex Legend text size.
-#' @param legend.side Side of the plot for the legend.
-#' @param legend.line Line position for the legend.
-#' @param radius Sphere radius.
-#' @param quantize.method Method for quantizing y values: "uniform" or "quantile".
-#' @param quantize.wins.p Winsorization parameter for "uniform".
-#' @param quantize.round Logical; round quantization endpoints.
-#' @param quantize.dig.lab Digits for quantization labels.
-#' @param start,end Hue start/end for rainbow palette (used only when \code{color.palette} is NULL).
-#' @param n.levels Number of color levels.
-#' @param color.palette Palette specification. See \code{quantize.cont.var}.
-#' @param palette.type Palette type: "discrete" (function(n) or vector) or "value" (function(x)).
-#' @param na.color Color for points with NA \code{y} (or NA bin assignment).
-#'
-#' @return Invisibly returns a list with \item{y.cols}{}, \item{y.col.tbl}{}, \item{legend.labs}{}.
-#'
-#' @noRd
-plot3D.cont <- function(X,
-                        y,
-                        subset = NULL,
-                        non.highlight.type = "sphere",
-                        highlight.type = c("sphere", "point"),
-                        non.highlight.color = "gray",
-                        point.size = 3,
-                        legend.title = "",
-                        legend.cex = 1.5,
-                        legend.side = 3,
-                        legend.line = 0.5,
-                        radius = NULL,
-                        quantize.method = "uniform",
-                        quantize.wins.p = 0.01,
-                        quantize.round = FALSE,
-                        quantize.dig.lab = 2,
-                        start = 1/6, end = 0, n.levels = 10,
-                        color.palette = NULL,
-                        palette.type = c("discrete", "value"),
-                        na.color = "gray80") {
-
-    ## rgl is optional; error here because this function's purpose is plotting
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-        stop("This function requires the optional package 'rgl' for 3D visualization. ",
-             "Install with install.packages('rgl').", call. = FALSE)
-    }
-
-    highlight.type <- match.arg(highlight.type)
-    palette.type <- match.arg(palette.type)
-
-    ## Headless/CI-safe; harmless on desktops
-    use_null <- (!interactive()) ||
-        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
-        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
-    old_opt <- options(rgl.useNULL = use_null)
-    on.exit(options(old_opt), add = TRUE)
-
-    ## ---- open/clear device ----
-    if (rgl::cur3d() == 0) {
-        if (use_null) {
-            rgl::open3d()
-            on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-        } else {
-            window_size <- 800
-            rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
-        }
-    } else {
-        rgl::set3d(rgl::cur3d())
-    }
-
-    rgl::clear3d()
-
-    ## Validate inputs
-    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
-    if (ncol(X) != 3) stop("X must have exactly 3 columns")
-    if (!is.numeric(y)) stop("y must be a numeric vector")
-    if (nrow(X) != length(y)) stop("Number of rows in X must match the length of y")
-    if (!is.null(subset) && length(subset) != length(y)) {
-        stop("Length of subset must match the length of y")
-    }
-    if (!non.highlight.type %in% c("sphere", "point")) {
-        stop("non.highlight.type must be either 'sphere' or 'point'")
-    }
-    if (!is.numeric(point.size) || point.size <= 0) {
-        stop("point.size must be a positive numeric value")
-    }
-
-    X <- as.matrix(X)
-    storage.mode(X) <- "double"
-
-    ## Quantize continuous y -> categories & colors
-    q <- quantize.cont.var(
-        y,
-        method = quantize.method,
-        wins.p = quantize.wins.p,
-        round = quantize.round,
-        dig.lab = quantize.dig.lab,
-        start = start,
-        end = end,
-        n.levels = n.levels,
-        color.palette = color.palette,
-        palette.type = palette.type,
-        na.color = na.color
-    )
-
-    y.cat <- q$x.cat
-    y.col.tbl <- q$x.col.tbl
-    y.cols <- y.col.tbl[as.character(y.cat)]
-    y.cols[is.na(y.cols)] <- na.color
-
-    ## Prepare subset; treat NAs as FALSE
-    if (is.null(subset)) {
-        subset <- rep(TRUE, length(y))
-    } else {
-        subset <- as.logical(subset)
-        subset[is.na(subset)] <- FALSE
-    }
-
-    ## Choose a radius if none provided (scale-aware default)
-    radius_local <- radius
-    if (is.null(radius_local)) {
-        rng <- apply(X, 2, function(v) diff(range(v, na.rm = TRUE)))
-        radius_local <- max(1e-8, 0.01 * mean(rng))
-    }
-
-    ## Base layer: non-highlighted points
-    if (any(!subset)) {
-        if (identical(non.highlight.type, "sphere")) {
-            plot3D.plain(
-                X[!subset, , drop = FALSE],
-                col = non.highlight.color,
-                radius = radius_local,
-                open_new = FALSE
-            )
-        } else {
-            plot3D.plain(
-                X[!subset, , drop = FALSE],
-                col = non.highlight.color,
-                size = point.size,
-                open_new = FALSE
-            )
-        }
-    } else {
-        plot3D.plain(
-            X[FALSE, , drop = FALSE],
-            col = non.highlight.color,
-            size = point.size,
-            open_new = FALSE
-        )
-    }
-
-    ## Overlay: highlighted points (data-driven colors; spheres or points)
-    if (any(subset)) {
-        if (identical(highlight.type, "sphere")) {
-            rgl::spheres3d(X[subset, , drop = FALSE], col = y.cols[subset], radius = radius_local)
-        } else {
-            rgl::points3d(X[subset, , drop = FALSE], col = y.cols[subset], size = point.size)
-        }
-    }
-
-    ## Legend: ensure all bins appear, including empty ones
-    y.cat.freq <- table(y.cat, useNA = "no")
-    for (nm in names(y.col.tbl)) {
-        if (!nm %in% names(y.cat.freq)) y.cat.freq[nm] <- 0L
-    }
-    y.cat.freq <- y.cat.freq[names(y.col.tbl)]
-
-    maxlen <- max(nchar(names(y.col.tbl)), 5) + 2
-    legend.labs <- vapply(names(y.col.tbl), function(x) {
-        sprintf(sprintf("%%-%ds%%5s", maxlen), x, sprintf("(%s)", y.cat.freq[[x]]))
-    }, character(1))
-
-    rgl::legend3d("topleft",
-                  legend = legend.labs,
-                  fill = unname(y.col.tbl),
-                  inset = 0.05,
-                  cex = legend.cex,
-                  title = legend.title)
-
-    invisible(list(
-        y.cols = y.cols,
-        y.col.tbl = y.col.tbl,
-        legend.labs = legend.labs
-    ))
-}
-
 #' Plot Output from lcor.1D()
 #'
 #' Creates a visualization of local correlation results from the lcor.1D() function
@@ -537,12 +257,11 @@ plot2D.cont <- function(X,
 #' cl <- sample(1:5, nrow(X), replace = TRUE)
 #' centers <- show.cltrs(X, cl, show.plot = FALSE)
 #'
-#' # If rgl is available, render off-screen safely:
-#' if (requireNamespace("rgl", quietly = TRUE)) {
-#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
-#'   # Suppose you've already drawn points via your helper:
-#'   # plot3D.plain(X)
-#'   show.cltrs(X, cl, cex = 1.1, adj = c(0.5, 1), show.plot = TRUE)
+#' # Add domain labels inside the widget's private scene:
+#' if (requireNamespace("ivue", quietly = TRUE)) {
+#'   ivue::plot3D.plain(X, layers = list(ivue::layer3D.callback(function(ctx) {
+#'     show.cltrs(ctx$X, cl, cex = 1.1, adj = c(0.5, 1), show.plot = TRUE)
+#'   })))
 #' }
 #' }
 #'
@@ -628,254 +347,6 @@ show.cltrs <- function(X, cltr, cex = 1, adj = c(0.5, 1),
     invisible(cltr_centers)
 }
 
-#' Create 3D Plot with Cluster Visualization
-#'
-#' Creates a 3D plot of points with cluster assignments shown by different colors
-#'
-#' @param X A 3D matrix or data.frame with exactly 3 columns.
-#' @param cltr A vector of cluster IDs (numeric or character) of length nrow(X).
-#' @param cltr.col.tbl A named vector mapping cluster IDs to colors. If NULL, colors are assigned automatically.
-#' @param ref.cltr A reference cluster ID (usually '0') that can be colored differently.
-#' @param ref.cltr.color The color for the reference cluster.
-#' @param show.ref.cltr Logical. Whether to display the reference cluster.
-#' @param show.cltr.labels Logical. Whether to show cluster labels in the plot.
-#' @param add Logical. Whether to add to an existing plot.
-#' @param title Title of the plot.
-#' @param cex.labs Size scaling parameter for cluster labels.
-#' @param pal.type Palette type: "numeric", "brewer", or "mclust".
-#' @param brewer.pal.n Number of colors in the RColorBrewer palette.
-#' @param brewer.pal Name of the RColorBrewer palette.
-#' @param show.legend Logical. Whether to show the legend.
-#' @param sort.legend.labs.by.freq Logical. Sort legend labels by frequency.
-#' @param sort.legend.labs.by.name Logical. Sort legend labels alphabetically.
-#' @param filter.out.freq.0.cltrs Logical. Remove clusters with zero frequency from legend.
-#' @param legend.title Title for the legend.
-#' @param radius Numeric. Size of spheres at data points.
-#' @param axes Logical. Whether to show axes.
-#' @param xlab,ylab,zlab Axis labels.
-#' @param ... Additional arguments passed to \code{\link[rgl]{plot3d}}.
-#'
-#' @return Invisibly returns a list containing:
-#' \item{ids}{RGL object IDs}
-#' \item{cltr.col.tbl}{Color table used for clusters}
-#' \item{cltr.labs}{Cluster labels}
-#' \item{legend.cltr.labs}{Legend labels}
-#' \item{cltr.centers}{Matrix of cluster centers (if show.cltr.labels = TRUE)}
-#'
-#' @details
-#' This function provides comprehensive cluster visualization in 3D space with automatic
-#' color assignment, legend generation, and various customization options. It supports
-#' highlighting specific clusters and different color palette options.
-#'
-#' @examples
-#' \dontrun{
-#' if (requireNamespace("rgl", quietly = TRUE)) {
-#'   old <- options(rgl.useNULL = TRUE); on.exit(options(old), add = TRUE)
-#'   set.seed(123)
-#'   X <- matrix(rnorm(300), ncol = 3)
-#'   cltr <- sample(c("A", "B", "C"), 100, replace = TRUE)
-#'   plot3D.cltrs(X, cltr, show.cltr.labels = TRUE)
-#' }
-#' }
-#' @importFrom grDevices hcl.colors rainbow
-#' @noRd
-#' @noRd
-plot3D.cltrs <- function(X,
-                         cltr = NULL,
-                         cltr.col.tbl = NULL,
-                         ref.cltr = NULL,
-                         ref.cltr.color = 'gray',
-                         show.ref.cltr = TRUE,
-                         show.cltr.labels = TRUE,
-                         add = FALSE,
-                         title = "",
-                         cex.labs = 2,
-                         pal.type = "numeric",
-                         brewer.pal.n = 3,
-                         brewer.pal = "Set1",
-                         show.legend = TRUE,
-                         sort.legend.labs.by.freq = FALSE,
-                         sort.legend.labs.by.name = FALSE,
-                         filter.out.freq.0.cltrs = TRUE,
-                         legend.title = NULL,
-                         radius = NA,
-                         axes = FALSE,
-                         xlab = "",
-                         ylab = "",
-                         zlab = "",
-                         ...) {
-
-    if (!requireNamespace("rgl", quietly = TRUE)) {
-        stop("This function requires the optional package 'rgl' for 3D visualization. ",
-             "Install with install.packages('rgl').", call. = FALSE)
-    }
-
-    ## Headless/CI-safe; harmless on desktops
-    use_null <- (!interactive()) ||
-        identical(Sys.getenv("RGL_USE_NULL"), "TRUE") ||
-        (Sys.getenv("DISPLAY") == "" && .Platform$OS.type != "windows")
-    old_opt <- options(rgl.useNULL = use_null)
-    on.exit(options(old_opt), add = TRUE)
-
-    ## ---- open/clear device ----
-    ## Check if an rgl device is already open
-    if (rgl::cur3d() == 0) {
-        ## No device open, create a new one
-        if (use_null) {
-            ## Null device for headless environments
-            rgl::open3d()
-            on.exit(try(rgl::close3d(), silent = TRUE), add = TRUE)
-        } else {
-            ## Interactive: create a large square window
-            ## Get screen dimensions
-            screen_info <- try(rgl::par3d("windowRect"), silent = TRUE)
-
-            ## Calculate square window size (use ~80% of screen height for safety)
-            if (inherits(screen_info, "try-error")) {
-                ## Fallback if we can't get screen info
-                window_size <- 800
-            } else {
-                ## Estimate available screen space
-                ## par3d("windowRect") returns current window, not screen size
-                ## Use a reasonable maximum
-                window_size <- min(1200, 800)  ## Conservative default
-            }
-
-            rgl::open3d(windowRect = c(50, 50, 50 + window_size, 50 + window_size))
-        }
-    } else {
-        ## Device already open, use it (but don't close it on exit)
-        rgl::set3d(rgl::cur3d())
-    }
-
-    rgl::clear3d()
-
-    if (!is.matrix(X) && !is.data.frame(X)) stop("X must be a matrix or data frame")
-    if (ncol(X) != 3) stop("X must have exactly 3 columns")
-    if (!is.null(cltr) && length(cltr) != nrow(X)) stop("Length of cltr must match nrow(X)")
-
-    legend.cltr.labs <- NULL
-    ids <- NULL
-    cltr.centers <- NULL
-
-    x <- X[, 1]; y <- X[, 2]; z <- X[, 3]
-
-    if (!is.null(cltr)) {
-        cltr <- as.character(cltr)
-        cltr.labs <- names(sort(table(cltr)))
-        nCl <- length(cltr.labs)
-
-        if (is.null(cltr.col.tbl)) {
-            if (nCl <= 8) pal.type <- "numeric"
-            if (nCl > 19) {
-                brewer.pal <- "Spectral"; brewer.pal.n <- 11
-                cltr.labs <- sample(cltr.labs)
-            }
-
-            if (pal.type == "brewer") {
-                if (requireNamespace("RColorBrewer", quietly = TRUE)) {
-                    col.pal <- grDevices::colorRampPalette(
-                                              rev(RColorBrewer::brewer.pal(brewer.pal.n, brewer.pal))
-                                          )
-                    cltr.col.tbl <- col.pal(nCl)
-                } else {
-                    warning("RColorBrewer not installed; using hcl.colors('Spectral') fallback.")
-                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
-                }
-            } else if (pal.type == "numeric") {
-                cltr.col.tbl <- if (nCl < 8) 2:(nCl + 1) else seq_len(nCl)
-            } else if (pal.type == "mclust") {
-                if (!requireNamespace("mclust", quietly = TRUE)) {
-                    warning("mclust not installed; using hcl.colors('Spectral') fallback.")
-                    cltr.col.tbl <- grDevices::hcl.colors(nCl, palette = "Spectral")
-                } else {
-                    cltr.col.tbl <- mclust::mclust.options("classPlotColors")[seq_len(nCl)]
-                }
-            } else {
-                stop(sprintf("Unrecognized pal.type='%s'", pal.type))
-            }
-            names(cltr.col.tbl) <- cltr.labs
-        }
-
-        if (!is.null(ref.cltr)) {
-            ref.cltr <- as.character(ref.cltr)
-            if (!(ref.cltr %in% cltr.labs)) warning(ref.cltr, " is not in cltr.labs")
-            cltr.col.tbl[ref.cltr] <- ref.cltr.color
-        }
-
-        cltr.cols <- cltr.col.tbl[cltr]
-        if (nCl == 1 && !add) {
-            ids <- rgl::plot3d(x, y, z, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
-        } else {
-            if (!is.na(radius)) {
-                if (!add) {
-                    if (is.null(ref.cltr)) {
-                        ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab,
-                                           main = title, type = "s", radius = radius, ...)
-                    } else {
-                        idx <- cltr != ref.cltr
-                        ids <- rgl::plot3d(x[idx], y[idx], z[idx], col = cltr.cols[idx], axes = axes,
-                                           xlab = xlab, ylab = ylab, zlab = zlab, main = title, type = "s", radius = radius, ...)
-                        if (show.ref.cltr) rgl::spheres3d(x[!idx], y[!idx], z[!idx], col = ref.cltr.color, radius = radius)
-                    }
-                }
-            } else if (!add) {
-                ids <- rgl::plot3d(x, y, z, col = cltr.cols, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
-            }
-
-            if (show.cltr.labels) {
-                cltr.centers <- matrix(nrow = length(cltr.labs), ncol = 3,
-                                       dimnames = list(cltr.labs, c("x","y","z")))
-                for (j in seq_along(cltr.labs)) {
-                    idx <- cltr == cltr.labs[j]
-                    idx[is.na(idx)] <- FALSE
-                    s <- sum(idx)
-                    if (s > 1) cltr.centers[j, ] <- apply(X[idx, , drop = FALSE], 2, median)
-                    else if (s == 1) cltr.centers[j, ] <- as.numeric(X[idx, ])
-                }
-                rgl::text3d(x = cltr.centers[,1], y = cltr.centers[,2], z = cltr.centers[,3],
-                            texts = rownames(cltr.centers), font = 2, cex = cex.labs, adj = c(0.5, 1))
-            }
-
-            cltr.freq <- table(cltr)
-            if (!is.null(ref.cltr)) cltr.freq <- cltr.freq[setdiff(names(cltr.freq), ref.cltr)]
-
-            if (isTRUE(show.legend)) {
-                for (xnm in names(cltr.col.tbl)) if (!(xnm %in% names(cltr.freq))) cltr.freq[xnm] <- 0L
-                if (isTRUE(sort.legend.labs.by.freq)) {
-                    o <- order(cltr.freq[names(cltr.col.tbl)], decreasing = TRUE); cltr.col.tbl <- cltr.col.tbl[o]
-                } else if (isTRUE(sort.legend.labs.by.name)) {
-                    o <- order(names(cltr.col.tbl)); cltr.col.tbl <- cltr.col.tbl[o]
-                }
-                if (isTRUE(filter.out.freq.0.cltrs)) {
-                    cltr.freq <- cltr.freq[names(cltr.col.tbl)]
-                    keep <- cltr.freq != 0L
-                    cltr.col.tbl <- cltr.col.tbl[keep]; cltr.freq <- cltr.freq[keep]
-                }
-                maxlen <- max(nchar(names(cltr.col.tbl))) + 2
-                legend.cltr.labs <- vapply(names(cltr.col.tbl), function(xnm) {
-                    sprintf(sprintf("%%-%ds%%5s", maxlen), xnm, sprintf("(%s)", cltr.freq[xnm]))
-                }, character(1))
-                rgl::legend3d("topleft", legend = legend.cltr.labs, fill = cltr.col.tbl, inset = 0.05,
-                              cex = 1.5, title = legend.title)
-            } else {
-                legend.cltr.labs <- NULL
-                try(rgl::legend3d(), silent = TRUE)
-            }
-        }
-    } else {
-        ids <- rgl::plot3d(X, axes = axes, xlab = xlab, ylab = ylab, zlab = zlab, main = title, ...)
-        cltr.col.tbl <- NULL; cltr.labs <- NULL
-        try(rgl::legend3d(), silent = TRUE)
-    }
-
-    invisible(list(ids = ids,
-                   cltr.col.tbl = cltr.col.tbl,
-                   cltr.labs = if (!is.null(cltr)) cltr.labs else NULL,
-                   legend.cltr.labs = legend.cltr.labs,
-                   cltr.centers = cltr.centers))
-}
-
 #' Highlight a Specific Cluster in 3D Space
 #'
 #' Shows a specified cluster with emphasis while displaying other clusters in gray
@@ -886,10 +357,13 @@ plot3D.cltrs <- function(X,
 #' @param cl.radius Radius of spheres for the highlighted cluster.
 #' @param show.ref.cltr Logical. Whether to show non-highlighted clusters.
 #' @param show.labels Logical. Whether to show row names of highlighted points.
+#' @param show.cltr.labels Whether to label cluster coordinate medians.
+#' @param cex.labs Size of cluster labels.
 #' @param adj Adjustment parameter for text positioning.
-#' @param ... Additional arguments.
+#' @param layers Additional ivue layers.
+#' @param ... Additional scene controls passed to \code{ivue::plot3D.groups()}.
 #'
-#' @return Invisibly returns NULL. The function is called for its side effect.
+#' @return An interactive browser widget.
 #'
 #' @details
 #' This function creates a 3D plot where one specific cluster is highlighted in red
@@ -911,7 +385,10 @@ plot3D.cltrs <- function(X,
 #'
 #' @noRd
 show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
-                       show.labels = FALSE, adj = c(1.3, 0), ...) {
+                       show.labels = FALSE, adj = c(1.3, 0), layers = list(),
+                       show.cltr.labels = TRUE, cex.labs = 2, ...) {
+
+    .require.ivue.plotting()
 
     if (!is.matrix(X) && !is.data.frame(X)) {
         stop("X must be a matrix or data frame")
@@ -923,18 +400,28 @@ show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
         stop("Length of cltr must match number of rows in X")
     }
 
-    idx <- cltr == cl
+    if (length(cl) != 1L || is.na(cl)) stop("cl must identify one cluster")
+    cl <- as.character(cl)
+    if (!is.logical(show.ref.cltr) || length(show.ref.cltr) != 1L || is.na(show.ref.cltr)) {
+        stop("show.ref.cltr must be TRUE or FALSE")
+    }
+    idx <- !is.na(cltr) & cltr == cl
     lab <- paste0("not ", cl)
     loc.cltr <- ifelse(idx, cl, lab)
-
-    plot3D.cltrs(X, loc.cltr, ref.cltr = lab, show.ref.cltr = show.ref.cltr, ...)
-    rgl::spheres3d(X[idx, , drop = FALSE], radius = cl.radius, col = 'red')
-
-    if (show.labels && !is.null(rownames(X))) {
-        rgl::text3d(X[idx, , drop = FALSE], texts = rownames(X)[idx], adj = adj)
+    colors <- stats::setNames(c("red", "gray"), c(as.character(cl), lab))
+    if (show.cltr.labels) {
+        label.groups <- if (show.ref.cltr) unique(loc.cltr) else unique(loc.cltr[idx])
+        layers <- c(layers, .cluster.label.layers(X, loc.cltr, label.groups, cex.labs))
     }
-
-    invisible(NULL)
+    if (show.labels && !is.null(rownames(X))) {
+        layers <- c(layers, list(ivue::layer3D.labels(
+            which(idx), rownames(X)[idx], adj = adj)))
+    }
+    ivue::plot3D.groups(
+        X, groups = loc.cltr, scale = ivue::color.scale.groups(loc.cltr, colors),
+        highlight = idx, highlight.style = list(point.type = "sphere", sphere.radius = cl.radius),
+        non.highlight.style = list(col = "gray", alpha = if (show.ref.cltr) 1 else 0),
+        layers = layers, ...)
 }
 
 #' Plot a Specific Cluster with Custom Colors
@@ -944,9 +431,12 @@ show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
 #' @param cl Cluster ID(s) to highlight. Can be a single value or vector.
 #' @param cltr Vector of cluster IDs.
 #' @param X A matrix or data.frame with 3 columns representing 3D coordinates.
-#' @param ... Additional arguments passed to \code{\link{plot3D.cltrs}}.
+#' @param show.cltr.labels Whether to label cluster coordinate medians.
+#' @param cex.labs Size of cluster labels.
+#' @param layers Additional ivue layers.
+#' @param ... Additional controls passed to \code{ivue::plot3D.groups()}.
 #'
-#' @return Invisibly returns the output from plot3D.cltrs.
+#' @return An interactive browser widget.
 #'
 #' @details
 #' This function creates a 3D plot where specified clusters are highlighted with
@@ -966,19 +456,25 @@ show.3d.cl <- function(cl, cltr, X, cl.radius = 0.0001, show.ref.cltr = TRUE,
 #' }
 #'
 #' @noRd
-plot3D.cl <- function(cl, cltr, X, ...) {
+plot3D.cl <- function(cl, cltr, X, show.cltr.labels = TRUE, cex.labs = 2,
+                      layers = list(), ...) {
+
+    .require.ivue.plotting()
+    if (length(cltr) != nrow(X)) stop("Length of cltr must match nrow(X)")
 
     cl <- as.character(cl)
-    all <- as.character(sort(unique(cltr)))
-    other <- setdiff(all, cl)
+    cltr <- as.character(cltr)
+    cltr.levels <- as.character(sort(unique(cltr)))
+    if (anyNA(cl) || !all(cl %in% cltr.levels)) stop("cl must identify existing clusters")
+    other <- setdiff(cltr.levels, cl)
 
-    cltr.col.tbl <- rep("gray", length(all))
-    names(cltr.col.tbl) <- all
+    cltr.col.tbl <- rep("gray", length(cltr.levels))
+    names(cltr.col.tbl) <- cltr.levels
 
     if (length(cl) > 1) {
         if (!requireNamespace("mclust", quietly = TRUE)) {
             # Use default colors if mclust not available
-            cltr.col.tbl[cl] <- 2:(length(cl) + 1)
+            cltr.col.tbl[cl] <- grDevices::hcl.colors(length(cl), "Dark 3")
         } else {
             cltr.col.tbl[cl] <- mclust::mclust.options("classPlotColors")[seq_along(cl)]
         }
@@ -986,9 +482,14 @@ plot3D.cl <- function(cl, cltr, X, ...) {
         cltr.col.tbl[cl] <- "red"
     }
 
-    cltr.col.tbl[other] <- grDevices::gray.colors(length(other))
+    if (length(other)) cltr.col.tbl[other] <- grDevices::gray.colors(length(other))
 
-    plot3D.cltrs(X = X, cltr = cltr, cltr.col.tbl = cltr.col.tbl, ...)
+    if (show.cltr.labels) {
+        layers <- c(layers, .cluster.label.layers(X, cltr, cltr.levels, cex.labs))
+    }
+    ivue::plot3D.groups(X, groups = cltr,
+        scale = ivue::color.scale.groups(cltr, colors = cltr.col.tbl),
+        layers = layers, ...)
 }
 
 #' Add 3D Line Segments for Binary Variable
@@ -1018,8 +519,9 @@ plot3D.cl <- function(cl, cltr, X, ...) {
 #' y <- sample(0:1, 100, replace = TRUE)
 #' names(y) <- rownames(X) <- paste0("Sample", 1:100)
 #'
-#' plot3D.plain(X)
-#' bin.segments3d(X, y, offset = c(0, 0, 0.1))
+#' ivue::plot3D.plain(X, layers = list(ivue::layer3D.callback(function(ctx) {
+#'   bin.segments3d(ctx$X, y, offset = c(0, 0, 0.1))
+#' })))
 #' }
 #'
 #' @noRd
@@ -1080,8 +582,9 @@ bin.segments3d <- function(X, y, offset, with.labels = TRUE, lab.tbl = NULL,
 #' y <- runif(100)
 #' names(y) <- rownames(X) <- paste0("Sample", 1:100)
 #'
-#' plot3D.plain(X)
-#' cont.segments3d(X, y, offset = c(0, 0, 0.1))
+#' ivue::plot3D.plain(X, layers = list(ivue::layer3D.callback(function(ctx) {
+#'   cont.segments3d(ctx$X, y, offset = c(0, 0, 0.1))
+#' })))
 #' }
 #'
 #' @importFrom grDevices rainbow
@@ -1175,7 +678,7 @@ mae.plot <- function(mae.mean, mae.mad,
 #' @param col Color for highlighted samples.
 #' @param legend.title Title for the legend.
 #'
-#' @return Invisibly returns NULL.
+#' @return An interactive browser widget.
 #'
 #' @details
 #' This function creates a 3D plot where samples in set S are highlighted
@@ -1194,6 +697,8 @@ mae.plot <- function(mae.mean, mae.mad,
 #' @noRd
 map.S.to.X <- function(S, X, radius = 0.075, col = 'red', legend.title = NULL) {
 
+    .require.ivue.plotting()
+
     if (!is.matrix(X) && !is.data.frame(X)) {
         stop("X must be a matrix or data frame")
     }
@@ -1206,73 +711,16 @@ map.S.to.X <- function(S, X, radius = 0.075, col = 'red', legend.title = NULL) {
         warning("No samples from S found in rownames(X)")
     }
 
-    ind <- numeric(nrow(X))
-    names(ind) <- rownames(X)
-    ind[cn] <- 1
+    selected <- seq_len(nrow(X)) %in% match(cn, rownames(X))
+    ind <- ifelse(selected, "1", "0")
 
-    # Assuming bin.col.tbl is defined elsewhere or using default
     bin.col.tbl <- c("0" = "gray", "1" = col)
-
-    if (is.null(legend.title)) {
-        plot3D.cltrs(X, ind, cltr.col.tbl = bin.col.tbl)
-    } else {
-        plot3D.cltrs(X, ind, cltr.col.tbl = bin.col.tbl, legend.title = legend.title)
-    }
-
-    if (length(cn) > 0) {
-        rgl::spheres3d(X[cn, , drop = FALSE], col = col, radius = radius)
-    }
-
-    invisible(NULL)
-}
-
-#' Add Minimal Spanning Tree to 3D Plot
-#'
-#' Adds edges of a minimal spanning tree to an existing 3D plot
-#'
-#' @param X Matrix with 3 columns representing 3D coordinates.
-#' @param T.edges Matrix with 2 columns containing start and end indices of edges.
-#' @param col Color of the edges.
-#' @param lwd Line width of the edges.
-#'
-#' @return Invisibly returns NULL.
-#'
-#' @examples
-#' \dontrun{
-#' X <- matrix(rnorm(30), ncol = 3)
-#' # Assuming T.edges is computed from a minimal spanning tree algorithm
-#' T.edges <- matrix(c(1,2, 2,3, 3,4, 4,5), ncol = 2, byrow = TRUE)
-#'
-#' plot3D.plain(X)
-#' plot3D.tree(X, T.edges)
-#' }
-#'
-#' @noRd
-plot3D.tree <- function(X, T.edges, col = "gray", lwd = 1) {
-
-    if (!is.matrix(X) || ncol(X) != 3) {
-        stop("X must be a matrix with 3 columns")
-    }
-
-    if (!is.matrix(T.edges) || ncol(T.edges) != 2) {
-        stop("T.edges must be a matrix with 2 columns")
-    }
-
-    max_idx <- max(T.edges)
-    if (max_idx > nrow(X)) {
-        stop("Edge indices exceed number of rows in X")
-    }
-
-    for (i in seq(nrow(T.edges))) {
-        s <- T.edges[i, 1]
-        e <- T.edges[i, 2]
-        rgl::segments3d(x = X[c(s, e), 1],
-                       y = X[c(s, e), 2],
-                       z = X[c(s, e), 3],
-                       col = col, lwd = lwd)
-    }
-
-    invisible(NULL)
+    ivue::plot3D.groups(X, groups = ind,
+        scale = ivue::color.scale.groups(ind, colors = bin.col.tbl),
+        legend.title = if (is.null(legend.title)) "Selected samples" else legend.title,
+        highlight = selected,
+        highlight.style = list(point.type = "sphere", sphere.radius = radius),
+        non.highlight.style = list(col = "gray", alpha = 1))
 }
 
 #' Add Minimal Spanning Tree to 2D Plot
@@ -1319,52 +767,6 @@ plot2D.tree <- function(X, T.edges, col = "gray") {
     invisible(NULL)
 }
 
-#' Plot Path in 3D Graph
-#'
-#' Plots a sequence of edges forming a path in a graph with 3D vertex positions
-#'
-#' @param s Vector of vertex indices defining the path.
-#' @param V Matrix of vertex positions with 3 columns.
-#' @param edge.col Color of the path edges.
-#'
-#' @return Invisibly returns NULL.
-#'
-#' @details
-#' This function draws line segments connecting consecutive vertices in the
-#' specified path sequence.
-#'
-#' @examples
-#' \dontrun{
-#' V <- matrix(rnorm(15), ncol = 3)
-#' s <- c(1, 3, 2, 5, 4)
-#'
-#' plot3D.plain(V)
-#' plot3D.path(s, V, edge.col = "red")
-#' }
-#'
-#' @noRd
-plot3D.path <- function(s, V, edge.col = "gray") {
-
-    if (!is.numeric(s) || length(s) < 2) {
-        stop("s must be a numeric vector with at least 2 elements")
-    }
-
-    if (!is.matrix(V) || ncol(V) != 3) {
-        stop("V must be a matrix with 3 columns")
-    }
-
-    if (max(s) > nrow(V)) {
-        stop("Path indices exceed number of vertices")
-    }
-
-    for (i in 1:(length(s) - 1)) {
-        M <- rbind(V[s[i], ], V[s[i + 1], ])
-        rgl::segments3d(M, col = edge.col)
-    }
-
-    invisible(NULL)
-}
-
 #' Plot Geodesic Path in 3D
 #'
 #' Plots the shortest path between two vertices in a graph
@@ -1389,8 +791,9 @@ plot3D.path <- function(s, V, edge.col = "gray") {
 #' G <- make_ring(10)
 #' S.3d <- matrix(rnorm(30), ncol = 3)
 #'
-#' plot3D.plain(S.3d)
-#' plot3D.geodesic(S.3d, 1, 5, G, S.3d)
+#' ivue::plot3D.plain(S.3d, layers = list(ivue::layer3D.callback(function(ctx) {
+#'   plot3D.geodesic(ctx$X, 1, 5, G, S.3d)
+#' })))
 #' }
 #'
 #' @importFrom igraph shortest_paths
@@ -1497,8 +900,9 @@ path.fn <- function(i, Epath, radius = 0.0008, sphere.col = "red",
 #' grad.ED <- matrix(rnorm(30) * 0.1, ncol = 3)
 #' rownames(grad.ED) <- rownames(S)
 #'
-#' plot3D.plain(S)
-#' add.grad.ED.arrows(c("Point1", "Point5"), S, grad.ED, C = 2.5)
+#' ivue::plot3D.plain(S, layers = list(ivue::layer3D.callback(function(ctx) {
+#'   add.grad.ED.arrows(c("Point1", "Point5"), ctx$X, grad.ED, C = 2.5)
+#' })))
 #' }
 #'
 #' @noRd
@@ -1814,8 +1218,10 @@ plot2D.node.level.props <- function(adj.mat,
 #' @examples
 #' \dontrun{
 #' # Draw a dashed line from origin to (1, 1, 1)
-#' plot3D.plain(matrix(c(0,0,0,1,1,1), ncol = 3, byrow = TRUE))
-#' draw.dashed.line3d(0, 0, 0, 1, 1, 1, col = "red", lwd = 3)
+#' ivue::plot3D.plain(matrix(c(0,0,0,1,1,1), ncol = 3, byrow = TRUE),
+#'   layers = list(ivue::layer3D.callback(function(ctx) {
+#'     draw.dashed.line3d(0, 0, 0, 1, 1, 1, col = "red", lwd = 3)
+#'   })))
 #' }
 #'
 #' @noRd
@@ -1987,8 +1393,10 @@ circle.plot <- function(X,
 #'
 #' @examples
 #' \dontrun{
-#' plot3D.plain(matrix(rnorm(30), ncol = 3))
-#' draw.axes(delta = 0.5, axes.color = "black", half.axes = TRUE)
+#' ivue::plot3D.plain(matrix(rnorm(30), ncol = 3),
+#'   layers = list(ivue::layer3D.callback(function(ctx) {
+#'     draw.axes(delta = 0.5, axes.color = "black", half.axes = TRUE)
+#'   })))
 #' }
 #'
 #' @noRd
@@ -2070,9 +1478,11 @@ draw.axes <- function(delta = 0.5,
 #'
 #' @examples
 #' \dontrun{
-#' plot3D.plain(matrix(0, ncol = 3))
-#' draw.3d.line(c(1, 1, 1), length = 2, col = "red")
-#' draw.3d.line(c(1, 0, 0), length = 1.5, col = "blue")
+#' ivue::plot3D.plain(matrix(0, nrow = 1, ncol = 3),
+#'   layers = list(ivue::layer3D.callback(function(ctx) {
+#'     draw.3d.line(c(1, 1, 1), length = 2, col = "red")
+#'     draw.3d.line(c(1, 0, 0), length = 1.5, col = "blue")
+#'   })))
 #' }
 #'
 #' @noRd
@@ -2116,7 +1526,7 @@ draw.3d.line <- function(x, length = 2, col = "gray") {
 #' @param edge.col Color of edges.
 #' @param adj.df Matrix of text adjustment values for vertex labels.
 #'
-#' @return Invisibly returns NULL.
+#' @return An interactive browser widget.
 #'
 #' @details
 #' This function visualizes a disk embedding where data is projected onto a
@@ -2138,37 +1548,31 @@ plot3D.diskEmbdg <- function(ebdg.obj,
                            edge.col = "gray",
                            adj.df = NULL) {
 
+    .require.ivue.plotting()
+
     # Extract components
     axis.pos <- ebdg.obj$axis.pos
     X.ebdg <- ebdg.obj$X.ebdg
     X <- ebdg.obj$X
     n <- ebdg.obj$n
 
-    # Create sphere plot
-    plot3D.plain(X.ebdg)
-    rgl::spheres3d(X.ebdg, col = col, radius = radius)
-
-    # Draw line segments from center to sphere points
-    for (i in seq(n)) {
-        rgl::segments3d(rbind(numeric(3), axis.pos[i, ]), col = edge.col)
-    }
-
-    # Draw vertices
-    rgl::spheres3d(axis.pos, col = vertex.col, radius = vertex.radius)
-
-    # Draw labels
-    if (!is.null(adj.df)) {
-        for (i in seq(n)) {
-            rgl::text3d(axis.pos[i, ], texts = colnames(X)[i],
-                       cex = vertex.cex, adj = adj.df[i, ])
+    # Disk axes and their labels are drawn before ivue captures its private scene.
+    axes.layer <- ivue::layer3D.callback(function(context) {
+        for (i in seq_len(n)) {
+            rgl::segments3d(rbind(numeric(3), axis.pos[i, ]), col = edge.col)
         }
-    } else {
-        for (i in seq(n)) {
-            rgl::text3d(axis.pos[i, ], texts = colnames(X)[i], cex = vertex.cex)
+        rgl::spheres3d(axis.pos, col = vertex.col, radius = vertex.radius)
+        for (i in seq_len(n)) {
+            if (!is.null(adj.df)) {
+                rgl::text3d(axis.pos[i, ], texts = colnames(X)[i],
+                           cex = vertex.cex, adj = adj.df[i, ])
+            } else {
+                rgl::text3d(axis.pos[i, ], texts = colnames(X)[i], cex = vertex.cex)
+            }
         }
-    }
-
-    invisible(NULL)
+    })
+    ivue::plot3D.plain(X.ebdg, col = col, point.type = "sphere",
+                       sphere.radius = radius, layers = list(axes.layer))
 }
 
 #' Add Vertical Error Bar to Plot
@@ -2506,5 +1910,27 @@ label.end.pts <- function(graph.3d,
 
     invisible(NULL)
 }
-# Generic browser plotting now lives in ivue. Native drawing helpers below
-# remain for existing domain workflows; they are not ivue compatibility aliases.
+# Generic browser plotting lives in ivue. The domain drawing helpers retained
+# here may be used inside ivue callback layers; they are not compatibility aliases.
+
+.require.ivue.plotting <- function() {
+    required <- c("plot3D.plain", "plot3D.groups", "color.scale.groups",
+                  "layer3D.labels", "layer3D.callback")
+    if (!requireNamespace("ivue", quietly = TRUE) ||
+        !all(required %in% getNamespaceExports("ivue"))) {
+        stop("This visualization requires an ivue installation with the canonical ",
+             "point, group, color-scale, and layer APIs. Install the current ivue package.",
+             call. = FALSE)
+    }
+    invisible(NULL)
+}
+
+# Cluster annotations are prepared in gflow; ivue owns their scene rendering.
+.cluster.label.layers <- function(X, groups, labels, cex) {
+    lapply(labels, function(group) {
+        rows <- which(!is.na(groups) & groups == group)
+        center <- apply(as.matrix(X[rows, , drop = FALSE]), 2, stats::median)
+        ivue::layer3D.labels(rows[1], group, cex = cex, adj = c(0.5, 1),
+                            offset = center - as.numeric(X[rows[1], ]))
+    })
+}

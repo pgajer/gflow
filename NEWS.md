@@ -1,5 +1,17 @@
 # gflow 0.2.0 — 2026-07-26
 
+## Retire duplicate generic 3D renderers
+
+* Removed the internal `plot3D.plain()`, `plot3D.cont()`, `plot3D.cltrs()`,
+  `plot3D.tree()`, and `plot3D.path()` implementations. Use `ivue`'s
+  `plot3D.plain()`, `plot3D.cont()`, `plot3D.groups()`, `layer3D.edges()`,
+  and `layer3D.path()`, respectively.
+* Cluster highlights, selected-sample displays, and disk-embedding displays
+  now return `ivue` browser widgets. Their additional scene controls use the
+  `ivue` API; native additions belong in callback layers before widget capture.
+  No compatibility aliases were added. The function-height `plot3D.graph()`
+  and unrelated 2D/domain drawing functions are unchanged.
+
 ## Separate adaptive extrema from dgraphs
 
 * Renamed `detect.local.extrema()` to `detect.adaptive.extrema()`, returning

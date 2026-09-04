@@ -1,7 +1,9 @@
 test_that("generic browser implementations have moved out of gflow", {
     retired <- c("plot3D.plain.widget", "plot3D.cont.widget", "plot3D.cltrs.widget",
                  "plot3D.plain.html", "plot3D.cont.html", "plot3D.cltrs.html",
-                 ".run_plot3d_html_layers", "quantize.for.legend")
+                 ".run_plot3d_html_layers", "quantize.for.legend",
+                 "plot3D.plain", "plot3D.cont", "plot3D.cltrs",
+                 "plot3D.tree", "plot3D.path")
     ns <- asNamespace("gflow")
     expect_false(any(vapply(retired, exists, logical(1), envir = ns, inherits = FALSE)))
     expect_true(exists("quantize.cont.var", envir = ns, inherits = FALSE))

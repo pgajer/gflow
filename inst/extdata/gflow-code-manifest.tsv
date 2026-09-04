@@ -532,7 +532,7 @@ inst/include/Spectra/Util/SelectionRule.h	8842650ab86bb23416ce95ad43322b59
 inst/include/Spectra/Util/SimpleRandom.h	840f08da0e08a41893441c061b4eb18b
 inst/include/Spectra/Util/TypeTraits.h	2a9d6706d590e419e91e6507893feec5
 inst/include/Spectra/Util/Version.h	f722f8efd1eb0704f952716e74d2016c
-NAMESPACE	c9f7d27336d4b4576eec00c713751b6d
+NAMESPACE	fb68ffc6a771b9f3e4376bb41241dc8c
 R/2d_smooth_morse_smale.R	8e5bc6d728111df84121e928b40f2e3f
 R/analyze_comono_distributions.R	cd4931162f49a86903be176dc85ee80e
 R/annotation.R	ed8df33997b96a85a8d5f472187331d2
@@ -623,7 +623,7 @@ R/pextrema.R	d29e14020613ebf03818a5cdd1b61631
 R/plot_feature_distance_diagnostics.R	c085b4e427505d2e1d03166b06c1ec67
 R/plot_graph_component.R	e8b64be8798f1289a47c86fd04dc4261
 R/plot_trajectory_hurdle_association.R	82af16ebdb6855be79cc02ffa1c6a887
-R/plot_utils.R	6a0e572cf512c8381544cd059bb81994
+R/plot_utils.R	36ff2113f305e7497e41a788471e9c4a
 R/potential_metric_graph.R	88b60b478be1a8aa62875c0d1fedd9e9
 R/preprocess_matrix.R	2094ff7e0f892cbb1db3947c69b78606
 R/preprocess_metabolon_twoplane.R	ecec0e0cb23a75aed483d724fad4c2fb
@@ -760,7 +760,7 @@ src/lslope.cpp	e2586de36c0558d953186e321185f6cb
 src/madag_r.cpp	3c0199f8b6056b53c3e2178aacb150dc
 src/madag.cpp	11bac1fd101f937f176f12225eaae79c
 src/Makevars	3d043ac5e74f47344e15701c6be59dcd
-src/Makevars.local	c74e0b908d0e863b149f35c587d241b0
+src/Makevars.local	5ed7e9a2f105fbf9f87ab74ecb56561c
 src/Makevars.win	b852afcbc2534f65a5f9753fc1990cda
 src/Makevars.win.local	2e79f96da434db12d75090bbcc963a45
 src/memory_utils.cpp	ee89768bb142a59d573f836b986c476b
