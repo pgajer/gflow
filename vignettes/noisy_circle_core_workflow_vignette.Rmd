@@ -1,6 +1,8 @@
 ---
 title: "Noisy Circle: End-to-End gflow Workflow"
-output: rmarkdown::html_vignette
+output:
+  rmarkdown::html_vignette:
+    css: !expr c(system.file("rmarkdown/templates/html_vignette/resources/vignette.css", package = "rmarkdown"), "guide.css")
 vignette: >
   %\VignetteIndexEntry{Noisy Circle: End-to-End gflow Workflow}
   %\VignetteEngine{knitr::rmarkdown}
@@ -72,7 +74,7 @@ circle.true <- cbind(
 )
 ```
 
-```{r noisy-circle-plot}
+```{r noisy-circle-plot, fig.cap="Observed samples around the known generating circle. Coordinate noise changes the graph geometry independently of response noise."}
 op <- par(mar = c(2.5, 2.5, 0.5, 0.5), mgp = c(2.5, 0.5, 0), tcl = -0.3)
 plot(X, asp = 1, las = 1, xlab = "", ylab = "")
 lines(circle.true, lwd = 2)
@@ -104,7 +106,7 @@ summary(X.graphs)
 
 ## 3) Select Graph Scale
 
-```{r iknn-selectk}
+```{r iknn-selectk, fig.cap="Graph-scale selection diagnostics for the simulated circle; the displayed criterion selects a graph, not a validated basin partition."}
 X.graphs2 <- dgraphs::build.iknn.graphs.and.selectk(
   X,
   kmin = k.min,
@@ -120,7 +122,7 @@ plot(X.graphs2)
 
 ## 4) Visualize the Selected Graph
 
-```{r graph-layout-2d}
+```{r graph-layout-2d, fig.cap="A drawing of the selected graph. Layout coordinates aid inspection and are not the scalar field used to construct basins."}
 k.values <- if (!is.null(colnames(X.graphs$k_statistics)) &&
                 "k" %in% colnames(X.graphs$k_statistics)) {
   as.integer(X.graphs$k_statistics[, "k"])
@@ -387,7 +389,7 @@ perm.lcor$table[order(perm.lcor$table$q.value), ]
 
 ## 11) Build an lcor-Based Feature Module Graph
 
-```{r lcor-module-graph}
+```{r lcor-module-graph, fig.cap="Feature modules based on similarities between local-correlation profiles. Edges pass the stated similarity threshold; they do not denote significant feature associations."}
 sim <- stats::cor(lcor.derivative, use = "pairwise.complete.obs")
 adj.sim <- abs(sim)
 diag(adj.sim) <- 0

@@ -9,6 +9,18 @@
   Supplied feature and vertex names are validated and preserved in results.
   A single draw remains supported, with an undefined (`NA`) standard deviation.
 
+## User experience
+
+* Added a complete-help source installation route, a package-help quick start,
+  runnable local-correlation examples, and a visual introduction shared by the
+  README and installed task guide. Guides now adapt to narrow screens.
+* Basin summaries print bounded rankings, diagnostics, and distinct raw,
+  retained, and assigned vertex coverage. Explicit plot views show merge trees,
+  primary assignments, or overlap counts. Failed results are labeled in field
+  views and rejected by analytical views; numerical construction is unchanged.
+* Added a task-organized documentation website built from the maintained help
+  and vignettes, with the package marked as unreleased.
+
 ## User guides
 
 * Added installed task-oriented function and example-graph vignettes, with

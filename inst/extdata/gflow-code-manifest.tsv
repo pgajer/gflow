@@ -541,12 +541,13 @@ R/basin_complex_converters.R	6497945f0f6bd2d5afbf471770917e04
 R/basin_complex_merge_tree.R	5b000238093603b6ba39b4661e0bca5d
 R/basin_complex_plateau_flow.R	2aa117a8a2627e67de86fe729b26f97e
 R/basin_complex_refinement.R	090a8af31e5876f1be09b259ecc0a86d
-R/basin_complex.R	77af20ef279ad7b744b6b1da6d314e48
+R/basin_complex.R	5d69efd29d6b4908519f7384fb9ad5aa
 R/basin_cx.R	fd1d2936e2c4a1a2f75a7f4fdb311173
+R/basin_display.R	15950db379c1fcc8298f07d96743633d
 R/basin_identity.R	0ab0af0abb84b2aed34649733a65f8a2
 R/basin_lookup_functions.R	7c5a2d660bac9a5ecfb8540c214ad890
 R/basin_merge_tree_public.R	f40d3db760d2c60f7117a09fb6f0211f
-R/basin_summary.R	3e5d53374253cafd689d598926568db9
+R/basin_summary.R	f7695c13c3eb127a3c8e0237ec0d9f15
 R/boxcox_utils.R	8b9b4ec962d826247f5e7a87aba75dff
 R/cell_trajectories_generic.R	0c13e545d2c2e9c6e76f1cda24914838
 R/centered_paths.R	a4c669d39a2c8e93a35e862f74ecb95c
@@ -586,7 +587,7 @@ R/gflow_cx.R	499b1eb00094323a4cc1f2f675bc23ad
 R/gflow_graph_plot.R	8e0419a85c647966b9d4cc91b2c01a33
 R/gflow_graph.R	eec4a94a4d656e23bcb0cf44acbd277d
 R/gflow-migration.R	fc14d416c6e1bdc05b0a5385bc1c9b5f
-R/gflow-package.R	370fa76eece12cb4482e798ebd3c4cb3
+R/gflow-package.R	880eda824f385a9bd1b758e07b55df0d
 R/globals.R	f3b359325747c0a7289f09bce92edbc6
 R/gradient_basin_utilities.R	a5d304a39d0c254343adebf7d3c63864
 R/graph_generators.R	a21b571ee60c950586ddb7b7a6034fcd
@@ -605,7 +606,7 @@ R/kernels.R	a896e33ab797be99f887c606b0d9e8a8
 R/knn_cache_helpers.R	e4abe9bdbc46934249ec7e5b1f39424f
 R/knn_metric_helpers.R	5b0381aa92c434b3b4e749972640b550
 R/lcor_with_posterior.R	0eb67073c7d31578c59925bfcff2ddaf
-R/lcor.R	bf38d662200c5f995749c608cec363c2
+R/lcor.R	a9fbe223a081dc180cd024ae427856ea
 R/local_extrema.R	0faaeebb7ef9d4dd1453d6f7b97b23d2
 R/local_geodesic_pruning.R	cf0e2dfed2b696d02d89f987afc49311
 R/lslope.R	95520a964af4e6f5da6b59202e054acd

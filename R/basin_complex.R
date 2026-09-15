@@ -1484,8 +1484,8 @@
 #' `method.params$modulation` is `"DENSITY"` or `"DENSITY_EDGELEN"`. Neither is
 #' inferred from the other.
 #'
-#' Basin membership can overlap. `membership.table` is therefore the
-#' authoritative many-to-many vertex-to-basin relation. `primary.assignment`
+#' Basin membership can overlap. `get.basin.membership()` is therefore the
+#' authoritative many-to-many vertex-to-basin relation. `get.basin.assignment()`
 #' is an optional, method-dependent single label for convenience; it must not
 #' be interpreted as replacing membership.
 #'
@@ -1540,63 +1540,27 @@
 #'   structured diagnostic.
 #'
 #' @examples
-#' # A 3-by-3 graph with two local maxima.
-#' edges <- matrix(
-#'     c(
-#'         1, 2, 1, 1, 4, 1, 2, 3, 1, 2, 5, 1,
-#'         3, 6, 1, 4, 5, 1, 4, 7, 1, 5, 6, 1,
-#'         5, 8, 1, 6, 9, 1, 7, 8, 1, 8, 9, 1
-#'     ),
-#'     ncol = 3,
-#'     byrow = TRUE
-#' )
-#' adjacency <- edge.lengths <- vector("list", 9)
-#' for (i in seq_len(nrow(edges))) {
-#'     from <- edges[i, 1]
-#'     to <- edges[i, 2]
-#'     adjacency[[from]] <- c(adjacency[[from]], to)
-#'     adjacency[[to]] <- c(adjacency[[to]], from)
-#'     edge.lengths[[from]] <- c(edge.lengths[[from]], edges[i, 3])
-#'     edge.lengths[[to]] <- c(edge.lengths[[to]], edges[i, 3])
-#' }
-#' field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+#' # A path with a plateau peak at vertices 2--3 and a higher peak at 6.
+#' adjacency <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L),
+#'                   c(4L, 6L), c(5L, 7L), 6L)
+#' lengths <- lapply(adjacency, function(v) rep(1, length(v)))
+#' field <- c(0, 3, 3, 1, 2, 4, 0)
+#' tree <- create.basin.complex(adjacency, lengths, field,
+#'                             method = "superlevel_merge_tree", direction = "max")
+#' summary(tree)
+#' get.basin.table(tree)[, c("extremum.vertex", "persistence", "raw.support.size")]
+#' membership <- get.basin.membership(tree)
+#' assignment <- get.basin.assignment(tree)
+#' stopifnot(nrow(membership) > 0L, nrow(assignment) == length(field))
+#' # At height 2 the plateau and the higher peak are separate components.
+#' cut(get.basin.merge.tree(tree), height = 2)$components
+#' plot(tree, view = "merge_tree", direction = "max", type = "tree",
+#'      label = "extremum.vertex", show.mass = FALSE, show.support = FALSE)
 #'
-#' flow <- create.basin.complex(
-#'     adjacency, edge.lengths, field,
-#'     method = "trajectory_flow", direction = "max",
-#'     method.params = list(edge.length.quantile.thld = 1)
-#' )
-#' tree <- create.basin.complex(
-#'     adjacency, edge.lengths, field,
-#'     method = "superlevel_merge_tree", direction = "max"
-#' )
-#' reachability <- create.basin.complex(
-#'     adjacency, edge.lengths, field,
-#'     method = "geodesic_reachability", direction = "max",
-#'     method.params = list(edge.length.quantile.thld = 1)
-#' )
-#' consensus <- create.basin.complex(
-#'     adjacency, edge.lengths, field,
-#'     method = "rtcb", direction = "max",
-#'     method.params = list(
-#'         edge.length.quantile.thld = 1,
-#'         n.min = 1L,
-#'         m.min = 0
-#'     )
-#' )
-#' cells <- create.basin.complex(
-#'     adjacency, edge.lengths, field,
-#'     method = "overlap_cell_complex", direction = "both"
-#' )
-#'
-#' stopifnot(all(vapply(
-#'     list(flow, tree, reachability, consensus, cells),
-#'     function(x) identical(x$status, "ok"),
-#'     logical(1)
-#' )))
-#' tree$merge.table
-#' flow$membership.table
-#' flow$primary.assignment
+#' @seealso [get.basin.table()], [get.basin.membership()],
+#'   [get.basin.assignment()], [summary.basin_complex()], [plot.basin_complex()]
+#'   and `vignette("basin_complex_workflow_vignette", package = "gflow")` for
+#'   all five method families and their refinement controls.
 #'
 #' @export
 create.basin.complex <- function(
@@ -1980,7 +1944,11 @@ print.basin_complex <- function(x, ...) {
 #'
 #' @return A `summary.basin_complex` containing aggregate counts, ranked
 #'   direction-specific tables, ranking availability, column definitions,
-#'   mass provenance, and build identity.
+#'   mass provenance, build identity, diagnostics, and a `coverage` table.
+#'   Coverage reports unique vertices in raw membership, retained supports, and
+#'   current nonmissing assignments per direction, independently of Top-K ranking.
+#'   `n.assignments` remains the number of assignment rows, including unavailable
+#'   labels; `coverage$assigned.vertices` counts actual labels.
 #' @export
 summary.basin_complex <- function(
     object,
@@ -2011,59 +1979,67 @@ summary.basin_complex <- function(
     )
 }
 
+#' @rdname summary.basin_complex
+#' @param x A summary object for printing, or a canonical basin complex for plotting.
+#' @param n Maximum ranked rows to print per direction. Full tables remain in
+#'   the returned summary; use `Inf` to print all returned rows.
+#' @param digits Significant digits in printed ranked tables.
 #' @export
-print.summary.basin_complex <- function(x, ...) {
-    cat("Canonical Basin Complex Summary\n")
-    cat("  Method: ", x$method, "\n", sep = "")
-    cat("  Direction: ", x$direction, "\n", sep = "")
-    cat("  Status: ", x$status, "\n", sep = "")
-    cat(
-        "  Vertices/components: ",
-        x$n.vertices,
-        "/",
-        x$n.components,
-        "\n",
-        sep = ""
-    )
-    cat(
-        "  Basins/memberships/assignments: ",
-        x$n.basins,
-        "/",
-        x$n.memberships,
-        "/",
-        x$n.assignments,
-        "\n",
-        sep = ""
-    )
-    if (!is.null(x$rank.resolved)) {
-        cat(
-            "  Ranking (max/min): ",
-            paste(
-                ifelse(is.na(x$rank.resolved), "\u2014", x$rank.resolved),
-                collapse = " / "
-            ),
-            "\n",
-            sep = ""
-        )
-    }
-    invisible(x)
+print.summary.basin_complex <- function(x, ..., n = 5L, digits = 3L) {
+    .print.basin.summary(x, n = n, digits = digits)
 }
 
+#' Plot a Canonical Basin Complex
+#'
+#' Select an explicit analytical view or inspect the input field. Drawing
+#' coordinates never change the graph, field, or computed basins.
+#'
+#' @param x A canonical `basin_complex`.
+#' @param xlab,ylab Axis labels. Graph views default to coordinate column names.
+#' @param main Plot title. Construction status is always shown if not `"ok"`.
+#' @param ... Graphical parameters passed to the field/graph plot, or arguments
+#'   to [plot.basin.merge.tree()] for the merge-tree view. Use `main.tree`,
+#'   `main.barcode`, and `field.label` to customize merge-tree panels.
+#' @param view `"field"` (default, input field against vertex index),
+#'   `"merge_tree"`, `"assignment"`, or `"overlap"` (number of containing basins).
+#' @param direction `"max"` or `"min"`. Required for analytical views when both
+#'   directions were constructed; otherwise the object's direction is used.
+#' @param coordinates Finite numeric n-by-2 drawing coordinates in graph vertex
+#'   order, required for assignment and overlap views. If row names are supplied
+#'   they must match the object's external vertex IDs in order.
+#' @param stage Support used by the overlap view: `"retained"` (default) or
+#'   `"raw"`. The assignment view always uses current primary assignments.
+#' @param label.vertices Show external vertex IDs on graph views.
+#'
+#' @details
+#' A failed construction can only be plotted as an explicitly labeled input
+#' field, with a warning and diagnostic. Analytical views reject failed objects.
+#' Partial results are labeled and warn. The assignment view rejects unavailable
+#' assignment policies; a missing label is not treated as an inferred basin.
+#' Overlap counts describe support coverage, not uncertainty or probability.
+#' Filled circles have an assignment/support; crosses mark missing assignments
+#' or zero coverage. Plotting leaves the numerical object unchanged.
+#'
+#' @return `x`, invisibly.
+#' @seealso [summary.basin_complex()], [get.basin.assignment()],
+#'   [get.basin.table()], [plot.basin.merge.tree()]
 #' @export
 plot.basin_complex <- function(x,
-                               xlab = "Vertex",
+                               xlab = "Vertex index",
                                ylab = "Field",
-                               main = "Canonical Basin Complex Field",
-                               ...) {
-    graphics::plot(
-        seq_len(x$n.vertices),
-        x$field$input.values,
-        xlab = xlab,
-        ylab = ylab,
-        main = main,
-        ...
-    )
-    invisible(x)
+                               main = "Input scalar field",
+                               ...,
+                               view = c("field", "merge_tree", "assignment", "overlap"),
+                               direction = NULL,
+                               coordinates = NULL,
+                               stage = c("retained", "raw"),
+                               label.vertices = FALSE) {
+    .plot.basin.view(x, view = match.arg(view), direction = direction,
+                     coordinates = coordinates, stage = match.arg(stage),
+                     label.vertices = label.vertices,
+                     xlab = if (missing(xlab)) NULL else xlab,
+                     ylab = if (missing(ylab)) NULL else ylab,
+                     main = if (missing(main)) NULL else main, ...)
 }
 
 #' @export

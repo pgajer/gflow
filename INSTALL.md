@@ -1,6 +1,42 @@
-# Installation Notes for OpenMP (macOS / Linux / Windows)
+# Installation with complete help and vignettes
 
-Basic package installation steps are in `README.md`.
+From a cloned source checkout, run `make install-user`. This uses your current
+R libraries, installs missing core and documentation-building dependencies,
+regenerates Rd help, builds vignettes, installs the built archive, and checks
+installed help and the introductory workflow. R, GNU make, a C++17 compiler,
+and Pandoc must be available. RStudio includes Pandoc; otherwise install it
+separately and put it on `PATH`.
+
+For explicit control, the equivalent commands are:
+
+```sh
+Rscript --vanilla tools/install_build_dependencies.R
+make install R_ENV="env -u R_HOME"
+Rscript --vanilla tools/check_installed_guides.R
+```
+
+These commands share the active R library settings. On a machine without a
+writable default library, create a user library directory, set `R_LIBS_USER`
+to that directory, and run the commands in that environment. To validate a
+separate installation, set `R_LIBS` to an isolated library before running them.
+Use the published dgraphs release (tested with 0.2.0); the 0.3.0.9000 development
+API is not supported by the overlap-cell backend.
+
+`make build` produces `gflow_0.2.0.tar.gz` with generated help and all four
+guides. Once the required dependencies are installed, this archive can also be
+installed using `R CMD INSTALL gflow_0.2.0.tar.gz`. Direct Git/local installers
+that do not regenerate Rd and build vignettes are not the complete-help route.
+
+After installation:
+
+```r
+help("gflow-package", package = "gflow")
+vignette("function-guide", package = "gflow")
+browseVignettes("gflow")
+```
+
+## Optional OpenMP toolchains (macOS / Linux / Windows)
+
 This document focuses on OpenMP toolchain setup so `gflow` can be installed in
 the `dev` profile (parallel-enabled and OpenMP-required).
 
@@ -132,5 +168,5 @@ R CMD config CXX17FLAGS
 4. To force the portable profile explicitly:
 
 ```bash
-R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="cran-safe"); remotes::install_local("gflow", dependencies=TRUE, upgrade="never")'
+R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="cran-safe"); system("make install-user")'
 ```

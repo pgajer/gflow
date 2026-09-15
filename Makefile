@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance audit-api-guide preview-user-guides
+.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance audit-api-guide preview-user-guides install-user showcase website
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -79,3 +79,15 @@ audit-api-guide:
 
 preview-user-guides:
 	@$(RSCRIPT_RUN) tools/render_user_guides.R
+
+# User installation keeps the same libraries as the dependency bootstrap.
+install-user:
+	Rscript --vanilla tools/install_build_dependencies.R
+	$(MAKE) install R_ENV="env -u R_HOME"
+	Rscript --vanilla tools/check_installed_guides.R
+
+showcase:
+	$(RSCRIPT_RUN) tools/render_basin_showcase.R
+
+website:
+	$(RSCRIPT_RUN) tools/build_website.R

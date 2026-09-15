@@ -190,66 +190,32 @@
 #' having unit length.
 #'
 #' @examples
-#' \dontrun{
+#' # Three vertices, with one field increasing in the same direction as y.
+#' adjacency <- list(c(2L, 3L), c(1L, 3L), c(1L, 2L))
+#' lengths <- lapply(adjacency, function(v) rep(1, length(v)))
+#' y <- c(0, 1, 3)
+#' features <- cbind(aligned = 2 * y + 1, opposed = -y)
 #'
-#' # Build a simple graph (triangle)
-#' adj.list <- list(c(2L, 3L), c(1L, 3L), c(1L, 2L))
-#' weight.list <- list(c(1.0, 1.0), c(1.0, 1.0), c(1.0, 1.0))
+#' # Default vector output: +1 means aligned incident differences.
+#' alignment <- lcor(adjacency, lengths, y, features[, "aligned"])
+#' as.numeric(alignment)
+#' stopifnot(isTRUE(all.equal(as.numeric(alignment), rep(1, 3))))
 #'
-#' # Case (a): Vector-vector
-#' y <- c(1.0, 2.0, 3.0)
-#' z <- c(2.0, 4.0, 5.0)
-#' result <- lcor(adj.list, weight.list, y, z, type = "unit")
-#' print(result$vertex.coefficients)
+#' # Matrix output has vertices in rows and features in columns.
+#' coefficients <- lcor(adjacency, lengths, y, features)
+#' colMeans(coefficients) # aligned = +1; opposed = -1
+#' stopifnot(identical(dim(coefficients), c(3L, 2L)))
 #'
-#' # Case (b): Vector-matrix (feature screening)
-#' # Compare response against multiple bacterial abundances
-#' response <- rnorm(100)
-#' abundances <- matrix(runif(100 * 50), nrow = 100, ncol = 50)
-#' colnames(abundances) <- paste0("ASV", 1:50)
+#' # Request the diagnostic list explicitly when inspecting edge quantities.
+#' diagnostic <- lcor(adjacency, lengths, y, features[, "aligned"],
+#'                    instrumented = TRUE)
+#' diagnostic$vertex.coefficients
+#' diagnostic$vertex.weights
 #'
-#' # Assume graph is built from the data
-#' result <- lcor(adj.list, weight.list,
-#'                response, abundances,
-#'                type = "derivative",
-#'                y.diff.type = "difference",
-#'                z.diff.type = "logratio")
-#'
-#' # Identify top features by absolute mean correlation
-#' top.features <- order(abs(result$mean.coefficients), decreasing = TRUE)[1:10]
-#' print(names(result$mean.coefficients)[top.features])
-#'
-#' # Case (c): Matrix-vector (same as b with roles swapped)
-#' result <- lcor(adj.list, weight.list,
-#'                abundances, response,
-#'                type = "derivative",
-#'                y.diff.type = "logratio",
-#'                z.diff.type = "difference")
-#'
-#' # Case (d): Matrix-matrix (pairwise correlations)
-#' # Compute local correlation tensor for compositional data
-#' Z <- abundances[, 1:10]  # First 10 ASVs
-#' result <- lcor(adj.list, weight.list,
-#'                Z, Z,
-#'                type = "unit",
-#'                y.diff.type = "logratio",
-#'                z.diff.type = "logratio",
-#'                mc.cores = 4)
-#'
-#' # Result contains upper triangular pairs only since y == z
-#' print(result$pair.names[1:5])
-#'
-#' # With winsorization for robustness
-#' result <- lcor(adj.list, weight.list, y, z,
-#'                type = "derivative",
-#'                winsorize.quantile = 0.025)
-#'
-#' # With instrumented output for diagnostics
-#' result <- lcor(adj.list, weight.list, y, z,
-#'                type = "derivative",
-#'                instrumented = TRUE)
-#' hist(result$all.delta.y, main = "Distribution of y edge differences")
-#' }
+#' # Identical matrices return one column for each distinct feature pair.
+#' pairs <- lcor(adjacency, lengths, features, features)
+#' colnames(pairs)
+#' # These are descriptive local alignments, not significance tests.
 #'
 #' @seealso
 #' Matrix inputs are handled directly by \code{lcor()}; its shape-specific

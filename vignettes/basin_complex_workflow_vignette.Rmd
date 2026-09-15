@@ -1,6 +1,8 @@
 ---
 title: "Canonical Basin Complex Workflow"
-output: rmarkdown::html_vignette
+output:
+  rmarkdown::html_vignette:
+    css: !expr c(system.file("rmarkdown/templates/html_vignette/resources/vignette.css", package = "rmarkdown"), "guide.css")
 vignette: >
   %\VignetteIndexEntry{Canonical Basin Complex Workflow}
   %\VignetteEngine{knitr::rmarkdown}

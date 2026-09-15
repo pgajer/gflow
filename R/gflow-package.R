@@ -6,6 +6,19 @@
 #' `dgraphs`; retired smoothing and conditional-expectation estimators are not
 #' part of this package.
 #'
+#' @section Start here:
+#' Start with [create.basin.complex()] and inspect the result with
+#' [summary.basin_complex()] and the `get.basin.*()` accessors. The small
+#' example below needs only the installed package: its two peaks merge at
+#' field height 1. Persistence measures lifetime across field thresholds,
+#' not statistical significance. Use `plot(bc, view = "merge_tree")` to explore
+#' the hierarchy, or change the field and reconstruct it.
+#'
+#' The documented source-build installation generates help and all four
+#' vignettes. A direct Git installation that skips documentation generation
+#' may lack them; follow the repository's installation instructions to build
+#' a complete source archive. Package loading does not open guides automatically.
+#'
 #' @section User guides:
 #' Run `vignette("function-guide", package = "gflow")` for the task map and
 #' complete API catalog, and `vignette("example-graphs-and-fields", package =
@@ -52,6 +65,15 @@
 #' analyses. PHATE, diffusion/potential pseudotime, generic graph utilities,
 #' interactive selection widgets, and domain-specific pipelines are not part
 #' of the supported `gflow` surface.
+#'
+#' @examples
+#' adjacency <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+#' lengths <- lapply(adjacency, function(v) rep(1, length(v)))
+#' bc <- create.basin.complex(adjacency, lengths, c(0, 3, 1, 2, 0),
+#'                            method = "superlevel_merge_tree", direction = "max")
+#' get.basin.table(bc)[, c("extremum.vertex", "persistence", "raw.support.size")]
+#' # Peaks at vertices 2 and 4 have persistence 3 and 1 field units.
+#' # The root's support contains all five vertices; supports can overlap.
 #'
 #' @author Pawel Gajer \email{pgajer@@gmail.com}
 #'

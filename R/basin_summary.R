@@ -339,6 +339,9 @@
             n.memberships = nrow(object$membership),
             n.assignments = nrow(object$assignment),
             n.diagnostics = nrow(object$diagnostics),
+            diagnostics = object$diagnostics,
+            warnings = object$warnings,
+            coverage = .basin.coverage(object),
             has.vertex.mass =
                 !is.null(object$field$vertex.mass.normalized),
             rank.requested = rank.by,

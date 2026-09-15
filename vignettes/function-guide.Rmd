@@ -2,6 +2,7 @@
 title: "Finding your way around gflow"
 output:
   rmarkdown::html_vignette:
+    css: !expr c(system.file("rmarkdown/templates/html_vignette/resources/vignette.css", package = "rmarkdown"), "guide.css")
     toc: true
     toc_depth: 2
 vignette: >
@@ -23,6 +24,10 @@ inspectable inputs. The [canonical workflow](basin_complex_workflow_vignette.htm
 covers construction and refinement in more detail; the
 [noisy-circle workflow](noisy_circle_core_workflow_vignette.html) adds noisy
 observations, graph selection, and local association.
+
+```{r opening-result, echo=FALSE, fig.cap="Two peaks on a seven-vertex path. The height-3 plateau joins the higher peak at field height 1; the tree records that relationship. Reproduce the analysis below."}
+if (knitr::is_html_output()) knitr::include_graphics("figures/basin-showcase.png")
+```
 
 ## Choose a starting point
 
@@ -166,7 +171,14 @@ raise errors; a recoverable backend failure can instead return a failed object.
 
 Use `required = TRUE` on the three structure accessors to reject absent
 structures. Use `summary(bc)` for direction-specific ranking and availability
-information; `as.data.frame(bc)` gives the basin table. `basin()` and `basins()`
+information; the printed summary includes a bounded ranking and separate raw,
+retained, and assigned vertex coverage. `as.data.frame(bc)` gives the basin table.
+`plot(bc)` shows the input field against vertex index. Select
+`view = "merge_tree"` for the exact hierarchy, or supply an `n` by 2
+`coordinates` matrix to `view = "assignment"` or `view = "overlap"`.
+Choose `direction` explicitly if both were constructed. Failed construction is
+labeled in the input-field view and rejected by analytical views; partial
+results warn. These plots do not modify the analysis. `basin()` and `basins()`
 also dispatch on canonical objects, but the non-colliding `get.basin.*()`
 accessors make the intended schema explicit.
 

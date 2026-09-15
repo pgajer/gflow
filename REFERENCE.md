@@ -1,8 +1,8 @@
 # gflow public API reference
 
-Start with [Finding your way around gflow](vignettes/function-guide.Rmd) for
+Start with [Finding your way around gflow](https://pgajer.github.io/gflow/articles/function-guide.html) for
 an exhaustive, status-labeled catalog and [Example graphs and scalar
-fields](vignettes/example-graphs-and-fields.Rmd) for runnable inputs.
+fields](https://pgajer.github.io/gflow/articles/example-graphs-and-fields.html) for runnable inputs.
 Both are installed vignettes. The canonical basin-complex API is the starting
 point for new basin analyses; the families below also contain advanced and
 archived-object interfaces.

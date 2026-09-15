@@ -1,93 +1,128 @@
 # gflow
 
-`gflow` constructs, explores, and analyzes basin and gradient-flow complexes
-on structured high-dimensional data. Its supported public API is deliberately
-narrow: basin/flow objects, their summaries and trajectories, graph-local
-association, and flow-aware association.
+Explore how scalar fields rise, form basins, and change together on a graph.
+`gflow` helps you follow peaks, overlapping supports, and trajectories in
+structured data, and compare local changes between fields.
 
-Generic graph construction and graph algorithms belong to
-[`dgraphs`](https://github.com/pgajer/dgraphs). Retired response-smoothing and
-conditional-expectation estimators are archived in
-[`gflowx`](https://github.com/pgajer/gflowx); they are not dependencies of
-`gflow`.
+![A seven-vertex field with two peaks beside its merge tree. The plateau at vertices 2–3 joins the higher peak at vertex 6 at field height 1.](vignettes/figures/basin-showcase.png)
 
-## Core workflow
+**Two peaks, one hierarchy.** The plateau peak is born at height 3 and joins the
+higher peak at height 1. The tree records this relationship; its branch
+lifetimes are in field units, not significance scores.
+[Reproduce the figure](https://github.com/pgajer/gflow/blob/main/tools/render_basin_showcase.R) ·
+[Start an analysis](https://pgajer.github.io/gflow/articles/function-guide.html) ·
+[Explore the example graphs](https://pgajer.github.io/gflow/articles/example-graphs-and-fields.html)
+
+## Install with help and guides
+
+This is the unreleased 0.2.0 development package. Build from a source checkout
+with R, a C++17 compiler, GNU make, and Pandoc (also supplied with RStudio).
+Published `dgraphs` 0.2.0 is the tested graph dependency; its R requirement is
+R >= 4.1.0. Development versions may use a different graph API.
+
+```sh
+git clone https://github.com/pgajer/gflow.git
+cd gflow
+make install-user
+```
+
+This installs missing core/build R dependencies, generates function help,
+builds all four vignettes, installs the source archive, and checks the installed
+introduction. It uses your current R library configuration. For a library you
+control, create a directory and set `R_LIBS_USER` before running the command.
+Optional viewers and archived modeling packages are not needed for this route.
+
+Then, in R:
+
+```r
+help("gflow-package", package = "gflow")
+vignette("function-guide", package = "gflow")
+```
+
+A plain Git/local installation that skips the Makefile's documentation step
+can omit generated help and rendered guides. Use the route above, or install a
+source archive produced by `make build`. See [installation details](https://github.com/pgajer/gflow/blob/main/INSTALL.md)
+for manual steps, library selection, and optional OpenMP toolchains.
+
+## A first result
+
+This small example reproduces the structure in the opening figure. Each
+adjacency entry has an aligned list of edge lengths; the field has one value
+per vertex in the same order.
 
 ```r
 library(gflow)
-adjacency <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+adjacency <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L),
+                  c(4L, 6L), c(5L, 7L), 6L)
 edge_lengths <- lapply(adjacency, function(v) rep(1, length(v)))
-field <- c(0, 3, 1, 2, 0)
+field <- c(0, 3, 3, 1, 2, 4, 0)
 bc <- create.basin.complex(
   adjacency, edge_lengths, field,
   method = "superlevel_merge_tree", direction = "max"
 )
-summary(bc)
-get.basin.table(bc)
-get.basin.membership(bc)
-plot(get.basin.merge.tree(bc))
+get.basin.table(bc)[, c("extremum.vertex", "persistence", "raw.support.size")]
 ```
 
-For data-derived graphs, choose a documented constructor in `dgraphs` and
-supply its adjacency and aligned edge-length lists.
+| Peak vertex | Persistence (field units) | Raw support (vertices) |
+|---|---:|---:|
+| 2 (plateau at 2–3) | 2 | 2 |
+| 6 | 4 | 7 |
 
-## User guides
+The root support includes the younger branch, so these supports overlap.
+Change the field and reconstruct `bc` to see how the hierarchy changes.
 
-- [Finding your way around gflow](vignettes/function-guide.Rmd): task map,
-  complete export catalog, method availability, and installed migration advice.
-- [Example graphs and scalar fields](vignettes/example-graphs-and-fields.Rmd):
-  paths, a grid, and disconnected components with reproducible comparisons.
-- [Canonical basin workflow](vignettes/basin_complex_workflow_vignette.Rmd).
-- [Noisy-circle workflow](vignettes/noisy_circle_core_workflow_vignette.Rmd).
-
-After installing a build with vignettes, use
-`vignette("function-guide", package = "gflow")` or
-`vignette("example-graphs-and-fields", package = "gflow")` for rendered guides.
-`help("gflow-migration", package = "gflow")` provides installed migration help.
-
-## Supported API map
-
-| Purpose | Canonical entry points |
-|---|---|
-| Construct/convert basin complexes | `create.basin.complex()`, `as.basin.complex()` |
-| Inspect basin objects | `summary()`, `plot()`, `get.basin.table()`, `get.basin.membership()`, `get.basin.assignment()` |
-| Explore trajectories and cells | `get.basin.trajectory.forest()`, `get.basin.cells()`, `compute.harmonic.extension()`, `construct.madag()` |
-| Local association | `lcor()`, `lslope()`, `lslope.neighborhood()`, `permutation.test.lcor()` |
-| Flow-aware association on archived basin/membership objects | `gfcor()`, `gfassoc.membership()`, `gfassoc.polarity()`, `gfassoc.overlap()`, `gfassoc.deviation()` |
-
-See [REFERENCE.md](REFERENCE.md) for the maintained public families and
-[the public migration guidance](vignettes/function-guide.Rmd#migration-and-package-boundaries)
-for removed names and verified package boundaries. `gfcor()` and
-`gfassoc.membership()` currently reject canonical basin objects.
-
-## Installation
-
-For this source checkout, install the published `dgraphs` dependency first,
-then build `gflow` with its required dependencies. The current workflows were
-checked with dgraphs 0.2.0; development versions may change input contracts.
-
-```bash
-R -q -e 'install.packages("dgraphs", repos="https://cloud.r-project.org")'
-R -q -e 'remotes::install_local(".", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
+```r
+summary(bc)                         # Rankings, coverage, and diagnostics
+get.basin.membership(bc)             # Raw overlapping membership
+get.basin.assignment(bc)             # Current single labels, when available
+plot(bc, view = "merge_tree", type = "tree",
+     label = "extremum.vertex", show.mass = FALSE, show.support = FALSE)
 ```
 
-The default `cran-safe` profile is intended to support serial builds and uses
-OpenMP when the toolchain supplies it. Portability must be checked for each
-release candidate; the profile name alone is not evidence of a successful
-non-OpenMP build. A performance-oriented build can require OpenMP:
+For graph maps, supply drawing coordinates to `plot(bc, view = "assignment",
+coordinates = xy)` or `view = "overlap"`. `plot(bc)` shows the input field
+against vertex index. A drawing does not change the analysis.
 
-```bash
-R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="dev"); remotes::install_local(".", dependencies=c("Depends","Imports","LinkingTo"), upgrade="never")'
-```
+## Choose the next task
 
-Detailed toolchain instructions are in [INSTALL.md](INSTALL.md).
+| Task | Start with | Guide |
+|---|---|---|
+| Choose a basin definition | `create.basin.complex()` | [Canonical workflow](https://pgajer.github.io/gflow/articles/basin_complex_workflow_vignette.html) |
+| Understand overlap, cuts, and refinement | `get.basin.*()`, `cut()`, `summary()` | [Paths, grids, and disconnected graphs](https://pgajer.github.io/gflow/articles/example-graphs-and-fields.html) |
+| Follow trajectories or extend coordinates | `construct.madag()`, `compute.harmonic.extension()` | [Task map](https://pgajer.github.io/gflow/articles/function-guide.html) |
+| Compare local changes between fields | `lcor()`, `lslope()`, `lslope.neighborhood()` | [Noisy-circle workflow](https://pgajer.github.io/gflow/articles/noisy_circle_core_workflow_vignette.html) |
 
-## Development QA
+[Function reference](https://pgajer.github.io/gflow/reference/index.html) ·
+[Full task and API catalog](https://pgajer.github.io/gflow/articles/function-guide.html) ·
+[Guide sources](https://github.com/pgajer/gflow/tree/main/vignettes) · [Release notes](https://github.com/pgajer/gflow/blob/main/NEWS.md)
 
-```bash
+All four guides are installed locally. Use `browseVignettes("gflow")` for the
+index and `help("gflow-migration", package = "gflow")` for migration advice.
+Loading the package stays quiet.
+
+## Package boundaries
+
+Build graphs with [`dgraphs`](https://github.com/pgajer/dgraphs), then supply
+adjacency and aligned edge lengths. `gflow` owns basin/flow analysis and local
+association. Layout and interactive viewers are optional and separate.
+Retired response-smoothing estimators are archived in
+[`gflowx`](https://github.com/pgajer/gflowx).
+
+`gfcor()` and `gfassoc.membership()` currently require compatible archived
+basin objects and reject canonical `basin_complex` inputs. They are not a
+continuation of the new-analysis example above. See [REFERENCE.md](https://github.com/pgajer/gflow/blob/main/REFERENCE.md)
+and the [migration guide](https://pgajer.github.io/gflow/reference/gflow-migration.html).
+
+## Development and documentation
+
+```sh
 make document
 make audit-api-guide
-make check-fast
 make check
 make audit-final-acceptance
 ```
+
+To rebuild the website from a matching installed archive, install `pkgdown`
+and run `make website` with the same `R_ENV` library selection used to install
+that archive. Generated pages live in `build/site/`; maintained installation
+notes in `docs/` are preserved. See [the documentation build guide](https://github.com/pgajer/gflow/blob/main/docs/documentation-build.md).

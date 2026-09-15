@@ -2,6 +2,7 @@
 title: "Example graphs and scalar fields"
 output:
   rmarkdown::html_vignette:
+    css: !expr c(system.file("rmarkdown/templates/html_vignette/resources/vignette.css", package = "rmarkdown"), "guide.css")
     toc: true
     toc_depth: 2
 vignette: >
@@ -170,6 +171,23 @@ Both methods identify maxima 5 and 9 and cover this grid, but reachability
 has more overlapping vertices. A single label discards that multiplicity.
 Compare the membership rows first and interpret assignment as the selected
 policy's convenience label. Agreement across methods is not the objective.
+
+### Draw assignments and overlapping support
+
+These views use the same reachability result and the grid's supplied drawing
+coordinates. Assignment colors show one selected label; the overlap view counts
+all containing basins. Neither is a probability map. Crosses indicate an absent
+assignment or zero support, not a third basin.
+
+```{r grid-assignment-view, fig.cap="Primary reachability assignments on the grid. Colors identify the selected peak; this single label omits multiple membership.", fig.width=6, fig.height=5}
+plot(grid_objects[[2]], view = "assignment", coordinates = coordinates,
+     label.vertices = TRUE)
+```
+
+```{r grid-overlap-view, fig.cap="Raw reachability support counts on the same grid. Vertices in two basins retain that overlap even though the previous view selected one primary label.", fig.width=6, fig.height=5}
+plot(grid_objects[[2]], view = "overlap", stage = "raw",
+     coordinates = coordinates, label.vertices = TRUE)
+```
 
 ## Refine retained support
 

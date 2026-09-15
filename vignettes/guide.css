@@ -1,0 +1,12 @@
+/* Shared by the installed, self-contained HTML guides. */
+body { width: auto; max-width: 900px; padding: 12px 20px; box-sizing: border-box; overflow-wrap: anywhere; }
+img, svg { box-sizing: border-box; max-width: 100%; height: auto; }
+#TOC { box-sizing: border-box; width: auto; margin: 1em 0; max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+pre { box-sizing: border-box; max-width: 100%; overflow-x: auto; }
+table { display: block; max-width: 100%; overflow-x: auto; }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+@media (max-width: 600px) {
+  body { padding: 10px 14px; }
+  h1 { font-size: 1.8em; }
+}

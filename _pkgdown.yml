@@ -1,0 +1,30 @@
+url: https://pgajer.github.io/gflow/
+destination: build/site
+development:
+  mode: unreleased
+template:
+  bootstrap: 5
+  bslib:
+    bg: "#fbfcfa"
+    fg: "#20343c"
+    primary: "#146f7b"
+navbar:
+  structure:
+    left: [intro, articles, reference, news]
+    right: [search, github]
+  components:
+    intro:
+      text: Start here
+      href: articles/function-guide.html
+    articles:
+      text: Worked examples
+      menu:
+        - text: Paths, grids, and disconnected graphs
+          href: articles/example-graphs-and-fields.html
+        - text: Canonical basin workflow
+          href: articles/basin_complex_workflow_vignette.html
+        - text: Noisy-circle analysis
+          href: articles/noisy_circle_core_workflow_vignette.html
+home:
+  title: Basin structure and local association on graphs
+  description: Explore peaks, overlapping supports, trajectories, and field alignment on a graph.
