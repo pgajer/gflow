@@ -31,17 +31,30 @@ if (knitr::is_html_output()) knitr::include_graphics("figures/basin-showcase.png
 
 ## Choose a starting point
 
-| Your task | Entry point | Result or prerequisite |
+| Your task | Entry point | Worked route |
 |---|---|---|
-| Start a basin analysis | `create.basin.complex()` | A graph, edge lengths, and one finite field give a `basin_complex`. |
-| Follow connected level sets | The constructor with `method = "superlevel_merge_tree"` | Exact graph merge tree; query with `get.basin.merge.tree()` and `cut()`. |
-| Follow field-directed paths | The constructor with `method = "trajectory_flow"` | Terminal basins and a trajectory forest. |
-| Inspect support and coverage | `get.basin.table()`, `get.basin.membership()`, `get.basin.assignment()` | Retained support, raw overlap, and optional single assignments are different quantities. |
-| Reconstruct an archived analysis | `as.basin.complex()` | Requires the original graph and an available construction field. |
-| Extend position along a path into its neighborhood | `compute.harmonic.extension()` | A connected vertex path and a graph give harmonic coordinates. |
-| Compare local changes symmetrically | `lcor()` | Graph plus vectors or matrices of vertex fields. |
-| Measure change in a response along a directing field | `lslope()` or `lslope.neighborhood()` | Directed edge ratios or neighborhood regression coefficients. |
-| Summarize flow polarity and overlap | `gfcor()`, `gfassoc.*()` | Currently requires archived basin/membership structures; no public canonical adapter yet. |
+| Construct and compare basins | [`create.basin.complex()`](https://pgajer.github.io/gflow/reference/create.basin.complex.html) | [First analysis](#a-complete-first-analysis) and [construction workflow](basin_complex_workflow_vignette.html). |
+| Inspect hierarchy and support | [`get.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/get.basin.merge.tree.html), [`get.basin.table()`](https://pgajer.github.io/gflow/reference/get.basin.table.html), [`get.basin.membership()`](https://pgajer.github.io/gflow/reference/get.basin.membership.html) | [Path and grid examples](example-graphs-and-fields.html); distinguish raw, retained and assigned supports. |
+| Follow trajectories | [`get.basin.trajectory.forest()`](https://pgajer.github.io/gflow/reference/get.basin.trajectory.forest.html), [`construct.madag()`](https://pgajer.github.io/gflow/reference/construct.madag.html) | [Canonical trajectory workflow](basin_complex_workflow_vignette.html). |
+| Compare fields | [`lcor()`](https://pgajer.github.io/gflow/reference/lcor.html), [`lslope()`](https://pgajer.github.io/gflow/reference/lslope.html), [`gfcor()`](https://pgajer.github.io/gflow/reference/gfcor.html) | [Noisy-circle example](noisy_circle_core_workflow_vignette.html) and [flow association](#flow-aware-association-current-input-boundary). |
+
+For saved historical results, the secondary route is `as.basin.complex()`:
+reconstruction requires the original graph and an available construction field.
+The full catalog below retains the archive and advanced interfaces.
+
+The [method-parameter reference](https://pgajer.github.io/gflow/reference/basin-parameters.html)
+is also installed: `help("basin-parameters", package = "gflow")`. Its tables
+are generated from the constructor's resolved defaults. In particular,
+CLOSEST requires exact connected plateaus, density modulation requires a supplied
+density, and disabled nondefault refinement settings can still be inapplicable.
+
+Across interfaces, `edge.length.list` and the inherited `weight.list` both
+supply graph edge lengths, not vertex mass or affinity. `lcor()` defaults to
+ordinary differences for both fields; `lslope()` defaults to log-ratios for the
+response field. Set `z.diff.type = "difference"` explicitly for an ordinary
+response slope. The local statistic is an edge-difference cosine; interpreting
+it as a Euclidean gradient cosine requires isotropic local directions, as
+explained in `help("lcor", package = "gflow")`.
 
 ## A complete first analysis
 
@@ -279,7 +292,7 @@ hops and, for derivative weighting, shortest lengths within the hop limit.
 This is local alignment of graph differences, not an ordinary Pearson
 correlation of observations in a neighborhood.
 
-| Inputs (rows are vertices) | `lcor()` result, without instrumentation | `lslope()` result |
+| Inputs (rows are vertices) | [`lcor()`](https://pgajer.github.io/gflow/reference/lcor.html) result, without instrumentation | [`lslope()`](https://pgajer.github.io/gflow/reference/lslope.html) result |
 |---|---|---|
 | Vector and vector | Length-`n` coefficients | Length-`n` coefficients |
 | Vector and matrix, or matrix and vector | `n` by number-of-columns matrix | Vector directing field plus response matrix is supported; matrix directing field plus vector is rejected. |
@@ -349,12 +362,31 @@ different questions:
 
 ## Flow-aware association: current input boundary
 
-`gfcor(y.hat, z.hat, y.basins, z.basins)` accepts two vertex vectors and two
-archived `basins_of_attraction` objects. **It currently rejects canonical
-`basin_complex` objects.** `gfassoc.membership()` has the same basin-class
-restriction. The retired constructor must not be called to create these
-inputs; use these interfaces only for compatible saved analyses. There is no
-public conversion from canonical basins to that archived class.
+`gfcor()` now accepts two successful canonical `trajectory_flow` complexes,
+each built with `direction = "both"`. Choose `support.stage = "raw"` or
+`"retained"` explicitly. Retained association supports only support filtering;
+other refinement choices and other method families are rejected. The graph,
+lengths, external vertex IDs and order must match, and the supplied fields must
+be the construction values. Canonical masses are normalized to sum one, with
+uniform mass by default. Archived `basins_of_attraction` inputs remain supported
+with their original behavior; the retired constructor remains retired.
+
+```{r canonical-association}
+adj.assoc <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+lengths.assoc <- lapply(adj.assoc, function(v) rep(1, length(v)))
+y.assoc <- c(0, 3, 1, 2, 0)
+by <- gflow::create.basin.complex(adj.assoc, lengths.assoc, y.assoc,
+    method = "trajectory_flow", direction = "both")
+bz <- gflow::create.basin.complex(adj.assoc, lengths.assoc, -y.assoc,
+    method = "trajectory_flow", direction = "both")
+gflow::gfcor(y.assoc, -y.assoc, by, bz, support.stage = "raw")
+```
+
+Reversing the field produces negative polarity concordance. Self-association
+averages squared polarity and need not equal one. Check validity flags and
+coverage: invalid vertices are omitted from global averages, while numeric
+zeros remain as placeholders. The `canonical` metadata maps zero-based kernel
+basin positions to stable basin IDs.
 
 `gfassoc.membership()` divides a vertex's membership equally among its
 containing basins and forms maximum/minimum cell memberships. Its basin/cell
@@ -393,57 +425,57 @@ availability from recommendation. Open exact arguments with
 
 | Function | Purpose | Status |
 |---|---|---|
-| `create.basin.complex()` | Construct a canonical basin analysis with a chosen method. | Start |
-| `as.basin.complex()` | Validate a canonical object or reconstruct from a supported archive. | Start |
-| `compute.basins.of.attraction()` | Retired reachability constructor; use canonical `geodesic_reachability`. | Retired |
-| `compute.gfc()` | Retired composite refinement workflow; translate controls into canonical construction/refinement. | Retired |
-| `compute.gfc.trajectory()` | Retired trajectory constructor; use canonical `trajectory_flow`. | Retired |
-| `compute.gfc.flow()` | Retired trajectory alias; it also raises a migration error. | Retired |
-| `create.basin.cx()` | Retired overlap constructor; use canonical `overlap_cell_complex`. | Retired |
-| `compute.gfc.basins()` | Compute a specialized modulated-flow basin record (`gfc_basins`). | Advanced |
-| `find.gflow.basins()` | Find path-based graph basins with size and edge controls. | Advanced |
-| `create.gflow.cx()` | Construct an extrema-oriented complex with iterative harmonic modification. | Advanced |
-| `create.morse.smale.complex()` | Construct a separate two-dimensional grid complex from `f.grid`. | Advanced |
+| [`create.basin.complex()`](https://pgajer.github.io/gflow/reference/create.basin.complex.html) | Construct a canonical basin analysis with a chosen method. | Start |
+| [`as.basin.complex()`](https://pgajer.github.io/gflow/reference/as.basin.complex.html) | Validate a canonical object or reconstruct from a supported archive. | Start |
+| [`compute.basins.of.attraction()`](https://pgajer.github.io/gflow/reference/compute.basins.of.attraction.html) | Retired reachability constructor; use canonical `geodesic_reachability`. | Retired |
+| [`compute.gfc()`](https://pgajer.github.io/gflow/reference/compute.gfc.html) | Retired composite refinement workflow; translate controls into canonical construction/refinement. | Retired |
+| [`compute.gfc.trajectory()`](https://pgajer.github.io/gflow/reference/compute.gfc.trajectory.html) | Retired trajectory constructor; use canonical `trajectory_flow`. | Retired |
+| [`compute.gfc.flow()`](https://pgajer.github.io/gflow/reference/compute.gfc.trajectory.html) | Retired trajectory alias; it also raises a migration error. | Retired |
+| [`create.basin.cx()`](https://pgajer.github.io/gflow/reference/create.basin.cx.html) | Retired overlap constructor; use canonical `overlap_cell_complex`. | Retired |
+| [`compute.gfc.basins()`](https://pgajer.github.io/gflow/reference/compute.gfc.basins.html) | Compute a specialized modulated-flow basin record (`gfc_basins`). | Advanced |
+| [`find.gflow.basins()`](https://pgajer.github.io/gflow/reference/find.gflow.basins.html) | Find path-based graph basins with size and edge controls. | Advanced |
+| [`create.gflow.cx()`](https://pgajer.github.io/gflow/reference/create.gflow.cx.html) | Construct an extrema-oriented complex with iterative harmonic modification. | Advanced |
+| [`create.morse.smale.complex()`](https://pgajer.github.io/gflow/reference/create.morse.smale.complex.html) | Construct a separate two-dimensional grid complex from `f.grid`. | Advanced |
 
 ### Stable accessors and summaries
 
 | Function | Purpose | Status |
 |---|---|---|
-| `get.basin.table()` | Read raw, retained, and primary basin summaries. | Start |
-| `get.basin.membership()` | Read raw construction membership, including overlaps. | Start |
-| `get.basin.assignment()` | Read current optional single-basin labels and their status. | Start |
-| `get.basin.merge.tree()` | Extract the exact level-set hierarchy. | Start |
-| `get.basin.trajectory.forest()` | Extract canonical trajectory-flow paths and successor/root records. | Start |
-| `get.basin.cells()` | Extract overlap-cell structures and summary. | Start |
-| `basin()` | Generic for one basin; canonical and historical classes dispatch differently. | Advanced |
-| `basins()` | Generic for basin collections; consult the object's method. | Advanced |
-| `get.basin()` | Find a labeled basin in an archived `gfc.flow`. | Archive |
-| `get.gflow.build.identity()` | Report the loaded package build and manifest identity. | Advanced |
+| [`get.basin.table()`](https://pgajer.github.io/gflow/reference/get.basin.table.html) | Read raw, retained, and primary basin summaries. | Start |
+| [`get.basin.membership()`](https://pgajer.github.io/gflow/reference/get.basin.membership.html) | Read raw construction membership, including overlaps. | Start |
+| [`get.basin.assignment()`](https://pgajer.github.io/gflow/reference/get.basin.assignment.html) | Read current optional single-basin labels and their status. | Start |
+| [`get.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/get.basin.merge.tree.html) | Extract the exact level-set hierarchy. | Start |
+| [`get.basin.trajectory.forest()`](https://pgajer.github.io/gflow/reference/get.basin.trajectory.forest.html) | Extract canonical trajectory-flow paths and successor/root records. | Start |
+| [`get.basin.cells()`](https://pgajer.github.io/gflow/reference/get.basin.cells.html) | Extract overlap-cell structures and summary. | Start |
+| [`basin()`](https://pgajer.github.io/gflow/reference/basin.html) | Generic for one basin; canonical and historical classes dispatch differently. | Advanced |
+| [`basins()`](https://pgajer.github.io/gflow/reference/basins.html) | Generic for basin collections; consult the object's method. | Advanced |
+| [`get.basin()`](https://pgajer.github.io/gflow/reference/get.basin.html) | Find a labeled basin in an archived `gfc.flow`. | Archive |
+| [`get.gflow.build.identity()`](https://pgajer.github.io/gflow/reference/get.gflow.build.identity.html) | Report the loaded package build and manifest identity. | Advanced |
 
 ### Extrema and merge trees
 
 | Function | Purpose | Status |
 |---|---|---|
-| `detect.adaptive.extrema()` | Detect extrema with adaptive graph neighborhoods. | Start |
-| `find.critical.points()` | Identify critical points on a two-dimensional field grid. | Advanced |
-| `find.local.extrema()` | Find labeled extrema with graph-basin size controls. | Advanced |
-| `compute.extrema.hop.nbhds()` | Compute extrema-centered hop neighborhoods. | Advanced |
-| `get.nbrs()` | Extract an extrema-neighborhood component by label. | Advanced |
-| `relabel.extrema()` | Reorder and label an extrema data frame. | Advanced |
-| `compute.persistence()` | Run the older persistence/basin calculation with `n.top.basins` and `alpha`; not a canonical tree accessor. | Advanced |
-| `plot.basin.merge.tree()` | Tree/barcode view; normally call `plot(tree)`. | Start |
-| `cut.basin.merge.tree()` | Exact field-height query; normally call `cut(tree, height)`. | Start |
-| `as.dendrogram.basin.merge.tree()` | Coerce one direction/component; normally call `as.dendrogram(tree)`. | Advanced |
-| `get.basin.merge.tree.layout()` | Obtain validated tree drawing coordinates. | Advanced |
-| `extremality.summary()` | Summarize extremality scores in a domain-complex record. | Advanced |
-| `compute.pextrema.nbhds()` | Extract neighborhoods from extremality and degree criteria. | Advanced |
-| `maxp()` | Evaluate a neighborhood-weighted maximum score from `y` and `rho`. | Advanced |
-| `minp()` | Evaluate a neighborhood-weighted minimum score from `y` and `rho`. | Advanced |
-| `analyze.extrema.distribution()` | Inspect extrema distributions and candidate filtering thresholds. | Advanced |
-| `classify.spurious.extrema()` | Classify extrema by supplied heuristic criteria. | Advanced |
-| `compare.retained.extrema()` | Compare extrema retained by selected thresholds. | Advanced |
-| `create.hop.nbhd.extrema.df2()` | Tabulate hop-neighborhood extrema and heuristic classifications. | Advanced |
-| `suggest.threshold()` | Suggest extrema thresholds from expected count/range controls. | Advanced |
+| [`detect.adaptive.extrema()`](https://pgajer.github.io/gflow/reference/detect.adaptive.extrema.html) | Detect extrema with adaptive graph neighborhoods. | Start |
+| [`find.critical.points()`](https://pgajer.github.io/gflow/reference/find.critical.points.html) | Identify critical points on a two-dimensional field grid. | Advanced |
+| [`find.local.extrema()`](https://pgajer.github.io/gflow/reference/find.local.extrema.html) | Find labeled extrema with graph-basin size controls. | Advanced |
+| [`compute.extrema.hop.nbhds()`](https://pgajer.github.io/gflow/reference/compute.extrema.hop.nbhds.html) | Compute extrema-centered hop neighborhoods. | Advanced |
+| [`get.nbrs()`](https://pgajer.github.io/gflow/reference/get.nbrs.html) | Extract an extrema-neighborhood component by label. | Advanced |
+| [`relabel.extrema()`](https://pgajer.github.io/gflow/reference/relabel.extrema.html) | Reorder and label an extrema data frame. | Advanced |
+| [`compute.persistence()`](https://pgajer.github.io/gflow/reference/compute.persistence.html) | Run the older persistence/basin calculation with `n.top.basins` and `alpha`; not a canonical tree accessor. | Advanced |
+| [`plot.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/plot.basin.merge.tree.html) | Tree/barcode view; normally call `plot(tree)`. | Start |
+| [`cut.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/cut.basin.merge.tree.html) | Exact field-height query; normally call `cut(tree, height)`. | Start |
+| [`as.dendrogram.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/as.dendrogram.basin.merge.tree.html) | Coerce one direction/component; normally call `as.dendrogram(tree)`. | Advanced |
+| [`get.basin.merge.tree.layout()`](https://pgajer.github.io/gflow/reference/get.basin.merge.tree.layout.html) | Obtain validated tree drawing coordinates. | Advanced |
+| [`extremality.summary()`](https://pgajer.github.io/gflow/reference/extremality.summary.html) | Summarize extremality scores in a domain-complex record. | Advanced |
+| [`compute.pextrema.nbhds()`](https://pgajer.github.io/gflow/reference/compute.pextrema.nbhds.html) | Extract neighborhoods from extremality and degree criteria. | Advanced |
+| [`maxp()`](https://pgajer.github.io/gflow/reference/maxp.html) | Evaluate a neighborhood-weighted maximum score from `y` and `rho`. | Advanced |
+| [`minp()`](https://pgajer.github.io/gflow/reference/minp.html) | Evaluate a neighborhood-weighted minimum score from `y` and `rho`. | Advanced |
+| [`analyze.extrema.distribution()`](https://pgajer.github.io/gflow/reference/analyze.extrema.distribution.html) | Inspect extrema distributions and candidate filtering thresholds. | Advanced |
+| [`classify.spurious.extrema()`](https://pgajer.github.io/gflow/reference/classify.spurious.extrema.html) | Classify extrema by supplied heuristic criteria. | Advanced |
+| [`compare.retained.extrema()`](https://pgajer.github.io/gflow/reference/compare.retained.extrema.html) | Compare extrema retained by selected thresholds. | Advanced |
+| [`create.hop.nbhd.extrema.df2()`](https://pgajer.github.io/gflow/reference/create.hop.nbhd.extrema.df2.html) | Tabulate hop-neighborhood extrema and heuristic classifications. | Advanced |
+| [`suggest.threshold()`](https://pgajer.github.io/gflow/reference/suggest.threshold.html) | Suggest extrema thresholds from expected count/range controls. | Advanced |
 
 “Spurious,” “probability,” and “persistence” in older function names do not
 by themselves imply a calibrated statistical test. Prefer the exact canonical
@@ -453,72 +485,72 @@ tree for graph level-set births and mergers.
 
 | Function | Purpose | Status |
 |---|---|---|
-| `cluster.local.extrema()` | Cluster overlaps in an archived basin object. | Archive |
-| `filter.basins()` | Retain selected extrema in an archived basin object. | Archive |
-| `filter.basins.by.relvalue()` | Filter an archived basin object by relative field value. | Archive |
-| `expand.basins.to.cover()` | Expand supplied basin vertex lists along the graph. | Advanced |
-| `generate.refinement.report()` | Format a report from an older composite-refinement record. | Archive |
-| `replace.basin.label()` | Replace a label in a graph-gradient-flow record. | Archive |
-| `uncovered.vertices.gfc.flow()` | Locate uncovered vertices in an archived trajectory-flow result. | Archive |
-| `count.feature.carriers()` | Count features present in a selected matrix row subset. | Advanced |
-| `set.boundary()` | Find boundary vertices of a supplied subset using adjacency. | Advanced |
+| [`cluster.local.extrema()`](https://pgajer.github.io/gflow/reference/cluster.local.extrema.html) | Cluster overlaps in an archived basin object. | Archive |
+| [`filter.basins()`](https://pgajer.github.io/gflow/reference/filter.basins.html) | Retain selected extrema in an archived basin object. | Archive |
+| [`filter.basins.by.relvalue()`](https://pgajer.github.io/gflow/reference/filter.basins.by.relvalue.html) | Filter an archived basin object by relative field value. | Archive |
+| [`expand.basins.to.cover()`](https://pgajer.github.io/gflow/reference/expand.basins.to.cover.html) | Expand supplied basin vertex lists along the graph. | Advanced |
+| [`generate.refinement.report()`](https://pgajer.github.io/gflow/reference/generate.refinement.report.html) | Format a report from an older composite-refinement record. | Archive |
+| [`replace.basin.label()`](https://pgajer.github.io/gflow/reference/replace.basin.label.html) | Replace a label in a graph-gradient-flow record. | Archive |
+| [`uncovered.vertices.gfc.flow()`](https://pgajer.github.io/gflow/reference/uncovered.vertices.gfc.flow.html) | Locate uncovered vertices in an archived trajectory-flow result. | Archive |
+| [`count.feature.carriers()`](https://pgajer.github.io/gflow/reference/count.feature.carriers.html) | Count features present in a selected matrix row subset. | Advanced |
+| [`set.boundary()`](https://pgajer.github.io/gflow/reference/set.boundary.html) | Find boundary vertices of a supplied subset using adjacency. | Advanced |
 
 ### Trajectories, cells, and flow graphs
 
 | Function | Purpose | Status |
 |---|---|---|
-| `construct.madag()` | Build monotonic ascent paths from a source, with enumeration limits. | Advanced |
-| `madag.bottlenecks()` | Find vertices shared by a chosen fraction of paths to a sink. | Advanced |
-| `construct.gflow.graph()` | Build an intersection graph from archived merged basins. | Archive |
-| `construct.graph.gradient.flow()` | Compute a scale-controlled graph-gradient-flow record. | Advanced |
-| `compute.graph.gradient.flow()` | Compute flow information with supplied extrema lists. | Advanced |
-| `compute.gfc.modulation()` | Compute graph edge modulation weights from density/length controls. | Advanced |
-| `build.se.tree()` | Build a spurious-extrema tree from a source and classified extrema/basins. | Advanced |
-| `extract.gradient.trajectory()` | Extract a path from an archived basin trajectory record. | Archive |
-| `extract.cell.trajectory()` | Join minimum/maximum paths through an archived cell vertex. | Archive |
-| `vertex.cell.trajectory.gfc.flow()` | Extract a vertex's trajectory inside an archived flow cell. | Archive |
-| `filter.cells.by.criteria()` | Filter a gradient-flow-cell record by counts or percentiles. | Archive |
-| `filter.cells.by.vertex.count()` | Filter a gradient-flow-cell record by support size. | Archive |
-| `cell.y.values()` | Extract response values for a supplied partition's super-cells. | Advanced |
-| `compute.tube.lens.corridor()` | Find graph corridors constrained by path length/excess. | Advanced |
-| `construct.path.through.waypoints()` | Join waypoint vertices using a supplied igraph graph. | Advanced |
-| `trajectory.distances.to.vertex()` | Measure path distances to a target vertex. | Advanced |
-| `vertex.distances.to.trajectory()` | Measure distances from vertices to a path. | Advanced |
-| `fit.trajectory.smooth.splines()` | Smooth mean/median trajectory coordinates in a 3D embedding. | Advanced |
-| `graph.constrained.gradient.flow.trajectories()` | Follow a field using supplied graph/core-graph structures. | Advanced |
-| `compute.gradient.trajectory()` | Follow a trajectory on a two-dimensional field grid. | Advanced |
-| `compute.morse.smale.cells()` | Compute the cells of a two-dimensional field grid. | Advanced |
+| [`construct.madag()`](https://pgajer.github.io/gflow/reference/construct.madag.html) | Build monotonic ascent paths from a source, with enumeration limits. | Advanced |
+| [`madag.bottlenecks()`](https://pgajer.github.io/gflow/reference/madag.bottlenecks.html) | Find vertices shared by a chosen fraction of paths to a sink. | Advanced |
+| [`construct.gflow.graph()`](https://pgajer.github.io/gflow/reference/construct.gflow.graph.html) | Build an intersection graph from archived merged basins. | Archive |
+| [`construct.graph.gradient.flow()`](https://pgajer.github.io/gflow/reference/construct.graph.gradient.flow.html) | Compute a scale-controlled graph-gradient-flow record. | Advanced |
+| [`compute.graph.gradient.flow()`](https://pgajer.github.io/gflow/reference/compute.graph.gradient.flow.html) | Compute flow information with supplied extrema lists. | Advanced |
+| [`compute.gfc.modulation()`](https://pgajer.github.io/gflow/reference/compute.gfc.modulation.html) | Compute graph edge modulation weights from density/length controls. | Advanced |
+| [`build.se.tree()`](https://pgajer.github.io/gflow/reference/build.se.tree.html) | Build a spurious-extrema tree from a source and classified extrema/basins. | Advanced |
+| [`extract.gradient.trajectory()`](https://pgajer.github.io/gflow/reference/extract.gradient.trajectory.html) | Extract a path from an archived basin trajectory record. | Archive |
+| [`extract.cell.trajectory()`](https://pgajer.github.io/gflow/reference/extract.cell.trajectory.html) | Join minimum/maximum paths through an archived cell vertex. | Archive |
+| [`vertex.cell.trajectory.gfc.flow()`](https://pgajer.github.io/gflow/reference/vertex.cell.trajectory.gfc.flow.html) | Extract a vertex's trajectory inside an archived flow cell. | Archive |
+| [`filter.cells.by.criteria()`](https://pgajer.github.io/gflow/reference/filter.cells.by.criteria.html) | Filter a gradient-flow-cell record by counts or percentiles. | Archive |
+| [`filter.cells.by.vertex.count()`](https://pgajer.github.io/gflow/reference/filter.cells.by.vertex.count.html) | Filter a gradient-flow-cell record by support size. | Archive |
+| [`cell.y.values()`](https://pgajer.github.io/gflow/reference/cell.y.values.html) | Extract response values for a supplied partition's super-cells. | Advanced |
+| [`compute.tube.lens.corridor()`](https://pgajer.github.io/gflow/reference/compute.tube.lens.corridor.html) | Find graph corridors constrained by path length/excess. | Advanced |
+| [`construct.path.through.waypoints()`](https://pgajer.github.io/gflow/reference/construct.path.through.waypoints.html) | Join waypoint vertices using a supplied igraph graph. | Advanced |
+| [`trajectory.distances.to.vertex()`](https://pgajer.github.io/gflow/reference/trajectory.distances.to.vertex.html) | Measure path distances to a target vertex. | Advanced |
+| [`vertex.distances.to.trajectory()`](https://pgajer.github.io/gflow/reference/vertex.distances.to.trajectory.html) | Measure distances from vertices to a path. | Advanced |
+| [`fit.trajectory.smooth.splines()`](https://pgajer.github.io/gflow/reference/fit.trajectory.smooth.splines.html) | Smooth mean/median trajectory coordinates in a 3D embedding. | Advanced |
+| [`graph.constrained.gradient.flow.trajectories()`](https://pgajer.github.io/gflow/reference/graph.constrained.gradient.flow.trajectories.html) | Follow a field using supplied graph/core-graph structures. | Advanced |
+| [`compute.gradient.trajectory()`](https://pgajer.github.io/gflow/reference/compute.gradient.trajectory.html) | Follow a trajectory on a two-dimensional field grid. | Advanced |
+| [`compute.morse.smale.cells()`](https://pgajer.github.io/gflow/reference/compute.morse.smale.cells.html) | Compute the cells of a two-dimensional field grid. | Advanced |
 
 ### Harmonic extension
 
 | Function | Purpose | Status |
 |---|---|---|
-| `compute.harmonic.extension()` | Extend arc-length coordinates from a path into its graph tube. | Start |
-| `select.max.density.trajectory()` | Select the supplied path with greatest mean density. | Advanced |
-| `apply.harmonic.extension()` | Apply a selected harmonic scheme to a local-subgraph record. | Advanced |
-| `analyze.harmonic.extensions()` | Analyze extensions around supplied extrema and predictions. | Advanced |
-| `compare.harmonic.methods()` | Compare numerical extensions on one local-subgraph record. | Advanced |
-| `visualize.smoothing.steps()` | Visualize recorded complex-smoothing iterations. | Advanced |
+| [`compute.harmonic.extension()`](https://pgajer.github.io/gflow/reference/compute.harmonic.extension.html) | Extend arc-length coordinates from a path into its graph tube. | Start |
+| [`select.max.density.trajectory()`](https://pgajer.github.io/gflow/reference/select.max.density.trajectory.html) | Select the supplied path with greatest mean density. | Advanced |
+| [`apply.harmonic.extension()`](https://pgajer.github.io/gflow/reference/apply.harmonic.extension.html) | Apply a selected harmonic scheme to a local-subgraph record. | Advanced |
+| [`analyze.harmonic.extensions()`](https://pgajer.github.io/gflow/reference/analyze.harmonic.extensions.html) | Analyze extensions around supplied extrema and predictions. | Advanced |
+| [`compare.harmonic.methods()`](https://pgajer.github.io/gflow/reference/compare.harmonic.methods.html) | Compare numerical extensions on one local-subgraph record. | Advanced |
+| [`visualize.smoothing.steps()`](https://pgajer.github.io/gflow/reference/visualize.smoothing.steps.html) | Visualize recorded complex-smoothing iterations. | Advanced |
 
 ### Local association
 
 | Function | Purpose | Status |
 |---|---|---|
-| `lcor()` | Estimate symmetric local alignment of field differences. | Start |
-| `lslope()` | Estimate directed response on a chosen improving edge. | Start |
-| `lslope.neighborhood()` | Regress incident response differences on directing-field differences. | Start |
-| `permutation.test.lcor()` | Test feature-level local-correlation summaries by unrestricted row permutation. | Advanced |
-| `lcor.with.posterior()` | Summarize local correlation over supplied field draws against a fixed response. | Advanced |
+| [`lcor()`](https://pgajer.github.io/gflow/reference/lcor.html) | Estimate symmetric local alignment of field differences. | Start |
+| [`lslope()`](https://pgajer.github.io/gflow/reference/lslope.html) | Estimate directed response on a chosen improving edge. | Start |
+| [`lslope.neighborhood()`](https://pgajer.github.io/gflow/reference/lslope.neighborhood.html) | Regress incident response differences on directing-field differences. | Start |
+| [`permutation.test.lcor()`](https://pgajer.github.io/gflow/reference/permutation.test.lcor.html) | Test feature-level local-correlation summaries by unrestricted row permutation. | Advanced |
+| [`lcor.with.posterior()`](https://pgajer.github.io/gflow/reference/lcor.with.posterior.html) | Summarize local correlation over supplied field draws against a fixed response. | Advanced |
 
 ### Flow-aware association
 
 | Function | Purpose | Status |
 |---|---|---|
-| `gfcor()` | Summarize polarity concordance for two fields and archived basin objects. | Archive |
-| `gfassoc.membership()` | Normalize memberships from an archived basin object. | Archive |
-| `gfassoc.polarity()` | Compute value/rank polarity from a field and compatible membership record. | Archive |
-| `gfassoc.overlap()` | Compute mass-weighted overlap between compatible membership records. | Archive |
-| `gfassoc.deviation()` | Describe residuals from marginal-product expected overlap. | Advanced |
+| [`gfcor()`](https://pgajer.github.io/gflow/reference/gfcor.html) | Summarize polarity concordance for canonical trajectory or archived basin objects. | Advanced |
+| [`gfassoc.membership()`](https://pgajer.github.io/gflow/reference/gfassoc.membership.html) | Normalize canonical trajectory or archived basin memberships. | Advanced |
+| [`gfassoc.polarity()`](https://pgajer.github.io/gflow/reference/gfassoc.polarity.html) | Compute value/rank polarity from a field and compatible membership record. | Archive |
+| [`gfassoc.overlap()`](https://pgajer.github.io/gflow/reference/gfassoc.overlap.html) | Compute mass-weighted overlap between compatible membership records. | Archive |
+| [`gfassoc.deviation()`](https://pgajer.github.io/gflow/reference/gfassoc.deviation.html) | Describe residuals from marginal-product expected overlap. | Advanced |
 
 ### Domain-specific visualization and supporting grid tools
 
@@ -533,36 +565,36 @@ they are not a general synthetic-data API.
 
 | Function | Purpose | Status |
 |---|---|---|
-| `label.extrema.3d()` | Add extrema labels to a native 3D scene using supplied coordinates. | Advanced |
-| `label.extrema.leaders.3d()` | Add extrema labels and leader segments to a native 3D scene. | Advanced |
-| `label.extremality.3d()` | Add extremality-based labels to a native 3D scene. | Advanced |
-| `draw.basin()` | Add archived basin vertices to a native 3D scene. | Archive |
-| `critical.points.plot()` | Draw critical points in two dimensions. | Advanced |
-| `grid.critical.points.plot()` | Draw grid extrema with coordinate axes. | Advanced |
-| `function.contours.plot()` | Draw contours of a grid field. | Advanced |
-| `gradient.trajectory.plot()` | Draw one ascending/descending grid trajectory. | Advanced |
-| `gradient.trajectories.plot()` | Draw a collection of grid trajectories. | Advanced |
-| `morse.analysis.plot()` | Combine contours, critical points, and a grid trajectory. | Advanced |
-| `morse.smale.cells.plot()` | Draw two-dimensional grid cells. | Advanced |
-| `morse.smale.complex.plot()` | Draw a grid complex from a supplied function. | Advanced |
-| `morse.smale.complex.plot.from.critical()` | Draw a grid complex using supplied critical points. | Advanced |
-| `separatrices.with.cells.plot()` | Draw cell-separating curves and regions in a specified 2D layout. | Advanced |
-| `create.grid()` | Prepare a coordinate grid for the two-dimensional workflow. | Advanced |
-| `evaluate.function.on.grid()` | Evaluate a supplied function into a grid matrix. | Advanced |
-| `evaluate.function.on.grid.as.vector()` | Evaluate a supplied function in grid vertex order. | Advanced |
-| `create.lmin.lmax.labels()` | Label domain-complex extrema using supplied state/taxonomy data. | Advanced |
-| `create.lmin.lmax.label.indicators()` | Build label tables and indicators for domain-complex extrema. | Advanced |
-| `create.lmin.lmax.contingency.table()` | Tabulate relationships between labeled extrema. | Advanced |
-| `morse.smale.complex.lmin.lmax.summary()` | Summarize a supplied domain-complex and its feature annotations. | Advanced |
-| `prof.fn()` | Profile a selected feature against supplied similarity/taxonomy records. | Advanced |
-| `find.longest.true.stretch()` | Locate the longest consecutive TRUE run in a logical vector. | Advanced |
-| `elapsed.time()` | Format elapsed computation time. | Advanced |
+| [`label.extrema.3d()`](https://pgajer.github.io/gflow/reference/label.extrema.3d.html) | Add extrema labels to a native 3D scene using supplied coordinates. | Advanced |
+| [`label.extrema.leaders.3d()`](https://pgajer.github.io/gflow/reference/label.extrema.leaders.3d.html) | Add extrema labels and leader segments to a native 3D scene. | Advanced |
+| [`label.extremality.3d()`](https://pgajer.github.io/gflow/reference/label.extremality.3d.html) | Add extremality-based labels to a native 3D scene. | Advanced |
+| [`draw.basin()`](https://pgajer.github.io/gflow/reference/draw.basin.html) | Add archived basin vertices to a native 3D scene. | Archive |
+| [`critical.points.plot()`](https://pgajer.github.io/gflow/reference/critical.points.plot.html) | Draw critical points in two dimensions. | Advanced |
+| [`grid.critical.points.plot()`](https://pgajer.github.io/gflow/reference/grid.critical.points.plot.html) | Draw grid extrema with coordinate axes. | Advanced |
+| [`function.contours.plot()`](https://pgajer.github.io/gflow/reference/function.contours.plot.html) | Draw contours of a grid field. | Advanced |
+| [`gradient.trajectory.plot()`](https://pgajer.github.io/gflow/reference/gradient.trajectory.plot.html) | Draw one ascending/descending grid trajectory. | Advanced |
+| [`gradient.trajectories.plot()`](https://pgajer.github.io/gflow/reference/gradient.trajectories.plot.html) | Draw a collection of grid trajectories. | Advanced |
+| [`morse.analysis.plot()`](https://pgajer.github.io/gflow/reference/morse.analysis.plot.html) | Combine contours, critical points, and a grid trajectory. | Advanced |
+| [`morse.smale.cells.plot()`](https://pgajer.github.io/gflow/reference/morse.smale.cells.plot.html) | Draw two-dimensional grid cells. | Advanced |
+| [`morse.smale.complex.plot()`](https://pgajer.github.io/gflow/reference/morse.smale.complex.plot.html) | Draw a grid complex from a supplied function. | Advanced |
+| [`morse.smale.complex.plot.from.critical()`](https://pgajer.github.io/gflow/reference/morse.smale.complex.plot.from.critical.html) | Draw a grid complex using supplied critical points. | Advanced |
+| [`separatrices.with.cells.plot()`](https://pgajer.github.io/gflow/reference/separatrices.with.cells.plot.html) | Draw cell-separating curves and regions in a specified 2D layout. | Advanced |
+| [`create.grid()`](https://pgajer.github.io/gflow/reference/create.grid.html) | Prepare a coordinate grid for the two-dimensional workflow. | Advanced |
+| [`evaluate.function.on.grid()`](https://pgajer.github.io/gflow/reference/evaluate.function.on.grid.html) | Evaluate a supplied function into a grid matrix. | Advanced |
+| [`evaluate.function.on.grid.as.vector()`](https://pgajer.github.io/gflow/reference/evaluate.function.on.grid.as.vector.html) | Evaluate a supplied function in grid vertex order. | Advanced |
+| [`create.lmin.lmax.labels()`](https://pgajer.github.io/gflow/reference/create.lmin.lmax.labels.html) | Label domain-complex extrema using supplied state/taxonomy data. | Advanced |
+| [`create.lmin.lmax.label.indicators()`](https://pgajer.github.io/gflow/reference/create.lmin.lmax.label.indicators.html) | Build label tables and indicators for domain-complex extrema. | Advanced |
+| [`create.lmin.lmax.contingency.table()`](https://pgajer.github.io/gflow/reference/create.lmin.lmax.contingency.table.html) | Tabulate relationships between labeled extrema. | Advanced |
+| [`morse.smale.complex.lmin.lmax.summary()`](https://pgajer.github.io/gflow/reference/morse.smale.complex.lmin.lmax.summary.html) | Summarize a supplied domain-complex and its feature annotations. | Advanced |
+| [`prof.fn()`](https://pgajer.github.io/gflow/reference/prof.fn.html) | Profile a selected feature against supplied similarity/taxonomy records. | Advanced |
+| [`find.longest.true.stretch()`](https://pgajer.github.io/gflow/reference/find.longest.true.stretch.html) | Locate the longest consecutive TRUE run in a logical vector. | Advanced |
+| [`elapsed.time()`](https://pgajer.github.io/gflow/reference/elapsed.time.html) | Format elapsed computation time. | Advanced |
 
 ### Dependency re-export
 
 | Function | Purpose | Status |
 |---|---|---|
-| `vertices()` | Re-export of `dgraphs::vertices()`: shared generic dispatches to each package's object methods. | Re-export |
+| [`vertices()`](https://pgajer.github.io/gflow/reference/reexports.html) | Re-export of `dgraphs::vertices()`: shared generic dispatches to each package's object methods. | Re-export |
 
 <!-- export-catalog-end -->
 
@@ -601,7 +633,7 @@ coverage inspectable.
 | `lmin` | `basin_summary`, `basins` |
 | `merge` | `clustered.basins`, `gfc.basins`, `gfc.flow.basins`, `two.basins`, `two.extrema` |
 | `plot` | `basin.merge.tree`, `basin_complex`, `basin_cx`, `feature.prevalence`, `gfc_modulation`, `gflow_graph`, `gflow_local_extrema`, `graphMScx`, `morse.smale.trajectories.from.point` |
-| `print` | `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basins`, `gfc_cell_trajectories`, `gfc_modulation`, `gfcor`, `gflow_cx`, `gflow_graph`, `gradient_flow_cells`, `harmonic_extension`, `lcor.posterior`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_gradient_result`, `lslope_matrix_matrix_result`, `lslope_neighborhood_result`, `lslope_vector_matrix_result`, `madag`, `se_tree`, `summary.basin_complex`, `summary.basin_cx`, `summary.gfc_basin_trajectories`, `summary.gfc_cell_trajectories`, `summary.gfcor`, `summary.gflow_basins`, `summary.gflow_graph`, `summary.gflow_local_extrema`, `summary.ggflow`, `summary.lcor.posterior` |
+| `print` | `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basins`, `gfc_cell_trajectories`, `gfc_modulation`, `gfcor`, `gflow_cx`, `gflow_graph`, `gradient_flow_cells`, `harmonic_extension`, `lcor.posterior`, `lcor_permutation_test`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_gradient_result`, `lslope_matrix_matrix_result`, `lslope_neighborhood_result`, `lslope_vector_matrix_result`, `madag`, `se_tree`, `summary.basin_complex`, `summary.basin_cx`, `summary.gfc_basin_trajectories`, `summary.gfc_cell_trajectories`, `summary.gfcor`, `summary.gflow_basins`, `summary.gflow_graph`, `summary.gflow_local_extrema`, `summary.ggflow`, `summary.lcor.posterior` |
 | `show.basin` | `basin_cx` |
 | `summary` | `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basin_trajectories`, `gfc_cell_trajectories`, `gfcor`, `gflow_basins`, `gflow_graph`, `gflow_local_extrema`, `ggflow`, `gradient_flow_cells`, `lcor.posterior`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_matrix_matrix_result`, `lslope_vector_matrix_result`, `madag` |
 | `vertices` | `feature.carriers`, `gflow_local_extrema` |
@@ -616,7 +648,7 @@ These instructions are available in installed help as
 | Earlier call or family | Current action |
 |---|---|
 | `detect.local.extrema()` in gflow | Use `gflow::detect.adaptive.extrema()` and recompute saved objects with the new class. The dgraphs detector has different semantics. |
-| The five retired basin constructors | Use `create.basin.complex()` with the method and named parameter lists documented above; convert compatible archives with `as.basin.complex()`. No exact equivalence for every old argument combination is promised. |
+| The five retired basin constructors | Use [`create.basin.complex()`](https://pgajer.github.io/gflow/reference/create.basin.complex.html) with the method and named parameter lists documented above; convert compatible archives with [`as.basin.complex()`](https://pgajer.github.io/gflow/reference/as.basin.complex.html). No exact equivalence for every old argument combination is promised. |
 | Generic graph construction, conversion, paths, and diagnostics | Use the documented public `dgraphs` API, with its current graph input/output schema. For example, `dgraphs::create.path.graph()` constructs a path; `dgraphs::detect.graph.endpoints()` handles endpoint diagnostics. |
 | Generic graph layout | Use the appropriate layout package, for example optional `grip` for its documented layouts. A drawing is separate from the graph/field used for analysis. |
 | Generic 3D rendering | Use `ivue::plot3D.plain()`, `ivue::plot3D.cont()`, `ivue::plot3D.groups()`, and scene layers such as `ivue::layer3D.path()` and `ivue::layer3D.edges()`. |

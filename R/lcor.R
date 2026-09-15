@@ -21,24 +21,26 @@
 #'       Appropriate when functions represent continuous quantities sampled at
 #'       irregular spatial positions. This is the default.}
 #'     \item{"unit"}{Equal weights (w_e = 1). Treats all edges equally regardless
-#'       of length. Appropriate when edge lengths are comparable or when counting
-#'       directional agreements without geometric normalization.}
-#'     \item{"sign"}{Sign-based weighting. Uses only the sign of edge products,
-#'       providing robustness to outliers at the cost of magnitude information.}
+#'       of length, while retaining the magnitudes of the field differences.}
+#'     \item{"sign"}{Legacy name currently equivalent to "unit". It retains
+#'       edge-difference magnitudes; it is not a sign-only statistic.}
 #'   }
 #' @param y.diff.type Character scalar specifying edge difference type for y:
 #'   \describe{
 #'     \item{"difference"}{Standard differences: Delta_e f = f(u) - f(v).
 #'       Appropriate for continuous data in Euclidean space.}
 #'     \item{"logratio"}{Log-ratios: Delta_e f = log((f(u) + epsilon) / (f(v) + epsilon)).
-#'       Appropriate for compositional data (relative abundances, proportions).
+#'       A per-edge transform for nonnegative fields; see its limitations below.
 #'       The log transformation maps multiplicative changes to an additive scale.}
 #'   }
 #' @param z.diff.type Character scalar specifying edge difference type for z.
 #'   Same options as y.diff.type.
 #' @param epsilon Numeric scalar for pseudocount in log-ratio transformations.
-#'   If 0 (default), computed adaptively as 1e-6 times the minimum non-zero value.
-#'   Only used when the corresponding diff.type is "logratio".
+#'   Must be finite and nonnegative. Zero selects 1e-6 times the smallest positive
+#'   value (1e-6 when all values are zero). Vector-vector and matrix-matrix paths
+#'   select it separately per field; vector-matrix selects one for y and one
+#'   across the whole feature matrix. Supply an explicit positive value when
+#'   comparing dispatch paths or chunks using log-ratios. Only used for log-ratios.
 #' @param winsorize.quantile Numeric scalar for winsorization of edge differences.
 #'   If 0 (default), no winsorization is applied.
 #'   If positive (e.g., 0.025), clips edge differences to the \eqn{[q, 1-q]} percentile
@@ -130,9 +132,12 @@
 #'                            \sqrt{\sum_e w_e (\Delta_e z)^2}}}
 #'
 #' where the sum is over edges e incident to vertex v, and Delta_e f denotes the
-#' edge difference (either standard or log-ratio). This correlation-style
-#' normalization makes the coefficient scale-invariant and interpretable as the
-#' cosine of the angle between gradient vectors in the appropriate geometry.
+#' edge difference (either standard or log-ratio). This is an uncentered weighted
+#' cosine of incident edge differences, not Pearson correlation across vertices.
+#' Isolates and fields with weighted local norm at most 1e-10 return zero;
+#' that convention is not evidence of orthogonality. Derivative weighting omits
+#' edges with lengths at most 1e-10. A nonzero epsilon and clipping can alter
+#' rescaling properties. Local alignment alone does not establish causation.
 #'
 #' @section Dispatch Behavior:
 #'
@@ -158,26 +163,33 @@
 #'
 #' @section Edge Difference Types:
 #'
-#' The flexibility to specify different edge difference types enables appropriate
-#' treatment of mixed data:
-#'
-#' \strong{Continuous vs. compositional:} Use "difference" for y (e.g., clinical
-#' severity score) and "logratio" for z (e.g., bacterial relative abundances).
-#'
-#' \strong{Compositional vs. compositional:} Use "logratio" for both when
-#' analyzing co-variation of relative abundances in microbiome data.
-#'
-#' \strong{Continuous vs. continuous:} Use "difference" for both when analyzing
-#' standard numeric measurements.
+#' Ordinary differences describe absolute changes in a field across an edge.
+#' Log-ratios describe multiplicative changes after adding the pseudocount.
+#' Either field can use either transform if its input domain permits it. Choosing
+#' a transform is a modeling assumption; relative-abundance data alone do not
+#' establish that edge log-ratios supply an appropriate compositional analysis.
 #'
 #' @section Geometric Interpretation:
 #'
-#' With derivative weighting, the local correlation coefficient converges to
-#' cos(theta) where theta is the angle between gradient vectors (or their
-#' log-ratio analogs for compositional data). Values near +1 indicate parallel
-#' gradients (functions increase together), values near -1 indicate anti-parallel
-#' gradients (one increases while the other decreases), and values near 0
-#' indicate orthogonal gradients (no directional relationship).
+#' With ordinary differences and no winsorization, for linear fields with
+#' gradients a and b on an embedded star, define
+#' \eqn{M = \sum_e w_e d_e d_e^T}, where d_e is its displacement vector.
+#' Substituting \eqn{\Delta_e y = a^T d_e} in the discrete formula gives
+#' \eqn{a^T M b / \sqrt{(a^T M a)(b^T M b)}}. This equals the Euclidean
+#' gradient cosine when M is proportional to the identity on the relevant span.
+#' A smooth-field limit additionally needs shrinking neighborhoods, controlled
+#' Taylor remainders, nonzero gradients, and that isotropic directional sampling.
+#' Shrinking an anisotropic star alone does not establish this limit.
+#'
+#' For example, neighbors (1,0) and (1,1) around (0,0), with fields x and y,
+#' give local alignment 1/sqrt(3) at the center under derivative weighting,
+#' although the Euclidean gradients are orthogonal. This follows directly from
+#' the displayed finite-graph formula.
+#'
+#' A log-ratio here compares one field between adjacent vertices after adding
+#' the stated pseudocount; it does not compare different components within a
+#' composition. Zeros and the pseudocount affect the result, and this transform
+#' alone is not a general compositional-inference guarantee.
 #'
 #' @section Hop Radius:
 #'
@@ -188,6 +200,26 @@
 #' weighted by the inverse squared shortest path length within the hop limit; for
 #' \code{type = "unit"} and \code{type = "sign"}, all k-hop edges are treated as
 #' having unit length.
+#'
+#' @param pairs Optional two-column matrix of column indices for matrix y and z.
+#'   Computes only these pairs, in supplied order, as a vertex-by-pair matrix.
+#'   Repeated pairs and self-pairs are allowed. Column names identify both fields;
+#'   the `pairs` attribute records the exact indices. Uses serial vector-pair
+#'   computation, regardless of `mc.cores`; requires `instrumented = FALSE`.
+#' @section Memory and bounded calculations:
+#' With n vertices and p and q fields, numeric output alone needs approximately
+#' 8*n bytes for vectors, 8*n*p for vector-matrix, 8*n*p*(p-1)/2 for identical
+#' matrix inputs, and 8*n*p*q for distinct matrices. Inputs, expanded hop graphs,
+#' worker copies, pair-result lists, and assembly temporaries add to these totals.
+#' For example, n=10000 and p=q=100 needs 800 MB for the full asymmetric output.
+#' `pairs` reduces output to 8*n*K bytes for K requested pairs, plus one temporary
+#' vertex vector. To bound a long analysis, split the requested pairs into small
+#' blocks, call `lcor(..., pairs = block)`, save each returned block, then discard
+#' it before the next call. Save the pair indices with every block and record
+#' completed blocks; a stopped analysis must not be treated as complete.
+#' Use an explicit common positive `epsilon` when comparing logratio results
+#' across dispatch paths or chunks. Native kernels do not currently poll for
+#' interrupts inside a single pair; R can process interrupts between pair calls.
 #'
 #' @examples
 #' # Three vertices, with one field increasing in the same direction as y.
@@ -237,7 +269,8 @@ lcor <- function(adj.list,
                  winsorize.quantile = 0,
                  instrumented = FALSE,
                  mc.cores = 1L,
-                 hop.radius = 1L) {
+                 hop.radius = 1L,
+                 pairs = NULL) {
 
     ## Match arguments
     type <- match.arg(type)
@@ -255,10 +288,11 @@ lcor <- function(adj.list,
     ## Validate common inputs
     if (!is.list(adj.list)) stop("adj.list must be a list")
     if (!is.list(weight.list)) stop("weight.list must be a list")
-    if (!is.numeric(epsilon) || length(epsilon) != 1)
-        stop("epsilon must be a single numeric value")
-    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1)
-        stop("winsorize.quantile must be a single numeric value")
+    if (!is.numeric(epsilon) || length(epsilon) != 1 || !is.finite(epsilon) || epsilon < 0)
+        stop("epsilon must be a finite nonnegative scalar")
+    if (!is.numeric(winsorize.quantile) || length(winsorize.quantile) != 1 ||
+        !is.finite(winsorize.quantile) || winsorize.quantile < 0 || winsorize.quantile >= 0.5)
+        stop("winsorize.quantile must be in [0, 0.5)")
 
     n.vertices <- length(adj.list)
     if (length(weight.list) != n.vertices)
@@ -284,6 +318,46 @@ lcor <- function(adj.list,
         if (!is.numeric(z)) stop("z must be a numeric vector")
         if (length(z) != n.vertices)
             stop("length(z) must equal number of vertices")
+    }
+
+    if (!is.numeric(y) || !is.numeric(z) || any(!is.finite(y)) || any(!is.finite(z))) {
+        stop("y and z must contain only finite numeric values")
+    }
+    if ((y.diff.type == "logratio" && any(y < 0)) ||
+        (z.diff.type == "logratio" && any(z < 0))) {
+        stop("logratio fields must be nonnegative")
+    }
+
+    if (!is.null(pairs)) {
+        if (!y.is.matrix || !z.is.matrix || instrumented)
+            stop("pairs requires two matrix inputs and instrumented = FALSE")
+        if (!is.matrix(pairs) || !is.numeric(pairs) || ncol(pairs) != 2L ||
+            !nrow(pairs) || any(!is.finite(pairs)) || any(pairs != floor(pairs)) ||
+            any(pairs < 1) || any(pairs[, 1] > ncol(y)) || any(pairs[, 2] > ncol(z)))
+            stop("pairs must be a nonempty two-column matrix of valid y/z column indices")
+        graph <- .prepare_lcor_hop_graph(adj.list, weight.list, hop.radius, type)
+        out <- matrix(0, n.vertices, nrow(pairs))
+        for (k in seq_len(nrow(pairs))) {
+            out[, k] <- lcor.vector.vector(graph$adj.list, graph$weight.list,
+                y[, pairs[k, 1]], z[, pairs[k, 2]], type, y.diff.type, z.diff.type,
+                epsilon, winsorize.quantile, FALSE, hop.radius = 1L)
+        }
+        yn <- colnames(y); zn <- colnames(z)
+        if (is.null(yn)) yn <- paste0("y", seq_len(ncol(y)))
+        if (is.null(zn)) zn <- paste0("z", seq_len(ncol(z)))
+        dimnames(out) <- list(rownames(y), paste(yn[pairs[, 1]], zn[pairs[, 2]], sep = ":"))
+        attr(out, "pairs") <- pairs
+        attr(out, "type") <- type
+        attr(out, "y.diff.type") <- y.diff.type
+        attr(out, "z.diff.type") <- z.diff.type
+        attr(out, "hop.radius") <- as.integer(hop.radius)
+        attr(out, "epsilon") <- epsilon
+        attr(out, "winsorize.quantile") <- winsorize.quantile
+        attr(out, "n.vertices") <- n.vertices
+        attr(out, "n.columns") <- nrow(pairs)
+        attr(out, "instrumented") <- FALSE
+        class(out) <- c("lcor_vector_matrix_result", "matrix", "array")
+        return(out)
     }
 
     ## Dispatch based on input types
@@ -342,14 +416,14 @@ lcor <- function(adj.list,
     }
 
     if (type == "derivative") {
-        pg <- dgraphs::create.path.graph(adj.list, weight.list, h = hop.radius)
+        pg <- .dgraphs.path(adj.list, weight.list, h = hop.radius)
         adj.list <- pg$adj.list
         weight.list <- pg$edge.length.list
     } else {
         unit.weights <- lapply(adj.list, function(neighbors) {
             if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)
         })
-        pg <- dgraphs::create.path.graph(adj.list, unit.weights, h = hop.radius)
+        pg <- .dgraphs.path(adj.list, unit.weights, h = hop.radius)
         adj.list <- pg$adj.list
         weight.list <- lapply(adj.list, function(neighbors) {
             if (length(neighbors) > 0) rep(1.0, length(neighbors)) else numeric(0)

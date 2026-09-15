@@ -31,6 +31,15 @@
 #'   Setting TRUE with many features will use substantial memory.
 #' @param verbose Logical. Print progress (default TRUE)
 #'
+#' @section Memory:
+#' The four feature-by-vertex summary matrices require about 32*p*n bytes.
+#' Processing one feature also materializes an n-by-B double matrix (8*n*B
+#' bytes), even when `return.samples = FALSE`. Returning samples retains another
+#' 8*p*n*B bytes across features, in addition to input draws and temporaries.
+#' Process subsets of features separately when needed; keep the same response,
+#' graph, settings and complete draw count, and preserve feature identities when
+#' combining summaries. This does not reduce the per-feature draw allocation.
+#'
 #' @return A list of class "lcor.posterior" containing:
 #'   \describe{
 #'     \item{mean}{Matrix (p x n) of posterior mean lcor values}

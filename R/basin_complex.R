@@ -1522,9 +1522,10 @@
 #'   The total must be positive. No uniform fallback is applied when omitted.
 #' @param vertex.density Optional finite nonnegative vertex density used by
 #'   density-modulated trajectory methods.
-#' @param graph.params Named graph-validation parameters.
-#' @param method.params Named parameters for the selected construction method.
-#' @param simplify.params Named post-construction refinement parameters.
+#' @param graph.params Named graph-validation parameters; see [basin-parameters].
+#' @param method.params Named method parameters. Defaults, applicability and
+#'   consequential choices are listed in [basin-parameters].
+#' @param simplify.params Named refinement parameters; see [basin-parameters].
 #' @param verbose Logical scalar controlling backend progress output.
 #' @param vertex.id Optional integer or character external vertex IDs in graph
 #'   order. Factors, missing values, duplicates, empty strings, and invalid

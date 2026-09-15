@@ -13,7 +13,7 @@ if (any(!vapply(required, requireNamespace, logical(1), quietly = TRUE))) {
 if (!rmarkdown::pandoc_available()) {
     stop("Pandoc is required to build installed guides. Install Pandoc or run with RStudio's Pandoc on PATH.")
 }
-if (packageVersion("dgraphs") < "0.2.0" || length(unclass(packageVersion("dgraphs"))[[1L]]) > 3L) {
-    stop("Use published dgraphs 0.2.0 or a compatible release for this build; the development graph API is not supported. Install the CRAN release in the selected R library.")
+if (packageVersion("dgraphs") < "0.2.0") {
+    stop("dgraphs >= 0.2.0 is required. Update dgraphs in the selected R library.")
 }
 cat("Build dependencies and Pandoc are available. Next: make install R_ENV=\"env -u R_HOME\"\n")

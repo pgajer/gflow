@@ -17,8 +17,8 @@ lifetimes are in field units, not significance scores.
 
 This is the unreleased 0.2.0 development package. Build from a source checkout
 with R, a C++17 compiler, GNU make, and Pandoc (also supplied with RStudio).
-Published `dgraphs` 0.2.0 is the tested graph dependency; its R requirement is
-R >= 4.1.0. Development versions may use a different graph API.
+R >= 4.1.0 and `dgraphs` >= 0.2.0 are required. The graph boundary supports
+both the published 0.2.0 list API and the tested 0.3.0.9000 object API.
 
 ```sh
 git clone https://github.com/pgajer/gflow.git
@@ -126,3 +126,6 @@ To rebuild the website from a matching installed archive, install `pkgdown`
 and run `make website` with the same `R_ENV` library selection used to install
 that archive. Generated pages live in `build/site/`; maintained installation
 notes in `docs/` are preserved. See [the documentation build guide](https://github.com/pgajer/gflow/blob/main/docs/documentation-build.md).
+
+The [developer map](docs/development-map.md) locates implementations, scientific
+regression tests, ownership records, and resource limits.

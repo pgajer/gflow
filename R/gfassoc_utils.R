@@ -21,9 +21,9 @@
 #' minimum basin \eqn{B_j^-}. The cell membership \eqn{\gamma_{ij}(v)} is
 #' normalized so that \eqn{\sum_{i,j}\gamma_{ij}(v)=1}.
 #'
-#' @param basins Object of class \code{"basins_of_attraction"} from
-#'   a compatible saved analysis. Its constructor is retired; canonical
-#'   `basin_complex` objects are currently rejected.
+#' @param basins Canonical trajectory complex (see [gfcor()]) or object of class \code{"basins_of_attraction"} from
+#'   a compatible saved analysis. Its constructor is retired. Canonical inputs
+#'   require an explicit support stage and both trajectory directions.
 #'
 #' @return An object of class \code{"gfassoc_membership"} containing:
 #'   \item{max_basin_indices}{List of integer vectors. Element v contains 0-based
@@ -63,10 +63,14 @@
 #' \code{\link{gflow-migration}} for archived-input restrictions,
 #' \code{\link{gfassoc.polarity}} for computing polarity coordinates
 #'
+#' @param support.stage Explicit canonical support choice; see [gfcor()].
 #' @export
-gfassoc.membership <- function(basins) {
+gfassoc.membership <- function(basins, support.stage = NULL) {
+    canonical <- inherits(basins, "basin_complex")
+    if (canonical) basins <- .gfassoc.pack(basins, support.stage)
+    else if (!is.null(support.stage)) stop("support.stage applies only to canonical complexes.")
 
-    if (!inherits(basins, "basins_of_attraction")) {
+    if (!canonical && !inherits(basins, "basins_of_attraction")) {
         stop("basins must be of class 'basins_of_attraction'")
     }
 
@@ -78,6 +82,7 @@ gfassoc.membership <- function(basins) {
         PACKAGE = "gflow"
     )
 
+    if (canonical) result$canonical <- basins$metadata
     return(result)
 }
 
@@ -144,6 +149,9 @@ gfassoc.polarity <- function(y,
                              epsilon = 1e-10) {
 
     polarity.scale <- match.arg(polarity.scale)
+    if (!is.null(membership$canonical)) .gfassoc.check.field(y, membership$canonical)
+    if (!is.numeric(epsilon) || length(epsilon) != 1L || !is.finite(epsilon) || epsilon <= 0)
+        stop("epsilon must be a positive finite scalar")
 
     if (!is.numeric(y)) {
         stop("y must be a numeric vector")
@@ -213,6 +221,14 @@ gfassoc.overlap <- function(y.membership,
 
     if (!inherits(z.membership, "gfassoc_membership")) {
         stop("z.membership must be of class 'gfassoc_membership'")
+    }
+
+    cy <- y.membership$canonical
+    cz <- z.membership$canonical
+    if (!is.null(cy) || !is.null(cz)) {
+        if (is.null(cy) || is.null(cz)) stop("Do not mix canonical and archived memberships.")
+        .gfassoc.check.pair(cy, cz)
+        vertex.mass <- .gfassoc.mass(vertex.mass, length(cy$vertex.id))
     }
 
     result <- .Call(

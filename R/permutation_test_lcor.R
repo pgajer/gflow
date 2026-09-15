@@ -25,10 +25,16 @@
 #'     \item{"y"}{Permute response values.}
 #'   }
 #' @param n.perm Integer \eqn{\ge 1}; number of permutations.
-#' @param seed Optional integer RNG seed. If \code{NULL}, uses current RNG state.
+#' @param seed Optional integer RNG seed. A supplied seed is local: the caller's
+#'   random-number state is restored, even on error. `NULL` advances the current stream.
 #' @param return.perm.stats Logical; if \code{TRUE}, include permutation
 #'   statistics matrix in the result.
 #' @param verbose Logical; if \code{TRUE}, prints progress every 25 permutations.
+#'
+#' @param epsilon,winsorize.quantile,hop.radius Settings passed unchanged to
+#'   [lcor()] for both observed and permuted statistics.
+#' @param strata Optional vector of group labels, one per vertex, without missing
+#'   values. Permutations stay within groups; singleton groups remain fixed.
 #'
 #' @return A list with class \code{"lcor_permutation_test"} containing:
 #'   \describe{
@@ -47,29 +53,30 @@
 #' graph, edge lengths, and unpermuted field. A common permutation is applied
 #' across feature columns. Local correlations and their feature summaries are
 #' recomputed, but graphs, fitted fields, and neighborhood selection are not.
-#' There is no block/stratum permutation or `hop.radius` control here.
-#' Spatially correlated fields or repeated subjects may require a different
-#' null procedure. The signed `mean` statistic uses an upper-tail comparison.
+#' With `strata`, rows must be exchangeable within the supplied groups under
+#' that same conditional null. Grouping alone does not make spatial dependence
+#' exchangeable, and is not a replacement for an appropriate null model. The signed `mean` statistic uses an upper-tail comparison.
 #' P-values use the add-one Monte Carlo correction. BH-adjusted `q.value`
 #' refers to feature tests, not vertex tests, and its false discovery rate
 #' interpretation requires valid p-values and suitable dependence conditions.
 #'
 #' @examples
-#' \dontrun{
-#' res <- permutation.test.lcor(
-#'   adj.list = adj.list,
-#'   weight.list = weight.list,
-#'   y = response.field,
-#'   z = Z,
-#'   type = "derivative",
-#'   statistic = "mean.abs",
-#'   permute = "z",
-#'   n.perm = 200,
-#'   seed = 1
-#' )
-#'
-#' head(res$table[order(res$table$q.value), ])
-#' }
+#' # Independent null features on a fixed path: rows are exchangeable.
+#' local({
+#'   had <- exists(".Random.seed", envir = .GlobalEnv)
+#'   if (had) old <- .Random.seed
+#'   on.exit(if (had) assign(".Random.seed", old, envir = .GlobalEnv) else
+#'     rm(".Random.seed", envir = .GlobalEnv))
+#'   set.seed(42)
+#'   a <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+#'   w <- lapply(a, function(v) rep(1, length(v)))
+#'   z <- matrix(rnorm(15), 5, 3, dimnames = list(NULL, c("A", "B", "C")))
+#'   result <- permutation.test.lcor(a, w, c(0, 1, 2, 1, 0), z,
+#'                                    n.perm = 19, seed = 7)
+#'   print(result)
+#' })
+#' # Nineteen draws give resolution 1/20; this tiny run illustrates the null,
+#' # not a well-powered study. BH values concern features, not vertices.
 #'
 #' @export
 permutation.test.lcor <- function(adj.list,
@@ -84,15 +91,19 @@ permutation.test.lcor <- function(adj.list,
                                   n.perm = 200L,
                                   seed = 1L,
                                   return.perm.stats = FALSE,
-                                  verbose = FALSE) {
+                                  verbose = FALSE,
+                                  epsilon = 0,
+                                  winsorize.quantile = 0,
+                                  hop.radius = 1L,
+                                  strata = NULL) {
     type <- match.arg(type)
     y.diff.type <- match.arg(y.diff.type)
     z.diff.type <- match.arg(z.diff.type)
     statistic <- match.arg(statistic)
     permute <- match.arg(permute)
 
-    if (!is.numeric(y)) {
-        stop("y must be numeric.")
+    if (!is.numeric(y) || !is.null(dim(y)) || any(!is.finite(y))) {
+        stop("y must be a finite numeric vector.")
     }
     y <- as.double(y)
     n <- length(y)
@@ -100,18 +111,21 @@ permutation.test.lcor <- function(adj.list,
         stop("length(y) must be >= 2.")
     }
 
-    if (!is.numeric(n.perm) || length(n.perm) != 1L || n.perm < 1L || n.perm != floor(n.perm)) {
+    if (!is.numeric(n.perm) || length(n.perm) != 1L || !is.finite(n.perm) || n.perm > .Machine$integer.max || n.perm < 1L || n.perm != floor(n.perm)) {
         stop("n.perm must be a positive integer.")
     }
     n.perm <- as.integer(n.perm)
 
-    if (!is.logical(return.perm.stats) || length(return.perm.stats) != 1L) {
+    if (!is.logical(return.perm.stats) || length(return.perm.stats) != 1L || is.na(return.perm.stats)) {
         stop("return.perm.stats must be TRUE/FALSE.")
     }
-    if (!is.logical(verbose) || length(verbose) != 1L) {
+    if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
         stop("verbose must be TRUE/FALSE.")
     }
 
+    if (!is.numeric(z) && !(is.data.frame(z) && all(vapply(z, is.numeric, logical(1))))) {
+        stop("z must contain only numeric values.")
+    }
     if (is.null(dim(z))) {
         z <- matrix(as.double(z), ncol = 1L)
     } else if (is.data.frame(z) || is.matrix(z)) {
@@ -121,6 +135,7 @@ permutation.test.lcor <- function(adj.list,
         stop("z must be a numeric vector, matrix, or data.frame.")
     }
 
+    if (any(!is.finite(z)) || ncol(z) < 1L) stop("z must have finite values and at least one feature.")
     if (nrow(z) != n) {
         stop("nrow(z) must equal length(y).")
     }
@@ -129,10 +144,28 @@ permutation.test.lcor <- function(adj.list,
         colnames(z) <- paste0("feature", seq_len(ncol(z)))
     }
 
+    if (!is.null(strata) && (length(strata) != n || !is.atomic(strata) ||
+                             !is.null(dim(strata)) || anyNA(strata))) {
+        stop("strata must have one nonmissing group label per vertex.")
+    }
+    groups <- if (is.null(strata)) list(seq_len(n)) else split(seq_len(n), as.character(strata))
+    permutation <- function() {
+        if (is.null(strata)) return(sample.int(n))
+        index <- seq_len(n)
+        for (g in groups) index[g] <- g[sample.int(length(g))]
+        index
+    }
     if (!is.null(seed)) {
-        if (!is.numeric(seed) || length(seed) != 1L || seed != floor(seed)) {
+        if (!is.numeric(seed) || length(seed) != 1L || !is.finite(seed) || abs(seed) > .Machine$integer.max || seed != floor(seed)) {
             stop("seed must be an integer or NULL.")
         }
+        had.seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+        if (had.seed) old.seed <- get(".Random.seed", envir = .GlobalEnv)
+        on.exit({
+            if (had.seed) assign(".Random.seed", old.seed, envir = .GlobalEnv)
+            else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+                rm(".Random.seed", envir = .GlobalEnv)
+        }, add = TRUE)
         set.seed(as.integer(seed))
     }
 
@@ -167,14 +200,17 @@ permutation.test.lcor <- function(adj.list,
         z = z,
         type = type,
         y.diff.type = y.diff.type,
-        z.diff.type = z.diff.type
+        z.diff.type = z.diff.type,
+        epsilon = epsilon, winsorize.quantile = winsorize.quantile,
+        hop.radius = hop.radius
     )
     lcor.obs <- lcor.to.matrix(lcor.obs, p = ncol(z))
     stat.obs <- summarize.stat(lcor.obs)
     names(stat.obs) <- colnames(z)
 
-    stat.perm <- matrix(NA_real_, nrow = n.perm, ncol = ncol(z))
-    colnames(stat.perm) <- colnames(z)
+    stat.perm <- if (return.perm.stats) matrix(NA_real_, nrow = n.perm, ncol = ncol(z),
+                                             dimnames = list(NULL, colnames(z))) else NULL
+    exceed <- numeric(ncol(z))
 
     if (verbose) {
         message(sprintf("Running %d permutations (%s permutation)...", n.perm, permute))
@@ -182,11 +218,11 @@ permutation.test.lcor <- function(adj.list,
 
     for (b in seq_len(n.perm)) {
         if (identical(permute, "z")) {
-            z.b <- z[sample.int(n), , drop = FALSE]
+            z.b <- z[permutation(), , drop = FALSE]
             y.b <- y
         } else {
             z.b <- z
-            y.b <- y[sample.int(n)]
+            y.b <- y[permutation()]
         }
 
         lcor.b <- lcor(
@@ -196,17 +232,21 @@ permutation.test.lcor <- function(adj.list,
             z = z.b,
             type = type,
             y.diff.type = y.diff.type,
-            z.diff.type = z.diff.type
+            z.diff.type = z.diff.type,
+        epsilon = epsilon, winsorize.quantile = winsorize.quantile,
+        hop.radius = hop.radius
         )
         lcor.b <- lcor.to.matrix(lcor.b, p = ncol(z))
-        stat.perm[b, ] <- summarize.stat(lcor.b)
+        simulated <- summarize.stat(lcor.b)
+        exceed <- exceed + (simulated >= stat.obs)
+        if (return.perm.stats) stat.perm[b, ] <- simulated
 
         if (verbose && (b %% 25L == 0L || b == n.perm)) {
             message(sprintf("  completed %d/%d permutations", b, n.perm))
         }
     }
 
-    p.value <- (1 + colSums(t(t(stat.perm) >= stat.obs))) / (n.perm + 1L)
+    p.value <- setNames((1 + exceed) / (n.perm + 1), colnames(z))
     q.value <- stats::p.adjust(p.value, method = "BH")
 
     out <- list(
@@ -223,6 +263,12 @@ permutation.test.lcor <- function(adj.list,
         statistic = statistic,
         permute = permute,
         n.perm = n.perm,
+        tail = "upper",
+        settings = list(type = type, y.diff.type = y.diff.type, z.diff.type = z.diff.type,
+                        epsilon = epsilon, winsorize.quantile = winsorize.quantile,
+                        hop.radius = hop.radius, seed = seed),
+        strata = strata,
+        group.sizes = lengths(groups),
         call = match.call()
     )
 
@@ -232,4 +278,40 @@ permutation.test.lcor <- function(adj.list,
 
     class(out) <- c("lcor_permutation_test", "list")
     out
+}
+
+
+#' Print a Local-Correlation Permutation Test
+#'
+#' @param x A result from [permutation.test.lcor()].
+#' @param ... Unused.
+#' @param n Maximum number of feature rows to print.
+#' @return `x`, invisibly. Complete results remain in `x$table`.
+#' @export
+print.lcor_permutation_test <- function(x, ..., n = 5L) {
+    .validate.lcor.permutation.test(x)
+    n <- .basin.summary.top.k(n, "n")
+    cat("Local-correlation permutation test\n")
+    cat("  Statistic: ", x$statistic, "; upper tail; target: ", x$permute, "\n", sep = "")
+    cat("  Fixed: graph, edge lengths, unpermuted field, statistic settings.\n")
+    cat("  Null: exchangeable ", x$permute, " rows",
+        if (is.null(x$strata)) ".\n" else " within supplied groups.\n", sep = "")
+    cat("  Monte Carlo permutations: ", x$n.perm, "; minimum p-value: ",
+        format(1 / (x$n.perm + 1)), "; tested features: ", nrow(x$table), "\n", sep = "")
+    if (!is.null(x$settings)) cat("  Weighting: ", x$settings$type, "; hop radius: ",
+                                x$settings$hop.radius, "\n", sep = "")
+    tab <- x$table[order(x$table$q.value, x$table$p.value), , drop = FALSE]
+    print(utils::head(tab, n), row.names = FALSE)
+    cat("BH q-values apply to features and require valid null p-values.\n")
+    invisible(x)
+}
+
+.validate.lcor.permutation.test <- function(x) {
+    .validate.s3.contract(x, "lcor_permutation_test",
+        fields = c("table", "stat.obs", "p.value", "q.value", "statistic", "permute", "n.perm"),
+        storage = "list")
+    if (!is.data.frame(x$table) ||
+        !all(c("feature", "stat.obs", "p.value", "q.value") %in% names(x$table)))
+        stop("Invalid lcor permutation result table.")
+    invisible(x)
 }

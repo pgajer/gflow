@@ -86,6 +86,12 @@ test_that("migrated graph constructors are supplied by dgraphs", {
     "verify.maximal.packing"
   )
 
+  if (.dgraphs.object.api()) {
+    # The object API consolidates elementary constructors into create.graph().
+    migrated <- c("create.graph", "dgraph", "graph.adjacency", "graph.lengths",
+                  "create.sknn.graph", "create.mknn.graph", "create.path.graph",
+                  "create.single.iknn.graph", "nerve.graph")
+  }
   expect_true(all(migrated %in% getNamespaceExports("dgraphs")))
 })
 

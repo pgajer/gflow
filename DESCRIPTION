@@ -24,7 +24,7 @@ Roxygen: list(markdown = TRUE)
 SystemRequirements: C++17, GNU make, OpenMP (optional)
 LinkingTo: Rcpp
 Depends:
-    R (>= 3.5.0)
+    R (>= 4.1.0)
 Imports:
     Rcpp,
     stats,
@@ -32,11 +32,11 @@ Imports:
     grDevices,
     FNN,
     parallel,
-    dgraphs,
+    dgraphs (>= 0.2.0),
     igraph,
     utils
 Suggests:
-    ivue (>= 0.0.0.9001),
+    ivue (>= 0.1.0),
     rgl,
     htmlwidgets,
     htmltools,

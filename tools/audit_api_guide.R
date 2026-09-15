@@ -10,6 +10,7 @@ reexports <- intersect(exports, import.names)
 s3 <- vapply(calls("S3method"), function(x)
     paste(as.character(x[[2L]]), as.character(x[[3L]]), sep = ","), "")
 guide <- readLines("vignettes/function-guide.Rmd", warn = FALSE)
+guide <- gsub("\\[(`[^`]+`)\\]\\([^)]*\\)", "\\1", guide)
 section <- function(name) {
     start <- which(guide == paste0("<!-- ", name, "-start -->"))
     end <- which(guide == paste0("<!-- ", name, "-end -->"))

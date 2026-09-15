@@ -19,8 +19,11 @@ These commands share the active R library settings. On a machine without a
 writable default library, create a user library directory, set `R_LIBS_USER`
 to that directory, and run the commands in that environment. To validate a
 separate installation, set `R_LIBS` to an isolated library before running them.
-Use the published dgraphs release (tested with 0.2.0); the 0.3.0.9000 development
-API is not supported by the overlap-cell backend.
+Requires R >= 4.1.0 and dgraphs >= 0.2.0. Published dgraphs 0.2.0 and the
+0.3.0.9000 object API have separate compatibility checks for components,
+hop graphs and canonical overlap cells. Future dependency changes still need
+the same checks. Optional 3D viewing requires ivue >= 0.1.0; use its
+[documented development installation](https://pgajer.github.io/ivue/).
 
 `make build` produces `gflow_0.2.0.tar.gz` with generated help and all four
 guides. Once the required dependencies are installed, this archive can also be
@@ -170,3 +173,12 @@ R CMD config CXX17FLAGS
 ```bash
 R -q -e 'Sys.setenv(GFLOW_BUILD_PROFILE="cran-safe"); system("make install-user")'
 ```
+
+## Continuous platform checks
+
+Pushes and pull requests build generated documentation and run tests on Linux,
+macOS and Windows. The minimum R series is tested on Linux. Serial builds set
+`GFLOW_DISABLE_OPENMP=1` with the default `cran-safe` profile; Linux and Windows
+parallel builds use `GFLOW_BUILD_PROFILE=dev` and verify that OpenMP was compiled.
+`GFLOW_DISABLE_OPENMP=1` and `GFLOW_BUILD_PROFILE=dev` are deliberately incompatible.
+The manual R-hub workflow remains available for additional release checks.

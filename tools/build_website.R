@@ -12,6 +12,7 @@ aliases <- lapply(db, function(rd) vapply(Filter(function(x) identical(attr(x, "
                                         function(x) paste(unlist(x), collapse = ""), character(1)))
 alias.topic <- setNames(rep(sub("[.]Rd$", "", names(db)), lengths(aliases)), unlist(aliases))
 lines <- readLines("vignettes/function-guide.Rmd")
+lines <- gsub("\\[(`[^`]+`)\\]\\([^)]*\\)", "\\1", lines)
 lines <- lines[(match("<!-- export-catalog-start -->", lines) + 1L):(match("<!-- export-catalog-end -->", lines) - 1L)]
 groups <- list(); assigned <- character(); heading <- "Getting started"
 for (line in lines) {

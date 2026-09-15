@@ -799,7 +799,7 @@ plot.graphMScx <- function(x,
     } else if (type == "MS_cx_nerve_graph") {
 
         # Creating a nerve graph from the covering of the graph vertices by trajectory cells
-        nerve.res <- dgraphs::nerve.graph(res$MS_cell_cc_vertices)
+        nerve.res <- .dgraphs.nerve(res$MS_cell_cc_vertices)
 
         # Extracting the corresponding weights matrix
         nerve.weights <- dgraphs::convert.adjacency.list.to.adjacency.matrix(

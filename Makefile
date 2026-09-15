@@ -28,6 +28,7 @@ attrs: check-r-toolchain
 # 2) Then regenerate NAMESPACE + Rd via roxygen (through devtools::document)
 document: attrs
 	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" $(R_RUN) -q -e "roxygen2::roxygenise(load = 'source')"
+	$(RSCRIPT_RUN) tools/update_guide_links.R
 
 manifest:
 	$(RSCRIPT_RUN) tools/update_gflow_build_manifest.R

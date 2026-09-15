@@ -52,8 +52,9 @@ archived-object interfaces.
 ## Flow-aware association
 
 - `gfcor()` computes global and basin-aware flow association from two fields
-  and two archived `basins_of_attraction` objects. It currently rejects
-  `basin_complex` objects; no public canonical adapter exists.
+  and two canonical `trajectory_flow` complexes built with both directions.
+  Choose `support.stage = "raw"` or `"retained"` explicitly; retained supports
+  allow only support filtering. Compatible archived objects remain supported.
 - `gfassoc.membership()`, `gfassoc.polarity()`, `gfassoc.overlap()`, and
   `gfassoc.deviation()` expose the component flow-aware summaries.
 

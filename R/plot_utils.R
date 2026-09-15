@@ -1913,13 +1913,24 @@ label.end.pts <- function(graph.3d,
 # Generic browser plotting lives in ivue. The domain drawing helpers retained
 # here may be used inside ivue callback layers; they are not compatibility aliases.
 
+.ivue.plotting.status <- function() {
+    if (!requireNamespace("ivue", quietly = TRUE)) return(list(version = NULL, exports = character()))
+    list(version = utils::packageVersion("ivue"), exports = getNamespaceExports("ivue"))
+}
+
 .require.ivue.plotting <- function() {
     required <- c("plot3D.plain", "plot3D.groups", "color.scale.groups",
                   "layer3D.labels", "layer3D.callback")
-    if (!requireNamespace("ivue", quietly = TRUE) ||
-        !all(required %in% getNamespaceExports("ivue"))) {
-        stop("This visualization requires an ivue installation with the canonical ",
-             "point, group, color-scale, and layer APIs. Install the current ivue package.",
+    status <- .ivue.plotting.status()
+    available <- !is.null(status$version)
+    version <- if (available) as.character(status$version) else "not installed"
+    missing <- setdiff(required, status$exports)
+    if (!available || status$version < "0.1.0" || length(missing)) {
+        stop("This visualization requires ivue >= 0.1.0 with the point, group, ",
+             "color-scale and layer APIs. Found: ", version,
+             if (length(missing)) paste0("; missing: ", paste(missing, collapse = ", ")) else "",
+             ". Install the documented build at https://pgajer.github.io/ivue/ ",
+             "(Get Started). Core gflow analysis and base-R basin plots do not require ivue.",
              call. = FALSE)
     }
     invisible(NULL)

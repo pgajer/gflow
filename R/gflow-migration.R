@@ -44,9 +44,10 @@
 #' \code{\link{lslope.neighborhood}} for graph-local estimates.
 #' \code{\link{lcor.with.posterior}} summarizes supplied field draws and fits
 #' no posterior model. \code{\link{gfcor}} and
-#' \code{\link{gfassoc.membership}} currently require archived
-#' `basins_of_attraction` objects, and reject `basin_complex`; their descriptive
-#' summaries do not replace permutation tests.
+#' \code{\link{gfassoc.membership}} accept successful canonical trajectory
+#' complexes with both directions and an explicit support stage, as well as
+#' archived `basins_of_attraction` inputs. Other canonical method families are
+#' rejected; these descriptive summaries do not replace permutation tests.
 #'
 #' @seealso [create.basin.complex()], [as.basin.complex()], [gflow-package]
 #' @name gflow-migration

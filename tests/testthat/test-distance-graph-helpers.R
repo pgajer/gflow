@@ -180,7 +180,7 @@ test_that("distance-matrix ikNN helper matches native gflow ikNN on root example
       verbose = FALSE
     )
 
-    expect_equal(.edge_keys(helper$edge.matrix), .adj_edge_keys(native$adj_list))
+    expect_equal(.edge_keys(helper$edge.matrix), .adj_edge_keys(.test.graph.adj(native)))
   }
 })
 

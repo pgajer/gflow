@@ -17,7 +17,11 @@ permutation.test.lcor(
   n.perm = 200L,
   seed = 1L,
   return.perm.stats = FALSE,
-  verbose = FALSE
+  verbose = FALSE,
+  epsilon = 0,
+  winsorize.quantile = 0,
+  hop.radius = 1L,
+  strata = NULL
 )
 }
 \arguments{
@@ -51,12 +55,19 @@ local-correlation coefficients.
 
 \item{n.perm}{Integer \eqn{\ge 1}; number of permutations.}
 
-\item{seed}{Optional integer RNG seed. If \code{NULL}, uses current RNG state.}
+\item{seed}{Optional integer RNG seed. A supplied seed is local: the caller's
+random-number state is restored, even on error. \code{NULL} advances the current stream.}
 
 \item{return.perm.stats}{Logical; if \code{TRUE}, include permutation
 statistics matrix in the result.}
 
 \item{verbose}{Logical; if \code{TRUE}, prints progress every 25 permutations.}
+
+\item{epsilon, winsorize.quantile, hop.radius}{Settings passed unchanged to
+\code{\link[=lcor]{lcor()}} for both observed and permuted statistics.}
+
+\item{strata}{Optional vector of group labels, one per vertex, without missing
+values. Permutations stay within groups; singleton groups remain fixed.}
 }
 \value{
 A list with class \code{"lcor_permutation_test"} containing:
@@ -82,28 +93,29 @@ Permuted rows must be exchangeable under the null conditional on the fixed
 graph, edge lengths, and unpermuted field. A common permutation is applied
 across feature columns. Local correlations and their feature summaries are
 recomputed, but graphs, fitted fields, and neighborhood selection are not.
-There is no block/stratum permutation or \code{hop.radius} control here.
-Spatially correlated fields or repeated subjects may require a different
-null procedure. The signed \code{mean} statistic uses an upper-tail comparison.
+With \code{strata}, rows must be exchangeable within the supplied groups under
+that same conditional null. Grouping alone does not make spatial dependence
+exchangeable, and is not a replacement for an appropriate null model. The signed \code{mean} statistic uses an upper-tail comparison.
 P-values use the add-one Monte Carlo correction. BH-adjusted \code{q.value}
 refers to feature tests, not vertex tests, and its false discovery rate
 interpretation requires valid p-values and suitable dependence conditions.
 }
 \examples{
-\dontrun{
-res <- permutation.test.lcor(
-  adj.list = adj.list,
-  weight.list = weight.list,
-  y = response.field,
-  z = Z,
-  type = "derivative",
-  statistic = "mean.abs",
-  permute = "z",
-  n.perm = 200,
-  seed = 1
-)
-
-head(res$table[order(res$table$q.value), ])
-}
+# Independent null features on a fixed path: rows are exchangeable.
+local({
+  had <- exists(".Random.seed", envir = .GlobalEnv)
+  if (had) old <- .Random.seed
+  on.exit(if (had) assign(".Random.seed", old, envir = .GlobalEnv) else
+    rm(".Random.seed", envir = .GlobalEnv))
+  set.seed(42)
+  a <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+  w <- lapply(a, function(v) rep(1, length(v)))
+  z <- matrix(rnorm(15), 5, 3, dimnames = list(NULL, c("A", "B", "C")))
+  result <- permutation.test.lcor(a, w, c(0, 1, 2, 1, 0), z,
+                                   n.perm = 19, seed = 7)
+  print(result)
+})
+# Nineteen draws give resolution 1/20; this tiny run illustrates the null,
+# not a well-powered study. BH values concern features, not vertices.
 
 }

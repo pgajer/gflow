@@ -10,10 +10,11 @@ test_that("wgraph.prune.long.edges returns valid 1-based adjacency indices", {
         verbose = FALSE
     )
 
-    expect_named(result, c("adj_list", "edge_lengths_list", "path_lengths",
+    if (!inherits(result, "dgraph")) expect_named(result, c("adj_list", "edge_lengths_list", "path_lengths",
                            "edge_lengths"))
-    expect_equal(result$adj_list, graph)
-    expect_true(all(vapply(result$adj_list, function(neighbors) {
-        all(neighbors >= 1L & neighbors <= length(result$adj_list))
+    adj <- if(inherits(result,"dgraph")) .test.graph.adj(result) else result$adj_list
+    expect_equal(adj, graph)
+    expect_true(all(vapply(adj, function(neighbors) {
+        all(neighbors >= 1L & neighbors <= length(adj))
     }, logical(1))))
 })

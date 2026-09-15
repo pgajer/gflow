@@ -54,14 +54,17 @@
 #'   must equal the number of vertices in the graph.
 #' @param z.hat Numeric vector of fitted values for the second surface. Must
 #'   have the same length as y.hat.
-#' @param y.basins Object of class \code{"basins_of_attraction"} computed from
-#'   the same field. The constructor is retired; supply a compatible archived
-#'   object. Canonical `basin_complex` objects are currently rejected.
-#' @param z.basins Object of class \code{"basins_of_attraction"} computed from
-#'   the same field, with the same archived-object restriction as `y.basins`.
-#' @param vertex.mass Optional numeric vector of vertex weights for computing
-#'   weighted averages. If NULL (default), uniform weights are used. Useful for
-#'   incorporating sampling density or confidence weights.
+#' @param y.basins,z.basins Successful `trajectory_flow` objects from
+#'   [create.basin.complex()], constructed with `direction = "both"`, or two compatible archived
+#'   `basins_of_attraction` objects. Do not mix these input families.
+#' @param support.stage For canonical inputs, explicitly choose `"raw"` or
+#'   `"retained"`. Raw supports precede refinement. Retained supports allow
+#'   support filtering only; other refinements require using raw supports.
+#'   Leave NULL for archived inputs, whose behavior is unchanged.
+#' @param vertex.mass Optional nonnegative finite vertex weights. Canonical
+#'   inputs normalize these to total mass one (NULL gives uniform mass 1/n);
+#'   stored construction masses are not used implicitly. Archived inputs retain
+#'   the original unnormalized mass convention.
 #' @param polarity.scale Character string specifying the polarity computation
 #'   mode. Either \code{"value"} (default) for normalized height based on
 #'   function values, or \code{"rank"} for rank-based computation within cells.
@@ -106,26 +109,36 @@
 #'     }}
 #'   \item{membership}{List containing y and z membership structures}
 #'
+#' @section Canonical support contract:
+#' Both complexes must use identical graph adjacency, edge lengths, external
+#' vertex IDs and vertex order. Supply their construction fields, including any
+#' tie perturbation, as `y.hat` and `z.hat`. Hierarchical and other method families
+#' are deliberately rejected: their supports do not yet have the same validated
+#' association interpretation. The returned `canonical` metadata records the
+#' support stage, vertex IDs, basin IDs in kernel order, and normalized masses.
+#' Kernel basin indices are zero-based; their positions map to these basin IDs.
+#'
+#' Membership is uniform across containing basins within each direction. A vertex
+#' uncovered in either direction has undefined polarity. Flat cells (range below
+#' `epsilon`) also have undefined polarity. Check `is_valid`: numeric zero is a
+#' placeholder for invalid vertices. Global association averages use only valid
+#' vertices; an entirely invalid result has zero as a placeholder. Overlap total
+#' mass includes all vertices, so uncovered mass need not appear in its matrices.
+#' Value polarity uses `(y - minimum)/(maximum - minimum + epsilon)` before
+#' conversion to [-1, 1]. Consequently self-association averages squared polarity
+#' and is generally less than one; this is not a Pearson correlation.
+#'
 #' @examples
-#' \dontrun{
-#' ## Compute basins for two fitted surfaces
-#' # y.basins and z.basins must be compatible saved basins_of_attraction
-#' # objects for y.hat and z.hat. Do not call the retired constructor.
-#'
-#' ## Compute gradient flow correlation
-#' gfc <- gfcor(y.hat, z.hat, y.basins, z.basins)
-#'
-#' ## Examine global association
-#' print(gfc$global$A_pol)      ## Polarity concordance
-#' print(gfc$global$kappa_pol)  ## Sign concordance
-#'
-#' ## Map vertex-level association
-#' assoc.map <- gfc$vertex$a_pol
-#' positive.vertices <- which(gfc$vertex$sign_pol > 0 & gfc$vertex$is_valid)
-#'
-#' ## Examine basin characters
-#' print(gfc$basin_character$chi_y_max)  ## Which y-max basins are positively associated?
-#' }
+#' adj <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L), 4L)
+#' lengths <- lapply(adj, function(v) rep(1, length(v)))
+#' y <- c(0, 3, 1, 2, 0)
+#' z <- -y
+#' by <- create.basin.complex(adj, lengths, y, method = "trajectory_flow",
+#'                            direction = "both")
+#' bz <- create.basin.complex(adj, lengths, z, method = "trajectory_flow",
+#'                            direction = "both")
+#' association <- gfcor(y, z, by, bz, support.stage = "raw")
+#' association$global # Negative polarity concordance for reversed fields.
 #'
 #' @seealso
 #' \code{\link{gflow-migration}} for current input restrictions,
@@ -138,7 +151,25 @@ gfcor <- function(y.hat,
                   z.basins,
                   vertex.mass = NULL,
                   polarity.scale = c("value", "rank"),
-                  epsilon = 1e-10) {
+                  epsilon = 1e-10,
+                  support.stage = NULL) {
+
+    canonical <- inherits(y.basins, "basin_complex") || inherits(z.basins, "basin_complex")
+    metadata <- NULL
+    if (canonical) {
+        if (!inherits(y.basins, "basin_complex") || !inherits(z.basins, "basin_complex"))
+            stop("Use either two canonical complexes or two archived basin objects.")
+        y.basins <- .gfassoc.pack(y.basins, support.stage)
+        z.basins <- .gfassoc.pack(z.basins, support.stage)
+        .gfassoc.check.pair(y.basins$metadata, z.basins$metadata)
+        .gfassoc.check.field(y.hat, y.basins$metadata)
+        .gfassoc.check.field(z.hat, z.basins$metadata)
+        vertex.mass <- .gfassoc.mass(vertex.mass, length(y.hat))
+        metadata <- list(y = y.basins$metadata, z = z.basins$metadata,
+                         vertex.mass = vertex.mass)
+    } else if (!is.null(support.stage)) {
+        stop("support.stage applies only to canonical basin complexes.")
+    }
 
     ## Input validation
     polarity.scale <- match.arg(polarity.scale)
@@ -151,11 +182,11 @@ gfcor <- function(y.hat,
         stop("y.hat and z.hat must have the same length")
     }
 
-    if (!inherits(y.basins, "basins_of_attraction")) {
+    if (!canonical && !inherits(y.basins, "basins_of_attraction")) {
         stop("y.basins must be of class 'basins_of_attraction'")
     }
 
-    if (!inherits(z.basins, "basins_of_attraction")) {
+    if (!canonical && !inherits(z.basins, "basins_of_attraction")) {
         stop("z.basins must be of class 'basins_of_attraction'")
     }
 
@@ -176,7 +207,7 @@ gfcor <- function(y.hat,
         }
     }
 
-    if (!is.numeric(epsilon) || length(epsilon) != 1 || epsilon <= 0) {
+    if (!is.numeric(epsilon) || length(epsilon) != 1 || !is.finite(epsilon) || epsilon <= 0) {
         stop("epsilon must be a positive numeric scalar")
     }
 
@@ -204,6 +235,7 @@ gfcor <- function(y.hat,
     result$n_vertices <- length(y.hat)
     result$polarity_scale <- polarity.scale
     result$epsilon <- epsilon
+    if (canonical) result$canonical <- metadata
 
     ## Ensure class is set (should already be set in C++)
     class(result) <- c("gfcor", "list")
@@ -227,6 +259,14 @@ print.gfcor <- function(x, ...) {
     .validate.gfcor(x)
     cat("Gradient Flow Correlation Analysis\n")
     cat("===================================\n\n")
+    if (!is.null(x$canonical)) {
+        valid <- as.logical(x$vertex$is_valid)
+        cat("Canonical trajectory supports: ", x$canonical$y$support.stage, "\n", sep = "")
+        cat(sprintf("Global summaries use %d/%d valid vertices (normalized mass %.4f).\n",
+                    sum(valid), length(valid), sum(x$canonical$vertex.mass[valid])))
+        if (!any(valid)) cat("No valid polarity: reported zeros are placeholders.\n")
+        cat("\n")
+    }
 
     cat("Global Association Measures:\n")
     cat(sprintf("  Polarity concordance (A_pol):  %+.4f\n", x$global$A_pol))
@@ -237,7 +277,7 @@ print.gfcor <- function(x, ...) {
     cat(sprintf("  Positive association: %d\n", x$global$n_positive))
     cat(sprintf("  Negative association: %d\n", x$global$n_negative))
     cat(sprintf("  Zero association:     %d\n", x$global$n_zero))
-    cat(sprintf("  Invalid (flat):       %d\n", x$global$n_invalid))
+    cat(sprintf("  Invalid (flat or uncovered): %d\n", x$global$n_invalid))
     cat("\n")
 
     cat("Basin Structure:\n")

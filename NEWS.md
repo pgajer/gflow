@@ -11,6 +11,26 @@
 
 ## Further craftsmanship improvements
 
+- Canonical trajectory complexes with both directions can now be passed to
+  `gfcor()` and `gfassoc.membership()` with an explicit raw/retained support choice.
+  Graph, vertex identity, field and refinement compatibility are checked before
+  calling the existing association kernel. Archived input behavior is preserved.
+- Local-correlation help now defines its finite-graph edge cosine, anisotropy
+  conditions and logratio limitations. The legacy `sign` mode is documented as
+  unit weighting. `pairs` computes requested matrix-column pairs in their
+  supplied order, allowing bounded blocks without a full association array.
+- Seeded permutation tests restore RNG state, support explicit within-group
+  permutations, forward statistic settings and print the null/statistic contract.
+- R >= 4.1.0 and dgraphs >= 0.2.0 are required. Graph boundary adapters support
+  published list and development object APIs; optional viewer diagnostics name
+  the required ivue version and installation route. Push/PR checks cover operating
+  systems, the minimum R series, and serial/OpenMP builds.
+- The guide links its complete catalog to help and opens with four task routes.
+  Installed `basin-parameters` help derives defaults from constructor definitions.
+  A developer map records implementation ownership, memory costs and interrupt
+  limits without reorganizing stable numerical kernels.
+
+
 * Removed the installed metric-graph low-pass Shiny demo: it called a retired
   estimator that is no longer exported by gflow. Its historical source remains
   in Git history; smoothing belongs to the separate smoothing projects.

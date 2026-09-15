@@ -92,6 +92,7 @@ test_that("retained in-scope S3 methods have explicit release ownership", {
         "print.gflow_graph",
         "print.harmonic_extension",
         "print.lcor_matrix_matrix_result",
+        "print.lcor_permutation_test",
         "print.lcor_vector_matrix_result",
         "print.lcor.posterior",
         "print.lslope_gradient_result",

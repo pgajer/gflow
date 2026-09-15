@@ -52,8 +52,9 @@
 #' \itemize{
 #'   \item \code{\link{lcor}} and \code{\link{lslope}} provide graph-local
 #'     association and directed response.
-#'   \item \code{\link{gfcor}} provides flow-aware association on archived
-#'     \code{basins_of_attraction} inputs; it currently rejects canonical objects.
+#'   \item \code{\link{gfcor}} provides flow-aware association on canonical
+#'     trajectory complexes with both directions and explicit raw/retained
+#'     supports, or compatible archived \code{basins_of_attraction} inputs.
 #'   \item \code{\link{gfassoc.membership}},
 #'     \code{\link{gfassoc.polarity}}, \code{\link{gfassoc.overlap}}, and
 #'     \code{\link{gfassoc.deviation}} expose flow-aware components.

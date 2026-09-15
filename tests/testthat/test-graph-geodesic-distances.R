@@ -22,7 +22,7 @@ test_that("graph.geodesic.distances dispatches on standard final graph payloads"
   )
 
   for (g in graphs) {
-    expected <- dgraphs::shortest.path(g$adj_list, g$weight_list, seq_along(g$adj_list))
+    expected <- .test.shortest.paths(.test.graph.adj(g, "final"), .test.graph.lengths(g, "final"), seq_along(.test.graph.adj(g, "final")))
     observed <- dgraphs::graph.geodesic.distances(g)
     expect_equal(observed, expected, tolerance = 1e-12)
   }
@@ -52,9 +52,9 @@ test_that("graph.geodesic.distances uses adj_list final payload after local prun
   )
 
   for (g in graphs) {
-    expect_equal(graph_geodesic_edge_keys(.graph.edge.table(g$adj_list, g$weight_list)),
+    expect_equal(graph_geodesic_edge_keys(.graph.edge.table(.test.graph.adj(g, "final"), .test.graph.lengths(g, "final"))),
                  c("1-2", "2-3", "3-4"))
-    expected <- dgraphs::shortest.path(g$adj_list, g$weight_list, seq_along(g$adj_list))
+    expected <- .test.shortest.paths(.test.graph.adj(g, "final"), .test.graph.lengths(g, "final"), seq_along(.test.graph.adj(g, "final")))
     observed <- dgraphs::graph.geodesic.distances(g)
     expect_equal(observed, expected, tolerance = 1e-12)
   }
@@ -91,6 +91,17 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
   )
 
   for (g in graphs) {
+    if (inherits(g, "dgraph")) {
+      # The object API exposes available stages; derived geodesic graphs may
+      # legitimately retain only the final stage.
+      stages <- getExportedValue("dgraphs", "graph.stages")(g)
+      expect_true("final" %in% stages)
+      for (stage in stages) {
+        expect_length(.test.graph.adj(g, stage), nrow(X))
+        expect_length(.test.graph.lengths(g, stage), nrow(X))
+      }
+      next
+    }
     expect_true(all(c(
       "raw_adj_list", "raw_weight_list",
       "pruned_adj_list", "pruned_weight_list",
@@ -99,13 +110,13 @@ test_that("graph constructors expose raw, pruned, and final lifecycle fields", {
       "repaired_pruned_adj_list", "repaired_pruned_weight_list",
       "adj_list", "weight_list"
     ) %in% names(g)))
-    expect_equal(length(g$raw_adj_list), length(g$raw_weight_list))
-    expect_equal(length(g$pruned_adj_list), length(g$pruned_weight_list))
-    expect_equal(length(g$raw_repaired_adj_list), length(g$raw_repaired_weight_list))
-    expect_equal(length(g$pruned_repaired_adj_list), length(g$pruned_repaired_weight_list))
-    expect_equal(length(g$repaired_pruned_adj_list), length(g$repaired_pruned_weight_list))
-    expect_equal(length(g$adj_list), length(g$weight_list))
-    expect_equal(length(g$adj_list), nrow(X))
+    expect_equal(length(.test.graph.adj(g, "raw")), length(.test.graph.lengths(g, "raw")))
+    expect_equal(length(.test.graph.adj(g, "pruned")), length(.test.graph.lengths(g, "pruned")))
+    expect_equal(length(.test.graph.adj(g, "raw.repaired")), length(.test.graph.lengths(g, "raw.repaired")))
+    expect_equal(length(.test.graph.adj(g, "pruned.repaired")), length(.test.graph.lengths(g, "pruned.repaired")))
+    expect_equal(length(.test.graph.adj(g, "repaired.pruned")), length(.test.graph.lengths(g, "repaired.pruned")))
+    expect_equal(length(.test.graph.adj(g, "final")), length(.test.graph.lengths(g, "final")))
+    expect_equal(length(.test.graph.adj(g, "final")), nrow(X))
   }
 })
 
@@ -140,8 +151,8 @@ test_that("graph.geodesic.distances can select lifecycle stages", {
 
   for (stage in stages) {
     payload <- fields[[stage]]
-    expected <- dgraphs::shortest.path(g[[payload[[1L]]]], g[[payload[[2L]]]],
-                              seq_along(g$adj_list))
+    expected <- .test.shortest.paths(.test.graph.adj(g, stage), .test.graph.lengths(g, stage),
+                              seq_along(.test.graph.adj(g, "final")))
     observed <- dgraphs::graph.geodesic.distances(g, stage = stage)
     expect_equal(observed, expected, tolerance = 1e-12)
   }
@@ -149,7 +160,7 @@ test_that("graph.geodesic.distances can select lifecycle stages", {
   expect_true(any(!is.finite(dgraphs::graph.geodesic.distances(g, stage = "raw"))))
   expect_true(all(is.finite(dgraphs::graph.geodesic.distances(g, stage = "raw.repaired"))))
   expect_true(any(!is.finite(dgraphs::graph.geodesic.distances(g, stage = "final"))))
-  expect_error(dgraphs::graph.geodesic.distances(g, stage = "unknown"), "arg")
+  expect_error(dgraphs::graph.geodesic.distances(g, stage = "unknown"), "arg|stage")
 })
 
 
@@ -170,12 +181,12 @@ test_that("repaired.pruned represents pruning after MST repair", {
   )
 
   expect_equal(
-    graph_geodesic_edge_keys(.graph.edge.table(g$raw_adj_list, g$raw_weight_list)),
+    graph_geodesic_edge_keys(.graph.edge.table(.test.graph.adj(g, "raw"), .test.graph.lengths(g, "raw"))),
     c("1-2", "1-3", "1-4", "2-3", "2-4", "3-4")
   )
   expect_equal(
-    graph_geodesic_edge_keys(.graph.edge.table(g$repaired_pruned_adj_list,
-                                               g$repaired_pruned_weight_list)),
+    graph_geodesic_edge_keys(.graph.edge.table(.test.graph.adj(g, "repaired.pruned"),
+                                               .test.graph.lengths(g, "repaired.pruned"))),
     c("1-2", "2-3", "3-4")
   )
   expect_true(all(is.finite(dgraphs::graph.geodesic.distances(g, stage = "repaired.pruned"))))
@@ -199,7 +210,7 @@ test_that("graph.geodesic.distances uses final adj_list payload for IkNN objects
     verbose = FALSE
   )
 
-  expected <- dgraphs::shortest.path(g$adj_list, g$weight_list, seq_along(g$adj_list))
+  expected <- .test.shortest.paths(.test.graph.adj(g, "final"), .test.graph.lengths(g, "final"), seq_along(.test.graph.adj(g, "final")))
   observed <- dgraphs::graph.geodesic.distances(g)
 
   expect_equal(observed, expected, tolerance = 1e-12)
@@ -224,7 +235,7 @@ test_that("graph.geodesic.distances ignores raw and pruned lifecycle fields", {
     pca.dim = NULL,
     verbose = FALSE
   )
-  expected <- dgraphs::shortest.path(g$adj_list, g$weight_list, seq_along(g$adj_list))
+  expected <- .test.shortest.paths(.test.graph.adj(g, "final"), .test.graph.lengths(g, "final"), seq_along(.test.graph.adj(g, "final")))
 
   # If the wrapper accidentally used raw_* or pruned_* fields, these mutations
   # would make the call fail. The final payload is adj_list/weight_list.
@@ -257,13 +268,17 @@ test_that("graph.geodesic.distances validates class and payload", {
   X <- rbind(c(0, 0), c(1, 0), c(2, 0))
   g <- dgraphs::create.sknn.graph(X, k = 1)
 
-  expect_error(dgraphs::graph.geodesic.distances(list(adj_list = g$adj_list,
-                                             weight_list = g$weight_list)),
-               "must inherit")
+  expect_error(dgraphs::graph.geodesic.distances(list(adj_list = .test.graph.adj(g, "final"),
+                                             weight_list = .test.graph.lengths(g, "final"))),
+               "must inherit|dgraph")
 
   bad <- g
-  bad$adj_list <- NULL
-  expect_error(dgraphs::graph.geodesic.distances(bad), "must be a list")
+  bad <- .test.corrupt.graph(g, adj = NULL, lengths = .test.graph.lengths(g))
+  if (inherits(bad, "dgraph")) {
+    # New graph objects are validated at construction; deleting payload fields
+    # after construction bypasses that public contract.
+    expect_error(getExportedValue("dgraphs","dgraph")(NULL,.test.graph.lengths(g)), "list")
+  } else expect_error(dgraphs::graph.geodesic.distances(bad), "must be a list")
 
   iknn <- dgraphs::create.single.iknn.graph(
     X,
@@ -273,20 +288,24 @@ test_that("graph.geodesic.distances validates class and payload", {
     pca.dim = NULL,
     verbose = FALSE
   )
-  iknn$adj_list <- NULL
-  expect_error(dgraphs::graph.geodesic.distances(iknn), "must be a list")
+  iknn <- .test.corrupt.graph(iknn, adj = NULL, lengths = .test.graph.lengths(iknn))
+  if (inherits(iknn, "dgraph")) {
+    expect_error(getExportedValue("dgraphs","dgraph")(NULL,.test.graph.lengths(iknn)), "list")
+  } else expect_error(dgraphs::graph.geodesic.distances(iknn), "must be a list")
 
   bad <- g
-  bad$weight_list <- bad$weight_list[-1]
-  expect_error(dgraphs::graph.geodesic.distances(bad), "same length")
+  bad <- .test.corrupt.graph(g, .test.graph.adj(g), .test.graph.lengths(g)[-1])
+  expect_error(dgraphs::graph.geodesic.distances(bad), "same length|align|length")
 
   bad <- g
-  bad$adj_list[[1]] <- c(2L, 99L)
-  bad$weight_list[[1]] <- c(1, 1)
-  expect_error(dgraphs::graph.geodesic.distances(bad), "outside 1")
+  aa <- .test.graph.adj(g); ww <- .test.graph.lengths(g)
+  aa[[1]] <- c(2L, 99L); ww[[1]] <- c(1, 1)
+  bad <- .test.corrupt.graph(g, aa, ww)
+  expect_error(dgraphs::graph.geodesic.distances(bad), "outside 1|indices|index")
 
   bad <- g
-  bad$weight_list[[1]][[1]] <- -1
+  ww <- .test.graph.lengths(g); ww[[1]][1] <- -1
+  bad <- .test.corrupt.graph(g, .test.graph.adj(g), ww)
   expect_error(dgraphs::graph.geodesic.distances(bad), "non-negative")
 
   expect_error(dgraphs::graph.geodesic.distances(g, vertices = 0), "vertices")

@@ -1,0 +1,21 @@
+test_that("both dependency representations preserve components and hop lengths", {
+    a <- list(2L,c(1L,3L),2L,integer())
+    w <- list(2,c(2,3),3,numeric())
+    cc <- .dgraphs.components(a)
+    expect_equal(outer(cc,cc,`==`), outer(c(1,1,1,2),c(1,1,1,2),`==`))
+    p <- .dgraphs.path(a,w,2)
+    expect_equal(p$edge.length.list[[1]][match(3L,p$adj.list[[1]])],5)
+    expect_length(p$adj.list[[4]],0)
+    nerve <- .dgraphs.nerve(list(1:3,2:4,8:9))
+    expect_equal(nerve$weights.list[[1]],2)
+    expect_length(nerve$adjacency.list[[3]],0)
+})
+
+test_that("optional viewer errors identify missing installation and APIs", {
+    testthat::local_mocked_bindings(.ivue.plotting.status = function()
+        list(version=NULL,exports=character()), .package="gflow")
+    expect_error(.require.ivue.plotting(), "not installed.*https://pgajer.github.io/ivue/")
+    testthat::local_mocked_bindings(.ivue.plotting.status = function()
+        list(version=package_version("0.0.0.9001"),exports=character()), .package="gflow")
+    expect_error(.require.ivue.plotting(), "0.0.0.9001; missing: plot3D.plain")
+})
