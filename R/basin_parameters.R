@@ -5,7 +5,7 @@
             value <- paste(utils::capture.output(dput(values[[name]])), collapse = " ")
             paste0("\\item{\\code{", name, "}}{\\code{", value, "}}")
         }, character(1))
-        paste0("\\describe{", paste(items, collapse = "\n"), "}")
+        paste0("\\describe{\n", paste(items, collapse = "\n"), "\n}")
     }
     methods <- c("trajectory_flow", "superlevel_merge_tree", "geodesic_reachability", "rtcb", "overlap_cell_complex")
     sections <- vapply(methods, function(method) paste0(

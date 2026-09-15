@@ -48,6 +48,20 @@ pkgdown::build_site(install = FALSE, new_process = FALSE, examples = FALSE,
 pkgdown::build_reference(topics = c("gflow-package", "lcor", "create.basin.complex"),
                          examples = TRUE, lazy = FALSE, devel = FALSE,
                          override = list(reference = reference))
+# Generated definition lists must retain every default, including their first
+# item (which pkgdown can omit when it shares a line with the opening markup).
+parameter.page <- xml2::read_html("build/site/reference/basin-parameters.html")
+ns <- asNamespace("gflow")
+method.names <- c("trajectory_flow", "superlevel_merge_tree", "geodesic_reachability",
+                  "rtcb", "overlap_cell_complex")
+defaults <- c(list(ns$.basin.graph.defaults()),
+              lapply(method.names, function(method)
+                  ns$.basin.resolve.method.params(method, list(), 100L, NULL)),
+              ns$.basin.simplify.defaults())
+expected <- unique(unlist(lapply(defaults, names)))
+rendered <- xml2::xml_text(xml2::xml_find_all(parameter.page, ".//dl/dt/code"))
+missing <- setdiff(expected, rendered)
+if (length(missing)) stop("Parameter defaults missing from website: ", paste(missing, collapse = ", "))
 # Rd example plots have no caption channel; describe this known entry-point plot.
 page <- "build/site/reference/create.basin.complex.html"
 html <- xml2::read_html(page)

@@ -547,7 +547,7 @@ R/basin_display.R	15950db379c1fcc8298f07d96743633d
 R/basin_identity.R	0ab0af0abb84b2aed34649733a65f8a2
 R/basin_lookup_functions.R	7c5a2d660bac9a5ecfb8540c214ad890
 R/basin_merge_tree_public.R	f40d3db760d2c60f7117a09fb6f0211f
-R/basin_parameters.R	de0ee27bb99ccd25f964a7855b2afd4b
+R/basin_parameters.R	deccdd8234bb00c3e5ca17758d6b3f0d
 R/basin_summary.R	f7695c13c3eb127a3c8e0237ec0d9f15
 R/boxcox_utils.R	8b9b4ec962d826247f5e7a87aba75dff
 R/cell_trajectories_generic.R	0c13e545d2c2e9c6e76f1cda24914838
