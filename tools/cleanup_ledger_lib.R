@@ -481,11 +481,11 @@ cleanup.build.ledger <- function(root, scan.downstream = TRUE) {
 cleanup.hash.expression <- function(expression) {
     path <- tempfile("gflow-protected-expression-", fileext = ".R")
     on.exit(unlink(path), add = TRUE)
-    writeLines(
-        deparse(expression, control = c("keepInteger", "keepNA")),
-        path,
-        useBytes = TRUE
-    )
+    # Binary output fixes LF separators on every platform. Text-mode temporary
+    # files otherwise introduce CRLF on Windows and falsely change every hash.
+    text <- paste0(paste(deparse(expression, control = c("keepInteger", "keepNA")),
+                        collapse = "\n"), "\n")
+    writeBin(charToRaw(enc2utf8(text)), path)
     unname(tools::md5sum(path))
 }
 

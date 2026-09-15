@@ -1,0 +1,2 @@
+# Keep source fingerprints and shell scripts stable across Windows and Unix.
+* text=auto eol=lf

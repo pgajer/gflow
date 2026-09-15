@@ -548,8 +548,8 @@ tree for graph level-set births and mergers.
 |---|---|---|
 | [`gfcor()`](https://pgajer.github.io/gflow/reference/gfcor.html) | Summarize polarity concordance for canonical trajectory or archived basin objects. | Advanced |
 | [`gfassoc.membership()`](https://pgajer.github.io/gflow/reference/gfassoc.membership.html) | Normalize canonical trajectory or archived basin memberships. | Advanced |
-| [`gfassoc.polarity()`](https://pgajer.github.io/gflow/reference/gfassoc.polarity.html) | Compute value/rank polarity from a field and compatible membership record. | Archive |
-| [`gfassoc.overlap()`](https://pgajer.github.io/gflow/reference/gfassoc.overlap.html) | Compute mass-weighted overlap between compatible membership records. | Archive |
+| [`gfassoc.polarity()`](https://pgajer.github.io/gflow/reference/gfassoc.polarity.html) | Compute value/rank polarity from a field and compatible membership record. | Advanced |
+| [`gfassoc.overlap()`](https://pgajer.github.io/gflow/reference/gfassoc.overlap.html) | Compute mass-weighted overlap between compatible membership records. | Advanced |
 | [`gfassoc.deviation()`](https://pgajer.github.io/gflow/reference/gfassoc.deviation.html) | Describe residuals from marginal-product expected overlap. | Advanced |
 
 ### Domain-specific visualization and supporting grid tools

@@ -1,3 +1,7 @@
+check.log <- readLines("gflow.Rcheck/00check.log", warn = FALSE)
+if (any(grepl("^Status:.*(ERROR|WARNING)", check.log))) {
+    stop("The built-package check has errors or warnings; inspect 00check.log.")
+}
 library(gflow)
 cat(R.version.string, "\ndgraphs:", as.character(packageVersion("dgraphs")), "\n")
 info <- .Call("S_gflow_openmp_diag", PACKAGE = "gflow")

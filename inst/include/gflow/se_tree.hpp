@@ -1,6 +1,7 @@
 #ifndef SE_TREE_HPP
 #define SE_TREE_HPP
 
+#include <cstddef>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
@@ -9,15 +10,15 @@
  * @brief Node in a Spurious Extrema tree
  */
 struct se_node_t {
-    size_t vertex;                      ///< Vertex index of this extremum
+    std::size_t vertex;                      ///< Vertex index of this extremum
     bool is_maximum;                    ///< True if maximum, false if minimum
     bool is_spurious;                   ///< True if spurious, false if non-spurious (leaf)
-    size_t parent;                      ///< Parent node vertex (SIZE_MAX if root)
-    std::vector<size_t> children;       ///< Child node vertices
+    std::size_t parent;                      ///< Parent node vertex (SIZE_MAX if root)
+    std::vector<std::size_t> children;       ///< Child node vertices
 
     // Basin information for this node
-    std::vector<size_t> basin_vertices; ///< Vertices in this extremum's basin
-    std::vector<size_t> basin_boundary; ///< Boundary of this extremum's basin
+    std::vector<std::size_t> basin_vertices; ///< Vertices in this extremum's basin
+    std::vector<std::size_t> basin_boundary; ///< Boundary of this extremum's basin
 };
 
 /**
@@ -39,16 +40,16 @@ enum class se_tree_class_t {
  * terminating at non-spurious extrema (leaves).
  */
 struct se_tree_t {
-    size_t root_vertex;                             ///< Root spurious extremum
+    std::size_t root_vertex;                             ///< Root spurious extremum
     bool root_is_maximum;                           ///< Type of root extremum
-    std::unordered_map<size_t, se_node_t> nodes;    ///< All nodes indexed by vertex
-    std::vector<size_t> ns_min_terminals;           ///< Non-spurious minimum terminals
-    std::vector<size_t> ns_max_terminals;           ///< Non-spurious maximum terminals
+    std::unordered_map<std::size_t, se_node_t> nodes;    ///< All nodes indexed by vertex
+    std::vector<std::size_t> ns_min_terminals;           ///< Non-spurious minimum terminals
+    std::vector<std::size_t> ns_max_terminals;           ///< Non-spurious maximum terminals
     se_tree_class_t classification;                 ///< Tree classification
 
     // Precomputed support for harmonic repair
-    std::vector<size_t> hr_support_vertices;        ///< Union of basins for HR
-    std::vector<size_t> hr_support_boundary;        ///< Boundary of HR support region
+    std::vector<std::size_t> hr_support_vertices;        ///< Union of basins for HR
+    std::vector<std::size_t> hr_support_boundary;        ///< Boundary of HR support region
 };
 
 #endif // SE_TREE_HPP

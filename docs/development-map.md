@@ -31,7 +31,9 @@ namespace and ownership. Run `make check` for the full package check.
 - [Native ownership](../split_audit/cleanup/native-symbol-ownership.csv)
 - [Dependency ownership](../split_audit/cleanup/dependency-ownership.csv)
 - [Protected basin surface](../split_audit/cleanup/protected-basin-surface.txt)
-- [Document locations](../DOCUMENT_LOCATIONS.md)
+
+When present in a working checkout, `DOCUMENT_LOCATIONS.md` records local
+document-location policy; private review evidence is kept outside the package.
 
 When an authorized basin change alters protected fingerprints, regenerate with
 `cleanup.build.protected.surface()` from `tools/cleanup_ledger_lib.R`, inspect the

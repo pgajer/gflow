@@ -127,5 +127,5 @@ and run `make website` with the same `R_ENV` library selection used to install
 that archive. Generated pages live in `build/site/`; maintained installation
 notes in `docs/` are preserved. See [the documentation build guide](https://github.com/pgajer/gflow/blob/main/docs/documentation-build.md).
 
-The [developer map](docs/development-map.md) locates implementations, scientific
+The [developer map](https://github.com/pgajer/gflow/blob/main/docs/development-map.md) locates implementations, scientific
 regression tests, ownership records, and resource limits.
