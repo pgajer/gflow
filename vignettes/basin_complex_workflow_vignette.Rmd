@@ -17,10 +17,15 @@ knitr::opts_chunk$set(
 library(gflow)
 ```
 
+Start with [Finding your way around gflow](function-guide.html) for input
+conventions, the complete catalog, and migration advice. The
+[example graphs and fields](example-graphs-and-fields.html) give smaller
+structural comparisons.
+
 ## One constructor, five basin families
 
-`create.basin.complex()` is the only constructor for new basin objects in
-`gflow`. It validates the graph and field once, dispatches to one of five basin
+`create.basin.complex()` is the recommended constructor for new basin analyses in
+`gflow`. Specialized historical/grid constructors have separate schemas. It validates the graph and field once, dispatches to one of five basin
 construction families, and returns the same `basin_complex` schema from every
 family.
 
@@ -29,7 +34,7 @@ family.
 | `"trajectory_flow"` | Flow trajectories and terminal basins | Deterministic field-following basins |
 | `"superlevel_merge_tree"` | Plateau-aware graph level-set merge tree | Basin births, mergers, and persistence |
 | `"geodesic_reachability"` | Monotone reachability supports | Overlapping attraction supports |
-| `"rtcb"` | Robust trajectory-consensus basins | Stability under local trajectory variation |
+| `"rtcb"` | Relaxed trajectory-constrained basins | Bounded departures from monotone paths |
 | `"overlap_cell_complex"` | Ascending-by-descending overlap cells | Joint maxima/minima decomposition |
 
 The remainder of this vignette uses one small two-dimensional grid only to make
@@ -93,7 +98,7 @@ flow <- create.basin.complex(
 )
 
 flow$status
-flow$basin.table[
+get.basin.table(flow)[
   ,
   c("basin.id", "type", "retained.support.mass")
 ]
@@ -120,9 +125,8 @@ density_flow$status
 ## Level-set merge tree
 
 The level-set method contracts exact field plateaus and records component
-births, elder-rule mergers, and component-root deaths. It is the canonical
-method for following basin topology across a one-parameter conditional-
-expectation scale path.
+births, elder-rule mergers, and component-root deaths. Use it to query connected graph level sets. A field estimated elsewhere at
+several smoothing scales can also be analyzed separately at each scale.
 
 ```{r merge-tree}
 tree <- create.basin.complex(
@@ -134,7 +138,7 @@ tree <- create.basin.complex(
 )
 
 tree$status
-tree$merge.table
+get.basin.merge.tree(tree, required = TRUE)$merge.table
 ```
 
 Construct one object at every retained scale value, then compare merge tables
@@ -188,18 +192,21 @@ vapply(
 
 ## Membership is not assignment
 
-`membership.table` is the authoritative many-to-many relation between vertices
+`get.basin.membership()` exposes the raw many-to-many relation between vertices
 and basins. Overlap is allowed. `primary.assignment` is an optional convenience
 label selected by the method's `primary.assignment.policy`; it does not replace
-membership and may be absent.
+membership and can have `NA` labels and `not_applicable` status. A missing assignment
+is not evidence of missing membership. RTCB currently supplies no backend
+primary assignment; overlap cells also have no primary assignment.
 
 ```{r membership}
-head(reachability$membership.table)
-reachability$primary.assignment
+head(get.basin.membership(reachability))
+get.basin.assignment(reachability)
 ```
 
 Downstream code that needs complete basin supports should use
-`membership.table`. Code that requires exactly one basin per vertex must choose
+`get.basin.membership()`. After refinement, use the basin table's
+`retained.support.vertices` for retained support. Code that requires exactly one basin per vertex must choose
 and record an assignment policy.
 
 ## Refinement

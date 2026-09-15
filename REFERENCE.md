@@ -1,8 +1,11 @@
 # gflow public API reference
 
-The supported `gflow` API has four user-facing families. Basin and extrema
-construction internals are intentionally outside the cleanup that produced
-this index; the canonical basin-complex API remains the starting point.
+Start with [Finding your way around gflow](vignettes/function-guide.Rmd) for
+an exhaustive, status-labeled catalog and [Example graphs and scalar
+fields](vignettes/example-graphs-and-fields.Rmd) for runnable inputs.
+Both are installed vignettes. The canonical basin-complex API is the starting
+point for new basin analyses; the families below also contain advanced and
+archived-object interfaces.
 
 ## Basin and flow objects
 
@@ -25,15 +28,15 @@ this index; the canonical basin-complex API remains the starting point.
 
 ## Complex and trajectory exploration
 
-- `construct.gflow.graph()` summarizes basin intersections as a flow graph.
+- `construct.gflow.graph()` summarizes archived basin intersections as a flow graph.
 - `construct.madag()` and `madag.bottlenecks()` analyze directed basin/cell
   structure.
 - `compute.harmonic.extension()`, `apply.harmonic.extension()`,
   `analyze.harmonic.extensions()`, and `compare.harmonic.methods()` extend and
   compare coordinates around trajectories.
 - `select.max.density.trajectory()` selects a representative trajectory.
-- `compute.gfc.modulation()` applies a named modulation to a gradient-flow
-  complex.
+- `compute.gfc.modulation()` computes edge modulation weights from graph
+  lengths and optional density.
 - `extremality.summary()` and `label.extremality.3d()` support extrema-focused
   interpretation.
 
@@ -48,7 +51,9 @@ this index; the canonical basin-complex API remains the starting point.
 
 ## Flow-aware association
 
-- `gfcor()` computes global and basin-aware flow association.
+- `gfcor()` computes global and basin-aware flow association from two fields
+  and two archived `basins_of_attraction` objects. It currently rejects
+  `basin_complex` objects; no public canonical adapter exists.
 - `gfassoc.membership()`, `gfassoc.polarity()`, `gfassoc.overlap()`, and
   `gfassoc.deviation()` expose the component flow-aware summaries.
 
@@ -64,3 +69,9 @@ this index; the canonical basin-complex API remains the starting point.
   as removed in the migration guide.
 - Interactive selection widgets and domain-specific analysis pipelines:
   specialist UI or analysis repositories, not `gflow`.
+
+## Migration
+
+Use `help("gflow-migration", package = "gflow")` or the migration section of
+the function guide for installed-package advice. Exported retirement stubs
+raise migration errors and must not be used as estimators.

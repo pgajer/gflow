@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance
+.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance audit-api-guide preview-user-guides
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -73,3 +73,9 @@ audit-cleanup-boundary: audit-s3-namespace audit-phase7-ownership
 
 audit-final-acceptance: audit-cleanup-boundary
 	@$(RSCRIPT_RUN) tools/check_final_acceptance.R
+
+audit-api-guide:
+	@$(RSCRIPT_RUN) tools/audit_api_guide.R
+
+preview-user-guides:
+	@$(RSCRIPT_RUN) tools/render_user_guides.R

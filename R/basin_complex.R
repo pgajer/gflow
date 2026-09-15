@@ -1471,7 +1471,7 @@
 #'   sets;
 #' * `"geodesic_reachability"`: basins defined by monotone geodesic
 #'   reachability;
-#' * `"rtcb"`: robust trajectory-consensus basins; and
+#' * `"rtcb"`: relaxed trajectory-constrained basins; and
 #' * `"overlap_cell_complex"`: joint ascending/descending overlap cells.
 #'
 #' `direction = "max"` follows the field toward maxima, `"min"` follows it
@@ -1811,7 +1811,13 @@ create.basin.complex <- function(
 #'
 #' @param object A canonical `basin_complex`.
 #'
-#' @return A canonical basin table.
+#' @return A data frame with basin/extremum identity, direction (`type`),
+#'   method, retention status, extremum/birth/death levels and persistence,
+#'   parent identity, and raw/retained/primary support vertex lists, sizes and
+#'   masses. `raw.allocated.mass` uses raw membership weights. External-ID
+#'   companion columns preserve supplied vertex IDs. Unavailable measures are
+#'   `NA`; mass measures require explicitly supplied mass.
+#' @seealso [get.basin.membership()], [get.basin.assignment()]
 #' @export
 get.basin.table <- function(object) {
     .basin.accessor.object(object)$basin.table
@@ -1820,7 +1826,11 @@ get.basin.table <- function(object) {
 #' Extract Canonical Basin Membership
 #'
 #' @inheritParams get.basin.table
-#' @return A canonical raw-membership table.
+#' @return A data frame with `vertex`, `direction`, `basin.id`,
+#'   `membership.weight`, `membership.status`, `source.stage`, `is.primary`,
+#'   and external `vertex.id`. Raw membership rows and weights survive
+#'   refinement; `is.primary` reflects matching current assignments. For
+#'   refined support use `get.basin.table()` and `retained.support.vertices`.
 #' @export
 get.basin.membership <- function(object) {
     .basin.accessor.object(object)$membership
@@ -1829,7 +1839,10 @@ get.basin.membership <- function(object) {
 #' Extract Canonical Primary Basin Assignments
 #'
 #' @inheritParams get.basin.table
-#' @return A canonical primary-assignment table.
+#' @return A data frame with vertex/direction, optional `basin.id`,
+#'   assignment weight/status/policy, root and next vertex, and external-ID
+#'   companions. `not_applicable` with an `NA` label need not mean uncovered
+#'   membership; some methods intentionally do not assign one basin per vertex.
 #' @export
 get.basin.assignment <- function(object) {
     .basin.accessor.object(object)$assignment

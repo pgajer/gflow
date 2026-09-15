@@ -210,6 +210,13 @@
 #' @seealso \code{\link{generate.refinement.report}} for automated report generation,
 #'   \code{\link{expand.basins.to.cover}} for the basin expansion algorithm
 #'
+#' @section Lifecycle:
+#' This exported name is retired and always raises a
+#' `gflow_basin_lifecycle_error`. Historical arguments and return descriptions
+#' below document archived calls, not a runnable estimator. Use
+#' \code{\link{create.basin.complex}} with `method = "geodesic_reachability"`
+#' and translate controls explicitly. See \code{\link{gflow-migration}}.
+#'
 #' @export
 compute.gfc <- function(adj.list,
                                    edge.length.list,

@@ -1,4 +1,18 @@
-# gflow 0.2.0 — 2026-07-26
+# gflow 0.2.0 (unreleased)
+
+## User guides
+
+* Added installed task-oriented function and example-graph vignettes, with
+  complete export/S3 coverage checks and public migration help.
+* Corrected the README constructor call, documented archived-object limits in
+  flow-aware association, and made overlap assignment and permutation
+  assumptions explicit in the existing workflows.
+* Corrected RTCB terminology to relaxed trajectory-constrained basins, matching
+  the implemented constrained-path search.
+* Earlier extraction milestones below are history, not evidence that removed
+  forwarders or experimental APIs remain available.
+
+## Earlier development changes
 
 ## Retire duplicate generic 3D renderers
 
@@ -9,8 +23,9 @@
 * Cluster highlights, selected-sample displays, and disk-embedding displays
   now return `ivue` browser widgets. Their additional scene controls use the
   `ivue` API; native additions belong in callback layers before widget capture.
-  No compatibility aliases were added. The function-height `plot3D.graph()`
-  and unrelated 2D/domain drawing functions are unchanged.
+  No compatibility aliases were added. The function-height `plot3D.graph()` was also removed in the graph extraction;
+  use documented dgraphs or application plotting code. Domain-specific 2D
+  functions remain available as listed in the function guide.
 
 ## Separate adaptive extrema from dgraphs
 
@@ -43,8 +58,8 @@
   association.
 * De-exported generic weighted-p-value helpers, clustering summaries,
   interactive selection/widgets, and remaining support utilities.
-* Added a complete breaking-release migration table at
-  `split_audit/cleanup/breaking-release-migration.md`.
+* Added breaking-release migration guidance, now accessible in installed
+  `gflow-migration` help and the function guide.
 
 * Moved fitted-model local-slope testing and subject-neighborhood diagnostics
   to `gflowx`; restricted posterior local correlation to supplied field draws;
@@ -54,8 +69,9 @@
   `lcor` helpers and generic conditional-mean `fassoc*` support are now private.
 * De-exported generic statistics, preprocessing, grid, sampling, histogram,
   divergence, Wasserstein, synthetic-data, and miscellaneous plotting helpers.
-  The three tested interactive 3D widget APIs remain public, and duplicate
-  matrix preprocessing helpers were removed.
+  Subsequent renderer cleanup removed the generic widget exports; native
+  domain-specific extrema-labeling functions remain public. Duplicate matrix
+  preprocessing helpers were removed.
 
 * Retired `compute.gfc()`, `compute.basins.of.attraction()`,
   `compute.gfc.trajectory()`, `compute.gfc.flow()`, and `create.basin.cx()`
@@ -102,8 +118,8 @@
   - Added consistent deprecation warnings across legacy exported 1D regression
     entry points (`magelo`, `amagelo`, `mabilo`, `mabilo.plus`, `mabilog`,
     `magelog`, `fit.pwlm*`, and `get.magelo.MAB`).
-* Package-level docs now mark legacy 1D model-averaging APIs as experimental and
-  planned for extraction to a separate package.
+* At that intermediate stage, legacy 1D model-averaging APIs were marked
+  experimental; their extraction and hard removal were subsequently completed.
 * Phase 3 extraction started with new `malo` package:
   - `fit.pwlm*` and the 1D `get.*MAB*` benchmarking/model-comparison families now
     have native implementations in `malo`.
@@ -137,5 +153,6 @@
 
 # gflow 0.1.0 — 2025-09-21
 
-* Initial CRAN release.
+* Historical initial-release milestone; a CRAN publication for this version
+  was not found in the current or archived CRAN listings checked on 2026-09-15.
 * Implements geometric tools for intrinsic-structure modeling, Morse–Smale regression, and related utilities.

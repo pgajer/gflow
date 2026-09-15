@@ -14,13 +14,17 @@ knitr::opts_chunk$set(
   fig.width = 7,
   fig.height = 5,
   message = FALSE,
-  warning = FALSE
+  warning = TRUE
 )
 library(gflow)
-set.seed(2026)
+saved_rng <- if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+  get(".Random.seed", envir = .GlobalEnv) else NULL
 ```
 
 ## Overview
+
+For a task map, see [Finding your way around gflow](function-guide.html).
+For tiny deterministic inputs, see [Example graphs and fields](example-graphs-and-fields.html).
 
 This vignette follows one graph-centered analysis story.
 We start with noisy samples from a circle and a noisy response field over that
@@ -148,8 +152,12 @@ plot(layout.2d, pch = 19, cex = 0.5, asp = 1,
 
 ## 5) Prepare the Selected Graph and Response
 
-The rest of the vignette works directly with the selected graph and the
-observed response.
+The rest of the vignette works with the selected graph and the observed
+response. `y.true` is the known generating field at latent circle positions;
+`y` adds response noise. `X` adds coordinate noise independently. The graph
+uses `X`; the basin constructor receives `observed_field = y`, with no fitted
+smoother or conditional-expectation estimate. Graph choice and response noise
+are separate influences on the resulting structures.
 
 ```{r selected-graph-response}
 X.use <- X
@@ -161,12 +169,12 @@ comp2.use <- comp2
 
 adj.list <- g.sel$adj_list
 edge.length.list <- g.sel$weight_list
-y.hat <- as.double(y.use)
+observed_field <- as.double(y.use)
 
 data.frame(
   metric = c("cor(y, y.true)", "RMSE(y, y.true)"),
-  value = c(cor(y.hat, y.true.use),
-            sqrt(mean((y.hat - y.true.use)^2)))
+  value = c(cor(observed_field, y.true.use),
+            sqrt(mean((observed_field - y.true.use)^2)))
 )
 ```
 
@@ -200,7 +208,7 @@ Z <- cbind(
   z_noise3 = z.noise3
 )
 Z <- scale(Z)
-Z.sm <- as.matrix(Z)
+feature_fields <- as.matrix(Z)
 ```
 
 ## 7) Recover Extrema and Basins
@@ -209,7 +217,7 @@ Z.sm <- as.matrix(Z)
 y.basins <- create.basin.complex(
   adj.list = adj.list,
   edge.length.list = edge.length.list,
-  field = y.hat,
+  field = observed_field,
   method = "geodesic_reachability",
   method.params = list(
     edge.length.quantile.thld = 0.8,
@@ -236,48 +244,51 @@ y.basins <- create.basin.complex(
   verbose = TRUE
 )
 
-y.basins$basin.table
-table(y.basins$basin.table$type, y.basins$basin.table$retained)
+stopifnot(identical(y.basins$status, "ok"))
+basin_table <- get.basin.table(y.basins)
+basin_table
+table(basin_table$type, basin_table$retained)
 ```
 
 ```{r compare-true-estimated-basins}
 true.max.label <- ifelse(comp1.use >= comp2.use, "M1.true", "M2.true")
 
-max.rows <- y.basins$basin.table$type == "max" &
-  y.basins$basin.table$retained
-max.vertices.list <- y.basins$basin.table$retained.support.vertices[max.rows]
-names(max.vertices.list) <- y.basins$basin.table$basin.id[max.rows]
+max.rows <- basin_table$type == "max" &
+  basin_table$retained
+max.vertices.list <- basin_table$retained.support.vertices[max.rows]
+names(max.vertices.list) <- basin_table$basin.id[max.rows]
 
-est.max.label <- rep(NA_character_, length(y.hat))
-for (lab in names(max.vertices.list)) {
-  est.max.label[as.integer(max.vertices.list[[lab]])] <- lab
-}
+assignment <- get.basin.assignment(y.basins)
+max_assignment <- assignment[assignment$direction == "max", ]
+est.max.label <- max_assignment$basin.id[
+  match(seq_along(observed_field), max_assignment$vertex)]
 
 idx.ok <- !is.na(est.max.label)
 table(True = true.max.label[idx.ok], Estimated = est.max.label[idx.ok])
 ```
 
+The generating-component label compares which Gaussian component contributes
+more. It is not an exact ground-truth graph-basin label. The cross-tabulation
+uses the recorded primary-assignment policy and omits unassigned vertices;
+raw overlaps remain available through `get.basin.membership(y.basins)`.
+
 ## 8) Basin-Wise Pearson and Spearman Checks
 
 ```{r basin-wise-classical-correlation}
-max.rows <- y.basins$basin.table$type == "max" &
-  y.basins$basin.table$retained
-min.rows <- y.basins$basin.table$type == "min" &
-  y.basins$basin.table$retained
-max.vertices.list <- y.basins$basin.table$retained.support.vertices[max.rows]
-min.vertices.list <- y.basins$basin.table$retained.support.vertices[min.rows]
-names(max.vertices.list) <- y.basins$basin.table$basin.id[max.rows]
-names(min.vertices.list) <- y.basins$basin.table$basin.id[min.rows]
+max.rows <- basin_table$type == "max" &
+  basin_table$retained
+min.rows <- basin_table$type == "min" &
+  basin_table$retained
+max.vertices.list <- basin_table$retained.support.vertices[max.rows]
+min.vertices.list <- basin_table$retained.support.vertices[min.rows]
+names(max.vertices.list) <- basin_table$basin.id[max.rows]
+names(min.vertices.list) <- basin_table$basin.id[min.rows]
 
-max.assign <- rep(NA_character_, length(y.hat))
-for (lab in names(max.vertices.list)) {
-  max.assign[as.integer(max.vertices.list[[lab]])] <- lab
-}
-
-min.assign <- rep(NA_character_, length(y.hat))
-for (lab in names(min.vertices.list)) {
-  min.assign[as.integer(min.vertices.list[[lab]])] <- lab
-}
+# Use the recorded policy; do not overwrite labels while iterating overlaps.
+max.assign <- est.max.label
+min_assignment <- assignment[assignment$direction == "min", ]
+min.assign <- min_assignment$basin.id[
+  match(seq_along(observed_field), min_assignment$vertex)]
 
 cell.assign <- ifelse(is.na(max.assign) | is.na(min.assign),
                       NA_character_,
@@ -286,18 +297,18 @@ cell.assign <- ifelse(is.na(max.assign) | is.na(min.assign),
 group.levels <- setdiff(sort(unique(max.assign)), NA_character_)
 basin.cor <- data.frame()
 
-for (j in seq_len(ncol(Z.sm))) {
+for (j in seq_len(ncol(feature_fields))) {
   for (gr in group.levels) {
     idx <- which(max.assign == gr)
     if (length(idx) < 20L) next
     basin.cor <- rbind(
       basin.cor,
       data.frame(
-        feature = colnames(Z.sm)[j],
+        feature = colnames(feature_fields)[j],
         group = gr,
         n = length(idx),
-        pearson = suppressWarnings(cor(y.hat[idx], Z.sm[idx, j], method = "pearson")),
-        spearman = suppressWarnings(cor(y.hat[idx], Z.sm[idx, j], method = "spearman"))
+        pearson = suppressWarnings(cor(observed_field[idx], feature_fields[idx, j], method = "pearson")),
+        spearman = suppressWarnings(cor(observed_field[idx], feature_fields[idx, j], method = "spearman"))
       )
     )
   }
@@ -313,9 +324,9 @@ if (nrow(basin.cor) > 0) {
 ## 9) Local Correlation with `lcor()`
 
 ```{r lcor-methods}
-lcor.derivative <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "derivative"))
-lcor.unit <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "unit"))
-lcor.sign <- as.matrix(lcor(adj.list, edge.length.list, y.hat, Z, type = "sign"))
+lcor.derivative <- as.matrix(lcor(adj.list, edge.length.list, observed_field, Z, type = "derivative"))
+lcor.unit <- as.matrix(lcor(adj.list, edge.length.list, observed_field, Z, type = "unit"))
+lcor.sign <- as.matrix(lcor(adj.list, edge.length.list, observed_field, Z, type = "sign"))
 
 lcor.summary <- rbind(
   data.frame(
@@ -346,14 +357,23 @@ lcor.summary[order(lcor.summary$type, -lcor.summary$mean.abs.lcor), ]
 
 ## 10) Permutation Inference for `lcor`
 
-We assess feature significance by permuting feature rows (`permute = "z"`),
-recomputing local correlations, and comparing observed statistics to this null.
+We illustrate a feature-level test by permuting feature rows (`permute = "z"`),
+recomputing local correlations, and comparing their mean absolute values.
+The graph, edge lengths, and response remain fixed; a common row permutation
+preserves relationships among feature columns. This null requires exchangeable
+feature rows conditional on those fixed inputs. The structured features in this
+simulation are spatially patterned, so unrestricted permutation is not a general
+test of independence between spatial fields. Read these results as a computation
+demonstration, not calibrated evidence for the full data-selected pipeline.
+The 200 permutations give minimum p-value 1/201. Benjamini--Hochberg-adjusted
+`q.value` controls the false discovery rate only under valid p-values and the
+procedure's dependence assumptions; it tests features, not individual vertices.
 
 ```{r lcor-permutation}
 perm.lcor <- permutation.test.lcor(
   adj.list = adj.list,
   weight.list = edge.length.list,
-  y = y.hat,
+  y = observed_field,
   z = Z,
   type = "derivative",
   statistic = "mean.abs",
@@ -428,8 +448,19 @@ if (requireNamespace("grip", quietly = TRUE) &&
 
 ## Notes
 
-- For publication-quality inference, increase permutation count (`n.perm`),
-  report confidence intervals, and retain `q.value` (FDR-controlled) summaries.
+- For scientific inference, justify exchangeability and the treatment of graph
+  selection first, then choose adequate permutation resolution and an
+  appropriate multiple-testing procedure. More permutations do not fix an
+  invalid null model.
 - For larger datasets, use `n.cores > 1` and consider chunk-level caching.
 - If basin refinement is unstable for a specific dataset, start with relaxed
   filtering and tighten thresholds gradually.
+
+```{r restore-rng, include=FALSE}
+if (is.null(saved_rng)) {
+  if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+    rm(".Random.seed", envir = .GlobalEnv)
+} else {
+  assign(".Random.seed", saved_rng, envir = .GlobalEnv)
+}
+```

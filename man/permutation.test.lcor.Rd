@@ -77,6 +77,18 @@ computed by \code{\link{lcor}}. By default, vertex labels of feature columns
 are permuted (\code{permute = "z"}), which is appropriate for screening
 associations between a fixed response field and candidate features.
 }
+\details{
+Permuted rows must be exchangeable under the null conditional on the fixed
+graph, edge lengths, and unpermuted field. A common permutation is applied
+across feature columns. Local correlations and their feature summaries are
+recomputed, but graphs, fitted fields, and neighborhood selection are not.
+There is no block/stratum permutation or \code{hop.radius} control here.
+Spatially correlated fields or repeated subjects may require a different
+null procedure. The signed \code{mean} statistic uses an upper-tail comparison.
+P-values use the add-one Monte Carlo correction. BH-adjusted \code{q.value}
+refers to feature tests, not vertex tests, and its false discovery rate
+interpretation requires valid p-values and suitable dependence conditions.
+}
 \examples{
 \dontrun{
 res <- permutation.test.lcor(

@@ -6,6 +6,13 @@
 #' `dgraphs`; retired smoothing and conditional-expectation estimators are not
 #' part of this package.
 #'
+#' @section User guides:
+#' Run `vignette("function-guide", package = "gflow")` for the task map and
+#' complete API catalog, and `vignette("example-graphs-and-fields", package =
+#' "gflow")` for reproducible graph/field recipes. The canonical basin and
+#' noisy-circle workflow vignettes provide longer analyses.
+#' See \code{\link{gflow-migration}} for installed migration guidance.
+#'
 #' @section Basin and flow objects:
 #' \itemize{
 #'   \item \code{\link{create.basin.complex}} constructs a canonical
@@ -32,7 +39,8 @@
 #' \itemize{
 #'   \item \code{\link{lcor}} and \code{\link{lslope}} provide graph-local
 #'     association and directed response.
-#'   \item \code{\link{gfcor}} provides basin- and flow-aware association.
+#'   \item \code{\link{gfcor}} provides flow-aware association on archived
+#'     \code{basins_of_attraction} inputs; it currently rejects canonical objects.
 #'   \item \code{\link{gfassoc.membership}},
 #'     \code{\link{gfassoc.polarity}}, \code{\link{gfassoc.overlap}}, and
 #'     \code{\link{gfassoc.deviation}} expose flow-aware components.

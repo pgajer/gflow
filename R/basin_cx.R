@@ -91,6 +91,13 @@
 #'
 #' @seealso \code{\link{plot.basin_cx}}
 #'
+#' @section Lifecycle:
+#' This exported name is retired and always raises a
+#' `gflow_basin_lifecycle_error`. Historical arguments and return descriptions
+#' below document archived calls, not a runnable estimator. Use
+#' \code{\link{create.basin.complex}} with `method = "overlap_cell_complex"`
+#' and translate controls explicitly. See \code{\link{gflow-migration}}.
+#'
 #' @export
 create.basin.cx <- function(adj.list,
                            weight.list,

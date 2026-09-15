@@ -123,6 +123,13 @@
 #' @seealso \code{\link{summary.basins_of_attraction}} for generating
 #'   summary statistics
 #'
+#' @section Lifecycle:
+#' This exported name is retired and always raises a
+#' `gflow_basin_lifecycle_error`. Historical arguments and return descriptions
+#' below document archived calls, not a runnable estimator. Use
+#' \code{\link{create.basin.complex}} with `method = "geodesic_reachability"`
+#' and translate controls explicitly. See \code{\link{gflow-migration}}.
+#'
 #' @export
 compute.basins.of.attraction <- function(adj.list,
                                          weight.list,

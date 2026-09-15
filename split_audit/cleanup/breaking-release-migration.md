@@ -4,6 +4,10 @@ Version 0.2.0 is a coordinated pre-1.0 breaking release. The package no longer
 keeps compatibility wrappers for APIs owned by another package or for
 experimental families that lack a maintained owner.
 
+Public installed guidance is available in `help("gflow-migration", package =
+"gflow")` and the function-guide vignette. Historical ledger records below do
+not establish current dependency API compatibility.
+
 ## Adaptive extrema
 
 Use `gflow::detect.adaptive.extrema()` in place of the former
@@ -45,7 +49,7 @@ requested maxima/minima setting in `detect.maxima` for correct summaries.
 
 | Removed/de-exported from `gflow` | Owner or next action |
 |---|---|
-| Generic `plot3D.*.widget` workflows | Use `ivue::plot3D.plain`, `ivue::plot3D.cont`, or `ivue::plot3D.cltrs`; no `.widget`/`.html` aliases or public `gflow` adapter |
+| Generic `plot3D.*.widget` workflows | Use `ivue::plot3D.plain`, `ivue::plot3D.cont`, or `ivue::plot3D.groups`; no `.widget`/`.html` aliases or public `gflow` adapter |
 | Interactive `select3D.*` application workflows | Remain an application concern in `gflowui`, using `ivue` scenes where appropriate |
 | Compositional/microbiome helpers | Relocate to `microbiome.utils` |
 | Two-factor/CST analyses | Relocate to `gcstflow` or the owning analysis repository |

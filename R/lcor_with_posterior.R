@@ -43,7 +43,10 @@
 #' @details
 #' Each supplied draw is passed to \code{\link{lcor}} against the fixed
 #' response field. This makes the estimand independent of how the draws were
-#' generated. Archived graph-regression objects can be adapted in \code{gflowx}.
+#' generated. The graph and response remain fixed. Quantile intervals are
+#' pointwise, not simultaneous; their posterior interpretation depends on the
+#' supplied draws and excludes uncertainty not represented in those draws.
+#' Archived graph-regression objects can be adapted in \code{gflowx}.
 #'
 #' @examples
 #' adj <- list(c(2L), c(1L, 3L), c(2L))

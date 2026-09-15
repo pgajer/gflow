@@ -167,6 +167,13 @@
 #'
 #' @seealso \code{\link{compute.gfc}} for the extrema-first approach
 #'
+#' @section Lifecycle:
+#' This exported name is retired and always raises a
+#' `gflow_basin_lifecycle_error`. Historical arguments and return descriptions
+#' below document archived calls, not a runnable estimator. Use
+#' \code{\link{create.basin.complex}} with `method = "trajectory_flow"`
+#' and translate controls explicitly. See \code{\link{gflow-migration}}.
+#'
 #' @export
 compute.gfc.trajectory <- function(
     adj.list,
@@ -398,9 +405,16 @@ compute.gfc.trajectory <- function(
     return(result)
 }
 
-#' Deprecated Alias for \code{compute.gfc.trajectory}
+#' Retired Alias for \code{compute.gfc.trajectory}
 #'
 #' @rdname compute.gfc.trajectory
+#' @section Lifecycle:
+#' This exported name is retired and always raises a
+#' `gflow_basin_lifecycle_error`. Historical arguments and return descriptions
+#' below document archived calls, not a runnable estimator. Use
+#' \code{\link{create.basin.complex}} with `method = "trajectory_flow"`
+#' and translate controls explicitly. See \code{\link{gflow-migration}}.
+#'
 #' @export
 compute.gfc.flow <- function(
     adj.list,

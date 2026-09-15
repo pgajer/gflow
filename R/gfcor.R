@@ -16,8 +16,8 @@
 #' attraction. Each basin consists of vertices whose gradient flow trajectories
 #' converge to the same local extremum. By analyzing how the basin partitions
 #' of y and z overlap and how the functions vary within those overlapping
-#' regions, we obtain robust association measures that are insensitive to
-#' spurious local extrema.
+#' regions, we obtain descriptive association measures conditional on the supplied
+#' basin construction and filtering.
 #'
 #' The polarity coordinate p(v) in \eqn{[-1, 1]} measures where vertex v sits within
 #' its accessible dynamic range. A vertex with p(v) near +1 sits close to a
@@ -55,9 +55,10 @@
 #' @param z.hat Numeric vector of fitted values for the second surface. Must
 #'   have the same length as y.hat.
 #' @param y.basins Object of class \code{"basins_of_attraction"} computed from
-#'   y.hat using \code{compute.basins.of.attraction}.
+#'   the same field. The constructor is retired; supply a compatible archived
+#'   object. Canonical `basin_complex` objects are currently rejected.
 #' @param z.basins Object of class \code{"basins_of_attraction"} computed from
-#'   z.hat using \code{compute.basins.of.attraction}.
+#'   the same field, with the same archived-object restriction as `y.basins`.
 #' @param vertex.mass Optional numeric vector of vertex weights for computing
 #'   weighted averages. If NULL (default), uniform weights are used. Useful for
 #'   incorporating sampling density or confidence weights.
@@ -82,7 +83,7 @@
 #'     \itemize{
 #'       \item \code{a_pol}: Association score p_y * p_z in \eqn{[-1, 1]}
 #'       \item \code{sign_pol}: Sign of association in \eqn{\{-1, 0, +1\}}
-#'       \item \code{confidence}: Absolute value |a_pol| as confidence proxy
+#'       \item \code{confidence}: Absolute value |a_pol| as an association-magnitude proxy, not a calibrated probability
 #'       \item \code{is_valid}: Logical indicating valid polarity
 #'     }}
 #'   \item{polarity_y}{Polarity structure for y (theta, polarity, range, is_valid)}
@@ -108,8 +109,8 @@
 #' @examples
 #' \dontrun{
 #' ## Compute basins for two fitted surfaces
-#' y.basins <- compute.basins.of.attraction(adj.list, weight.list, y.hat)
-#' z.basins <- compute.basins.of.attraction(adj.list, weight.list, z.hat)
+#' # y.basins and z.basins must be compatible saved basins_of_attraction
+#' # objects for y.hat and z.hat. Do not call the retired constructor.
 #'
 #' ## Compute gradient flow correlation
 #' gfc <- gfcor(y.hat, z.hat, y.basins, z.basins)
@@ -127,9 +128,8 @@
 #' }
 #'
 #' @seealso
-#' \code{\link{compute.basins.of.attraction}} for computing gradient flow basins,
-#' \code{gfcomon} for directed co-monotonicity analysis,
-#' \code{gfassoc} for comprehensive association analysis
+#' \code{\link{gflow-migration}} for current input restrictions,
+#' \code{\link{gfassoc.membership}} for soft memberships
 #'
 #' @export
 gfcor <- function(y.hat,

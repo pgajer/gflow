@@ -1,0 +1,244 @@
+---
+title: "Example graphs and scalar fields"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 2
+vignette: >
+  %\VignetteIndexEntry{Example graphs and scalar fields}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                     fig.width = 7, fig.height = 4)
+library(gflow)
+```
+
+Small deterministic graphs make basin definitions visible. Here we separate
+the graph, its edge lengths, and its scalar field, then compare selected
+methods under stated controls. These examples verify interfaces and illustrate
+structure; they do not validate performance on noisy or high-dimensional data.
+See [Finding your way around gflow](function-guide.html) for the API catalog
+and [the canonical workflow](basin_complex_workflow_vignette.html) for all five
+construction families.
+
+## Recipes at a glance
+
+| Example | Required inputs | Question and entry points | Output |
+|---|---|---|---|
+| Seven-vertex path | Explicit adjacency, unit lengths, two peaks including an exact plateau | How do exact level sets and terminal flow differ? `create.basin.complex()`, `cut()` | Basin tables, branch hierarchy, assignments |
+| Nine-vertex grid | Four-neighbor edges, unit lengths, peaks separated by level 1 | Which supports overlap? Compare trajectory flow and reachability; refine support | Membership rows and retained-support summaries |
+| Two paths and an isolate | Six-vertex disconnected adjacency and field | Does the level-set hierarchy preserve components? | Three component roots with separately defined lifetimes |
+| Noisy circle (linked below) | Seeded noisy coordinates, known generating field, observed response, selected dgraphs graph | How do graph choice and noise affect a basin/association analysis? | Refined basins and local-association summaries |
+
+There are no public scientific datasets bundled in this package. The installed
+`extdata` code manifest identifies the build; it is not a dataset. These recipes
+define their inputs directly and add no generator API or external download.
+
+## A path with two peaks and a plateau
+
+List position is the internal vertex index. Every neighbor has a corresponding
+edge length in the same position, and edges appear in both directions. Field
+height and edge length use independent units. The drawing's horizontal
+coordinate is vertex order; it is not an extra constructor input.
+
+```{r path-input}
+adjacency <- list(2L, c(1L, 3L), c(2L, 4L), c(3L, 5L),
+                  c(4L, 6L), c(5L, 7L), 6L)
+edge_lengths <- lapply(adjacency, function(v) rep(1, length(v)))
+field <- c(0, 3, 3, 1, 2, 4, 0)
+vertex_mass <- c(1, 2, 2, 1, 1, 2, 1)
+vertex_density <- c(1, 1, 1, 2, 3, 2, 1)
+knitr::kable(data.frame(vertex = seq_along(field), field,
+                        mass = vertex_mass, density = vertex_density),
+             caption = "Independent field, mass, and density inputs.")
+```
+
+```{r path-plot, fig.cap="Path field: vertices 2 and 3 form one connected plateau at height 3; vertex 6 peaks at height 4. The two peaks connect through vertex 4 at height 1."}
+plot(seq_along(field), field, type = "b", pch = 19,
+     xlab = "Vertex (unit-length path)", ylab = "Scalar field (field units)",
+     ylim = c(-0.3, 4.6))
+text(seq_along(field), field, labels = seq_along(field), pos = 3)
+```
+
+Mass expresses empirical or quadrature support. The constructor normalizes it
+for basin mass summaries. Density can change edge scoring in density-modulated
+trajectory flow; it does not weight the level-set sweep. Neither is inferred
+from the field. Here we use the same mass for both constructions and no density
+modulation, so differences arise from the basin definitions.
+
+```{r path-methods}
+path_tree <- create.basin.complex(
+  adjacency, edge_lengths, field, method = "superlevel_merge_tree",
+  direction = "max", vertex.mass = vertex_mass
+)
+path_flow <- create.basin.complex(
+  adjacency, edge_lengths, field, method = "trajectory_flow",
+  direction = "max", vertex.mass = vertex_mass,
+  method.params = list(modulation = "CLOSEST", edge.length.quantile.thld = 1)
+)
+stopifnot(identical(path_tree$status, "ok"),
+          identical(path_flow$status, "ok"))
+for (object in list(path_tree, path_flow)) {
+  print(get.basin.table(object)[, c("extremum.vertex", "raw.support.size",
+                                    "primary.support.size", "persistence")])
+}
+```
+
+CLOSEST flow contracts the exact plateau and chooses terminal paths. Its two
+supports contain 4 and 3 vertices. The exact tree's root support contains all
+7 vertices, including the younger plateau branch of size 2. This hierarchical
+overlap is legitimate; tree support is not a partition into terminal paths.
+
+```{r path-cut}
+tree <- get.basin.merge.tree(path_tree, required = TRUE)
+above_two <- cut(tree, height = 2, direction = "max")
+at_merge <- cut(tree, height = 1, direction = "max")
+stopifnot(above_two$n.components == 2L, at_merge$n.components == 1L)
+above_two$components[, c("extremum.vertex", "support.size", "vertices")]
+get.basin.assignment(path_flow)[, c("vertex", "basin.id", "next.vertex")]
+```
+
+At height 2, the active components are `{2, 3}` and `{5, 6}`. At height 1
+they merge. The younger branch persists for `3 - 1 = 2` field units. The root's
+finite lifetime is `4 - 0 = 4` under the component-opposite-extreme convention.
+This is a structural comparison, with no significance test.
+
+## A grid with overlapping supports
+
+Build a 3-by-3 grid with horizontal and vertical edges only. The coordinate
+matrix is used to construct and draw those edges. It is separate from the
+field and would not affect the analysis if merely redrawn.
+
+```{r grid-input}
+coordinates <- as.matrix(expand.grid(x = 0:2, y = 0:2))
+grid_adjacency <- lapply(seq_len(nrow(coordinates)), function(i) {
+  which(rowSums(abs(sweep(coordinates, 2, coordinates[i, ], "-"))) == 1)
+})
+grid_lengths <- lapply(grid_adjacency, function(v) rep(1, length(v)))
+grid_field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+```
+
+```{r grid-plot, fig.width=5, fig.cap="Four-neighbor grid, labeled vertex:field. The peaks at vertices 5 and 9 connect through level-1 vertices 6 and 8; diagonal shortcuts are absent."}
+plot(coordinates, type = "n", asp = 1, xlab = "Graph coordinate x",
+     ylab = "Graph coordinate y", xlim = c(-0.2, 2.2), ylim = c(-0.2, 2.3))
+for (i in seq_along(grid_adjacency)) {
+  for (j in grid_adjacency[[i]][grid_adjacency[[i]] > i]) {
+    segments(coordinates[i, 1], coordinates[i, 2],
+             coordinates[j, 1], coordinates[j, 2], col = "grey60")
+  }
+}
+points(coordinates, pch = 21, bg = "white", cex = 1.5)
+text(coordinates, labels = paste(seq_along(grid_field), grid_field, sep = ":"),
+     pos = 3, cex = 0.9)
+```
+
+Use all edge lengths for both methods, ascending direction, and the same
+explicit primary-assignment policy. No refinement is applied at first.
+
+```{r grid-compare}
+grid_objects <- lapply(c("trajectory_flow", "geodesic_reachability"), function(m) {
+  create.basin.complex(
+    grid_adjacency, grid_lengths, grid_field, method = m, direction = "max",
+    method.params = list(edge.length.quantile.thld = 1,
+                        primary.assignment.policy = "largest_membership_then_extremum")
+  )
+})
+names(grid_objects) <- c("Trajectory flow", "Geodesic reachability")
+stopifnot(all(vapply(grid_objects, function(x) identical(x$status, "ok"), logical(1))))
+comparison <- do.call(rbind, lapply(names(grid_objects), function(method) {
+  object <- grid_objects[[method]]
+  membership <- get.basin.membership(object)
+  data.frame(method, extrema = paste(get.basin.table(object)$extremum.vertex,
+                                     collapse = ", "),
+             membership.rows = nrow(membership),
+             overlapping.vertices = sum(table(membership$vertex) > 1),
+             uncovered.vertices = length(setdiff(seq_along(grid_field),
+                                                 membership$vertex)))
+}))
+knitr::kable(comparison, row.names = FALSE,
+             col.names = c("Method", "Peak vertices", "Membership rows",
+                           "Vertices in multiple basins", "Uncovered vertices"),
+             caption = "Same grid and field, different basin definitions.")
+get.basin.membership(grid_objects[[2]])
+get.basin.assignment(grid_objects[[2]])[, c("vertex", "basin.id", "assignment.status")]
+```
+
+Both methods identify maxima 5 and 9 and cover this grid, but reachability
+has more overlapping vertices. A single label discards that multiplicity.
+Compare the membership rows first and interpret assignment as the selected
+policy's convenience label. Agreement across methods is not the objective.
+
+## Refine retained support
+
+For reachability, retain only basins with at least six vertices. The supports
+initially have sizes 8 and 5, so this removes the smaller one. Expansion can
+then fill uncovered retained support along the graph.
+
+```{r grid-refinement}
+refined <- create.basin.complex(
+  grid_adjacency, grid_lengths, grid_field,
+  method = "geodesic_reachability", direction = "max",
+  method.params = list(edge.length.quantile.thld = 1,
+                      primary.assignment.policy = "largest_membership_then_extremum"),
+  simplify.params = list(
+    support.filter = list(enabled = TRUE, min.basin.size = 6L),
+    expansion = list(enabled = TRUE)
+  )
+)
+stopifnot(identical(refined$status, "ok"))
+retained <- get.basin.table(refined)
+knitr::kable(retained[, c("extremum.vertex", "retained", "raw.support.size",
+                         "retained.support.size")],
+             caption = "Refinement preserves raw support and changes retained support.")
+raw_columns <- c("vertex", "direction", "basin.id", "membership.weight")
+stopifnot(identical(get.basin.membership(refined)[, raw_columns],
+                    get.basin.membership(grid_objects[[2]])[, raw_columns]))
+refined$provenance$refinement.stages[, c("stage", "status")]
+```
+
+Raw membership remains a record of construction, even after retained support
+changes. For current coverage, take the union of `retained.support.vertices`
+over retained rows; for current labels, call `get.basin.assignment(refined)`.
+The canonical workflow describes the other stages and their availability.
+
+## Disconnected components and an isolated vertex
+
+The exact merge-tree method supports disconnected graphs. These components
+are path `1--2--3`, edge `4--5`, and isolated vertex `6`.
+
+```{r disconnected}
+disconnected_adjacency <- list(2L, c(1L, 3L), 2L, 5L, 4L, integer(0))
+disconnected_lengths <- lapply(disconnected_adjacency, function(v) rep(1, length(v)))
+disconnected_field <- c(0, 2, 1, 5, 4, 7)
+disconnected <- create.basin.complex(
+  disconnected_adjacency, disconnected_lengths, disconnected_field,
+  method = "superlevel_merge_tree", direction = "max"
+)
+stopifnot(identical(disconnected$status, "ok"))
+roots <- get.basin.table(disconnected)
+stopifnot(nrow(roots) == 3L, all(is.na(roots$parent.basin.id)))
+knitr::kable(roots[, c("extremum.vertex", "birth.level", "death.level", "persistence")],
+             caption = "Each disconnected component has its own root lifetime.")
+```
+
+No branch joins across components. The isolated vertex is a constant component
+with zero lifetime; its high absolute value does not give it large persistence.
+Mass was omitted, so mass summaries are unavailable. This example establishes
+component handling for exact trees, not for every trajectory backend.
+
+## From these recipes to the noisy circle
+
+The [noisy-circle vignette](noisy_circle_core_workflow_vignette.html) distinguishes
+latent circle position, noisy coordinates, the known generating field, and
+the noisy observed response. The graph is chosen from the noisy coordinates;
+the basin field is the observed response, not an estimated conditional mean.
+Its small permutation example demonstrates computation under an unrestricted
+row-permutation null, with assumptions and limits explained alongside it.
+
+For a new scientific application, record which field was supplied, how the
+graph and lengths were chosen, the direction and method, all refinement
+controls, mass/density provenance, and construction status. The examples here
+need no optional renderer and open no browser or graphics window during builds.

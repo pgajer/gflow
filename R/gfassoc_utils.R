@@ -22,7 +22,8 @@
 #' normalized so that \eqn{\sum_{i,j}\gamma_{ij}(v)=1}.
 #'
 #' @param basins Object of class \code{"basins_of_attraction"} from
-#'   \code{compute.basins.of.attraction}.
+#'   a compatible saved analysis. Its constructor is retired; canonical
+#'   `basin_complex` objects are currently rejected.
 #'
 #' @return An object of class \code{"gfassoc_membership"} containing:
 #'   \item{max_basin_indices}{List of integer vectors. Element v contains 0-based
@@ -47,7 +48,7 @@
 #' @examples
 #' \dontrun{
 #' ## Compute basins
-#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#' # basins must be a compatible saved basins_of_attraction object for y.
 #'
 #' ## Extract membership structure
 #' membership <- gfassoc.membership(basins)
@@ -59,7 +60,7 @@
 #' }
 #'
 #' @seealso
-#' \code{\link{compute.basins.of.attraction}} for computing gradient basins,
+#' \code{\link{gflow-migration}} for archived-input restrictions,
 #' \code{\link{gfassoc.polarity}} for computing polarity coordinates
 #'
 #' @export
@@ -124,7 +125,7 @@ gfassoc.membership <- function(basins) {
 #' @examples
 #' \dontrun{
 #' ## Compute membership and polarity
-#' basins <- compute.basins.of.attraction(adj.list, weight.list, y)
+#' # basins must be a compatible saved basins_of_attraction object for y.
 #' membership <- gfassoc.membership(basins)
 #' polarity <- gfassoc.polarity(y, membership)
 #'
@@ -243,7 +244,8 @@ gfassoc.overlap <- function(y.membership,
 #'
 #' Large positive zeta values indicate basin pairs that overlap more than
 #' expected (attraction). Large negative values indicate pairs that overlap
-#' less than expected (repulsion).
+#' less than expected. These are descriptive residuals, not calibrated tests
+#' or evidence of causal attraction/repulsion.
 #'
 #' @param overlap.matrix A numeric matrix (one of the overlap matrices from
 #'   \code{gfassoc.overlap}).
