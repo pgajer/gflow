@@ -9,6 +9,12 @@
   Supplied feature and vertex names are validated and preserved in results.
   A single draw remains supported, with an undefined (`NA`) standard deviation.
 
+## Further craftsmanship improvements
+
+* Removed the installed metric-graph low-pass Shiny demo: it called a retired
+  estimator that is no longer exported by gflow. Its historical source remains
+  in Git history; smoothing belongs to the separate smoothing projects.
+
 ## User experience
 
 * Added a complete-help source installation route, a package-help quick start,
