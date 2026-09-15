@@ -1,5 +1,14 @@
 # gflow 0.2.0 (unreleased)
 
+## Bug fixes
+
+* `lcor.with.posterior()` now validates every feature before computation and
+  rejects inconsistent draw counts instead of silently truncating later
+  features. Inputs must be finite numeric fields with a common positive draw
+  count, and the credible level must be strictly between zero and one.
+  Supplied feature and vertex names are validated and preserved in results.
+  A single draw remains supported, with an undefined (`NA`) standard deviation.
+
 ## User guides
 
 * Added installed task-oriented function and example-graph vignettes, with

@@ -324,7 +324,11 @@ different questions:
   and the procedure's independence or suitable positive-dependence conditions.
   Increasing permutation count improves resolution, not exchangeability.
 * `lcor.with.posterior()` takes a fixed `y.hat` and supplied `n` by `B` field
-  draws, or a list of such matrices for multiple features. It computes local
+  draws, or a list of such matrices for multiple features. All fields must be
+  finite numeric values and all features must have the same positive draw
+  count; inconsistent counts are rejected before computation. Supplied feature
+  names are preserved, and supplied vertex names must agree in order (see
+  `help("lcor.with.posterior", package = "gflow")`). It computes local
   correlation for each draw and returns feature-by-vertex means, standard
   deviations, and equal-tail quantile intervals. The graph and response remain
   fixed. It fits no posterior model and does not propagate uncertainty absent

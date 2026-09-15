@@ -17,12 +17,16 @@
 #'
 #' @param adj.list Adjacency list (1-based R indexing)
 #' @param weight.list Edge weight list
-#' @param y.hat Smoothed response values (length n)
+#' @param y.hat Finite numeric response vector of positive length n, in graph
+#'   vertex order. Optional names identify vertices; see Details.
 #' @param Z.hat.samples A list of length p whose elements are n by B matrices
-#'   of sampled vertex fields, or one n by B matrix for a single feature.
+#'   of finite numeric sampled vertex fields, or one n by B matrix for a single
+#'   feature. Every feature must have the same positive number B of draws.
+#'   Optional list names identify features and matrix row names identify vertices.
 #' @param lcor.type Type of local correlation weighting: "derivative" (default),
 #'   "unit", or "sign". See \code{\link{lcor}} for details.
-#' @param credible.level Credible interval level (default 0.95)
+#' @param credible.level Finite numeric interval level strictly between 0 and 1
+#'   (default 0.95).
 #' @param return.samples Logical. Return individual lcor samples (default FALSE).
 #'   Setting TRUE with many features will use substantial memory.
 #' @param verbose Logical. Print progress (default TRUE)
@@ -48,6 +52,21 @@
 #' supplied draws and excludes uncertainty not represented in those draws.
 #' Archived graph-regression objects can be adapted in \code{gflowx}.
 #'
+#' All features are validated before any local correlation is computed; unequal
+#' draw counts are rejected rather than truncated. With one draw, the mean and
+#' both interval endpoints equal its local correlation, and the standard
+#' deviation is \code{NA}.
+#'
+#' Supplied feature names and vertex names must be unique, nonmissing, and
+#' nonempty. Vertex names in \code{y.hat} and row names in any supplied matrices
+#' must agree in order; inputs are never reordered by name. Names do not verify
+#' graph alignment: rows must still follow the adjacency list's vertex order.
+#' Feature names become row names of the summary matrices and names of the
+#' optional samples list. Vertex names become column names of the summaries and
+#' row names of sample matrices; draw column names are preserved separately for
+#' each feature. Unnamed dimensions remain unnamed, and \code{summary()} labels
+#' unnamed features \code{Feature1}, \code{Feature2}, and so on.
+#'
 #' @examples
 #' adj <- list(c(2L), c(1L, 3L), c(2L))
 #' weights <- lapply(adj, function(x) rep(1, length(x)))
@@ -68,8 +87,6 @@ lcor.with.posterior <- function(adj.list,
                                  verbose = TRUE) {
 
     lcor.type <- match.arg(lcor.type)
-    n <- length(y.hat)
-
     lcor.with.posterior.R(
         adj.list = adj.list,
         weight.list = weight.list,
@@ -97,30 +114,82 @@ lcor.with.posterior.R <- function(adj.list,
                                    return.samples,
                                    verbose) {
 
+    if (!is.numeric(y.hat) || !is.null(dim(y.hat)) ||
+        length(y.hat) == 0L || any(!is.finite(y.hat))) {
+        stop("y.hat must be a nonempty finite numeric vector.", call. = FALSE)
+    }
     n <- length(y.hat)
+    if (!is.numeric(credible.level) || length(credible.level) != 1L ||
+        !is.finite(credible.level) || credible.level <= 0 || credible.level >= 1) {
+        stop("credible.level must be a finite number strictly between 0 and 1.",
+             call. = FALSE)
+    }
+    for (control in c("return.samples", "verbose")) {
+        value <- get(control)
+        if (!is.logical(value) || length(value) != 1L || is.na(value)) {
+            stop(control, " must be TRUE or FALSE.", call. = FALSE)
+        }
+    }
 
     ## Handle single feature case
     if (is.matrix(Z.hat.samples)) {
         Z.hat.samples <- list(Z.hat.samples)
     }
 
-    ## Validate Z.hat.samples
-    if (length(Z.hat.samples) == 0) {
-        stop("Z.hat.samples cannot be empty")
+    if (!is.list(Z.hat.samples) || is.data.frame(Z.hat.samples) ||
+        !is.null(dim(Z.hat.samples)) || length(Z.hat.samples) == 0L) {
+        stop("Z.hat.samples must be a numeric matrix or a nonempty list of numeric matrices.",
+             call. = FALSE)
     }
-
     p <- length(Z.hat.samples)
-
-    ## Validate first element has correct dimensions
-    if (!is.matrix(Z.hat.samples[[1]])) {
-        stop("Each element of Z.hat.samples must be a matrix")
+    validate.names <- function(value, label) {
+        if (!is.null(value) &&
+            (anyNA(value) || any(!nzchar(value)) || anyDuplicated(value))) {
+            stop(label, " must be unique, nonmissing, and nonempty.", call. = FALSE)
+        }
     }
-    if (nrow(Z.hat.samples[[1]]) != n) {
-        stop(sprintf("nrow(Z.hat.samples[[1]]) = %d must equal length(y.hat) = %d",
-                     nrow(Z.hat.samples[[1]]), n))
+    feature.names <- names(Z.hat.samples)
+    validate.names(feature.names, "names(Z.hat.samples)")
+    vertex.ids <- names(y.hat)
+    validate.names(vertex.ids, "names(y.hat)")
+    n.samples <- NULL
+    ## Validate every feature before allocating results or calling lcor().
+    for (j in seq_len(p)) {
+        label <- sprintf("Z.hat.samples[[%d]]", j)
+        if (!is.null(feature.names)) {
+            label <- paste0(label, " ('", feature.names[[j]], "')")
+        }
+        samples.j <- Z.hat.samples[[j]]
+        if (!is.matrix(samples.j) || !is.numeric(samples.j)) {
+            stop(label, " must be a numeric matrix.", call. = FALSE)
+        }
+        if (nrow(samples.j) != n) {
+            stop(sprintf("%s has %d rows; expected %d to match length(y.hat).",
+                         label, nrow(samples.j), n), call. = FALSE)
+        }
+        if (ncol(samples.j) == 0L) {
+            stop(label, " must contain at least one draw (column).", call. = FALSE)
+        }
+        if (is.null(n.samples)) {
+            n.samples <- ncol(samples.j)
+        } else if (ncol(samples.j) != n.samples) {
+            stop(sprintf("%s has %d columns; expected %d draws as in Z.hat.samples[[1]].",
+                         label, ncol(samples.j), n.samples), call. = FALSE)
+        }
+        if (any(!is.finite(samples.j))) {
+            stop(label, " must contain only finite values.", call. = FALSE)
+        }
+        ids <- rownames(samples.j)
+        validate.names(ids, paste0("rownames(", label, ")"))
+        if (!is.null(ids)) {
+            if (is.null(vertex.ids)) {
+                vertex.ids <- ids
+            } else if (!identical(ids, vertex.ids)) {
+                stop(label, " must use the same vertex names in the same order as y.hat or the preceding named feature.",
+                     call. = FALSE)
+            }
+        }
     }
-
-    n.samples <- ncol(Z.hat.samples[[1]])
 
     if (verbose) {
         message(sprintf("lcor with posterior (R mode): %d features, %d samples",
@@ -128,13 +197,16 @@ lcor.with.posterior.R <- function(adj.list,
     }
 
     ## Initialize output storage
-    lcor.mean <- matrix(NA_real_, nrow = p, ncol = n)
-    lcor.sd <- matrix(NA_real_, nrow = p, ncol = n)
-    lcor.lower <- matrix(NA_real_, nrow = p, ncol = n)
-    lcor.upper <- matrix(NA_real_, nrow = p, ncol = n)
+    summary.names <- if (is.null(feature.names) && is.null(vertex.ids)) NULL else
+        list(feature.names, vertex.ids)
+    lcor.mean <- matrix(NA_real_, nrow = p, ncol = n, dimnames = summary.names)
+    lcor.sd <- matrix(NA_real_, nrow = p, ncol = n, dimnames = summary.names)
+    lcor.lower <- matrix(NA_real_, nrow = p, ncol = n, dimnames = summary.names)
+    lcor.upper <- matrix(NA_real_, nrow = p, ncol = n, dimnames = summary.names)
 
     if (return.samples) {
         all.samples <- vector("list", p)
+        names(all.samples) <- feature.names
     }
 
     alpha.lower <- (1 - credible.level) / 2
@@ -150,6 +222,9 @@ lcor.with.posterior.R <- function(adj.list,
 
         ## Compute lcor for each posterior sample
         lcor.samples.j <- matrix(NA_real_, nrow = n, ncol = n.samples)
+        if (!is.null(vertex.ids) || !is.null(colnames(samples.j))) {
+            dimnames(lcor.samples.j) <- list(vertex.ids, colnames(samples.j))
+        }
 
         for (b in seq_len(n.samples)) {
             z.hat.b <- samples.j[, b]
