@@ -14,7 +14,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      R_LIBS_USER: ${{ runner.temp }}/gflow-library
       OMP_NUM_THREADS: 1
       OMP_THREAD_LIMIT: 1
     steps:
@@ -24,7 +23,9 @@ jobs:
           use-public-rspm: true
       - uses: r-lib/actions/setup-pandoc@v2
       - name: Create R library
-        run: mkdir -p "$R_LIBS_USER"
+        run: |
+          mkdir -p "$RUNNER_TEMP/gflow-library"
+          echo "R_LIBS_USER=$RUNNER_TEMP/gflow-library" >> "$GITHUB_ENV"
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
