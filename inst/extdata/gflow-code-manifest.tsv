@@ -1,7 +1,7 @@
 path	md5
 cleanup	e658237e78d9c433409abe960dd01c09
 configure	9a7d134c0b8635e876f0ae92012d469f
-DESCRIPTION	1c1f4d55b14920f4e0cd9667a563c289
+DESCRIPTION	93eb1149d957eaf5a5ba5ca1a86c48ed
 inst/include/Eigen/Cholesky	145af623d4b14c143f728edefb421c90
 inst/include/Eigen/CholmodSupport	5f70c8a26df5e844d8bb58b0687f350b
 inst/include/Eigen/Core	81296a0f304f1f4c2d7683c0da4f41e8

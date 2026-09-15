@@ -16,7 +16,7 @@ Description: Constructs and explores basin and gradient-flow complexes on
     expectation estimators are preserved separately in 'gflowx'.
 Copyright: file inst/COPYRIGHTS
 License: GPL (>= 3)
-URL: https://github.com/pgajer/gflow
+URL: https://pgajer.github.io/gflow/, https://github.com/pgajer/gflow
 BugReports: https://github.com/pgajer/gflow/issues
 Encoding: UTF-8
 Language: en-US
