@@ -547,7 +547,7 @@ R/basin_display.R	15950db379c1fcc8298f07d96743633d
 R/basin_identity.R	0ab0af0abb84b2aed34649733a65f8a2
 R/basin_lookup_functions.R	7c5a2d660bac9a5ecfb8540c214ad890
 R/basin_merge_tree_public.R	f40d3db760d2c60f7117a09fb6f0211f
-R/basin_parameters.R	75a824ef5fad1ce963d1afb3172170db
+R/basin_parameters.R	de0ee27bb99ccd25f964a7855b2afd4b
 R/basin_summary.R	f7695c13c3eb127a3c8e0237ec0d9f15
 R/boxcox_utils.R	8b9b4ec962d826247f5e7a87aba75dff
 R/cell_trajectories_generic.R	0c13e545d2c2e9c6e76f1cda24914838
@@ -583,7 +583,7 @@ R/generate_knn_example_data.R	7bab0654c9314d5ec4dbdcae0ec2081f
 R/gfassoc_canonical.R	390cf67eaa652b9ceb52c9c5ee9b21d2
 R/gfassoc_utils.R	844c80e29d1552cded89662a2cb5acd2
 R/gfc_flow.R	49e856477728623dc3c8f7b416cc104f
-R/gfcor.R	2b942577ec1fe797b609bbf995b2df96
+R/gfcor.R	e4a773555ce243d28cd41298cca9ca5f
 R/gflow_basins.R	2330a637f2e476b3a652cbafaa1d924b
 R/gflow_cx_utils.R	ff78b99f0e1b1744e604a21bd73311a4
 R/gflow_cx.R	499b1eb00094323a4cc1f2f675bc23ad

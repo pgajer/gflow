@@ -2,7 +2,7 @@
 .basin.parameter.rd <- function() {
     table <- function(values) {
         items <- vapply(names(values), function(name) {
-            value <- paste(capture.output(dput(values[[name]])), collapse = " ")
+            value <- paste(utils::capture.output(dput(values[[name]])), collapse = " ")
             paste0("\\item{\\code{", name, "}}{\\code{", value, "}}")
         }, character(1))
         paste0("\\describe{", paste(items, collapse = "\n"), "}")
@@ -77,7 +77,7 @@
 #' These controls are method-specific, not interchangeable measures of scale.
 #'
 #' @section Overlap cells:
-#' This family requires both directions. `basin.merge.overlap.thld` in [0,1]
+#' This family requires both directions. `basin.merge.overlap.thld` in `[0,1]`
 #' controls basin merging. The three `min.*.cell.size.thld` integers control
 #' minimum ascending/descending, ascending/ascending, and descending/descending
 #' cell sizes. `cell.graph.params` is forwarded to the cell graph backend.
@@ -92,7 +92,7 @@
 #'
 #' Stages run in the order above, followed by support filtering and expansion.
 #' Relative thresholds compare extrema with the mean construction field;
-#' clustering uses the overlap threshold in [0,1]. Geometric filters use the
+#' clustering uses the overlap threshold in `[0,1]`. Geometric filters use the
 #' listed percentiles and positive integer hop radius. Support filters require
 #' minimum vertex count, trajectory count and normalized support mass; mass
 #' thresholds need supplied mass. Expansion assigns uncovered vertices to the

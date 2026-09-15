@@ -125,7 +125,7 @@
 #' vertices; an entirely invalid result has zero as a placeholder. Overlap total
 #' mass includes all vertices, so uncovered mass need not appear in its matrices.
 #' Value polarity uses `(y - minimum)/(maximum - minimum + epsilon)` before
-#' conversion to [-1, 1]. Consequently self-association averages squared polarity
+#' conversion to `[-1, 1]`. Consequently self-association averages squared polarity
 #' and is generally less than one; this is not a Pearson correlation.
 #'
 #' @examples
