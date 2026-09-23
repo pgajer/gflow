@@ -434,13 +434,14 @@ if (requireNamespace("grip", quietly = TRUE) &&
   g <- X.graphs$geom_pruned_graphs[[k.idx]]
 
   X.graphs.3d <- grip::grip(
-    adj_list = g$adj_list,
-    weight_list = g$weight_list,
+    metric = "edge_length",
+    adj.list = g$adj_list,
+    weight.list = g$weight_list,
     dim = 3,
     rounds = 50,
-    final_rounds = 50,
-    num_init = 36,
-    num_nbrs = 8,
+    final.rounds = 50,
+    num.init = 36,
+    num.nbrs = 8,
     seed = 6
   )
 
