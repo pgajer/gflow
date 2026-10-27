@@ -445,7 +445,7 @@ if (requireNamespace("grip", quietly = TRUE) &&
     seed = 6
   )
 
-  ivue::plot3D.plain(X.graphs.3d, point.type = "sphere", sphere.radius = 0.03)
+  ivue::plot3D.plain(X.graphs.3d, point.type = "sphere", sphere.radius = 0.03, controls = FALSE)
 }
 ```
 
