@@ -114,7 +114,7 @@ required.story <- c(
     "NEWS.md",
     "man/gflow-package.Rd",
     "split_audit/cleanup/breaking-release-migration.md",
-    "split_audit/cleanup/downstream-breaking-release-audit.md"
+    "man/gflow-migration.Rd"
 )
 missing.story <- required.story[!file.exists(file.path(root, required.story))]
 if (length(missing.story)) {

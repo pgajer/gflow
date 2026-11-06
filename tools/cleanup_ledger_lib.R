@@ -342,6 +342,19 @@ cleanup.documentation <- function(root, name) {
 cleanup.tests <- function(root, name) {
     files <- cleanup.find.files(root, "tests/testthat", "\\.[Rr]$")
     hits <- cleanup.files.containing(root, files, name)
+    # S3 methods can be exercised through their generic without spelling out
+    # the method name. Use the class contract's declared test owner as well.
+    class.path <- file.path(root, "split_audit/cleanup/s3-class-ownership.csv")
+    if (file.exists(class.path)) {
+        classes <- read.csv(class.path, stringsAsFactors = FALSE)
+        owns.method <- vapply(
+            strsplit(classes$methods, ";", fixed = TRUE),
+            function(methods) name %in% methods,
+            logical(1L)
+        )
+        declared <- unlist(strsplit(classes$tests[owns.method], ";", fixed = TRUE))
+        hits <- sort(unique(c(hits, intersect(declared, files))))
+    }
     if (length(hits)) paste(hits, collapse = ";") else "none"
 }
 
