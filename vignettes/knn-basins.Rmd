@@ -140,10 +140,10 @@ below `min.persistence` merge along their parent links; then basins smaller
 than `min.basin.size` receive `NA` labels. Initial trajectories are preserved,
 and merging does not create a new shortest-edge ascent/descent path.
 
-The synthetic figures and the first terrain figures below use the default
-symmetric mode. A separate terrain comparison holds the numeric settings
-fixed and displays both modes side by side; the neighborhood-scale sensitivity
-analysis then returns to symmetric mode.
+The first synthetic examples and first terrain figures use the default
+symmetric mode. Controlled two-dimensional comparisons and a separate terrain
+comparison hold the numeric settings fixed and display both modes side by
+side. The neighborhood-scale sensitivity analysis uses symmetric mode.
 
 ```{r plotting-helpers, include=FALSE}
 ink <- "#253943"
@@ -511,7 +511,523 @@ local({
 })
 ```
 
-## 3. Maunga Whau: extrema of a real terrain grid
+## 3. Controlled 2D comparisons with known basins
+
+The terrain comparison later in this vignette has no surveyed reference basin
+partition. Here we can compare both modes against a specified continuous
+surface. We use a two-peak surface and a four-peak surface:
+
+\[
+f_2(u,v)=-(u^2-1)^2-0.7v^2+0.2u,
+\qquad
+f_4(u,v)=-(u^2-1)^2-0.7(v^2-1)^2+0.2u+0.12v.
+\]
+
+For each of eight seeds, we sample 2,500 locations uniformly in
+\([-1.65,1.65]^2\) and rotate the coordinates by \(\pi/7\). The rotation
+preserves L2 distances and is part of the data construction, not PCA.
+The reference basins follow **continuous Euclidean gradient ascent of the
+unrounded surface**. Separability makes their boundaries explicit: the middle
+stationary root in each double-well coordinate separates its two peaks.
+We also check these labels by integrating the analytic gradient numerically.
+
+Each pair of fits uses the same locations, **L2, `k = 50`,
+`min.persistence = 0.15`, and `min.basin.size = 100`**. We supply either exact
+heights or `round(y / 0.1) * 0.1`, with no smoothing or additional noise.
+Rounding represents limited measurement precision; both versions are scored
+against the same underlying unrounded surface. Reversing the sign of each
+surface supplies the corresponding minima comparison. These are tests of
+specific smooth surfaces and a fixed scale, not a general accuracy ranking.
+
+<details>
+<summary>Surface definitions and analytic reference basins</summary>
+
+```{r synthetic-surfaces, cache=TRUE}
+synthetic_rotation <- matrix(c(cos(pi / 7), sin(pi / 7),
+                -sin(pi / 7), cos(pi / 7)), 2L)
+synthetic_to_x <- function(U) U %*% t(synthetic_rotation)
+synthetic_stationary <- function(a, b) vapply(list(c(-1.5, -.6), c(-.4, .4), c(.6, 1.5)),
+    function(interval) uniroot(function(t) -4 * a * t * (t * t - 1) + b,
+                               interval, tol = 1e-13)$root, numeric(1))
+synthetic_rx <- synthetic_stationary(1, .2)
+synthetic_ry <- synthetic_stationary(.7, .12)
+synthetic_field <- function(U, surface) {
+    u <- U[, 1]; v <- U[, 2]
+    -(u * u - 1)^2 + .2 * u + if (surface == "Two peaks") -.7 * v^2 else
+        -.7 * (v * v - 1)^2 + .12 * v
+}
+synthetic_gradient <- function(U, surface) cbind(-4 * U[, 1] * (U[, 1]^2 - 1) + .2,
+    if (surface == "Two peaks") -1.4 * U[, 2] else
+        -2.8 * U[, 2] * (U[, 2]^2 - 1) + .12)
+synthetic_reference <- function(U, surface) {
+    peaks <- as.matrix(expand.grid(u = synthetic_rx[c(1, 3)],
+                                   v = if (surface == "Two peaks") 0 else synthetic_ry[c(1, 3)]))
+    list(peaks = synthetic_to_x(peaks), peaks.uv = peaks,
+         labels = 1L + as.integer(U[, 1] > synthetic_rx[2]) +
+             if (surface == "Two peaks") 0L else 2L * as.integer(U[, 2] > synthetic_ry[2]),
+         separators = c(u = synthetic_rx[2], v = if (surface == "Two peaks") NA_real_ else synthetic_ry[2]))
+}
+```
+
+</details>
+
+### Two agreement measures answer different questions
+
+A true basin is the set of points whose continuous trajectories reach one
+true peak. An **estimated basin** is the set assigned by `knn.basins()` to
+one retained terminal row. Several estimated basins can therefore split one
+true basin. This is oversegmentation: there are multiple estimated pieces
+of one feature, not multiple true features.
+
+Rounding helps explain how this occurs. Several sampled points near one
+smooth peak can acquire the same recorded height. In asymmetric mode each
+row with no strictly higher outgoing neighbor is terminal. Different starting
+points can stop at different tied terminal rows near that single true peak.
+The resulting estimated basins remain separate, and equal-height extrema
+do not eliminate one another under directed escape prominence.
+
+We evaluate the final, size-filtered assignments in two ways:
+
+1. **One-to-one basin agreement.** Match estimated basins to true basins to
+   maximize the number of correctly assigned observations, allowing at most
+   one estimated basin per true basin and one true basin per estimated basin.
+   Any unmatched extra basin contributes no correct observations. This asks
+   how well the method recovers complete, separate basins, and penalizes
+   splitting one true basin into several estimates.
+2. **Many-to-one region agreement.** Map each retained estimated basin to the
+   true peak nearest its terminal row, using L2 distance. Several estimated
+   basins may map to the same true peak. An observation is correct only if
+   this mapped peak is the destination of its true continuous trajectory.
+   This asks whether the pieces point to the right underlying region, while
+   allowing that region to be split into several estimated basins.
+
+**Both percentages use all 2,500 observations as the denominator.** Unassigned
+observations count as errors in both measures. A fragment that crosses a true
+boundary is not entirely credited: points on the wrong side still count as
+errors. The second measure uses nearest-peak geometry, whereas the first uses
+maximum overlap, so their numerical ordering is not guaranteed in general.
+
+For a separate counting example with a minimum basin size of 30, suppose one
+true basin contains 100 observations.
+The estimate divides it into two retained basins, A with 60 points and B with
+30, leaving 10 unassigned. Both terminal rows are nearest the same true peak,
+and all 90 assigned points really belong to its basin:
+
+| Estimated group | Observations | Credited one-to-one | Credited many-to-one |
+|---|---:|---:|---:|
+| A | 60 | 60 | 60 |
+| B | 30 | 0 | 30 |
+| Unassigned | 10 | 0 | 0 |
+| **Total** | **100** | **60%** | **90%** |
+
+Here “allowing multiple fragments to represent the same true region” means
+giving A and B the same **evaluation label**. It neither changes the fitted
+basins nor removes their extra terminal rows. It also requires knowledge of
+the true peaks, which is available in this synthetic example but usually
+unavailable in real data. It is not an automatic merging procedure for
+`knn.basins()`. We report basin counts and unassigned fractions alongside both
+scores so that a good many-to-one score cannot conceal oversegmentation.
+
+```{r synthetic-evaluation-functions, cache=TRUE, include=FALSE}
+synthetic_best_match <- function(counts) {
+    q <- nrow(counts); p <- ncol(counts); nstate <- 2^q
+    values <- rep(-Inf, nstate); values[1] <- 0
+    maps <- vector("list", nstate); maps[[1]] <- integer(p)
+    for (column in seq_len(p)) {
+        old <- values; oldmaps <- maps
+        for (mask in which(is.finite(old)) - 1L) for (row in seq_len(q)) {
+            bit <- bitwShiftL(1L, row - 1L)
+            if (bitwAnd(mask, bit) != 0L) next
+            target <- bitwOr(mask, bit) + 1L
+            candidate <- old[mask + 1L] + counts[row, column]
+            if (candidate > values[target]) {
+                values[target] <- candidate
+                maps[[target]] <- oldmaps[[mask + 1L]]
+                maps[[target]][column] <- row
+            }
+        }
+    }
+    best <- which.max(values)
+    list(correct = unname(values[best]), map = maps[[best]])
+}
+synthetic_score <- function(fit, X, ref) {
+    z <- fit$max
+    peaks <- z$extrema$row[z$extrema$retained]
+    counts <- table(factor(ref$labels, levels = seq_len(nrow(ref$peaks))),
+                    factor(z$labels, levels = peaks))
+    best <- synthetic_best_match(counts)
+    one <- setNames(as.integer(best$map), peaks)
+    one[one == 0L] <- NA_integer_
+    nearest <- setNames(integer(length(peaks)), peaks)
+    if (length(peaks)) {
+        distance <- vapply(seq_len(nrow(ref$peaks)), function(j)
+            sqrt(rowSums(sweep(X[peaks, , drop = FALSE], 2, ref$peaks[j, ], "-")^2)),
+            numeric(length(peaks)))
+        nearest[] <- max.col(-matrix(distance, nrow = length(peaks)), ties.method = "first")
+    }
+    one_labels <- unname(one[as.character(z$labels)])
+    region_labels <- unname(nearest[as.character(z$labels)])
+    correct <- sum(one_labels == ref$labels, na.rm = TRUE)
+    stopifnot(correct == best$correct)
+    list(one = one, nearest = nearest, counts = counts,
+         one.labels = one_labels, region.labels = region_labels,
+         metrics = data.frame(initial = nrow(z$extrema), retained = length(peaks),
+             true.basins = nrow(ref$peaks), one.to.one = 100 * correct / nrow(X),
+             many.to.one = 100 * sum(region_labels == ref$labels, na.rm = TRUE) / nrow(X),
+             unassigned = 100 * mean(is.na(z$labels))))
+}
+synthetic_key <- function(seed, surface, outcome, mode)
+    paste(seed, surface, outcome, mode, sep = ":")
+```
+
+```{r synthetic-comparison-fits, cache=TRUE, dependson=c("synthetic-surfaces", "synthetic-evaluation-functions"), include=FALSE}
+synthetic_seeds <- 120601:120608
+synthetic_cases <- list()
+synthetic_equalities <- list()
+synthetic_reused <- 0L
+case_number <- 0L
+for (seed in synthetic_seeds) {
+    set.seed(seed)
+    U <- matrix(runif(5000, -1.65, 1.65), ncol = 2)
+    X <- synthetic_to_x(U)
+    for (surface in c("Two peaks", "Four peaks")) {
+        exact <- synthetic_field(U, surface)
+        ref <- synthetic_reference(U, surface)
+        stopifnot(!anyDuplicated(exact), all(tabulate(ref$labels) >= 100))
+        for (outcome in c("Exact", "Rounded")) {
+            y <- if (outcome == "Exact") exact else round(exact / .1) * .1
+            pair <- list()
+            for (mode in c("Symmetric", "Asymmetric")) {
+                case_number <- case_number + 1L
+                fit <- NULL
+                # The local renderer can supply a build-validated archive.
+                # Ordinary package/vignette builds compute these fits directly.
+                if (exists("knn_synthetic_archive")) {
+                    old <- readRDS(file.path(knn_synthetic_archive, "cases", sprintf("%02d.rds", case_number)))
+                    stopifnot(identical(old$X, X), identical(old$y, y),
+                              old$metadata$seed == seed, old$metadata$surface == surface,
+                              old$metadata$outcome == outcome, old$metadata$mode == mode)
+                    p <- old$fit$parameters
+                    stopifnot(p$k == 50L, p$metric == "L2", p$direction == "max",
+                              p$min.persistence == .15, p$min.basin.size == 100L,
+                              p$symmetrization == if (mode == "Symmetric") "union" else "none")
+                    fit <- old$fit
+                    synthetic_reused <- synthetic_reused + 1L
+                }
+                if (is.null(fit)) fit <- knn.basins(X, y, k = 50, metric = "L2", direction = "max",
+                    min.persistence = .15, min.basin.size = 100, symmetrize = mode == "Symmetric")
+                inverse <- knn.basins(X, -y, k = 50, metric = "L2", direction = "min",
+                    min.persistence = .15, min.basin.size = 100, symmetrize = mode == "Symmetric")$min
+                inverse$extrema$value <- -inverse$extrema$value
+                inverse$extrema$merge.level <- -inverse$extrema$merge.level
+                stopifnot(identical(fit$max, inverse))
+                key <- synthetic_key(seed, surface, outcome, mode)
+                synthetic_cases[[key]] <- list(seed = seed, surface = surface, outcome = outcome,
+                    mode = mode, X = X, U = U, y = y, reference = ref, fit = fit,
+                    sign.verified = TRUE)
+                pair[[mode]] <- fit
+            }
+            stopifnot(identical(pair$Symmetric$y, pair$Asymmetric$y),
+                identical(pair$Symmetric$neighborhood$knn.index, pair$Asymmetric$neighborhood$knn.index),
+                identical(pair$Symmetric$neighborhood$knn.distance, pair$Asymmetric$neighborhood$knn.distance))
+            synthetic_equalities[[length(synthetic_equalities) + 1L]] <- data.frame(seed, surface, outcome,
+                initial.identical = identical(pair$Symmetric$max$initial.labels, pair$Asymmetric$max$initial.labels),
+                final.identical = identical(pair$Symmetric$max$labels, pair$Asymmetric$max$labels))
+        }
+    }
+}
+synthetic_equalities <- do.call(rbind, synthetic_equalities)
+```
+
+For example, the first four-peak sample with rounded heights is fitted as follows:
+
+```{r synthetic-example-call, eval=FALSE}
+set.seed(120601)
+U <- matrix(runif(5000, -1.65, 1.65), ncol = 2)
+X <- synthetic_to_x(U)
+y <- round(synthetic_field(U, "Four peaks") / 0.1) * 0.1
+symmetric <- knn.basins(X, y, k = 50, direction = "max", metric = "L2",
+                        min.persistence = 0.15, min.basin.size = 100,
+                        symmetrize = TRUE)
+asymmetric <- knn.basins(X, y, k = 50, direction = "max", metric = "L2",
+                         min.persistence = 0.15, min.basin.size = 100,
+                         symmetrize = FALSE)
+```
+
+```{r synthetic-comparison-summary, include=FALSE}
+synthetic_results <- do.call(rbind, lapply(names(synthetic_cases), function(key) {
+    z <- synthetic_cases[[key]]
+    z$score <- synthetic_score(z$fit, z$X, z$reference)
+    synthetic_cases[[key]] <<- z
+    data.frame(seed = z$seed, surface = z$surface, outcome = z$outcome,
+               mode = z$mode, z$score$metrics)
+}))
+rownames(synthetic_results) <- NULL
+synthetic_summary <- do.call(rbind, lapply(c("Two peaks", "Four peaks"), function(surface)
+    do.call(rbind, lapply(c("Exact", "Rounded"), function(outcome)
+        do.call(rbind, lapply(c("Symmetric", "Asymmetric"), function(mode) {
+            z <- synthetic_results[synthetic_results$surface == surface &
+                synthetic_results$outcome == outcome & synthetic_results$mode == mode, ]
+            data.frame(surface, outcome, mode, samples = nrow(z),
+                retained = mean(z$retained), retained.min = min(z$retained), retained.max = max(z$retained),
+                one.to.one = mean(z$one.to.one), many.to.one = mean(z$many.to.one),
+                unassigned = mean(z$unassigned))
+        }))))))
+rownames(synthetic_summary) <- NULL
+```
+
+```{r synthetic-plotting-functions, include=FALSE}
+synthetic_palette <- c("#216b9b", "#b78016", "#398f89", "#a64c73")
+synthetic_mode_colors <- c(Symmetric = "#216b9b", Asymmetric = "#bd683b")
+synthetic_get_case <- function(surface, outcome, mode, seed = synthetic_seeds[1])
+    synthetic_cases[[synthetic_key(seed, surface, outcome, mode)]]
+synthetic_boundaries <- function(ref) {
+    lim <- c(-1.65, 1.65)
+    lines(synthetic_to_x(cbind(rep(ref$separators["u"], 2), lim)), lty = 2, col = ink)
+    if (!is.na(ref$separators["v"]))
+        lines(synthetic_to_x(cbind(lim, rep(ref$separators["v"], 2))), lty = 2, col = ink)
+    polygon(synthetic_to_x(rbind(c(lim[1], lim[1]), c(lim[2], lim[1]),
+                                 c(lim[2], lim[2]), c(lim[1], lim[2]))), border = muted)
+}
+synthetic_reference_fill <- function(ref) {
+    a <- c(-1.65, ref$separators["u"], 1.65)
+    b <- if (is.na(ref$separators["v"])) c(-1.65, 1.65) else c(-1.65, ref$separators["v"], 1.65)
+    for (j in seq_len(length(b) - 1L)) for (i in 1:2)
+        polygon(synthetic_to_x(rbind(c(a[i], b[j]), c(a[i+1], b[j]),
+                                     c(a[i+1], b[j+1]), c(a[i], b[j+1]))),
+                col = synthetic_palette[i + 2L * (j - 1L)], border = NA)
+}
+synthetic_contours <- function(surface) {
+    a <- seq(-1.65, 1.65, length.out = 181)
+    z <- matrix(synthetic_field(as.matrix(expand.grid(a, a)), surface), length(a))
+    for (line in contourLines(a, a, z, levels = c(-2, -1, -.5, 0, .2)))
+        lines(synthetic_to_x(cbind(line$x, line$y)), col = "#25394350", lwd = .6)
+}
+synthetic_panel <- function(z, title, view = "estimate") {
+    theme_par(mar = c(2.5, 2.7, 3.2, .7), mgp = c(1.6, .5, 0), cex.axis = .8, cex.lab = .86)
+    plot(NA, xlim = c(-2.25, 2.25), ylim = c(-2.25, 2.25), asp = 1,
+         xlab = "Coordinate 1", ylab = "Coordinate 2", xaxs = "i", yaxs = "i",
+         main = title, cex.main = .92)
+    roots <- z$fit$max$extrema$row[z$fit$max$extrema$retained]
+    if (view == "reference") {
+        synthetic_reference_fill(z$reference)
+        subtitle <- sprintf("%d true basins", nrow(z$reference$peaks))
+    } else {
+        if (view == "individual") {
+            stopifnot(length(roots) <= length(basin_palette))
+            key <- setNames(basin_palette[seq_along(roots)], roots)
+        } else {
+            mapping <- if (view == "region") z$score$nearest else z$score$one
+            key <- setNames(rep("#75628b", length(mapping)), names(mapping))
+            key[!is.na(mapping)] <- synthetic_palette[mapping[!is.na(mapping)]]
+        }
+        colors <- unname(key[as.character(z$fit$max$labels)])
+        colors[is.na(z$fit$max$labels)] <- excluded
+        stopifnot(!anyNA(colors))
+        points(z$X, pch = 15, cex = .46, col = colors)
+        subtitle <- if (view == "individual") sprintf("%d separate retained basins", length(roots)) else
+            sprintf("%s %.1f%%; unassigned %.1f%%",
+                if (view == "region") "Many-to-one" else "One-to-one",
+                if (view == "region") z$score$metrics$many.to.one else z$score$metrics$one.to.one,
+                z$score$metrics$unassigned)
+    }
+    mtext(subtitle, side = 3, line = .3, cex = .69, col = muted)
+    synthetic_contours(z$surface)
+    synthetic_boundaries(z$reference)
+    points(z$reference$peaks, pch = 8, cex = .95, lwd = 1.2)
+    if (view == "reference") text(z$reference$peaks, labels = seq_len(nrow(z$reference$peaks)),
+                                   pos = 3, cex = .8)
+    else points(z$X[roots, , drop = FALSE], pch = 21, bg = "white", col = ink, cex = .75)
+    box(col = excluded)
+}
+synthetic_legend <- function(unmatched = TRUE) {
+    theme_par(mar = c(0, 0, 0, 0)); plot.new()
+    labels <- c("True peak", "Estimated peak", "True boundary", "Unmatched basin", "Unassigned")
+    pch <- c(8, 21, NA, 15, 15)
+    col <- c(ink, ink, ink, "#75628b", excluded)
+    lty <- c(NA, NA, 2, NA, NA)
+    if (!unmatched) {
+        labels <- labels[-4]; pch <- pch[-4]; col <- col[-4]; lty <- lty[-4]
+    }
+    legend("center", labels, pch = pch, pt.bg = "white", col = col, lty = lty,
+           ncol = length(labels), bty = "n", cex = .75, x.intersp = 1.5)
+}
+synthetic_plot_comparison <- function(surface) {
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    layout(matrix(c(1,2,3,4,5,6,7,7,7), nrow = 3, byrow = TRUE), heights = c(1,1,.14))
+    for (outcome in c("Exact", "Rounded")) for (mode in c("Reference", "Symmetric", "Asymmetric")) {
+        z <- synthetic_get_case(surface, outcome, if (mode == "Reference") "Symmetric" else mode)
+        synthetic_panel(z, paste(outcome, "heights:", tolower(mode)),
+                         if (mode == "Reference") "reference" else "estimate")
+    }
+    synthetic_legend()
+}
+synthetic_plot_fragments <- function(z) {
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    original <- z$fit$max$labels
+    layout(matrix(c(1,2,3,4,4,4), nrow = 2, byrow = TRUE), heights = c(1,.18))
+    synthetic_panel(z, "Known reference", "reference")
+    synthetic_panel(z, "Asymmetric fit", "individual")
+    synthetic_panel(z, "Evaluation grouping", "region")
+    synthetic_legend(FALSE)
+    stopifnot(identical(original, z$fit$max$labels))
+}
+synthetic_plot_replicates <- function() {
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    theme_par(mfrow = c(3,2), oma = c(.3,.5,1.5,.2))
+    for (metric in c("one.to.one", "many.to.one", "retained")) for (surface in c("Two peaks", "Four peaks")) {
+        z <- synthetic_results[synthetic_results$surface == surface, ]
+        percent <- metric != "retained"
+        ylim <- if (percent) c(0,100) else c(0, max(synthetic_results$retained) + 1)
+        theme_par(mar = c(3.8,4.2,2,1), mgp = c(2.6,.65,0), cex.axis = .85, cex.lab = .9)
+        plot(NA, xlim = c(.5,4.5), ylim = ylim, xaxt = "n", xlab = "", yaxs = "i",
+             ylab = c(one.to.one = "One-to-one agreement (%)", many.to.one = "Many-to-one agreement (%)",
+                      retained = "Retained extrema")[[metric]], main = surface, cex.main = 1)
+        if (percent) abline(h = seq(0,100,20), col = "#e4e8ea", lwd = .7)
+        else {
+            target <- if (surface == "Two peaks") 2 else 4
+            abline(h = target, col = ink, lty = 2)
+            text(4.45, target + .35, paste("Truth:", target), adj = 1, cex = .8)
+        }
+        axis(1, 1:4, c("Symmetric", "Asymmetric", "Symmetric", "Asymmetric"), cex.axis = .72)
+        mtext("Exact heights", side = 1, line = 2.1, at = 1.5, cex = .85)
+        mtext("Rounded heights", side = 1, line = 2.1, at = 3.5, cex = .85)
+        abline(v = 2.5, col = excluded, lty = 3)
+        for (outcome in c("Exact", "Rounded")) {
+            base <- if (outcome == "Exact") 0 else 2
+            for (j in seq_along(synthetic_seeds)) {
+                p <- z[z$seed == synthetic_seeds[j] & z$outcome == outcome, ]
+                p <- p[match(c("Symmetric", "Asymmetric"), p$mode), ]
+                offset <- (j - 4.5) * .035
+                lines(base + c(1,2) + offset, p[[metric]], col = "#75828b66", lwd = .8)
+                points(base + c(1,2) + offset, p[[metric]], pch = c(16,17),
+                       col = synthetic_mode_colors[p$mode], cex = .85)
+            }
+            for (i in 1:2) {
+                average <- mean(z[z$outcome == outcome & z$mode == c("Symmetric", "Asymmetric")[i], metric])
+                segments(base+i-.17, average, base+i+.17, average, lwd = 3,
+                         col = synthetic_mode_colors[i])
+            }
+        }
+    }
+    mtext("Eight paired samples; lines join the same inputs; thick bars show means",
+          side = 3, outer = TRUE, line = .2, cex = .85, col = ink)
+}
+```
+
+### Exact heights, rounded heights, and the reference boundaries
+
+The maps use the first seed, selected before examining the results. Each point
+is an input observation. Reference regions are filled continuously only to
+show the analytic boundaries; fitted partitions are shown at the sampled
+locations. The same reference applies to both rows. In the fitted panels,
+colors follow the one-to-one matching; purple marks unmatched estimated
+basins and gray marks observations excluded by the size filter.
+
+```{r synthetic-two-basins, echo=FALSE, fig.width=10, fig.height=7, fig.cap="Two-peak surface, first preselected sample. Top: exact heights. Bottom: heights rounded to 0.1. Columns show the analytic reference, symmetric mode, and asymmetric mode. Dashed lines are true gradient-ascent basin boundaries; stars mark true peaks and white circles mark retained estimated extrema. Scores use one-to-one basin matching and all 2,500 points. Colors denote evaluation matches; purple is unmatched and gray is unassigned.", fig.alt="Reference and estimated basins on a two-peak synthetic surface, comparing exact and rounded heights in both modes."}
+synthetic_plot_comparison("Two peaks")
+```
+
+```{r synthetic-four-basins, echo=FALSE, fig.width=10, fig.height=7, fig.cap="Four-peak surface under the same settings and first sample. The exact-height modes agree. Rounding changes both the basin boundaries and, in asymmetric mode, the number of retained basins. The filled reference is unchanged by rounding; scores use one-to-one matching, not the many-to-one evaluation described below.", fig.alt="Six panels compare four known basins with symmetric and asymmetric estimates using exact and rounded heights."}
+synthetic_plot_comparison("Four peaks")
+```
+
+### What grouping fragments means in the actual example
+
+The next figure keeps the asymmetric fit fixed. Its middle panel gives every
+retained estimated basin its own color. The right panel recolors each entire
+estimated basin by the true peak nearest its terminal row. Several colors
+can become one color because several estimated terminal rows surround one
+true peak. No observations move and no fitted labels are changed.
+
+```{r synthetic-fragment-summary, include=FALSE}
+synthetic_fragment_case <- synthetic_get_case("Four peaks", "Rounded", "Asymmetric")
+z <- synthetic_fragment_case
+roots <- z$fit$max$extrema$row[z$fit$max$extrema$retained]
+synthetic_fragments <- do.call(rbind, lapply(roots, function(row) {
+    target <- z$score$nearest[as.character(row)]
+    members <- which(z$fit$max$labels == row)
+    data.frame(terminal.row = row, height = z$y[row], nearest.true.peak = unname(target),
+               assigned = length(members), correct.region = sum(z$reference$labels[members] == target),
+               one.to.one.peak = unname(z$score$one[as.character(row)]))
+}))
+fragment_target <- as.integer(names(which.max(table(synthetic_fragments$nearest.true.peak))))
+fragment_example <- synthetic_fragments[synthetic_fragments$nearest.true.peak == fragment_target, ]
+```
+
+```{r synthetic-fragment-map, echo=FALSE, fig.width=10, fig.height=3.9, fig.cap="Evaluation grouping of the same rounded-height asymmetric fit. Left: four true regions. Middle: separate colors identify each retained estimated basin. Right: each basin is recolored by its terminal row's nearest true peak. This changes only evaluation labels; gray unassigned points remain unassigned. Points across a dashed true boundary still count as errors, even after grouping. Both fitted panels show exactly the same observations and terminal rows.", fig.alt="A known four-region partition, a fragmented asymmetric estimate, and the same estimate recolored using nearest true peaks for evaluation."}
+synthetic_plot_fragments(synthetic_fragment_case)
+```
+
+In this sample, `r nrow(fragment_example)` retained estimated basins map to
+true peak `r fragment_target`. Their terminal rows have the recorded heights
+shown below. The last two columns distinguish all assigned observations from
+those actually belonging to that true basin; sharing an evaluation label
+does not make every assigned point correct.
+
+```{r synthetic-fragment-table, echo=FALSE}
+knitr::kable(fragment_example[, c("terminal.row", "height", "nearest.true.peak", "assigned", "correct.region")],
+    row.names = FALSE, digits = 1,
+    col.names = c("Terminal row", "Recorded height", "Nearest true peak", "Assigned points", "In that true basin"),
+    caption = "Several distinct estimated basins evaluated against one underlying true peak.")
+```
+
+Together these estimated basins contain `r sum(fragment_example$assigned)`
+assigned observations, of which `r sum(fragment_example$correct.region)`
+actually lie in true basin `r fragment_target`. One-to-one matching credits
+`r sum(fragment_example$correct.region[fragment_example$one.to.one.peak == fragment_target], na.rm = TRUE)`
+of those observations, from the single estimate matched to that true basin.
+Many-to-one evaluation credits all `r sum(fragment_example$correct.region)`
+correct-region observations across the pieces. The remaining
+`r sum(fragment_example$assigned - fragment_example$correct.region)` assigned
+observations lie in other true basins and still count as errors. These are
+contributions to the scores over all 2,500 points, not percentages within this
+one reference basin.
+
+### Results over eight paired samples
+
+```{r synthetic-results-table, echo=FALSE}
+knitr::kable(synthetic_summary[, c("surface", "outcome", "mode", "retained", "one.to.one", "many.to.one", "unassigned")],
+    row.names = FALSE, digits = 2,
+    col.names = c("Surface", "Heights", "Mode", "Mean basins", "One-to-one (%)", "Many-to-one (%)", "Unassigned (%)"),
+    caption = "Means over eight samples of 2,500 observations. Both agreement measures include all observations; larger values are better. The true basin counts are two and four.")
+```
+
+```{r synthetic-replicated-comparison, echo=FALSE, fig.width=10, fig.height=10, fig.cap="Repeated-sample comparison. Rows show one-to-one basin agreement, many-to-one region agreement, and retained-extremum counts. Columns distinguish the two surfaces. Lines pair results from the same input sample; thick bars show means, and the dashed count lines mark the truth. All percentages include unassigned observations as errors. Agreement with one measure need not imply agreement with the other.", fig.alt="Six panels show paired symmetric and asymmetric results across eight samples for both basin-agreement measures and retained-extremum counts."}
+synthetic_plot_replicates()
+```
+
+With exact heights, the modes have identical initial and final labels in all
+16 surface/sample pairs, and retain the correct two or four extrema. Their
+mean agreement with the continuous reference is 97.69% for two peaks and
+95.42% for four peaks. Shortest improving edges approximate, but do not
+exactly reproduce, continuous gradient trajectories.
+
+With rounded heights, symmetric mode still retains two or four extrema.
+Asymmetric mode retains five to eight or eight to twelve, respectively, and
+leaves an average of 18.71% or 28.38% of observations unassigned. Symmetric
+mode has better one-to-one agreement in these comparisons. Asymmetric mode
+has better many-to-one agreement: its pieces more often point toward the
+correct broad region once multiple pieces may share a true-peak label.
+These results favor different aspects of recovery, rather than establishing
+one universally better mode.
+
+Connected equal-height bands in symmetric mode share one selected improving
+exit, which can change the reference basin boundaries substantially.
+Asymmetric mode preserves separate stopping rows on ties and can fragment one
+underlying basin. Both effects matter when outcomes are rounded. The same
+numerical prominence threshold also has different meanings in the two modes:
+level-set persistence versus directed escape prominence. The comparison does
+not isolate edge direction from these other conventions.
+
+All 64 maximum fits were checked against their corresponding minimum fits on
+the negated outcomes. The results above therefore also apply to those
+sign-reversed trough surfaces. This does not test every geometry, sampling
+density, noise process, or choice of `k`; the known reference and its two
+agreement measures are specific to this controlled experiment.
+
+
+## 4. Maunga Whau: extrema of a real terrain grid
 
 R's [`datasets::volcano` documentation](https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/volcano.html)
 describes topography of Maunga Whau (Mt Eden), digitized from a map by Ross
@@ -831,7 +1347,10 @@ results. They verify:
 * identical inputs and numeric settings for the two terrain modes, exact
   outgoing-neighbor extrema and shortest improving steps for every asymmetric
   terrain row, and directed escape levels and parent targets using an
-  independent threshold-reachability search for all asymmetric terrain extrema.
+  independent threshold-reachability search for all asymmetric terrain extrema;
+* analytic 2D reference basins against numerical gradient trajectories, both
+  synthetic basin-agreement measures against independent calculations, the
+  fragment illustration, and reproduction of the previously reviewed means.
 
 ```{r numerical-verification, include=FALSE}
 verification <- data.frame(check = character(), cases = integer(), passed = logical())
@@ -1052,6 +1571,81 @@ for (d in c("max", "min")) {
                         colors_for(terrain[[d]]$labels, terrain, d)))
 }
 record_check("Comparison color identities and baseline colors", sum(lengths(terrain_mode_colors)), TRUE)
+# Check the analytic reference without using graph flow or basin labels.
+set.seed(91901)
+synthetic_reference_checks <- do.call(rbind, lapply(c("Two peaks", "Four peaks"), function(surface) {
+    U <- matrix(runif(256, -1.65, 1.65), ncol = 2)
+    ref <- synthetic_reference(U, surface)
+    stopifnot(max(abs(synthetic_gradient(ref$peaks.uv, surface))) < 1e-10)
+    final <- U; h <- .01
+    for (step in seq_len(3000L)) {
+        g1 <- synthetic_gradient(final, surface)
+        g2 <- synthetic_gradient(final + h / 2 * g1, surface)
+        g3 <- synthetic_gradient(final + h / 2 * g2, surface)
+        g4 <- synthetic_gradient(final + h * g3, surface)
+        final <- final + h / 6 * (g1 + 2 * g2 + 2 * g3 + g4)
+    }
+    error <- sqrt(rowSums((final - ref$peaks.uv[ref$labels, ])^2))
+    data.frame(surface, trajectories = nrow(U), max.error = max(error))
+}))
+record_check("Analytic 2D reference basins versus integrated gradient trajectories", 256L,
+              all(synthetic_reference_checks$max.error < 1e-7))
+record_check("Paired synthetic inputs and neighborhoods", 32L, nrow(synthetic_equalities) == 32L)
+record_check("Synthetic maxima equal sign-reversed minima", 64L,
+              length(synthetic_cases) == 64L && all(vapply(synthetic_cases, `[[`, logical(1), "sign.verified")))
+record_check("Exact synthetic modes have identical initial and final labels", 16L,
+              all(synthetic_equalities$initial.identical[synthetic_equalities$outcome == "Exact"]) &&
+              all(synthetic_equalities$final.identical[synthetic_equalities$outcome == "Exact"]))
+
+for (z in synthetic_cases) {
+    tab <- z$fit$max$extrema
+    labels <- z$fit$max$labels
+    stopifnot(sum(tab$initial.size) == 2500L, sum(tab$merged.size) == 2500L,
+              all(tab$merged.size[tab$retained] >= 100L),
+              identical(sort(unlist(z$fit$max$basins, use.names = FALSE)), which(!is.na(labels))))
+    # Enumerate all injective basin matchings, independently of the dynamic
+    # programming matcher used to produce the figures and tables.
+    counts <- z$score$counts
+    candidates <- as.matrix(expand.grid(rep(list(seq_len(ncol(counts))), nrow(counts))))
+    candidates <- candidates[apply(candidates, 1, function(row) !anyDuplicated(row)), , drop = FALSE]
+    totals <- rowSums(vapply(seq_len(nrow(counts)), function(j)
+        counts[cbind(j, candidates[, j])], numeric(nrow(candidates))))
+    stopifnot(isTRUE(all.equal(100 * max(totals) / 2500, z$score$metrics$one.to.one)))
+    # Recompute the many-to-one score from raw coordinates and membership sets.
+    correct <- 0L
+    for (row in tab$row[tab$retained]) {
+        distance <- sqrt((z$reference$peaks[, 1] - z$X[row, 1])^2 +
+                          (z$reference$peaks[, 2] - z$X[row, 2])^2)
+        target <- which.min(distance)
+        members <- which(labels == row)
+        correct <- correct + sum(z$reference$labels[members] == target)
+        stopifnot(target == z$score$nearest[as.character(row)])
+    }
+    stopifnot(isTRUE(all.equal(100 * correct / 2500, z$score$metrics$many.to.one)))
+}
+record_check("Synthetic assignment and size-filter accounting", 64L, TRUE)
+record_check("One-to-one scores versus exhaustive basin matchings", 64L, TRUE)
+record_check("Many-to-one scores versus direct peak distances and memberships", 64L, TRUE)
+
+# Expected means are from the original, separately checked experiment.
+expected_synthetic <- data.frame(
+    retained = c(2,2,2,5.875,4,4,4,9.75),
+    one.to.one = c(97.69,97.69,71.825,39.925,95.42,95.42,57.665,36.33),
+    many.to.one = c(97.69,97.69,71.825,80.3,95.42,95.42,57.665,68.495),
+    unassigned = c(0,0,0,18.71,0,0,0,28.38))
+record_check("Synthetic means reproduce the reviewed experiment", 8L,
+              isTRUE(all.equal(synthetic_summary[names(expected_synthetic)], expected_synthetic, tolerance = 1e-10)))
+
+# The small explanatory example has one true basin, two estimates, and ten NA.
+toy_labels <- c(rep(1L, 60), rep(2L, 30), rep(NA_integer_, 10))
+toy_match <- synthetic_best_match(matrix(c(60L,30L), nrow = 1L))
+record_check("Fragment illustration and actual grouping accounting", 2L,
+    toy_match$correct == 60 && sum(!is.na(toy_labels)) == 90 &&
+    nrow(fragment_example) > 1L &&
+    sum(synthetic_fragments$assigned) == sum(!is.na(synthetic_fragment_case$fit$max$labels)) &&
+    isTRUE(all.equal(100 * sum(synthetic_fragments$correct.region) / 2500,
+                    synthetic_fragment_case$score$metrics$many.to.one)))
+
 numerical_checks_passed <- TRUE
 ```
 
@@ -1075,7 +1669,8 @@ The complete source is installed with the vignette. For method details, see
 <summary>Reproduction information</summary>
 
 The random seeds are 22061 (1D noise), 22062 (uniform 2D locations), and
-22063 (nonuniform 2D locations). All fits use the original coordinates and
+22063 (nonuniform 2D locations). The controlled comparison uses seeds
+120601--120608, with seed 91901 for the independent trajectory check. All fits use the original coordinates and
 the displayed outcomes. Cached chunks include the package code/build identity
 and runtime identity, so changed implementations do not silently reuse results.
 
