@@ -45,9 +45,23 @@ pkgdown::build_site(install = FALSE, new_process = FALSE, examples = FALSE,
                     preview = FALSE, override = list(reference = reference))
 # Evaluate the small supported entry-point examples; retain source-only examples
 # on specialized/archive reference pages that require saved or optional inputs.
-pkgdown::build_reference(topics = c("gflow-package", "lcor", "create.basin.complex"),
+pkgdown::build_reference(topics = c("gflow-package", "lcor", "create.basin.complex", "knn.basins"),
                          examples = TRUE, lazy = FALSE, devel = FALSE,
                          override = list(reference = reference))
+# A successful knit does not ensure that pkgdown copied the article's figures.
+# Reject temporary/out-of-tree image paths before publishing the new vignette.
+knn.article <- "build/site/articles/knn-basins.html"
+knn.images <- xml2::xml_attr(xml2::xml_find_all(xml2::read_html(knn.article), ".//img"), "src")
+knn.local.images <- knn.images[!grepl("^(https?:)?//|^data:", knn.images)]
+if (!length(knn.local.images)) stop("No local figures found in the knn.basins article.")
+knn.image.files <- file.path(dirname(knn.article), xml2::url_unescape(knn.local.images))
+knn.image.paths <- normalizePath(knn.image.files, winslash = "/", mustWork = FALSE)
+knn.invalid.images <- !file.exists(knn.image.files) |
+    !startsWith(knn.image.paths, paste0(normalizePath("build/site", winslash = "/"), "/"))
+if (any(knn.invalid.images)) {
+    stop("Figures missing from the knn.basins website output: ",
+         paste(knn.local.images[knn.invalid.images], collapse = ", "))
+}
 # Generated definition lists must retain every default, including their first
 # item (which pkgdown can omit when it shares a line with the opening markup).
 parameter.page <- xml2::read_html("build/site/reference/basin-parameters.html")
